@@ -46,3 +46,10 @@ v1.0.5
 
 - Same Markdown reader as 1.0.4, cut through `.github/workflows/release.yml`.
 - Board image: `firmware/corsspoint_lilygo_t5s3_1.0.5.bin` (T5-4.7-S3 E-Paper Pro, merged flash image).
+
+v1.0.6
+
+- OTA latest-release URL points at `michaelrolphone-cmyk/T5S3-Reader`.
+- Release assets include `firmware-t5s3-pro.bin` for on-device OTA and SD update.
+- Version compare accepts a leading `v` on GitHub tags.
+- Board image: `firmware/corsspoint_lilygo_t5s3_1.0.6.bin` (merged USB image). Use `firmware-t5s3-pro.bin` or the `-app` file for SD/OTA.
