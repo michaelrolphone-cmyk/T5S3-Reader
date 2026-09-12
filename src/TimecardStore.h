@@ -44,7 +44,7 @@ int todayYmd();
 int currentMinutes();
 int sundayYmd(int weekOffset);
 int addDays(int ymd, int days);
-int weekOfMonth(int ymd);
+int weekOfYear(int ymd);
 void splitYmd(int ymd, int& year, int& month, int& day);
 const char* monthAbbrev(int month);
 const char* weekdayAbbrev(int ymd);
