@@ -62,9 +62,8 @@ inline bool hasMarkdownExtension(const String& fileName) {
 }
 
 // Document classification used by the file browser, reader, and sleep cover path.
-// Markdown is a distinct kind so a future renderer can branch without changing
-// every extension check. Until that renderer exists, Markdown is opened with
-// the TXT reader (raw source text).
+// Markdown is a distinct kind. The TXT reader renders it with heading styles
+// and treats first-class ATX headings (`#`) as chapter breaks.
 enum class DocumentKind {
   Unknown = 0,
   Epub,
@@ -79,7 +78,7 @@ inline DocumentKind classifyDocument(const String& fileName) {
   return classifyDocument(std::string_view{fileName.c_str(), fileName.length()});
 }
 
-// True for .txt and .md — both currently use the plain-text reader.
+// True for .txt and .md — both open in TxtReaderActivity.
 bool isPlainTextReadable(std::string_view fileName);
 inline bool isPlainTextReadable(const String& fileName) {
   return isPlainTextReadable(std::string_view{fileName.c_str(), fileName.length()});

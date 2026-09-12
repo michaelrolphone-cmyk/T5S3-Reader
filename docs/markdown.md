@@ -14,6 +14,8 @@
 
 `FsHelpers::classifyDocument()` returns `DocumentKind::Markdown` for `.md`.
 
+Sleep cover uses the same sibling-image path as TXT (`notes.md` + `notes.jpg` in the same folder). Page-index cache version 5 stores fence state so Markdown files do not re-index on every open.
+
 ## Not yet rendered
 
 Nested lists, tables, images inside the document, Setext headings, and per-word bold/italic runs inside a paragraph.
