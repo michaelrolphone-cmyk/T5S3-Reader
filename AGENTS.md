@@ -34,3 +34,12 @@ future sessions.
 
 firmware-t5s3-pro.bin and the versioned -app.bin are OTA/SD app images. The merged
 versioned .bin is a USB image at 0x0 and must not be used for OTA/SD updates.
+
+## Adding or extending apps
+
+Read [docs/ADDING_APPS.md](docs/ADDING_APPS.md) before adding an app. It traces
+Timecard and Ask through ActivityManager, Home menu routing, rendering, child
+dialogs, storage, networking, localization, and builds. Keep the Home count,
+labels, icons, and activation indices synchronized; use the documented lifecycle
+and render-lock rules. The guide distinguishes existing behavior from known
+limitations and optional improvements. Check current source before applying it.
