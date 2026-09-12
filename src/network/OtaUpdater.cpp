@@ -3,17 +3,12 @@
 #include <Board.h>
 #include <Logging.h>
 #include <ReleaseJsonParser.h>
-#include <esp_crt_bundle.h>
 #include <esp_http_client.h>
 #include <esp_https_ota.h>
 #include <esp_idf_version.h>
 #include <esp_wifi.h>
 
-#if ESP_IDF_VERSION_MAJOR >= 5
-#define CROSSPOINT_CRT_BUNDLE_ATTACH esp_crt_bundle_attach
-#else
-#define CROSSPOINT_CRT_BUNDLE_ATTACH arduino_esp_crt_bundle_attach
-#endif
+#include "GithubTlsCerts.h"
 
 namespace {
 constexpr char latestReleaseUrl[] =
@@ -45,14 +40,16 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   esp_err_t esp_err;
   ReleaseJsonParser releaseParser(Board::id());
 
+  // Do not use crt_bundle_attach. Arduino-ESP32 2.x does not link the Mozilla
+  // bundle into this firmware, so attach fails and mbedtls returns -0x7680.
   esp_http_client_config_t client_config = {
       .url = latestReleaseUrl,
+      .cert_pem = kGithubTlsRoots,
       .event_handler = event_handler,
       .buffer_size = 8192,
       .buffer_size_tx = 8192,
       .user_data = &releaseParser,
       .skip_cert_common_name_check = true,
-      .crt_bundle_attach = CROSSPOINT_CRT_BUNDLE_ATTACH,
       .keep_alive_enable = true,
   };
 
@@ -147,11 +144,11 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
 
   esp_http_client_config_t client_config = {
       .url = otaUrl.c_str(),
+      .cert_pem = kGithubTlsRoots,
       .timeout_ms = 15000,
       .buffer_size = 8192,
       .buffer_size_tx = 8192,
       .skip_cert_common_name_check = true,
-      .crt_bundle_attach = CROSSPOINT_CRT_BUNDLE_ATTACH,
       .keep_alive_enable = true,
   };
 
