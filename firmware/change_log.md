@@ -74,3 +74,9 @@ v1.0.9
 - Quarantine a corrupt `/.crosspoint/settings.json` to `settings.json.bak.YYYYMMDDTHHMMSS` and rewrite from memory.
 - SD writes recreate the parent folder, retry the open, and log SdFat error codes.
 - USB: `firmware/corsspoint_lilygo_t5s3_1.0.9.bin`. SD/OTA: `firmware-t5s3-pro.bin`.
+
+v1.0.10
+
+- Home menu Timecard: clock in, start/end lunch, clock out; week view with week-of-year and date range; AM/PM edit.
+- LLM handshake sends SNI for `api.llm7.io` (fix Cloudflare fatal alert -0x7780).
+- USB: `firmware/corsspoint_lilygo_t5s3_1.0.10.bin`. SD/OTA: `firmware-t5s3-pro.bin`.
