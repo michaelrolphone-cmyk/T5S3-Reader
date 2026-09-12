@@ -41,3 +41,8 @@ v1.0.4
 - Render Markdown: strip inline markup, bold ATX headings, treat `#` H1 titles as chapter breaks.
 - Markdown chapter picker (Confirm hold), fence-aware page-index cache, sleep-cover path.
 - Board image: `firmware/corsspoint_lilygo_t5s3_1.0.4.bin` (T5-4.7-S3 E-Paper Pro, merged flash image).
+
+v1.0.5
+
+- Same Markdown reader as 1.0.4, cut through `.github/workflows/release.yml`.
+- Board image: `firmware/corsspoint_lilygo_t5s3_1.0.5.bin` (T5-4.7-S3 E-Paper Pro, merged flash image).

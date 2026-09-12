@@ -1,0 +1,112 @@
+name: Cut release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to create (e.g. v1.0.5)
+        required: true
+        default: v1.0.5
+      commit_firmware:
+        description: Commit merged bin into firmware/ on this branch
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish ${{ inputs.tag }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: ver
+        run: |
+          TAG="${{ inputs.tag }}"
+          case "$TAG" in v*) ;; *) TAG="v$TAG" ;; esac
+          VER="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+          echo "bin=firmware/corsspoint_lilygo_t5s3_${VER}.bin" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-
+
+      - name: Install PlatformIO
+        run: python -m pip install platformio==6.1.19
+
+      - name: Build gh_release
+        run: pio run -e gh_release
+
+      - name: Stage firmware image
+        run: |
+          mkdir -p firmware dist
+          cp .pio/build/gh_release/firmware-merged.bin "${{ steps.ver.outputs.bin }}"
+          cp .pio/build/gh_release/firmware.bin "dist/corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}-app.bin"
+          cp .pio/build/gh_release/firmware-merged.bin "dist/corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}.bin"
+          ls -lh "${{ steps.ver.outputs.bin }}" dist/
+
+      - name: Commit firmware tree
+        if: ${{ inputs.commit_firmware }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${{ steps.ver.outputs.bin }}"
+          if git diff --cached --quiet; then
+            echo "firmware image already committed"
+          else
+            git commit -m "Add ${{ steps.ver.outputs.bin }}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Create tag
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists"
+          else
+            git tag -a "$TAG" -m "$TAG"
+            git push origin "$TAG"
+          fi
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" \
+              "${{ steps.ver.outputs.bin }}" \
+              "dist/corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}-app.bin" \
+              --clobber
+          else
+            gh release create "$TAG" \
+              "${{ steps.ver.outputs.bin }}" \
+              "dist/corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}-app.bin" \
+              --title "$TAG" \
+              --notes "T5-4.7-S3 E-Paper Pro markdown reader build ${{ steps.ver.outputs.ver }}. Merged flash image flashes at 0x0. App-only image flashes at 0x10000."
+          fi
