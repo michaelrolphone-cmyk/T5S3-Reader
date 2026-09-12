@@ -61,3 +61,9 @@ v1.0.7
 - Feed the task WDT while validating large SD firmware images.
 - Settings / boot splash show `1.0.7` on `gh_release` builds.
 - USB: `firmware/corsspoint_lilygo_t5s3_1.0.7.bin`. SD/OTA: `firmware-t5s3-pro.bin`.
+
+v1.0.8
+
+- Home menu Ask screen: type a question, call LLM7.io (`fast`, anonymous `Bearer unused`).
+- LLM TLS pinned to GTS Root R4 for `api.llm7.io`.
+- USB: `firmware/corsspoint_lilygo_t5s3_1.0.8.bin`. SD/OTA: `firmware-t5s3-pro.bin`.
