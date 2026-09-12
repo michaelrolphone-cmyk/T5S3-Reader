@@ -57,6 +57,32 @@ inline bool hasTxtExtension(const String& fileName) {
 
 // Check for .md extension (case-insensitive)
 bool hasMarkdownExtension(std::string_view fileName);
+inline bool hasMarkdownExtension(const String& fileName) {
+  return hasMarkdownExtension(std::string_view{fileName.c_str(), fileName.length()});
+}
+
+// Document classification used by the file browser, reader, and sleep cover path.
+// Markdown is a distinct kind. The TXT reader renders it with heading styles
+// and treats first-class ATX headings (`#`) as chapter breaks.
+enum class DocumentKind {
+  Unknown = 0,
+  Epub,
+  Xtc,
+  Txt,
+  Markdown,
+  Bitmap,
+};
+
+DocumentKind classifyDocument(std::string_view fileName);
+inline DocumentKind classifyDocument(const String& fileName) {
+  return classifyDocument(std::string_view{fileName.c_str(), fileName.length()});
+}
+
+// True for .txt and .md — both open in TxtReaderActivity.
+bool isPlainTextReadable(std::string_view fileName);
+inline bool isPlainTextReadable(const String& fileName) {
+  return isPlainTextReadable(std::string_view{fileName.c_str(), fileName.length()});
+}
 
 std::string extractFolderPath(const std::string& filePath);
 

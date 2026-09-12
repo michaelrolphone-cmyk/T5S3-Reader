@@ -131,6 +131,31 @@ bool hasTxtExtension(std::string_view fileName) { return checkFileExtension(file
 
 bool hasMarkdownExtension(std::string_view fileName) { return checkFileExtension(fileName, ".md"); }
 
+DocumentKind classifyDocument(std::string_view fileName) {
+  if (hasEpubExtension(fileName)) {
+    return DocumentKind::Epub;
+  }
+  if (hasXtcExtension(fileName)) {
+    return DocumentKind::Xtc;
+  }
+  // Markdown before TXT so .md stays a distinct kind.
+  if (hasMarkdownExtension(fileName)) {
+    return DocumentKind::Markdown;
+  }
+  if (hasTxtExtension(fileName)) {
+    return DocumentKind::Txt;
+  }
+  if (hasBmpExtension(fileName)) {
+    return DocumentKind::Bitmap;
+  }
+  return DocumentKind::Unknown;
+}
+
+bool isPlainTextReadable(std::string_view fileName) {
+  const DocumentKind kind = classifyDocument(fileName);
+  return kind == DocumentKind::Txt || kind == DocumentKind::Markdown;
+}
+
 std::string extractFolderPath(const std::string& filePath) {
   const auto lastSlash = filePath.find_last_of('/');
   if (lastSlash == std::string::npos || lastSlash == 0) {
