@@ -31,6 +31,40 @@ esp_err_t onHttpEvent(esp_http_client_event_t* event) {
   sink->body.append(static_cast<const char*>(event->data), take);
   return ESP_OK;
 }
+
+esp_err_t performOnce(const std::string& payload, ResponseSink* sink, int* statusOut) {
+  esp_http_client_config_t config = {};
+  config.url = kChatUrl;
+  config.cert_pem = kLlm7TlsRoots;
+  config.timeout_ms = 30000;
+  config.event_handler = onHttpEvent;
+  config.buffer_size = 4096;
+  config.buffer_size_tx = 4096;
+  config.user_data = sink;
+  config.skip_cert_common_name_check = true;
+  config.keep_alive_enable = false;
+
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (client == nullptr) {
+    return ESP_FAIL;
+  }
+
+  esp_http_client_set_method(client, HTTP_METHOD_POST);
+  esp_http_client_set_header(client, "Content-Type", "application/json");
+  esp_http_client_set_header(client, "Authorization", "Bearer unused");
+  esp_http_client_set_header(client, "User-Agent", "Manifold-ESP32");
+  esp_http_client_set_header(client, "Accept", "application/json");
+  esp_http_client_set_post_field(client, payload.c_str(), static_cast<int>(payload.size()));
+
+  esp_task_wdt_reset();
+  const esp_err_t err = esp_http_client_perform(client);
+  esp_task_wdt_reset();
+  if (statusOut != nullptr) {
+    *statusOut = esp_http_client_get_status_code(client);
+  }
+  esp_http_client_cleanup(client);
+  return err;
+}
 }  // namespace
 
 LlmChatResult Llm7Client::complete(const std::vector<LlmChatMessage>& messages) {
@@ -55,37 +89,16 @@ LlmChatResult Llm7Client::complete(const std::vector<LlmChatMessage>& messages) 
   }
 
   ResponseSink sink;
-  esp_http_client_config_t config = {
-      .url = kChatUrl,
-      .cert_pem = kLlm7TlsRoots,
-      .timeout_ms = 30000,
-      .event_handler = onHttpEvent,
-      .buffer_size = 4096,
-      .buffer_size_tx = 4096,
-      .user_data = &sink,
-      .skip_cert_common_name_check = true,
-      .keep_alive_enable = false,
-  };
-
-  esp_http_client_handle_t client = esp_http_client_init(&config);
-  if (client == nullptr) {
-    result.error = "HTTP client init failed";
-    return result;
-  }
-
+  int status = 0;
   esp_wifi_set_ps(WIFI_PS_NONE);
-  esp_http_client_set_method(client, HTTP_METHOD_POST);
-  esp_http_client_set_header(client, "Content-Type", "application/json");
-  esp_http_client_set_header(client, "Authorization", "Bearer unused");
-  esp_http_client_set_header(client, "User-Agent", "Manifold-ESP32");
-  esp_http_client_set_post_field(client, payload.c_str(), static_cast<int>(payload.size()));
-
   LOG_INF("LLM", "POST %s (%u bytes)", kChatUrl, static_cast<unsigned>(payload.size()));
-  esp_task_wdt_reset();
-  const esp_err_t err = esp_http_client_perform(client);
-  esp_task_wdt_reset();
-  const int status = esp_http_client_get_status_code(client);
-  esp_http_client_cleanup(client);
+  esp_err_t err = performOnce(payload, &sink, &status);
+  if (err == ESP_ERR_HTTP_CONNECT) {
+    LOG_ERR("LLM", "connect failed, retrying once");
+    delay(500);
+    sink.body.clear();
+    err = performOnce(payload, &sink, &status);
+  }
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 
   if (err != ESP_OK) {
