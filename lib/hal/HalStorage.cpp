@@ -7,10 +7,49 @@
 #include <SdFat.h>
 
 #include <cassert>
+#include <cstring>
 
 namespace {
 constexpr uint32_t SD_SPI_FREQUENCY = 40000000;
 SdFat sd;
+
+void logSdError(const char* moduleName, const char* action, const char* path) {
+  LOG_ERR(moduleName, "%s: %s (sdErr=0x%X data=0x%X)", action, path, sd.sdErrorCode(), sd.sdErrorData());
+}
+
+bool ensureParentDirUnlocked(const char* path) {
+  if (path == nullptr || path[0] == '\0') {
+    return false;
+  }
+  const char* slash = strrchr(path, '/');
+  if (slash == nullptr || slash == path) {
+    return true;
+  }
+  char parent[160];
+  const size_t len = static_cast<size_t>(slash - path);
+  if (len == 0 || len >= sizeof(parent)) {
+    return false;
+  }
+  memcpy(parent, path, len);
+  parent[len] = '\0';
+
+  if (sd.exists(parent)) {
+    FsFile existing = sd.open(parent);
+    const bool isDir = existing && existing.isDirectory();
+    existing.close();
+    if (isDir) {
+      return true;
+    }
+    LOG_ERR("SD", "Parent path is not a directory, removing: %s", parent);
+    sd.remove(parent);
+  }
+  if (sd.mkdir(parent, true)) {
+    LOG_DBG("SD", "Created directory: %s", parent);
+    return true;
+  }
+  logSdError("SD", "Failed to create parent directory", parent);
+  return false;
+}
 
 bool openFileForReadUnlocked(const char* moduleName, const char* path, FsFile& file) {
   if (!sd.exists(path)) {
@@ -20,16 +59,22 @@ bool openFileForReadUnlocked(const char* moduleName, const char* path, FsFile& f
 
   file = sd.open(path, O_RDONLY);
   if (!file) {
-    LOG_ERR(moduleName, "Failed to open file for reading: %s", path);
+    logSdError(moduleName, "Failed to open file for reading", path);
     return false;
   }
   return true;
 }
 
 bool openFileForWriteUnlocked(const char* moduleName, const char* path, FsFile& file) {
+  ensureParentDirUnlocked(path);
   file = sd.open(path, O_RDWR | O_CREAT | O_TRUNC);
   if (!file) {
-    LOG_ERR(moduleName, "Failed to open file for writing: %s", path);
+    logSdError(moduleName, "Failed to open file for writing", path);
+    ensureParentDirUnlocked(path);
+    file = sd.open(path, O_WRONLY | O_CREAT | O_TRUNC);
+  }
+  if (!file) {
+    logSdError(moduleName, "Retry open for writing failed", path);
     return false;
   }
   return true;
@@ -76,8 +121,6 @@ HalStorage::HalStorage() {
   assert(storageMutex != nullptr);
 }
 
-// begin() and ready() are only called from setup, no need to acquire mutex for them
-
 bool HalStorage::begin() {
   Board::prepareSdBus();
   initialized = sd.begin(BoardPins::SdCs, SD_SPI_FREQUENCY);
@@ -90,8 +133,6 @@ bool HalStorage::begin() {
 }
 
 bool HalStorage::ready() const { return initialized; }
-
-// For the rest of the methods, we acquire the mutex to ensure thread safety
 
 class HalStorage::StorageLock {
  public:
@@ -234,8 +275,14 @@ bool HalStorage::writeFile(const char* path, const String& content) {
     return false;
   }
 
+  if (!ensureParentDirUnlocked(path)) {
+    return false;
+  }
+
   if (sd.exists(path)) {
-    sd.remove(path);
+    if (!sd.remove(path)) {
+      logSdError("SD", "Failed to remove existing file before write", path);
+    }
   }
 
   FsFile f;
@@ -244,8 +291,14 @@ bool HalStorage::writeFile(const char* path, const String& content) {
   }
 
   const size_t written = f.print(content);
+  f.sync();
   f.close();
-  return written == content.length();
+  if (written != content.length()) {
+    LOG_ERR("SD", "Short write to %s (%u of %u)", path, static_cast<unsigned>(written),
+            static_cast<unsigned>(content.length()));
+    return false;
+  }
+  return true;
 }
 
 bool HalStorage::ensureDirectoryExists(const char* path) {
@@ -262,14 +315,16 @@ bool HalStorage::ensureDirectoryExists(const char* path) {
     if (isDirectory) {
       return true;
     }
+    LOG_ERR("SD", "Path exists and is not a directory, removing: %s", path);
+    sd.remove(path);
   }
 
-  if (sd.mkdir(path)) {
+  if (sd.mkdir(path, true)) {
     LOG_DBG("SD", "Created directory: %s", path);
     return true;
   }
 
-  LOG_ERR("SD", "Failed to create directory: %s", path);
+  logSdError("SD", "Failed to create directory", path);
   return false;
 }
 
@@ -290,7 +345,7 @@ HalFile::HalFile(HalFile&&) = default;
 HalFile& HalFile::operator=(HalFile&&) = default;
 
 HalFile HalStorage::open(const char* path, const oflag_t oflag) {
-  StorageLock lock;  // ensure thread safety for the duration of this function
+  StorageLock lock;
   return HalFile(std::make_unique<HalFile::Impl>(sd.open(path, oflag)));
 }
 
@@ -319,7 +374,7 @@ bool HalStorage::rmdir(const char* path) {
 }
 
 bool HalStorage::openFileForRead(const char* moduleName, const char* path, HalFile& file) {
-  StorageLock lock;  // ensure thread safety for the duration of this function
+  StorageLock lock;
   FsFile fsFile;
   bool ok = openFileForReadUnlocked(moduleName, path, fsFile);
   file = HalFile(std::make_unique<HalFile::Impl>(std::move(fsFile)));
@@ -335,7 +390,7 @@ bool HalStorage::openFileForRead(const char* moduleName, const String& path, Hal
 }
 
 bool HalStorage::openFileForWrite(const char* moduleName, const char* path, HalFile& file) {
-  StorageLock lock;  // ensure thread safety for the duration of this function
+  StorageLock lock;
   FsFile fsFile;
   bool ok = openFileForWriteUnlocked(moduleName, path, fsFile);
   file = HalFile(std::make_unique<HalFile::Impl>(std::move(fsFile)));
@@ -355,10 +410,6 @@ bool HalStorage::removeDir(const char* path) {
   return removeDirUnlocked(path);
 }
 
-// HalFile implementation
-// Allow doing file operations while ensuring thread safety via HalStorage's mutex.
-// Please keep the list below in sync with the HalFile.h header
-
 #define HAL_FILE_WRAPPED_CALL(method, ...) \
   HalStorage::StorageLock lock;            \
   assert(impl != nullptr);                 \
@@ -370,9 +421,9 @@ bool HalStorage::removeDir(const char* path) {
 
 void HalFile::flush() { HAL_FILE_WRAPPED_CALL(flush, ); }
 size_t HalFile::getName(char* name, size_t len) { HAL_FILE_WRAPPED_CALL(getName, name, len); }
-size_t HalFile::size() { HAL_FILE_FORWARD_CALL(size, ); }              // already thread-safe, no need to wrap
-size_t HalFile::fileSize() { HAL_FILE_FORWARD_CALL(fileSize, ); }      // already thread-safe, no need to wrap
-uint64_t HalFile::fileSize64() { HAL_FILE_FORWARD_CALL(fileSize, ); }  // already thread-safe, no need to wrap
+size_t HalFile::size() { HAL_FILE_FORWARD_CALL(size, ); }
+size_t HalFile::fileSize() { HAL_FILE_FORWARD_CALL(fileSize, ); }
+uint64_t HalFile::fileSize64() { HAL_FILE_FORWARD_CALL(fileSize, ); }
 bool HalFile::seek(size_t pos) { HAL_FILE_WRAPPED_CALL(seekSet, pos); }
 bool HalFile::seek64(uint64_t pos) { HAL_FILE_WRAPPED_CALL(seekSet, pos); }
 bool HalFile::seekCur(int64_t offset) { HAL_FILE_WRAPPED_CALL(seekCur, offset); }
@@ -384,7 +435,7 @@ int HalFile::read() { HAL_FILE_WRAPPED_CALL(read, ); }
 size_t HalFile::write(const void* buf, size_t count) { HAL_FILE_WRAPPED_CALL(write, buf, count); }
 size_t HalFile::write(uint8_t b) { HAL_FILE_WRAPPED_CALL(write, b); }
 bool HalFile::rename(const char* newPath) { HAL_FILE_WRAPPED_CALL(rename, newPath); }
-bool HalFile::isDirectory() const { HAL_FILE_FORWARD_CALL(isDirectory, ); }  // already thread-safe, no need to wrap
+bool HalFile::isDirectory() const { HAL_FILE_FORWARD_CALL(isDirectory, ); }
 void HalFile::rewindDirectory() { HAL_FILE_WRAPPED_CALL(rewindDirectory, ); }
 bool HalFile::close() { HAL_FILE_WRAPPED_CALL(close, ); }
 HalFile HalFile::openNextFile() {
@@ -392,5 +443,5 @@ HalFile HalFile::openNextFile() {
   assert(impl != nullptr);
   return HalFile(std::make_unique<Impl>(impl->file.openNextFile()));
 }
-bool HalFile::isOpen() const { return impl != nullptr && impl->file.isOpen(); }  // already thread-safe, no need to wrap
+bool HalFile::isOpen() const { return impl != nullptr && impl->file.isOpen(); }
 HalFile::operator bool() const { return isOpen(); }
