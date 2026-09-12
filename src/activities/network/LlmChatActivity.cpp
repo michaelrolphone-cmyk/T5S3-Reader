@@ -1,5 +1,6 @@
 #include "LlmChatActivity.h"
 
+#include <algorithm>
 #include <I18n.h>
 #include <WiFi.h>
 #include <esp_task_wdt.h>
