@@ -80,3 +80,8 @@ v1.0.10
 - Home menu Timecard: clock in, start/end lunch, clock out; week view with week-of-year and date range; AM/PM edit.
 - LLM handshake sends SNI for `api.llm7.io` (fix Cloudflare fatal alert -0x7780).
 - USB: `firmware/corsspoint_lilygo_t5s3_1.0.10.bin`. SD/OTA: `firmware-t5s3-pro.bin`.
+
+v1.0.11
+
+- Timecard home menu uses a dedicated 32x32 clock icon.
+- USB: `firmware/corsspoint_lilygo_t5s3_1.0.11.bin`. SD/OTA: `firmware-t5s3-pro.bin`.
