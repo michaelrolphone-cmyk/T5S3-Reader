@@ -12,36 +12,10 @@
 
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
-#include "components/icons/book.h"
-#include "components/icons/book24.h"
-#include "components/icons/cover.h"
-#include "components/icons/file24.h"
-#include "components/icons/folder.h"
-#include "components/icons/folder24.h"
-#include "components/icons/hotspot.h"
-#include "components/icons/image24.h"
-#include "components/icons/library.h"
-#include "components/icons/recent.h"
-#include "components/icons/settings2.h"
-#include "components/icons/text24.h"
-#include "components/icons/transfer.h"
-#include "components/icons/wifi.h"
-#include "components/icons/clock.h"
+#include "LyraIcons.h"
 #include "fontIds.h"
 
-// Internal constants
 namespace {
-constexpr int hPaddingInSelection = 8;
-constexpr int cornerRadius = 6;
-constexpr int topHintButtonY = 345;
-constexpr int popupMarginX = 16;
-constexpr int popupMarginY = 12;
-constexpr int maxListValueWidth = 200;
-constexpr int mainMenuIconSize = 32;
-constexpr int listIconSize = 24;
-constexpr int mainMenuColumns = 2;
-int coverWidth = 0;
-
 void drawLyraBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight,
                          uint16_t percentage) {
   BaseTheme::drawBatteryOutline(renderer, x, y, battWidth, rectHeight);
@@ -63,47 +37,31 @@ void drawLyraBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidt
     }
   }
 }
-
-const uint8_t* iconForName(UIIcon icon, int size) {
-  if (size == 24) {
-    switch (icon) {
-      case UIIcon::Folder:
-        return Folder24Icon;
-      case UIIcon::Text:
-        return Text24Icon;
-      case UIIcon::Image:
-        return Image24Icon;
-      case UIIcon::Book:
-        return Book24Icon;
-      case UIIcon::File:
-        return File24Icon;
-      default:
-        return nullptr;
-    }
-  } else if (size == 32) {
-    switch (icon) {
-      case UIIcon::Folder:
-        return FolderIcon;
-      case UIIcon::Book:
-        return BookIcon;
-      case UIIcon::Recent:
-        return RecentIcon;
-      case UIIcon::Settings:
-        return Settings2Icon;
-      case UIIcon::Transfer:
-        return TransferIcon;
-      case UIIcon::Library:
-        return LibraryIcon;
-      case UIIcon::Wifi:
-        return WifiIcon;
-      case UIIcon::Hotspot:
-        return HotspotIcon;
-      case UIIcon::Clock:
-        return ClockIcon;
-      default:
-        return nullptr;
-    }
-  }
-  return nullptr;
-}
 }  // namespace
+
+void LyraTheme::drawBatteryLeft(const GfxRenderer& renderer, Rect rect, const bool showPercentage) const {
+  const uint16_t percentage = powerManager.getBatteryPercentage();
+
+  if (showPercentage) {
+    const auto percentageText = std::to_string(percentage) + "%";
+    renderer.drawText(SMALL_FONT_ID, rect.x + BaseTheme::batteryPercentSpacing + LyraMetrics::values.batteryWidth,
+                      rect.y, percentageText.c_str());
+  }
+
+  drawLyraBatteryIcon(renderer, rect.x, rect.y + 6, LyraMetrics::values.batteryWidth, rect.height, percentage);
+}
+
+void LyraTheme::drawBatteryRight(const GfxRenderer& renderer, Rect rect, const bool showPercentage) const {
+  const uint16_t percentage = powerManager.getBatteryPercentage();
+
+  if (showPercentage) {
+    const auto percentageText = std::to_string(percentage) + "%";
+    const int textWidth = renderer.getTextWidth(SMALL_FONT_ID, percentageText.c_str());
+    const auto textHeight = renderer.getTextHeight(SMALL_FONT_ID);
+    renderer.fillRect(rect.x - textWidth - BaseTheme::batteryPercentSpacing, rect.y, textWidth, textHeight, false);
+    renderer.drawText(SMALL_FONT_ID, rect.x - textWidth - BaseTheme::batteryPercentSpacing, rect.y,
+                      percentageText.c_str());
+  }
+
+  drawLyraBatteryIcon(renderer, rect.x, rect.y + 6, LyraMetrics::values.batteryWidth, rect.height, percentage);
+}
