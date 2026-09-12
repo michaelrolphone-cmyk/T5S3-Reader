@@ -53,3 +53,11 @@ v1.0.6
 - Release assets include `firmware-t5s3-pro.bin` for on-device OTA and SD update.
 - Version compare accepts a leading `v` on GitHub tags.
 - Board image: `firmware/corsspoint_lilygo_t5s3_1.0.6.bin` (merged USB image). Use `firmware-t5s3-pro.bin` or the `-app` file for SD/OTA.
+
+v1.0.7
+
+- Product name on boot/power-off splash is Manifold; default logo is Eye of Horus.
+- GitHub OTA uses pinned USERTrust ECC + ISRG Root X1/X2 instead of the missing Arduino cert bundle.
+- Feed the task WDT while validating large SD firmware images.
+- Settings / boot splash show `1.0.7` on `gh_release` builds.
+- USB: `firmware/corsspoint_lilygo_t5s3_1.0.7.bin`. SD/OTA: `firmware-t5s3-pro.bin`.
