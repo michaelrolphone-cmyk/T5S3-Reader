@@ -9,6 +9,8 @@
 #include "LlmTlsCerts.h"
 
 namespace {
+constexpr char kChatHost[] = "api.llm7.io";
+constexpr char kChatPath[] = "/v1/chat/completions";
 constexpr char kChatUrl[] = "https://api.llm7.io/v1/chat/completions";
 constexpr char kModel[] = "fast";
 constexpr int kMaxTokens = 256;
@@ -33,15 +35,22 @@ esp_err_t onHttpEvent(esp_http_client_event_t* event) {
 }
 
 esp_err_t performOnce(const std::string& payload, ResponseSink* sink, int* statusOut) {
+  // skip_cert_common_name_check also suppresses SNI on this Arduino-ESP32
+  // stack. Cloudflare then sends a fatal handshake alert (-0x7780).
+  // Leave CN checking on so SNI is api.llm7.io (SAN: *.llm7.io).
   esp_http_client_config_t config = {};
   config.url = kChatUrl;
+  config.host = kChatHost;
+  config.path = kChatPath;
+  config.port = 443;
+  config.transport_type = HTTP_TRANSPORT_OVER_SSL;
   config.cert_pem = kLlm7TlsRoots;
   config.timeout_ms = 30000;
   config.event_handler = onHttpEvent;
   config.buffer_size = 4096;
   config.buffer_size_tx = 4096;
   config.user_data = sink;
-  config.skip_cert_common_name_check = true;
+  config.skip_cert_common_name_check = false;
   config.keep_alive_enable = false;
 
   esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -54,6 +63,7 @@ esp_err_t performOnce(const std::string& payload, ResponseSink* sink, int* statu
   esp_http_client_set_header(client, "Authorization", "Bearer unused");
   esp_http_client_set_header(client, "User-Agent", "Manifold-ESP32");
   esp_http_client_set_header(client, "Accept", "application/json");
+  esp_http_client_set_header(client, "Host", kChatHost);
   esp_http_client_set_post_field(client, payload.c_str(), static_cast<int>(payload.size()));
 
   esp_task_wdt_reset();
