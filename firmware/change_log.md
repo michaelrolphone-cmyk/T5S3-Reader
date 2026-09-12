@@ -67,3 +67,10 @@ v1.0.8
 - Home menu Ask screen: type a question, call LLM7.io (`fast`, anonymous `Bearer unused`).
 - LLM TLS pinned to GTS Root R4 for `api.llm7.io`.
 - USB: `firmware/corsspoint_lilygo_t5s3_1.0.8.bin`. SD/OTA: `firmware-t5s3-pro.bin`.
+
+v1.0.9
+
+- LLM TLS also pins GlobalSign Root CA and GTS WE1 so Cloudflare's cross-signed chain verifies.
+- Quarantine a corrupt `/.crosspoint/settings.json` to `settings.json.bak.YYYYMMDDTHHMMSS` and rewrite from memory.
+- SD writes recreate the parent folder, retry the open, and log SdFat error codes.
+- USB: `firmware/corsspoint_lilygo_t5s3_1.0.9.bin`. SD/OTA: `firmware-t5s3-pro.bin`.
