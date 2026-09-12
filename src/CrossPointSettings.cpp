@@ -1,11 +1,15 @@
 #include "CrossPointSettings.h"
 
+#include <Arduino.h>
 #include <HalStorage.h>
 #include <JsonSettingsIO.h>
 #include <Logging.h>
 #include <Serialization.h>
 
+#include <cctype>
+#include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <string>
 
 #include "I18nKeys.h"
@@ -30,7 +34,6 @@ constexpr char SETTINGS_FILE_BAK[] = "/.crosspoint/settings.bin.bak";
 constexpr char LANG_FILE_BIN[] = "/.crosspoint/language.bin";
 constexpr char LANG_FILE_BAK[] = "/.crosspoint/language.bin.bak";
 
-// Convert legacy front button layout into explicit logical->hardware mapping.
 void applyLegacyFrontButtonLayout(CrossPointSettings& settings) {
   switch (static_cast<CrossPointSettings::FRONT_BUTTON_LAYOUT>(settings.frontButtonLayout)) {
     case CrossPointSettings::LEFT_RIGHT_BACK_CONFIRM:
@@ -72,6 +75,58 @@ void migrateLegacyOpenDyslexicSelection(CrossPointSettings& settings) {
   }
 }
 
+bool looksLikeSettingsJson(const String& json) {
+  if (json.isEmpty()) {
+    return false;
+  }
+  const char* p = json.c_str();
+  size_t printable = 0;
+  size_t checked = 0;
+  while (*p != '\0' && isspace(static_cast<unsigned char>(*p))) {
+    ++p;
+    ++checked;
+  }
+  if (*p != '{') {
+    return false;
+  }
+  for (; *p != '\0'; ++p, ++checked) {
+    const unsigned char c = static_cast<unsigned char>(*p);
+    if (c == 0xFF || c == 0x00) {
+      return false;
+    }
+    if (c >= 32 || c == '\n' || c == '\r' || c == '\t') {
+      ++printable;
+    }
+  }
+  return checked >= 2 && printable * 2 >= checked;
+}
+
+void quarantineSettingsJson() {
+  Storage.ensureDirectoryExists("/.crosspoint");
+
+  char dest[96];
+  const time_t now = time(nullptr);
+  if (now > 1600000000) {
+    struct tm t = {};
+    gmtime_r(&now, &t);
+    snprintf(dest, sizeof(dest), "/.crosspoint/settings.json.bak.%04d%02d%02dT%02d%02d%02d",
+             t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+  } else {
+    snprintf(dest, sizeof(dest), "/.crosspoint/settings.json.bak.%lu", static_cast<unsigned long>(millis()));
+  }
+
+  if (Storage.exists(dest)) {
+    Storage.remove(dest);
+  }
+  if (Storage.rename(SETTINGS_FILE_JSON, dest)) {
+    LOG_ERR("CPS", "Quarantined corrupted settings.json to %s", dest);
+    return;
+  }
+
+  LOG_ERR("CPS", "Rename of corrupted settings.json failed, deleting");
+  Storage.remove(SETTINGS_FILE_JSON);
+}
+
 }  // namespace
 
 void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings) {
@@ -91,18 +146,18 @@ void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings
 }
 
 bool CrossPointSettings::saveToFile() const {
-  Storage.mkdir("/.crosspoint");
+  Storage.ensureDirectoryExists("/.crosspoint");
   return JsonSettingsIO::saveSettings(*this, SETTINGS_FILE_JSON);
 }
 
 bool CrossPointSettings::loadFromFile() {
-  // Try JSON first
   if (Storage.exists(SETTINGS_FILE_JSON)) {
     String json = Storage.readFile(SETTINGS_FILE_JSON);
-    if (!json.isEmpty()) {
-      bool resave = false;
-      bool result = JsonSettingsIO::loadSettings(*this, json.c_str(), &resave);
-      if (result && resave) {
+    bool resave = false;
+    const bool parsed =
+        looksLikeSettingsJson(json) && JsonSettingsIO::loadSettings(*this, json.c_str(), &resave);
+    if (parsed) {
+      if (resave) {
         if (saveToFile()) {
           LOG_DBG("CPS", "Resaved settings to update format");
         } else {
@@ -110,11 +165,13 @@ bool CrossPointSettings::loadFromFile() {
         }
       }
       migrateLanguageBinaryFile();
-      return result;
+      return true;
     }
+
+    LOG_ERR("CPS", "settings.json is missing or corrupt (%u bytes)", json.length());
+    quarantineSettingsJson();
   }
 
-  // Fall back to binary migration
   if (Storage.exists(SETTINGS_FILE_BIN)) {
     if (loadFromBinaryFile()) {
       migrateLanguageBinaryFile();
@@ -122,20 +179,22 @@ bool CrossPointSettings::loadFromFile() {
         Storage.rename(SETTINGS_FILE_BIN, SETTINGS_FILE_BAK);
         LOG_DBG("CPS", "Migrated settings.bin to settings.json");
         return true;
-      } else {
-        LOG_ERR("CPS", "Failed to save migrated settings to JSON");
-        return false;
       }
+      LOG_ERR("CPS", "Failed to save migrated settings to JSON");
+      return false;
     }
   }
 
-  // No settings files at all -- check for standalone language.bin
-  return migrateLanguageBinaryFile();
+  const bool migratedLang = migrateLanguageBinaryFile();
+  if (saveToFile()) {
+    LOG_INF("CPS", "Wrote settings.json from in-memory values");
+  } else {
+    LOG_ERR("CPS", "Failed to write replacement settings.json");
+  }
+  return migratedLang;
 }
 
 bool CrossPointSettings::migrateLanguageBinaryFile() {
-  // V1_LANGUAGES / V1_LANGUAGE_COUNT are emitted by gen_i18n.py with the
-  // frozen enum order from 2f969a9.
   if (!Storage.exists(LANG_FILE_BIN)) return false;
 
   FsFile f;
@@ -181,7 +240,7 @@ bool CrossPointSettings::loadFromBinaryFile() {
     if (++settingsRead >= fileSettingsCount) break;
     readAndValidate(inputFile, shortPwrBtn, SHORT_PWRBTN_COUNT);
     if (++settingsRead >= fileSettingsCount) break;
-    readAndValidate(inputFile, statusBar, STATUS_BAR_MODE_COUNT);  // legacy
+    readAndValidate(inputFile, statusBar, STATUS_BAR_MODE_COUNT);
     if (++settingsRead >= fileSettingsCount) break;
     readAndValidate(inputFile, orientation, ORIENTATION_COUNT);
     if (++settingsRead >= fileSettingsCount) break;
