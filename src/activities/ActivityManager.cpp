@@ -12,6 +12,7 @@
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
 #include "home/RecentBooksActivity.h"
+#include "home/TimecardActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "network/LlmChatActivity.h"
 #include "reader/ReaderActivity.h"
@@ -25,11 +26,7 @@ constexpr HalDisplay::RefreshMode kUiPageTransitionRefreshMode = HalDisplay::HAL
 
 void ActivityManager::begin() {
   xTaskCreate(&renderTaskTrampoline, "ActivityManagerRender",
-              12288,             // Stack size
-              this,              // Parameters
-              1,                 // Priority
-              &renderTaskHandle  // Task handle
-  );
+              12288, this, 1, &renderTaskHandle);
   assert(renderTaskHandle != nullptr && "Failed to create render task");
 }
 
@@ -246,6 +243,10 @@ void ActivityManager::goToBrowser() {
 
 void ActivityManager::goToLlmChat() {
   replaceActivity(std::make_unique<LlmChatActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
+}
+
+void ActivityManager::goToTimecard() {
+  replaceActivity(std::make_unique<TimecardActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
 }
 
 void ActivityManager::goToReader(std::string path, const HalDisplay::RefreshMode replaceRefreshMode) {
