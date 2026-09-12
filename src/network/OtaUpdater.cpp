@@ -16,7 +16,8 @@
 #endif
 
 namespace {
-constexpr char latestReleaseUrl[] = "https://api.github.com/repos/crosspoint-reader/crosspoint-reader/releases/latest";
+constexpr char latestReleaseUrl[] =
+    "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
 
 esp_err_t http_client_set_header_cb(esp_http_client_handle_t http_client) {
   return esp_http_client_set_header(http_client, "User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
@@ -31,6 +32,12 @@ esp_err_t event_handler(esp_http_client_event_t* event) {
   auto* parser = static_cast<ReleaseJsonParser*>(event->user_data);
   parser->feed(static_cast<const char*>(event->data), event->data_len);
   return ESP_OK;
+}
+
+const char* skipVersionPrefix(const char* version) {
+  if (version == nullptr) return "";
+  if (version[0] == 'v' || version[0] == 'V') return version + 1;
+  return version;
 }
 }  // namespace
 
@@ -108,38 +115,20 @@ bool OtaUpdater::isUpdateNewer() const {
     return false;
   }
 
-  int currentMajor, currentMinor, currentPatch;
-  int latestMajor, latestMinor, latestPatch;
+  int currentMajor = 0, currentMinor = 0, currentPatch = 0;
+  int latestMajor = 0, latestMinor = 0, latestPatch = 0;
 
-  const auto currentVersion = CROSSPOINT_VERSION;
+  const char* currentVersion = skipVersionPrefix(CROSSPOINT_VERSION);
+  const char* latest = skipVersionPrefix(latestVersion.c_str());
 
-  // semantic version check (only match on 3 segments)
-  sscanf(latestVersion.c_str(), "%d.%d.%d", &latestMajor, &latestMinor, &latestPatch);
+  sscanf(latest, "%d.%d.%d", &latestMajor, &latestMinor, &latestPatch);
   sscanf(currentVersion, "%d.%d.%d", &currentMajor, &currentMinor, &currentPatch);
 
-  /*
-   * Compare major versions.
-   * If they differ, return true if latest major version greater than current major version
-   * otherwise return false.
-   */
   if (latestMajor != currentMajor) return latestMajor > currentMajor;
-
-  /*
-   * Compare minor versions.
-   * If they differ, return true if latest minor version greater than current minor version
-   * otherwise return false.
-   */
   if (latestMinor != currentMinor) return latestMinor > currentMinor;
-
-  /*
-   * Check patch versions.
-   */
   if (latestPatch != currentPatch) return latestPatch > currentPatch;
 
-  // If we reach here, it means all segments are equal.
-  // One final check, if we're on an RC build (contains "-rc"), we should consider the latest version as newer even if
-  // the segments are equal, since RC builds are pre-release versions.
-  if (strstr(currentVersion, "-rc") != nullptr) {
+  if (strstr(CROSSPOINT_VERSION, "-rc") != nullptr) {
     return true;
   }
 
@@ -159,10 +148,6 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   esp_http_client_config_t client_config = {
       .url = otaUrl.c_str(),
       .timeout_ms = 15000,
-      /* Default HTTP client buffer size 512 byte only
-       * not sufficient to handle URL redirection cases or
-       * parsing of large HTTP headers.
-       */
       .buffer_size = 8192,
       .buffer_size_tx = 8192,
       .skip_cert_common_name_check = true,
@@ -175,7 +160,6 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
       .http_client_init_cb = http_client_set_header_cb,
   };
 
-  /* For better timing and connectivity, we disable power saving for WiFi */
   esp_wifi_set_ps(WIFI_PS_NONE);
 
   esp_err = esp_https_ota_begin(&ota_config, &ota_handle);
@@ -188,10 +172,9 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     esp_err = esp_https_ota_perform(ota_handle);
     processedSize = esp_https_ota_get_image_len_read(ota_handle);
     if (onProgress) onProgress(ctx);
-    delay(100);  // TODO: should we replace this with something better?
+    delay(100);
   } while (esp_err == ESP_ERR_HTTPS_OTA_IN_PROGRESS);
 
-  /* Return back to default power saving for WiFi in case of failing */
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 
   if (esp_err != ESP_OK) {
