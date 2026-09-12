@@ -6,7 +6,7 @@ on:
       tag:
         description: Tag to create
         required: true
-        default: v1.0.6
+        default: v1.0.7
       commit_firmware:
         description: Commit merged bin into firmware/
         type: boolean
@@ -38,6 +38,11 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "ver=$VER" >> "$GITHUB_OUTPUT"
           echo "bin=firmware/corsspoint_lilygo_t5s3_${VER}.bin" >> "$GITHUB_OUTPUT"
+          if ! grep -q "^version = ${VER}$" platformio.ini && ! grep -q "^version = ${VER} " platformio.ini; then
+            echo "platformio.ini [crosspoint] version is not ${VER}"
+            grep -n "^version" platformio.ini || true
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -61,6 +66,20 @@ jobs:
 
       - name: Build gh_release
         run: pio run -e gh_release
+
+      - name: Verify baked version string
+        run: |
+          VER="${{ steps.ver.outputs.ver }}"
+          BIN=".pio/build/gh_release/firmware.bin"
+          if ! grep -a -F -q "$VER" "$BIN"; then
+            echo "firmware.bin does not contain version string $VER"
+            exit 1
+          fi
+          if grep -a -F -q -- "-dev-" "$BIN"; then
+            echo "firmware.bin still contains a -dev- version string; gh_release must stamp a clean version"
+            exit 1
+          fi
+          echo "Baked version $VER present in firmware.bin"
 
       - name: Stage firmware image
         run: |
