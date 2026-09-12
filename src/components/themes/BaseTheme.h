@@ -75,13 +75,10 @@ struct ThemeMetrics {
   int keyboardKeyCornerRadius;
 };
 
-enum UIIcon { Folder, Text, Image, Book, File, Recent, Settings, Transfer, Library, Wifi, Hotspot };
+enum UIIcon { Folder, Text, Image, Book, File, Recent, Settings, Transfer, Library, Wifi, Hotspot, Clock };
 
 enum class KeyboardKeyType { Normal, Shift, Mode, Space, Del, Ok, Disabled };
 enum class TextRole { System, UserContent };
-
-// Default theme implementation (Classic Theme)
-// Additional themes can inherit from this and override methods as needed
 
 namespace BaseMetrics {
 constexpr ThemeMetrics values = {.batteryWidth = 15,
@@ -128,12 +125,11 @@ class BaseTheme {
  public:
   virtual ~BaseTheme() = default;
 
-  // Component drawing methods
   virtual void drawProgressBar(const GfxRenderer& renderer, Rect rect, size_t current, size_t total) const;
   virtual void drawBatteryLeft(const GfxRenderer& renderer, Rect rect,
-                               bool showPercentage = true) const;  // Left aligned (reader mode)
+                               bool showPercentage = true) const;
   virtual void drawBatteryRight(const GfxRenderer& renderer, Rect rect,
-                                bool showPercentage = true) const;  // Right aligned (UI headers)
+                                bool showPercentage = true) const;
   virtual void drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                                const char* btn4) const;
   virtual std::array<Rect, 4> getButtonHintTouchBounds(const GfxRenderer& renderer) const;
@@ -171,7 +167,6 @@ class BaseTheme {
                                bool inactiveSelection = false) const;
   virtual bool showsFileIcons() const { return false; }
 
-  // Shared constants and helpers for battery drawing (used by all themes)
   static constexpr int batteryPercentSpacing = 4;
   static int resolveTextFontId(int systemFontId, TextRole role);
   static int getLineHeightForRole(const GfxRenderer& renderer, int systemFontId, TextRole role);
