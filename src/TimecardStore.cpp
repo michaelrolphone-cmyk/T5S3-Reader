@@ -169,13 +169,9 @@ int sundayYmd(int weekOffset) {
   return (t.tm_year + 1900) * 10000 + (t.tm_mon + 1) * 100 + t.tm_mday;
 }
 
-int weekOfMonth(int ymd) {
-  int year = 0, month = 0, day = 0;
-  splitYmd(ymd, year, month, day);
-  if (day < 1) {
-    day = 1;
-  }
-  return ((day - 1) / 7) + 1;
+int weekOfYear(int ymd) {
+  const tm t = localFromYmd(ymd);
+  return t.tm_yday / 7 + 1;
 }
 
 const char* monthAbbrev(int month) {
@@ -264,9 +260,9 @@ std::string formatWeekLabel(int sunday) {
   splitYmd(saturday, y2, m2, d2);
   char buf[48];
   if (m1 == m2) {
-    snprintf(buf, sizeof(buf), "Week %d  %s %d – %d", weekOfMonth(sunday), monthAbbrev(m1), d1, d2);
+    snprintf(buf, sizeof(buf), "Week %d  %s %d – %d", weekOfYear(sunday), monthAbbrev(m1), d1, d2);
   } else {
-    snprintf(buf, sizeof(buf), "Week %d  %s %d – %s %d", weekOfMonth(sunday), monthAbbrev(m1), d1, monthAbbrev(m2),
+    snprintf(buf, sizeof(buf), "Week %d  %s %d – %s %d", weekOfYear(sunday), monthAbbrev(m1), d1, monthAbbrev(m2),
              d2);
   }
   return buf;
