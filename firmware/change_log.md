@@ -35,8 +35,9 @@ rely on the public network NTP can be performed:
 - Flip up/down buttons and screen option #18
 - Resume Book on Wake Fix + Making Optional #19
 
+v1.0.4
 
-
-
-
-
+- Open `.md` / `.markdown` files in the TXT reader.
+- Render Markdown: strip inline markup, bold ATX headings, treat `#` H1 titles as chapter breaks.
+- Markdown chapter picker (Confirm hold), fence-aware page-index cache, sleep-cover path.
+- Board image: `firmware/corsspoint_lilygo_t5s3_1.0.4.bin` (T5-4.7-S3 E-Paper Pro, merged flash image).
