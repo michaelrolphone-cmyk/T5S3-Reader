@@ -138,7 +138,7 @@ DocumentKind classifyDocument(std::string_view fileName) {
   if (hasXtcExtension(fileName)) {
     return DocumentKind::Xtc;
   }
-  // Markdown before TXT so .md stays a distinct kind for the future renderer.
+  // Markdown before TXT so .md stays a distinct kind.
   if (hasMarkdownExtension(fileName)) {
     return DocumentKind::Markdown;
   }
