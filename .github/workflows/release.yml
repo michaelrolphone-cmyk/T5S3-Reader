@@ -1,12 +1,14 @@
 name: Cut release
 
 on:
+  push:
+    branches: [master]
+    paths: ['.github/release-request.json']
   workflow_dispatch:
     inputs:
       tag:
         description: Tag to create
         required: true
-        default: v1.0.7
       commit_firmware:
         description: Commit merged bin into firmware/
         type: boolean
@@ -20,7 +22,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  request:
+    name: Validate release request
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.request.outputs.publish }}
+      tag: ${{ steps.request.outputs.tag }}
+      ver: ${{ steps.request.outputs.ver }}
+      commit_firmware: ${{ steps.request.outputs.commit_firmware }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate request and version
+        id: request
+        run: python3 scripts/resolve_release_request.py
+
   release:
+    needs: request
+    if: ${{ needs.request.outputs.publish == 'true' }}
     name: Build and publish
     runs-on: ubuntu-latest
     steps:
@@ -31,18 +51,13 @@ jobs:
 
       - name: Resolve version
         id: ver
+        env:
+          TAG: ${{ needs.request.outputs.tag }}
+          VER: ${{ needs.request.outputs.ver }}
         run: |
-          TAG="${{ inputs.tag }}"
-          case "$TAG" in v*) ;; *) TAG="v$TAG" ;; esac
-          VER="${TAG#v}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "ver=$VER" >> "$GITHUB_OUTPUT"
           echo "bin=firmware/corsspoint_lilygo_t5s3_${VER}.bin" >> "$GITHUB_OUTPUT"
-          if ! grep -q "^version = ${VER}$" platformio.ini && ! grep -q "^version = ${VER} " platformio.ini; then
-            echo "platformio.ini [crosspoint] version is not ${VER}"
-            grep -n "^version" platformio.ini || true
-            exit 1
-          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -91,7 +106,7 @@ jobs:
           ls -lh "${{ steps.ver.outputs.bin }}" dist/
 
       - name: Commit firmware tree
-        if: ${{ inputs.commit_firmware }}
+        if: ${{ needs.request.outputs.commit_firmware == 'true' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -108,6 +123,7 @@ jobs:
           TAG="${{ steps.ver.outputs.tag }}"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists"
+            exit 1
           else
             git tag -a "$TAG" -m "$TAG"
             git push origin "$TAG"
