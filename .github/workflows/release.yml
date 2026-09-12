@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag to create (e.g. v1.0.5)
+        description: Tag to create (e.g. v1.0.6)
         required: true
-        default: v1.0.5
+        default: v1.0.6
       commit_firmware:
         description: Commit merged bin into firmware/ on this branch
         type: boolean
@@ -66,6 +66,7 @@ jobs:
         run: |
           mkdir -p firmware dist
           cp .pio/build/gh_release/firmware-merged.bin "${{ steps.ver.outputs.bin }}"
+          cp .pio/build/gh_release/firmware.bin "dist/firmware-t5s3-pro.bin"
           cp .pio/build/gh_release/firmware.bin "dist/corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}-app.bin"
           cp .pio/build/gh_release/firmware-merged.bin "dist/corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}.bin"
           ls -lh "${{ steps.ver.outputs.bin }}" dist/
@@ -98,15 +99,25 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.ver.outputs.tag }}"
+          NOTES=$(cat <<EOF
+T5-4.7-S3 E-Paper Pro markdown reader ${{ steps.ver.outputs.ver }}.
+
+- firmware-t5s3-pro.bin — OTA / SD update (app partition, flash at 0x10000)
+- corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}-app.bin — same app image, versioned name
+- corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}.bin — merged USB image (bootloader+app, flash at 0x0). Do not use this for SD/OTA.
+EOF
+)
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" \
-              "${{ steps.ver.outputs.bin }}" \
+              "dist/firmware-t5s3-pro.bin" \
               "dist/corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}-app.bin" \
+              "${{ steps.ver.outputs.bin }}" \
               --clobber
           else
             gh release create "$TAG" \
-              "${{ steps.ver.outputs.bin }}" \
+              "dist/firmware-t5s3-pro.bin" \
               "dist/corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}-app.bin" \
+              "${{ steps.ver.outputs.bin }}" \
               --title "$TAG" \
-              --notes "T5-4.7-S3 E-Paper Pro markdown reader build ${{ steps.ver.outputs.ver }}. Merged flash image flashes at 0x0. App-only image flashes at 0x10000."
+              --notes "$NOTES"
           fi
