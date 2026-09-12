@@ -7,6 +7,7 @@
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #include <esp_spi_flash.h>
+#include <esp_task_wdt.h>
 #include <mbedtls/sha256.h>
 
 #include <algorithm>
@@ -27,6 +28,11 @@ constexpr size_t SHA_TRAILER = 32;
 constexpr uint8_t CHECKSUM_SEED = 0xEF;
 constexpr size_t HEADER_SIZE = 24;
 constexpr size_t SEG_HEADER_SIZE = 8;
+
+void petWatchdog() {
+  esp_task_wdt_reset();
+  delay(0);
+}
 }  // namespace
 
 const char* resultName(Result r) {
@@ -82,6 +88,7 @@ bool containsBoardMarker(HalFile& file, const char* marker) {
     if (read <= 0) {
       return false;
     }
+    petWatchdog();
     for (int i = 0; i < read; ++i) {
       if (buffer[i] == static_cast<uint8_t>(marker[matched])) {
         if (++matched == markerLength) {
@@ -95,9 +102,6 @@ bool containsBoardMarker(HalFile& file, const char* marker) {
   return false;
 }
 
-// Stream `length` bytes from `file` starting at the current read offset, feeding them through
-// both the XOR-checksum and SHA256 accumulators. Used by validateImageFile so the whole image
-// is verified end-to-end without holding it in RAM (ESP32-C3 only has ~380 KB).
 Result feedHashAndChecksum(HalFile& file, size_t length, uint8_t* xorAccum, mbedtls_sha256_context* sha, uint8_t* buf) {
   size_t remaining = length;
   while (remaining > 0) {
@@ -111,6 +115,7 @@ Result feedHashAndChecksum(HalFile& file, size_t length, uint8_t* xorAccum, mbed
       *xorAccum = acc;
     }
     remaining -= want;
+    petWatchdog();
   }
   return Result::OK;
 }
@@ -199,7 +204,6 @@ Result validateImageFile(const char* sdPath, size_t partitionSize) {
     pos += dataLen;
   }
 
-  // pad_end is the 16-byte aligned offset at which the checksum byte sits at pad_end - 1.
   const size_t padEnd = (pos + 16) & ~static_cast<size_t>(15);
   const size_t expectedTotal = padEnd + (hashAppended ? SHA_TRAILER : 0);
   if (expectedTotal != fileSize) {
@@ -211,7 +215,6 @@ Result validateImageFile(const char* sdPath, size_t partitionSize) {
     return Result::BAD_SIZE;
   }
 
-  // Read the padding bytes (which include the stored checksum at the last byte) into the SHA stream.
   const size_t padLen = padEnd - pos;
   uint8_t padBuf[16];
   if (padLen > sizeof(padBuf)) {
@@ -264,19 +267,12 @@ Result validateImageFile(const char* sdPath, size_t partitionSize) {
 }
 
 Result flashFromSdPath(const char* sdPath, ProgressCb onProgress, void* ctx, bool alreadyValidated) {
-  // Resolve destination first so we can size-check during validation. The full image-integrity
-  // pass below verifies header, segment table, XOR checksum and SHA256 trailer end-to-end before
-  // we touch otadata, so a truncated/corrupted .bin can never become the next boot target.
   const esp_partition_t* dest = esp_ota_get_next_update_partition(nullptr);
   if (!dest) {
     LOG_ERR("FLASH", "no next-update partition");
     return Result::NO_PARTITION;
   }
 
-  // When the caller already ran validateImageFile() against this same partition
-  // size (e.g. SdFirmwareUpdateActivity validates before the confirmation
-  // prompt), skip the redundant integrity scan. We still keep the partition
-  // lookup so the rest of the flashing path stays unchanged.
   if (!alreadyValidated) {
     const Result validateRes = validateImageFile(sdPath, dest->size);
     if (validateRes != Result::OK) {
@@ -302,8 +298,6 @@ Result flashFromSdPath(const char* sdPath, ProgressCb onProgress, void* ctx, boo
     return Result::OOM;
   }
 
-  // Interleave erase + write so the progress bar advances 0→100% smoothly
-  // rather than stalling for several seconds during a single up-front erase.
   size_t streamPos = 0;
   size_t erasedUpto = 0;
   while (streamPos < firmwareSize) {
@@ -334,6 +328,7 @@ Result flashFromSdPath(const char* sdPath, ProgressCb onProgress, void* ctx, boo
     }
     streamPos += want;
     if (onProgress) onProgress(streamPos, firmwareSize, ctx);
+    petWatchdog();
     delay(1);
   }
   file.close();
