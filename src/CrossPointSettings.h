@@ -1,733 +1,319 @@
 #pragma once
+#include <HalStorage.h>
 
-#include <HalTiltSensor.h>
-#include <I18n.h>
-#include <SdCardFontRegistry.h>
-#include <Board.h>
+#include <cstdint>
+#include <iosfwd>
 
-#include <algorithm>
-#include <cstring>
-#include <iterator>
-#include <vector>
+class CrossPointSettings {
+ private:
+  // Private constructor for singleton
+  CrossPointSettings() = default;
 
-#include "CrossPointSettings.h"
-#include "KOReaderCredentialStore.h"
-#include "activities/settings/SettingsActivity.h"
+  // Static instance
+  static CrossPointSettings instance;
 
-inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
-  SettingInfo setting =
-      SettingInfo::Enum(StrId::STR_FONT_FAMILY, &CrossPointSettings::fontFamily,
-                        {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS},
-                        "fontFamily", StrId::STR_CAT_READER);
+ public:
+  // Delete copy constructor and assignment
+  CrossPointSettings(const CrossPointSettings&) = delete;
+  CrossPointSettings& operator=(const CrossPointSettings&) = delete;
 
-  if (registry == nullptr || registry->getFamilyCount() == 0) {
-    return setting;
-  }
-
-  std::vector<std::string> sdFamilyNames;
-  const auto& families = registry->getFamilies();
-
-  sdFamilyNames.reserve(families.size());
-
-  std::transform(
-      families.begin(),
-      families.end(),
-      std::back_inserter(sdFamilyNames),
-      [](const SdCardFontFamilyInfo& family) {
-        return family.name;
-      });
-
-  setting.enumStringValues.reserve(
-      CrossPointSettings::BUILTIN_FONT_COUNT + sdFamilyNames.size());
-
-  setting.enumStringValues.push_back(I18N.get(StrId::STR_NOTO_SERIF));
-  setting.enumStringValues.push_back(I18N.get(StrId::STR_NOTO_SANS));
-
-  setting.enumStringValues.insert(
-      setting.enumStringValues.end(),
-      sdFamilyNames.begin(),
-      sdFamilyNames.end());
-
-  setting.valuePtr = nullptr;
-
-  setting.valueGetter = [sdFamilyNames]() -> uint8_t {
-    if (SETTINGS.sdFontFamilyName[0] != '\0') {
-      for (size_t i = 0; i < sdFamilyNames.size(); i++) {
-        if (sdFamilyNames[i] == SETTINGS.sdFontFamilyName) {
-          return static_cast<uint8_t>(
-              CrossPointSettings::BUILTIN_FONT_COUNT + i);
-        }
-      }
-    }
-
-    return SETTINGS.fontFamily < CrossPointSettings::BUILTIN_FONT_COUNT
-               ? SETTINGS.fontFamily
-               : CrossPointSettings::NOTOSERIF;
+  enum SLEEP_SCREEN_MODE {
+    DARK = 0,
+    LIGHT = 1,
+    CUSTOM = 2,
+    COVER = 3,
+    BLANK = 4,
+    COVER_CUSTOM = 5,
+    DIGITAL_CLOCK = 6,
+    SLEEP_SCREEN_MODE_COUNT
+  };
+  enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
+  enum SLEEP_SCREEN_COVER_FILTER {
+    NO_FILTER = 0,
+    BLACK_AND_WHITE = 1,
+    INVERTED_BLACK_AND_WHITE = 2,
+    SLEEP_SCREEN_COVER_FILTER_COUNT
   };
 
-  setting.valueSetter = [sdFamilyNames](uint8_t value) {
-    if (value < CrossPointSettings::BUILTIN_FONT_COUNT) {
-      SETTINGS.fontFamily = value;
-      SETTINGS.sdFontFamilyName[0] = '\0';
-      return;
-    }
-
-    const int sdIndex =
-        value - CrossPointSettings::BUILTIN_FONT_COUNT;
-
-    if (sdIndex >= 0 &&
-        sdIndex < static_cast<int>(sdFamilyNames.size())) {
-      strncpy(
-          SETTINGS.sdFontFamilyName,
-          sdFamilyNames[sdIndex].c_str(),
-          sizeof(SETTINGS.sdFontFamilyName) - 1);
-
-      SETTINGS.sdFontFamilyName[
-          sizeof(SETTINGS.sdFontFamilyName) - 1] = '\0';
-
-      SETTINGS.fontFamily = CrossPointSettings::NOTOSERIF;
-    }
+  // Status bar enum - legacy
+  enum STATUS_BAR_MODE {
+    NONE = 0,
+    NO_PROGRESS = 1,
+    FULL = 2,
+    BOOK_PROGRESS_BAR = 3,
+    ONLY_BOOK_PROGRESS_BAR = 4,
+    CHAPTER_PROGRESS_BAR = 5,
+    STATUS_BAR_MODE_COUNT
+  };
+  enum STATUS_BAR_PROGRESS_BAR {
+    BOOK_PROGRESS = 0,
+    CHAPTER_PROGRESS = 1,
+    HIDE_PROGRESS = 2,
+    STATUS_BAR_PROGRESS_BAR_COUNT
+  };
+  enum STATUS_BAR_PROGRESS_BAR_THICKNESS {
+    PROGRESS_BAR_THIN = 0,
+    PROGRESS_BAR_NORMAL = 1,
+    PROGRESS_BAR_THICK = 2,
+    STATUS_BAR_PROGRESS_BAR_THICKNESS_COUNT
+  };
+  enum STATUS_BAR_TITLE { BOOK_TITLE = 0, CHAPTER_TITLE = 1, HIDE_TITLE = 2, STATUS_BAR_TITLE_COUNT };
+  enum STATUS_BAR_CLOCK_MODE {
+    STATUS_BAR_CLOCK_HIDE = 0,
+    STATUS_BAR_CLOCK_LEFT = 1,
+    STATUS_BAR_CLOCK_RIGHT = 2,
+    STATUS_BAR_CLOCK_MODE_COUNT
   };
 
-  return setting;
-}
-
-
-// Shared settings list used by both the device settings UI and the web
-// settings API.
-//
-// IMPORTANT:
-// Do not replace the sequential emplace_back() construction below with one
-// giant:
-//
-//     std::vector<SettingInfo> v = { ... };
-//
-// SettingInfo is a relatively large object containing vectors and
-// std::function members. On ESP32-S3/Xtensa, a large brace initializer can
-// cause the compiler to materialize the initializer-list backing array in the
-// current task's stack frame. As this list grows, that can consume several KB
-// of loopTask stack and trigger the FreeRTOS stack canary.
-//
-// Constructing one SettingInfo at a time keeps peak temporary stack usage
-// bounded regardless of the total number of settings.
-//
-// Each entry has a key for the JSON API and a category for grouping.
-// ACTION-type entries and entries without a key are device-only.
-inline std::vector<SettingInfo> getSettingsList(
-    const SdCardFontRegistry* registry = nullptr) {
-
-  static const std::vector<SettingInfo> baseList = [] {
-    std::vector<SettingInfo> v;
-
-    // Current base list has 48 entries, plus an optional tilt entry.
-    // Reserving up front prevents vector reallocation while preserving
-    // stack-safe one-at-a-time construction.
-    v.reserve(50);
-
-
-    // ---------------------------------------------------------------------
-    // Display
-    // ---------------------------------------------------------------------
-
-    v.emplace_back(
-        SettingInfo::Value(
-            StrId::STR_BACKLIGHT,
-            &CrossPointSettings::backlightLevel,
-            {0, 10, 1},
-            "backlightLevel",
-            StrId::STR_CAT_DISPLAY));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_SLEEP_SCREEN,
-            &CrossPointSettings::sleepScreen,
-            {
-                StrId::STR_DARK,
-                StrId::STR_LIGHT,
-                StrId::STR_CUSTOM,
-                StrId::STR_COVER,
-                StrId::STR_NONE_OPT,
-                StrId::STR_COVER_CUSTOM,
-                StrId::STR_DIGITAL_DESK_CLOCK
-            },
-            "sleepScreen",
-            StrId::STR_CAT_DISPLAY));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_POWER_OFF_SCREEN,
-            &CrossPointSettings::powerOffScreen,
-            {
-                StrId::STR_DARK,
-                StrId::STR_LIGHT,
-                StrId::STR_CUSTOM,
-                StrId::STR_COVER,
-                StrId::STR_NONE_OPT,
-                StrId::STR_COVER_CUSTOM
-            },
-            "powerOffScreen",
-            StrId::STR_CAT_DISPLAY));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_SLEEP_COVER_MODE,
-            &CrossPointSettings::sleepScreenCoverMode,
-            {
-                StrId::STR_FIT,
-                StrId::STR_CROP
-            },
-            "sleepScreenCoverMode",
-            StrId::STR_CAT_DISPLAY));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_SLEEP_COVER_FILTER,
-            &CrossPointSettings::sleepScreenCoverFilter,
-            {
-                StrId::STR_NONE_OPT,
-                StrId::STR_FILTER_CONTRAST,
-                StrId::STR_INVERTED
-            },
-            "sleepScreenCoverFilter",
-            StrId::STR_CAT_DISPLAY));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_POWER_OFF_COVER_MODE,
-            &CrossPointSettings::powerOffScreenCoverMode,
-            {
-                StrId::STR_FIT,
-                StrId::STR_CROP
-            },
-            "powerOffScreenCoverMode",
-            StrId::STR_CAT_DISPLAY));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_POWER_OFF_COVER_FILTER,
-            &CrossPointSettings::powerOffScreenCoverFilter,
-            {
-                StrId::STR_NONE_OPT,
-                StrId::STR_FILTER_CONTRAST,
-                StrId::STR_INVERTED
-            },
-            "powerOffScreenCoverFilter",
-            StrId::STR_CAT_DISPLAY));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_HIDE_BATTERY,
-            &CrossPointSettings::hideBatteryPercentage,
-            {
-                StrId::STR_NEVER,
-                StrId::STR_IN_READER,
-                StrId::STR_ALWAYS
-            },
-            "hideBatteryPercentage",
-            StrId::STR_CAT_DISPLAY));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_REFRESH_FREQ,
-            &CrossPointSettings::refreshFrequency,
-            {
-                StrId::STR_PAGES_1,
-                StrId::STR_PAGES_5,
-                StrId::STR_PAGES_10,
-                StrId::STR_PAGES_15,
-                StrId::STR_PAGES_30
-            },
-            "refreshFrequency",
-            StrId::STR_CAT_DISPLAY));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_UI_THEME,
-            &CrossPointSettings::uiTheme,
-            {
-                StrId::STR_THEME_CLASSIC,
-                StrId::STR_THEME_LYRA,
-                StrId::STR_THEME_LYRA_EXTENDED,
-                StrId::STR_THEME_ROUNDEDRAFF
-            },
-            "uiTheme",
-            StrId::STR_CAT_DISPLAY));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_SUNLIGHT_FADING_FIX,
-            &CrossPointSettings::fadingFix,
-            "fadingFix",
-            StrId::STR_CAT_DISPLAY));
-
-
-    // ---------------------------------------------------------------------
-    // Reader
-    // ---------------------------------------------------------------------
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_FONT_FAMILY,
-            &CrossPointSettings::fontFamily,
-            {
-                StrId::STR_NOTO_SERIF,
-                StrId::STR_NOTO_SANS
-            },
-            "fontFamily",
-            StrId::STR_CAT_READER));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_FONT_SIZE,
-            &CrossPointSettings::fontSize,
-            {
-                StrId::STR_SMALL,
-                StrId::STR_MEDIUM,
-                StrId::STR_LARGE,
-                StrId::STR_X_LARGE
-            },
-            "fontSize",
-            StrId::STR_CAT_READER));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_LINE_SPACING,
-            &CrossPointSettings::lineSpacing,
-            {
-                StrId::STR_TIGHT,
-                StrId::STR_NORMAL,
-                StrId::STR_WIDE
-            },
-            "lineSpacing",
-            StrId::STR_CAT_READER));
-
-    v.emplace_back(
-        SettingInfo::Value(
-            StrId::STR_SCREEN_MARGIN,
-            &CrossPointSettings::screenMargin,
-            {5, 40, 5},
-            "screenMargin",
-            StrId::STR_CAT_READER));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_PARA_ALIGNMENT,
-            &CrossPointSettings::paragraphAlignment,
-            {
-                StrId::STR_JUSTIFY,
-                StrId::STR_ALIGN_LEFT,
-                StrId::STR_CENTER,
-                StrId::STR_ALIGN_RIGHT,
-                StrId::STR_BOOK_S_STYLE
-            },
-            "paragraphAlignment",
-            StrId::STR_CAT_READER));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_EMBEDDED_STYLE,
-            &CrossPointSettings::embeddedStyle,
-            "embeddedStyle",
-            StrId::STR_CAT_READER));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_HYPHENATION,
-            &CrossPointSettings::hyphenationEnabled,
-            "hyphenationEnabled",
-            StrId::STR_CAT_READER));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_ORIENTATION,
-            &CrossPointSettings::orientation,
-            {
-                StrId::STR_PORTRAIT,
-                StrId::STR_LANDSCAPE_CW,
-                StrId::STR_INVERTED,
-                StrId::STR_LANDSCAPE_CCW
-            },
-            "orientation",
-            StrId::STR_CAT_READER));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_EXTRA_SPACING,
-            &CrossPointSettings::extraParagraphSpacing,
-            "extraParagraphSpacing",
-            StrId::STR_CAT_READER));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_TEXT_AA,
-            &CrossPointSettings::textAntiAliasing,
-            "textAntiAliasing",
-            StrId::STR_CAT_READER));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_READER_DISPLAY_MODE,
-            &CrossPointSettings::readerDisplayMode,
-            {
-                StrId::STR_DISPLAY_QUALITY,
-                StrId::STR_DISPLAY_STANDARD,
-                StrId::STR_DISPLAY_FAST
-            },
-            "readerDisplayMode",
-            StrId::STR_CAT_READER));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_IMAGES,
-            &CrossPointSettings::imageRendering,
-            {
-                StrId::STR_IMAGES_DISPLAY,
-                StrId::STR_IMAGES_PLACEHOLDER,
-                StrId::STR_IMAGES_SUPPRESS
-            },
-            "imageRendering",
-            StrId::STR_CAT_READER));
-
-
-    // ---------------------------------------------------------------------
-    // Controls
-    // ---------------------------------------------------------------------
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_SIDE_BTN_LAYOUT,
-            &CrossPointSettings::sideButtonLayout,
-            {
-                StrId::STR_PREV_NEXT,
-                StrId::STR_NEXT_PREV
-            },
-            "sideButtonLayout",
-            StrId::STR_CAT_CONTROLS));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_LONG_PRESS_MENU,
-            &CrossPointSettings::longPressMenuFunction,
-            {
-                StrId::STR_KOREADER_SYNC,
-                StrId::STR_DISABLED,
-                StrId::STR_BOOKMARK_OPTION
-            },
-            "longPressMenuFunction",
-            StrId::STR_CAT_CONTROLS));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_LONG_PRESS_BEHAVIOR,
-            &CrossPointSettings::longPressButtonBehavior,
-            {
-                StrId::STR_LONG_PRESS_BEHAVIOR_OFF,
-                StrId::STR_LONG_PRESS_BEHAVIOR_SKIP,
-                StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION
-            },
-            "longPressButtonBehavior",
-            StrId::STR_CAT_CONTROLS));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_DOUBLE_CLICK_HOME,
-            &CrossPointSettings::doubleClickHomeMenu,
-            "doubleClickHomeMenu",
-            StrId::STR_CAT_CONTROLS));
-
-
-    // ---------------------------------------------------------------------
-    // System
-    // ---------------------------------------------------------------------
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_TIME_TO_SLEEP,
-            &CrossPointSettings::sleepTimeout,
-            {
-                StrId::STR_MIN_1,
-                StrId::STR_MIN_5,
-                StrId::STR_MIN_10,
-                StrId::STR_MIN_15,
-                StrId::STR_MIN_30
-            },
-            "sleepTimeout",
-            StrId::STR_CAT_SYSTEM));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_HIDE_CLOCK,
-            &CrossPointSettings::hideClock,
-            "hideClock",
-            StrId::STR_CAT_SYSTEM));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_TIME_FORMAT,
-            &CrossPointSettings::timeFormat,
-            {
-                StrId::STR_TIME_12H,
-                StrId::STR_TIME_24H
-            },
-            "timeFormat",
-            StrId::STR_CAT_SYSTEM));
-
-    v.emplace_back(
-        SettingInfo::TimeZone(
-            StrId::STR_TIME_ZONE,
-            SETTINGS.timeZoneId,
-            sizeof(SETTINGS.timeZoneId),
-            "timeZone",
-            StrId::STR_CAT_SYSTEM));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_SHOW_HIDDEN_FILES,
-            &CrossPointSettings::showHiddenFiles,
-            "showHiddenFiles",
-            StrId::STR_CAT_SYSTEM));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_AUTO_REMOVE_FINISHED_BOOKS,
-            &CrossPointSettings::autoRemoveFinishedRecentBooks,
-            "autoRemoveFinishedRecentBooks",
-            StrId::STR_CAT_SYSTEM));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_MOVE_FINISHED_TO_READ,
-            &CrossPointSettings::moveFinishedToReadFolder,
-            "moveFinishedToReadFolder",
-            StrId::STR_CAT_SYSTEM));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_CONFIRM_SHUTDOWN,
-            &CrossPointSettings::confirmShutdown,
-            "confirmShutdown",
-            StrId::STR_CAT_SYSTEM));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_FLIP_UI,
-            &CrossPointSettings::flipUi,
-            "flipUi",
-            StrId::STR_CAT_SYSTEM));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_RESUME_ON_BOOT,
-            &CrossPointSettings::resumeReaderOnBoot,
-            "resumeReaderOnBoot",
-            StrId::STR_CAT_SYSTEM));
-
-
-    // ---------------------------------------------------------------------
-    // KOReader Sync
-    // Web-only, uses KOReaderCredentialStore
-    // ---------------------------------------------------------------------
-
-    v.emplace_back(
-        SettingInfo::DynamicString(
-            StrId::STR_KOREADER_USERNAME,
-            [] {
-              return KOREADER_STORE.getUsername();
-            },
-            [](const std::string& value) {
-              KOREADER_STORE.setCredentials(
-                  value,
-                  KOREADER_STORE.getPassword());
-
-              KOREADER_STORE.saveToFile();
-            },
-            "koUsername",
-            StrId::STR_KOREADER_SYNC));
-
-    v.emplace_back(
-        SettingInfo::DynamicString(
-            StrId::STR_KOREADER_PASSWORD,
-            [] {
-              return KOREADER_STORE.getPassword();
-            },
-            [](const std::string& value) {
-              KOREADER_STORE.setCredentials(
-                  KOREADER_STORE.getUsername(),
-                  value);
-
-              KOREADER_STORE.saveToFile();
-            },
-            "koPassword",
-            StrId::STR_KOREADER_SYNC));
-
-    v.emplace_back(
-        SettingInfo::DynamicString(
-            StrId::STR_SYNC_SERVER_URL,
-            [] {
-              return KOREADER_STORE.getServerUrl();
-            },
-            [](const std::string& value) {
-              KOREADER_STORE.setServerUrl(value);
-              KOREADER_STORE.saveToFile();
-            },
-            "koServerUrl",
-            StrId::STR_KOREADER_SYNC));
-
-    v.emplace_back(
-        SettingInfo::DynamicEnum(
-            StrId::STR_DOCUMENT_MATCHING,
-            {
-                StrId::STR_FILENAME,
-                StrId::STR_BINARY
-            },
-            [] {
-              return static_cast<uint8_t>(
-                  KOREADER_STORE.getMatchMethod());
-            },
-            [](uint8_t value) {
-              KOREADER_STORE.setMatchMethod(
-                  static_cast<DocumentMatchMethod>(value));
-
-              KOREADER_STORE.saveToFile();
-            },
-            "koMatchMethod",
-            StrId::STR_KOREADER_SYNC));
-
-
-    // ---------------------------------------------------------------------
-    // Status Bar Settings
-    // Web-only, uses StatusBarSettingsActivity
-    // ---------------------------------------------------------------------
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_CHAPTER_PAGE_COUNT,
-            &CrossPointSettings::statusBarChapterPageCount,
-            "statusBarChapterPageCount",
-            StrId::STR_CUSTOMISE_STATUS_BAR));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_BOOK_PROGRESS_PERCENTAGE,
-            &CrossPointSettings::statusBarBookProgressPercentage,
-            "statusBarBookProgressPercentage",
-            StrId::STR_CUSTOMISE_STATUS_BAR));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_PROGRESS_BAR,
-            &CrossPointSettings::statusBarProgressBar,
-            {
-                StrId::STR_BOOK,
-                StrId::STR_CHAPTER,
-                StrId::STR_HIDE
-            },
-            "statusBarProgressBar",
-            StrId::STR_CUSTOMISE_STATUS_BAR));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_PROGRESS_BAR_THICKNESS,
-            &CrossPointSettings::statusBarProgressBarThickness,
-            {
-                StrId::STR_PROGRESS_BAR_THIN,
-                StrId::STR_PROGRESS_BAR_MEDIUM,
-                StrId::STR_PROGRESS_BAR_THICK
-            },
-            "statusBarProgressBarThickness",
-            StrId::STR_CUSTOMISE_STATUS_BAR));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_TITLE,
-            &CrossPointSettings::statusBarTitle,
-            {
-                StrId::STR_BOOK,
-                StrId::STR_CHAPTER,
-                StrId::STR_HIDE
-            },
-            "statusBarTitle",
-            StrId::STR_CUSTOMISE_STATUS_BAR));
-
-    v.emplace_back(
-        SettingInfo::Enum(
-            StrId::STR_CLOCK,
-            &CrossPointSettings::statusBarClock,
-            {
-                StrId::STR_HIDE,
-                StrId::STR_DIR_LEFT,
-                StrId::STR_DIR_RIGHT
-            },
-            "statusBarClock",
-            StrId::STR_CUSTOMISE_STATUS_BAR));
-
-    v.emplace_back(
-        SettingInfo::Toggle(
-            StrId::STR_BATTERY,
-            &CrossPointSettings::statusBarBattery,
-            "statusBarBattery",
-            StrId::STR_CUSTOMISE_STATUS_BAR));
-
-
-    // ---------------------------------------------------------------------
-    // Hardware-dependent filtering
-    // ---------------------------------------------------------------------
-
-    if (!Board::capabilities().hasBacklight) {
-      v.erase(
-          std::remove_if(
-              v.begin(),
-              v.end(),
-              [](const SettingInfo& setting) {
-                return setting.nameId == StrId::STR_BACKLIGHT;
-              }),
-          v.end());
-    }
-
-
-    // ---------------------------------------------------------------------
-    // Optional tilt-page-turn setting
-    // ---------------------------------------------------------------------
-
-    if (halTiltSensor.isAvailable()) {
-      for (auto it = v.begin(); it != v.end(); ++it) {
-        if (it->nameId == StrId::STR_LONG_PRESS_BEHAVIOR) {
-          v.insert(
-              it + 1,
-              SettingInfo::Enum(
-                  StrId::STR_TILT_PAGE_TURN,
-                  &CrossPointSettings::tiltPageTurn,
-                  {
-                      StrId::STR_STATE_OFF,
-                      StrId::STR_NORMAL,
-                      StrId::STR_INVERTED
-                  },
-                  "tiltPageTurn",
-                  StrId::STR_CAT_CONTROLS));
-
-          break;
-        }
-      }
-    }
-
-    return v;
-  }();
-
-
-  // Make a per-call copy because the SD font registry may modify the
-  // font-family setting dynamically.
-  std::vector<SettingInfo> list = baseList;
-
-  auto it = std::find_if(
-      list.begin(),
-      list.end(),
-      [](const SettingInfo& setting) {
-        return setting.nameId == StrId::STR_FONT_FAMILY;
-      });
-
-  if (it != list.end()) {
-    *it = buildFontFamilySetting(registry);
+  enum TIME_FORMAT { TIME_12H = 0, TIME_24H = 1, TIME_FORMAT_COUNT };
+
+  enum ORIENTATION {
+    PORTRAIT = 0,
+    LANDSCAPE_CW = 1,
+    INVERTED = 2,
+    LANDSCAPE_CCW = 3,
+    ORIENTATION_COUNT
+  };
+
+  // Front button layout options (legacy)
+  // Default: Back, Confirm, Left, Right
+  // Swapped: Left, Right, Back, Confirm
+  enum FRONT_BUTTON_LAYOUT {
+    BACK_CONFIRM_LEFT_RIGHT = 0,
+    LEFT_RIGHT_BACK_CONFIRM = 1,
+    LEFT_BACK_CONFIRM_RIGHT = 2,
+    BACK_CONFIRM_RIGHT_LEFT = 3,
+    FRONT_BUTTON_LAYOUT_COUNT
+  };
+
+  // Front button hardware identifiers (for remapping)
+  enum FRONT_BUTTON_HARDWARE {
+    FRONT_HW_BACK = 0,
+    FRONT_HW_CONFIRM = 1,
+    FRONT_HW_LEFT = 2,
+    FRONT_HW_RIGHT = 3,
+    FRONT_BUTTON_HARDWARE_COUNT
+  };
+
+  // Side button layout options
+  // Default: Previous, Next
+  // Swapped: Next, Previous
+  enum SIDE_BUTTON_LAYOUT { PREV_NEXT = 0, NEXT_PREV = 1, SIDE_BUTTON_LAYOUT_COUNT };
+
+  // Font family options. SD card fonts are tracked separately in sdFontFamilyName.
+  enum FONT_FAMILY { NOTOSERIF = 0, NOTOSANS = 1, OPENDYSLEXIC = 2, FONT_FAMILY_COUNT };
+  static constexpr uint8_t BUILTIN_FONT_COUNT = 2;
+  // Font size options
+  enum FONT_SIZE { SMALL = 0, MEDIUM = 1, LARGE = 2, EXTRA_LARGE = 3, FONT_SIZE_COUNT };
+  enum LINE_COMPRESSION { TIGHT = 0, NORMAL = 1, WIDE = 2, LINE_COMPRESSION_COUNT };
+  enum PARAGRAPH_ALIGNMENT {
+    JUSTIFIED = 0,
+    LEFT_ALIGN = 1,
+    CENTER_ALIGN = 2,
+    RIGHT_ALIGN = 3,
+    BOOK_STYLE = 4,
+    PARAGRAPH_ALIGNMENT_COUNT
+  };
+
+  // Auto-sleep timeout options (in minutes)
+  enum SLEEP_TIMEOUT {
+    SLEEP_1_MIN = 0,
+    SLEEP_5_MIN = 1,
+    SLEEP_10_MIN = 2,
+    SLEEP_15_MIN = 3,
+    SLEEP_30_MIN = 4,
+    SLEEP_TIMEOUT_COUNT
+  };
+
+  // E-ink refresh frequency (pages between full refreshes)
+  enum REFRESH_FREQUENCY {
+    REFRESH_1 = 0,
+    REFRESH_5 = 1,
+    REFRESH_10 = 2,
+    REFRESH_15 = 3,
+    REFRESH_30 = 4,
+    REFRESH_FREQUENCY_COUNT
+  };
+
+  enum READER_DISPLAY_MODE {
+    READER_DISPLAY_QUALITY = 0,
+    READER_DISPLAY_STANDARD = 1,
+    READER_DISPLAY_FAST = 2,
+    READER_DISPLAY_MODE_COUNT
+  };
+
+  // Short power button press actions
+  enum SHORT_PWRBTN { IGNORE = 0, SLEEP = 1, PAGE_TURN = 2, FORCE_REFRESH = 3, SHORT_PWRBTN_COUNT };
+
+  // Long-press Confirm action while reading EPUB.
+  enum LONG_PRESS_MENU_FUNCTION {
+    LP_MENU_KOREADER_SYNC = 0,
+    LP_MENU_DISABLED = 1,
+    LP_MENU_BOOKMARK = 2,
+    LONG_PRESS_MENU_FUNCTION_COUNT
+  };
+
+  // Hide battery percentage
+  enum HIDE_BATTERY_PERCENTAGE { HIDE_NEVER = 0, HIDE_READER = 1, HIDE_ALWAYS = 2, HIDE_BATTERY_PERCENTAGE_COUNT };
+
+  // Page turn button long press behavior
+  enum LONG_PRESS_BUTTON_BEHAVIOR {
+    OFF = 0,
+    CHAPTER_SKIP = 1,
+    ORIENTATION_CHANGE = 2,
+    LONG_PRESS_BUTTON_BEHAVIOR_COUNT
+  };
+
+  // UI Theme
+  enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, ROUNDEDRAFF = 3 };
+
+  // Image rendering in EPUB reader
+  enum IMAGE_RENDERING { IMAGES_DISPLAY = 0, IMAGES_PLACEHOLDER = 1, IMAGES_SUPPRESS = 2, IMAGE_RENDERING_COUNT };
+
+  enum TILT_PAGE_TURN { TILT_OFF = 0, TILT_NORMAL = 1, TILT_NVERTED = 2, TILT_PAGE_TURN_COUNT };
+
+  // Sleep screen settings
+  uint8_t sleepScreen = DARK;
+  // Power off retains the static modes only (not DIGITAL_CLOCK).
+  uint8_t powerOffScreen = DARK;
+  // Front-light/backlight brightness level (0 = off, 10 = max)
+  uint8_t backlightLevel = 2;
+  // Sleep screen cover mode settings
+  uint8_t sleepScreenCoverMode = FIT;
+  // Sleep screen cover filter
+  uint8_t sleepScreenCoverFilter = NO_FILTER;
+  // Power off screen cover mode/filter (same options as sleepScreenCoverMode/Filter)
+  uint8_t powerOffScreenCoverMode = FIT;
+  uint8_t powerOffScreenCoverFilter = NO_FILTER;
+  // Status bar settings (statusBar retained for migration only)
+  uint8_t statusBar = FULL;
+  uint8_t statusBarChapterPageCount = 1;
+  uint8_t statusBarBookProgressPercentage = 1;
+  uint8_t statusBarProgressBar = HIDE_PROGRESS;
+  uint8_t statusBarProgressBarThickness = PROGRESS_BAR_NORMAL;
+  uint8_t statusBarTitle = CHAPTER_TITLE;
+  uint8_t statusBarBattery = 1;
+  uint8_t statusBarClock = STATUS_BAR_CLOCK_HIDE;
+  // When 1, hide all clocks everywhere (reader status bar + home/system header)
+  uint8_t hideClock = 0;
+  uint8_t timeFormat = TIME_12H;
+  // Text rendering settings
+  uint8_t extraParagraphSpacing = 1;
+  uint8_t textAntiAliasing = 1;
+  // Short power button click behaviour
+  uint8_t shortPwrBtn = IGNORE;
+  // EPUB reading orientation settings
+  // 0 = portrait (default), 1 = landscape clockwise, 2 = inverted, 3 = landscape counter-clockwise
+  uint8_t orientation = PORTRAIT;
+  // Button layouts (front layout retained for migration only)
+  uint8_t frontButtonLayout = BACK_CONFIRM_LEFT_RIGHT;
+  uint8_t sideButtonLayout = PREV_NEXT;
+  // Front button remap (logical -> hardware)
+  // Used by MappedInputManager to translate logical buttons into physical front buttons.
+  uint8_t frontButtonBack = FRONT_HW_BACK;
+  uint8_t frontButtonConfirm = FRONT_HW_CONFIRM;
+  uint8_t frontButtonLeft = FRONT_HW_LEFT;
+  uint8_t frontButtonRight = FRONT_HW_RIGHT;
+  // Reader font settings
+  uint8_t fontFamily = NOTOSERIF;
+  uint8_t fontSize = MEDIUM;
+  uint8_t lineSpacing = NORMAL;
+  uint8_t paragraphAlignment = JUSTIFIED;
+  // Auto-sleep timeout setting (default 10 minutes)
+  uint8_t sleepTimeout = SLEEP_10_MIN;
+  // IANA time zone id used for UI rendering and legacy RTC migration.
+  char timeZoneId[40] = "UTC";
+  // E-ink refresh frequency (default 15 pages)
+  uint8_t refreshFrequency = REFRESH_15;
+  // Reader-only display mode: quality, standard, or fast.
+  uint8_t readerDisplayMode = READER_DISPLAY_STANDARD;
+  uint8_t hyphenationEnabled = 0;
+
+  // Reader screen margin settings
+  uint8_t screenMargin = 5;
+  // OPDS browser settings
+  char opdsServerUrl[128] = "";
+  char opdsUsername[64] = "";
+  char opdsPassword[64] = "";
+  // Hide battery percentage
+  uint8_t hideBatteryPercentage = HIDE_NEVER;
+  // Long-press page turn button behavior
+  uint8_t longPressButtonBehavior = OFF;
+  // Long-press Confirm function in EPUB reader.
+  uint8_t longPressMenuFunction = LP_MENU_DISABLED;
+  // UI Theme
+  uint8_t uiTheme = LYRA;
+  // Sunlight fading compensation
+  uint8_t fadingFix = 0;
+  // Use book's embedded CSS styles for EPUB rendering (1 = enabled, 0 = disabled)
+  uint8_t embeddedStyle = 1;
+  // Focus Reading - emphasizes the first part of words with bold.
+  uint8_t focusReadingEnabled = 0;
+  // SD card font family name (empty = use built-in fontFamily).
+  char sdFontFamilyName[32] = "";
+  // Show hidden files/directories (starting with '.') in the file browser (0 = hidden, 1 = show)
+  uint8_t showHiddenFiles = 0;
+  // Remove a book from the recent list once reading reaches the end.
+  uint8_t autoRemoveFinishedRecentBooks = 0;
+  // Move finished EPUBs into /Read/ instead of leaving them in their original folder.
+  uint8_t moveFinishedToReadFolder = 0;
+  // Prompt for confirmation before powering off from the reader menu (1 = prompt, 0 = off immediately)
+  uint8_t confirmShutdown = 0;
+  // Open the global drag-down menu with a double-click of the home button.
+  uint8_t doubleClickHomeMenu = 0;
+  // Flip the entire UI 180° (upside down) and swap the two side buttons' up/down + page-turn roles.
+  uint8_t flipUi = 0;
+  // Resume the last open book on boot (1). When 0, always boot to the home screen.
+  uint8_t resumeReaderOnBoot = 1;
+  // Image rendering mode in EPUB reader
+  uint8_t imageRendering = IMAGES_DISPLAY;
+  // Tilt-based page turning. Hidden when the active board has no tilt sensor.
+  uint8_t tiltPageTurn = TILT_OFF;
+  // Language setting (Language enum index, default 0 = EN)
+  uint8_t language = 0;
+  // Migration flag: older firmware treated RTC as local wall-clock time.
+  // Once we have synced from NTP, RTC is rewritten as UTC and this flips to 1.
+  uint8_t rtcStoresUtc = 0;
+  // Internal hint for the RTC register layout that successfully round-tripped.
+  // 0 = unknown, 1 = PCF85063 layout, 2 = PCF8563 layout.
+  uint8_t rtcVariantHint = 0;
+  // Reference epoch from the last successful network sync / RTC write-back.
+  uint32_t rtcReferenceEpoch = 0;
+
+  ~CrossPointSettings() = default;
+
+  // Get singleton instance
+  static CrossPointSettings& getInstance() { return instance; }
+
+  // Callback used to resolve a loaded SD card font to its runtime font ID.
+  using SdFontIdResolver = int (*)(void* ctx, const char* familyName, uint8_t fontSize);
+  static constexpr uint8_t SD_FONT_UI_CONTENT_ROLE = 0xFF;
+  SdFontIdResolver sdFontIdResolver = nullptr;
+  void* sdFontResolverCtx = nullptr;
+
+  uint16_t getPowerButtonDuration() const {
+    return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;
   }
+  int getReaderFontId() const;
+  int getUserContentFontId() const;
 
-  return list;
-}
+  // If count_only is true, returns the number of settings items that would be written.
+  uint8_t writeSettings(FsFile& file, bool count_only = false) const;
+
+  bool saveToFile() const;
+  bool loadFromFile();
+
+  static void validateFrontButtonMapping(CrossPointSettings& settings);
+
+ private:
+  bool loadFromBinaryFile();
+  bool migrateLanguageBinaryFile();
+
+ public:
+  float getReaderLineCompression() const;
+  unsigned long getSleepTimeoutMs() const;
+  int getRefreshFrequency() const;
+};
+
+// Helper macro to access settings
+#define SETTINGS CrossPointSettings::getInstance()
