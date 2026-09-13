@@ -38,6 +38,7 @@ GPIO21 for wake, and cannot wake from touch.
 - XTC reading.
 - BMP image viewer.
 - Recent books, file browser, reading cache, cover images, and sleep screen images.
+- Native `.elf` applications loaded from the SD card and executed dynamically on the ESP32-S3.
 - Wi-Fi file upload and web-based file management.
 - Configurable fonts, font size, line spacing, margins, orientation, and refresh mode.
 - Auto power-off after long inactivity when USB is not connected.
@@ -146,6 +147,9 @@ Recommended layout:
   Books/
     book.epub
     novel.txt
+  apps/
+    hello.elf
+    mahjong.elf
   .sleep/
     sleep.bmp
 ```
@@ -164,6 +168,179 @@ More information:
 
 - English font generation reference: [sd-card-fonts](./docs/sd-card-fonts.md)
 - Chinese font usage guide: [Chinese Font Usage Guide](./docs/Chinese%20Font%20Usage%20Guide.md)
+
+## Native ELF Applications
+
+The ESP32-S3 builds support small native applications stored as ELF shared objects on the SD card. These apps are separate from the main firmware: they can be copied to the card, opened from the file browser, executed, unloaded, and replaced without reflashing the reader firmware.
+
+Native app sources in this repository live under [`Apps/`](Apps/). The current examples include a minimal hello-world app and a small Mahjong demo.
+
+### How Native Apps Run
+
+The native-app path is built around Espressif's ELF loader and dynamic-linking interface.
+
+At runtime the flow is:
+
+1. The file browser selects an `.elf` file on the SD card.
+2. The firmware passes its absolute VFS path, such as `/sd/apps/mahjong.elf`, to `launch_elf_app()`.
+3. The launcher exposes the SD card through a read-only `/sd` VFS used by the ELF loader.
+4. The firmware registers the versioned native-app host symbol `t5_app_get_api`.
+5. `dlopen(path, RTLD_NOW)` loads and relocates the application. The firmware is configured to use the ESP32-S3 ELF loader's PSRAM loading and instruction-cache mapping support.
+6. `dlsym()` resolves the app's required `app_main` entry point.
+7. The app runs in the owning UI task and talks to the firmware through the versioned `T5AppApi` function table.
+8. When `app_main()` returns, the launcher calls `dlclose()` and releases the module.
+
+Only one native application can run at a time. Nested or concurrent launches are rejected. ELF files are opened read-only by the loader VFS and are currently limited to 8 MiB.
+
+### Native App ABI
+
+Apps should include:
+
+```c
+#include "T5AppApi.h"
+```
+
+and export exactly this entry point:
+
+```c
+__attribute__((visibility("default"))) void app_main(void)
+```
+
+The current ABI is `T5_APP_ABI_VERSION == 1`. An application obtains the host API like this:
+
+```c
+const t5_app_api_v1 *api = t5_app_get_api(T5_APP_ABI_VERSION);
+if (!api || api->struct_size < sizeof(*api)) return;
+```
+
+ABI v1 currently provides:
+
+| API | Purpose |
+| --- | --- |
+| `screen_width()` / `screen_height()` | Query the current app drawing surface. |
+| `clear()` | Clear the app surface. |
+| `draw_text(x, y, text)` | Draw text. |
+| `fill_rect(x, y, w, h, black)` | Draw or erase a filled rectangle. |
+| `present(full_refresh)` | Present the frame using a full or partial e-paper refresh. |
+| `poll(&input, wait_ms)` | Process input, yield to the firmware, and feed the watchdog. |
+| `millis()` | Read the firmware millisecond counter. |
+
+`t5_app_input_t` contains button state, touch coordinates, a tap flag, and `exit_requested`. Back, PWR, or the touch Home action makes `exit_requested` sticky so an app can return cleanly to the reader.
+
+Apps should call `poll()` regularly; the API header recommends approximately every 20-50 ms. Native apps should not create a second independent UI loop that bypasses this call because polling also yields and feeds the watchdog.
+
+### Minimal App
+
+A native application can be very small:
+
+```c
+#include "T5AppApi.h"
+
+__attribute__((visibility("default"))) void app_main(void) {
+    const t5_app_api_v1 *api = t5_app_get_api(T5_APP_ABI_VERSION);
+    if (!api || api->struct_size < sizeof(*api)) return;
+
+    api->clear();
+    api->draw_text(30, 60, "Hello from ELF");
+    api->present(true);
+
+    t5_app_input_t input;
+    while (api->poll(&input, 20)) {
+        if (input.exit_requested) return;
+    }
+}
+```
+
+See [`Apps/hello.c`](Apps/hello.c) for the smallest example and [`Apps/mahjong.c`](Apps/mahjong.c) for a larger interactive example.
+
+### Building A Native App
+
+Native ELF applications must be built with the ESP32-S3 Xtensa compiler, not the host computer's normal GCC. The repository includes [`scripts/build_native_app.py`](scripts/build_native_app.py), which uses the same `xtensa-esp32s3-elf-gcc` toolchain installed by PlatformIO.
+
+First install the PlatformIO packages/toolchain if they are not already present:
+
+```bash
+pio run -e t5s3-pro
+```
+
+Then build one app:
+
+```bash
+python scripts/build_native_app.py Apps/hello.c --output dist/hello.elf
+```
+
+or:
+
+```bash
+python scripts/build_native_app.py Apps/mahjong.c --output dist/mahjong.elf
+```
+
+The build helper supplies the ELF-specific compiler/linker settings used by this project, including PIC code, ESP32-S3 long calls, hidden-by-default symbols, `-nostdlib`, `-nostartfiles`, shared-object output, and the native-app include path. It also inspects the dynamic symbol table and fails the build if a visible `app_main` function is not exported.
+
+To validate an ELF against the native loader tests:
+
+```bash
+bash test/run_native_app_test.sh dist/hello.elf
+```
+
+### Building Every App Under `Apps/`
+
+Each `.c` file is an independent application. A local bulk build can use:
+
+```bash
+mkdir -p dist/apps
+
+find Apps -type f -name '*.c' -print0 | while IFS= read -r -d '' src; do
+    rel="${src#Apps/}"
+    name="${rel%.c}"
+    name="${name//\//__}"
+
+    python scripts/build_native_app.py \
+        "$src" \
+        --output "dist/apps/${name}.elf"
+done
+```
+
+This maps, for example:
+
+```text
+Apps/hello.c             -> dist/apps/hello.elf
+Apps/mahjong.c           -> dist/apps/mahjong.elf
+Apps/games/solitaire.c   -> dist/apps/games__solitaire.elf
+```
+
+The same pattern can be used by GitHub Actions so every source under `Apps/` is compiled and the resulting `.elf` files are attached as CI or release artifacts.
+
+### Installing And Launching An App
+
+1. Build the `.elf`, or download a compatible `.elf` release artifact.
+2. Copy it anywhere on the SD card; `/apps/` is the recommended location.
+3. Insert the card and open `Browse Files`.
+4. Navigate to the `.elf` file and open it.
+5. Use the app normally. Back, PWR, or Home requests an exit through the native-app input API.
+6. When the app returns, its ELF module is unloaded and control returns to the reader.
+
+### Architecture And Compatibility
+
+The native ABI is deliberately small. Apps do not link against the reader's C++ application internals. The firmware exports `t5_app_get_api()` as the single versioned native UI entry point, and the returned function table is the compatibility boundary between independently built ELF apps and the firmware.
+
+This design provides several advantages:
+
+- Apps can be distributed independently from firmware images.
+- The firmware controls which services are intentionally exposed to native code.
+- The ABI can grow by appending fields while older apps continue checking `abi_version` and `struct_size`.
+- App code can execute directly as ESP32-S3 machine code instead of being interpreted.
+- Executable sections can use the ELF loader's PSRAM/MMU/cache mapping path instead of consuming the main firmware image.
+
+Native ELF applications are architecture-specific. An ELF built by this project targets the ESP32-S3 Xtensa architecture and is not a desktop executable, WebAssembly module, or generic Linux ELF.
+
+### Security And Stability
+
+Native ELF apps are native machine code, not a security sandbox. Only run applications from sources you trust.
+
+The small `T5AppApi` reduces normal app coupling to firmware internals, but a malformed or malicious native binary can still crash the device, exhaust memory, trigger watchdog resets, or otherwise destabilize the running firmware. Treat `.elf` files with the same trust level as firmware extensions.
+
+For normal applications, use only the documented `T5AppApi` surface and return from `app_main()` when `exit_requested` is set.
 
 ## Device Operation
 
@@ -205,6 +382,7 @@ Use Left/Right or Up/Down to move, Confirm to open, and Back to return.
 - Confirm: open a file or folder.
 - Back: go to the parent folder or return home.
 - Long press Confirm: delete the selected file after confirmation.
+- Opening a compatible `.elf` file launches it as a native application.
 
 ### Reading
 
@@ -241,6 +419,6 @@ In `Settings`, you can configure:
 
 ## Notes
 
-This firmware is still being tuned. E-paper refresh, image decoding, large TXT loading, power consumption, and battery reporting can vary with hardware state. If something goes wrong, please provide serial logs, reproduction files, and exact steps when possible.
+This firmware is still being tuned. E-paper refresh, image decoding, large TXT loading, power consumption, battery reporting, and native ELF application compatibility can vary with hardware state and firmware version. If something goes wrong, please provide serial logs, reproduction files, and exact steps when possible.
 
 Thanks again to CrossPoint Reader and all related open-source library authors.
