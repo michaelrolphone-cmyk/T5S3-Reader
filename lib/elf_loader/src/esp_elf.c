@@ -4,7 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <stdatomic.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,7 +42,8 @@
 
 static const char *TAG = "ELF";
 static esp_elf_symbol_table_t *g_symbol_tables[SYMBOL_TABLES_NO];
-static _Atomic(symbol_resolver) current_resolver = elf_find_sym_default;
+static symbol_resolver current_resolver = elf_find_sym_default;
+static portMUX_TYPE resolver_mux = portMUX_INITIALIZER_UNLOCKED;
 
 /**
  * @brief Open and load an ELF file into memory.
@@ -164,7 +166,9 @@ uintptr_t elf_find_sym(const char *sym_name)
         return 0;
     }
 
-    symbol_resolver resolver = atomic_load(&current_resolver);
+    taskENTER_CRITICAL(&resolver_mux);
+    symbol_resolver resolver = current_resolver;
+    taskEXIT_CRITICAL(&resolver_mux);
     return resolver(sym_name);
 }
 
@@ -198,7 +202,9 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
                          shdr[i].addr, shdr[i].size, shdr[i].offset);
 
                 elf->sec[ELF_SEC_TEXT].v_addr  = shdr[i].addr;
-                elf->sec[ELF_SEC_TEXT].size    = ELF_ALIGN(shdr[i].size, 4);
+                /* Heap allocation is aligned; the virtual section range must stay exact
+                 * or a following unaligned .rodata address aliases into .text. */
+                elf->sec[ELF_SEC_TEXT].size    = shdr[i].size;
                 elf->sec[ELF_SEC_TEXT].offset  = shdr[i].offset;
 
                 ESP_LOGD(TAG, ".text   offset is 0x%lx size is 0x%x",
@@ -463,7 +469,9 @@ void elf_set_symbol_resolver(symbol_resolver resolver)
         return;
     }
 
-    atomic_store(&current_resolver, resolver);
+    taskENTER_CRITICAL(&resolver_mux);
+    current_resolver = resolver;
+    taskEXIT_CRITICAL(&resolver_mux);
 }
 
 /**
@@ -473,7 +481,7 @@ void elf_set_symbol_resolver(symbol_resolver resolver)
  */
 void elf_reset_symbol_resolver(void)
 {
-    atomic_store(&current_resolver, elf_find_sym_default);
+    elf_set_symbol_resolver(elf_find_sym_default);
 }
 
 /**
@@ -589,7 +597,7 @@ int esp_elf_relocate(esp_elf_t *elf, const uint8_t *pbuf)
 #if CONFIG_ELF_DYNAMIC_LOAD_SHARED_OBJECT
                         if (!addr && sym->shndx != SHN_UNDEF) {
 #if CONFIG_ELF_LOADER_BUS_ADDRESS_MIRROR
-                            addr = (uintptr_t)(elf->sec[ELF_SEC_DATA].addr + sym->value - elf->sec[ELF_SEC_DATA].v_addr);
+                            addr = esp_elf_map_sym(elf, sym->value);
 #else
                             addr = (uintptr_t)(elf->psegment + sym->value - elf->svaddr);
 #endif
@@ -614,7 +622,7 @@ int esp_elf_relocate(esp_elf_t *elf, const uint8_t *pbuf)
 #if CONFIG_ELF_DYNAMIC_LOAD_SHARED_OBJECT
                     if (!addr && sym->shndx != SHN_UNDEF) {
 #if CONFIG_ELF_LOADER_BUS_ADDRESS_MIRROR
-                        addr = (uintptr_t)(elf->sec[ELF_SEC_TEXT].addr + sym->value - elf->sec[ELF_SEC_TEXT].v_addr);
+                        addr = esp_elf_map_sym(elf, sym->value);
 #else
                         addr = (uintptr_t)(elf->psegment + sym->value - elf->svaddr);
 #endif
@@ -759,7 +767,7 @@ void esp_elf_deinit(esp_elf_t *elf)
 #endif
 
 #if CONFIG_ELF_DYNAMIC_LOAD_SHARED_OBJECT
-    if (elf->num && elf->symtab) {
+    if (elf->symtab) {
         for (int i = 0; i < elf->num; i++) {
             if (elf->symtab[i].name) {
                 esp_elf_free(elf->symtab[i].name);
