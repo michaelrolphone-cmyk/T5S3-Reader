@@ -157,6 +157,8 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                           "sleepTimeout", StrId::STR_CAT_SYSTEM),
         SettingInfo::Toggle(StrId::STR_HIDE_CLOCK, &CrossPointSettings::hideClock, "hideClock",
                             StrId::STR_CAT_SYSTEM),
+        SettingInfo::Enum(StrId::STR_TIME_FORMAT, &CrossPointSettings::timeFormat,
+                          {StrId::STR_TIME_12H, StrId::STR_TIME_24H}, "timeFormat", StrId::STR_CAT_SYSTEM),
         SettingInfo::TimeZone(StrId::STR_TIME_ZONE, SETTINGS.timeZoneId, sizeof(SETTINGS.timeZoneId), "timeZone",
                               StrId::STR_CAT_SYSTEM),
         SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles, "showHiddenFiles",

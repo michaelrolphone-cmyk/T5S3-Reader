@@ -128,10 +128,11 @@ bool HalClock::getTime(uint8_t& hour, uint8_t& minute) const {
   return true;
 }
 
-bool HalClock::formatTime(char* buf, size_t bufSize) const {
-  if (buf == nullptr || bufSize < 6) {
+bool HalClock::formatTime(char* buf, size_t bufSize, bool use12Hour) const {
+  if (buf == nullptr || bufSize == 0) {
     return false;
   }
+  buf[0] = '\0';
 
   uint8_t hour = 0;
   uint8_t minute = 0;
@@ -139,8 +140,7 @@ bool HalClock::formatTime(char* buf, size_t bufSize) const {
     return false;
   }
 
-  snprintf(buf, bufSize, "%02u:%02u", static_cast<unsigned>(hour), static_cast<unsigned>(minute));
-  return true;
+  return ClockFormat::format(buf, bufSize, hour, minute, use12Hour);
 }
 
 bool HalClock::syncSystemTimeFromRtc() {

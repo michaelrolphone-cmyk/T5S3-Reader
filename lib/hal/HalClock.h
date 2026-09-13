@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <ClockFormat.h>
 
 class HalClock;
 extern HalClock halClock;
@@ -15,7 +16,7 @@ class HalClock {
   bool getRtcStoresUtc() const { return rtcStoresUtc_; }
   bool isSystemTimeValid() const;
   bool getTime(uint8_t& hour, uint8_t& minute) const;
-  bool formatTime(char* buf, size_t bufSize) const;
+  bool formatTime(char* buf, size_t bufSize, bool use12Hour) const;
   bool syncSystemTimeFromRtc();
   bool syncRtcFromSystemTime();
 

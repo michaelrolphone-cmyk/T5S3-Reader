@@ -5,8 +5,15 @@ by the shared web settings API as `sleepScreen: 6`). Existing Dark, Light,
 Custom, Cover, None, and Cover+Custom values keep their original numeric IDs.
 Power Off Screen retains its six static choices.
 
-The sleep timeout now enters a large, landscape 24-hour clock with the local
-date. This choice also permits the timeout while USB or a serial connection is
+The sleep timeout now enters a large, landscape digital clock with the local
+date. **Settings → System → Time Format** selects **12-hour (AM/PM)** (the
+default, including upgrades) or **24-hour (military)**. This saved option applies
+to the desk clock, Home header and reader status bar in every theme. Midnight
+is `12:00 AM` and noon is `12:00 PM`; 24-hour mode shows `00:00` and `12:00`.
+The shared web settings API exposes `timeFormat: 0` for 12-hour and `1` for
+24-hour. Existing clock visibility settings still control the normal UI.
+
+This sleep choice also permits the timeout while USB or a serial connection is
 present, so the reader can be used as a powered desk clock. Other sleep choices
 retain the existing USB/debug sleep suppression.
 
@@ -46,12 +53,15 @@ still uses the existing Power Off Screen and does not run a clock.
 - `main.cpp`: choose light-clock versus original deep sleep and restore the UI.
 - Both display backends implement `setIdlePowerSaving()` without SD teardown.
 - `test/run_desk_clock_test.sh`: verifies minute alignment, subsecond offsets,
-  render-latency compensation, midnight, and a multi-day range; runs in CI.
+  render-latency compensation, midnight, and a multi-day range; also checks
+  12/24-hour formatting, noon/midnight and buffer bounds; runs in CI.
 
 Hardware acceptance: select each old sleep mode; check clock entry on battery
 and USB; watch several :59→:00 transitions and midnight; test timezone and
 unset-clock behavior; wake by touch/PWR; verify reader position and orientation;
-test shutdown separately. Build/host tests cannot establish these hardware
+test shutdown separately. Switch Time Format both ways, restart to check
+persistence, and check AM/PM spacing in all themes and both status bar positions.
+Build/host tests cannot establish these hardware
 behaviors.
 
 The light-sleep design follows the [ESP-IDF 4.4 ESP32-S3 sleep API](https://docs.espressif.com/projects/esp-idf/en/v4.4.6/esp32s3/api-reference/system/sleep_modes.html).

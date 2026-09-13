@@ -973,8 +973,8 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
   }
 
   if (showClock) {
-    char timeBuf[6] = {};
-    if (halClock.formatTime(timeBuf, sizeof(timeBuf))) {
+    char timeBuf[ClockFormat::BUFFER_SIZE] = {};
+    if (halClock.formatTime(timeBuf, sizeof(timeBuf), SETTINGS.timeFormat == CrossPointSettings::TIME_12H)) {
       const int clockTextWidth = renderer.getTextWidth(SMALL_FONT_ID, timeBuf);
       if (SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_MODE::STATUS_BAR_CLOCK_LEFT) {
         const int gap = leftClusterWidth > 0 ? 10 : 0;

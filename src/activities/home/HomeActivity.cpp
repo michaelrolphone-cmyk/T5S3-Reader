@@ -275,10 +275,10 @@ void HomeActivity::render(RenderLock&&) {
     lastVisibleTextPrewarmKey = visibleTextKey;
   }
 
-  char homeClockLabel[6] = {};
+  char homeClockLabel[ClockFormat::BUFFER_SIZE] = {};
   const char* headerClockLabel = nullptr;
   if (!SETTINGS.hideClock && halClock.isAvailable() &&
-      halClock.formatTime(homeClockLabel, sizeof(homeClockLabel))) {
+      halClock.formatTime(homeClockLabel, sizeof(homeClockLabel), SETTINGS.timeFormat == CrossPointSettings::TIME_12H)) {
     headerClockLabel = homeClockLabel;
   }
 

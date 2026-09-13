@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <ctime>
 
+#include "CrossPointSettings.h"
 #include "activities/RenderLock.h"
 #include "fontIds.h"
 #include "util/DeskClockTime.h"
@@ -41,22 +42,30 @@ void drawDigit(GfxRenderer& renderer, int digit, int x, int y, int unit) {
 void drawClock(GfxRenderer& renderer, const time_t now, bool touchWake, bool first) {
   tm local = {};
   const bool valid = halClock.isSystemTimeValid() && localtime_r(&now, &local) != nullptr;
+  const bool use12Hour = SETTINGS.timeFormat == CrossPointSettings::TIME_12H;
+  const unsigned hour = ClockFormat::displayHour(local.tm_hour, use12Hour);
   const int width = renderer.getScreenWidth();
   const int height = renderer.getScreenHeight();
-  const int unit = std::max(4, std::min((width - 96) / 29, (height - 160) / 10));
+  const int unit = std::max(4, std::min((width - 96) / 29, (height - 200) / 10));
   const int left = (width - 29 * unit) / 2;
   const int top = (height - 10 * unit) / 2;
   renderer.clearScreen();
-  const int digits[] = {valid ? local.tm_hour / 10 : -1, valid ? local.tm_hour % 10 : -1,
+  const int digits[] = {valid ? static_cast<int>(hour / 10) : -1, valid ? static_cast<int>(hour % 10) : -1,
                         valid ? local.tm_min / 10 : -1, valid ? local.tm_min % 10 : -1};
   const int positions[] = {0, 7, 16, 23};
-  for (int i = 0; i < 4; ++i) drawDigit(renderer, digits[i], left + positions[i] * unit, top, unit);
+  for (int i = 0; i < 4; ++i) {
+    if (i == 0 && valid && use12Hour && hour < 10) continue;
+    drawDigit(renderer, digits[i], left + positions[i] * unit, top, unit);
+  }
   renderer.fillRect(left + 14 * unit, top + 3 * unit, unit, unit);
   renderer.fillRect(left + 14 * unit, top + 6 * unit, unit, unit);
 
   char date[32] = {};
   if (valid) strftime(date, sizeof(date), "%Y-%m-%d", &local);
   renderer.drawCenteredText(UI_12_FONT_ID, top - 48, valid ? date : tr(STR_CLOCK_SET_TIME));
+  if (valid && use12Hour) {
+    renderer.drawCenteredText(UI_12_FONT_ID, top + 10 * unit + 12, ClockFormat::period(local.tm_hour));
+  }
   renderer.drawCenteredText(SMALL_FONT_ID, height - 44,
                            touchWake ? tr(STR_CLOCK_WAKE) : tr(STR_CLOCK_WAKE_BUTTON));
   display.setIdlePowerSaving(false);

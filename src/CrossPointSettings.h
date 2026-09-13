@@ -65,6 +65,8 @@ class CrossPointSettings {
     STATUS_BAR_CLOCK_MODE_COUNT
   };
 
+  enum TIME_FORMAT { TIME_12H = 0, TIME_24H = 1, TIME_FORMAT_COUNT };
+
   enum ORIENTATION {
     PORTRAIT = 0,
     LANDSCAPE_CW = 1,
@@ -194,6 +196,7 @@ class CrossPointSettings {
   uint8_t statusBarClock = STATUS_BAR_CLOCK_HIDE;
   // When 1, hide all clocks everywhere (reader status bar + home/system header)
   uint8_t hideClock = 0;
+  uint8_t timeFormat = TIME_12H;
   // Text rendering settings
   uint8_t extraParagraphSpacing = 1;
   uint8_t textAntiAliasing = 1;
