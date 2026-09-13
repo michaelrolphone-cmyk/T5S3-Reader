@@ -14,6 +14,7 @@
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "native/NativeAppHost.h"
 
 namespace {
 constexpr unsigned long GO_HOME_MS = 1000;
@@ -64,7 +65,7 @@ void FileBrowserActivity::loadFiles() {
         }
       } else if (FsHelpers::hasEpubExtension(filename) || FsHelpers::hasXtcExtension(filename) ||
                  FsHelpers::hasTxtExtension(filename) || FsHelpers::hasMarkdownExtension(filename) ||
-                 FsHelpers::hasBmpExtension(filename)) {
+                 FsHelpers::hasBmpExtension(filename) || FsHelpers::checkFileExtension(filename, ".elf")) {
         files.emplace_back(filename);
       }
     }
@@ -142,6 +143,9 @@ void FileBrowserActivity::openSelectedEntry() {
     loadFiles();
     selectorIndex = 0;
     requestUpdate();
+  } else if (FsHelpers::checkFileExtension(entry, ".elf")) {
+    pendingElfPath = "/sd" + basepath + entry;
+    requestUpdate();
   } else {
     onSelectBook(basepath + entry);
   }
@@ -186,7 +190,35 @@ void FileBrowserActivity::confirmDeleteSelectedFile() {
   startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, heading, entry), handler);
 }
 
+void FileBrowserActivity::runPendingElf() {
+  const std::string path = std::move(pendingElfPath);
+  pendingElfPath.clear();
+  {
+    RenderLock lock;
+    nativeAppActive = true;
+    appStatus = tr(STR_NATIVE_APP_RUNNING);
+  }
+  requestUpdateAndWait();
+  const esp_err_t err = runNativeApp(path.c_str(), renderer, mappedInput);
+  {
+    RenderLock lock;
+    nativeAppActive = false;
+    appStatus = err == ESP_OK ? "" : std::string(tr(STR_NATIVE_APP_FAILED)) + ": " + esp_err_to_name(err);
+    // Keep the same folder/selection; app code may have changed files through libc.
+    const std::string selected = files.empty() ? "" : files[selectorIndex];
+    loadFiles();
+    selectorIndex = findEntry(selected);
+    confirmPressStarted = false;
+    lockNextConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  }
+  requestUpdate();
+}
+
 void FileBrowserActivity::loop() {
+  if (!pendingElfPath.empty()) {
+    runPendingElf();
+    return;
+  }
   // Long press BACK (1s+) goes to root folder (Books mode only).
   // In firmware-pick mode we keep navigation simple: short Back = up dir / cancel.
   if (mode == Mode::Books && mappedInput.isPressed(MappedInputManager::Button::Back) &&
@@ -435,7 +467,7 @@ void FileBrowserActivity::render(RenderLock&&) {
     renderer.drawLine(0, separatorY, pageWidth - 1, separatorY, 3, true);
     const int pathMaxWidth = pageWidth - metrics.contentSidePadding * 2;
     // Left-truncate so the deepest directory is always visible
-    const char* pathStr = basepath.c_str();
+    const char* pathStr = appStatus.empty() ? basepath.c_str() : appStatus.c_str();
     const char* pathDisplay = pathStr;
     char leftTruncBuf[256];
     if (BaseTheme::getTextWidthForRole(renderer, SMALL_FONT_ID, TextRole::UserContent, pathStr) > pathMaxWidth) {

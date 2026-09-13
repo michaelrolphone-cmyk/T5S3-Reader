@@ -1,0 +1,68 @@
+#include <assert.h>
+#include <stdbool.h>
+#include <string.h>
+#include "NativeAppLauncher.h"
+#include "esp_dlfcn.h"
+#include "esp_elf.h"
+#include "T5AppApi.h"
+
+static int mode, opens, closes, calls, handle_storage;
+static const char *pending;
+static bool running;
+const char *dlerror(void) { const char *e = pending; pending = NULL; return e; }
+static void child(void)
+{
+    running = true;
+    ++calls;
+    assert(closes == 0);
+    assert(launch_elf_app("/sd/apps/nested.elf") == ESP_ERR_INVALID_STATE);
+    running = false;
+}
+void *dlopen(const char *path, int flags)
+{
+    ++opens;
+    assert(strcmp(path, "/sd/apps/game.elf") == 0 && flags == RTLD_NOW);
+    assert(pending == NULL);
+    if (mode == 1) { pending = "read/relocation/allocation failed"; return NULL; }
+    return &handle_storage;
+}
+void *dlsym(void *handle, const char *name)
+{
+    assert(handle == &handle_storage && strcmp(name, "app_main") == 0);
+    if (mode == 2) { pending = "symbol missing"; return NULL; }
+    if (mode == 3) return NULL;
+    if (mode == 5) pending = "non-null symbol with loader error";
+    return (void *)child;
+}
+int dlclose(void *handle)
+{
+    assert(handle == &handle_storage && !running);
+    ++closes;
+    if (mode == 4) { pending = "close failed"; return -1; }
+    return 0;
+}
+int main(void)
+{
+    assert(launch_elf_app(NULL) == ESP_ERR_INVALID_ARG);
+    assert(launch_elf_app("") == ESP_ERR_INVALID_ARG);
+    assert(launch_elf_app("/") == ESP_ERR_INVALID_ARG);
+    assert(launch_elf_app("relative.elf") == ESP_ERR_INVALID_ARG);
+    assert(opens == 0);
+    for (int round = 0; round < 3; ++round) {
+        for (mode = 0; mode < 6; ++mode) {
+            opens = closes = calls = 0;
+            pending = "stale error";
+            int rc = launch_elf_app("/sd/apps/game.elf");
+            assert(opens == 1);
+            assert(closes == (mode == 1 ? 0 : 1));
+            assert(calls == (mode == 0 || mode == 4 ? 1 : 0));
+            assert(rc == (mode == 0 ? ESP_OK : (mode == 2 || mode == 3 || mode == 5)
+                          ? ESP_ERR_NOT_FOUND : ESP_FAIL));
+        }
+    }
+    return 0;
+}
+
+esp_err_t native_app_register_sd_vfs(void) { return ESP_OK; }
+int esp_elf_register_symbol(const struct esp_elfsym *s) { assert(s && s[0].sym); return 0; }
+const t5_app_api_v1 *t5_app_get_api(uint32_t version) { (void)version; return NULL; }

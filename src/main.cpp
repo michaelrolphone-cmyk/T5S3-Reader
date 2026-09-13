@@ -21,6 +21,7 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "DeskClockSleep.h"
+#include "native/NativeAppHost.h"
 #include "KOReaderCredentialStore.h"
 #include "PowerControl.h"
 #include "MappedInputManager.h"
@@ -634,6 +635,7 @@ void loop() {
     mappedInputManager.injectButtonTap(hardwareButtonTap);
   }
   activityManager.loop();
+  if (consumeNativeAppReturn()) lastActivityTime = millis();
   if (hasHardwareButtonTap) {
     mappedInputManager.clearInjectedButtonTap();
   }

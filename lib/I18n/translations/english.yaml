@@ -403,3 +403,6 @@ STR_TIMECARD_CLOCK_OUT: "Clock Out"
 STR_TIMECARD_EDIT_TIME: "Type 8:30 AM or leave blank to clear"
 STR_TIMECARD_HINT: "Open a day to edit. Punch buttons stamp now."
 STR_TIMECARD_NO_TIME: "--"
+
+STR_NATIVE_APP_RUNNING: "Running application..."
+STR_NATIVE_APP_FAILED: "Application failed"

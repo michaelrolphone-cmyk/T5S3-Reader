@@ -10,9 +10,11 @@ includes these additional apps.
 ## 1. Architecture and source map
 
 Apps are C++ classes compiled into the firmware and derived from `Activity`.
-There is no app manifest, dynamic loader, independently installed app package,
-or central app registry in this implementation. Adding an app means adding an
-activity, wiring a navigation factory, and updating the Home menu.
+Built-in apps use the Activity architecture below. Native `.elf` apps can also
+be launched from Browse Files; see [NATIVE_APPS.md](NATIVE_APPS.md) for the
+versioned C API, SD VFS bridge, PSRAM loader, build workflow and return lifecycle.
+Adding a built-in app means adding an activity, wiring a navigation factory,
+and updating the Home menu.
 
 ```mermaid
 flowchart TD
