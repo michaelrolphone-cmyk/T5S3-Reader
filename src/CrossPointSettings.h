@@ -24,6 +24,7 @@ class CrossPointSettings {
     COVER = 3,
     BLANK = 4,
     COVER_CUSTOM = 5,
+    DIGITAL_CLOCK = 6,
     SLEEP_SCREEN_MODE_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
@@ -171,7 +172,7 @@ class CrossPointSettings {
 
   // Sleep screen settings
   uint8_t sleepScreen = DARK;
-  // Power off screen settings (same options/modes as sleepScreen)
+  // Power off retains the static modes only (not DIGITAL_CLOCK).
   uint8_t powerOffScreen = DARK;
   // Front-light/backlight brightness level (0 = off, 10 = max)
   uint8_t backlightLevel = 2;

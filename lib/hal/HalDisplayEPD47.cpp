@@ -226,6 +226,13 @@ void HalDisplay::deepSleep() {
   Board::deinitForSleep();
 }
 
+void HalDisplay::setIdlePowerSaving(bool enabled) {
+  // This backend powers up in displayBuffer() and down after each update.
+  if (enabled) {
+    epd_poweroff_all();
+  }
+}
+
 uint8_t* HalDisplay::getFrameBuffer() const { return frameBuffer; }
 
 void HalDisplay::copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* msbBuffer) {

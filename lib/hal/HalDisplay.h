@@ -70,6 +70,9 @@ class HalDisplay {
 
   // Power management
   void deepSleep();
+  // Gate panel drive power between clock updates without deinitializing SD,
+  // touch or the framebuffer, as deepSleep() does.
+  void setIdlePowerSaving(bool enabled);
 
   // Access to frame buffer
   uint8_t* getFrameBuffer() const;

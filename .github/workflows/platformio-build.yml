@@ -101,3 +101,6 @@ jobs:
 
       - name: Run release JSON parser tests
         run: bash test/run_release_json_parser_test.sh
+
+      - name: Run desk clock minute alignment tests
+        run: bash test/run_desk_clock_test.sh

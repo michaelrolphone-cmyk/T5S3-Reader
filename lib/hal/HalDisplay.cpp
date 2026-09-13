@@ -663,6 +663,13 @@ void HalDisplay::deepSleep() {
   Board::deinitForSleep();
 }
 
+void HalDisplay::setIdlePowerSaving(bool enabled) {
+  if (gfx) {
+    gfx->waitDisplay();
+    gfx->powerSave(enabled);
+  }
+}
+
 uint8_t* HalDisplay::getFrameBuffer() const { return frameBuffer; }
 
 void HalDisplay::copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* msbBuffer) {

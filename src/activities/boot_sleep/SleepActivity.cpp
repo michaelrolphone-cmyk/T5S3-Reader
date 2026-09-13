@@ -19,6 +19,12 @@
 void SleepActivity::onEnter() {
   Activity::onEnter();
 
+  // The main sleep controller owns the clock's minute timer and light-sleep
+  // loop. Do not flash a static popup/image before the landscape clock.
+  if (!poweringOff && activeScreenMode() == CrossPointSettings::DIGITAL_CLOCK) {
+    return;
+  }
+
   const char* popupText = poweringOff ? tr(STR_SHUTTING_DOWN) : tr(STR_ENTERING_SLEEP);
 
   // Show popup with reader orientation only when going to sleep from reader

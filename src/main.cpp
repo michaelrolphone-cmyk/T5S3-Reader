@@ -20,6 +20,7 @@
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "DeskClockSleep.h"
 #include "KOReaderCredentialStore.h"
 #include "PowerControl.h"
 #include "MappedInputManager.h"
@@ -198,7 +199,8 @@ bool shouldSuppressDeepSleepForDebug() {
 
 // Enter deep sleep mode
 void enterDeepSleep() {
-  if (shouldSuppressDeepSleepForDebug()) {
+  const bool deskClock = SETTINGS.sleepScreen == CrossPointSettings::DIGITAL_CLOCK;
+  if (!deskClock && shouldSuppressDeepSleepForDebug()) {
     LOG_DBG("MAIN", "Deep sleep suppressed while serial is connected");
     waitForPowerRelease();
     return;
@@ -210,6 +212,20 @@ void enterDeepSleep() {
 
   activityManager.goToSleep();
   Board::setBacklightLevel(0);
+
+  if (deskClock) {
+    // SleepActivity has closed the reader and saved its position. Light sleep
+    // keeps the display/touch initialized and avoids a boot on every minute.
+    DeskClockSleep::run(renderer, gpio);
+    Board::setBacklightLevel(SETTINGS.backlightLevel);
+    renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
+    if (SETTINGS.resumeReaderOnBoot && APP_STATE.lastSleepFromReader && !APP_STATE.openEpubPath.empty()) {
+      activityManager.goToReader(APP_STATE.openEpubPath, HalDisplay::FULL_REFRESH);
+    } else {
+      activityManager.goHome();
+    }
+    return;
+  }
 
   halTiltSensor.deepSleep();
   display.deepSleep();
@@ -500,7 +516,7 @@ void loop() {
   if (gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.hadTouchActivity() || halTiltSensor.hadActivity() ||
       activityManager.preventAutoSleep()
 #ifdef ENABLE_SERIAL_LOG
-      || Serial
+      || (Serial && SETTINGS.sleepScreen != CrossPointSettings::DIGITAL_CLOCK)
 #endif
   ) {
     lastActivityTime = millis();         // Reset inactivity timer
@@ -595,13 +611,14 @@ void loop() {
 
   const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
   if (millis() - lastActivityTime >= sleepTimeoutMs) {
-    if (gpio.isUsbConnected()) {
+    if (gpio.isUsbConnected() && SETTINGS.sleepScreen != CrossPointSettings::DIGITAL_CLOCK) {
       LOG_DBG("SLP", "Auto sleep skipped after %lu ms of inactivity because USB is connected", sleepTimeoutMs);
       lastActivityTime = millis();
     } else {
       LOG_DBG("SLP", "Auto sleep triggered after %lu ms of inactivity", sleepTimeoutMs);
       enterDeepSleep();
-      // This should never be hit as `enterDeepSleep` calls esp_deep_sleep_start
+      // Desk-clock light sleep returns on user wake; start a fresh idle period.
+      lastActivityTime = millis();
       return;
     }
   }
