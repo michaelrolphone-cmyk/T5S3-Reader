@@ -10,7 +10,9 @@ static bool range(size_t length, uint32_t offset, uint64_t size) {
     return offset <= length && size <= length - offset;
 }
 static bool string_at(const uint8_t *buf, const elf32_shdr_t *str, uint32_t offset) {
-    return offset < str->size && memchr(buf + str->offset + offset, 0, str->size - offset) != NULL;
+    if (offset >= str->size) return false;
+    const size_t remaining = str->size - offset;
+    return memchr(buf + str->offset + offset, 0, remaining < 1024 ? remaining : 1024) != NULL;
 }
 static bool mapped(const elf32_shdr_t *sections, unsigned count, uint32_t addr, unsigned size) {
     for (unsigned i = 0; i < count; ++i) {
@@ -36,17 +38,21 @@ bool esp_elf_validate_file(const uint8_t *buf, size_t length) {
         if (!string_at(buf, names, s[i].name) || s[i].size > MAX_IMAGE ||
             (s[i].type != SHT_NOBITS && !range(length, s[i].offset, s[i].size))) return false;
         const char *name = (const char *)buf + names->offset + s[i].name;
+        if (!strcmp(name, ELF_DYNSYM)) {
+            if (dynsym || s[i].type != SHT_SYNSYM) return false;
+            dynsym = true;
+        }
         if (s[i].flags & SHF_ALLOC) {
             allocated += s[i].size;
             if (allocated > MAX_IMAGE || (uint64_t)s[i].addr + s[i].size > UINT32_MAX) return false;
         }
         if (!strcmp(name, ELF_TEXT)) {
             if (text || s[i].type != SHT_PROGBITS || !(s[i].flags & SHF_EXECINSTR) || !s[i].size ||
-                !(s[i].flags & SHF_ALLOC) || !range(length, s[i].offset, (s[i].size + 3u) & ~3u)) return false;
+                !(s[i].flags & SHF_ALLOC)) return false;
             text = true;
         }
         if (s[i].type == SHT_SYNSYM || s[i].type == SHT_SYMTAB) {
-            if (s[i].offset % 4 || s[i].size % sizeof(elf32_sym_t) || s[i].link >= h->shnum ||
+            if (s[i].size / sizeof(elf32_sym_t) > 65535 || s[i].offset % 4 || s[i].size % sizeof(elf32_sym_t) || s[i].link >= h->shnum ||
                 s[s[i].link].type != SHT_STRTAB || !range(length, s[s[i].link].offset, s[s[i].link].size)) return false;
             const elf32_sym_t *sym = (const elf32_sym_t *)(buf + s[i].offset);
             for (unsigned j = 0; j < s[i].size / sizeof(*sym); ++j) {
@@ -54,7 +60,7 @@ bool esp_elf_validate_file(const uint8_t *buf, size_t length) {
                 if (ELF_ST_TYPE(sym[j].info) == STT_FUNC && sym[j].shndx != SHN_UNDEF &&
                     (sym[j].shndx >= h->shnum || !mapped(s, h->shnum, sym[j].value, 1))) return false;
             }
-            if (!strcmp(name, ELF_DYNSYM)) dynsym = true;
+
         }
         if (s[i].type == SHT_RELA) {
             if (s[i].size % sizeof(elf32_rela_t) || s[i].offset % 4 || s[i].link >= h->shnum ||

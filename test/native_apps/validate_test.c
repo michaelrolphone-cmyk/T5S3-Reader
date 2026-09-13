@@ -28,6 +28,11 @@ int main(int argc, char **argv) {
         const elf32_shdr_t orig = s[i];
         s[i].name = UINT32_MAX; assert(!esp_elf_validate_file(buf, size)); s[i] = orig;
         s[i].size = UINT32_MAX; assert(!esp_elf_validate_file(buf, size)); s[i] = orig;
+        if (s[i].type == SHT_SYNSYM) {
+            s[i].type = SHT_PROGBITS;
+            assert(!esp_elf_validate_file(buf, size));
+            s[i] = orig;
+        }
         if (s[i].type == SHT_RELA && s[i].size) {
             elf32_rela_t *r = (elf32_rela_t *)(buf + s[i].offset);
             const elf32_rela_t saved = *r;
