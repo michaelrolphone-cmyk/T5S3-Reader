@@ -1,0 +1,89 @@
+#include "NativeAppLauncher.h"
+
+#include <stdatomic.h>
+#include <stddef.h>
+#include <string.h>
+#include "sdkconfig.h"
+#include "esp_dlfcn.h"
+#include "esp_log.h"
+
+#include "esp_elf.h"
+#include "T5AppApi.h"
+#include <errno.h>
+
+#if !CONFIG_IDF_TARGET_ESP32S3 || !CONFIG_ELF_LOADER_LOAD_PSRAM
+#error "T5S3 native apps require the S3 PSRAM loader configuration"
+#endif
+
+static const char *TAG = "sd_elf_launcher";
+static atomic_flag s_running = ATOMIC_FLAG_INIT;
+typedef void (*elf_app_main_t)(void);
+
+esp_err_t launch_elf_app(const char *sd_path)
+{
+    if (sd_path == NULL || strncmp(sd_path, "/sd/", 4) != 0 || sd_path[4] == '\0') {
+        ESP_LOGE(TAG, "Expected an absolute SD VFS file path");
+        return ESP_ERR_INVALID_ARG;
+    }
+    // Reject nesting/concurrent launches without holding an RTOS mutex while
+    // executing arbitrary app code. The caller's task remains preemptible.
+    if (atomic_flag_test_and_set_explicit(&s_running, memory_order_acquire)) {
+        ESP_LOGE(TAG, "An ELF application is already running");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_err_t result = native_app_register_sd_vfs();
+    if (result != ESP_OK) {
+        ESP_LOGE(TAG, "SD VFS unavailable: %s", esp_err_to_name(result));
+        goto done;
+    }
+    static const struct esp_elfsym host_symbols[] = {
+        ESP_ELFSYM_EXPORT(t5_app_get_api), ESP_ELFSYM_END
+    };
+    const int registered = esp_elf_register_symbol(host_symbols);
+    if (registered != 0 && registered != -EEXIST) {
+        result = ESP_ERR_NO_MEM;
+        ESP_LOGE(TAG, "Could not register native app API");
+        goto done;
+    }
+    result = ESP_FAIL;
+    (void)dlerror(); // Discard stale loader diagnostics.
+    void *handle = dlopen(sd_path, RTLD_NOW);
+    if (handle == NULL) {
+        const char *error = dlerror();
+        ESP_LOGE(TAG, "dlopen(%s): %s", sd_path,
+                 error != NULL ? error : "loader returned NULL without a diagnostic");
+        goto done;
+    }
+
+    (void)dlerror();
+    void *symbol = dlsym(handle, "app_main");
+    const char *error = dlerror();
+    if (error != NULL || symbol == NULL) {
+        // Consume/log this diagnostic before dlclose can overwrite it.
+        ESP_LOGE(TAG, "dlsym(app_main) in %s: %s", sd_path,
+                 error != NULL ? error : "entry point has a NULL address");
+        result = ESP_ERR_NOT_FOUND;
+        goto close_module;
+    }
+
+    ESP_LOGI(TAG, "Starting %s", sd_path);
+    // Espressif's target ABI supports the dlsym object/function pointer cast.
+    // The loader owns relocation, PSRAM allocation, cache sync and I-bus mapping.
+    ((elf_app_main_t)symbol)();
+    ESP_LOGI(TAG, "Application returned: %s", sd_path);
+    result = ESP_OK;
+
+close_module:
+    (void)dlerror();
+    if (dlclose(handle) != 0) {
+        const char *close_error = dlerror();
+        ESP_LOGE(TAG, "dlclose(%s): %s", sd_path,
+                 close_error != NULL ? close_error : "unload failed without a diagnostic");
+        result = ESP_FAIL;
+    }
+    // Neither the handle nor any resolved function pointer is valid now.
+done:
+    atomic_flag_clear_explicit(&s_running, memory_order_release);
+    return result;
+}

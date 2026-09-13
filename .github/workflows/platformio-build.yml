@@ -10,6 +10,7 @@ on:
       - "src/**"
       - "lib/**"
       - "scripts/**"
+      - "examples/native_apps/**"
       - "test/**"
       - "platformio.ini"
       - "partitions.csv"
@@ -19,6 +20,7 @@ on:
       - "src/**"
       - "lib/**"
       - "scripts/**"
+      - "examples/native_apps/**"
       - "test/**"
       - "platformio.ini"
       - "partitions.csv"
@@ -72,6 +74,11 @@ jobs:
       - name: Build firmware
         run: pio run -e ${{ matrix.environment }}
 
+      - name: Build and validate native ELF example
+        run: |
+          python scripts/build_native_app.py examples/native_apps/hello.c --output dist/hello.elf
+          bash test/run_native_app_test.sh dist/hello.elf
+
       - name: Stage board-qualified firmware
         run: |
           grep -a -q "CROSSPOINT_BOARD_ID:${{ matrix.board_id }}" ".pio/build/${{ matrix.environment }}/firmware.bin"
@@ -86,6 +93,7 @@ jobs:
           path: |
             dist/${{ matrix.firmware_name }}
             dist/${{ matrix.merged_firmware_name }}
+            dist/hello.elf
           if-no-files-found: error
 
   host-tests:
@@ -104,3 +112,6 @@ jobs:
 
       - name: Run desk clock minute alignment tests
         run: bash test/run_desk_clock_test.sh
+
+      - name: Run native app launcher tests
+        run: bash test/run_native_app_test.sh

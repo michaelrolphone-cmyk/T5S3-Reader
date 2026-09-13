@@ -32,6 +32,11 @@ class FileBrowserActivity final : public Activity {
 
   Mode mode = Mode::Books;
 
+  std::string pendingElfPath;
+  std::string appStatus;
+  bool nativeAppActive = false;
+  void runPendingElf();
+
   // Files state
   std::string basepath = "/";
   std::vector<std::string> files;
@@ -49,6 +54,7 @@ class FileBrowserActivity final : public Activity {
         basepath(initialPath.empty() ? "/" : std::move(initialPath)) {}
   void onEnter() override;
   void onExit() override;
+  bool preventAutoSleep() override { return nativeAppActive || !pendingElfPath.empty(); }
   void loop() override;
   bool onTouchTap(int16_t x, int16_t y) override;
   bool onTouchSwipe(int16_t startX, int16_t startY, int16_t endX, int16_t endY) override;
