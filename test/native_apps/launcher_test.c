@@ -9,6 +9,7 @@
 #include "T5BatteryApi.h"
 #include "T5CacheApi.h"
 #include "T5FileBrowserApi.h"
+#include "T5FontApi.h"
 #include "T5GpsApi.h"
 #include "T5ImageApi.h"
 #include "T5KOReaderApi.h"
@@ -105,6 +106,7 @@ const t5_app_api_v1 *t5_app_get_api(uint32_t version) { (void)version; return NU
 const t5_battery_api_v1 *t5_battery_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_cache_api_v1 *t5_cache_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_file_browser_api_v1 *t5_file_browser_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_font_api_v1 *t5_font_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_gps_api_v1 *t5_gps_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_image_api_v1 *t5_image_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_koreader_api_v1 *t5_koreader_get_api(uint32_t version) { (void)version; return NULL; }
