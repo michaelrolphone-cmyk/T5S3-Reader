@@ -9,6 +9,7 @@
 
 #include "esp_elf.h"
 #include "T5AppApi.h"
+#include "T5FileBrowserApi.h"
 #include "T5NetworkApi.h"
 #include "T5StorageApi.h"
 #include "T5SystemApi.h"
@@ -36,8 +37,6 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_LOGE(TAG, "Expected an absolute SD VFS file path");
         return ESP_ERR_INVALID_ARG;
     }
-    // Reject nesting/concurrent launches without holding an RTOS mutex while
-    // executing arbitrary app code. The caller's task remains preemptible.
     if (atomic_flag_test_and_set_explicit(&s_running, memory_order_acquire)) {
         ESP_LOGE(TAG, "An ELF application is already running");
         return ESP_ERR_INVALID_STATE;
@@ -55,6 +54,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_system_ui_get_api),
         ESP_ELFSYM_EXPORT(t5_ui_get_api),
         ESP_ELFSYM_EXPORT(t5_network_get_api),
+        ESP_ELFSYM_EXPORT(t5_file_browser_get_api),
         ESP_ELFSYM_END
     };
     const int registered = esp_elf_register_symbol(host_symbols);
@@ -64,7 +64,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         goto done;
     }
     result = ESP_FAIL;
-    (void)dlerror(); // Discard stale loader diagnostics.
+    (void)dlerror();
     void *handle = dlopen(sd_path, RTLD_NOW);
     if (handle == NULL) {
         const char *error = dlerror();
@@ -77,7 +77,6 @@ esp_err_t launch_elf_app(const char *sd_path)
     void *symbol = dlsym(handle, "app_main");
     const char *error = dlerror();
     if (error != NULL || symbol == NULL) {
-        // Consume/log this diagnostic before dlclose can overwrite it.
         ESP_LOGE(TAG, "dlsym(app_main) in %s: %s", sd_path,
                  error != NULL ? error : "entry point has a NULL address");
         result = ESP_ERR_NOT_FOUND;
@@ -85,8 +84,6 @@ esp_err_t launch_elf_app(const char *sd_path)
     }
 
     ESP_LOGI(TAG, "Starting %s", sd_path);
-    // Espressif's target ABI supports the dlsym object/function pointer cast.
-    // The loader owns relocation, PSRAM allocation, cache sync and I-bus mapping.
     s_current_path = sd_path;
     ((elf_app_main_t)symbol)();
     s_current_path = NULL;
@@ -102,7 +99,6 @@ close_module:
                  close_error != NULL ? close_error : "unload failed without a diagnostic");
         result = ESP_FAIL;
     }
-    // Neither the handle nor any resolved function pointer is valid now.
 done:
     s_current_path = NULL;
     atomic_flag_clear_explicit(&s_running, memory_order_release);
