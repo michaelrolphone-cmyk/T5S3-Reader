@@ -20,6 +20,7 @@
 #include "T5NetworkApi.h"
 #include "T5OpdsApi.h"
 #include "T5OtaApi.h"
+#include "T5SdFirmwareApi.h"
 #include "T5StorageApi.h"
 #include "T5SystemApi.h"
 #include "T5SystemUiApi.h"
@@ -65,6 +66,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_koreader_get_api),
         ESP_ELFSYM_EXPORT(t5_opds_get_api),
         ESP_ELFSYM_EXPORT(t5_ota_get_api),
+        ESP_ELFSYM_EXPORT(t5_sd_firmware_get_api),
         ESP_ELFSYM_EXPORT(t5_storage_get_api),
         ESP_ELFSYM_EXPORT(t5_system_get_api),
         ESP_ELFSYM_EXPORT(t5_system_ui_get_api),
@@ -76,8 +78,6 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_lora_get_api),
         ESP_ELFSYM_EXPORT(t5_web_server_get_api),
         ESP_ELFSYM_EXPORT(t5_usb_get_api),
-        // Native apps format bounded status/error text. The vendored loader's
-        // default libc table exports printf, but does not export snprintf.
         ESP_ELFSYM_EXPORT(snprintf),
         ESP_ELFSYM_END
     };
