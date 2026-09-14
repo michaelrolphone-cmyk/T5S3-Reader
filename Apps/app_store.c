@@ -1,13 +1,10 @@
 #include "T5AppApi.h"
 
-#include <stdio.h>
-#include <string.h>
-
 #define HEADER_Y 28
 #define FIRST_ROW_Y 82
 #define ROW_HEIGHT 28
 #define FOOTER_HEIGHT 82
-#define LINE_MAX 96
+#define LINE_MAX 160
 
 static bool has_catalog_api(const t5_app_api_v1 *api) {
     const size_t required = offsetof(t5_app_api_v1, app_catalog_download) + sizeof(api->app_catalog_download);
@@ -22,24 +19,28 @@ static int32_t visible_rows(const t5_app_api_v1 *api) {
     return rows;
 }
 
+static void append_text(char *dst, size_t capacity, const char *src) {
+    size_t d = 0;
+    size_t s = 0;
+    if (!dst || !src || capacity == 0) return;
+    while (d + 1 < capacity && dst[d]) ++d;
+    while (d + 1 < capacity && src[s]) dst[d++] = src[s++];
+    dst[d] = '\0';
+}
+
+static void make_prefixed_text(char *dst, size_t capacity, const char *prefix, const char *text) {
+    if (!dst || capacity == 0) return;
+    dst[0] = '\0';
+    append_text(dst, capacity, prefix);
+    append_text(dst, capacity, text);
+}
+
 static void draw_status(const t5_app_api_v1 *api, const char *title, const char *line1, const char *line2) {
     api->clear();
     api->draw_text(24, HEADER_Y, title);
     if (line1) api->draw_text(24, HEADER_Y + 52, line1);
     if (line2) api->draw_text(24, HEADER_Y + 84, line2);
     api->present(true);
-}
-
-static void format_size(char *out, size_t capacity, uint64_t bytes) {
-    if (bytes >= 1024u * 1024u) {
-        const unsigned long whole = (unsigned long)(bytes / (1024u * 1024u));
-        const unsigned long tenth = (unsigned long)((bytes % (1024u * 1024u)) * 10u / (1024u * 1024u));
-        snprintf(out, capacity, "%lu.%lu MB", whole, tenth);
-    } else if (bytes >= 1024u) {
-        snprintf(out, capacity, "%lu KB", (unsigned long)(bytes / 1024u));
-    } else {
-        snprintf(out, capacity, "%lu B", (unsigned long)bytes);
-    }
 }
 
 static void draw_catalog(const t5_app_api_v1 *api, uint32_t selected) {
@@ -65,16 +66,12 @@ static void draw_catalog(const t5_app_api_v1 *api, uint32_t selected) {
         t5_app_release_asset_t asset;
         if (!api->app_catalog_get(index, &asset)) continue;
 
-        char size_text[24];
         char line[LINE_MAX];
-        format_size(size_text, sizeof(size_text), asset.size);
-        snprintf(line, sizeof(line), "%c %s  %s", index == selected ? '>' : ' ', asset.name, size_text);
+        make_prefixed_text(line, sizeof(line), index == selected ? "> " : "  ", asset.name);
         api->draw_text(24, FIRST_ROW_Y + row * ROW_HEIGHT, line);
     }
 
-    char page[48];
-    snprintf(page, sizeof(page), "%lu app%s", (unsigned long)count, count == 1 ? "" : "s");
-    api->draw_text(24, height - 74, page);
+    api->draw_text(24, height - 74, "Latest release .elf apps");
     api->draw_text(24, height - 48, "Up/Down: select  Confirm/tap: install  Right: refresh");
     api->present(true);
 }
@@ -154,14 +151,13 @@ __attribute__((visibility("default"))) void app_main(void) {
             t5_app_release_asset_t asset;
             if (!api->app_catalog_get(selected, &asset)) continue;
 
-            char installing[LINE_MAX];
-            snprintf(installing, sizeof(installing), "Installing %s", asset.name);
-            draw_status(api, "Native App Store", installing, "Saving to /sd/Apps ...");
+            char message[LINE_MAX];
+            make_prefixed_text(message, sizeof(message), "Installing: ", asset.name);
+            draw_status(api, "Native App Store", message, "Saving to /sd/Apps ...");
 
             if (api->app_catalog_download(selected)) {
-                char installed[LINE_MAX];
-                snprintf(installed, sizeof(installed), "Installed: %s", asset.name);
-                draw_status(api, "Native App Store", installed, "Confirm/Down: back to list");
+                make_prefixed_text(message, sizeof(message), "Installed: ", asset.name);
+                draw_status(api, "Native App Store", message, "Confirm/Down: back to list");
             } else {
                 draw_status(api, "Native App Store", "Download failed.", "Confirm/Down: back to list");
             }
