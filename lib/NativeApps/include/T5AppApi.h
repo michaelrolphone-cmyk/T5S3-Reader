@@ -14,13 +14,15 @@ extern "C" {
 #define T5_APP_BUTTON_DOWN (1u << 5)
 #define T5_APP_DIRENT_NAME_MAX 128u
 #define T5_APP_ASSET_NAME_MAX 128u
+#define T5_APP_SETTING_LABEL_MAX 128u
+#define T5_APP_SETTING_VALUE_MAX 128u
 
 typedef struct {
     uint32_t buttons;
     bool tapped;
     int16_t touch_x;
     int16_t touch_y;
-    bool exit_requested; // Sticky after Back, PWR or touch Home.
+    bool exit_requested; // Sticky after configured exit gestures.
 } t5_app_input_t;
 
 typedef struct {
@@ -33,6 +35,29 @@ typedef struct {
     char name[T5_APP_ASSET_NAME_MAX];
     uint64_t size;
 } t5_app_release_asset_t;
+
+typedef enum {
+    T5_APP_SETTING_TOGGLE = 0,
+    T5_APP_SETTING_ENUM = 1,
+    T5_APP_SETTING_ACTION = 2,
+    T5_APP_SETTING_VALUE = 3,
+    T5_APP_SETTING_STRING = 4,
+    T5_APP_SETTING_TIMEZONE = 5,
+} t5_app_setting_type_t;
+
+typedef enum {
+    T5_APP_SETTING_NO_CHANGE = 0,
+    T5_APP_SETTING_UPDATED = 1,
+    T5_APP_SETTING_ACTION_REQUESTED = 2,
+    T5_APP_SETTING_ERROR = 3,
+} t5_app_setting_result_t;
+
+typedef struct {
+    char label[T5_APP_SETTING_LABEL_MAX];
+    char value[T5_APP_SETTING_VALUE_MAX];
+    uint8_t type;
+    uint8_t reserved[3];
+} t5_app_setting_t;
 
 typedef struct {
     uint32_t abi_version;
@@ -60,6 +85,24 @@ typedef struct {
     uint32_t (*app_catalog_count)(void);
     bool (*app_catalog_get)(uint32_t index, t5_app_release_asset_t *asset);
     bool (*app_catalog_download)(uint32_t index);
+
+    // Append-only native UI/settings bridge. Existing apps continue to see Back as
+    // an exit gesture unless they explicitly disable it for in-app navigation.
+    void (*set_back_exits_app)(bool enabled);
+
+    // Settings metadata comes from the same firmware model used by SettingsActivity.
+    // Category indexes are stable for the device UI: Display, Reader, Controls, System.
+    uint32_t (*settings_category_count)(void);
+    bool (*settings_category_get)(uint32_t category, char *label, size_t capacity);
+    uint32_t (*settings_count)(uint32_t category);
+    bool (*settings_get)(uint32_t category, uint32_t index, t5_app_setting_t *setting);
+    uint8_t (*settings_activate)(uint32_t category, uint32_t index);
+
+    // Render and touch-hit-test the native settings page through the active firmware
+    // theme. This intentionally keeps theme metrics/font rendering inside firmware
+    // while the ELF owns navigation and setting activation.
+    void (*settings_render)(uint32_t category, int32_t selected_index);
+    uint8_t (*settings_touch)(int16_t x, int16_t y, uint32_t *category, int32_t *selected_index);
 } t5_app_api_v1;
 
 // This is the single versioned firmware symbol imported by native UI apps.
