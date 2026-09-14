@@ -1,0 +1,125 @@
+name: Build Font Awesome Classic SD fonts
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-fa-classic-sd-fonts.yml'
+      - 'lib/EpdFont/scripts/fontconvert_sdcard.py'
+      - 'lib/EpdFont/scripts/cpfont_version.py'
+
+permissions:
+  contents: write
+
+jobs:
+  build-fonts:
+    runs-on: ubuntu-latest
+    env:
+      FA_COMMIT: 14c65a3747d0f3b751f15831fc719236aea8729d
+      FA_SOLID_URL: https://raw.githubusercontent.com/FortAwesome/Font-Awesome/14c65a3747d0f3b751f15831fc719236aea8729d/otfs/Font%20Awesome%207%20Free-Solid-900.otf
+      FA_REGULAR_URL: https://raw.githubusercontent.com/FortAwesome/Font-Awesome/14c65a3747d0f3b751f15831fc719236aea8729d/otfs/Font%20Awesome%207%20Free-Regular-400.otf
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install font conversion dependencies
+        run: python -m pip install --upgrade freetype-py fonttools
+
+      - name: Download pinned Font Awesome Free Classic fonts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .font-build
+          curl -fL --retry 3 --retry-delay 2 "$FA_SOLID_URL" -o .font-build/fa-classic-solid.otf
+          curl -fL --retry 3 --retry-delay 2 "$FA_REGULAR_URL" -o .font-build/fa-classic-regular.otf
+          test -s .font-build/fa-classic-solid.otf
+          test -s .font-build/fa-classic-regular.otf
+
+      - name: Convert Classic Solid to cpfont
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf SD_fonts/FAClassicSolid
+          mkdir -p SD_fonts/FAClassicSolid
+          python3 lib/EpdFont/scripts/fontconvert_sdcard.py \
+            .font-build/fa-classic-solid.otf \
+            --intervals '(0x0000-0xFFFF)' \
+            --sizes 12,14,16,18 \
+            --style regular \
+            --name FAClassicSolid \
+            --output-dir SD_fonts/FAClassicSolid
+
+      - name: Convert Classic Regular to cpfont
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf SD_fonts/FAClassicRegular
+          mkdir -p SD_fonts/FAClassicRegular
+          python3 lib/EpdFont/scripts/fontconvert_sdcard.py \
+            .font-build/fa-classic-regular.otf \
+            --intervals '(0x0000-0xFFFF)' \
+            --sizes 12,14,16,18 \
+            --style regular \
+            --name FAClassicRegular \
+            --output-dir SD_fonts/FAClassicRegular
+
+      - name: Generate exact Unicode lookup tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import csv
+          from fontTools.ttLib import TTFont
+
+          fonts = [
+              ('.font-build/fa-classic-solid.otf', 'SD_fonts/FAClassicSolid/FAClassicSolid_codepoints.csv'),
+              ('.font-build/fa-classic-regular.otf', 'SD_fonts/FAClassicRegular/FAClassicRegular_codepoints.csv'),
+          ]
+
+          for font_path, csv_path in fonts:
+              font = TTFont(font_path)
+              cmap = font.getBestCmap() or {}
+              with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+                  w = csv.writer(f)
+                  w.writerow(['unicode', 'decimal', 'glyph_name'])
+                  for cp, glyph_name in sorted(cmap.items()):
+                      w.writerow([f'U+{cp:04X}', cp, glyph_name])
+              print(f'{csv_path}: {len(cmap)} mapped codepoints')
+          PY
+
+      - name: Validate generated font set
+        shell: bash
+        run: |
+          set -euo pipefail
+          for family in FAClassicSolid FAClassicRegular; do
+            for size in 12 14 16 18; do
+              file="SD_fonts/${family}/${family}_${size}.cpfont"
+              test -s "$file"
+              echo "$(stat -c '%s' "$file") bytes  $file"
+            done
+          done
+          test -s SD_fonts/FAClassicSolid/FAClassicSolid_codepoints.csv
+          test -s SD_fonts/FAClassicRegular/FAClassicRegular_codepoints.csv
+
+      - name: Commit generated SD fonts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add SD_fonts/FAClassicSolid SD_fonts/FAClassicRegular
+          if git diff --cached --quiet; then
+            echo 'Font outputs are already current.'
+            exit 0
+          fi
+          git commit -m "Generate Font Awesome Classic SD fonts"
+          git pull --rebase origin master
+          git push origin HEAD:master
