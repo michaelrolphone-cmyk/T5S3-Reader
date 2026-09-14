@@ -19,7 +19,8 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/Apps/llm_ask.c" "$repo_dir/test/native_apps/llm_ask_test.c" -o "$binary"
 "$binary"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
-  "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" -o "$binary"
+  "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" \
+  "$repo_dir/test/native_apps/image_api_stub.c" -o "$binary"
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
 echo 'Manifest, springboard, App Store, Timecard, Ask, and File Browser native app tests passed'
