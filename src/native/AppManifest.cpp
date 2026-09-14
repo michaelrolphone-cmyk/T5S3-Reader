@@ -4,8 +4,10 @@
 #include <HalStorage.h>
 #include <cstring>
 
-bool parseAppManifest(const std::string& json, t5_app_manifest_t& out) {
+bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
+                      std::string* appVersion, bool requireAppVersion) {
   out = {};
+  if (appVersion) appVersion->clear();
   if (json.empty() || json.size() > 2048 || json.find('\0') != std::string::npos) return false;
   JsonDocument doc;
   if (deserializeJson(doc, json) || !doc.is<JsonObject>()) return false;
@@ -20,6 +22,21 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out) {
     for (size_t j = 0; j < n; ++j) if (static_cast<unsigned char>(value[j]) < 32) return false;
     std::memcpy(fields[i], value, n + 1);
   }
+
+  const JsonVariantConst versionNode = doc["version"];
+  if (versionNode.is<const char*>()) {
+    const char* value = versionNode.as<const char*>();
+    const size_t n = std::strlen(value);
+    uint32_t parsed[3];
+    if (!n || n >= T5_APP_VERSION_MAX || !t5_parse_version(value, parsed, false)) return false;
+    for (size_t j = 0; j < n; ++j) if (static_cast<unsigned char>(value[j]) < 32) return false;
+    if (appVersion) appVersion->assign(value, n);
+  } else if (requireAppVersion) {
+    return false;
+  } else if (!versionNode.isNull()) {
+    return false;
+  }
+
   uint32_t version[3], cp;
   bool regular;
   if (!t5_safe_elf_name(out.file_name) || !t5_parse_version(out.min_firmware_version, version, false) ||
@@ -27,10 +44,11 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out) {
   out.compatible = t5_firmware_compatible(CROSSPOINT_VERSION, out.min_firmware_version);
   return true;
 }
-bool readAppManifest(const char* path, t5_app_manifest_t& out) {
+bool readAppManifest(const char* path, t5_app_manifest_t& out,
+                     std::string* appVersion, bool requireAppVersion) {
   HalFile file = Storage.open(path, O_RDONLY);
   if (!file.isOpen() || file.isDirectory() || file.fileSize64() > 2048) return false;
   file.close();
   const String json = Storage.readFile(path);
-  return parseAppManifest(std::string(json.c_str(), json.length()), out);
+  return parseAppManifest(std::string(json.c_str(), json.length()), out, appVersion, requireAppVersion);
 }
