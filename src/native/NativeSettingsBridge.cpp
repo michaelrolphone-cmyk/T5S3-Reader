@@ -15,6 +15,7 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "NativeAppHost.h"
 #include "SdCardFontGlobals.h"
 #include "SettingsList.h"
 #include "activities/Activity.h"
@@ -218,11 +219,15 @@ std::unique_ptr<Activity> makeActionActivity(PendingAction action, GfxRenderer& 
 
 class NativeSettingsActionActivity final : public Activity {
   PendingAction action;
+  std::string resumePath;
   bool started = false;
+  bool childCompleted = false;
+  bool resumeReturned = false;
 
  public:
-  NativeSettingsActionActivity(GfxRenderer& renderer, MappedInputManager& input, PendingAction requested)
-      : Activity("NativeSettingsAction", renderer, input), action(requested) {}
+  NativeSettingsActionActivity(GfxRenderer& renderer, MappedInputManager& input, PendingAction requested,
+                               std::string resume)
+      : Activity("NativeSettingsAction", renderer, input), action(requested), resumePath(std::move(resume)) {}
 
   void onEnter() override {
     Activity::onEnter();
@@ -236,8 +241,33 @@ class NativeSettingsActionActivity final : public Activity {
     startActivityForResult(std::move(child), [this](const ActivityResult&) {
       SETTINGS.saveToFile();
       UITheme::getInstance().reload();
-      finish();
+      childCompleted = true;
     });
+  }
+
+  void loop() override {
+    if (resumeReturned) {
+      finish();
+      return;
+    }
+    if (!childCompleted) return;
+    childCompleted = false;
+    if (resumePath.empty()) {
+      finish();
+      return;
+    }
+
+    const esp_err_t result = runNativeApp(resumePath.c_str(), renderer, mappedInput);
+    if (result != ESP_OK) {
+      finish();
+      return;
+    }
+
+    // Do not finish in this same iteration. If the resumed ELF requested
+    // another firmware action, runNativeApp queued a new wrapper and the
+    // ActivityManager will push it after loop() returns. Once that nested
+    // wrapper unwinds, this instance finishes on its next loop iteration.
+    resumeReturned = true;
   }
 
   void render(RenderLock&&) override {
@@ -408,9 +438,10 @@ uint8_t nativeSettingsTouch(int16_t x, int16_t y, uint32_t* category, int32_t* s
   return nativeSettingsActivate(*category, static_cast<uint32_t>(touched));
 }
 
-void nativeSettingsDispatchPendingAction(GfxRenderer& renderer, MappedInputManager& input) {
+void nativeSettingsDispatchPendingAction(GfxRenderer& renderer, MappedInputManager& input, const char* resumePath) {
   const PendingAction action = state.requestedAction;
   state.requestedAction = PendingAction::None;
   if (action == PendingAction::None) return;
-  activityManager.pushActivity(std::make_unique<NativeSettingsActionActivity>(renderer, input, action));
+  activityManager.pushActivity(std::make_unique<NativeSettingsActionActivity>(
+      renderer, input, action, resumePath ? std::string(resumePath) : std::string{}));
 }
