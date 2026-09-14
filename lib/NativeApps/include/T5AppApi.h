@@ -60,6 +60,14 @@ typedef struct {
 } t5_app_setting_t;
 
 typedef struct {
+    char display_name[96];
+    char file_name[128];
+    char min_firmware_version[32];
+    char icon[24]; // "solid:f013" or "regular:f007" (Classic Unicode codepoint).
+    bool compatible;
+} t5_app_manifest_t;
+
+typedef struct {
     uint32_t abi_version;
     uint32_t struct_size;
     int32_t (*screen_width)(void);
@@ -103,6 +111,14 @@ typedef struct {
     // while the ELF owns navigation and setting activation.
     void (*settings_render)(uint32_t category, int32_t selected_index);
     uint8_t (*settings_touch)(int16_t x, int16_t y, uint32_t *category, int32_t *selected_index);
+    // Append-only springboard services. Check struct_size before accessing.
+    bool (*installed_apps_refresh)(void);
+    uint32_t (*installed_apps_count)(void);
+    bool (*installed_apps_get)(uint32_t index, t5_app_manifest_t *manifest);
+    // Queues an app; caller must return from app_main to unload before launch.
+    bool (*request_app_launch)(uint32_t index);
+    bool (*draw_icon)(int32_t x, int32_t y, const char *icon, uint8_t point_size, bool black);
+    void (*draw_label)(int32_t x, int32_t y, int32_t width, const char *text);
 } t5_app_api_v1;
 
 // This is the single versioned firmware symbol imported by native UI apps.

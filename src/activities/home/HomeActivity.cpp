@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "CrossPointSettings.h"
+#include "native/NativeAppHost.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
@@ -43,7 +44,7 @@ void recordUserContentText(FontCacheManager* fcm, const int systemFontId, const 
 }  // namespace
 
 int HomeActivity::getMenuItemCount() const {
-  int count = 6;  // File Browser, Recents, File transfer, Ask, Timecard, Settings
+  int count = 7;  // File Browser, Recents, File transfer, Ask, Timecard, Apps, Settings
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
@@ -194,6 +195,13 @@ void HomeActivity::freeCoverBuffer() {
 }
 
 void HomeActivity::loop() {
+  if (appsPending) {
+    appsPending = false;
+    appsPending = runNativeSpringboard(renderer, mappedInput, appsResume);
+    appsResume = appsPending;
+    requestUpdate();
+    return;
+  }
   if (firstRenderDone && !recentsLoaded && !recentsLoading) {
     loadRecentCovers(UITheme::getInstance().getMetrics().homeCoverHeight);
     requestUpdate();
@@ -227,15 +235,16 @@ bool HomeActivity::onTouchTap(int16_t, int16_t y) {
   }
 
   const Rect menuRect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset, pageWidth,
-                      pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
+                      pageHeight - (metrics.homeTopPadding + metrics.homeCoverTileHeight +
                                     metrics.homeMenuTopOffset + metrics.buttonHintsHeight)};
   const int menuCount = getMenuItemCount() - (metrics.homeContinueReadingInMenu ? 0 : recentBooks.size());
   if (menuCount <= 0) return false;
 
-  for (int i = 0; i < menuCount; ++i) {
-    const int rowY =
-        metrics.verticalSpacing + menuRect.y + static_cast<int>(i) * (metrics.menuRowHeight + metrics.menuSpacing);
-    if (y >= rowY && y < rowY + metrics.menuRowHeight) {
+  const int selected = metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size();
+  const auto layout = GUI.buttonMenuLayout(renderer, menuRect, selected);
+  for (int i = layout.start; i < menuCount && i < layout.start + layout.pageSize; ++i) {
+    const int rowY = layout.top + (i - layout.start) * layout.rowStep;
+    if (y >= rowY && y < rowY + layout.rowHeight) {
       selectorIndex = metrics.homeContinueReadingInMenu ? i : static_cast<int>(recentBooks.size()) + i;
       activateSelection(selectorIndex);
       return true;
@@ -291,8 +300,8 @@ void HomeActivity::render(RenderLock&&) {
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
-                                        tr(STR_LLM_CHAT), tr(STR_TIMECARD), tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Wifi, Clock, Settings};
+                                        tr(STR_LLM_CHAT), tr(STR_TIMECARD), tr(STR_APPS), tr(STR_SETTINGS_TITLE)};
+  std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Wifi, Clock, Library, Settings};
 
   if (hasOpdsServers) {
     menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
@@ -307,7 +316,7 @@ void HomeActivity::render(RenderLock&&) {
   GUI.drawButtonMenu(
       renderer,
       Rect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset, pageWidth,
-           pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
+           pageHeight - (metrics.homeTopPadding + metrics.homeCoverTileHeight +
                          metrics.homeMenuTopOffset + metrics.buttonHintsHeight)},
       static_cast<int>(menuItems.size()),
       metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
@@ -333,6 +342,7 @@ void HomeActivity::activateSelection(int index) {
   const int fileTransferIdx = idx++;
   const int llmChatIdx = idx++;
   const int timecardIdx = idx++;
+  const int appsIdx = idx++;
   const int settingsIdx = idx;
 
   if (index < static_cast<int>(recentBooks.size())) {
@@ -349,6 +359,8 @@ void HomeActivity::activateSelection(int index) {
     onLlmChatOpen();
   } else if (menuSelectedIndex == timecardIdx) {
     onTimecardOpen();
+  } else if (menuSelectedIndex == appsIdx) {
+    appsPending = true;
   } else if (menuSelectedIndex == settingsIdx) {
     onSettingsOpen();
   }

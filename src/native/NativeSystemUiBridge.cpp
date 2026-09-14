@@ -29,6 +29,7 @@ struct KeyboardState {
 };
 
 KeyboardState keyboardState;
+NativeSystemUiNavigation navigation = NativeSystemUiNavigation::None;
 
 bool validResumePath(const char* path) {
   return path && std::strncmp(path, "/sd/", 4) == 0 && path[4] != '\0';
@@ -131,11 +132,12 @@ bool keyboardRequest(const char* title, const char* initialText, size_t maxLengt
 
   // Do not let a new request silently destroy an unread result from a prior
   // keyboard interaction.
-  if (keyboardState.available) return false;
+  if (keyboardState.available || navigation != NativeSystemUiNavigation::None) return false;
 
   activityManager.pushActivity(std::make_unique<NativeKeyboardActivity>(
       renderer, mappedInputManager, std::string(currentPath), title ? title : "Enter Text",
       initialText ? initialText : "", maxLength, mapInputType(inputType), cookie));
+  navigation = NativeSystemUiNavigation::Keyboard;
   return true;
 }
 
@@ -155,7 +157,10 @@ bool keyboardTakeResult(char* text, size_t capacity, bool* cancelled, uint64_t* 
   return true;
 }
 
-void navigateHome() { activityManager.goHome(); }
+void navigateHome() {
+  navigation = NativeSystemUiNavigation::Home;
+  activityManager.goHome();
+}
 
 const t5_system_ui_api_v1 api = {
     T5_SYSTEM_UI_API_VERSION,
@@ -169,4 +174,11 @@ const t5_system_ui_api_v1 api = {
 extern "C" const t5_system_ui_api_v1* t5_system_ui_get_api(uint32_t version) {
   if (version != T5_SYSTEM_UI_API_VERSION || t5_app_get_api(T5_APP_ABI_VERSION) == nullptr) return nullptr;
   return &api;
+}
+
+void nativeSystemUiBegin() { navigation = NativeSystemUiNavigation::None; }
+NativeSystemUiNavigation nativeSystemUiTakeNavigation() {
+  const auto value = navigation;
+  navigation = NativeSystemUiNavigation::None;
+  return value;
 }

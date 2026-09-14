@@ -831,12 +831,21 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
   }
 }
 
+BaseTheme::ButtonMenuLayout BaseTheme::buttonMenuLayout(const GfxRenderer& renderer, Rect rect, int selectedIndex) const {
+  (void)renderer;
+  const int top = rect.y + BaseMetrics::values.verticalSpacing;
+  const int height = BaseMetrics::values.menuRowHeight;
+  const int step = height + BaseMetrics::values.menuSpacing;
+  const int pageSize = std::max(1, (rect.height - (top - rect.y)) / step);
+  return {top, height, step, pageSize, (std::max(0, selectedIndex) / pageSize) * pageSize};
+}
+
 void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon) const {
-  for (int i = 0; i < buttonCount; ++i) {
-    const int tileY = BaseMetrics::values.verticalSpacing + rect.y +
-                      static_cast<int>(i) * (BaseMetrics::values.menuRowHeight + BaseMetrics::values.menuSpacing);
+  const auto layout = buttonMenuLayout(renderer, rect, selectedIndex);
+  for (int i = layout.start; i < buttonCount && i < layout.start + layout.pageSize; ++i) {
+    const int tileY = layout.top + (i - layout.start) * layout.rowStep;
 
     const bool selected = selectedIndex == i;
 

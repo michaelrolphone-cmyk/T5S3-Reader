@@ -1,4 +1,7 @@
 #include "NativeAppHost.h"
+#include "AppManifest.h"
+#include <AppManifestRules.h>
+#include "components/FontAwesomeIcons.h"
 #include <Arduino.h>
 #include <GfxRenderer.h>
 #include <HalPowerManager.h>
@@ -15,6 +18,7 @@
 #include <vector>
 #include "MappedInputManager.h"
 #include "NativeSettingsBridge.h"
+#include "NativeSystemUiBridge.h"
 #include "WifiCredentialStore.h"
 #include "activities/RenderLock.h"
 #include "fontIds.h"
@@ -29,6 +33,7 @@ constexpr size_t kMaxCatalogAssets = 64;
 struct CatalogAsset {
   std::string name;
   std::string url;
+  std::string manifestUrl;
   uint64_t size = 0;
 };
 
@@ -38,11 +43,16 @@ struct Session {
   TaskHandle_t owner;
   HalFile directory;
   std::vector<CatalogAsset> catalog;
+  std::vector<t5_app_manifest_t> installed;
+  std::string launchPath;
   bool backExitsApp = true;
   bool exiting = false;
 };
 Session* session = nullptr;
 bool returned = false;
+std::string queuedLaunch;
+bool homeRequested = false;
+bool firmwareActionPending = false;
 Session* current() { return session && session->owner == xTaskGetCurrentTaskHandle() ? session : nullptr; }
 int32_t width() { auto* s = current(); return s ? s->renderer.getScreenWidth() : 0; }
 int32_t height() { auto* s = current(); return s ? s->renderer.getScreenHeight() : 0; }
@@ -82,6 +92,7 @@ bool poll(t5_app_input_t* out, uint32_t waitMs) {
       s->input.wasTouchHomeButtonPressed()) {
     s->exiting = true;
   }
+  if (s->input.isPressed(Button::Power) || s->input.wasTouchHomeButtonPressed()) homeRequested = true;
   out->exit_requested = s->exiting;
   return true;
 }
@@ -192,13 +203,14 @@ uint64_t jsonUintField(const std::string& object, const char* field) {
 
 bool parseCatalog(const std::string& json, std::vector<CatalogAsset>& catalog) {
   catalog.clear();
+  std::vector<CatalogAsset> manifests;
   size_t assets = json.find("\"assets\"");
   if (assets == std::string::npos) return false;
   size_t p = json.find('[', assets);
   if (p == std::string::npos) return false;
   ++p;
 
-  while (p < json.size() && catalog.size() < kMaxCatalogAssets) {
+  while (p < json.size()) {
     p = json.find_first_not_of(" \t\r\n,", p);
     if (p == std::string::npos || json[p] == ']') break;
     p = json.find('{', p);
@@ -238,11 +250,17 @@ bool parseCatalog(const std::string& json, std::vector<CatalogAsset>& catalog) {
 
     const std::string object = json.substr(start, end - start + 1);
     CatalogAsset asset;
-    if (jsonStringField(object, "name", asset.name) && safeAssetName(asset.name) &&
+    if (jsonStringField(object, "name", asset.name) &&
         jsonStringField(object, "browser_download_url", asset.url)) {
       asset.size = jsonUintField(object, "size");
-      catalog.push_back(std::move(asset));
+      if (safeAssetName(asset.name) && catalog.size() < kMaxCatalogAssets) catalog.push_back(std::move(asset));
+      else if (asset.name.size() > 5 && asset.name.substr(asset.name.size() - 5) == ".json" &&
+               manifests.size() < kMaxCatalogAssets) manifests.push_back(std::move(asset));
     }
+  }
+  for (auto& asset : catalog) {
+    const auto expected = asset.name.substr(0, asset.name.size() - 4) + ".json";
+    for (const auto& manifest : manifests) if (manifest.name == expected) asset.manifestUrl = manifest.url;
   }
   return true;
 }
@@ -324,53 +342,109 @@ bool appCatalogDownload(uint32_t index) {
   const auto& asset = s->catalog[index];
   if (!safeAssetName(asset.name)) return false;
 
+  if (asset.manifestUrl.empty()) return false;
+  std::string json;
+  t5_app_manifest_t manifest{};
+  if (!HttpDownloader::fetchUrl(asset.manifestUrl, json) || !parseAppManifest(json, manifest) ||
+      !manifest.compatible || asset.name != manifest.file_name) return false;
+  if (!Storage.mkdir("/Apps") && !Storage.exists("/Apps")) return false;
   const std::string destination = std::string("/Apps/") + asset.name;
+  const std::string sidecar = destination.substr(0, destination.size() - 4) + ".json";
   const std::string temporary = destination + ".part";
+  const std::string stagedJson = sidecar + ".part";
   const std::string backup = destination + ".bak";
-
-  if (Storage.exists(backup.c_str())) {
-    if (!Storage.exists(destination.c_str())) {
+  const std::string backupJson = sidecar + ".bak";
+  // A prior interrupted transaction is recovered before making another install.
+  if (Storage.exists(backup.c_str()) || Storage.exists(backupJson.c_str())) {
+    if (Storage.exists(backup.c_str())) {
+      Storage.remove(destination.c_str());
       if (!Storage.rename(backup.c_str(), destination.c_str())) return false;
-    } else {
-      Storage.remove(backup.c_str());
+    }
+    if (Storage.exists(backupJson.c_str())) {
+      Storage.remove(sidecar.c_str());
+      if (!Storage.rename(backupJson.c_str(), sidecar.c_str())) return false;
     }
   }
-  if (Storage.exists(temporary.c_str())) Storage.remove(temporary.c_str());
-
-  esp_task_wdt_reset();
-  const auto result = HttpDownloader::downloadToFile(asset.url, temporary, [](size_t, size_t) {
-    esp_task_wdt_reset();
-  });
-  esp_task_wdt_reset();
-  if (result != HttpDownloader::OK) {
-    if (Storage.exists(temporary.c_str())) Storage.remove(temporary.c_str());
+  Storage.remove(temporary.c_str());
+  Storage.remove(stagedJson.c_str());
+  if (!Storage.writeFile(stagedJson.c_str(), String(json.c_str()))) return false;
+  const auto result = HttpDownloader::downloadToFile(asset.url, temporary, [](size_t, size_t) { esp_task_wdt_reset(); });
+  HalFile staged = Storage.open(temporary.c_str(), O_RDONLY);
+  const bool sizeOk = staged.isOpen() && (asset.size == 0 || staged.fileSize64() == asset.size);
+  staged.close();
+  if (result != HttpDownloader::OK || !sizeOk) {
+    Storage.remove(temporary.c_str()); Storage.remove(stagedJson.c_str()); return false;
+  }
+  const bool hadElf = Storage.exists(destination.c_str());
+  const bool hadJson = Storage.exists(sidecar.c_str());
+  if (hadElf && !Storage.rename(destination.c_str(), backup.c_str())) return false;
+  if (hadJson && !Storage.rename(sidecar.c_str(), backupJson.c_str())) {
+    if (hadElf) Storage.rename(backup.c_str(), destination.c_str());
     return false;
   }
-
-  if (asset.size > 0) {
-    HalFile staged = Storage.open(temporary.c_str(), O_RDONLY);
-    const bool sizeOk = staged.isOpen() && staged.fileSize64() == asset.size;
-    if (staged.isOpen()) staged.close();
-    if (!sizeOk) {
-      Storage.remove(temporary.c_str());
-      return false;
-    }
-  }
-
-  const bool hadExisting = Storage.exists(destination.c_str());
-  if (hadExisting && !Storage.rename(destination.c_str(), backup.c_str())) {
-    Storage.remove(temporary.c_str());
+  if (!Storage.rename(temporary.c_str(), destination.c_str()) || !Storage.rename(stagedJson.c_str(), sidecar.c_str())) {
+    Storage.remove(destination.c_str()); Storage.remove(sidecar.c_str());
+    if (hadElf) Storage.rename(backup.c_str(), destination.c_str());
+    if (hadJson) Storage.rename(backupJson.c_str(), sidecar.c_str());
     return false;
   }
-
-  if (!Storage.rename(temporary.c_str(), destination.c_str())) {
-    Storage.remove(temporary.c_str());
-    if (hadExisting) Storage.rename(backup.c_str(), destination.c_str());
-    return false;
-  }
-
-  if (hadExisting && Storage.exists(backup.c_str())) Storage.remove(backup.c_str());
+  Storage.remove(backup.c_str()); Storage.remove(backupJson.c_str());
   return true;
+}
+
+bool installedRefresh() {
+  auto* s = current();
+  if (!s) return false;
+  s->installed.clear();
+  HalFile dir = Storage.open("/Apps", O_RDONLY);
+  if (!dir.isOpen() || !dir.isDirectory()) return false;
+  while (s->installed.size() < 128) {
+    esp_task_wdt_reset();
+    HalFile file = dir.openNextFile();
+    if (!file.isOpen()) break;
+    char name[128] = {};
+    file.getName(name, sizeof(name));
+    const bool isDir = file.isDirectory();
+    file.close();
+    const std::string filename(name);
+    if (isDir || filename.size() < 6 || filename.substr(filename.size() - 5) != ".json") continue;
+    t5_app_manifest_t manifest{};
+    if (!readAppManifest((std::string("/Apps/") + filename).c_str(), manifest)) continue;
+    if (filename != std::string(manifest.file_name).substr(0, std::strlen(manifest.file_name) - 4) + ".json") continue;
+    if (!std::strcmp(manifest.file_name, "springboard.elf")) continue;
+    if (!Storage.exists((std::string("/Apps/") + manifest.file_name).c_str())) continue;
+    // Incomplete update pairs are never launched.
+    if (Storage.exists((std::string("/Apps/") + manifest.file_name + ".bak").c_str()) ||
+        Storage.exists((std::string("/Apps/") + filename + ".bak").c_str())) continue;
+    s->installed.push_back(manifest);
+  }
+  std::sort(s->installed.begin(), s->installed.end(), [](const t5_app_manifest_t& a, const t5_app_manifest_t& b) {
+    return std::strcmp(a.display_name, b.display_name) < 0;
+  });
+  return true;
+}
+uint32_t installedCount() { auto* s = current(); return s ? s->installed.size() : 0; }
+bool installedGet(uint32_t index, t5_app_manifest_t* out) {
+  auto* s = current();
+  if (!s || !out || index >= s->installed.size()) return false;
+  *out = s->installed[index]; return true;
+}
+bool requestLaunch(uint32_t index) {
+  auto* s = current();
+  if (!s || s->exiting || index >= s->installed.size() || !s->installed[index].compatible) return false;
+  s->launchPath = std::string("/sd/Apps/") + s->installed[index].file_name;
+  s->exiting = true;
+  return true;
+}
+bool drawIcon(int32_t x, int32_t y, const char* icon, uint8_t size, bool black) {
+  auto* s = current(); return s && FontAwesomeIcons::draw(s->renderer, x, y, icon, size, black);
+}
+void drawLabel(int32_t x, int32_t y, int32_t w, const char* value) {
+  auto* s = current();
+  if (!s || !value || w <= 0) return;
+  const auto label = s->renderer.truncatedText(UI_12_FONT_ID, value, w);
+  const int textWidth = s->renderer.getTextWidth(UI_12_FONT_ID, label.c_str());
+  s->renderer.drawText(UI_12_FONT_ID, x + (w - textWidth) / 2, y, label.c_str());
 }
 
 const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
@@ -397,7 +471,8 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            nativeSettingsGet,
                            nativeSettingsActivate,
                            nativeSettingsRender,
-                           nativeSettingsTouch};
+                           nativeSettingsTouch,
+                           installedRefresh, installedCount, installedGet, requestLaunch, drawIcon, drawLabel};
 }  // namespace
 
 extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
@@ -406,6 +481,20 @@ extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
 
 esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManager& input) {
   if (session) return ESP_ERR_INVALID_STATE;
+  queuedLaunch.clear();
+  homeRequested = false;
+  firmwareActionPending = false;
+  // Legacy loose ELFs still work in Browse Files. Present sidecars are enforced.
+  if (!path || std::strncmp(path, "/sd/", 4)) return ESP_ERR_INVALID_ARG;
+  const std::string elf(path + 3);
+  if (elf.size() < 4) return ESP_ERR_INVALID_ARG;
+  const std::string sidecar = elf.substr(0, elf.size() - 4) + ".json";
+  if (Storage.exists((elf + ".bak").c_str()) || Storage.exists((sidecar + ".bak").c_str())) return ESP_ERR_INVALID_STATE;
+  if (Storage.exists(sidecar.c_str())) {
+    t5_app_manifest_t manifest{};
+    if (!readAppManifest(sidecar.c_str(), manifest) || !manifest.compatible ||
+        elf.substr(elf.find_last_of('/') + 1) != manifest.file_name) return ESP_ERR_NOT_SUPPORTED;
+  }
   HalPowerManager::Lock powerLock;
   RenderLock lock;
   const auto orientation = renderer.getOrientation();
@@ -416,8 +505,12 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   Session active{renderer, input, xTaskGetCurrentTaskHandle()};
   session = &active;
   nativeSettingsBegin(renderer, input);
+  nativeSystemUiBegin();
   esp_task_wdt_reset();
   const esp_err_t result = launch_elf_app(path);
+  const auto systemNavigation = nativeSystemUiTakeNavigation();
+  homeRequested = homeRequested || systemNavigation == NativeSystemUiNavigation::Home;
+  queuedLaunch = active.launchPath;
   if (active.directory.isOpen()) active.directory.close();
   active.catalog.clear();
   session = nullptr;
@@ -436,9 +529,49 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     delay(10);
   } while (millis() - quiet < 350);
   input.clearInjectedButtonTap();
-  nativeSettingsDispatchPendingAction(renderer, input, path);
+  firmwareActionPending = nativeSettingsDispatchPendingAction(renderer, input, path);
+  firmwareActionPending = firmwareActionPending || systemNavigation == NativeSystemUiNavigation::Keyboard;
   returned = true;
   return result;
 }
 
 bool consumeNativeAppReturn() { const bool value = returned; returned = false; return value; }
+
+
+bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool resume) {
+  if (resume && homeRequested) return false;
+  const char* springboard = "/sd/Apps/springboard.elf";
+  auto showError = [&](const char* message) {
+    RenderLock lock;
+    renderer.clearScreen();
+    renderer.drawText(UI_12_FONT_ID, 24, 40, "Apps");
+    const std::string msg(message);
+    const auto split = msg.find(' ', msg.size() / 2);
+    renderer.drawText(UI_12_FONT_ID, 24, 100, msg.substr(0, split).c_str());
+    if (split != std::string::npos) renderer.drawText(UI_12_FONT_ID, 24, 136, msg.substr(split + 1).c_str());
+    renderer.drawText(UI_12_FONT_ID, 24, 200, "Tap or press Back to return.");
+    renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+    for (;;) {
+      esp_task_wdt_reset(); delay(20); input.update();
+      MappedInputManager::TouchPoint point{};
+      if (input.wasTouchTapped(point, renderer) || input.wasAnyPressed() || input.wasTouchHomeButtonPressed()) break;
+    }
+  };
+  if (!Storage.exists("/Apps/springboard.elf") || !Storage.exists("/Apps/springboard.json")) {
+    showError("Copy springboard.elf and .json to /Apps.");
+    return false;
+  }
+  for (;;) {
+    const auto result = runNativeApp(springboard, renderer, input);
+    if (result != ESP_OK) { showError("Apps launcher failed; check firmware version."); return false; }
+    if (firmwareActionPending) return true;
+    if (homeRequested || queuedLaunch.empty()) return false;
+    const std::string selected = queuedLaunch;
+    const std::string sidecar = selected.substr(3, selected.size() - 7) + ".json";
+    if (!Storage.exists(sidecar.c_str())) { showError("Application manifest is missing."); continue; }
+    const auto appResult = runNativeApp(selected.c_str(), renderer, input);
+    if (firmwareActionPending) return true;
+    if (homeRequested) return false;
+    if (appResult != ESP_OK) showError("Application failed or needs newer firmware.");
+  }
+}

@@ -150,6 +150,10 @@ class BaseTheme {
   virtual void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
                                    const int selectorIndex, bool& coverRendered, bool& coverBufferStored,
                                    bool& bufferRestored, std::function<bool()> storeCoverBuffer) const;
+  struct ButtonMenuLayout {
+    int top, rowHeight, rowStep, pageSize, start;
+  };
+  virtual ButtonMenuLayout buttonMenuLayout(const GfxRenderer& renderer, Rect rect, int selectedIndex) const;
   virtual void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                               const std::function<std::string(int index)>& buttonLabel,
                               const std::function<UIIcon(int index)>& rowIcon) const;

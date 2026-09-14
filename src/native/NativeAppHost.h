@@ -7,3 +7,7 @@ esp_err_t runNativeApp(const char* sdPath, GfxRenderer& renderer, MappedInputMan
 
 // Consumed by main.cpp to start a fresh inactivity period on browser return.
 bool consumeNativeAppReturn();
+
+// Home's Apps entry: the actual grid lives in /sd/Apps/springboard.elf.
+// Returns true when a firmware settings dialog must finish before resuming.
+bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool resume = false);

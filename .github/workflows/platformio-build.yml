@@ -83,6 +83,10 @@ jobs:
           python scripts/build_native_app.py Apps/timecard.c --output dist/timecard.elf
           bash test/run_native_app_test.sh dist/timecard.elf
 
+      - name: Build and validate all released apps and manifests
+        run: |
+          python scripts/build_all_apps.py
+
       - name: Stage board-qualified firmware
         run: |
           grep -a -q "CROSSPOINT_BOARD_ID:${{ matrix.board_id }}" ".pio/build/${{ matrix.environment }}/firmware.bin"
@@ -98,7 +102,9 @@ jobs:
             dist/${{ matrix.firmware_name }}
             dist/${{ matrix.merged_firmware_name }}
             dist/hello.elf
+            dist/apps/*
             dist/timecard.elf
+            dist/timecard.json
           if-no-files-found: error
 
   host-tests:
@@ -120,3 +126,6 @@ jobs:
 
       - name: Run native app launcher tests
         run: bash test/run_native_app_test.sh
+
+      - name: Run app manifest and springboard tests
+        run: bash test/run_springboard_test.sh

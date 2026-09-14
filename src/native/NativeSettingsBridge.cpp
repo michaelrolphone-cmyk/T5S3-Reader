@@ -438,10 +438,11 @@ uint8_t nativeSettingsTouch(int16_t x, int16_t y, uint32_t* category, int32_t* s
   return nativeSettingsActivate(*category, static_cast<uint32_t>(touched));
 }
 
-void nativeSettingsDispatchPendingAction(GfxRenderer& renderer, MappedInputManager& input, const char* resumePath) {
+bool nativeSettingsDispatchPendingAction(GfxRenderer& renderer, MappedInputManager& input, const char* resumePath) {
   const PendingAction action = state.requestedAction;
   state.requestedAction = PendingAction::None;
-  if (action == PendingAction::None) return;
+  if (action == PendingAction::None) return false;
   activityManager.pushActivity(std::make_unique<NativeSettingsActionActivity>(
       renderer, input, action, resumePath ? std::string(resumePath) : std::string{}));
+  return true;
 }
