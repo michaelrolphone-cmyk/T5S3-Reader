@@ -55,9 +55,20 @@ void app_main(void) {
         const char *name = basename_of(path);
         app->clear();
         app->draw_text(20, 20, name && name[0] ? name : "Image Viewer");
-        if (!image->render_fit(path, 12, image_top, screen_w - 24, image_bottom - image_top)) {
+
+        /*
+         * probe() is safe for PNG, but the current firmware render_fit() PNG
+         * path can fault inside PNGdec on real-world files. Do not enter the
+         * known-crashing decoder from the ELF app. JPEG/BMP remain unchanged.
+         * The host-side decoder is fixed separately in firmware.
+         */
+        if (info.format == T5_IMAGE_FORMAT_PNG) {
+            app->draw_text(24, 112, "PNG decoder error prevented.");
+            app->draw_text(24, 148, "Update firmware for PNG rendering.");
+        } else if (!image->render_fit(path, 12, image_top, screen_w - 24, image_bottom - image_top)) {
             app->draw_text(24, 112, "Image decode failed.");
         }
+
         snprintf(meta, sizeof(meta), "%s  %lux%lu", format_name(info.format),
                  (unsigned long)info.width, (unsigned long)info.height);
         app->draw_text(20, screen_h - 48, meta);
