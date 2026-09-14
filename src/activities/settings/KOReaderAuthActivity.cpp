@@ -2,115 +2,62 @@
 
 #include <GfxRenderer.h>
 #include <I18n.h>
-#include <WiFi.h>
 
-#include "KOReaderCredentialStore.h"
-#include "KOReaderSyncClient.h"
 #include "MappedInputManager.h"
-#include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "native/NativeAppHost.h"
 
-void KOReaderAuthActivity::onWifiSelectionComplete(const bool success) {
-  if (!success) {
-    {
-      RenderLock lock(*this);
-      state = FAILED;
-      errorMessage = tr(STR_WIFI_CONN_FAILED);
+void KOReaderAuthActivity::onEnter() {
+  Activity::onEnter();
+  launchAttempted = false;
+  launchFailed = false;
+  requestUpdate();
+}
+
+void KOReaderAuthActivity::loop() {
+  if (!launchAttempted) {
+    launchAttempted = true;
+    const esp_err_t result = runNativeApp("/sd/Apps/koreader_auth.elf", renderer, mappedInput);
+    if (result == ESP_OK) {
+      finish();
+      return;
     }
+    launchFailed = true;
     requestUpdate();
     return;
   }
 
-  {
-    RenderLock lock(*this);
-    state = AUTHENTICATING;
-    statusMessage = tr(STR_AUTHENTICATING);
+  if (launchFailed && (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
+                       mappedInput.wasPressed(MappedInputManager::Button::Confirm))) {
+    finish();
   }
-  requestUpdate();
-
-  performAuthentication();
 }
 
-void KOReaderAuthActivity::performAuthentication() {
-  const auto result = KOReaderSyncClient::authenticate();
-
-  {
-    RenderLock lock(*this);
-    if (result == KOReaderSyncClient::OK) {
-      state = SUCCESS;
-      statusMessage = tr(STR_AUTH_SUCCESS);
-    } else {
-      state = FAILED;
-      errorMessage = KOReaderSyncClient::errorString(result);
-    }
-  }
-  requestUpdate();
-}
-
-void KOReaderAuthActivity::onEnter() {
-  Activity::onEnter();
-
-  // Check if already connected
-  if (WiFi.status() == WL_CONNECTED) {
-    onWifiSelectionComplete(true);
-    return;
-  }
-
-  // Launch WiFi selection
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                         [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
-}
-
-void KOReaderAuthActivity::onExit() {
-  Activity::onExit();
-
-  // Turn off wifi
-  WiFi.disconnect(false);
-  delay(100);
-  WiFi.mode(WIFI_OFF);
-  delay(100);
+bool KOReaderAuthActivity::onTouchTap(int16_t x, int16_t y) {
+  if (!launchFailed) return true;
+  MappedInputManager::Button button = MappedInputManager::Button::Back;
+  if (!resolveTouchButtonHint(x, y, button)) return false;
+  if (button == MappedInputManager::Button::Back || button == MappedInputManager::Button::Confirm) finish();
+  return true;
 }
 
 void KOReaderAuthActivity::render(RenderLock&&) {
   renderer.clearScreen();
-
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const auto pageWidth = renderer.getScreenWidth();
-  const auto pageHeight = renderer.getScreenHeight();
+  const int pageWidth = renderer.getScreenWidth();
+  const int pageHeight = renderer.getScreenHeight();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_KOREADER_AUTH));
-  const auto height = renderer.getLineHeight(UI_10_FONT_ID);
-  const auto top = (pageHeight - height) / 2;
-
-  if (state == AUTHENTICATING) {
-    renderer.drawCenteredText(UI_10_FONT_ID, top, statusMessage.c_str());
-  } else if (state == SUCCESS) {
-    renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_AUTH_SUCCESS), true, EpdFontFamily::BOLD);
-    renderer.drawCenteredText(UI_10_FONT_ID, top + height + 10, tr(STR_SYNC_READY));
-  } else if (state == FAILED) {
-    renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_AUTH_FAILED), true, EpdFontFamily::BOLD);
-    renderer.drawCenteredText(UI_10_FONT_ID, top + height + 10, errorMessage.c_str());
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "KOReader Authentication");
+  const int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing * 3;
+  if (launchFailed) {
+    renderer.drawCenteredText(UI_10_FONT_ID, y, "koreader_auth.elf could not be launched");
+    renderer.drawCenteredText(SMALL_FONT_ID, y + 36,
+                              "Install KOReader Authentication from the App Store or copy it to /Apps.");
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "OK", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  } else {
+    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, "Opening KOReader Authentication...");
   }
-
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  renderer.displayBuffer();
-}
-
-void KOReaderAuthActivity::loop() {
-  if (state == SUCCESS || state == FAILED) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
-        mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-      finish();
-    }
-  }
-}
-
-bool KOReaderAuthActivity::onTouchTap(int16_t, int16_t) {
-  if (state == SUCCESS || state == FAILED) {
-    finish();
-    return true;
-  }
-  return false;
+  renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
 }
