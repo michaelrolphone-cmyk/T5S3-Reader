@@ -7,7 +7,6 @@
 
 #include "CrossPointSettings.h"
 #include "activities/Activity.h"
-#include "util/ButtonNavigator.h"
 
 enum class SettingType { TOGGLE, ENUM, ACTION, VALUE, STRING, TIMEZONE };
 
@@ -41,15 +40,12 @@ struct SettingInfo {
   };
   ValueRange valueRange = {};
 
-  const char* key = nullptr;             // JSON API key (nullptr for ACTION types)
-  StrId category = StrId::STR_NONE_OPT;  // Category for web UI grouping
-  bool obfuscated = false;               // Save/load via base64 obfuscation (passwords)
-
-  // Direct char[] string fields (for settings stored in CrossPointSettings)
+  const char* key = nullptr;
+  StrId category = StrId::STR_NONE_OPT;
+  bool obfuscated = false;
   size_t stringOffset = 0;
   size_t stringMaxLen = 0;
 
-  // Dynamic accessors (for settings stored outside CrossPointSettings, e.g. KOReaderCredentialStore)
   std::function<uint8_t()> valueGetter;
   std::function<void(uint8_t)> valueSetter;
   std::function<std::string()> stringGetter;
@@ -151,32 +147,17 @@ struct SettingInfo {
 };
 
 class SettingsActivity final : public Activity {
-  ButtonNavigator buttonNavigator;
-
-  int selectedCategoryIndex = 0;  // Currently selected category
-  int selectedSettingIndex = 0;
-  int settingsCount = 0;
-
-  // Per-category settings derived from shared list + device-only actions
-  std::vector<SettingInfo> displaySettings;
-  std::vector<SettingInfo> readerSettings;
-  std::vector<SettingInfo> controlsSettings;
-  std::vector<SettingInfo> systemSettings;
-  const std::vector<SettingInfo>* currentSettings = nullptr;
-
-  static constexpr int categoryCount = 4;
-  static const StrId categoryNames[categoryCount];
-
-  void enterCategory(int categoryIndex);
-  void toggleCurrentSetting();
-  void rebuildSettingsLists();
-
  public:
   explicit SettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("Settings", renderer, mappedInput) {}
+
   void onEnter() override;
   void onExit() override;
   void loop() override;
   bool onTouchTap(int16_t x, int16_t y) override;
   void render(RenderLock&&) override;
+
+ private:
+  bool launchAttempted = false;
+  bool launchFailed = false;
 };
