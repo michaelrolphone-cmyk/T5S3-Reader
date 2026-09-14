@@ -1,0 +1,7 @@
+{
+  "min_firmware_version": "1.1.13",
+  "version": "1.0.0",
+  "display_name": "Image Viewer",
+  "file_name": "image_viewer.elf",
+  "icon": "regular:f03e"
+}
