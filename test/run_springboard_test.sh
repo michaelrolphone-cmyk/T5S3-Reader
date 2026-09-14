@@ -28,5 +28,8 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/Apps/lora.c" "$repo_dir/test/native_apps/lora_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/Apps/web_server.c" "$repo_dir/test/native_apps/web_server_test.c" -o "$binary"
+"$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
-echo 'Manifest, springboard, App Store, Timecard, Ask, File Browser, GPS, and LoRa native app tests passed'
+echo 'Manifest, springboard, App Store, Timecard, Ask, File Browser, GPS, LoRa, and Web Server native app tests passed'
