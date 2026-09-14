@@ -7,17 +7,10 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
-#include <memory>
 #include <string>
-#include <utility>
 
 #include "MappedInputManager.h"
-#include "NativeAppHost.h"
 #include "TimecardStore.h"
-#include "activities/Activity.h"
-#include "activities/ActivityManager.h"
-#include "activities/RenderLock.h"
-#include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -28,13 +21,6 @@ namespace {
 constexpr int kDayCount = 7;
 constexpr int kPunchCount = 4;
 constexpr int kWeekHistory = 20;
-
-struct BridgeState {
-  bool resumeAvailable = false;
-  t5_timecard_resume_t resume{};
-};
-
-BridgeState state;
 
 bool validScreen(uint8_t screen) {
   return screen == T5_TIMECARD_WEEK_LIST || screen == T5_TIMECARD_WEEK || screen == T5_TIMECARD_DAY;
@@ -99,100 +85,6 @@ void drawSelectedRow(GfxRenderer& gfx, int x, int y, int width, int height, bool
   if (selected) gfx.fillRect(x, y, width, height, true);
 }
 
-void prepareResume(int ymd, uint8_t punch, int weekOffset, const char* status) {
-  state.resume = {};
-  state.resume.screen = T5_TIMECARD_DAY;
-  state.resume.week_offset = weekOffset;
-  state.resume.selected_index = punch;
-  state.resume.editing_ymd = ymd;
-  copyText(state.resume.status, sizeof(state.resume.status), status);
-  state.resumeAvailable = true;
-}
-
-class NativeTimecardEditActivity final : public Activity {
-  int ymd;
-  uint8_t punch;
-  int weekOffset;
-  std::string resumePath;
-  bool started = false;
-  bool childCompleted = false;
-  bool resumeReturned = false;
-
- public:
-  NativeTimecardEditActivity(GfxRenderer& gfx, MappedInputManager& input, int editYmd, uint8_t editPunch,
-                             int editWeekOffset, std::string resume)
-      : Activity("NativeTimecardEdit", gfx, input),
-        ymd(editYmd),
-        punch(editPunch),
-        weekOffset(editWeekOffset),
-        resumePath(std::move(resume)) {}
-
-  void onEnter() override {
-    Activity::onEnter();
-    if (started) return;
-    started = true;
-
-    TIMECARD.loadFromFile();
-    const TimecardDay day = TIMECARD.getDay(ymd);
-    const int16_t current = day.get(static_cast<TimecardPunch>(punch));
-    const std::string initial = current >= 0 ? TimecardTime::formatAmpm(current) : "";
-
-    startActivityForResult(
-        std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, punchLabel(punch), initial, 12, InputType::Text),
-        [this](const ActivityResult& result) {
-          if (result.isCancelled) {
-            const TimecardDay existing = TIMECARD.getDay(ymd);
-            prepareResume(ymd, punch, weekOffset,
-                          existing.hasAny() ? "Confirm a row to edit" : "Confirm a row to set time");
-            childCompleted = true;
-            return;
-          }
-
-          const auto& keyboard = std::get<KeyboardResult>(result.data);
-          int16_t minutes = -1;
-          if (!TimecardTime::parseAmpm(keyboard.text.c_str(), minutes)) {
-            prepareResume(ymd, punch, weekOffset, tr(STR_TIMECARD_EDIT_TIME));
-            childCompleted = true;
-            return;
-          }
-
-          TIMECARD.setPunch(ymd, static_cast<TimecardPunch>(punch), minutes);
-          const std::string status = std::string(punchLabel(punch)) + "  " + TimecardTime::formatAmpm(minutes);
-          prepareResume(ymd, punch, weekOffset, status.c_str());
-          childCompleted = true;
-        });
-  }
-
-  void loop() override {
-    if (resumeReturned) {
-      finish();
-      return;
-    }
-    if (!childCompleted) return;
-    childCompleted = false;
-    if (resumePath.empty()) {
-      finish();
-      return;
-    }
-
-    const esp_err_t result = runNativeApp(resumePath.c_str(), renderer, mappedInput);
-    if (result != ESP_OK) {
-      finish();
-      return;
-    }
-
-    resumeReturned = true;
-  }
-
-  void render(RenderLock&&) override {
-    renderer.clearScreen();
-    const auto& metrics = UITheme::getInstance().getMetrics();
-    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight},
-                   tr(STR_TIMECARD));
-    renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
-  }
-};
-
 void reloadStore() { TIMECARD.loadFromFile(); }
 int32_t todayYmd() { return TimecardTime::todayYmd(); }
 int32_t currentMinutes() { return TimecardTime::currentMinutes(); }
@@ -211,6 +103,15 @@ bool getDay(int32_t ymd, t5_timecard_day_t* out) {
 bool setPunch(int32_t ymd, uint8_t punch, int16_t minutesFromMidnight) {
   if (ymd < 19700101 || !validPunch(punch)) return false;
   TIMECARD.setPunch(ymd, static_cast<TimecardPunch>(punch), minutesFromMidnight);
+  return true;
+}
+
+bool setPunchText(int32_t ymd, uint8_t punch, const char* text, int16_t* minutesOut) {
+  if (ymd < 19700101 || !validPunch(punch) || !text) return false;
+  int16_t minutes = -1;
+  if (!TimecardTime::parseAmpm(text, minutes)) return false;
+  TIMECARD.setPunch(ymd, static_cast<TimecardPunch>(punch), minutes);
+  if (minutesOut) *minutesOut = minutes;
   return true;
 }
 
@@ -349,22 +250,6 @@ uint8_t touchTimecard(uint8_t screen, int16_t, int16_t y, int32_t* selectedIndex
   return T5_TIMECARD_TOUCH_ITEM;
 }
 
-bool requestEdit(int32_t ymd, uint8_t punch, int32_t weekOffset, const char* resumePath) {
-  if (ymd < 19700101 || !validPunch(punch) || !resumePath || resumePath[0] == '\0') return false;
-
-  state.resumeAvailable = false;
-  activityManager.pushActivity(std::make_unique<NativeTimecardEditActivity>(
-      renderer, mappedInputManager, ymd, punch, weekOffset, std::string(resumePath)));
-  return true;
-}
-
-bool takeResume(t5_timecard_resume_t* out) {
-  if (!out || !state.resumeAvailable) return false;
-  *out = state.resume;
-  state.resumeAvailable = false;
-  return true;
-}
-
 const t5_timecard_api_v1 api = {T5_TIMECARD_API_VERSION,
                                 sizeof(t5_timecard_api_v1),
                                 reloadStore,
@@ -374,12 +259,11 @@ const t5_timecard_api_v1 api = {T5_TIMECARD_API_VERSION,
                                 addDays,
                                 getDay,
                                 setPunch,
+                                setPunchText,
                                 getPunchLabel,
                                 formatAmpm,
                                 renderTimecard,
-                                touchTimecard,
-                                requestEdit,
-                                takeResume};
+                                touchTimecard};
 }  // namespace
 
 extern "C" const t5_timecard_api_v1* t5_timecard_get_api(uint32_t version) {
