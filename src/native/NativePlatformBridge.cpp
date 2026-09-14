@@ -17,12 +17,9 @@ bool mapStoragePath(const char* path, std::string& mapped) {
   }
   if (std::strncmp(path, "/sd/", 4) != 0) return false;
 
-  const char* relative = path + 3;  // Preserve the leading slash.
-  if (*relative == '\0') return false;
-
-  // Native apps are confined to the SD root. Reject traversal, backslashes,
-  // empty path segments, and dot segments before handing paths to HalStorage.
+  const char* relative = path + 3;
   const char* segment = relative + 1;
+  if (*segment == '\0') return false;
   while (*segment) {
     const char* end = segment;
     while (*end && *end != '/') {
@@ -36,6 +33,7 @@ bool mapStoragePath(const char* path, std::string& mapped) {
     }
     if (!*end) break;
     segment = end + 1;
+    if (*segment == '\0') return false;
   }
 
   mapped = relative;
@@ -49,25 +47,27 @@ bool ensureParentDirectory(const std::string& path) {
   return Storage.ensureDirectoryExists(parent.c_str());
 }
 
-t5_storage_result_t readFile(const char* path,
-                             void* buffer,
-                             size_t capacity,
-                             size_t* outSize) {
+bool storageExists(const char* path) {
+  if (!Storage.ready()) return false;
+  std::string mapped;
+  return mapStoragePath(path, mapped) && Storage.exists(mapped.c_str());
+}
+
+bool readFile(const char* path, void* buffer, size_t capacity, size_t* outSize) {
   if (outSize) *outSize = 0;
-  if ((!buffer && capacity != 0) || !outSize || !Storage.ready()) {
-    return T5_STORAGE_IO_ERROR;
-  }
+  if (!outSize || !Storage.ready()) return false;
 
   std::string mapped;
-  if (!mapStoragePath(path, mapped)) return T5_STORAGE_INVALID_PATH;
-  if (!Storage.exists(mapped.c_str())) return T5_STORAGE_NOT_FOUND;
+  if (!mapStoragePath(path, mapped) || !Storage.exists(mapped.c_str())) return false;
 
   const String contents = Storage.readFile(mapped.c_str());
   const size_t size = contents.length();
   *outSize = size;
-  if (size > capacity) return T5_STORAGE_TOO_LARGE;
+
+  if (!buffer || capacity == 0) return true;
+  if (size > capacity) return false;
   if (size != 0) std::memcpy(buffer, contents.c_str(), size);
-  return T5_STORAGE_OK;
+  return true;
 }
 
 bool writeFileAtomic(const char* path, const void* data, size_t size) {
@@ -80,7 +80,6 @@ bool writeFileAtomic(const char* path, const void* data, size_t size) {
   const std::string temporary = destination + ".part";
   const std::string backup = destination + ".bak";
 
-  // Recover a prior interrupted replacement before starting another one.
   if (Storage.exists(backup.c_str())) {
     if (!Storage.exists(destination.c_str())) {
       if (!Storage.rename(backup.c_str(), destination.c_str())) return false;
@@ -116,6 +115,14 @@ bool writeFileAtomic(const char* path, const void* data, size_t size) {
   return true;
 }
 
+bool removeFile(const char* path) {
+  if (!Storage.ready()) return false;
+  std::string mapped;
+  if (!mapStoragePath(path, mapped) || mapped == "/") return false;
+  if (!Storage.exists(mapped.c_str())) return true;
+  return Storage.remove(mapped.c_str());
+}
+
 bool localDateTime(t5_local_datetime_t* out) {
   if (!out) return false;
   const time_t now = time(nullptr);
@@ -123,35 +130,38 @@ bool localDateTime(t5_local_datetime_t* out) {
 
   struct tm local = {};
   if (!localtime_r(&now, &local)) return false;
-  out->year = static_cast<uint16_t>(local.tm_year + 1900);
+  out->year = static_cast<int16_t>(local.tm_year + 1900);
   out->month = static_cast<uint8_t>(local.tm_mon + 1);
   out->day = static_cast<uint8_t>(local.tm_mday);
   out->hour = static_cast<uint8_t>(local.tm_hour);
   out->minute = static_cast<uint8_t>(local.tm_min);
   out->second = static_cast<uint8_t>(local.tm_sec);
   out->weekday = static_cast<uint8_t>(local.tm_wday);
+  out->yearday = static_cast<uint16_t>(local.tm_yday);
   return true;
 }
 
 const t5_storage_api_v1 kStorageApi = {
-    T5_STORAGE_ABI_VERSION,
+    T5_STORAGE_API_VERSION,
     sizeof(t5_storage_api_v1),
+    storageExists,
     readFile,
     writeFileAtomic,
+    removeFile,
 };
 
 const t5_system_api_v1 kSystemApi = {
-    T5_SYSTEM_ABI_VERSION,
+    T5_SYSTEM_API_VERSION,
     sizeof(t5_system_api_v1),
     localDateTime,
 };
 
 }  // namespace
 
-extern "C" const t5_storage_api_v1* t5_storage_get_api(uint32_t requestedVersion) {
-  return requestedVersion == T5_STORAGE_ABI_VERSION ? &kStorageApi : nullptr;
+extern "C" const t5_storage_api_v1* t5_storage_get_api(uint32_t apiVersion) {
+  return apiVersion == T5_STORAGE_API_VERSION ? &kStorageApi : nullptr;
 }
 
-extern "C" const t5_system_api_v1* t5_system_get_api(uint32_t requestedVersion) {
-  return requestedVersion == T5_SYSTEM_ABI_VERSION ? &kSystemApi : nullptr;
+extern "C" const t5_system_api_v1* t5_system_get_api(uint32_t apiVersion) {
+  return apiVersion == T5_SYSTEM_API_VERSION ? &kSystemApi : nullptr;
 }
