@@ -436,7 +436,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     delay(10);
   } while (millis() - quiet < 350);
   input.clearInjectedButtonTap();
-  nativeSettingsDispatchPendingAction(renderer, input);
+  nativeSettingsDispatchPendingAction(renderer, input, path);
   returned = true;
   return result;
 }
