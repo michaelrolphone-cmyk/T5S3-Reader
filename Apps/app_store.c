@@ -15,6 +15,13 @@ static bool has_catalog_api(const t5_app_api_v1 *api) {
            api->app_catalog_get && api->app_catalog_download;
 }
 
+static int32_t visible_rows(const t5_app_api_v1 *api) {
+    int32_t rows = (api->screen_height() - FIRST_ROW_Y - FOOTER_HEIGHT) / ROW_HEIGHT;
+    if (rows < 1) rows = 1;
+    if (rows > 18) rows = 18;
+    return rows;
+}
+
 static void draw_status(const t5_app_api_v1 *api, const char *title, const char *line1, const char *line2) {
     api->clear();
     api->draw_text(24, HEADER_Y, title);
@@ -38,9 +45,7 @@ static void format_size(char *out, size_t capacity, uint64_t bytes) {
 static void draw_catalog(const t5_app_api_v1 *api, uint32_t selected) {
     const uint32_t count = api->app_catalog_count();
     const int32_t height = api->screen_height();
-    int32_t rows = (height - FIRST_ROW_Y - FOOTER_HEIGHT) / ROW_HEIGHT;
-    if (rows < 1) rows = 1;
-    if (rows > 18) rows = 18;
+    const int32_t rows = visible_rows(api);
 
     api->clear();
     api->draw_text(24, HEADER_Y, "Native App Store");
@@ -52,7 +57,7 @@ static void draw_catalog(const t5_app_api_v1 *api, uint32_t selected) {
         return;
     }
 
-    uint32_t page_start = (selected / (uint32_t)rows) * (uint32_t)rows;
+    const uint32_t page_start = (selected / (uint32_t)rows) * (uint32_t)rows;
     for (int32_t row = 0; row < rows; ++row) {
         const uint32_t index = page_start + (uint32_t)row;
         if (index >= count) break;
@@ -70,7 +75,7 @@ static void draw_catalog(const t5_app_api_v1 *api, uint32_t selected) {
     char page[48];
     snprintf(page, sizeof(page), "%lu app%s", (unsigned long)count, count == 1 ? "" : "s");
     api->draw_text(24, height - 74, page);
-    api->draw_text(24, height - 48, "Up/Down: select  Confirm: install  Right: refresh");
+    api->draw_text(24, height - 48, "Up/Down: select  Confirm/tap: install  Right: refresh");
     api->present(true);
 }
 
@@ -80,6 +85,23 @@ static bool refresh_catalog(const t5_app_api_v1 *api) {
         draw_status(api, "Native App Store", "Unable to load latest release.", "Check saved Wi-Fi and try Right.");
         return false;
     }
+    return true;
+}
+
+static bool select_tapped_row(const t5_app_api_v1 *api, const t5_app_input_t *input, uint32_t count,
+                              uint32_t *selected) {
+    if (!input->tapped || !selected || count == 0) return false;
+
+    const int32_t rows = visible_rows(api);
+    const int32_t list_bottom = FIRST_ROW_Y + rows * ROW_HEIGHT;
+    if (input->touch_y < FIRST_ROW_Y || input->touch_y >= list_bottom) return false;
+
+    const uint32_t page_start = (*selected / (uint32_t)rows) * (uint32_t)rows;
+    const uint32_t row = (uint32_t)((input->touch_y - FIRST_ROW_Y) / ROW_HEIGHT);
+    const uint32_t tapped = page_start + row;
+    if (tapped >= count) return false;
+
+    *selected = tapped;
     return true;
 }
 
@@ -127,7 +149,8 @@ __attribute__((visibility("default"))) void app_main(void) {
             continue;
         }
 
-        if ((buttons & T5_APP_BUTTON_CONFIRM) || input.tapped) {
+        const bool tapped_row = select_tapped_row(api, &input, count, &selected);
+        if ((buttons & T5_APP_BUTTON_CONFIRM) || tapped_row) {
             t5_app_release_asset_t asset;
             if (!api->app_catalog_get(selected, &asset)) continue;
 
