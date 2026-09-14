@@ -14,6 +14,7 @@ extern "C" {
 #define T5_APP_BUTTON_DOWN (1u << 5)
 #define T5_APP_DIRENT_NAME_MAX 128u
 #define T5_APP_ASSET_NAME_MAX 128u
+#define T5_APP_VERSION_MAX 32u
 #define T5_APP_SETTING_LABEL_MAX 128u
 #define T5_APP_SETTING_VALUE_MAX 128u
 
@@ -124,6 +125,12 @@ typedef struct {
     // each ELF's matching release manifest before exposing it through this getter.
     // Older firmware may not provide this member; callers must check struct_size.
     bool (*app_catalog_manifest_get)(uint32_t index, t5_app_manifest_t *manifest);
+
+    // Append-only app version metadata. Versions are major.minor.patch strings from
+    // each app's JSON sidecar. Legacy installed manifests may return an empty string.
+    // Callers must check struct_size before accessing these members.
+    bool (*installed_app_version_get)(uint32_t index, char *version, size_t capacity);
+    bool (*app_catalog_version_get)(uint32_t index, char *version, size_t capacity);
 } t5_app_api_v1;
 
 // This is the single versioned firmware symbol imported by native UI apps.
