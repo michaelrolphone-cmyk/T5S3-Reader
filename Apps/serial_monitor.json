@@ -1,0 +1,7 @@
+{
+  "min_firmware_version": "1.1.17",
+  "version": "1.0.0",
+  "display_name": "USB Serial",
+  "file_name": "serial_monitor.elf",
+  "icon": "solid:f287"
+}
