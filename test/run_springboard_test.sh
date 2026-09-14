@@ -8,6 +8,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo
 for pair in \
   "springboard springboard_test" \
   "app_store app_store_test" \
+  "settings settings_test" \
   "timecard timecard_ui_test" \
   "llm_ask llm_ask_test" \
   "gps gps_test" \
@@ -35,4 +36,4 @@ done
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" "$repo_dir/test/native_apps/image_api_stub.c" -o "$binary"
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
-echo 'Native app regression tests passed, including Wi-Fi Networks, KOReader Authentication, Manage Fonts, Font Family, Customize Status Bar, Remap Front Buttons, and Time Zone'
+echo 'Native app regression tests passed, including Settings, Wi-Fi Networks, KOReader Authentication, Manage Fonts, Font Family, Customize Status Bar, Remap Front Buttons, and Time Zone'
