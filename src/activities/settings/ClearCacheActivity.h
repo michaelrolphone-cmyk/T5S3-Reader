@@ -1,7 +1,5 @@
 #pragma once
 
-#include <functional>
-
 #include "activities/Activity.h"
 
 class ClearCacheActivity final : public Activity {
@@ -10,20 +8,12 @@ class ClearCacheActivity final : public Activity {
       : Activity("ClearCache", renderer, mappedInput) {}
 
   void onEnter() override;
-  void onExit() override;
   void loop() override;
   bool onTouchTap(int16_t x, int16_t y) override;
-  bool skipLoopDelay() override { return true; }  // Prevent power-saving mode
+  bool skipLoopDelay() override { return true; }
   void render(RenderLock&&) override;
 
  private:
-  enum State { WARNING, CLEARING, SUCCESS, FAILED };
-
-  State state = WARNING;
-
-  void goBack() { finish(); }
-
-  int clearedCount = 0;
-  int failedCount = 0;
-  void clearCache();
+  bool launchAttempted = false;
+  bool launchFailed = false;
 };
