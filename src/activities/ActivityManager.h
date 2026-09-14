@@ -62,8 +62,6 @@ class ActivityManager {
   void goToFileBrowser(std::string path = {});
   void goToRecentBooks();
   void goToBrowser();
-  void goToLlmChat();
-  void goToTimecard();
   void goToReader(std::string path, HalDisplay::RefreshMode replaceRefreshMode = HalDisplay::HALF_REFRESH);
   void goToSleep(bool poweringOff = false);
   void goToBoot();

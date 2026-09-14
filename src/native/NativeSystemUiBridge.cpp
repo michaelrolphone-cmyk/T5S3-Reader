@@ -3,6 +3,7 @@
 #include <GfxRenderer.h>
 #include <NativeAppLauncher.h>
 #include <T5AppApi.h>
+#include <WiFi.h>
 
 #include <cstring>
 #include <memory>
@@ -14,6 +15,7 @@
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/RenderLock.h"
+#include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 
@@ -28,12 +30,22 @@ struct KeyboardState {
   std::string text;
 };
 
+struct WifiState {
+  bool available = false;
+  bool connected = false;
+  bool cancelled = false;
+  uint64_t cookie = 0;
+};
+
 KeyboardState keyboardState;
+WifiState wifiState;
 NativeSystemUiNavigation navigation = NativeSystemUiNavigation::None;
 
 bool validResumePath(const char* path) {
   return path && std::strncmp(path, "/sd/", 4) == 0 && path[4] != '\0';
 }
+
+bool hasUnreadResult() { return keyboardState.available || wifiState.available; }
 
 InputType mapInputType(uint8_t inputType) {
   switch (inputType) {
@@ -104,15 +116,11 @@ class NativeKeyboardActivity final : public Activity {
 
     const esp_err_t result = runNativeApp(resumePath.c_str(), renderer, mappedInput);
     if (result != ESP_OK) {
-      // The result cannot be consumed if the caller cannot be relaunched. Clear
-      // it so one failed app cannot permanently block keyboard use by other ELFs.
       keyboardState = {};
       finish();
       return;
     }
 
-    // If the relaunched ELF requests another system activity, let
-    // ActivityManager process that pending push before this wrapper unwinds.
     resumeReturned = true;
   }
 
@@ -125,14 +133,67 @@ class NativeKeyboardActivity final : public Activity {
   }
 };
 
+class NativeWifiActivity final : public Activity {
+  std::string resumePath;
+  uint64_t cookie;
+  bool started = false;
+  bool childCompleted = false;
+  bool resumeReturned = false;
+
+ public:
+  NativeWifiActivity(GfxRenderer& gfx, MappedInputManager& input, std::string resume, uint64_t requestCookie)
+      : Activity("NativeWifi", gfx, input), resumePath(std::move(resume)), cookie(requestCookie) {}
+
+  void onEnter() override {
+    Activity::onEnter();
+    if (started) return;
+    started = true;
+    startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+                           [this](const ActivityResult& result) {
+                             wifiState.available = true;
+                             wifiState.cancelled = result.isCancelled;
+                             wifiState.connected = WiFi.status() == WL_CONNECTED;
+                             wifiState.cookie = cookie;
+                             childCompleted = true;
+                           });
+  }
+
+  void loop() override {
+    if (resumeReturned) {
+      finish();
+      return;
+    }
+    if (!childCompleted) return;
+    childCompleted = false;
+
+    if (resumePath.empty()) {
+      wifiState = {};
+      finish();
+      return;
+    }
+
+    const esp_err_t result = runNativeApp(resumePath.c_str(), renderer, mappedInput);
+    if (result != ESP_OK) {
+      wifiState = {};
+      finish();
+      return;
+    }
+    resumeReturned = true;
+  }
+
+  void render(RenderLock&&) override {
+    renderer.clearScreen();
+    const auto& metrics = UITheme::getInstance().getMetrics();
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight}, "Wi-Fi");
+    renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+  }
+};
+
 bool keyboardRequest(const char* title, const char* initialText, size_t maxLength, uint8_t inputType, uint64_t cookie) {
   const char* currentPath = native_app_current_path();
   if (!validResumePath(currentPath)) return false;
   if (inputType > T5_SYSTEM_KEYBOARD_URL) return false;
-
-  // Do not let a new request silently destroy an unread result from a prior
-  // keyboard interaction.
-  if (keyboardState.available || navigation != NativeSystemUiNavigation::None) return false;
+  if (hasUnreadResult() || navigation != NativeSystemUiNavigation::None) return false;
 
   activityManager.pushActivity(std::make_unique<NativeKeyboardActivity>(
       renderer, mappedInputManager, std::string(currentPath), title ? title : "Enter Text",
@@ -157,6 +218,26 @@ bool keyboardTakeResult(char* text, size_t capacity, bool* cancelled, uint64_t* 
   return true;
 }
 
+bool wifiRequest(uint64_t cookie) {
+  const char* currentPath = native_app_current_path();
+  if (!validResumePath(currentPath)) return false;
+  if (hasUnreadResult() || navigation != NativeSystemUiNavigation::None) return false;
+
+  activityManager.pushActivity(
+      std::make_unique<NativeWifiActivity>(renderer, mappedInputManager, std::string(currentPath), cookie));
+  navigation = NativeSystemUiNavigation::Wifi;
+  return true;
+}
+
+bool wifiTakeResult(bool* connected, bool* cancelled, uint64_t* cookie) {
+  if (!wifiState.available) return false;
+  if (connected) *connected = wifiState.connected;
+  if (cancelled) *cancelled = wifiState.cancelled;
+  if (cookie) *cookie = wifiState.cookie;
+  wifiState = {};
+  return true;
+}
+
 void navigateHome() {
   navigation = NativeSystemUiNavigation::Home;
   activityManager.goHome();
@@ -168,6 +249,8 @@ const t5_system_ui_api_v1 api = {
     keyboardRequest,
     keyboardTakeResult,
     navigateHome,
+    wifiRequest,
+    wifiTakeResult,
 };
 }  // namespace
 

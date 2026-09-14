@@ -119,9 +119,6 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
                highlightValue);
   drawChrome(*r, *in, chrome);
 
-  // Match the active theme's drawList row geometry exactly. Lyra uses different
-  // list heights from the Base/Rounded themes, so hit-testing must not assume
-  // BaseMetrics even though all themes share the same logical list API.
   const int rowHeight = hasSubtitle ? metrics.listWithSubtitleRowHeight : metrics.listRowHeight;
   const int pageItems = std::max(1, content.height / std::max(1, rowHeight));
   const int selected = rowCount ? std::clamp(selectedIndex, 0, static_cast<int32_t>(rowCount) - 1) : 0;
@@ -206,6 +203,71 @@ void renderTable(const t5_ui_chrome_t* chrome, const t5_ui_table_column_t* colum
   hitLayout.pageItems = pageItems;
   hitLayout.pageStart = pageStart;
   hitLayout.rowCount = static_cast<int>(rowCount);
+  r->displayBuffer(HalDisplay::BALANCED_REFRESH);
+}
+
+void renderTextView(const t5_ui_chrome_t* chrome, const char* text, int32_t scrollFromBottom,
+                    t5_ui_text_view_result_t* result) {
+  if (result) *result = {};
+  auto* r = renderer();
+  auto* in = input();
+  if (!r || !in) return;
+
+  r->clearScreen();
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pageWidth = r->getScreenWidth();
+  const int pageHeight = r->getScreenHeight();
+  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
+  int contentBottom = pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing;
+  if (chrome && chrome->status && chrome->status[0]) contentBottom -= 26;
+  const int maxWidth = pageWidth - metrics.contentSidePadding * 2;
+  const int lineHeight = std::max(1, BaseTheme::getLineHeightForRole(*r, UI_10_FONT_ID, TextRole::UserContent));
+  const int visibleLines = std::max(1, (contentBottom - contentTop) / lineHeight);
+
+  std::vector<std::string> lines;
+  const std::string source = safe(text);
+  size_t start = 0;
+  while (start <= source.size()) {
+    const size_t end = source.find('\n', start);
+    const std::string paragraph = source.substr(start, end == std::string::npos ? std::string::npos : end - start);
+    if (paragraph.empty()) {
+      lines.emplace_back();
+    } else {
+      auto wrapped = BaseTheme::wrappedTextForRole(*r, UI_10_FONT_ID, TextRole::UserContent,
+                                                   paragraph.c_str(), maxWidth, 96);
+      if (wrapped.empty()) lines.push_back(paragraph);
+      else lines.insert(lines.end(), wrapped.begin(), wrapped.end());
+    }
+    if (end == std::string::npos) break;
+    start = end + 1;
+  }
+  if (source.empty()) lines.clear();
+
+  const int maxScroll = std::max(0, static_cast<int>(lines.size()) - visibleLines);
+  const int scroll = std::clamp(scrollFromBottom, 0, maxScroll);
+  const int first = maxScroll - scroll;
+  int y = contentTop;
+  for (int i = first; i < static_cast<int>(lines.size()) && i < first + visibleLines; ++i) {
+    if (!lines[i].empty()) {
+      BaseTheme::drawTextForRole(*r, UI_10_FONT_ID, TextRole::UserContent, metrics.contentSidePadding, y,
+                                 lines[i].c_str());
+    }
+    y += lineHeight;
+  }
+
+  drawChrome(*r, *in, chrome);
+  hitLayout.headerBottom = metrics.topPadding + metrics.headerHeight;
+  hitLayout.rowTop = contentTop;
+  hitLayout.rowHeight = lineHeight;
+  hitLayout.pageItems = visibleLines;
+  hitLayout.pageStart = first;
+  hitLayout.rowCount = static_cast<int>(lines.size());
+
+  if (result) {
+    result->max_scroll_lines = maxScroll;
+    result->total_lines = static_cast<uint32_t>(lines.size());
+    result->visible_lines = static_cast<uint32_t>(visibleLines);
+  }
   r->displayBuffer(HalDisplay::BALANCED_REFRESH);
 }
 
@@ -294,7 +356,7 @@ int32_t previousIndex(int32_t currentIndex, uint32_t itemCount) {
 }
 
 const t5_ui_api_v1 api = {T5_UI_API_VERSION, sizeof(t5_ui_api_v1), renderList, renderTable,
-                          hitTest, pollEvent, nextIndex, previousIndex};
+                          hitTest, pollEvent, nextIndex, previousIndex, renderTextView};
 }  // namespace
 
 extern "C" const t5_ui_api_v1* t5_ui_get_api(uint32_t apiVersion) {
