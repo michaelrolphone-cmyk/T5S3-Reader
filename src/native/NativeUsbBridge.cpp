@@ -306,16 +306,17 @@ bool configureDevice(uint8_t address) {
 
 void hostTask(void*) {
   usb_host_config_t hostConfig = {};
+  usb_host_client_config_t clientConfig = {};
   hostConfig.skip_phy_setup = false;
   hostConfig.intr_flags = ESP_INTR_FLAG_LEVEL1;
-  esp_err_t rc = usb_host_install(&hostConfig);
-  if (rc != ESP_OK) { setError(rc); goto finish_power; }
-
-  usb_host_client_config_t clientConfig = {};
   clientConfig.is_synchronous = false;
   clientConfig.max_num_event_msg = 5;
   clientConfig.async.client_event_callback = clientEvent;
   clientConfig.async.callback_arg = nullptr;
+
+  esp_err_t rc = usb_host_install(&hostConfig);
+  if (rc != ESP_OK) { setError(rc); goto finish_power; }
+
   rc = usb_host_client_register(&clientConfig, &client);
   if (rc != ESP_OK) { setError(rc); goto finish_host; }
 
@@ -367,7 +368,11 @@ void hostTask(void*) {
 finish_client:
   if (client) { (void)usb_host_client_deregister(client); client = nullptr; }
   (void)usb_host_device_free_all();
-  for (int i = 0; i < 20; ++i) { uint32_t f = 0; (void)usb_host_lib_handle_events(pdMS_TO_TICKS(5), &f); if (f & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE) break; }
+  for (int i = 0; i < 20; ++i) {
+    uint32_t f = 0;
+    (void)usb_host_lib_handle_events(pdMS_TO_TICKS(5), &f);
+    if (f & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE) break;
+  }
 finish_host:
   (void)usb_host_uninstall();
 finish_power:
