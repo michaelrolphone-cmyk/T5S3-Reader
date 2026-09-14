@@ -5,28 +5,13 @@
 #include "activities/Activity.h"
 
 /**
- * SD-card based firmware update activity.
- *
- * Flow:
- *  1) onEnter -> push FileBrowserActivity in PickFirmware mode (only .bin files visible).
- *  2) On result: validate the .bin (header magic, size fits OTA partition).
- *  3) Push ConfirmationActivity ("Update firmware?").
- *  4) On confirm: stream the file into the OTA partition via the Arduino Update API,
- *     drawing a progress bar; on success ESP.restart().
- *
- * Used both from Settings -> System -> "SD Card Firmware Update", and as the only
- * activity launched in boot recovery mode (left side button + power on X3).
+ * Settings mode uses the native SD Firmware Update ELF after firmware-owned
+ * .bin selection. Recovery mode intentionally remains fully firmware-native so
+ * boot recovery never depends on an external app being present on the SD card.
  */
 class SdFirmwareUpdateActivity : public Activity {
  public:
-  enum class State {
-    PICKING,
-    VALIDATING,
-    CONFIRMING,
-    UPDATING,
-    SUCCESS,
-    FAILED,
-  };
+  enum class State { PICKING, VALIDATING, CONFIRMING, UPDATING, SUCCESS, FAILED };
 
   explicit SdFirmwareUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool recoveryMode = false)
       : Activity("SdFirmwareUpdate", renderer, mappedInput), recoveryMode(recoveryMode) {}
@@ -42,7 +27,7 @@ class SdFirmwareUpdateActivity : public Activity {
  private:
   State state = State::PICKING;
   bool recoveryMode = false;
-
+  bool launchFailed = false;
   std::string firmwarePath;
   size_t firmwareSize = 0;
   size_t writtenBytes = 0;
