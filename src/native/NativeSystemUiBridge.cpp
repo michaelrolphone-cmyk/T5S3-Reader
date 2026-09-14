@@ -15,6 +15,7 @@
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/RenderLock.h"
+#include "activities/network/CrossPointWebServerActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
@@ -238,6 +239,13 @@ bool wifiTakeResult(bool* connected, bool* cancelled, uint64_t* cookie) {
   return true;
 }
 
+bool fileTransferRequest() {
+  if (hasUnreadResult() || navigation != NativeSystemUiNavigation::None) return false;
+  activityManager.replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInputManager));
+  navigation = NativeSystemUiNavigation::Home;
+  return true;
+}
+
 void navigateHome() {
   navigation = NativeSystemUiNavigation::Home;
   activityManager.goHome();
@@ -251,6 +259,7 @@ const t5_system_ui_api_v1 api = {
     navigateHome,
     wifiRequest,
     wifiTakeResult,
+    fileTransferRequest,
 };
 }  // namespace
 
