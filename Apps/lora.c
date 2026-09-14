@@ -3,6 +3,7 @@
 #include "T5UiApi.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -15,6 +16,18 @@ static char packet_value[96] = "Waiting for packet";
 static char signal_value[48] = "--";
 static char counters_value[48];
 static char footer[96];
+
+static void copy_text(char *dst, size_t capacity, const char *src) {
+    if (!dst || capacity == 0u) return;
+    size_t i = 0u;
+    if (src) {
+        while (src[i] && i + 1u < capacity) {
+            dst[i] = src[i];
+            ++i;
+        }
+    }
+    dst[i] = '\0';
+}
 
 static const char *status_name(uint8_t status) {
     switch (status) {
@@ -39,7 +52,7 @@ static void packet_to_text(const t5_lora_packet_t *packet) {
 }
 
 static void render_state(const t5_lora_state_t *state) {
-    snprintf(status_value, sizeof(status_value), "%s", status_name(state->status));
+    copy_text(status_value, sizeof(status_value), status_name(state->status));
     snprintf(radio_value, sizeof(radio_value), "%lu.%03lu MHz  BW%lu  SF%u",
              (unsigned long)(state->config.frequency_hz / 1000000u),
              (unsigned long)((state->config.frequency_hz / 1000u) % 1000u),
@@ -49,11 +62,11 @@ static void render_state(const t5_lora_state_t *state) {
              (unsigned long)state->packets_received, (unsigned long)state->packets_sent);
 
     if (state->status == T5_LORA_STATUS_UNSUPPORTED) {
-        snprintf(footer, sizeof(footer), "SX1262 hardware is not available on this board");
+        copy_text(footer, sizeof(footer), "SX1262 hardware is not available on this board");
     } else if (state->status == T5_LORA_STATUS_ERROR) {
         snprintf(footer, sizeof(footer), "Radio error %d", (int)state->last_error);
     } else {
-        snprintf(footer, sizeof(footer), "Confirm sends a T5S3 ping");
+        copy_text(footer, sizeof(footer), "Confirm sends a T5S3 ping");
     }
 
     const t5_ui_chrome_t chrome = {
