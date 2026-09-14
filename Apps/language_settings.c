@@ -1,3 +1,4 @@
+#include "T5AppApi.h"
 #include "T5LanguageApi.h"
 #include "T5UiApi.h"
 
