@@ -1,6 +1,5 @@
 #pragma once
 
-#include <Board.h>
 #include "activities/Activity.h"
 
 class BatteryStatusActivity final : public Activity {
@@ -15,8 +14,6 @@ class BatteryStatusActivity final : public Activity {
   bool preventAutoSleep() override { return true; }
 
  private:
-  Board::BatteryState state = {};
-  bool hasState = false;
-
-  void refreshBattery();
+  bool launchAttempted = false;
+  bool launchFailed = false;
 };
