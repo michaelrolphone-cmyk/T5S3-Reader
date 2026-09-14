@@ -4,6 +4,18 @@
 #include <Arduino.h>
 #include <GfxRenderer.h>
 #include <JPEGDEC.h>
+#ifdef INTELSHORT
+#undef INTELSHORT
+#endif
+#ifdef INTELLONG
+#undef INTELLONG
+#endif
+#ifdef MOTOSHORT
+#undef MOTOSHORT
+#endif
+#ifdef MOTOLONG
+#undef MOTOLONG
+#endif
 #include <NativeAppLauncher.h>
 #include <PNGdec.h>
 #include <esp_err.h>
@@ -50,11 +62,18 @@ bool validSdPath(const char* path) {
   return true;
 }
 
+bool endsWith(const std::string& value, const char* suffix) {
+  if (!suffix) return false;
+  const size_t suffixLength = std::strlen(suffix);
+  return suffixLength <= value.size() &&
+         value.compare(value.size() - suffixLength, suffixLength, suffix) == 0;
+}
+
 bool imageExtension(const char* path) {
   if (!path) return false;
   std::string s(path);
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  return s.ends_with(".jpg") || s.ends_with(".jpeg") || s.ends_with(".png") || s.ends_with(".bmp");
+  return endsWith(s, ".jpg") || endsWith(s, ".jpeg") || endsWith(s, ".png") || endsWith(s, ".bmp");
 }
 
 uint16_t le16(const uint8_t* p) { return static_cast<uint16_t>(p[0] | (p[1] << 8)); }
