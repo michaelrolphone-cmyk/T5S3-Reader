@@ -29,7 +29,6 @@ class HomeActivity final : public Activity {
   void onSettingsOpen();
   void onFileTransferOpen();
   void onOpdsBrowserOpen();
-  void onTimecardOpen();
   void activateSelection(int index);
 
   int getMenuItemCount() const;
