@@ -9,6 +9,7 @@
 
 #include "esp_elf.h"
 #include "T5AppApi.h"
+#include "T5NetworkApi.h"
 #include "T5StorageApi.h"
 #include "T5SystemApi.h"
 #include "T5SystemUiApi.h"
@@ -53,6 +54,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_system_get_api),
         ESP_ELFSYM_EXPORT(t5_system_ui_get_api),
         ESP_ELFSYM_EXPORT(t5_ui_get_api),
+        ESP_ELFSYM_EXPORT(t5_network_get_api),
         ESP_ELFSYM_END
     };
     const int registered = esp_elf_register_symbol(host_symbols);
