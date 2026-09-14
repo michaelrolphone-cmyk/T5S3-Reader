@@ -1,270 +1,610 @@
-# Native applications from SD
+# Native ELF applications
 
-Browse Files now lists `.elf` applications alongside existing supported files.
-Open an app with touch or Confirm. The browser remains alive with its folder
-and selection preserved while the app owns the display; after `app_main`
-returns, the loader unloads it and the browser redraws. Loading/symbol/unload
-errors are logged and shown in the browser path/status line. Firmware selection
-continues to list only `.bin` files. No change to Home menu indices is required.
+T5S3-Reader can load ESP32-S3 native applications from the SD card as ELF shared
+objects. The framework is intended to make applications independently buildable,
+installable, replaceable, and updatable without reflashing the reader firmware.
 
-## Host implementation
+The current firmware version in `platformio.ini` is 1.1.7. The native-app ABI and
+service APIs are versioned separately from the firmware version; applications
+must use both the manifest firmware floor and each API table's `struct_size`
+checks for compatibility.
 
-- `lib/NativeApps/include/NativeAppLauncher.h`: `esp_err_t launch_elf_app(const char *sd_path)`.
-- `NativeAppLauncher.c`: exclusive blocking session, `dlopen(sd_path, RTLD_NOW)`,
-  `dlsym(handle, "app_main")`, native call, `dlclose`, explicit `dlerror` handling.
-- `SdVfs.cpp`: read-only `/sd` VFS over the existing mutex-protected
-  HalStorage/SdFat. It does not remount the card or create a second SD driver.
-- `src/native/NativeAppHost.cpp`: main-task display/input ownership, render and
-  power locks, restoration, exit-gesture draining, fresh inactivity timeout,
-  read-only directory enumeration, and the firmware-owned release catalog for
-  native apps.
-- `lib/elf_loader`: pinned official Espressif 1.3.3 source with documented
-  compatibility changes in `UPSTREAM.md`, included by PlatformIO.
+## Architecture at a glance
 
-The actual reader uses Arduino on ESP-IDF 4.4.x. PlatformIO flags enable the
-loader's S3 PSRAM allocation and cache-address routing in all board/release
-variants. There is no separate ESP-IDF migration or user-run patch step.
-The two supported reader boards are ESP32-S3 with PSRAM. File/relocated image
-allocations use the loader's MALLOC_CAP_SPIRAM path; allocation failure returns
-a loader error. Instruction execution uses the loader's I-bus mapping/cache
-synchronization, not a cast from an arbitrary malloc buffer.
+A native application is an Xtensa ESP32-S3 `ET_DYN` ELF with a visible
+`app_main` entry point. The firmware launches it from an absolute `/sd/...` VFS
+path using Espressif's ELF loader:
 
-The upstream dynamic interface currently accepts but ignores RTLD mode flags;
-this firmware passes RTLD_NOW and uses its eager relocation path. Absolute SD
-paths and dlsym executable addresses are fixed in the vendored integration.
+1. `runNativeApp()` takes ownership of the reader UI session, renderer, input,
+   and power/render locks.
+2. `launch_elf_app()` registers the native host symbols and the existing SD card
+   as the loader's read-only `/sd` VFS.
+3. `dlopen(path, RTLD_NOW)` validates, loads, relocates, and maps the ELF through
+   the ESP32-S3 PSRAM/cache/I-bus path.
+4. `dlsym(handle, "app_main")` resolves the required entry point.
+5. `app_main()` runs synchronously on the owning firmware task and calls only
+   explicitly exported, versioned host APIs.
+6. When `app_main()` returns, `dlclose()` unloads the module and releases loader
+   allocations. The firmware then restores renderer state and resumes the
+   calling activity or a queued firmware UI handoff.
 
-## Built-in native apps
+Only one ELF may run at a time. Nested or concurrent launches are rejected.
+Native apps are trusted native machine code, not isolated processes.
 
-Native application sources live under `Apps/` and are built by the existing
-release workflow. No separate app build workflow is required.
+### Host implementation map
 
-- `Apps/sd_list.c`: lists the SD root, marks directories, and pages through the
-  directory using the native directory API.
-- `Apps/app_store.c`: connects using Wi-Fi credentials already saved by the
-  firmware, lists `.elf` assets from this repository's latest GitHub release,
-  and installs the selected app into the SD card's `/Apps` folder.
+| Area | Source |
+| --- | --- |
+| Loader entry point | `lib/NativeApps/include/NativeAppLauncher.h`, `lib/NativeApps/src/NativeAppLauncher.c` |
+| SD VFS used by the ELF loader | `lib/NativeApps/src/SdVfs.cpp` |
+| Core UI/session host | `src/native/NativeAppHost.cpp` |
+| App manifest parser/rules | `src/native/AppManifest.cpp`, `lib/NativeApps/include/AppManifestRules.h` |
+| Storage and local-time services | `src/native/NativePlatformBridge.cpp` |
+| Firmware keyboard/Home handoff | `src/native/NativeSystemUiBridge.cpp` |
+| Settings bridge | `src/native/NativeSettingsBridge.cpp` |
+| Public native headers | `lib/NativeApps/include/T5AppApi.h`, `T5StorageApi.h`, `T5SystemApi.h`, `T5SystemUiApi.h` |
+| App build helpers | `scripts/build_native_app.py`, `scripts/build_all_apps.py`, `scripts/app_manifest.py` |
+| Shipped apps | `Apps/` |
 
-For an individual local build, use the same PlatformIO Xtensa S3 compiler as
-the firmware:
+The reader uses Arduino on ESP-IDF 4.4.x. `platformio.ini` enables the vendored
+Espressif `elf_loader` with S3 PSRAM allocation, shared-object loading, cache
+address routing, I-bus mapping, and libc symbol exports. There is no separate
+user patch step.
 
-```sh
-pio run -e t5s3-pro
-python scripts/build_native_app.py Apps/sd_list.c --output dist/sd_list.elf
-python scripts/build_native_app.py Apps/app_store.c --output dist/app_store.elf
+## Application package and manifest
+
+First-class installed apps use an ELF plus a JSON sidecar with the same basename:
+
+```text
+/Apps/
+  springboard.elf
+  springboard.json
+  app_store.elf
+  app_store.json
+  timecard.elf
+  timecard.json
 ```
 
-The script finds the compiler in PlatformIO's packages directory; use `--cc`
-or NATIVE_APP_CC to select it explicitly. Copy an `.elf` to `/Apps/` on the SD
-card and select it in Browse Files. Its VFS path is `/sd/Apps/<name>.elf`.
-`sd_list.elf` lists the SD root, pages forward with touch/Confirm/Down, restarts
-at the end, and exits through the normal Back/PWR/touch Home path.
+A shipped source has the same pairing in the repository:
 
-`app_store.elf` refreshes the latest release on startup. Up/Down changes the
-selected release asset, Confirm or touch downloads it, Right refreshes the
-catalog, and Back/PWR/touch Home exits. The native ELF never receives the saved
-Wi-Fi password or arbitrary HTTP/write primitives; connection, HTTPS, GitHub
-release parsing, filename validation, and the SD write remain firmware-owned.
-Downloads are constrained to safe `.elf` asset names under `/Apps`.
-
-Apps must be ELF32 little-endian Xtensa shared objects (ET_DYN), with a defined
-GLOBAL FUNC `app_main` in `.dynsym`. The script uses the toolchain's shared-object layout and CI validates the
-result against the Espressif section loader. A normal firmware flash/debug `.elf` is not an app.
-This framework does not load binaries compiled for desktop CPUs or RISC-V.
-
-## C API, ABI version 1
-
-Include `lib/NativeApps/include/T5AppApi.h` in the app and export:
-
-```c
-__attribute__((visibility("default"))) void app_main(void) {
-    const t5_app_api_v1 *api = t5_app_get_api(T5_APP_ABI_VERSION);
-    if (!api) return;
-    /* Check struct_size for any extension callbacks the app uses. */
-    /* Draw, poll input, and return when input.exit_requested is true. */
-}
+```text
+Apps/timecard.c
+Apps/timecard.json
 ```
 
-C++ entry points must use `extern "C"`; the provided build script builds C.
-The versioned table supplies screen size, clear/text/rectangle drawing,
-full/partial display refresh, milliseconds, cooperative input polling,
-read-only SD directory enumeration, and the constrained release-app catalog.
-Callbacks run only on the launching task, which exclusively owns the renderer.
-`poll` yields for 1–50 ms, updates input and feeds the watchdog. Back, PWR and
-touch Home set a sticky exit request; app code must respond by returning. Do
-not launch app work from the render task or call ActivityManager from an app.
-
-### Directory enumeration
-
-Directory enumeration uses the same `/sd` namespace as the loader. The current
-ABI permits one open directory per native app session:
-
-```c
-if (api->dir_open("/sd")) {
-    t5_app_dirent_t entry;
-    while (api->dir_next(&entry)) {
-        /* entry.name, entry.size and entry.is_directory */
-    }
-    api->dir_close();
-}
-```
-
-`dir_open` accepts `/sd` or paths below it, `dir_next` returns one immediate
-child at a time, and `dir_close` closes the iterator. The host also closes an
-outstanding directory automatically when the app returns. These callbacks are
-appended to the version-1 structure; apps that depend on them should check
-`struct_size` reaches `dir_close` before dereferencing the extension.
-
-### Latest-release app catalog
-
-The catalog extension is also append-only. A native app can request a refresh,
-inspect the cached `.elf` assets, and ask the host to install one:
-
-```c
-const size_t required =
-    offsetof(t5_app_api_v1, app_catalog_download) +
-    sizeof(api->app_catalog_download);
-
-if (api->struct_size >= required && api->app_catalog_refresh()) {
-    uint32_t count = api->app_catalog_count();
-    for (uint32_t i = 0; i < count; ++i) {
-        t5_app_release_asset_t asset;
-        if (api->app_catalog_get(i, &asset)) {
-            /* asset.name and asset.size */
-        }
-    }
-    /* api->app_catalog_download(selected_index); */
-}
-```
-
-`app_catalog_refresh` reconnects with firmware-saved Wi-Fi when necessary,
-queries `michaelrolphone-cmyk/T5S3-Reader` latest-release metadata, and caches
-only safe `.elf` assets. `app_catalog_download` uses the cached asset URL and
-writes only `/Apps/<asset-name>` on the SD card. Native code does not receive
-the credential or release URL. Existing version-1 binaries remain compatible
-because all extensions are appended after the original structure prefix and
-new apps detect them with `struct_size`.
-
-The explicit host API is resolved through Espressif's symbol registry. Only
-registered symbols and the enabled upstream libc exports are available;
-ordinary compiled-in C++ methods are not automatically dynamically exported.
-Keep C ABI structure layouts compatible. Do not retain the API pointer after
-return or invoke its callbacks from worker tasks.
-
-## Cleanup and limits
-
-The function blocks in the firmware main task. Normal main-loop services are
-paused while the app runs, and the rendering task waits on its lock. Native
-apps must cooperate with the provided poll API; a nonreturning app cannot be
-forcibly stopped safely by unloading its executable memory. Long computations
-must poll/yield frequently. Back/PWR cannot interrupt arbitrary native code.
-
-`dlclose` frees loader-owned allocations. Before returning, app code must free
-its own allocations, close files and stop/join all tasks, timers, DMA and
-callbacks that reference its image. The framework does not promise to recover
-from a native fault, assertion, exit(), task deletion or watchdog reset. Apps
-share firmware privileges and are trusted code, not isolated processes.
-
-The read-only VFS is intended for loading app images; it supports four open
-files and images from 52 bytes to 8 MiB. Native directory enumeration is a
-separate host callback over the existing HalStorage instance and does not
-relax the loader VFS's regular-file restrictions. The loader holds the file
-buffer plus the relocated image during loading. Actual maximum app size is
-lower than free PSRAM and depends on fragmentation and other reader allocations.
-Structural validation rejects incompatible/truncated headers, invalid
-symbol/section and relocation ranges; it is not a proof that instructions are
-safe.
-
-## Verification
-
-`test/run_native_app_test.sh` checks launcher errors, cleanup and recursive
-launch rejection. With an ELF argument it also checks the actual sample format
-and corrupted/truncated variants against the pre-relocation validator.
-
-Device acceptance remains necessary: launch/exit repeatedly, measure heap
-recovery, exercise missing/invalid apps and SD errors, confirm app touch/PWR
-exit, browser selection, display restoration and sleep timeout after return.
-For `sd_list.elf`, also verify root listing, paging, directory markers, an empty
-card/directory case, and return to the browser. For `app_store.elf`, verify
-reconnection using a saved network, release refresh, selection/paging, install
-to `/Apps`, overwrite behavior, download failure cleanup, and immediate launch
-of the downloaded ELF from Browse Files. Build success alone cannot establish
-PSRAM instruction execution on hardware.
-
-## Apps springboard and manifests (firmware 1.1.5)
-
-Home → **Apps** launches `/sd/Apps/springboard.elf`. The springboard is built
-from `Apps/springboard.c`; its grid, pagination, selection and touch/button
-navigation execute in the ELF. The firmware supplies discovery, drawing and a
-launch handoff. The springboard returns before the selected ELF loads, keeping
-only one ELF resident. When that app returns, the springboard reloads and rescans
-the SD card. Back leaves the springboard; Home/Power exit the Apps session.
-
-Copy `springboard.elf` and `springboard.json` from the same release into `/Apps`
-on SD. Copy every other ELF with its matching JSON sidecar there too. App Store
-now downloads both assets, validates the manifest and firmware floor, stages the
-pair, and rolls back failed replacements. It refuses assets without a matching
-manifest. Existing standalone ELFs remain usable from Browse Files; if a sidecar
-exists, its compatibility requirements are enforced there as well.
-
-Each shipped C source has a sibling JSON file, for example `Apps/settings.json`:
+Example manifest:
 
 ```json
 {
   "min_firmware_version": "1.1.5",
-  "display_name": "Settings",
-  "file_name": "settings.elf",
-  "icon": "solid:f013"
+  "display_name": "Timecard",
+  "file_name": "timecard.elf",
+  "icon": "solid:f017"
 }
 ```
 
-- The minimum is a numeric `major.minor.patch` firmware API floor. Development
-  and RC suffixes on the running firmware use their numeric base for this check.
-  The manifest floor does not accept suffixes. This is independent of ABI v1's
-  append-only struct-size check.
-- Display names are UTF-8, up to 95 bytes; long labels are truncated to tile width.
-- File names are plain basenames, up to 127 bytes, ending in `.elf`. They must
-  match the released ELF and the sidecar basename. Paths and `..` are rejected.
-- Icons use `solid:<hex-codepoint>` or `regular:<hex-codepoint>` from Font Awesome
-  Classic. This avoids a firmware-maintained list of icon names and supports any
-  glyph included in the installed font, including supplementary Unicode glyphs.
+Manifest rules are enforced by both the build tooling and firmware:
 
-The launcher lists up to 128 valid installed manifests, sorted by display name,
-excluding itself. Missing ELF files, malformed manifests and incomplete updates
-are omitted. Incompatible apps remain visible with an update notice but cannot
-launch. Installed JSON files are limited to 2 KiB.
+- `min_firmware_version` is numeric `major.minor.patch`. Each component is
+  0-65535. A running development/RC firmware may have a `-` or `+` suffix; the
+  manifest floor may not.
+- `display_name` is non-empty UTF-8 and must fit in 95 bytes plus its terminator.
+- `file_name` is a safe basename under 128 bytes, may contain letters, digits,
+  `_`, `-`, and `.`, must end in `.elf`, and may not contain `..` or path
+  separators. It must match the emitted release ELF basename.
+- `icon` is `solid:<hex-codepoint>` or `regular:<hex-codepoint>` using a valid
+  Font Awesome Classic Unicode scalar value.
+- Installed manifest files are limited to 2 KiB by the firmware parser.
 
-### Shared Font Awesome drawing
+The manifest firmware floor and the C ABI are independent compatibility layers.
+A manifest can prevent an obviously too-new app from launching, but code must
+still check the specific API table members it uses. Do not assume every field in
+a version-1 structure existed in the first firmware that exposed version 1.
 
-Install the existing `SD_fonts/FAClassicSolid` and `SD_fonts/FAClassicRegular`
-folders under `/.fonts/` or `/fonts/` on SD. For example:
-`/fonts/FAClassicSolid/FAClassicSolid_18.cpfont`.
+### Legacy loose ELFs
 
-Core UI code can call `FontAwesomeIcons::draw(renderer, x, y, "solid:f013", 18)`
-from `src/components/FontAwesomeIcons.h` while holding the normal render lock.
-The x/y origin is the glyph cell's top-left. Supported point sizes are 12, 14,
-16 and 18; other sizes round upward within that set and cap at 18. The optional
-black argument supports inverted buttons. Missing fonts/glyphs draw an outlined
-placeholder and return false. Icon caches are separate from the reader font;
-changing the reading font does not unregister them.
+Browse Files can still launch an ELF without a manifest. If a matching JSON
+sidecar is present, the firmware enforces it before launch. The Apps springboard,
+App Store, and tagged-release app workflow use ELF+JSON pairs and should be used
+for normal first-class applications.
 
-Native apps use the appended `draw_icon` and `draw_label` services after checking
-`struct_size`. The springboard uses the appended `installed_apps_*` functions
-and `request_app_launch(index)`, then immediately returns from `app_main`.
-These APIs retain the existing owner-task and render-lock requirements.
+## Building apps
 
-### Build and release
+Native apps must be compiled for Xtensa ESP32-S3, not the host CPU. Build the
+firmware once so PlatformIO installs the matching toolchain:
 
-`python scripts/build_all_apps.py` builds every `Apps/**/*.c` and validates its
-sibling JSON, output basename, icon and firmware floor. Nested names are flattened
-(`Apps/games/foo.c` → `games__foo.elf`, whose JSON must name that ELF); collisions
-fail the build. ELF and JSON pairs are staged together in `dist/apps/`.
+```sh
+pio run -e t5s3-pro
+```
 
-CI builds and validates every shipped app on both supported targets, and uploads
-the pairs with its firmware artifacts. The existing tagged release workflow runs
-the same builder and publishes both `.elf` and `.json` assets. No release is
-created merely by building this feature branch.
+Build one app:
 
-Host checks: `bash test/run_springboard_test.sh` covers firmware floors, path/icon
-validation, shipped manifests, touch selection, page navigation, incompatible
-apps and an empty SD app list. Hardware checks still need to cover font appearance,
-e-paper refresh, SD removal, launch/return cycles and Home/Back/Power gestures.
+```sh
+python scripts/build_native_app.py Apps/hello.c --output dist/hello.elf
+```
+
+If a sibling JSON exists, the helper validates it and copies it beside the ELF.
+Use `--require-manifest` when a manifest is mandatory:
+
+```sh
+python scripts/build_native_app.py Apps/hello.c \
+  --output dist/apps/hello.elf \
+  --require-manifest
+```
+
+The helper uses `xtensa-esp32s3-elf-gcc` with C11, PIC, S3 long calls,
+hidden-by-default symbols, `-nostdlib`, `-nostartfiles`, and shared-object output.
+It verifies that `.dynsym` contains a defined GLOBAL FUNC named `app_main`.
+
+Build and validate every shipped app exactly as CI/release does:
+
+```sh
+python scripts/build_all_apps.py
+```
+
+`build_all_apps.py` builds every `Apps/**/*.c`, requires and validates its
+sibling manifest, runs the native-loader test for the result, and stages the
+ELF+JSON pair under `dist/apps/`. Nested source paths are flattened for release
+assets:
+
+```text
+Apps/games/foo.c -> dist/apps/games__foo.elf
+Apps/games/foo.json must declare "file_name": "games__foo.elf"
+```
+
+Output-name collisions fail the build.
+
+## Entry point and API discovery
+
+Every app must export:
+
+```c
+__attribute__((visibility("default"))) void app_main(void)
+```
+
+C++ applications must export it with `extern "C"`.
+
+The loader explicitly registers four firmware service entry points:
+
+| Entry point | Version | Purpose |
+| --- | ---: | --- |
+| `t5_app_get_api()` | `T5_APP_ABI_VERSION == 1` | UI, input, directory listing, App Store/springboard, settings, icons |
+| `t5_storage_get_api()` | `T5_STORAGE_API_VERSION == 1` | SD file existence/read/atomic write/remove |
+| `t5_system_get_api()` | `T5_SYSTEM_API_VERSION == 1` | Firmware-local wall clock |
+| `t5_system_ui_get_api()` | `T5_SYSTEM_UI_API_VERSION == 1` | Firmware keyboard and Home navigation handoff |
+
+Only explicitly registered host symbols plus the enabled upstream libc exports
+are linkable. Firmware C++ internals are not automatically exported.
+
+### Forward-compatible member checks
+
+All service structures begin with a version and `struct_size`. New members are
+appended. Check only as far as the last member your app needs instead of
+requiring the current firmware's entire structure:
+
+```c
+#include <stddef.h>
+#include "T5AppApi.h"
+
+static bool has_draw_icon(const t5_app_api_v1 *api) {
+    const size_t required =
+        offsetof(t5_app_api_v1, draw_icon) + sizeof(api->draw_icon);
+    return api && api->struct_size >= required && api->draw_icon;
+}
+```
+
+Using `api->struct_size < sizeof(*api)` is acceptable only when an app deliberately
+requires every member known at its build revision. Per-feature `offsetof` checks
+provide better compatibility with older firmware.
+
+Do not retain any API pointer, callback, resolved symbol, or app-owned task past
+`app_main()` return. The ELF image can be unmapped immediately afterward.
+
+## `T5AppApi`: UI/session API
+
+Obtain the core API from the native application's owning task:
+
+```c
+const t5_app_api_v1 *app = t5_app_get_api(T5_APP_ABI_VERSION);
+if (!app) return;
+```
+
+`t5_app_get_api()` returns `NULL` for an unsupported ABI or outside the active
+native UI session.
+
+### Core drawing and input
+
+The stable prefix provides:
+
+| Member | Purpose |
+| --- | --- |
+| `screen_width`, `screen_height` | Current drawing surface dimensions |
+| `clear` | Clear the framebuffer |
+| `draw_text` | Draw firmware UI text |
+| `fill_rect` | Draw/erase a rectangle |
+| `present` | Push the frame using full or half refresh |
+| `poll` | Update input, yield, and feed the watchdog |
+| `millis` | Firmware millisecond counter |
+
+`t5_app_input_t` supplies button bits, a tap flag, touch coordinates, and a
+sticky `exit_requested` flag. Apps should normally call `poll()` every 20-50 ms.
+The host clamps the polling delay to 1-50 ms.
+
+By default Back, Power, and the touch Home gesture request exit. Power and Home
+remain unconditional exit/navigation gestures. Apps that need Back for internal
+navigation can call:
+
+```c
+app->set_back_exits_app(false);
+```
+
+The app then handles `T5_APP_BUTTON_BACK` itself and returns when its own top
+level is complete.
+
+### Read-only directory enumeration
+
+The core API exposes one native directory iterator per app session:
+
+```c
+if (app->dir_open("/sd/Books")) {
+    t5_app_dirent_t entry;
+    while (app->dir_next(&entry)) {
+        /* entry.name, entry.size, entry.is_directory */
+    }
+    app->dir_close();
+}
+```
+
+Paths use the `/sd` namespace. `dir_next()` returns immediate children only. The
+host closes an outstanding iterator automatically when the ELF returns.
+
+This directory interface is distinct from the ELF loader's read-only file VFS.
+Use `T5StorageApi` below when an app needs to persist its own data.
+
+### Latest-release App Store catalog
+
+The firmware owns GitHub networking, saved Wi-Fi credentials, release parsing,
+manifest validation, and writes into `/Apps`. A native app can operate the
+constrained catalog without receiving Wi-Fi passwords or arbitrary download
+URLs:
+
+```c
+if (app->app_catalog_refresh()) {
+    uint32_t count = app->app_catalog_count();
+    for (uint32_t i = 0; i < count; ++i) {
+        t5_app_release_asset_t asset = {0};
+        t5_app_manifest_t manifest = {0};
+        if (app->app_catalog_get(i, &asset)) {
+            /* asset.name, asset.size */
+        }
+        if (app->app_catalog_manifest_get &&
+            app->app_catalog_manifest_get(i, &manifest)) {
+            /* display_name, icon, firmware floor, compatible */
+        }
+    }
+}
+```
+
+`app_catalog_refresh()` connects with firmware-saved Wi-Fi if necessary, queries
+this repository's latest GitHub release, finds safe `.elf` assets with matching
+`.json` sidecars, downloads and validates those manifests, drops invalid pairs,
+and sorts the exposed catalog by manifest display name. The cache is capped at
+64 apps.
+
+`app_catalog_download(index)` re-fetches and validates the manifest, rejects an
+incompatible app, downloads the ELF, verifies the release size when supplied,
+and installs the pair under `/Apps`. Replacement is staged with `.part` files
+and recoverable `.bak` files so a failed update does not intentionally leave a
+half-updated ELF/manifest pair.
+
+`Apps/app_store.c` is the reference implementation. It uses
+`app_catalog_manifest_get()` to show display names, compatibility, and icons.
+
+### Installed-app discovery and launch handoff
+
+The springboard uses:
+
+- `installed_apps_refresh()`
+- `installed_apps_count()`
+- `installed_apps_get()`
+- `request_app_launch(index)`
+
+The host scans `/Apps` for valid manifest/ELF pairs, rejects incomplete backup
+states, excludes `springboard.elf` from its own list, caps the list at 128 apps,
+and sorts it by display name. Incompatible apps remain discoverable so the UI can
+show that a firmware update is required, but `request_app_launch()` rejects them.
+
+`request_app_launch()` does not recursively load another ELF. It queues the
+selected path and marks the current native session for exit. The caller must
+return from `app_main()` immediately. The host unloads the current ELF first,
+then starts the requested app. This one-ELF-at-a-time handoff is fundamental to
+the springboard lifecycle.
+
+### Shared Font Awesome and labels
+
+The append-only UI helpers are:
+
+```c
+bool draw_icon(int32_t x, int32_t y, const char *icon,
+               uint8_t point_size, bool black);
+void draw_label(int32_t x, int32_t y, int32_t width, const char *text);
+```
+
+`draw_label()` centers and truncates using the firmware UI font. `draw_icon()`
+parses the manifest icon codepoint and uses the firmware's shared Font Awesome
+renderer; see the Font Awesome section below.
+
+### Settings bridge
+
+The current `T5AppApi` also exposes the firmware settings model without exposing
+`CrossPointSettings` C++ internals:
+
+- `settings_category_count()` / `settings_category_get()`
+- `settings_count()` / `settings_get()`
+- `settings_activate()`
+- `settings_render()`
+- `settings_touch()`
+
+The stable category order is Display, Reader, Controls, System.
+`t5_app_setting_t` contains a translated label, current value text, and one of:
+
+- `T5_APP_SETTING_TOGGLE`
+- `T5_APP_SETTING_ENUM`
+- `T5_APP_SETTING_ACTION`
+- `T5_APP_SETTING_VALUE`
+- `T5_APP_SETTING_STRING`
+- `T5_APP_SETTING_TIMEZONE`
+
+`settings_activate()` returns `T5_APP_SETTING_UPDATED` for a simple setting that
+was changed and saved, `T5_APP_SETTING_ACTION_REQUESTED` when the firmware must
+open a complex activity, `T5_APP_SETTING_ERROR` on failure, or
+`T5_APP_SETTING_NO_CHANGE` when applicable.
+
+`settings_render()` and `settings_touch()` deliberately keep theme metrics,
+translations, firmware widgets, and touch hit-testing inside the firmware while
+the ELF owns high-level navigation. `Apps/settings.c` is the reference app.
+
+Complex settings actions use the same safe unload/resume pattern as the system
+keyboard: when `settings_activate()` reports `ACTION_REQUESTED`, the ELF returns;
+the host dispatches the firmware activity after the ELF has released renderer
+ownership, then relaunches the exact same ELF path when that activity finishes.
+
+## `T5StorageApi`: SD persistence
+
+Include `T5StorageApi.h` and request version 1:
+
+```c
+const t5_storage_api_v1 *storage =
+    t5_storage_get_api(T5_STORAGE_API_VERSION);
+if (!storage) return;
+```
+
+The API provides:
+
+| Member | Behavior |
+| --- | --- |
+| `exists(path)` | Test an SD path |
+| `read_file(path, buffer, capacity, &size)` | Read a complete file or query its size |
+| `write_file_atomic(path, data, size)` | Stage a complete replacement then rename it into place |
+| `remove_file(path)` | Remove a file; missing files are treated as already removed |
+
+Paths must be `/sd` or below `/sd/`. The bridge rejects backslashes, empty path
+segments, `.`/`..` segments, and trailing empty segments. The root itself cannot
+be replaced or removed.
+
+A two-pass read is supported:
+
+```c
+size_t size = 0;
+if (!storage->read_file("/sd/.crosspoint/example.json", NULL, 0, &size)) return;
+/* allocate size bytes */
+```
+
+On an undersized buffer, `read_file()` returns false while `size_out` still
+reports the full file length.
+
+`write_file_atomic()` creates missing parent directories through the firmware
+storage layer, writes a sibling `.part`, renames the prior destination to `.bak`
+when necessary, promotes the staged file, and restores the previous file if the
+promotion fails. The current implementation buffers the complete payload in RAM;
+it is not a streaming file API and should not be used as one.
+
+`Apps/timecard.c` is the reference consumer of the storage API.
+
+## `T5SystemApi`: local clock
+
+`T5SystemApi` intentionally exposes a small system primitive rather than libc or
+firmware clock internals:
+
+```c
+const t5_system_api_v1 *system_api =
+    t5_system_get_api(T5_SYSTEM_API_VERSION);
+
+t5_local_datetime_t now;
+if (system_api && system_api->local_datetime(&now)) {
+    /* year, month, day, hour, minute, second, weekday, yearday */
+}
+```
+
+The value is the firmware's timezone-adjusted local wall clock using the current
+reader timezone. Apps own their own calendar/business logic above this primitive.
+The call returns false when the firmware clock cannot provide a usable time.
+
+## `T5SystemUiApi`: firmware UI handoff
+
+`T5SystemUiApi` is separate from the core app ABI so reusable firmware widgets can
+evolve independently. It is available only during an active native UI session.
+
+### Keyboard request and resume
+
+A native app can request the normal firmware keyboard:
+
+```c
+const t5_system_ui_api_v1 *ui =
+    t5_system_ui_get_api(T5_SYSTEM_UI_API_VERSION);
+
+if (ui && ui->keyboard_request("Name", "", 64,
+                               T5_SYSTEM_KEYBOARD_TEXT, 1234)) {
+    return; /* required: unload before firmware opens the keyboard */
+}
+```
+
+The firmware records the exact current ELF path, unloads the ELF, opens
+`KeyboardEntryActivity`, and relaunches that same ELF when the keyboard closes.
+The relaunched app consumes the pending result:
+
+```c
+char text[65];
+bool cancelled = false;
+uint64_t cookie = 0;
+if (ui->keyboard_take_result(text, sizeof(text), &cancelled, &cookie)) {
+    /* result consumed; cookie is the value supplied with the request */
+}
+```
+
+Keyboard input types are text, password, and URL. `max_length == 0` preserves the
+firmware keyboard's unlimited-length behavior. A pending unread result prevents a
+new keyboard request from silently overwriting it. A successful take consumes the
+result.
+
+### Navigate Home
+
+`navigate_home()` queues a return to the firmware Home activity. Call it and then
+return from `app_main()`; do not continue drawing after requesting a firmware
+navigation handoff.
+
+## Apps springboard
+
+Home -> **Apps** runs `/sd/Apps/springboard.elf`; the springboard itself is not
+hard-coded into the firmware UI. `Apps/springboard.c` owns its grid geometry,
+pagination, selection, touch handling, and launch decisions.
+
+The firmware owns only discovery, manifest compatibility checks, shared drawing
+services, and the handoff to another ELF. The springboard returns before the
+selected app loads. When the selected app later returns, the firmware reloads the
+springboard and rescans `/Apps`. Power/Home leaves the Apps session; Back leaves
+the springboard according to its app logic.
+
+Copy `springboard.elf` and `springboard.json` from the same release to `/Apps`.
+For the normal springboard experience, copy every other app as a matching pair as
+well.
+
+## Font Awesome Classic icons
+
+The repository contains generated Font Awesome Classic SD fonts under:
+
+```text
+SD_fonts/FAClassicRegular/
+SD_fonts/FAClassicSolid/
+```
+
+The firmware searches these family directories at these roots:
+
+```text
+/.fonts/
+/fonts/
+/SD_fonts/
+/
+```
+
+For example, all of these layouts are supported:
+
+```text
+/fonts/FAClassicRegular/FAClassicRegular_18.cpfont
+/SD_fonts/FAClassicRegular/FAClassicRegular_18.cpfont
+/FAClassicRegular/FAClassicRegular_18.cpfont
+```
+
+Supported point sizes are 12, 14, 16, and 18. Requested sizes round upward within
+that set and cap at 18.
+
+The manifest syntax still accepts `solid:` and `regular:` for compatibility and
+validation, but the current shared renderer intentionally tries
+**FAClassicRegular first for every icon**, then falls back transparently to
+FAClassicSolid when the glyph is absent in Regular. A missing font or glyph draws
+an outlined placeholder and `draw_icon()` returns false.
+
+The Font Awesome caches are independent of the selected reading font, so changing
+the reader font does not unregister the icon fonts.
+
+Core firmware code can use the same renderer through
+`src/components/FontAwesomeIcons.h`.
+
+## App Store and tagged releases
+
+The tagged release workflow runs:
+
+```sh
+python scripts/build_all_apps.py
+```
+
+and publishes every staged `.elf` and `.json` from `dist/apps/` beside the
+firmware images. The App Store reads the latest release, requires matching
+manifest assets, validates compatibility before install, and installs the pair
+transactionally under `/Apps`.
+
+This pairing is part of the release contract. Do not publish a first-class app
+ELF without its sidecar manifest.
+
+## Loader and lifetime limits
+
+The loader VFS is read-only and intended for loading ELF images. It allows four
+open files and validates images from 52 bytes through 8 MiB. Actual usable app
+size is lower than free PSRAM because loading can temporarily require both the
+file buffer and relocated image and is affected by fragmentation and other
+firmware allocations.
+
+The native session is synchronous. Normal main-loop work is paused while the app
+runs, and renderer ownership is exclusive. Long work must continue to poll/yield.
+A non-returning app cannot be forcibly unloaded safely.
+
+Before returning, an app must stop/join its own tasks, timers, DMA, interrupts,
+and callbacks; close resources; and free app-owned allocations. Nothing may
+continue executing code or dereferencing data from the ELF after `dlclose()`.
+The framework does not promise recovery from native faults, assertions, `exit()`,
+app-created task deletion, or watchdog resets.
+
+The storage API and other host services are capabilities, not a sandbox. Native
+code can modify allowed SD paths and runs with firmware privilege. Install only
+trusted applications.
+
+## Verification
+
+Host tests:
+
+```sh
+bash test/run_native_app_test.sh
+bash test/run_springboard_test.sh
+```
+
+`run_native_app_test.sh <elf>` also validates an actual app image and malformed /
+truncated variants against the loader checks. `run_springboard_test.sh` covers
+manifest rules, firmware floors, installed-app discovery, touch/page behavior,
+incompatible apps, and App Store/springboard integration.
+
+CI additionally runs `python scripts/build_all_apps.py` for both supported board
+builds and publishes the staged app pairs as artifacts.
+
+Hardware acceptance is still required. Exercise repeated launch/unload cycles,
+heap recovery, invalid or incompatible manifests, SD removal, Home/Back/Power,
+touch, e-paper refreshes, App Store replacement/failure recovery, Font Awesome
+fallback, system keyboard resume, settings firmware-action resume, and persistent
+storage across app restarts.
+
+## Shipped reference apps
+
+The `Apps/` directory demonstrates the framework at increasing levels:
+
+| App | Demonstrates |
+| --- | --- |
+| `hello.c` | Minimal ABI acquisition, drawing, polling, exit |
+| `mahjong.c` | Larger interactive native UI |
+| `sd_list.c` | Native directory enumeration |
+| `app_store.c` | Firmware-owned release catalog, manifests, icons, paired install |
+| `springboard.c` | Installed-app discovery and one-ELF-at-a-time launch handoff |
+| `settings.c` | Back navigation, settings metadata/rendering, firmware action handoff |
+| `timecard.c` | Storage API, local-time API, firmware keyboard request/resume |
+
+For new first-class applications, start with the closest shipped native example
+rather than adding a built-in C++ Activity unless the feature specifically needs
+direct firmware integration that is not yet represented by a native host API.

@@ -15,7 +15,9 @@ mechanism. A workflow-dispatch tool is not required. Read docs/RELEASING.md and
    the matching new v-prefixed version, and commit_firmware=true (unless the user
    requests otherwise). Commit source changes before or together with the request.
 4. This file change automatically triggers Cut release. GitHub Actions builds
-   gh_release, commits the merged firmware, creates the tag, and publishes assets.
+   gh_release, builds all native ELF apps and manifests, commits the merged
+   firmware when requested, creates the tag, and publishes firmware plus paired
+   `.elf`/`.json` app assets.
 5. Monitor the push-triggered workflow run for the request commit, inspect failed
    job logs if necessary, and verify the published release and assets before
    reporting success. Provide the release URL. Do not require a manual external
@@ -37,9 +39,23 @@ versioned .bin is a USB image at 0x0 and must not be used for OTA/SD updates.
 
 ## Adding or extending apps
 
-Read [docs/ADDING_APPS.md](docs/ADDING_APPS.md) before adding an app. It traces
-Timecard and Ask through ActivityManager, Home menu routing, rendering, child
+For a first-class SD-installable application, read
+[docs/NATIVE_APPS.md](docs/NATIVE_APPS.md) first. Native apps under `Apps/` are
+now the preferred extension path when the required capability is available
+through the versioned ELF APIs. Each shipped app source has a sibling JSON
+manifest; use `scripts/build_all_apps.py` for release-equivalent validation.
+
+The native framework currently exposes separate versioned UI/session, storage,
+system-time, and system-UI service tables. It also supports installed-app
+manifests, the ELF springboard, App Store catalog/install services, shared Font
+Awesome rendering, settings integration, SD persistence, and firmware keyboard
+handoff/resume. Check the exact current headers and use append-only `struct_size`
+checks for the members an app requires.
+
+Use [docs/ADDING_APPS.md](docs/ADDING_APPS.md) when a feature genuinely needs to
+be compiled into the firmware as a C++ `Activity` or needs firmware internals not
+yet exposed through a native host API. That guide traces the built-in Timecard
+and Ask architecture through ActivityManager, Home routing, rendering, child
 dialogs, storage, networking, localization, and builds. Keep the Home count,
 labels, icons, and activation indices synchronized; use the documented lifecycle
-and render-lock rules. The guide distinguishes existing behavior from known
-limitations and optional improvements. Check current source before applying it.
+and render-lock rules. Check current source before applying either guide.
