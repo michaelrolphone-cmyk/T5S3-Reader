@@ -16,6 +16,7 @@ for pair in \
   "serial_monitor serial_monitor_test" \
   "battery battery_test" \
   "koreader_sync koreader_sync_test" \
+  "koreader_auth koreader_auth_test" \
   "opds_settings opds_settings_test" \
   "clear_cache clear_cache_test" \
   "ota_update ota_update_test" \
@@ -33,4 +34,4 @@ done
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" "$repo_dir/test/native_apps/image_api_stub.c" -o "$binary"
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
-echo 'Native app regression tests passed, including Manage Fonts, Font Family, Customize Status Bar, Remap Front Buttons, and Time Zone'
+echo 'Native app regression tests passed, including KOReader Authentication, Manage Fonts, Font Family, Customize Status Bar, Remap Front Buttons, and Time Zone'
