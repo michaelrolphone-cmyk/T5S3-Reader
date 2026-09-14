@@ -16,7 +16,8 @@ continues to list only `.bin` files. No change to Home menu indices is required.
   HalStorage/SdFat. It does not remount the card or create a second SD driver.
 - `src/native/NativeAppHost.cpp`: main-task display/input ownership, render and
   power locks, restoration, exit-gesture draining, fresh inactivity timeout,
-  and read-only directory enumeration for native apps.
+  read-only directory enumeration, and the firmware-owned release catalog for
+  native apps.
 - `lib/elf_loader`: pinned official Espressif 1.3.3 source with documented
   compatibility changes in `UPSTREAM.md`, included by PlatformIO.
 
@@ -32,10 +33,16 @@ The upstream dynamic interface currently accepts but ignores RTLD mode flags;
 this firmware passes RTLD_NOW and uses its eager relocation path. Absolute SD
 paths and dlsym executable addresses are fixed in the vendored integration.
 
-## Build an app
+## Built-in native apps
 
 Native application sources live under `Apps/` and are built by the existing
-release workflow. `Apps/sd_list.c` is the SD-card directory listing app.
+release workflow. No separate app build workflow is required.
+
+- `Apps/sd_list.c`: lists the SD root, marks directories, and pages through the
+  directory using the native directory API.
+- `Apps/app_store.c`: connects using Wi-Fi credentials already saved by the
+  firmware, lists `.elf` assets from this repository's latest GitHub release,
+  and installs the selected app into the SD card's `/Apps` folder.
 
 For an individual local build, use the same PlatformIO Xtensa S3 compiler as
 the firmware:
@@ -43,13 +50,21 @@ the firmware:
 ```sh
 pio run -e t5s3-pro
 python scripts/build_native_app.py Apps/sd_list.c --output dist/sd_list.elf
+python scripts/build_native_app.py Apps/app_store.c --output dist/app_store.elf
 ```
 
 The script finds the compiler in PlatformIO's packages directory; use `--cc`
-or NATIVE_APP_CC to select it explicitly. Copy an `.elf` to `/apps/` on the SD
-card and select it in Browse Files. Its VFS path is `/sd/apps/<name>.elf`.
+or NATIVE_APP_CC to select it explicitly. Copy an `.elf` to `/Apps/` on the SD
+card and select it in Browse Files. Its VFS path is `/sd/Apps/<name>.elf`.
 `sd_list.elf` lists the SD root, pages forward with touch/Confirm/Down, restarts
 at the end, and exits through the normal Back/PWR/touch Home path.
+
+`app_store.elf` refreshes the latest release on startup. Up/Down changes the
+selected release asset, Confirm or touch downloads it, Right refreshes the
+catalog, and Back/PWR/touch Home exits. The native ELF never receives the saved
+Wi-Fi password or arbitrary HTTP/write primitives; connection, HTTPS, GitHub
+release parsing, filename validation, and the SD write remain firmware-owned.
+Downloads are constrained to safe `.elf` asset names under `/Apps`.
 
 Apps must be ELF32 little-endian Xtensa shared objects (ET_DYN), with a defined
 GLOBAL FUNC `app_main` in `.dynsym`. The script uses the toolchain's shared-object layout and CI validates the
@@ -63,19 +78,22 @@ Include `lib/NativeApps/include/T5AppApi.h` in the app and export:
 ```c
 __attribute__((visibility("default"))) void app_main(void) {
     const t5_app_api_v1 *api = t5_app_get_api(T5_APP_ABI_VERSION);
-    if (!api || api->struct_size < sizeof(*api)) return;
+    if (!api) return;
+    /* Check struct_size for any extension callbacks the app uses. */
     /* Draw, poll input, and return when input.exit_requested is true. */
 }
 ```
 
 C++ entry points must use `extern "C"`; the provided build script builds C.
 The versioned table supplies screen size, clear/text/rectangle drawing,
-full/partial display refresh, milliseconds, cooperative input polling, and
-read-only SD directory enumeration. Callbacks run only on the launching task,
-which exclusively owns the renderer. `poll` yields for 1–50 ms, updates input
-and feeds the watchdog. Back, PWR and touch Home set a sticky exit request; app
-code must respond by returning. Do not launch app work from the render task or
-call ActivityManager from an app.
+full/partial display refresh, milliseconds, cooperative input polling,
+read-only SD directory enumeration, and the constrained release-app catalog.
+Callbacks run only on the launching task, which exclusively owns the renderer.
+`poll` yields for 1–50 ms, updates input and feeds the watchdog. Back, PWR and
+touch Home set a sticky exit request; app code must respond by returning. Do
+not launch app work from the render task or call ActivityManager from an app.
+
+### Directory enumeration
 
 Directory enumeration uses the same `/sd` namespace as the loader. The current
 ABI permits one open directory per native app session:
@@ -94,9 +112,37 @@ if (api->dir_open("/sd")) {
 child at a time, and `dir_close` closes the iterator. The host also closes an
 outstanding directory automatically when the app returns. These callbacks are
 appended to the version-1 structure; apps that depend on them should check
-`struct_size` reaches `dir_close` before dereferencing the extension. Existing
-version-1 binaries remain compatible because the original structure prefix is
-unchanged.
+`struct_size` reaches `dir_close` before dereferencing the extension.
+
+### Latest-release app catalog
+
+The catalog extension is also append-only. A native app can request a refresh,
+inspect the cached `.elf` assets, and ask the host to install one:
+
+```c
+const size_t required =
+    offsetof(t5_app_api_v1, app_catalog_download) +
+    sizeof(api->app_catalog_download);
+
+if (api->struct_size >= required && api->app_catalog_refresh()) {
+    uint32_t count = api->app_catalog_count();
+    for (uint32_t i = 0; i < count; ++i) {
+        t5_app_release_asset_t asset;
+        if (api->app_catalog_get(i, &asset)) {
+            /* asset.name and asset.size */
+        }
+    }
+    /* api->app_catalog_download(selected_index); */
+}
+```
+
+`app_catalog_refresh` reconnects with firmware-saved Wi-Fi when necessary,
+queries `michaelrolphone-cmyk/T5S3-Reader` latest-release metadata, and caches
+only safe `.elf` assets. `app_catalog_download` uses the cached asset URL and
+writes only `/Apps/<asset-name>` on the SD card. Native code does not receive
+the credential or release URL. Existing version-1 binaries remain compatible
+because all extensions are appended after the original structure prefix and
+new apps detect them with `struct_size`.
 
 The explicit host API is resolved through Espressif's symbol registry. Only
 registered symbols and the enabled upstream libc exports are available;
@@ -138,5 +184,8 @@ Device acceptance remains necessary: launch/exit repeatedly, measure heap
 recovery, exercise missing/invalid apps and SD errors, confirm app touch/PWR
 exit, browser selection, display restoration and sleep timeout after return.
 For `sd_list.elf`, also verify root listing, paging, directory markers, an empty
-card/directory case, and return to the browser. Build success alone cannot
-establish PSRAM instruction execution on hardware.
+card/directory case, and return to the browser. For `app_store.elf`, verify
+reconnection using a saved network, release refresh, selection/paging, install
+to `/Apps`, overwrite behavior, download failure cleanup, and immediate launch
+of the downloaded ELF from Browse Files. Build success alone cannot establish
+PSRAM instruction execution on hardware.
