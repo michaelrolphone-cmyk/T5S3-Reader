@@ -55,5 +55,8 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/Apps/language_settings.c" "$repo_dir/test/native_apps/language_settings_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/Apps/font_manager.c" "$repo_dir/test/native_apps/font_manager_test.c" -o "$binary"
+"$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
-echo 'Manifest, springboard, App Store, Timecard, Ask, File Browser, GPS, LoRa, Web Server, USB Serial, Battery, KOReader Sync, OPDS Servers, Clear Reading Cache, Firmware Update, SD Firmware Update, and Language native app tests passed'
+echo 'Manifest, springboard, App Store, Timecard, Ask, File Browser, GPS, LoRa, Web Server, USB Serial, Battery, KOReader Sync, OPDS Servers, Clear Reading Cache, Firmware Update, SD Firmware Update, Language, and Manage Fonts native app tests passed'
