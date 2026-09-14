@@ -15,7 +15,8 @@ continues to list only `.bin` files. No change to Home menu indices is required.
 - `SdVfs.cpp`: read-only `/sd` VFS over the existing mutex-protected
   HalStorage/SdFat. It does not remount the card or create a second SD driver.
 - `src/native/NativeAppHost.cpp`: main-task display/input ownership, render and
-  power locks, restoration, exit-gesture draining and fresh inactivity timeout.
+  power locks, restoration, exit-gesture draining, fresh inactivity timeout,
+  and read-only directory enumeration for native apps.
 - `lib/elf_loader`: pinned official Espressif 1.3.3 source with documented
   compatibility changes in `UPSTREAM.md`, included by PlatformIO.
 
@@ -38,13 +39,16 @@ Use the same PlatformIO Xtensa S3 compiler as the firmware:
 ```sh
 pio run -e t5s3-pro
 python scripts/build_native_app.py examples/native_apps/hello.c --output dist/hello.elf
+python scripts/build_native_app.py examples/native_apps/sd_list.c --output dist/sd_list.elf
 ```
 
 The script finds the compiler in PlatformIO's packages directory; use `--cc`
-or NATIVE_APP_CC to select it explicitly. Copy `hello.elf` to `/apps/hello.elf`
-on the SD card and select it in Browse Files. Its VFS path is
-`/sd/apps/hello.elf`. The example draws text, responds to touch and exits on
-Back/PWR/touch Home. CI builds and stages the sample with each firmware artifact.
+or NATIVE_APP_CC to select it explicitly. Copy an `.elf` to `/apps/` on the SD
+card and select it in Browse Files. Its VFS path is `/sd/apps/<name>.elf`.
+`hello.elf` draws text, responds to touch and exits on Back/PWR/touch Home.
+`sd_list.elf` lists the SD root, pages forward with touch/Confirm/Down, restarts
+at the end, and exits through the normal Back/PWR/touch Home path. CI builds and
+validates both examples with each firmware artifact.
 
 Apps must be ELF32 little-endian Xtensa shared objects (ET_DYN), with a defined
 GLOBAL FUNC `app_main` in `.dynsym`. The script uses the toolchain's shared-object layout and CI validates the
@@ -65,11 +69,33 @@ __attribute__((visibility("default"))) void app_main(void) {
 
 C++ entry points must use `extern "C"`; the provided build script builds C.
 The versioned table supplies screen size, clear/text/rectangle drawing,
-full/partial display refresh, milliseconds, and cooperative input polling.
-Callbacks run only on the launching task, which exclusively owns the renderer.
-`poll` yields for 1–50 ms, updates input and feeds the watchdog. Back, PWR and
-touch Home set a sticky exit request; app code must respond by returning.
-Do not launch app work from the render task or call ActivityManager from an app.
+full/partial display refresh, milliseconds, cooperative input polling, and
+read-only SD directory enumeration. Callbacks run only on the launching task,
+which exclusively owns the renderer. `poll` yields for 1–50 ms, updates input
+and feeds the watchdog. Back, PWR and touch Home set a sticky exit request; app
+code must respond by returning. Do not launch app work from the render task or
+call ActivityManager from an app.
+
+Directory enumeration uses the same `/sd` namespace as the loader. The current
+ABI permits one open directory per native app session:
+
+```c
+if (api->dir_open("/sd")) {
+    t5_app_dirent_t entry;
+    while (api->dir_next(&entry)) {
+        /* entry.name, entry.size and entry.is_directory */
+    }
+    api->dir_close();
+}
+```
+
+`dir_open` accepts `/sd` or paths below it, `dir_next` returns one immediate
+child at a time, and `dir_close` closes the iterator. The host also closes an
+outstanding directory automatically when the app returns. These callbacks are
+appended to the version-1 structure; apps that depend on them should check
+`struct_size` reaches `dir_close` before dereferencing the extension. Existing
+version-1 binaries remain compatible because the original structure prefix is
+unchanged.
 
 The explicit host API is resolved through Espressif's symbol registry. Only
 registered symbols and the enabled upstream libc exports are available;
@@ -92,20 +118,25 @@ from a native fault, assertion, exit(), task deletion or watchdog reset. Apps
 share firmware privileges and are trusted code, not isolated processes.
 
 The read-only VFS is intended for loading app images; it supports four open
-files and images from 52 bytes to 8 MiB. The loader holds the file buffer plus
-the relocated image during loading. Actual maximum app size is lower than free
-PSRAM and depends on fragmentation and other reader allocations. Structural
-validation rejects incompatible/truncated headers, invalid symbol/section and
-relocation ranges; it is not a proof that instructions are safe.
+files and images from 52 bytes to 8 MiB. Native directory enumeration is a
+separate host callback over the existing HalStorage instance and does not
+relax the loader VFS's regular-file restrictions. The loader holds the file
+buffer plus the relocated image during loading. Actual maximum app size is
+lower than free PSRAM and depends on fragmentation and other reader allocations.
+Structural validation rejects incompatible/truncated headers, invalid
+symbol/section and relocation ranges; it is not a proof that instructions are
+safe.
 
 ## Verification
 
 `test/run_native_app_test.sh` checks launcher errors, cleanup and recursive
 launch rejection. With an ELF argument it also checks the actual sample format
 and corrupted/truncated variants against the pre-relocation validator. CI builds
-both firmware boards and the sample app, then runs these tests.
+both firmware boards and both sample apps, then runs these tests.
 
 Device acceptance remains necessary: launch/exit repeatedly, measure heap
 recovery, exercise missing/invalid apps and SD errors, confirm app touch/PWR
 exit, browser selection, display restoration and sleep timeout after return.
-Build success alone cannot establish PSRAM instruction execution on hardware.
+For `sd_list.elf`, also verify root listing, paging, directory markers, an empty
+card/directory case, and return to the browser. Build success alone cannot
+establish PSRAM instruction execution on hardware.
