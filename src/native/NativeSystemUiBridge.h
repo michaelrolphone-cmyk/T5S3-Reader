@@ -11,3 +11,7 @@
 enum class NativeSystemUiNavigation { None, Keyboard, Wifi = Keyboard, Home };
 void nativeSystemUiBegin();
 NativeSystemUiNavigation nativeSystemUiTakeNavigation();
+
+// Internal bridge hook for other firmware-owned native-app services that push an
+// Activity and must let NativeAppHost unwind the current ELF before it runs.
+void nativeSystemUiMarkActivityPending();
