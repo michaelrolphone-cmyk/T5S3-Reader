@@ -28,6 +28,7 @@
 #include "T5StorageApi.h"
 #include "T5SystemApi.h"
 #include "T5SystemUiApi.h"
+#include "T5TimeZoneApi.h"
 #include "T5UiApi.h"
 #include "T5UsbApi.h"
 #include "T5WebServerApi.h"
@@ -78,6 +79,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_storage_get_api),
         ESP_ELFSYM_EXPORT(t5_system_get_api),
         ESP_ELFSYM_EXPORT(t5_system_ui_get_api),
+        ESP_ELFSYM_EXPORT(t5_time_zone_get_api),
         ESP_ELFSYM_EXPORT(t5_ui_get_api),
         ESP_ELFSYM_EXPORT(t5_network_get_api),
         ESP_ELFSYM_EXPORT(t5_file_browser_get_api),
