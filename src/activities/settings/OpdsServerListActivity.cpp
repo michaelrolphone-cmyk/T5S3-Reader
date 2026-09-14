@@ -5,39 +5,55 @@
 
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
-#include "OpdsSettingsActivity.h"
 #include "activities/ActivityManager.h"
 #include "activities/browser/OpdsBookBrowserActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "native/NativeAppHost.h"
 
 int OpdsServerListActivity::getItemCount() const {
   int count = static_cast<int>(OPDS_STORE.getCount());
-  // In settings mode, append a virtual "Add Server" item; in picker mode, only show real servers
-  if (!pickerMode) {
-    count++;
-  }
+  if (!pickerMode) count++;
   return count;
 }
 
 void OpdsServerListActivity::onEnter() {
   Activity::onEnter();
+  launchAttempted = false;
+  launchFailed = false;
 
-  // Reload from disk in case servers were added/removed by a subactivity or the web UI
-  OPDS_STORE.loadFromFile();
-  selectedIndex = 0;
+  if (pickerMode) {
+    OPDS_STORE.loadFromFile();
+    selectedIndex = 0;
+  }
   requestUpdate();
 }
 
 void OpdsServerListActivity::onExit() { Activity::onExit(); }
 
 void OpdsServerListActivity::loop() {
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-    if (pickerMode) {
-      activityManager.goHome();
-    } else {
+  if (!pickerMode) {
+    if (!launchAttempted) {
+      launchAttempted = true;
+      const esp_err_t result = runNativeApp("/sd/Apps/opds_settings.elf", renderer, mappedInput);
+      if (result == ESP_OK) {
+        finish();
+        return;
+      }
+      launchFailed = true;
+      requestUpdate();
+      return;
+    }
+
+    if (launchFailed && (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
+                         mappedInput.wasPressed(MappedInputManager::Button::Confirm))) {
       finish();
     }
+    return;
+  }
+
+  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    activityManager.goHome();
     return;
   }
 
@@ -61,51 +77,38 @@ void OpdsServerListActivity::loop() {
 }
 
 void OpdsServerListActivity::handleSelection() {
+  if (!pickerMode) return;
   const auto serverCount = static_cast<int>(OPDS_STORE.getCount());
-
-  if (pickerMode) {
-    // Picker mode: selecting a server navigates to the OPDS browser
-    if (selectedIndex < serverCount) {
-      const auto* server = OPDS_STORE.getServer(static_cast<size_t>(selectedIndex));
-      if (server) {
-        activityManager.replaceActivity(std::make_unique<OpdsBookBrowserActivity>(renderer, mappedInput, *server));
-      }
-    }
-    return;
-  }
-
-  // Settings mode: open editor for selected server, or create a new one
-  auto resultHandler = [this](const ActivityResult&) {
-    // Reload server list when returning from editor
-    OPDS_STORE.loadFromFile();
-    selectedIndex = 0;
-  };
-
   if (selectedIndex < serverCount) {
-    startActivityForResult(std::make_unique<OpdsSettingsActivity>(renderer, mappedInput, selectedIndex), resultHandler);
-  } else {
-    startActivityForResult(std::make_unique<OpdsSettingsActivity>(renderer, mappedInput, -1), resultHandler);
+    const auto* server = OPDS_STORE.getServer(static_cast<size_t>(selectedIndex));
+    if (server) {
+      activityManager.replaceActivity(std::make_unique<OpdsBookBrowserActivity>(renderer, mappedInput, *server));
+    }
   }
 }
 
-bool OpdsServerListActivity::onTouchTap(int16_t, int16_t y) {
+bool OpdsServerListActivity::onTouchTap(int16_t x, int16_t y) {
+  if (!pickerMode) {
+    if (!launchFailed) return true;
+    MappedInputManager::Button button = MappedInputManager::Button::Back;
+    if (!resolveTouchButtonHint(x, y, button)) return false;
+    if (button == MappedInputManager::Button::Back || button == MappedInputManager::Button::Confirm) finish();
+    return true;
+  }
+
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageHeight = renderer.getScreenHeight();
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing * 2;
   const int rowHeight = metrics.listWithSubtitleRowHeight;
   const int itemCount = getItemCount();
-  if (itemCount <= 0 || rowHeight <= 0 || y < contentTop || y >= contentTop + contentHeight) {
-    return false;
-  }
+  if (itemCount <= 0 || rowHeight <= 0 || y < contentTop || y >= contentTop + contentHeight) return false;
 
   const int pageItems = std::max(1, contentHeight / rowHeight);
   const int row = (y - contentTop) / rowHeight;
   const int pageStartIndex = (selectedIndex / pageItems) * pageItems;
   const int touchedIndex = pageStartIndex + row;
-  if (row < 0 || row >= pageItems || touchedIndex < 0 || touchedIndex >= itemCount) {
-    return false;
-  }
+  if (row < 0 || row >= pageItems || touchedIndex < 0 || touchedIndex >= itemCount) return false;
 
   selectedIndex = touchedIndex;
   handleSelection();
@@ -119,6 +122,21 @@ void OpdsServerListActivity::render(RenderLock&&) {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 
+  if (!pickerMode) {
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "OPDS Servers");
+    const int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing * 3;
+    if (launchFailed) {
+      renderer.drawCenteredText(UI_10_FONT_ID, y, "opds_settings.elf could not be launched");
+      renderer.drawCenteredText(SMALL_FONT_ID, y + 36, "Install OPDS Servers from the App Store or copy it to /Apps.");
+      const auto labels = mappedInput.mapLabels(tr(STR_BACK), "OK", "", "");
+      GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    } else {
+      renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, "Opening OPDS Servers...");
+    }
+    renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+    return;
+  }
+
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_OPDS_SERVERS));
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
@@ -130,9 +148,6 @@ void OpdsServerListActivity::render(RenderLock&&) {
   } else {
     const auto& servers = OPDS_STORE.getServers();
     const auto serverCount = static_cast<int>(servers.size());
-
-    // Primary label: server name (falling back to URL if unnamed).
-    // Secondary label: server URL (shown as subtitle when name is set).
     GUI.drawList(
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, itemCount, selectedIndex,
         [&servers, serverCount](int index) {
@@ -143,15 +158,12 @@ void OpdsServerListActivity::render(RenderLock&&) {
           return std::string(I18n::getInstance().get(StrId::STR_ADD_SERVER));
         },
         [&servers, serverCount](int index) {
-          if (index < serverCount && !servers[index].name.empty()) {
-            return servers[index].url;
-          }
+          if (index < serverCount && !servers[index].name.empty()) return servers[index].url;
           return std::string("");
         });
   }
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
   renderer.displayBuffer();
 }
