@@ -37,6 +37,17 @@ static char lower_ascii(char ch) {
     return ch >= 'A' && ch <= 'Z' ? (char)(ch + ('a' - 'A')) : ch;
 }
 
+static void copy_text(char *dst, size_t capacity, const char *src) {
+    size_t i = 0;
+    if (!dst || capacity == 0) return;
+    if (!src) src = "";
+    while (src[i] && i + 1 < capacity) {
+        dst[i] = src[i];
+        ++i;
+    }
+    dst[i] = 0;
+}
+
 static bool ends_with_ci(const char *value, const char *suffix) {
     size_t n = value ? strlen(value) : 0;
     size_t s = suffix ? strlen(suffix) : 0;
@@ -102,20 +113,34 @@ static void rebuild_ui_entries(void) {
 
 static void make_vfs_dir(char *out, size_t capacity) {
     if (!out || capacity == 0) return;
-    if (strcmp(base_path, "/") == 0) snprintf(out, capacity, "/sd");
-    else snprintf(out, capacity, "/sd%s", base_path);
+    if (strcmp(base_path, "/") == 0) copy_text(out, capacity, "/sd");
+    else {
+        copy_text(out, capacity, "/sd");
+        size_t used = strlen(out);
+        copy_text(out + used, capacity - used, base_path);
+    }
 }
 
 static void make_storage_path(const char *name, char *out, size_t capacity) {
     if (!out || capacity == 0) return;
-    if (strcmp(base_path, "/") == 0) snprintf(out, capacity, "/%s", name);
-    else snprintf(out, capacity, "%s/%s", base_path, name);
+    if (strcmp(base_path, "/") == 0) {
+        copy_text(out, capacity, "/");
+        copy_text(out + strlen(out), capacity - strlen(out), name);
+    } else {
+        copy_text(out, capacity, base_path);
+        size_t used = strlen(out);
+        copy_text(out + used, capacity - used, "/");
+        used = strlen(out);
+        copy_text(out + used, capacity - used, name);
+    }
 }
 
 static void make_vfs_path(const char *name, char *out, size_t capacity) {
     char storage_path[PATH_CAP];
     make_storage_path(name, storage_path, sizeof(storage_path));
-    snprintf(out, capacity, "/sd%s", storage_path);
+    copy_text(out, capacity, "/sd");
+    size_t used = strlen(out);
+    copy_text(out + used, capacity - used, storage_path);
 }
 
 static int32_t find_entry(const char *name) {
@@ -136,7 +161,7 @@ static bool load_files(const char *preserve_name) {
     while (entry_count < MAX_ENTRIES && app->dir_next(&item)) {
         if ((!show_hidden && item.name[0] == '.') || strcmp(item.name, "System Volume Information") == 0) continue;
         if (!item.is_directory && !supported_file(item.name)) continue;
-        snprintf(entries[entry_count].name, sizeof(entries[entry_count].name), "%s", item.name);
+        copy_text(entries[entry_count].name, sizeof(entries[entry_count].name), item.name);
         entries[entry_count].is_directory = item.is_directory != 0;
         ++entry_count;
     }
@@ -153,7 +178,7 @@ static void selected_name(char *out, size_t capacity) {
     if (!out || capacity == 0) return;
     out[0] = 0;
     if (entry_count && selected_index >= 0 && selected_index < (int32_t)entry_count)
-        snprintf(out, capacity, "%s", entries[selected_index].name);
+        copy_text(out, capacity, entries[selected_index].name);
 }
 
 static void save_session(void) {
@@ -178,8 +203,8 @@ static void load_session(void) {
     *line3++ = 0;
     char *line4 = strchr(line3, '\n');
     if (line4) *line4 = 0;
-    if (line1[0] == '/') snprintf(base_path, sizeof(base_path), "%s", line1);
-    snprintf(pending_delete_path, sizeof(pending_delete_path), "%s", line3);
+    if (line1[0] == '/') copy_text(base_path, sizeof(base_path), line1);
+    copy_text(pending_delete_path, sizeof(pending_delete_path), line3);
     load_files(line2);
 }
 
@@ -216,11 +241,11 @@ static bool go_up(void) {
     if (strcmp(base_path, "/") == 0) return false;
     char old_path[PATH_CAP];
     char child[T5_APP_DIRENT_NAME_MAX];
-    snprintf(old_path, sizeof(old_path), "%s", base_path);
+    copy_text(old_path, sizeof(old_path), base_path);
     char *last = strrchr(old_path, '/');
-    snprintf(child, sizeof(child), "%s", last ? last + 1 : old_path);
+    copy_text(child, sizeof(child), last ? last + 1 : old_path);
     char *slash = strrchr(base_path, '/');
-    if (!slash || slash == base_path) snprintf(base_path, sizeof(base_path), "/");
+    if (!slash || slash == base_path) copy_text(base_path, sizeof(base_path), "/");
     else *slash = 0;
     load_files(child);
     return true;
@@ -230,10 +255,14 @@ static bool open_selected(void) {
     if (!entry_count || selected_index < 0 || selected_index >= (int32_t)entry_count) return false;
     browser_entry_t *entry = &entries[selected_index];
     if (entry->is_directory) {
-        if (strcmp(base_path, "/") == 0) snprintf(base_path, sizeof(base_path), "/%s", entry->name);
-        else {
+        if (strcmp(base_path, "/") == 0) {
+            copy_text(base_path, sizeof(base_path), "/");
+            copy_text(base_path + 1, sizeof(base_path) - 1, entry->name);
+        } else {
             size_t used = strlen(base_path);
-            snprintf(base_path + used, sizeof(base_path) - used, "/%s", entry->name);
+            copy_text(base_path + used, sizeof(base_path) - used, "/");
+            used = strlen(base_path);
+            copy_text(base_path + used, sizeof(base_path) - used, entry->name);
         }
         selected_index = 0;
         status_text[0] = 0;
@@ -247,14 +276,14 @@ static bool open_selected(void) {
         save_session();
         if (browser->launch_elf_request(vfs_path, HANDOFF_COOKIE)) return true;
         clear_session();
-        snprintf(status_text, sizeof(status_text), "Native app failed");
+        copy_text(status_text, sizeof(status_text), "Native app failed");
         return false;
     }
     char document[PATH_CAP];
     make_storage_path(entry->name, document, sizeof(document));
     clear_session();
     if (browser->open_document(document)) return true;
-    snprintf(status_text, sizeof(status_text), "Unable to open file");
+    copy_text(status_text, sizeof(status_text), "Unable to open file");
     return false;
 }
 
@@ -275,7 +304,7 @@ static void consume_handoff_results(void) {
         const int32_t old_index = selected_index;
         if (confirmed && pending_delete_path[0]) {
             if (!browser->delete_document(pending_delete_path))
-                snprintf(status_text, sizeof(status_text), "Failed to delete file");
+                copy_text(status_text, sizeof(status_text), "Failed to delete file");
             else
                 status_text[0] = 0;
         }
@@ -314,7 +343,7 @@ void app_main(void) {
     pending_delete_path[0] = 0;
     entry_count = 0;
     selected_index = 0;
-    snprintf(base_path, sizeof(base_path), "/");
+    copy_text(base_path, sizeof(base_path), "/");
 
     load_files(NULL);
     load_session();
@@ -352,7 +381,7 @@ void app_main(void) {
                 redraw = true;
                 break;
             case T5_FILE_BROWSER_EVENT_ROOT:
-                snprintf(base_path, sizeof(base_path), "/");
+                copy_text(base_path, sizeof(base_path), "/");
                 selected_index = 0;
                 status_text[0] = 0;
                 load_files(NULL);
