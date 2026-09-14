@@ -45,14 +45,11 @@ static bool gps_read(t5_gps_state_t *state) {
     state->receiver_detected = 1;
     state->baud = 38400;
     state->satellites = 8;
-    state->hdop = 0.9f;
     if (reads >= 2) {
         state->status = T5_GPS_STATUS_FIX;
         state->fix_valid = 1;
         state->latitude = 43.6150187;
         state->longitude = -116.2023137;
-        state->altitude_m = 824.5f;
-        state->speed_kph = 2.5f;
         state->age_ms = 250;
     } else {
         state->status = T5_GPS_STATUS_SEARCHING;
@@ -73,10 +70,11 @@ const t5_gps_api_v1 *t5_gps_get_api(uint32_t version) {
 
 static void render_list(const t5_ui_chrome_t *chrome, const t5_ui_list_row_t *rows,
                         uint32_t row_count, int32_t selected_index) {
-    assert(chrome && rows && row_count == 7 && selected_index == 0);
+    assert(chrome && rows && row_count == 4 && selected_index == 0);
     assert(strcmp(chrome->title, "GPS") == 0);
     assert(strcmp(rows[1].title, "Latitude") == 0);
     assert(strcmp(rows[2].title, "Longitude") == 0);
+    assert(strcmp(rows[3].title, "Satellites") == 0);
     if (renders == 0) {
         assert(strcmp(rows[0].value, "Searching") == 0);
         assert(strcmp(rows[1].value, "--") == 0);
@@ -84,6 +82,7 @@ static void render_list(const t5_ui_chrome_t *chrome, const t5_ui_list_row_t *ro
         assert(strcmp(rows[0].value, "Fix") == 0);
         assert(strcmp(rows[1].value, "43.6150187") == 0);
         assert(strcmp(rows[2].value, "-116.2023137") == 0);
+        assert(strcmp(rows[3].value, "8") == 0);
     }
     ++renders;
 }
