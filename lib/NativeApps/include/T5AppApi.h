@@ -134,6 +134,10 @@ typedef struct {
     bool (*app_catalog_version_get)(uint32_t index, char *version, size_t capacity);
 } t5_app_api_v1;
 
+// Native application entry point. Native ELFs are built with -fvisibility=hidden,
+// so the ABI header explicitly keeps app_main discoverable through dlsym().
+__attribute__((visibility("default"))) void app_main(void);
+
 // This is the single versioned firmware symbol imported by native UI apps.
 // NULL means unsupported ABI or no active UI session. Do not call from workers.
 const t5_app_api_v1 *t5_app_get_api(uint32_t abi_version);

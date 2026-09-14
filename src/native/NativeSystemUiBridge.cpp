@@ -265,3 +265,7 @@ NativeSystemUiNavigation nativeSystemUiTakeNavigation() {
   navigation = NativeSystemUiNavigation::None;
   return value;
 }
+
+void nativeSystemUiMarkActivityPending() {
+  if (navigation == NativeSystemUiNavigation::None) navigation = NativeSystemUiNavigation::Keyboard;
+}
