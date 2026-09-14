@@ -32,16 +32,23 @@ bool ensureFont(bool regular, int size) {
 
   const char* family = familyName(regular);
   char path[128];
-  for (const char* root : {"/.fonts", "/fonts"}) {
+
+  // The project historically documents /.fonts, but some SD images and users
+  // have the hidden directory as /.font. Accept both spellings, plus the
+  // visible /fonts directory, so a missing icon face never silently degrades
+  // to the fallback rectangle solely because of the SD directory name.
+  static constexpr const char* kFontRoots[] = {"/.fonts", "/.font", "/fonts"};
+  for (const char* root : kFontRoots) {
     snprintf(path, sizeof(path), "%s/%s/%s_%d.cpfont", root, family, family, size);
     if (font->load(path)) {
+      LOG_DBG("FA", "Loaded %s size %d from %s", family, size, path);
       slot.font = std::move(font);
       slot.size = size;
       return true;
     }
   }
 
-  LOG_DBG("FA", "Unable to load %s size %d from /.fonts or /fonts", family, size);
+  LOG_ERR("FA", "Unable to load %s size %d from /.fonts, /.font, or /fonts", family, size);
   return false;
 }
 
@@ -127,16 +134,16 @@ bool draw(GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSi
   bool manifestRegular = false;
   uint32_t cp = 0;
   if (!t5_parse_icon(icon, &manifestRegular, &cp)) return false;
-  (void)manifestRegular;
 
   const int size = pointSize <= 12 ? 12 : pointSize <= 14 ? 14 : pointSize <= 16 ? 16 : 18;
 
-  // Springboard/core UI policy: prefer FAClassicRegular whenever that codepoint
-  // has a real rasterized glyph. Fall back to FAClassicSolid for Font Awesome
-  // icons that are only provided by the Solid face.
-  if (drawWithFamily(renderer, x, y, cp, size, true, black)) return true;
-  if (drawWithFamily(renderer, x, y, cp, size, false, black)) return true;
+  // Honor the manifest face first. This matters for glyphs whose regular and
+  // solid forms share a codepoint. If that face does not contain the glyph,
+  // fall back to the other face rather than drawing an empty placeholder.
+  if (drawWithFamily(renderer, x, y, cp, size, manifestRegular, black)) return true;
+  if (drawWithFamily(renderer, x, y, cp, size, !manifestRegular, black)) return true;
 
+  LOG_ERR("FA", "No Font Awesome glyph for '%s' (U+%04lX)", icon ? icon : "", static_cast<unsigned long>(cp));
   renderer.drawRect(x, y, size, size, black);
   return false;
 }
