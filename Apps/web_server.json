@@ -1,0 +1,7 @@
+{
+  "min_firmware_version": "1.1.16",
+  "version": "1.0.0",
+  "display_name": "Web Server",
+  "file_name": "web_server.elf",
+  "icon": "solid:f0ac"
+}
