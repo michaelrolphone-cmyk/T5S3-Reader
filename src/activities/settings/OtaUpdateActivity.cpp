@@ -2,12 +2,12 @@
 
 #include <GfxRenderer.h>
 #include <I18n.h>
-#include <WiFi.h>
 
 #include "MappedInputManager.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "runtime/network/NetworkService.h"
 #include "native/NativeAppHost.h"
 
 void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
@@ -26,17 +26,14 @@ void OtaUpdateActivity::onEnter() {
   state = WIFI_SELECTION;
   launchAttempted = false;
 
-  WiFi.mode(WIFI_STA);
+  RuntimeNetwork::wifi().stationMode();
   startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
 }
 
 void OtaUpdateActivity::onExit() {
   Activity::onExit();
-  WiFi.disconnect(false);
-  delay(100);
-  WiFi.mode(WIFI_OFF);
-  delay(100);
+  RuntimeNetwork::shutdown();
 }
 
 void OtaUpdateActivity::loop() {
