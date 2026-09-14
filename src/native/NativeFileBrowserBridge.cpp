@@ -2,6 +2,7 @@
 #include <T5FileBrowserApi.h>
 
 #include <Epub.h>
+#include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
 #include <HalStorage.h>
@@ -41,17 +42,8 @@ struct BrowserLayout {
   int rowCount = 0;
 };
 
-struct ConfirmationState {
-  bool available = false;
-  bool confirmed = false;
-  uint64_t cookie = 0;
-};
-
-struct LaunchState {
-  bool available = false;
-  int32_t error = 0;
-  uint64_t cookie = 0;
-};
+struct ConfirmationState { bool available = false; bool confirmed = false; uint64_t cookie = 0; };
+struct LaunchState { bool available = false; int32_t error = 0; uint64_t cookie = 0; };
 
 BrowserLayout layout;
 ConfirmationState confirmationState;
@@ -63,25 +55,10 @@ bool lockNextConfirmRelease = false;
 bool rootLongPressTriggered = false;
 
 bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
-
-GfxRenderer* gfx() {
-  if (!active()) return nullptr;
-  return &activityManager.nativeAppRenderer();
-}
-
-MappedInputManager* input() {
-  if (!active()) return nullptr;
-  return &activityManager.nativeAppInput();
-}
-
-bool validResumePath(const char* path) {
-  return path && std::strncmp(path, "/sd/", 4) == 0 && path[4] != '\0';
-}
-
-bool validStoragePath(const char* path) {
-  return path && path[0] == '/' && std::strncmp(path, "/sd/", 4) != 0;
-}
-
+GfxRenderer* gfx() { return active() ? &activityManager.nativeAppRenderer() : nullptr; }
+MappedInputManager* input() { return active() ? &activityManager.nativeAppInput() : nullptr; }
+bool validResumePath(const char* path) { return path && std::strncmp(path, "/sd/", 4) == 0 && path[4] != '\0'; }
+bool validStoragePath(const char* path) { return path && path[0] == '/' && std::strncmp(path, "/sd/", 4) != 0; }
 bool hasUnreadResult() { return confirmationState.available || launchState.available; }
 
 Rect rotatePortraitRectToCurrentOrientation(const Rect& rect, const GfxRenderer& r) {
@@ -108,7 +85,6 @@ std::string entryKey(const t5_file_browser_entry_t& entry) {
   if (entry.is_directory) value += "/";
   return value;
 }
-
 std::string displayName(const t5_file_browser_entry_t& entry) {
   std::string value = entry.name ? entry.name : "";
   if (entry.is_directory) {
@@ -118,7 +94,6 @@ std::string displayName(const t5_file_browser_entry_t& entry) {
   const auto pos = value.rfind('.');
   return pos == std::string::npos ? value : value.substr(0, pos);
 }
-
 std::string extension(const t5_file_browser_entry_t& entry) {
   if (entry.is_directory) return "";
   const std::string value = entry.name ? entry.name : "";
@@ -131,39 +106,31 @@ void renderBrowser(const char* pathValue, const char* statusValue, const t5_file
   auto* r = gfx();
   auto* in = input();
   if (!r || !in || (entryCount && !entries)) return;
-
   const std::string path = pathValue && pathValue[0] ? pathValue : "/";
   const std::string status = statusValue ? statusValue : "";
   const int selected = entryCount ? std::clamp(selectedIndex, 0, static_cast<int32_t>(entryCount) - 1) : 0;
-
   r->clearScreen();
   const auto pageWidth = r->getScreenWidth();
   const auto pageHeight = r->getScreenHeight();
   const auto& metrics = UITheme::getInstance().getMetrics();
-
   const std::string folderName = path == "/" ? std::string(tr(STR_SD_CARD)) : path.substr(path.rfind('/') + 1);
   const TextRole folderTitleRole = path == "/" ? TextRole::System : TextRole::UserContent;
   GUI.drawHeader(*r, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, folderName.c_str(), nullptr,
                  folderTitleRole);
-
   const int pathLineHeight = BaseTheme::getLineHeightForRole(*r, SMALL_FONT_ID, TextRole::UserContent);
   const int pathReserved = pathLineHeight + metrics.verticalSpacing;
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  const int contentHeight =
-      pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing - pathReserved;
+  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing - pathReserved;
   const int pageItems = std::max(1, contentHeight / std::max(1, metrics.listRowHeight));
   const int pageStart = entryCount ? (selected / pageItems) * pageItems : 0;
-
   if (entryCount == 0) {
     r->drawText(UI_10_FONT_ID, metrics.contentSidePadding, contentTop + 20, tr(STR_NO_FILES_FOUND));
   } else {
-    GUI.drawList(
-        *r, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(entryCount), selected,
-        [entries](int index) { return displayName(entries[index]); }, nullptr,
-        [entries](int index) { return UITheme::getFileIcon(entryKey(entries[index])); },
-        [entries](int index) { return extension(entries[index]); }, false, TextRole::UserContent);
+    GUI.drawList(*r, Rect{0, contentTop, pageWidth, contentHeight}, static_cast<int>(entryCount), selected,
+                 [entries](int i) { return displayName(entries[i]); }, nullptr,
+                 [entries](int i) { return UITheme::getFileIcon(entryKey(entries[i])); },
+                 [entries](int i) { return extension(entries[i]); }, false, TextRole::UserContent);
   }
-
   const int pathY = pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing - pathLineHeight;
   const int separatorY = pathY - metrics.verticalSpacing / 2;
   r->drawLine(0, separatorY, pageWidth - 1, separatorY, 3, true);
@@ -172,8 +139,7 @@ void renderBrowser(const char* pathValue, const char* statusValue, const t5_file
   const char* pathDisplay = pathStr;
   char leftTruncBuf[256];
   if (BaseTheme::getTextWidthForRole(*r, SMALL_FONT_ID, TextRole::UserContent, pathStr) > pathMaxWidth) {
-    const int ellipsisWidth =
-        BaseTheme::getTextWidthForRole(*r, SMALL_FONT_ID, TextRole::UserContent, UTF8_ELLIPSIS);
+    const int ellipsisWidth = BaseTheme::getTextWidthForRole(*r, SMALL_FONT_ID, TextRole::UserContent, UTF8_ELLIPSIS);
     const int available = pathMaxWidth - ellipsisWidth;
     const char* p = pathStr;
     while (*p) {
@@ -185,18 +151,12 @@ void renderBrowser(const char* pathValue, const char* statusValue, const t5_file
     pathDisplay = leftTruncBuf;
   }
   BaseTheme::drawTextForRole(*r, SMALL_FONT_ID, TextRole::UserContent, metrics.contentSidePadding, pathY, pathDisplay);
-
   const char* backLabel = path == "/" ? tr(STR_HOME) : tr(STR_BACK);
   const char* confirmLabel = entryCount ? tr(STR_OPEN) : "";
   const auto labels = in->mapLabels(backLabel, confirmLabel, entryCount ? tr(STR_DIR_UP) : "",
                                     entryCount ? tr(STR_DIR_DOWN) : "");
   GUI.drawButtonHints(*r, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
-  layout.rowTop = contentTop;
-  layout.rowHeight = metrics.listRowHeight;
-  layout.pageItems = pageItems;
-  layout.pageStart = pageStart;
-  layout.rowCount = static_cast<int>(entryCount);
+  layout = {contentTop, metrics.listRowHeight, pageItems, pageStart, static_cast<int>(entryCount)};
   r->displayBuffer(HalDisplay::BALANCED_REFRESH);
 }
 
@@ -221,14 +181,9 @@ bool pollBrowserEvent(t5_file_browser_event_t* event, uint32_t waitMs, bool atRo
   auto* r = gfx();
   auto* in = input();
   if (!core || !core->poll || !core->millis || !r || !in) return false;
-
   t5_app_input_t raw{};
   if (!core->poll(&raw, waitMs)) return false;
-  if (raw.exit_requested) {
-    event->type = T5_FILE_BROWSER_EVENT_EXIT;
-    return true;
-  }
-
+  if (raw.exit_requested) { event->type = T5_FILE_BROWSER_EVENT_EXIT; return true; }
   MappedInputManager::TouchPoint swipeStart{}, swipeEnd{};
   if (in->getTouchSwipe(swipeStart, swipeEnd, *r)) {
     const int vertical = static_cast<int>(swipeEnd.y) - swipeStart.y;
@@ -237,17 +192,13 @@ bool pollBrowserEvent(t5_file_browser_event_t* event, uint32_t waitMs, bool atRo
       return true;
     }
   }
-
   if (raw.tapped) {
     const auto bounds = GUI.getButtonHintTouchBounds(*r);
     for (size_t i = 0; i < bounds.size(); ++i) {
       const Rect oriented = rotatePortraitRectToCurrentOrientation(bounds[i], *r);
       if (!containsPoint(oriented, raw.touch_x, raw.touch_y)) continue;
       MappedInputManager::Button button;
-      if (in->resolveTouchFrontButton(i, button)) {
-        event->type = buttonEvent(button);
-        return true;
-      }
+      if (in->resolveTouchFrontButton(i, button)) { event->type = buttonEvent(button); return true; }
     }
     if (layout.rowHeight > 0 && raw.touch_y >= layout.rowTop) {
       const int local = (raw.touch_y - layout.rowTop) / layout.rowHeight;
@@ -261,50 +212,34 @@ bool pollBrowserEvent(t5_file_browser_event_t* event, uint32_t waitMs, bool atRo
       }
     }
   }
-
   using Button = MappedInputManager::Button;
   if (!atRoot && in->isPressed(Button::Back) && in->getHeldTime() >= LONG_PRESS_MS && !rootLongPressTriggered) {
-    rootLongPressTriggered = true;
-    event->type = T5_FILE_BROWSER_EVENT_ROOT;
-    return true;
+    rootLongPressTriggered = true; event->type = T5_FILE_BROWSER_EVENT_ROOT; return true;
   }
   if (in->wasReleased(Button::Back)) {
-    if (rootLongPressTriggered) {
-      rootLongPressTriggered = false;
-      return true;
-    }
-    event->type = T5_FILE_BROWSER_EVENT_BACK;
-    return true;
+    if (rootLongPressTriggered) { rootLongPressTriggered = false; return true; }
+    event->type = T5_FILE_BROWSER_EVENT_BACK; return true;
   }
-
-  if (in->wasPressed(Button::Confirm)) {
-    confirmPressedAt = core->millis();
-    confirmPressStarted = true;
-  }
+  if (in->wasPressed(Button::Confirm)) { confirmPressedAt = core->millis(); confirmPressStarted = true; }
   if (in->wasReleased(Button::Confirm)) {
     const unsigned long held = confirmPressStarted ? core->millis() - confirmPressedAt : in->getHeldTime();
     confirmPressStarted = false;
-    if (lockNextConfirmRelease) {
-      lockNextConfirmRelease = false;
-      return true;
-    }
+    if (lockNextConfirmRelease) { lockNextConfirmRelease = false; return true; }
     event->type = held >= LONG_PRESS_MS && !selectedIsDirectory ? T5_FILE_BROWSER_EVENT_DELETE
                                                                 : T5_FILE_BROWSER_EVENT_OPEN;
     return true;
   }
-
   if (!navigator) navigator = std::make_unique<ButtonNavigator>();
   uint8_t nav = T5_FILE_BROWSER_EVENT_NONE;
   navigator->onNextRelease([&nav] { nav = T5_FILE_BROWSER_EVENT_NEXT; });
-  if (nav == T5_FILE_BROWSER_EVENT_NONE)
-    navigator->onPreviousRelease([&nav] { nav = T5_FILE_BROWSER_EVENT_PREVIOUS; });
-  if (nav == T5_FILE_BROWSER_EVENT_NONE)
-    navigator->onNextContinuous([&nav] { nav = T5_FILE_BROWSER_EVENT_PAGE_NEXT; });
-  if (nav == T5_FILE_BROWSER_EVENT_NONE)
-    navigator->onPreviousContinuous([&nav] { nav = T5_FILE_BROWSER_EVENT_PAGE_PREVIOUS; });
+  if (nav == T5_FILE_BROWSER_EVENT_NONE) navigator->onPreviousRelease([&nav] { nav = T5_FILE_BROWSER_EVENT_PREVIOUS; });
+  if (nav == T5_FILE_BROWSER_EVENT_NONE) navigator->onNextContinuous([&nav] { nav = T5_FILE_BROWSER_EVENT_PAGE_NEXT; });
+  if (nav == T5_FILE_BROWSER_EVENT_NONE) navigator->onPreviousContinuous([&nav] { nav = T5_FILE_BROWSER_EVENT_PAGE_PREVIOUS; });
   event->type = nav;
   return true;
 }
+
+uint32_t pageItems() { return static_cast<uint32_t>(std::max(1, layout.pageItems)); }
 
 class NativeDeleteConfirmationActivity final : public Activity {
   std::string resumePath;
@@ -313,40 +248,33 @@ class NativeDeleteConfirmationActivity final : public Activity {
   bool started = false;
   bool childCompleted = false;
   bool resumeReturned = false;
-
  public:
   NativeDeleteConfirmationActivity(GfxRenderer& gfxRenderer, MappedInputManager& mappedInput, std::string resume,
                                    std::string entry, uint64_t requestCookie)
-      : Activity("NativeFileDelete", gfxRenderer, mappedInput),
-        resumePath(std::move(resume)), entryName(std::move(entry)), cookie(requestCookie) {}
-
+      : Activity("NativeFileDelete", gfxRenderer, mappedInput), resumePath(std::move(resume)),
+        entryName(std::move(entry)), cookie(requestCookie) {}
   void onEnter() override {
     Activity::onEnter();
     if (started) return;
     started = true;
     std::string heading = tr(STR_DELETE) + std::string("? ");
-    startActivityForResult(
-        std::make_unique<ConfirmationActivity>(renderer, mappedInput, heading, entryName),
-        [this](const ActivityResult& result) {
-          confirmationState.available = true;
-          confirmationState.confirmed = !result.isCancelled;
-          confirmationState.cookie = cookie;
-          childCompleted = true;
-        });
+    startActivityForResult(std::make_unique<ConfirmationActivity>(renderer, mappedInput, heading, entryName),
+                           [this](const ActivityResult& result) {
+                             confirmationState.available = true;
+                             confirmationState.confirmed = !result.isCancelled;
+                             confirmationState.cookie = cookie;
+                             childCompleted = true;
+                           });
   }
-
   void loop() override {
     if (resumeReturned) { finish(); return; }
     if (!childCompleted) return;
     childCompleted = false;
     if (resumePath.empty() || runNativeApp(resumePath.c_str(), renderer, mappedInput) != ESP_OK) {
-      confirmationState = {};
-      finish();
-      return;
+      confirmationState = {}; finish(); return;
     }
     resumeReturned = true;
   }
-
   void render(RenderLock&&) override {}
 };
 
@@ -356,13 +284,11 @@ class NativeChildElfActivity final : public Activity {
   uint64_t cookie;
   bool ranChild = false;
   bool resumeReturned = false;
-
  public:
   NativeChildElfActivity(GfxRenderer& gfxRenderer, MappedInputManager& mappedInput, std::string resume,
                          std::string child, uint64_t requestCookie)
       : Activity("NativeFileElf", gfxRenderer, mappedInput), resumePath(std::move(resume)),
         childPath(std::move(child)), cookie(requestCookie) {}
-
   void loop() override {
     if (resumeReturned) { finish(); return; }
     if (!ranChild) {
@@ -372,18 +298,14 @@ class NativeChildElfActivity final : public Activity {
       launchState.cookie = cookie;
     }
     if (resumePath.empty() || runNativeApp(resumePath.c_str(), renderer, mappedInput) != ESP_OK) {
-      launchState = {};
-      finish();
-      return;
+      launchState = {}; finish(); return;
     }
     resumeReturned = true;
   }
-
   void render(RenderLock&&) override {}
 };
 
 bool showHiddenFiles() { return SETTINGS.showHiddenFiles; }
-
 bool confirmDeleteRequest(const char* entryName, uint64_t cookie) {
   const char* currentPath = native_app_current_path();
   if (!validResumePath(currentPath) || !entryName || !entryName[0] || hasUnreadResult()) return false;
@@ -392,7 +314,6 @@ bool confirmDeleteRequest(const char* entryName, uint64_t cookie) {
   nativeSystemUiMarkActivityPending();
   return true;
 }
-
 bool confirmDeleteTakeResult(bool* confirmed, uint64_t* cookie) {
   if (!confirmationState.available) return false;
   if (confirmed) *confirmed = confirmationState.confirmed;
@@ -400,30 +321,25 @@ bool confirmDeleteTakeResult(bool* confirmed, uint64_t* cookie) {
   confirmationState = {};
   return true;
 }
-
 bool deleteDocument(const char* path) {
   if (!validStoragePath(path)) return false;
   if (FsHelpers::hasEpubExtension(path)) Epub(path, "/.crosspoint").clearCache();
   return Storage.remove(path);
 }
-
 bool openDocument(const char* path) {
   if (!validStoragePath(path) || hasUnreadResult()) return false;
   activityManager.goToReader(std::string(path));
   return true;
 }
-
 bool launchElfRequest(const char* sdVfsPath, uint64_t cookie) {
   const char* currentPath = native_app_current_path();
   if (!validResumePath(currentPath) || !validResumePath(sdVfsPath) || hasUnreadResult()) return false;
-  const size_t len = std::strlen(sdVfsPath);
-  if (len < 4 || strcasecmp(sdVfsPath + len - 4, ".elf") != 0) return false;
+  if (!FsHelpers::checkFileExtension(sdVfsPath, ".elf")) return false;
   activityManager.pushActivity(std::make_unique<NativeChildElfActivity>(
       renderer, mappedInputManager, std::string(currentPath), std::string(sdVfsPath), cookie));
   nativeSystemUiMarkActivityPending();
   return true;
 }
-
 bool launchElfTakeResult(int32_t* espError, uint64_t* cookie) {
   if (!launchState.available) return false;
   if (espError) *espError = launchState.error;
@@ -433,17 +349,9 @@ bool launchElfTakeResult(int32_t* espError, uint64_t* cookie) {
 }
 
 const t5_file_browser_api_v1 api = {
-    T5_FILE_BROWSER_API_VERSION,
-    sizeof(t5_file_browser_api_v1),
-    showHiddenFiles,
-    renderBrowser,
-    pollBrowserEvent,
-    confirmDeleteRequest,
-    confirmDeleteTakeResult,
-    deleteDocument,
-    openDocument,
-    launchElfRequest,
-    launchElfTakeResult,
+    T5_FILE_BROWSER_API_VERSION, sizeof(t5_file_browser_api_v1), showHiddenFiles, renderBrowser,
+    pollBrowserEvent, pageItems, confirmDeleteRequest, confirmDeleteTakeResult, deleteDocument,
+    openDocument, launchElfRequest, launchElfTakeResult,
 };
 }  // namespace
 
