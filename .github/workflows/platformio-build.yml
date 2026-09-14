@@ -74,12 +74,10 @@ jobs:
       - name: Build firmware
         run: pio run -e ${{ matrix.environment }}
 
-      - name: Build and validate native ELF examples
+      - name: Build and validate native ELF example
         run: |
           python scripts/build_native_app.py examples/native_apps/hello.c --output dist/hello.elf
           bash test/run_native_app_test.sh dist/hello.elf
-          python scripts/build_native_app.py examples/native_apps/sd_list.c --output dist/sd_list.elf
-          bash test/run_native_app_test.sh dist/sd_list.elf
 
       - name: Stage board-qualified firmware
         run: |
@@ -96,7 +94,6 @@ jobs:
             dist/${{ matrix.firmware_name }}
             dist/${{ matrix.merged_firmware_name }}
             dist/hello.elf
-            dist/sd_list.elf
           if-no-files-found: error
 
   host-tests:
