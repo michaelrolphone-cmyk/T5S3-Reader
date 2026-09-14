@@ -2,6 +2,7 @@
 
 #include <stdatomic.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 #include "sdkconfig.h"
 #include "esp_dlfcn.h"
@@ -55,6 +56,9 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_ui_get_api),
         ESP_ELFSYM_EXPORT(t5_network_get_api),
         ESP_ELFSYM_EXPORT(t5_file_browser_get_api),
+        // File Browser formats bounded session/error text. The vendored loader's
+        // default libc table exports printf, but does not export snprintf.
+        ESP_ELFSYM_EXPORT(snprintf),
         ESP_ELFSYM_END
     };
     const int registered = esp_elf_register_symbol(host_symbols);

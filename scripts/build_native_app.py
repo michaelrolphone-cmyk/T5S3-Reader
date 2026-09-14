@@ -6,6 +6,7 @@ import pathlib
 import shutil
 import subprocess
 from app_manifest import validate_manifest
+from native_app_symbols import firmware_exports, validate_imports
 
 repo = pathlib.Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
@@ -31,6 +32,7 @@ info = subprocess.check_output([readelf, '--dyn-syms', '--wide', str(args.output
 if not any('GLOBAL' in line and 'FUNC' in line and 'UND' not in line and line.split()[-1] == 'app_main'
            for line in info.splitlines() if line.strip()):
     raise SystemExit('The app must export void app_main(void) with default visibility')
+validate_imports(info, firmware_exports(repo))
 print(info)
 if manifest:
     shutil.copyfile(manifest, args.output.with_suffix('.json'))

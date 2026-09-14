@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 #include "NativeAppLauncher.h"
 #include "esp_dlfcn.h"
@@ -79,6 +80,14 @@ esp_err_t native_app_register_sd_vfs(void) { return ESP_OK; }
 int esp_elf_register_symbol(const struct esp_elfsym *s)
 {
     assert(s && s[0].sym && s[1].sym && s[2].sym && s[3].sym && s[4].sym && s[5].sym && s[6].sym);
+    // Exercise the actual registered pointer, including bounded output semantics.
+    const struct esp_elfsym *entry = s;
+    while (entry->name && strcmp(entry->name, "snprintf") != 0) ++entry;
+    assert(entry->name && entry->sym);
+    int (*format)(char *, size_t, const char *, ...) = entry->sym;
+    char text[8];
+    assert(format(text, sizeof(text), "%s %d", "test", 12345) == 10);
+    assert(strcmp(text, "test 12") == 0);
     return 0;
 }
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) { (void)version; return NULL; }
