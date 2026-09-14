@@ -23,6 +23,7 @@
 #include "T5OpdsApi.h"
 #include "T5OtaApi.h"
 #include "T5SdFirmwareApi.h"
+#include "T5StatusBarApi.h"
 #include "T5StorageApi.h"
 #include "T5SystemApi.h"
 #include "T5SystemUiApi.h"
@@ -71,6 +72,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_opds_get_api),
         ESP_ELFSYM_EXPORT(t5_ota_get_api),
         ESP_ELFSYM_EXPORT(t5_sd_firmware_get_api),
+        ESP_ELFSYM_EXPORT(t5_status_bar_get_api),
         ESP_ELFSYM_EXPORT(t5_storage_get_api),
         ESP_ELFSYM_EXPORT(t5_system_get_api),
         ESP_ELFSYM_EXPORT(t5_system_ui_get_api),
