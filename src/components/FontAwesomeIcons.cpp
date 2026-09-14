@@ -109,13 +109,12 @@ bool draw(GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSi
   bool manifestRegular = false;
   uint32_t cp = 0;
   if (!t5_parse_icon(icon, &manifestRegular, &cp)) return false;
+  (void)manifestRegular;  // Regular is intentionally preferred regardless of the manifest's legacy style prefix.
 
   const int size = pointSize <= 12 ? 12 : pointSize <= 14 ? 14 : pointSize <= 16 ? 16 : 18;
 
-  // Prefer FAClassicRegular for springboard/core UI icons as requested. Some
-  // Font Awesome glyphs exist only in Solid, so retain Solid as a transparent
-  // fallback. A manifest that explicitly says regular therefore behaves the
-  // same way, while solid manifests still benefit from the Regular-first policy.
+  // Prefer FAClassicRegular for springboard/core UI icons. Some Font Awesome
+  // glyphs exist only in Solid, so retain Solid as a transparent fallback.
   if (drawWithFamily(renderer, x, y, cp, size, true, black)) return true;
   if (drawWithFamily(renderer, x, y, cp, size, false, black)) return true;
 
