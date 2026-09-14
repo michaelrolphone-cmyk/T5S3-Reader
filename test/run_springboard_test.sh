@@ -46,5 +46,8 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/Apps/clear_cache.c" "$repo_dir/test/native_apps/clear_cache_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/Apps/ota_update.c" "$repo_dir/test/native_apps/ota_update_test.c" -o "$binary"
+"$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
-echo 'Manifest, springboard, App Store, Timecard, Ask, File Browser, GPS, LoRa, Web Server, USB Serial, Battery, KOReader Sync, OPDS Servers, and Clear Reading Cache native app tests passed'
+echo 'Manifest, springboard, App Store, Timecard, Ask, File Browser, GPS, LoRa, Web Server, USB Serial, Battery, KOReader Sync, OPDS Servers, Clear Reading Cache, and Firmware Update native app tests passed'
