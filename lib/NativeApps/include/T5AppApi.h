@@ -127,9 +127,10 @@ typedef struct {
     bool (*app_catalog_manifest_get)(uint32_t index, t5_app_manifest_t *manifest);
 
     // Append-only app version metadata. Versions are major.minor.patch strings from
-    // each app's JSON sidecar. Legacy installed manifests may return an empty string.
-    // Callers must check struct_size before accessing these members.
-    bool (*installed_app_version_get)(uint32_t index, char *version, size_t capacity);
+    // each app's JSON sidecar. Legacy installed manifests return an empty string.
+    // installed_app_version_get returns false only when that app is not installed or
+    // its sidecar is invalid. Callers must check struct_size before accessing these.
+    bool (*installed_app_version_get)(const char *file_name, char *version, size_t capacity);
     bool (*app_catalog_version_get)(uint32_t index, char *version, size_t capacity);
 } t5_app_api_v1;
 
