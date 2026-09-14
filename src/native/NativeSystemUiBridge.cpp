@@ -150,11 +150,14 @@ bool keyboardTakeResult(char* text, size_t capacity, bool* cancelled, uint64_t* 
   return true;
 }
 
+void navigateHome() { activityManager.goHome(); }
+
 const t5_system_ui_api_v1 api = {
     T5_SYSTEM_UI_API_VERSION,
     sizeof(t5_system_ui_api_v1),
     keyboardRequest,
     keyboardTakeResult,
+    navigateHome,
 };
 }  // namespace
 
