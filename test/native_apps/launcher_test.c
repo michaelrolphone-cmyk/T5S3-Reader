@@ -10,6 +10,7 @@
 #include "T5FileBrowserApi.h"
 #include "T5GpsApi.h"
 #include "T5ImageApi.h"
+#include "T5KOReaderApi.h"
 #include "T5LoRaApi.h"
 #include "T5NetworkApi.h"
 #include "T5StorageApi.h"
@@ -85,7 +86,7 @@ int main(void)
 esp_err_t native_app_register_sd_vfs(void) { return ESP_OK; }
 int esp_elf_register_symbol(const struct esp_elfsym *s)
 {
-    assert(s && s[0].sym && s[1].sym && s[2].sym && s[3].sym && s[4].sym && s[5].sym && s[6].sym && s[7].sym && s[8].sym && s[9].sym && s[10].sym && s[11].sym && s[12].sym);
+    assert(s && s[0].sym && s[1].sym && s[2].sym && s[3].sym && s[4].sym && s[5].sym && s[6].sym && s[7].sym && s[8].sym && s[9].sym && s[10].sym && s[11].sym && s[12].sym && s[13].sym);
     const struct esp_elfsym *entry = s;
     while (entry->name && strcmp(entry->name, "snprintf") != 0) ++entry;
     assert(entry->name && entry->sym);
@@ -100,6 +101,7 @@ const t5_battery_api_v1 *t5_battery_get_api(uint32_t version) { (void)version; r
 const t5_file_browser_api_v1 *t5_file_browser_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_gps_api_v1 *t5_gps_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_image_api_v1 *t5_image_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_koreader_api_v1 *t5_koreader_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_lora_api_v1 *t5_lora_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_network_api_v1 *t5_network_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_storage_api_v1 *t5_storage_get_api(uint32_t version) { (void)version; return NULL; }
