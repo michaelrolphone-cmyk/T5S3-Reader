@@ -55,7 +55,7 @@ void BatteryStatusActivity::render(RenderLock&&) {
   if (launchFailed) {
     renderer.drawCenteredText(UI_10_FONT_ID, y, "battery.elf could not be launched");
     renderer.drawCenteredText(SMALL_FONT_ID, y + 36, "Install Battery Status from the App Store or copy it to /Apps.");
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_OK), "", "");
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "OK", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, "Opening Battery Status...");
