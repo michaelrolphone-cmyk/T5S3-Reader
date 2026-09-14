@@ -16,6 +16,8 @@ extern "C" {
 #define T5_APP_ASSET_NAME_MAX 128u
 #define T5_APP_SETTING_LABEL_MAX 128u
 #define T5_APP_SETTING_VALUE_MAX 128u
+#define T5_APP_TIMECARD_PUNCH_COUNT 4u
+#define T5_APP_TIMECARD_STATUS_MAX 128u
 
 typedef struct {
     uint32_t buttons;
@@ -58,6 +60,39 @@ typedef struct {
     uint8_t type;
     uint8_t reserved[3];
 } t5_app_setting_t;
+
+typedef enum {
+    T5_APP_TIMECARD_WEEK_LIST = 0,
+    T5_APP_TIMECARD_WEEK = 1,
+    T5_APP_TIMECARD_DAY = 2,
+} t5_app_timecard_screen_t;
+
+typedef enum {
+    T5_APP_TIMECARD_CLOCK_IN = 0,
+    T5_APP_TIMECARD_LUNCH_START = 1,
+    T5_APP_TIMECARD_LUNCH_END = 2,
+    T5_APP_TIMECARD_CLOCK_OUT = 3,
+} t5_app_timecard_punch_t;
+
+typedef enum {
+    T5_APP_TIMECARD_TOUCH_NONE = 0,
+    T5_APP_TIMECARD_TOUCH_HEADER = 1,
+    T5_APP_TIMECARD_TOUCH_ITEM = 2,
+} t5_app_timecard_touch_result_t;
+
+typedef struct {
+    int32_t ymd;
+    int16_t punches[T5_APP_TIMECARD_PUNCH_COUNT];
+} t5_app_timecard_day_t;
+
+typedef struct {
+    uint8_t screen;
+    uint8_t reserved[3];
+    int32_t week_offset;
+    int32_t selected_index;
+    int32_t editing_ymd;
+    char status[T5_APP_TIMECARD_STATUS_MAX];
+} t5_app_timecard_resume_t;
 
 typedef struct {
     uint32_t abi_version;
@@ -103,6 +138,32 @@ typedef struct {
     // while the ELF owns navigation and setting activation.
     void (*settings_render)(uint32_t category, int32_t selected_index);
     uint8_t (*settings_touch)(int16_t x, int16_t y, uint32_t *category, int32_t *selected_index);
+
+    // Timecard access is backed directly by firmware TimecardStore. The ELF never
+    // parses or rewrites /.crosspoint/timecard.json itself, so the built-in firmware
+    // Timecard screen and timecard.elf always share exactly one data model and path.
+    void (*timecard_reload)(void);
+    int32_t (*timecard_today_ymd)(void);
+    int32_t (*timecard_current_minutes)(void);
+    int32_t (*timecard_sunday_ymd)(int32_t week_offset);
+    int32_t (*timecard_add_days)(int32_t ymd, int32_t days);
+    bool (*timecard_get_day)(int32_t ymd, t5_app_timecard_day_t *day);
+    bool (*timecard_set_punch)(int32_t ymd, uint8_t punch, int16_t minutes_from_midnight);
+    bool (*timecard_punch_label)(uint8_t punch, char *label, size_t capacity);
+    bool (*timecard_format_ampm)(int16_t minutes_from_midnight, char *text, size_t capacity);
+
+    // The page is rendered and hit-tested through the same firmware UITheme code as
+    // TimecardActivity. The ELF owns navigation state while firmware owns typography,
+    // dimensions, translations, and the shared TimecardStore.
+    void (*timecard_render)(uint8_t screen, int32_t week_offset, int32_t selected_index,
+                            int32_t editing_ymd, const char *status);
+    uint8_t (*timecard_touch)(uint8_t screen, int16_t x, int16_t y, int32_t *selected_index);
+
+    // Punch edits temporarily hand off to the existing firmware keyboard. The host
+    // resumes the same ELF afterwards and exposes the prior page/selection + status
+    // through timecard_take_resume().
+    bool (*timecard_request_edit)(int32_t ymd, uint8_t punch, int32_t week_offset);
+    bool (*timecard_take_resume)(t5_app_timecard_resume_t *resume);
 } t5_app_api_v1;
 
 // This is the single versioned firmware symbol imported by native UI apps.
