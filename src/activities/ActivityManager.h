@@ -53,7 +53,7 @@ class ActivityManager {
     assert(renderingMutex != nullptr && "Failed to create rendering mutex");
     stackActivities.reserve(10);
   }
-  ~ActivityManager() { assert(false); };
+  ~ActivityManager();
 
   void begin();
   void loop();
