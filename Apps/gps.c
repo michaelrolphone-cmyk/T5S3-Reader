@@ -3,6 +3,7 @@
 #include "T5UiApi.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -15,10 +16,18 @@ static char status_value[32];
 static char latitude_value[32];
 static char longitude_value[32];
 static char satellites_value[16];
-static char hdop_value[16];
-static char altitude_value[24];
-static char speed_value[24];
 static char footer[96];
+
+static void copy_text(char *dst, size_t capacity, const char *src) {
+    size_t i = 0;
+    if (!dst || capacity == 0) return;
+    if (!src) src = "";
+    while (src[i] && i + 1 < capacity) {
+        dst[i] = src[i];
+        ++i;
+    }
+    dst[i] = 0;
+}
 
 static const char *status_name(uint8_t status) {
     switch (status) {
@@ -30,28 +39,22 @@ static const char *status_name(uint8_t status) {
 }
 
 static void render(const t5_gps_state_t *state) {
-    snprintf(status_value, sizeof(status_value), "%s", status_name(state->status));
+    copy_text(status_value, sizeof(status_value), status_name(state->status));
     if (state->fix_valid) {
         snprintf(latitude_value, sizeof(latitude_value), "%.7f", state->latitude);
         snprintf(longitude_value, sizeof(longitude_value), "%.7f", state->longitude);
-        snprintf(altitude_value, sizeof(altitude_value), "%.1f m", (double)state->altitude_m);
-        snprintf(speed_value, sizeof(speed_value), "%.1f km/h", (double)state->speed_kph);
     } else {
-        snprintf(latitude_value, sizeof(latitude_value), "--");
-        snprintf(longitude_value, sizeof(longitude_value), "--");
-        snprintf(altitude_value, sizeof(altitude_value), "--");
-        snprintf(speed_value, sizeof(speed_value), "--");
+        copy_text(latitude_value, sizeof(latitude_value), "--");
+        copy_text(longitude_value, sizeof(longitude_value), "--");
     }
     snprintf(satellites_value, sizeof(satellites_value), "%u", (unsigned)state->satellites);
-    if (state->hdop >= 0.0f) snprintf(hdop_value, sizeof(hdop_value), "%.1f", (double)state->hdop);
-    else snprintf(hdop_value, sizeof(hdop_value), "--");
 
     if (state->status == T5_GPS_STATUS_UNSUPPORTED) {
-        snprintf(footer, sizeof(footer), "GPS hardware is not available on this board");
+        copy_text(footer, sizeof(footer), "GPS hardware is not available on this board");
     } else if (!state->receiver_detected) {
         snprintf(footer, sizeof(footer), "Probing receiver at %lu baud", (unsigned long)state->baud);
     } else if (!state->fix_valid) {
-        snprintf(footer, sizeof(footer), "Receiver detected; waiting for satellite fix");
+        copy_text(footer, sizeof(footer), "Receiver detected; waiting for satellite fix");
     } else {
         snprintf(footer, sizeof(footer), "Fix age %lu ms | %lu baud", (unsigned long)state->age_ms,
                  (unsigned long)state->baud);
@@ -71,9 +74,6 @@ static void render(const t5_gps_state_t *state) {
         {.title = "Latitude", .subtitle = NULL, .value = latitude_value, .flags = T5_UI_LIST_HIGHLIGHT_VALUE},
         {.title = "Longitude", .subtitle = NULL, .value = longitude_value, .flags = T5_UI_LIST_HIGHLIGHT_VALUE},
         {.title = "Satellites", .subtitle = NULL, .value = satellites_value, .flags = 0},
-        {.title = "HDOP", .subtitle = NULL, .value = hdop_value, .flags = 0},
-        {.title = "Altitude", .subtitle = NULL, .value = altitude_value, .flags = 0},
-        {.title = "Speed", .subtitle = NULL, .value = speed_value, .flags = 0},
     };
     ui->render_list(&chrome, rows, (uint32_t)(sizeof(rows) / sizeof(rows[0])), 0);
 }
