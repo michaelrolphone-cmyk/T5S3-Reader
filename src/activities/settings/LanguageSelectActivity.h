@@ -1,18 +1,12 @@
 #pragma once
 
-#include <GfxRenderer.h>
-#include <I18n.h>
-
-#include <functional>
-
 #include "../Activity.h"
-#include "components/UITheme.h"
-#include "util/ButtonNavigator.h"
 
 class MappedInputManager;
 
 /**
- * Activity for selecting UI language
+ * Settings wrapper for the native Language app. Locale application and
+ * persistence remain firmware-owned behind T5LanguageApi.
  */
 class LanguageSelectActivity final : public Activity {
  public:
@@ -20,16 +14,11 @@ class LanguageSelectActivity final : public Activity {
       : Activity("LanguageSelect", renderer, mappedInput) {}
 
   void onEnter() override;
-  void onExit() override;
   void loop() override;
   bool onTouchTap(int16_t x, int16_t y) override;
   void render(RenderLock&&) override;
 
  private:
-  void handleSelection();
-
-  void onBack() { finish(); }
-  ButtonNavigator buttonNavigator;
-  int selectedIndex = 0;
-  constexpr static uint8_t totalItems = getLanguageCount();
+  bool launchAttempted = false;
+  bool launchFailed = false;
 };
