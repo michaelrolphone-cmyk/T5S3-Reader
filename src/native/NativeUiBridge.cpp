@@ -119,7 +119,10 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
                highlightValue);
   drawChrome(*r, *in, chrome);
 
-  const int rowHeight = hasSubtitle ? BaseMetrics::values.listWithSubtitleRowHeight : BaseMetrics::values.listRowHeight;
+  // Match the active theme's drawList row geometry exactly. Lyra uses different
+  // list heights from the Base/Rounded themes, so hit-testing must not assume
+  // BaseMetrics even though all themes share the same logical list API.
+  const int rowHeight = hasSubtitle ? metrics.listWithSubtitleRowHeight : metrics.listRowHeight;
   const int pageItems = std::max(1, content.height / std::max(1, rowHeight));
   const int selected = rowCount ? std::clamp(selectedIndex, 0, static_cast<int32_t>(rowCount) - 1) : 0;
   hitLayout.headerBottom = metrics.topPadding + metrics.headerHeight;
