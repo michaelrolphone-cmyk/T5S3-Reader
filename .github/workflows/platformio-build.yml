@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/platformio-build.yml"
       - "Apps/**"
+      - "SD_fonts/FAClassic*/**"
       - "src/**"
       - "lib/**"
       - "scripts/**"
@@ -19,6 +20,7 @@ on:
     paths:
       - ".github/workflows/platformio-build.yml"
       - "Apps/**"
+      - "SD_fonts/FAClassic*/**"
       - "src/**"
       - "lib/**"
       - "scripts/**"
@@ -129,3 +131,6 @@ jobs:
 
       - name: Run app manifest and springboard tests
         run: bash test/run_springboard_test.sh
+
+      - name: Run Font Awesome tests with shipped SD fonts
+        run: bash test/run_fontawesome_test.sh

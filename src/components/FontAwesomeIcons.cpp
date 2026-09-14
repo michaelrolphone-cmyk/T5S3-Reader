@@ -106,8 +106,11 @@ bool drawWithFamily(GfxRenderer& renderer, int x, int y, uint32_t cp, int size, 
   char utf8[5];
   encodeUtf8(cp, utf8);
 
-  if (slot.font->prewarm(utf8, 1) != 0) {
-    LOG_DBG("FA", "%s has no glyph U+%04lX", familyName(regular), static_cast<unsigned long>(cp));
+  // prewarm also requests U+FFFD, which Font Awesome intentionally omits.
+  // Positive miss counts can therefore accompany a successfully loaded icon.
+  // Check the requested glyph below; only negative results are fatal here.
+  if (slot.font->prewarm(utf8, 1) < 0) {
+    LOG_DBG("FA", "%s failed to prepare U+%04lX", familyName(regular), static_cast<unsigned long>(cp));
     return false;
   }
 
