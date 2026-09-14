@@ -1,0 +1,7 @@
+{
+  "min_firmware_version": "1.1.24",
+  "version": "1.0.0",
+  "display_name": "Language",
+  "file_name": "language_settings.elf",
+  "icon": "solid:f1ab"
+}
