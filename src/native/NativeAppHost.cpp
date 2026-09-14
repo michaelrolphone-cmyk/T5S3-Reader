@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 #include "MappedInputManager.h"
+#include "NativeSettingsBridge.h"
 #include "WifiCredentialStore.h"
 #include "activities/RenderLock.h"
 #include "fontIds.h"
@@ -37,6 +38,7 @@ struct Session {
   TaskHandle_t owner;
   HalFile directory;
   std::vector<CatalogAsset> catalog;
+  bool backExitsApp = true;
   bool exiting = false;
 };
 Session* session = nullptr;
@@ -58,6 +60,9 @@ void present(bool full) {
     esp_task_wdt_reset();
   }
 }
+void setBackExitsApp(bool enabled) {
+  if (auto* s = current()) s->backExitsApp = enabled;
+}
 bool poll(t5_app_input_t* out, uint32_t waitMs) {
   auto* s = current();
   if (!s || !out) return false;
@@ -73,7 +78,8 @@ bool poll(t5_app_input_t* out, uint32_t waitMs) {
   MappedInputManager::TouchPoint point{};
   out->tapped = s->input.wasTouchTapped(point, s->renderer);
   if (out->tapped) { out->touch_x = point.x; out->touch_y = point.y; }
-  if (s->input.isPressed(Button::Back) || s->input.isPressed(Button::Power) || s->input.wasTouchHomeButtonPressed()) {
+  if ((s->backExitsApp && s->input.isPressed(Button::Back)) || s->input.isPressed(Button::Power) ||
+      s->input.wasTouchHomeButtonPressed()) {
     s->exiting = true;
   }
   out->exit_requested = s->exiting;
@@ -322,7 +328,6 @@ bool appCatalogDownload(uint32_t index) {
   const std::string temporary = destination + ".part";
   const std::string backup = destination + ".bak";
 
-  // Recover a prior install interrupted after the old ELF was moved aside.
   if (Storage.exists(backup.c_str())) {
     if (!Storage.exists(destination.c_str())) {
       if (!Storage.rename(backup.c_str(), destination.c_str())) return false;
@@ -332,8 +337,6 @@ bool appCatalogDownload(uint32_t index) {
   }
   if (Storage.exists(temporary.c_str())) Storage.remove(temporary.c_str());
 
-  // Never write directly over an installed app. A failed HTTP transfer leaves
-  // the previous ELF untouched, and a failed final rename restores it.
   esp_task_wdt_reset();
   const auto result = HttpDownloader::downloadToFile(asset.url, temporary, [](size_t, size_t) {
     esp_task_wdt_reset();
@@ -344,8 +347,6 @@ bool appCatalogDownload(uint32_t index) {
     return false;
   }
 
-  // GitHub release metadata includes the asset byte count. Verify the staged
-  // file before replacing an installed copy when that value is available.
   if (asset.size > 0) {
     HalFile staged = Storage.open(temporary.c_str(), O_RDONLY);
     const bool sizeOk = staged.isOpen() && staged.fileSize64() == asset.size;
@@ -388,7 +389,15 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            appCatalogRefresh,
                            appCatalogCount,
                            appCatalogGet,
-                           appCatalogDownload};
+                           appCatalogDownload,
+                           setBackExitsApp,
+                           nativeSettingsCategoryCount,
+                           nativeSettingsCategoryGet,
+                           nativeSettingsCount,
+                           nativeSettingsGet,
+                           nativeSettingsActivate,
+                           nativeSettingsRender,
+                           nativeSettingsTouch};
 }  // namespace
 
 extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
@@ -396,7 +405,6 @@ extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
 }
 
 esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManager& input) {
-  // Render task must not paint the browser over native app output.
   if (session) return ESP_ERR_INVALID_STATE;
   HalPowerManager::Lock powerLock;
   RenderLock lock;
@@ -407,15 +415,16 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   input.update();
   Session active{renderer, input, xTaskGetCurrentTaskHandle()};
   session = &active;
+  nativeSettingsBegin(renderer, input);
   esp_task_wdt_reset();
   const esp_err_t result = launch_elf_app(path);
   if (active.directory.isOpen()) active.directory.close();
   active.catalog.clear();
   session = nullptr;
+  nativeSettingsEnd();
   renderer.setOrientation(orientation);
   renderer.setRenderMode(mode);
   renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
-  // Consume the exit gesture before returning control to the browser.
   unsigned long quiet = millis();
   do {
     input.update();
@@ -427,6 +436,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     delay(10);
   } while (millis() - quiet < 350);
   input.clearInjectedButtonTap();
+  nativeSettingsDispatchPendingAction(renderer, input, path);
   returned = true;
   return result;
 }
