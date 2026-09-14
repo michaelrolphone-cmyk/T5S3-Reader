@@ -23,5 +23,6 @@ uint8_t nativeSettingsTouch(int16_t x, int16_t y, uint32_t* category, int32_t* s
 
 // Complex settings screens remain firmware activities during migration. An
 // ELF action requests one of them, then returns; the host dispatches it after
-// the ELF loader has released framebuffer ownership.
-void nativeSettingsDispatchPendingAction(GfxRenderer& renderer, MappedInputManager& input);
+// the ELF loader has released framebuffer ownership. The wrapper resumes the
+// same ELF path after the firmware sub-screen closes.
+void nativeSettingsDispatchPendingAction(GfxRenderer& renderer, MappedInputManager& input, const char* resumePath);
