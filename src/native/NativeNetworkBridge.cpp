@@ -1,7 +1,6 @@
 #include <T5AppApi.h>
 #include <T5NetworkApi.h>
 
-#include <WiFi.h>
 #include <esp_http_client.h>
 #include <esp_task_wdt.h>
 #include <esp_wifi.h>
@@ -9,6 +8,8 @@
 #include <algorithm>
 #include <climits>
 #include <cstring>
+
+#include "runtime/network/NetworkService.h"
 
 namespace {
 constexpr uint32_t kMaxHeaders = 16;
@@ -45,7 +46,7 @@ esp_err_t onHttpEvent(esp_http_client_event_t* event) {
   return ESP_OK;
 }
 
-bool wifiConnected() { return WiFi.status() == WL_CONNECTED; }
+bool wifiConnected() { return RuntimeNetwork::connected(); }
 
 bool httpRequest(const char* url, uint8_t method, const t5_http_header_t* headers, uint32_t headerCount,
                  const void* body, size_t bodySize, const char* certPem, uint32_t timeoutMs, char* response,

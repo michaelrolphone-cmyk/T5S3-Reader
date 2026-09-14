@@ -124,6 +124,9 @@ jobs:
       - name: Run desk clock minute alignment tests
         run: bash test/run_desk_clock_test.sh
 
+      - name: Run runtime network provider tests
+        run: bash test/run_runtime_network_test.sh
+
       - name: Run native app launcher tests
         run: bash test/run_native_app_test.sh
 

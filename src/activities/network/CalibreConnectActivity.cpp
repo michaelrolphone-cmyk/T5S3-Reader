@@ -3,13 +3,13 @@
 #include <ESPmDNS.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
-#include <WiFi.h>
 #include <esp_task_wdt.h>
 
 #include "MappedInputManager.h"
 #include "WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "runtime/network/NetworkService.h"
 
 namespace {
 constexpr const char* HOSTNAME = "crosspoint";
@@ -31,7 +31,7 @@ void CalibreConnectActivity::onEnter() {
   lastProcessedCompleteAt = 0;
   exitRequested = false;
 
-  if (WiFi.status() != WL_CONNECTED) {
+  if (!RuntimeNetwork::connected()) {
     startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
                            [this](const ActivityResult& result) {
                              if (!result.isCancelled) {
@@ -42,8 +42,10 @@ void CalibreConnectActivity::onEnter() {
                              onWifiSelectionComplete(!result.isCancelled);
                            });
   } else {
-    connectedIP = WiFi.localIP().toString().c_str();
-    connectedSSID = WiFi.SSID().c_str();
+    connectedIP = RuntimeNetwork::state().address;
+    char ssid[33];
+    RuntimeNetwork::wifi().stationSsid(ssid);
+    connectedSSID = ssid;
     startWebServer();
   }
 }
@@ -55,10 +57,7 @@ void CalibreConnectActivity::onExit() {
   MDNS.end();
 
   delay(50);
-  WiFi.disconnect(false);
-  delay(30);
-  WiFi.mode(WIFI_OFF);
-  delay(30);
+  RuntimeNetwork::shutdown();
 }
 
 void CalibreConnectActivity::onWifiSelectionComplete(const bool connected) {

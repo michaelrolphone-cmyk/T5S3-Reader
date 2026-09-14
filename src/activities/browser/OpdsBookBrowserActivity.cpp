@@ -5,13 +5,13 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <OpdsStream.h>
-#include <WiFi.h>
 
 #include "MappedInputManager.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "runtime/network/NetworkService.h"
 #include "network/HttpDownloader.h"
 #include "util/StringUtils.h"
 #include "util/UrlUtils.h"
@@ -40,7 +40,7 @@ void OpdsBookBrowserActivity::onEnter() {
 
 void OpdsBookBrowserActivity::onExit() {
   Activity::onExit();
-  WiFi.mode(WIFI_OFF);
+  RuntimeNetwork::shutdown();
   entries.clear();
   navigationHistory.clear();
 }
@@ -61,7 +61,7 @@ void OpdsBookBrowserActivity::loop() {
 
   if (state == BrowserState::ERROR) {
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-      if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
+      if (RuntimeNetwork::ready()) {
         state = BrowserState::LOADING;
         statusMessage = tr(STR_LOADING);
         requestUpdate();
@@ -123,7 +123,7 @@ bool OpdsBookBrowserActivity::onTouchTap(int16_t x, int16_t y) {
   if (state == BrowserState::ERROR) {
     if (x < pageWidth / 2) {
       navigateBack();
-    } else if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
+    } else if (RuntimeNetwork::ready()) {
       state = BrowserState::LOADING;
       statusMessage = tr(STR_LOADING);
       requestUpdate();
@@ -382,7 +382,7 @@ void OpdsBookBrowserActivity::performSearch(const std::string& query) {
 }
 
 void OpdsBookBrowserActivity::checkAndConnectWifi() {
-  if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
+  if (RuntimeNetwork::ready()) {
     state = BrowserState::LOADING;
     statusMessage = tr(STR_LOADING);
     requestUpdate();
@@ -407,8 +407,7 @@ void OpdsBookBrowserActivity::onWifiSelectionComplete(const bool connected) {
     requestUpdate(true);
     fetchFeed(currentPath);
   } else {
-    WiFi.disconnect();
-    WiFi.mode(WIFI_OFF);
+    RuntimeNetwork::shutdown();
     state = BrowserState::ERROR;
     errorMessage = tr(STR_WIFI_CONN_FAILED);
     requestUpdate();

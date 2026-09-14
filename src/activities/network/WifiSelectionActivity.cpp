@@ -3,7 +3,6 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
-#include <WiFi.h>
 
 #include <map>
 
@@ -13,6 +12,7 @@
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "runtime/network/NetworkService.h"
 
 void WifiSelectionActivity::onEnter() {
   Activity::onEnter();
@@ -40,7 +40,7 @@ void WifiSelectionActivity::onEnter() {
 
   // Cache MAC address for display
   uint8_t mac[6];
-  WiFi.macAddress(mac);
+  RuntimeNetwork::wifi().macAddress(mac);
   char macStr[64];
   snprintf(macStr, sizeof(macStr), "%s %02x-%02x-%02x-%02x-%02x-%02x", tr(STR_MAC_ADDRESS), mac[0], mac[1], mac[2],
            mac[3], mac[4], mac[5]);
@@ -79,7 +79,7 @@ void WifiSelectionActivity::onExit() {
 
   // Stop any ongoing WiFi scan
   LOG_DBG("WIFI", "Deleting WiFi scan...");
-  WiFi.scanDelete();
+  RuntimeNetwork::wifi().clearScan();
   LOG_DBG("WIFI", "Free heap after scanDelete: %d bytes", ESP.getFreeHeap());
 
   // Note: We do NOT disconnect WiFi here - the parent activity
@@ -100,44 +100,32 @@ void WifiSelectionActivity::startWifiScanAttempt() {
   networks.clear();
   requestUpdate();
 
-  WiFi.scanDelete();
-  WiFi.persistent(false);
-
-  // Fully restart STA before scanning. This avoids stale AP/STA/off state causing empty scans on ESP32-S3.
-  WiFi.mode(WIFI_OFF);
-  delay(150);
-  WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);
-  WiFi.disconnect(false, false);
-  delay(150);
-
   const bool passiveScan = scanAttempt >= 2;
   const uint32_t maxMsPerChannel = scanAttempt == 0 ? 350 : (scanAttempt == 1 ? 700 : 1000);
-  const int16_t scanStart =
-      WiFi.scanNetworks(true, true, passiveScan, maxMsPerChannel);  // async, include hidden AP records
+  const int16_t scanStart = RuntimeNetwork::wifi().startScan(passiveScan, maxMsPerChannel);
 
-  LOG_DBG("WIFI", "Scan attempt %u/%u started: result=%d passive=%d max_ms=%lu mode=%d heap=%d", scanAttempt + 1,
-          MAX_SCAN_ATTEMPTS, scanStart, passiveScan, maxMsPerChannel, WiFi.getMode(), ESP.getFreeHeap());
+  LOG_DBG("WIFI", "Scan attempt %u/%u started: result=%d passive=%d max_ms=%lu", scanAttempt + 1,
+          MAX_SCAN_ATTEMPTS, scanStart, passiveScan, maxMsPerChannel);
 
-  if (scanStart == WIFI_SCAN_FAILED && scanAttempt + 1 >= MAX_SCAN_ATTEMPTS) {
+  if (scanStart == RuntimeNetwork::SCAN_FAILED && scanAttempt + 1 >= MAX_SCAN_ATTEMPTS) {
     LOG_ERR("WIFI", "WiFi scan failed to start after %u attempts", MAX_SCAN_ATTEMPTS);
     state = WifiSelectionState::NETWORK_LIST;
     requestUpdate();
-  } else if (scanStart == WIFI_SCAN_FAILED) {
+  } else if (scanStart == RuntimeNetwork::SCAN_FAILED) {
     scanAttempt++;
     startWifiScanAttempt();
   }
 }
 
 void WifiSelectionActivity::processWifiScanResults() {
-  const int16_t scanResult = WiFi.scanComplete();
+  const int16_t scanResult = RuntimeNetwork::wifi().scanComplete();
 
-  if (scanResult == WIFI_SCAN_RUNNING) {
+  if (scanResult == RuntimeNetwork::SCAN_RUNNING) {
     // Scan still in progress
     return;
   }
 
-  if (scanResult == WIFI_SCAN_FAILED) {
+  if (scanResult == RuntimeNetwork::SCAN_FAILED) {
     LOG_ERR("WIFI", "WiFi scan attempt %u/%u failed", scanAttempt + 1, MAX_SCAN_ATTEMPTS);
     if (scanAttempt + 1 < MAX_SCAN_ATTEMPTS) {
       scanAttempt++;
@@ -154,8 +142,10 @@ void WifiSelectionActivity::processWifiScanResults() {
   std::map<std::string, WifiNetworkInfo> uniqueNetworks;
 
   for (int i = 0; i < scanResult; i++) {
-    std::string ssid = WiFi.SSID(i).c_str();
-    const int32_t rssi = WiFi.RSSI(i);
+    RuntimeNetwork::WifiNetwork scanned;
+    if (!RuntimeNetwork::wifi().scanResult(i, scanned)) continue;
+    std::string ssid = scanned.ssid;
+    const int32_t rssi = scanned.signalDbm;
 
     // Skip hidden networks (empty SSID)
     if (ssid.empty()) {
@@ -169,7 +159,7 @@ void WifiSelectionActivity::processWifiScanResults() {
       WifiNetworkInfo network;
       network.ssid = ssid;
       network.rssi = rssi;
-      network.isEncrypted = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+      network.isEncrypted = scanned.encrypted;
       network.hasSavedPassword = WIFI_STORE.hasSavedCredential(network.ssid);
       uniqueNetworks[ssid] = network;
     }
@@ -199,7 +189,7 @@ void WifiSelectionActivity::processWifiScanResults() {
     return a.rssi > b.rssi;
   });
 
-  WiFi.scanDelete();
+  RuntimeNetwork::wifi().clearScan();
   state = WifiSelectionState::NETWORK_LIST;
   selectedNetworkIndex = 0;
   requestUpdate();
@@ -257,22 +247,8 @@ void WifiSelectionActivity::attemptConnection() {
   connectionError.clear();
   requestUpdate();
 
-  WiFi.persistent(false);  // Credentials are managed by WifiCredentialStore; suppress SDK NVS auto-connect
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect(true, true);  // Abort any in-progress SDK auto-connect and clear NVS-saved SSID
-  delay(100);
-
-  // Set hostname so routers show "CrossPoint-Reader-AABBCCDDEEFF" instead of "esp32-XXXXXXXXXXXX"
-  String mac = WiFi.macAddress();
-  mac.replace(":", "");
-  String hostname = "CrossPoint-Reader-" + mac;
-  WiFi.setHostname(hostname.c_str());
-
-  if (selectedRequiresPassword && !enteredPassword.empty()) {
-    WiFi.begin(selectedSSID.c_str(), enteredPassword.c_str());
-  } else {
-    WiFi.begin(selectedSSID.c_str());
-  }
+  RuntimeNetwork::wifi().connect(selectedSSID.c_str(),
+                                 selectedRequiresPassword ? enteredPassword.c_str() : nullptr);
 }
 
 void WifiSelectionActivity::checkConnectionStatus() {
@@ -280,14 +256,12 @@ void WifiSelectionActivity::checkConnectionStatus() {
     return;
   }
 
-  const wl_status_t status = WiFi.status();
+  const auto connection = RuntimeNetwork::state();
+  const auto status = connection.connection;
 
-  if (status == WL_CONNECTED) {
+  if (status == RuntimeNetwork::ConnectionState::Connected) {
     // Successfully connected
-    IPAddress ip = WiFi.localIP();
-    char ipStr[16];
-    snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-    connectedIP = ipStr;
+    connectedIP = connection.address;
     autoConnecting = false;
 
     // Save this as the last connected network - SD card operations need lock as
@@ -313,9 +287,9 @@ void WifiSelectionActivity::checkConnectionStatus() {
     return;
   }
 
-  if (status == WL_CONNECT_FAILED || status == WL_NO_SSID_AVAIL) {
+  if (status == RuntimeNetwork::ConnectionState::Failed || status == RuntimeNetwork::ConnectionState::NetworkNotFound) {
     connectionError = tr(STR_ERROR_GENERAL_FAILURE);
-    if (status == WL_NO_SSID_AVAIL) {
+    if (status == RuntimeNetwork::ConnectionState::NetworkNotFound) {
       connectionError = tr(STR_ERROR_NETWORK_NOT_FOUND);
     }
     state = WifiSelectionState::CONNECTION_FAILED;
@@ -325,7 +299,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
 
   // Check for timeout
   if (millis() - connectionStartTime > CONNECTION_TIMEOUT_MS) {
-    WiFi.disconnect();
+    RuntimeNetwork::wifi().disconnect();
     connectionError = tr(STR_ERROR_CONNECTION_TIMEOUT);
     state = WifiSelectionState::CONNECTION_FAILED;
     requestUpdate();

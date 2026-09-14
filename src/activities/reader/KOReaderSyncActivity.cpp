@@ -3,7 +3,6 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
-#include <WiFi.h>
 
 #include "ClockSync.h"
 #include "Epub/Section.h"
@@ -13,6 +12,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "runtime/network/NetworkService.h"
 
 namespace {
 CrossPointPosition makeLocalPositionWithParagraph(const int spineIndex, const int page, const int totalPages,
@@ -25,13 +25,7 @@ CrossPointPosition makeLocalPositionWithParagraph(const int spineIndex, const in
   return pos;
 }
 
-void wifiOff() {
-  ClockSync::stop();
-  WiFi.disconnect(false);
-  delay(100);
-  WiFi.mode(WIFI_OFF);
-  delay(100);
-}
+void wifiOff() { RuntimeNetwork::shutdown(); }
 }  // namespace
 
 void KOReaderSyncActivity::onWifiSelectionComplete(const bool success) {
@@ -200,7 +194,7 @@ void KOReaderSyncActivity::onEnter() {
   }
 
   // Check if already connected (e.g. from settings page auth)
-  if (WiFi.status() == WL_CONNECTED) {
+  if (RuntimeNetwork::connected()) {
     LOG_DBG("KOSync", "Already connected to WiFi");
     onWifiSelectionComplete(true);
     return;

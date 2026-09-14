@@ -4,7 +4,6 @@
 #include <ESPmDNS.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
-#include <WiFi.h>
 #include <esp_task_wdt.h>
 
 #include <cstddef>
@@ -15,6 +14,7 @@
 #include "activities/network/CalibreConnectActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "runtime/network/NetworkService.h"
 #include "util/QrUtils.h"
 
 namespace {
@@ -92,19 +92,7 @@ void CrossPointWebServerActivity::onExit() {
   // Brief wait for LWIP stack to flush pending packets
   delay(50);
 
-  // Disconnect WiFi gracefully
-  if (isApMode) {
-    LOG_DBG("WEBACT", "Stopping WiFi AP...");
-    WiFi.softAPdisconnect(true);
-  } else {
-    LOG_DBG("WEBACT", "Disconnecting WiFi (graceful)...");
-    WiFi.disconnect(false);  // false = don't erase credentials, send disconnect frame
-  }
-  delay(30);  // Allow disconnect frame to be sent
-
-  LOG_DBG("WEBACT", "Setting WiFi mode OFF...");
-  WiFi.mode(WIFI_OFF);
-  delay(30);  // Allow WiFi hardware to power down
+  RuntimeNetwork::shutdown();
 
   LOG_DBG("WEBACT", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
 }
@@ -141,7 +129,7 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
   if (mode == NetworkMode::JOIN_NETWORK) {
     // STA mode - launch WiFi selection
     LOG_DBG("WEBACT", "Turning on WiFi (STA mode)...");
-    WiFi.mode(WIFI_STA);
+    RuntimeNetwork::wifi().stationMode();
 
     state = WebServerActivityState::WIFI_SELECTION;
     LOG_DBG("WEBACT", "Launching WifiSelectionActivity...");
@@ -195,18 +183,8 @@ void CrossPointWebServerActivity::startAccessPoint() {
   LOG_DBG("WEBACT", "Starting Access Point mode...");
   LOG_DBG("WEBACT", "Free heap before AP start: %d bytes", ESP.getFreeHeap());
 
-  // Configure and start the AP
-  WiFi.mode(WIFI_AP);
-  delay(100);
-
-  // Start soft AP
-  bool apStarted;
-  if (AP_PASSWORD && strlen(AP_PASSWORD) >= 8) {
-    apStarted = WiFi.softAP(AP_SSID, AP_PASSWORD, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
-  } else {
-    // Open network (no password)
-    apStarted = WiFi.softAP(AP_SSID, nullptr, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
-  }
+  const bool apStarted = RuntimeNetwork::wifi().startAccessPoint(
+      AP_SSID, AP_PASSWORD, AP_CHANNEL, AP_MAX_CONNECTIONS);
 
   if (!apStarted) {
     LOG_ERR("WEBACT", "ERROR: Failed to start Access Point!");
@@ -214,12 +192,10 @@ void CrossPointWebServerActivity::startAccessPoint() {
     return;
   }
 
-  delay(100);  // Wait for AP to fully initialize
-
-  // Get AP IP address
-  const IPAddress apIP = WiFi.softAPIP();
   char ipStr[16];
-  snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
+  RuntimeNetwork::wifi().accessPointAddress(ipStr);
+  IPAddress apIP;
+  apIP.fromString(ipStr);  // Adapter for the existing DNS service.
   connectedIP = ipStr;
   connectedSSID = AP_SSID;
 
@@ -257,7 +233,7 @@ void CrossPointWebServerActivity::startWebServer() {
   if (webServer->isRunning()) {
     state = WebServerActivityState::SERVER_RUNNING;
     LOG_DBG("WEBACT", "Web server started successfully");
-    lastWifiBars = isApMode ? 0 : barsForRssi(WiFi.RSSI(), 0);
+    lastWifiBars = isApMode ? 0 : barsForRssi(RuntimeNetwork::wifi().signalDbm(), 0);
 
     // Force an immediate render since we're transitioning from a subactivity
     // that had its own rendering task. We need to make sure our display is shown.
@@ -292,17 +268,17 @@ void CrossPointWebServerActivity::loop() {
       static unsigned long lastWifiCheck = 0;
       if (millis() - lastWifiCheck > 2000) {  // Check every 2 seconds
         lastWifiCheck = millis();
-        const wl_status_t wifiStatus = WiFi.status();
+        const auto wifiStatus = RuntimeNetwork::state().connection;
         // Driver auto-reconnect handles retries; abandon (via onGoHome) only
         // after WIFI_ABANDON_MS, otherwise the activity freezes on a blip.
         bool repaint = false;
-        if (wifiStatus != WL_CONNECTED) {
+        if (wifiStatus != RuntimeNetwork::ConnectionState::Connected) {
           if (consecutiveDisconnects == 0) {
             firstDisconnectAt = millis();
             repaint = true;
           }
           consecutiveDisconnects++;
-          LOG_DBG("WEBACT", "WiFi not connected (status=%d, consecutive=%d, total=%lu ms)", wifiStatus,
+          LOG_DBG("WEBACT", "WiFi not connected (status=%d, consecutive=%d, total=%lu ms)", static_cast<int>(wifiStatus),
                   consecutiveDisconnects, millis() - firstDisconnectAt);
           if (millis() - firstDisconnectAt > WIFI_ABANDON_MS) {
             LOG_DBG("WEBACT", "WiFi unavailable for >%lu s; returning to network selection", WIFI_ABANDON_MS / 1000UL);
@@ -318,7 +294,7 @@ void CrossPointWebServerActivity::loop() {
           }
           consecutiveDisconnects = 0;
           firstDisconnectAt = 0;
-          const int rssi = WiFi.RSSI();
+          const int rssi = RuntimeNetwork::wifi().signalDbm();
           if (rssi < -75) {
             LOG_DBG("WEBACT", "Warning: Weak WiFi signal: %d dBm", rssi);
           }
@@ -496,7 +472,7 @@ void CrossPointWebServerActivity::renderWifiIndicator(int subHeaderTop) const {
   const int iconLeft = iconRight - iconWidth;
   const int iconBottom = subHeaderTop + metrics.tabBarHeight - metrics.verticalSpacing;
 
-  const bool wifiUp = (WiFi.status() == WL_CONNECTED) && (consecutiveDisconnects == 0);
+  const bool wifiUp = RuntimeNetwork::connected() && (consecutiveDisconnects == 0);
   if (wifiUp) {
     for (int i = 0; i < BAR_COUNT; i++) {
       const int barHeight = (i + 1) * ICON_HEIGHT / BAR_COUNT;
