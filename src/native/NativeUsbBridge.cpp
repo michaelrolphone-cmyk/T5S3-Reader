@@ -65,6 +65,33 @@ bool dataClaimed = false;
 bool txInFlight = false;
 int controlStep = 0;
 t5_usb_line_coding_t requestedCoding = {115200, 8, T5_USB_PARITY_NONE, 1, 0};
+bool debugUsbSerialSuspended = false;
+
+void suspendDebugUsbSerial() {
+#if defined(ENABLE_SERIAL_LOG) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE && \
+    defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  if (!debugUsbSerialSuspended) {
+    // ESP32-S3 USB Serial/JTAG and USB OTG share the internal PHY. The firmware
+    // starts HW CDC for logging at boot, so release it before the host driver
+    // claims that PHY. Otherwise usb_host_install() fails immediately and the
+    // normal failure cleanup removes OTG VBUS before the peripheral can boot.
+    Serial.end();
+    delay(20);
+    debugUsbSerialSuspended = true;
+  }
+#endif
+}
+
+void restoreDebugUsbSerial() {
+#if defined(ENABLE_SERIAL_LOG) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE && \
+    defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  if (debugUsbSerialSuspended) {
+    delay(20);
+    Serial.begin(115200);
+    debugUsbSerialSuspended = false;
+  }
+#endif
+}
 
 bool bqRead(uint8_t reg, uint8_t* value) {
   if (!value) return false;
@@ -377,6 +404,7 @@ finish_host:
   (void)usb_host_uninstall();
 finish_power:
   (void)setOtgPower(false);
+  restoreDebugUsbSerial();
   running = false;
   hostTaskHandle = nullptr;
   vTaskDelete(nullptr);
@@ -398,15 +426,25 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
   }
   resetState(T5_USB_STATUS_OFF);
   requestedCoding = *coding;
-  if (!setOtgPower(true)) { setError(-1001); return false; }
+  suspendDebugUsbSerial();
+  if (!setOtgPower(true)) { restoreDebugUsbSerial(); setError(-1001); return false; }
   if (!txMutex) txMutex = xSemaphoreCreateMutex();
-  if (!txMutex) { (void)setOtgPower(false); setError(ESP_ERR_NO_MEM); return false; }
+  if (!txMutex) {
+    (void)setOtgPower(false);
+    restoreDebugUsbSerial();
+    setError(ESP_ERR_NO_MEM);
+    return false;
+  }
   stopRequested = false;
   pendingAddress = 0;
   deviceGone = false;
   running = true;
   if (xTaskCreatePinnedToCore(hostTask, "usb-cdc-host", 6144, nullptr, 3, &hostTaskHandle, 0) != pdPASS) {
-    running = false; (void)setOtgPower(false); setError(ESP_ERR_NO_MEM); return false;
+    running = false;
+    (void)setOtgPower(false);
+    restoreDebugUsbSerial();
+    setError(ESP_ERR_NO_MEM);
+    return false;
   }
   return true;
 }

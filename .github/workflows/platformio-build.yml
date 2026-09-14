@@ -10,6 +10,7 @@ on:
       - "Apps/**"
       - "Drivers/**"
       - "sdk/**"
+      - "SD_fonts/FAClassic*/**"
       - "src/**"
       - "lib/**"
       - "scripts/**"
@@ -23,6 +24,7 @@ on:
       - "Apps/**"
       - "Drivers/**"
       - "sdk/**"
+      - "SD_fonts/FAClassic*/**"
       - "src/**"
       - "lib/**"
       - "scripts/**"
@@ -145,3 +147,6 @@ jobs:
 
       - name: Run app manifest and springboard tests
         run: bash test/run_springboard_test.sh
+
+      - name: Run Font Awesome tests with shipped SD fonts
+        run: bash test/run_fontawesome_test.sh
