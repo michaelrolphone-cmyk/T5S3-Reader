@@ -150,6 +150,18 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
     LOG_DBG("HTTP", "Content-Length: unknown");
   }
 
+  // Ensure the parent directory exists before opening the destination. This is
+  // especially important for first-run native app installs to /Apps.
+  const size_t separator = destPath.find_last_of('/');
+  if (separator != std::string::npos && separator > 0) {
+    const std::string parent = destPath.substr(0, separator);
+    if (!Storage.ensureDirectoryExists(parent.c_str())) {
+      LOG_ERR("HTTP", "Failed to create destination directory: %s", parent.c_str());
+      http.end();
+      return FILE_ERROR;
+    }
+  }
+
   // Remove existing file if present
   if (Storage.exists(destPath.c_str())) {
     Storage.remove(destPath.c_str());
