@@ -12,7 +12,6 @@
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
 #include "home/RecentBooksActivity.h"
-#include "home/TimecardActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "reader/ReaderActivity.h"
 #include "settings/OpdsServerListActivity.h"
@@ -240,12 +239,8 @@ void ActivityManager::goToBrowser() {
   }
 }
 
-void ActivityManager::goToTimecard() {
-  replaceActivity(std::make_unique<TimecardActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
-}
-
 void ActivityManager::goToReader(std::string path, const HalDisplay::RefreshMode replaceRefreshMode) {
-  replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path), replaceRefreshMode),
+  replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path, replaceRefreshMode)),
                   replaceRefreshMode);
 }
 
