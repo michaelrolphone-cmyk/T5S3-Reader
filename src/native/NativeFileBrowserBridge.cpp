@@ -10,10 +10,13 @@
 #include <NativeAppLauncher.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <utility>
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
@@ -218,6 +221,7 @@ bool pollBrowserEvent(t5_file_browser_event_t* event, uint32_t waitMs, bool atRo
   }
   if (in->wasReleased(Button::Back)) {
     if (rootLongPressTriggered) { rootLongPressTriggered = false; return true; }
+    if (in->getHeldTime() >= LONG_PRESS_MS) return true;
     event->type = T5_FILE_BROWSER_EVENT_BACK; return true;
   }
   if (in->wasPressed(Button::Confirm)) { confirmPressedAt = core->millis(); confirmPressStarted = true; }
@@ -323,7 +327,8 @@ bool confirmDeleteTakeResult(bool* confirmed, uint64_t* cookie) {
 }
 bool deleteDocument(const char* path) {
   if (!validStoragePath(path)) return false;
-  if (FsHelpers::hasEpubExtension(path)) Epub(path, "/.crosspoint").clearCache();
+  const std::string_view documentPath(path);
+  if (FsHelpers::hasEpubExtension(documentPath)) Epub(std::string(path), "/.crosspoint").clearCache();
   return Storage.remove(path);
 }
 bool openDocument(const char* path) {
@@ -334,7 +339,7 @@ bool openDocument(const char* path) {
 bool launchElfRequest(const char* sdVfsPath, uint64_t cookie) {
   const char* currentPath = native_app_current_path();
   if (!validResumePath(currentPath) || !validResumePath(sdVfsPath) || hasUnreadResult()) return false;
-  if (!FsHelpers::checkFileExtension(sdVfsPath, ".elf")) return false;
+  if (!FsHelpers::checkFileExtension(std::string_view(sdVfsPath), ".elf")) return false;
   activityManager.pushActivity(std::make_unique<NativeChildElfActivity>(
       renderer, mappedInputManager, std::string(currentPath), std::string(sdVfsPath), cookie));
   nativeSystemUiMarkActivityPending();
