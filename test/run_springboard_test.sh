@@ -15,5 +15,8 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/Apps/timecard.c" "$repo_dir/test/native_apps/timecard_ui_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/Apps/llm_ask.c" "$repo_dir/test/native_apps/llm_ask_test.c" -o "$binary"
+"$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
-echo 'Manifest, springboard, App Store, and Timecard UI tests passed'
+echo 'Manifest, springboard, App Store, Timecard, and Ask native app tests passed'
