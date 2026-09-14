@@ -49,7 +49,7 @@ static void load_rows(void) {
         } else if (families[i].installed) {
             snprintf(values[i], sizeof(values[i]), "Installed");
         } else {
-            const unsigned kb = (unsigned)((families[i].total_size + 1023u) / 1024u);
+            const unsigned kb = (unsigned)((families[i].total_size + 1023u) >> 10);
             snprintf(values[i], sizeof(values[i]), "%u KB", kb);
         }
         rows[i].value = values[i];
@@ -75,9 +75,9 @@ static void render(void) {
 static void progress_cb(const char *family_name, uint32_t file_index, uint32_t file_count,
                         size_t downloaded, size_t total, void *ctx) {
     (void)ctx;
-    unsigned pct = total ? (unsigned)((downloaded * 100u) / total) : 0u;
-    snprintf(status_text, sizeof(status_text), "%s  %u/%u  %u%%", family_name ? family_name : "Font",
-             (unsigned)(file_index + 1u), (unsigned)file_count, pct);
+    snprintf(status_text, sizeof(status_text), "%s  %u/%u  %u/%u bytes", family_name ? family_name : "Font",
+             (unsigned)(file_index + 1u), (unsigned)file_count,
+             (unsigned)downloaded, (unsigned)total);
     render();
 }
 
@@ -126,13 +126,13 @@ void app_main(void) {
     for (;;) {
         t5_app_input_t input;
         if (!app->poll(&input, 50) || input.exit_requested || (input.buttons & T5_APP_BUTTON_BACK)) break;
-        if ((input.buttons & T5_APP_BUTTON_UP) || (input.buttons & T5_APP_BUTTON_LEFT)) {
+        if (family_count && ((input.buttons & T5_APP_BUTTON_UP) || (input.buttons & T5_APP_BUTTON_LEFT))) {
             pending_delete = -1;
             selected_index = ui->previous_index(selected_index, family_count);
             render();
             continue;
         }
-        if ((input.buttons & T5_APP_BUTTON_DOWN) || (input.buttons & T5_APP_BUTTON_RIGHT)) {
+        if (family_count && ((input.buttons & T5_APP_BUTTON_DOWN) || (input.buttons & T5_APP_BUTTON_RIGHT))) {
             pending_delete = -1;
             selected_index = ui->next_index(selected_index, family_count);
             render();
