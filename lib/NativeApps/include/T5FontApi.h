@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-#define T5_FONT_API_VERSION 1u
+#define T5_FONT_API_VERSION 2u
 #define T5_FONT_NAME_MAX 64u
 #define T5_FONT_DESCRIPTION_MAX 128u
 
@@ -31,6 +31,13 @@ typedef struct {
     uint8_t reserved[2];
 } t5_font_family_info_t;
 
+typedef struct {
+    char name[T5_FONT_NAME_MAX];
+    uint8_t builtin;
+    uint8_t selected;
+    uint8_t reserved[2];
+} t5_font_choice_info_t;
+
 typedef void (*t5_font_progress_callback_t)(const char *family_name,
                                              uint32_t file_index,
                                              uint32_t file_count,
@@ -41,15 +48,14 @@ typedef void (*t5_font_progress_callback_t)(const char *family_name,
 typedef struct {
     uint32_t api_version;
     uint32_t struct_size;
-
-    // Refreshes the firmware-owned font catalog from the canonical manifest.
-    // The native app owns browsing and presentation; firmware owns network,
-    // SD-card writes, cpfont validation, CRC verification, and registry refresh.
     t5_font_result_t (*refresh_catalog)(void);
     uint32_t (*family_count)(void);
     bool (*family_info)(uint32_t index, t5_font_family_info_t *out);
     t5_font_result_t (*install_family)(uint32_t index, t5_font_progress_callback_t callback, void *ctx);
     t5_font_result_t (*delete_family)(uint32_t index);
+    uint32_t (*choice_count)(void);
+    bool (*choice_info)(uint32_t index, t5_font_choice_info_t *out);
+    t5_font_result_t (*select_choice)(uint32_t index);
 } t5_font_api_v1;
 
 const t5_font_api_v1 *t5_font_get_api(uint32_t api_version);
