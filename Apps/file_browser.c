@@ -272,8 +272,7 @@ static void consume_handoff_results(void) {
     bool confirmed = false;
     uint64_t cookie = 0;
     if (browser->confirm_delete_take_result(&confirmed, &cookie)) {
-        char selected[T5_APP_DIRENT_NAME_MAX] = {0};
-        selected_name(selected, sizeof(selected));
+        const int32_t old_index = selected_index;
         if (confirmed && pending_delete_path[0]) {
             if (!browser->delete_document(pending_delete_path))
                 snprintf(status_text, sizeof(status_text), "Failed to delete file");
@@ -281,8 +280,10 @@ static void consume_handoff_results(void) {
                 status_text[0] = 0;
         }
         pending_delete_path[0] = 0;
-        load_files(selected);
-        if (entry_count && selected_index >= (int32_t)entry_count) selected_index = (int32_t)entry_count - 1;
+        load_files(NULL);
+        if (entry_count == 0) selected_index = 0;
+        else if (old_index >= (int32_t)entry_count) selected_index = (int32_t)entry_count - 1;
+        else selected_index = old_index;
         clear_session();
     }
     int32_t launch_error = 0;
