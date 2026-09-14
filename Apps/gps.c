@@ -50,7 +50,9 @@ static void render(const t5_gps_state_t *state) {
     snprintf(satellites_value, sizeof(satellites_value), "%u", (unsigned)state->satellites);
 
     if (state->status == T5_GPS_STATUS_UNSUPPORTED) {
-        copy_text(footer, sizeof(footer), "GPS hardware is not available on this board");
+        copy_text(footer, sizeof(footer), "GPS driver unavailable; install the GPS driver package");
+    } else if (state->status == T5_GPS_STATUS_OFF) {
+        copy_text(footer, sizeof(footer), "GPS driver could not start; check the installed package");
     } else if (!state->receiver_detected) {
         snprintf(footer, sizeof(footer), "Probing receiver at %lu baud", (unsigned long)state->baud);
     } else if (!state->fix_valid) {

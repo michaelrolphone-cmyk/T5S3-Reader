@@ -1,4 +1,5 @@
 #include "NativeAppHost.h"
+#include "runtime/drivers/GpsDriverRuntime.h"
 #include "AppManifest.h"
 #include <AppManifestRules.h>
 #include "components/FontAwesomeIcons.h"
@@ -608,6 +609,8 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   nativeSystemUiBegin();
   esp_task_wdt_reset();
   const esp_err_t result = launch_elf_app(path);
+  // Clean up even when an app returns without calling its GPS stop callback.
+  GpsDriverRuntime::stop();
   if (result != ESP_OK && lastLaunchError.empty()) {
     char message[80];
     std::snprintf(message, sizeof(message), "ELF loader failed with error 0x%lX.",

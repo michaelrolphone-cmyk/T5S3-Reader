@@ -1,5 +1,6 @@
 #include <T5AppApi.h>
 #include <T5LoRaApi.h>
+#include "runtime/resources/RadioPower.h"
 
 #include <Arduino.h>
 #include <cstdint>
@@ -45,8 +46,9 @@ t5_lora_config_t currentConfig{};
 void IRAM_ATTR onPacketReceived() { packetReceived = true; }
 
 bool powerRail(bool enabled) {
-  if (!BoardT5S3::writePca9535Pin(PCA9535_IO00_LORA_GPS_EN, enabled)) return false;
-  return BoardT5S3::setPca9535PinMode(PCA9535_IO00_LORA_GPS_EN, OUTPUT);
+  if (enabled) return RadioPower::acquire(RadioPower::Owner::LoRa);
+  RadioPower::release(RadioPower::Owner::LoRa);
+  return true;
 }
 
 void releaseRadioPins() {

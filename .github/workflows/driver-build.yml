@@ -1,0 +1,58 @@
+name: GPS driver package
+on:
+  push:
+    tags: ['driver-gps-nmea-v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install driver toolchain
+        run: |
+          python -m pip install platformio==6.1.19
+          pio pkg install --global --tool 'espressif/toolchain-xtensa-esp32s3@8.4.0+2021r2-patch5'
+      - name: Validate tag version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          DRIVER_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import json, os
+          version = json.load(open('Drivers/gps_nmea/manifest.json'))['version']
+          assert os.environ['DRIVER_TAG'] == 'driver-gps-nmea-v' + version, 'Tag must match driver manifest version'
+          PY
+      - name: Test, build, and validate driver
+        run: |
+          bash test/run_driver_test.sh
+          python scripts/build_driver.py
+          bash test/run_native_app_test.sh dist/drivers/gps-nmea/driver.elf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gps-driver-package
+          path: dist/drivers/*.t5driver.zip
+          if-no-files-found: error
+  release:
+    if: startsWith(github.ref, 'refs/tags/driver-gps-nmea-v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gps-driver-package
+          path: dist
+      - name: Publish driver release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          DRIVER_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$DRIVER_TAG" dist/*.t5driver.zip --verify-tag --latest=false \
+            --title "$DRIVER_TAG" --notes 'Installable GPS driver package. Requires firmware with driver ABI 1. Install on a mounted SD card using scripts/install_driver.py; this package is not a firmware image.'

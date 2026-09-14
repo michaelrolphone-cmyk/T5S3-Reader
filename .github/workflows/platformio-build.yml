@@ -8,6 +8,8 @@ on:
     paths:
       - ".github/workflows/platformio-build.yml"
       - "Apps/**"
+      - "Drivers/**"
+      - "sdk/**"
       - "src/**"
       - "lib/**"
       - "scripts/**"
@@ -19,6 +21,8 @@ on:
     paths:
       - ".github/workflows/platformio-build.yml"
       - "Apps/**"
+      - "Drivers/**"
+      - "sdk/**"
       - "src/**"
       - "lib/**"
       - "scripts/**"
@@ -83,6 +87,11 @@ jobs:
           python scripts/build_native_app.py Apps/timecard.c --output dist/timecard.elf
           bash test/run_native_app_test.sh dist/timecard.elf
 
+      - name: Build and validate installable GPS driver
+        run: |
+          python scripts/build_driver.py
+          bash test/run_native_app_test.sh dist/drivers/gps-nmea/driver.elf
+
       - name: Build and validate all released apps and manifests
         run: |
           python scripts/build_all_apps.py
@@ -103,6 +112,7 @@ jobs:
             dist/${{ matrix.merged_firmware_name }}
             dist/hello.elf
             dist/apps/*
+            dist/drivers/*.t5driver.zip
             dist/timecard.elf
             dist/timecard.json
           if-no-files-found: error
@@ -123,6 +133,9 @@ jobs:
 
       - name: Run desk clock minute alignment tests
         run: bash test/run_desk_clock_test.sh
+
+      - name: Run driver module and package tests
+        run: bash test/run_driver_test.sh
 
       - name: Run runtime network provider tests
         run: bash test/run_runtime_network_test.sh

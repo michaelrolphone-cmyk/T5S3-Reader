@@ -82,6 +82,12 @@ jobs:
       - name: Build gh_release
         run: pio run -e gh_release
 
+      - name: Build and validate GPS driver package
+        run: |
+          python scripts/build_driver.py
+          bash test/run_driver_test.sh
+          bash test/run_native_app_test.sh dist/drivers/gps-nmea/driver.elf
+
       - name: Build native ELF apps and manifests
         run: python scripts/build_all_apps.py
 
@@ -153,6 +159,7 @@ jobs:
             "dist/corsspoint_lilygo_t5s3_${VER}-app.bin"
             "$MERGED"
             "${APP_ELFS[@]}"
+            dist/drivers/*.t5driver.zip
           )
 
           echo "Release assets:"
