@@ -318,16 +318,51 @@ bool appCatalogDownload(uint32_t index) {
   const auto& asset = s->catalog[index];
   if (!safeAssetName(asset.name)) return false;
 
-  char destination[sizeof("/Apps/") + T5_APP_ASSET_NAME_MAX];
-  const int written = std::snprintf(destination, sizeof(destination), "/Apps/%s", asset.name.c_str());
-  if (written <= 0 || static_cast<size_t>(written) >= sizeof(destination)) return false;
+  const std::string destination = std::string("/Apps/") + asset.name;
+  const std::string temporary = destination + ".part";
+  const std::string backup = destination + ".bak";
+
+  // Never write directly over an installed app. A failed HTTP transfer leaves
+  // the previous ELF untouched, and a failed final rename restores it.
+  if (Storage.exists(temporary.c_str())) Storage.remove(temporary.c_str());
+  if (Storage.exists(backup.c_str())) Storage.remove(backup.c_str());
 
   esp_task_wdt_reset();
-  const auto result = HttpDownloader::downloadToFile(asset.url, destination, [](size_t, size_t) {
+  const auto result = HttpDownloader::downloadToFile(asset.url, temporary, [](size_t, size_t) {
     esp_task_wdt_reset();
   });
   esp_task_wdt_reset();
-  return result == HttpDownloader::OK;
+  if (result != HttpDownloader::OK) {
+    if (Storage.exists(temporary.c_str())) Storage.remove(temporary.c_str());
+    return false;
+  }
+
+  // GitHub release metadata includes the asset byte count. Verify the staged
+  // file before replacing an installed copy when that value is available.
+  if (asset.size > 0) {
+    HalFile staged = Storage.open(temporary.c_str(), O_RDONLY);
+    const bool sizeOk = staged.isOpen() && staged.fileSize64() == asset.size;
+    if (staged.isOpen()) staged.close();
+    if (!sizeOk) {
+      Storage.remove(temporary.c_str());
+      return false;
+    }
+  }
+
+  const bool hadExisting = Storage.exists(destination.c_str());
+  if (hadExisting && !Storage.rename(destination.c_str(), backup.c_str())) {
+    Storage.remove(temporary.c_str());
+    return false;
+  }
+
+  if (!Storage.rename(temporary.c_str(), destination.c_str())) {
+    Storage.remove(temporary.c_str());
+    if (hadExisting) Storage.rename(backup.c_str(), destination.c_str());
+    return false;
+  }
+
+  if (hadExisting && Storage.exists(backup.c_str())) Storage.remove(backup.c_str());
+  return true;
 }
 
 const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
