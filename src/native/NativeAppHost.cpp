@@ -34,6 +34,7 @@ struct CatalogAsset {
   std::string name;
   std::string url;
   std::string manifestUrl;
+  std::string version;
   uint64_t size = 0;
   t5_app_manifest_t manifest{};
   bool manifestValid = false;
@@ -151,6 +152,12 @@ bool safeAssetName(const std::string& name) {
   if (name.empty() || name.size() >= T5_APP_ASSET_NAME_MAX || !endsWithElf(name)) return false;
   if (name.find("..") != std::string::npos) return false;
   return name.find('/') == std::string::npos && name.find('\\') == std::string::npos;
+}
+
+bool copyVersion(const std::string& value, char* out, size_t capacity) {
+  if (!out || capacity == 0 || value.size() >= capacity) return false;
+  std::memcpy(out, value.c_str(), value.size() + 1);
+  return true;
 }
 
 bool jsonStringField(const std::string& object, const char* field, std::string& value) {
@@ -274,12 +281,14 @@ bool loadCatalogManifests(std::vector<CatalogAsset>& catalog) {
     esp_task_wdt_reset();
     if (asset.manifestUrl.empty()) continue;
     std::string json;
+    std::string version;
     t5_app_manifest_t manifest{};
-    if (!HttpDownloader::fetchUrl(asset.manifestUrl, json) || !parseAppManifest(json, manifest) ||
-        asset.name != manifest.file_name) {
+    if (!HttpDownloader::fetchUrl(asset.manifestUrl, json) ||
+        !parseAppManifest(json, manifest, &version, true) || asset.name != manifest.file_name) {
       continue;
     }
     asset.manifest = manifest;
+    asset.version = std::move(version);
     asset.manifestValid = true;
     validated.push_back(std::move(asset));
   }
@@ -369,6 +378,29 @@ bool appCatalogManifestGet(uint32_t index, t5_app_manifest_t* out) {
   return true;
 }
 
+bool appCatalogVersionGet(uint32_t index, char* out, size_t capacity) {
+  auto* s = current();
+  if (!s || index >= s->catalog.size() || !s->catalog[index].manifestValid) return false;
+  return copyVersion(s->catalog[index].version, out, capacity);
+}
+
+bool installedAppVersionGet(const char* fileName, char* out, size_t capacity) {
+  auto* s = current();
+  if (!s || !Storage.ready() || !t5_safe_elf_name(fileName) || !out || capacity == 0) return false;
+  const std::string destination = std::string("/Apps/") + fileName;
+  const std::string sidecar = destination.substr(0, destination.size() - 4) + ".json";
+  if (!Storage.exists(destination.c_str()) || !Storage.exists(sidecar.c_str()) ||
+      Storage.exists((destination + ".bak").c_str()) || Storage.exists((sidecar + ".bak").c_str())) {
+    return false;
+  }
+  t5_app_manifest_t manifest{};
+  std::string version;
+  if (!readAppManifest(sidecar.c_str(), manifest, &version, false) || std::strcmp(manifest.file_name, fileName)) {
+    return false;
+  }
+  return copyVersion(version, out, capacity);
+}
+
 bool appCatalogDownload(uint32_t index) {
   auto* s = current();
   if (!s || !Storage.ready() || index >= s->catalog.size()) return false;
@@ -377,9 +409,11 @@ bool appCatalogDownload(uint32_t index) {
 
   if (asset.manifestUrl.empty()) return false;
   std::string json;
+  std::string version;
   t5_app_manifest_t manifest{};
-  if (!HttpDownloader::fetchUrl(asset.manifestUrl, json) || !parseAppManifest(json, manifest) ||
-      !manifest.compatible || asset.name != manifest.file_name) return false;
+  if (!HttpDownloader::fetchUrl(asset.manifestUrl, json) ||
+      !parseAppManifest(json, manifest, &version, true) || !manifest.compatible ||
+      asset.name != manifest.file_name || version != asset.version) return false;
   if (!Storage.mkdir("/Apps") && !Storage.exists("/Apps")) return false;
   const std::string destination = std::string("/Apps/") + asset.name;
   const std::string sidecar = destination.substr(0, destination.size() - 4) + ".json";
@@ -506,7 +540,9 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            nativeSettingsRender,
                            nativeSettingsTouch,
                            installedRefresh, installedCount, installedGet, requestLaunch, drawIcon, drawLabel,
-                           appCatalogManifestGet};
+                           appCatalogManifestGet,
+                           installedAppVersionGet,
+                           appCatalogVersionGet};
 }  // namespace
 
 extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
