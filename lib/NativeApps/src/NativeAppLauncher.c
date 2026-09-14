@@ -13,6 +13,7 @@
 #include "T5FileBrowserApi.h"
 #include "T5GpsApi.h"
 #include "T5ImageApi.h"
+#include "T5LoRaApi.h"
 #include "T5NetworkApi.h"
 #include "T5StorageApi.h"
 #include "T5SystemApi.h"
@@ -60,6 +61,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_file_browser_get_api),
         ESP_ELFSYM_EXPORT(t5_image_get_api),
         ESP_ELFSYM_EXPORT(t5_gps_get_api),
+        ESP_ELFSYM_EXPORT(t5_lora_get_api),
         // Native apps format bounded status/error text. The vendored loader's
         // default libc table exports printf, but does not export snprintf.
         ESP_ELFSYM_EXPORT(snprintf),
