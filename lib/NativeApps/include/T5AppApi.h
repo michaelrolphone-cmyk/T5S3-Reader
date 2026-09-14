@@ -119,6 +119,11 @@ typedef struct {
     bool (*request_app_launch)(uint32_t index);
     bool (*draw_icon)(int32_t x, int32_t y, const char *icon, uint8_t point_size, bool black);
     void (*draw_label)(int32_t x, int32_t y, int32_t width, const char *text);
+
+    // Append-only release-catalog metadata. app_catalog_refresh validates and caches
+    // each ELF's matching release manifest before exposing it through this getter.
+    // Older firmware may not provide this member; callers must check struct_size.
+    bool (*app_catalog_manifest_get)(uint32_t index, t5_app_manifest_t *manifest);
 } t5_app_api_v1;
 
 // This is the single versioned firmware symbol imported by native UI apps.
