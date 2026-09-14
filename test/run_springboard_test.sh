@@ -24,7 +24,8 @@ for pair in \
   "font_manager font_manager_test" \
   "font_selection font_selection_test" \
   "status_bar_settings status_bar_settings_test" \
-  "button_remap button_remap_test"; do
+  "button_remap button_remap_test" \
+  "time_zone time_zone_test"; do
   set -- $pair
   cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/$1.c" "$repo_dir/test/native_apps/$2.c" -o "$binary"
   "$binary"
@@ -32,4 +33,4 @@ done
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" "$repo_dir/test/native_apps/image_api_stub.c" -o "$binary"
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
-echo 'Native app regression tests passed, including Manage Fonts, Font Family, Customize Status Bar, and Remap Front Buttons'
+echo 'Native app regression tests passed, including Manage Fonts, Font Family, Customize Status Bar, Remap Front Buttons, and Time Zone'
