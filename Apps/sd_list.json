@@ -1,5 +1,6 @@
 {
   "min_firmware_version": "1.1.5",
+  "version": "1.0.0",
   "display_name": "SD Files",
   "file_name": "sd_list.elf",
   "icon": "solid:f07b"
