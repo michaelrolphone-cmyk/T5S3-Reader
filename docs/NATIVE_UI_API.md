@@ -22,6 +22,7 @@ The firmware owns:
 - standard headers and subtitles;
 - `GUI.drawList` list rendering and selection behavior;
 - firmware-owned table rendering for structured app data;
+- wrapped user-content text rendering;
 - status-line placement;
 - `GUI.drawButtonHints`;
 - front-button label mapping from the user's Controls settings;
@@ -31,13 +32,13 @@ The firmware owns:
 - Confirm-on-release and Back handling;
 - Power/Home native-session exit behavior.
 
-The ELF continues to own its application data, persistence, business logic, screen state, selected index, and actions that occur when a row is activated.
+The ELF continues to own its application data, persistence, business logic, screen state, selected index, scrolling state, and actions.
 
-This split is intentional. Applications should describe the rows or table they want displayed; they should not reproduce firmware spacing, fonts, button positions, or physical-button mapping.
+This split is intentional. Applications describe the content they want displayed; they should not reproduce firmware spacing, fonts, button positions, physical-button mapping, or user-content font handling.
 
 ## Chrome
 
-Both list and table screens use `t5_ui_chrome_t`:
+List, table, and text-view screens use `t5_ui_chrome_t`:
 
 ```c
 t5_ui_chrome_t chrome = {
@@ -96,6 +97,27 @@ ui->render_table(&chrome, columns, 5, rows, 11, selected_index);
 
 A row with `T5_UI_TABLE_ROW_FULL_WIDTH` uses its first cell as a full-width action row. Timecard uses these rows for Clock in, Lunch start, Lunch end, and Clock out below the seven day rows.
 
+## Wrapped text viewport
+
+`render_text_view()` is for document/chat/log style native-app content that should use the same user-content font policy and layout as the firmware:
+
+```c
+t5_ui_text_view_result_t layout = {0};
+ui->render_text_view(&chrome, transcript, scroll_from_bottom, &layout);
+```
+
+The firmware:
+
+- uses the active theme's content bounds and system chrome;
+- renders body text as `TextRole::UserContent`;
+- wraps text with the firmware's selected user-content font;
+- preserves newline paragraph and blank-line breaks;
+- reports total, visible, and maximum scrollable line counts.
+
+`scroll_from_bottom == 0` shows the newest/bottom page. Increasing it moves toward older content. The ELF retains the scroll value and decides which input events alter it.
+
+`Apps/llm_ask.c` uses this viewport for its conversation transcript, so the Ask app no longer needs a private rendering implementation even though the LLM service itself is fully app-owned.
+
 ## Navigation
 
 Use `poll_event()` rather than interpreting raw button bits when the app wants standard firmware navigation:
@@ -136,8 +158,8 @@ while (ui->poll_event(&event, 20)) {
 
 `hit_test()` applies to the most recently rendered list or table. It returns a row index, `T5_UI_HIT_HEADER`, or `T5_UI_HIT_NONE`.
 
-## Reference application
+## Reference applications
 
-`Apps/timecard.c` is the reference application for `T5UiApi`.
+`Apps/timecard.c` is the reference structured-data application. Its week history and day editor are firmware lists, and its weekly punch summary is a firmware-owned table.
 
-Its week history and day editor are firmware lists. Its weekly punch summary is a firmware-owned table. The ELF still owns its JSON store, date/time calculations, punch actions, week/day state, and system-keyboard handoff.
+`Apps/llm_ask.c` is the reference text/network application. Its conversation transcript uses the firmware text viewport and navigation controls while the ELF owns the LLM provider, HTTP protocol, transient chat state, and application behavior.
