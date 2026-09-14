@@ -10,6 +10,8 @@ static int icons;
 static int downloads;
 static int saw_alpha;
 static int saw_beta;
+static int saw_installed;
+static int saw_update;
 static uint32_t downloaded_index;
 
 static int32_t width(void) { return 540; }
@@ -20,6 +22,8 @@ static void text(int32_t x, int32_t y, const char *s) {
     (void)y;
     if (!strcmp(s, "Alpha")) saw_alpha = 1;
     if (!strcmp(s, "Beta")) saw_beta = 1;
+    if (!strcmp(s, "Installed")) saw_installed = 1;
+    if (!strcmp(s, "Update")) saw_update = 1;
 }
 static void rect(int32_t x, int32_t y, int32_t w, int32_t h, bool black) {
     (void)black;
@@ -44,6 +48,24 @@ static bool manifest_get(uint32_t index, t5_app_manifest_t *manifest) {
     strcpy(manifest->min_firmware_version, "1.1.5");
     strcpy(manifest->icon, index == 0 ? "solid:f013" : "regular:f007");
     manifest->compatible = true;
+    return true;
+}
+static bool installed_version_get(const char *file_name, char *version, size_t capacity) {
+    assert(file_name && version && capacity >= T5_APP_VERSION_MAX);
+    if (!strcmp(file_name, "alpha.elf")) {
+        strcpy(version, "1.0.0");
+        return true;
+    }
+    if (!strcmp(file_name, "beta.elf")) {
+        strcpy(version, "0.9.0");
+        return true;
+    }
+    return false;
+}
+static bool catalog_version_get(uint32_t index, char *version, size_t capacity) {
+    assert(index < count());
+    assert(version && capacity >= T5_APP_VERSION_MAX);
+    strcpy(version, "1.0.0");
     return true;
 }
 static bool download(uint32_t index) {
@@ -88,6 +110,8 @@ static const t5_app_api_v1 api = {
     .app_catalog_download = download,
     .draw_icon = icon,
     .app_catalog_manifest_get = manifest_get,
+    .installed_app_version_get = installed_version_get,
+    .app_catalog_version_get = catalog_version_get,
 };
 
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) {
@@ -98,6 +122,8 @@ const t5_app_api_v1 *t5_app_get_api(uint32_t version) {
 int main(void) {
     app_main();
     assert(saw_alpha && saw_beta);
+    assert(saw_installed);
+    assert(saw_update);
     assert(icons >= 2);
     assert(downloads == 1);
     assert(downloaded_index == 1);
