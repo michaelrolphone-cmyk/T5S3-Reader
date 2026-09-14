@@ -13,4 +13,5 @@ if [[ $# -gt 0 ]]; then
     "$repo_dir/lib/elf_loader/src/esp_elf_validate.c" "$repo_dir/test/native_apps/validate_test.c" -o "$binary"
   "$binary" "$1"
 fi
+python3 "$repo_dir/test/native_apps/test_symbols.py"
 echo 'Native app launcher tests passed'
