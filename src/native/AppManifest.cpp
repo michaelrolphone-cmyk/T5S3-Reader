@@ -31,11 +31,16 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
     if (!n || n >= T5_APP_VERSION_MAX || !t5_parse_version(value, parsed, false)) return false;
     for (size_t j = 0; j < n; ++j) if (static_cast<unsigned char>(value[j]) < 32) return false;
     if (appVersion) appVersion->assign(value, n);
-  } else if (requireAppVersion) {
-    return false;
   } else if (!versionNode.isNull()) {
     return false;
   }
+
+  // Runtime parsing intentionally accepts pre-versioning sidecars so firmware can
+  // still browse/install the currently published legacy release. The release build
+  // validator requires version for every newly published app. A missing runtime
+  // version is represented by an empty string and compares equal only to another
+  // legacy sidecar; the first versioned catalog release will therefore offer Update.
+  (void)requireAppVersion;
 
   uint32_t version[3], cp;
   bool regular;
