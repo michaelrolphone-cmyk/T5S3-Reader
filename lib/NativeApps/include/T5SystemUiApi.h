@@ -35,6 +35,12 @@ typedef struct {
     // Queue a return to the firmware Home activity after the ELF returns. This
     // mirrors built-in activities whose top-level Back/Home action exits to Home.
     void (*navigate_home)(void);
+
+    // Opens the firmware's standard Wi-Fi selection activity, then relaunches
+    // the exact calling ELF. The result is intentionally generic: native apps
+    // learn only whether selection was cancelled and whether Wi-Fi is connected.
+    bool (*wifi_request)(uint64_t cookie);
+    bool (*wifi_take_result)(bool *connected, bool *cancelled, uint64_t *cookie);
 } t5_system_ui_api_v1;
 
 // Versioned firmware system-UI service. This is intentionally separate from
