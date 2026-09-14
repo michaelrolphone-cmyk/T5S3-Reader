@@ -18,6 +18,7 @@
 #include <vector>
 #include "MappedInputManager.h"
 #include "NativeSettingsBridge.h"
+#include "NativeSystemUiBridge.h"
 #include "WifiCredentialStore.h"
 #include "activities/RenderLock.h"
 #include "fontIds.h"
@@ -504,8 +505,11 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   Session active{renderer, input, xTaskGetCurrentTaskHandle()};
   session = &active;
   nativeSettingsBegin(renderer, input);
+  nativeSystemUiBegin();
   esp_task_wdt_reset();
   const esp_err_t result = launch_elf_app(path);
+  const auto systemNavigation = nativeSystemUiTakeNavigation();
+  homeRequested = homeRequested || systemNavigation == NativeSystemUiNavigation::Home;
   queuedLaunch = active.launchPath;
   if (active.directory.isOpen()) active.directory.close();
   active.catalog.clear();
@@ -526,6 +530,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   } while (millis() - quiet < 350);
   input.clearInjectedButtonTap();
   firmwareActionPending = nativeSettingsDispatchPendingAction(renderer, input, path);
+  firmwareActionPending = firmwareActionPending || systemNavigation == NativeSystemUiNavigation::Keyboard;
   returned = true;
   return result;
 }

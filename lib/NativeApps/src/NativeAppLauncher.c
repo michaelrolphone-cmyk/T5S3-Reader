@@ -9,6 +9,9 @@
 
 #include "esp_elf.h"
 #include "T5AppApi.h"
+#include "T5StorageApi.h"
+#include "T5SystemApi.h"
+#include "T5SystemUiApi.h"
 #include <errno.h>
 
 #if !CONFIG_IDF_TARGET_ESP32S3 || !CONFIG_ELF_LOADER_LOAD_PSRAM
@@ -17,7 +20,13 @@
 
 static const char *TAG = "sd_elf_launcher";
 static atomic_flag s_running = ATOMIC_FLAG_INIT;
+static const char *s_current_path = NULL;
 typedef void (*elf_app_main_t)(void);
+
+const char *native_app_current_path(void)
+{
+    return s_current_path;
+}
 
 esp_err_t launch_elf_app(const char *sd_path)
 {
@@ -38,12 +47,16 @@ esp_err_t launch_elf_app(const char *sd_path)
         goto done;
     }
     static const struct esp_elfsym host_symbols[] = {
-        ESP_ELFSYM_EXPORT(t5_app_get_api), ESP_ELFSYM_END
+        ESP_ELFSYM_EXPORT(t5_app_get_api),
+        ESP_ELFSYM_EXPORT(t5_storage_get_api),
+        ESP_ELFSYM_EXPORT(t5_system_get_api),
+        ESP_ELFSYM_EXPORT(t5_system_ui_get_api),
+        ESP_ELFSYM_END
     };
     const int registered = esp_elf_register_symbol(host_symbols);
     if (registered != 0 && registered != -EEXIST) {
         result = ESP_ERR_NO_MEM;
-        ESP_LOGE(TAG, "Could not register native app API");
+        ESP_LOGE(TAG, "Could not register native app APIs");
         goto done;
     }
     result = ESP_FAIL;
@@ -70,11 +83,14 @@ esp_err_t launch_elf_app(const char *sd_path)
     ESP_LOGI(TAG, "Starting %s", sd_path);
     // Espressif's target ABI supports the dlsym object/function pointer cast.
     // The loader owns relocation, PSRAM allocation, cache sync and I-bus mapping.
+    s_current_path = sd_path;
     ((elf_app_main_t)symbol)();
+    s_current_path = NULL;
     ESP_LOGI(TAG, "Application returned: %s", sd_path);
     result = ESP_OK;
 
 close_module:
+    s_current_path = NULL;
     (void)dlerror();
     if (dlclose(handle) != 0) {
         const char *close_error = dlerror();
@@ -84,6 +100,7 @@ close_module:
     }
     // Neither the handle nor any resolved function pointer is valid now.
 done:
+    s_current_path = NULL;
     atomic_flag_clear_explicit(&s_running, memory_order_release);
     return result;
 }

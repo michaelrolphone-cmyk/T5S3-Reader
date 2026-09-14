@@ -7,22 +7,22 @@ on:
       - master
     paths:
       - ".github/workflows/platformio-build.yml"
+      - "Apps/**"
       - "src/**"
       - "lib/**"
       - "scripts/**"
       - "examples/native_apps/**"
-      - "Apps/**"
       - "test/**"
       - "platformio.ini"
       - "partitions.csv"
   pull_request:
     paths:
       - ".github/workflows/platformio-build.yml"
+      - "Apps/**"
       - "src/**"
       - "lib/**"
       - "scripts/**"
       - "examples/native_apps/**"
-      - "Apps/**"
       - "test/**"
       - "platformio.ini"
       - "partitions.csv"
@@ -76,10 +76,12 @@ jobs:
       - name: Build firmware
         run: pio run -e ${{ matrix.environment }}
 
-      - name: Build and validate native ELF example
+      - name: Build and validate native ELFs
         run: |
           python scripts/build_native_app.py examples/native_apps/hello.c --output dist/hello.elf
           bash test/run_native_app_test.sh dist/hello.elf
+          python scripts/build_native_app.py Apps/timecard.c --output dist/timecard.elf
+          bash test/run_native_app_test.sh dist/timecard.elf
 
       - name: Build and validate all released apps and manifests
         run: |
@@ -101,6 +103,8 @@ jobs:
             dist/${{ matrix.merged_firmware_name }}
             dist/hello.elf
             dist/apps/*
+            dist/timecard.elf
+            dist/timecard.json
           if-no-files-found: error
 
   host-tests:
