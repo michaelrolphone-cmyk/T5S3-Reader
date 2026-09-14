@@ -20,7 +20,9 @@ void WifiSettingsActivity::loop() {
     launchAttempted = true;
     const esp_err_t result = runNativeApp("/sd/Apps/wifi_settings.elf", renderer, mappedInput);
     if (result == ESP_OK) {
-      finish();
+      // A native app may have queued a firmware-owned activity (the Wi-Fi selector)
+      // before returning. Do not pop this launcher in the same ActivityManager
+      // iteration or popActivity() will discard that pending child activity.
       return;
     }
     launchFailed = true;
@@ -28,8 +30,15 @@ void WifiSettingsActivity::loop() {
     return;
   }
 
-  if (launchFailed && (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
-                       mappedInput.wasPressed(MappedInputManager::Button::Confirm))) {
+  if (!launchFailed) {
+    // With no handoff this runs on the next manager iteration. With a handoff,
+    // this launcher is stacked beneath it and only resumes here after it unwinds.
+    finish();
+    return;
+  }
+
+  if (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
+      mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
     finish();
   }
 }
