@@ -11,6 +11,7 @@
 #include "esp_elf.h"
 #include "T5AppApi.h"
 #include "T5BatteryApi.h"
+#include "T5CacheApi.h"
 #include "T5FileBrowserApi.h"
 #include "T5GpsApi.h"
 #include "T5ImageApi.h"
@@ -59,6 +60,7 @@ esp_err_t launch_elf_app(const char *sd_path)
     static const struct esp_elfsym host_symbols[] = {
         ESP_ELFSYM_EXPORT(t5_app_get_api),
         ESP_ELFSYM_EXPORT(t5_battery_get_api),
+        ESP_ELFSYM_EXPORT(t5_cache_get_api),
         ESP_ELFSYM_EXPORT(t5_koreader_get_api),
         ESP_ELFSYM_EXPORT(t5_opds_get_api),
         ESP_ELFSYM_EXPORT(t5_storage_get_api),
