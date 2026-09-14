@@ -19,6 +19,7 @@
 #include "T5OpdsApi.h"
 #include "T5OtaApi.h"
 #include "T5SdFirmwareApi.h"
+#include "T5StatusBarApi.h"
 #include "T5StorageApi.h"
 #include "T5SystemApi.h"
 #include "T5SystemUiApi.h"
@@ -116,6 +117,7 @@ const t5_network_api_v1 *t5_network_get_api(uint32_t version) { (void)version; r
 const t5_opds_api_v1 *t5_opds_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_ota_api_v1 *t5_ota_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_sd_firmware_api_v1 *t5_sd_firmware_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_status_bar_api_v1 *t5_status_bar_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_storage_api_v1 *t5_storage_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_system_api_v1 *t5_system_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_system_ui_api_v1 *t5_system_ui_get_api(uint32_t version) { (void)version; return NULL; }
