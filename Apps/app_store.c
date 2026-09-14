@@ -13,10 +13,30 @@ static bool has_catalog_api(const t5_app_api_v1 *api) {
 }
 
 static int32_t visible_rows(const t5_app_api_v1 *api) {
-    int32_t rows = (api->screen_height() - FIRST_ROW_Y - FOOTER_HEIGHT) / ROW_HEIGHT;
+    int32_t available = api->screen_height() - FIRST_ROW_Y - FOOTER_HEIGHT;
+    int32_t rows = 0;
+    while (available >= ROW_HEIGHT && rows < 18) {
+        available -= ROW_HEIGHT;
+        ++rows;
+    }
     if (rows < 1) rows = 1;
-    if (rows > 18) rows = 18;
     return rows;
+}
+
+static uint32_t page_start_for(uint32_t selected, uint32_t rows) {
+    uint32_t offset = selected;
+    while (offset >= rows) offset -= rows;
+    return selected - offset;
+}
+
+static uint32_t row_from_y(int32_t y) {
+    uint32_t row = 0;
+    int32_t offset = y - FIRST_ROW_Y;
+    while (offset >= ROW_HEIGHT) {
+        offset -= ROW_HEIGHT;
+        ++row;
+    }
+    return row;
 }
 
 static void append_text(char *dst, size_t capacity, const char *src) {
@@ -58,7 +78,7 @@ static void draw_catalog(const t5_app_api_v1 *api, uint32_t selected) {
         return;
     }
 
-    const uint32_t page_start = (selected / (uint32_t)rows) * (uint32_t)rows;
+    const uint32_t page_start = page_start_for(selected, (uint32_t)rows);
     for (int32_t row = 0; row < rows; ++row) {
         const uint32_t index = page_start + (uint32_t)row;
         if (index >= count) break;
@@ -93,8 +113,8 @@ static bool select_tapped_row(const t5_app_api_v1 *api, const t5_app_input_t *in
     const int32_t list_bottom = FIRST_ROW_Y + rows * ROW_HEIGHT;
     if (input->touch_y < FIRST_ROW_Y || input->touch_y >= list_bottom) return false;
 
-    const uint32_t page_start = (*selected / (uint32_t)rows) * (uint32_t)rows;
-    const uint32_t row = (uint32_t)((input->touch_y - FIRST_ROW_Y) / ROW_HEIGHT);
+    const uint32_t page_start = page_start_for(*selected, (uint32_t)rows);
+    const uint32_t row = row_from_y(input->touch_y);
     const uint32_t tapped = page_start + row;
     if (tapped >= count) return false;
 
@@ -141,7 +161,8 @@ __attribute__((visibility("default"))) void app_main(void) {
             continue;
         }
         if (buttons & T5_APP_BUTTON_DOWN) {
-            selected = (selected + 1) % count;
+            ++selected;
+            if (selected >= count) selected = 0;
             draw_catalog(api, selected);
             continue;
         }
