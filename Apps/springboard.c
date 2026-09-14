@@ -41,7 +41,7 @@ static void draw(const char *status) {
     }
     const int bottom = api->screen_height() - 88;
     api->draw_label(8, bottom, api->screen_width() - 16,
-                    status ? status : missing_icons ? "Install FAClassic fonts for icons" : "Back: Home   Select: Open");
+                    status ? status : missing_icons ? "Some Font Awesome icons unavailable" : "Back: Home   Select: Open");
     api->draw_label(0, bottom + 40, api->screen_width() / 2, "< Previous");
     api->draw_label(api->screen_width() / 2, bottom + 40, api->screen_width() / 2, "Next >");
     api->present(false);

@@ -35,6 +35,8 @@ struct CatalogAsset {
   std::string url;
   std::string manifestUrl;
   uint64_t size = 0;
+  t5_app_manifest_t manifest{};
+  bool manifestValid = false;
 };
 
 struct Session {
@@ -265,6 +267,29 @@ bool parseCatalog(const std::string& json, std::vector<CatalogAsset>& catalog) {
   return true;
 }
 
+bool loadCatalogManifests(std::vector<CatalogAsset>& catalog) {
+  std::vector<CatalogAsset> validated;
+  validated.reserve(catalog.size());
+  for (auto& asset : catalog) {
+    esp_task_wdt_reset();
+    if (asset.manifestUrl.empty()) continue;
+    std::string json;
+    t5_app_manifest_t manifest{};
+    if (!HttpDownloader::fetchUrl(asset.manifestUrl, json) || !parseAppManifest(json, manifest) ||
+        asset.name != manifest.file_name) {
+      continue;
+    }
+    asset.manifest = manifest;
+    asset.manifestValid = true;
+    validated.push_back(std::move(asset));
+  }
+  std::sort(validated.begin(), validated.end(), [](const CatalogAsset& a, const CatalogAsset& b) {
+    return std::strcmp(a.manifest.display_name, b.manifest.display_name) < 0;
+  });
+  catalog.swap(validated);
+  return true;
+}
+
 bool connectSavedWifi() {
   if (WiFi.status() == WL_CONNECTED) return true;
 
@@ -317,7 +342,8 @@ bool appCatalogRefresh() {
   esp_task_wdt_reset();
   if (!HttpDownloader::fetchUrl(kLatestReleaseApi, json)) return false;
   esp_task_wdt_reset();
-  return parseCatalog(json, s->catalog);
+  if (!parseCatalog(json, s->catalog)) return false;
+  return loadCatalogManifests(s->catalog);
 }
 
 uint32_t appCatalogCount() {
@@ -333,6 +359,13 @@ bool appCatalogGet(uint32_t index, t5_app_release_asset_t* out) {
   std::strncpy(out->name, asset.name.c_str(), sizeof(out->name) - 1);
   out->name[sizeof(out->name) - 1] = '\0';
   out->size = asset.size;
+  return true;
+}
+
+bool appCatalogManifestGet(uint32_t index, t5_app_manifest_t* out) {
+  auto* s = current();
+  if (!s || !out || index >= s->catalog.size() || !s->catalog[index].manifestValid) return false;
+  *out = s->catalog[index].manifest;
   return true;
 }
 
@@ -472,7 +505,8 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            nativeSettingsActivate,
                            nativeSettingsRender,
                            nativeSettingsTouch,
-                           installedRefresh, installedCount, installedGet, requestLaunch, drawIcon, drawLabel};
+                           installedRefresh, installedCount, installedGet, requestLaunch, drawIcon, drawLabel,
+                           appCatalogManifestGet};
 }  // namespace
 
 extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
