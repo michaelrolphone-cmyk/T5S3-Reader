@@ -109,9 +109,7 @@ static app_action_t catalog_action(const t5_app_api_v1 *api, uint32_t index,
     if (!api->installed_app_version_get(manifest->file_name, installed_version, installed_capacity)) {
         return APP_ACTION_INSTALL;
     }
-    if (available_version[0] && installed_version[0] && !strcmp(available_version, installed_version)) {
-        return APP_ACTION_CURRENT;
-    }
+    if (!strcmp(available_version, installed_version)) return APP_ACTION_CURRENT;
     return APP_ACTION_UPDATE;
 }
 
