@@ -1,6 +1,7 @@
 #include "FontAwesomeIcons.h"
 #include <AppManifestRules.h>
 #include <GfxRenderer.h>
+#include <Logging.h>
 #include <SdCardFont.h>
 #include <cstdio>
 #include <memory>
@@ -10,58 +11,38 @@ namespace {
 struct Slot {
   std::unique_ptr<SdCardFont> font;
   int size = 0;
-  GfxRenderer* owner = nullptr;
 };
 
-// Keep the Font Awesome caches independent from the selected reading font.
-// Index 0 is Solid and index 1 is Regular.
+// Index 0 is Solid and index 1 is Regular. These fonts are intentionally kept
+// separate from the reader's selected SD font and from GfxRenderer's font map.
 Slot slots[2];
 
-int fontId(bool regular) { return regular ? 0x46410002 : 0x46410001; }
 const char* familyName(bool regular) { return regular ? "FAClassicRegular" : "FAClassicSolid"; }
 
-bool ensureFont(GfxRenderer& renderer, bool regular, int size) {
+bool ensureFont(bool regular, int size) {
   Slot& slot = slots[regular ? 1 : 0];
-  const int id = fontId(regular);
-
-  if (slot.font && (slot.size != size || slot.owner != &renderer)) {
-    if (slot.owner) slot.owner->removeFont(id);
+  if (slot.font && slot.size != size) {
     slot.font.reset();
     slot.size = 0;
-    slot.owner = nullptr;
   }
-
   if (slot.font) return true;
 
   auto font = std::unique_ptr<SdCardFont>(new (std::nothrow) SdCardFont());
   if (!font) return false;
 
   const char* family = familyName(regular);
-  char path[160];
-  bool loaded = false;
-
-  // Normal installed-font roots plus the repository's copy-ready SD_fonts
-  // layout and direct family folders at the SD root.
-  for (const char* root : {"/.fonts", "/fonts", "/SD_fonts", ""}) {
-    if (root[0]) {
-      snprintf(path, sizeof(path), "%s/%s/%s_%d.cpfont", root, family, family, size);
-    } else {
-      snprintf(path, sizeof(path), "/%s/%s_%d.cpfont", family, family, size);
-    }
+  char path[128];
+  for (const char* root : {"/.fonts", "/fonts"}) {
+    snprintf(path, sizeof(path), "%s/%s/%s_%d.cpfont", root, family, family, size);
     if (font->load(path)) {
-      loaded = true;
-      break;
+      slot.font = std::move(font);
+      slot.size = size;
+      return true;
     }
   }
 
-  if (!loaded) return false;
-
-  slot.font = std::move(font);
-  slot.size = size;
-  slot.owner = &renderer;
-  renderer.registerSdCardFont(id, slot.font.get());
-  renderer.insertFont(id, EpdFontFamily(slot.font->getEpdFont(0)));
-  return true;
+  LOG_DBG("FA", "Unable to load %s size %d from /.fonts or /fonts", family, size);
+  return false;
 }
 
 void encodeUtf8(uint32_t cp, char utf8[5]) {
@@ -83,25 +64,62 @@ void encodeUtf8(uint32_t cp, char utf8[5]) {
   }
 }
 
+bool drawGlyphBitmap(GfxRenderer& renderer, int x, int y, int cellSize, const EpdFontData* data,
+                     const EpdGlyph* glyph, bool black) {
+  if (!data || !glyph || glyph->width == 0 || glyph->height == 0 || glyph->dataLength == 0) return false;
+  const uint8_t* bitmap = renderer.getGlyphBitmap(data, glyph);
+  if (!bitmap) return false;
+
+  // draw_icon() defines x/y as the top-left of an icon cell, not a text
+  // baseline. Center the rasterized glyph in that cell and draw it directly so
+  // Font Awesome does not depend on dynamic registration in GfxRenderer's text
+  // font map.
+  const int drawX = x + (cellSize - static_cast<int>(glyph->width)) / 2;
+  const int drawY = y + (cellSize - static_cast<int>(glyph->height)) / 2;
+  int pixelPosition = 0;
+
+  if (data->is2Bit) {
+    for (int gy = 0; gy < glyph->height; ++gy) {
+      for (int gx = 0; gx < glyph->width; ++gx, ++pixelPosition) {
+        const uint8_t byte = bitmap[pixelPosition >> 2];
+        const uint8_t shift = static_cast<uint8_t>((3 - (pixelPosition & 3)) * 2);
+        const uint8_t coverage = (byte >> shift) & 0x3;
+        if (coverage != 0) renderer.drawPixel(drawX + gx, drawY + gy, black);
+      }
+    }
+  } else {
+    for (int gy = 0; gy < glyph->height; ++gy) {
+      for (int gx = 0; gx < glyph->width; ++gx, ++pixelPosition) {
+        const uint8_t byte = bitmap[pixelPosition >> 3];
+        const uint8_t shift = static_cast<uint8_t>(7 - (pixelPosition & 7));
+        if ((byte >> shift) & 1) renderer.drawPixel(drawX + gx, drawY + gy, black);
+      }
+    }
+  }
+  return true;
+}
+
 bool drawWithFamily(GfxRenderer& renderer, int x, int y, uint32_t cp, int size, bool regular, bool black) {
-  if (!ensureFont(renderer, regular, size)) return false;
+  if (!ensureFont(regular, size)) return false;
 
   Slot& slot = slots[regular ? 1 : 0];
   char utf8[5];
   encodeUtf8(cp, utf8);
 
-  if (slot.font->prewarm(utf8, 1) != 0) return false;
+  if (slot.font->prewarm(utf8, 1) != 0) {
+    LOG_DBG("FA", "%s has no glyph U+%04lX", familyName(regular), static_cast<unsigned long>(cp));
+    return false;
+  }
+
   EpdFont* epd = slot.font->getEpdFont(0);
   if (!epd) return false;
   const EpdGlyph* glyph = epd->getGlyph(cp);
+  if (!glyph || glyph->width == 0 || glyph->height == 0 || glyph->dataLength == 0) {
+    LOG_DBG("FA", "%s glyph U+%04lX is empty", familyName(regular), static_cast<unsigned long>(cp));
+    return false;
+  }
 
-  // The generated FA fonts contain zero-width placeholders for codepoints not
-  // provided by that style. Treat those as missing so the other family can be
-  // tried instead of reporting a successful but invisible draw.
-  if (!glyph || glyph->width == 0 || glyph->height == 0 || glyph->dataLength == 0) return false;
-
-  renderer.drawText(fontId(regular), x, y, utf8, black);
-  return true;
+  return drawGlyphBitmap(renderer, x, y, size, epd->data, glyph, black);
 }
 }  // namespace
 
@@ -109,12 +127,13 @@ bool draw(GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSi
   bool manifestRegular = false;
   uint32_t cp = 0;
   if (!t5_parse_icon(icon, &manifestRegular, &cp)) return false;
-  (void)manifestRegular;  // Regular is intentionally preferred regardless of the manifest's legacy style prefix.
+  (void)manifestRegular;
 
   const int size = pointSize <= 12 ? 12 : pointSize <= 14 ? 14 : pointSize <= 16 ? 16 : 18;
 
-  // Prefer FAClassicRegular for springboard/core UI icons. Some Font Awesome
-  // glyphs exist only in Solid, so retain Solid as a transparent fallback.
+  // Springboard/core UI policy: prefer FAClassicRegular whenever that codepoint
+  // has a real rasterized glyph. Fall back to FAClassicSolid for Font Awesome
+  // icons that are only provided by the Solid face.
   if (drawWithFamily(renderer, x, y, cp, size, true, black)) return true;
   if (drawWithFamily(renderer, x, y, cp, size, false, black)) return true;
 
