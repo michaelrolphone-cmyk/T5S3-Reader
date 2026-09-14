@@ -240,7 +240,7 @@ void ActivityManager::goToBrowser() {
 }
 
 void ActivityManager::goToReader(std::string path, const HalDisplay::RefreshMode replaceRefreshMode) {
-  replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path, replaceRefreshMode)),
+  replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path), replaceRefreshMode),
                   replaceRefreshMode);
 }
 
