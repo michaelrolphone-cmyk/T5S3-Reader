@@ -12,6 +12,7 @@
 #include <esp_task_wdt.h>
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -23,6 +24,10 @@
 #include "activities/RenderLock.h"
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
+
+#ifndef CROSSPOINT_COMPAT_VERSION
+#define CROSSPOINT_COMPAT_VERSION CROSSPOINT_VERSION
+#endif
 
 namespace {
 constexpr const char* kLatestReleaseApi =
@@ -54,6 +59,7 @@ struct Session {
 Session* session = nullptr;
 bool returned = false;
 std::string queuedLaunch;
+std::string lastLaunchError;
 bool homeRequested = false;
 bool firmwareActionPending = false;
 Session* current() { return session && session->owner == xTaskGetCurrentTaskHandle() ? session : nullptr; }
@@ -550,20 +556,44 @@ extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
 }
 
 esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManager& input) {
-  if (session) return ESP_ERR_INVALID_STATE;
+  lastLaunchError.clear();
+  if (session) {
+    lastLaunchError = "Another native application is already running.";
+    return ESP_ERR_INVALID_STATE;
+  }
   queuedLaunch.clear();
   homeRequested = false;
   firmwareActionPending = false;
   // Legacy loose ELFs still work in Browse Files. Present sidecars are enforced.
-  if (!path || std::strncmp(path, "/sd/", 4)) return ESP_ERR_INVALID_ARG;
+  if (!path || std::strncmp(path, "/sd/", 4)) {
+    lastLaunchError = "Invalid native application path.";
+    return ESP_ERR_INVALID_ARG;
+  }
   const std::string elf(path + 3);
-  if (elf.size() < 4) return ESP_ERR_INVALID_ARG;
+  if (elf.size() < 4) {
+    lastLaunchError = "Invalid native application filename.";
+    return ESP_ERR_INVALID_ARG;
+  }
   const std::string sidecar = elf.substr(0, elf.size() - 4) + ".json";
-  if (Storage.exists((elf + ".bak").c_str()) || Storage.exists((sidecar + ".bak").c_str())) return ESP_ERR_INVALID_STATE;
+  if (Storage.exists((elf + ".bak").c_str()) || Storage.exists((sidecar + ".bak").c_str())) {
+    lastLaunchError = "Application update is incomplete; backup files remain.";
+    return ESP_ERR_INVALID_STATE;
+  }
   if (Storage.exists(sidecar.c_str())) {
     t5_app_manifest_t manifest{};
-    if (!readAppManifest(sidecar.c_str(), manifest) || !manifest.compatible ||
-        elf.substr(elf.find_last_of('/') + 1) != manifest.file_name) return ESP_ERR_NOT_SUPPORTED;
+    if (!readAppManifest(sidecar.c_str(), manifest)) {
+      lastLaunchError = "Application manifest is invalid.";
+      return ESP_ERR_NOT_SUPPORTED;
+    }
+    if (elf.substr(elf.find_last_of('/') + 1) != manifest.file_name) {
+      lastLaunchError = "Manifest file name does not match the ELF.";
+      return ESP_ERR_NOT_SUPPORTED;
+    }
+    if (!manifest.compatible) {
+      lastLaunchError = std::string("Requires firmware ") + manifest.min_firmware_version +
+                        "; running " + CROSSPOINT_COMPAT_VERSION + ".";
+      return ESP_ERR_NOT_SUPPORTED;
+    }
   }
   HalPowerManager::Lock powerLock;
   RenderLock lock;
@@ -578,6 +608,12 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   nativeSystemUiBegin();
   esp_task_wdt_reset();
   const esp_err_t result = launch_elf_app(path);
+  if (result != ESP_OK && lastLaunchError.empty()) {
+    char message[80];
+    std::snprintf(message, sizeof(message), "ELF loader failed with error 0x%lX.",
+                  static_cast<unsigned long>(result));
+    lastLaunchError = message;
+  }
   const auto systemNavigation = nativeSystemUiTakeNavigation();
   homeRequested = homeRequested || systemNavigation == NativeSystemUiNavigation::Home;
   queuedLaunch = active.launchPath;
@@ -633,7 +669,10 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
   }
   for (;;) {
     const auto result = runNativeApp(springboard, renderer, input);
-    if (result != ESP_OK) { showError("Apps launcher failed; check firmware version."); return false; }
+    if (result != ESP_OK) {
+      showError(lastLaunchError.empty() ? "Apps launcher failed." : lastLaunchError.c_str());
+      return false;
+    }
     if (firmwareActionPending) return true;
     if (homeRequested || queuedLaunch.empty()) return false;
     const std::string selected = queuedLaunch;
@@ -642,6 +681,8 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
     const auto appResult = runNativeApp(selected.c_str(), renderer, input);
     if (firmwareActionPending) return true;
     if (homeRequested) return false;
-    if (appResult != ESP_OK) showError("Application failed or needs newer firmware.");
+    if (appResult != ESP_OK) {
+      showError(lastLaunchError.empty() ? "Application launch failed." : lastLaunchError.c_str());
+    }
   }
 }
