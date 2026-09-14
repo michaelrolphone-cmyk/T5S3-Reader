@@ -322,11 +322,18 @@ bool appCatalogDownload(uint32_t index) {
   const std::string temporary = destination + ".part";
   const std::string backup = destination + ".bak";
 
+  // Recover a prior install interrupted after the old ELF was moved aside.
+  if (Storage.exists(backup.c_str())) {
+    if (!Storage.exists(destination.c_str())) {
+      if (!Storage.rename(backup.c_str(), destination.c_str())) return false;
+    } else {
+      Storage.remove(backup.c_str());
+    }
+  }
+  if (Storage.exists(temporary.c_str())) Storage.remove(temporary.c_str());
+
   // Never write directly over an installed app. A failed HTTP transfer leaves
   // the previous ELF untouched, and a failed final rename restores it.
-  if (Storage.exists(temporary.c_str())) Storage.remove(temporary.c_str());
-  if (Storage.exists(backup.c_str())) Storage.remove(backup.c_str());
-
   esp_task_wdt_reset();
   const auto result = HttpDownloader::downloadToFile(asset.url, temporary, [](size_t, size_t) {
     esp_task_wdt_reset();
