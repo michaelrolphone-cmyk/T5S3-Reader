@@ -2,10 +2,12 @@
 #include <Arduino.h>
 #include <GfxRenderer.h>
 #include <HalPowerManager.h>
+#include <HalStorage.h>
 #include <NativeAppLauncher.h>
 #include <T5AppApi.h>
 #include <esp_task_wdt.h>
 #include <algorithm>
+#include <cstring>
 #include "MappedInputManager.h"
 #include "activities/RenderLock.h"
 #include "fontIds.h"
@@ -15,6 +17,7 @@ struct Session {
   GfxRenderer& renderer;
   MappedInputManager& input;
   TaskHandle_t owner;
+  HalFile directory;
   bool exiting = false;
 };
 Session* session = nullptr;
@@ -58,8 +61,48 @@ bool poll(t5_app_input_t* out, uint32_t waitMs) {
   return true;
 }
 uint32_t clockMs() { return ::millis(); }
+
+const char* storagePath(const char* path) {
+  if (!path) return nullptr;
+  if (std::strcmp(path, "/sd") == 0) return "/";
+  if (std::strncmp(path, "/sd/", 4) == 0) return path + 3;
+  return nullptr;
+}
+
+bool dirOpen(const char* path) {
+  auto* s = current();
+  const char* sdPath = storagePath(path);
+  if (!s || !sdPath || !Storage.ready()) return false;
+  if (s->directory.isOpen()) s->directory.close();
+  s->directory = Storage.open(sdPath, O_RDONLY);
+  if (!s->directory.isOpen() || !s->directory.isDirectory()) {
+    if (s->directory.isOpen()) s->directory.close();
+    return false;
+  }
+  s->directory.rewindDirectory();
+  return true;
+}
+
+bool dirNext(t5_app_dirent_t* out) {
+  auto* s = current();
+  if (!s || !out || !s->directory.isOpen() || !s->directory.isDirectory()) return false;
+  *out = {};
+  HalFile entry = s->directory.openNextFile();
+  if (!entry.isOpen()) return false;
+  entry.getName(out->name, sizeof(out->name));
+  out->name[sizeof(out->name) - 1] = '\0';
+  out->is_directory = entry.isDirectory() ? 1u : 0u;
+  out->size = out->is_directory ? 0u : entry.fileSize64();
+  entry.close();
+  return true;
+}
+
+void dirClose() {
+  if (auto* s = current(); s && s->directory.isOpen()) s->directory.close();
+}
+
 const t5_app_api_v1 api = {T5_APP_ABI_VERSION, sizeof(t5_app_api_v1), width, height, clear, text, rect,
-                          present, poll, clockMs};
+                          present, poll, clockMs, dirOpen, dirNext, dirClose};
 }  // namespace
 
 extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
@@ -80,6 +123,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   session = &active;
   esp_task_wdt_reset();
   const esp_err_t result = launch_elf_app(path);
+  if (active.directory.isOpen()) active.directory.close();
   session = nullptr;
   renderer.setOrientation(orientation);
   renderer.setRenderMode(mode);
