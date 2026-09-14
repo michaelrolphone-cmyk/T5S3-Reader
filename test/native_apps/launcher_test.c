@@ -17,7 +17,10 @@ static void child(void)
     running = true;
     ++calls;
     assert(closes == 0);
+    assert(native_app_current_path() != NULL);
+    assert(strcmp(native_app_current_path(), "/sd/apps/game.elf") == 0);
     assert(launch_elf_app("/sd/apps/nested.elf") == ESP_ERR_INVALID_STATE);
+    assert(strcmp(native_app_current_path(), "/sd/apps/game.elf") == 0);
     running = false;
 }
 void *dlopen(const char *path, int flags)
@@ -45,16 +48,19 @@ int dlclose(void *handle)
 }
 int main(void)
 {
+    assert(native_app_current_path() == NULL);
     assert(launch_elf_app(NULL) == ESP_ERR_INVALID_ARG);
     assert(launch_elf_app("") == ESP_ERR_INVALID_ARG);
     assert(launch_elf_app("/") == ESP_ERR_INVALID_ARG);
     assert(launch_elf_app("relative.elf") == ESP_ERR_INVALID_ARG);
+    assert(native_app_current_path() == NULL);
     assert(opens == 0);
     for (int round = 0; round < 3; ++round) {
         for (mode = 0; mode < 6; ++mode) {
             opens = closes = calls = 0;
             pending = "stale error";
             int rc = launch_elf_app("/sd/apps/game.elf");
+            assert(native_app_current_path() == NULL);
             assert(opens == 1);
             assert(closes == (mode == 1 ? 0 : 1));
             assert(calls == (mode == 0 || mode == 4 ? 1 : 0));
