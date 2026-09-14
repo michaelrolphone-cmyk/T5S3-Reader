@@ -253,19 +253,27 @@ void RoundedRaffTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, con
   }
 }
 
+BaseTheme::ButtonMenuLayout RoundedRaffTheme::buttonMenuLayout(const GfxRenderer& renderer, Rect rect, int selectedIndex) const {
+  (void)renderer;
+  const int top = rect.y;
+  const int height = renderer.getLineHeight(kTitleFontId) + 20;
+  const int step = height + kSelectableRowGap;
+  const int pageSize = std::max(1, (rect.height - (top - rect.y)) / step);
+  return {top, height, step, pageSize, (std::max(0, selectedIndex) / pageSize) * pageSize};
+}
+
 void RoundedRaffTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                       const std::function<std::string(int index)>& buttonLabel,
                                       const std::function<UIIcon(int index)>& rowIcon) const {
   (void)rowIcon;
   const int sidePadding = RoundedRaffMetrics::values.contentSidePadding;
   const int rowX = rect.x + sidePadding;
-  const int rowHeight = renderer.getLineHeight(kTitleFontId) + 20;  // 10px top + 10px bottom
-  const int rowGap = kSelectableRowGap;
-  const int rowStep = rowHeight + rowGap;
-  const int pageItems = std::max(1, rect.height / rowStep);
-  const int safeSelectedIndex = std::max(0, selectedIndex);
-  const int pageStartIndex = (safeSelectedIndex / pageItems) * pageItems;
-  const int menuTop = rect.y;
+  const auto layout = buttonMenuLayout(renderer, rect, selectedIndex);
+  const int rowHeight = layout.rowHeight;
+  const int rowStep = layout.rowStep;
+  const int pageItems = layout.pageSize;
+  const int pageStartIndex = layout.start;
+  const int menuTop = layout.top;
   const int textLineHeight = renderer.getLineHeight(kTitleFontId);
   const int menuMaxWidth = std::max(0, rect.width - sidePadding * 2);
 

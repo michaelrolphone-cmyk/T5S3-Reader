@@ -406,3 +406,5 @@ STR_TIMECARD_NO_TIME: "--"
 
 STR_NATIVE_APP_RUNNING: "Running application..."
 STR_NATIVE_APP_FAILED: "Application failed"
+
+STR_APPS: "Apps"

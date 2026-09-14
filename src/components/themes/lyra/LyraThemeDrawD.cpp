@@ -15,13 +15,23 @@
 #include "LyraIcons.h"
 #include "fontIds.h"
 
+BaseTheme::ButtonMenuLayout LyraTheme::buttonMenuLayout(const GfxRenderer& renderer, Rect rect, int selectedIndex) const {
+  (void)renderer;
+  const int top = rect.y;
+  const int height = LyraMetrics::values.menuRowHeight;
+  const int step = height + LyraMetrics::values.menuSpacing;
+  const int pageSize = std::max(1, (rect.height - (top - rect.y)) / step);
+  return {top, height, step, pageSize, (std::max(0, selectedIndex) / pageSize) * pageSize};
+}
+
 void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
                                const std::function<UIIcon(int index)>& rowIcon) const {
-  for (int i = 0; i < buttonCount; ++i) {
+  const auto layout = buttonMenuLayout(renderer, rect, selectedIndex);
+  for (int i = layout.start; i < buttonCount && i < layout.start + layout.pageSize; ++i) {
     int tileWidth = rect.width - LyraMetrics::values.contentSidePadding * 2;
     Rect tileRect = Rect{rect.x + LyraMetrics::values.contentSidePadding,
-                         rect.y + i * (LyraMetrics::values.menuRowHeight + LyraMetrics::values.menuSpacing), tileWidth,
+                         layout.top + (i - layout.start) * layout.rowStep, tileWidth,
                          LyraMetrics::values.menuRowHeight};
 
     const bool selected = selectedIndex == i;

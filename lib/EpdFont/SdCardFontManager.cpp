@@ -137,7 +137,6 @@ bool SdCardFontManager::loadFamily(const SdCardFontFamilyInfo& family, GfxRender
 }
 
 void SdCardFontManager::unloadAll(GfxRenderer& renderer) {
-  renderer.clearSdCardFonts();
   for (auto& lf : loaded_) {
     renderer.removeFont(lf.fontId);
     delete lf.font;

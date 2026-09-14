@@ -189,3 +189,82 @@ reconnection using a saved network, release refresh, selection/paging, install
 to `/Apps`, overwrite behavior, download failure cleanup, and immediate launch
 of the downloaded ELF from Browse Files. Build success alone cannot establish
 PSRAM instruction execution on hardware.
+
+## Apps springboard and manifests (firmware 1.1.5)
+
+Home → **Apps** launches `/sd/Apps/springboard.elf`. The springboard is built
+from `Apps/springboard.c`; its grid, pagination, selection and touch/button
+navigation execute in the ELF. The firmware supplies discovery, drawing and a
+launch handoff. The springboard returns before the selected ELF loads, keeping
+only one ELF resident. When that app returns, the springboard reloads and rescans
+the SD card. Back leaves the springboard; Home/Power exit the Apps session.
+
+Copy `springboard.elf` and `springboard.json` from the same release into `/Apps`
+on SD. Copy every other ELF with its matching JSON sidecar there too. App Store
+now downloads both assets, validates the manifest and firmware floor, stages the
+pair, and rolls back failed replacements. It refuses assets without a matching
+manifest. Existing standalone ELFs remain usable from Browse Files; if a sidecar
+exists, its compatibility requirements are enforced there as well.
+
+Each shipped C source has a sibling JSON file, for example `Apps/settings.json`:
+
+```json
+{
+  "min_firmware_version": "1.1.5",
+  "display_name": "Settings",
+  "file_name": "settings.elf",
+  "icon": "solid:f013"
+}
+```
+
+- The minimum is a numeric `major.minor.patch` firmware API floor. Development
+  and RC suffixes on the running firmware use their numeric base for this check.
+  The manifest floor does not accept suffixes. This is independent of ABI v1's
+  append-only struct-size check.
+- Display names are UTF-8, up to 95 bytes; long labels are truncated to tile width.
+- File names are plain basenames, up to 127 bytes, ending in `.elf`. They must
+  match the released ELF and the sidecar basename. Paths and `..` are rejected.
+- Icons use `solid:<hex-codepoint>` or `regular:<hex-codepoint>` from Font Awesome
+  Classic. This avoids a firmware-maintained list of icon names and supports any
+  glyph included in the installed font, including supplementary Unicode glyphs.
+
+The launcher lists up to 128 valid installed manifests, sorted by display name,
+excluding itself. Missing ELF files, malformed manifests and incomplete updates
+are omitted. Incompatible apps remain visible with an update notice but cannot
+launch. Installed JSON files are limited to 2 KiB.
+
+### Shared Font Awesome drawing
+
+Install the existing `SD_fonts/FAClassicSolid` and `SD_fonts/FAClassicRegular`
+folders under `/.fonts/` or `/fonts/` on SD. For example:
+`/fonts/FAClassicSolid/FAClassicSolid_18.cpfont`.
+
+Core UI code can call `FontAwesomeIcons::draw(renderer, x, y, "solid:f013", 18)`
+from `src/components/FontAwesomeIcons.h` while holding the normal render lock.
+The x/y origin is the glyph cell's top-left. Supported point sizes are 12, 14,
+16 and 18; other sizes round upward within that set and cap at 18. The optional
+black argument supports inverted buttons. Missing fonts/glyphs draw an outlined
+placeholder and return false. Icon caches are separate from the reader font;
+changing the reading font does not unregister them.
+
+Native apps use the appended `draw_icon` and `draw_label` services after checking
+`struct_size`. The springboard uses the appended `installed_apps_*` functions
+and `request_app_launch(index)`, then immediately returns from `app_main`.
+These APIs retain the existing owner-task and render-lock requirements.
+
+### Build and release
+
+`python scripts/build_all_apps.py` builds every `Apps/**/*.c` and validates its
+sibling JSON, output basename, icon and firmware floor. Nested names are flattened
+(`Apps/games/foo.c` → `games__foo.elf`, whose JSON must name that ELF); collisions
+fail the build. ELF and JSON pairs are staged together in `dist/apps/`.
+
+CI builds and validates every shipped app on both supported targets, and uploads
+the pairs with its firmware artifacts. The existing tagged release workflow runs
+the same builder and publishes both `.elf` and `.json` assets. No release is
+created merely by building this feature branch.
+
+Host checks: `bash test/run_springboard_test.sh` covers firmware floors, path/icon
+validation, shipped manifests, touch selection, page navigation, incompatible
+apps and an empty SD app list. Hardware checks still need to cover font appearance,
+e-paper refresh, SD removal, launch/return cycles and Home/Back/Power gestures.

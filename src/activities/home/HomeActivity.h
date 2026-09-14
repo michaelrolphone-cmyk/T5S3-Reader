@@ -12,6 +12,8 @@ struct Rect;
 class HomeActivity final : public Activity {
   ButtonNavigator buttonNavigator;
   int selectorIndex = 0;
+  bool appsPending = false;
+  bool appsResume = false;
   bool recentsLoading = false;
   bool recentsLoaded = false;
   bool firstRenderDone = false;

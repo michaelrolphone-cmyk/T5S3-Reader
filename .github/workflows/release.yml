@@ -82,43 +82,8 @@ jobs:
       - name: Build gh_release
         run: pio run -e gh_release
 
-      - name: Build native ELF apps
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mkdir -p dist/apps
-
-          found=0
-
-          while IFS= read -r -d '' SRC; do
-            REL="${SRC#Apps/}"
-            NAME="${REL%.c}"
-
-            # Flatten subdirectories for GitHub release asset names:
-            # Apps/games/foo.c -> games__foo.elf
-            NAME="${NAME//\//__}"
-
-            OUT="dist/apps/${NAME}.elf"
-
-            echo "Building ${SRC} -> ${OUT}"
-
-            python scripts/build_native_app.py \
-              "${SRC}" \
-              --output "${OUT}"
-
-            bash test/run_native_app_test.sh "${OUT}"
-
-            found=1
-          done < <(find Apps -type f -name '*.c' -print0 | sort -z)
-
-          if [[ "$found" -eq 0 ]]; then
-            echo "No native applications found under Apps/"
-            exit 1
-          fi
-
-          echo "Native applications built:"
-          ls -lh dist/apps/*.elf
+      - name: Build native ELF apps and manifests
+        run: python scripts/build_all_apps.py
 
       - name: Verify baked version string
         run: |
@@ -180,7 +145,7 @@ jobs:
           NOTES="T5-4.7-S3 E-Paper Pro markdown reader ${VER}. firmware-t5s3-pro.bin is the OTA/SD app image (0x10000). corsspoint_lilygo_t5s3_${VER}.bin is the merged USB image (0x0) and must not be used for SD/OTA."
 
           mapfile -d '' APP_ELFS < <(
-            find dist/apps -type f -name '*.elf' -print0 | sort -z
+            find dist/apps -type f \( -name '*.elf' -o -name '*.json' \) -print0 | sort -z
           )
 
           ASSETS=(

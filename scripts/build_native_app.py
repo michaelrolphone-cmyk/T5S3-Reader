@@ -5,13 +5,18 @@ import os
 import pathlib
 import shutil
 import subprocess
+from app_manifest import validate_manifest
 
 repo = pathlib.Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('source', type=pathlib.Path)
 parser.add_argument('--output', type=pathlib.Path, required=True)
+parser.add_argument('--require-manifest', action='store_true')
 parser.add_argument('--cc', default=os.environ.get('NATIVE_APP_CC'))
 args = parser.parse_args()
+manifest = None
+if args.require_manifest or args.source.with_suffix('.json').exists():
+    manifest = validate_manifest(args.source, args.output)
 cc = args.cc or shutil.which('xtensa-esp32s3-elf-gcc')
 if not cc:
     core = pathlib.Path(os.environ.get('PLATFORMIO_CORE_DIR', pathlib.Path.home() / '.platformio'))
@@ -27,4 +32,6 @@ if not any('GLOBAL' in line and 'FUNC' in line and 'UND' not in line and line.sp
            for line in info.splitlines() if line.strip()):
     raise SystemExit('The app must export void app_main(void) with default visibility')
 print(info)
-print('Copy', args.output, 'to /apps/ on the SD card and open it in Browse Files.')
+if manifest:
+    shutil.copyfile(manifest, args.output.with_suffix('.json'))
+print('Copy', args.output, 'and its .json sidecar to /Apps/ on the SD card.')
