@@ -34,21 +34,22 @@ paths and dlsym executable addresses are fixed in the vendored integration.
 
 ## Build an app
 
-Use the same PlatformIO Xtensa S3 compiler as the firmware:
+Native application sources live under `Apps/` and are built by the existing
+release workflow. `Apps/sd_list.c` is the SD-card directory listing app.
+
+For an individual local build, use the same PlatformIO Xtensa S3 compiler as
+the firmware:
 
 ```sh
 pio run -e t5s3-pro
-python scripts/build_native_app.py examples/native_apps/hello.c --output dist/hello.elf
-python scripts/build_native_app.py examples/native_apps/sd_list.c --output dist/sd_list.elf
+python scripts/build_native_app.py Apps/sd_list.c --output dist/sd_list.elf
 ```
 
 The script finds the compiler in PlatformIO's packages directory; use `--cc`
 or NATIVE_APP_CC to select it explicitly. Copy an `.elf` to `/apps/` on the SD
 card and select it in Browse Files. Its VFS path is `/sd/apps/<name>.elf`.
-`hello.elf` draws text, responds to touch and exits on Back/PWR/touch Home.
 `sd_list.elf` lists the SD root, pages forward with touch/Confirm/Down, restarts
-at the end, and exits through the normal Back/PWR/touch Home path. CI builds and
-validates both examples with each firmware artifact.
+at the end, and exits through the normal Back/PWR/touch Home path.
 
 Apps must be ELF32 little-endian Xtensa shared objects (ET_DYN), with a defined
 GLOBAL FUNC `app_main` in `.dynsym`. The script uses the toolchain's shared-object layout and CI validates the
@@ -131,8 +132,7 @@ safe.
 
 `test/run_native_app_test.sh` checks launcher errors, cleanup and recursive
 launch rejection. With an ELF argument it also checks the actual sample format
-and corrupted/truncated variants against the pre-relocation validator. CI builds
-both firmware boards and both sample apps, then runs these tests.
+and corrupted/truncated variants against the pre-relocation validator.
 
 Device acceptance remains necessary: launch/exit repeatedly, measure heap
 recovery, exercise missing/invalid apps and SD errors, confirm app touch/PWR
