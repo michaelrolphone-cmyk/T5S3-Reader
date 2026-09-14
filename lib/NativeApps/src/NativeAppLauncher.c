@@ -11,6 +11,7 @@
 #include "esp_elf.h"
 #include "T5AppApi.h"
 #include "T5FileBrowserApi.h"
+#include "T5ImageApi.h"
 #include "T5NetworkApi.h"
 #include "T5StorageApi.h"
 #include "T5SystemApi.h"
@@ -56,6 +57,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_ui_get_api),
         ESP_ELFSYM_EXPORT(t5_network_get_api),
         ESP_ELFSYM_EXPORT(t5_file_browser_get_api),
+        ESP_ELFSYM_EXPORT(t5_image_get_api),
         // File Browser formats bounded session/error text. The vendored loader's
         // default libc table exports printf, but does not export snprintf.
         ESP_ELFSYM_EXPORT(snprintf),

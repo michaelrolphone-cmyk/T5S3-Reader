@@ -1,5 +1,6 @@
 #include "T5AppApi.h"
 #include "T5FileBrowserApi.h"
+#include "T5ImageApi.h"
 #include "T5StorageApi.h"
 #include "T5SystemUiApi.h"
 
@@ -24,6 +25,7 @@ static const t5_app_api_v1 *app;
 static const t5_storage_api_v1 *storage;
 static const t5_system_ui_api_v1 *system_ui;
 static const t5_file_browser_api_v1 *browser;
+static const t5_image_api_v1 *image;
 
 static browser_entry_t entries[MAX_ENTRIES];
 static t5_file_browser_entry_t ui_entries[MAX_ENTRIES];
@@ -58,9 +60,14 @@ static bool ends_with_ci(const char *value, const char *suffix) {
     return true;
 }
 
+static bool image_file(const char *name) {
+    return ends_with_ci(name, ".jpg") || ends_with_ci(name, ".jpeg") ||
+           ends_with_ci(name, ".png") || ends_with_ci(name, ".bmp");
+}
+
 static bool supported_file(const char *name) {
     return ends_with_ci(name, ".epub") || ends_with_ci(name, ".xtc") || ends_with_ci(name, ".xtch") ||
-           ends_with_ci(name, ".txt") || ends_with_ci(name, ".md") || ends_with_ci(name, ".bmp") ||
+           ends_with_ci(name, ".txt") || ends_with_ci(name, ".md") || image_file(name) ||
            ends_with_ci(name, ".elf");
 }
 
@@ -269,6 +276,16 @@ static bool open_selected(void) {
         load_files(NULL);
         return false;
     }
+    if (image_file(entry->name)) {
+        char vfs_path[PATH_CAP + 4];
+        make_vfs_path(entry->name, vfs_path, sizeof(vfs_path));
+        pending_delete_path[0] = 0;
+        save_session();
+        if (image->viewer_open_request(vfs_path, HANDOFF_COOKIE)) return true;
+        clear_session();
+        copy_text(status_text, sizeof(status_text), "Image Viewer unavailable");
+        return false;
+    }
     if (ends_with_ci(entry->name, ".elf")) {
         char vfs_path[PATH_CAP + 4];
         make_vfs_path(entry->name, vfs_path, sizeof(vfs_path));
@@ -315,6 +332,15 @@ static void consume_handoff_results(void) {
         else selected_index = old_index;
         clear_session();
     }
+    int32_t image_error = 0;
+    if (image->viewer_open_take_result(&image_error, &cookie)) {
+        char selected[T5_APP_DIRENT_NAME_MAX] = {0};
+        selected_name(selected, sizeof(selected));
+        if (image_error != 0) snprintf(status_text, sizeof(status_text), "Image Viewer failed: %ld", (long)image_error);
+        else status_text[0] = 0;
+        load_files(selected);
+        clear_session();
+    }
     int32_t launch_error = 0;
     if (browser->launch_elf_take_result(&launch_error, &cookie)) {
         char selected[T5_APP_DIRENT_NAME_MAX] = {0};
@@ -331,12 +357,13 @@ void app_main(void) {
     storage = t5_storage_get_api(T5_STORAGE_API_VERSION);
     system_ui = t5_system_ui_get_api(T5_SYSTEM_UI_API_VERSION);
     browser = t5_file_browser_get_api(T5_FILE_BROWSER_API_VERSION);
-    if (!app || !storage || !system_ui || !browser || !app->dir_open || !app->dir_next || !app->dir_close ||
+    image = t5_image_get_api(T5_IMAGE_API_VERSION);
+    if (!app || !storage || !system_ui || !browser || !image || !app->dir_open || !app->dir_next || !app->dir_close ||
         !app->set_back_exits_app || !storage->read_file || !storage->write_file_atomic || !storage->remove_file ||
         !system_ui->navigate_home || !browser->show_hidden_files || !browser->render || !browser->poll_event ||
         !browser->page_items || !browser->confirm_delete_request || !browser->confirm_delete_take_result ||
         !browser->delete_document || !browser->open_document || !browser->launch_elf_request ||
-        !browser->launch_elf_take_result) return;
+        !browser->launch_elf_take_result || !image->viewer_open_request || !image->viewer_open_take_result) return;
 
     app->set_back_exits_app(false);
     status_text[0] = 0;
