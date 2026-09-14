@@ -86,6 +86,12 @@ class ActivityManager {
   bool skipLoopDelay() const;
   ScreenshotInfo getScreenshotInfo() const;
 
+  // Native ELF UI bridges execute synchronously while ActivityManager is paused
+  // and the normal RenderLock is held by runNativeApp(). Keep access narrow and
+  // use these only for firmware-owned native UI services.
+  GfxRenderer& nativeAppRenderer() { return renderer; }
+  MappedInputManager& nativeAppInput() { return mappedInput; }
+
   void requestUpdate(bool immediate = false);
   void requestUpdateAndWait();
 };
