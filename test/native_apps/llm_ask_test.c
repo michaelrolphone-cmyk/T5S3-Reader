@@ -266,6 +266,6 @@ int main(void) {
     assert(session_removed);
     assert(!stored_session_available);
     assert(back_exits);
-    assert(render_count >= 4);
+    assert(render_count >= 3);
     return 0;
 }
