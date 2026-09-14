@@ -2,6 +2,8 @@
 
 #include <I18n.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <utility>
