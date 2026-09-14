@@ -1,6 +1,7 @@
 #include "NativeSystemUiBridge.h"
 
 #include <GfxRenderer.h>
+#include <NativeAppLauncher.h>
 #include <T5AppApi.h>
 
 #include <cstring>
@@ -95,12 +96,16 @@ class NativeKeyboardActivity final : public Activity {
     childCompleted = false;
 
     if (resumePath.empty()) {
+      keyboardState = {};
       finish();
       return;
     }
 
     const esp_err_t result = runNativeApp(resumePath.c_str(), renderer, mappedInput);
     if (result != ESP_OK) {
+      // The result cannot be consumed if the caller cannot be relaunched. Clear
+      // it so one failed app cannot permanently block keyboard use by other ELFs.
+      keyboardState = {};
       finish();
       return;
     }
@@ -119,9 +124,9 @@ class NativeKeyboardActivity final : public Activity {
   }
 };
 
-bool keyboardRequest(const char* resumePath, const char* title, const char* initialText, size_t maxLength,
-                     uint8_t inputType, uint64_t cookie) {
-  if (!validResumePath(resumePath)) return false;
+bool keyboardRequest(const char* title, const char* initialText, size_t maxLength, uint8_t inputType, uint64_t cookie) {
+  const char* currentPath = native_app_current_path();
+  if (!validResumePath(currentPath)) return false;
   if (inputType > T5_SYSTEM_KEYBOARD_URL) return false;
 
   // Do not let a new request silently destroy an unread result from a prior
@@ -129,7 +134,7 @@ bool keyboardRequest(const char* resumePath, const char* title, const char* init
   if (keyboardState.available) return false;
 
   activityManager.pushActivity(std::make_unique<NativeKeyboardActivity>(
-      renderer, mappedInputManager, std::string(resumePath), title ? title : "Enter Text",
+      renderer, mappedInputManager, std::string(currentPath), title ? title : "Enter Text",
       initialText ? initialText : "", maxLength, mapInputType(inputType), cookie));
   return true;
 }
