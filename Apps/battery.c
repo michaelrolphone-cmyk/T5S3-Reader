@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MAX_ROWS 26u
+#define MAX_ROWS 28u
 #define VALUE_SIZE 72u
 
 static const t5_app_api_v1 *app;
@@ -142,13 +142,14 @@ static void build_rows(const t5_battery_state_t *state) {
     add_u16("Battery voltage", state->battery_voltage_mv, "mV", 0);
     add_u16("Regulation V", state->charge_voltage_mv, "mV", 0);
     add_u16("Charge current", state->charge_current_ma, "mA", 0);
-    if (row_count < MAX_ROWS) {
+    {
         char text[VALUE_SIZE];
         snprintf(text, sizeof(text), "%u/%u mA", (unsigned)state->precharge_current_ma,
                  (unsigned)state->termination_current_ma);
         add_row("Pre/termination", text, 0);
     }
-    if (row_count < MAX_ROWS) {
+    add_u16("Charger ADC I", state->charger_adc_current_ma, "mA", 0);
+    {
         char text[VALUE_SIZE];
         snprintf(text, sizeof(text), "%s / %s", charge_status_name(state->charger_status),
                  state->charge_enabled ? "Enabled" : "Disabled");
