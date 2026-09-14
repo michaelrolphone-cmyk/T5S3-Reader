@@ -1,5 +1,7 @@
 #include "T5AppApi.h"
 
+#include <string.h>
+
 #define HEADER_Y 28
 #define FIRST_ROW_Y 82
 #define ROW_HEIGHT 54
@@ -8,6 +10,14 @@
 #define ICON_SIZE 18
 #define TITLE_X 74
 #define LINE_MAX 160
+#define ACTION_WIDTH 92
+#define ACTION_HEIGHT 30
+
+typedef enum {
+    APP_ACTION_INSTALL = 0,
+    APP_ACTION_UPDATE = 1,
+    APP_ACTION_CURRENT = 2,
+} app_action_t;
 
 static bool has_catalog_api(const t5_app_api_v1 *api) {
     const size_t required = offsetof(t5_app_api_v1, app_catalog_download) + sizeof(api->app_catalog_download);
@@ -19,6 +29,12 @@ static bool has_catalog_manifest_api(const t5_app_api_v1 *api) {
     const size_t required =
         offsetof(t5_app_api_v1, app_catalog_manifest_get) + sizeof(api->app_catalog_manifest_get);
     return api && api->struct_size >= required && api->app_catalog_manifest_get && api->draw_icon;
+}
+
+static bool has_version_api(const t5_app_api_v1 *api) {
+    const size_t required =
+        offsetof(t5_app_api_v1, app_catalog_version_get) + sizeof(api->app_catalog_version_get);
+    return api && api->struct_size >= required && api->installed_app_version_get && api->app_catalog_version_get;
 }
 
 static bool catalog_manifest(const t5_app_api_v1 *api, uint32_t index, t5_app_manifest_t *manifest) {
@@ -82,6 +98,34 @@ static const char *catalog_display_name(const t5_app_api_v1 *api, uint32_t index
     return asset->name;
 }
 
+static app_action_t catalog_action(const t5_app_api_v1 *api, uint32_t index,
+                                   const t5_app_manifest_t *manifest,
+                                   char *available_version, size_t available_capacity,
+                                   char *installed_version, size_t installed_capacity) {
+    if (available_version && available_capacity) available_version[0] = '\0';
+    if (installed_version && installed_capacity) installed_version[0] = '\0';
+    if (!manifest || !has_version_api(api)) return APP_ACTION_INSTALL;
+    if (!api->app_catalog_version_get(index, available_version, available_capacity)) return APP_ACTION_INSTALL;
+    if (!api->installed_app_version_get(manifest->file_name, installed_version, installed_capacity)) {
+        return APP_ACTION_INSTALL;
+    }
+    if (available_version[0] && installed_version[0] && !strcmp(available_version, installed_version)) {
+        return APP_ACTION_CURRENT;
+    }
+    return APP_ACTION_UPDATE;
+}
+
+static void draw_action_button(const t5_app_api_v1 *api, int32_t width, int32_t y, const char *label) {
+    if (!label) return;
+    const int32_t x = width - ACTION_WIDTH - 26;
+    const int32_t top = y + 9;
+    api->fill_rect(x, top, ACTION_WIDTH, 1, true);
+    api->fill_rect(x, top + ACTION_HEIGHT - 1, ACTION_WIDTH, 1, true);
+    api->fill_rect(x, top, 1, ACTION_HEIGHT, true);
+    api->fill_rect(x + ACTION_WIDTH - 1, top, 1, ACTION_HEIGHT, true);
+    api->draw_text(x + 13, top + 8, label);
+}
+
 static void draw_status(const t5_app_api_v1 *api, const char *title, const char *line1, const char *line2) {
     api->clear();
     api->draw_text(24, HEADER_Y, title);
@@ -119,18 +163,31 @@ static void draw_catalog(const t5_app_api_v1 *api, uint32_t selected) {
 
         const int32_t y = FIRST_ROW_Y + row * ROW_HEIGHT;
         const int32_t text_x = has_manifest ? TITLE_X : 30;
+        char available[T5_APP_VERSION_MAX] = {0};
+        char installed[T5_APP_VERSION_MAX] = {0};
+        const app_action_t action = has_manifest
+            ? catalog_action(api, index, &manifest, available, sizeof(available), installed, sizeof(installed))
+            : APP_ACTION_INSTALL;
 
         if (index == selected) api->fill_rect(18, y + 5, 4, ROW_HEIGHT - 12, true);
         if (has_manifest) api->draw_icon(ICON_X, y + 10, manifest.icon, ICON_SIZE, true);
         api->draw_text(text_x, y + 6, name);
         if (has_manifest && !manifest.compatible) {
             api->draw_text(text_x, y + 29, "Requires firmware update");
+        } else if (action == APP_ACTION_UPDATE) {
+            api->draw_text(text_x, y + 29, installed[0] ? installed : "Legacy install");
+            draw_action_button(api, width, y, "Update");
+        } else if (action == APP_ACTION_CURRENT) {
+            api->draw_text(text_x, y + 29, "Installed");
+        } else {
+            if (available[0]) api->draw_text(text_x, y + 29, available);
+            draw_action_button(api, width, y, "Install");
         }
         api->fill_rect(24, y + ROW_HEIGHT - 2, width - 48, 1, true);
     }
 
     api->draw_text(24, height - 74, "Latest release apps");
-    api->draw_text(24, height - 48, "Up/Down: select  Confirm/tap: install  Right: refresh");
+    api->draw_text(24, height - 48, "Up/Down: select  Confirm/tap: install/update  Right: refresh");
     api->present(true);
 }
 
@@ -158,6 +215,22 @@ static bool select_tapped_row(const t5_app_api_v1 *api, const t5_app_input_t *in
 
     *selected = tapped;
     return true;
+}
+
+static void wait_for_acknowledge(const t5_app_api_v1 *api) {
+    bool wait_release = true;
+    t5_app_input_t acknowledge;
+    while (api->poll(&acknowledge, 20)) {
+        if (acknowledge.exit_requested) return;
+        if (acknowledge.buttons == 0 && !acknowledge.tapped) {
+            wait_release = false;
+            continue;
+        }
+        if (!wait_release && ((acknowledge.buttons & (T5_APP_BUTTON_CONFIRM | T5_APP_BUTTON_DOWN)) ||
+                             acknowledge.tapped)) {
+            break;
+        }
+    }
 }
 
 __attribute__((visibility("default"))) void app_main(void) {
@@ -213,34 +286,40 @@ __attribute__((visibility("default"))) void app_main(void) {
             const char *name = catalog_display_name(api, selected, &asset, &manifest, &has_manifest);
             if (!name) continue;
 
+            char available[T5_APP_VERSION_MAX] = {0};
+            char installed[T5_APP_VERSION_MAX] = {0};
+            const app_action_t action = has_manifest
+                ? catalog_action(api, selected, &manifest, available, sizeof(available), installed, sizeof(installed))
+                : APP_ACTION_INSTALL;
+
             if (has_manifest && !manifest.compatible) {
                 draw_status(api, "App Store", name, "This app requires newer firmware.");
+            } else if (action == APP_ACTION_CURRENT) {
+                char message[LINE_MAX];
+                make_prefixed_text(message, sizeof(message), "Installed: ", name);
+                draw_status(api, "App Store", message, "This version is already current.");
             } else {
                 char message[LINE_MAX];
-                make_prefixed_text(message, sizeof(message), "Installing: ", name);
-                draw_status(api, "App Store", message, "Saving .elf + .json to /sd/Apps ...");
+                if (action == APP_ACTION_UPDATE) {
+                    make_prefixed_text(message, sizeof(message), "Updating: ", name);
+                    draw_status(api, "App Store", message, "Replacing installed .elf + .json ...");
+                } else {
+                    make_prefixed_text(message, sizeof(message), "Installing: ", name);
+                    draw_status(api, "App Store", message, "Saving .elf + .json to /sd/Apps ...");
+                }
 
                 if (api->app_catalog_download(selected)) {
-                    make_prefixed_text(message, sizeof(message), "Installed: ", name);
+                    make_prefixed_text(message, sizeof(message),
+                                       action == APP_ACTION_UPDATE ? "Updated: " : "Installed: ", name);
                     draw_status(api, "App Store", message, "Confirm/Down: back to list");
                 } else {
-                    draw_status(api, "App Store", "Install failed.", "Confirm/Down: back to list");
+                    draw_status(api, "App Store",
+                                action == APP_ACTION_UPDATE ? "Update failed." : "Install failed.",
+                                "Confirm/Down: back to list");
                 }
             }
 
-            bool wait_release = true;
-            t5_app_input_t acknowledge;
-            while (api->poll(&acknowledge, 20)) {
-                if (acknowledge.exit_requested) return;
-                if (acknowledge.buttons == 0 && !acknowledge.tapped) {
-                    wait_release = false;
-                    continue;
-                }
-                if (!wait_release && ((acknowledge.buttons & (T5_APP_BUTTON_CONFIRM | T5_APP_BUTTON_DOWN)) ||
-                                     acknowledge.tapped)) {
-                    break;
-                }
-            }
+            wait_for_acknowledge(api);
             draw_catalog(api, selected);
         }
     }
