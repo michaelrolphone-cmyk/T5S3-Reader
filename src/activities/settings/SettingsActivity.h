@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SettingInfo.h"
 #include "activities/Activity.h"
 
 class SettingsActivity final : public Activity {
