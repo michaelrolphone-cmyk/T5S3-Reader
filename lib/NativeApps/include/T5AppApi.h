@@ -12,6 +12,8 @@ extern "C" {
 #define T5_APP_BUTTON_RIGHT (1u << 3)
 #define T5_APP_BUTTON_UP (1u << 4)
 #define T5_APP_BUTTON_DOWN (1u << 5)
+#define T5_APP_DIRENT_NAME_MAX 128u
+#define T5_APP_ASSET_NAME_MAX 128u
 
 typedef struct {
     uint32_t buttons;
@@ -20,6 +22,17 @@ typedef struct {
     int16_t touch_y;
     bool exit_requested; // Sticky after Back, PWR or touch Home.
 } t5_app_input_t;
+
+typedef struct {
+    char name[T5_APP_DIRENT_NAME_MAX];
+    uint64_t size;
+    uint8_t is_directory;
+} t5_app_dirent_t;
+
+typedef struct {
+    char name[T5_APP_ASSET_NAME_MAX];
+    uint64_t size;
+} t5_app_release_asset_t;
 
 typedef struct {
     uint32_t abi_version;
@@ -34,6 +47,19 @@ typedef struct {
     // Returns false outside the application's owning task.
     bool (*poll)(t5_app_input_t *input, uint32_t wait_ms);
     uint32_t (*millis)(void);
+    // Read-only SD directory enumeration. Paths use the native VFS namespace,
+    // e.g. "/sd" or "/sd/books". One directory may be open per app session.
+    bool (*dir_open)(const char *path);
+    bool (*dir_next)(t5_app_dirent_t *entry);
+    void (*dir_close)(void);
+
+    // Firmware-owned native-app catalog. Refresh connects with credentials already
+    // saved by the firmware, queries this repository's latest GitHub release, and
+    // caches only .elf assets. Downloads are constrained to /sd/Apps/<asset-name>.
+    bool (*app_catalog_refresh)(void);
+    uint32_t (*app_catalog_count)(void);
+    bool (*app_catalog_get)(uint32_t index, t5_app_release_asset_t *asset);
+    bool (*app_catalog_download)(uint32_t index);
 } t5_app_api_v1;
 
 // This is the single versioned firmware symbol imported by native UI apps.
