@@ -1,5 +1,7 @@
 #include "T5AppApi.h"
 
+#include <stdio.h>
+
 // The ELF owns all grid geometry, selection, pagination and input handling.
 // Firmware owns only SD discovery, shared drawing primitives and launch handoff.
 static const t5_app_api_v1 *api;
@@ -36,7 +38,11 @@ static void draw(const char *status) {
         api->fill_rect(bx + 3, y + 11, box - 6, box - 6, false);
         if (!api->draw_icon(bx + 17, y + 23, app.icon, 18, true)) missing_icons = true;
         api->draw_label(x + 6, y + 86, cell_w - 12, app.display_name);
-        if (!app.compatible) api->draw_label(x + 6, y + 115, cell_w - 12, "Update firmware");
+        if (!app.compatible) {
+            char required[48];
+            snprintf(required, sizeof(required), "Needs %s", app.min_firmware_version);
+            api->draw_label(x + 6, y + 115, cell_w - 12, required);
+        }
         if (first + cell == selected) api->fill_rect(x + 12, y + cell_h - 8, cell_w - 24, 3, true);
     }
     const int bottom = api->screen_height() - 88;
@@ -49,9 +55,14 @@ static void draw(const char *status) {
 static bool launch(void) {
     t5_app_manifest_t app;
     if (!count || !api->installed_apps_get(selected, &app)) return false;
-    if (!app.compatible) { draw("This app requires newer firmware"); return false; }
+    if (!app.compatible) {
+        char status[80];
+        snprintf(status, sizeof(status), "Requires firmware %s", app.min_firmware_version);
+        draw(status);
+        return false;
+    }
     if (api->request_app_launch(selected)) return true;
-    draw("Unable to launch application");
+    draw("Unable to queue application launch");
     return false;
 }
 __attribute__((visibility("default"))) void app_main(void) {
