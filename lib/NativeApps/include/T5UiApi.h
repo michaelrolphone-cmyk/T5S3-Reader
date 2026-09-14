@@ -57,6 +57,12 @@ typedef struct {
 } t5_ui_table_row_t;
 
 typedef struct {
+    int32_t max_scroll_lines;
+    uint32_t total_lines;
+    uint32_t visible_lines;
+} t5_ui_text_view_result_t;
+
+typedef struct {
     uint32_t api_version;
     uint32_t struct_size;
 
@@ -85,6 +91,14 @@ typedef struct {
 
     int32_t (*next_index)(int32_t current_index, uint32_t item_count);
     int32_t (*previous_index)(int32_t current_index, uint32_t item_count);
+
+    // Firmware-themed wrapped user-content viewport. `scroll_from_bottom == 0`
+    // shows the newest/bottom page; increasing it moves toward older content.
+    // Newlines in `text` are preserved as paragraph/blank-line breaks.
+    void (*render_text_view)(const t5_ui_chrome_t *chrome,
+                             const char *text,
+                             int32_t scroll_from_bottom,
+                             t5_ui_text_view_result_t *result);
 } t5_ui_api_v1;
 
 const t5_ui_api_v1 *t5_ui_get_api(uint32_t api_version);
