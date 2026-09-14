@@ -41,6 +41,11 @@ typedef struct {
     // learn only whether selection was cancelled and whether Wi-Fi is connected.
     bool (*wifi_request)(uint64_t cookie);
     bool (*wifi_take_result)(bool *connected, bool *cancelled, uint64_t *cookie);
+
+    // Transfers control to the firmware-owned File Transfer session after the
+    // current ELF returns. The transport session retains ownership of Wi-Fi,
+    // Calibre, captive portal, HTTP server and cleanup resources.
+    bool (*file_transfer_request)(void);
 } t5_system_ui_api_v1;
 
 // Versioned firmware system-UI service. This is intentionally separate from
