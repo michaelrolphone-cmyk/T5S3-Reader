@@ -1,0 +1,7 @@
+{
+  "min_firmware_version": "1.1.24",
+  "version": "1.0.0",
+  "display_name": "Wi-Fi Networks",
+  "file_name": "wifi_settings.elf",
+  "icon": "solid:f1eb"
+}

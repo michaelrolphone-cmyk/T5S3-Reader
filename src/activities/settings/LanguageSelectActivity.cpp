@@ -3,113 +3,62 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 
-#include <algorithm>
-#include <iterator>
-
-#include "CrossPointSettings.h"
-#include "I18nKeys.h"
 #include "MappedInputManager.h"
+#include "components/UITheme.h"
 #include "fontIds.h"
+#include "native/NativeAppHost.h"
 
 void LanguageSelectActivity::onEnter() {
   Activity::onEnter();
-
-  // Set current selection based on current language
-  const auto currentLang = static_cast<uint8_t>(I18N.getLanguage());
-  const auto* begin = std::begin(SORTED_LANGUAGE_INDICES);
-  const auto* end = std::end(SORTED_LANGUAGE_INDICES);
-  const auto* it = std::find(begin, end, currentLang);
-  selectedIndex = (it != end) ? std::distance(begin, it) : 0;
-
+  launchAttempted = false;
+  launchFailed = false;
   requestUpdate();
 }
 
-void LanguageSelectActivity::onExit() { Activity::onExit(); }
-
 void LanguageSelectActivity::loop() {
-  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-    onBack();
+  if (!launchAttempted) {
+    launchAttempted = true;
+    const esp_err_t result = runNativeApp("/sd/Apps/language_settings.elf", renderer, mappedInput);
+    if (result == ESP_OK) {
+      finish();
+      return;
+    }
+    launchFailed = true;
+    requestUpdate();
     return;
   }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-    handleSelection();
-    return;
+  if (launchFailed && (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
+                       mappedInput.wasPressed(MappedInputManager::Button::Confirm))) {
+    finish();
   }
-
-  // Handle navigation
-  buttonNavigator.onNextRelease([this] {
-    selectedIndex = ButtonNavigator::nextIndex(static_cast<int>(selectedIndex), totalItems);
-    requestUpdate();
-  });
-
-  buttonNavigator.onPreviousRelease([this] {
-    selectedIndex = ButtonNavigator::previousIndex(static_cast<int>(selectedIndex), totalItems);
-    requestUpdate();
-  });
 }
 
-void LanguageSelectActivity::handleSelection() {
-  const uint8_t langIndex = SORTED_LANGUAGE_INDICES[selectedIndex];
-
-  {
-    RenderLock lock(*this);
-    I18N.setLanguage(static_cast<Language>(langIndex));
+bool LanguageSelectActivity::onTouchTap(int16_t x, int16_t y) {
+  if (!launchFailed) return true;
+  MappedInputManager::Button button = MappedInputManager::Button::Back;
+  if (!resolveTouchButtonHint(x, y, button)) return false;
+  if (button == MappedInputManager::Button::Back || button == MappedInputManager::Button::Confirm) {
+    finish();
   }
-
-  SETTINGS.language = langIndex;
-  SETTINGS.saveToFile();
-
-  // Return to previous page
-  onBack();
-}
-
-bool LanguageSelectActivity::onTouchTap(int16_t, int16_t y) {
-  const auto pageHeight = renderer.getScreenHeight();
-  auto metrics = UITheme::getInstance().getMetrics();
-  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
-  const int rowHeight = metrics.listRowHeight;
-  if (rowHeight <= 0 || y < contentTop || y >= contentTop + contentHeight) {
-    return false;
-  }
-
-  const int pageItems = std::max(1, contentHeight / rowHeight);
-  const int row = (y - contentTop) / rowHeight;
-  const int pageStartIndex = (selectedIndex / pageItems) * pageItems;
-  const int touchedIndex = pageStartIndex + row;
-  if (row < 0 || row >= pageItems || touchedIndex < 0 || touchedIndex >= totalItems) {
-    return false;
-  }
-
-  selectedIndex = touchedIndex;
-  handleSelection();
   return true;
 }
 
 void LanguageSelectActivity::render(RenderLock&&) {
   renderer.clearScreen();
-
-  const auto pageWidth = renderer.getScreenWidth();
-  const auto pageHeight = renderer.getScreenHeight();
-  auto metrics = UITheme::getInstance().getMetrics();
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pageWidth = renderer.getScreenWidth();
+  const int pageHeight = renderer.getScreenHeight();
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_LANGUAGE));
-
-  // Current language marker
-  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
-  const auto currentLang = static_cast<uint8_t>(I18N.getLanguage());
-  GUI.drawList(
-      renderer, Rect{0, contentTop, pageWidth, contentHeight}, totalItems, selectedIndex,
-      [this](int index) { return I18N.getLanguageName(static_cast<Language>(SORTED_LANGUAGE_INDICES[index])); },
-      nullptr, nullptr,
-      [this, currentLang](int index) { return SORTED_LANGUAGE_INDICES[index] == currentLang ? tr(STR_SELECTED) : ""; },
-      true);
-
-  // Button hints
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
-  renderer.displayBuffer();
+  const int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing * 3;
+  if (launchFailed) {
+    renderer.drawCenteredText(UI_10_FONT_ID, y, "language_settings.elf could not be launched");
+    renderer.drawCenteredText(SMALL_FONT_ID, y + 36, "Install Language from the App Store or copy it to /Apps.");
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "OK", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  } else {
+    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, "Opening Language...");
+  }
+  renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
 }

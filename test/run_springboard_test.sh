@@ -3,36 +3,37 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
-c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
-  "$repo_dir/test/native_apps/manifest_test.cpp" -o "$binary"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/test/native_apps/manifest_test.cpp" -o "$binary"
 "$binary"
-cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
-  "$repo_dir/Apps/springboard.c" "$repo_dir/test/native_apps/springboard_test.c" -o "$binary"
-"$binary"
-cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
-  "$repo_dir/Apps/app_store.c" "$repo_dir/test/native_apps/app_store_test.c" -o "$binary"
-"$binary"
-cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
-  "$repo_dir/Apps/timecard.c" "$repo_dir/test/native_apps/timecard_ui_test.c" -o "$binary"
-"$binary"
-cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
-  "$repo_dir/Apps/llm_ask.c" "$repo_dir/test/native_apps/llm_ask_test.c" -o "$binary"
-"$binary"
-cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
-  "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" \
-  "$repo_dir/test/native_apps/image_api_stub.c" -o "$binary"
-"$binary"
-cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
-  "$repo_dir/Apps/gps.c" "$repo_dir/test/native_apps/gps_test.c" -o "$binary"
-"$binary"
-cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
-  "$repo_dir/Apps/lora.c" "$repo_dir/test/native_apps/lora_test.c" -o "$binary"
-"$binary"
-cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
-  "$repo_dir/Apps/web_server.c" "$repo_dir/test/native_apps/web_server_test.c" -o "$binary"
-"$binary"
-cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
-  "$repo_dir/Apps/serial_monitor.c" "$repo_dir/test/native_apps/serial_monitor_test.c" -o "$binary"
+for pair in \
+  "springboard springboard_test" \
+  "app_store app_store_test" \
+  "settings settings_test" \
+  "timecard timecard_ui_test" \
+  "llm_ask llm_ask_test" \
+  "gps gps_test" \
+  "lora lora_test" \
+  "web_server web_server_test" \
+  "serial_monitor serial_monitor_test" \
+  "battery battery_test" \
+  "koreader_sync koreader_sync_test" \
+  "koreader_auth koreader_auth_test" \
+  "wifi_settings wifi_settings_test" \
+  "opds_settings opds_settings_test" \
+  "clear_cache clear_cache_test" \
+  "ota_update ota_update_test" \
+  "sd_firmware_update sd_firmware_update_test" \
+  "language_settings language_settings_test" \
+  "font_manager font_manager_test" \
+  "font_selection font_selection_test" \
+  "status_bar_settings status_bar_settings_test" \
+  "button_remap button_remap_test" \
+  "time_zone time_zone_test"; do
+  set -- $pair
+  cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/$1.c" "$repo_dir/test/native_apps/$2.c" -o "$binary"
+  "$binary"
+done
+cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" "$repo_dir/test/native_apps/image_api_stub.c" -o "$binary"
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
-echo 'Manifest, springboard, App Store, Timecard, Ask, File Browser, GPS, LoRa, Web Server, and USB Serial native app tests passed'
+echo 'Native app regression tests passed, including Settings, Wi-Fi Networks, KOReader Authentication, Manage Fonts, Font Family, Customize Status Bar, Remap Front Buttons, and Time Zone'

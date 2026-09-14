@@ -10,14 +10,25 @@
 
 #include "esp_elf.h"
 #include "T5AppApi.h"
+#include "T5BatteryApi.h"
+#include "T5ButtonRemapApi.h"
+#include "T5CacheApi.h"
 #include "T5FileBrowserApi.h"
+#include "T5FontApi.h"
 #include "T5GpsApi.h"
 #include "T5ImageApi.h"
+#include "T5KOReaderApi.h"
+#include "T5LanguageApi.h"
 #include "T5LoRaApi.h"
 #include "T5NetworkApi.h"
+#include "T5OpdsApi.h"
+#include "T5OtaApi.h"
+#include "T5SdFirmwareApi.h"
+#include "T5StatusBarApi.h"
 #include "T5StorageApi.h"
 #include "T5SystemApi.h"
 #include "T5SystemUiApi.h"
+#include "T5TimeZoneApi.h"
 #include "T5UiApi.h"
 #include "T5UsbApi.h"
 #include "T5WebServerApi.h"
@@ -55,9 +66,20 @@ esp_err_t launch_elf_app(const char *sd_path)
     }
     static const struct esp_elfsym host_symbols[] = {
         ESP_ELFSYM_EXPORT(t5_app_get_api),
+        ESP_ELFSYM_EXPORT(t5_battery_get_api),
+        ESP_ELFSYM_EXPORT(t5_button_remap_get_api),
+        ESP_ELFSYM_EXPORT(t5_cache_get_api),
+        ESP_ELFSYM_EXPORT(t5_font_get_api),
+        ESP_ELFSYM_EXPORT(t5_koreader_get_api),
+        ESP_ELFSYM_EXPORT(t5_language_get_api),
+        ESP_ELFSYM_EXPORT(t5_opds_get_api),
+        ESP_ELFSYM_EXPORT(t5_ota_get_api),
+        ESP_ELFSYM_EXPORT(t5_sd_firmware_get_api),
+        ESP_ELFSYM_EXPORT(t5_status_bar_get_api),
         ESP_ELFSYM_EXPORT(t5_storage_get_api),
         ESP_ELFSYM_EXPORT(t5_system_get_api),
         ESP_ELFSYM_EXPORT(t5_system_ui_get_api),
+        ESP_ELFSYM_EXPORT(t5_time_zone_get_api),
         ESP_ELFSYM_EXPORT(t5_ui_get_api),
         ESP_ELFSYM_EXPORT(t5_network_get_api),
         ESP_ELFSYM_EXPORT(t5_file_browser_get_api),
@@ -66,9 +88,9 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_lora_get_api),
         ESP_ELFSYM_EXPORT(t5_web_server_get_api),
         ESP_ELFSYM_EXPORT(t5_usb_get_api),
-        // Native apps format bounded status/error text. The vendored loader's
-        // default libc table exports printf, but does not export snprintf.
         ESP_ELFSYM_EXPORT(snprintf),
+        ESP_ELFSYM_EXPORT(strcpy),
+        ESP_ELFSYM_EXPORT(strncpy),
         ESP_ELFSYM_END
     };
     const int registered = esp_elf_register_symbol(host_symbols);

@@ -21,7 +21,6 @@
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/RenderLock.h"
-#include "activities/network/WifiSelectionActivity.h"
 #include "activities/settings/BatteryStatusActivity.h"
 #include "activities/settings/ButtonRemapActivity.h"
 #include "activities/settings/ClearCacheActivity.h"
@@ -34,6 +33,7 @@
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "activities/settings/StatusBarSettingsActivity.h"
 #include "activities/settings/TimeZoneSelectActivity.h"
+#include "activities/settings/WifiSettingsActivity.h"
 #include "components/UITheme.h"
 
 namespace {
@@ -193,7 +193,7 @@ std::unique_ptr<Activity> makeActionActivity(PendingAction action, GfxRenderer& 
     case PendingAction::OPDSBrowser:
       return std::make_unique<OpdsServerListActivity>(renderer, input);
     case PendingAction::Network:
-      return std::make_unique<WifiSelectionActivity>(renderer, input, false);
+      return std::make_unique<WifiSettingsActivity>(renderer, input);
     case PendingAction::BatteryStatus:
       return std::make_unique<BatteryStatusActivity>(renderer, input);
     case PendingAction::ClearCache:

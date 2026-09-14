@@ -4,10 +4,9 @@
 #include "util/ButtonNavigator.h"
 
 /**
- * Activity showing the list of configured OPDS servers.
- * Allows adding new servers and editing/deleting existing ones.
- * When pickerMode is true, selecting a server navigates to the OPDS browser
- * instead of opening the editor (used from the home screen).
+ * Activity showing configured OPDS servers. Settings mode delegates editing to
+ * the native OPDS ELF. Picker mode remains firmware-native because it navigates
+ * directly into OpdsBookBrowserActivity.
  */
 class OpdsServerListActivity final : public Activity {
  public:
@@ -24,6 +23,8 @@ class OpdsServerListActivity final : public Activity {
   ButtonNavigator buttonNavigator;
   int selectedIndex = 0;
   bool pickerMode = false;
+  bool launchAttempted = false;
+  bool launchFailed = false;
 
   int getItemCount() const;
   void handleSelection();

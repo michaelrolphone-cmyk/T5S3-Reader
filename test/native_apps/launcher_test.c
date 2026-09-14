@@ -6,14 +6,25 @@
 #include "esp_dlfcn.h"
 #include "esp_elf.h"
 #include "T5AppApi.h"
+#include "T5BatteryApi.h"
+#include "T5ButtonRemapApi.h"
+#include "T5CacheApi.h"
 #include "T5FileBrowserApi.h"
+#include "T5FontApi.h"
 #include "T5GpsApi.h"
 #include "T5ImageApi.h"
+#include "T5KOReaderApi.h"
+#include "T5LanguageApi.h"
 #include "T5LoRaApi.h"
 #include "T5NetworkApi.h"
+#include "T5OpdsApi.h"
+#include "T5OtaApi.h"
+#include "T5SdFirmwareApi.h"
+#include "T5StatusBarApi.h"
 #include "T5StorageApi.h"
 #include "T5SystemApi.h"
 #include "T5SystemUiApi.h"
+#include "T5TimeZoneApi.h"
 #include "T5UiApi.h"
 #include "T5UsbApi.h"
 #include "T5WebServerApi.h"
@@ -84,7 +95,10 @@ int main(void)
 esp_err_t native_app_register_sd_vfs(void) { return ESP_OK; }
 int esp_elf_register_symbol(const struct esp_elfsym *s)
 {
-    assert(s && s[0].sym && s[1].sym && s[2].sym && s[3].sym && s[4].sym && s[5].sym && s[6].sym && s[7].sym && s[8].sym && s[9].sym && s[10].sym && s[11].sym);
+    assert(s);
+    int count = 0;
+    while (s[count].name) { assert(s[count].sym); ++count; }
+    assert(count >= 21);
     const struct esp_elfsym *entry = s;
     while (entry->name && strcmp(entry->name, "snprintf") != 0) ++entry;
     assert(entry->name && entry->sym);
@@ -95,14 +109,25 @@ int esp_elf_register_symbol(const struct esp_elfsym *s)
     return 0;
 }
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_battery_api_v1 *t5_battery_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_button_remap_api_v1 *t5_button_remap_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_cache_api_v1 *t5_cache_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_file_browser_api_v1 *t5_file_browser_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_font_api_v1 *t5_font_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_gps_api_v1 *t5_gps_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_image_api_v1 *t5_image_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_koreader_api_v1 *t5_koreader_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_language_api_v1 *t5_language_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_lora_api_v1 *t5_lora_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_network_api_v1 *t5_network_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_opds_api_v1 *t5_opds_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_ota_api_v1 *t5_ota_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_sd_firmware_api_v1 *t5_sd_firmware_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_status_bar_api_v1 *t5_status_bar_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_storage_api_v1 *t5_storage_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_system_api_v1 *t5_system_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_system_ui_api_v1 *t5_system_ui_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_time_zone_api_v1 *t5_time_zone_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_usb_api_v1 *t5_usb_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_web_server_api_v1 *t5_web_server_get_api(uint32_t version) { (void)version; return NULL; }

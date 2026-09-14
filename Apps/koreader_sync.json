@@ -1,0 +1,7 @@
+{
+  "min_firmware_version": "1.1.19",
+  "version": "1.0.0",
+  "display_name": "KOReader Sync",
+  "file_name": "koreader_sync.elf",
+  "icon": "solid:f021"
+}
