@@ -20,11 +20,11 @@ typedef struct {
     uint32_t struct_size;
 
     // Opens the firmware's standard KeyboardEntryActivity after the current ELF
-    // returns. When the keyboard closes the host relaunches resume_path, normally
-    // the current ELF's /sd/... path. `cookie` is opaque caller state returned
-    // unchanged with the result. max_length == 0 preserves the firmware
-    // keyboard's unlimited-length behavior.
-    bool (*keyboard_request)(const char *resume_path, const char *title, const char *initial_text,
+    // returns. The firmware automatically relaunches the exact ELF path that made
+    // the request, so callers do not need to know their filename. `cookie` is
+    // opaque caller state returned unchanged with the result. max_length == 0
+    // preserves the firmware keyboard's unlimited-length behavior.
+    bool (*keyboard_request)(const char *title, const char *initial_text,
                              size_t max_length, uint8_t input_type, uint64_t cookie);
 
     // Called by the relaunched ELF. Returns false when no keyboard result is
