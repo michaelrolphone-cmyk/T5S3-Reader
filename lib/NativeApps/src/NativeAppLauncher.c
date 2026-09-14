@@ -9,6 +9,7 @@
 
 #include "esp_elf.h"
 #include "T5AppApi.h"
+#include "T5TimecardApi.h"
 #include <errno.h>
 
 #if !CONFIG_IDF_TARGET_ESP32S3 || !CONFIG_ELF_LOADER_LOAD_PSRAM
@@ -38,12 +39,14 @@ esp_err_t launch_elf_app(const char *sd_path)
         goto done;
     }
     static const struct esp_elfsym host_symbols[] = {
-        ESP_ELFSYM_EXPORT(t5_app_get_api), ESP_ELFSYM_END
+        ESP_ELFSYM_EXPORT(t5_app_get_api),
+        ESP_ELFSYM_EXPORT(t5_timecard_get_api),
+        ESP_ELFSYM_END
     };
     const int registered = esp_elf_register_symbol(host_symbols);
     if (registered != 0 && registered != -EEXIST) {
         result = ESP_ERR_NO_MEM;
-        ESP_LOGE(TAG, "Could not register native app API");
+        ESP_LOGE(TAG, "Could not register native app APIs");
         goto done;
     }
     result = ESP_FAIL;
