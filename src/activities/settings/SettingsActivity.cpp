@@ -25,7 +25,11 @@ void SettingsActivity::loop() {
     launchAttempted = true;
     const esp_err_t result = runNativeApp("/sd/Apps/settings.elf", renderer, mappedInput);
     if (result == ESP_OK) {
-      finish();
+      // settings.elf returns both when the user leaves Settings and when it has
+      // requested a firmware-owned Settings action. In the latter case
+      // runNativeApp() has already queued that action. Do not pop this parent in
+      // the same ActivityManager iteration or popActivity() will discard the
+      // pending action and unwind to Home.
       return;
     }
     launchFailed = true;
@@ -33,8 +37,17 @@ void SettingsActivity::loop() {
     return;
   }
 
-  if (launchFailed && (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
-                       mappedInput.wasPressed(MappedInputManager::Button::Confirm))) {
+  if (!launchFailed) {
+    // If settings.elf queued a sub-app, this activity was pushed underneath it
+    // before we get here and resumes only after the whole Settings handoff chain
+    // has unwound. If no action was queued, this simply closes Settings one loop
+    // later after the user backed out of settings.elf.
+    finish();
+    return;
+  }
+
+  if (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
+      mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
     finish();
   }
 }
