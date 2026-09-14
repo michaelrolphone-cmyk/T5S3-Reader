@@ -20,7 +20,8 @@ void KOReaderSettingsActivity::loop() {
     launchAttempted = true;
     const esp_err_t result = runNativeApp("/sd/Apps/koreader_sync.elf", renderer, mappedInput);
     if (result == ESP_OK) {
-      finish();
+      // The native app can queue firmware keyboard/Wi-Fi activities before
+      // returning. Defer our pop so ActivityManager can first push the child.
       return;
     }
     launchFailed = true;
@@ -28,8 +29,13 @@ void KOReaderSettingsActivity::loop() {
     return;
   }
 
-  if (launchFailed && (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
-                       mappedInput.wasPressed(MappedInputManager::Button::Confirm))) {
+  if (!launchFailed) {
+    finish();
+    return;
+  }
+
+  if (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
+      mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
     finish();
   }
 }

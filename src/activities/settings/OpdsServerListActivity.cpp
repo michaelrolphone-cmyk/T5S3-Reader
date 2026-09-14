@@ -37,7 +37,8 @@ void OpdsServerListActivity::loop() {
       launchAttempted = true;
       const esp_err_t result = runNativeApp("/sd/Apps/opds_settings.elf", renderer, mappedInput);
       if (result == ESP_OK) {
-        finish();
+        // The native OPDS editor can queue a firmware keyboard activity.
+        // Let ActivityManager push that child before this launcher pops.
         return;
       }
       launchFailed = true;
@@ -45,8 +46,13 @@ void OpdsServerListActivity::loop() {
       return;
     }
 
-    if (launchFailed && (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
-                         mappedInput.wasPressed(MappedInputManager::Button::Confirm))) {
+    if (!launchFailed) {
+      finish();
+      return;
+    }
+
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
+        mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
       finish();
     }
     return;
