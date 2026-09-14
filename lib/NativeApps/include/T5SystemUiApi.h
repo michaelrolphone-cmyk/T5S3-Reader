@@ -31,6 +31,10 @@ typedef struct {
     // pending for consumption. `text` may be NULL when only cancel/cookie state
     // is needed. The result is consumed only after a successful call.
     bool (*keyboard_take_result)(char *text, size_t capacity, bool *cancelled, uint64_t *cookie);
+
+    // Queue a return to the firmware Home activity after the ELF returns. This
+    // mirrors built-in activities whose top-level Back/Home action exits to Home.
+    void (*navigate_home)(void);
 } t5_system_ui_api_v1;
 
 // Versioned firmware system-UI service. This is intentionally separate from
