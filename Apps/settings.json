@@ -1,5 +1,6 @@
 {
   "min_firmware_version": "1.1.5",
+  "version": "1.0.0",
   "display_name": "Settings",
   "file_name": "settings.elf",
   "icon": "solid:f013"
