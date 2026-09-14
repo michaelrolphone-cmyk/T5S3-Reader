@@ -2,7 +2,6 @@
 #include "T5SystemUiApi.h"
 #include "T5TimecardApi.h"
 
-#define SELF_PATH "/sd/Apps/timecard.elf"
 #define DAY_COUNT 7
 #define PUNCH_COUNT 4
 #define WEEK_HISTORY 20
@@ -156,7 +155,7 @@ static bool request_edit(void) {
     initial[0] = '\0';
     if (current >= 0) g_tc->format_ampm(current, initial, sizeof(initial));
 
-    if (!g_ui->keyboard_request(SELF_PATH, title, initial, 12, T5_SYSTEM_KEYBOARD_TEXT,
+    if (!g_ui->keyboard_request(title, initial, 12, T5_SYSTEM_KEYBOARD_TEXT,
                                 make_edit_cookie(g_editing_ymd, punch, g_week_offset))) {
         set_status("Keyboard unavailable");
         return false;
