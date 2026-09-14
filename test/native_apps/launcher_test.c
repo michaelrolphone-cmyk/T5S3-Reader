@@ -5,6 +5,9 @@
 #include "esp_dlfcn.h"
 #include "esp_elf.h"
 #include "T5AppApi.h"
+#include "T5StorageApi.h"
+#include "T5SystemApi.h"
+#include "T5SystemUiApi.h"
 
 static int mode, opens, closes, calls, handle_storage;
 static const char *pending;
@@ -15,7 +18,10 @@ static void child(void)
     running = true;
     ++calls;
     assert(closes == 0);
+    assert(native_app_current_path() != NULL);
+    assert(strcmp(native_app_current_path(), "/sd/apps/game.elf") == 0);
     assert(launch_elf_app("/sd/apps/nested.elf") == ESP_ERR_INVALID_STATE);
+    assert(strcmp(native_app_current_path(), "/sd/apps/game.elf") == 0);
     running = false;
 }
 void *dlopen(const char *path, int flags)
@@ -43,16 +49,19 @@ int dlclose(void *handle)
 }
 int main(void)
 {
+    assert(native_app_current_path() == NULL);
     assert(launch_elf_app(NULL) == ESP_ERR_INVALID_ARG);
     assert(launch_elf_app("") == ESP_ERR_INVALID_ARG);
     assert(launch_elf_app("/") == ESP_ERR_INVALID_ARG);
     assert(launch_elf_app("relative.elf") == ESP_ERR_INVALID_ARG);
+    assert(native_app_current_path() == NULL);
     assert(opens == 0);
     for (int round = 0; round < 3; ++round) {
         for (mode = 0; mode < 6; ++mode) {
             opens = closes = calls = 0;
             pending = "stale error";
             int rc = launch_elf_app("/sd/apps/game.elf");
+            assert(native_app_current_path() == NULL);
             assert(opens == 1);
             assert(closes == (mode == 1 ? 0 : 1));
             assert(calls == (mode == 0 || mode == 4 ? 1 : 0));
@@ -64,5 +73,12 @@ int main(void)
 }
 
 esp_err_t native_app_register_sd_vfs(void) { return ESP_OK; }
-int esp_elf_register_symbol(const struct esp_elfsym *s) { assert(s && s[0].sym); return 0; }
+int esp_elf_register_symbol(const struct esp_elfsym *s)
+{
+    assert(s && s[0].sym && s[1].sym && s[2].sym && s[3].sym);
+    return 0;
+}
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_storage_api_v1 *t5_storage_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_system_api_v1 *t5_system_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_system_ui_api_v1 *t5_system_ui_get_api(uint32_t version) { (void)version; return NULL; }
