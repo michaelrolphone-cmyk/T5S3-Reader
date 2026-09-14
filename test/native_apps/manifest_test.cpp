@@ -2,8 +2,11 @@
 #include "AppManifestRules.h"
 int main() {
   assert(t5_firmware_compatible("1.1.5", "1.1.5"));
+  assert(t5_firmware_compatible("1.1.10", "1.1.10"));
+  assert(t5_firmware_compatible("1.1.10-dev-feature-apps-abcd", "1.1.10"));
   assert(t5_firmware_compatible("1.1.5-dev-feature-apps-abcd", "1.1.5"));
   assert(t5_firmware_compatible("1.10.0", "1.9.99"));
+  assert(!t5_firmware_compatible("1.1.9", "1.1.10"));
   assert(!t5_firmware_compatible("1.1.4", "1.1.5"));
   assert(!t5_firmware_compatible("garbage", "1.1.5"));
   assert(!t5_firmware_compatible("1.1.5", "1.1.5-dev"));

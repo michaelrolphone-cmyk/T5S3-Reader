@@ -4,6 +4,10 @@
 #include <HalStorage.h>
 #include <cstring>
 
+#ifndef CROSSPOINT_COMPAT_VERSION
+#define CROSSPOINT_COMPAT_VERSION CROSSPOINT_VERSION
+#endif
+
 bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
                       std::string* appVersion, bool requireAppVersion) {
   out = {};
@@ -46,7 +50,11 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
   bool regular;
   if (!t5_safe_elf_name(out.file_name) || !t5_parse_version(out.min_firmware_version, version, false) ||
       !t5_parse_icon(out.icon, &regular, &cp)) return false;
-  out.compatible = t5_firmware_compatible(CROSSPOINT_VERSION, out.min_firmware_version);
+
+  // Compatibility must use the clean semantic release version, not the display/build
+  // version. Development and RC builds append branch/hash metadata to CROSSPOINT_VERSION;
+  // CROSSPOINT_COMPAT_VERSION is always the bare major.minor.patch firmware floor.
+  out.compatible = t5_firmware_compatible(CROSSPOINT_COMPAT_VERSION, out.min_firmware_version);
   return true;
 }
 bool readAppManifest(const char* path, t5_app_manifest_t& out,
