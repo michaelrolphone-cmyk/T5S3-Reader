@@ -57,6 +57,13 @@ activities. CI runs this test and builds both firmware targets.
 On-device verification is still required for scan reliability, authenticated and
 open connections, parent/child navigation, AP file transfer, and reconnects.
 
+## GPS driver ELF pathway
+
+The next implemented slice is a real installable GPS provider. See
+[GPS_DRIVER.md](GPS_DRIVER.md) for the ABI, runtime load/unload path, kernel
+resource ownership, independent build, package installation, tests, and release
+cycle. GPS parsing is no longer compiled into the firmware.
+
 ## Remaining architecture work
 
 - Phase A registry, logical aliases, handles/reference counts, capability-loss
@@ -66,6 +73,6 @@ open connections, parent/child navigation, AP file transfer, and reconnects.
   provider use or unloading.
 - ESP-IDF HTTP/TLS, DNS/mDNS, web services, watchdog calls, other native bridges,
   storage/HAL access, and other hardware families still need migration.
-- VFS/mounts, driver manifests/ELF loading, device profiles, dependency resolution,
+- VFS/mounts, general provider discovery, device profiles, dependency resolution,
   and driverless recovery remain subsequent phases. The existing compiled-in
   ESP32 networking remains available; this slice does not add recovery commands.
