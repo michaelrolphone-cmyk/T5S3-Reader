@@ -1,5 +1,6 @@
 #include "HomeActivity.h"
 
+#include <AppManifestRules.h>
 #include <Bitmap.h>
 #include <Epub.h>
 #include <FontCacheManager.h>
@@ -12,9 +13,11 @@
 #include <Xtc.h>
 
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include "CrossPointSettings.h"
+#include "native/AppManifest.h"
 #include "native/NativeAppHost.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
@@ -25,6 +28,7 @@
 
 namespace {
 constexpr char UTF8_ELLIPSIS[] = "\xE2\x80\xA6";
+constexpr char HOME_APPS_PATH[] = "/Apps/.home_apps";
 
 void appendTextKey(std::string& key, const std::string& text) {
   if (text.empty()) {
@@ -44,7 +48,7 @@ void recordUserContentText(FontCacheManager* fcm, const int systemFontId, const 
 }  // namespace
 
 int HomeActivity::getMenuItemCount() const {
-  int count = 5;  // File Browser, Recents, File transfer, Apps, Settings
+  int count = 5 + static_cast<int>(homeApps.size());  // File Browser, Recents, File transfer, Apps, pinned apps, Settings
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
@@ -67,6 +71,55 @@ void HomeActivity::loadRecentBooks(int maxBooks) {
       continue;
     }
     recentBooks.push_back(book);
+  }
+}
+
+void HomeActivity::loadHomeApps() {
+  homeApps.clear();
+  if (!Storage.ready() || !Storage.exists(HOME_APPS_PATH)) {
+    return;
+  }
+
+  const String pins = Storage.readFile(HOME_APPS_PATH);
+  const char* data = pins.c_str();
+  const size_t length = pins.length();
+  size_t start = 0;
+
+  while (start < length && homeApps.size() < 128) {
+    size_t end = start;
+    while (end < length && data[end] != '\n' && data[end] != '\r') {
+      ++end;
+    }
+
+    if (end > start) {
+      const std::string fileName(data + start, end - start);
+      if (t5_safe_elf_name(fileName.c_str()) && fileName != "springboard.elf") {
+        const std::string elfPath = std::string("/Apps/") + fileName;
+        const std::string sidecar = elfPath.substr(0, elfPath.size() - 4) + ".json";
+        if (Storage.exists(elfPath.c_str()) && Storage.exists(sidecar.c_str()) &&
+            !Storage.exists((elfPath + ".bak").c_str()) && !Storage.exists((sidecar + ".bak").c_str())) {
+          t5_app_manifest_t manifest{};
+          if (readAppManifest(sidecar.c_str(), manifest) && manifest.compatible &&
+              fileName == manifest.file_name) {
+            bool duplicate = false;
+            for (const auto& existing : homeApps) {
+              if (!std::strcmp(existing.file_name, manifest.file_name)) {
+                duplicate = true;
+                break;
+              }
+            }
+            if (!duplicate) {
+              homeApps.push_back(manifest);
+            }
+          }
+        }
+      }
+    }
+
+    while (end < length && (data[end] == '\n' || data[end] == '\r')) {
+      ++end;
+    }
+    start = end;
   }
 }
 
@@ -148,6 +201,7 @@ void HomeActivity::onEnter() {
   lastVisibleTextPrewarmKey.clear();
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
+  loadHomeApps();
   recentsLoaded = !needsRecentCovers(metrics.homeCoverHeight);
   requestUpdate();
 }
@@ -199,6 +253,7 @@ void HomeActivity::loop() {
     appsPending = false;
     appsPending = runNativeSpringboard(renderer, mappedInput, appsResume);
     appsResume = appsPending;
+    loadHomeApps();
     requestUpdate();
     return;
   }
@@ -299,14 +354,29 @@ void HomeActivity::render(RenderLock&&) {
                           recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
-  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_MENU_RECENT_BOOKS), tr(STR_FILE_TRANSFER),
-                                        tr(STR_APPS), tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Folder, Recent, Transfer, Library, Settings};
+  std::vector<const char*> menuItems;
+  std::vector<UIIcon> menuIcons;
+  menuItems.reserve(5 + homeApps.size() + (hasOpdsServers ? 1 : 0) + (metrics.homeContinueReadingInMenu ? 1 : 0));
+  menuIcons.reserve(menuItems.capacity());
 
+  menuItems.push_back(tr(STR_BROWSE_FILES));
+  menuIcons.push_back(Folder);
+  menuItems.push_back(tr(STR_MENU_RECENT_BOOKS));
+  menuIcons.push_back(Recent);
   if (hasOpdsServers) {
-    menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
-    menuIcons.insert(menuIcons.begin() + 2, Library);
+    menuItems.push_back(tr(STR_OPDS_BROWSER));
+    menuIcons.push_back(Library);
   }
+  menuItems.push_back(tr(STR_FILE_TRANSFER));
+  menuIcons.push_back(Transfer);
+  menuItems.push_back(tr(STR_APPS));
+  menuIcons.push_back(Library);
+  for (const auto& app : homeApps) {
+    menuItems.push_back(app.display_name);
+    menuIcons.push_back(Library);
+  }
+  menuItems.push_back(tr(STR_SETTINGS_TITLE));
+  menuIcons.push_back(Settings);
 
   if (metrics.homeContinueReadingInMenu) {
     menuItems.insert(menuItems.begin(), tr(STR_CONTINUE_READING));
@@ -341,6 +411,8 @@ void HomeActivity::activateSelection(int index) {
   const int opdsLibraryIdx = hasOpdsServers ? idx++ : -1;
   const int fileTransferIdx = idx++;
   const int appsIdx = idx++;
+  const int homeAppsStartIdx = idx;
+  idx += static_cast<int>(homeApps.size());
   const int settingsIdx = idx;
 
   if (index < static_cast<int>(recentBooks.size())) {
@@ -355,9 +427,21 @@ void HomeActivity::activateSelection(int index) {
     onFileTransferOpen();
   } else if (menuSelectedIndex == appsIdx) {
     appsPending = true;
+  } else if (menuSelectedIndex >= homeAppsStartIdx && menuSelectedIndex < settingsIdx) {
+    onHomeAppOpen(static_cast<size_t>(menuSelectedIndex - homeAppsStartIdx));
   } else if (menuSelectedIndex == settingsIdx) {
     onSettingsOpen();
   }
+}
+
+void HomeActivity::onHomeAppOpen(size_t index) {
+  if (index >= homeApps.size()) {
+    return;
+  }
+  const std::string path = std::string("/sd/Apps/") + homeApps[index].file_name;
+  runNativeApp(path.c_str(), renderer, mappedInput);
+  loadHomeApps();
+  requestUpdate();
 }
 
 void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }

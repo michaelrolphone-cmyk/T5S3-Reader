@@ -1,4 +1,6 @@
 #pragma once
+#include <T5AppApi.h>
+
 #include <functional>
 #include <vector>
 
@@ -22,6 +24,7 @@ class HomeActivity final : public Activity {
   bool coverBufferStored = false;
   uint8_t* coverBuffer = nullptr;
   std::vector<RecentBook> recentBooks;
+  std::vector<t5_app_manifest_t> homeApps;
   std::string lastVisibleTextPrewarmKey;
   void onSelectBook(const std::string& path);
   void onFileBrowserOpen();
@@ -29,6 +32,7 @@ class HomeActivity final : public Activity {
   void onSettingsOpen();
   void onFileTransferOpen();
   void onOpdsBrowserOpen();
+  void onHomeAppOpen(size_t index);
   void activateSelection(int index);
 
   int getMenuItemCount() const;
@@ -37,6 +41,7 @@ class HomeActivity final : public Activity {
   void freeCoverBuffer();
   void loadRecentBooks(int maxBooks);
   void loadRecentCovers(int coverHeight);
+  void loadHomeApps();
   bool needsRecentCovers(int coverHeight) const;
 
  public:
