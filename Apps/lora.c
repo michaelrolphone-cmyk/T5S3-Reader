@@ -11,8 +11,10 @@ static const t5_lora_api_v1 *lora;
 static const t5_ui_api_v1 *ui;
 
 static char status_value[32];
-static char radio_value[64];
-static char packet_value[96] = "Waiting for packet";
+static char radio_value[96];
+static char packet_info_value[48] = "Waiting for packet";
+static char packet_hex_value[769] = "--";
+static char packet_ascii_value[257] = "--";
 static char signal_value[48] = "--";
 static char counters_value[48];
 static char footer[96];
@@ -38,26 +40,47 @@ static const char *status_name(uint8_t status) {
     }
 }
 
-static void packet_to_text(const t5_lora_packet_t *packet) {
-    if (!packet || packet->length == 0) return;
-    uint16_t limit = packet->length;
-    if (limit >= sizeof(packet_value)) limit = (uint16_t)(sizeof(packet_value) - 1u);
-    for (uint16_t i = 0; i < limit; ++i) {
-        const uint8_t c = packet->data[i];
-        packet_value[i] = (c >= 32u && c <= 126u) ? (char)c : '.';
+static char hex_digit(uint8_t value) {
+    static const char digits[] = "0123456789ABCDEF";
+    return digits[value & 0x0fu];
+}
+
+static void packet_to_raw_views(const t5_lora_packet_t *packet) {
+    if (!packet || packet->length == 0u) return;
+
+    const size_t max_hex_bytes = (sizeof(packet_hex_value) - 1u) / 3u;
+    const size_t max_ascii_bytes = sizeof(packet_ascii_value) - 1u;
+    size_t count = (size_t)packet->length;
+    if (count > max_hex_bytes) count = max_hex_bytes;
+    if (count > max_ascii_bytes) count = max_ascii_bytes;
+
+    size_t hex_pos = 0u;
+    for (size_t i = 0u; i < count; ++i) {
+        const uint8_t byte = packet->data[i];
+        packet_hex_value[hex_pos++] = hex_digit((uint8_t)(byte >> 4));
+        packet_hex_value[hex_pos++] = hex_digit(byte);
+        if (i + 1u < count) packet_hex_value[hex_pos++] = ' ';
+
+        packet_ascii_value[i] = (byte >= 32u && byte <= 126u) ? (char)byte : '.';
     }
-    packet_value[limit] = '\0';
+    packet_hex_value[hex_pos] = '\0';
+    packet_ascii_value[count] = '\0';
+
+    snprintf(packet_info_value, sizeof(packet_info_value), "%u byte%s",
+             (unsigned)packet->length, packet->length == 1u ? "" : "s");
     snprintf(signal_value, sizeof(signal_value), "RSSI %d dBm / SNR %d dB",
              (int)(packet->rssi_dbm_x10 / 10), (int)(packet->snr_db_x10 / 10));
 }
 
 static void render_state(const t5_lora_state_t *state) {
     copy_text(status_value, sizeof(status_value), status_name(state->status));
-    snprintf(radio_value, sizeof(radio_value), "%lu.%03lu MHz  BW%lu  SF%u",
+    snprintf(radio_value, sizeof(radio_value), "%lu.%03lu MHz BW%lu SF%u CR4/%u SW0x%02X",
              (unsigned long)(state->config.frequency_hz / 1000000u),
              (unsigned long)((state->config.frequency_hz / 1000u) % 1000u),
              (unsigned long)(state->config.bandwidth_hz / 1000u),
-             (unsigned)state->config.spreading_factor);
+             (unsigned)state->config.spreading_factor,
+             (unsigned)state->config.coding_rate,
+             (unsigned)state->config.sync_word);
     snprintf(counters_value, sizeof(counters_value), "RX %lu / TX %lu",
              (unsigned long)state->packets_received, (unsigned long)state->packets_sent);
 
@@ -66,12 +89,12 @@ static void render_state(const t5_lora_state_t *state) {
     } else if (state->status == T5_LORA_STATUS_ERROR) {
         snprintf(footer, sizeof(footer), "Radio error %d", (int)state->last_error);
     } else {
-        copy_text(footer, sizeof(footer), "Confirm sends a T5S3 ping");
+        copy_text(footer, sizeof(footer), "Preamble 8 / CRC on / explicit header / normal IQ");
     }
 
     const t5_ui_chrome_t chrome = {
         .title = "LoRa",
-        .subtitle = "SX1262 radio",
+        .subtitle = "SX1262 raw packet monitor",
         .status = footer,
         .back_label = "Back",
         .confirm_label = "Ping",
@@ -81,7 +104,9 @@ static void render_state(const t5_lora_state_t *state) {
     const t5_ui_list_row_t rows[] = {
         {.title = "Status", .subtitle = NULL, .value = status_value, .flags = T5_UI_LIST_HIGHLIGHT_VALUE},
         {.title = "Radio", .subtitle = NULL, .value = radio_value, .flags = 0},
-        {.title = "Last RX", .subtitle = NULL, .value = packet_value, .flags = T5_UI_LIST_HIGHLIGHT_VALUE},
+        {.title = "Last RX", .subtitle = NULL, .value = packet_info_value, .flags = T5_UI_LIST_HIGHLIGHT_VALUE},
+        {.title = "HEX", .subtitle = NULL, .value = packet_hex_value, .flags = 0},
+        {.title = "ASCII", .subtitle = NULL, .value = packet_ascii_value, .flags = 0},
         {.title = "Signal", .subtitle = NULL, .value = signal_value, .flags = 0},
         {.title = "Packets", .subtitle = NULL, .value = counters_value, .flags = 0},
     };
@@ -104,6 +129,17 @@ void app_main(void) {
     t5_lora_packet_t packet = {0};
     lora->default_config(&config);
 
+    // Match the existing correction transmitter exactly. The payload is kept
+    // opaque and displayed byte-for-byte so this app can validate RF reception
+    // before any correction-structure decoder is introduced.
+    config.frequency_hz = 915000000u;
+    config.bandwidth_hz = 125000u;
+    config.spreading_factor = 7u;
+    config.coding_rate = 5u;
+    config.sync_word = 0x12u;
+    config.preamble_symbols = 8u;
+    config.crc_enabled = 1u;
+
     if (!lora->supported()) {
         state.status = T5_LORA_STATUS_UNSUPPORTED;
         state.config = config;
@@ -116,7 +152,7 @@ void app_main(void) {
 
     for (;;) {
         if (lora->poll_packet(&packet)) {
-            packet_to_text(&packet);
+            packet_to_raw_views(&packet);
             (void)lora->read_state(&state);
             render_state(&state);
             (void)lora->read_state(&state);
