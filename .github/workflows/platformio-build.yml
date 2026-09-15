@@ -50,10 +50,12 @@ jobs:
             board_id: t5s3-pro
             firmware_name: firmware-t5s3-pro.bin
             merged_firmware_name: firmware-t5s3-pro-merged.bin
+            elf_name: firmware-t5s3-pro.elf
           - environment: lilygo-epd47-s3
             board_id: lilygo-epd47-s3
             firmware_name: firmware-lilygo-epd47-s3.bin
             merged_firmware_name: firmware-lilygo-epd47-s3-merged.bin
+            elf_name: firmware-lilygo-epd47-s3.elf
 
     steps:
       - name: Check out repository
@@ -104,6 +106,7 @@ jobs:
           mkdir -p dist
           cp ".pio/build/${{ matrix.environment }}/firmware.bin" "dist/${{ matrix.firmware_name }}"
           cp ".pio/build/${{ matrix.environment }}/firmware-merged.bin" "dist/${{ matrix.merged_firmware_name }}"
+          cp ".pio/build/${{ matrix.environment }}/firmware.elf" "dist/${{ matrix.elf_name }}"
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
@@ -112,6 +115,7 @@ jobs:
           path: |
             dist/${{ matrix.firmware_name }}
             dist/${{ matrix.merged_firmware_name }}
+            dist/${{ matrix.elf_name }}
             dist/hello.elf
             dist/apps/*
             dist/drivers/*.t5driver.zip
