@@ -33,7 +33,14 @@ static void lora_default_config(t5_lora_config_t *config) {
     config->crc_enabled = 1;
 }
 static bool lora_start(const t5_lora_config_t *config) {
-    assert(config && config->frequency_hz == 915000000u && config->spreading_factor == 10);
+    assert(config);
+    assert(config->frequency_hz == 915000000u);
+    assert(config->bandwidth_hz == 125000u);
+    assert(config->spreading_factor == 7u);
+    assert(config->coding_rate == 5u);
+    assert(config->sync_word == 0x12u);
+    assert(config->preamble_symbols == 8u);
+    assert(config->crc_enabled == 1u);
     started = true;
     return true;
 }
@@ -45,7 +52,14 @@ static bool lora_read_state(t5_lora_state_t *state) {
     state->receiver_active = 1;
     state->packets_received = rx_count;
     state->packets_sent = tx_count;
-    lora_default_config(&state->config);
+    state->config.frequency_hz = 915000000u;
+    state->config.bandwidth_hz = 125000u;
+    state->config.preamble_symbols = 8u;
+    state->config.spreading_factor = 7u;
+    state->config.coding_rate = 5u;
+    state->config.sync_word = 0x12u;
+    state->config.tx_power_dbm = 22;
+    state->config.crc_enabled = 1u;
     return true;
 }
 static bool lora_poll_packet(t5_lora_packet_t *packet) {
@@ -90,18 +104,22 @@ const t5_lora_api_v1 *t5_lora_get_api(uint32_t version) {
 
 static void render_list(const t5_ui_chrome_t *chrome, const t5_ui_list_row_t *rows,
                         uint32_t row_count, int32_t selected_index) {
-    assert(chrome && rows && row_count == 5 && selected_index == 0);
+    assert(chrome && rows && row_count == 7 && selected_index == 0);
     assert(strcmp(chrome->title, "LoRa") == 0);
-    assert(strcmp(rows[1].value, "915.000 MHz  BW125  SF10") == 0);
+    assert(strcmp(rows[1].value, "915.000 MHz BW125 SF7 CR4/5 SW0x12") == 0);
     if (renders == 0) {
         assert(strcmp(rows[2].value, "Waiting for packet") == 0);
-        assert(strcmp(rows[4].value, "RX 0 / TX 0") == 0);
+        assert(strcmp(rows[3].value, "--") == 0);
+        assert(strcmp(rows[4].value, "--") == 0);
+        assert(strcmp(rows[6].value, "RX 0 / TX 0") == 0);
     } else if (renders == 1) {
-        assert(strcmp(rows[4].value, "RX 0 / TX 1") == 0);
+        assert(strcmp(rows[6].value, "RX 0 / TX 1") == 0);
     } else {
-        assert(strcmp(rows[2].value, "hello lora") == 0);
-        assert(strcmp(rows[3].value, "RSSI -73 dBm / SNR 8 dB") == 0);
-        assert(strcmp(rows[4].value, "RX 1 / TX 1") == 0);
+        assert(strcmp(rows[2].value, "10 bytes") == 0);
+        assert(strcmp(rows[3].value, "68 65 6C 6C 6F 20 6C 6F 72 61") == 0);
+        assert(strcmp(rows[4].value, "hello lora") == 0);
+        assert(strcmp(rows[5].value, "RSSI -73 dBm / SNR 8 dB") == 0);
+        assert(strcmp(rows[6].value, "RX 1 / TX 1") == 0);
     }
     ++renders;
 }
