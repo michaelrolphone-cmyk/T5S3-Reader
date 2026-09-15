@@ -11,7 +11,7 @@ static const t5_lora_api_v1 *lora;
 static const t5_ui_api_v1 *ui;
 
 static char status_value[32];
-static char radio_value[64];
+static char radio_value[96];
 static char packet_info_value[48] = "Waiting for packet";
 static char packet_hex_value[769] = "--";
 static char packet_ascii_value[257] = "--";
@@ -41,8 +41,8 @@ static const char *status_name(uint8_t status) {
 }
 
 static char hex_digit(uint8_t value) {
-    value &= 0x0fu;
-    return (char)(value < 10u ? ('0' + value) : ('A' + (value - 10u)));
+    static const char digits[] = "0123456789ABCDEF";
+    return digits[value & 0x0fu];
 }
 
 static void packet_to_raw_views(const t5_lora_packet_t *packet) {
@@ -74,11 +74,13 @@ static void packet_to_raw_views(const t5_lora_packet_t *packet) {
 
 static void render_state(const t5_lora_state_t *state) {
     copy_text(status_value, sizeof(status_value), status_name(state->status));
-    snprintf(radio_value, sizeof(radio_value), "%lu.%03lu MHz  BW%lu  SF%u",
+    snprintf(radio_value, sizeof(radio_value), "%lu.%03lu MHz BW%lu SF%u CR4/%u SW0x%02X",
              (unsigned long)(state->config.frequency_hz / 1000000u),
              (unsigned long)((state->config.frequency_hz / 1000u) % 1000u),
              (unsigned long)(state->config.bandwidth_hz / 1000u),
-             (unsigned)state->config.spreading_factor);
+             (unsigned)state->config.spreading_factor,
+             (unsigned)state->config.coding_rate,
+             (unsigned)state->config.sync_word);
     snprintf(counters_value, sizeof(counters_value), "RX %lu / TX %lu",
              (unsigned long)state->packets_received, (unsigned long)state->packets_sent);
 
@@ -87,12 +89,12 @@ static void render_state(const t5_lora_state_t *state) {
     } else if (state->status == T5_LORA_STATUS_ERROR) {
         snprintf(footer, sizeof(footer), "Radio error %d", (int)state->last_error);
     } else {
-        copy_text(footer, sizeof(footer), "Confirm sends a T5S3 ping");
+        copy_text(footer, sizeof(footer), "Preamble 8 / CRC on / explicit header / normal IQ");
     }
 
     const t5_ui_chrome_t chrome = {
         .title = "LoRa",
-        .subtitle = "SX1262 radio",
+        .subtitle = "SX1262 raw packet monitor",
         .status = footer,
         .back_label = "Back",
         .confirm_label = "Ping",
@@ -126,6 +128,17 @@ void app_main(void) {
     t5_lora_state_t state = {0};
     t5_lora_packet_t packet = {0};
     lora->default_config(&config);
+
+    // Match the existing correction transmitter exactly. The payload is kept
+    // opaque and displayed byte-for-byte so this app can validate RF reception
+    // before any correction-structure decoder is introduced.
+    config.frequency_hz = 915000000u;
+    config.bandwidth_hz = 125000u;
+    config.spreading_factor = 7u;
+    config.coding_rate = 5u;
+    config.sync_word = 0x12u;
+    config.preamble_symbols = 8u;
+    config.crc_enabled = 1u;
 
     if (!lora->supported()) {
         state.status = T5_LORA_STATUS_UNSUPPORTED;
