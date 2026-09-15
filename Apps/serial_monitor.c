@@ -7,7 +7,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 #define TERMINAL_CAP 12288u
 #define SEND_CAP 257u
@@ -63,6 +62,21 @@ static void append_notice(const char *text) {
     while (text && *text) append_char(*text++);
     append_char(']');
     append_char('\n');
+}
+
+static bool parse_baud(const char *text, uint32_t *baud) {
+    uint32_t value = 0;
+    if (!text || !text[0] || !baud) return false;
+    while (*text) {
+        if (*text < '0' || *text > '9') return false;
+        uint32_t digit = (uint32_t)(*text - '0');
+        if (value > (3000000u - digit) / 10u) return false;
+        value = value * 10u + digit;
+        ++text;
+    }
+    if (value < 300u || value > 3000000u) return false;
+    *baud = value;
+    return true;
 }
 
 static const char *status_name(uint8_t status) {
@@ -139,13 +153,13 @@ static void render_actions(const t5_usb_serial_state_t *state, int32_t selected)
     snprintf(data_bits, sizeof(data_bits), "%u", (unsigned)state->line_coding.data_bits);
     snprintf(stop_bits, sizeof(stop_bits), "%u", (unsigned)state->line_coding.stop_bits);
     const t5_ui_list_row_t rows[] = {
-        {"Send text", state->status == T5_USB_STATUS_READY ? "Ready" : "Connect first", NULL, 0},
-        {"Baud rate", baud, NULL, T5_UI_LIST_HIGHLIGHT_VALUE},
-        {"Data bits", data_bits, NULL, T5_UI_LIST_HIGHLIGHT_VALUE},
-        {"Parity", parity_name(state->line_coding.parity), NULL, T5_UI_LIST_HIGHLIGHT_VALUE},
-        {"Stop bits", stop_bits, NULL, T5_UI_LIST_HIGHLIGHT_VALUE},
-        {"DTR", state->dtr ? "On" : "Off", NULL, T5_UI_LIST_HIGHLIGHT_VALUE},
-        {"RTS", state->rts ? "On" : "Off", NULL, T5_UI_LIST_HIGHLIGHT_VALUE},
+        {"Send text", NULL, state->status == T5_USB_STATUS_READY ? "Ready" : "Connect first", T5_UI_LIST_HIGHLIGHT_VALUE},
+        {"Baud rate", NULL, baud, T5_UI_LIST_HIGHLIGHT_VALUE},
+        {"Data bits", NULL, data_bits, T5_UI_LIST_HIGHLIGHT_VALUE},
+        {"Parity", NULL, parity_name(state->line_coding.parity), T5_UI_LIST_HIGHLIGHT_VALUE},
+        {"Stop bits", NULL, stop_bits, T5_UI_LIST_HIGHLIGHT_VALUE},
+        {"DTR", NULL, state->dtr ? "On" : "Off", T5_UI_LIST_HIGHLIGHT_VALUE},
+        {"RTS", NULL, state->rts ? "On" : "Off", T5_UI_LIST_HIGHLIGHT_VALUE},
     };
     const t5_ui_chrome_t chrome = {
         .title = "USB Serial",
@@ -283,11 +297,10 @@ void app_main(void) {
             append_bytes((const uint8_t *)keyboard_text, length);
             append_char('\n');
         } else if (cookie == COOKIE_CUSTOM_BAUD && keyboard_text[0]) {
-            char *end = NULL;
-            unsigned long value = strtoul(keyboard_text, &end, 10);
-            if (end && *end == 0 && value >= 300ul && value <= 3000000ul) {
+            uint32_t value = 0;
+            if (parse_baud(keyboard_text, &value)) {
                 coding = state.line_coding;
-                coding.baud_rate = (uint32_t)value;
+                coding.baud_rate = value;
                 (void)apply_coding(&state, coding);
             } else {
                 append_notice("Invalid baud; enter 300-3000000");
