@@ -6,9 +6,9 @@
 #include <GfxRenderer.h>
 #include <HalPowerManager.h>
 #include <HalStorage.h>
+#include <Logging.h>
 #include <NativeAppLauncher.h>
 #include <T5AppApi.h>
-#include <WiFi.h>
 #include <esp_task_wdt.h>
 #include <algorithm>
 #include <cctype>
@@ -24,6 +24,7 @@
 #include "activities/RenderLock.h"
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
+#include "runtime/network/NetworkService.h"
 
 #ifndef CROSSPOINT_COMPAT_VERSION
 #define CROSSPOINT_COMPAT_VERSION CROSSPOINT_VERSION
@@ -34,6 +35,7 @@ constexpr const char* kLatestReleaseApi =
     "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
 constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr size_t kMaxCatalogAssets = 64;
+constexpr size_t kMaxReleaseAssetObjectBytes = 8192;
 
 struct CatalogAsset {
   std::string name;
@@ -216,69 +218,133 @@ uint64_t jsonUintField(const std::string& object, const char* field) {
   return static_cast<uint64_t>(std::strtoull(object.c_str() + p, nullptr, 10));
 }
 
-bool parseCatalog(const std::string& json, std::vector<CatalogAsset>& catalog) {
-  catalog.clear();
-  std::vector<CatalogAsset> manifests;
-  size_t assets = json.find("\"assets\"");
-  if (assets == std::string::npos) return false;
-  size_t p = json.find('[', assets);
-  if (p == std::string::npos) return false;
-  ++p;
+class CatalogReleaseStream final : public Stream {
+ public:
+  explicit CatalogReleaseStream(std::vector<CatalogAsset>& catalog) : catalog_(catalog) {
+    catalog_.clear();
+    manifests_.reserve(kMaxCatalogAssets);
+  }
 
-  while (p < json.size()) {
-    p = json.find_first_not_of(" \t\r\n,", p);
-    if (p == std::string::npos || json[p] == ']') break;
-    p = json.find('{', p);
-    if (p == std::string::npos) break;
+  size_t write(uint8_t byte) override { return write(&byte, 1); }
 
-    const size_t start = p;
-    int depth = 0;
-    bool inString = false;
-    bool escaped = false;
-    size_t end = std::string::npos;
-    for (; p < json.size(); ++p) {
-      const char c = json[p];
-      if (inString) {
-        if (escaped) {
-          escaped = false;
-        } else if (c == '\\') {
-          escaped = true;
-        } else if (c == '"') {
-          inString = false;
-        }
-        continue;
-      }
-      if (c == '"') {
-        inString = true;
-      } else if (c == '{') {
-        ++depth;
-      } else if (c == '}') {
-        --depth;
-        if (depth == 0) {
-          end = p;
-          ++p;
+  size_t write(const uint8_t* buffer, size_t size) override {
+    if (!buffer) return 0;
+    for (size_t i = 0; i < size; ++i) consume(static_cast<char>(buffer[i]));
+    return size;
+  }
+
+  int available() override { return 0; }
+  int read() override { return -1; }
+  int peek() override { return -1; }
+  void flush() override {}
+
+  bool finish() {
+    if (failed_ || !assetsComplete_) return false;
+    for (auto& asset : catalog_) {
+      const auto expected = asset.name.substr(0, asset.name.size() - 4) + ".json";
+      for (const auto& manifest : manifests_) {
+        if (manifest.name == expected) {
+          asset.manifestUrl = manifest.url;
           break;
         }
       }
     }
-    if (end == std::string::npos) return false;
+    return true;
+  }
 
-    const std::string object = json.substr(start, end - start + 1);
-    CatalogAsset asset;
-    if (jsonStringField(object, "name", asset.name) &&
-        jsonStringField(object, "browser_download_url", asset.url)) {
-      asset.size = jsonUintField(object, "size");
-      if (safeAssetName(asset.name) && catalog.size() < kMaxCatalogAssets) catalog.push_back(std::move(asset));
-      else if (asset.name.size() > 5 && asset.name.substr(asset.name.size() - 5) == ".json" &&
-               manifests.size() < kMaxCatalogAssets) manifests.push_back(std::move(asset));
+ private:
+  static constexpr const char* kAssetsKey = "\"assets\"";
+
+  void consume(char c) {
+    if (failed_ || assetsComplete_) return;
+
+    if (!insideAssets_) {
+      if (!assetsKeyFound_) {
+        if (c == kAssetsKey[keyMatch_]) {
+          ++keyMatch_;
+          if (kAssetsKey[keyMatch_] == '\0') {
+            assetsKeyFound_ = true;
+            keyMatch_ = 0;
+          }
+        } else {
+          keyMatch_ = c == kAssetsKey[0] ? 1u : 0u;
+        }
+        return;
+      }
+      if (c == '[') insideAssets_ = true;
+      return;
+    }
+
+    if (objectDepth_ == 0) {
+      if (c == ']') {
+        assetsComplete_ = true;
+        insideAssets_ = false;
+        return;
+      }
+      if (c != '{') return;
+      object_.clear();
+      object_.push_back(c);
+      objectDepth_ = 1;
+      inString_ = false;
+      escaped_ = false;
+      return;
+    }
+
+    if (object_.size() >= kMaxReleaseAssetObjectBytes) {
+      failed_ = true;
+      return;
+    }
+    object_.push_back(c);
+
+    if (inString_) {
+      if (escaped_) {
+        escaped_ = false;
+      } else if (c == '\\') {
+        escaped_ = true;
+      } else if (c == '"') {
+        inString_ = false;
+      }
+      return;
+    }
+
+    if (c == '"') {
+      inString_ = true;
+    } else if (c == '{') {
+      ++objectDepth_;
+    } else if (c == '}') {
+      --objectDepth_;
+      if (objectDepth_ == 0) parseObject();
     }
   }
-  for (auto& asset : catalog) {
-    const auto expected = asset.name.substr(0, asset.name.size() - 4) + ".json";
-    for (const auto& manifest : manifests) if (manifest.name == expected) asset.manifestUrl = manifest.url;
+
+  void parseObject() {
+    CatalogAsset asset;
+    if (!jsonStringField(object_, "name", asset.name) ||
+        !jsonStringField(object_, "browser_download_url", asset.url)) {
+      object_.clear();
+      return;
+    }
+    asset.size = jsonUintField(object_, "size");
+    if (safeAssetName(asset.name)) {
+      if (catalog_.size() < kMaxCatalogAssets) catalog_.push_back(std::move(asset));
+    } else if (asset.name.size() > 5 && asset.name.substr(asset.name.size() - 5) == ".json") {
+      if (manifests_.size() < kMaxCatalogAssets) manifests_.push_back(std::move(asset));
+    }
+    object_.clear();
   }
-  return true;
-}
+
+  std::vector<CatalogAsset>& catalog_;
+  std::vector<CatalogAsset> manifests_;
+  std::string object_;
+  size_t keyMatch_ = 0;
+  int objectDepth_ = 0;
+  bool assetsKeyFound_ = false;
+  bool insideAssets_ = false;
+  bool assetsComplete_ = false;
+  bool inString_ = false;
+  bool escaped_ = false;
+  bool failed_ = false;
+};
 
 bool loadCatalogManifests(std::vector<CatalogAsset>& catalog) {
   std::vector<CatalogAsset> validated;
@@ -306,7 +372,7 @@ bool loadCatalogManifests(std::vector<CatalogAsset>& catalog) {
 }
 
 bool connectSavedWifi() {
-  if (WiFi.status() == WL_CONNECTED) return true;
+  if (RuntimeNetwork::ready()) return true;
 
   WIFI_STORE.loadFromFile();
   const WifiCredential* cred = nullptr;
@@ -316,35 +382,32 @@ bool connectSavedWifi() {
     const auto& credentials = WIFI_STORE.getCredentials();
     if (!credentials.empty()) cred = &credentials.front();
   }
-  if (!cred || cred->ssid.empty()) return false;
-
-  WiFi.persistent(false);
-  WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);
-  WiFi.disconnect(false, false);
-  delay(100);
-
-  String mac = WiFi.macAddress();
-  mac.replace(":", "");
-  String hostname = "CrossPoint-Reader-" + mac;
-  WiFi.setHostname(hostname.c_str());
-
-  if (cred->password.empty()) {
-    WiFi.begin(cred->ssid.c_str());
-  } else {
-    WiFi.begin(cred->ssid.c_str(), cred->password.c_str());
+  if (!cred || cred->ssid.empty()) {
+    LOG_ERR("APPSTORE", "No saved Wi-Fi credentials are available");
+    return false;
   }
+
+  LOG_INF("APPSTORE", "Connecting to saved Wi-Fi: %s", cred->ssid.c_str());
+  RuntimeNetwork::wifi().connect(cred->ssid.c_str(), cred->password.empty() ? nullptr : cred->password.c_str());
 
   const uint32_t started = millis();
   while (millis() - started < kWifiConnectTimeoutMs) {
     esp_task_wdt_reset();
-    if (WiFi.status() == WL_CONNECTED) {
+    const auto state = RuntimeNetwork::state();
+    if (state.connection == RuntimeNetwork::ConnectionState::Connected && state.hasAddress) {
       WIFI_STORE.setLastConnectedSsid(cred->ssid);
+      LOG_INF("APPSTORE", "Wi-Fi ready: %s", state.address);
       return true;
+    }
+    if (state.connection == RuntimeNetwork::ConnectionState::Failed ||
+        state.connection == RuntimeNetwork::ConnectionState::NetworkNotFound) {
+      LOG_ERR("APPSTORE", "Saved Wi-Fi connection failed before IP assignment");
+      return false;
     }
     delay(100);
   }
-  return WiFi.status() == WL_CONNECTED;
+  LOG_ERR("APPSTORE", "Timed out waiting for saved Wi-Fi and IP address");
+  return RuntimeNetwork::ready();
 }
 
 bool appCatalogRefresh() {
@@ -353,11 +416,18 @@ bool appCatalogRefresh() {
   s->catalog.clear();
   if (!connectSavedWifi()) return false;
 
-  std::string json;
+  CatalogReleaseStream release(s->catalog);
   esp_task_wdt_reset();
-  if (!HttpDownloader::fetchUrl(kLatestReleaseApi, json)) return false;
+  if (!HttpDownloader::fetchUrl(kLatestReleaseApi, release)) {
+    LOG_ERR("APPSTORE", "Failed to fetch latest GitHub release");
+    return false;
+  }
   esp_task_wdt_reset();
-  if (!parseCatalog(json, s->catalog)) return false;
+  if (!release.finish()) {
+    LOG_ERR("APPSTORE", "Latest release asset stream was incomplete or invalid");
+    return false;
+  }
+  LOG_INF("APPSTORE", "Found %u ELF assets in latest release", static_cast<unsigned>(s->catalog.size()));
   return loadCatalogManifests(s->catalog);
 }
 

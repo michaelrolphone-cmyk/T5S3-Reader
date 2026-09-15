@@ -1,5 +1,6 @@
 #include "HttpDownloader.h"
 
+#include <Arduino.h>
 #include <HTTPClient.h>
 #include <Logging.h>
 #if __has_include(<NetworkClient.h>)
@@ -13,16 +14,49 @@ using CrossPointHttpClientSecure = NetworkClientSecure;
 using CrossPointHttpClient = WiFiClient;
 using CrossPointHttpClientSecure = WiFiClientSecure;
 #endif
-#include <StreamString.h>
 #include <base64.h>
 
 #include <cstring>
 #include <memory>
 #include <utility>
 
+#include "runtime/network/NetworkService.h"
 #include "util/UrlUtils.h"
 
 namespace {
+constexpr uint32_t kNetworkReadyTimeoutMs = 5000;
+
+bool waitForNetworkReady() {
+  if (RuntimeNetwork::ready()) return true;
+  const uint32_t started = millis();
+  while (millis() - started < kNetworkReadyTimeoutMs) {
+    if (RuntimeNetwork::ready()) return true;
+    delay(50);
+  }
+  return RuntimeNetwork::ready();
+}
+
+class StringWriteStream final : public Stream {
+ public:
+  explicit StringWriteStream(std::string& output) : output_(output) { output_.clear(); }
+
+  size_t write(uint8_t byte) override { return write(&byte, 1); }
+
+  size_t write(const uint8_t* buffer, size_t size) override {
+    if (!buffer || size == 0) return 0;
+    output_.append(reinterpret_cast<const char*>(buffer), size);
+    return size;
+  }
+
+  int available() override { return 0; }
+  int read() override { return -1; }
+  int peek() override { return -1; }
+  void flush() override {}
+
+ private:
+  std::string& output_;
+};
+
 class FileWriteStream final : public Stream {
  public:
   FileWriteStream(FsFile& file, size_t total, HttpDownloader::ProgressCallback progress)
@@ -62,6 +96,11 @@ class FileWriteStream final : public Stream {
 
 bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const std::string& username,
                               const std::string& password) {
+  if (!waitForNetworkReady()) {
+    LOG_ERR("HTTP", "Network is not ready (no usable IP address)");
+    return false;
+  }
+
   std::unique_ptr<CrossPointHttpClient> client;
   if (UrlUtils::isHttpsUrl(url)) {
     auto* secureClient = new CrossPointHttpClientSecure();
@@ -91,27 +130,35 @@ bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const 
     return false;
   }
 
-  http.writeToStream(&outContent);
-
+  const int writeResult = http.writeToStream(&outContent);
   http.end();
+  if (writeResult < 0) {
+    LOG_ERR("HTTP", "Fetch stream failed: %d", writeResult);
+    return false;
+  }
 
-  LOG_DBG("HTTP", "Fetch success");
+  LOG_DBG("HTTP", "Fetch success: %d bytes", writeResult);
   return true;
 }
 
 bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent, const std::string& username,
                               const std::string& password) {
-  StreamString stream;
-  if (!fetchUrl(url, stream, username, password)) {
-    return false;
-  }
-  outContent = stream.c_str();
-  return true;
+  // Write directly into the caller's std::string. The old StreamString path
+  // held a complete second copy of large responses before assigning them to
+  // outContent; the GitHub release catalog is now large enough for that peak
+  // allocation to exhaust the ESP32 heap.
+  StringWriteStream stream(outContent);
+  return fetchUrl(url, stream, username, password);
 }
 
 HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& url, const std::string& destPath,
                                                              ProgressCallback progress, const std::string& username,
                                                              const std::string& password) {
+  if (!waitForNetworkReady()) {
+    LOG_ERR("HTTP", "Network is not ready (no usable IP address)");
+    return HTTP_ERROR;
+  }
+
   std::unique_ptr<CrossPointHttpClient> client;
   if (UrlUtils::isHttpsUrl(url)) {
     auto* secureClient = new CrossPointHttpClientSecure();
