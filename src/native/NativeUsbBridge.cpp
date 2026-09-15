@@ -70,6 +70,7 @@ bool debugUsbSerialSuspended = false;
 enum SerialDriverKind : uint8_t {
   SERIAL_DRIVER_NONE = 0,
   SERIAL_DRIVER_CDC,
+  SERIAL_DRIVER_WCH_CDC,
   SERIAL_DRIVER_CP210X,
   SERIAL_DRIVER_CH34X,
 };
@@ -201,6 +202,7 @@ void setProductFallback(const char* name) {
 
 const char* driverName() {
   switch (driverKind) {
+    case SERIAL_DRIVER_WCH_CDC: return "WCH CH343/CH9102";
     case SERIAL_DRIVER_CP210X: return "CP210x USB-UART";
     case SERIAL_DRIVER_CH34X: return "CH34x USB-UART";
     case SERIAL_DRIVER_CDC: return "USB CDC-ACM";
@@ -345,6 +347,12 @@ bool parseVendorBulk(const usb_config_desc_t* config) {
   return commitCandidate();
 }
 
+bool isWchCdc(uint16_t vid, uint16_t pid) {
+  // WCH CH343 and CH9102 enumerate as standards-compliant CDC-ACM devices.
+  // Keep them on the CDC request path; they are not CH341-protocol bridges.
+  return vid == 0x1a86u && (pid == 0x55d3u || pid == 0x55d4u);
+}
+
 bool isCp210x(uint16_t vid, uint16_t) {
   // Silicon Labs CP210x parts used on ESP32 development boards normally retain
   // the Silicon Labs VID while allowing product IDs to vary by board/vendor.
@@ -352,8 +360,7 @@ bool isCp210x(uint16_t vid, uint16_t) {
 }
 
 bool isCh34x(uint16_t vid, uint16_t pid) {
-  // IDs supported by the upstream CH341 serial driver. CH9102/CH343 devices use
-  // a different protocol and are intentionally not claimed here.
+  // IDs supported by the upstream CH341 serial driver.
   return (vid == 0x1a86u && (pid == 0x5523u || pid == 0x7522u || pid == 0x7523u)) ||
          (vid == 0x4348u && pid == 0x5523u) ||
          (vid == 0x2184u && pid == 0x0057u) ||
@@ -533,7 +540,9 @@ bool submitCh34xControlLines() {
 
 bool submitLineCoding() {
   switch (driverKind) {
-    case SERIAL_DRIVER_CDC: return submitCdcLineCoding();
+    case SERIAL_DRIVER_CDC:
+    case SERIAL_DRIVER_WCH_CDC:
+      return submitCdcLineCoding();
     case SERIAL_DRIVER_CP210X: return submitCp210xBaud();
     case SERIAL_DRIVER_CH34X: return submitCh34xBaud();
     default: return false;
@@ -542,7 +551,9 @@ bool submitLineCoding() {
 
 bool submitControlLines() {
   switch (driverKind) {
-    case SERIAL_DRIVER_CDC: return submitCdcControlLines();
+    case SERIAL_DRIVER_CDC:
+    case SERIAL_DRIVER_WCH_CDC:
+      return submitCdcControlLines();
     case SERIAL_DRIVER_CP210X: return submitCp210xControlLines();
     case SERIAL_DRIVER_CH34X: return submitCh34xControlLines();
     default: return false;
@@ -594,7 +605,9 @@ void cleanupDevice() {
 
 bool beginDriverConfiguration() {
   switch (driverKind) {
-    case SERIAL_DRIVER_CDC: return submitCdcLineCoding();
+    case SERIAL_DRIVER_CDC:
+    case SERIAL_DRIVER_WCH_CDC:
+      return submitCdcLineCoding();
     case SERIAL_DRIVER_CP210X: return submitCp210xEnable();
     case SERIAL_DRIVER_CH34X: return submitCh34xReadVersion();
     default: return false;
@@ -611,7 +624,7 @@ bool configureDevice(uint8_t address) {
   }
 
   if (parseCdc(config)) {
-    driverKind = SERIAL_DRIVER_CDC;
+    driverKind = isWchCdc(devDesc->idVendor, devDesc->idProduct) ? SERIAL_DRIVER_WCH_CDC : SERIAL_DRIVER_CDC;
   } else if (isCp210x(devDesc->idVendor, devDesc->idProduct) && parseVendorBulk(config)) {
     driverKind = SERIAL_DRIVER_CP210X;
   } else if (isCh34x(devDesc->idVendor, devDesc->idProduct) && parseVendorBulk(config)) {
@@ -620,7 +633,7 @@ bool configureDevice(uint8_t address) {
     (void)usb_host_device_close(client, device); device = nullptr; return false;
   }
 
-  if (driverKind == SERIAL_DRIVER_CDC) {
+  if (driverKind == SERIAL_DRIVER_CDC || driverKind == SERIAL_DRIVER_WCH_CDC) {
     if (usb_host_interface_claim(client, device, controlInterface, 0) != ESP_OK) {
       (void)usb_host_device_close(client, device); device = nullptr; return false;
     }
