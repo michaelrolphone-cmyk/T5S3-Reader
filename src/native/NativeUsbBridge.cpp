@@ -63,9 +63,36 @@ uint16_t epOutMps = 64;
 bool controlClaimed = false;
 bool dataClaimed = false;
 bool txInFlight = false;
-int controlStep = 0;
+bool rxActive = false;
 t5_usb_line_coding_t requestedCoding = {115200, 8, T5_USB_PARITY_NONE, 1, 0};
 bool debugUsbSerialSuspended = false;
+
+enum SerialDriverKind : uint8_t {
+  SERIAL_DRIVER_NONE = 0,
+  SERIAL_DRIVER_CDC,
+  SERIAL_DRIVER_WCH_CDC,
+  SERIAL_DRIVER_CP210X,
+  SERIAL_DRIVER_CH34X,
+};
+
+enum ControlStep : int {
+  CTRL_NONE = 0,
+  CTRL_CDC_LINE = 1,
+  CTRL_CDC_LINES = 2,
+  CTRL_CP210X_ENABLE = 10,
+  CTRL_CP210X_BAUD = 11,
+  CTRL_CP210X_LINE = 12,
+  CTRL_CP210X_LINES = 13,
+  CTRL_CH34X_VERSION = 20,
+  CTRL_CH34X_INIT = 21,
+  CTRL_CH34X_BAUD = 22,
+  CTRL_CH34X_LCR = 23,
+  CTRL_CH34X_LINES = 24,
+};
+
+SerialDriverKind driverKind = SERIAL_DRIVER_NONE;
+int controlStep = CTRL_NONE;
+uint8_t ch34xVersion = 0;
 
 void suspendDebugUsbSerial() {
 #if defined(ENABLE_SERIAL_LOG) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE && \
@@ -140,7 +167,7 @@ void setError(int32_t error) {
   portENTER_CRITICAL(&stateMux);
   state.status = T5_USB_STATUS_ERROR;
   state.last_error = error;
-  state.connected = 0;
+  state.connected = device ? 1 : 0;
   portEXIT_CRITICAL(&stateMux);
 }
 
@@ -157,6 +184,30 @@ void copyProduct(const usb_str_desc_t* desc) {
     state.product[chars] = 0;
   }
   portEXIT_CRITICAL(&stateMux);
+}
+
+void setProductFallback(const char* name) {
+  if (!name) return;
+  portENTER_CRITICAL(&stateMux);
+  if (!state.product[0]) {
+    size_t i = 0;
+    while (name[i] && i + 1u < T5_USB_PRODUCT_MAX) {
+      state.product[i] = name[i];
+      ++i;
+    }
+    state.product[i] = 0;
+  }
+  portEXIT_CRITICAL(&stateMux);
+}
+
+const char* driverName() {
+  switch (driverKind) {
+    case SERIAL_DRIVER_WCH_CDC: return "WCH CH343/CH9102";
+    case SERIAL_DRIVER_CP210X: return "CP210x USB-UART";
+    case SERIAL_DRIVER_CH34X: return "CH34x USB-UART";
+    case SERIAL_DRIVER_CDC: return "USB CDC-ACM";
+    default: return "USB serial";
+  }
 }
 
 void pushRx(const uint8_t* data, size_t length) {
@@ -207,6 +258,7 @@ void clientEvent(const usb_host_client_event_msg_t* event, void*) {
 
 bool parseCdc(const usb_config_desc_t* config) {
   controlInterface = dataInterface = 0xff;
+  dataAlt = 0;
   epIn = epOut = 0;
   epInMps = epOutMps = 64;
   uint8_t currentInterface = 0xff;
@@ -242,14 +294,91 @@ bool parseCdc(const usb_config_desc_t* config) {
   return controlInterface != 0xff && dataInterface != 0xff && epIn && epOut && epInMps && epOutMps;
 }
 
-void fillSetup(uint8_t request, uint16_t value, const uint8_t* payload, uint16_t payloadLength) {
+bool parseVendorBulk(const usb_config_desc_t* config) {
+  controlInterface = dataInterface = 0xff;
+  dataAlt = 0;
+  epIn = epOut = 0;
+  epInMps = epOutMps = 64;
+
+  const uint8_t* p = reinterpret_cast<const uint8_t*>(config);
+  size_t offset = 0;
+  const size_t total = config->wTotalLength;
+  uint8_t currentInterface = 0xff;
+  uint8_t currentAlt = 0;
+  uint8_t currentClass = 0;
+  uint8_t candidateIn = 0;
+  uint8_t candidateOut = 0;
+  uint16_t candidateInMps = 64;
+  uint16_t candidateOutMps = 64;
+
+  auto commitCandidate = [&]() -> bool {
+    if (currentClass != 0xffu || currentInterface == 0xffu || !candidateIn || !candidateOut) return false;
+    controlInterface = dataInterface = currentInterface;
+    dataAlt = currentAlt;
+    epIn = candidateIn;
+    epOut = candidateOut;
+    epInMps = candidateInMps;
+    epOutMps = candidateOutMps;
+    return true;
+  };
+
+  while (offset + 2u <= total) {
+    uint8_t length = p[offset];
+    uint8_t type = p[offset + 1u];
+    if (length < 2u || offset + length > total) break;
+    if (type == 4u && length >= 9u) {
+      if (commitCandidate()) return true;
+      currentInterface = p[offset + 2u];
+      currentAlt = p[offset + 3u];
+      currentClass = p[offset + 5u];
+      candidateIn = candidateOut = 0;
+      candidateInMps = candidateOutMps = 64;
+    } else if (type == 5u && length >= 7u && currentClass == 0xffu) {
+      uint8_t address = p[offset + 2u];
+      uint8_t attributes = p[offset + 3u] & 0x03u;
+      uint16_t mps = (uint16_t)p[offset + 4u] | ((uint16_t)p[offset + 5u] << 8u);
+      if (attributes == 2u && mps) {
+        if (address & 0x80u) { candidateIn = address; candidateInMps = mps; }
+        else { candidateOut = address; candidateOutMps = mps; }
+      }
+    }
+    offset += length;
+  }
+  return commitCandidate();
+}
+
+bool isWchCdc(uint16_t vid, uint16_t pid) {
+  // WCH CH343 and CH9102 enumerate as standards-compliant CDC-ACM devices.
+  // Keep them on the CDC request path; they are not CH341-protocol bridges.
+  return vid == 0x1a86u && (pid == 0x55d3u || pid == 0x55d4u);
+}
+
+bool isCp210x(uint16_t vid, uint16_t) {
+  // Silicon Labs CP210x parts used on ESP32 development boards normally retain
+  // the Silicon Labs VID while allowing product IDs to vary by board/vendor.
+  return vid == 0x10c4u;
+}
+
+bool isCh34x(uint16_t vid, uint16_t pid) {
+  // IDs supported by the upstream CH341 serial driver.
+  return (vid == 0x1a86u && (pid == 0x5523u || pid == 0x7522u || pid == 0x7523u)) ||
+         (vid == 0x4348u && pid == 0x5523u) ||
+         (vid == 0x2184u && pid == 0x0057u) ||
+         (vid == 0x9986u && pid == 0x7523u);
+}
+
+void fillSetup(uint8_t requestType, uint8_t request, uint16_t value, uint16_t index,
+               const uint8_t* payload, uint16_t payloadLength) {
   uint8_t* b = controlTransfer->data_buffer;
-  b[0] = 0x21; // host-to-device, class, interface
+  b[0] = requestType;
   b[1] = request;
   b[2] = (uint8_t)(value & 0xffu); b[3] = (uint8_t)(value >> 8u);
-  b[4] = controlInterface; b[5] = 0;
+  b[4] = (uint8_t)(index & 0xffu); b[5] = (uint8_t)(index >> 8u);
   b[6] = (uint8_t)(payloadLength & 0xffu); b[7] = (uint8_t)(payloadLength >> 8u);
-  for (uint16_t i = 0; i < payloadLength; ++i) b[8u + i] = payload[i];
+  for (uint16_t i = 0; i < payloadLength; ++i) b[8u + i] = 0;
+  if (!(requestType & 0x80u) && payload) {
+    for (uint16_t i = 0; i < payloadLength; ++i) b[8u + i] = payload[i];
+  }
   controlTransfer->device_handle = device;
   controlTransfer->bEndpointAddress = 0;
   controlTransfer->num_bytes = 8 + payloadLength;
@@ -257,7 +386,18 @@ void fillSetup(uint8_t request, uint16_t value, const uint8_t* payload, uint16_t
   controlTransfer->context = nullptr;
 }
 
-bool submitLineCoding() {
+bool submitControl(uint8_t requestType, uint8_t request, uint16_t value, uint16_t index,
+                   const uint8_t* payload, uint16_t payloadLength, int step) {
+  if (!device || !controlTransfer || payloadLength + 8u > kControlBufferSize) return false;
+  fillSetup(requestType, request, value, index, payload, payloadLength);
+  controlStep = step;
+  controlDone = false;
+  esp_err_t rc = usb_host_transfer_submit_control(client, controlTransfer);
+  if (rc != ESP_OK) controlStep = CTRL_NONE;
+  return rc == ESP_OK;
+}
+
+bool submitCdcLineCoding() {
   uint8_t payload[7];
   uint32_t baud = requestedCoding.baud_rate;
   payload[0] = (uint8_t)baud; payload[1] = (uint8_t)(baud >> 8u);
@@ -265,18 +405,178 @@ bool submitLineCoding() {
   payload[4] = requestedCoding.stop_bits == 2 ? 2u : 0u;
   payload[5] = requestedCoding.parity;
   payload[6] = requestedCoding.data_bits;
-  fillSetup(0x20u, 0u, payload, sizeof(payload)); // SET_LINE_CODING
-  controlStep = 1;
-  controlDone = false;
-  return usb_host_transfer_submit_control(client, controlTransfer) == ESP_OK;
+  return submitControl(0x21u, 0x20u, 0u, controlInterface, payload, sizeof(payload), CTRL_CDC_LINE);
+}
+
+bool submitCdcControlLines() {
+  uint16_t value = (state.dtr ? 1u : 0u) | (state.rts ? 2u : 0u);
+  return submitControl(0x21u, 0x22u, value, controlInterface, nullptr, 0, CTRL_CDC_LINES);
+}
+
+uint16_t cp210xLineControl() {
+  uint16_t value = (uint16_t)(requestedCoding.data_bits & 0x0fu) << 8u;
+  switch (requestedCoding.parity) {
+    case T5_USB_PARITY_ODD: value |= 0x0010u; break;
+    case T5_USB_PARITY_EVEN: value |= 0x0020u; break;
+    case T5_USB_PARITY_MARK: value |= 0x0030u; break;
+    case T5_USB_PARITY_SPACE: value |= 0x0040u; break;
+    default: break;
+  }
+  if (requestedCoding.stop_bits == 2u) value |= 0x0002u;
+  return value;
+}
+
+bool submitCp210xEnable() {
+  return submitControl(0x41u, 0x00u, 0x0001u, dataInterface, nullptr, 0, CTRL_CP210X_ENABLE);
+}
+
+bool submitCp210xBaud() {
+  uint32_t baud = requestedCoding.baud_rate;
+  uint8_t payload[4] = {
+      (uint8_t)baud, (uint8_t)(baud >> 8u), (uint8_t)(baud >> 16u), (uint8_t)(baud >> 24u)};
+  return submitControl(0x41u, 0x1eu, 0u, dataInterface, payload, sizeof(payload), CTRL_CP210X_BAUD);
+}
+
+bool submitCp210xLine() {
+  return submitControl(0x41u, 0x03u, cp210xLineControl(), dataInterface, nullptr, 0, CTRL_CP210X_LINE);
+}
+
+bool submitCp210xControlLines() {
+  uint16_t value = 0x0300u;
+  if (state.dtr) value |= 0x0001u;
+  if (state.rts) value |= 0x0002u;
+  return submitControl(0x41u, 0x07u, value, dataInterface, nullptr, 0, CTRL_CP210X_LINES);
+}
+
+uint8_t ch34xLcr() {
+  uint8_t lcr = 0xc0u; // Enable receiver and transmitter.
+  switch (requestedCoding.data_bits) {
+    case 5: break;
+    case 6: lcr |= 0x01u; break;
+    case 7: lcr |= 0x02u; break;
+    default: lcr |= 0x03u; break;
+  }
+  switch (requestedCoding.parity) {
+    case T5_USB_PARITY_ODD: lcr |= 0x08u; break;
+    case T5_USB_PARITY_EVEN: lcr |= 0x18u; break;
+    case T5_USB_PARITY_MARK: lcr |= 0x28u; break;
+    case T5_USB_PARITY_SPACE: lcr |= 0x38u; break;
+    default: break;
+  }
+  if (requestedCoding.stop_bits == 2u) lcr |= 0x04u;
+  return lcr;
+}
+
+bool ch34xDefaultLineCoding() {
+  return requestedCoding.data_bits == 8u && requestedCoding.parity == T5_USB_PARITY_NONE &&
+         requestedCoding.stop_bits == 1u;
+}
+
+bool ch34xDivisor(uint32_t speed, uint16_t* out) {
+  if (!out || speed < 46u || speed > 3000000u) return false;
+  constexpr uint32_t clockRate = 48000000u;
+  int fact = 1;
+  int ps = 3;
+  for (; ps >= 0; --ps) {
+    uint32_t clkDiv = 1u << (12 - 3 * ps - 1);
+    uint32_t minRate = (clockRate + clkDiv * 512u - 1u) / (clkDiv * 512u);
+    if (speed > minRate) break;
+  }
+  if (ps < 0) return false;
+
+  uint32_t clkDiv = 1u << (12 - 3 * ps - fact);
+  uint32_t div = clockRate / (clkDiv * speed);
+  if (div < 9u || div > 255u) {
+    div /= 2u;
+    clkDiv *= 2u;
+    fact = 0;
+  }
+  if (div < 2u || div > 256u) return false;
+
+  if (div < 256u) {
+    uint64_t actual16 = 16ull * clockRate / (clkDiv * div);
+    uint64_t next16 = 16ull * clockRate / (clkDiv * (div + 1u));
+    uint64_t wanted16 = 16ull * speed;
+    if (actual16 >= wanted16 && wanted16 >= next16 &&
+        actual16 - wanted16 >= wanted16 - next16) ++div;
+  }
+  if (fact == 1 && (div & 1u) == 0u) {
+    div /= 2u;
+    fact = 0;
+  }
+
+  uint16_t value = (uint16_t)(((0x100u - div) & 0xffu) << 8u);
+  value |= (uint16_t)((fact & 1) << 2u);
+  value |= (uint16_t)(ps & 0x03);
+  if (ch34xVersion > 0x27u) value |= 0x0080u;
+  *out = value;
+  return true;
+}
+
+bool submitCh34xReadVersion() {
+  return submitControl(0xc0u, 0x5fu, 0u, 0u, nullptr, 2u, CTRL_CH34X_VERSION);
+}
+
+bool submitCh34xInit() {
+  return submitControl(0x40u, 0xa1u, 0u, 0u, nullptr, 0, CTRL_CH34X_INIT);
+}
+
+bool submitCh34xBaud() {
+  uint16_t divisor = 0;
+  if (!ch34xDivisor(requestedCoding.baud_rate, &divisor)) return false;
+  return submitControl(0x40u, 0x9au, 0x1312u, divisor, nullptr, 0, CTRL_CH34X_BAUD);
+}
+
+bool submitCh34xLcr() {
+  return submitControl(0x40u, 0x9au, 0x2518u, ch34xLcr(), nullptr, 0, CTRL_CH34X_LCR);
+}
+
+bool submitCh34xControlLines() {
+  uint8_t control = 0;
+  if (state.rts) control |= 0x40u;
+  if (state.dtr) control |= 0x20u;
+  return submitControl(0x40u, 0xa4u, (uint16_t)~(uint16_t)control, 0u, nullptr, 0, CTRL_CH34X_LINES);
+}
+
+bool submitLineCoding() {
+  switch (driverKind) {
+    case SERIAL_DRIVER_CDC:
+    case SERIAL_DRIVER_WCH_CDC:
+      return submitCdcLineCoding();
+    case SERIAL_DRIVER_CP210X: return submitCp210xBaud();
+    case SERIAL_DRIVER_CH34X: return submitCh34xBaud();
+    default: return false;
+  }
 }
 
 bool submitControlLines() {
-  uint16_t value = (state.dtr ? 1u : 0u) | (state.rts ? 2u : 0u);
-  fillSetup(0x22u, value, nullptr, 0); // SET_CONTROL_LINE_STATE
-  controlStep = 2;
-  controlDone = false;
-  return usb_host_transfer_submit_control(client, controlTransfer) == ESP_OK;
+  switch (driverKind) {
+    case SERIAL_DRIVER_CDC:
+    case SERIAL_DRIVER_WCH_CDC:
+      return submitCdcControlLines();
+    case SERIAL_DRIVER_CP210X: return submitCp210xControlLines();
+    case SERIAL_DRIVER_CH34X: return submitCh34xControlLines();
+    default: return false;
+  }
+}
+
+bool markReady() {
+  if (!rxActive) {
+    rxTransfer->device_handle = device;
+    rxTransfer->bEndpointAddress = epIn;
+    rxTransfer->num_bytes = (int)((kBulkBufferSize / epInMps) * epInMps);
+    if (rxTransfer->num_bytes <= 0) rxTransfer->num_bytes = epInMps;
+    rxTransfer->callback = rxCallback;
+    rxTransfer->context = nullptr;
+    if (usb_host_transfer_submit(rxTransfer) != ESP_OK) return false;
+    rxActive = true;
+  }
+  portENTER_CRITICAL(&stateMux);
+  state.status = T5_USB_STATUS_READY;
+  state.line_coding = requestedCoding;
+  portEXIT_CRITICAL(&stateMux);
+  controlStep = CTRL_NONE;
+  return true;
 }
 
 void cleanupDevice() {
@@ -290,8 +590,11 @@ void cleanupDevice() {
   dataClaimed = controlClaimed = false;
   epIn = epOut = 0;
   txInFlight = false;
+  rxActive = false;
   deviceGone = false;
-  controlStep = 0;
+  controlStep = CTRL_NONE;
+  driverKind = SERIAL_DRIVER_NONE;
+  ch34xVersion = 0;
   portENTER_CRITICAL(&stateMux);
   state.connected = 0;
   state.vid = state.pid = 0;
@@ -300,25 +603,58 @@ void cleanupDevice() {
   portEXIT_CRITICAL(&stateMux);
 }
 
+bool beginDriverConfiguration() {
+  switch (driverKind) {
+    case SERIAL_DRIVER_CDC:
+    case SERIAL_DRIVER_WCH_CDC:
+      return submitCdcLineCoding();
+    case SERIAL_DRIVER_CP210X: return submitCp210xEnable();
+    case SERIAL_DRIVER_CH34X: return submitCh34xReadVersion();
+    default: return false;
+  }
+}
+
 bool configureDevice(uint8_t address) {
   if (usb_host_device_open(client, address, &device) != ESP_OK) return false;
   const usb_device_desc_t* devDesc = nullptr;
   const usb_config_desc_t* config = nullptr;
   if (usb_host_get_device_descriptor(device, &devDesc) != ESP_OK || !devDesc ||
-      usb_host_get_active_config_descriptor(device, &config) != ESP_OK || !config || !parseCdc(config)) {
+      usb_host_get_active_config_descriptor(device, &config) != ESP_OK || !config) {
     (void)usb_host_device_close(client, device); device = nullptr; return false;
   }
-  if (usb_host_interface_claim(client, device, controlInterface, 0) != ESP_OK) {
+
+  if (parseCdc(config)) {
+    driverKind = isWchCdc(devDesc->idVendor, devDesc->idProduct) ? SERIAL_DRIVER_WCH_CDC : SERIAL_DRIVER_CDC;
+  } else if (isCp210x(devDesc->idVendor, devDesc->idProduct) && parseVendorBulk(config)) {
+    driverKind = SERIAL_DRIVER_CP210X;
+  } else if (isCh34x(devDesc->idVendor, devDesc->idProduct) && parseVendorBulk(config)) {
+    driverKind = SERIAL_DRIVER_CH34X;
+  } else {
     (void)usb_host_device_close(client, device); device = nullptr; return false;
   }
-  controlClaimed = true;
-  if (dataInterface != controlInterface) {
-    if (usb_host_interface_claim(client, device, dataInterface, dataAlt) != ESP_OK) { cleanupDevice(); return false; }
+
+  if (driverKind == SERIAL_DRIVER_CDC || driverKind == SERIAL_DRIVER_WCH_CDC) {
+    if (usb_host_interface_claim(client, device, controlInterface, 0) != ESP_OK) {
+      (void)usb_host_device_close(client, device); device = nullptr; return false;
+    }
+    controlClaimed = true;
+    if (dataInterface != controlInterface) {
+      if (usb_host_interface_claim(client, device, dataInterface, dataAlt) != ESP_OK) { cleanupDevice(); return false; }
+      dataClaimed = true;
+    } else {
+      dataClaimed = true;
+    }
+  } else {
+    if (usb_host_interface_claim(client, device, dataInterface, dataAlt) != ESP_OK) {
+      (void)usb_host_device_close(client, device); device = nullptr; driverKind = SERIAL_DRIVER_NONE; return false;
+    }
     dataClaimed = true;
-  } else dataClaimed = true;
+    controlClaimed = true;
+  }
 
   usb_device_info_t info = {};
   if (usb_host_device_info(device, &info) == ESP_OK) copyProduct(info.str_desc_product);
+  setProductFallback(driverName());
   portENTER_CRITICAL(&stateMux);
   state.status = T5_USB_STATUS_CONFIGURING;
   state.connected = 1;
@@ -328,7 +664,66 @@ bool configureDevice(uint8_t address) {
   state.dtr = 1;
   state.rts = 1;
   portEXIT_CRITICAL(&stateMux);
-  return submitLineCoding();
+  controlStep = CTRL_NONE;
+  ch34xVersion = 0;
+  return beginDriverConfiguration();
+}
+
+void handleControlCompletion() {
+  int completedStep = controlStep;
+  controlDone = false;
+  controlStep = CTRL_NONE;
+  if (controlStatus != USB_TRANSFER_STATUS_COMPLETED) {
+    setError(-1102);
+    return;
+  }
+
+  switch (completedStep) {
+    case CTRL_CDC_LINE:
+      if (!submitCdcControlLines()) setError(-1103);
+      break;
+    case CTRL_CDC_LINES:
+      if (!markReady()) setError(-1104);
+      break;
+
+    case CTRL_CP210X_ENABLE:
+      if (!submitCp210xBaud()) setError(-1110);
+      break;
+    case CTRL_CP210X_BAUD:
+      if (!submitCp210xLine()) setError(-1111);
+      break;
+    case CTRL_CP210X_LINE:
+      if (!submitCp210xControlLines()) setError(-1112);
+      break;
+    case CTRL_CP210X_LINES:
+      if (!markReady()) setError(-1113);
+      break;
+
+    case CTRL_CH34X_VERSION:
+      ch34xVersion = controlTransfer->data_buffer[8];
+      if (!submitCh34xInit()) setError(-1120);
+      break;
+    case CTRL_CH34X_INIT:
+      if (!submitCh34xBaud()) setError(-1121);
+      break;
+    case CTRL_CH34X_BAUD:
+      if (ch34xVersion >= 0x30u) {
+        if (!submitCh34xLcr()) setError(-1122);
+      } else if (!ch34xDefaultLineCoding()) {
+        setError(-1123); // Older CH34x revisions expose fixed/default 8N1 line control here.
+      } else if (!submitCh34xControlLines()) {
+        setError(-1124);
+      }
+      break;
+    case CTRL_CH34X_LCR:
+      if (!submitCh34xControlLines()) setError(-1125);
+      break;
+    case CTRL_CH34X_LINES:
+      if (!markReady()) setError(-1126);
+      break;
+    default:
+      break;
+  }
 }
 
 void hostTask(void*) {
@@ -368,24 +763,7 @@ void hostTask(void*) {
         portEXIT_CRITICAL(&stateMux);
       }
     }
-    if (device && controlDone) {
-      controlDone = false;
-      if (controlStatus != USB_TRANSFER_STATUS_COMPLETED) {
-        setError(-1102);
-      } else if (controlStep == 1) {
-        if (!submitControlLines()) setError(-1103);
-      } else if (controlStep == 2) {
-        rxTransfer->device_handle = device;
-        rxTransfer->bEndpointAddress = epIn;
-        rxTransfer->num_bytes = (int)((kBulkBufferSize / epInMps) * epInMps);
-        if (rxTransfer->num_bytes <= 0) rxTransfer->num_bytes = epInMps;
-        rxTransfer->callback = rxCallback;
-        rxTransfer->context = nullptr;
-        if (usb_host_transfer_submit(rxTransfer) == ESP_OK) {
-          portENTER_CRITICAL(&stateMux); state.status = T5_USB_STATUS_READY; portEXIT_CRITICAL(&stateMux);
-        } else setError(-1104);
-      }
-    }
+    if (device && controlDone) handleControlCompletion();
   }
 
   cleanupDevice();
@@ -422,10 +800,12 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
   if (!active() || !validCoding(coding)) return false;
   if (running) {
     requestedCoding = *coding;
+    portENTER_CRITICAL(&stateMux); state.line_coding = *coding; portEXIT_CRITICAL(&stateMux);
     return true;
   }
   resetState(T5_USB_STATUS_OFF);
   requestedCoding = *coding;
+  portENTER_CRITICAL(&stateMux); state.line_coding = *coding; portEXIT_CRITICAL(&stateMux);
   suspendDebugUsbSerial();
   if (!setOtgPower(true)) { restoreDebugUsbSerial(); setError(-1001); return false; }
   if (!txMutex) txMutex = xSemaphoreCreateMutex();
@@ -439,7 +819,7 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
   pendingAddress = 0;
   deviceGone = false;
   running = true;
-  if (xTaskCreatePinnedToCore(hostTask, "usb-cdc-host", 6144, nullptr, 3, &hostTaskHandle, 0) != pdPASS) {
+  if (xTaskCreatePinnedToCore(hostTask, "usb-serial-host", 7168, nullptr, 3, &hostTaskHandle, 0) != pdPASS) {
     running = false;
     (void)setOtgPower(false);
     restoreDebugUsbSerial();
@@ -467,15 +847,21 @@ bool serialReadState(t5_usb_serial_state_t* out) {
 bool serialSetLineCoding(const t5_usb_line_coding_t* coding) {
   if (!validCoding(coding)) return false;
   requestedCoding = *coding;
+  portENTER_CRITICAL(&stateMux); state.line_coding = *coding; portEXIT_CRITICAL(&stateMux);
   if (!device || state.status < T5_USB_STATUS_CONFIGURING) return true;
-  portENTER_CRITICAL(&stateMux); state.line_coding = *coding; state.status = T5_USB_STATUS_CONFIGURING; portEXIT_CRITICAL(&stateMux);
-  return submitLineCoding();
+  if (controlStep != CTRL_NONE) return false;
+  portENTER_CRITICAL(&stateMux); state.status = T5_USB_STATUS_CONFIGURING; portEXIT_CRITICAL(&stateMux);
+  if (!submitLineCoding()) { setError(-1130); return false; }
+  return true;
 }
 
 bool serialSetControlLines(bool dtr, bool rts) {
   portENTER_CRITICAL(&stateMux); state.dtr = dtr; state.rts = rts; portEXIT_CRITICAL(&stateMux);
   if (!device) return true;
-  return submitControlLines();
+  if (controlStep != CTRL_NONE) return false;
+  portENTER_CRITICAL(&stateMux); state.status = T5_USB_STATUS_CONFIGURING; portEXIT_CRITICAL(&stateMux);
+  if (!submitControlLines()) { setError(-1131); return false; }
+  return true;
 }
 
 size_t serialRead(uint8_t* data, size_t capacity) {

@@ -53,7 +53,7 @@ typedef struct {
     uint32_t api_version;
     uint32_t struct_size;
 
-    /* USB OTG/host hardware and CDC serial lifecycle are entirely firmware-owned. */
+    /* USB OTG/host hardware and serial-device drivers remain entirely firmware-owned. */
     bool (*supported)(void);
     bool (*serial_start)(const t5_usb_line_coding_t *coding);
     void (*serial_stop)(void);
