@@ -9,6 +9,39 @@ static uint32_t selected, count;
 static int columns, rows, page_size, cell_w, cell_h;
 static bool missing_icons;
 
+static int rounded_inset_for_row(int row, int height, int radius) {
+    int edge;
+    int x = 0;
+    if (radius <= 0 || (row >= radius && row < height - radius)) return 0;
+    edge = row < radius ? radius - 1 - row : row - (height - radius);
+    while (x < radius && x * x + edge * edge < radius * radius) ++x;
+    return radius - x;
+}
+
+static void fill_rounded_rect(int x, int y, int width, int height, int radius, bool black) {
+    int start;
+    int inset;
+    if (width <= 0 || height <= 0) return;
+    if (radius < 0) radius = 0;
+    if (radius > width / 2) radius = width / 2;
+    if (radius > height / 2) radius = height / 2;
+    if (radius == 0) {
+        api->fill_rect(x, y, width, height, black);
+        return;
+    }
+
+    start = 0;
+    inset = rounded_inset_for_row(0, height, radius);
+    for (int row = 1; row <= height; ++row) {
+        const int next = row < height ? rounded_inset_for_row(row, height, radius) : -1;
+        if (next != inset) {
+            api->fill_rect(x + inset, y + start, width - inset * 2, row - start, black);
+            start = row;
+            inset = next;
+        }
+    }
+}
+
 static void layout(void) {
     int w = api->screen_width(), h = api->screen_height();
     columns = w >= 700 ? 4 : 3;
@@ -33,10 +66,18 @@ static void draw(const char *status) {
         const int x = 16 + (cell % columns) * cell_w;
         const int y = 80 + (cell / columns) * cell_h;
         const int box = 70;
+        const int border = 3;
+        const int radius = 12;
+        const int icon_cell = 18;
         const int bx = x + (cell_w - box) / 2;
-        api->fill_rect(bx, y + 8, box, box, true);
-        api->fill_rect(bx + 3, y + 11, box - 6, box - 6, false);
-        if (!api->draw_icon(bx + 17, y + 23, app.icon, 18, true)) missing_icons = true;
+        const int by = y + 8;
+        fill_rounded_rect(bx, by, box, box, radius, true);
+        fill_rounded_rect(bx + border, by + border, box - border * 2, box - border * 2,
+                          radius - border, false);
+        if (!api->draw_icon(bx + (box - icon_cell) / 2, by + (box - icon_cell) / 2,
+                            app.icon, icon_cell, true)) {
+            missing_icons = true;
+        }
         api->draw_label(x + 6, y + 86, cell_w - 12, app.display_name);
         if (!app.compatible) {
             char required[48];
