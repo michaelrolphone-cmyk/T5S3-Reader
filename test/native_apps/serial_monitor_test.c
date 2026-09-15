@@ -10,6 +10,7 @@
 void app_main(void);
 
 static int renders;
+static int list_renders;
 static int polls;
 static int writes;
 static bool started;
@@ -29,6 +30,8 @@ static bool usb_state(t5_usb_serial_state_t *state) {
     memset(state, 0, sizeof(*state));
     state->status = T5_USB_STATUS_READY;
     state->connected = 1;
+    state->dtr = 1;
+    state->rts = 1;
     state->vid = 0x303a;
     state->pid = 0x1001;
     state->line_coding.baud_rate = 115200u;
@@ -74,6 +77,24 @@ static void render_text(const t5_ui_chrome_t *chrome, const char *text, int32_t 
     result->visible_lines = 1;
     ++renders;
 }
+static void render_list(const t5_ui_chrome_t *chrome, const t5_ui_list_row_t *rows,
+                        uint32_t row_count, int32_t selected_index) {
+    assert(chrome && rows && row_count > 0u);
+    assert(selected_index >= 0 && (uint32_t)selected_index < row_count);
+    ++list_renders;
+}
+static int32_t hit_test(int16_t x, int16_t y) {
+    (void)x; (void)y;
+    return T5_UI_HIT_NONE;
+}
+static int32_t next_index(int32_t current, uint32_t count) {
+    if (!count) return 0;
+    return (current + 1) % (int32_t)count;
+}
+static int32_t previous_index(int32_t current, uint32_t count) {
+    if (!count) return 0;
+    return current <= 0 ? (int32_t)count - 1 : current - 1;
+}
 static bool poll_event(t5_ui_event_t *event, uint32_t wait_ms) {
     assert(event && wait_ms == 75);
     memset(event, 0, sizeof(*event));
@@ -84,7 +105,11 @@ static bool poll_event(t5_ui_event_t *event, uint32_t wait_ms) {
 static const t5_ui_api_v1 ui_api = {
     .api_version = T5_UI_API_VERSION,
     .struct_size = sizeof(t5_ui_api_v1),
+    .render_list = render_list,
+    .hit_test = hit_test,
     .poll_event = poll_event,
+    .next_index = next_index,
+    .previous_index = previous_index,
     .render_text_view = render_text,
 };
 const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) { return version == T5_UI_API_VERSION ? &ui_api : NULL; }
@@ -114,5 +139,6 @@ int main(void) {
     assert(read_once);
     assert(writes == 2); /* text + CRLF */
     assert(renders >= 2);
+    assert(list_renders == 0); /* Existing send-result path remains in terminal view. */
     return 0;
 }
