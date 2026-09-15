@@ -54,8 +54,14 @@ static bool storage_read(const char *path,void *buffer,size_t capacity,size_t *o
   memcpy(buffer,saved,saved_size); return true;
 }
 static bool storage_write(const char *path,const void *data,size_t size) {
-  assert(!strcmp(path,"/sd/Apps/.home_apps")); assert(size<=sizeof(saved));
-  if (size) memcpy(saved,data,size); saved_size=size; writes++; return true;
+  assert(!strcmp(path,"/sd/Apps/.home_apps"));
+  assert(size<=sizeof(saved));
+  if (size) {
+    memcpy(saved,data,size);
+  }
+  saved_size=size;
+  writes++;
+  return true;
 }
 static bool storage_remove(const char *path) { (void)path; saved_size=0; return true; }
 static const t5_storage_api_v1 storage_api={.api_version=1,.struct_size=sizeof(t5_storage_api_v1),
