@@ -34,6 +34,14 @@ static bool has_storage_api(void) {
            storage->write_file_atomic;
 }
 
+static bool filename_matches(const char *name, const char *data, size_t length) {
+    if (!name || strlen(name) != length) return false;
+    for (size_t i = 0; i < length; ++i) {
+        if (name[i] != data[i]) return false;
+    }
+    return true;
+}
+
 static int rounded_inset_for_row(int row, int height, int radius) {
     int edge;
     int x = 0;
@@ -92,7 +100,7 @@ static void load_home_pins(void) {
             for (uint32_t i = 0; i < count && i < MAX_HOME_APPS; ++i) {
                 t5_app_manifest_t app;
                 if (!api->installed_apps_get(i, &app)) continue;
-                if (strlen(app.file_name) == name_len && !memcmp(app.file_name, data + start, name_len)) {
+                if (filename_matches(app.file_name, data + start, name_len)) {
                     home_pinned[i] = true;
                     break;
                 }
