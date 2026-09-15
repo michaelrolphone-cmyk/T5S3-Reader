@@ -112,6 +112,7 @@ jobs:
           cp .pio/build/gh_release/firmware.bin dist/firmware-t5s3-pro.bin
           cp .pio/build/gh_release/firmware.bin "dist/corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}-app.bin"
           cp .pio/build/gh_release/firmware-merged.bin "dist/corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}.bin"
+          cp .pio/build/gh_release/firmware.elf "dist/corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}.elf"
           ls -lh "${{ steps.ver.outputs.bin }}" dist/
 
       - name: Commit firmware tree
@@ -148,7 +149,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          NOTES="T5-4.7-S3 E-Paper Pro markdown reader ${VER}. firmware-t5s3-pro.bin is the OTA/SD app image (0x10000). corsspoint_lilygo_t5s3_${VER}.bin is the merged USB image (0x0) and must not be used for SD/OTA."
+          NOTES="T5-4.7-S3 E-Paper Pro markdown reader ${VER}. firmware-t5s3-pro.bin is the OTA/SD app image (0x10000). corsspoint_lilygo_t5s3_${VER}.bin is the merged USB image (0x0) and must not be used for SD/OTA. The matching .elf is a non-flashable debug-symbol image retained for decoding panic backtraces."
 
           mapfile -d '' APP_ELFS < <(
             find dist/apps -type f \( -name '*.elf' -o -name '*.json' \) -print0 | sort -z
@@ -157,6 +158,7 @@ jobs:
           ASSETS=(
             "dist/firmware-t5s3-pro.bin"
             "dist/corsspoint_lilygo_t5s3_${VER}-app.bin"
+            "dist/corsspoint_lilygo_t5s3_${VER}.elf"
             "$MERGED"
             "${APP_ELFS[@]}"
             dist/drivers/*.t5driver.zip
