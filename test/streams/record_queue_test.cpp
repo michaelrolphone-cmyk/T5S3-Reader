@@ -8,9 +8,14 @@ using namespace RuntimeStreams;
 int main() {
   assert(RecordQueue::validSchema("location.fix.v1"));
   assert(RecordQueue::validSchema("network.udp.datagram.v20"));
+  assert(RecordQueue::validSchema("a.v1"));
+  assert(RecordQueue::validSchema("device_2.sensor-name.v12"));
   for (const char* invalid : {"", "location.fix", "location.fix.v0", "location.fix.v1.",
                               "location..fix.v1", "Location.fix.v1", "location.fix.v1?",
-                              "location.fix.v1x", "location.fix.v1.extra"})
+                              "location.fix.v1x", "location.fix.v1.extra", "location.fix.v1.v2",
+                              "location.v12.fix.v2", "v1.location.v2", "1location.fix.v1",
+                              "location.1fix.v1", "location.-fix.v1", "location.fix.v01",
+                              "location.fix.v-1", "location.fix.v1.2", "location.fix.v1.v0"})
     assert(!RecordQueue::validSchema(invalid));
   assert(!RecordQueue::validSchema(std::string(64, 'a').c_str()));
   assert(RecordQueue::compatible("location.fix.v1", "location.fix.v1"));
@@ -24,6 +29,7 @@ int main() {
   assert(q.write("x", 1) == T5_STREAM_INVALID);
   assert(q.read(out, sizeof(out), &size) == T5_STREAM_INVALID && size == 0);
   assert(q.configure("location.fix", 32, 3) == T5_STREAM_INVALID);
+  assert(q.configure("location.fix.v1.v2", 32, 3) == T5_STREAM_INVALID);
   assert(q.configure("location.fix.v1", 513, 1) == T5_STREAM_INVALID);
   assert(q.configure("location.fix.v1", 32, 9) == T5_STREAM_INVALID);
   assert(q.configure("location.fix.v1", 512, 9) == T5_STREAM_INVALID);
