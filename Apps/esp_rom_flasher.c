@@ -162,7 +162,7 @@ static bool flash_stream(const char *path, size_t size) {
         if (n<sizeof(block)) memset(block+n,0xff,sizeof(block)-n);
         le32(payload,FLASH_BLOCK); le32(payload+4,seq); le32(payload+8,0); le32(payload+12,0); memcpy(payload+16,block,FLASH_BLOCK);
         if (!command(ESP_FLASH_DATA,payload,sizeof(payload),checksum(block,FLASH_BLOCK),reply,sizeof(reply),&rlen,5000)) { storage->stream_close(f); return false; }
-        unsigned pct=(unsigned)(((uint64_t)(seq+1u)*100u)/blocks);
+        unsigned pct=(unsigned)(((seq+1u)*100u)/blocks);
         snprintf(status_text,sizeof(status_text),"%u%% | block %lu/%lu",pct,(unsigned long)(seq+1u),(unsigned long)blocks);
         render_status("Flashing firmware - do not disconnect","Writing",status_text);
     }
