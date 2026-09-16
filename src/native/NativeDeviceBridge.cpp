@@ -185,7 +185,7 @@ t5_device_result_t requestCapability(const char* capability, t5_device_handle_t 
                                      uint32_t rights, t5_device_lease_t* out) {
   if (out) *out = 0;
   if (!out || !capability || !device || !rights || (rights & ~kCapabilityRightsMask) ||
-      std::strnlen(capability, kCapabilityBytes) == kCapabilityBytes)
+      strnlen(capability, kCapabilityBytes) == kCapabilityBytes)
     return T5_DEVICE_INVALID;
   auto* context = caller();
   if (!context) return T5_DEVICE_DENIED;
