@@ -430,6 +430,13 @@ uint32_t nativeUsbProviderEpoch() {
   return devices.epoch();
 }
 
+// Trusted owner-task discovery path, callable with no active app context. A
+// host callback only updates its own lock-protected snapshot; the main loop
+// and native app input polling perform unified registry mutations here.
+void nativeDeviceDiscoveryTick() {
+  synchronizeUsbDevice();
+}
+
 // Reconcile even for a stale handle: the owner task must revoke the old
 // physical lease on detach, without ever claiming its replacement for that
 // handle. The USB host and stream scheduler never mutate the unified registry.
