@@ -71,18 +71,28 @@ int main() {
   closeOk = false; assert(api->finish(h) == T5_STREAM_IO); closeOk = true;
   assert(api->close(h) == 0);
 
-  // Legacy USB stream remains supported during migration and retains reconnect behavior.
+  // Even the compatibility USB stream must never resume against a replacement
+  // device after a real host DEV_GONE callback, including an identical replug.
+  usbStatus.status = T5_USB_STATUS_READY; usbStatus.connected = 1;
+  std::strcpy(usbStatus.product, "Legacy UART"); usbStatus.vid = 0x1234; usbStatus.pid = 0x5678;
+  nativeUsbProviderAttach(&usbStatus, 0);
   assert(api->open_usb(&h) == 0);
   assert(api->open_usb(&other) == T5_STREAM_BUSY);
-  usbStatus.status = T5_USB_STATUS_READY; usbStatus.connected = 1;
   assert(api->write(h, "abc", 3, &count) == 0 && count == 2);
   usbStatus.status = T5_USB_STATUS_CONFIGURING;
   assert(api->write(h, "abc", 3, &count) == T5_STREAM_AGAIN && count == 0);
-  usbStatus.connected = 0; usbStatus.status = T5_USB_STATUS_WAITING;
-  assert(api->read(h, bytes, 3, &count) == T5_STREAM_AGAIN && count == 0);
-  usbStatus.connected = 1; usbStatus.status = T5_USB_STATUS_READY;
-  assert(api->write(h, "abc", 3, &count) == 0 && count == 2);
+  usbStatus.status = T5_USB_STATUS_READY;
+  nativeUsbProviderDetach();
+  assert(api->read(h, bytes, 3, &count) == T5_STREAM_DISCONNECTED && count == 0);
+  nativeUsbProviderAttach(&usbStatus, 0);
+  assert(api->write(h, "abc", 3, &count) == T5_STREAM_DISCONNECTED && count == 0);
   assert(api->close(h) == 0 && stops == 0);
+  nativeUsbProviderDetach();
+  assert(api->open_usb(&h) == 0); // Fresh handle may use a replacement.
+  nativeUsbProviderAttach(&usbStatus, 0);
+  assert(api->write(h, "abc", 3, &count) == T5_STREAM_OK && count == 2);
+  assert(api->close(h) == 0 && stops == 0);
+  nativeUsbProviderDetach();
 
   // serial.port is an exclusive semantic lease backed by independent RX/TX streams.
   const auto* serial = t5_serial_port_get_api(T5_SERIAL_PORT_API_VERSION);
@@ -107,21 +117,26 @@ int main() {
   assert(std::string(serialState.device_label).find("Test UART") != std::string::npos);
   const auto firstDevice = serialState.device;
 
-  // A DEV_GONE callback must invalidate identity BEFORE the stale USB status
-  // changes, and a new identical device must never regain the old ID even if
-  // no status read took place between the host callbacks.
-  nativeUsbProviderDetach();
-  assert(serial->read_status(lease, &serialState) == T5_SERIAL_OK);
-  assert(!serialState.connected && !serialState.device && serialState.status == T5_SERIAL_STATUS_WAITING);
-  nativeUsbProviderAttach(&usbStatus, 2);
-  assert(serial->read_status(lease, &serialState) == T5_SERIAL_OK);
-  assert(serialState.connected && serialState.device && serialState.device != firstDevice);
-
   auto changed = request.config; changed.baud_rate = 9600;
   assert(serial->configure(lease, &changed) == T5_SERIAL_OK && lineChanges == 1);
   changed.flow_control = T5_SERIAL_FLOW_RTS_CTS;
   assert(serial->configure(lease, &changed) == T5_SERIAL_UNSUPPORTED);
   assert(serial->set_control_lines(lease, false, true) == T5_SERIAL_OK && !usbStatus.dtr && usbStatus.rts);
+
+  // DEV_GONE invalidates before USB's old status snapshot changes. Neither a
+  // same-device replacement nor a missed status poll may revive this lease.
+  nativeUsbProviderDetach();
+  assert(serial->read_status(lease, &serialState) == T5_SERIAL_OK);
+  assert(!serialState.connected && !serialState.device && serialState.status == T5_SERIAL_STATUS_WAITING);
+  assert(serialState.last_error == T5_SERIAL_DISCONNECTED);
+  nativeUsbProviderAttach(&usbStatus, 2);
+  assert(serial->read_status(lease, &serialState) == T5_SERIAL_OK);
+  assert(!serialState.connected && !serialState.device && serialState.last_error == T5_SERIAL_DISCONNECTED);
+  assert(api->read(rx, bytes, 3, &count) == T5_STREAM_DISCONNECTED && count == 0);
+  assert(api->write(tx, "abc", 3, &count) == T5_STREAM_DISCONNECTED && count == 0);
+  assert(serial->configure(lease, &request.config) == T5_SERIAL_DISCONNECTED);
+  assert(serial->set_control_lines(lease, true, false) == T5_SERIAL_DISCONNECTED);
+
   const auto stale = lease;
   assert(serial->release(lease) == T5_SERIAL_OK && stops == 1);
   assert(serial->configure(stale, &request.config) == T5_SERIAL_CLOSED);
@@ -129,12 +144,13 @@ int main() {
   assert(serial->acquire(&request, &busyLease, &busyRx, &busyTx) == T5_SERIAL_INVALID && starts == 1);
   request.device = 0;
 
-  // A new acquisition receives a different generation-safe lease and teardown reclaims it.
+  // New acquisition gets new generation-safe lease and usable independent streams.
   usbStatus.status = T5_USB_STATUS_READY; usbStatus.connected = 1;
   t5_serial_port_lease_t second = 0;
   assert(serial->acquire(&request, &second, &rx, &tx) == T5_SERIAL_OK && second != stale && starts == 2);
   nativeUsbProviderAttach(&usbStatus, 2);
   assert(serial->read_status(second, &serialState) == T5_SERIAL_OK && serialState.device != firstDevice);
+  assert(api->write(tx, "abc", 3, &count) == T5_STREAM_OK && count == 2);
   assert(api->open_http("https://example.test/file", &h) == 0);
   assert(api->open_http("https://example.test/other", &other) == T5_STREAM_BUSY);
   httpTask(httpContext);
@@ -152,7 +168,7 @@ int main() {
   assert(api->read(h, bytes, 512, &count) == T5_STREAM_INVALID);
   assert(api->read(replacement, bytes, 512, &count) == T5_STREAM_AGAIN && count == 0);
 
-  // unloadInRequest already ended/restarted the original context, so its serial lease was reclaimed.
+  // unloadInRequest already ended/restarted the original context, reclaiming its serial lease.
   assert(stops == 2);
   assert(t5_serial_port_get_api(T5_SERIAL_PORT_API_VERSION));
   nativeStreamsEnd();
