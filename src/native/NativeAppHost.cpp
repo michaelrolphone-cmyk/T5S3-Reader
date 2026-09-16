@@ -1,6 +1,7 @@
 #include "NativeStreamBridge.h"
 #include "NativeAppHost.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
+#include "AppCatalogIndex.h"
 #include "AppManifest.h"
 #include <AppManifestRules.h>
 #include "components/FontAwesomeIcons.h"
@@ -35,8 +36,9 @@
 namespace {
 constexpr const char* kLatestReleaseApi =
     "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
+constexpr const char* kAggregateAppCatalogName = "app-catalog.json";
 constexpr uint32_t kWifiConnectTimeoutMs = 15000;
-constexpr size_t kMaxCatalogAssets = 64;
+constexpr size_t kMaxCatalogAssets = 128;
 constexpr size_t kMaxReleaseAssetObjectBytes = 8192;
 
 struct CatalogAsset {
@@ -222,8 +224,10 @@ uint64_t jsonUintField(const std::string& object, const char* field) {
 
 class CatalogReleaseStream final : public Stream {
  public:
-  explicit CatalogReleaseStream(std::vector<CatalogAsset>& catalog) : catalog_(catalog) {
+  CatalogReleaseStream(std::vector<CatalogAsset>& catalog, std::string& catalogUrl)
+      : catalog_(catalog), catalogUrl_(catalogUrl) {
     catalog_.clear();
+    catalogUrl_.clear();
     manifests_.reserve(kMaxCatalogAssets);
   }
 
@@ -327,7 +331,9 @@ class CatalogReleaseStream final : public Stream {
       return;
     }
     asset.size = jsonUintField(object_, "size");
-    if (safeAssetName(asset.name)) {
+    if (asset.name == kAggregateAppCatalogName) {
+      catalogUrl_ = asset.url;
+    } else if (safeAssetName(asset.name)) {
       if (catalog_.size() < kMaxCatalogAssets) catalog_.push_back(std::move(asset));
     } else if (asset.name.size() > 5 && asset.name.substr(asset.name.size() - 5) == ".json") {
       if (manifests_.size() < kMaxCatalogAssets) manifests_.push_back(std::move(asset));
@@ -336,6 +342,7 @@ class CatalogReleaseStream final : public Stream {
   }
 
   std::vector<CatalogAsset>& catalog_;
+  std::string& catalogUrl_;
   std::vector<CatalogAsset> manifests_;
   std::string object_;
   size_t keyMatch_ = 0;
@@ -347,6 +354,46 @@ class CatalogReleaseStream final : public Stream {
   bool escaped_ = false;
   bool failed_ = false;
 };
+
+void sortCatalog(std::vector<CatalogAsset>& catalog) {
+  std::sort(catalog.begin(), catalog.end(), [](const CatalogAsset& a, const CatalogAsset& b) {
+    return std::strcmp(a.manifest.display_name, b.manifest.display_name) < 0;
+  });
+}
+
+bool loadAggregateCatalog(std::vector<CatalogAsset>& catalog, const std::string& catalogUrl) {
+  std::vector<std::string> manifests;
+  if (!fetchAppCatalogIndex(catalogUrl, manifests)) return false;
+
+  std::vector<CatalogAsset> validated;
+  validated.reserve(manifests.size());
+  for (const auto& json : manifests) {
+    esp_task_wdt_reset();
+    std::string version;
+    t5_app_manifest_t manifest{};
+    if (!parseAppManifest(json, manifest, &version, true)) return false;
+
+    const auto asset = std::find_if(catalog.begin(), catalog.end(), [&](const CatalogAsset& candidate) {
+      return candidate.name == manifest.file_name;
+    });
+    if (asset == catalog.end()) return false;
+    if (std::any_of(validated.begin(), validated.end(), [&](const CatalogAsset& candidate) {
+          return candidate.name == asset->name;
+        })) {
+      return false;
+    }
+
+    CatalogAsset resolved = *asset;
+    resolved.manifest = manifest;
+    resolved.version = std::move(version);
+    resolved.manifestValid = true;
+    validated.push_back(std::move(resolved));
+  }
+  if (validated.empty()) return false;
+  sortCatalog(validated);
+  catalog.swap(validated);
+  return true;
+}
 
 bool loadCatalogManifests(std::vector<CatalogAsset>& catalog) {
   std::vector<CatalogAsset> validated;
@@ -366,9 +413,7 @@ bool loadCatalogManifests(std::vector<CatalogAsset>& catalog) {
     asset.manifestValid = true;
     validated.push_back(std::move(asset));
   }
-  std::sort(validated.begin(), validated.end(), [](const CatalogAsset& a, const CatalogAsset& b) {
-    return std::strcmp(a.manifest.display_name, b.manifest.display_name) < 0;
-  });
+  sortCatalog(validated);
   catalog.swap(validated);
   return true;
 }
@@ -418,7 +463,8 @@ bool appCatalogRefresh() {
   s->catalog.clear();
   if (!connectSavedWifi()) return false;
 
-  CatalogReleaseStream release(s->catalog);
+  std::string catalogUrl;
+  CatalogReleaseStream release(s->catalog, catalogUrl);
   esp_task_wdt_reset();
   if (!HttpDownloader::fetchUrl(kLatestReleaseApi, release)) {
     LOG_ERR("APPSTORE", "Failed to fetch latest GitHub release");
@@ -430,6 +476,14 @@ bool appCatalogRefresh() {
     return false;
   }
   LOG_INF("APPSTORE", "Found %u ELF assets in latest release", static_cast<unsigned>(s->catalog.size()));
+
+  if (!catalogUrl.empty() && loadAggregateCatalog(s->catalog, catalogUrl)) {
+    LOG_INF("APPSTORE", "Loaded %u apps from aggregate release catalog",
+            static_cast<unsigned>(s->catalog.size()));
+    return true;
+  }
+
+  LOG_INF("APPSTORE", "Aggregate catalog unavailable; falling back to per-app manifests");
   return loadCatalogManifests(s->catalog);
 }
 
