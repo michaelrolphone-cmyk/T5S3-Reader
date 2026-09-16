@@ -18,6 +18,10 @@ namespace NativeUsbDevices {
 enum class Transport : uint8_t { Usb = 1 };
 enum class Provider : uint8_t { None = 0, UsbSerial = 1 };
 enum class Presence : uint8_t { Unavailable = 0, Bound = 1 };
+enum class RevocationCause : uint8_t {
+  None = 0, HostDetach = 1, ConnectionLost = 2, HostStopped = 3,
+  BindingChanged = 4,
+};
 
 struct Record {
   t5_serial_device_t id = 0;
@@ -31,6 +35,21 @@ struct Record {
   char product[T5_USB_PRODUCT_MAX] = {};
 };
 
+// A coherent, bounded snapshot for firmware diagnostics. Counters saturate
+// rather than wrapping; they never reset on application unload. This captures
+// claimed-interface transitions, NOT unclaimed USB enumeration attempts.
+struct Diagnostics {
+  Record device{};
+  uint32_t epoch = 0;
+  uint32_t binds = 0;
+  uint32_t revocations = 0;
+  uint32_t host_detaches = 0;
+  uint32_t connection_losses = 0;
+  uint32_t host_stops = 0;
+  uint32_t binding_changes = 0;
+  RevocationCause last_cause = RevocationCause::None;
+};
+
 // USB host task publishes attachment/detachment immediately. The serial app
 // task concurrently takes snapshots and resolves selected IDs; all operations
 // on this small record are synchronized. ESP32 disables task preemption while
@@ -42,7 +61,8 @@ class Registry final {
   void observe(const t5_usb_serial_state_t& state, uint8_t interface_number = 0xff) {
     Guard guard(lock_);
     if (!state.connected || state.status == T5_USB_STATUS_OFF) {
-      invalidateLocked();
+      invalidateLocked(state.status == T5_USB_STATUS_OFF ?
+          RevocationCause::HostStopped : RevocationCause::ConnectionLost);
       return;
     }
     const bool different = record_.presence != Presence::Bound ||
@@ -50,7 +70,7 @@ class Registry final {
         record_.interface_number != interface_number ||
         std::strncmp(record_.product, state.product, sizeof(record_.product)) != 0;
     if (!different) return;
-    invalidateLocked();
+    invalidateLocked(RevocationCause::BindingChanged);
     // Neither identity nor revocation tokens may wrap and alias an old lease.
     if (generation_ >= 0x7fffffffu || epoch_ == UINT32_MAX) return;
     ++generation_;
@@ -64,16 +84,25 @@ class Registry final {
     record_.serial_port = true;
     std::memcpy(record_.product, state.product, sizeof(record_.product));
     record_.product[sizeof(record_.product) - 1u] = '\0';
+    increment(diag_.binds);
   }
 
   void detach() {
     Guard guard(lock_);
-    invalidateLocked();
+    invalidateLocked(RevocationCause::HostDetach);
   }
 
   Record snapshot() const {
     Guard guard(lock_);
     return record_;
+  }
+
+  Diagnostics diagnostics() const {
+    Guard guard(lock_);
+    Diagnostics result = diag_;
+    result.device = record_;
+    result.epoch = epoch_;
+    return result;
   }
 
   // Host detach increments this even if an identical device re-attaches
@@ -91,8 +120,22 @@ class Registry final {
   }
 
  private:
-  void invalidateLocked() {
-    if (record_.presence == Presence::Bound && epoch_ != UINT32_MAX) ++epoch_;
+  static void increment(uint32_t& value) {
+    if (value != UINT32_MAX) ++value;
+  }
+  void invalidateLocked(RevocationCause cause) {
+    if (record_.presence == Presence::Bound) {
+      if (epoch_ != UINT32_MAX) ++epoch_;
+      increment(diag_.revocations);
+      diag_.last_cause = cause;
+      switch (cause) {
+        case RevocationCause::HostDetach: increment(diag_.host_detaches); break;
+        case RevocationCause::ConnectionLost: increment(diag_.connection_losses); break;
+        case RevocationCause::HostStopped: increment(diag_.host_stops); break;
+        case RevocationCause::BindingChanged: increment(diag_.binding_changes); break;
+        default: break;
+      }
+    }
     record_ = Record{};
   }
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
@@ -119,6 +162,7 @@ class Registry final {
   mutable Mutex lock_ = ATOMIC_FLAG_INIT;
 #endif
   Record record_{};
+  Diagnostics diag_{};
   uint32_t generation_ = 0;
   uint32_t epoch_ = 0;
 };
