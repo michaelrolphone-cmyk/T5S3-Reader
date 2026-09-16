@@ -48,11 +48,65 @@ int main() {
   };
   usb.serial_read = [](uint8_t*, size_t) -> size_t { return 0; };
   usb.serial_write = [](const uint8_t*, size_t n) -> size_t { return std::min<size_t>(2, n); };
-  assert(!t5_stream_get_api(1));
-  nativeStreamsBegin(); api = t5_stream_get_api(1); assert(api && !t5_stream_get_api(2));
+  assert(!t5_stream_get_api(1) && !riscrte_stream_get_api_v2());
+  nativeStreamsBegin(); api = t5_stream_get_api(1);
+  const auto* recordApi = riscrte_stream_get_api_v2();
+  assert(api && recordApi && !t5_stream_get_api(3));
+  assert(api->api_version == T5_STREAM_API_VERSION && api->struct_size == sizeof(t5_stream_api_v1));
+  assert(recordApi->v1.api_version == RISCRTE_STREAM_API_VERSION_2 &&
+         recordApi->v1.struct_size == sizeof(riscrte_stream_api_v2));
+  assert(recordApi->v1.open_buffer == api->open_buffer && recordApi->v1.pipe_connect == api->pipe_connect);
+  assert(recordApi->open_record_buffer && recordApi->record_read && recordApi->record_write && recordApi->record_info);
   t5_stream_t h, other;
   uint32_t count;
   uint8_t bytes[512];
+
+  // Public V2 records are invocation-owned and can never be read through the
+  // byte ABI or connected to an incompatible kind, schema or sink size.
+  t5_stream_t recordSource = 0, recordSink = 0, recordWrong = 0, recordSmall = 0;
+  assert(recordApi->open_record_buffer("location.fix", 16, 2, 3, &h) == T5_STREAM_INVALID && !h);
+  assert(recordApi->open_record_buffer("location.fix.v1", 16, 2, 4, &h) == T5_STREAM_INVALID && !h);
+  assert(recordApi->open_record_buffer("location.fix.v1", 16, 2, 3, &recordSource) == T5_STREAM_OK);
+  assert(recordApi->open_record_buffer("location.fix.v1", 16, 1, 3, &recordSink) == T5_STREAM_OK);
+  assert(recordApi->open_record_buffer("location.fix.v2", 16, 1, 3, &recordWrong) == T5_STREAM_OK);
+  assert(recordApi->open_record_buffer("location.fix.v1", 8, 1, 3, &recordSmall) == T5_STREAM_OK);
+  assert(api->read(recordSource, bytes, 4, &count) == T5_STREAM_UNSUPPORTED && count == 0);
+  assert(api->write(recordSource, "abc", 3, &count) == T5_STREAM_UNSUPPORTED && count == 0);
+  riscrte_record_info_v1 recordMetadata{};
+  recordMetadata.struct_size = sizeof(recordMetadata) - 1;
+  assert(recordApi->record_info(recordSource, &recordMetadata) == T5_STREAM_INVALID);
+  recordMetadata.struct_size = sizeof(recordMetadata);
+  assert(recordApi->record_info(recordSource, &recordMetadata) == T5_STREAM_OK);
+  assert(std::strcmp(recordMetadata.schema, "location.fix.v1") == 0 && recordMetadata.max_record == 16 &&
+         recordMetadata.capacity_records == 2 && recordMetadata.queued_records == 0 && recordMetadata.owner);
+  assert(recordApi->record_write(recordSource, "abc", 3) == T5_STREAM_OK);
+  assert(recordApi->record_write(recordSource, nullptr, 0) == T5_STREAM_OK);
+  assert(recordApi->record_write(recordSource, "x", 1) == T5_STREAM_AGAIN);
+  assert(recordApi->record_read(recordSource, bytes, 2, &count) == T5_STREAM_LIMIT && count == 0);
+  assert(recordApi->record_read(recordSource, bytes, 3, &count) == T5_STREAM_OK && count == 3 &&
+         std::memcmp(bytes, "abc", 3) == 0);
+  assert(recordApi->record_read(recordSource, nullptr, 0, &count) == T5_STREAM_OK && count == 0);
+  assert(recordApi->record_read(recordSource, bytes, 3, &count) == T5_STREAM_AGAIN && count == 0);
+  assert(recordApi->record_info(recordSource, &recordMetadata) == T5_STREAM_OK &&
+         recordMetadata.records_written == 2 && recordMetadata.records_read == 2);
+  t5_pipe_t recordPipe = 0;
+  assert(api->pipe_connect(recordSource, recordWrong, 0, &recordPipe) == T5_STREAM_UNSUPPORTED && !recordPipe);
+  assert(api->pipe_connect(recordSource, recordSmall, 0, &recordPipe) == T5_STREAM_LIMIT && !recordPipe);
+  assert(api->open_buffer(8, &h) == T5_STREAM_OK);
+  assert(api->pipe_connect(recordSource, h, 0, &recordPipe) == T5_STREAM_UNSUPPORTED && !recordPipe);
+  assert(recordApi->record_info(h, &recordMetadata) == T5_STREAM_UNSUPPORTED);
+  assert(api->close(h) == T5_STREAM_OK);
+  assert(api->pipe_connect(recordSource, recordSink, 0, &recordPipe) == T5_STREAM_OK && recordPipe);
+  assert(recordApi->record_read(recordSource, bytes, 3, &count) == T5_STREAM_BUSY);
+  assert(recordApi->record_write(recordSink, "x", 1) == T5_STREAM_BUSY);
+  assert(api->pipe_cancel(recordPipe) == T5_STREAM_OK && api->pipe_close(recordPipe) == T5_STREAM_OK);
+  assert(api->close(recordSink) == T5_STREAM_OK);
+  assert(api->close(recordWrong) == T5_STREAM_OK);
+  assert(api->close(recordSmall) == T5_STREAM_OK);
+  const t5_stream_t staleRecord = recordSource;
+  assert(api->close(recordSource) == T5_STREAM_OK);
+  assert(recordApi->record_read(staleRecord, bytes, 3, &count) == T5_STREAM_INVALID);
+
   for (auto path : {"/outside/a", "/sd/../a", "/sd/./a", "/sd/a//b", "/sd/a/", "/sd/a\\b"})
     assert(api->open_file(path, T5_STREAM_FILE_READ, &h) == T5_STREAM_INVALID);
   files["/input"] = std::make_shared<TestFile>(); files["/input"]->data.resize(10000, 42);
@@ -173,6 +227,7 @@ int main() {
   assert(t5_serial_port_get_api(T5_SERIAL_PORT_API_VERSION));
   nativeStreamsEnd();
   assert(api->close(replacement) == T5_STREAM_DENIED && !t5_stream_get_api(1));
+  assert(!riscrte_stream_get_api_v2());
   assert(!t5_serial_port_get_api(T5_SERIAL_PORT_API_VERSION));
   std::cout << "Stream firmware adapter tests passed\n";
 }
