@@ -45,6 +45,13 @@ int main() {
   for (uint32_t i = 0; i < 4; ++i)
     assert(s.publish(provider, 50, gps, 1000 + i) == T5_STREAM_OK);
   assert(s.accepted() == 4 && s.deliveries() == 8);
+  // Re-polling the same cached receiver fix changes sample time and age by
+  // the same amount. This must not fill another slot or masquerade as
+  // backpressure while both subscriber queues are full.
+  gps.age_ms = 13;
+  assert(s.publish(provider, 50, gps, 1004) == T5_STREAM_AGAIN);
+  assert(s.duplicates() == 1 && s.backpressure() == 0 && s.accepted() == 4);
+  gps = fix();
   assert(s.publish(provider, 50, gps, 1004) == T5_STREAM_AGAIN && s.backpressure() == 1);
   readFix(r, 101, sa, 1000);
   assert(s.publish(provider, 50, gps, 1004) == T5_STREAM_AGAIN);
@@ -52,6 +59,10 @@ int main() {
   readFix(r, 102, sb, 1000);
   assert(s.publish(provider, 50, gps, 1004) == T5_STREAM_OK);
   assert(s.accepted() == 5 && s.deliveries() == 10);
+  gps.age_ms = 13;
+  assert(s.publish(provider, 50, gps, 1005) == T5_STREAM_AGAIN);
+  assert(s.duplicates() == 2 && s.backpressure() == 2 && s.deliveries() == 10);
+  gps = fix();
   assert(s.publish(provider, 51, gps, 1005) == T5_STREAM_DISCONNECTED);
   assert(s.disconnect(provider) == T5_STREAM_OK);
   t5_stream_t denied = 99;
@@ -78,6 +89,9 @@ int main() {
   assert(r.readRecord(103, sc, payload, sizeof(payload), &n) == T5_STREAM_AGAIN);
   gps = fix();
   assert(s.publish(newer, 51, gps, 1021) == T5_STREAM_OK);
+  gps.age_ms = 13;
+  assert(s.publish(newer, 51, gps, 1022) == T5_STREAM_AGAIN && s.duplicates() == 3);
+  gps = fix();
   s.releaseOwner(103);
   assert(s.subscribers() == 0 && r.readRecord(103, sc, payload, sizeof(payload), &n) == T5_STREAM_INVALID);
   assert(s.unsubscribe(103, c) == T5_STREAM_INVALID);
