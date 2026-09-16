@@ -24,10 +24,10 @@ UsbCdcDriverModule module;
 // hold the same priority-inheriting mutex. The lock lasts for the firmware
 // lifetime; it is not destroyed while either task may still be running.
 SemaphoreHandle_t moduleMutex = nullptr;
-// Never provide an ESP-IDF-owned descriptor pointer to an external module.
-// This single-device snapshot is accessed only while moduleMutex is held and
-// avoids allocating a 4-KB descriptor on the USB host task's limited stack.
+// Buffers are protected by moduleMutex. Neither a 4KB descriptor nor a 4KB
+// manifest may be allocated on the USB host task's limited stack.
 uint8_t descriptorSnapshot[kMaxDescriptor];
+char manifestBuffer[kMaxManifest + 1];
 struct Lock {
   Lock() { xSemaphoreTake(moduleMutex, portMAX_DELAY); }
   ~Lock() { xSemaphoreGive(moduleMutex); }
@@ -39,12 +39,11 @@ bool installedAndVerified() {
   if (native_app_register_sd_vfs() != ESP_OK) return false;
   FILE* file = std::fopen(kManifest, "rb");
   if (!file) return false;
-  char buffer[kMaxManifest + 1] = {};
-  const size_t bytes = std::fread(buffer, 1, sizeof(buffer), file);
+  const size_t bytes = std::fread(manifestBuffer, 1, sizeof(manifestBuffer), file);
   const bool readOk = bytes != 0 && bytes <= kMaxManifest && !std::ferror(file);
   std::fclose(file);
   if (!readOk) return false;
-  const std::string manifest(buffer, bytes);
+  const std::string manifest(manifestBuffer, bytes);
   JsonDocument doc;
   if (deserializeJson(doc, manifest)) return false;
   if (!doc["requires"].is<JsonArray>() || doc["requires"].size() != 1 ||
