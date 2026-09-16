@@ -43,9 +43,12 @@
 #error "T5S3 native apps require the S3 PSRAM loader configuration"
 #endif
 
-// Firmware-only, owner-task preflight. Never register this function as an ELF
-// symbol. A declaration in a sidecar is not a hardware permission grant.
+// Firmware-only owner-task hooks. The first checks compatibility; the second
+// acquires non-authorizing, invocation-owned dependency bindings atomically.
+// Neither is exported to the ELF. NativeStreamBridge ends the context on all
+// launcher exits and releases any bound dependencies before ELF unload.
 extern bool native_app_capabilities_ready(const char *sd_path);
+extern bool native_app_capabilities_bind(const char *sd_path);
 
 static const char *TAG = "sd_elf_launcher";
 static atomic_flag s_running = ATOMIC_FLAG_INIT;
@@ -73,10 +76,10 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_LOGE(TAG, "SD VFS unavailable: %s", esp_err_to_name(result));
         goto done;
     }
-    if (!native_app_capabilities_ready(sd_path)) {
-        ESP_LOGE(TAG, "Required application capabilities are unavailable or incompatible: %s", sd_path);
+    if (!native_app_capabilities_ready(sd_path) || !native_app_capabilities_bind(sd_path)) {
+        ESP_LOGE(TAG, "Required application dependencies unavailable or could not be bound: %s", sd_path);
         result = ESP_ERR_NOT_SUPPORTED;
-        goto done;  // Never map or call an ELF with unresolved requirements.
+        goto done;  // No ELF mapping; binding failures roll back all partial leases.
     }
     static const struct esp_elfsym host_symbols[] = {
         ESP_ELFSYM_EXPORT(t5_app_get_api),
