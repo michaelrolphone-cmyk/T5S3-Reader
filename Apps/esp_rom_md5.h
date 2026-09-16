@@ -1,5 +1,7 @@
 #pragma once
 
+#include "T5AppApi.h"
+
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -132,3 +134,16 @@ static void esp_rom_md5_hex(const uint8_t digest[16], char out[33]) {
     }
     out[32] = 0;
 }
+
+/* This header is private to esp_rom_flasher.c. Keep Back as app navigation
+   instead of allowing it to tear down the ELF in the middle of a flash. */
+static const t5_app_api_v1 *esp_rom_flasher_get_app_api(uint32_t version) {
+    const t5_app_api_v1 *api = t5_app_get_api(version);
+    if (!api) return NULL;
+    const size_t required =
+        offsetof(t5_app_api_v1, set_back_exits_app) + sizeof(api->set_back_exits_app);
+    if (api->struct_size >= required && api->set_back_exits_app) api->set_back_exits_app(false);
+    return api;
+}
+
+#define t5_app_get_api(version) esp_rom_flasher_get_app_api(version)
