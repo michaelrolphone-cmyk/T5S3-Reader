@@ -18,4 +18,5 @@ bool nativeUnregisterSerialProvider(const char* id);
 // application owner task, outside the stream registry mutex. The epoch is
 // captured at stream open and prevents rebinding to a replacement device.
 bool nativeUsbDirectStreamClaim(uint32_t expectedEpoch);
+bool nativeUsbDirectStreamBound();
 void nativeUsbDirectStreamRelease();
