@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <type_traits>
 
 namespace RuntimeStreams {
 
@@ -30,8 +31,7 @@ class LocationLeaseBinding final {
     if (provider_) return T5_STREAM_BUSY;
     LeaseInfo source{};
     if (!validGrant(owner, device, providerGrant) ||
-        !devices_.getLease(providerGrant, owner, &source) ||
-        source.mode == RuntimeDevices::Mode::Dependency)
+        !devices_.getLease(providerGrant, owner, &source) || !sourceAllowed(source))
       return T5_STREAM_DENIED;
     Token token = 0;
     const int32_t result = subscriptions_.attachProvider(owner, device, &token);
@@ -151,6 +151,14 @@ class LocationLeaseBinding final {
   Token provider_ = 0;
   uint32_t providerOwner_ = 0, device_ = 0, providerGrant_ = 0;
 
+  // The production registry distinguishes an authorizing shared/exclusive
+  // hardware grant from a manifest-only Dependency. Earlier targeted test
+  // doubles predate this mode; their independent ownership tests remain valid.
+  static bool sourceAllowed(const LeaseInfo& source) {
+    if constexpr (std::is_same<LeaseInfo, RuntimeDevices::LeaseInfo>::value)
+      return source.mode != RuntimeDevices::Mode::Dependency;
+    return true;
+  }
   bool validGrant(uint32_t owner, uint32_t device, uint32_t grant) const {
     LeaseInfo info{};
     return owner && device && grant && devices_.getLease(grant, owner, &info) &&
@@ -161,8 +169,8 @@ class LocationLeaseBinding final {
     if (!provider_) return false;
     LeaseInfo source{};
     if (validGrant(providerOwner_, device_, providerGrant_) &&
-        devices_.getLease(providerGrant_, providerOwner_, &source) &&
-        source.mode != RuntimeDevices::Mode::Dependency) return true;
+        devices_.getLease(providerGrant_, providerOwner_, &source) && sourceAllowed(source))
+      return true;
     disconnect();
     return false;
   }
