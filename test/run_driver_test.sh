@@ -15,6 +15,9 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/lib/NativeApp
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/programmer/esp_rom_protocol_test.cpp" -o "$build/esp-rom-protocol-test"
 "$build/esp-rom-protocol-test"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" -I"$repo/lib/NativeApps/include" \
+  "$repo/test/programmer/esp_rom_session_test.cpp" -o "$build/esp-rom-session-test"
+"$build/esp-rom-session-test"
 c++ -std=c++17 -Wall -Wextra -Werror -DBOARD_T5S3_PRO \
   -I"$repo/test/drivers/stubs" -I"$repo/src" "$repo/src/runtime/resources/RadioPower.cpp" \
   "$repo/test/drivers/power_test.cpp" -o "$build/power-test"
