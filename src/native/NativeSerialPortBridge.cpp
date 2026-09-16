@@ -7,6 +7,9 @@
 #include <T5UsbApi.h>
 #include <cstdio>
 #include <cstring>
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+#include <Logging.h>
+#endif
 
 namespace {
 constexpr uint32_t kMaxHandleGeneration = 0x7fffffffu;
@@ -17,11 +20,54 @@ t5_stream_t rxHandle = 0;
 t5_stream_t txHandle = 0;
 uint32_t leaseGeneration = 0;
 uint32_t leaseEpoch = 0;
-// The device record and resolver persist across app invocations. Only the
-// runtime registers providers; ELF applications receive the semantic v1 API.
+// Records and provider registrations outlive app invocations. Only trusted
+// runtime code registers providers; ELFs see the semantic serial.port API.
 NativeUsbDevices::Registry devices;
 RuntimeSerial::Registry providers;
 t5_serial_config_t currentConfig = {115200u, 8u, T5_SERIAL_PARITY_NONE, 1u, T5_SERIAL_FLOW_NONE};
+
+// Only status transitions and API calls are logged. Polls, received content,
+// transmitted content and protocol payloads must not flood the debug channel.
+t5_serial_port_lease_t lastLoggedLease = 0;
+uint8_t lastLoggedStatus = 0xff;
+uint8_t lastLoggedConnected = 0xff;
+int32_t lastLoggedError = 0;
+t5_serial_device_t lastLoggedDevice = 0;
+void resetStatusTrace() {
+  lastLoggedLease = 0;
+  lastLoggedStatus = 0xff;
+  lastLoggedConnected = 0xff;
+  lastLoggedError = 0;
+  lastLoggedDevice = 0;
+}
+void traceResult(const char* action, t5_serial_result_t result,
+                 t5_serial_port_lease_t lease, t5_serial_device_t device) {
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  LOG_INF("SERIAL", "SERREF action=%s result=%d lease=%lu device=%lu",
+          action, static_cast<int>(result), static_cast<unsigned long>(lease),
+          static_cast<unsigned long>(device));
+#else
+  (void)action; (void)result; (void)lease; (void)device;
+#endif
+}
+void traceStatus(t5_serial_port_lease_t lease, const t5_serial_port_state_t& status) {
+  if (lastLoggedLease == lease && lastLoggedStatus == status.status &&
+      lastLoggedConnected == status.connected && lastLoggedError == status.last_error &&
+      lastLoggedDevice == status.device) return;
+  lastLoggedLease = lease;
+  lastLoggedStatus = status.status;
+  lastLoggedConnected = status.connected;
+  lastLoggedError = status.last_error;
+  lastLoggedDevice = status.device;
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  LOG_INF("SERIAL", "SERREF action=status lease=%lu device=%lu status=%u connected=%u error=%ld rx=%lu tx=%lu dropped=%lu",
+          static_cast<unsigned long>(lease), static_cast<unsigned long>(status.device),
+          static_cast<unsigned>(status.status), static_cast<unsigned>(status.connected),
+          static_cast<long>(status.last_error), static_cast<unsigned long>(status.rx_bytes),
+          static_cast<unsigned long>(status.tx_bytes),
+          static_cast<unsigned long>(status.dropped_rx_bytes));
+#endif
+}
 
 bool authorized() {
   return active && t5_app_get_api(T5_APP_ABI_VERSION) != nullptr;
@@ -70,12 +116,11 @@ void clearLease(bool stopUsb) {
   if (stopUsb && usb && usb->serial_stop) usb->serial_stop();
   leaseHandle = 0;
   leaseEpoch = 0;
-  // Host stop and app unload invalidate even a device with identical VID/PID.
+  // Host stop and app unload invalidate even an identical VID/PID device.
   devices.detach();
 }
 
-// USB is one provider, not the implementation of the public serial.port API.
-// Keep its working host/power/epoch/stream logic inside these backend methods.
+// USB is one provider; its host/power/epoch/stream details stay private.
 t5_serial_result_t usbAcquirePort(const t5_serial_port_request_t* request,
                                   t5_serial_port_lease_t* lease,
                                   t5_stream_t* rx,
@@ -113,8 +158,8 @@ t5_serial_result_t usbAcquirePort(const t5_serial_port_request_t* request,
     if (streamResult == T5_STREAM_LIMIT) return T5_SERIAL_LIMIT;
     return T5_SERIAL_IO;
   }
-  // Reject a detach during acquisition rather than returning streams bound to
-  // a different physical device than the newly issued lease.
+  // Reject detach during acquisition rather than issuing streams for another
+  // physical device.
   if (devices.epoch() != startEpoch) {
     (void)nativeStreamCloseOwned(newRx);
     (void)nativeStreamCloseOwned(newTx);
@@ -152,7 +197,7 @@ t5_serial_result_t usbReadStatus(t5_serial_port_lease_t lease, t5_serial_port_st
   if (!out) return T5_SERIAL_INVALID;
   std::memset(out, 0, sizeof(*out));
   if (leaseRevoked()) {
-    // A lease never silently rebinds to a replacement USB device.
+    // Never silently rebind a lease to a replacement device.
     out->status = T5_SERIAL_STATUS_WAITING;
     out->last_error = T5_SERIAL_DISCONNECTED;
     out->config = currentConfig;
@@ -160,8 +205,6 @@ t5_serial_result_t usbReadStatus(t5_serial_port_lease_t lease, t5_serial_port_st
   }
   t5_usb_serial_state_t state{};
   if (!usb->serial_read_state(&state)) return T5_SERIAL_IO;
-
-  // The USB host's binding epoch wins over an out-of-date status snapshot.
   const auto device = devices.snapshot();
   if (leaseRevoked()) {
     out->status = T5_SERIAL_STATUS_WAITING;
@@ -239,32 +282,45 @@ void ensureUsbRegistered() {
   if (!usbRegistered) usbRegistered = providers.add(usbProvider);
 }
 
-// Public ABI dispatches solely through the semantic provider/lease resolver.
+// Public ABI only dispatches through the semantic provider/lease resolver.
 t5_serial_result_t acquirePort(const t5_serial_port_request_t* request,
                                t5_serial_port_lease_t* lease,
                                t5_stream_t* rx, t5_stream_t* tx) {
   if (lease) *lease = 0;
   if (rx) *rx = 0;
   if (tx) *tx = 0;
-  if (!authorized()) return T5_SERIAL_DENIED;
+  if (!authorized()) {
+    traceResult("acquire", T5_SERIAL_DENIED, 0, request ? request->device : 0);
+    return T5_SERIAL_DENIED;
+  }
   ensureUsbRegistered();
-  return providers.acquire(request, lease, rx, tx);
+  const auto rc = providers.acquire(request, lease, rx, tx);
+  traceResult("acquire", rc, rc == T5_SERIAL_OK && lease ? *lease : 0,
+              request ? request->device : 0);
+  if (rc == T5_SERIAL_OK) resetStatusTrace();
+  return rc;
 }
 t5_serial_result_t configurePort(t5_serial_port_lease_t lease, const t5_serial_config_t* config) {
-  if (!authorized()) return T5_SERIAL_DENIED;
-  return providers.configure(lease, config);
+  const auto rc = authorized() ? providers.configure(lease, config) : T5_SERIAL_DENIED;
+  traceResult("configure", rc, lease, 0);
+  return rc;
 }
 t5_serial_result_t readStatus(t5_serial_port_lease_t lease, t5_serial_port_state_t* state) {
-  if (!authorized()) return T5_SERIAL_DENIED;
-  return providers.status(lease, state);
+  const auto rc = authorized() ? providers.status(lease, state) : T5_SERIAL_DENIED;
+  if (rc != T5_SERIAL_OK) traceResult("read-status", rc, lease, 0);
+  else if (state) traceStatus(lease, *state);
+  return rc;
 }
 t5_serial_result_t setControlLines(t5_serial_port_lease_t lease, bool dtr, bool rts) {
-  if (!authorized()) return T5_SERIAL_DENIED;
-  return providers.control(lease, dtr, rts);
+  const auto rc = authorized() ? providers.control(lease, dtr, rts) : T5_SERIAL_DENIED;
+  traceResult("control-lines", rc, lease, 0);
+  return rc;
 }
 t5_serial_result_t releasePort(t5_serial_port_lease_t lease) {
-  if (!authorized()) return T5_SERIAL_DENIED;
-  return providers.release(lease);
+  const auto rc = authorized() ? providers.release(lease) : T5_SERIAL_DENIED;
+  traceResult("release", rc, lease, 0);
+  if (rc == T5_SERIAL_OK) resetStatusTrace();
+  return rc;
 }
 
 const t5_serial_port_api_v1 api = {
@@ -279,21 +335,18 @@ const t5_serial_port_api_v1 api = {
 };
 } // namespace
 
-// Trusted runtime registration only; app ELFs cannot import these hooks.
-// Registration must happen on the app owner's task with no active serial lease.
+// Trusted registration only; applications cannot import these hooks.
+// Register on the owning task with no active serial lease.
 bool nativeRegisterSerialProvider(const RuntimeSerial::Provider& provider) {
   ensureUsbRegistered();
   return providers.add(provider);
 }
 bool nativeUnregisterSerialProvider(const char* id) {
-  // The firmware-owned USB fallback is permanent; replaceable providers may
-  // unload only after their outstanding lease has been released.
   if (!id || std::strcmp(id, "usb.serial") == 0) return false;
   return providers.remove(id);
 }
 
-// Called by the USB host task. Publishing device identity is separate from
-// provider registration, which is performed on the owning native app task.
+// USB host task publishes device identity separately from registration.
 void nativeUsbProviderAttach(const t5_usb_serial_state_t* state, uint8_t dataInterface) {
   if (state) devices.observe(*state, dataInterface);
 }
@@ -308,16 +361,20 @@ void nativeSerialPortsBegin() {
   clearLease(false);
   usb = nullptr;
   active = true;
+  resetStatusTrace();
   ensureUsbRegistered();
+  traceResult("context-begin", T5_SERIAL_OK, 0, 0);
 }
 void nativeSerialPortsEnd() {
-  // Dispatch teardown to the lease's *selected* provider before the stream
-  // table is reclaimed. No USB stop is attempted for a non-USB lease.
+  // Release the selected provider before reclaiming streams. A non-USB
+  // provider must never trigger an unrelated USB serial_stop.
   providers.end();
   if (leaseHandle) clearLease(true);
   devices.detach();
   active = false;
   usb = nullptr;
+  resetStatusTrace();
+  traceResult("context-end", T5_SERIAL_OK, 0, 0);
 }
 
 extern "C" const t5_serial_port_api_v1* t5_serial_port_get_api(uint32_t version) {
