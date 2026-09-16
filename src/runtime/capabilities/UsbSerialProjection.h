@@ -28,8 +28,6 @@ class UsbSerialProjection final {
     if (!bound) return true;
 
     char identity[kIdentityBytes]{};
-    // Generation-qualified enumeration identity prevents collision between
-    // two identical USB adapters plugged in at different times.
     std::snprintf(identity, sizeof(identity), "usb.serial.session.%08lX",
                   static_cast<unsigned long>(legacyId));
     char label[kLabelBytes]{};
@@ -46,11 +44,12 @@ class UsbSerialProjection final {
                     static_cast<unsigned>(vid), static_cast<unsigned>(pid));
     }
     static constexpr const char* capabilities[] = {"serial.port", "serial.host"};
-    // Interface identity is preserved by the legacy binding (legacyId), which
-    // rotates if interfaceNumber changes. It is not a new physical locator.
+    // serial.port exposes the versioned serial-port v1 ABI; serial.host has no
+    // public semantic contract yet. Keep its version UNKNOWN, never guessed.
+    static constexpr uint16_t capabilityVersions[] = {1, 0};
     (void)interfaceNumber;
     const Descriptor descriptor{identity, label, "usb.serial", Transport::Usb,
-                                capabilities, 2, 100};
+                                capabilities, 2, 100, capabilityVersions};
     if (!registry_.add(descriptor, State::Available, &handle_)) {
       handle_ = 0;
       return false;
@@ -59,9 +58,6 @@ class UsbSerialProjection final {
     return true;
   }
 
-  // Removal revokes any outstanding capability leases synchronously. A later
-  // reconcile with the same epoch can re-create a slot only after the caller
-  // observes a new live binding; explicitly clear the old binding at teardown.
   bool clear() {
     if (handle_) {
       (void)registry_.remove(handle_);
