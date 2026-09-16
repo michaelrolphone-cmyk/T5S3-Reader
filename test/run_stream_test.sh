@@ -11,9 +11,21 @@ printf '#include "T5StreamApi.h"\n#include "T5SerialPortApi.h"\nint main(void) {
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/NativeApps/include" "$build/abi.c" -o "$build/abi"
 "$build/abi"
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/execution_context_test.cpp" -o "$build/execution-context"
+"$build/execution-context"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo/lib/NativeApps/include" -I"$repo/src" \
   "$repo/test/streams/usb_device_registry_test.cpp" -o "$build/device-registry"
 "$build/device-registry"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/lib/NativeApps/include" -I"$repo/src" \
+  "$repo/test/streams/serial_provider_registry_test.cpp" -o "$build/serial-provider-registry"
+"$build/serial-provider-registry"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/lib/NativeApps/include" -I"$repo/src" \
+  "$repo/src/native/NativeSerialPortBridge.cpp" \
+  "$repo/test/streams/serial_provider_bridge_test.cpp" -o "$build/serial-provider-bridge"
+"$build/serial-provider-bridge"
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo/test/streams/stubs" -I"$repo/lib/NativeApps/include" -I"$repo/src" \
   "$repo/src/runtime/streams/StreamRuntime.cpp" "$repo/src/native/NativeStreamBridge.cpp" \

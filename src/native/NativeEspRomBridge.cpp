@@ -4,6 +4,7 @@
 #include <T5StreamApi.h>
 #include "runtime/programmer/EspRomProtocol.h"
 #include "runtime/programmer/EspRomSession.h"
+#include "runtime/resources/ExecutionContext.h"
 
 #include <Arduino.h>
 #include <esp_task_wdt.h>
@@ -20,6 +21,7 @@ constexpr uint8_t kFlashBegin = 0x02, kFlashData = 0x03, kFlashEnd = 0x04;
 constexpr uint8_t kSync = 0x08, kSpiParams = 0x0b, kSpiAttach = 0x0d;
 constexpr uint8_t kFlashMd5 = 0x13, kSecurityInfo = 0x14;
 constexpr uint32_t kMaxChunk = T5_STREAM_CHUNK;
+using RuntimeResources::ExecutionContext;
 std::atomic_flag busy = ATOMIC_FLAG_INIT;
 
 struct Operation {
@@ -30,10 +32,12 @@ struct Operation {
   EspRomSession::Watch target;
   t5_program_esp_rom_progress_fn progress = nullptr;
   void* context = nullptr;
+  ExecutionContext* owner = nullptr;
+  uint32_t invocation = 0;
+  bool cancelRequested = false;
   t5_program_esp_rom_status_v1 status{};
   uint32_t lastCallback = 0;
-  // Firmware-owned buffers. Allocate the operation on the heap, never on the
-  // native app task stack; no whole-image buffer is created.
+  // Firmware-owned buffers: no whole-image allocation or app task stack use.
   uint8_t raw[EspRomProtocol::kCommandBytes]{};
   uint8_t framed[EspRomProtocol::kFramedBytes]{};
   uint8_t block[EspRomProtocol::kBlock]{};
@@ -43,9 +47,18 @@ struct Operation {
   char digest[33]{};
 
   ~Operation() {
-    // The borrowed input stream stays with the app. Releasing the serial lease
-    // closes both serial streams and stops the host before the caller returns.
+    // Release the serial lease and its RX/TX streams before untracking this job.
+    // The firmware input stream belongs to the application context.
     if (lease && serial) (void)serial->release(lease);
+  }
+  static void stop(void* opaque, uint32_t id) {
+    auto* op = static_cast<Operation*>(opaque);
+    if (op && op->invocation == id) op->cancelRequested = true;
+  }
+  static void cleanup(void*, uint32_t) {
+    // end() defers while any synchronous programmer remains registered. An
+    // operation always releases its lease and untracks before end() resumes;
+    // destroying its live stack from this callback would be unsafe.
   }
   bool fail(t5_program_esp_rom_result_t code, const char* text) {
     if (status.result != T5_PROGRAM_CANCELLED && status.result != T5_PROGRAM_TARGET_LOST) {
@@ -54,32 +67,46 @@ struct Operation {
     }
     return false;
   }
+  bool cancel() {
+    if (status.result == T5_PROGRAM_OK) {
+      status.result = T5_PROGRAM_CANCELLED;
+      std::snprintf(status.message, sizeof(status.message), "Programming cancelled: application stopping");
+    }
+    return false;
+  }
+  bool owned() {
+    return (!cancelRequested && owner && owner->running(invocation)) || cancel();
+  }
   bool targetLost() {
     status.result = T5_PROGRAM_TARGET_LOST;
     std::snprintf(status.message, sizeof(status.message), "Programming target disconnected");
     return false;
   }
   bool report(uint8_t stage, uint8_t percent, const char* text) {
+    // Do not enter an unloadable app callback after stop has been requested.
+    if (!owned()) return false;
     status.stage = stage;
     status.percent = percent;
     if (text) std::snprintf(status.message, sizeof(status.message), "%s", text);
     lastCallback = millis();
-    // This callback is synchronous and cannot outlive the app invocation.
     if (progress && !progress(context, &status)) {
       status.result = T5_PROGRAM_CANCELLED;
       std::snprintf(status.message, sizeof(status.message), "Programming cancelled");
       return false;
     }
-    return true;
+    // A callback may request app exit. Detect that before any further IO or
+    // callback, and complete the synchronous call before releasing streams.
+    return owned();
   }
   bool tick() {
     esp_task_wdt_reset();
-    if (status.result != T5_PROGRAM_OK) return false;
+    if (!owned() || status.result != T5_PROGRAM_OK) return false;
     if (millis() - lastCallback >= 50 && !report(status.stage, status.percent, nullptr)) return false;
     delay(5);
-    return status.result == T5_PROGRAM_OK;
+    return owned() && status.result == T5_PROGRAM_OK;
   }
   bool transport(bool* ready = nullptr) {
+    if (!owned()) return false;
     if (ready) *ready = false;
     if (!serial || !lease) return fail(T5_PROGRAM_IO, "Serial port was not acquired");
     t5_serial_port_state_t state{};
@@ -99,13 +126,10 @@ struct Operation {
     const uint32_t started = millis();
     while (millis() - started < timeout) {
       bool ready = false;
-      // One status snapshot per iteration. The guard latches identity while
-      // CONFIGURING and detects epoch revocation even before initial READY.
       if (!transport(&ready)) return false;
       if (ready) return true;
       if (!tick()) return false;
     }
-    // A detach at the timeout boundary must win over the generic timeout.
     if (!transport()) return false;
     return fail(T5_PROGRAM_TIMEOUT, "Serial device did not become ready");
   }
@@ -125,19 +149,17 @@ struct Operation {
     const uint32_t started = millis();
     size_t done = 0;
     while (done < length && millis() - started < timeout) {
+      if (!owned()) return false;
       uint32_t count = 0;
       const uint32_t requested = static_cast<uint32_t>((length - done) < kMaxChunk ? (length - done) : kMaxChunk);
       const auto rc = streams->read(stream, out + done, requested, &count);
       if (count > requested) return fail(T5_PROGRAM_IO, "Stream returned an invalid byte count");
-      // The borrowed firmware source has independent EOF/IO semantics; only
-      // a serial stream's terminal result is evidence of target removal.
+      // Source IO/EOF is separate from serial transport loss.
       if (stream == rx && EspRomSession::Watch::lostStream(rc)) return targetLost();
       if (rc < 0 || (rc == T5_STREAM_EOF && done + count < length))
         return fail(T5_PROGRAM_IO, "Firmware or serial stream terminated");
       done += count;
       esp_task_wdt_reset();
-      // Do not sleep for each successful 512-byte SD read. At 16 MiB that
-      // would add minutes to hashing alone; progress checks bound cancellation.
       if (!count && !tick()) return false;
     }
     return done == length || fail(T5_PROGRAM_TIMEOUT, "Firmware stream read timed out");
@@ -358,8 +380,7 @@ struct Operation {
   bool reset() {
     if (!report(T5_PROGRAM_STAGE_RESET, 100, "Resetting target into flashed firmware")) return false;
     uint8_t end[4]{};
-    // Some ROMs reset immediately without acknowledging FLASH_END. Preserve
-    // the original best-effort command, but require both physical reset steps.
+    // Some ROMs reset without acknowledging FLASH_END. Physical reset matters.
     (void)command(kFlashEnd, end, sizeof(end), 0, 1000);
     if (status.result != T5_PROGRAM_OK) return false;
     if (!lines(false, true, 100)) return false;
@@ -392,16 +413,15 @@ t5_program_esp_rom_result_t program(t5_stream_t firmware, uint32_t imageBytes,
   output->struct_size = sizeof(*output);
   output->image_bytes = imageBytes;
   output->rom_command = output->rom_status = output->rom_error = 0xff;
-  // Immediate failures are also API results: never return BUSY/DENIED while
-  // leaving final_status apparently OK with an unset structure version.
   if (!firmware) {
     output->result = T5_PROGRAM_INVALID;
     std::snprintf(output->message, sizeof(output->message), "No firmware input stream");
     return T5_PROGRAM_INVALID;
   }
-  if (!t5_app_get_api(T5_APP_ABI_VERSION)) {
+  auto* owner = ExecutionContext::current();
+  if (!t5_app_get_api(T5_APP_ABI_VERSION) || !owner || !owner->running(owner->id())) {
     output->result = T5_PROGRAM_DENIED;
-    std::snprintf(output->message, sizeof(output->message), "No active application execution context");
+    std::snprintf(output->message, sizeof(output->message), "No running application execution context");
     return T5_PROGRAM_DENIED;
   }
   if (busy.test_and_set(std::memory_order_acquire)) {
@@ -409,8 +429,6 @@ t5_program_esp_rom_result_t program(t5_stream_t firmware, uint32_t imageBytes,
     std::snprintf(output->message, sizeof(output->message), "ESP ROM programmer already in use");
     return T5_PROGRAM_BUSY;
   }
-  // Create the 5+ KiB protocol buffers in bounded heap storage, not on the
-  // application's main task stack. Release serial before unlocking busy.
   auto* op = new (std::nothrow) Operation{};
   if (!op) {
     busy.clear(std::memory_order_release);
@@ -422,6 +440,17 @@ t5_program_esp_rom_result_t program(t5_stream_t firmware, uint32_t imageBytes,
   op->status.image_bytes = imageBytes;
   op->status.rom_command = op->status.rom_status = op->status.rom_error = 0xff;
   op->progress = progress; op->context = context; op->firmware = firmware;
+  op->owner = owner; op->invocation = owner->id();
+  // Registration precedes ANY callback or transport acquisition. A stop
+  // notification requests cancellation, then end() defers until we quiesce.
+  if (!owner->track(ExecutionContext::Resource::Programmer, Operation::cleanup,
+                    op, Operation::stop)) {
+    delete op;
+    busy.clear(std::memory_order_release);
+    output->result = T5_PROGRAM_DENIED;
+    std::snprintf(output->message, sizeof(output->message), "Cannot register programming job to invocation");
+    return T5_PROGRAM_DENIED;
+  }
   op->streams = t5_stream_get_api(T5_STREAM_API_VERSION);
   op->serial = t5_serial_port_get_api(T5_SERIAL_PORT_API_VERSION);
   if (!op->streams || !op->serial || !op->streams->info || !op->streams->seek ||
@@ -433,7 +462,12 @@ t5_program_esp_rom_result_t program(t5_stream_t firmware, uint32_t imageBytes,
   }
   *output = op->status;
   const auto result = static_cast<t5_program_esp_rom_result_t>(op->status.result);
+  // No further ELF callback is possible. The lease is released while its
+  // invocation and stream registry remain valid, even in Stopping.
+  const uint32_t id = op->invocation;
   delete op;
+  (void)owner->untrack(ExecutionContext::Resource::Programmer, id);
+  if (owner->state() == ExecutionContext::State::Stopping) owner->end();
   busy.clear(std::memory_order_release);
   return result;
 }
@@ -445,6 +479,8 @@ const t5_program_esp_rom_api_v1 api = {
 } // namespace
 
 extern "C" const t5_program_esp_rom_api_v1* t5_program_esp_rom_get_api(uint32_t version) {
-  if (version != T5_PROGRAM_ESP_ROM_API_VERSION || !t5_app_get_api(T5_APP_ABI_VERSION)) return nullptr;
+  auto* owner = RuntimeResources::ExecutionContext::current();
+  if (version != T5_PROGRAM_ESP_ROM_API_VERSION || !owner ||
+      !owner->running(owner->id()) || !t5_app_get_api(T5_APP_ABI_VERSION)) return nullptr;
   return &api;
 }
