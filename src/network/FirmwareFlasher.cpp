@@ -11,6 +11,7 @@
 #include <mbedtls/sha256.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 
@@ -100,6 +101,19 @@ bool containsBoardMarker(HalFile& file, const char* marker) {
     }
   }
   return false;
+}
+
+bool containsCompatibleBoardMarker(HalFile& file) {
+  if (containsBoardMarker(file, Board::firmwareMarker())) {
+    return true;
+  }
+
+  char legacyMarker[64] = {};
+  const int written = snprintf(legacyMarker, sizeof(legacyMarker), "CROSSPOINT_BOARD_ID:%s", Board::id());
+  if (written <= 0 || static_cast<size_t>(written) >= sizeof(legacyMarker)) {
+    return false;
+  }
+  return containsBoardMarker(file, legacyMarker);
 }
 
 Result feedHashAndChecksum(HalFile& file, size_t length, uint8_t* xorAccum, mbedtls_sha256_context* sha, uint8_t* buf) {
@@ -254,7 +268,7 @@ Result validateImageFile(const char* sdPath, size_t partitionSize) {
     }
   }
 
-  if (!containsBoardMarker(file, Board::firmwareMarker())) {
+  if (!containsCompatibleBoardMarker(file)) {
     LOG_ERR("FLASH", "firmware board marker does not match %s", Board::id());
     mbedtls_sha256_free(&shaCtx);
     file.close();
