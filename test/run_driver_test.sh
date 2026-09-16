@@ -15,6 +15,35 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/lib/NativeApp
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_registry_test.cpp" -o "$build/device-registry-test"
 "$build/device-registry-test"
+# Generic provider API metadata and transactionally bound non-authorizing
+# dependencies must both pass before an ELF is mapped.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" -I"$repo/lib/NativeApps/include" \
+  "$repo/test/resources/app_capability_requirements_test.cpp" -o "$build/app-capability-requirements"
+"$build/app-capability-requirements"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/app_dependency_bindings_test.cpp" \
+  -o "$build/app-dependency-bindings"
+"$build/app-dependency-bindings"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/app_dependency_lifecycle_test.cpp" \
+  -o "$build/app-dependency-lifecycle"
+"$build/app-dependency-lifecycle"
+# A manifest must never grant its own rights. Only trusted owner-task grants
+# can create scoped semantic handles, all reclaimed at invocation termination.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/capability_access_test.cpp" \
+  -o "$build/capability-access"
+"$build/capability-access"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/NativeApps/include" \
+  "$repo/test/resources/device_api_v2_abi_test.c" -o "$build/device-api-abi"
+"$build/device-api-abi"
+# Approval must require a fresh physical button edge: a held Confirm or a tap
+# initiated under the app's earlier framebuffer cannot authorize hardware.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/consent_input_gate_test.cpp" \
+  -o "$build/consent-input-gate"
+"$build/consent-input-gate"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_event_test.cpp" -o "$build/device-event-test"
 "$build/device-event-test"

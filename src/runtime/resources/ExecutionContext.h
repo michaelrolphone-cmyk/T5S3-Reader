@@ -12,14 +12,13 @@ class ExecutionContext final {
  public:
   enum class State : uint8_t { Terminated, Running, Stopping };
   enum class Resource : uint8_t {
-    Streams = 1, SerialPort = 2, Programmer = 3, DeviceLeases = 4, DeviceEvents = 5
+    Streams = 1, SerialPort = 2, Programmer = 3, DeviceLeases = 4,
+    DeviceEvents = 5, Dependencies = 6
   };
   using Cleanup = void (*)(void* opaque, uint32_t invocation);
   using Stop = void (*)(void* opaque, uint32_t invocation);
   static constexpr size_t kMaxResources = 8;
 
-  // Only firmware providers may use this pointer. It is not an ELF ABI. The
-  // single-app runtime never permits a second context to replace a live one.
   static ExecutionContext* current() { return activeSlot(); }
 
   bool begin() {
@@ -31,7 +30,6 @@ class ExecutionContext final {
     activeSlot() = this;
     return true;
   }
-
   uint32_t id() const { return id_; }
   State state() const { return state_; }
   bool running(uint32_t invocation) const {
@@ -40,15 +38,12 @@ class ExecutionContext final {
 
   bool track(Resource kind, Cleanup cleanup, void* opaque = nullptr, Stop stop = nullptr) {
     if (state_ != State::Running || !cleanup || count_ == kMaxResources) return false;
-    for (size_t i = 0; i < count_; ++i) {
+    for (size_t i = 0; i < count_; ++i)
       if (entries_[i].kind == kind) return false;
-    }
     entries_[count_++] = {kind, cleanup, opaque, stop};
     return true;
   }
 
-  // Completion may unregister while Stopping, but only for the same invocation.
-  // The provider must finish its work and release the lease before untracking.
   bool untrack(Resource kind, uint32_t invocation) {
     if (!invocation || invocation != id_ || state_ == State::Terminated ||
         ending_ || notifying_) return false;
@@ -61,8 +56,6 @@ class ExecutionContext final {
     return false;
   }
 
-  // Stops new acquisitions before notifying jobs. Stop callbacks only set a
-  // cancellation flag; they never free an active worker or call into an ELF.
   void requestStop() {
     if (state_ != State::Running) return;
     state_ = State::Stopping;
@@ -77,13 +70,8 @@ class ExecutionContext final {
   void end() {
     if (state_ == State::Terminated || ending_ || notifying_) return;
     requestStop();
-    // The programmer runs synchronously on the application task. A reentrant
-    // stop during its progress callback cannot join that same stack frame.
-    // Retain ALL dependencies until the provider has returned, released its
-    // serial lease and untracked its job; the provider then calls end() again.
-    for (size_t i = 0; i < count_; ++i) {
+    for (size_t i = 0; i < count_; ++i)
       if (entries_[i].kind == Resource::Programmer) return;
-    }
     ending_ = true;
     const uint32_t invocation = id_;
     while (count_) {
@@ -109,8 +97,6 @@ class ExecutionContext final {
     Stop stop = nullptr;
   };
   Entry entries_[kMaxResources]{};
-  // Shared by every ExecutionContext instance: a new object cannot recycle
-  // an invocation ID previously used by another object in the same process.
   inline static uint32_t nextId_ = 0;
   uint32_t id_ = 0;
   size_t count_ = 0;

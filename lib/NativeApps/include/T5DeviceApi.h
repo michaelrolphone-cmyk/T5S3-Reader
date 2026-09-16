@@ -1,16 +1,13 @@
 #pragma once
-
 #include <stdint.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* RiscRTE semantic device observation, ABI v1. Observation does not authorize
- * hardware access. Device handles identify a generation, not a USB VID/PID.
- * All calls must originate on the active application's execution task.
- */
+/* Device observation ABI v1; it does not authorize hardware access. */
 #define T5_DEVICE_API_VERSION 1u
+#define T5_DEVICE_API_VERSION_2 2u
+#define T5_DEVICE_API_VERSION_3 3u
 #define T5_DEVICE_IDENTITY_MAX 48u
 #define T5_DEVICE_LABEL_MAX 48u
 #define T5_DEVICE_PROVIDER_MAX 32u
@@ -19,48 +16,36 @@ extern "C" {
 
 typedef uint32_t t5_device_handle_t;
 typedef uint32_t t5_device_subscription_t;
+typedef uint32_t t5_device_lease_t;
 typedef int32_t t5_device_result_t;
 
 enum {
-    T5_DEVICE_OK = 0,
-    T5_DEVICE_NEXT = 1,
-    T5_DEVICE_EMPTY = 2,
-    T5_DEVICE_GAP = 3,
-    T5_DEVICE_INVALID = -1,
-    T5_DEVICE_DENIED = -2,
-    T5_DEVICE_STALE = -3,
-    T5_DEVICE_LIMIT = -4,
+    T5_DEVICE_OK = 0, T5_DEVICE_NEXT = 1, T5_DEVICE_EMPTY = 2,
+    T5_DEVICE_GAP = 3, T5_DEVICE_INVALID = -1, T5_DEVICE_DENIED = -2,
+    T5_DEVICE_STALE = -3, T5_DEVICE_LIMIT = -4,
+    T5_DEVICE_ERR_BUSY = -5, T5_DEVICE_ERR_UNAVAILABLE = -6,
+};
+enum {
+    T5_DEVICE_RIGHT_READ = 1u, T5_DEVICE_RIGHT_WRITE = 2u,
+    T5_DEVICE_RIGHT_CONFIGURE = 4u,
 };
 
 typedef enum {
-    T5_DEVICE_TRANSPORT_INTERNAL = 0,
-    T5_DEVICE_TRANSPORT_UART = 1,
-    T5_DEVICE_TRANSPORT_USB = 2,
-    T5_DEVICE_TRANSPORT_BLE = 3,
-    T5_DEVICE_TRANSPORT_I2C = 4,
-    T5_DEVICE_TRANSPORT_SPI = 5,
-    T5_DEVICE_TRANSPORT_GPIO = 6,
-    T5_DEVICE_TRANSPORT_LORA = 7,
+    T5_DEVICE_TRANSPORT_INTERNAL = 0, T5_DEVICE_TRANSPORT_UART = 1,
+    T5_DEVICE_TRANSPORT_USB = 2, T5_DEVICE_TRANSPORT_BLE = 3,
+    T5_DEVICE_TRANSPORT_I2C = 4, T5_DEVICE_TRANSPORT_SPI = 5,
+    T5_DEVICE_TRANSPORT_GPIO = 6, T5_DEVICE_TRANSPORT_LORA = 7,
     T5_DEVICE_TRANSPORT_IP = 8,
 } t5_device_transport_t;
-
 typedef enum {
-    T5_DEVICE_DISCOVERED = 0,
-    T5_DEVICE_IDENTIFIED = 1,
-    T5_DEVICE_BOUND = 2,
-    T5_DEVICE_AVAILABLE = 3,
-    T5_DEVICE_BUSY = 4,
-    T5_DEVICE_SUSPENDED = 5,
-    T5_DEVICE_UNAVAILABLE = 6,
-    T5_DEVICE_REMOVED = 7,
-    T5_DEVICE_FAILED = 8,
+    T5_DEVICE_DISCOVERED = 0, T5_DEVICE_IDENTIFIED = 1,
+    T5_DEVICE_BOUND = 2, T5_DEVICE_AVAILABLE = 3, T5_DEVICE_BUSY = 4,
+    T5_DEVICE_SUSPENDED = 5, T5_DEVICE_UNAVAILABLE = 6,
+    T5_DEVICE_REMOVED = 7, T5_DEVICE_FAILED = 8,
 } t5_device_state_t;
-
 typedef enum {
-    T5_DEVICE_ADDED = 0,
-    T5_DEVICE_STATE_CHANGED = 1,
-    T5_DEVICE_CAPABILITY_LOST = 2,
-    T5_DEVICE_REMOVAL = 3,
+    T5_DEVICE_ADDED = 0, T5_DEVICE_STATE_CHANGED = 1,
+    T5_DEVICE_CAPABILITY_LOST = 2, T5_DEVICE_REMOVAL = 3,
 } t5_device_event_kind_t;
 
 typedef struct {
@@ -74,7 +59,6 @@ typedef struct {
     char provider[T5_DEVICE_PROVIDER_MAX];
     char capabilities[T5_DEVICE_CAPABILITY_COUNT][T5_DEVICE_CAPABILITY_MAX];
 } t5_device_info_t;
-
 typedef struct {
     uint64_t sequence;
     t5_device_handle_t device;
@@ -88,26 +72,48 @@ typedef struct {
 typedef struct {
     uint32_t api_version;
     uint32_t struct_size;
-    /* All-or-nothing snapshot. *count receives required capacity on LIMIT;
-     * capacity=0 and out=NULL queries the required capacity. */
+    /* All-or-nothing snapshot; LIMIT reports required capacity through count. */
     t5_device_result_t (*inventory)(t5_device_info_t *out, uint32_t capacity,
                                      uint32_t *count);
-    /* Starts at the current sequence; does not replay previous invocations. */
+    /* Future events only. */
     t5_device_result_t (*subscribe)(t5_device_subscription_t *out);
-    /* Atomic resnapshot and cursor acknowledgement. Mandatory after GAP;
-     * insufficient capacity does NOT acknowledge the loss. */
+    /* Atomic snapshot acknowledges an overflow only if capacity suffices. */
     t5_device_result_t (*snapshot)(t5_device_subscription_t subscription,
                                     t5_device_info_t *out, uint32_t capacity,
                                     uint32_t *count);
-    /* NEXT writes an event; EMPTY means none; GAP requires snapshot before
-     * another event can be read. missed (optional) counts overwritten events. */
     t5_device_result_t (*poll)(t5_device_subscription_t subscription,
                                 t5_device_event_t *out, uint64_t *missed);
     t5_device_result_t (*unsubscribe)(t5_device_subscription_t subscription);
 } t5_device_api_v1;
 
-const t5_device_api_v1 *t5_device_get_api(uint32_t version);
+/* ABI v2 retains the byte-for-byte v1 prefix. Authorization does not grant a
+ * physical bus session; a provider must separately enforce access for I/O. */
+typedef struct {
+    t5_device_api_v1 v1;
+    /* A specific generation-qualified device is required; no ambient rights. */
+    t5_device_result_t (*acquire)(const char *capability, t5_device_handle_t device,
+                                   uint32_t rights, t5_device_lease_t *out);
+    /* Failure returns STALE and resets output device when provided. */
+    t5_device_result_t (*validate)(t5_device_lease_t lease, uint32_t rights,
+                                    t5_device_handle_t *device);
+    t5_device_result_t (*release)(t5_device_lease_t lease);
+} t5_device_api_v2;
 
+/* ABI v3 appends explicit, synchronous firmware-owned consent to the unchanged
+ * v2 prefix. request never grants silently from an SD manifest; an unsigned
+ * local app is identified as unverified on the prompt. Back, Home, Power,
+ * rejection or timeout return DENIED and no handle. A successful user choice
+ * grants only this invocation, exact device generation, capability and rights.
+ * Already granted rights may be acquired without another prompt. These grants
+ * do not authorize I/O through legacy GPS/USB interfaces until migrated. */
+typedef struct {
+    t5_device_api_v2 v2;
+    t5_device_result_t (*request)(const char *capability, t5_device_handle_t device,
+                                   uint32_t rights, t5_device_lease_t *out);
+} t5_device_api_v3;
+
+/* Get an exact version, then check api_version and struct_size before casting. */
+const t5_device_api_v1 *t5_device_get_api(uint32_t version);
 #ifdef __cplusplus
 }
 #endif

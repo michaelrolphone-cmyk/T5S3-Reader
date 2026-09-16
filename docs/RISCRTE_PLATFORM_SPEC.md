@@ -88,6 +88,14 @@ Each event SHALL have a monotonic sequence, an opaque generation-qualified devic
 
 Event storage SHALL be bounded. Consumers SHALL use independently maintained cursors, be told explicitly when retained events were overwritten, and re-enumerate the current registry before resuming after a gap. A consumer MUST NOT interpret the retained suffix as a complete event history after an overflow. Observation alone SHALL NOT grant access to a device; acquiring and using capability leases remains subject to execution-context identity and rights. The initial [Device Observation API](DEVICE_OBSERVATION_API.md) exposes the internal owner-task journal to authenticated ELF invocations through copied records and context-owned subscriptions, not direct registry access or a complete cross-task event bus.
 
+### Application capability requirements and launch gating
+
+The [Application Capability Requirements](APP_CAPABILITY_REQUIREMENTS.md) implementation validates bounded, versioned mandatory/optional manifest declarations and resolves available, versioned semantic providers **before mapping an ELF**. Mandatory dependencies are transactionally bound to a unique execution context before the load and released before unload, with all-or-nothing rollback. A declaration or dependency binding grants no access to hardware. Legacy undeclared apps remain compatible. The complete architecture still requires provider activation, trusted permissions and enforcement of public semantic access handles by each provider.
+
+### Semantic access authorization — implementation boundary
+
+The [Device Capability Access API](DEVICE_CAPABILITY_ACCESS_API.md) extends observation with versioned, default-deny access handles. Only trusted firmware policy/UI may grant a scoped right for one device generation and active execution context; an SD manifest cannot issue or expand grants. The firmware checks owner, rights and device generation on validation and revokes handles when a grant or device disappears or the invocation ends. The additive v3 `request` entry invokes a firmware-owned, one-run permission prompt and rechecks invocation and device identity after approval. Approval requires a fresh physical Confirm press; touch is deny-only until reliable new-touch detection exists. This is **transient consent, not end-to-end hardware permission enforcement**: signed package identity, independently authenticated UI, provider activation and access-handle enforcement inside older USB/GNSS APIs remain outstanding. No new work may mistake an inventory record or mandatory dependency lease for authorization.
+
 ## Specification tree
 
 ### A. Platform contract and portability
@@ -101,6 +109,7 @@ Event storage SHALL be bounded. Consumers SHALL use independently maintained cur
 ### B. Application and execution model
 
 - [Application Execution Context Architecture](APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md) — authoritative for execution contexts, universal object ownership, trusted system UI, private app storage, resource quotas and manifest derivation. **Required reading for new app work.**
+- [Application Capability Requirements](APP_CAPABILITY_REQUIREMENTS.md) — manifest requirements, generic versioned resolution and invocation-owned launch bindings, with explicit remaining limitations
 - [Scene Runtime Architecture](SCENE_RUNTIME_ARCHITECTURE.md)
 - [Service Runtime Architecture](SERVICE_RUNTIME_ARCHITECTURE.md)
 - [RiscRTE Applications](NATIVE_APPS.md) — current application ABI/framework and compatibility identifiers
@@ -122,7 +131,8 @@ Streams/pipes are the preferred reusable path for serial, files, downloads, GNSS
 
 The Unified Device/Peripheral Registry, Capability Resolver and Unified Resource Ownership are parent abstractions for transport-specific specs.
 
-- [Device Observation API](DEVICE_OBSERVATION_API.md) — current authenticated inventory/event ABI and acceptance gaps
+- [Device Observation API](DEVICE_OBSERVATION_API.md) — authenticated inventory/event ABI and acceptance gaps
+- [Device Capability Access API](DEVICE_CAPABILITY_ACCESS_API.md) — default-deny semantic rights, v2/v3 ABI, transient consent and incomplete provider enforcement
 - [Bluetooth Sensor Architecture](BLUETOOTH_SENSOR_ARCHITECTURE.md)
 - [GPS Driver](GPS_DRIVER.md)
 - [USB OTG Host Architecture](USB_OTG_HOST_ARCHITECTURE.md)

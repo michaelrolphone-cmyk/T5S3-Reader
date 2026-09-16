@@ -7,7 +7,15 @@
 #undef main
 #pragma GCC diagnostic pop
 #include <T5DeviceApi.h>
+#include "native/NativeDeviceConsent.h"
 #include "runtime/capabilities/DeviceEventSubscriptions.h"
+
+// This isolated observation-only host binary has no display. The v3 consent
+// interface must not be entered by v1 inventory and subscription calls.
+bool nativeDeviceConsentPrompt(const RuntimeDevices::DeviceInfo&, const char*, uint32_t) {
+  assert(false && "observation must never request consent");
+  return false;
+}
 
 int main() {
   auto& registry = RuntimeDevices::systemRegistry();

@@ -43,6 +43,11 @@
 #error "T5S3 native apps require the S3 PSRAM loader configuration"
 #endif
 
+// Firmware-only owner-task hooks; never exported to application ELFs.
+extern bool native_app_capabilities_ready(const char *sd_path);
+extern bool native_app_capabilities_bind(const char *sd_path);
+extern void native_app_capabilities_release(void);
+
 static const char *TAG = "sd_elf_launcher";
 static atomic_flag s_running = ATOMIC_FLAG_INIT;
 static const char *s_current_path = NULL;
@@ -67,6 +72,11 @@ esp_err_t launch_elf_app(const char *sd_path)
     esp_err_t result = native_app_register_sd_vfs();
     if (result != ESP_OK) {
         ESP_LOGE(TAG, "SD VFS unavailable: %s", esp_err_to_name(result));
+        goto done;
+    }
+    if (!native_app_capabilities_ready(sd_path) || !native_app_capabilities_bind(sd_path)) {
+        ESP_LOGE(TAG, "Required application dependencies unavailable or could not be bound: %s", sd_path);
+        result = ESP_ERR_NOT_SUPPORTED;
         goto done;
     }
     static const struct esp_elfsym host_symbols[] = {
@@ -138,6 +148,7 @@ esp_err_t launch_elf_app(const char *sd_path)
 
 close_module:
     s_current_path = NULL;
+    native_app_capabilities_release();  // Dependency lifetimes end before ELF unload.
     (void)dlerror();
     if (dlclose(handle) != 0) {
         const char *close_error = dlerror();
@@ -146,6 +157,7 @@ close_module:
         result = ESP_FAIL;
     }
 done:
+    native_app_capabilities_release();  // Idempotent for preflight/dlopen/registration errors.
     s_current_path = NULL;
     atomic_flag_clear_explicit(&s_running, memory_order_release);
     return result;

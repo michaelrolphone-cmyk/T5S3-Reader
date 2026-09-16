@@ -10,6 +10,7 @@
 #include "T5BatteryApi.h"
 #include "T5ButtonRemapApi.h"
 #include "T5CacheApi.h"
+#include "T5DeviceApi.h"
 #include "T5DriverManagerApi.h"
 #include "T5FileBrowserApi.h"
 #include "T5FontApi.h"
@@ -32,6 +33,9 @@
 #include "T5UsbApi.h"
 #include "T5WebServerApi.h"
 
+extern int test_capability_gate_allowed;
+extern int test_capability_bind_allowed;
+extern int test_capability_bind_calls;
 static int mode, opens, closes, calls, handle_storage;
 static const char *pending;
 static bool running;
@@ -92,6 +96,22 @@ int main(void)
                           ? ESP_ERR_NOT_FOUND : ESP_FAIL));
         }
     }
+    // Preflight denial cannot allocate bindings; binding denial must reject
+    // BEFORE registering symbols, dlopen or app_main. Neither locks next launch.
+    test_capability_gate_allowed = 0;
+    opens = closes = calls = test_capability_bind_calls = 0;
+    assert(launch_elf_app("/sd/apps/game.elf") == ESP_ERR_NOT_SUPPORTED);
+    assert(opens == 0 && closes == 0 && calls == 0 && test_capability_bind_calls == 0);
+    assert(native_app_current_path() == NULL);
+    test_capability_gate_allowed = 1;
+    test_capability_bind_allowed = 0;
+    assert(launch_elf_app("/sd/apps/game.elf") == ESP_ERR_NOT_SUPPORTED);
+    assert(opens == 0 && closes == 0 && calls == 0 && test_capability_bind_calls == 1);
+    assert(native_app_current_path() == NULL);
+    test_capability_bind_allowed = 1;
+    mode = 0;
+    assert(launch_elf_app("/sd/apps/game.elf") == ESP_OK);
+    assert(opens == 1 && closes == 1 && calls == 1 && test_capability_bind_calls == 2);
     return 0;
 }
 
@@ -101,13 +121,15 @@ int esp_elf_register_symbol(const struct esp_elfsym *s)
     assert(s);
     int count = 0;
     bool serial_port_found = false;
+    bool device_found = false;
     while (s[count].name) {
         assert(s[count].sym);
         if (strcmp(s[count].name, "t5_serial_port_get_api") == 0) serial_port_found = true;
+        if (strcmp(s[count].name, "t5_device_get_api") == 0) device_found = true;
         ++count;
     }
-    assert(count >= 23);
-    assert(serial_port_found);
+    assert(count >= 24);
+    assert(serial_port_found && device_found);
     const struct esp_elfsym *entry = s;
     while (entry->name && strcmp(entry->name, "snprintf") != 0) ++entry;
     assert(entry->name && entry->sym);
@@ -142,5 +164,4 @@ const t5_time_zone_api_v1 *t5_time_zone_get_api(uint32_t version) { (void)versio
 const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_usb_api_v1 *t5_usb_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_web_server_api_v1 *t5_web_server_get_api(uint32_t version) { (void)version; return NULL; }
-
 const t5_stream_api_v1 *t5_stream_get_api(uint32_t version) { (void)version; return NULL; }
