@@ -19,19 +19,18 @@ int main() {
   DeviceHandle usbId = 0;
   assert(registry.add(port, State::Available, &usbId));
 
-  AppCapabilityRequirements requires{};
-  assert(addRequirement(&requires, "location.position", ">=1"));
-  assert(addRequirement(&requires, "serial.port", ">=2"));
+  AppCapabilityRequirements mandatory{};
+  assert(addRequirement(&mandatory, "location.position", ">=1"));
+  assert(addRequirement(&mandatory, "serial.port", ">=2"));
   size_t failed = 99;
   AppDependencyBindings bindings;
-  assert(bindings.bind(registry, requires, 101, &failed));
-  assert(failed == requires.count && bindings.count() == 2 && registry.leaseCount() == 2);
+  assert(bindings.bind(registry, mandatory, 101, &failed));
+  assert(failed == mandatory.count && bindings.count() == 2 && registry.leaseCount() == 2);
   assert(bindings.valid(registry, 101));
   assert(!bindings.valid(registry, 102));
-  assert(!bindings.bind(registry, requires, 102));
+  assert(!bindings.bind(registry, mandatory, 102));
 
   // Dependencies are observational, not access rights or physical reservations.
-  // Both an exclusive USB owner and a separate shared GNSS consumer must work.
   LeaseHandle physical = 0;
   assert(registry.acquire("serial.port", 101, &physical, usbId, Mode::Exclusive) == Result::Ok);
   assert(registry.valid(physical, 101));
@@ -41,44 +40,42 @@ int main() {
   assert(registry.release(physical, 101) == Result::Ok);
   assert(bindings.valid(registry, 101));
 
-  // Device removal revokes the exact generation. An identical replacement
-  // cannot resurrect a stale dependency binding.
+  // Removal revokes the exact generation; replug cannot resurrect a lease.
   assert(registry.remove(usbId));
   assert(!bindings.valid(registry, 101));
   assert(registry.add(port, State::Available, &usbId));
   assert(!bindings.valid(registry, 101));
-  assert(registry.leaseCount() == 1);  // GNSS dependency still live.
-  bindings.release(registry, 102);    // Wrong owner cannot discard it.
+  assert(registry.leaseCount() == 1);
+  bindings.release(registry, 102);
   assert(registry.leaseCount() == 1);
   bindings.release(registry, 101);
   bindings.release(registry, 101);
   assert(registry.leaseCount() == 0);
 
-  // Partial failure must release all preceding dependencies. A missing second
-  // provider and an API-floor mismatch leave no leaked resource handles.
+  // Partial failures release all preceding dependencies.
   assert(registry.remove(usbId));
-  assert(!bindings.bind(registry, requires, 102, &failed));
+  assert(!bindings.bind(registry, mandatory, 102, &failed));
   assert(failed == 1 && registry.leaseCount() == 0 && bindings.count() == 0);
   const uint16_t oldVersion[] = {1};
   const Descriptor outdated{"usb.session.2", "USB", "other.cdc", Transport::Usb,
                             portCaps, 1, 10, oldVersion};
   assert(registry.add(outdated, State::Available, &usbId));
-  assert(resolveRequirement(registry, requires.entries[1]) == RequirementResult::ApiTooOld);
-  assert(!bindings.bind(registry, requires, 102, &failed));
+  assert(resolveRequirement(registry, mandatory.entries[1]) == RequirementResult::ApiTooOld);
+  assert(!bindings.bind(registry, mandatory, 102, &failed));
   assert(failed == 1 && registry.leaseCount() == 0);
   assert(registry.remove(usbId));
   assert(registry.add(port, State::Available, &usbId));
 
-  // A full lease table triggers rollback even when preflight saw both devices.
+  // Exhaustion after the first claim must roll back that claim, not leak it.
   LeaseHandle filler[kMaxLeases]{};
   for (size_t i = 0; i < kMaxLeases - 1; ++i)
     assert(registry.acquire("location.position", 900, &filler[i], gpsId) == Result::Ok);
   assert(registry.leaseCount() == kMaxLeases - 1);
-  assert(!bindings.bind(registry, requires, 103, &failed));
+  assert(!bindings.bind(registry, mandatory, 103, &failed));
   assert(failed == 1 && bindings.count() == 0);
   assert(registry.leaseCount() == kMaxLeases - 1);
   assert(registry.releaseOwner(900) == kMaxLeases - 1);
-  assert(bindings.bind(registry, requires, 103));
+  assert(bindings.bind(registry, mandatory, 103));
   assert(bindings.valid(registry, 103));
   bindings.release(registry, 103);
   assert(registry.leaseCount() == 0);
