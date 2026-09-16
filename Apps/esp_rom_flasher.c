@@ -528,15 +528,23 @@ __attribute__((visibility("default"))) void app_main(void) {
     storage = t5_storage_get_api(T5_STORAGE_API_VERSION);
     ui = t5_ui_get_api(T5_UI_API_VERSION);
     usb = t5_usb_get_api(T5_USB_API_VERSION);
+    if (!app || !storage || !ui || !usb) return;
 
+    const size_t app_back_required =
+        offsetof(t5_app_api_v1, set_back_exits_app) + sizeof(app->set_back_exits_app);
     const size_t storage_stream_required =
         offsetof(t5_storage_api_v1, stream_close) + sizeof(storage->stream_close);
-    if (!app || !storage || !ui || !usb || storage->struct_size < storage_stream_required ||
-        !app->dir_open || !app->dir_next || !app->dir_close || !app->poll || !app->millis ||
-        !ui->render_list || !ui->poll_event || !ui->hit_test || !ui->next_index || !ui->previous_index ||
-        !storage->stream_open || !storage->stream_read || !storage->stream_close ||
-        !usb->serial_start || !usb->serial_stop || !usb->serial_set_control_lines ||
-        !usb->serial_read || !usb->serial_write || !usb->serial_read_state) return;
+    if (app->struct_size < app_back_required || storage->struct_size < storage_stream_required ||
+        !app->set_back_exits_app || !app->dir_open || !app->dir_next || !app->dir_close ||
+        !app->poll || !app->millis || !ui->render_list || !ui->poll_event || !ui->hit_test ||
+        !ui->next_index || !ui->previous_index || !storage->stream_open || !storage->stream_read ||
+        !storage->stream_close || !usb->serial_start || !usb->serial_stop ||
+        !usb->serial_set_control_lines || !usb->serial_read || !usb->serial_write ||
+        !usb->serial_read_state) return;
+
+    /* Back remains ordinary app navigation, but cannot set the sticky native-app
+       exit flag while erase/write/verify is in progress. */
+    app->set_back_exits_app(false);
 
     image_count = 0;
     selected = 0;
