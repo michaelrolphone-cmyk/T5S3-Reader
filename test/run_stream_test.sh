@@ -27,6 +27,11 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   "$repo/test/streams/serial_provider_bridge_test.cpp" -o "$build/serial-provider-bridge"
 "$build/serial-provider-bridge"
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/lib/NativeApps/include" -I"$repo/src" \
+  "$repo/src/native/NativeSerialPortBridge.cpp" \
+  "$repo/test/streams/usb_semantic_bridge_test.cpp" -o "$build/usb-semantic-bridge"
+"$build/usb-semantic-bridge"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo/test/streams/stubs" -I"$repo/lib/NativeApps/include" -I"$repo/src" \
   "$repo/src/runtime/streams/StreamRuntime.cpp" "$repo/src/native/NativeStreamBridge.cpp" \
   "$repo/src/native/NativeSerialPortBridge.cpp" "$repo/test/streams/bridge_test.cpp" -o "$build/bridge"
