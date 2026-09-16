@@ -11,6 +11,9 @@ printf '#include "T5StreamApi.h"\n#include "T5SerialPortApi.h"\nint main(void) {
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/NativeApps/include" "$build/abi.c" -o "$build/abi"
 "$build/abi"
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/execution_context_test.cpp" -o "$build/execution-context"
+"$build/execution-context"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo/lib/NativeApps/include" -I"$repo/src" \
   "$repo/test/streams/usb_device_registry_test.cpp" -o "$build/device-registry"
 "$build/device-registry"

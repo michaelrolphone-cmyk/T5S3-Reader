@@ -3,6 +3,7 @@
 #include "NativeUsbDeviceRegistry.h"
 #include <Arduino.h>
 #include "runtime/streams/StreamRuntime.h"
+#include "runtime/resources/ExecutionContext.h"
 #include "network/HttpDownloader.h"
 #include <T5AppApi.h>
 #include <T5UsbApi.h>
@@ -17,6 +18,7 @@
 
 namespace {
 RuntimeStreams::Registry registry;
+RuntimeResources::ExecutionContext invocation;
 SemaphoreHandle_t mutex = nullptr;
 TaskHandle_t scheduler = nullptr;
 uint32_t owner = 0;
@@ -26,7 +28,9 @@ struct Lock {
   Lock() { xSemaphoreTake(mutex, portMAX_DELAY); }
   ~Lock() { xSemaphoreGive(mutex); }
 };
-bool authorized() { return active && t5_app_get_api(T5_APP_ABI_VERSION); }
+bool authorized() {
+  return active && invocation.running(owner) && t5_app_get_api(T5_APP_ABI_VERSION);
+}
 void wake() { if (scheduler) xTaskNotifyGive(scheduler); }
 void schedule(void*) {
   TickType_t wait = portMAX_DELAY;
@@ -248,7 +252,13 @@ int32_t pipeInfo(t5_pipe_t h, t5_pipe_info_t* out) { SESSION_CALL(registry.pipeI
 #undef SESSION_CALL
 const t5_stream_api_v1 api = {T5_STREAM_API_VERSION, sizeof(t5_stream_api_v1), openBuffer, openFile, openUsb,
   openHttp, readStream, writeStream, finish, seek, closeStream, info, connect, pause, cancel, closePipe, pipeInfo};
+
+void releaseStreams(void*, uint32_t id) {
+  if (mutex) { Lock lock; registry.release(id); }
+  wake();
 }
+void releaseSerial(void*, uint32_t) { nativeSerialPortsEnd(); }
+}  // namespace
 
 bool nativeStreamUsbIsBusy() {
   if (!authorized() || !initialize()) return true;
@@ -299,7 +309,10 @@ t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
 }
 
 t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream) {
-  if (!authorized()) return T5_STREAM_DENIED;
+  // A stopping context cannot acquire or use public handles, but firmware
+  // destructors must still be allowed to close its already-owned streams.
+  if (!active || invocation.id() != owner || !t5_app_get_api(T5_APP_ABI_VERSION))
+    return T5_STREAM_DENIED;
   if (!stream || !initialize()) return T5_STREAM_INVALID;
   Lock lock;
   const auto result = registry.close(owner, stream);
@@ -308,17 +321,29 @@ t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream) {
 }
 
 void nativeStreamsBegin() {
-  // Exhaustion fails closed rather than reusing execution-context identity.
-  if (owner != UINT32_MAX) {
-    ++owner;
-    active = true;
-    nativeSerialPortsBegin();
+  // A context identity never aliases a prior invocation, and nested launches
+  // are rejected rather than overwriting live resources from the first app.
+  if (!invocation.begin()) return;
+  owner = invocation.id();
+  active = true;
+  if (!invocation.track(RuntimeResources::ExecutionContext::Resource::Streams, releaseStreams)) {
+    invocation.end();
+    active = false;
+    return;
+  }
+  nativeSerialPortsBegin();
+  if (!invocation.track(RuntimeResources::ExecutionContext::Resource::SerialPort, releaseSerial)) {
+    nativeSerialPortsEnd();
+    invocation.end();
+    active = false;
   }
 }
 void nativeStreamsEnd() {
-  if (active) nativeSerialPortsEnd();
+  // Stop new acquisitions first. Reverse-order firmware destructors close the
+  // serial lease (and its streams), then the remaining pipes/files/HTTP streams.
+  // All cleanup occurs before the caller unloads the ELF.
+  invocation.end();
   active = false;
-  if (mutex) { Lock lock; registry.release(owner); }
 }
 extern "C" const t5_stream_api_v1* t5_stream_get_api(uint32_t version) {
   if (version != T5_STREAM_API_VERSION || !authorized() || !initialize()) return nullptr;
