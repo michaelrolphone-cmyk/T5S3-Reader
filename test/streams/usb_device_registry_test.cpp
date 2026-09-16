@@ -35,14 +35,14 @@ int main() {
   assert(registry.snapshot().id == a.id && registry.epoch() == 0);
   assert(registry.diagnostics().binds == 1); // Status refresh is not a new device.
 
-  // Simulate host events without any read_status between them. Identical
-  // VID/PID/product/interface still means a different physical device.
+  // Host detach notification, also sent during intentional provider teardown.
+  // An identical VID/PID replug is still a different physical device.
   registry.detach();
   assert(registry.epoch() == 1);
   assert(!registry.resolve(a.id, Provider::UsbSerial));
   diag = registry.diagnostics();
-  assert(diag.revocations == 1 && diag.host_detaches == 1);
-  assert(diag.last_cause == RevocationCause::HostDetach && diag.device.id == 0);
+  assert(diag.revocations == 1 && diag.detach_notifications == 1);
+  assert(diag.last_cause == RevocationCause::DetachNotification && diag.device.id == 0);
   registry.detach(); // Redundant teardown cannot double-count or revoke next lease.
   assert(registry.epoch() == 1 && registry.diagnostics().revocations == 1);
   registry.observe(state, 2);
@@ -86,7 +86,7 @@ int main() {
   assert(registry.epoch() == 5);
   diag = registry.diagnostics();
   assert(diag.epoch == registry.epoch() && diag.binds == 5 && diag.revocations == 5);
-  assert(diag.host_detaches == 1 && diag.connection_losses == 1);
+  assert(diag.detach_notifications == 1 && diag.connection_losses == 1);
   assert(diag.host_stops == 1 && diag.binding_changes == 2);
   assert(diag.last_cause == RevocationCause::HostStopped);
   registry.detach();
