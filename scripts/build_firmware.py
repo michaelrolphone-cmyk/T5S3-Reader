@@ -79,10 +79,8 @@ def platformio_command() -> list[str]:
 
 
 def contains_board_marker(firmware: Path, board_id: str) -> bool:
-    # CROSSPOINT_BOARD_ID is an internal compatibility marker emitted by the
-    # current source. Keep accepting it until the separate source-symbol rename.
-    legacy_marker = f"CROSSPOINT_BOARD_ID:{board_id}".encode("ascii")
-    return legacy_marker in firmware.read_bytes()
+    marker = f"RISCRTE_BOARD_ID:{board_id}".encode("ascii")
+    return marker in firmware.read_bytes()
 
 
 def build_board(repo_root: Path, pio: list[str], board: BoardBuild, jobs: int) -> Path:
@@ -98,7 +96,7 @@ def build_board(repo_root: Path, pio: list[str], board: BoardBuild, jobs: int) -
         raise RuntimeError(f"PlatformIO did not create {firmware}")
     if not contains_board_marker(firmware, board.board_id):
         raise RuntimeError(
-            f"{firmware} does not contain the expected board marker for {board.board_id}"
+            f"{firmware} does not contain the expected RiscRTE board marker for {board.board_id}"
         )
     return firmware
 
