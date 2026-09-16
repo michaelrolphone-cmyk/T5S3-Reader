@@ -101,16 +101,17 @@ int main() {
   assert(GnssRecordAdapter::encode(fix, 5, wire));
   assert(u32(wire + RISCRTE_FIX_OFFSET_FIX_MS) == UINT32_MAX - 4);
 
-  // Publish through the provider-only entry point, then through an ordinary
-  // typed pipe; neither the read-only source nor app-visible v2 gains WRITE.
+  // Firmware publisher can continue to ingest while the pipe owns the source
+  // read side; the ELF cannot write to either the read-only source or leased sink.
   t5_stream_t destination = 0;
   assert(registry.recordBuffer(owner, RISCRTE_LOCATION_FIX_SCHEMA,
                                GnssRecordAdapter::Size, 1, &destination) == T5_STREAM_OK);
-  assert(GnssRecordAdapter::publish(registry, owner, source, fix, 5000) == T5_STREAM_OK);
-  assert(registry.finish(owner, source) == T5_STREAM_OK);
   t5_pipe_t pipe = 0;
   assert(registry.connect(owner, source, destination, T5_PIPE_BLOCK_PRODUCER, &pipe) == T5_STREAM_OK);
-  assert(registry.produceRecord(owner, source, wire, sizeof(wire)) == T5_STREAM_BUSY);
+  assert(registry.writeRecord(owner, source, wire, sizeof(wire)) == T5_STREAM_DENIED);
+  assert(registry.writeRecord(owner, destination, wire, sizeof(wire)) == T5_STREAM_BUSY);
+  assert(GnssRecordAdapter::publish(registry, owner, source, fix, 5000) == T5_STREAM_OK);
+  assert(registry.finish(owner, source) == T5_STREAM_OK);
   registry.pump();
   assert(info(registry, owner, pipe).bytes_transferred == GnssRecordAdapter::Size);
   registry.pump();
