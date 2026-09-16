@@ -11,6 +11,7 @@ extern "C" {
  * All calls must originate on the active application's execution task.
  */
 #define T5_DEVICE_API_VERSION 1u
+#define T5_DEVICE_API_VERSION_2 2u
 #define T5_DEVICE_IDENTITY_MAX 48u
 #define T5_DEVICE_LABEL_MAX 48u
 #define T5_DEVICE_PROVIDER_MAX 32u
@@ -19,6 +20,7 @@ extern "C" {
 
 typedef uint32_t t5_device_handle_t;
 typedef uint32_t t5_device_subscription_t;
+typedef uint32_t t5_device_lease_t;
 typedef int32_t t5_device_result_t;
 
 enum {
@@ -30,6 +32,14 @@ enum {
     T5_DEVICE_DENIED = -2,
     T5_DEVICE_STALE = -3,
     T5_DEVICE_LIMIT = -4,
+    T5_DEVICE_BUSY = -5,
+    T5_DEVICE_UNAVAILABLE = -6,
+};
+
+enum {
+    T5_DEVICE_RIGHT_READ = 1u,
+    T5_DEVICE_RIGHT_WRITE = 2u,
+    T5_DEVICE_RIGHT_CONFIGURE = 4u,
 };
 
 typedef enum {
@@ -105,6 +115,27 @@ typedef struct {
                                 t5_device_event_t *out, uint64_t *missed);
     t5_device_result_t (*unsubscribe)(t5_device_subscription_t subscription);
 } t5_device_api_v1;
+
+/* ABI v2 extends v1 at an identical prefix. Obtain through
+ * t5_device_get_api(T5_DEVICE_API_VERSION_2), then cast the returned pointer
+ * after verifying api_version and struct_size. A device grant is issued ONLY
+ * by trusted firmware policy/UI; a manifest requires/optional declaration
+ * NEVER creates one. No public API is provided to grant itself permission.
+ * These scoped leases authorize a semantic right, NOT a physical bus session.
+ * Providers must independently validate the lease before I/O as they migrate.
+ */
+typedef struct {
+    t5_device_api_v1 v1;
+    /* Explicit generation-qualified device from inventory/trusted selection.
+     * There is no ambient or wildcard device authority. */
+    t5_device_result_t (*acquire)(const char *capability, t5_device_handle_t device,
+                                   uint32_t rights, t5_device_lease_t *out);
+    /* Returns STALE on removal, revocation, wrong context, or missing rights.
+     * The output device is reset on every failure. */
+    t5_device_result_t (*validate)(t5_device_lease_t lease, uint32_t rights,
+                                    t5_device_handle_t *device);
+    t5_device_result_t (*release)(t5_device_lease_t lease);
+} t5_device_api_v2;
 
 const t5_device_api_v1 *t5_device_get_api(uint32_t version);
 
