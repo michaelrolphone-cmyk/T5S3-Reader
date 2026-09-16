@@ -15,8 +15,8 @@ t5_serial_port_lease_t leaseHandle = 0;
 t5_stream_t rxHandle = 0;
 t5_stream_t txHandle = 0;
 uint32_t leaseGeneration = 0;
-// Device identity belongs to the runtime provider, not the application lease.
-// Preserve this registry (and its generation) across application invocations.
+// This registry and its generation persist across application contexts. The
+// host owns publication; applications can only snapshot/resolve opaque IDs.
 NativeUsbDevices::Registry devices;
 t5_serial_config_t currentConfig = {115200u, 8u, T5_SERIAL_PARITY_NONE, 1u, T5_SERIAL_FLOW_NONE};
 
@@ -62,8 +62,7 @@ void clearLease(bool stopUsb) {
   rxHandle = txHandle = 0;
   if (stopUsb && usb && usb->serial_stop) usb->serial_stop();
   leaseHandle = 0;
-  // Stopping USB invalidates the device identity regardless of the VID/PID of
-  // whatever enumerates next. Never reset the monotonic generation.
+  // Host stop and app unload invalidate even a device with identical VID/PID.
   devices.detach();
 }
 
@@ -132,25 +131,28 @@ t5_serial_result_t readStatus(t5_serial_port_lease_t lease, t5_serial_port_state
   t5_usb_serial_state_t state{};
   if (!usb->serial_read_state(&state)) return T5_SERIAL_IO;
 
-  // The provider publishes the observed transport state into the runtime
-  // registry; the consumer sees only the resulting opaque device handle.
-  devices.observe(state);
+  // Do NOT observe/re-create identities from this potentially stale snapshot:
+  // DEV_GONE may already have invalidated an old ID on the USB host task while
+  // the legacy USB status still reports the old connected device.
   const auto device = devices.snapshot();
+  const bool bound = device.presence == NativeUsbDevices::Presence::Bound;
   std::memset(out, 0, sizeof(*out));
   out->status = semanticStatus(state.status);
-  out->connected = state.connected;
+  out->connected = state.connected && bound;
+  if (!bound && out->status != T5_SERIAL_STATUS_ERROR && out->status != T5_SERIAL_STATUS_OFF)
+    out->status = T5_SERIAL_STATUS_WAITING;
   out->dtr = state.dtr;
   out->rts = state.rts;
   out->last_error = state.last_error;
   out->rx_bytes = state.rx_bytes;
   out->tx_bytes = state.tx_bytes;
   out->dropped_rx_bytes = state.dropped_rx_bytes;
-  out->device = device.id;
+  out->device = bound && state.connected ? device.id : 0;
   out->config = currentConfig;
-  if (device.presence == NativeUsbDevices::Presence::Bound && device.product[0]) {
+  if (out->device && device.product[0]) {
     std::snprintf(out->device_label, sizeof(out->device_label), "%s  %04X:%04X",
                   device.product, (unsigned)device.vid, (unsigned)device.pid);
-  } else if (device.presence == NativeUsbDevices::Presence::Bound) {
+  } else if (out->device) {
     std::snprintf(out->device_label, sizeof(out->device_label), "Serial device  %04X:%04X",
                   (unsigned)device.vid, (unsigned)device.pid);
   }
@@ -181,6 +183,16 @@ const t5_serial_port_api_v1 api = {
     releasePort,
 };
 } // namespace
+
+// Called by the USB host task, never by a native ELF app. Only publish a
+// supported/claimed serial interface, not every enumerated USB device.
+void nativeUsbProviderAttach(const t5_usb_serial_state_t* state, uint8_t dataInterface) {
+  if (state) devices.observe(*state, dataInterface);
+}
+
+void nativeUsbProviderDetach() {
+  devices.detach();
+}
 
 void nativeSerialPortsBegin() {
   clearLease(false);
