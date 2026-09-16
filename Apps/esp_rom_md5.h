@@ -1,15 +1,27 @@
 #pragma once
 
+#include "T5AppApi.h"
+
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+
+#define ESP_ROM_MD5_SERVICE_INTERVAL (32u * 1024u)
 
 typedef struct {
     uint32_t h[4];
     uint32_t bytes;
     uint32_t used;
+    uint32_t next_service;
     uint8_t block[64];
 } esp_rom_md5_ctx_t;
+
+static void esp_rom_md5_service_runtime(void) {
+    const t5_app_api_v1 *runtime = t5_app_get_api(T5_APP_ABI_VERSION);
+    if (!runtime || !runtime->poll) return;
+    t5_app_input_t input;
+    (void)runtime->poll(&input, 1u);
+}
 
 static uint32_t esp_rom_md5_rotl(uint32_t value, uint32_t bits) {
     return (value << bits) | (value >> (32u - bits));
@@ -75,6 +87,7 @@ static void esp_rom_md5_init(esp_rom_md5_ctx_t *ctx) {
     ctx->h[3] = 0x10325476u;
     ctx->bytes = 0;
     ctx->used = 0;
+    ctx->next_service = ESP_ROM_MD5_SERVICE_INTERVAL;
 }
 
 static void esp_rom_md5_update(esp_rom_md5_ctx_t *ctx, const uint8_t *data, size_t length) {
@@ -90,6 +103,13 @@ static void esp_rom_md5_update(esp_rom_md5_ctx_t *ctx, const uint8_t *data, size
             esp_rom_md5_transform(ctx, ctx->block);
             ctx->used = 0;
         }
+    }
+
+    if (ctx->bytes >= ctx->next_service) {
+        esp_rom_md5_service_runtime();
+        do {
+            ctx->next_service += ESP_ROM_MD5_SERVICE_INTERVAL;
+        } while (ctx->bytes >= ctx->next_service);
     }
 }
 
