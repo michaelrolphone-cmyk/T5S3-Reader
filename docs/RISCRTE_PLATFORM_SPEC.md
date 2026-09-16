@@ -94,7 +94,7 @@ The [Application Capability Requirements](APP_CAPABILITY_REQUIREMENTS.md) implem
 
 ### Semantic access authorization — implementation boundary
 
-The initial [Device Capability Access API](DEVICE_CAPABILITY_ACCESS_API.md) extends observation with a versioned, default-deny access ABI. Only trusted firmware policy/UI may grant a scoped right for a specific device generation and active execution context; an SD manifest cannot issue or expand grants. The firmware checks owner, rights and device generation on each access-handle validation and revokes handles when a grant or device disappears or the invocation ends. It does **not** yet implement the trusted UI that issues grants, cryptographically authenticate package identity or enforce the new access handles inside older USB/GNSS provider APIs. No new work may mistake an inventory record or mandatory dependency lease for authorization.
+The [Device Capability Access API](DEVICE_CAPABILITY_ACCESS_API.md) extends observation with versioned, default-deny access handles. Only trusted firmware policy/UI may grant a scoped right for one device generation and active execution context; an SD manifest cannot issue or expand grants. The firmware checks owner, rights and device generation on validation and revokes handles when a grant or device disappears or the invocation ends. The additive v3 `request` entry invokes a firmware-owned, one-run permission prompt and rechecks invocation and device identity after approval. Approval requires a fresh physical Confirm press; touch is deny-only until reliable new-touch detection exists. This is **transient consent, not end-to-end hardware permission enforcement**: signed package identity, independently authenticated UI, provider activation and access-handle enforcement inside older USB/GNSS APIs remain outstanding. No new work may mistake an inventory record or mandatory dependency lease for authorization.
 
 ## Specification tree
 
@@ -132,7 +132,7 @@ Streams/pipes are the preferred reusable path for serial, files, downloads, GNSS
 The Unified Device/Peripheral Registry, Capability Resolver and Unified Resource Ownership are parent abstractions for transport-specific specs.
 
 - [Device Observation API](DEVICE_OBSERVATION_API.md) — authenticated inventory/event ABI and acceptance gaps
-- [Device Capability Access API](DEVICE_CAPABILITY_ACCESS_API.md) — default-deny semantic rights, v2 ABI, trusted-grant model and incomplete provider/UI enforcement
+- [Device Capability Access API](DEVICE_CAPABILITY_ACCESS_API.md) — default-deny semantic rights, v2/v3 ABI, transient consent and incomplete provider enforcement
 - [Bluetooth Sensor Architecture](BLUETOOTH_SENSOR_ARCHITECTURE.md)
 - [GPS Driver](GPS_DRIVER.md)
 - [USB OTG Host Architecture](USB_OTG_HOST_ARCHITECTURE.md)
