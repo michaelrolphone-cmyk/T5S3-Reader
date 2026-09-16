@@ -99,6 +99,20 @@ int main() {
   assert(binding.subscribe(22, &b, &sb) == T5_STREAM_OK && b && sb);
   assert(devices.count() == 3);
   assert(streams.writeRecord(21, sa, "spoof", 5) == T5_STREAM_DENIED);
+
+  // The public stream API can close a record handle without semantic
+  // unsubscribe. A subsequent reconcile must reclaim its independent device
+  // lease and slot; neither the driver nor other subscribers may leak claims.
+  LocationPositionSubscriptions::Lease closed = 0;
+  t5_stream_t closedStream = 0;
+  assert(binding.subscribe(23, &closed, &closedStream) == T5_STREAM_OK);
+  assert(devices.count() == 4 && subscriptions.streamOpen(23, closed));
+  assert(streams.close(23, closedStream) == T5_STREAM_OK);
+  assert(!subscriptions.streamOpen(23, closed));
+  assert(binding.reconcile() && devices.count() == 3);
+  assert(subscriptions.subscribers() == 2);
+  assert(binding.unsubscribe(23, closed) == T5_STREAM_INVALID);
+
   auto f = fix();
   for (uint32_t i = 0; i < 4; ++i)
     assert(binding.submit(10, f, 1000 + i) == T5_STREAM_OK);
@@ -138,9 +152,29 @@ int main() {
   binding.releaseOwner(24);
   assert(subscriptions.subscribers() == 0);
   assert(devices.count() == 1);
+
+  // Voluntary driver shutdown differs from physical loss: registry leases
+  // remain live unless explicitly released, but old read-only data MUST drain.
+  LocationPositionSubscriptions::Lease draining = 0;
+  t5_stream_t drainStream = 0;
+  assert(binding.subscribe(25, &draining, &drainStream) == T5_STREAM_OK);
+  for (uint32_t i = 0; i < 4; ++i)
+    assert(binding.submit(12, f, 1300 + i) == T5_STREAM_OK);
+  assert(binding.submit(12, f, 1304) == T5_STREAM_AGAIN && binding.hasPending());
+  assert(devices.count() == 2);
+  binding.disconnect();
+  assert(!binding.provider() && !binding.hasPending());
+  assert(devices.count() == 1); // Driver's borrowed grant only.
+  assert(binding.attach(12, 513, nextGrant, &provider) == T5_STREAM_BUSY);
+  for (uint32_t i = 0; i < 4; ++i) readOne(streams, 25, drainStream, 1300 + i);
+  assert(streams.readRecord(25, drainStream, bytes, sizeof(bytes), &count) == T5_STREAM_DISCONNECTED);
+  assert(binding.unsubscribe(25, draining) == T5_STREAM_OK && subscriptions.subscribers() == 0);
+  assert(devices.count() == 1);
+  assert(binding.attach(12, 513, nextGrant, &provider) == T5_STREAM_OK);
   binding.releaseOwner(12);
   assert(!binding.provider() && devices.count() == 1);
   assert(devices.release(nextGrant, 12) == Devices::Result::Ok);
-  streams.release(10); streams.release(12); streams.release(21); streams.release(22); streams.release(24);
-  std::cout << "Location lease binding authorization and revocation tests passed\n";
+  streams.release(10); streams.release(12); streams.release(21); streams.release(22); streams.release(23);
+  streams.release(24); streams.release(25);
+  std::cout << "Location lease binding authorization, drain and revocation tests passed\n";
 }
