@@ -2,6 +2,8 @@
 
 For architecture or implementation work, begin with **[RiscRTE Platform Specification](RISCRTE_PLATFORM_SPEC.md)**. It is the master specification and defines precedence, naming, invariants and the branch map. Then read the **[Platform Capability Roadmap](PLATFORM_CAPABILITY_ROADMAP.md)** section governing the change and the applicable child specification.
 
+**For every new application or application API change, also read [Application Execution Context Architecture](APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md). Trusted RiscRTE resource pickers/system UI and package-private application storage are high-priority requirements for new app work.**
+
 ```text
 RISCRTE_PLATFORM_SPEC.md                         <- START HERE
  |
@@ -15,6 +17,7 @@ RISCRTE_PLATFORM_SPEC.md                         <- START HERE
  |    +-- SECURITY_ARCHITECTURE.md
  |
  +-- Applications / execution
+ |    +-- APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md [authoritative; REQUIRED for new apps]
  |    +-- SCENE_RUNTIME_ARCHITECTURE.md
  |    +-- SERVICE_RUNTIME_ARCHITECTURE.md
  |    +-- NATIVE_APPS.md                          [RiscRTE apps; legacy filename/ABI]
@@ -32,6 +35,19 @@ RISCRTE_PLATFORM_SPEC.md                         <- START HERE
       +-- USB_OTG_HOST_ARCHITECTURE.md
       +-- PROGRAMMER_DEBUGGER_ARCHITECTURE.md
 ```
+
+## Application architecture priorities
+
+New application work follows these rules even while compatibility APIs still expose broader access:
+
+- every invocation converges on a first-class execution context owning its resources;
+- runtime-facing resources converge on generation-safe opaque handles/object ownership;
+- **file/resource/device/network/credential/permission selection should use trusted RiscRTE-owned UI and return scoped authority;**
+- **application-private state should use package-private storage, not new arbitrary shared `/sd` paths;**
+- memory and resource use should be attributable/quota-capable per execution context;
+- build tooling should derive or validate manifest requirements from SDK/API use where practical.
+
+If the reusable trusted picker/private-storage primitive required by a new app is missing, prefer implementing that platform primitive before embedding a private substitute in the app.
 
 ## Roadmap branches awaiting/demanding dedicated specs
 
