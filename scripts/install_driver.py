@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and install a GPS driver package onto a mounted SD card."""
+"""Validate and install a supported driver package onto a mounted SD card."""
 import argparse
 import os
 from pathlib import Path
@@ -32,7 +32,7 @@ def install(package, sd_root):
         raise ValueError("Resolve the existing backup/symlink before updating this driver")
     if target.exists() and (not target.is_dir() or {p.name for p in target.iterdir()} != {"manifest.json", "driver.elf"}):
         raise ValueError("Existing driver directory contains unmanaged files")
-    stage = Path(tempfile.mkdtemp(prefix=".gps-nmea-", dir=drivers))
+    stage = Path(tempfile.mkdtemp(prefix="." + manifest["id"] + "-", dir=drivers))
     try:
         for name, content in (("driver.elf", payload), ("manifest.json", manifest_bytes)):
             with (stage / name).open("wb") as stream:
