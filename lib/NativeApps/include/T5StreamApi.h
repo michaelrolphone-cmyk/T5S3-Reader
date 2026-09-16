@@ -58,7 +58,42 @@ typedef struct {
   t5_stream_result_t (*pipe_close)(t5_pipe_t);
   t5_stream_result_t (*pipe_info)(t5_pipe_t, t5_pipe_info_t *);
 } t5_stream_api_v1;
+/* RiscRTE's v2 API is additive: v1's binary layout and get_api(1) behavior
+ * are retained. The v2 pointer is only valid for this invocation; an ELF must
+ * check version, struct_size and required function pointers before use.
+ * No record metadata pointer is retained, and the schema is copied by value.
+ */
+#define RISCRTE_STREAM_API_VERSION_2 2u
+#define RISCRTE_RECORD_SCHEMA_CAPACITY 64u
+typedef struct {
+  uint32_t struct_size, flags, owner;
+  char schema[RISCRTE_RECORD_SCHEMA_CAPACITY];
+  uint32_t max_record, capacity_records, queued_records, queued_bytes;
+  uint32_t high_water_records, high_water_bytes;
+  int32_t terminal;
+  uint64_t records_read, records_written, bytes_read, bytes_written;
+} riscrte_record_info_v1;
+typedef struct {
+  t5_stream_api_v1 v1; /* ABI prefix: api_version=2 and struct_size=sizeof(v2). */
+  t5_stream_result_t (*open_record_buffer)(const char *schema, uint32_t max_record,
+      uint32_t capacity_records, uint32_t flags, t5_stream_t *out);
+  t5_stream_result_t (*record_read)(t5_stream_t, void *out, uint32_t capacity,
+      uint32_t *size);
+  t5_stream_result_t (*record_write)(t5_stream_t, const void *record, uint32_t size);
+  t5_stream_result_t (*record_info)(t5_stream_t, riscrte_record_info_v1 *out);
+} riscrte_stream_api_v2;
+/* The historical symbol remains the sole exported loader entry point. A v2
+ * caller casts only after checking the returned version and full struct size.
+ * The v1 read/write members reject record handles; v2 record operations reject
+ * byte handles. pipe_connect accepts only matching kinds and exact schemas.
+ */
 const t5_stream_api_v1 *t5_stream_get_api(uint32_t version);
+static inline const riscrte_stream_api_v2 *riscrte_stream_get_api_v2(void) {
+  const t5_stream_api_v1 *base = t5_stream_get_api(RISCRTE_STREAM_API_VERSION_2);
+  if (!base || base->api_version != RISCRTE_STREAM_API_VERSION_2 ||
+      base->struct_size < sizeof(riscrte_stream_api_v2)) return (const riscrte_stream_api_v2 *)0;
+  return (const riscrte_stream_api_v2 *)base;
+}
 #ifdef __cplusplus
 }
 #endif
