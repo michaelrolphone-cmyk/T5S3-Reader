@@ -430,13 +430,20 @@ uint32_t nativeUsbProviderEpoch() {
   return devices.epoch();
 }
 
-// Called only on the owning application task, never the USB host callback or
-// stream pump task. Direct streams and serial sessions use the same capability
-// registry and the same exclusive physical-interface lease.
+// Reconcile even for a stale handle: the owner task must revoke the old
+// physical lease on detach, without ever claiming its replacement for that
+// handle. The USB host and stream scheduler never mutate the unified registry.
 bool nativeUsbDirectStreamClaim(uint32_t expectedEpoch) {
-  if (!authorized() || devices.epoch() != expectedEpoch) return false;
+  if (!authorized()) return false;
+  synchronizeUsbDevice();
+  if (devices.epoch() != expectedEpoch) return false;
   if (!claimPhysicalDevice(UsbConsumer::DirectStream)) return false;
-  return devices.epoch() == expectedEpoch;
+  if (devices.epoch() != expectedEpoch) {
+    synchronizeUsbDevice();
+    releasePhysicalDevice(UsbConsumer::DirectStream);
+    return false;
+  }
+  return true;
 }
 void nativeUsbDirectStreamRelease() {
   releasePhysicalDevice(UsbConsumer::DirectStream);
