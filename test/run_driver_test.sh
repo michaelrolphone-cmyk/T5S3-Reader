@@ -12,8 +12,23 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/lib/NativeApp
   -I"$repo/src" -I"$repo/test/drivers/stubs" "$repo/src/runtime/drivers/GpsDriverModule.cpp" \
   "$repo/test/drivers/module_test.cpp" -ldl -o "$build/test"
 "$build/test" "$build/gps.so" "$build/bad.so"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
+  "$repo/test/programmer/esp_rom_protocol_test.cpp" -o "$build/esp-rom-protocol-test"
+"$build/esp-rom-protocol-test"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" -I"$repo/lib/NativeApps/include" \
+  "$repo/test/programmer/esp_rom_session_test.cpp" -o "$build/esp-rom-session-test"
+"$build/esp-rom-session-test"
+# Compile the production provider itself against test-only Arduino/MD5/WDT
+# shims and mocked capability/stream APIs. Exercises real protocol and cleanup.
+c++ -std=c++17 -Wall -Wextra -Werror \
+  -I"$repo/test/programmer/stubs" -I"$repo/lib/NativeApps/include" -I"$repo/src" \
+  "$repo/src/native/NativeEspRomBridge.cpp" \
+  "$repo/test/programmer/esp_rom_provider_test.cpp" -o "$build/esp-rom-provider-test"
+"$build/esp-rom-provider-test"
 c++ -std=c++17 -Wall -Wextra -Werror -DBOARD_T5S3_PRO \
   -I"$repo/test/drivers/stubs" -I"$repo/src" "$repo/src/runtime/resources/RadioPower.cpp" \
   "$repo/test/drivers/power_test.cpp" -o "$build/power-test"
 "$build/power-test"
+bash "$repo/test/run_usb_cdc_driver_test.sh"
 python3 "$repo/test/drivers/package_test.py"
+python3 "$repo/test/drivers/usb_package_test.py"

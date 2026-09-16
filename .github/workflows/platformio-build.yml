@@ -96,6 +96,11 @@ jobs:
           python scripts/build_driver.py
           bash test/run_native_app_test.sh dist/drivers/gps-nmea/driver.elf
 
+      - name: Build and validate installable USB CDC driver
+        run: |
+          python scripts/build_usb_cdc_driver.py
+          bash test/run_native_app_test.sh dist/drivers/usb-cdc-acm/driver.elf
+
       - name: Build and validate all released apps and manifests
         run: |
           python scripts/build_all_apps.py

@@ -24,7 +24,9 @@
 #include "T5NetworkApi.h"
 #include "T5OpdsApi.h"
 #include "T5OtaApi.h"
+#include "T5ProgramEspRomApi.h"
 #include "T5SdFirmwareApi.h"
+#include "T5SerialPortApi.h"
 #include "T5StatusBarApi.h"
 #include "T5StorageApi.h"
 #include "T5StreamApi.h"
@@ -77,7 +79,9 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_language_get_api),
         ESP_ELFSYM_EXPORT(t5_opds_get_api),
         ESP_ELFSYM_EXPORT(t5_ota_get_api),
+        ESP_ELFSYM_EXPORT(t5_program_esp_rom_get_api),
         ESP_ELFSYM_EXPORT(t5_sd_firmware_get_api),
+        ESP_ELFSYM_EXPORT(t5_serial_port_get_api),
         ESP_ELFSYM_EXPORT(t5_status_bar_get_api),
         ESP_ELFSYM_EXPORT(t5_storage_get_api),
         ESP_ELFSYM_EXPORT(t5_stream_get_api),

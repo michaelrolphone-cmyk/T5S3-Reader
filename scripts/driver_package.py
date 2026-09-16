@@ -1,4 +1,4 @@
-"""Strict package contract shared by the driver builder and offline installer."""
+"""Strict allowlisted package contracts shared by driver builders and installer."""
 import hashlib
 import json
 import re
@@ -7,16 +7,26 @@ import struct
 MAX_ELF_BYTES = 256 * 1024
 REQUIRES = [{"capability": name, "api": 1} for name in ("kernel.serial", "kernel.power", "kernel.clock")]
 PROVIDES = [{"capability": "position.gnss", "api": 1}]
+USB_REQUIRES = [{"capability": "kernel.usb.host", "api": 1}]
+USB_PROVIDES = [{"capability": "usb.class.cdc_acm", "api": 1}]
+CONTRACTS = {
+    "gps-nmea": (REQUIRES, PROVIDES),
+    "usb-cdc-acm": (USB_REQUIRES, USB_PROVIDES),
+}
 
 def validate_manifest(data, *, packaged=False):
-    expected = {"type": "driver", "id": "gps-nmea", "driver_abi": 1,
+    expected = {"type": "driver", "driver_abi": 1,
                 "architecture": "xtensa-esp32s3", "file_name": "driver.elf"}
     for key, value in expected.items():
         if type(data.get(key)) is not type(value) or data[key] != value:
             raise ValueError(f"Invalid driver manifest {key}")
+    driver_id = data.get("id")
+    if not isinstance(driver_id, str) or driver_id not in CONTRACTS:
+        raise ValueError("Unsupported driver ID")
     if not isinstance(data.get("version"), str) or not re.fullmatch(r"\d+\.\d+\.\d+", data["version"]):
         raise ValueError("Invalid driver version")
-    if data.get("requires") != REQUIRES or data.get("provides") != PROVIDES:
+    required, provided = CONTRACTS[driver_id]
+    if data.get("requires") != required or data.get("provides") != provided:
         raise ValueError("Unsupported driver capability contract")
     if packaged:
         if not re.fullmatch(r"[a-f0-9]{64}", str(data.get("sha256", ""))):

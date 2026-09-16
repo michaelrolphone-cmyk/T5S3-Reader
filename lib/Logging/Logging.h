@@ -66,6 +66,9 @@ bool sanitizeLogHead();
 class MySerialImpl : public Print {
  public:
   void begin(unsigned long baud) { logSerial.begin(baud); }
+  // USB OTG and debug HWCDC share the ESP32-S3 PHY. Forward shutdown as well
+  // as startup so the USB host can release the debug CDC before claiming OTG.
+  void end() { logSerial.end(); }
 
   // Support boolean conversion for compatibility with code like:
   //   if (Serial) or while (!Serial)
