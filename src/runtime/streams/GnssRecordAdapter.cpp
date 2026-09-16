@@ -1,9 +1,11 @@
 #include "GnssRecordAdapter.h"
 #include "LocationPositionSubscriptions.h"
+#include "CooperativeGnssProducer.h"
 
-// Keep the provider-side record adapter and bounded subscriber coordinator in
-// both firmware builds. They remain firmware-only until the Unified Device
-// Registry's authorization and owner-task producer controls are connected.
+// Compile the provider-side wire format, bounded subscriber coordinator and
+// cooperative pending-record state in both firmware targets. These are
+// firmware-only until Device Registry authorization and the owner-task driver
+// polling bridge are connected; compilation alone is not a live GPS feed.
 static_assert(RuntimeStreams::GnssRecordAdapter::Size <= T5_STREAM_CHUNK,
               "GNSS record must fit one atomic stream transfer");
 static_assert(RuntimeStreams::LocationPositionSubscriptions::MaxSubscribers <=
