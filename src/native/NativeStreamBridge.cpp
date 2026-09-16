@@ -1,5 +1,6 @@
 #include "NativeStreamBridge.h"
 #include "NativeSerialPortBridge.h"
+#include "NativeUsbDeviceRegistry.h"
 #include <Arduino.h>
 #include "runtime/streams/StreamRuntime.h"
 #include "network/HttpDownloader.h"
@@ -111,28 +112,37 @@ int32_t openFile(const char* path, uint32_t mode, t5_stream_t* out) {
   }
   return r;
 }
-struct Usb { const t5_usb_api_v1* api; };
+struct Usb {
+  const t5_usb_api_v1* api;
+  uint32_t epoch;
+};
+bool usbRevoked(const Usb& u) {
+  return u.epoch == UINT32_MAX || nativeUsbProviderEpoch() != u.epoch;
+}
 int32_t usbState(Usb& u) {
+  if (usbRevoked(u)) return T5_STREAM_DISCONNECTED;
   t5_usb_serial_state_t s{};
   if (!u.api->serial_read_state(&s)) return T5_STREAM_IO;
+  // The host may report stale status across DEV_GONE; its publication epoch
+  // always wins, including when an identical replacement attached between polls.
+  if (usbRevoked(u)) return T5_STREAM_DISCONNECTED;
   if (s.status == T5_USB_STATUS_ERROR) return T5_STREAM_IO;
-  // A physical unplug is transient while the USB host session is still running.
-  // Returning DISCONNECTED here would make StreamRuntime permanently terminalize
-  // this handle, preventing it from receiving from a replacement/replugged device.
   if (s.status == T5_USB_STATUS_OFF) return T5_STREAM_DISCONNECTED;
-  if (!s.connected) return T5_STREAM_AGAIN;
+  if (!s.connected) return T5_STREAM_AGAIN; // Initial enumeration is not loss.
   return s.status == T5_USB_STATUS_READY ? T5_STREAM_OK : T5_STREAM_AGAIN;
 }
 int32_t usbRead(void* ctx, void* data, uint32_t size, uint32_t* count) {
   auto& u = *static_cast<Usb*>(ctx);
-  auto r = usbState(u); if (r < 0) return r;
+  auto r = usbState(u); if (r != T5_STREAM_OK) return r;
   *count = u.api->serial_read(static_cast<uint8_t*>(data), size);
+  if (usbRevoked(u)) { *count = 0; return T5_STREAM_DISCONNECTED; }
   return *count ? T5_STREAM_OK : T5_STREAM_AGAIN;
 }
 int32_t usbWrite(void* ctx, const void* data, uint32_t size, uint32_t* count) {
   auto& u = *static_cast<Usb*>(ctx);
   auto r = usbState(u); if (r != T5_STREAM_OK) return r;
   *count = u.api->serial_write(static_cast<const uint8_t*>(data), size);
+  if (usbRevoked(u)) { *count = 0; return T5_STREAM_DISCONNECTED; }
   return *count ? T5_STREAM_OK : T5_STREAM_AGAIN;
 }
 void usbClose(void* ctx) {
@@ -148,7 +158,7 @@ int32_t openUsb(t5_stream_t* out) {
   if (!api || !api->supported()) return T5_STREAM_UNSUPPORTED;
   Lock lock;
   if (usbOpen) return T5_STREAM_BUSY;
-  auto* u = new (std::nothrow) Usb{api};
+  auto* u = new (std::nothrow) Usb{api, nativeUsbProviderEpoch()};
   if (!u) return T5_STREAM_LIMIT;
   RuntimeStreams::Provider p{u, usbRead, usbWrite, nullptr, nullptr, usbClose};
   auto r = registry.attach(owner, T5_STREAM_BYTES, T5_STREAM_READ | T5_STREAM_WRITE, p, out);
@@ -251,8 +261,9 @@ t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
 
   Lock lock;
   if (usbOpen) return T5_STREAM_BUSY;
-  auto* reader = new (std::nothrow) Usb{usbApi};
-  auto* writer = new (std::nothrow) Usb{usbApi};
+  const uint32_t sessionEpoch = nativeUsbProviderEpoch();
+  auto* reader = new (std::nothrow) Usb{usbApi, sessionEpoch};
+  auto* writer = new (std::nothrow) Usb{usbApi, sessionEpoch};
   if (!reader || !writer) {
     delete reader;
     delete writer;
