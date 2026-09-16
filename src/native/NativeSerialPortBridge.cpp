@@ -1,5 +1,6 @@
 #include "NativeSerialPortBridge.h"
 #include "NativeStreamBridge.h"
+#include "NativeUsbDeviceRegistry.h"
 #include <T5AppApi.h>
 #include <T5SerialPortApi.h>
 #include <T5UsbApi.h>
@@ -14,9 +15,9 @@ t5_serial_port_lease_t leaseHandle = 0;
 t5_stream_t rxHandle = 0;
 t5_stream_t txHandle = 0;
 uint32_t leaseGeneration = 0;
-uint32_t deviceGeneration = 0;
-bool devicePresent = false;
-t5_serial_device_t deviceHandle = 0;
+// Device identity belongs to the runtime provider, not the application lease.
+// Preserve this registry (and its generation) across application invocations.
+NativeUsbDevices::Registry devices;
 t5_serial_config_t currentConfig = {115200u, 8u, T5_SERIAL_PARITY_NONE, 1u, T5_SERIAL_FLOW_NONE};
 
 bool authorized() {
@@ -55,31 +56,15 @@ bool validLease(t5_serial_port_lease_t lease) {
   return lease != 0 && lease == leaseHandle;
 }
 
-void updateDeviceHandle(bool present) {
-  if (present == devicePresent) return;
-  devicePresent = present;
-  if (!present) {
-    deviceHandle = 0;
-    return;
-  }
-  // Handle generations never wrap: once exhausted, this execution lifetime can
-  // still report connection state but cannot issue an identity that could alias
-  // an older device handle.
-  if (deviceGeneration >= kMaxHandleGeneration) {
-    deviceHandle = 0;
-    return;
-  }
-  ++deviceGeneration;
-  deviceHandle = (deviceGeneration << 1u) | 1u;
-}
-
 void clearLease(bool stopUsb) {
   if (rxHandle) (void)nativeStreamCloseOwned(rxHandle);
   if (txHandle) (void)nativeStreamCloseOwned(txHandle);
   rxHandle = txHandle = 0;
   if (stopUsb && usb && usb->serial_stop) usb->serial_stop();
   leaseHandle = 0;
-  updateDeviceHandle(false);
+  // Stopping USB invalidates the device identity regardless of the VID/PID of
+  // whatever enumerates next. Never reset the monotonic generation.
+  devices.detach();
 }
 
 t5_serial_result_t acquirePort(const t5_serial_port_request_t* request,
@@ -93,9 +78,10 @@ t5_serial_result_t acquirePort(const t5_serial_port_request_t* request,
   if (!request || !lease || !rx || !tx) return T5_SERIAL_INVALID;
   if (request->config.flow_control != T5_SERIAL_FLOW_NONE) return T5_SERIAL_UNSUPPORTED;
   if (!validConfig(&request->config)) return T5_SERIAL_INVALID;
-  if (request->device != 0 && request->device != deviceHandle) return T5_SERIAL_INVALID;
   if (leaseHandle) return T5_SERIAL_BUSY;
   if (leaseGeneration >= kMaxHandleGeneration) return T5_SERIAL_LIMIT;
+  if (request->device && !devices.resolve(request->device, NativeUsbDevices::Provider::UsbSerial))
+    return T5_SERIAL_INVALID;
 
   usb = t5_usb_get_api(T5_USB_API_VERSION);
   if (!usb || !usb->supported || !usb->supported() || !usb->serial_start || !usb->serial_stop ||
@@ -109,6 +95,7 @@ t5_serial_result_t acquirePort(const t5_serial_port_request_t* request,
   const auto streamResult = nativeStreamOpenUsbPair(&newRx, &newTx);
   if (streamResult != T5_STREAM_OK) {
     usb->serial_stop();
+    devices.detach();
     if (streamResult == T5_STREAM_BUSY) return T5_SERIAL_BUSY;
     if (streamResult == T5_STREAM_UNSUPPORTED) return T5_SERIAL_UNSUPPORTED;
     if (streamResult == T5_STREAM_DENIED) return T5_SERIAL_DENIED;
@@ -145,8 +132,11 @@ t5_serial_result_t readStatus(t5_serial_port_lease_t lease, t5_serial_port_state
   t5_usb_serial_state_t state{};
   if (!usb->serial_read_state(&state)) return T5_SERIAL_IO;
 
+  // The provider publishes the observed transport state into the runtime
+  // registry; the consumer sees only the resulting opaque device handle.
+  devices.observe(state);
+  const auto device = devices.snapshot();
   std::memset(out, 0, sizeof(*out));
-  updateDeviceHandle(state.connected != 0);
   out->status = semanticStatus(state.status);
   out->connected = state.connected;
   out->dtr = state.dtr;
@@ -155,14 +145,14 @@ t5_serial_result_t readStatus(t5_serial_port_lease_t lease, t5_serial_port_state
   out->rx_bytes = state.rx_bytes;
   out->tx_bytes = state.tx_bytes;
   out->dropped_rx_bytes = state.dropped_rx_bytes;
-  out->device = deviceHandle;
+  out->device = device.id;
   out->config = currentConfig;
-  if (state.product[0] && state.connected) {
+  if (device.presence == NativeUsbDevices::Presence::Bound && device.product[0]) {
     std::snprintf(out->device_label, sizeof(out->device_label), "%s  %04X:%04X",
-                  state.product, (unsigned)state.vid, (unsigned)state.pid);
-  } else if (state.connected) {
+                  device.product, (unsigned)device.vid, (unsigned)device.pid);
+  } else if (device.presence == NativeUsbDevices::Presence::Bound) {
     std::snprintf(out->device_label, sizeof(out->device_label), "Serial device  %04X:%04X",
-                  (unsigned)state.vid, (unsigned)state.pid);
+                  (unsigned)device.vid, (unsigned)device.pid);
   }
   return T5_SERIAL_OK;
 }
@@ -200,6 +190,7 @@ void nativeSerialPortsBegin() {
 
 void nativeSerialPortsEnd() {
   if (leaseHandle) clearLease(true);
+  devices.detach();
   active = false;
   usb = nullptr;
 }
