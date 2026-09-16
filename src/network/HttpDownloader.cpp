@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <Logging.h>
+#include <T5StreamApi.h>
+#include <esp_task_wdt.h>
 #if __has_include(<NetworkClient.h>)
 #include <NetworkClient.h>
 #include <NetworkClientSecure.h>
@@ -17,14 +19,17 @@ using CrossPointHttpClientSecure = WiFiClientSecure;
 #include <base64.h>
 
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <utility>
 
 #include "runtime/network/NetworkService.h"
+#include "runtime/streams/HttpStreamTransfer.h"
 #include "util/UrlUtils.h"
 
 namespace {
 constexpr uint32_t kNetworkReadyTimeoutMs = 5000;
+constexpr size_t kNativeMetadataLimit = 64 * 1024;
 
 bool waitForNetworkReady() {
   if (RuntimeNetwork::ready()) return true;
@@ -36,14 +41,30 @@ bool waitForNetworkReady() {
   return RuntimeNetwork::ready();
 }
 
+// The native-app invocation is the only task authorized to request its stream
+// API. The HTTP provider's own network task deliberately receives nullptr here
+// and uses the existing HTTPClient implementation below, avoiding recursion.
+const t5_stream_api_v1* invocationStreams(const std::string& username, const std::string& password) {
+  if (!username.empty() || !password.empty()) return nullptr;  // No auth in open_http v1.
+  return t5_stream_get_api(T5_STREAM_API_VERSION);
+}
+
+RuntimeHttpStreams::Hooks streamHooks() {
+  RuntimeHttpStreams::Hooks hooks{};
+  hooks.now_ms = [](void*) -> uint32_t { return millis(); };
+  hooks.cooperate = [](void*) { esp_task_wdt_reset(); delay(5); };
+  return hooks;
+}
+
 class StringWriteStream final : public Stream {
  public:
-  explicit StringWriteStream(std::string& output) : output_(output) { output_.clear(); }
+  explicit StringWriteStream(std::string& output, size_t limit = std::numeric_limits<size_t>::max())
+      : output_(output), limit_(limit) { output_.clear(); }
 
   size_t write(uint8_t byte) override { return write(&byte, 1); }
 
   size_t write(const uint8_t* buffer, size_t size) override {
-    if (!buffer || size == 0) return 0;
+    if (!buffer || size == 0 || output_.size() > limit_ || size > limit_ - output_.size()) return 0;
     output_.append(reinterpret_cast<const char*>(buffer), size);
     return size;
   }
@@ -55,6 +76,7 @@ class StringWriteStream final : public Stream {
 
  private:
   std::string& output_;
+  size_t limit_;
 };
 
 class FileWriteStream final : public Stream {
@@ -65,15 +87,11 @@ class FileWriteStream final : public Stream {
   size_t write(uint8_t byte) override { return write(&byte, 1); }
 
   size_t write(const uint8_t* buffer, size_t size) override {
-    // Write-through stream for HTTPClient::writeToStream with progress tracking.
+    // Legacy firmware download path; native App Store staging uses a pipe.
     const size_t written = file_.write(buffer, size);
-    if (written != size) {
-      writeOk_ = false;
-    }
+    if (written != size) writeOk_ = false;
     downloaded_ += written;
-    if (progress_ && total_ > 0) {
-      progress_(downloaded_, total_);
-    }
+    if (progress_ && total_ > 0) progress_(downloaded_, total_);
     return written;
   }
 
@@ -101,6 +119,20 @@ bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const 
     return false;
   }
 
+  if (const auto* api = invocationStreams(username, password)) {
+    const auto receive = [](void* context, const uint8_t* bytes, uint32_t count) -> bool {
+      return static_cast<Stream*>(context)->write(bytes, count) == count;
+    };
+    const auto result = RuntimeHttpStreams::fetch(api, url.c_str(), streamHooks(), receive, &outContent);
+    if (result != RuntimeHttpStreams::Result::Ok) {
+      LOG_ERR("HTTP", "Native metadata stream failed: %d", static_cast<int>(result));
+      return false;
+    }
+    return true;
+  }
+
+  // Privileged provider task / non-ELF firmware path. The open_http adapter
+  // uses this exact client, retaining the established redirect and TLS policy.
   std::unique_ptr<CrossPointHttpClient> client;
   if (UrlUtils::isHttpsUrl(url)) {
     auto* secureClient = new CrossPointHttpClientSecure();
@@ -143,11 +175,11 @@ bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const 
 
 bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent, const std::string& username,
                               const std::string& password) {
-  // Write directly into the caller's std::string. The old StreamString path
-  // held a complete second copy of large responses before assigning them to
-  // outContent; the GitHub release catalog is now large enough for that peak
-  // allocation to exhaust the ESP32 heap.
-  StringWriteStream stream(outContent);
+  // Release-level aggregate metadata is limited to 64 KiB and each manifest
+  // is validated separately. Bound native string downloads *during* streaming;
+  // the release asset listing instead uses its incremental CatalogReleaseStream.
+  const bool native = invocationStreams(username, password) != nullptr;
+  StringWriteStream stream(outContent, native ? kNativeMetadataLimit : std::numeric_limits<size_t>::max());
   return fetchUrl(url, stream, username, password);
 }
 
@@ -159,6 +191,48 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
     return HTTP_ERROR;
   }
 
+  // Native installers already create a transaction-specific, disposable .part
+  // path. All of its bytes travel via HTTP stream -> lossless pipe -> exclusively
+  // created file stream. The App Store still owns manifest policy and renames.
+  const auto* streams = invocationStreams(username, password);
+  const bool staged = destPath.size() >= 6 && destPath.compare(destPath.size() - 5, 5, ".part") == 0;
+  if (streams && staged) {
+    if (destPath.front() != '/' || destPath.compare(0, 4, "/sd/") == 0) return FILE_ERROR;
+    const size_t separator = destPath.find_last_of('/');
+    if (separator == std::string::npos || separator == 0 ||
+        !Storage.ensureDirectoryExists(destPath.substr(0, separator).c_str()) ||
+        Storage.exists(destPath.c_str())) {
+      LOG_ERR("HTTP", "Native staged destination is not new or not writable: %s", destPath.c_str());
+      return FILE_ERROR;
+    }
+    const std::string streamPath = "/sd" + destPath;
+    uint64_t transferred = 0;
+    auto reportProgress = [](void* context, uint64_t count) {
+      auto* callback = static_cast<ProgressCallback*>(context);
+      if (*callback) (*callback)(static_cast<size_t>(count), 0);
+    };
+    const auto result = RuntimeHttpStreams::download(streams, url.c_str(), streamPath.c_str(),
+                                                      streamHooks(), reportProgress, &progress, &transferred);
+    if (result != RuntimeHttpStreams::Result::Ok) {
+      LOG_ERR("HTTP", "Native staged transfer failed: %d", static_cast<int>(result));
+      Storage.remove(destPath.c_str());
+      return result == RuntimeHttpStreams::Result::File ? FILE_ERROR : HTTP_ERROR;
+    }
+    // pipe DONE/finish prove the data-plane operation, not the SD artifact's
+    // length. Reopen after file close and verify the byte count independently.
+    HalFile file = Storage.open(destPath.c_str(), O_RDONLY);
+    const bool complete = file.isOpen() && file.fileSize64() == transferred;
+    if (file.isOpen()) file.close();
+    if (!complete) {
+      LOG_ERR("HTTP", "Native staged file differs from pipe transfer count");
+      Storage.remove(destPath.c_str());
+      return FILE_ERROR;
+    }
+    return OK;
+  }
+
+  // Compatibility path for non-native firmware downloads and destinations
+  // that are not transactionally staged. No app-specific transport is added.
   std::unique_ptr<CrossPointHttpClient> client;
   if (UrlUtils::isHttpsUrl(url)) {
     auto* secureClient = new CrossPointHttpClientSecure();
@@ -238,7 +312,6 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
   const size_t downloaded = fileStream.downloaded();
   LOG_DBG("HTTP", "Downloaded %zu bytes", downloaded);
 
-  // Guard against partial writes even if HTTPClient completes.
   if (!fileStream.ok()) {
     LOG_ERR("HTTP", "Write failed during download");
     Storage.remove(destPath.c_str());
@@ -251,7 +324,6 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
     return HTTP_ERROR;
   }
 
-  // Verify download size if known
   if (contentLength > 0 && downloaded != contentLength) {
     LOG_ERR("HTTP", "Size mismatch: got %zu, expected %zu", downloaded, contentLength);
     Storage.remove(destPath.c_str());
