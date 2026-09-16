@@ -189,6 +189,12 @@ int32_t openUsb(t5_stream_t* out) {
   const auto* api = t5_usb_get_api(T5_USB_API_VERSION);
   if (!api || !api->supported || !api->supported()) return T5_STREAM_UNSUPPORTED;
   if (!initialize()) return T5_STREAM_LIMIT;
+  // Do not re-claim and subsequently release an already-owned direct lease
+  // when a caller attempts to open the same device a second time.
+  {
+    Lock lock;
+    if (usbOpen) return T5_STREAM_BUSY;
+  }
   const uint32_t expectedEpoch = nativeUsbProviderEpoch();
   if (!nativeUsbDirectStreamClaim(expectedEpoch))
     return nativeUsbProviderEpoch() != expectedEpoch ? T5_STREAM_DISCONNECTED : T5_STREAM_BUSY;
@@ -213,7 +219,7 @@ int32_t openUsb(t5_stream_t* out) {
       }
     }
   }
-  if (result != T5_STREAM_OK) nativeUsbDirectStreamRelease();
+  if (result != T5_STREAM_OK && result != T5_STREAM_BUSY) nativeUsbDirectStreamRelease();
   return result;
 }
 struct HttpJob { uint32_t owner; t5_stream_t stream; char url[1024]; };
