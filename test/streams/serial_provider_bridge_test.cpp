@@ -6,6 +6,7 @@
 #include "native/NativeSerialPortBridge.h"
 #include "native/NativeStreamBridge.h"
 #include "native/NativeUsbDeviceRegistry.h"
+#include "runtime/resources/ExecutionContext.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -113,6 +114,10 @@ int main() {
   std::strcpy(usbStatus.product, "USB serial");
   usbStatus.vid = 0x1234; usbStatus.pid = 0x5678;
 
+  // Real app launches create this context in NativeStreamBridge before the
+  // serial bridge begins. A USB device lease must never use an arbitrary owner.
+  RuntimeResources::ExecutionContext context;
+  assert(context.begin());
   assert(!t5_serial_port_get_api(T5_SERIAL_PORT_API_VERSION));
   nativeSerialPortsBegin();
   const auto* api = t5_serial_port_get_api(T5_SERIAL_PORT_API_VERSION);
@@ -185,5 +190,7 @@ int main() {
   request.device = kAlternativeDevice;
   assert(api->acquire(&request, &duplicate, &rx, &tx) == T5_SERIAL_INVALID);
   nativeSerialPortsEnd();
+  context.end();
+  assert(!RuntimeResources::ExecutionContext::current());
   std::puts("Production serial provider dispatch, selection and teardown tests passed");
 }
