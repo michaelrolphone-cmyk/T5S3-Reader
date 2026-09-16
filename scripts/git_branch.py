@@ -1,9 +1,12 @@
 """
 PlatformIO pre-build script: inject git branch and short SHA into
-CROSSPOINT_VERSION for development environments.
+RISCRTE_VERSION for development environments.
 
-Results in a version string like:  1.1.0-dev-feat-kosync-xpath-05c6cf8
-Release environments are unaffected; they set CROSSPOINT_VERSION in the ini.
+Results in a version string like:  1.2.8-dev-feat-kosync-xpath-05c6cf8
+Release environments are unaffected; they set RISCRTE_VERSION in the ini.
+
+CROSSPOINT_VERSION is emitted as a temporary source-compatibility alias while
+internal firmware symbols are migrated separately.
 """
 
 import configparser
@@ -73,10 +76,10 @@ def get_base_version(project_dir):
         return '0.0.0'
     config = configparser.ConfigParser()
     config.read(ini_path)
-    if not config.has_option('crosspoint', 'version'):
-        warn('No [crosspoint] version in platformio.ini; base version will be "0.0.0"')
+    if not config.has_option('riscrte', 'version'):
+        warn('No [riscrte] version in platformio.ini; base version will be "0.0.0"')
         return '0.0.0'
-    return config.get('crosspoint', 'version')
+    return config.get('riscrte', 'version')
 
 
 def inject_version(env):
@@ -90,9 +93,14 @@ def inject_version(env):
     branch = get_git_branch(project_dir)
     short_sha = get_git_short_sha(project_dir)
     version_string = f'{base_version}-dev-{branch}-{short_sha}'
+    escaped = f'\\"{version_string}\\"'
 
-    env.Append(CPPDEFINES=[('CROSSPOINT_VERSION', f'\\"{version_string}\\"')])
-    print(f'CrossPoint build version: {version_string}')
+    env.Append(CPPDEFINES=[
+        ('RISCRTE_VERSION', escaped),
+        # Legacy source compatibility until internal symbols are renamed.
+        ('CROSSPOINT_VERSION', escaped),
+    ])
+    print(f'RiscRTE build version: {version_string}')
 
 
 # PlatformIO/SCons entry point — Import and env are SCons builtins injected at runtime.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build board-specific release firmware into the repository firmware directory."""
+"""Build board-specific RiscRTE release firmware into the repository firmware directory."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ BOARD_BUILDS = {
     "epd47": BoardBuild("epd47", "lilygo-epd47-s3-release", "lilygo-epd47-s3"),
 }
 
-FIRMWARE_PREFIX = "corsspoint_lilygo"
+FIRMWARE_PREFIX = "riscrte_lilygo"
 VERSION_PATTERN = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._+-]*$")
 
 
@@ -39,7 +39,7 @@ def positive_int(value: str) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build release firmware for all supported boards."
+        description="Build RiscRTE release firmware for all supported boards."
     )
     parser.add_argument(
         "boards",
@@ -62,12 +62,12 @@ def load_version(platformio_ini: Path) -> str:
     config = configparser.ConfigParser(interpolation=None)
     if not config.read(platformio_ini, encoding="utf-8"):
         raise RuntimeError(f"cannot read {platformio_ini}")
-    if not config.has_option("crosspoint", "version"):
-        raise RuntimeError(f"[crosspoint] version is missing from {platformio_ini}")
+    if not config.has_option("riscrte", "version"):
+        raise RuntimeError(f"[riscrte] version is missing from {platformio_ini}")
 
-    version = config.get("crosspoint", "version").strip()
+    version = config.get("riscrte", "version").strip()
     if not VERSION_PATTERN.fullmatch(version):
-        raise RuntimeError(f"invalid [crosspoint] version for a file name: {version!r}")
+        raise RuntimeError(f"invalid [riscrte] version for a file name: {version!r}")
     return version
 
 
@@ -79,12 +79,12 @@ def platformio_command() -> list[str]:
 
 
 def contains_board_marker(firmware: Path, board_id: str) -> bool:
-    marker = f"CROSSPOINT_BOARD_ID:{board_id}".encode("ascii")
+    marker = f"RISCRTE_BOARD_ID:{board_id}".encode("ascii")
     return marker in firmware.read_bytes()
 
 
 def build_board(repo_root: Path, pio: list[str], board: BoardBuild, jobs: int) -> Path:
-    print(f"\n==> Building {board.name} with environment {board.environment}", flush=True)
+    print(f"\n==> Building RiscRTE {board.name} with environment {board.environment}", flush=True)
     subprocess.run(
         [*pio, "run", "-e", board.environment, "-j", str(jobs)],
         cwd=repo_root,
@@ -96,7 +96,7 @@ def build_board(repo_root: Path, pio: list[str], board: BoardBuild, jobs: int) -
         raise RuntimeError(f"PlatformIO did not create {firmware}")
     if not contains_board_marker(firmware, board.board_id):
         raise RuntimeError(
-            f"{firmware} does not contain the expected board marker for {board.board_id}"
+            f"{firmware} does not contain the expected RiscRTE board marker for {board.board_id}"
         )
     return firmware
 
@@ -143,7 +143,7 @@ def main() -> int:
         print(f"\nError: {error}", file=sys.stderr)
         return 1
 
-    print(f"\nBuilt firmware version {version}:")
+    print(f"\nBuilt RiscRTE firmware version {version}:")
     for output in outputs:
         print(f"  {output.relative_to(repo_root)} ({output.stat().st_size:,} bytes)")
     return 0

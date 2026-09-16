@@ -1,4 +1,4 @@
-name: Cut release
+name: Cut RiscRTE release
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag to create
+        description: RiscRTE tag to create
         required: true
       commit_firmware:
         description: Commit merged bin into firmware/
@@ -18,12 +18,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: cut-release
+  group: cut-riscrte-release
   cancel-in-progress: false
 
 jobs:
   request:
-    name: Validate release request
+    name: Validate RiscRTE release request
     runs-on: ubuntu-latest
     outputs:
       publish: ${{ steps.request.outputs.publish }}
@@ -41,7 +41,7 @@ jobs:
   release:
     needs: request
     if: ${{ needs.request.outputs.publish == 'true' }}
-    name: Build and publish
+    name: Build and publish RiscRTE
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -57,7 +57,7 @@ jobs:
         run: |
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "ver=$VER" >> "$GITHUB_OUTPUT"
-          echo "bin=firmware/corsspoint_lilygo_t5s3_${VER}.bin" >> "$GITHUB_OUTPUT"
+          echo "bin=firmware/riscrte_lilygo_t5s3_${VER}.bin" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -79,7 +79,7 @@ jobs:
       - name: Install PlatformIO
         run: python -m pip install platformio==6.1.19
 
-      - name: Build gh_release
+      - name: Build RiscRTE gh_release
         run: pio run -e gh_release
 
       - name: Build and validate GPS driver package
@@ -91,28 +91,28 @@ jobs:
       - name: Build native ELF apps and manifests
         run: python scripts/build_all_apps.py
 
-      - name: Verify baked version string
+      - name: Verify baked RiscRTE version string
         run: |
           VER="${{ steps.ver.outputs.ver }}"
           BIN=".pio/build/gh_release/firmware.bin"
           if ! grep -a -F -q "$VER" "$BIN"; then
-            echo "firmware.bin does not contain version string $VER"
+            echo "firmware.bin does not contain RiscRTE version string $VER"
             exit 1
           fi
           if grep -a -F -q -- "-dev-" "$BIN"; then
             echo "firmware.bin still contains a -dev- version string; gh_release must stamp a clean version"
             exit 1
           fi
-          echo "Baked version $VER present in firmware.bin"
+          echo "Baked RiscRTE version $VER present in firmware.bin"
 
-      - name: Stage firmware image
+      - name: Stage RiscRTE firmware image
         run: |
           mkdir -p firmware dist
           cp .pio/build/gh_release/firmware-merged.bin "${{ steps.ver.outputs.bin }}"
           cp .pio/build/gh_release/firmware.bin dist/firmware-t5s3-pro.bin
-          cp .pio/build/gh_release/firmware.bin "dist/corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}-app.bin"
-          cp .pio/build/gh_release/firmware-merged.bin "dist/corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}.bin"
-          cp .pio/build/gh_release/firmware.elf "dist/corsspoint_lilygo_t5s3_${{ steps.ver.outputs.ver }}.elf"
+          cp .pio/build/gh_release/firmware.bin "dist/riscrte_lilygo_t5s3_${{ steps.ver.outputs.ver }}-app.bin"
+          cp .pio/build/gh_release/firmware-merged.bin "dist/riscrte_lilygo_t5s3_${{ steps.ver.outputs.ver }}.bin"
+          cp .pio/build/gh_release/firmware.elf "dist/riscrte_lilygo_t5s3_${{ steps.ver.outputs.ver }}.elf"
           ls -lh "${{ steps.ver.outputs.bin }}" dist/
 
       - name: Commit firmware tree
@@ -122,7 +122,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "${{ steps.ver.outputs.bin }}"
           if git diff --cached --quiet; then
-            echo "firmware image already committed"
+            echo "RiscRTE firmware image already committed"
           else
             git commit -m "Add ${{ steps.ver.outputs.bin }}"
             git push origin "HEAD:${GITHUB_REF_NAME}"
@@ -135,7 +135,7 @@ jobs:
             echo "Tag $TAG already exists"
             exit 1
           else
-            git tag -a "$TAG" -m "$TAG"
+            git tag -a "$TAG" -m "RiscRTE $TAG"
             git push origin "$TAG"
           fi
 
@@ -149,7 +149,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          NOTES="T5-4.7-S3 E-Paper Pro markdown reader ${VER}. firmware-t5s3-pro.bin is the OTA/SD app image (0x10000). corsspoint_lilygo_t5s3_${VER}.bin is the merged USB image (0x0) and must not be used for SD/OTA. The matching .elf is a non-flashable debug-symbol image retained for decoding panic backtraces."
+          NOTES="RiscRTE ${VER} firmware for the LilyGo T5S3 E-Paper Pro. firmware-t5s3-pro.bin and riscrte_lilygo_t5s3_${VER}-app.bin are OTA/SD app images (0x10000). riscrte_lilygo_t5s3_${VER}.bin is the merged USB image (0x0) and must not be used for SD/OTA. The matching .elf is a non-flashable debug-symbol image retained for decoding panic backtraces. CrossPoint reader functionality is included as the ebook-reader subsystem of RiscRTE."
 
           mapfile -d '' APP_ELFS < <(
             find dist/apps -type f \( -name '*.elf' -o -name '*.json' \) -print0 | sort -z
@@ -157,8 +157,8 @@ jobs:
 
           ASSETS=(
             "dist/firmware-t5s3-pro.bin"
-            "dist/corsspoint_lilygo_t5s3_${VER}-app.bin"
-            "dist/corsspoint_lilygo_t5s3_${VER}.elf"
+            "dist/riscrte_lilygo_t5s3_${VER}-app.bin"
+            "dist/riscrte_lilygo_t5s3_${VER}.elf"
             "$MERGED"
             "${APP_ELFS[@]}"
             dist/drivers/*.t5driver.zip
@@ -166,7 +166,7 @@ jobs:
             dist/drivers/*.t5driver.elf
           )
 
-          echo "Release assets:"
+          echo "RiscRTE release assets:"
           printf '  %s\n' "${ASSETS[@]}"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
@@ -176,6 +176,6 @@ jobs:
           else
             gh release create "$TAG" \
               "${ASSETS[@]}" \
-              --title "$TAG" \
+              --title "RiscRTE ${VER}" \
               --notes "$NOTES"
           fi

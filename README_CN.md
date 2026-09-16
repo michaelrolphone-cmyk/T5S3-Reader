@@ -1,18 +1,18 @@
-# T5S3 / EPD47 Reader
+# RiscRTE
 
-[![PlatformIO Build](https://github.com/ShallowGreen123/t5s3-reader/actions/workflows/platformio-build.yml/badge.svg)](https://github.com/ShallowGreen123/t5s3-reader/actions/workflows/platformio-build.yml)
+[![RiscRTE PlatformIO Build](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/workflows/platformio-build.yml/badge.svg)](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/workflows/platformio-build.yml)
 
 [English](README.md) | 中文
 
-适用于 **LilyGo T5S3** 与 **LilyGo EPD47 ESP32-S3** 4.7 寸墨水屏设备的电子书阅读器固件。编译时选择板型，每个固件只对应一种硬件。
+**RiscRTE — RISC Runtime Environment** 是适用于 **LilyGo T5S3** 与 **LilyGo EPD47 ESP32-S3** 4.7 寸墨水屏设备的嵌入式运行环境与固件平台。编译时选择板型，每个固件只对应一种硬件。
 
-本项目基于 CrossPoint Reader 的代码和设计继续改造，适配 LilyGo T5S3 与 EPD47 ESP32-S3 硬件，并针对 EPUB 插图、TXT 打开速度、低功耗关机、开机刷新等问题做了优化。
+本项目的电子书阅读能力基于 **CrossPoint Reader** 的代码和设计继续维护。**CrossPoint** 在本仓库中只用于电子书阅读子系统、相关功能，以及尚未迁移的兼容实现标识；整个固件、运行时、构建、版本与发布产物统一使用 **RiscRTE** 名称。
 
 ## 致谢
 
-感谢 [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) 项目。这个固件继承了 CrossPoint 的活动页面架构、阅读器逻辑、设置系统、SD 卡缓存、Web 文件传输等大量基础工作。
+感谢 [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) 项目。RiscRTE 中的阅读器子系统继承了 CrossPoint 的活动页面架构、阅读器逻辑、设置系统、SD 卡缓存、Web 文件传输等大量基础工作。
 
-本仓库不是 CrossPoint 官方项目，也不隶属于 LilyGo。它是面向 T5S3 设备的适配和实验版本。
+本仓库不是 CrossPoint 官方项目，也不隶属于 LilyGo。
 
 ## 使用的设备
 
@@ -60,7 +60,7 @@ python -m pip install platformio==6.1.19
 
 ```bash
 git clone <仓库地址>
-cd z-T5S3-Reader
+cd T5S3-Reader
 ```
 
 ## 如何下载程序到设备
@@ -68,7 +68,7 @@ cd z-T5S3-Reader
 ### 方式一：使用 LILYGO Spark，推荐
 
 1. 下载并打开 [LILYGO Spark](https://lilygo.cc/en-us/pages/lilygo-spark?srsltid=AfmBOoorTB7ptFu2LQNLRnoI2SA0zBGJTN6JpI9J3hmHEkKhBQSmeu0Y)。
-2. 搜索你的设备，并下载 `corsspoint_lilygo_t5s3_e_paper` 程序。
+2. LILYGO Spark 中可能仍以旧名称 `corsspoint_lilygo_t5s3_e_paper` 显示该固件。这个名称仅作为尚未迁移的外部/历史实现引用保留，不是当前 RiscRTE 的产品或发布命名规范。
 
 该方式目前只适用于 T5S3。
 
@@ -109,16 +109,28 @@ pio device monitor -b 115200
 
 ![](./docs/README_img/download1.png)
 
-3. 选择与板型严格对应的完整合并镜像，按镜像说明设置下载地址，然后选择串口并点击 `START`。PlatformIO 生成的 `.pio/build/<环境>/firmware.bin` 和 CI 的 `firmware-<板型>.bin` 是应用镜像，不能作为地址 `0x0` 的完整恢复镜像使用。
+3. 选择与板型严格对应的完整合并镜像，按镜像说明设置下载地址，然后选择串口并点击 `START`。PlatformIO 生成的 `.pio/build/<环境>/firmware.bin` 和 CI 的 `riscrte-<板型>.bin` 是应用镜像，不能作为地址 `0x0` 的完整恢复镜像使用。
 
 ![](./docs/README_img/download2.png)
 
-## 固件升级安全
+## RiscRTE 固件升级安全与产物命名
 
-发布与 CI 产物使用板型限定名称：
+CI 产物使用 RiscRTE 与板型限定名称：
 
-- `firmware-t5s3-pro.bin`
-- `firmware-lilygo-epd47-s3.bin`
+- `riscrte-t5s3-pro.bin`
+- `riscrte-t5s3-pro-merged.bin`
+- `riscrte-lilygo-epd47-s3.bin`
+- `riscrte-lilygo-epd47-s3-merged.bin`
+
+正式 T5S3 版本化发布产物为：
+
+```text
+riscrte_lilygo_t5s3_<version>-app.bin
+riscrte_lilygo_t5s3_<version>.bin
+riscrte_lilygo_t5s3_<version>.elf
+```
+
+其中 `-app.bin` 是 OTA/SD 应用镜像；无 `-app` 的版本化 `.bin` 是从 `0x0` 写入的合并 USB 镜像；`.elf` 是用于调试符号的非刷写文件。`firmware-t5s3-pro.bin` 暂时保留为 OTA/SD 消费方使用的兼容文件名。历史版本中以 `corsspoint_` 开头的文件名仅作为已发布旧产物的引用保留，新版本不得继续使用该命名。
 
 OTA 只会选择当前板型对应的文件。通过 SD 卡升级时，固件还会检查内嵌的板型标记并拒绝另一种板子的固件。如果应用升级失败或中断，请按住开发板的 BOOT 键并按 RESET（或重新连接 USB），释放 BOOT 后通过 PlatformIO 上传正确的环境。
 
@@ -139,7 +151,7 @@ EPD47 目标链接了 GPL-3.0 的 LilyGo 显示驱动。分发 EPD47 二进制�
     sleep.bmp
 ```
 
-固件会在 SD 卡上创建 `.crosspoint/` 目录，用于保存设置、阅读进度、缓存和封面缩略图。若遇到异常缓存或反复崩溃，可以备份后删除 `.crosspoint/` 让系统重新生成。
+当前 CrossPoint Reader 兼容实现仍会在 SD 卡上创建 `.crosspoint/` 目录，用于保存设置、阅读进度、缓存和封面缩略图。该路径属于阅读器的遗留兼容状态，不能只因平台重命名而破坏已有用户数据。若遇到异常缓存或反复崩溃，可以备份后删除 `.crosspoint/` 让系统重新生成。
 
 ### 如何添加字体
 
@@ -229,6 +241,6 @@ EPD47 目标链接了 GPL-3.0 的 LilyGo 显示驱动。分发 EPD47 二进制�
 
 ## 说明
 
-这个固件仍在持续调整中。墨水屏刷新、图片解码、TXT 大文件加载、功耗和电量计都和具体硬件状态有关，如果遇到异常，请尽量提供串口日志、复现文件和操作步骤。
+RiscRTE 仍在持续调整。平台架构与新功能以 `docs/RISCRTE_PLATFORM_SPEC.md` 和 `docs/PLATFORM_CAPABILITY_ROADMAP.md` 为准；CrossPoint Reader 名称只用于电子书阅读子系统及其遗留兼容实现。
 
 再次感谢 CrossPoint Reader 项目和相关开源库作者。

@@ -208,7 +208,7 @@ const char* id() { return "t5s3-pro"; }
 
 const char* displayName() { return "LilyGo T5S3 E-Paper PRO/Lite"; }
 
-const char* firmwareMarker() { return "CROSSPOINT_BOARD_ID:t5s3-pro"; }
+const char* firmwareMarker() { return "RISCRTE_BOARD_ID:t5s3-pro"; }
 
 const BoardCapabilities& capabilities() { return kCapabilities; }
 

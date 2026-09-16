@@ -83,7 +83,7 @@ const char* id() { return "lilygo-epd47-s3"; }
 
 const char* displayName() { return "LilyGo EPD47 ESP32-S3"; }
 
-const char* firmwareMarker() { return "CROSSPOINT_BOARD_ID:lilygo-epd47-s3"; }
+const char* firmwareMarker() { return "RISCRTE_BOARD_ID:lilygo-epd47-s3"; }
 
 const BoardCapabilities& capabilities() { return kCapabilities; }
 

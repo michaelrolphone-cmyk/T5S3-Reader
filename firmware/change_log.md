@@ -1,3 +1,6 @@
+# RiscRTE firmware change log
+
+> Entries below preserve historical artifact filenames exactly as they were published. Names beginning with `corsspoint_` are legacy pre-RiscRTE release references and are not the naming convention for new firmware. New versioned firmware artifacts use the `riscrte_` prefix.
 
 v1.0.1
 - Add screen backlight settings

@@ -1,4 +1,4 @@
-name: PlatformIO Build
+name: RiscRTE PlatformIO Build
 
 on:
   push:
@@ -35,12 +35,12 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: platformio-build-${{ github.ref }}
+  group: riscrte-platformio-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: Build ${{ matrix.environment }}
+    name: Build RiscRTE ${{ matrix.environment }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -48,14 +48,14 @@ jobs:
         include:
           - environment: t5s3-pro
             board_id: t5s3-pro
-            firmware_name: firmware-t5s3-pro.bin
-            merged_firmware_name: firmware-t5s3-pro-merged.bin
-            elf_name: firmware-t5s3-pro.elf
+            firmware_name: riscrte-t5s3-pro.bin
+            merged_firmware_name: riscrte-t5s3-pro-merged.bin
+            elf_name: riscrte-t5s3-pro.elf
           - environment: lilygo-epd47-s3
             board_id: lilygo-epd47-s3
-            firmware_name: firmware-lilygo-epd47-s3.bin
-            merged_firmware_name: firmware-lilygo-epd47-s3-merged.bin
-            elf_name: firmware-lilygo-epd47-s3.elf
+            firmware_name: riscrte-lilygo-epd47-s3.bin
+            merged_firmware_name: riscrte-lilygo-epd47-s3-merged.bin
+            elf_name: riscrte-lilygo-epd47-s3.elf
 
     steps:
       - name: Check out repository
@@ -81,7 +81,7 @@ jobs:
       - name: Install PlatformIO
         run: python -m pip install platformio==6.1.19
 
-      - name: Build firmware
+      - name: Build RiscRTE firmware
         run: pio run -e ${{ matrix.environment }}
 
       - name: Build and validate native ELFs
@@ -100,18 +100,18 @@ jobs:
         run: |
           python scripts/build_all_apps.py
 
-      - name: Stage board-qualified firmware
+      - name: Stage board-qualified RiscRTE firmware
         run: |
-          grep -a -q "CROSSPOINT_BOARD_ID:${{ matrix.board_id }}" ".pio/build/${{ matrix.environment }}/firmware.bin"
+          grep -a -q "RISCRTE_BOARD_ID:${{ matrix.board_id }}" ".pio/build/${{ matrix.environment }}/firmware.bin"
           mkdir -p dist
           cp ".pio/build/${{ matrix.environment }}/firmware.bin" "dist/${{ matrix.firmware_name }}"
           cp ".pio/build/${{ matrix.environment }}/firmware-merged.bin" "dist/${{ matrix.merged_firmware_name }}"
           cp ".pio/build/${{ matrix.environment }}/firmware.elf" "dist/${{ matrix.elf_name }}"
 
-      - name: Upload firmware artifact
+      - name: Upload RiscRTE firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: firmware-${{ matrix.board_id }}
+          name: riscrte-firmware-${{ matrix.board_id }}
           path: |
             dist/${{ matrix.firmware_name }}
             dist/${{ matrix.merged_firmware_name }}
@@ -124,7 +124,7 @@ jobs:
           if-no-files-found: error
 
   host-tests:
-    name: Host parser tests
+    name: RiscRTE host parser tests
     runs-on: ubuntu-latest
 
     steps:

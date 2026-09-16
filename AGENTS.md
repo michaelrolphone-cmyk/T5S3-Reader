@@ -8,7 +8,7 @@ Before making architectural changes, adding or extending platform APIs, applicat
 
 New functionality must follow the RiscRTE target architecture even when current code still implements a legacy design. Do not extend a legacy pattern merely because it is documented. When implementation has not migrated, preserve accurate current-state documentation under explicit current/legacy headings and prepend/update the canonical target specification. Architecture/API changes must update the authoritative specification in the same change.
 
-Use **RiscRTE** for new platform/runtime terminology. `T5S3`, `T5 ePaper S3`, `T5S3 Pro`, and `EPD47` are hardware identifiers. Existing `T5*`, `native_*`, and other historical ABI/source identifiers may be referenced when required to describe current implementation or compatibility; do not propagate them as names for new platform facilities.
+Use **RiscRTE** for the overall firmware, runtime, build/release system, artifacts, versioning, platform terminology, and new platform facilities. **CrossPoint** is reserved for the ebook-reader subsystem/capabilities and for legacy implementation identifiers that have not yet been migrated (for example `CrossPointSettings`, `CrossPointState`, `.crosspoint/`, and temporary `CROSSPOINT_*` compatibility defines). Do not use CrossPoint as a name for the overall firmware or platform. `T5S3`, `T5 ePaper S3`, `T5S3 Pro`, and `EPD47` are hardware identifiers. Existing `T5*`, `native_*`, and other historical ABI/source identifiers may be referenced when required to describe current implementation or compatibility; do not propagate them as names for new platform facilities.
 
 Core rule: new reusable functionality normally belongs in a capability, provider/service, stream, device, job, intent/content handler, package, execution-context facility, or core runtime primitive rather than private application infrastructure. Applications should request semantic capabilities instead of binding directly to concrete hardware implementations where the specification defines such a capability.
 
@@ -19,14 +19,14 @@ Repository: michaelrolphone-cmyk/T5S3-Reader. Release branch: master.
 When the user asks to publish a firmware release, use the existing release-request mechanism. A workflow-dispatch tool is not required. Read docs/RELEASING.md and .github/workflows/release.yml for the current implementation before publishing.
 
 1. Inspect current master, tags/releases, and CI.
-2. Complete requested firmware changes and update [crosspoint] version in platformio.ini.
+2. Complete requested firmware changes and update `[riscrte] version` in platformio.ini.
 3. Commit .github/release-request.json on master with enabled=true, matching v-prefixed tag, and commit_firmware=true unless requested otherwise.
 4. GitHub Actions builds gh_release, RiscRTE ELF apps/manifests, merged firmware when requested, tags, and publishes assets.
 5. Monitor the workflow and verify the published release/assets before reporting success.
 
 Existing tags are rejected. Keep requested version and platformio.ini synchronized. Avoid advancing master during a release with commit_firmware=true. Unrelated source commits do not trigger publishing merely because the request remains enabled.
 
-firmware-t5s3-pro.bin and versioned -app.bin are OTA/SD app images. The merged versioned .bin is a USB image at 0x0 and must not be used for OTA/SD updates. These `t5s3` artifact names are compatibility/build identifiers, not the platform name.
+`firmware-t5s3-pro.bin` is retained as an OTA/SD compatibility filename. Canonical versioned release assets use the `riscrte_...` prefix; versioned `-app.bin` files are OTA/SD app images, while the merged versioned `.bin` is a USB image at 0x0 and must not be used for OTA/SD updates. Hardware identifiers such as `t5s3` are not platform names.
 
 ## Adding or extending apps
 

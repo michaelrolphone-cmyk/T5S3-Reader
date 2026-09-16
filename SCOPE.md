@@ -1,21 +1,23 @@
 # Project Vision & Scope: CrossPoint Reader
 
+> **RiscRTE scope note:** This document preserves the inherited scope of the **CrossPoint Reader** subsystem and its reader-specific design goals. It is not the scope of the overall RiscRTE firmware/runtime. RiscRTE is a general embedded runtime and intentionally supports applications, services, drivers, and platform capabilities that are outside this reader-only scope. CrossPoint should be used here only for the ebook-reader subsystem and inherited reader behavior.
+
 The goal of CrossPoint Reader is to create an efficient, open-source reading experience for the Xteink X4. We believe a
 dedicated e-reader should do one thing exceptionally well: **facilitate focused reading.**
 
 ## 1. Core Mission
 
-To provide a lightweight, high-performance firmware that maximizes the potential of the X4, prioritizing legibility and
+To provide a lightweight, high-performance reader that prioritizes legibility and
 usability over "swiss-army-knife" functionality.
 
 ## 2. Scope
 
 ### In-Scope
 
-*These are features that directly improve the primary purpose of the device.*
+*These are features that directly improve the primary purpose of the reader subsystem.*
 
 * **User Experience:** E.g. User-friendly interfaces, and interactions, both inside the reader and navigating the
-  firmware. This includes things like button mapping, book loading, and book navigation like bookmarks.
+  reader experience. This includes things like button mapping, book loading, and book navigation like bookmarks.
 * **Document Rendering:** E.g. Support for rendering documents (primarily EPUB) and improvements to the rendering
   engine.
 * **Format Optimization:** E.g. Efficiently parsing EPUB (CSS/Images) and other documents within the device's
@@ -34,29 +36,23 @@ usability over "swiss-army-knife" functionality.
 | X3 | The X3 uses a dedicated DS3231 RTC, which maintains accurate time across sleep cycles and can be treated as a reliable wall clock. |
 | X4 | The X4 relies on the ESP32-C3's internal RTC, which drifts significantly during deep sleep. NTP sync could correct this, with an appropriate user experience around connecting to the internet on wake or on demand. This causes some tension with the **Active Connectivity** section below, so please open a discussion about this UX if it's a feature you would find useful. |
 
-### Out-of-Scope
+### Out-of-Scope for CrossPoint Reader
 
-*These items are rejected because they compromise the device's stability or mission.*
+*These items are outside the reader subsystem's focused mission. They are not necessarily out of scope for RiscRTE applications or platform capabilities.*
 
-* **Interactive Apps:** No Notepads, Calculators, or Games. This is a reader, not a PDA.
-* **Active Connectivity:** No RSS readers, News aggregators, or Web browsers. Background Wi-Fi tasks drain the battery
-  and complicate the single-core CPU's execution.
-* **Media Playback:** No Audio players or Audio-books.
-* **Complex Annotation:** No typed out notes. These features are better suited for devices with better input
-  capabilities and more powerful chips.
+* **Interactive Apps:** No Notepads, Calculators, or Games inside the CrossPoint Reader subsystem.
+* **Active Connectivity:** No RSS readers, News aggregators, or Web browsers as reader features. Background connectivity belongs to RiscRTE platform/services where applicable.
+* **Media Playback:** No Audio players or Audio-books as CrossPoint Reader features.
+* **Complex Annotation:** No typed out notes as part of the focused reader experience.
 
 ### In-scope — Technically Unsupported
 
-*These features align with CrossPoint's goals but are impractical on the current hardware or produce poor UX.*
+*These features align with CrossPoint Reader's goals but are impractical on the legacy reader hardware or produce poor UX.*
 
 * **PDF Rendering:** PDFs are fixed-layout documents, so rendering them requires displaying pages as images rather than reflowable text — resulting in constant panning and zooming that makes for a poor reading experience on e-ink.
 
 ## 3. Idea Evaluation
 
-While I appreciate the desire to add new and exciting features to CrossPoint Reader, CrossPoint Reader is designed to be
-a lightweight, reliable, and performant e-reader. Things which distract or compromise the device's core mission will not
-be accepted. As a guiding question, consider if your idea improve the "core reading experience" for the average user,
-and, critically, not distract from that reading experience.
+When evaluating changes specifically to CrossPoint Reader, prioritize a lightweight, reliable, and performant reading experience. Platform-wide RiscRTE features should instead be evaluated against the RiscRTE architecture specifications and capability roadmap.
 
-> **Note to Contributors:** If you are unsure if your idea fits the scope, please open a **Discussion** before you start
-> coding!
+> **Note to Contributors:** For reader-specific changes, use this document together with the RiscRTE master specification. For platform-wide changes, `docs/RISCRTE_PLATFORM_SPEC.md` and `docs/PLATFORM_CAPABILITY_ROADMAP.md` are authoritative.
