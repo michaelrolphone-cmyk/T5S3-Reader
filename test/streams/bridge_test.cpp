@@ -5,6 +5,7 @@
 #include <T5UsbApi.h>
 #include <T5StreamApi.h>
 #include "native/NativeStreamBridge.h"
+#include "native/NativeUsbDeviceRegistry.h"
 #include "network/HttpDownloader.h"
 #include <cassert>
 #include <iostream>
@@ -37,7 +38,7 @@ int main() {
   usb.serial_start = [](const t5_usb_line_coding_t* coding) {
     ++starts; ++configs; usbStatus.line_coding = *coding; return true;
   };
-  usb.serial_stop = [] { ++stops; usbStatus.status = T5_USB_STATUS_OFF; usbStatus.connected = 0; };
+  usb.serial_stop = [] { ++stops; nativeUsbProviderDetach(); usbStatus.status = T5_USB_STATUS_OFF; usbStatus.connected = 0; };
   usb.serial_read_state = [](t5_usb_serial_state_t* out) { *out = usbStatus; return true; };
   usb.serial_set_line_coding = [](const t5_usb_line_coding_t* coding) {
     ++lineChanges; usbStatus.line_coding = *coding; return true;
@@ -93,6 +94,7 @@ int main() {
   usbStatus.status = T5_USB_STATUS_READY; usbStatus.connected = 1;
   std::strcpy(usbStatus.product, "Test UART"); usbStatus.vid = 0x1234; usbStatus.pid = 0x5678;
   assert(serial->acquire(&request, &lease, &rx, &tx) == T5_SERIAL_OK);
+  nativeUsbProviderAttach(&usbStatus, 2); // Host config finished; real data interface 2 is claimed.
   assert(lease && rx && tx && rx != tx && starts == 1);
   assert(serial->acquire(&request, &busyLease, &busyRx, &busyTx) == T5_SERIAL_BUSY);
   assert(api->write(rx, "a", 1, &count) == T5_STREAM_DENIED);
@@ -103,6 +105,18 @@ int main() {
   assert(serial->read_status(lease, &serialState) == T5_SERIAL_OK);
   assert(serialState.status == T5_SERIAL_STATUS_READY && serialState.connected && serialState.device != 0);
   assert(std::string(serialState.device_label).find("Test UART") != std::string::npos);
+  const auto firstDevice = serialState.device;
+
+  // A DEV_GONE callback must invalidate identity BEFORE the stale USB status
+  // changes, and a new identical device must never regain the old ID even if
+  // no status read took place between the host callbacks.
+  nativeUsbProviderDetach();
+  assert(serial->read_status(lease, &serialState) == T5_SERIAL_OK);
+  assert(!serialState.connected && !serialState.device && serialState.status == T5_SERIAL_STATUS_WAITING);
+  nativeUsbProviderAttach(&usbStatus, 2);
+  assert(serial->read_status(lease, &serialState) == T5_SERIAL_OK);
+  assert(serialState.connected && serialState.device && serialState.device != firstDevice);
+
   auto changed = request.config; changed.baud_rate = 9600;
   assert(serial->configure(lease, &changed) == T5_SERIAL_OK && lineChanges == 1);
   changed.flow_control = T5_SERIAL_FLOW_RTS_CTS;
@@ -111,11 +125,16 @@ int main() {
   const auto stale = lease;
   assert(serial->release(lease) == T5_SERIAL_OK && stops == 1);
   assert(serial->configure(stale, &request.config) == T5_SERIAL_CLOSED);
+  request.device = firstDevice;
+  assert(serial->acquire(&request, &busyLease, &busyRx, &busyTx) == T5_SERIAL_INVALID && starts == 1);
+  request.device = 0;
 
   // A new acquisition receives a different generation-safe lease and teardown reclaims it.
   usbStatus.status = T5_USB_STATUS_READY; usbStatus.connected = 1;
   t5_serial_port_lease_t second = 0;
   assert(serial->acquire(&request, &second, &rx, &tx) == T5_SERIAL_OK && second != stale && starts == 2);
+  nativeUsbProviderAttach(&usbStatus, 2);
+  assert(serial->read_status(second, &serialState) == T5_SERIAL_OK && serialState.device != firstDevice);
   assert(api->open_http("https://example.test/file", &h) == 0);
   assert(api->open_http("https://example.test/other", &other) == T5_STREAM_BUSY);
   httpTask(httpContext);
