@@ -1,7 +1,9 @@
 #pragma once
 
 #include "runtime/capabilities/SerialProviderRegistry.h"
+#include "runtime/capabilities/DeviceRegistry.h"
 #include <cstdint>
+#include <cstring>
 
 void nativeSerialPortsBegin();
 void nativeSerialPortsEnd();
@@ -18,5 +20,18 @@ bool nativeUnregisterSerialProvider(const char* id);
 // application owner task, outside the stream registry mutex. The epoch is
 // captured at stream open and prevents rebinding to a replacement device.
 bool nativeUsbDirectStreamClaim(uint32_t expectedEpoch);
-bool nativeUsbDirectStreamBound();
 void nativeUsbDirectStreamRelease();
+
+// The claim hook succeeds during initial enumeration to reserve the session.
+// Data must NOT flow until its physical interface is actually in the common
+// registry and the claim hook has acquired its exclusive lease.
+inline bool nativeUsbDirectStreamBound() {
+  auto& registry = RuntimeDevices::systemRegistry();
+  RuntimeDevices::DeviceInfo info{};
+  for (size_t index = 0; index < RuntimeDevices::kMaxDevices; ++index) {
+    if (registry.at(index, &info) && info.transport == RuntimeDevices::Transport::Usb &&
+        std::strcmp(info.provider, "usb.serial") == 0 &&
+        info.state == RuntimeDevices::State::Available) return true;
+  }
+  return false;
+}
