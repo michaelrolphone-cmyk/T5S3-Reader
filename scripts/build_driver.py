@@ -13,6 +13,27 @@ from native_app_symbols import firmware_exports, validate_imports
 
 ROOT = Path(__file__).resolve().parents[1]
 
+
+def write_release_catalog(directory: Path) -> Path:
+    """Publish one compact index for all streamable driver companions in a release."""
+    drivers = []
+    for manifest_asset in sorted(directory.glob("*.t5driver.json")):
+        elf_asset = manifest_asset.with_suffix(".elf")
+        if not elf_asset.is_file():
+            raise ValueError(f"Missing driver ELF companion for {manifest_asset.name}")
+        manifest = validate_manifest(read_json(manifest_asset.read_bytes()))
+        payload = elf_asset.read_bytes()
+        validate_payload(manifest, payload)
+        drivers.append({"manifest": manifest, "elf_asset": elf_asset.name})
+    if not drivers:
+        raise ValueError("No streamable driver companions found for release catalog")
+
+    catalog = directory / "driver-catalog.json"
+    catalog.write_text(json.dumps({"schema": 1, "drivers": drivers}, separators=(",", ":")) + "\n",
+                       encoding="utf-8")
+    return catalog
+
+
 def build(output, cc=None):
     source = ROOT / "Drivers/gps_nmea"
     manifest = validate_manifest(read_json((source / "manifest.json").read_bytes()))
@@ -55,11 +76,14 @@ def build(output, cc=None):
     elf_asset = output.parent / f"gps-nmea-{manifest['version']}.t5driver.elf"
     manifest_asset.write_text(text)
     elf_asset.write_bytes(payload)
+    catalog = write_release_catalog(output.parent)
 
     print(f"Built {elf} ({len(payload)} bytes)")
     print(f"Installable package: {package}")
     print(f"Driver Manager assets: {manifest_asset.name}, {elf_asset.name}")
+    print(f"Driver catalog: {catalog.name}")
     return package
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
