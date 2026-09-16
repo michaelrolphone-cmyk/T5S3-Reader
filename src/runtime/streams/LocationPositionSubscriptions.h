@@ -36,6 +36,8 @@ class LocationPositionSubscriptions final {
     if (source_.active || subscribers()) return T5_STREAM_BUSY;
     if (sourceGeneration_ == std::numeric_limits<uint32_t>::max()) return T5_STREAM_LIMIT;
     source_ = {providerOwner, deviceEpoch, ++sourceGeneration_, true};
+    lastAccepted_ = false; // A replacement receiver is a new observation epoch.
+    lastRecord_.fill(0);
     *out = (static_cast<uint64_t>(source_.generation) << 32) | providerOwner;
     return T5_STREAM_OK;
   }
@@ -67,6 +69,11 @@ class LocationPositionSubscriptions final {
   // BLOCK_PRODUCER fanout: a full consumer stalls the ENTIRE publication.
   // Nothing is delivered to any subscriber until every live subscriber can
   // accept the record. This avoids duplicate delivery when the caller retries.
+  // Repeated polling of the same GNSS observation also must not fill queues:
+  // ignore only an observation that was PREVIOUSLY ACCEPTED. The sample_ms
+  // field is not part of observation identity; fix_ms, coordinates, validity
+  // flags and optional measurements ARE. A previously backpressured record is
+  // never marked accepted, so it remains eligible for an exact retry.
   // An externally closed/finished consumer is pruned; its old handle is never
   // reused, and stale subscription leases cannot release a replacement.
   int32_t publish(Lease provider, uint32_t currentDeviceEpoch,
@@ -77,6 +84,17 @@ class LocationPositionSubscriptions final {
     uint8_t record[GnssRecordAdapter::Size]{};
     if (!GnssRecordAdapter::encode(observation, sampleMs, record, verifiedFields))
       return T5_STREAM_AGAIN;
+    // Exclude only the changing sample timestamp (offset 4..7). Comparing the
+    // remaining complete wire representation includes fix time and prevents
+    // stale reads of a cached fix from being published as fresh observations.
+    if (lastAccepted_ &&
+        std::memcmp(record, lastRecord_.data(), RISCRTE_FIX_OFFSET_SAMPLE_MS) == 0 &&
+        std::memcmp(record + RISCRTE_FIX_OFFSET_FIX_MS,
+                    lastRecord_.data() + RISCRTE_FIX_OFFSET_FIX_MS,
+                    sizeof(record) - RISCRTE_FIX_OFFSET_FIX_MS) == 0) {
+      ++duplicates_;
+      return T5_STREAM_AGAIN;
+    }
     for (auto& slot : slots_) {
       if (!slot.lease) continue;
       char schema[RecordQueue::MaxSchema]{};
@@ -104,6 +122,8 @@ class LocationPositionSubscriptions final {
       if (result != T5_STREAM_OK) return result; // Contract violation without external serialization.
       ++deliveries_;
     }
+    std::memcpy(lastRecord_.data(), record, sizeof(record));
+    lastAccepted_ = true;
     ++accepted_;
     return T5_STREAM_OK;
   }
@@ -154,6 +174,7 @@ class LocationPositionSubscriptions final {
   uint64_t accepted() const { return accepted_; }
   uint64_t deliveries() const { return deliveries_; }
   uint64_t backpressure() const { return backpressure_; }
+  uint64_t duplicates() const { return duplicates_; }
 
  private:
   struct Source { uint32_t owner = 0, deviceEpoch = 0, generation = 0; bool active = false; };
@@ -161,8 +182,10 @@ class LocationPositionSubscriptions final {
   Registry& registry_;
   Source source_{};
   std::array<Subscriber, MaxSubscribers> slots_{};
+  std::array<uint8_t, GnssRecordAdapter::Size> lastRecord_{};
+  bool lastAccepted_ = false;
   uint32_t sourceGeneration_ = 0, subscriptionGeneration_ = 0;
-  uint64_t accepted_ = 0, deliveries_ = 0, backpressure_ = 0;
+  uint64_t accepted_ = 0, deliveries_ = 0, backpressure_ = 0, duplicates_ = 0;
   Lease providerLease() const {
     return (static_cast<Lease>(source_.generation) << 32) | source_.owner;
   }
