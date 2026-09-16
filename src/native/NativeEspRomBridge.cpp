@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <new>
 
 namespace {
 constexpr uint32_t kMinImage = 0x10000u;
@@ -30,6 +31,8 @@ struct Operation {
   void* context = nullptr;
   t5_program_esp_rom_status_v1 status{};
   uint32_t lastCallback = 0;
+  // Firmware-owned buffers. Allocate the operation on the heap, never on the
+  // native app task stack; no whole-image buffer is created.
   uint8_t raw[EspRomProtocol::kCommandBytes]{};
   uint8_t framed[EspRomProtocol::kFramedBytes]{};
   uint8_t block[EspRomProtocol::kBlock]{};
@@ -39,15 +42,15 @@ struct Operation {
   char digest[33]{};
 
   ~Operation() {
-    // The borrowed firmware stream belongs to the calling app, never to this
-    // provider. A lease owns both serial streams and stops the USB host once.
+    // The borrowed input stream stays with the app. Releasing the serial lease
+    // closes both serial streams and stops the host before the caller returns.
     if (lease && serial) (void)serial->release(lease);
   }
   bool fail(t5_program_esp_rom_result_t code, const char* text) {
-    if (status.result != T5_PROGRAM_CANCELLED && status.result != T5_PROGRAM_TARGET_LOST)
+    if (status.result != T5_PROGRAM_CANCELLED && status.result != T5_PROGRAM_TARGET_LOST) {
       status.result = code;
-    if (text && status.result != T5_PROGRAM_CANCELLED && status.result != T5_PROGRAM_TARGET_LOST)
-      std::snprintf(status.message, sizeof(status.message), "%s", text);
+      if (text) std::snprintf(status.message, sizeof(status.message), "%s", text);
+    }
     return false;
   }
   bool report(uint8_t stage, uint8_t percent, const char* text) {
@@ -55,6 +58,7 @@ struct Operation {
     status.percent = percent;
     if (text) std::snprintf(status.message, sizeof(status.message), "%s", text);
     lastCallback = millis();
+    // This callback is synchronous and cannot outlive the app invocation.
     if (progress && !progress(context, &status)) {
       status.result = T5_PROGRAM_CANCELLED;
       std::snprintf(status.message, sizeof(status.message), "Programming cancelled");
@@ -79,8 +83,11 @@ struct Operation {
       std::snprintf(status.message, sizeof(status.message), "Programming target disconnected");
       return false;
     }
-    if (state.status == T5_SERIAL_STATUS_ERROR || state.status == T5_SERIAL_STATUS_OFF)
+    if (state.status == T5_SERIAL_STATUS_ERROR ||
+        (selectedDevice && state.status == T5_SERIAL_STATUS_OFF))
       return fail(T5_PROGRAM_IO, "Serial provider stopped or reported an error");
+    // Before the first USB device is bound, serial_start starts a host task
+    // asynchronously; its status can still be OFF while VBUS starts up.
     return true;
   }
   bool waitReady(uint32_t timeout) {
@@ -100,9 +107,7 @@ struct Operation {
   }
   bool delayChecked(uint32_t ms) {
     const uint32_t started = millis();
-    while (millis() - started < ms) {
-      if (!transport() || !tick()) return false;
-    }
+    while (millis() - started < ms) if (!transport() || !tick()) return false;
     return true;
   }
   bool lines(bool dtr, bool rts, uint32_t hold) {
@@ -118,9 +123,13 @@ struct Operation {
       const uint32_t requested = static_cast<uint32_t>((length - done) < kMaxChunk ? (length - done) : kMaxChunk);
       const auto rc = streams->read(stream, out + done, requested, &count);
       if (count > requested) return fail(T5_PROGRAM_IO, "Stream returned an invalid byte count");
+      if (rc < 0 || (rc == T5_STREAM_EOF && done + count < length))
+        return fail(T5_PROGRAM_IO, "Firmware or serial stream terminated");
       done += count;
-      if (rc < 0 || rc == T5_STREAM_EOF) return fail(T5_PROGRAM_IO, "Firmware or serial stream terminated");
-      if (done != length && !tick()) return false;
+      esp_task_wdt_reset();
+      // Do not sleep for each successful 512-byte SD read. At 16 MiB that
+      // would add minutes to hashing alone; progress checks bound cancellation.
+      if (!count && !tick()) return false;
     }
     return done == length || fail(T5_PROGRAM_TIMEOUT, "Firmware stream read timed out");
   }
@@ -162,7 +171,7 @@ struct Operation {
       for (uint32_t i = 0; i < count; ++i) {
         const auto decoded = decoder.feed(incoming[i]);
         if (decoded == EspRomProtocol::Decoder::Result::Invalid) {
-          decoder.reset(); // Discard one malformed frame; recover at next delimiter.
+          decoder.reset();
         } else if (decoded == EspRomProtocol::Decoder::Result::Frame) {
           if (decoder.size() >= 2 && decoder.data()[0] == 1 && decoder.data()[1] == op) {
             replyLength = decoder.size();
@@ -189,7 +198,7 @@ struct Operation {
   bool hashSource() {
     if (streams->seek(firmware, 0) != T5_STREAM_OK)
       return fail(T5_PROGRAM_IO, "Firmware stream is not seekable");
-    esp_rom_md5_ctx_t md5{};
+    md5_context_t md5{};
     esp_rom_md5_init(&md5);
     uint32_t remaining = status.image_bytes;
     unsigned lastPercent = 0;
@@ -247,7 +256,7 @@ struct Operation {
     if (!report(T5_PROGRAM_STAGE_CONFIGURE, 0, "Checking ROM capabilities")) return false;
     const bool extended = command(kSecurityInfo, nullptr, 0, 0, 750);
     if (status.result != T5_PROGRAM_OK) return false;
-    drain(75); // Older ROMs may reject the optional probe and queue an error.
+    drain(75);
     uint8_t attach[8]{};
     if (!report(T5_PROGRAM_STAGE_CONFIGURE, 0, "Configuring SPI flash")) return false;
     if (!command(kSpiAttach, attach, sizeof(attach), 0, 3000))
@@ -347,6 +356,7 @@ struct Operation {
     if (status.image_bytes < kMinImage || status.image_bytes > kMaxImage)
       return fail(T5_PROGRAM_INVALID, "Image size must be 64 KiB to 16 MiB");
     t5_stream_info_t info{};
+    info.struct_size = sizeof(info);
     if (streams->info(firmware, &info) != T5_STREAM_OK ||
         (info.flags & (T5_STREAM_READ | T5_STREAM_SEEK)) != (T5_STREAM_READ | T5_STREAM_SEEK))
       return fail(T5_PROGRAM_INVALID, "Firmware input must be a readable, seekable stream");
@@ -367,26 +377,32 @@ t5_program_esp_rom_result_t program(t5_stream_t firmware, uint32_t imageBytes,
   if (!output || !firmware) return T5_PROGRAM_INVALID;
   if (!t5_app_get_api(T5_APP_ABI_VERSION)) return T5_PROGRAM_DENIED;
   if (busy.test_and_set(std::memory_order_acquire)) return T5_PROGRAM_BUSY;
-  // RAII order: release serial/streams before making another operation possible.
-  t5_program_esp_rom_result_t result;
-  {
-    Operation op{};
-    op.status.struct_size = sizeof(op.status);
-    op.status.image_bytes = imageBytes;
-    op.status.rom_command = op.status.rom_status = op.status.rom_error = 0xff;
-    op.progress = progress; op.context = context; op.firmware = firmware;
-    op.streams = t5_stream_get_api(T5_STREAM_API_VERSION);
-    op.serial = t5_serial_port_get_api(T5_SERIAL_PORT_API_VERSION);
-    if (!op.streams || !op.serial || !op.streams->info || !op.streams->seek ||
-        !op.streams->read || !op.streams->write || !op.serial->acquire ||
-        !op.serial->read_status || !op.serial->set_control_lines || !op.serial->release) {
-      op.fail(T5_PROGRAM_UNSUPPORTED, "serial.port or firmware streams unavailable");
-    } else if (!op.run() && op.status.result == T5_PROGRAM_OK) {
-      op.fail(T5_PROGRAM_IO, "ESP ROM programming failed");
-    }
-    *output = op.status;
-    result = static_cast<t5_program_esp_rom_result_t>(op.status.result);
+  // Create the 5+ KiB protocol buffers in bounded heap storage, not on the
+  // application's main task stack. Release serial before unlocking busy.
+  auto* op = new (std::nothrow) Operation{};
+  if (!op) {
+    busy.clear(std::memory_order_release);
+    output->struct_size = sizeof(*output);
+    output->result = T5_PROGRAM_IO;
+    std::snprintf(output->message, sizeof(output->message), "Cannot allocate programmer buffers");
+    return T5_PROGRAM_IO;
   }
+  op->status.struct_size = sizeof(op->status);
+  op->status.image_bytes = imageBytes;
+  op->status.rom_command = op->status.rom_status = op->status.rom_error = 0xff;
+  op->progress = progress; op->context = context; op->firmware = firmware;
+  op->streams = t5_stream_get_api(T5_STREAM_API_VERSION);
+  op->serial = t5_serial_port_get_api(T5_SERIAL_PORT_API_VERSION);
+  if (!op->streams || !op->serial || !op->streams->info || !op->streams->seek ||
+      !op->streams->read || !op->streams->write || !op->serial->acquire ||
+      !op->serial->read_status || !op->serial->set_control_lines || !op->serial->release) {
+    op->fail(T5_PROGRAM_UNSUPPORTED, "serial.port or firmware streams unavailable");
+  } else if (!op->run() && op->status.result == T5_PROGRAM_OK) {
+    op->fail(T5_PROGRAM_IO, "ESP ROM programming failed");
+  }
+  *output = op->status;
+  const auto result = static_cast<t5_program_esp_rom_result_t>(op->status.result);
+  delete op;
   busy.clear(std::memory_order_release);
   return result;
 }
