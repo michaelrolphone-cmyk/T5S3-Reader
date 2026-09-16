@@ -1,4 +1,5 @@
 #include "NativeStreamBridge.h"
+#include "NativeSerialPortBridge.h"
 #include <Arduino.h>
 #include "runtime/streams/StreamRuntime.h"
 #include "network/HttpDownloader.h"
@@ -291,9 +292,14 @@ t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream) {
 
 void nativeStreamsBegin() {
   // Exhaustion fails closed rather than reusing execution-context identity.
-  if (owner != UINT32_MAX) { ++owner; active = true; }
+  if (owner != UINT32_MAX) {
+    ++owner;
+    active = true;
+    nativeSerialPortsBegin();
+  }
 }
 void nativeStreamsEnd() {
+  if (active) nativeSerialPortsEnd();
   active = false;
   if (mutex) { Lock lock; registry.release(owner); }
 }
