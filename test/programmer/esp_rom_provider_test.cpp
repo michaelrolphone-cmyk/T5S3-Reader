@@ -1,6 +1,6 @@
-// Host-level fault injection for the real runtime programmer implementation.
-// Fake MD5 has a deterministic digest; this tests protocol and ownership, not
-// the SDK's cryptographic implementation or physical USB behavior.
+// Exercise the actual runtime provider with deterministic serial/stream faults.
+// MD5 is stubbed to a constant digest: this tests lifecycle and protocol flow,
+// not the ESP-IDF cryptographic implementation or physical USB signaling.
 #include <T5AppApi.h>
 #include <T5ProgramEspRomApi.h>
 #include <T5SerialPortApi.h>
@@ -14,7 +14,7 @@
 
 namespace {
 enum class Fault { None, CancelHash, ShortSource, LostSync, LostErase, LostWrite,
-                   ResetControlIO, ResetControlLost, Md5Mismatch, NoFlashEndReply };
+                   ResetControlIO, ResetControlLost, Md5Mismatch, NoFlashEndReply, Reentrant };
 struct Fixture {
   Fault fault = Fault::None;
   std::vector<uint8_t> image;
@@ -23,18 +23,17 @@ struct Fixture {
   uint32_t pos = 0;
   int acquired = 0, released = 0, controlCalls = 0, flashBlocks = 0;
   bool leaseLive = false, connected = true, escaped = false;
-  bool flashEndSeen = false, completeReported = false;
-  uint8_t lastOp = 0;
+  bool flashEndSeen = false, completeReported = false, nestedChecked = false;
 } fixture;
 uint32_t fakeClock = 1;
+bool allowApp = true;
 
 void enqueue(uint8_t op) {
   const bool md5 = op == 0x13;
-  const uint8_t dataSize = md5 ? 36 : 4;
   fixture.replies.push_back(0xc0);
   fixture.replies.push_back(1);
   fixture.replies.push_back(op);
-  fixture.replies.push_back(dataSize);
+  fixture.replies.push_back(md5 ? 36 : 4);
   fixture.replies.push_back(0);
   for (int i = 0; i < 4; ++i) fixture.replies.push_back(0);
   if (md5) {
@@ -44,11 +43,9 @@ void enqueue(uint8_t op) {
   for (int i = 0; i < 4; ++i) fixture.replies.push_back(0);
   fixture.replies.push_back(0xc0);
 }
-
 void completedFrame() {
   if (fixture.frame.size() < 8) return;
   const uint8_t op = fixture.frame[1];
-  fixture.lastOp = op;
   if (op == 0x03) ++fixture.flashBlocks;
   if (op == 0x04) fixture.flashEndSeen = true;
   if ((fixture.fault == Fault::LostSync && op == 0x08) ||
@@ -59,15 +56,12 @@ void completedFrame() {
   }
   if (fixture.fault != Fault::NoFlashEndReply || op != 0x04) enqueue(op);
 }
-
 t5_serial_result_t acquire(const t5_serial_port_request_t* request,
                            t5_serial_port_lease_t* lease, t5_stream_t* rx, t5_stream_t* tx) {
   assert(request && lease && rx && tx && !fixture.leaseLive);
   fixture.leaseLive = true;
   ++fixture.acquired;
-  *lease = 10;
-  *rx = 20;
-  *tx = 30;
+  *lease = 10; *rx = 20; *tx = 30;
   return T5_SERIAL_OK;
 }
 t5_serial_result_t readStatus(t5_serial_port_lease_t lease, t5_serial_port_state_t* out) {
@@ -96,7 +90,6 @@ t5_serial_result_t release(t5_serial_port_lease_t lease) {
   ++fixture.released;
   return T5_SERIAL_OK;
 }
-
 t5_stream_result_t streamInfo(t5_stream_t stream, t5_stream_info_t* out) {
   assert(stream == 1 && out);
   *out = {};
@@ -159,6 +152,15 @@ t5_stream_result_t streamWrite(t5_stream_t stream, const void* data,
 }
 bool progress(void*, const t5_program_esp_rom_status_v1* status) {
   if (status->stage == T5_PROGRAM_STAGE_COMPLETE) fixture.completeReported = true;
+  if (fixture.fault == Fault::Reentrant && !fixture.nestedChecked) {
+    fixture.nestedChecked = true;
+    auto* programmer = t5_program_esp_rom_get_api(T5_PROGRAM_ESP_ROM_API_VERSION);
+    assert(programmer);
+    t5_program_esp_rom_status_v1 nested{};
+    assert(programmer->program(1, 0x10000u, nullptr, nullptr, &nested) == T5_PROGRAM_BUSY);
+    assert(nested.result == T5_PROGRAM_BUSY && nested.struct_size == sizeof(nested));
+    assert(nested.message[0] && fixture.acquired == 0);
+  }
   return !(fixture.fault == Fault::CancelHash &&
            status->stage == T5_PROGRAM_STAGE_HASH && status->percent >= 5);
 }
@@ -186,10 +188,9 @@ t5_program_esp_rom_status_v1 run(Fault fault, t5_program_esp_rom_result_t expect
 
 uint32_t millis() { return fakeClock; }
 void delay(uint32_t ms) { fakeClock += ms; }
-
 extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
   static const t5_app_api_v1 api{};
-  return version == T5_APP_ABI_VERSION ? &api : nullptr;
+  return allowApp && version == T5_APP_ABI_VERSION ? &api : nullptr;
 }
 extern "C" const t5_serial_port_api_v1* t5_serial_port_get_api(uint32_t version) {
   static t5_serial_port_api_v1 api{};
@@ -216,7 +217,7 @@ extern "C" const t5_stream_api_v1* t5_stream_get_api(uint32_t version) {
 int main() {
   auto success = run(Fault::None, T5_PROGRAM_OK);
   assert(success.bytes_written == 0x10000u && fixture.flashBlocks == 64);
-  assert(fixture.flashEndSeen && fixture.controlCalls >= 8);
+  assert(fixture.flashEndSeen && fixture.controlCalls == 5);
   auto cancelled = run(Fault::CancelHash, T5_PROGRAM_CANCELLED);
   assert(cancelled.bytes_written == 0 && fixture.acquired == 0 && fixture.released == 0);
   auto source = run(Fault::ShortSource, T5_PROGRAM_IO);
@@ -233,9 +234,21 @@ int main() {
   assert(resetLost.bytes_written == 0x10000u && fixture.released == 1);
   auto mismatch = run(Fault::Md5Mismatch, T5_PROGRAM_VERIFY_FAILED);
   assert(mismatch.bytes_written == 0x10000u && !fixture.flashEndSeen);
-  // ROM FLASH_END may reset without an acknowledgment. Physical reset lines
-  // remain the authoritative final action; retain this compatibility behavior.
+  // Some ROMs reset without a FLASH_END acknowledgment; hardware reset lines
+  // remain the final action for this backward-compatible implementation.
   auto noAck = run(Fault::NoFlashEndReply, T5_PROGRAM_OK);
-  assert(noAck.bytes_written == 0x10000u && fixture.controlCalls >= 8);
+  assert(noAck.bytes_written == 0x10000u && fixture.controlCalls == 5);
+  (void)run(Fault::Reentrant, T5_PROGRAM_OK);
+  assert(fixture.nestedChecked && fixture.acquired == 1);
+  resetFixture(Fault::None);
+  const auto* programmer = t5_program_esp_rom_get_api(T5_PROGRAM_ESP_ROM_API_VERSION);
+  t5_program_esp_rom_status_v1 immediate{};
+  assert(programmer->program(0, 0x10000u, nullptr, nullptr, &immediate) == T5_PROGRAM_INVALID);
+  assert(immediate.result == T5_PROGRAM_INVALID && immediate.struct_size == sizeof(immediate));
+  allowApp = false;
+  assert(programmer->program(1, 0x10000u, nullptr, nullptr, &immediate) == T5_PROGRAM_DENIED);
+  assert(immediate.result == T5_PROGRAM_DENIED && immediate.struct_size == sizeof(immediate));
+  allowApp = true;
+  assert(fixture.acquired == 0 && fixture.released == 0);
   std::puts("ESP ROM provider fault-injection tests passed");
 }
