@@ -2,13 +2,13 @@
 
 #include <T5SerialPortApi.h>
 #include <T5UsbApi.h>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 
-// Internal runtime device record: never expose the USB implementation, host
-// handle, endpoint, or transfer descriptors through the application ABI.
-// This first slice has one USB serial binding. The record/resolver can be
-// extended to more USB interfaces and providers without changing serial.port.
+// Internal runtime device records. Applications see only opaque IDs through
+// serial.port; USB host handles, endpoints, descriptors and event APIs are not
+// exported through the application ABI.
 namespace NativeUsbDevices {
 
 enum class Transport : uint8_t { Usb = 1 };
@@ -22,31 +22,30 @@ struct Record {
   Presence presence = Presence::Unavailable;
   uint16_t vid = 0;
   uint16_t pid = 0;
-  // USB serial status does not yet export the claimed interface number. An
-  // unknown interface is explicit, not an invented interface zero.
   uint8_t interface_number = 0xff;
   bool serial_port = false;
   char product[T5_USB_PRODUCT_MAX] = {};
 };
 
-// Only the runtime/provider calls observe()/detach(); an application receives
-// the opaque ID through serial.port status and may request that exact ID.
-// The caller serializes access to this object when observations originate from
-// multiple tasks. This implementation's owner is the serial provider bridge.
+// USB host task publishes attachment/detachment immediately. The serial app
+// task concurrently takes snapshots and resolves selected IDs; all operations
+// on this small record are synchronized. The generation is never reset by
+// detach, USB restart or application unload, and never wraps.
 class Registry final {
  public:
-  void observe(const t5_usb_serial_state_t& state) {
+  void observe(const t5_usb_serial_state_t& state, uint8_t interface_number = 0xff) {
+    Guard guard(lock_);
     if (!state.connected || state.status == T5_USB_STATUS_OFF) {
-      detach();
+      record_ = Record{};
       return;
     }
     const bool different = record_.presence != Presence::Bound ||
         record_.vid != state.vid || record_.pid != state.pid ||
+        record_.interface_number != interface_number ||
         std::strncmp(record_.product, state.product, sizeof(record_.product)) != 0;
     if (!different) return;
-    detach();
-    // Fail closed on exhaustion rather than allowing a stale identity to
-    // identify a different device after generation wraparound.
+    record_ = Record{};
+    // Do not recycle an identity if the finite handle namespace is exhausted.
     if (generation_ >= 0x7fffffffu) return;
     ++generation_;
     record_.id = (generation_ << 1u) | 1u;
@@ -55,23 +54,47 @@ class Registry final {
     record_.presence = Presence::Bound;
     record_.vid = state.vid;
     record_.pid = state.pid;
+    record_.interface_number = interface_number;
     record_.serial_port = true;
     std::memcpy(record_.product, state.product, sizeof(record_.product));
     record_.product[sizeof(record_.product) - 1u] = '\0';
   }
 
-  void detach() { record_ = Record{}; }
+  void detach() {
+    Guard guard(lock_);
+    record_ = Record{};
+  }
 
-  Record snapshot() const { return record_; }
+  Record snapshot() const {
+    Guard guard(lock_);
+    return record_;
+  }
 
   bool resolve(t5_serial_device_t id, Provider provider) const {
+    Guard guard(lock_);
     return id != 0 && record_.presence == Presence::Bound &&
            record_.id == id && record_.provider == provider && record_.serial_port;
   }
 
  private:
+  struct Guard {
+    explicit Guard(std::atomic_flag& flag) : flag_(flag) {
+      while (flag_.test_and_set(std::memory_order_acquire)) {}
+    }
+    ~Guard() { flag_.clear(std::memory_order_release); }
+    Guard(const Guard&) = delete;
+    Guard& operator=(const Guard&) = delete;
+    std::atomic_flag& flag_;
+  };
+
+  mutable std::atomic_flag lock_ = ATOMIC_FLAG_INIT;
   Record record_{};
-  uint32_t generation_ = 0;  // Persistent across app contexts/USB sessions.
+  uint32_t generation_ = 0;
 };
 
 }  // namespace NativeUsbDevices
+
+// Runtime-only publication hooks. The USB host task invokes these at the
+// lifecycle boundary; they are not exported to ELF applications.
+void nativeUsbProviderAttach(const t5_usb_serial_state_t* state, uint8_t dataInterface);
+void nativeUsbProviderDetach();
