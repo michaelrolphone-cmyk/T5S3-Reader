@@ -11,13 +11,12 @@ struct Fixture {
   unsigned stopCalls = 0;
   uint32_t invocation = 0;
 };
-
 static void streamCleanup(void* opaque, uint32_t id) {
   auto& f = *static_cast<Fixture*>(opaque);
   assert(f.context->state() == ExecutionContext::State::Stopping);
   assert(!f.context->running(id) && f.invocation == id);
   f.order[f.calls++] = 1;
-  f.context->end();  // Reentrant termination cannot double-release.
+  f.context->end();
 }
 static void serialCleanup(void* opaque, uint32_t id) {
   auto& f = *static_cast<Fixture*>(opaque);
@@ -26,38 +25,34 @@ static void serialCleanup(void* opaque, uint32_t id) {
 }
 static void programmerCleanup(void* opaque, uint32_t id) {
   auto& f = *static_cast<Fixture*>(opaque);
-  assert(f.invocation == id && f.context->state() == ExecutionContext::State::Stopping);
-  assert(f.stopCalls == 1);  // Stop notification precedes dependent destruction.
-  f.order[f.calls++] = 3;
+  assert(f.invocation == id);
+  // This callback must never destroy an in-flight synchronous operation.
+  assert(false && "An active programmer must untrack before teardown");
 }
 static void programmerStop(void* opaque, uint32_t id) {
   auto& f = *static_cast<Fixture*>(opaque);
   assert(f.invocation == id && f.context->state() == ExecutionContext::State::Stopping);
-  assert(f.calls == 0);  // Leases and streams are still intact for cancellation.
+  assert(f.calls == 0);
   ++f.stopCalls;
   f.context->requestStop();
-  f.context->end();  // A stop callback cannot trigger premature destruction.
+  f.context->end();  // Reentrant end defers ALL dependent resource cleanup.
   assert(f.calls == 0);
 }
-
 int main() {
   ExecutionContext context;
+  ExecutionContext another;
   Fixture fixture{&context};
-  assert(context.state() == ExecutionContext::State::Terminated);
-  assert(!context.running(0));
-  context.end();  // Partial/duplicate shutdown is harmless.
+  assert(!ExecutionContext::current());
+  context.end();
   assert(context.begin());
   const uint32_t first = context.id();
   fixture.invocation = first;
-  assert(first && context.running(first));
-  assert(!context.begin());  // Nested app launch is not another context.
+  assert(ExecutionContext::current() == &context);
+  assert(!context.begin() && !another.begin());
   assert(context.track(ExecutionContext::Resource::Streams, streamCleanup, &fixture));
   assert(context.track(ExecutionContext::Resource::SerialPort, serialCleanup, &fixture));
   assert(!context.track(ExecutionContext::Resource::SerialPort, serialCleanup, &fixture));
   assert(!context.track(ExecutionContext::Resource::Programmer, nullptr, &fixture));
-
-  // A completed synchronous job unregisters before its operation memory is
-  // freed; only the exact invocation can remove it, and its slot can be reused.
   assert(context.track(ExecutionContext::Resource::Programmer, programmerCleanup, &fixture,
                        programmerStop));
   assert(!context.untrack(ExecutionContext::Resource::Programmer, first + 1));
@@ -66,23 +61,23 @@ int main() {
   assert(!context.untrack(ExecutionContext::Resource::Programmer, first));
   assert(context.track(ExecutionContext::Resource::Programmer, programmerCleanup, &fixture,
                        programmerStop));
-
   context.requestStop();
-  context.requestStop();
+  context.end();
   assert(fixture.stopCalls == 1 && fixture.calls == 0);
+  assert(context.state() == ExecutionContext::State::Stopping);
+  assert(ExecutionContext::current() == &context && !another.begin());
   assert(!context.running(first));
   assert(!context.track(ExecutionContext::Resource::Programmer, programmerCleanup, &fixture));
-  // A cooperative job may finish after stop notification. It must unregister
-  // before its state is freed so teardown cannot call a dangling destructor.
   assert(context.untrack(ExecutionContext::Resource::Programmer, first));
   context.end();
   context.end();
   assert(fixture.calls == 2 && fixture.order[0] == 2 && fixture.order[1] == 1);
   assert(context.id() == 0 && context.state() == ExecutionContext::State::Terminated);
+  assert(!ExecutionContext::current());
   assert(!context.untrack(ExecutionContext::Resource::Streams, first));
 
-  // A job still registered when end() starts is signaled before its own
-  // destructor and before the serial/stream resources it consumes are closed.
+  // An end request cannot free a programmer's input stream or lease while its
+  // synchronous stack is active. Completion/lease release then untracks it.
   assert(context.begin());
   const uint32_t second = context.id();
   assert(second != first && !context.running(first) && context.running(second));
@@ -94,12 +89,17 @@ int main() {
                        programmerStop));
   assert(!context.untrack(ExecutionContext::Resource::Programmer, first));
   context.end();
-  assert(fixture.stopCalls == 1 && fixture.calls == 3);
-  assert(fixture.order[0] == 3 && fixture.order[1] == 2 && fixture.order[2] == 1);
+  assert(fixture.stopCalls == 1 && fixture.calls == 0);
+  assert(context.state() == ExecutionContext::State::Stopping);
+  assert(context.untrack(ExecutionContext::Resource::Programmer, second));
   context.end();
-
+  assert(fixture.calls == 2 && fixture.order[0] == 2 && fixture.order[1] == 1);
+  assert(!ExecutionContext::current());
   assert(context.begin());
   context.requestStop();
-  context.end();  // Partial startup is safe.
-  std::puts("Native execution-context ownership and cooperative-stop tests passed");
+  context.end();
+  assert(!ExecutionContext::current());
+  assert(another.begin());
+  another.end();
+  std::puts("Native execution-context owner and deferred programmer teardown tests passed");
 }
