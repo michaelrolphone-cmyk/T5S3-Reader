@@ -17,6 +17,7 @@
 #define DETECT_SAMPLE_TICKS 5u
 #define DETECT_CONFIG_TICKS 32u
 #define DETECT_ACCEPT_SCORE 600u
+#define RECONNECT_RETRY_TICKS 12u
 #define COOKIE_SEND 0x55534201u
 #define COOKIE_CUSTOM_BAUD 0x55534202u
 
@@ -216,10 +217,12 @@ static bool acquire_serial_session(t5_serial_port_state_t *state, const t5_seria
     clear_serial_handles();
     result = serial_port->acquire(&request, &serial_lease, &rx_stream, &tx_stream);
     if (result != T5_SERIAL_OK || !serial_lease || !rx_stream || !tx_stream) {
+        if (serial_lease) release_serial_session();
         clear_serial_handles();
         return false;
     }
-    if (serial_port->read_status(serial_lease, state) != T5_SERIAL_OK) {
+    if (serial_port->read_status(serial_lease, state) != T5_SERIAL_OK ||
+        state->last_error == T5_SERIAL_DISCONNECTED) {
         release_serial_session();
         return false;
     }
@@ -708,7 +711,7 @@ static void render_actions(const t5_serial_port_state_t *state, int32_t selected
 static void render_baud(int32_t selected) {
     const t5_ui_list_row_t rows[] = {
         {"1200", NULL, NULL, 0}, {"2400", NULL, NULL, 0}, {"4800", NULL, NULL, 0},
-        {"9600", NULL, NULL, 0}, {"19200", NULL, NULL, 0}, {"38400", NULL, NULL, 0},
+        {"9600", NULL, NULL, 0}, {"19200", NULL, NULL, 0}, {"38400", NULL, 0},
         {"57600", NULL, NULL, 0}, {"115200", NULL, NULL, 0}, {"230400", NULL, NULL, 0},
         {"460800", NULL, NULL, 0}, {"921600", NULL, NULL, 0}, {"Custom...", NULL, NULL, 0},
     };
@@ -825,6 +828,9 @@ void app_main(void) {
     char pending_send[SEND_CAP];
     bool pending_send_ready = false;
     bool cancelled = false;
+    bool reconnect_pending = false;
+    bool reconnect_notice = false;
+    uint8_t reconnect_ticks = 0;
     uint64_t cookie = 0;
     memset(&state, 0, sizeof(state));
     state.status = T5_SERIAL_STATUS_OFF;
@@ -833,7 +839,8 @@ void app_main(void) {
 
     if (!acquire_serial_session(&state, &coding)) {
         state.status = T5_SERIAL_STATUS_UNAVAILABLE;
-        append_notice("Unable to acquire serial.port capability");
+        append_notice("Unable to acquire serial.port capability; retrying");
+        reconnect_pending = true;
     }
 
     if (system_ui->keyboard_take_result(keyboard_text, sizeof(keyboard_text), &cancelled, &cookie) && !cancelled) {
@@ -862,12 +869,49 @@ void app_main(void) {
         bool repaint = false;
         t5_serial_port_state_t next;
         memset(&next, 0, sizeof(next));
-        if (serial_lease && serial_port->read_status(serial_lease, &next) == T5_SERIAL_OK) {
-            if (state_changed(&state, &next)) repaint = true;
-            state = next;
+        if (serial_lease) {
+            const t5_serial_result_t rc = serial_port->read_status(serial_lease, &next);
+            if (rc == T5_SERIAL_OK && next.last_error != T5_SERIAL_DISCONNECTED) {
+                if (state_changed(&state, &next)) repaint = true;
+                state = next;
+            } else if (rc == T5_SERIAL_DISCONNECTED || rc == T5_SERIAL_CLOSED ||
+                       (rc == T5_SERIAL_OK && next.last_error == T5_SERIAL_DISCONNECTED)) {
+                // Explicit revocation: stale device/streams must never be reused.
+                coding = detect_phase == DETECT_NONE ? state.config : detect_original;
+                detect_phase = DETECT_NONE;
+                detect_candidate_active = false;
+                detect_outcome = 0;
+                release_serial_session();
+                state.status = T5_SERIAL_STATUS_WAITING;
+                state.connected = 0;
+                state.device = 0;
+                state.last_error = T5_SERIAL_DISCONNECTED;
+                state.config = coding;
+                pending_send_ready = false;
+                pending_send[0] = 0;
+                reconnect_pending = true;
+                reconnect_notice = true;
+                reconnect_ticks = RECONNECT_RETRY_TICKS;
+                stream_error_reported = false;
+                mode = VIEW_TERMINAL;
+                selected = 0;
+                append_notice("Serial disconnected; acquiring a new session");
+                repaint = true;
+            }
+        }
+        if (!serial_lease && reconnect_pending && ++reconnect_ticks >= RECONNECT_RETRY_TICKS) {
+            reconnect_ticks = 0;
+            if (acquire_serial_session(&next, &coding)) {
+                state = next;
+                reconnect_pending = false;
+                stream_error_reported = false;
+                if (reconnect_notice) append_notice("New serial session acquired");
+                reconnect_notice = false;
+                repaint = true;
+            }
         }
 
-        if (pending_send_ready && state.status == T5_SERIAL_STATUS_READY) {
+        if (pending_send_ready && serial_lease && state.status == T5_SERIAL_STATUS_READY) {
             if (send_text_line(pending_send)) {
                 pending_send_ready = false;
                 pending_send[0] = 0;
@@ -884,9 +928,30 @@ void app_main(void) {
         t5_stream_result_t stream_result = T5_STREAM_AGAIN;
         bool capture = mode == VIEW_AUTODETECT && detection_capture_ready(&state);
         size_t received = 0;
-        if (mode != VIEW_AUTODETECT || capture)
+        if (serial_lease && (mode != VIEW_AUTODETECT || capture))
             received = read_serial_stream(incoming, sizeof(incoming), &stream_result);
-        if (mode == VIEW_AUTODETECT) {
+        if (stream_result == T5_STREAM_DISCONNECTED) {
+            coding = detect_phase == DETECT_NONE ? state.config : detect_original;
+            detect_phase = DETECT_NONE;
+            detect_candidate_active = false;
+            detect_outcome = 0;
+            release_serial_session();
+            state.status = T5_SERIAL_STATUS_WAITING;
+            state.connected = 0;
+            state.device = 0;
+            state.last_error = T5_SERIAL_DISCONNECTED;
+            state.config = coding;
+            pending_send_ready = false;
+            pending_send[0] = 0;
+            reconnect_pending = true;
+            reconnect_notice = true;
+            reconnect_ticks = 0;
+            stream_error_reported = false;
+            mode = VIEW_TERMINAL;
+            selected = 0;
+            append_notice("Serial disconnected; acquiring a new session");
+            repaint = true;
+        } else if (mode == VIEW_AUTODETECT) {
             detection_tick(&state, incoming, received, capture);
             if (detect_outcome != 0) {
                 if (detect_outcome == 2) append_notice("Auto detect inconclusive; previous settings restored");
@@ -902,7 +967,7 @@ void app_main(void) {
             scroll_from_bottom = 0;
             repaint = true;
             stream_error_reported = false;
-        } else if (stream_result < 0 && stream_result != T5_STREAM_DISCONNECTED && !stream_error_reported) {
+        } else if (stream_result < 0 && !stream_error_reported) {
             append_notice("Serial byte stream error");
             stream_error_reported = true;
             repaint = true;
