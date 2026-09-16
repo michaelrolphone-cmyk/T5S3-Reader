@@ -5,6 +5,8 @@
 #include <ArduinoJson.h>
 #include <Logging.h>
 #include <NativeAppLauncher.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -16,6 +18,17 @@ constexpr const char* kElf = "/sd/Drivers/usb-cdc-acm/driver.elf";
 constexpr const char* kManifest = "/sd/Drivers/usb-cdc-acm/manifest.json";
 constexpr size_t kMaxManifest = 4096;
 UsbCdcDriverModule module;
+// The USB host task handles attach and shutdown while the native app task can
+// reconfigure an active serial port. Every ELF call, including dlclose, must
+// hold the same priority-inheriting mutex. The lock lasts for the firmware
+// lifetime; it is not destroyed while either task may still be running.
+SemaphoreHandle_t moduleMutex = nullptr;
+struct Lock {
+  Lock() { xSemaphoreTake(moduleMutex, portMAX_DELAY); }
+  ~Lock() { xSemaphoreGive(moduleMutex); }
+  Lock(const Lock&) = delete;
+  Lock& operator=(const Lock&) = delete;
+};
 
 bool installedAndVerified() {
   if (native_app_register_sd_vfs() != ESP_OK) return false;
@@ -45,6 +58,11 @@ bool installedAndVerified() {
 }  // namespace
 
 bool activate() {
+  // activate() is the only initializer; it executes on the USB host task
+  // before enumeration, so no other task can reach an ELF entry point yet.
+  if (!moduleMutex) moduleMutex = xSemaphoreCreateMutex();
+  if (!moduleMutex) return false;
+  Lock lock;
   if (module.state() == UsbCdcDriverModule::State::Active) return true;
   if (!installedAndVerified()) {
     LOG_INF("USB", "Installable CDC package missing/invalid; using resident USB drivers");
@@ -58,9 +76,15 @@ bool activate() {
   return true;
 }
 
-bool active() { return module.state() == UsbCdcDriverModule::State::Active; }
+bool active() {
+  if (!moduleMutex) return false;
+  Lock lock;
+  return module.state() == UsbCdcDriverModule::State::Active;
+}
 
 bool deactivate() {
+  if (!moduleMutex) return true;
+  Lock lock;
   if (!module.unload()) {
     LOG_ERR("USB", "CDC ELF unload failed; module handle retained");
     return false;
@@ -70,15 +94,21 @@ bool deactivate() {
 
 bool probe(const uint8_t* configuration, size_t length, uint16_t vid, uint16_t pid,
            t5_usb_cdc_binding_v1* binding) {
+  if (!moduleMutex) return false;
+  Lock lock;
   return module.probe(configuration, length, vid, pid, binding);
 }
 
 bool lineCoding(uint32_t baud, uint8_t bits, uint8_t parity, uint8_t stop,
                 uint8_t payload[7]) {
+  if (!moduleMutex) return false;
+  Lock lock;
   return module.lineCoding(baud, bits, parity, stop, payload);
 }
 
 bool controlLines(bool dtr, bool rts, uint16_t* value) {
+  if (!moduleMutex) return false;
+  Lock lock;
   return module.controlLines(dtr, rts, value);
 }
 
