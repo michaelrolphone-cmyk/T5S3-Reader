@@ -25,6 +25,10 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo/src" "$repo/test/resources/app_dependency_bindings_test.cpp" \
   -o "$build/app-dependency-bindings"
 "$build/app-dependency-bindings"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/app_dependency_lifecycle_test.cpp" \
+  -o "$build/app-dependency-lifecycle"
+"$build/app-dependency-lifecycle"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_event_test.cpp" -o "$build/device-event-test"
 "$build/device-event-test"
