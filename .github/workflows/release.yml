@@ -161,6 +161,7 @@ jobs:
             "dist/riscrte_lilygo_t5s3_${VER}.elf"
             "$MERGED"
             "${APP_ELFS[@]}"
+            "dist/drivers/driver-catalog.json"
             dist/drivers/*.t5driver.zip
             dist/drivers/*.t5driver.json
             dist/drivers/*.t5driver.elf
