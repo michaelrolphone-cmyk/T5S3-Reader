@@ -83,7 +83,7 @@ t5_serial_result_t acquirePort(const t5_serial_port_request_t* request,
   if (!request || !lease || !rx || !tx) return T5_SERIAL_INVALID;
   if (request->config.flow_control != T5_SERIAL_FLOW_NONE) return T5_SERIAL_UNSUPPORTED;
   if (!validConfig(&request->config)) return T5_SERIAL_INVALID;
-  if (leaseHandle) return T5_SERIAL_BUSY;
+  if (leaseHandle || nativeStreamUsbIsBusy()) return T5_SERIAL_BUSY;
   if (leaseGeneration >= kMaxHandleGeneration) return T5_SERIAL_LIMIT;
   if (request->device && !devices.resolve(request->device, NativeUsbDevices::Provider::UsbSerial))
     return T5_SERIAL_INVALID;
