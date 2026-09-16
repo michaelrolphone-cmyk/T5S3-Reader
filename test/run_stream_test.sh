@@ -25,6 +25,10 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
 "$build/location-subscriptions"
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo/lib/NativeApps/include" -I"$repo/src" \
+  "$repo/src/runtime/streams/StreamRuntime.cpp" "$repo/test/streams/cooperative_gnss_producer_test.cpp" -o "$build/gnss-producer"
+"$build/gnss-producer"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/lib/NativeApps/include" -I"$repo/src" \
   "$repo/src/runtime/streams/StreamRuntime.cpp" "$repo/test/streams/http_transfer_test.cpp" -o "$build/http-transfer"
 "$build/http-transfer"
 printf '#include "T5StreamApi.h"\n#include "T5SerialPortApi.h"\n#include "RiscRteLocationRecords.h"\nint main(void) { return T5_STREAM_API_VERSION != 1 || T5_SERIAL_PORT_API_VERSION != 1 || RISCRTE_LOCATION_FIX_SIZE != 52; }\n' > "$build/abi.c"
