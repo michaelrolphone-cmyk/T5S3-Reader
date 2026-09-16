@@ -29,6 +29,15 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo/src" "$repo/test/resources/app_dependency_lifecycle_test.cpp" \
   -o "$build/app-dependency-lifecycle"
 "$build/app-dependency-lifecycle"
+# A manifest must never grant its own rights. Only trusted owner-task grants
+# can create scoped semantic handles, all reclaimed at invocation termination.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/capability_access_test.cpp" \
+  -o "$build/capability-access"
+"$build/capability-access"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/NativeApps/include" \
+  "$repo/test/resources/device_api_v2_abi_test.c" -o "$build/device-api-abi"
+"$build/device-api-abi"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_event_test.cpp" -o "$build/device-event-test"
 "$build/device-event-test"
