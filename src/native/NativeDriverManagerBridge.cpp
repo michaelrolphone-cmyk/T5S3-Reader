@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <NativeAppLauncher.h>
@@ -20,8 +21,13 @@
 namespace {
 constexpr const char* kLatestReleaseApi =
     "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
+constexpr const char* kDriverCatalogUrl =
+    "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/latest/download/driver-catalog.json";
+constexpr const char* kLatestReleaseDownloadBase =
+    "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/latest/download/";
 constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr size_t kMaxDriverAssets = 64;
+constexpr size_t kMaxDriverCatalogBytes = 64 * 1024;
 constexpr size_t kMaxReleaseAssetObjectBytes = 8192;
 
 struct ReleaseAsset {
@@ -46,6 +52,24 @@ bool activeNativeApp() {
 bool endsWith(const std::string& value, const char* suffix) {
     const size_t n = std::strlen(suffix);
     return value.size() >= n && value.compare(value.size() - n, n, suffix) == 0;
+}
+
+bool safeDriverAssetName(const char* value) {
+    if (!value || !value[0]) return false;
+    const size_t length = std::strlen(value);
+    if (length >= 160 || !endsWith(value, ".t5driver.elf") || std::strstr(value, "..")) return false;
+    for (const unsigned char* p = reinterpret_cast<const unsigned char*>(value); *p; ++p) {
+        if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+            (*p >= '0' && *p <= '9') || *p == '-' || *p == '_' || *p == '.' || *p == '+') continue;
+        return false;
+    }
+    return true;
+}
+
+void sortCatalog() {
+    std::sort(catalog.begin(), catalog.end(), [](const CatalogDriver& a, const CatalogDriver& b) {
+        return std::strcmp(a.info.id, b.info.id) < 0;
+    });
 }
 
 bool jsonStringField(const std::string& object, const char* field, std::string& value) {
@@ -217,11 +241,59 @@ bool connectSavedWifi() {
     return RuntimeNetwork::ready();
 }
 
-bool catalogRefresh() {
-    if (!activeNativeApp()) return false;
-    catalog.clear();
-    if (!connectSavedWifi()) return false;
+bool loadAggregateDriverCatalog() {
+    std::string json;
+    esp_task_wdt_reset();
+    if (!HttpDownloader::fetchUrl(kDriverCatalogUrl, json) || json.empty() || json.size() > kMaxDriverCatalogBytes) {
+        return false;
+    }
 
+    JsonDocument doc;
+    if (deserializeJson(doc, json) || !doc.is<JsonObjectConst>() || doc["schema"] != 1 ||
+        !doc["drivers"].is<JsonArrayConst>()) {
+        LOG_ERR("DRVMGR", "Driver catalog JSON is invalid");
+        return false;
+    }
+    const JsonArrayConst drivers = doc["drivers"].as<JsonArrayConst>();
+    if (drivers.size() == 0 || drivers.size() > kMaxDriverAssets) {
+        LOG_ERR("DRVMGR", "Driver catalog has an invalid entry count");
+        return false;
+    }
+
+    std::vector<CatalogDriver> loaded;
+    loaded.reserve(drivers.size());
+    for (JsonVariantConst entry : drivers) {
+        esp_task_wdt_reset();
+        if (!entry.is<JsonObjectConst>() || !entry["manifest"].is<JsonObjectConst>()) return false;
+        const char* elfAsset = entry["elf_asset"] | nullptr;
+        if (!safeDriverAssetName(elfAsset)) return false;
+
+        std::string manifest;
+        serializeJson(entry["manifest"], manifest);
+        DriverPackageInfo info{};
+        if (!parseDriverPackageManifest(manifest, info)) return false;
+
+        const std::string expected = std::string(info.id) + "-" + info.version + ".t5driver.elf";
+        if (expected != elfAsset) return false;
+        if (std::any_of(loaded.begin(), loaded.end(), [&](const CatalogDriver& candidate) {
+                return std::strcmp(candidate.info.id, info.id) == 0;
+            })) return false;
+
+        CatalogDriver driver;
+        driver.info = info;
+        driver.manifest = std::move(manifest);
+        driver.elfUrl = std::string(kLatestReleaseDownloadBase) + elfAsset;
+        loaded.push_back(std::move(driver));
+    }
+
+    catalog.swap(loaded);
+    sortCatalog();
+    LOG_INF("DRVMGR", "Loaded %u drivers from aggregate release catalog",
+            static_cast<unsigned>(catalog.size()));
+    return true;
+}
+
+bool loadLegacyReleaseCatalog() {
     std::vector<ReleaseAsset> assets;
     DriverReleaseStream release(assets);
     esp_task_wdt_reset();
@@ -230,20 +302,41 @@ bool catalogRefresh() {
         return false;
     }
 
+    bool sawManifest = false;
+    bool rejectedCandidate = false;
     for (const auto& manifestAsset : assets) {
         if (!endsWith(manifestAsset.name, ".t5driver.json")) continue;
+        sawManifest = true;
         const std::string stem = manifestAsset.name.substr(0, manifestAsset.name.size() - 5);
         const std::string elfName = stem + ".elf";
         const auto elf = std::find_if(assets.begin(), assets.end(), [&](const ReleaseAsset& candidate) {
             return candidate.name == elfName;
         });
-        if (elf == assets.end()) continue;
+        if (elf == assets.end()) {
+            LOG_ERR("DRVMGR", "Driver manifest has no ELF companion: %s", manifestAsset.name.c_str());
+            rejectedCandidate = true;
+            continue;
+        }
 
         std::string manifest;
         DriverPackageInfo info{};
         esp_task_wdt_reset();
-        if (!HttpDownloader::fetchUrl(manifestAsset.url, manifest) ||
-            !parseDriverPackageManifest(manifest, info) || elf->size != info.sizeBytes) continue;
+        if (!HttpDownloader::fetchUrl(manifestAsset.url, manifest)) {
+            LOG_ERR("DRVMGR", "Failed to fetch driver manifest: %s", manifestAsset.name.c_str());
+            rejectedCandidate = true;
+            continue;
+        }
+        if (!parseDriverPackageManifest(manifest, info)) {
+            LOG_ERR("DRVMGR", "Rejected driver manifest: %s", manifestAsset.name.c_str());
+            rejectedCandidate = true;
+            continue;
+        }
+        if (elf->size != info.sizeBytes) {
+            LOG_ERR("DRVMGR", "Driver size mismatch for %s: release=%llu manifest=%u", info.id,
+                    static_cast<unsigned long long>(elf->size), static_cast<unsigned>(info.sizeBytes));
+            rejectedCandidate = true;
+            continue;
+        }
 
         CatalogDriver driver;
         driver.info = info;
@@ -253,11 +346,24 @@ bool catalogRefresh() {
         if (catalog.size() >= kMaxDriverAssets) break;
     }
 
-    std::sort(catalog.begin(), catalog.end(), [](const CatalogDriver& a, const CatalogDriver& b) {
-        return std::strcmp(a.info.id, b.info.id) < 0;
-    });
-    LOG_INF("DRVMGR", "Found %u installable driver packages", static_cast<unsigned>(catalog.size()));
-    return true;
+    sortCatalog();
+    LOG_INF("DRVMGR", "Found %u installable driver packages using legacy release discovery",
+            static_cast<unsigned>(catalog.size()));
+    // No published driver packages is a valid empty catalog. If GitHub advertised a
+    // driver manifest but every candidate was rejected, surface refresh failure so
+    // the app retries instead of incorrectly claiming that the release has no drivers.
+    return !catalog.empty() || (!sawManifest && !rejectedCandidate);
+}
+
+bool catalogRefresh() {
+    if (!activeNativeApp()) return false;
+    catalog.clear();
+    if (!connectSavedWifi()) return false;
+
+    if (loadAggregateDriverCatalog()) return true;
+    catalog.clear();
+    LOG_INF("DRVMGR", "Aggregate driver catalog unavailable; using legacy release discovery");
+    return loadLegacyReleaseCatalog();
 }
 
 uint32_t catalogCount() {
