@@ -36,13 +36,13 @@ struct Record {
 // on this small record are synchronized. ESP32 disables task preemption while
 // holding its cross-core portMUX: an atomic spin lock alone could deadlock if
 // a higher-priority USB host task preempted its owner on the same core.
-// Generation never resets on detach, USB restart or application unload.
+// Device IDs and the revocation epoch never reset across detach or app unload.
 class Registry final {
  public:
   void observe(const t5_usb_serial_state_t& state, uint8_t interface_number = 0xff) {
     Guard guard(lock_);
     if (!state.connected || state.status == T5_USB_STATUS_OFF) {
-      record_ = Record{};
+      invalidateLocked();
       return;
     }
     const bool different = record_.presence != Presence::Bound ||
@@ -50,9 +50,9 @@ class Registry final {
         record_.interface_number != interface_number ||
         std::strncmp(record_.product, state.product, sizeof(record_.product)) != 0;
     if (!different) return;
-    record_ = Record{};
-    // Do not recycle an identity if the finite handle namespace is exhausted.
-    if (generation_ >= 0x7fffffffu) return;
+    invalidateLocked();
+    // Neither identity nor revocation tokens may wrap and alias an old lease.
+    if (generation_ >= 0x7fffffffu || epoch_ == UINT32_MAX) return;
     ++generation_;
     record_.id = (generation_ << 1u) | 1u;
     record_.transport = Transport::Usb;
@@ -68,12 +68,20 @@ class Registry final {
 
   void detach() {
     Guard guard(lock_);
-    record_ = Record{};
+    invalidateLocked();
   }
 
   Record snapshot() const {
     Guard guard(lock_);
     return record_;
+  }
+
+  // Host detach increments this even if an identical device re-attaches
+  // between consumer polls. A stream/lease captures it at acquisition and
+  // must reject subsequent I/O when the epoch differs.
+  uint32_t epoch() const {
+    Guard guard(lock_);
+    return epoch_;
   }
 
   bool resolve(t5_serial_device_t id, Provider provider) const {
@@ -83,6 +91,10 @@ class Registry final {
   }
 
  private:
+  void invalidateLocked() {
+    if (record_.presence == Presence::Bound && epoch_ != UINT32_MAX) ++epoch_;
+    record_ = Record{};
+  }
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
   using Mutex = portMUX_TYPE;
   struct Guard {
@@ -108,6 +120,7 @@ class Registry final {
 #endif
   Record record_{};
   uint32_t generation_ = 0;
+  uint32_t epoch_ = 0;
 };
 
 }  // namespace NativeUsbDevices
@@ -116,3 +129,4 @@ class Registry final {
 // lifecycle boundary; they are not exported to ELF applications.
 void nativeUsbProviderAttach(const t5_usb_serial_state_t* state, uint8_t dataInterface);
 void nativeUsbProviderDetach();
+uint32_t nativeUsbProviderEpoch();
