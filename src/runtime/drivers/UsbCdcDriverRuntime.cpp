@@ -19,13 +19,10 @@ constexpr const char* kManifest = "/sd/Drivers/usb-cdc-acm/manifest.json";
 constexpr size_t kMaxManifest = 4096;
 constexpr size_t kMaxDescriptor = 4096;
 UsbCdcDriverModule module;
-// The USB host task handles attach and shutdown while the native app task can
-// reconfigure an active serial port. Every ELF call, including dlclose, must
-// hold the same priority-inheriting mutex. The lock lasts for the firmware
-// lifetime; it is not destroyed while either task may still be running.
+// USB host and app tasks share the class ELF. Every entry and dlclose must
+// hold this priority-inheriting mutex, which lives for the firmware lifetime.
 SemaphoreHandle_t moduleMutex = nullptr;
-// Buffers are protected by moduleMutex. Neither a 4KB descriptor nor a 4KB
-// manifest may be allocated on the USB host task's limited stack.
+// Neither the descriptor nor the manifest belongs on the host task stack.
 uint8_t descriptorSnapshot[kMaxDescriptor];
 char manifestBuffer[kMaxManifest + 1];
 struct Lock {
@@ -35,48 +32,75 @@ struct Lock {
   Lock& operator=(const Lock&) = delete;
 };
 
-bool installedAndVerified() {
-  if (native_app_register_sd_vfs() != ESP_OK) return false;
+// Distinguish missing packages from damaged packages. These are internal
+// diagnostics, never a reason to let an unverified ELF enter the host table.
+enum class PackageCheck : uint8_t {
+  Valid, StorageUnavailable, ManifestMissing, ManifestUnreadable,
+  ManifestMalformed, CapabilityMismatch, PayloadInvalid,
+};
+const char* packageReason(PackageCheck result) {
+  switch (result) {
+    case PackageCheck::Valid: return "valid";
+    case PackageCheck::StorageUnavailable: return "sd-unavailable";
+    case PackageCheck::ManifestMissing: return "manifest-missing";
+    case PackageCheck::ManifestUnreadable: return "manifest-read-failed";
+    case PackageCheck::ManifestMalformed: return "manifest-json-invalid";
+    case PackageCheck::CapabilityMismatch: return "manifest-capability-mismatch";
+    case PackageCheck::PayloadInvalid: return "payload-verification-failed";
+  }
+  return "unknown";
+}
+
+PackageCheck checkPackage() {
+  if (native_app_register_sd_vfs() != ESP_OK) return PackageCheck::StorageUnavailable;
   FILE* file = std::fopen(kManifest, "rb");
-  if (!file) return false;
+  if (!file) return PackageCheck::ManifestMissing;
   const size_t bytes = std::fread(manifestBuffer, 1, sizeof(manifestBuffer), file);
   const bool readOk = bytes != 0 && bytes <= kMaxManifest && !std::ferror(file);
   std::fclose(file);
-  if (!readOk) return false;
+  if (!readOk) return PackageCheck::ManifestUnreadable;
   const std::string manifest(manifestBuffer, bytes);
   JsonDocument doc;
-  if (deserializeJson(doc, manifest)) return false;
+  if (deserializeJson(doc, manifest)) return PackageCheck::ManifestMalformed;
   if (!doc["requires"].is<JsonArray>() || doc["requires"].size() != 1 ||
-      !doc["provides"].is<JsonArray>() || doc["provides"].size() != 1) return false;
+      !doc["provides"].is<JsonArray>() || doc["provides"].size() != 1)
+    return PackageCheck::CapabilityMismatch;
   const char* requirement = doc["requires"][0]["capability"] | nullptr;
   const char* provision = doc["provides"][0]["capability"] | nullptr;
   if (!requirement || std::strcmp(requirement, "kernel.usb.host") != 0 ||
       doc["requires"][0]["api"].as<unsigned>() != 1 ||
       !provision || std::strcmp(provision, T5_USB_CDC_CLASS_CAPABILITY) != 0 ||
-      doc["provides"][0]["api"].as<unsigned>() != T5_USB_CDC_CLASS_API_VERSION) return false;
+      doc["provides"][0]["api"].as<unsigned>() != T5_USB_CDC_CLASS_API_VERSION)
+    return PackageCheck::CapabilityMismatch;
   DriverPackageInfo info{};
-  return validateDriverPayload(manifest, kElf, &info) &&
-         std::strcmp(info.id, kId) == 0 &&
-         std::strcmp(info.capability, T5_USB_CDC_CLASS_CAPABILITY) == 0;
+  if (!validateDriverPayload(manifest, kElf, &info) ||
+      std::strcmp(info.id, kId) != 0 ||
+      std::strcmp(info.capability, T5_USB_CDC_CLASS_CAPABILITY) != 0)
+    return PackageCheck::PayloadInvalid;
+  return PackageCheck::Valid;
 }
 }  // namespace
 
 bool activate() {
-  // activate() is the only initializer; it executes on the USB host task
-  // before enumeration, so no other task can reach an ELF entry point yet.
+  // Called on the owning USB host task before enumeration. Only a verified
+  // package can enter the active driver function table.
   if (!moduleMutex) moduleMutex = xSemaphoreCreateMutex();
-  if (!moduleMutex) return false;
+  if (!moduleMutex) {
+    LOG_ERR("USB", "USBREF phase=driver_load result=fallback reason=mutex-allocation-failed");
+    return false;
+  }
   Lock lock;
   if (module.state() == UsbCdcDriverModule::State::Active) return true;
-  if (!installedAndVerified()) {
-    LOG_INF("USB", "Installable CDC package missing/invalid; using resident USB drivers");
+  const auto package = checkPackage();
+  if (package != PackageCheck::Valid) {
+    LOG_INF("USB", "USBREF phase=driver_load result=fallback reason=%s", packageReason(package));
     return false;
   }
   if (!module.load(kElf)) {
-    LOG_ERR("USB", "Verified CDC ELF failed ABI validation/start; using resident drivers");
+    LOG_ERR("USB", "USBREF phase=driver_load result=fallback reason=elf-load-or-abi-failed");
     return false;
   }
-  LOG_INF("USB", "usb-cdc-acm ELF ACTIVE: usb.class.cdc_acm API 1");
+  LOG_INF("USB", "USBREF phase=driver_load result=active id=usb-cdc-acm api=1");
   return true;
 }
 
@@ -90,7 +114,7 @@ bool deactivate() {
   if (!moduleMutex) return true;
   Lock lock;
   if (!module.unload()) {
-    LOG_ERR("USB", "CDC ELF unload failed; module handle retained");
+    LOG_ERR("USB", "USBREF phase=driver_unload result=failed reason=module-handle-retained");
     return false;
   }
   return true;
@@ -98,10 +122,23 @@ bool deactivate() {
 
 bool probe(const uint8_t* configuration, size_t length, uint16_t vid, uint16_t pid,
            t5_usb_cdc_binding_v1* binding) {
-  if (!moduleMutex || !configuration || !binding || length < 9 || length > kMaxDescriptor) return false;
-  Lock lock;
-  std::memcpy(descriptorSnapshot, configuration, length);
-  return module.probe(descriptorSnapshot, length, vid, pid, binding);
+  if (!moduleMutex || !configuration || !binding || length < 9 || length > kMaxDescriptor) {
+    LOG_ERR("USB", "USBREF phase=driver_probe result=invalid-input vid=%04X pid=%04X bytes=%lu",
+            static_cast<unsigned>(vid), static_cast<unsigned>(pid),
+            static_cast<unsigned long>(length));
+    return false;
+  }
+  bool matched = false;
+  {
+    Lock lock;
+    std::memcpy(descriptorSnapshot, configuration, length);
+    matched = module.probe(descriptorSnapshot, length, vid, pid, binding);
+  }
+  LOG_INF("USB", "USBREF phase=driver_probe result=%s vid=%04X pid=%04X bytes=%lu",
+          matched ? "matched" : "no-match",
+          static_cast<unsigned>(vid), static_cast<unsigned>(pid),
+          static_cast<unsigned long>(length));
+  return matched;
 }
 
 bool lineCoding(uint32_t baud, uint8_t bits, uint8_t parity, uint8_t stop,
