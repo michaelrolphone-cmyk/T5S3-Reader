@@ -14,52 +14,66 @@ static int renders;
 static int list_renders;
 static int polls;
 static int writes;
-static bool acquired;
-static bool released;
+static int acquisitions;
+static int releases;
 static bool read_once;
+static bool read_replacement;
+static bool revoked;
 static t5_serial_config_t active_config;
+static t5_serial_port_lease_t current_lease;
 
 static t5_serial_result_t serial_acquire(const t5_serial_port_request_t *request,
                                          t5_serial_port_lease_t *lease,
                                          t5_stream_t *rx,
                                          t5_stream_t *tx) {
-    assert(request && lease && rx && tx && !acquired);
+    assert(request && lease && rx && tx && current_lease == 0);
     assert(request->device == 0u);
     assert(request->config.baud_rate == 115200u && request->config.data_bits == 8u &&
            request->config.parity == T5_SERIAL_PARITY_NONE && request->config.stop_bits == 1u &&
            request->config.flow_control == T5_SERIAL_FLOW_NONE);
-    acquired = true;
-    released = false;
+    assert(acquisitions < 2);
+    ++acquisitions;
     active_config = request->config;
-    *lease = 7u;
-    *rx = 1u;
-    *tx = 2u;
+    current_lease = acquisitions == 1 ? 7u : 11u;
+    *lease = current_lease;
+    *rx = acquisitions == 1 ? 1u : 3u;
+    *tx = acquisitions == 1 ? 2u : 4u;
     return T5_SERIAL_OK;
 }
 static t5_serial_result_t serial_configure(t5_serial_port_lease_t lease, const t5_serial_config_t *config) {
-    assert(lease == 7u && config);
+    assert(lease == current_lease && config);
     active_config = *config;
     return T5_SERIAL_OK;
 }
 static t5_serial_result_t serial_status(t5_serial_port_lease_t lease, t5_serial_port_state_t *state) {
-    assert(lease == 7u && state && acquired && !released);
+    assert(lease == current_lease && state);
     memset(state, 0, sizeof(*state));
+    state->config = active_config;
+    if (lease == 7u && polls >= 1) {
+        revoked = true;
+        state->status = T5_SERIAL_STATUS_WAITING;
+        state->last_error = T5_SERIAL_DISCONNECTED;
+        return T5_SERIAL_OK;
+    }
     state->status = T5_SERIAL_STATUS_READY;
     state->connected = 1;
     state->dtr = 1;
     state->rts = 1;
-    state->device = 9u;
-    state->config = active_config;
+    state->device = lease == 7u ? 9u : 13u;
     strcpy(state->device_label, "Test Serial Provider");
     return T5_SERIAL_OK;
 }
 static t5_serial_result_t serial_controls(t5_serial_port_lease_t lease, bool dtr, bool rts) {
-    assert(lease == 7u);
-    return (dtr || rts) ? T5_SERIAL_OK : T5_SERIAL_OK;
+    assert(lease == current_lease);
+    (void)dtr; (void)rts;
+    return T5_SERIAL_OK;
 }
 static t5_serial_result_t serial_release(t5_serial_port_lease_t lease) {
-    assert(lease == 7u && acquired && !released);
-    released = true;
+    assert(lease == current_lease && releases < acquisitions);
+    if (lease == 7u) assert(revoked && acquisitions == 1);
+    if (lease == 11u) assert(acquisitions == 2);
+    ++releases;
+    current_lease = 0;
     return T5_SERIAL_OK;
 }
 static const t5_serial_port_api_v1 serial_api = {
@@ -77,21 +91,27 @@ const t5_serial_port_api_v1 *t5_serial_port_get_api(uint32_t version) {
 }
 
 static t5_stream_result_t stream_read(t5_stream_t stream, void *data, uint32_t capacity, uint32_t *count) {
-    static const uint8_t msg[] = {'h','e','l','l','o','\n'};
-    assert(stream == 1u && data && count);
-    if (read_once || capacity < sizeof(msg)) {
-        *count = 0;
-        return T5_STREAM_AGAIN;
+    static const uint8_t first[] = {'h','e','l','l','o','\n'};
+    static const uint8_t next[] = {'n','e','w','\n'};
+    assert(data && count);
+    if (stream == 1u) {
+        assert(current_lease == 7u && !revoked);
+        if (read_once || capacity < sizeof(first)) { *count = 0; return T5_STREAM_AGAIN; }
+        memcpy(data, first, sizeof(first));
+        *count = sizeof(first);
+        read_once = true;
+        return T5_STREAM_OK;
     }
-    memcpy(data, msg, sizeof(msg));
-    *count = sizeof(msg);
-    read_once = true;
+    assert(stream == 3u && current_lease == 11u && revoked);
+    if (read_replacement || capacity < sizeof(next)) { *count = 0; return T5_STREAM_AGAIN; }
+    memcpy(data, next, sizeof(next));
+    *count = sizeof(next);
+    read_replacement = true;
     return T5_STREAM_OK;
 }
 static t5_stream_result_t stream_write(t5_stream_t stream, const void *data, uint32_t size, uint32_t *count) {
-    assert(stream == 2u && data && count);
-    assert(size == 6u);
-    assert(memcmp(data, "ping\r\n", 6u) == 0);
+    assert(stream == 2u && current_lease == 7u && !revoked && data && count);
+    assert(size == 6u && memcmp(data, "ping\r\n", 6u) == 0);
     ++writes;
     *count = size;
     return T5_STREAM_OK;
@@ -137,7 +157,7 @@ static bool poll_event(t5_ui_event_t *event, uint32_t wait_ms) {
     assert(event && wait_ms == 75);
     memset(event, 0, sizeof(*event));
     ++polls;
-    if (polls >= 2) event->type = T5_UI_EVENT_BACK;
+    if (polls >= 3) event->type = T5_UI_EVENT_BACK;
     return true;
 }
 static const t5_ui_api_v1 ui_api = {
@@ -172,11 +192,10 @@ const t5_system_ui_api_v1 *t5_system_ui_get_api(uint32_t version) { return versi
 
 int main(void) {
     app_main();
-    assert(acquired);
-    assert(released);
-    assert(read_once);
-    assert(writes == 1); /* text + CRLF share one TX stream write. */
-    assert(renders >= 2);
-    assert(list_renders == 0); /* Existing send-result path remains in terminal view. */
+    assert(acquisitions == 2 && releases == 2 && current_lease == 0);
+    assert(revoked && read_once && read_replacement);
+    assert(writes == 1); /* Only the original device received the pending text. */
+    assert(renders >= 3);
+    assert(list_renders == 0);
     return 0;
 }
