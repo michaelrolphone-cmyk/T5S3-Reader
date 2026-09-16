@@ -109,13 +109,16 @@ int32_t openFile(const char* path, uint32_t mode, t5_stream_t* out) {
   }
   return r;
 }
-struct Usb { const t5_usb_api_v1* api; bool connected = false; };
+struct Usb { const t5_usb_api_v1* api; };
 int32_t usbState(Usb& u) {
   t5_usb_serial_state_t s{};
   if (!u.api->serial_read_state(&s)) return T5_STREAM_IO;
   if (s.status == T5_USB_STATUS_ERROR) return T5_STREAM_IO;
-  if (s.status == T5_USB_STATUS_OFF || (u.connected && !s.connected)) return T5_STREAM_DISCONNECTED;
-  if (s.connected) u.connected = true;
+  // A physical unplug is transient while the USB host session is still running.
+  // Returning DISCONNECTED here would make StreamRuntime permanently terminalize
+  // this handle, preventing it from receiving from a replacement/replugged device.
+  if (s.status == T5_USB_STATUS_OFF) return T5_STREAM_DISCONNECTED;
+  if (!s.connected) return T5_STREAM_AGAIN;
   return s.status == T5_USB_STATUS_READY ? T5_STREAM_OK : T5_STREAM_AGAIN;
 }
 int32_t usbRead(void* ctx, void* data, uint32_t size, uint32_t* count) {
@@ -139,7 +142,7 @@ int32_t openUsb(t5_stream_t* out) {
   if (!api || !api->supported()) return T5_STREAM_UNSUPPORTED;
   Lock lock;
   if (usbOpen) return T5_STREAM_BUSY;
-  auto* u = new (std::nothrow) Usb{api, false};
+  auto* u = new (std::nothrow) Usb{api};
   if (!u) return T5_STREAM_LIMIT;
   RuntimeStreams::Provider p{u, usbRead, usbWrite, nullptr, nullptr, usbClose};
   auto r = registry.attach(owner, T5_STREAM_BYTES, T5_STREAM_READ | T5_STREAM_WRITE, p, out);
