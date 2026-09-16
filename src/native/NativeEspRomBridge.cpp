@@ -3,6 +3,7 @@
 #include <T5SerialPortApi.h>
 #include <T5StreamApi.h>
 #include "runtime/programmer/EspRomProtocol.h"
+#include "runtime/programmer/EspRomSession.h"
 
 #include <Arduino.h>
 #include <esp_task_wdt.h>
@@ -26,7 +27,7 @@ struct Operation {
   const t5_stream_api_v1* streams = nullptr;
   t5_stream_t firmware = 0, rx = 0, tx = 0;
   t5_serial_port_lease_t lease = 0;
-  t5_serial_device_t selectedDevice = 0;
+  EspRomSession::Watch target;
   t5_program_esp_rom_progress_fn progress = nullptr;
   void* context = nullptr;
   t5_program_esp_rom_status_v1 status{};
@@ -53,6 +54,11 @@ struct Operation {
     }
     return false;
   }
+  bool targetLost() {
+    status.result = T5_PROGRAM_TARGET_LOST;
+    std::snprintf(status.message, sizeof(status.message), "Programming target disconnected");
+    return false;
+  }
   bool report(uint8_t stage, uint8_t percent, const char* text) {
     status.stage = stage;
     status.percent = percent;
@@ -73,36 +79,34 @@ struct Operation {
     delay(5);
     return status.result == T5_PROGRAM_OK;
   }
-  bool transport() {
+  bool transport(bool* ready = nullptr) {
+    if (ready) *ready = false;
     if (!serial || !lease) return fail(T5_PROGRAM_IO, "Serial port was not acquired");
     t5_serial_port_state_t state{};
-    if (serial->read_status(lease, &state) != T5_SERIAL_OK)
-      return fail(T5_PROGRAM_IO, "Serial status unavailable");
-    if (selectedDevice && (!state.connected || state.device != selectedDevice)) {
-      status.result = T5_PROGRAM_TARGET_LOST;
-      std::snprintf(status.message, sizeof(status.message), "Programming target disconnected");
-      return false;
+    const auto rc = serial->read_status(lease, &state);
+    switch (target.observe(rc, rc == T5_SERIAL_OK ? &state : nullptr)) {
+      case EspRomSession::Observation::Lost: return targetLost();
+      case EspRomSession::Observation::Error:
+        return fail(T5_PROGRAM_IO, "Serial provider stopped or reported an error");
+      case EspRomSession::Observation::Ready:
+        if (ready) *ready = true;
+        return true;
+      case EspRomSession::Observation::Waiting: return true;
     }
-    if (state.status == T5_SERIAL_STATUS_ERROR ||
-        (selectedDevice && state.status == T5_SERIAL_STATUS_OFF))
-      return fail(T5_PROGRAM_IO, "Serial provider stopped or reported an error");
-    // Before the first USB device is bound, serial_start starts a host task
-    // asynchronously; its status can still be OFF while VBUS starts up.
-    return true;
+    return fail(T5_PROGRAM_IO, "Unknown serial provider state");
   }
   bool waitReady(uint32_t timeout) {
     const uint32_t started = millis();
     while (millis() - started < timeout) {
-      if (!transport()) return false;
-      t5_serial_port_state_t state{};
-      if (serial->read_status(lease, &state) != T5_SERIAL_OK)
-        return fail(T5_PROGRAM_IO, "Serial status unavailable");
-      if (state.status == T5_SERIAL_STATUS_READY && state.connected && state.device) {
-        if (!selectedDevice) selectedDevice = state.device;
-        return true;
-      }
+      bool ready = false;
+      // One status snapshot per iteration. The guard latches identity while
+      // CONFIGURING and detects epoch revocation even before initial READY.
+      if (!transport(&ready)) return false;
+      if (ready) return true;
       if (!tick()) return false;
     }
+    // A detach at the timeout boundary must win over the generic timeout.
+    if (!transport()) return false;
     return fail(T5_PROGRAM_TIMEOUT, "Serial device did not become ready");
   }
   bool delayChecked(uint32_t ms) {
@@ -111,8 +115,10 @@ struct Operation {
     return true;
   }
   bool lines(bool dtr, bool rts, uint32_t hold) {
-    if (!transport() || serial->set_control_lines(lease, dtr, rts) != T5_SERIAL_OK)
-      return fail(T5_PROGRAM_IO, "Target reset control lines failed");
+    if (!transport()) return false;
+    const auto rc = serial->set_control_lines(lease, dtr, rts);
+    if (EspRomSession::Watch::lostControl(rc)) return targetLost();
+    if (rc != T5_SERIAL_OK) return fail(T5_PROGRAM_IO, "Target reset control lines failed");
     return waitReady(1500) && delayChecked(hold);
   }
   bool streamRead(t5_stream_t stream, uint8_t* out, size_t length, uint32_t timeout = 5000) {
@@ -123,6 +129,9 @@ struct Operation {
       const uint32_t requested = static_cast<uint32_t>((length - done) < kMaxChunk ? (length - done) : kMaxChunk);
       const auto rc = streams->read(stream, out + done, requested, &count);
       if (count > requested) return fail(T5_PROGRAM_IO, "Stream returned an invalid byte count");
+      // The borrowed firmware source has independent EOF/IO semantics; only
+      // a serial stream's terminal result is evidence of target removal.
+      if (stream == rx && EspRomSession::Watch::lostStream(rc)) return targetLost();
       if (rc < 0 || (rc == T5_STREAM_EOF && done + count < length))
         return fail(T5_PROGRAM_IO, "Firmware or serial stream terminated");
       done += count;
@@ -141,8 +150,8 @@ struct Operation {
       uint32_t count = 0;
       const uint32_t requested = static_cast<uint32_t>((length - done) < kMaxChunk ? (length - done) : kMaxChunk);
       const auto rc = streams->write(tx, data + done, requested, &count);
-      if (count > requested || rc < 0 || rc == T5_STREAM_CLOSED)
-        return fail(T5_PROGRAM_IO, "Serial transmit stream failed");
+      if (EspRomSession::Watch::lostStream(rc)) return targetLost();
+      if (count > requested || rc < 0) return fail(T5_PROGRAM_IO, "Serial transmit stream failed");
       done += count;
       if (done != length && !tick()) return false;
     }
@@ -154,7 +163,8 @@ struct Operation {
     do {
       if (rx && transport()) {
         uint32_t n = 0;
-        (void)streams->read(rx, discarded, sizeof(discarded), &n);
+        const auto rc = streams->read(rx, discarded, sizeof(discarded), &n);
+        if (EspRomSession::Watch::lostStream(rc)) (void)targetLost();
       }
       if (!duration || !tick()) break;
     } while (millis() - started < duration);
@@ -167,7 +177,9 @@ struct Operation {
       uint8_t incoming[kMaxChunk];
       uint32_t count = 0;
       const auto rc = streams->read(rx, incoming, sizeof(incoming), &count);
-      if (rc < 0 || rc == T5_STREAM_EOF) return fail(T5_PROGRAM_IO, "Serial receive stream terminated");
+      if (EspRomSession::Watch::lostStream(rc)) return targetLost();
+      if (rc < 0) return fail(T5_PROGRAM_IO, "Serial receive stream terminated");
+      if (count > sizeof(incoming)) return fail(T5_PROGRAM_IO, "Serial receive overrun");
       for (uint32_t i = 0; i < count; ++i) {
         const auto decoded = decoder.feed(incoming[i]);
         if (decoded == EspRomProtocol::Decoder::Result::Invalid) {
@@ -225,6 +237,7 @@ struct Operation {
     t5_serial_port_request_t request{};
     request.config = {115200u, 8u, T5_SERIAL_PARITY_NONE, 1u, T5_SERIAL_FLOW_NONE};
     const auto rc = serial->acquire(&request, &lease, &rx, &tx);
+    if (rc == T5_SERIAL_DISCONNECTED) return targetLost();
     if (rc != T5_SERIAL_OK) return fail(rc == T5_SERIAL_BUSY ? T5_PROGRAM_BUSY : T5_PROGRAM_IO,
                                           "Cannot acquire serial.port for programming");
     if (!waitReady(8000)) return false;
