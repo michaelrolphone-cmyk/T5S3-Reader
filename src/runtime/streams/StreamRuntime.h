@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include "RecordQueue.h"
 
 namespace RuntimeStreams {
 // Firmware-only provider vtable. Never export registration to an ELF. Calls
@@ -19,6 +20,15 @@ class Registry {
  public:
   static constexpr unsigned MaxStreams = 12, MaxPipes = 4;
   int32_t buffer(uint32_t owner, uint32_t capacity, t5_stream_t* out, uint32_t flags = 3);
+  // Records share the same slots/handle generations, owner, leases and scheduler
+  // as byte streams. No alternate stream registry or ELF-facing API is created.
+  int32_t recordBuffer(uint32_t owner, const char* schema, uint32_t maxRecord,
+                       uint32_t capacityRecords, t5_stream_t* out, uint32_t flags = 3);
+  int32_t readRecord(uint32_t owner, t5_stream_t, void*, uint32_t, uint32_t*);
+  int32_t writeRecord(uint32_t owner, t5_stream_t, const void*, uint32_t);
+  // Metadata is copied to caller storage, not returned as a persistent pointer.
+  int32_t recordInfo(uint32_t owner, t5_stream_t, char* schema, uint32_t schemaCapacity,
+                     RecordQueue::Stats* out);
   int32_t produce(uint32_t owner, t5_stream_t, const void*, uint32_t, uint32_t*);
   int32_t attach(uint32_t owner, uint32_t kind, uint32_t flags, Provider provider, t5_stream_t* out);
   int32_t read(uint32_t owner, t5_stream_t, void*, uint32_t, uint32_t*);
@@ -34,12 +44,13 @@ class Registry {
   int32_t pipeInfo(uint32_t owner, t5_pipe_t, t5_pipe_info_t*);
   void release(uint32_t owner);
   bool runnable() const;
-  void pump(); // one bounded read + write per pipe, rotating first pipe
+  void pump(); // one bounded byte chunk or one atomic record per pipe, rotating first
  private:
   struct Stream {
-    uint32_t generation = 0, owner = 0, flags = 0;
+    uint32_t generation = 0, owner = 0, flags = 0, kind = T5_STREAM_BYTES;
     Provider provider;
     std::unique_ptr<uint8_t[]> buffer;
+    RecordQueue records;
     uint32_t capacity = 0, head = 0, used = 0, high = 0;
     int32_t terminal = 0;
     uint64_t read = 0, written = 0;
@@ -49,6 +60,7 @@ class Registry {
     t5_stream_t source = 0, destination = 0;
     std::array<uint8_t, T5_STREAM_CHUNK> data{};
     uint32_t offset = 0, used = 0;
+    bool recordPending = false; // needed to stage even an empty record atomically
     int32_t error = 0;
     uint64_t transferred = 0, stalls = 0;
   };
