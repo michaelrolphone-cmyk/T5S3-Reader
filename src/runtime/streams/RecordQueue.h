@@ -1,5 +1,4 @@
 #pragma once
-
 #include <T5StreamApi.h>
 #include <algorithm>
 #include <cstdint>
@@ -28,25 +27,47 @@ class RecordQueue final {
     int32_t terminal = 0;
   };
 
-  // Stable, explicit, versioned ASCII type names: location.fix.v1, etc.
-  // Never use a schema pointer owned by a dynamically unloaded ELF.
+  // Exactly one final .vN version suffix. Each preceding segment starts with
+  // a lowercase letter and contains only lowercase ASCII, digits, '-' or '_'.
+  // Do not accept an earlier version segment followed by another version;
+  // the schema identity must have one unambiguous canonical spelling.
   static bool validSchema(const char* name) {
     if (!name) return false;
-    const size_t n = strnlen(name, MaxSchema);
-    if (n < 4 || n >= MaxSchema || name[0] < 'a' || name[0] > 'z') return false;
-    size_t version = n;
-    for (size_t i = 0; i < n; ++i) {
-      const char c = name[i];
-      if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.'))
-        return false;
-      if (c == '.' && (i == 0 || i + 1 == n || name[i - 1] == '.')) return false;
-      if (c == '.' && i + 2 < n && name[i + 1] == 'v' && name[i + 2] >= '1' && name[i + 2] <= '9')
-        version = i;
+    size_t n = 0;
+    while (n < MaxSchema && name[n]) ++n;
+    if (n < 4 || n >= MaxSchema) return false;
+    size_t start = 0;
+    bool haveType = false;
+    while (start < n) {
+      size_t end = start;
+      while (end < n && name[end] != '.') ++end;
+      if (end == start) return false;
+      if (end == n) {
+        if (!haveType || name[start] != 'v' || start + 1 == end ||
+            name[start + 1] < '1' || name[start + 1] > '9') return false;
+        for (size_t i = start + 2; i < end; ++i)
+          if (name[i] < '0' || name[i] > '9') return false;
+        return true;
+      }
+      if (name[start] < 'a' || name[start] > 'z') return false;
+      // A non-final segment that looks like a version is ambiguous, even if
+      // another valid version suffix follows it.
+      if (name[start] == 'v' && start + 1 < end &&
+          name[start + 1] >= '1' && name[start + 1] <= '9') {
+        bool digits = true;
+        for (size_t i = start + 2; i < end; ++i)
+          if (name[i] < '0' || name[i] > '9') digits = false;
+        if (digits) return false;
+      }
+      for (size_t i = start + 1; i < end; ++i) {
+        const char c = name[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+              c == '_' || c == '-')) return false;
+      }
+      haveType = true;
+      start = end + 1;
     }
-    if (version == n || version < 1 || version + 2 >= n) return false;
-    for (size_t i = version + 2; i < n; ++i)
-      if (name[i] < '0' || name[i] > '9') return false;
-    return true;
+    return false;
   }
 
   static bool compatible(const char* source, const char* destination) {
