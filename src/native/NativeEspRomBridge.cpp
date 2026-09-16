@@ -214,7 +214,7 @@ struct Operation {
       }
     }
     uint8_t bytes[16]{};
-    esp_rom_md5_final(&md5, bytes);
+    esp_rom_md5_final(bytes, &md5);
     constexpr char hex[] = "0123456789abcdef";
     for (unsigned i = 0; i < 16; ++i) { digest[2*i] = hex[bytes[i] >> 4]; digest[2*i+1] = hex[bytes[i] & 15]; }
     digest[32] = 0;
