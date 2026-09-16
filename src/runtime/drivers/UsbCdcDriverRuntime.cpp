@@ -17,12 +17,17 @@ constexpr const char* kId = "usb-cdc-acm";
 constexpr const char* kElf = "/sd/Drivers/usb-cdc-acm/driver.elf";
 constexpr const char* kManifest = "/sd/Drivers/usb-cdc-acm/manifest.json";
 constexpr size_t kMaxManifest = 4096;
+constexpr size_t kMaxDescriptor = 4096;
 UsbCdcDriverModule module;
 // The USB host task handles attach and shutdown while the native app task can
 // reconfigure an active serial port. Every ELF call, including dlclose, must
 // hold the same priority-inheriting mutex. The lock lasts for the firmware
 // lifetime; it is not destroyed while either task may still be running.
 SemaphoreHandle_t moduleMutex = nullptr;
+// Never provide an ESP-IDF-owned descriptor pointer to an external module.
+// This single-device snapshot is accessed only while moduleMutex is held and
+// avoids allocating a 4-KB descriptor on the USB host task's limited stack.
+uint8_t descriptorSnapshot[kMaxDescriptor];
 struct Lock {
   Lock() { xSemaphoreTake(moduleMutex, portMAX_DELAY); }
   ~Lock() { xSemaphoreGive(moduleMutex); }
@@ -94,9 +99,10 @@ bool deactivate() {
 
 bool probe(const uint8_t* configuration, size_t length, uint16_t vid, uint16_t pid,
            t5_usb_cdc_binding_v1* binding) {
-  if (!moduleMutex) return false;
+  if (!moduleMutex || !configuration || !binding || length < 9 || length > kMaxDescriptor) return false;
   Lock lock;
-  return module.probe(configuration, length, vid, pid, binding);
+  std::memcpy(descriptorSnapshot, configuration, length);
+  return module.probe(descriptorSnapshot, length, vid, pid, binding);
 }
 
 bool lineCoding(uint32_t baud, uint8_t bits, uint8_t parity, uint8_t stop,
