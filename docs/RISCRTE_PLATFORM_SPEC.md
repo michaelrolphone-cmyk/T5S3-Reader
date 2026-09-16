@@ -80,6 +80,14 @@ Mandatory consequences for new work:
 - security-sensitive resource selection SHOULD use trusted system UI and scoped authority;
 - application-private state SHOULD use private package storage rather than unrestricted shared-volume access.
 
+### Unified device lifecycle observation
+
+The runtime-owned device inventory SHALL expose bounded observation of device arrival, meaningful state changes, capability loss, and removal without invoking application or driver callbacks during registry mutation. Transport callbacks SHALL publish snapshots and marshal inventory mutations to the owning runtime task until the registry has an explicitly synchronized implementation.
+
+Each event SHALL have a monotonic sequence, an opaque generation-qualified device handle, copied identity sufficient to correlate a removal after its handle is invalid, prior and current states, and the number of leases forcibly revoked by that transition. A transition from AVAILABLE/BUSY to an unusable state, or removal of a usable device, SHALL report capability loss even when no consumer currently holds a lease. Repeated identical state observations SHALL not generate duplicate events.
+
+Event storage SHALL be bounded. Consumers SHALL use independently maintained cursors, be told explicitly when retained events were overwritten, and re-enumerate the current registry before resuming after a gap. A consumer MUST NOT interpret the retained suffix as a complete event history after an overflow. Observation alone SHALL NOT grant access to a device; acquiring and using capability leases remains subject to execution-context identity and rights. This currently describes a firmware-internal owner-task journal, not an authorization-free ELF ABI or a complete cross-task event bus.
+
 ## Specification tree
 
 ### A. Platform contract and portability
