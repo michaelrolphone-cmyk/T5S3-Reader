@@ -13,6 +13,19 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/lib/NativeApp
   "$repo/test/drivers/module_test.cpp" -ldl -o "$build/test"
 "$build/test" "$build/gps.so" "$build/bad.so"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
+  "$repo/test/resources/device_registry_test.cpp" -o "$build/device-registry-test"
+"$build/device-registry-test"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
+  "$repo/test/resources/device_event_test.cpp" -o "$build/device-event-test"
+"$build/device-event-test"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/device_subscription_test.cpp" \
+  -o "$build/device-subscription-test"
+"$build/device-subscription-test"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
+  "$repo/test/resources/usb_serial_projection_test.cpp" -o "$build/usb-projection-test"
+"$build/usb-projection-test"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/programmer/esp_rom_protocol_test.cpp" -o "$build/esp-rom-protocol-test"
 "$build/esp-rom-protocol-test"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" -I"$repo/lib/NativeApps/include" \

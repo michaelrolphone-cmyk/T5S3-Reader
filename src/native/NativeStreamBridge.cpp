@@ -119,12 +119,19 @@ int32_t openFile(const char* path, uint32_t mode, t5_stream_t* out) {
 struct Usb {
   const t5_usb_api_v1* api;
   uint32_t epoch;
+  bool direct = false;
+  bool physicalReady = false;  // Updated only under stream mutex on owner task.
 };
+Usb* directUsb = nullptr;
+t5_stream_t directHandle = 0;
 bool usbRevoked(const Usb& u) {
   return u.epoch == UINT32_MAX || nativeUsbProviderEpoch() != u.epoch;
 }
 int32_t usbState(Usb& u) {
   if (usbRevoked(u)) return T5_STREAM_DISCONNECTED;
+  // The pipe scheduler must not touch a device before the owner task has
+  // reconciled its enumeration and acquired the exclusive physical lease.
+  if (u.direct && !u.physicalReady) return T5_STREAM_AGAIN;
   t5_usb_serial_state_t s{};
   if (!u.api->serial_read_state(&s)) return T5_STREAM_IO;
   // The host may report stale status across DEV_GONE; its publication epoch
@@ -150,25 +157,73 @@ int32_t usbWrite(void* ctx, const void* data, uint32_t size, uint32_t* count) {
   return *count ? T5_STREAM_OK : T5_STREAM_AGAIN;
 }
 void usbClose(void* ctx) {
-  delete static_cast<Usb*>(ctx);
+  auto* u = static_cast<Usb*>(ctx);
+  if (directUsb == u) { directUsb = nullptr; directHandle = 0; }
+  delete u;
   if (usbRefs) --usbRefs;
   if (!usbRefs) usbOpen = false;
+}
+// Only an owner-task public operation may refresh the direct physical claim.
+// No device-registry access occurs from the stream scheduler or USB callback.
+int32_t refreshDirect(t5_stream_t handle) {
+  uint32_t expectedEpoch = 0;
+  {
+    Lock lock;
+    if (!directUsb || handle != directHandle) return T5_STREAM_OK;
+    expectedEpoch = directUsb->epoch;
+  }
+  // Even if the epoch changed, the owner task must reconcile the host snapshot
+  // and revoke the old physical lease. The claim hook never rebinds a stale ID.
+  const bool claimed = nativeUsbDirectStreamClaim(expectedEpoch);
+  if (nativeUsbProviderEpoch() != expectedEpoch) return T5_STREAM_DISCONNECTED;
+  if (!claimed) return T5_STREAM_BUSY;
+  const bool ready = nativeUsbDirectStreamBound();
+  {
+    Lock lock;
+    if (directUsb && directHandle == handle && directUsb->epoch == expectedEpoch)
+      directUsb->physicalReady = ready;
+  }
+  return T5_STREAM_OK;
 }
 int32_t openUsb(t5_stream_t* out) {
   if (out) *out = 0;
   if (!authorized()) return T5_STREAM_DENIED;
   if (!out) return T5_STREAM_INVALID;
   const auto* api = t5_usb_get_api(T5_USB_API_VERSION);
-  if (!api || !api->supported()) return T5_STREAM_UNSUPPORTED;
-  Lock lock;
-  if (usbOpen) return T5_STREAM_BUSY;
-  auto* u = new (std::nothrow) Usb{api, nativeUsbProviderEpoch()};
-  if (!u) return T5_STREAM_LIMIT;
-  RuntimeStreams::Provider p{u, usbRead, usbWrite, nullptr, nullptr, usbClose};
-  auto r = registry.attach(owner, T5_STREAM_BYTES, T5_STREAM_READ | T5_STREAM_WRITE, p, out);
-  if (r != T5_STREAM_OK) delete u;
-  else { usbOpen = true; usbRefs = 1; }
-  return r;
+  if (!api || !api->supported || !api->supported()) return T5_STREAM_UNSUPPORTED;
+  if (!initialize()) return T5_STREAM_LIMIT;
+  // Do not re-claim and subsequently release an already-owned direct lease
+  // when a caller attempts to open the same device a second time.
+  {
+    Lock lock;
+    if (usbOpen) return T5_STREAM_BUSY;
+  }
+  const uint32_t expectedEpoch = nativeUsbProviderEpoch();
+  if (!nativeUsbDirectStreamClaim(expectedEpoch))
+    return nativeUsbProviderEpoch() != expectedEpoch ? T5_STREAM_DISCONNECTED : T5_STREAM_BUSY;
+  const bool ready = nativeUsbDirectStreamBound();
+  int32_t result = T5_STREAM_BUSY;
+  {
+    Lock lock;
+    if (!usbOpen) {
+      auto* u = new (std::nothrow) Usb{api, expectedEpoch, true, ready};
+      if (!u) result = T5_STREAM_LIMIT;
+      else {
+        RuntimeStreams::Provider p{u, usbRead, usbWrite, nullptr, nullptr, usbClose};
+        result = registry.attach(owner, T5_STREAM_BYTES,
+                                 T5_STREAM_READ | T5_STREAM_WRITE, p, out);
+        if (result != T5_STREAM_OK) delete u;
+        else {
+          usbOpen = true;
+          usbRefs = 1;
+          directUsb = u;
+          directHandle = *out;
+        }
+      }
+    }
+  }
+  if (result != T5_STREAM_OK && result != T5_STREAM_BUSY) nativeUsbDirectStreamRelease();
+  return result;
 }
 struct HttpJob { uint32_t owner; t5_stream_t stream; char url[1024]; };
 class HttpSink final : public Stream {
@@ -231,18 +286,42 @@ int32_t openHttp(const char* url, t5_stream_t* out) {
 #define SESSION_CALL(expr) do { if (!authorized()) return T5_STREAM_DENIED; Lock lock; auto r = (expr); wake(); return r; } while (0)
 int32_t readStream(t5_stream_t h, void* d, uint32_t n, uint32_t* out) {
   if (out) *out = 0;
+  if (!authorized()) return T5_STREAM_DENIED;
+  const auto claim = refreshDirect(h);
+  if (claim != T5_STREAM_OK) return claim;
   SESSION_CALL(registry.read(owner, h, d, n, out));
 }
 int32_t writeStream(t5_stream_t h, const void* d, uint32_t n, uint32_t* out) {
   if (out) *out = 0;
+  if (!authorized()) return T5_STREAM_DENIED;
+  const auto claim = refreshDirect(h);
+  if (claim != T5_STREAM_OK) return claim;
   SESSION_CALL(registry.write(owner, h, d, n, out));
 }
 int32_t finish(t5_stream_t h) { SESSION_CALL(registry.finish(owner, h)); }
 int32_t seek(t5_stream_t h, uint64_t offset) { SESSION_CALL(registry.seek(owner, h, offset)); }
-int32_t closeStream(t5_stream_t h) { SESSION_CALL(registry.close(owner, h)); }
+int32_t closeStream(t5_stream_t h) {
+  if (!authorized()) return T5_STREAM_DENIED;
+  int32_t result;
+  bool closedDirect;
+  {
+    Lock lock;
+    const bool wasDirect = directUsb && h == directHandle;
+    result = registry.close(owner, h);
+    closedDirect = wasDirect && !directUsb;
+  }
+  if (closedDirect) nativeUsbDirectStreamRelease();
+  wake();
+  return result;
+}
 int32_t info(t5_stream_t h, t5_stream_info_t* out) { SESSION_CALL(registry.info(owner, h, out)); }
 int32_t connect(t5_stream_t s, t5_stream_t d, uint32_t policy, t5_pipe_t* out) {
   if (out) *out = 0;
+  if (!authorized()) return T5_STREAM_DENIED;
+  const auto src = refreshDirect(s);
+  if (src != T5_STREAM_OK) return src;
+  const auto dst = refreshDirect(d);
+  if (dst != T5_STREAM_OK) return dst;
   SESSION_CALL(registry.connect(owner, s, d, policy, out));
 }
 int32_t pause(t5_pipe_t h, uint32_t paused) { SESSION_CALL(registry.pause(owner, h, paused != 0)); }
@@ -255,6 +334,7 @@ const t5_stream_api_v1 api = {T5_STREAM_API_VERSION, sizeof(t5_stream_api_v1), o
 
 void releaseStreams(void*, uint32_t id) {
   if (mutex) { Lock lock; registry.release(id); }
+  nativeUsbDirectStreamRelease();
   wake();
 }
 void releaseSerial(void*, uint32_t) { nativeSerialPortsEnd(); }
@@ -314,8 +394,15 @@ t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream) {
   if (!active || invocation.id() != owner || !t5_app_get_api(T5_APP_ABI_VERSION))
     return T5_STREAM_DENIED;
   if (!stream || !initialize()) return T5_STREAM_INVALID;
-  Lock lock;
-  const auto result = registry.close(owner, stream);
+  t5_stream_result_t result;
+  bool closedDirect;
+  {
+    Lock lock;
+    const bool wasDirect = directUsb && stream == directHandle;
+    result = registry.close(owner, stream);
+    closedDirect = wasDirect && !directUsb;
+  }
+  if (closedDirect) nativeUsbDirectStreamRelease();
   wake();
   return result;
 }

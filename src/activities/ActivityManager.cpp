@@ -5,6 +5,7 @@
 #include "CrossPointSettings.h"
 #include "GlobalMenuActivity.h"
 #include "OpdsServerStore.h"
+#include "native/NativeSerialPortBridge.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
@@ -53,6 +54,9 @@ void ActivityManager::renderTaskLoop() {
 }
 
 void ActivityManager::loop() {
+  // This is the firmware's owner task, not the asynchronous USB callback or
+  // render task. Observe host changes even if no application asks for serial.
+  nativeDeviceDiscoveryTick();
   bool injectedTouchButtonTap = false;
   if (currentActivity) {
     bool activityHandled = false;

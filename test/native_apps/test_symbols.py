@@ -21,6 +21,10 @@ class ImportsTest(unittest.TestCase):
         imports = '1: 00000000 0 NOTYPE GLOBAL DEFAULT UND t5_serial_port_get_api'
         self.assertEqual(validate_imports(imports, firmware_exports(repo)), {'t5_serial_port_get_api'})
 
+    def test_device_observation_api_export(self):
+        imports = '1: 00000000 0 NOTYPE GLOBAL DEFAULT UND t5_device_get_api'
+        self.assertEqual(validate_imports(imports, firmware_exports(repo)), {'t5_device_get_api'})
+
     def test_programmer_api_export(self):
         imports = '1: 00000000 0 NOTYPE GLOBAL DEFAULT UND t5_program_esp_rom_get_api'
         self.assertEqual(validate_imports(imports, firmware_exports(repo)), {'t5_program_esp_rom_get_api'})
