@@ -253,7 +253,10 @@ void controlCallback(usb_transfer_t* transfer) {
 
 void clientEvent(const usb_host_client_event_msg_t* event, void*) {
   if (event->event == USB_HOST_CLIENT_EVENT_NEW_DEV) {
-    if (!device && pendingAddress == 0) pendingAddress = event->new_dev.address;
+    // DEV_GONE and NEW_DEV can be delivered by the same client event drain. If
+    // the replacement device arrives before cleanupDevice() has cleared the old
+    // handle, keep its address instead of silently losing the only NEW_DEV event.
+    if (pendingAddress == 0 && (!device || deviceGone)) pendingAddress = event->new_dev.address;
   } else if (event->event == USB_HOST_CLIENT_EVENT_DEV_GONE) {
     if (device && event->dev_gone.dev_hdl == device) deviceGone = true;
   }
@@ -595,6 +598,8 @@ void cleanupDevice() {
   txInFlight = false;
   rxActive = false;
   deviceGone = false;
+  controlDone = false;
+  controlStatus = USB_TRANSFER_STATUS_ERROR;
   controlStep = CTRL_NONE;
   driverKind = SERIAL_DRIVER_NONE;
   ch34xVersion = 0;
@@ -870,6 +875,8 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
   stopRequested = false;
   pendingAddress = 0;
   deviceGone = false;
+  controlDone = false;
+  controlStatus = USB_TRANSFER_STATUS_ERROR;
   running = true;
   if (xTaskCreatePinnedToCore(hostTask, "usb-serial-host", 7168, nullptr, 3, &hostTaskHandle, 0) != pdPASS) {
     running = false;
