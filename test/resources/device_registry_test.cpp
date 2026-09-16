@@ -17,17 +17,17 @@ int main() {
   const char* gnssCaps[] = {"location.position", "location.time"};
   const char* bleCaps[] = {"location.position", "sensor.temperature"};
   DeviceHandle uart = 0, ble = 0, replacement = 0;
-  Descriptor gnss{"gnss-0", "GNSS", "gps-nmea", Transport::Uart, gnssCaps, 2, 50};
-  Descriptor sensor{"ble-1", "Sensor", "ble-provider", Transport::Ble, bleCaps, 2, 20};
+  Descriptor gnss{"gnss-0", "Onboard GNSS", "gps-nmea", Transport::Uart, gnssCaps, 2, 50};
+  Descriptor sensor{"ble-1", "BLE Sensor", "ble-provider", Transport::Ble, bleCaps, 2, 20};
   assert(registry.add(gnss, State::Available, &uart) && uart);
   assert(registry.add(sensor, State::Available, &ble) && ble && ble != uart);
   assert(registry.count() == 2);
   DeviceInfo info{};
   assert(registry.get(uart, &info) && info.handle == uart &&
-         std::strcmp(info.identity, "gnss-0") == 0 && info.capabilityCount == 2);
+         std::strcmp(info.identity, "gnss-0") == 0 &&
+         std::strcmp(info.label, "Onboard GNSS") == 0 && info.capabilityCount == 2);
   assert(registry.at((uart & 0xffu) - 1u, &info));
-  assert(!registry.add(gnss, State::Available, &replacement));
-  assert(!replacement);
+  assert(!registry.add(gnss, State::Available, &replacement) && !replacement);
   const char* duplicated[] = {"sensor.temperature", "sensor.temperature"};
   Descriptor bad{"bad", "Bad", "provider", Transport::I2c, duplicated, 2, 0};
   assert(!registry.add(bad, State::Available, &replacement));
@@ -40,7 +40,6 @@ int main() {
   assert(context.begin());
   const uint32_t firstOwner = context.id();
   LeaseHandle preferred = 0, shared = 0, denied = 123;
-  // Unconstrained resolution picks the highest-priority matching device.
   assert(registry.acquire("location.position", firstOwner, &preferred) == Result::Ok);
   LeaseInfo lease{};
   assert(registry.getLease(preferred, firstOwner, &lease) && lease.device == ble);
@@ -50,6 +49,10 @@ int main() {
                           Mode::Exclusive) == Result::Busy && !denied);
   assert(registry.acquire("location.position", firstOwner, &shared, uart) == Result::Ok);
   assert(registry.valid(shared, firstOwner));
+  assert(registry.setState(uart, State::Busy));
+  assert(registry.valid(shared, firstOwner));
+  assert(registry.acquire("location.time", firstOwner, &denied, uart) == Result::Busy);
+  assert(registry.setState(uart, State::Available));
   assert(registry.release(preferred, firstOwner) == Result::Ok);
   assert(!registry.valid(preferred, firstOwner));
   assert(registry.acquire("sensor.temperature", firstOwner, &denied, ble,
@@ -62,7 +65,6 @@ int main() {
          Result::NotFound);
   assert(registry.leaseCount() == 1);
 
-  // An unrelated device can disappear without revoking the GNSS session.
   assert(registry.setState(ble, State::Unavailable));
   assert(registry.valid(shared, firstOwner));
   assert(registry.acquire("location.position", firstOwner, &preferred, ble) ==
@@ -74,17 +76,15 @@ int main() {
   assert(registry.release(preferred, firstOwner) == Result::Stale);
   assert(registry.setState(ble, State::Available));
   assert(registry.acquire("location.position", firstOwner, &denied, ble) == Result::Ok);
-  assert(denied != preferred);  // Generation cannot alias a revoked lease.
+  assert(denied != preferred);
   assert(registry.release(denied, firstOwner) == Result::Ok);
 
-  // The provider's firmware-only cleanup runs before application ELF unload.
   assert(context.track(ExecutionContext::Resource::DeviceLeases, cleanup, &registry));
   context.end();
   assert(registry.leaseCount() == 0 && !registry.valid(shared, firstOwner));
   assert(!ExecutionContext::current());
   assert(registry.release(shared, firstOwner) == Result::Stale);
 
-  // Reused device slot never resolves the previous device or a previous lease.
   assert(registry.remove(uart));
   assert(!registry.get(uart, &info));
   assert(registry.add(gnss, State::Available, &replacement));
