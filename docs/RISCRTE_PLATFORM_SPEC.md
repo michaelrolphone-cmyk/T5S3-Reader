@@ -103,6 +103,7 @@ Mandatory consequences for new work:
 ### C. Streams, IPC, and data movement
 
 - [Stream and Pipe Architecture](STREAM_PIPE_ARCHITECTURE.md) — canonical data-movement design
+- [Typed Record Stream ABI](STREAM_RECORD_API_V2.md) — versioned ELF record API, compatibility, ownership and implementation status
 - [Stream and Pipe MVP](STREAM_PIPE_MVP.md) — implemented/transition subset
 
 Streams/pipes are the preferred reusable path for serial, files, downloads, GNSS, programming, recording and transforms.
