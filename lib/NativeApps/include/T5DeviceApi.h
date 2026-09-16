@@ -7,6 +7,7 @@ extern "C" {
 /* Device observation ABI v1; it does not authorize hardware access. */
 #define T5_DEVICE_API_VERSION 1u
 #define T5_DEVICE_API_VERSION_2 2u
+#define T5_DEVICE_API_VERSION_3 3u
 #define T5_DEVICE_IDENTITY_MAX 48u
 #define T5_DEVICE_LABEL_MAX 48u
 #define T5_DEVICE_PROVIDER_MAX 32u
@@ -85,13 +86,8 @@ typedef struct {
     t5_device_result_t (*unsubscribe)(t5_device_subscription_t subscription);
 } t5_device_api_v1;
 
-/* ABI v2 has an identical v1 prefix. Obtain through
- * t5_device_get_api(T5_DEVICE_API_VERSION_2), cast to v2 only after checking
- * api_version and struct_size. Manifest declarations are NOT permission grants.
- * Only trusted firmware policy/UI can issue an invocation-scoped grant; an
- * app cannot grant itself rights. An access lease authorizes semantic rights,
- * not a physical bus session. Providers must validate the lease before I/O.
- */
+/* ABI v2 retains the byte-for-byte v1 prefix. Authorization does not grant a
+ * physical bus session; a provider must separately enforce access for I/O. */
 typedef struct {
     t5_device_api_v1 v1;
     /* A specific generation-qualified device is required; no ambient rights. */
@@ -103,6 +99,20 @@ typedef struct {
     t5_device_result_t (*release)(t5_device_lease_t lease);
 } t5_device_api_v2;
 
+/* ABI v3 appends explicit, synchronous firmware-owned consent to the unchanged
+ * v2 prefix. request never grants silently from an SD manifest; an unsigned
+ * local app is identified as unverified on the prompt. Back, Home, Power,
+ * rejection or timeout return DENIED and no handle. A successful user choice
+ * grants only this invocation, exact device generation, capability and rights.
+ * Already granted rights may be acquired without another prompt. These grants
+ * do not authorize I/O through legacy GPS/USB interfaces until migrated. */
+typedef struct {
+    t5_device_api_v2 v2;
+    t5_device_result_t (*request)(const char *capability, t5_device_handle_t device,
+                                   uint32_t rights, t5_device_lease_t *out);
+} t5_device_api_v3;
+
+/* Get an exact version, then check api_version and struct_size before casting. */
 const t5_device_api_v1 *t5_device_get_api(uint32_t version);
 #ifdef __cplusplus
 }
