@@ -12,7 +12,7 @@
 
 #define MAX_IMAGES 64
 #define PATH_CAP 512
-#define STATUS_CAP 128
+#define STATUS_CAP 160
 #define FLASH_BLOCK 1024u
 #define MAX_IMAGE_SIZE 0x01000000u
 #define MIN_IMAGE_SIZE 0x00010000u
@@ -35,6 +35,17 @@ static char images[MAX_IMAGES][T5_APP_DIRENT_NAME_MAX];
 static uint32_t image_count;
 static int32_t selected;
 static char status_text[STATUS_CAP];
+static char failure_text[STATUS_CAP];
+
+/* Keep the largest protocol buffers out of the native app task stack. */
+static uint8_t command_raw[20u + FLASH_BLOCK];
+static uint8_t command_framed[2u * (20u + FLASH_BLOCK) + 2u];
+static uint8_t flash_block[FLASH_BLOCK];
+static uint8_t flash_payload[16u + FLASH_BLOCK];
+
+static uint8_t last_rom_status = 0xffu;
+static uint8_t last_rom_error = 0xffu;
+static uint8_t last_command = 0xffu;
 
 static void le32(uint8_t *p, uint32_t v) {
     p[0] = (uint8_t)v;
@@ -48,7 +59,7 @@ static uint16_t le16_read(const uint8_t *p) {
 }
 
 static bool ends_with_bin(const char *s) {
-    const size_t n = s ? strlen(s) : 0;
+    const size_t n = s ? strlen(s) : 0u;
     if (n < 4u) return false;
     const char *p = s + n - 4u;
     return p[0] == '.' && (p[1] == 'b' || p[1] == 'B') &&
@@ -57,6 +68,47 @@ static bool ends_with_bin(const char *s) {
 
 static char lower_ascii(char c) {
     return c >= 'A' && c <= 'Z' ? (char)(c + ('a' - 'A')) : c;
+}
+
+static void clear_failure(void) {
+    failure_text[0] = 0;
+}
+
+static void set_failure(const char *text) {
+    if (!text) text = "Unknown failure";
+    strncpy(failure_text, text, sizeof(failure_text) - 1u);
+    failure_text[sizeof(failure_text) - 1u] = 0;
+}
+
+static void set_usb_failure(const char *stage) {
+    t5_usb_serial_state_t state;
+    if (usb && usb->serial_read_state && usb->serial_read_state(&state)) {
+        snprintf(failure_text, sizeof(failure_text),
+                 "%s | USB %04x:%04x RX%lu TX%lu E%ld",
+                 stage ? stage : "USB failure",
+                 (unsigned)state.vid, (unsigned)state.pid,
+                 (unsigned long)state.rx_bytes, (unsigned long)state.tx_bytes,
+                 (long)state.last_error);
+    } else {
+        set_failure(stage ? stage : "USB failure");
+    }
+}
+
+static void set_rom_failure(const char *stage) {
+    t5_usb_serial_state_t state;
+    if (usb && usb->serial_read_state && usb->serial_read_state(&state)) {
+        snprintf(failure_text, sizeof(failure_text),
+                 "%s | C%02x S%02x E%02x RX%lu TX%lu",
+                 stage ? stage : "ROM failure",
+                 (unsigned)last_command, (unsigned)last_rom_status,
+                 (unsigned)last_rom_error,
+                 (unsigned long)state.rx_bytes, (unsigned long)state.tx_bytes);
+    } else {
+        snprintf(failure_text, sizeof(failure_text), "%s | C%02x S%02x E%02x",
+                 stage ? stage : "ROM failure",
+                 (unsigned)last_command, (unsigned)last_rom_status,
+                 (unsigned)last_rom_error);
+    }
 }
 
 static void render_list(void) {
@@ -115,38 +167,48 @@ static void drain_rx(void) {
     while (usb->serial_read(tmp, sizeof(tmp)) != 0u) {}
 }
 
+static void drain_rx_for(uint32_t milliseconds) {
+    const uint32_t start = app->millis();
+    uint8_t tmp[128];
+    while ((uint32_t)(app->millis() - start) < milliseconds) {
+        while (usb->serial_read(tmp, sizeof(tmp)) != 0u) {}
+        t5_app_input_t input;
+        if (!app->poll(&input, 5u) || input.exit_requested) return;
+    }
+}
+
 static bool write_all(const uint8_t *data, size_t length, uint32_t timeout_ms) {
-    size_t sent = 0;
+    size_t sent = 0u;
     const uint32_t start = app->millis();
     while (sent < length && (uint32_t)(app->millis() - start) < timeout_ms) {
         const size_t count = usb->serial_write(data + sent, length - sent);
         if (count != 0u) sent += count;
         t5_app_input_t input;
-        if (!app->poll(&input, 5)) return false;
+        if (!app->poll(&input, 5u)) return false;
         if (input.exit_requested) return false;
     }
     return sent == length;
 }
 
 static size_t slip_encode(const uint8_t *input, size_t length, uint8_t *output, size_t capacity) {
-    size_t out = 0;
-    if (out >= capacity) return 0;
+    size_t out = 0u;
+    if (out >= capacity) return 0u;
     output[out++] = 0xc0u;
-    for (size_t i = 0; i < length; ++i) {
+    for (size_t i = 0u; i < length; ++i) {
         if (input[i] == 0xc0u) {
-            if (out + 2u > capacity) return 0;
+            if (out + 2u > capacity) return 0u;
             output[out++] = 0xdbu;
             output[out++] = 0xdcu;
         } else if (input[i] == 0xdbu) {
-            if (out + 2u > capacity) return 0;
+            if (out + 2u > capacity) return 0u;
             output[out++] = 0xdbu;
             output[out++] = 0xddu;
         } else {
-            if (out >= capacity) return 0;
+            if (out >= capacity) return 0u;
             output[out++] = input[i];
         }
     }
-    if (out >= capacity) return 0;
+    if (out >= capacity) return 0u;
     output[out++] = 0xc0u;
     return out;
 }
@@ -154,18 +216,18 @@ static size_t slip_encode(const uint8_t *input, size_t length, uint8_t *output, 
 static bool recv_slip(uint8_t *output, size_t capacity, size_t *out_length, uint32_t timeout_ms) {
     bool started = false;
     bool escaped = false;
-    size_t length = 0;
+    size_t length = 0u;
     const uint32_t start = app->millis();
     while ((uint32_t)(app->millis() - start) < timeout_ms) {
         uint8_t incoming[64];
         const size_t count = usb->serial_read(incoming, sizeof(incoming));
-        for (size_t i = 0; i < count; ++i) {
+        for (size_t i = 0u; i < count; ++i) {
             uint8_t value = incoming[i];
             if (!started) {
                 if (value == 0xc0u) {
                     started = true;
                     escaped = false;
-                    length = 0;
+                    length = 0u;
                 }
                 continue;
             }
@@ -188,42 +250,47 @@ static bool recv_slip(uint8_t *output, size_t capacity, size_t *out_length, uint
             output[length++] = value;
         }
         t5_app_input_t input;
-        if (!app->poll(&input, 5)) return false;
+        if (!app->poll(&input, 5u)) return false;
         if (input.exit_requested) return false;
     }
     return false;
 }
 
 static bool rom_reply_success(uint8_t op, const uint8_t *reply, size_t reply_length) {
+    last_rom_status = 0xffu;
+    last_rom_error = 0xffu;
     if (reply_length < 12u || reply[0] != 0x01u || reply[1] != op) return false;
     const uint16_t data_length = le16_read(reply + 2);
     if (data_length < 4u || reply_length < 8u + (size_t)data_length) return false;
-    /* ESP32-family ROM responses end in status,error,reserved,reserved. */
-    return reply[8u + (size_t)data_length - 4u] == 0u;
+    const size_t status_offset = 8u + (size_t)data_length - 4u;
+    last_rom_status = reply[status_offset];
+    last_rom_error = reply[status_offset + 1u];
+    return last_rom_status == 0u;
 }
 
 static bool command(uint8_t op, const uint8_t *payload, uint16_t payload_length,
                     uint32_t checksum, uint8_t *reply, size_t reply_capacity,
                     size_t *reply_length, uint32_t timeout_ms) {
-    uint8_t raw[20u + FLASH_BLOCK];
-    if ((size_t)payload_length + 8u > sizeof(raw)) return false;
-    raw[0] = 0x00u;
-    raw[1] = op;
-    raw[2] = (uint8_t)payload_length;
-    raw[3] = (uint8_t)(payload_length >> 8u);
-    le32(raw + 4, checksum);
-    if (payload_length != 0u) memcpy(raw + 8, payload, payload_length);
+    last_command = op;
+    last_rom_status = 0xffu;
+    last_rom_error = 0xffu;
+    if ((size_t)payload_length + 8u > sizeof(command_raw)) return false;
+    command_raw[0] = 0x00u;
+    command_raw[1] = op;
+    command_raw[2] = (uint8_t)payload_length;
+    command_raw[3] = (uint8_t)(payload_length >> 8u);
+    le32(command_raw + 4, checksum);
+    if (payload_length != 0u) memcpy(command_raw + 8, payload, payload_length);
 
-    uint8_t framed[2u * (20u + FLASH_BLOCK) + 2u];
-    const size_t framed_length = slip_encode(raw, (size_t)payload_length + 8u, framed, sizeof(framed));
-    if (framed_length == 0u || !write_all(framed, framed_length, timeout_ms)) return false;
+    const size_t framed_length = slip_encode(command_raw, (size_t)payload_length + 8u,
+                                             command_framed, sizeof(command_framed));
+    if (framed_length == 0u || !write_all(command_framed, framed_length, timeout_ms)) return false;
 
     const uint32_t start = app->millis();
     for (;;) {
         const uint32_t elapsed = (uint32_t)(app->millis() - start);
         if (elapsed >= timeout_ms) return false;
         if (!recv_slip(reply, reply_capacity, reply_length, timeout_ms - elapsed)) return false;
-        /* SYNC and retried operations can leave older responses queued. */
         if (*reply_length < 2u || reply[0] != 0x01u || reply[1] != op) continue;
         return rom_reply_success(op, reply, *reply_length);
     }
@@ -238,7 +305,7 @@ static bool wait_usb_ready(uint32_t timeout_ms) {
             if (state.status == T5_USB_STATUS_ERROR) return false;
         }
         t5_app_input_t input;
-        if (!app->poll(&input, 10)) return false;
+        if (!app->poll(&input, 10u)) return false;
         if (input.exit_requested) return false;
     }
     return false;
@@ -246,23 +313,31 @@ static bool wait_usb_ready(uint32_t timeout_ms) {
 
 static bool set_control_lines_wait(bool dtr, bool rts, uint32_t settle_ms) {
     if (!usb->serial_set_control_lines(dtr, rts)) return false;
-    if (!wait_usb_ready(1000u)) return false;
+    if (!wait_usb_ready(1500u)) return false;
     return settle_ms == 0u || poll_delay(settle_ms);
 }
 
-static bool enter_bootloader(void) {
+static bool enter_bootloader(uint32_t reset_hold_ms) {
     drain_rx();
-    /* Espressif tight reset sequence. DTR drives IO0 and RTS drives EN, both active-low. */
-    if (!set_control_lines_wait(false, false, 20u)) return false;
-    if (!set_control_lines_wait(true, true, 20u)) return false;
-    if (!set_control_lines_wait(false, true, 100u)) return false; /* IO0 high, EN low */
-    if (!set_control_lines_wait(true, false, 50u)) return false;  /* IO0 low, EN high */
-    if (!set_control_lines_wait(false, false, 50u)) return false; /* release IO0 */
-    drain_rx();
+    /* Match Espressif ClassicReset exactly:
+       DTR=0,RTS=1 -> wait -> DTR=1,RTS=0 -> wait -> DTR=0,RTS=0.
+       On normal ESP dev-board auto-reset circuits DTR controls GPIO0 and RTS controls EN. */
+    if (!set_control_lines_wait(false, true, reset_hold_ms)) {
+        set_usb_failure("Reset: RTS assert failed");
+        return false;
+    }
+    if (!set_control_lines_wait(true, false, 50u)) {
+        set_usb_failure("Reset: DTR boot strap failed");
+        return false;
+    }
+    if (!set_control_lines_wait(false, false, 50u)) {
+        set_usb_failure("Reset: release failed");
+        return false;
+    }
     return true;
 }
 
-static bool sync_rom(void) {
+static bool sync_rom_once(void) {
     uint8_t payload[36];
     memset(payload, 0x55, sizeof(payload));
     payload[0] = 0x07u;
@@ -270,20 +345,36 @@ static bool sync_rom(void) {
     payload[2] = 0x12u;
     payload[3] = 0x20u;
     uint8_t reply[128];
-    size_t reply_length = 0;
-    for (uint32_t attempt = 0; attempt < 7u; ++attempt) {
-        if (command(ESP_SYNC, payload, sizeof(payload), 0, reply, sizeof(reply), &reply_length, 500u)) return true;
-        drain_rx();
+    size_t reply_length = 0u;
+    for (uint32_t attempt = 0u; attempt < 5u; ++attempt) {
+        if (command(ESP_SYNC, payload, sizeof(payload), 0u,
+                    reply, sizeof(reply), &reply_length, 500u)) return true;
+        drain_rx_for(25u);
     }
+    return false;
+}
+
+static bool connect_rom(void) {
+    static const uint32_t reset_holds[] = {100u, 250u, 500u};
+    for (uint32_t attempt = 0u; attempt < sizeof(reset_holds) / sizeof(reset_holds[0]); ++attempt) {
+        snprintf(status_text, sizeof(status_text), "Reset/sync attempt %lu/3",
+                 (unsigned long)(attempt + 1u));
+        render_status("Connecting to target", "ROM bootloader", status_text);
+        if (!enter_bootloader(reset_holds[attempt])) return false;
+        if (sync_rom_once()) return true;
+    }
+    set_usb_failure("SYNC timeout/no ROM reply");
     return false;
 }
 
 static bool extended_flash_begin_supported(void) {
     uint8_t reply[96];
-    size_t reply_length = 0;
-    /* GET_SECURITY_INFO exists on S2/S3 and newer ROMs. These use the extended
-       FLASH_BEGIN parameter containing the encrypted-write flag. */
-    return command(ESP_GET_SECURITY_INFO, NULL, 0, 0, reply, sizeof(reply), &reply_length, 750u);
+    size_t reply_length = 0u;
+    const bool supported = command(ESP_GET_SECURITY_INFO, NULL, 0u, 0u,
+                                   reply, sizeof(reply), &reply_length, 750u);
+    /* Older ESP32 ROMs reject this command and may queue an additional error packet. */
+    drain_rx_for(75u);
+    return supported;
 }
 
 static uint32_t flash_capacity_for_image(size_t image_size) {
@@ -294,47 +385,63 @@ static uint32_t flash_capacity_for_image(size_t image_size) {
 
 static bool configure_flash(uint32_t capacity) {
     uint8_t reply[96];
-    size_t reply_length = 0;
+    size_t reply_length = 0u;
     uint8_t attach[8] = {0};
-    if (!command(ESP_SPI_ATTACH, attach, sizeof(attach), 0,
-                 reply, sizeof(reply), &reply_length, 3000u)) return false;
+    if (!command(ESP_SPI_ATTACH, attach, sizeof(attach), 0u,
+                 reply, sizeof(reply), &reply_length, 3000u)) {
+        set_rom_failure("SPI_ATTACH failed");
+        return false;
+    }
 
     uint8_t params[24];
-    le32(params + 0, 0u);                 /* flash ID: let ROM use attached flash */
+    le32(params + 0, 0u);
     le32(params + 4, capacity);
-    le32(params + 8, 64u * 1024u);        /* block size */
-    le32(params + 12, 4u * 1024u);        /* sector size */
-    le32(params + 16, 256u);              /* page size */
-    le32(params + 20, 0xffffu);           /* status mask */
-    return command(ESP_SPI_SET_PARAMS, params, sizeof(params), 0,
-                   reply, sizeof(reply), &reply_length, 3000u);
+    le32(params + 8, 64u * 1024u);
+    le32(params + 12, 4u * 1024u);
+    le32(params + 16, 256u);
+    le32(params + 20, 0xffffu);
+    if (!command(ESP_SPI_SET_PARAMS, params, sizeof(params), 0u,
+                 reply, sizeof(reply), &reply_length, 3000u)) {
+        set_rom_failure("SPI_SET_PARAMS failed");
+        return false;
+    }
+    return true;
 }
 
 static uint8_t flash_checksum(const uint8_t *data, size_t length) {
     uint8_t value = 0xefu;
-    for (size_t i = 0; i < length; ++i) value ^= data[i];
+    for (size_t i = 0u; i < length; ++i) value ^= data[i];
     return value;
 }
 
 static bool validate_image(const char *path, size_t *image_size) {
-    size_t size = 0;
+    size_t size = 0u;
     t5_storage_stream_t stream = storage->stream_open(path, &size);
-    if (stream == T5_STORAGE_STREAM_INVALID) return false;
+    if (stream == T5_STORAGE_STREAM_INVALID) {
+        set_failure("Cannot open firmware image");
+        return false;
+    }
     uint8_t header[4] = {0};
     const size_t count = storage->stream_read(stream, header, sizeof(header));
     storage->stream_close(stream);
-    if (count != sizeof(header) || size < MIN_IMAGE_SIZE || size > MAX_IMAGE_SIZE) return false;
-    /* A merged image flashed at offset 0 begins with an ESP image bootloader. */
-    if (header[0] != 0xe9u) return false;
+    if (count != sizeof(header) || size < MIN_IMAGE_SIZE || size > MAX_IMAGE_SIZE) {
+        set_failure("Invalid image size/header");
+        return false;
+    }
+    if (header[0] != 0xe9u) {
+        set_failure("Image is not merged ESP image at 0x0");
+        return false;
+    }
     *image_size = size;
     return true;
 }
 
 static bool source_md5(const char *path, size_t expected_size, char hex_out[33]) {
-    size_t size = 0;
+    size_t size = 0u;
     t5_storage_stream_t stream = storage->stream_open(path, &size);
     if (stream == T5_STORAGE_STREAM_INVALID || size != expected_size) {
         if (stream != T5_STORAGE_STREAM_INVALID) storage->stream_close(stream);
+        set_failure("Source MD5: cannot reopen image");
         return false;
     }
 
@@ -343,10 +450,11 @@ static bool source_md5(const char *path, size_t expected_size, char hex_out[33])
     uint8_t block[FLASH_BLOCK];
     size_t remaining = size;
     while (remaining != 0u) {
-        size_t wanted = remaining < sizeof(block) ? remaining : sizeof(block);
+        const size_t wanted = remaining < sizeof(block) ? remaining : sizeof(block);
         const size_t count = storage->stream_read(stream, block, wanted);
         if (count == 0u || count > remaining) {
             storage->stream_close(stream);
+            set_failure("Source MD5: SD read failed");
             return false;
         }
         esp_rom_md5_update(&md5, block, count);
@@ -361,10 +469,11 @@ static bool source_md5(const char *path, size_t expected_size, char hex_out[33])
 }
 
 static bool flash_stream(const char *path, size_t image_size, bool extended_begin) {
-    size_t opened_size = 0;
+    size_t opened_size = 0u;
     t5_storage_stream_t stream = storage->stream_open(path, &opened_size);
     if (stream == T5_STORAGE_STREAM_INVALID || opened_size != image_size) {
         if (stream != T5_STORAGE_STREAM_INVALID) storage->stream_close(stream);
+        set_failure("Flash: cannot reopen image");
         return false;
     }
 
@@ -374,44 +483,48 @@ static bool flash_stream(const char *path, size_t image_size, bool extended_begi
     le32(begin + 4, blocks);
     le32(begin + 8, FLASH_BLOCK);
     le32(begin + 12, 0u);
-    le32(begin + 16, 0u); /* unencrypted write */
+    le32(begin + 16, 0u);
 
     const uint32_t megabytes = ((uint32_t)image_size + 0x0fffffu) >> 20u;
     const uint32_t erase_timeout = 10000u + megabytes * 40000u;
     uint8_t reply[160];
-    size_t reply_length = 0;
+    size_t reply_length = 0u;
     const uint16_t begin_length = extended_begin ? 20u : 16u;
-    if (!command(ESP_FLASH_BEGIN, begin, begin_length, 0,
+    if (!command(ESP_FLASH_BEGIN, begin, begin_length, 0u,
                  reply, sizeof(reply), &reply_length, erase_timeout)) {
         storage->stream_close(stream);
+        set_rom_failure("FLASH_BEGIN/erase failed");
         return false;
     }
 
-    uint8_t block[FLASH_BLOCK];
-    uint8_t payload[16u + FLASH_BLOCK];
     unsigned next_progress = 5u;
-    for (uint32_t sequence = 0; sequence < blocks; ++sequence) {
-        const size_t count = storage->stream_read(stream, block, sizeof(block));
+    for (uint32_t sequence = 0u; sequence < blocks; ++sequence) {
+        const size_t count = storage->stream_read(stream, flash_block, sizeof(flash_block));
         if (count == 0u && sequence + 1u < blocks) {
             storage->stream_close(stream);
+            set_failure("Flash: SD read failed");
             return false;
         }
-        if (count < sizeof(block)) memset(block + count, 0xff, sizeof(block) - count);
+        if (count < sizeof(flash_block)) memset(flash_block + count, 0xff, sizeof(flash_block) - count);
 
-        le32(payload + 0, FLASH_BLOCK);
-        le32(payload + 4, sequence);
-        le32(payload + 8, 0u);
-        le32(payload + 12, 0u);
-        memcpy(payload + 16, block, FLASH_BLOCK);
+        le32(flash_payload + 0, FLASH_BLOCK);
+        le32(flash_payload + 4, sequence);
+        le32(flash_payload + 8, 0u);
+        le32(flash_payload + 12, 0u);
+        memcpy(flash_payload + 16, flash_block, FLASH_BLOCK);
 
         bool written = false;
-        for (uint32_t attempt = 0; attempt < 3u && !written; ++attempt) {
-            written = command(ESP_FLASH_DATA, payload, sizeof(payload),
-                              flash_checksum(block, FLASH_BLOCK), reply, sizeof(reply),
-                              &reply_length, 5000u);
+        for (uint32_t attempt = 0u; attempt < 3u && !written; ++attempt) {
+            written = command(ESP_FLASH_DATA, flash_payload, sizeof(flash_payload),
+                              flash_checksum(flash_block, FLASH_BLOCK),
+                              reply, sizeof(reply), &reply_length, 5000u);
         }
         if (!written) {
             storage->stream_close(stream);
+            snprintf(failure_text, sizeof(failure_text),
+                     "FLASH_DATA block %lu failed | S%02x E%02x",
+                     (unsigned long)sequence, (unsigned)last_rom_status,
+                     (unsigned)last_rom_error);
             return false;
         }
 
@@ -435,40 +548,46 @@ static bool verify_md5(size_t image_size, const char expected_hex[33]) {
     le32(payload + 12, 0u);
 
     uint8_t reply[160];
-    size_t reply_length = 0;
+    size_t reply_length = 0u;
     const uint32_t megabytes = ((uint32_t)image_size + 0x0fffffu) >> 20u;
     const uint32_t timeout = 5000u + megabytes * 8000u;
-    if (!command(ESP_FLASH_MD5, payload, sizeof(payload), 0,
-                 reply, sizeof(reply), &reply_length, timeout)) return false;
+    if (!command(ESP_FLASH_MD5, payload, sizeof(payload), 0u,
+                 reply, sizeof(reply), &reply_length, timeout)) {
+        set_rom_failure("FLASH_MD5 command failed");
+        return false;
+    }
 
     const uint16_t data_length = le16_read(reply + 2);
-    /* ESP32-family ROM returns 32 ASCII hex characters followed by 4 status bytes. */
-    if (data_length < 36u || reply_length < 8u + (size_t)data_length) return false;
-    for (uint32_t i = 0; i < 32u; ++i) {
-        if (lower_ascii((char)reply[8u + i]) != expected_hex[i]) return false;
+    if (data_length < 36u || reply_length < 8u + (size_t)data_length) {
+        set_failure("FLASH_MD5 returned malformed digest");
+        return false;
+    }
+    for (uint32_t i = 0u; i < 32u; ++i) {
+        if (lower_ascii((char)reply[8u + i]) != expected_hex[i]) {
+            set_failure("MD5 mismatch: target flash differs from source");
+            return false;
+        }
     }
     return true;
 }
 
 static void reset_target(void) {
     uint8_t payload[4];
-    le32(payload, 0u); /* FLASH_END 0 requests reboot. */
+    le32(payload, 0u);
     uint8_t reply[64];
-    size_t reply_length = 0;
-    (void)command(ESP_FLASH_END, payload, sizeof(payload), 0,
+    size_t reply_length = 0u;
+    (void)command(ESP_FLASH_END, payload, sizeof(payload), 0u,
                   reply, sizeof(reply), &reply_length, 1000u);
-
-    /* Also pulse EN so an external USB-UART target leaves download mode even if
-       its ROM reset response disappeared while rebooting. Keep IO0 released. */
     (void)set_control_lines_wait(false, true, 100u);
     (void)set_control_lines_wait(false, false, 50u);
 }
 
 static bool flash_selected(void) {
+    clear_failure();
     char path[PATH_CAP];
     snprintf(path, sizeof(path), "/sd/%s", images[selected]);
 
-    size_t image_size = 0;
+    size_t image_size = 0u;
     render_status("Checking firmware image", "Validating", "Merged ESP image required at flash offset 0x0");
     if (!validate_image(path, &image_size)) return false;
 
@@ -477,28 +596,31 @@ static bool flash_selected(void) {
     if (!source_md5(path, image_size, expected_md5)) return false;
 
     const uint32_t flash_capacity = flash_capacity_for_image(image_size);
-    if (flash_capacity == 0u) return false;
+    if (flash_capacity == 0u) {
+        set_failure("Image exceeds supported 16 MiB flash range");
+        return false;
+    }
 
     const t5_usb_line_coding_t coding = {115200u, 8u, T5_USB_PARITY_NONE, 1u, 0u};
     render_status("Connecting to target", "USB", "Powering target and opening serial bridge");
-    if (!usb->serial_start(&coding)) return false;
+    if (!usb->serial_start(&coding)) {
+        set_usb_failure("USB serial_start failed");
+        return false;
+    }
     if (!wait_usb_ready(8000u)) {
-        usb->serial_stop();
-        return false;
-    }
-    if (!enter_bootloader()) {
-        usb->serial_stop();
-        return false;
-    }
-
-    render_status("Connecting to target", "ROM bootloader", "Synchronizing");
-    if (!sync_rom()) {
+        set_usb_failure("USB bridge not ready");
         usb->serial_stop();
         return false;
     }
 
+    if (!connect_rom()) {
+        usb->serial_stop();
+        return false;
+    }
+
+    render_status("ROM bootloader connected", "Probe", "Checking ROM capabilities");
     const bool extended_begin = extended_flash_begin_supported();
-    drain_rx();
+
     render_status("ROM bootloader connected", "SPI flash", "Configuring flash interface");
     if (!configure_flash(flash_capacity)) {
         usb->serial_stop();
@@ -542,11 +664,9 @@ __attribute__((visibility("default"))) void app_main(void) {
         !usb->serial_set_control_lines || !usb->serial_read || !usb->serial_write ||
         !usb->serial_read_state) return;
 
-    /* Back remains ordinary app navigation, but cannot set the sticky native-app
-       exit flag while erase/write/verify is in progress. */
     app->set_back_exits_app(false);
 
-    image_count = 0;
+    image_count = 0u;
     selected = 0;
     if (app->dir_open("/sd")) {
         t5_app_dirent_t entry;
@@ -563,7 +683,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     render_list();
     for (;;) {
         t5_ui_event_t event;
-        if (!ui->poll_event(&event, 50)) continue;
+        if (!ui->poll_event(&event, 50u)) continue;
         if (event.type == T5_UI_EVENT_EXIT || event.type == T5_UI_EVENT_BACK) return;
         if (image_count == 0u) continue;
 
@@ -583,10 +703,11 @@ __attribute__((visibility("default"))) void app_main(void) {
             const bool ok = flash_selected();
             render_status(ok ? "Flash complete" : "Flash failed",
                           ok ? "MD5 verified" : "Error",
-                          ok ? "Target reset into flashed firmware" : "Check target connection/image and retry");
+                          ok ? "Target reset into flashed firmware" :
+                               (failure_text[0] ? failure_text : "Unknown flasher failure"));
             for (;;) {
                 t5_ui_event_t done;
-                if (!ui->poll_event(&done, 50)) continue;
+                if (!ui->poll_event(&done, 50u)) continue;
                 if (done.type == T5_UI_EVENT_BACK || done.type == T5_UI_EVENT_EXIT) return;
                 if (done.type == T5_UI_EVENT_CONFIRM || done.type == T5_UI_EVENT_TAP) {
                     render_list();

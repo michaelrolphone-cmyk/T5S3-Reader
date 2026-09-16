@@ -1,6 +1,6 @@
 {
   "min_firmware_version": "1.2.3",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "display_name": "ESP ROM Flasher",
   "file_name": "esp_rom_flasher.elf",
   "icon": "solid:f1ea"
