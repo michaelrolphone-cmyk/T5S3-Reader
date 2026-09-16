@@ -66,7 +66,9 @@ int main() {
   usbStatus.status = T5_USB_STATUS_CONFIGURING;
   assert(api->write(h, "abc", 3, &count) == T5_STREAM_AGAIN && count == 0);
   usbStatus.connected = 0; usbStatus.status = T5_USB_STATUS_WAITING;
-  assert(api->read(h, bytes, 3, &count) == T5_STREAM_DISCONNECTED);
+  assert(api->read(h, bytes, 3, &count) == T5_STREAM_AGAIN && count == 0);
+  usbStatus.connected = 1; usbStatus.status = T5_USB_STATUS_READY;
+  assert(api->write(h, "abc", 3, &count) == 0 && count == 2);
   assert(api->close(h) == 0 && stops == 0);
   assert(api->open_http("https://example.test/file", &h) == 0);
   assert(api->open_http("https://example.test/other", &other) == T5_STREAM_BUSY);

@@ -14,7 +14,7 @@
 #define DETECT_SAMPLE_CAP 320u
 #define DETECT_SETTLE_TICKS 2u
 #define DETECT_SAMPLE_TICKS 5u
-#define DETECT_CONFIG_TICKS 12u
+#define DETECT_CONFIG_TICKS 32u
 #define DETECT_ACCEPT_SCORE 600u
 #define COOKIE_SEND 0x55534201u
 #define COOKIE_CUSTOM_BAUD 0x55534202u
@@ -226,6 +226,23 @@ static void drain_serial_stream(void) {
     }
 }
 
+static bool restart_serial_session(t5_usb_serial_state_t *state, const t5_usb_line_coding_t *coding) {
+    if (!state || !coding) return false;
+
+    // Closing the stream before stopping the host prevents the intentional OFF
+    // state from terminalizing the old stream handle. serial_stop() removes VBUS,
+    // so each candidate gets a real device power cycle and fresh boot output.
+    close_serial_stream();
+    usb->serial_stop();
+    if (!usb->serial_start(coding)) return false;
+    if (!open_serial_stream()) {
+        usb->serial_stop();
+        return false;
+    }
+    if (!usb->serial_read_state(state)) return false;
+    return true;
+}
+
 static bool coding_equal(const t5_usb_line_coding_t *a, const t5_usb_line_coding_t *b) {
     return a->baud_rate == b->baud_rate && a->data_bits == b->data_bits &&
            a->parity == b->parity && a->stop_bits == b->stop_bits;
@@ -352,15 +369,13 @@ static void consider_best(const t5_usb_line_coding_t *coding, uint16_t score, ui
 }
 
 static bool start_detect_candidate(t5_usb_serial_state_t *state, t5_usb_line_coding_t coding) {
-    drain_serial_stream();
     detect_sample_len = 0;
     detect_settle_ticks = DETECT_SETTLE_TICKS;
     detect_sample_ticks = 0;
     detect_config_ticks = 0;
     detect_candidate = coding;
     detect_candidate_active = false;
-    if (!usb->serial_set_line_coding(&coding)) return false;
-    state->line_coding = coding;
+    if (!restart_serial_session(state, &coding)) return false;
     detect_candidate_active = true;
     return true;
 }
@@ -403,8 +418,8 @@ static void render_detect(const t5_usb_serial_state_t *state) {
 
     if (detect_phase == DETECT_BAUD) {
         snprintf(body, sizeof(body),
-                 "Passive auto detect\n\n"
-                 "Nothing is transmitted and DTR/RTS are not changed.\n\n"
+                 "Auto detect\n\n"
+                 "USB power is cycled before each candidate so boot-only serial output can be sampled. No payload bytes are transmitted.\n\n"
                  "Scanning baud rates: %u/%u\n"
                  "Current: %s\n\n"
                  "Then the strongest baud is tested across data bits, parity, and stop bits.",
@@ -413,7 +428,8 @@ static void render_detect(const t5_usb_serial_state_t *state) {
                  candidate[0] ? candidate : "configuring");
     } else {
         snprintf(body, sizeof(body),
-                 "Passive auto detect\n\n"
+                 "Auto detect\n\n"
+                 "USB power is cycled before each framing candidate.\n\n"
                  "Testing framing: baud candidate %u/%u, format %u/%u\n"
                  "Current: %s\n\n"
                  "Best so far: %s",
@@ -438,8 +454,10 @@ static void render_detect(const t5_usb_serial_state_t *state) {
 }
 
 static void finish_detect_no_match(t5_usb_serial_state_t *state) {
-    (void)usb->serial_set_line_coding(&detect_original);
-    state->line_coding = detect_original;
+    if (!restart_serial_session(state, &detect_original)) {
+        (void)usb->serial_set_line_coding(&detect_original);
+        state->line_coding = detect_original;
+    }
     detect_phase = DETECT_NONE;
     detect_candidate_active = false;
     detect_outcome = 2;
@@ -448,8 +466,10 @@ static void finish_detect_no_match(t5_usb_serial_state_t *state) {
 static void finish_detect_success(t5_usb_serial_state_t *state) {
     char coding[32];
     char notice[128];
-    (void)usb->serial_set_line_coding(&detect_best.coding);
-    state->line_coding = detect_best.coding;
+    if (!restart_serial_session(state, &detect_best.coding)) {
+        (void)usb->serial_set_line_coding(&detect_best.coding);
+        state->line_coding = detect_best.coding;
+    }
     coding_text(&detect_best.coding, coding, sizeof(coding));
     if (detect_runner_up.score && (uint32_t)detect_best.score - (uint32_t)detect_runner_up.score <= 30u) {
         snprintf(notice, sizeof(notice), "Auto detected %s; framing ambiguous, using best text match", coding);
@@ -533,8 +553,10 @@ static void complete_detect_candidate(t5_usb_serial_state_t *state) {
 
 static void cancel_auto_detect(t5_usb_serial_state_t *state) {
     if (detect_phase == DETECT_NONE) return;
-    (void)usb->serial_set_line_coding(&detect_original);
-    state->line_coding = detect_original;
+    if (!restart_serial_session(state, &detect_original)) {
+        (void)usb->serial_set_line_coding(&detect_original);
+        state->line_coding = detect_original;
+    }
     detect_phase = DETECT_NONE;
     detect_candidate_active = false;
     detect_outcome = 0;
@@ -648,7 +670,7 @@ static void render_terminal(const t5_usb_serial_state_t *state) {
     };
     ui->render_text_view(&chrome, terminal_len ? terminal :
                          "Connect a USB serial device to the USB-C OTG port.\n\n"
-                         "Use Actions > Auto detect to identify baud and framing passively.",
+                         "Use Actions > Auto detect to power-cycle and probe baud/framing.",
                          scroll_from_bottom, &result);
     if (scroll_from_bottom > result.max_scroll_lines) scroll_from_bottom = result.max_scroll_lines;
 }
@@ -849,7 +871,12 @@ void app_main(void) {
         uint8_t incoming[256];
         t5_stream_result_t stream_result = T5_STREAM_AGAIN;
         bool capture = mode == VIEW_AUTODETECT && detection_capture_ready(&state);
-        size_t received = read_serial_stream(incoming, sizeof(incoming), &stream_result);
+        size_t received = 0;
+        // During the settle window leave bytes in the native USB ring. Consuming
+        // them here used to throw away exactly the one-shot boot output that the
+        // detector needs to identify a quiet-after-boot device.
+        if (mode != VIEW_AUTODETECT || capture)
+            received = read_serial_stream(incoming, sizeof(incoming), &stream_result);
         if (mode == VIEW_AUTODETECT) {
             detection_tick(&state, incoming, received, capture);
             if (detect_outcome != 0) {
