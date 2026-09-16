@@ -38,6 +38,12 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/NativeApps/include" \
   "$repo/test/resources/device_api_v2_abi_test.c" -o "$build/device-api-abi"
 "$build/device-api-abi"
+# Approval must require a fresh physical button edge: a held Confirm or a tap
+# initiated under the app's earlier framebuffer cannot authorize hardware.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/consent_input_gate_test.cpp" \
+  -o "$build/consent-input-gate"
+"$build/consent-input-gate"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_event_test.cpp" -o "$build/device-event-test"
 "$build/device-event-test"
