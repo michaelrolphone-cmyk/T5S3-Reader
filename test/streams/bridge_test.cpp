@@ -95,8 +95,8 @@ int main() {
   assert(serial->acquire(&request, &lease, &rx, &tx) == T5_SERIAL_OK);
   assert(lease && rx && tx && rx != tx && starts == 1);
   assert(serial->acquire(&request, &busyLease, &busyRx, &busyTx) == T5_SERIAL_BUSY);
-  assert(api->write(rx, "a", 1, &count) == T5_STREAM_INVALID);
-  assert(api->read(tx, bytes, 1, &count) == T5_STREAM_INVALID);
+  assert(api->write(rx, "a", 1, &count) == T5_STREAM_DENIED);
+  assert(api->read(tx, bytes, 1, &count) == T5_STREAM_DENIED);
   assert(api->read(rx, bytes, 3, &count) == T5_STREAM_AGAIN && count == 0);
   assert(api->write(tx, "abc", 3, &count) == T5_STREAM_OK && count == 2);
   t5_serial_port_state_t serialState{};
