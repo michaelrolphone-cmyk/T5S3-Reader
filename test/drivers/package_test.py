@@ -8,6 +8,7 @@ import tempfile
 import unittest
 import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
+from build_driver import write_release_catalog
 from driver_package import REQUIRES, PROVIDES, read_json, validate_payload
 from install_driver import install
 
@@ -34,6 +35,19 @@ class Packages(unittest.TestCase):
             bad = {**self.manifest, key: value}
             with self.assertRaises(ValueError): validate_payload(bad, self.elf)
         with self.assertRaises(ValueError): read_json(b'{"id":"one","id":"two"}')
+    def test_release_catalog(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            manifest_asset = directory / 'gps-nmea-1.0.0.t5driver.json'
+            elf_asset = directory / 'gps-nmea-1.0.0.t5driver.elf'
+            manifest_asset.write_text(json.dumps(self.manifest), encoding='utf-8')
+            elf_asset.write_bytes(self.elf)
+            catalog_path = write_release_catalog(directory)
+            catalog = json.loads(catalog_path.read_text(encoding='utf-8'))
+            self.assertEqual(catalog['schema'], 1)
+            self.assertEqual(len(catalog['drivers']), 1)
+            self.assertEqual(catalog['drivers'][0]['manifest'], self.manifest)
+            self.assertEqual(catalog['drivers'][0]['elf_asset'], elf_asset.name)
     def test_install_update_and_rollback_copy(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
