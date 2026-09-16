@@ -18,13 +18,17 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" -I"$repo/lib/NativeApps/include" \
   "$repo/test/programmer/esp_rom_session_test.cpp" -o "$build/esp-rom-session-test"
 "$build/esp-rom-session-test"
-# Compile the production provider itself against test-only Arduino/MD5/WDT
-# shims and mocked capability/stream APIs. Exercises real protocol and cleanup.
-c++ -std=c++17 -Wall -Wextra -Werror \
-  -I"$repo/test/programmer/stubs" -I"$repo/lib/NativeApps/include" -I"$repo/src" \
-  "$repo/src/native/NativeEspRomBridge.cpp" \
+# Real firmware provider, stubbed serial/streams/MD5; the baseline is booted
+# with a real execution context, and the second binary injects app stop/exit.
+programmer_flags=(-std=c++17 -Wall -Wextra -Werror
+  -I"$repo/test/programmer/stubs" -I"$repo/lib/NativeApps/include" -I"$repo/src")
+c++ "${programmer_flags[@]}" "$repo/src/native/NativeEspRomBridge.cpp" \
+  "$repo/test/programmer/programmer_context_fixture.cpp" \
   "$repo/test/programmer/esp_rom_provider_test.cpp" -o "$build/esp-rom-provider-test"
 "$build/esp-rom-provider-test"
+c++ "${programmer_flags[@]}" "$repo/src/native/NativeEspRomBridge.cpp" \
+  "$repo/test/programmer/esp_rom_context_test.cpp" -o "$build/esp-rom-context-test"
+"$build/esp-rom-context-test"
 c++ -std=c++17 -Wall -Wextra -Werror -DBOARD_T5S3_PRO \
   -I"$repo/test/drivers/stubs" -I"$repo/src" "$repo/src/runtime/resources/RadioPower.cpp" \
   "$repo/test/drivers/power_test.cpp" -o "$build/power-test"
