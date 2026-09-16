@@ -19,6 +19,7 @@ SemaphoreHandle_t mutex = nullptr;
 TaskHandle_t scheduler = nullptr;
 uint32_t owner = 0;
 bool active = false, httpBusy = false, usbOpen = false;
+uint32_t usbRefs = 0;
 struct Lock {
   Lock() { xSemaphoreTake(mutex, portMAX_DELAY); }
   ~Lock() { xSemaphoreGive(mutex); }
@@ -133,7 +134,11 @@ int32_t usbWrite(void* ctx, const void* data, uint32_t size, uint32_t* count) {
   *count = u.api->serial_write(static_cast<const uint8_t*>(data), size);
   return *count ? T5_STREAM_OK : T5_STREAM_AGAIN;
 }
-void usbClose(void* ctx) { delete static_cast<Usb*>(ctx); usbOpen = false; }
+void usbClose(void* ctx) {
+  delete static_cast<Usb*>(ctx);
+  if (usbRefs) --usbRefs;
+  if (!usbRefs) usbOpen = false;
+}
 int32_t openUsb(t5_stream_t* out) {
   if (out) *out = 0;
   if (!authorized()) return T5_STREAM_DENIED;
@@ -146,7 +151,8 @@ int32_t openUsb(t5_stream_t* out) {
   if (!u) return T5_STREAM_LIMIT;
   RuntimeStreams::Provider p{u, usbRead, usbWrite, nullptr, nullptr, usbClose};
   auto r = registry.attach(owner, T5_STREAM_BYTES, T5_STREAM_READ | T5_STREAM_WRITE, p, out);
-  if (r != T5_STREAM_OK) delete u; else usbOpen = true;
+  if (r != T5_STREAM_OK) delete u;
+  else { usbOpen = true; usbRefs = 1; }
   return r;
 }
 struct HttpJob { uint32_t owner; t5_stream_t stream; char url[1024]; };
@@ -205,7 +211,7 @@ int32_t openHttp(const char* url, t5_stream_t* out) {
   if (xTaskCreate(httpRequest, "stream-http", 8192, job, 1, nullptr) != pdPASS) {
     httpBusy = false; registry.close(owner, *out); *out = 0; delete job; return T5_STREAM_LIMIT;
   }
-  return T5_STREAM_OK;
+  return r;
 }
 #define SESSION_CALL(expr) do { if (!authorized()) return T5_STREAM_DENIED; Lock lock; auto r = (expr); wake(); return r; } while (0)
 int32_t readStream(t5_stream_t h, void* d, uint32_t n, uint32_t* out) {
@@ -232,6 +238,57 @@ int32_t pipeInfo(t5_pipe_t h, t5_pipe_info_t* out) { SESSION_CALL(registry.pipeI
 const t5_stream_api_v1 api = {T5_STREAM_API_VERSION, sizeof(t5_stream_api_v1), openBuffer, openFile, openUsb,
   openHttp, readStream, writeStream, finish, seek, closeStream, info, connect, pause, cancel, closePipe, pipeInfo};
 }
+
+t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
+  if (rx) *rx = 0;
+  if (tx) *tx = 0;
+  if (!authorized()) return T5_STREAM_DENIED;
+  if (!rx || !tx) return T5_STREAM_INVALID;
+  if (!initialize()) return T5_STREAM_LIMIT;
+  const auto* usbApi = t5_usb_get_api(T5_USB_API_VERSION);
+  if (!usbApi || !usbApi->supported || !usbApi->supported()) return T5_STREAM_UNSUPPORTED;
+
+  Lock lock;
+  if (usbOpen) return T5_STREAM_BUSY;
+  auto* reader = new (std::nothrow) Usb{usbApi};
+  auto* writer = new (std::nothrow) Usb{usbApi};
+  if (!reader || !writer) {
+    delete reader;
+    delete writer;
+    return T5_STREAM_LIMIT;
+  }
+
+  RuntimeStreams::Provider rp{reader, usbRead, nullptr, nullptr, nullptr, usbClose};
+  auto result = registry.attach(owner, T5_STREAM_BYTES, T5_STREAM_READ, rp, rx);
+  if (result != T5_STREAM_OK) {
+    delete reader;
+    delete writer;
+    return result;
+  }
+  usbOpen = true;
+  usbRefs = 1;
+
+  RuntimeStreams::Provider wp{writer, nullptr, usbWrite, nullptr, nullptr, usbClose};
+  result = registry.attach(owner, T5_STREAM_BYTES, T5_STREAM_WRITE, wp, tx);
+  if (result != T5_STREAM_OK) {
+    (void)registry.close(owner, *rx);
+    *rx = 0;
+    delete writer;
+    return result;
+  }
+  usbRefs = 2;
+  return T5_STREAM_OK;
+}
+
+t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream) {
+  if (!authorized()) return T5_STREAM_DENIED;
+  if (!stream || !initialize()) return T5_STREAM_INVALID;
+  Lock lock;
+  const auto result = registry.close(owner, stream);
+  wake();
+  return result;
+}
+
 void nativeStreamsBegin() {
   // Exhaustion fails closed rather than reusing execution-context identity.
   if (owner != UINT32_MAX) { ++owner; active = true; }
