@@ -4,6 +4,10 @@
 
 class GfxRenderer;
 
+// Firmware-only owner-task discovery hook; native application input polling
+// runs on the same task as the firmware activity loop. Not an ELF import.
+void nativeDeviceDiscoveryTick();
+
 class MappedInputManager {
  public:
   enum class Button { Back, Confirm, Left, Right, Up, Down, Power, PageBack, PageForward };
@@ -22,7 +26,9 @@ class MappedInputManager {
 
   explicit MappedInputManager(HalGPIO& gpio) : gpio(gpio) {}
 
-  void update() const { gpio.update(); }
+  // Also service transport snapshots while an ELF owns the main activity
+  // stack and its input polling temporarily blocks the outer firmware loop.
+  void update() const { gpio.update(); nativeDeviceDiscoveryTick(); }
   bool wasPressed(Button button) const;
   bool wasReleased(Button button) const;
   bool isPressed(Button button) const;
@@ -31,7 +37,6 @@ class MappedInputManager {
   unsigned long getHeldTime() const;
   bool wasTouchTapped(TouchPoint& point, const GfxRenderer& renderer) const;
   bool getTouchHold(TouchPoint& point, unsigned long& heldMs, const GfxRenderer& renderer) const;
-  // Reports the start/end of the most recent swipe in oriented (flip-corrected) logical coordinates.
   bool getTouchSwipe(TouchPoint& start, TouchPoint& end, const GfxRenderer& renderer) const;
   bool wasTouchHomeButtonPressed() const;
   Labels mapLabels(const char* back, const char* confirm, const char* previous, const char* next) const;

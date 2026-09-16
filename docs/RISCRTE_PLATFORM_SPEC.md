@@ -26,7 +26,7 @@ Every application invocation has an owning **execution context**. Resources are 
 
 New applications SHOULD request files/resources, devices, credentials, permissions, networks and similar security-sensitive choices through RiscRTE-owned pickers/intents and receive scoped handles/results rather than implementing broad app-private selection infrastructure.
 
-New applications SHOULD store private state in a package-private logical storage namespace rather than inventing paths in shared SD storage. User/shared content SHOULD normally enter through a trusted picker, intent/share operation or scoped resource handle.
+New applications SHOULD store private state in a package-private logical storage namespace rather than inventing shared `/sd` paths. User/shared content SHOULD normally enter through a trusted picker, intent/share operation or scoped resource handle.
 
 If a required trusted picker or private-storage primitive does not yet exist, new app work SHOULD implement the smallest reusable platform primitive rather than deepen the legacy broad-access model. See [Application Execution Context Architecture](APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md).
 
@@ -80,6 +80,14 @@ Mandatory consequences for new work:
 - security-sensitive resource selection SHOULD use trusted system UI and scoped authority;
 - application-private state SHOULD use private package storage rather than unrestricted shared-volume access.
 
+### Unified device lifecycle observation
+
+The runtime-owned device inventory SHALL expose bounded observation of device arrival, meaningful state changes, capability loss, and removal without invoking application or driver callbacks during registry mutation. Transport callbacks SHALL publish snapshots and marshal inventory mutations to the owning runtime task until the registry has an explicitly synchronized implementation.
+
+Each event SHALL have a monotonic sequence, an opaque generation-qualified device handle, copied identity sufficient to correlate a removal after its handle is invalid, prior and current states, and the number of leases forcibly revoked by that transition. A transition from AVAILABLE/BUSY to an unusable state, or removal of a usable device, SHALL report capability loss even when no consumer currently holds a lease. Repeated identical state observations SHALL not generate duplicate events.
+
+Event storage SHALL be bounded. Consumers SHALL use independently maintained cursors, be told explicitly when retained events were overwritten, and re-enumerate the current registry before resuming after a gap. A consumer MUST NOT interpret the retained suffix as a complete event history after an overflow. Observation alone SHALL NOT grant access to a device; acquiring and using capability leases remains subject to execution-context identity and rights. The initial [Device Observation API](DEVICE_OBSERVATION_API.md) exposes the internal owner-task journal to authenticated ELF invocations through copied records and context-owned subscriptions, not direct registry access or a complete cross-task event bus.
+
 ## Specification tree
 
 ### A. Platform contract and portability
@@ -104,7 +112,8 @@ Mandatory consequences for new work:
 
 - [Stream and Pipe Architecture](STREAM_PIPE_ARCHITECTURE.md) — canonical data-movement design
 - [Typed Record Stream ABI](STREAM_RECORD_API_V2.md) — versioned ELF record API, compatibility, ownership and implementation status
-- [GNSS Record/Provider Publication](STREAM_GNSS_RECORD_ADAPTER.md) — portable location.fix.v1 data schema, firmware publication rights, driver-task ownership and incomplete subscription path
+- [GNSS Record/Provider Publication](STREAM_GNSS_RECORD_ADAPTER.md) — location.fix.v1 schema, firmware publication rights, driver-task ownership and incomplete subscription path
+- [GNSS Registry Integration](STREAM_GNSS_REGISTRY_INTEGRATION.md) — shared device registry, lease binding and integration boundary
 - [Stream and Pipe MVP](STREAM_PIPE_MVP.md) — implemented/transition subset
 
 Streams/pipes are the preferred reusable path for serial, files, downloads, GNSS, programming, recording and transforms.
@@ -113,6 +122,7 @@ Streams/pipes are the preferred reusable path for serial, files, downloads, GNSS
 
 The Unified Device/Peripheral Registry, Capability Resolver and Unified Resource Ownership are parent abstractions for transport-specific specs.
 
+- [Device Observation API](DEVICE_OBSERVATION_API.md) — current authenticated inventory/event ABI and acceptance gaps
 - [Bluetooth Sensor Architecture](BLUETOOTH_SENSOR_ARCHITECTURE.md)
 - [GPS Driver](GPS_DRIVER.md)
 - [USB OTG Host Architecture](USB_OTG_HOST_ARCHITECTURE.md)
