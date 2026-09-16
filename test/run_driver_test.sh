@@ -18,6 +18,10 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_event_test.cpp" -o "$build/device-event-test"
 "$build/device-event-test"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/device_subscription_test.cpp" \
+  -o "$build/device-subscription-test"
+"$build/device-subscription-test"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/usb_serial_projection_test.cpp" -o "$build/usb-projection-test"
 "$build/usb-projection-test"
