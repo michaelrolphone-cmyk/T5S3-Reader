@@ -162,6 +162,8 @@ jobs:
             "$MERGED"
             "${APP_ELFS[@]}"
             dist/drivers/*.t5driver.zip
+            dist/drivers/*.t5driver.json
+            dist/drivers/*.t5driver.elf
           )
 
           echo "Release assets:"
