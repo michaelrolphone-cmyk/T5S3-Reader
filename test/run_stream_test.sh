@@ -35,6 +35,13 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   "$repo/src/native/NativeSerialPortBridge.cpp" \
   "$repo/test/streams/usb_semantic_bridge_test.cpp" -o "$build/usb-semantic-bridge"
 "$build/usb-semantic-bridge"
+# The firmware owner-task tick must observe arrival and loss without any
+# serial API call and deliver revocation through context-owned subscriptions.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/lib/NativeApps/include" -I"$repo/src" \
+  "$repo/src/native/NativeSerialPortBridge.cpp" \
+  "$repo/test/streams/usb_discovery_tick_test.cpp" -o "$build/usb-discovery-tick"
+"$build/usb-discovery-tick"
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo/test/streams/stubs" -I"$repo/lib/NativeApps/include" -I"$repo/src" \
   "$repo/src/runtime/streams/StreamRuntime.cpp" "$repo/src/native/NativeStreamBridge.cpp" \
