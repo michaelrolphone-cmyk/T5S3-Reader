@@ -1,3 +1,4 @@
+#include "T5StreamApi.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -131,3 +132,5 @@ const t5_time_zone_api_v1 *t5_time_zone_get_api(uint32_t version) { (void)versio
 const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_usb_api_v1 *t5_usb_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_web_server_api_v1 *t5_web_server_get_api(uint32_t version) { (void)version; return NULL; }
+
+const t5_stream_api_v1 *t5_stream_get_api(uint32_t version) { (void)version; return NULL; }

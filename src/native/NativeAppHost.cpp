@@ -1,3 +1,4 @@
+#include "NativeStreamBridge.h"
 #include "NativeAppHost.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
 #include "AppManifest.h"
@@ -678,7 +679,9 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   nativeSettingsBegin(renderer, input);
   nativeSystemUiBegin();
   esp_task_wdt_reset();
+  nativeStreamsBegin();
   const esp_err_t result = launch_elf_app(path);
+  nativeStreamsEnd();
   // Clean up even when an app returns without calling its GPS stop callback.
   GpsDriverRuntime::stop();
   if (result != ESP_OK && lastLaunchError.empty()) {
