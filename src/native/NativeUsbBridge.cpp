@@ -1,5 +1,6 @@
 #include <T5AppApi.h>
 #include <T5UsbApi.h>
+#include "NativeUsbDeviceRegistry.h"
 
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
@@ -258,7 +259,12 @@ void clientEvent(const usb_host_client_event_msg_t* event, void*) {
     // handle, keep its address instead of silently losing the only NEW_DEV event.
     if (pendingAddress == 0 && (!device || deviceGone)) pendingAddress = event->new_dev.address;
   } else if (event->event == USB_HOST_CLIENT_EVENT_DEV_GONE) {
-    if (device && event->dev_gone.dev_hdl == device) deviceGone = true;
+    if (device && event->dev_gone.dev_hdl == device) {
+      // Invalidate immediately at the host callback, before the app could
+      // read a still-connected USB state or a replacement with identical IDs.
+      nativeUsbProviderDetach();
+      deviceGone = true;
+    }
   }
 }
 
@@ -586,6 +592,8 @@ bool markReady() {
 }
 
 void cleanupDevice() {
+  // Cleanup may also follow a failed control request without DEV_GONE.
+  nativeUsbProviderDetach();
   if (!device) return;
   if (epIn) { (void)usb_host_endpoint_halt(device, epIn); (void)usb_host_endpoint_flush(device, epIn); }
   if (epOut) { (void)usb_host_endpoint_halt(device, epOut); (void)usb_host_endpoint_flush(device, epOut); }
@@ -674,7 +682,18 @@ bool configureDevice(uint8_t address) {
   portEXIT_CRITICAL(&stateMux);
   controlStep = CTRL_NONE;
   ch34xVersion = 0;
-  return beginDriverConfiguration();
+  if (!beginDriverConfiguration()) {
+    cleanupDevice();
+    return false;
+  }
+  // Claim/configuration succeeded. Publish from the host lifecycle, recording
+  // the real claimed data interface and retaining a generation across polls.
+  t5_usb_serial_state_t attached{};
+  portENTER_CRITICAL(&stateMux);
+  attached = state;
+  portEXIT_CRITICAL(&stateMux);
+  nativeUsbProviderAttach(&attached, dataInterface);
+  return true;
 }
 
 void handleControlCompletion() {
@@ -831,6 +850,7 @@ finish_host:
     setError(-1141);
   }
 finish_power:
+  nativeUsbProviderDetach();
   (void)setOtgPower(false);
   restoreDebugUsbSerial();
   running = false;
@@ -889,6 +909,8 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
 }
 
 void serialStop() {
+  // A requested stop invalidates the selected device even before teardown.
+  nativeUsbProviderDetach();
   if (!running) {
     if (!teardownFailed) resetState(T5_USB_STATUS_OFF);
     return;
@@ -964,7 +986,7 @@ size_t serialWrite(const uint8_t* data, size_t length) {
 #else
 bool supported() { return false; }
 bool serialStart(const t5_usb_line_coding_t*) { resetState(T5_USB_STATUS_UNSUPPORTED); return false; }
-void serialStop() { resetState(T5_USB_STATUS_UNSUPPORTED); }
+void serialStop() { nativeUsbProviderDetach(); resetState(T5_USB_STATUS_UNSUPPORTED); }
 bool serialReadState(t5_usb_serial_state_t* out) { if (!out) return false; resetState(T5_USB_STATUS_UNSUPPORTED); *out = state; return true; }
 bool serialSetLineCoding(const t5_usb_line_coding_t*) { return false; }
 bool serialSetControlLines(bool, bool) { return false; }
