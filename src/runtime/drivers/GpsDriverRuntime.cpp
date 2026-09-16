@@ -93,6 +93,25 @@ bool start() {
   return false;
 }
 
+// This is a firmware-only handoff for the typed-record source. The driver
+// remains the sole owner of the UART and of this original lease. A mere device
+// inventory entry or a dependency lease is never accepted as source authority.
+bool borrowLocationSource(LocationSource* out) {
+  if (out) *out = {};
+  if (!out || !owner || owner != xTaskGetCurrentTaskHandle() || !invocation || !device || !positionLease ||
+      module.state() != GpsDriverModule::State::Active) return false;
+  auto* context = RuntimeResources::ExecutionContext::current();
+  if (!context || !context->running(invocation) || context->id() != invocation) return false;
+  auto& registry = RuntimeDevices::systemRegistry();
+  RuntimeDevices::LeaseInfo info{};
+  if (!registry.valid(positionLease, invocation) || !registry.getLease(positionLease, invocation, &info) ||
+      info.owner != invocation || info.device != device ||
+      std::strcmp(info.capability, "location.position") != 0 ||
+      info.mode == RuntimeDevices::Mode::Dependency) return false;
+  *out = {invocation, device, positionLease};
+  return true;
+}
+
 void stop() {
   if (!owner || owner != xTaskGetCurrentTaskHandle()) return;
   if (!module.stop()) LOG_ERR("DRIVER", "gps-nmea unload failed; handle retained");
