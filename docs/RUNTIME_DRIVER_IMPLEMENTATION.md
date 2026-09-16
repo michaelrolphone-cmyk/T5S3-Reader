@@ -20,13 +20,23 @@ Migrated consumers include Wi-Fi selection, file transfer, Calibre, OPDS, KORead
 
 ### Installable GNSS provider pathway
 
-The first actual installable hardware provider is documented in `GPS_DRIVER.md`. GPS parsing is no longer compiled into firmware. The existing `gps-nmea` ELF, `position.gnss` capability and `T5GpsApi` facade prove the independent build/package/load/unload pathway while remaining a compatibility slice pending the roadmap's unified Device Registry and semantic `location.*` capability model.
+The first actual installable hardware provider is documented in `GPS_DRIVER.md`. GPS parsing is no longer compiled into firmware. The existing `gps-nmea` ELF, `position.gnss` capability and `T5GpsApi` facade prove the independent build/package/load/unload pathway while remaining a compatibility slice pending the roadmap's general resolver and semantic `location.*` ABI.
+
+### Unified Device Registry and context-owned lease: first vertical slice
+
+`src/runtime/capabilities/DeviceRegistry.h` provides a bounded, firmware-owned, transport-independent inventory. It copies stable device/provider identity and semantic capability names into fixed records; discovery state, transport, capability metadata, priority and opaque generation-safe device handles can be queried without loading an ELF. Its resolver acquires shared or exclusive capability leases under a nonzero application invocation identity. A wrong owner cannot inspect or release another invocation's lease. Removal or loss of availability revokes leases; slot reuse changes the handle generation. `releaseOwner()` provides deterministic invocation-wide revocation. The registry is firmware-internal and currently serialized by the runtime owner task, **not** an app-facing SDK ABI or a complete asynchronous event-driven discovery service.
+
+The onboard GNSS adapter now publishes a UART logical device with `location.position`, `location.altitude`, `location.time`, `location.accuracy` and `location.satellites`. Starting its existing compatibility API resolves an invocation-owned `location.position` lease before claiming UART and loading the driver ELF. A firmware-only `ExecutionContext` cleanup callback unloads the provider, releases UART/power and revokes leases before the application ELF is unloaded. Explicit stop untracks the callback; failed start/read unwinds ownership and marks the device failed. Existing application and GPS ELF ABIs are unchanged.
+
+`test/resources/device_registry_test.cpp`, run by `test/run_driver_test.sh`, exercises identity/metadata, priority resolution, shared/exclusive conflicts, wrong-owner denial, removal, loss and recovery, stale-generation rejection, and invocation cleanup. Host tests do **not** prove hardware-level UART/PSRAM/power behavior; those still require on-device verification.
 
 ## Required convergence with the roadmap
 
-The next driver/runtime work should prioritize the unified Device and Peripheral Registry, semantic capability resolver/leases, unified resource ownership, manifest capability requirements and launch gating. Network should migrate from fixed compiled binding to the same provider/capability model where feasible. GNSS should migrate from the narrow compatibility capability to the common Location Framework without breaking deployed APIs during transition.
+The registry currently has one live adapter (GNSS); the existing serial and USB inventories are not yet projected into it. `GpsDriverRuntime` is still the concrete compatibility adapter beneath its semantic device record; generic provider activation, manifest-driven capability declarations, automatic provider selection, dependency graphs, framework-wide events and public app-facing semantic location APIs remain outstanding. Do not mistake a registered device for an installed, activated, or verified driver.
 
-Shared I2C/SPI/GPIO buses must become runtime-owned managers before arbitrary installable drivers receive bus access. USB, BLE, UART and future transports should register devices/capabilities through the same registry rather than create parallel inventories. Capability-loss/device lifecycle events should flow through the common event fabric.
+The next driver/runtime work should connect USB and serial enumeration to the same registry, generalize capability leases/cleanup for all resource classes, add manifest capability requirements and launch gating, and expose the semantic location interface without breaking deployed `T5GpsApi`. Network should migrate from fixed compiled binding to the same provider/capability model where feasible.
+
+Shared I2C/SPI/GPIO buses must become runtime-owned managers before arbitrary installable drivers receive bus access. USB, BLE, UART and future transports should register devices/capabilities through the same registry rather than create parallel inventories. Capability-loss/device lifecycle events should flow through the common event fabric. All transport discovery callbacks must marshal registry mutations onto its owner task until synchronization is explicitly implemented.
 
 HTTP/TLS, DNS/mDNS and higher network facilities belong in reusable RiscRTE networking services above the Wi-Fi provider rather than individual applications. VFS/mounts, provider discovery, device profiles, dependency resolution, signed packages and driverless recovery remain roadmap work.
 
