@@ -143,6 +143,9 @@ jobs:
       - name: Run driver module and package tests
         run: bash test/run_driver_test.sh
 
+      - name: Run stream runtime tests
+        run: bash test/run_stream_test.sh
+
       - name: Run runtime network provider tests
         run: bash test/run_runtime_network_test.sh
 

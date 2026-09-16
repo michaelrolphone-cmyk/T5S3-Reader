@@ -2,6 +2,11 @@
 
 ## Status
 
+The first byte-stream MVP is documented in [STREAM_PIPE_MVP.md](STREAM_PIPE_MVP.md).
+It provides the runtime and adapters needed for later App Store and serial-monitor
+migration. The broader requirements below remain the target architecture; this MVP
+does not claim the full Section 78 hardware acceptance criteria.
+
 Priority architecture specification for the RiscRTE data plane: typed streams, runtime-owned pipes, transforms, bounded buffering, backpressure, fan-out/fan-in, asynchronous scheduling, resource ownership, and safe communication across independently loadable ELF modules.
 
 This specification is a foundational dependency for later device-registry unification. **Streams and Pipes are Priority 1 in the platform capability roadmap; the Unified Device Registry follows as Priority 2.**
