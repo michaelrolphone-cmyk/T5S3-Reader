@@ -244,8 +244,8 @@ void ActivityManager::goToBrowser() {
 }
 
 void ActivityManager::goToReader(std::string path, const HalDisplay::RefreshMode replaceRefreshMode) {
-  replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path, replaceRefreshMode),
-                  replaceRefreshMode));
+  replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path), replaceRefreshMode),
+                  replaceRefreshMode);
 }
 
 void ActivityManager::goToSleep(bool poweringOff) {
@@ -334,7 +334,7 @@ void ActivityManager::requestUpdateAndWait() {
   auto mutexHolder = xSemaphoreGetMutexHolder(renderingMutex);
   bool isRenderTask = (currTaskHandler == renderTaskHandle);
   bool alreadyWaiting = (waitingTaskHandle != nullptr);
-  bool holdingRenderLock = (mutexHolder == currTaskHandler);
+  bool holdingRenderLock = (mutexHolder == ownerTask);
   if (!alreadyWaiting && !isRenderTask && !holdingRenderLock) {
     waitingTaskHandle = currTaskHandler;
   }
