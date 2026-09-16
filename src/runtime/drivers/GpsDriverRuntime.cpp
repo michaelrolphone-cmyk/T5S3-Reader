@@ -19,6 +19,8 @@ uint32_t invocation = 0;
 constexpr const char* kCapabilities[] = {
     "location.position", "location.altitude", "location.time",
     "location.accuracy", "location.satellites"};
+// Only location.position has a currently implemented versioned ELF facade.
+constexpr uint16_t kCapabilityApiVersions[] = {T5_GPS_API_VERSION, 0, 0, 0, 0};
 
 bool publishDevice(bool packageAvailable) {
   if (!gpsKernelAvailable()) return false;
@@ -26,11 +28,10 @@ bool publishDevice(bool packageAvailable) {
   RuntimeDevices::DeviceInfo info{};
   if (device && !registry.get(device, &info)) device = 0;
   if (!device) {
-    // Stable board binding; the transport is metadata, not a requirement on
-    // consumers. The compatibility position.gnss ABI remains inside this adapter.
     const RuntimeDevices::Descriptor desc{
         "board.gnss.uart0", "GNSS", "gps-nmea", RuntimeDevices::Transport::Uart,
-        kCapabilities, sizeof(kCapabilities) / sizeof(kCapabilities[0]), 100};
+        kCapabilities, sizeof(kCapabilities) / sizeof(kCapabilities[0]), 100,
+        kCapabilityApiVersions};
     if (!registry.add(desc, packageAvailable ? RuntimeDevices::State::Available
                                               : RuntimeDevices::State::Unavailable, &device))
       return false;
@@ -41,12 +42,8 @@ bool publishDevice(bool packageAvailable) {
   return packageAvailable;
 }
 
-// Firmware callback only. ExecutionContext runs it on the application task
-// before unloading the app ELF; stop() releases the provider ELF and hardware.
 void cleanupLocation(void*, uint32_t id) {
   if (id == invocation) stop();
-  // Even a future provider that aborts without explicitly releasing its token
-  // cannot leave an invocation's capability bookkeeping behind.
   (void)RuntimeDevices::systemRegistry().releaseOwner(id);
 }
 }  // namespace
@@ -120,7 +117,7 @@ bool read(t5_gps_state_t* state) {
     state->status = T5_GPS_STATUS_UNSUPPORTED;
     return true;
   }
-  if (!owner) return module.read(state);  // Preserve the compatibility OFF state.
+  if (!owner) return module.read(state);
   auto* context = RuntimeResources::ExecutionContext::current();
   if (!context || !context->running(invocation) ||
       !RuntimeDevices::systemRegistry().valid(positionLease, invocation)) {
