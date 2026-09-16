@@ -5,10 +5,8 @@
 
 // A bounded, firmware-owned lifetime for one native ELF invocation. Resource
 // destructors run on the owning app task BEFORE dlclose; none may retain an
-// ELF function pointer. This class allocates no heap and never reuses an ID.
-// Registration, teardown and callbacks are owner-task operations; worker tasks
-// must use their own synchronization and owner checks. A stop callback must
-// only request cancellation: it must not destroy a still-running worker.
+// ELF function pointer. Registration, termination and callback invocation are
+// owner-task operations. Workers must use their own synchronization.
 namespace RuntimeResources {
 class ExecutionContext final {
  public:
@@ -18,12 +16,17 @@ class ExecutionContext final {
   using Stop = void (*)(void* opaque, uint32_t invocation);
   static constexpr size_t kMaxResources = 8;
 
+  // Only firmware providers may use this pointer. It is not an ELF ABI. The
+  // single-app runtime never permits a second context to replace a live one.
+  static ExecutionContext* current() { return activeSlot(); }
+
   bool begin() {
-    if (state_ != State::Terminated || ending_ || notifying_ || nextId_ == UINT32_MAX)
-      return false;
+    if (activeSlot() || state_ != State::Terminated || ending_ || notifying_ ||
+        nextId_ == UINT32_MAX) return false;
     id_ = ++nextId_;
     count_ = 0;
     state_ = State::Running;
+    activeSlot() = this;
     return true;
   }
 
@@ -42,13 +45,11 @@ class ExecutionContext final {
     return true;
   }
 
-  // A synchronous operation must unregister its completed job BEFORE its
-  // operation buffers are freed. The same invocation may then start a new job.
-  // A stop request may race logically with completion on the owner task, so
-  // completion is permitted in Stopping, but never during notification/teardown.
+  // Completion may unregister while Stopping, but only for the same invocation.
+  // The provider must finish its work and release the lease before untracking.
   bool untrack(Resource kind, uint32_t invocation) {
-    if (!invocation || invocation != id_ || state_ == State::Terminated || ending_ || notifying_)
-      return false;
+    if (!invocation || invocation != id_ || state_ == State::Terminated ||
+        ending_ || notifying_) return false;
     for (size_t i = 0; i < count_; ++i) {
       if (entries_[i].kind != kind) continue;
       for (size_t j = i + 1; j < count_; ++j) entries_[j - 1] = entries_[j];
@@ -58,9 +59,8 @@ class ExecutionContext final {
     return false;
   }
 
-  // Denies new public acquisitions first, then broadcasts a cooperative stop
-  // BEFORE dependent leases, streams and files are destroyed by end(). Stop
-  // callbacks are single-shot even if requestStop/end are called repeatedly.
+  // Stops new acquisitions before notifying jobs. Stop callbacks only set a
+  // cancellation flag; they never free an active worker or call into an ELF.
   void requestStop() {
     if (state_ != State::Running) return;
     state_ = State::Stopping;
@@ -75,10 +75,15 @@ class ExecutionContext final {
   void end() {
     if (state_ == State::Terminated || ending_ || notifying_) return;
     requestStop();
+    // The programmer runs synchronously on the application task. A reentrant
+    // stop during its progress callback cannot join that same stack frame.
+    // Retain ALL dependencies until the provider has returned, released its
+    // serial lease and untracked its job; the provider then calls end() again.
+    for (size_t i = 0; i < count_; ++i) {
+      if (entries_[i].kind == Resource::Programmer) return;
+    }
     ending_ = true;
     const uint32_t invocation = id_;
-    // LIFO: dependent jobs before serial leases, then underlying stream table.
-    // Decrement first so a reentrant end() cannot destroy a resource twice.
     while (count_) {
       const Entry entry = entries_[--count_];
       entries_[count_] = {};
@@ -86,10 +91,15 @@ class ExecutionContext final {
     }
     id_ = 0;
     state_ = State::Terminated;
+    if (activeSlot() == this) activeSlot() = nullptr;
     ending_ = false;
   }
 
  private:
+  static ExecutionContext*& activeSlot() {
+    static ExecutionContext* currentContext = nullptr;
+    return currentContext;
+  }
   struct Entry {
     Resource kind = Resource::Streams;
     Cleanup cleanup = nullptr;
