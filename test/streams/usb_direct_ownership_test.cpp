@@ -1,13 +1,32 @@
-// Reuse the production stream bridge fixture, then exercise direct USB
-// acquisition specifically against the shared physical capability registry.
-#define main run_existing_bridge_fixture
+// Compile the real stream and serial bridges with the existing host fixture,
+// but use an independent main to focus on direct USB physical ownership.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wreturn-type"
+#define main unused_existing_bridge_fixture
 #include "bridge_test.cpp"
 #undef main
+#pragma GCC diagnostic pop
 #include "runtime/capabilities/DeviceRegistry.h"
 
 int main() {
-  assert(run_existing_bridge_fixture() == 0);
-  unloadInRequest = false;
+  usb.supported = [] { return true; };
+  usb.serial_start = [](const t5_usb_line_coding_t* coding) {
+    ++starts; ++configs; usbStatus.line_coding = *coding; return true;
+  };
+  usb.serial_stop = [] {
+    ++stops; nativeUsbProviderDetach(); usbStatus.status = T5_USB_STATUS_OFF;
+    usbStatus.connected = 0;
+  };
+  usb.serial_read_state = [](t5_usb_serial_state_t* out) { *out = usbStatus; return true; };
+  usb.serial_set_line_coding = [](const t5_usb_line_coding_t* coding) {
+    usbStatus.line_coding = *coding; return true;
+  };
+  usb.serial_set_control_lines = [](bool dtr, bool rts) {
+    usbStatus.dtr = dtr; usbStatus.rts = rts; return true;
+  };
+  usb.serial_read = [](uint8_t*, size_t) -> size_t { return 0; };
+  usb.serial_write = [](const uint8_t*, size_t n) -> size_t { return std::min<size_t>(2, n); };
+
   nativeStreamsBegin();
   const auto* streams = t5_stream_get_api(T5_STREAM_API_VERSION);
   const auto* serial = t5_serial_port_get_api(T5_SERIAL_PORT_API_VERSION);
@@ -43,4 +62,5 @@ int main() {
   nativeStreamsEnd();
   assert(devices.count() == 0 && devices.leaseCount() == 0);
   std::puts("Direct USB physical ownership and stale-stream tests passed");
+  return 0;
 }
