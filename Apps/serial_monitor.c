@@ -427,7 +427,7 @@ static void render_detect(const t5_serial_port_state_t *state) {
     best_line[0] = 0;
     if (detect_candidate_active) coding_text(&detect_candidate, candidate, sizeof(candidate));
     if (detect_best.score) {
-        coding_text(&detect_best.coding, best, sizeof(best));
+        coding_text(&detect_best.coding, best, sizeof(best), "%s  score %u");
         snprintf(best_line, sizeof(best_line), "%s  score %u", best, (unsigned)detect_best.score);
     } else {
         snprintf(best_line, sizeof(best_line), "None yet");
@@ -711,7 +711,7 @@ static void render_actions(const t5_serial_port_state_t *state, int32_t selected
 static void render_baud(int32_t selected) {
     const t5_ui_list_row_t rows[] = {
         {"1200", NULL, NULL, 0}, {"2400", NULL, NULL, 0}, {"4800", NULL, NULL, 0},
-        {"9600", NULL, NULL, 0}, {"19200", NULL, NULL, 0}, {"38400", NULL, 0},
+        {"9600", NULL, NULL, 0}, {"19200", NULL, NULL, 0}, {"38400", NULL, NULL, 0},
         {"57600", NULL, NULL, 0}, {"115200", NULL, NULL, 0}, {"230400", NULL, NULL, 0},
         {"460800", NULL, NULL, 0}, {"921600", NULL, NULL, 0}, {"Custom...", NULL, NULL, 0},
     };
