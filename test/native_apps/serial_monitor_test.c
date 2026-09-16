@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "T5StreamApi.h"
 #include "T5SystemUiApi.h"
 #include "T5UiApi.h"
 #include "T5UsbApi.h"
@@ -16,6 +17,8 @@ static int writes;
 static bool started;
 static bool stopped;
 static bool read_once;
+static bool stream_opened;
+static bool stream_closed;
 
 static bool usb_supported(void) { return true; }
 static bool usb_start(const t5_usb_line_coding_t *coding) {
@@ -51,6 +54,8 @@ static size_t usb_read(uint8_t *data, size_t capacity) {
 }
 static size_t usb_write(const uint8_t *data, size_t length) {
     assert(data && length > 0);
+    assert(length == 6u);
+    assert(memcmp(data, "ping\r\n", 6u) == 0);
     ++writes;
     return length;
 }
@@ -67,6 +72,39 @@ static const t5_usb_api_v1 usb_api = {
     .serial_write = usb_write,
 };
 const t5_usb_api_v1 *t5_usb_get_api(uint32_t version) { return version == T5_USB_API_VERSION ? &usb_api : NULL; }
+
+static t5_stream_result_t stream_open_usb(t5_stream_t *out) {
+    assert(out && !stream_opened);
+    *out = 1u;
+    stream_opened = true;
+    return T5_STREAM_OK;
+}
+static t5_stream_result_t stream_read(t5_stream_t stream, void *data, uint32_t capacity, uint32_t *count) {
+    assert(stream == 1u && data && count);
+    *count = (uint32_t)usb_read((uint8_t *)data, capacity);
+    return *count ? T5_STREAM_OK : T5_STREAM_AGAIN;
+}
+static t5_stream_result_t stream_write(t5_stream_t stream, const void *data, uint32_t size, uint32_t *count) {
+    assert(stream == 1u && data && count);
+    *count = (uint32_t)usb_write((const uint8_t *)data, size);
+    return *count == size ? T5_STREAM_OK : T5_STREAM_AGAIN;
+}
+static t5_stream_result_t stream_close(t5_stream_t stream) {
+    assert(stream == 1u);
+    stream_closed = true;
+    return T5_STREAM_OK;
+}
+static const t5_stream_api_v1 stream_api = {
+    .api_version = T5_STREAM_API_VERSION,
+    .struct_size = sizeof(t5_stream_api_v1),
+    .open_usb = stream_open_usb,
+    .read = stream_read,
+    .write = stream_write,
+    .close = stream_close,
+};
+const t5_stream_api_v1 *t5_stream_get_api(uint32_t version) {
+    return version == T5_STREAM_API_VERSION ? &stream_api : NULL;
+}
 
 static void render_text(const t5_ui_chrome_t *chrome, const char *text, int32_t scroll, t5_ui_text_view_result_t *result) {
     assert(chrome && text && result && scroll == 0);
@@ -136,8 +174,10 @@ int main(void) {
     app_main();
     assert(started);
     assert(stopped);
+    assert(stream_opened);
+    assert(stream_closed);
     assert(read_once);
-    assert(writes == 2); /* text + CRLF */
+    assert(writes == 1); /* text + CRLF share one stream write. */
     assert(renders >= 2);
     assert(list_renders == 0); /* Existing send-result path remains in terminal view. */
     return 0;
