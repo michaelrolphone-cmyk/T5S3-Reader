@@ -212,6 +212,11 @@ int32_t Registry::connect(uint32_t owner, t5_stream_t source, t5_stream_t dest, 
   if (!(s->flags & T5_STREAM_READ) || !(d->flags & T5_STREAM_WRITE)) return T5_STREAM_DENIED;
   if (s->kind != d->kind || (s->kind == T5_STREAM_RECORDS &&
       !RecordQueue::compatible(s->records.schema(), d->records.schema()))) return T5_STREAM_UNSUPPORTED;
+  // A record is indivisible: reject incompatible sink capacity before leasing
+  // either endpoint. Otherwise the scheduler could dequeue a valid source
+  // record which the destination can never accept.
+  if (s->kind == T5_STREAM_RECORDS && s->records.maxRecord() > d->records.maxRecord())
+    return T5_STREAM_LIMIT;
   if (d->terminal) return T5_STREAM_CLOSED;
   if (leased(source, true) || leased(dest, false)) return T5_STREAM_BUSY;
   // One reader and writer per endpoint makes cycle detection a bounded walk.
