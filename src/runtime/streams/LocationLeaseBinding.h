@@ -7,17 +7,13 @@
 
 namespace RuntimeStreams {
 
-// The only authority used here is the Unified Device Registry's EXISTING
-// capability lease. Devices matches RuntimeDevices::Registry; LeaseInfo matches
-// RuntimeDevices::LeaseInfo in PR #64. This template deliberately does not
-// introduce a second device registry or compile-depend on that parallel PR.
-//
-// Firmware callers MUST authenticate the current execution-context owner and
-// run on the device/driver owning task, under the stream registry's mutex.
-// DeviceRegistry is single-task-owned; no cross-task device calls are allowed.
-// Poll the installable GPS driver OUTSIDE the stream mutex, then submit a copy.
-// A provider lease is borrowed from the driver and NEVER released here; the
-// driver is responsible for releasing it after this binding is disconnected.
+// Firmware-only integration with PR #64's DeviceRegistry contract.
+// Devices=RuntimeDevices::Registry, LeaseInfo=RuntimeDevices::LeaseInfo after
+// branch integration. No second device registry or ELF callback is retained.
+// The caller MUST authenticate the execution-context owner, use the driver
+// owning task and serialize stream/coordinator calls under the stream mutex.
+// Poll GPS outside that mutex; submit only a copied observation. The provider
+// lease is borrowed: the driver releases it after disconnect/teardown.
 template <typename Devices, typename LeaseInfo>
 class LocationLeaseBinding final {
  public:
@@ -39,26 +35,24 @@ class LocationLeaseBinding final {
     if (result != T5_STREAM_OK) return result;
     provider_ = token;
     providerOwner_ = owner;
-    device_ = device;  // Generation-safe physical handle, never VID/PID identity.
+    device_ = device; // Generation-safe physical handle, not a model identity.
     providerGrant_ = providerGrant;
     *out = token;
     return T5_STREAM_OK;
   }
 
-  // Caller must authenticate owner before entering this firmware-only API.
-  // The resolver grants one independently owned, SHARED location.position
-  // capability lease per subscriber. A successful stream is READ-only.
+  // Caller authenticates owner. Acquire a separate SHARED location.position
+  // grant for each consumer, bound to the same exact device generation.
   int32_t subscribe(uint32_t owner, Token* out, t5_stream_t* stream) {
     if (out) *out = 0;
     if (stream) *stream = 0;
     if (!out || !stream || !owner) return T5_STREAM_INVALID;
-    if (!sourceAlive()) return T5_STREAM_DISCONNECTED;
-    reapRevoked();
+    if (!reconcile()) return T5_STREAM_DISCONNECTED;
     Slot* available = nullptr;
     for (auto& slot : subscribers_) if (!slot.token) { available = &slot; break; }
     if (!available) return T5_STREAM_LIMIT;
     uint32_t grant = 0;
-    // PR #64's acquire() resets grant on failure; zero never denotes a lease.
+    // PR #64 resets out=0 on failure; default acquire mode is shared.
     (void)devices_.acquire("location.position", owner, &grant, device_);
     if (!grant) return T5_STREAM_DENIED;
     if (!validGrant(owner, device_, grant)) {
@@ -78,29 +72,22 @@ class LocationLeaseBinding final {
     return T5_STREAM_OK;
   }
 
-  // Invoke only from the provider's claiming task AFTER a successful driver
-  // read; never retain driver callbacks and never publish a caller-provided
-  // epoch. The bound, generation-safe device handle is authoritative.
+  // Provider owning task only. Never trust a caller-provided epoch: use the
+  // bound device handle after verifying its actual device capability lease.
   int32_t submit(uint32_t owner, const t5_gps_state_t& copy, uint32_t sampleMs,
                  uint32_t verifiedFields = 0) {
     if (!owner || owner != providerOwner_) return T5_STREAM_DENIED;
-    if (!sourceAlive()) return T5_STREAM_DISCONNECTED;
-    reapRevoked();
+    if (!reconcile()) return T5_STREAM_DISCONNECTED;
     return producer_.submit(subscriptions_, provider_, device_, copy, sampleMs, verifiedFields);
   }
-
-  // When a record is pending, the owner MUST retry it before polling hardware
-  // again. A revoked provider/device clears pending and finishes subscriptions.
   int32_t retry(uint32_t owner) {
     if (!owner || owner != providerOwner_) return T5_STREAM_DENIED;
-    if (!sourceAlive()) return T5_STREAM_DISCONNECTED;
-    reapRevoked();
+    if (!reconcile()) return T5_STREAM_DISCONNECTED;
     return producer_.retry(subscriptions_, provider_, device_);
   }
 
-  // Called on capability-lost/removed events or before driver unload.
-  // Existing accepted records drain to DISCONNECTED. The physical lease is
-  // borrowed and must be released by the GPS driver itself.
+  // CapabilityLost/Removed or driver shutdown. Already queued fixes drain
+  // before DISCONNECTED; never release the driver's borrowed provider grant.
   void disconnect() {
     if (provider_) (void)subscriptions_.disconnect(provider_);
     producer_.clear();
@@ -110,7 +97,15 @@ class LocationLeaseBinding final {
   void deviceLost(uint32_t device) {
     if (device && device == device_) disconnect();
   }
-  bool reconcile() { return sourceAlive(); }
+
+  // Call following registry journal events and before every subscription or
+  // publication. Individually revoked subscriber grants are closed even when
+  // the receiver has not delivered any new observations.
+  bool reconcile() {
+    if (!sourceAlive()) return false;
+    reapRevoked();
+    return true;
+  }
 
   int32_t unsubscribe(uint32_t owner, Token token) {
     if (!owner || !token) return T5_STREAM_INVALID;
@@ -125,8 +120,8 @@ class LocationLeaseBinding final {
     return T5_STREAM_INVALID;
   }
 
-  // Invoke before Registry::release(owner) and before the driver's unload.
-  // App teardown cannot leave a subscriber device grant behind.
+  // Invoke before Registry::release(owner) and driver ELF unload. Provider
+  // source lease remains the responsibility of its original driver owner.
   void releaseOwner(uint32_t owner) {
     if (!owner) return;
     if (owner == providerOwner_) disconnect();
@@ -139,7 +134,6 @@ class LocationLeaseBinding final {
     }
     subscriptions_.releaseOwner(owner);
   }
-
   bool hasPending() const { return producer_.hasPending(); }
   uint32_t device() const { return device_; }
   Token provider() const { return provider_; }
