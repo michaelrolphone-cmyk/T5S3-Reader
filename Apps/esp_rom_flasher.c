@@ -14,6 +14,10 @@
 #define PATH_CAP 512
 #define STATUS_CAP 160
 #define FLASH_BLOCK 1024u
+#define ROM_COMMAND_HEADER 8u
+#define FLASH_DATA_HEADER 16u
+#define COMMAND_RAW_CAP (ROM_COMMAND_HEADER + FLASH_DATA_HEADER + FLASH_BLOCK)
+#define COMMAND_FRAMED_CAP (2u * COMMAND_RAW_CAP + 2u)
 #define MAX_IMAGE_SIZE 0x01000000u
 #define MIN_IMAGE_SIZE 0x00010000u
 
@@ -38,10 +42,10 @@ static char status_text[STATUS_CAP];
 static char failure_text[STATUS_CAP];
 
 /* Keep the largest protocol buffers out of the native app task stack. */
-static uint8_t command_raw[20u + FLASH_BLOCK];
-static uint8_t command_framed[2u * (20u + FLASH_BLOCK) + 2u];
+static uint8_t command_raw[COMMAND_RAW_CAP];
+static uint8_t command_framed[COMMAND_FRAMED_CAP];
 static uint8_t flash_block[FLASH_BLOCK];
-static uint8_t flash_payload[16u + FLASH_BLOCK];
+static uint8_t flash_payload[FLASH_DATA_HEADER + FLASH_BLOCK];
 
 static uint8_t last_rom_status = 0xffu;
 static uint8_t last_rom_error = 0xffu;
@@ -274,17 +278,28 @@ static bool command(uint8_t op, const uint8_t *payload, uint16_t payload_length,
     last_command = op;
     last_rom_status = 0xffu;
     last_rom_error = 0xffu;
-    if ((size_t)payload_length + 8u > sizeof(command_raw)) return false;
+    const size_t raw_length = (size_t)payload_length + ROM_COMMAND_HEADER;
+    if (raw_length > sizeof(command_raw)) {
+        snprintf(failure_text, sizeof(failure_text),
+                 "Internal packet overflow C%02x %lu>%lu",
+                 (unsigned)op, (unsigned long)raw_length,
+                 (unsigned long)sizeof(command_raw));
+        return false;
+    }
     command_raw[0] = 0x00u;
     command_raw[1] = op;
     command_raw[2] = (uint8_t)payload_length;
     command_raw[3] = (uint8_t)(payload_length >> 8u);
     le32(command_raw + 4, checksum);
-    if (payload_length != 0u) memcpy(command_raw + 8, payload, payload_length);
+    if (payload_length != 0u) memcpy(command_raw + ROM_COMMAND_HEADER, payload, payload_length);
 
-    const size_t framed_length = slip_encode(command_raw, (size_t)payload_length + 8u,
+    const size_t framed_length = slip_encode(command_raw, raw_length,
                                              command_framed, sizeof(command_framed));
-    if (framed_length == 0u || !write_all(command_framed, framed_length, timeout_ms)) return false;
+    if (framed_length == 0u) {
+        set_failure("Internal SLIP buffer overflow");
+        return false;
+    }
+    if (!write_all(command_framed, framed_length, timeout_ms)) return false;
 
     const uint32_t start = app->millis();
     for (;;) {
@@ -511,7 +526,7 @@ static bool flash_stream(const char *path, size_t image_size, bool extended_begi
         le32(flash_payload + 4, sequence);
         le32(flash_payload + 8, 0u);
         le32(flash_payload + 12, 0u);
-        memcpy(flash_payload + 16, flash_block, FLASH_BLOCK);
+        memcpy(flash_payload + FLASH_DATA_HEADER, flash_block, FLASH_BLOCK);
 
         bool written = false;
         for (uint32_t attempt = 0u; attempt < 3u && !written; ++attempt) {
@@ -521,10 +536,12 @@ static bool flash_stream(const char *path, size_t image_size, bool extended_begi
         }
         if (!written) {
             storage->stream_close(stream);
-            snprintf(failure_text, sizeof(failure_text),
-                     "FLASH_DATA block %lu failed | S%02x E%02x",
-                     (unsigned long)sequence, (unsigned)last_rom_status,
-                     (unsigned)last_rom_error);
+            if (!failure_text[0]) {
+                snprintf(failure_text, sizeof(failure_text),
+                         "FLASH_DATA block %lu failed | S%02x E%02x",
+                         (unsigned long)sequence, (unsigned)last_rom_status,
+                         (unsigned)last_rom_error);
+            }
             return false;
         }
 
