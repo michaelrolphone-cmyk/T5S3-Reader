@@ -11,8 +11,8 @@
 #include <atomic>
 #endif
 
-// Runtime-only device identities: USB handles, descriptors and events never
-// cross the serial.port application ABI.
+// Runtime-only identities: USB handles, descriptors and events never cross
+// the serial.port application ABI.
 namespace NativeUsbDevices {
 
 enum class Transport : uint8_t { Usb = 1 };
@@ -35,11 +35,13 @@ struct Record {
   char product[T5_USB_PRODUCT_MAX] = {};
 };
 
-// Coherent bounded snapshot. A detach notification also occurs on intentional
-// lease/app teardown: it is NOT by itself evidence of a physical unplug.
-// These are claimed-interface counters, not pre-claim enumeration statistics.
+// Coherent bounded snapshot. Last revoked identity remains available after
+// the active record has been cleared, so a detach can be correlated with its
+// former serial lease. A detach notification can be intentional teardown.
+// These are claimed-interface counters, NOT enumeration statistics.
 struct Diagnostics {
   Record device{};
+  Record last_revoked{};
   uint32_t epoch = 0;
   uint32_t binds = 0;
   uint32_t revocations = 0;
@@ -50,29 +52,31 @@ struct Diagnostics {
   RevocationCause last_cause = RevocationCause::None;
 };
 
-// USB host publishes attachment/detachment on a separate core. Keep the
-// snapshot and counters under one portMUX, but NEVER log while holding it.
-// Generations, epochs and counts persist across app unload; counts saturate.
+// Host and consumers run on separate cores. Copy event snapshots inside the
+// lock; do NOT invoke a formatter, logger or callbacks while holding it.
+// Generations, epochs and counters persist across app unload and never wrap.
 class Registry final {
  public:
   void observe(const t5_usb_serial_state_t& state, uint8_t interface_number = 0xff) {
-    Diagnostics event{};
-    bool changed = false;
+    Diagnostics revokeEvent{}, bindEvent{};
+    bool revoked = false, bound = false;
     {
       Guard guard(lock_);
       if (!state.connected || state.status == T5_USB_STATUS_OFF) {
-        changed = record_.presence == Presence::Bound;
+        revoked = record_.presence == Presence::Bound;
         invalidateLocked(state.status == T5_USB_STATUS_OFF ?
             RevocationCause::HostStopped : RevocationCause::ConnectionLost);
+        if (revoked) revokeEvent = diagnosticsLocked();
       } else {
         const bool different = record_.presence != Presence::Bound ||
             record_.vid != state.vid || record_.pid != state.pid ||
             record_.interface_number != interface_number ||
             std::strncmp(record_.product, state.product, sizeof(record_.product)) != 0;
         if (different) {
-          changed = true;
+          revoked = record_.presence == Presence::Bound;
           invalidateLocked(RevocationCause::BindingChanged);
-          // Never wrap an opaque identity or a lease-revocation token.
+          if (revoked) revokeEvent = diagnosticsLocked();
+          // Do not allow stale IDs or epochs to alias newly claimed devices.
           if (generation_ < 0x7fffffffu && epoch_ != UINT32_MAX) {
             ++generation_;
             record_.id = (generation_ << 1u) | 1u;
@@ -86,24 +90,29 @@ class Registry final {
             std::memcpy(record_.product, state.product, sizeof(record_.product));
             record_.product[sizeof(record_.product) - 1u] = '\0';
             increment(diag_.binds);
+            bound = true;
+            bindEvent = diagnosticsLocked();
           }
         }
       }
-      if (changed) event = diagnosticsLocked();
     }
-    if (changed) logTransition(event);
+    // Replacement emits TWO distinct events in order: old device revoked,
+    // then new device bound. An initial/replug bind has cause=0, not the
+    // lingering last revocation cause in the diagnostic snapshot.
+    if (revoked) logTransition(revokeEvent, false);
+    if (bound) logTransition(bindEvent, true);
   }
 
   void detach() {
     Diagnostics event{};
-    bool changed = false;
+    bool revoked = false;
     {
       Guard guard(lock_);
-      changed = record_.presence == Presence::Bound;
+      revoked = record_.presence == Presence::Bound;
       invalidateLocked(RevocationCause::DetachNotification);
-      if (changed) event = diagnosticsLocked();
+      if (revoked) event = diagnosticsLocked();
     }
-    if (changed) logTransition(event);
+    if (revoked) logTransition(event, false);
   }
 
   Record snapshot() const {
@@ -134,26 +143,27 @@ class Registry final {
     result.epoch = epoch_;
     return result;
   }
-  static void logTransition(const Diagnostics& event) {
+  static void logTransition(const Diagnostics& event, bool binding) {
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
-    // Capture event under the lock, then log after it. The binding epoch and
-    // opaque ID correlate with serial leases; no USB pointers are exposed.
-    LOG_INF("USB", "USBREF binding=%s epoch=%lu id=%lu cause=%u vid=%04X pid=%04X iface=%u binds=%lu revocations=%lu",
-            event.device.id ? "bound" : "revoked",
+    const Record& identity = binding ? event.device : event.last_revoked;
+    LOG_INF("USB", "USBREF event=%s epoch=%lu id=%lu cause=%u vid=%04X pid=%04X iface=%u binds=%lu revocations=%lu",
+            binding ? "bind" : "revoke",
             static_cast<unsigned long>(event.epoch),
-            static_cast<unsigned long>(event.device.id),
-            static_cast<unsigned>(event.last_cause),
-            static_cast<unsigned>(event.device.vid),
-            static_cast<unsigned>(event.device.pid),
-            static_cast<unsigned>(event.device.interface_number),
+            static_cast<unsigned long>(identity.id),
+            static_cast<unsigned>(binding ? RevocationCause::None : event.last_cause),
+            static_cast<unsigned>(identity.vid),
+            static_cast<unsigned>(identity.pid),
+            static_cast<unsigned>(identity.interface_number),
             static_cast<unsigned long>(event.binds),
             static_cast<unsigned long>(event.revocations));
 #else
     (void)event;
+    (void)binding;
 #endif
   }
   void invalidateLocked(RevocationCause cause) {
     if (record_.presence == Presence::Bound) {
+      diag_.last_revoked = record_;
       if (epoch_ != UINT32_MAX) ++epoch_;
       increment(diag_.revocations);
       diag_.last_cause = cause;
