@@ -1,17 +1,19 @@
 #include "T5AppApi.h"
+#include "T5UiApi.h"
 
 #include <assert.h>
 #include <string.h>
 
 void app_main(void);
 
-static int ticks;
-static int icons;
 static int downloads;
 static int saw_alpha;
 static int saw_beta;
 static int saw_installed;
 static int saw_update;
+static int back_disabled;
+static int back_restored;
+static int event_index;
 static uint32_t downloaded_index;
 
 static int32_t width(void) { return 540; }
@@ -20,10 +22,7 @@ static void clear(void) {}
 static void text(int32_t x, int32_t y, const char *s) {
     (void)x;
     (void)y;
-    if (!strcmp(s, "Alpha")) saw_alpha = 1;
-    if (!strcmp(s, "Beta")) saw_beta = 1;
-    if (!strcmp(s, "Installed")) saw_installed = 1;
-    if (!strcmp(s, "Update")) saw_update = 1;
+    (void)s;
 }
 static void rect(int32_t x, int32_t y, int32_t w, int32_t h, bool black) {
     (void)black;
@@ -74,24 +73,14 @@ static bool download(uint32_t index) {
     downloaded_index = index;
     return true;
 }
-static bool icon(int32_t x, int32_t y, const char *name, uint8_t point_size, bool black) {
-    (void)x;
-    (void)y;
-    (void)black;
-    assert(name && name[0]);
-    assert(point_size == 18);
-    ++icons;
-    return true;
-}
 static bool poll(t5_app_input_t *input, uint32_t wait_ms) {
     (void)wait_ms;
     memset(input, 0, sizeof(*input));
-    ++ticks;
-    if (ticks == 2) input->buttons = T5_APP_BUTTON_DOWN;
-    if (ticks == 4) input->buttons = T5_APP_BUTTON_CONFIRM;
-    if (ticks == 6) input->buttons = T5_APP_BUTTON_CONFIRM;
-    if (ticks >= 7) input->exit_requested = true;
     return true;
+}
+static void set_back_exits_app(bool enabled) {
+    if (enabled) back_restored = 1;
+    else back_disabled = 1;
 }
 
 static const t5_app_api_v1 api = {
@@ -108,7 +97,7 @@ static const t5_app_api_v1 api = {
     .app_catalog_count = count,
     .app_catalog_get = asset_get,
     .app_catalog_download = download,
-    .draw_icon = icon,
+    .set_back_exits_app = set_back_exits_app,
     .app_catalog_manifest_get = manifest_get,
     .installed_app_version_get = installed_version_get,
     .app_catalog_version_get = catalog_version_get,
@@ -119,13 +108,81 @@ const t5_app_api_v1 *t5_app_get_api(uint32_t version) {
     return &api;
 }
 
+static void render_list(const t5_ui_chrome_t *chrome,
+                        const t5_ui_list_row_t *rows,
+                        uint32_t row_count,
+                        int32_t selected_index) {
+    assert(chrome);
+    assert(selected_index >= 0);
+    if (row_count == 2) {
+        assert(rows);
+        for (uint32_t i = 0; i < row_count; ++i) {
+            if (rows[i].title && !strcmp(rows[i].title, "Alpha")) saw_alpha = 1;
+            if (rows[i].title && !strcmp(rows[i].title, "Beta")) saw_beta = 1;
+            if (rows[i].subtitle && !strcmp(rows[i].subtitle, "Installed")) saw_installed = 1;
+            if ((rows[i].flags & T5_UI_LIST_HIGHLIGHT_VALUE) != 0) saw_update = 1;
+        }
+        if (chrome->confirm_label && !strcmp(chrome->confirm_label, "Update")) saw_update = 1;
+    }
+}
+
+static int32_t hit_test(int16_t x, int16_t y) {
+    (void)x;
+    (void)y;
+    return T5_UI_HIT_NONE;
+}
+
+static bool poll_event(t5_ui_event_t *event, uint32_t wait_ms) {
+    (void)wait_ms;
+    assert(event);
+    memset(event, 0, sizeof(*event));
+    switch (event_index++) {
+        case 0:
+            event->type = T5_UI_EVENT_NEXT;
+            break;
+        case 1:
+            event->type = T5_UI_EVENT_CONFIRM;
+            break;
+        default:
+            event->type = T5_UI_EVENT_EXIT;
+            break;
+    }
+    return true;
+}
+
+static int32_t next_index(int32_t current_index, uint32_t item_count) {
+    if (!item_count) return 0;
+    return (current_index + 1) % (int32_t)item_count;
+}
+
+static int32_t previous_index(int32_t current_index, uint32_t item_count) {
+    if (!item_count) return 0;
+    return current_index <= 0 ? (int32_t)item_count - 1 : current_index - 1;
+}
+
+static const t5_ui_api_v1 ui_api = {
+    .api_version = T5_UI_API_VERSION,
+    .struct_size = sizeof(t5_ui_api_v1),
+    .render_list = render_list,
+    .hit_test = hit_test,
+    .poll_event = poll_event,
+    .next_index = next_index,
+    .previous_index = previous_index,
+};
+
+const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) {
+    assert(version == T5_UI_API_VERSION);
+    return &ui_api;
+}
+
 int main(void) {
     app_main();
     assert(saw_alpha && saw_beta);
     assert(saw_installed);
     assert(saw_update);
-    assert(icons >= 2);
     assert(downloads == 1);
     assert(downloaded_index == 1);
+    assert(back_disabled);
+    assert(back_restored);
     return 0;
 }
