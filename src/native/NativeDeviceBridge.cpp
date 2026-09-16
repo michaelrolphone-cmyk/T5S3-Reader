@@ -1,6 +1,7 @@
 #include <T5AppApi.h>
 #include <T5DeviceApi.h>
 
+#include "NativeDeviceConsent.h"
 #include "NativeSerialPortBridge.h"
 #include "runtime/capabilities/CapabilityAccess.h"
 #include "runtime/capabilities/DeviceEventSubscriptions.h"
@@ -177,6 +178,46 @@ t5_device_result_t releaseCapability(t5_device_lease_t lease) {
   return accessResult(systemCapabilityAccess().release(context->id(), lease));
 }
 
+// Only ABI v3 can solicit consent; v2 acquire remains strictly noninteractive.
+// The prompt never uses a label supplied by the ELF, and approval is checked
+// against a fresh registry snapshot and the same invocation before mutation.
+t5_device_result_t requestCapability(const char* capability, t5_device_handle_t device,
+                                     uint32_t rights, t5_device_lease_t* out) {
+  if (out) *out = 0;
+  if (!out || !capability || !device || !rights || (rights & ~kCapabilityRightsMask) ||
+      std::strnlen(capability, kCapabilityBytes) == kCapabilityBytes)
+    return T5_DEVICE_INVALID;
+  auto* context = caller();
+  if (!context) return T5_DEVICE_DENIED;
+  const uint32_t invocation = context->id();
+  nativeDeviceDiscoveryTick();
+  auto& access = systemCapabilityAccess();
+  const auto previous = access.acquire(*context, capability, device, rights, out);
+  if (previous == AccessResult::Ok) return T5_DEVICE_OK;
+  if (previous != AccessResult::Denied) return accessResult(previous);
+
+  DeviceInfo before{};
+  if (!systemRegistry().get(device, &before)) return T5_DEVICE_STALE;
+  if (before.state != State::Available) return T5_DEVICE_ERR_UNAVAILABLE;
+  bool supports = false;
+  for (size_t i = 0; i < before.capabilityCount; ++i)
+    if (std::strcmp(before.capabilities[i], capability) == 0) supports = true;
+  if (!supports) return T5_DEVICE_INVALID;
+  if (!nativeDeviceConsentPrompt(before, capability, rights)) return T5_DEVICE_DENIED;
+
+  if (caller() != context || context->id() != invocation) return T5_DEVICE_DENIED;
+  nativeDeviceDiscoveryTick();
+  DeviceInfo after{};
+  if (!systemRegistry().get(device, &after)) return T5_DEVICE_STALE;
+  if (after.state != State::Available) return T5_DEVICE_ERR_UNAVAILABLE;
+  supports = false;
+  for (size_t i = 0; i < after.capabilityCount; ++i)
+    if (std::strcmp(after.capabilities[i], capability) == 0) supports = true;
+  if (!supports || std::strcmp(after.identity, before.identity) != 0) return T5_DEVICE_STALE;
+  if (!access.grantTrusted(*context, device, capability, rights)) return T5_DEVICE_LIMIT;
+  return accessResult(access.acquire(*context, capability, device, rights, out));
+}
+
 const t5_device_api_v1 api = {
     T5_DEVICE_API_VERSION, sizeof(t5_device_api_v1),
     inventory, subscribe, snapshot, poll, unsubscribe};
@@ -184,11 +225,17 @@ const t5_device_api_v2 api2 = {
     {T5_DEVICE_API_VERSION_2, sizeof(t5_device_api_v2),
      inventory, subscribe, snapshot, poll, unsubscribe},
     acquireCapability, validateCapability, releaseCapability};
+const t5_device_api_v3 api3 = {
+    {{T5_DEVICE_API_VERSION_3, sizeof(t5_device_api_v3),
+      inventory, subscribe, snapshot, poll, unsubscribe},
+     acquireCapability, validateCapability, releaseCapability},
+    requestCapability};
 }  // namespace
 
 extern "C" const t5_device_api_v1* t5_device_get_api(uint32_t version) {
   if (!caller()) return nullptr;
   if (version == T5_DEVICE_API_VERSION) return &api;
   if (version == T5_DEVICE_API_VERSION_2) return &api2.v1;
+  if (version == T5_DEVICE_API_VERSION_3) return &api3.v2.v1;
   return nullptr;
 }
