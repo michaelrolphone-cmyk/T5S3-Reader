@@ -15,6 +15,12 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/lib/NativeApp
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_registry_test.cpp" -o "$build/device-registry-test"
 "$build/device-registry-test"
+# Resolve only known versioned semantic providers; malformed declarations and
+# unavailable/unknown devices must fail before a native app can be mapped.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" -I"$repo/lib/NativeApps/include" \
+  "$repo/test/resources/app_capability_requirements_test.cpp" -o "$build/app-capability-requirements"
+"$build/app-capability-requirements"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_event_test.cpp" -o "$build/device-event-test"
 "$build/device-event-test"
