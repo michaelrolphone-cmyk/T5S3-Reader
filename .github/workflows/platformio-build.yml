@@ -102,9 +102,7 @@ jobs:
 
       - name: Stage board-qualified RiscRTE firmware
         run: |
-          # This legacy marker is emitted by current source code and remains only
-          # until the deferred source-symbol rename. Artifact identity is RiscRTE.
-          grep -a -q "CROSSPOINT_BOARD_ID:${{ matrix.board_id }}" ".pio/build/${{ matrix.environment }}/firmware.bin"
+          grep -a -q "RISCRTE_BOARD_ID:${{ matrix.board_id }}" ".pio/build/${{ matrix.environment }}/firmware.bin"
           mkdir -p dist
           cp ".pio/build/${{ matrix.environment }}/firmware.bin" "dist/${{ matrix.firmware_name }}"
           cp ".pio/build/${{ matrix.environment }}/firmware-merged.bin" "dist/${{ matrix.merged_firmware_name }}"
