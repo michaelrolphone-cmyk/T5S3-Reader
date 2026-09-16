@@ -15,12 +15,16 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/lib/NativeApp
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_registry_test.cpp" -o "$build/device-registry-test"
 "$build/device-registry-test"
-# Resolve only known versioned semantic providers; malformed declarations and
-# unavailable/unknown devices must fail before a native app can be mapped.
+# Generic provider API metadata and transactionally bound non-authorizing
+# dependencies must both pass before an ELF is mapped.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo/src" -I"$repo/lib/NativeApps/include" \
   "$repo/test/resources/app_capability_requirements_test.cpp" -o "$build/app-capability-requirements"
 "$build/app-capability-requirements"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/app_dependency_bindings_test.cpp" \
+  -o "$build/app-dependency-bindings"
+"$build/app-dependency-bindings"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_event_test.cpp" -o "$build/device-event-test"
 "$build/device-event-test"
