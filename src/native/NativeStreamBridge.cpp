@@ -250,8 +250,67 @@ int32_t cancel(t5_pipe_t h) { SESSION_CALL(registry.cancel(owner, h)); }
 int32_t closePipe(t5_pipe_t h) { SESSION_CALL(registry.closePipe(owner, h)); }
 int32_t pipeInfo(t5_pipe_t h, t5_pipe_info_t* out) { SESSION_CALL(registry.pipeInfo(owner, h, out)); }
 #undef SESSION_CALL
+
+// V2 is a strict append-only ABI extension. All callbacks share the original
+// registry, lock, invocation owner and scheduler; no ELF pointer is retained.
+int32_t openRecordBuffer(const char* schema, uint32_t maxRecord, uint32_t capacityRecords,
+                         uint32_t flags, t5_stream_t* out) {
+  if (out) *out = 0;
+  if (!authorized()) return T5_STREAM_DENIED;
+  Lock lock;
+  const auto result = registry.recordBuffer(owner, schema, maxRecord, capacityRecords, out, flags);
+  wake(); return result;
+}
+int32_t readRecord(t5_stream_t h, void* data, uint32_t capacity, uint32_t* size) {
+  if (size) *size = 0;
+  if (!authorized()) return T5_STREAM_DENIED;
+  Lock lock;
+  const auto result = registry.readRecord(owner, h, data, capacity, size);
+  wake(); return result;
+}
+int32_t writeRecord(t5_stream_t h, const void* data, uint32_t size) {
+  if (!authorized()) return T5_STREAM_DENIED;
+  Lock lock;
+  const auto result = registry.writeRecord(owner, h, data, size);
+  wake(); return result;
+}
+int32_t recordInfo(t5_stream_t h, riscrte_record_info_v1* out) {
+  if (!authorized()) return T5_STREAM_DENIED;
+  if (!out || out->struct_size < sizeof(*out)) return T5_STREAM_INVALID;
+  char schema[RISCRTE_RECORD_SCHEMA_CAPACITY]{};
+  RuntimeStreams::RecordQueue::Stats stats{};
+  t5_stream_info_t base{};
+  base.struct_size = sizeof(base);
+  Lock lock;
+  auto result = registry.info(owner, h, &base);
+  if (result != T5_STREAM_OK) return result;
+  result = registry.recordInfo(owner, h, schema, sizeof(schema), &stats);
+  if (result != T5_STREAM_OK) return result;
+  riscrte_record_info_v1 value{};
+  value.struct_size = sizeof(value);
+  value.flags = base.flags;
+  value.owner = base.owner;
+  std::memcpy(value.schema, schema, sizeof(value.schema));
+  value.max_record = stats.max_record;
+  value.capacity_records = stats.capacity_records;
+  value.queued_records = stats.queued_records;
+  value.queued_bytes = stats.queued_bytes;
+  value.high_water_records = stats.high_water_records;
+  value.high_water_bytes = stats.high_water_bytes;
+  value.terminal = stats.terminal;
+  value.records_read = stats.records_read;
+  value.records_written = stats.records_written;
+  value.bytes_read = stats.bytes_read;
+  value.bytes_written = stats.bytes_written;
+  *out = value;
+  return T5_STREAM_OK;
+}
 const t5_stream_api_v1 api = {T5_STREAM_API_VERSION, sizeof(t5_stream_api_v1), openBuffer, openFile, openUsb,
   openHttp, readStream, writeStream, finish, seek, closeStream, info, connect, pause, cancel, closePipe, pipeInfo};
+const riscrte_stream_api_v2 api2 = {{RISCRTE_STREAM_API_VERSION_2, sizeof(riscrte_stream_api_v2),
+  openBuffer, openFile, openUsb, openHttp, readStream, writeStream, finish, seek, closeStream,
+  info, connect, pause, cancel, closePipe, pipeInfo},
+  openRecordBuffer, readRecord, writeRecord, recordInfo};
 
 void releaseStreams(void*, uint32_t id) {
   if (mutex) { Lock lock; registry.release(id); }
@@ -346,6 +405,8 @@ void nativeStreamsEnd() {
   active = false;
 }
 extern "C" const t5_stream_api_v1* t5_stream_get_api(uint32_t version) {
-  if (version != T5_STREAM_API_VERSION || !authorized() || !initialize()) return nullptr;
-  return &api;
+  if (!authorized() || !initialize()) return nullptr;
+  if (version == T5_STREAM_API_VERSION) return &api;
+  if (version == RISCRTE_STREAM_API_VERSION_2) return &api2.v1;
+  return nullptr;
 }
