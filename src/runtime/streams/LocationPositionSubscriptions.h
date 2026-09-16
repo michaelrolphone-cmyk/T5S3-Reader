@@ -142,6 +142,23 @@ class LocationPositionSubscriptions final {
     return T5_STREAM_OK;
   }
 
+  // Query ownership AND the actual registry stream under the same external
+  // mutex. A public stream close() may occur without semantic unsubscribe;
+  // the binding uses this to release the orphaned device capability grant.
+  // A terminal stream is no longer an active hardware subscription, although
+  // its already-queued records may remain readable by its owner.
+  bool streamOpen(uint32_t owner, Lease lease) {
+    if (!owner || !lease) return false;
+    for (const auto& slot : slots_) {
+      if (slot.lease != lease || slot.owner != owner) continue;
+      char schema[RecordQueue::MaxSchema]{};
+      RecordQueue::Stats stats{};
+      return registry_.recordInfo(owner, slot.stream, schema, sizeof(schema), &stats) == T5_STREAM_OK &&
+             !stats.terminal && std::strcmp(schema, RISCRTE_LOCATION_FIX_SCHEMA) == 0;
+    }
+    return false;
+  }
+
   int32_t unsubscribe(uint32_t subscriberOwner, Lease lease) {
     if (!subscriberOwner || !lease) return T5_STREAM_INVALID;
     for (auto& slot : slots_) {
