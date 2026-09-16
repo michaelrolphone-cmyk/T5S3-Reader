@@ -18,13 +18,14 @@ namespace {
 constexpr size_t kRxRingSize = 8192;
 constexpr size_t kBulkBufferSize = 512;
 constexpr size_t kControlBufferSize = 32;
+constexpr uint32_t kUsbShutdownTimeoutMs = 7000;
 
 portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
 t5_usb_serial_state_t state = {};
 uint8_t rxRing[kRxRingSize];
 size_t rxHead = 0;
 size_t rxTail = 0;
-bool running = false;
+volatile bool running = false;
 
 bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
 
@@ -48,7 +49,9 @@ usb_transfer_t* txTransfer = nullptr;
 usb_transfer_t* controlTransfer = nullptr;
 TaskHandle_t hostTaskHandle = nullptr;
 SemaphoreHandle_t txMutex = nullptr;
+SemaphoreHandle_t hostStopped = nullptr;
 volatile bool stopRequested = false;
+volatile bool teardownFailed = false;
 volatile uint8_t pendingAddress = 0;
 volatile bool deviceGone = false;
 volatile bool controlDone = false;
@@ -726,9 +729,46 @@ void handleControlCompletion() {
   }
 }
 
+bool teardownHostLibrary() {
+  esp_err_t freeRc = usb_host_device_free_all();
+  bool allFree = freeRc == ESP_OK;
+  if (freeRc != ESP_OK && freeRc != ESP_ERR_NOT_FINISHED) return false;
+
+  for (int i = 0; !allFree && i < 500; ++i) {
+    uint32_t flags = 0;
+    (void)usb_host_lib_handle_events(pdMS_TO_TICKS(10), &flags);
+    if (flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS) {
+      freeRc = usb_host_device_free_all();
+      if (freeRc == ESP_OK) allFree = true;
+      else if (freeRc != ESP_ERR_NOT_FINISHED) return false;
+    }
+    if (flags & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE) allFree = true;
+  }
+
+  // ALL_FREE can race the bounded event loop; let uninstall make the final
+  // authoritative decision rather than abandoning a clean host state.
+  esp_err_t uninstallRc = usb_host_uninstall();
+  if (uninstallRc == ESP_OK) return true;
+
+  // Give the daemon one final chance to finish a device-free transition before
+  // reporting a teardown failure. Never pretend the host is reusable if the
+  // ESP-IDF host library still considers itself installed.
+  for (int i = 0; i < 100; ++i) {
+    uint32_t flags = 0;
+    (void)usb_host_lib_handle_events(pdMS_TO_TICKS(10), &flags);
+    if (flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS) (void)usb_host_device_free_all();
+    if (flags & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE) {
+      uninstallRc = usb_host_uninstall();
+      if (uninstallRc == ESP_OK) return true;
+    }
+  }
+  return false;
+}
+
 void hostTask(void*) {
   usb_host_config_t hostConfig = {};
   usb_host_client_config_t clientConfig = {};
+  bool hostInstalled = false;
   hostConfig.skip_phy_setup = false;
   hostConfig.intr_flags = ESP_INTR_FLAG_LEVEL1;
   clientConfig.is_synchronous = false;
@@ -738,6 +778,7 @@ void hostTask(void*) {
 
   esp_err_t rc = usb_host_install(&hostConfig);
   if (rc != ESP_OK) { setError(rc); goto finish_power; }
+  hostInstalled = true;
 
   rc = usb_host_client_register(&clientConfig, &client);
   if (rc != ESP_OK) { setError(rc); goto finish_host; }
@@ -771,20 +812,25 @@ void hostTask(void*) {
   if (txTransfer) { usb_host_transfer_free(txTransfer); txTransfer = nullptr; }
   if (rxTransfer) { usb_host_transfer_free(rxTransfer); rxTransfer = nullptr; }
 finish_client:
-  if (client) { (void)usb_host_client_deregister(client); client = nullptr; }
-  (void)usb_host_device_free_all();
-  for (int i = 0; i < 20; ++i) {
-    uint32_t f = 0;
-    (void)usb_host_lib_handle_events(pdMS_TO_TICKS(5), &f);
-    if (f & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE) break;
+  if (client) {
+    const esp_err_t deregisterRc = usb_host_client_deregister(client);
+    if (deregisterRc == ESP_OK) client = nullptr;
+    else {
+      teardownFailed = true;
+      setError(-1140);
+    }
   }
 finish_host:
-  (void)usb_host_uninstall();
+  if (hostInstalled && !client && !teardownHostLibrary()) {
+    teardownFailed = true;
+    setError(-1141);
+  }
 finish_power:
   (void)setOtgPower(false);
   restoreDebugUsbSerial();
   running = false;
   hostTaskHandle = nullptr;
+  if (hostStopped) xSemaphoreGive(hostStopped);
   vTaskDelete(nullptr);
 }
 
@@ -799,10 +845,15 @@ bool validCoding(const t5_usb_line_coding_t* coding) {
 bool serialStart(const t5_usb_line_coding_t* coding) {
   if (!active() || !validCoding(coding)) return false;
   if (running) {
+    if (stopRequested) return false;
     requestedCoding = *coding;
     portENTER_CRITICAL(&stateMux); state.line_coding = *coding; portEXIT_CRITICAL(&stateMux);
     return true;
   }
+  if (!hostStopped) hostStopped = xSemaphoreCreateBinary();
+  if (!hostStopped) { setError(ESP_ERR_NO_MEM); return false; }
+  while (xSemaphoreTake(hostStopped, 0) == pdTRUE) {}
+
   resetState(T5_USB_STATUS_OFF);
   requestedCoding = *coding;
   portENTER_CRITICAL(&stateMux); state.line_coding = *coding; portEXIT_CRITICAL(&stateMux);
@@ -815,6 +866,7 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
     setError(ESP_ERR_NO_MEM);
     return false;
   }
+  teardownFailed = false;
   stopRequested = false;
   pendingAddress = 0;
   deviceGone = false;
@@ -830,12 +882,20 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
 }
 
 void serialStop() {
-  if (!running) { resetState(T5_USB_STATUS_OFF); return; }
+  if (!running) {
+    if (!teardownFailed) resetState(T5_USB_STATUS_OFF);
+    return;
+  }
   stopRequested = true;
   if (client) (void)usb_host_client_unblock(client);
   (void)usb_host_lib_unblock();
-  for (int i = 0; i < 100 && running; ++i) delay(10);
-  resetState(T5_USB_STATUS_OFF);
+
+  if (!hostStopped || xSemaphoreTake(hostStopped, pdMS_TO_TICKS(kUsbShutdownTimeoutMs)) != pdTRUE) {
+    teardownFailed = true;
+    setError(-1142);
+    return;
+  }
+  if (!teardownFailed) resetState(T5_USB_STATUS_OFF);
 }
 
 bool serialReadState(t5_usb_serial_state_t* out) {
