@@ -16,6 +16,9 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_registry_test.cpp" -o "$build/device-registry-test"
 "$build/device-registry-test"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
+  "$repo/test/resources/device_event_test.cpp" -o "$build/device-event-test"
+"$build/device-event-test"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/usb_serial_projection_test.cpp" -o "$build/usb-projection-test"
 "$build/usb-projection-test"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
