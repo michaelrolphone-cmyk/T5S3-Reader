@@ -88,6 +88,10 @@ Each event SHALL have a monotonic sequence, an opaque generation-qualified devic
 
 Event storage SHALL be bounded. Consumers SHALL use independently maintained cursors, be told explicitly when retained events were overwritten, and re-enumerate the current registry before resuming after a gap. A consumer MUST NOT interpret the retained suffix as a complete event history after an overflow. Observation alone SHALL NOT grant access to a device; acquiring and using capability leases remains subject to execution-context identity and rights. The initial [Device Observation API](DEVICE_OBSERVATION_API.md) exposes the internal owner-task journal to authenticated ELF invocations through copied records and context-owned subscriptions, not direct registry access or a complete cross-task event bus.
 
+### Application capability requirements and launch gating
+
+The initial [Application Capability Requirements](APP_CAPABILITY_REQUIREMENTS.md) implementation validates bounded, versioned mandatory/optional manifest declarations and checks currently available, known-version semantic providers **before mapping an ELF**. A declaration is neither a permission grant nor a capability lease. Legacy undeclared apps remain compatible; the full architecture still requires generic version metadata, provider activation, trusted permissions, and actual dependency handle acquisition before launch.
+
 ## Specification tree
 
 ### A. Platform contract and portability
@@ -101,6 +105,7 @@ Event storage SHALL be bounded. Consumers SHALL use independently maintained cur
 ### B. Application and execution model
 
 - [Application Execution Context Architecture](APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md) — authoritative for execution contexts, universal object ownership, trusted system UI, private app storage, resource quotas and manifest derivation. **Required reading for new app work.**
+- [Application Capability Requirements](APP_CAPABILITY_REQUIREMENTS.md) — initial manifest parsing/version checks and pre-ELF launch gate, with explicit remaining dependencies
 - [Scene Runtime Architecture](SCENE_RUNTIME_ARCHITECTURE.md)
 - [Service Runtime Architecture](SERVICE_RUNTIME_ARCHITECTURE.md)
 - [RiscRTE Applications](NATIVE_APPS.md) — current application ABI/framework and compatibility identifiers
