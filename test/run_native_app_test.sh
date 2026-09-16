@@ -16,4 +16,5 @@ if [[ $# -gt 0 ]]; then
   "$binary" "$1"
 fi
 python3 "$repo_dir/test/native_apps/test_symbols.py"
+python3 "$repo_dir/test/native_apps/test_capability_manifest.py"
 echo 'Native app launcher tests passed'
