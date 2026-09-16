@@ -1,4 +1,5 @@
 #include "NativeDeviceConsent.h"
+#include "NativeConsentInputGate.h"
 
 #include <Arduino.h>
 #include <GfxRenderer.h>
@@ -77,17 +78,20 @@ bool nativeDeviceConsentPrompt(const RuntimeDevices::DeviceInfo& device,
   const int buttonY = height - 83;
   const int buttonWidth = width / 2 - 30;
   outline(20, buttonY, buttonWidth, 55);
-  outline(width / 2 + 10, buttonY, buttonWidth, 55);
   renderer.drawText(UI_12_FONT_ID, 30, buttonY + 17, "BACK: DENY");
-  renderer.drawText(UI_12_FONT_ID, width / 2 + 20, buttonY + 17, "CONFIRM: ALLOW");
+  // The approval control deliberately is not touch-active: the current touch
+  // API reports completed taps without a trusted new-down epoch, so a touch
+  // begun under an app-controlled screen could otherwise approve this prompt.
+  renderer.drawText(UI_12_FONT_ID, width / 2 + 12, buttonY + 17, "CONFIRM: ALLOW");
   renderer.displayBuffer(HalDisplay::FULL_REFRESH);
 
-  // A button held while the ELF requested permission must be released before
-  // its next press can approve. System Back/Power/Home always cancel.
+  // Only a fresh physical Confirm press after a release can grant. An
+  // already-held button or completed touch never approves. Back/Power/Home,
+  // including a touch on the DENY control, always cancel.
   using Button = MappedInputManager::Button;
   mappedInputManager.clearInjectedButtonTap();
   mappedInputManager.update();
-  bool armed = false;
+  NativeConsentInputGate gate;
   const uint32_t start = millis();
   while (static_cast<uint32_t>(millis() - start) < kConsentTimeoutMs) {
     esp_task_wdt_reset();
@@ -95,21 +99,19 @@ bool nativeDeviceConsentPrompt(const RuntimeDevices::DeviceInfo& device,
     mappedInputManager.update();
     if (RuntimeResources::ExecutionContext::current() != context ||
         !context->running(invocation) || !t5_app_get_api(T5_APP_ABI_VERSION)) return false;
-    if (mappedInputManager.isPressed(Button::Power) ||
-        mappedInputManager.wasTouchHomeButtonPressed() ||
-        mappedInputManager.isPressed(Button::Back)) return false;
     MappedInputManager::TouchPoint touch{};
     const bool tapped = mappedInputManager.wasTouchTapped(touch, renderer);
-    if (!armed) {
-      if (!mappedInputManager.isPressed(Button::Confirm)) armed = true;
-      continue;
-    }
-    if (tapped && touch.y >= buttonY && touch.y < buttonY + 55) {
-      if (touch.x >= 20 && touch.x < 20 + buttonWidth) return false;
-      if (touch.x >= width / 2 + 10 && touch.x < width / 2 + 10 + buttonWidth)
-        return true;
-    }
-    if (mappedInputManager.isPressed(Button::Confirm)) return true;
+    const bool touchDeny = tapped && touch.y >= buttonY && touch.y < buttonY + 55 &&
+                           touch.x >= 20 && touch.x < 20 + buttonWidth;
+    const auto decision = gate.sample(
+        mappedInputManager.isPressed(Button::Confirm),
+        mappedInputManager.wasPressed(Button::Confirm),
+        mappedInputManager.isPressed(Button::Power) ||
+            mappedInputManager.wasTouchHomeButtonPressed() ||
+            mappedInputManager.isPressed(Button::Back),
+        touchDeny);
+    if (decision == NativeConsentDecision::Deny) return false;
+    if (decision == NativeConsentDecision::Allow) return true;
   }
   return false;
 }
