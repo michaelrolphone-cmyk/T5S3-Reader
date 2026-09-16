@@ -10,7 +10,7 @@ int main() {
   const uint8_t payload[] = {0xc0, 0xdb, 0x55};
   auto size = encode(0x08, payload, sizeof(payload), checksum(payload, sizeof(payload)),
                      raw, sizeof(raw), framed, sizeof(framed));
-  assert(size == 16); // 8-byte header + 3-byte payload + 2 escapes + delimiters
+  assert(size == 15); // Header 8 + payload 3 + escapes 2 + delimiters 2
   assert(framed[0] == 0xc0 && framed[size - 1] == 0xc0);
   assert(raw[0] == 0 && raw[1] == 0x08 && raw[2] == 3 && raw[3] == 0);
   assert(raw[8] == 0xc0 && raw[9] == 0xdb && raw[10] == 0x55);
