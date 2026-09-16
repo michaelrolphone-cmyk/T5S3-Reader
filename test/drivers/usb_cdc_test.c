@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
     malformed[27] = 0; // Zero-length endpoint descriptor must fail closed.
     assert(!api->probe(malformed, sizeof(malformed), 0, 0, &bound));
     memcpy(malformed, config, sizeof(config));
-    malformed[34] = 0x83; // Distinct IN endpoint does not replace required OUT.
+    malformed[36] = 0x83; // Second endpoint is also IN: required OUT is missing.
     assert(!api->probe(malformed, sizeof(malformed), 0, 0, &bound));
     uint8_t line[7] = {0};
     assert(api->line_coding(115200, 8, 0, 1, line));
