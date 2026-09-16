@@ -179,20 +179,23 @@ t5_device_result_t releaseCapability(t5_device_lease_t lease) {
 }
 
 // Only ABI v3 can solicit consent; v2 acquire remains strictly noninteractive.
-// The prompt never uses a label supplied by the ELF, and approval is checked
-// against a fresh registry snapshot and the same invocation before mutation.
+// Copy untrusted request text before blocking; another ELF worker must not be
+// able to change the capability displayed by the trusted UI before grant.
 t5_device_result_t requestCapability(const char* capability, t5_device_handle_t device,
                                      uint32_t rights, t5_device_lease_t* out) {
   if (out) *out = 0;
-  if (!out || !capability || !device || !rights || (rights & ~kCapabilityRightsMask) ||
-      strnlen(capability, kCapabilityBytes) == kCapabilityBytes)
+  if (!out || !capability || !device || !rights || (rights & ~kCapabilityRightsMask))
     return T5_DEVICE_INVALID;
+  const size_t length = strnlen(capability, kCapabilityBytes);
+  if (!length || length == kCapabilityBytes) return T5_DEVICE_INVALID;
+  char requested[kCapabilityBytes]{};
+  std::memcpy(requested, capability, length);
   auto* context = caller();
   if (!context) return T5_DEVICE_DENIED;
   const uint32_t invocation = context->id();
   nativeDeviceDiscoveryTick();
   auto& access = systemCapabilityAccess();
-  const auto previous = access.acquire(*context, capability, device, rights, out);
+  const auto previous = access.acquire(*context, requested, device, rights, out);
   if (previous == AccessResult::Ok) return T5_DEVICE_OK;
   if (previous != AccessResult::Denied) return accessResult(previous);
 
@@ -201,9 +204,9 @@ t5_device_result_t requestCapability(const char* capability, t5_device_handle_t 
   if (before.state != State::Available) return T5_DEVICE_ERR_UNAVAILABLE;
   bool supports = false;
   for (size_t i = 0; i < before.capabilityCount; ++i)
-    if (std::strcmp(before.capabilities[i], capability) == 0) supports = true;
+    if (std::strcmp(before.capabilities[i], requested) == 0) supports = true;
   if (!supports) return T5_DEVICE_INVALID;
-  if (!nativeDeviceConsentPrompt(before, capability, rights)) return T5_DEVICE_DENIED;
+  if (!nativeDeviceConsentPrompt(before, requested, rights)) return T5_DEVICE_DENIED;
 
   if (caller() != context || context->id() != invocation) return T5_DEVICE_DENIED;
   nativeDeviceDiscoveryTick();
@@ -212,10 +215,10 @@ t5_device_result_t requestCapability(const char* capability, t5_device_handle_t 
   if (after.state != State::Available) return T5_DEVICE_ERR_UNAVAILABLE;
   supports = false;
   for (size_t i = 0; i < after.capabilityCount; ++i)
-    if (std::strcmp(after.capabilities[i], capability) == 0) supports = true;
+    if (std::strcmp(after.capabilities[i], requested) == 0) supports = true;
   if (!supports || std::strcmp(after.identity, before.identity) != 0) return T5_DEVICE_STALE;
-  if (!access.grantTrusted(*context, device, capability, rights)) return T5_DEVICE_LIMIT;
-  return accessResult(access.acquire(*context, capability, device, rights, out));
+  if (!access.grantTrusted(*context, device, requested, rights)) return T5_DEVICE_LIMIT;
+  return accessResult(access.acquire(*context, requested, device, rights, out));
 }
 
 const t5_device_api_v1 api = {
