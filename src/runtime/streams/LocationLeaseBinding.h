@@ -86,11 +86,20 @@ class LocationLeaseBinding final {
     return producer_.retry(subscriptions_, provider_, device_);
   }
 
-  // CapabilityLost/Removed or driver shutdown. Already queued fixes drain
-  // before DISCONNECTED; never release the driver's borrowed provider grant.
+  // CapabilityLost/Removed or driver shutdown. Accepted fixes remain readable
+  // until DISCONNECTED. Release every subscriber device claim immediately:
+  // draining old records must not prevent a replacement/exclusive provider.
+  // Keep subscription tokens only for owner-checked stream drain/close.
+  // The driver's borrowed provider grant is NEVER released here.
   void disconnect() {
     if (provider_) (void)subscriptions_.disconnect(provider_);
     producer_.clear();
+    for (auto& slot : subscribers_) {
+      if (slot.token && slot.grant) {
+        (void)devices_.release(slot.grant, slot.owner);
+        slot.grant = 0;
+      }
+    }
     provider_ = 0;
     providerOwner_ = device_ = providerGrant_ = 0;
   }
@@ -98,9 +107,8 @@ class LocationLeaseBinding final {
     if (device && device == device_) disconnect();
   }
 
-  // Call following registry journal events and before every subscription or
-  // publication. Individually revoked subscriber grants are closed even when
-  // the receiver has not delivered any new observations.
+  // Capability-loss journal events and every new operation invoke reconcile().
+  // A consumer which closes its stream directly must not retain its grant.
   bool reconcile() {
     if (!sourceAlive()) return false;
     reapRevoked();
@@ -113,7 +121,7 @@ class LocationLeaseBinding final {
       if (slot.token != token) continue;
       if (slot.owner != owner) return T5_STREAM_DENIED;
       const int32_t result = subscriptions_.unsubscribe(owner, token);
-      (void)devices_.release(slot.grant, owner);
+      if (slot.grant) (void)devices_.release(slot.grant, owner);
       slot = {};
       return result;
     }
@@ -128,7 +136,7 @@ class LocationLeaseBinding final {
     for (auto& slot : subscribers_) {
       if (slot.token && slot.owner == owner) {
         (void)subscriptions_.unsubscribe(owner, slot.token);
-        (void)devices_.release(slot.grant, owner);
+        if (slot.grant) (void)devices_.release(slot.grant, owner);
         slot = {};
       }
     }
@@ -161,9 +169,14 @@ class LocationLeaseBinding final {
   }
   void reapRevoked() {
     for (auto& slot : subscribers_) {
-      if (!slot.token || validGrant(slot.owner, device_, slot.grant)) continue;
+      if (!slot.token) continue;
+      // A public v2 close() may invalidate the stream without an explicit
+      // semantic unsubscribe. Reclaim the corresponding device grant on the
+      // next owner-task reconcile instead of retaining it until app unload.
+      if (validGrant(slot.owner, device_, slot.grant) &&
+          subscriptions_.streamOpen(slot.owner, slot.token)) continue;
       (void)subscriptions_.unsubscribe(slot.owner, slot.token);
-      (void)devices_.release(slot.grant, slot.owner);
+      if (slot.grant) (void)devices_.release(slot.grant, slot.owner);
       slot = {};
     }
   }
