@@ -6,29 +6,29 @@ This is the **canonical entry point for RiscRTE architecture and specification w
 
 All contributors and coding agents MUST read this document before making architectural changes, adding platform APIs, adding applications/services/drivers/providers, or changing resource ownership. New work MUST follow this specification tree and the [Platform Capability Roadmap](PLATFORM_CAPABILITY_ROADMAP.md).
 
-When documents disagree, use this precedence order:
-
-1. this master specification and its invariants;
-2. `PLATFORM_CAPABILITY_ROADMAP.md` for intended platform direction and sequencing;
-3. the applicable current architecture specification listed below;
-4. implementation/MVP documents for the currently implemented subset;
-5. legacy implementation notes, retained only to describe code that has not migrated yet.
-
-A legacy implementation description is not permission to extend the legacy design. New work should move toward the canonical architecture unless a compatibility requirement explicitly prevents it.
+Precedence: this master specification and invariants; the roadmap; applicable architecture specifications; implementation/MVP documents; then explicitly labeled legacy implementation notes. Legacy implementation is not precedent for new design.
 
 ## Naming
 
-The platform and runtime are named **RiscRTE (RISC Runtime Environment)**.
-
-`T5S3`, `T5 ePaper S3`, `T5S3 Pro`, and `EPD47` are hardware/board names, not platform names. Historical `T5*` source symbols, ABI structures, paths, build environments, release artifacts, or implementation identifiers may be named where necessary to identify existing code. They are compatibility identifiers and MUST NOT be used as the conceptual name of a new platform facility.
-
-Likewise, documents historically using **native app**, **native API**, or board-specific terminology should describe the forward architecture as **RiscRTE application**, **RiscRTE host/platform API**, capability, provider, service, stream, or device as appropriate. Existing `native_*`/`t5_*` identifiers remain documented where changing the identifier would misdescribe the implementation or break compatibility.
+The platform/runtime is **RiscRTE (RISC Runtime Environment)**. `T5S3`, `T5 ePaper S3`, `T5S3 Pro`, and `EPD47` are hardware names. Historical `T5*`, `native_*`, paths, ABI structures, build environments and artifacts remain only where needed to describe compatible/current implementation.
 
 ## Core platform invariant
 
-New platform functionality SHOULD normally be implemented as a reusable **capability, provider, service, stream, device, job, intent/content handler, or package**, not as private infrastructure embedded in one application.
+New platform functionality SHOULD normally be a reusable **capability, provider, service, stream, device, job, intent/content handler, package, or core runtime primitive**, not private application infrastructure.
 
-Applications state what they require. The runtime resolves those requirements to implementations. Hardware access belongs below bounded runtime-owned abstractions. Cross-module communication uses versioned handles/messages/events/streams rather than persistent raw pointers across ELF lifetimes.
+Applications state what they require. The runtime resolves implementations. Hardware access belongs below bounded runtime-owned abstractions. Cross-module communication uses versioned handles/messages/events/streams rather than persistent raw pointers across ELF lifetimes.
+
+Every application invocation has an owning **execution context**. Resources are owned by that context and deterministically reclaimed. Resources crossing the application/runtime boundary SHOULD converge on generation-safe opaque handles with ownership, type and rights metadata.
+
+### High-priority rule for new applications
+
+**Trusted RiscRTE system UI mediation and private application storage are high-priority platform requirements for new app work.**
+
+New applications SHOULD request files/resources, devices, credentials, permissions, networks and similar security-sensitive choices through RiscRTE-owned pickers/intents and receive scoped handles/results rather than implementing broad app-private selection infrastructure.
+
+New applications SHOULD store private state in a package-private logical storage namespace rather than inventing shared `/sd` paths. User/shared content SHOULD normally enter through a trusted picker, intent/share operation or scoped resource handle.
+
+If a required trusted picker or private-storage primitive does not yet exist, new app work SHOULD implement the smallest reusable platform primitive rather than deepen the legacy broad-access model. See [Application Execution Context Architecture](APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md).
 
 ## Canonical architecture
 
@@ -36,6 +36,10 @@ Applications state what they require. The runtime resolves those requirements to
                          RiscRTE Applications
                                   |
                      intents / jobs / capabilities
+                                  |
+                       Execution Context
+                                  |
+                         Opaque Handles
                                   |
               +-------------------+-------------------+
               |                   |                   |
@@ -46,6 +50,8 @@ Applications state what they require. The runtime resolves those requirements to
                       Streams / Events
                             |
                      Capability Resolver
+                            |
+                    Resource / Lease Owner
                             |
               +-------------+-------------+
               |             |             |
@@ -58,81 +64,80 @@ Applications state what they require. The runtime resolves those requirements to
                          Hardware
 ```
 
-The architectural consequences are mandatory for new work:
+Mandatory consequences for new work:
 
 - applications do not bind directly to concrete hardware drivers when a semantic capability exists;
+- every major resource has an owning execution context and deterministic reclamation;
+- handles crossing unloadable-module boundaries are opaque and generation-safe where reuse is possible;
 - drivers/providers do not independently initialize shared buses or globally owned hardware;
 - streams have bounded buffering and explicit backpressure/overflow behavior;
-- resources have an owning execution context and deterministic reclamation;
 - persistent state does not retain raw pointers into unloadable ELFs;
-- transport-specific details stay below semantic device/capability APIs;
-- reusable network, storage, sensor, scheduling, notification, security, and data movement functions belong to platform services rather than individual applications;
-- manifests describe requirements and handlers so routing/resolution can occur without loading candidate ELFs.
+- transport details stay below semantic device/capability APIs;
+- reusable network, storage, sensor, scheduling, notification, security and data-movement functions belong to platform services;
+- manifests describe requirements and handlers without loading candidate ELFs;
+- application memory/resources SHOULD be accounted and quota-capable;
+- build tooling SHOULD derive or validate manifest requirements from SDK/API use where practical;
+- security-sensitive resource selection SHOULD use trusted system UI and scoped authority;
+- application-private state SHOULD use private package storage rather than unrestricted shared-volume access.
 
 ## Specification tree
 
 ### A. Platform contract and portability
 
-Start with [Platform Abstraction Architecture](PLATFORM_ABSTRACTION_ARCHITECTURE.md). It defines the board-independent boundary, hardware/provider ownership, and capability-oriented platform contract.
-
-Then use:
-
-- [Runtime Driver Architecture](RUNTIME_DRIVER_ARCHITECTURE.md) for installable hardware/provider modules and capability resolution.
-- [Runtime Driver Implementation](RUNTIME_DRIVER_IMPLEMENTATION.md) for the implemented driver subset and migration state.
-- [Memory Architecture](MEMORY_ARCHITECTURE.md) for SRAM/PSRAM/storage-backed memory and mapping ownership.
-- [Security Architecture](SECURITY_ARCHITECTURE.md) for trust, authorization, signed modules, permissions, and production policy.
+- [Platform Abstraction Architecture](PLATFORM_ABSTRACTION_ARCHITECTURE.md)
+- [Runtime Driver Architecture](RUNTIME_DRIVER_ARCHITECTURE.md)
+- [Runtime Driver Implementation](RUNTIME_DRIVER_IMPLEMENTATION.md) — current/migration state
+- [Memory Architecture](MEMORY_ARCHITECTURE.md)
+- [Security Architecture](SECURITY_ARCHITECTURE.md)
 
 ### B. Application and execution model
 
-Use [Scene Runtime Architecture](SCENE_RUNTIME_ARCHITECTURE.md) for application bundles, scenes/controllers, navigation state, lifecycle, and unloadable ELF execution.
-
-Use [Service Runtime Architecture](SERVICE_RUNTIME_ARCHITECTURE.md) for background/system services, scheduling, events, persistence, and non-foreground work.
-
-Application-facing guides are subordinate to these architecture specifications:
-
-- [RiscRTE Applications](NATIVE_APPS.md) — current application ABI/framework and compatibility identifiers.
-- [Adding Firmware Activities](ADDING_APPS.md) — legacy/in-firmware Activity path, only when functionality cannot yet be expressed through RiscRTE application/platform APIs.
-- [RiscRTE UI Host API](NATIVE_UI_API.md) and [RiscRTE Network Host API](NATIVE_NETWORK_API.md) — current ABI/API documentation; historical symbol names may remain.
+- [Application Execution Context Architecture](APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md) — authoritative for execution contexts, universal object ownership, trusted system UI, private app storage, resource quotas and manifest derivation. **Required reading for new app work.**
+- [Scene Runtime Architecture](SCENE_RUNTIME_ARCHITECTURE.md)
+- [Service Runtime Architecture](SERVICE_RUNTIME_ARCHITECTURE.md)
+- [RiscRTE Applications](NATIVE_APPS.md) — current application ABI/framework and compatibility identifiers
+- [Adding Firmware Activities](ADDING_APPS.md) — legacy/in-firmware Activity path
+- [RiscRTE UI Host API](NATIVE_UI_API.md)
+- [RiscRTE Network Host API](NATIVE_NETWORK_API.md)
 
 ### C. Streams, IPC, and data movement
 
-Use [Stream and Pipe Architecture](STREAM_PIPE_ARCHITECTURE.md) as the canonical data-movement design. It implements Roadmap Part III and is the preferred mechanism for byte/record flows such as serial, GNSS, files, downloads, programming, recording, and transforms.
+- [Stream and Pipe Architecture](STREAM_PIPE_ARCHITECTURE.md) — canonical data-movement design
+- [Stream and Pipe MVP](STREAM_PIPE_MVP.md) — implemented/transition subset
 
-[Stream and Pipe MVP](STREAM_PIPE_MVP.md) documents the currently implemented/minimum transition slice. The MVP never overrides the architecture; it records what is safe to depend on today.
+Streams/pipes are the preferred reusable path for serial, files, downloads, GNSS, programming, recording and transforms.
 
 ### D. Devices, sensors, and transports
 
-The roadmap's **Unified Device and Peripheral Registry**, **Capability Resolver**, and **Unified Resource Ownership** are the parent abstractions for transport-specific specs.
+The Unified Device/Peripheral Registry, Capability Resolver and Unified Resource Ownership are parent abstractions for transport-specific specs.
 
-- [Bluetooth Sensor Architecture](BLUETOOTH_SENSOR_ARCHITECTURE.md) is a transport-specific implementation/precursor. Its semantic sensor model generalizes into the roadmap's transport-independent Generic Sensor Framework.
-- [GPS Driver](GPS_DRIVER.md) documents the current GNSS driver implementation. Forward consumers request `location.*` capabilities rather than depending on a GPS implementation.
-- [USB OTG Host Architecture](USB_OTG_HOST_ARCHITECTURE.md) defines USB transport ownership, enumeration, hubs, class providers, and role handling beneath the unified device/capability model.
-- [Programmer/Debugger Architecture](PROGRAMMER_DEBUGGER_ARCHITECTURE.md) defines programming/debugging as reusable capabilities/jobs over streams and device providers, not app-private probe stacks.
+- [Bluetooth Sensor Architecture](BLUETOOTH_SENSOR_ARCHITECTURE.md)
+- [GPS Driver](GPS_DRIVER.md)
+- [USB OTG Host Architecture](USB_OTG_HOST_ARCHITECTURE.md)
+- [Programmer/Debugger Architecture](PROGRAMMER_DEBUGGER_ARCHITECTURE.md)
 
 ### E. Roadmap capability branches
 
-The [Platform Capability Roadmap](PLATFORM_CAPABILITY_ROADMAP.md) is the authoritative expansion plan. New detailed specifications should branch from it in these domains:
+The [Platform Capability Roadmap](PLATFORM_CAPABILITY_ROADMAP.md) is the authoritative expansion plan:
 
-1. Core platform unification — device registry, capability resolver, resource ownership.
-2. Hardware and sensors — generic sensors, I2C/SPI/GPIO providers, location, observation/fusion.
-3. Streams and IPC — streams/pipes, structured IPC, unified event bus.
-4. Storage and data — volumes, recorder/time-series data, content intents, clipboard/share, search/indexing.
-5. Networking and communications — reusable network services, message transport, discovery.
-6. System facilities — notifications, alarms/deadlines, automation/rules.
-7. Security services — credentials/secrets and policy integration.
-8. Packaging/lifecycle — packages, dependency/capability declarations, install/update/remove lifecycle.
-9. Power/reliability/diagnostics — ownership-aware power, watchdogs, health, logs, crash/diagnostic facilities.
-
-A new architecture document SHOULD be linked from the relevant roadmap section and added to this tree when it becomes authoritative.
+1. Core platform unification — device registry, resolver, resource ownership, execution contexts/object handles.
+2. Hardware/sensors — generic sensors, I2C/SPI/GPIO, location, observation/fusion.
+3. Streams/IPC — streams/pipes, structured IPC, event bus.
+4. Storage/data — **private app storage and trusted file/resource mediation first**, then volumes, recorder, content intents, clipboard/share, search/indexing.
+5. Networking/communications.
+6. System facilities.
+7. Security services.
+8. Packaging/lifecycle — manifests, requirements, dependency declarations, install/update/remove lifecycle.
+9. Power/reliability/diagnostics — including per-context resource accounting.
 
 ## Future-state versus current-state documentation
 
-Specifications may need to describe both the target architecture and code that still implements an older design. Use this structure:
+When target architecture and legacy/current implementation differ, document in this order:
 
-1. **Canonical / target architecture** — first, normative, aligned to this master spec and roadmap.
-2. **Current implementation status** — what exists now, including gaps.
-3. **Legacy compatibility** — old names, APIs, ownership patterns, or implementation details that must remain documented until migrated.
-4. **Migration requirements** — how new work avoids deepening the legacy dependency and how existing code converges on the target.
+1. **Canonical / target architecture**.
+2. **Current implementation status**.
+3. **Legacy compatibility**.
+4. **Migration requirements**.
 
 Do not delete accurate legacy implementation documentation merely because the target changed. Move it beneath an explicit current/legacy heading and prepend the target design.
 
@@ -140,17 +145,19 @@ Do not delete accurate legacy implementation documentation merely because the ta
 
 Before implementing a platform change, an agent/contributor MUST:
 
-1. read this file and the roadmap section governing the feature;
-2. read the directly applicable child architecture spec(s);
-3. inspect current implementation before assuming the spec is already implemented;
-4. classify the change as application, service, provider/driver, stream/transform, device, job, intent/content handler, package, or core runtime primitive;
-5. use semantic capabilities instead of concrete implementation dependencies where the roadmap defines them;
-6. update the authoritative spec in the same change when architecture/API behavior changes;
-7. preserve legacy documentation only where it still describes deployed/current code, and label it explicitly;
-8. avoid introducing new `T5*` platform terminology except for hardware or compatibility identifiers.
+1. read this file and the governing roadmap section;
+2. read directly applicable child architecture specs;
+3. for application work, read `APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md` and prioritize trusted system UI/private storage over app-private broad access;
+4. inspect current implementation before assuming the target is implemented;
+5. classify the change using platform abstractions rather than creating private infrastructure;
+6. use semantic capabilities instead of concrete implementation dependencies where defined;
+7. route newly acquired resources to an execution-context owner and prefer opaque handles;
+8. update the authoritative spec in the same change when architecture/API behavior changes;
+9. preserve/labeled legacy documentation where it still describes deployed code;
+10. avoid new `T5*` platform terminology except hardware/compatibility identifiers.
 
 ## Documentation maintenance rule
 
-Every architecture/API document should carry a short authority header pointing back to this master specification. Documents that describe a legacy or transitional subsystem must say so near the top. The roadmap and this index must be updated when a new authoritative branch spec is added.
+Every architecture/API document should point back to this master specification. Transitional/legacy subsystems must say so near the top. The roadmap and this index must be updated when a new authoritative branch spec is added.
 
-This file is deliberately stable and concise enough to be the first document an automated coding agent reads. Detailed requirements belong in the linked child specifications, not in ad-hoc implementation notes.
+This file is deliberately stable and concise enough to be the first document an automated coding agent reads. Detailed requirements belong in linked child specifications.
