@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <HalStorage.h>
 #include <T5AppApi.h>
+#include <T5SerialPortApi.h>
 #include <T5UsbApi.h>
 #include <T5StreamApi.h>
 #include "native/NativeStreamBridge.h"
@@ -17,7 +18,7 @@ static t5_app_api_v1 app{};
 extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t) { return &app; }
 static t5_usb_api_v1 usb{};
 static t5_usb_serial_state_t usbStatus{};
-static int stops = 0;
+static int starts = 0, stops = 0, configs = 0, lineChanges = 0;
 extern "C" const t5_usb_api_v1* t5_usb_get_api(uint32_t) { return &usb; }
 static unsigned bodySize = 3;
 static bool unloadInRequest = false;
@@ -33,10 +34,19 @@ bool HttpDownloader::fetchUrl(const std::string&, Stream& out, const std::string
 }
 int main() {
   usb.supported = [] { return true; };
+  usb.serial_start = [](const t5_usb_line_coding_t* coding) {
+    ++starts; ++configs; usbStatus.line_coding = *coding; return true;
+  };
+  usb.serial_stop = [] { ++stops; usbStatus.status = T5_USB_STATUS_OFF; usbStatus.connected = 0; };
   usb.serial_read_state = [](t5_usb_serial_state_t* out) { *out = usbStatus; return true; };
+  usb.serial_set_line_coding = [](const t5_usb_line_coding_t* coding) {
+    ++lineChanges; usbStatus.line_coding = *coding; return true;
+  };
+  usb.serial_set_control_lines = [](bool dtr, bool rts) {
+    usbStatus.dtr = dtr; usbStatus.rts = rts; return true;
+  };
   usb.serial_read = [](uint8_t*, size_t) -> size_t { return 0; };
   usb.serial_write = [](const uint8_t*, size_t n) -> size_t { return std::min<size_t>(2, n); };
-  usb.serial_stop = [] { ++stops; };
   assert(!t5_stream_get_api(1));
   nativeStreamsBegin(); api = t5_stream_get_api(1); assert(api && !t5_stream_get_api(2));
   t5_stream_t h, other;
@@ -59,6 +69,8 @@ int main() {
   assert(api->write(h, "abc", 3, &count) == 0 && count == 3);
   closeOk = false; assert(api->finish(h) == T5_STREAM_IO); closeOk = true;
   assert(api->close(h) == 0);
+
+  // Legacy USB stream remains supported during migration and retains reconnect behavior.
   assert(api->open_usb(&h) == 0);
   assert(api->open_usb(&other) == T5_STREAM_BUSY);
   usbStatus.status = T5_USB_STATUS_READY; usbStatus.connected = 1;
@@ -70,6 +82,40 @@ int main() {
   usbStatus.connected = 1; usbStatus.status = T5_USB_STATUS_READY;
   assert(api->write(h, "abc", 3, &count) == 0 && count == 2);
   assert(api->close(h) == 0 && stops == 0);
+
+  // serial.port is an exclusive semantic lease backed by independent RX/TX streams.
+  const auto* serial = t5_serial_port_get_api(T5_SERIAL_PORT_API_VERSION);
+  assert(serial && serial->capability_id && std::string(serial->capability_id) == "serial.port");
+  t5_serial_port_request_t request{};
+  request.config = {115200u, 8u, T5_SERIAL_PARITY_NONE, 1u, T5_SERIAL_FLOW_NONE};
+  t5_serial_port_lease_t lease = 0, busyLease = 0;
+  t5_stream_t rx = 0, tx = 0, busyRx = 0, busyTx = 0;
+  usbStatus.status = T5_USB_STATUS_READY; usbStatus.connected = 1;
+  std::strcpy(usbStatus.product, "Test UART"); usbStatus.vid = 0x1234; usbStatus.pid = 0x5678;
+  assert(serial->acquire(&request, &lease, &rx, &tx) == T5_SERIAL_OK);
+  assert(lease && rx && tx && rx != tx && starts == 1);
+  assert(serial->acquire(&request, &busyLease, &busyRx, &busyTx) == T5_SERIAL_BUSY);
+  assert(api->write(rx, "a", 1, &count) == T5_STREAM_INVALID);
+  assert(api->read(tx, bytes, 1, &count) == T5_STREAM_INVALID);
+  assert(api->read(rx, bytes, 3, &count) == T5_STREAM_AGAIN && count == 0);
+  assert(api->write(tx, "abc", 3, &count) == T5_STREAM_OK && count == 2);
+  t5_serial_port_state_t serialState{};
+  assert(serial->read_status(lease, &serialState) == T5_SERIAL_OK);
+  assert(serialState.status == T5_SERIAL_STATUS_READY && serialState.connected && serialState.device != 0);
+  assert(std::string(serialState.device_label).find("Test UART") != std::string::npos);
+  auto changed = request.config; changed.baud_rate = 9600;
+  assert(serial->configure(lease, &changed) == T5_SERIAL_OK && lineChanges == 1);
+  changed.flow_control = T5_SERIAL_FLOW_RTS_CTS;
+  assert(serial->configure(lease, &changed) == T5_SERIAL_UNSUPPORTED);
+  assert(serial->set_control_lines(lease, false, true) == T5_SERIAL_OK && !usbStatus.dtr && usbStatus.rts);
+  const auto stale = lease;
+  assert(serial->release(lease) == T5_SERIAL_OK && stops == 1);
+  assert(serial->configure(stale, &request.config) == T5_SERIAL_CLOSED);
+
+  // A new acquisition receives a different generation-safe lease and teardown reclaims it.
+  usbStatus.status = T5_USB_STATUS_READY; usbStatus.connected = 1;
+  t5_serial_port_lease_t second = 0;
+  assert(serial->acquire(&request, &second, &rx, &tx) == T5_SERIAL_OK && second != stale && starts == 2);
   assert(api->open_http("https://example.test/file", &h) == 0);
   assert(api->open_http("https://example.test/other", &other) == T5_STREAM_BUSY);
   httpTask(httpContext);
@@ -86,7 +132,12 @@ int main() {
   assert(api->open_http("https://example.test/late", &h) == 0); httpTask(httpContext);
   assert(api->read(h, bytes, 512, &count) == T5_STREAM_INVALID);
   assert(api->read(replacement, bytes, 512, &count) == T5_STREAM_AGAIN && count == 0);
+
+  // unloadInRequest already ended/restarted the original context, so its serial lease was reclaimed.
+  assert(stops == 2);
+  assert(t5_serial_port_get_api(T5_SERIAL_PORT_API_VERSION));
   nativeStreamsEnd();
   assert(api->close(replacement) == T5_STREAM_DENIED && !t5_stream_get_api(1));
+  assert(!t5_serial_port_get_api(T5_SERIAL_PORT_API_VERSION));
   std::cout << "Stream firmware adapter tests passed\n";
 }
