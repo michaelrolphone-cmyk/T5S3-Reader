@@ -4,6 +4,10 @@ import re
 from pathlib import Path
 
 
+_CAPABILITY = re.compile(r'[a-z][a-z0-9._-]{0,38}', re.ASCII)
+_API_MIN = re.compile(r'>=([1-9][0-9]*)', re.ASCII)
+
+
 def _validate_version(path, field, value, label):
     if not isinstance(value, str) or len(value.encode('utf-8')) >= 32:
         raise ValueError(f'{path}: invalid {field}')
@@ -11,9 +15,33 @@ def _validate_version(path, field, value, label):
         raise ValueError(f'{path}: {label} must be major.minor.patch')
 
 
+def _validate_capabilities(path, data):
+    # Keep the host release validator in sync with the bounded firmware parser.
+    seen = set()
+    for field in ('requires', 'optional'):
+        if field not in data or data[field] is None:
+            continue  # Legacy sidecars have no capability declarations.
+        values = data[field]
+        if not isinstance(values, list) or len(values) > 6:
+            raise ValueError(f'{path}: {field} must be an array of at most six capabilities')
+        for entry in values:
+            if not isinstance(entry, dict) or set(entry) != {'capability', 'api'}:
+                raise ValueError(f'{path}: invalid {field} requirement')
+            capability = entry['capability']
+            api = entry['api']
+            match = _API_MIN.fullmatch(api) if isinstance(api, str) else None
+            if (not isinstance(capability, str) or not _CAPABILITY.fullmatch(capability)
+                    or not match or int(match[1]) > 65535 or capability in seen):
+                raise ValueError(f'{path}: invalid, duplicate or unsupported {field} requirement')
+            seen.add(capability)
+
+
 def validate_manifest(source, output):
     path = Path(source).with_suffix('.json')
-    data = json.loads(path.read_text(encoding='utf-8'))
+    raw = path.read_bytes()
+    if not raw or len(raw) > 2048 or b'\x00' in raw:
+        raise ValueError(f'{path}: manifest exceeds runtime limits')
+    data = json.loads(raw.decode('utf-8'))
     if not isinstance(data, dict):
         raise ValueError(f'{path}: expected an object')
     for field, limit in [('display_name', 96), ('file_name', 128),
@@ -29,4 +57,5 @@ def validate_manifest(source, output):
     icon = re.fullmatch(r'(solid|regular):([0-9a-fA-F]{4,6})', data['icon'])
     if not icon or not 0 < int(icon[2], 16) <= 0x10ffff or 0xd800 <= int(icon[2], 16) <= 0xdfff:
         raise ValueError(f'{path}: invalid Classic icon')
+    _validate_capabilities(path, data)
     return path
