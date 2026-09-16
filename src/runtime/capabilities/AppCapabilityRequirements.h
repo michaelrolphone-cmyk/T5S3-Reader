@@ -1,9 +1,6 @@
 #pragma once
 
 #include "runtime/capabilities/DeviceRegistry.h"
-#include <T5GpsApi.h>
-#include <T5SerialPortApi.h>
-
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -33,8 +30,6 @@ inline bool validCapabilityName(const char* name) {
   return n > 0 && n < kCapabilityBytes;
 }
 
-// The initial manifest syntax is an explicit minimum major API: ">=1".
-// Versions not recorded by a provider cannot be silently assumed compatible.
 inline bool parseMinimumApi(const char* text, uint16_t* out) {
   if (out) *out = 0;
   if (!out || !text || text[0] != '>' || text[1] != '=' ||
@@ -58,7 +53,7 @@ inline bool addRequirement(AppCapabilityRequirements* requirements,
   for (size_t i = 0; i < requirements->count; ++i)
     if (std::strcmp(requirements->entries[i].capability, capability) == 0) return false;
   auto& entry = requirements->entries[requirements->count++];
-  std::strcpy(entry.capability, capability);  // Name length validated above.
+  std::strcpy(entry.capability, capability);
   entry.minApi = version;
   return true;
 }
@@ -67,23 +62,28 @@ enum class RequirementResult : uint8_t {
   Ready, Missing, Unavailable, UnknownApi, ApiTooOld
 };
 
-// Version knowledge is intentionally limited to *existing, versioned host
-// facades*. A provider's name alone is not permission to open that hardware.
-// Additional capabilities require registered API-version metadata before they
-// can pass a mandatory manifest requirement. No device lease is acquired here.
+// Versions are published with each capability by its trusted firmware adapter;
+// no provider-name special cases and no assumptions for unversioned providers.
 inline uint16_t knownApiVersion(const DeviceInfo& device, const char* capability) {
-  if (std::strcmp(device.provider, "usb.serial") == 0 &&
-      std::strcmp(capability, "serial.port") == 0)
-    return static_cast<uint16_t>(T5_SERIAL_PORT_API_VERSION);
-  if (std::strcmp(device.provider, "gps-nmea") == 0 &&
-      std::strcmp(capability, "location.position") == 0)
-    return static_cast<uint16_t>(T5_GPS_API_VERSION);
+  if (!capability) return 0;
+  for (size_t i = 0; i < device.capabilityCount; ++i)
+    if (std::strcmp(device.capabilities[i], capability) == 0)
+      return device.capabilityApiVersions[i];
   return 0;
 }
 
+// Select the highest-priority compatible *generation-qualified* device. On
+// equal priority, registry slot order is stable. A missing version fails closed.
 inline RequirementResult resolveRequirement(const Registry& registry,
-                                            const AppCapabilityRequirement& requested) {
+                                            const AppCapabilityRequirement& requested,
+                                            DeviceHandle* selected = nullptr) {
+  if (selected) *selected = 0;
+  if (!validCapabilityName(requested.capability) || !requested.minApi)
+    return RequirementResult::Missing;
   bool seen = false, unversioned = false, older = false;
+  bool found = false;
+  uint8_t bestPriority = 0xff;
+  DeviceHandle bestDevice = 0;
   for (size_t slot = 0; slot < kMaxDevices; ++slot) {
     DeviceInfo device{};
     if (!registry.at(slot, &device)) continue;
@@ -99,6 +99,14 @@ inline RequirementResult resolveRequirement(const Registry& registry,
     const uint16_t version = knownApiVersion(device, requested.capability);
     if (!version) { unversioned = true; continue; }
     if (version < requested.minApi) { older = true; continue; }
+    if (!found || device.priority < bestPriority) {
+      found = true;
+      bestPriority = device.priority;
+      bestDevice = device.handle;
+    }
+  }
+  if (found) {
+    if (selected) *selected = bestDevice;
     return RequirementResult::Ready;
   }
   if (!seen) return RequirementResult::Missing;
