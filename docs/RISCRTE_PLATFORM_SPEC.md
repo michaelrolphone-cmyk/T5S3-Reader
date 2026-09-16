@@ -86,7 +86,7 @@ The runtime-owned device inventory SHALL expose bounded observation of device ar
 
 Each event SHALL have a monotonic sequence, an opaque generation-qualified device handle, copied identity sufficient to correlate a removal after its handle is invalid, prior and current states, and the number of leases forcibly revoked by that transition. A transition from AVAILABLE/BUSY to an unusable state, or removal of a usable device, SHALL report capability loss even when no consumer currently holds a lease. Repeated identical state observations SHALL not generate duplicate events.
 
-Event storage SHALL be bounded. Consumers SHALL use independently maintained cursors, be told explicitly when retained events were overwritten, and re-enumerate the current registry before resuming after a gap. A consumer MUST NOT interpret the retained suffix as a complete event history after an overflow. Observation alone SHALL NOT grant access to a device; acquiring and using capability leases remains subject to execution-context identity and rights. This currently describes a firmware-internal owner-task journal, not an authorization-free ELF ABI or a complete cross-task event bus.
+Event storage SHALL be bounded. Consumers SHALL use independently maintained cursors, be told explicitly when retained events were overwritten, and re-enumerate the current registry before resuming after a gap. A consumer MUST NOT interpret the retained suffix as a complete event history after an overflow. Observation alone SHALL NOT grant access to a device; acquiring and using capability leases remains subject to execution-context identity and rights. The initial [Device Observation API](DEVICE_OBSERVATION_API.md) exposes the internal owner-task journal to authenticated ELF invocations through copied records and context-owned subscriptions, not direct registry access or a complete cross-task event bus.
 
 ## Specification tree
 
@@ -119,6 +119,7 @@ Streams/pipes are the preferred reusable path for serial, files, downloads, GNSS
 
 The Unified Device/Peripheral Registry, Capability Resolver and Unified Resource Ownership are parent abstractions for transport-specific specs.
 
+- [Device Observation API](DEVICE_OBSERVATION_API.md) — current authenticated inventory/event ABI and acceptance gaps
 - [Bluetooth Sensor Architecture](BLUETOOTH_SENSOR_ARCHITECTURE.md)
 - [GPS Driver](GPS_DRIVER.md)
 - [USB OTG Host Architecture](USB_OTG_HOST_ARCHITECTURE.md)
