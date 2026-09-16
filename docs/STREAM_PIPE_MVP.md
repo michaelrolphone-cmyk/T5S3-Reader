@@ -130,7 +130,10 @@ Run `bash test/run_stream_test.sh` for the actual portable registry under ASan a
 UBSan plus C-header compatibility. It covers ordering, short writes, bounded
 backpressure, partial-buffer drain, EOF/error distinction, source size independence,
 seek limits, ownership rejection, stale handles, pause/cancel, provider failure,
-cleanup, slot exhaustion and two-pipe fairness. Restricted containers may need
+cleanup, slot exhaustion and two-pipe fairness. The actual firmware bridge is also
+compiled against host doubles to test path rejection, exclusive file creation,
+SD failure, file close failure, USB disconnect/reconfiguration, HTTP backpressure
+timeout, and late HTTP writes across session reuse. Restricted containers may need
 `ASAN_OPTIONS=detect_leaks=0` because LeakSanitizer cannot inspect `/proc` there;
 CI runs the default sanitizer configuration.
 
