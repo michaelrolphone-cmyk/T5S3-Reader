@@ -4,10 +4,10 @@
 #include <cstdint>
 #include <cstring>
 
-// Firmware-only, single-runtime-task registry. Transport callbacks must marshal
-// changes onto that task. No ELF pointers, dynamic allocation, or app-visible
-// pointers are retained. Public application access requires a separate host API
-// that authenticates the calling execution context.
+// Firmware-only, single-runtime-task registry. Transport callbacks marshal
+// changes onto that task. No ELF function pointers, dynamic allocation or
+// app-visible implementation pointers are retained. An eventual public host
+// API must authenticate the calling execution context before invoking this.
 namespace RuntimeDevices {
 constexpr size_t kMaxDevices = 12;
 constexpr size_t kMaxLeases = 16;
@@ -25,15 +25,14 @@ enum class State : uint8_t {
 };
 enum class Mode : uint8_t { Shared, Exclusive };
 enum class Result : uint8_t { Ok, Invalid, NotFound, Unavailable, Busy, Limit, Stale };
-
 struct Descriptor {
-  const char* identity = nullptr;   // Unique stable logical identity, never an ephemeral USB address.
+  const char* identity = nullptr;   // Stable logical identity, not an ephemeral USB address.
   const char* label = nullptr;
-  const char* provider = nullptr;   // Informational runtime-owned provider identity, NOT an ELF pointer.
+  const char* provider = nullptr;   // Metadata only; NEVER an ELF pointer.
   Transport transport = Transport::Internal;
   const char* const* capabilities = nullptr;
   size_t capabilityCount = 0;
-  uint8_t priority = 100;           // Lower number wins unconstrained resolution.
+  uint8_t priority = 100;           // Lower is preferred.
 };
 struct DeviceInfo {
   DeviceHandle handle = 0;
@@ -61,7 +60,7 @@ class Registry final {
     if (!out || !desc.capabilities || !desc.capabilityCount ||
         desc.capabilityCount > kMaxCapabilities || state == State::Removed) return false;
     DeviceInfo info{};
-    if (!copy(info.identity, desc.identity) || !copy(info.label, desc.label) ||
+    if (!copy(info.identity, desc.identity) || !copy(info.label, desc.label, true) ||
         !copy(info.provider, desc.provider)) return false;
     info.state = state;
     info.transport = desc.transport;
@@ -90,20 +89,20 @@ class Registry final {
   bool setState(DeviceHandle device, State state) {
     Slot* slot = deviceSlot(device);
     if (!slot) return false;
-    if (state != State::Available) revokeDevice(device);
+    // BUSY means the device remains attached and existing leases stay valid;
+    // it blocks new acquisitions. Loss/suspension/failure revokes immediately.
+    if (state != State::Available && state != State::Busy) revokeDevice(device);
     slot->info.state = state;
     return true;
   }
-
   bool remove(DeviceHandle device) {
     Slot* slot = deviceSlot(device);
     if (!slot) return false;
     revokeDevice(device);
-    slot->used = false;  // Preserve generation so old handles cannot alias reuse.
-    slot->info = DeviceInfo{};
+    slot->used = false;
+    slot->info = DeviceInfo{};  // Keep generation to invalidate a reused slot.
     return true;
   }
-
   bool get(DeviceHandle device, DeviceInfo* out) const {
     if (!out) return false;
     const Slot* slot = deviceSlot(device);
@@ -111,33 +110,36 @@ class Registry final {
     *out = slot->info;
     return true;
   }
-  // index is a physical slot, not a compact ordinal: stable while other slots change.
+  // Physical slot index, not a shifting ordinal; safely skip unused entries.
   bool at(size_t index, DeviceInfo* out) const {
     if (!out || index >= kMaxDevices || !devices_[index].used) return false;
     *out = devices_[index].info;
     return true;
   }
   size_t count() const {
-    size_t total = 0;
-    for (const auto& slot : devices_) if (slot.used) ++total;
-    return total;
+    size_t n = 0;
+    for (const auto& slot : devices_) if (slot.used) ++n;
+    return n;
   }
 
   Result acquire(const char* capability, uint32_t owner, LeaseHandle* out,
                  DeviceHandle preferred = 0, Mode mode = Mode::Shared) {
     if (out) *out = 0;
-    if (!out || !owner || !validName(capability, kCapabilityBytes)) return Result::Invalid;
+    if (!out || !owner || !validText(capability, kCapabilityBytes)) return Result::Invalid;
     if (preferred && !deviceSlot(preferred)) return Result::NotFound;
     Slot* best = nullptr;
-    bool foundCapability = false, offline = false, busy = false;
+    bool offline = false, busy = false;
     for (auto& slot : devices_) {
       if (!slot.used || (preferred && slot.info.handle != preferred)) continue;
       bool supports = false;
       for (size_t i = 0; i < slot.info.capabilityCount; ++i) {
-        if (std::strcmp(capability, slot.info.capabilities[i]) == 0) { supports = true; break; }
+        if (std::strcmp(capability, slot.info.capabilities[i]) == 0) {
+          supports = true;
+          break;
+        }
       }
       if (!supports) continue;
-      foundCapability = true;
+      if (slot.info.state == State::Busy) { busy = true; continue; }
       if (slot.info.state != State::Available) { offline = true; continue; }
       bool conflicts = false;
       for (const auto& lease : leases_) {
@@ -150,11 +152,7 @@ class Registry final {
       if (conflicts) { busy = true; continue; }
       if (!best || slot.info.priority < best->info.priority) best = &slot;
     }
-    if (!best) {
-      if (busy) return Result::Busy;
-      if (offline) return Result::Unavailable;
-      return foundCapability ? Result::Unavailable : Result::NotFound;
-    }
+    if (!best) return busy ? Result::Busy : (offline ? Result::Unavailable : Result::NotFound);
     for (size_t i = 0; i < kMaxLeases; ++i) {
       LeaseSlot& slot = leases_[i];
       if (slot.used || slot.generation >= kMaxGeneration) continue;
@@ -171,11 +169,12 @@ class Registry final {
     }
     return Result::Limit;
   }
-
   bool valid(LeaseHandle lease, uint32_t owner) const {
     const LeaseSlot* slot = leaseSlot(lease);
-    return slot && slot->info.owner == owner && deviceSlot(slot->info.device) &&
-           deviceSlot(slot->info.device)->info.state == State::Available;
+    if (!slot || !owner || slot->info.owner != owner) return false;
+    const Slot* device = deviceSlot(slot->info.device);
+    return device && (device->info.state == State::Available ||
+                      device->info.state == State::Busy);
   }
   bool getLease(LeaseHandle lease, uint32_t owner, LeaseInfo* out) const {
     if (!out || !valid(lease, owner)) return false;
@@ -210,20 +209,21 @@ class Registry final {
   static constexpr uint32_t kMaxGeneration = 0x00ffffffu;
   struct Slot { DeviceInfo info{}; uint32_t generation = 0; bool used = false; };
   struct LeaseSlot { LeaseInfo info{}; uint32_t generation = 0; bool used = false; };
-  static DeviceHandle makeHandle(size_t index, uint32_t generation) {
+  static uint32_t makeHandle(size_t index, uint32_t generation) {
     return (generation << 8u) | static_cast<uint32_t>(index + 1u);
   }
-  static bool validName(const char* src, size_t capacity) {
+  static bool validText(const char* src, size_t capacity, bool spaces = false) {
     if (!src) return false;
     size_t i = 0;
     for (; i < capacity && src[i]; ++i) {
-      if (static_cast<unsigned char>(src[i]) < 0x21u ||
-          static_cast<unsigned char>(src[i]) > 0x7eu) return false;
+      const unsigned char ch = static_cast<unsigned char>(src[i]);
+      if (ch < (spaces ? 0x20u : 0x21u) || ch > 0x7eu) return false;
     }
     return i && i < capacity;
   }
-  template <size_t N> static bool copy(char (&out)[N], const char* src) {
-    if (!validName(src, N)) return false;
+  template <size_t N> static bool copy(char (&out)[N], const char* src,
+                                        bool spaces = false) {
+    if (!validText(src, N, spaces)) return false;
     std::strcpy(out, src);
     return true;
   }
@@ -247,16 +247,16 @@ class Registry final {
   }
   void revokeDevice(DeviceHandle device) {
     for (auto& lease : leases_) {
-      if (!lease.used || lease.info.device != device) continue;
-      lease.used = false;
-      lease.info = LeaseInfo{};
+      if (lease.used && lease.info.device == device) {
+        lease.used = false;
+        lease.info = LeaseInfo{};
+      }
     }
   }
   Slot devices_[kMaxDevices]{};
   LeaseSlot leases_[kMaxLeases]{};
 };
 
-// A single firmware-owned inventory shared by all transport adapters.
 inline Registry& systemRegistry() {
   static Registry registry;
   return registry;
