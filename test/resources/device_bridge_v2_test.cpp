@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 
 using namespace RuntimeDevices;
 using RuntimeResources::ExecutionContext;
@@ -12,6 +13,8 @@ using RuntimeResources::ExecutionContext;
 static bool appSession = false;
 static bool consentAllowed = false;
 static bool detachDuringPrompt = false;
+static bool mutateDuringPrompt = false;
+static char mutableCapability[40] = "location.position";
 static unsigned promptCount = 0;
 extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
   static const t5_app_api_v1 api{};
@@ -21,6 +24,12 @@ void nativeDeviceDiscoveryTick() {}  // Snapshot mutation belongs to owner task.
 bool nativeDeviceConsentPrompt(const DeviceInfo& device, const char* capability, uint32_t rights) {
   ++promptCount;
   assert(capability && rights && device.handle);
+  if (mutateDuringPrompt) {
+    mutateDuringPrompt = false;
+    assert(std::strcmp(capability, "location.position") == 0);
+    std::strcpy(mutableCapability, "serial.port");
+    assert(std::strcmp(capability, "location.position") == 0);
+  }
   if (detachDuringPrompt) {
     detachDuringPrompt = false;
     assert(systemRegistry().remove(device.handle));
@@ -100,6 +109,16 @@ int main() {
   assert(api->validate(access, T5_DEVICE_RIGHT_WRITE, &observed) == T5_DEVICE_STALE);
   assert(api->acquire("location.position", device, T5_DEVICE_RIGHT_READ, &access) == T5_DEVICE_DENIED);
 
+  // ELF-owned mutable text must be copied before the owner task pauses for UI;
+  // otherwise a worker can change which capability is granted after consent.
+  std::strcpy(mutableCapability, "location.position");
+  mutateDuringPrompt = true;
+  assert(v3->request(mutableCapability, device, T5_DEVICE_RIGHT_READ, &access) == T5_DEVICE_OK);
+  assert(std::strcmp(mutableCapability, "serial.port") == 0);
+  assert(api->validate(access, T5_DEVICE_RIGHT_READ, &observed) == T5_DEVICE_OK && observed == device);
+  assert(systemCapabilityAccess().revokeTrusted(context.id(), device, "location.position"));
+  assert(api->validate(access, T5_DEVICE_RIGHT_READ, &observed) == T5_DEVICE_STALE);
+
   detachDuringPrompt = true;
   const DeviceHandle disconnected = device;
   assert(v3->request("location.position", device, T5_DEVICE_RIGHT_READ, &access) == T5_DEVICE_STALE);
@@ -117,5 +136,5 @@ int main() {
   assert(registry.leaseCount() == 0 && systemCapabilityAccess().owner() == 0);
   appSession = false;
   assert(t5_device_get_api(3) == nullptr);
-  std::puts("Device ABI v1/v2 compatibility and v3 per-invocation consent tests passed");
+  std::puts("Device ABI v1/v2 compatibility, v3 scoped consent and immutable request tests passed");
 }
