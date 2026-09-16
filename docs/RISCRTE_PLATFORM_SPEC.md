@@ -111,6 +111,9 @@ Event storage SHALL be bounded. Consumers SHALL use independently maintained cur
 ### C. Streams, IPC, and data movement
 
 - [Stream and Pipe Architecture](STREAM_PIPE_ARCHITECTURE.md) — canonical data-movement design
+- [Typed Record Stream ABI](STREAM_RECORD_API_V2.md) — versioned ELF record API, compatibility, ownership and implementation status
+- [GNSS Record/Provider Publication](STREAM_GNSS_RECORD_ADAPTER.md) — location.fix.v1 schema, firmware publication rights, driver-task ownership and incomplete subscription path
+- [GNSS Registry Integration](STREAM_GNSS_REGISTRY_INTEGRATION.md) — shared device registry, lease binding and integration boundary
 - [Stream and Pipe MVP](STREAM_PIPE_MVP.md) — implemented/transition subset
 
 Streams/pipes are the preferred reusable path for serial, files, downloads, GNSS, programming, recording and transforms.
