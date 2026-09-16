@@ -250,6 +250,12 @@ const t5_stream_api_v1 api = {T5_STREAM_API_VERSION, sizeof(t5_stream_api_v1), o
   openHttp, readStream, writeStream, finish, seek, closeStream, info, connect, pause, cancel, closePipe, pipeInfo};
 }
 
+bool nativeStreamUsbIsBusy() {
+  if (!authorized() || !initialize()) return true;
+  Lock lock;
+  return usbOpen;
+}
+
 t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
   if (rx) *rx = 0;
   if (tx) *tx = 0;
