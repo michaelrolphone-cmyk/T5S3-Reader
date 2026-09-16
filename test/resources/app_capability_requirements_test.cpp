@@ -11,7 +11,7 @@ int main() {
   size_t failing = 99;
   Registry registry;
   assert(resolveRequirements(registry, required, &failing) == RequirementResult::Ready);
-  assert(failing == 0);  // Legacy sidecar imposes no new launch requirement.
+  assert(failing == 0);
   assert(!validCapabilityName(nullptr));
   assert(!validCapabilityName("Serial.Port"));
   assert(!validCapabilityName("../uart"));
@@ -32,8 +32,11 @@ int main() {
   assert(resolveRequirements(registry, required, &failing) == RequirementResult::Missing && failing == 0);
 
   const char* gpsCaps[] = {"location.position"};
-  const Descriptor gps{"board.gnss.uart0", "GNSS", "gps-nmea", Transport::Uart,
-                       gpsCaps, 1, 100};
+  const uint16_t gpsApi[] = {1};
+  // Provider string intentionally differs from gps-nmea: API metadata must
+  // follow the declared capability, not a hard-coded ELF provider name.
+  const Descriptor gps{"board.gnss.uart0", "GNSS", "vendor.gps", Transport::Uart,
+                       gpsCaps, 1, 100, gpsApi};
   DeviceHandle gpsDevice = 0;
   assert(registry.add(gps, State::Unavailable, &gpsDevice));
   assert(resolveRequirements(registry, required, &failing) == RequirementResult::Unavailable && failing == 0);
@@ -41,11 +44,17 @@ int main() {
   assert(resolveRequirements(registry, required, &failing) == RequirementResult::Missing && failing == 1);
 
   const char* serialCaps[] = {"serial.port", "serial.host"};
-  const Descriptor serial{"usb.session.1", "USB UART", "usb.serial", Transport::Usb,
-                          serialCaps, 2, 100};
+  const uint16_t serialApi[] = {1, 0};
+  const Descriptor serial{"usb.session.1", "USB UART", "thirdparty.cdc", Transport::Usb,
+                          serialCaps, 2, 100, serialApi};
   DeviceHandle serialDevice = 0;
   assert(registry.add(serial, State::Available, &serialDevice));
   assert(resolveRequirements(registry, required, &failing) == RequirementResult::Ready && failing == required.count);
+  assert(knownApiVersion(DeviceInfo{}, "serial.port") == 0);
+  DeviceInfo serialInfo{};
+  assert(registry.get(serialDevice, &serialInfo));
+  assert(knownApiVersion(serialInfo, "serial.port") == 1);
+  assert(knownApiVersion(serialInfo, "serial.host") == 0);
 
   required.entries[1].minApi = 2;
   assert(resolveRequirements(registry, required, &failing) == RequirementResult::ApiTooOld && failing == 1);
@@ -58,21 +67,32 @@ int main() {
   assert(registry.add(serial, State::Available, &serialDevice));
   assert(resolveRequirements(registry, required, &failing) == RequirementResult::Ready);
 
-  // A registered capability with an unknown provider-version contract must
-  // fail closed. Registry presence alone does not prove compatible APIs.
+  // An unversioned provider fails closed even if its name resembles a known
+  // driver. A separate, compatible provider can satisfy the same capability.
   const char* customCaps[] = {"sensor.temperature"};
-  const Descriptor custom{"sensor.1", "Thermometer", "unknown.elf", Transport::I2c,
+  const Descriptor custom{"sensor.1", "Thermometer", "gps-nmea", Transport::I2c,
                           customCaps, 1, 100};
   DeviceHandle customDevice = 0;
   assert(registry.add(custom, State::Available, &customDevice));
   AppCapabilityRequirements customRequired{};
   assert(addRequirement(&customRequired, "sensor.temperature", ">=1"));
   assert(resolveRequirements(registry, customRequired, &failing) == RequirementResult::UnknownApi);
+  const uint16_t customApi[] = {3};
+  const Descriptor alternate{"sensor.2", "Thermometer 2", "sensor.elf", Transport::Ble,
+                             customCaps, 1, 50, customApi};
+  DeviceHandle selected = 0;
+  assert(registry.add(alternate, State::Available, &selected));
+  DeviceHandle resolved = 0;
+  assert(resolveRequirement(registry, customRequired.entries[0], &resolved) == RequirementResult::Ready);
+  assert(resolved == selected);
+  assert(registry.get(selected, &serialInfo) && knownApiVersion(serialInfo, "sensor.temperature") == 3);
+  assert(registry.remove(selected));
+  assert(resolveRequirements(registry, customRequired) == RequirementResult::UnknownApi);
+
   for (size_t i = 0; i < kMaxAppRequirements; ++i) {
     char capability[32];
     std::snprintf(capability, sizeof(capability), "test.capability%u", static_cast<unsigned>(i));
     AppCapabilityRequirements full{};
-    // Validate the exact capacity boundary separately from name uniqueness.
     for (size_t j = 0; j < kMaxAppRequirements; ++j) {
       char name[32];
       std::snprintf(name, sizeof(name), "test.resource%u", static_cast<unsigned>(j));
@@ -80,5 +100,5 @@ int main() {
     }
     assert(!addRequirement(&full, capability, ">=1"));
   }
-  std::puts("App manifest capability preflight, version and state tests passed");
+  std::puts("App manifest capability preflight, generic versions and state tests passed");
 }
