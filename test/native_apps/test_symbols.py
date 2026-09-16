@@ -17,6 +17,10 @@ class ImportsTest(unittest.TestCase):
         imports = '1: 00000000 0 NOTYPE GLOBAL DEFAULT UND t5_stream_get_api'
         self.assertEqual(validate_imports(imports, firmware_exports(repo)), {'t5_stream_get_api'})
 
+    def test_serial_port_api_export(self):
+        imports = '1: 00000000 0 NOTYPE GLOBAL DEFAULT UND t5_serial_port_get_api'
+        self.assertEqual(validate_imports(imports, firmware_exports(repo)), {'t5_serial_port_get_api'})
+
     def test_unknown_dependency_rejected(self):
         with self.assertRaisesRegex(ValueError, 'unexported_service'):
             validate_imports('2: 00000000 0 NOTYPE GLOBAL DEFAULT UND unexported_service', firmware_exports(repo))
