@@ -1,3 +1,6 @@
+# RiscRTE firmware change log
+
+> Entries below preserve historical artifact filenames exactly as they were published. Names beginning with `corsspoint_` are legacy pre-RiscRTE release references and are not the naming convention for new firmware. New versioned firmware artifacts use the `riscrte_` prefix.
 
 v1.0.1
 - Add screen backlight settings
@@ -71,7 +74,7 @@ v1.0.8
 v1.0.9
 
 - LLM TLS also pins GlobalSign Root CA and GTS WE1 so Cloudflare's cross-signed chain verifies.
-- Quarantine a corrupt `/.crosspoint/settings.json` to `settings.json.bak.YYYYMMDDTHHMMSS` and rewrite from memory.
+- Quarantine a corrupt `/.crosspoint/settings.json` to `settings.json.bak.YYYYMMDDHHMMSS` and rewrite from memory.
 - SD writes recreate the parent folder, retry the open, and log SdFat error codes.
 - USB: `firmware/corsspoint_lilygo_t5s3_1.0.9.bin`. SD/OTA: `firmware-t5s3-pro.bin`.
 
