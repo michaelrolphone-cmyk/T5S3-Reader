@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a release request and emit GitHub Actions job outputs."""
+"""Validate a RiscRTE release request and emit GitHub Actions job outputs."""
 import configparser
 import json
 import os
@@ -34,8 +34,8 @@ def resolve(event_name, event, root):
     version = tag[1:]
     config = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=(";", "#"))
     config.read(root / "platformio.ini")
-    if config.get("crosspoint", "version") != version:
-        raise ValueError("Requested tag must match [crosspoint] version in platformio.ini")
+    if config.get("riscrte", "version") != version:
+        raise ValueError("Requested tag must match [riscrte] version in platformio.ini")
     return {"publish": "true", "tag": tag, "ver": version, "commit_firmware": str(commit).lower()}
 
 def main():
@@ -50,7 +50,7 @@ def main():
     with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
         for key, value in outputs.items():
             stream.write(f"{key}={value}\n")
-    print("Release request validated." if outputs["publish"] == "true" else "Release publishing disabled; setup validation complete.")
+    print("RiscRTE release request validated." if outputs["publish"] == "true" else "Release publishing disabled; setup validation complete.")
 
 if __name__ == "__main__":
     main()
