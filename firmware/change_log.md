@@ -74,7 +74,7 @@ v1.0.8
 v1.0.9
 
 - LLM TLS also pins GlobalSign Root CA and GTS WE1 so Cloudflare's cross-signed chain verifies.
-- Quarantine a corrupt `/.crosspoint/settings.json` to `settings.json.bak.YYYYMMDDHHMMSS` and rewrite from memory.
+- Quarantine a corrupt `/.crosspoint/settings.json` to `settings.json.bak.YYYYMMDDTHHMMSS` and rewrite from memory.
 - SD writes recreate the parent folder, retry the open, and log SdFat error codes.
 - USB: `firmware/corsspoint_lilygo_t5s3_1.0.9.bin`. SD/OTA: `firmware-t5s3-pro.bin`.
 
