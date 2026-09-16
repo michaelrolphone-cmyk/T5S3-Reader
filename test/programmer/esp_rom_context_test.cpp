@@ -1,8 +1,13 @@
 // Compile the existing mock transport and REAL NativeEspRomBridge provider in
 // this second binary; reuse its fixture without running the baseline main.
+// The original main omits an explicit return, legal for main but not for the
+// renamed fixture function; suppress only that one translation-unit warning.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wreturn-type"
 #define main espRomBaselineMain
 #include "esp_rom_provider_test.cpp"
 #undef main
+#pragma GCC diagnostic pop
 #include "runtime/resources/ExecutionContext.h"
 
 using RuntimeResources::ExecutionContext;
@@ -69,11 +74,10 @@ int main() {
   stopCase(T5_PROGRAM_STAGE_HASH, true);
   stopCase(T5_PROGRAM_STAGE_ERASE, false);
   stopCase(T5_PROGRAM_STAGE_WRITE, true);
-  // An already-saved ABI pointer cannot bypass a terminated context.
   resetFixture(Fault::None);
   t5_program_esp_rom_status_v1 denied{};
   assert(!t5_program_esp_rom_get_api(T5_PROGRAM_ESP_ROM_API_VERSION));
-  // A fresh context can still program after a prior context was revoked.
+  // A previously obtained ABI pointer cannot bypass a terminated context.
   ExecutionContext next;
   assert(next.begin());
   auto* api = t5_program_esp_rom_get_api(T5_PROGRAM_ESP_ROM_API_VERSION);
