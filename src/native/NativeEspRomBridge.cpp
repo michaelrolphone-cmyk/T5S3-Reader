@@ -358,11 +358,12 @@ struct Operation {
   bool reset() {
     if (!report(T5_PROGRAM_STAGE_RESET, 100, "Resetting target into flashed firmware")) return false;
     uint8_t end[4]{};
+    // Some ROMs reset immediately without acknowledging FLASH_END. Preserve
+    // the original best-effort command, but require both physical reset steps.
     (void)command(kFlashEnd, end, sizeof(end), 0, 1000);
     if (status.result != T5_PROGRAM_OK) return false;
-    (void)lines(false, true, 100);
-    (void)lines(false, false, 50);
-    return status.result == T5_PROGRAM_OK;
+    if (!lines(false, true, 100)) return false;
+    return lines(false, false, 50);
   }
   bool run() {
     if (!report(T5_PROGRAM_STAGE_VALIDATE, 0, "Checking merged firmware image at offset 0")) return false;
@@ -375,8 +376,8 @@ struct Operation {
       return fail(T5_PROGRAM_INVALID, "Firmware input must be a readable, seekable stream");
     if (streams->seek(firmware, 0) != T5_STREAM_OK) return fail(T5_PROGRAM_IO, "Cannot seek firmware image");
     uint8_t header[4]{};
-    if (!streamRead(firmware, header, sizeof(header)) || header[0] != 0xe9)
-      return fail(T5_PROGRAM_INVALID, "Image is not merged ESP firmware at 0x0");
+    if (!streamRead(firmware, header, sizeof(header))) return false;
+    if (header[0] != 0xe9) return fail(T5_PROGRAM_INVALID, "Image is not merged ESP firmware at 0x0");
     if (!report(T5_PROGRAM_STAGE_HASH, 0, "Calculating source MD5") || !hashSource()) return false;
     if (!report(T5_PROGRAM_STAGE_CONNECT, 0, "Powering target and opening serial.port") || !connect()) return false;
     if (!configure() || !writeFirmware() || !verify() || !reset()) return false;
@@ -386,16 +387,33 @@ struct Operation {
 
 t5_program_esp_rom_result_t program(t5_stream_t firmware, uint32_t imageBytes,
     t5_program_esp_rom_progress_fn progress, void* context, t5_program_esp_rom_status_v1* output) {
-  if (output) *output = {};
-  if (!output || !firmware) return T5_PROGRAM_INVALID;
-  if (!t5_app_get_api(T5_APP_ABI_VERSION)) return T5_PROGRAM_DENIED;
-  if (busy.test_and_set(std::memory_order_acquire)) return T5_PROGRAM_BUSY;
+  if (!output) return T5_PROGRAM_INVALID;
+  *output = {};
+  output->struct_size = sizeof(*output);
+  output->image_bytes = imageBytes;
+  output->rom_command = output->rom_status = output->rom_error = 0xff;
+  // Immediate failures are also API results: never return BUSY/DENIED while
+  // leaving final_status apparently OK with an unset structure version.
+  if (!firmware) {
+    output->result = T5_PROGRAM_INVALID;
+    std::snprintf(output->message, sizeof(output->message), "No firmware input stream");
+    return T5_PROGRAM_INVALID;
+  }
+  if (!t5_app_get_api(T5_APP_ABI_VERSION)) {
+    output->result = T5_PROGRAM_DENIED;
+    std::snprintf(output->message, sizeof(output->message), "No active application execution context");
+    return T5_PROGRAM_DENIED;
+  }
+  if (busy.test_and_set(std::memory_order_acquire)) {
+    output->result = T5_PROGRAM_BUSY;
+    std::snprintf(output->message, sizeof(output->message), "ESP ROM programmer already in use");
+    return T5_PROGRAM_BUSY;
+  }
   // Create the 5+ KiB protocol buffers in bounded heap storage, not on the
   // application's main task stack. Release serial before unlocking busy.
   auto* op = new (std::nothrow) Operation{};
   if (!op) {
     busy.clear(std::memory_order_release);
-    output->struct_size = sizeof(*output);
     output->result = T5_PROGRAM_IO;
     std::snprintf(output->message, sizeof(output->message), "Cannot allocate programmer buffers");
     return T5_PROGRAM_IO;
