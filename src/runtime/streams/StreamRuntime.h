@@ -26,6 +26,20 @@ class Registry {
                        uint32_t capacityRecords, t5_stream_t* out, uint32_t flags = 3);
   int32_t readRecord(uint32_t owner, t5_stream_t, void*, uint32_t, uint32_t*);
   int32_t writeRecord(uint32_t owner, t5_stream_t, const void*, uint32_t);
+  // Firmware-only ingestion for a read-only provider endpoint. The caller must
+  // already hold the registry mutex and the owning execution-context identity.
+  // This bypasses only the public WRITE right, not owner, kind, size, terminal,
+  // or bounded-backpressure validation. Never expose this method through ELF ABI.
+  int32_t produceRecord(uint32_t owner, t5_stream_t h, const void* data, uint32_t size) {
+    auto* s = stream(owner, h);
+    if (!s) return T5_STREAM_INVALID;
+    if (s->kind != T5_STREAM_RECORDS) return T5_STREAM_UNSUPPORTED;
+    if (!(s->flags & T5_STREAM_READ)) return T5_STREAM_DENIED;
+    if (leased(h, false)) return T5_STREAM_BUSY;
+    const auto result = s->records.write(data, size);
+    if (result == T5_STREAM_OK) s->written += size;
+    return result;
+  }
   // Metadata is copied to caller storage, not returned as a persistent pointer.
   int32_t recordInfo(uint32_t owner, t5_stream_t, char* schema, uint32_t schemaCapacity,
                      RecordQueue::Stats* out);
