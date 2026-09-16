@@ -9,30 +9,36 @@
 
 namespace RuntimeStreams {
 
-// The adapter consumes a COPY of a GNSS driver's state on the driver's owning
-// task. It never stores any driver ELF pointers or calls into a driver from the
-// stream scheduler. The caller serializes Registry access with its mutex.
+// Consumes a COPY of state on the driver's owning task. Never stores driver
+// ELF callbacks or invokes the driver from the generic stream scheduler.
 class GnssRecordAdapter final {
  public:
   static constexpr uint32_t Size = RISCRTE_LOCATION_FIX_SIZE;
+  static constexpr uint32_t OptionalFields = RISCRTE_LOCATION_FIX_ALTITUDE_VALID |
+      RISCRTE_LOCATION_FIX_HDOP_VALID | RISCRTE_LOCATION_FIX_SPEED_VALID |
+      RISCRTE_LOCATION_FIX_HEADING_VALID;
   static_assert(sizeof(float) == 4 && sizeof(double) == 8,
                 "location.fix.v1 requires IEEE-754 binary32/binary64 storage");
   static_assert(std::numeric_limits<float>::is_iec559 &&
                 std::numeric_limits<double>::is_iec559,
                 "location.fix.v1 requires IEEE-754 floating point");
 
-  // Caller owns the READ-only stream and must close it on provider/context
-  // teardown. The provider writes exclusively via Registry::produceRecord.
+  // Caller owns this READ-only stream and closes it at provider/context exit.
   static int32_t open(Registry& registry, uint32_t owner, t5_stream_t* out,
                       uint32_t capacityRecords = 4) {
     return registry.recordBuffer(owner, RISCRTE_LOCATION_FIX_SCHEMA, Size,
                                  capacityRecords, out, T5_STREAM_READ);
   }
 
-  // Only a valid, fresh fix becomes a semantic location record. A false return
-  // means no record should be emitted; it is NOT a zero-coordinate fix.
-  static bool encode(const t5_gps_state_t& fix, uint32_t sampleMs, uint8_t (&out)[Size]) {
-    if (fix.status != T5_GPS_STATUS_FIX || !fix.fix_valid || fix.age_ms > 5000 ||
+  // The legacy GPS state lacks per-field presence flags. Never advertise an
+  // optional measurement just because its numeric value defaults to zero.
+  // verifiedFields must originate in a provider that actually observed those
+  // fields (e.g. an enhanced GGA/RMC parser); default 0 leaves them unknown.
+  // False means no valid fix should be emitted, NOT a fix at (0,0).
+  static bool encode(const t5_gps_state_t& fix, uint32_t sampleMs, uint8_t (&out)[Size],
+                     uint32_t verifiedFields = 0) {
+    if ((verifiedFields & ~OptionalFields) || fix.status != T5_GPS_STATUS_FIX ||
+        !fix.fix_valid || fix.age_ms > 5000 ||
         !std::isfinite(fix.latitude) || !std::isfinite(fix.longitude) ||
         fix.latitude < -90 || fix.latitude > 90 ||
         fix.longitude < -180 || fix.longitude > 180) return false;
@@ -41,19 +47,22 @@ class GnssRecordAdapter final {
     put32(out + RISCRTE_FIX_OFFSET_SAMPLE_MS, sampleMs);
     put32(out + RISCRTE_FIX_OFFSET_FIX_MS, sampleMs - fix.age_ms);
     uint32_t flags = 0;
-    if (std::isfinite(fix.altitude_m)) {
+    if ((verifiedFields & RISCRTE_LOCATION_FIX_ALTITUDE_VALID) && std::isfinite(fix.altitude_m)) {
       putFloat(out + RISCRTE_FIX_OFFSET_ALTITUDE, fix.altitude_m);
       flags |= RISCRTE_LOCATION_FIX_ALTITUDE_VALID;
     }
-    if (std::isfinite(fix.hdop) && fix.hdop >= 0) {
+    if ((verifiedFields & RISCRTE_LOCATION_FIX_HDOP_VALID) &&
+        std::isfinite(fix.hdop) && fix.hdop >= 0) {
       putFloat(out + RISCRTE_FIX_OFFSET_HDOP, fix.hdop);
       flags |= RISCRTE_LOCATION_FIX_HDOP_VALID;
     }
-    if (std::isfinite(fix.speed_kph) && fix.speed_kph >= 0) {
+    if ((verifiedFields & RISCRTE_LOCATION_FIX_SPEED_VALID) &&
+        std::isfinite(fix.speed_kph) && fix.speed_kph >= 0) {
       putFloat(out + RISCRTE_FIX_OFFSET_SPEED, fix.speed_kph);
       flags |= RISCRTE_LOCATION_FIX_SPEED_VALID;
     }
-    if (std::isfinite(fix.course_deg) && fix.course_deg >= 0 && fix.course_deg < 360) {
+    if ((verifiedFields & RISCRTE_LOCATION_FIX_HEADING_VALID) &&
+        std::isfinite(fix.course_deg) && fix.course_deg >= 0 && fix.course_deg < 360) {
       putFloat(out + RISCRTE_FIX_OFFSET_HEADING, fix.course_deg);
       flags |= RISCRTE_LOCATION_FIX_HEADING_VALID;
     }
@@ -65,9 +74,10 @@ class GnssRecordAdapter final {
   }
 
   static int32_t publish(Registry& registry, uint32_t owner, t5_stream_t stream,
-                         const t5_gps_state_t& fix, uint32_t sampleMs) {
+                         const t5_gps_state_t& fix, uint32_t sampleMs,
+                         uint32_t verifiedFields = 0) {
     uint8_t payload[Size]{};
-    if (!encode(fix, sampleMs, payload)) return T5_STREAM_AGAIN;
+    if (!encode(fix, sampleMs, payload, verifiedFields)) return T5_STREAM_AGAIN;
     return registry.produceRecord(owner, stream, payload, sizeof(payload));
   }
 
