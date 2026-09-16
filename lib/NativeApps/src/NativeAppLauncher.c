@@ -13,6 +13,7 @@
 #include "T5BatteryApi.h"
 #include "T5ButtonRemapApi.h"
 #include "T5CacheApi.h"
+#include "T5DriverManagerApi.h"
 #include "T5FileBrowserApi.h"
 #include "T5FontApi.h"
 #include "T5GpsApi.h"
@@ -70,6 +71,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_battery_get_api),
         ESP_ELFSYM_EXPORT(t5_button_remap_get_api),
         ESP_ELFSYM_EXPORT(t5_cache_get_api),
+        ESP_ELFSYM_EXPORT(t5_driver_manager_get_api),
         ESP_ELFSYM_EXPORT(t5_font_get_api),
         ESP_ELFSYM_EXPORT(t5_koreader_get_api),
         ESP_ELFSYM_EXPORT(t5_language_get_api),
