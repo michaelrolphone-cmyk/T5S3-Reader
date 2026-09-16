@@ -1,0 +1,21 @@
+# RiscRTE Device Capability Access API — Initial Enforcement Contract
+
+Authority: [RiscRTE Platform Specification](RISCRTE_PLATFORM_SPEC.md), [Application Execution Context Architecture](APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md), [Security Architecture](SECURITY_ARCHITECTURE.md), [Device Observation API](DEVICE_OBSERVATION_API.md) and [Application Capability Requirements](APP_CAPABILITY_REQUIREMENTS.md).
+
+## Contract
+
+`T5DeviceApi.h` retains its original v1 binary table and observation semantics. `t5_device_get_api(2)` returns a pointer to the v1 prefix of `t5_device_api_v2`; clients verify `api_version == 2` and `struct_size >= sizeof(t5_device_api_v2)` before casting. V2 appends `acquire(capability, device, rights, out)`, `validate(lease, rights, device_out)` and `release(lease)`. The exported getter symbol is unchanged. An older binary requesting v1 receives the original layout and size.
+
+A capability lease is a generation-safe registry handle for one semantic capability on one selected device, owned by a unique execution-context invocation. Rights are independently scoped as READ (1), WRITE (2), CONFIGURE (4), or combinations. `acquire` requires an exact device handle obtained from inventory or a future trusted device picker; it does not grant ambient access to all matching devices. Output handles are reset on failure. `validate` checks exact owner, handle generation, associated capability, requested-rights subset, live device and current grant; it resets the optional device output on failure. `release` and context termination reclaim access handles. Device removal and trusted permission revocation invalidate access immediately, including when an identical peripheral reconnects. New grants never retroactively expand the rights of previously issued handles.
+
+### Permission boundary
+
+**Default-deny. No application ABI grants permissions.** `CapabilityAccess::grantTrusted` and `revokeTrusted` are firmware-only methods and are not published in the ELF symbol table. A manifest `requires` or `optional` entry only describes compatibility and creates no grant. Trusted UI/firmware policy must explicitly authorize the active invocation, a concrete device generation, capability name and rights. An application cannot grant itself permissions by editing its SD sidecar. Grants and resulting access handles are context-owned and reclaimed before unload. Provider I/O must use `CapabilityAccess::valid(owner, lease, rights)` to check authority; a raw registry dependency lease is never sufficient proof. The library uses the registry's non-conflicting `Dependency` lease mode as its generation-safe backing, with rights stored exclusively in the firmware authority table. It does not acquire a physical USB host or UART session and cannot be used to bypass an existing exclusive physical owner.
+
+### Current scope and migration
+
+The policy and public v2 acquire/validate/release path are implemented, but **no trusted consent picker or persistent package-identity grant store is wired yet**. Therefore application acquisitions are denied by default on normal firmware until trusted policy/UI issues a grant. This is intentional: manifest declarations must not silently become authorizations. The pre-existing GPS and USB/serial compatibility APIs remain legacy broad-access entry points and do not yet consume these authorization handles. V2 must not be advertised as end-to-end enforcement of those older APIs or as a process sandbox. Next work is a firmware-owned trusted permission/device selector with package identity and explicit consent, provider-side lease enforcement and legacy API migration, including physical testing. Do not auto-grant requirements as a shortcut.
+
+### Acceptance
+
+The sanitizer-backed `test/resources/capability_access_test.cpp` checks default denial, absent/stopping context, bounded right masks, device and capability scoping, no right escalation, physical exclusivity coexistence, wrong-owner isolation, immediate trusted revocation, detach/replug stale generation, and full context cleanup. `device_api_v2_abi_test.c` validates v1 C layout and v2 prefix. CI also compiles both firmware boards, native apps and installable drivers; these do not substitute for physical USB/GNSS acceptance.
