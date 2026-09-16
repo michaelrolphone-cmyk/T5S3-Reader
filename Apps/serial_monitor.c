@@ -427,7 +427,7 @@ static void render_detect(const t5_serial_port_state_t *state) {
     best_line[0] = 0;
     if (detect_candidate_active) coding_text(&detect_candidate, candidate, sizeof(candidate));
     if (detect_best.score) {
-        coding_text(&detect_best.coding, best, sizeof(best), "%s  score %u");
+        coding_text(&detect_best.coding, best, sizeof(best));
         snprintf(best_line, sizeof(best_line), "%s  score %u", best, (unsigned)detect_best.score);
     } else {
         snprintf(best_line, sizeof(best_line), "None yet");
@@ -898,6 +898,11 @@ void app_main(void) {
                 append_notice("Serial disconnected; acquiring a new session");
                 repaint = true;
             }
+        }
+        if (!serial_lease && !reconnect_pending && detect_phase == DETECT_NONE) {
+            reconnect_pending = true;
+            reconnect_ticks = 0;
+            coding = state.config;
         }
         if (!serial_lease && reconnect_pending && ++reconnect_ticks >= RECONNECT_RETRY_TICKS) {
             reconnect_ticks = 0;
