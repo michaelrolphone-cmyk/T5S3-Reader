@@ -172,8 +172,11 @@ int32_t refreshDirect(t5_stream_t handle) {
     if (!directUsb || handle != directHandle) return T5_STREAM_OK;
     expectedEpoch = directUsb->epoch;
   }
+  // Even if the epoch changed, the owner task must reconcile the host snapshot
+  // and revoke the old physical lease. The claim hook never rebinds a stale ID.
+  const bool claimed = nativeUsbDirectStreamClaim(expectedEpoch);
   if (nativeUsbProviderEpoch() != expectedEpoch) return T5_STREAM_DISCONNECTED;
-  if (!nativeUsbDirectStreamClaim(expectedEpoch)) return T5_STREAM_BUSY;
+  if (!claimed) return T5_STREAM_BUSY;
   const bool ready = nativeUsbDirectStreamBound();
   {
     Lock lock;
