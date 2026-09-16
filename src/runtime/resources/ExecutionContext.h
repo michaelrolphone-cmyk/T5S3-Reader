@@ -107,7 +107,9 @@ class ExecutionContext final {
     Stop stop = nullptr;
   };
   Entry entries_[kMaxResources]{};
-  uint32_t nextId_ = 0;
+  // Shared by every ExecutionContext instance: a new object cannot recycle
+  // an invocation ID previously used by another object in the same process.
+  inline static uint32_t nextId_ = 0;
   uint32_t id_ = 0;
   size_t count_ = 0;
   State state_ = State::Terminated;
