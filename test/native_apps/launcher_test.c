@@ -10,6 +10,7 @@
 #include "T5BatteryApi.h"
 #include "T5ButtonRemapApi.h"
 #include "T5CacheApi.h"
+#include "T5DriverManagerApi.h"
 #include "T5FileBrowserApi.h"
 #include "T5FontApi.h"
 #include "T5GpsApi.h"
@@ -99,7 +100,7 @@ int esp_elf_register_symbol(const struct esp_elfsym *s)
     assert(s);
     int count = 0;
     while (s[count].name) { assert(s[count].sym); ++count; }
-    assert(count >= 21);
+    assert(count >= 22);
     const struct esp_elfsym *entry = s;
     while (entry->name && strcmp(entry->name, "snprintf") != 0) ++entry;
     assert(entry->name && entry->sym);
@@ -113,6 +114,7 @@ const t5_app_api_v1 *t5_app_get_api(uint32_t version) { (void)version; return NU
 const t5_battery_api_v1 *t5_battery_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_button_remap_api_v1 *t5_button_remap_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_cache_api_v1 *t5_cache_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_driver_manager_api_v1 *t5_driver_manager_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_file_browser_api_v1 *t5_file_browser_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_font_api_v1 *t5_font_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_gps_api_v1 *t5_gps_get_api(uint32_t version) { (void)version; return NULL; }

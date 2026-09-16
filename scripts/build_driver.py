@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build GPS driver independently of firmware and package an installable ZIP."""
+"""Build GPS driver independently of firmware and package installable/release assets."""
 import argparse
 import hashlib
 import json
@@ -41,12 +41,24 @@ def build(output, cc=None):
     validate_payload(manifest, payload)
     text = json.dumps(manifest, indent=2) + "\n"
     (output / "manifest.json").write_text(text)
-    package = output.parent / f"gps-nmea-{manifest['version']}.t5driver.zip"
+
+    release_stem = output.parent / f"gps-nmea-{manifest['version']}.t5driver"
+    package = release_stem.with_suffix(".t5driver.zip")
     with zipfile.ZipFile(package, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("manifest.json", text)
         archive.writestr("driver.elf", payload)
+
+    # The ZIP remains the canonical offline package. These companions carry the
+    # identical validated manifest/payload for constrained devices to stream
+    # directly from GitHub Releases without embedding a DEFLATE implementation.
+    manifest_asset = output.parent / f"gps-nmea-{manifest['version']}.t5driver.json"
+    elf_asset = output.parent / f"gps-nmea-{manifest['version']}.t5driver.elf"
+    manifest_asset.write_text(text)
+    elf_asset.write_bytes(payload)
+
     print(f"Built {elf} ({len(payload)} bytes)")
     print(f"Installable package: {package}")
+    print(f"Driver Manager assets: {manifest_asset.name}, {elf_asset.name}")
     return package
 
 if __name__ == "__main__":
