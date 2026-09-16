@@ -24,11 +24,14 @@ Registry::Pipe* Registry::pipe(uint32_t owner, t5_pipe_t h) {
 int32_t Registry::attach(uint32_t owner, uint32_t kind, uint32_t flags, Provider provider, t5_stream_t* out) {
   if (out) *out = 0;
   if (!out || !owner || !(flags & 3) || (flags & ~7u)) return T5_STREAM_INVALID;
+  // Existing provider vtable is byte-oriented. Record providers require an
+  // explicitly typed adapter; reject accidental reinterpretation as bytes.
   if (kind != T5_STREAM_BYTES) return T5_STREAM_UNSUPPORTED;
   for (unsigned i = 0; i < MaxStreams; ++i) {
     auto& s = streams_[i];
     if (s.owner || s.generation == MaxGeneration) continue;
-    ++s.generation; s.owner = owner; s.flags = flags; s.provider = provider;
+    ++s.generation; s.owner = owner; s.flags = flags; s.kind = kind; s.provider = provider;
+    s.records.reset();
     s.terminal = 0; s.capacity = s.head = s.used = s.high = 0; s.read = s.written = 0;
     *out = handle(s.generation, i); return T5_STREAM_OK;
   }
@@ -44,10 +47,60 @@ int32_t Registry::buffer(uint32_t owner, uint32_t capacity, t5_stream_t* out, ui
   auto* s = stream(owner, *out); s->buffer = std::move(bytes); s->capacity = capacity;
   return T5_STREAM_OK;
 }
+int32_t Registry::recordBuffer(uint32_t owner, const char* schema, uint32_t maxRecord,
+                               uint32_t capacityRecords, t5_stream_t* out, uint32_t flags) {
+  if (out) *out = 0;
+  if (!out || !(flags & 3) || (flags & ~3u) ||
+      !RecordQueue::validSchema(schema) || !maxRecord || maxRecord > RecordQueue::MaxRecord ||
+      !capacityRecords || capacityRecords > RecordQueue::MaxQueued ||
+      capacityRecords > RecordQueue::MaxStorage / maxRecord) return T5_STREAM_INVALID;
+  // Allocate and validate before publishing a typed handle. If allocation
+  // fails, close the reserved slot and advance its generation on next reuse.
+  auto result = attach(owner, T5_STREAM_BYTES, flags, {}, out);
+  if (result != T5_STREAM_OK) return result;
+  auto* s = stream(owner, *out);
+  result = s->records.configure(schema, maxRecord, capacityRecords);
+  if (result != T5_STREAM_OK) { close(owner, *out); *out = 0; return result; }
+  s->kind = T5_STREAM_RECORDS;
+  return T5_STREAM_OK;
+}
+int32_t Registry::readRecord(uint32_t owner, t5_stream_t h, void* data, uint32_t capacity, uint32_t* size) {
+  if (size) *size = 0;
+  auto* s = stream(owner, h);
+  if (!s || !size || (!data && capacity)) return T5_STREAM_INVALID;
+  if (s->kind != T5_STREAM_RECORDS) return T5_STREAM_UNSUPPORTED;
+  if (!(s->flags & T5_STREAM_READ)) return T5_STREAM_DENIED;
+  if (leased(h, true)) return T5_STREAM_BUSY;
+  const auto result = s->records.read(data, capacity, size);
+  if (result == T5_STREAM_OK) s->read += *size;
+  return result;
+}
+int32_t Registry::writeRecord(uint32_t owner, t5_stream_t h, const void* data, uint32_t size) {
+  auto* s = stream(owner, h);
+  if (!s) return T5_STREAM_INVALID;
+  if (s->kind != T5_STREAM_RECORDS) return T5_STREAM_UNSUPPORTED;
+  if (!(s->flags & T5_STREAM_WRITE)) return T5_STREAM_DENIED;
+  if (leased(h, false)) return T5_STREAM_BUSY;
+  const auto result = s->records.write(data, size);
+  if (result == T5_STREAM_OK) s->written += size;
+  return result;
+}
+int32_t Registry::recordInfo(uint32_t owner, t5_stream_t h, char* schema,
+                             uint32_t schemaCapacity, RecordQueue::Stats* out) {
+  auto* s = stream(owner, h);
+  if (!s || !schema || !out) return T5_STREAM_INVALID;
+  if (s->kind != T5_STREAM_RECORDS) return T5_STREAM_UNSUPPORTED;
+  const size_t length = std::strlen(s->records.schema()) + 1;
+  if (schemaCapacity < length) return T5_STREAM_LIMIT;
+  std::memcpy(schema, s->records.schema(), length);
+  *out = s->records.stats();
+  return T5_STREAM_OK;
+}
 int32_t Registry::produce(uint32_t owner, t5_stream_t h, const void* data, uint32_t size, uint32_t* count) {
   if (count) *count = 0;
   auto* s = stream(owner, h);
-  if (!s || !s->buffer || !count || (!data && size)) return T5_STREAM_INVALID;
+  if (!s || !count || (!data && size)) return T5_STREAM_INVALID;
+  if (s->kind != T5_STREAM_BYTES || !s->buffer) return T5_STREAM_UNSUPPORTED;
   auto flags = s->flags; s->flags |= T5_STREAM_WRITE;
   auto r = transfer(*s, false, const_cast<void*>(data), size, count);
   s->flags = flags; return r;
@@ -58,6 +111,7 @@ bool Registry::leased(t5_stream_t h, bool reading) const {
 }
 int32_t Registry::transfer(Stream& s, bool reading, void* data, uint32_t size, uint32_t* count) {
   *count = 0;
+  if (s.kind != T5_STREAM_BYTES) return T5_STREAM_UNSUPPORTED;
   if (!(s.flags & (reading ? T5_STREAM_READ : T5_STREAM_WRITE))) return T5_STREAM_DENIED;
   if (!size) return T5_STREAM_OK;
   size = std::min(size, T5_STREAM_CHUNK);
@@ -90,6 +144,7 @@ int32_t Registry::read(uint32_t owner, t5_stream_t h, void* data, uint32_t size,
   if (count) *count = 0;
   auto* s = stream(owner, h);
   if (!s || !count || (!data && size)) return T5_STREAM_INVALID;
+  if (s->kind != T5_STREAM_BYTES) return T5_STREAM_UNSUPPORTED;
   if (leased(h, true)) return T5_STREAM_BUSY;
   return transfer(*s, true, data, size, count);
 }
@@ -97,6 +152,7 @@ int32_t Registry::write(uint32_t owner, t5_stream_t h, const void* data, uint32_
   if (count) *count = 0;
   auto* s = stream(owner, h);
   if (!s || !count || (!data && size)) return T5_STREAM_INVALID;
+  if (s->kind != T5_STREAM_BYTES) return T5_STREAM_UNSUPPORTED;
   if (leased(h, false)) return T5_STREAM_BUSY;
   return transfer(*s, false, const_cast<void*>(data), size, count);
 }
@@ -105,6 +161,11 @@ int32_t Registry::finish(uint32_t owner, t5_stream_t h, int32_t terminal) {
   if (!s || (terminal != T5_STREAM_EOF && terminal >= 0)) return T5_STREAM_INVALID;
   if (leased(h, false)) return T5_STREAM_BUSY;
   if (s->terminal) return s->terminal == T5_STREAM_EOF ? T5_STREAM_OK : s->terminal;
+  if (s->kind == T5_STREAM_RECORDS) {
+    auto result = s->records.finish(terminal);
+    if (result == T5_STREAM_OK) s->terminal = terminal;
+    return result;
+  }
   if (s->provider.finish && terminal == T5_STREAM_EOF) {
     auto r = s->provider.finish(s->provider.context); if (r != T5_STREAM_OK) { s->terminal = r; return r; }
   }
@@ -113,6 +174,7 @@ int32_t Registry::finish(uint32_t owner, t5_stream_t h, int32_t terminal) {
 int32_t Registry::seek(uint32_t owner, t5_stream_t h, uint64_t offset) {
   auto* s = stream(owner, h);
   if (!s) return T5_STREAM_INVALID;
+  if (s->kind != T5_STREAM_BYTES) return T5_STREAM_UNSUPPORTED;
   if (leased(h, true) || leased(h, false)) return T5_STREAM_BUSY;
   if (!(s->flags & T5_STREAM_SEEK) || !s->provider.seek) return T5_STREAM_UNSUPPORTED;
   auto r = s->provider.seek(s->provider.context, offset);
@@ -123,16 +185,23 @@ int32_t Registry::close(uint32_t owner, t5_stream_t h) {
   auto* s = stream(owner, h);
   if (!s) return T5_STREAM_INVALID;
   for (auto& p : pipes_) if (p.owner && live(p.state) && (p.source == h || p.destination == h)) {
-    p.state = T5_PIPE_FAILED; p.error = T5_STREAM_CLOSED; p.used = p.offset = 0;
+    p.state = T5_PIPE_FAILED; p.error = T5_STREAM_CLOSED; p.used = p.offset = 0; p.recordPending = false;
   }
   if (s->provider.close) s->provider.close(s->provider.context);
-  s->buffer.reset(); s->provider = {}; s->owner = 0;
+  s->buffer.reset(); s->records.reset(); s->provider = {}; s->owner = 0;
   return T5_STREAM_OK;
 }
 int32_t Registry::info(uint32_t owner, t5_stream_t h, t5_stream_info_t* out) {
   auto* s = stream(owner, h);
   if (!s || !out || out->struct_size < sizeof(*out)) return T5_STREAM_INVALID;
-  *out = {sizeof(*out), T5_STREAM_BYTES, s->flags, s->owner, s->capacity, s->used, s->high, s->terminal, s->read, s->written};
+  if (s->kind == T5_STREAM_RECORDS) {
+    const auto r = s->records.stats();
+    *out = {sizeof(*out), s->kind, s->flags, s->owner, r.capacity_records * r.max_record,
+            r.queued_bytes, r.high_water_bytes, r.terminal, r.bytes_read, r.bytes_written};
+  } else {
+    *out = {sizeof(*out), s->kind, s->flags, s->owner, s->capacity, s->used,
+            s->high, s->terminal, s->read, s->written};
+  }
   return T5_STREAM_OK;
 }
 int32_t Registry::connect(uint32_t owner, t5_stream_t source, t5_stream_t dest, uint32_t policy, t5_pipe_t* out) {
@@ -141,6 +210,8 @@ int32_t Registry::connect(uint32_t owner, t5_stream_t source, t5_stream_t dest, 
   if (!s || !d || !out || source == dest) return T5_STREAM_INVALID;
   if (policy != T5_PIPE_BLOCK_PRODUCER) return T5_STREAM_UNSUPPORTED;
   if (!(s->flags & T5_STREAM_READ) || !(d->flags & T5_STREAM_WRITE)) return T5_STREAM_DENIED;
+  if (s->kind != d->kind || (s->kind == T5_STREAM_RECORDS &&
+      !RecordQueue::compatible(s->records.schema(), d->records.schema()))) return T5_STREAM_UNSUPPORTED;
   if (d->terminal) return T5_STREAM_CLOSED;
   if (leased(source, true) || leased(dest, false)) return T5_STREAM_BUSY;
   // One reader and writer per endpoint makes cycle detection a bounded walk.
@@ -155,7 +226,7 @@ int32_t Registry::connect(uint32_t owner, t5_stream_t source, t5_stream_t dest, 
     auto& p = pipes_[i];
     if (p.owner || p.generation == MaxGeneration) continue;
     ++p.generation; p.owner = owner; p.state = T5_PIPE_RUNNING;
-    p.source = source; p.destination = dest; p.used = p.offset = 0;
+    p.source = source; p.destination = dest; p.used = p.offset = 0; p.recordPending = false;
     p.error = 0; p.transferred = p.stalls = 0;
     *out = handle(p.generation, i); return T5_STREAM_OK;
   }
@@ -168,17 +239,21 @@ int32_t Registry::pause(uint32_t owner, t5_pipe_t h, bool paused) {
 }
 int32_t Registry::cancel(uint32_t owner, t5_pipe_t h) {
   auto* p = pipe(owner, h); if (!p) return T5_STREAM_INVALID;
-  if (live(p->state)) { p->state = T5_PIPE_CANCELLED; p->error = T5_STREAM_CANCELLED; p->used = p->offset = 0; }
+  if (live(p->state)) {
+    p->state = T5_PIPE_CANCELLED; p->error = T5_STREAM_CANCELLED;
+    p->used = p->offset = 0; p->recordPending = false;
+  }
   return T5_STREAM_OK;
 }
 int32_t Registry::closePipe(uint32_t owner, t5_pipe_t h) {
   auto* p = pipe(owner, h); if (!p) return T5_STREAM_INVALID;
-  p->owner = 0; p->used = p->offset = 0; return T5_STREAM_OK;
+  p->owner = 0; p->used = p->offset = 0; p->recordPending = false; return T5_STREAM_OK;
 }
 int32_t Registry::pipeInfo(uint32_t owner, t5_pipe_t h, t5_pipe_info_t* out) {
   auto* p = pipe(owner, h);
   if (!p || !out || out->struct_size < sizeof(*out)) return T5_STREAM_INVALID;
-  *out = {sizeof(*out), p->owner, p->state, p->used - p->offset, p->source, p->destination, p->error, p->transferred, p->stalls};
+  *out = {sizeof(*out), p->owner, p->state, p->used - p->offset, p->source, p->destination,
+          p->error, p->transferred, p->stalls};
   return T5_STREAM_OK;
 }
 bool Registry::runnable() const {
@@ -191,6 +266,29 @@ void Registry::pump() {
     if (!p.owner || p.state != T5_PIPE_RUNNING) continue;
     auto* s = stream(p.owner, p.source); auto* d = stream(p.owner, p.destination);
     if (!s || !d) { p.state = T5_PIPE_FAILED; p.error = T5_STREAM_CLOSED; continue; }
+    if (s->kind == T5_STREAM_RECORDS) {
+      // One atomic record per turn; never hand a byte prefix to the sink.
+      // A zero-byte record is still staged by recordPending, not p.used.
+      if (!p.recordPending) {
+        p.used = p.offset = 0;
+        const auto result = s->records.read(p.data.data(), p.data.size(), &p.used);
+        if (result == T5_STREAM_EOF) { p.state = T5_PIPE_DONE; continue; }
+        if (result == T5_STREAM_AGAIN) { ++p.stalls; continue; }
+        if (result != T5_STREAM_OK) {
+          p.state = T5_PIPE_FAILED; p.error = result; p.used = 0; continue;
+        }
+        p.recordPending = true;
+      }
+      const auto result = d->records.write(p.data.data(), p.used);
+      if (result == T5_STREAM_AGAIN) { ++p.stalls; continue; }
+      if (result != T5_STREAM_OK) {
+        p.state = T5_PIPE_FAILED; p.error = result; p.used = p.offset = 0; p.recordPending = false;
+        continue;
+      }
+      p.transferred += p.used;
+      p.used = p.offset = 0; p.recordPending = false;
+      continue;
+    }
     if (p.used == p.offset) {
       p.used = p.offset = 0;
       auto r = transfer(*s, true, p.data.data(), T5_STREAM_CHUNK, &p.used);
@@ -207,7 +305,10 @@ void Registry::pump() {
   first_ = (first_ + 1) % MaxPipes;
 }
 void Registry::release(uint32_t owner) {
-  for (auto& p : pipes_) if (p.owner == owner) { p.owner = 0; p.used = p.offset = 0; }
-  for (unsigned i = 0; i < MaxStreams; ++i) if (streams_[i].owner == owner) close(owner, handle(streams_[i].generation, i));
+  for (auto& p : pipes_) if (p.owner == owner) {
+    p.owner = 0; p.used = p.offset = 0; p.recordPending = false;
+  }
+  for (unsigned i = 0; i < MaxStreams; ++i)
+    if (streams_[i].owner == owner) close(owner, handle(streams_[i].generation, i));
 }
 }
