@@ -2,9 +2,13 @@
 
 #include <T5SerialPortApi.h>
 #include <T5UsbApi.h>
-#include <atomic>
 #include <cstdint>
 #include <cstring>
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+#include <freertos/FreeRTOS.h>
+#else
+#include <atomic>
+#endif
 
 // Internal runtime device records. Applications see only opaque IDs through
 // serial.port; USB host handles, endpoints, descriptors and event APIs are not
@@ -29,8 +33,10 @@ struct Record {
 
 // USB host task publishes attachment/detachment immediately. The serial app
 // task concurrently takes snapshots and resolves selected IDs; all operations
-// on this small record are synchronized. The generation is never reset by
-// detach, USB restart or application unload, and never wraps.
+// on this small record are synchronized. ESP32 disables task preemption while
+// holding its cross-core portMUX: an atomic spin lock alone could deadlock if
+// a higher-priority USB host task preempted its owner on the same core.
+// Generation never resets on detach, USB restart or application unload.
 class Registry final {
  public:
   void observe(const t5_usb_serial_state_t& state, uint8_t interface_number = 0xff) {
@@ -77,17 +83,29 @@ class Registry final {
   }
 
  private:
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  using Mutex = portMUX_TYPE;
   struct Guard {
-    explicit Guard(std::atomic_flag& flag) : flag_(flag) {
+    explicit Guard(Mutex& mux) : mux_(mux) { portENTER_CRITICAL(&mux_); }
+    ~Guard() { portEXIT_CRITICAL(&mux_); }
+    Guard(const Guard&) = delete;
+    Guard& operator=(const Guard&) = delete;
+    Mutex& mux_;
+  };
+  mutable Mutex lock_ = portMUX_INITIALIZER_UNLOCKED;
+#else
+  using Mutex = std::atomic_flag;
+  struct Guard {
+    explicit Guard(Mutex& flag) : flag_(flag) {
       while (flag_.test_and_set(std::memory_order_acquire)) {}
     }
     ~Guard() { flag_.clear(std::memory_order_release); }
     Guard(const Guard&) = delete;
     Guard& operator=(const Guard&) = delete;
-    std::atomic_flag& flag_;
+    Mutex& flag_;
   };
-
-  mutable std::atomic_flag lock_ = ATOMIC_FLAG_INIT;
+  mutable Mutex lock_ = ATOMIC_FLAG_INIT;
+#endif
   Record record_{};
   uint32_t generation_ = 0;
 };
