@@ -1,9 +1,9 @@
-# Publishing firmware and native-app releases
+# Publishing RiscRTE firmware and native-app releases
 
-Update `platformio.ini` `[crosspoint] version` and finish the firmware/app changes
-first. Native ELF apps are part of the same tagged release: the release workflow
-builds every `Apps/**/*.c`, validates its JSON manifest, and publishes each
-`.elf` + `.json` pair beside the firmware images.
+Update `platformio.ini` `[riscrte] version` and finish the firmware/app changes
+first. Native ELF apps are part of the same tagged RiscRTE release: the release
+workflow builds every `Apps/**/*.c`, validates its JSON manifest, and publishes
+each `.elf` + `.json` pair beside the firmware images.
 
 Before requesting a release, run the same native-app build locally when possible:
 
@@ -23,7 +23,7 @@ Example (use a new version matching `platformio.ini`):
 ```json
 {
   "enabled": true,
-  "tag": "v1.1.8",
+  "tag": "v1.2.9",
   "commit_firmware": true
 }
 ```
@@ -43,10 +43,31 @@ the trigger without publishing firmware. Leaving an enabled request in place
 does not publish on unrelated source commits. For the next release, change its
 tag to the new version. Existing tags are rejected to prevent replacing releases.
 
-The Actions **Cut release** manual workflow remains available with `tag` and
-`commit_firmware` inputs. It uses the same version and existing-tag checks. The
-workflow uses the built-in `GITHUB_TOKEN` with `contents:write`; no extra secret
-is required. Check the Actions run and release assets before reporting success.
+The Actions **Cut RiscRTE release** manual workflow remains available with `tag`
+and `commit_firmware` inputs. It uses the same version and existing-tag checks.
+The workflow uses the built-in `GITHUB_TOKEN` with `contents:write`; no extra
+secret is required. Check the Actions run and release assets before reporting
+success.
+
+## Product and compatibility naming
+
+**RiscRTE** is the product/platform name used by version metadata, build tooling,
+CI artifacts, release titles, and versioned firmware assets. **CrossPoint** names
+the ebook-reader subsystem and may also appear in legacy source identifiers or
+compatibility markers that have not yet been renamed. Do not introduce new
+overall-firmware artifacts, release metadata, or version fields under the
+CrossPoint name.
+
+The canonical versioned T5S3 release assets are:
+
+```text
+riscrte_lilygo_t5s3_<version>-app.bin
+riscrte_lilygo_t5s3_<version>.bin
+riscrte_lilygo_t5s3_<version>.elf
+```
+
+`firmware-t5s3-pro.bin` is retained as an unversioned compatibility filename for
+OTA/SD consumers that currently expect it.
 
 ## Native app release contract
 
@@ -79,6 +100,7 @@ checks inside the app for individual native API members.
 
 ## Firmware image types
 
-`firmware-t5s3-pro.bin` and the versioned `-app.bin` are OTA/SD application
-images. The merged versioned `.bin` is a USB flash image at `0x0` and must not be
-used for OTA/SD updates.
+`firmware-t5s3-pro.bin` and `riscrte_lilygo_t5s3_<version>-app.bin` are OTA/SD
+application images. `riscrte_lilygo_t5s3_<version>.bin` is the merged USB flash
+image at `0x0` and must not be used for OTA/SD updates. The matching `.elf` is a
+non-flashable debug-symbol image.
