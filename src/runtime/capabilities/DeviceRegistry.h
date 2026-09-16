@@ -12,6 +12,7 @@ namespace RuntimeDevices {
 constexpr size_t kMaxDevices = 12;
 constexpr size_t kMaxLeases = 16;
 constexpr size_t kMaxCapabilities = 6;
+constexpr size_t kMaxEvents = 24;
 constexpr size_t kIdentityBytes = 48;
 constexpr size_t kLabelBytes = 48;
 constexpr size_t kProviderBytes = 32;
@@ -53,6 +54,24 @@ struct LeaseInfo {
   char capability[kCapabilityBytes]{};
 };
 
+// A bounded owner-task journal: consumers remember a sequence cursor and poll
+// on the same task as registry mutations. No callbacks, task notifications or
+// ELF pointers are invoked by a provider or USB/BLE discovery callback.
+// Removal includes a copied identity because its device handle is immediately
+// invalid. CapabilityLost describes a device becoming unusable, including
+// when no lease was held; revokedLeases counts leases forcibly invalidated.
+enum class EventKind : uint8_t { Added, StateChanged, CapabilityLost, Removed };
+enum class PollResult : uint8_t { Next, Empty, Gap, Invalid };
+struct Event {
+  uint64_t sequence = 0;
+  DeviceHandle device = 0;
+  EventKind kind = EventKind::Added;
+  State previous = State::Discovered;
+  State current = State::Discovered;
+  uint32_t revokedLeases = 0;
+  char identity[kIdentityBytes]{};
+};
+
 class Registry final {
  public:
   bool add(const Descriptor& desc, State state, DeviceHandle* out) {
@@ -83,24 +102,36 @@ class Registry final {
     empty->info = info;
     empty->used = true;
     *out = info.handle;
+    publish(EventKind::Added, info, State::Removed, state);
     return true;
   }
 
   bool setState(DeviceHandle device, State state) {
+    if (state == State::Removed) return remove(device);
     Slot* slot = deviceSlot(device);
     if (!slot) return false;
-    // BUSY means the device remains attached and existing leases stay valid;
-    // it blocks new acquisitions. Loss/suspension/failure revokes immediately.
-    if (state != State::Available && state != State::Busy) revokeDevice(device);
+    const State old = slot->info.state;
+    if (old == state) return true;  // Idempotent observations must not flood the log.
+    // BUSY means attached with existing leases valid, but denies new claims.
+    const bool wasUsable = usable(old);
+    const bool nowUsable = usable(state);
+    const uint32_t revoked = nowUsable ? 0 : revokeDevice(device);
     slot->info.state = state;
+    publish(EventKind::StateChanged, slot->info, old, state, revoked);
+    if (wasUsable && !nowUsable)
+      publish(EventKind::CapabilityLost, slot->info, old, state, revoked);
     return true;
   }
   bool remove(DeviceHandle device) {
     Slot* slot = deviceSlot(device);
     if (!slot) return false;
-    revokeDevice(device);
+    const DeviceInfo previous = slot->info;
+    const uint32_t revoked = revokeDevice(device);
     slot->used = false;
     slot->info = DeviceInfo{};  // Keep generation to invalidate a reused slot.
+    if (usable(previous.state))
+      publish(EventKind::CapabilityLost, previous, previous.state, State::Removed, revoked);
+    publish(EventKind::Removed, previous, previous.state, State::Removed, revoked);
     return true;
   }
   bool get(DeviceHandle device, DeviceInfo* out) const {
@@ -120,6 +151,28 @@ class Registry final {
     size_t n = 0;
     for (const auto& slot : devices_) if (slot.used) ++n;
     return n;
+  }
+
+  // Capture once, then poll after each owner-task reconciliation or event pump.
+  // A new cursor sees FUTURE events. A cursor of zero replays retained history.
+  // On Gap, cursor advances to immediately before the oldest retained event;
+  // enumerate current devices to rebuild state, then use cursor() to resume.
+  uint64_t cursor() const { return sequence_; }
+  uint64_t overwrittenEvents() const { return overwritten_; }
+  PollResult poll(uint64_t* next, Event* out, uint64_t* missed = nullptr) const {
+    if (missed) *missed = 0;
+    if (!next || !out || *next > sequence_) return PollResult::Invalid;
+    const uint64_t oldest = sequence_ >= kMaxEvents ? sequence_ - kMaxEvents + 1u : 1u;
+    if (*next < oldest - 1u) {
+      if (missed) *missed = oldest - 1u - *next;
+      *next = oldest - 1u;
+      return PollResult::Gap;
+    }
+    if (*next == sequence_) return PollResult::Empty;
+    const uint64_t wanted = *next + 1u;
+    *out = events_[(wanted - 1u) % kMaxEvents];
+    *next = wanted;
+    return PollResult::Next;
   }
 
   Result acquire(const char* capability, uint32_t owner, LeaseHandle* out,
@@ -173,8 +226,7 @@ class Registry final {
     const LeaseSlot* slot = leaseSlot(lease);
     if (!slot || !owner || slot->info.owner != owner) return false;
     const Slot* device = deviceSlot(slot->info.device);
-    return device && (device->info.state == State::Available ||
-                      device->info.state == State::Busy);
+    return device && usable(device->info.state);
   }
   bool getLease(LeaseHandle lease, uint32_t owner, LeaseInfo* out) const {
     if (!out || !valid(lease, owner)) return false;
@@ -209,6 +261,24 @@ class Registry final {
   static constexpr uint32_t kMaxGeneration = 0x00ffffffu;
   struct Slot { DeviceInfo info{}; uint32_t generation = 0; bool used = false; };
   struct LeaseSlot { LeaseInfo info{}; uint32_t generation = 0; bool used = false; };
+  static bool usable(State state) {
+    return state == State::Available || state == State::Busy;
+  }
+  void publish(EventKind kind, const DeviceInfo& device, State previous, State current,
+               uint32_t revoked = 0) {
+    // Never wrap a sequence and accidentally acknowledge an ancient cursor.
+    if (sequence_ == UINT64_MAX) return;
+    Event event{};
+    event.sequence = ++sequence_;
+    event.device = device.handle;
+    event.kind = kind;
+    event.previous = previous;
+    event.current = current;
+    event.revokedLeases = revoked;
+    std::strcpy(event.identity, device.identity);  // Validated/copy-owned on add.
+    events_[(sequence_ - 1u) % kMaxEvents] = event;
+    if (sequence_ > kMaxEvents && overwritten_ != UINT64_MAX) ++overwritten_;
+  }
   static uint32_t makeHandle(size_t index, uint32_t generation) {
     return (generation << 8u) | static_cast<uint32_t>(index + 1u);
   }
@@ -245,16 +315,22 @@ class Registry final {
   const LeaseSlot* leaseSlot(LeaseHandle handle) const {
     return const_cast<Registry*>(this)->leaseSlot(handle);
   }
-  void revokeDevice(DeviceHandle device) {
+  uint32_t revokeDevice(DeviceHandle device) {
+    uint32_t revoked = 0;
     for (auto& lease : leases_) {
       if (lease.used && lease.info.device == device) {
         lease.used = false;
         lease.info = LeaseInfo{};
+        ++revoked;
       }
     }
+    return revoked;
   }
   Slot devices_[kMaxDevices]{};
   LeaseSlot leases_[kMaxLeases]{};
+  Event events_[kMaxEvents]{};
+  uint64_t sequence_ = 0;
+  uint64_t overwritten_ = 0;
 };
 
 inline Registry& systemRegistry() {
