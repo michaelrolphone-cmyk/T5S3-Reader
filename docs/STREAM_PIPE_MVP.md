@@ -10,7 +10,7 @@ The implementation below is deliberately narrower. New work should extend it tow
 
 ## Current compatibility implementation
 
-The byte-stream MVP exists primarily to enable App Store and serial-monitor migration. Neither application was converted by the MVP itself. The deployed additive ABI is `t5_stream_get_api(1)` in `T5StreamApi.h`; the `T5*` name is a compatibility identifier, not the platform name. Applications using it must set an appropriate firmware floor.
+The byte-stream MVP exists primarily to enable App Store and serial-monitor migration. The USB Serial application has now migrated its serial payload RX/TX path to the MVP `open_usb` byte stream while retaining line-coding and DTR/RTS configuration in the compatibility USB control API. The App Store remains to be converted. The deployed additive ABI is `t5_stream_get_api(1)` in `T5StreamApi.h`; the `T5*` name is a compatibility identifier, not the platform name. Applications using it must set an appropriate firmware floor.
 
 The API uses a versioned C table with `api_version` and `struct_size`. Handles contain a slot and generation and are never durable IDs. Firmware currently owns at most 12 streams and 4 pipes. Memory streams are bounded to 1–4096 bytes; a pipe retains at most 512 pending bytes and transfers at most 512 bytes per operation. `AGAIN`, `EOF`, disconnect, timeout, permission/direction failure, resource exhaustion and I/O failure are distinct results.
 
@@ -32,12 +32,12 @@ This is the current implementation of the broader RiscRTE resource-ownership inv
 
 ## Roadmap migration
 
-The App Store should move HTTP/download data through streams into staged storage while keeping catalog/install policy above the stream layer. The serial monitor should retain device/control-plane configuration while moving serial payload data through streams. Neither application should own a private buffering/transport subsystem once the common stream capability satisfies its requirements.
+The App Store should move HTTP/download data through streams into staged storage while keeping catalog/install policy above the stream layer. USB Serial now keeps device/control-plane configuration in the compatibility USB API while moving terminal payload data through a RiscRTE byte stream. Its passive baud/framing detector consumes the same stream and changes only control-plane line coding; it does not create a second transport path or transmit probe bytes. Future device-registry/capability work should replace the concrete USB-open step with a semantic serial capability without moving payload handling back into the application.
 
 Subsequent architecture work adds typed records/schema identity, transforms, tee/merge, explicit dropping policies, zero-copy pools, range views, replay, stream discovery, persistent logical topology, provider-ELF registration, revocation and manifest capability permissions. Device registry and capability resolver integration should allow consumers to request semantic endpoints rather than concrete transport implementations.
 
 ## Validation/current limits
 
-`bash test/run_stream_test.sh` validates the portable registry and bridge behavior; native-app tests validate loader integration. CI builds both supported boards and released applications. Physical USB disconnect, SD removal and large/chunked HTTP transfers still require on-device acceptance before application migration.
+`bash test/run_stream_test.sh` validates the portable registry and bridge behavior; native-app tests validate loader integration. CI builds both supported boards and released applications. USB Serial now exercises `open_usb` for its normal terminal and auto-detection RX/TX path. Physical USB disconnect/reconnect, SD removal, large/chunked HTTP transfers, and passive auto-detection against a representative range of USB-UART bridges and target baud/framing combinations still require on-device acceptance.
 
 This document is implementation-state documentation. Where it conflicts with the full Stream/Pipe architecture or platform roadmap, the target architecture governs new work and this document describes only the compatibility state that must be migrated.
