@@ -43,6 +43,10 @@
 #error "T5S3 native apps require the S3 PSRAM loader configuration"
 #endif
 
+// Firmware-only, owner-task preflight. Never register this function as an ELF
+// symbol. A declaration in a sidecar is not a hardware permission grant.
+extern bool native_app_capabilities_ready(const char *sd_path);
+
 static const char *TAG = "sd_elf_launcher";
 static atomic_flag s_running = ATOMIC_FLAG_INIT;
 static const char *s_current_path = NULL;
@@ -68,6 +72,11 @@ esp_err_t launch_elf_app(const char *sd_path)
     if (result != ESP_OK) {
         ESP_LOGE(TAG, "SD VFS unavailable: %s", esp_err_to_name(result));
         goto done;
+    }
+    if (!native_app_capabilities_ready(sd_path)) {
+        ESP_LOGE(TAG, "Required application capabilities are unavailable or incompatible: %s", sd_path);
+        result = ESP_ERR_NOT_SUPPORTED;
+        goto done;  // Never map or call an ELF with unresolved requirements.
     }
     static const struct esp_elfsym host_symbols[] = {
         ESP_ELFSYM_EXPORT(t5_app_get_api),
