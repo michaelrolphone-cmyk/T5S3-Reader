@@ -41,10 +41,19 @@ int main() {
                               Transport::Uart, capabilities, 1, 100};
   DeviceHandle physical = 0;
   assert(devices.add(descriptor, State::Available, &physical) && physical);
+
+  // A manifest preflight dependency is not physical source authority, even
+  // when its owner/device/capability fields otherwise match exactly.
+  LeaseHandle dependency = 0;
+  assert(devices.acquire("location.position", 10, &dependency, physical, Mode::Dependency) == Result::Ok);
+  LocationPositionSubscriptions::Lease source = 0, first = 0, second = 0;
+  assert(binding.attach(10, physical, dependency, &source) == T5_STREAM_DENIED);
+  assert(!source && !binding.provider());
+  assert(devices.release(dependency, 10) == Result::Ok);
+
   LeaseHandle sourceGrant = 0;
   assert(devices.acquire("location.position", 10, &sourceGrant, physical) == Result::Ok);
   assert(sourceGrant && devices.valid(sourceGrant, 10));
-  LocationPositionSubscriptions::Lease source = 0, first = 0, second = 0;
   t5_stream_t a = 0, b = 0;
   assert(binding.attach(11, physical, sourceGrant, &source) == T5_STREAM_DENIED);
   assert(!source);
@@ -58,8 +67,6 @@ int main() {
     assert(binding.submit(10, observation, 1000 + i) == T5_STREAM_OK);
   assert(binding.submit(10, observation, 1004) == T5_STREAM_AGAIN);
   assert(binding.hasPending());
-  // A real registry owner revocation must prune only that subscriber; it
-  // cannot invalidate a different invocation's shared position lease.
   assert(devices.releaseOwner(22) == 1);
   assert(binding.reconcile());
   assert(devices.leaseCount() == 2 && subscriptions.subscribers() == 1);
@@ -73,8 +80,6 @@ int main() {
   assert(binding.retry(10) == T5_STREAM_OK && !binding.hasPending());
   for (uint32_t i = 1; i != 5; ++i) consume(streams, 21, a, 1000 + i);
   assert(binding.submit(10, observation, 1010) == T5_STREAM_OK);
-  // The production registry itself now revokes every grant and journals
-  // capability loss; already accepted observations must still drain.
   const uint64_t beforeLoss = devices.cursor();
   assert(devices.setState(physical, State::Unavailable));
   assert(devices.leaseCount() == 0);
@@ -99,11 +104,11 @@ int main() {
   assert(binding.attach(12, physical, replacementGrant, &source) == T5_STREAM_DENIED);
   assert(binding.attach(12, replacement, replacementGrant, &source) == T5_STREAM_OK);
   assert(binding.subscribe(24, &first, &a) == T5_STREAM_OK);
-  binding.deviceLost(physical);  // A stale journal event cannot kill new hardware.
+  binding.deviceLost(physical);
   assert(binding.provider());
   binding.releaseOwner(24);
   binding.releaseOwner(12);
-  assert(devices.leaseCount() == 1);  // Source grant is borrowed from GPS driver.
+  assert(devices.leaseCount() == 1);
   assert(devices.release(replacementGrant, 12) == Result::Ok);
   streams.release(10);
   streams.release(12);
