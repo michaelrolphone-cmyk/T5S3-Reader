@@ -79,15 +79,20 @@ bool ModuleV2::unpinConsumer() {
 
 bool ModuleV2::unload() {
   if (consumers_) return false;
-  /* Only a valid driver whose start was attempted is retained in driver_.
-   * Never try stop() or dlclose() while its failed-start hardware state is
-   * unknown. Recovery may be retried after an external fault is cleared. */
+  /* A valid driver with an unsuccessful start OR teardown may still own
+   * hardware. Retry quiesce in its mapped image before stop or dlclose. */
   if (state_ == State::Failed && handle_ && driver_) {
     if (!hasQuiesce(driver_) || !driver_->quiesce()) return false;
     driver_->stop();
     driver_ = nullptr;
   } else if (state_ == State::Active && driver_) {
-    if (hasQuiesce(driver_) && !driver_->quiesce()) return false;
+    if (hasQuiesce(driver_) && !driver_->quiesce()) {
+      /* A partially completed teardown is NOT an active usable provider.
+       * Re-granting it could access freed DMA, handles, or power resources. */
+      api_ = nullptr;
+      state_ = State::Failed;
+      return false;
+    }
     driver_->stop();
     driver_ = nullptr;
   }
