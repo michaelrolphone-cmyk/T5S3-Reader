@@ -337,7 +337,7 @@ bool parseVendorBulk(const usb_config_desc_t* config) {
     } else if (type == 5u && length >= 7u && currentClass == 0xffu) {
       uint8_t address = p[offset + 2u];
       uint8_t attributes = p[offset + 3u] & 0x03u;
-      uint16_t mps = (uint16_t)p[offset + 4u] | ((uint16_t)p[offset + 5u) << 8u);
+      uint16_t mps = (uint16_t)p[offset + 4u] | ((uint16_t)p[offset + 5u] << 8u);
       if (attributes == 2u && mps) {
         if (address & 0x80u) { candidateIn = address; candidateInMps = mps; }
         else { candidateOut = address; candidateOutMps = mps; }
