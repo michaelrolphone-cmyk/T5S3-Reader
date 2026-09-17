@@ -19,7 +19,8 @@ namespace RuntimePackages {
 // Successful staging is NOT install authorization or verified-byte pinning.
 enum class ArchiveStageResult : uint8_t {
   ReadyForPublicationReview, InvalidInput, SourceUntrusted, PreflightRejected,
-  StageUnavailable, CopyFailure, SealFailure, StageUntrusted, DifferentPackage
+  StageUnavailable, CopyFailure, SealFailure, StageUntrusted, DifferentPackage,
+  SecurityRollback, SecurityFloorUnavailable
 };
 
 template <typename SourceRead, typename Stage, typename Hash,
