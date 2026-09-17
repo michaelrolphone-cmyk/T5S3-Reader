@@ -5,58 +5,30 @@ binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/test/native_apps/manifest_test.cpp" -o "$binary"
 "$binary"
-# Recovery discovery must map legacy ELF, manifest backup and staged suffixes
-# to the same safe package identity without scanning arbitrary JSON data.
+# Legacy app pair recovery and mapped-ELF replacement reservations.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo_dir/src" -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/resources/package_app_recovery_index_test.cpp" -o "$binary"
 "$binary"
-# Loaded modules and directory updates must share a single exclusive identity
-# reservation; verify pin lifecycle, mapped rollback, race and capacity cases.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -pthread -I"$repo_dir/src" \
   "$repo_dir/test/resources/package_use_gate_test.cpp" -o "$binary"
 "$binary"
-# DEFAULT MVP: ordinary self-declared digest integrity, SAME reader for
-# downloaded and SD bytes, four kinds, bounded staging, readback and failures.
-# This test needs OpenSSL only for SHA-256, NEVER signing/key provisioning.
-c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
-  -I"$repo_dir/src" "$repo_dir/test/resources/package_ordinary_stage_test.cpp" \
-  -lcrypto -o "$binary"
-"$binary"
-# One unsigned transaction engine handles all four package kinds, versioning,
-# mapping leases, interrupted updates, cleanup and crash-consistent uninstall.
+# DEFAULT MVP: ordinary package integrity, common SD/online source contracts,
+# four-kind stage -> verification -> publication and recoverable lifecycle.
+# OpenSSL is used for SHA-256 corruption detection, NOT signing or trust roots.
+for test_case in package_ordinary_stage package_ordinary_installer; do
+  c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -pthread -I"$repo_dir/src" \
+    "$repo_dir/test/resources/${test_case}_test.cpp" -lcrypto -o "$binary"
+  "$binary"
+done
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -pthread -I"$repo_dir/src" \
   "$repo_dir/test/resources/package_ordinary_transaction_test.cpp" -o "$binary"
 "$binary"
-# Experimental signed-format prototype regressions below are not a requirement
-# to install ordinary MVP packages; they are retained to avoid regressions in
-# existing code while that experiment is isolated from default install paths.
-c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
-  -I"$repo_dir/src" "$repo_dir/test/resources/package_archive_test.cpp" -o "$binary"
-"$binary"
-c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
-  -I"$repo_dir/src" "$repo_dir/test/resources/package_trust_policy_test.cpp" -o "$binary"
-"$binary"
-c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
-  -pthread -I"$repo_dir/src" \
-  "$repo_dir/test/resources/package_security_floor_test.cpp" -o "$binary"
-"$binary"
-c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
-  -pthread -I"$repo_dir/test/resources/package_floor_stubs" -I"$repo_dir/src" \
-  "$repo_dir/src/runtime/packages/PackageDeviceSecurityFloor.cpp" \
-  "$repo_dir/test/resources/package_device_security_floor_test.cpp" \
-  -lcrypto -o "$binary"
-"$binary"
-c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
-  -pthread -I"$repo_dir/src" \
-  "$repo_dir/test/resources/package_signed_transaction_test.cpp" \
-  -o "$binary"
-"$binary"
-python3 "$repo_dir/test/resources/package_builder_test.py"
-python3 "$repo_dir/test/resources/package_stage_test.py"
-python3 "$repo_dir/test/resources/package_provider_profile_test.py"
+# The old P-256/provenance/NVS experiment is not a normal build/merge gate.
+# Run test/run_signed_package_experiment.sh explicitly only when requested.
 for pair in \
   "springboard springboard_test" \
   "app_store app_store_test" \
@@ -90,4 +62,4 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_di
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
 python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
-echo 'Native app regression tests passed, including ordinary four-kind staging/SHA-256, ordinary lifecycle/uninstall, legacy recovery and experimental signed prototype regressions'
+echo 'Native app regressions passed: ordinary four-kind stage/publication/lifecycle, legacy recovery and app UI (no mandatory package signing).'
