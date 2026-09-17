@@ -71,5 +71,10 @@ class UsbCdcPackage(unittest.TestCase):
         self.assertIn('view["requires"][0]["capability"].as<const char*>()', source)
         self.assertIn('view["provides"][0]["capability"].as<const char*>()', source)
         self.assertIn('USBREF phase=driver_load result=active', source)
+    def test_usb_descriptor_endpoint_index_syntax(self):
+        source = (Path(__file__).resolve().parents[2] /
+                  'src/native/NativeUsbBridge.cpp').read_text(encoding='utf-8')
+        self.assertNotIn('p[offset + 5u) << 8u', source)
+        self.assertIn('p[offset + 5u] << 8u', source)
 
 if __name__ == '__main__': unittest.main()
