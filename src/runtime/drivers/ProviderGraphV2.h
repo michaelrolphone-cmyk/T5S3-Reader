@@ -3,12 +3,11 @@
 #include <cstddef>
 #include <cstdint>
 
-/* Generic resolver inputs MUST originate from independently integrity/trust-
- * validated installed manifests. Strings, dependencies AND signed import
- * declarations must stay immutable while the graph can activate the node;
- * the authenticated ELF digest is copied BY VALUE. An SD mutation cannot
- * replace the executable without a fresh digest match at relocation.
- * This is module lifetime/integrity machinery, NOT signature authorization. */
+/* The generic graph owns its registration metadata. A trusted package manager
+ * must authenticate signer, executable digest and exact imports independently;
+ * copying a caller's SpecV2 is NEVER an authorization decision. The private
+ * loader hashes its own executable snapshot and validates both symbol tables.
+ */
 namespace RuntimeProviders {
 struct RequirementV2 {
   const char* capability;
@@ -21,27 +20,24 @@ struct SpecV2 {
   uint32_t api;
   const RequirementV2* requirements;
   size_t requirementCount;
-  /* Append-only private verified-loader admission. Zero retains the existing
-   * unprivileged path. Nonzero requests versioned OS/CPU privilege and
-   * requires authenticated digest, EXACT signed imports, dependency pins and
-   * execution authorization. Declaring an ABI alone is NEVER authority. */
+  /* Versioned generic OS/CPU services, not a built-in hardware driver.
+   * Zero retains the existing unprivileged loading path. */
   uint32_t requiredOsCpuAbi = 0;
   const uint8_t* verifiedElfBytes = nullptr;
   size_t verifiedElfLength = 0;
-  /* Only the privileged Package Manager may supply this manager-owned,
-   * immutable signed declaration array; arbitrary app metadata is untrusted.
-   * Names must be sorted, unique and exactly match BOTH ELF symbol tables. */
+  /* Must originate in a cryptographically authenticated package receipt.
+   * Names are sorted, unique, and must match BOTH ELF symbol tables. */
   const char* const* signedImports = nullptr;
   size_t signedImportCount = 0;
-  /* The verifier must copy this digest from an authenticated package receipt,
-   * not from an unchecked manifest or removable storage header. */
+  /* The manager must copy this digest from authenticated package content. */
   uint8_t authenticatedElfSha256[32] = {};
 };
 struct GrantV2 {
-  uint32_t slot = 0;       // Zero is invalid.
+  uint32_t slot = 0;
   uint32_t generation = 0;
 };
 
+struct OwnedNodeV2;
 class GraphV2 final {
  public:
   static constexpr size_t kMaxModules = 16;
@@ -49,21 +45,17 @@ class GraphV2 final {
   GraphV2() = default;
   GraphV2(const GraphV2&) = delete;
   GraphV2& operator=(const GraphV2&) = delete;
+  ~GraphV2();
+  /* Existing trusted-manifest registration; this API does not verify signers.
+   * Until the signed manager's private admission is integrated, privileged
+   * registration must not be exposed to ordinary app-controlled callers. */
   bool addVerified(const SpecV2& spec);
-  // An unresolved capability with competing providers fails closed rather
-  // than silently preferring the first installed package.
+  // Ambiguous providers fail closed rather than using install order.
   GrantV2 acquire(const char* capability, uint32_t api);
-  // The trusted caller may choose a specific manifest-verified provider ID;
-  // this does not grant an application permission or infer device semantics.
   GrantV2 acquireFrom(const char* providerId, const char* capability, uint32_t api);
-  // The grant becomes stale even when hardware cannot safely quiesce. Failed
-  // release quarantines the provider, preventing new grants; shutdown can
-  // retry without releasing its dependency pins prematurely.
   bool release(GrantV2 grant);
   const void* interfaceFor(GrantV2 grant) const;
-  // Returns true only when every provider, including failed-start and
-  // failed-teardown quarantines, is fully quiesced and its dependencies are
-  // released. False preserves all code and dependencies still required.
+  // Never unmap a provider whose teardown/quiescence failed.
   bool shutdown();
   size_t moduleCount() const { return count_; }
   size_t liveGrants() const;
@@ -72,6 +64,7 @@ class GraphV2 final {
   enum class Visit : uint8_t { Idle, Visiting, Active };
   struct Node {
     SpecV2 spec{};
+    OwnedNodeV2* owned = nullptr;
     ModuleV2 module;
     Visit visit = Visit::Idle;
     uint8_t dependencies[kMaxModules]{};
