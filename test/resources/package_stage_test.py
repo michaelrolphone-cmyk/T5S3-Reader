@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build real signed archives and exercise bounded staging and extraction."""
+"""Build real signed archives and exercise stage, extraction and publication."""
 import argparse
 from pathlib import Path
 import subprocess
@@ -35,7 +35,8 @@ def run() -> None:
         good = builder.build(args)
         alternate_path = root / 'alternate.risc'
         changed = builder.build(argparse.Namespace(**{
-            **vars(args), 'security_version': '4', 'output': alternate_path}))
+            **vars(args), 'version': '1.2.4', 'security_version': '4',
+            'output': alternate_path}))
         assert good != changed and len(good) == len(changed) and len(good) > 1024
         # build() returns archive bytes; only its CLI writes the output file.
         args.output.write_bytes(good)
@@ -43,13 +44,14 @@ def run() -> None:
         for name, test_source in [
             ('stage-test', 'package_archive_stage_test.cpp'),
             ('extract-test', 'package_archive_extract_test.cpp'),
+            ('pipeline-test', 'package_signed_pipeline_test.cpp'),
         ]:
             program = root / name
             # Preserve compiler stderr in CI; sanitizer-backed compilation
             # failures must show the actual diagnostic, not only a traceback.
             subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                             '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
-                            '-I' + str(ROOT / 'src'),
+                            '-pthread', '-I' + str(ROOT / 'src'),
                             str(ROOT / 'test/resources' / test_source),
                             '-lcrypto', '-o', str(program)], check=True)
             subprocess.run([str(program), str(args.output), str(alternate_path),
