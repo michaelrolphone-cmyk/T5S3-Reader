@@ -11,6 +11,12 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo_dir/src" -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/resources/package_app_recovery_index_test.cpp" -o "$binary"
 "$binary"
+# Loaded modules and directory updates must share a single exclusive identity
+# reservation; verify pin lifecycle, mapped rollback, race and capacity cases.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -pthread -I"$repo_dir/src" \
+  "$repo_dir/test/resources/package_use_gate_test.cpp" -o "$binary"
+"$binary"
 for pair in \
   "springboard springboard_test" \
   "app_store app_store_test" \
@@ -44,4 +50,4 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_di
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
 python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
-echo 'Native app regression tests passed, including App Store package install, recovery indexing, Settings, Wi-Fi Networks, File Transfer, KOReader Authentication, Manage Fonts, Font Family, Customize Status Bar, Remap Front Buttons, and Time Zone'
+echo 'Native app regression tests passed, including package module pins, App Store package install, recovery indexing, Settings, Wi-Fi Networks, File Transfer, KOReader Authentication, Manage Fonts, Font Family, Customize Status Bar, Remap Front Buttons, and Time Zone'
