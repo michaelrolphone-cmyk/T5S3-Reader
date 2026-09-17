@@ -189,7 +189,7 @@ void prepare(Disk& disk, Floors& floors, Signer& signer,
     std::memcpy(out, stage.bytes.data() + at, count);
     return true;
   };
-  ExtractToDisk destination{disk};
+  ExtractToDisk destination{disk, {}, false};
   PackageArchive extracted{};
   assert(extractSignedPackageArchive(intakeRead, stage.bytes.size(),
       fingerprint.data(), destination, hash, signer, resolve,
@@ -283,7 +283,7 @@ int main(int argc, char** argv) {
     std::memcpy(out, previous.data() + at, count);
     return true;
   };
-  ExtractToDisk refused{disk};
+  ExtractToDisk refused{disk, {}, false};
   Sha256 hash;
   static PackageVerificationWorkspace workspace{};
   PackageArchive rejected{};
