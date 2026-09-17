@@ -14,8 +14,8 @@ bool validName(const char* s) {
 }
 
 GraphV2::~GraphV2() {
-  // Failed hardware quiescence forbids releasing executable/metadata buffers.
-  // The manager must keep a failed graph quarantined and retry before destroy.
+  // A failed quiesce forbids releasing executable/metadata buffers; manager
+  // must retain and retry a quarantined graph before destroying it.
   if (!shutdown()) return;
   for (size_t i = 0; i < count_; ++i) {
     delete nodes_[i].owned;
@@ -46,16 +46,13 @@ int GraphV2::findProvider(const char* id, const char* capability, uint32_t api) 
 }
 
 bool GraphV2::addVerified(const SpecV2& spec) {
-  // The ordinary public graph API must never turn caller-supplied digests or
-  // import declarations into OS/CPU privilege, even when they look valid.
+  // No public caller can self-declare OS/CPU privilege via a plausible digest.
   return addChecked(spec, false);
 }
 
 bool GraphV2::addAuthenticatedPrivileged(const SpecV2& spec) {
-  // ONLY the firmware's signed-package executor is a friend of this method.
-  // It MUST verify real P-256, signed entry hashes, identity, floor and exact
-  // import declaration before constructing this request. Friend access is
-  // not process memory isolation and no C/ELF symbol export is added here.
+  // Only the firmware's signed-package executor may enter this function. It
+  // must authenticate P-256, entry hashes, identity, floor and exact imports.
   return addChecked(spec, true);
 }
 
@@ -107,8 +104,6 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
       if (std::strcmp(spec.requirements[i].capability,
                       spec.requirements[j].capability) == 0) return false;
   }
-  // Multiple drivers offering the same capability are allowed; acquisition
-  // rejects ambiguous selection rather than using installation order.
   auto* owned = new (std::nothrow) OwnedNodeV2();
   if (!owned) return false;
   if (!owned->snapshot(spec)) {
@@ -128,6 +123,10 @@ void GraphV2::releaseDependencies(size_t index) {
     (void)nodes_[dependency].module.unpinConsumer();
     (void)deactivateIfUnused(dependency);
   }
+  // Clear only AFTER this provider has unmapped and released its pins. A
+  // failed quiesce retains both table and lower provider interface pointers.
+  for (size_t i = 0; i < node.spec.requirementCount; ++i)
+    node.boundDependencies[i] = {};
 }
 
 bool GraphV2::deactivateIfUnused(size_t index) {
@@ -145,7 +144,6 @@ bool GraphV2::activate(size_t index) {
     return node.module.state() == ModuleV2::State::Active;
   if (node.visit == Visit::Visiting) return false;
   node.visit = Visit::Visiting;
-  risc_provider_dependency_v1 deps[kMaxModules]{};
   for (size_t i = 0; i < node.spec.requirementCount; ++i) {
     const RequirementV2& requirement = node.spec.requirements[i];
     int dependency = find(requirement.capability, requirement.api);
@@ -157,12 +155,11 @@ bool GraphV2::activate(size_t index) {
       return false;
     }
     node.dependencies[node.acquired++] = static_cast<uint8_t>(dependency);
-    deps[i] = {requirement.capability, requirement.api,
-               nodes_[dependency].module.capability()};
+    node.boundDependencies[i] = {requirement.capability, requirement.api,
+                                 nodes_[dependency].module.capability()};
   }
-  // The graph owns an immutable registration snapshot; the private loader
-  // takes another byte snapshot, checks its authenticated digest and verifies
-  // the exact import set BEFORE mapping that same image.
+  // Graph-privately-owned bytes and names survive source/receipt teardown.
+  // The loader takes another snapshot and hashes/relocates the SAME image.
   const bool loaded = node.spec.requiredOsCpuAbi
       ? node.module.loadVerifiedBytes(node.spec.verifiedElfBytes,
                                       node.spec.verifiedElfLength,
@@ -171,11 +168,11 @@ bool GraphV2::activate(size_t index) {
                                       node.spec.signedImportCount,
                                       node.spec.id, node.spec.provides,
                                       node.spec.api,
-                                      node.spec.requirementCount ? deps : nullptr,
+                                      node.spec.requirementCount ? node.boundDependencies : nullptr,
                                       node.spec.requirementCount)
       : node.module.load(node.spec.verifiedElfPath, node.spec.id,
                          node.spec.provides, node.spec.api,
-                         node.spec.requirementCount ? deps : nullptr,
+                         node.spec.requirementCount ? node.boundDependencies : nullptr,
                          node.spec.requirementCount);
   if (!loaded) {
     if (node.module.unload()) releaseDependencies(index);
