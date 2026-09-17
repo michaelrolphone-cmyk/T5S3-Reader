@@ -46,6 +46,8 @@ class Packages(unittest.TestCase):
         for key in ('requires', 'provides'):
             self.assertIn(f'view["{key}"].is<JsonArrayConst>()', source)
             self.assertIn(f'doc["{key}"].is<JsonArrayConst>()', source)
+        self.assertIn('const JsonArrayConst provided = view["provides"].as<JsonArrayConst>();', source)
+        self.assertIn('provided[0]["capability"]', source)
     def test_release_discovery_diagnostic_guards(self):
         # Static source guards: compilation and real HTTP behavior are covered
         # separately by firmware CI and hardware acceptance. Do not regress to
