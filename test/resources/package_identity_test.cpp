@@ -32,8 +32,9 @@ int main() {
   assert(!makeIdentity(Kind::Driver, "", "1.0.0", "driver.elf", false, &driver));
   assert(!makeIdentity(Kind::Application, "", "1.0.0", "app.elf", false, &app));
   assert(!makeIdentity(Kind::Driver, "gps-nmea", nullptr, "driver.elf", false, &driver));
+  assert(!makeIdentity(static_cast<Kind>(255), "gps-nmea", "1.0.0", "driver.elf", false, &driver));
 
-  const char* badIds[] = {"-start", "_start", "Upper", "a.b", "a/b", "../escape", "a\\b", "a:b", "a b", "a\n"};
+  const char* badIds[] = {"-start", "_start", "end-", "end_", "Upper", "a.b", "a/b", "../escape", "a\\b", "a:b", "a b", "a\n"};
   for (const auto* bad : badIds)
     assert(!makeIdentity(Kind::Driver, bad, "1.0.0", "driver.elf", false, &driver));
   const char* badFiles[] = {"", ".hidden.elf", "../escape.elf", "a/escape.elf", "a\\escape.elf",
@@ -41,9 +42,11 @@ int main() {
   for (const auto* bad : badFiles)
     assert(!makeIdentity(Kind::Application, nullptr, "1.0.0", bad, false, &app));
   const char* badVersions[] = {"", "1", "1.2", "1.2.", "1..2", "1.2.3.4", "v1.2.3",
-                               "1.2.-3", "1.2.3-rc", "1.2.3+meta", "1.2.3/evil"};
+                               "1.2.-3", "1.2.3-rc", "1.2.3+meta", "1.2.3/evil",
+                               "4294967296.0.0", "0.4294967296.0", "0.0.4294967296"};
   for (const auto* bad : badVersions)
     assert(!makeIdentity(Kind::Driver, "gps-nmea", bad, "driver.elf", false, &driver));
+  assert(safeVersion("4294967295.4294967295.0"));
 
   char longId[70];
   std::memset(longId, 'a', sizeof(longId));
