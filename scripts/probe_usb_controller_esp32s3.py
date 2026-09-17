@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Compile real usb.controller provider source with the firmware's ESP32-S3 SDK.
+"""Compile real usb.controller provider against the ESP32-S3 SDK and link IDF USB.
 
-This is a REAL-IDF compile and a non-publishing relocation/link probe, not a
-mock or a claim that the firmware ELF loader can yet load the resulting object.
-The ESP-IDF host archive must be linked into the provider, rather than exporting
-USB functions from RiscRTE. Until the separate VBUS ELF and generic OS imports
-are available, do not place this controller in a package/catalog.
+This uses the exact target compile command and embeds the IDF USB static archive
+inside the provider ELF. It never exports USB APIs from the resident firmware.
+The output remains non-installable until the external import/relocation audit,
+board VBUS provider, generic runtime integration and physical tests are done.
 """
 import argparse
 import json
@@ -55,25 +54,36 @@ def run():
         raise RuntimeError('Physical controller does not reference actual IDF host implementation')
     if any(forbidden in undefined for forbidden in ('nativeUsb', 'NativeUsbBridge', 't5_usb_')):
         raise RuntimeError('USB hardware provider depends on resident firmware USB implementation')
-    print('Physical ESP32-S3 controller source compiled with real IDF headers: PASS')
-    print('IDF USB implementation must be linked into ELF; unresolved OS/USB symbols are NOT installable.')
+    print('Physical ESP32-S3 controller source compiled with real IDF headers: PASS', flush=True)
     if args.link_experiment:
         core = Path.home() / '.platformio'
-        # Follow the exact toolchain chosen by PlatformIO; do not guess an SDK version.
         framework = core / 'packages/framework-arduinoespressif32/tools/sdk/esp32s3/lib/libusb.a'
         if not framework.is_file():
             raise FileNotFoundError('SDK USB archive not found: ' + str(framework))
         experiment = OUTPUT / 'controller-link-experiment.elf'
+        # This archive was built for static firmware and contains direct Xtensa
+        # calls to its own global definitions. Hide those definitions and bind
+        # internal references locally; otherwise -shared produces dangerous
+        # dynamic relocations into text/rodata. Do NOT export resident USB ABI.
         command = [str(compiler), '-shared', '-nostdlib', '-nostartfiles',
-                   '-Wl,--hash-style=sysv', str(object_file),
+                   '-Wl,--hash-style=sysv', '-Wl,--exclude-libs,ALL',
+                   '-Wl,-Bsymbolic', str(object_file),
                    '-Wl,--start-group', str(framework), '-lgcc', '-Wl,--end-group',
                    '-o', str(experiment)]
         subprocess.run(command, cwd=ROOT, check=True)
         imported = subprocess.check_output([str(nm), '-u', str(experiment)], text=True)
         (OUTPUT / 'unresolved-symbols.txt').write_text(imported)
-        if 'usb_host_' in imported:
-            raise RuntimeError('IDF USB archive was not fully incorporated into provider ELF')
-        print('IDF USB archive link probe completed; verify generic OS/CPU imports before installing')
+        unresolved_usb = ('usb_host_', 'usbh_', 'hcd_', 'hub_', 'usb_phy_', 'usb_new_phy')
+        if any(name in imported for name in unresolved_usb):
+            raise RuntimeError('IDF USB archive not fully incorporated into provider ELF')
+        defined = subprocess.check_output([str(nm), '-D', '--defined-only',
+                                           str(experiment)], text=True)
+        if [line.split()[-1] for line in defined.splitlines()] != ['t5_driver_get']:
+            raise RuntimeError('Controller ELF exports more than its provider entry point: ' + defined)
+        print('IDF USB implementation linked inside provider ELF: PASS', flush=True)
+        print('Remaining generic OS/CPU imports require a separate loader/ABI audit.', flush=True)
+    else:
+        print('IDF USB archive linkage and generic OS imports have not been validated.', flush=True)
 
 
 if __name__ == '__main__':
