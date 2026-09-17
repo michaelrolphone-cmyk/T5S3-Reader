@@ -93,18 +93,22 @@ static bool release_device(void *context, uint64_t token) {
 }
 
 static bool quiesce(void) {
-    if (busy || faulted) return false;
+    if (busy) return false;
     for (size_t i = 0; i < MAX_CLAIMS; ++i)
         if (claims[i].token) return false;
+    /* A failed setup without an installed controller may have changed pins;
+     * there is no demonstrated safe recovery yet. Keep its ELF quarantined. */
+    if (faulted && !installed) return false;
     if (installed) {
-        /* The IDF driver owns the ISR, controller and its allocations within
-         * this ELF; failed deletion quarantines it against code unmapping. */
+        /* Permit an explicit retry when the IDF delete previously failed.
+         * The module remains mapped until a successful hardware teardown. */
         if (i2c_driver_delete(BUS_PORT) != ESP_OK) {
             faulted = true;
             return false;
         }
         installed = false;
     }
+    faulted = false;
     started = false;
     return true;
 }
