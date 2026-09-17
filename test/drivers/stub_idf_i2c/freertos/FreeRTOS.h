@@ -1,0 +1,5 @@
+#pragma once
+/* Host test fixture ONLY. */
+#include <stdint.h>
+typedef uint32_t TickType_t;
+#define pdMS_TO_TICKS(milliseconds) ((TickType_t)(milliseconds))

@@ -17,6 +17,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <ctype.h>
+#include "private/esp_privileged_os_cpu.h"
 
 #if CONFIG_LIBC_PICOLIBC
 /*
@@ -205,6 +206,19 @@ uintptr_t elf_find_sym_default(const char *sym_name)
         return 0;
     }
 
+    /* This decision is task-specific. While trusted firmware is relocating
+     * a privileged provider, ONLY its exact OS/CPU inventory and the compiled
+     * public libc table are legal firmware imports. A failed lookup must not
+     * fall through to registered symbols, the customer/IDF tables, or another
+     * ELF via dlmod_getaddr(). Defined local ELF symbols can still use the
+     * existing relocator's own in-image fallback after this returns zero.
+     * Other tasks retain the ordinary app resolution path unchanged. */
+    const bool privileged_scope = esp_elf_privileged_os_cpu_scope_owned_v1();
+    if (privileged_scope) {
+        uintptr_t privileged = esp_elf_privileged_os_cpu_lookup_v1(sym_name);
+        if (privileged) return privileged;
+    }
+
     esp_elf_symbol_table_t *syms;
 
 #ifdef CONFIG_ELF_LOADER_LIBC_SYMBOLS
@@ -213,7 +227,6 @@ uintptr_t elf_find_sym_default(const char *sym_name)
         if (!strcmp(syms->name, sym_name)) {
             return (uintptr_t)syms->sym;
         }
-
         syms++;
     }
 #else
@@ -221,13 +234,17 @@ uintptr_t elf_find_sym_default(const char *sym_name)
     (void)syms;
 #endif
 
+    /* In particular, a syntactically valid local symbol named usb_* must
+     * not be redirected to a globally registered hardware implementation.
+     * The port has no knowledge of which capability the provider implements. */
+    if (privileged_scope) return 0;
+
 #ifdef CONFIG_ELF_LOADER_ESPIDF_SYMBOLS
     syms = g_esp_espidf_elfsyms;
     while (syms->name) {
         if (!strcmp(syms->name, sym_name)) {
             return (uintptr_t)syms->sym;
         }
-
         syms++;
     }
 #else
@@ -237,16 +254,13 @@ uintptr_t elf_find_sym_default(const char *sym_name)
 
 #ifdef CONFIG_ELF_LOADER_CUSTOMER_SYMBOLS
     extern const struct esp_elfsym g_customer_elfsyms[];
-
     syms = g_customer_elfsyms;
     while (syms->name) {
         if (!strcmp(syms->name, sym_name)) {
             return (uintptr_t)syms->sym;
         }
-
         syms++;
     }
-
 #endif
 
     uintptr_t sym_addr = esp_elf_find_symbol(sym_name);
