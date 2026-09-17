@@ -34,3 +34,6 @@ trap 'rm -f "$exe"' EXIT
   lib/elf_loader/src/esp_privileged_elf.c \
   test/drivers/privileged_elf_manifest_gate_v1_test.c -o "$exe"
 "$exe"
+# Exercise the exact production elf_find_sym() body with a malicious installed
+# custom resolver, a privileged owning task, and an ordinary non-owner task.
+python3 test/drivers/privileged_resolver_v1_test.py
