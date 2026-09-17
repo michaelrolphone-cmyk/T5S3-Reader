@@ -1,8 +1,6 @@
 /* Generic privileged kernel/CPU ABI for independently built hardware ELFs.
- * This maps exact, versioned compatibility symbols to existing RTOS/IDF port
- * primitives. No bus, controller, device, or transport is implemented here.
- * A native ELF is not memory-isolated: the scope restricts loader binding,
- * not execution-time address access. Verified admission remains mandatory.
+ * Versioned OS/CPU symbols only; physical drivers remain inside provider ELF.
+ * A native ELF is not memory-isolated; authenticated admission is mandatory.
  */
 #include <stdint.h>
 #include <string.h>
@@ -10,12 +8,8 @@
 #include "freertos/task.h"
 #include "private/esp_privileged_os_cpu.h"
 
-/* Opaque assembler aliases preserve the exact ABI symbol spelling while
- * avoiding incompatible redeclarations of IDF functions and data objects.
- * Strong references intentionally make a missing port primitive a FIRMWARE
- * LINK FAILURE, never a weak/NULL export masquerading as ABI compatibility.
- * The table only takes addresses; it never calls a driver on firmware's behalf.
- */
+/* Strong links intentionally fail firmware builds when the port ABI is absent.
+ * The table contains addresses, not forwarding hardware driver functions. */
 #define RISC_OS_CPU_SYMBOL(name) \
     extern const unsigned char risc_os_cpu_link_##name[] __asm__(#name);
 #include "private/privileged_os_cpu_symbols_v1.def"
@@ -32,14 +26,16 @@ static const risc_os_cpu_symbol_v1 s_privileged_symbols_v1[] = {
 #undef RISC_OS_CPU_SYMBOL
 };
 
-/* A task-specific scope avoids the security bug introduced by temporarily
- * swapping the ELF loader's global resolver or registering kernel symbols in
- * esp_elf_register_symbol(). Concurrent ordinary ELF relocations remain in
- * their ordinary, unprivileged resolution namespace. Reentrant and concurrent
- * privileged scopes are rejected rather than accidentally sharing authority.
- */
+/* A private, task-owned non-reentrant relocation scope. The module pointer is
+ * a one-shot authorization token: the normal esp_elf_relocate entry validates
+ * it BEFORE it can load or bind anything, including nested regular ELFs on
+ * the owner task. Separate tasks can continue ordinary application loading.
+ * No global resolver pointer or customer export table is ever modified. */
 static portMUX_TYPE s_scope_lock = portMUX_INITIALIZER_UNLOCKED;
 static TaskHandle_t s_scope_owner = NULL;
+static const void *s_scope_module = NULL;
+static bool s_relocation_active = false;
+static bool s_relocation_consumed = false;
 
 bool esp_elf_privileged_os_cpu_begin_v1(void)
 {
@@ -48,6 +44,9 @@ bool esp_elf_privileged_os_cpu_begin_v1(void)
     bool acquired = false;
     taskENTER_CRITICAL(&s_scope_lock);
     if (s_scope_owner == NULL) {
+        s_scope_module = NULL;
+        s_relocation_active = false;
+        s_relocation_consumed = false;
         s_scope_owner = caller;
         acquired = true;
     }
@@ -60,7 +59,9 @@ bool esp_elf_privileged_os_cpu_end_v1(void)
     TaskHandle_t caller = xTaskGetCurrentTaskHandle();
     bool released = false;
     taskENTER_CRITICAL(&s_scope_lock);
-    if (caller != NULL && s_scope_owner == caller) {
+    if (caller != NULL && s_scope_owner == caller && !s_relocation_active) {
+        s_scope_module = NULL;
+        s_relocation_consumed = false;
         s_scope_owner = NULL;
         released = true;
     }
@@ -76,6 +77,58 @@ bool esp_elf_privileged_os_cpu_scope_owned_v1(void)
     const bool owned = s_scope_owner == caller;
     taskEXIT_CRITICAL(&s_scope_lock);
     return owned;
+}
+
+bool esp_elf_privileged_os_cpu_authorize_relocation_v1(const void *module)
+{
+    TaskHandle_t caller = xTaskGetCurrentTaskHandle();
+    bool authorized = false;
+    taskENTER_CRITICAL(&s_scope_lock);
+    if (caller != NULL && s_scope_owner == caller && module != NULL &&
+        s_scope_module == NULL && !s_relocation_active && !s_relocation_consumed) {
+        s_scope_module = module;
+        authorized = true;
+    }
+    taskEXIT_CRITICAL(&s_scope_lock);
+    return authorized;
+}
+
+bool esp_elf_privileged_os_cpu_relocation_enter_v1(const void *module)
+{
+    TaskHandle_t caller = xTaskGetCurrentTaskHandle();
+    bool allowed = false;
+    taskENTER_CRITICAL(&s_scope_lock);
+    if (caller != NULL && s_scope_owner == caller) {
+        if (module != NULL && module == s_scope_module &&
+            !s_relocation_active && !s_relocation_consumed) {
+            s_relocation_active = true;
+            s_relocation_consumed = true;
+            allowed = true;
+        }
+    } else {
+        /* No scope, or the scope belongs to a different task: the existing
+         * ordinary loader namespace remains unaffected on this task. */
+        allowed = true;
+    }
+    taskEXIT_CRITICAL(&s_scope_lock);
+    return allowed;
+}
+
+bool esp_elf_privileged_os_cpu_relocation_leave_v1(const void *module)
+{
+    TaskHandle_t caller = xTaskGetCurrentTaskHandle();
+    bool released = false;
+    taskENTER_CRITICAL(&s_scope_lock);
+    if (caller != NULL && s_scope_owner == caller) {
+        if (module != NULL && module == s_scope_module && s_relocation_active) {
+            s_relocation_active = false;
+            released = true;
+        }
+    } else {
+        released = true;
+    }
+    taskEXIT_CRITICAL(&s_scope_lock);
+    return released;
 }
 
 uintptr_t esp_elf_privileged_os_cpu_lookup_v1(const char *symbol)
