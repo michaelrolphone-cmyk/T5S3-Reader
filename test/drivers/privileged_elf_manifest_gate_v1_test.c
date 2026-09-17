@@ -7,10 +7,10 @@
 #include "private/elf_types.h"
 #include "private/esp_privileged_elf.h"
 
-/* Exercise the ACTUAL private relocation entry, substituting only structural
- * validation and native loader/FreeRTOS operations. No ELF code is executed. */
-static unsigned begins, ends, inits, relocations, deinitializations;
-static bool allow_scope = true;
+/* Exercise the production private entry, mocking native loader/RTOS only. */
+static unsigned begins, ends, inits, grants, relocations, deinitializations;
+static bool allow_scope = true, allow_grant = true;
+static const void *authorized_module;
 bool esp_elf_validate_file(const uint8_t *image, size_t length) {
     return image && length == 1024;
 }
@@ -22,9 +22,15 @@ bool esp_elf_privileged_os_cpu_end_v1(void) {
     ++ends;
     return true;
 }
+bool esp_elf_privileged_os_cpu_authorize_relocation_v1(const void *module) {
+    ++grants;
+    authorized_module = allow_grant ? module : NULL;
+    return allow_grant;
+}
 int esp_elf_init(esp_elf_t *image) { ++inits; memset(image, 0, sizeof(*image)); return 0; }
 int esp_elf_relocate(esp_elf_t *image, const uint8_t *bytes) {
-    (void)image; (void)bytes;
+    (void)bytes;
+    assert(authorized_module == image); /* grant precedes native mapping */
     ++relocations;
     return -ENOSYS; /* Never execute a synthetic image. */
 }
@@ -67,22 +73,28 @@ int main(void) {
                                                    unordered, 2) == -EINVAL);
     assert(esp_elf_relocate_privileged_verified_v1(&module, bytes, 1024,
                                                    NULL, 0) == -EINVAL);
-    assert(!begins && !inits && !relocations);
+    assert(!begins && !inits && !grants && !relocations);
     strcpy(names + 32, "usb_host_install");
     assert(esp_elf_relocate_privileged_verified_v1(&module, bytes, 1024,
                                                    exact, 2) == -EINVAL);
     strcpy(names + 32, "malloc");
-    assert(!begins && !inits && !relocations);
+    assert(!begins && !inits && !grants && !relocations);
 
     allow_scope = false;
     assert(esp_elf_relocate_privileged_verified_v1(&module, bytes, 1024,
                                                    exact, 2) == -EBUSY);
-    assert(begins == 1 && !ends && !inits && !relocations);
+    assert(begins == 1 && !ends && !inits && !grants && !relocations);
     allow_scope = true;
+    allow_grant = false;
+    assert(esp_elf_relocate_privileged_verified_v1(&module, bytes, 1024,
+                                                   exact, 2) == -EPERM);
+    assert(begins == 2 && ends == 1 && inits == 1 && grants == 1 &&
+           relocations == 0 && deinitializations == 1);
+    allow_grant = true;
     assert(esp_elf_relocate_privileged_verified_v1(&module, bytes, 1024,
                                                    exact, 2) == -ENOSYS);
-    assert(begins == 2 && ends == 1 && inits == 1 && relocations == 1 &&
-           deinitializations == 1);
-    puts("Privileged relocation entry: complete signed imports required before scope/mapping PASS");
+    assert(begins == 3 && ends == 2 && inits == 2 && grants == 2 &&
+           relocations == 1 && deinitializations == 2);
+    puts("Privileged relocation entry: exact imports and one-shot module grant before mapping PASS");
     return 0;
 }
