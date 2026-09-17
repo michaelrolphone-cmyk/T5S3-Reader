@@ -34,16 +34,24 @@ int GraphV2::findProvider(const char* id, const char* capability, uint32_t api) 
 }
 
 bool GraphV2::addVerified(const SpecV2& spec) {
+  bool emptyDigest = true;
+  for (uint8_t byte : spec.authenticatedElfSha256)
+    if (byte) { emptyDigest = false; break; }
   const bool regular = spec.requiredOsCpuAbi == 0 &&
                        spec.verifiedElfBytes == nullptr &&
-                       spec.verifiedElfLength == 0;
+                       spec.verifiedElfLength == 0 && emptyDigest;
   const bool privileged = spec.requiredOsCpuAbi == 1 &&
                           spec.verifiedElfBytes != nullptr &&
                           spec.verifiedElfLength > 0 &&
-                          spec.verifiedElfLength <= 8u * 1024u * 1024u;
+                          spec.verifiedElfLength <= 8u * 1024u * 1024u &&
+                          !emptyDigest;
+  /* Privileged byte-images have no pathname dependency; ordinary ELFs still
+   * require an absolute path. Neither path nor digest is authentication on
+   * its own; only trusted package intake may register privileged specs. */
   if (count_ == kMaxModules || !validName(spec.id) ||
       !validName(spec.provides) || !spec.api ||
-      !spec.verifiedElfPath || spec.verifiedElfPath[0] != '/' ||
+      (spec.verifiedElfPath && spec.verifiedElfPath[0] != '/') ||
+      (regular && !spec.verifiedElfPath) ||
       (!regular && !privileged) ||
       spec.requirementCount > kMaxModules ||
       (spec.requirementCount && !spec.requirements)) return false;
@@ -62,6 +70,7 @@ bool GraphV2::addVerified(const SpecV2& spec) {
   }
   // Multiple verified drivers may offer the same semantic capability.
   // acquire() refuses ambiguity; acquireFrom() requires an explicit ID.
+  // The signed digest is copied into the node, not retained through a pointer.
   nodes_[count_++].spec = spec;
   return true;
 }
@@ -105,13 +114,14 @@ bool GraphV2::activate(size_t index) {
     deps[i] = {requirement.capability, requirement.api,
                nodes_[dependency].module.capability()};
   }
-  /* Port ABI selection is generic manifest data: the core does not inspect
-   * provider identity/capability or implement any hardware-specific branch.
-   * A trusted installer must have authenticated the exact immutable bytes and
-   * import allowlist before calling addVerified() on this private graph. */
+  /* The package verifier must have authenticated the signature and signed
+   * entry digest before this private graph is populated. The loader itself
+   * snapshots bytes, hashes its copy and relocates only matching bytes; no
+   * capability string or path grants authority. */
   const bool loaded = node.spec.requiredOsCpuAbi
       ? node.module.loadVerifiedBytes(node.spec.verifiedElfBytes,
                                       node.spec.verifiedElfLength,
+                                      node.spec.authenticatedElfSha256,
                                       node.spec.id, node.spec.provides,
                                       node.spec.api,
                                       node.spec.requirementCount ? deps : nullptr,
