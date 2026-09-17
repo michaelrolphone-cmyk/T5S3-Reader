@@ -25,7 +25,7 @@ bool GraphV2::addVerified(const SpecV2& spec) {
       !validName(spec.provides) || !spec.api ||
       !spec.verifiedElfPath || spec.verifiedElfPath[0] != '/' ||
       spec.requirementCount > kMaxModules ||
-      (spec.requirementCount && !spec.requires) ||
+      (spec.requirementCount && !spec.requirements) ||
       find(spec.provides, spec.api) >= 0) return false;
   for (size_t i = 0; i < count_; ++i) {
     if (nodes_[i].visit != Visit::Idle ||
@@ -34,11 +34,11 @@ bool GraphV2::addVerified(const SpecV2& spec) {
   }
   if (liveGrants()) return false;
   for (size_t i = 0; i < spec.requirementCount; ++i) {
-    if (!validName(spec.requires[i].capability) || !spec.requires[i].api)
+    if (!validName(spec.requirements[i].capability) || !spec.requirements[i].api)
       return false;
     for (size_t j = 0; j < i; ++j)
-      if (std::strcmp(spec.requires[i].capability,
-                      spec.requires[j].capability) == 0) return false;
+      if (std::strcmp(spec.requirements[i].capability,
+                      spec.requirements[j].capability) == 0) return false;
   }
   nodes_[count_++].spec = spec;
   return true;
@@ -71,7 +71,7 @@ bool GraphV2::activate(size_t index) {
   node.visit = Visit::Visiting;
   risc_provider_dependency_v1 deps[kMaxModules]{};
   for (size_t i = 0; i < node.spec.requirementCount; ++i) {
-    const RequirementV2& requirement = node.spec.requires[i];
+    const RequirementV2& requirement = node.spec.requirements[i];
     int indexOfDependency = find(requirement.capability, requirement.api);
     if (indexOfDependency < 0 ||
         !activate(static_cast<size_t>(indexOfDependency)) ||
@@ -88,8 +88,8 @@ bool GraphV2::activate(size_t index) {
                         node.spec.provides, node.spec.api,
                         node.spec.requirementCount ? deps : nullptr,
                         node.spec.requirementCount)) {
-    // The module loader may retain Failed state after a clean dlclose. Reset
-    // that state so the graph can roll back and retry without leaking pins.
+    // The loader can retain Failed state after a clean dlclose. Reset that
+    // state before rollback so a later activation can retry safely.
     (void)node.module.unload();
     releaseDependencies(index);
     node.visit = Visit::Idle;
