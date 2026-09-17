@@ -1,12 +1,11 @@
 #include "RiscUsbProviderV1.h"
 
-/* CP210x class implementation. USB discovery, claiming and I/O are supplied
- * by a separately installed host-controller ELF, never by RiscRTE firmware. */
+/* The separately installed usb.host ELF owns physical USB operations. This
+ * class ELF owns CP210x matching, vendor requests and serial sessions. */
 typedef struct {
     uint64_t token, device, claim;
     uint8_t interface_number, alternate, in_ep, out_ep;
 } cp_session;
-
 static const risc_usb_host_api_v1 *host;
 static cp_session sessions[RISC_USB_CDC_MAX_SESSIONS];
 static uint8_t descriptors[RISC_USB_CONFIG_LIMIT];
@@ -39,36 +38,33 @@ static bool quiesce(void) {
     return true;
 }
 static void stop(void) {
-    /* The generic loader MUST check quiesce before calling stop or unmapping.
-     * Never release a borrowed host interface while a session is live. */
+    /* Generic lifecycle MUST call quiesce first. Never unmap with sessions. */
     if (quiesce()) host = 0;
 }
 
-/* Match one unambiguous vendor bulk interface from a bounded descriptor copy.
- * The host ELF owns enumeration and descriptors; this class ELF owns matching. */
 static bool parse(size_t length, cp_session *result) {
-    if (length < 9 || length > sizeof(descriptors) ||
+    if (!result || length < 9 || length > sizeof(descriptors) ||
         descriptors[0] < 9 || descriptors[1] != 2) return false;
     const size_t total = (size_t)descriptors[2] | ((size_t)descriptors[3] << 8);
     if (total < 9 || total > length) return false;
     uint8_t iface = 0xff, alt = 0, cls = 0;
     uint8_t in = 0, out = 0;
-    size_t selected = 0;
+    size_t candidates = 0;
     cp_session found = {0};
     for (size_t pos = 0; pos < total;) {
         if (total - pos < 2) return false;
         const uint8_t n = descriptors[pos], kind = descriptors[pos + 1];
         if (n < 2 || n > total - pos) return false;
-        if (kind == 4 || pos == total - n) {
+        if (kind == 4) {
+            /* Commit the PREVIOUS interface after all its endpoints, not
+             * before processing the final endpoint of the configuration. */
             if (cls == 0xff && iface != 0xff && in && out) {
-                ++selected;
+                ++candidates;
                 found.interface_number = iface;
                 found.alternate = alt;
                 found.in_ep = in;
                 found.out_ep = out;
             }
-        }
-        if (kind == 4) {
             if (n < 9) return false;
             iface = descriptors[pos + 2];
             alt = descriptors[pos + 3];
@@ -93,7 +89,14 @@ static bool parse(size_t length, cp_session *result) {
         }
         pos += n;
     }
-    if (selected != 1) return false;
+    if (cls == 0xff && iface != 0xff && in && out) {
+        ++candidates;
+        found.interface_number = iface;
+        found.alternate = alt;
+        found.in_ep = in;
+        found.out_ep = out;
+    }
+    if (candidates != 1) return false;
     *result = found;
     return true;
 }
@@ -113,13 +116,13 @@ static uint64_t open_device(uint64_t device) {
     uint16_t vid = 0, pid = 0;
     if (!host->configuration(host->context, device, descriptors, &length, &vid, &pid) ||
         vid != 0x10c4u) return 0;
-    (void)pid; /* Profile can narrow device matching when validated PIDs exist. */
+    (void)pid; /* Future device profiles may constrain the vendor PID set. */
     cp_session candidate = {0};
     if (!parse(length, &candidate)) return 0;
     candidate.device = device;
     if (!host->claim(host->context, device, candidate.interface_number,
                      candidate.alternate, &candidate.claim) || !candidate.claim) return 0;
-    if (command(device, candidate.interface_number, 0x00u, 0x0001u, 0, 0) != 0) {
+    if (command(device, candidate.interface_number, 0x00u, 1u, 0, 0) != 0) {
         host->release(host->context, candidate.claim);
         return 0;
     }
@@ -145,8 +148,8 @@ static bool configure(uint64_t token, uint32_t baud, uint8_t bits,
 static bool control_lines(uint64_t token, bool dtr, bool rts) {
     cp_session *s = lookup(token);
     if (!s) return false;
-    const uint16_t value = (uint16_t)(0x0300u | (dtr ? 1u : 0u) |
-                                      (rts ? 2u : 0u));
+    uint16_t value = (uint16_t)(0x0300u | (dtr ? 1u : 0u) |
+                                (rts ? 2u : 0u));
     return command(s->device, s->interface_number, 0x07u, value, 0, 0) == 0;
 }
 static int32_t read_data(uint64_t token, uint8_t *dst, size_t capacity,
@@ -168,8 +171,7 @@ static int32_t write_data(uint64_t token, const uint8_t *src, size_t length,
 static bool close_device(uint64_t token) {
     cp_session *s = lookup(token);
     if (!s) return false;
-    /* A failure to disable the UART keeps the provider mapped and pinned;
-     * the caller must handle recovery rather than falsely report teardown. */
+    /* Failed physical disable is NOT successful cleanup or safe ELF unload. */
     if (command(s->device, s->interface_number, 0x00u, 0, 0, 0) != 0) return false;
     host->release(host->context, s->claim);
     s->token = s->device = s->claim = 0;
