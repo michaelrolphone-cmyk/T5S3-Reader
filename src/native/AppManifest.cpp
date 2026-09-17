@@ -2,6 +2,7 @@
 #include <AppManifestRules.h>
 #include <ArduinoJson.h>
 #include <HalStorage.h>
+#include "runtime/packages/PackageIdentity.h"
 #include <cstring>
 
 #ifndef CROSSPOINT_COMPAT_VERSION
@@ -80,6 +81,20 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
   bool regular;
   if (!t5_safe_elf_name(out.file_name) || !t5_parse_version(out.min_firmware_version, version, false) ||
       !t5_parse_icon(out.icon, &regular, &cp)) return false;
+
+  // New typed manifests share the same bounded package identity contract as
+  // drivers. Existing untyped app sidecars derive a stable ID from the ELF
+  // basename and may lack a version; neither form implies signing or trust.
+  const JsonVariantConst typeNode = doc["type"];
+  if (!typeNode.isNull() && (!typeNode.is<const char*>() ||
+      std::strcmp(typeNode.as<const char*>(), "application") != 0)) return false;
+  const JsonVariantConst idNode = doc["id"];
+  if (!idNode.isNull() && !idNode.is<const char*>()) return false;
+  RuntimePackages::Identity identity{};
+  if (!RuntimePackages::makeIdentity(RuntimePackages::Kind::Application,
+      idNode.isNull() ? nullptr : idNode.as<const char*>(),
+      versionNode.isNull() ? nullptr : versionNode.as<const char*>(),
+      out.file_name, true, &identity)) return false;
 
   // Compatibility must use the clean semantic release version, not the display/build
   // version. Development and RC builds append branch/hash metadata to CROSSPOINT_VERSION;
