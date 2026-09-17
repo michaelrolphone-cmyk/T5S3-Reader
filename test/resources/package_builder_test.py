@@ -86,6 +86,25 @@ def run() -> None:
         corrupt_payload[first_payload] ^= 1
         assert hashlib.sha256(corrupt_payload[first_payload:first_payload + 64]).digest() != digest
         assert verifies(corrupt_payload[:signed_end])  # Signature alone does not validate payloads.
+        # Cross-language full-content verification against the identical archive.
+        inspector = root / 'inspect'
+        subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+            '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+            '-I' + str(ROOT / 'src'),
+            str(ROOT / 'test/resources/package_archive_inspect.cpp'), '-lcrypto',
+            '-o', str(inspector)], check=True, capture_output=True)
+        package = root / 'fixture.risc'
+        package.write_bytes(archive)
+        assert subprocess.run([str(inspector), str(package), str(public)],
+            capture_output=True).returncode == 0
+        package.write_bytes(corrupt_payload)
+        assert subprocess.run([str(inspector), str(package), str(public)],
+            capture_output=True).returncode != 0
+        invalid_sig = bytearray(archive)
+        invalid_sig[signed_end] ^= 1
+        package.write_bytes(invalid_sig)
+        assert subprocess.run([str(inspector), str(package), str(public)],
+            capture_output=True).returncode != 0
         reject(argparse.Namespace(**{**vars(arguments), 'id': '../gps'}), 'invalid package ID')
         reject(argparse.Namespace(**{**vars(arguments), 'version': '01.2.3'}), 'version must be canonical')
         reject(argparse.Namespace(**{**vars(arguments), 'entry': [f'driver.elf={elf}'] * 2}), 'duplicate archive entry')
