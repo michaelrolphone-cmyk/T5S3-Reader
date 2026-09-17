@@ -1,48 +1,56 @@
-# Unified Package Manager MVP — architecture and acceptance
+# Unified Package Manager MVP — implementation and acceptance
 
-**Status:** Priority 3, draft PR #76. The legacy online App Store uses a digest-aware ELF/JSON pair transaction. Driver packages use a shared directory transaction with a runtime-owned module mapping/replacement gate. Shared identity, guarded JSON, metadata preflight, version decisions, application release hash stamping, and bounded boot-time application recovery exist. **This is transitional, not the completed Unified Package Manager.** The `package.risc` decoder, authenticated publisher signatures/key policy, offline SD installer, unified four-kind lifecycle and verified-byte pinning remain outstanding. Legacy unsigned artifacts are never publisher-authenticated.
+**Status:** Priority 3, draft PR #76. The existing App Store and driver installer have integrity-aware transactional legacy paths. The new canonical `.risc` decoder, signer and verification building blocks exist, but **no signed archive is installed by the firmware yet**. There is no provisioned production signing-key allowlist, common SD/online installer, persisted package security floor, or SD verified-byte-to-load guarantee. Legacy sidecars and their SHA-256 values remain unsigned and unauthenticated.
 
-Authority: [RiscRTE Platform Specification](RISCRTE_PLATFORM_SPEC.md) → [Platform Capability Roadmap](PLATFORM_CAPABILITY_ROADMAP.md), §§26–28 and §39 → [Runtime Driver Architecture](RUNTIME_DRIVER_ARCHITECTURE.md), [Application Execution Context Architecture](APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md), and [Security Architecture](SECURITY_ARCHITECTURE.md). This document tracks implementation and acceptance without redefining the roadmap.
+Authority: [RiscRTE Platform Specification](RISCRTE_PLATFORM_SPEC.md) → [Platform Capability Roadmap](PLATFORM_CAPABILITY_ROADMAP.md), §§26–28 and §39 → [RISC-PKG v1 wire format](RISC_PACKAGE_FORMAT.md) → [Security Architecture](SECURITY_ARCHITECTURE.md). This tracker records what actually exists; it does not supersede those specifications.
 
-## Target invariant
+## Required invariant
 
-One runtime-owned manager validates and installs **applications, drivers, services and providers** without loading candidate payloads. A versioned envelope binds identity, all entry sizes/hashes, architecture/ABI, dependencies, capability declarations, security version and an authenticated publisher signature. SD and online distribution use the same envelope and installer. Interrupted updates retain a verified generation; installation grants no hardware access or activation. SHA-256 checks bytes against a declared digest but cannot authenticate a mutable manifest. Hardware protocols reside in driver ELFs; the runtime exposes generic capability-gated resources.
+One runtime-owned manager must authenticate and install applications, drivers, services and providers from **identical archive bytes** whether supplied by SD or a network download, without mapping candidate ELFs. A bounded canonical envelope must bind identity, ABI/architecture, dependencies, SHA-256 of every entry, security version and publisher signature. Keys and authorization are supplied only by trusted firmware/device policy. Installation confers neither hardware permission nor activation. Interrupted updates must retain a usable verified generation, and the exact authenticated ELF bytes must remain bound through loading even if an SD card changes.
 
-## Implemented
+## Implemented: existing transitional paths
 
-### Shared identity, guarded manifests and preflight
+- `PackageIdentity.h`, `PackageJsonGuard.h` and `PackagePreflight.h` validate bounded four-kind identities, guarded legacy JSON, entry/requirement budgets, ABI compatibility and numeric versions. Preflight alone does not authenticate input.
+- `package_integrity.py`, `build_all_apps.py` and App Store adapters stamp/check actual ELF size and SHA-256, refuse downgrades and verify staged downloads. Old digestless sidecars remain migration-only and unsigned.
+- `PackagePairTransaction.h`, `AppPackageInstaller.cpp` and `NativeAppHost.cpp` publish managed app ELF/JSON pairs with recoverable `.part`/`.bak` transactions. `AppPackageRecoveryInventory.cpp` scans recognizable packages before springboard checks and enumeration without mutating an open directory; loose unmanaged files are preserved.
+- `PackageTransaction.h` stages/verifies driver directories and recovers interrupted publication while preserving unknown/corrupt data.
+- `PackageUseGate.h` provides mapping pins and exclusive replacement reservations. GPS and USB CDC module loaders pin from before `dlopen` through successful `dlclose`, keeping pins after a failed unload. Driver publication and mutating recovery honor the gate. This protects registered loader/installer races, **not arbitrary SD removal or modification**.
 
-- `src/runtime/packages/PackageIdentity.h`: four kinds; `(kind,id)` namespace; bounded IDs and numeric `major.minor.patch` versions; rejects unsafe names, traversal, version overflow and trailing ID punctuation. Untyped/versionless application sidecars remain readable as untrusted legacy artifacts.
-- `src/runtime/packages/PackageJsonGuard.h`: bounded allocation-free JSON syntax and duplicate-key guard, including escaped aliases and malformed escapes, executed before ArduinoJson in both legacy manifest parsers. Does not canonicalize signatures or parse archives.
-- `src/runtime/packages/PackagePreflight.h`: typed borrowed metadata, bounded entries/requirements, declared hashes/budgets, architecture/runtime/security floors, capability/API availability and numeric version policy. `ReadyForContentVerification` does **not** mean content or publisher was verified. A common decoder is still required.
-- Driver manifests validate ABI, ELF header, SHA-256 and capability declarations. Installed-driver version lookup hashes the actual ELF, not just the sidecar.
+## Implemented: signed archive development path
 
-### Release construction and legacy App Store integration
+- `docs/RISC_PACKAGE_FORMAT.md` defines the binary, uncompressed RISC-PKG v1 wire format and exact signed bytes: 48-byte header, canonical bounded metadata, fixed raw P-256 signature and contiguous payloads. Format/version/algorithm and reserved fields are explicit; entries and requirements must be strictly sorted.
+- `PackageArchive.h` is a bounded, allocation-free framing/manifest decoder with explicit size limits, safe names, strict lengths, identity/version normalization, duplicate/alias exclusion, exact payload offsets and an adapter to the existing four-kind preflight. Its `ReadyForAuthentication` result is **not** a trust verdict.
+- `scripts/build_risc_package.py` builds these archives with SHA-256 of each supplied entry and a real P-256/SHA-256 signature from an explicitly supplied external private key. It refuses wrong-architecture ELFs, disguised ELF resources, traversal, duplicate entries, oversized input, noncanonical versions and unsuitable signing keys. No production private key is included or generated by repository builds.
+- `PackageArchiveVerification.h` reads and decodes the same buffered immutable signed prefix, verifies its signature through an injected trusted-key callback, then hashes **every** archive entry using a 512-byte streaming buffer and compares all SHA-256 digests. It additionally checks ELF structure/machine and rejects resource entries beginning with ELF magic. Workspace memory is caller-owned; no ELF-sized allocation is required. Its success describes the bytes inspected **at that time**, not a guarantee against later SD substitution.
+- `PackageDeviceCrypto.h/.cpp` provides an ESP-IDF/mbedTLS SHA-256 adapter and P-256 verifier constrained by firmware-supplied key IDs, exact package kind/ID scope, minimum key security version and revocation flags. Empty/unconfigured or duplicate signing-key lists fail closed. This is a cryptographic primitive, **not** key provisioning, persistent rollback policy, authorization or installer integration.
+- `package_archive_test.cpp`, `package_builder_test.py` and `package_archive_inspect.cpp` cover hostile metadata, real OpenSSL signatures, header/manifest tampering, payload mismatch and full Python-writer/C++-reader interoperability. Host tests run with sanitizers; the device crypto adapter is compiled by both firmware builds. Test signing keys are ephemeral only.
 
-- `scripts/package_integrity.py` and `scripts/build_all_apps.py` record built ELF size and SHA-256 in sidecars/catalog; reject inconsistent metadata and overlarge manifests/catalogs. `src/native/AppManifest.cpp` validates both fields together while continuing to parse older digestless sidecars.
-- `src/native/AppPackageInstaller.cpp` validates filename, ELF header, length and declared hash, requiring both size/digest for newly staged downloads. A legacy digestless installed pair is checked only for basic filename/header/length consistency during migration; it is neither cryptographically verified nor authenticated.
-- `src/runtime/packages/PackagePairTransaction.h` stages flat `/Apps/<name>.elf` and `.json` with `.part`/`.bak` recovery instead of assuming two renames are atomic. It verifies an available old/new generation and retains ambiguous or corrupt files for inspection.
-- `src/native/NativeAppHost.cpp` recovers managed pairs before installs/launch, validates download lengths and hashes before publication, validates installed pairs at launch/version lookup, rejects numeric downgrades and refuses replacing the exact active app ELF.
-- `src/native/AppPackageRecoveryInventory.cpp` and `src/runtime/packages/PackageAppRecoveryIndex.h` enumerate a bounded set of recognizable managed pairs, close the directory before modifying entries, and recover before springboard existence checks or installed-app enumeration. A mapped application with a backup is deferred rather than renamed; loose unmanaged files remain untouched. This is code plus host tests, not physical reset/power-cut acceptance.
-- Host ASan/UBSan transaction fault tests, recovery-index tests and live App Store wiring tests run in CI.
+### Local signing usage
 
-### Driver transaction and in-use exclusion
+Use a private key stored outside the repository and specify all package metadata explicitly, for example:
 
-- `src/runtime/packages/PackageTransaction.h` stages a driver directory, verifies before publication, retains the previous generation in `.previous`, and supports recovery of interrupted renames/managed cleanup without deleting unmanaged data.
-- `src/runtime/packages/PackageUseGate.h` is a bounded, runtime-owned registry keyed by package directory. Mapping pins and exclusive replacement reservations share a mutex. A pinned driver blocks both publication and any recovery requiring a rename. A replacement reservation blocks a concurrent loader until transaction verification, renames and cleanup finish; read-only recovery/version checks with no backup remain possible while mapped.
-- `GpsDriverModule.cpp` and `UsbCdcDriverModule.cpp` acquire pins before `dlopen` and release them only after successful `dlclose`. If `dlclose` retains the handle, the package remains pinned. The legacy driver installer's `replaceAllowed=true` flag is now additionally constrained by the transaction's mandatory runtime reservation; that flag alone cannot bypass a pin.
-- `test/resources/package_use_gate_test.cpp` exercises mapping, replacement, rollback, invalid identities, capacity and refusal to pin during verification. It is wired into `test/run_springboard_test.sh` with ASan/UBSan. Other future module loaders must register pins before they can be considered covered by this gate.
+```sh
+python3 scripts/build_risc_package.py \
+  --kind driver --id gps-nmea --version 1.2.3 \
+  --artifact driver.elf --architecture xtensa-esp32s3 \
+  --min-runtime-api 2 --security-version 3 --key-id 7 \
+  --private-key /secure/signing-key.pem \
+  --entry driver.elf=/build/driver.elf \
+  --require kernel.serial:1 --output /build/gps-nmea.risc
+```
 
-## Outstanding milestones (implementation priority)
+This generates a distribution artifact; it does **not** make the current firmware accept it. A key ID in a manifest is only a lookup selector, never a self-authorizing grant. Real trust material must be provisioned separately through firmware/device policy.
 
-1. **Canonical package and trust policy.** Define bounded `package.risc` schema and signing bytes; reject duplicate fields/filenames including FAT aliases, unsupported fields, hidden executables, oversized/decompression-bomb entries and traversal. Verify all entries and an allowlisted publisher key before installation. Security-version floors must persist independently of a mutable SD manifest. A legacy SHA-256 sidecar is not an authenticated signature.
-2. **Verified-byte lifetime.** Pin or copy authenticated ELF bytes from verification through load, so removable SD contents cannot be swapped between check and `dlopen`. The current package-use registry protects against installer renames, **not** hostile or external SD modifications, and is not a general all-ELF loader registry yet.
-3. **One installer for both distribution paths.** Connect decoder, metadata preflight, dependency resolver, storage budgets, signature checks and staging to the same on-device installer for SD and online. Do not run candidate code during discovery; install grants no hardware permissions.
-4. **Complete four-kind lifecycle.** Driver/service/provider/app activation separation, inventory, update, uninstall/quarantine, version/permissions/trust UI, fallback serial/Wi-Fi recovery and explicit unsigned development policy distinct from signed release policy. All current/future ELF loading paths and context leases must honor in-use replacement exclusion.
-5. **Physical acceptance.** Exercise both boards and real SD media: online/offline installs, power cuts at transaction boundaries, preserving the last usable app/driver, recovery to springboard, in-use replacement refusal and recovery UI. No physical power-cut test has been reported.
+## Outstanding milestones, in dependency order
 
-`/sd` remains a read-only ELF VFS: mutation uses `HalStorage` and paths derived from validated identity. Package declarations never grant hardware rights; hardware-specific behavior belongs in driver ELFs.
+1. **Trusted package-manager integration:** expose one on-device read-only SD/online archive intake into the decoder, mbedTLS signature verifier and complete-entry hashes. Supply actual firmware/device-controlled signer allowlists (kind/ID/capability scope, revocation), perform trusted security-floor checks, preflight and explicit platform consent. Do not let a bundle select or add its own trusted key.
+2. **Verified-byte lifetime and protected rollback:** stage authenticated content into a controlled generation and protect it against mutable SD replacement through `dlopen`; persist monotonic package security floors outside untrusted SD storage. Bind package-use pins and execution-context leases for all ELF loaders. The existing directory gate alone is insufficient.
+3. **Shared SD/online publication:** route the same verified `.risc` archive through storage preflight, dependency resolution and recoverable transaction publication. Migrate legacy app/driver adapters only after parity and recovery tests, keeping explicit unsigned development policy separate from signed release policy.
+4. **Full management lifecycle:** service/provider activation separation; inventory, update, uninstall/quarantine, version/trust/permission UI, fallback serial/Wi-Fi recovery, key rotation and security-version migration.
+5. **Hardware acceptance:** run actual SD and network installs on both boards, power cuts at every transaction step, recovery into springboard, SD removal/replacement between verify/load, in-use module replacement refusal, and rollback tests. No physical power-cut acceptance has been performed.
+
+No package manifest grants hardware rights. Hardware-specific behavior stays in driver ELFs; the runtime exposes generic capability-gated resources. `/sd` is a read-only ELF VFS and all managed mutations must go through runtime-owned storage operations.
 
 ## CI and release gate
 
-The previously integrated App Store changes passed firmware and host CI at `93497fc`. The driver pin/reservation work began at `d806030` and is pending its own full CI result and physical validation at the time of this documentation update. Do not infer acceptance from a previous commit's green check. Keep PR #76 draft, unmerged and unreleased until its claimed scope and required gates pass.
+Earlier integrated App Store and package-use gate builds passed CI through `45757f4`. Signed archive and device crypto commits require their own **latest-head** CI results, including both firmware builds and full host tests. A green older SHA is not proof of a newer SHA. Keep PR #76 draft, unmerged and unreleased until every claimed acceptance gate passes.
