@@ -35,6 +35,8 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo/src" "$repo/test/resources/capability_access_test.cpp" \
   -o "$build/capability-access"
 "$build/capability-access"
+# Both provider-rights tests use real capability and device registries.
+bash "$repo/test/run_provider_authorization_test.sh"
 # A consent grant and the active GPS driver each require an independent
 # execution-context destructor. Verify both acquisition orders and lease cleanup.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
