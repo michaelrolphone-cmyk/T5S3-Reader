@@ -55,9 +55,6 @@ SemaphoreHandle_t txMutex = nullptr;
 SemaphoreHandle_t hostStopped = nullptr;
 volatile bool stopRequested = false;
 volatile bool teardownFailed = false;
-// A wait timeout means the old task is STILL cleaning up, not that cleanup
-// failed. Only the host task may decide whether teardown is irrecoverable.
-volatile bool shutdownTimedOut = false;
 volatile uint8_t pendingAddress = 0;
 volatile bool deviceGone = false;
 volatile bool controlDone = false;
@@ -340,7 +337,7 @@ bool parseVendorBulk(const usb_config_desc_t* config) {
     } else if (type == 5u && length >= 7u && currentClass == 0xffu) {
       uint8_t address = p[offset + 2u];
       uint8_t attributes = p[offset + 3u] & 0x03u;
-      uint16_t mps = (uint16_t)p[offset + 4u] | ((uint16_t)p[offset + 5u] << 8u);
+      uint16_t mps = (uint16_t)p[offset + 4u] | ((uint16_t)p[offset + 5u) << 8u);
       if (attributes == 2u && mps) {
         if (address & 0x80u) { candidateIn = address; candidateInMps = mps; }
         else { candidateOut = address; candidateOutMps = mps; }
@@ -752,7 +749,9 @@ bool teardownHostLibrary() {
   for (int i = 0; !allFree && i < 500; ++i) {
     uint32_t flags = 0;
     const esp_err_t eventsRc = usb_host_lib_handle_events(pdMS_TO_TICKS(10), &flags);
-    if (eventsRc != ESP_OK) {
+    // Waiting for a detached device to free may legitimately time out for
+    // individual 10-ms polls. Only a broken host state is fatal.
+    if (eventsRc != ESP_OK && eventsRc != ESP_ERR_TIMEOUT) {
       LOG_ERR("USB", "USBREF phase=host_shutdown result=failed step=events error=%d", (int)eventsRc);
       return false;
     }
@@ -852,13 +851,9 @@ finish_power:
     setError(-1144);
   }
   restoreDebugUsbSerial();
-  if (shutdownTimedOut) {
-    LOG_INF("USB", "USBREF phase=host_shutdown result=%s after_wait_timeout",
-            teardownFailed ? "failed" : "recovered");
-    shutdownTimedOut = false;
-  }
-  // The host task alone decides if cleanup failed. The caller's timeout is
-  // transient: a later successful completion must permit a fresh session.
+  // The host task alone decides whether cleanup failed. A caller's earlier
+  // timeout is transient: once running becomes false and cleanup succeeded,
+  // the next serialStart is allowed to re-enable VBUS and enumerate devices.
   running = false;
   hostTaskHandle = nullptr;
   if (hostStopped) xSemaphoreGive(hostStopped);
@@ -887,10 +882,6 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
     requestedCoding = *coding;
     portENTER_CRITICAL(&stateMux); state.line_coding = *coding; portEXIT_CRITICAL(&stateMux);
     return true;
-  }
-  if (shutdownTimedOut) {
-    LOG_INF("USB", "USBREF phase=host_start result=retry reason=previous-shutdown-in-progress");
-    return false;
   }
   if (!hostStopped) hostStopped = xSemaphoreCreateBinary();
   if (!hostStopped) { setError(ESP_ERR_NO_MEM); return false; }
@@ -937,9 +928,8 @@ void serialStop() {
   if (client) (void)usb_host_client_unblock(client);
   (void)usb_host_lib_unblock();
   if (!hostStopped || xSemaphoreTake(hostStopped, pdMS_TO_TICKS(kUsbShutdownTimeoutMs)) != pdTRUE) {
-    // The task may finish after this wait. Do NOT set teardownFailed here:
-    // that used to skip driver unloading and block every later start forever.
-    shutdownTimedOut = true;
+    // Do not permanently latch failure: the task may complete safely later.
+    // While running && stopRequested, serialStart refuses to bind a new app.
     LOG_ERR("USB", "USBREF phase=host_shutdown result=timeout task-still-running=%u",
             static_cast<unsigned>(running));
     setError(-1142);
