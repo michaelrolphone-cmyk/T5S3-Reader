@@ -87,7 +87,7 @@ bool filePath(const char* path) {
     const char* end = segment;
     while (*end && *end != '/') { if (*end == '\\') return false; ++end; }
     auto len = end - segment;
-    if (!len || (len == 1 && *segment[0] == '.') || (len == 2 && segment[0] == '.' && segment[1] == '.')) return false;
+    if (!len || (len == 1 && segment[0] == '.') || (len == 2 && segment[0] == '.' && segment[1] == '.')) return false;
     if (!*end) return true;
     segment = end + 1;
   }
