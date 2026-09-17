@@ -19,8 +19,14 @@ constexpr const char* kPackageIntakeStage = "/Packages/.intake.part";
 // and recheck the floor. Missing floor records fail closed unless the trusted
 // caller explicitly authorizes a first installation. Existing intake files
 // are preserved and require separate recovery, not destructive cleanup.
-// Success retains a stage for a separate publication decision. This function
+// Success retains a stage for separate publication review. This function
 // neither commits the security floor nor activates/loads/authorizes anything.
+//
+// If expectedSignedPrefixDigest is non-null, it MUST point to 32 writable
+// manager-owned bytes. Failure zeros it; success records the SHA-256 of the
+// authenticated header+manifest for later extraction identity comparison.
+// Keep this fingerprint outside mutable SD and do not reconstruct it from the
+// intake after an attacker has had a chance to replace that intake.
 //
 // IMPORTANT: an SD stage can be altered after this function returns. The
 // publisher must repeat the floor check and enforce authenticated-byte
@@ -31,6 +37,7 @@ ArchiveStageResult stageSignedDevicePackage(std::FILE* source,
     const PackageRuntimePolicy& policy, PackageCapabilityApi resolveCapability,
     void* resolverContext, PackageVerificationWorkspace& workspace,
     PackageArchive& result, PackageArchiveLimits limits = {},
-    bool allowFirstInstall = false);
+    bool allowFirstInstall = false,
+    uint8_t expectedSignedPrefixDigest[32] = nullptr);
 
 } // namespace RuntimePackages
