@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 
 namespace RuntimePackages {
 namespace {
@@ -88,8 +89,10 @@ ArchiveStageResult stageSignedDevicePackage(std::FILE* source,
     const TrustedPackageSigner* signers, size_t signerCount,
     const PackageRuntimePolicy& policy, PackageCapabilityApi resolveCapability,
     void* resolverContext, PackageVerificationWorkspace& workspace,
-    PackageArchive& result, PackageArchiveLimits limits, bool allowFirstInstall) {
+    PackageArchive& result, PackageArchiveLimits limits, bool allowFirstInstall,
+    uint8_t expectedSignedPrefixDigest[32]) {
   result = {};
+  if (expectedSignedPrefixDigest) std::memset(expectedSignedPrefixDigest, 0, 32);
   constexpr uint64_t overhead = kPackageHeaderBytes + kPackageManifestLimit +
       kPackageSignatureBytes;
   if (!source || !signers || !signerCount || signerCount > 16 ||
@@ -141,6 +144,16 @@ ArchiveStageResult stageSignedDevicePackage(std::FILE* source,
     (void)stage.discard();
     result = {};
     return finalFloor;
+  }
+  if (expectedSignedPrefixDigest) {
+    if (!hash.start() || !hash.update(workspace.signedPrefix,
+                                     static_cast<size_t>(result.signatureOffset)) ||
+        !hash.finish(expectedSignedPrefixDigest)) {
+      (void)stage.discard();
+      std::memset(expectedSignedPrefixDigest, 0, 32);
+      result = {};
+      return ArchiveStageResult::SourceUntrusted;
+    }
   }
   return staged;
 }
