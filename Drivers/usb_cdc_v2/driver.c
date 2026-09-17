@@ -1,7 +1,7 @@
 #include "RiscUsbProviderV1.h"
 
-/* All class operations are within the ELF. A separate usb.host provider ELF
- * owns controller, physical claims, transfers and disconnection. */
+/* All class operations are within this ELF. The separately installed
+ * usb.host provider owns the controller, physical claims and transfers. */
 typedef struct {
     uint64_t token;
     uint64_t device;
@@ -54,9 +54,8 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     return true;
 }
 
-/* Quiescence is distinct from merely losing the last software capability
- * grant. Refuse to unmap while a consumer still owns a class session. The
- * generic graph retains the host ELF and its physical claims until closed. */
+/* An open physical interface remains owned by this ELF even after the last
+ * generic grant disappears. Do not unload until the session is closed. */
 static bool quiesce(void) {
     for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
         if (sessions[i].token) return false;
@@ -65,67 +64,150 @@ static bool quiesce(void) {
 
 static void stop(void) {
     if (!host) return;
-    /* Direct manual stop is legacy test/recovery behavior; the generic module
-     * loader MUST call quiesce and refuse unsafe unmapping beforehand. */
+    /* Direct stop is a recovery/test hook. The generic loader must first
+     * check quiesce and refuse unsafe unmapping. */
     for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
         release_session(&sessions[i]);
     host = 0;
 }
 
-/* Deliberately accepts a single unambiguous CDC control/data pair. Multiple
- * CDC functions need IAD/union selection; ambiguous configurations fail. */
+/* Parse a complete configuration without trusting interface ordering. A
+ * single ACM function is supported, including unrelated composite interfaces,
+ * a CDC union, an IAD and an endpoint-bearing nonzero data alternate. The
+ * open(device) API has no function selector: multiple ACM functions or equally
+ * valid alternates must fail closed instead of claiming the wrong interface. */
 static bool parse(size_t length, cdc_session *out) {
-    if (length < 9 || length > RISC_USB_CONFIG_LIMIT ||
-        config_bytes[0] < 9 || config_bytes[1] != 2) return false;
+    if (!out || length < 9 || length > RISC_USB_CONFIG_LIMIT ||
+        config_bytes[0] != 9 || config_bytes[1] != 2) return false;
     size_t total = (size_t)config_bytes[2] | ((size_t)config_bytes[3] << 8);
-    if (total < 9 || total > length) return false;
-    uint8_t ctl = 0xff, data = 0xff, alternate = 0;
-    uint8_t current_class = 0xff, current_interface = 0xff;
-    uint8_t current_alternate = 0xff;
-    uint8_t ep_in = 0, ep_out = 0;
+    if (total < 9 || total != length) return false;
+
+    uint8_t control = 0xff, only_data = 0xff;
+    uint8_t control_count = 0, data_count = 0;
     for (size_t at = 0; at < total;) {
         if (total - at < 2) return false;
         uint8_t n = config_bytes[at], type = config_bytes[at + 1];
         if (n < 2 || n > total - at) return false;
-        if (type == 4 && n >= 9) {
-            current_interface = config_bytes[at + 2];
+        if (type == 4) {
+            if (n < 9) return false;
+            uint8_t iface = config_bytes[at + 2];
             uint8_t alt = config_bytes[at + 3];
-            current_alternate = alt;
-            current_class = config_bytes[at + 5];
-            if (current_class == 2 && alt == 0) {
-                if (ctl != 0xff && ctl != current_interface) return false;
-                ctl = current_interface;
+            uint8_t cls = config_bytes[at + 5];
+            uint8_t subcls = config_bytes[at + 6];
+            if (alt == 0 && cls == 2 && subcls == 2) {
+                if (++control_count != 1) return false;
+                control = iface;
+            } else if (alt == 0 && cls == 10) {
+                if (++data_count == 0) return false;
+                only_data = iface;
             }
-            if (current_class == 10 && alt == 0) {
-                if (data != 0xff && data != current_interface) return false;
-                data = current_interface;
-                alternate = alt;
+        }
+        at += n;
+    }
+    if (control_count != 1 || !data_count) return false;
+
+    uint8_t data = 0xff;
+    bool has_union = false, has_iad = false;
+    uint8_t iad_first = 0, iad_end = 0;
+    for (size_t at = 0; at < total;) {
+        uint8_t n = config_bytes[at], type = config_bytes[at + 1];
+        if (type == 0x24 && n >= 4 && config_bytes[at + 2] == 6 &&
+            config_bytes[at + 3] == control) {
+            /* A union with more than one slave needs a function selector;
+             * do not accidentally bind one member of a multiport function. */
+            if (has_union || n != 5) return false;
+            has_union = true;
+            data = config_bytes[at + 4];
+        } else if (type == 11) {
+            if (n < 8) return false;
+            uint8_t first = config_bytes[at + 2];
+            uint8_t count = config_bytes[at + 3];
+            if (!count || (unsigned)first + count > 256u) return false;
+            if (config_bytes[at + 4] == 2 && config_bytes[at + 5] == 2 &&
+                control >= first && (unsigned)control < (unsigned)first + count) {
+                if (has_iad) return false;
+                has_iad = true;
+                iad_first = first;
+                iad_end = (uint8_t)((unsigned)first + count - 1u);
             }
-        } else if (type == 5 && n >= 7 && current_class == 10 &&
-                   current_interface == data && current_alternate == alternate) {
+        }
+        at += n;
+    }
+    if (!has_union) {
+        if (data_count != 1) return false;
+        data = only_data;
+    }
+    if (data == control || data == 0xff ||
+        (has_iad && (data < iad_first || data > iad_end))) return false;
+
+    /* Verify that the selected interface really is a CDC data interface.
+     * Union descriptors can refer to absent or unrelated interfaces. */
+    bool found_data = false;
+    for (size_t at = 0; at < total;) {
+        uint8_t n = config_bytes[at];
+        if (config_bytes[at + 1] == 4 && config_bytes[at + 2] == data &&
+            config_bytes[at + 3] == 0 && config_bytes[at + 5] == 10)
+            found_data = true;
+        at += n;
+    }
+    if (!found_data) return false;
+
+    uint8_t iface = 0xff, alt = 0xff, cls = 0xff;
+    uint8_t in = 0, out_ep = 0, chosen_alt = 0;
+    uint8_t chosen_in = 0, chosen_out = 0;
+    bool chosen = false, duplicate_endpoint = false;
+    for (size_t at = 0; at < total;) {
+        uint8_t n = config_bytes[at], type = config_bytes[at + 1];
+        if (type == 4) {
+            if (iface == data && cls == 10) {
+                if (duplicate_endpoint) return false;
+                if (in && out_ep) {
+                    if (chosen) return false;
+                    chosen = true;
+                    chosen_alt = alt;
+                    chosen_in = in;
+                    chosen_out = out_ep;
+                }
+            }
+            iface = config_bytes[at + 2];
+            alt = config_bytes[at + 3];
+            cls = config_bytes[at + 5];
+            in = out_ep = 0;
+            duplicate_endpoint = false;
+        } else if (type == 5 && iface == data && cls == 10) {
+            if (n < 7) return false;
             uint8_t ep = config_bytes[at + 2];
-            uint8_t kind = config_bytes[at + 3] & 3u;
             uint16_t mps = (uint16_t)config_bytes[at + 4] |
                            ((uint16_t)config_bytes[at + 5] << 8);
-            if (kind == 2 && mps && mps <= 512) {
+            if ((config_bytes[at + 3] & 3u) == 2 && mps && mps <= 512) {
+                if ((ep & 0x0fu) == 0 || (ep & 0x70u)) return false;
                 if (ep & 0x80u) {
-                    if (ep_in) return false;
-                    ep_in = ep;
+                    if (in) duplicate_endpoint = true;
+                    else in = ep;
                 } else {
-                    if (ep_out) return false;
-                    ep_out = ep;
+                    if (out_ep) duplicate_endpoint = true;
+                    else out_ep = ep;
                 }
             }
         }
         at += n;
     }
-    if (ctl == 0xff || data == 0xff || ctl == data || !ep_in || !ep_out)
-        return false;
-    out->control_interface = ctl;
+    if (iface == data && cls == 10) {
+        if (duplicate_endpoint) return false;
+        if (in && out_ep) {
+            if (chosen) return false;
+            chosen = true;
+            chosen_alt = alt;
+            chosen_in = in;
+            chosen_out = out_ep;
+        }
+    }
+    if (!chosen) return false;
+    out->control_interface = control;
     out->data_interface = data;
-    out->data_alternate = alternate;
-    out->ep_in = ep_in;
-    out->ep_out = ep_out;
+    out->data_alternate = chosen_alt;
+    out->ep_in = chosen_in;
+    out->ep_out = chosen_out;
     return true;
 }
 
