@@ -15,7 +15,7 @@ static bool controls_ready;
 static bool reads_paused;
 static char status_text[96];
 static char count_text[24];
-static char queue_text[32];
+static char queue_text[48];
 static char lat_text[32];
 static char lon_text[32];
 static char satellites_text[16];
