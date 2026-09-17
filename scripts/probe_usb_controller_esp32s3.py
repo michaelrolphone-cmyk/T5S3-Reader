@@ -25,8 +25,7 @@ def tool(compiler, suffix):
     name = compiler.name
     if not name.endswith(('g++', 'gcc')):
         raise RuntimeError('Unexpected target compiler: ' + str(compiler))
-    prefix = name[:-3] if name.endswith('g++') else name[:-3]
-    return compiler.with_name(prefix + suffix)
+    return compiler.with_name(name[:-3] + suffix)
 
 
 def compile_target(argv, entry, source, output, c_compiler=False, extra=()):
@@ -46,7 +45,8 @@ def compile_target(argv, entry, source, output, c_compiler=False, extra=()):
         if not compiler.name.endswith('g++'):
             raise RuntimeError('Expected C++ target compiler for command derivation')
         command[0] = str(tool(compiler, 'gcc'))
-        command = [arg for arg in command if not arg.startswith('-std=')]
+        command = [arg for arg in command if not arg.startswith('-std=') and
+                   arg not in ('-fno-rtti', '-Wno-bidi-chars')]
         command.append('-std=gnu11')
     command.extend(['-fPIC', '-fvisibility=hidden', '-I' + str(ROOT / 'sdk/driver')])
     command.extend(extra)
@@ -117,8 +117,13 @@ def run():
     subprocess.run(command, cwd=ROOT, check=True)
     imported = subprocess.check_output([str(nm), '-u', str(elf)], text=True)
     (OUTPUT / 'unresolved-symbols.txt').write_text(imported)
-    if any(name in imported for name in ('usb_host_', 'usbh_', 'hcd_', 'hub_',
-                                         'usb_phy_', 'usb_new_phy', 'urb_')):
+    bad_namespaces = ('usb_host_', 'usbh_', 'hcd_', 'hub_', 'usb_phy_',
+                      'usb_new_phy', 'urb_')
+    offenders = [line.strip() for line in imported.splitlines()
+                 if any(namespace in line for namespace in bad_namespaces)]
+    if offenders:
+        print('Unresolved USB implementation symbols after PIC link:',
+              *offenders, sep='\n  ', flush=True)
         raise RuntimeError('IDF USB implementation not fully linked into controller ELF')
     defined = subprocess.check_output([str(nm), '-D', '--defined-only', str(elf)], text=True)
     exports = [line.split()[-1] for line in defined.splitlines()]
