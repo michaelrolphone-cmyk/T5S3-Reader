@@ -46,7 +46,6 @@ bool GraphV2::addVerified(const SpecV2& spec) {
 
 void GraphV2::releaseDependencies(size_t index) {
   Node& node = nodes_[index];
-  // Release pins in reverse acquisition order, then unload orphaned modules.
   while (node.acquired) {
     size_t dependency = node.dependencies[--node.acquired];
     (void)nodes_[dependency].module.unpinConsumer();
@@ -67,7 +66,7 @@ bool GraphV2::activate(size_t index) {
   Node& node = nodes_[index];
   if (node.visit == Visit::Active)
     return node.module.state() == ModuleV2::State::Active;
-  if (node.visit == Visit::Visiting) return false;  // Dependency cycle.
+  if (node.visit == Visit::Visiting) return false;
   node.visit = Visit::Visiting;
   risc_provider_dependency_v1 deps[kMaxModules]{};
   for (size_t i = 0; i < node.spec.requirementCount; ++i) {
@@ -88,10 +87,9 @@ bool GraphV2::activate(size_t index) {
                         node.spec.provides, node.spec.api,
                         node.spec.requirementCount ? deps : nullptr,
                         node.spec.requirementCount)) {
-    // The loader can retain Failed state after a clean dlclose. Reset that
-    // state before rollback so a later activation can retry safely.
-    (void)node.module.unload();
-    releaseDependencies(index);
+    // If dlclose failed, the failed ELF may still hold a borrowed provider
+    // table. Quarantine it AND its dependency pins rather than free its code.
+    if (node.module.unload()) releaseDependencies(index);
     node.visit = Visit::Idle;
     return false;
   }
