@@ -9,6 +9,7 @@ on:
       - "Drivers/usb_controller_esp32s3/**"
       - "Drivers/board_power_t5s3_v2/**"
       - "Drivers/i2c_esp32s3_v2/**"
+      - "Drivers/platform_clock_v1/**"
       - "sdk/driver/RiscProviderV2.h"
       - "sdk/driver/RiscUsbProviderV1.h"
       - "sdk/driver/RiscUsbControllerV1.h"
@@ -21,6 +22,7 @@ on:
       - "scripts/build_usb_cp210x_v2.py"
       - "scripts/build_usb_host_v2.py"
       - "scripts/build_board_power_t5s3_v2.py"
+      - "scripts/build_platform_clock_v1.py"
       - "scripts/probe_usb_controller_esp32s3.py"
       - "scripts/probe_i2c_esp32s3_v2.py"
       - "scripts/audit_usb_controller_elf.py"
@@ -30,12 +32,14 @@ on:
       - "test/drivers/usb_host_v2*.c"
       - "test/drivers/board_power_t5s3_v2_test.c"
       - "test/drivers/i2c_esp32s3_v2_test.c"
+      - "test/drivers/platform_clock_v1_test.c"
       - "test/drivers/provider*.cpp"
       - "test/run_usb_cdc_v2_test.sh"
       - "test/run_usb_cp210x_v2_test.sh"
       - "test/run_usb_host_v2_test.sh"
       - "test/run_board_power_t5s3_v2_test.sh"
       - "test/run_i2c_esp32s3_v2_test.sh"
+      - "test/run_platform_clock_v1_test.sh"
       - "test/run_provider_graph_v2_test.sh"
       - "test/run_usb_provider_stack_v2_test.sh"
       - ".github/workflows/usb-elf-provider-v2.yml"
@@ -49,12 +53,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Exercise independent USB classes, host, board-power and I2C provider logic
+      - name: Exercise independent USB classes, host, board-power, I2C and clock provider logic
         run: |
           bash test/run_usb_cdc_v2_test.sh
           bash test/run_usb_cp210x_v2_test.sh
           bash test/run_board_power_t5s3_v2_test.sh
           bash test/run_i2c_esp32s3_v2_test.sh
+          bash test/run_platform_clock_v1_test.sh
       - name: Install PlatformIO and target toolchain
         run: |
           python -m pip install platformio==6.1.19
@@ -80,6 +85,8 @@ jobs:
           bash test/run_native_app_test.sh dist/experimental/usb-host-v2/driver.elf
           python scripts/build_board_power_t5s3_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-board-power-t5s3-v2/driver.elf
+          python scripts/build_platform_clock_v1.py
+          bash test/run_native_app_test.sh dist/experimental/platform-clock-v1/driver.elf
       - name: Preserve experimental binaries and compatibility report for inspection only
         uses: actions/upload-artifact@v4
         with:
@@ -87,4 +94,5 @@ jobs:
           path: |
             dist/experimental/usb-*/
             dist/experimental/i2c-*/
+            dist/experimental/platform-clock-v1/
           if-no-files-found: error
