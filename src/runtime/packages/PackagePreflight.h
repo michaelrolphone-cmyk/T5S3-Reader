@@ -61,17 +61,20 @@ enum class PreflightResult : uint8_t {
   UnavailableCapability
 };
 
+// Canonical lowercase names avoid case-insensitive SD/FAT aliases; rejecting
+// trailing punctuation avoids another source of basename normalization.
 inline bool safePackageEntryName(const char* name) {
   if (!name) return false;
   size_t i = 0;
   for (; i < sizeof(Identity::artifact) && name[i]; ++i) {
     const char ch = name[i];
-    const bool alnum = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-                       (ch >= '0' && ch <= '9');
+    const bool alnum = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9');
     if (!alnum && (i == 0 || (ch != '-' && ch != '_' && ch != '.'))) return false;
     if (ch == '.' && i && name[i - 1] == '.') return false;
   }
-  return i != 0 && i < sizeof(Identity::artifact);
+  if (!i || i >= sizeof(Identity::artifact)) return false;
+  const char last = name[i - 1];
+  return (last >= 'a' && last <= 'z') || (last >= '0' && last <= '9');
 }
 
 inline bool safePackageCapability(const char* capability) {
