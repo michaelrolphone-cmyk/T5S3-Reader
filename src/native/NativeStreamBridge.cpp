@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "runtime/streams/StreamRuntime.h"
 #include "runtime/resources/ExecutionContext.h"
+#include "runtime/capabilities/GnssStreamAuthority.h"
 #include "network/HttpDownloader.h"
 #include <T5AppApi.h>
 #include <T5UsbApi.h>
@@ -21,6 +22,8 @@ RuntimeStreams::Registry registry;
 // Exactly the existing stream registry is injected. Do not create a second
 // position registry, provider queue, or cross-task ELF driver callback.
 RuntimeStreams::LiveGnssSession gnss(RuntimeDevices::systemRegistry(), registry);
+RuntimeDevices::GnssStreamAuthority gnssGrants(RuntimeDevices::systemCapabilityAccess(),
+                                               RuntimeDevices::systemRegistry());
 RuntimeResources::ExecutionContext invocation;
 SemaphoreHandle_t mutex = nullptr;
 TaskHandle_t scheduler = nullptr;
@@ -40,6 +43,8 @@ void schedule(void*) {
   for (;;) {
     ulTaskNotifyTake(pdTRUE, wait);
     Lock lock;
+    // GNSS sources are forbidden in generic pipes until authorization is
+    // propagated to downstream buffers. No scheduler thread reads consent.
     registry.pump();
     wait = registry.runnable() ? pdMS_TO_TICKS(10) : portMAX_DELAY;
   }
@@ -51,6 +56,29 @@ bool initialize() {
   if (!scheduler && xTaskCreate(schedule, "stream-pipes", 4096, nullptr, 1, &scheduler) != pdPASS) return false;
   return true;
 }
+
+// Caller already holds the existing stream mutex. Check the *issued consent*
+// immediately before any operation on a previously returned GNSS handle, not
+// just when location->subscribe() or location->poll() is called. Revocation
+// destroys the stream and its queued records rather than letting stale data
+// drain into an app or a newly consented subscription.
+int32_t guardGnssStream(t5_stream_t handle) {
+  const auto result = gnssGrants.check(owner, handle);
+  if (result != RuntimeDevices::GnssStreamAuthority::Check::Denied) return T5_STREAM_OK;
+  RuntimeDevices::GnssStreamAuthority::Entry entry{};
+  if (gnssGrants.findStream(owner, handle, &entry)) {
+    (void)gnss.unsubscribe(owner, entry.subscription);
+    (void)gnssGrants.forgetStream(owner, handle);
+  }
+  return T5_STREAM_DENIED;
+}
+void forgetClosedGnssStream(t5_stream_t handle) {
+  RuntimeDevices::GnssStreamAuthority::Entry entry{};
+  if (!gnssGrants.findStream(owner, handle, &entry)) return;
+  (void)gnss.unsubscribe(owner, entry.subscription);
+  (void)gnssGrants.forgetStream(owner, handle);
+}
+
 struct File {
   HalFile file;
   uint64_t length = 0, position = 0;
@@ -280,14 +308,22 @@ int32_t readStream(t5_stream_t h, void* d, uint32_t n, uint32_t* out) {
   if (!authorized()) return T5_STREAM_DENIED;
   const auto claim = refreshDirect(h);
   if (claim != T5_STREAM_OK) return claim;
-  SESSION_CALL(registry.read(owner, h, d, n, out));
+  Lock lock;
+  const auto guard = guardGnssStream(h);
+  if (guard != T5_STREAM_OK) return guard;
+  const auto result = registry.read(owner, h, d, n, out);
+  wake(); return result;
 }
 int32_t writeStream(t5_stream_t h, const void* d, uint32_t n, uint32_t* out) {
   if (out) *out = 0;
   if (!authorized()) return T5_STREAM_DENIED;
   const auto claim = refreshDirect(h);
   if (claim != T5_STREAM_OK) return claim;
-  SESSION_CALL(registry.write(owner, h, d, n, out));
+  Lock lock;
+  const auto guard = guardGnssStream(h);
+  if (guard != T5_STREAM_OK) return guard;
+  const auto result = registry.write(owner, h, d, n, out);
+  wake(); return result;
 }
 int32_t finish(t5_stream_t h) { SESSION_CALL(registry.finish(owner, h)); }
 int32_t seek(t5_stream_t h, uint64_t offset) { SESSION_CALL(registry.seek(owner, h, offset)); }
@@ -300,13 +336,23 @@ int32_t closeStream(t5_stream_t h) {
     const bool wasDirect = directUsb && h == directHandle;
     result = registry.close(owner, h);
     closedDirect = wasDirect && !directUsb;
+    // An app may call the generic close instead of location->unsubscribe.
+    // Release the GNSS subscriber's device grant and clear its consent token.
+    forgetClosedGnssStream(h);
     (void)gnss.beforePoll(gnss.owner()); // Reconcile orphaned GNSS consumers on owner task.
   }
   if (closedDirect) nativeUsbDirectStreamRelease();
   wake();
   return result;
 }
-int32_t info(t5_stream_t h, t5_stream_info_t* out) { SESSION_CALL(registry.info(owner, h, out)); }
+int32_t info(t5_stream_t h, t5_stream_info_t* out) {
+  if (!authorized()) return T5_STREAM_DENIED;
+  Lock lock;
+  const auto guard = guardGnssStream(h);
+  if (guard != T5_STREAM_OK) return guard;
+  const auto result = registry.info(owner, h, out);
+  wake(); return result;
+}
 int32_t connect(t5_stream_t s, t5_stream_t d, uint32_t policy, t5_pipe_t* out) {
   if (out) *out = 0;
   if (!authorized()) return T5_STREAM_DENIED;
@@ -314,7 +360,14 @@ int32_t connect(t5_stream_t s, t5_stream_t d, uint32_t policy, t5_pipe_t* out) {
   if (src != T5_STREAM_OK) return src;
   const auto dst = refreshDirect(d);
   if (dst != T5_STREAM_OK) return dst;
-  SESSION_CALL(registry.connect(owner, s, d, policy, out));
+  Lock lock;
+  if (guardGnssStream(s) != T5_STREAM_OK || guardGnssStream(d) != T5_STREAM_OK)
+    return T5_STREAM_DENIED;
+  // Reject even a currently authorized GNSS pipe. Otherwise data copied to
+  // an unprotected destination could survive subsequent consent revocation.
+  if (gnssGrants.bound(owner, s) || gnssGrants.bound(owner, d)) return T5_STREAM_DENIED;
+  const auto result = registry.connect(owner, s, d, policy, out);
+  wake(); return result;
 }
 int32_t pause(t5_pipe_t h, uint32_t paused) { SESSION_CALL(registry.pause(owner, h, paused != 0)); }
 int32_t cancel(t5_pipe_t h) { SESSION_CALL(registry.cancel(owner, h)); }
@@ -334,12 +387,16 @@ int32_t readRecord(t5_stream_t h, void* data, uint32_t capacity, uint32_t* size)
   if (size) *size = 0;
   if (!authorized()) return T5_STREAM_DENIED;
   Lock lock;
+  const auto guard = guardGnssStream(h);
+  if (guard != T5_STREAM_OK) return guard;
   const auto result = registry.readRecord(owner, h, data, capacity, size);
   wake(); return result;
 }
 int32_t writeRecord(t5_stream_t h, const void* data, uint32_t size) {
   if (!authorized()) return T5_STREAM_DENIED;
   Lock lock;
+  const auto guard = guardGnssStream(h);
+  if (guard != T5_STREAM_OK) return guard;
   const auto result = registry.writeRecord(owner, h, data, size);
   wake(); return result;
 }
@@ -351,6 +408,8 @@ int32_t recordInfo(t5_stream_t h, riscrte_record_info_v1* out) {
   t5_stream_info_t base{};
   base.struct_size = sizeof(base);
   Lock lock;
+  const auto guard = guardGnssStream(h);
+  if (guard != T5_STREAM_OK) return guard;
   auto result = registry.info(owner, h, &base);
   if (result != T5_STREAM_OK) return result;
   result = registry.recordInfo(owner, h, schema, sizeof(schema), &stats);
@@ -382,7 +441,7 @@ const riscrte_stream_api_v2 api2 = {{RISCRTE_STREAM_API_VERSION_2, sizeof(riscrt
   openRecordBuffer, readRecord, writeRecord, recordInfo};
 
 void releaseStreams(void*, uint32_t id) {
-  if (mutex) { Lock lock; gnss.releaseOwner(id); registry.release(id); }
+  if (mutex) { Lock lock; gnss.releaseOwner(id); gnssGrants.releaseOwner(id); registry.release(id); }
   nativeUsbDirectStreamRelease();
   wake();
 }
@@ -446,6 +505,7 @@ t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream) {
     const bool wasDirect = directUsb && stream == directHandle;
     result = registry.close(owner, stream);
     closedDirect = wasDirect && !directUsb;
+    forgetClosedGnssStream(stream);
   }
   if (closedDirect) nativeUsbDirectStreamRelease();
   wake();
@@ -510,17 +570,32 @@ void nativeGnssDisconnect(uint32_t providerOwner) {
   wake();
 }
 t5_stream_result_t nativeGnssSubscribe(uint32_t authenticatedOwner, uint32_t authorizedDevice,
+                                      uint32_t issuedReadConsent,
                                       uint64_t* subscription, t5_stream_t* stream) {
   if (subscription) *subscription = 0;
   if (stream) *stream = 0;
   if (!authorized() || !initialize() || authenticatedOwner != owner ||
-      !authorizedDevice || !subscription || !stream) return T5_STREAM_DENIED;
+      !authorizedDevice || !issuedReadConsent || !subscription || !stream) return T5_STREAM_DENIED;
   Lock lock;
   if (gnss.device() != authorizedDevice) return T5_STREAM_DISCONNECTED;
-  return gnss.subscribe(authenticatedOwner, subscription, stream);
+  const auto result = gnss.subscribe(authenticatedOwner, subscription, stream);
+  if (result != T5_STREAM_OK) return result;
+  // A grant may disappear during synchronous stream allocation. Never expose
+  // an unguarded queue, including during a partially completed subscription.
+  if (!gnssGrants.bind(authenticatedOwner, authorizedDevice, issuedReadConsent,
+                       *subscription, *stream)) {
+    (void)gnss.unsubscribe(authenticatedOwner, *subscription);
+    *subscription = 0;
+    *stream = 0;
+    return T5_STREAM_DENIED;
+  }
+  return T5_STREAM_OK;
 }
 t5_stream_result_t nativeGnssUnsubscribe(uint32_t authenticatedOwner, uint64_t subscription) {
   if (!active || invocation.id() != authenticatedOwner || !mutex) return T5_STREAM_DENIED;
   Lock lock;
-  return gnss.unsubscribe(authenticatedOwner, subscription);
+  const auto result = gnss.unsubscribe(authenticatedOwner, subscription);
+  if (result == T5_STREAM_OK || result == T5_STREAM_INVALID)
+    (void)gnssGrants.forgetSubscription(authenticatedOwner, subscription);
+  return result;
 }
