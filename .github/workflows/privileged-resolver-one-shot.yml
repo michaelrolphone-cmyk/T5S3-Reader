@@ -1,0 +1,33 @@
+name: One-time privileged resolver source patch
+on:
+  push:
+    branches:
+      - feature/usb-elf-provider-migration
+    paths:
+      - .github/workflows/privileged-resolver-one-shot.yml
+permissions:
+  contents: write
+jobs:
+  apply-reviewed-patch:
+    if: github.repository == 'michaelrolphone-cmyk/T5S3-Reader' && github.ref == 'refs/heads/feature/usb-elf-provider-migration'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/usb-elf-provider-migration
+          persist-credentials: true
+      - name: Require the reviewed head and apply only the exact ELF source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "0f608fcbd1fea10ff2b43d890ed070dbcccfad5c"
+          python scripts/apply_privileged_resolver_patch_once.py
+          python test/drivers/privileged_resolver_v1_test.py
+          git diff --check
+          git diff --quiet -- . ':!lib/elf_loader/src/esp_elf.c'
+          test -n "$(git diff -- lib/elf_loader/src/esp_elf.c)"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- lib/elf_loader/src/esp_elf.c
+          git commit -m 'Fix scoped ELF imports bypassing custom global resolver'
+          git push origin HEAD:refs/heads/feature/usb-elf-provider-migration
