@@ -11,8 +11,11 @@
 #include <string.h>
 
 static const t5_ui_api_v1 *ui;
+static bool controls_ready;
+static bool reads_paused;
 static char status_text[96];
 static char count_text[24];
+static char queue_text[32];
 static char lat_text[32];
 static char lon_text[32];
 static char satellites_text[16];
@@ -24,13 +27,14 @@ static void show(void) {
         .subtitle = "Authorized location.fix.v1",
         .status = status_text,
         .back_label = "Back",
-        .confirm_label = "",
+        .confirm_label = controls_ready ? (reads_paused ? "Resume" : "Pause") : "",
         .previous_label = "",
-        .next_label = "",
+        .next_label = controls_ready ? "Revoke" : "",
     };
     const t5_ui_list_row_t rows[] = {
         {.title = "Stream", .value = status_text, .flags = 0},
         {.title = "Records", .value = count_text, .flags = 0},
+        {.title = "Queue / peak", .value = queue_text, .flags = 0},
         {.title = "Latitude", .value = lat_text, .flags = T5_UI_LIST_HIGHLIGHT_VALUE},
         {.title = "Longitude", .value = lon_text, .flags = T5_UI_LIST_HIGHLIGHT_VALUE},
         {.title = "Satellites", .value = satellites_text, .flags = 0},
@@ -100,11 +104,30 @@ static t5_device_handle_t find_receiver(const t5_device_api_v3 *devices) {
     return 0;
 }
 
+static void show_queue(const riscrte_stream_api_v2 *streams, t5_stream_t stream,
+                       riscrte_record_info_v1 *info) {
+    info->struct_size = sizeof(*info);
+    if (streams->record_info(stream, info) != T5_STREAM_OK) {
+        snprintf(queue_text, sizeof(queue_text), "metadata unavailable");
+        return;
+    }
+    snprintf(queue_text, sizeof(queue_text), "%lu/%lu (peak %lu)",
+             (unsigned long)info->queued_records,
+             (unsigned long)info->capacity_records,
+             (unsigned long)info->high_water_records);
+    if (reads_paused && info->capacity_records &&
+        info->queued_records == info->capacity_records)
+        snprintf(status_text, sizeof(status_text), "Queue full: producer backpressured");
+}
+
 void app_main(void) {
     const t5_app_api_v1 *app = t5_app_get_api(T5_APP_ABI_VERSION);
     ui = t5_ui_get_api(T5_UI_API_VERSION);
-    if (!app || !app->poll || !app->millis || !ui || !ui->render_list) return;
+    if (!app || !app->poll || !app->millis || !ui || !ui->render_list || !ui->poll_event) return;
+    controls_ready = false;
+    reads_paused = false;
     snprintf(count_text, sizeof(count_text), "0");
+    snprintf(queue_text, sizeof(queue_text), "--");
     snprintf(lat_text, sizeof(lat_text), "--");
     snprintf(lon_text, sizeof(lon_text), "--");
     snprintf(satellites_text, sizeof(satellites_text), "--");
@@ -161,13 +184,43 @@ void app_main(void) {
         return;
     }
 
+    controls_ready = true;
     status("Waiting for a GNSS fix");
     uint32_t received = 0;
     uint32_t last_poll = app->millis();
     uint32_t last_render = last_poll;
+    bool revoked = false;
     for (;;) {
-        t5_app_input_t input = {0};
-        if (!app->poll(&input, 50) || input.exit_requested || (input.buttons & T5_APP_BUTTON_BACK)) break;
+        t5_ui_event_t event = {0};
+        if (!ui->poll_event(&event, 50) || event.type == T5_UI_EVENT_EXIT ||
+            event.type == T5_UI_EVENT_BACK) break;
+        if (revoked) continue; // Keep the immutable PASS/FAIL verdict visible until Back.
+        if (event.type == T5_UI_EVENT_CONFIRM) {
+            reads_paused = !reads_paused;
+            status(reads_paused ? "Reads paused; GPS still polling" : "Reads resumed; draining queue");
+        } else if (event.type == T5_UI_EVENT_NEXT) {
+            // This is an intentional test, not ordinary application cleanup:
+            // leave the issued stream handle intact across consent release.
+            const t5_device_result_t released = devices->v2.release(authorization);
+            if (released != T5_DEVICE_OK) {
+                status("FAIL: could not release consent");
+                continue;
+            }
+            authorization = 0;
+            uint8_t probe[RISCRTE_LOCATION_FIX_SIZE] = {0};
+            uint32_t probe_size = UINT32_MAX;
+            const t5_stream_result_t result = streams->record_read(stream, probe, sizeof(probe), &probe_size);
+            revoked = true;
+            controls_ready = false;
+            if (result == T5_STREAM_DENIED && probe_size == 0)
+                status("PASS: revoked stream denied raw read");
+            else {
+                snprintf(status_text, sizeof(status_text), "FAIL: revoked read %ld / %lu",
+                         (long)result, (unsigned long)probe_size);
+                show();
+            }
+            continue;
+        }
         const uint32_t now = app->millis();
         if (now - last_poll >= 250u) {
             last_poll = now;
@@ -176,32 +229,37 @@ void app_main(void) {
                 snprintf(status_text, sizeof(status_text), "GNSS poll error %ld", (long)result);
                 break;
             }
-            for (unsigned n = 0; n < 8; ++n) {
-                uint8_t bytes[RISCRTE_LOCATION_FIX_SIZE] = {0};
-                uint32_t size = 0;
-                const t5_stream_result_t read = streams->record_read(stream, bytes, sizeof(bytes), &size);
-                if (read == T5_STREAM_AGAIN) break;
-                if (read != T5_STREAM_OK) {
-                    snprintf(status_text, sizeof(status_text), "Record read error %ld", (long)read);
-                    goto done;
+            show_queue(streams, stream, &info);
+            if (!reads_paused) {
+                for (unsigned n = 0; n < 8; ++n) {
+                    uint8_t bytes[RISCRTE_LOCATION_FIX_SIZE] = {0};
+                    uint32_t size = 0;
+                    const t5_stream_result_t read = streams->record_read(stream, bytes, sizeof(bytes), &size);
+                    if (read == T5_STREAM_AGAIN) break;
+                    if (read != T5_STREAM_OK) {
+                        snprintf(status_text, sizeof(status_text), "Record read error %ld", (long)read);
+                        goto done;
+                    }
+                    uint32_t age = 0;
+                    if (!decode(bytes, size, &age)) {
+                        snprintf(status_text, sizeof(status_text), "Invalid location.fix.v1 record");
+                        goto done;
+                    }
+                    ++received;
+                    snprintf(count_text, sizeof(count_text), "%lu", (unsigned long)received);
+                    snprintf(status_text, sizeof(status_text), "Live GNSS records");
                 }
-                uint32_t age = 0;
-                if (!decode(bytes, size, &age)) {
-                    snprintf(status_text, sizeof(status_text), "Invalid location.fix.v1 record");
-                    goto done;
-                }
-                ++received;
-                snprintf(count_text, sizeof(count_text), "%lu", (unsigned long)received);
-                snprintf(status_text, sizeof(status_text), "Live GNSS records");
+                show_queue(streams, stream, &info);
             }
         }
-        if (now - last_render >= 2000u) {
+        if (now - last_render >= (reads_paused ? 500u : 2000u)) {
             show();
             last_render = now;
         }
     }
 done:
+    controls_ready = false;
     show();
     (void)location->unsubscribe(subscription);
-    (void)devices->v2.release(authorization);
+    if (authorization) (void)devices->v2.release(authorization);
 }
