@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Cross-link the REAL ESP32-S3 I2C implementation inside its provider ELF.
+"""Cross-link actual ESP32-S3 I2C, GPIO, HAL and ISR code inside its ELF.
 
-Do not replace this build with firmware i2c_* exports: that produces a proxy.
-This remains experimental until all imports resolve through generic OS/CPU
-primitives and exclusive I2C0 ownership is established against legacy Wire.
+Never resolve peripheral i2c_*/gpio_* calls from compiled resident firmware.
+The provider is experimental until all loader imports and exclusive physical
+I2C0/legacy Wire arbitration are validated.
 """
 import json
 from pathlib import Path
@@ -21,15 +21,19 @@ SOURCES = (
     'components/driver/gpio.c',
     'components/driver/periph_ctrl.c',
     'components/hal/i2c_hal.c',
-    # ESP-IDF places the hardware ISR event handlers in a separate IRAM TU.
-    # Leaving this out would silently route I2C hardware interrupt behavior
-    # back into compiled firmware, defeating the purpose of an ELF driver.
+    # ESP-IDF defines interrupt-safe HAL handlers in their own translation unit.
+    # Leaving this out would route actual I2C interrupt work into firmware.
     'components/hal/i2c_hal_iram.c',
     'components/hal/gpio_hal.c',
     'components/soc/esp32s3/i2c_periph.c',
     'components/soc/esp32s3/gpio_periph.c',
 )
 MMIO = ('I2C0', 'I2C1', 'GPIO', 'SYSTEM', 'RTCCNTL', 'USB_SERIAL_JTAG')
+# GPIO has additional RTC/sleep operations irrelevant to the I2C host bus.
+# Build independent PIC sections and collect only reachable functions/data;
+# pulling those unused paths in via a whole object creates false runtime
+# dependencies on another peripheral driver's RTC implementation.
+FUNCTION_SECTIONS = ('-ffunction-sections', '-fdata-sections')
 
 
 def peripheral_map():
@@ -60,9 +64,6 @@ def run():
     entry = matched[0]
     args = list(entry['arguments']) if 'arguments' in entry else shlex.split(entry['command'])
     cc = Path(args[0]); nm = tool(cc, 'nm'); readelf = tool(cc, 'readelf')
-
-    # Reuse the same pinned upstream checkout as USB without changing its
-    # USB/HAL/SoC sparse paths. The package contains its own compiled code.
     idf_sources()
     subprocess.run(['git', '-C', str(SOURCE_CACHE), 'sparse-checkout', 'add',
                     'components/driver'], check=True)
@@ -76,7 +77,8 @@ def run():
     objects = []
     controller = OUTPUT / 'controller.o'
     compile_target(args, entry, SOURCE / 'driver.c', controller,
-                   c_compiler=True, extra=includes + ('-Wall', '-Wextra', '-Werror'))
+                   c_compiler=True,
+                   extra=includes + FUNCTION_SECTIONS + ('-Wall', '-Wextra', '-Werror'))
     objects.append(controller)
     undefined = subprocess.check_output([str(nm), '-u', str(controller)], text=True)
     if 'i2c_master_write_read_device' not in undefined or 'i2c_driver_install' not in undefined:
@@ -87,21 +89,23 @@ def run():
             raise RuntimeError('Pinned IDF I2C dependency absent: ' + filename)
         object_file = OUTPUT / f'idf-i2c-{index}.o'
         compile_target(args, entry, source, object_file,
-                       c_compiler=True, extra=includes)
+                       c_compiler=True, extra=includes + FUNCTION_SECTIONS)
         objects.append(object_file)
     output = OUTPUT / 'driver.elf'
     subprocess.run([str(cc), '-shared', '-nostdlib', '-nostartfiles',
                     '-Wl,--hash-style=sysv', '-Wl,--exclude-libs,ALL',
-                    '-Wl,-Bsymbolic',
+                    '-Wl,-Bsymbolic', '-Wl,--gc-sections',
                     '-Wl,--version-script,' + str(SOURCE / 'exports.map'),
                     *peripheral_map(), *map(str, objects), '-lgcc',
                     '-o', str(output)], cwd=ROOT, check=True)
     undefined = subprocess.check_output([str(nm), '-u', str(output)], text=True)
     (OUTPUT / 'unresolved-symbols.txt').write_text(undefined)
+    # This must match *every* physical function the provider needs. Unknown
+    # peripheral imports are not acceptable generic CPU/OS services.
     forbidden = [line for line in undefined.splitlines() if
-                 re.search(r'\b(?:i2c_|i2c_hal_|i2c_ll_|gpio_|gpio_hal_|periph_module_)', line)]
+                 re.search(r'\b(?:i2c_|gpio_|rtc_gpio_|rtc_io_|periph_module_)', line)]
     if forbidden:
-        raise RuntimeError('Physical I2C/SoC implementation still imported from firmware: '
+        raise RuntimeError('I2C ELF still imports a resident peripheral implementation: '
                            + ', '.join(forbidden))
     symbols = subprocess.check_output([str(readelf), '--dyn-syms', '--wide',
                                        str(output)], text=True)
@@ -110,10 +114,12 @@ def run():
                 p[4] == 'GLOBAL' and p[6] != 'UND'}
     if exported != {'t5_driver_get'}:
         raise RuntimeError('I2C ELF exports unexpected entry points: ' + repr(exported))
-    print('Physical ESP32-S3 I2C driver + PIC IDF I2C/GPIO/ISR HAL linked: PASS',
+    print('Physical ESP32-S3 I2C ELF + PIC IDF controller/GPIO/ISR HAL linked: PASS',
           flush=True)
-    print('Outstanding generic OS/CPU imports and exclusive Wire ownership remain '
-          'release blockers.', flush=True)
+    print('Remaining imported generic platform services:',
+          len(undefined.splitlines()), flush=True)
+    print('Exclusive legacy Wire arbitration and loader ABI remain release blockers.',
+          flush=True)
 
 
 if __name__ == '__main__':
