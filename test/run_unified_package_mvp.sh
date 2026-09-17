@@ -25,4 +25,6 @@ c++ "${flags[@]}" -I"$repo_dir/test/resources/package_floor_stubs" \
 echo '== Real P-256 writer, staging, extraction, publication and reboot verification =='
 python3 "$repo_dir/test/resources/package_builder_test.py"
 python3 "$repo_dir/test/resources/package_stage_test.py"
-echo 'PASS: host signed-package MVP (hardware acceptance and protected ELF loading remain separate).'
+echo '== Real P-256 provider ABI/import profile and signed-intake substitution =='
+python3 "$repo_dir/test/resources/package_provider_profile_test.py"
+echo 'PASS: host signed-package MVP (hardware acceptance, private provider admission and protected ELF loading remain separate).'
