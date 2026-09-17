@@ -84,7 +84,11 @@ int main() {
   assert(!ProviderAuthorization::io(access, registry, context, permission, physical, replacement,
                                     "serial.port", kCapabilityRead));
   context.end();
-  assert(registry.leaseCount() == 0 && access.owner() == 0);
+  // Permission cleanup is independent: the provider still owns the physical
+  // claim and must explicitly release it during its own shutdown.
+  assert(access.owner() == 0 && registry.leaseCount() == 1);
+  assert(registry.release(physical, owner) == Result::Ok);
+  assert(registry.leaseCount() == 0);
   assert(context.begin() && context.id() != owner);
   assert(!ProviderAuthorization::io(access, registry, context, permission, physical, replacement,
                                     "serial.port", kCapabilityRead));
