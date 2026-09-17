@@ -109,6 +109,8 @@ bool ModuleV2::load(const char* path, const char* expectedId,
 
 bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
                                  const uint8_t authenticatedSha256[32],
+                                 const char* const* signedImports,
+                                 size_t signedImportCount,
                                  const char* expectedId,
                                  const char* expectedCapability,
                                  uint32_t expectedApi,
@@ -116,18 +118,17 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
                                  size_t count) {
 #ifdef ESP_PLATFORM
   if (handle_ || !candidateBytes || !authenticatedSha256 || !length ||
+      !signedImports || !signedImportCount || signedImportCount > 128 ||
       length > 8u * 1024u * 1024u ||
       !validRequest(expectedId, expectedCapability, expectedApi, deps, count))
     return false;
   state_ = State::Failed;
 
-  /* The Package Manager is responsible for authenticating the SIGNER and the
-   * exact signed entry digest. The source buffer need not remain immutable:
-   * copy it once into private memory, hash that copy, then relocate from the
-   * exact same copy. An SD replacement between archive inspection and launch
-   * therefore produces a digest mismatch BEFORE any executable mapping.
-   * No hardware operation is implemented here. The image copy is temporary;
-   * the loader owns its own mapped sections after relocation succeeds. */
+  /* The Package Manager is responsible for authenticating the SIGNER, the
+   * entry digest and the exact manifest import list. Snapshot candidate bytes,
+   * hash the private copy, then validate imports and relocate from this SAME
+   * copy. An SD mutation between inspection and launch therefore fails before
+   * executable mapping. No peripheral operation is implemented in core. */
   auto* snapshot = static_cast<uint8_t*>(
       heap_caps_malloc(length, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (!snapshot) snapshot = static_cast<uint8_t*>(
@@ -150,7 +151,8 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
     heap_caps_free(snapshot);
     return false;
   }
-  const int result = esp_elf_relocate_privileged_verified_v1(image, snapshot, length);
+  const int result = esp_elf_relocate_privileged_verified_v1(
+      image, snapshot, length, signedImports, signedImportCount);
   heap_caps_free(snapshot);
   if (result != 0) {
     std::free(image);
@@ -175,6 +177,7 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
   /* Host tests exercise the legacy graph via POSIX dlopen; they must never
    * simulate success for an ESP32 privileged native ELF relocation. */
   (void)candidateBytes; (void)length; (void)authenticatedSha256;
+  (void)signedImports; (void)signedImportCount;
   (void)expectedId; (void)expectedCapability; (void)expectedApi;
   (void)deps; (void)count;
   return false;
