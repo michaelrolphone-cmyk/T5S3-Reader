@@ -1,17 +1,15 @@
 # RISC-PKG v1: deterministic package envelope
 
-**Status:** PR #76 implements the bounded decoder (`PackageArchive.h`), P-256 signing writer (`scripts/build_risc_package.py`), all-entry authentication (`PackageArchiveVerification.h`), device mbedTLS signer policy and read-only inspection (`PackageDeviceCrypto.*`, `PackageDeviceInspection.*`), and an initial shared authenticated staging path (`PackageArchiveStage.h`, `PackageDeviceStage.*`). **No signed archive is published by the firmware or enabled for production loading yet.** There are no provisioned production keys, persisted anti-rollback floors or authenticated-byte guarantees from SD verification through `dlopen`. Legacy App Store and driver installations remain separate unsigned paths.
+**Status:** Draft PR #76 implements a canonical decoder and P-256 signing writer, all-entry authentication, firmware signer policy, read-only inspection, device NVS security-version floors, authenticated intake, extracted-file verification, retained signed provenance, and a recoverable four-kind publication/orchestration API. **The legacy App Store and driver publishers do not yet call the new installer.** No production signing-key allowlist is provisioned and installed SD ELF bytes are not bound against substitution through `dlopen`; signed execution is NOT ready for release.
 
-Authority: [RiscRTE Platform Specification](RISCRTE_PLATFORM_SPEC.md) → [Platform Capability Roadmap](PLATFORM_CAPABILITY_ROADMAP.md) §§26–28, §39 → [Security Architecture](SECURITY_ARCHITECTURE.md) and [Unified Package Manager acceptance](UNIFIED_PACKAGE_MANAGER_MVP.md). Format fields describe package identity and compatibility, **not hardware permissions or activation**.
+Authority: [RiscRTE Platform Specification](RISCRTE_PLATFORM_SPEC.md) → [Platform Capability Roadmap](PLATFORM_CAPABILITY_ROADMAP.md) §§26–28, §39 → [Security Architecture](SECURITY_ARCHITECTURE.md) and [Unified Package Manager acceptance](UNIFIED_PACKAGE_MANAGER_MVP.md). Format metadata describes identity/compatibility, **not hardware permission or activation**.
 
 ## Encoding
 
-All integers are unsigned **little endian**. Strings are length-prefixed printable ASCII without NUL. Path separators, colon, dot traversal, invalid FAT aliases and out-of-range lengths are rejected. Strings are not Unicode-normalized. Fixed field order and zero reserved bytes are mandatory; unknown extensions and trailing data fail closed. Version 1 uses **uncompressed**, contiguous payload bytes, not ZIP.
-
-The exact archive is:
+All integers are unsigned little endian. Strings are length-prefixed printable ASCII without NUL. Separators, traversal, FAT aliases and overlength names are rejected. Fixed order, zero reserved fields and exact length are mandatory; unknown extensions and trailing bytes fail closed. Version 1 is uncompressed and has one contiguous payload sequence, not ZIP:
 
 ```text
-header[48] | deterministic manifest[manifest_length] | signature[64] | entry[0] | ... | entry[n-1]
+header[48] | manifest[manifest_length] | signature[64] | entry[0] | ... | entry[n-1]
 ```
 
 Header byte offsets:
@@ -20,22 +18,22 @@ Header byte offsets:
 |---|---:|---|
 | 0 | 8 | ASCII `RISCPKG1` |
 | 8 | 2 | format version `1` |
-| 10 | 2 | signature algorithm `1`: ECDSA P-256 / SHA-256, fixed raw big-endian `r[32] || s[32]` |
+| 10 | 2 | signature algorithm `1`: ECDSA P-256 / SHA-256, raw big-endian `r[32] || s[32]` |
 | 12 | 4 | manifest length, 16–4096 |
-| 16 | 2 | number of entries, 1–16 |
-| 18 | 2 | number of capability requirements, 0–16 |
+| 16 | 2 | entries, 1–16 |
+| 18 | 2 | capability requirements, 0–16 |
 | 20 | 2 | signature length, exactly 64 |
 | 22 | 2 | reserved, zero |
 | 24 | 8 | sum of entry lengths |
-| 32 | 4 | nonzero key identifier; selection never grants rights |
-| 36 | 8 | complete archive length, equal to actual file length |
+| 32 | 4 | nonzero key ID; never grants rights |
+| 36 | 8 | complete archive length, equal to actual input length |
 | 44 | 4 | reserved, zero |
 
-The 16-byte manifest prefix:
+Manifest prefix (16 bytes):
 
 | Offset | Width | Meaning |
 |---|---:|---|
-| 0 | 1 | kind: `0` app, `1` driver, `2` service, `3` provider |
+| 0 | 1 | kind: `0` application, `1` driver, `2` service, `3` provider |
 | 1 | 1 | ID length |
 | 2 | 1 | version length |
 | 3 | 1 | executable artifact basename length |
@@ -44,40 +42,56 @@ The 16-byte manifest prefix:
 | 8 | 4 | nonzero minimum runtime API |
 | 12 | 4 | nonzero security version |
 
-Four strings follow in order: `id`, `version`, `artifact`, `architecture`. ID and artifact use the shared bounded identity/safe filename rules; `version` is canonical `major.minor.patch` with uint32 components and no leading zero in a multi-digit component. The artifact is an `.elf` basename. Architecture is a bounded lowercase capability-like name; runtime preflight checks it against the target platform.
+Four strings follow: ID, version, artifact, architecture. ID/artifact obey the shared bounded identity/filename rules. Version is canonical `major.minor.patch` with uint32 components and no redundant leading zeros. Artifact is a `.elf` basename; architecture is a bounded lowercase name checked against runtime policy.
 
-Exactly `entry_count` records follow in **strict bytewise name order**:
+Exactly `entry_count` manifest records follow in strictly increasing bytewise name order:
 
 ```text
 name_length:u8 | executable:u8 (0 or 1) | size:u64 | sha256[32] | name[name_length]
 ```
 
-Each nonempty entry has a safe lowercase basename and must fit both per-entry and aggregate size limits. Duplicate or case/normalization-aliasing names fail. Exactly one entry must be flagged executable and match the declared artifact; no other `.elf`-suffixed resource is accepted. Entry payloads start immediately after the signature and are contiguous in manifest order, with no padding or hidden files. The sum of sizes must match the signed header.
+Each entry is nonempty, has a safe lowercase basename, and fits per-entry/total limits. Duplicate and normalization-aliasing names fail. Exactly one executable matches the declared artifact; other `.elf`-suffixed entries are rejected. Entry offsets begin immediately after the signature and are contiguous with no padding; aggregate lengths match the signed header. The reserved installed metadata filename `.risc-auth` cannot be a package-controlled entry because a leading dot is forbidden.
 
-Exactly `requirement_count` records follow, in **strict bytewise capability-name order**:
+Exactly `requirement_count` records follow in strictly increasing capability-name order:
 
 ```text
 name_length:u8 | minimum_api:u32 (nonzero) | capability[name_length]
 ```
 
-Requirements state capability/ABI availability, **not permission**. Preflight validates architecture, minimum runtime API, security floor supplied by the runtime, artifact/entry identity, size budgets and availability of every dependency. It never executes a candidate and does not authenticate any bytes.
+Requirements describe capability ABI availability, never permission. Preflight checks architecture, runtime API, security-version minimum, artifact identity, storage budgets and dependency availability. It does not authorize a device or execute code.
 
-## Signing, verification and trust
+## Signature, verifier and trusted policy
 
-The signature covers the SHA-256 digest of the literal **48-byte header and complete deterministic manifest**, not pretty-printed JSON. `scripts/build_risc_package.py` accepts an **externally supplied** NIST P-256 private key and stamps every entry's SHA-256 digest. No production private key may be checked into or generated by repository builds; host tests use temporary keys.
+The signature covers SHA-256 of the **literal 48-byte header plus deterministic manifest**. `scripts/build_risc_package.py` uses an externally supplied P-256 private key and inserts SHA-256 of every entry. No production private key is generated by repository builds; tests create ephemeral keys.
 
-`PackageArchive.h` parses bounded metadata but returns `ReadyForAuthentication`, **not** a trust verdict. `PackageArchiveVerification.h` hashes exactly the buffered signed prefix, verifies the raw ECDSA signature through the caller's trusted callback, then stream-hashes **all** entries and checks ELF class, machine and resource disguises. It uses a caller-owned bounded workspace and a 512-byte transfer buffer rather than allocating an ELF-sized buffer.
+`PackageArchive.h` only decodes and returns `ReadyForAuthentication`. `PackageArchiveVerification.h` authenticates the copied immutable prefix through a trusted signer callback, hashes every payload in 512-byte chunks, and checks ELF format/machine plus disguised ELF resources. `PackageTrustPolicy.h`, `PackageDeviceCrypto.*` resolve firmware-owned key IDs with exact kind/ID scope, revocation, unique IDs and minimum security versions. Unknown keys, empty allowlists and invalid signatures fail closed. Device `PackageSecurityFloor.h`/`PackageDeviceSecurityFloor.*` additionally enforce a persistent monotonic version per kind/ID in NVS, with explicit first-install policy. Neither an unsigned sidecar nor a package-supplied callback establishes trust.
 
-`PackageTrustPolicy.h` and `PackageDeviceCrypto.*` resolve a signing key only from a firmware/device-owned allowlist of exact package kind/ID scopes, nonzero security floors and revocation status. Unknown keys, empty lists, duplicate IDs, invalid points and signature mismatches fail closed. This cryptographic policy is not a key-provisioning mechanism and does not persist a monotonic security-version floor.
+## Managed intake and signed extraction
 
-## Intake, staging and publication boundary
+`PackageDeviceInspection.*` verifies an already-opened read-only archive, without installing. `PackageArchiveStage.h` authenticates input, preflights, copies to an exclusively created stage, closes/reopens, authenticates all staged bytes and compares the signed prefix against the original; failed operations discard only their owned disposable stage.
 
-`PackageDeviceInspection.*` verifies an already-opened read-only `.risc` file with firmware-supplied signer/runtime policy but does **not** install it. `PackageArchiveStage.h` exposes the same transport-agnostic staging algorithm for SD input or an already downloaded online archive: authenticate the source, preflight, copy into a fresh manager-owned stage in bounded chunks, seal and reopen it, then authenticate **all staged bytes** again. A different valid signed manifest/prefix substituted during copying is rejected; the disposable stage is discarded on copy/verification failure.
+`PackageDeviceStage.*` implements fixed `/Packages/.intake.part` with device NVS floor checks before/after copying and optionally returns a signed-prefix SHA-256 fingerprint in privileged RAM. Existing stages are preserved rather than overwritten. Network and SD producers both supply an already-opened readable `FILE*`; no manifest-selected path is accepted.
 
-`PackageDeviceStage.*` implements the current HAL adapter with the fixed manager-owned path `/Packages/.intake.part`, exclusive creation, exact writes, close/reopen readback, and explicit refusal to overwrite an interrupted stage. This path is a **publication-review candidate only**. It is not connected to the legacy App Store or driver publisher, does not provision a key, and has no protected immutable storage guarantee. Network and SD callers must pass an already-opened readable source; archive metadata never supplies storage paths.
+`PackageArchiveExtract.h`/`PackageDeviceExtract.*` require that *original* fingerprint and reauthenticate intake. They copy every signed entry to exclusively created `/Packages/.extract.part`, compare source digests, close/reopen and hash extracted files, reauthenticate intake and recheck floor. A cooperative extraction lock remains held through the final recheck. Interrupted extraction is not silently overwritten or recursively deleted.
 
-Before production publication, the manager must check a persisted security floor from storage the SD attacker cannot edit, enforce dependency/storage and in-use policy, hold the authenticated generation against external modification until after ELF mapping, perform recoverable publication, and keep unsigned development behavior distinct from signed release policy. Installation must not grant hardware access, activate a driver or execute candidate code. A package-use rename mutex alone cannot defeat physical SD removal or replacement.
+The extractor additionally retains a bounded authenticated provenance record before sealing:
 
-## Version evolution and limitations
+```text
+/Packages/.extract.part/
+  .risc-auth   = header[48] | manifest[manifest_length] | signature[64]
+  <exactly the signed entry basenames and bytes; nothing else>
+```
 
-Unknown schema/signature identifiers, nonzero reserved fields, compressed content, noncanonical metadata and extra bytes are rejected. Future versions require their own canonical signing rules. Neither a matching SHA-256 next to an unsigned legacy ELF nor a successful read-only inspection proves publisher authenticity through future SD mutations. **PR #76 remains draft: device staging and verification exist, but signed publication, persisted anti-rollback, full four-kind lifecycle, unified SD/online installer and physical reset/removal acceptance remain outstanding.**
+This record preserves complete signed identity, key ID, security version, architecture/dependencies and every entry digest without duplicating the entire payload. It contains **no private key**. It is itself mutable SD data and is never trusted by location alone. `PackageSignedProvenance.h`/`PackageDeviceDirectory.*` reauthenticate its signature against currently trusted firmware keys, validate runtime/floor policy, reject extra/missing files, hash every installed entry and recheck provenance/inventory/floor. The manager can re-verify after reboot without the prior RAM fingerprint; when one is present it must match exactly.
+
+## Recoverable publication and retained-generation state
+
+`PackageSignedTransaction.h` derives four-kind target and previous-generation paths from authenticated identity. `PackageDevicePublication.*` verifies the extracted stage, reserves its target against active loader mappings, verifies any previous signed generation, performs rename-based publication, re-verifies the new target, selectively removes the previous generation and only then advances NVS. The previous generation's signed `.risc-auth` is removed LAST during backup cleanup so a reset between file deletions can resume against its authenticated manifest. An empty, provenance-free backup directory is recognized only as the final rmdir step. Unknown files are never purged.
+
+A reset after target→backup restores an authenticated previous generation without premature floor advancement. A reset after stage→target verifies the new target, resumes selective backup removal, and retries the floor commit. If the NVS update fails, the publisher reports pending recovery rather than claiming a completed install. The common `PackageDeviceInstaller.*` entry point ties stage→extract→publish together for an already-opened source from either transport; the legacy UI/download call sites remain unmigrated.
+
+**Limitations:** SD rename, backup purge and NVS commit are not one atomic storage operation; crash recovery handles ordinary interrupted operations but there is not yet a device-authenticated in-flight installation-intent journal. A physical attacker may swap removable SD during a reset. NVS survives ordinary resets but is not tamper-resistant against raw flash erasure/rewrite. Most importantly, validating an SD file and holding a path-based replacement lease do NOT pin its bytes between verification and `dlopen`. Do not activate/load this newly published generation until an authenticated-byte lifetime boundary exists for all ELF loaders. Installation must never itself grant hardware rights or activate drivers.
+
+## Evolution and release conditions
+
+Unknown format/signature IDs, compressed payloads, noncanonical metadata, nonzero reserved fields, oversized values and extra bytes fail closed. Later formats require their own canonical rules. An unsigned legacy ELF with matching SHA-256 is not authenticated as a publisher. Before release, provision actual trusted signers/revocation, implement load-time byte binding and durable install intent, migrate offline/online UI paths, complete four-kind lifecycle and perform power-cut/SD-swap acceptance on both boards. **PR #76 stays draft, unmerged and unreleased.**
