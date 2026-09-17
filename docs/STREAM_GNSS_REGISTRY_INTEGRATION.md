@@ -28,7 +28,7 @@ On ESP32 firmware, `src/native/NativeDeviceBridge.cpp` calls passive `GpsDriverR
 
 ## Native diagnostic application
 
-`Apps/gnss_stream_diagnostic.c` and its sibling manifest provide a real ELF consumer. It discovers the GPS registry device, requests explicit physical-button READ permission, starts/subscribes through the semantic location API, validates the exact read-only `location.fix.v1` schema, polls on the app task, and decodes the 52-byte little-endian record without casting it to a native struct. It displays fix count, latitude, longitude, satellites and fix age, and releases the subscription and authorization on normal exit. Its minimum firmware is 1.2.14, matching this API introduction.
+`Apps/gnss_stream_diagnostic.c` and its sibling manifest provide a real ELF consumer. It discovers the GPS registry device, requests explicit physical-button READ permission, starts/subscribes through the semantic location API, validates the exact read-only `location.fix.v1` schema, polls on the app task, and decodes the 52-byte little-endian record without casting it to a native struct. It displays fix count, latitude, longitude, satellites and fix age, and releases the subscription and authorization on normal exit. Its minimum firmware is **1.2.15**, matching this API introduction; master firmware 1.2.14 does not contain the new semantic location API.
 
 ## Tests and acceptance gates
 
