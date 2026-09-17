@@ -34,10 +34,10 @@ class ProviderAuthorization final {
            std::strcmp(issued.capability, expectedCapability) == 0;
   }
 
-  // For transport I/O the provider must ALSO hold a physical Shared/Exclusive
-  // Registry lease for the exact same capability, device and invocation.
-  // A dependency-only lease is never a physical reservation. The resource
-  // manager remains responsible for shared/exclusive conflict resolution.
+  // The provider must ALSO own a physical lease for the same capability,
+  // device generation and invocation. READ can be shared; WRITE/CONFIGURE
+  // requires exclusive physical access. A dependency is never hardware access.
+  // The resource manager still resolves shared/exclusive contention.
   static bool io(const CapabilityAccess& access, const Registry& devices,
                  const RuntimeResources::ExecutionContext& context,
                  LeaseHandle authorization, LeaseHandle physical,
@@ -45,7 +45,9 @@ class ProviderAuthorization final {
                  uint32_t rights, Mode requiredMode = Mode::Exclusive) {
     if (!semantic(access, devices, context, authorization, expectedDevice,
                   expectedCapability, rights) || !physical ||
-        requiredMode == Mode::Dependency) return false;
+        requiredMode == Mode::Dependency ||
+        ((rights & (kCapabilityWrite | kCapabilityConfigure)) &&
+         requiredMode != Mode::Exclusive)) return false;
     LeaseInfo source{};
     return devices.getLease(physical, context.id(), &source) &&
            source.owner == context.id() && source.device == expectedDevice &&
