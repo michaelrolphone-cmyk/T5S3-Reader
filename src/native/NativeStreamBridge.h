@@ -25,6 +25,9 @@ t5_stream_result_t nativeGnssAttach(uint32_t owner, uint32_t device, uint32_t bo
 RuntimeStreams::LiveGnssSession::PollDecision nativeGnssBeforePoll(uint32_t owner);
 t5_stream_result_t nativeGnssPublishCopy(uint32_t owner, const t5_gps_state_t& state, uint32_t sampleMs);
 void nativeGnssDisconnect(uint32_t owner);
+// The consent handle is bound to the resulting stream under the stream mutex.
+// Raw record reads must revalidate it; generic pipe delegation is disallowed.
 t5_stream_result_t nativeGnssSubscribe(uint32_t authenticatedOwner, uint32_t authorizedDevice,
+                                      uint32_t issuedReadConsent,
                                       uint64_t* subscription, t5_stream_t* stream);
 t5_stream_result_t nativeGnssUnsubscribe(uint32_t authenticatedOwner, uint64_t subscription);
