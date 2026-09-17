@@ -14,9 +14,8 @@ bool validName(const char* s) {
 }
 
 GraphV2::~GraphV2() {
-  // Quiescence failure means hardware can still call into its ELF. Retain all
-  // borrowed metadata and executable snapshots rather than causing UAF.
-  // The higher-level manager must keep a failed graph in quarantine and retry.
+  // Failed hardware quiescence forbids releasing executable/metadata buffers.
+  // The manager must keep a failed graph quarantined and retry before destroy.
   if (!shutdown()) return;
   for (size_t i = 0; i < count_; ++i) {
     delete nodes_[i].owned;
@@ -30,7 +29,7 @@ int GraphV2::find(const char* capability, uint32_t api) const {
   for (size_t i = 0; i < count_; ++i) {
     if (nodes_[i].spec.api != api ||
         std::strcmp(nodes_[i].spec.provides, capability) != 0) continue;
-    if (match >= 0) return -2; // Ambiguous: never use install order as policy.
+    if (match >= 0) return -2;
     match = static_cast<int>(i);
   }
   return match;
@@ -47,6 +46,20 @@ int GraphV2::findProvider(const char* id, const char* capability, uint32_t api) 
 }
 
 bool GraphV2::addVerified(const SpecV2& spec) {
+  // The ordinary public graph API must never turn caller-supplied digests or
+  // import declarations into OS/CPU privilege, even when they look valid.
+  return addChecked(spec, false);
+}
+
+bool GraphV2::addAuthenticatedPrivileged(const SpecV2& spec) {
+  // ONLY the firmware's signed-package executor is a friend of this method.
+  // It MUST verify real P-256, signed entry hashes, identity, floor and exact
+  // import declaration before constructing this request. Friend access is
+  // not process memory isolation and no C/ELF symbol export is added here.
+  return addChecked(spec, true);
+}
+
+bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
   bool emptyDigest = true;
   for (uint8_t byte : spec.authenticatedElfSha256)
     if (byte) { emptyDigest = false; break; }
@@ -63,19 +76,15 @@ bool GraphV2::addVerified(const SpecV2& spec) {
                           spec.signedImportCount > 0 &&
                           spec.signedImportCount <= 128 &&
                           !emptyDigest;
-  /* A digest and import list are DATA, not a signer. The manager's private
-   * admission boundary must authenticate them before calling this method.
-   * Never borrow any of this data from a temporary caller after registration. */
   if (count_ == kMaxModules || !validName(spec.id) ||
       !validName(spec.provides) || !spec.api ||
       (spec.verifiedElfPath && spec.verifiedElfPath[0] != '/') ||
       (regular && !spec.verifiedElfPath) ||
       (!regular && !privileged) ||
+      (privilegedAdmission != privileged) ||
       spec.requirementCount > kMaxModules ||
       (spec.requirementCount && !spec.requirements)) return false;
   if (privileged) {
-    // Validate bounds BEFORE strcmp; neither malformed input nor a forged
-    // unterminated declaration may drive an unbounded string walk.
     for (size_t i = 0; i < spec.signedImportCount; ++i) {
       if (!spec.signedImports[i]) return false;
       char bounded[OwnedNodeV2::kImportName]{};
@@ -98,8 +107,8 @@ bool GraphV2::addVerified(const SpecV2& spec) {
       if (std::strcmp(spec.requirements[i].capability,
                       spec.requirements[j].capability) == 0) return false;
   }
-  // Multiple verified drivers may offer the same semantic capability.
-  // acquire() refuses ambiguity; acquireFrom() requires an explicit ID.
+  // Multiple drivers offering the same capability are allowed; acquisition
+  // rejects ambiguous selection rather than using installation order.
   auto* owned = new (std::nothrow) OwnedNodeV2();
   if (!owned) return false;
   if (!owned->snapshot(spec)) {
@@ -151,10 +160,9 @@ bool GraphV2::activate(size_t index) {
     deps[i] = {requirement.capability, requirement.api,
                nodes_[dependency].module.capability()};
   }
-  /* Registration-owned bytes cannot change when the manifest, verifier
-   * receipt or SD buffer goes out of scope. The loader independently copies
-   * those bytes, checks the signed digest and validates exact imports on the
-   * SAME private image that will be relocated. */
+  // The graph owns an immutable registration snapshot; the private loader
+  // takes another byte snapshot, checks its authenticated digest and verifies
+  // the exact import set BEFORE mapping that same image.
   const bool loaded = node.spec.requiredOsCpuAbi
       ? node.module.loadVerifiedBytes(node.spec.verifiedElfBytes,
                                       node.spec.verifiedElfLength,
