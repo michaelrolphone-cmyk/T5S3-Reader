@@ -20,7 +20,6 @@ SOURCE_CACHE = ROOT / 'dist/idf-usb-source/v4.4.7'
 IDF_TAG = 'v4.4.7'
 USB_SOURCES = ('hcd_dwc.c', 'hub.c', 'usb_helpers.c', 'usb_host.c',
                'usb_private.c', 'usbh.c', 'usb_phy.c')
-# USB-specific hardware HAL belongs to the controller ELF, not firmware.
 USB_HAL_SOURCES = ('usb_hal.c', 'usb_phy_hal.c', 'usb_dwc_hal.c')
 USB_SOC_SOURCES = ('usb_phy_periph.c', 'usb_periph.c')
 
@@ -137,11 +136,19 @@ def run():
     if offenders:
         print('Unresolved USB internals:', *offenders, sep='\n  ', flush=True)
         raise RuntimeError('Physical controller still imports internal USB implementation')
-    defined = subprocess.check_output([str(nm), '-D', '--defined-only', str(elf)], text=True)
-    exports = [line.split()[-1] for line in defined.splitlines()]
-    if exports != ['t5_driver_get']:
-        raise RuntimeError('Controller exports more than entry point: ' + repr(exports))
     readelf = tool(compiler, 'readelf')
+    symbols = subprocess.check_output([str(readelf), '--dyn-syms', '--wide', str(elf)],
+                                      text=True)
+    export_functions = {parts[7] for line in symbols.splitlines()
+                        if len(parts := line.split()) >= 8 and parts[3] == 'FUNC'
+                        and parts[4] == 'GLOBAL' and parts[6] != 'UND'}
+    if export_functions != {'t5_driver_get'}:
+        raise RuntimeError('Unexpected exported ELF functions: ' + repr(export_functions))
+    defined = subprocess.check_output([str(nm), '-D', '--defined-only', str(elf)], text=True)
+    extra_symbols = {line.split()[-1] for line in defined.splitlines()} - {
+        't5_driver_get', '__bss_start', '_edata', '_end'}
+    if extra_symbols:
+        raise RuntimeError('Unexpected exported ELF data: ' + repr(extra_symbols))
     dynamic = subprocess.check_output([str(readelf), '-d', str(elf)], text=True)
     if 'TEXTREL' in dynamic:
         raise RuntimeError('Controller contains text/read-only dynamic relocations')
