@@ -16,6 +16,12 @@ bool verifyAppPair(const char* elfPath, const char* manifestPath,
 // an installed app. A corrupt or ambiguous state is left in place, not erased.
 bool recoverAppPair(const char* filename);
 
+// Scan /Apps for managed ELF targets, staged files and backups. Close the
+// directory before any rename, recover each discovered package independently,
+// and report false if any candidate is unsafe. Never delete unknown content.
+// Call before the springboard presence check and before installed enumeration.
+bool recoverAppInventory();
+
 // Delete only the two known disposable .part paths after recovery succeeds.
 bool clearAppStage(const char* filename);
 
