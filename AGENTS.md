@@ -12,6 +12,10 @@ Use **RiscRTE** for the overall firmware, runtime, build/release system, artifac
 
 Core rule: new reusable functionality normally belongs in a capability, provider/service, stream, device, job, intent/content handler, package, execution-context facility, or core runtime primitive rather than private application infrastructure. Applications should request semantic capabilities instead of binding directly to concrete hardware implementations where the specification defines such a capability.
 
+## Pull request isolation — mandatory
+
+**NEVER stack pull requests. Every new PR must target `master` directly.** Never set another feature branch or unmerged PR as a PR's base, even temporarily, and never include another open PR's unmerged commits in a feature PR. Start each new feature branch from current `master`; keep unrelated work in independent branches and independent PRs. If a feature depends on another unmerged feature, finish/merge the prerequisite first, then branch from updated `master` and create its own PR. Do not work around this by opening a PR against `master` that contains a second PR's commits. If an existing PR violates this rule, preserve unique work, remove the cross-PR dependency and correct its base and diff before proceeding. Backmerge current `master` into a feature branch when necessary to resolve divergence, but never backmerge an unmerged feature branch.
+
 ## Tagged firmware releases
 
 Repository: michaelrolphone-cmyk/T5S3-Reader. Release branch: master.
