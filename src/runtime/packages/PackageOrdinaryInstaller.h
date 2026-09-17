@@ -1,53 +1,53 @@
 #pragma once
 
 #include "PackageOrdinaryStage.h"
-#include "PackageTransaction.h"
+#include "PackageOrdinaryTransaction.h"
 
 namespace RuntimePackages {
 
-// Manager-only, transport-independent installation path. Source and stage
-// implement the ordinary 512-byte streaming interfaces; Ops owns manager-
-// derived target/stage/backup paths. Verify MUST independently parse each
-// directory's stored manifest, check its identity and exact inventory, and
-// hash all entries. In particular, the old generation has its own version and
-// manifest: do not verify it against the incoming candidate's plan.
-// Neither package metadata nor a matching checksum authorizes an ELF to load.
+// A single manager-only SD/download entrypoint for all package kinds. The
+// source and destination implement the bounded stream interfaces in
+// PackageOrdinaryStage. Verify MUST independently parse each directory's
+// retained manifest, establish its Identity and hash its exact file inventory.
+// The previously installed generation has its OWN manifest and version.
+// Neither metadata nor an integrity hash grants execution or hardware rights.
 enum class OrdinaryInstallResult : uint8_t {
   Installed, InvalidInput, RecoveryRejected, StageAlreadyExists,
-  StageRejected, StageVerificationRejected, PublicationRejected
+  StageRejected, StageVerificationRejected, PublicationRejected,
+  PublicationCleanupPending
 };
-
 struct OrdinaryInstallOutcome {
   OrdinaryInstallResult result = OrdinaryInstallResult::InvalidInput;
   OrdinaryStageResult staging = OrdinaryStageResult::InvalidInput;
+  OrdinaryTransactionResult transaction = OrdinaryTransactionResult::InvalidIdentity;
 };
 
-// The same function handles SD and downloaded Source implementations. It does
-// NOT perform UI, network, package parsing, automatic activation or device
-// permission grants. Caller serializes transactions for the same stage path;
-// PackageTransaction takes the target's exclusive replacement lease during
-// recovery and publication. A failed stage may discard only files it created.
+// Caller owns source, parser, manager-derived temporary destination and a
+// per-stage serialization lock. Typed transaction code independently derives
+// all four-kind paths, checks semantic versions, takes a target replacement
+// lease and preserves the previous verified generation on interrupted updates.
+// This function never performs dlopen, activation, permission grants or UI.
 template <typename Source, typename Destination, typename Hash,
           typename Resolver, typename Ops, typename Verify, typename Purge>
 OrdinaryInstallOutcome installOrdinaryPackage(
     const OrdinaryPackagePlan& plan, const uint8_t* manifest,
     size_t manifestBytes, Source& source, Destination& destination, Hash& hash,
     Resolver resolver, const PackageRuntimePolicy& policy,
-    uint8_t (&io)[kOrdinaryIoBytes], Ops& ops, const TransactionPaths& paths,
-    Verify verifyDirectory, Purge purgeManagedBackup, bool replacementAllowed) {
+    uint8_t (&io)[kOrdinaryIoBytes], Ops& ops, Verify verifyDirectory,
+    Purge purgeManagedBackup, bool replacementAllowed) {
   OrdinaryInstallOutcome outcome{};
-  if (!replacementAllowed || !paths.target || !paths.stage || !paths.backup ||
-      !paths.target[0] || !paths.stage[0] || !paths.backup[0] ||
-      std::strcmp(paths.target, paths.stage) == 0 ||
-      std::strcmp(paths.target, paths.backup) == 0 ||
-      std::strcmp(paths.stage, paths.backup) == 0)
+  OrdinaryTransactionPaths paths{};
+  if (!replacementAllowed || !ordinaryTransactionPaths(plan.identity.kind,
+                                                      plan.identity.id, paths))
     return outcome;
 
-  // Recover BEFORE staging: never overwrite interrupted operations or erase
-  // an unknown directory. The verifier must evaluate the installed generation,
-  // not assume its manifest is the version being installed now.
-  if (!recoverDirectoryTransaction(ops, paths, verifyDirectory,
-                                   purgeManagedBackup)) {
+  Identity observed{};
+  outcome.transaction = recoverOrdinaryPackage(ops, plan.identity.kind,
+      plan.identity.id, verifyDirectory, purgeManagedBackup, observed);
+  if (outcome.transaction != OrdinaryTransactionResult::NoInstalledPackage &&
+      outcome.transaction != OrdinaryTransactionResult::InstalledVerified &&
+      outcome.transaction != OrdinaryTransactionResult::PreviousRestored &&
+      outcome.transaction != OrdinaryTransactionResult::Removed) {
     outcome.result = OrdinaryInstallResult::RecoveryRejected;
     return outcome;
   }
@@ -61,15 +61,26 @@ OrdinaryInstallOutcome installOrdinaryPackage(
     outcome.result = OrdinaryInstallResult::StageRejected;
     return outcome;
   }
-  if (!verifyDirectory(paths.stage)) {
-    // Destination can dispose of only its own files, not an existing target,
-    // backup, unknown file or a stage from another installation.
+  observed = {};
+  if (!verifyDirectory(paths.stage, observed) ||
+      !samePackage(plan.identity, observed) ||
+      std::strcmp(plan.identity.version, observed.version) != 0 ||
+      std::strcmp(plan.identity.artifact, observed.artifact) != 0) {
+    // Discard only files created by this invocation, never an earlier stage
+    // or an unknown file in the target/backup.
     (void)destination.discard();
     outcome.result = OrdinaryInstallResult::StageVerificationRejected;
     return outcome;
   }
-  if (!publishDirectoryTransaction(ops, paths, verifyDirectory,
-                                   purgeManagedBackup, replacementAllowed)) {
+  outcome.transaction = publishOrdinaryPackage(ops, plan.identity,
+      verifyDirectory, purgeManagedBackup, observed);
+  if (outcome.transaction == OrdinaryTransactionResult::CleanupPending) {
+    // Newly published target is verified, but recovery must finish deleting
+    // the previous managed generation before another package operation.
+    outcome.result = OrdinaryInstallResult::PublicationCleanupPending;
+    return outcome;
+  }
+  if (outcome.transaction != OrdinaryTransactionResult::Published) {
     outcome.result = OrdinaryInstallResult::PublicationRejected;
     return outcome;
   }
