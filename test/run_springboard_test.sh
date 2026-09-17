@@ -17,44 +17,39 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -pthread -I"$repo_dir/src" \
   "$repo_dir/test/resources/package_use_gate_test.cpp" -o "$binary"
 "$binary"
-# The common binary envelope must reject noncanonical, malformed and oversized
-# metadata without loading any package entry or allocating an ELF-sized buffer.
+# DEFAULT MVP: ordinary self-declared digest integrity, SAME reader for
+# downloaded and SD bytes, four kinds, bounded staging, readback and failures.
+# This test needs OpenSSL only for SHA-256, NEVER signing/key provisioning.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo_dir/src" "$repo_dir/test/resources/package_ordinary_stage_test.cpp" \
+  -lcrypto -o "$binary"
+"$binary"
+# Experimental signed-format prototype regressions below are not a requirement
+# to install ordinary MVP packages; they are retained to avoid regressions in
+# existing code while that experiment is isolated from default install paths.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo_dir/src" "$repo_dir/test/resources/package_archive_test.cpp" -o "$binary"
 "$binary"
-# Firmware policy must reject unknown/revoked/out-of-scope keys and ambiguous IDs
-# before attempting cryptographic verification of a signed manifest.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo_dir/src" "$repo_dir/test/resources/package_trust_policy_test.cpp" -o "$binary"
 "$binary"
-# Security versions must persist per (kind, ID), never silently reset on backend
-# failure, and never permit an installed floor to be lowered.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -pthread -I"$repo_dir/src" \
   "$repo_dir/test/resources/package_security_floor_test.cpp" -o "$binary"
 "$binary"
-# Compile the actual ESP NVS-backed implementation against fault-injected host
-# NVS storage; use real OpenSSL SHA-256 for the shortened collision-checked key.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -pthread -I"$repo_dir/test/resources/package_floor_stubs" -I"$repo_dir/src" \
   "$repo_dir/src/runtime/packages/PackageDeviceSecurityFloor.cpp" \
   "$repo_dir/test/resources/package_device_security_floor_test.cpp" \
   -lcrypto -o "$binary"
 "$binary"
-# Publication must hold the exclusive target lease through rename, backup
-# cleanup and persistent floor advance; fault-inject resets at transaction cuts.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -pthread -I"$repo_dir/src" \
   "$repo_dir/test/resources/package_signed_transaction_test.cpp" \
   -o "$binary"
 "$binary"
-# Generate ephemeral signing keys in temp directories. Exercise the real P-256
-# writer/reader and reauthenticate the sealed staged archive after SD copy races,
-# short writes, seal failures and substitution by a different valid package.
 python3 "$repo_dir/test/resources/package_builder_test.py"
 python3 "$repo_dir/test/resources/package_stage_test.py"
-# Signed provider profile and exact ELF import declarations must be bound by
-# the same P-256 manifest; signed malformed profiles never become receipts.
 python3 "$repo_dir/test/resources/package_provider_profile_test.py"
 for pair in \
   "springboard springboard_test" \
@@ -89,4 +84,4 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_di
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
 python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
-echo 'Native app regression tests passed, including NVS floor faults, signed provider profiles, signed extraction/provenance, publication recovery, package trust scope and legacy recovery'
+echo 'Native app regression tests passed, including ordinary four-kind staging/SHA-256, legacy recovery and optional signed prototype regressions'
