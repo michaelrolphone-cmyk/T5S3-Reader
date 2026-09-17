@@ -2,11 +2,13 @@
 
 #include "AppManifest.h"
 #include "runtime/packages/PackagePairTransaction.h"
+#include "runtime/packages/PackagePreflight.h"
 
 #include <AppManifestRules.h>
 #include <ArduinoJson.h>
 #include <HalStorage.h>
 #include <Logging.h>
+#include <NativeAppLauncher.h>
 #include <esp_task_wdt.h>
 #include <mbedtls/sha256.h>
 
@@ -18,9 +20,7 @@ namespace RuntimePackages {
 namespace {
 constexpr uint64_t kMaxAppBytes = 1024u * 1024u;
 
-bool validFilename(const char* filename) {
-  return t5_safe_elf_name(filename) && std::strcmp(filename, "springboard.elf") != 0;
-}
+bool validFilename(const char* filename) { return t5_safe_elf_name(filename); }
 
 struct Paths {
   std::string targetElf, targetManifest, stageElf, stageManifest, backupElf, backupManifest;
@@ -95,9 +95,9 @@ bool verifyNamedPair(const char* elf, const char* manifest, const char* filename
   t5_app_manifest_t parsed{};
   if (!readAppManifest(manifest, parsed) || std::strcmp(parsed.file_name, filename) != 0) return false;
   // readAppManifest validates JSON, duplicate keys, length, digest spelling and
-  // the size limit. Reparse the bounded sidecar to obtain the digest fields.
+  // size limits. Reparse the bounded sidecar to obtain its digest fields.
   const String raw = Storage.readFile(manifest);
-  if (raw.isEmpty() || raw.length() > 2048) return false;
+  if (raw.length() == 0 || raw.length() > 2048) return false;
   JsonDocument json;
   if (deserializeJson(json, raw) || !json.is<JsonObjectConst>()) return false;
   const JsonVariantConst declaredSize = json["size_bytes"];
@@ -137,8 +137,17 @@ bool clearAppStage(const char* filename) {
 }
 
 bool publishAppPair(const char* filename, bool replacementAllowed) {
-  if (!Storage.ready() || !validFilename(filename) || !replacementAllowed) return false;
+  if (!Storage.ready() || !validFilename(filename) || !replacementAllowed ||
+      !safePackageEntryName(filename)) return false; // New releases use canonical FAT-safe names.
   Paths paths(filename);
+  // An app may update other apps, but never its own mapped ELF. Only the
+  // loader knows the active path, so this gate cannot be delegated to the app.
+  const char* active = native_app_current_path();
+  const std::string mappedPath = std::string("/sd") + paths.targetElf;
+  if (active && std::strcmp(active, mappedPath.c_str()) == 0) {
+    LOG_ERR("APPSTORE", "Refusing replacement of running application %s", filename);
+    return false;
+  }
   StorageOps ops;
   if (!recoverAppPair(filename) ||
       !verifyNamedPair(paths.stageElf.c_str(), paths.stageManifest.c_str(), filename, true)) {
@@ -146,10 +155,9 @@ bool publishAppPair(const char* filename, bool replacementAllowed) {
     return false;
   }
   const auto verify = [filename, &paths](const char* elf, const char* manifest) {
-    // Only the disposable stage must carry signed-era digest metadata. An old
-    // installed package may be versionless and digestless, for migration only.
-    const bool stage = std::strcmp(elf, paths.stageElf.c_str()) == 0;
-    return verifyNamedPair(elf, manifest, filename, stage);
+    // A previous installed package may be digestless, for migration only.
+    const bool staged = std::strcmp(elf, paths.stageElf.c_str()) == 0;
+    return verifyNamedPair(elf, manifest, filename, staged);
   };
   return publishPairTransaction(ops, paths.view(), verify, replacementAllowed);
 }
