@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
 namespace RuntimePackages {
 
@@ -27,7 +28,9 @@ inline bool safeId(const char* id) {
     const bool alnum = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9');
     if (!alnum && (size == 0 || (ch != '-' && ch != '_'))) return false;
   }
-  return size != 0 && size < sizeof(Identity::id);
+  if (!size || size >= sizeof(Identity::id)) return false;
+  const char last = id[size - 1];
+  return (last >= 'a' && last <= 'z') || (last >= '0' && last <= '9');
 }
 
 // This is a single executable basename, not a path or URI. In particular,
@@ -46,20 +49,25 @@ inline bool safeArtifact(const char* name) {
          std::strcmp(name + size - 4, ".elf") == 0;
 }
 
-// Numeric major.minor.patch, without prerelease or build metadata. Matching
-// the existing release validators keeps update identity deterministic.
+// Numeric major.minor.patch, without prerelease or build metadata. Every
+// component fits uint32_t so comparisons cannot overflow or truncate.
 inline bool safeVersion(const char* version) {
   if (!version) return false;
   unsigned components = 0;
   size_t digits = 0;
   size_t size = 0;
+  uint32_t component = 0;
   for (; size < sizeof(Identity::version) && version[size]; ++size) {
     const char ch = version[size];
     if (ch >= '0' && ch <= '9') {
+      const uint32_t digit = static_cast<uint32_t>(ch - '0');
+      if (component > (std::numeric_limits<uint32_t>::max() - digit) / 10) return false;
+      component = component * 10 + digit;
       ++digits;
     } else if (ch == '.' && digits && components < 2) {
       ++components;
       digits = 0;
+      component = 0;
     } else {
       return false;
     }
@@ -71,6 +79,10 @@ inline bool makeIdentity(Kind kind, const char* declaredId, const char* version,
                          const char* artifact, bool allowLegacyVersion, Identity* out) {
   if (out) *out = {};
   if (!out || !safeArtifact(artifact)) return false;
+  switch (kind) {
+    case Kind::Application: case Kind::Driver: case Kind::Service: case Kind::Provider: break;
+    default: return false;
+  }
   char inferred[sizeof(Identity::id)]{};
   const char* id = declaredId;
   if (!id || !id[0]) {
