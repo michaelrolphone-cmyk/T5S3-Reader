@@ -13,8 +13,8 @@ namespace RuntimePackages {
 namespace {
 constexpr size_t kPathBytes = 256;
 std::mutex& publicationMutex() {
-  // Serializes the one shared /Packages/.extract.part across package identities
-  // as well as the separate target-specific PackageReplacementLease.
+  // Serializes the shared /Packages/.extract.part across identities, alongside
+  // the target-specific PackageReplacementLease held by the transaction.
   static std::mutex mutex;
   return mutex;
 }
@@ -32,19 +32,38 @@ struct StorageOps {
   bool rename(const char* from, const char* to) { return Storage.rename(from, to); }
 };
 
-// Backup cleanup can be interrupted after individual entry deletions; retain
-// signed provenance until LAST, so on reboot we can authenticate the manifest
-// and remove only listed remaining entries. An empty provenance-free directory
-// is the sole special case for a cut between final remove and rmdir.
 bool emptyDirectory(const char* path) {
-  HalFile directory = Storage.open(path, O_RDONLY);
-  if (!directory.isOpen() || !directory.isDirectory()) return false;
-  HalFile item = directory.openNextFile();
-  const bool empty = !item.isOpen();
-  if (item.isOpen()) (void)item.close();
-  return directory.close() && empty;
+  HalFile dir = Storage.open(path, O_RDONLY);
+  if (!dir.isOpen() || !dir.isDirectory()) return false;
+  HalFile entry = dir.openNextFile();
+  const bool empty = !entry.isOpen();
+  if (entry.isOpen()) (void)entry.close();
+  return dir.close() && empty;
 }
 
+bool onlyProvenance(const char* path) {
+  HalFile dir = Storage.open(path, O_RDONLY);
+  if (!dir.isOpen() || !dir.isDirectory()) return false;
+  size_t found = 0;
+  bool valid = true;
+  while (valid) {
+    HalFile entry = dir.openNextFile();
+    if (!entry.isOpen()) break;
+    char name[128]{};
+    const size_t length = entry.getName(name, sizeof(name));
+    const bool regular = !entry.isDirectory();
+    (void)entry.close();
+    if (!regular || !length || length >= sizeof(name) ||
+        std::strcmp(name, kPackageProvenanceName) || ++found > 1)
+      valid = false;
+  }
+  return dir.close() && valid && found == 1;
+}
+
+// Backup cleanup is resumable even after an interrupted per-file deletion.
+// Retain signed metadata until LAST, so only filenames listed in an actually
+// authenticated prior manifest can be deleted. The sole provenance-free
+// recovery state is an empty directory awaiting final rmdir.
 bool inspectBackupProvenance(const char* backup, Kind kind, const char* id,
     const TrustedPackageSigner* signers, size_t signerCount,
     PackageVerificationWorkspace& workspace, PackageArchive& archive,
@@ -69,7 +88,8 @@ bool inspectBackupProvenance(const char* backup, Kind kind, const char* id,
           static_cast<int>(kPackageHeaderBytes + manifestBytes) ||
       std::memcmp(header, workspace.signedPrefix, sizeof(header))) return false;
   const size_t prefixSize = kPackageHeaderBytes + manifestBytes;
-  const auto prefix = [&workspace, prefixSize](uint64_t at, uint8_t* out, size_t count) {
+  const auto prefix = [&workspace, prefixSize](uint64_t at, uint8_t* out,
+                                                size_t count) {
     if (at > prefixSize || count > prefixSize - at) return false;
     std::memcpy(out, workspace.signedPrefix + at, count);
     return true;
@@ -102,23 +122,21 @@ bool selectivePurgeBackup(const char* path, Kind kind, const char* id,
       !path || std::strcmp(path, paths.backup) || !Storage.ready()) return false;
   char provenance[kPathBytes]{};
   if (!childPath(path, kPackageProvenanceName, provenance)) return false;
-  if (!Storage.exists(provenance)) {
-    // Only the final rmdir may remain if provenance was removed last.
+  if (!Storage.exists(provenance))
     return emptyDirectory(path) && Storage.rmdir(path);
-  }
   if (!inspectBackupProvenance(path, kind, id, signers, signerCount,
                                workspace, scratch, limits)) return false;
-  HalFile directory = Storage.open(path, O_RDONLY);
-  if (!directory.isOpen() || !directory.isDirectory()) return false;
+  HalFile dir = Storage.open(path, O_RDONLY);
+  if (!dir.isOpen() || !dir.isDirectory()) return false;
   bool recognized = true;
   while (recognized) {
-    HalFile item = directory.openNextFile();
+    HalFile item = dir.openNextFile();
     if (!item.isOpen()) break;
     char name[128]{};
-    const size_t nameBytes = item.getName(name, sizeof(name));
+    const size_t length = item.getName(name, sizeof(name));
     const bool regular = !item.isDirectory();
     (void)item.close();
-    if (!regular || !nameBytes || nameBytes >= sizeof(name)) {
+    if (!regular || !length || length >= sizeof(name)) {
       recognized = false;
       break;
     }
@@ -128,19 +146,14 @@ bool selectivePurgeBackup(const char* path, Kind kind, const char* id,
       if (std::strcmp(name, scratch.entries[i].name) == 0) signedName = true;
     if (!signedName) recognized = false;
   }
-  if (!directory.close() || !recognized) return false;
+  if (!dir.close() || !recognized) return false;
   for (size_t i = 0; i < scratch.entryCount; ++i) {
     char file[kPathBytes]{};
     if (!childPath(path, scratch.entries[i].name, file)) return false;
     if (Storage.exists(file) && !Storage.remove(file)) return false;
   }
-  // Signed metadata is removed only when all known payload files are gone.
-  if (!emptyDirectory(path)) {
-    HalFile metadata = Storage.open(provenance, O_RDONLY);
-    if (!metadata.isOpen() || metadata.isDirectory()) return false;
-    if (!metadata.close()) return false;
-  }
-  if (!Storage.remove(provenance)) return false;
+  // Do not discard provenance if unexpected content appeared during cleanup.
+  if (!onlyProvenance(path) || !Storage.remove(provenance)) return false;
   return Storage.rmdir(path);
 }
 
@@ -150,9 +163,8 @@ bool validInputs(const TrustedPackageSigner* signers, size_t count,
          policy.architecture && policy.runtimeApi;
 }
 
-// The scratch archive belongs to the manager's shared serialized purge, not
-// an app or a small FreeRTOS task stack. It must never alias the current
-// generation that the transaction will use for the NVS commit.
+// This scratch is used only while the publication-wide mutex is held. Do not
+// alias the observed target archive used for the subsequent NVS advancement.
 PackageArchive& backupScratch() {
   static PackageArchive archive{};
   return archive;
@@ -180,19 +192,22 @@ SignedTransactionResult publishSignedDevicePackage(const PackageArchive& approve
     PackageArchive& observed, PackageArchiveLimits limits,
     bool allowFirstInstall, bool allowSemverDowngrade) {
   if (&approved == &observed || !expectedSignedPrefixDigest ||
-      !validInputs(signers, signerCount, policy) ||
-      !ensureRoot(approved.identity.kind, approved.identity.id))
+      !validInputs(signers, signerCount, policy))
     return SignedTransactionResult::InvalidInput;
   std::lock_guard<std::mutex> lock(publicationMutex());
+  if (!ensureRoot(approved.identity.kind, approved.identity.id))
+    return SignedTransactionResult::InvalidInput;
   StorageOps ops;
-  const auto verify = [=, &workspace](const char* path, const uint8_t* digest,
-                                       PackageArchive& out) {
+  const auto verify = [&approved, signers, signerCount, policy,
+      resolveCapability, resolverContext, &workspace, limits, allowFirstInstall]
+      (const char* path, const uint8_t* digest, PackageArchive& out) {
     return verifySignedDeviceDirectory(path, approved.identity.kind,
         approved.identity.id, signers, signerCount, policy, resolveCapability,
         resolverContext, workspace, out, digest, limits, allowFirstInstall) ==
         ProvenanceResult::AuthenticatedDirectory;
   };
-  const auto purge = [=, &workspace](const char* path) {
+  const auto purge = [&approved, signers, signerCount, &workspace, limits]
+      (const char* path) {
     return selectivePurgeBackup(path, approved.identity.kind,
         approved.identity.id, signers, signerCount, workspace,
         backupScratch(), limits);
@@ -208,19 +223,21 @@ SignedTransactionResult recoverSignedDevicePackage(Kind kind, const char* id,
     void* resolverContext, PackageVerificationWorkspace& workspace,
     PackageArchive& observed, PackageArchiveLimits limits,
     bool allowFirstInstall) {
-  if (!signedTransactionPaths(kind, id, *([]() -> SignedTransactionPaths* {
-          static SignedTransactionPaths paths{}; return &paths;
-        })()) || !validInputs(signers, signerCount, policy))
+  SignedTransactionPaths paths{};
+  if (!signedTransactionPaths(kind, id, paths) ||
+      !validInputs(signers, signerCount, policy))
     return SignedTransactionResult::InvalidInput;
   std::lock_guard<std::mutex> lock(publicationMutex());
   StorageOps ops;
-  const auto verify = [=, &workspace](const char* path, const uint8_t* digest,
-                                       PackageArchive& out) {
+  const auto verify = [kind, id, signers, signerCount, policy,
+      resolveCapability, resolverContext, &workspace, limits, allowFirstInstall]
+      (const char* path, const uint8_t* digest, PackageArchive& out) {
     return verifySignedDeviceDirectory(path, kind, id, signers, signerCount,
         policy, resolveCapability, resolverContext, workspace, out, digest,
         limits, allowFirstInstall) == ProvenanceResult::AuthenticatedDirectory;
   };
-  const auto purge = [=, &workspace](const char* path) {
+  const auto purge = [kind, id, signers, signerCount, &workspace, limits]
+      (const char* path) {
     return selectivePurgeBackup(path, kind, id, signers, signerCount,
                                 workspace, backupScratch(), limits);
   };
