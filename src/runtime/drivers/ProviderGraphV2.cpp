@@ -101,8 +101,8 @@ bool GraphV2::activate(size_t index) {
                         node.spec.provides, node.spec.api,
                         node.spec.requirementCount ? deps : nullptr,
                         node.spec.requirementCount)) {
-    // If dlclose failed, the failed ELF may still hold borrowed provider
-    // tables. Quarantine it AND its dependencies until safe recovery.
+    // If quiescence fails after a partially successful start, retain the ELF
+    // AND all borrowed provider tables. shutdown() retries this quarantine.
     if (node.module.unload()) releaseDependencies(index);
     node.visit = Visit::Idle;
     return false;
@@ -160,16 +160,30 @@ size_t GraphV2::liveGrants() const {
 
 bool GraphV2::shutdown() {
   if (liveGrants()) return false;
-  for (size_t pass = 0; pass < count_; ++pass)
-    for (size_t i = 0; i < count_; ++i)
-      if (nodes_[i].visit == Visit::Active &&
-          !nodes_[i].module.consumers() && !deactivateIfUnused(i)) return false;
-  for (size_t i = 0; i < count_; ++i) {
-    if (nodes_[i].visit != Visit::Idle) return false;
-    if (nodes_[i].module.state() == ModuleV2::State::Failed &&
-        !nodes_[i].module.unload()) return false;
-    if (nodes_[i].module.state() != ModuleV2::State::Absent) return false;
+  /* Failed-start nodes may hold borrowed dependency tables even though their
+   * graph visit state is Idle. Recover and unload those ELFs BEFORE releasing
+   * their pins, then drain newly unpinned dependencies on subsequent passes.
+   * A still-active IRQ/DMA/rail causes unload() to fail without revocation. */
+  for (size_t pass = 0; pass <= count_; ++pass) {
+    bool progress = false;
+    for (size_t i = 0; i < count_; ++i) {
+      Node& node = nodes_[i];
+      if (node.module.consumers()) continue;
+      if (node.visit == Visit::Active ||
+          (node.visit == Visit::Idle &&
+           node.module.state() == ModuleV2::State::Failed)) {
+        if (!node.module.unload()) return false;
+        node.visit = Visit::Idle;
+        releaseDependencies(i);
+        progress = true;
+      }
+    }
+    if (!progress) break;
   }
+  for (size_t i = 0; i < count_; ++i)
+    if (nodes_[i].visit != Visit::Idle || nodes_[i].acquired ||
+        nodes_[i].module.state() != ModuleV2::State::Absent ||
+        nodes_[i].module.consumers()) return false;
   return true;
 }
 }  // namespace RuntimeProviders
