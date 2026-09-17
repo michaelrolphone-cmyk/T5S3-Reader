@@ -13,6 +13,8 @@ using RuntimeResources::ExecutionContext;
 namespace {
 static bool appApiEnabled = true;
 static bool providerActive = false;
+static bool revokeDuringStart = false;
+static bool revokeDuringSubscribe = false;
 static DeviceHandle receiver = 0;
 static LeaseHandle sourceGrant = 0;
 static uint32_t polls = 0, subscribes = 0, unsubscribes = 0;
@@ -33,6 +35,10 @@ bool start() {
   if (!sourceGrant && systemRegistry().acquire("location.position", sourceOwner,
                                                &sourceGrant, receiver) != Result::Ok) return false;
   providerActive = true;
+  // Startup may yield to firmware activity which revokes user permission. A
+  // physical source lease is not a substitute for rechecking authorization.
+  if (revokeDuringStart)
+    assert(systemCapabilityAccess().revokeTrusted(sourceOwner, receiver, "location.position"));
   return true;
 }
 void stop() {
@@ -69,6 +75,10 @@ t5_stream_result_t nativeGnssSubscribe(uint32_t owner, uint32_t device,
   *token = 0x100000001ull;
   *stream = 0x101u;
   ++subscribes;
+  // A grant revoked during a successful subscription must trigger immediate
+  // rollback, never return usable stream handles to the application.
+  if (revokeDuringSubscribe)
+    assert(systemCapabilityAccess().revokeTrusted(owner, receiver, "location.position"));
   return T5_STREAM_OK;
 }
 t5_stream_result_t nativeGnssUnsubscribe(uint32_t owner, uint64_t token) {
@@ -115,6 +125,25 @@ int main() {
   LeaseHandle permission = 0;
   assert(access.acquire(context, "location.position", receiver, kCapabilityRead,
                         &permission) == AccessResult::Ok);
+
+  revokeDuringStart = true;
+  assert(api->subscribe(permission, &token, &stream) == T5_STREAM_DENIED);
+  assert(!token && !stream && !providerActive && !sourceGrant && subscribes == 0);
+  revokeDuringStart = false;
+  assert(access.grantTrusted(context, receiver, "location.position", kCapabilityRead));
+  assert(access.acquire(context, "location.position", receiver, kCapabilityRead,
+                        &permission) == AccessResult::Ok);
+
+  revokeDuringSubscribe = true;
+  assert(api->subscribe(permission, &token, &stream) == T5_STREAM_DENIED);
+  assert(!token && !stream && !providerActive && !sourceGrant &&
+         subscribes == 1 && unsubscribes == 1);
+  revokeDuringSubscribe = false;
+  assert(access.grantTrusted(context, receiver, "location.position", kCapabilityRead));
+  assert(access.acquire(context, "location.position", receiver, kCapabilityRead,
+                        &permission) == AccessResult::Ok);
+  subscribes = unsubscribes = 0;
+
   assert(api->subscribe(permission, &token, &stream) == T5_STREAM_OK);
   assert(token && stream && subscribes == 1 && providerActive);
   assert(api->poll(permission) == T5_STREAM_OK && polls == 1);
@@ -131,5 +160,5 @@ int main() {
   assert(context.begin());
   assert(t5_location_get_api(T5_LOCATION_API_VERSION)->poll(permission) == T5_STREAM_DENIED);
   context.end();
-  std::puts("Native GNSS bridge authorization and invocation lifecycle tests passed");
+  std::puts("Native GNSS bridge authorization, revocation races and lifecycle passed");
 }
