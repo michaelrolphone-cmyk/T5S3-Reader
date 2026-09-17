@@ -68,16 +68,20 @@ bool esp_elf_privileged_os_cpu_end_v1(void)
     return released;
 }
 
+bool esp_elf_privileged_os_cpu_scope_owned_v1(void)
+{
+    TaskHandle_t caller = xTaskGetCurrentTaskHandle();
+    if (caller == NULL) return false;
+    taskENTER_CRITICAL(&s_scope_lock);
+    const bool owned = s_scope_owner == caller;
+    taskEXIT_CRITICAL(&s_scope_lock);
+    return owned;
+}
+
 uintptr_t esp_elf_privileged_os_cpu_lookup_v1(const char *symbol)
 {
-    if (symbol == NULL || symbol[0] == '\0') return 0;
-    TaskHandle_t caller = xTaskGetCurrentTaskHandle();
-    if (caller == NULL) return 0;
-    taskENTER_CRITICAL(&s_scope_lock);
-    const bool permitted = s_scope_owner == caller;
-    taskEXIT_CRITICAL(&s_scope_lock);
-    if (!permitted) return 0;
-
+    if (symbol == NULL || symbol[0] == '\0' ||
+        !esp_elf_privileged_os_cpu_scope_owned_v1()) return 0;
     for (size_t i = 0; i < sizeof(s_privileged_symbols_v1) /
                            sizeof(s_privileged_symbols_v1[0]); ++i) {
         if (strcmp(symbol, s_privileged_symbols_v1[i].name) == 0)
