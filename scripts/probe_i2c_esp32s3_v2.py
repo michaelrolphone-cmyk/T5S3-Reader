@@ -21,6 +21,10 @@ SOURCES = (
     'components/driver/gpio.c',
     'components/driver/periph_ctrl.c',
     'components/hal/i2c_hal.c',
+    # ESP-IDF places the hardware ISR event handlers in a separate IRAM TU.
+    # Leaving this out would silently route I2C hardware interrupt behavior
+    # back into compiled firmware, defeating the purpose of an ELF driver.
+    'components/hal/i2c_hal_iram.c',
     'components/hal/gpio_hal.c',
     'components/soc/esp32s3/i2c_periph.c',
     'components/soc/esp32s3/gpio_periph.c',
@@ -106,7 +110,7 @@ def run():
                 p[4] == 'GLOBAL' and p[6] != 'UND'}
     if exported != {'t5_driver_get'}:
         raise RuntimeError('I2C ELF exports unexpected entry points: ' + repr(exported))
-    print('Physical ESP32-S3 I2C driver + bundled IDF I2C/GPIO/HAL linked: PASS',
+    print('Physical ESP32-S3 I2C driver + PIC IDF I2C/GPIO/ISR HAL linked: PASS',
           flush=True)
     print('Outstanding generic OS/CPU imports and exclusive Wire ownership remain '
           'release blockers.', flush=True)
