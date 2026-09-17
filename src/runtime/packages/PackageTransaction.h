@@ -6,9 +6,10 @@ namespace RuntimePackages {
 // All paths are constructed by the caller from a validated package identity;
 // this class never interprets untrusted manifest paths or writes through /sd.
 // Ops supplies exists(path) and rename(from, to), using HalStorage on device.
-// verify(path) must authenticate the identity and validate every managed entry
-// (including executable size and digest), without loading any ELF. purge(path)
-// must refuse unknown files and must not recursively delete unmanaged content.
+// verify(path) must validate identity and every managed entry (including ELF
+// length/digest) without loading it. Authenticity also requires a separate
+// signature check when signed packages are introduced. purge(path) must reject
+// unknown/unmanaged files; it may clean a partially deleted managed backup.
 struct TransactionPaths {
   const char* target;
   const char* stage;
@@ -22,20 +23,22 @@ bool recoverDirectoryTransaction(Ops& ops, const TransactionPaths& paths,
   if (!ops.exists(paths.backup)) {
     return !ops.exists(paths.target) || verify(paths.target);
   }
-  // An interrupted target -> backup rename MUST restore the last good copy,
-  // never delete it just because another installation is about to begin.
-  if (!verify(paths.backup)) return false;
-  if (!ops.exists(paths.target)) {
-    if (!ops.rename(paths.backup, paths.target)) return false;
-    if (verify(paths.target)) return true;
-    // Preserve the previous copy if post-rename storage verification fails.
-    (void)ops.rename(paths.target, paths.backup);
-    return false;
+  // A verified published target is the new known-good generation. Cleanup of
+  // the old backup may have been interrupted *after* its first file was
+  // deleted. Never require the partially cleaned backup to verify before
+  // retrying a managed-only purge; doing so would permanently block recovery.
+  if (ops.exists(paths.target)) {
+    if (!verify(paths.target)) return false; // Preserve unknown/corrupt target.
+    return purge(paths.backup);             // Refuse unmanaged backup entries.
   }
-  // Both paths exist after a completed publish. An unknown/corrupt target is
-  // never removed automatically, even if there is a valid backup.
-  if (!verify(paths.target)) return false;
-  return purge(paths.backup);
+  // A cut after target -> backup requires restoring the complete old package.
+  // A corrupt backup with no target cannot be recovered automatically.
+  if (!verify(paths.backup)) return false;
+  if (!ops.rename(paths.backup, paths.target)) return false;
+  if (verify(paths.target)) return true;
+  // Preserve the previous copy if post-rename storage verification fails.
+  (void)ops.rename(paths.target, paths.backup);
+  return false;
 }
 
 template <typename Ops, typename Verify, typename Purge>
@@ -62,8 +65,8 @@ bool publishDirectoryTransaction(Ops& ops, const TransactionPaths& paths,
       (void)ops.rename(paths.backup, paths.target);
     return false;
   }
-  // Commit succeeded. Failure to clean the previous generation is harmless:
-  // keep the known-good backup for the next verified recovery attempt.
+  // The new target is verified and committed. Interrupted backup cleanup may
+  // leave a partial managed directory; recovery can retry safely next boot.
   if (hadTarget) (void)purge(paths.backup);
   return true;
 }
