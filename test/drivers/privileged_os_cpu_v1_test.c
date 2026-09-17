@@ -60,18 +60,34 @@ int main(void)
     assert(esp_elf_privileged_os_cpu_authorize_relocation_v1(&provider_module));
     assert(!esp_elf_privileged_os_cpu_authorize_relocation_v1(&ordinary_module));
     assert(!esp_elf_privileged_os_cpu_relocation_enter_v1(&ordinary_module));
+    /* Another task may load another ELF, but not relocate the scoped module
+     * or release the grant, even before the privileged owner starts mapping. */
+    active_task = &task_b;
+    assert(!esp_elf_privileged_os_cpu_relocation_enter_v1(&provider_module));
+    assert(!esp_elf_privileged_os_cpu_relocation_leave_v1(&provider_module));
+    assert(esp_elf_privileged_os_cpu_relocation_enter_v1(&ordinary_module));
+    assert(esp_elf_privileged_os_cpu_relocation_leave_v1(&ordinary_module));
+    active_task = &task_a;
     assert(esp_elf_privileged_os_cpu_relocation_enter_v1(&provider_module));
     /* Reentrant loads, including the same module, are denied. */
     assert(!esp_elf_privileged_os_cpu_relocation_enter_v1(&provider_module));
     assert(!esp_elf_privileged_os_cpu_relocation_enter_v1(&ordinary_module));
     assert(!esp_elf_privileged_os_cpu_relocation_leave_v1(&ordinary_module));
     assert(!esp_elf_privileged_os_cpu_end_v1()); /* cannot release active load */
+    active_task = &task_b;
+    assert(!esp_elf_privileged_os_cpu_relocation_enter_v1(&provider_module));
+    assert(!esp_elf_privileged_os_cpu_relocation_leave_v1(&provider_module));
+    assert(esp_elf_privileged_os_cpu_relocation_enter_v1(&ordinary_module));
+    assert(esp_elf_privileged_os_cpu_relocation_leave_v1(&ordinary_module));
+    active_task = &task_a;
     assert(esp_elf_privileged_os_cpu_relocation_leave_v1(&provider_module));
     assert(!esp_elf_privileged_os_cpu_relocation_enter_v1(&provider_module));
     assert(!esp_elf_privileged_os_cpu_authorize_relocation_v1(&provider_module));
     assert(esp_elf_privileged_os_cpu_end_v1());
     assert(!esp_elf_privileged_os_cpu_scope_owned_v1());
     assert(esp_elf_privileged_os_cpu_lookup_v1("esp_intr_alloc") == 0u);
+    assert(esp_elf_privileged_os_cpu_relocation_enter_v1(&provider_module));
+    assert(esp_elf_privileged_os_cpu_relocation_leave_v1(&provider_module));
     assert(esp_elf_privileged_os_cpu_relocation_enter_v1(&ordinary_module));
     assert(esp_elf_privileged_os_cpu_relocation_leave_v1(&ordinary_module));
 
@@ -84,6 +100,6 @@ int main(void)
     assert(!esp_elf_privileged_os_cpu_scope_owned_v1());
     assert(!esp_elf_privileged_os_cpu_begin_v1());
     assert(esp_elf_privileged_os_cpu_lookup_v1("esp_intr_alloc") == 0u);
-    puts("Privileged OS/CPU v1: exact imports, task isolation, single-module grant, nested denial PASS");
+    puts("Privileged OS/CPU v1: exact imports, cross-task isolation, single-module grant, nested denial PASS");
     return 0;
 }
