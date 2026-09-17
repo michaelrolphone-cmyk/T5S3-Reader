@@ -36,9 +36,6 @@ class Packages(unittest.TestCase):
             with self.assertRaises(ValueError): validate_payload(bad, self.elf)
         with self.assertRaises(ValueError): read_json(b'{"id":"one","id":"two"}')
     def test_firmware_manifest_reader_const_array_contract(self):
-        # ArduinoJson's const views cannot satisfy is<JsonArray>() even when
-        # the underlying JSON is an array. Guard both the catalog parser and
-        # the installed GPS driver's additional capability-contract check.
         source = (Path(__file__).resolve().parents[2] /
                   'src/runtime/drivers/DriverPackage.cpp').read_text(encoding='utf-8')
         self.assertNotIn('.is<JsonArray>()', source)
@@ -49,8 +46,6 @@ class Packages(unittest.TestCase):
         self.assertIn('const JsonArrayConst provided = view["provides"].as<JsonArrayConst>();', source)
         self.assertIn('provided[0]["capability"]', source)
     def test_firmware_json_string_extraction_and_asset_naming(self):
-        # A literal nullptr fallback deduces nullptr_t, not const char*;
-        # it yielded null for every valid id and catalog elf_asset on hardware.
         root = Path(__file__).resolve().parents[2]
         parser = (root / 'src/runtime/drivers/DriverPackage.cpp').read_text(encoding='utf-8')
         manager = (root / 'src/native/NativeDriverManagerBridge.cpp').read_text(encoding='utf-8')
@@ -64,12 +59,29 @@ class Packages(unittest.TestCase):
         self.assertIn('entry["elf_asset"].as<const char*>()', manager)
         # GitHub asset carries id/version; installer stores it as driver.elf.
         self.assertIn('std::string(info.id) + "-" + info.version + ".t5driver.elf"', manager)
-        self.assertIn('std::rename(stagedElfVfsPath, stageElf.c_str())', parser)
+        self.assertIn('Storage.rename(kDownloadedStorage, stageElf.c_str())', parser)
         self.assertIn('"/driver.elf"', parser)
+    def test_firmware_install_writable_storage_contract(self):
+        root = Path(__file__).resolve().parents[2]
+        parser = (root / 'src/runtime/drivers/DriverPackage.cpp').read_text(encoding='utf-8')
+        vfs = (root / 'lib/NativeApps/src/SdVfs.cpp').read_text(encoding='utf-8')
+        hal = (root / 'lib/hal/HalStorage.h').read_text(encoding='utf-8')
+        # ELF VFS is read-only: it has no filesystem mutation callbacks.
+        self.assertIn('errno = EROFS;', vfs)
+        for forbidden in ('::mkdir(', 'std::rename(', 'std::remove(', '::rmdir(', 'std::fopen(path, "wb")'):
+            self.assertNotIn(forbidden, parser)
+        for required in ('Storage.rename(', 'Storage.mkdir(', 'Storage.rmdir(',
+                         'Storage.writeFile(', 'Storage.exists(', 'Storage.remove('):
+            self.assertIn(required, parser)
+        for api in ('bool rename(', 'bool mkdir(', 'bool rmdir(', 'bool writeFile('):
+            self.assertIn(api, hal)
+        self.assertIn('"/sd" + stageElf', parser)
+        self.assertIn('"/Drivers/.driver-manager.part"', parser)
+        self.assertIn('ROLLBACK FAILED', parser)
+        self.assertIn('ELF validation: SHA-256 mismatch', parser)
+        # VFS lacks a pathname stat callback, so installed detection uses HAL.
+        self.assertIn('Storage.exists((storagePath + "/driver.elf").c_str())', parser)
     def test_release_discovery_diagnostic_guards(self):
-        # Static source guards: compilation and real HTTP behavior are covered
-        # separately by firmware CI and hardware acceptance. Do not regress to
-        # a silent parser failure or accept a partial, HTTP-successful sidecar.
         root = Path(__file__).resolve().parents[2]
         parser = (root / 'src/runtime/drivers/DriverPackage.cpp').read_text(encoding='utf-8')
         manager = (root / 'src/native/NativeDriverManagerBridge.cpp').read_text(encoding='utf-8')
