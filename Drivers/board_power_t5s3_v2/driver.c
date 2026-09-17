@@ -52,7 +52,10 @@ static bool write_reg(uint8_t reg, uint8_t value) {
 }
 static bool timed_out(uint64_t begun, uint32_t limit_ms) {
     uint64_t now = clock_api->monotonic_ms(clock_api->context);
-    return now < begun || now - begun >= limit_ms;
+    /* platform.clock returns UINT64_MAX on OS clock failure. In particular,
+     * UINT64_MAX - UINT64_MAX == 0 MUST NOT become an infinite OTG loop. */
+    return begun == UINT64_MAX || now == UINT64_MAX ||
+           now < begun || now - begun >= limit_ms;
 }
 static void delay_ms(uint32_t milliseconds) {
     clock_api->sleep_ms(clock_api->context, milliseconds);
@@ -61,6 +64,7 @@ static void delay_ms(uint32_t milliseconds) {
  * proven OFF. A failed read is unknown, never evidence of safe shutdown. */
 static bool wait_source_off(void) {
     uint64_t begun = clock_api->monotonic_ms(clock_api->context);
+    if (begun == UINT64_MAX) return false;
     for (;;) {
         uint8_t power = 0, status = 0;
         if (!read_reg(REG_POWER, &power) || !read_reg(REG_STATUS, &status))
@@ -96,6 +100,7 @@ static bool preflight(void) {
 }
 static bool verify_source(void) {
     uint64_t begun = clock_api->monotonic_ms(clock_api->context);
+    if (begun == UINT64_MAX) return false;
     for (;;) {
         uint8_t power = 0, status = 0, adc = 0, faults = 0;
         if (!read_reg(REG_POWER, &power) || !read_reg(REG_STATUS, &status) ||
@@ -116,6 +121,7 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
     if (out) *out = 0;
     if (!out || !started || !bus_claim || lease || faulted ||
         !requested_ma || requested_ma > 500u || sequence == UINT64_MAX ||
+        !clock_api || clock_api->monotonic_ms(clock_api->context) == UINT64_MAX ||
         !preflight() || !read_reg(REG_POWER, &saved_power) ||
         !read_reg(REG_BOOST, &saved_boost) ||
         !read_reg(REG_ADC_CONTROL, &saved_adc)) return false;
