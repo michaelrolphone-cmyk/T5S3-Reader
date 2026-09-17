@@ -13,8 +13,21 @@ bool validName(const char* s) {
 
 int GraphV2::find(const char* capability, uint32_t api) const {
   if (!validName(capability) || !api) return -1;
+  int match = -1;
+  for (size_t i = 0; i < count_; ++i) {
+    if (nodes_[i].spec.api != api ||
+        std::strcmp(nodes_[i].spec.provides, capability) != 0) continue;
+    if (match >= 0) return -2; // Ambiguous: never use install order as policy.
+    match = static_cast<int>(i);
+  }
+  return match;
+}
+
+int GraphV2::findProvider(const char* id, const char* capability, uint32_t api) const {
+  if (!validName(id) || !validName(capability) || !api) return -1;
   for (size_t i = 0; i < count_; ++i)
     if (nodes_[i].spec.api == api &&
+        std::strcmp(nodes_[i].spec.id, id) == 0 &&
         std::strcmp(nodes_[i].spec.provides, capability) == 0)
       return static_cast<int>(i);
   return -1;
@@ -25,8 +38,7 @@ bool GraphV2::addVerified(const SpecV2& spec) {
       !validName(spec.provides) || !spec.api ||
       !spec.verifiedElfPath || spec.verifiedElfPath[0] != '/' ||
       spec.requirementCount > kMaxModules ||
-      (spec.requirementCount && !spec.requirements) ||
-      find(spec.provides, spec.api) >= 0) return false;
+      (spec.requirementCount && !spec.requirements)) return false;
   for (size_t i = 0; i < count_; ++i) {
     if (nodes_[i].visit != Visit::Idle ||
         nodes_[i].module.state() != ModuleV2::State::Absent ||
@@ -40,6 +52,8 @@ bool GraphV2::addVerified(const SpecV2& spec) {
       if (std::strcmp(spec.requirements[i].capability,
                       spec.requirements[j].capability) == 0) return false;
   }
+  // Multiple verified drivers may offer the same semantic capability.
+  // acquire() refuses ambiguity; acquireFrom() requires an explicit ID.
   nodes_[count_++].spec = spec;
   return true;
 }
@@ -71,24 +85,24 @@ bool GraphV2::activate(size_t index) {
   risc_provider_dependency_v1 deps[kMaxModules]{};
   for (size_t i = 0; i < node.spec.requirementCount; ++i) {
     const RequirementV2& requirement = node.spec.requirements[i];
-    int indexOfDependency = find(requirement.capability, requirement.api);
-    if (indexOfDependency < 0 ||
-        !activate(static_cast<size_t>(indexOfDependency)) ||
-        !nodes_[indexOfDependency].module.pinConsumer()) {
+    int dependency = find(requirement.capability, requirement.api);
+    if (dependency < 0 ||
+        !activate(static_cast<size_t>(dependency)) ||
+        !nodes_[dependency].module.pinConsumer()) {
       releaseDependencies(index);
       node.visit = Visit::Idle;
       return false;
     }
-    node.dependencies[node.acquired++] = static_cast<uint8_t>(indexOfDependency);
+    node.dependencies[node.acquired++] = static_cast<uint8_t>(dependency);
     deps[i] = {requirement.capability, requirement.api,
-               nodes_[indexOfDependency].module.capability()};
+               nodes_[dependency].module.capability()};
   }
   if (!node.module.load(node.spec.verifiedElfPath, node.spec.id,
                         node.spec.provides, node.spec.api,
                         node.spec.requirementCount ? deps : nullptr,
                         node.spec.requirementCount)) {
-    // If dlclose failed, the failed ELF may still hold a borrowed provider
-    // table. Quarantine it AND its dependency pins rather than free its code.
+    // If dlclose failed, the failed ELF may still hold borrowed provider
+    // tables. Quarantine it AND its dependencies until safe recovery.
     if (node.module.unload()) releaseDependencies(index);
     node.visit = Visit::Idle;
     return false;
@@ -97,21 +111,30 @@ bool GraphV2::activate(size_t index) {
   return true;
 }
 
-GrantV2 GraphV2::acquire(const char* capability, uint32_t api) {
-  int target = find(capability, api);
-  if (target < 0) return {};
+GrantV2 GraphV2::acquireIndex(size_t index) {
   size_t slot = kMaxGrants;
   for (size_t i = 0; i < kMaxGrants; ++i)
     if (!grants_[i].occupied) { slot = i; break; }
-  if (slot == kMaxGrants || !activate(static_cast<size_t>(target))) return {};
-  if (!nodes_[target].module.pinConsumer()) {
-    (void)deactivateIfUnused(static_cast<size_t>(target));
+  if (slot == kMaxGrants || !activate(index)) return {};
+  if (!nodes_[index].module.pinConsumer()) {
+    (void)deactivateIfUnused(index);
     return {};
   }
   ++nextGeneration_;
   if (!nextGeneration_) ++nextGeneration_;
-  grants_[slot] = {nextGeneration_, static_cast<uint8_t>(target), true};
+  grants_[slot] = {nextGeneration_, static_cast<uint8_t>(index), true};
   return {static_cast<uint32_t>(slot + 1), nextGeneration_};
+}
+
+GrantV2 GraphV2::acquire(const char* capability, uint32_t api) {
+  int target = find(capability, api);
+  return target < 0 ? GrantV2{} : acquireIndex(static_cast<size_t>(target));
+}
+
+GrantV2 GraphV2::acquireFrom(const char* providerId, const char* capability,
+                           uint32_t api) {
+  int target = findProvider(providerId, capability, api);
+  return target < 0 ? GrantV2{} : acquireIndex(static_cast<size_t>(target));
 }
 
 const void* GraphV2::interfaceFor(GrantV2 grant) const {
