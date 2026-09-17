@@ -14,3 +14,11 @@ c++ "${flags[@]}" "$repo/test/resources/provider_mode_rights_test.cpp" \
 c++ "${flags[@]}" "$repo/test/resources/gnss_stream_authority_test.cpp" \
   -o "$build/gnss-stream-authority"
 "$build/gnss-stream-authority"
+# Link the REAL GpsDriverRuntime against a mocked driver ELF/kernel/stream
+# boundary to verify that unsuccessful semantic attach releases the physical
+# claim and context cleanup slot and permits a subsequent successful retry.
+c++ "${flags[@]}" -I"$repo/test/drivers/stubs" -I"$repo/sdk/driver" \
+  "$repo/src/runtime/drivers/GpsDriverRuntime.cpp" \
+  "$repo/test/drivers/gnss_startup_failure_test.cpp" \
+  -o "$build/gnss-startup-failure"
+"$build/gnss-startup-failure"
