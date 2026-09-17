@@ -51,6 +51,15 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   "$repo/test/streams/location_native_bridge_test.cpp" \
   -o "$build/location-native-bridge"
 "$build/location-native-bridge"
+# Execute the actual GNSS diagnostic application with deterministic native
+# ABI fixtures. Pause reads to force a full queue, resume, then release consent
+# and verify the previously issued raw stream denies access.
+cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/lib/NativeApps/include" \
+  "$repo/Apps/gnss_stream_diagnostic.c" \
+  "$repo/test/streams/gnss_diagnostic_controls_test.c" \
+  -o "$build/gnss-diagnostic-controls"
+"$build/gnss-diagnostic-controls"
 # Compile the actual observation ABI with its ESP32-only GNSS discovery path
 # enabled. Fake clock and passive package availability, never the GPS driver.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
