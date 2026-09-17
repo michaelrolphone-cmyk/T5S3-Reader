@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "private/esp_privileged_elf.h"
+#include "private/esp_privileged_imports.h"
 #include "private/esp_privileged_os_cpu.h"
 
 extern bool esp_elf_validate_file(const uint8_t *image, size_t length);
@@ -11,8 +12,14 @@ int esp_elf_relocate_privileged_verified_v1(esp_elf_t *module,
                                             const uint8_t *verified_bytes,
                                             size_t verified_length)
 {
+    /* Authentication of this SAME immutable byte buffer is still the trusted
+     * installer's responsibility. Even an admitted package may not import an
+     * arbitrary previously loaded ELF or firmware hardware implementation.
+     * Reject unexpected imports BEFORE granting any privileged resolver scope
+     * or mapping executable memory. */
     if (!module || !verified_bytes ||
-        !esp_elf_validate_file(verified_bytes, verified_length))
+        !esp_elf_validate_file(verified_bytes, verified_length) ||
+        !esp_elf_privileged_imports_valid_v1(verified_bytes, verified_length))
         return -EINVAL;
 
     /* Never swap the process-global resolver or register privileged imports
