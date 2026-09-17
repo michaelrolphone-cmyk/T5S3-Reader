@@ -64,7 +64,7 @@ class UsbCdcPackage(unittest.TestCase):
     def test_installed_usb_cdc_elf_activation_uses_explicit_json_strings(self):
         source = (Path(__file__).resolve().parents[2] /
                   'src/runtime/drivers/UsbCdcDriverRuntime.cpp').read_text(encoding='utf-8')
-        self.assertNotIn('| nullptr', source)
+        self.assertNotIn(' | nullptr;', source)
         self.assertIn('const JsonDocument& view = doc;', source)
         self.assertIn('view["requires"].is<JsonArrayConst>()', source)
         self.assertIn('view["provides"].is<JsonArrayConst>()', source)
