@@ -3,11 +3,12 @@
 #include <cstddef>
 #include <cstdint>
 
-/* The generic graph owns its registration metadata. A trusted package manager
- * must authenticate signer, executable digest and exact imports independently;
- * copying a caller's SpecV2 is NEVER an authorization decision. The private
- * loader hashes its own executable snapshot and validates both symbol tables.
+/* Generic graph owns all registration metadata and candidate bytes. The
+ * privileged admission entry is available ONLY to firmware's signed package
+ * executor; a digest in a public SpecV2 is not authentication. The ELF loader
+ * independently hashes its relocation snapshot and validates symbol tables.
  */
+namespace RuntimePackages { class DeviceProviderExecutorV2; }
 namespace RuntimeProviders {
 struct RequirementV2 {
   const char* capability;
@@ -20,16 +21,11 @@ struct SpecV2 {
   uint32_t api;
   const RequirementV2* requirements;
   size_t requirementCount;
-  /* Versioned generic OS/CPU services, not a built-in hardware driver.
-   * Zero retains the existing unprivileged loading path. */
   uint32_t requiredOsCpuAbi = 0;
   const uint8_t* verifiedElfBytes = nullptr;
   size_t verifiedElfLength = 0;
-  /* Must originate in a cryptographically authenticated package receipt.
-   * Names are sorted, unique, and must match BOTH ELF symbol tables. */
   const char* const* signedImports = nullptr;
   size_t signedImportCount = 0;
-  /* The manager must copy this digest from authenticated package content. */
   uint8_t authenticatedElfSha256[32] = {};
 };
 struct GrantV2 {
@@ -46,21 +42,26 @@ class GraphV2 final {
   GraphV2(const GraphV2&) = delete;
   GraphV2& operator=(const GraphV2&) = delete;
   ~GraphV2();
-  /* Existing trusted-manifest registration; this API does not verify signers.
-   * Until the signed manager's private admission is integrated, privileged
-   * registration must not be exposed to ordinary app-controlled callers. */
+  // Existing ordinary provider admission. Privileged input is ALWAYS denied
+  // here even with a plausible hash/import set; not a signature checker.
   bool addVerified(const SpecV2& spec);
-  // Ambiguous providers fail closed rather than using install order.
   GrantV2 acquire(const char* capability, uint32_t api);
   GrantV2 acquireFrom(const char* providerId, const char* capability, uint32_t api);
   bool release(GrantV2 grant);
   const void* interfaceFor(GrantV2 grant) const;
-  // Never unmap a provider whose teardown/quiescence failed.
   bool shutdown();
   size_t moduleCount() const { return count_; }
   size_t liveGrants() const;
 
  private:
+  // The signed package executor is compiled into firmware and is NOT part of
+  // ordinary ELF symbol exports. The executor must verify a real P-256 signer,
+  // identity/floor/profile and exact package-entry hashes before calling here.
+  // C++ friend access is an API boundary, NOT a native address-space sandbox.
+  friend class ::RuntimePackages::DeviceProviderExecutorV2;
+  bool addAuthenticatedPrivileged(const SpecV2& spec);
+  bool addChecked(const SpecV2& spec, bool privilegedAdmission);
+
   enum class Visit : uint8_t { Idle, Visiting, Active };
   struct Node {
     SpecV2 spec{};
