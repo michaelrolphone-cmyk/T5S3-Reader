@@ -1,72 +1,83 @@
 #pragma once
 
+#include "PackageUseGate.h"
+
 namespace RuntimePackages {
 
-// Only runtime-owned, single-directory package layouts may use this primitive.
-// All paths are constructed by the caller from a validated package identity;
-// this class never interprets untrusted manifest paths or writes through /sd.
-// Ops supplies exists(path) and rename(from, to), using HalStorage on device.
-// verify(path) must validate identity and every managed entry (including ELF
-// length/digest) without loading it. Authenticity also requires a separate
-// signature check when signed packages are introduced. purge(path) must reject
-// unknown/unmanaged files; it may clean a partially deleted managed backup.
+// Only runtime-owned, single-directory layouts may use this primitive. Paths
+// are derived from validated identities and writes go through HalStorage.
+// Verify checks every managed byte before publication; publisher authentication
+// remains a separate prerequisite for the future signed package installer.
 struct TransactionPaths {
   const char* target;
   const char* stage;
   const char* backup;
 };
 
+namespace detail {
+// Caller holds the exclusive package replacement reservation whenever an
+// interrupted transaction can rename or remove a published generation.
 template <typename Ops, typename Verify, typename Purge>
-bool recoverDirectoryTransaction(Ops& ops, const TransactionPaths& paths,
-                                 Verify verify, Purge purge) {
+bool recoverDirectoryTransactionLocked(Ops& ops, const TransactionPaths& paths,
+                                       Verify verify, Purge purge) {
   if (!paths.target || !paths.stage || !paths.backup) return false;
   if (!ops.exists(paths.backup)) {
     return !ops.exists(paths.target) || verify(paths.target);
   }
   // A verified published target is the new known-good generation. Cleanup of
-  // the old backup may have been interrupted *after* its first file was
-  // deleted. Never require the partially cleaned backup to verify before
-  // retrying a managed-only purge; doing so would permanently block recovery.
+  // the old backup may have been interrupted after its first file was deleted.
   if (ops.exists(paths.target)) {
-    if (!verify(paths.target)) return false; // Preserve unknown/corrupt target.
-    return purge(paths.backup);             // Refuse unmanaged backup entries.
+    if (!verify(paths.target)) return false;
+    return purge(paths.backup); // Refuse unknown/unmanaged backup entries.
   }
   // A cut after target -> backup requires restoring the complete old package.
-  // A corrupt backup with no target cannot be recovered automatically.
   if (!verify(paths.backup)) return false;
   if (!ops.rename(paths.backup, paths.target)) return false;
   if (verify(paths.target)) return true;
-  // Preserve the previous copy if post-rename storage verification fails.
-  (void)ops.rename(paths.target, paths.backup);
+  (void)ops.rename(paths.target, paths.backup); // Preserve on bad storage reads.
   return false;
+}
+}  // namespace detail
+
+template <typename Ops, typename Verify, typename Purge>
+bool recoverDirectoryTransaction(Ops& ops, const TransactionPaths& paths,
+                                 Verify verify, Purge purge) {
+  if (!paths.target || !paths.stage || !paths.backup) return false;
+  if (!ops.exists(paths.backup)) {
+    // Without a backup this is strictly read-only; do not block inventory
+    // queries just because the installed ELF is currently mapped.
+    return !ops.exists(paths.target) || verify(paths.target);
+  }
+  PackageReplacementLease reservation(paths.target);
+  if (!reservation) return false;
+  return detail::recoverDirectoryTransactionLocked(ops, paths, verify, purge);
 }
 
 template <typename Ops, typename Verify, typename Purge>
 bool publishDirectoryTransaction(Ops& ops, const TransactionPaths& paths,
                                  Verify verify, Purge purge, bool replaceAllowed) {
-  // The runtime must refuse replacement while a module is mapped, running,
-  // or otherwise pinned. The caller owns the execution-context/lease gate.
-  if (!replaceAllowed || !paths.target || !paths.stage || !paths.backup ||
-      !ops.exists(paths.stage) || !verify(paths.stage)) return false;
-  if (!recoverDirectoryTransaction(ops, paths, verify, purge)) return false;
+  // The caller's permission flag is not enough: the runtime also requires an
+  // exclusive reservation across recovery, rename, verification and cleanup.
+  if (!replaceAllowed || !paths.target || !paths.stage || !paths.backup) return false;
+  PackageReplacementLease reservation(paths.target);
+  if (!reservation) return false;
+  if (!ops.exists(paths.stage) || !verify(paths.stage)) return false;
+  if (!detail::recoverDirectoryTransactionLocked(ops, paths, verify, purge)) return false;
   const bool hadTarget = ops.exists(paths.target);
   if (hadTarget && !verify(paths.target)) return false;
   if (hadTarget && !ops.rename(paths.target, paths.backup)) return false;
   if (!ops.rename(paths.stage, paths.target)) {
-    // If restore fails, the validated old package remains at backup and a
-    // later recover() can put it back. Never erase that backup here.
+    // If restore fails, a later recovery can put the verified backup back.
     if (hadTarget) (void)ops.rename(paths.backup, paths.target);
     return false;
   }
   if (!verify(paths.target)) {
     // A failed post-publish check cannot expose an unverified executable.
-    // Move it away before attempting restoration; retain backup on failure.
     if (ops.rename(paths.target, paths.stage) && hadTarget)
       (void)ops.rename(paths.backup, paths.target);
     return false;
   }
-  // The new target is verified and committed. Interrupted backup cleanup may
-  // leave a partial managed directory; recovery can retry safely next boot.
+  // The new target is committed. Recovery retries interrupted backup cleanup.
   if (hadTarget) (void)purge(paths.backup);
   return true;
 }
