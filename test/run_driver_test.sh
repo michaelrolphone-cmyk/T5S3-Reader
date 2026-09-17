@@ -49,6 +49,15 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   "$repo/test/streams/location_native_bridge_test.cpp" \
   -o "$build/location-native-bridge"
 "$build/location-native-bridge"
+# Compile the actual observation ABI with its ESP32-only GNSS discovery path
+# enabled. Fake clock and passive package availability, never the GPS driver.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -DARDUINO_ARCH_ESP32 -I"$repo/test/streams/stubs" \
+  -I"$repo/src" -I"$repo/lib/NativeApps/include" \
+  "$repo/src/native/NativeDeviceBridge.cpp" \
+  "$repo/test/streams/gnss_device_discovery_test.cpp" \
+  -o "$build/gnss-device-discovery"
+"$build/gnss-device-discovery"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/NativeApps/include" \
   "$repo/test/resources/device_api_v2_abi_test.c" -o "$build/device-api-abi"
 "$build/device-api-abi"
