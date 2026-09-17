@@ -4,28 +4,34 @@
 #include <string.h>
 #include "private/esp_privileged_elf.h"
 #include "private/esp_privileged_imports.h"
+#include "private/esp_privileged_manifest_imports.h"
 #include "private/esp_privileged_os_cpu.h"
 
 extern bool esp_elf_validate_file(const uint8_t *image, size_t length);
 
 int esp_elf_relocate_privileged_verified_v1(esp_elf_t *module,
                                             const uint8_t *verified_bytes,
-                                            size_t verified_length)
+                                            size_t verified_length,
+                                            const char *const *signed_imports,
+                                            size_t signed_import_count)
 {
-    /* Authentication of this SAME immutable byte buffer is still the trusted
-     * installer's responsibility. Even an admitted package may not import an
-     * arbitrary previously loaded ELF or firmware hardware implementation.
-     * Reject unexpected imports BEFORE granting any privileged resolver scope
-     * or mapping executable memory. */
-    if (!module || !verified_bytes ||
+    /* Authentication of this SAME digest-checked snapshot and the exact
+     * declaration list is the privileged Package Manager's responsibility.
+     * Enforce both ABI-wide and manifest-exact import bounds BEFORE granting
+     * resolution scope or mapping executable memory. A self-declared list is
+     * not signer trust and must never originate from an application. */
+    if (!module || !verified_bytes || !signed_imports || !signed_import_count ||
         !esp_elf_validate_file(verified_bytes, verified_length) ||
-        !esp_elf_privileged_imports_valid_v1(verified_bytes, verified_length))
+        !esp_elf_privileged_imports_valid_v1(verified_bytes, verified_length) ||
+        !esp_elf_privileged_manifest_imports_match_v1(
+            verified_bytes, verified_length, signed_imports, signed_import_count))
         return -EINVAL;
 
     /* Never swap the process-global resolver or register privileged imports
      * globally. The default resolver consults the scoped table only for this
      * FreeRTOS task while esp_elf_relocate executes synchronously. Concurrent
      * regular app loads cannot see it. Reentrant privileged loads fail closed.
+     * A globally installed custom resolver still requires separate hardening.
      */
     if (!esp_elf_privileged_os_cpu_begin_v1()) return -EBUSY;
     int result = esp_elf_init(module);
