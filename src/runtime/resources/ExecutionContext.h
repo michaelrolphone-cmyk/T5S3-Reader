@@ -13,7 +13,7 @@ class ExecutionContext final {
   enum class State : uint8_t { Terminated, Running, Stopping };
   enum class Resource : uint8_t {
     Streams = 1, SerialPort = 2, Programmer = 3, DeviceLeases = 4,
-    DeviceEvents = 5, Dependencies = 6
+    DeviceEvents = 5, Dependencies = 6, GnssDriver = 7
   };
   using Cleanup = void (*)(void* opaque, uint32_t invocation);
   using Stop = void (*)(void* opaque, uint32_t invocation);

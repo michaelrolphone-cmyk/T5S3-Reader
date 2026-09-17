@@ -6,6 +6,10 @@
 #include "runtime/capabilities/CapabilityAccess.h"
 #include "runtime/capabilities/DeviceEventSubscriptions.h"
 #include "runtime/resources/ExecutionContext.h"
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+#include "runtime/drivers/GpsDriverRuntime.h"
+#include <Arduino.h>
+#endif
 
 #include <cstddef>
 #include <cstdint>
@@ -32,6 +36,26 @@ ExecutionContext* caller() {
   if (!context || !context->running(context->id()) ||
       !t5_app_get_api(T5_APP_ABI_VERSION)) return nullptr;
   return context;
+}
+
+// Observation must discover the board GNSS device without requiring an ELF to
+// call the legacy GPS API. available() checks the installed package and only
+// publishes its descriptor/state: it never starts UART, powers the receiver or
+// acquires a lease. Rate-limit this SD/package check while an app polls the
+// device journal; unsigned elapsed arithmetic remains valid across millis wrap.
+// The host-only USB observation fixture has no board GPS hardware or Arduino.
+void discoveryTick() {
+  nativeDeviceDiscoveryTick();
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  static bool scanned = false;
+  static uint32_t lastScan = 0;
+  const uint32_t now = millis();
+  if (!scanned || static_cast<uint32_t>(now - lastScan) >= 10000u) {
+    scanned = true;
+    lastScan = now;
+    (void)GpsDriverRuntime::available();
+  }
+#endif
 }
 
 void copyInfo(t5_device_info_t& dest, const DeviceInfo& source) {
@@ -89,7 +113,7 @@ t5_device_result_t inventory(t5_device_info_t* out, uint32_t capacity, uint32_t*
   if (count) *count = 0;
   if (!count || (capacity && !out)) return T5_DEVICE_INVALID;
   if (!caller()) return T5_DEVICE_DENIED;
-  nativeDeviceDiscoveryTick();
+  discoveryTick();
   auto& registry = systemRegistry();
   const size_t required = registry.count();
   *count = static_cast<uint32_t>(required);
@@ -107,7 +131,7 @@ t5_device_result_t subscribe(t5_device_subscription_t* out) {
   if (!out) return T5_DEVICE_INVALID;
   auto* context = caller();
   if (!context) return T5_DEVICE_DENIED;
-  nativeDeviceDiscoveryTick();
+  discoveryTick();
   SubscriptionHandle next = 0;
   const auto result = systemEventSubscriptions().subscribe(*context, &next);
   if (result == ObserveResult::Ok) *out = next;
@@ -120,7 +144,7 @@ t5_device_result_t snapshot(t5_device_subscription_t subscription, t5_device_inf
   if (!count || (capacity && !out)) return T5_DEVICE_INVALID;
   auto* context = caller();
   if (!context) return T5_DEVICE_DENIED;
-  nativeDeviceDiscoveryTick();
+  discoveryTick();
   static DeviceInfo scratch[kMaxDevices]{};
   size_t needed = 0;
   const auto result = systemEventSubscriptions().snapshot(
@@ -139,7 +163,7 @@ t5_device_result_t poll(t5_device_subscription_t subscription, t5_device_event_t
   if (!out) return T5_DEVICE_INVALID;
   auto* context = caller();
   if (!context) return T5_DEVICE_DENIED;
-  nativeDeviceDiscoveryTick();
+  discoveryTick();
   Event event{};
   const auto result = systemEventSubscriptions().poll(subscription, context->id(), &event, missed);
   if (result == ObserveResult::Next) copyEvent(*out, event);
@@ -158,7 +182,7 @@ t5_device_result_t acquireCapability(const char* capability, t5_device_handle_t 
   if (!out) return T5_DEVICE_INVALID;
   auto* context = caller();
   if (!context) return T5_DEVICE_DENIED;
-  nativeDeviceDiscoveryTick();
+  discoveryTick();
   return accessResult(systemCapabilityAccess().acquire(*context, capability, device, rights, out));
 }
 
@@ -167,7 +191,7 @@ t5_device_result_t validateCapability(t5_device_lease_t lease, uint32_t rights,
   if (device) *device = 0;
   auto* context = caller();
   if (!context) return T5_DEVICE_DENIED;
-  nativeDeviceDiscoveryTick();
+  discoveryTick();
   return systemCapabilityAccess().valid(context->id(), lease, rights, device)
              ? T5_DEVICE_OK : T5_DEVICE_STALE;
 }
@@ -193,7 +217,7 @@ t5_device_result_t requestCapability(const char* capability, t5_device_handle_t 
   auto* context = caller();
   if (!context) return T5_DEVICE_DENIED;
   const uint32_t invocation = context->id();
-  nativeDeviceDiscoveryTick();
+  discoveryTick();
   auto& access = systemCapabilityAccess();
   const auto previous = access.acquire(*context, requested, device, rights, out);
   if (previous == AccessResult::Ok) return T5_DEVICE_OK;
@@ -209,7 +233,7 @@ t5_device_result_t requestCapability(const char* capability, t5_device_handle_t 
   if (!nativeDeviceConsentPrompt(before, requested, rights)) return T5_DEVICE_DENIED;
 
   if (caller() != context || context->id() != invocation) return T5_DEVICE_DENIED;
-  nativeDeviceDiscoveryTick();
+  discoveryTick();
   DeviceInfo after{};
   if (!systemRegistry().get(device, &after)) return T5_DEVICE_STALE;
   if (after.state != State::Available) return T5_DEVICE_ERR_UNAVAILABLE;

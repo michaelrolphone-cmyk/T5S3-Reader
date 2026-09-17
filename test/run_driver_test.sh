@@ -35,6 +35,40 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo/src" "$repo/test/resources/capability_access_test.cpp" \
   -o "$build/capability-access"
 "$build/capability-access"
+# Both provider-rights tests use real capability and device registries.
+bash "$repo/test/run_provider_authorization_test.sh"
+# A consent grant and the active GPS driver each require an independent
+# execution-context destructor. Verify both acquisition orders and lease cleanup.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/gnss_permission_lifecycle_test.cpp" \
+  -o "$build/gnss-permission-lifecycle"
+"$build/gnss-permission-lifecycle"
+# Exercise the actual semantic ELF getter with production authorization state.
+# Stubs replace ONLY the physical GPS read and downstream stream bridge.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" -I"$repo/lib/NativeApps/include" \
+  "$repo/src/native/NativeLocationBridge.cpp" \
+  "$repo/test/streams/location_native_bridge_test.cpp" \
+  -o "$build/location-native-bridge"
+"$build/location-native-bridge"
+# Execute the actual GNSS diagnostic application with deterministic native
+# ABI fixtures. Pause reads to force a full queue, resume, then release consent
+# and verify the previously issued raw stream denies access.
+cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/lib/NativeApps/include" \
+  "$repo/Apps/gnss_stream_diagnostic.c" \
+  "$repo/test/streams/gnss_diagnostic_controls_test.c" \
+  -o "$build/gnss-diagnostic-controls"
+"$build/gnss-diagnostic-controls"
+# Compile the actual observation ABI with its ESP32-only GNSS discovery path
+# enabled. Fake clock and passive package availability, never the GPS driver.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -DARDUINO_ARCH_ESP32 -I"$repo/test/streams/stubs" \
+  -I"$repo/src" -I"$repo/lib/NativeApps/include" \
+  "$repo/src/native/NativeDeviceBridge.cpp" \
+  "$repo/test/streams/gnss_device_discovery_test.cpp" \
+  -o "$build/gnss-device-discovery"
+"$build/gnss-device-discovery"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/NativeApps/include" \
   "$repo/test/resources/device_api_v2_abi_test.c" -o "$build/device-api-abi"
 "$build/device-api-abi"

@@ -21,6 +21,7 @@
 #include "T5ImageApi.h"
 #include "T5KOReaderApi.h"
 #include "T5LanguageApi.h"
+#include "T5LocationApi.h"
 #include "T5LoRaApi.h"
 #include "T5NetworkApi.h"
 #include "T5OpdsApi.h"
@@ -89,6 +90,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_font_get_api),
         ESP_ELFSYM_EXPORT(t5_koreader_get_api),
         ESP_ELFSYM_EXPORT(t5_language_get_api),
+        ESP_ELFSYM_EXPORT(t5_location_get_api),
         ESP_ELFSYM_EXPORT(t5_opds_get_api),
         ESP_ELFSYM_EXPORT(t5_ota_get_api),
         ESP_ELFSYM_EXPORT(t5_program_esp_rom_get_api),
