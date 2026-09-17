@@ -61,5 +61,15 @@ class UsbCdcPackage(unittest.TestCase):
                              {'gps-nmea', 'usb-cdc-acm'})
             self.assertEqual({entry['elf_asset'] for entry in catalog['drivers']},
                              {'gps-nmea-1.0.0.t5driver.elf', 'usb-cdc-acm-0.1.0.t5driver.elf'})
+    def test_installed_usb_cdc_elf_activation_uses_explicit_json_strings(self):
+        source = (Path(__file__).resolve().parents[2] /
+                  'src/runtime/drivers/UsbCdcDriverRuntime.cpp').read_text(encoding='utf-8')
+        self.assertNotIn('| nullptr', source)
+        self.assertIn('const JsonDocument& view = doc;', source)
+        self.assertIn('view["requires"].is<JsonArrayConst>()', source)
+        self.assertIn('view["provides"].is<JsonArrayConst>()', source)
+        self.assertIn('view["requires"][0]["capability"].as<const char*>()', source)
+        self.assertIn('view["provides"][0]["capability"].as<const char*>()', source)
+        self.assertIn('USBREF phase=driver_load result=active', source)
 
 if __name__ == '__main__': unittest.main()
