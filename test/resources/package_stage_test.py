@@ -45,12 +45,13 @@ def run() -> None:
             ('extract-test', 'package_archive_extract_test.cpp'),
         ]:
             program = root / name
+            # Preserve compiler stderr in CI; sanitizer-backed compilation
+            # failures must show the actual diagnostic, not only a traceback.
             subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                             '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
                             '-I' + str(ROOT / 'src'),
                             str(ROOT / 'test/resources' / test_source),
-                            '-lcrypto', '-o', str(program)], check=True,
-                           capture_output=True)
+                            '-lcrypto', '-o', str(program)], check=True)
             subprocess.run([str(program), str(args.output), str(alternate_path),
                             str(public)], check=True)
 
