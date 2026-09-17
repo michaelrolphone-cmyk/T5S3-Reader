@@ -14,20 +14,23 @@ namespace RuntimePackages {
 // interpreted as an installed executable merely because it exists on the SD.
 constexpr const char* kPackageIntakeStage = "/Packages/.intake.part";
 
-// Inspect source, copy to a fresh exclusive HalStorage stage, close/reopen it,
-// and authenticate all sealed bytes again against firmware-owned signer policy.
-// Existing files at kPackageIntakeStage are preserved and cause refusal; they
-// require explicit recovery, not an implicit destructive cleanup. Success
-// retains the stage for a separate, future publication decision. No payload is
-// loaded, no package is activated and no capability is granted here.
+// Inspect source, check the persistent per-kind/ID security floor, copy to a
+// fresh exclusive HalStorage stage, close/reopen, authenticate all sealed bytes
+// and recheck the floor. Missing floor records fail closed unless the trusted
+// caller explicitly authorizes a first installation. Existing intake files
+// are preserved and require separate recovery, not destructive cleanup.
+// Success retains a stage for a separate publication decision. This function
+// neither commits the security floor nor activates/loads/authorizes anything.
 //
-// IMPORTANT: authentication of an SD stage does not guarantee that its bytes
-// remain immutable after this function returns. Installation/load MUST enforce
-// a separate verified-byte lifetime mechanism before enabling production use.
+// IMPORTANT: an SD stage can be altered after this function returns. The
+// publisher must repeat the floor check and enforce authenticated-byte
+// lifetime through publication and ELF loading. NVS does not protect against
+// a physical adversary who can rewrite or roll back raw device flash.
 ArchiveStageResult stageSignedDevicePackage(std::FILE* source,
     const TrustedPackageSigner* signers, size_t signerCount,
     const PackageRuntimePolicy& policy, PackageCapabilityApi resolveCapability,
     void* resolverContext, PackageVerificationWorkspace& workspace,
-    PackageArchive& result, PackageArchiveLimits limits = {});
+    PackageArchive& result, PackageArchiveLimits limits = {},
+    bool allowFirstInstall = false);
 
 } // namespace RuntimePackages
