@@ -29,13 +29,16 @@ def build(cc=None):
         cc = str(core / 'packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc')
     OUTPUT.mkdir(parents=True, exist_ok=True)
     elf = OUTPUT / 'driver.elf'
+    # Xtensa binutils 2.35 can crash in elf_xtensa_finish_dynamic_sections
+    # when garbage-collecting a small PIC shared object. Keep complete tiny
+    # clock sections and use the same proven flags as the other small ELFs.
     subprocess.run([
         cc, '-std=c11', '-D_DEFAULT_SOURCE', '-Os', '-fPIC',
         '-mtext-section-literals', '-mlongcalls', '-fvisibility=hidden',
-        '-ffunction-sections', '-fdata-sections', '-nostdlib', '-nostartfiles',
-        '-shared', '-I' + str(ROOT / 'sdk/driver'),
+        '-nostdlib', '-nostartfiles', '-shared',
+        '-I' + str(ROOT / 'sdk/driver'),
         '-Wl,--hash-style=sysv', '-Wl,--exclude-libs,ALL',
-        '-Wl,--gc-sections', str(SOURCE / 'driver.c'), '-lgcc', '-o', str(elf),
+        str(SOURCE / 'driver.c'), '-lgcc', '-o', str(elf),
     ], check=True)
     readelf = str(Path(cc).with_name(Path(cc).name.replace('gcc', 'readelf')))
     symbols = subprocess.check_output([readelf, '--dyn-syms', '--wide', str(elf)], text=True)
