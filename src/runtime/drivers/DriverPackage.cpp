@@ -7,6 +7,7 @@
 #include <T5DriverApi.h>
 #include <T5GnssProvider.h>
 #include <mbedtls/sha256.h>
+#include "runtime/packages/PackageIdentity.h"
 
 #include <cstdio>
 #include <cstring>
@@ -31,12 +32,7 @@ bool requirement(JsonVariantConst entry, const char* id) {
 }
 
 bool safeDriverId(const char* id) {
-    if (!id || !id[0] || std::strlen(id) >= 64) return false;
-    for (const unsigned char* p = reinterpret_cast<const unsigned char*>(id); *p; ++p) {
-        if ((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '-' || *p == '_') continue;
-        return false;
-    }
-    return std::strstr(id, "..") == nullptr;
+    return RuntimePackages::safeId(id);
 }
 
 bool validSha256(const char* value) {
@@ -95,6 +91,11 @@ bool parseManifest(const std::string& json, JsonDocument& doc, DriverPackageInfo
     const unsigned size = view["size_bytes"].as<unsigned>();
     REQUIRE_MANIFEST(safeDriverId(id), "id");
     REQUIRE_MANIFEST(version && version[0] && std::strlen(version) < sizeof(out.version), "version");
+    // Match applications' shared package namespace and strict semantic version
+    // before trusting these values for an on-disk install path or upgrade.
+    RuntimePackages::Identity identity{};
+    REQUIRE_MANIFEST(RuntimePackages::makeIdentity(RuntimePackages::Kind::Driver,
+        id, version, view["file_name"].as<const char*>(), false, &identity), "package identity");
     REQUIRE_MANIFEST(validSha256(sha), "sha256 value");
     REQUIRE_MANIFEST(size >= 52 && size <= kMaxDriverBytes, "size_bytes range");
 
