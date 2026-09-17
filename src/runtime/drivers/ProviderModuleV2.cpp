@@ -5,6 +5,8 @@
 #include <cstdlib>
 extern "C" {
 #include <esp_elf.h>
+#include <esp_heap_caps.h>
+#include <mbedtls/sha256.h>
 #include <private/esp_privileged_elf.h>
 }
 #endif
@@ -105,23 +107,52 @@ bool ModuleV2::load(const char* path, const char* expectedId,
   return false;
 }
 
-bool ModuleV2::loadVerifiedBytes(const uint8_t* verifiedBytes, size_t length,
+bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
+                                 const uint8_t authenticatedSha256[32],
                                  const char* expectedId,
                                  const char* expectedCapability,
                                  uint32_t expectedApi,
                                  const risc_provider_dependency_v1* deps,
                                  size_t count) {
 #ifdef ESP_PLATFORM
-  if (handle_ || !verifiedBytes || !length ||
+  if (handle_ || !candidateBytes || !authenticatedSha256 || !length ||
+      length > 8u * 1024u * 1024u ||
       !validRequest(expectedId, expectedCapability, expectedApi, deps, count))
     return false;
   state_ = State::Failed;
-  /* Trust/manifest/import verification MUST already have succeeded. Using the
-   * verified buffer, rather than reopening a path, closes a verification TOCTOU.
-   * No application-facing API exposes this private firmware entry point. */
+
+  /* The Package Manager is responsible for authenticating the SIGNER and the
+   * exact signed entry digest. The source buffer need not remain immutable:
+   * copy it once into private memory, hash that copy, then relocate from the
+   * exact same copy. An SD replacement between archive inspection and launch
+   * therefore produces a digest mismatch BEFORE any executable mapping.
+   * No hardware operation is implemented here. The image copy is temporary;
+   * the loader owns its own mapped sections after relocation succeeds. */
+  auto* snapshot = static_cast<uint8_t*>(
+      heap_caps_malloc(length, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!snapshot) snapshot = static_cast<uint8_t*>(
+      heap_caps_malloc(length, MALLOC_CAP_8BIT));
+  if (!snapshot) return false;
+  std::memcpy(snapshot, candidateBytes, length);
+  uint8_t actual[32]{};
+  const bool hashed = mbedtls_sha256_ret(snapshot, length, actual, 0) == 0;
+  uint8_t mismatch = 0;
+  for (size_t i = 0; i < sizeof(actual); ++i)
+    mismatch |= static_cast<uint8_t>(actual[i] ^ authenticatedSha256[i]);
+  std::memset(actual, 0, sizeof(actual));
+  if (!hashed || mismatch) {
+    heap_caps_free(snapshot);
+    return false;
+  }
+
   auto* image = static_cast<esp_elf_t*>(std::malloc(sizeof(esp_elf_t)));
-  if (!image) return false;
-  if (esp_elf_relocate_privileged_verified_v1(image, verifiedBytes, length) != 0) {
+  if (!image) {
+    heap_caps_free(snapshot);
+    return false;
+  }
+  const int result = esp_elf_relocate_privileged_verified_v1(image, snapshot, length);
+  heap_caps_free(snapshot);
+  if (result != 0) {
     std::free(image);
     return false;
   }
@@ -143,8 +174,9 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* verifiedBytes, size_t length,
 #else
   /* Host tests exercise the legacy graph via POSIX dlopen; they must never
    * simulate success for an ESP32 privileged native ELF relocation. */
-  (void)verifiedBytes; (void)length; (void)expectedId;
-  (void)expectedCapability; (void)expectedApi; (void)deps; (void)count;
+  (void)candidateBytes; (void)length; (void)authenticatedSha256;
+  (void)expectedId; (void)expectedCapability; (void)expectedApi;
+  (void)deps; (void)count;
   return false;
 #endif
 }
