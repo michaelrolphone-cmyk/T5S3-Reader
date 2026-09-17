@@ -11,3 +11,6 @@ c++ "${flags[@]}" "$repo/test/resources/provider_authorization_test.cpp" \
 c++ "${flags[@]}" "$repo/test/resources/provider_mode_rights_test.cpp" \
   -o "$build/provider-mode-rights"
 "$build/provider-mode-rights"
+c++ "${flags[@]}" "$repo/test/resources/gnss_stream_authority_test.cpp" \
+  -o "$build/gnss-stream-authority"
+"$build/gnss-stream-authority"
