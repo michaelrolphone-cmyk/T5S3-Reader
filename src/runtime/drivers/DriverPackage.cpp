@@ -1,18 +1,16 @@
 #include "DriverPackage.h"
 
 #include <ArduinoJson.h>
+#include <HalStorage.h>
 #include <Logging.h>
 #include <NativeAppLauncher.h>
 #include <T5DriverApi.h>
 #include <T5GnssProvider.h>
 #include <mbedtls/sha256.h>
 
-#include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <string>
-#include <sys/stat.h>
-#include <unistd.h>
 
 namespace {
 constexpr unsigned kMaxDriverBytes = 256u * 1024u;
@@ -57,9 +55,8 @@ bool copyString(const char* value, char* out, size_t capacity) {
     return true;
 }
 
-// The release catalog and the legacy release-manifest path share this parser.
-// Report the rejected *field*, not the JSON payload: the latter can contain
-// arbitrary server responses and should not be copied verbatim into serial logs.
+// The release catalog and legacy release-manifest path share this parser.
+// Log a field name, not untrusted remote JSON content.
 bool manifestReject(const char* reason, size_t bytes) {
     LOG_ERR("DRIVER", "Manifest rejected at %s (received=%u bytes)", reason,
             static_cast<unsigned>(bytes));
@@ -91,8 +88,7 @@ bool parseManifest(const std::string& json, JsonDocument& doc, DriverPackageInfo
     REQUIRE_MANIFEST(view["provides"].is<JsonArrayConst>(), "provides array");
     REQUIRE_MANIFEST(view["provides"].size() != 0, "provides empty");
 
-    // ArduinoJson's operator| deduces std::nullptr_t for a nullptr fallback;
-    // it does not request a const char* and therefore returns null for strings.
+    // Explicit string conversions are required: `| nullptr` deduces nullptr_t.
     const char* id = view["id"].as<const char*>();
     const char* version = view["version"].as<const char*>();
     const char* sha = view["sha256"].as<const char*>();
@@ -130,11 +126,13 @@ bool parseManifest(const std::string& json, JsonDocument& doc, DriverPackageInfo
     return true;
 }
 
-bool readFile(const char* path, std::string& out) {
-    FILE* file = std::fopen(path, "rb");
+// /sd is intentionally a read-only ELF VFS. It supports fopen("rb") but not
+// stat, mkdir, write, unlink or rename. All mutations use HalStorage with /Drivers.
+bool readFile(const char* vfsPath, std::string& out) {
+    FILE* file = std::fopen(vfsPath, "rb");
     if (!file) return false;
     char buffer[kMaxManifestBytes + 1];
-    const size_t bytes = std::fread(buffer, 1, kMaxManifestBytes + 1, file);
+    const size_t bytes = std::fread(buffer, 1, sizeof(buffer), file);
     const bool ok = !std::ferror(file) && bytes > 0 && bytes <= kMaxManifestBytes;
     std::fclose(file);
     if (!ok) return false;
@@ -142,44 +140,45 @@ bool readFile(const char* path, std::string& out) {
     return true;
 }
 
-bool writeFile(const char* path, const std::string& value) {
-    FILE* file = std::fopen(path, "wb");
-    if (!file) return false;
-    const bool ok = std::fwrite(value.data(), 1, value.size(), file) == value.size() &&
-                    std::fflush(file) == 0 && !std::ferror(file);
-    std::fclose(file);
-    return ok;
+bool writeManifest(const std::string& storagePath, const std::string& value) {
+    // The stage is a newly created, exclusively managed directory. HalStorage
+    // closes and syncs its write before this returns.
+    if (!Storage.writeFile(storagePath.c_str(), String(value.c_str()))) {
+        LOG_ERR("DRIVER", "Unable to write staged manifest: %s", storagePath.c_str());
+        return false;
+    }
+    return true;
 }
 
-bool pathExists(const std::string& path) {
-    struct stat info {};
-    return ::stat(path.c_str(), &info) == 0;
+// Never recursively delete a directory containing unrecognized files.
+bool removeManagedDirectory(const std::string& storagePath) {
+    if (!Storage.exists(storagePath.c_str())) return true;
+    const std::string elf = storagePath + "/driver.elf";
+    const std::string manifest = storagePath + "/manifest.json";
+    if (Storage.exists(elf.c_str()) && !Storage.remove(elf.c_str())) return false;
+    if (Storage.exists(manifest.c_str()) && !Storage.remove(manifest.c_str())) return false;
+    if (!Storage.rmdir(storagePath.c_str())) {
+        LOG_ERR("DRIVER", "Refusing to remove nonempty/unmanaged directory: %s", storagePath.c_str());
+        return false;
+    }
+    return true;
 }
 
-bool ensureDirectory(const char* path) {
-    if (::mkdir(path, 0775) == 0) return true;
-    if (errno != EEXIST) return false;
-    struct stat info {};
-    return ::stat(path, &info) == 0 && S_ISDIR(info.st_mode);
-}
-
-void removeManagedDirectory(const std::string& path) {
-    std::remove((path + "/driver.elf").c_str());
-    std::remove((path + "/manifest.json").c_str());
-    ::rmdir(path.c_str());
-}
-
-bool directoryIsManagedPackage(const std::string& path, const char* expectedId) {
+bool directoryIsManagedPackage(const std::string& storagePath, const char* expectedId) {
+    if (!Storage.exists((storagePath + "/driver.elf").c_str()) ||
+        !Storage.exists((storagePath + "/manifest.json").c_str())) return false;
     std::string json;
-    if (!readFile((path + "/manifest.json").c_str(), json)) return false;
+    if (!readFile(("/sd" + storagePath + "/manifest.json").c_str(), json)) return false;
     DriverPackageInfo info{};
-    return parseDriverPackageManifest(json, info) && std::strcmp(info.id, expectedId) == 0 &&
-           pathExists(path + "/driver.elf");
+    return parseDriverPackageManifest(json, info) && std::strcmp(info.id, expectedId) == 0;
 }
 
 bool validateElfAndHash(const char* path, unsigned expectedSize, const char* expectedSha) {
     FILE* file = std::fopen(path, "rb");
-    if (!file) return false;
+    if (!file) {
+        LOG_ERR("DRIVER", "ELF validation: cannot open %s", path);
+        return false;
+    }
 
     uint8_t header[20] = {};
     const size_t headerBytes = std::fread(header, 1, sizeof(header), file);
@@ -187,6 +186,7 @@ bool validateElfAndHash(const char* path, unsigned expectedSize, const char* exp
                        header[2] == 'L' && header[3] == 'F' && header[4] == 1 && header[5] == 1 &&
                        header[16] == 3 && header[17] == 0 && header[18] == 94 && header[19] == 0;
     if (!elfOk || std::fseek(file, 0, SEEK_SET) != 0) {
+        LOG_ERR("DRIVER", "ELF validation: invalid header or seek failed: %s", path);
         std::fclose(file);
         return false;
     }
@@ -209,17 +209,19 @@ bool validateElfAndHash(const char* path, unsigned expectedSize, const char* exp
     ok = ok && !std::ferror(file) && total == expectedSize && mbedtls_sha256_finish_ret(&hash, digest) == 0;
     std::fclose(file);
     mbedtls_sha256_free(&hash);
-
-    if (ok) {
-        constexpr char hex[] = "0123456789abcdef";
-        for (unsigned i = 0; i < 32; ++i) {
-            if (expectedSha[i * 2] != hex[digest[i] >> 4] || expectedSha[i * 2 + 1] != hex[digest[i] & 15]) {
-                ok = false;
-                break;
-            }
+    if (!ok) {
+        LOG_ERR("DRIVER", "ELF validation: length/read/hash failed for %s (read=%u expected=%u)",
+                path, total, expectedSize);
+        return false;
+    }
+    constexpr char hex[] = "0123456789abcdef";
+    for (unsigned i = 0; i < 32; ++i) {
+        if (expectedSha[i * 2] != hex[digest[i] >> 4] || expectedSha[i * 2 + 1] != hex[digest[i] & 15]) {
+            LOG_ERR("DRIVER", "ELF validation: SHA-256 mismatch for %s", path);
+            return false;
         }
     }
-    return ok;
+    return true;
 }
 }  // namespace
 
@@ -229,7 +231,10 @@ bool parseDriverPackageManifest(const std::string& json, DriverPackageInfo& out)
 }
 
 bool validateDriverPayload(const std::string& manifestJson, const char* elfVfsPath, DriverPackageInfo* out) {
-    if (!elfVfsPath || native_app_register_sd_vfs() != ESP_OK) return false;
+    if (!elfVfsPath || native_app_register_sd_vfs() != ESP_OK) {
+        LOG_ERR("DRIVER", "ELF validation: missing path or read-only SD VFS unavailable");
+        return false;
+    }
     JsonDocument doc;
     DriverPackageInfo info{};
     if (!parseManifest(manifestJson, doc, info)) return false;
@@ -241,59 +246,87 @@ bool validateDriverPayload(const std::string& manifestJson, const char* elfVfsPa
 
 bool getInstalledDriverVersion(const char* id, char* version, size_t capacity) {
     if (!safeDriverId(id) || !version || capacity == 0 || native_app_register_sd_vfs() != ESP_OK) return false;
-    const std::string base = std::string("/sd/Drivers/") + id;
-    if (!pathExists(base + "/driver.elf")) return false;
+    const std::string storagePath = std::string("/Drivers/") + id;
+    if (!Storage.exists((storagePath + "/driver.elf").c_str())) return false;
     std::string json;
-    if (!readFile((base + "/manifest.json").c_str(), json)) return false;
+    if (!readFile(("/sd" + storagePath + "/manifest.json").c_str(), json)) return false;
     DriverPackageInfo info{};
     if (!parseDriverPackageManifest(json, info) || std::strcmp(info.id, id) != 0) return false;
     return copyString(info.version, version, capacity);
 }
 
 bool installStagedDriverPackage(const std::string& manifestJson, const char* stagedElfVfsPath) {
+    // Only the Driver Manager's disposable download may be moved. This
+    // prevents a native app from supplying an arbitrary source path.
+    constexpr const char* kDownloadedVfs = "/sd/Drivers/.driver-manager.part";
+    constexpr const char* kDownloadedStorage = "/Drivers/.driver-manager.part";
+    if (!stagedElfVfsPath || std::strcmp(stagedElfVfsPath, kDownloadedVfs) != 0) {
+        LOG_ERR("DRIVER", "Install refused: unexpected staged ELF path");
+        return false;
+    }
     DriverPackageInfo info{};
+    LOG_INF("DRIVER", "Install: validating downloaded ELF and manifest");
     if (!validateDriverPayload(manifestJson, stagedElfVfsPath, &info)) {
-        LOG_ERR("DRIVER", "Rejected staged driver package");
+        LOG_ERR("DRIVER", "Install failed: download/ELF integrity validation");
         return false;
     }
-    if (!ensureDirectory("/sd/Drivers")) return false;
+    if (!Storage.ready() || (!Storage.exists("/Drivers") && !Storage.mkdir("/Drivers"))) {
+        LOG_ERR("DRIVER", "Install failed: /Drivers storage unavailable");
+        return false;
+    }
 
-    const std::string target = std::string("/sd/Drivers/") + info.id;
-    const std::string stage = std::string("/sd/Drivers/.") + info.id + ".install";
-    const std::string backup = std::string("/sd/Drivers/.") + info.id + ".previous";
-    const bool hadTarget = pathExists(target);
+    const std::string target = std::string("/Drivers/") + info.id;
+    const std::string stage = std::string("/Drivers/.") + info.id + ".install";
+    const std::string backup = std::string("/Drivers/.") + info.id + ".previous";
+    const bool hadTarget = Storage.exists(target.c_str());
     if (hadTarget && !directoryIsManagedPackage(target, info.id)) {
-        LOG_ERR("DRIVER", "Refusing to replace unmanaged path for %s", info.id);
+        LOG_ERR("DRIVER", "Install refused: unmanaged existing path for %s", info.id);
         return false;
     }
-
-    removeManagedDirectory(stage);
-    if (pathExists(backup)) {
-        if (!directoryIsManagedPackage(backup, info.id)) return false;
-        removeManagedDirectory(backup);
+    if (!removeManagedDirectory(stage)) {
+        LOG_ERR("DRIVER", "Install failed: stale stage cannot be cleaned");
+        return false;
     }
-    if (!ensureDirectory(stage.c_str())) return false;
+    if (Storage.exists(backup.c_str())) {
+        if (!directoryIsManagedPackage(backup, info.id) || !removeManagedDirectory(backup)) {
+            LOG_ERR("DRIVER", "Install failed: previous backup is unmanaged or cannot be cleaned");
+            return false;
+        }
+    }
+    if (!Storage.mkdir(stage.c_str())) {
+        LOG_ERR("DRIVER", "Install failed: cannot create stage %s", stage.c_str());
+        return false;
+    }
 
     const std::string stageElf = stage + "/driver.elf";
     const std::string stageManifest = stage + "/manifest.json";
-    std::remove(stageElf.c_str());
-    if (std::rename(stagedElfVfsPath, stageElf.c_str()) != 0 || !writeFile(stageManifest.c_str(), manifestJson) ||
-        !validateDriverPayload(manifestJson, stageElf.c_str(), nullptr)) {
-        removeManagedDirectory(stage);
+    if (!Storage.rename(kDownloadedStorage, stageElf.c_str())) {
+        LOG_ERR("DRIVER", "Install failed: cannot move downloaded ELF into stage");
+        (void)removeManagedDirectory(stage);
         return false;
     }
-
-    if (hadTarget && std::rename(target.c_str(), backup.c_str()) != 0) {
-        removeManagedDirectory(stage);
+    if (!writeManifest(stageManifest, manifestJson) ||
+        !validateDriverPayload(manifestJson, ("/sd" + stageElf).c_str(), nullptr)) {
+        LOG_ERR("DRIVER", "Install failed: staged manifest write or integrity recheck");
+        (void)removeManagedDirectory(stage);
         return false;
     }
-    if (std::rename(stage.c_str(), target.c_str()) != 0) {
-        if (hadTarget) std::rename(backup.c_str(), target.c_str());
-        removeManagedDirectory(stage);
+    if (hadTarget && !Storage.rename(target.c_str(), backup.c_str())) {
+        LOG_ERR("DRIVER", "Install failed: cannot back up existing driver %s", info.id);
+        (void)removeManagedDirectory(stage);
         return false;
     }
-
-    if (hadTarget) removeManagedDirectory(backup);
+    if (!Storage.rename(stage.c_str(), target.c_str())) {
+        LOG_ERR("DRIVER", "Install failed: cannot commit staged driver %s", info.id);
+        if (hadTarget && !Storage.rename(backup.c_str(), target.c_str())) {
+            LOG_ERR("DRIVER", "ROLLBACK FAILED: previous driver preserved at %s", backup.c_str());
+        }
+        (void)removeManagedDirectory(stage);
+        return false;
+    }
+    if (hadTarget && !removeManagedDirectory(backup)) {
+        LOG_ERR("DRIVER", "Installed %s, but previous backup cleanup failed: %s", info.id, backup.c_str());
+    }
     LOG_INF("DRIVER", "Installed driver %s %s; activation unchanged", info.id, info.version);
     return true;
 }
@@ -305,14 +338,12 @@ bool validateGpsDriverPackage() {
         LOG_ERR("DRIVER", "GPS package missing: /Drivers/gps-nmea/manifest.json");
         return false;
     }
-
     DriverPackageInfo info{};
     if (!validateDriverPayload(json, GPS_DRIVER_ELF, &info) || std::strcmp(info.id, "gps-nmea") != 0 ||
         std::strcmp(info.capability, T5_GNSS_CAPABILITY) != 0) {
         LOG_ERR("DRIVER", "GPS package integrity or identity mismatch");
         return false;
     }
-
     JsonDocument doc;
     if (deserializeJson(doc, json) || !doc["provides"].is<JsonArrayConst>() || doc["provides"].size() != 1 ||
         !requirement(doc["provides"][0], T5_GNSS_CAPABILITY) || !doc["requires"].is<JsonArrayConst>() ||
@@ -320,7 +351,6 @@ bool validateGpsDriverPackage() {
         LOG_ERR("DRIVER", "GPS manifest capability contract mismatch");
         return false;
     }
-
     unsigned requirements = 0;
     for (JsonVariantConst entry : doc["requires"].as<JsonArrayConst>()) {
         const unsigned bit = requirement(entry, "kernel.serial") ? 1u : requirement(entry, "kernel.power") ? 2u :
