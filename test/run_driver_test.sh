@@ -21,6 +21,12 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo/src" "$repo/test/resources/package_identity_test.cpp" \
   -o "$build/package-identity-test"
 "$build/package-identity-test"
+# The shared directory transaction must retain the last verified generation
+# through rename failures, abrupt resets, corrupt stages and cleanup failures.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/package_transaction_test.cpp" \
+  -o "$build/package-transaction-test"
+"$build/package-transaction-test"
 # Generic provider API metadata and transactionally bound non-authorizing
 # dependencies must both pass before an ELF is mapped.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
@@ -53,9 +59,8 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_event_test.cpp" -o "$build/device-event-test"
 "$build/device-event-test"
-c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
-  -I"$repo/src" "$repo/test/resources/device_subscription_test.cpp" \
-  -o "$build/device-subscription-test"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
+  "$repo/test/resources/device_subscription_test.cpp" -o "$build/device-subscription-test"
 "$build/device-subscription-test"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/usb_serial_projection_test.cpp" -o "$build/usb-projection-test"
