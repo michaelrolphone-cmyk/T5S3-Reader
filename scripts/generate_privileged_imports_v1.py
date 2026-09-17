@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Emit a canonical OS/CPU ABI v1 import sidecar for a linked physical ELF.
+"""Emit canonical OS/CPU ABI v1 imports from a linked physical provider ELF.
 
-The UTF-8/ASCII, sorted, newline-delimited sidecar is structural BUILD OUTPUT,
-NOT a signed receipt. It becomes authenticated only when the package manager
-signs the sidecar entry digest and executable digest together in one package.
-The C private loader still independently checks BOTH ELF symbol tables and
-requires exact equality with the eventual authenticated declaration.
+This newline-delimited ASCII sidecar is UNSIGNED build output, not authority.
+Only a trusted package-signing process covering the executable digest, ABI,
+and sidecar digest together can subsequently authenticate this declaration.
+The firmware C private matcher rechecks BOTH symbol tables independently.
 """
 import argparse
 import hashlib
@@ -37,7 +36,7 @@ def extract_imports(path: Path) -> list[str]:
                 if symbol['st_shndx'] != 'SHN_UNDEF':
                     continue
                 name = symbol.name
-                if index == 0 and not name and not symbol['st_info']['type'] != 'STT_NOTYPE':
+                if index == 0 and not name and symbol['st_info']['type'] == 'STT_NOTYPE':
                     continue
                 if not name or len(name) > MAX_NAME or not name.isascii() or any(
                         ord(char) <= 0x20 or ord(char) > 0x7e for char in name):
@@ -62,7 +61,7 @@ def main() -> int:
         print(f'Generated ABI v1 import declaration: {output} ({len(imports)} names)')
         print(f'Executable SHA-256: {hashlib.sha256(args.elf.read_bytes()).hexdigest()}')
         print(f'Import sidecar SHA-256: {hashlib.sha256(declaration).hexdigest()}')
-        print('UNSIGNED diagnostic only: authenticate BOTH file digests and ABI in a package receipt.')
+        print('UNSIGNED diagnostic: package manager must authenticate BOTH file digests and ABI.')
         return 0
     except (OSError, ValueError, UnicodeEncodeError) as error:
         parser.exit(1, f'Privileged imports build rejected: {error}\n')
