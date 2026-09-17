@@ -120,7 +120,8 @@ bool parseManifest(const std::string& json, JsonDocument& doc, DriverPackageInfo
     out = {};
     REQUIRE_MANIFEST(copyString(id, out.id, sizeof(out.id)), "id output capacity");
     REQUIRE_MANIFEST(copyString(version, out.version, sizeof(out.version)), "version output capacity");
-    const char* capability = view["provides"][0]["capability"] | nullptr;
+    const JsonArrayConst provided = view["provides"].as<JsonArrayConst>();
+    const char* capability = provided[0]["capability"] | nullptr;
     REQUIRE_MANIFEST(copyString(capability, out.capability, sizeof(out.capability)), "provided capability output capacity");
     out.sizeBytes = size;
 #undef REQUIRE_MANIFEST
