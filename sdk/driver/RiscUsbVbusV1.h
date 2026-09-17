@@ -1,7 +1,9 @@
 #pragma once
-/* USB/board-specific provider SDK, never part of the generic RiscRTE core.
- * The board provider arbitrates OTG role, charger conflicts and source current.
- * A successful release must mean VBUS is electrically safe before ELF unload. */
+/* Provider-to-provider board power API, never part of the generic RiscRTE
+ * core. Board ELF arbitrates charger, external input, source current and OTG.
+ * A successful release means it has verified that it is no longer sourcing;
+ * external VBUS may still be present. False retains the power lease and
+ * prevents the controller or board-power ELF from unmapping. */
 #include "RiscProviderV2.h"
 #ifdef __cplusplus
 extern "C" {
@@ -11,11 +13,17 @@ typedef struct {
     uint32_t api_version;
     uint32_t struct_size;
     void *context;
-    /* Refuse a lease when the board is connected to external USB power, the
-     * charger is unsafe, the port is in device mode or another owner exists. */
+    /* Only one live source lease. Reject unknown electrical/role state,
+     * external VBUS, and requests above the board-verified current limit.
+     * False MUST set *lease to zero; a partially applied power transition
+     * must retain an internal lease and make provider quiesce return false
+     * until a verified recovery has completed. */
     bool (*acquire_host)(void *context, uint32_t max_milliamps, uint64_t *lease);
-    /* A failed release must retain ownership and prevent controller unmap. */
+    /* Source-off plus restored board state must be verified by hardware
+     * readback. On failure retain ownership for explicit recovery/retry. */
     bool (*release_host)(void *context, uint64_t lease);
+    /* True only when no source lease, pending rail transition, DMA/callback
+     * into this provider, or lower-device claim can outlive the ELF. */
     bool (*quiesce)(void *context);
 } risc_usb_vbus_api_v1;
 #ifdef __cplusplus
