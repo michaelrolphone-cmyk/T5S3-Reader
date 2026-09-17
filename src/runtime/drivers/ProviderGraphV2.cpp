@@ -39,15 +39,20 @@ bool GraphV2::addVerified(const SpecV2& spec) {
     if (byte) { emptyDigest = false; break; }
   const bool regular = spec.requiredOsCpuAbi == 0 &&
                        spec.verifiedElfBytes == nullptr &&
-                       spec.verifiedElfLength == 0 && emptyDigest;
+                       spec.verifiedElfLength == 0 &&
+                       spec.signedImports == nullptr &&
+                       spec.signedImportCount == 0 && emptyDigest;
   const bool privileged = spec.requiredOsCpuAbi == 1 &&
                           spec.verifiedElfBytes != nullptr &&
                           spec.verifiedElfLength > 0 &&
                           spec.verifiedElfLength <= 8u * 1024u * 1024u &&
+                          spec.signedImports != nullptr &&
+                          spec.signedImportCount > 0 &&
+                          spec.signedImportCount <= 128 &&
                           !emptyDigest;
   /* Privileged byte-images have no pathname dependency; ordinary ELFs still
-   * require an absolute path. Neither path nor digest is authentication on
-   * its own; only trusted package intake may register privileged specs. */
+   * require an absolute path. Neither path, digest nor declaration alone is
+   * signer authentication. Only trusted package intake may register specs. */
   if (count_ == kMaxModules || !validName(spec.id) ||
       !validName(spec.provides) || !spec.api ||
       (spec.verifiedElfPath && spec.verifiedElfPath[0] != '/') ||
@@ -55,6 +60,15 @@ bool GraphV2::addVerified(const SpecV2& spec) {
       (!regular && !privileged) ||
       spec.requirementCount > kMaxModules ||
       (spec.requirementCount && !spec.requirements)) return false;
+  if (privileged) {
+    /* Fast metadata preflight; the private loader revalidates the exact set
+     * against both ELF symbol tables on the digest-checked private snapshot. */
+    for (size_t i = 0; i < spec.signedImportCount; ++i) {
+      if (!spec.signedImports[i] || !spec.signedImports[i][0]) return false;
+      if (i && std::strcmp(spec.signedImports[i - 1], spec.signedImports[i]) >= 0)
+        return false;
+    }
+  }
   for (size_t i = 0; i < count_; ++i) {
     if (nodes_[i].visit != Visit::Idle ||
         nodes_[i].module.state() != ModuleV2::State::Absent ||
@@ -114,14 +128,15 @@ bool GraphV2::activate(size_t index) {
     deps[i] = {requirement.capability, requirement.api,
                nodes_[dependency].module.capability()};
   }
-  /* The package verifier must have authenticated the signature and signed
-   * entry digest before this private graph is populated. The loader itself
-   * snapshots bytes, hashes its copy and relocates only matching bytes; no
-   * capability string or path grants authority. */
+  /* The package verifier must authenticate signer, entry digest and exact
+   * import declarations before this graph is populated. The loader snapshots
+   * bytes, hashes its copy and validates imports on that SAME image. */
   const bool loaded = node.spec.requiredOsCpuAbi
       ? node.module.loadVerifiedBytes(node.spec.verifiedElfBytes,
                                       node.spec.verifiedElfLength,
                                       node.spec.authenticatedElfSha256,
+                                      node.spec.signedImports,
+                                      node.spec.signedImportCount,
                                       node.spec.id, node.spec.provides,
                                       node.spec.api,
                                       node.spec.requirementCount ? deps : nullptr,
