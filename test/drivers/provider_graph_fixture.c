@@ -20,10 +20,17 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     started = true;
     return true;
 }
+static bool quiesce(void) {
+#ifdef FIXTURE_QUIESCE_FAIL
+    return !started;
+#else
+    return true;
+#endif
+}
 static void stop(void) { started = false; }
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
-    FIXTURE_ID, FIXTURE_CAPABILITY, 1, &value, start, stop
+    FIXTURE_ID, FIXTURE_CAPABILITY, 1, &value, start, stop, quiesce
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
