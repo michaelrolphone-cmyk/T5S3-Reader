@@ -1,10 +1,9 @@
 #include <T5AppApi.h>
 #include <T5LocationApi.h>
 #include "NativeStreamBridge.h"
-#include "runtime/capabilities/CapabilityAccess.h"
+#include "runtime/capabilities/ProviderAuthorization.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
 #include "runtime/resources/ExecutionContext.h"
-#include <cstring>
 
 namespace {
 using RuntimeResources::ExecutionContext;
@@ -15,22 +14,23 @@ ExecutionContext* caller() {
              ? context : nullptr;
 }
 
-// Authorization is exact: owner, physical generation, capability NAME and
-// READ right. A manifest Dependency is not a trusted hardware source grant;
-// an unrelated READ grant must not authorize location.
+// Derive the expected physical generation from the firmware registry rather
+// than trusting an app-provided handle. ProviderAuthorization verifies that
+// this exact lease was ISSUED by consent, is still live for this invocation,
+// names location.position and includes READ. A plain manifest dependency or
+// an unrelated location grant cannot authorize a GNSS data operation.
 bool authorizedDevice(t5_device_lease_t authorization, uint32_t* device) {
   if (device) *device = 0;
   auto* context = caller();
-  if (!context || !authorization || !device ||
-      !RuntimeDevices::systemCapabilityAccess().valid(
-          context->id(), authorization, RuntimeDevices::kCapabilityRead, device)) return false;
+  if (!context || !authorization || !device) return false;
+  auto& registry = RuntimeDevices::systemRegistry();
   RuntimeDevices::LeaseInfo lease{};
-  if (!RuntimeDevices::systemRegistry().getLease(authorization, context->id(), &lease) ||
-      lease.device != *device || lease.mode != RuntimeDevices::Mode::Dependency ||
-      std::strcmp(lease.capability, "location.position") != 0) {
-    *device = 0;
+  if (!registry.getLease(authorization, context->id(), &lease) ||
+      !RuntimeDevices::ProviderAuthorization::semantic(
+          RuntimeDevices::systemCapabilityAccess(), registry, *context,
+          authorization, lease.device, "location.position", RuntimeDevices::kCapabilityRead))
     return false;
-  }
+  *device = lease.device;
   return true;
 }
 
@@ -53,13 +53,27 @@ t5_stream_result_t subscribe(t5_device_lease_t authorization,
       return T5_STREAM_DISCONNECTED;
     }
   }
-  if (source.owner != context->id() || source.device != authorized) {
+  // Driver startup may yield; approval is never cached across it. Verify
+  // permission and the same physical generation before handing back a stream.
+  uint32_t rechecked = 0;
+  if (source.owner != context->id() || source.device != authorized ||
+      !authorizedDevice(authorization, &rechecked) || rechecked != authorized) {
     if (startedHere) GpsDriverRuntime::stop();
     return T5_STREAM_DENIED;
   }
   const auto result = nativeGnssSubscribe(context->id(), authorized, token, stream);
-  if (result != T5_STREAM_OK && startedHere) GpsDriverRuntime::stop();
-  return result;
+  if (result != T5_STREAM_OK) {
+    if (startedHere) GpsDriverRuntime::stop();
+    return result;
+  }
+  if (!authorizedDevice(authorization, &rechecked) || rechecked != authorized) {
+    (void)nativeGnssUnsubscribe(context->id(), *token);
+    *token = 0;
+    *stream = 0;
+    if (startedHere) GpsDriverRuntime::stop();
+    return T5_STREAM_DENIED;
+  }
+  return T5_STREAM_OK;
 }
 
 t5_stream_result_t poll(t5_device_lease_t authorization) {
