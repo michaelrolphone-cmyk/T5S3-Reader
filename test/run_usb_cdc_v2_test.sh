@@ -27,6 +27,9 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/src" \
   "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
   "$repo/test/drivers/provider_quiesce_v2_test.cpp" -ldl -o "$build/quiesce-test"
 "$build/quiesce-test" "$build/stuck.so"
+# USB host provider owns discovery, generations and physical interface claims.
+# Its usb.controller dependency is test-double ONLY, not actual hardware.
+bash "$repo/test/run_usb_host_v2_test.sh"
 # Generic graph pins transitive dependencies, rejects cycles and refuses stale grants.
 bash "$repo/test/run_provider_graph_v2_test.sh"
 # Two independent ELFs compose without a firmware USB bridge: mock host ONLY.
