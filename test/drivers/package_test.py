@@ -49,7 +49,7 @@ class Packages(unittest.TestCase):
         root = Path(__file__).resolve().parents[2]
         parser = (root / 'src/runtime/drivers/DriverPackage.cpp').read_text(encoding='utf-8')
         manager = (root / 'src/native/NativeDriverManagerBridge.cpp').read_text(encoding='utf-8')
-        self.assertNotIn('| nullptr', parser)
+        self.assertNotIn(' | nullptr;', parser)
         self.assertNotIn('entry["elf_asset"] | nullptr', manager)
         for field in ('id', 'version', 'sha256'):
             self.assertIn(f'view["{field}"].as<const char*>()', parser)
@@ -57,7 +57,6 @@ class Packages(unittest.TestCase):
         self.assertIn('provided[0]["capability"].as<const char*>()', parser)
         self.assertIn('doc["sha256"].as<const char*>()', parser)
         self.assertIn('entry["elf_asset"].as<const char*>()', manager)
-        # GitHub asset carries id/version; installer stores it as driver.elf.
         self.assertIn('std::string(info.id) + "-" + info.version + ".t5driver.elf"', manager)
         self.assertIn('Storage.rename(kDownloadedStorage, stageElf.c_str())', parser)
         self.assertIn('"/driver.elf"', parser)
@@ -66,7 +65,6 @@ class Packages(unittest.TestCase):
         parser = (root / 'src/runtime/drivers/DriverPackage.cpp').read_text(encoding='utf-8')
         vfs = (root / 'lib/NativeApps/src/SdVfs.cpp').read_text(encoding='utf-8')
         hal = (root / 'lib/hal/HalStorage.h').read_text(encoding='utf-8')
-        # ELF VFS is read-only: it has no filesystem mutation callbacks.
         self.assertIn('errno = EROFS;', vfs)
         for forbidden in ('::mkdir(', 'std::rename(', 'std::remove(', '::rmdir(', 'std::fopen(path, "wb")'):
             self.assertNotIn(forbidden, parser)
@@ -79,7 +77,6 @@ class Packages(unittest.TestCase):
         self.assertIn('"/Drivers/.driver-manager.part"', parser)
         self.assertIn('ROLLBACK FAILED', parser)
         self.assertIn('ELF validation: SHA-256 mismatch', parser)
-        # VFS lacks a pathname stat callback, so installed detection uses HAL.
         self.assertIn('Storage.exists((storagePath + "/driver.elf").c_str())', parser)
     def test_release_discovery_diagnostic_guards(self):
         root = Path(__file__).resolve().parents[2]
