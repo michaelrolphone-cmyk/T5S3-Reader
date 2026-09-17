@@ -149,7 +149,7 @@ The [Platform Capability Roadmap](PLATFORM_CAPABILITY_ROADMAP.md) is the authori
 5. Networking/communications.
 6. System facilities.
 7. Security services.
-8. Packaging/lifecycle — manifests, requirements, dependency declarations, install/update/remove lifecycle.
+8. Packaging/lifecycle — manifests, requirements, dependency declarations, install/update/remove lifecycle. See [Unified Package Manager MVP](UNIFIED_PACKAGE_MANAGER_MVP.md) for the shared identity implementation, separate legacy installers, migration steps and explicit outstanding signature/recovery gates.
 9. Power/reliability/diagnostics — including per-context resource accounting.
 
 ## Future-state versus current-state documentation
