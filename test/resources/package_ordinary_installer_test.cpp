@@ -11,7 +11,6 @@
 using namespace RuntimePackages;
 namespace {
 constexpr PackageRuntimePolicy kPolicy{"xtensa-esp32s3", 2, 0, 4096, 8192};
-constexpr uint8_t kManifest[] = "{\"kind\":\"driver\",\"id\":\"test\"}";
 OrdinaryTransactionPaths paths(Kind kind) {
   OrdinaryTransactionPaths p{};
   assert(ordinaryTransactionPaths(kind, "test", p));
@@ -95,6 +94,7 @@ struct Stage {
   std::string writing;
   std::string path;
   bool ownsStage = false;
+  explicit Stage(Storage& owner) : storage(owner) {}
   bool begin(const OrdinaryPackagePlan& plan) {
     OrdinaryTransactionPaths p{};
     if (!ordinaryTransactionPaths(plan.identity.kind, plan.identity.id, p) ||
@@ -166,12 +166,24 @@ OrdinaryPackagePlan makePlan(const Source& source, Kind kind) {
   }
   return plan;
 }
+const char* kindText(Kind kind) {
+  switch (kind) {
+    case Kind::Application: return "application";
+    case Kind::Driver: return "driver";
+    case Kind::Service: return "service";
+    case Kind::Provider: return "provider";
+    default: return "invalid";
+  }
+}
 uint32_t resolver(const char*) { return 0; }
 OrdinaryInstallOutcome install(Source& source, Stage& stage, Storage& disk,
                                const OrdinaryPackagePlan& plan, bool allowed = true) {
   Hash hash;
   uint8_t io[kOrdinaryIoBytes]{};
-  return installOrdinaryPackage(plan, kManifest, sizeof(kManifest) - 1,
+  const std::string manifest = std::string("{\"kind\":\"") + kindText(plan.identity.kind) +
+      "\",\"id\":\"test\",\"version\":\"" + plan.identity.version + "\"}";
+  return installOrdinaryPackage(plan,
+      reinterpret_cast<const uint8_t*>(manifest.data()), manifest.size(),
       source, stage, hash, resolver, kPolicy, io, disk,
       [&disk](const char* path, Identity& identity) {
         return disk.verify(path, identity);
@@ -185,7 +197,7 @@ void successfulFourKindsAndSources() {
       Source source = makeSource();
       auto plan = makePlan(source, kind);
       Storage disk;
-      Stage stage{disk};
+      Stage stage(disk);
       const auto result = install(source, stage, disk, plan);
       const auto p = paths(kind);
       Identity observed{};
@@ -200,7 +212,7 @@ void preservePriorAndRejectFailure() {
   Source source = makeSource();
   auto plan = makePlan(source, Kind::Driver);
   Storage disk;
-  Stage stage{disk};
+  Stage stage(disk);
   const auto p = paths(Kind::Driver);
   Identity old{};
   assert(makeIdentity(Kind::Driver, "test", "1.0.0", "module.elf", false, &old));
@@ -220,7 +232,7 @@ void failWithoutModifyingExisting() {
   Source source = makeSource();
   auto plan = makePlan(source, Kind::Driver);
   Storage disk;
-  Stage stage{disk};
+  Stage stage(disk);
   const auto p = paths(Kind::Driver);
   Identity old{};
   assert(makeIdentity(Kind::Driver, "test", "1.0.0", "module.elf", false, &old));
@@ -247,7 +259,7 @@ void blockSameVersion() {
   Source source = makeSource();
   auto plan = makePlan(source, Kind::Driver);
   Storage disk;
-  Stage stage{disk};
+  Stage stage(disk);
   const auto p = paths(Kind::Driver);
   disk.directories[p.target] = {plan.identity, true};
   const auto result = install(source, stage, disk, plan);
