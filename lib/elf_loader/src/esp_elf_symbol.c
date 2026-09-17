@@ -17,6 +17,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <ctype.h>
+#include "private/esp_privileged_os_cpu.h"
 
 #if CONFIG_LIBC_PICOLIBC
 /*
@@ -204,6 +205,12 @@ uintptr_t elf_find_sym_default(const char *sym_name)
         ESP_LOGE(TAG, "Invalid parameter: sym_name is NULL");
         return 0;
     }
+
+    /* Per-task privileged OS/CPU names are visible ONLY to the firmware task
+     * currently relocating an admitted provider. Do not register these names
+     * in global symbol tables: ordinary apps may load concurrently. */
+    uintptr_t privileged = esp_elf_privileged_os_cpu_lookup_v1(sym_name);
+    if (privileged) return privileged;
 
     esp_elf_symbol_table_t *syms;
 
