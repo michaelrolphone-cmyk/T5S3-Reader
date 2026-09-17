@@ -50,20 +50,32 @@ static uint32_t read_u32(const uint8_t *bytes) {
            ((uint32_t)bytes[2] << 16) | ((uint32_t)bytes[3] << 24);
 }
 
+// The ESP32 native ELF target and location.fix.v1 wire format are both
+// little-endian IEEE-754. Copy the bits directly: variable uint64_t shifts
+// would import __ashldi3, which is intentionally absent from the ELF ABI.
 static double read_f64(const uint8_t *bytes) {
-    uint64_t bits = 0;
-    for (unsigned index = 0; index < 8; ++index) bits |= (uint64_t)bytes[index] << (8u * index);
     double value = 0;
-    memcpy(&value, &bits, sizeof(value));
+    memcpy(&value, bytes, sizeof(value));
     return value;
 }
 
+// Validate finite, bounded IEEE-754 coordinates by their absolute-value bit
+// patterns. Software double comparisons import __gedf2/__ledf2 on this target.
+// +90.0 = 0x4056800000000000; +180.0 = 0x4066800000000000.
+static bool coordinate_in_range(const uint8_t *bytes, uint32_t limit_high) {
+    const uint32_t magnitude_high = read_u32(bytes + 4) & UINT32_C(0x7fffffff);
+    const uint32_t magnitude_low = read_u32(bytes);
+    return magnitude_high < limit_high ||
+           (magnitude_high == limit_high && magnitude_low == 0);
+}
+
 static bool decode(const uint8_t *bytes, uint32_t size, uint32_t *age) {
-    if (!bytes || size != RISCRTE_LOCATION_FIX_SIZE ||
+    if (!bytes || !age || size != RISCRTE_LOCATION_FIX_SIZE ||
         read_u32(bytes + RISCRTE_FIX_OFFSET_VERSION) != RISCRTE_LOCATION_FIX_VERSION) return false;
+    if (!coordinate_in_range(bytes + RISCRTE_FIX_OFFSET_LATITUDE, UINT32_C(0x40568000)) ||
+        !coordinate_in_range(bytes + RISCRTE_FIX_OFFSET_LONGITUDE, UINT32_C(0x40668000))) return false;
     const double latitude = read_f64(bytes + RISCRTE_FIX_OFFSET_LATITUDE);
     const double longitude = read_f64(bytes + RISCRTE_FIX_OFFSET_LONGITUDE);
-    if (!(latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180)) return false;
     snprintf(lat_text, sizeof(lat_text), "%.7f", latitude);
     snprintf(lon_text, sizeof(lon_text), "%.7f", longitude);
     snprintf(satellites_text, sizeof(satellites_text), "%u",
