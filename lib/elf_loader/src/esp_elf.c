@@ -23,6 +23,7 @@
 #endif
 
 #include "private/elf_platform.h"
+#include "private/esp_privileged_os_cpu.h"
 
 #define stype(_s, _t)               ((_s)->type == (_t))
 #define sflags(_s, _f)              (((_s)->flags & (_f)) == (_f))
@@ -164,6 +165,16 @@ uintptr_t elf_find_sym(const char *sym_name)
     if (!sym_name) {
         ESP_LOGE(TAG, "Invalid parameter: sym_name is NULL");
         return 0;
+    }
+
+    /* Privileged relocation must never invoke a process-global custom
+     * resolver, regardless of when another task installs or replaces it.
+     * The default lookup is task-scoped and returns ONLY the fixed OS/CPU
+     * inventory and libc while this task owns the privileged scope. Other
+     * tasks retain the ordinary application's customizable namespace.
+     * Do not modify current_resolver or hold resolver_mux across callbacks. */
+    if (esp_elf_privileged_os_cpu_scope_owned_v1()) {
+        return elf_find_sym_default(sym_name);
     }
 
     taskENTER_CRITICAL(&resolver_mux);
