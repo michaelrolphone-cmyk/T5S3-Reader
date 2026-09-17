@@ -24,6 +24,12 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo_dir/src" "$repo_dir/test/resources/package_ordinary_stage_test.cpp" \
   -lcrypto -o "$binary"
 "$binary"
+# One unsigned transaction engine handles all four package kinds, versioning,
+# mapping leases, interrupted updates, cleanup and crash-consistent uninstall.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -pthread -I"$repo_dir/src" \
+  "$repo_dir/test/resources/package_ordinary_transaction_test.cpp" -o "$binary"
+"$binary"
 # Experimental signed-format prototype regressions below are not a requirement
 # to install ordinary MVP packages; they are retained to avoid regressions in
 # existing code while that experiment is isolated from default install paths.
@@ -84,4 +90,4 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_di
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
 python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
-echo 'Native app regression tests passed, including ordinary four-kind staging/SHA-256, legacy recovery and optional signed prototype regressions'
+echo 'Native app regression tests passed, including ordinary four-kind staging/SHA-256, ordinary lifecycle/uninstall, legacy recovery and experimental signed prototype regressions'
