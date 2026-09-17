@@ -41,7 +41,7 @@ for pair in \
   "web_server web_server_test" \
   "serial_monitor serial_monitor_test" \
   "battery battery_test" \
-  "koreader_sync koreader_auth_test" \
+  "koreader_sync koreader_sync_test" \
   "koreader_auth koreader_auth_test" \
   "wifi_settings wifi_settings_test" \
   "file_transfer file_transfer_test" \
