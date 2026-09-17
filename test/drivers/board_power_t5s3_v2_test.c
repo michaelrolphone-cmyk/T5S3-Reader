@@ -11,7 +11,7 @@ typedef struct {
     uint64_t claim, next_claim, now;
     unsigned writes, releases, bad_claims;
     unsigned fail_power_write, fail_adc_write, fail_release, fail_probe;
-    int external, no_boost;
+    int external, no_boost, clock_failed;
 } simulated_board;
 static bool claim_device(void *ctx, uint8_t address, uint64_t *out) {
     simulated_board *b = ctx;
@@ -62,7 +62,10 @@ static bool release_device(void *ctx, uint64_t id) {
     ++b->releases;
     return true;
 }
-static uint64_t monotonic_ms(void *ctx) { return ((simulated_board *)ctx)->now; }
+static uint64_t monotonic_ms(void *ctx) {
+    simulated_board *b = ctx;
+    return b->clock_failed ? UINT64_MAX : b->now;
+}
 static void sleep_ms(void *ctx, uint32_t ms) { ((simulated_board *)ctx)->now += ms; }
 static simulated_board board;
 static risc_i2c_bus_api_v1 i2c = {
@@ -132,6 +135,25 @@ int main(void) {
     assert(board.releases == 1 && !board.bad_claims);
 
     reset_board();
+    board.clock_failed = 1;
+    token = 9;
+    assert(!power->acquire_host(NULL, 500, &token) && token == 0);
+    assert(board.writes == 0);  /* Unavailable clock must not energize VBUS. */
+    board.clock_failed = 0;
+    shutdown_board();
+
+    reset_board();
+    assert(power->acquire_host(NULL, 500, &token));
+    board.clock_failed = 1;
+    assert(!power->release_host(NULL, token));
+    assert(!driver->quiesce() && board.claim);
+    assert(!power->acquire_host(NULL, 500, &(uint64_t){0}));
+    board.clock_failed = 0;
+    assert(power->release_host(NULL, token));
+    assert_restored();
+    shutdown_board();
+
+    reset_board();
     board.external = 1;
     token = 9;
     assert(!power->acquire_host(NULL, 500, &token) && token == 0);
@@ -164,6 +186,6 @@ int main(void) {
     assert(!power->acquire_host(NULL, 500, &token));
     assert_restored();
     shutdown_board();
-    puts("T5S3 VBUS: real OTG VBUS_GD=0, ADC, power conflicts, rollback, timeout, retry: PASS");
+    puts("T5S3 VBUS: real OTG, ADC, power conflicts, clock loss, rollback, timeout, retry: PASS");
     return 0;
 }
