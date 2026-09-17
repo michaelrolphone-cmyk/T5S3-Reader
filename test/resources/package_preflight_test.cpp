@@ -69,6 +69,10 @@ void rejectsUnsafeEntries() {
   f.package.entryCount = kMaxPackageEntries + 1;
   assert(f.check() == PreflightResult::InvalidEntryList);
   f.package.entryCount = 3;
+  f.entries[1].name = "ICON.png";
+  assert(f.check() == PreflightResult::InvalidEntry);
+  f.entries[1].name = "icon.png.";
+  assert(f.check() == PreflightResult::InvalidEntry);
   f.entries[1].name = "../other";
   assert(f.check() == PreflightResult::InvalidEntry);
   f.entries[1].name = "driver.elf";
