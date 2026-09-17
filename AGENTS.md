@@ -12,9 +12,9 @@ Use **RiscRTE** for the overall firmware, runtime, build/release system, artifac
 
 Core rule: new reusable functionality normally belongs in a capability, provider/service, stream, device, job, intent/content handler, package, execution-context facility, or core runtime primitive rather than private application infrastructure. Applications should request semantic capabilities instead of binding directly to concrete hardware implementations where the specification defines such a capability.
 
-## Pull request isolation — mandatory
+## Pull request workflow — mandatory
 
-**NEVER stack pull requests. Every new PR must target `master` directly.** Never set another feature branch or unmerged PR as a PR's base, even temporarily, and never include another open PR's unmerged commits in a feature PR. Start each new feature branch from current `master`; keep unrelated work in independent branches and independent PRs. If a feature depends on another unmerged feature, finish/merge the prerequisite first, then branch from updated `master` and create its own PR. Do not work around this by opening a PR against `master` that contains a second PR's commits. If an existing PR violates this rule, preserve unique work, remove the cross-PR dependency and correct its base and diff before proceeding. Backmerge current `master` into a feature branch when necessary to resolve divergence, but never backmerge an unmerged feature branch.
+**NEVER stack pull requests. Every PR targets `master` directly. If work depends on an existing open PR, add the dependent changes to that existing PR and its branch; do not create a second PR, branch a second PR from it, or open a PR against `master` that duplicates its unmerged commits.** Keep extending the existing PR until its interdependent body of work is complete and merged. Create separate PRs only for genuinely independent work branched from `master`. If an unnecessary dependent PR has already been opened, preserve its unique changes in the original prerequisite PR, verify that the work is present, and close the redundant PR. Never discard changes merely to make PRs independent. Backmerge current `master` into the active PR branch when necessary to resolve divergence; do not merge one unmerged PR branch into a separate PR.
 
 ## Tagged firmware releases
 
