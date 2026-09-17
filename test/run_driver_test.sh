@@ -35,6 +35,12 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo/src" "$repo/test/resources/capability_access_test.cpp" \
   -o "$build/capability-access"
 "$build/capability-access"
+# A consent grant and the active GPS driver each require an independent
+# execution-context destructor. Verify both acquisition orders and lease cleanup.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/gnss_permission_lifecycle_test.cpp" \
+  -o "$build/gnss-permission-lifecycle"
+"$build/gnss-permission-lifecycle"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/NativeApps/include" \
   "$repo/test/resources/device_api_v2_abi_test.c" -o "$build/device-api-abi"
 "$build/device-api-abi"
