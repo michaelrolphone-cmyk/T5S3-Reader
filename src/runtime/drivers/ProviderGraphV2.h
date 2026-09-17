@@ -39,8 +39,14 @@ class GraphV2 final {
   // The trusted caller may choose a specific manifest-verified provider ID;
   // this does not grant an application permission or infer device semantics.
   GrantV2 acquireFrom(const char* providerId, const char* capability, uint32_t api);
+  // The grant becomes stale even when hardware cannot safely quiesce. Failed
+  // release quarantines the provider, preventing new grants; shutdown can
+  // retry without releasing its dependency pins prematurely.
   bool release(GrantV2 grant);
   const void* interfaceFor(GrantV2 grant) const;
+  // Returns true only when every provider, including failed-start and
+  // failed-teardown quarantines, is fully quiesced and its dependencies are
+  // released. False preserves all code and dependencies still required.
   bool shutdown();
   size_t moduleCount() const { return count_; }
   size_t liveGrants() const;
