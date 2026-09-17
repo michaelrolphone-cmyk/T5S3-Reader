@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <string>
@@ -13,29 +14,23 @@
 
 namespace {
 using Bytes = std::vector<uint8_t>;
-struct Handle {
-  std::map<std::string, Bytes> pending;
-};
+struct Handle { std::map<std::string, Bytes> pending; };
 std::map<std::string, Bytes> durable;
 std::map<nvs_handle_t, Handle> handles;
 nvs_handle_t nextHandle = 1;
 bool failOpen = false, failWrite = false, failCommit = false;
-
 Handle* active(nvs_handle_t handle) {
   auto it = handles.find(handle);
   return it == handles.end() ? nullptr : &it->second;
 }
 void resetStorage() {
-  durable.clear();
-  handles.clear();
-  nextHandle = 1;
+  durable.clear(); handles.clear(); nextHandle = 1;
   failOpen = failWrite = failCommit = false;
 }
 }
 
-// Host NVS emulation: uncommitted writes disappear on close, committed blobs
-// persist between open/close cycles. This intentionally models interruption
-// and storage faults, not underlying ESP flash wear or hardware tamper defence.
+// Host NVS emulation: uncommitted writes disappear on close; committed blobs
+// persist between handles. Does not model flash wear or physical tamper defence.
 esp_err_t nvs_open(const char* name, int mode, nvs_handle_t* out) {
   if (failOpen || !name || std::strcmp(name, "risc_pkg_floor") ||
       mode != NVS_READWRITE || !out) return -1;
@@ -104,18 +99,16 @@ int main() {
   failOpen = false;
   assert(floor.read(Kind::Driver, "gps-nmea", value) == FloorRead::Present && value == 6);
 
-  // A full-identity mismatch under the same short NVS key must never inherit,
-  // reset or overwrite another package's floor (also handles hash collisions).
+  // A shortened-key collision must fail closed on full identity mismatch.
   resetStorage();
   assert(floor.advance(Kind::Driver, "alpha", 7) == FloorAdvance::Advanced);
   assert(floor.advance(Kind::Driver, "beta", 9) == FloorAdvance::Advanced);
   assert(durable.size() == 2);
   auto first = durable.begin(), second = std::next(first);
-  const std::string swappedKey = first->first;
   first->second = second->second;
   assert(floor.read(Kind::Driver, "alpha", value) == FloorRead::Unavailable ||
          floor.read(Kind::Driver, "beta", value) == FloorRead::Unavailable);
-  // Restore independent data and corrupt schema/magic; corruption fails closed.
+
   resetStorage();
   assert(floor.advance(Kind::Driver, "gps-nmea", 7) == FloorAdvance::Advanced);
   durable.begin()->second[0] ^= 1;
@@ -125,13 +118,19 @@ int main() {
   assert(floor.advance(Kind::Driver, "gps-nmea", 7) == FloorAdvance::Advanced);
   durable.begin()->second.pop_back();
   assert(floor.read(Kind::Driver, "gps-nmea", value) == FloorRead::Unavailable);
+  // Reject noncanonical bytes after the NUL in the fixed-size identity field.
+  resetStorage();
+  assert(floor.advance(Kind::Driver, "gps-nmea", 7) == FloorAdvance::Advanced);
+  assert(durable.begin()->second.size() > 32);
+  durable.begin()->second[32] = 0x5a;
+  assert(floor.read(Kind::Driver, "gps-nmea", value) == FloorRead::Unavailable);
 
-  // The device adapter serializes reads/commits across concurrent writers.
+  // The device adapter serializes reads and commits across concurrent writers.
   resetStorage();
   std::thread a([&] { for (uint32_t n = 1; n <= 32; ++n) (void)floor.advance(Kind::Driver, "race", n); });
   std::thread b([&] { for (uint32_t n = 1; n <= 32; ++n) (void)floor.advance(Kind::Driver, "race", n); });
   a.join(); b.join();
   assert(floor.read(Kind::Driver, "race", value) == FloorRead::Present && value == 32);
   assert(floor.advance(Kind::Driver, "race", 31) == FloorAdvance::Downgrade);
-  std::puts("Device NVS security floors: commit faults, restart, collisions, corruption and writers passed");
+  std::puts("Device NVS security floors: commit faults, restart, collision, corruption and writer tests passed");
 }
