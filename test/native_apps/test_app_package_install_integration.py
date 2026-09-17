@@ -2,7 +2,7 @@
 """Prevent regressions from the live App Store back to split ELF/JSON swaps.
 
 The template transaction's fault-injection tests exercise rename/delete states;
-firmware board builds compile this real HalStorage/mbedTLS adapter. This source
+firmware board builds compile the actual HalStorage/mbedTLS adapters. This source
 contract additionally ensures the live API is wired to those tested paths.
 """
 from pathlib import Path
@@ -11,6 +11,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 HOST = (ROOT / 'src/native/NativeAppHost.cpp').read_text(encoding='utf-8')
 ADAPTER = (ROOT / 'src/native/AppPackageInstaller.cpp').read_text(encoding='utf-8')
+INVENTORY = (ROOT / 'src/native/AppPackageRecoveryInventory.cpp').read_text(encoding='utf-8')
 
 
 class LiveInstallContract(unittest.TestCase):
@@ -50,6 +51,27 @@ class LiveInstallContract(unittest.TestCase):
         self.assertIn('RuntimePackages::verifyAppPair(elf.c_str(), sidecar.c_str(), filename.c_str(), false)', HOST)
         self.assertIn('Application ELF integrity validation failed.', HOST)
         self.assertIn('Application update cannot be safely recovered.', HOST)
+
+    def test_recovery_runs_before_springboard_presence_and_inventory_open(self):
+        start = HOST.index('bool runNativeSpringboard(')
+        boot = HOST[start:]
+        self.assertLess(boot.index('recoverAppInventory()'),
+                        boot.index('Storage.exists("/Apps/springboard.elf")'))
+        self.assertLess(boot.index('recoverAppPair("springboard.elf")'),
+                        boot.index('Storage.exists("/Apps/springboard.elf")'))
+        installed = HOST[HOST.index('bool installedRefresh()'):HOST.index('\nuint32_t installedCount()')]
+        self.assertLess(installed.index('recoverAppInventory()'),
+                        installed.index('Storage.open("/Apps", O_RDONLY)'))
+        self.assertIn('recoverAppPair(selectedName.c_str())', boot)
+
+    def test_inventory_does_not_rename_open_directory_or_mapped_app(self):
+        self.assertIn('appRecoveryCandidate(name, elf)', INVENTORY)
+        self.assertLess(INVENTORY.index('directory.close();\n  if (!complete)'),
+                        INVENTORY.index('recoverAppPair(elf.c_str())'))
+        self.assertIn('native_app_current_path()', INVENTORY)
+        self.assertIn('if (active && mapped == active && backedUp)', INVENTORY)
+        self.assertIn('if (!Storage.exists(manifest.c_str()) && !backedUp && !staged) continue;', INVENTORY)
+        self.assertIn('candidates.size() >= 256', INVENTORY)
 
 
 if __name__ == '__main__':
