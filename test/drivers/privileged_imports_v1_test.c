@@ -6,9 +6,8 @@
 #include "private/elf_types.h"
 #include "private/esp_privileged_imports.h"
 
-/* A bounded synthetic dynamic-symbol table. The full ELF structural validator
- * is separately exercised by native-app tests and precedes this preflight in
- * the production entry point. This fixture never executes any ELF code. */
+/* Synthetic bounded tables: no ELF code is executed. Structural checks run
+ * independently; the private loader executes both validators before mapping. */
 typedef union {
     uint32_t alignment;
     uint8_t bytes[1024];
@@ -53,22 +52,91 @@ int main(void)
     strcpy(names + 1, "esp_intr_alloc");
     assert(esp_elf_privileged_imports_valid_v1(bytes, length));
 
-    symbols[1].name = 128; /* Outside the string table. */
+    symbols[1].name = 128;
     assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
     symbols[1].name = 1;
     symbols[1].info = ELF_ST_INFO(STB_LOCAL, STT_FUNC);
     assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
     symbols[1].info = ELF_ST_INFO(STB_GLOBAL, STT_FUNC);
-    sections[1].link = 3; /* Out-of-range section index. */
+    sections[1].link = 3;
     assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
     sections[1].link = 2;
-    sections[1].offset = 1020; /* Symbol array crosses the buffer end. */
+    sections[1].offset = 1020;
     assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
     sections[1].offset = 256;
     assert(esp_elf_privileged_imports_valid_v1(bytes, length));
-    header->shoff = 1016; /* Section table crosses the buffer end. */
+
+    /* Move section headers and add a second, independent .symtab, its own
+     * string table and a RELA targeting .symtab. The old dynsym is still
+     * clean, reproducing the former policy bypass exactly. */
+    memmove(bytes + 640, bytes + 512, 3 * sizeof(elf32_shdr_t));
+    header->shoff = 640;
+    header->shnum = 6;
+    sections = (elf32_shdr_t *)(bytes + header->shoff);
+    sections[3].type = SHT_SYMTAB;
+    sections[3].offset = 320;
+    sections[3].size = 3 * sizeof(elf32_sym_t);
+    sections[3].link = 4;
+    sections[4].type = SHT_STRTAB;
+    sections[4].offset = 384;
+    sections[4].size = 128;
+    sections[5].type = SHT_RELA;
+    sections[5].offset = 520;
+    sections[5].size = sizeof(elf32_rela_t);
+    sections[5].link = 3;
+    char *alternate_names = (char *)(bytes + sections[4].offset);
+    strcpy(alternate_names + 1, "malloc");
+    strcpy(alternate_names + 32, "memcpy");
+    elf32_sym_t *alternate = (elf32_sym_t *)(bytes + sections[3].offset);
+    alternate[1].name = 1;
+    alternate[1].info = ELF_ST_INFO(STB_GLOBAL, STT_FUNC);
+    alternate[2].name = 32;
+    alternate[2].info = ELF_ST_INFO(STB_GLOBAL, STT_FUNC);
+    elf32_rela_t *rel = (elf32_rela_t *)(bytes + sections[5].offset);
+    rel[0].info = ELF_R_INFO(2, 2);
+    assert(esp_elf_privileged_imports_valid_v1(bytes, length));
+
+    strcpy(alternate_names + 32, "usb_host_install");
+    assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
+    strcpy(alternate_names + 32, "i2c_driver_install");
+    assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
+    strcpy(alternate_names + 32, "t5_usb_get_api");
+    assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
+    strcpy(alternate_names + 32, "memcpy");
+    assert(esp_elf_privileged_imports_valid_v1(bytes, length));
+
+    alternate[2].name = 128;
+    assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
+    alternate[2].name = 32;
+    alternate[2].info = ELF_ST_INFO(STB_LOCAL, STT_FUNC);
+    assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
+    alternate[2].info = ELF_ST_INFO(STB_GLOBAL, STT_FUNC);
+    sections[3].link = 6;
+    assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
+    sections[3].link = 4;
+    sections[3].offset = 1020;
+    assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
+    sections[3].offset = 320;
+    rel[0].info = ELF_R_INFO(3, 2);
+    assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
+    rel[0].info = ELF_R_INFO(2, 2);
+    sections[5].link = 4;
+    assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
+    sections[5].link = 3;
+    assert(esp_elf_privileged_imports_valid_v1(bytes, length));
+    sections[3].type = SHT_SYNSYM; /* No second dynsym. */
+    assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
+    sections[3].type = SHT_SYMTAB;
+    sections[1].type = SHT_SYMTAB; /* No dynsym. */
+    assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
+    sections[1].type = SHT_SYNSYM;
+    sections[5].type = SHT_REL; /* Unsupported implicit-addend format. */
+    assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
+    sections[5].type = SHT_RELA;
+    assert(esp_elf_privileged_imports_valid_v1(bytes, length));
+    header->shoff = 1016;
     assert(!esp_elf_privileged_imports_valid_v1(bytes, length));
     assert(!esp_elf_privileged_imports_valid_v1(NULL, length));
-    puts("Privileged provider ELF import preflight: allowlist and bounds PASS");
+    puts("Privileged provider import preflight: dynsym, symtab, RELA and bounds PASS");
     return 0;
 }
