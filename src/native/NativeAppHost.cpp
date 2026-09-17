@@ -3,7 +3,10 @@
 #include "runtime/drivers/GpsDriverRuntime.h"
 #include "AppCatalogIndex.h"
 #include "AppManifest.h"
+#include "AppPackageInstaller.h"
+#include "runtime/packages/PackagePreflight.h"
 #include <AppManifestRules.h>
+#include <ArduinoJson.h>
 #include "components/FontAwesomeIcons.h"
 #include <Arduino.h>
 #include <GfxRenderer.h>
@@ -521,15 +524,13 @@ bool installedAppVersionGet(const char* fileName, char* out, size_t capacity) {
   if (!s || !Storage.ready() || !t5_safe_elf_name(fileName) || !out || capacity == 0) return false;
   const std::string destination = std::string("/Apps/") + fileName;
   const std::string sidecar = destination.substr(0, destination.size() - 4) + ".json";
-  if (!Storage.exists(destination.c_str()) || !Storage.exists(sidecar.c_str()) ||
-      Storage.exists((destination + ".bak").c_str()) || Storage.exists((sidecar + ".bak").c_str())) {
-    return false;
-  }
+  if (!RuntimePackages::recoverAppPair(fileName) ||
+      !Storage.exists(destination.c_str()) || !Storage.exists(sidecar.c_str()) ||
+      !RuntimePackages::verifyAppPair(destination.c_str(), sidecar.c_str(), fileName, false)) return false;
   t5_app_manifest_t manifest{};
   std::string version;
-  if (!readAppManifest(sidecar.c_str(), manifest, &version, false) || std::strcmp(manifest.file_name, fileName)) {
+  if (!readAppManifest(sidecar.c_str(), manifest, &version, false) || std::strcmp(manifest.file_name, fileName))
     return false;
-  }
   return copyVersion(version, out, capacity);
 }
 
@@ -537,57 +538,62 @@ bool appCatalogDownload(uint32_t index) {
   auto* s = current();
   if (!s || !Storage.ready() || index >= s->catalog.size()) return false;
   const auto& asset = s->catalog[index];
-  if (!safeAssetName(asset.name)) return false;
+  // New managed installations have canonical filenames and independently
+  // checked release asset lengths; old loose files can still be browsed.
+  if (!safeAssetName(asset.name) || !RuntimePackages::safePackageEntryName(asset.name.c_str()) ||
+      !asset.manifestValid || asset.size < 52 || asset.size > 1024u * 1024u ||
+      asset.manifestUrl.empty()) return false;
 
-  if (asset.manifestUrl.empty()) return false;
   std::string json;
   std::string version;
   t5_app_manifest_t manifest{};
   if (!HttpDownloader::fetchUrl(asset.manifestUrl, json) ||
       !parseAppManifest(json, manifest, &version, true) || !manifest.compatible ||
       asset.name != manifest.file_name || version != asset.version) return false;
+  JsonDocument metadata;
+  if (deserializeJson(metadata, json) || !metadata.is<JsonObjectConst>() ||
+      !metadata["sha256"].is<const char*>() || !metadata["size_bytes"].is<unsigned>() ||
+      metadata["size_bytes"].as<unsigned>() != asset.size) {
+    LOG_ERR("APPSTORE", "Release metadata lacks a matching ELF digest and length");
+    return false;
+  }
   if (!Storage.mkdir("/Apps") && !Storage.exists("/Apps")) return false;
   const std::string destination = std::string("/Apps/") + asset.name;
   const std::string sidecar = destination.substr(0, destination.size() - 4) + ".json";
   const std::string temporary = destination + ".part";
   const std::string stagedJson = sidecar + ".part";
-  const std::string backup = destination + ".bak";
-  const std::string backupJson = sidecar + ".bak";
-  // A prior interrupted transaction is recovered before making another install.
-  if (Storage.exists(backup.c_str()) || Storage.exists(backupJson.c_str())) {
-    if (Storage.exists(backup.c_str())) {
-      Storage.remove(destination.c_str());
-      if (!Storage.rename(backup.c_str(), destination.c_str())) return false;
-    }
-    if (Storage.exists(backupJson.c_str())) {
-      Storage.remove(sidecar.c_str());
-      if (!Storage.rename(backupJson.c_str(), sidecar.c_str())) return false;
+  if (!RuntimePackages::recoverAppPair(asset.name.c_str())) return false;
+  if (Storage.exists(destination.c_str())) {
+    t5_app_manifest_t installed{};
+    std::string installedVersion;
+    if (!readAppManifest(sidecar.c_str(), installed, &installedVersion, false) ||
+        !RuntimePackages::verifyAppPair(destination.c_str(), sidecar.c_str(), asset.name.c_str(), false))
+      return false;
+    if (!installedVersion.empty()) {
+      const auto order = RuntimePackages::comparePackageVersions(version.c_str(), installedVersion.c_str());
+      if (order == RuntimePackages::VersionOrder::Invalid ||
+          order == RuntimePackages::VersionOrder::Older) {
+        LOG_ERR("APPSTORE", "Refusing invalid or downgraded application version: %s", asset.name.c_str());
+        return false;
+      }
     }
   }
-  Storage.remove(temporary.c_str());
-  Storage.remove(stagedJson.c_str());
+  // Recovery is complete before deleting only these two disposable .part files.
+  if (!RuntimePackages::clearAppStage(asset.name.c_str())) return false;
   if (!Storage.writeFile(stagedJson.c_str(), String(json.c_str()))) return false;
-  const auto result = HttpDownloader::downloadToFile(asset.url, temporary, [](size_t, size_t) { esp_task_wdt_reset(); });
-  HalFile staged = Storage.open(temporary.c_str(), O_RDONLY);
-  const bool sizeOk = staged.isOpen() && (asset.size == 0 || staged.fileSize64() == asset.size);
-  staged.close();
-  if (result != HttpDownloader::OK || !sizeOk) {
-    Storage.remove(temporary.c_str()); Storage.remove(stagedJson.c_str()); return false;
-  }
-  const bool hadElf = Storage.exists(destination.c_str());
-  const bool hadJson = Storage.exists(sidecar.c_str());
-  if (hadElf && !Storage.rename(destination.c_str(), backup.c_str())) return false;
-  if (hadJson && !Storage.rename(sidecar.c_str(), backupJson.c_str())) {
-    if (hadElf) Storage.rename(backup.c_str(), destination.c_str());
+  const auto result = HttpDownloader::downloadToFile(asset.url, temporary,
+      [](size_t, size_t) { esp_task_wdt_reset(); });
+  if (result != HttpDownloader::OK ||
+      !RuntimePackages::verifyAppPair(temporary.c_str(), stagedJson.c_str(), asset.name.c_str(), true)) {
+    LOG_ERR("APPSTORE", "Download rejected: ELF length, header or SHA-256 mismatch");
+    // Keep staged files for inspection on a failed integrity check; the old
+    // published generation has not been modified.
     return false;
   }
-  if (!Storage.rename(temporary.c_str(), destination.c_str()) || !Storage.rename(stagedJson.c_str(), sidecar.c_str())) {
-    Storage.remove(destination.c_str()); Storage.remove(sidecar.c_str());
-    if (hadElf) Storage.rename(backup.c_str(), destination.c_str());
-    if (hadJson) Storage.rename(backupJson.c_str(), sidecar.c_str());
+  if (!RuntimePackages::publishAppPair(asset.name.c_str(), true)) {
+    LOG_ERR("APPSTORE", "App publish blocked; recoverable old package retained");
     return false;
   }
-  Storage.remove(backup.c_str()); Storage.remove(backupJson.c_str());
   return true;
 }
 
@@ -612,7 +618,7 @@ bool installedRefresh() {
     if (filename != std::string(manifest.file_name).substr(0, std::strlen(manifest.file_name) - 4) + ".json") continue;
     if (!std::strcmp(manifest.file_name, "springboard.elf")) continue;
     if (!Storage.exists((std::string("/Apps/") + manifest.file_name).c_str())) continue;
-    // Incomplete update pairs are never launched.
+    // Incomplete update pairs are never listed until recovery succeeds.
     if (Storage.exists((std::string("/Apps/") + manifest.file_name + ".bak").c_str()) ||
         Storage.exists((std::string("/Apps/") + filename + ".bak").c_str())) continue;
     s->installed.push_back(manifest);
@@ -700,7 +706,14 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     lastLaunchError = "Invalid native application filename.";
     return ESP_ERR_INVALID_ARG;
   }
+  const std::string filename = elf.substr(elf.find_last_of('/') + 1);
   const std::string sidecar = elf.substr(0, elf.size() - 4) + ".json";
+  // Managed /Apps updates recover before any sidecar/ELF can be loaded.
+  if (elf.compare(0, 6, "/Apps/") == 0 && t5_safe_elf_name(filename.c_str()) &&
+      !RuntimePackages::recoverAppPair(filename.c_str())) {
+    lastLaunchError = "Application update cannot be safely recovered.";
+    return ESP_ERR_INVALID_STATE;
+  }
   if (Storage.exists((elf + ".bak").c_str()) || Storage.exists((sidecar + ".bak").c_str())) {
     lastLaunchError = "Application update is incomplete; backup files remain.";
     return ESP_ERR_INVALID_STATE;
@@ -711,8 +724,12 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
       lastLaunchError = "Application manifest is invalid.";
       return ESP_ERR_NOT_SUPPORTED;
     }
-    if (elf.substr(elf.find_last_of('/') + 1) != manifest.file_name) {
+    if (filename != manifest.file_name) {
       lastLaunchError = "Manifest file name does not match the ELF.";
+      return ESP_ERR_NOT_SUPPORTED;
+    }
+    if (!RuntimePackages::verifyAppPair(elf.c_str(), sidecar.c_str(), filename.c_str(), false)) {
+      lastLaunchError = "Application ELF integrity validation failed.";
       return ESP_ERR_NOT_SUPPORTED;
     }
     if (!manifest.compatible) {
@@ -772,7 +789,6 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
 }
 
 bool consumeNativeAppReturn() { const bool value = returned; returned = false; return value; }
-
 
 bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool resume) {
   if (resume && homeRequested) return false;
