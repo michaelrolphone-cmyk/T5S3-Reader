@@ -94,11 +94,21 @@ bool start() {
   }
   if (module.start(GPS_DRIVER_ELF, host)) {
     LocationSource source{};
-    if (borrowLocationSource(&source)) {
-      const auto result = nativeGnssAttach(source.owner, source.device, source.lease);
-      gnssBound = result == T5_STREAM_OK;
-      if (!gnssBound) LOG_ERR("DRIVER", "location.fix.v1 stream attach failed: %ld", static_cast<long>(result));
+    if (!borrowLocationSource(&source)) {
+      LOG_ERR("DRIVER", "gps-nmea active but cannot borrow its location source");
+      stop();
+      return false;
     }
+    const auto result = nativeGnssAttach(source.owner, source.device, source.lease);
+    if (result != T5_STREAM_OK) {
+      // A functioning UART driver without its required semantic stream would
+      // report a false-positive start and leave a claimed bus/lease behind.
+      // Abort atomically; a later attempt may retry once old streams close.
+      LOG_ERR("DRIVER", "location.fix.v1 stream attach failed: %ld", static_cast<long>(result));
+      stop();
+      return false;
+    }
+    gnssBound = true;
     LOG_INF("DRIVER", "gps-nmea ACTIVE: location.position (position.gnss compatibility)");
     return true;
   }
