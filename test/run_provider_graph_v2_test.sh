@@ -29,7 +29,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   "$repo/test/drivers/provider_owned_spec_v2_test.cpp" -ldl -o "$build/ownership-test"
 "$build/ownership-test" "$build/root.so"
 
-# A provider can retain start()'s dependency pointer through quiesce and stop.
+# Retained start() dependency pointers survive activation, quiesce and stop.
 cc "${flags[@]}" -fsanitize=address,undefined -fno-omit-frame-pointer \
   "$repo/test/drivers/provider_dependency_retention_fixture.c" -o "$build/retaining.so"
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
@@ -41,8 +41,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
 ASAN_OPTIONS=detect_stack_use_after_return=1 "$build/dependency-lifetime-test" \
   "$build/root.so" "$build/retaining.so"
 
-# Check ordinary unsigned manager admission, actual SHA-256 integrity failures,
-# copy-on-register and the public graph's refusal of forged privilege. No P-256.
+# Unsigned manager admission, actual SHA-256 corruption, and forged privilege.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo/sdk/driver" -I"$repo/test/drivers/stubs" -I"$repo/src" \
   "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
@@ -52,7 +51,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -ldl -lcrypto -o "$build/manager-admission-test"
 "$build/manager-admission-test"
 
-# Host-only friend tests private metadata shape; it does not grant execution.
+# Host-only private metadata shape fixture; not a cryptographic requirement.
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   -I"$repo/test/drivers/stubs" -I"$repo/src" \
   "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
@@ -61,9 +60,8 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   -ldl -o "$build/privileged-spec-test"
 "$build/privileged-spec-test"
 
-# Failed start retains the mapped ELF and dependencies through retry.
-cc "${flags[@]}" "$repo/test/drivers/provider_failed_start_fixture.c" \
-  -o "$build/failed-start.so"
+# Failed start retains mapped code/dependencies until quiescence retry.
+cc "${flags[@]}" "$repo/test/drivers/provider_failed_start_fixture.c" -o "$build/failed-start.so"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   -I"$repo/test/drivers/stubs" -I"$repo/src" \
   "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
@@ -72,7 +70,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   -ldl -o "$build/recovery-test"
 "$build/recovery-test" "$build/root.so" "$build/failed-start.so"
 
-# Failed quiescence revokes grants without unmapping active IRQ/DMA owners.
+# Failed quiescence revokes grants and does not force-unmap hardware.
 cc "${flags[@]}" -DFIXTURE_ID='"fixture-retry"' \
   -DFIXTURE_CAPABILITY='"cap.retry"' -DFIXTURE_QUIESCE_FAIL_ONCE \
   "$repo/test/drivers/provider_graph_fixture.c" -o "$build/retry.so"
@@ -83,3 +81,16 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/provider_failed_teardown_v2_test.cpp" \
   -ldl -o "$build/teardown-test"
 "$build/teardown-test" "$build/retry.so"
+
+# An owner destroying a graph with perpetually mapped hardware MUST fail stop
+# instead of returning with dangling graph-owned API/dependency addresses.
+cc "${flags[@]}" -DFIXTURE_ID='"fixture-stuck"' \
+  -DFIXTURE_CAPABILITY='"cap.stuck"' -DFIXTURE_QUIESCE_FAIL \
+  "$repo/test/drivers/provider_graph_fixture.c" -o "$build/stuck.so"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  -I"$repo/test/drivers/stubs" -I"$repo/src" \
+  "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
+  "$repo/src/runtime/drivers/ProviderGraphV2.cpp" \
+  "$repo/test/drivers/provider_graph_destruction_guard_v2_test.cpp" \
+  -ldl -o "$build/destruction-test"
+"$build/destruction-test" "$build/stuck.so"
