@@ -20,6 +20,9 @@ extern "C" {
 bool esp_elf_privileged_os_cpu_begin_v1(void);
 /* Returns false without clearing somebody else's scope (fail closed). */
 bool esp_elf_privileged_os_cpu_end_v1(void);
+/* True exclusively on the current task while its privileged scope is held.
+ * Used by the default resolver to forbid fallback to global provider symbols. */
+bool esp_elf_privileged_os_cpu_scope_owned_v1(void);
 /* Only the owning task can resolve symbols; other tasks always get zero. */
 uintptr_t esp_elf_privileged_os_cpu_lookup_v1(const char *symbol);
 size_t esp_elf_privileged_os_cpu_symbol_count_v1(void);
