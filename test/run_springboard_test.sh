@@ -41,6 +41,12 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   "$repo_dir/test/resources/package_device_security_floor_test.cpp" \
   -lcrypto -o "$binary"
 "$binary"
+# Publication must hold the exclusive target lease through rename, backup
+# cleanup and persistent floor advance; fault-inject resets at transaction cuts.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -pthread -I"$repo_dir/src" \
+  "$repo_dir/test/resources/package_signed_transaction_test.cpp" -o "$binary"
+"$binary"
 # Generate ephemeral signing keys in temp directories. Exercise the real P-256
 # writer/reader and reauthenticate the sealed staged archive after SD copy races,
 # short writes, seal failures and substitution by a different valid package.
@@ -79,4 +85,4 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_di
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
 python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
-echo 'Native app regression tests passed, including real device NVS floor faults, signed staging copy races, signer trust scope, canonical archive decoding and package recovery'
+echo 'Native app regression tests passed, including NVS floor faults, signed extraction/provenance, signed publication recovery, package trust scope and legacy recovery'
