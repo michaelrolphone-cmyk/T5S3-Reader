@@ -27,12 +27,12 @@ int esp_elf_relocate_privileged_verified_v1(esp_elf_t *module,
             verified_bytes, verified_length, signed_imports, signed_import_count))
         return -EINVAL;
 
-    /* Never swap the process-global resolver or register privileged imports
-     * globally. The default resolver consults the scoped table only for this
-     * FreeRTOS task while esp_elf_relocate executes synchronously. Concurrent
-     * regular app loads cannot see it. Reentrant privileged loads fail closed.
-     * A globally installed custom resolver still requires separate hardening.
-     */
+    /* Never swap the global resolver or globally register private imports.
+     * elf_find_sym bypasses any installed custom resolver while this task
+     * owns the scope and dispatches directly to the private-scoped default.
+     * Other tasks retain ordinary lookup; nested privileged scopes fail.
+     * This scope is task-owned rather than bound to one module. The trusted
+     * executor must also prevent same-task ordinary relocation reentrancy. */
     if (!esp_elf_privileged_os_cpu_begin_v1()) return -EBUSY;
     int result = esp_elf_init(module);
     if (result == 0) {
@@ -41,8 +41,7 @@ int esp_elf_relocate_privileged_verified_v1(esp_elf_t *module,
     }
     if (!esp_elf_privileged_os_cpu_end_v1()) {
         /* A mismatched owner can never be silently cleared; the scope stays
-         * closed to all other tasks. Do not return a live driver in this case.
-         */
+         * closed to all other tasks. Do not return a live driver in this case. */
         if (result == 0) esp_elf_deinit(module);
         return -EIO;
     }
