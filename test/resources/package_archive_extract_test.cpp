@@ -1,9 +1,9 @@
-// Reuse the real OpenSSL SHA-256/P-256 fixture verifier from the staging test;
-// compile this as a separate executable so both original test mains run.
+// Reuse the real OpenSSL SHA-256/P-256 fixture verifier from staging.
 #define main original_stage_main
 #include "package_archive_stage_test.cpp"
 #undef main
 #include "runtime/packages/PackageArchiveExtract.h"
+#include "runtime/packages/PackageSignedProvenance.h"
 
 #include <map>
 #include <string>
@@ -11,11 +11,13 @@
 namespace {
 struct ExtractDirectory {
   std::map<std::string, std::vector<uint8_t>> files;
+  std::vector<uint8_t> provenance;
   std::string active;
   std::vector<uint8_t>* source = nullptr;
   const std::vector<uint8_t>* replacement = nullptr;
   bool failBegin = false, failAppend = false, failRead = false;
-  bool corruptOutput = false, failSeal = false, mutateSourceAtSeal = false;
+  bool corruptOutput = false, failProvenance = false, failSeal = false;
+  bool mutateSourceAtSeal = false;
   bool started = false, sealed = false, discarded = false;
   size_t appends = 0;
 
@@ -31,8 +33,8 @@ struct ExtractDirectory {
     return true;
   }
   bool append(const uint8_t* bytes, size_t count) {
-    if (failAppend && ++appends == 2) return false;
-    if (!failAppend) ++appends;
+    ++appends;
+    if (failAppend && appends == 2) return false;
     auto& output = files[active];
     output.insert(output.end(), bytes, bytes + count);
     return true;
@@ -50,13 +52,26 @@ struct ExtractDirectory {
     std::memcpy(bytes, it->second.data() + offset, count);
     return true;
   }
+  bool writeProvenance(const uint8_t* prefix, size_t prefixLength,
+                       const uint8_t* signature, size_t signatureLength) {
+    if (failProvenance) return false;
+    provenance.assign(prefix, prefix + prefixLength);
+    provenance.insert(provenance.end(), signature, signature + signatureLength);
+    return true;
+  }
   bool seal() {
     if (failSeal) return false;
     sealed = true;
     if (mutateSourceAtSeal) source->back() ^= 1;
     return true;
   }
-  bool discard() { discarded = true; sealed = false; files.clear(); return true; }
+  bool discard() {
+    discarded = true;
+    sealed = false;
+    files.clear();
+    provenance.clear();
+    return true;
+  }
 };
 
 ArchiveExtractResult extract(std::vector<uint8_t>& source,
@@ -82,11 +97,15 @@ ArchiveExtractResult extract(std::vector<uint8_t>& source,
       [&floorChecks, rejectFinalFloor](const PackageArchive& candidate) {
         ++floorChecks;
         return candidate.securityVersion >= 3 &&
-               !(rejectFinalFloor && floorChecks == 2);
+               !(rejectFinalFloor && floorChecks >= 2);
       }, policy, archive, workspace);
   if (result == ArchiveExtractResult::ReadyForPublicationReview) {
-    assert(directory.sealed && !directory.discarded && floorChecks == 2);
+    assert(directory.sealed && !directory.discarded && floorChecks == 3);
     assert(archive.entryCount == directory.files.size());
+    assert(directory.provenance.size() == static_cast<size_t>(archive.signatureOffset) +
+                                          kPackageSignatureBytes);
+    assert(std::memcmp(directory.provenance.data(), source.data(),
+                       directory.provenance.size()) == 0);
     for (size_t i = 0; i < archive.entryCount; ++i) {
       const auto& entry = archive.entries[i];
       const auto& file = directory.files.at(entry.name);
@@ -97,9 +116,53 @@ ArchiveExtractResult extract(std::vector<uint8_t>& source,
   } else {
     assert(!archive.identity.id[0]);
     assert(!directory.started || directory.discarded);
-    assert(directory.files.empty());
+    assert(directory.files.empty() && directory.provenance.empty());
   }
   return result;
+}
+
+ProvenanceResult verifyDirectory(ExtractDirectory& directory, Signer& signer,
+                                 const uint8_t* expected = nullptr,
+                                 bool floorAllowed = true) {
+  Sha256 sha;
+  static PackageVerificationWorkspace workspace{};
+  static PackageArchive archive{};
+  const PackageRuntimePolicy policy{"xtensa-esp32s3", 2, 3,
+                                    1024 * 1024, 4 * 1024 * 1024};
+  const auto readProvenance = [&directory](uint64_t at, uint8_t* output, size_t count) {
+    if (at > directory.provenance.size() ||
+        count > directory.provenance.size() - static_cast<size_t>(at)) return false;
+    std::memcpy(output, directory.provenance.data() + at, count);
+    return true;
+  };
+  const auto size = [&directory](const char* name, uint64_t& result) {
+    const auto it = directory.files.find(name);
+    if (it == directory.files.end()) return false;
+    result = it->second.size();
+    return true;
+  };
+  const auto read = [&directory](const char* name, uint64_t at, uint8_t* output,
+                                  size_t count) {
+    const auto it = directory.files.find(name);
+    if (it == directory.files.end() || at > it->second.size() ||
+        count > it->second.size() - static_cast<size_t>(at)) return false;
+    std::memcpy(output, it->second.data() + at, count);
+    return true;
+  };
+  const auto exact = [&directory](const PackageArchive& candidate) {
+    if (directory.files.size() != candidate.entryCount) return false;
+    for (size_t i = 0; i < candidate.entryCount; ++i)
+      if (directory.files.count(candidate.entries[i].name) != 1) return false;
+    return true;
+  };
+  return verifySignedPackageDirectory(readProvenance, directory.provenance.size(),
+      size, read, exact, sha, signer,
+      [](const char* cap) -> uint32_t {
+        return std::strcmp(cap, "kernel.serial") == 0 ? 1u : 0u;
+      },
+      [floorAllowed](const PackageArchive& candidate) {
+        return floorAllowed && candidate.securityVersion >= 3;
+      }, policy, archive, workspace, expected);
 }
 } // namespace
 
@@ -128,6 +191,21 @@ int main(int argc, char** argv) {
     ExtractDirectory directory;
     assert(extract(source, directory, signer, expected) ==
            ArchiveExtractResult::ReadyForPublicationReview);
+    assert(verifyDirectory(directory, signer, expected) ==
+           ProvenanceResult::AuthenticatedDirectory);
+    assert(verifyDirectory(directory, signer) ==
+           ProvenanceResult::AuthenticatedDirectory); // Restart: no RAM digest.
+    directory.files["driver.elf"][25] ^= 1;
+    assert(verifyDirectory(directory, signer) == ProvenanceResult::EntryCorrupt);
+    directory.files["driver.elf"][25] ^= 1;
+    directory.provenance.back() ^= 1;
+    assert(verifyDirectory(directory, signer) == ProvenanceResult::SignatureRejected);
+    directory.provenance.back() ^= 1;
+    directory.files["unknown"] = {1};
+    assert(verifyDirectory(directory, signer) == ProvenanceResult::UnexpectedFiles);
+    directory.files.erase("unknown");
+    directory.files.erase("schema.json");
+    assert(verifyDirectory(directory, signer) == ProvenanceResult::UnexpectedFiles);
   }
   {
     source = alternate; ExtractDirectory directory;
@@ -166,6 +244,11 @@ int main(int argc, char** argv) {
            ArchiveExtractResult::ReadbackFailure);
   }
   {
+    source = good; ExtractDirectory directory; directory.failProvenance = true;
+    assert(extract(source, directory, signer, expected) ==
+           ArchiveExtractResult::ProvenanceFailure);
+  }
+  {
     source = good; ExtractDirectory directory; directory.failSeal = true;
     assert(extract(source, directory, signer, expected) ==
            ArchiveExtractResult::SealFailure);
@@ -180,5 +263,16 @@ int main(int argc, char** argv) {
     assert(extract(source, directory, signer, expected, true) ==
            ArchiveExtractResult::FloorRejected);
   }
-  std::puts("Signed extraction: independent readback, intake identity, floor and fault cases passed");
+  {
+    source = good; ExtractDirectory directory;
+    assert(extract(source, directory, signer, expected) ==
+           ArchiveExtractResult::ReadyForPublicationReview);
+    assert(verifyDirectory(directory, signer, expected, false) ==
+           ProvenanceResult::FloorRejected);
+    directory.provenance[20] ^= 1;
+    assert(verifyDirectory(directory, signer, expected) !=
+           ProvenanceResult::AuthenticatedDirectory);
+  }
+  std::puts("Signed extraction/provenance: P-256, readback, restart, identity, floor and fault cases passed");
+  return 0;
 }
