@@ -33,7 +33,12 @@ class GraphV2 final {
   GraphV2(const GraphV2&) = delete;
   GraphV2& operator=(const GraphV2&) = delete;
   bool addVerified(const SpecV2& spec);
+  // An unresolved capability with competing providers fails closed rather
+  // than silently preferring the first installed package.
   GrantV2 acquire(const char* capability, uint32_t api);
+  // The trusted caller may choose a specific manifest-verified provider ID;
+  // this does not grant an application permission or infer device semantics.
+  GrantV2 acquireFrom(const char* providerId, const char* capability, uint32_t api);
   bool release(GrantV2 grant);
   const void* interfaceFor(GrantV2 grant) const;
   bool shutdown();
@@ -60,6 +65,8 @@ class GraphV2 final {
   uint32_t nextGeneration_ = 0;
 
   int find(const char* capability, uint32_t api) const;
+  int findProvider(const char* id, const char* capability, uint32_t api) const;
+  GrantV2 acquireIndex(size_t index);
   bool activate(size_t index);
   void releaseDependencies(size_t index);
   bool deactivateIfUnused(size_t index);
