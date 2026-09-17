@@ -1,6 +1,6 @@
 #pragma once
-/* Hardware-blind provider ABI. The core treats capability IDs and the
- * capability interface pointers as opaque. The provider owns hardware. */
+/* Hardware-blind provider ABI. Capability identifiers and interface pointers
+ * are opaque to RiscRTE; a provider owns its physical implementation. */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -24,11 +24,22 @@ typedef struct {
     const void *capability;
     bool (*start)(const risc_provider_dependency_v1 *dependencies, size_t count);
     void (*stop)(void);
+    /* Optional, append-only ABI-v2 extension. Returns true ONLY after all
+     * physical sessions, asynchronous callbacks, DMA and worker tasks have
+     * ceased and stop() cannot fail. A false result keeps the ELF mapped and
+     * its dependency providers pinned. The runtime MUST NOT interpret a
+     * software-grant release as proof of quiescence. Existing v2 modules
+     * lacking this member retain legacy stop behavior; hardware providers
+     * MUST implement it before becoming installable. */
+    bool (*quiesce)(void);
 } risc_driver_v2;
 
+/* Minimum accepted ABI-v2 struct ends before the optional quiesce pointer. */
+#define RISC_DRIVER_V2_BASE_SIZE offsetof(risc_driver_v2, quiesce)
+
 typedef const risc_driver_v2 *(*risc_driver_get_v2_fn)(uint32_t abi);
-/* The ABI-v1 loader must not activate this ABI. The generic dependency-aware
- * loader validates the provider's manifest before calling this symbol. */
+/* ABI-v1 loader must not activate this ABI. The generic dependency-aware
+ * loader validates the package and manifest before invoking this symbol. */
 const risc_driver_v2 *t5_driver_get(uint32_t abi);
 #ifdef __cplusplus
 }
