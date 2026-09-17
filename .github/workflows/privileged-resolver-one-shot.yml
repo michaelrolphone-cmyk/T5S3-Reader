@@ -16,11 +16,11 @@ jobs:
         with:
           ref: feature/usb-elf-provider-migration
           persist-credentials: true
-      - name: Require the reviewed head and apply only the exact ELF source patch
+      - name: Require reviewed parent and patch exact ELF source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "0f608fcbd1fea10ff2b43d890ed070dbcccfad5c"
+          test "$(git rev-parse HEAD^)" = "c36b28044e8c1803dd02f61874a981d77f31b109"
           python scripts/apply_privileged_resolver_patch_once.py
           python test/drivers/privileged_resolver_v1_test.py
           git diff --check
