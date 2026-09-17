@@ -10,9 +10,13 @@
 
 using namespace RuntimePackages;
 namespace {
-constexpr TransactionPaths kPaths{"/Drivers/test", "/Drivers/.test.install", "/Drivers/.test.previous"};
 constexpr PackageRuntimePolicy kPolicy{"xtensa-esp32s3", 2, 0, 4096, 8192};
 constexpr uint8_t kManifest[] = "{\"kind\":\"driver\",\"id\":\"test\"}";
+OrdinaryTransactionPaths paths(Kind kind) {
+  OrdinaryTransactionPaths p{};
+  assert(ordinaryTransactionPaths(kind, "test", p));
+  return p;
+}
 struct Hash {
   EVP_MD_CTX* ctx = EVP_MD_CTX_new();
   ~Hash() { EVP_MD_CTX_free(ctx); }
@@ -55,10 +59,10 @@ struct Source {
   }
 };
 struct Storage {
-  // The real adapter MUST parse the directory's own retained manifest and
-  // hash its exact entries. This mock exercises publication ordering/faults;
-  // package_ordinary_stage_test.cpp exercises actual SHA/readback verification.
-  std::map<std::string, bool> directories;
+  // This mock covers transaction ordering/version identity; the separately
+  // tested ordinary directory verifier covers SHA-256 and exact inventories.
+  struct Entry { Identity identity{}; bool good = false; };
+  std::map<std::string, Entry> directories;
   int renames = 0;
   int failRename = -1;
   bool failVerifyStage = false;
@@ -70,13 +74,17 @@ struct Storage {
     directories.erase(from);
     return true;
   }
-  bool verify(const char* path) const {
-    if (failVerifyStage && std::strcmp(path, kPaths.stage) == 0) return false;
+  bool verify(const char* path, Identity& observed) const {
+    observed = {};
+    if (failVerifyStage && std::strstr(path, ".pkg-stage")) return false;
     const auto it = directories.find(path);
-    return it != directories.end() && it->second;
+    if (it == directories.end() || !it->second.good) return false;
+    observed = it->second.identity;
+    return true;
   }
   bool purge(const char* path) {
-    if (failPurge || !verify(path)) return false;
+    Identity observed{};
+    if (failPurge || !verify(path, observed)) return false;
     return directories.erase(path) == 1;
   }
 };
@@ -85,11 +93,17 @@ struct Stage {
   std::map<std::string, std::vector<uint8_t>> files;
   std::vector<uint8_t> manifest;
   std::string writing;
+  std::string path;
   bool ownsStage = false;
-  bool begin(const OrdinaryPackagePlan&) {
-    if (storage.exists(kPaths.stage)) return false;
-    storage.directories[kPaths.stage] = false;
+  bool begin(const OrdinaryPackagePlan& plan) {
+    OrdinaryTransactionPaths p{};
+    if (!ordinaryTransactionPaths(plan.identity.kind, plan.identity.id, p) ||
+        storage.exists(p.stage)) return false;
+    path = p.stage;
+    storage.directories[path] = {plan.identity, false};
     ownsStage = true;
+    files.clear();
+    manifest.clear();
     return true;
   }
   bool beginEntry(const char* name, uint64_t) {
@@ -114,12 +128,14 @@ struct Stage {
   }
   bool seal() {
     if (!ownsStage || manifest.empty()) return false;
-    storage.directories[kPaths.stage] = true;
+    storage.directories[path].good = true;
     return true;
   }
   bool discard() {
-    if (ownsStage) storage.directories.erase(kPaths.stage);
+    if (ownsStage) storage.directories.erase(path);
     ownsStage = false;
+    files.clear();
+    manifest.clear();
     return true;
   }
 };
@@ -156,23 +172,28 @@ OrdinaryInstallOutcome install(Source& source, Stage& stage, Storage& disk,
   Hash hash;
   uint8_t io[kOrdinaryIoBytes]{};
   return installOrdinaryPackage(plan, kManifest, sizeof(kManifest) - 1,
-      source, stage, hash, resolver, kPolicy, io, disk, kPaths,
-      [&disk](const char* path) { return disk.verify(path); },
+      source, stage, hash, resolver, kPolicy, io, disk,
+      [&disk](const char* path, Identity& identity) {
+        return disk.verify(path, identity);
+      },
       [&disk](const char* path) { return disk.purge(path); }, allowed);
 }
 void successfulFourKindsAndSources() {
   for (Kind kind : {Kind::Application, Kind::Driver, Kind::Service, Kind::Provider})
-    for (int sourceType = 0; sourceType != 2; ++sourceType) {
-      (void)sourceType; // Both SD and downloader supply the same source contract.
+    for (int medium = 0; medium != 2; ++medium) {
+      (void)medium; // SD and downloader implement identical source operations.
       Source source = makeSource();
       auto plan = makePlan(source, kind);
       Storage disk;
       Stage stage{disk};
       const auto result = install(source, stage, disk, plan);
+      const auto p = paths(kind);
+      Identity observed{};
       assert(result.result == OrdinaryInstallResult::Installed);
+      assert(result.transaction == OrdinaryTransactionResult::Published);
       assert(result.staging == OrdinaryStageResult::ReadyForPublicationReview);
-      assert(disk.verify(kPaths.target) && !disk.exists(kPaths.stage));
-      assert(!disk.exists(kPaths.backup));
+      assert(disk.verify(p.target, observed) && samePackage(observed, plan.identity));
+      assert(!disk.exists(p.stage) && !disk.exists(p.backup));
     }
 }
 void preservePriorAndRejectFailure() {
@@ -180,45 +201,67 @@ void preservePriorAndRejectFailure() {
   auto plan = makePlan(source, Kind::Driver);
   Storage disk;
   Stage stage{disk};
-  disk.directories[kPaths.target] = true;
-  disk.failRename = 2; // target -> backup succeeds, stage -> target fails.
+  const auto p = paths(Kind::Driver);
+  Identity old{};
+  assert(makeIdentity(Kind::Driver, "test", "1.0.0", "module.elf", false, &old));
+  disk.directories[p.target] = {old, true};
+  disk.failRename = 2; // backup move succeeds; stage publication fails.
   assert(install(source, stage, disk, plan).result ==
          OrdinaryInstallResult::PublicationRejected);
-  assert(disk.verify(kPaths.target) || disk.verify(kPaths.backup));
+  Identity observed{};
+  assert(disk.verify(p.target, observed) || disk.verify(p.backup, observed));
+  assert(std::strcmp(observed.version, "1.0.0") == 0);
   disk.failRename = -1;
   assert(install(source, stage, disk, plan).result ==
          OrdinaryInstallResult::StageAlreadyExists);
-  // No caller is allowed to erase an interrupted stage automatically.
-  assert(disk.exists(kPaths.stage));
+  assert(disk.exists(p.stage)); // Never silently overwrite an interrupted stage.
 }
 void failWithoutModifyingExisting() {
   Source source = makeSource();
   auto plan = makePlan(source, Kind::Driver);
   Storage disk;
   Stage stage{disk};
-  disk.directories[kPaths.target] = true;
+  const auto p = paths(Kind::Driver);
+  Identity old{};
+  assert(makeIdentity(Kind::Driver, "test", "1.0.0", "module.elf", false, &old));
+  disk.directories[p.target] = {old, true};
   assert(install(source, stage, disk, plan, false).result ==
          OrdinaryInstallResult::InvalidInput);
-  assert(!disk.exists(kPaths.stage));
+  assert(!disk.exists(p.stage));
   source.badRead = true;
   assert(install(source, stage, disk, plan).result ==
          OrdinaryInstallResult::StageRejected);
-  assert(disk.verify(kPaths.target) && !disk.exists(kPaths.stage));
+  assert(!disk.exists(p.stage));
   source.badRead = false;
   disk.failVerifyStage = true;
   assert(install(source, stage, disk, plan).result ==
          OrdinaryInstallResult::StageVerificationRejected);
-  assert(disk.verify(kPaths.target) && !disk.exists(kPaths.stage));
+  assert(!disk.exists(p.stage));
   disk.failVerifyStage = false;
-  disk.directories[kPaths.stage] = true;
+  disk.directories[p.stage] = {plan.identity, true};
   assert(install(source, stage, disk, plan).result ==
          OrdinaryInstallResult::StageAlreadyExists);
-  assert(disk.verify(kPaths.target) && disk.exists(kPaths.stage));
+  assert(disk.exists(p.stage));
+}
+void blockSameVersion() {
+  Source source = makeSource();
+  auto plan = makePlan(source, Kind::Driver);
+  Storage disk;
+  Stage stage{disk};
+  const auto p = paths(Kind::Driver);
+  disk.directories[p.target] = {plan.identity, true};
+  const auto result = install(source, stage, disk, plan);
+  assert(result.result == OrdinaryInstallResult::PublicationRejected);
+  assert(result.transaction == OrdinaryTransactionResult::VersionRejected);
+  Identity observed{};
+  assert(disk.verify(p.target, observed) && !disk.exists(p.backup));
+  assert(disk.exists(p.stage));
 }
 } // namespace
 int main() {
   successfulFourKindsAndSources();
   preservePriorAndRejectFailure();
   failWithoutModifyingExisting();
-  std::puts("Ordinary installer: unsigned four-kind staging, publication, backup recovery and failures PASS");
+  blockSameVersion();
+  std::puts("Ordinary installer: unsigned four-kind staging, semver, publication and recovery PASS");
 }
