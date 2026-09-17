@@ -62,15 +62,18 @@ PackageCheck checkPackage() {
   const std::string manifest(manifestBuffer, bytes);
   JsonDocument doc;
   if (deserializeJson(doc, manifest)) return PackageCheck::ManifestMalformed;
-  if (!doc["requires"].is<JsonArray>() || doc["requires"].size() != 1 ||
-      !doc["provides"].is<JsonArray>() || doc["provides"].size() != 1)
+  // Use a const JSON view consistently. The old `| nullptr` expressions
+  // deduced nullptr_t and rejected valid capability strings on the device.
+  const JsonDocument& view = doc;
+  if (!view["requires"].is<JsonArrayConst>() || view["requires"].size() != 1 ||
+      !view["provides"].is<JsonArrayConst>() || view["provides"].size() != 1)
     return PackageCheck::CapabilityMismatch;
-  const char* requirement = doc["requires"][0]["capability"] | nullptr;
-  const char* provision = doc["provides"][0]["capability"] | nullptr;
+  const char* requirement = view["requires"][0]["capability"].as<const char*>();
+  const char* provision = view["provides"][0]["capability"].as<const char*>();
   if (!requirement || std::strcmp(requirement, "kernel.usb.host") != 0 ||
-      doc["requires"][0]["api"].as<unsigned>() != 1 ||
+      view["requires"][0]["api"].as<unsigned>() != 1 ||
       !provision || std::strcmp(provision, T5_USB_CDC_CLASS_CAPABILITY) != 0 ||
-      doc["provides"][0]["api"].as<unsigned>() != T5_USB_CDC_CLASS_API_VERSION)
+      view["provides"][0]["api"].as<unsigned>() != T5_USB_CDC_CLASS_API_VERSION)
     return PackageCheck::CapabilityMismatch;
   DriverPackageInfo info{};
   if (!validateDriverPayload(manifest, kElf, &info) ||
