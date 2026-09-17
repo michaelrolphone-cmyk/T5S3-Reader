@@ -22,14 +22,15 @@ class ModuleV2 final {
             const char* expectedCapability, uint32_t expectedApi,
             const risc_provider_dependency_v1* dependencies, size_t count);
   /* PRIVATE firmware admission path. The caller MUST authenticate the signed
-   * package/identity/ABI and provide the exact signed entry digest. This
-   * function snapshots candidate bytes, hashes that private snapshot and
-   * relocates from ONLY that matching snapshot, never a reopened SD path.
-   * A digest provided by an untrusted caller is NOT signer authentication.
-   * Host builds deny this path; hardware ownership still requires a separate
-   * grant and a successful quiesce callback before unmapping. */
+   * package/identity/ABI, exact signed entry digest AND canonical exact import
+   * declarations. This function snapshots candidate bytes, hashes that
+   * private snapshot and relocates from ONLY that matching snapshot.
+   * Digest/import declarations supplied by an untrusted caller are NOT signer
+   * authentication. Host builds deny this path; ownership still requires
+   * separate grants and successful quiescence before unmapping. */
   bool loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
                          const uint8_t authenticatedSha256[32],
+                         const char* const* signedImports, size_t signedImportCount,
                          const char* expectedId, const char* expectedCapability,
                          uint32_t expectedApi,
                          const risc_provider_dependency_v1* dependencies,
