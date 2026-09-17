@@ -18,6 +18,9 @@
 
 namespace {
 RuntimeStreams::Registry registry;
+// Exactly the existing stream registry is injected. Do not create a second
+// position registry, provider queue, or cross-task ELF driver callback.
+RuntimeStreams::LiveGnssSession gnss(RuntimeDevices::systemRegistry(), registry);
 RuntimeResources::ExecutionContext invocation;
 SemaphoreHandle_t mutex = nullptr;
 TaskHandle_t scheduler = nullptr;
@@ -84,7 +87,7 @@ bool filePath(const char* path) {
     const char* end = segment;
     while (*end && *end != '/') { if (*end == '\\') return false; ++end; }
     auto len = end - segment;
-    if (!len || (len == 1 && *segment == '.') || (len == 2 && segment[0] == '.' && segment[1] == '.')) return false;
+    if (!len || (len == 1 && *segment[0] == '.') || (len == 2 && segment[0] == '.' && segment[1] == '.')) return false;
     if (!*end) return true;
     segment = end + 1;
   }
@@ -120,7 +123,7 @@ struct Usb {
   const t5_usb_api_v1* api;
   uint32_t epoch;
   bool direct = false;
-  bool physicalReady = false;  // Updated only under stream mutex on owner task.
+  bool physicalReady = false;
 };
 Usb* directUsb = nullptr;
 t5_stream_t directHandle = 0;
@@ -129,17 +132,13 @@ bool usbRevoked(const Usb& u) {
 }
 int32_t usbState(Usb& u) {
   if (usbRevoked(u)) return T5_STREAM_DISCONNECTED;
-  // The pipe scheduler must not touch a device before the owner task has
-  // reconciled its enumeration and acquired the exclusive physical lease.
   if (u.direct && !u.physicalReady) return T5_STREAM_AGAIN;
   t5_usb_serial_state_t s{};
   if (!u.api->serial_read_state(&s)) return T5_STREAM_IO;
-  // The host may report stale status across DEV_GONE; its publication epoch
-  // always wins, including when an identical replacement attached between polls.
   if (usbRevoked(u)) return T5_STREAM_DISCONNECTED;
   if (s.status == T5_USB_STATUS_ERROR) return T5_STREAM_IO;
   if (s.status == T5_USB_STATUS_OFF) return T5_STREAM_DISCONNECTED;
-  if (!s.connected) return T5_STREAM_AGAIN; // Initial enumeration is not loss.
+  if (!s.connected) return T5_STREAM_AGAIN;
   return s.status == T5_USB_STATUS_READY ? T5_STREAM_OK : T5_STREAM_AGAIN;
 }
 int32_t usbRead(void* ctx, void* data, uint32_t size, uint32_t* count) {
@@ -163,8 +162,6 @@ void usbClose(void* ctx) {
   if (usbRefs) --usbRefs;
   if (!usbRefs) usbOpen = false;
 }
-// Only an owner-task public operation may refresh the direct physical claim.
-// No device-registry access occurs from the stream scheduler or USB callback.
 int32_t refreshDirect(t5_stream_t handle) {
   uint32_t expectedEpoch = 0;
   {
@@ -172,8 +169,6 @@ int32_t refreshDirect(t5_stream_t handle) {
     if (!directUsb || handle != directHandle) return T5_STREAM_OK;
     expectedEpoch = directUsb->epoch;
   }
-  // Even if the epoch changed, the owner task must reconcile the host snapshot
-  // and revoke the old physical lease. The claim hook never rebinds a stale ID.
   const bool claimed = nativeUsbDirectStreamClaim(expectedEpoch);
   if (nativeUsbProviderEpoch() != expectedEpoch) return T5_STREAM_DISCONNECTED;
   if (!claimed) return T5_STREAM_BUSY;
@@ -192,8 +187,6 @@ int32_t openUsb(t5_stream_t* out) {
   const auto* api = t5_usb_get_api(T5_USB_API_VERSION);
   if (!api || !api->supported || !api->supported()) return T5_STREAM_UNSUPPORTED;
   if (!initialize()) return T5_STREAM_LIMIT;
-  // Do not re-claim and subsequently release an already-owned direct lease
-  // when a caller attempts to open the same device a second time.
   {
     Lock lock;
     if (usbOpen) return T5_STREAM_BUSY;
@@ -257,8 +250,6 @@ class HttpSink final : public Stream {
 void httpRequest(void* context) {
   auto* job = static_cast<HttpJob*>(context);
   HttpSink sink(*job);
-  // HTTPClient handles Content-Length, redirects and chunked transfer decoding.
-  // Only firmware-owned data survives caller unload; stale handles reject writes.
   bool ok = HttpDownloader::fetchUrl(job->url, sink);
   { Lock lock; registry.finish(job->owner, job->stream, ok ? T5_STREAM_EOF : T5_STREAM_IO); httpBusy = false; }
   delete job;
@@ -309,6 +300,7 @@ int32_t closeStream(t5_stream_t h) {
     const bool wasDirect = directUsb && h == directHandle;
     result = registry.close(owner, h);
     closedDirect = wasDirect && !directUsb;
+    (void)gnss.beforePoll(gnss.owner()); // Reconcile orphaned GNSS consumers on owner task.
   }
   if (closedDirect) nativeUsbDirectStreamRelease();
   wake();
@@ -330,8 +322,6 @@ int32_t closePipe(t5_pipe_t h) { SESSION_CALL(registry.closePipe(owner, h)); }
 int32_t pipeInfo(t5_pipe_t h, t5_pipe_info_t* out) { SESSION_CALL(registry.pipeInfo(owner, h, out)); }
 #undef SESSION_CALL
 
-// Stream ABI v2 only extends the legacy table. Physical USB claims remain
-// owner-task-only; record operations use this same mutex and registry.
 int32_t openRecordBuffer(const char* schema, uint32_t maxRecord, uint32_t capacityRecords,
                          uint32_t flags, t5_stream_t* out) {
   if (out) *out = 0;
@@ -392,7 +382,7 @@ const riscrte_stream_api_v2 api2 = {{RISCRTE_STREAM_API_VERSION_2, sizeof(riscrt
   openRecordBuffer, readRecord, writeRecord, recordInfo};
 
 void releaseStreams(void*, uint32_t id) {
-  if (mutex) { Lock lock; registry.release(id); }
+  if (mutex) { Lock lock; gnss.releaseOwner(id); registry.release(id); }
   nativeUsbDirectStreamRelease();
   wake();
 }
@@ -424,7 +414,6 @@ t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
     delete writer;
     return T5_STREAM_LIMIT;
   }
-
   RuntimeStreams::Provider rp{reader, usbRead, nullptr, nullptr, nullptr, usbClose};
   auto result = registry.attach(owner, T5_STREAM_BYTES, T5_STREAM_READ, rp, rx);
   if (result != T5_STREAM_OK) {
@@ -434,7 +423,6 @@ t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
   }
   usbOpen = true;
   usbRefs = 1;
-
   RuntimeStreams::Provider wp{writer, nullptr, usbWrite, nullptr, nullptr, usbClose};
   result = registry.attach(owner, T5_STREAM_BYTES, T5_STREAM_WRITE, wp, tx);
   if (result != T5_STREAM_OK) {
@@ -448,8 +436,6 @@ t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
 }
 
 t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream) {
-  // A stopping context cannot acquire or use public handles, but firmware
-  // destructors must still be allowed to close its already-owned streams.
   if (!active || invocation.id() != owner || !t5_app_get_api(T5_APP_ABI_VERSION))
     return T5_STREAM_DENIED;
   if (!stream || !initialize()) return T5_STREAM_INVALID;
@@ -467,8 +453,6 @@ t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream) {
 }
 
 void nativeStreamsBegin() {
-  // A context identity never aliases a prior invocation, and nested launches
-  // are rejected rather than overwriting live resources from the first app.
   if (!invocation.begin()) return;
   owner = invocation.id();
   active = true;
@@ -485,9 +469,6 @@ void nativeStreamsBegin() {
   }
 }
 void nativeStreamsEnd() {
-  // Stop new acquisitions first. Reverse-order firmware destructors close the
-  // serial lease (and its streams), then the remaining pipes/files/HTTP streams.
-  // All cleanup occurs before the caller unloads the ELF.
   invocation.end();
   active = false;
 }
@@ -496,4 +477,50 @@ extern "C" const t5_stream_api_v1* t5_stream_get_api(uint32_t version) {
   if (version == T5_STREAM_API_VERSION) return &api;
   if (version == RISCRTE_STREAM_API_VERSION_2) return &api2.v1;
   return nullptr;
+}
+
+// All GNSS data-plane operations are marshalled through the SAME mutex and
+// Registry above; the GPS ELF is polled by its claiming app task elsewhere.
+t5_stream_result_t nativeGnssAttach(uint32_t providerOwner, uint32_t device, uint32_t borrowedSourceLease) {
+  if (!authorized() || !initialize() || providerOwner != owner) return T5_STREAM_DENIED;
+  Lock lock;
+  return gnss.attach(providerOwner, device, borrowedSourceLease);
+}
+RuntimeStreams::LiveGnssSession::PollDecision nativeGnssBeforePoll(uint32_t providerOwner) {
+  if (!authorized() || !initialize() || providerOwner != owner)
+    return RuntimeStreams::LiveGnssSession::PollDecision::Denied;
+  Lock lock;
+  const auto result = gnss.beforePoll(providerOwner);
+  wake();
+  return result;
+}
+t5_stream_result_t nativeGnssPublishCopy(uint32_t providerOwner, const t5_gps_state_t& observation,
+                                        uint32_t sampleMs) {
+  if (!authorized() || !initialize() || providerOwner != owner) return T5_STREAM_DENIED;
+  Lock lock;
+  const auto result = gnss.publishCopied(providerOwner, observation, sampleMs);
+  wake();
+  return result;
+}
+void nativeGnssDisconnect(uint32_t providerOwner) {
+  // Firmware teardown may be called after context enters Stopping.
+  if (!mutex || !providerOwner || invocation.id() != providerOwner) return;
+  Lock lock;
+  if (gnss.owner() == providerOwner) gnss.disconnect();
+  wake();
+}
+t5_stream_result_t nativeGnssSubscribe(uint32_t authenticatedOwner, uint32_t authorizedDevice,
+                                      uint64_t* subscription, t5_stream_t* stream) {
+  if (subscription) *subscription = 0;
+  if (stream) *stream = 0;
+  if (!authorized() || !initialize() || authenticatedOwner != owner ||
+      !authorizedDevice || !subscription || !stream) return T5_STREAM_DENIED;
+  Lock lock;
+  if (gnss.device() != authorizedDevice) return T5_STREAM_DISCONNECTED;
+  return gnss.subscribe(authenticatedOwner, subscription, stream);
+}
+t5_stream_result_t nativeGnssUnsubscribe(uint32_t authenticatedOwner, uint64_t subscription) {
+  if (!active || invocation.id() != authenticatedOwner || !mutex) return T5_STREAM_DENIED;
+  Lock lock;
+  return gnss.unsubscribe(authenticatedOwner, subscription);
 }
