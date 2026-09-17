@@ -10,7 +10,8 @@ import json
 from pathlib import Path
 
 from elftools.elf.elffile import ELFFile
-from native_app_symbols import firmware_exports, privileged_os_cpu_exports
+from native_app_symbols import (firmware_exports, privileged_os_cpu_exports,
+                                privileged_loader_public_libc_v1)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ELF = ROOT / 'dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf'
@@ -18,8 +19,8 @@ SUPPORTED_RELA = frozenset((2, 3, 4, 5))
 USB_INTERNAL_PREFIXES = ('usb_', 'usbh_', 'hcd_', 'hub_', 'urb_')
 
 
-def classify_imports(imports, exported, privileged=()):
-    """Distinguish ordinary app symbols from scoped OS/CPU ABI v1."""
+def classify_imports(imports, exported, privileged=(), loader_public=()):
+    """Distinguish ordinary app names from the actual private preflight."""
     names = set(imports)
     safe_exports = {name for name in exported if not name.startswith('t5_')}
     scoped = set(privileged)
@@ -30,6 +31,7 @@ def classify_imports(imports, exported, privileged=()):
         'missing_current_firmware_exports': sorted(names - safe_exports),
         'resolved_by_privileged_os_cpu_v1': sorted((names - safe_exports) & scoped),
         'missing_privileged_os_cpu_v1': sorted(names - safe_exports - scoped),
+        'rejected_by_private_loader_import_preflight': sorted(names - set(loader_public) - scoped),
         'forbidden_usb_or_firmware_api_imports': sorted(set(private_usb) |
             {name for name in names if name.startswith('t5_')}),
     }
@@ -53,10 +55,12 @@ def audit(path):
                           sym['st_info']['bind'] in ('STB_GLOBAL', 'STB_WEAK')})
         normal_exports = firmware_exports(ROOT)
         privileged_exports = privileged_os_cpu_exports(ROOT)
+        loader_public = privileged_loader_public_libc_v1(ROOT)
         if normal_exports & privileged_exports:
             raise ValueError('Privileged symbols leaked into ordinary app export table: ' +
                              ', '.join(sorted(normal_exports & privileged_exports)))
-        import_report = classify_imports(imports, normal_exports, privileged_exports)
+        import_report = classify_imports(imports, normal_exports, privileged_exports,
+                                         loader_public)
         alloc = [(section['sh_addr'], section['sh_addr'] + section['sh_size'])
                  for section in elf.iter_sections() if section['sh_flags'] & 2]
         unsupported = []
@@ -85,7 +89,9 @@ def audit(path):
         structural = (identity_ok and not unsupported and not textrel and
                       not unexpected_exports and
                       not import_report['forbidden_usb_or_firmware_api_imports'])
-        privileged_compatible = structural and not import_report['missing_privileged_os_cpu_v1']
+        privileged_compatible = (structural and
+            not import_report['missing_privileged_os_cpu_v1'] and
+            not import_report['rejected_by_private_loader_import_preflight'])
         return {
             'binary': path.name,
             'format_supported': identity_ok,
@@ -100,7 +106,7 @@ def audit(path):
             'firmware_strong_symbol_link_confirmed': False,
             'physical_board_validated': False,
             'installable': False,
-            'status': ('privileged-imports-covered-awaiting-firmware-link-and-admission'
+            'status': ('privileged-imports-covered-awaiting-signed-admission'
                        if privileged_compatible else 'loader-abi-blocked'),
         }
 
@@ -119,6 +125,8 @@ def main():
           *result['missing_current_firmware_exports'], sep='\n  ', flush=True)
     print('Missing scoped privileged OS/CPU imports:',
           *result['missing_privileged_os_cpu_v1'], sep='\n  ', flush=True)
+    print('Rejected by runtime private import preflight:',
+          *result['rejected_by_private_loader_import_preflight'], sep='\n  ', flush=True)
     print('Unsupported relocations:', result['unsupported_relocations'], flush=True)
     print('Report:', output, flush=True)
     print('Not installable: signed admission, ownership and board validation pending.', flush=True)
