@@ -287,7 +287,8 @@ bool loadAggregateDriverCatalog() {
             LOG_ERR("DRVMGR", "Aggregate catalog entry[%u] is not an object with a manifest object", index);
             return false;
         }
-        const char* elfAsset = entry["elf_asset"] | nullptr;
+        // Request the JSON string type explicitly; nullptr fallback is not a string.
+        const char* elfAsset = entry["elf_asset"].as<const char*>();
         if (!safeDriverAssetName(elfAsset)) {
             LOG_ERR("DRVMGR", "Aggregate catalog entry[%u] has invalid ELF asset name", index);
             return false;
