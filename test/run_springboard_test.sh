@@ -22,6 +22,9 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo_dir/src" "$repo_dir/test/resources/package_archive_test.cpp" -o "$binary"
 "$binary"
+# Generate ephemeral signing keys in a temp directory, verify actual P-256
+# signatures with OpenSSL, and test payload binding and unsafe inputs.
+python3 "$repo_dir/test/resources/package_builder_test.py"
 for pair in \
   "springboard springboard_test" \
   "app_store app_store_test" \
@@ -55,4 +58,4 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_di
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
 python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
-echo 'Native app regression tests passed, including canonical package archive decoding, package module pins, App Store package install, recovery indexing, Settings, Wi-Fi Networks, File Transfer, KOReader Authentication, Manage Fonts, Font Family, Customize Status Bar, Remap Front Buttons, and Time Zone'
+echo 'Native app regression tests passed, including signed package builder, canonical archive decoding, package module pins, App Store package install, recovery indexing, Settings, Wi-Fi Networks, File Transfer, KOReader Authentication, Manage Fonts, Font Family, Customize Status Bar, Remap Front Buttons, and Time Zone'
