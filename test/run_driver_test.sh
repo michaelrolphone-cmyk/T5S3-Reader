@@ -39,6 +39,12 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo/src" "$repo/test/resources/package_transaction_test.cpp" \
   -o "$build/package-transaction-test"
 "$build/package-transaction-test"
+# Legacy flat App Store layout requires a two-file transaction while existing
+# launch paths are preserved; inject failures at each rename/cleanup boundary.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/package_pair_transaction_test.cpp" \
+  -o "$build/package-pair-transaction-test"
+"$build/package-pair-transaction-test"
 # Interrupted cleanup can leave only part of a managed backup. Recheck the
 # published target and retry managed-only cleanup; refuse unknown content.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
