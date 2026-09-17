@@ -38,6 +38,7 @@ on:
       - "test/drivers/platform_clock_v1_test.c"
       - "test/drivers/privileged_*"
       - "test/drivers/stub_os_cpu/**"
+      - "test/drivers/stub_privileged_loader/**"
       - "test/drivers/mock_i2c_bus_elf_v2.c"
       - "test/drivers/vbus_provider_chain_v2_test.cpp"
       - "test/drivers/provider*.cpp"
@@ -48,6 +49,7 @@ on:
       - "test/run_i2c_esp32s3_v2_test.sh"
       - "test/run_platform_clock_v1_test.sh"
       - "test/run_privileged_os_cpu_v1_test.sh"
+      - "test/run_privileged_elf_snapshot_v1_test.sh"
       - "test/run_vbus_provider_chain_v2_test.sh"
       - "test/run_provider_graph_v2_test.sh"
       - "test/run_usb_provider_stack_v2_test.sh"
@@ -62,9 +64,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Exercise independent USB, I2C, clock and three-ELF power dependency graph
+      - name: Exercise OS/CPU scope, native digest snapshot and provider graph
         run: |
           bash test/run_privileged_os_cpu_v1_test.sh
+          bash test/run_privileged_elf_snapshot_v1_test.sh
+          bash test/run_provider_graph_v2_test.sh
           bash test/run_usb_cdc_v2_test.sh
           bash test/run_usb_cp210x_v2_test.sh
           bash test/run_board_power_t5s3_v2_test.sh
