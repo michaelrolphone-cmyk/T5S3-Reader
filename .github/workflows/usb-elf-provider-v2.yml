@@ -21,6 +21,7 @@ on:
       - "src/runtime/drivers/ProviderModuleV2.*"
       - "src/runtime/drivers/ProviderGraphV2.*"
       - "scripts/native_app_symbols.py"
+      - "scripts/generate_privileged_imports_v1.py"
       - "scripts/build_usb_cdc_v2.py"
       - "scripts/build_usb_cp210x_v2.py"
       - "scripts/build_usb_host_v2.py"
@@ -103,16 +104,28 @@ jobs:
           python scripts/build_platform_clock_v1.py
           python scripts/audit_usb_controller_elf.py dist/experimental/platform-clock-v1/driver.elf --strict
           bash test/run_native_app_test.sh dist/experimental/platform-clock-v1/driver.elf
-      - name: Execute the private C import policy on actual physical ELF files
+      - name: Execute private C ABI and exact import matcher against physical linked ELFs
         run: |
           cc -std=gnu11 -O2 -Wall -Wextra -Werror \
             -Itest/drivers/stub_os_cpu -Ilib/elf_loader/include \
             lib/elf_loader/src/esp_privileged_imports.c \
             test/drivers/privileged_imports_v1_cli.c -o /tmp/riscrte-privileged-imports-ci
+          cc -std=gnu11 -O2 -Wall -Wextra -Werror \
+            -Itest/drivers/stub_os_cpu -Ilib/elf_loader/include \
+            lib/elf_loader/src/esp_privileged_imports.c \
+            lib/elf_loader/src/esp_privileged_manifest_imports.c \
+            test/drivers/privileged_manifest_imports_v1_cli.c -o /tmp/riscrte-exact-imports-ci
           /tmp/riscrte-privileged-imports-ci \
             dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf \
             dist/experimental/i2c-esp32s3-v2/driver.elf \
             dist/experimental/platform-clock-v1/driver.elf
+          for elf in \
+            dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf \
+            dist/experimental/i2c-esp32s3-v2/driver.elf \
+            dist/experimental/platform-clock-v1/driver.elf; do
+            python scripts/generate_privileged_imports_v1.py "$elf"
+            /tmp/riscrte-exact-imports-ci "$elf" "$(dirname "$elf")/privileged-imports.v1"
+          done
       - name: Preserve experimental binaries and compatibility reports for inspection only
         if: always()
         uses: actions/upload-artifact@v4
