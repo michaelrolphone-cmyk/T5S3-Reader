@@ -53,7 +53,7 @@ bool ModuleV2::load(const char* path, const char* expectedId,
     }
     /* A rejected start may have acquired physical resources. If the provider
      * cannot prove it has quiesced, keep its code mapped and retain pins on
-     * lower providers; a future recovery path must handle this quarantine. */
+     * lower providers. unload() is the explicit retry/recovery path. */
     if (hasQuiesce(candidate) && !candidate->quiesce()) {
       driver_ = candidate;
       return false;
@@ -78,15 +78,24 @@ bool ModuleV2::unpinConsumer() {
 }
 
 bool ModuleV2::unload() {
-  if (consumers_ || (handle_ && state_ == State::Failed)) return false;
-  if (state_ == State::Active && driver_) {
+  if (consumers_) return false;
+  /* Only a valid driver whose start was attempted is retained in driver_.
+   * Never try stop() or dlclose() while its failed-start hardware state is
+   * unknown. Recovery may be retried after an external fault is cleared. */
+  if (state_ == State::Failed && handle_ && driver_) {
+    if (!hasQuiesce(driver_) || !driver_->quiesce()) return false;
+    driver_->stop();
+    driver_ = nullptr;
+  } else if (state_ == State::Active && driver_) {
     if (hasQuiesce(driver_) && !driver_->quiesce()) return false;
     driver_->stop();
+    driver_ = nullptr;
   }
   api_ = nullptr;
-  driver_ = nullptr;
   if (handle_) {
     if (dlclose(handle_) != 0) {
+      /* The hardware is already stopped, so retry ONLY dlclose; do not call
+       * into the stopped driver again if the linker later recovers. */
       state_ = State::Failed;
       return false;
     }
