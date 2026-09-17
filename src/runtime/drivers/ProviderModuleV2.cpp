@@ -18,6 +18,9 @@ bool validDependencies(const risc_provider_dependency_v1* deps, size_t count) {
   }
   return true;
 }
+bool hasQuiesce(const risc_driver_v2* driver) {
+  return driver && driver->struct_size >= sizeof(risc_driver_v2) && driver->quiesce;
+}
 }  // namespace
 
 bool ModuleV2::load(const char* path, const char* expectedId,
@@ -34,27 +37,29 @@ bool ModuleV2::load(const char* path, const char* expectedId,
   auto get = reinterpret_cast<risc_driver_get_v2_fn>(dlsym(handle_, "t5_driver_get"));
   const char* error = dlerror();
   const risc_driver_v2* candidate = (!error && get) ? get(RISC_PROVIDER_DRIVER_ABI_V2) : nullptr;
-  if (candidate && candidate->abi_version == RISC_PROVIDER_DRIVER_ABI_V2 &&
-      candidate->struct_size >= sizeof(risc_driver_v2) &&
+  const bool valid = candidate && candidate->abi_version == RISC_PROVIDER_DRIVER_ABI_V2 &&
+      candidate->struct_size >= RISC_DRIVER_V2_BASE_SIZE &&
       candidate->driver_id && candidate->capability_id &&
       std::strcmp(candidate->driver_id, expectedId) == 0 &&
       std::strcmp(candidate->capability_id, expectedCapability) == 0 &&
       candidate->capability_api == expectedApi && candidate->capability &&
-      candidate->start && candidate->stop && candidate->start(deps, count)) {
-    driver_ = candidate;
-    api_ = candidate->capability;
-    state_ = State::Active;
-    return true;
-  }
-  /* A failing start must unwind partial acquisition. A malformed module
-   * cannot be trusted with callbacks; never call stop unless start ran. */
-  if (candidate && candidate->abi_version == RISC_PROVIDER_DRIVER_ABI_V2 &&
-      candidate->struct_size >= sizeof(risc_driver_v2) && candidate->start &&
-      candidate->stop && candidate->driver_id && candidate->capability_id &&
-      std::strcmp(candidate->driver_id, expectedId) == 0 &&
-      std::strcmp(candidate->capability_id, expectedCapability) == 0 &&
-      candidate->capability_api == expectedApi && candidate->capability)
+      candidate->start && candidate->stop;
+  if (valid) {
+    if (candidate->start(deps, count)) {
+      driver_ = candidate;
+      api_ = candidate->capability;
+      state_ = State::Active;
+      return true;
+    }
+    /* A rejected start may have acquired physical resources. If the provider
+     * cannot prove it has quiesced, keep its code mapped and retain pins on
+     * lower providers; a future recovery path must handle this quarantine. */
+    if (hasQuiesce(candidate) && !candidate->quiesce()) {
+      driver_ = candidate;
+      return false;
+    }
     candidate->stop();
+  }
   if (dlclose(handle_) == 0) handle_ = nullptr;
   return false;
 }
@@ -74,7 +79,10 @@ bool ModuleV2::unpinConsumer() {
 
 bool ModuleV2::unload() {
   if (consumers_ || (handle_ && state_ == State::Failed)) return false;
-  if (state_ == State::Active && driver_) driver_->stop();
+  if (state_ == State::Active && driver_) {
+    if (hasQuiesce(driver_) && !driver_->quiesce()) return false;
+    driver_->stop();
+  }
   api_ = nullptr;
   driver_ = nullptr;
   if (handle_) {
