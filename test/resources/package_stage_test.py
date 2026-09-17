@@ -33,16 +33,20 @@ def run() -> None:
             private_key=key, entry=[f'driver.elf={elf}', f'schema.json={resource}'],
             require=['kernel.serial:1'], output=root / 'candidate.risc')
         good = builder.build(args)
+        alternate_path = root / 'alternate.risc'
         changed = builder.build(argparse.Namespace(**{
-            **vars(args), 'security_version': '4', 'output': root / 'alternate.risc'}))
+            **vars(args), 'security_version': '4', 'output': alternate_path}))
         assert good != changed and len(good) == len(changed) and len(good) > 1024
+        # build() returns archive bytes; only its CLI writes the output file.
+        args.output.write_bytes(good)
+        alternate_path.write_bytes(changed)
         program = root / 'stage-test'
         subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                         '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
                         '-I' + str(ROOT / 'src'),
                         str(ROOT / 'test/resources/package_archive_stage_test.cpp'),
                         '-lcrypto', '-o', str(program)], check=True, capture_output=True)
-        subprocess.run([str(program), str(args.output), str(root / 'alternate.risc'),
+        subprocess.run([str(program), str(args.output), str(alternate_path),
                         str(public)], check=True)
 
 
