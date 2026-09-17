@@ -3,13 +3,15 @@
 
 The bundled libusb.a is statically linked for resident firmware and triggers
 Xtensa dangerous dynamic relocations when linked directly into an ELF. Rebuild
-only USB-owned sources from the pinned IDF release as PIC. This is a real
-physical-provider link probe; loader/import compatibility and on-board use are
-separate verification steps, not reasons to omit the hardware implementation.
+only USB-owned sources from the pinned IDF release as PIC. Hardware register
+addresses come from that same pinned IDF's SoC linker definitions; they are
+bound inside the provider rather than imported from resident firmware.
+Loader/import compatibility and on-board use remain separate verification steps.
 """
 import argparse
 import json
 from pathlib import Path
+import re
 import shlex
 import subprocess
 
@@ -21,7 +23,12 @@ IDF_TAG = 'v4.4.7'
 USB_SOURCES = ('hcd_dwc.c', 'hub.c', 'usb_helpers.c', 'usb_host.c',
                'usb_private.c', 'usbh.c', 'usb_phy.c')
 USB_HAL_SOURCES = ('usb_hal.c', 'usb_phy_hal.c', 'usb_dwc_hal.c')
-USB_SOC_SOURCES = ('usb_phy_periph.c', 'usb_periph.c')
+USB_SOC_SOURCES = ('usb_phy_periph.c', 'usb_periph.c', 'gpio_periph.c')
+# These are memory-mapped hardware registers, not resident symbols or objects.
+# The provider's PIC code must reference the exact physical addresses from the
+# pinned target SoC linker script. Do not fabricate C data objects at them.
+MMIO_SYMBOLS = ('RTCCNTL', 'SYSTEM', 'USB_DWC', 'USB_SERIAL_JTAG', 'USB_WRAP')
+EXPORT_MAP = ROOT / 'Drivers/usb_controller_esp32s3/exports.map'
 
 
 def tool(compiler, suffix):
@@ -85,6 +92,19 @@ def idf_sources():
     return usb, hal, soc, paths
 
 
+def target_mmio_symbols(soc):
+    """Read actual ESP32-S3 memory map, never hard-code host-firmware globals."""
+    linker = soc / 'ld/esp32s3.peripherals.ld'
+    if not linker.is_file() or not EXPORT_MAP.is_file():
+        raise FileNotFoundError('Pinned physical peripheral map or ELF export policy absent')
+    matches = re.findall(r'PROVIDE\s*\(\s*(\w+)\s*=\s*(0x[0-9a-fA-F]+)\s*\)',
+                         linker.read_text())
+    values = dict(matches)
+    if len(matches) != len(values) or any(name not in values for name in MMIO_SYMBOLS):
+        raise RuntimeError('Pinned ESP32-S3 peripheral map is incomplete or ambiguous')
+    return [f'-Wl,--defsym,{name}={values[name]}' for name in MMIO_SYMBOLS]
+
+
 def run():
     parser = argparse.ArgumentParser()
     parser.add_argument('--link-experiment', action='store_true')
@@ -125,7 +145,8 @@ def run():
     elf = OUTPUT / 'controller-link-experiment.elf'
     command = [str(compiler), '-shared', '-nostdlib', '-nostartfiles',
                '-Wl,--hash-style=sysv', '-Wl,--exclude-libs,ALL',
-               '-Wl,-Bsymbolic', *map(str, objects), '-lgcc', '-o', str(elf)]
+               '-Wl,-Bsymbolic', '-Wl,--version-script,' + str(EXPORT_MAP),
+               *target_mmio_symbols(soc), *map(str, objects), '-lgcc', '-o', str(elf)]
     subprocess.run(command, cwd=ROOT, check=True)
     imported = subprocess.check_output([str(nm), '-u', str(elf)], text=True)
     (OUTPUT / 'unresolved-symbols.txt').write_text(imported)
