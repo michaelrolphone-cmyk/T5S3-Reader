@@ -1,0 +1,37 @@
+# Unified Package Manager Scope Contract
+
+**Status:** Normative current-work scope, September 17, 2026. Applies immediately to the Unified Package Manager MVP (PR #76), its integration with provider/driver loading (PR #78), and future agents working on these tasks. The roadmap's package sections are long-term possibilities, **not an authorization to implement or require them in the MVP**. This contract governs current delivery wherever older package documents describe mandatory signatures or signer trust. It does not claim that existing signed code has been removed.
+
+Authority: the user's current explicit request and constraints take priority for the work being performed. This document refines the current implementation scope under [RISCRTE_PLATFORM_SPEC.md](RISCRTE_PLATFORM_SPEC.md) and [PLATFORM_CAPABILITY_ROADMAP.md](PLATFORM_CAPABILITY_ROADMAP.md). Hardware-specific functionality still follows [HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md](HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md).
+
+## Authorized MVP objective
+
+Provide **one shared package model and one package manager** for applications, drivers, services, and providers. The same install/update/uninstall/inventory/recovery engine must accept offline SD packages and online downloads, without requiring desktop-side packaging/signing tools or differing authorization rules by source. Keep the generic manager hardware-blind; packages may declare versioned dependencies and capability requirements, but installation is separate from loading/activation and never grants hardware rights.
+
+Required deliverables for this MVP:
+
+1. A common, documented envelope/manifest or compatible migration path with bounded type, ID, version, target architecture/runtime ABI, payload identity, declared dependencies and resource paths. Prefer minimal changes to existing usable assets rather than demanding a new cryptographic distribution format.
+2. Shared source-independent inspection, dependency/version/compatibility checks, bounded reads, safe paths/extraction, payload size and SHA-256 **file-integrity** checks against the package's own declared values, and explicit failure diagnostics. SHA-256 here detects accidental corruption/mismatch; it is **not publisher authentication**.
+3. A single transactional installation/update mechanism with owned temporary storage, previous-generation preservation, interruption recovery and in-use replacement protection. Avoid deleting unknown user files. Preserve working installs on failure.
+4. Unified local/remote discovery and inventory; install, update and uninstall for all four kinds, with activation separately controlled through existing generic capability/consent/context rules.
+5. Host regressions and realistic on-device acceptance for each source and package kind, failed download, corrupt/incompatible input, reboot during replacement, active ELF replacement refusal, recovery and uninstall. Report what was actually tested; do not label simulator or CI results physical acceptance.
+
+## Explicitly deferred — not MVP gates
+
+No mandatory digital signatures, P-256, publisher key provisioning, signer allowlists, cryptographic trust roots, signer revocation, signed provenance, NVS cryptographic security-version floors, secure boot or anti-rollback policy, mandatory package enrollment, or signed-package-only activation. Do not make these a prerequisite for package discovery, installation, loading, USB/I2C driver activation, or merging the requested MVP. Do not silently introduce a different cryptographic trust mechanism under another name. Future authentication may be proposed as a separate feature and implemented **only after explicit user approval** with its own scope, threat model, API and compatibility plan.
+
+Keep ordinary defensive validation, size/bounds checks, SHA-256 corruption detection, compatible-version policy and crash-consistent file transactions. A digest supplied alongside a package is not an authenticated publisher identity. Neither package metadata nor a digest is authorization to call a privileged API: the loader's import policy, runtime-owned execution context, capability grants and physical provider ownership remain separate concerns.
+
+## Existing implementation disposition
+
+PR #76 currently contains extensive signing and trust code. Treat it as **implemented experimental/out-of-scope work**, not acceptance criteria or a dependency. Do not delete it blindly or claim it is already decoupled. The MVP must expose a non-signature-dependent path and remove mandatory signer/trust/floor gates from its normal install and load path; retain only independently useful generic components. Isolate/archive the signed-format implementation or split it into a separately scoped proposal without allowing it to block the requested MVP. Revise `UNIFIED_PACKAGE_MANAGER_MVP.md` and `RISC_PACKAGE_FORMAT.md` to distinguish the existing signed experiment from the authorized unsigned MVP before declaring completion.
+
+PR #78 may validate ELF structure/import bounds, require a module-specific privileged relocation grant, hash/copy the exact candidate loaded, and enforce capability permissions. It must accept manager-owned metadata generated by ordinary package inspection without requiring a P-256 signature, signed-import record, signer identity or security floor. Imported privileged symbols must still be limited by the independently specified runtime/driver loading policy. Signed provider profiles are optional future work, **not the interface contract between PRs #76 and #78**.
+
+## Acceptance and change-control rule
+
+Before implementing a task, write a brief change contract in the PR or its implementation spec: **(a) explicit user objective, (b) authorized deliverables, (c) excluded/deferred features, (d) acceptance tests, (e) dependencies and their source of authorization.** A roadmap item, nearby spec, existing prototype, perceived best practice or security concern is not evidence that the user authorized additional delivery scope. More specific user instructions override an older generalized roadmap for that task, without erasing long-term ideas.
+
+Classify each proposed feature or blocking dependency as `REQUIRED` (directly necessary for the explicit objective), `OPTIONAL` (separable, nonblocking) or `DEFERRED` (outside current scope). If it introduces new trust infrastructure, cryptographic identity, persistent policy, breaking package format, new hardware ownership, a new mandatory dependency, significant cross-PR coupling or an expanded release gate, **do not implement or require it unless expressly requested**. Record the proposal separately and proceed with the smallest viable solution. Genuine safety/correctness defects in the requested functionality may justify bounded checks, but must not be used to smuggle an unrelated feature into the acceptance criteria. Never bypass existing permissions or safety checks to remove an unwanted feature.
+
+When a scope mismatch is discovered, stop extending it, identify its concrete dependencies, restore the original MVP acceptance criteria, preserve reusable independent work, update the governing documents and PR descriptions, and distinguish spec changes from code changes. Do not call a policy edit an implementation rollback. Every PR review must include a scope audit: list any newly introduced feature, mandatory dependency or release gate and identify the explicit user request approving it, or remove/defer it.
