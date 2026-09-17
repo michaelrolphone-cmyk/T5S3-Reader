@@ -1,0 +1,21 @@
+# Verified provider admission and graph lifetime
+
+**Status:** draft PR #78 implementation contract, not authorization to install or activate drivers. Read with [privileged OS/CPU ABI](PRIVILEGED_OS_CPU_ABI.md), [hardware-agnostic driver boundary](HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md), and the provider-profile verifier in draft package-manager PR #76. Hardware-specific operations remain wholly inside driver ELFs.
+
+## Registration and authority
+
+`GraphV2::addVerified` accepts only ordinary, nonprivileged specs. A self-supplied digest, claimed signer or plausible exact import list cannot pass through this public API to receive generic privileged OS/CPU imports. `GraphV2::addAuthenticatedPrivileged` is a private C++ entry reserved for the firmware's `RuntimePackages::DeviceProviderExecutorV2`; a host-only friend fixture exercises metadata rejection but **is not a cryptographic authorization test or production executor**. The actual executor still needs implementation and cross-PR integration. Native ELFs share an address space; a C++ access modifier is not a sandbox.
+
+PR #76's `verifySignedProviderProfile` and device inspection adapter independently authenticate the RISC-PKG signature, signer scope, all entry digests, exact provider ABI and import resource, prior intake fingerprint, dependency preflight and device security floor. The resulting `ProviderProfileReceipt` copies identity, capabilities, dependencies, imports and executable digest; it is *data*, not a transferable unforgeable credential. Only a trusted manager that performs these checks itself, using firmware provisioned keys and a protected installation generation, may construct and submit a privileged `SpecV2`. Neither arbitrary receipts nor caller-selected signer tables qualify.
+
+## Ownership and TOCTOU
+
+`GraphV2::addChecked` validates the input before admission and `OwnedNodeV2` copies identity, path, provided capability, dependency names/interfaces, signed import strings, digest and a complete privileged candidate ELF into node-owned memory. Optional import tables and candidate images prefer PSRAM. The caller may mutate or free its original buffers immediately after registration without replacing an activation input. This is a registration snapshot, not signature verification. `ModuleV2::loadVerifiedBytes` separately snapshots those bytes, hashes its own copy against the signed digest, validates both symbol tables and relocates that same image. An ordinary path-based `dlopen` still needs a signed executable-byte lifetime boundary when migrated from the legacy installer.
+
+Each graph node also owns the `risc_provider_dependency_v1[]` handed to `start()`. Its content and pinned lower-provider interfaces survive nested calls and remain valid through quiesce/stop; they are cleared only after safe unload and release of lower-provider pins. Failure to quiesce leaves code, metadata, candidate bytes, dependencies and generation-sensitive grants quarantined. The owning manager must never destroy a graph while any provider remains mapped or has outstanding consumers. No native module isolation, ISR/DMA cancellation or physical hardware safety is implied by metadata ownership.
+
+Host regressions: `test/run_provider_graph_v2_test.sh` compiles graph/module source with actual dlopen fixtures; checks public privilege rejection, private metadata shape, caller-buffer mutation, snapshot independence, an ASan-instrumented driver retaining a dependency table through quiesce/stop, and failed-start/teardown quarantine. Experimental hardware ELF audit is separately exercised by `.github/workflows/usb-elf-provider-v2.yml`.
+
+## Remaining integration gate
+
+Implement the firmware-private executor that directly invokes PR #76's authenticated package inspection using provisioned trust policy and a manager-owned archive/receipt. Before calling `addAuthenticatedPrivileged`, it must establish package identity, signer scope, rollback and generation, dependency availability and execution-context/resource grants; bind the exact archived ELF entry to its signed length/digest; and retain ownership of the graph for all mapped hardware and dependents. Then exercise on-device relocation, real USB/PHY/I²C ownership cutover, quiescence and fault injection. **Do not publish, install or auto-activate experimental physical drivers before those gates pass.**
