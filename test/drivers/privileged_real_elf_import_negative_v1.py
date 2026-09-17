@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """Negative exact-import tests against real, freshly linked provider ELF bytes.
 
-The compiled firmware C matcher must reject every changed canonical declaration
-(including an EXTRA ABI-PERMITTED import) even when the original ELF and
-canonical unsigned build sidecar agree. These are not signature tests.
+The compiled firmware C matcher must reject changed canonical declarations,
+including an EXTRA ABI-PERMITTED import when actual ELF imports are unchanged.
+These are declaration consistency tests, not signature authentication.
 """
 import argparse
 from pathlib import Path
 import subprocess
 import tempfile
 
-ALLOWED = ('malloc', 'printf', 'memset', 'strcpy', 'strlen', 'esp_intr_alloc',
-           'xTaskGetTickCount', 'calloc', 'free', 'memcpy', 'strchr', 'vfprintf')
+# All names below are in the REAL v1 fixed libc or privileged OS/CPU ABI.
+ALLOWED = ('malloc', 'printf', 'memset', 'strlen', 'esp_intr_alloc',
+           'xTaskGetTickCount', 'calloc', 'free', 'memcpy', 'strchr', 'vfprintf',
+           'strrchr', 'strtol', 'putchar', 'fprintf', 'clock_gettime')
 
 
 def invoke(matcher: Path, elf: Path, declaration: Path, expected: bool) -> None:
@@ -44,7 +46,7 @@ def exercise(matcher: Path, elf: Path) -> None:
         reject((''.join(name + '\n' for name in names[1:])).encode('ascii'),
                'missing actual ELF import')
         reject((''.join(name + '\n' for name in sorted([*names, extra]))).encode('ascii'),
-               'extra ABI-permitted but undeclared ELF import')
+               'extra ABI-permitted but absent ELF import')
         reject(original + names[-1].encode('ascii') + b'\n', 'duplicate import')
         if len(names) >= 2:
             swapped = names.copy()
