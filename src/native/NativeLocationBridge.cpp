@@ -61,7 +61,9 @@ t5_stream_result_t subscribe(t5_device_lease_t authorization,
     if (startedHere) GpsDriverRuntime::stop();
     return T5_STREAM_DENIED;
   }
-  const auto result = nativeGnssSubscribe(context->id(), authorized, token, stream);
+  // Keep the issued consent with the returned record stream: the raw stream
+  // API must independently deny reads after revoke/release, even without poll.
+  const auto result = nativeGnssSubscribe(context->id(), authorized, authorization, token, stream);
   if (result != T5_STREAM_OK) {
     if (startedHere) GpsDriverRuntime::stop();
     return result;
