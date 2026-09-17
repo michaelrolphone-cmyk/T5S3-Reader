@@ -9,6 +9,9 @@
 namespace RuntimeProviders {
 class ModuleV2 final {
  public:
+  /* Failed also denotes quarantine after a partial start/teardown: code and
+   * lower providers remain pinned but no new consumer may use its capability.
+   * unload() retries verified quiescence; it never force-unmaps hardware. */
   enum class State : uint8_t { Absent, Active, Failed };
   ModuleV2() = default;
   ModuleV2(const ModuleV2&) = delete;
