@@ -4,8 +4,8 @@
 #include <cstdint>
 
 /* Generic module loader; cannot include USB, UART, GPIO or board headers.
- * Its caller must verify a signed/integrity-checked manifest, pin dependency
- * provider ELFs, resolve API versions and authorize physical consumers. */
+ * Its caller must authenticate a signed manifest, pin dependencies, resolve
+ * API versions and authorize provider execution. */
 namespace RuntimeProviders {
 class ModuleV2 final {
  public:
@@ -22,12 +22,14 @@ class ModuleV2 final {
             const char* expectedCapability, uint32_t expectedApi,
             const risc_provider_dependency_v1* dependencies, size_t count);
   /* PRIVATE firmware admission path. The caller MUST authenticate the signed
-   * package and manifest, verify exact imports and ABI version, and supply the
-   * SAME immutable verified bytes. Not exposed through an ELF host API. This
-   * function does not itself prove signing or physical ownership. It requires
-   * a quiesce callback, then binds scoped privileged OS/CPU symbols only while
-   * relocating this particular ELF. Host builds deliberately deny this path. */
-  bool loadVerifiedBytes(const uint8_t* verifiedBytes, size_t length,
+   * package/identity/ABI and provide the exact signed entry digest. This
+   * function snapshots candidate bytes, hashes that private snapshot and
+   * relocates from ONLY that matching snapshot, never a reopened SD path.
+   * A digest provided by an untrusted caller is NOT signer authentication.
+   * Host builds deny this path; hardware ownership still requires a separate
+   * grant and a successful quiesce callback before unmapping. */
+  bool loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
+                         const uint8_t authenticatedSha256[32],
                          const char* expectedId, const char* expectedCapability,
                          uint32_t expectedApi,
                          const risc_provider_dependency_v1* dependencies,
