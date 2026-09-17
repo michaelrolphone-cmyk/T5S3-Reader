@@ -7,7 +7,6 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/NativeApps/src/NativeAppLauncher.c" \
   "$repo_dir/test/native_apps/programmer_api_stub.c" \
-  "$repo_dir/test/native_apps/package_api_stub.c" \
   "$repo_dir/test/native_apps/launcher_test.c" -o "$binary"
 "$binary"
 # The real firmware device ABI bridge must authorize by execution context and
@@ -25,4 +24,4 @@ if [[ $# -gt 0 ]]; then
 fi
 python3 "$repo_dir/test/native_apps/test_symbols.py"
 python3 "$repo_dir/test/native_apps/test_capability_manifest.py"
-echo 'Native app launcher tests passed, including inactive signed-package load guard'
+echo 'Native app launcher tests passed'

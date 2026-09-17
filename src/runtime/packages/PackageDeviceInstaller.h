@@ -10,10 +10,7 @@ namespace RuntimePackages {
 
 enum class SignedInstallResult : uint8_t {
   Installed, InvalidInput, IntakeRejected, ExtractionRejected,
-  PublicationRejected, PublicationPendingRecovery, InstalledIntakeCleanupPending,
-  // An existing disposable stage is not authenticated as the exact candidate
-  // selected by the caller. Preserve it for explicit inspection/quarantine.
-  StaleOrForeignStage
+  PublicationRejected, PublicationPendingRecovery, InstalledIntakeCleanupPending
 };
 
 struct SignedInstallOutcome {
@@ -31,25 +28,15 @@ struct SignedInstallOutcome {
 // FreeRTOS task stack. No signing key is provided by a package.
 //
 // A trusted caller must explicitly authorize first installs, storage, consent
-// and declared dependencies; the manifest itself grants no rights. If an
-// interrupted intake exists, reauthenticate it against the caller-selected
-// signed source and resume only the exact same fingerprint. A foreign or
-// partially written stage is NEVER overwritten, removed or silently adopted.
-// If publication reached the final directory before reset, authenticate and
-// complete its recovery before removing the matching disposable intake.
-//
-// expectedApprovedDigest, when nonnull, MUST be retained by the privileged
-// manager from authenticated inspection before the user's physical consent.
-// It is compared with authenticated intake BEFORE extraction or publication.
-// This entry point does NOT activate, dlopen or grant hardware capabilities.
-// Do not make published SD executable until a byte-bound load gate exists.
+// and declared dependencies; the manifest itself grants no rights. This entry
+// point does NOT activate, dlopen or grant hardware capabilities. Do not make
+// published SD executable until a byte-bound load gate is implemented.
 SignedInstallOutcome installSignedDevicePackage(std::FILE* source,
     const TrustedPackageSigner* signers, size_t signerCount,
     const PackageRuntimePolicy& policy, PackageCapabilityApi resolveCapability,
     void* resolverContext, PackageVerificationWorkspace& workspace,
     PackageArchive& approved, PackageArchive& observed,
     PackageArchiveLimits limits = {}, bool allowFirstInstall = false,
-    bool allowSemverDowngrade = false,
-    const uint8_t expectedApprovedDigest[32] = nullptr);
+    bool allowSemverDowngrade = false);
 
 } // namespace RuntimePackages

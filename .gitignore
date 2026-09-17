@@ -20,5 +20,3 @@ build
 *.local*
 webUI/
 Other/
-# Local DEVELOPMENT public-key signer enrollment; never commit accidentally.
-/include/RiscRteLocalPackageTrust.h
