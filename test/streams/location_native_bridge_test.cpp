@@ -68,10 +68,16 @@ bool read(t5_gps_state_t* state) {
 }
 
 t5_stream_result_t nativeGnssSubscribe(uint32_t owner, uint32_t device,
+                                      uint32_t issuedReadConsent,
                                       uint64_t* token, t5_stream_t* stream) {
   auto* context = ExecutionContext::current();
-  if (!context || owner != context->id() || device != receiver || !token || !stream)
+  if (!context || owner != context->id() || device != receiver ||
+      !issuedReadConsent || !token || !stream)
     return T5_STREAM_DENIED;
+  DeviceHandle issuedDevice = 0;
+  assert(systemCapabilityAccess().valid(owner, issuedReadConsent,
+                                        kCapabilityRead, &issuedDevice));
+  assert(issuedDevice == receiver);
   *token = 0x100000001ull;
   *stream = 0x101u;
   ++subscribes;
