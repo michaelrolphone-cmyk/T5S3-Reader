@@ -17,7 +17,7 @@ struct SpecV2 {
   const char* verifiedElfPath;
   const char* provides;
   uint32_t api;
-  const RequirementV2* requires;
+  const RequirementV2* requirements;
   size_t requirementCount;
 };
 struct GrantV2 {
@@ -32,14 +32,11 @@ class GraphV2 final {
   GraphV2() = default;
   GraphV2(const GraphV2&) = delete;
   GraphV2& operator=(const GraphV2&) = delete;
-
-  // Caller verifies manifest identity, hashes/signatures, path and permissions
-  // before adding any spec. Identical capability/version offers are ambiguous.
   bool addVerified(const SpecV2& spec);
   GrantV2 acquire(const char* capability, uint32_t api);
   bool release(GrantV2 grant);
   const void* interfaceFor(GrantV2 grant) const;
-  bool shutdown();   // Fail closed if any grant or provider is still pinned.
+  bool shutdown();
   size_t moduleCount() const { return count_; }
   size_t liveGrants() const;
 
