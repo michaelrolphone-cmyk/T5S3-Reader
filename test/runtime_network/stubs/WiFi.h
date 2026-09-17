@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <array>
+#include <cassert>
 #include <cstring>
 constexpr int WIFI_OFF = 0, WIFI_STA = 1, WIFI_AP = 2;
 // Deliberately different from runtime values: the provider must translate.
@@ -27,10 +28,11 @@ struct FakeWiFi {
   void setSleep(bool flag) { calls.push_back(flag ? "sleep:on" : "sleep:off"); }
   void disconnect(bool off = false, bool erase = false) {
     calls.push_back(std::string("disconnect:") + (off ? "1" : "0") + (erase ? "1" : "0"));
+    if (off) currentMode = WIFI_OFF;
   }
   void softAPdisconnect(bool) { calls.push_back("ap.stop"); }
-  void macAddress(uint8_t* mac) { std::memset(mac, 0xab, 6); }
-  String macAddress() { return String("AA:BB:CC:DD:EE:FF"); }
+  void macAddress(uint8_t* mac) { assert(currentMode != WIFI_OFF); std::memset(mac, 0xab, 6); }
+  String macAddress() { assert(currentMode != WIFI_OFF); return String("AA:BB:CC:DD:EE:FF"); }
   void scanDelete() { calls.push_back("scan.clear"); }
   int16_t scanNetworks(bool async, bool hidden, bool passive, uint32_t ms) {
     calls.push_back(std::string("scan:") + (async ? "1" : "0") + (hidden ? "1" : "0") +
@@ -41,7 +43,11 @@ struct FakeWiFi {
   String SSID(int = 0) { return String(name.c_str()); }
   int32_t RSSI(int = 0) { return -63; }
   int encryptionType(int) { return 1; }
-  void setHostname(const char* host) { hostname = host; calls.push_back("hostname"); }
+  void setHostname(const char* host) {
+    assert(currentMode != WIFI_OFF);
+    hostname = host;
+    calls.push_back("hostname");
+  }
   void begin(const char* ssid, const char* pass = nullptr) {
     name = ssid; password = pass ? pass : ""; calls.push_back("connect");
   }
