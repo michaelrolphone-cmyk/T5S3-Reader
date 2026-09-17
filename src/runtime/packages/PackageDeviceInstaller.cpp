@@ -58,7 +58,7 @@ SignedInstallOutcome installSignedDevicePackage(std::FILE* source,
     void* resolverContext, PackageVerificationWorkspace& workspace,
     PackageArchive& approved, PackageArchive& observed,
     PackageArchiveLimits limits, bool allowFirstInstall,
-    bool allowSemverDowngrade) {
+    bool allowSemverDowngrade, const uint8_t expectedApprovedDigest[32]) {
   SignedInstallOutcome outcome{};
   if (!source || !signers || !signerCount || signerCount > 16 ||
       !policy.architecture || !policy.runtimeApi ||
@@ -124,6 +124,17 @@ SignedInstallOutcome installSignedDevicePackage(std::FILE* source,
       outcome.result = SignedInstallResult::IntakeRejected;
       return outcome;
     }
+  }
+
+  // The fingerprint comes from an authenticated signed prefix, never the
+  // pathname or mutable SD metadata. The UI captures it BEFORE user consent;
+  // this check is made before accepting an old stage, extraction or renames.
+  if (expectedApprovedDigest &&
+      !sameFingerprint(expectedApprovedDigest, authenticatedPrefix)) {
+    approved = {};
+    observed = {};
+    outcome.result = SignedInstallResult::IntakeRejected;
+    return outcome;
   }
 
   if (pendingIntake && !pendingExtract) {
