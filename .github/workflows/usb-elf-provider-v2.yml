@@ -126,6 +126,11 @@ jobs:
             python scripts/generate_privileged_imports_v1.py "$elf"
             /tmp/riscrte-exact-imports-ci "$elf" "$(dirname "$elf")/privileged-imports.v1"
           done
+          python test/drivers/privileged_real_elf_import_negative_v1.py \
+            /tmp/riscrte-exact-imports-ci \
+            dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf \
+            dist/experimental/i2c-esp32s3-v2/driver.elf \
+            dist/experimental/platform-clock-v1/driver.elf
       - name: Preserve experimental binaries and compatibility reports for inspection only
         if: always()
         uses: actions/upload-artifact@v4
