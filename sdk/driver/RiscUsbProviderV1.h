@@ -1,21 +1,18 @@
 #pragma once
-/* Driver-only ABI. RiscRTE core MUST treat these capability names and API
- * pointers as opaque; the USB host implementation belongs in another ELF. */
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
+/* Driver-only protocol ABI. RiscRTE core MUST treat usb.host, serial.port,
+ * and their provider interface tables as opaque versioned capabilities. */
+#include "RiscProviderV2.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define RISC_PROVIDER_DRIVER_ABI_V2 2u
 #define RISC_USB_HOST_API_V1 1u
 #define RISC_USB_CDC_API_V1 1u
 #define RISC_USB_CONFIG_LIMIT 4096u
 #define RISC_USB_CDC_MAX_SESSIONS 4u
 
-/* Device IDs and claims are host-ELF-owned generation-safe tokens, never IDF
- * pointers. Negative transfer results mean failure; zero means no data. */
+/* Device identities and interface claims are host-ELF-owned generation-safe
+ * tokens, not IDF objects. Negative transfers fail; zero means no data. */
 typedef struct {
     uint32_t api_version;
     uint32_t struct_size;
@@ -34,9 +31,9 @@ typedef struct {
                           const uint8_t *src, size_t length, uint32_t timeout_ms);
 } risc_usb_host_api_v1;
 
-/* A driver owns hardware sessions; the runtime owns only generic grants and
- * dispatch lifetime. A zero session is invalid. All calls are serialized by
- * the provider executor until a future ABI explicitly supports concurrency. */
+/* Actual CDC configuration, class control requests, bulk I/O and interface
+ * release are performed by the CDC ELF through the separate usb.host ELF.
+ * Runtime grants authorize access but do not operate the hardware. */
 typedef struct {
     uint32_t api_version;
     uint32_t struct_size;
@@ -50,31 +47,6 @@ typedef struct {
                      uint32_t timeout_ms);
     bool (*close)(uint64_t session);
 } risc_usb_cdc_api_v1;
-
-/* Generic provider dependencies are resolved by ID/version, not by a built-in
- * USB branch. The containing loader must pin both ELFs until all sessions
- * close, revoke dependent handles on loss, and call stop before unmapping. */
-typedef struct {
-    const char *capability_id;
-    uint32_t api_version;
-    const void *api;
-} risc_provider_dependency_v1;
-
-typedef struct {
-    uint32_t abi_version;
-    uint32_t struct_size;
-    const char *driver_id;
-    const char *capability_id;
-    uint32_t capability_api;
-    const void *capability;
-    bool (*start)(const risc_provider_dependency_v1 *dependencies, size_t count);
-    void (*stop)(void);
-} risc_driver_v2;
-
-typedef const risc_driver_v2 *(*risc_driver_get_v2_fn)(uint32_t abi);
-/* ABI v2 is intentionally rejected by the current ABI-v1 USB loader. It may
- * only be activated when the generic dependency-aware provider loader exists. */
-const risc_driver_v2 *t5_driver_get(uint32_t abi);
 #ifdef __cplusplus
 }
 #endif
