@@ -19,7 +19,6 @@ inline bool appRecoveryCandidate(const char* storedName, std::string& elfName) {
   for (const char* suffix : suffixes) {
     const size_t suffixLength = std::strlen(suffix);
     if (length <= suffixLength || std::strcmp(storedName + length - suffixLength, suffix)) continue;
-    const bool alreadyElf = suffix[1] == 'e';
     const size_t stemLength = length - suffixLength;
     if (stemLength + 4 >= 128) return false;
     std::string candidate(storedName, stemLength);
