@@ -1,8 +1,7 @@
 #include "RiscUsbProviderV1.h"
 #include <string.h>
 
-/* Test fixture only: a separately dlopen'ed provider, never firmware USB
- * implementation. It proves that CDC receives usb.host from another ELF. */
+/* Test fixture only: separately dlopen'ed usb.host, never a hardware driver. */
 static const uint8_t descriptors[] = {
     9,2,41,0,2,1,0,0x80,50,
     9,4,0,0,0,2,2,1,0,
@@ -12,6 +11,7 @@ static const uint8_t descriptors[] = {
 };
 static bool running;
 static uint64_t next_claim;
+static unsigned outstanding;
 static bool configuration(void *ctx, uint64_t dev, uint8_t *bytes,
                           size_t *length, uint16_t *vid, uint16_t *pid) {
     (void)ctx;
@@ -28,9 +28,13 @@ static bool claim(void *ctx, uint64_t dev, uint8_t iface,
     (void)ctx;
     if (!running || dev != 42 || iface > 1 || alt || !token) return false;
     *token = (++next_claim << 8) | iface;
+    ++outstanding;
     return true;
 }
-static void release_claim(void *ctx, uint64_t token) { (void)ctx; (void)token; }
+static void release_claim(void *ctx, uint64_t token) {
+    (void)ctx;
+    if (token && outstanding) --outstanding;
+}
 static int32_t control(void *ctx, uint64_t dev, uint8_t request_type,
                        uint8_t request, uint16_t value, uint16_t index,
                        uint8_t *payload, uint16_t length, uint32_t timeout_ms) {
@@ -65,11 +69,12 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     running = true;
     return true;
 }
+static bool quiesce(void) { return outstanding == 0; }
 static void stop(void) { running = false; }
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
     "fixture-usb-host", "usb.host", RISC_USB_HOST_API_V1,
-    &usb_host, start, stop
+    &usb_host, start, stop, quiesce
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
