@@ -32,3 +32,16 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/provider_failed_start_recovery_v2_test.cpp" \
   -ldl -o "$build/recovery-test"
 "$build/recovery-test" "$build/root.so" "$build/failed-start.so"
+
+# Once quiesce fails, an initially active module is no longer usable. A
+# failed release cannot permit a new grant into partially torn-down hardware.
+cc "${flags[@]}" -DFIXTURE_ID='"fixture-retry"' \
+  -DFIXTURE_CAPABILITY='"cap.retry"' -DFIXTURE_QUIESCE_FAIL_ONCE \
+  "$repo/test/drivers/provider_graph_fixture.c" -o "$build/retry.so"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  -I"$repo/test/drivers/stubs" -I"$repo/src" \
+  "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
+  "$repo/src/runtime/drivers/ProviderGraphV2.cpp" \
+  "$repo/test/drivers/provider_failed_teardown_v2_test.cpp" \
+  -ldl -o "$build/teardown-test"
+"$build/teardown-test" "$build/retry.so"
