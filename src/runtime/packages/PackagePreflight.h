@@ -40,6 +40,9 @@ struct PackageEnvelopeView {
 struct PackageRuntimePolicy {
   const char* architecture;
   uint32_t runtimeApi;
+  // Zero explicitly disables the optional experimental security-version
+  // policy for ORDINARY integrity-checked packages. A nonzero threshold keeps
+  // existing signed-package/rollback behavior unchanged.
   uint32_t minimumSecurityVersion;
   uint64_t maxEntryBytes;
   uint64_t maxTotalBytes;
@@ -103,9 +106,10 @@ inline bool validSha256Hex(const char* digest) {
 // Resolver is a read-only lookup: uint32_t resolver(const char* capability).
 // This validates *declarations* and available ABI contracts only. A successful
 // result MUST NOT grant capabilities, authorize an ELF, install any content, or
-// imply SHA-256 was computed or a signature authenticated. The caller must read
-// and hash every payload, authenticate the signed canonical envelope against
-// trusted keys, and pin validated bytes before any publication or loading.
+// imply SHA-256 was computed. A caller must independently hash the payloads
+// against declared digests, retain exact candidate bytes through staging, and
+// apply execution-context grants at LOAD time. An ordinary digest is NOT a
+// publisher signature. Optional signed packages may enforce additional trust.
 template <typename Resolver>
 PreflightResult preflightPackage(const PackageEnvelopeView& package,
                                  const PackageRuntimePolicy& runtime,
@@ -123,7 +127,8 @@ PreflightResult preflightPackage(const PackageEnvelopeView& package,
     return PreflightResult::UnsupportedArchitecture;
   if (!package.minRuntimeApi || package.minRuntimeApi > runtime.runtimeApi)
     return PreflightResult::IncompatibleRuntime;
-  if (!package.securityVersion || package.securityVersion < runtime.minimumSecurityVersion)
+  if (runtime.minimumSecurityVersion &&
+      (!package.securityVersion || package.securityVersion < runtime.minimumSecurityVersion))
     return PreflightResult::SecurityRollback;
   if (!package.entries || !package.entryCount || package.entryCount > kMaxPackageEntries ||
       !runtime.maxEntryBytes || !runtime.maxTotalBytes)
