@@ -27,6 +27,12 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo/src" "$repo/test/resources/package_preflight_test.cpp" \
   -o "$build/package-preflight-test"
 "$build/package-preflight-test"
+# Reject duplicate JSON keys at every nesting level, escaped key aliases and
+# malformed/unbounded input before ArduinoJson can overwrite a declaration.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/package_json_guard_test.cpp" \
+  -o "$build/package-json-guard-test"
+"$build/package-json-guard-test"
 # The shared directory transaction must retain the last verified generation
 # through rename failures, abrupt resets, corrupt stages and cleanup failures.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
