@@ -1,5 +1,6 @@
 #include "PackageDeviceExtract.h"
 #include "PackageDeviceSecurityFloor.h"
+#include "PackageSignedProvenance.h"
 
 #include <HalStorage.h>
 #include <esp_task_wdt.h>
@@ -13,11 +14,10 @@
 namespace RuntimePackages {
 namespace {
 constexpr const char* kExtractionLock = "/Packages/.extract.lock";
+constexpr const char* kExtractProvenance = "/Packages/.extract.part/.risc-auth";
 
-// The only paths removed by this adapter are an exclusively created lock and
-// files it created under its own fresh stage. Unknown files are never purged.
-// A reset leaves .extract.part intact and blocks new extraction until an
-// explicit recovery path verifies or safely quarantines it.
+// Only an exclusively created lock, metadata file and this operation's entry
+// files may be removed. An interrupted stage is deliberately NOT overwritten.
 class HalExtractDirectory {
  public:
   bool begin(const PackageArchive& archive) {
@@ -29,8 +29,7 @@ class HalExtractDirectory {
         static_cast<oflag_t>(O_CREAT | O_EXCL | O_RDWR));
     if (!lock_.isOpen() || lock_.isDirectory()) return false;
     ownsLock_ = true;
-    // This is an exclusively reserved runtime stage, not an install target.
-    // The lock serializes cooperating installers; it cannot stop raw SD edits.
+    // This lock serializes cooperating installers, not physical SD edits.
     if (Storage.exists(kPackageExtractStage) ||
         !Storage.mkdir(kPackageExtractStage, false)) return false;
     ownsDirectory_ = true;
@@ -85,13 +84,47 @@ class HalExtractDirectory {
     return reader_.read(output, bytes) == static_cast<int>(bytes);
   }
 
-  bool seal() {
-    if (!ownsDirectory_ || next_ != count_ || writer_.isOpen()) return false;
+  bool writeProvenance(const uint8_t* prefix, size_t prefixLength,
+                       const uint8_t* signature, size_t signatureLength) {
+    if (!ownsDirectory_ || next_ != count_ || !prefix || !signature ||
+        prefixLength < kPackageHeaderBytes + 16 ||
+        prefixLength > kPackageHeaderBytes + kPackageManifestLimit ||
+        signatureLength != kPackageSignatureBytes ||
+        writer_.isOpen() || ownsProvenance_ || Storage.exists(kExtractProvenance))
+      return false;
     if (reader_.isOpen() && !reader_.close()) return false;
-    // A stage is only reviewable once all entry handles are closed and every
-    // entry was read back. The generic extractor reauthenticates intake AFTER
-    // this seal and discards the entire directory if that recheck fails.
-    return releaseLock();
+    HalFile metadata = Storage.open(kExtractProvenance,
+        static_cast<oflag_t>(O_CREAT | O_EXCL | O_RDWR));
+    if (!metadata.isOpen() || metadata.isDirectory()) return false;
+    ownsProvenance_ = true;
+    const bool written = metadata.write(prefix, prefixLength) == prefixLength &&
+                         metadata.write(signature, signatureLength) == signatureLength;
+    metadata.flush();
+    if (!metadata.close() || !written) return false;
+    HalFile check = Storage.open(kExtractProvenance, O_RDONLY);
+    if (!check.isOpen() || check.isDirectory() ||
+        check.fileSize64() != prefixLength + signatureLength) return false;
+    uint8_t scratch[256]{};
+    for (size_t pos = 0; pos < prefixLength;) {
+      const size_t count = prefixLength - pos < sizeof(scratch) ?
+          prefixLength - pos : sizeof(scratch);
+      if (check.read(scratch, count) != static_cast<int>(count) ||
+          std::memcmp(scratch, prefix + pos, count)) return false;
+      pos += count;
+    }
+    if (check.read(scratch, signatureLength) != static_cast<int>(signatureLength) ||
+        std::memcmp(scratch, signature, signatureLength)) return false;
+    return check.close();
+  }
+
+  bool seal() {
+    if (!ownsDirectory_ || next_ != count_ || writer_.isOpen() ||
+        !ownsProvenance_) return false;
+    if (reader_.isOpen() && !reader_.close()) return false;
+    // Do NOT release the cooperative installer lock until AFTER the generic
+    // extractor's final intake reauthentication and floor recheck. Destructor
+    // releases it upon return; an error can still discard under the lock.
+    return true;
   }
 
   bool discard() {
@@ -99,14 +132,17 @@ class HalExtractDirectory {
     if (writer_.isOpen()) (void)writer_.close();
     bool clean = true;
     if (ownsDirectory_) {
+      if (ownsProvenance_) {
+        if (Storage.remove(kExtractProvenance)) ownsProvenance_ = false;
+        else clean = false;
+      }
       for (size_t i = 0; i < count_; ++i) {
         if (!ownsFile_[i]) continue;
-        char path[sizeof(path_)]{};
+        char path[160]{};
         if (!makePath(names_[i], path) || !Storage.remove(path)) clean = false;
         else ownsFile_[i] = false;
       }
-      // Refuse unknown entries. If a physical attacker or reset introduced
-      // extra files, rmdir fails and the stage remains for manual recovery.
+      // Unknown additions cause rmdir to fail, preserving them for review.
       if (clean && Storage.rmdir(kPackageExtractStage)) ownsDirectory_ = false;
       else clean = false;
     }
@@ -117,7 +153,7 @@ class HalExtractDirectory {
     if (reader_.isOpen()) (void)reader_.close();
     if (writer_.isOpen()) (void)writer_.close();
     (void)releaseLock();
-    // Do NOT remove successful extracted content or an interrupted stage.
+    // Success leaves the complete extracted generation for publication review.
   }
 
  private:
@@ -127,7 +163,6 @@ class HalExtractDirectory {
                                      kPackageExtractStage, name);
     return length > 0 && static_cast<size_t>(length) < sizeof(path);
   }
-
   bool releaseLock() {
     if (lock_.isOpen() && !lock_.close()) return false;
     if (!ownsLock_) return true;
@@ -149,6 +184,7 @@ class HalExtractDirectory {
   uint64_t written_ = 0;
   bool ownsLock_ = false;
   bool ownsDirectory_ = false;
+  bool ownsProvenance_ = false;
 };
 } // namespace
 
