@@ -22,6 +22,7 @@ on:
       - "src/runtime/drivers/ProviderGraphV2.*"
       - "scripts/native_app_symbols.py"
       - "scripts/generate_privileged_imports_v1.py"
+      - "scripts/generate_provider_package_inputs_v1.py"
       - "scripts/build_usb_cdc_v2.py"
       - "scripts/build_usb_cp210x_v2.py"
       - "scripts/build_usb_host_v2.py"
@@ -38,6 +39,7 @@ on:
       - "test/drivers/i2c_esp32s3_v2_test.c"
       - "test/drivers/platform_clock_v1_test.c"
       - "test/drivers/privileged_*"
+      - "test/drivers/provider_package_inputs_v1_test.py"
       - "test/drivers/stub_os_cpu/**"
       - "test/drivers/stub_privileged_loader/**"
       - "test/drivers/mock_i2c_bus_elf_v2.c"
@@ -131,6 +133,7 @@ jobs:
             dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf \
             dist/experimental/i2c-esp32s3-v2/driver.elf \
             dist/experimental/platform-clock-v1/driver.elf
+          python test/drivers/provider_package_inputs_v1_test.py
       - name: Preserve experimental binaries and compatibility reports for inspection only
         if: always()
         uses: actions/upload-artifact@v4
