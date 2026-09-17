@@ -1,347 +1,85 @@
 # RiscRTE USB Capability/Stream Reference Implementation
 
-## Status and priority
+## Status, priority, and authority
 
-**HIGH PRIORITY — reference implementation for capability-driven RiscRTE application development.**
+**HIGH PRIORITY — target plus historical implementation reference.** Governed by [RISCRTE_PLATFORM_SPEC.md](RISCRTE_PLATFORM_SPEC.md), [HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md](HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md), [RUNTIME_DRIVER_ARCHITECTURE.md](RUNTIME_DRIVER_ARCHITECTURE.md), [USB_OTG_HOST_ARCHITECTURE.md](USB_OTG_HOST_ARCHITECTURE.md), [STREAM_PIPE_ARCHITECTURE.md](STREAM_PIPE_ARCHITECTURE.md), and [APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md](APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md).
 
-Authority: [RiscRTE Platform Specification](RISCRTE_PLATFORM_SPEC.md), [Platform Capability Roadmap](PLATFORM_CAPABILITY_ROADMAP.md), [Application Execution Context Architecture](APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md), [Stream/Pipe Architecture](STREAM_PIPE_ARCHITECTURE.md), [USB OTG Host Architecture](USB_OTG_HOST_ARCHITECTURE.md), and [Programmer/Debugger Architecture](PROGRAMMER_DEBUGGER_ARCHITECTURE.md).
-
-This specification defines the migration of the existing USB Serial Monitor and ESP ROM Firmware Flasher from application-owned USB OTG implementations to capability-driven applications using runtime-owned USB providers and RiscRTE streams. It is intentionally a narrow vertical slice: preserve existing results while implementing the greatest useful portion of the target architecture with the least new machinery.
-
-The completed Serial Monitor and Firmware Flasher SHALL serve as canonical examples for future capability-driven RiscRTE apps.
+**Architecture correction:** The earlier reference milestone moved USB code out of applications into compiled firmware and called the result a runtime-owned USB provider. That achieved partial app decoupling but **did not implement an installable hardware driver**. Firmware-owned USB host/VBUS, descriptor and chipset state, interface/endpoint claims, transfers, class protocols, device projection and USB-specific loader routes are **CURRENT/LEGACY, NONCOMPLIANT**. They remain relevant to regression tests, not to new architecture. A working USB ELF must own hardware implementation through its own code and capabilities supplied by other ELFs. The generic framework MUST know nothing about USB other than that `usb` might be a requested/published capability string.
 
 ## 1. Objectives
 
-The work SHALL:
+1. Preserve existing Serial Monitor and Firmware Flasher behavior, timing and supported physical devices during migration.
+2. Remove all application-owned USB controller/device/transfer behavior; apps consume semantic capabilities.
+3. Remove **all production USB implementation and USB-specific manager/dispatch/discovery code from the compiled RiscRTE core**. Move controller/host, VBUS via optional board power providers, enumeration, hub, class matching, control/bulk transfers, hotplug and recovery into installable provider ELFs.
+4. Implement `serial.port` as an arbitrary semantic capability supplied by USB or another provider without core special cases, and bounded RX/TX streams with explicit loss/backpressure behavior.
+5. Implement `program.esp_rom` as an installable capability provider consuming `serial.port`, with ESP ROM protocol implementation outside firmware and app.
+6. Stream firmware images to programming jobs instead of loading whole images into app memory.
+7. Propagate provider/device loss through generic registration, lease revocation, stream/job failure and app-facing semantic results.
+8. Bind grants/streams/jobs to execution contexts and deterministically reclaim them; driver ELFs, not the runtime, safely quiesce hardware.
+9. Demonstrate that a new transport/chipset works after ELF installation **without firmware recompilation** and disappears after ELF removal with no hidden native fallback.
 
-1. preserve current Serial Monitor and Firmware Flasher user-visible behavior and working hardware behavior;
-2. remove USB host/device/transfer ownership from both applications;
-3. establish runtime-owned USB device/provider infrastructure;
-4. establish `serial.port` as a semantic capability independent of USB;
-5. route serial RX/TX through bounded RiscRTE streams;
-6. establish `program.esp_rom` as a semantic programming capability built on `serial.port` rather than USB;
-7. feed firmware images to the programmer through streams rather than large app-owned image buffers;
-8. connect device loss to capability revocation, stream termination and job failure;
-9. make capability/stream resources execution-context owned and deterministically reclaimable;
-10. provide a small, understandable reference architecture reusable for GNSS, BLE, UART, storage and future hardware.
-
-## 2. Non-goals
-
-This job SHALL NOT block on a complete implementation of every future RiscRTE facility. In particular, it need not implement all USB classes, generalized record streams, arbitrary stream graphs, full IPC, every permission/picker UI, BLE/UART serial providers, full dynamic driver installation, or the complete future Device Registry.
-
-Where a future abstraction is not yet implemented, implement the smallest reusable subset whose API and ownership model can converge without requiring the two applications to regain transport-specific knowledge.
-
-## 3. Target architecture
+## 2. Strict responsibilities
 
 ```text
-                       RiscRTE Applications
-                    /                       \
-             Serial Monitor             Firmware Flasher
-                  |                           |
-             serial.port                program.esp_rom
-                  |                           |
-                  |                    programming job
-                  |                           |
-                  +--------- Streams --------+
-                              |
-                       Capability Resolver
-                              |
-                  +-----------+-----------+
-                  |                       |
-          USB Serial Provider      ESP ROM Provider
-                  |                       |
-                  +------ serial.port ----+
-                  |
-             USB Device Layer
-                  |
-          Runtime-owned USB Host
-                  |
-                USB OTG
+Serial Monitor ELF ----requires----> serial.port
+Firmware Flasher ELF --requires----> program.esp_rom
+ESP ROM provider ELF --requires----> serial.port
+USB CDC ELF ---------requires----> usb.host; provides serial.port
+USB host ELF ---------provides----> usb.host (and optionally usb)
+USB host ELF --optional requires--> board.power.vbus provider ELF
+
+Generic RiscRTE: opaque IDs, dependency resolution, execution contexts,
+rights/consent, generic events/streams, package loading/lifecycle only.
 ```
 
-The key architectural rule is that **USB is a transport, not the application capability**. Serial Monitor consumes `serial.port`. Firmware Flasher consumes `program.esp_rom`. The ESP ROM provider may acquire `serial.port`, which may currently be supplied by USB. Future providers may satisfy these capabilities over other transports without changing the apps.
+The core MUST NOT implement `usb.host`, `usb.class.*`, USB enumeration, `open_usb`-specific device I/O, firmware USB host task ownership, hard-coded CDC/CP210x/CH34x logic or special USB provider activation. A driver-specific SDK ABI is allowed, but its implementation resides in ELFs. Lower-level USB host/controller provider owns host/device interface grants and actual transfers; class providers implement their entire protocol and semantic capability data plane. The core's generic lease is permission/lifetime bookkeeping, not possession of a USB interface or physical session.
 
-## 4. Phase 0 — freeze current behavior
+## 3. CURRENT/LEGACY, NONCOMPLIANT baseline — preserve only as migration evidence
 
-Before extraction, document and/or test the behavior that must survive the migration. At minimum capture:
+The initial extraction placed USB host setup, OTG power, enumeration, interface claims, transfer submission, class/chipset operations, and teardown in `src/native/NativeUsbBridge.cpp`. The installable `Drivers/usb_cdc/driver.c` contains descriptor matching and line/control encoders, while its `start()`/`stop()` do not manage hardware. `src/runtime/drivers/UsbCdcDriverRuntime.cpp` has a fixed `usb-cdc-acm` load path and a resident fallback. The original `T5UsbClassDriver.h` API treats USB device operations as privileged firmware calls. Firmware-owned USB discovery projection and legacy USB stream interfaces remain elsewhere. Their existence proves a transitional app migration, not hardware modularity or acceptable new precedent.
 
-- USB OTG/VBUS power behavior and timing;
-- attach/detach behavior;
-- supported USB serial devices/interfaces currently working;
-- baud/data/parity/stop/flow-control behavior currently exposed;
-- Serial Monitor receive, transmit, scrolling, input and navigation behavior;
-- Firmware Flasher firmware selection, ROM boot entry, synchronization, erase/write, progress, hashing/MD5 verification, reset and error behavior;
-- existing timeout/retry behavior required for devices that work today.
+Existing app-level `serial.port`, stream and programmer-provider portions may be reused where they already satisfy generic boundaries. Do not regress functioning firmware while replacing these legacy paths, but do not add new hardware implementation to compiled firmware or call a proxy-only ELF complete. No code is migrated by this documentation change.
 
-Add useful logging at the runtime/provider boundary so regressions can be distinguished between enumeration, capability resolution, stream movement and protocol failure.
+## 4. Phase 0 — behavior freeze and regression instrumentation
 
-## 5. Phase 1 — extract runtime-owned USB
+Capture working host startup/VBUS timing, attach/detach, supported CDC/vendor adapters and interfaces, line coding/flow settings, serial RX/TX and auto-detect behavior, replug and stale-handle behavior, flasher boot entry/SYNC/SLIP/erase/write/MD5/reset, shutdown, power locks and memory usage. Preserve useful phase diagnostics across the provider/stream/capability boundary without putting USB logic into the logging or event core.
 
-Move existing working common USB OTG code out of the apps with minimal behavioral redesign.
+## 5. Phase 1 — genuine installable host/controller provider
 
-Runtime/provider code SHALL own:
+Move the **complete** existing functional host-controller implementation into ELF(s). The host ELF performs real hardware initialization, OTG role transition, VBUS sequencing (or consumes a separate charger/power ELF), host worker/task, enumeration/hub/port management, descriptor handling, claims, control/bulk transfers, completion callbacks, timeouts and safe teardown. Its provider ABI exports versioned `usb`/`usb.host` interfaces. Privileged ESP-IDF or MCU access, if needed, is linked into the driver or uses narrow generic platform port primitives; never add an ESP-IDF USB-operation shim to the compiled core. Host capabilities appear only after the ELF successfully starts and publishes them. Absence or invalidity results in unavailable USB capability rather than a firmware fallback.
 
-- USB host initialization/shutdown;
-- VBUS/power control and required power locks;
-- enumeration and detach handling;
-- interface and endpoint discovery;
-- interface claiming/release;
-- USB transfer submission/completion;
-- control transfers;
-- transfer buffers owned by the USB/provider layer;
-- timeout/error recovery;
-- deterministic device teardown.
+## 6. Phase 2 — class/vendor/device-function ELFs
 
-Applications SHALL NOT directly call ESP-IDF USB host APIs after migration.
+Move CDC ACM and vendor-specific serial implementations into class ELFs consuming the host provider. They own descriptor matching, control requests, interface/endpoint selection, setup, line coding, data transfer loops, error/recovery policy and complete teardown. `usb_cdc.elf`, `cp210x.elf`, `ch34x.elf`, `ftdi.elf` and future drivers can publish `serial.port` from USB-host access; no core class enums or VID/PID dispatch. Multiple class drivers and devices may coexist subject to host-provider interface arbitration. Device-mode functions and hub support likewise reside in USB provider ELFs. A packet-encoder-only class ELF is insufficient.
 
-The first extraction milestone is successful when both applications retain existing behavior while their former USB implementation has been replaced by calls into runtime/provider code. Protocol-specific flashing logic may remain in the Flasher during this phase.
+## 7. Phase 3 — generic device publication and capability leases
 
-## 6. Phase 2 — minimal USB device objects and opaque handles
+The USB host/class providers publish copied/opaque device observations through one transport-neutral device-publication ABI. The registry does not enumerate, interpret USB identity or poll provider hardware. Generation-qualified handles are invalidated on detach/rebind; an identical VID/PID replug is not the old resource. Capability acquisition checks generic execution-context authority and rights, then dispatches to the chosen provider. The provider enforces hardware access, performs physical reservation and conflicts, and reports capability loss. Do not create a separate firmware `NativeUsbDevices` manager or special USB registry projection as the target.
 
-Enumerated USB devices SHALL become runtime-owned objects. The minimum device record should include runtime identity, transport=`usb`, VID/PID, interface information, presence/state, provider binding and advertised semantic capabilities.
+## 8. Phase 4 — Serial Monitor
 
-Application/provider boundaries SHALL use generation-safe opaque handles rather than persistent raw pointers to USB objects. Handle resolution must validate ownership/type/generation before use.
+Serial Monitor requests `serial.port`, configures baud/data/parity/stop/flow, consumes a bounded RX stream, writes to a bounded TX stream, observes semantic status/disconnect and releases its grant on exit. UI, scrolling, input, auto-detection and navigation remain app features. App code never parses USB descriptors, claims interfaces, or calls ESP-IDF USB APIs. The same app must work with a non-USB `serial.port` provider without rebuilding firmware or the app.
 
-This is the reference implementation pattern for later BLE, UART, I2C, SPI and other device providers.
+**Milestone A:** prove `app ELF -> generic capability resolver -> installed provider ELF -> real device I/O -> generic streams` with zero hardware-specific compiled-core calls. App-only transport independence is an intermediate acceptance criterion, not proof of driver independence.
 
-## 7. Phase 3 — `serial.port` capability
+## 9. Phase 5 — ESP ROM provider and Flasher
 
-Implement the minimum resolver/lease functionality necessary for a provider to register and a consumer to acquire:
+A separately installable `program.esp_rom` ELF consumes `serial.port` and owns DTR/RTS bootloader entry, SYNC, SLIP/esptool framing, ROM commands, erase/write, timeouts/retries, progress, MD5/hash verification, reset and protocol error attribution. Firmware Flasher ELF owns firmware selection, consent, progress/results and navigation, not USB or ROM protocol. The programmer takes an authorized readable/seekable firmware stream, may use two passes for hash/write, and returns a context-owned operation/job with cancellation and progress. No large whole-image allocation is required.
 
-```text
-serial.port
-```
+**Milestone B:** demonstrate `Flasher -> program.esp_rom ELF -> serial.port provider ELF -> device`, with no compiled-in ROM programming engine or USB-specific dispatch. A programming protocol provider may use a different transport in the future by depending on another capability.
 
-A request MAY constrain a particular device when the user/application has selected one, but SHALL NOT name the concrete USB driver implementation.
+## 10. Phase 6 — loss, safety and execution contexts
 
-A `serial.port` lease SHALL provide semantic serial operations rather than USB operations. The minimum contract includes:
+On physical removal, the responsible USB provider detects and publishes loss, revokes its physical handles, cancels in-flight I/O and quiesces. The generic registry revokes associated context grants, streams become terminal or rebind according to their explicit contract, and dependent jobs fail with semantic target-loss errors. The app receives no raw USB host objects. USB class and host providers must release in correct order; a generic context cleanup callback invokes provider lifecycle and cannot unmap code while hardware callbacks/tasks/DMA can still execute. Handle identity, retry, hotplug and power failures are physically tested; do not infer hardware safety solely from a green build.
 
-```text
-configure(baud, data_bits, parity, stop_bits, flow_control)
-rx_stream
-tx_stream
-status
-close/release
-```
+Typical Serial Monitor context: semantic lease, RX/TX streams, UI resources. Flasher: programming lease, firmware input stream, job and UI. Physical USB hardware belongs to its driver/provider stack, not to either app context or core.
 
-No application-facing API should expose CDC control requests, endpoint addresses, transfer descriptors or other USB implementation details.
+## 11. Test matrix
 
-The design SHALL permit future UART/BLE/network providers to supply `serial.port` without changing Serial Monitor.
+Verify: supported CDC and vendor adapters; install new class/chipset with **no firmware change**; remove ELF and prove no native fallback; VBUS startup and hardware boot output; multiple baud/data/parity/stop/flow combinations; sustained RX, TX and full-duplex data; Back/Home/exit under traffic; disconnect idle and during RX/TX; rapid replug/new generation; repeated open/close without power/resource leaks; competing provider/session claims; failed or corrupt driver package; host controller missing; class driver missing; and safe power/role teardown. For the flasher, verify boot entry, synchronization, known-good firmware, streaming progress, hashes/MD5, reset, disconnect during hash/erase/write, cancellation, app exit, failure/retry and stale-handle rejection. Also test build/host suites, package integrity, provider lifecycle and source-boundary guards.
 
-## 8. Phase 4 — Serial Monitor conversion to streams
+## 12. Completion criteria and implementation order
 
-This is the first required end-to-end capability-driven reference application.
+Proceed in this order: record baseline -> define full USB host/class ELF ABI -> migrate whole host and power-dependent controller I/O -> migrate complete CDC/vendor class operation -> publish devices from providers through generic registry -> remove hard-coded firmware USB loaders, host/device/transfer code, discovery projections, direct USB stream I/O and silent resident fallbacks -> verify app semantic streams -> migrate ROM protocol provider to ELF if still compiled in -> verify end-to-end on hardware. Move code rather than rewriting proven behavior unnecessarily, but **do not preserve a USB operation in firmware merely to reduce implementation effort**.
 
-Serial Monitor SHALL:
-
-1. request/select a `serial.port` capability;
-2. configure it using semantic serial settings;
-3. consume its RX stream;
-4. write user input to its TX stream;
-5. respond to semantic status/disconnect results;
-6. release the lease by normal execution-context teardown or explicit close.
-
-Serial Monitor SHALL NOT own USB transfer buffers or USB enumeration/claim/control logic.
-
-The existing UI, terminal rendering, scrolling, input, baud selection, navigation and other presentation behavior SHOULD remain unchanged during transport refactoring.
-
-The RX/TX streams SHALL use bounded buffering and explicit backpressure/overflow/disconnect semantics consistent with `STREAM_PIPE_ARCHITECTURE.md`.
-
-### Milestone A — architectural proof
-
-When Serial Monitor operates entirely through `serial.port` + streams with no USB knowledge, RiscRTE has a complete baseline proof of:
-
-```text
-application -> semantic capability -> resolver/lease -> provider -> stream -> transport
-```
-
-Do not delay this milestone for features not required to preserve existing Serial Monitor behavior.
-
-## 9. Phase 5 — ESP ROM programmer provider
-
-Extract the working non-UI ESP ROM flashing engine from Firmware Flasher into a reusable provider exposing:
-
-```text
-program.esp_rom
-```
-
-The provider owns protocol behavior including, as applicable to the current implementation:
-
-- DTR/RTS ROM bootloader entry sequencing;
-- ROM synchronization;
-- SLIP/esptool framing;
-- ROM command encoding/decoding;
-- erase/write sequencing;
-- timeouts/retries;
-- progress calculation;
-- MD5/hash verification;
-- reset/run sequencing;
-- protocol-specific errors.
-
-The ESP ROM provider SHALL consume `serial.port`; it SHALL NOT directly own USB host infrastructure.
-
-Firmware Flasher retains application responsibilities such as firmware selection, user confirmation, progress/result presentation and navigation.
-
-## 10. Phase 6 — firmware stream and programming job
-
-`program.esp_rom` SHOULD expose a bounded operation represented as a job or equivalent owned operation:
-
-```text
-start_program(target, firmware_stream, options) -> job_handle
-```
-
-The firmware image SHALL be supplied as a stream/file-stream rather than being materialized as a large application-owned buffer.
-
-If the ESP protocol requires a hash before programming, the initial implementation MAY reopen/seek and perform two streaming passes rather than implementing generalized stream tee/replay. Do not add a large RAM buffer merely to avoid a second file pass.
-
-The design should allow future checksum/progress transforms without making them prerequisites for this migration.
-
-### Milestone B — composed capability proof
-
-When Firmware Flasher operates as:
-
-```text
-Firmware Flasher
-      |
-program.esp_rom
-      |
-ESP ROM provider
-      |
-serial.port
-      |
-USB serial provider
-      |
-USB
-```
-
-RiscRTE has demonstrated that one semantic capability/provider can itself consume another capability while the application remains independent of both transport and lower-level protocol implementation.
-
-## 11. Phase 7 — capability loss and deterministic failure
-
-USB removal SHALL propagate upward through the architecture rather than requiring USB-specific application logic:
-
-```text
-USB removed
- -> device unavailable
- -> serial.port lease revoked/unavailable
- -> RX/TX streams disconnect/finish
- -> dependent programming job fails/cancels
- -> application receives semantic result
-```
-
-Serial Monitor should receive a serial/device-disconnected result. Firmware Flasher should receive a programming-target-lost/failure result. Neither should need to interpret USB errors.
-
-## 12. Phase 8 — execution-context ownership
-
-All app-acquired resources in this slice SHALL converge on the execution-context ownership model.
-
-Typical Serial Monitor context:
-
-```text
-serial.port lease
-RX stream
-TX stream
-UI/session resources
-```
-
-Typical Firmware Flasher context:
-
-```text
-program.esp_rom lease
-firmware input stream
-programming job
-UI/session resources
-```
-
-The Flasher application does not own the underlying USB device simply because its provider ultimately uses USB.
-
-On application unload/exit/crash, the runtime SHALL be able to cancel/revoke/close/release all resources owned by that invocation without invoking stale ELF callbacks.
-
-## 13. Reference-app requirements
-
-After successful migration, documentation SHALL identify:
-
-- **Serial Monitor** as the reference for a long-lived bidirectional capability + stream application;
-- **Firmware Flasher** as the reference for a bounded semantic capability + job + input-stream application;
-- the USB serial provider as the reference transport provider that converts hardware transfers into semantic capabilities and streams;
-- the ESP ROM provider as the reference composed provider that consumes another semantic capability.
-
-Future hardware-facing apps SHOULD be compared against these examples before introducing app-private transport code.
-
-## 14. Compatibility and migration rules
-
-Existing working implementation details may be retained temporarily behind the new provider boundary. Migration should prefer moving proven code rather than rewriting it unnecessarily.
-
-During conversion:
-
-- maintain working device compatibility and timing;
-- avoid simultaneous UI rewrites unless required by the capability boundary;
-- avoid introducing a second USB stack alongside the proven implementation;
-- remove duplicate app-owned USB code once equivalent provider behavior is verified;
-- do not expose concrete USB implementation objects through the new capability APIs;
-- do not make the new APIs ESP-ROM-specific where a generic serial abstraction is sufficient;
-- do not make the generic serial capability aware of ESP flashing.
-
-## 15. Validation matrix
-
-The migration is incomplete until at least these cases are exercised:
-
-```text
-Serial Monitor opens supported USB serial device
-Serial Monitor configures multiple baud rates
-RX sustained traffic
-TX sustained traffic
-bidirectional traffic
-Back/Home/app exit during active stream
-USB disconnect while idle
-USB disconnect during RX/TX
-reconnect/reopen
-repeated open/close without leaked resources
-Flasher enters ESP ROM bootloader
-Flasher synchronizes
-Flasher programs known-good firmware
-progress remains functional
-MD5/hash verification remains functional
-successful reset into programmed firmware
-USB disconnect during hash
-USB disconnect during erase/write
-app exit during programming
-program failure followed by successful retry
-stale handle rejected after close/reuse
-all execution-context resources reclaimed after app unload
-```
-
-Logging should make the responsible layer identifiable for failures.
-
-## 16. Completion criteria
-
-This high-priority roadmap item is complete when:
-
-1. neither Serial Monitor nor Firmware Flasher directly owns USB host/device/transfer infrastructure;
-2. Serial Monitor uses `serial.port` and bounded streams for RX/TX;
-3. Firmware Flasher uses `program.esp_rom` rather than USB-specific programming logic in the app;
-4. the ESP ROM provider obtains its transport through `serial.port`;
-5. firmware data reaches the programmer through a stream/file stream without large app-owned whole-image buffering;
-6. USB disconnect propagates as capability/stream/job state rather than USB-specific app handling;
-7. leases, streams and jobs are execution-context owned and deterministically reclaimed;
-8. existing supported Serial Monitor and Firmware Flasher behavior is preserved;
-9. the resulting code and documentation are suitable as the canonical capability-driven examples for future RiscRTE app development.
-
-## 17. Recommended implementation order
-
-Execute in this order to maximize architectural progress while minimizing simultaneous change:
-
-1. freeze behavior/tests/logging;
-2. extract common runtime-owned USB host/device/serial code;
-3. introduce USB runtime device records and opaque handles;
-4. implement minimum capability registration/resolution/leases;
-5. expose USB serial as `serial.port`;
-6. convert Serial Monitor to `serial.port` + streams — **Milestone A**;
-7. extract ESP ROM protocol as `program.esp_rom` provider consuming `serial.port`;
-8. convert firmware input to a file stream and programming operation to a job;
-9. implement disconnect -> revocation -> stream/job termination;
-10. complete execution-context ownership/teardown;
-11. designate/document the two apps as reference implementations;
-12. remove obsolete duplicated compatibility paths after regression verification.
-
-The implementation should favor a working vertical slice over broad framework completeness. Each new primitive introduced by this job must nevertheless be reusable and consistent with the RiscRTE master architecture.
+The reference is complete only when both apps operate through generic capabilities/streams; USB host, class and ESP programming protocols are implemented by installed ELFs; unplug propagates generic loss; context cleanup is deterministic; real hardware parity is demonstrated; the normal core is USB-blind; and adding/removing a device provider requires no firmware rebuild. The prior firmware-host extraction and descriptor-only `usb-cdc-acm` package are transitional milestones, not the completed architecture.
