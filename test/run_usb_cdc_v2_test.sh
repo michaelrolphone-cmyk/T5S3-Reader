@@ -27,13 +27,14 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/src" \
   "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
   "$repo/test/drivers/provider_quiesce_v2_test.cpp" -ldl -o "$build/quiesce-test"
 "$build/quiesce-test" "$build/stuck.so"
-# USB host provider owns discovery, generations and physical interface claims.
-# Its usb.controller dependency is test-double ONLY, not actual hardware.
+# Host provider owns discovery/claims; actual hardware controller is not built.
 bash "$repo/test/run_usb_host_v2_test.sh"
-# Generic graph pins transitive dependencies, rejects cycles and refuses stale grants.
+# Generic graph pins transitive dependencies, rejects cycles and stale grants.
 bash "$repo/test/run_provider_graph_v2_test.sh"
-# Two independent ELFs compose without a firmware USB bridge: mock host ONLY.
+# Existing two-ELF exercise (mock host only).
 bash "$repo/test/run_usb_provider_stack_v2_test.sh"
+# Full three-ELF chain with simulated controller ONLY, not hardware acceptance.
+bash "$repo/test/run_usb_three_elf_stack_v2_test.sh"
 exports="$(nm -D --defined-only "$build/cdc-v2.so" | awk '{print $3}')"
 [[ "$exports" == "t5_driver_get" ]] || { echo "Unexpected ELF export: $exports" >&2; exit 1; }
 if nm -D --undefined-only "$build/cdc-v2.so" | grep -E 'usb_host_|nativeUsb|UsbCdcDriverRuntime|t5_usb_'; then
