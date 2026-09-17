@@ -15,6 +15,12 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/lib/NativeApp
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_registry_test.cpp" -o "$build/device-registry-test"
 "$build/device-registry-test"
+# Unified package identity is a bounded, transport-independent contract for
+# app, driver, service and provider metadata. It grants no executable trust.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/package_identity_test.cpp" \
+  -o "$build/package-identity-test"
+"$build/package-identity-test"
 # Generic provider API metadata and transactionally bound non-authorizing
 # dependencies must both pass before an ELF is mapped.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
