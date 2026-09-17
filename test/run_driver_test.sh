@@ -35,6 +35,9 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo/src" "$repo/test/resources/capability_access_test.cpp" \
   -o "$build/capability-access"
 "$build/capability-access"
+# A provider must validate exact invocation, device generation, capability,
+# rights and a distinct physical lease immediately before accessing hardware.
+bash "$repo/test/run_provider_authorization_test.sh"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/NativeApps/include" \
   "$repo/test/resources/device_api_v2_abi_test.c" -o "$build/device-api-abi"
 "$build/device-api-abi"
