@@ -32,7 +32,9 @@ if not outputs:
     raise SystemExit('No apps found')
 
 catalog.sort(key=lambda item: (item['display_name'].casefold(), item['file_name']))
-(repo / 'dist/apps/app-catalog.json').write_text(
-    json.dumps({'schema': 1, 'apps': catalog}, separators=(',', ':')) + '\n',
-    encoding='utf-8')
+encoded = json.dumps({'schema': 1, 'apps': catalog}, separators=(',', ':')) + '\n'
+# src/native/AppCatalogIndex.cpp accepts at most 64 KiB / 128 entries.
+if len(catalog) > 128 or len(encoded.encode('utf-8')) > 64 * 1024:
+    raise SystemExit('Release catalog exceeds on-device parser budget')
+(repo / 'dist/apps/app-catalog.json').write_text(encoded, encoding='utf-8')
 print(f'Published aggregate app catalog with {len(catalog)} entries and ELF SHA-256 digests')
