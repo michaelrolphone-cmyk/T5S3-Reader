@@ -11,6 +11,7 @@
       "+<esp_elf.c>",
       "+<esp_elf_adapter.c>",
       "+<esp_elf_symbol.c>",
+      "+<esp_privileged_os_cpu.c>",
       "+<arch/esp_elf_xtensa.c>",
       "+<dlso/*.c>",
       "+<esp_elf_validate.c>"
