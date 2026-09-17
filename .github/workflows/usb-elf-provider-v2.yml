@@ -1,0 +1,40 @@
+name: Experimental USB ELF Provider v2
+
+on:
+  pull_request:
+    paths:
+      - "Drivers/usb_cdc_v2/**"
+      - "sdk/driver/RiscProviderV2.h"
+      - "sdk/driver/RiscUsbProviderV1.h"
+      - "src/runtime/drivers/ProviderModuleV2.*"
+      - "scripts/build_usb_cdc_v2.py"
+      - "test/drivers/usb_cdc_v2_test.c"
+      - "test/drivers/provider_v2_module_test.cpp"
+      - "test/run_usb_cdc_v2_test.sh"
+      - ".github/workflows/usb-elf-provider-v2.yml"
+  workflow_dispatch:
+
+jobs:
+  build-experimental:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Exercise real CDC ELF through mocked host ELF ABI
+        run: bash test/run_usb_cdc_v2_test.sh
+      - name: Install PlatformIO and target toolchain
+        run: |
+          python -m pip install platformio==6.1.19
+          pio pkg install -e t5s3-pro
+      - name: Build experimental Xtensa provider (not published)
+        run: |
+          python scripts/build_usb_cdc_v2.py
+          bash test/run_native_app_test.sh dist/experimental/usb-cdc-acm-v2/driver.elf
+      - name: Preserve experimental binary for inspection only
+        uses: actions/upload-artifact@v4
+        with:
+          name: usb-cdc-v2-experimental-uninstallable
+          path: dist/experimental/usb-cdc-acm-v2/
+          if-no-files-found: error
