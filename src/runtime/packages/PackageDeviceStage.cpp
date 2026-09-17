@@ -1,4 +1,5 @@
 #include "PackageDeviceStage.h"
+#include "PackageDeviceSecurityFloor.h"
 
 #include <HalStorage.h>
 #include <esp_task_wdt.h>
@@ -73,13 +74,21 @@ class HalArchiveStage {
   uint64_t written_ = 0;
   bool created_ = false;
 };
+
+ArchiveStageResult checkFloor(const PackageArchive& archive, bool allowFirstInstall) {
+  const FloorCheck status = checkPackageSecurityFloor(devicePackageSecurityFloors(),
+                                                     archive, allowFirstInstall);
+  if (status == FloorCheck::Allowed) return ArchiveStageResult::ReadyForPublicationReview;
+  if (status == FloorCheck::SecurityRollback) return ArchiveStageResult::SecurityRollback;
+  return ArchiveStageResult::SecurityFloorUnavailable;
+}
 } // namespace
 
 ArchiveStageResult stageSignedDevicePackage(std::FILE* source,
     const TrustedPackageSigner* signers, size_t signerCount,
     const PackageRuntimePolicy& policy, PackageCapabilityApi resolveCapability,
     void* resolverContext, PackageVerificationWorkspace& workspace,
-    PackageArchive& result, PackageArchiveLimits limits) {
+    PackageArchive& result, PackageArchiveLimits limits, bool allowFirstInstall) {
   result = {};
   constexpr uint64_t overhead = kPackageHeaderBytes + kPackageManifestLimit +
       kPackageSignatureBytes;
@@ -102,13 +111,38 @@ ArchiveStageResult stageSignedDevicePackage(std::FILE* source,
     if (read && (offset & 0x3fffu) < count) (void)esp_task_wdt_reset();
     return read;
   };
+  // Resolve the version floor from device-controlled NVS only after complete
+  // signature/content authentication; do not stage a known downgrade.
+  const PackageInspectionResult inspected = inspectSignedPackage(source, signers,
+      signerCount, policy, resolveCapability, resolverContext, workspace, result, limits);
+  if (inspected != PackageInspectionResult::ContentVerifiedForInspection) {
+    result = {};
+    return inspected == PackageInspectionResult::PolicyRejected ?
+        ArchiveStageResult::PreflightRejected : ArchiveStageResult::SourceUntrusted;
+  }
+  const ArchiveStageResult initialFloor = checkFloor(result, allowFirstInstall);
+  if (initialFloor != ArchiveStageResult::ReadyForPublicationReview) {
+    result = {};
+    return initialFloor;
+  }
   PackageMbedtlsSha256 hash;
   PackageDeviceTrustVerifier verify(result, signers, signerCount);
   HalArchiveStage stage;
-  return stageSignedPackageArchive(sourceRead, length, stage, hash, verify,
+  const ArchiveStageResult staged = stageSignedPackageArchive(sourceRead, length,
+      stage, hash, verify,
       [resolveCapability, resolverContext](const char* capability) -> uint32_t {
         return resolveCapability ? resolveCapability(capability, resolverContext) : 0;
       }, policy, result, workspace, limits);
+  if (staged != ArchiveStageResult::ReadyForPublicationReview) return staged;
+  // A concurrent publisher may have advanced this package's floor during the
+  // copy. Refuse and discard the candidate rather than return stale approval.
+  const ArchiveStageResult finalFloor = checkFloor(result, allowFirstInstall);
+  if (finalFloor != ArchiveStageResult::ReadyForPublicationReview) {
+    (void)stage.discard();
+    result = {};
+    return finalFloor;
+  }
+  return staged;
 }
 
 } // namespace RuntimePackages
