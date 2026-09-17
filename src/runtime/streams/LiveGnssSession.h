@@ -22,7 +22,7 @@ class LiveGnssSession final {
     Poll,             // No pending record; safe to leave mutex and read UART.
     Retried,          // Previously blocked record was delivered; skip this poll.
     Backpressured,    // Record still blocked; do NOT read newer GPS data.
-    Disconnected,     // Provider lease/device has gone away.
+    Disconnected,     // Provider lease/device or record delivery has failed.
     Denied            // Wrong execution-context owner.
   };
 
@@ -49,8 +49,10 @@ class LiveGnssSession final {
     const int32_t result = binding_.retry(owner);
     if (result == T5_STREAM_OK) return PollDecision::Retried;
     if (result == T5_STREAM_AGAIN && binding_.hasPending()) return PollDecision::Backpressured;
-    if (result == T5_STREAM_DISCONNECTED) return PollDecision::Disconnected;
-    return PollDecision::Retried; // Terminal error cleared pending; next tick can poll.
+    // A terminal delivery failure is NOT a successful retry. The driver must
+    // unload instead of silently resuming UART reads without a valid stream.
+    if (result < T5_STREAM_OK) return PollDecision::Disconnected;
+    return PollDecision::Retried; // Nonterminal AGAIN cleared pending (duplicate).
   }
 
   // No provider reads, callbacks, or ELF pointers under the bridge mutex.
