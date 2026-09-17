@@ -187,4 +187,5 @@ int main(int argc, char** argv) {
     assert(stage.discarded);
   }
   std::puts("Signed staging: source substitution, changed payload, policy, write, seal and verification failures passed");
+  return 0;
 }
