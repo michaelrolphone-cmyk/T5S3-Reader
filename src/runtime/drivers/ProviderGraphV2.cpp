@@ -34,9 +34,17 @@ int GraphV2::findProvider(const char* id, const char* capability, uint32_t api) 
 }
 
 bool GraphV2::addVerified(const SpecV2& spec) {
+  const bool regular = spec.requiredOsCpuAbi == 0 &&
+                       spec.verifiedElfBytes == nullptr &&
+                       spec.verifiedElfLength == 0;
+  const bool privileged = spec.requiredOsCpuAbi == 1 &&
+                          spec.verifiedElfBytes != nullptr &&
+                          spec.verifiedElfLength > 0 &&
+                          spec.verifiedElfLength <= 8u * 1024u * 1024u;
   if (count_ == kMaxModules || !validName(spec.id) ||
       !validName(spec.provides) || !spec.api ||
       !spec.verifiedElfPath || spec.verifiedElfPath[0] != '/' ||
+      (!regular && !privileged) ||
       spec.requirementCount > kMaxModules ||
       (spec.requirementCount && !spec.requirements)) return false;
   for (size_t i = 0; i < count_; ++i) {
@@ -97,10 +105,22 @@ bool GraphV2::activate(size_t index) {
     deps[i] = {requirement.capability, requirement.api,
                nodes_[dependency].module.capability()};
   }
-  if (!node.module.load(node.spec.verifiedElfPath, node.spec.id,
-                        node.spec.provides, node.spec.api,
-                        node.spec.requirementCount ? deps : nullptr,
-                        node.spec.requirementCount)) {
+  /* Port ABI selection is generic manifest data: the core does not inspect
+   * provider identity/capability or implement any hardware-specific branch.
+   * A trusted installer must have authenticated the exact immutable bytes and
+   * import allowlist before calling addVerified() on this private graph. */
+  const bool loaded = node.spec.requiredOsCpuAbi
+      ? node.module.loadVerifiedBytes(node.spec.verifiedElfBytes,
+                                      node.spec.verifiedElfLength,
+                                      node.spec.id, node.spec.provides,
+                                      node.spec.api,
+                                      node.spec.requirementCount ? deps : nullptr,
+                                      node.spec.requirementCount)
+      : node.module.load(node.spec.verifiedElfPath, node.spec.id,
+                         node.spec.provides, node.spec.api,
+                         node.spec.requirementCount ? deps : nullptr,
+                         node.spec.requirementCount);
+  if (!loaded) {
     // If quiescence fails after a partially successful start, retain the ELF
     // AND all borrowed provider tables. shutdown() retries this quarantine.
     if (node.module.unload()) releaseDependencies(index);
