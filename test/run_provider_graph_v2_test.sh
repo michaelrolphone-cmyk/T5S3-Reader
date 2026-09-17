@@ -20,3 +20,15 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/src/runtime/drivers/ProviderGraphV2.cpp" \
   "$repo/test/drivers/provider_graph_v2_test.cpp" -ldl -o "$build/graph-test"
 "$build/graph-test" "$build/root.so" "$build/child.so" "$build/other.so" "$build/root-alt.so"
+
+# Failure AFTER hardware acquisition must quarantine the child and pin the
+# lower ELF until repeated quiescence succeeds; test real dlopen/dlclose flow.
+cc "${flags[@]}" "$repo/test/drivers/provider_failed_start_fixture.c" \
+  -o "$build/failed-start.so"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  -I"$repo/test/drivers/stubs" -I"$repo/src" \
+  "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
+  "$repo/src/runtime/drivers/ProviderGraphV2.cpp" \
+  "$repo/test/drivers/provider_failed_start_recovery_v2_test.cpp" \
+  -ldl -o "$build/recovery-test"
+"$build/recovery-test" "$build/root.so" "$build/failed-start.so"
