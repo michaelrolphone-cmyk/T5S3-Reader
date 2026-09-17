@@ -1,5 +1,6 @@
 #include "ProviderGraphV2.h"
 #include "ProviderOwnedSpecV2.h"
+#include <cstdlib>
 #include <cstring>
 #include <new>
 
@@ -14,9 +15,12 @@ bool validName(const char* s) {
 }
 
 GraphV2::~GraphV2() {
-  // A failed quiesce forbids releasing executable/metadata buffers; manager
-  // must retain and retry a quarantined graph before destroying it.
-  if (!shutdown()) return;
+  // Returning from a failed destructor would destroy boundDependencies and
+  // Node storage even while an ELF has retained pointers into those objects.
+  // A manager MUST quarantine a failed graph, retain its allocation, retry
+  // quiescence, and only then destroy it. Fail stop rather than allow UAF if
+  // an owner violates that contract. Never force-unmap an active provider.
+  if (!shutdown()) std::abort();
   for (size_t i = 0; i < count_; ++i) {
     delete nodes_[i].owned;
     nodes_[i].owned = nullptr;
@@ -51,8 +55,10 @@ bool GraphV2::addVerified(const SpecV2& spec) {
 }
 
 bool GraphV2::addAuthenticatedPrivileged(const SpecV2& spec) {
-  // Only the firmware's signed-package executor may enter this function. It
-  // must authenticate P-256, entry hashes, identity, floor and exact imports.
+  // Legacy method name: this PRIVATE entry now takes bounded metadata checked
+  // by the firmware manager, not a mandatory P-256 signer or signed receipt.
+  // DeviceProviderExecutorV2 computes a checksum of exact candidate bytes;
+  // relocation separately enforces all privileged OS/CPU import restrictions.
   return addChecked(spec, true);
 }
 
