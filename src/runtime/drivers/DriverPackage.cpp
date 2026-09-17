@@ -57,33 +57,74 @@ bool copyString(const char* value, char* out, size_t capacity) {
     return true;
 }
 
+// The release catalog and the legacy release-manifest path share this parser.
+// Report the rejected *field*, not the JSON payload: the latter can contain
+// arbitrary server responses and should not be copied verbatim into serial logs.
+bool manifestReject(const char* reason, size_t bytes) {
+    LOG_ERR("DRIVER", "Manifest rejected at %s (received=%u bytes)", reason,
+            static_cast<unsigned>(bytes));
+    return false;
+}
+
 bool parseManifest(const std::string& json, JsonDocument& doc, DriverPackageInfo& out) {
-    if (json.empty() || json.size() > kMaxManifestBytes || deserializeJson(doc, json)) return false;
-    if (!matches(doc["type"], "driver") || !matches(doc["architecture"], "xtensa-esp32s3") ||
-        !matches(doc["file_name"], "driver.elf") || !doc["driver_abi"].is<unsigned>() ||
-        doc["driver_abi"].as<unsigned>() != T5_DRIVER_ABI_VERSION || !doc["size_bytes"].is<unsigned>() ||
-        !doc["sha256"].is<const char*>() || !doc["requires"].is<JsonArray>() ||
-        !doc["provides"].is<JsonArray>() || doc["provides"].size() == 0) return false;
-
-    const char* id = doc["id"] | nullptr;
-    const char* version = doc["version"] | nullptr;
-    const char* sha = doc["sha256"] | nullptr;
-    const unsigned size = doc["size_bytes"].as<unsigned>();
-    if (!safeDriverId(id) || !version || !version[0] || std::strlen(version) >= sizeof(out.version) ||
-        !validSha256(sha) || size < 52 || size > kMaxDriverBytes) return false;
-
-    for (JsonVariantConst entry : doc["requires"].as<JsonArrayConst>()) {
-        if (!capabilityEntry(entry)) return false;
+    const size_t bytes = json.size();
+    if (json.empty()) return manifestReject("empty response", bytes);
+    if (bytes > kMaxManifestBytes) return manifestReject("manifest exceeds 4096 bytes", bytes);
+    const DeserializationError error = deserializeJson(doc, json);
+    if (error) {
+        LOG_ERR("DRIVER", "Manifest rejected at JSON decoding: %s (received=%u bytes, first_byte=0x%02x)",
+                error.c_str(), static_cast<unsigned>(bytes),
+                static_cast<unsigned>(static_cast<unsigned char>(json[0])));
+        return false;
     }
-    for (JsonVariantConst entry : doc["provides"].as<JsonArrayConst>()) {
-        if (!capabilityEntry(entry)) return false;
+    const JsonDocument& view = doc;
+#define REQUIRE_MANIFEST(condition, name) do { if (!(condition)) return manifestReject(name, bytes); } while (false)
+    REQUIRE_MANIFEST(view.is<JsonObjectConst>(), "root object");
+    REQUIRE_MANIFEST(matches(view["type"], "driver"), "type");
+    REQUIRE_MANIFEST(matches(view["architecture"], "xtensa-esp32s3"), "architecture");
+    REQUIRE_MANIFEST(matches(view["file_name"], "driver.elf"), "file_name");
+    REQUIRE_MANIFEST(view["driver_abi"].is<unsigned>() &&
+                     view["driver_abi"].as<unsigned>() == T5_DRIVER_ABI_VERSION, "driver_abi");
+    REQUIRE_MANIFEST(view["size_bytes"].is<unsigned>(), "size_bytes type");
+    REQUIRE_MANIFEST(view["sha256"].is<const char*>(), "sha256 type");
+    REQUIRE_MANIFEST(view["requires"].is<JsonArrayConst>(), "requires array");
+    REQUIRE_MANIFEST(view["provides"].is<JsonArrayConst>(), "provides array");
+    REQUIRE_MANIFEST(view["provides"].size() != 0, "provides empty");
+
+    const char* id = view["id"] | nullptr;
+    const char* version = view["version"] | nullptr;
+    const char* sha = view["sha256"] | nullptr;
+    const unsigned size = view["size_bytes"].as<unsigned>();
+    REQUIRE_MANIFEST(safeDriverId(id), "id");
+    REQUIRE_MANIFEST(version && version[0] && std::strlen(version) < sizeof(out.version), "version");
+    REQUIRE_MANIFEST(validSha256(sha), "sha256 value");
+    REQUIRE_MANIFEST(size >= 52 && size <= kMaxDriverBytes, "size_bytes range");
+
+    unsigned index = 0;
+    for (JsonVariantConst entry : view["requires"].as<JsonArrayConst>()) {
+        if (!capabilityEntry(entry)) {
+            LOG_ERR("DRIVER", "Manifest rejected at requires[%u] capability/api", index);
+            return false;
+        }
+        ++index;
+    }
+    index = 0;
+    for (JsonVariantConst entry : view["provides"].as<JsonArrayConst>()) {
+        if (!capabilityEntry(entry)) {
+            LOG_ERR("DRIVER", "Manifest rejected at provides[%u] capability/api", index);
+            return false;
+        }
+        ++index;
     }
 
     out = {};
-    if (!copyString(id, out.id, sizeof(out.id)) || !copyString(version, out.version, sizeof(out.version))) return false;
-    const char* capability = doc["provides"][0]["capability"] | nullptr;
-    if (!copyString(capability, out.capability, sizeof(out.capability))) return false;
+    REQUIRE_MANIFEST(copyString(id, out.id, sizeof(out.id)), "id output capacity");
+    REQUIRE_MANIFEST(copyString(version, out.version, sizeof(out.version)), "version output capacity");
+    const JsonArrayConst provided = view["provides"].as<JsonArrayConst>();
+    const char* capability = provided[0]["capability"] | nullptr;
+    REQUIRE_MANIFEST(copyString(capability, out.capability, sizeof(out.capability)), "provided capability output capacity");
     out.sizeBytes = size;
+#undef REQUIRE_MANIFEST
     return true;
 }
 
@@ -271,8 +312,8 @@ bool validateGpsDriverPackage() {
     }
 
     JsonDocument doc;
-    if (deserializeJson(doc, json) || !doc["provides"].is<JsonArray>() || doc["provides"].size() != 1 ||
-        !requirement(doc["provides"][0], T5_GNSS_CAPABILITY) || !doc["requires"].is<JsonArray>() ||
+    if (deserializeJson(doc, json) || !doc["provides"].is<JsonArrayConst>() || doc["provides"].size() != 1 ||
+        !requirement(doc["provides"][0], T5_GNSS_CAPABILITY) || !doc["requires"].is<JsonArrayConst>() ||
         doc["requires"].size() != 3) {
         LOG_ERR("DRIVER", "GPS manifest capability contract mismatch");
         return false;

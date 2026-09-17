@@ -35,6 +35,36 @@ class Packages(unittest.TestCase):
             bad = {**self.manifest, key: value}
             with self.assertRaises(ValueError): validate_payload(bad, self.elf)
         with self.assertRaises(ValueError): read_json(b'{"id":"one","id":"two"}')
+    def test_firmware_manifest_reader_const_array_contract(self):
+        # ArduinoJson's const views cannot satisfy is<JsonArray>() even when
+        # the underlying JSON is an array. Guard both the catalog parser and
+        # the installed GPS driver's additional capability-contract check.
+        source = (Path(__file__).resolve().parents[2] /
+                  'src/runtime/drivers/DriverPackage.cpp').read_text(encoding='utf-8')
+        self.assertNotIn('.is<JsonArray>()', source)
+        self.assertIn('const JsonDocument& view = doc;', source)
+        for key in ('requires', 'provides'):
+            self.assertIn(f'view["{key}"].is<JsonArrayConst>()', source)
+            self.assertIn(f'doc["{key}"].is<JsonArrayConst>()', source)
+        self.assertIn('const JsonArrayConst provided = view["provides"].as<JsonArrayConst>();', source)
+        self.assertIn('provided[0]["capability"]', source)
+    def test_release_discovery_diagnostic_guards(self):
+        # Static source guards: compilation and real HTTP behavior are covered
+        # separately by firmware CI and hardware acceptance. Do not regress to
+        # a silent parser failure or accept a partial, HTTP-successful sidecar.
+        root = Path(__file__).resolve().parents[2]
+        parser = (root / 'src/runtime/drivers/DriverPackage.cpp').read_text(encoding='utf-8')
+        manager = (root / 'src/native/NativeDriverManagerBridge.cpp').read_text(encoding='utf-8')
+        self.assertIn('Manifest rejected at %s', parser)
+        self.assertIn('Manifest rejected at JSON decoding', parser)
+        for field in ('type', 'architecture', 'file_name', 'driver_abi', 'size_bytes type',
+                      'sha256 type', 'requires array', 'provides array'):
+            self.assertIn(f', "{field}");', parser)
+        self.assertIn('Aggregate catalog HTTP fetch failed', manager)
+        self.assertIn('Aggregate catalog JSON decode failed', manager)
+        self.assertIn('Aggregate catalog entry[%u] manifest rejected', manager)
+        self.assertIn('manifest.size() != manifestAsset.size', manager)
+        self.assertIn('Driver manifest length mismatch', manager)
     def test_release_catalog(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
