@@ -45,13 +45,17 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
 # cleanup and persistent floor advance; fault-inject resets at transaction cuts.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -pthread -I"$repo_dir/src" \
-  "$repo_dir/test/resources/package_signed_transaction_test.cpp" -o "$binary"
+  "$repo_dir/test/resources/package_signed_transaction_test.cpp" \
+  -o "$binary"
 "$binary"
 # Generate ephemeral signing keys in temp directories. Exercise the real P-256
 # writer/reader and reauthenticate the sealed staged archive after SD copy races,
 # short writes, seal failures and substitution by a different valid package.
 python3 "$repo_dir/test/resources/package_builder_test.py"
 python3 "$repo_dir/test/resources/package_stage_test.py"
+# Signed provider profile and exact ELF import declarations must be bound by
+# the same P-256 manifest; signed malformed profiles never become receipts.
+python3 "$repo_dir/test/resources/package_provider_profile_test.py"
 for pair in \
   "springboard springboard_test" \
   "app_store app_store_test" \
@@ -85,4 +89,4 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_di
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
 python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
-echo 'Native app regression tests passed, including NVS floor faults, signed extraction/provenance, signed publication recovery, package trust scope and legacy recovery'
+echo 'Native app regression tests passed, including NVS floor faults, signed provider profiles, signed extraction/provenance, publication recovery, package trust scope and legacy recovery'
