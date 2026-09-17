@@ -35,6 +35,17 @@ class Packages(unittest.TestCase):
             bad = {**self.manifest, key: value}
             with self.assertRaises(ValueError): validate_payload(bad, self.elf)
         with self.assertRaises(ValueError): read_json(b'{"id":"one","id":"two"}')
+    def test_firmware_manifest_reader_const_array_contract(self):
+        # ArduinoJson's const views cannot satisfy is<JsonArray>() even when
+        # the underlying JSON is an array. Guard both the catalog parser and
+        # the installed GPS driver's additional capability-contract check.
+        source = (Path(__file__).resolve().parents[2] /
+                  'src/runtime/drivers/DriverPackage.cpp').read_text(encoding='utf-8')
+        self.assertNotIn('.is<JsonArray>()', source)
+        self.assertIn('const JsonDocument& view = doc;', source)
+        for key in ('requires', 'provides'):
+            self.assertIn(f'view["{key}"].is<JsonArrayConst>()', source)
+            self.assertIn(f'doc["{key}"].is<JsonArrayConst>()', source)
     def test_release_catalog(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
