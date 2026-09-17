@@ -36,9 +36,10 @@ int main(int argc, char **argv) {
   assert(graph.liveGrants() == 0);
   assert(graph.shutdown()); // Idempotent without double stop or double unpin.
 
-  // After shutdown the lower provider can be independently reactivated.
+  // A genuinely unloaded ELF reinitializes its static data on reload. The
+  // test must NOT expect the artificial repair flag to persist after unmap.
   root = graph.acquire("cap.root", 1);
-  assert(root.slot && *static_cast<const int *>(graph.interfaceFor(root)) == 43);
+  assert(root.slot && *static_cast<const int *>(graph.interfaceFor(root)) == 42);
   assert(graph.release(root) && graph.shutdown());
   std::puts("Failed-start hardware recovery: retry, dependency pin and no stale grants PASS");
 }
