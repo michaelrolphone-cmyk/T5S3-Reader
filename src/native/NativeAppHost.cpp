@@ -601,6 +601,11 @@ bool installedRefresh() {
   auto* s = current();
   if (!s) return false;
   s->installed.clear();
+  // Recover before opening the directory iterator. A damaged package is
+  // quarantined by the verifier; other independently recovered apps remain usable.
+  if (!RuntimePackages::recoverAppInventory()) {
+    LOG_ERR("APPSTORE", "Some installed applications could not be safely recovered");
+  }
   HalFile dir = Storage.open("/Apps", O_RDONLY);
   if (!dir.isOpen() || !dir.isDirectory()) return false;
   while (s->installed.size() < 128) {
@@ -809,6 +814,16 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
       if (input.wasTouchTapped(point, renderer) || input.wasAnyPressed() || input.wasTouchHomeButtonPressed()) break;
     }
   };
+  // Recovery must run while no ELF is mapped, before checking for springboard
+  // files: a power cut can leave only springboard.elf.bak at this point.
+  if (Storage.exists("/Apps")) {
+    if (!RuntimePackages::recoverAppInventory())
+      LOG_ERR("APPSTORE", "Some managed apps require manual recovery");
+    if (!RuntimePackages::recoverAppPair("springboard.elf")) {
+      showError("Springboard update cannot be safely recovered.");
+      return false;
+    }
+  }
   if (!Storage.exists("/Apps/springboard.elf") || !Storage.exists("/Apps/springboard.json")) {
     showError("Copy springboard.elf and .json to /Apps.");
     return false;
@@ -822,6 +837,12 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
     if (firmwareActionPending) return true;
     if (homeRequested || queuedLaunch.empty()) return false;
     const std::string selected = queuedLaunch;
+    const std::string selectedName = selected.substr(selected.find_last_of('/') + 1);
+    if (t5_safe_elf_name(selectedName.c_str()) &&
+        !RuntimePackages::recoverAppPair(selectedName.c_str())) {
+      showError("Application update cannot be safely recovered.");
+      continue;
+    }
     const std::string sidecar = selected.substr(3, selected.size() - 7) + ".json";
     if (!Storage.exists(sidecar.c_str())) { showError("Application manifest is missing."); continue; }
     const auto appResult = runNativeApp(selected.c_str(), renderer, input);
