@@ -1,1497 +1,242 @@
 # RiscRTE Platform Capability Roadmap
 
-## Status
+## Status and authority
 
-Architecture and implementation roadmap for expanding RiscRTE from a collection of runtime facilities into a general embedded runtime platform whose applications, services, drivers, protocols, devices, and data sources can be added independently of core firmware.
+This roadmap governs the progression from installed apps and limited provider slices to a general embedded runtime whose applications, services, drivers, protocols, devices and data sources can be independently installed. Read [RISCRTE_PLATFORM_SPEC.md](RISCRTE_PLATFORM_SPEC.md) first. **All hardware-related milestones are constrained by [HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md](HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md).** Legacy claims that the framework owns USB, GPIO, I2C, SPI, UART, controllers, power rails, device discovery or physical resource management are superseded. They are migration-state descriptions, not target requirements.
 
-This document defines the major platform capabilities that should be built above the existing ELF application/driver/service architecture, capability resolver, scene runtime, memory architecture, security model, USB subsystem, networking, BLE sensor subsystem, and hardware abstractions.
-
-> **Core invariant:** New platform functionality should normally appear as a reusable capability, provider, service, stream, device, job, or package—not as private infrastructure embedded inside one application.
-
----
+> **Core invariant:** The RiscRTE core is hardware agnostic: `usb` and every other capability name are opaque, dynamically registered identifiers. Installable provider ELFs implement and own physical hardware, including controller/bus sharing, power, discovery, transfers, protocols and recovery. RiscRTE implements generic manifests, capability/dependency resolution, execution contexts, rights, generic events/streams, provider lifecycle and package loading. Adding hardware requires an ELF/profile, never a core firmware change.
 
 ## 1. Objective
 
-RiscRTE should evolve toward this model:
-
 ```text
-                         Applications
-                              |
-                 intents / jobs / capabilities
-                              |
-          +-------------------+-------------------+
-          |                   |                   |
-          v                   v                   v
-      Devices              Services             Data
-          |                   |                   |
-          +-------------+-----+-------------------+
-                        |
-                  Streams / Events
-                        |
-                 Capability Resolver
-                        |
-          +-------------+-------------+
-          |             |             |
-        Drivers      Providers      Runtime
-          |             |             |
-          +-------------+-------------+
-                        |
-                     Hardware
+Applications / services
+       -> capabilities / intents / jobs / generic streams
+       -> hardware-blind core: resolver, contexts, generic registry
+       -> independently installed physical/composite/provider ELFs
+       -> provider dependencies / generic platform port primitives
+       -> hardware
 ```
 
-Applications should increasingly describe **what they require** rather than **which hardware implementation they expect**.
+Applications describe *what* they require rather than *which* hardware implements it. Physical hardware must not be implemented in applications **or compiled into the core**. Generic framework-held authorization/lease records do not imply core ownership of physical devices. Driver ELFs own real hardware state and coordinate shared resources through controller/bus/power-provider capabilities.
 
----
+## 2. Existing foundations and authority
 
-## 2. Existing foundations
-
-This roadmap assumes and builds on the architecture defined elsewhere in the repository, including:
-
-```text
-RUNTIME_DRIVER_ARCHITECTURE.md
-RUNTIME_DRIVER_IMPLEMENTATION.md
-SCENE_RUNTIME_ARCHITECTURE.md
-SERVICE_RUNTIME_ARCHITECTURE.md
-MEMORY_ARCHITECTURE.md
-SECURITY_ARCHITECTURE.md
-USB_OTG_HOST_ARCHITECTURE.md
-PROGRAMMER_DEBUGGER_ARCHITECTURE.md
-BLUETOOTH_SENSOR_ARCHITECTURE.md
-PLATFORM_ABSTRACTION_ARCHITECTURE.md
-```
-
-The roadmap does not replace those specifications. It defines the higher-level platform capabilities that should connect them.
-
----
+This roadmap connects `RUNTIME_DRIVER_ARCHITECTURE.md`, `RUNTIME_DRIVER_IMPLEMENTATION.md` (current-state only), `SCENE_RUNTIME_ARCHITECTURE.md`, `SERVICE_RUNTIME_ARCHITECTURE.md`, `MEMORY_ARCHITECTURE.md`, `SECURITY_ARCHITECTURE.md`, `USB_OTG_HOST_ARCHITECTURE.md`, `PROGRAMMER_DEBUGGER_ARCHITECTURE.md`, `BLUETOOTH_SENSOR_ARCHITECTURE.md` and `PLATFORM_ABSTRACTION_ARCHITECTURE.md`. The hardware boundary overrides contrary historical wording. `HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md` is the required implementation/review gate for every hardware-related priority below. A new device capability must be introduced by installing a provider, not adding a transport branch in firmware.
 
 # Part I — Core Platform Unification
 
 ## 3. Unified Device and Peripheral Registry
 
-RiscRTE SHOULD provide one system-owned registry for physical and logical devices regardless of transport.
+RiscRTE SHALL supply one **generic provider-publication registry** for physical and logical devices. It MUST NOT itself discover USB/BLE/UART/I2C/SPI/GPIO/LoRa/Wi-Fi devices, know which transport a string represents, parse descriptors, or maintain transport-specific subregistries. Installed provider ELFs observe their own hardware and publish copied/opaque identity, capability lists and lifecycle records through a transport-neutral ABI. A physical device may publish multiple semantic capabilities (temperature/humidity/battery, debug/programming, position/altitude/time). A provider is responsible for interpreting any transport-specific metadata it publishes.
 
-Potential transports include:
+### 3.1 Device records
 
-```text
-USB
-Bluetooth LE
-UART
-I2C
-SPI
-GPIO
-LoRa
-Wi-Fi / IP
-internal SoC peripherals
-future transports
-```
-
-A device is not synonymous with a transport endpoint. One physical device may expose several semantic capabilities.
-
-Example:
-
-```text
-Environmental Sensor A
-  transport: BLE
-  capabilities:
-    sensor.temperature
-    sensor.humidity
-    sensor.battery
-
-USB Debug Probe
-  transport: USB
-  capabilities:
-    debug.swd
-    program.stm32
-
-GNSS Receiver
-  transport: UART
-  capabilities:
-    location.position
-    location.altitude
-    location.time
-```
-
-### 3.1 Device record
-
-A logical device record SHOULD support:
-
-```text
-runtime device ID
-transport identity
-stable identity evidence
-friendly name
-provider/driver binding
-connection/presence state
-capabilities
-resource ownership
-security/trust metadata
-last seen
-transport-specific metadata reference
-```
-
-Transport-specific implementation details SHOULD remain below the generic registry API.
+Generic fields: opaque generation-qualified device ID, provider ID, optional opaque transport/identity strings, friendly name, availability/binding, capability IDs and API versions, generic grant/rights state, trust metadata, last observation time, and bounded provider-owned metadata reference. The runtime never interprets VID/PID, protocol class, UART address, I2C register or a transport identity as a privileged hardware fact.
 
 ### 3.2 Device lifecycle
 
-Suggested states:
-
-```text
-DISCOVERED
-IDENTIFIED
-BOUND
-AVAILABLE
-BUSY
-SUSPENDED
-UNAVAILABLE
-REMOVED
-FAILED
-```
+Generic published states may include `DISCOVERED`, `IDENTIFIED`, `BOUND`, `AVAILABLE`, `BUSY`, `SUSPENDED`, `UNAVAILABLE`, `REMOVED`, and `FAILED`. The provider performs real probe/binding and hardware teardown; the core stores bounded state and invalidates software handles.
 
 ### 3.3 Device events
 
-```text
-device.discovered
-device.available
-device.unavailable
-device.capability_added
-device.capability_removed
-device.identity_changed
-device.error
-```
-
----
+`device.discovered`, `device.available`, `device.unavailable`, `device.capability_added`, `device.capability_removed`, `device.identity_changed` and `device.error` are **generic event topics** emitted through provider publication. Support bounded journals, per-reader cursors, overflow GAP, mandatory resnapshot and generation-safe revocation; no firmware USB discovery tick.
 
 ## 4. Capability Resolver Expansion
 
-The capability resolver should become the primary indirection mechanism between applications/services and implementations.
-
-Examples:
-
-```text
-location.position
-sensor.temperature
-serial.port
-serial.host
-storage.removable
-input.keyboard
-network.internet
-debug.swd
-program.target
-notification.post
-crypto.hash
-credential.read
-```
-
-A capability request SHOULD be able to specify constraints without naming a driver ELF.
-
-Conceptually:
-
-```text
-request:
-  capability: sensor.temperature
-  device: optional
-  minimum_rate: optional
-  preferred_source: optional
-  exclusivity: shared
-```
-
-The resolver returns an opaque lease/handle whose implementation may come from hardware, a driver, a service, or another provider.
-
----
+The resolver is the implementation-independent indirection between consumers and providers. Capability examples (not built-in enums): `location.position`, `sensor.temperature`, `serial.port`, `usb`, `usb.host`, `storage.removable`, `input.keyboard`, `network.internet`, `debug.swd`, `program.target`, `notification.post`, `crypto.hash`, `credential.read`. Requests may specify device, minimum rate, preferred source, rights or exclusivity without naming a concrete driver. Resolve arbitrary manifest-provided names, API versions and dependency constraints to opaque grants; the driver mediates real access. Detect/report cycles and failure, and permit provider composition without special cases for hardware family names.
 
 ## 5. Unified Resource Ownership
 
-All major platform capabilities SHOULD participate in the same ownership model.
-
-Resources include:
-
-```text
-devices
-capability leases
-streams
-files
-volumes
-network connections
-BLE connections
-USB interfaces
-timers
-jobs
-power locks
-UI surfaces
-memory mappings
-subscriptions
-credentials
-```
-
-Every resource SHOULD have an owning execution context and deterministic reclamation behavior.
-
-This is a prerequisite for reliable ELF unloading and future isolation.
-
----
+Execution contexts own generic leases, stream handles, files, volumes, connection capability handles, timers, jobs, UI surfaces, memory mappings, subscriptions, credentials and software power-policy requests, with deterministic cleanup. Physical USB interfaces, BLE radio sessions, GPIO pins, I2C addresses, power rails or DMA device state are **owned/arbitrated by provider ELFs** and released by their provider lifecycle, not managed as hardware types by the framework. The core may manage an opaque platform resource grant without interpreting its hardware purpose. This distinction is prerequisite to safe ELF unloading; capability refcount alone is not proof hardware is quiescent.
 
 # Part II — Hardware and Sensor Expansion
 
 ## 6. Generic Sensor Framework
 
-The semantic sensor layer introduced by `BLUETOOTH_SENSOR_ARCHITECTURE.md` SHOULD become transport-independent.
+A semantic measurement ABI SHALL be transport-independent. Provider ELFs for BLE, USB, I2C, SPI, UART, LoRa, Wi-Fi, internal ADC/SoC and GNSS may publish versioned samples without code paths in firmware for those sources. Example capabilities: temperature, humidity, pressure, acceleration, angular velocity, magnetic field, light, distance, voltage, current, power, battery, air quality and position. Calibration, unit conversion, sampling policy, channel metadata, latest-value cache, historical recording, quality flags, time synchronization, aggregation/downsampling and threshold detection should be generic services or independently installed providers, not hardware-specific core facilities. Apps consume a common measurement representation.
 
-Potential sources:
+## 7. I2C, SPI and GPIO Provider Framework
 
-```text
-BLE
-USB
-I2C
-SPI
-UART
-LoRa
-Wi-Fi
-internal ADC/SoC sensors
-GNSS-derived observations
-```
-
-All sources SHOULD be capable of publishing a common versioned measurement representation.
-
-### 6.1 Common sensor capabilities
-
-Examples:
+**Corrected ownership:** I2C/SPI/GPIO bus and pin implementations MUST be ELF providers, not framework-owned bus managers. A bus/controller ELF implements enumeration/configuration, address/chip-select ownership, bounded transactions, serialization, timeouts, interrupt handling, DMA-safe buffers, arbitration, stuck-bus recovery and physical cleanup as applicable. A GPIO provider ELF owns reservation, modes, interrupts, pulls and safe release state. A sensor ELF requires the appropriate provider capability and profile-granted pins/buses/addresses; it never independently races another driver to initialize shared hardware. RiscRTE only resolves names, checks generic permissions, passes opaque grants, and invokes lifecycles. The platform bootstrap can expose generic OS/CPU primitives but cannot act as a compiled-in I2C/SPI/GPIO driver for normal runtime use.
 
 ```text
-sensor.temperature
-sensor.humidity
-sensor.pressure
-sensor.acceleration
-sensor.angular_velocity
-sensor.magnetic_field
-sensor.light
-sensor.distance
-sensor.voltage
-sensor.current
-sensor.power
-sensor.battery
-sensor.air_quality
-sensor.position
+sensor_app.elf -> sensor.temperature
+                         ^
+                    sensor.elf -> requires i2c.bus
+                                               ^
+                                          i2c.elf -> hardware
 ```
 
-### 6.2 Sensor services
-
-The framework SHOULD eventually support:
-
-```text
-calibration
-unit conversion
-sampling policy
-channel metadata
-latest-value cache
-historical recording
-quality flags
-time synchronization
-aggregation/downsampling
-threshold events
-```
-
-Applications SHOULD not need transport-specific code to consume measurements.
-
----
-
-## 7. I2C, SPI, and GPIO Provider Framework
-
-Shared buses SHALL be runtime-owned resources rather than independently initialized by arbitrary drivers.
-
-Architecture:
-
-```text
-Application
-    |
-semantic capability
-    |
-Device/Capability Resolver
-    |
-signed device driver ELF
-    |
-bounded bus API
-    |
-RiscRTE Bus Manager
-    |
-I2C / SPI / GPIO hardware
-```
-
-### 7.1 I2C manager
-
-Should provide:
-
-```text
-bus enumeration/configuration
-address ownership
-bounded transactions
-timeouts
-shared-bus arbitration
-recovery from stuck bus where hardware permits
-power-domain integration
-```
-
-### 7.2 SPI manager
-
-Should provide:
-
-```text
-bus ownership
-chip-select identities
-transaction settings
-DMA-safe buffer allocation
-shared-device arbitration
-bounded transfer sizes
-```
-
-### 7.3 GPIO manager
-
-Should provide:
-
-```text
-pin reservation
-input/output modes
-interrupt subscription
-pull configuration
-safe release state
-ownership conflict detection
-```
-
-Drivers SHOULD receive only the pins/buses declared by their authorized hardware profile.
-
----
+Acceptance: install a new bus-connected sensor and any required bus ELF/profile without rebuilding firmware; concurrent clients and power/reset conflicts are enforced by the provider, not a core hardware-specific manager.
 
 ## 8. Location Framework
 
-GNSS SHOULD be generalized into semantic location capabilities.
-
-Examples:
-
-```text
-location.position
-location.altitude
-location.velocity
-location.heading
-location.time
-location.accuracy
-location.satellites
-```
-
-A location consumer SHOULD not need to know whether position came from:
-
-```text
-internal GNSS
-UART GNSS
-USB GNSS
-BLE GNSS
-future fused source
-```
-
-The framework SHOULD support source metadata and quality/accuracy indicators.
-
----
+GNSS becomes semantic `location.position`, `location.altitude`, `location.velocity`, `location.heading`, `location.time`, `location.accuracy` and `location.satellites`, with source metadata and accuracy/quality indicators. A consumer is independent of internal/UART/USB/BLE GNSS or fusion. GNSS and underlying UART/USB/power hardware implementations and their discovery/polling remain in provider ELFs. Firmware `GpsDriverRuntime` or fixed facade paths are current-state migration targets, not the location framework architecture.
 
 ## 9. Observation and Sensor Fusion
 
-Once multiple timestamped sensor/location sources exist, RiscRTE SHOULD provide a common observation timeline and optional fusion providers.
-
-The initial goal is not a universal estimator. It is reliable temporal alignment.
-
-```text
-GNSS
-IMU
-BLE sensor
-battery telemetry
-LoRa observation
-        |
-        v
-common timestamped observation model
-        |
-        +--> recorder
-        +--> application
-        +--> optional fusion provider
-```
-
-Fusion algorithms SHOULD be replaceable providers rather than hard-coded into the sensor core.
-
----
+Timestamped GNSS, IMU, BLE sensor, battery, LoRa and future observations use a generic temporal schema with validity, quality and provenance. Recorder, app and fusion providers consume the same streams. Fusion estimators are replaceable ELFs requiring lower-level capabilities; the core may supply time/stream mechanisms but never embeds the sensor fusion or hardware-reading algorithm. Initial objective: reliable temporal alignment, not a universal estimator.
 
 # Part III — Streams, IPC, and Data Movement
 
 ## 10. Stream and Pipe Abstraction
 
-A generic stream abstraction is a high-priority platform primitive.
-
-RiscRTE SHOULD support byte streams and record/message streams.
-
-Examples:
-
-```text
-USB serial -> terminal
-USB serial -> file
-GNSS -> recorder
-BLE sensor -> recorder
-LoRa -> decoder
-file -> firmware programmer
-network -> updater
-sensor stream -> graph
-```
-
-### 10.1 Stream properties
-
-A stream SHOULD expose metadata such as:
-
-```text
-readable/writable
-data type
-seekability
-bounded buffer policy
-source/sink identity
-backpressure support
-EOF/disconnect semantics
-```
-
-### 10.2 Pipes
-
-The runtime SHOULD permit compatible endpoints to be connected without either module knowing the other's implementation.
-
-```text
-source -> transform -> sink
-```
-
-Transforms may include:
-
-```text
-decoder
-encoder
-filter
-compressor
-checksum
-logger
-rate limiter
-packetizer
-```
-
-### 10.3 Backpressure
-
-All streams SHALL have bounded buffering and explicit overflow/backpressure semantics.
-
----
+Generic bounded byte/record streams support serial-to-terminal/file, GNSS-to-recorder, BLE sensor-to-recorder, LoRa-to-decoder, file-to-programmer, network-to-updater and sensor-to-graph use cases. Metadata includes read/write, type, seekability, source/sink identity, buffer/backpressure policy, EOF and disconnect. Pipes connect compatible endpoints (`source -> transform -> sink`); transform ELFs may decode, encode, filter, compress, checksum, log, rate-limit or packetize. Every stream has bounded buffering and explicit overflow/backpressure. **The runtime supplies generic buffers/routing; the installed driver performs physical RX/TX.** A firmware USB-specific open/read/write stream is legacy.
 
 ## 11. Inter-Module IPC
 
-RiscRTE SHOULD replace arbitrary cross-ELF callback pointers with structured IPC.
-
-Required communication forms should include:
-
-```text
-event publish/subscribe
-request/reply
-one-way message
-stream/pipe
-job progress/completion
-capability invocation
-```
-
-Messages SHALL use versioned data structures or serialization formats safe across module lifetimes.
-
-Persistent state SHALL never contain raw pointers into another ELF.
-
----
+Use typed/versioned event publish/subscribe, request/reply, one-way messages, streams/pipes, job completion and generic capability invocation instead of persistent cross-ELF callbacks. Durable structures never retain an unloaded module's pointer. Rights and message bounds are enforced without inspecting protocol payloads.
 
 ## 12. Unified Event Bus
 
-The service event bus SHOULD expand into a platform-wide event fabric.
-
-Namespaces might include:
-
-```text
-system.*
-power.*
-network.*
-storage.*
-device.*
-sensor.*
-location.*
-usb.*
-bluetooth.*
-application.*
-package.*
-job.*
-notification.*
-```
-
-Events SHALL have bounded delivery and durability semantics appropriate to their class.
-
----
+Expand generic events for `system.*`, `power.*`, `network.*`, `storage.*`, `device.*`, `sensor.*`, `location.*`, `usb.*`, `bluetooth.*`, `application.*`, `package.*`, `job.*`, `notification.*`. These are optional provider-chosen **topic strings**, not hardware-specific core event families or parsers. Define bounded delivery, sequence/overflow and durability appropriate to event class.
 
 # Part IV — Storage, Files, and Data
 
 ## 13. Unified Storage Provider Layer
 
-SD and USB mass storage SHOULD expose the same logical volume abstraction.
-
-Future providers may include network-backed storage.
-
-A volume record SHOULD include:
-
-```text
-volume ID
-provider/device ID
-mount point
-filesystem type
-capacity/free space
-read/write capability
-removability
-ownership state
-health/error state
-```
-
-### 13.1 Storage events
-
-```text
-storage.volume_added
-storage.mounted
-storage.unmounting
-storage.unmounted
-storage.removed
-storage.low_space
-storage.error
-```
-
-### 13.2 Safe removal
-
-Volume ownership SHALL coordinate:
-
-```text
-open files
-storage-VM mappings
-recorder buffers
-jobs
-USB MSC export
-filesystem flush
-```
-
----
+SD, USB MSC, internal flash and network volumes expose a shared logical volume ABI; provider ELFs own media-specific controllers and filesystem/protocol behavior. Generic volume metadata: ID, provider/device, mount point, filesystem type, capacity/free space, read/write, removability, generic ownership and health. Publish volume-added, mounted, unmounting, unmounted, removed, low-space and error events. Safe removal coordinates open handles, mappings, recorder buffers, jobs, export clients and filesystem flush through providers; the generic mount/namespace manager does not implement USB MSC or SDMMC.
 
 ## 14. Unified Data Recorder and Time-Series Store
 
-The BLE Sensor Recorder SHOULD evolve into a general recorder for timestamped platform observations.
-
-Sources may include:
-
-```text
-sensor measurements
-GNSS/location
-battery telemetry
-LoRa packets
-USB instrument measurements
-system performance counters
-network observations
-application-defined channels
-```
-
-### 14.1 Recorder API
-
-The recorder SHOULD support:
-
-```text
-channel registration
-append measurement/event
-batching
-query by time range
-latest value
-aggregation/downsampling
-export
-retention policy
-```
-
-### 14.2 Storage principles
-
-- append/batch rather than one filesystem transaction per sample;
-- bounded in-memory buffers;
-- recoverable format;
-- versioned schema;
-- explicit timestamp validity;
-- optional indexes built asynchronously;
-- storage quotas/retention policies.
-
----
+Generalize BLE recording to sensors, GNSS, battery, LoRa packets, USB instruments, runtime metrics, network and application-defined channels. Provide channel registration, append/batch, query by time, latest sample, aggregation, export and retention. Require bounded buffers, recoverable/versioned formats, timestamp validity, storage quota, low-priority interruptible indexing and batching instead of a filesystem transaction per sample. Consume streams from installed providers; no special USB/GNSS core readers.
 
 ## 15. Content Type and Intent Routing
 
-File Browser and applications SHOULD not hard-code file-extension-to-app mappings.
-
-Applications register intents/content handlers.
-
-Examples:
-
-```text
-image/png -> Image Viewer
-image/jpeg -> Image Viewer
-application/epub+zip -> Reader
-text/markdown -> Reader/Editor
-application/x-riscrte-package -> Package Manager
-application/x-firmware -> Programmer
-```
-
-Framework operations could include:
-
-```text
-open(resource)
-open_with(resource)
-share(resource)
-inspect(resource)
-install(resource)
-program(resource, target)
-```
-
-Intent routing SHOULD use application manifests without loading candidate application ELFs.
-
----
+Route image/png, image/jpeg, EPUB, Markdown, platform packages and firmware resources to manifest-registered handlers rather than hard-coded extensions. Generic operations include open, open-with, share, inspect, install and program; inspect handler manifests without loading candidate app ELFs.
 
 ## 16. Clipboard and Share Framework
 
-RiscRTE SHOULD eventually provide a small system clipboard and resource-sharing model.
-
-Clipboard payloads SHOULD be typed and bounded.
-
-Potential types:
-
-```text
-text
-URI/resource reference
-file handle/reference
-sensor value
-location
-small binary payload
-```
-
-Large files SHALL be shared by handle/reference, not copied into clipboard memory.
-
----
+Use bounded typed text, resource reference, handle, measurement, location and small binary payloads; share large files by reference/authorized handles rather than memory copy.
 
 ## 17. System Search and Indexing
 
-Search SHOULD become a service/capability rather than an application-specific implementation.
-
-Indexable sources may include:
-
-```text
-files
-books/documents
-applications
-settings
-sensor channels/history metadata
-logs
-documentation
-```
-
-Indexing SHALL be incremental, storage-aware, interruptible, and low-priority.
-
-The index itself belongs on persistent storage with a bounded active cache.
-
----
+Index files, documents/books, apps, settings, sensor-channel metadata/history, logs and docs through an incremental, storage-aware, interruptible low-priority service with bounded active cache and persistent index.
 
 # Part V — Networking and Communications
 
 ## 18. Networking Services Above Wi-Fi
 
-Wi-Fi hardware access should be separated from common network services.
-
-RiscRTE SHOULD provide reusable facilities for:
-
-```text
-DNS
-HTTP/HTTPS
-WebSocket
-NTP/time synchronization
-mDNS/service discovery
-resumable downloads
-connection-state events
-TLS policy
-future MQTT
-```
-
-Applications SHOULD not each independently implement connection lifecycle, TLS policy, retries, and background downloads.
-
----
+Physical Wi-Fi/radio/link management is implemented by provider ELFs, not compiled into firmware. Transport-independent DNS, HTTP(S), WebSocket, NTP, mDNS, resumable download, connection events, TLS policy and future MQTT are reusable service/provider capabilities above an installed network interface. Applications do not replicate connection lifecycle, TLS policy, retry or download code. The existing fixed compiled Esp32NetworkProvider is **legacy noncompliant**, except isolated bootstrap recovery that is not a silent production fallback.
 
 ## 19. Unified Communications and Message Transport
 
-RiscRTE SHOULD eventually define a message/packet abstraction above transports such as:
-
-```text
-BLE
-LoRa
-Wi-Fi/IP
-USB CDC
-UART
-```
-
-Conceptually:
-
-```text
-application message
-      |
-endpoint/routing policy
-      |
-transport provider
-      |
-physical link
-```
-
-The initial goal SHOULD be common endpoint/message semantics, not automatic mesh routing.
-
-Routing and multi-transport failover can be added later.
-
----
+Provide message/packet endpoint/routing semantics over BLE, LoRa, Wi-Fi/IP, USB CDC, UART and later providers without making the core understand those transports. Message -> endpoint/policy -> installed transport provider -> physical link. Start with common endpoint semantics; add failover/mesh later.
 
 ## 20. Device and Service Discovery
 
-Discovery SHOULD unify observations from:
+BLE advertisements, USB enumeration, mDNS, known UART/I2C devices and LoRa peers are discovered **inside independently installed providers**. Those providers publish generic observations to one registry; the core merely stores copied records and reports events. It MUST NOT enumerate these transports itself. A weather station may publish sensor capabilities, a PC network/debug capabilities, a probe SWD, and a GNSS receiver location, without a built-in transport-specific registry path.
 
-```text
-BLE advertisements
-USB enumeration
-mDNS/network discovery
-known UART/I2C devices
-LoRa peer discovery where protocol supports it
-```
-
-The Device Registry consumes these discoveries and presents one coherent inventory.
-
-Example:
-
-```text
-Weather Station
-  BLE
-  sensor.temperature
-  sensor.humidity
-
-Desktop PC
-  Wi-Fi
-  network.http
-  debug.gdb
-
-USB Probe
-  USB
-  debug.swd
-
-GNSS Receiver
-  UART
-  location.position
-```
-
----
-
-# Part VI — System Services and User-Facing Platform Facilities
+# Part VI — System Services and User-Facing Facilities
 
 ## 21. Notification Framework
 
-Services and applications SHOULD post notifications through RiscRTE rather than owning global UI.
-
-A notification may include:
-
-```text
-source
-priority
-title
-message
-icon
-timestamp
-persistence
-optional actions
-wake/display policy
-```
-
-Possible priorities:
-
-```text
-BACKGROUND
-NORMAL
-IMPORTANT
-CRITICAL
-```
-
-Notification actions SHALL route back through intents/messages rather than raw function pointers.
-
----
+Apps/services post through a generic notification capability, not global UI ownership. Records may include source, priority (background/normal/important/critical), title, message, icon, timestamp, persistence, actions and wake/display policy. Actions route via intents/messages, never stale pointers.
 
 ## 22. Persistent Alarm and Deadline Framework
 
-The scheduler concepts from `SERVICE_RUNTIME_ARCHITECTURE.md` SHOULD become a first-class platform API.
-
-Required classes:
-
-```text
-EXACT
-FLEXIBLE
-PERIODIC
-IDLE
-MONOTONIC
-LOCAL_CIVIL_TIME
-```
-
-Deadlines SHALL survive service unloading and, where configured, deep sleep/restart.
-
-The runtime owns wake-source programming.
-
----
+Provide exact, flexible, periodic, idle, monotonic and local-civil-time deadline classes. Scheduling metadata survives service unload and optionally deep sleep/restart. Generic scheduler policy may call an installed wake/power capability; MCU-specific wake-source programming is a provider/port responsibility, not hardware-specific core logic.
 
 ## 23. Automation and Rules Engine
 
-Once events, sensors, notifications, jobs, and capabilities are available, RiscRTE SHOULD support declarative automation.
+Declarative event/capability rules may trigger recorder marks, notifications, jobs and installs, without requiring foreground apps. Rules require explicit permissions, bounded execution, rate limiting, loop detection, quotas and auditing. Device events originate from providers, not core transport polling.
 
-Example:
-
-```text
-WHEN sensor.temperature > 30 C
-AND device.sensor_a is available
-THEN
-    recorder.mark_event("high-temperature")
-    notification.post(...)
-```
-
-Another example:
-
-```text
-WHEN storage.volume_added
-AND content_type == application/x-riscrte-package
-THEN notification.post("Install package?")
-```
-
-Rules SHALL be event/scheduler driven and SHALL not require a resident foreground application.
-
-### 23.1 Rule safety
-
-Rules SHALL have:
-
-```text
-explicit permissions
-bounded execution
-rate limiting
-loop detection
-resource quotas
-audit/logging
-```
-
----
-
-# Part VII — Security Platform Services
+# Part VII — Security Services
 
 ## 24. Credential and Secrets Vault
 
-Credentials SHOULD be system-owned objects accessed through opaque handles.
-
-Examples:
-
-```text
-Wi-Fi credentials
-BLE bonds
-API tokens
-TLS private keys/certificates
-service credentials
-future SSH keys
-```
-
-Applications/providers SHOULD request authorized use of a credential rather than reading plaintext secrets whenever possible.
-
-Conceptually:
-
-```text
-credential handle
-      |
-authorized operation
-      |
-network/crypto service
-```
-
-The vault SHALL integrate with `SECURITY_ARCHITECTURE.md`.
-
----
+Credentials are policy-controlled opaque objects for Wi-Fi, BLE bonds, APIs, TLS/service credentials and SSH, with authorized-use handles instead of plaintext exposure where feasible. Provider ELFs may request granted credentials, but generic policy does not become hardware ownership.
 
 ## 25. Cryptographic Service
 
-Common cryptographic primitives SHOULD be exposed through versioned runtime APIs rather than statically duplicated throughout ELF modules where practical.
-
-Capabilities may include:
-
-```text
-crypto.random
-crypto.hash.sha256
-crypto.hmac
-crypto.signature.verify
-crypto.signature.sign using protected key handle
-crypto.certificate.verify
-crypto.key.derive
-```
-
-Private keys SHOULD be represented by opaque handles when hardware/platform storage permits.
-
-Crypto APIs SHALL distinguish authentication, integrity, encryption, and hashing rather than treating them as interchangeable.
-
----
+Version capabilities for random, SHA-256, HMAC, signature verify/sign with protected key, certificate verification and key derivation. Distinguish authentication, integrity, encryption and hash. Keys use opaque handles where possible; hardware secure-element drivers remain ELFs rather than core-specific integrations.
 
 # Part VIII — Package and Module Management
 
-## 26. Unified RiscRTE Package Model
+## 26. Unified Package Model
 
-Applications, drivers, services, and providers SHOULD converge on one package envelope.
-
-Conceptually:
-
-```text
-package.risc
-  |
-  +-- manifest
-  +-- one or more ELF modules
-  +-- resources
-  +-- schemas/metadata
-  +-- dependency declarations
-  +-- capability declarations
-  +-- architecture requirements
-  +-- minimum/maximum compatible RiscRTE version
-  +-- security version
-  +-- signatures
-```
-
-Module type remains explicit:
-
-```text
-application
-driver
-service
-provider
-```
-
-A package is a distribution/install unit; an ELF is an executable module within it.
-
----
+A package contains manifest, one or more ELF modules, resources, schemas, dependency/capability declarations, CPU/ABI compatibility, platform/security version and integrity/signatures. Types: application, driver, service, provider. Package is distribution unit; ELF is loadable implementation. Driver packages MUST include **functional hardware code**, not only a proxy into firmware.
 
 ## 27. Package Manager
 
-A system Package Manager SHOULD own:
-
-```text
-install
-validate
-signature verification
-dependency resolution
-capability requirement checks
-update
-atomic replacement
-rollback
-uninstall
-quarantine
-inventory
-```
-
-Discovery SHOULD inspect package manifests without loading executable code.
-
-### 27.1 Offline installation
-
-Packages MUST remain installable from removable storage without requiring a desktop-side Python installer.
-
-A user should be able to place/extract a package onto an SD card or install it through an on-device Package Manager according to package format policy.
-
-### 27.2 Online installation
-
-The same package format SHOULD be usable by the App Store/update services.
-
----
+Manage install, validation, signatures, dependency/version checks, update, atomic replacement, rollback, uninstall, quarantine and inventory without executing unverified manifests. Offline removable-storage installation MUST work without requiring desktop-side Python. Online App Store/update delivery consumes the same format. Never silently substitute a firmware hardware driver for a missing/broken installed ELF.
 
 ## 28. Dependency Model
 
-Dependencies SHOULD normally target capabilities or ABI contracts rather than concrete module filenames.
-
-Prefer:
-
-```text
-requires:
-  bluetooth.gatt.client >= ABI 1
-  sensor.framework >= ABI 1
-```
-
-rather than:
-
-```text
-requires:
-  /Drivers/foo/foo.elf
-```
-
-Concrete provider dependencies may still be supported where technically unavoidable.
-
----
+Prefer capability and ABI dependencies, e.g. `bluetooth.gatt.client >= 1`, `sensor.framework >= 1`, `usb.host >= 1`, over ELF filenames. Concrete provider dependencies may exist when unavoidable. Dependency graph is generic and rejects cycles; consumers of low-level transport/bus capabilities coordinate through provider ELFs, never a new built-in controller manager.
 
 # Part IX — Jobs and Long-Running Work
 
 ## 29. Generic Job Framework
 
-The job model from `PROGRAMMER_DEBUGGER_ARCHITECTURE.md` SHOULD become a reusable runtime facility.
-
-Candidate jobs include:
-
-```text
-firmware programming
-file copy/move
-large download
-package install/update
-index rebuild
-sensor export
-book conversion/indexing
-storage verification
-sync operation
-```
-
-### 29.1 Job state
-
-Generic states may include:
-
-```text
-QUEUED
-WAITING
-RUNNING
-PAUSED
-CANCELLING
-COMPLETE
-FAILED
-CANCELLED
-```
-
-### 29.2 Job metadata
-
-```text
-job ID
-owner
-job type
-progress
-status text
-start/end timestamps
-resource leases
-cancel capability
-persistent/resumable flag
-result/error
-```
-
-### 29.3 Job UI
-
-The framework SHOULD be able to expose active jobs globally without each application implementing its own progress infrastructure.
-
----
+Reusable jobs include programming, file copy/move, download, package install, index rebuild, sensor export, book conversion, storage verification and sync. States: queued, waiting, running, paused, cancelling, complete, failed, cancelled. Metadata: job ID/type, owner, progress/status, times, **generic** capability grants, cancellation, resumability and result/error. System job UI presents active jobs. Programming protocol and target hardware work are performed by ELF providers; job core schedules and tracks only.
 
 # Part X — Diagnostics and Observability
 
 ## 30. Structured Logging
 
-RiscRTE SHOULD standardize structured logs across core, apps, drivers, services, and providers.
-
-A log record SHOULD include where available:
-
-```text
-timestamp
-severity
-module identity
-execution context
-event/code
-message
-structured fields
-```
-
-Logging SHALL be bounded and should support both serial diagnostics and persistent ring/batched storage.
-
----
+Bounded timestamped/severity/module/context/event logs with structured fields, serial diagnostics and optional persistent batches, across core/ELFs/services.
 
 ## 31. Runtime Observability
 
-A system diagnostics capability SHOULD expose:
-
-```text
-SRAM/PSRAM usage
-storage-VM cache
-loaded ELF modules
-module memory usage
-tasks/work items by owner
-capability leases
-power locks
-open files
-mounted volumes
-USB topology
-BLE devices/connections
-network state
-sensor registry
-active streams
-active jobs
-service states
-driver/provider states
-watchdog/crash history
-queue overflows
-```
-
-This should become the primary source of truth for debugging ownership/lifecycle problems.
-
----
+Expose generic memory usage, loaded ELFs, module resources, tasks/work, capability grants, power-policy requests, files/mounts, streams, jobs, service/provider state, crash/watchdog history and queue overflow. USB topology, BLE devices, sensor registry or network state can be displayed **only as provider-published diagnostic data**; core MUST NOT query transport-specific firmware managers.
 
 ## 32. Crash and Failure Records
 
-When possible, crashes SHALL preserve enough metadata to identify:
+Capture module/context, versions, fault address/reason, generic resource snapshot, memory pressure and log tail. Quarantine optional failed providers while preserving boot/recovery; native ELF memory isolation is not assumed and quiescent hardware teardown must be established.
 
-```text
-module/execution context
-firmware/RiscRTE version
-loaded module versions
-fault address/reason
-resource ownership snapshot
-memory pressure state
-recent structured log tail
-```
-
-A failing optional provider/service SHOULD be quarantinable without preventing the platform from booting.
-
----
-
-# Part XI — Framework Integration
+# Part XI — Integration
 
 ## 33. Application Model
 
-Applications SHOULD increasingly consume platform facilities through:
-
-```text
-capabilities
-intents
-jobs
-streams
-events
-resource handles
-semantic devices/sensors
-```
-
-They SHOULD NOT directly own:
-
-```text
-USB controller
-BLE stack
-shared I2C/SPI buses
-Wi-Fi hardware
-filesystem global state
-system scheduler
-system power state
-```
-
----
+Applications consume capabilities, intents, jobs, streams, events, handles and semantic devices. They do not implement USB, BLE, I2C/SPI, Wi-Fi hardware, filesystem global state, scheduler or system power. Equally, physical implementations do not move into RiscRTE core merely because apps stop owning them.
 
 ## 34. Service Model
 
-Services perform persistent/background logical roles while the runtime owns execution lifetime.
-
-Examples from this roadmap:
-
-```text
-Sensor Recorder
-Search Indexer
-Package Updater
-Notification Manager
-Time Synchronizer
-Automation Engine
-Data Export/Sync
-```
-
-A service's logical existence SHALL remain independent of whether its ELF is currently resident.
-
----
+Sensor Recorder, Search Indexer, Package Updater, Notification Manager, Time Synchronizer, Automation and Export/Sync are logical services with lifetimes independent of ELF residency. Hardware-dependent work goes through installed providers.
 
 ## 35. Driver Model
 
-Drivers translate controlled hardware access into capabilities.
-
-Examples:
-
-```text
-GPS UART driver -> location.*
-USB FTDI driver -> serial.host
-BLE radio stack/core -> bluetooth.*
-I2C sensor driver -> sensor.*
-USB MSC provider -> storage.removable
-```
-
-Drivers SHOULD not embed unrelated application workflows.
-
----
+Driver ELFs implement complete working hardware and publish capabilities: GNSS/UART -> location, USB host plus FTDI/CDC -> serial, BLE radio -> bluetooth, I2C sensor -> sensor, USB MSC -> block/storage. Drivers exclude unrelated UI workflows but own required hardware protocols, transfer loops, control and recovery. No firmware-side driver proxy passes acceptance.
 
 ## 36. Provider Model
 
-Providers implement protocol, decoding, transformation, or higher-level capability behavior without necessarily owning physical hardware.
-
-Examples:
-
-```text
-BLE proprietary sensor decoder
-Espressif programming protocol
-STM32 SWD programming provider
-sensor fusion provider
-stream codec
-file/content parser
-```
-
-This distinction allows hardware transport and semantic protocol behavior to evolve independently.
-
----
+Physical, protocol and composite providers all participate in the same graph: BLE sensor decoder, Espressif/STM32 programming, GNSS/IMU fusion, stream codec, content parser. A protocol provider may consume serial/USB/etc. but its entire algorithm resides in an ELF, not in compiled firmware. The core treats them all as arbitrary capability implementers.
 
 # Part XII — Priority and Implementation Order
 
-## 37. Priority 1: Unified Device Registry
+## 37. Priority 1: Unified Device Registry and full provider publication
 
-This should be implemented early because USB, BLE, serial, sensors, programmers, and future buses all need a common identity/capability model.
-
-First acceptance test:
-
-```text
-USB device + BLE sensor + GNSS receiver
-        |
-        v
-one Device Registry
-        |
-        v
-three independently queryable logical devices
-with semantic capabilities
-```
-
----
+Retain generic generation-safe inventory/grants/events and eliminate hard-coded USB/GNSS firmware projection. First acceptance: installed USB, BLE and GNSS ELFs independently publish three logical devices via one registry, without transport-aware registry branches or a core USB discovery tick. Generic execution-context grants do not transfer hardware ownership from drivers to framework.
 
 ## 38. Priority 2: Streams and Pipes
 
-Streams should follow because they remove a large amount of application-specific data plumbing.
-
-First acceptance tests:
-
-```text
-USB serial -> terminal
-USB serial -> file
-GNSS -> recorder
-file -> programmer
-```
-
-All should use the same stream abstraction with bounded buffering.
-
----
+Serial -> terminal/file, GNSS -> recorder and file -> programmer use the same bounded streams. Hardware I/O belongs to producing/consuming ELFs, not a firmware USB stream adapter. Reference app migration alone is not proof that hardware is modular.
 
 ## 39. Priority 3: Unified Package Manager
 
-Package management should follow once module classes and capability contracts stabilize enough to distribute independently.
+Install/upgrade/rollback/remove independently signed app/driver/service/provider packages with manifest/ELF validation and dependency graph. Acceptance includes genuine new hardware driver installation without rebuilding core and no hidden firmware fallback after uninstall.
 
-First acceptance test:
+## 40. Priority 4: Generic Sensor and Recorder
 
-```text
-one signed package format
-      |
-      +-- install app
-      +-- install driver
-      +-- install service
-      +-- install provider
-```
+BLE temperature, GNSS and battery telemetry publish interoperable timestamped records; one recorder queries/exports synchronized history without embedded hardware readers.
 
-The Package Manager validates without executing package contents and supports atomic update/rollback.
+## 41. Priority 5: Bus and Controller Provider ELFs
 
----
+**Corrected priority:** deliver independently installed I2C/SPI/GPIO/UART/USB-host and other controller/bus provider ELFs, their versioned capabilities, and provider-owned arbitration. Do **not** implement framework-owned bus managers. Prove multiple downstream device ELFs share a provider safely and add a new device via packages/profile alone.
 
-## 40. Priority 4: Generic Sensor + Recorder
+## 42. Priority 6: Jobs, Notifications and Intents
 
-Generalize the BLE sensor work into transport-independent sensor channels and one historical recorder.
+A File Browser selects firmware, an intent invokes an installed programming provider/job, generic job UI reports progress and a notification completes the workflow. Neither core nor app implements flashing hardware/protocol.
 
-Acceptance test:
+## 43. Priority 7: Vault and Crypto
 
-```text
-BLE temperature
-GNSS position
-battery telemetry
-        |
-        v
-same recorder API
-        |
-        v
-query/export synchronized history
-```
+Centralize permission-scoped secret use and cryptographic services before broadly distributing privileged third-party ELFs; strengthen driver package signatures and trust.
 
----
+## 44. Priority 8: Search, Automation and Communications
 
-## 41. Priority 5: Bus Managers
+Build on reliable generic device publication, events, sensors, jobs, streams and intents; keep transports in providers.
 
-Implement framework-owned I2C/SPI/GPIO access so external hardware can participate in the same driver/provider ecosystem without creating unmanaged bus ownership.
+## Acceptance and migration rule
 
----
-
-## 42. Priority 6: Jobs, Notifications, and Intents
-
-These facilities make long-running work and cross-application workflows coherent.
-
-Example:
-
-```text
-File Browser selects firmware
-        |
-        v
-intent: program(resource)
-        |
-        v
-Programmer creates Job
-        |
-        v
-system job UI + notification on completion
-```
-
----
-
-## 43. Priority 7: Vault and Crypto Services
-
-Centralize secrets and cryptographic operations before third-party/native packages become broadly installable.
-
----
-
-## 44. Priority 8: Search, Automation, and Communications
-
-These become much more valuable after devices, events, sensors, jobs, and intents are stable.
-
----
-
-# Part XIII — Cross-Cutting Requirements
-
-## 45. Bounded memory
-
-Every new capability SHALL be designed for bounded SRAM/PSRAM consumption.
-
-Large/cold state belongs in storage-backed structures according to `MEMORY_ARCHITECTURE.md`.
-
-No registry, queue, stream, recorder, log, or job history may grow indefinitely in RAM.
-
----
-
-## 46. ELF lifecycle safety
-
-No platform facility may retain raw callback/function pointers into an ELF after that module becomes unloadable.
-
-Cross-module communication SHALL use framework-owned handles, messages, events, jobs, or streams.
-
-Unload SHALL deterministically revoke resources.
-
----
-
-## 47. Security
-
-Every capability SHALL have an authorization model compatible with `SECURITY_ARCHITECTURE.md`.
-
-Sensitive examples include:
-
-```text
-HID injection
-firmware programming/debugging
-credential access
-cryptographic signing
-raw bus/GPIO access
-network listening
-filesystem writes
-package installation
-```
-
-Authentication of a signed module does not imply authorization for every capability.
-
----
-
-## 48. Power
-
-Capabilities SHALL cooperate with centralized power policy.
-
-Background work should prefer:
-
-```text
-events
-deadlines
-bounded jobs
-duty cycling
-wake sources
-```
-
-rather than permanent polling tasks.
-
----
-
-## 49. Versioning
-
-Public ABI structures, capability contracts, package schemas, persistent records, IPC messages, stream formats, and recorder formats SHALL be explicitly versioned.
-
-Backward compatibility should be deliberate rather than accidental.
-
----
-
-## 50. Hardware independence
-
-`RiscRTE` is the runtime/platform name. Hardware names such as T5S3 are board identifiers only.
-
-New architecture SHALL avoid using board names as generic runtime API concepts.
-
-Board-specific implementation belongs behind platform abstraction and hardware profiles.
-
----
-
-# Part XIV — Reference End State
-
-## 51. Example integrated system
-
-A mature RiscRTE installation might look like:
-
-```text
-                         RiscRTE
-                            |
-                    Device Registry
-                            |
-       +--------------------+--------------------+
-       |                    |                    |
-       v                    v                    v
- BLE weather sensor     USB debug probe      UART GNSS
-       |                    |                    |
- sensor.temperature      debug.swd         location.position
- sensor.humidity         program.target    location.time
-       |                    |                    |
-       +--------------------+--------------------+
-                            |
-                    Capability Resolver
-                            |
-       +--------------------+--------------------+
-       |                    |                    |
-     Streams              Events               Jobs
-       |                    |                    |
-       +---------+----------+----------+---------+
-                 |                     |
-                 v                     v
-          Data Recorder          Applications
-                 |                     |
-                 v                     +-- Reader
-                SD                     +-- Sensors
-                                       +-- Programmer
-                                       +-- File Browser
-                                       +-- Diagnostics
-                                       +-- Package Manager
-```
-
-An application can disappear from memory while devices continue to be discovered, measurements continue to be recorded, alarms remain scheduled, jobs continue under system ownership, and services are loaded only when their logical work requires execution.
-
----
-
-## 52. Platform acceptance criteria
-
-The capability roadmap can be considered substantially realized when RiscRTE can demonstrate the following without rebuilding core firmware for each new implementation:
-
-1. discover USB, BLE, and bus-attached devices into one registry;
-2. bind signed drivers/providers dynamically;
-3. resolve semantic capabilities independently of transport;
-4. route bounded streams between independently developed modules;
-5. record sensor/location/system data through one time-series service;
-6. install/update/rollback applications, drivers, services, and providers through one package system;
-7. execute long-running operations as framework-owned jobs;
-8. route files/resources through intents rather than hard-coded app dependencies;
-9. post system notifications from unloaded/background logical services;
-10. retain alarms/deadlines across sleep and service unloading;
-11. protect credentials through opaque vault handles;
-12. perform common cryptographic operations through authorized runtime capabilities;
-13. inspect resource ownership and subsystem state through unified diagnostics;
-14. automatically reclaim all resources when an ELF exits, fails, or is unloaded;
-15. add a new supported sensor, programming protocol, storage device, or application primarily by installing a package rather than modifying core firmware.
-
-The architectural transition is complete when **RiscRTE core firmware primarily supplies policy, lifecycle, resource management, security, IPC, capability resolution, and hardware primitives, while most extensible behavior resides in independently installable applications, drivers, services, and providers.**
+Preserve functional legacy current-state documentation separately in [RUNTIME_DRIVER_IMPLEMENTATION.md](RUNTIME_DRIVER_IMPLEMENTATION.md); do not label current compiled USB/GPS/network bridges compliant. The next hardware milestone MUST show actual ELF-owned I/O, installation without firmware change, ability to remove the provider without a resident substitute, safe shared-resource/hotplug behavior, generic registry publication and successful physical tests. **Any proposal placing hardware-specific ownership or implementation in the RiscRTE framework conflicts with this roadmap.**
