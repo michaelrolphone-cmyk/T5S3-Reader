@@ -41,6 +41,14 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo/src" "$repo/test/resources/gnss_permission_lifecycle_test.cpp" \
   -o "$build/gnss-permission-lifecycle"
 "$build/gnss-permission-lifecycle"
+# Exercise the actual semantic ELF getter with production authorization state.
+# Stubs replace ONLY the physical GPS read and downstream stream bridge.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" -I"$repo/lib/NativeApps/include" \
+  "$repo/src/native/NativeLocationBridge.cpp" \
+  "$repo/test/streams/location_native_bridge_test.cpp" \
+  -o "$build/location-native-bridge"
+"$build/location-native-bridge"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/NativeApps/include" \
   "$repo/test/resources/device_api_v2_abi_test.c" -o "$build/device-api-abi"
 "$build/device-api-abi"
