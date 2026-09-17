@@ -4,9 +4,10 @@
 #include <cstdint>
 
 /* Generic resolver inputs MUST originate from independently integrity/trust-
- * validated installed manifests. Strings and requirement arrays must remain
- * valid while the graph exists. No hardware identifiers have special meaning.
- * This is a bounded graph / module-lifetime primitive, not a permission API. */
+ * validated installed manifests. Strings, requirements and verified image
+ * bytes must remain valid/immutable while the graph can activate the node.
+ * No hardware capability identifier has special meaning in this graph.
+ * This is a module-lifetime primitive, NOT a signature/permission API. */
 namespace RuntimeProviders {
 struct RequirementV2 {
   const char* capability;
@@ -19,6 +20,14 @@ struct SpecV2 {
   uint32_t api;
   const RequirementV2* requirements;
   size_t requirementCount;
+  /* Append-only private verified-loader admission. Zero retains the existing
+   * unprivileged path. Nonzero requests a versioned privileged port ABI and
+   * requires the trusted installer to supply immutable authenticated bytes,
+   * the exact-import preflight, dependency pins and execution authorization.
+   * This manifest field is a requirement, NEVER authority in its own right. */
+  uint32_t requiredOsCpuAbi = 0;
+  const uint8_t* verifiedElfBytes = nullptr;
+  size_t verifiedElfLength = 0;
 };
 struct GrantV2 {
   uint32_t slot = 0;       // Zero is invalid.
