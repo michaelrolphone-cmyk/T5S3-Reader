@@ -8,7 +8,8 @@ import tempfile
 import unittest
 import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
-from driver_package import USB_REQUIRES, USB_PROVIDES, validate_manifest, validate_payload
+from build_driver import write_release_catalog
+from driver_package import REQUIRES, PROVIDES, USB_REQUIRES, USB_PROVIDES, validate_manifest, validate_payload
 from install_driver import install
 
 class UsbCdcPackage(unittest.TestCase):
@@ -45,5 +46,20 @@ class UsbCdcPackage(unittest.TestCase):
                       {'file_name': '../driver.elf'}):
             with self.subTest(patch=patch), self.assertRaises(ValueError):
                 validate_manifest({**self.manifest, **patch})
+    def test_catalog_contains_all_published_drivers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            gps = {**self.manifest, 'id': 'gps-nmea', 'version': '1.0.0',
+                   'requires': REQUIRES, 'provides': PROVIDES}
+            for manifest in (gps, self.manifest):
+                stem = f"{manifest['id']}-{manifest['version']}.t5driver"
+                (directory / f'{stem}.json').write_text(json.dumps(manifest), encoding='utf-8')
+                (directory / f'{stem}.elf').write_bytes(self.elf)
+            catalog = json.loads(write_release_catalog(directory).read_text(encoding='utf-8'))
+            self.assertEqual(catalog['schema'], 1)
+            self.assertEqual({entry['manifest']['id'] for entry in catalog['drivers']},
+                             {'gps-nmea', 'usb-cdc-acm'})
+            self.assertEqual({entry['elf_asset'] for entry in catalog['drivers']},
+                             {'gps-nmea-1.0.0.t5driver.elf', 'usb-cdc-acm-0.1.0.t5driver.elf'})
 
 if __name__ == '__main__': unittest.main()

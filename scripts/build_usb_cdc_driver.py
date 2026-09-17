@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import zipfile
 
+from build_driver import write_release_catalog
 from driver_package import read_json
 from native_app_symbols import firmware_exports, validate_imports
 
@@ -63,7 +64,10 @@ def build(output, cc=None):
         archive.writestr("driver.elf", payload)
     (output.parent / f"{DRIVER_ID}-{version}.t5driver.json").write_text(text)
     (output.parent / f"{DRIVER_ID}-{version}.t5driver.elf").write_bytes(payload)
-    print(f"Built {elf} ({len(payload)} bytes); package: {package}")
+    # GPS is built first in the release workflow. Rebuild the index only after
+    # USB companions exist so all released drivers are discoverable in it.
+    catalog = write_release_catalog(output.parent)
+    print(f"Built {elf} ({len(payload)} bytes); package: {package}; catalog: {catalog}")
     return package
 
 if __name__ == "__main__":
