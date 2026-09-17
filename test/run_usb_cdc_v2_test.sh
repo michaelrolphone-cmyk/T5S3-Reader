@@ -13,9 +13,11 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/src" \
   "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
   "$repo/test/drivers/provider_v2_module_test.cpp" -ldl -o "$build/provider-v2-test"
 "$build/provider-v2-test" "$build/cdc-v2.so"
-# This resolver handles arbitrary capability names and must pin transitive
-# dependency ELFs, reject cycles and revoke generation-qualified grants.
+# Generic graph pins transitive dependencies, rejects cycles and refuses stale grants.
 bash "$repo/test/run_provider_graph_v2_test.sh"
+# Demonstrate two independent loaded ELFs composing without a firmware USB
+# bridge. This tests architecture, not physical host-controller functionality.
+bash "$repo/test/run_usb_provider_stack_v2_test.sh"
 # The dependent ELF exports exactly one symbol and cannot import a hard-coded
 # firmware USB implementation. All USB operations go through the injected
 # usb.host provider capability table, which a separate ELF must implement.
