@@ -81,7 +81,10 @@ bool start() {
   positionLease = newLease;
   gnssBound = false;
   lastObservation = {};
-  if (!context->track(RuntimeResources::ExecutionContext::Resource::DeviceLeases,
+  // CapabilityAccess independently tracks DeviceLeases when the user grants
+  // location READ. ExecutionContext permits only one handler per Resource,
+  // so the driver must have a distinct slot and release before ELF unload.
+  if (!context->track(RuntimeResources::ExecutionContext::Resource::GnssDriver,
                       cleanupLocation)) {
     gpsKernelRelease();
     (void)registry.release(positionLease, invocation);
@@ -137,7 +140,7 @@ void stop() {
   positionLease = invocation = 0;
   auto* context = RuntimeResources::ExecutionContext::current();
   if (context && context->id() == oldInvocation) {
-    (void)context->untrack(RuntimeResources::ExecutionContext::Resource::DeviceLeases,
+    (void)context->untrack(RuntimeResources::ExecutionContext::Resource::GnssDriver,
                            oldInvocation);
   }
 }
