@@ -1,6 +1,5 @@
 #include "T5AppApi.h"
 #include "T5DeviceApi.h"
-#include "T5GpsApi.h"
 #include "T5LocationApi.h"
 #include "T5StreamApi.h"
 #include "T5UiApi.h"
@@ -130,10 +129,8 @@ void app_main(void) {
         return;
     }
 
-    // Compatibility discovery only: supported() publishes the board receiver
-    // in the Unified Device Registry; no legacy GPS start/read occurs here.
-    const t5_gps_api_v1 *gps = t5_gps_get_api(T5_GPS_API_VERSION);
-    if (gps && gps->supported) (void)gps->supported();
+    // The device API discovers gps-nmea passively; this ELF never imports the
+    // legacy GPS API, claims the UART, or touches a hardware power rail.
     const t5_device_handle_t receiver = find_receiver(devices);
     if (!receiver) { status("GNSS driver unavailable"); return; }
 
