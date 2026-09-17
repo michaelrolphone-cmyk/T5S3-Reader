@@ -37,4 +37,5 @@ done
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" "$repo_dir/test/native_apps/image_api_stub.c" -o "$binary"
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
-echo 'Native app regression tests passed, including Settings, Wi-Fi Networks, File Transfer, KOReader Authentication, Manage Fonts, Font Family, Customize Status Bar, Remap Front Buttons, and Time Zone'
+python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
+echo 'Native app regression tests passed, including App Store package install, Settings, Wi-Fi Networks, File Transfer, KOReader Authentication, Manage Fonts, Font Family, Customize Status Bar, Remap Front Buttons, and Time Zone'
