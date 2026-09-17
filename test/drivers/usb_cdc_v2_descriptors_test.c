@@ -123,8 +123,8 @@ int main(int argc, char **argv) {
     risc_provider_dependency_v1 dep = {"usb.host", 1, &host};
     assert(driver->start(&dep, 1));
 
-    /* Composite device: non-CDC vendor interface, IAD and union select a CDC
-     * function whose alternate zero has no endpoints; alternate one has I/O. */
+    /* Composite: vendor interface, IAD and union identify a function whose
+     * alternate zero has no endpoints but alternate one has bulk I/O. */
     begin_config(3);
     ADD(8, 11, 1, 2, 2, 2, 1, 0);
     ADD(9, 4, 0, 0, 0, 0xff, 0, 0, 0);
@@ -135,7 +135,7 @@ int main(int argc, char **argv) {
     finish_config();
     expect_open(cdc, 1, 2, 1);
 
-    /* An explicit union disambiguates two CDC data interfaces. */
+    /* A union disambiguates two data interfaces, unlike an absent union. */
     begin_config(4);
     add_control(1);
     ADD(5, 0x24, 6, 1, 2);
@@ -143,8 +143,6 @@ int main(int argc, char **argv) {
     add_data(3, 0, true);
     finish_config();
     expect_open(cdc, 1, 2, 0);
-
-    /* Without the union the same multi-data descriptor is ambiguous. */
     begin_config(4);
     add_control(1);
     add_data(2, 0, true);
@@ -152,7 +150,7 @@ int main(int argc, char **argv) {
     finish_config();
     expect_rejected(cdc);
 
-    /* A second ACM function requires an explicit function selector in API v2. */
+    /* No function selector yet: two ACM controls must fail closed. */
     begin_config(4);
     add_control(1);
     add_data(2, 0, true);
@@ -160,7 +158,7 @@ int main(int argc, char **argv) {
     finish_config();
     expect_rejected(cdc);
 
-    /* Two fully valid alternates cannot be selected nondeterministically. */
+    /* Two fully valid alternates also require an explicit selector. */
     begin_config(2);
     add_control(0);
     add_data(1, 0, true);
@@ -168,7 +166,7 @@ int main(int argc, char **argv) {
     finish_config();
     expect_rejected(cdc);
 
-    /* A union cannot point to a vendor interface or multiple slave ports. */
+    /* Invalid union targets and multi-slave unions must not bind. */
     begin_config(3);
     add_control(1);
     ADD(5, 0x24, 6, 1, 3);
@@ -183,11 +181,11 @@ int main(int argc, char **argv) {
     finish_config();
     expect_rejected(cdc);
 
-    /* Malformed trailing descriptors and conflicting IAD boundaries reject. */
+    /* A truncated interface descriptor and conflicting IAD reject. */
     begin_config(2);
     add_control(0);
     add_data(1, 0, true);
-    ADD(2, 0);
+    ADD(2, 4);
     finish_config();
     expect_rejected(cdc);
     begin_config(2);
