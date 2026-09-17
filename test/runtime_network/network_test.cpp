@@ -45,10 +45,14 @@ int main() {
   wifi().connect("test", "secret");
   assert(WiFi.name == "test" && WiFi.password == "secret");
   assert(WiFi.hostname == "CrossPoint-Reader-AABBCCDDEEFF");
-  assert((calls == std::vector<std::string>{"persistent:off", "mode:1", "disconnect:11", "delay:100",
+  assert(WiFi.currentMode == WIFI_STA); // MAC and hostname must not run with Wi-Fi disabled.
+  assert((calls == std::vector<std::string>{"persistent:off", "mode:1", "disconnect:01", "delay:100",
                                           "hostname", "connect"}));
+  calls.clear();
   wifi().connect("open", nullptr);
-  assert(WiFi.password.empty());
+  assert(WiFi.password.empty() && WiFi.currentMode == WIFI_STA);
+  assert((calls == std::vector<std::string>{"persistent:off", "mode:1", "disconnect:01", "delay:100",
+                                          "hostname", "connect"}));
   calls.clear();
   wifi().connect(nullptr, nullptr);
   assert(calls.empty());
