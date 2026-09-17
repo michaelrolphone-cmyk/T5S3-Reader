@@ -26,11 +26,11 @@ static const risc_os_cpu_symbol_v1 s_privileged_symbols_v1[] = {
 #undef RISC_OS_CPU_SYMBOL
 };
 
-/* A private, task-owned non-reentrant relocation scope. The module pointer is
- * a one-shot authorization token: the normal esp_elf_relocate entry validates
- * it BEFORE it can load or bind anything, including nested regular ELFs on
- * the owner task. Separate tasks can continue ordinary application loading.
- * No global resolver pointer or customer export table is ever modified. */
+/* A private task-owned non-reentrant relocation scope. The module pointer is
+ * a one-shot authorization: the normal esp_elf_relocate entry validates it
+ * BEFORE mapping, including nested regular ELFs on the owner task. Other
+ * tasks can load other modules but may not race the privileged module itself.
+ * No global resolver pointer or customer export table is modified. */
 static portMUX_TYPE s_scope_lock = portMUX_INITIALIZER_UNLOCKED;
 static TaskHandle_t s_scope_owner = NULL;
 static const void *s_scope_module = NULL;
@@ -106,9 +106,11 @@ bool esp_elf_privileged_os_cpu_relocation_enter_v1(const void *module)
             allowed = true;
         }
     } else {
-        /* No scope, or the scope belongs to a different task: the existing
-         * ordinary loader namespace remains unaffected on this task. */
-        allowed = true;
+        /* A different task may continue ordinary loads, but never mutate
+         * the SAME module while the private scope holds its relocation grant.
+         * This is an identity guard, not a global app-loading mutex. */
+        allowed = (s_scope_owner == NULL || s_scope_module == NULL ||
+                   module != s_scope_module);
     }
     taskEXIT_CRITICAL(&s_scope_lock);
     return allowed;
@@ -125,7 +127,9 @@ bool esp_elf_privileged_os_cpu_relocation_leave_v1(const void *module)
             released = true;
         }
     } else {
-        released = true;
+        /* A cross-task attempt cannot release the privileged module's grant. */
+        released = (s_scope_owner == NULL || s_scope_module == NULL ||
+                    module != s_scope_module);
     }
     taskEXIT_CRITICAL(&s_scope_lock);
     return released;
