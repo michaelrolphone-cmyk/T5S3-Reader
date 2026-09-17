@@ -24,6 +24,7 @@ on:
       - "scripts/probe_usb_controller_esp32s3.py"
       - "scripts/probe_i2c_esp32s3_v2.py"
       - "scripts/audit_usb_controller_elf.py"
+      - "scripts/audit_i2c_esp32s3_elf.py"
       - "test/drivers/usb_cdc_v2*.c"
       - "test/drivers/usb_cp210x_v2*.c"
       - "test/drivers/usb_host_v2*.c"
@@ -67,6 +68,7 @@ jobs:
       - name: Build full physical I2C controller and PIC IDF I2C/GPIO implementation (experimental)
         run: |
           python scripts/probe_i2c_esp32s3_v2.py
+          python scripts/audit_i2c_esp32s3_elf.py
           bash test/run_native_app_test.sh dist/experimental/i2c-esp32s3-v2/driver.elf
       - name: Build experimental Xtensa provider ELFs (not published)
         run: |
