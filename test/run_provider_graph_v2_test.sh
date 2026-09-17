@@ -21,8 +21,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/provider_graph_v2_test.cpp" -ldl -o "$build/graph-test"
 "$build/graph-test" "$build/root.so" "$build/child.so" "$build/other.so" "$build/root-alt.so"
 
-# Registration must copy every string and image byte before caller buffers or
-# package inspection receipts can change or be released.
+# Register copied metadata and ELF bytes; no caller mutation can alter them.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo/sdk/driver" -I"$repo/test/drivers/stubs" -I"$repo/src" \
   "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
@@ -30,8 +29,22 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   "$repo/test/drivers/provider_owned_spec_v2_test.cpp" -ldl -o "$build/ownership-test"
 "$build/ownership-test" "$build/root.so"
 
-# A by-value authenticated image digest and exact sorted import declarations
-# are necessary for privileged images. Host MUST NOT claim Xtensa activation.
+# An ELF is allowed to retain start()'s dependency table until quiesce/stop.
+# ASan catches the former stack-use-after-return when the fixture reads it.
+cc "${flags[@]}" -fsanitize=address,undefined -fno-omit-frame-pointer \
+  "$repo/test/drivers/provider_dependency_retention_fixture.c" \
+  -o "$build/retaining.so"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/sdk/driver" -I"$repo/test/drivers/stubs" -I"$repo/src" \
+  "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
+  "$repo/src/runtime/drivers/ProviderGraphV2.cpp" \
+  "$repo/test/drivers/provider_dependency_lifetime_v2_test.cpp" \
+  -ldl -o "$build/dependency-lifetime-test"
+ASAN_OPTIONS=detect_stack_use_after_return=1 "$build/dependency-lifetime-test" \
+  "$build/root.so" "$build/retaining.so"
+
+# Public forged privilege MUST fail; friend fixture tests metadata only, never
+# substitutes for real P-256 or Xtensa host execution.
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   -I"$repo/test/drivers/stubs" -I"$repo/src" \
   "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
