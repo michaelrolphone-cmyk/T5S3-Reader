@@ -53,7 +53,7 @@ void cleanupLocation(void*, uint32_t id) {
 }  // namespace
 
 bool available() {
-  if (owner) return module.state() == GpsDriverModule::State::Active &&
+  if (owner) return gnssBound && module.state() == GpsDriverModule::State::Active &&
                     RuntimeDevices::systemRegistry().valid(positionLease, invocation);
   return publishDevice(gpsKernelAvailable() && validateGpsDriverPackage());
 }
@@ -63,7 +63,7 @@ bool start() {
   if (!context || !context->running(context->id())) return false;
   if (owner) {
     return owner == xTaskGetCurrentTaskHandle() && invocation == context->id() &&
-           module.state() == GpsDriverModule::State::Active &&
+           gnssBound && module.state() == GpsDriverModule::State::Active &&
            RuntimeDevices::systemRegistry().valid(positionLease, invocation);
   }
   if (!available()) return false;
@@ -172,17 +172,28 @@ bool read(t5_gps_state_t* state) {
     stop();
     return false;
   }
-  if (gnssBound) {
-    const auto decision = nativeGnssBeforePoll(invocation);
-    if (decision == RuntimeStreams::LiveGnssSession::PollDecision::Backpressured ||
-        decision == RuntimeStreams::LiveGnssSession::PollDecision::Retried) {
-      *state = lastObservation; // Never poll/overwrite a pending observation.
-      return true;
-    }
-    if (decision != RuntimeStreams::LiveGnssSession::PollDecision::Poll) {
-      nativeGnssDisconnect(invocation);
-      gnssBound = false;
-    }
+  // A started GPS provider is never allowed to fall back to an unbound legacy
+  // read path. On stream loss, drop cached coordinates and release UART/power.
+  if (!gnssBound) {
+    std::memset(state, 0, sizeof(*state));
+    state->status = T5_GPS_STATUS_OFF;
+    stop();
+    return false;
+  }
+  const auto decision = nativeGnssBeforePoll(invocation);
+  if (decision == RuntimeStreams::LiveGnssSession::PollDecision::Backpressured ||
+      decision == RuntimeStreams::LiveGnssSession::PollDecision::Retried) {
+    *state = lastObservation; // Never poll/overwrite a pending observation.
+    return true;
+  }
+  if (decision != RuntimeStreams::LiveGnssSession::PollDecision::Poll) {
+    // BeforePoll can discover a removed device or revoked source grant. Stop
+    // before attempting another hardware read; never leave a streamless ELF.
+    std::memset(state, 0, sizeof(*state));
+    state->status = T5_GPS_STATUS_OFF;
+    stop();
+    LOG_ERR("DRIVER", "location.fix.v1 unavailable before GNSS poll");
+    return false;
   }
   // The synchronous ELF driver is called ONLY on its claiming task and OUTSIDE
   // the stream mutex. The bridge copies this observation before publishing.
@@ -194,12 +205,16 @@ bool read(t5_gps_state_t* state) {
     return false;
   }
   lastObservation = *state;
-  if (gnssBound) {
-    const auto result = nativeGnssPublishCopy(invocation, lastObservation, millis());
-    if (result == T5_STREAM_DISCONNECTED) {
-      nativeGnssDisconnect(invocation);
-      gnssBound = false;
-    }
+  const auto result = nativeGnssPublishCopy(invocation, lastObservation, millis());
+  // AGAIN is normal for no fix, a duplicate, or bounded backpressure (which
+  // retains the copied observation for retry). Every other non-OK result is
+  // a broken semantic stream contract and must unwind the physical provider.
+  if (result != T5_STREAM_OK && result != T5_STREAM_AGAIN) {
+    std::memset(state, 0, sizeof(*state));
+    state->status = T5_GPS_STATUS_OFF;
+    stop();
+    LOG_ERR("DRIVER", "location.fix.v1 publish failed: %ld", static_cast<long>(result));
+    return false;
   }
   return true;
 }
