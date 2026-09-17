@@ -16,6 +16,7 @@ static bool reject_spiram = false;
 static bool reject_hash = false;
 static const uint8_t* original = nullptr;
 static uint8_t expected_payload[] = {0x7f, 'E', 'L', 'F', 1, 1, 1, 0x44, 0x19};
+static const char* const signed_imports[] = {"esp_intr_alloc", "malloc"};
 
 extern "C" void* heap_caps_malloc(size_t size, uint32_t capabilities) {
   ++allocations;
@@ -30,21 +31,26 @@ extern "C" int mbedtls_sha256_ret(const unsigned char* data, size_t length,
   return SHA256(data, length, result) ? 0 : -1;
 }
 extern "C" int esp_elf_relocate_privileged_verified_v1(esp_elf_t* image,
-                                                         const uint8_t* bytes, size_t length) {
+                                                         const uint8_t* bytes, size_t length,
+                                                         const char* const* imports,
+                                                         size_t import_count) {
   assert(image);
   ++relocations;
   /* The only permitted relocation input is a private copy of precisely the
-   * digest-checked bytes. Deliberately fail before any native code can run. */
+   * digest-checked bytes with exactly the authenticated import declaration.
+   * Deliberately fail before any native code can run. */
   assert(bytes != original);
   assert(length == sizeof(expected_payload));
   assert(std::memcmp(bytes, expected_payload, length) == 0);
+  assert(imports == signed_imports && import_count == 2);
   return -1;
 }
 extern "C" void esp_elf_deinit(esp_elf_t*) {}
 
 static bool attempt(const uint8_t* image, size_t length, const uint8_t digest[32]) {
   RuntimeProviders::ModuleV2 module;
-  return module.loadVerifiedBytes(image, length, digest, "fixture-signed",
+  return module.loadVerifiedBytes(image, length, digest,
+                                  signed_imports, 2, "fixture-signed",
                                   "cap.generic", 1, nullptr, 0);
 }
 
@@ -84,6 +90,10 @@ int main() {
   assert(!attempt(nullptr, sizeof(candidate), signed_digest));
   assert(!attempt(candidate, sizeof(candidate), nullptr));
   assert(!attempt(candidate, 8u * 1024u * 1024u + 1u, signed_digest));
+  RuntimeProviders::ModuleV2 missing;
+  assert(!missing.loadVerifiedBytes(candidate, sizeof(candidate), signed_digest,
+                                    nullptr, 0, "fixture-signed", "cap.generic", 1,
+                                    nullptr, 0));
   assert(relocations == 2);
-  std::puts("Privileged ELF: private snapshot, signed digest gate, failure paths PASS");
+  std::puts("Privileged ELF: private snapshot, digest and mandatory import gates PASS");
 }
