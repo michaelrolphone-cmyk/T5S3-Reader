@@ -31,8 +31,8 @@ int main(int argc, char **argv) {
   assert(!graph.shutdown()); // live grant and source cannot be silently revoked
   assert(!power->release_host(power->context, source + 1u));
   assert(power->release_host(power->context, source));
-  assert(power->quiesce(power->context) == false); // lower I2C claim still open
-  assert(graph.release(power_grant)); // quiesce releases real lower claim
+  assert(power->quiesce(power->context)); // releases the last real lower claim
+  assert(graph.release(power_grant));
   assert(!graph.interfaceFor(power_grant));
   assert(graph.shutdown()); // clock and mock bus unload after last dependent
 
