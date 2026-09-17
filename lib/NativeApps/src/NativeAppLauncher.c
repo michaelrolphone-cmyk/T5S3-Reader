@@ -25,6 +25,7 @@
 #include "T5NetworkApi.h"
 #include "T5OpdsApi.h"
 #include "T5OtaApi.h"
+#include "T5PackageApi.h"
 #include "T5ProgramEspRomApi.h"
 #include "T5SdFirmwareApi.h"
 #include "T5SerialPortApi.h"
@@ -58,11 +59,33 @@ const char *native_app_current_path(void)
     return s_current_path;
 }
 
+// Signed packages intentionally install as INACTIVE until the privileged ELF
+// executor snapshots and authenticates precisely the bytes it relocates.
+// Neither File Browser nor an ordinary app may launch the managed directories
+// with a raw dlopen. Legacy loose /sd/Apps/*.elf paths remain compatible.
+static bool signed_managed_path(const char *path)
+{
+    static const char *roots[] = {
+        "/sd/Apps/", "/sd/Drivers/", "/sd/Services/", "/sd/Providers/"
+    };
+    if (strncmp(path, "/sd/Packages/", sizeof("/sd/Packages/") - 1) == 0) return true;
+    for (size_t i = 0; i < sizeof(roots) / sizeof(roots[0]); ++i) {
+        const size_t prefix = strlen(roots[i]);
+        if (strncmp(path, roots[i], prefix) == 0 && strchr(path + prefix, '/') != NULL)
+            return true;
+    }
+    return false;
+}
+
 esp_err_t launch_elf_app(const char *sd_path)
 {
     if (sd_path == NULL || strncmp(sd_path, "/sd/", 4) != 0 || sd_path[4] == '\0') {
         ESP_LOGE(TAG, "Expected an absolute SD VFS file path");
         return ESP_ERR_INVALID_ARG;
+    }
+    if (signed_managed_path(sd_path)) {
+        ESP_LOGE(TAG, "Signed-managed executable requires private authenticated loader");
+        return ESP_ERR_NOT_SUPPORTED;
     }
     if (atomic_flag_test_and_set_explicit(&s_running, memory_order_acquire)) {
         ESP_LOGE(TAG, "An ELF application is already running");
@@ -91,6 +114,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_language_get_api),
         ESP_ELFSYM_EXPORT(t5_opds_get_api),
         ESP_ELFSYM_EXPORT(t5_ota_get_api),
+        ESP_ELFSYM_EXPORT(t5_package_get_api),
         ESP_ELFSYM_EXPORT(t5_program_esp_rom_get_api),
         ESP_ELFSYM_EXPORT(t5_sd_firmware_get_api),
         ESP_ELFSYM_EXPORT(t5_serial_port_get_api),
