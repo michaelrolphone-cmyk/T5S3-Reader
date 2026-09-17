@@ -55,6 +55,9 @@ SemaphoreHandle_t txMutex = nullptr;
 SemaphoreHandle_t hostStopped = nullptr;
 volatile bool stopRequested = false;
 volatile bool teardownFailed = false;
+// A wait timeout means the old task is STILL cleaning up, not that cleanup
+// failed. Only the host task may decide whether teardown is irrecoverable.
+volatile bool shutdownTimedOut = false;
 volatile uint8_t pendingAddress = 0;
 volatile bool deviceGone = false;
 volatile bool controlDone = false;
@@ -742,28 +745,38 @@ void handleControlCompletion() {
 bool teardownHostLibrary() {
   esp_err_t freeRc = usb_host_device_free_all();
   bool allFree = freeRc == ESP_OK;
-  if (freeRc != ESP_OK && freeRc != ESP_ERR_NOT_FINISHED) return false;
+  if (freeRc != ESP_OK && freeRc != ESP_ERR_NOT_FINISHED) {
+    LOG_ERR("USB", "USBREF phase=host_shutdown result=failed step=free_all error=%d", (int)freeRc);
+    return false;
+  }
   for (int i = 0; !allFree && i < 500; ++i) {
     uint32_t flags = 0;
-    (void)usb_host_lib_handle_events(pdMS_TO_TICKS(10), &flags);
+    const esp_err_t eventsRc = usb_host_lib_handle_events(pdMS_TO_TICKS(10), &flags);
+    if (eventsRc != ESP_OK) {
+      LOG_ERR("USB", "USBREF phase=host_shutdown result=failed step=events error=%d", (int)eventsRc);
+      return false;
+    }
     if (flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS) {
       freeRc = usb_host_device_free_all();
       if (freeRc == ESP_OK) allFree = true;
-      else if (freeRc != ESP_ERR_NOT_FINISHED) return false;
+      else if (freeRc != ESP_ERR_NOT_FINISHED) {
+        LOG_ERR("USB", "USBREF phase=host_shutdown result=failed step=free_all error=%d", (int)freeRc);
+        return false;
+      }
     }
     if (flags & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE) allFree = true;
   }
-  esp_err_t uninstallRc = usb_host_uninstall();
-  if (uninstallRc == ESP_OK) return true;
-  for (int i = 0; i < 100; ++i) {
-    uint32_t flags = 0;
-    (void)usb_host_lib_handle_events(pdMS_TO_TICKS(10), &flags);
-    if (flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS) (void)usb_host_device_free_all();
-    if (flags & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE) {
-      uninstallRc = usb_host_uninstall();
-      if (uninstallRc == ESP_OK) return true;
-    }
+  // Uninstall is unsafe until ALL_FREE (or free_all reports ESP_OK).
+  if (!allFree) {
+    LOG_ERR("USB", "USBREF phase=host_shutdown result=failed step=wait_all_free error=timeout");
+    return false;
   }
+  esp_err_t uninstallRc = usb_host_uninstall();
+  if (uninstallRc == ESP_OK) {
+    LOG_INF("USB", "USBREF phase=host_shutdown result=ok");
+    return true;
+  }
+  LOG_ERR("USB", "USBREF phase=host_shutdown result=failed step=uninstall error=%d", (int)uninstallRc);
   return false;
 }
 
@@ -814,7 +827,11 @@ finish_client:
   if (client) {
     const esp_err_t deregisterRc = usb_host_client_deregister(client);
     if (deregisterRc == ESP_OK) client = nullptr;
-    else { teardownFailed = true; setError(-1140); }
+    else {
+      teardownFailed = true;
+      LOG_ERR("USB", "USBREF phase=host_shutdown result=failed step=deregister error=%d", (int)deregisterRc);
+      setError(-1140);
+    }
   }
 finish_host:
   if (hostInstalled && !client && !teardownHostLibrary()) {
@@ -829,8 +846,19 @@ finish_power:
     teardownFailed = true;
     setError(-1143);
   }
-  (void)setOtgPower(false);
+  if (!setOtgPower(false)) {
+    LOG_ERR("USB", "USBREF phase=host_shutdown result=failed step=vbus_off");
+    teardownFailed = true;
+    setError(-1144);
+  }
   restoreDebugUsbSerial();
+  if (shutdownTimedOut) {
+    LOG_INF("USB", "USBREF phase=host_shutdown result=%s after_wait_timeout",
+            teardownFailed ? "failed" : "recovered");
+    shutdownTimedOut = false;
+  }
+  // The host task alone decides if cleanup failed. The caller's timeout is
+  // transient: a later successful completion must permit a fresh session.
   running = false;
   hostTaskHandle = nullptr;
   if (hostStopped) xSemaphoreGive(hostStopped);
@@ -846,12 +874,23 @@ bool validCoding(const t5_usb_line_coding_t* coding) {
 }
 
 bool serialStart(const t5_usb_line_coding_t* coding) {
-  if (!active() || !validCoding(coding) || teardownFailed) return false;
+  if (!active() || !validCoding(coding)) return false;
+  if (teardownFailed) {
+    LOG_ERR("USB", "USBREF phase=host_start result=denied reason=previous-teardown-failed");
+    return false;
+  }
   if (running) {
-    if (stopRequested) return false;
+    if (stopRequested) {
+      LOG_INF("USB", "USBREF phase=host_start result=retry reason=previous-shutdown-in-progress");
+      return false;
+    }
     requestedCoding = *coding;
     portENTER_CRITICAL(&stateMux); state.line_coding = *coding; portEXIT_CRITICAL(&stateMux);
     return true;
+  }
+  if (shutdownTimedOut) {
+    LOG_INF("USB", "USBREF phase=host_start result=retry reason=previous-shutdown-in-progress");
+    return false;
   }
   if (!hostStopped) hostStopped = xSemaphoreCreateBinary();
   if (!hostStopped) { setError(ESP_ERR_NO_MEM); return false; }
@@ -860,7 +899,11 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
   requestedCoding = *coding;
   portENTER_CRITICAL(&stateMux); state.line_coding = *coding; portEXIT_CRITICAL(&stateMux);
   suspendDebugUsbSerial();
-  if (!setOtgPower(true)) { restoreDebugUsbSerial(); setError(-1001); return false; }
+  if (!setOtgPower(true)) {
+    LOG_ERR("USB", "USBREF phase=host_start result=failed step=vbus_on");
+    restoreDebugUsbSerial(); setError(-1001); return false;
+  }
+  LOG_INF("USB", "USBREF phase=host_start result=vbus_on");
   if (!txMutex) txMutex = xSemaphoreCreateMutex();
   if (!txMutex) {
     (void)setOtgPower(false);
@@ -894,7 +937,11 @@ void serialStop() {
   if (client) (void)usb_host_client_unblock(client);
   (void)usb_host_lib_unblock();
   if (!hostStopped || xSemaphoreTake(hostStopped, pdMS_TO_TICKS(kUsbShutdownTimeoutMs)) != pdTRUE) {
-    teardownFailed = true;
+    // The task may finish after this wait. Do NOT set teardownFailed here:
+    // that used to skip driver unloading and block every later start forever.
+    shutdownTimedOut = true;
+    LOG_ERR("USB", "USBREF phase=host_shutdown result=timeout task-still-running=%u",
+            static_cast<unsigned>(running));
     setError(-1142);
     return;
   }
