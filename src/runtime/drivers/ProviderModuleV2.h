@@ -16,9 +16,22 @@ class ModuleV2 final {
   ModuleV2() = default;
   ModuleV2(const ModuleV2&) = delete;
   ModuleV2& operator=(const ModuleV2&) = delete;
+  /* Legacy/unprivileged loader, retained for host graph tests and modules not
+   * requiring OS/CPU privilege. Never grants privileged imports. */
   bool load(const char* validatedElf, const char* expectedId,
             const char* expectedCapability, uint32_t expectedApi,
             const risc_provider_dependency_v1* dependencies, size_t count);
+  /* PRIVATE firmware admission path. The caller MUST authenticate the signed
+   * package and manifest, verify exact imports and ABI version, and supply the
+   * SAME immutable verified bytes. Not exposed through an ELF host API. This
+   * function does not itself prove signing or physical ownership. It requires
+   * a quiesce callback, then binds scoped privileged OS/CPU symbols only while
+   * relocating this particular ELF. Host builds deliberately deny this path. */
+  bool loadVerifiedBytes(const uint8_t* verifiedBytes, size_t length,
+                         const char* expectedId, const char* expectedCapability,
+                         uint32_t expectedApi,
+                         const risc_provider_dependency_v1* dependencies,
+                         size_t count);
   bool pinConsumer();
   bool unpinConsumer();
   bool unload();
@@ -26,10 +39,15 @@ class ModuleV2 final {
   State state() const { return state_; }
   uint32_t consumers() const { return consumers_; }
  private:
+  bool activateMapped(risc_driver_get_v2_fn get, const char* expectedId,
+                      const char* expectedCapability, uint32_t expectedApi,
+                      const risc_provider_dependency_v1* dependencies, size_t count);
+  bool closeMapped();
   void* handle_ = nullptr;
   const risc_driver_v2* driver_ = nullptr;
   const void* api_ = nullptr;
   uint32_t consumers_ = 0;
+  bool privileged_image_ = false;
   State state_ = State::Absent;
 };
 }  // namespace RuntimeProviders
