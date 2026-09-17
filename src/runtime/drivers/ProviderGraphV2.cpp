@@ -85,8 +85,12 @@ bool GraphV2::activate(size_t index) {
                nodes_[indexOfDependency].module.capability()};
   }
   if (!node.module.load(node.spec.verifiedElfPath, node.spec.id,
-                        node.spec.provides, node.spec.api, deps,
+                        node.spec.provides, node.spec.api,
+                        node.spec.requirementCount ? deps : nullptr,
                         node.spec.requirementCount)) {
+    // The module loader may retain Failed state after a clean dlclose. Reset
+    // that state so the graph can roll back and retry without leaking pins.
+    (void)node.module.unload();
     releaseDependencies(index);
     node.visit = Visit::Idle;
     return false;
@@ -139,9 +143,12 @@ bool GraphV2::shutdown() {
     for (size_t i = 0; i < count_; ++i)
       if (nodes_[i].visit == Visit::Active &&
           !nodes_[i].module.consumers() && !deactivateIfUnused(i)) return false;
-  for (size_t i = 0; i < count_; ++i)
-    if (nodes_[i].visit != Visit::Idle ||
-        nodes_[i].module.state() != ModuleV2::State::Absent) return false;
+  for (size_t i = 0; i < count_; ++i) {
+    if (nodes_[i].visit != Visit::Idle) return false;
+    if (nodes_[i].module.state() == ModuleV2::State::Failed &&
+        !nodes_[i].module.unload()) return false;
+    if (nodes_[i].module.state() != ModuleV2::State::Absent) return false;
+  }
   return true;
 }
 }  // namespace RuntimeProviders
