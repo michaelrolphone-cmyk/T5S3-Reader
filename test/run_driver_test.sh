@@ -33,6 +33,12 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo/src" "$repo/test/resources/package_transaction_test.cpp" \
   -o "$build/package-transaction-test"
 "$build/package-transaction-test"
+# Interrupted cleanup can leave only part of a managed backup. Recheck the
+# published target and retry managed-only cleanup; refuse unknown content.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/package_recovery_test.cpp" \
+  -o "$build/package-recovery-test"
+"$build/package-recovery-test"
 # Generic provider API metadata and transactionally bound non-authorizing
 # dependencies must both pass before an ELF is mapped.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
