@@ -43,6 +43,28 @@ void acceptsFourKinds() {
   }
 }
 
+void ordinaryPackageWithoutSigning() {
+  for (Kind kind : {Kind::Application, Kind::Driver, Kind::Service, Kind::Provider}) {
+    Fixture f;
+    f.package.identity.kind = kind;
+    f.package.securityVersion = 0; // Not an implicit security-floor enrollment.
+    f.runtime.minimumSecurityVersion = 0; // Explicit ordinary package policy.
+    assert(f.check() == PreflightResult::ReadyForContentVerification);
+    assert(f.resolveCalls == 2);
+    f.resolveCalls = 0;
+    f.package.minRuntimeApi = 9;
+    assert(f.check() == PreflightResult::IncompatibleRuntime);
+    assert(f.resolveCalls == 0);
+    f.package.minRuntimeApi = 2;
+    f.entries[0].sha256 = "invalid";
+    assert(f.check() == PreflightResult::InvalidEntry);
+    assert(f.resolveCalls == 0);
+    f.entries[0].sha256 = kDigest;
+    f.runtime.minimumSecurityVersion = 1;
+    assert(f.check() == PreflightResult::SecurityRollback);
+  }
+}
+
 void rejectsIdentityAndCompatibility() {
   Fixture f;
   f.package.identity.legacyVersion = true;
@@ -140,9 +162,10 @@ void versionPolicy() {
 
 int main() {
   acceptsFourKinds();
+  ordinaryPackageWithoutSigning();
   rejectsIdentityAndCompatibility();
   rejectsUnsafeEntries();
   rejectsInvalidDependenciesBeforeLookup();
   versionPolicy();
-  std::puts("Package preflight: four kinds, bounded entries, dependencies and numeric version policy passed");
+  std::puts("Package preflight: four kinds, ordinary unsigned compatibility, bounded entries, dependencies and numeric version policy passed");
 }
