@@ -1,4 +1,5 @@
 #include "runtime/drivers/UsbCdcDriverModule.h"
+#include "runtime/packages/PackageUseGate.h"
 #include <cassert>
 #include <cstdint>
 #include <iostream>
@@ -12,15 +13,24 @@ static const uint8_t config[] = {
 };
 int main(int argc, char** argv) {
   assert(argc == 3);
+  auto& gate = RuntimePackages::systemPackageUseGate();
+  constexpr const char* target = "/Drivers/usb-cdc-acm";
   UsbCdcDriverModule module;
   t5_usb_cdc_binding_v1 bound{};
+  assert(!gate.pinned(target));
   assert(!module.probe(config, sizeof(config), 0, 0, &bound));
   assert(!module.load(nullptr));
   assert(module.state() == UsbCdcDriverModule::State::Absent);
   assert(!module.load(argv[2])); // The GPS driver must not satisfy USB CDC.
   assert(module.state() == UsbCdcDriverModule::State::Failed);
+  assert(!gate.pinned(target)); // Failed ABI and successful dlclose drop the pin.
+  assert(gate.beginReplacement(target));
+  assert(!module.load(argv[1])); // An in-progress update blocks the loader.
+  assert(gate.endReplacement(target));
   assert(module.load(argv[1]));
   assert(module.state() == UsbCdcDriverModule::State::Active);
+  assert(gate.pinned(target));
+  assert(!gate.beginReplacement(target)); // Mapped ELF cannot be replaced.
   assert(!module.load(argv[1]));
   assert(module.probe(config, sizeof(config), 0, 0, &bound));
   assert(bound.data_interface == 3 && bound.ep_in == 0x81 && bound.ep_out == 2);
@@ -30,11 +40,14 @@ int main(int argc, char** argv) {
   assert(module.controlLines(true, false, &lines) && lines == 1);
   assert(!module.controlLines(true, true, nullptr));
   assert(module.unload());
+  assert(!gate.pinned(target));
   assert(module.state() == UsbCdcDriverModule::State::Absent);
   assert(!module.probe(config, sizeof(config), 0, 0, &bound));
   assert(!module.lineCoding(115200, 8, 0, 1, payload));
   assert(module.unload());
   assert(module.load(argv[1]));
+  assert(gate.pinned(target));
   assert(module.unload());
-  std::cout << "USB CDC runtime loader tests passed\n";
+  assert(!gate.pinned(target));
+  std::cout << "USB CDC runtime loader and package pin tests passed\n";
 }

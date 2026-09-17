@@ -1,17 +1,28 @@
 #include "GpsDriverModule.h"
+#include "runtime/packages/PackageUseGate.h"
 #include <cstring>
 extern "C" {
 #include <esp_dlfcn.h>
+}
+
+namespace {
+constexpr const char* kPackageRoot = "/Drivers/gps-nmea";
 }
 
 bool GpsDriverModule::start(const char* path, const t5_kernel_io_v1* host) {
   if (state_ == State::Active) return true;
   // A failed dlclose retains the handle; never replace it or run it again.
   if (handle_ || !path || !host) return false;
+  // Reserve before mapping: a package publisher cannot rename this generation
+  // between the verification/loader transition and dlopen.
+  if (!RuntimePackages::systemPackageUseGate().pin(kPackageRoot)) return false;
   state_ = State::Failed;
   (void)dlerror();
   handle_ = dlopen(path, RTLD_NOW);
-  if (!handle_) return false;
+  if (!handle_) {
+    (void)RuntimePackages::systemPackageUseGate().unpin(kPackageRoot);
+    return false;
+  }
   state_ = State::Loaded;
   (void)dlerror();
   auto get = reinterpret_cast<t5_driver_get_fn>(dlsym(handle_, "t5_driver_get"));
@@ -39,17 +50,28 @@ bool GpsDriverModule::start(const char* path, const t5_kernel_io_v1* host) {
   state_ = State::Failed;
   return false;
 }
+
 bool GpsDriverModule::stop() {
   if (driver_) driver_->stop();
   gps_ = nullptr;
   driver_ = nullptr;
+  const bool wasMapped = handle_ != nullptr;
   if (handle_) {
-    if (dlclose(handle_) != 0) { state_ = State::Failed; return false; }
+    if (dlclose(handle_) != 0) {
+      // Retain the pin as well as the ELF handle when dlclose fails.
+      state_ = State::Failed;
+      return false;
+    }
     handle_ = nullptr;
+  }
+  if (wasMapped && !RuntimePackages::systemPackageUseGate().unpin(kPackageRoot)) {
+    state_ = State::Failed;
+    return false;
   }
   state_ = State::Absent;
   return true;
 }
+
 bool GpsDriverModule::read(t5_gps_state_t* state) {
   if (!state) return false;
   std::memset(state, 0, sizeof(*state));

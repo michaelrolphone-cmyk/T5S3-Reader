@@ -2,6 +2,8 @@
 #include <AppManifestRules.h>
 #include <ArduinoJson.h>
 #include <HalStorage.h>
+#include "runtime/packages/PackageIdentity.h"
+#include "runtime/packages/PackageJsonGuard.h"
 #include <cstring>
 
 #ifndef CROSSPOINT_COMPAT_VERSION
@@ -14,7 +16,8 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
   out = {};
   if (appVersion) appVersion->clear();
   if (requirements) *requirements = {};
-  if (json.empty() || json.size() > 2048 || json.find('\0') != std::string::npos) return false;
+  if (json.empty() || json.size() > 2048 || json.find('\0') != std::string::npos ||
+      !RuntimePackages::safePackageJsonObject(json.data(), json.size())) return false;
   JsonDocument doc;
   if (deserializeJson(doc, json) || !doc.is<JsonObject>()) return false;
   const char* keys[] = {"display_name", "file_name", "min_firmware_version", "icon"};
@@ -39,6 +42,24 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
     if (appVersion) appVersion->assign(value, n);
   } else if (!versionNode.isNull()) {
     return false;
+  }
+
+  // Legacy manifests may omit both integrity declarations. New release
+  // manifests provide both; neither field grants trust without hashing the
+  // actual ELF and authenticating the manifest through an independent policy.
+  const JsonVariantConst sizeNode = doc["size_bytes"];
+  const JsonVariantConst digestNode = doc["sha256"];
+  if (sizeNode.isNull() != digestNode.isNull()) return false;
+  if (!sizeNode.isNull()) {
+    if (!sizeNode.is<unsigned>() || !digestNode.is<const char*>()) return false;
+    const unsigned bytes = sizeNode.as<unsigned>();
+    if (bytes < 52 || bytes > 1024u * 1024u) return false;
+    const char* digest = digestNode.as<const char*>();
+    if (std::strlen(digest) != 64) return false;
+    for (unsigned i = 0; i < 64; ++i) {
+      if (!((digest[i] >= '0' && digest[i] <= '9') ||
+            (digest[i] >= 'a' && digest[i] <= 'f'))) return false;
+    }
   }
 
   // Runtime parsing intentionally accepts pre-versioning sidecars so firmware can
@@ -80,6 +101,20 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
   bool regular;
   if (!t5_safe_elf_name(out.file_name) || !t5_parse_version(out.min_firmware_version, version, false) ||
       !t5_parse_icon(out.icon, &regular, &cp)) return false;
+
+  // New typed manifests share the same bounded package identity contract as
+  // drivers. Existing untyped app sidecars derive a stable ID from the ELF
+  // basename and may lack a version; neither form implies signing or trust.
+  const JsonVariantConst typeNode = doc["type"];
+  if (!typeNode.isNull() && (!typeNode.is<const char*>() ||
+      std::strcmp(typeNode.as<const char*>(), "application") != 0)) return false;
+  const JsonVariantConst idNode = doc["id"];
+  if (!idNode.isNull() && !idNode.is<const char*>()) return false;
+  RuntimePackages::Identity identity{};
+  if (!RuntimePackages::makeIdentity(RuntimePackages::Kind::Application,
+      idNode.isNull() ? nullptr : idNode.as<const char*>(),
+      versionNode.isNull() ? nullptr : versionNode.as<const char*>(),
+      out.file_name, true, &identity)) return false;
 
   // Compatibility must use the clean semantic release version, not the display/build
   // version. Development and RC builds append branch/hash metadata to CROSSPOINT_VERSION;

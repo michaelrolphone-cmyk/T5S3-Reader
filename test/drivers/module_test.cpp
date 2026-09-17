@@ -1,4 +1,5 @@
 #include "runtime/drivers/GpsDriverModule.h"
+#include "runtime/packages/PackageUseGate.h"
 #include <cassert>
 #include <cmath>
 #include <cstring>
@@ -36,22 +37,35 @@ std::string nmea(const std::string& body) {
 }
 int main(int argc, char** argv) {
   assert(argc == 3);
+  auto& gate = RuntimePackages::systemPackageUseGate();
+  constexpr const char* target = "/Drivers/gps-nmea";
   Device d;
   t5_kernel_io_v1 host = {1, sizeof(host), &d, ticks, wait, acquire, release, open, close, receive};
   GpsDriverModule module;
   t5_gps_state_t state{};
+  assert(!gate.pinned(target));
   assert(!module.start("/does/not/exist", &host));
+  assert(!gate.pinned(target));
   assert(!module.start(argv[2], &host)); // Wrong driver ABI must never acquire hardware.
+  assert(!gate.pinned(target));
   assert(d.acquires == 0);
   host.api_version = 2;
   assert(!module.start(argv[1], &host));
+  assert(!gate.pinned(target));
   host.api_version = 1;
   d.failPower = true;
   assert(!module.start(argv[1], &host) && !d.power);
+  assert(!gate.pinned(target));
   d.failPower = false; d.failUart = true;
   assert(!module.start(argv[1], &host) && !d.power && !d.uart && d.acquires == d.releases);
+  assert(!gate.pinned(target));
   d.failUart = false;
+  assert(gate.beginReplacement(target));
+  assert(!module.start(argv[1], &host)); // Update reservation excludes dlopen.
+  assert(gate.endReplacement(target));
   assert(module.start(argv[1], &host));
+  assert(gate.pinned(target));
+  assert(!gate.beginReplacement(target)); // Active module cannot be replaced.
   assert(d.power && d.uart && d.baud == 9600);
   assert(module.start(argv[1], &host)); // Start is idempotent, no second lease.
   assert(module.read(&state) && state.status == T5_GPS_STATUS_SEARCHING);
@@ -83,14 +97,18 @@ int main(int argc, char** argv) {
   d.clock = 50;
   assert(module.read(&state) && state.fix_valid && state.age_ms == 151); // Timer wrap.
   assert(module.stop() && !d.power && !d.uart && d.acquires == d.releases);
+  assert(!gate.pinned(target));
   assert(module.read(&state) && state.status == T5_GPS_STATUS_OFF);
   assert(module.stop());
   assert(module.start(argv[1], &host)); // Reload genuinely initializes fresh ELF state.
+  assert(gate.pinned(target));
   assert(module.read(&state) && !state.receiver_detected && !state.fix_valid);
   d.failUart = true; d.clock += 1600;
   assert(!module.read(&state) && !d.power && !d.uart);
+  assert(!gate.pinned(target)); // Read failure closed its ELF and dropped its pin.
   assert(module.state() == GpsDriverModule::State::Failed);
   assert(d.acquires == d.releases);
   assert(module.stop());
-  std::cout << "GPS driver dynamic load/parser/lifecycle tests passed\n";
+  assert(!gate.pinned(target));
+  std::cout << "GPS driver dynamic load/parser/lifecycle and package pin tests passed\n";
 }

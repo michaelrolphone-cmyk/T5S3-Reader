@@ -15,6 +15,42 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/lib/NativeApp
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_registry_test.cpp" -o "$build/device-registry-test"
 "$build/device-registry-test"
+# Unified package identity is a bounded, transport-independent contract for
+# app, driver, service and provider metadata. It grants no executable trust.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/package_identity_test.cpp" \
+  -o "$build/package-identity-test"
+"$build/package-identity-test"
+# Reject malformed envelope metadata and unavailable ABI dependencies before
+# reading/executing candidate code; version decisions are numeric and typed.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/package_preflight_test.cpp" \
+  -o "$build/package-preflight-test"
+"$build/package-preflight-test"
+# Reject duplicate JSON keys at every nesting level, escaped key aliases and
+# malformed/unbounded input before ArduinoJson can overwrite a declaration.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/package_json_guard_test.cpp" \
+  -o "$build/package-json-guard-test"
+"$build/package-json-guard-test"
+# The shared directory transaction must retain the last verified generation
+# through rename failures, abrupt resets, corrupt stages and cleanup failures.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/package_transaction_test.cpp" \
+  -o "$build/package-transaction-test"
+"$build/package-transaction-test"
+# Legacy flat App Store layout requires a two-file transaction while existing
+# launch paths are preserved; inject failures at each rename/cleanup boundary.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/package_pair_transaction_test.cpp" \
+  -o "$build/package-pair-transaction-test"
+"$build/package-pair-transaction-test"
+# Interrupted cleanup can leave only part of a managed backup. Recheck the
+# published target and retry managed-only cleanup; refuse unknown content.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/package_recovery_test.cpp" \
+  -o "$build/package-recovery-test"
+"$build/package-recovery-test"
 # Generic provider API metadata and transactionally bound non-authorizing
 # dependencies must both pass before an ELF is mapped.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
@@ -81,9 +117,8 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_event_test.cpp" -o "$build/device-event-test"
 "$build/device-event-test"
-c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
-  -I"$repo/src" "$repo/test/resources/device_subscription_test.cpp" \
-  -o "$build/device-subscription-test"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
+  "$repo/test/resources/device_subscription_test.cpp" -o "$build/device-subscription-test"
 "$build/device-subscription-test"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/usb_serial_projection_test.cpp" -o "$build/usb-projection-test"
@@ -112,3 +147,4 @@ c++ -std=c++17 -Wall -Wextra -Werror -DBOARD_T5S3_PRO \
 bash "$repo/test/run_usb_cdc_driver_test.sh"
 python3 "$repo/test/drivers/package_test.py"
 python3 "$repo/test/drivers/usb_package_test.py"
+python3 "$repo/test/resources/package_integrity_test.py"

@@ -63,6 +63,7 @@ class Packages(unittest.TestCase):
     def test_firmware_install_writable_storage_contract(self):
         root = Path(__file__).resolve().parents[2]
         parser = (root / 'src/runtime/drivers/DriverPackage.cpp').read_text(encoding='utf-8')
+        transaction = (root / 'src/runtime/packages/PackageTransaction.h').read_text(encoding='utf-8')
         vfs = (root / 'lib/NativeApps/src/SdVfs.cpp').read_text(encoding='utf-8')
         hal = (root / 'lib/hal/HalStorage.h').read_text(encoding='utf-8')
         self.assertIn('errno = EROFS;', vfs)
@@ -73,11 +74,19 @@ class Packages(unittest.TestCase):
             self.assertIn(required, parser)
         for api in ('bool rename(', 'bool mkdir(', 'bool rmdir(', 'bool writeFile('):
             self.assertIn(api, hal)
-        self.assertIn('"/sd" + stageElf', parser)
         self.assertIn('"/Drivers/.driver-manager.part"', parser)
-        self.assertIn('ROLLBACK FAILED', parser)
         self.assertIn('ELF validation: SHA-256 mismatch', parser)
         self.assertIn('Storage.exists((storagePath + "/driver.elf").c_str())', parser)
+        # The old two-rename implementation is intentionally gone. The driver
+        # must verify both staged files, use the shared coordinator, and recover
+        # the previous verified directory without writing through the SD VFS.
+        self.assertIn('verify(stage.c_str())', parser)
+        self.assertIn('RuntimePackages::recoverDirectoryTransaction(', parser)
+        self.assertIn('RuntimePackages::publishDirectoryTransaction(', parser)
+        self.assertIn('verifiedDriverDirectory(path, info.id)', parser)
+        self.assertIn('if (!recoverDriverDirectory(id)) return false;', parser)
+        self.assertIn('verify(paths.backup)', transaction)
+        self.assertIn('verify(paths.stage)', transaction)
     def test_release_discovery_diagnostic_guards(self):
         root = Path(__file__).resolve().parents[2]
         parser = (root / 'src/runtime/drivers/DriverPackage.cpp').read_text(encoding='utf-8')

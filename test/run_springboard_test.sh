@@ -5,6 +5,30 @@ binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/test/native_apps/manifest_test.cpp" -o "$binary"
 "$binary"
+# Legacy app pair recovery and mapped-ELF replacement reservations.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo_dir/src" -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/resources/package_app_recovery_index_test.cpp" -o "$binary"
+"$binary"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -pthread -I"$repo_dir/src" \
+  "$repo_dir/test/resources/package_use_gate_test.cpp" -o "$binary"
+"$binary"
+# DEFAULT MVP: ordinary package integrity, common SD/online source contracts,
+# four-kind stage -> verification -> publication and recoverable lifecycle.
+# OpenSSL is used for SHA-256 corruption detection, NOT signing or trust roots.
+for test_case in package_ordinary_stage package_ordinary_installer; do
+  c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -pthread -I"$repo_dir/src" \
+    "$repo_dir/test/resources/${test_case}_test.cpp" -lcrypto -o "$binary"
+  "$binary"
+done
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -pthread -I"$repo_dir/src" \
+  "$repo_dir/test/resources/package_ordinary_transaction_test.cpp" -o "$binary"
+"$binary"
+# The old P-256/provenance/NVS experiment is not a normal build/merge gate.
+# Run test/run_signed_package_experiment.sh explicitly only when requested.
 for pair in \
   "springboard springboard_test" \
   "app_store app_store_test" \
@@ -37,4 +61,5 @@ done
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" "$repo_dir/test/native_apps/image_api_stub.c" -o "$binary"
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
-echo 'Native app regression tests passed, including Settings, Wi-Fi Networks, File Transfer, KOReader Authentication, Manage Fonts, Font Family, Customize Status Bar, Remap Front Buttons, and Time Zone'
+python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
+echo 'Native app regressions passed: ordinary four-kind stage/publication/lifecycle, legacy recovery and app UI (no mandatory package signing).'

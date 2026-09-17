@@ -1,17 +1,28 @@
 #include "UsbCdcDriverModule.h"
+#include "runtime/packages/PackageUseGate.h"
 #include <cstring>
 extern "C" {
 #include <esp_dlfcn.h>
+}
+
+namespace {
+constexpr const char* kPackageRoot = "/Drivers/usb-cdc-acm";
 }
 
 bool UsbCdcDriverModule::load(const char* path) {
   // A failed dlclose retains the handle. Never replace a live or uncertain
   // module or call it after its ABI validation has failed.
   if (handle_ || !path || !path[0]) return false;
+  // Acquire before dlopen; the installer holds the mutually exclusive
+  // replacement reservation through the entire directory transaction.
+  if (!RuntimePackages::systemPackageUseGate().pin(kPackageRoot)) return false;
   state_ = State::Failed;
   (void)dlerror();
   handle_ = dlopen(path, RTLD_NOW);
-  if (!handle_) return false;
+  if (!handle_) {
+    (void)RuntimePackages::systemPackageUseGate().unpin(kPackageRoot);
+    return false;
+  }
   state_ = State::Loaded;
   (void)dlerror();
   auto get = reinterpret_cast<t5_driver_get_fn>(dlsym(handle_, "t5_driver_get"));
@@ -31,8 +42,8 @@ bool UsbCdcDriverModule::load(const char* path) {
           api->probe && api->line_coding && api->control_lines) {
         driver_ = candidate;
         api_ = api;
-        // This class provider contains pure descriptor/protocol logic and
-        // needs no GPS-style serial/power kernel primitives.
+        // This class provider contains descriptor/protocol logic and needs
+        // no GPS-style serial/power kernel primitives.
         if (driver_->start(nullptr)) {
           state_ = State::Active;
           return true;
@@ -49,12 +60,18 @@ bool UsbCdcDriverModule::unload() {
   if (driver_) driver_->stop();
   api_ = nullptr;
   driver_ = nullptr;
+  const bool wasMapped = handle_ != nullptr;
   if (handle_) {
     if (dlclose(handle_) != 0) {
+      // Keep package pinned if the loader retains its mapping.
       state_ = State::Failed;
       return false;
     }
     handle_ = nullptr;
+  }
+  if (wasMapped && !RuntimePackages::systemPackageUseGate().unpin(kPackageRoot)) {
+    state_ = State::Failed;
+    return false;
   }
   state_ = State::Absent;
   return true;
