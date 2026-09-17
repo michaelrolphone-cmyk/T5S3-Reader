@@ -7,7 +7,6 @@
 #include <esp_task_wdt.h>
 
 #include <algorithm>
-#include <cstring>
 #include <string>
 #include <vector>
 
@@ -63,14 +62,19 @@ bool recoverAppInventory() {
   bool allRecovered = true;
   for (const auto& elf : candidates) {
     const std::string target = std::string("/Apps/") + elf;
+    const std::string manifest = target.substr(0, target.size() - 4) + ".json";
+    const bool backedUp = Storage.exists((target + ".bak").c_str()) ||
+                          Storage.exists((manifest + ".bak").c_str());
+    const bool staged = Storage.exists((target + ".part").c_str()) ||
+                        Storage.exists((manifest + ".part").c_str());
+    // A deliberately loose ELF in /Apps without a sidecar or transaction
+    // artifacts is not a managed pair. Preserve the file-browser contract.
+    if (!Storage.exists(manifest.c_str()) && !backedUp && !staged) continue;
     const char* active = native_app_current_path();
     const std::string mapped = std::string("/sd") + target;
-    const std::string manifest = target.substr(0, target.size() - 4) + ".json";
     // Recovery can rename an executable during rollback. Never rename the
     // mapped application out from under the running owner context.
-    if (active && mapped == active &&
-        (Storage.exists((target + ".bak").c_str()) ||
-         Storage.exists((manifest + ".bak").c_str()))) {
+    if (active && mapped == active && backedUp) {
       LOG_ERR("APPSTORE", "Recovery deferred for mapped package %s", elf.c_str());
       allRecovered = false;
       continue;
