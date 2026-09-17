@@ -4,10 +4,11 @@
 #include <cstdint>
 
 /* Generic resolver inputs MUST originate from independently integrity/trust-
- * validated installed manifests. Strings, requirements and verified image
- * bytes must remain valid/immutable while the graph can activate the node.
- * No hardware capability identifier has special meaning in this graph.
- * This is a module-lifetime primitive, NOT a signature/permission API. */
+ * validated installed manifests. Strings and requirements remain valid while
+ * the graph exists; the authenticated ELF digest is copied BY VALUE. The
+ * original file/buffer may change: the loader snapshots bytes and checks the
+ * signed digest before relocation. No capability name is special to core.
+ * This is module lifetime/integrity machinery, NOT signature authorization. */
 namespace RuntimeProviders {
 struct RequirementV2 {
   const char* capability;
@@ -22,12 +23,16 @@ struct SpecV2 {
   size_t requirementCount;
   /* Append-only private verified-loader admission. Zero retains the existing
    * unprivileged path. Nonzero requests a versioned privileged port ABI and
-   * requires the trusted installer to supply immutable authenticated bytes,
-   * the exact-import preflight, dependency pins and execution authorization.
+   * requires the trusted installer to supply authenticated bytes, the exact
+   * signed payload SHA-256, dependency pins and execution authorization.
    * This manifest field is a requirement, NEVER authority in its own right. */
   uint32_t requiredOsCpuAbi = 0;
   const uint8_t* verifiedElfBytes = nullptr;
   size_t verifiedElfLength = 0;
+  /* The trusted package verifier must copy the digest from an authenticated
+   * package receipt, not from an unchecked manifest or writable SD header.
+   * The by-value field prevents subsequent digest-pointer substitution. */
+  uint8_t authenticatedElfSha256[32] = {};
 };
 struct GrantV2 {
   uint32_t slot = 0;       // Zero is invalid.
