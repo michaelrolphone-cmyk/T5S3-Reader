@@ -16,8 +16,11 @@ on:
       - "sdk/driver/RiscUsbVbusV1.h"
       - "sdk/driver/RiscI2cBusV1.h"
       - "sdk/driver/RiscPlatformClockV1.h"
+      - "lib/elf_loader/**"
+      - "lib/NativeApps/src/NativeAppLauncher.c"
       - "src/runtime/drivers/ProviderModuleV2.*"
       - "src/runtime/drivers/ProviderGraphV2.*"
+      - "scripts/native_app_symbols.py"
       - "scripts/build_usb_cdc_v2.py"
       - "scripts/build_usb_cp210x_v2.py"
       - "scripts/build_usb_host_v2.py"
@@ -33,6 +36,8 @@ on:
       - "test/drivers/board_power_t5s3_v2_test.c"
       - "test/drivers/i2c_esp32s3_v2_test.c"
       - "test/drivers/platform_clock_v1_test.c"
+      - "test/drivers/privileged_os_cpu_v1_test.c"
+      - "test/drivers/stub_os_cpu/**"
       - "test/drivers/mock_i2c_bus_elf_v2.c"
       - "test/drivers/vbus_provider_chain_v2_test.cpp"
       - "test/drivers/provider*.cpp"
@@ -42,6 +47,7 @@ on:
       - "test/run_board_power_t5s3_v2_test.sh"
       - "test/run_i2c_esp32s3_v2_test.sh"
       - "test/run_platform_clock_v1_test.sh"
+      - "test/run_privileged_os_cpu_v1_test.sh"
       - "test/run_vbus_provider_chain_v2_test.sh"
       - "test/run_provider_graph_v2_test.sh"
       - "test/run_usb_provider_stack_v2_test.sh"
@@ -58,6 +64,7 @@ jobs:
           python-version: "3.11"
       - name: Exercise independent USB, I2C, clock and three-ELF power dependency graph
         run: |
+          bash test/run_privileged_os_cpu_v1_test.sh
           bash test/run_usb_cdc_v2_test.sh
           bash test/run_usb_cp210x_v2_test.sh
           bash test/run_board_power_t5s3_v2_test.sh
@@ -72,12 +79,12 @@ jobs:
         run: python scripts/probe_usb_controller_esp32s3.py --link-experiment
       - name: Audit physical ELF imports and exact loader relocation support (diagnostic, not installable)
         run: |
-          python scripts/audit_usb_controller_elf.py
+          python scripts/audit_usb_controller_elf.py --strict
           bash test/run_native_app_test.sh dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf
       - name: Build full physical I2C controller and PIC IDF I2C/GPIO implementation (experimental)
         run: |
           python scripts/probe_i2c_esp32s3_v2.py
-          python scripts/audit_i2c_esp32s3_elf.py
+          python scripts/audit_i2c_esp32s3_elf.py --strict
           bash test/run_native_app_test.sh dist/experimental/i2c-esp32s3-v2/driver.elf
       - name: Build experimental Xtensa provider ELFs (not published)
         run: |
@@ -90,7 +97,7 @@ jobs:
           python scripts/build_board_power_t5s3_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-board-power-t5s3-v2/driver.elf
           python scripts/build_platform_clock_v1.py
-          python scripts/audit_usb_controller_elf.py dist/experimental/platform-clock-v1/driver.elf
+          python scripts/audit_usb_controller_elf.py dist/experimental/platform-clock-v1/driver.elf --strict
           bash test/run_native_app_test.sh dist/experimental/platform-clock-v1/driver.elf
       - name: Preserve experimental binaries and compatibility reports for inspection only
         if: always()
