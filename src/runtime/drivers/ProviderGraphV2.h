@@ -3,11 +3,9 @@
 #include <cstddef>
 #include <cstdint>
 
-/* Generic graph owns all registration metadata and candidate bytes. The
- * privileged admission entry is available ONLY to firmware's signed package
- * executor; a digest in a public SpecV2 is not authentication. The ELF loader
- * independently hashes its relocation snapshot and validates symbol tables.
- */
+/* Generic graph owns all registration metadata and dependency interface
+ * tables. Privileged admission belongs only to the trusted signed executor;
+ * a caller-supplied digest/import set must never confer OS/CPU rights. */
 namespace RuntimePackages { class DeviceProviderExecutorV2; }
 namespace RuntimeProviders {
 struct RequirementV2 {
@@ -42,8 +40,7 @@ class GraphV2 final {
   GraphV2(const GraphV2&) = delete;
   GraphV2& operator=(const GraphV2&) = delete;
   ~GraphV2();
-  // Existing ordinary provider admission. Privileged input is ALWAYS denied
-  // here even with a plausible hash/import set; not a signature checker.
+  // Ordinary providers only; forged privileged specs fail regardless of hash.
   bool addVerified(const SpecV2& spec);
   GrantV2 acquire(const char* capability, uint32_t api);
   GrantV2 acquireFrom(const char* providerId, const char* capability, uint32_t api);
@@ -54,10 +51,10 @@ class GraphV2 final {
   size_t liveGrants() const;
 
  private:
-  // The signed package executor is compiled into firmware and is NOT part of
-  // ordinary ELF symbol exports. The executor must verify a real P-256 signer,
-  // identity/floor/profile and exact package-entry hashes before calling here.
-  // C++ friend access is an API boundary, NOT a native address-space sandbox.
+  // Compiled-in firmware executor only; not an ordinary ELF export. The
+  // executor must verify P-256 signer, signed entry hashes, identity, policy,
+  // rollback floor and exact import declarations BEFORE entering this API.
+  // Friendship is an API boundary, not a memory-isolation guarantee.
   friend class ::RuntimePackages::DeviceProviderExecutorV2;
   bool addAuthenticatedPrivileged(const SpecV2& spec);
   bool addChecked(const SpecV2& spec, bool privilegedAdmission);
@@ -69,6 +66,9 @@ class GraphV2 final {
     ModuleV2 module;
     Visit visit = Visit::Idle;
     uint8_t dependencies[kMaxModules]{};
+    // start() may retain this table until quiesce/stop; unlike a temporary
+    // activate() stack array, this remains valid while the ELF is mapped.
+    risc_provider_dependency_v1 boundDependencies[kMaxModules]{};
     size_t acquired = 0;
   };
   struct GrantSlot {
