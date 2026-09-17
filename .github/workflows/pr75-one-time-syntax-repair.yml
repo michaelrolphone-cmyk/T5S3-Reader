@@ -1,0 +1,34 @@
+name: One-time PR75 source syntax repair
+on:
+  push:
+    branches:
+      - fix/usb-serial-hotplug-recovery
+permissions:
+  contents: write
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Correct source and remove temporary workflow
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/native/NativeUsbBridge.cpp')
+          source = path.read_text(encoding='utf-8')
+          before = 'p[offset + 5u) << 8u'
+          after = 'p[offset + 5u] << 8u'
+          if source.count(before) != 1:
+              raise SystemExit('Expected exactly one syntax error; refusing ambiguous edit')
+          path.write_text(source.replace(before, after), encoding='utf-8')
+          Path('.github/workflows/pr75-one-time-syntax-repair.yml').unlink()
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u src/native/NativeUsbBridge.cpp .github/workflows/pr75-one-time-syntax-repair.yml
+          git commit -m 'Fix malformed USB descriptor index in PR 75'
+          git push origin HEAD:fix/usb-serial-hotplug-recovery
