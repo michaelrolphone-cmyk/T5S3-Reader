@@ -33,6 +33,8 @@ on:
       - "test/drivers/board_power_t5s3_v2_test.c"
       - "test/drivers/i2c_esp32s3_v2_test.c"
       - "test/drivers/platform_clock_v1_test.c"
+      - "test/drivers/mock_i2c_bus_elf_v2.c"
+      - "test/drivers/vbus_provider_chain_v2_test.cpp"
       - "test/drivers/provider*.cpp"
       - "test/run_usb_cdc_v2_test.sh"
       - "test/run_usb_cp210x_v2_test.sh"
@@ -40,6 +42,7 @@ on:
       - "test/run_board_power_t5s3_v2_test.sh"
       - "test/run_i2c_esp32s3_v2_test.sh"
       - "test/run_platform_clock_v1_test.sh"
+      - "test/run_vbus_provider_chain_v2_test.sh"
       - "test/run_provider_graph_v2_test.sh"
       - "test/run_usb_provider_stack_v2_test.sh"
       - ".github/workflows/usb-elf-provider-v2.yml"
@@ -53,13 +56,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Exercise independent USB classes, host, board-power, I2C and clock provider logic
+      - name: Exercise independent USB, I2C, clock and three-ELF power dependency graph
         run: |
           bash test/run_usb_cdc_v2_test.sh
           bash test/run_usb_cp210x_v2_test.sh
           bash test/run_board_power_t5s3_v2_test.sh
           bash test/run_i2c_esp32s3_v2_test.sh
           bash test/run_platform_clock_v1_test.sh
+          bash test/run_vbus_provider_chain_v2_test.sh
       - name: Install PlatformIO and target toolchain
         run: |
           python -m pip install platformio==6.1.19
@@ -86,8 +90,10 @@ jobs:
           python scripts/build_board_power_t5s3_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-board-power-t5s3-v2/driver.elf
           python scripts/build_platform_clock_v1.py
+          python scripts/audit_usb_controller_elf.py dist/experimental/platform-clock-v1/driver.elf
           bash test/run_native_app_test.sh dist/experimental/platform-clock-v1/driver.elf
-      - name: Preserve experimental binaries and compatibility report for inspection only
+      - name: Preserve experimental binaries and compatibility reports for inspection only
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: usb-v2-elves-experimental-not-for-install
@@ -95,4 +101,4 @@ jobs:
             dist/experimental/usb-*/
             dist/experimental/i2c-*/
             dist/experimental/platform-clock-v1/
-          if-no-files-found: error
+          if-no-files-found: warn
