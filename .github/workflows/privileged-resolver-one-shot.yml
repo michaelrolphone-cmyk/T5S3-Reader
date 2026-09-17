@@ -15,12 +15,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feature/usb-elf-provider-migration
+          fetch-depth: 2
           persist-credentials: true
       - name: Require reviewed parent and patch exact ELF source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "c36b28044e8c1803dd02f61874a981d77f31b109"
+          test "$(git rev-parse HEAD^)" = "800b4abf1349d899a52bbdf47578c51cec062644"
           python scripts/apply_privileged_resolver_patch_once.py
           python test/drivers/privileged_resolver_v1_test.py
           git diff --check
