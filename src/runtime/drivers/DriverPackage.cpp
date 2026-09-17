@@ -8,6 +8,7 @@
 #include <T5GnssProvider.h>
 #include <mbedtls/sha256.h>
 #include "runtime/packages/PackageIdentity.h"
+#include "runtime/packages/PackageJsonGuard.h"
 #include "runtime/packages/PackageTransaction.h"
 
 #include <cstdio>
@@ -64,6 +65,10 @@ bool parseManifest(const std::string& json, JsonDocument& doc, DriverPackageInfo
     const size_t bytes = json.size();
     if (json.empty()) return manifestReject("empty response", bytes);
     if (bytes > kMaxManifestBytes) return manifestReject("manifest exceeds 4096 bytes", bytes);
+    // Fail before ArduinoJson can overwrite an earlier occurrence of a key.
+    // Neither parsing nor SHA-256 alone authenticates the publisher.
+    if (!RuntimePackages::safePackageJsonObject(json.data(), bytes))
+        return manifestReject("duplicate keys or malformed JSON", bytes);
     const DeserializationError error = deserializeJson(doc, json);
     if (error) {
         LOG_ERR("DRIVER", "Manifest rejected at JSON decoding: %s (received=%u bytes, first_byte=0x%02x)",
@@ -297,7 +302,9 @@ bool getInstalledDriverVersion(const char* id, char* version, size_t capacity) {
     std::string json;
     if (!readFile(("/sd" + storagePath + "/manifest.json").c_str(), json)) return false;
     DriverPackageInfo info{};
-    if (!parseDriverPackageManifest(json, info) || std::strcmp(info.id, id) != 0) return false;
+    // Inventory must not claim a version from a parseable but corrupted ELF.
+    if (!validateDriverPayload(json, ("/sd" + storagePath + "/driver.elf").c_str(), &info) ||
+        std::strcmp(info.id, id) != 0) return false;
     return copyString(info.version, version, capacity);
 }
 
