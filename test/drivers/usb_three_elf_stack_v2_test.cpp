@@ -18,7 +18,9 @@ int main(int argc, char **argv) {
   assert(hostGrant.slot);
   auto *host = static_cast<const risc_usb_host_api_v1 *>(graph.interfaceFor(hostGrant));
   assert(host && host->struct_size >= sizeof(risc_usb_host_discovery_v1));
-  auto *discovery = static_cast<const risc_usb_host_discovery_v1 *>(host);
+  // The discovery ABI is a standard-layout extension whose first member is
+  // the original host API; this is pointer-to-containing-object conversion.
+  auto *discovery = reinterpret_cast<const risc_usb_host_discovery_v1 *>(host);
   size_t processed = 0;
   assert(discovery->poll(host->context, 8, &processed) && processed == 1);
   uint64_t devices[RISC_USB_HOST_MAX_DEVICES]{};
