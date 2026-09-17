@@ -17,6 +17,7 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'Drivers/usb_controller_esp32s3/driver.cpp'
+PHY_GPIO_SOURCE = ROOT / 'Drivers/usb_controller_esp32s3/phy_gpio.c'
 OUTPUT = ROOT / 'dist/experimental/usb-controller-esp32s3'
 SOURCE_CACHE = ROOT / 'dist/idf-usb-source/v4.4.7'
 IDF_TAG = 'v4.4.7'
@@ -27,7 +28,7 @@ USB_SOC_SOURCES = ('usb_phy_periph.c', 'usb_periph.c', 'gpio_periph.c')
 # These are memory-mapped hardware registers, not resident symbols or objects.
 # The provider's PIC code must reference the exact physical addresses from the
 # pinned target SoC linker script. Do not fabricate C data objects at them.
-MMIO_SYMBOLS = ('RTCCNTL', 'SYSTEM', 'USB_DWC', 'USB_SERIAL_JTAG', 'USB_WRAP')
+MMIO_SYMBOLS = ('GPIO', 'RTCCNTL', 'SYSTEM', 'USB_DWC', 'USB_SERIAL_JTAG', 'USB_WRAP')
 EXPORT_MAP = ROOT / 'Drivers/usb_controller_esp32s3/exports.map'
 
 
@@ -142,6 +143,10 @@ def run():
         obj = OUTPUT / f'idf-usb-{index}-{path.name}.o'
         compile_target(argv, entry, path, obj, c_compiler=True, extra=includes)
         objects.append(obj)
+    phy_gpio = OUTPUT / 'phy-gpio.o'
+    compile_target(argv, entry, PHY_GPIO_SOURCE, phy_gpio, c_compiler=True,
+                   extra=(*includes, '-Wall', '-Wextra', '-Werror'))
+    objects.append(phy_gpio)
     elf = OUTPUT / 'controller-link-experiment.elf'
     command = [str(compiler), '-shared', '-nostdlib', '-nostartfiles',
                '-Wl,--hash-style=sysv', '-Wl,--exclude-libs,ALL',
@@ -157,6 +162,8 @@ def run():
     if offenders:
         print('Unresolved USB internals:', *offenders, sep='\n  ', flush=True)
         raise RuntimeError('Physical controller still imports internal USB implementation')
+    if 'gpio_set_drive_capability' in imported:
+        raise RuntimeError('USB PHY GPIO pad configuration leaked back into firmware')
     readelf = tool(compiler, 'readelf')
     symbols = subprocess.check_output([str(readelf), '--dyn-syms', '--wide', str(elf)],
                                       text=True)
@@ -173,7 +180,7 @@ def run():
     dynamic = subprocess.check_output([str(readelf), '-d', str(elf)], text=True)
     if 'TEXTREL' in dynamic:
         raise RuntimeError('Controller contains text/read-only dynamic relocations')
-    print('Physical controller + PIC-built IDF USB/PHY/SOC linked: PASS', flush=True)
+    print('Physical controller + PIC-built IDF USB/PHY/SOC + owned PHY GPIO linked: PASS', flush=True)
     print('Unresolved generic OS/CPU imports and loader/board-power path still require validation.', flush=True)
 
 
