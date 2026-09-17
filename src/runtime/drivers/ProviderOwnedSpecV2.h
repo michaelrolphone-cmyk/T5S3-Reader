@@ -10,12 +10,11 @@
 
 namespace RuntimeProviders {
 
-// Graph-owned snapshot. None of the activation inputs may point into a caller's
-// stack, mutable manifest, SD mapping, or temporary package-verifier receipt.
-// The executable is snapshotted at REGISTRATION as well as at relocation: the
-// second snapshot and digest check in ModuleV2 are intentional TOCTOU defense.
-// Privileged bulk buffers prefer PSRAM so a graph of 16 providers does not
-// reserve 16 * 17 KiB of internal RAM for optional import lists.
+// Graph-owned snapshot. Activation inputs cannot point into a caller stack,
+// SD mapping, mutable manifest, or temporary signed-package receipt.
+// The private loader intentionally takes a SECOND snapshot and checks its
+// digest, so an original caller cannot change the bytes to be relocated.
+// Optional bulk storage prefers PSRAM; no 128-name table lives in every node.
 struct OwnedNodeV2 final {
   static constexpr size_t kImports = 128;
   static constexpr size_t kImportName = 128;
@@ -38,6 +37,7 @@ struct OwnedNodeV2 final {
   OwnedNodeV2& operator=(const OwnedNodeV2&) = delete;
   ~OwnedNodeV2() {
     release(image);
+    if (imported) imported->~ImportStorage();
     release(imported);
   }
 
@@ -88,9 +88,9 @@ struct OwnedNodeV2 final {
         from.verifiedElfLength > 8u * 1024u * 1024u ||
         !from.signedImports || !from.signedImportCount ||
         from.signedImportCount > kImports) return false;
-    imported = static_cast<ImportStorage*>(allocate(sizeof(ImportStorage)));
-    if (!imported) return false;
-    std::memset(imported, 0, sizeof(*imported));
+    void* storage = allocate(sizeof(ImportStorage));
+    if (!storage) return false;
+    imported = new (storage) ImportStorage();
     for (size_t i = 0; i < from.signedImportCount; ++i) {
       if (!copyString(imported->names[i], sizeof(imported->names[i]),
                       from.signedImports[i])) return false;
