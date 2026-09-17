@@ -7,7 +7,7 @@
 #include "private/esp_privileged_os_cpu.h"
 
 /* Synthetic definitions satisfy every *strong* linker reference in the
- * exact inventory. They do not model any hardware or permit ELF execution. */
+ * exact inventory. They do not model hardware or permit ELF execution. */
 #define RISC_OS_CPU_SYMBOL(name) \
     __attribute__((used)) const unsigned char fake_os_symbol_##name[] __asm__(#name) = { 1 };
 #include "private/privileged_os_cpu_symbols_v1.def"
@@ -22,10 +22,12 @@ int main(void)
 {
     active_task = &task_a;
     assert(esp_elf_privileged_os_cpu_symbol_count_v1() == 46u);
+    assert(!esp_elf_privileged_os_cpu_scope_owned_v1());
     assert(esp_elf_privileged_os_cpu_lookup_v1("esp_intr_alloc") == 0u);
     assert(esp_elf_privileged_os_cpu_lookup_v1("__stack_chk_guard") == 0u);
     assert(!esp_elf_privileged_os_cpu_end_v1());
     assert(esp_elf_privileged_os_cpu_begin_v1());
+    assert(esp_elf_privileged_os_cpu_scope_owned_v1());
     assert(!esp_elf_privileged_os_cpu_begin_v1()); /* no reentrant scope */
     assert(esp_elf_privileged_os_cpu_lookup_v1("esp_intr_alloc") ==
            (uintptr_t)fake_os_symbol_esp_intr_alloc);
@@ -39,17 +41,22 @@ int main(void)
     assert(esp_elf_privileged_os_cpu_lookup_v1(NULL) == 0u);
 
     active_task = &task_b;
+    assert(!esp_elf_privileged_os_cpu_scope_owned_v1());
     assert(esp_elf_privileged_os_cpu_lookup_v1("esp_intr_alloc") == 0u);
     assert(!esp_elf_privileged_os_cpu_begin_v1()); /* concurrent denied */
     assert(!esp_elf_privileged_os_cpu_end_v1());   /* cannot steal scope */
     active_task = &task_a;
+    assert(esp_elf_privileged_os_cpu_scope_owned_v1());
     assert(esp_elf_privileged_os_cpu_lookup_v1("esp_intr_alloc") != 0u);
     assert(esp_elf_privileged_os_cpu_end_v1());
+    assert(!esp_elf_privileged_os_cpu_scope_owned_v1());
     assert(esp_elf_privileged_os_cpu_lookup_v1("esp_intr_alloc") == 0u);
     active_task = &task_b;
     assert(esp_elf_privileged_os_cpu_begin_v1());
+    assert(esp_elf_privileged_os_cpu_scope_owned_v1());
     assert(esp_elf_privileged_os_cpu_end_v1());
     active_task = NULL;
+    assert(!esp_elf_privileged_os_cpu_scope_owned_v1());
     assert(!esp_elf_privileged_os_cpu_begin_v1());
     assert(esp_elf_privileged_os_cpu_lookup_v1("esp_intr_alloc") == 0u);
     puts("Privileged OS/CPU v1: exact imports, scoped visibility and wrong-task denial PASS");
