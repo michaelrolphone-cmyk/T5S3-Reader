@@ -44,6 +44,24 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
     return false;
   }
 
+  // Legacy manifests may omit both integrity declarations. New release
+  // manifests provide both; neither field grants trust without hashing the
+  // actual ELF and authenticating the manifest through an independent policy.
+  const JsonVariantConst sizeNode = doc["size_bytes"];
+  const JsonVariantConst digestNode = doc["sha256"];
+  if (sizeNode.isNull() != digestNode.isNull()) return false;
+  if (!sizeNode.isNull()) {
+    if (!sizeNode.is<unsigned>() || !digestNode.is<const char*>()) return false;
+    const unsigned bytes = sizeNode.as<unsigned>();
+    if (bytes < 52 || bytes > 1024u * 1024u) return false;
+    const char* digest = digestNode.as<const char*>();
+    if (std::strlen(digest) != 64) return false;
+    for (unsigned i = 0; i < 64; ++i) {
+      if (!((digest[i] >= '0' && digest[i] <= '9') ||
+            (digest[i] >= 'a' && digest[i] <= 'f'))) return false;
+    }
+  }
+
   // Runtime parsing intentionally accepts pre-versioning sidecars so firmware can
   // still browse/install the currently published legacy release. The release build
   // validator requires version for every newly published app. A missing runtime
