@@ -1,8 +1,7 @@
 #include "RiscUsbProviderV1.h"
 
-/* Unlike the legacy descriptor-only ELF, this provider owns the entire CDC
- * class lifecycle. ALL USB transactions use usb.host implemented by another
- * ELF; none are forwarded to RiscRTE firmware or a kernel.usb service. */
+/* All class operations are within the ELF. A separate usb.host provider ELF
+ * owns controller, physical claims, transfers and disconnection. */
 typedef struct {
     uint64_t token;
     uint64_t device;
@@ -55,16 +54,26 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     return true;
 }
 
+/* Quiescence is distinct from merely losing the last software capability
+ * grant. Refuse to unmap while a consumer still owns a class session. The
+ * generic graph retains the host ELF and its physical claims until closed. */
+static bool quiesce(void) {
+    for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
+        if (sessions[i].token) return false;
+    return true;
+}
+
 static void stop(void) {
     if (!host) return;
+    /* Direct manual stop is legacy test/recovery behavior; the generic module
+     * loader MUST call quiesce and refuse unsafe unmapping beforehand. */
     for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
         release_session(&sessions[i]);
     host = 0;
 }
 
-/* Deliberately accepts exactly one unambiguous CDC control/data pair. A
- * composite device with multiple pairs needs IAD/union selection in v2;
- * silently binding the wrong data interface would corrupt another device. */
+/* Deliberately accepts a single unambiguous CDC control/data pair. Multiple
+ * CDC functions need IAD/union selection; ambiguous configurations fail. */
 static bool parse(size_t length, cdc_session *out) {
     if (length < 9 || length > RISC_USB_CONFIG_LIMIT ||
         config_bytes[0] < 9 || config_bytes[1] != 2) return false;
@@ -72,6 +81,7 @@ static bool parse(size_t length, cdc_session *out) {
     if (total < 9 || total > length) return false;
     uint8_t ctl = 0xff, data = 0xff, alternate = 0;
     uint8_t current_class = 0xff, current_interface = 0xff;
+    uint8_t current_alternate = 0xff;
     uint8_t ep_in = 0, ep_out = 0;
     for (size_t at = 0; at < total;) {
         if (total - at < 2) return false;
@@ -80,6 +90,7 @@ static bool parse(size_t length, cdc_session *out) {
         if (type == 4 && n >= 9) {
             current_interface = config_bytes[at + 2];
             uint8_t alt = config_bytes[at + 3];
+            current_alternate = alt;
             current_class = config_bytes[at + 5];
             if (current_class == 2 && alt == 0) {
                 if (ctl != 0xff && ctl != current_interface) return false;
@@ -91,7 +102,7 @@ static bool parse(size_t length, cdc_session *out) {
                 alternate = alt;
             }
         } else if (type == 5 && n >= 7 && current_class == 10 &&
-                   current_interface == data) {
+                   current_interface == data && current_alternate == alternate) {
             uint8_t ep = config_bytes[at + 2];
             uint8_t kind = config_bytes[at + 3] & 3u;
             uint16_t mps = (uint16_t)config_bytes[at + 4] |
@@ -128,7 +139,7 @@ static uint64_t open_device(uint64_t device) {
     uint16_t vid = 0, pid = 0;
     if (!host->configuration(host->context, device, config_bytes, &length,
                              &vid, &pid)) return 0;
-    (void)vid; (void)pid; /* CDC matches descriptors, not a vendor list. */
+    (void)vid; (void)pid;
     cdc_session candidate = {0};
     if (!parse(length, &candidate)) return 0;
     candidate.device = device;
@@ -198,7 +209,7 @@ static const risc_usb_cdc_api_v1 capability = {
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
     "usb-cdc-acm-v2", "serial.port", RISC_USB_CDC_API_V1,
-    &capability, start, stop
+    &capability, start, stop, quiesce
 };
 
 __attribute__((visibility("default")))
