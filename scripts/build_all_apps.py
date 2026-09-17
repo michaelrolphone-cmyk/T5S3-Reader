@@ -4,6 +4,7 @@ import json
 import pathlib
 import subprocess
 import sys
+from package_integrity import stamp_app_manifest
 
 repo = pathlib.Path(__file__).resolve().parents[1]
 outputs = set()
@@ -17,9 +18,15 @@ for source in sorted((repo / 'Apps').rglob('*.c')):
     subprocess.run([sys.executable, str(repo / 'scripts/build_native_app.py'), str(source),
                     '--output', str(output), '--require-manifest'], check=True)
     subprocess.run(['bash', str(repo / 'test/run_native_app_test.sh'), str(output)], check=True)
-    manifest = json.loads(output.with_suffix('.json').read_text(encoding='utf-8'))
-    if manifest.get('file_name') != name:
-        raise SystemExit(f'Published manifest filename mismatch for {name}')
+    manifest_path = output.with_suffix('.json')
+    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+    manifest = stamp_app_manifest(manifest, output)
+    manifest_path.write_text(json.dumps(manifest, separators=(',', ':'), ensure_ascii=False) + '\n',
+                             encoding='utf-8')
+    # Check the published pair after writing; fail the release build if the
+    # bytes changed or the sidecar no longer agrees with the ELF.
+    if stamp_app_manifest(json.loads(manifest_path.read_text(encoding='utf-8')), output) != manifest:
+        raise SystemExit(f'Published ELF digest mismatch for {name}')
     catalog.append(manifest)
 if not outputs:
     raise SystemExit('No apps found')
@@ -28,4 +35,4 @@ catalog.sort(key=lambda item: (item['display_name'].casefold(), item['file_name'
 (repo / 'dist/apps/app-catalog.json').write_text(
     json.dumps({'schema': 1, 'apps': catalog}, separators=(',', ':')) + '\n',
     encoding='utf-8')
-print(f'Published aggregate app catalog with {len(catalog)} entries')
+print(f'Published aggregate app catalog with {len(catalog)} entries and ELF SHA-256 digests')
