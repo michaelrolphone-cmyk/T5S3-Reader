@@ -22,3 +22,14 @@ trap 'rm -f "$exe"' EXIT
   lib/elf_loader/src/esp_privileged_manifest_imports.c \
   test/drivers/privileged_manifest_imports_v1_test.c -o "$exe"
 "$exe"
+# Compile the REAL private relocation source. Mock only the structural
+# validator, RTOS scope and relocation backend: never execute synthetic ELF.
+"${CC:-cc}" -std=gnu11 -O2 -fno-builtin -fno-stack-protector \
+  -Wall -Wextra -Werror \
+  -Itest/drivers/stub_privileged_loader \
+  -Itest/drivers/stub_os_cpu -Ilib/elf_loader/include \
+  lib/elf_loader/src/esp_privileged_imports.c \
+  lib/elf_loader/src/esp_privileged_manifest_imports.c \
+  lib/elf_loader/src/esp_privileged_elf.c \
+  test/drivers/privileged_elf_manifest_gate_v1_test.c -o "$exe"
+"$exe"
