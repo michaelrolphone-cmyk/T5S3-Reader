@@ -61,8 +61,11 @@ FloorRead loadRecord(nvs_handle_t handle, const char* key, Kind kind, const char
   if (nvs_get_blob(handle, key, &record, &length) != ESP_OK ||
       length != sizeof(record) || record.magic != kMagic ||
       record.schema != kSchema || record.kind != static_cast<uint32_t>(kind) ||
-      record.floor == 0 || std::memcmp(record.id, id, std::strlen(id) + 1) != 0 ||
-      !safeId(record.id)) return FloorRead::Unavailable;
+      record.floor == 0 || !safeId(record.id)) return FloorRead::Unavailable;
+  char canonicalId[sizeof(record.id)]{};
+  std::memcpy(canonicalId, id, std::strlen(id) + 1);
+  if (std::memcmp(record.id, canonicalId, sizeof(record.id)) != 0)
+    return FloorRead::Unavailable;
   floor = record.floor;
   return FloorRead::Present;
 }
