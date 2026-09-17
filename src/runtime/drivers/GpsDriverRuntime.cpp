@@ -2,8 +2,10 @@
 #include "DriverPackage.h"
 #include "GpsDriverModule.h"
 #include "GpsKernelIo.h"
+#include "native/NativeStreamBridge.h"
 #include "runtime/capabilities/DeviceRegistry.h"
 #include "runtime/resources/ExecutionContext.h"
+#include <Arduino.h>
 #include <Logging.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -16,6 +18,8 @@ TaskHandle_t owner = nullptr;
 RuntimeDevices::DeviceHandle device = 0;
 RuntimeDevices::LeaseHandle positionLease = 0;
 uint32_t invocation = 0;
+bool gnssBound = false;
+t5_gps_state_t lastObservation{};
 constexpr const char* kCapabilities[] = {
     "location.position", "location.altitude", "location.time",
     "location.accuracy", "location.satellites"};
@@ -75,6 +79,8 @@ bool start() {
   owner = xTaskGetCurrentTaskHandle();
   invocation = context->id();
   positionLease = newLease;
+  gnssBound = false;
+  lastObservation = {};
   if (!context->track(RuntimeResources::ExecutionContext::Resource::DeviceLeases,
                       cleanupLocation)) {
     gpsKernelRelease();
@@ -84,6 +90,12 @@ bool start() {
     return false;
   }
   if (module.start(GPS_DRIVER_ELF, host)) {
+    LocationSource source{};
+    if (borrowLocationSource(&source)) {
+      const auto result = nativeGnssAttach(source.owner, source.device, source.lease);
+      gnssBound = result == T5_STREAM_OK;
+      if (!gnssBound) LOG_ERR("DRIVER", "location.fix.v1 stream attach failed: %ld", static_cast<long>(result));
+    }
     LOG_INF("DRIVER", "gps-nmea ACTIVE: location.position (position.gnss compatibility)");
     return true;
   }
@@ -93,9 +105,6 @@ bool start() {
   return false;
 }
 
-// This is a firmware-only handoff for the typed-record source. The driver
-// remains the sole owner of the UART and of this original lease. A mere device
-// inventory entry or a dependency lease is never accepted as source authority.
 bool borrowLocationSource(LocationSource* out) {
   if (out) *out = {};
   if (!out || !owner || owner != xTaskGetCurrentTaskHandle() || !invocation || !device || !positionLease ||
@@ -114,6 +123,11 @@ bool borrowLocationSource(LocationSource* out) {
 
 void stop() {
   if (!owner || owner != xTaskGetCurrentTaskHandle()) return;
+  // Finish queued records and clear any backpressured sample BEFORE dlclose,
+  // UART release, or release of the driver's borrowed source grant.
+  if (gnssBound) nativeGnssDisconnect(invocation);
+  gnssBound = false;
+  lastObservation = {};
   if (!module.stop()) LOG_ERR("DRIVER", "gps-nmea unload failed; handle retained");
   gpsKernelRelease();
   auto& registry = RuntimeDevices::systemRegistry();
@@ -145,12 +159,35 @@ bool read(t5_gps_state_t* state) {
     stop();
     return false;
   }
+  if (gnssBound) {
+    const auto decision = nativeGnssBeforePoll(invocation);
+    if (decision == RuntimeStreams::LiveGnssSession::PollDecision::Backpressured ||
+        decision == RuntimeStreams::LiveGnssSession::PollDecision::Retried) {
+      *state = lastObservation; // Never poll/overwrite a pending observation.
+      return true;
+    }
+    if (decision != RuntimeStreams::LiveGnssSession::PollDecision::Poll) {
+      nativeGnssDisconnect(invocation);
+      gnssBound = false;
+    }
+  }
+  // The synchronous ELF driver is called ONLY on its claiming task and OUTSIDE
+  // the stream mutex. The bridge copies this observation before publishing.
   const bool ok = module.read(state);
   if (!ok) {
     stop();
     (void)RuntimeDevices::systemRegistry().setState(device, RuntimeDevices::State::Failed);
     LOG_ERR("DRIVER", "gps-nmea provider failed; location lease revoked");
+    return false;
   }
-  return ok;
+  lastObservation = *state;
+  if (gnssBound) {
+    const auto result = nativeGnssPublishCopy(invocation, lastObservation, millis());
+    if (result == T5_STREAM_DISCONNECTED) {
+      nativeGnssDisconnect(invocation);
+      gnssBound = false;
+    }
+  }
+  return true;
 }
 }  // namespace GpsDriverRuntime
