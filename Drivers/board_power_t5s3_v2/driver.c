@@ -10,11 +10,13 @@
 #include <stdint.h>
 
 #define BQ_ADDRESS 0x6bu /* T5S3 hardware profile */
+#define REG_ADC_CONTROL 0x02u
 #define REG_POWER 0x03u
 #define REG_BOOST 0x0au
 #define REG_STATUS 0x0bu
 #define REG_FAULT 0x0cu
 #define REG_VBUS_ADC 0x11u
+#define ADC_CONTINUOUS 0x40u
 #define OTG_ENABLE 0x20u
 #define CHARGE_ENABLE 0x10u
 #define VBUS_STATUS_MASK 0xe0u
@@ -31,7 +33,7 @@
 static const risc_i2c_bus_api_v1 *bus;
 static const risc_platform_clock_api_v1 *clock_api;
 static uint64_t bus_claim, lease, sequence;
-static uint8_t saved_power, saved_boost;
+static uint8_t saved_power, saved_boost, saved_adc;
 static bool started, saved, source_requested, faulted;
 
 static bool equal(const char *a, const char *b) {
@@ -69,16 +71,19 @@ static bool wait_source_off(void) {
         delay_ms(10u);
     }
 }
-/* If any operation fails, retain lease AND lower-provider pin. This covers
- * write-ack ambiguity, rail discharge, register restoration and readback. */
+/* Retain the lease on any uncertain write, failed source-off verification or
+ * incomplete restoration; no unmapped callback may own this charger state. */
 static bool disable_and_restore(void) {
     if (!saved || !write_reg(REG_POWER, saved_power & (uint8_t)~OTG_ENABLE))
         return false;
-    if (!wait_source_off() || !write_reg(REG_BOOST, saved_boost)) return false;
-    uint8_t power = 0, boost = 0;
+    if (!wait_source_off() || !write_reg(REG_BOOST, saved_boost) ||
+        !write_reg(REG_ADC_CONTROL, saved_adc)) return false;
+    uint8_t power = 0, boost = 0, adc = 0;
     if (!read_reg(REG_POWER, &power) || !read_reg(REG_BOOST, &boost) ||
+        !read_reg(REG_ADC_CONTROL, &adc) ||
         (power & (OTG_ENABLE | CHARGE_ENABLE)) !=
-            (saved_power & CHARGE_ENABLE) || boost != saved_boost) return false;
+            (saved_power & CHARGE_ENABLE) || boost != saved_boost ||
+        (adc & ADC_CONTINUOUS) != (saved_adc & ADC_CONTINUOUS)) return false;
     source_requested = false;
     return true;
 }
@@ -97,9 +102,11 @@ static bool verify_source(void) {
             !read_reg(REG_VBUS_ADC, &adc) || !read_reg(REG_FAULT, &faults))
             return false;
         if ((faults & BOOST_FAULT) || !(power & OTG_ENABLE)) return false;
-        /* REG11[6:0] reads 2.6V + 100mV/count; 18 indicates >=4.4V. */
+        /* REG11[6:0] = 2.6V + 100mV/count. REG11 VBUS_GD reports INPUT
+         * attachment and can be zero while OTG is successfully SOURCING.
+         * Use VBUS_STAT=OTG, actual ADC voltage, and boost fault instead. */
         if ((status & VBUS_STATUS_MASK) == VBUS_OTG &&
-            (adc & VBUS_GOOD) && (adc & 0x7fu) >= 18u) return true;
+            (adc & 0x7fu) >= 18u) return true; /* at least 4.4 V */
         if (timed_out(begun, STARTUP_TIMEOUT_MS)) return false;
         delay_ms(10u);
     }
@@ -110,12 +117,14 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
     if (!out || !started || !bus_claim || lease || faulted ||
         !requested_ma || requested_ma > 500u || sequence == UINT64_MAX ||
         !preflight() || !read_reg(REG_POWER, &saved_power) ||
-        !read_reg(REG_BOOST, &saved_boost)) return false;
+        !read_reg(REG_BOOST, &saved_boost) ||
+        !read_reg(REG_ADC_CONTROL, &saved_adc)) return false;
     saved = true;
     lease = ++sequence; /* A partially applied write MUST pin the provider. */
     const uint8_t boost = (uint8_t)((saved_boost & 0x08u) |
                                  BOOST_VOLTAGE_5126MV | BOOST_500MA);
     bool ok = write_reg(REG_BOOST, boost);
+    if (ok) ok = write_reg(REG_ADC_CONTROL, saved_adc | ADC_CONTINUOUS);
     if (ok) {
         const uint8_t value = (uint8_t)((saved_power &
                                  (uint8_t)~CHARGE_ENABLE) | OTG_ENABLE);
