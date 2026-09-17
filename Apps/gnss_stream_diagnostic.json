@@ -1,5 +1,5 @@
 {
-  "min_firmware_version": "1.2.15",
+  "min_firmware_version": "1.2.16",
   "version": "0.1.0",
   "display_name": "GNSS Stream Diagnostic",
   "file_name": "gnss_stream_diagnostic.elf",
