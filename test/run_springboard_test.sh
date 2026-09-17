@@ -27,6 +27,12 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo_dir/src" "$repo_dir/test/resources/package_trust_policy_test.cpp" -o "$binary"
 "$binary"
+# Security versions must persist per (kind, ID), never silently reset on backend
+# failure, and never permit an installed floor to be lowered.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -pthread -I"$repo_dir/src" \
+  "$repo_dir/test/resources/package_security_floor_test.cpp" -o "$binary"
+"$binary"
 # Generate ephemeral signing keys in temp directories. Exercise the real P-256
 # writer/reader and reauthenticate the sealed staged archive after SD copy races,
 # short writes, seal failures and substitution by a different valid package.
@@ -65,4 +71,4 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_di
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
 python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
-echo 'Native app regression tests passed, including signed staging copy races, signer trust scope, signed package builder, canonical archive decoding, package module pins, App Store package install and recovery indexing'
+echo 'Native app regression tests passed, including per-package security floors, signed staging copy races, signer trust scope, signed package builder, canonical archive decoding, module pins and App Store package recovery'
