@@ -48,6 +48,24 @@ class Packages(unittest.TestCase):
             self.assertIn(f'doc["{key}"].is<JsonArrayConst>()', source)
         self.assertIn('const JsonArrayConst provided = view["provides"].as<JsonArrayConst>();', source)
         self.assertIn('provided[0]["capability"]', source)
+    def test_firmware_json_string_extraction_and_asset_naming(self):
+        # A literal nullptr fallback deduces nullptr_t, not const char*;
+        # it yielded null for every valid id and catalog elf_asset on hardware.
+        root = Path(__file__).resolve().parents[2]
+        parser = (root / 'src/runtime/drivers/DriverPackage.cpp').read_text(encoding='utf-8')
+        manager = (root / 'src/native/NativeDriverManagerBridge.cpp').read_text(encoding='utf-8')
+        self.assertNotIn('| nullptr', parser)
+        self.assertNotIn('entry["elf_asset"] | nullptr', manager)
+        for field in ('id', 'version', 'sha256'):
+            self.assertIn(f'view["{field}"].as<const char*>()', parser)
+        self.assertIn('entry["capability"].as<const char*>()', parser)
+        self.assertIn('provided[0]["capability"].as<const char*>()', parser)
+        self.assertIn('doc["sha256"].as<const char*>()', parser)
+        self.assertIn('entry["elf_asset"].as<const char*>()', manager)
+        # GitHub asset carries id/version; installer stores it as driver.elf.
+        self.assertIn('std::string(info.id) + "-" + info.version + ".t5driver.elf"', manager)
+        self.assertIn('std::rename(stagedElfVfsPath, stageElf.c_str())', parser)
+        self.assertIn('"/driver.elf"', parser)
     def test_release_discovery_diagnostic_guards(self):
         # Static source guards: compilation and real HTTP behavior are covered
         # separately by firmware CI and hardware acceptance. Do not regress to

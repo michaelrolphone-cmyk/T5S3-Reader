@@ -23,7 +23,7 @@ bool matches(JsonVariantConst value, const char* expected) {
 }
 
 bool capabilityEntry(JsonVariantConst entry) {
-    const char* capability = entry["capability"] | nullptr;
+    const char* capability = entry["capability"].as<const char*>();
     return capability && capability[0] && std::strlen(capability) < 64 &&
            entry["api"].is<unsigned>() && entry["api"].as<unsigned>() > 0;
 }
@@ -91,9 +91,11 @@ bool parseManifest(const std::string& json, JsonDocument& doc, DriverPackageInfo
     REQUIRE_MANIFEST(view["provides"].is<JsonArrayConst>(), "provides array");
     REQUIRE_MANIFEST(view["provides"].size() != 0, "provides empty");
 
-    const char* id = view["id"] | nullptr;
-    const char* version = view["version"] | nullptr;
-    const char* sha = view["sha256"] | nullptr;
+    // ArduinoJson's operator| deduces std::nullptr_t for a nullptr fallback;
+    // it does not request a const char* and therefore returns null for strings.
+    const char* id = view["id"].as<const char*>();
+    const char* version = view["version"].as<const char*>();
+    const char* sha = view["sha256"].as<const char*>();
     const unsigned size = view["size_bytes"].as<unsigned>();
     REQUIRE_MANIFEST(safeDriverId(id), "id");
     REQUIRE_MANIFEST(version && version[0] && std::strlen(version) < sizeof(out.version), "version");
@@ -121,7 +123,7 @@ bool parseManifest(const std::string& json, JsonDocument& doc, DriverPackageInfo
     REQUIRE_MANIFEST(copyString(id, out.id, sizeof(out.id)), "id output capacity");
     REQUIRE_MANIFEST(copyString(version, out.version, sizeof(out.version)), "version output capacity");
     const JsonArrayConst provided = view["provides"].as<JsonArrayConst>();
-    const char* capability = provided[0]["capability"] | nullptr;
+    const char* capability = provided[0]["capability"].as<const char*>();
     REQUIRE_MANIFEST(copyString(capability, out.capability, sizeof(out.capability)), "provided capability output capacity");
     out.sizeBytes = size;
 #undef REQUIRE_MANIFEST
@@ -231,7 +233,7 @@ bool validateDriverPayload(const std::string& manifestJson, const char* elfVfsPa
     JsonDocument doc;
     DriverPackageInfo info{};
     if (!parseManifest(manifestJson, doc, info)) return false;
-    const char* sha = doc["sha256"] | nullptr;
+    const char* sha = doc["sha256"].as<const char*>();
     if (!validateElfAndHash(elfVfsPath, info.sizeBytes, sha)) return false;
     if (out) *out = info;
     return true;
