@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 from native_app_symbols import firmware_exports, validate_imports
+from normalize_xtensa_relocations import normalize
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'Drivers/platform_clock_v1'
@@ -40,6 +41,13 @@ def build(cc=None):
         '-Wl,--hash-style=sysv', '-Wl,--exclude-libs,ALL',
         str(SOURCE / 'driver.c'), '-lgcc', '-o', str(elf),
     ], check=True)
+    # This specific Xtensa linker sometimes appends two literal all-zero
+    # R_XTENSA_NONE entries after the real dynamic relocations. The native
+    # validator rejects them correctly. Trim ONLY those unused metadata
+    # slots, updating .rela.dyn and DT_RELASZ consistently without touching
+    # any real relocation, address or code. All ELF validator checks remain.
+    removed = normalize(elf)
+    print('Clock link: excluded trailing zero relocation slots:', removed)
     readelf = str(Path(cc).with_name(Path(cc).name.replace('gcc', 'readelf')))
     symbols = subprocess.check_output([readelf, '--dyn-syms', '--wide', str(elf)], text=True)
     exported = {fields[7] for line in symbols.splitlines()
