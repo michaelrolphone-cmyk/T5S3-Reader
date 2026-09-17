@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -244,46 +245,81 @@ bool connectSavedWifi() {
 bool loadAggregateDriverCatalog() {
     std::string json;
     esp_task_wdt_reset();
-    if (!HttpDownloader::fetchUrl(kDriverCatalogUrl, json) || json.empty() || json.size() > kMaxDriverCatalogBytes) {
+    if (!HttpDownloader::fetchUrl(kDriverCatalogUrl, json)) {
+        LOG_ERR("DRVMGR", "Aggregate catalog HTTP fetch failed (received=%u bytes)",
+                static_cast<unsigned>(json.size()));
+        return false;
+    }
+    if (json.empty() || json.size() > kMaxDriverCatalogBytes) {
+        LOG_ERR("DRVMGR", "Aggregate catalog invalid response length: %u bytes",
+                static_cast<unsigned>(json.size()));
         return false;
     }
 
     JsonDocument doc;
-    if (deserializeJson(doc, json) || !doc.is<JsonObjectConst>() || doc["schema"] != 1 ||
-        !doc["drivers"].is<JsonArrayConst>()) {
-        LOG_ERR("DRVMGR", "Driver catalog JSON is invalid");
+    const DeserializationError error = deserializeJson(doc, json);
+    if (error) {
+        LOG_ERR("DRVMGR", "Aggregate catalog JSON decode failed: %s (%u bytes, first_byte=0x%02x)",
+                error.c_str(), static_cast<unsigned>(json.size()),
+                static_cast<unsigned>(static_cast<unsigned char>(json[0])));
+        return false;
+    }
+    if (!doc.is<JsonObjectConst>() || doc["schema"] != 1 || !doc["drivers"].is<JsonArrayConst>()) {
+        LOG_ERR("DRVMGR", "Aggregate catalog contract invalid: root=%u schema=%u drivers_array=%u",
+                static_cast<unsigned>(doc.is<JsonObjectConst>()),
+                static_cast<unsigned>(doc["schema"].as<unsigned>()),
+                static_cast<unsigned>(doc["drivers"].is<JsonArrayConst>()));
         return false;
     }
     const JsonArrayConst drivers = doc["drivers"].as<JsonArrayConst>();
     if (drivers.size() == 0 || drivers.size() > kMaxDriverAssets) {
-        LOG_ERR("DRVMGR", "Driver catalog has an invalid entry count");
+        LOG_ERR("DRVMGR", "Driver catalog has an invalid entry count: %u",
+                static_cast<unsigned>(drivers.size()));
         return false;
     }
 
     std::vector<CatalogDriver> loaded;
     loaded.reserve(drivers.size());
+    unsigned index = 0;
     for (JsonVariantConst entry : drivers) {
         esp_task_wdt_reset();
-        if (!entry.is<JsonObjectConst>() || !entry["manifest"].is<JsonObjectConst>()) return false;
+        if (!entry.is<JsonObjectConst>() || !entry["manifest"].is<JsonObjectConst>()) {
+            LOG_ERR("DRVMGR", "Aggregate catalog entry[%u] is not an object with a manifest object", index);
+            return false;
+        }
         const char* elfAsset = entry["elf_asset"] | nullptr;
-        if (!safeDriverAssetName(elfAsset)) return false;
+        if (!safeDriverAssetName(elfAsset)) {
+            LOG_ERR("DRVMGR", "Aggregate catalog entry[%u] has invalid ELF asset name", index);
+            return false;
+        }
 
         std::string manifest;
         serializeJson(entry["manifest"], manifest);
         DriverPackageInfo info{};
-        if (!parseDriverPackageManifest(manifest, info)) return false;
+        if (!parseDriverPackageManifest(manifest, info)) {
+            LOG_ERR("DRVMGR", "Aggregate catalog entry[%u] manifest rejected (bytes=%u)",
+                    index, static_cast<unsigned>(manifest.size()));
+            return false;
+        }
 
         const std::string expected = std::string(info.id) + "-" + info.version + ".t5driver.elf";
-        if (expected != elfAsset) return false;
+        if (expected != elfAsset) {
+            LOG_ERR("DRVMGR", "Aggregate catalog entry[%u] ELF asset name does not match manifest identity", index);
+            return false;
+        }
         if (std::any_of(loaded.begin(), loaded.end(), [&](const CatalogDriver& candidate) {
                 return std::strcmp(candidate.info.id, info.id) == 0;
-            })) return false;
+            })) {
+            LOG_ERR("DRVMGR", "Aggregate catalog entry[%u] duplicates driver ID %s", index, info.id);
+            return false;
+        }
 
         CatalogDriver driver;
         driver.info = info;
         driver.manifest = std::move(manifest);
         driver.elfUrl = std::string(kLatestReleaseDownloadBase) + elfAsset;
         loaded.push_back(std::move(driver));
+        ++index;
     }
 
     catalog.swap(loaded);
@@ -322,12 +358,24 @@ bool loadLegacyReleaseCatalog() {
         DriverPackageInfo info{};
         esp_task_wdt_reset();
         if (!HttpDownloader::fetchUrl(manifestAsset.url, manifest)) {
-            LOG_ERR("DRVMGR", "Failed to fetch driver manifest: %s", manifestAsset.name.c_str());
+            LOG_ERR("DRVMGR", "Failed to fetch driver manifest: %s (received=%u expected=%llu bytes)",
+                    manifestAsset.name.c_str(), static_cast<unsigned>(manifest.size()),
+                    static_cast<unsigned long long>(manifestAsset.size));
+            rejectedCandidate = true;
+            continue;
+        }
+        // The GitHub release API advertises the byte count for every sidecar.
+        // A successful HTTP stream is not sufficient to trust a partial body.
+        if (!manifestAsset.size || manifest.size() != manifestAsset.size) {
+            LOG_ERR("DRVMGR", "Driver manifest length mismatch: %s received=%u expected=%llu bytes",
+                    manifestAsset.name.c_str(), static_cast<unsigned>(manifest.size()),
+                    static_cast<unsigned long long>(manifestAsset.size));
             rejectedCandidate = true;
             continue;
         }
         if (!parseDriverPackageManifest(manifest, info)) {
-            LOG_ERR("DRVMGR", "Rejected driver manifest: %s", manifestAsset.name.c_str());
+            LOG_ERR("DRVMGR", "Rejected driver manifest: %s (received=%u bytes, parser reason above)",
+                    manifestAsset.name.c_str(), static_cast<unsigned>(manifest.size()));
             rejectedCandidate = true;
             continue;
         }
