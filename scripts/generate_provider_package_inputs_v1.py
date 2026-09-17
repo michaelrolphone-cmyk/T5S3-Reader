@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Prepare RISC-PKG v1 provider sidecars from a compiled physical ELF.
+"""Generate bounded provider ABI and import metadata from an actual linked ELF.
 
-This does NOT sign, authenticate, install or enable a hardware driver. The
-separate unified package manager signs the ELF and BOTH emitted entries as
-one canonical P-256 manifest. No private signing key enters this build path.
+These are ordinary source-independent package-manager inputs. No P-256 key,
+signature, signer identity, or cryptographic trust policy is required for driver
+installation or activation. The loader independently enforces privileged ABI
+imports against the exact candidate it maps. An optional later signing format
+may cover these files, but it is not part of this build contract.
 """
 from __future__ import annotations
 
@@ -77,7 +79,7 @@ def prepare(elf: Path, manifest: Path, destination: Path) -> tuple[Path, Path]:
     profile = f'os-cpu-abi=1\nprovides={capability}\napi={api}\n'.encode('ascii')
     imports = ''.join(name + '\n' for name in names).encode('ascii')
     if len(profile) > 160 or not imports or len(imports) > 128 * 128:
-        raise ValueError('profile or import resource exceeds signed profile bounds')
+        raise ValueError('profile or import resource exceeds provider metadata bounds')
     destination.mkdir(parents=True, exist_ok=True)
     output_profile = destination / 'provider-abi.v1'
     output_imports = destination / 'privileged-imports.v1'
@@ -88,7 +90,7 @@ def prepare(elf: Path, manifest: Path, destination: Path) -> tuple[Path, Path]:
     for label, value in [('ELF', elf), ('provider-abi.v1', output_profile),
                          ('privileged-imports.v1', output_imports)]:
         print(f'{label} SHA-256: {hashlib.sha256(value.read_bytes()).hexdigest()}')
-    print('UNSIGNED package inputs only; sign all three artifacts together in RISC-PKG.')
+    print('Unsigned provider metadata generated; SHA-256 is integrity, not authority.')
     return output_profile, output_imports
 
 
