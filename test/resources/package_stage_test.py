@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build real signed archives and exercise bounded copy/reverification staging."""
+"""Build real signed archives and exercise bounded staging and extraction."""
 import argparse
 from pathlib import Path
 import subprocess
@@ -40,14 +40,19 @@ def run() -> None:
         # build() returns archive bytes; only its CLI writes the output file.
         args.output.write_bytes(good)
         alternate_path.write_bytes(changed)
-        program = root / 'stage-test'
-        subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
-                        '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
-                        '-I' + str(ROOT / 'src'),
-                        str(ROOT / 'test/resources/package_archive_stage_test.cpp'),
-                        '-lcrypto', '-o', str(program)], check=True, capture_output=True)
-        subprocess.run([str(program), str(args.output), str(alternate_path),
-                        str(public)], check=True)
+        for name, test_source in [
+            ('stage-test', 'package_archive_stage_test.cpp'),
+            ('extract-test', 'package_archive_extract_test.cpp'),
+        ]:
+            program = root / name
+            subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                            '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+                            '-I' + str(ROOT / 'src'),
+                            str(ROOT / 'test/resources' / test_source),
+                            '-lcrypto', '-o', str(program)], check=True,
+                           capture_output=True)
+            subprocess.run([str(program), str(args.output), str(alternate_path),
+                            str(public)], check=True)
 
 
 if __name__ == '__main__':
