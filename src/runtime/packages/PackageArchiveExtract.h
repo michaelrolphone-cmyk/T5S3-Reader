@@ -10,22 +10,22 @@
 namespace RuntimePackages {
 
 // This is extraction into a disposable, NOT published, directory. A privileged
-// destination must implement begin(archive), beginEntry(name,length),
-// append(data,length), endEntry(), readEntry(name,offset,data,length), seal(),
-// and discard(). It must own its own fixed/validated stage path, exclusively
-// create files, close a writer before readback, and never touch installed data.
-// begin() failure must be safe to follow by discard(). No path may be supplied
-// by an archive without validating its identity and entry basenames.
+// destination implements begin(archive), beginEntry(name,length), append,
+// endEntry(), readEntry(name,offset,data,length), writeProvenance(prefix,
+// prefixLength,signature,signatureLength), seal() and discard(). It exclusively
+// creates the stage and files, closes writers before readback, and never touches
+// installed data. begin() failure must be safe to follow by discard().
+// The provenance record is exactly the canonical signed prefix plus signature;
+// no archive-controlled filename may collide with the reserved metadata file.
 //
-// The expected digest MUST be captured from the authenticated intake's signed
-// prefix by the manager and held outside mutable SD. Do not compute it for the
-// first time from a potentially replaced intake during extraction. This does
-// not make the final extracted bytes immutable until dlopen: publication,
-// crash recovery, provenance retention and the load lifetime remain separate.
+// The expected digest MUST be captured from authenticated intake in manager
+// memory, not computed for the first time from replaceable SD during extraction.
+// Published-file authentication, recovery and the dlopen byte lifetime remain
+// separate gates; a completed SD directory is not immutable.
 enum class ArchiveExtractResult : uint8_t {
   ReadyForPublicationReview, InvalidInput, IntakeUntrusted, DifferentPackage,
   PreflightRejected, FloorRejected, StageUnavailable, CopyFailure,
-  EntryCorrupt, ReadbackFailure, SealFailure, IntakeChanged
+  EntryCorrupt, ReadbackFailure, ProvenanceFailure, SealFailure, IntakeChanged
 };
 
 namespace ExtractDetail {
@@ -35,7 +35,6 @@ inline bool sameDigest(const uint8_t* a, const uint8_t* b) {
     difference |= static_cast<uint8_t>(a[i] ^ b[i]);
   return difference == 0;
 }
-
 inline bool matchesHex(const uint8_t digest[32], const char expected[65]) {
   constexpr char hex[] = "0123456789abcdef";
   uint8_t difference = 0;
@@ -84,9 +83,8 @@ ArchiveExtractResult extractSignedPackageArchive(ReadAt source, uint64_t length,
     archive = {};
     return ArchiveExtractResult::FloorRejected;
   }
-  // Capture the signed expected entry digests in the decoded archive. During
-  // extraction do NOT replace this archive with a fresh decode until every
-  // output file has been checked against its original signed entry digest.
+  // Hold the original signed entry hashes until all extracted entries have
+  // been independently reread and checked, even if source SD bytes change.
   if (!destination.begin(archive)) {
     (void)destination.discard();
     archive = {};
@@ -131,10 +129,31 @@ ArchiveExtractResult extractSignedPackageArchive(ReadAt source, uint64_t length,
     if (!hash.finish(digest) || !ExtractDetail::matchesHex(digest, entry.sha256))
       return fail(ArchiveExtractResult::ReadbackFailure);
   }
+
+  // Reauthenticate intake BEFORE recording provenance, binding metadata and
+  // signature to the same originally accepted manager-held fingerprint.
+  if (verifyPackageArchive(source, length, archive, workspace, hash, signer,
+                           limits) != PackageVerifyResult::AuthenticatedContent)
+    return fail(ArchiveExtractResult::IntakeChanged);
+  if (static_cast<size_t>(archive.signatureOffset) != prefixLength ||
+      !hash.start() || !hash.update(workspace.signedPrefix, prefixLength) ||
+      !hash.finish(digest) ||
+      !ExtractDetail::sameDigest(digest, expectedSignedPrefixDigest))
+    return fail(ArchiveExtractResult::IntakeChanged);
+  if (preflightArchive(archive, policy, resolver) !=
+          PreflightResult::ReadyForContentVerification || !floor(archive))
+    return fail(ArchiveExtractResult::FloorRejected);
+  uint8_t signature[kPackageSignatureBytes]{};
+  if (!source(archive.signatureOffset, signature, sizeof(signature)) ||
+      !signer(archive.keyId, digest, signature))
+    return fail(ArchiveExtractResult::IntakeChanged);
+  if (!destination.writeProvenance(workspace.signedPrefix, prefixLength,
+                                   signature, sizeof(signature)))
+    return fail(ArchiveExtractResult::ProvenanceFailure);
   if (!destination.seal()) return fail(ArchiveExtractResult::SealFailure);
 
-  // Detect modification of the intake during extraction, even if each output
-  // happened to hash correctly. Bind against the originally approved prefix.
+  // Seal/readback is not a trust boundary for removable SD. Catch subsequent
+  // intake replacement and a floor advance before returning reviewable files.
   if (verifyPackageArchive(source, length, archive, workspace, hash, signer,
                            limits) != PackageVerifyResult::AuthenticatedContent)
     return fail(ArchiveExtractResult::IntakeChanged);
