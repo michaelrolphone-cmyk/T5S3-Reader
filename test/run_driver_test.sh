@@ -21,6 +21,12 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo/src" "$repo/test/resources/package_identity_test.cpp" \
   -o "$build/package-identity-test"
 "$build/package-identity-test"
+# Reject malformed envelope metadata and unavailable ABI dependencies before
+# reading/executing candidate code; version decisions are numeric and typed.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/src" "$repo/test/resources/package_preflight_test.cpp" \
+  -o "$build/package-preflight-test"
+"$build/package-preflight-test"
 # The shared directory transaction must retain the last verified generation
 # through rename failures, abrupt resets, corrupt stages and cleanup failures.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
