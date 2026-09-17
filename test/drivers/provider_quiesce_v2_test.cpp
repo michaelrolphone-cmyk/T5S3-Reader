@@ -10,11 +10,14 @@ int main(int argc, char** argv) {
   assert(interface && module.consumers() == 0);
   // Hardware ownership is not equivalent to the software consumer count.
   assert(!module.unload());
-  assert(module.state() == RuntimeProviders::ModuleV2::State::Active);
-  assert(module.capability() == interface);
-  assert(module.pinConsumer() && module.unpinConsumer());
+  // Quiesce can have partially freed a resource: the provider must remain
+  // mapped but MUST NOT be regranted or expose its capability after failure.
+  assert(module.state() == RuntimeProviders::ModuleV2::State::Failed);
+  assert(!module.capability() && !module.pinConsumer());
+  assert(!module.unpinConsumer());
   assert(!module.unload());
-  // The fixture refuses quiescence permanently: intentionally leave mapped.
-  std::puts("Generic provider refuses unsafe unmap when quiesce fails: PASS");
+  assert(module.state() == RuntimeProviders::ModuleV2::State::Failed);
+  // This fixture refuses quiescence permanently: intentionally leave mapped.
+  std::puts("Generic provider quarantines unsafe teardown and rejects regrant: PASS");
   return 0;
 }
