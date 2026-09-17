@@ -1,24 +1,12 @@
 #pragma once
 
-#include "PackageArchive.h"
+#include "PackageTrustPolicy.h"
 
 #include <mbedtls/sha256.h>
 #include <cstddef>
 #include <cstdint>
 
 namespace RuntimePackages {
-
-// Firmware-owned only. An SD manifest may name a key ID, but it cannot add a
-// key, change a scope, revoke a revocation, or lower a security floor.
-struct TrustedPackageSigner {
-  uint32_t id;
-  const uint8_t* publicPoint;   // Exactly 65-byte SEC1 uncompressed P-256 point.
-  size_t publicPointLength;
-  Kind allowedKind;
-  const char* allowedPackageId; // Exact package ID, never a filename or wildcard.
-  uint32_t minimumSecurityVersion;
-  bool revoked;
-};
 
 class PackageMbedtlsSha256 {
  public:
