@@ -4,6 +4,7 @@
 #include "runtime/capabilities/CapabilityAccess.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
 #include "runtime/resources/ExecutionContext.h"
+#include <cstring>
 
 namespace {
 using RuntimeResources::ExecutionContext;
@@ -14,15 +15,23 @@ ExecutionContext* caller() {
              ? context : nullptr;
 }
 
-// The authorization handle must have been issued by the trusted capability
-// policy for this exact invocation, physical generation and READ right.
-// The manifest's non-authorizing dependency does not satisfy this check.
+// Authorization is exact: owner, physical generation, capability NAME and
+// READ right. A manifest Dependency is not a trusted hardware source grant;
+// an unrelated READ grant must not authorize location.
 bool authorizedDevice(t5_device_lease_t authorization, uint32_t* device) {
   if (device) *device = 0;
   auto* context = caller();
-  return context && authorization && device &&
-         RuntimeDevices::systemCapabilityAccess().valid(
-             context->id(), authorization, RuntimeDevices::kCapabilityRead, device);
+  if (!context || !authorization || !device ||
+      !RuntimeDevices::systemCapabilityAccess().valid(
+          context->id(), authorization, RuntimeDevices::kCapabilityRead, device)) return false;
+  RuntimeDevices::LeaseInfo lease{};
+  if (!RuntimeDevices::systemRegistry().getLease(authorization, context->id(), &lease) ||
+      lease.device != *device || lease.mode != RuntimeDevices::Mode::Dependency ||
+      std::strcmp(lease.capability, "location.position") != 0) {
+    *device = 0;
+    return false;
+  }
+  return true;
 }
 
 t5_stream_result_t subscribe(t5_device_lease_t authorization,
@@ -63,8 +72,7 @@ t5_stream_result_t poll(t5_device_lease_t authorization) {
       source.owner != context->id() || source.device != authorized)
     return T5_STREAM_DISCONNECTED;
   t5_gps_state_t copied{};
-  // This synchronous call is on the claiming app task, outside the stream
-  // mutex. GpsDriverRuntime handles retry-before-read and submits a copy.
+  // Poll on claiming app task, outside stream mutex; read submits a copy.
   return GpsDriverRuntime::read(&copied) ? T5_STREAM_OK : T5_STREAM_IO;
 }
 
