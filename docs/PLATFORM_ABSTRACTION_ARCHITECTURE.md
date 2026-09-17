@@ -1,930 +1,183 @@
-# T5 Platform Abstraction and Execution Runtime Architecture
+# RiscRTE Platform Abstraction and Execution Runtime Architecture
 
-## Status
+## Status and authority
 
-Architecture specification for making T5 the application programming model rather than exposing ESP32-S3, FreeRTOS, ESP-IDF, PSRAM, SD, e-paper, or hardware implementation details to ordinary application and service code.
+**Normative target.** Read [RISCRTE_PLATFORM_SPEC.md](RISCRTE_PLATFORM_SPEC.md) and [HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md](HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md) first. This specification governs how applications/services avoid OS and hardware implementation details. Any historical text saying that the framework owns USB, GNSS, physical buses, a display panel, Wi-Fi radio, charger, device power transitions or concrete device I/O is superseded. The compiled core MUST know only generic capability identifiers; installed driver ELFs own physical hardware. [RUNTIME_DRIVER_IMPLEMENTATION.md](RUNTIME_DRIVER_IMPLEMENTATION.md) documents remaining incompatible code.
 
-This specification complements `SCENE_RUNTIME_ARCHITECTURE.md`, `MEMORY_ARCHITECTURE.md`, the runtime driver architecture, security architecture, and future service runtime architecture.
-
-> **Core invariant:** Applications and services express intent, state, events, capabilities, and durable data. T5 owns execution, concurrency, memory placement, storage, hardware, power, scheduling, cleanup, and presentation policy.
-
----
+> **Invariant:** Feature code expresses intent, state, events, capability requirements and durable data. The generic RiscRTE runtime supplies execution, memory, policy, software resource grants, generic events/streams, data namespaces, scheduling and resolution. Driver/provider ELFs implement physical hardware, including controller/bus ownership, discovery, power, data transfers, refresh, and recovery. A core-held lease grants software authority, not ownership of a USB controller or other physical device.
 
 ## 1. Goal
 
-The primary platform goal is to make feature development independent of hardware and RTOS mechanics.
-
-Ordinary T5 feature code SHOULD NOT need to know:
-
-- which ESP32 core executes work;
-- that FreeRTOS tasks, queues, mutexes, or semaphores exist;
-- whether memory came from internal SRAM or PSRAM;
-- whether large data is currently resident or SD-backed;
-- which UART, SPI, I2C, GPIO, radio, or peripheral implements a capability;
-- how Wi-Fi is powered or reconnected;
-- how e-paper partial/full refresh policy works;
-- how long-lived deadlines survive sleep;
-- how resources are reclaimed after an ELF unloads;
-- how drivers or services are discovered and loaded.
-
-The desired programming model is:
+Apps/services should not know CPU core, FreeRTOS tasks/queues, SRAM/PSRAM allocation, backing storage, transport identity, Wi-Fi radio mechanics, panel-refresh implementation, sleep hardware, ELF unloading or provider selection. Likewise, **the generic core must not know hardware protocols or types**. It resolves dynamically registered arbitrary capability names and communicates with installed providers through stable APIs.
 
 ```text
-Feature code
-    |
-    v
-State + Actions + Events + Capabilities + Data
-    |
-    v
-T5 Platform APIs
-    |
-    +-- Execution Runtime
-    +-- Data Runtime
-    +-- Capability Runtime
-    +-- Service Runtime
-    +-- Presentation Runtime
-    +-- Power Runtime
-    +-- Scheduler
-    |
-    v
-Drivers / ESP-IDF / FreeRTOS / Hardware
+feature ELF -> state/actions/events/capabilities/data
+        -> generic runtime (execution, contexts, policy, resolver, streams)
+        -> installable driver/provider ELFs
+        -> provider-to-provider dependencies and narrow CPU/OS port primitives
+        -> hardware
 ```
 
----
+A separate minimal bootstrap/port may bring up CPU/memory/loader/module storage; it must not hide ordinary production device implementations or silently act as driver fallback.
 
 ## 2. Architectural boundary
 
-T5 SHALL define a stable platform boundary above ESP-IDF and FreeRTOS.
-
-```text
-+--------------------------------------------------+
-| Applications / Scene Controller ELFs             |
-| Service ELFs                                     |
-+--------------------------------------------------+
-| T5 Feature API                                   |
-| state | events | jobs | data | capabilities      |
-+--------------------------------------------------+
-| T5 Platform Runtime                              |
-| execution | resources | storage | power | UI     |
-| scheduling | services | capability resolution    |
-+--------------------------------------------------+
-| Driver Capability ELFs                           |
-+--------------------------------------------------+
-| ESP-IDF / FreeRTOS                               |
-+--------------------------------------------------+
-| ESP32-S3 / board hardware                        |
-+--------------------------------------------------+
-```
-
-Direct ESP-IDF/FreeRTOS/hardware access from ordinary app/service ELFs SHOULD be treated as an escape hatch, not the normal ABI.
-
----
+Normal app/service ELFs use abstract APIs. The core implements generic mechanics and does not import ESP-IDF USB/Wi-Fi/GPIO/charger/display drivers or switch on USB/GPS capability names. Physical driver ELFs may use an authorized low-level port API or another provider's capability. A protocol-specific wrapper in compiled firmware is still a firmware hardware driver even if called a kernel API and is prohibited for normal device support. No new device requires a firmware rebuild when the relevant driver ABI exists.
 
 ## 3. Module classes
 
-T5 SHALL distinguish at least three native ELF roles:
-
-### Application/scene ELF
-User-facing feature behavior. Governed by application/scene lifecycle and disposable residency.
-
-### Service ELF
-Background/system behavior managed independently of foreground UI. Services are scheduled and invoked by the Service Runtime rather than owning unrestricted permanent tasks.
-
-### Driver ELF
-Privileged hardware capability provider. Drivers translate T5 capability contracts into board/peripheral operations.
-
-These roles SHALL have separate manifests, ABIs, lifecycle rules, permissions, and resource policies.
-
----
+Application/scene ELFs implement UI and user workflows; service ELFs implement managed background logic; hardware driver ELFs implement complete controller, bus, transport or device functionality; composite/provider ELFs transform capabilities into other capabilities; the generic core manages loading, rights, contexts and lifecycle. Modules have separately versioned manifests/ABIs/permissions. No class may be used as a pretext for a hardware-specific core manager.
 
 ## 4. Execution Runtime
 
-The Execution Runtime is the primary abstraction over FreeRTOS concurrency.
-
-Applications and most services SHALL NOT need to create or manage FreeRTOS tasks, mutexes, queues, semaphores, priorities, task stacks, or core affinity.
-
-Feature code SHOULD use event-driven lifecycle entry points and asynchronous jobs.
-
-Conceptually:
-
-```c
-void on_appear(void);
-void on_action(const t5_action_t *action);
-void on_event(const t5_event_t *event);
-void on_disappear(void);
-```
-
-Long-running/blocking work SHALL be submitted to the T5 executor rather than performed on the presentation/event dispatch path.
-
----
+Apps/services should use event-driven entry points (`on_appear`, `on_action`, `on_event`, `on_disappear`) and bounded asynchronous work rather than permanent direct FreeRTOS task ownership. The generic executor schedules, tracks and cancels software work; hardware-oriented provider ELFs implement their own device loops/callbacks under tracked lifecycle and must quiesce before unload.
 
 ## 5. Asynchronous jobs
 
-T5 SHALL expose asynchronous operations through opaque job handles.
-
-Conceptually:
-
-```c
-t5_job_t job = t5_http_get(request);
-t5_job_cancel(job);
-```
-
-Completion is delivered through framework events/messages:
-
-```text
-JOB_STARTED
-JOB_PROGRESS
-JOB_COMPLETE
-JOB_FAILED
-JOB_CANCELLED
-```
-
-The runtime owns the implementation mechanism, including worker tasks, queues, synchronization, stack allocation, priority, core placement, DMA waits, and blocking I/O.
-
-Applications SHALL NOT assume a job maps one-to-one to a FreeRTOS task.
-
----
+Opaque job handles represent operations with started/progress/complete/failed/cancelled events. The core manages scheduling, status, cancellation and software grants, not the protocol implementation. `program.esp_rom` and any actual device programming live in a provider ELF, not inside a kernel job function.
 
 ## 6. Executor classes
 
-Internally T5 MAY maintain execution classes such as:
-
-```text
-presentation/event executor
-I/O executor
-CPU/background executor
-system executor
-driver execution context
-```
-
-These are implementation details. Public APIs SHALL describe workload intent/priority rather than FreeRTOS primitives.
-
-The executor SHALL support cancellation, ownership, timeout/deadline metadata, and cleanup when the owning context dies.
-
----
+Presentation/event, I/O, CPU/background, system and driver execution contexts may be scheduling classes; exact tasks, core affinity, stacks and queues are implementation details. Workload intent and owner identity are public; resource-specific hardware task ownership remains with its provider.
 
 ## 7. Unified event/message model
 
-T5 SHALL define a common event vocabulary used across applications, services, jobs, capabilities, and system state.
-
-Initial event families SHOULD include:
-
-```text
-Lifecycle
-  APPEAR
-  DISAPPEAR
-  SUSPEND
-  RESUME
-
-Input
-  ACTION
-  TOUCH
-  KEY
-
-Async work
-  JOB_STARTED
-  JOB_PROGRESS
-  JOB_COMPLETE
-  JOB_FAILED
-  JOB_CANCELLED
-
-System
-  NETWORK_CHANGED
-  TIME_CHANGED
-  STORAGE_CHANGED
-  POWER_CHANGED
-  SYSTEM_SLEEPING
-  SYSTEM_RESUMED
-
-Capability
-  CAPABILITY_AVAILABLE
-  CAPABILITY_CHANGED
-  CAPABILITY_LOST
-```
-
-Opaque handles and messages SHALL be preferred over storing arbitrary cross-ELF callback pointers. This supports ELF unloading, revocation, and future isolation.
-
----
+Use generic lifecycle (APPEAR/DISAPPEAR/SUSPEND/RESUME), input (ACTION/TOUCH/KEY), job (STARTED/PROGRESS/COMPLETE/FAILED/CANCELLED), system (network/time/storage/power/sleep/resume) and capability (AVAILABLE/CHANGED/LOST) notifications. Hardware-specific event topic strings can be published by ELFs as opaque data; core must not parse them into transport-specific behavior. Use bounded copied/versioned messages and opaque handles, not long-lived cross-ELF callback pointers.
 
 ## 8. Resource Context
 
-Every executing app, scene, service, and other managed module SHALL execute under a framework-owned resource context.
-
-Conceptually:
-
-```text
-T5Context
-  identity
-  memory allocations
-  VM mappings
-  files/storage objects
-  jobs
-  timers/deadlines
-  event subscriptions
-  capabilities
-  power leases
-  network operations
-  UI objects
-  service/driver handles
-```
-
-All acquired resources SHOULD be attributable to an owner context.
-
-Destroying a context SHALL reclaim all framework-owned resources associated with it, even if feature code fails to explicitly release each one.
-
-This is the platform-level lifetime/cleanup boundary.
-
----
+Every app/scene/service/driver invocation has a generic context identifying software allocations, mappings, files, jobs, timers, subscriptions, capability grants, UI objects and provider handles. Destroying the context cancels/revokes these software resources and asks the provider to terminate hardware operations. **It does not mean the framework directly releases USB interfaces, powers a GPS rail or performs device reset.** The provider must report quiescence before unloading.
 
 ## 9. Opaque handles
 
-Feature ABIs SHOULD use opaque handles instead of exposing framework object pointers.
-
-Examples:
-
-```c
-t5_file_t
-t5_job_t
-t5_timer_t
-t5_capability_t
-t5_subscription_t
-t5_power_lease_t
-t5_store_t
-```
-
-Handles SHALL be validated for type, ownership, generation/staleness, and permissions where appropriate.
-
-Framework internals SHALL NOT be traversable through ordinary public handles.
-
----
+Use typed owner/generation/rights-checked file, job, timer, capability, subscription, policy request and store handles. Provider hardware handles are private to the providing ELF or exchanged through its own versioned ABI. Generic core cannot interpret a USB endpoint handle or treat it as an internally owned endpoint.
 
 ## 10. Memory by intent
 
-Feature code SHOULD request memory according to semantics rather than physical memory type.
-
-It SHOULD NOT normally request ESP-IDF capability flags such as internal/PSRAM/DMA directly.
-
-Conceptual classes:
-
-```text
-TRANSIENT     short-lived ordinary working memory
-RESIDENT      must remain directly addressable
-LARGE         large active working set
-DMA           requires hardware-compatible addressability
-CACHE         reconstructable and aggressively reclaimable
-PERSISTENT    durable storage-backed data
-VIRTUAL       potentially much larger than RAM
-```
-
-T5 maps these intentions onto the tiered memory architecture:
-
-```text
-small/hot/critical -> internal SRAM
-large resident     -> PSRAM
-ELF executable     -> executable-capable mapping
-large/cold         -> SD-backed virtual object + PSRAM window
-persistent         -> managed SD storage
-DMA                -> compatible resident memory
-```
-
-The exact physical placement is not part of the feature API contract unless hardware semantics require it.
-
----
+Feature code requests TRANSIENT, RESIDENT, LARGE, DMA, CACHE, PERSISTENT or VIRTUAL classes, not raw ESP allocation flags. Generic memory manager maps hot data to SRAM, resident/executable data to appropriate PSRAM/allocations, cold data to storage-backed windows, and DMA to compatible memory. Driver ELF must declare constraints and validate its own DMA/transfer buffer lifetimes; generic memory allocation does not confer device operation ownership.
 
 ## 11. Data Runtime
 
-T5 SHALL provide managed logical storage so ordinary applications/services do not need to construct filesystem layouts for routine state.
-
-Each installed bundle/service SHALL receive namespaced storage classes such as:
-
-```text
-preferences
-durable application data
-documents
-cache
-temporary
-virtual objects
-```
-
-Conceptual APIs:
-
-```c
-t5_preferences_get(...);
-t5_preferences_set(...);
-t5_store_open("history", ...);
-t5_cache_open("thumbnails", ...);
-t5_vm_open(...);
-```
-
-The runtime owns physical paths, quotas, cleanup, migration metadata, and storage policy.
-
-Bundle replacement SHALL be separable from mutable data replacement.
-
----
+Namespaced preferences, durable data, documents, cache, temp and virtual objects separate mutable data from bundles. Generic runtime owns logical namespace, quotas and metadata. Physical filesystem/media I/O is implemented through installed storage/filesystem providers; a minimal module-store bootstrap path remains separately identified.
 
 ## 12. Storage-backed large data
 
-The Data Runtime SHALL integrate the storage-backed virtual memory architecture.
-
-Large collections, documents, image resources, indexes, download data, and other cold datasets SHOULD use bounded resident windows rather than requiring complete PSRAM residency.
-
-Applications SHALL operate using stable logical handles/identifiers and temporary mapped views.
-
-Physical SD paging/cache behavior remains a runtime implementation detail.
-
----
+Apps use logical handles and temporary mapped views over large collections, documents, images, indexes and downloads. Cache/window placement is generic; SD/USB/network device interaction remains provider-defined.
 
 ## 13. Transactions
 
-The Data Runtime SHOULD provide transactional operations for fragile durable state.
-
-Conceptually:
-
-```c
-t5_transaction_begin(...);
-t5_transaction_commit(...);
-t5_transaction_abort(...);
-```
-
-Higher-level storage APIs SHOULD provide atomic replacement/crash recovery so feature code does not independently implement temporary files, backup files, rename protocols, journals, or recovery conventions.
-
----
+Generic begin/commit/abort, atomic replacement and crash-recovery abstractions prevent each feature implementing its own backup/rename/journal conventions. Actual filesystem semantics are supplied by the storage provider capability.
 
 ## 14. Virtualized collections
 
-The framework SHOULD provide collection/list primitives that decouple logical collection size from rendered/resident size.
-
-A collection data source SHOULD conceptually expose operations such as:
-
-```text
-count
-item(index)
-action(index)
-```
-
-The framework owns:
-
-```text
-scrolling
-visible-range calculation
-row/view reuse
-selection/focus
-pagination
-prefetch
-storage-VM windowing
-restoration
-render invalidation
-```
-
-A 10-item list and a 100,000-item list SHOULD use the same feature-level model.
-
----
+The generic UI collection API offers count/item/action, visible-range, row reuse, selection/focus, pagination, prefetch, VM windowing and incremental invalidation, supporting small and very large lists. Rendering policy belongs to generic UI; **actual e-paper panel driving and physical full/partial refresh live in the display provider ELF**, not a framework-owned hardware renderer.
 
 ## 15. Capability Runtime
 
-Capabilities SHALL be the normal abstraction for hardware and system facilities.
-
-Capabilities may be provided by firmware, drivers, or services.
-
-Examples:
-
-```text
-Hardware
-  position.gnss
-  battery.status
-  usb.serial
-
-System
-  network.internet
-  time.clock
-  time.synchronized
-  alarm.scheduler
-  notifications
-  system.update
-
-Higher-level
-  search.index
-  media.playback
-```
-
-Feature code requests a capability by contract. It SHALL NOT need to know whether the provider is built-in firmware, a driver ELF, or a service ELF.
-
-The Capability Runtime resolves and manages providers.
-
----
+Capabilities are arbitrary name/version/metadata contracts registered by ELFs (examples: `position.gnss`, `battery.status`, `usb`, `serial.port`, `network.internet`, `time.clock`, `notification.post`, `search.index`). The core resolver is agnostic to names and whether a provider is physical, virtual or composite. Built-in normal hardware providers are forbidden; generic core software facilities and isolated bootstrap are not hardware driver substitutes.
 
 ## 16. Capability leases
 
-Capabilities that imply scarce hardware, power, or provider residency SHOULD be acquired through leases.
-
-Conceptually:
-
-```c
-t5_capability_t gnss = t5_capability_acquire("position.gnss", ...);
-t5_capability_release(gnss);
-```
-
-While a lease exists, the runtime ensures the provider and required dependencies are available subject to policy.
-
-When leases disappear, the runtime MAY suspend/unload providers and power down hardware.
-
----
+A generic lease identifies an authorized consumer, provider, API/version, rights and lifetime. It keeps dependency/provider residency according to policy and invokes generic provider lifecycle. Physical controller ownership, contention, device power-down and safe shutdown remain provider responsibilities; the core MUST NOT power down hardware simply because its software reference count reaches zero. Loss invalidates handles and propagates generic events.
 
 ## 17. Service Runtime
 
-Background/system work SHALL be implemented through managed service ELFs rather than unrestricted permanent application tasks.
-
-Service execution modes SHOULD include:
-
-```text
-resident
-event-driven
-scheduled
-periodic
-on-demand
-boot
-idle/opportunistic
-```
-
-The Service Manager owns lifecycle, scheduling, dependency resolution, resource budgets, restart policy, persistence, and unloading.
-
-A service SHOULD perform bounded work and become unloadable whenever continuous residency is unnecessary.
-
-Examples include time synchronization, alarm handling, update checks, indexing, background downloads, and notification processing.
-
----
+Resident, event-driven, scheduled, periodic, on-demand, boot and idle services use managed lifecycle, dependency resolution, budgets, restart, persistence and unload. Time sync, updater, alarm and indexing are reference services. Hardware-specific implementation inside a service must instead be an appropriately privileged provider capability and cannot be hidden in compiled core.
 
 ## 18. Persistent scheduling
 
-T5 SHALL provide system-owned scheduling independent of service ELF residency.
-
-Conceptual APIs:
-
-```c
-t5_schedule_at(...);
-t5_schedule_after(...);
-t5_schedule_periodic(...);
-t5_schedule_cancel(...);
-```
-
-The scheduler determines whether a deadline uses an awake software timer, persistent deadline state, RTC/deep-sleep wakeup, or restoration after reboot.
-
-An alarm service SHALL NOT need to remain loaded merely to wait for an alarm deadline.
-
----
+Schedule at/after/periodic/cancel APIs maintain deadlines independent of service residency. Generic scheduling decides deadlines and policy; a dedicated RTC/wake/power provider (or isolated minimal CPU bootstrap primitive) programs actual MCU hardware. The core should not contain device-specific wake-source code.
 
 ## 19. Power Runtime
 
-Power policy SHALL be centralized.
-
-Apps/services SHOULD declare temporary requirements rather than directly controlling global sleep or peripheral power.
-
-Conceptually:
-
-```c
-t5_power_lease_t lease = t5_power_acquire(T5_POWER_REQUIRE_NETWORK);
-...
-t5_power_release(lease);
-```
-
-The runtime owns:
-
-- sleep eligibility;
-- peripheral/provider power transitions;
-- network wake requirements;
-- display wake policy;
-- deep-sleep scheduling;
-- conflicting requirement arbitration;
-- cleanup of leaked leases when an owner context terminates.
-
-No app/service SHOULD be able to accidentally prevent sleep forever merely because it forgot a raw firmware power lock.
-
----
+The core may compute *generic policy* such as sleep eligibility, desired wake deadlines and owner-scoped power requirements, and clean leaked software policy requests. Hardware power modes, rails, charger registers, USB VBUS, radio state, panel power and actual sleep-entry wiring are implemented by installed power/board/controller providers. Apps/services request capabilities rather than controlling global state. A power policy enum must not become a USB-specific core power manager. If a provider fails to quiesce, follow an explicit safe failure policy instead of assuming a generic lease release powered hardware down.
 
 ## 20. Networking Runtime
 
-Ordinary feature code SHOULD use high-level asynchronous network operations rather than sockets/Wi-Fi lifecycle directly.
-
-Initial abstractions SHOULD include:
-
-```text
-HTTP request
-download/upload
-network availability
-optional WebSocket/streaming abstraction
-```
-
-The runtime owns Wi-Fi acquisition, connection state, DNS, TLS, buffering, timeout, retry policy, storage-backed downloads where appropriate, cancellation, and power integration.
-
-Low-level sockets MAY remain an advanced capability rather than the default API.
-
----
+Feature code requests HTTP, upload/download, availability and optional WebSocket/streaming; generic jobs can handle timeouts, cancellation and buffering. Installed networking providers own Wi-Fi/radio, link association, actual sockets/transport and associated physical power. Reusable DNS/TLS/HTTP components are transport-independent services/providers, never justification for compiled Wi-Fi control. Recovery-only networking is explicitly isolated.
 
 ## 21. Presentation Runtime
 
-Applications manipulate framework UI state/objects; the framework owns e-paper rendering mechanics.
-
-Feature code SHOULD NOT normally choose partial versus full refresh, directly drive the panel, or maintain ghosting policy.
-
-The Presentation Runtime owns:
-
-```text
-view hierarchy
-layout
-navigation chrome
-Back behavior
-scrolling
-focus/input routing
-dirty regions
-partial/full refresh policy
-ghosting budget
-framebuffer/display transactions
-```
-
-State changes invalidate logical presentation. The runtime determines the cheapest correct physical update.
-
----
+Generic UI owns view hierarchy, layout, navigation, Back behavior, lists/scrolling, focus/input routing and invalidation; an installed display provider owns panel commands, framebuffer transfer, ghosting/partial/full refresh constraints and physical commit policy. A display-specific policy may be supplied through provider metadata/ABI; normal core cannot hard-code e-paper hardware behavior. Touch hardware is likewise an ELF provider.
 
 ## 22. State-driven UI integration
 
-This specification retains the scene-runtime invariant that authoritative state lives outside disposable controllers/rendered views.
-
-```text
-Application/model state
-       +
-NavigationPath/scene state
-       |
-       v
-active controller ELF
-       |
-       v
-framework UI objects
-       |
-       v
-Presentation Runtime
-```
-
-State-driven architecture SHALL NOT require continuous rebuilding or redrawing. Active concrete UI may remain resident and be incrementally updated.
-
----
+Authoritative model/navigation state is independent of disposable controllers and visible UI. State changes update resident views incrementally; only the installed display provider drives actual pixels.
 
 ## 23. Cancellation
 
-Every asynchronous framework operation that can outlive its immediate caller SHOULD have explicit cancellation semantics.
-
-Cancellation SHALL also occur automatically when required by owner-context destruction.
-
-A cancelled job SHALL eventually reach a terminal state and release framework-owned resources.
-
-Feature code SHALL NOT need to locate and terminate underlying FreeRTOS tasks.
-
----
+Operations surviving the caller require explicit cancellation and context-triggered cleanup. Jobs reach terminal status and software resources are released; hardware providers implement actual stop/abort and report safe quiescence before unload, without core device reset operations.
 
 ## 24. Timeouts and deadlines
 
-Blocking or potentially unbounded platform operations SHOULD support runtime-controlled timeout/deadline policy.
-
-Services SHOULD have execution budgets so malfunctioning background code cannot consume CPU, memory, network, or power indefinitely.
-
-Timeout outcomes SHALL be delivered as structured errors/events rather than requiring application watchdog logic.
-
----
+Generic operations have deadlines/budgets and structured failure events. Provider-specific timeout/retry protocol is driver code; a generic watchdog cannot replace USB recovery or charger fault handling.
 
 ## 25. Fault containment
 
-T5 SHOULD convert recoverable module/runtime failures into managed lifecycle outcomes whenever possible.
-
-Examples:
-
-```text
-invalid/stale handle
-resource quota exceeded
-job timeout
-service timeout
-ELF load/entry failure
-ABI mismatch
-capability unavailable
-provider failure
-storage failure
-```
-
-The runtime SHOULD surface outcomes such as:
-
-```text
-APP_FAILED
-SERVICE_FAILED
-DRIVER_FAILED
-JOB_FAILED
-CAPABILITY_LOST
-```
-
-This does not imply complete hardware memory isolation. Native-code memory corruption may remain capable of compromising the system until stronger protection is implemented.
-
----
+Represent stale handles, quotas, job/service timeouts, ELF load/ABI/provider/storage failure as APP_FAILED/SERVICE_FAILED/DRIVER_FAILED/JOB_FAILED/CAPABILITY_LOST. Native ELF is not process isolation: memory corruption may compromise system. Physical failure policy is provider-specific, not a core hardware recovery routine.
 
 ## 26. Resource budgets and quotas
 
-Managed contexts SHOULD support accounting for:
-
-```text
-resident SRAM
-resident PSRAM
-storage-VM mappings/cache
-open handles
-jobs
-CPU/runtime budget
-timers/deadlines
-network activity
-power leases
-wakeups
-persistent storage
-```
-
-System policy MAY assign different limits to apps, services, and privileged drivers.
-
-A single module SHALL NOT be allowed to accidentally consume all framework resources through managed APIs.
-
----
+Track SRAM/PSRAM, VM maps/cache, handles, jobs, CPU, timers, generic network grants, policy requests, wakeups and persistent storage per context. Apps/services/drivers may have different limits. Hardware transactions and actual resource arbitration belong to provider ELFs.
 
 ## 27. Hardware independence
 
-Feature-level capability contracts SHOULD avoid board-specific concepts whenever possible.
-
-For example, applications should consume:
-
-```text
-position.gnss
-```
-
-rather than:
-
-```text
-UART1 RX GPIO 44 at 9600 baud
-```
-
-Board/device-specific details belong in driver/provider manifests and implementation.
-
-This SHALL allow future T5 hardware to provide the same capability through different silicon without changing application code.
-
----
+An app requests `position.gnss`, not `UART1 RX GPIO44 at 9600 baud`. A generic core knows neither expression as hardware semantics; it resolves the capability string. Device-specific details reside in ELF implementations and optional board profiles. This must hold for every device and transport, not just application source.
 
 ## 28. Escape hatches
 
-T5 MAY expose advanced low-level APIs for specialized software, but they SHALL be explicit privileged capabilities rather than the default development path.
-
-Examples may include raw sockets, raw serial, raw filesystem paths, or direct hardware buses.
-
-Use of escape hatches MAY reduce portability, resource guarantees, power optimization, and future isolation.
-
----
+Advanced low-level capabilities (raw serial/socket/filesystem or bus access) require explicit provider-defined privileges and may reduce portability. Such interfaces are delivered by drivers, not special-case firmware hardware APIs.
 
 ## 29. Developer programming model
 
-A normal application should primarily consist of:
-
-```text
-models/state
-scene controllers
-user actions
-event handling
-capability requests
-async job requests
-logical data access
-```
-
-A normal service should primarily consist of:
-
-```text
-event/schedule triggers
-bounded work
-capability requests
-logical persistent state
-result/event publication
-```
-
-Neither should normally contain RTOS scheduling, hardware initialization, memory-tier selection, sleep coordination, or display-driver logic.
-
----
+Applications comprise state, scenes, actions, events, capability requests, jobs and logical data; services comprise events/schedules, bounded work, capability requests, persistent state and outputs. Neither normally owns RTOS tasks, board initialization, sleep hardware or display driver. Hardware driver ELFs intentionally do own their corresponding hardware implementation.
 
 ## 30. Example feature flow
 
-A weather-style feature SHOULD conceptually be expressible as:
+Weather scene -> acquire generic network capability -> request async refresh -> receive JOB_COMPLETE -> update model -> invalidate UI -> display provider physically commits. The app is unaware of tasks/buffers/Wi-Fi/panel timing, and the core is unaware of Wi-Fi/controller/panel hardware.
 
-```text
-scene appears
-    |
-    v
-acquire network/service capability
-    |
-    v
-request asynchronous refresh
-    |
-    v
-return to framework
+## 31. Core responsibilities
 
-... runtime handles threads/network/power ...
+Core: minimal boot/loader, signature/integrity validation, scheduler/contexts/handle tables, generic event bus, persistent deadline metadata, memory manager, logical data namespace, arbitrary capability resolver, service/driver package managers, generic policy and crash/watchdog diagnostics. Optional bootstrap storage/recovery is isolated. **Not core:** any production hardware controller, bus manager, USB host/class, Wi-Fi radio manager, GPS UART, charger/rail manager, panel driver or hardware-specific power/sleep operation. Those are ELF providers.
 
-JOB_COMPLETE / MODEL_CHANGED
-    |
-    v
-update model
-    |
-    v
-framework invalidates affected UI
-    |
-    v
-presentation runtime selects e-paper update
-```
+## 32. Security/isolation
 
-The feature does not know which task executed the HTTP request, where buffers lived, how Wi-Fi was powered, or which physical refresh mode was selected.
-
----
-
-## 31. Platform-owned responsibilities
-
-The following SHOULD remain core runtime responsibilities rather than arbitrary pluggable feature code:
-
-```text
-boot
-ELF loader
-signature verification
-execution/runtime scheduler
-resource contexts/handle tables
-event/message bus
-persistent deadline scheduler
-memory manager
-storage/data runtime
-capability resolver
-service manager
-driver manager
-power/sleep coordinator
-presentation/display ownership
-crash/watchdog infrastructure
-basic filesystem substrate
-```
-
-Higher-level behavior may be implemented as replaceable services/drivers on top of these primitives.
-
----
-
-## 32. Relationship to security/isolation
-
-The abstraction boundary SHALL be designed so it can later become a stronger security boundary.
-
-Therefore public APIs SHOULD:
-
-- use handles rather than framework pointers;
-- validate buffer ranges and lengths;
-- associate resources with identities/contexts;
-- avoid arbitrary cross-ELF callbacks;
-- centralize privileged hardware access;
-- centralize service/driver loading;
-- enforce declared capabilities;
-- permit provider revocation/unloading.
-
-These practices are valuable even before hardware-enforced process isolation exists.
-
----
+Public APIs validate buffers, types, owner, rights, lifecycle and generations; avoid raw cross-ELF callbacks, validate packages and support provider revocation/unload. Centralize *authorization* in the generic core and *hardware implementation* in trusted providers. Signed packages and stronger isolation remain necessary; putting hardware in firmware is not an acceptable shortcut.
 
 ## 33. Observability
 
-The runtime SHOULD expose diagnostics sufficient to debug abstractions without requiring applications to instrument FreeRTOS directly.
-
-Diagnostics SHOULD include:
-
-```text
-active contexts
-resident modules
-job queue/running jobs
-resource ownership
-memory by context/tier
-VM cache pressure
-open capabilities/providers
-service states
-scheduled deadlines
-power leases
-network operations
-recent failures
-```
-
-A future system diagnostics application can consume this data through a privileged framework capability.
-
----
+Report contexts, resident modules, jobs, generic software grants, memory, VM pressure, provider capability state, services, deadlines, policy requests and failures. USB topology/transport details may be surfaced as opaque provider-published diagnostics; the core must not query a compiled USB manager.
 
 ## 34. Implementation sequence
 
-### Phase 1 - Resource context and handles
-
-Create `T5Context`, ownership tracking, typed/generation-safe handles, and deterministic cleanup. Migrate framework APIs to associate resources with a context.
-
-### Phase 2 - Execution Runtime
-
-Create the framework executor, async job abstraction, cancellation, terminal job states, and unified event delivery. Migrate app code away from direct task creation where practical.
-
-### Phase 3 - Event bus
-
-Define versioned system/job/capability event structures and subscription ownership. Eliminate long-lived cross-ELF callbacks where possible.
-
-### Phase 4 - Capability and power leases
-
-Unify capability acquisition with resource ownership. Make hardware/provider residency and power requirements lease-driven.
-
-### Phase 5 - Data Runtime
-
-Add namespaced preferences, durable data, cache/temp storage, transactions, and integration with storage-backed virtual objects.
-
-### Phase 6 - Persistent scheduler and Service Runtime
-
-Implement durable deadlines, event/scheduled service activation, resource budgets, persistence, restart policy, and unloading. Use time synchronization as the first reference service, updater as the second, and alarm handling as the scheduled/deep-sleep validation case.
-
-### Phase 7 - Networking Runtime
-
-Move common network operations behind async T5 APIs with automatic connectivity, timeout, cancellation, buffering, storage, and power integration.
-
-### Phase 8 - Presentation abstraction
-
-Complete framework ownership of navigation, lists/scrolling, input, dirty regions, e-paper refresh policy, and virtualization.
-
-### Phase 9 - Isolation hardening
-
-Use the established context/handle/capability boundaries to add available ESP32-S3 memory protection, stricter module privileges, signed service policy, quotas, and fault containment.
-
----
+1. Generic context/handles and deterministic software cleanup.
+2. Execution/job/cancellation/event model.
+3. Versioned generic events, provider publication and subscriptions.
+4. Arbitrary capability names, manifests, resolver and rights; provider-managed hardware sessions/power.
+5. Data runtime with namespaced storage, transactions and VM.
+6. Persistent deadlines and service activation, with actual RTC/wake operations in providers.
+7. Generic networking services with physical link/radio implementations in ELFs.
+8. Generic UI/navigation/virtualization with actual display and input hardware implemented in ELFs.
+9. Signed privileged drivers, stricter API rights/quotas, and containment.
+10. Remove legacy firmware device-specific bridges/projections/managers; validate independent driver installation and physical teardown.
 
 ## 35. Acceptance criteria
 
-The abstraction architecture is successful when representative applications and services can be implemented without direct use of:
-
-```text
-xTaskCreate
-vTaskDelete
-FreeRTOS queues/semaphores/mutexes
-ESP heap capability selection
-raw PSRAM allocation policy
-raw SD filesystem paths for routine state
-raw Wi-Fi lifecycle
-raw display refresh calls
-raw sleep/power locks
-raw UART/SPI/I2C/GPIO for ordinary capabilities
-```
-
-A representative app SHALL be able to perform UI, navigation, persistence, networking, large-data access, scheduling, and hardware capability consumption exclusively through T5 APIs.
-
-A representative background service SHALL be able to wake from an event/deadline, perform bounded asynchronous work, persist state, publish results, and become unloadable without owning permanent RTOS machinery.
-
----
+Representative apps/services use no direct FreeRTOS task management, heap-tier selection, raw storage paths, Wi-Fi lifecycle, panel commands, power hardware locks or UART/SPI/I2C/GPIO calls for ordinary capabilities. **Additionally**, normal compiled firmware has no operational hardware implementation or transport-specific device managers. Install new hardware using only ELFs/profiles; uninstall its driver and verify no silent resident fallback; generic capability resolver/streams remain unchanged. Verify real hardware, resource cleanup and safe provider unload, not just compilation.
 
 ## 36. Architectural test applications
 
-The implementation SHOULD maintain small reference modules that prove abstraction completeness:
-
-1. **Weather/reference network app** - UI + HTTP + persistence + async jobs + power.
-2. **Large catalog app** - virtualized collection + storage-backed data + scrolling.
-3. **Time synchronization service** - event/scheduled service + network + time capability.
-4. **Updater service** - background network + durable state + large download + transaction.
-5. **Alarm service** - persistent deadline + deep sleep/wake + event delivery.
-6. **GNSS app** - hardware capability consumption without UART knowledge.
-
-If any reference feature requires ordinary application code to reach through the T5 boundary into ESP-IDF/FreeRTOS, the missing abstraction SHOULD be treated as a platform design gap.
-
----
+Maintain weather/network UI, large virtualized catalog, time-sync service, updater, alarm/deep-sleep service and GNSS consumer references. Add a driver installation test for a previously unsupported device and an absence-after-removal test. If any reference needs app-specific ESP-IDF access, it exposes a missing provider API; if the core gains a USB/GNSS hardware branch, it violates the architecture.
 
 ## 37. Final architecture
 
 ```text
-                 T5 FEATURE SOFTWARE
-
-       Apps / Scenes              Services
-            |                        |
-            +----------+-------------+
-                       |
-          State / Actions / Events / Data
-                       |
-                       v
-+--------------------------------------------------+
-|                  T5 FEATURE API                  |
-+--------------------------------------------------+
-| Execution | Resource Contexts | Event Bus        |
-| Data/VM   | Scheduler         | Networking       |
-| Power     | Presentation      | Capabilities     |
-| Service Manager              | Security          |
-+----------------------+---------------------------+
-                       |
-               Capability Resolver
-                       |
-          +------------+-------------+
-          |                          |
-    Built-in providers         Driver ELFs
-          |                          |
-          +------------+-------------+
-                       |
-                ESP-IDF / FreeRTOS
-                       |
-                    Hardware
+Apps / scenes / services
+     -> generic state / actions / events / data / capabilities
+     -> RiscRTE core: execution / policy / generic handles / streams / resolver
+     -> installed physical, virtual and composite provider ELFs
+     -> other providers / narrow platform CPU+OS port
+     -> hardware
 ```
 
-The intended development experience is therefore:
-
-> **Feature software describes what should happen. T5 decides how the machine makes it happen.**
-
-That principle SHALL guide future framework APIs and migration of existing firmware functionality.
+**Feature software describes required outcomes; provider ELFs implement the hardware; RiscRTE only resolves and supervises the software contracts.**
