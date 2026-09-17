@@ -21,8 +21,17 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/provider_graph_v2_test.cpp" -ldl -o "$build/graph-test"
 "$build/graph-test" "$build/root.so" "$build/child.so" "$build/other.so" "$build/root-alt.so"
 
-# The generic registry must require a by-value authenticated image digest for
-# privileged providers. A host build MUST NOT claim native Xtensa activation.
+# Registration must copy every string and image byte before caller buffers or
+# package inspection receipts can change or be released.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/sdk/driver" -I"$repo/test/drivers/stubs" -I"$repo/src" \
+  "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
+  "$repo/src/runtime/drivers/ProviderGraphV2.cpp" \
+  "$repo/test/drivers/provider_owned_spec_v2_test.cpp" -ldl -o "$build/ownership-test"
+"$build/ownership-test" "$build/root.so"
+
+# A by-value authenticated image digest and exact sorted import declarations
+# are necessary for privileged images. Host MUST NOT claim Xtensa activation.
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   -I"$repo/test/drivers/stubs" -I"$repo/src" \
   "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
@@ -31,8 +40,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   -ldl -o "$build/privileged-spec-test"
 "$build/privileged-spec-test"
 
-# Failure AFTER hardware acquisition must quarantine the child and pin the
-# lower ELF until repeated quiescence succeeds; test real dlopen/dlclose flow.
+# Failed start retains the mapped ELF and dependencies through retry.
 cc "${flags[@]}" "$repo/test/drivers/provider_failed_start_fixture.c" \
   -o "$build/failed-start.so"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
@@ -43,8 +51,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   -ldl -o "$build/recovery-test"
 "$build/recovery-test" "$build/root.so" "$build/failed-start.so"
 
-# Once quiesce fails, an initially active module is no longer usable. A
-# failed release cannot permit a new grant into partially torn-down hardware.
+# Failed quiescence revokes grants without unmapping active IRQ/DMA owners.
 cc "${flags[@]}" -DFIXTURE_ID='"fixture-retry"' \
   -DFIXTURE_CAPABILITY='"cap.retry"' -DFIXTURE_QUIESCE_FAIL_ONCE \
   "$repo/test/drivers/provider_graph_fixture.c" -o "$build/retry.so"
