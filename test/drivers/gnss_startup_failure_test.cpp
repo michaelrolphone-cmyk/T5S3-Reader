@@ -14,6 +14,9 @@ namespace {
 bool kernelClaimed = false;
 bool moduleActivates = true;
 t5_stream_result_t attachResult = T5_STREAM_BUSY;
+t5_stream_result_t publishResult = T5_STREAM_OK;
+RuntimeStreams::LiveGnssSession::PollDecision pollDecision =
+    RuntimeStreams::LiveGnssSession::PollDecision::Poll;
 unsigned kernelClaims = 0, kernelReleases = 0;
 unsigned moduleStarts = 0, moduleStops = 0, moduleReads = 0;
 unsigned streamAttaches = 0, streamDisconnects = 0, streamPublishes = 0;
@@ -69,14 +72,14 @@ void nativeGnssDisconnect(uint32_t owner) {
 }
 RuntimeStreams::LiveGnssSession::PollDecision nativeGnssBeforePoll(uint32_t owner) {
   assert(ExecutionContext::current()->running(owner));
-  return RuntimeStreams::LiveGnssSession::PollDecision::Poll;
+  return pollDecision;
 }
 t5_stream_result_t nativeGnssPublishCopy(uint32_t owner, const t5_gps_state_t& state,
                                         uint32_t sampleMs) {
   assert(ExecutionContext::current()->running(owner));
   assert(state.fix_valid && sampleMs == 1000u);
   ++streamPublishes;
-  return T5_STREAM_OK;
+  return publishResult;
 }
 
 int main() {
@@ -111,19 +114,70 @@ int main() {
   assert(registry.leaseCount() == 0 && !kernelClaimed);
 
   // Even if a malformed module reports start success without ACTIVE state,
-  // borrowing its source must fail closed and must release the UART claim.
+  // borrowing its source must fail closed and release the UART claim.
   moduleActivates = false;
   assert(!GpsDriverRuntime::start());
   assert(streamAttaches == 2 && moduleStops == 3 && kernelReleases == 3);
   assert(registry.leaseCount() == 0 && !kernelClaimed);
   moduleActivates = true;
 
-  // A normal active provider is also cleaned on exceptional app-context exit.
+  // A source may be revoked during preflight OR the record registry may fail
+  // after the ELF read. Neither path may return a fix or leave an active UART
+  // that subsequently serves legacy raw reads without a semantic stream.
+  auto failRead = [&](RuntimeStreams::LiveGnssSession::PollDecision decision,
+                      t5_stream_result_t publication) {
+    pollDecision = RuntimeStreams::LiveGnssSession::PollDecision::Poll;
+    publishResult = T5_STREAM_OK;
+    assert(GpsDriverRuntime::start());
+    assert(GpsDriverRuntime::available());
+    const unsigned reads = moduleReads, publishes = streamPublishes;
+    const unsigned stops = moduleStops, disconnects = streamDisconnects;
+    const unsigned releases = kernelReleases;
+    pollDecision = decision;
+    publishResult = publication;
+    t5_gps_state_t value{};
+    value.latitude = 81.0; // Must be cleared even after a successful ELF read.
+    assert(!GpsDriverRuntime::read(&value));
+    assert(value.status == T5_GPS_STATUS_OFF && !value.fix_valid &&
+           value.latitude == 0 && value.longitude == 0);
+    const bool readHardware = decision == RuntimeStreams::LiveGnssSession::PollDecision::Poll;
+    assert(moduleReads == reads + (readHardware ? 1u : 0u));
+    assert(streamPublishes == publishes + (readHardware ? 1u : 0u));
+    assert(moduleStops == stops + 1 && streamDisconnects == disconnects + 1);
+    assert(kernelReleases == releases + 1 && !kernelClaimed);
+    assert(registry.leaseCount() == 0);
+    GpsDriverRuntime::LocationSource stale{1, 1, 1};
+    assert(!GpsDriverRuntime::borrowLocationSource(&stale) && !stale.owner);
+    pollDecision = RuntimeStreams::LiveGnssSession::PollDecision::Poll;
+    publishResult = T5_STREAM_OK;
+  };
+  failRead(RuntimeStreams::LiveGnssSession::PollDecision::Disconnected, T5_STREAM_OK);
+  failRead(RuntimeStreams::LiveGnssSession::PollDecision::Denied, T5_STREAM_OK);
+  failRead(RuntimeStreams::LiveGnssSession::PollDecision::Poll, T5_STREAM_DISCONNECTED);
+  failRead(RuntimeStreams::LiveGnssSession::PollDecision::Poll, T5_STREAM_DENIED);
+  failRead(RuntimeStreams::LiveGnssSession::PollDecision::Poll, T5_STREAM_BUSY);
+
+  // Backpressure and retry are not fatal: they must return cached data and
+  // must NEVER trigger an additional UART read or record publication.
   assert(GpsDriverRuntime::start());
+  assert(GpsDriverRuntime::read(&observation));
+  const unsigned reads = moduleReads, publishes = streamPublishes;
+  pollDecision = RuntimeStreams::LiveGnssSession::PollDecision::Backpressured;
+  t5_gps_state_t cached{};
+  assert(GpsDriverRuntime::read(&cached) && cached.latitude == observation.latitude);
+  pollDecision = RuntimeStreams::LiveGnssSession::PollDecision::Retried;
+  assert(GpsDriverRuntime::read(&cached) && cached.longitude == observation.longitude);
+  assert(moduleReads == reads && streamPublishes == publishes);
+  pollDecision = RuntimeStreams::LiveGnssSession::PollDecision::Poll;
+
+  // A normal active provider is also cleaned on exceptional app-context exit.
   assert(registry.leaseCount() == 1 && kernelClaimed);
+  const unsigned stops = moduleStops, disconnects = streamDisconnects;
+  const unsigned releases = kernelReleases;
   context.end();
-  assert(moduleStops == 4 && streamDisconnects == 2 && kernelReleases == 4);
+  assert(moduleStops == stops + 1 && streamDisconnects == disconnects + 1 &&
+         kernelReleases == releases + 1);
   assert(registry.leaseCount() == 0 && !kernelClaimed);
   assert(ExecutionContext::current() == nullptr);
-  std::puts("GNSS runtime fails closed on stream attach failure and cleans up on retry/exit");
+  std::puts("GNSS startup, poll, publish, retry and context teardown fail-closed tests passed");
 }
