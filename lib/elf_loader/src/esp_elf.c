@@ -543,7 +543,23 @@ int esp_elf_init(esp_elf_t *elf)
  *
  * @return ESP_OK if success or other if failed.
  */
+/* The implementation never handles scope admission. Every public caller,
+ * including ordinary dlopen and trusted provider loading, passes this entry.
+ * Only the verified provider module has a one-use grant while its task owns
+ * privileged import resolution; nested ordinary/same-module loads are denied.
+ * All return paths (including partial mapping errors) revoke active state. */
+static int esp_elf_relocate_impl(esp_elf_t *elf, const uint8_t *pbuf);
+
 int esp_elf_relocate(esp_elf_t *elf, const uint8_t *pbuf)
+{
+    if (!elf || !pbuf) return -EINVAL;
+    if (!esp_elf_privileged_os_cpu_relocation_enter_v1(elf)) return -EPERM;
+    int result = esp_elf_relocate_impl(elf, pbuf);
+    if (!esp_elf_privileged_os_cpu_relocation_leave_v1(elf)) return -EIO;
+    return result;
+}
+
+static int esp_elf_relocate_impl(esp_elf_t *elf, const uint8_t *pbuf)
 {
     int ret;
 
