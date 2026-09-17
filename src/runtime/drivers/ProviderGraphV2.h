@@ -4,10 +4,10 @@
 #include <cstdint>
 
 /* Generic resolver inputs MUST originate from independently integrity/trust-
- * validated installed manifests. Strings and requirements remain valid while
- * the graph exists; the authenticated ELF digest is copied BY VALUE. The
- * original file/buffer may change: the loader snapshots bytes and checks the
- * signed digest before relocation. No capability name is special to core.
+ * validated installed manifests. Strings, dependencies AND signed import
+ * declarations must stay immutable while the graph can activate the node;
+ * the authenticated ELF digest is copied BY VALUE. An SD mutation cannot
+ * replace the executable without a fresh digest match at relocation.
  * This is module lifetime/integrity machinery, NOT signature authorization. */
 namespace RuntimeProviders {
 struct RequirementV2 {
@@ -22,16 +22,19 @@ struct SpecV2 {
   const RequirementV2* requirements;
   size_t requirementCount;
   /* Append-only private verified-loader admission. Zero retains the existing
-   * unprivileged path. Nonzero requests a versioned privileged port ABI and
-   * requires the trusted installer to supply authenticated bytes, the exact
-   * signed payload SHA-256, dependency pins and execution authorization.
-   * This manifest field is a requirement, NEVER authority in its own right. */
+   * unprivileged path. Nonzero requests versioned OS/CPU privilege and
+   * requires authenticated digest, EXACT signed imports, dependency pins and
+   * execution authorization. Declaring an ABI alone is NEVER authority. */
   uint32_t requiredOsCpuAbi = 0;
   const uint8_t* verifiedElfBytes = nullptr;
   size_t verifiedElfLength = 0;
-  /* The trusted package verifier must copy the digest from an authenticated
-   * package receipt, not from an unchecked manifest or writable SD header.
-   * The by-value field prevents subsequent digest-pointer substitution. */
+  /* Only the privileged Package Manager may supply this manager-owned,
+   * immutable signed declaration array; arbitrary app metadata is untrusted.
+   * Names must be sorted, unique and exactly match BOTH ELF symbol tables. */
+  const char* const* signedImports = nullptr;
+  size_t signedImportCount = 0;
+  /* The verifier must copy this digest from an authenticated package receipt,
+   * not from an unchecked manifest or removable storage header. */
   uint8_t authenticatedElfSha256[32] = {};
 };
 struct GrantV2 {
