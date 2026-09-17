@@ -38,6 +38,9 @@ struct SignedInstallOutcome {
 // If publication reached the final directory before reset, authenticate and
 // complete its recovery before removing the matching disposable intake.
 //
+// expectedApprovedDigest, when nonnull, MUST be retained by the privileged
+// manager from authenticated inspection before the user's physical consent.
+// It is compared with authenticated intake BEFORE extraction or publication.
 // This entry point does NOT activate, dlopen or grant hardware capabilities.
 // Do not make published SD executable until a byte-bound load gate exists.
 SignedInstallOutcome installSignedDevicePackage(std::FILE* source,
@@ -46,6 +49,7 @@ SignedInstallOutcome installSignedDevicePackage(std::FILE* source,
     void* resolverContext, PackageVerificationWorkspace& workspace,
     PackageArchive& approved, PackageArchive& observed,
     PackageArchiveLimits limits = {}, bool allowFirstInstall = false,
-    bool allowSemverDowngrade = false);
+    bool allowSemverDowngrade = false,
+    const uint8_t expectedApprovedDigest[32] = nullptr);
 
 } // namespace RuntimePackages
