@@ -1,14 +1,27 @@
 #include "ProviderGraphV2.h"
+#include "ProviderOwnedSpecV2.h"
 #include <cstring>
+#include <new>
 
 namespace RuntimeProviders {
 namespace {
 bool validName(const char* s) {
   if (!s || !s[0]) return false;
   size_t i = 0;
-  while (s[i] && i < 95) ++i;
+  while (i < 95 && s[i]) ++i;
   return i && i < 95;
 }
+}
+
+GraphV2::~GraphV2() {
+  // Quiescence failure means hardware can still call into its ELF. Retain all
+  // borrowed metadata and executable snapshots rather than causing UAF.
+  // The higher-level manager must keep a failed graph in quarantine and retry.
+  if (!shutdown()) return;
+  for (size_t i = 0; i < count_; ++i) {
+    delete nodes_[i].owned;
+    nodes_[i].owned = nullptr;
+  }
 }
 
 int GraphV2::find(const char* capability, uint32_t api) const {
@@ -50,9 +63,9 @@ bool GraphV2::addVerified(const SpecV2& spec) {
                           spec.signedImportCount > 0 &&
                           spec.signedImportCount <= 128 &&
                           !emptyDigest;
-  /* Privileged byte-images have no pathname dependency; ordinary ELFs still
-   * require an absolute path. Neither path, digest nor declaration alone is
-   * signer authentication. Only trusted package intake may register specs. */
+  /* A digest and import list are DATA, not a signer. The manager's private
+   * admission boundary must authenticate them before calling this method.
+   * Never borrow any of this data from a temporary caller after registration. */
   if (count_ == kMaxModules || !validName(spec.id) ||
       !validName(spec.provides) || !spec.api ||
       (spec.verifiedElfPath && spec.verifiedElfPath[0] != '/') ||
@@ -61,10 +74,13 @@ bool GraphV2::addVerified(const SpecV2& spec) {
       spec.requirementCount > kMaxModules ||
       (spec.requirementCount && !spec.requirements)) return false;
   if (privileged) {
-    /* Fast metadata preflight; the private loader revalidates the exact set
-     * against both ELF symbol tables on the digest-checked private snapshot. */
+    // Validate bounds BEFORE strcmp; neither malformed input nor a forged
+    // unterminated declaration may drive an unbounded string walk.
     for (size_t i = 0; i < spec.signedImportCount; ++i) {
-      if (!spec.signedImports[i] || !spec.signedImports[i][0]) return false;
+      if (!spec.signedImports[i]) return false;
+      char bounded[OwnedNodeV2::kImportName]{};
+      if (!OwnedNodeV2::copyString(bounded, sizeof(bounded),
+                                   spec.signedImports[i])) return false;
       if (i && std::strcmp(spec.signedImports[i - 1], spec.signedImports[i]) >= 0)
         return false;
     }
@@ -84,8 +100,15 @@ bool GraphV2::addVerified(const SpecV2& spec) {
   }
   // Multiple verified drivers may offer the same semantic capability.
   // acquire() refuses ambiguity; acquireFrom() requires an explicit ID.
-  // The signed digest is copied into the node, not retained through a pointer.
-  nodes_[count_++].spec = spec;
+  auto* owned = new (std::nothrow) OwnedNodeV2();
+  if (!owned) return false;
+  if (!owned->snapshot(spec)) {
+    delete owned;
+    return false;
+  }
+  Node& node = nodes_[count_++];
+  node.owned = owned;
+  node.spec = owned->spec;
   return true;
 }
 
@@ -128,9 +151,10 @@ bool GraphV2::activate(size_t index) {
     deps[i] = {requirement.capability, requirement.api,
                nodes_[dependency].module.capability()};
   }
-  /* The package verifier must authenticate signer, entry digest and exact
-   * import declarations before this graph is populated. The loader snapshots
-   * bytes, hashes its copy and validates imports on that SAME image. */
+  /* Registration-owned bytes cannot change when the manifest, verifier
+   * receipt or SD buffer goes out of scope. The loader independently copies
+   * those bytes, checks the signed digest and validates exact imports on the
+   * SAME private image that will be relocated. */
   const bool loaded = node.spec.requiredOsCpuAbi
       ? node.module.loadVerifiedBytes(node.spec.verifiedElfBytes,
                                       node.spec.verifiedElfLength,
@@ -146,8 +170,6 @@ bool GraphV2::activate(size_t index) {
                          node.spec.requirementCount ? deps : nullptr,
                          node.spec.requirementCount);
   if (!loaded) {
-    // If quiescence fails after a partially successful start, retain the ELF
-    // AND all borrowed provider tables. shutdown() retries this quarantine.
     if (node.module.unload()) releaseDependencies(index);
     node.visit = Visit::Idle;
     return false;
@@ -205,10 +227,6 @@ size_t GraphV2::liveGrants() const {
 
 bool GraphV2::shutdown() {
   if (liveGrants()) return false;
-  /* Failed-start nodes may hold borrowed dependency tables even though their
-   * graph visit state is Idle. Recover and unload those ELFs BEFORE releasing
-   * their pins, then drain newly unpinned dependencies on subsequent passes.
-   * A still-active IRQ/DMA/rail causes unload() to fail without revocation. */
   for (size_t pass = 0; pass <= count_; ++pass) {
     bool progress = false;
     for (size_t i = 0; i < count_; ++i) {
