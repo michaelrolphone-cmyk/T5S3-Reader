@@ -77,7 +77,10 @@ void connect(const char* ssid, const char* password) {
   if (!ssid || !ssid[0]) return;
   WiFi.persistent(false);  // The credential store owns persistence.
   WiFi.mode(WIFI_STA);
-  WiFi.disconnect(true, true);  // Clear stale SDK auto-connect credentials.
+  // Erase stale SDK credentials without powering off the just-initialized STA.
+  // disconnect(true, true) stops the radio, making the following MAC/hostname
+  // operations fail with ESP_ERR_WIFI_NOT_INIT (0x3001).
+  WiFi.disconnect(false, true);
   delay(100);
   String mac = WiFi.macAddress();
   mac.replace(":", "");
