@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Focused, reproducible HOST acceptance for the unified signed package MVP.
-# Not a physical SD/power-cut, ELF-loader, or production-key acceptance test.
+# Unified Package Manager MVP HOST gate: no P-256 keys, signer provisioning,
+# signed provenance or NVS cryptographic rollback policy are required.
+# A successful host run is NOT on-device SD/network or power-cut acceptance.
 set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-for program in c++ python3 openssl; do
+for program in c++ openssl; do
   if ! command -v "$program" >/dev/null 2>&1; then
     echo "Missing required host tool: $program" >&2
     exit 2
@@ -13,18 +14,13 @@ binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
 flags=(-std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined
        -fno-omit-frame-pointer -pthread -I"$repo_dir/src")
-echo '== Signed transaction recovery, rename and NVS fault simulation =='
-c++ "${flags[@]}" "$repo_dir/test/resources/package_signed_transaction_test.cpp" -o "$binary"
-"$binary"
-echo '== Real NVS adapter, restart and fault injection =='
-c++ "${flags[@]}" -I"$repo_dir/test/resources/package_floor_stubs" \
-  "$repo_dir/src/runtime/packages/PackageDeviceSecurityFloor.cpp" \
-  "$repo_dir/test/resources/package_device_security_floor_test.cpp" \
-  -lcrypto -o "$binary"
-"$binary"
-echo '== Real P-256 writer, staging, extraction, publication and reboot verification =='
-python3 "$repo_dir/test/resources/package_builder_test.py"
-python3 "$repo_dir/test/resources/package_stage_test.py"
-echo '== Real P-256 provider ABI/import profile and signed-intake substitution =='
-python3 "$repo_dir/test/resources/package_provider_profile_test.py"
-echo 'PASS: host signed-package MVP (hardware acceptance, private provider admission and protected ELF loading remain separate).'
+for test_case in package_identity package_preflight package_json_guard \
+                 package_use_gate package_transaction package_recovery \
+                 package_ordinary_stage package_ordinary_installer; do
+  echo "== Ordinary package MVP: ${test_case} =="
+  c++ "${flags[@]}" "$repo_dir/test/resources/${test_case}_test.cpp" \
+      -lcrypto -o "$binary"
+  "$binary"
+done
+echo 'PASS: ordinary package MVP host tests (four kinds, source-neutral integrity, staging and recoverable publication).'
+echo 'Deferred signer/P-256 prototype: test/run_signed_package_experiment.sh (not an MVP gate).'
