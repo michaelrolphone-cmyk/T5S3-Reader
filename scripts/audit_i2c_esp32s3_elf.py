@@ -24,8 +24,6 @@ def inspect(path):
                result['resolved_by_current_firmware'])
     hardware = sorted(name for name in imports
                       if name.startswith(HARDWARE_IMPORT_PREFIXES))
-    # A global or privileged port export must never authorize a driver
-    # to delegate its actual hardware implementation back to firmware.
     result['forbidden_peripheral_imports'] = hardware
     result['current_loader_abi_compatible'] = (
         result['current_loader_abi_compatible'] and not hardware)
@@ -36,7 +34,7 @@ def inspect(path):
     result['installable'] = False
     result['status'] = ('peripheral-import-blocked' if hardware else
                         'loader-abi-blocked' if not result['privileged_os_cpu_v1_import_compatible']
-                        else 'privileged-imports-covered-awaiting-firmware-link-and-admission')
+                        else 'privileged-imports-covered-awaiting-signed-admission')
     return result
 
 
@@ -53,6 +51,8 @@ def main():
           *result['missing_current_firmware_exports'], sep='\n  ', flush=True)
     print('Missing scoped privileged OS/CPU imports:',
           *result['missing_privileged_os_cpu_v1'], sep='\n  ', flush=True)
+    print('Rejected by runtime private import preflight:',
+          *result['rejected_by_private_loader_import_preflight'], sep='\n  ', flush=True)
     print('Forbidden hardware implementation imports:',
           result['forbidden_peripheral_imports'], flush=True)
     print('Relocations:', result['relocations_examined'],
