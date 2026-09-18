@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guard live driver intake and publication in addition to host transactions.
+"""Guard live driver intake, downloader exclusivity and publication.
 
 Source assertions prove wiring, not physical SD or USB behavior. The executable
 C++ intake tests validate the decision policy and board CI compiles adapters.
@@ -44,4 +44,16 @@ assert intake.index('systemPackageUseGate().pinned(paths.target)') < intake.inde
 assert intake.index('systemPackageUseGate().pinned(paths.target)') < intake.index('HttpDownloader::downloadToFile(')
 assert 'Storage.remove(temporaryStoragePath);\n    const auto result' not in intake
 assert bridge.index('ManagerMutation mutation;', bridge.index('bool catalogRefresh()')) < bridge.index('catalog.clear();', bridge.index('bool catalogRefresh()'))
-print('Driver Manager intake preserves prior downloads, refuses mapped drivers and invalid versions before network, and publishes through typed transaction')
+
+# Even if stream ABI negotiation fails, the fallback HTTPClient route must not
+# delete an existing .part file or truncate it between exists() and open().
+download = (root / 'src/network/HttpDownloader.cpp').read_text(encoding='utf-8')
+start = download.index('HttpDownloader::DownloadError HttpDownloader::downloadToFile(')
+transfer = download[start:]
+assert 'if (staged && (destPath.front()' in transfer
+assert 'Storage.exists(destPath.c_str())' in transfer
+assert transfer.index('Storage.exists(destPath.c_str())') < transfer.index('const auto* streams = invocationStreams(')
+assert 'if (staged) {\n    file = Storage.open(destPath.c_str(), O_WRONLY | O_CREAT | O_EXCL);' in transfer
+assert 'if (Storage.exists(destPath.c_str())) Storage.remove(destPath.c_str());' in transfer.split('} else {', 1)[-1]
+assert 'Storage.openFileForWrite("HTTP", destPath.c_str(), file);' in transfer
+print('Driver Manager preflight refuses mapped drivers; all staged HTTP routes exclusively create .part; typed publication remains authoritative')
