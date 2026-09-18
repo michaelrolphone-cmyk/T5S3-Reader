@@ -769,6 +769,23 @@ static void render_view(view_mode_t mode, const t5_serial_port_state_t *state, i
     }
 }
 
+// Draw before entering the synchronous provider acquisition. The display must
+// not remain on the launcher while several installed ELFs are hashed/started.
+// This is a phase label, not a fabricated progress percentage.
+static void render_acquiring(bool reconnecting) {
+    const t5_ui_chrome_t chrome = {
+        .title = "Serial Monitor", .subtitle = "Starting serial.port",
+        .status = "Checking installed providers; keep power on",
+        .back_label = NULL, .confirm_label = NULL,
+        .previous_label = NULL, .next_label = NULL,
+    };
+    const t5_ui_list_row_t row = {
+        reconnecting ? "Reconnecting serial session" : "Initializing serial session",
+        "Verifying packages and starting provider chain", "Working", 0,
+    };
+    ui->render_list(&chrome, &row, 1u, 0);
+}
+
 static int32_t baud_index(uint32_t baud) {
     size_t i;
     for (i = 0; i < sizeof(baud_rates) / sizeof(baud_rates[0]); ++i) {
@@ -837,6 +854,7 @@ void app_main(void) {
     state.config = coding;
     pending_send[0] = 0;
 
+    render_acquiring(false);
     if (!acquire_serial_session(&state, &coding)) {
         state.status = T5_SERIAL_STATUS_UNAVAILABLE;
         append_notice("Unable to acquire serial.port capability; retrying");
@@ -906,12 +924,16 @@ void app_main(void) {
         }
         if (!serial_lease && reconnect_pending && ++reconnect_ticks >= RECONNECT_RETRY_TICKS) {
             reconnect_ticks = 0;
+            render_acquiring(true);
             if (acquire_serial_session(&next, &coding)) {
                 state = next;
                 reconnect_pending = false;
                 stream_error_reported = false;
                 if (reconnect_notice) append_notice("New serial session acquired");
                 reconnect_notice = false;
+                repaint = true;
+            } else {
+                // Restore the interactive terminal after a failed attempt.
                 repaint = true;
             }
         }

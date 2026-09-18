@@ -1,6 +1,7 @@
 #include "InstalledCapabilityResolver.h"
 #include "PackageOrdinaryManifest.h"
 #include "PackageOrdinarySdAdapter.h"
+#include "PackageOrdinaryStage.h"
 #include <HalStorage.h>
 #include <cstdio>
 #include <cstdlib>
@@ -75,12 +76,9 @@ struct Candidate {
   std::vector<OrdinaryRequirement> requirements;
 };
 
-// Snapshot and hash each candidate ONCE per query. The old recursive resolver
-// opened all three directories and rehashed every candidate at every dependency
-// level, retaining directory/manifest/identity workspaces in recursive frames.
-// That caused multi-minute UI stalls and overflowed loopTask on deep graphs.
-// This snapshot never survives the call: a later query independently verifies
-// current on-card bytes rather than trusting a stale global cache.
+// Snapshot and hash each candidate ONCE per query. Never cache this inventory
+// beyond a caller-owned, single operation. A later query independently verifies
+// current on-card bytes rather than trusting stale global state.
 bool snapshotCandidates(std::vector<Candidate>& candidates) {
   std::unique_ptr<char[]> json(new (std::nothrow) char[4097]{});
   std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
@@ -94,6 +92,9 @@ bool snapshotCandidates(std::vector<Candidate>& candidates) {
     }
     size_t examined = 0;
     while (examined++ < kMaxEntriesPerRoot) {
+      // SHA-256 verification yields within its byte loop; also give the idle
+      // task a chance to run between metadata and directory operations.
+      ordinaryCooperativeYield(1, 1);
       HalFile item = directory.openNextFile();
       if (!item.isOpen()) break;
       char id[64]{};
@@ -172,11 +173,38 @@ uint32_t resolveSnapshot(const char* capability, const std::vector<Candidate>& c
 }
 } // namespace
 
+struct InstalledCapabilitySnapshot {
+  std::vector<Candidate> candidates;
+};
+
+InstalledCapabilitySnapshot* captureInstalledCapabilities() {
+  if (!Storage.ready()) return nullptr;
+  auto* snapshot = new (std::nothrow) InstalledCapabilitySnapshot();
+  if (!snapshot) return nullptr;
+  if (!snapshotCandidates(snapshot->candidates)) {
+    delete snapshot;
+    return nullptr;
+  }
+  return snapshot;
+}
+
+uint32_t versionInInstalledSnapshot(const InstalledCapabilitySnapshot* snapshot,
+                                    const char* capability) {
+  if (!snapshot || !capability || !safePackageCapability(capability)) return 0;
+  size_t ancestry[kMaxDepth]{};
+  return resolveSnapshot(capability, snapshot->candidates, ancestry, 0);
+}
+
+void releaseInstalledCapabilities(InstalledCapabilitySnapshot* snapshot) {
+  delete snapshot;
+}
+
 uint32_t installedCapabilityVersion(const char* capability) {
   if (!capability || !safePackageCapability(capability) || !Storage.ready()) return 0;
-  std::vector<Candidate> candidates;
-  if (!snapshotCandidates(candidates)) return 0;
-  size_t ancestry[kMaxDepth]{};
-  return resolveSnapshot(capability, candidates, ancestry, 0);
+  InstalledCapabilitySnapshot* snapshot = captureInstalledCapabilities();
+  if (!snapshot) return 0;
+  const uint32_t result = versionInInstalledSnapshot(snapshot, capability);
+  releaseInstalledCapabilities(snapshot);
+  return result;
 }
 } // namespace RuntimePackages

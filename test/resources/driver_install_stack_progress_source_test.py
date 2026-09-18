@@ -10,8 +10,8 @@ ui = (repo / 'Apps/driver_manager.c').read_text()
 manifest = json.loads((repo / 'Apps/driver_manager.json').read_text())
 
 # The real installed-byte verifier must run only while constructing a fresh
-# per-query snapshot. Dependency traversal may not open SD handles, allocate a
-# manifest or recursively hash the same candidate for every nested edge.
+# operation-scoped snapshot. Dependency traversal may not open SD handles,
+# allocate a manifest or recursively hash a candidate for every nested edge.
 assert 'bool snapshotCandidates(' in resolver
 snapshot = resolver.split('bool snapshotCandidates(', 1)[1].split('uint32_t resolveSnapshot(', 1)[0]
 graph = resolver.split('uint32_t resolveSnapshot(', 1)[1]
@@ -21,7 +21,8 @@ assert 'plan->requirements + plan->requirementCount' in snapshot
 assert 'depth >= kMaxDepth' in graph and 'ancestry[depth] = index;' in graph
 assert 'verifyOrdinarySdDirectory(' not in graph
 assert 'Storage.open(' not in graph
-assert 'snapshotCandidates(candidates)' in resolver
+assert 'snapshotCandidates(snapshot->candidates)' in resolver
+assert 'releaseInstalledCapabilities(snapshot)' in resolver
 assert 'static std::vector<Candidate>' not in resolver
 
 # Interrupted stages must remain untouched on OOM and retain the existing
