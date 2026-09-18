@@ -71,6 +71,7 @@ static bool mock_recovery_discard(uint32_t index) {
     retained_count = 0;
     return true;
 }
+static bool mock_catalog_refresh(void) { return true; }
 static uint32_t mock_count(void) { return 1; }
 static bool mock_get(uint32_t index, t5_driver_catalog_entry_t *out) {
     if (index || !out) return false;
@@ -119,6 +120,7 @@ int main(void) {
     const t5_driver_manager_api_v1 manager = {
         .api_version = T5_DRIVER_MANAGER_API_VERSION,
         .struct_size = sizeof(t5_driver_manager_api_v1),
+        .catalog_refresh = mock_catalog_refresh,
         .catalog_count = mock_count,
         .catalog_get = mock_get,
         .installed_version_get = mock_installed,
@@ -181,7 +183,6 @@ int main(void) {
     assert(strstr(row_subtitles[0], "Not installed"));
     assert(!strcmp(confirm_label(&manager, 0), "Install"));
 
-    // A single Confirm on the discard confirmation dialog ALWAYS keeps data.
     const t5_driver_recovery_entry_t part = {
         .kind = T5_DRIVER_RECOVERY_DOWNLOAD, .state = T5_DRIVER_RECOVERY_INCOMPLETE,
         .can_discard = true,
@@ -193,44 +194,40 @@ int main(void) {
     reset_queue(); enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM);
     assert(confirm_discard(&recovery_ui, &part));
 
-    // Offline recovery does not require a catalog, and a cancelled action is inert.
     retained_kind = T5_DRIVER_RECOVERY_DOWNLOAD;
     retained_state = T5_DRIVER_RECOVERY_INCOMPLETE;
     retained_retry = false; retained_discard = true; retained_count = 1;
     reset_queue();
-    enqueue(T5_UI_EVENT_CONFIRM); // Select retained download.
+    enqueue(T5_UI_EVENT_CONFIRM);
     enqueue(T5_UI_EVENT_CONFIRM); // Action menu defaults to Keep.
-    enqueue(T5_UI_EVENT_BACK);    // Continue to catalog without deletion.
+    enqueue(T5_UI_EVENT_BACK);
     assert(show_recovery_screen(&manager, &recovery_ui));
     assert(recovery_discards == 0 && retained_count == 1);
 
     reset_queue();
-    enqueue(T5_UI_EVENT_CONFIRM); // Select retained download.
-    enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM); // Choose discard action.
-    enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM); // Confirm discard separately.
-    enqueue(T5_UI_EVENT_CONFIRM); // Continue to catalog after refresh reports no stage.
+    enqueue(T5_UI_EVENT_CONFIRM);
+    enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM); // Choose discard.
+    enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM); // Confirm separately.
+    enqueue(T5_UI_EVENT_CONFIRM); // Continue after refresh reports no stage.
     assert(show_recovery_screen(&manager, &recovery_ui));
     assert(recovery_discards == 1 && retained_count == 0);
 
-    // Verified stage retry uses the exact selected identity; it never downloads.
     retained_kind = T5_DRIVER_RECOVERY_STAGE;
     retained_state = T5_DRIVER_RECOVERY_READY;
     retained_retry = true; retained_discard = true; retained_count = 1;
     reset_queue();
-    enqueue(T5_UI_EVENT_CONFIRM); // Stage row.
-    enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM); // Retry action.
-    enqueue(T5_UI_EVENT_CONFIRM); // Continue after successful publication.
+    enqueue(T5_UI_EVENT_CONFIRM);
+    enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM); // Retry stage.
+    enqueue(T5_UI_EVENT_CONFIRM);
     assert(show_recovery_screen(&manager, &recovery_ui));
     assert(recovery_retries == 1 && recovery_discards == 1 && retained_count == 0);
 
-    // A mapped/unresolved stage offers no destructive or publication action.
     retained_state = T5_DRIVER_RECOVERY_MAPPED;
     retained_retry = false; retained_discard = false; retained_count = 1;
     reset_queue(); enqueue(T5_UI_EVENT_CONFIRM); enqueue(T5_UI_EVENT_BACK);
     assert(show_recovery_screen(&manager, &recovery_ui));
     assert(recovery_retries == 1 && recovery_discards == 1);
     assert(recovery_rendered > 0 && recovery_refreshes > 0);
-
     puts("Driver Manager real UI: versions, offline recovery, verified retry, cancelled and two-step discard, mapped refusal PASS");
     return 0;
 }
