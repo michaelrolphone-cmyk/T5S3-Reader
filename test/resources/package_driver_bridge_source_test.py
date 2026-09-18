@@ -16,8 +16,8 @@ assert 'publishDirectoryTransaction(' not in installer
 assert 'removeManagedDirectory(stage)' not in installer
 
 bridge = (root / 'src/native/NativeDriverManagerBridge.cpp').read_text(encoding='utf-8')
-start = bridge.index('bool install(uint32_t index)')
-end = bridge.index('\nbool rebuildRecoveryInventory()', start)
+start = bridge.index('bool installImpl(uint32_t index,')
+end = bridge.index('\nbool installWithProgress(', start)
 intake = bridge[start:end]
 for required in ('ManagerMutation mutation;', 'if (!mutation)',
                  'const CatalogDriver selected = catalog[index];',
@@ -39,6 +39,24 @@ assert intake.index('systemPackageUseGate().pinned(paths.target)') < intake.inde
 assert 'Storage.remove(temporaryStoragePath);\n    const auto result' not in intake
 assert bridge.index('ManagerMutation mutation;', bridge.index('bool catalogRefresh()')) < bridge.index('catalog.clear();', bridge.index('bool catalogRefresh()'))
 
+# The old install entrypoint and lock remain, while the optional progress API
+# observes the same transaction; callback state must not be retained globally.
+assert 'bool install(uint32_t index) { return installWithProgress(index, nullptr, nullptr); }' in bridge
+assert 'return installCanonicalDependencies(index, visiting, progress, context);' in intake
+assert 'installCanonicalDependencies(prerequisite, visiting, progress, context)' in bridge
+assert 'T5_DRIVER_INSTALL_VERIFYING' in intake and 'T5_DRIVER_INSTALL_DOWNLOADING' in intake
+assert 'id, ok ? T5_DRIVER_INSTALL_INSTALLED : T5_DRIVER_INSTALL_FAILED' in bridge
+assert 'installWithProgress,\n};' in bridge
+online = (root / 'src/native/NativeOnlineDriverInstall.h').read_text(encoding='utf-8')
+for required in ('emitProgress(progress, context, id, T5_DRIVER_INSTALL_METADATA',
+                 'emitProgress(progress, context, id, T5_DRIVER_INSTALL_RECOVERY',
+                 'emitProgress(progress, context, id, T5_DRIVER_INSTALL_DOWNLOADING',
+                 'emitProgress(progress, context, id, T5_DRIVER_INSTALL_VERIFYING',
+                 'emitProgress(progress, context, id, T5_DRIVER_INSTALL_PUBLISHING',
+                 'emitProgress(progress, context, id, T5_DRIVER_INSTALL_INSTALLED',
+                 'verifyOrdinarySdDirectory(', 'installOrdinaryFromSd('):
+    assert required in online, required
+
 recovery = bridge[bridge.index('bool rebuildRecoveryInventory()'):]
 for name in ('bool recoveryRefresh()', 'bool recoveryGet(',
              'bool recoveryRetry(', 'bool recoveryDiscard('):
@@ -54,10 +72,10 @@ for required in ('RuntimePackages::safeId(id.c_str())',
                  'okay = regular && closed && Storage.remove(kDownloadStage);'):
     assert required in recovery, required
 assert 'Storage.remove(paths.target)' not in recovery
-assert 'recoveryRefresh,\n    recoveryCount,\n    recoveryGet,\n    recoveryRetry,\n    recoveryDiscard,' in recovery
+assert 'recoveryRefresh,\n    recoveryCount,\n    recoveryGet,\n    recoveryRetry,\n    recoveryDiscard,\n    installWithProgress,' in recovery
 
 api = (root / 'lib/NativeApps/include/T5DriverManagerApi.h').read_text(encoding='utf-8')
-assert api.index('bool (*install)') < api.index('bool (*recovery_refresh)') < api.index('bool (*recovery_discard)')
+assert api.index('bool (*install)') < api.index('bool (*recovery_refresh)') < api.index('bool (*recovery_discard)') < api.index('bool (*install_with_progress)')
 ui = (root / 'Apps/driver_manager.c').read_text(encoding='utf-8')
 start = ui.index('__attribute__((visibility("default"))) void app_main(void)')
 app = ui[start:]
@@ -70,6 +88,10 @@ assert 'info.kind != T5_PACKAGE_DRIVER' in ui
 assert 'manager->install(folders[selected])' in ui
 assert 'manager->uninstall(T5_PACKAGE_DRIVER, info.id)' in ui
 assert 'release_indices[selected]' in ui  # sparse catalog rows are not release indices
+assert 'api->install_with_progress(release_indices[selected], install_progress, &install_view)' in ui
+assert 'api->install(release_indices[selected])' in ui  # legacy firmware fallback
+assert 'else (void)populate_release(drivers);' in app
+assert 'else if (!load_release(drivers, ui))' not in app  # no post-install network fetch
 
 # Staged downloads never overwrite or delete someone else's .part file.
 download = (root / 'src/network/HttpDownloader.cpp').read_text(encoding='utf-8')
@@ -88,4 +110,4 @@ stream_download = stream[stream.index('inline Result download('):]
 assert 'if (destinationCreated) *destinationCreated = false;' in stream_download
 assert 'T5_STREAM_FILE_CREATE_NEW' in stream_download
 assert stream_download.index('T5_STREAM_FILE_CREATE_NEW') < stream_download.index('if (destinationCreated) *destinationCreated = true;')
-print('Driver download and recovery: exclusive stage, serialized mutation, unified offline UI, confirmed retry/discard PASS')
+print('Driver download, recovery and progress: exclusive stage, serialized mutation, live UI and legacy ABI PASS')
