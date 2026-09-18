@@ -4,6 +4,9 @@
 #include "AppCatalogIndex.h"
 #include "AppManifest.h"
 #include "AppPackageInstaller.h"
+#include "runtime/packages/PackageOrdinarySdAdapter.h"
+#include "runtime/packages/InstalledCapabilityResolver.h"
+#include "runtime/packages/PackageUseGate.h"
 #include "runtime/packages/PackagePreflight.h"
 #include <AppManifestRules.h>
 #include <ArduinoJson.h>
@@ -519,18 +522,50 @@ bool appCatalogVersionGet(uint32_t index, char* out, size_t capacity) {
   return copyVersion(s->catalog[index].version, out, capacity);
 }
 
+namespace {
+constexpr RuntimePackages::PackageRuntimePolicy kCanonicalAppPolicy{
+    "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+
+bool verifiedManagedApp(const char* id, RuntimePackages::Identity& identity,
+                        t5_app_manifest_t* manifest = nullptr) {
+  identity = {};
+  if (!id || !RuntimePackages::safeId(id)) return false;
+  const std::string root = std::string("/Apps/") + id;
+  if (!RuntimePackages::verifyOrdinarySdDirectory(root.c_str(), kCanonicalAppPolicy,
+          RuntimePackages::installedCapabilityVersion, identity) ||
+      identity.kind != RuntimePackages::Kind::Application ||
+      std::strcmp(identity.id, id) || !t5_safe_elf_name(identity.artifact))
+    return false;
+  const std::string elf = root + "/" + identity.artifact;
+  const std::string json = elf.substr(0, elf.size() - 4) + ".json";
+  if (!Storage.exists(elf.c_str()) || !Storage.exists(json.c_str())) return false;
+  t5_app_manifest_t parsed{};
+  if (!readAppManifest(json.c_str(), parsed) ||
+      std::strcmp(parsed.file_name, identity.artifact)) return false;
+  if (manifest) *manifest = parsed;
+  return true;
+}
+} // namespace
+
 bool installedAppVersionGet(const char* fileName, char* out, size_t capacity) {
   auto* s = current();
-  if (!s || !Storage.ready() || !t5_safe_elf_name(fileName) || !out || capacity == 0) return false;
+  if (!s || !Storage.ready() || !t5_safe_elf_name(fileName) || !out || !capacity)
+    return false;
+  const std::string id(fileName, std::strlen(fileName) - 4);
+  RuntimePackages::Identity canonical{};
+  if (verifiedManagedApp(id.c_str(), canonical) &&
+      std::strcmp(canonical.artifact, fileName) == 0)
+    return copyVersion(canonical.version, out, capacity);
   const std::string destination = std::string("/Apps/") + fileName;
   const std::string sidecar = destination.substr(0, destination.size() - 4) + ".json";
   if (!RuntimePackages::recoverAppPair(fileName) ||
       !Storage.exists(destination.c_str()) || !Storage.exists(sidecar.c_str()) ||
-      !RuntimePackages::verifyAppPair(destination.c_str(), sidecar.c_str(), fileName, false)) return false;
+      !RuntimePackages::verifyAppPair(destination.c_str(), sidecar.c_str(), fileName, false))
+    return false;
   t5_app_manifest_t manifest{};
   std::string version;
-  if (!readAppManifest(sidecar.c_str(), manifest, &version, false) || std::strcmp(manifest.file_name, fileName))
-    return false;
+  if (!readAppManifest(sidecar.c_str(), manifest, &version, false) ||
+      std::strcmp(manifest.file_name, fileName)) return false;
   return copyVersion(version, out, capacity);
 }
 
@@ -601,38 +636,44 @@ bool installedRefresh() {
   auto* s = current();
   if (!s) return false;
   s->installed.clear();
-  // Recover before opening the directory iterator. A damaged package is
-  // quarantined by the verifier; other independently recovered apps remain usable.
-  if (!RuntimePackages::recoverAppInventory()) {
-    LOG_ERR("APPSTORE", "Some installed applications could not be safely recovered");
-  }
+  if (!RuntimePackages::recoverAppInventory())
+    LOG_ERR("APPSTORE", "Some legacy app updates require manual recovery");
   HalFile dir = Storage.open("/Apps", O_RDONLY);
   if (!dir.isOpen() || !dir.isDirectory()) return false;
   while (s->installed.size() < 128) {
     esp_task_wdt_reset();
     HalFile file = dir.openNextFile();
     if (!file.isOpen()) break;
-    char name[128] = {};
+    char name[128]{};
     file.getName(name, sizeof(name));
     const bool isDir = file.isDirectory();
     file.close();
     const std::string filename(name);
-    if (isDir || filename.size() < 6 || filename.substr(filename.size() - 5) != ".json") continue;
+    if (isDir) {
+      RuntimePackages::Identity identity{};
+      t5_app_manifest_t manifest{};
+      if (!verifiedManagedApp(name, identity, &manifest) ||
+          !std::strcmp(manifest.file_name, "springboard.elf")) continue;
+      s->installed.push_back(manifest);
+      continue;
+    }
+    if (filename.size() < 6 || filename.substr(filename.size() - 5) != ".json") continue;
     t5_app_manifest_t manifest{};
     if (!readAppManifest((std::string("/Apps/") + filename).c_str(), manifest)) continue;
     if (filename != std::string(manifest.file_name).substr(0, std::strlen(manifest.file_name) - 4) + ".json") continue;
     if (!std::strcmp(manifest.file_name, "springboard.elf")) continue;
     if (!Storage.exists((std::string("/Apps/") + manifest.file_name).c_str())) continue;
-    // Incomplete update pairs are never listed until recovery succeeds.
     if (Storage.exists((std::string("/Apps/") + manifest.file_name + ".bak").c_str()) ||
         Storage.exists((std::string("/Apps/") + filename + ".bak").c_str())) continue;
     s->installed.push_back(manifest);
   }
+  dir.close();
   std::sort(s->installed.begin(), s->installed.end(), [](const t5_app_manifest_t& a, const t5_app_manifest_t& b) {
     return std::strcmp(a.display_name, b.display_name) < 0;
   });
   return true;
 }
+
 uint32_t installedCount() { auto* s = current(); return s ? s->installed.size() : 0; }
 bool installedGet(uint32_t index, t5_app_manifest_t* out) {
   auto* s = current();
@@ -641,11 +682,20 @@ bool installedGet(uint32_t index, t5_app_manifest_t* out) {
 }
 bool requestLaunch(uint32_t index) {
   auto* s = current();
-  if (!s || s->exiting || index >= s->installed.size() || !s->installed[index].compatible) return false;
-  s->launchPath = std::string("/sd/Apps/") + s->installed[index].file_name;
+  if (!s || s->exiting || index >= s->installed.size() || !s->installed[index].compatible)
+    return false;
+  const char* artifact = s->installed[index].file_name;
+  const std::string id(artifact, std::strlen(artifact) - 4);
+  RuntimePackages::Identity managed{};
+  if (verifiedManagedApp(id.c_str(), managed) &&
+      !std::strcmp(managed.artifact, artifact))
+    s->launchPath = std::string("/sd/Apps/") + id + "/" + artifact;
+  else
+    s->launchPath = std::string("/sd/Apps/") + artifact;
   s->exiting = true;
   return true;
 }
+
 bool drawIcon(int32_t x, int32_t y, const char* icon, uint8_t size, bool black) {
   auto* s = current(); return s && FontAwesomeIcons::draw(s->renderer, x, y, icon, size, black);
 }
@@ -713,8 +763,25 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   }
   const std::string filename = elf.substr(elf.find_last_of('/') + 1);
   const std::string sidecar = elf.substr(0, elf.size() - 4) + ".json";
+  // Nested /Apps/<id>/<artifact> entries are independently verified against
+  // their exact canonical package inventory. A failed verification never
+  // falls through to the loose-file compatibility loader.
+  const size_t nestedSlash = elf.compare(0, 6, "/Apps/") == 0 ?
+      elf.find('/', 6) : std::string::npos;
+  std::string canonicalRoot;
+  if (nestedSlash != std::string::npos) {
+    const std::string id = elf.substr(6, nestedSlash - 6);
+    RuntimePackages::Identity identity{};
+    if (!verifiedManagedApp(id.c_str(), identity) ||
+        std::strcmp(identity.artifact, filename.c_str())) {
+      lastLaunchError = "Canonical application package or executable is invalid.";
+      return ESP_ERR_NOT_SUPPORTED;
+    }
+    canonicalRoot = elf.substr(0, nestedSlash);
+  }
   // Managed /Apps updates recover before any sidecar/ELF can be loaded.
-  if (elf.compare(0, 6, "/Apps/") == 0 && t5_safe_elf_name(filename.c_str()) &&
+  if (elf.compare(0, 6, "/Apps/") == 0 &&
+      nestedSlash == std::string::npos && t5_safe_elf_name(filename.c_str()) &&
       !RuntimePackages::recoverAppPair(filename.c_str())) {
     lastLaunchError = "Application update cannot be safely recovered.";
     return ESP_ERR_INVALID_STATE;
@@ -743,7 +810,14 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
       return ESP_ERR_NOT_SUPPORTED;
     }
   }
-  HalPowerManager::Lock powerLock;
+  // Refuse a concurrent managed-package replacement before changing app UI
+// state. Keep failed dlclose generations pinned for safe recovery.
+if (!canonicalRoot.empty() &&
+    !RuntimePackages::systemPackageUseGate().pin(canonicalRoot.c_str())) {
+  lastLaunchError = "Managed application is being replaced or is unavailable.";
+  return ESP_ERR_INVALID_STATE;
+}
+HalPowerManager::Lock powerLock;
   RenderLock lock;
   const auto orientation = renderer.getOrientation();
   const auto mode = renderer.getRenderMode();
@@ -755,9 +829,14 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   nativeSettingsBegin(renderer, input);
   nativeSystemUiBegin();
   esp_task_wdt_reset();
+  // Pin the exact installed generation before mapping and release only after
+  // the ELF has returned and dlclose has succeeded. Failed unloads retain the
+  // pin; replacement and uninstall must not race executable memory.
   nativeStreamsBegin();
   const esp_err_t result = launch_elf_app(path);
   nativeStreamsEnd();
+  if (!canonicalRoot.empty() && result == ESP_OK)
+    (void)RuntimePackages::systemPackageUseGate().unpin(canonicalRoot.c_str());
   // Clean up even when an app returns without calling its GPS stop callback.
   GpsDriverRuntime::stop();
   if (result != ESP_OK && lastLaunchError.empty()) {
