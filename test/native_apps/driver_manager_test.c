@@ -98,7 +98,7 @@ static void mock_render(const t5_ui_chrome_t *chrome, const t5_ui_list_row_t *it
 }
 static void mock_recovery_render(const t5_ui_chrome_t *chrome, const t5_ui_list_row_t *items,
                                  uint32_t count, int32_t selected) {
-    assert(chrome && items && count >= 1 && count <= MAX_RECOVERY_ITEMS + 1 &&
+    assert(chrome && items && count >= 1 && count <= RECOVERY_LIMIT + 1u &&
            selected >= 0 && selected < (int32_t)count);
     ++recovery_rendered;
 }
@@ -108,6 +108,10 @@ const t5_app_api_v1 *t5_app_get_api(uint32_t version) {
     return NULL;
 }
 const t5_driver_manager_api_v1 *t5_driver_manager_get_api(uint32_t version) {
+    (void)version;
+    return NULL;
+}
+const t5_package_manager_api_v1 *t5_package_manager_get_api(uint32_t version) {
     (void)version;
     return NULL;
 }
@@ -139,60 +143,57 @@ int main(void) {
         .previous_index = mock_previous,
         .hit_test = mock_hit,
     };
-    char status[STATUS_MAX] = {0};
-    assert(has_recovery_api(&manager));
+    char status[STATUS_BYTES] = {0};
+    assert(recovery_api(&manager));
     t5_driver_manager_api_v1 legacy = manager;
     legacy.struct_size = offsetof(t5_driver_manager_api_v1, recovery_refresh);
-    assert(has_driver_api(&legacy) && !has_recovery_api(&legacy));
+    assert(driver_api(&legacy) && !recovery_api(&legacy));
     assert(t5_package_version_compare("1.10.0", "1.9.99") == 1);
     assert(t5_package_version_compare("4294967295.0.0", "1.0.0") == 1);
     assert(t5_package_version_compare("4294967296.0.0", "1.0.0") == 2);
     assert(t5_package_version_compare("01.0.0", "1.0.0") == 0);
 
+    source = ONLINE;
     catalog_version = "1.10.0";
     installed_version = "1.9.99";
-    build_rows(&manager);
-    assert(row_count == 1 && strstr(row_subtitles[0], "Installed 1.9.99"));
+    assert(load_release(&manager, &ui));
+    assert(row_count == 1 && strstr(descriptions[0], "Installed 1.9.99"));
     assert(rows[0].flags == T5_UI_LIST_HIGHLIGHT_VALUE);
-    assert(strcmp(confirm_label(&manager, 0), "Update") == 0);
-    activate_selected(&manager, &ui, 0, status, sizeof(status));
+    assert(strcmp(action_label(&manager, 0), "Update") == 0);
+    activate(&manager, NULL, &ui, 0, status, sizeof(status));
     assert(install_calls == 1 && rendered == 1);
 
     installed_version = "1.10.0";
-    build_rows(&manager);
-    assert(strstr(row_subtitles[0], "Installed") && !strcmp(confirm_label(&manager, 0), ""));
-    activate_selected(&manager, &ui, 0, status, sizeof(status));
+    assert(load_release(&manager, &ui));
+    assert(strstr(descriptions[0], "Installed") && !strcmp(action_label(&manager, 0), ""));
+    activate(&manager, NULL, &ui, 0, status, sizeof(status));
     assert(install_calls == 1);
 
     installed_version = "2.0.0";
-    build_rows(&manager);
-    assert(strstr(row_subtitles[0], "Installed newer 2.0.0"));
-    assert(!strcmp(confirm_label(&manager, 0), ""));
-    activate_selected(&manager, &ui, 0, status, sizeof(status));
-    assert(strstr(status, "newer than catalog") && install_calls == 1);
+    assert(load_release(&manager, &ui));
+    assert(strstr(descriptions[0], "Installed newer 2.0.0"));
+    assert(!strcmp(action_label(&manager, 0), ""));
+    activate(&manager, NULL, &ui, 0, status, sizeof(status));
+    assert(strstr(status, "is newer") && install_calls == 1);
 
     installed_version = "invalid";
-    build_rows(&manager);
-    assert(strstr(row_subtitles[0], "version invalid"));
-    assert(!strcmp(confirm_label(&manager, 0), ""));
-    activate_selected(&manager, &ui, 0, status, sizeof(status));
+    assert(load_release(&manager, &ui));
+    assert(strstr(descriptions[0], "version invalid"));
+    assert(!strcmp(action_label(&manager, 0), ""));
+    activate(&manager, NULL, &ui, 0, status, sizeof(status));
     assert(install_calls == 1);
 
     installed_version = NULL;
-    build_rows(&manager);
-    assert(strstr(row_subtitles[0], "Not installed"));
-    assert(!strcmp(confirm_label(&manager, 0), "Install"));
+    assert(load_release(&manager, &ui));
+    assert(strstr(descriptions[0], "Not installed"));
+    assert(!strcmp(action_label(&manager, 0), "Install"));
 
-    const t5_driver_recovery_entry_t part = {
-        .kind = T5_DRIVER_RECOVERY_DOWNLOAD, .state = T5_DRIVER_RECOVERY_INCOMPLETE,
-        .can_discard = true,
-    };
     reset_queue(); enqueue(T5_UI_EVENT_CONFIRM);
-    assert(!confirm_discard(&recovery_ui, &part));
+    assert(!confirm(&recovery_ui, "gps-nmea", "Discard retained files"));
     reset_queue(); enqueue(T5_UI_EVENT_BACK);
-    assert(!confirm_discard(&recovery_ui, &part));
+    assert(!confirm(&recovery_ui, "gps-nmea", "Discard retained files"));
     reset_queue(); enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM);
-    assert(confirm_discard(&recovery_ui, &part));
+    assert(confirm(&recovery_ui, "gps-nmea", "Discard retained files"));
 
     retained_kind = T5_DRIVER_RECOVERY_DOWNLOAD;
     retained_state = T5_DRIVER_RECOVERY_INCOMPLETE;
@@ -201,7 +202,7 @@ int main(void) {
     enqueue(T5_UI_EVENT_CONFIRM);
     enqueue(T5_UI_EVENT_CONFIRM); // Action menu defaults to Keep.
     enqueue(T5_UI_EVENT_BACK);
-    assert(show_recovery_screen(&manager, &recovery_ui));
+    assert(recovery_screen(&manager, &recovery_ui));
     assert(recovery_discards == 0 && retained_count == 1);
 
     reset_queue();
@@ -209,7 +210,7 @@ int main(void) {
     enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM); // Choose discard.
     enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM); // Confirm separately.
     enqueue(T5_UI_EVENT_CONFIRM); // Continue after refresh reports no stage.
-    assert(show_recovery_screen(&manager, &recovery_ui));
+    assert(recovery_screen(&manager, &recovery_ui));
     assert(recovery_discards == 1 && retained_count == 0);
 
     retained_kind = T5_DRIVER_RECOVERY_STAGE;
@@ -219,13 +220,13 @@ int main(void) {
     enqueue(T5_UI_EVENT_CONFIRM);
     enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM); // Retry stage.
     enqueue(T5_UI_EVENT_CONFIRM);
-    assert(show_recovery_screen(&manager, &recovery_ui));
+    assert(recovery_screen(&manager, &recovery_ui));
     assert(recovery_retries == 1 && recovery_discards == 1 && retained_count == 0);
 
     retained_state = T5_DRIVER_RECOVERY_MAPPED;
     retained_retry = false; retained_discard = false; retained_count = 1;
     reset_queue(); enqueue(T5_UI_EVENT_CONFIRM); enqueue(T5_UI_EVENT_BACK);
-    assert(show_recovery_screen(&manager, &recovery_ui));
+    assert(recovery_screen(&manager, &recovery_ui));
     assert(recovery_retries == 1 && recovery_discards == 1);
     assert(recovery_rendered > 0 && recovery_refreshes > 0);
     puts("Driver Manager real UI: versions, offline recovery, verified retry, cancelled and two-step discard, mapped refusal PASS");
