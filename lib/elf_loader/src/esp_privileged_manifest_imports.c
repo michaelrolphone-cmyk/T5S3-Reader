@@ -1,5 +1,4 @@
-/* Exact import-set matching is separate from both signer authentication and
- * the generic port's fixed import allowlist. No peripheral code lives here. */
+/* Exact import-set matching is separate from privilege authorization. */
 #include <string.h>
 #include "private/elf_types.h"
 #include "private/esp_privileged_imports.h"
@@ -12,19 +11,18 @@ bool esp_elf_privileged_manifest_imports_match_v1(
     const uint8_t *image, size_t length,
     const char *const *declared, size_t declared_count)
 {
-    if (!image || !declared || !declared_count ||
-        declared_count > MAX_MANIFEST_IMPORTS ||
+    /* An empty import list is legitimate ONLY for an ELF with no undefined
+     * symbols in either table. Keep a nonnull metadata pointer so a missing
+     * declaration remains distinguishable from an intentional empty list. */
+    if (!image || !declared || declared_count > MAX_MANIFEST_IMPORTS ||
         !esp_elf_privileged_imports_valid_v1(image, length)) return false;
 
-    /* Canonical ordering and bounds make ambiguities (including duplicates,
-     * empty strings and unterminated names) invalid signed declarations. */
     for (size_t i = 0; i < declared_count; ++i) {
         if (!declared[i]) return false;
         const size_t size = strnlen(declared[i], MAX_IMPORT_NAME + 1u);
         if (!size || size > MAX_IMPORT_NAME ||
             (i && strcmp(declared[i - 1], declared[i]) >= 0)) return false;
     }
-
     uint8_t seen[MAX_MANIFEST_IMPORTS] = {0};
     const elf32_hdr_t *header = (const elf32_hdr_t *)image;
     const elf32_shdr_t *sections =
@@ -40,8 +38,6 @@ bool esp_elf_privileged_manifest_imports_match_v1(
             const elf32_sym_t *symbol = &symbols[j];
             if (symbol->shndx != SHN_UNDEF ||
                 (j == 0 && !symbol->name && !symbol->info)) continue;
-            /* The preceding bounded ABI preflight has already established
-             * valid string-table offsets, termination and symbol bindings. */
             const char *name = (const char *)image + names->offset + symbol->name;
             size_t k = 0;
             for (; k < declared_count; ++k) {
