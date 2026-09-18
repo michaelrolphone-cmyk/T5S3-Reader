@@ -63,7 +63,8 @@ class Packages(unittest.TestCase):
     def test_firmware_install_writable_storage_contract(self):
         root = Path(__file__).resolve().parents[2]
         parser = (root / 'src/runtime/drivers/DriverPackage.cpp').read_text(encoding='utf-8')
-        transaction = (root / 'src/runtime/packages/PackageTransaction.h').read_text(encoding='utf-8')
+        legacy = (root / 'src/runtime/packages/PackageTransaction.h').read_text(encoding='utf-8')
+        ordinary = (root / 'src/runtime/packages/PackageOrdinaryTransaction.h').read_text(encoding='utf-8')
         vfs = (root / 'lib/NativeApps/src/SdVfs.cpp').read_text(encoding='utf-8')
         hal = (root / 'lib/hal/HalStorage.h').read_text(encoding='utf-8')
         self.assertIn('errno = EROFS;', vfs)
@@ -77,16 +78,23 @@ class Packages(unittest.TestCase):
         self.assertIn('"/Drivers/.driver-manager.part"', parser)
         self.assertIn('ELF validation: SHA-256 mismatch', parser)
         self.assertIn('Storage.exists((storagePath + "/driver.elf").c_str())', parser)
-        # The old two-rename implementation is intentionally gone. The driver
-        # must verify both staged files, use the shared coordinator, and recover
-        # the previous verified directory without writing through the SD VFS.
-        self.assertIn('verify(stage.c_str())', parser)
+        # Recover old installations first; new installs use the four-kind typed
+        # transaction with exact inventory, semver, package pins and rollback.
         self.assertIn('RuntimePackages::recoverDirectoryTransaction(', parser)
-        self.assertIn('RuntimePackages::publishDirectoryTransaction(', parser)
-        self.assertIn('verifiedDriverDirectory(path, info.id)', parser)
+        self.assertIn('RuntimePackages::recoverOrdinaryPackage(', parser)
+        self.assertIn('RuntimePackages::ordinaryTransactionPaths(', parser)
+        self.assertIn('RuntimePackages::publishOrdinaryPackage(', parser)
+        self.assertIn('verify(paths.stage, observed)', parser)
+        self.assertIn('verifiedDriverDirectoryIdentity(path, info.id, observed)', parser)
+        self.assertIn('exactLegacyDriverFiles(path)', parser)
+        self.assertIn('if (Storage.exists(paths.stage))', parser)
+        self.assertIn('Storage.mkdir(paths.stage, false)', parser)
+        self.assertNotIn('RuntimePackages::publishDirectoryTransaction(', parser)
         self.assertIn('if (!recoverDriverDirectory(id)) return false;', parser)
-        self.assertIn('verify(paths.backup)', transaction)
-        self.assertIn('verify(paths.stage)', transaction)
+        self.assertIn('verify(paths.backup)', legacy)
+        self.assertIn('PackageReplacementLease lease(paths.target)', ordinary)
+        self.assertIn('decidePackageVersion(candidate, &observed)', ordinary)
+        self.assertIn('ops.exists(paths.stage)', ordinary)
     def test_release_discovery_diagnostic_guards(self):
         root = Path(__file__).resolve().parents[2]
         parser = (root / 'src/runtime/drivers/DriverPackage.cpp').read_text(encoding='utf-8')
