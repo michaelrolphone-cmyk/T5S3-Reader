@@ -1,6 +1,6 @@
 {
   "min_firmware_version": "1.2.8",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "display_name": "Driver Manager",
   "file_name": "driver_manager.elf",
   "icon": "solid:f085"
