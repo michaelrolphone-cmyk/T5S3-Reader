@@ -4,31 +4,35 @@
 
 int main() {
   using Decision = NativeConsentDecision;
-  // A Confirm held before showing the trusted screen cannot be counted.
-  NativeConsentInputGate held;
-  assert(held.sample(true, true, false, false) == Decision::Pending);
-  assert(held.sample(true, false, false, false) == Decision::Pending);
-  assert(held.sample(false, false, false, false) == Decision::Pending);
-  assert(held.sample(true, false, false, false) == Decision::Pending);
-  assert(held.sample(true, true, false, false) == Decision::Allow);
 
-  // A stale button edge on the first frame cannot approve, even if up.
+  // A tap inherited from the launching app never grants before the trusted
+  // screen observes an idle touch frame, even when it lands on ALLOW.
   NativeConsentInputGate stale;
-  assert(stale.sample(false, true, false, false) == Decision::Pending);
+  assert(stale.sample(false, false, false, true) == Decision::Pending);
   assert(stale.sample(false, false, false, false) == Decision::Pending);
-  assert(stale.sample(true, true, false, false) == Decision::Allow);
+  assert(stale.sample(false, true, false, true) == Decision::Pending);
+  assert(stale.sample(false, false, false, true) == Decision::Allow);
 
-  // Rejection wins over simultaneous new presses; a prior tap has no approve
-  // input at all. Only a touch specifically on DENY is ever considered.
-  NativeConsentInputGate denied;
-  assert(denied.sample(false, false, false, false) == Decision::Pending);
-  assert(denied.sample(true, true, true, false) == Decision::Deny);
-  NativeConsentInputGate touch;
-  assert(touch.sample(false, false, false, true) == Decision::Deny);
-  NativeConsentInputGate noTouchApproval;
-  assert(noTouchApproval.sample(false, false, false, false) == Decision::Pending);
+  // Once a clean frame has armed the dialog, the two on-screen buttons must
+  // perform precisely the actions printed on them.
+  NativeConsentInputGate allow;
+  assert(allow.sample(false, true, false, false) == Decision::Pending);
+  assert(allow.sample(false, false, false, true) == Decision::Allow);
+  NativeConsentInputGate deny;
+  assert(deny.sample(false, true, false, false) == Decision::Pending);
+  assert(deny.sample(false, false, true, false) == Decision::Deny);
+
+  // A DENY tap is always safe, including before the touch idle epoch; the
+  // cancel control wins over simultaneous approval after arming.
+  NativeConsentInputGate earlyDeny;
+  assert(earlyDeny.sample(false, false, true, true) == Decision::Deny);
+  NativeConsentInputGate cancel;
+  assert(cancel.sample(false, true, false, false) == Decision::Pending);
+  assert(cancel.sample(true, false, false, true) == Decision::Deny);
+
+  NativeConsentInputGate outside;
+  assert(outside.sample(false, true, false, false) == Decision::Pending);
   for (unsigned i = 0; i < 10; ++i)
-    assert(noTouchApproval.sample(false, false, false, false) == Decision::Pending);
-  assert(noTouchApproval.sample(true, true, false, false) == Decision::Allow);
-  std::puts("Consent requires a fresh hardware edge; stale touch and held input cannot approve");
+    assert(outside.sample(false, true, false, false) == Decision::Pending);
+  std::puts("Consent touch gate: fresh Allow, Deny, stale input and cancel PASS");
 }
