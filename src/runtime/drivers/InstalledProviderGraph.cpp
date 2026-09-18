@@ -3,12 +3,19 @@
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
+#include "runtime/packages/PackageOrdinaryStage.h"
 #include "runtime/packages/PackageUseGate.h"
 #include <HalStorage.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <new>
+#if defined(ESP_PLATFORM)
+#include <esp_task_wdt.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
 
 namespace RuntimeInstalledProviders {
 namespace {
@@ -41,6 +48,10 @@ uint8_t* readFile(const char* name, size_t maximum, size_t& length) {
     auto* data = static_cast<uint8_t*>(std::malloc(size + 1));
     if (!data) { (void)file.close(); return nullptr; }
     bool good = true;
+#if defined(ESP_PLATFORM)
+    size_t lastCheckpoint = 0;
+    TickType_t lastTick = xTaskGetTickCount();
+#endif
     for (size_t at = 0; at < size;) {
         const size_t n = size - at < 512 ? size - at : 512;
         if (file.read(data + at, n) != static_cast<int>(n)) {
@@ -48,6 +59,16 @@ uint8_t* readFile(const char* name, size_t maximum, size_t& length) {
             break;
         }
         at += n;
+#if defined(ESP_PLATFORM)
+        const TickType_t now = xTaskGetTickCount();
+        if (at == size || at - lastCheckpoint >= 4096u ||
+            static_cast<TickType_t>(now - lastTick) >= pdMS_TO_TICKS(50)) {
+            (void)esp_task_wdt_reset();
+            vTaskDelay(1);
+            lastCheckpoint = at;
+            lastTick = now;
+        }
+#endif
     }
     if (!file.close()) good = false;
     if (!good) { std::free(data); return nullptr; }
@@ -104,9 +125,13 @@ bool parseExactImports(uint8_t* bytes, size_t length,
     return count > 0;
 }
 
+// The snapshot is owned by prepare() and is never reused after this startup.
+// Every directory is still independently checked against its own complete
+// inventory and SHA-256 before executable bytes can enter the provider graph.
 bool registerOne(RuntimeProviders::GraphV2& destination,
-                 const char* root, const char* id, Kind kind) {
-    if (pinCount >= kMaxProviders || !safeId(id)) return false;
+                 const char* root, const char* id, Kind kind,
+                 const InstalledCapabilitySnapshot* verified) {
+    if (!verified || pinCount >= kMaxProviders || !safeId(id)) return false;
     char target[96]{};
     const int n = std::snprintf(target, sizeof(target), "%s/%s", root, id);
     if (n <= 0 || static_cast<size_t>(n) >= sizeof(target) ||
@@ -114,24 +139,29 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
     bool accepted = false;
     do {
         Identity identity{};
+        // Structural verification never trusts requirements to self-authorize.
+        // Their actual versions are checked against the verified snapshot
+        // below, exactly once per startup rather than by rehashing every ELF.
         if (!verifyOrdinarySdDirectory(target, kPolicy,
-                installedCapabilityVersion, identity) || identity.kind != kind ||
-            std::strcmp(identity.id, id) ||
+                [](const char*) -> uint32_t { return UINT32_MAX; }, identity) ||
+            identity.kind != kind || std::strcmp(identity.id, id) ||
             std::strcmp(identity.artifact, "driver.elf")) break;
         char name[160]{};
         if (!pathFor(name, root, id, ".package.json")) break;
         size_t jsonSize = 0;
         uint8_t* json = readFile(name, 4096, jsonSize);
         if (!json) break;
-        OrdinaryPackagePlan plan{};
-        const bool parsed = parseOrdinaryManifest(
-            reinterpret_cast<const char*>(json), jsonSize, plan);
+        // A multi-kilobyte manifest plan must not live on loopTask's stack
+        // during ELF read, SHA-256 and downstream graph registration.
+        std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
+        const bool parsed = plan && parseOrdinaryManifest(
+            reinterpret_cast<const char*>(json), jsonSize, *plan);
         std::free(json);
-        if (!parsed || plan.identity.kind != kind ||
-            std::strcmp(plan.identity.id, id)) break;
+        if (!parsed || plan->identity.kind != kind ||
+            std::strcmp(plan->identity.id, id)) break;
         bool hasProfile = false, hasImports = false, hasExecutable = false;
-        for (size_t i = 0; i < plan.entryCount; ++i) {
-            const auto& entry = plan.entries[i];
+        for (size_t i = 0; i < plan->entryCount; ++i) {
+            const auto& entry = plan->entries[i];
             if (!std::strcmp(entry.name, "provider-abi.v1")) hasProfile = true;
             if (!std::strcmp(entry.name, "privileged-imports.v1")) hasImports = true;
             if (!std::strcmp(entry.name, "driver.elf") && entry.executable)
@@ -164,11 +194,12 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         uint8_t* elf = readFile(name, 8u * 1024u * 1024u, elfSize);
         if (!elf) { std::free(imports); break; }
         RuntimeProviders::RequirementV2 needs[kMaxPackageRequirements]{};
-        bool goodRequirements = plan.requirementCount <= kMaxPackageRequirements;
-        for (size_t i = 0; goodRequirements && i < plan.requirementCount; ++i) {
-            needs[i] = {plan.requirements[i].capability,
-                        installedCapabilityVersion(plan.requirements[i].capability)};
-            if (needs[i].api < plan.requirements[i].minApi)
+        bool goodRequirements = plan->requirementCount <= kMaxPackageRequirements;
+        for (size_t i = 0; goodRequirements && i < plan->requirementCount; ++i) {
+            const uint32_t available = versionInInstalledSnapshot(
+                verified, plan->requirements[i].capability);
+            needs[i] = {plan->requirements[i].capability, available};
+            if (available < plan->requirements[i].minApi)
                 goodRequirements = false;
         }
         if (goodRequirements) {
@@ -177,7 +208,7 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
             candidate.provides = capability;
             candidate.providesApi = api;
             candidate.requirements = needs;
-            candidate.requirementCount = plan.requirementCount;
+            candidate.requirementCount = plan->requirementCount;
             candidate.elfBytes = elf;
             candidate.elfLength = elfSize;
             candidate.importedSymbols = symbols;
@@ -207,6 +238,12 @@ void undoPins() {
 bool prepare() {
     if (graph) return true;
     if (!Storage.ready()) return false;
+    // One integrity-verified, operation-scoped capability inventory is shared
+    // across every registered provider and every one of its requirements.
+    // A failed snapshot leaves the existing graph untouched and grants nothing.
+    std::unique_ptr<InstalledCapabilitySnapshot, void(*)(InstalledCapabilitySnapshot*)>
+        verified(captureInstalledCapabilities(), releaseInstalledCapabilities);
+    if (!verified) return false;
     auto* candidate = new (std::nothrow) RuntimeProviders::GraphV2();
     if (!candidate) return false;
     const struct Root { const char* path; Kind kind; } roots[] = {
@@ -220,6 +257,8 @@ bool prepare() {
             continue;
         }
         for (size_t i = 0; i < 64 && pinCount < kMaxProviders; ++i) {
+            // A bounded scan still needs scheduler cooperation between entries.
+            ordinaryCooperativeYield(1, 1);
             HalFile item = directory.openNextFile();
             if (!item.isOpen()) break;
             char id[64]{};
@@ -227,7 +266,8 @@ bool prepare() {
             const bool valid = item.isDirectory() && length && length < sizeof(id) &&
                                safeId(id);
             (void)item.close();
-            if (valid) (void)registerOne(*candidate, root.path, id, root.kind);
+            if (valid) (void)registerOne(*candidate, root.path, id, root.kind,
+                                        verified.get());
         }
         (void)directory.close();
     }
