@@ -17,6 +17,7 @@ typedef enum { INSTALL = 0, UPDATE, CURRENT, NEWER, INVALID } action_t;
 static source_t source;
 static t5_driver_catalog_entry_t releases[LIMIT];
 static uint32_t release_indices[LIMIT];
+static action_t release_actions[LIMIT];
 static t5_package_preview_t packages[LIMIT];
 static char folders[LIMIT][T5_PACKAGE_ID_MAX];
 static t5_ui_list_row_t rows[LIMIT];
@@ -150,8 +151,12 @@ static void install_progress(void *context, const t5_driver_install_event_t *eve
     } else view->transferred[0] = '\0';
     const bool terminal = event->stage == T5_DRIVER_INSTALL_INSTALLED ||
                           event->stage == T5_DRIVER_INSTALL_FAILED;
+    // These phases can each block in network or SD IO. Draw them before the
+    // blocking call, even if the previous screen was rendered recently.
     const bool mandatory = !view->rendered || package_changed || terminal ||
-                           (stage_changed && (event->stage == T5_DRIVER_INSTALL_DOWNLOADING ||
+                           (stage_changed && (event->stage == T5_DRIVER_INSTALL_METADATA ||
+                                              event->stage == T5_DRIVER_INSTALL_RECOVERY ||
+                                              event->stage == T5_DRIVER_INSTALL_DOWNLOADING ||
                                               event->stage == T5_DRIVER_INSTALL_VERIFYING ||
                                               event->stage == T5_DRIVER_INSTALL_PUBLISHING));
     const bool time_ready = !view->app || !view->app->millis ||
@@ -178,8 +183,10 @@ static void begin_install_progress(const t5_app_api_v1 *app, const t5_ui_api_v1 
     install_view.ui = ui;
     install_view.started_ms = app && app->millis ? app->millis() : 0u;
     snprintf(install_view.target, sizeof(install_view.target), "Requested: %s", id ? id : "driver");
+    // The click handler checks the installed version first. Render that work
+    // immediately rather than leaving the old catalog visible until it ends.
     const t5_driver_install_event_t initial = {id ? id : "driver", NULL,
-                                               T5_DRIVER_INSTALL_RESOLVING, 0, 0};
+                                               T5_DRIVER_INSTALL_CHECKING, 0, 0};
     install_progress(&install_view, &initial);
 }
 
@@ -316,6 +323,7 @@ static bool populate_release(const t5_driver_manager_api_v1 *api) {
         release_indices[row_count] = index;
         char installed[T5_DRIVER_VERSION_MAX] = {0};
         const action_t action = action_for(api, row_count, installed, sizeof(installed));
+        release_actions[row_count] = action;
         snprintf(names[row_count], sizeof(names[row_count]), "%s", entry.id);
         if (action == CURRENT)
             snprintf(descriptions[row_count], sizeof(descriptions[row_count]), "%s - Installed", entry.capability);
@@ -376,6 +384,7 @@ static bool load_inbox(const t5_app_api_v1 *app, const t5_package_manager_api_v1
     return true;
 }
 static const char *action_label(const t5_driver_manager_api_v1 *api, int32_t selected) {
+    (void)api;
     if (selected < 0 || selected >= (int32_t)row_count) return "";
     if (source == INBOX) {
         const t5_package_preview_t *info = &packages[selected];
@@ -383,8 +392,9 @@ static const char *action_label(const t5_driver_manager_api_v1 *api, int32_t sel
         if (info->install_allowed) return info->installed_version[0] ? "Update" : "Install";
         return info->installed_version[0] ? "Actions" : "";
     }
-    char installed[T5_DRIVER_VERSION_MAX] = {0};
-    const action_t action = action_for(api, (uint32_t)selected, installed, sizeof(installed));
+    // A label draw is never allowed to synchronously rehash drivers or recurse
+    // through their dependencies. Catalog population already checked each row.
+    const action_t action = release_actions[selected];
     return action == UPDATE ? "Update" : action == INSTALL ? "Install" : "";
 }
 static void render(const t5_driver_manager_api_v1 *api, const t5_ui_api_v1 *ui,
@@ -420,25 +430,39 @@ static void activate(const t5_driver_manager_api_v1 *api, const t5_package_manag
         } else snprintf(status, capacity, "%s: install blocked", info.id);
         return;
     }
-    char installed[T5_DRIVER_VERSION_MAX] = {0};
-    const action_t action = action_for(api, (uint32_t)selected, installed, sizeof(installed));
-    if (action == CURRENT) { snprintf(status, capacity, "%s already current", releases[selected].id); return; }
-    if (action == NEWER) { snprintf(status, capacity, "%s: installed %s is newer", releases[selected].id, installed); return; }
-    if (action == INVALID) { snprintf(status, capacity, "%s: version invalid", releases[selected].id); return; }
-    bool ok = false;
-    if (progress_api(api)) {
-        const t5_app_api_v1 *app = t5_app_get_api(T5_APP_ABI_VERSION);
-        begin_install_progress(app, ui, releases[selected].id);
-        ok = api->install_with_progress(release_indices[selected], install_progress, &install_view);
-        // No firmware function may retain an ELF callback or its app context.
-        install_view.ui = NULL;
-        install_view.app = NULL;
+    const bool live = progress_api(api);
+    // Version preflight performs SD integrity and capability verification; it
+    // can take substantial time. Present an honest state BEFORE starting it.
+    if (live) {
+        begin_install_progress(t5_app_get_api(T5_APP_ABI_VERSION), ui, releases[selected].id);
     } else {
         const t5_ui_chrome_t busy = {"Driver installation", releases[selected].id,
                                      "Older firmware: detailed progress unavailable", "", "", "", ""};
-        const t5_ui_list_row_t row = {"Installing", "Downloading and validating; keep power on", "", 0};
+        const t5_ui_list_row_t row = {"Checking installed version", "Then downloading and validating", "", 0};
         ui->render_list(&busy, &row, 1, 0);
-        ok = api->install(release_indices[selected]);
+    }
+    char installed[T5_DRIVER_VERSION_MAX] = {0};
+    const action_t action = action_for(api, (uint32_t)selected, installed, sizeof(installed));
+    if (action == CURRENT || action == NEWER || action == INVALID) {
+        if (live) {
+            const t5_driver_install_event_t done = {releases[selected].id, NULL,
+                action == INVALID ? T5_DRIVER_INSTALL_FAILED : T5_DRIVER_INSTALL_ALREADY_PRESENT, 0, 0};
+            install_progress(&install_view, &done);
+            install_view.ui = NULL;
+            install_view.app = NULL;
+        }
+        if (action == CURRENT) snprintf(status, capacity, "%s already current", releases[selected].id);
+        else if (action == NEWER) snprintf(status, capacity, "%s: installed %s is newer", releases[selected].id, installed);
+        else snprintf(status, capacity, "%s: version invalid", releases[selected].id);
+        return;
+    }
+    const bool ok = live ?
+        api->install_with_progress(release_indices[selected], install_progress, &install_view) :
+        api->install(release_indices[selected]);
+    if (live) {
+        // No firmware function may retain an ELF callback or its app context.
+        install_view.ui = NULL;
+        install_view.app = NULL;
     }
     snprintf(status, capacity, "%s: %s; not activated", releases[selected].id,
              ok ? "installed" : "install refused; inspect recovery");
