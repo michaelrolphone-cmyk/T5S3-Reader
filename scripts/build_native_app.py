@@ -23,18 +23,29 @@ if not cc:
     core = pathlib.Path(os.environ.get('PLATFORMIO_CORE_DIR', pathlib.Path.home() / '.platformio'))
     cc = str(core / 'packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc')
 args.output.parent.mkdir(parents=True, exist_ok=True)
-# -nostdlib omits compiler runtime helpers as well as libc. Native apps can
-# legitimately use C operations such as 64-bit integer division, which GCC
-# lowers to __udivdi3 on Xtensa. Resolve those helpers from this toolchain's
-# libgcc INTO the ELF, rather than expanding the firmware's public ABI or
-# allowing an unresolved import. Keep archive symbols private to this app.
-subprocess.run([cc, '-std=c11', '-Os', '-fPIC', '-mtext-section-literals', '-mlongcalls',
-                '-fvisibility=hidden', '-nostdlib', '-nostartfiles', '-shared',
-                '-I' + str(repo / 'lib/NativeApps/include'),
-                '-Wl,--hash-style=sysv', '-Wl,--exclude-libs,ALL',
-                str(args.source), '-lgcc', '-o', str(args.output)], check=True)
+
+# Keep ELF linkage restricted. Pulling in the stock libgcc archive resolved
+# __udivdi3 but produced an ELF rejected by esp_elf_validate_file(); it must
+# not be used as a blanket linker dependency for native applications.
+flags = [cc, '-std=c11', '-Os', '-fPIC', '-mtext-section-literals', '-mlongcalls',
+         '-fvisibility=hidden', '-nostdlib', '-nostartfiles', '-shared',
+         '-I' + str(repo / 'lib/NativeApps/include'), '-Wl,--hash-style=sysv']
 readelf = cc.replace('gcc', 'readelf')
-info = subprocess.check_output([readelf, '--dyn-syms', '--wide', str(args.output)], text=True)
+
+def build(support=()):
+    subprocess.run([*flags, str(args.source), *map(str, support), '-o', str(args.output)], check=True)
+    return subprocess.check_output([readelf, '--dyn-syms', '--wide', str(args.output)], text=True)
+
+info = build()
+# Xtensa lowers unsigned 64-bit division to a compiler helper. Supply the
+# bounded, source-owned implementation only to an app that actually imports
+# it. It performs no division itself and does not expand the firmware ABI.
+if any(len(fields := line.split()) >= 8 and fields[4] == 'GLOBAL'
+       and fields[6] == 'UND' and fields[7] == '__udivdi3'
+       for line in info.splitlines()):
+    helper = repo / 'lib/NativeApps/src/UnsignedDivisionCompat.c'
+    info = build((helper,))
+
 if not any('GLOBAL' in line and 'FUNC' in line and 'UND' not in line and line.split()[-1] == 'app_main'
            for line in info.splitlines() if line.strip()):
     raise SystemExit('The app must export void app_main(void) with default visibility')
