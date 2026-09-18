@@ -45,15 +45,24 @@ assert intake.index('systemPackageUseGate().pinned(paths.target)') < intake.inde
 assert 'Storage.remove(temporaryStoragePath);\n    const auto result' not in intake
 assert bridge.index('ManagerMutation mutation;', bridge.index('bool catalogRefresh()')) < bridge.index('catalog.clear();', bridge.index('bool catalogRefresh()'))
 
-# Even if stream ABI negotiation fails, the fallback HTTPClient route must not
-# delete an existing .part file or truncate it between exists() and open().
+# Neither transport may truncate an existing .part. A failed native CREATE_NEW
+# must also leave another writer's file alone: cleanup requires proof of ownership.
 download = (root / 'src/network/HttpDownloader.cpp').read_text(encoding='utf-8')
 start = download.index('HttpDownloader::DownloadError HttpDownloader::downloadToFile(')
 transfer = download[start:]
 assert 'if (staged && (destPath.front()' in transfer
 assert 'Storage.exists(destPath.c_str())' in transfer
 assert transfer.index('Storage.exists(destPath.c_str())') < transfer.index('const auto* streams = invocationStreams(')
+assert 'bool destinationCreated = false;' in transfer
+assert '&transferred, &destinationCreated);' in transfer
+assert 'if (destinationCreated) Storage.remove(destPath.c_str());' in transfer
 assert 'if (staged) {\n    file = Storage.open(destPath.c_str(), O_WRONLY | O_CREAT | O_EXCL);' in transfer
 assert 'if (Storage.exists(destPath.c_str())) Storage.remove(destPath.c_str());' in transfer.split('} else {', 1)[-1]
 assert 'Storage.openFileForWrite("HTTP", destPath.c_str(), file);' in transfer
-print('Driver Manager preflight refuses mapped drivers; all staged HTTP routes exclusively create .part; typed publication remains authoritative')
+
+stream = (root / 'src/runtime/streams/HttpStreamTransfer.h').read_text(encoding='utf-8')
+stream_download = stream[stream.index('inline Result download('):]
+assert 'if (destinationCreated) *destinationCreated = false;' in stream_download
+assert 'T5_STREAM_FILE_CREATE_NEW' in stream_download
+assert stream_download.index('T5_STREAM_FILE_CREATE_NEW') < stream_download.index('if (destinationCreated) *destinationCreated = true;')
+print('Driver intake refuses mapped drivers; exclusive staged creation and owner-only cleanup are wired in both HTTP routes')
