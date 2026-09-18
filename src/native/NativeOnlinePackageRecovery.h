@@ -88,7 +88,10 @@ inline bool stagePrefixMatches(const std::string& sourcePath,
     return false;
   }
   const uint64_t length = stage.fileSize64();
-  if (length > limit || source.fileSize64() != limit) {
+  const uint64_t expected = source.fileSize64();
+  // Metadata is bounded to 4096, not necessarily exactly 4096 bytes. Entry
+  // lengths are independently checked by the full source verifier above.
+  if (expected > limit || length > expected) {
     (void)source.close(); (void)stage.close();
     return false;
   }
