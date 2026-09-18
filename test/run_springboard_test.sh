@@ -63,6 +63,10 @@ for pair in \
 done
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" "$repo_dir/test/native_apps/image_api_stub.c" -o "$binary"
 "$binary"
+# Exercise the actual Driver Manager app's static row construction and actions.
+cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/driver_manager_test.c" -o "$binary"
+"$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
 python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
-echo 'Native app regressions passed: ordinary four-kind stage/publication/lifecycle, early driver intake, driver transition, legacy recovery and app UI (no mandatory package signing).'
+echo 'Native app regressions passed: ordinary four-kind stage/publication/lifecycle, early driver intake, driver UI/version actions, legacy recovery and app UI (no mandatory package signing).'
