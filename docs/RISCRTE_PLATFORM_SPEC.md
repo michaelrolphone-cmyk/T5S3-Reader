@@ -10,6 +10,8 @@ This is the **canonical entry point for RiscRTE architecture and specification w
 
 **Binding application version policy:** [Application Version Policy](APP_VERSION_POLICY.md) applies to **every** first-class app edit, including U1 changes to Serial Monitor, App Store, Driver Manager and Package Manager. Any distributable app source/behavior/resource/manifest change requires a strictly increased version in that app's own source `Apps/<app>.json` within the same PR. Firmware version or `min_firmware_version` changes do not count. The identical app version propagates to sidecar, package, catalog and installed inventory. Compare against prior target/published versions and do not reissue altered payloads under a previously released app identity/version. The current format validator is not a changed-source version-increase gate; manual checking is mandatory until automatic enforcement is implemented and tested.
 
+**Future deployment provisioning:** [Deployment Provisioning Manifest](DEPLOYMENT_PROVISIONING.md) specifies an eventual SD-card first-run desired-state manifest for board/hardware profiles, installed drivers/providers/apps and initial configuration, using the ordinary manager. It is **DEFERRED**, not part of U1 or the current package-manager MVP and not an instruction to implement a first-run installer or extra release gate. Preserve generic mechanisms now; implement provisioning only when separately authorized.
+
 Precedence: explicit current user scope; this master specification and hardware invariant; roadmap where consistent; applicable normative child specs and current-work U1 contract; implementation/MVP reports; explicitly labeled historical/legacy notes. Legacy behavior is not design precedent. Signing, signer trust and cryptographic security-floor ideas in broad security/roadmap documents are **not** authorized package-manager MVP requirements; the current owner instruction is to purge package-signing implementation from the active repository while preserving integrity/loader safety.
 
 ## Naming
@@ -101,12 +103,12 @@ Events have monotonic sequence, generation-qualified opaque handle, copied remov
 
 ### B. Application and execution model
 
-- [Application Version Policy](APP_VERSION_POLICY.md) — **mandatory per-app version increase for distributed changes, immutable published identity and required changed-app release validation**.
 - [Application Execution Context Architecture](APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md) — contexts, owned resources, trusted UI and private storage; required for new apps.
 - [Application Capability Requirements](APP_CAPABILITY_REQUIREMENTS.md) — manifest resolution and invocation binding.
 - [Scene Runtime Architecture](SCENE_RUNTIME_ARCHITECTURE.md)
 - [Service Runtime Architecture](SERVICE_RUNTIME_ARCHITECTURE.md)
 - [RiscRTE Applications](NATIVE_APPS.md) — current ABI and compatibility names.
+- [Application Version Policy](APP_VERSION_POLICY.md) — mandatory per-app version bump for any distributable app change.
 - [Adding Firmware Activities](ADDING_APPS.md) — legacy in-firmware activity path.
 - [RiscRTE UI Host API](NATIVE_UI_API.md)
 - [RiscRTE Network Host API](NATIVE_NETWORK_API.md) — compatibility API, not a firmware hardware-driver precedent.
@@ -147,13 +149,15 @@ The generic registry/resolver/context facilities are parent abstractions for pro
 8. Package management — [ordinary format](RISC_PACKAGE_FORMAT.md), [Unified Package Manager MVP](UNIFIED_PACKAGE_MANAGER_MVP.md), [Package Manager Scope Contract](PACKAGE_MANAGER_SCOPE_CONTRACT.md), and [U1 integrated completion](NEXT_HARDWARE_TEST_MILESTONE.md). Merged code provides a real ordinary foundation; complete four-kind online/inventory/UI and remove unwanted signing and USB catalog coupling. **No signing gate.**
 9. Power, reliability, diagnostics and context accounting.
 
+**Deferred deployment extension:** [Deployment Provisioning Manifest](DEPLOYMENT_PROVISIONING.md) — future first-run SD desired-state installation of compatible board/hardware profiles, drivers/providers/apps and initial configuration through the ordinary manager. This is not a new U1 or MVP dependency.
+
 ## Future-state versus current-state documentation
 
 Document in order: (1) target architecture, (2) implementation status, (3) legacy compatibility, (4) migration requirements. Do not erase truthful historical behavior; label still-compiled hardware paths **CURRENT/LEGACY, NONCOMPLIANT**. For package-signing sources specifically, the user has required a physical purge from the active tree; explaining their prior existence does not authorize preserving the implementation or its active experimental spec.
 
 ## Rules for new changes
 
-Before a change, read this master and the governing roadmap/child spec; read hardware boundary for device/capability/driver work and [U1](NEXT_HARDWARE_TEST_MILESTONE.md) for package/USB/Serial Monitor/signing-purge work. For app work, read [APP_VERSION_POLICY.md](APP_VERSION_POLICY.md) and execution-context architecture, bump each distributively changed app's own manifest version, and apply trusted UI/private storage within scope. Inspect code before treating a target as implemented. Use semantic capabilities and appropriate platform abstractions, never create new hardware-specific core bridges. Associate software grants with execution-context owners. Update normative specs with architectural/API changes and label remaining legacy behavior. Use RiscRTE naming for the platform.
+Before a change, read this master and the governing roadmap/child spec; read hardware boundary for device/capability/driver work and [U1](NEXT_HARDWARE_TEST_MILESTONE.md) for package/USB/Serial Monitor/signing-purge work. For app work, read execution-context architecture and apply trusted UI/private storage within scope. Inspect code before treating a target as implemented. Use semantic capabilities and appropriate platform abstractions, never create new hardware-specific core bridges. Associate software grants with execution-context owners. Update normative specs with architectural/API changes and label remaining legacy behavior. Use RiscRTE naming for the platform.
 
 One explicit user request controls change scope; U1 is a single software milestone with internal workstreams and one owner hardware-test handoff. Do not require physical testing between commits, wait idle on CI instead of progressing independent work, conflate CI and hardware acceptance, create stacked interdependent PRs, or auto-merge/release/flash. Preserve a recoverable progress ledger across prompts.
 
