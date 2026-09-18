@@ -38,17 +38,17 @@ bool validRequest(const char* expectedId, const char* expectedCapability,
          expectedCapability[0] && expectedApi && validDependencies(deps, count);
 }
 void report(const char* id, const char* stage, int code = 0) {
+  // Some ESP_PLATFORM host harnesses stub LOG_ERR to a no-op. Keep parameters
+  // explicitly used in both logging-enabled and logging-disabled builds.
+  (void)id; (void)stage; (void)code;
 #ifdef ESP_PLATFORM
   LOG_ERR("PROV", "PROVREF id=%s failure=%s code=%d", id ? id : "?", stage, code);
-#else
-  (void)id; (void)stage; (void)code;
 #endif
 }
 void trace(const char* id, const char* stage) {
+  (void)id; (void)stage;
 #ifdef ESP_PLATFORM
   LOG_INF("PROV", "PROVREF id=%s stage=%s", id ? id : "?", stage);
-#else
-  (void)id; (void)stage;
 #endif
 }
 } // namespace
