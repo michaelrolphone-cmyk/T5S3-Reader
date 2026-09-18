@@ -16,11 +16,12 @@ flags=(-std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined
        -fno-omit-frame-pointer -pthread -I"$repo_dir/src")
 for test_case in package_identity package_preflight package_json_guard \
                  package_use_gate package_transaction package_recovery \
-                 package_ordinary_stage package_ordinary_installer; do
+                 package_ordinary_stage package_ordinary_installer \
+                 package_driver_transition; do
   echo "== Ordinary package MVP: ${test_case} =="
   c++ "${flags[@]}" "$repo_dir/test/resources/${test_case}_test.cpp" \
       -lcrypto -o "$binary"
   "$binary"
 done
-echo 'PASS: ordinary package MVP host tests (four kinds, source-neutral integrity, staging and recoverable publication).'
+echo 'PASS: ordinary package MVP host tests (four kinds, source-neutral integrity, staging, versioned driver upgrades and recoverable publication).'
 echo 'Deferred signer/P-256 prototype: test/run_signed_package_experiment.sh (not an MVP gate).'
