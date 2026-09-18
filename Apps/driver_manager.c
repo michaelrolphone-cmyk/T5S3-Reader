@@ -1,5 +1,6 @@
 #include "T5AppApi.h"
 #include "T5DriverManagerApi.h"
+#include "T5PackageVersion.h"
 #include "T5UiApi.h"
 
 #include <stddef.h>
@@ -17,6 +18,8 @@ typedef enum {
     DRIVER_ACTION_INSTALL = 0,
     DRIVER_ACTION_UPDATE = 1,
     DRIVER_ACTION_CURRENT = 2,
+    DRIVER_ACTION_INSTALLED_NEWER = 3,
+    DRIVER_ACTION_UNAVAILABLE = 4,
 } driver_action_t;
 
 static t5_driver_catalog_entry_t entries[MAX_DRIVER_ITEMS];
@@ -42,11 +45,16 @@ static bool has_ui_api(const t5_ui_api_v1 *ui) {
 static driver_action_t action_for(const t5_driver_manager_api_v1 *api, uint32_t index,
                                   char *installed, size_t installed_capacity) {
     if (installed && installed_capacity) installed[0] = '\0';
-    if (index >= row_count) return DRIVER_ACTION_INSTALL;
+    if (index >= row_count || !installed || !installed_capacity) return DRIVER_ACTION_UNAVAILABLE;
     if (!api->installed_version_get(entries[index].id, installed, installed_capacity)) {
         return DRIVER_ACTION_INSTALL;
     }
-    return strcmp(installed, entries[index].version) == 0 ? DRIVER_ACTION_CURRENT : DRIVER_ACTION_UPDATE;
+    switch (t5_package_version_compare(entries[index].version, installed)) {
+        case 1: return DRIVER_ACTION_UPDATE;
+        case 0: return DRIVER_ACTION_CURRENT;
+        case -1: return DRIVER_ACTION_INSTALLED_NEWER;
+        default: return DRIVER_ACTION_UNAVAILABLE;
+    }
 }
 
 static void build_rows(const t5_driver_manager_api_v1 *api) {
@@ -65,6 +73,12 @@ static void build_rows(const t5_driver_manager_api_v1 *api) {
         if (action == DRIVER_ACTION_CURRENT) {
             snprintf(row_subtitles[row_count], sizeof(row_subtitles[row_count]),
                      "%s - Installed", entry.capability[0] ? entry.capability : "Driver package");
+        } else if (action == DRIVER_ACTION_INSTALLED_NEWER) {
+            snprintf(row_subtitles[row_count], sizeof(row_subtitles[row_count]),
+                     "Installed newer %s", installed);
+        } else if (action == DRIVER_ACTION_UNAVAILABLE) {
+            snprintf(row_subtitles[row_count], sizeof(row_subtitles[row_count]),
+                     "Installed version invalid; inspect package");
         } else if (action == DRIVER_ACTION_UPDATE) {
             snprintf(row_subtitles[row_count], sizeof(row_subtitles[row_count]),
                      "%s - Installed %s", entry.capability[0] ? entry.capability : "Driver package", installed);
@@ -85,8 +99,9 @@ static const char *confirm_label(const t5_driver_manager_api_v1 *api, int32_t se
     if (selected < 0 || selected >= (int32_t)row_count) return "";
     char installed[T5_DRIVER_VERSION_MAX] = {0};
     const driver_action_t action = action_for(api, (uint32_t)selected, installed, sizeof(installed));
-    if (action == DRIVER_ACTION_CURRENT) return "";
-    return action == DRIVER_ACTION_UPDATE ? "Update" : "Install";
+    if (action == DRIVER_ACTION_UPDATE) return "Update";
+    if (action == DRIVER_ACTION_INSTALL) return "Install";
+    return "";
 }
 
 static void render_rows(const t5_driver_manager_api_v1 *api, const t5_ui_api_v1 *ui,
@@ -163,6 +178,14 @@ static void activate_selected(const t5_driver_manager_api_v1 *api, const t5_ui_a
     const driver_action_t action = action_for(api, (uint32_t)selected, installed, sizeof(installed));
     if (action == DRIVER_ACTION_CURRENT) {
         snprintf(status, status_capacity, "%s is already current", entries[selected].id);
+        return;
+    }
+    if (action == DRIVER_ACTION_INSTALLED_NEWER) {
+        snprintf(status, status_capacity, "%s: installed %s is newer than catalog", entries[selected].id, installed);
+        return;
+    }
+    if (action == DRIVER_ACTION_UNAVAILABLE) {
+        snprintf(status, status_capacity, "%s: version invalid; inspect installation", entries[selected].id);
         return;
     }
 
