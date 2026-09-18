@@ -92,9 +92,17 @@ def run():
                        c_compiler=True, extra=includes + FUNCTION_SECTIONS)
         objects.append(object_file)
     output = OUTPUT / 'driver.elf'
+    # The firmware native relocator maps the canonical .text output region,
+    # NOT orphan .iram1.N(.literal) output sections. Without this linker
+    # fragment, 23 RELATIVE relocation sites in the released I2C ELF fall
+    # outside esp_elf_map_sym and the entire USB host chain fails with -EINVAL.
+    linker_layout = SOURCE / 'loader_sections.ld'
+    if not linker_layout.is_file():
+        raise RuntimeError('I2C runtime-loader linker layout is missing')
     subprocess.run([str(cc), '-shared', '-nostdlib', '-nostartfiles',
                     '-Wl,--hash-style=sysv', '-Wl,--exclude-libs,ALL',
                     '-Wl,-Bsymbolic', '-Wl,--gc-sections',
+                    '-Wl,-T,' + str(linker_layout),
                     '-Wl,--version-script,' + str(SOURCE / 'exports.map'),
                     *peripheral_map(), *map(str, objects), '-lgcc',
                     '-o', str(output)], cwd=ROOT, check=True)
