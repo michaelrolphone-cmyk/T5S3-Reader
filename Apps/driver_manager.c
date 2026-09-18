@@ -213,8 +213,14 @@ static bool load_inbox(const t5_app_api_v1 *app, const t5_package_manager_api_v1
         if (!entry.is_directory || row_count >= LIMIT) continue;
         t5_package_preview_t info = {0};
         if (!manager->preview(entry.name, &info) || info.kind != T5_PACKAGE_DRIVER) continue;
+        size_t folder_length = 0;
+        while (folder_length < sizeof(entry.name) && entry.name[folder_length])
+            ++folder_length;
+        // A truncated folder would identify a different package. Skip it.
+        if (!folder_length || folder_length >= sizeof(entry.name) ||
+            folder_length >= sizeof(folders[0])) continue;
         packages[row_count] = info;
-        snprintf(folders[row_count], sizeof(folders[row_count]), "%s", entry.name);
+        memcpy(folders[row_count], entry.name, folder_length + 1u);
         snprintf(names[row_count], sizeof(names[row_count]), "%s", info.id);
         if (!info.valid_installation)
             snprintf(descriptions[row_count], sizeof(descriptions[row_count]), "Installed generation requires recovery");
