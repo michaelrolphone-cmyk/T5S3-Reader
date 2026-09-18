@@ -5,6 +5,7 @@
 #include <cstring>
 #include <string>
 
+#include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/PackageOrdinaryTransaction.h"
@@ -20,9 +21,11 @@ struct Mutation {
     explicit operator bool() const { return owned; }
 };
 
-// A missing dependency is not an implicit privilege grant. The registry must
-// supply the installed capability version before dependent packages can pass.
-uint32_t availableCapability(const char*) { return 0; }
+// Installed, integrity-verified provider generations satisfy INSTALL dependency
+// preflight; this never grants runtime privileges or activates hardware.
+uint32_t availableCapability(const char* name) {
+    return RuntimePackages::installedCapabilityVersion(name);
+}
 
 // The shared manager may install all four ordinary kinds. The App Store and
 // Driver Manager are explicitly limited to their own package kind. An ELF
