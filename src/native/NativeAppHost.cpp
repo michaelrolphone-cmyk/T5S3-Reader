@@ -1,5 +1,6 @@
 #include "NativeStreamBridge.h"
 #include "NativeAppHost.h"
+#include "NativeOnlineAppInstall.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
 #include "AppCatalogIndex.h"
 #include "AppManifest.h"
@@ -572,64 +573,39 @@ bool installedAppVersionGet(const char* fileName, char* out, size_t capacity) {
 bool appCatalogDownload(uint32_t index) {
   auto* s = current();
   if (!s || !Storage.ready() || index >= s->catalog.size()) return false;
-  const auto& asset = s->catalog[index];
-  // New managed installations have canonical filenames and independently
-  // checked release asset lengths; old loose files can still be browsed.
-  if (!safeAssetName(asset.name) || !RuntimePackages::safePackageEntryName(asset.name.c_str()) ||
-      !asset.manifestValid || asset.size < 52 || asset.size > 1024u * 1024u ||
-      asset.manifestUrl.empty()) return false;
+  const CatalogAsset selected = s->catalog[index];
+  if (!safeAssetName(selected.name) ||
+      !RuntimePackages::safePackageEntryName(selected.name.c_str()) ||
+      !selected.manifestValid || selected.manifestUrl.empty() ||
+      selected.size < 52 || selected.size > 8u * 1024u * 1024u) return false;
 
-  std::string json;
-  std::string version;
+  std::string json, version;
   t5_app_manifest_t manifest{};
-  if (!HttpDownloader::fetchUrl(asset.manifestUrl, json) ||
-      !parseAppManifest(json, manifest, &version, true) || !manifest.compatible ||
-      asset.name != manifest.file_name || version != asset.version) return false;
+  if (!HttpDownloader::fetchUrl(selected.manifestUrl, json) ||
+      json.empty() || json.size() > 4096 ||
+      !parseAppManifest(json, manifest, &version, true) ||
+      !manifest.compatible || selected.name != manifest.file_name ||
+      version != selected.version) return false;
   JsonDocument metadata;
   if (deserializeJson(metadata, json) || !metadata.is<JsonObjectConst>() ||
-      !metadata["sha256"].is<const char*>() || !metadata["size_bytes"].is<unsigned>() ||
-      metadata["size_bytes"].as<unsigned>() != asset.size) {
-    LOG_ERR("APPSTORE", "Release metadata lacks a matching ELF digest and length");
+      !metadata["sha256"].is<const char*>() ||
+      !metadata["size_bytes"].is<unsigned>() ||
+      metadata["size_bytes"].as<unsigned>() != selected.size) {
+    LOG_ERR("APPSTORE", "Release metadata lacks matching executable length and digest");
     return false;
   }
-  if (!Storage.mkdir("/Apps") && !Storage.exists("/Apps")) return false;
-  const std::string destination = std::string("/Apps/") + asset.name;
-  const std::string sidecar = destination.substr(0, destination.size() - 4) + ".json";
-  const std::string temporary = destination + ".part";
-  const std::string stagedJson = sidecar + ".part";
-  if (!RuntimePackages::recoverAppPair(asset.name.c_str())) return false;
-  if (Storage.exists(destination.c_str())) {
-    t5_app_manifest_t installed{};
-    std::string installedVersion;
-    if (!readAppManifest(sidecar.c_str(), installed, &installedVersion, false) ||
-        !RuntimePackages::verifyAppPair(destination.c_str(), sidecar.c_str(), asset.name.c_str(), false))
-      return false;
-    if (!installedVersion.empty()) {
-      const auto order = RuntimePackages::comparePackageVersions(version.c_str(), installedVersion.c_str());
-      if (order == RuntimePackages::VersionOrder::Invalid ||
-          order == RuntimePackages::VersionOrder::Older) {
-        LOG_ERR("APPSTORE", "Refusing invalid or downgraded application version: %s", asset.name.c_str());
-        return false;
-      }
-    }
-  }
-  // Recovery is complete before deleting only these two disposable .part files.
-  if (!RuntimePackages::clearAppStage(asset.name.c_str())) return false;
-  if (!Storage.writeFile(stagedJson.c_str(), String(json.c_str()))) return false;
-  const auto result = HttpDownloader::downloadToFile(asset.url, temporary,
-      [](size_t, size_t) { esp_task_wdt_reset(); });
-  if (result != HttpDownloader::OK ||
-      !RuntimePackages::verifyAppPair(temporary.c_str(), stagedJson.c_str(), asset.name.c_str(), true)) {
-    LOG_ERR("APPSTORE", "Download rejected: ELF length, header or SHA-256 mismatch");
-    // Keep staged files for inspection on a failed integrity check; the old
-    // published generation has not been modified.
-    return false;
-  }
-  if (!RuntimePackages::publishAppPair(asset.name.c_str(), true)) {
-    LOG_ERR("APPSTORE", "App publish blocked; recoverable old package retained");
-    return false;
-  }
-  return true;
+  const char* digest = metadata["sha256"].as<const char*>();
+  if (!RuntimePackages::validSha256Hex(digest)) return false;
+  char installed[T5_APP_VERSION_MAX]{};
+  if (installedAppVersionGet(selected.name.c_str(), installed, sizeof(installed)) &&
+      RuntimePackages::comparePackageVersions(version.c_str(), installed) !=
+          RuntimePackages::VersionOrder::Newer) return false;
+
+  // There is exactly one publication mechanism for all four ordinary package
+  // kinds. A release is first converted to an exclusive canonical SD source;
+  // that source is independently verified by the shared transaction engine.
+  return RuntimeOnlinePackages::installApplication(selected.name.c_str(),
+      version.c_str(), selected.url.c_str(), json, selected.size, digest);
 }
 
 bool installedRefresh() {
