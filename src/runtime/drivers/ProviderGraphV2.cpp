@@ -15,11 +15,8 @@ bool validName(const char* s) {
 }
 
 GraphV2::~GraphV2() {
-  // Returning from a failed destructor would destroy boundDependencies and
-  // Node storage even while an ELF has retained pointers into those objects.
-  // A manager MUST quarantine a failed graph, retain its allocation, retry
-  // quiescence, and only then destroy it. Fail stop rather than allow UAF if
-  // an owner violates that contract. Never force-unmap an active provider.
+  // Bound dependency tables may be retained by mapped ELFs and IRQ callbacks.
+  // Never destroy those arrays while a provider refuses verified quiescence.
   if (!shutdown()) std::abort();
   for (size_t i = 0; i < count_; ++i) {
     delete nodes_[i].owned;
@@ -50,15 +47,12 @@ int GraphV2::findProvider(const char* id, const char* capability, uint32_t api) 
 }
 
 bool GraphV2::addVerified(const SpecV2& spec) {
-  // No public caller can self-declare OS/CPU privilege via a plausible digest.
   return addChecked(spec, false);
 }
 
 bool GraphV2::addAuthenticatedPrivileged(const SpecV2& spec) {
-  // Legacy method name: this PRIVATE entry now takes bounded metadata checked
-  // by the firmware manager, not a mandatory P-256 signer or signed receipt.
-  // DeviceProviderExecutorV2 computes a checksum of exact candidate bytes;
-  // relocation separately enforces all privileged OS/CPU import restrictions.
+  // Manager-validated private entry; signing is optional, exact privileged
+  // import validation and checksum matching remain mandatory on relocation.
   return addChecked(spec, true);
 }
 
@@ -76,9 +70,7 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
                           spec.verifiedElfLength > 0 &&
                           spec.verifiedElfLength <= 8u * 1024u * 1024u &&
                           spec.signedImports != nullptr &&
-                          spec.signedImportCount > 0 &&
-                          spec.signedImportCount <= 128 &&
-                          !emptyDigest;
+                          spec.signedImportCount <= 128 && !emptyDigest;
   if (count_ == kMaxModules || !validName(spec.id) ||
       !validName(spec.provides) || !spec.api ||
       (spec.verifiedElfPath && spec.verifiedElfPath[0] != '/') ||
@@ -129,8 +121,7 @@ void GraphV2::releaseDependencies(size_t index) {
     (void)nodes_[dependency].module.unpinConsumer();
     (void)deactivateIfUnused(dependency);
   }
-  // Clear only AFTER this provider has unmapped and released its pins. A
-  // failed quiesce retains both table and lower provider interface pointers.
+  // Never invalidate this table before the provider has safely unloaded.
   for (size_t i = 0; i < node.spec.requirementCount; ++i)
     node.boundDependencies[i] = {};
 }
@@ -148,11 +139,12 @@ bool GraphV2::activate(size_t index) {
   Node& node = nodes_[index];
   if (node.visit == Visit::Active)
     return node.module.state() == ModuleV2::State::Active;
-  if (node.visit == Visit::Visiting) return false;
+  if (node.visit == Visit::Visiting ||
+      node.module.state() == ModuleV2::State::Failed) return false;
   node.visit = Visit::Visiting;
   for (size_t i = 0; i < node.spec.requirementCount; ++i) {
     const RequirementV2& requirement = node.spec.requirements[i];
-    int dependency = find(requirement.capability, requirement.api);
+    const int dependency = find(requirement.capability, requirement.api);
     if (dependency < 0 ||
         !activate(static_cast<size_t>(dependency)) ||
         !nodes_[dependency].module.pinConsumer()) {
@@ -164,8 +156,6 @@ bool GraphV2::activate(size_t index) {
     node.boundDependencies[i] = {requirement.capability, requirement.api,
                                  nodes_[dependency].module.capability()};
   }
-  // Graph-privately-owned bytes and names survive source/receipt teardown.
-  // The loader takes another snapshot and hashes/relocates the SAME image.
   const bool loaded = node.spec.requiredOsCpuAbi
       ? node.module.loadVerifiedBytes(node.spec.verifiedElfBytes,
                                       node.spec.verifiedElfLength,
@@ -181,8 +171,14 @@ bool GraphV2::activate(size_t index) {
                          node.spec.requirementCount ? node.boundDependencies : nullptr,
                          node.spec.requirementCount);
   if (!loaded) {
-    if (node.module.unload()) releaseDependencies(index);
-    node.visit = Visit::Idle;
+    if (node.module.unload()) {
+      releaseDependencies(index);
+      node.visit = Visit::Idle;
+    } else {
+      // A failed start may own live DMA/interrupt state. Never drop the
+      // dependencies, clear the interface pointers or regrant the node.
+      node.visit = Visit::Active;
+    }
     return false;
   }
   node.visit = Visit::Active;
@@ -205,13 +201,13 @@ GrantV2 GraphV2::acquireIndex(size_t index) {
 }
 
 GrantV2 GraphV2::acquire(const char* capability, uint32_t api) {
-  int target = find(capability, api);
+  const int target = find(capability, api);
   return target < 0 ? GrantV2{} : acquireIndex(static_cast<size_t>(target));
 }
 
 GrantV2 GraphV2::acquireFrom(const char* providerId, const char* capability,
                            uint32_t api) {
-  int target = findProvider(providerId, capability, api);
+  const int target = findProvider(providerId, capability, api);
   return target < 0 ? GrantV2{} : acquireIndex(static_cast<size_t>(target));
 }
 
