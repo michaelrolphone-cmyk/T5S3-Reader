@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Generate bounded provider ABI and import metadata from an actual linked ELF.
+"""Generate source-independent bounded ABI metadata from an actual linked ELF.
 
-These are ordinary source-independent package-manager inputs. No P-256 key,
-signature, signer identity, or cryptographic trust policy is required for driver
-installation or activation. The loader independently enforces privileged ABI
-imports against the exact candidate it maps. An optional later signing format
-may cover these files, but it is not part of this build contract.
+The import sidecar uses sorted newline-delimited ASCII names. A self-contained
+ELF with zero imports uses precisely one LF, which remains a nonempty hashed
+ordinary-package entry. Neither metadata nor SHA-256 is an authorization grant.
 """
 from __future__ import annotations
 
@@ -16,7 +14,7 @@ from pathlib import Path
 import re
 import sys
 
-from generate_privileged_imports_v1 import extract_imports
+from generate_privileged_imports_v1 import extract_imports, encode_imports
 
 CAPABILITY = re.compile(r'[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\Z', re.ASCII)
 PACKAGE_ID = re.compile(r'[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?\Z', re.ASCII)
@@ -31,7 +29,6 @@ def canonical_capability(value: object) -> bool:
 def canonical_manifest(path: Path) -> tuple[str, int]:
     if path.stat().st_size > 4096:
         raise ValueError('provider manifest is oversized')
-    # Duplicate JSON keys are forbidden even when the duplicated value agrees.
     def object_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
         result: dict[str, object] = {}
         for key, value in pairs:
@@ -75,10 +72,10 @@ def canonical_manifest(path: Path) -> tuple[str, int]:
 
 def prepare(elf: Path, manifest: Path, destination: Path) -> tuple[Path, Path]:
     capability, api = canonical_manifest(manifest)
-    names = extract_imports(elf)  # BOTH .dynsym and .symtab, strict count/bounds.
+    names = extract_imports(elf)  # Both .dynsym and .symtab; zero is legitimate.
     profile = f'os-cpu-abi=1\nprovides={capability}\napi={api}\n'.encode('ascii')
-    imports = ''.join(name + '\n' for name in names).encode('ascii')
-    if len(profile) > 160 or not imports or len(imports) > 128 * 128:
+    imports = encode_imports(names)
+    if len(profile) > 160 or len(imports) > 128 * 128:
         raise ValueError('profile or import resource exceeds provider metadata bounds')
     destination.mkdir(parents=True, exist_ok=True)
     output_profile = destination / 'provider-abi.v1'
