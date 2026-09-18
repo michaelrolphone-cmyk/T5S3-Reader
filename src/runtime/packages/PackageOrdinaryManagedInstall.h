@@ -1,6 +1,8 @@
 #pragma once
 #include "PackageOrdinaryInstaller.h"
 #include "PackageOrdinaryManifest.h"
+#include <memory>
+#include <new>
 
 namespace RuntimePackages {
 
@@ -17,9 +19,12 @@ OrdinaryInstallOutcome installCanonicalOrdinaryPackage(
     const PackageRuntimePolicy& policy, uint8_t (&io)[kOrdinaryIoBytes],
     Ops& ops, Verify verifyDirectory, Purge purgeManagedBackup,
     bool replacementAllowed) {
-  OrdinaryPackagePlan plan{};
-  if (!parseOrdinaryManifest(manifest, manifestBytes, plan)) return {};
-  return installOrdinaryPackage(plan,
+  // The plan contains up to sixteen file descriptors and dependencies. It
+  // must not be retained on loopTask's stack throughout download, hashing,
+  // staged publication and the nested post-install verification.
+  std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
+  if (!plan || !parseOrdinaryManifest(manifest, manifestBytes, *plan)) return {};
+  return installOrdinaryPackage(*plan,
       reinterpret_cast<const uint8_t*>(manifest), manifestBytes,
       source, destination, hash, resolver, policy, io,
       ops, verifyDirectory, purgeManagedBackup, replacementAllowed);
@@ -35,15 +40,19 @@ bool verifyCanonicalOrdinaryDirectory(Directory& directory, Hash& hash,
     Resolver resolver, const PackageRuntimePolicy& policy,
     uint8_t (&io)[kOrdinaryIoBytes], Identity& observed) {
   observed = {};
-  char manifest[PackageJsonGuard::kMaxBytes]{};
+  // These two allocations used to live in the same nested call chain as the
+  // SD reader's second 4 KiB buffer. A 16-entry plan plus two manifests could
+  // exhaust the Arduino loopTask stack before the first SHA-256 completed.
+  std::unique_ptr<char[]> manifest(new (std::nothrow) char[PackageJsonGuard::kMaxBytes]{});
+  std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
+  if (!manifest || !plan) return false;
   size_t used = 0;
-  if (!directory.readManifest(manifest, sizeof(manifest), used) ||
-      !used || used > sizeof(manifest)) return false;
-  OrdinaryPackagePlan plan{};
-  if (!parseOrdinaryManifest(manifest, used, plan) ||
-      !verifyOrdinaryDirectory(plan, directory, hash, resolver, policy, io))
+  if (!directory.readManifest(manifest.get(), PackageJsonGuard::kMaxBytes, used) ||
+      !used || used > PackageJsonGuard::kMaxBytes) return false;
+  if (!parseOrdinaryManifest(manifest.get(), used, *plan) ||
+      !verifyOrdinaryDirectory(*plan, directory, hash, resolver, policy, io))
     return false;
-  observed = plan.identity;
+  observed = plan->identity;
   return true;
 }
 
