@@ -58,13 +58,16 @@ def build() -> list[dict]:
         elf = SOURCE / output_name / elf_name
         if not elf.is_file() or elf.stat().st_size < 52:
             raise FileNotFoundError(f'actual linked provider ELF missing: {elf}')
-        # An ELF can pass the generic SHF_ALLOC structural check and still be
-        # impossible to load. Every RELA destination and executable section
-        # must be in one of esp_elf_load_section's five mapped outputs.
+        # Inspect the FINAL linked executable. Valid relocation destinations
+        # are insufficient: an R_XTENSA_RELATIVE whose original value is an
+        # absolute MMIO address must remain unchanged, while an unknown
+        # address must fail closed, never become NULL on the device.
         mapping = audit_loader_map(elf)
-        if mapping['unmapped_relocations'] or mapping['unmapped_executable_sections']:
+        if (mapping['unmapped_relocations'] or mapping['unmapped_relative_values'] or
+                mapping['unmapped_executable_sections']):
             raise ValueError(f'provider {identity} is not relocatable by runtime: '
-                             f"{len(mapping['unmapped_relocations'])} unmapped relocation targets; "
+                             f"{len(mapping['unmapped_relocations'])} unmapped sites; "
+                             f"{len(mapping['unmapped_relative_values'])} invalid values; "
                              f"executable orphans={mapping['unmapped_executable_sections']}")
         target = DESTINATION / identity
         target.mkdir(parents=True, exist_ok=True)
