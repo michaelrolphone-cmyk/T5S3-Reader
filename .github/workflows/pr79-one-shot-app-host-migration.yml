@@ -6,7 +6,6 @@ on:
     paths:
       - scripts/pr79_wire_online_app_install.py
       - scripts/pr79_wire_online_driver_manager.py
-      - scripts/pr79_wire_release_delivery.py
       - scripts/pr79_enforce_streamed_intake.py
       - scripts/pr79_driver_dependency_install.py
       - .github/workflows/pr79-one-shot-app-host-migration.yml
@@ -20,21 +19,20 @@ jobs:
         with:
           ref: feature/unified-manager-driver-adapter
           persist-credentials: true
-      - name: Edit manager firmware, streamed package intake, driver graph and release delivery
+      - name: Apply actual manager, dependency and stream source integrations
         run: |
           python scripts/pr79_wire_online_app_install.py
           python scripts/pr79_wire_online_driver_manager.py
           python scripts/pr79_driver_dependency_install.py
-          python scripts/pr79_wire_release_delivery.py
           python scripts/pr79_enforce_streamed_intake.py
           git diff --check
-          git diff -- src/native/NativeAppHost.cpp src/native/NativeDriverManagerBridge.cpp .github/workflows/release.yml src/native/NativeOnlineAppInstall.h src/native/NativeOnlineDriverInstall.h
-      - name: Commit actual source changes to PR branch
+          git diff -- src/native/NativeAppHost.cpp src/native/NativeDriverManagerBridge.cpp src/native/NativeOnlineAppInstall.h src/native/NativeOnlineDriverInstall.h
+      - name: Commit firmware source only (workflow edits require separate owner-authorized write)
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/native/NativeAppHost.cpp src/native/NativeDriverManagerBridge.cpp .github/workflows/release.yml src/native/NativeOnlineAppInstall.h src/native/NativeOnlineDriverInstall.h
+          git add src/native/NativeAppHost.cpp src/native/NativeDriverManagerBridge.cpp src/native/NativeOnlineAppInstall.h src/native/NativeOnlineDriverInstall.h
           if ! git diff --cached --quiet; then
-            git commit -m 'Complete canonical online managers, streamed installs and physical driver dependencies'
+            git commit -m 'Complete canonical manager dependency graph and streamed installs'
             git push origin HEAD:feature/unified-manager-driver-adapter
           fi
