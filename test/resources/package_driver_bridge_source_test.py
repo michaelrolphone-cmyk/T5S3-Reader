@@ -33,12 +33,15 @@ for required in ('ManagerMutation mutation;', 'if (!mutation)',
                  'Storage.exists(paths.stage)',
                  'Storage.exists(paths.backup)',
                  'Storage.exists(paths.removing)',
+                 'RuntimePackages::systemPackageUseGate().pinned(paths.target)',
                  'HttpDownloader::downloadToFile(',
                  'installStagedDriverPackage(selected.manifest'):
     assert required in intake, required
 assert intake.index('getInstalledDriverVersion(') < intake.index('HttpDownloader::downloadToFile(')
 assert intake.index('decideDriverDownload(') < intake.index('HttpDownloader::downloadToFile(')
 assert intake.index('Storage.exists(temporaryStoragePath)') < intake.index('HttpDownloader::downloadToFile(')
+assert intake.index('systemPackageUseGate().pinned(paths.target)') < intake.index('connectSavedWifi()', intake.index('decideDriverDownload('))
+assert intake.index('systemPackageUseGate().pinned(paths.target)') < intake.index('HttpDownloader::downloadToFile(')
 assert 'Storage.remove(temporaryStoragePath);\n    const auto result' not in intake
 assert bridge.index('ManagerMutation mutation;', bridge.index('bool catalogRefresh()')) < bridge.index('catalog.clear();', bridge.index('bool catalogRefresh()'))
-print('Driver Manager intake preserves prior downloads, rejects invalid versions before network mutation, and publishes through typed transaction')
+print('Driver Manager intake preserves prior downloads, refuses mapped drivers and invalid versions before network, and publishes through typed transaction')
