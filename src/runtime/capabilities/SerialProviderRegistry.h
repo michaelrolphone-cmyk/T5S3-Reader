@@ -72,6 +72,7 @@ class Registry final {
     if (generation_ >= 0x7fffffffu) return T5_SERIAL_LIMIT;
 
     Slot* selected = nullptr;
+    bool selectedAvailable = false;
     for (auto& slot : slots_) {
       if (!slot.used) continue;
       const Provider& p = slot.provider;
@@ -80,14 +81,20 @@ class Registry final {
         // Ambiguous handles must never resolve to the wrong transport.
         if (selected) return T5_SERIAL_INVALID;
         selected = &slot;
-      } else if (p.available(p.context) &&
-                 (!selected || p.priority < selected->provider.priority)) {
-        selected = &slot;
+        selectedAvailable = p.available(p.context);
+      } else {
+        // Availability may verify an entire installed capability inventory.
+        // Evaluate it once, not again after selecting the same provider.
+        const bool available = p.available(p.context);
+        if (available && (!selected || p.priority < selected->provider.priority)) {
+          selected = &slot;
+          selectedAvailable = true;
+        }
       }
     }
     if (!selected) return request->device ? T5_SERIAL_INVALID : T5_SERIAL_UNSUPPORTED;
+    if (!selectedAvailable) return T5_SERIAL_UNSUPPORTED;
     const Provider& p = selected->provider;
-    if (!p.available(p.context)) return T5_SERIAL_UNSUPPORTED;
     t5_serial_port_lease_t privateLease = 0;
     t5_stream_t newRx = 0, newTx = 0;
     const auto result = p.acquire(p.context, request, &privateLease, &newRx, &newTx);
