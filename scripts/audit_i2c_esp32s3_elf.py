@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Audit physical I2C ELF imports, real loader relocations and isolation.
 
-A structural/scoped import pass is NOT signed-loader or hardware acceptance.
+A structural/scoped import pass is NOT hardware acceptance. The final ELF's
+RELATIVE pointer values must be runtime-mappable or exact SHN_ABS MMIO symbols.
 Physical controller/GPIO/HAL implementations must remain within the ELF.
 """
 import argparse
@@ -21,9 +22,6 @@ HARDWARE_IMPORT_PREFIXES = (
 
 def inspect(path):
     result = audit(path)
-    # The generic auditor permits relocation sites in any SHF_ALLOC section.
-    # The actual firmware loader maps only five named sections. Check those
-    # precise destinations and executable orphan sections before publishing.
     mapping = audit_loader_map(path)
     result.update(mapping)
     imports = (result['missing_current_firmware_exports'] +
@@ -31,7 +29,9 @@ def inspect(path):
     hardware = sorted(name for name in imports
                       if name.startswith(HARDWARE_IMPORT_PREFIXES))
     result['forbidden_peripheral_imports'] = hardware
-    layout_ok = not mapping['unmapped_relocations'] and not mapping['unmapped_executable_sections']
+    layout_ok = not (mapping['unmapped_relocations'] or
+                     mapping['unmapped_relative_values'] or
+                     mapping['unmapped_executable_sections'])
     result['current_loader_abi_compatible'] = (
         result['current_loader_abi_compatible'] and not hardware and layout_ok)
     result['privileged_os_cpu_v1_import_compatible'] = (
@@ -65,13 +65,16 @@ def main():
           result['forbidden_peripheral_imports'], flush=True)
     print('Relocations:', result['relocations_examined'],
           'unsupported:', len(result['unsupported_relocations']),
-          'unmapped:', len(result['unmapped_relocations']), flush=True)
+          'unmapped sites:', len(result['unmapped_relocations']),
+          'invalid values:', len(result['unmapped_relative_values']),
+          'validated ABS MMIO:', len(result['absolute_peripheral_relocations']), flush=True)
     print('Unmapped executable sections:', result['unmapped_executable_sections'], flush=True)
     print('Report:', report, flush=True)
     if (result['forbidden_peripheral_imports'] or
             not result['format_supported'] or
             result['unsupported_relocations'] or
             result['unmapped_relocations'] or
+            result['unmapped_relative_values'] or
             result['unmapped_executable_sections'] or
             result['text_relocations'] or result['unexpected_exports'] or
             (args.strict and not result['privileged_os_cpu_v1_import_compatible'])):
