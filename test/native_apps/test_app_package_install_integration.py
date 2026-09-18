@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Prevent regressions from the live App Store back to split ELF/JSON swaps.
 
-The template transaction's fault-injection tests exercise rename/delete states;
-firmware board builds compile the actual HalStorage/mbedTLS adapters. This source
-contract additionally ensures the live API is wired to those tested paths.
+Transaction fault-injection tests cover rename/delete states; firmware board
+builds compile the production HalStorage/mbedTLS adapters. This contract checks
+live wiring and the fail-closed interrupted-download retry path.
 """
 from pathlib import Path
 import unittest
@@ -13,6 +13,10 @@ HOST = (ROOT / 'src/native/NativeAppHost.cpp').read_text(encoding='utf-8')
 ADAPTER = (ROOT / 'src/native/AppPackageInstaller.cpp').read_text(encoding='utf-8')
 INVENTORY = (ROOT / 'src/native/AppPackageRecoveryInventory.cpp').read_text(encoding='utf-8')
 ONLINE = (ROOT / 'src/native/NativeOnlineAppInstall.h').read_text(encoding='utf-8')
+RECOVERY = (ROOT / 'src/native/NativeOnlinePackageRecovery.h').read_text(encoding='utf-8')
+SD_ADAPTER = (ROOT / 'src/runtime/packages/PackageOrdinarySdAdapter.cpp').read_text(encoding='utf-8')
+MANAGED = (ROOT / 'src/runtime/packages/PackageOrdinaryManagedInstall.h').read_text(encoding='utf-8')
+PACKAGE_MANAGER = (ROOT / 'src/native/NativePackageManagerBridge.cpp').read_text(encoding='utf-8')
 
 
 class LiveInstallContract(unittest.TestCase):
@@ -30,31 +34,58 @@ class LiveInstallContract(unittest.TestCase):
             self.assertIn(required, install)
         self.assertLess(install.index('metadata["sha256"]'),
                         install.index('RuntimeOnlinePackages::installApplication('))
-        # The new online path cannot silently fall back to legacy split-file swaps.
         for obsolete in ('RuntimePackages::clearAppStage(',
                          'RuntimePackages::publishAppPair(',
                          'Storage.remove(destination.c_str())'):
             self.assertNotIn(obsolete, install)
 
-        # Verify the real online adapter's exclusive stream stage, pair digest,
-        # canonical manifest preflight and unified transactional publication.
+        # New paths may reclaim only an exactly matched previous online source.
+        # Retain exclusive new-directory/file creation and verified publication.
         for required in ('safePackageEntryName(artifact)',
-                         'Storage.exists(root.c_str()) || !Storage.mkdir(root.c_str(), false)',
+                         'Recovery::discardMatchingInbox(',
+                         'if (!Storage.mkdir(root.c_str(), false)) return false',
                          'O_WRONLY | O_CREAT | O_EXCL',
                          'HttpDownloader::downloadToFile(url, elfStage,',
                          '!Storage.rename(elfStage.c_str(), elfPath.c_str())',
                          '!verifyAppPair(elfPath.c_str(), jsonPath.c_str(), artifact, true)',
                          'mbedtls_sha256_ret(',
-                         'parseOrdinaryManifest(descriptor, static_cast<size_t>(count), plan)',
+                         'parseOrdinaryManifest(descriptor.get(), static_cast<size_t>(count), *plan)',
+                         'Recovery::discardMatchingStage(',
                          'installOrdinaryFromSd(root.c_str(), policy,',
                          'installed.result != OrdinaryInstallResult::Installed'):
             self.assertIn(required, ONLINE)
+        self.assertLess(ONLINE.index('parseOrdinaryManifest(descriptor.get(),'),
+                        ONLINE.index('Storage.mkdir(root.c_str(), false)'))
         self.assertLess(ONLINE.index('downloadToFile(url, elfStage,'),
                         ONLINE.index('verifyAppPair(elfPath.c_str()'))
         self.assertLess(ONLINE.index('verifyAppPair(elfPath.c_str()'),
-                        ONLINE.index('parseOrdinaryManifest(descriptor,'))
-        self.assertLess(ONLINE.index('parseOrdinaryManifest(descriptor,'),
+                        ONLINE.index('discardMatchingStage(root,'))
+        self.assertLess(ONLINE.index('discardMatchingStage(root,'),
                         ONLINE.index('installOrdinaryFromSd(root.c_str()'))
+        self.assertIn('new (std::nothrow) char[4096]', ONLINE)
+        self.assertIn('new (std::nothrow) OrdinaryPackagePlan', ONLINE)
+
+    def test_recovery_is_exact_inventory_and_preserves_foreign_files(self):
+        for required in ('equalFile(root + "/" + sidecarName, sidecar.data()',
+                         'descriptorSeen && !equalFile(',
+                         'else { valid = false; break; }',
+                         'if (!valid || !closed || !sidecarSeen',
+                         'verifyOrdinarySdDirectory(sourceRoot.c_str(), policy, resolver, verified)',
+                         'stagePrefixMatches(',
+                         'if (!valid || !closed) return false;',
+                         'Storage.rmdir(paths.stage)'):
+            self.assertIn(required, RECOVERY)
+        self.assertLess(RECOVERY.index('verifyOrdinarySdDirectory(sourceRoot.c_str()'),
+                        RECOVERY.index('Storage.rmdir(paths.stage)'))
+
+    def test_package_manager_and_shared_verifier_do_not_retain_large_stack_buffers(self):
+        self.assertIn('new (std::nothrow) char[4096]', PACKAGE_MANAGER)
+        self.assertIn('new (std::nothrow) RuntimePackages::OrdinaryPackagePlan', PACKAGE_MANAGER)
+        self.assertIn('new (std::nothrow) char[PackageJsonGuard::kMaxBytes]', MANAGED)
+        self.assertIn('new (std::nothrow) OrdinaryPackagePlan', MANAGED)
+        self.assertIn('new (std::nothrow) SdStage()', SD_ADAPTER)
+        self.assertIn('new (std::nothrow) char[kManifestBytes]', SD_ADAPTER)
+        self.assertNotIn('char metadata[kManifestBytes]{};', SD_ADAPTER)
 
     def test_real_adapter_checks_content_and_mapped_executable(self):
         for required in ('mbedtls_sha256_starts_ret', 'mbedtls_sha256_update_ret',
