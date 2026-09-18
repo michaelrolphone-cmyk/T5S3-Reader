@@ -29,4 +29,5 @@ else
 fi
 python3 "$repo_dir/test/native_apps/test_symbols.py"
 python3 "$repo_dir/test/native_apps/test_capability_manifest.py"
+python3 "$repo_dir/test/resources/driver_install_stack_progress_source_test.py"
 echo 'Native app launcher tests passed'
