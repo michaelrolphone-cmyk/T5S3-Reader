@@ -1,22 +1,19 @@
 # U1 glanceable progress reporting
 
-**Status:** Mandatory agent communication rule for U1 and every `continue` response. Read with [U1 Continuation and Completion Protocol](U1_CONTINUATION_AND_COMPLETION_PROTOCOL.md), [the platform specification](RISCRTE_PLATFORM_SPEC.md), and [repository agent instructions](../AGENTS.md). This document sets output format only; it does not change milestone acceptance or authorize additional implementation work.
+**Status:** Mandatory user-facing communication rule. Read with [U1 Continuation Protocol](U1_CONTINUATION_AND_COMPLETION_PROTOCOL.md) and [AGENTS.md](../AGENTS.md). The owner skims briefly; concise, truthful code progress is more useful than repeating the milestone plan or discussing future hardware testing.
 
-## Every user-facing work report
+Give a few compact sentences: **what code changed** (PR/commit only when confirmed), **what focused validation actually found** (only when relevant), and **the next concrete implementation task or genuine blocker**. Keep long logs, detailed audit inventory and incidental CI status in the compact implementation ledger, not in each response. Do not pretend missing or failed checks passed. CI runs asynchronously and is NOT a reason to stop useful independent work or to build comprehensive milestone-specific end-to-end test infrastructure. Do not repeat the physical-test boundary until software handoff unless the user asks or a physical test is genuinely needed to explain a present blocker.
 
-The owner may glance at the screen for only a moment. Keep the normal response concise and put the immediately actionable facts first: **what changed** (include PR/commit when confirmed), **what validation actually passed or failed**, and **what remains or what is blocked**. Prefer a few compact sentences over long activity logs, repeated specifications, tables, or a history of the whole milestone. Link to the persistent implementation ledger for detailed evidence; put full test logs, exact errors and completed/remaining gate inventory there. Never omit a serious blocker, failed test, missing artifact, unverified CI result or pending physical test merely to shorten the reply. Avoid narrating tool calls and idle progress.
+**Last line of EVERY U1 work or workflow response:** exactly ONE standalone Markdown-bold status phrase of **2–5 words**, absolutely no text after it. Use the current milestone state, not just the current commit. Accurate examples:
 
-**The last line of EVERY agent message responding about U1 work or its workflow MUST be one standalone Markdown bold status label of TWO TO FIVE WORDS.** Make it the last visible text in the message, with nothing after it (no link, citation, footnote, sign-off or second heading). Use a phrase that accurately summarizes the present work state, not just the operation performed in the current turn; do not claim completion based on docs, partial code, a pending build or a completed subtask. Use exactly one such final label and retain the convention after a chat restart, after a failed test, on a GitHub quota blocker, at initial software completion and during post-completion QA. If requirements or a failure remain, the final label MUST not say complete.
+- **Implementation In Progress** — mandatory code remains, regardless of unrelated CI status.
+- **Verification In Progress** — code is assembled and relevant focused/build checks or review are underway.
+- **Build Failure Blocking Completion** — a necessary release-equivalent build is demonstrably broken; fix it while continuing independent available work, never generalize an unrelated CI failure into a total development stop.
+- **GitHub Quota Blocking Work** — only for evidenced rate limiting, with concise actual reset/last-SHA facts above.
+- **GitHub Access Unavailable** — access failure without confirmed quota evidence.
+- **Software Ready For Testing** — required software exists, integrated, no known blocking defect; actual builds/checks and any unverified areas disclosed honestly at handoff.
+- **Post Completion Audit Active** — real focused QA after reported readiness, with no discovered blocker.
 
-Recommended exact final labels, selected to match verified facts:
+On the first genuinely completed software handoff include the standalone bold announcement **Work Complete** earlier in the response, identify the implementation commit and the meaningful evidence, then end with **Software Ready For Testing**. Never use that completion phrase for docs, a partially implemented path, or pending implementation. On later `continue`, perform useful audit or fixes rather than repeating status. If a regression invalidates readiness, withdraw the completed assessment.
 
-- **Implementation In Progress** — U1 mandatory code/test tasks remain; internal checkpoint committed or not.
-- **Verification In Progress** — implementation appears in place, but required tests/builds/CI/static checks have not all passed.
-- **Build Failure Blocking Completion** — a required build failed; describe the specific failure immediately above.
-- **GitHub Quota Blocking Work** — quota/rate limiting confirmed with response evidence; include actual retry/reset only if provided, last confirmed SHA, and explicit pause statement immediately above. Unknown connectivity failures instead use **GitHub Access Unavailable** and disclose that cause is unconfirmed.
-- **Software Ready For Testing** — ALL software gates and builds are verified at one SHA; owner physical testing remains pending. This must never mean hardware passed.
-- **Post Completion Audit Active** — previously completed software is undergoing useful follow-up QA with no newly discovered blocking regression; if one is found, revert to an incomplete/blocked label.
-
-For the FIRST verified software-ready handoff, the existing protocol additionally requires an earlier, standalone exact bold line **Work Complete**, the verified SHA and the separate statement `Physical hardware acceptance: PENDING OWNER TEST`. That completion announcement is NOT the last line; the last line MUST still be **Software Ready For Testing**. The reserved **Work Complete** phrase must never be used for intermediate progress or merely to satisfy this output-format requirement. On later `continue`, reconfirm it only if completion remains verified and perform real QA before reporting.
-
-This output rule applies equally when no meaningful work could be performed: state precisely why and end with the truthful final label. Do not invent a commit, test result, quota reset, time estimate or background job.
+For a confirmed rate limit say GitHub-dependent work is paused until the limit lifts, without inventing reset timing or retrying repeatedly. The last status line still follows this rule. Never invent commits, CI passes, artifacts, test results or background execution.
