@@ -278,4 +278,5 @@ int main() {
   failWithoutModifyingExisting();
   blockSameVersion();
   std::puts("Ordinary installer: unsigned four-kind staging, semver, publication and recovery PASS");
+  return 0;
 }
