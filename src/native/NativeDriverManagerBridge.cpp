@@ -506,6 +506,13 @@ bool install(uint32_t index) {
                 static_cast<unsigned>(intake), selected.info.id);
         return false;
     }
+    // This early check avoids a guaranteed failed download. It is advisory:
+    // the exclusive replacement lease at publication remains authoritative if
+    // a loader starts between this inspection and the final rename.
+    if (RuntimePackages::systemPackageUseGate().pinned(paths.target)) {
+        LOG_ERR("DRVMGR", "Download refused: driver is mapped and must be stopped: %s", selected.info.id);
+        return false;
+    }
     if (!connectSavedWifi()) return false;
 
     const auto result = HttpDownloader::downloadToFile(
