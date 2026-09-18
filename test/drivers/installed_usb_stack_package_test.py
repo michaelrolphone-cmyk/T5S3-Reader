@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Verify real built USB provider packages, not host-only mock images."""
+"""Verify real built USB provider packages, including exact ELF imports."""
 import hashlib
 import json
 from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'scripts'))
+from generate_privileged_imports_v1 import extract_imports, encode_imports
 PACKAGES = ROOT / 'dist/packages'
 CATALOG = PACKAGES / 'usb-provider-catalog.json'
 EXPECTED = {
@@ -60,13 +62,15 @@ def run():
         assert int.from_bytes(elf[18:20], 'little') == 94
         profile = (folder / 'provider-abi.v1').read_text(encoding='ascii')
         assert profile == f'os-cpu-abi=1\nprovides={cap}\napi=1\n'
-        imports = (folder / 'privileged-imports.v1').read_text(encoding='ascii').splitlines()
-        assert imports == sorted(set(imports)) and imports
-        assert all(0 < len(name) <= 127 and name.isascii() for name in imports)
-        assert {e['name'] for e in record['files']} == names | {'.package.json'}
+        imports_bytes = (folder / 'privileged-imports.v1').read_bytes()
+        names = extract_imports(folder / 'driver.elf')
+        assert imports_bytes == encode_imports(names), id
+        assert names == sorted(set(names))
+        assert {e['name'] for e in record['files']} == {'driver.elf',
+            'provider-abi.v1', 'privileged-imports.v1', '.package.json'}
         available[cap] = 1
     assert observed_ids == set(EXPECTED)
-    print('Seven real USB provider ELF packages: canonical inventory, SHA-256, ABI and dependency order PASS')
+    print('Seven real USB provider ELF packages: exact imports, SHA-256, ABI and dependency order PASS')
 
 
 if __name__ == '__main__':
