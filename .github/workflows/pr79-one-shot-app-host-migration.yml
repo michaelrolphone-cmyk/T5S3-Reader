@@ -8,6 +8,7 @@ on:
       - scripts/pr79_wire_online_driver_manager.py
       - scripts/pr79_wire_release_delivery.py
       - scripts/pr79_enforce_streamed_intake.py
+      - scripts/pr79_driver_dependency_install.py
       - .github/workflows/pr79-one-shot-app-host-migration.yml
 permissions:
   contents: write
@@ -19,20 +20,21 @@ jobs:
         with:
           ref: feature/unified-manager-driver-adapter
           persist-credentials: true
-      - name: Edit actual runtime implementations and future release delivery
+      - name: Edit manager firmware, streamed package intake, driver graph and release delivery
         run: |
           python scripts/pr79_wire_online_app_install.py
           python scripts/pr79_wire_online_driver_manager.py
+          python scripts/pr79_driver_dependency_install.py
           python scripts/pr79_wire_release_delivery.py
           python scripts/pr79_enforce_streamed_intake.py
           git diff --check
           git diff -- src/native/NativeAppHost.cpp src/native/NativeDriverManagerBridge.cpp .github/workflows/release.yml src/native/NativeOnlineAppInstall.h src/native/NativeOnlineDriverInstall.h
-      - name: Commit integrated C++ and release sources to PR branch
+      - name: Commit actual source changes to PR branch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add src/native/NativeAppHost.cpp src/native/NativeDriverManagerBridge.cpp .github/workflows/release.yml src/native/NativeOnlineAppInstall.h src/native/NativeOnlineDriverInstall.h
           if ! git diff --cached --quiet; then
-            git commit -m 'Integrate canonical managers, physical USB package release and stream intake'
+            git commit -m 'Complete canonical online managers, streamed installs and physical driver dependencies'
             git push origin HEAD:feature/unified-manager-driver-adapter
           fi
