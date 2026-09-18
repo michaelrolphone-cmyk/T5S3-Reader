@@ -8,6 +8,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from generate_privileged_imports_v1 import extract_imports, encode_imports
+from verify_provider_relocation_map import audit_loader_map
 PACKAGES = ROOT / 'dist/packages'
 CATALOG = PACKAGES / 'usb-provider-catalog.json'
 EXPECTED = {
@@ -37,7 +38,9 @@ def run():
         assert set(manifest) == {'schema', 'kind', 'id', 'version', 'artifact',
                                  'architecture', 'min_runtime_api', 'entries', 'requires'}
         assert manifest['schema'] == 1 and manifest['kind'] == 'driver'
-        assert manifest['id'] == id and manifest['version'] == '0.1.0'
+        expected_version = '0.1.1' if id == 'i2c-esp32s3-v2' else '0.1.0'
+        assert manifest['id'] == id and manifest['version'] == expected_version
+        assert record['version'] == expected_version
         assert manifest['artifact'] == 'driver.elf'
         assert manifest['architecture'] == 'xtensa-esp32s3'
         assert manifest['min_runtime_api'] == 2
@@ -57,20 +60,25 @@ def run():
             assert len(body) == entry['size_bytes'] and body
             assert hashlib.sha256(body).hexdigest() == entry['sha256']
             assert entry['executable'] == (name == 'driver.elf')
-        elf = (folder / 'driver.elf').read_bytes()
+        elf_path = folder / 'driver.elf'
+        elf = elf_path.read_bytes()
         assert elf[:7] == b'\x7fELF\x01\x01\x01' and int.from_bytes(elf[16:18], 'little') == 3
         assert int.from_bytes(elf[18:20], 'little') == 94
+        mapping = audit_loader_map(elf_path)
+        assert mapping['relocations_examined'] > 0, id
+        assert not mapping['unmapped_relocations'], (id, mapping['unmapped_relocations'])
+        assert not mapping['unmapped_executable_sections'], (id, mapping['unmapped_executable_sections'])
         profile = (folder / 'provider-abi.v1').read_text(encoding='ascii')
         assert profile == f'os-cpu-abi=1\nprovides={cap}\napi=1\n'
         imports_bytes = (folder / 'privileged-imports.v1').read_bytes()
-        names = extract_imports(folder / 'driver.elf')
+        names = extract_imports(elf_path)
         assert imports_bytes == encode_imports(names), id
         assert names == sorted(set(names))
         assert {e['name'] for e in record['files']} == {'driver.elf',
             'provider-abi.v1', 'privileged-imports.v1', '.package.json'}
         available[cap] = 1
     assert observed_ids == set(EXPECTED)
-    print('Seven real USB provider ELF packages: exact imports, SHA-256, ABI and dependency order PASS')
+    print('Seven real USB provider ELF packages: runtime map, exact imports, SHA-256, ABI and dependency order PASS')
 
 
 if __name__ == '__main__':

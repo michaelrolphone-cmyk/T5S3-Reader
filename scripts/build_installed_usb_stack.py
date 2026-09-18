@@ -14,6 +14,7 @@ import shutil
 import sys
 
 from generate_provider_package_inputs_v1 import prepare as provider_inputs
+from verify_provider_relocation_map import audit_loader_map
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'dist/experimental'
@@ -51,11 +52,20 @@ def build() -> list[dict]:
             raise ValueError(f'unexpected source identity: {source}')
         capability, api = canonical_manifest(source)
         version = metadata.get('version', '0.1.0')
-        if version != '0.1.0':
+        expected_version = '0.1.1' if identity == 'i2c-esp32s3-v2' else '0.1.0'
+        if version != expected_version:
             raise ValueError(f'unknown package version for {identity}: {version}')
         elf = SOURCE / output_name / elf_name
         if not elf.is_file() or elf.stat().st_size < 52:
             raise FileNotFoundError(f'actual linked provider ELF missing: {elf}')
+        # An ELF can pass the generic SHF_ALLOC structural check and still be
+        # impossible to load. Every RELA destination and executable section
+        # must be in one of esp_elf_load_section's five mapped outputs.
+        mapping = audit_loader_map(elf)
+        if mapping['unmapped_relocations'] or mapping['unmapped_executable_sections']:
+            raise ValueError(f'provider {identity} is not relocatable by runtime: '
+                             f"{len(mapping['unmapped_relocations'])} unmapped relocation targets; "
+                             f"executable orphans={mapping['unmapped_executable_sections']}")
         target = DESTINATION / identity
         target.mkdir(parents=True, exist_ok=True)
         executable = target / 'driver.elf'

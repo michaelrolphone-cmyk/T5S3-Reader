@@ -16,6 +16,7 @@ void BootActivity::onEnter() {
   renderer.drawImage(Logo120, (pageWidth - 120) / 2, (pageHeight - 120) / 2, 120, 120);
   renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 70, "Manifold", true, EpdFontFamily::BOLD);
   renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + 95, tr(STR_BOOTING));
-  renderer.drawCenteredText(SMALL_FONT_ID, pageHeight - 30, CROSSPOINT_VERSION);
+  // Available for every board/build environment, not only gh_release.
+  renderer.drawCenteredText(SMALL_FONT_ID, pageHeight - 30, RISCRTE_COMPAT_VERSION);
   renderer.displayBuffer();
 }
