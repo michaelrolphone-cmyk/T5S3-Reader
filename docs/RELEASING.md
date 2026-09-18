@@ -5,6 +5,8 @@ first. Native ELF apps are part of the same tagged RiscRTE release: the release
 workflow builds every `Apps/**/*.c`, validates its JSON manifest, and publishes
 each `.elf` + `.json` pair beside the firmware images.
 
+**Mandatory per-app release identity:** Follow [Application Version Policy](APP_VERSION_POLICY.md). Before releasing or completing any app update, compare every modified app against its prior published and target-branch versions; its source `Apps/<app>.json` `version` MUST have increased numerically. Update each affected app independently, even when firmware's version stays the same. Changing `min_firmware_version` does not count; only raise that floor for actual firmware compatibility. A published `(application ID, version, target ABI)` cannot be reused for changed ELF/manifest/resources, even in a newer firmware release. Record `app: old -> new` in the PR/release summary. Verify that staged sidecar, online/generic catalogs and package inventory use the same app version. Do not rely on ELF SHA-256 stamping or the current manifest syntax validator to detect version reuse: neither compares the version to previously distributed content. A source/release baseline comparison is required, manually until the specified automated guard has been implemented and demonstrated.
+
 Before requesting a release, run the same native-app build locally when possible:
 
 ```sh
@@ -13,7 +15,7 @@ python scripts/build_all_apps.py
 
 This validates every shipped manifest, verifies that its `file_name` matches the
 emitted ELF basename, checks the exported `app_main`, runs the native loader test,
-and stages pairs under `dist/apps/`.
+and stages pairs under `dist/apps/`. This build is necessary but does not currently establish that a changed app has a higher version than the previous release.
 
 After checking CI, commit this file to master:
 `.github/release-request.json`.
@@ -94,8 +96,9 @@ Store reads the repository's latest release and exposes only safe ELF assets tha
 have a matching valid manifest. Do not manually publish a first-class app ELF
 without its matching JSON sidecar; the App Store will ignore incomplete pairs.
 
-A manifest's `min_firmware_version` is the firmware compatibility floor enforced
-by the springboard/App Store. It does not replace append-only `struct_size`
+An app's `version` is its independent update identity; the manifest's
+`min_firmware_version` is the separate firmware compatibility floor enforced
+by the springboard/App Store. Neither replaces append-only `struct_size`
 checks inside the app for individual native API members.
 
 ## Firmware image types
