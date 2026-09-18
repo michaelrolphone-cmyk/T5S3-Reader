@@ -7,6 +7,7 @@
 #include <esp_task_wdt.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
@@ -16,8 +17,10 @@
 
 #include "WifiCredentialStore.h"
 #include "network/HttpDownloader.h"
+#include "runtime/drivers/DriverInstallIntake.h"
 #include "runtime/drivers/DriverPackage.h"
 #include "runtime/network/NetworkService.h"
+#include "runtime/packages/PackageOrdinaryTransaction.h"
 
 namespace {
 constexpr const char* kLatestReleaseApi =
@@ -44,6 +47,21 @@ struct CatalogDriver {
 };
 
 std::vector<CatalogDriver> catalog;
+
+// Catalog refresh and install both own the shared catalog/download intake.
+// Never let a second invocation overwrite a .part file or invalidate the
+// selected catalog element while the first is downloading and publishing.
+std::atomic_flag managerMutation = ATOMIC_FLAG_INIT;
+struct ManagerMutation {
+    ManagerMutation() : acquired(!managerMutation.test_and_set(std::memory_order_acquire)) {}
+    ~ManagerMutation() {
+        if (acquired) managerMutation.clear(std::memory_order_release);
+    }
+    ManagerMutation(const ManagerMutation&) = delete;
+    ManagerMutation& operator=(const ManagerMutation&) = delete;
+    explicit operator bool() const { return acquired; }
+    bool acquired;
+};
 
 bool activeNativeApp() {
     const char* path = native_app_current_path();
@@ -406,6 +424,11 @@ bool loadLegacyReleaseCatalog() {
 
 bool catalogRefresh() {
     if (!activeNativeApp()) return false;
+    ManagerMutation mutation;
+    if (!mutation) {
+        LOG_ERR("DRVMGR", "Catalog refresh refused while a package operation is active");
+        return false;
+    }
     catalog.clear();
     if (!connectSavedWifi()) return false;
 
@@ -435,20 +458,70 @@ bool installedVersionGet(const char* id, char* version, size_t capacity) {
 }
 
 bool install(uint32_t index) {
-    if (!activeNativeApp() || index >= catalog.size() || !Storage.ready() || !connectSavedWifi()) return false;
-    if (!Storage.mkdir("/Drivers") && !Storage.exists("/Drivers")) return false;
-    const char* temporaryStoragePath = "/Drivers/.driver-manager.part";
-    const char* temporaryVfsPath = "/sd/Drivers/.driver-manager.part";
-    Storage.remove(temporaryStoragePath);
-    const auto result = HttpDownloader::downloadToFile(
-        catalog[index].elfUrl, temporaryStoragePath,
-        [](size_t, size_t) { esp_task_wdt_reset(); });
-    if (result != HttpDownloader::OK) {
-        Storage.remove(temporaryStoragePath);
+    if (!activeNativeApp() || !Storage.ready()) return false;
+    ManagerMutation mutation;
+    if (!mutation) {
+        LOG_ERR("DRVMGR", "Driver installation already in progress");
         return false;
     }
-    const bool ok = installStagedDriverPackage(catalog[index].manifest, temporaryVfsPath);
-    if (!ok) Storage.remove(temporaryStoragePath);
+    if (index >= catalog.size()) return false;
+    const CatalogDriver selected = catalog[index];  // Stable across network callbacks.
+    const char* temporaryStoragePath = "/Drivers/.driver-manager.part";
+    const char* temporaryVfsPath = "/sd/Drivers/.driver-manager.part";
+    RuntimePackages::OrdinaryTransactionPaths paths{};
+    if (!RuntimePackages::ordinaryTransactionPaths(RuntimePackages::Kind::Driver,
+                                                   selected.info.id, paths)) return false;
+
+    // Never delete a previous failed download or unverified stage automatically.
+    // If /Drivers is a file rather than a directory, refuse rather than let
+    // generic directory-creation helpers delete an unrelated user file.
+    if (!Storage.exists("/Drivers") && !Storage.mkdir("/Drivers", false)) return false;
+    HalFile root = Storage.open("/Drivers", O_RDONLY);
+    const bool validRoot = root.isOpen() && root.isDirectory();
+    if (root.isOpen()) (void)root.close();
+    if (!validRoot) return false;
+    if (Storage.exists(temporaryStoragePath)) {
+        LOG_ERR("DRVMGR", "Existing download needs inspection: %s", temporaryStoragePath);
+        return false;
+    }
+
+    // Recover and verify the existing version BEFORE spending time downloading.
+    // A missing version with an existing generation means corruption/recovery,
+    // not permission to treat an installed driver as a fresh package.
+    char installed[T5_DRIVER_VERSION_MAX]{};
+    const bool hasInstalled = getInstalledDriverVersion(selected.info.id, installed, sizeof(installed));
+    const std::string legacyPrefix = std::string("/Drivers/.") + selected.info.id;
+    const bool unresolved = !hasInstalled &&
+        (Storage.exists(paths.target) || Storage.exists(paths.backup) ||
+         Storage.exists(paths.removing) ||
+         Storage.exists((legacyPrefix + ".previous").c_str()) ||
+         Storage.exists((legacyPrefix + ".install").c_str()));
+    const bool pendingStage = Storage.exists(paths.stage) ||
+                              Storage.exists((legacyPrefix + ".install").c_str());
+    const auto intake = RuntimeDrivers::decideDriverDownload(
+        selected.info.version, hasInstalled ? installed : nullptr, unresolved, pendingStage);
+    if (intake != RuntimeDrivers::DownloadIntake::Fresh &&
+        intake != RuntimeDrivers::DownloadIntake::Upgrade) {
+        LOG_ERR("DRVMGR", "Download refused: version or pending generation (%u) for %s",
+                static_cast<unsigned>(intake), selected.info.id);
+        return false;
+    }
+    if (!connectSavedWifi()) return false;
+
+    const auto result = HttpDownloader::downloadToFile(
+        selected.elfUrl, temporaryStoragePath,
+        [](size_t, size_t) { esp_task_wdt_reset(); });
+    if (result != HttpDownloader::OK) {
+        // This invocation proved the path was absent before download. The
+        // downloader normally removes its own partial writes; a leftover is
+        // retained instead of accidentally purging another operation's data.
+        if (Storage.exists(temporaryStoragePath))
+            LOG_ERR("DRVMGR", "Failed download left partial file for inspection: %s", temporaryStoragePath);
+        return false;
+    }
+    const bool ok = installStagedDriverPackage(selected.manifest, temporaryVfsPath);
+    if (!ok && Storage.exists(temporaryStoragePath) && !Storage.remove(temporaryStoragePath))
+        LOG_ERR("DRVMGR", "Could not clean up this invocation's verified download");
     return ok;
 }
 
