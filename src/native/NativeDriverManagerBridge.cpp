@@ -4,6 +4,7 @@
 #include <Logging.h>
 #include <NativeAppLauncher.h>
 #include <T5DriverManagerApi.h>
+#include "NativeOnlineDriverInstall.h"
 #include <esp_task_wdt.h>
 
 #include <algorithm>
@@ -22,10 +23,14 @@
 #include "runtime/drivers/DriverStageActions.h"
 #include "runtime/network/NetworkService.h"
 #include "runtime/packages/PackageOrdinaryTransaction.h"
+#include "runtime/packages/PackageOrdinarySdAdapter.h"
+#include "runtime/packages/InstalledCapabilityResolver.h"
 
 namespace {
 constexpr const char* kLatestReleaseApi =
     "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
+constexpr const char* kCanonicalProviderCatalogUrl =
+    "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/latest/download/usb-provider-catalog.json";
 constexpr const char* kDriverCatalogUrl =
     "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/latest/download/driver-catalog.json";
 constexpr const char* kLatestReleaseDownloadBase =
@@ -46,6 +51,7 @@ struct CatalogDriver {
     DriverPackageInfo info{};
     std::string manifest;
     std::string elfUrl;
+    std::string canonicalMetadata;
 };
 
 struct RecoveryItem {
@@ -415,20 +421,103 @@ bool loadLegacyReleaseCatalog() {
     return !catalog.empty() || (!sawManifest && !rejectedCandidate);
 }
 
+
+// Canonical release assets are separate from old .t5driver.elf files. A
+// physical provider is only advertised when its four-file inventory can be
+// fetched and verified by the same transaction used by the SD inbox.
+bool loadCanonicalDriverCatalog() {
+    std::string json;
+    if (!HttpDownloader::fetchUrl(kCanonicalProviderCatalogUrl, json) ||
+        json.empty() || json.size() > kMaxDriverCatalogBytes) return false;
+    JsonDocument document;
+    if (deserializeJson(document, json) || !document.is<JsonObjectConst>() ||
+        document["schema"] != 1 || !document["packages"].is<JsonArrayConst>())
+        return false;
+    const JsonArrayConst entries = document["packages"].as<JsonArrayConst>();
+    if (entries.empty() || entries.size() > kMaxDriverAssets) return false;
+    std::vector<CatalogDriver> found;
+    found.reserve(entries.size());
+    for (JsonVariantConst entry : entries) {
+        if (!entry.is<JsonObjectConst>() || !entry["id"].is<const char*>() ||
+            !entry["version"].is<const char*>() ||
+            !entry["capability"].is<const char*>() ||
+            !entry["api"].is<unsigned>() ||
+            !entry["files"].is<JsonArrayConst>()) return false;
+        const char* id = entry["id"].as<const char*>();
+        const char* version = entry["version"].as<const char*>();
+        const char* capability = entry["capability"].as<const char*>();
+        if (!RuntimePackages::safeId(id) || !RuntimePackages::safeVersion(version) ||
+            !RuntimePackages::safePackageCapability(capability) ||
+            entry["api"].as<unsigned>() == 0) return false;
+        uint32_t parts[3]{};
+        if (!RuntimePackages::parsePackageVersion(version, parts)) return false;
+        const JsonArrayConst files = entry["files"].as<JsonArrayConst>();
+        if (files.size() != 4) return false;
+        bool elf = false, descriptor = false, profile = false, imports = false;
+        uint64_t size = 0;
+        for (JsonVariantConst file : files) {
+            if (!file.is<JsonObjectConst>() || !file["name"].is<const char*>() ||
+                !file["size_bytes"].is<uint64_t>() ||
+                !file["sha256"].is<const char*>()) return false;
+            const char* name = file["name"].as<const char*>();
+            const char* digest = file["sha256"].as<const char*>();
+            const uint64_t bytes = file["size_bytes"].as<uint64_t>();
+            if (!RuntimePackages::validSha256Hex(digest) || !bytes ||
+                bytes > 8u * 1024u * 1024u) return false;
+            if (!std::strcmp(name, "driver.elf")) { if (elf) return false; elf = true; size = bytes; }
+            else if (!std::strcmp(name, ".package.json")) { if (descriptor || bytes > 4096) return false; descriptor = true; }
+            else if (!std::strcmp(name, "provider-abi.v1")) { if (profile) return false; profile = true; }
+            else if (!std::strcmp(name, "privileged-imports.v1")) { if (imports) return false; imports = true; }
+            else return false;
+        }
+        if (!elf || !descriptor || !profile || !imports || size > UINT32_MAX ||
+            std::any_of(found.begin(), found.end(), [id](const CatalogDriver& candidate) {
+                return std::strcmp(candidate.info.id, id) == 0;
+            })) return false;
+        CatalogDriver candidate;
+        std::snprintf(candidate.info.id, sizeof(candidate.info.id), "%s", id);
+        std::snprintf(candidate.info.version, sizeof(candidate.info.version), "%s", version);
+        std::snprintf(candidate.info.capability, sizeof(candidate.info.capability), "%s", capability);
+        candidate.info.sizeBytes = static_cast<uint32_t>(size);
+        serializeJson(entry, candidate.canonicalMetadata);
+        if (candidate.canonicalMetadata.empty() || candidate.canonicalMetadata.size() > 8192) return false;
+        found.push_back(std::move(candidate));
+    }
+    catalog.swap(found);
+    sortCatalog();
+    LOG_INF("DRVMGR", "Discovered %u canonical hardware-owning driver packages",
+            static_cast<unsigned>(catalog.size()));
+    return true;
+}
+
 bool catalogRefresh() {
     if (!activeNativeApp()) return false;
     ManagerMutation mutation;
-    if (!mutation) {
-        LOG_ERR("DRVMGR", "Catalog refresh refused while a package operation is active");
-        return false;
-    }
+    if (!mutation) return false;
     catalog.clear();
     if (!connectSavedWifi()) return false;
-    if (loadAggregateDriverCatalog()) return true;
+    const bool canonical = loadCanonicalDriverCatalog();
+    std::vector<CatalogDriver> physical;
+    if (canonical) physical.swap(catalog);
     catalog.clear();
-    LOG_INF("DRVMGR", "Aggregate driver catalog unavailable; using legacy release discovery");
-    return loadLegacyReleaseCatalog();
+    bool legacy = loadAggregateDriverCatalog();
+    if (!legacy) {
+        catalog.clear();
+        legacy = loadLegacyReleaseCatalog();
+    }
+    // A canonical physical ELF always supersedes a same-ID legacy proxy.
+    // Preserve unrelated old releases, including GPS, during the transition.
+    for (auto& driver : physical) {
+        catalog.erase(std::remove_if(catalog.begin(), catalog.end(),
+            [&driver](const CatalogDriver& existing) {
+                return !std::strcmp(existing.info.id, driver.info.id);
+            }), catalog.end());
+        catalog.push_back(std::move(driver));
+    }
+    sortCatalog();
+    return canonical || legacy;
 }
+
 
 uint32_t catalogCount() {
     return activeNativeApp() ? static_cast<uint32_t>(catalog.size()) : 0u;
@@ -446,8 +535,24 @@ bool catalogGet(uint32_t index, t5_driver_catalog_entry_t* out) {
 }
 
 bool installedVersionGet(const char* id, char* version, size_t capacity) {
-    return activeNativeApp() && getInstalledDriverVersion(id, version, capacity);
+    if (!activeNativeApp() || !version || !capacity || !RuntimePackages::safeId(id)) return false;
+    version[0] = 0;
+    const std::string canonicalPath = std::string("/Drivers/") + id;
+    constexpr RuntimePackages::PackageRuntimePolicy policy{
+        "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+    RuntimePackages::Identity observed{};
+    if (RuntimePackages::verifyOrdinarySdDirectory(canonicalPath.c_str(), policy,
+            RuntimePackages::installedCapabilityVersion, observed) &&
+        observed.kind == RuntimePackages::Kind::Driver &&
+        !std::strcmp(observed.id, id)) {
+        const size_t length = std::strlen(observed.version);
+        if (length >= capacity) return false;
+        std::memcpy(version, observed.version, length + 1);
+        return true;
+    }
+    return getInstalledDriverVersion(id, version, capacity);
 }
+
 
 bool install(uint32_t index) {
     if (!activeNativeApp() || !Storage.ready()) return false;
@@ -458,6 +563,14 @@ bool install(uint32_t index) {
     }
     if (index >= catalog.size()) return false;
     const CatalogDriver selected = catalog[index];
+    if (!selected.canonicalMetadata.empty()) {
+        char installed[T5_DRIVER_VERSION_MAX]{};
+        if (installedVersionGet(selected.info.id, installed, sizeof(installed)) &&
+            RuntimePackages::comparePackageVersions(selected.info.version, installed) !=
+                RuntimePackages::VersionOrder::Newer) return false;
+        return RuntimeOnlinePackages::DriverIntake::install(selected.info.id,
+            selected.info.version, selected.canonicalMetadata);
+    }
     const char* temporaryStoragePath = kDownloadStage;
     const char* temporaryVfsPath = "/sd/Drivers/.driver-manager.part";
     RuntimePackages::OrdinaryTransactionPaths paths{};
