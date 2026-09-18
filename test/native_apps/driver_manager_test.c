@@ -2,14 +2,75 @@
 #include <stdio.h>
 #include <string.h>
 
-// Compile the real app, including its static action and row-building paths.
+// Compile the actual app and exercise its static UI and action paths.
 #include "../../Apps/driver_manager.c"
 
 static const char *catalog_version;
 static const char *installed_version;
 static unsigned install_calls;
 static unsigned rendered;
+static unsigned recovery_rendered;
+static unsigned recovery_discards;
+static unsigned recovery_retries;
+static unsigned recovery_refreshes;
+static uint32_t retained_count;
+static uint8_t retained_kind;
+static uint8_t retained_state;
+static bool retained_retry;
+static bool retained_discard;
+static t5_ui_event_t queued[24];
+static size_t queued_count;
+static size_t queued_next;
 
+static void enqueue(uint8_t type) {
+    assert(queued_count < sizeof(queued) / sizeof(queued[0]));
+    queued[queued_count++] = (t5_ui_event_t){.type = type};
+}
+static void reset_queue(void) { queued_count = queued_next = 0; }
+static bool mock_poll(t5_ui_event_t *event, uint32_t wait_ms) {
+    (void)wait_ms;
+    if (queued_next == queued_count) return false;
+    *event = queued[queued_next++];
+    return true;
+}
+static int32_t mock_next(int32_t index, uint32_t count) {
+    return count ? (index + 1) % (int32_t)count : 0;
+}
+static int32_t mock_previous(int32_t index, uint32_t count) {
+    return count ? (index + (int32_t)count - 1) % (int32_t)count : 0;
+}
+static int32_t mock_hit(int16_t x, int16_t y) {
+    (void)y;
+    return x;
+}
+static bool mock_recovery_refresh(void) { ++recovery_refreshes; return true; }
+static uint32_t mock_recovery_count(void) { return retained_count; }
+static bool mock_recovery_get(uint32_t index, t5_driver_recovery_entry_t *out) {
+    if (index || !retained_count || !out) return false;
+    *out = (t5_driver_recovery_entry_t){0};
+    out->kind = retained_kind;
+    out->state = retained_state;
+    out->can_retry = retained_retry;
+    out->can_discard = retained_discard;
+    out->size_bytes = 17;
+    if (retained_kind == T5_DRIVER_RECOVERY_STAGE) {
+        snprintf(out->id, sizeof(out->id), "gps-nmea");
+        snprintf(out->candidate_version, sizeof(out->candidate_version), "1.0.1");
+    }
+    return true;
+}
+static bool mock_recovery_retry(uint32_t index) {
+    assert(index == 0 && retained_count && retained_retry);
+    ++recovery_retries;
+    retained_count = 0;
+    return true;
+}
+static bool mock_recovery_discard(uint32_t index) {
+    assert(index == 0 && retained_count && retained_discard);
+    ++recovery_discards;
+    retained_count = 0;
+    return true;
+}
 static uint32_t mock_count(void) { return 1; }
 static bool mock_get(uint32_t index, t5_driver_catalog_entry_t *out) {
     if (index || !out) return false;
@@ -34,6 +95,12 @@ static void mock_render(const t5_ui_chrome_t *chrome, const t5_ui_list_row_t *it
     assert(chrome && items && count == 1 && selected == 0);
     ++rendered;
 }
+static void mock_recovery_render(const t5_ui_chrome_t *chrome, const t5_ui_list_row_t *items,
+                                 uint32_t count, int32_t selected) {
+    assert(chrome && items && count >= 1 && count <= MAX_RECOVERY_ITEMS + 1 &&
+           selected >= 0 && selected < (int32_t)count);
+    ++recovery_rendered;
+}
 
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) {
     (void)version;
@@ -56,10 +123,25 @@ int main(void) {
         .catalog_get = mock_get,
         .installed_version_get = mock_installed,
         .install = mock_install,
+        .recovery_refresh = mock_recovery_refresh,
+        .recovery_count = mock_recovery_count,
+        .recovery_get = mock_recovery_get,
+        .recovery_retry = mock_recovery_retry,
+        .recovery_discard = mock_recovery_discard,
     };
     const t5_ui_api_v1 ui = {.render_list = mock_render};
+    const t5_ui_api_v1 recovery_ui = {
+        .render_list = mock_recovery_render,
+        .poll_event = mock_poll,
+        .next_index = mock_next,
+        .previous_index = mock_previous,
+        .hit_test = mock_hit,
+    };
     char status[STATUS_MAX] = {0};
-
+    assert(has_recovery_api(&manager));
+    t5_driver_manager_api_v1 legacy = manager;
+    legacy.struct_size = offsetof(t5_driver_manager_api_v1, recovery_refresh);
+    assert(has_driver_api(&legacy) && !has_recovery_api(&legacy));
     assert(t5_package_version_compare("1.10.0", "1.9.99") == 1);
     assert(t5_package_version_compare("4294967295.0.0", "1.0.0") == 1);
     assert(t5_package_version_compare("4294967296.0.0", "1.0.0") == 2);
@@ -67,7 +149,7 @@ int main(void) {
 
     catalog_version = "1.10.0";
     installed_version = "1.9.99";
-    build_rows(&manager); // Previously returned INSTALL because row_count was still zero.
+    build_rows(&manager);
     assert(row_count == 1 && strstr(row_subtitles[0], "Installed 1.9.99"));
     assert(rows[0].flags == T5_UI_LIST_HIGHLIGHT_VALUE);
     assert(strcmp(confirm_label(&manager, 0), "Update") == 0);
@@ -98,6 +180,57 @@ int main(void) {
     build_rows(&manager);
     assert(strstr(row_subtitles[0], "Not installed"));
     assert(!strcmp(confirm_label(&manager, 0), "Install"));
-    puts("Driver Manager real UI: installed rows, numeric update, equal/newer refusal, invalid version and fresh install PASS");
+
+    // A single Confirm on the discard confirmation dialog ALWAYS keeps data.
+    const t5_driver_recovery_entry_t part = {
+        .kind = T5_DRIVER_RECOVERY_DOWNLOAD, .state = T5_DRIVER_RECOVERY_INCOMPLETE,
+        .can_discard = true,
+    };
+    reset_queue(); enqueue(T5_UI_EVENT_CONFIRM);
+    assert(!confirm_discard(&recovery_ui, &part));
+    reset_queue(); enqueue(T5_UI_EVENT_BACK);
+    assert(!confirm_discard(&recovery_ui, &part));
+    reset_queue(); enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM);
+    assert(confirm_discard(&recovery_ui, &part));
+
+    // Offline recovery does not require a catalog, and a cancelled action is inert.
+    retained_kind = T5_DRIVER_RECOVERY_DOWNLOAD;
+    retained_state = T5_DRIVER_RECOVERY_INCOMPLETE;
+    retained_retry = false; retained_discard = true; retained_count = 1;
+    reset_queue();
+    enqueue(T5_UI_EVENT_CONFIRM); // Select retained download.
+    enqueue(T5_UI_EVENT_CONFIRM); // Action menu defaults to Keep.
+    enqueue(T5_UI_EVENT_BACK);    // Continue to catalog without deletion.
+    assert(show_recovery_screen(&manager, &recovery_ui));
+    assert(recovery_discards == 0 && retained_count == 1);
+
+    reset_queue();
+    enqueue(T5_UI_EVENT_CONFIRM); // Select retained download.
+    enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM); // Choose discard action.
+    enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM); // Confirm discard separately.
+    enqueue(T5_UI_EVENT_CONFIRM); // Continue to catalog after refresh reports no stage.
+    assert(show_recovery_screen(&manager, &recovery_ui));
+    assert(recovery_discards == 1 && retained_count == 0);
+
+    // Verified stage retry uses the exact selected identity; it never downloads.
+    retained_kind = T5_DRIVER_RECOVERY_STAGE;
+    retained_state = T5_DRIVER_RECOVERY_READY;
+    retained_retry = true; retained_discard = true; retained_count = 1;
+    reset_queue();
+    enqueue(T5_UI_EVENT_CONFIRM); // Stage row.
+    enqueue(T5_UI_EVENT_NEXT); enqueue(T5_UI_EVENT_CONFIRM); // Retry action.
+    enqueue(T5_UI_EVENT_CONFIRM); // Continue after successful publication.
+    assert(show_recovery_screen(&manager, &recovery_ui));
+    assert(recovery_retries == 1 && recovery_discards == 1 && retained_count == 0);
+
+    // A mapped/unresolved stage offers no destructive or publication action.
+    retained_state = T5_DRIVER_RECOVERY_MAPPED;
+    retained_retry = false; retained_discard = false; retained_count = 1;
+    reset_queue(); enqueue(T5_UI_EVENT_CONFIRM); enqueue(T5_UI_EVENT_BACK);
+    assert(show_recovery_screen(&manager, &recovery_ui));
+    assert(recovery_retries == 1 && recovery_discards == 1);
+    assert(recovery_rendered > 0 && recovery_refreshes > 0);
+
+    puts("Driver Manager real UI: versions, offline recovery, verified retry, cancelled and two-step discard, mapped refusal PASS");
     return 0;
 }
