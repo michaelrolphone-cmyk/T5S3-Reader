@@ -74,7 +74,8 @@ PreflightResult preflightOrdinaryPackage(const OrdinaryPackagePlan& plan,
     const auto& src = plan.entries[i];
     if (!std::memchr(src.name, 0, sizeof(src.name)) ||
         !std::memchr(src.sha256, 0, sizeof(src.sha256)) ||
-        !std::strcmp(src.name, kOrdinaryManifestName))
+        !std::strcmp(src.name, kOrdinaryManifestName) ||
+        (src.executable && src.sizeBytes < 52))
       return PreflightResult::InvalidEntry;
     entries[i] = {src.name, src.sizeBytes, src.sha256, src.executable};
   }
@@ -95,9 +96,10 @@ PreflightResult preflightOrdinaryPackage(const OrdinaryPackagePlan& plan,
 
 inline bool ordinaryElfHeader(const uint8_t* data, size_t size,
                               const char* architecture) {
-  if (!data || size < 20 || !architecture ||
+  if (!data || size < 52 || !architecture ||
       std::memcmp(data, "\x7f" "ELF\x01\x01", 6) ||
-      data[16] != 3 || data[17] != 0) return false;
+      data[6] != 1 || data[16] != 3 || data[17] != 0 ||
+      data[20] != 1 || data[21] || data[22] || data[23]) return false;
   const uint16_t machine = static_cast<uint16_t>(data[18]) |
                            static_cast<uint16_t>(data[19] << 8);
   return (std::strcmp(architecture, "xtensa-esp32s3") == 0 && machine == 94) ||
@@ -125,7 +127,9 @@ OrdinaryStageResult stageOrdinaryPackage(const OrdinaryPackagePlan& plan,
       return OrdinaryStageResult::InvalidSourceSize;
   }
   if (!destination.begin(plan)) {
-    (void)destination.discard();
+    // begin() has NOT granted ownership. In particular a pre-existing stage
+    // must survive a competing or unsuccessful begin intact. Only a destination
+    // that acquired exclusive ownership may discard its own files.
     return OrdinaryStageResult::StageUnavailable;
   }
   auto fail = [&destination](OrdinaryStageResult error) {
