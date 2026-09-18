@@ -225,7 +225,10 @@ int main(void) {
 
     retained_state = T5_DRIVER_RECOVERY_MAPPED;
     retained_retry = false; retained_discard = false; retained_count = 1;
-    reset_queue(); enqueue(T5_UI_EVENT_CONFIRM); enqueue(T5_UI_EVENT_BACK);
+    reset_queue();
+    enqueue(T5_UI_EVENT_CONFIRM); // Open actions: only Cancel is available.
+    enqueue(T5_UI_EVENT_BACK);    // Cancel the nested action menu.
+    enqueue(T5_UI_EVENT_BACK);    // Then leave the recovery screen.
     assert(recovery_screen(&manager, &recovery_ui));
     assert(recovery_retries == 1 && recovery_discards == 1);
     assert(recovery_rendered > 0 && recovery_refreshes > 0);
