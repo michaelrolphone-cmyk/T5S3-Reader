@@ -81,6 +81,35 @@ jobs:
 
       - name: Build RiscRTE gh_release
         run: pio run -e gh_release
+        
+      - name: Verify firmware build outputs
+        run: |
+          set -euo pipefail
+      
+          echo "Firmware build directory:"
+          ls -lah .pio/build/gh_release/ || true
+      
+          echo "Firmware images:"
+          find .pio -type f \( -name 'firmware.bin' -o -name 'firmware-merged.bin' \) -print
+      
+          test -s .pio/build/gh_release/firmware.bin || {
+            echo "::error::Firmware build did not produce firmware.bin"
+            exit 1
+          }
+          
+      - name: Verify baked RiscRTE version string
+        run: |
+          VER="${{ steps.ver.outputs.ver }}"
+          BIN=".pio/build/gh_release/firmware.bin"
+          if ! grep -a -F -q "$VER" "$BIN"; then
+            echo "firmware.bin does not contain RiscRTE version string $VER"
+            exit 1
+          fi
+          if grep -a -F -q -- "-dev-" "$BIN"; then
+            echo "firmware.bin still contains a -dev- version string; gh_release must stamp a clean version"
+            exit 1
+          fi
+          echo "Baked RiscRTE version $VER present in firmware.bin"
 
       - name: Build and validate GPS driver package
         run: |
@@ -112,20 +141,6 @@ jobs:
           python scripts/build_installed_usb_stack.py
           python test/drivers/installed_usb_stack_package_test.py
           python scripts/export_canonical_driver_release.py
-
-      - name: Verify baked RiscRTE version string
-        run: |
-          VER="${{ steps.ver.outputs.ver }}"
-          BIN=".pio/build/gh_release/firmware.bin"
-          if ! grep -a -F -q "$VER" "$BIN"; then
-            echo "firmware.bin does not contain RiscRTE version string $VER"
-            exit 1
-          fi
-          if grep -a -F -q -- "-dev-" "$BIN"; then
-            echo "firmware.bin still contains a -dev- version string; gh_release must stamp a clean version"
-            exit 1
-          fi
-          echo "Baked RiscRTE version $VER present in firmware.bin"
 
       - name: Stage RiscRTE firmware image
         run: |
