@@ -21,6 +21,11 @@ if [[ $# -gt 0 ]]; then
     -I"$repo_dir/lib/elf_loader/include" \
     "$repo_dir/lib/elf_loader/src/esp_elf_validate.c" "$repo_dir/test/native_apps/validate_test.c" -o "$binary"
   "$binary" "$1"
+else
+  cc -std=c11 -Wall -Wextra -Werror \
+    "$repo_dir/lib/NativeApps/src/UnsignedDivisionCompat.c" \
+    "$repo_dir/test/native_apps/unsigned_division_test.c" -o "$binary"
+  "$binary"
 fi
 python3 "$repo_dir/test/native_apps/test_symbols.py"
 python3 "$repo_dir/test/native_apps/test_capability_manifest.py"
