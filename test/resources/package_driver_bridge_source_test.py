@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Guard live driver intake, downloader exclusivity and publication.
+"""Guard live driver intake, downloader exclusivity, and recovery wiring.
 
-Source assertions prove wiring, not physical SD or USB behavior. The executable
-C++ intake tests validate the decision policy and board CI compiles adapters.
+Source assertions verify production linkage; host recovery/UI tests exercise
+behavior. Board CI compiles all firmware and released native ELF variants.
 """
 from pathlib import Path
 
@@ -23,7 +23,7 @@ assert 'Installed driver' in installer and 'activation unchanged' in installer
 
 bridge = (root / 'src/native/NativeDriverManagerBridge.cpp').read_text(encoding='utf-8')
 start = bridge.index('bool install(uint32_t index)')
-end = bridge.index('\nconst t5_driver_manager_api_v1 api', start)
+end = bridge.index('\nbool rebuildRecoveryInventory()', start)
 intake = bridge[start:end]
 for required in ('ManagerMutation mutation;', 'if (!mutation)',
                  'const CatalogDriver selected = catalog[index];',
@@ -45,8 +45,37 @@ assert intake.index('systemPackageUseGate().pinned(paths.target)') < intake.inde
 assert 'Storage.remove(temporaryStoragePath);\n    const auto result' not in intake
 assert bridge.index('ManagerMutation mutation;', bridge.index('bool catalogRefresh()')) < bridge.index('catalog.clear();', bridge.index('bool catalogRefresh()'))
 
-# Neither transport may truncate an existing .part. A failed native CREATE_NEW
-# must also leave another writer's file alone: cleanup requires proof of ownership.
+# The SAME guard serializes recovery with normal installs and refresh. Discover
+# stages independently of GitHub catalog, and delete only the reserved .part
+# after checking it is a regular file. Stage discard uses the package lease.
+recovery = bridge[bridge.index('bool rebuildRecoveryInventory()'):]
+for name in ('bool recoveryRefresh()', 'bool recoveryGet(',
+             'bool recoveryRetry(', 'bool recoveryDiscard('):
+    assert name in recovery, name
+for name in ('bool recoveryRefresh()', 'bool recoveryRetry(', 'bool recoveryDiscard('):
+    function = recovery[recovery.index(name):]
+    assert 'ManagerMutation mutation;' in function.split('\n}', 1)[0], name
+assert 'RuntimePackages::safeId(id.c_str())' in recovery
+assert 'RuntimeDrivers::inspectDriverStage(' in recovery
+assert 'RuntimeDrivers::retryDriverStage(' in recovery
+assert 'RuntimeDrivers::discardDriverStage(' in recovery
+assert 'const bool regular = !part.isDirectory();' in recovery
+assert 'okay = regular && closed && Storage.remove(kDownloadStage);' in recovery
+assert 'Storage.remove(paths.target)' not in recovery
+assert 'recoveryRefresh,\n    recoveryCount,\n    recoveryGet,\n    recoveryRetry,\n    recoveryDiscard,' in recovery
+
+api = (root / 'lib/NativeApps/include/T5DriverManagerApi.h').read_text(encoding='utf-8')
+assert api.index('bool (*install)') < api.index('bool (*recovery_refresh)') < api.index('bool (*recovery_discard)')
+ui = (root / 'Apps/driver_manager.c').read_text(encoding='utf-8')
+start = ui.index('__attribute__((visibility("default"))) void app_main(void)')
+assert ui.index('show_recovery_screen(drivers, ui)', start) < ui.index('refresh_catalog(drivers, ui)', start)
+assert 'static bool confirm_discard(' in ui
+assert 'return selected == 1;' in ui
+assert 'recovery_action_menu(api, ui,' in ui
+assert 'api->recovery_retry(index)' in ui and 'api->recovery_discard(index)' in ui
+
+# Neither transport may truncate an existing .part, nor delete a stage whose
+# exclusive creation failed. Non-staged downloads retain overwrite behavior.
 download = (root / 'src/network/HttpDownloader.cpp').read_text(encoding='utf-8')
 start = download.index('HttpDownloader::DownloadError HttpDownloader::downloadToFile(')
 transfer = download[start:]
@@ -65,4 +94,4 @@ stream_download = stream[stream.index('inline Result download('):]
 assert 'if (destinationCreated) *destinationCreated = false;' in stream_download
 assert 'T5_STREAM_FILE_CREATE_NEW' in stream_download
 assert stream_download.index('T5_STREAM_FILE_CREATE_NEW') < stream_download.index('if (destinationCreated) *destinationCreated = true;')
-print('Driver intake refuses mapped drivers; exclusive staged creation and owner-only cleanup are wired in both HTTP routes')
+print('Driver download and recovery: exclusive staged creation, shared serialization, offline UI, confirmed discard and retry wiring PASS')
