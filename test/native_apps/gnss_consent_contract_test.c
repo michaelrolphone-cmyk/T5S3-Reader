@@ -1,7 +1,7 @@
-/* Source-level guard for the consent UI/diagnostic integration. The production
- * firmware and real native app are additionally compiled by PlatformIO CI.
- * A permission denial must not be followed by an immediate app exit, and a
- * touch tap must never be passed to the trusted approval gate. */
+/* Source-level guard for the trusted consent UI and GNSS diagnostic. The
+ * production firmware and real native app are also compiled by PlatformIO CI.
+ * Both visible touch buttons must match their behavior; denying access must
+ * not immediately exit the diagnostic app. */
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,14 +23,19 @@ static char *read_source(const char *path) {
 
 int main(void) {
     char *consent = read_source("src/native/NativeDeviceConsent.cpp");
-    assert(strstr(consent, "ALLOW: press physical Confirm button"));
-    assert(strstr(consent, "Touch cannot allow: press physical Confirm"));
+    assert(strstr(consent, "buttonY + 17, \"DENY\"") != NULL);
+    assert(strstr(consent, "buttonY + 17, \"ALLOW\"") != NULL);
+    assert(strstr(consent, "outline(denyX, buttonY, buttonWidth, 55)"));
+    assert(strstr(consent, "outline(allowX, buttonY, buttonWidth, 55)"));
     assert(strstr(consent, "mappedInputManager.wasTouchTapped(touch, renderer)"));
     assert(strstr(consent, "const bool touchDeny ="));
+    assert(strstr(consent, "const bool touchAllow ="));
+    assert(strstr(consent, "!gpio.hadTouchActivity(), touchDeny, touchAllow)"));
     assert(strstr(consent, "NativeConsentDecision::Allow"));
-    assert(strstr(consent, "gate.sample("));
-    assert(strstr(consent, "touchDeny);"));
-    assert(strstr(consent, "permission prompt timed out without physical Confirm"));
+    assert(strstr(consent, "NativeConsentDecision::Deny"));
+    assert(strstr(consent, "permission prompt approved by fresh on-screen Allow tap"));
+    assert(strstr(consent, "permission prompt timed out without a decision"));
+    assert(!strstr(consent, "physical Confirm"));
     free(consent);
 
     char *app = read_source("Apps/gnss_stream_diagnostic.c");
@@ -38,8 +43,6 @@ int main(void) {
     assert(main);
     const char *request = strstr(main, "devices->request(");
     const char *deny = strstr(main, "if (result == T5_DEVICE_DENIED)");
-    // An earlier retry exists for a missing receiver. Select the retry that
-    // follows the permission result, not that unrelated discovery retry.
     const char *retry = deny ? strstr(deny, "if (!await_retry_or_back(true)) return;") : NULL;
     const char *subscribe = strstr(main, "location->subscribe(authorization");
     assert(request && deny && retry && subscribe);
@@ -49,6 +52,6 @@ int main(void) {
     assert(strstr(main, "if (result == T5_DEVICE_OK && authorization) break;"));
     assert(strstr(main, "status(\"Starting authorized GNSS stream\");"));
     free(app);
-    puts("GNSS consent interface and interactive denial contract passed");
+    puts("GNSS on-screen Allow/Deny and interactive denial contract passed");
     return 0;
 }

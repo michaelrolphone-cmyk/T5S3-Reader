@@ -8,37 +8,8 @@ RiscRTE is no longer defined as a reader firmware tied to a single device. The r
 
 ## Architecture
 
-```text
-                         RiscRTE
+![Architecture](https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/refs/heads/master/docs/riscrte-architecture.svg)
 
-+------------------------------------------------------------+
-| Applications / Scene Controllers                           |
-| Reader | File Browser | Settings | Programmer | Apps       |
-+------------------------------+-----------------------------+
-                               |
-+------------------------------v-----------------------------+
-| RiscRTE Application Framework                              |
-| UI | Navigation | Input | Files | Network | Power | Events |
-+------------------------------+-----------------------------+
-                               |
-+------------------------------v-----------------------------+
-| RiscRTE Runtime                                             |
-| ELF loader | capability resolver | resource ownership      |
-| service manager | driver manager | security | memory       |
-+---------------+----------------------+---------------------+
-                |                      |
-        +-------v-------+      +-------v-------+
-        | Service ELFs  |      | Driver ELFs   |
-        | time / alarm  |      | GPS / USB /   |
-        | updater / ... |      | hardware / ...|
-        +---------------+      +---------------+
-                |                      |
-                +----------+-----------+
-                           |
-                    ESP-IDF / FreeRTOS
-                           |
-                    Supported hardware
-```
 
 ## Current hardware
 
