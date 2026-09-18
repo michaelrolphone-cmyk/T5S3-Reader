@@ -1,6 +1,7 @@
 #include "T5ProgramEspRomApi.h"
 #include "T5DeviceApi.h"
 #include "T5LocationApi.h"
+#include "T5PackageManagerApi.h"
 #include <stdbool.h>
 
 /* The launcher test links an isolated host symbol table, not the firmware. */
@@ -13,6 +14,10 @@ const t5_device_api_v1 *t5_device_get_api(uint32_t version) {
     return 0;
 }
 const t5_location_api_v1 *t5_location_get_api(uint32_t version) {
+    (void)version;
+    return 0;
+}
+const t5_package_manager_api_v1 *t5_package_manager_get_api(uint32_t version) {
     (void)version;
     return 0;
 }
