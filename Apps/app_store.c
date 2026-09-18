@@ -23,10 +23,17 @@ static t5_package_preview_t packages[MAX_ROWS];
 static uint32_t release_indices[MAX_ROWS];
 static uint32_t row_count;
 
+// Native ELF symbols are a deliberately bounded ABI. Never import libc
+// functions (such as strnlen) that firmware does not explicitly export.
+static size_t bounded_length(const char *value, size_t bound) {
+    size_t n = 0;
+    if (value) while (n < bound && value[n]) ++n;
+    return n;
+}
 static void copy_text(char *destination, size_t capacity, const char *source) {
     if (!destination || !capacity) return;
     if (!source) source = "";
-    const size_t length = strnlen(source, capacity - 1u);
+    const size_t length = bounded_length(source, capacity - 1u);
     memcpy(destination, source, length);
     destination[length] = '\0';
 }
@@ -103,9 +110,8 @@ static bool build_inbox(const t5_app_api_v1 *app,
     t5_app_dirent_t entry = {0};
     while (app->dir_next(&entry)) {
         if (!entry.is_directory || row_count == MAX_ROWS) continue;
-        const size_t length = strnlen(entry.name, sizeof(entry.name));
-        // A directory name must fit the canonical package identity exactly;
-        // never pass a truncated identity into the install API.
+        const size_t length = bounded_length(entry.name, sizeof(entry.name));
+        // Refuse truncated identities, never turn one directory into another.
         if (!length || length >= sizeof(folders[0]) ||
             length == sizeof(entry.name)) continue;
         t5_package_preview_t info = {0};
@@ -114,7 +120,8 @@ static bool build_inbox(const t5_app_api_v1 *app,
         memcpy(folders[row_count], entry.name, length + 1u);
         packages[row_count] = info;
         char detail[SUBTITLE_SIZE] = {0};
-        if (!info.valid_installation) copy_text(detail, sizeof(detail), "Installed package needs recovery");
+        if (!info.valid_installation)
+            copy_text(detail, sizeof(detail), "Installed package needs recovery");
         else if (info.installed_version[0]) {
             snprintf(detail, sizeof(detail), "Installed %.31s; %s", info.installed_version,
                      info.install_allowed ? "update available" : "no update");
@@ -246,7 +253,6 @@ __attribute__((visibility("default"))) void app_main(void) {
     app->set_back_exits_app(false);
     view = RELEASES;
     if (!refresh_releases(app, ui)) {
-        // A Wi-Fi failure does not lock users out of the unified offline path.
         view = SD_INBOX;
         (void)build_inbox(app, manager);
     }
