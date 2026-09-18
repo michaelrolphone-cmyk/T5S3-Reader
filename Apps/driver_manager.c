@@ -45,7 +45,9 @@ static bool has_ui_api(const t5_ui_api_v1 *ui) {
 static driver_action_t action_for(const t5_driver_manager_api_v1 *api, uint32_t index,
                                   char *installed, size_t installed_capacity) {
     if (installed && installed_capacity) installed[0] = '\0';
-    if (index >= row_count || !installed || !installed_capacity) return DRIVER_ACTION_UNAVAILABLE;
+    // build_rows calls this BEFORE incrementing row_count. Validate the array
+    // bound here; the user-interaction callers independently check row_count.
+    if (index >= MAX_DRIVER_ITEMS || !installed || !installed_capacity) return DRIVER_ACTION_UNAVAILABLE;
     if (!api->installed_version_get(entries[index].id, installed, installed_capacity)) {
         return DRIVER_ACTION_INSTALL;
     }
