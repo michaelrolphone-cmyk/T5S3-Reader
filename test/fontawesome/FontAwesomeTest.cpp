@@ -14,6 +14,9 @@ int main(int argc, char** argv) {
   assert(font.prewarm("\xef\x80\x93", 1) == 1); // Gear exists; U+FFFD does not.
   assert(font.getEpdFont(0)->getGlyph(0xf013));
   assert(!font.getEpdFont(0)->getGlyph(0xfffd));
+  // The Serial Monitor manifest must reference a glyph actually shipped on
+  // the SD card, not an icon present only in an unrelated font distribution.
+  assert(font.getEpdFont(0)->getGlyph(0xf120));
 
   // Exercise the production draw helper, retaining only a fake display driver.
   static GfxRenderer renderer;
@@ -22,6 +25,7 @@ int main(int argc, char** argv) {
     assert(FontAwesomeIcons::draw(renderer, 0, 0, "solid:f013", size));
     assert(renderer.pixels > before);
     assert(FontAwesomeIcons::draw(renderer, 0, 0, "regular:f017", size));
+    assert(FontAwesomeIcons::draw(renderer, 0, 0, "solid:f120", size));
   }
   assert(renderer.pixels > 0 && renderer.placeholders == 0);
   const int pixels = renderer.pixels;
