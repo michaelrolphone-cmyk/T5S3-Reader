@@ -17,13 +17,11 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
 # DEFAULT MVP: ordinary package integrity, common SD/online source contracts,
 # four-kind stage -> verification -> publication and recoverable lifecycle.
 # OpenSSL is used for SHA-256 corruption detection, NOT signing or trust roots.
-for test_case in package_ordinary_manifest; do
-  c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
-    -pthread -I"$repo_dir/src" \
-    "$repo_dir/test/resources/${test_case}_test.cpp" -o "$binary"
-  "$binary"
-done
-for test_case in package_ordinary_stage package_ordinary_installer; do
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -pthread -I"$repo_dir/src" \
+  "$repo_dir/test/resources/package_ordinary_manifest_test.cpp" -o "$binary"
+"$binary"
+for test_case in package_ordinary_stage package_ordinary_installer package_ordinary_managed; do
   c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
     -pthread -I"$repo_dir/src" \
     "$repo_dir/test/resources/${test_case}_test.cpp" -lcrypto -o "$binary"
@@ -75,4 +73,4 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
 python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
-echo 'Native app regressions passed: canonical four-kind ordinary manifests/staging/publication/retry/explicit discard, early driver intake, driver UI/version actions and legacy recovery (no mandatory signing).'
+echo 'Native app regressions passed: canonical four-kind manifests/install/readback, staging/publication/retry/explicit discard, driver UI and legacy recovery (no mandatory signing).'
