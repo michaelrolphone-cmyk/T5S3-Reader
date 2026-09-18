@@ -13,6 +13,7 @@
 static const t5_ui_api_v1 *ui;
 static bool controls_ready;
 static bool reads_paused;
+static bool permission_retry_ready;
 static char status_text[96];
 static char count_text[24];
 static char queue_text[48];
@@ -27,7 +28,8 @@ static void show(void) {
         .subtitle = "Authorized location.fix.v1",
         .status = status_text,
         .back_label = "Back",
-        .confirm_label = controls_ready ? (reads_paused ? "Resume" : "Pause") : "",
+        .confirm_label = controls_ready ? (reads_paused ? "Resume" : "Pause") :
+                         (permission_retry_ready ? "Retry" : ""),
         .previous_label = "",
         .next_label = controls_ready ? "Revoke" : "",
     };
@@ -46,6 +48,18 @@ static void show(void) {
 static void status(const char *message) {
     snprintf(status_text, sizeof(status_text), "%s", message);
     show();
+}
+
+// Do not display an error and immediately return from app_main: that looks
+// exactly like a crash on the springboard. Keep the diagnostic and its reason
+// visible until Back. Permission denial alone may be retried by Confirm.
+static bool await_retry_or_back(bool allow_retry) {
+    t5_ui_event_t event = {0};
+    for (;;) {
+        if (!ui->poll_event(&event, 50) || event.type == T5_UI_EVENT_EXIT ||
+            event.type == T5_UI_EVENT_BACK) return false;
+        if (allow_retry && event.type == T5_UI_EVENT_CONFIRM) return true;
+    }
 }
 
 static uint32_t read_u32(const uint8_t *bytes) {
@@ -126,6 +140,7 @@ void app_main(void) {
     if (!app || !app->poll || !app->millis || !ui || !ui->render_list || !ui->poll_event) return;
     controls_ready = false;
     reads_paused = false;
+    permission_retry_ready = false;
     snprintf(count_text, sizeof(count_text), "0");
     snprintf(queue_text, sizeof(queue_text), "--");
     snprintf(lat_text, sizeof(lat_text), "--");
@@ -144,32 +159,55 @@ void app_main(void) {
         !location->subscribe || !location->poll || !location->unsubscribe ||
         !streams->record_read || !streams->record_info || !streams->v1.close) {
         status("Required runtime APIs unavailable");
+        (void)await_retry_or_back(false);
         return;
     }
     const t5_device_api_v3 *devices = (const t5_device_api_v3 *)(const void *)device_base;
     if (!devices->request || !devices->v2.release || !devices->v2.v1.inventory) {
         status("Device permissions unavailable");
+        (void)await_retry_or_back(false);
         return;
     }
 
     // The device API discovers gps-nmea passively; this ELF never imports the
     // legacy GPS API, claims the UART, or touches a hardware power rail.
-    const t5_device_handle_t receiver = find_receiver(devices);
-    if (!receiver) { status("GNSS driver unavailable"); return; }
-
-    status("Request location READ permission");
     t5_device_lease_t authorization = 0;
-    if (devices->request("location.position", receiver, T5_DEVICE_RIGHT_READ,
-                         &authorization) != T5_DEVICE_OK || !authorization) {
-        status("Location permission denied");
-        return;
+    for (;;) {
+        status("Discovering GNSS device");
+        const t5_device_handle_t receiver = find_receiver(devices);
+        if (!receiver) {
+            permission_retry_ready = true;
+            status("GNSS driver unavailable; Confirm to retry");
+            if (!await_retry_or_back(true)) return;
+            permission_retry_ready = false;
+            continue;
+        }
+        status("Request location READ permission");
+        const t5_device_result_t result = devices->request(
+            "location.position", receiver, T5_DEVICE_RIGHT_READ, &authorization);
+        if (result == T5_DEVICE_OK && authorization) break;
+        authorization = 0;
+        permission_retry_ready = true;
+        if (result == T5_DEVICE_DENIED) {
+            status("Not approved; physical Confirm to allow. Retry?");
+        } else {
+            snprintf(status_text, sizeof(status_text),
+                     "Location request error %ld; Confirm to retry", (long)result);
+            show();
+        }
+        if (!await_retry_or_back(true)) return;
+        permission_retry_ready = false;
     }
+    // Permission is now an execution-context-owned lease. A denied prompt
+    // never reaches subscribe, and a failed subscribe never keeps a lease.
+    status("Starting authorized GNSS stream");
     t5_location_subscription_t subscription = 0;
     t5_stream_t stream = 0;
     if (location->subscribe(authorization, &subscription, &stream) != T5_STREAM_OK ||
         !subscription || !stream) {
         status("GNSS stream unavailable");
         (void)devices->v2.release(authorization);
+        (void)await_retry_or_back(false);
         return;
     }
     riscrte_record_info_v1 info = {0};
@@ -181,6 +219,7 @@ void app_main(void) {
         status("Unexpected stream schema/rights");
         (void)location->unsubscribe(subscription);
         (void)devices->v2.release(authorization);
+        (void)await_retry_or_back(false);
         return;
     }
 
