@@ -20,14 +20,24 @@ struct Mutation {
     explicit operator bool() const { return owned; }
 };
 
-// This is a declaration preflight, never an authorization grant. Until the
-// live provider/capability registry exposes a version lookup for manager-side
-// dependency resolution, unresolved requirements fail CLOSED rather than
-// forging available capabilities. No special cases for USB/I2C or hardware.
+// A missing dependency is not an implicit privilege grant. The registry must
+// supply the installed capability version before dependent packages can pass.
 uint32_t availableCapability(const char*) { return 0; }
-bool activeManager() {
+
+// The shared manager may install all four ordinary kinds. The App Store and
+// Driver Manager are explicitly limited to their own package kind. An ELF
+// cannot pass an arbitrary path or impersonate a manager to gain mutations.
+int callerKind() {
     const char* path = native_app_current_path();
-    return path && std::strcmp(path, "/sd/Apps/package_manager.elf") == 0;
+    if (!path) return -1;
+    if (std::strcmp(path, "/sd/Apps/package_manager.elf") == 0) return 4;
+    if (std::strcmp(path, "/sd/Apps/app_store.elf") == 0) return T5_PACKAGE_APPLICATION;
+    if (std::strcmp(path, "/sd/Apps/driver_manager.elf") == 0) return T5_PACKAGE_DRIVER;
+    return -1;
+}
+bool permitted(uint8_t kind) {
+    const int caller = callerKind();
+    return kind <= T5_PACKAGE_PROVIDER && (caller == 4 || caller == kind);
 }
 bool folderPath(const char* folder, std::string& path) {
     path.clear();
@@ -57,10 +67,11 @@ bool sourceMetadata(const char* folder, RuntimePackages::OrdinaryPackagePlan& pl
 }
 bool preview(const char* folder, t5_package_preview_t* out) {
     if (out) *out = {};
-    if (!activeManager() || !out) return false;
+    if (callerKind() < 0 || !out) return false;
     RuntimePackages::OrdinaryPackagePlan plan{};
     if (!sourceMetadata(folder, plan)) return false;
     const auto& identity = plan.identity;
+    if (!permitted(static_cast<uint8_t>(identity.kind))) return false;
     RuntimePackages::OrdinaryTransactionPaths paths{};
     if (!RuntimePackages::ordinaryTransactionPaths(identity.kind, identity.id, paths)) return false;
     out->kind = static_cast<uint8_t>(identity.kind);
@@ -74,10 +85,7 @@ bool preview(const char* folder, t5_package_preview_t* out) {
             availableCapability, installed) && installed.kind == identity.kind &&
             std::strcmp(installed.id, identity.id) == 0;
         if (good) std::strcpy(out->installed_version, installed.version);
-        // Legacy driver upgrades use their separate validated migration path.
         if (!good && identity.kind == RuntimePackages::Kind::Driver) {
-            // A legacy layout cannot be treated as a fresh package: refusal
-            // until its owner performs explicit migration/recovery.
             out->valid_installation = 0;
             return true;
         }
@@ -96,11 +104,12 @@ bool preview(const char* folder, t5_package_preview_t* out) {
     return true;
 }
 bool install(const char* folder) {
-    if (!activeManager()) return false;
+    if (callerKind() < 0) return false;
     Mutation lock;
     if (!lock) return false;
     t5_package_preview_t candidate{};
-    if (!preview(folder, &candidate) || !candidate.install_allowed) return false;
+    if (!preview(folder, &candidate) || !candidate.install_allowed ||
+        !permitted(candidate.kind)) return false;
     std::string source;
     if (!folderPath(folder, source)) return false;
     const auto result = RuntimePackages::installOrdinaryFromSd(source.c_str(),
@@ -108,8 +117,7 @@ bool install(const char* folder) {
     return result.result == RuntimePackages::OrdinaryInstallResult::Installed;
 }
 bool uninstall(uint8_t kind, const char* id) {
-    if (!activeManager() || kind > T5_PACKAGE_PROVIDER ||
-        !RuntimePackages::safeId(id)) return false;
+    if (!permitted(kind) || !RuntimePackages::safeId(id)) return false;
     Mutation lock;
     if (!lock) return false;
     const auto result = RuntimePackages::uninstallOrdinaryFromSd(
@@ -123,5 +131,5 @@ const t5_package_manager_api_v1 api = {
 } // namespace
 
 extern "C" const t5_package_manager_api_v1* t5_package_manager_get_api(uint32_t version) {
-    return version == T5_PACKAGE_MANAGER_API_VERSION && activeManager() ? &api : nullptr;
+    return version == T5_PACKAGE_MANAGER_API_VERSION && callerKind() >= 0 ? &api : nullptr;
 }
