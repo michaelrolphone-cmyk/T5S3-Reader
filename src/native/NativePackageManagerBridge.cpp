@@ -3,6 +3,8 @@
 #include <NativeAppLauncher.h>
 #include <atomic>
 #include <cstring>
+#include <memory>
+#include <new>
 #include <string>
 
 #include "runtime/packages/InstalledCapabilityResolver.h"
@@ -60,20 +62,24 @@ bool sourceMetadata(const char* folder, RuntimePackages::OrdinaryPackagePlan& pl
     }
     const uint64_t bytes = file.fileSize64();
     if (!bytes || bytes > 4096) { (void)file.close(); return false; }
-    char buffer[4096]{};
-    const bool read = file.read(reinterpret_cast<uint8_t*>(buffer), bytes) ==
+    // A nested 4096-byte stack buffer plus OrdinaryPackagePlan and the
+    // canonical verifier would overflow the Arduino loopTask during preview.
+    std::unique_ptr<char[]> buffer(new (std::nothrow) char[4096]{});
+    if (!buffer) { (void)file.close(); return false; }
+    const bool read = file.read(reinterpret_cast<uint8_t*>(buffer.get()), bytes) ==
                       static_cast<int>(bytes);
     const bool closed = file.close();
     return read && closed &&
-        RuntimePackages::parseOrdinaryManifest(buffer, bytes, plan) &&
+        RuntimePackages::parseOrdinaryManifest(buffer.get(), bytes, plan) &&
         std::strcmp(plan.identity.id, folder) == 0;
 }
 bool preview(const char* folder, t5_package_preview_t* out) {
     if (out) *out = {};
     if (callerKind() < 0 || !out) return false;
-    RuntimePackages::OrdinaryPackagePlan plan{};
-    if (!sourceMetadata(folder, plan)) return false;
-    const auto& identity = plan.identity;
+    std::unique_ptr<RuntimePackages::OrdinaryPackagePlan> plan(
+        new (std::nothrow) RuntimePackages::OrdinaryPackagePlan{});
+    if (!plan || !sourceMetadata(folder, *plan)) return false;
+    const auto& identity = plan->identity;
     if (!permitted(static_cast<uint8_t>(identity.kind))) return false;
     RuntimePackages::OrdinaryTransactionPaths paths{};
     if (!RuntimePackages::ordinaryTransactionPaths(identity.kind, identity.id, paths)) return false;
@@ -97,7 +103,7 @@ bool preview(const char* folder, t5_package_preview_t* out) {
     if (!good || Storage.exists(paths.stage) || Storage.exists(paths.backup) ||
         Storage.exists(paths.removing) ||
         RuntimePackages::systemPackageUseGate().pinned(paths.target)) return true;
-    const auto policy = RuntimePackages::preflightOrdinaryPackage(plan, kPolicy,
+    const auto policy = RuntimePackages::preflightOrdinaryPackage(*plan, kPolicy,
                                                                  availableCapability);
     if (policy != RuntimePackages::PreflightResult::ReadyForContentVerification)
         return true;

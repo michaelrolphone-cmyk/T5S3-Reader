@@ -10,6 +10,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
+#include <new>
 #include <string>
 
 namespace RuntimePackages {
@@ -69,12 +71,12 @@ bool readAt(const std::string& path, uint64_t offset,
   return file.close() && okay;
 }
 bool readManifest(const char* directory, const char* name,
-                  char (&buffer)[kManifestBytes], size_t& length) {
+                  char* buffer, size_t capacity, size_t& length) {
   length = 0;
-  if (!directory) return false;
+  if (!directory || !buffer || capacity < kManifestBytes) return false;
   const std::string filename = std::string(directory) + "/" + name;
   uint64_t bytes = 0;
-  if (!sizeOf(filename, bytes) || !bytes || bytes > sizeof(buffer)) return false;
+  if (!sizeOf(filename, bytes) || !bytes || bytes > capacity) return false;
   length = static_cast<size_t>(bytes);
   if (readAt(filename, 0, reinterpret_cast<uint8_t*>(buffer), length)) return true;
   length = 0;
@@ -167,10 +169,11 @@ bool legacyIdentity(const char* path, const char* id, Identity& observed) {
   observed = {};
   if (!id || !legacyInventory(path, true) ||
       native_app_register_sd_vfs() != ESP_OK) return false;
-  char buffer[kManifestBytes]{};
+  std::unique_ptr<char[]> buffer(new (std::nothrow) char[kManifestBytes]{});
+  if (!buffer) return false;
   size_t length = 0;
-  if (!readManifest(path, "manifest.json", buffer, length)) return false;
-  const std::string json(buffer, length);
+  if (!readManifest(path, "manifest.json", buffer.get(), kManifestBytes, length)) return false;
+  const std::string json(buffer.get(), length);
   DriverPackageInfo info{};
   const std::string vfs = std::string("/sd") + path + "/driver.elf";
   if (!validateDriverPayload(json, vfs.c_str(), &info) ||
@@ -185,11 +188,12 @@ bool purgeLegacy(const char* path, const char* id) {
     // The legacy manifest is also removed last; no manifest means empty only.
     return Storage.rmdir(path);
   }
-  char buffer[kManifestBytes]{};
+  std::unique_ptr<char[]> buffer(new (std::nothrow) char[kManifestBytes]{});
+  if (!buffer) return false;
   size_t length = 0;
   DriverPackageInfo info{};
-  if (!readManifest(path, "manifest.json", buffer, length) ||
-      !parseDriverPackageManifest(std::string(buffer, length), info) ||
+  if (!readManifest(path, "manifest.json", buffer.get(), kManifestBytes, length) ||
+      !parseDriverPackageManifest(std::string(buffer.get(), length), info) ||
       std::strcmp(info.id, id)) return false;
   const std::string elf = std::string(path) + "/driver.elf";
   if (Storage.exists(elf.c_str()) && !Storage.remove(elf.c_str())) return false;
@@ -226,12 +230,10 @@ class SdDirectory {
  public:
   explicit SdDirectory(const char* path) : root_(path) {}
   bool readManifest(char* output, size_t capacity, size_t& length) {
-    if (!output || capacity < kManifestBytes) return false;
-    char metadata[kManifestBytes]{};
-    if (!::RuntimePackages::readManifest(root_.c_str(), kOrdinaryManifestName,
-                                         metadata, length)) return false;
-    std::memcpy(output, metadata, length);
-    return true;
+    // Read directly into the caller's heap-owned workspace. The previous
+    // second 4 KiB stack buffer overflowed loopTask during nested hashing.
+    return ::RuntimePackages::readManifest(root_.c_str(), kOrdinaryManifestName,
+                                           output, capacity, length);
   }
   bool exactEntries(const OrdinaryPackagePlan& plan) {
     return inventory(root_.c_str(), plan, true);
@@ -294,9 +296,10 @@ class SdStage {
   bool seal() {
     if (!owns_ || writer_.isOpen()) return false;
     SdDirectory directory(root_.c_str());
-    char metadata[kManifestBytes]{};
+    std::unique_ptr<char[]> metadata(new (std::nothrow) char[kManifestBytes]{});
+    if (!metadata) return false;
     size_t length = 0;
-    return directory.readManifest(metadata, sizeof(metadata), length) &&
+    return directory.readManifest(metadata.get(), kManifestBytes, length) &&
            inventory(root_.c_str(), plan_, true);
   }
   bool discard() {
@@ -330,22 +333,23 @@ bool purgeManaged(const char* path, Kind kind, const char* expectedId) {
   if (!path || !safeId(expectedId) || !directoryExists(path)) return false;
   const std::string canonical = std::string(path) + "/" + kOrdinaryManifestName;
   if (Storage.exists(canonical.c_str())) {
-    char metadata[kManifestBytes]{};
+    std::unique_ptr<char[]> metadata(new (std::nothrow) char[kManifestBytes]{});
+    std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
+    if (!metadata || !plan) return false;
     size_t length = 0;
-    OrdinaryPackagePlan plan{};
-    if (!readManifest(path, kOrdinaryManifestName, metadata, length) ||
-        !parseOrdinaryManifest(metadata, length, plan) ||
-        plan.identity.kind != kind || std::strcmp(plan.identity.id, expectedId))
+    if (!readManifest(path, kOrdinaryManifestName, metadata.get(), kManifestBytes, length) ||
+        !parseOrdinaryManifest(metadata.get(), length, *plan) ||
+        plan->identity.kind != kind || std::strcmp(plan->identity.id, expectedId))
       return false;
-    return purgeKnown(path, plan, false);
+    return purgeKnown(path, *plan, false);
   }
   const std::string legacy = std::string(path) + "/manifest.json";
   if (kind == Kind::Driver && Storage.exists(legacy.c_str()))
     return purgeLegacy(path, expectedId);
   // A missing manifest is only safe after previous manifest-last cleanup has
   // removed every file. Never erase unrecognized data or partial ELF bytes.
-  OrdinaryPackagePlan empty{};
-  return purgeKnown(path, empty, false);
+  std::unique_ptr<OrdinaryPackagePlan> empty(new (std::nothrow) OrdinaryPackagePlan{});
+  return empty && purgeKnown(path, *empty, false);
 }
 } // namespace
 
@@ -362,14 +366,16 @@ OrdinaryInstallOutcome installOrdinaryFromSd(
   OrdinaryInstallOutcome invalid{};
   if (!Storage.ready() || !safeSourcePath(sourceDirectory) ||
       !resolveCapability || !directoryExists(sourceDirectory)) return invalid;
-  char metadata[kManifestBytes]{};
+  std::unique_ptr<char[]> metadata(new (std::nothrow) char[kManifestBytes]{});
+  std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
+  if (!metadata || !plan) return invalid;
   size_t length = 0;
-  OrdinaryPackagePlan plan{};
-  if (!readManifest(sourceDirectory, kOrdinaryManifestName, metadata, length) ||
-      !parseOrdinaryManifest(metadata, length, plan) ||
-      !inventory(sourceDirectory, plan, true)) return invalid;
-  const Kind kind = plan.identity.kind;
-  const std::string id(plan.identity.id);
+  if (!readManifest(sourceDirectory, kOrdinaryManifestName, metadata.get(),
+                    kManifestBytes, length) ||
+      !parseOrdinaryManifest(metadata.get(), length, *plan) ||
+      !inventory(sourceDirectory, *plan, true)) return invalid;
+  const Kind kind = plan->identity.kind;
+  const std::string id(plan->identity.id);
   OrdinaryTransactionPaths paths{};
   if (!ordinaryTransactionPaths(kind, id.c_str(), paths)) return invalid;
   if (kind == Kind::Driver) {
@@ -380,7 +386,8 @@ OrdinaryInstallOutcome installOrdinaryFromSd(
         Storage.exists((legacy + ".previous").c_str())) return invalid;
   }
   SdSource source(sourceDirectory);
-  SdStage destination;
+  std::unique_ptr<SdStage> destination(new (std::nothrow) SdStage());
+  if (!destination) return invalid;
   SdHash hash;
   Ops ops;
   uint8_t io[kOrdinaryIoBytes]{};
@@ -397,7 +404,7 @@ OrdinaryInstallOutcome installOrdinaryFromSd(
   };
   // The caller must own the per-identity manager mutation lock; publication
   // itself takes an exclusive mapping lease and independently re-verifies.
-  return installCanonicalOrdinaryPackage(metadata, length, source, destination,
+  return installCanonicalOrdinaryPackage(metadata.get(), length, source, *destination,
       hash, resolveCapability, policy, io, ops, verify, purge, true);
 }
 } // namespace RuntimePackages

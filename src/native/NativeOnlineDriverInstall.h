@@ -1,15 +1,19 @@
 #pragma once
 
+#include "NativeDriverInboxRecovery.h"
 #include "network/HttpDownloader.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include <ArduinoJson.h>
 #include <HalStorage.h>
+#include <Logging.h>
 #include <esp_task_wdt.h>
 #include <mbedtls/sha256.h>
 #include <cstdio>
 #include <cstring>
+#include <memory>
+#include <new>
 #include <string>
 
 namespace RuntimeOnlinePackages {
@@ -85,16 +89,18 @@ inline bool install(const char* id, const char* version, const std::string& cata
     if (!HttpDownloader::fetchUrl(prefix + "package.json", descriptor) ||
         descriptor.size() != expectedSize[0] ||
         !hashMatches(descriptor, expectedSha[0])) return false;
-    OrdinaryPackagePlan plan{};
-    if (!parseOrdinaryManifest(descriptor.data(), descriptor.size(), plan) ||
-        plan.identity.kind != Kind::Driver || std::strcmp(plan.identity.id, id) ||
-        std::strcmp(plan.identity.version, version) ||
-        std::strcmp(plan.identity.artifact, "driver.elf") ||
-        plan.entryCount != 3) return false;
+    // Retain the bounded package plan in heap memory: the dependency caller
+    // must not keep a multi-kilobyte local alive throughout nested SD stages.
+    std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
+    if (!plan || !parseOrdinaryManifest(descriptor.data(), descriptor.size(), *plan) ||
+        plan->identity.kind != Kind::Driver || std::strcmp(plan->identity.id, id) ||
+        std::strcmp(plan->identity.version, version) ||
+        std::strcmp(plan->identity.artifact, "driver.elf") ||
+        plan->entryCount != 3) return false;
     for (size_t i = 1; i < 4; ++i) {
         bool match = false;
-        for (size_t j = 0; j < plan.entryCount; ++j) {
-            const auto& entry = plan.entries[j];
+        for (size_t j = 0; j < plan->entryCount; ++j) {
+            const auto& entry = plan->entries[j];
             if (std::strcmp(entry.name, kNames[i])) continue;
             match = entry.sizeBytes == expectedSize[i] &&
                     std::strcmp(entry.sha256, expectedSha[i]) == 0 &&
@@ -105,9 +111,17 @@ inline bool install(const char* id, const char* version, const std::string& cata
     }
     const std::string root = std::string("/Packages/Inbox/") + id;
     if ((!Storage.exists("/Packages") && !Storage.mkdir("/Packages", false)) ||
-        (!Storage.exists("/Packages/Inbox") && !Storage.mkdir("/Packages/Inbox", false)) ||
-        Storage.exists(root.c_str()) || !Storage.mkdir(root.c_str(), false)) return false;
-    if (!writeExclusive(root + "/.package.json", descriptor)) return false;
+        (!Storage.exists("/Packages/Inbox") && !Storage.mkdir("/Packages/Inbox", false)))
+        return false;
+    if (Storage.exists(root.c_str())) {
+        if (!Recovery::discardMatchingDriverInbox(root, descriptor, kNames, expectedSize)) {
+            LOG_ERR("DRVMGR", "Existing driver inbox differs from this release; preserved: %s", root.c_str());
+            return false;
+        }
+        LOG_INF("DRVMGR", "Recovered matching interrupted driver download: %s", id);
+    }
+    if (!Storage.mkdir(root.c_str(), false) ||
+        !writeExclusive(root + "/.package.json", descriptor)) return false;
     for (size_t i = 1; i < 4; ++i) {
         const std::string target = root + "/" + kNames[i];
         const std::string stage = target + ".part";
@@ -123,9 +137,18 @@ inline bool install(const char* id, const char* version, const std::string& cata
     if (!verifyOrdinarySdDirectory(root.c_str(), policy,
                                    installedCapabilityVersion, observed) ||
         observed.kind != Kind::Driver || std::strcmp(observed.id, id)) return false;
+    if (!Recovery::discardMatchingStage(root, *plan, policy, installedCapabilityVersion)) {
+        LOG_ERR("DRVMGR", "Unknown interrupted driver stage preserved: %s", id);
+        return false;
+    }
     const auto result = installOrdinaryFromSd(root.c_str(), policy,
                                                installedCapabilityVersion);
-    if (result.result != OrdinaryInstallResult::Installed) return false;
+    if (result.result != OrdinaryInstallResult::Installed) {
+        LOG_ERR("DRVMGR", "Canonical driver install rejected for %s: result=%u stage=%u transaction=%u",
+                id, static_cast<unsigned>(result.result),
+                static_cast<unsigned>(result.staging), static_cast<unsigned>(result.transaction));
+        return false;
+    }
     // An interrupted download remains in the inbox for explicit inspection.
     // Only an exclusively created, successfully installed source is cleaned.
     (void)Storage.remove((root + "/.package.json").c_str());
