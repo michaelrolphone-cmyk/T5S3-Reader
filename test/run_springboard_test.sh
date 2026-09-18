@@ -67,10 +67,14 @@ for pair in \
 done
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" "$repo_dir/test/native_apps/image_api_stub.c" -o "$binary"
 "$binary"
-# Exercise the actual Driver Manager app's static row construction and actions.
+# Exercise actual Driver Manager and Package Manager app code, including
+# cancellation, offline recovery and independently confirmed uninstall.
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/driver_manager_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/package_manager_test.c" -o "$binary"
+"$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
 python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
-echo 'Native app regressions passed: canonical four-kind manifests/install/readback, staging/publication/retry/explicit discard, driver UI and legacy recovery (no mandatory signing).'
+echo 'Native app regressions passed: canonical four-kind manifests/install/readback, staging/publication/retry/explicit discard, standard-UI Package Manager and Driver Manager recovery (no mandatory signing).'
