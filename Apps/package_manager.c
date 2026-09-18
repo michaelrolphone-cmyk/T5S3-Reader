@@ -1,6 +1,5 @@
 #include "T5AppApi.h"
 #include "T5PackageManagerApi.h"
-#include "T5PackageVersion.h"
 #include "T5UiApi.h"
 #include <stddef.h>
 #include <stdint.h>
@@ -19,17 +18,17 @@ static char subtitles[MAX_ITEMS][SUBTITLE_BYTES];
 static char values[MAX_ITEMS][T5_PACKAGE_VERSION_MAX];
 static uint32_t row_count;
 
-static bool api_ready(const t5_package_manager_api_v1 *packages_api,
+static bool api_ready(const t5_package_manager_api_v1 *manager,
                       const t5_ui_api_v1 *ui) {
-    return packages_api && packages_api->api_version == T5_PACKAGE_MANAGER_API_VERSION &&
-           packages_api->struct_size >= sizeof(t5_package_manager_api_v1) &&
-           packages_api->preview && packages_api->install && packages_api->uninstall &&
+    return manager && manager->api_version == T5_PACKAGE_MANAGER_API_VERSION &&
+           manager->struct_size >= sizeof(t5_package_manager_api_v1) &&
+           manager->preview && manager->install && manager->uninstall &&
            ui && ui->api_version == T5_UI_API_VERSION &&
            ui->struct_size >= offsetof(t5_ui_api_v1, previous_index) + sizeof(ui->previous_index) &&
            ui->render_list && ui->poll_event && ui->hit_test &&
            ui->next_index && ui->previous_index;
 }
-static const char *kind_name(uint8_t kind) {
+static const char* kind_name(uint8_t kind) {
     switch (kind) {
         case T5_PACKAGE_APPLICATION: return "App";
         case T5_PACKAGE_DRIVER: return "Driver";
@@ -50,18 +49,17 @@ static void refresh(const t5_app_api_v1 *app,
         packages[row_count] = info;
         snprintf(titles[row_count], sizeof(titles[row_count]), "%s [%s]",
                  info.id, kind_name(info.kind));
-        if (!info.valid_installation) {
+        if (!info.valid_installation)
             snprintf(subtitles[row_count], sizeof(subtitles[row_count]),
                      "Installed generation needs recovery; no mutation");
-        } else if (info.installed_version[0]) {
+        else if (info.installed_version[0])
             snprintf(subtitles[row_count], sizeof(subtitles[row_count]),
                      "Installed %s; %s", info.installed_version,
-                     info.install_allowed ? "update available" : "install unchanged");
-        } else {
+                     info.install_allowed ? "update available" : "no update");
+        else
             snprintf(subtitles[row_count], sizeof(subtitles[row_count]), "%s",
                      info.install_allowed ? "SD inbox: ready to install" :
                      "Unavailable: dependency, version or pending stage");
-        }
         snprintf(values[row_count], sizeof(values[row_count]), "%s", info.version);
         rows[row_count] = (t5_ui_list_row_t){titles[row_count], subtitles[row_count],
                                             values[row_count],
@@ -81,44 +79,71 @@ static void render(const t5_ui_api_v1 *ui, int32_t selected, const char *status)
     if (row_count) ui->render_list(&chrome, rows, row_count, selected);
     else {
         const t5_ui_list_row_t empty = {
-            "No packages in SD inbox", "Add <id>/.package.json and declared files",
-            "Offline", 0,
+            "No packages in SD inbox", "Add <id>/.package.json and declared files", "Offline", 0,
         };
         ui->render_list(&chrome, &empty, 1, 0);
     }
 }
-static bool choose(const t5_ui_api_v1 *ui, const char* heading,
-                   const char* description, const char* action) {
-    const t5_ui_list_row_t options[2] = {
-        {"Cancel", "Keep installed files and staged content", "Back", 0},
-        {action, description, "Confirm", T5_UI_LIST_HIGHLIGHT_VALUE},
-    };
+
+// All selectors default to cancel. Back/Exit and failed polling never mutate.
+static int32_t menu(const t5_ui_api_v1 *ui, const char* title,
+                    const char* description, const t5_ui_list_row_t *items,
+                    uint32_t count) {
+    if (!count) return 0;
     const t5_ui_chrome_t chrome = {
-        .title = heading, .subtitle = description, .status = "No changes until confirmed",
-        .back_label = "Cancel", .confirm_label = "Select",
-        .previous_label = "Up", .next_label = "Down",
+        .title = title, .subtitle = description,
+        .status = "No change until Confirm", .back_label = "Cancel",
+        .confirm_label = "Select", .previous_label = "Up", .next_label = "Down",
     };
     int32_t selected = 0;
-    ui->render_list(&chrome, options, 2, selected);
+    ui->render_list(&chrome, items, count, selected);
     for (;;) {
         t5_ui_event_t event = {0};
         if (!ui->poll_event(&event, 20) || event.type == T5_UI_EVENT_BACK ||
-            event.type == T5_UI_EVENT_EXIT) return false;
-        if (event.type == T5_UI_EVENT_NEXT)
-            selected = ui->next_index(selected, 2);
-        if (event.type == T5_UI_EVENT_PREVIOUS)
-            selected = ui->previous_index(selected, 2);
+            event.type == T5_UI_EVENT_EXIT) return 0;
+        if (event.type == T5_UI_EVENT_NEXT) selected = ui->next_index(selected, count);
+        if (event.type == T5_UI_EVENT_PREVIOUS) selected = ui->previous_index(selected, count);
         if (event.type == T5_UI_EVENT_TAP) {
             const int32_t hit = ui->hit_test(event.touch_x, event.touch_y);
-            if (hit < 0 || hit > 1) continue;
+            if (hit < 0 || hit >= (int32_t)count) continue;
             selected = hit;
         }
-        if (event.type == T5_UI_EVENT_CONFIRM || event.type == T5_UI_EVENT_TAP) {
-            if (selected == 1) return true;
-            return false;
-        }
-        ui->render_list(&chrome, options, 2, selected);
+        if (event.type == T5_UI_EVENT_CONFIRM || event.type == T5_UI_EVENT_TAP)
+            return selected;
+        ui->render_list(&chrome, items, count, selected);
     }
+}
+static bool confirm(const t5_ui_api_v1 *ui, const char *heading,
+                    const char *description, const char *action) {
+    const t5_ui_list_row_t choices[2] = {
+        {"Cancel", "Keep all installed and staged files", "Back", 0},
+        {action, description, "Confirm", T5_UI_LIST_HIGHLIGHT_VALUE},
+    };
+    return menu(ui, heading, description, choices, 2) == 1;
+}
+static int32_t select_action(const t5_ui_api_v1 *ui,
+                             const t5_package_preview_t *info) {
+    t5_ui_list_row_t actions[3] = {
+        {"Cancel", "Return to package list", "Back", 0},
+        {"", "", "", 0},
+        {"", "", "", 0},
+    };
+    uint32_t count = 1;
+    int32_t installIndex = -1, uninstallIndex = -1;
+    if (info->install_allowed) {
+        installIndex = (int32_t)count;
+        actions[count++] = (t5_ui_list_row_t){
+            info->installed_version[0] ? "Update package" : "Install package",
+            "Publish verified bytes; does not activate ELF", "Install", 0};
+    }
+    if (info->installed_version[0]) {
+        uninstallIndex = (int32_t)count;
+        actions[count++] = (t5_ui_list_row_t){
+            "Uninstall package", "Requires inactive ELF; removes this version",
+            "Remove", 0};
+    }
+    const int32_t choice = menu(ui, "Package actions", info->id, actions, count);
+    return choice == installIndex ? 1 : choice == uninstallIndex ? 2 : 0;
 }
 static void activate(const t5_package_manager_api_v1 *manager,
                      const t5_ui_api_v1 *ui, int32_t selected,
@@ -129,24 +154,16 @@ static void activate(const t5_package_manager_api_v1 *manager,
         snprintf(status, capacity, "%s: recover invalid generation before changing it", info.id);
         return;
     }
-    const bool installed = info.installed_version[0] != 0;
-    if (info.install_allowed &&
-        choose(ui, installed ? "Confirm package update" : "Confirm package install",
-               "Integrity checked; no ELF activation or capability grant",
-               installed ? "Update package" : "Install package")) {
+    const int32_t action = select_action(ui, &info);
+    if (action == 1 &&
+        confirm(ui, "Confirm installation",
+                "Integrity checked; no activation or privilege grant", "Install now")) {
         const bool okay = manager->install(info.id);
         snprintf(status, capacity, "%s: %s; no activation", info.id,
                  okay ? "installed" : "install refused; inspect SD/recovery");
-        return;
-    }
-    // Uninstall is a separate user decision and an additional confirmation;
-    // cancelled installs do not automatically initiate a destructive action.
-    if (installed && choose(ui, "Uninstall package?",
-                            "Stop users first; no legacy files are removed",
-                            "Continue to uninstall") &&
-        choose(ui, "Final uninstall confirmation",
-               "Delete the selected installed package; cannot be undone",
-               "Uninstall now")) {
+    } else if (action == 2 &&
+               confirm(ui, "Confirm uninstall",
+                       "Remove selected package; cannot be undone", "Uninstall now")) {
         const bool okay = manager->uninstall(info.kind, info.id);
         snprintf(status, capacity, "%s: %s", info.id,
                  okay ? "uninstalled" : "uninstall refused; stop mapped users");
