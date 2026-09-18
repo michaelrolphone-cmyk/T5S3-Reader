@@ -101,7 +101,7 @@ def run():
             # Physical address outside the architecture's privileged MMIO range.
             assert mutation_rejected(elf, site, 0x70000000), id
             # Still inside the MMIO window, but not declared SHN_ABS by this ELF.
-            assert mutation_rejected(elf, site, 0x600fff00), id
+            assert mutation_rejected(elf, site, 0x60004010), id
         profile = (folder / 'provider-abi.v1').read_text(encoding='ascii')
         assert profile == f'os-cpu-abi=1\nprovides={cap}\napi=1\n'
         imports_bytes = (folder / 'privileged-imports.v1').read_bytes()
