@@ -6,6 +6,11 @@
 #include <cstdint>
 #include <cstring>
 
+#if defined(ESP_PLATFORM)
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
+
 namespace RuntimePackages {
 
 // An ORDINARY package has only self-declared file-integrity hashes. The
@@ -34,6 +39,20 @@ struct OrdinaryPackagePlan {
   OrdinaryRequirement requirements[kMaxPackageRequirements]{};
   size_t requirementCount = 0;
 };
+
+// CPU0's idle task must run even during repeated synchronous SD operations.
+// Task watchdog resets alone do not service IDLE0. Keep the package algorithm
+// host-testable and yield only on its embedded FreeRTOS implementation.
+inline void ordinaryCooperativeYield(uint64_t processedBytes, uint64_t fileBytes) {
+#if defined(ESP_PLATFORM)
+  // Many native app ELFs are smaller than 16 KiB; always yield after their
+  // final chunk so a catalog-wide series of checks cannot starve IDLE0.
+  if ((processedBytes & 0x3fffu) == 0u || processedBytes == fileBytes) vTaskDelay(1);
+#else
+  (void)processedBytes;
+  (void)fileBytes;
+#endif
+}
 
 // ReadAt(name,at,dst,len), EntrySize(name,uint64_t&), Destination begin(plan),
 // beginEntry(name,len), append(bytes,len), endEntry(), readEntry(name,at,...),
@@ -152,6 +171,7 @@ OrdinaryStageResult stageOrdinaryPackage(const OrdinaryPackagePlan& plan,
       if (!hash.update(io, count) || !destination.append(io, count))
         return fail(OrdinaryStageResult::WriteFailure);
       at += count;
+      ordinaryCooperativeYield(at, entry.sizeBytes);
     }
     uint8_t digest[32]{};
     if (!hash.finish(digest) || !ordinaryDigestEquals(digest, entry.sha256))
@@ -166,6 +186,7 @@ OrdinaryStageResult stageOrdinaryPackage(const OrdinaryPackagePlan& plan,
           !hash.update(io, count))
         return fail(OrdinaryStageResult::ReadbackFailure);
       at += count;
+      ordinaryCooperativeYield(at, entry.sizeBytes);
     }
     if (!hash.finish(digest) || !ordinaryDigestEquals(digest, entry.sha256))
       return fail(OrdinaryStageResult::ReadbackFailure);
@@ -199,6 +220,7 @@ bool verifyOrdinaryDirectory(const OrdinaryPackagePlan& plan,
           (entry.executable && !at && !ordinaryElfHeader(io, count, plan.architecture)) ||
           !hash.update(io, count)) return false;
       at += count;
+      ordinaryCooperativeYield(at, entry.sizeBytes);
     }
     uint8_t digest[32]{};
     if (!hash.finish(digest) || !ordinaryDigestEquals(digest, entry.sha256))
