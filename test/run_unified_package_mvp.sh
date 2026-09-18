@@ -4,7 +4,7 @@
 # A successful host run is NOT on-device SD/network or power-cut acceptance.
 set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-for program in c++ openssl; do
+for program in c++ openssl python3; do
   if ! command -v "$program" >/dev/null 2>&1; then
     echo "Missing required host tool: $program" >&2
     exit 2
@@ -23,5 +23,6 @@ for test_case in package_identity package_preflight package_json_guard \
       -lcrypto -o "$binary"
   "$binary"
 done
+python3 "$repo_dir/test/resources/package_driver_bridge_source_test.py"
 echo 'PASS: ordinary package MVP host tests (four kinds, source-neutral integrity, staging, versioned driver upgrades and recoverable publication).'
 echo 'Deferred signer/P-256 prototype: test/run_signed_package_experiment.sh (not an MVP gate).'
