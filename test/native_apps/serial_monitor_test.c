@@ -32,6 +32,9 @@ static t5_serial_result_t serial_acquire(const t5_serial_port_request_t *request
            request->config.parity == T5_SERIAL_PARITY_NONE && request->config.stop_bits == 1u &&
            request->config.flow_control == T5_SERIAL_FLOW_NONE);
     assert(acquisitions < 2);
+    // The real display must show a phase BEFORE either potentially long
+    // provider acquire. An old launcher frame is not an acceptable busy UI.
+    assert(list_renders >= acquisitions + 1);
     ++acquisitions;
     active_config = request->config;
     current_lease = acquisitions == 1 ? 7u : 11u;
@@ -137,8 +140,12 @@ static void render_text(const t5_ui_chrome_t *chrome, const char *text, int32_t 
 }
 static void render_list(const t5_ui_chrome_t *chrome, const t5_ui_list_row_t *rows,
                         uint32_t row_count, int32_t selected_index) {
-    assert(chrome && rows && row_count > 0u);
-    assert(selected_index >= 0 && (uint32_t)selected_index < row_count);
+    assert(chrome && rows && row_count == 1u && selected_index == 0);
+    assert(strcmp(chrome->title, "Serial Monitor") == 0);
+    assert(rows[0].title && strstr(rows[0].title, "serial session"));
+    assert(rows[0].subtitle && strstr(rows[0].subtitle, "provider chain"));
+    if (list_renders == 0) assert(strstr(rows[0].title, "Initializing"));
+    if (list_renders == 1) assert(strstr(rows[0].title, "Reconnecting"));
     ++list_renders;
 }
 static int32_t hit_test(int16_t x, int16_t y) {
@@ -196,6 +203,6 @@ int main(void) {
     assert(revoked && read_once && read_replacement);
     assert(writes == 1); /* Only the original device received the pending text. */
     assert(renders >= 3);
-    assert(list_renders == 0);
+    assert(list_renders == 2);
     return 0;
 }
