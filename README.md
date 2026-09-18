@@ -1,4 +1,4 @@
-# ![RiscRTE](https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/refs/heads/master/docs/riscrte-lockup-descriptor.svg)
+# ![RiscRTE](https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/refs/heads/master/docs/riscrte-lockup-descriptor-dark-bg.svg)
 
 **RiscRTE — RISC Runtime Environment** is a modular embedded runtime environment for resource-constrained RISC systems. The current hardware targets are the LilyGO T5 ePaper S3 / T5S3 Pro and LilyGO EPD47 ESP32-S3 e-paper boards.
 
