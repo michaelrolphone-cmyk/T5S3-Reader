@@ -5,6 +5,7 @@
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
+#include <T5DriverManagerApi.h>
 #include <ArduinoJson.h>
 #include <HalStorage.h>
 #include <Logging.h>
@@ -22,6 +23,16 @@ constexpr const char* kRelease =
     "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/latest/download/";
 constexpr const char* kNames[] = {
     ".package.json", "driver.elf", "provider-abi.v1", "privileged-imports.v1"};
+
+// Progress is advisory and scoped to this synchronous install invocation.
+// It must not alter staging, verification or execution rights.
+inline void emitProgress(t5_driver_install_progress_t progress, void* context,
+                         const char* id, uint8_t stage, const char* file = nullptr,
+                         uint64_t transferred = 0, uint64_t total = 0) {
+    if (!progress) return;
+    const t5_driver_install_event_t event{id, file, stage, transferred, total};
+    progress(context, &event);
+}
 
 inline bool hashMatches(const std::string& bytes, const char* hex) {
     if (!RuntimePackages::validSha256Hex(hex)) return false;
@@ -53,7 +64,8 @@ inline bool writeExclusive(const std::string& path, const std::string& bytes) {
 // The downloaded .package.json is independently parsed; exact inventory,
 // dependency preflight, ELF format and all hashes are rechecked by the same
 // engine used for offline SD inbox installations.
-inline bool install(const char* id, const char* version, const std::string& catalogEntry) {
+inline bool install(const char* id, const char* version, const std::string& catalogEntry,
+                    t5_driver_install_progress_t progress = nullptr, void* context = nullptr) {
     using namespace RuntimePackages;
     if (!Storage.ready() || !safeId(id) || !safeVersion(version) ||
         catalogEntry.empty() || catalogEntry.size() > 8192) return false;
@@ -86,6 +98,7 @@ inline bool install(const char* id, const char* version, const std::string& cata
     if (expectedSize[0] > 4096) return false;
     const std::string prefix = std::string(kRelease) + id + "--";
     std::string descriptor;
+    emitProgress(progress, context, id, T5_DRIVER_INSTALL_METADATA, ".package.json");
     if (!HttpDownloader::fetchUrl(prefix + "package.json", descriptor) ||
         descriptor.size() != expectedSize[0] ||
         !hashMatches(descriptor, expectedSha[0])) return false;
@@ -113,6 +126,7 @@ inline bool install(const char* id, const char* version, const std::string& cata
     if ((!Storage.exists("/Packages") && !Storage.mkdir("/Packages", false)) ||
         (!Storage.exists("/Packages/Inbox") && !Storage.mkdir("/Packages/Inbox", false)))
         return false;
+    emitProgress(progress, context, id, T5_DRIVER_INSTALL_RECOVERY);
     if (Storage.exists(root.c_str())) {
         if (!Recovery::discardMatchingDriverInbox(root, descriptor, kNames, expectedSize)) {
             LOG_ERR("DRVMGR", "Existing driver inbox differs from this release; preserved: %s", root.c_str());
@@ -125,8 +139,14 @@ inline bool install(const char* id, const char* version, const std::string& cata
     for (size_t i = 1; i < 4; ++i) {
         const std::string target = root + "/" + kNames[i];
         const std::string stage = target + ".part";
+        emitProgress(progress, context, id, T5_DRIVER_INSTALL_DOWNLOADING,
+                     kNames[i], 0, expectedSize[i]);
         if (HttpDownloader::downloadToFile(prefix + kNames[i], stage,
-                [](size_t, size_t) { esp_task_wdt_reset(); }) != HttpDownloader::OK ||
+                [progress, context, id, i, &expectedSize](size_t bytes, size_t) {
+                    esp_task_wdt_reset();
+                    emitProgress(progress, context, id, T5_DRIVER_INSTALL_DOWNLOADING,
+                                 kNames[i], bytes, expectedSize[i]);
+                }) != HttpDownloader::OK ||
             Storage.exists(target.c_str()) ||
             !Storage.rename(stage.c_str(), target.c_str()))
             return false;
@@ -134,6 +154,7 @@ inline bool install(const char* id, const char* version, const std::string& cata
     constexpr PackageRuntimePolicy policy{"xtensa-esp32s3", 2, 0,
                                           8u * 1024u * 1024u, 16u * 1024u * 1024u};
     Identity observed{};
+    emitProgress(progress, context, id, T5_DRIVER_INSTALL_VERIFYING);
     if (!verifyOrdinarySdDirectory(root.c_str(), policy,
                                    installedCapabilityVersion, observed) ||
         observed.kind != Kind::Driver || std::strcmp(observed.id, id)) return false;
@@ -141,6 +162,7 @@ inline bool install(const char* id, const char* version, const std::string& cata
         LOG_ERR("DRVMGR", "Unknown interrupted driver stage preserved: %s", id);
         return false;
     }
+    emitProgress(progress, context, id, T5_DRIVER_INSTALL_PUBLISHING);
     const auto result = installOrdinaryFromSd(root.c_str(), policy,
                                                installedCapabilityVersion);
     if (result.result != OrdinaryInstallResult::Installed) {
@@ -155,6 +177,7 @@ inline bool install(const char* id, const char* version, const std::string& cata
     for (size_t i = 1; i < 4; ++i)
         (void)Storage.remove((root + "/" + kNames[i]).c_str());
     (void)Storage.rmdir(root.c_str());
+    emitProgress(progress, context, id, T5_DRIVER_INSTALL_INSTALLED);
     return true;
 }
 } // namespace DriverIntake
