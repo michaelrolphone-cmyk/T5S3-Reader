@@ -1,7 +1,7 @@
 {
-  "min_firmware_version": "1.2.17",
-  "version": "1.2.1",
+  "min_firmware_version": "1.2.25",
+  "version": "1.2.2",
   "display_name": "Serial Monitor",
   "file_name": "serial_monitor.elf",
-  "icon": "solid:f287"
+  "icon": "solid:f120"
 }
