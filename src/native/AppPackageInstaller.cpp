@@ -76,9 +76,10 @@ bool verifyBytes(const char* elfPath, uint64_t declaredSize, const char* declare
     if (count != static_cast<int>(want)) { good = false; break; }
     good = mbedtls_sha256_update_ret(&context, buffer, want) == 0;
     total += want;
-    if ((total & 0x3fffu) == 0) {
+    if ((total & 0x3fffu) == 0 || total == size) {
       // The TWDT also watches IDLE0. Resetting loopTask's watchdog alone does
       // not let IDLE0 run during a long run of synchronous SD reads + hashing.
+      // The final-block case also covers batches of small (<16 KiB) apps.
       esp_task_wdt_reset();
       vTaskDelay(1);
     }
