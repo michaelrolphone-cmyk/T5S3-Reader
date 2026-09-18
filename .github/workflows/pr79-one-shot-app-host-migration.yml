@@ -1,32 +1,34 @@
-name: PR79 apply canonical online App Store integration
+name: PR79 apply canonical manager source integration
 on:
   push:
     branches:
       - feature/unified-manager-driver-adapter
     paths:
       - scripts/pr79_wire_online_app_install.py
+      - scripts/pr79_wire_online_driver_manager.py
       - .github/workflows/pr79-one-shot-app-host-migration.yml
 permissions:
   contents: write
 jobs:
-  integrate-app-store:
+  integrate-managers:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: feature/unified-manager-driver-adapter
           persist-credentials: true
-      - name: Apply canonical transaction to actual native App Store source
+      - name: Edit actual application and driver manager firmware source
         run: |
           python scripts/pr79_wire_online_app_install.py
+          python scripts/pr79_wire_online_driver_manager.py
           git diff --check
-          git diff -- src/native/NativeAppHost.cpp
-      - name: Commit integrated C++ implementation to PR branch
+          git diff -- src/native/NativeAppHost.cpp src/native/NativeDriverManagerBridge.cpp
+      - name: Commit integrated C++ implementations to PR branch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/native/NativeAppHost.cpp
+          git add src/native/NativeAppHost.cpp src/native/NativeDriverManagerBridge.cpp
           if ! git diff --cached --quiet; then
-            git commit -m 'Route online App Store installs through unified canonical package transaction'
+            git commit -m 'Route online App Store and Driver Manager through canonical package transactions'
             git push origin HEAD:feature/unified-manager-driver-adapter
           fi
