@@ -5,6 +5,8 @@
 #include <Logging.h>
 #include <NativeAppLauncher.h>
 #include <esp_task_wdt.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include <algorithm>
 #include <string>
@@ -51,7 +53,10 @@ bool recoverAppInventory() {
       break;
     }
     candidates.push_back(std::move(elf));
-    if ((entries & 31u) == 0) esp_task_wdt_reset();
+    if ((entries & 31u) == 0) {
+      esp_task_wdt_reset();
+      vTaskDelay(1);
+    }
   }
   directory.close();
   if (!complete) {
@@ -80,7 +85,10 @@ bool recoverAppInventory() {
       continue;
     }
     if (!recoverAppPair(elf.c_str())) allRecovered = false;
+    // Resetting loopTask's TWDT alone will not service IDLE0. Allow IDLE0 to
+    // run between independent recovery transactions without skipping checks.
     esp_task_wdt_reset();
+    vTaskDelay(1);
   }
   return allRecovered;
 }
