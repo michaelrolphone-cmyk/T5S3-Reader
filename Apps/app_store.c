@@ -1,263 +1,146 @@
 #include "T5AppApi.h"
 #include "T5PackageManagerApi.h"
 #include "T5UiApi.h"
-
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
-#define MAX_CATALOG_ITEMS 64u
-#define TITLE_MAX 96u
-#define SUBTITLE_MAX 96u
-#define VALUE_MAX 40u
-#define STATUS_MAX 160u
+#define MAX_ROWS 64u
+#define TITLE_SIZE 96u
+#define SUBTITLE_SIZE 96u
+#define VALUE_SIZE 40u
+#define STATUS_SIZE 160u
 
-typedef enum { VIEW_RELEASE = 0, VIEW_INBOX = 1 } store_view_t;
-typedef enum {
-    APP_ACTION_INSTALL = 0,
-    APP_ACTION_UPDATE = 1,
-    APP_ACTION_CURRENT = 2,
-} app_action_t;
-
-static t5_ui_list_row_t rows[MAX_CATALOG_ITEMS];
-static char row_titles[MAX_CATALOG_ITEMS][TITLE_MAX];
-static char row_subtitles[MAX_CATALOG_ITEMS][SUBTITLE_MAX];
-static char row_values[MAX_CATALOG_ITEMS][VALUE_MAX];
-static char row_folders[MAX_CATALOG_ITEMS][T5_PACKAGE_ID_MAX];
-static t5_package_preview_t inbox_packages[MAX_CATALOG_ITEMS];
-static uint32_t row_catalog_index[MAX_CATALOG_ITEMS];
+typedef enum { RELEASES, SD_INBOX } view_t;
+static view_t view;
+static t5_ui_list_row_t rows[MAX_ROWS];
+static char titles[MAX_ROWS][TITLE_SIZE];
+static char subtitles[MAX_ROWS][SUBTITLE_SIZE];
+static char values[MAX_ROWS][VALUE_SIZE];
+static char folders[MAX_ROWS][T5_PACKAGE_ID_MAX];
+static t5_package_preview_t packages[MAX_ROWS];
+static uint32_t release_indices[MAX_ROWS];
 static uint32_t row_count;
-static store_view_t view;
 
-static bool has_catalog_api(const t5_app_api_v1 *api) {
-    const size_t required = offsetof(t5_app_api_v1, app_catalog_download) + sizeof(api->app_catalog_download);
-    return api && api->struct_size >= required && api->app_catalog_refresh && api->app_catalog_count &&
-           api->app_catalog_get && api->app_catalog_download;
+static void copy_text(char *destination, size_t capacity, const char *source) {
+    if (!destination || !capacity) return;
+    if (!source) source = "";
+    const size_t length = strnlen(source, capacity - 1u);
+    memcpy(destination, source, length);
+    destination[length] = '\0';
 }
-static bool has_catalog_manifest_api(const t5_app_api_v1 *api) {
-    const size_t required = offsetof(t5_app_api_v1, app_catalog_manifest_get) + sizeof(api->app_catalog_manifest_get);
-    return api && api->struct_size >= required && api->app_catalog_manifest_get;
+static bool catalog_available(const t5_app_api_v1 *app) {
+    return app && app->struct_size >= offsetof(t5_app_api_v1, app_catalog_download) +
+        sizeof(app->app_catalog_download) && app->app_catalog_refresh &&
+        app->app_catalog_count && app->app_catalog_get && app->app_catalog_download;
 }
-static bool has_version_api(const t5_app_api_v1 *api) {
-    const size_t required = offsetof(t5_app_api_v1, app_catalog_version_get) + sizeof(api->app_catalog_version_get);
-    return api && api->struct_size >= required && api->installed_app_version_get && api->app_catalog_version_get;
-}
-static bool has_package_api(const t5_package_manager_api_v1 *manager) {
+static bool package_available(const t5_package_manager_api_v1 *manager) {
     return manager && manager->api_version == T5_PACKAGE_MANAGER_API_VERSION &&
-           manager->struct_size >= sizeof(t5_package_manager_api_v1) &&
-           manager->preview && manager->install && manager->uninstall;
+        manager->struct_size >= sizeof(*manager) && manager->preview &&
+        manager->install && manager->uninstall;
 }
-static bool has_ui_api(const t5_ui_api_v1 *ui) {
-    const size_t required = offsetof(t5_ui_api_v1, previous_index) + sizeof(ui->previous_index);
-    return ui && ui->struct_size >= required && ui->render_list && ui->hit_test && ui->poll_event &&
-           ui->next_index && ui->previous_index;
+static bool ui_available(const t5_ui_api_v1 *ui) {
+    return ui && ui->struct_size >= offsetof(t5_ui_api_v1, previous_index) +
+        sizeof(ui->previous_index) && ui->render_list && ui->hit_test &&
+        ui->poll_event && ui->next_index && ui->previous_index;
 }
-static bool catalog_manifest(const t5_app_api_v1 *api, uint32_t index, t5_app_manifest_t *manifest) {
-    if (!manifest || !has_catalog_manifest_api(api)) return false;
-    *manifest = (t5_app_manifest_t){0};
-    return api->app_catalog_manifest_get(index, manifest);
+static bool release_manifest(const t5_app_api_v1 *app, uint32_t index,
+                             t5_app_manifest_t *out) {
+    if (!out || app->struct_size < offsetof(t5_app_api_v1, app_catalog_manifest_get) +
+        sizeof(app->app_catalog_manifest_get) || !app->app_catalog_manifest_get) return false;
+    *out = (t5_app_manifest_t){0};
+    return app->app_catalog_manifest_get(index, out);
 }
-static const char *catalog_display_name(const t5_app_api_v1 *api, uint32_t index,
-                                        t5_app_release_asset_t *asset, t5_app_manifest_t *manifest,
-                                        bool *has_manifest) {
-    if (has_manifest) *has_manifest = false;
-    if (!api->app_catalog_get(index, asset)) return NULL;
-    if (catalog_manifest(api, index, manifest)) {
-        if (has_manifest) *has_manifest = true;
-        return manifest->display_name;
-    }
-    return asset->name;
+static bool version_available(const t5_app_api_v1 *app) {
+    return app->struct_size >= offsetof(t5_app_api_v1, app_catalog_version_get) +
+        sizeof(app->app_catalog_version_get) && app->app_catalog_version_get &&
+        app->installed_app_version_get;
 }
-static app_action_t catalog_action(const t5_app_api_v1 *api, uint32_t index,
-                                   const t5_app_manifest_t *manifest,
-                                   char *available_version, size_t available_capacity,
-                                   char *installed_version, size_t installed_capacity) {
-    if (available_version && available_capacity) available_version[0] = '\0';
-    if (installed_version && installed_capacity) installed_version[0] = '\0';
-    if (!manifest || !has_version_api(api)) return APP_ACTION_INSTALL;
-    if (!api->app_catalog_version_get(index, available_version, available_capacity)) return APP_ACTION_INSTALL;
-    if (!api->installed_app_version_get(manifest->file_name, installed_version, installed_capacity))
-        return APP_ACTION_INSTALL;
-    if (!strcmp(available_version, installed_version)) return APP_ACTION_CURRENT;
-    return APP_ACTION_UPDATE;
+static void row(uint32_t index, const char *title, const char *subtitle,
+                const char *value, bool highlighted) {
+    copy_text(titles[index], sizeof(titles[index]), title);
+    copy_text(subtitles[index], sizeof(subtitles[index]), subtitle);
+    copy_text(values[index], sizeof(values[index]), value);
+    rows[index] = (t5_ui_list_row_t){titles[index], subtitles[index], values[index],
+                    highlighted ? T5_UI_LIST_HIGHLIGHT_VALUE : 0};
 }
-static void build_release_rows(const t5_app_api_v1 *api) {
-    uint32_t count = api->app_catalog_count();
-    if (count > MAX_CATALOG_ITEMS) count = MAX_CATALOG_ITEMS;
+static bool release_versions(const t5_app_api_v1 *app, uint32_t index,
+                             const t5_app_manifest_t *manifest,
+                             char *available, char *installed) {
+    available[0] = installed[0] = '\0';
+    if (!manifest || !version_available(app) ||
+        !app->app_catalog_version_get(index, available, T5_APP_VERSION_MAX)) return false;
+    return app->installed_app_version_get(manifest->file_name, installed,
+                                           T5_APP_VERSION_MAX);
+}
+static void build_releases(const t5_app_api_v1 *app) {
     row_count = 0;
-    for (uint32_t catalog_index = 0; catalog_index < count; ++catalog_index) {
+    const uint32_t count = app->app_catalog_count();
+    for (uint32_t index = 0; index < count && row_count < MAX_ROWS; ++index) {
         t5_app_release_asset_t asset = {0};
         t5_app_manifest_t manifest = {0};
-        bool has_manifest = false;
-        const char *name = catalog_display_name(api, catalog_index, &asset, &manifest, &has_manifest);
-        if (!name) continue;
-        char available[T5_APP_VERSION_MAX] = {0};
+        if (!app->app_catalog_get(index, &asset)) continue;
+        const bool has_manifest = release_manifest(app, index, &manifest);
+        char latest[T5_APP_VERSION_MAX] = {0};
         char installed[T5_APP_VERSION_MAX] = {0};
-        const app_action_t action = has_manifest ? catalog_action(api, catalog_index, &manifest,
-                available, sizeof(available), installed, sizeof(installed)) : APP_ACTION_INSTALL;
-        snprintf(row_titles[row_count], sizeof(row_titles[row_count]), "%s", name);
-        if (has_manifest && !manifest.compatible) {
-            snprintf(row_subtitles[row_count], sizeof(row_subtitles[row_count]), "Requires newer firmware");
-            snprintf(row_values[row_count], sizeof(row_values[row_count]), "%s", available);
-        } else if (action == APP_ACTION_CURRENT) {
-            snprintf(row_subtitles[row_count], sizeof(row_subtitles[row_count]), "Installed");
-            snprintf(row_values[row_count], sizeof(row_values[row_count]), "%s", installed[0] ? installed : available);
-        } else if (action == APP_ACTION_UPDATE) {
-            snprintf(row_subtitles[row_count], sizeof(row_subtitles[row_count]),
-                     installed[0] ? "Installed %s" : "Update available", installed);
-            snprintf(row_values[row_count], sizeof(row_values[row_count]), "%s", available[0] ? available : "Update");
-        } else {
-            snprintf(row_subtitles[row_count], sizeof(row_subtitles[row_count]), "Not installed");
-            snprintf(row_values[row_count], sizeof(row_values[row_count]), "%s", available[0] ? available : "Install");
-        }
-        rows[row_count] = (t5_ui_list_row_t){row_titles[row_count], row_subtitles[row_count],
-                                            row_values[row_count],
-                                            action == APP_ACTION_UPDATE ? T5_UI_LIST_HIGHLIGHT_VALUE : 0};
-        row_catalog_index[row_count] = catalog_index;
-        ++row_count;
+        const bool installed_now = has_manifest &&
+            release_versions(app, index, &manifest, latest, installed);
+        const bool current = installed_now && strcmp(latest, installed) == 0;
+        const char *subtitle = has_manifest && !manifest.compatible ?
+            "Requires newer firmware" : current ? "Installed" : installed_now ?
+            "Update available" : "Not installed";
+        row(row_count, has_manifest ? manifest.display_name : asset.name,
+            subtitle, latest[0] ? latest : current ? "Current" :
+            installed_now ? "Update" : "Install", installed_now && !current);
+        release_indices[row_count++] = index;
     }
 }
-
-// Use the same unified preview/install/uninstall path as Package Manager.
-// No other package kind is ever exposed by this App Store view. A directory
-// iterator is closed before any transaction changes storage contents.
-static bool build_inbox_rows(const t5_app_api_v1 *app,
-                             const t5_package_manager_api_v1 *manager) {
+static bool build_inbox(const t5_app_api_v1 *app,
+                        const t5_package_manager_api_v1 *manager) {
     row_count = 0;
     if (!app->dir_open("/sd/Packages/Inbox")) return false;
     t5_app_dirent_t entry = {0};
     while (app->dir_next(&entry)) {
-        if (!entry.is_directory || row_count >= MAX_CATALOG_ITEMS) continue;
+        if (!entry.is_directory || row_count == MAX_ROWS) continue;
+        const size_t length = strnlen(entry.name, sizeof(entry.name));
+        // A directory name must fit the canonical package identity exactly;
+        // never pass a truncated identity into the install API.
+        if (!length || length >= sizeof(folders[0]) ||
+            length == sizeof(entry.name)) continue;
         t5_package_preview_t info = {0};
-        if (!manager->preview(entry.name, &info) || info.kind != T5_PACKAGE_APPLICATION) continue;
-        snprintf(row_folders[row_count], sizeof(row_folders[row_count]), "%s", entry.name);
-        inbox_packages[row_count] = info;
-        snprintf(row_titles[row_count], sizeof(row_titles[row_count]), "%s", info.id);
-        if (!info.valid_installation)
-            snprintf(row_subtitles[row_count], sizeof(row_subtitles[row_count]), "Installed package needs recovery");
-        else if (info.installed_version[0])
-            snprintf(row_subtitles[row_count], sizeof(row_subtitles[row_count]),
-                     "Installed %s; %s", info.installed_version,
+        if (!manager->preview(entry.name, &info) ||
+            info.kind != T5_PACKAGE_APPLICATION) continue;
+        memcpy(folders[row_count], entry.name, length + 1u);
+        packages[row_count] = info;
+        char detail[SUBTITLE_SIZE] = {0};
+        if (!info.valid_installation) copy_text(detail, sizeof(detail), "Installed package needs recovery");
+        else if (info.installed_version[0]) {
+            snprintf(detail, sizeof(detail), "Installed %.31s; %s", info.installed_version,
                      info.install_allowed ? "update available" : "no update");
-        else
-            snprintf(row_subtitles[row_count], sizeof(row_subtitles[row_count]), "%s",
-                     info.install_allowed ? "SD inbox: ready to install" : "Dependency, version or stage blocked");
-        snprintf(row_values[row_count], sizeof(row_values[row_count]), "%s", info.version);
-        rows[row_count] = (t5_ui_list_row_t){row_titles[row_count], row_subtitles[row_count],
-                                            row_values[row_count],
-                                            info.install_allowed ? T5_UI_LIST_HIGHLIGHT_VALUE : 0};
+        } else copy_text(detail, sizeof(detail), info.install_allowed ?
+            "SD inbox: ready to install" : "Dependency, version or stage blocked");
+        row(row_count, info.id, detail, info.version, info.install_allowed != 0);
         ++row_count;
     }
     app->dir_close();
     return true;
 }
-static app_action_t selected_release_action(const t5_app_api_v1 *api, int32_t selected,
-                                            t5_app_manifest_t *manifest_out, bool *has_manifest_out) {
-    if (manifest_out) *manifest_out = (t5_app_manifest_t){0};
-    if (has_manifest_out) *has_manifest_out = false;
-    if (selected < 0 || selected >= (int32_t)row_count) return APP_ACTION_INSTALL;
-    const uint32_t index = row_catalog_index[selected];
-    t5_app_release_asset_t asset = {0};
-    t5_app_manifest_t manifest = {0};
-    bool has_manifest = false;
-    (void)catalog_display_name(api, index, &asset, &manifest, &has_manifest);
-    if (manifest_out) *manifest_out = manifest;
-    if (has_manifest_out) *has_manifest_out = has_manifest;
-    char available[T5_APP_VERSION_MAX] = {0}, installed[T5_APP_VERSION_MAX] = {0};
-    return has_manifest ? catalog_action(api, index, &manifest,
-            available, sizeof(available), installed, sizeof(installed)) : APP_ACTION_INSTALL;
-}
-static const char *confirm_label(const t5_app_api_v1 *api, int32_t selected) {
-    if (selected < 0 || selected >= (int32_t)row_count) return "";
-    if (view == VIEW_INBOX) {
-        const t5_package_preview_t *info = &inbox_packages[selected];
-        if (!info->valid_installation) return "";
-        if (info->install_allowed) return info->installed_version[0] ? "Update" : "Install";
-        return info->installed_version[0] ? "Actions" : "";
-    }
-    t5_app_manifest_t manifest = {0};
-    bool has_manifest = false;
-    const app_action_t action = selected_release_action(api, selected, &manifest, &has_manifest);
-    if (has_manifest && !manifest.compatible) return "";
-    if (action == APP_ACTION_CURRENT) return "";
-    return action == APP_ACTION_UPDATE ? "Update" : "Install";
-}
-static void render_rows(const t5_app_api_v1 *api, const t5_ui_api_v1 *ui,
-                        int32_t selected, const char *status) {
-    const t5_ui_chrome_t chrome = {
-        .title = "App Store",
-        .subtitle = view == VIEW_INBOX ? "SD inbox apps; tap header for releases" :
-                   "Latest release; tap header for SD packages",
-        .status = status ? status : "",
-        .back_label = "Back",
-        .confirm_label = confirm_label(api, selected),
-        .previous_label = "Up", .next_label = "Down",
-    };
-    if (row_count) ui->render_list(&chrome, rows, row_count, selected);
-    else {
-        const t5_ui_list_row_t empty = {"No applications", view == VIEW_INBOX ?
-            "Add an application to /Packages/Inbox/<id>" : "Release catalog is empty", "", 0};
-        ui->render_list(&chrome, &empty, 1, 0);
-    }
-}
-static bool refresh_release(const t5_app_api_v1 *api, const t5_ui_api_v1 *ui) {
+static bool refresh_releases(const t5_app_api_v1 *app, const t5_ui_api_v1 *ui) {
     const t5_ui_list_row_t loading = {"Loading release catalog", "Using saved Wi-Fi", "", 0};
-    const t5_ui_chrome_t chrome = {"App Store", "Latest release apps", "Connecting with saved Wi-Fi...",
+    const t5_ui_chrome_t chrome = {"App Store", "Release catalog", "Connecting...",
                                    "Back", "", "", ""};
     ui->render_list(&chrome, &loading, 1, 0);
-    if (!api->app_catalog_refresh()) return false;
-    build_release_rows(api);
+    if (!app->app_catalog_refresh()) return false;
+    build_releases(app);
     return true;
 }
-static bool retry_or_exit(const t5_ui_api_v1 *ui) {
-    const t5_ui_list_row_t retry = {"Retry catalog refresh", "Unable to load latest release", "Retry",
-                                     T5_UI_LIST_HIGHLIGHT_VALUE};
-    const t5_ui_chrome_t chrome = {"App Store", "Latest release apps", "Check saved Wi-Fi, then retry",
-                                   "Back", "Retry", "", ""};
-    ui->render_list(&chrome, &retry, 1, 0);
-    for (;;) {
-        t5_ui_event_t event = {0};
-        if (!ui->poll_event(&event, 20)) return false;
-        if (event.type == T5_UI_EVENT_CONFIRM ||
-            (event.type == T5_UI_EVENT_TAP && ui->hit_test(event.touch_x, event.touch_y) == 0)) return true;
-        if (event.type == T5_UI_EVENT_BACK || event.type == T5_UI_EVENT_EXIT) return false;
-    }
-}
-static void activate_release(const t5_app_api_v1 *api, const t5_ui_api_v1 *ui,
-                             int32_t selected, char *status, size_t capacity) {
-    if (selected < 0 || selected >= (int32_t)row_count) return;
-    const uint32_t index = row_catalog_index[selected];
-    t5_app_release_asset_t asset = {0};
-    t5_app_manifest_t manifest = {0};
-    bool has_manifest = false;
-    const char *name_ptr = catalog_display_name(api, index, &asset, &manifest, &has_manifest);
-    if (!name_ptr) return;
-    char name[TITLE_MAX];
-    snprintf(name, sizeof(name), "%s", name_ptr);
-    char available[T5_APP_VERSION_MAX] = {0}, installed[T5_APP_VERSION_MAX] = {0};
-    const app_action_t action = has_manifest ? catalog_action(api, index, &manifest,
-            available, sizeof(available), installed, sizeof(installed)) : APP_ACTION_INSTALL;
-    if (has_manifest && !manifest.compatible) {
-        snprintf(status, capacity, "%s requires newer firmware", name);
-        return;
-    }
-    if (action == APP_ACTION_CURRENT) {
-        snprintf(status, capacity, "%s is already current", name);
-        return;
-    }
-    snprintf(status, capacity, "%s %s...", action == APP_ACTION_UPDATE ? "Updating" : "Installing", name);
-    render_rows(api, ui, selected, status);
-    const bool ok = api->app_catalog_download(index);
-    build_release_rows(api);
-    snprintf(status, capacity, "%s %s", name, ok ? "installed" : "installation failed");
-}
-static bool confirm_removal(const t5_ui_api_v1 *ui, const char *id) {
-    const t5_ui_list_row_t choices[2] = {
-        {"Keep application", "Leave installed files unchanged", "Cancel", 0},
-        {"Uninstall application", "Requires inactive ELF; irreversible", "Remove", T5_UI_LIST_HIGHLIGHT_VALUE},
+static bool removal_confirmed(const t5_ui_api_v1 *ui, const char *name) {
+    const t5_ui_list_row_t choices[] = {
+        {"Keep application", "Leave files unchanged", "Cancel", 0},
+        {"Uninstall application", "Only if not in use", "Remove", T5_UI_LIST_HIGHLIGHT_VALUE},
     };
-    const t5_ui_chrome_t chrome = {"Confirm uninstall", id, "Select Remove and Confirm",
+    const t5_ui_chrome_t chrome = {"Confirm removal", name, "Select Remove to uninstall",
                                    "Cancel", "Select", "Up", "Down"};
     int32_t selected = 0;
     ui->render_list(&chrome, choices, 2, selected);
@@ -266,57 +149,110 @@ static bool confirm_removal(const t5_ui_api_v1 *ui, const char *id) {
         if (!ui->poll_event(&event, 20) || event.type == T5_UI_EVENT_BACK ||
             event.type == T5_UI_EVENT_EXIT) return false;
         if (event.type == T5_UI_EVENT_PREVIOUS) selected = ui->previous_index(selected, 2);
-        if (event.type == T5_UI_EVENT_NEXT) selected = ui->next_index(selected, 2);
-        if (event.type == T5_UI_EVENT_TAP) {
+        else if (event.type == T5_UI_EVENT_NEXT) selected = ui->next_index(selected, 2);
+        else if (event.type == T5_UI_EVENT_TAP) {
             const int32_t hit = ui->hit_test(event.touch_x, event.touch_y);
-            if (hit < 0 || hit >= 2) continue;
-            selected = hit;
-        }
-        if (event.type == T5_UI_EVENT_CONFIRM) return selected == 1;
+            if (hit >= 0 && hit < 2) selected = hit;
+        } else if (event.type == T5_UI_EVENT_CONFIRM) return selected == 1;
         ui->render_list(&chrome, choices, 2, selected);
     }
 }
-static void activate_inbox(const t5_package_manager_api_v1 *manager, const t5_ui_api_v1 *ui,
-                           int32_t selected, char *status, size_t capacity) {
-    if (selected < 0 || selected >= (int32_t)row_count) return;
-    const t5_package_preview_t info = inbox_packages[selected];
-    if (!info.valid_installation) {
-        snprintf(status, capacity, "%s: recovery required", info.id);
+static const char *action_label(const t5_app_api_v1 *app, int32_t selected) {
+    if (selected < 0 || selected >= (int32_t)row_count) return "";
+    if (view == SD_INBOX) {
+        const t5_package_preview_t *package = &packages[selected];
+        return !package->valid_installation ? "" : package->install_allowed ?
+            package->installed_version[0] ? "Update" : "Install" :
+            package->installed_version[0] ? "Actions" : "";
+    }
+    t5_app_manifest_t manifest = {0};
+    const uint32_t index = release_indices[selected];
+    if (release_manifest(app, index, &manifest)) {
+        if (!manifest.compatible) return "";
+        char latest[T5_APP_VERSION_MAX] = {0}, installed[T5_APP_VERSION_MAX] = {0};
+        if (release_versions(app, index, &manifest, latest, installed)) {
+            if (!strcmp(latest, installed)) return "";
+            return "Update";
+        }
+    }
+    return "Install";
+}
+static void render(const t5_app_api_v1 *app, const t5_ui_api_v1 *ui,
+                   int32_t selected, const char *status) {
+    const t5_ui_chrome_t chrome = {
+        .title = "App Store",
+        .subtitle = view == SD_INBOX ? "SD packages; tap header for releases" :
+                    "Latest release; tap header for SD packages",
+        .status = status,
+        .back_label = "Back", .confirm_label = action_label(app, selected),
+        .previous_label = "Up", .next_label = "Down",
+    };
+    if (row_count) ui->render_list(&chrome, rows, row_count, selected);
+    else {
+        const t5_ui_list_row_t empty = {"No applications", view == SD_INBOX ?
+            "Add a package under /Packages/Inbox" : "Release catalog unavailable", "", 0};
+        ui->render_list(&chrome, &empty, 1, 0);
+    }
+}
+static void activate_inbox(const t5_package_manager_api_v1 *manager,
+                           const t5_ui_api_v1 *ui, int32_t selected,
+                           char *status, size_t capacity) {
+    const t5_package_preview_t package = packages[selected];
+    if (!package.valid_installation) {
+        snprintf(status, capacity, "%.63s: recovery required", package.id);
+    } else if (package.install_allowed) {
+        const bool ok = manager->install(folders[selected]);
+        snprintf(status, capacity, "%.63s: %s", package.id,
+                 ok ? "verified package installed" : "install refused: check stage/dependencies");
+    } else if (package.installed_version[0] && removal_confirmed(ui, package.id)) {
+        const bool ok = manager->uninstall(T5_PACKAGE_APPLICATION, package.id);
+        snprintf(status, capacity, "%.63s: %s", package.id,
+                 ok ? "uninstalled" : "uninstall refused: active users");
+    } else if (!package.installed_version[0]) {
+        snprintf(status, capacity, "%.63s: dependency/version/stage blocked", package.id);
+    }
+}
+static void activate_release(const t5_app_api_v1 *app, const t5_ui_api_v1 *ui,
+                             int32_t selected, char *status, size_t capacity) {
+    const uint32_t index = release_indices[selected];
+    t5_app_release_asset_t asset = {0};
+    t5_app_manifest_t manifest = {0};
+    if (!app->app_catalog_get(index, &asset)) return;
+    const bool known = release_manifest(app, index, &manifest);
+    const char *name = known ? manifest.display_name : asset.name;
+    char latest[T5_APP_VERSION_MAX] = {0}, installed[T5_APP_VERSION_MAX] = {0};
+    const bool installed_now = known && release_versions(app, index, &manifest, latest, installed);
+    if (known && !manifest.compatible) {
+        snprintf(status, capacity, "%.95s requires newer firmware", name);
         return;
     }
-    if (info.install_allowed) {
-        const bool ok = manager->install(row_folders[selected]);
-        snprintf(status, capacity, "%s: %s", info.id,
-                 ok ? "verified package installed" : "install refused; inspect stage/dependencies");
-    } else if (info.installed_version[0] && confirm_removal(ui, info.id)) {
-        const bool ok = manager->uninstall(T5_PACKAGE_APPLICATION, info.id);
-        snprintf(status, capacity, "%s: %s", info.id, ok ? "uninstalled" : "uninstall refused; stop active users");
-    } else if (!info.installed_version[0]) {
-        snprintf(status, capacity, "%s: install blocked; check dependencies or stage", info.id);
+    if (installed_now && !strcmp(latest, installed)) {
+        snprintf(status, capacity, "%.95s already current", name);
+        return;
     }
+    snprintf(status, capacity, "%s %.95s...", installed_now ? "Updating" : "Installing", name);
+    render(app, ui, selected, status);
+    const bool okay = app->app_catalog_download(index);
+    build_releases(app);
+    snprintf(status, capacity, "%.95s: %s", name, okay ? "installed" : "installation failed");
 }
 
 __attribute__((visibility("default"))) void app_main(void) {
-    const t5_app_api_v1 *api = t5_app_get_api(T5_APP_ABI_VERSION);
+    const t5_app_api_v1 *app = t5_app_get_api(T5_APP_ABI_VERSION);
     const t5_package_manager_api_v1 *manager = t5_package_manager_get_api(T5_PACKAGE_MANAGER_API_VERSION);
     const t5_ui_api_v1 *ui = t5_ui_get_api(T5_UI_API_VERSION);
-    if (!has_catalog_api(api) || !has_ui_api(ui) || !api->set_back_exits_app ||
-        !api->dir_open || !api->dir_next || !api->dir_close || !has_package_api(manager)) return;
-    api->set_back_exits_app(false);
-    view = VIEW_RELEASE;
-    if (!refresh_release(api, ui)) {
-        while (retry_or_exit(ui)) {
-            if (refresh_release(api, ui)) break;
-        }
-        // Offline packages remain usable even when the network is unavailable.
-        if (!api->app_catalog_count()) {
-            view = VIEW_INBOX;
-            (void)build_inbox_rows(api, manager);
-        }
+    if (!catalog_available(app) || !package_available(manager) || !ui_available(ui) ||
+        !app->set_back_exits_app || !app->dir_open || !app->dir_next || !app->dir_close) return;
+    app->set_back_exits_app(false);
+    view = RELEASES;
+    if (!refresh_releases(app, ui)) {
+        // A Wi-Fi failure does not lock users out of the unified offline path.
+        view = SD_INBOX;
+        (void)build_inbox(app, manager);
     }
     int32_t selected = 0;
-    char status[STATUS_MAX] = {0};
-    render_rows(api, ui, selected, status);
+    char status[STATUS_SIZE] = {0};
+    render(app, ui, selected, status);
     for (;;) {
         t5_ui_event_t event = {0};
         if (!ui->poll_event(&event, 20)) break;
@@ -329,26 +265,28 @@ __attribute__((visibility("default"))) void app_main(void) {
                 selected = ui->next_index(selected, row_count);
                 status[0] = '\0'; redraw = true; break;
             case T5_UI_EVENT_CONFIRM:
-                if (view == VIEW_INBOX) {
-                    activate_inbox(manager, ui, selected, status, sizeof(status));
-                    (void)build_inbox_rows(api, manager);
-                } else activate_release(api, ui, selected, status, sizeof(status));
+                if (row_count && selected >= 0 && selected < (int32_t)row_count) {
+                    if (view == SD_INBOX) {
+                        activate_inbox(manager, ui, selected, status, sizeof(status));
+                        (void)build_inbox(app, manager);
+                    } else activate_release(app, ui, selected, status, sizeof(status));
+                }
                 redraw = true; break;
             case T5_UI_EVENT_TAP: {
                 const int32_t hit = ui->hit_test(event.touch_x, event.touch_y);
                 if (hit == T5_UI_HIT_HEADER) {
-                    view = view == VIEW_RELEASE ? VIEW_INBOX : VIEW_RELEASE;
-                    if (view == VIEW_INBOX) (void)build_inbox_rows(api, manager);
-                    else if (!refresh_release(api, ui)) snprintf(status, sizeof(status), "Release refresh failed; tap header for SD apps");
+                    view = view == RELEASES ? SD_INBOX : RELEASES;
+                    if (view == SD_INBOX) (void)build_inbox(app, manager);
+                    else if (!refresh_releases(app, ui))
+                        copy_text(status, sizeof(status), "Release refresh failed; SD packages available");
                     else status[0] = '\0';
-                    selected = 0;
-                    redraw = true;
+                    selected = 0; redraw = true;
                 } else if (hit >= 0 && hit < (int32_t)row_count) {
-                    if (hit == selected) {
-                        if (view == VIEW_INBOX) {
+                    if (selected == hit) {
+                        if (view == SD_INBOX) {
                             activate_inbox(manager, ui, selected, status, sizeof(status));
-                            (void)build_inbox_rows(api, manager);
-                        } else activate_release(api, ui, selected, status, sizeof(status));
+                            (void)build_inbox(app, manager);
+                        } else activate_release(app, ui, selected, status, sizeof(status));
                     } else { selected = hit; status[0] = '\0'; }
                     redraw = true;
                 }
@@ -356,12 +294,12 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             case T5_UI_EVENT_BACK:
             case T5_UI_EVENT_EXIT:
-                api->set_back_exits_app(true);
+                app->set_back_exits_app(true);
                 return;
             default: break;
         }
-        if (!row_count || selected >= (int32_t)row_count) selected = 0;
-        if (redraw) render_rows(api, ui, selected, status);
+        if (!row_count || selected < 0 || selected >= (int32_t)row_count) selected = 0;
+        if (redraw) render(app, ui, selected, status);
     }
-    api->set_back_exits_app(true);
+    app->set_back_exits_app(true);
 }
