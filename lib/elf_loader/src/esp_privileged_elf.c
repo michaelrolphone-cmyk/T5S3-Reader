@@ -15,18 +15,17 @@ int esp_elf_relocate_privileged_verified_v1(esp_elf_t *module,
                                             const char *const *signed_imports,
                                             size_t signed_import_count)
 {
-    /* The Package Manager must authenticate the SAME digest-checked snapshot
-     * and exact import declarations. Both preflights run before scope/mapping. */
-    if (!module || !verified_bytes || !signed_imports || !signed_import_count ||
+    /* Zero imports is a real exact declaration. The matcher verifies that no
+     * undefined symbol occurs in either ELF symbol table; nullptr still
+     * rejects missing metadata, regardless of the declared count. */
+    if (!module || !verified_bytes || !signed_imports ||
+        signed_import_count > 128 ||
         !esp_elf_validate_file(verified_bytes, verified_length) ||
         !esp_elf_privileged_imports_valid_v1(verified_bytes, verified_length) ||
         !esp_elf_privileged_manifest_imports_match_v1(
             verified_bytes, verified_length, signed_imports, signed_import_count))
         return -EINVAL;
 
-    /* No global resolver swap. The one-shot module grant restricts the
-     * privileged lookup to precisely this load, denying same-task nested
-     * ordinary ELFs. Concurrent ordinary loads on other tasks are unchanged. */
     if (!esp_elf_privileged_os_cpu_begin_v1()) return -EBUSY;
     int result = esp_elf_init(module);
     if (result == 0) {
@@ -37,7 +36,6 @@ int esp_elf_relocate_privileged_verified_v1(esp_elf_t *module,
         if (result != 0) esp_elf_deinit(module);
     }
     if (!esp_elf_privileged_os_cpu_end_v1()) {
-        /* Refuse to release a scope while relocation remains active. */
         if (result == 0) esp_elf_deinit(module);
         return -EIO;
     }
