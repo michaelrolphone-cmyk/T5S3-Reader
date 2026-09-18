@@ -30,4 +30,7 @@ fi
 python3 "$repo_dir/test/native_apps/test_symbols.py"
 python3 "$repo_dir/test/native_apps/test_capability_manifest.py"
 python3 "$repo_dir/test/resources/driver_install_stack_progress_source_test.py"
+cc -std=c11 -Wall -Wextra -Werror \
+  "$repo_dir/test/native_apps/gnss_consent_contract_test.c" -o "$binary"
+(cd "$repo_dir" && "$binary")
 echo 'Native app launcher tests passed'
