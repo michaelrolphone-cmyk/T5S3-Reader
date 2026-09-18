@@ -130,7 +130,7 @@ static void install_progress(void *context, const t5_driver_install_event_t *eve
     }
     if (stage_changed || file_changed) {
         if (view->current[0] && view->phase[0])
-            snprintf(view->previous, sizeof(view->previous), "%s: %s", view->current, view->phase);
+            snprintf(view->previous, sizeof(view->previous), "%.47s: %.63s", view->current, view->phase);
         snprintf(view->current, sizeof(view->current), "%s", event->package_id);
         snprintf(view->phase, sizeof(view->phase), "%s", phase);
         snprintf(view->file, sizeof(view->file), "%s", file);

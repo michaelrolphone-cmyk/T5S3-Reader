@@ -21,6 +21,13 @@ static bool retained_discard;
 static t5_ui_event_t queued[24];
 static size_t queued_count;
 static size_t queued_next;
+static unsigned progress_rendered;
+static char progress_current[64];
+static char progress_phase[96];
+static char progress_value[64];
+static char progress_file[64];
+static char progress_previous[128];
+static char progress_status[STATUS_BYTES];
 
 static void enqueue(uint8_t type) {
     assert(queued_count < sizeof(queued) / sizeof(queued[0]));
@@ -102,6 +109,20 @@ static void mock_recovery_render(const t5_ui_chrome_t *chrome, const t5_ui_list_
            selected >= 0 && selected < (int32_t)count);
     ++recovery_rendered;
 }
+static void mock_progress_render(const t5_ui_chrome_t *chrome, const t5_ui_list_row_t *items,
+                                 uint32_t count, int32_t selected) {
+    assert(chrome && items && count == 3 && selected == 0);
+    assert(chrome->title && strcmp(chrome->title, "Driver installation") == 0);
+    assert(items[0].title && items[0].subtitle && items[0].value &&
+           items[1].subtitle && items[2].subtitle && chrome->status);
+    ++progress_rendered;
+    snprintf(progress_current, sizeof(progress_current), "%s", items[0].title);
+    snprintf(progress_phase, sizeof(progress_phase), "%s", items[0].subtitle);
+    snprintf(progress_value, sizeof(progress_value), "%s", items[0].value);
+    snprintf(progress_file, sizeof(progress_file), "%s", items[1].subtitle);
+    snprintf(progress_previous, sizeof(progress_previous), "%s", items[2].subtitle);
+    snprintf(progress_status, sizeof(progress_status), "%s", chrome->status);
+}
 
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) {
     (void)version;
@@ -145,9 +166,10 @@ int main(void) {
     };
     char status[STATUS_BYTES] = {0};
     assert(recovery_api(&manager));
+    assert(!progress_api(&manager));
     t5_driver_manager_api_v1 legacy = manager;
     legacy.struct_size = offsetof(t5_driver_manager_api_v1, recovery_refresh);
-    assert(driver_api(&legacy) && !recovery_api(&legacy));
+    assert(driver_api(&legacy) && !recovery_api(&legacy) && !progress_api(&legacy));
     assert(t5_package_version_compare("1.10.0", "1.9.99") == 1);
     assert(t5_package_version_compare("4294967295.0.0", "1.0.0") == 1);
     assert(t5_package_version_compare("4294967296.0.0", "1.0.0") == 2);
@@ -161,7 +183,8 @@ int main(void) {
     assert(rows[0].flags == T5_UI_LIST_HIGHLIGHT_VALUE);
     assert(strcmp(action_label(&manager, 0), "Update") == 0);
     activate(&manager, NULL, &ui, 0, status, sizeof(status));
-    assert(install_calls == 1 && rendered == 1);
+    // Legacy firmware now shows a one-row busy screen in addition to loading.
+    assert(install_calls == 1 && rendered == 2);
 
     installed_version = "1.10.0";
     assert(load_release(&manager, &ui));
@@ -232,6 +255,37 @@ int main(void) {
     assert(recovery_screen(&manager, &recovery_ui));
     assert(recovery_retries == 1 && recovery_discards == 1);
     assert(recovery_rendered > 0 && recovery_refreshes > 0);
-    puts("Driver Manager real UI: versions, offline recovery, verified retry, cancelled and two-step discard, mapped refusal PASS");
+
+    // The actual app must render the installer events on the device, not just
+    // log them. Unknown download lengths must never display a percentage.
+    const t5_ui_api_v1 progress_ui = {.render_list = mock_progress_render};
+    begin_install_progress(NULL, &progress_ui, "usb-host-v2");
+    assert(progress_rendered == 1 && !strcmp(progress_current, "usb-host-v2"));
+    assert(strstr(progress_status, "Working") != NULL);
+    const t5_driver_install_event_t dependency = {
+        "i2c-esp32s3-v2", NULL, T5_DRIVER_INSTALL_DEPENDENCY, 0, 0};
+    install_progress(&install_view, &dependency);
+    assert(!strcmp(progress_current, "i2c-esp32s3-v2"));
+    assert(!strcmp(progress_phase, "Required dependency"));
+    const t5_driver_install_event_t downloading = {
+        "i2c-esp32s3-v2", "driver.elf", T5_DRIVER_INSTALL_DOWNLOADING, 250, 1000};
+    install_progress(&install_view, &downloading);
+    assert(strstr(progress_value, "25%") && !strcmp(progress_file, "driver.elf"));
+    assert(strstr(progress_previous, "Required dependency"));
+    const t5_driver_install_event_t verifying = {
+        "i2c-esp32s3-v2", NULL, T5_DRIVER_INSTALL_VERIFYING, 0, 0};
+    install_progress(&install_view, &verifying);
+    assert(strstr(progress_phase, "Verifying") && !progress_value[0]);
+    const t5_driver_install_event_t unknown_size = {
+        "i2c-esp32s3-v2", "provider-abi.v1", T5_DRIVER_INSTALL_DOWNLOADING, 512, 0};
+    install_progress(&install_view, &unknown_size);
+    assert(strstr(progress_value, "512 bytes received") && !strchr(progress_value, '%'));
+    const t5_driver_install_event_t failed = {
+        "usb-host-v2", NULL, T5_DRIVER_INSTALL_FAILED, 0, 0};
+    install_progress(&install_view, &failed);
+    assert(!strcmp(progress_current, "usb-host-v2") && strstr(progress_status, "Failed"));
+    assert(progress_rendered >= 5);
+
+    puts("Driver Manager real UI: versions, progress events/bytes, legacy busy screen, offline recovery and safe discard PASS");
     return 0;
 }
