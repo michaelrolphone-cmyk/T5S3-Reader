@@ -3,6 +3,7 @@
 #include <limits>
 #ifdef ESP_PLATFORM
 #include <cstdlib>
+#include <Logging.h>
 extern "C" {
 #include <esp_elf.h>
 #include <esp_heap_caps.h>
@@ -36,6 +37,20 @@ bool validRequest(const char* expectedId, const char* expectedCapability,
   return expectedId && expectedId[0] && expectedCapability &&
          expectedCapability[0] && expectedApi && validDependencies(deps, count);
 }
+void report(const char* id, const char* stage, int code = 0) {
+  // Some ESP_PLATFORM host harnesses stub LOG_ERR to a no-op. Keep parameters
+  // explicitly used in both logging-enabled and logging-disabled builds.
+  (void)id; (void)stage; (void)code;
+#ifdef ESP_PLATFORM
+  LOG_ERR("PROV", "PROVREF id=%s failure=%s code=%d", id ? id : "?", stage, code);
+#endif
+}
+void trace(const char* id, const char* stage) {
+  (void)id; (void)stage;
+#ifdef ESP_PLATFORM
+  LOG_INF("PROV", "PROVREF id=%s stage=%s", id ? id : "?", stage);
+#endif
+}
 } // namespace
 
 bool ModuleV2::closeMapped() {
@@ -68,16 +83,23 @@ bool ModuleV2::activateMapped(risc_driver_get_v2_fn get, const char* expectedId,
       candidate->capability_api == expectedApi && candidate->capability &&
       candidate->start && candidate->stop &&
       (!privileged_image_ || hasQuiesce(candidate));
-  if (!valid) return false;
+  if (!valid) {
+    report(expectedId, "elf-interface-or-identity");
+    return false;
+  }
+  trace(expectedId, "hardware-start-begin");
   if (candidate->start(deps, count)) {
     driver_ = candidate;
     api_ = candidate->capability;
     state_ = State::Active;
+    trace(expectedId, "hardware-started");
     return true;
   }
+  report(expectedId, "hardware-start-rejected");
   // A rejected start may still own DMA, tasks, IRQs or a lower provider.
   if (hasQuiesce(candidate) && !candidate->quiesce()) {
     driver_ = candidate;
+    report(expectedId, "hardware-quiesce-rejected");
     return false;
   }
   candidate->stop();
@@ -120,15 +142,20 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
   if (handle_ || !candidateBytes || !authenticatedSha256 || !length ||
       !signedImports || signedImportCount > 128 ||
       length > 8u * 1024u * 1024u ||
-      !validRequest(expectedId, expectedCapability, expectedApi, deps, count))
+      !validRequest(expectedId, expectedCapability, expectedApi, deps, count)) {
+    report(expectedId, "invalid-elf-request");
     return false;
+  }
   state_ = State::Failed;
-
+  trace(expectedId, "elf-relocate-begin");
   auto* snapshot = static_cast<uint8_t*>(
       heap_caps_malloc(length, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (!snapshot) snapshot = static_cast<uint8_t*>(
       heap_caps_malloc(length, MALLOC_CAP_8BIT));
-  if (!snapshot) return false;
+  if (!snapshot) {
+    report(expectedId, "elf-snapshot-oom", static_cast<int>(length));
+    return false;
+  }
   std::memcpy(snapshot, candidateBytes, length);
   uint8_t actual[32]{};
   const bool hashed = mbedtls_sha256_ret(snapshot, length, actual, 0) == 0;
@@ -138,12 +165,14 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
   std::memset(actual, 0, sizeof(actual));
   if (!hashed || mismatch) {
     heap_caps_free(snapshot);
+    report(expectedId, "elf-digest-mismatch-or-hash");
     return false;
   }
 
   auto* image = static_cast<esp_elf_t*>(std::malloc(sizeof(esp_elf_t)));
   if (!image) {
     heap_caps_free(snapshot);
+    report(expectedId, "elf-handle-oom");
     return false;
   }
   const int result = esp_elf_relocate_privileged_verified_v1(
@@ -151,6 +180,7 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
   heap_caps_free(snapshot);
   if (result != 0) {
     std::free(image);
+    report(expectedId, "elf-relocation-failed", result);
     return false;
   }
   handle_ = image;
@@ -163,6 +193,8 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
       break;
     }
   }
+  if (!get) report(expectedId, "elf-entry-symbol-missing");
+  else trace(expectedId, "elf-relocated");
   if (activateMapped(get, expectedId, expectedCapability,
                      expectedApi, deps, count)) return true;
   if (driver_) return false;
