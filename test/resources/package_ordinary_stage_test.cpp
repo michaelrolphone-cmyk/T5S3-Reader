@@ -59,8 +59,12 @@ struct Directory : Source {
   std::vector<uint8_t> manifest;
   std::string active;
   bool started = false, sealed = false, discarded = false;
-  bool failWrite = false, corruptReadback = false, failSeal = false;
-  bool begin(const OrdinaryPackagePlan&) { started = true; return true; }
+  bool failWrite = false, failBegin = false, corruptReadback = false, failSeal = false;
+  bool begin(const OrdinaryPackagePlan&) {
+    if (failBegin) return false; // No exclusive ownership was granted.
+    started = true;
+    return true;
+  }
   bool beginEntry(const char* name, uint64_t) {
     active = name;
     return files.emplace(name, std::vector<uint8_t>{}).second;
@@ -123,8 +127,10 @@ Source fixture() {
   out.files["module.elf"] = std::vector<uint8_t>(96, 0);
   auto& elf = out.files["module.elf"];
   std::memcpy(elf.data(), "\x7f" "ELF\x01\x01", 6);
+  elf[6] = 1;
   elf[16] = 3;
   elf[18] = 94;
+  elf[20] = 1;
   out.files["schema.json"] = std::vector<uint8_t>(1200, 0x7b);
   return out;
 }
@@ -197,11 +203,36 @@ void failures() {
   candidate = plan(Kind::Driver, source);
   source.files["module.elf"].push_back(0);
   assert(stage(candidate, source, ignored) == OrdinaryStageResult::InvalidSourceSize);
+
+  // A failed exclusive begin cannot authorize deleting someone else's stage.
+  source = fixture();
+  candidate = plan(Kind::Driver, source);
+  Directory preexisting;
+  preexisting.failBegin = true;
+  preexisting.files["unmanaged-user-file"] = {0xa5, 0x5a};
+  preexisting.manifest = {0x99};
+  assert(stage(candidate, source, preexisting) == OrdinaryStageResult::StageUnavailable);
+  assert(!preexisting.discarded && !preexisting.started);
+  assert(preexisting.files.at("unmanaged-user-file") == std::vector<uint8_t>({0xa5, 0x5a}));
+  assert(preexisting.manifest == std::vector<uint8_t>({0x99}));
+
+  // The executable must have an entire ELF32 header, not just magic bytes.
+  source.files["module.elf"].resize(20);
+  candidate = plan(Kind::Driver, source);
+  Directory shortElf;
+  assert(stage(candidate, source, shortElf) == OrdinaryStageResult::PreflightRejected);
+  assert(!shortElf.started);
+  source = fixture();
+  source.files["module.elf"][6] = 0;
+  candidate = plan(Kind::Driver, source);
+  Directory badVersion;
+  assert(stage(candidate, source, badVersion) == OrdinaryStageResult::BadElf);
+  assert(badVersion.discarded && badVersion.files.empty());
 }
 } // namespace
 
 int main() {
   validKindsAndSources();
   failures();
-  std::puts("Ordinary packages: four kinds, identical offline/online bytes, SHA-256, readback, ELF and failure paths passed");
+  std::puts("Ordinary packages: four kinds, exclusive stage ownership, complete ELF32 header, SHA-256 and failure paths passed");
 }
