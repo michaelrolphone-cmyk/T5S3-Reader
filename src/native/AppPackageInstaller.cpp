@@ -10,6 +10,8 @@
 #include <Logging.h>
 #include <NativeAppLauncher.h>
 #include <esp_task_wdt.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <mbedtls/sha256.h>
 
 #include <cstdint>
@@ -74,7 +76,12 @@ bool verifyBytes(const char* elfPath, uint64_t declaredSize, const char* declare
     if (count != static_cast<int>(want)) { good = false; break; }
     good = mbedtls_sha256_update_ret(&context, buffer, want) == 0;
     total += want;
-    if ((total & 0x3fffu) == 0) esp_task_wdt_reset();
+    if ((total & 0x3fffu) == 0) {
+      // The TWDT also watches IDLE0. Resetting loopTask's watchdog alone does
+      // not let IDLE0 run during a long run of synchronous SD reads + hashing.
+      esp_task_wdt_reset();
+      vTaskDelay(1);
+    }
   }
   if (good) good = total == size && mbedtls_sha256_finish_ret(&context, digest) == 0;
   mbedtls_sha256_free(&context);
