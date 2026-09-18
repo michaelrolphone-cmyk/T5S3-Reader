@@ -10,11 +10,8 @@
 
 namespace RuntimeProviders {
 
-// Graph-owned snapshot. Activation inputs cannot point into a caller stack,
-// SD mapping, mutable manifest, or temporary signed-package receipt.
-// The private loader intentionally takes a SECOND snapshot and checks its
-// digest, so an original caller cannot change the bytes to be relocated.
-// Optional bulk storage prefers PSRAM; no 128-name table lives in every node.
+// Graph-owned snapshot. Caller metadata, SD images, and mutable manifests
+// never survive as references inside a provider node.
 struct OwnedNodeV2 final {
   static constexpr size_t kImports = 128;
   static constexpr size_t kImportName = 128;
@@ -86,8 +83,7 @@ struct OwnedNodeV2 final {
     if (!from.requiredOsCpuAbi) return true;
     if (!from.verifiedElfBytes || !from.verifiedElfLength ||
         from.verifiedElfLength > 8u * 1024u * 1024u ||
-        !from.signedImports || !from.signedImportCount ||
-        from.signedImportCount > kImports) return false;
+        !from.signedImports || from.signedImportCount > kImports) return false;
     void* storage = allocate(sizeof(ImportStorage));
     if (!storage) return false;
     imported = new (storage) ImportStorage();
@@ -102,6 +98,8 @@ struct OwnedNodeV2 final {
     if (!image) return false;
     std::memcpy(image, from.verifiedElfBytes, from.verifiedElfLength);
     spec.verifiedElfBytes = image;
+    // Even with zero names, the allocated pointer array is nonnull: private
+    // loader can distinguish a verified empty list from missing declarations.
     spec.signedImports = imported->pointers;
     return true;
   }
