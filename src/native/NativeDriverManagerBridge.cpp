@@ -434,7 +434,7 @@ bool loadCanonicalDriverCatalog() {
         document["schema"] != 1 || !document["packages"].is<JsonArrayConst>())
         return false;
     const JsonArrayConst entries = document["packages"].as<JsonArrayConst>();
-    if (entries.empty() || entries.size() > kMaxDriverAssets) return false;
+    if (entries.size() == 0 || entries.size() > kMaxDriverAssets) return false;
     std::vector<CatalogDriver> found;
     found.reserve(entries.size());
     for (JsonVariantConst entry : entries) {
