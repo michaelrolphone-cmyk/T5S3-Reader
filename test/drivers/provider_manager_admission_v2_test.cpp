@@ -15,7 +15,7 @@ int main() {
   uint8_t image[64]{};
   image[0] = 0x7f; image[1] = 'E'; image[2] = 'L'; image[3] = 'F';
   image[4] = 1; image[5] = 1; image[16] = 3; image[18] = 94;
-  image[20] = 1; // ELF32, little-endian, ET_DYN, EM_XTENSA, EV_CURRENT.
+  image[20] = 1;
   uint8_t digest[32]{};
   unsigned digestLength = 0;
   assert(EVP_Digest(image, sizeof(image), digest, &digestLength,
@@ -39,8 +39,7 @@ int main() {
   candidate.importedSymbolCount = 2;
   candidate.declaredSha256 = digest;
 
-  // A copied checksum is integrity data: it neither grants OS/CPU privilege
-  // through the ordinary graph nor requires a signer in manager admission.
+  // A self-asserted checksum does not grant privileges via public admission.
   SpecV2 forged{id, nullptr, capability, 1, dependencies, 1};
   forged.requiredOsCpuAbi = 1;
   forged.verifiedElfBytes = image;
@@ -52,7 +51,6 @@ int main() {
   assert(!graph.addVerified(forged));
   assert(DeviceProviderExecutorV2::registerManagerValidated(graph, candidate));
   assert(graph.moduleCount() == 1);
-  // Change every source buffer; the graph stores its own candidate snapshot.
   std::strcpy(id, "forged-driver");
   std::strcpy(capability, "cap.forged");
   std::strcpy(importOne, "forged_symbol");
@@ -61,10 +59,9 @@ int main() {
   image[0] = 0;
   std::memset(digest, 0, sizeof(digest));
   assert(!graph.acquire("cap.forged", 1).slot);
-  assert(!graph.acquire("cap.manager", 1).slot); // Xtensa cannot run on host.
+  assert(!graph.acquire("cap.manager", 1).slot);
   assert(graph.shutdown());
 
-  // All remaining checks use an independent valid ELF and fresh package digest.
   image[0] = 0x7f;
   std::strcpy(id, "fixture-manager");
   std::strcpy(capability, "cap.manager");
@@ -87,7 +84,10 @@ int main() {
   assert(!DeviceProviderExecutorV2::registerManagerValidated(malformed, invalid));
   invalid = candidate; invalid.elfLength = 51;
   assert(!DeviceProviderExecutorV2::registerManagerValidated(malformed, invalid));
-  invalid = candidate; invalid.importedSymbolCount = 0;
+  // A nonnull, exact empty declaration is valid structural metadata. The
+  // private relocation matcher still rejects undeclared ELF undefined symbols.
+  // Missing metadata remains invalid even when import count is zero.
+  invalid = candidate; invalid.importedSymbols = nullptr; invalid.importedSymbolCount = 0;
   assert(!DeviceProviderExecutorV2::registerManagerValidated(malformed, invalid));
   invalid = candidate; invalid.importedSymbols = nullptr;
   assert(!DeviceProviderExecutorV2::registerManagerValidated(malformed, invalid));
@@ -95,17 +95,19 @@ int main() {
   assert(!DeviceProviderExecutorV2::registerManagerValidated(malformed, invalid));
   invalid = candidate; invalid.providesApi = 0;
   assert(!DeviceProviderExecutorV2::registerManagerValidated(malformed, invalid));
-  image[18] = 3; // non-Xtensa machine
+  image[18] = 3;
   assert(!DeviceProviderExecutorV2::registerManagerValidated(malformed, candidate));
   image[18] = 94;
-  image[16] = 2; // executable, not ET_DYN
+  image[16] = 2;
   assert(!DeviceProviderExecutorV2::registerManagerValidated(malformed, candidate));
   image[16] = 3;
   assert(malformed.moduleCount() == 0);
-  // Neither a cryptographic signer nor an authenticated publisher key is
-  // needed for a canonical, manager-owned package with optional checksum.
+  invalid = candidate; invalid.importedSymbolCount = 0;
+  GraphV2 explicitlyEmpty;
+  assert(DeviceProviderExecutorV2::registerManagerValidated(explicitlyEmpty, invalid));
+  assert(explicitlyEmpty.moduleCount() == 1 && explicitlyEmpty.shutdown());
   candidate.declaredSha256 = nullptr;
   assert(DeviceProviderExecutorV2::registerManagerValidated(malformed, candidate));
   assert(malformed.moduleCount() == 1 && malformed.shutdown());
-  std::puts("Provider manager admission: unsigned bounded ELF, SHA-256 corruption rejection, forged public privilege denied PASS");
+  std::puts("Provider manager admission: unsigned ELF, integrity, explicit empty imports, forged privilege denial PASS");
 }
