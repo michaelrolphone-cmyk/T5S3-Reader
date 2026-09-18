@@ -22,6 +22,7 @@ using RuntimeInstalledProviders::Lease;
 constexpr uint32_t kMaxTransfer = 512;
 constexpr uint32_t kReadTimeoutMs = 10;
 constexpr uint32_t kWriteTimeoutMs = 100;
+constexpr uint32_t kMutexTimeoutMs = 250;
 SemaphoreHandle_t mutex = nullptr;
 Lease hostGrant{};
 Lease classGrant{};
@@ -32,6 +33,9 @@ uint64_t session = 0;
 bool running = false;
 bool quarantined = false;
 t5_usb_serial_state_t state{};
+// reconcile() is always invoked with the bridge mutex held. Keeping the USB
+// descriptor workspace static avoids putting 4096 bytes on loopTask's stack.
+uint8_t configurationDescriptor[RISC_USB_CONFIG_LIMIT]{};
 
 bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
 bool initialize() {
@@ -39,8 +43,10 @@ bool initialize() {
     return mutex != nullptr;
 }
 struct Lock {
-    Lock() { xSemaphoreTake(mutex, portMAX_DELAY); }
-    ~Lock() { xSemaphoreGive(mutex); }
+    bool acquired;
+    Lock() : acquired(xSemaphoreTake(mutex, pdMS_TO_TICKS(kMutexTimeoutMs)) == pdTRUE) {}
+    ~Lock() { if (acquired) xSemaphoreGive(mutex); }
+    explicit operator bool() const { return acquired; }
 };
 void initialState(uint8_t status) {
     state = {};
@@ -177,11 +183,11 @@ void reconcile() {
     }
     // A disconnected class never causes us to restart an old physical token.
     for (size_t i = 0; i < count && !quarantined; ++i) {
-        uint8_t descriptor[RISC_USB_CONFIG_LIMIT]{};
-        size_t length = sizeof(descriptor);
+        std::memset(configurationDescriptor, 0, sizeof(configurationDescriptor));
+        size_t length = sizeof(configurationDescriptor);
         uint16_t vid = 0, pid = 0;
         if (!host->host.configuration(host->host.context, devices[i],
-                                      descriptor, &length, &vid, &pid)) continue;
+                                      configurationDescriptor, &length, &vid, &pid)) continue;
         if (openClass(devices[i], vid, pid)) return;
     }
     if (!quarantined) state.status = T5_USB_STATUS_WAITING;
@@ -197,18 +203,29 @@ bool supported() {
 }
 bool serialStart(const t5_usb_line_coding_t* coding) {
     if (!active() || !codingValid(coding) || !initialize()) return false;
+    LOG_INF("USB", "USBREF stage=serial-start-enter");
     Lock lock;
+    if (!lock) {
+        LOG_ERR("USB", "USBREF stage=serial-start-lock-timeout");
+        return false;
+    }
     if (quarantined) return false;
     if (running) {
         state.line_coding = *coding;
         return !session || (serial && serial->configure(session, coding->baud_rate,
                     coding->data_bits, coding->parity, coding->stop_bits));
     }
-    if (!supported() || !RuntimeInstalledProviders::acquire(
+    // The semantic provider registry already checked advertised availability.
+    // Graph acquisition independently verifies bytes, dependencies and ABI;
+    // calling supported() here would SHA-256 every installed driver AGAIN.
+    LOG_INF("USB", "USBREF stage=host-acquire-begin");
+    if (!RuntimeInstalledProviders::acquire(
             "usb-host-v2", "usb.host", 1, &hostGrant)) {
+        LOG_ERR("USB", "USBREF stage=host-acquire-failed");
         error(-1220);
         return false;
     }
+    LOG_INF("USB", "USBREF stage=host-acquired");
     host = static_cast<const risc_usb_host_discovery_v1*>(hostGrant.interface);
     if (!hostApiValid(host)) {
         if (!RuntimeInstalledProviders::release(&hostGrant)) quarantined = true;
@@ -219,6 +236,7 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
     initialState(T5_USB_STATUS_WAITING);
     state.line_coding = *coding;
     running = true;
+    LOG_INF("USB", "USBREF stage=initial-reconcile");
     reconcile();
     if (quarantined) return false;
     LOG_INF("USB", "USBREF state=host-active source=installed-elf");
@@ -227,6 +245,7 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
 void serialStop() {
     if (!initialize()) return;
     Lock lock;
+    if (!lock) { LOG_ERR("USB", "USBREF stage=serial-stop-lock-timeout"); return; }
     nativeUsbProviderDetach();
     if (quarantined) return; // Do not unload on a failed physical teardown.
     if (!closeClass()) return;
@@ -248,6 +267,7 @@ void serialStop() {
 bool serialReadState(t5_usb_serial_state_t* out) {
     if (!out || !initialize()) return false;
     Lock lock;
+    if (!lock) return false;
     reconcile();
     *out = state;
     return true;
@@ -255,6 +275,7 @@ bool serialReadState(t5_usb_serial_state_t* out) {
 bool serialSetLineCoding(const t5_usb_line_coding_t* coding) {
     if (!codingValid(coding) || !initialize()) return false;
     Lock lock;
+    if (!lock) return false;
     if (quarantined) return false;
     if (session && (!serial || !serial->configure(session, coding->baud_rate,
                 coding->data_bits, coding->parity, coding->stop_bits))) return false;
@@ -264,6 +285,7 @@ bool serialSetLineCoding(const t5_usb_line_coding_t* coding) {
 bool serialSetControlLines(bool dtr, bool rts) {
     if (!initialize()) return false;
     Lock lock;
+    if (!lock) return false;
     if (quarantined) return false;
     if (session && (!serial || !serial->control_lines(session, dtr, rts))) return false;
     state.dtr = dtr;
@@ -273,6 +295,7 @@ bool serialSetControlLines(bool dtr, bool rts) {
 size_t serialRead(uint8_t* bytes, size_t capacity) {
     if (!bytes || !capacity || !initialize()) return 0;
     Lock lock;
+    if (!lock) return 0;
     reconcile();
     if (!session || !serial || quarantined) return 0;
     const size_t n = std::min<size_t>(capacity, kMaxTransfer);
@@ -288,6 +311,7 @@ size_t serialRead(uint8_t* bytes, size_t capacity) {
 size_t serialWrite(const uint8_t* bytes, size_t length) {
     if (!bytes || !length || !initialize()) return 0;
     Lock lock;
+    if (!lock) return 0;
     reconcile();
     if (!session || !serial || quarantined) return 0;
     const size_t n = std::min<size_t>(length, kMaxTransfer);
