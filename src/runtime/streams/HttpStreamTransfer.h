@@ -103,20 +103,23 @@ inline Result fetch(const t5_stream_api_v1* api, const char* url, const Hooks& h
   }
 }
 
-// The caller owns the *new* staged path and is responsible for deleting it on
-// failure and committing only after independent artifact/manifest verification.
-// A pre-existing destination is never truncated: FILE_CREATE_NEW is mandatory.
+// The caller owns the staged path ONLY after CREATE_NEW succeeds. It must not
+// delete a pre-existing path if the exclusive open fails after its initial
+// exists check. destinationCreated reports that ownership even on subsequent
+// HTTP, pipe, cancellation and finish failures, so cleanup is conditional.
 // Only DONE followed by pipe_close and successful destination finish is success.
 inline Result download(const t5_stream_api_v1* api, const char* url,
                        const char* newStagePath, const Hooks& hooks,
                        Progress progress = nullptr, void* progressContext = nullptr,
-                       uint64_t* transferred = nullptr) {
+                       uint64_t* transferred = nullptr, bool* destinationCreated = nullptr) {
   if (transferred) *transferred = 0;
+  if (destinationCreated) *destinationCreated = false;
   if (!hasApi(api) || !url || !newStagePath || !hooks.now_ms ||
       !hooks.cooperate || !hooks.stall_timeout_ms) return Result::Invalid;
   Handles handles(api);
   if (api->open_file(newStagePath, T5_STREAM_FILE_CREATE_NEW, &handles.destination) != T5_STREAM_OK)
     return Result::File;
+  if (destinationCreated) *destinationCreated = true;
   if (api->open_http(url, &handles.source) != T5_STREAM_OK) return Result::Http;
   if (api->pipe_connect(handles.source, handles.destination, T5_PIPE_BLOCK_PRODUCER,
                         &handles.pipe) != T5_STREAM_OK) return Result::Transfer;
