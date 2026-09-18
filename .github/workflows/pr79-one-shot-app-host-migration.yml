@@ -24,7 +24,7 @@ jobs:
         with:
           ref: feature/unified-manager-driver-adapter
           persist-credentials: true
-      - name: Apply manager integration and fix recovery host-test event sequence
+      - name: Apply manager integration and fix host-test contracts
         run: |
           python scripts/pr79_wire_online_app_install.py
           python scripts/pr79_wire_online_driver_manager.py
@@ -36,16 +36,16 @@ jobs:
           python scripts/pr79_align_release_versions.py
           python scripts/pr79_fix_recovery_host_test.py
           git diff --check
-          git diff -- src/native/NativeAppHost.cpp src/native/NativeDriverManagerBridge.cpp src/native/NativeOnlineAppInstall.h src/native/NativeOnlineDriverInstall.h Apps/driver_manager.c platformio.ini Apps/app_store.json Apps/driver_manager.json Apps/serial_monitor.json test/native_apps/driver_manager_test.c
-      - name: Compile and run actual Driver Manager recovery and app regression tests
+          git diff -- src/native/NativeAppHost.cpp src/native/NativeDriverManagerBridge.cpp src/native/NativeOnlineAppInstall.h src/native/NativeOnlineDriverInstall.h Apps/driver_manager.c platformio.ini Apps/app_store.json Apps/driver_manager.json Apps/serial_monitor.json test/native_apps/driver_manager_test.c test/native_apps/test_app_package_install_integration.py
+      - name: Compile and run Driver Manager, app package and springboard regression tests
         run: bash test/run_springboard_test.sh
-      - name: Commit verified source and regression correction
+      - name: Commit verified source and regression corrections
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/native/NativeAppHost.cpp src/native/NativeDriverManagerBridge.cpp src/native/NativeOnlineAppInstall.h src/native/NativeOnlineDriverInstall.h Apps/driver_manager.c platformio.ini Apps/app_store.json Apps/driver_manager.json Apps/serial_monitor.json test/native_apps/driver_manager_test.c
+          git add src/native/NativeAppHost.cpp src/native/NativeDriverManagerBridge.cpp src/native/NativeOnlineAppInstall.h src/native/NativeOnlineDriverInstall.h Apps/driver_manager.c platformio.ini Apps/app_store.json Apps/driver_manager.json Apps/serial_monitor.json test/native_apps/driver_manager_test.c test/native_apps/test_app_package_install_integration.py
           if ! git diff --cached --quiet; then
-            git commit -m 'Correct Driver Manager recovery host test for nested Back semantics'
+            git commit -m 'Repair Driver Manager recovery and canonical App Store host regression contracts'
             git pull --rebase origin feature/unified-manager-driver-adapter
             git push origin HEAD:feature/unified-manager-driver-adapter
           fi
