@@ -1,24 +1,25 @@
 #pragma once
 
-// Pure, firmware-internal consent input policy. A button held when the prompt
-// opens cannot approve until released and freshly pressed. A preexisting tap
-// cannot approve: touch is intentionally permitted to DENY only until a
-// reliable hardware-level touch-down/release epoch is available.
+// Pure firmware-internal policy for the trusted permission screen. The prompt
+// must first observe a completely idle touch frame after it is displayed.
+// This consumes an app-originated held touch or pending tap without allowing
+// either to authorize the app. A subsequent completed tap on ALLOW can grant.
 enum class NativeConsentDecision { Pending, Deny, Allow };
 
 class NativeConsentInputGate final {
  public:
-  NativeConsentDecision sample(bool confirmDown, bool confirmPressed,
-                               bool cancelDown, bool touchDenyTap) {
+  NativeConsentDecision sample(bool cancelDown, bool touchIdle,
+                               bool touchDenyTap, bool touchAllowTap) {
+    // Cancellation, including an on-screen DENY tap, always wins.
     if (cancelDown || touchDenyTap) return NativeConsentDecision::Deny;
-    if (!confirmReleased_) {
-      if (!confirmDown) confirmReleased_ = true;
+    if (!touchArmed_) {
+      if (touchIdle) touchArmed_ = true;
       return NativeConsentDecision::Pending;
     }
-    return confirmDown && confirmPressed ? NativeConsentDecision::Allow
-                                         : NativeConsentDecision::Pending;
+    return touchAllowTap ? NativeConsentDecision::Allow
+                         : NativeConsentDecision::Pending;
   }
 
  private:
-  bool confirmReleased_ = false;
+  bool touchArmed_ = false;
 };
