@@ -191,13 +191,21 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
     return HTTP_ERROR;
   }
 
+  // Every staged install, including the compatibility HTTPClient transport,
+  // must refuse an existing .part. A read-only exists check is only an early
+  // diagnostic; exclusive creation below owns the actual race-free operation.
+  const bool staged = destPath.size() >= 6 && destPath.compare(destPath.size() - 5, 5, ".part") == 0;
+  if (staged && (destPath.front() != '/' || destPath.compare(0, 4, "/sd/") == 0 ||
+                 Storage.exists(destPath.c_str()))) {
+    LOG_ERR("HTTP", "Staged destination exists or is invalid: %s", destPath.c_str());
+    return FILE_ERROR;
+  }
+
   // Native installers already create a transaction-specific, disposable .part
   // path. All of its bytes travel via HTTP stream -> lossless pipe -> exclusively
   // created file stream. The App Store still owns manifest policy and renames.
   const auto* streams = invocationStreams(username, password);
-  const bool staged = destPath.size() >= 6 && destPath.compare(destPath.size() - 5, 5, ".part") == 0;
   if (streams && staged) {
-    if (destPath.front() != '/' || destPath.compare(0, 4, "/sd/") == 0) return FILE_ERROR;
     const size_t separator = destPath.find_last_of('/');
     if (separator == std::string::npos || separator == 0 ||
         !Storage.ensureDirectoryExists(destPath.substr(0, separator).c_str()) ||
@@ -207,15 +215,19 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
     }
     const std::string streamPath = "/sd" + destPath;
     uint64_t transferred = 0;
+    bool destinationCreated = false;
     auto reportProgress = [](void* context, uint64_t count) {
       auto* callback = static_cast<ProgressCallback*>(context);
       if (*callback) (*callback)(static_cast<size_t>(count), 0);
     };
     const auto result = RuntimeHttpStreams::download(streams, url.c_str(), streamPath.c_str(),
-                                                      streamHooks(), reportProgress, &progress, &transferred);
+                                                      streamHooks(), reportProgress, &progress,
+                                                      &transferred, &destinationCreated);
     if (result != RuntimeHttpStreams::Result::Ok) {
       LOG_ERR("HTTP", "Native staged transfer failed: %d", static_cast<int>(result));
-      Storage.remove(destPath.c_str());
+      // Exclusive open can fail because a different writer won the race after
+      // exists(). That file is not ours, so never remove it on failed open.
+      if (destinationCreated) Storage.remove(destPath.c_str());
       return result == RuntimeHttpStreams::Result::File ? FILE_ERROR : HTTP_ERROR;
     }
     // pipe DONE/finish prove the data-plane operation, not the SD artifact's
@@ -283,14 +295,17 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
     }
   }
 
-  // Remove existing file if present
-  if (Storage.exists(destPath.c_str())) {
-    Storage.remove(destPath.c_str());
-  }
-
-  // Open file for writing
+  // Non-transactional legacy destinations preserve overwrite semantics.
+  // A .part destination must be created exclusively: the earlier exists
+  // check cannot protect against a different writer racing this open.
   FsFile file;
-  if (!Storage.openFileForWrite("HTTP", destPath.c_str(), file)) {
+  if (staged) {
+    file = Storage.open(destPath.c_str(), O_WRONLY | O_CREAT | O_EXCL);
+  } else {
+    if (Storage.exists(destPath.c_str())) Storage.remove(destPath.c_str());
+    (void)Storage.openFileForWrite("HTTP", destPath.c_str(), file);
+  }
+  if (!file.isOpen()) {
     LOG_ERR("HTTP", "Failed to open file for writing");
     http.end();
     return FILE_ERROR;

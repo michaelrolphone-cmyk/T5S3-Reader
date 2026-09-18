@@ -144,8 +144,10 @@ Source makeSource() {
   auto& elf = source.files["module.elf"];
   elf.resize(96);
   std::memcpy(elf.data(), "\x7f" "ELF\x01\x01", 6);
+  elf[6] = 1;
   elf[16] = 3;
   elf[18] = 94;
+  elf[20] = 1;
   source.files["schema.json"] = std::vector<uint8_t>(1100, 0x42);
   return source;
 }
@@ -276,4 +278,5 @@ int main() {
   failWithoutModifyingExisting();
   blockSameVersion();
   std::puts("Ordinary installer: unsigned four-kind staging, semver, publication and recovery PASS");
+  return 0;
 }

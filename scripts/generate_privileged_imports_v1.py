@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Emit canonical OS/CPU ABI v1 imports from a linked physical provider ELF.
+"""Extract an exact canonical OS/CPU import set from the linked provider ELF.
 
-This newline-delimited ASCII sidecar is UNSIGNED build output, not authority.
-Only a trusted package-signing process covering the executable digest, ABI,
-and sidecar digest together can subsequently authenticate this declaration.
-The firmware C private matcher rechecks BOTH symbol tables independently.
+A self-contained ELF can legitimately have zero undefined symbols. Its
+sidecar is a single LF byte, not an invented import, so ordinary package
+manifests still require a nonempty, independently hashed file. The firmware
+private matcher must verify that the ELF really has zero imports in that case.
 """
 import argparse
 import hashlib
@@ -42,9 +42,13 @@ def extract_imports(path: Path) -> list[str]:
                         ord(char) <= 0x20 or ord(char) > 0x7e for char in name):
                     raise ValueError('invalid undefined ELF symbol in ' + section.name)
                 names.add(name)
-        if not dynsym or not names or len(names) > MAX_IMPORTS:
+        if not dynsym or len(names) > MAX_IMPORTS:
             raise ValueError('missing .dynsym or invalid exact import count')
         return sorted(names)
+
+
+def encode_imports(names: list[str]) -> bytes:
+    return (''.join(name + '\n' for name in names) if names else '\n').encode('ascii')
 
 
 def main() -> int:
@@ -54,14 +58,14 @@ def main() -> int:
     args = parser.parse_args()
     try:
         imports = extract_imports(args.elf)
-        declaration = (''.join(name + '\n' for name in imports)).encode('ascii')
+        declaration = encode_imports(imports)
         output = args.output or args.elf.with_name('privileged-imports.v1')
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(declaration)
         print(f'Generated ABI v1 import declaration: {output} ({len(imports)} names)')
         print(f'Executable SHA-256: {hashlib.sha256(args.elf.read_bytes()).hexdigest()}')
         print(f'Import sidecar SHA-256: {hashlib.sha256(declaration).hexdigest()}')
-        print('UNSIGNED diagnostic: package manager must authenticate BOTH file digests and ABI.')
+        print('Import declaration is an integrity-checked build input, not authorization.')
         return 0
     except (OSError, ValueError, UnicodeEncodeError) as error:
         parser.exit(1, f'Privileged imports build rejected: {error}\n')

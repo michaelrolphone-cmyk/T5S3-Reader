@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 HOST = (ROOT / 'src/native/NativeAppHost.cpp').read_text(encoding='utf-8')
 ADAPTER = (ROOT / 'src/native/AppPackageInstaller.cpp').read_text(encoding='utf-8')
 INVENTORY = (ROOT / 'src/native/AppPackageRecoveryInventory.cpp').read_text(encoding='utf-8')
+ONLINE = (ROOT / 'src/native/NativeOnlineAppInstall.h').read_text(encoding='utf-8')
 
 
 class LiveInstallContract(unittest.TestCase):
@@ -19,21 +20,41 @@ class LiveInstallContract(unittest.TestCase):
         start = HOST.index('bool appCatalogDownload(uint32_t index)')
         end = HOST.index('\nbool installedRefresh()', start)
         install = HOST[start:end]
+        # Source metadata is checked before the canonical online adapter is invoked.
         for required in ('RuntimePackages::safePackageEntryName',
-                         'metadata["size_bytes"].as<unsigned>() != asset.size',
+                         'metadata["size_bytes"].as<unsigned>() != selected.size',
                          'metadata["sha256"].is<const char*>()',
-                         'RuntimePackages::recoverAppPair(',
-                         'RuntimePackages::clearAppStage(',
-                         'RuntimePackages::verifyAppPair(temporary.c_str()',
-                         'RuntimePackages::publishAppPair('):
+                         'RuntimePackages::validSha256Hex(digest)',
+                         'RuntimePackages::comparePackageVersions(',
+                         'RuntimeOnlinePackages::installApplication(selected.name.c_str()'):
             self.assertIn(required, install)
-        self.assertLess(install.index('recoverAppPair('), install.index('clearAppStage('))
-        self.assertLess(install.index('verifyAppPair(temporary.c_str()'),
-                        install.index('publishAppPair('))
-        for obsolete in ('Storage.remove(destination.c_str())',
-                         'Storage.rename(destination.c_str(), backup.c_str())',
-                         'Storage.rename(sidecar.c_str(), backupJson.c_str())'):
+        self.assertLess(install.index('metadata["sha256"]'),
+                        install.index('RuntimeOnlinePackages::installApplication('))
+        # The new online path cannot silently fall back to legacy split-file swaps.
+        for obsolete in ('RuntimePackages::clearAppStage(',
+                         'RuntimePackages::publishAppPair(',
+                         'Storage.remove(destination.c_str())'):
             self.assertNotIn(obsolete, install)
+
+        # Verify the real online adapter's exclusive stream stage, pair digest,
+        # canonical manifest preflight and unified transactional publication.
+        for required in ('safePackageEntryName(artifact)',
+                         'Storage.exists(root.c_str()) || !Storage.mkdir(root.c_str(), false)',
+                         'O_WRONLY | O_CREAT | O_EXCL',
+                         'HttpDownloader::downloadToFile(url, elfStage,',
+                         '!Storage.rename(elfStage.c_str(), elfPath.c_str())',
+                         '!verifyAppPair(elfPath.c_str(), jsonPath.c_str(), artifact, true)',
+                         'mbedtls_sha256_ret(',
+                         'parseOrdinaryManifest(descriptor, static_cast<size_t>(count), plan)',
+                         'installOrdinaryFromSd(root.c_str(), policy,',
+                         'installed.result != OrdinaryInstallResult::Installed'):
+            self.assertIn(required, ONLINE)
+        self.assertLess(ONLINE.index('downloadToFile(url, elfStage,'),
+                        ONLINE.index('verifyAppPair(elfPath.c_str()'))
+        self.assertLess(ONLINE.index('verifyAppPair(elfPath.c_str()'),
+                        ONLINE.index('parseOrdinaryManifest(descriptor,'))
+        self.assertLess(ONLINE.index('parseOrdinaryManifest(descriptor,'),
+                        ONLINE.index('installOrdinaryFromSd(root.c_str()'))
 
     def test_real_adapter_checks_content_and_mapped_executable(self):
         for required in ('mbedtls_sha256_starts_ret', 'mbedtls_sha256_update_ret',

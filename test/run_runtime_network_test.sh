@@ -10,9 +10,16 @@ c++ -std=c++17 -Wall -Wextra -Werror \
   "$repo_dir/test/runtime_network/network_test.cpp" -o "$binary"
 "$binary"
 # Keep direct radio access from creeping back into migrated activities.
-if rg -n '#include [<"]WiFi\.h|\bWiFi\.|\bWL_(CONNECTED|CONNECT_FAILED|NO_SSID_AVAIL)\b' \
-    "$repo_dir/src/activities" --glob '*.[ch]' --glob '*.cpp' --glob '*.hpp' | \
-    sed '/^[^:]*:[0-9]*:[[:space:]]*\/\//d' | rg .; then
+# GitHub's stock runner does not provide ripgrep; using it here previously
+# made the forbidden-import check silently pass without examining any files.
+if ! command -v grep >/dev/null 2>&1; then
+  echo 'grep is required for the network-isolation regression test' >&2
+  exit 1
+fi
+if grep -REn --include='*.[ch]' --include='*.cpp' --include='*.hpp' \
+    '#include [<"]WiFi\.h|\bWiFi\.|\bWL_(CONNECTED|CONNECT_FAILED|NO_SSID_AVAIL)\b' \
+    "$repo_dir/src/activities" | \
+    sed '/^[^:]*:[0-9]*:[[:space:]]*\/\//d' | grep -q .; then
   echo 'Activities must use the runtime network contracts' >&2
   exit 1
 fi

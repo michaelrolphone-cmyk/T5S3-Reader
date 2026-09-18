@@ -18,11 +18,13 @@ on:
       - "sdk/driver/RiscPlatformClockV1.h"
       - "lib/elf_loader/**"
       - "lib/NativeApps/src/NativeAppLauncher.c"
-      - "src/runtime/drivers/ProviderModuleV2.*"
-      - "src/runtime/drivers/ProviderGraphV2.*"
+      - "src/runtime/drivers/**"
+      - "src/runtime/packages/**"
+      - "src/native/NativeUsbBridge.cpp"
       - "scripts/native_app_symbols.py"
       - "scripts/generate_privileged_imports_v1.py"
       - "scripts/generate_provider_package_inputs_v1.py"
+      - "scripts/build_installed_usb_stack.py"
       - "scripts/build_usb_cdc_v2.py"
       - "scripts/build_usb_cp210x_v2.py"
       - "scripts/build_usb_host_v2.py"
@@ -80,20 +82,20 @@ jobs:
           bash test/run_vbus_provider_chain_v2_test.sh
       - name: Install PlatformIO and target toolchain
         run: |
-          python -m pip install platformio==6.1.19
+          python -m pip install platformio==6.1.19 pyelftools
           pio pkg install -e t5s3-pro
-      - name: Compile PHYSICAL controller and link PIC IDF USB implementation into ELF
+      - name: Compile physical controller and link PIC IDF USB implementation into ELF
         run: python scripts/probe_usb_controller_esp32s3.py --link-experiment
-      - name: Audit physical ELF imports and exact loader relocation support (diagnostic, not installable)
+      - name: Audit physical ELF imports and exact loader relocation support
         run: |
           python scripts/audit_usb_controller_elf.py --strict
           bash test/run_native_app_test.sh dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf
-      - name: Build full physical I2C controller and PIC IDF I2C/GPIO implementation (experimental)
+      - name: Build physical I2C controller and PIC IDF I2C/GPIO implementation
         run: |
           python scripts/probe_i2c_esp32s3_v2.py
           python scripts/audit_i2c_esp32s3_elf.py --strict
           bash test/run_native_app_test.sh dist/experimental/i2c-esp32s3-v2/driver.elf
-      - name: Build experimental Xtensa provider ELFs (not published)
+      - name: Build Xtensa provider ELFs
         run: |
           python scripts/build_usb_cdc_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-cdc-acm-v2/driver.elf
@@ -106,7 +108,7 @@ jobs:
           python scripts/build_platform_clock_v1.py
           python scripts/audit_usb_controller_elf.py dist/experimental/platform-clock-v1/driver.elf --strict
           bash test/run_native_app_test.sh dist/experimental/platform-clock-v1/driver.elf
-      - name: Execute private C ABI and exact import matcher against physical linked ELFs
+      - name: Validate private C ABI and exact import matcher against physical linked ELFs
         run: |
           cc -std=gnu11 -O2 -Wall -Wextra -Werror \
             -Itest/drivers/stub_os_cpu -Ilib/elf_loader/include \
@@ -134,13 +136,18 @@ jobs:
             dist/experimental/i2c-esp32s3-v2/driver.elf \
             dist/experimental/platform-clock-v1/driver.elf
           python test/drivers/provider_package_inputs_v1_test.py
-      - name: Preserve experimental binaries and compatibility reports for inspection only
+      - name: Assemble and inspect canonical provider package delivery
+        run: |
+          python scripts/build_installed_usb_stack.py
+          python test/drivers/installed_usb_stack_package_test.py
+      - name: Preserve installable unsigned package directories and experimental binaries
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: usb-v2-elves-experimental-not-for-install
+          name: usb-v2-elves-and-canonical-packages-unqualified-for-board
           path: |
             dist/experimental/usb-*/
             dist/experimental/i2c-*/
             dist/experimental/platform-clock-v1/
+            dist/packages/
           if-no-files-found: warn

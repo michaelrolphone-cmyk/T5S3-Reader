@@ -96,9 +96,12 @@ inline bool safePackageCapability(const char* capability) {
 
 inline bool validSha256Hex(const char* digest) {
   if (!digest) return false;
+  // Manifest strings can be shorter than 64 bytes. Detect the terminator
+  // during validation rather than reading through a short JSON allocation.
   for (size_t i = 0; i != 64; ++i) {
     const char ch = digest[i];
-    if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) return false;
+    if (!ch || !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')))
+      return false;
   }
   return digest[64] == '\0';
 }

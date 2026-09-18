@@ -36,14 +36,13 @@ bool validRequest(const char* expectedId, const char* expectedCapability,
   return expectedId && expectedId[0] && expectedCapability &&
          expectedCapability[0] && expectedApi && validDependencies(deps, count);
 }
-}  // namespace
+} // namespace
 
 bool ModuleV2::closeMapped() {
   if (!handle_) return true;
 #ifdef ESP_PLATFORM
   if (privileged_image_) {
-    /* The caller must establish quiescence BEFORE reaching this branch.
-     * This frees only generic ELF allocations, never hardware resources. */
+    // Only generic memory is released here. Caller established quiescence.
     esp_elf_deinit(static_cast<esp_elf_t*>(handle_));
     std::free(handle_);
     handle_ = nullptr;
@@ -76,8 +75,7 @@ bool ModuleV2::activateMapped(risc_driver_get_v2_fn get, const char* expectedId,
     state_ = State::Active;
     return true;
   }
-  /* A rejected start may have acquired physical resources. Keep the code
-   * and dependency providers pinned until its quiesce can prove shutdown. */
+  // A rejected start may still own DMA, tasks, IRQs or a lower provider.
   if (hasQuiesce(candidate) && !candidate->quiesce()) {
     driver_ = candidate;
     return false;
@@ -102,7 +100,7 @@ bool ModuleV2::load(const char* path, const char* expectedId,
   const char* error = dlerror();
   if (!error && activateMapped(get, expectedId, expectedCapability,
                                expectedApi, deps, count)) return true;
-  if (driver_) return false; /* failed quiesce; deliberately keep ELF mapped */
+  if (driver_) return false;
   (void)closeMapped();
   return false;
 }
@@ -117,18 +115,15 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
                                  const risc_provider_dependency_v1* deps,
                                  size_t count) {
 #ifdef ESP_PLATFORM
+  // Nonnull import metadata and an exact zero count is valid for a truly
+  // self-contained ELF. The private matcher checks both symbol tables.
   if (handle_ || !candidateBytes || !authenticatedSha256 || !length ||
-      !signedImports || !signedImportCount || signedImportCount > 128 ||
+      !signedImports || signedImportCount > 128 ||
       length > 8u * 1024u * 1024u ||
       !validRequest(expectedId, expectedCapability, expectedApi, deps, count))
     return false;
   state_ = State::Failed;
 
-  /* The Package Manager is responsible for authenticating the SIGNER, the
-   * entry digest and the exact manifest import list. Snapshot candidate bytes,
-   * hash the private copy, then validate imports and relocate from this SAME
-   * copy. An SD mutation between inspection and launch therefore fails before
-   * executable mapping. No peripheral operation is implemented in core. */
   auto* snapshot = static_cast<uint8_t*>(
       heap_caps_malloc(length, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (!snapshot) snapshot = static_cast<uint8_t*>(
@@ -170,12 +165,10 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
   }
   if (activateMapped(get, expectedId, expectedCapability,
                      expectedApi, deps, count)) return true;
-  if (driver_) return false; /* failed quiesce; never unmap active hardware */
+  if (driver_) return false;
   (void)closeMapped();
   return false;
 #else
-  /* Host tests exercise the legacy graph via POSIX dlopen; they must never
-   * simulate success for an ESP32 privileged native ELF relocation. */
   (void)candidateBytes; (void)length; (void)authenticatedSha256;
   (void)signedImports; (void)signedImportCount;
   (void)expectedId; (void)expectedCapability; (void)expectedApi;
@@ -199,8 +192,6 @@ bool ModuleV2::unpinConsumer() {
 
 bool ModuleV2::unload() {
   if (consumers_) return false;
-  /* A failed start/teardown may still own IRQs, DMA or tasks. Retry quiesce
-   * in the mapped image; do not release lower providers until it succeeds. */
   if (state_ == State::Failed && handle_ && driver_) {
     if (!hasQuiesce(driver_) || !driver_->quiesce()) return false;
     driver_->stop();
@@ -222,4 +213,4 @@ bool ModuleV2::unload() {
   state_ = State::Absent;
   return true;
 }
-}  // namespace RuntimeProviders
+} // namespace RuntimeProviders

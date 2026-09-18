@@ -147,25 +147,34 @@ int main() {
   {
     Mock mock(10000);
     uint64_t progress = 0, total = 0;
+    bool created = false;
     assert(download(&mock.api, "https://example.test/payload", "/sd/Apps/test.elf.part",
-                    mock.hooks(), onProgress, &progress, &total) == Result::Ok);
-    assert(total == 10000 && progress == 10000 && mock.staged == mock.body);
+                    mock.hooks(), onProgress, &progress, &total, &created) == Result::Ok);
+    assert(created && total == 10000 && progress == 10000 && mock.staged == mock.body);
     assert(mock.fileFinish == 1 && mock.slowWrites > 7);
     assertReleased(mock);
   }
   {
     Mock mock(100);
+    // The exclusive open loses the race to an existing stage: the caller must
+    // leave it untouched, even if its earlier exists() check saw no file.
     mock.stageExists = true;
+    mock.staged = {0x42, 0x13, 0x99};
+    const std::vector<uint8_t> sentinel = mock.staged;
+    bool created = true;
+    uint64_t total = 123;
     assert(download(&mock.api, "https://example.test/payload", "/sd/Apps/test.elf.part",
-                    mock.hooks()) == Result::File);
-    assert(mock.staged.empty() && mock.sourceClose == 0 && mock.fileClose == 0);
+                    mock.hooks(), nullptr, nullptr, &total, &created) == Result::File);
+    assert(!created && total == 0 && mock.staged == sentinel);
+    assert(mock.sourceClose == 0 && mock.fileClose == 0);
   }
   {
     Mock mock(10000);
     mock.failReadAt = 2048;
+    bool created = false;
     assert(download(&mock.api, "https://example.test/payload", "/sd/Apps/test.elf.part",
-                    mock.hooks()) == Result::Transfer);
-    assert(mock.fileFinish == 0);
+                    mock.hooks(), nullptr, nullptr, nullptr, &created) == Result::Transfer);
+    assert(created && mock.fileFinish == 0);
     assertReleased(mock);
   }
   {
@@ -200,5 +209,5 @@ int main() {
     assert(mock.fileFinish == 0);
     assertReleased(mock);
   }
-  std::cout << "HTTP stream transfer tests passed\n";
+  std::cout << "HTTP stream transfer tests passed, including exclusive staged-file ownership\n";
 }

@@ -96,6 +96,23 @@ jobs:
       - name: Build native ELF apps and manifests
         run: python scripts/build_all_apps.py
 
+      - name: Build real hardware-owning USB providers and canonical packages
+        run: |
+          python -m pip install pyelftools
+          pio pkg install -e t5s3-pro
+          python scripts/probe_usb_controller_esp32s3.py --link-experiment
+          python scripts/audit_usb_controller_elf.py --strict
+          python scripts/probe_i2c_esp32s3_v2.py
+          python scripts/audit_i2c_esp32s3_elf.py --strict
+          python scripts/build_platform_clock_v1.py
+          python scripts/build_board_power_t5s3_v2.py
+          python scripts/build_usb_host_v2.py
+          python scripts/build_usb_cdc_v2.py
+          python scripts/build_usb_cp210x_v2.py
+          python scripts/build_installed_usb_stack.py
+          python test/drivers/installed_usb_stack_package_test.py
+          python scripts/export_canonical_driver_release.py
+
       - name: Verify baked RiscRTE version string
         run: |
           VER="${{ steps.ver.outputs.ver }}"
@@ -159,6 +176,9 @@ jobs:
           mapfile -d '' APP_ELFS < <(
             find dist/apps -type f \( -name '*.elf' -o -name '*.json' \) -print0 | sort -z
           )
+          mapfile -d '' CANONICAL_DRIVER_ASSETS < <(
+            find dist/release-packages -maxdepth 1 -type f -print0 | sort -z
+          )
 
           ASSETS=(
             "dist/firmware-t5s3-pro.bin"
@@ -166,6 +186,7 @@ jobs:
             "dist/riscrte_lilygo_t5s3_${VER}.elf"
             "$MERGED"
             "${APP_ELFS[@]}"
+            "${CANONICAL_DRIVER_ASSETS[@]}"
             "dist/drivers/driver-catalog.json"
             dist/drivers/*.t5driver.zip
             dist/drivers/*.t5driver.json

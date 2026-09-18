@@ -12,6 +12,8 @@ from build_driver import write_release_catalog
 from driver_package import REQUIRES, PROVIDES, USB_REQUIRES, USB_PROVIDES, validate_manifest, validate_payload
 from install_driver import install
 
+ROOT = Path(__file__).resolve().parents[2]
+
 class UsbCdcPackage(unittest.TestCase):
     def setUp(self):
         self.elf = bytearray(64)
@@ -62,8 +64,7 @@ class UsbCdcPackage(unittest.TestCase):
             self.assertEqual({entry['elf_asset'] for entry in catalog['drivers']},
                              {'gps-nmea-1.0.0.t5driver.elf', 'usb-cdc-acm-0.1.0.t5driver.elf'})
     def test_installed_usb_cdc_elf_activation_uses_explicit_json_strings(self):
-        source = (Path(__file__).resolve().parents[2] /
-                  'src/runtime/drivers/UsbCdcDriverRuntime.cpp').read_text(encoding='utf-8')
+        source = (ROOT / 'src/runtime/drivers/UsbCdcDriverRuntime.cpp').read_text(encoding='utf-8')
         self.assertNotIn(' | nullptr;', source)
         self.assertIn('const JsonDocument& view = doc;', source)
         self.assertIn('view["requires"].is<JsonArrayConst>()', source)
@@ -71,10 +72,18 @@ class UsbCdcPackage(unittest.TestCase):
         self.assertIn('view["requires"][0]["capability"].as<const char*>()', source)
         self.assertIn('view["provides"][0]["capability"].as<const char*>()', source)
         self.assertIn('USBREF phase=driver_load result=active', source)
-    def test_usb_descriptor_endpoint_index_syntax(self):
-        source = (Path(__file__).resolve().parents[2] /
-                  'src/native/NativeUsbBridge.cpp').read_text(encoding='utf-8')
-        self.assertNotIn('p[offset + 5u) << 8u', source)
-        self.assertIn('p[offset + 5u] << 8u', source)
+    def test_usb_class_descriptor_and_physical_ownership_are_in_elves(self):
+        bridge = (ROOT / 'src/native/NativeUsbBridge.cpp').read_text(encoding='utf-8')
+        controller = (ROOT / 'Drivers/usb_controller_esp32s3/driver.cpp').read_text(encoding='utf-8')
+        cdc = (ROOT / 'Drivers/usb_cdc_v2/driver.c').read_text(encoding='utf-8')
+        self.assertIn('RuntimeInstalledProviders::acquire(', bridge)
+        self.assertIn('RuntimeInstalledProviders::shutdown()', bridge)
+        self.assertNotIn('#include <usb/usb_host.h>', bridge)
+        self.assertNotIn('usb_host_install(', bridge)
+        self.assertNotIn('Wire.beginTransmission(', bridge)
+        self.assertIn('#include <usb/usb_host.h>', controller)
+        self.assertIn('usb_host_install(', controller)
+        self.assertIn('host->bulk_read(', cdc)
+        self.assertIn('host->bulk_write(', cdc)
 
 if __name__ == '__main__': unittest.main()

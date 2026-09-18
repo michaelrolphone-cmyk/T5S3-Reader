@@ -4,9 +4,11 @@
 #include <Logging.h>
 #include <NativeAppLauncher.h>
 #include <T5DriverManagerApi.h>
+#include "NativeOnlineDriverInstall.h"
 #include <esp_task_wdt.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
@@ -16,16 +18,24 @@
 
 #include "WifiCredentialStore.h"
 #include "network/HttpDownloader.h"
+#include "runtime/drivers/DriverInstallIntake.h"
 #include "runtime/drivers/DriverPackage.h"
+#include "runtime/drivers/DriverStageActions.h"
 #include "runtime/network/NetworkService.h"
+#include "runtime/packages/PackageOrdinaryTransaction.h"
+#include "runtime/packages/PackageOrdinarySdAdapter.h"
+#include "runtime/packages/InstalledCapabilityResolver.h"
 
 namespace {
 constexpr const char* kLatestReleaseApi =
     "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
+constexpr const char* kCanonicalProviderCatalogUrl =
+    "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/latest/download/usb-provider-catalog.json";
 constexpr const char* kDriverCatalogUrl =
     "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/latest/download/driver-catalog.json";
 constexpr const char* kLatestReleaseDownloadBase =
     "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/latest/download/";
+constexpr const char* kDownloadStage = "/Drivers/.driver-manager.part";
 constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr size_t kMaxDriverAssets = 64;
 constexpr size_t kMaxDriverCatalogBytes = 64 * 1024;
@@ -41,9 +51,30 @@ struct CatalogDriver {
     DriverPackageInfo info{};
     std::string manifest;
     std::string elfUrl;
+    std::string canonicalMetadata;
+};
+
+struct RecoveryItem {
+    std::string id;
+    bool isDownload = false;
 };
 
 std::vector<CatalogDriver> catalog;
+std::vector<RecoveryItem> recoveryItems;
+
+// Catalog refresh, normal installation, and ALL recovery mutations share the
+// same reservation. Recovery cannot erase a staged ELF during installation.
+std::atomic_flag managerMutation = ATOMIC_FLAG_INIT;
+struct ManagerMutation {
+    ManagerMutation() : acquired(!managerMutation.test_and_set(std::memory_order_acquire)) {}
+    ~ManagerMutation() {
+        if (acquired) managerMutation.clear(std::memory_order_release);
+    }
+    ManagerMutation(const ManagerMutation&) = delete;
+    ManagerMutation& operator=(const ManagerMutation&) = delete;
+    explicit operator bool() const { return acquired; }
+    bool acquired;
+};
 
 bool activeNativeApp() {
     const char* path = native_app_current_path();
@@ -287,13 +318,11 @@ bool loadAggregateDriverCatalog() {
             LOG_ERR("DRVMGR", "Aggregate catalog entry[%u] is not an object with a manifest object", index);
             return false;
         }
-        // Request the JSON string type explicitly; nullptr fallback is not a string.
         const char* elfAsset = entry["elf_asset"].as<const char*>();
         if (!safeDriverAssetName(elfAsset)) {
             LOG_ERR("DRVMGR", "Aggregate catalog entry[%u] has invalid ELF asset name", index);
             return false;
         }
-
         std::string manifest;
         serializeJson(entry["manifest"], manifest);
         DriverPackageInfo info{};
@@ -302,7 +331,6 @@ bool loadAggregateDriverCatalog() {
                     index, static_cast<unsigned>(manifest.size()));
             return false;
         }
-
         const std::string expected = std::string(info.id) + "-" + info.version + ".t5driver.elf";
         if (expected != elfAsset) {
             LOG_ERR("DRVMGR", "Aggregate catalog entry[%u] ELF asset name does not match manifest identity", index);
@@ -314,7 +342,6 @@ bool loadAggregateDriverCatalog() {
             LOG_ERR("DRVMGR", "Aggregate catalog entry[%u] duplicates driver ID %s", index, info.id);
             return false;
         }
-
         CatalogDriver driver;
         driver.info = info;
         driver.manifest = std::move(manifest);
@@ -322,7 +349,6 @@ bool loadAggregateDriverCatalog() {
         loaded.push_back(std::move(driver));
         ++index;
     }
-
     catalog.swap(loaded);
     sortCatalog();
     LOG_INF("DRVMGR", "Loaded %u drivers from aggregate release catalog",
@@ -338,7 +364,6 @@ bool loadLegacyReleaseCatalog() {
         LOG_ERR("DRVMGR", "Failed to read latest GitHub release driver assets");
         return false;
     }
-
     bool sawManifest = false;
     bool rejectedCandidate = false;
     for (const auto& manifestAsset : assets) {
@@ -354,7 +379,6 @@ bool loadLegacyReleaseCatalog() {
             rejectedCandidate = true;
             continue;
         }
-
         std::string manifest;
         DriverPackageInfo info{};
         esp_task_wdt_reset();
@@ -365,8 +389,6 @@ bool loadLegacyReleaseCatalog() {
             rejectedCandidate = true;
             continue;
         }
-        // The GitHub release API advertises the byte count for every sidecar.
-        // A successful HTTP stream is not sufficient to trust a partial body.
         if (!manifestAsset.size || manifest.size() != manifestAsset.size) {
             LOG_ERR("DRVMGR", "Driver manifest length mismatch: %s received=%u expected=%llu bytes",
                     manifestAsset.name.c_str(), static_cast<unsigned>(manifest.size()),
@@ -386,7 +408,6 @@ bool loadLegacyReleaseCatalog() {
             rejectedCandidate = true;
             continue;
         }
-
         CatalogDriver driver;
         driver.info = info;
         driver.manifest = std::move(manifest);
@@ -394,26 +415,109 @@ bool loadLegacyReleaseCatalog() {
         catalog.push_back(std::move(driver));
         if (catalog.size() >= kMaxDriverAssets) break;
     }
-
     sortCatalog();
     LOG_INF("DRVMGR", "Found %u installable driver packages using legacy release discovery",
             static_cast<unsigned>(catalog.size()));
-    // No published driver packages is a valid empty catalog. If GitHub advertised a
-    // driver manifest but every candidate was rejected, surface refresh failure so
-    // the app retries instead of incorrectly claiming that the release has no drivers.
     return !catalog.empty() || (!sawManifest && !rejectedCandidate);
+}
+
+
+// Canonical release assets are separate from old .t5driver.elf files. A
+// physical provider is only advertised when its four-file inventory can be
+// fetched and verified by the same transaction used by the SD inbox.
+bool loadCanonicalDriverCatalog() {
+    std::string json;
+    if (!HttpDownloader::fetchUrl(kCanonicalProviderCatalogUrl, json) ||
+        json.empty() || json.size() > kMaxDriverCatalogBytes) return false;
+    JsonDocument document;
+    if (deserializeJson(document, json) || !document.is<JsonObjectConst>() ||
+        document["schema"] != 1 || !document["packages"].is<JsonArrayConst>())
+        return false;
+    const JsonArrayConst entries = document["packages"].as<JsonArrayConst>();
+    if (entries.size() == 0 || entries.size() > kMaxDriverAssets) return false;
+    std::vector<CatalogDriver> found;
+    found.reserve(entries.size());
+    for (JsonVariantConst entry : entries) {
+        if (!entry.is<JsonObjectConst>() || !entry["id"].is<const char*>() ||
+            !entry["version"].is<const char*>() ||
+            !entry["capability"].is<const char*>() ||
+            !entry["api"].is<unsigned>() ||
+            !entry["files"].is<JsonArrayConst>()) return false;
+        const char* id = entry["id"].as<const char*>();
+        const char* version = entry["version"].as<const char*>();
+        const char* capability = entry["capability"].as<const char*>();
+        if (!RuntimePackages::safeId(id) || !RuntimePackages::safeVersion(version) ||
+            !RuntimePackages::safePackageCapability(capability) ||
+            entry["api"].as<unsigned>() == 0) return false;
+        uint32_t parts[3]{};
+        if (!RuntimePackages::parsePackageVersion(version, parts)) return false;
+        const JsonArrayConst files = entry["files"].as<JsonArrayConst>();
+        if (files.size() != 4) return false;
+        bool elf = false, descriptor = false, profile = false, imports = false;
+        uint64_t size = 0;
+        for (JsonVariantConst file : files) {
+            if (!file.is<JsonObjectConst>() || !file["name"].is<const char*>() ||
+                !file["size_bytes"].is<uint64_t>() ||
+                !file["sha256"].is<const char*>()) return false;
+            const char* name = file["name"].as<const char*>();
+            const char* digest = file["sha256"].as<const char*>();
+            const uint64_t bytes = file["size_bytes"].as<uint64_t>();
+            if (!RuntimePackages::validSha256Hex(digest) || !bytes ||
+                bytes > 8u * 1024u * 1024u) return false;
+            if (!std::strcmp(name, "driver.elf")) { if (elf) return false; elf = true; size = bytes; }
+            else if (!std::strcmp(name, ".package.json")) { if (descriptor || bytes > 4096) return false; descriptor = true; }
+            else if (!std::strcmp(name, "provider-abi.v1")) { if (profile) return false; profile = true; }
+            else if (!std::strcmp(name, "privileged-imports.v1")) { if (imports) return false; imports = true; }
+            else return false;
+        }
+        if (!elf || !descriptor || !profile || !imports || size > UINT32_MAX ||
+            std::any_of(found.begin(), found.end(), [id](const CatalogDriver& candidate) {
+                return std::strcmp(candidate.info.id, id) == 0;
+            })) return false;
+        CatalogDriver candidate;
+        std::snprintf(candidate.info.id, sizeof(candidate.info.id), "%s", id);
+        std::snprintf(candidate.info.version, sizeof(candidate.info.version), "%s", version);
+        std::snprintf(candidate.info.capability, sizeof(candidate.info.capability), "%s", capability);
+        candidate.info.sizeBytes = static_cast<uint32_t>(size);
+        serializeJson(entry, candidate.canonicalMetadata);
+        if (candidate.canonicalMetadata.empty() || candidate.canonicalMetadata.size() > 8192) return false;
+        found.push_back(std::move(candidate));
+    }
+    catalog.swap(found);
+    sortCatalog();
+    LOG_INF("DRVMGR", "Discovered %u canonical hardware-owning driver packages",
+            static_cast<unsigned>(catalog.size()));
+    return true;
 }
 
 bool catalogRefresh() {
     if (!activeNativeApp()) return false;
+    ManagerMutation mutation;
+    if (!mutation) return false;
     catalog.clear();
     if (!connectSavedWifi()) return false;
-
-    if (loadAggregateDriverCatalog()) return true;
+    const bool canonical = loadCanonicalDriverCatalog();
+    std::vector<CatalogDriver> physical;
+    if (canonical) physical.swap(catalog);
     catalog.clear();
-    LOG_INF("DRVMGR", "Aggregate driver catalog unavailable; using legacy release discovery");
-    return loadLegacyReleaseCatalog();
+    bool legacy = loadAggregateDriverCatalog();
+    if (!legacy) {
+        catalog.clear();
+        legacy = loadLegacyReleaseCatalog();
+    }
+    // A canonical physical ELF always supersedes a same-ID legacy proxy.
+    // Preserve unrelated old releases, including GPS, during the transition.
+    for (auto& driver : physical) {
+        catalog.erase(std::remove_if(catalog.begin(), catalog.end(),
+            [&driver](const CatalogDriver& existing) {
+                return !std::strcmp(existing.info.id, driver.info.id);
+            }), catalog.end());
+        catalog.push_back(std::move(driver));
+    }
+    sortCatalog();
+    return canonical || legacy;
 }
+
 
 uint32_t catalogCount() {
     return activeNativeApp() ? static_cast<uint32_t>(catalog.size()) : 0u;
@@ -431,25 +535,292 @@ bool catalogGet(uint32_t index, t5_driver_catalog_entry_t* out) {
 }
 
 bool installedVersionGet(const char* id, char* version, size_t capacity) {
-    return activeNativeApp() && getInstalledDriverVersion(id, version, capacity);
+    if (!activeNativeApp() || !version || !capacity || !RuntimePackages::safeId(id)) return false;
+    version[0] = 0;
+    const std::string canonicalPath = std::string("/Drivers/") + id;
+    constexpr RuntimePackages::PackageRuntimePolicy policy{
+        "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+    RuntimePackages::Identity observed{};
+    if (RuntimePackages::verifyOrdinarySdDirectory(canonicalPath.c_str(), policy,
+            RuntimePackages::installedCapabilityVersion, observed) &&
+        observed.kind == RuntimePackages::Kind::Driver &&
+        !std::strcmp(observed.id, id)) {
+        const size_t length = std::strlen(observed.version);
+        if (length >= capacity) return false;
+        std::memcpy(version, observed.version, length + 1);
+        return true;
+    }
+    return getInstalledDriverVersion(id, version, capacity);
+}
+
+
+// Installing a serial class driver must also install its provider graph;
+// installing just a leaf ELF cannot produce a usable serial.port capability.
+// Use the release index's declared requirements to install prerequisites in
+// dependency order, then let the shared transaction validate each package.
+bool installCanonicalDependencies(size_t index, std::vector<uint8_t>& visiting) {
+    if (index >= catalog.size() || index >= visiting.size() ||
+        catalog[index].canonicalMetadata.empty() || visiting[index] == 1) return false;
+    if (visiting[index] == 2) return true;
+    visiting[index] = 1;
+    const CatalogDriver& selected = catalog[index];
+    JsonDocument metadata;
+    if (deserializeJson(metadata, selected.canonicalMetadata) ||
+        !metadata.is<JsonObjectConst>() || !metadata["requires"].is<JsonArrayConst>())
+        return false;
+    const JsonArrayConst requirements = metadata["requires"].as<JsonArrayConst>();
+    if (requirements.size() > RuntimePackages::kMaxPackageRequirements) return false;
+    for (JsonVariantConst requirement : requirements) {
+        if (!requirement.is<JsonObjectConst>() ||
+            !requirement["capability"].is<const char*>() ||
+            !requirement["min_api"].is<unsigned>()) return false;
+        const char* capability = requirement["capability"].as<const char*>();
+        const uint32_t minimumApi = requirement["min_api"].as<unsigned>();
+        if (!RuntimePackages::safePackageCapability(capability) || !minimumApi) return false;
+        if (RuntimePackages::installedCapabilityVersion(capability) >= minimumApi) continue;
+        size_t prerequisite = catalog.size();
+        for (size_t candidate = 0; candidate < catalog.size(); ++candidate) {
+            if (catalog[candidate].canonicalMetadata.empty() ||
+                std::strcmp(catalog[candidate].info.capability, capability)) continue;
+            JsonDocument provider;
+            if (deserializeJson(provider, catalog[candidate].canonicalMetadata) ||
+                !provider["api"].is<unsigned>() ||
+                provider["api"].as<unsigned>() < minimumApi) continue;
+            prerequisite = candidate;
+            break;
+        }
+        if (prerequisite == catalog.size()) {
+            LOG_ERR("DRVMGR", "Required physical provider unavailable: %s", capability);
+            return false;
+        }
+        LOG_INF("DRVMGR", "Installing %s required by %s",
+                catalog[prerequisite].info.id, selected.info.id);
+        if (!installCanonicalDependencies(prerequisite, visiting) ||
+            RuntimePackages::installedCapabilityVersion(capability) < minimumApi)
+            return false;
+    }
+    char installed[T5_DRIVER_VERSION_MAX]{};
+    if (installedVersionGet(selected.info.id, installed, sizeof(installed))) {
+        const auto order = RuntimePackages::comparePackageVersions(selected.info.version, installed);
+        if (order == RuntimePackages::VersionOrder::Equal) {
+            visiting[index] = 2;
+            return true;
+        }
+        if (order != RuntimePackages::VersionOrder::Newer) return false;
+    }
+    if (!RuntimeOnlinePackages::DriverIntake::install(selected.info.id,
+            selected.info.version, selected.canonicalMetadata)) return false;
+    visiting[index] = 2;
+    return true;
 }
 
 bool install(uint32_t index) {
-    if (!activeNativeApp() || index >= catalog.size() || !Storage.ready() || !connectSavedWifi()) return false;
-    if (!Storage.mkdir("/Drivers") && !Storage.exists("/Drivers")) return false;
-    const char* temporaryStoragePath = "/Drivers/.driver-manager.part";
-    const char* temporaryVfsPath = "/sd/Drivers/.driver-manager.part";
-    Storage.remove(temporaryStoragePath);
-    const auto result = HttpDownloader::downloadToFile(
-        catalog[index].elfUrl, temporaryStoragePath,
-        [](size_t, size_t) { esp_task_wdt_reset(); });
-    if (result != HttpDownloader::OK) {
-        Storage.remove(temporaryStoragePath);
+    if (!activeNativeApp() || !Storage.ready()) return false;
+    ManagerMutation mutation;
+    if (!mutation) {
+        LOG_ERR("DRVMGR", "Driver installation already in progress");
         return false;
     }
-    const bool ok = installStagedDriverPackage(catalog[index].manifest, temporaryVfsPath);
-    if (!ok) Storage.remove(temporaryStoragePath);
+    if (index >= catalog.size()) return false;
+    const CatalogDriver selected = catalog[index];
+    if (!selected.canonicalMetadata.empty()) {
+        char installed[T5_DRIVER_VERSION_MAX]{};
+        if (installedVersionGet(selected.info.id, installed, sizeof(installed)) &&
+            RuntimePackages::comparePackageVersions(selected.info.version, installed) !=
+                RuntimePackages::VersionOrder::Newer) return false;
+        std::vector<uint8_t> visiting(catalog.size(), 0);
+        return installCanonicalDependencies(index, visiting);
+    }
+    const char* temporaryStoragePath = kDownloadStage;
+    const char* temporaryVfsPath = "/sd/Drivers/.driver-manager.part";
+    RuntimePackages::OrdinaryTransactionPaths paths{};
+    if (!RuntimePackages::ordinaryTransactionPaths(RuntimePackages::Kind::Driver,
+                                                   selected.info.id, paths)) return false;
+    if (!Storage.exists("/Drivers") && !Storage.mkdir("/Drivers", false)) return false;
+    HalFile root = Storage.open("/Drivers", O_RDONLY);
+    const bool validRoot = root.isOpen() && root.isDirectory();
+    if (root.isOpen()) (void)root.close();
+    if (!validRoot) return false;
+    if (Storage.exists(temporaryStoragePath)) {
+        LOG_ERR("DRVMGR", "Existing download needs inspection: %s", temporaryStoragePath);
+        return false;
+    }
+    char installed[T5_DRIVER_VERSION_MAX]{};
+    const bool hasInstalled = getInstalledDriverVersion(selected.info.id, installed, sizeof(installed));
+    const std::string legacyPrefix = std::string("/Drivers/.") + selected.info.id;
+    const bool unresolved = !hasInstalled &&
+        (Storage.exists(paths.target) || Storage.exists(paths.backup) ||
+         Storage.exists(paths.removing) ||
+         Storage.exists((legacyPrefix + ".previous").c_str()) ||
+         Storage.exists((legacyPrefix + ".install").c_str()));
+    const bool pendingStage = Storage.exists(paths.stage) ||
+                              Storage.exists((legacyPrefix + ".install").c_str());
+    const auto intake = RuntimeDrivers::decideDriverDownload(
+        selected.info.version, hasInstalled ? installed : nullptr, unresolved, pendingStage);
+    if (intake != RuntimeDrivers::DownloadIntake::Fresh &&
+        intake != RuntimeDrivers::DownloadIntake::Upgrade) {
+        LOG_ERR("DRVMGR", "Download refused: version or pending generation (%u) for %s",
+                static_cast<unsigned>(intake), selected.info.id);
+        return false;
+    }
+    if (RuntimePackages::systemPackageUseGate().pinned(paths.target)) {
+        LOG_ERR("DRVMGR", "Download refused: driver is mapped and must be stopped: %s", selected.info.id);
+        return false;
+    }
+    if (!connectSavedWifi()) return false;
+    const auto result = HttpDownloader::downloadToFile(
+        selected.elfUrl, temporaryStoragePath,
+        [](size_t, size_t) { esp_task_wdt_reset(); });
+    if (result != HttpDownloader::OK) {
+        if (Storage.exists(temporaryStoragePath))
+            LOG_ERR("DRVMGR", "Failed download left partial file for inspection: %s", temporaryStoragePath);
+        return false;
+    }
+    const bool ok = installStagedDriverPackage(selected.manifest, temporaryVfsPath);
+    if (!ok && Storage.exists(temporaryStoragePath) && !Storage.remove(temporaryStoragePath))
+        LOG_ERR("DRVMGR", "Could not clean up this invocation's verified download");
     return ok;
+}
+
+// Inventory is constructed under the SAME mutation lock as installs. It never
+// crawls user paths or treats a matching filename as validated executable.
+bool rebuildRecoveryInventory() {
+    if (!Storage.ready()) return false;
+    std::vector<RecoveryItem> found;
+    if (!Storage.exists("/Drivers")) {
+        recoveryItems.clear();
+        return true;
+    }
+    HalFile directory = Storage.open("/Drivers", O_RDONLY);
+    if (!directory.isOpen() || !directory.isDirectory()) {
+        if (directory.isOpen()) (void)directory.close();
+        return false;
+    }
+    bool valid = true;
+    while (valid) {
+        HalFile entry = directory.openNextFile();
+        if (!entry.isOpen()) break;
+        char name[128]{};
+        const size_t length = entry.getName(name, sizeof(name));
+        if (!length || length >= sizeof(name)) {
+            valid = false;
+        } else if (std::strcmp(name, ".driver-manager.part") == 0) {
+            found.push_back({"", true});
+        } else {
+            const std::string filename(name);
+            constexpr const char* suffix = ".pkg-stage";
+            if (entry.isDirectory() && filename.size() > std::strlen(suffix) + 1 &&
+                filename[0] == '.' && endsWith(filename, suffix)) {
+                const std::string id = filename.substr(1, filename.size() - 1 - std::strlen(suffix));
+                if (RuntimePackages::safeId(id.c_str())) found.push_back({id, false});
+            }
+        }
+        if (!entry.close()) valid = false;
+        if (found.size() > kMaxDriverAssets + 1) valid = false;
+    }
+    if (!directory.close() || !valid) return false;
+    std::sort(found.begin(), found.end(), [](const RecoveryItem& a, const RecoveryItem& b) {
+        if (a.isDownload != b.isDownload) return a.isDownload;
+        return a.id < b.id;
+    });
+    recoveryItems.swap(found);
+    return true;
+}
+
+bool recoveryRefresh() {
+    if (!activeNativeApp()) return false;
+    ManagerMutation mutation;
+    return mutation && rebuildRecoveryInventory();
+}
+
+uint32_t recoveryCount() {
+    return activeNativeApp() ? static_cast<uint32_t>(recoveryItems.size()) : 0u;
+}
+
+bool recoveryGet(uint32_t index, t5_driver_recovery_entry_t* out) {
+    if (!activeNativeApp() || !out || index >= recoveryItems.size()) return false;
+    *out = {};
+    const RecoveryItem& item = recoveryItems[index];
+    if (item.isDownload) {
+        out->kind = T5_DRIVER_RECOVERY_DOWNLOAD;
+        out->state = T5_DRIVER_RECOVERY_INCOMPLETE;
+        HalFile part = Storage.open(kDownloadStage, O_RDONLY);
+        if (!part.isOpen()) return false;
+        if (part.isDirectory()) {
+            out->state = T5_DRIVER_RECOVERY_REQUIRES_REPAIR;
+        } else {
+            out->size_bytes = part.fileSize64();
+            out->can_discard = true;
+        }
+        if (!part.close()) out->can_discard = false;
+        return true;
+    }
+    out->kind = T5_DRIVER_RECOVERY_STAGE;
+    std::strncpy(out->id, item.id.c_str(), sizeof(out->id) - 1);
+    RuntimePackages::OrdinaryStageReview review{};
+    if (!RuntimeDrivers::inspectDriverStage(item.id.c_str(), review)) return false;
+    std::strncpy(out->candidate_version, review.candidate.version,
+                 sizeof(out->candidate_version) - 1);
+    using State = RuntimePackages::OrdinaryStageState;
+    switch (review.state) {
+        case State::Ready:
+            out->state = T5_DRIVER_RECOVERY_READY;
+            out->can_retry = true;
+            out->can_discard = true;
+            break;
+        case State::InvalidStage:
+        case State::InvalidIdentity:
+        case State::Missing:
+            out->state = T5_DRIVER_RECOVERY_INVALID;
+            out->can_discard = review.state == State::InvalidStage;
+            break;
+        case State::StaleVersion:
+            out->state = T5_DRIVER_RECOVERY_STALE;
+            out->can_discard = true;
+            break;
+        case State::InUse:
+            out->state = T5_DRIVER_RECOVERY_MAPPED;
+            break;
+        case State::RecoveryRequired:
+        case State::InvalidInstalled:
+            out->state = T5_DRIVER_RECOVERY_REQUIRES_REPAIR;
+            break;
+    }
+    return true;
+}
+
+bool recoveryRetry(uint32_t index) {
+    if (!activeNativeApp()) return false;
+    ManagerMutation mutation;
+    if (!mutation || index >= recoveryItems.size() || recoveryItems[index].isDownload) return false;
+    const std::string id = recoveryItems[index].id;
+    const auto result = RuntimeDrivers::retryDriverStage(id.c_str());
+    const bool okay = result == RuntimePackages::OrdinaryTransactionResult::Published ||
+                      result == RuntimePackages::OrdinaryTransactionResult::CleanupPending;
+    if (okay && !rebuildRecoveryInventory()) LOG_ERR("DRVMGR", "Installed stage; recovery refresh failed");
+    return okay;
+}
+
+bool recoveryDiscard(uint32_t index) {
+    if (!activeNativeApp()) return false;
+    ManagerMutation mutation;
+    if (!mutation || index >= recoveryItems.size()) return false;
+    const RecoveryItem item = recoveryItems[index];
+    bool okay = false;
+    if (item.isDownload) {
+        // Exact reserved filename only, and only a regular file. The UI must
+        // explicitly confirm deletion; no install or refresh ever calls this.
+        HalFile part = Storage.open(kDownloadStage, O_RDONLY);
+        if (!part.isOpen()) return false;
+        const bool regular = !part.isDirectory();
+        const bool closed = part.close();
+        okay = regular && closed && Storage.remove(kDownloadStage);
+    } else {
+        okay = RuntimeDrivers::discardDriverStage(item.id.c_str()) ==
+               RuntimePackages::OrdinaryStageDiscardResult::Discarded;
+    }
+    if (okay && !rebuildRecoveryInventory()) LOG_ERR("DRVMGR", "Discard succeeded; recovery refresh failed");
+    return okay;
 }
 
 const t5_driver_manager_api_v1 api = {
@@ -460,6 +831,11 @@ const t5_driver_manager_api_v1 api = {
     catalogGet,
     installedVersionGet,
     install,
+    recoveryRefresh,
+    recoveryCount,
+    recoveryGet,
+    recoveryRetry,
+    recoveryDiscard,
 };
 }  // namespace
 
