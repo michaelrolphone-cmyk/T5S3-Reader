@@ -38,7 +38,9 @@ int main(void) {
     assert(main);
     const char *request = strstr(main, "devices->request(");
     const char *deny = strstr(main, "if (result == T5_DEVICE_DENIED)");
-    const char *retry = strstr(main, "if (!await_retry_or_back(true)) return;");
+    // An earlier retry exists for a missing receiver. Select the retry that
+    // follows the permission result, not that unrelated discovery retry.
+    const char *retry = deny ? strstr(deny, "if (!await_retry_or_back(true)) return;") : NULL;
     const char *subscribe = strstr(main, "location->subscribe(authorization");
     assert(request && deny && retry && subscribe);
     assert(request < deny && deny < retry && retry < subscribe);
