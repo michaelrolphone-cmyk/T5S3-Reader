@@ -26,6 +26,7 @@
 #include "T5NetworkApi.h"
 #include "T5OpdsApi.h"
 #include "T5OtaApi.h"
+#include "T5PackageManagerApi.h"
 #include "T5ProgramEspRomApi.h"
 #include "T5SdFirmwareApi.h"
 #include "T5SerialPortApi.h"
@@ -87,6 +88,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_cache_get_api),
         ESP_ELFSYM_EXPORT(t5_device_get_api),
         ESP_ELFSYM_EXPORT(t5_driver_manager_get_api),
+        ESP_ELFSYM_EXPORT(t5_package_manager_get_api),
         ESP_ELFSYM_EXPORT(t5_font_get_api),
         ESP_ELFSYM_EXPORT(t5_koreader_get_api),
         ESP_ELFSYM_EXPORT(t5_language_get_api),
@@ -150,7 +152,7 @@ esp_err_t launch_elf_app(const char *sd_path)
 
 close_module:
     s_current_path = NULL;
-    native_app_capabilities_release();  // Dependency lifetimes end before ELF unload.
+    native_app_capabilities_release();
     (void)dlerror();
     if (dlclose(handle) != 0) {
         const char *close_error = dlerror();
@@ -159,7 +161,7 @@ close_module:
         result = ESP_FAIL;
     }
 done:
-    native_app_capabilities_release();  // Idempotent for preflight/dlopen/registration errors.
+    native_app_capabilities_release();
     s_current_path = NULL;
     atomic_flag_clear_explicit(&s_running, memory_order_release);
     return result;
