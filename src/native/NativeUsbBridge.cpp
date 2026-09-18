@@ -2,7 +2,6 @@
 #include <T5UsbApi.h>
 #include "NativeUsbDeviceRegistry.h"
 #include "runtime/drivers/InstalledProviderGraph.h"
-#include "runtime/packages/InstalledCapabilityResolver.h"
 #include <RiscUsbControllerV1.h>
 #include <HalStorage.h>
 #include <Logging.h>
@@ -161,6 +160,7 @@ void reconcile() {
     if (!running || quarantined || !host) return;
     size_t processed = 0;
     if (!host->poll(host->host.context, 16, &processed)) {
+        LOG_ERR("USB", "USBREF stage=host-poll-failed");
         quarantined = true;
         error(-1210);
         return;
@@ -168,6 +168,7 @@ void reconcile() {
     uint64_t devices[RISC_USB_HOST_MAX_DEVICES]{};
     size_t count = RISC_USB_HOST_MAX_DEVICES;
     if (!host->devices(host->host.context, devices, &count) || count > RISC_USB_HOST_MAX_DEVICES) {
+        LOG_ERR("USB", "USBREF stage=host-devices-failed");
         quarantined = true;
         error(-1211);
         return;
@@ -193,10 +194,13 @@ void reconcile() {
     if (!quarantined) state.status = T5_USB_STATUS_WAITING;
 }
 
+// This is a CHEAP hardware-platform predicate, not an installed-package
+// integrity result. Calls from provider selection and stream creation must
+// never rescan SD. Graph admission independently validates the complete
+// installed package inventory, requirements, exact imports and ELF bytes.
 bool supported() {
 #ifdef BOARD_T5S3_PRO
-    return Storage.ready() &&
-        RuntimePackages::installedCapabilityVersion("serial.port") >= 1;
+    return Storage.ready();
 #else
     return false;
 #endif
@@ -209,15 +213,15 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
         LOG_ERR("USB", "USBREF stage=serial-start-lock-timeout");
         return false;
     }
-    if (quarantined) return false;
+    if (quarantined) {
+        LOG_ERR("USB", "USBREF stage=serial-start-quarantined");
+        return false;
+    }
     if (running) {
         state.line_coding = *coding;
         return !session || (serial && serial->configure(session, coding->baud_rate,
                     coding->data_bits, coding->parity, coding->stop_bits));
     }
-    // The semantic provider registry already checked advertised availability.
-    // Graph acquisition independently verifies bytes, dependencies and ABI;
-    // calling supported() here would SHA-256 every installed driver AGAIN.
     LOG_INF("USB", "USBREF stage=host-acquire-begin");
     if (!RuntimeInstalledProviders::acquire(
             "usb-host-v2", "usb.host", 1, &hostGrant)) {
@@ -228,6 +232,7 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
     LOG_INF("USB", "USBREF stage=host-acquired");
     host = static_cast<const risc_usb_host_discovery_v1*>(hostGrant.interface);
     if (!hostApiValid(host)) {
+        LOG_ERR("USB", "USBREF stage=host-api-invalid");
         if (!RuntimeInstalledProviders::release(&hostGrant)) quarantined = true;
         host = nullptr;
         error(-1221);
