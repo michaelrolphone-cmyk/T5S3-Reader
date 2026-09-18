@@ -1,29 +1,18 @@
 #include "T5AppApi.h"
+#include "T5PackageManagerApi.h"
 #include "T5UiApi.h"
-
 #include <assert.h>
 #include <string.h>
 
 void app_main(void);
-
-static int downloads;
-static int saw_alpha;
-static int saw_beta;
-static int saw_installed;
-static int saw_update;
-static int back_disabled;
-static int back_restored;
-static int event_index;
+static int downloads, saw_alpha, saw_beta, saw_installed, saw_update;
+static int back_disabled, back_restored, event_index;
 static uint32_t downloaded_index;
-
+static int preview_calls, install_calls;
 static int32_t width(void) { return 540; }
 static int32_t height(void) { return 960; }
 static void clear(void) {}
-static void text(int32_t x, int32_t y, const char *s) {
-    (void)x;
-    (void)y;
-    (void)s;
-}
+static void text(int32_t x, int32_t y, const char *s) { (void)x; (void)y; (void)s; }
 static void rect(int32_t x, int32_t y, int32_t w, int32_t h, bool black) {
     (void)black;
     assert(x >= 0 && y >= 0 && w >= 0 && h >= 0);
@@ -62,8 +51,7 @@ static bool installed_version_get(const char *file_name, char *version, size_t c
     return false;
 }
 static bool catalog_version_get(uint32_t index, char *version, size_t capacity) {
-    assert(index < count());
-    assert(version && capacity >= T5_APP_VERSION_MAX);
+    assert(index < count() && version && capacity >= T5_APP_VERSION_MAX);
     strcpy(version, "1.0.0");
     return true;
 }
@@ -82,7 +70,15 @@ static void set_back_exits_app(bool enabled) {
     if (enabled) back_restored = 1;
     else back_disabled = 1;
 }
-
+static bool directory_open(const char *path) {
+    assert(path && !strcmp(path, "/sd/Packages/Inbox"));
+    return true;
+}
+static bool directory_next(t5_app_dirent_t *out) {
+    assert(out);
+    return false; // Empty offline inventory in release-view regression.
+}
+static void directory_close(void) {}
 static const t5_app_api_v1 api = {
     .abi_version = T5_APP_ABI_VERSION,
     .struct_size = sizeof(t5_app_api_v1),
@@ -93,6 +89,9 @@ static const t5_app_api_v1 api = {
     .fill_rect = rect,
     .present = present,
     .poll = poll,
+    .dir_open = directory_open,
+    .dir_next = directory_next,
+    .dir_close = directory_close,
     .app_catalog_refresh = refresh,
     .app_catalog_count = count,
     .app_catalog_get = asset_get,
@@ -102,18 +101,34 @@ static const t5_app_api_v1 api = {
     .installed_app_version_get = installed_version_get,
     .app_catalog_version_get = catalog_version_get,
 };
-
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) {
     assert(version == T5_APP_ABI_VERSION);
     return &api;
 }
-
+static bool preview(const char *folder, t5_package_preview_t *out) {
+    assert(folder && out);
+    ++preview_calls;
+    memset(out, 0, sizeof(*out));
+    return false;
+}
+static bool install(const char *folder) { assert(folder); ++install_calls; return true; }
+static bool uninstall(uint8_t kind, const char *id) {
+    (void)kind; (void)id;
+    return true;
+}
+static const t5_package_manager_api_v1 package_api = {
+    T5_PACKAGE_MANAGER_API_VERSION, sizeof(t5_package_manager_api_v1),
+    preview, install, uninstall,
+};
+const t5_package_manager_api_v1 *t5_package_manager_get_api(uint32_t version) {
+    assert(version == T5_PACKAGE_MANAGER_API_VERSION);
+    return &package_api;
+}
 static void render_list(const t5_ui_chrome_t *chrome,
                         const t5_ui_list_row_t *rows,
                         uint32_t row_count,
                         int32_t selected_index) {
-    assert(chrome);
-    assert(selected_index >= 0);
+    assert(chrome && selected_index >= 0);
     if (row_count == 2) {
         assert(rows);
         for (uint32_t i = 0; i < row_count; ++i) {
@@ -125,41 +140,27 @@ static void render_list(const t5_ui_chrome_t *chrome,
         if (chrome->confirm_label && !strcmp(chrome->confirm_label, "Update")) saw_update = 1;
     }
 }
-
 static int32_t hit_test(int16_t x, int16_t y) {
-    (void)x;
-    (void)y;
-    return T5_UI_HIT_NONE;
+    (void)x; (void)y; return T5_UI_HIT_NONE;
 }
-
 static bool poll_event(t5_ui_event_t *event, uint32_t wait_ms) {
     (void)wait_ms;
     assert(event);
     memset(event, 0, sizeof(*event));
     switch (event_index++) {
-        case 0:
-            event->type = T5_UI_EVENT_NEXT;
-            break;
-        case 1:
-            event->type = T5_UI_EVENT_CONFIRM;
-            break;
-        default:
-            event->type = T5_UI_EVENT_EXIT;
-            break;
+        case 0: event->type = T5_UI_EVENT_NEXT; break;
+        case 1: event->type = T5_UI_EVENT_CONFIRM; break;
+        default: event->type = T5_UI_EVENT_EXIT; break;
     }
     return true;
 }
-
 static int32_t next_index(int32_t current_index, uint32_t item_count) {
-    if (!item_count) return 0;
-    return (current_index + 1) % (int32_t)item_count;
+    return item_count ? (current_index + 1) % (int32_t)item_count : 0;
 }
-
 static int32_t previous_index(int32_t current_index, uint32_t item_count) {
-    if (!item_count) return 0;
-    return current_index <= 0 ? (int32_t)item_count - 1 : current_index - 1;
+    return !item_count ? 0 : current_index <= 0 ?
+        (int32_t)item_count - 1 : current_index - 1;
 }
-
 static const t5_ui_api_v1 ui_api = {
     .api_version = T5_UI_API_VERSION,
     .struct_size = sizeof(t5_ui_api_v1),
@@ -169,20 +170,15 @@ static const t5_ui_api_v1 ui_api = {
     .next_index = next_index,
     .previous_index = previous_index,
 };
-
 const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) {
     assert(version == T5_UI_API_VERSION);
     return &ui_api;
 }
-
 int main(void) {
     app_main();
-    assert(saw_alpha && saw_beta);
-    assert(saw_installed);
-    assert(saw_update);
-    assert(downloads == 1);
-    assert(downloaded_index == 1);
-    assert(back_disabled);
-    assert(back_restored);
+    assert(saw_alpha && saw_beta && saw_installed && saw_update);
+    assert(downloads == 1 && downloaded_index == 1);
+    assert(install_calls == 0 && preview_calls == 0);
+    assert(back_disabled && back_restored);
     return 0;
 }
