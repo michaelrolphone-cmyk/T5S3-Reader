@@ -23,7 +23,7 @@ for test_case in package_ordinary_stage package_ordinary_installer; do
     "$repo_dir/test/resources/${test_case}_test.cpp" -lcrypto -o "$binary"
   "$binary"
 done
-for test_case in package_ordinary_transaction package_driver_transition; do
+for test_case in package_ordinary_transaction package_driver_transition driver_install_intake; do
   c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
     -pthread -I"$repo_dir/src" \
     "$repo_dir/test/resources/${test_case}_test.cpp" -o "$binary"
@@ -65,4 +65,4 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_di
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
 python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
-echo 'Native app regressions passed: ordinary four-kind stage/publication/lifecycle, driver transition, legacy recovery and app UI (no mandatory package signing).'
+echo 'Native app regressions passed: ordinary four-kind stage/publication/lifecycle, early driver intake, driver transition, legacy recovery and app UI (no mandatory package signing).'
