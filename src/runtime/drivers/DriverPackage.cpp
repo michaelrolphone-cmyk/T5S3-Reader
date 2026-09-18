@@ -9,6 +9,7 @@
 #include <mbedtls/sha256.h>
 #include "runtime/packages/PackageIdentity.h"
 #include "runtime/packages/PackageJsonGuard.h"
+#include "runtime/packages/PackageOrdinaryTransaction.h"
 #include "runtime/packages/PackageTransaction.h"
 
 #include <cstdio>
@@ -38,11 +39,7 @@ bool safeDriverId(const char* id) {
 }
 
 bool validSha256(const char* value) {
-    if (!value || std::strlen(value) != 64) return false;
-    for (unsigned i = 0; i < 64; ++i) {
-        if (!((value[i] >= '0' && value[i] <= '9') || (value[i] >= 'a' && value[i] <= 'f'))) return false;
-    }
-    return true;
+    return RuntimePackages::validSha256Hex(value);
 }
 
 bool copyString(const char* value, char* out, size_t capacity) {
@@ -53,8 +50,6 @@ bool copyString(const char* value, char* out, size_t capacity) {
     return true;
 }
 
-// The release catalog and legacy release-manifest path share this parser.
-// Log a field name, not untrusted remote JSON content.
 bool manifestReject(const char* reason, size_t bytes) {
     LOG_ERR("DRIVER", "Manifest rejected at %s (received=%u bytes)", reason,
             static_cast<unsigned>(bytes));
@@ -65,8 +60,6 @@ bool parseManifest(const std::string& json, JsonDocument& doc, DriverPackageInfo
     const size_t bytes = json.size();
     if (json.empty()) return manifestReject("empty response", bytes);
     if (bytes > kMaxManifestBytes) return manifestReject("manifest exceeds 4096 bytes", bytes);
-    // Fail before ArduinoJson can overwrite an earlier occurrence of a key.
-    // Neither parsing nor SHA-256 alone authenticates the publisher.
     if (!RuntimePackages::safePackageJsonObject(json.data(), bytes))
         return manifestReject("duplicate keys or malformed JSON", bytes);
     const DeserializationError error = deserializeJson(doc, json);
@@ -151,7 +144,7 @@ bool writeManifest(const std::string& storagePath, const std::string& value) {
     return true;
 }
 
-// Inspect first; do not delete even the recognizable files if an unknown entry
+// Inspect first; do not delete even recognizable files if an unknown entry
 // would make the directory impossible to remove. Never recursively delete.
 bool removeManagedDirectory(const std::string& storagePath) {
     if (!Storage.exists(storagePath.c_str())) return true;
@@ -164,8 +157,8 @@ bool removeManagedDirectory(const std::string& storagePath) {
         HalFile entry = directory.openNextFile();
         if (!entry.isOpen()) break;
         char name[128]{};
-        entry.getName(name, sizeof(name));
-        const bool known = !entry.isDirectory() &&
+        const size_t length = entry.getName(name, sizeof(name));
+        const bool known = length && length < sizeof(name) && !entry.isDirectory() &&
             (std::strcmp(name, "driver.elf") == 0 || std::strcmp(name, "manifest.json") == 0);
         entry.close();
         if (!known) {
@@ -186,13 +179,36 @@ bool removeManagedDirectory(const std::string& storagePath) {
     return true;
 }
 
-bool directoryIsManagedPackage(const std::string& storagePath, const char* expectedId) {
-    if (!Storage.exists((storagePath + "/driver.elf").c_str()) ||
-        !Storage.exists((storagePath + "/manifest.json").c_str())) return false;
-    std::string json;
-    if (!readFile(("/sd" + storagePath + "/manifest.json").c_str(), json)) return false;
-    DriverPackageInfo info{};
-    return parseDriverPackageManifest(json, info) && std::strcmp(info.id, expectedId) == 0;
+// An inventory check must reject added files and directories, not merely
+// accept the presence of the two files named in a legacy manifest.
+bool exactLegacyDriverFiles(const char* path) {
+    if (!path) return false;
+    HalFile directory = Storage.open(path, O_RDONLY);
+    if (!directory.isOpen() || !directory.isDirectory()) {
+        if (directory.isOpen()) (void)directory.close();
+        return false;
+    }
+    bool sawElf = false, sawManifest = false, valid = true;
+    size_t count = 0;
+    while (valid) {
+        HalFile entry = directory.openNextFile();
+        if (!entry.isOpen()) break;
+        char name[128]{};
+        const size_t length = entry.getName(name, sizeof(name));
+        if (!length || length >= sizeof(name) || entry.isDirectory()) {
+            valid = false;
+        } else if (std::strcmp(name, "driver.elf") == 0 && !sawElf) {
+            sawElf = true;
+        } else if (std::strcmp(name, "manifest.json") == 0 && !sawManifest) {
+            sawManifest = true;
+        } else {
+            valid = false;
+        }
+        (void)entry.close();
+        ++count;
+    }
+    const bool closed = directory.close();
+    return closed && valid && count == 2 && sawElf && sawManifest;
 }
 
 bool validateElfAndHash(const char* path, unsigned expectedSize, const char* expectedSha) {
@@ -211,7 +227,6 @@ bool validateElfAndHash(const char* path, unsigned expectedSize, const char* exp
         std::fclose(file);
         return false;
     }
-
     mbedtls_sha256_context hash;
     mbedtls_sha256_init(&hash);
     bool ok = mbedtls_sha256_starts_ret(&hash, 0) == 0;
@@ -249,6 +264,58 @@ struct DriverStorageOps {
     bool exists(const char* path) const { return Storage.exists(path); }
     bool rename(const char* source, const char* destination) const { return Storage.rename(source, destination); }
 };
+
+// The existing driver manifest remains the sole retained metadata during the
+// compatibility transition. Each verification reopens it and independently
+// checks ELF bytes, identity and exact file inventory; no signing receipt or
+// claimed SHA-256 alone grants execution rights.
+bool verifiedDriverDirectoryIdentity(const char* path, const char* expectedId,
+                                     RuntimePackages::Identity& observed) {
+    observed = {};
+    if (!path || !safeDriverId(expectedId) || !exactLegacyDriverFiles(path)) return false;
+    std::string json;
+    if (!readFile((std::string("/sd") + path + "/manifest.json").c_str(), json)) return false;
+    DriverPackageInfo info{};
+    if (!validateDriverPayload(json, (std::string("/sd") + path + "/driver.elf").c_str(), &info) ||
+        std::strcmp(info.id, expectedId) != 0) return false;
+    return RuntimePackages::makeIdentity(RuntimePackages::Kind::Driver, info.id,
+                                        info.version, "driver.elf", false, &observed);
+}
+
+bool verifiedDriverDirectory(const char* path, const char* expectedId) {
+    RuntimePackages::Identity observed{};
+    return verifiedDriverDirectoryIdentity(path, expectedId, observed);
+}
+
+bool recoverDriverDirectory(const char* id) {
+    if (!safeDriverId(id) || !Storage.ready() || native_app_register_sd_vfs() != ESP_OK) return false;
+    const std::string target = std::string("/Drivers/") + id;
+    const std::string legacyStage = std::string("/Drivers/.") + id + ".install";
+    const std::string legacyBackup = std::string("/Drivers/.") + id + ".previous";
+    DriverStorageOps ops;
+    const auto verifyLegacy = [id](const char* path) { return verifiedDriverDirectory(path, id); };
+    const auto purge = [](const char* path) { return removeManagedDirectory(path); };
+    if (Storage.exists(legacyBackup.c_str())) {
+        const RuntimePackages::TransactionPaths oldPaths{
+            target.c_str(), legacyStage.c_str(), legacyBackup.c_str()};
+        if (!RuntimePackages::recoverDirectoryTransaction(ops, oldPaths, verifyLegacy, purge)) {
+            LOG_ERR("DRIVER", "Legacy driver transaction requires recovery: %s", id);
+            return false;
+        }
+    }
+    // Recover new package generations as well; inventory must not forget a
+    // backup because it uses the new .pkg-previous name.
+    RuntimePackages::Identity observed{};
+    const auto verify = [id](const char* path, RuntimePackages::Identity& value) {
+        return verifiedDriverDirectoryIdentity(path, id, value);
+    };
+    const auto state = RuntimePackages::recoverOrdinaryPackage(ops,
+        RuntimePackages::Kind::Driver, id, verify, purge, observed);
+    return state == RuntimePackages::OrdinaryTransactionResult::NoInstalledPackage ||
+           state == RuntimePackages::OrdinaryTransactionResult::InstalledVerified ||
+           state == RuntimePackages::OrdinaryTransactionResult::PreviousRestored ||
+           state == RuntimePackages::OrdinaryTransactionResult::Removed;
+}
 }  // namespace
 
 bool parseDriverPackageManifest(const std::string& json, DriverPackageInfo& out) {
@@ -270,47 +337,19 @@ bool validateDriverPayload(const std::string& manifestJson, const char* elfVfsPa
     return true;
 }
 
-namespace {
-bool verifiedDriverDirectory(const char* path, const char* expectedId) {
-    if (!path || !directoryIsManagedPackage(path, expectedId)) return false;
-    std::string json;
-    if (!readFile((std::string("/sd") + path + "/manifest.json").c_str(), json)) return false;
-    DriverPackageInfo info{};
-    return validateDriverPayload(json, (std::string("/sd") + path + "/driver.elf").c_str(), &info) &&
-           std::strcmp(info.id, expectedId) == 0;
-}
-
-bool recoverDriverDirectory(const char* id) {
-    if (!safeDriverId(id) || !Storage.ready() || native_app_register_sd_vfs() != ESP_OK) return false;
-    const std::string target = std::string("/Drivers/") + id;
-    const std::string stage = std::string("/Drivers/.") + id + ".install";
-    const std::string backup = std::string("/Drivers/.") + id + ".previous";
-    if (!Storage.exists(backup.c_str())) return true;
-    DriverStorageOps ops;
-    const RuntimePackages::TransactionPaths paths{target.c_str(), stage.c_str(), backup.c_str()};
-    const auto verify = [id](const char* path) { return verifiedDriverDirectory(path, id); };
-    return RuntimePackages::recoverDirectoryTransaction(ops, paths, verify,
-        [](const char* path) { return removeManagedDirectory(path); });
-}
-} // namespace
-
 bool getInstalledDriverVersion(const char* id, char* version, size_t capacity) {
     if (!safeDriverId(id) || !version || capacity == 0 || native_app_register_sd_vfs() != ESP_OK) return false;
     if (!recoverDriverDirectory(id)) return false;
     const std::string storagePath = std::string("/Drivers/") + id;
     if (!Storage.exists((storagePath + "/driver.elf").c_str())) return false;
-    std::string json;
-    if (!readFile(("/sd" + storagePath + "/manifest.json").c_str(), json)) return false;
-    DriverPackageInfo info{};
-    // Inventory must not claim a version from a parseable but corrupted ELF.
-    if (!validateDriverPayload(json, ("/sd" + storagePath + "/driver.elf").c_str(), &info) ||
-        std::strcmp(info.id, id) != 0) return false;
-    return copyString(info.version, version, capacity);
+    RuntimePackages::Identity observed{};
+    if (!verifiedDriverDirectoryIdentity(storagePath.c_str(), id, observed)) return false;
+    return copyString(observed.version, version, capacity);
 }
 
 bool installStagedDriverPackage(const std::string& manifestJson, const char* stagedElfVfsPath) {
     // Only the Driver Manager's disposable download may be moved. Never accept
-    // an arbitrary app-selected source path or write via the read-only /sd VFS.
+    // arbitrary app-selected paths or mutate via the read-only /sd VFS.
     constexpr const char* kDownloadedVfs = "/sd/Drivers/.driver-manager.part";
     constexpr const char* kDownloadedStorage = "/Drivers/.driver-manager.part";
     if (!stagedElfVfsPath || std::strcmp(stagedElfVfsPath, kDownloadedVfs) != 0) {
@@ -318,7 +357,6 @@ bool installStagedDriverPackage(const std::string& manifestJson, const char* sta
         return false;
     }
     DriverPackageInfo info{};
-    LOG_INF("DRIVER", "Install: validating downloaded ELF and manifest");
     if (!validateDriverPayload(manifestJson, stagedElfVfsPath, &info)) {
         LOG_ERR("DRIVER", "Install failed: download/ELF integrity validation");
         return false;
@@ -327,46 +365,65 @@ bool installStagedDriverPackage(const std::string& manifestJson, const char* sta
         LOG_ERR("DRIVER", "Install failed: /Drivers storage unavailable");
         return false;
     }
-
-    const std::string target = std::string("/Drivers/") + info.id;
-    const std::string stage = std::string("/Drivers/.") + info.id + ".install";
-    const std::string backup = std::string("/Drivers/.") + info.id + ".previous";
+    RuntimePackages::Identity candidate{};
+    if (!RuntimePackages::makeIdentity(RuntimePackages::Kind::Driver, info.id,
+                                       info.version, "driver.elf", false, &candidate) ||
+        !recoverDriverDirectory(info.id)) {
+        LOG_ERR("DRIVER", "Install refused: invalid identity or incomplete prior recovery");
+        return false;
+    }
+    RuntimePackages::OrdinaryTransactionPaths paths{};
+    if (!RuntimePackages::ordinaryTransactionPaths(candidate.kind, candidate.id, paths))
+        return false;
     DriverStorageOps ops;
-    const RuntimePackages::TransactionPaths paths{target.c_str(), stage.c_str(), backup.c_str()};
-    const auto verify = [&info](const char* path) { return verifiedDriverDirectory(path, info.id); };
+    const auto verify = [&info](const char* path, RuntimePackages::Identity& observed) {
+        return verifiedDriverDirectoryIdentity(path, info.id, observed);
+    };
     const auto purge = [](const char* path) { return removeManagedDirectory(path); };
-    // A power cut after target -> backup must restore the backup BEFORE stage
-    // cleanup or any new install. Never destroy a valid previous generation.
-    if (!RuntimePackages::recoverDirectoryTransaction(ops, paths, verify, purge)) {
-        LOG_ERR("DRIVER", "Install refused: previous generation requires recovery or manual inspection");
+
+    // Never delete a previous .pkg-stage: it may represent an interrupted
+    // publication or contain unknown data. A separate recovery decision owns it.
+    if (Storage.exists(paths.stage)) {
+        LOG_ERR("DRIVER", "Install refused: unfinished stage requires review: %s", paths.stage);
         return false;
     }
-    if (!removeManagedDirectory(stage)) {
-        LOG_ERR("DRIVER", "Install failed: stale stage contains unmanaged entries");
+    if (!Storage.mkdir(paths.stage, false)) {
+        LOG_ERR("DRIVER", "Install failed: cannot exclusively create stage %s", paths.stage);
         return false;
     }
-    if (!Storage.mkdir(stage.c_str())) {
-        LOG_ERR("DRIVER", "Install failed: cannot create stage %s", stage.c_str());
-        return false;
-    }
-    const std::string stageElf = stage + "/driver.elf";
-    const std::string stageManifest = stage + "/manifest.json";
+    const std::string stageElf = std::string(paths.stage) + "/driver.elf";
+    const std::string stageManifest = std::string(paths.stage) + "/manifest.json";
     if (!Storage.rename(kDownloadedStorage, stageElf.c_str())) {
         LOG_ERR("DRIVER", "Install failed: cannot move downloaded ELF into stage");
-        (void)removeManagedDirectory(stage);
+        (void)removeManagedDirectory(paths.stage);
         return false;
     }
-    if (!writeManifest(stageManifest, manifestJson) || !verify(stage.c_str())) {
-        LOG_ERR("DRIVER", "Install failed: staged manifest write or integrity recheck");
-        (void)removeManagedDirectory(stage);
+    if (!writeManifest(stageManifest, manifestJson)) {
+        LOG_ERR("DRIVER", "Install failed: cannot retain staged manifest");
+        (void)removeManagedDirectory(paths.stage);
         return false;
     }
-    // Installation does not activate the driver. A generic runtime module-pin
-    // gate is still required before arbitrary active drivers can be replaced.
-    if (!RuntimePackages::publishDirectoryTransaction(ops, paths, verify, purge, true)) {
-        LOG_ERR("DRIVER", "Install failed: package transaction refused or rollback required for %s", info.id);
+    RuntimePackages::Identity observed{};
+    if (!verify(paths.stage, observed) ||
+        !RuntimePackages::samePackage(candidate, observed) ||
+        std::strcmp(candidate.version, observed.version) != 0) {
+        LOG_ERR("DRIVER", "Install failed: staged directory changed or failed integrity verification");
+        (void)removeManagedDirectory(paths.stage);
         return false;
     }
+    // A package transaction does not activate hardware. This re-verifies the
+    // candidate, enforces NEWER semver, checks active ELF pins, and restores the
+    // old generation if either rename or post-publication validation fails.
+    const auto result = RuntimePackages::publishOrdinaryPackage(ops, candidate,
+        verify, purge, observed);
+    if (result != RuntimePackages::OrdinaryTransactionResult::Published &&
+        result != RuntimePackages::OrdinaryTransactionResult::CleanupPending) {
+        LOG_ERR("DRIVER", "Install refused: version, mapped driver or recoverable publish error (%u) for %s",
+                static_cast<unsigned>(result), info.id);
+        return false;
+    }
+    if (result == RuntimePackages::OrdinaryTransactionResult::CleanupPending)
+        LOG_ERR("DRIVER", "Driver committed; prior generation cleanup pending: %s", info.id);
     LOG_INF("DRIVER", "Installed driver %s %s; activation unchanged", info.id, info.version);
     return true;
 }
