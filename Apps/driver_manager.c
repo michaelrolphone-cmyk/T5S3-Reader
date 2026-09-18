@@ -406,6 +406,10 @@ static void activate(const t5_driver_manager_api_v1 *api, const t5_package_manag
         const t5_package_preview_t info = packages[selected];
         if (!info.valid_installation) snprintf(status, capacity, "%s: recovery required", info.id);
         else if (info.install_allowed) {
+            const t5_ui_chrome_t busy = {"Driver installation", info.id,
+                                         "Verifying SD package; keep power on", "", "", "", ""};
+            const t5_ui_list_row_t row = {"Installing", "Verifying and publishing from SD inbox", "", 0};
+            ui->render_list(&busy, &row, 1, 0);
             const bool ok = manager->install(folders[selected]);
             snprintf(status, capacity, "%s: %s; not activated", info.id,
                 ok ? "verified package installed" : "install refused; inspect stage/dependencies");
@@ -421,7 +425,21 @@ static void activate(const t5_driver_manager_api_v1 *api, const t5_package_manag
     if (action == CURRENT) { snprintf(status, capacity, "%s already current", releases[selected].id); return; }
     if (action == NEWER) { snprintf(status, capacity, "%s: installed %s is newer", releases[selected].id, installed); return; }
     if (action == INVALID) { snprintf(status, capacity, "%s: version invalid", releases[selected].id); return; }
-    const bool ok = api->install(release_indices[selected]);
+    bool ok = false;
+    if (progress_api(api)) {
+        const t5_app_api_v1 *app = t5_app_get_api(T5_APP_ABI_VERSION);
+        begin_install_progress(app, ui, releases[selected].id);
+        ok = api->install_with_progress(release_indices[selected], install_progress, &install_view);
+        // No firmware function may retain an ELF callback or its app context.
+        install_view.ui = NULL;
+        install_view.app = NULL;
+    } else {
+        const t5_ui_chrome_t busy = {"Driver installation", releases[selected].id,
+                                     "Older firmware: detailed progress unavailable", "", "", "", ""};
+        const t5_ui_list_row_t row = {"Installing", "Downloading and validating; keep power on", "", 0};
+        ui->render_list(&busy, &row, 1, 0);
+        ok = api->install(release_indices[selected]);
+    }
     snprintf(status, capacity, "%s: %s; not activated", releases[selected].id,
              ok ? "installed" : "install refused; inspect recovery");
 }
