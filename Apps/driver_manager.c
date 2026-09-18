@@ -147,10 +147,11 @@ static bool recovery_screen(const t5_driver_manager_api_v1 *api, const t5_ui_api
             actions[choices++] = (t5_ui_list_row_t){"Discard stage", "Requires separate confirmation", "Discard", 0};
         }
         const int32_t action = menu(ui, "Recovery actions", item.id, actions, choices);
-        if (action == retry) {
+        if (retry >= 0 && action == retry) {
             const bool ok = api->recovery_retry((uint32_t)selected);
             snprintf(status, sizeof(status), "%s", ok ? "Verified stage published" : "Retry refused; files retained");
-        } else if (action == discard && confirm(ui, item.id, "Discard retained files")) {
+        } else if (discard >= 0 && action == discard &&
+                   confirm(ui, item.id, "Discard retained files")) {
             const bool ok = api->recovery_discard((uint32_t)selected);
             snprintf(status, sizeof(status), "%s", ok ? "Retained stage discarded" : "Discard refused; files retained");
         }
