@@ -341,22 +341,34 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     power = api;
     /* The board provider alone decides whether host sourcing is electrically
      * legal. The controller never touches charger/I2C registers in firmware. */
-    if (!power->acquire_host(power->context, 500, &powerLease) || !powerLease)
+    if (!power->acquire_host(power->context, 500, &powerLease) || !powerLease) {
+        // Acquire may fail after partially changing the board state. A lease
+        // must be released by its owner before the ELF can be reused/unmapped.
+        if (powerLease) (void)quiesce(nullptr);
+        else power = nullptr;
         return false;
+    }
     usb_host_config_t config = {};
     config.skip_phy_setup = false;
     config.intr_flags = ESP_INTR_FLAG_LEVEL1;
-    if (usb_host_install(&config) != ESP_OK) return false;
+    if (usb_host_install(&config) != ESP_OK) {
+        (void)quiesce(nullptr);  // Releases the exclusively acquired VBUS.
+        return false;
+    }
     installed = true;
     usb_host_client_config_t registration = {};
     registration.is_synchronous = false;
     registration.max_num_event_msg = kEvents;
     registration.async.client_event_callback = client_event;
     registration.async.callback_arg = nullptr;
-    if (usb_host_client_register(&registration, &client) != ESP_OK)
+    if (usb_host_client_register(&registration, &client) != ESP_OK) {
+        (void)quiesce(nullptr);  // Uninstalls IDF host before releasing VBUS.
         return false;
-    if (usb_host_transfer_alloc(kBuffer, 0, &transfer) != ESP_OK)
+    }
+    if (usb_host_transfer_alloc(kBuffer, 0, &transfer) != ESP_OK) {
+        (void)quiesce(nullptr);  // Deregisters client, host and VBUS in order.
         return false;
+    }
     running = true;
     return true;
 }
