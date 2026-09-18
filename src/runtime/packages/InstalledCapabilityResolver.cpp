@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+#include <new>
 #include <string>
 
 namespace RuntimePackages {
@@ -111,22 +113,40 @@ uint32_t resolve(const char* capability, char (&stack)[kMaxDepth][64],
       char manifest[192]{};
       if (std::snprintf(manifest, sizeof(manifest), "%s/.package.json", path) >=
           static_cast<int>(sizeof(manifest))) continue;
-      char json[4097]{};
+
+      // A manifest is 4 KiB and OrdinaryPackagePlan holds up to sixteen file
+      // entries and dependencies. Both used to remain live on loopTask's stack
+      // through every recursive dependency lookup (up to kMaxDepth levels).
+      // Allocate them only for this candidate, then retain just its bounded
+      // requirements while walking the dependency graph. OOM fails closed.
+      std::unique_ptr<char[]> json(new (std::nothrow) char[4097]{});
+      std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
+      if (!json || !plan) return 0;
       size_t length = 0;
-      OrdinaryPackagePlan plan{};
-      if (!readSmall(manifest, json, sizeof(json), length) ||
-          !parseOrdinaryManifest(json, length, plan) ||
-          std::strcmp(plan.identity.id, id) ||
-          plan.identity.kind != installed.kind) continue;
+      if (!readSmall(manifest, json.get(), 4097, length) ||
+          !parseOrdinaryManifest(json.get(), length, *plan) ||
+          std::strcmp(plan->identity.id, id) ||
+          plan->identity.kind != installed.kind) continue;
       bool declared = false;
-      for (size_t i = 0; i < plan.entryCount; ++i)
-        if (std::strcmp(plan.entries[i].name, "provider-abi.v1") == 0)
+      for (size_t i = 0; i < plan->entryCount; ++i)
+        if (std::strcmp(plan->entries[i].name, "provider-abi.v1") == 0)
           declared = true;
       if (!declared) continue;
+
+      const size_t requirementCount = plan->requirementCount;
+      std::unique_ptr<OrdinaryRequirement[]> requirements;
+      if (requirementCount) {
+        requirements.reset(new (std::nothrow) OrdinaryRequirement[requirementCount]{});
+        if (!requirements) return 0;
+        for (size_t i = 0; i < requirementCount; ++i)
+          requirements[i] = plan->requirements[i];
+      }
+      plan.reset();
+      json.reset();
       std::strcpy(stack[depth], id);
       bool dependenciesReady = true;
-      for (size_t i = 0; i < plan.requirementCount; ++i) {
-        const auto& need = plan.requirements[i];
+      for (size_t i = 0; i < requirementCount; ++i) {
+        const auto& need = requirements[i];
         if (resolve(need.capability, stack, depth + 1) < need.minApi) {
           dependenciesReady = false;
           break;
