@@ -52,7 +52,8 @@ def build() -> list[dict]:
             raise ValueError(f'unexpected source identity: {source}')
         capability, api = canonical_manifest(source)
         version = metadata.get('version', '0.1.0')
-        if version != '0.1.0':
+        expected_version = '0.1.1' if identity == 'i2c-esp32s3-v2' else '0.1.0'
+        if version != expected_version:
             raise ValueError(f'unknown package version for {identity}: {version}')
         elf = SOURCE / output_name / elf_name
         if not elf.is_file() or elf.stat().st_size < 52:
