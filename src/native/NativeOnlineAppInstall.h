@@ -53,8 +53,13 @@ inline bool installApplication(const char* artifact, const char* version,
   const std::string jsonPath = root + "/" + manifestName;
   if (!writeExclusive(jsonPath, sidecar.data(), sidecar.size())) return false;
   const std::string elfPath = root + "/" + artifact;
-  if (HttpDownloader::downloadToFile(url, elfPath,
+  const std::string elfStage = elfPath + ".part";
+  // Only a .part destination uses the lossless HTTP -> stream -> exclusive SD
+  // writer. Commit that file inside our exclusively owned source directory.
+  if (HttpDownloader::downloadToFile(url, elfStage,
           [](size_t, size_t) { esp_task_wdt_reset(); }) != HttpDownloader::OK ||
+      Storage.exists(elfPath.c_str()) ||
+      !Storage.rename(elfStage.c_str(), elfPath.c_str()) ||
       !verifyAppPair(elfPath.c_str(), jsonPath.c_str(), artifact, true)) return false;
 
   uint8_t digest[32]{};

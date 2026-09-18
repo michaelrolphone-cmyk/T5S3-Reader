@@ -110,8 +110,11 @@ inline bool install(const char* id, const char* version, const std::string& cata
     if (!writeExclusive(root + "/.package.json", descriptor)) return false;
     for (size_t i = 1; i < 4; ++i) {
         const std::string target = root + "/" + kNames[i];
-        if (HttpDownloader::downloadToFile(prefix + kNames[i], target,
-                [](size_t, size_t) { esp_task_wdt_reset(); }) != HttpDownloader::OK)
+        const std::string stage = target + ".part";
+        if (HttpDownloader::downloadToFile(prefix + kNames[i], stage,
+                [](size_t, size_t) { esp_task_wdt_reset(); }) != HttpDownloader::OK ||
+            Storage.exists(target.c_str()) ||
+            !Storage.rename(stage.c_str(), target.c_str()))
             return false;
     }
     constexpr PackageRuntimePolicy policy{"xtensa-esp32s3", 2, 0,
