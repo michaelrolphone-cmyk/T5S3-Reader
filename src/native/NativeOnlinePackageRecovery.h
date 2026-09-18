@@ -5,6 +5,8 @@
 #include "runtime/packages/PackageOrdinaryTransaction.h"
 #include <HalStorage.h>
 #include <cstring>
+#include <memory>
+#include <new>
 #include <string>
 
 namespace RuntimeOnlinePackages {
@@ -95,11 +97,20 @@ inline bool stagePrefixMatches(const std::string& sourcePath,
     (void)source.close(); (void)stage.close();
     return false;
   }
-  uint8_t lhs[512]{}, rhs[512]{};
+  // This comparison runs under the nested online installer and package
+  // verifier. Two local 512-byte arrays consumed a kilobyte of loopTask's
+  // remaining stack. Allocate once and fail closed without touching the stage.
+  std::unique_ptr<uint8_t[]> buffers(new (std::nothrow) uint8_t[1024]{});
+  if (!buffers) {
+    (void)source.close(); (void)stage.close();
+    return false;
+  }
+  uint8_t* const lhs = buffers.get();
+  uint8_t* const rhs = buffers.get() + 512;
   uint64_t at = 0;
   bool equal = true;
   while (at < length) {
-    const size_t n = length - at < sizeof(lhs) ? static_cast<size_t>(length - at) : sizeof(lhs);
+    const size_t n = length - at < 512 ? static_cast<size_t>(length - at) : 512;
     if (source.read(lhs, n) != static_cast<int>(n) ||
         stage.read(rhs, n) != static_cast<int>(n) ||
         std::memcmp(lhs, rhs, n)) { equal = false; break; }
