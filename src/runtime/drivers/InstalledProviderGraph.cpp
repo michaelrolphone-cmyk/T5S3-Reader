@@ -24,10 +24,6 @@ bool pathFor(char (&out)[160], const char* root, const char* id, const char* fil
     const int length = std::snprintf(out, sizeof(out), "%s/%s/%s", root, id, file);
     return length > 0 && static_cast<size_t>(length) < sizeof(out);
 }
-
-// This reader is deliberately independent of the ELF loader. The package
-// adapter separately checks the exact inventory and hashes before this call;
-// the executor hashes the private copied relocation bytes a second time.
 uint8_t* readFile(const char* name, size_t maximum, size_t& length) {
     length = 0;
     if (!Storage.ready() || !name) return nullptr;
@@ -59,7 +55,6 @@ uint8_t* readFile(const char* name, size_t maximum, size_t& length) {
     length = size;
     return data;
 }
-
 bool profile(const char* bytes, size_t size, char (&capability)[64], uint32_t& api) {
     capability[0] = 0;
     api = 0;
@@ -83,6 +78,32 @@ bool profile(const char* bytes, size_t size, char (&capability)[64], uint32_t& a
     return true;
 }
 
+bool parseExactImports(uint8_t* bytes, size_t length,
+                       const char* (&symbols)[128], size_t& count) {
+    count = 0;
+    if (!bytes || !length) return false;
+    // A single LF is a canonical, digest-checked declaration of zero imports;
+    // the private relocation matcher independently validates the ELF tables.
+    if (length == 1 && bytes[0] == '\n') return true;
+    char* begin = reinterpret_cast<char*>(bytes);
+    char* previous = nullptr;
+    for (size_t offset = 0; offset < length;) {
+        char* end = static_cast<char*>(std::memchr(begin, '\n', length - offset));
+        if (!end || end == begin || static_cast<size_t>(end - begin) >= 128 ||
+            count == 128) return false;
+        *end = 0;
+        for (char* c = begin; c < end; ++c)
+            if (static_cast<unsigned char>(*c) <= 0x20 ||
+                static_cast<unsigned char>(*c) > 0x7e) return false;
+        if (previous && std::strcmp(previous, begin) >= 0) return false;
+        symbols[count++] = begin;
+        previous = begin;
+        offset += static_cast<size_t>(end - begin) + 1u;
+        begin = end + 1;
+    }
+    return count > 0;
+}
+
 bool registerOne(RuntimeProviders::GraphV2& destination,
                  const char* root, const char* id, Kind kind) {
     if (pinCount >= kMaxProviders || !safeId(id)) return false;
@@ -90,8 +111,6 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
     const int n = std::snprintf(target, sizeof(target), "%s/%s", root, id);
     if (n <= 0 || static_cast<size_t>(n) >= sizeof(target) ||
         !systemPackageUseGate().pin(target)) return false;
-    // A pinned directory cannot be renamed while its manifest is verified,
-    // copied, and registered. Every rejection unpins this exact generation.
     bool accepted = false;
     do {
         Identity identity{};
@@ -135,27 +154,8 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         if (!imports) break;
         const char* symbols[128]{};
         size_t symbolCount = 0;
-        bool goodImports = true;
-        char* begin = reinterpret_cast<char*>(imports);
-        char* previous = nullptr;
-        for (size_t i = 0; i < importsSize;) {
-            char* end = static_cast<char*>(std::memchr(begin, '\n', importsSize - i));
-            if (!end || end == begin || static_cast<size_t>(end - begin) >= 128 ||
-                symbolCount == 128) { goodImports = false; break; }
-            *end = 0;
-            if (previous && std::strcmp(previous, begin) >= 0) {
-                goodImports = false;
-                break;
-            }
-            symbols[symbolCount++] = begin;
-            previous = begin;
-            i += static_cast<size_t>(end - begin) + 1u;
-            begin = end + 1;
-        }
-        if (!goodImports || !symbolCount) {
-            std::free(imports);
-            break;
-        }
+        const bool goodImports = parseExactImports(imports, importsSize, symbols, symbolCount);
+        if (!goodImports) { std::free(imports); break; }
         if (!pathFor(name, root, id, "driver.elf")) {
             std::free(imports);
             break;
@@ -195,7 +195,6 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
     std::strcpy(pinned[pinCount++], target);
     return true;
 }
-
 void undoPins() {
     while (pinCount) {
         --pinCount;
@@ -245,7 +244,7 @@ bool acquire(const char* providerId, const char* capability, uint32_t version,
              Lease* out) {
     if (out) *out = {};
     if (!out || !providerId || !capability || !version || !prepare()) return false;
-    auto grant = graph->acquireFrom(providerId, capability, version);
+    const auto grant = graph->acquireFrom(providerId, capability, version);
     const void* interface = graph->interfaceFor(grant);
     if (!interface) {
         if (grant.slot) (void)graph->release(grant);
