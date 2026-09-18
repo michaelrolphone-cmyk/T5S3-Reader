@@ -398,7 +398,7 @@ bool loadLegacyReleaseCatalog() {
         }
         if (!parseDriverPackageManifest(manifest, info)) {
             LOG_ERR("DRVMGR", "Rejected driver manifest: %s (received=%u bytes, parser reason above)",
-                    manifestAsset.name.c_str(), static_cast<unsigned>(manifest.size()));
+                manifestAsset.name.c_str(), static_cast<unsigned>(manifest.size()));
             rejectedCandidate = true;
             continue;
         }
@@ -553,17 +553,17 @@ bool installedVersionGet(const char* id, char* version, size_t capacity) {
     return getInstalledDriverVersion(id, version, capacity);
 }
 
-
-// Installing a serial class driver must also install its provider graph;
-// installing just a leaf ELF cannot produce a usable serial.port capability.
-// Use the release index's declared requirements to install prerequisites in
-// dependency order, then let the shared transaction validate each package.
-bool installCanonicalDependencies(size_t index, std::vector<uint8_t>& visiting) {
+// The callback remains scoped to the synchronous invocation. Dependencies
+// are discovered by their declared capability requirements, never from UI IDs.
+bool installCanonicalDependencies(size_t index, std::vector<uint8_t>& visiting,
+                                  t5_driver_install_progress_t progress, void* context) {
     if (index >= catalog.size() || index >= visiting.size() ||
         catalog[index].canonicalMetadata.empty() || visiting[index] == 1) return false;
     if (visiting[index] == 2) return true;
     visiting[index] = 1;
     const CatalogDriver& selected = catalog[index];
+    RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
+        selected.info.id, T5_DRIVER_INSTALL_RESOLVING);
     JsonDocument metadata;
     if (deserializeJson(metadata, selected.canonicalMetadata) ||
         !metadata.is<JsonObjectConst>() || !metadata["requires"].is<JsonArrayConst>())
@@ -595,26 +595,32 @@ bool installCanonicalDependencies(size_t index, std::vector<uint8_t>& visiting) 
         }
         LOG_INF("DRVMGR", "Installing %s required by %s",
                 catalog[prerequisite].info.id, selected.info.id);
-        if (!installCanonicalDependencies(prerequisite, visiting) ||
+        RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
+            catalog[prerequisite].info.id, T5_DRIVER_INSTALL_DEPENDENCY);
+        if (!installCanonicalDependencies(prerequisite, visiting, progress, context) ||
             RuntimePackages::installedCapabilityVersion(capability) < minimumApi)
             return false;
     }
+    RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
+        selected.info.id, T5_DRIVER_INSTALL_CHECKING);
     char installed[T5_DRIVER_VERSION_MAX]{};
     if (installedVersionGet(selected.info.id, installed, sizeof(installed))) {
         const auto order = RuntimePackages::comparePackageVersions(selected.info.version, installed);
         if (order == RuntimePackages::VersionOrder::Equal) {
             visiting[index] = 2;
+            RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
+                selected.info.id, T5_DRIVER_INSTALL_ALREADY_PRESENT);
             return true;
         }
         if (order != RuntimePackages::VersionOrder::Newer) return false;
     }
     if (!RuntimeOnlinePackages::DriverIntake::install(selected.info.id,
-            selected.info.version, selected.canonicalMetadata)) return false;
+            selected.info.version, selected.canonicalMetadata, progress, context)) return false;
     visiting[index] = 2;
     return true;
 }
 
-bool install(uint32_t index) {
+bool installImpl(uint32_t index, t5_driver_install_progress_t progress, void* context) {
     if (!activeNativeApp() || !Storage.ready()) return false;
     ManagerMutation mutation;
     if (!mutation) {
@@ -629,7 +635,7 @@ bool install(uint32_t index) {
             RuntimePackages::comparePackageVersions(selected.info.version, installed) !=
                 RuntimePackages::VersionOrder::Newer) return false;
         std::vector<uint8_t> visiting(catalog.size(), 0);
-        return installCanonicalDependencies(index, visiting);
+        return installCanonicalDependencies(index, visiting, progress, context);
     }
     const char* temporaryStoragePath = kDownloadStage;
     const char* temporaryVfsPath = "/sd/Drivers/.driver-manager.part";
@@ -645,6 +651,8 @@ bool install(uint32_t index) {
         LOG_ERR("DRVMGR", "Existing download needs inspection: %s", temporaryStoragePath);
         return false;
     }
+    RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
+        selected.info.id, T5_DRIVER_INSTALL_CHECKING);
     char installed[T5_DRIVER_VERSION_MAX]{};
     const bool hasInstalled = getInstalledDriverVersion(selected.info.id, installed, sizeof(installed));
     const std::string legacyPrefix = std::string("/Drivers/.") + selected.info.id;
@@ -667,20 +675,47 @@ bool install(uint32_t index) {
         LOG_ERR("DRVMGR", "Download refused: driver is mapped and must be stopped: %s", selected.info.id);
         return false;
     }
+    RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
+        selected.info.id, T5_DRIVER_INSTALL_METADATA);
     if (!connectSavedWifi()) return false;
+    RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
+        selected.info.id, T5_DRIVER_INSTALL_DOWNLOADING, "driver.elf", 0, selected.info.sizeBytes);
     const auto result = HttpDownloader::downloadToFile(
         selected.elfUrl, temporaryStoragePath,
-        [](size_t, size_t) { esp_task_wdt_reset(); });
+        [progress, context, &selected](size_t bytes, size_t) {
+            esp_task_wdt_reset();
+            RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
+                selected.info.id, T5_DRIVER_INSTALL_DOWNLOADING, "driver.elf",
+                bytes, selected.info.sizeBytes);
+        });
     if (result != HttpDownloader::OK) {
         if (Storage.exists(temporaryStoragePath))
             LOG_ERR("DRVMGR", "Failed download left partial file for inspection: %s", temporaryStoragePath);
         return false;
     }
+    RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
+        selected.info.id, T5_DRIVER_INSTALL_VERIFYING);
     const bool ok = installStagedDriverPackage(selected.manifest, temporaryVfsPath);
     if (!ok && Storage.exists(temporaryStoragePath) && !Storage.remove(temporaryStoragePath))
         LOG_ERR("DRVMGR", "Could not clean up this invocation's verified download");
     return ok;
 }
+
+bool installWithProgress(uint32_t index, t5_driver_install_progress_t progress, void* context) {
+    if (!activeNativeApp() || index >= catalog.size()) return false;
+    // Copying the ID is bounded. All callback pointers live only for this
+    // invocation and the existing mutation lock still owns every write.
+    char id[T5_DRIVER_ID_MAX]{};
+    std::strncpy(id, catalog[index].info.id, sizeof(id) - 1);
+    RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
+        id, T5_DRIVER_INSTALL_RESOLVING);
+    const bool ok = installImpl(index, progress, context);
+    RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
+        id, ok ? T5_DRIVER_INSTALL_INSTALLED : T5_DRIVER_INSTALL_FAILED);
+    return ok;
+}
+
+bool install(uint32_t index) { return installWithProgress(index, nullptr, nullptr); }
 
 // Inventory is constructed under the SAME mutation lock as installs. It never
 // crawls user paths or treats a matching filename as validated executable.
@@ -836,6 +871,7 @@ const t5_driver_manager_api_v1 api = {
     recoveryGet,
     recoveryRetry,
     recoveryDiscard,
+    installWithProgress,
 };
 }  // namespace
 

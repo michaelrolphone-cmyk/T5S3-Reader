@@ -30,6 +30,26 @@ static char retained_names[RECOVERY_LIMIT][96];
 static char retained_descriptions[RECOVERY_LIMIT][128];
 static char retained_versions[RECOVERY_LIMIT][40];
 
+// This state is static instead of retaining another multi-row workspace on
+// loopTask's stack. Both the callback and its context expire when install returns.
+typedef struct {
+    const t5_app_api_v1 *app;
+    const t5_ui_api_v1 *ui;
+    char target[T5_DRIVER_ID_MAX];
+    char current[T5_DRIVER_ID_MAX];
+    char phase[96];
+    char file[64];
+    char transferred[64];
+    char previous[128];
+    char chrome_status[STATUS_BYTES];
+    uint32_t started_ms;
+    uint32_t rendered_ms;
+    uint32_t last_bucket;
+    uint8_t last_stage;
+    bool rendered;
+} install_view_t;
+static install_view_t install_view;
+
 static bool driver_api(const t5_driver_manager_api_v1 *api) {
     return api && api->api_version == T5_DRIVER_MANAGER_API_VERSION &&
         api->struct_size >= offsetof(t5_driver_manager_api_v1, install) + sizeof(api->install) &&
@@ -42,6 +62,11 @@ static bool recovery_api(const t5_driver_manager_api_v1 *api) {
         api->recovery_refresh && api->recovery_count && api->recovery_get &&
         api->recovery_retry && api->recovery_discard;
 }
+static bool progress_api(const t5_driver_manager_api_v1 *api) {
+    return driver_api(api) &&
+        api->struct_size >= offsetof(t5_driver_manager_api_v1, install_with_progress) +
+                            sizeof(api->install_with_progress) && api->install_with_progress;
+}
 static bool package_api(const t5_package_manager_api_v1 *api) {
     return api && api->api_version == T5_PACKAGE_MANAGER_API_VERSION &&
         api->struct_size >= sizeof(t5_package_manager_api_v1) &&
@@ -52,6 +77,112 @@ static bool ui_api(const t5_ui_api_v1 *api) {
         api->struct_size >= offsetof(t5_ui_api_v1, previous_index) + sizeof(api->previous_index) &&
         api->render_list && api->poll_event && api->hit_test && api->next_index && api->previous_index;
 }
+
+static const char *install_stage(uint8_t stage) {
+    switch (stage) {
+        case T5_DRIVER_INSTALL_RESOLVING: return "Resolving capabilities";
+        case T5_DRIVER_INSTALL_DEPENDENCY: return "Required dependency";
+        case T5_DRIVER_INSTALL_CHECKING: return "Checking installed version";
+        case T5_DRIVER_INSTALL_METADATA: return "Fetching and checking manifest";
+        case T5_DRIVER_INSTALL_RECOVERY: return "Inspecting interrupted download";
+        case T5_DRIVER_INSTALL_DOWNLOADING: return "Downloading package file";
+        case T5_DRIVER_INSTALL_VERIFYING: return "Verifying hashes and dependencies";
+        case T5_DRIVER_INSTALL_PUBLISHING: return "Staging and publishing package";
+        case T5_DRIVER_INSTALL_INSTALLED: return "Installed; not activated";
+        case T5_DRIVER_INSTALL_ALREADY_PRESENT: return "Dependency already installed";
+        case T5_DRIVER_INSTALL_FAILED: return "Install failed; inspect recovery";
+        default: return "Working";
+    }
+}
+
+static void draw_install_progress(install_view_t *view) {
+    if (!view || !view->ui || !view->ui->render_list) return;
+    const t5_ui_chrome_t chrome = {"Driver installation", view->target, view->chrome_status,
+                                   "", "", "", ""};
+    const t5_ui_list_row_t progress_rows[3] = {
+        {view->current, view->phase, view->transferred, 0},
+        {"File", view->file[0] ? view->file : "Dependency / package", "", 0},
+        {"Previous activity", view->previous[0] ? view->previous : "Starting installation", "", 0},
+    };
+    view->ui->render_list(&chrome, progress_rows, 3, 0);
+}
+
+// Invoked by the firmware synchronously on the installing ELF's task; never
+// stores event-owned pointers or calls an installer from the UI callback.
+static void install_progress(void *context, const t5_driver_install_event_t *event) {
+    install_view_t *view = (install_view_t *)context;
+    if (!view || !view->ui || !event || !event->package_id) return;
+    const uint32_t now = view->app && view->app->millis ? view->app->millis() : 0u;
+    const char *phase = install_stage(event->stage);
+    const char *file = event->file_name ? event->file_name : "";
+    const bool package_changed = strcmp(view->current, event->package_id) != 0;
+    const bool stage_changed = package_changed || view->last_stage != event->stage;
+    const bool file_changed = strcmp(view->file, file) != 0;
+    uint32_t bucket = 0;
+    if (event->stage == T5_DRIVER_INSTALL_DOWNLOADING) {
+        if (event->total_bytes) {
+            const uint64_t bounded = event->transferred_bytes > event->total_bytes ?
+                                     event->total_bytes : event->transferred_bytes;
+            bucket = (uint32_t)(bounded * 4u / event->total_bytes);
+        } else {
+            bucket = (uint32_t)(event->transferred_bytes / 65536u);
+        }
+    }
+    if (stage_changed || file_changed) {
+        if (view->current[0] && view->phase[0])
+            snprintf(view->previous, sizeof(view->previous), "%s: %s", view->current, view->phase);
+        snprintf(view->current, sizeof(view->current), "%s", event->package_id);
+        snprintf(view->phase, sizeof(view->phase), "%s", phase);
+        snprintf(view->file, sizeof(view->file), "%s", file);
+    }
+    if (event->stage == T5_DRIVER_INSTALL_DOWNLOADING) {
+        if (event->total_bytes) {
+            const uint64_t bounded = event->transferred_bytes > event->total_bytes ?
+                                     event->total_bytes : event->transferred_bytes;
+            const unsigned percent = (unsigned)(bounded * 100u / event->total_bytes);
+            snprintf(view->transferred, sizeof(view->transferred), "%llu/%llu B (%u%%)",
+                (unsigned long long)event->transferred_bytes,
+                (unsigned long long)event->total_bytes, percent);
+        } else {
+            snprintf(view->transferred, sizeof(view->transferred), "%llu bytes received",
+                (unsigned long long)event->transferred_bytes);
+        }
+    } else view->transferred[0] = '\0';
+    const bool terminal = event->stage == T5_DRIVER_INSTALL_INSTALLED ||
+                          event->stage == T5_DRIVER_INSTALL_FAILED;
+    const bool mandatory = !view->rendered || package_changed || terminal ||
+                           (stage_changed && (event->stage == T5_DRIVER_INSTALL_DOWNLOADING ||
+                                              event->stage == T5_DRIVER_INSTALL_VERIFYING ||
+                                              event->stage == T5_DRIVER_INSTALL_PUBLISHING));
+    const bool time_ready = !view->app || !view->app->millis ||
+                            (uint32_t)(now - view->rendered_ms) >= 1500u;
+    if (!mandatory && (!time_ready || (!stage_changed && !file_changed && bucket == view->last_bucket)))
+        return;
+    view->last_stage = event->stage;
+    view->last_bucket = bucket;
+    view->rendered_ms = now;
+    view->rendered = true;
+    const uint32_t seconds = (uint32_t)(now - view->started_ms) / 1000u;
+    snprintf(view->chrome_status, sizeof(view->chrome_status),
+             "%lum %lus | %s", (unsigned long)(seconds / 60u),
+             (unsigned long)(seconds % 60u), terminal ?
+             (event->stage == T5_DRIVER_INSTALL_INSTALLED ? "Complete" : "Failed") :
+             "Working; keep power on");
+    draw_install_progress(view);
+}
+
+static void begin_install_progress(const t5_app_api_v1 *app, const t5_ui_api_v1 *ui,
+                                   const char *id) {
+    memset(&install_view, 0, sizeof(install_view));
+    install_view.app = app;
+    install_view.ui = ui;
+    install_view.started_ms = app && app->millis ? app->millis() : 0u;
+    snprintf(install_view.target, sizeof(install_view.target), "Requested: %s", id ? id : "driver");
+    const t5_driver_install_event_t initial = {id ? id : "driver", NULL,
+                                               T5_DRIVER_INSTALL_RESOLVING, 0, 0};
+    install_progress(&install_view, &initial);
+}
+
 static int32_t menu(const t5_ui_api_v1 *ui, const char *title, const char *subtitle,
                     const t5_ui_list_row_t *choices, uint32_t count) {
     if (!count) return -1;
@@ -171,12 +302,10 @@ static action_t action_for(const t5_driver_manager_api_v1 *api, uint32_t row,
         default: return INVALID;
     }
 }
-static bool load_release(const t5_driver_manager_api_v1 *api, const t5_ui_api_v1 *ui) {
-    const t5_ui_list_row_t wait = {"Loading release drivers", "Using saved Wi-Fi", "", 0};
-    const t5_ui_chrome_t chrome = {"Driver Manager", "Release catalog", "Connecting...",
-                                   "Back", "", "", ""};
-    ui->render_list(&chrome, &wait, 1, 0);
-    if (!api->catalog_refresh()) { row_count = 0; return false; }
+
+// A completed install must not trigger another network refresh that obscures
+// its result behind a blank loading screen. Reuse the already verified catalog.
+static bool populate_release(const t5_driver_manager_api_v1 *api) {
     row_count = 0;
     uint32_t count = api->catalog_count();
     if (count > LIMIT) count = LIMIT;
@@ -204,6 +333,14 @@ static bool load_release(const t5_driver_manager_api_v1 *api, const t5_ui_api_v1
         ++row_count;
     }
     return true;
+}
+static bool load_release(const t5_driver_manager_api_v1 *api, const t5_ui_api_v1 *ui) {
+    const t5_ui_list_row_t wait = {"Loading release drivers", "Using saved Wi-Fi", "", 0};
+    const t5_ui_chrome_t chrome = {"Driver Manager", "Release catalog", "Connecting...",
+                                   "Back", "", "", ""};
+    ui->render_list(&chrome, &wait, 1, 0);
+    if (!api->catalog_refresh()) { row_count = 0; return false; }
+    return populate_release(api);
 }
 static bool load_inbox(const t5_app_api_v1 *app, const t5_package_manager_api_v1 *manager) {
     row_count = 0;
@@ -269,6 +406,10 @@ static void activate(const t5_driver_manager_api_v1 *api, const t5_package_manag
         const t5_package_preview_t info = packages[selected];
         if (!info.valid_installation) snprintf(status, capacity, "%s: recovery required", info.id);
         else if (info.install_allowed) {
+            const t5_ui_chrome_t busy = {"Driver installation", info.id,
+                                         "Verifying SD package; keep power on", "", "", "", ""};
+            const t5_ui_list_row_t row = {"Installing", "Verifying and publishing from SD inbox", "", 0};
+            ui->render_list(&busy, &row, 1, 0);
             const bool ok = manager->install(folders[selected]);
             snprintf(status, capacity, "%s: %s; not activated", info.id,
                 ok ? "verified package installed" : "install refused; inspect stage/dependencies");
@@ -284,7 +425,21 @@ static void activate(const t5_driver_manager_api_v1 *api, const t5_package_manag
     if (action == CURRENT) { snprintf(status, capacity, "%s already current", releases[selected].id); return; }
     if (action == NEWER) { snprintf(status, capacity, "%s: installed %s is newer", releases[selected].id, installed); return; }
     if (action == INVALID) { snprintf(status, capacity, "%s: version invalid", releases[selected].id); return; }
-    const bool ok = api->install(release_indices[selected]);
+    bool ok = false;
+    if (progress_api(api)) {
+        const t5_app_api_v1 *app = t5_app_get_api(T5_APP_ABI_VERSION);
+        begin_install_progress(app, ui, releases[selected].id);
+        ok = api->install_with_progress(release_indices[selected], install_progress, &install_view);
+        // No firmware function may retain an ELF callback or its app context.
+        install_view.ui = NULL;
+        install_view.app = NULL;
+    } else {
+        const t5_ui_chrome_t busy = {"Driver installation", releases[selected].id,
+                                     "Older firmware: detailed progress unavailable", "", "", "", ""};
+        const t5_ui_list_row_t row = {"Installing", "Downloading and validating; keep power on", "", 0};
+        ui->render_list(&busy, &row, 1, 0);
+        ok = api->install(release_indices[selected]);
+    }
     snprintf(status, capacity, "%s: %s; not activated", releases[selected].id,
              ok ? "installed" : "install refused; inspect recovery");
 }
@@ -346,10 +501,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             case T5_UI_EVENT_CONFIRM:
                 activate(drivers, manager, ui, selected, status, sizeof(status));
                 if (source == INBOX) (void)load_inbox(app, manager);
-                else if (!load_release(drivers, ui)) {
-                    source = INBOX; (void)load_inbox(app, manager);
-                    snprintf(status, sizeof(status), "Online unavailable; managing SD packages");
-                }
+                else (void)populate_release(drivers);
                 redraw = true; break;
             case T5_UI_EVENT_TAP: {
                 const int32_t hit = ui->hit_test(event.touch_x, event.touch_y);
@@ -360,10 +512,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                     if (hit == selected) {
                         activate(drivers, manager, ui, selected, status, sizeof(status));
                         if (source == INBOX) (void)load_inbox(app, manager);
-                        else if (!load_release(drivers, ui)) {
-                            source = INBOX; (void)load_inbox(app, manager);
-                            snprintf(status, sizeof(status), "Online unavailable; managing SD packages");
-                        }
+                        else (void)populate_release(drivers);
                     } else { selected = hit; status[0] = '\0'; }
                     redraw = true;
                 }

@@ -48,6 +48,38 @@ typedef struct {
     bool can_discard;
 } t5_driver_recovery_entry_t;
 
+// Progress reports are synchronous and observational: no background task,
+// permission grant, cancellation, or package mutation is performed by the
+// callback. Strings and event pointer are valid only during the call.
+// total_bytes == 0 means that the transfer length is not known. The caller
+// MUST NOT present percentages for stages that have no total byte count.
+typedef enum {
+    T5_DRIVER_INSTALL_RESOLVING = 1,
+    T5_DRIVER_INSTALL_DEPENDENCY = 2,
+    T5_DRIVER_INSTALL_CHECKING = 3,
+    T5_DRIVER_INSTALL_METADATA = 4,
+    T5_DRIVER_INSTALL_RECOVERY = 5,
+    T5_DRIVER_INSTALL_DOWNLOADING = 6,
+    T5_DRIVER_INSTALL_VERIFYING = 7,
+    T5_DRIVER_INSTALL_PUBLISHING = 8,
+    T5_DRIVER_INSTALL_INSTALLED = 9,
+    T5_DRIVER_INSTALL_ALREADY_PRESENT = 10,
+    T5_DRIVER_INSTALL_FAILED = 11,
+} t5_driver_install_stage_t;
+
+typedef struct {
+    const char *package_id;
+    // For DOWNLOADING this is the current package file basename; otherwise
+    // it is NULL. No URL, credentials or arbitrary filesystem path is exposed.
+    const char *file_name;
+    uint8_t stage;
+    uint64_t transferred_bytes;
+    uint64_t total_bytes;
+} t5_driver_install_event_t;
+
+typedef void (*t5_driver_install_progress_t)(void *context,
+                                              const t5_driver_install_event_t *event);
+
 typedef struct {
     uint32_t api_version;
     uint32_t struct_size;
@@ -66,6 +98,12 @@ typedef struct {
     // Discard is destructive and MUST require explicit UI confirmation.
     bool (*recovery_retry)(uint32_t index);
     bool (*recovery_discard)(uint32_t index);
+    // Optional, append-only. Called synchronously on the app's installing
+    // task; callback and context are never stored after this call returns.
+    // A NULL callback is permitted and behaves exactly like install().
+    bool (*install_with_progress)(uint32_t index,
+                                  t5_driver_install_progress_t progress,
+                                  void *context);
 } t5_driver_manager_api_v1;
 
 const t5_driver_manager_api_v1 *t5_driver_manager_get_api(uint32_t version);
