@@ -8,6 +8,8 @@ This is the **canonical entry point for RiscRTE architecture and specification w
 
 **Binding current-work plan:** [Next hardware-test milestone U1](NEXT_HARDWARE_TEST_MILESTONE.md) is the authoritative execution order, status correction and **single owner-test handoff** for completion of unified package management, removal of package-signing scope creep and full USB firmware extraction. For these tasks the revised [Package Manager Scope Contract](PACKAGE_MANAGER_SCOPE_CONTRACT.md), [Unified Package Manager MVP](UNIFIED_PACKAGE_MANAGER_MVP.md), [ordinary package format](RISC_PACKAGE_FORMAT.md) and [USB migration status](USB_ELF_MIGRATION_STATUS.md) override stale implementation/PR descriptions. U1's internal code checkpoints require no intermediate owner hardware test and no idle CI wait. Do not treat planning/spec changes as already implemented source changes. Do not merge, release, flash or claim USB hardware success merely because the U1 plan exists.
 
+**Binding application version policy:** [Application Version Policy](APP_VERSION_POLICY.md) applies to **every** first-class app edit, including U1 changes to Serial Monitor, App Store, Driver Manager and Package Manager. Any distributable app source/behavior/resource/manifest change requires a strictly increased version in that app's own source `Apps/<app>.json` within the same PR. Firmware version or `min_firmware_version` changes do not count. The identical app version propagates to sidecar, package, catalog and installed inventory. Compare against prior target/published versions and do not reissue altered payloads under a previously released app identity/version. The current format validator is not a changed-source version-increase gate; manual checking is mandatory until automatic enforcement is implemented and tested.
+
 Precedence: explicit current user scope; this master specification and hardware invariant; roadmap where consistent; applicable normative child specs and current-work U1 contract; implementation/MVP reports; explicitly labeled historical/legacy notes. Legacy behavior is not design precedent. Signing, signer trust and cryptographic security-floor ideas in broad security/roadmap documents are **not** authorized package-manager MVP requirements; the current owner instruction is to purge package-signing implementation from the active repository while preserving integrity/loader safety.
 
 ## Naming
@@ -99,6 +101,7 @@ Events have monotonic sequence, generation-qualified opaque handle, copied remov
 
 ### B. Application and execution model
 
+- [Application Version Policy](APP_VERSION_POLICY.md) — **mandatory per-app version increase for distributed changes, immutable published identity and required changed-app release validation**.
 - [Application Execution Context Architecture](APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md) — contexts, owned resources, trusted UI and private storage; required for new apps.
 - [Application Capability Requirements](APP_CAPABILITY_REQUIREMENTS.md) — manifest resolution and invocation binding.
 - [Scene Runtime Architecture](SCENE_RUNTIME_ARCHITECTURE.md)
@@ -150,7 +153,7 @@ Document in order: (1) target architecture, (2) implementation status, (3) legac
 
 ## Rules for new changes
 
-Before a change, read this master and the governing roadmap/child spec; read hardware boundary for device/capability/driver work and [U1](NEXT_HARDWARE_TEST_MILESTONE.md) for package/USB/Serial Monitor/signing-purge work. For app work, read execution-context architecture and apply trusted UI/private storage within scope. Inspect code before treating a target as implemented. Use semantic capabilities and appropriate platform abstractions, never create new hardware-specific core bridges. Associate software grants with execution-context owners. Update normative specs with architectural/API changes and label remaining legacy behavior. Use RiscRTE naming for the platform.
+Before a change, read this master and the governing roadmap/child spec; read hardware boundary for device/capability/driver work and [U1](NEXT_HARDWARE_TEST_MILESTONE.md) for package/USB/Serial Monitor/signing-purge work. For app work, read [APP_VERSION_POLICY.md](APP_VERSION_POLICY.md) and execution-context architecture, bump each distributively changed app's own manifest version, and apply trusted UI/private storage within scope. Inspect code before treating a target as implemented. Use semantic capabilities and appropriate platform abstractions, never create new hardware-specific core bridges. Associate software grants with execution-context owners. Update normative specs with architectural/API changes and label remaining legacy behavior. Use RiscRTE naming for the platform.
 
 One explicit user request controls change scope; U1 is a single software milestone with internal workstreams and one owner hardware-test handoff. Do not require physical testing between commits, wait idle on CI instead of progressing independent work, conflate CI and hardware acceptance, create stacked interdependent PRs, or auto-merge/release/flash. Preserve a recoverable progress ledger across prompts.
 
