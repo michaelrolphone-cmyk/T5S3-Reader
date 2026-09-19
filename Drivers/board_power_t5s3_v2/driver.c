@@ -1,16 +1,17 @@
-/* T5S3 BQ25896 single-chip owner. OTG, charger register I/O and charge
- * configuration use ONE independently installed i2c.bus device claim.
- * Calls must be serialized by the generic provider executor. This provider
- * must not activate while legacy firmware owns the charger or OTG role. */
+/* T5S3 BQ25896 single-chip owner. OTG, charger register I/O, charging and
+ * shutdown use ONE independently installed i2c.bus device claim. Calls are
+ * serialized by the generic provider executor. Do not activate while a
+ * resident boot-time charger implementation still owns the same registers. */
 #include "RiscUsbVbusV1.h"
 #include "RiscI2cBusV1.h"
 #include "RiscPlatformClockV1.h"
 #include "BqChargerProfile.h"
+#include "BqShutdownPolicy.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
-#define BQ_ADDRESS 0x6bu /* T5S3 hardware profile */
+#define BQ_ADDRESS 0x6bu
 #define REG_ADC_CONTROL 0x02u
 #define REG_POWER 0x03u
 #define REG_BOOST 0x0au
@@ -26,15 +27,13 @@
 #define POWER_GOOD 0x04u
 #define BOOST_FAULT 0x40u
 #define VBUS_GOOD 0x80u
-/* RiscRTE v1.2.16 set REG0A BOOST_LIM=010 (1.2 A) and BOOSTV=1001.
- * Keep the 500mA logical USB request admission separate from the PMIC's
- * board-qualified peak/short-circuit threshold. */
+/* RiscRTE v1.2.16 uses BOOST_LIM=010 (1.2A peak); keep the logical USB
+ * 500mA current request separate from the PMIC's peak threshold. */
 #define BOOST_1200MA 0x02u
 #define BOOST_VOLTAGE_5126MV 0x90u
 #define BUS_TIMEOUT_MS 100u
-#define BOOST_SETTLE_MS 80u /* Matches the working v1.2.16 OTG sequence. */
-/* REG02 continuous ADC produces new results at 1s intervals; a 300ms
- * deadline falsely rejected its first measurement. */
+#define BOOST_SETTLE_MS 80u
+/* REG02 continuous ADC updates at 1s intervals, not 300ms. */
 #define STARTUP_TIMEOUT_MS 1500u
 #define SHUTDOWN_TIMEOUT_MS 400u
 
@@ -43,6 +42,7 @@ static const risc_platform_clock_api_v1 *clock_api;
 static uint64_t bus_claim, lease, sequence;
 static uint8_t saved_power, saved_boost, saved_adc;
 static bool started, saved, source_requested, faulted, profile_uncertain;
+static bool shutdown_pending;
 
 static bool equal(const char *a, const char *b) {
     if (!a || !b) return false;
@@ -66,12 +66,12 @@ static bool charger_write(void *unused, uint8_t reg, uint8_t value) {
     (void)unused;
     return write_reg(reg, value);
 }
-/* A failed profile write can be partially applied even on NACK. Retain the
- * bus claim and refuse USB sourcing/unload until an explicit profile retry
- * verifies the ENTIRE board policy; do not restore unknown stale registers. */
+/* A failed profile write may be partially applied on NACK. Retain the chip
+ * claim, block sourcing and unload until a full explicit profile retry. */
 static bool configure_charger(void *unused) {
     (void)unused;
-    if (!started || !bus_claim || lease || source_requested || !bus) return false;
+    if (!started || !bus_claim || lease || source_requested || !bus ||
+        shutdown_pending) return false;
     const risc_bq_charger_io io = {NULL, charger_read, charger_write};
     bool uncertain = false;
     if (!risc_bq_apply_charge_profile(&io, &uncertain)) {
@@ -83,15 +83,40 @@ static bool configure_charger(void *unused) {
         return false;
     }
     profile_uncertain = false;
-    faulted = false; /* All profile fields now have matching readbacks. */
+    faulted = false; /* Every profile register passed fresh readback. */
     return true;
 }
-/* A battery consumer never claims 0x6B independently. ADC conversions may
- * be stale; REG0C is deliberately untouched because it clears fault history.
- * Only publish complete snapshots, including when a read fails mid-way. */
+/* One-way BATFET_DIS command: after any attempted BATFET write the PMIC may
+ * remove its own I2C power. Never probe, unmap, restore charger configuration
+ * or report verified power-off. Only a device reboot clears the latch. */
+static bool request_shutdown(void *unused) {
+    (void)unused;
+    if (!started || !bus_claim || !bus || lease || source_requested ||
+        faulted || profile_uncertain || shutdown_pending) return false;
+    const risc_bq_charger_io io = {NULL, charger_read, charger_write};
+    const risc_bq_shutdown_result result = risc_bq_request_shutdown(&io);
+    if (result == RISC_BQ_SHUTDOWN_REJECTED) return false;
+    if (result == RISC_BQ_SHUTDOWN_CHARGE_UNCERTAIN) {
+        profile_uncertain = true;
+        faulted = true;
+        printf("BQREF failure=shutdown-charge-uncertain claim-retained=1\n");
+        return false;
+    }
+    /* BATFET may have accepted the command even if the bus returned NACK. */
+    shutdown_pending = true;
+    faulted = true;
+    if (result != RISC_BQ_SHUTDOWN_COMMAND_ACCEPTED) {
+        printf("BQREF failure=shutdown-batfet-uncertain claim-retained=1\n");
+        return false;
+    }
+    printf("BQREF stage=shutdown-command-accepted power-off-unverified=1\n");
+    return true;
+}
+/* A battery consumer never independently claims 0x6B. ADC can be stale;
+ * REG0C is untouched because it clears latched fault history. */
 static bool read_charger(void *unused, risc_bq25896_charger_snapshot_v1 *out) {
     (void)unused;
-    if (!out || !started || !bus_claim || faulted) return false;
+    if (!out || !started || !bus_claim || faulted || shutdown_pending) return false;
     risc_bq25896_charger_snapshot_v1 snapshot = {0};
     if (!read_reg(0x00u, &snapshot.input_control) ||
         !read_reg(REG_ADC_CONTROL, &snapshot.adc_control) ||
@@ -107,8 +132,7 @@ static bool read_charger(void *unused, risc_bq25896_charger_snapshot_v1 *out) {
     *out = snapshot;
     return true;
 }
-/* TI SLUSC76C: first REG0C read is latched history, second is live faults.
- * Must be consecutive separate I2C transactions. */
+/* First REG0C read returns latched faults, second live faults. */
 static bool read_fault_pair(uint8_t *latched, uint8_t *live) {
     return latched && live && read_reg(REG_FAULT, latched) &&
            read_reg(REG_FAULT, live);
@@ -121,8 +145,8 @@ static bool timed_out(uint64_t begun, uint32_t limit_ms) {
 static void delay_ms(uint32_t milliseconds) {
     clock_api->sleep_ms(clock_api->context, milliseconds);
 }
-/* External input may appear during shutdown; only sourcing must be OFF.
- * Read failure is unknown, never evidence of safe shutdown. */
+/* External input may appear during shutdown: only sourced VBUS must be
+ * verified OFF; a failed read never establishes safe shutdown. */
 static bool wait_source_off(void) {
     uint64_t begun = clock_api->monotonic_ms(clock_api->context);
     if (begun == UINT64_MAX) return false;
@@ -136,7 +160,7 @@ static bool wait_source_off(void) {
         delay_ms(10u);
     }
 }
-/* Retain the lease on uncertain write or failed source-off/readback. */
+/* On uncertain restoration keep the original lease and exact provider pin. */
 static bool disable_and_restore(void) {
     if (!saved || !write_reg(REG_POWER, saved_power & (uint8_t)~OTG_ENABLE))
         return false;
@@ -186,8 +210,8 @@ static bool preflight(void) {
                (unsigned)latched, (unsigned)live);
     return true;
 }
-/* Raw register diagnostics: ADC=0 is NOT proof of zero volts because REG11
- * defaults to 2.6V until the first conversion. */
+/* Raw register diagnostics: ADC=0 is NOT proof of zero volts until the
+ * REG11 conversion has completed; 2.6V is the ADC's nonzero baseline. */
 static void report_boost_failure(const char *reason, uint8_t power,
                                  uint8_t status, uint8_t adc,
                                  uint8_t latched, uint8_t live,
@@ -232,10 +256,10 @@ static bool verify_source(uint64_t begun) {
                                  latched, live, begun);
             return false;
         }
-        /* REG11[6:0] = 2.6V + 100mV/count. VBUS_GD describes INPUT and
-         * can be zero while OTG is successfully sourcing. */
+        /* REG11[6:0] = 2.6V + 100mV/count, VBUS_GD reports INPUT and may
+         * be zero while successfully sourcing OTG. */
         if ((status & VBUS_STATUS_MASK) == VBUS_OTG &&
-            (adc & 0x7fu) >= 18u) return true; /* at least 4.4 V */
+            (adc & 0x7fu) >= 18u) return true;
         if (timed_out(begun, STARTUP_TIMEOUT_MS)) {
             report_boost_failure("boost-timeout", power, status, adc,
                                  latched, live, begun);
@@ -248,8 +272,8 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
     (void)unused;
     if (out) *out = 0;
     if (!out || !started || !bus_claim || lease || faulted ||
-        !requested_ma || requested_ma > 500u || sequence == UINT64_MAX ||
-        !clock_api) {
+        shutdown_pending || !requested_ma || requested_ma > 500u ||
+        sequence == UINT64_MAX || !clock_api) {
         printf("VBUSREF failure=acquire-state started=%u claimed=%u leased=%u faulted=%u requested_ma=%u\n",
                (unsigned)started, (unsigned)(bus_claim != 0),
                (unsigned)(lease != 0), (unsigned)faulted, (unsigned)requested_ma);
@@ -267,7 +291,7 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
         return false;
     }
     saved = true;
-    lease = ++sequence; /* A partially applied write MUST pin the provider. */
+    lease = ++sequence; /* Partial writes must pin the provider. */
     const uint8_t boost = (uint8_t)((saved_boost & 0x08u) |
                                  BOOST_VOLTAGE_5126MV | BOOST_1200MA);
     bool ok = write_reg(REG_BOOST, boost);
@@ -279,7 +303,7 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
     if (ok) {
         const uint8_t value = (uint8_t)((saved_power &
                                  (uint8_t)~CHARGE_ENABLE) | OTG_ENABLE);
-        source_requested = true; /* Even a failed write may have applied. */
+        source_requested = true; /* Failed write may have applied. */
         ok = write_reg(REG_POWER, value);
         if (!ok) printf("VBUSREF failure=otg-enable-write\n");
     }
@@ -318,12 +342,12 @@ static bool release_host(void *unused, uint64_t id) {
     faulted = false;
     return true;
 }
-/* A failed charge-profile transaction or uncertain VBUS restoration MUST
- * retain the chip claim; a failed RELEASE of that claim is independently
- * retryable because it has not transferred ownership to another provider. */
+/* Charger/BATFET uncertainty pins the ELF; a failed release_device() alone
+ * remains retryable because no other provider has acquired the address. */
 static bool quiesce(void *unused) {
     (void)unused;
-    if (lease || source_requested || profile_uncertain) return false;
+    if (lease || source_requested || profile_uncertain || shutdown_pending)
+        return false;
     if (bus_claim) {
         if (!bus || !bus->release_device(bus->context, bus_claim)) {
             faulted = true;
@@ -337,7 +361,7 @@ static bool quiesce(void *unused) {
 static bool driver_quiesce(void) { return quiesce(NULL); }
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     if (started || bus_claim || lease || faulted || profile_uncertain ||
-        !deps || count != 2u) return false;
+        shutdown_pending || !deps || count != 2u) return false;
     const risc_i2c_bus_api_v1 *b = NULL;
     const risc_platform_clock_api_v1 *t = NULL;
     for (size_t i = 0; i < count; ++i) {
@@ -365,12 +389,14 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     return true;
 }
 static void stop(void) {
-    if (lease || bus_claim || source_requested || faulted || profile_uncertain) return;
+    if (lease || bus_claim || source_requested || faulted ||
+        profile_uncertain || shutdown_pending) return;
     bus = NULL; clock_api = NULL; started = false; saved = false;
 }
 static const risc_usb_vbus_charger_api_v1 capability = {
     {RISC_USB_VBUS_API_V1, sizeof(risc_usb_vbus_charger_api_v1), NULL,
-     acquire_host, release_host, quiesce}, read_charger, configure_charger
+     acquire_host, release_host, quiesce},
+    read_charger, configure_charger, request_shutdown
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
