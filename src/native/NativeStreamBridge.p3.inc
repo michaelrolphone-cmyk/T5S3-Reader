@@ -48,16 +48,12 @@ t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream) {
     return T5_STREAM_DENIED;
   if (!stream || !initialize()) return T5_STREAM_INVALID;
   t5_stream_result_t result;
-  bool closedDirect;
   {
     Lock lock;
-    const bool wasDirect = directUsb && stream == directHandle;
     result = registry.close(owner, stream);
-    closedDirect = wasDirect && !directUsb;
     if (result == T5_STREAM_OK) notePairClosed(stream);
     forgetClosedGnssStream(stream);
   }
-  if (closedDirect) nativeUsbDirectStreamRelease();
   wake();
   return result;
 }
