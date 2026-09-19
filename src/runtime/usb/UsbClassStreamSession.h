@@ -90,6 +90,16 @@ class ClassStreamSession {
     return port_.control(port_.context, token_, dtr, rts) ? T5_STREAM_OK : T5_STREAM_IO;
   }
 
+  // Bind already-opened class token to published serial.port endpoints.
+  int32_t attachPublished(uint32_t owner, uint64_t token, t5_stream_t rx, t5_stream_t tx) {
+    if (!bound() || token_ || !token || !owner || !rx || !tx) return T5_STREAM_INVALID;
+    token_ = token;
+    owner_ = owner;
+    rx_ = rx;
+    tx_ = tx;
+    return T5_STREAM_OK;
+  }
+
   // Class I/O runs here, not under a stream-registry mutex.
   int32_t pump(RuntimeStreams::Registry& registry) {
     if (!token_) return T5_STREAM_CLOSED;
