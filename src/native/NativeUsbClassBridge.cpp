@@ -1,37 +1,118 @@
 #include "NativeUsbClassBridge.h"
+#include <RiscUsbProviderV1.h>
 #include <cstring>
 
 namespace {
 NativeUsbClassOps ops{};
+RuntimeUsb::ClassStreamSession session;
 uint64_t token = 0;
+uint64_t observedDevice = 1;
 t5_serial_config_t coding{115200u, 8u, T5_SERIAL_PARITY_NONE, 1u, T5_SERIAL_FLOW_NONE};
 bool dtr = false, rts = false;
 bool started = false;
+const risc_usb_cdc_api_v1* boundApi = nullptr;
 
 bool valid(const NativeUsbClassOps& o) {
   return o.open && o.configure && o.control && o.close;
+}
+
+uint64_t apiOpen(void* ctx, uint64_t device) {
+  auto* api = static_cast<const risc_usb_cdc_api_v1*>(ctx);
+  return api && api->open ? api->open(device) : 0;
+}
+bool apiConfigure(void* ctx, uint64_t t, uint32_t baud, uint8_t bits,
+                  uint8_t parity, uint8_t stop) {
+  auto* api = static_cast<const risc_usb_cdc_api_v1*>(ctx);
+  return api && api->configure && api->configure(t, baud, bits, parity, stop);
+}
+bool apiControl(void* ctx, uint64_t t, bool nextDtr, bool nextRts) {
+  auto* api = static_cast<const risc_usb_cdc_api_v1*>(ctx);
+  return api && api->control_lines && api->control_lines(t, nextDtr, nextRts);
+}
+int32_t apiRead(void* ctx, uint64_t t, uint8_t* dst, uint32_t cap, uint32_t timeout) {
+  auto* api = static_cast<const risc_usb_cdc_api_v1*>(ctx);
+  if (!api || !api->read || !dst || !cap) return -1;
+  return api->read(t, dst, cap, timeout);
+}
+int32_t apiWrite(void* ctx, uint64_t t, const uint8_t* src, uint32_t len, uint32_t timeout) {
+  auto* api = static_cast<const risc_usb_cdc_api_v1*>(ctx);
+  if (!api || !api->write || !src || !len) return -1;
+  return api->write(t, src, len, timeout);
+}
+bool apiClose(void* ctx, uint64_t t) {
+  auto* api = static_cast<const risc_usb_cdc_api_v1*>(ctx);
+  return api && api->close && api->close(t);
+}
+
+bool apiValid(const risc_usb_cdc_api_v1* api) {
+  return api && api->api_version == RISC_USB_CDC_API_V1 &&
+         api->struct_size >= sizeof(risc_usb_cdc_api_v1) && api->open &&
+         api->configure && api->control_lines && api->read && api->write &&
+         api->close;
+}
+
+RuntimeUsb::ClassPort portFromOps(const NativeUsbClassOps& o) {
+  return {o.context, o.open, o.configure, o.control, o.read, o.write, o.close};
 }
 }  // namespace
 
 bool nativeUsbClassBind(const NativeUsbClassOps& incoming) {
   if (started || token || !valid(incoming)) return false;
   ops = incoming;
+  session.unbind();
+  if (incoming.read && incoming.write) (void)session.bind(portFromOps(incoming));
+  return true;
+}
+
+bool nativeUsbClassBindPort(const RuntimeUsb::ClassPort& port) {
+  NativeUsbClassOps incoming{port.context, port.open, port.configure, port.control,
+                             port.read, port.write, port.close};
+  return nativeUsbClassBind(incoming);
+}
+
+bool nativeUsbClassBindApi(const void* riscUsbCdcApiV1) {
+  const auto* api = static_cast<const risc_usb_cdc_api_v1*>(riscUsbCdcApiV1);
+  if (!apiValid(api)) return false;
+  NativeUsbClassOps incoming{const_cast<risc_usb_cdc_api_v1*>(api),
+                             apiOpen, apiConfigure, apiControl, apiRead, apiWrite,
+                             apiClose};
+  if (!nativeUsbClassBind(incoming)) return false;
+  boundApi = api;
   return true;
 }
 
 void nativeUsbClassUnbind() {
   nativeUsbClassStop();
+  session.unbind();
   ops = {};
+  boundApi = nullptr;
+  observedDevice = 1;
 }
 
 bool nativeUsbClassAvailable() { return valid(ops); }
+bool nativeUsbClassHasDataPlane() { return session.bound(); }
+uint64_t nativeUsbClassToken() { return token; }
+
+void nativeUsbClassObserveDevice(uint64_t device) {
+  if (device) observedDevice = device;
+}
+
+bool nativeUsbClassAdopt(uint64_t opened, const t5_serial_config_t& config) {
+  if (!valid(ops) || !opened) return false;
+  if (started && token != opened) return false;
+  token = opened;
+  coding = config;
+  started = true;
+  return true;
+}
 
 bool nativeUsbClassStart(const t5_serial_config_t& config) {
-  if (!valid(ops) || started) return false;
+  if (!valid(ops)) return false;
+  if (started) return token != 0;
   if (config.baud_rate < 300u || config.baud_rate > 3000000u ||
       config.data_bits < 5u || config.data_bits > 8u ||
       (config.stop_bits != 1u && config.stop_bits != 2u)) return false;
-  const uint64_t opened = ops.open(ops.context, 1);
+  const uint64_t opened = ops.open(ops.context, observedDevice ? observedDevice : 1);
   if (!opened) return false;
   if (!ops.configure(ops.context, opened, config.baud_rate, config.data_bits,
                      config.parity, config.stop_bits)) {
@@ -45,7 +126,11 @@ bool nativeUsbClassStart(const t5_serial_config_t& config) {
 }
 
 void nativeUsbClassStop() {
-  if (token && ops.close) (void)ops.close(ops.context, token);
+  if (session.token()) {
+    (void)session.close(nullptr);
+  } else if (token && ops.close) {
+    (void)ops.close(ops.context, token);
+  }
   token = 0;
   started = false;
   dtr = rts = false;
@@ -80,3 +165,31 @@ bool nativeUsbClassReadState(t5_usb_serial_state_t* out) {
   out->line_coding.stop_bits = coding.stop_bits;
   return true;
 }
+
+int32_t nativeUsbClassRead(uint8_t* dst, uint32_t capacity, uint32_t* out) {
+  if (out) *out = 0;
+  if (!dst || !capacity) return T5_STREAM_INVALID;
+  if (!started || !token) return T5_STREAM_CLOSED;
+  if (!ops.read) return T5_STREAM_AGAIN;
+  const int32_t n = ops.read(ops.context, token, dst, capacity, 1);
+  if (n < 0) return T5_STREAM_IO;
+  if (out) *out = static_cast<uint32_t>(n);
+  return n ? T5_STREAM_OK : T5_STREAM_AGAIN;
+}
+
+int32_t nativeUsbClassWrite(const uint8_t* src, uint32_t length, uint32_t* out) {
+  if (out) *out = 0;
+  if (!src || !length) return T5_STREAM_INVALID;
+  if (!started || !token) return T5_STREAM_CLOSED;
+  if (!ops.write) return T5_STREAM_AGAIN;
+  const int32_t n = ops.write(ops.context, token, src, length, 1);
+  if (n < 0) return T5_STREAM_IO;
+  if (out) *out = static_cast<uint32_t>(n);
+  return n ? T5_STREAM_OK : T5_STREAM_AGAIN;
+}
+
+RuntimeUsb::ClassStreamSession& nativeUsbClassSession() { return session; }
+
+#if !defined(ESP_PLATFORM)
+bool nativeUsbClassEnsureInstalled() { return nativeUsbClassAvailable(); }
+#endif
