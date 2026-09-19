@@ -21,23 +21,5 @@ void nativeDeviceDiscoveryTick();
 bool nativeRegisterSerialProvider(const RuntimeSerial::Provider& provider);
 bool nativeUnregisterSerialProvider(const char* id);
 
-// Direct compatibility USB streams share the serial bridge's physical
-// serial.port capability lease and invocation identity. Call only on the
-// application owner task, outside the stream registry mutex. The epoch is
-// captured at stream open and prevents rebinding to a replacement device.
-bool nativeUsbDirectStreamClaim(uint32_t expectedEpoch);
-void nativeUsbDirectStreamRelease();
-
-// The claim hook succeeds during initial enumeration to reserve the session.
-// Data must NOT flow until its physical interface is actually in the common
-// registry and the claim hook has acquired its exclusive lease.
-inline bool nativeUsbDirectStreamBound() {
-  auto& registry = RuntimeDevices::systemRegistry();
-  RuntimeDevices::DeviceInfo info{};
-  for (size_t index = 0; index < RuntimeDevices::kMaxDevices; ++index) {
-    if (registry.at(index, &info) && info.transport == RuntimeDevices::Transport::Usb &&
-        std::strcmp(info.provider, "usb.serial") == 0 &&
-        info.state == RuntimeDevices::State::Available) return true;
-  }
-  return false;
-}
+// serial.port is the only firmware USB serial consumer. Direct open_usb
+// streams no longer claim the physical device or a capability lease.
