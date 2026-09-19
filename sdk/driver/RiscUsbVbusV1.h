@@ -55,6 +55,12 @@ typedef struct {
      * quarantines the provider and retains its device claim until recovery;
      * callers must NOT fall back to a firmware BQ register writer. */
     bool (*configure_charger)(void *context);
+    /* One-way sleep/shutdown command. Requires no host power lease, no OTG,
+     * no external input and no uncertain charger state. True means the
+     * BATFET_DIS command was ACKed, NOT that power-off was observed. Once
+     * BATFET_DIS may have been written, the ELF must stay pinned until reboot
+     * because I2C and readback may disappear with its own power. */
+    bool (*request_shutdown)(void *context);
 } risc_usb_vbus_charger_api_v1;
 #ifdef __cplusplus
 }
