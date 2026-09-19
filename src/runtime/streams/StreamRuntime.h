@@ -62,7 +62,15 @@ class Registry {
   int32_t produce(uint32_t owner, t5_stream_t, const void*, uint32_t, uint32_t*);
   // Firmware shuttle only: drain a write-only published endpoint without
   // exposing READ to the ELF consumer.
-  int32_t consume(uint32_t owner, t5_stream_t, void*, uint32_t, uint32_t*);
+  int32_t consume(uint32_t owner, t5_stream_t h, void* data, uint32_t size, uint32_t* count) {
+    if (count) *count = 0;
+    auto* s = stream(owner, h);
+    if (!s || !count || (!data && size)) return T5_STREAM_INVALID;
+    if (s->kind != T5_STREAM_BYTES || !s->buffer) return T5_STREAM_UNSUPPORTED;
+    auto flags = s->flags; s->flags |= T5_STREAM_READ;
+    auto r = transfer(*s, true, data, size, count);
+    s->flags = flags; return r;
+  }
   int32_t attach(uint32_t owner, uint32_t kind, uint32_t flags, Provider provider, t5_stream_t* out);
   int32_t read(uint32_t owner, t5_stream_t, void*, uint32_t, uint32_t*);
   int32_t write(uint32_t owner, t5_stream_t, const void*, uint32_t, uint32_t*);
