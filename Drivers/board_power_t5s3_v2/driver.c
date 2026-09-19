@@ -16,6 +16,7 @@
 #define REG_BOOST 0x0au
 #define REG_STATUS 0x0bu
 #define REG_FAULT 0x0cu
+#define REG_BAT_ADC 0x0eu
 #define REG_VBUS_ADC 0x11u
 #define ADC_CONTINUOUS 0x40u
 #define OTG_ENABLE 0x20u
@@ -28,7 +29,9 @@
 #define BOOST_500MA 0x00u
 #define BOOST_VOLTAGE_5126MV 0x90u
 #define BUS_TIMEOUT_MS 100u
-#define STARTUP_TIMEOUT_MS 300u
+/* BQ25896 REG02 continuous ADC produces new results at 1s intervals. The
+ * former 300ms timeout rejected a valid first conversion as missing VBUS. */
+#define STARTUP_TIMEOUT_MS 1500u
 #define SHUTDOWN_TIMEOUT_MS 400u
 
 static const risc_i2c_bus_api_v1 *bus;
@@ -50,6 +53,13 @@ static bool write_reg(uint8_t reg, uint8_t value) {
     uint8_t command[2] = {reg, value};
     return bus && bus_claim && bus->transact(bus->context, bus_claim,
              command, 2u, NULL, 0u, BUS_TIMEOUT_MS);
+}
+/* TI SLUSC76C: the FIRST REG0C read returns faults latched since the last
+ * read; the SECOND returns the live fault state. REG0C cannot be multi-read.
+ * These must be distinct, consecutive single-register I2C transactions. */
+static bool read_fault_pair(uint8_t *latched, uint8_t *live) {
+    return latched && live && read_reg(REG_FAULT, latched) &&
+           read_reg(REG_FAULT, live);
 }
 static bool timed_out(uint64_t begun, uint32_t limit_ms) {
     uint64_t now = clock_api->monotonic_ms(clock_api->context);
@@ -112,7 +122,42 @@ static bool preflight(void) {
                (unsigned)status, (unsigned)adc, (unsigned)power);
         return false;
     }
+    /* Clear *historical* faults BEFORE requesting OTG. A leftover fault from
+     * a previous attempt is not evidence of a new boost failure. Conversely,
+     * a live boost fault is not safe to ignore just because it was latched. */
+    uint8_t latched = 0, live = 0;
+    if (!read_fault_pair(&latched, &live)) {
+        printf("VBUSREF failure=preflight-read reg=0x0c\n");
+        return false;
+    }
+    if (live & BOOST_FAULT) {
+        printf("VBUSREF failure=preflight-live-fault prev=0x%02x now=0x%02x\n",
+               (unsigned)latched, (unsigned)live);
+        return false;
+    }
+    if (latched & BOOST_FAULT)
+        printf("VBUSREF stage=preflight-historical-fault prev=0x%02x now=0x%02x\n",
+               (unsigned)latched, (unsigned)live);
     return true;
+}
+/* A diagnostic is a raw register snapshot, NOT a claim that ADC=0 means 0V:
+ * REG11 defaults to 2.6V and can stay stale until the first 1s conversion.
+ * BAT_ADC also defaults to 2.304V and is not proof of battery voltage. */
+static void report_boost_failure(const char *reason, uint8_t power,
+                                 uint8_t status, uint8_t adc,
+                                 uint8_t latched, uint8_t live,
+                                 uint64_t begun) {
+    uint8_t battery = 0xff, boost = 0xff, adc_control = 0xff;
+    (void)read_reg(REG_BAT_ADC, &battery);
+    (void)read_reg(REG_BOOST, &boost);
+    (void)read_reg(REG_ADC_CONTROL, &adc_control);
+    uint64_t now = clock_api->monotonic_ms(clock_api->context);
+    unsigned elapsed = (now == UINT64_MAX || now < begun) ? 0u :
+                       (unsigned)(now - begun);
+    printf("VBUSREF failure=%s p=%02x s=%02x v=%02x prev=%02x now=%02x bat=%02x cfg=%02x conv=%02x ms=%u\n",
+           reason, (unsigned)power, (unsigned)status, (unsigned)adc,
+           (unsigned)latched, (unsigned)live, (unsigned)battery,
+           (unsigned)boost, (unsigned)adc_control, elapsed);
 }
 static bool verify_source(void) {
     uint64_t begun = clock_api->monotonic_ms(clock_api->context);
@@ -121,25 +166,38 @@ static bool verify_source(void) {
         return false;
     }
     for (;;) {
-        uint8_t power = 0, status = 0, adc = 0, faults = 0;
+        uint8_t power = 0, status = 0, adc = 0, latched = 0, live = 0;
         if (!read_reg(REG_POWER, &power) || !read_reg(REG_STATUS, &status) ||
-            !read_reg(REG_VBUS_ADC, &adc) || !read_reg(REG_FAULT, &faults)) {
+            !read_reg(REG_VBUS_ADC, &adc) ||
+            !read_fault_pair(&latched, &live)) {
             printf("VBUSREF failure=boost-read\n");
             return false;
         }
-        if ((faults & BOOST_FAULT) || !(power & OTG_ENABLE)) {
-            printf("VBUSREF failure=boost-fault power=0x%02x status=0x%02x adc=0x%02x fault=0x%02x\n",
-                   (unsigned)power, (unsigned)status, (unsigned)adc, (unsigned)faults);
+        if (live & BOOST_FAULT) {
+            report_boost_failure("boost-fault", power, status, adc,
+                                 latched, live, begun);
+            return false;
+        }
+        /* Preflight cleared old fault history. A new latched boost fault in
+         * this attempt is a transient electrical event, even if recovered. */
+        if (latched & BOOST_FAULT) {
+            report_boost_failure("boost-transient", power, status, adc,
+                                 latched, live, begun);
+            return false;
+        }
+        if (!(power & OTG_ENABLE)) {
+            report_boost_failure("boost-disabled", power, status, adc,
+                                 latched, live, begun);
             return false;
         }
         /* REG11[6:0] = 2.6V + 100mV/count. REG11 VBUS_GD reports INPUT
          * attachment and can be zero while OTG is successfully SOURCING.
-         * Use VBUS_STAT=OTG, actual ADC voltage, and boost fault instead. */
+         * Require VBUS_STAT=OTG and a completed, adequate ADC measurement. */
         if ((status & VBUS_STATUS_MASK) == VBUS_OTG &&
             (adc & 0x7fu) >= 18u) return true; /* at least 4.4 V */
         if (timed_out(begun, STARTUP_TIMEOUT_MS)) {
-            printf("VBUSREF failure=boost-timeout power=0x%02x status=0x%02x adc=0x%02x fault=0x%02x\n",
-                   (unsigned)power, (unsigned)status, (unsigned)adc, (unsigned)faults);
+            report_boost_failure("boost-timeout", power, status, adc,
+                                 latched, live, begun);
             return false;
         }
         delay_ms(10u);
