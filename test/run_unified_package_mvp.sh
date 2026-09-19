@@ -17,7 +17,8 @@ flags=(-std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined
 for test_case in package_identity package_preflight package_json_guard \
                  package_use_gate package_transaction package_recovery \
                  package_ordinary_stage package_ordinary_installer \
-                 package_driver_transition driver_install_intake; do
+                 package_driver_transition driver_install_intake \
+                 package_rte_zip; do
   echo "== Ordinary package MVP: ${test_case} =="
   c++ "${flags[@]}" "$repo_dir/test/resources/${test_case}_test.cpp" \
       -lcrypto -o "$binary"
