@@ -42,7 +42,7 @@ static const risc_i2c_bus_api_v1 *bus;
 static const risc_platform_clock_api_v1 *clock_api;
 static uint64_t bus_claim, lease, sequence;
 static uint8_t saved_power, saved_boost, saved_adc;
-static bool started, saved, source_requested, faulted;
+static bool started, saved, source_requested, faulted, profile_uncertain;
 
 static bool equal(const char *a, const char *b) {
     if (!a || !b) return false;
@@ -76,11 +76,13 @@ static bool configure_charger(void *unused) {
     bool uncertain = false;
     if (!risc_bq_apply_charge_profile(&io, &uncertain)) {
         if (uncertain) {
+            profile_uncertain = true;
             faulted = true;
             printf("BQREF failure=charger-profile-uncertain claim-retained=1\n");
         }
         return false;
     }
+    profile_uncertain = false;
     faulted = false; /* All profile fields now have matching readbacks. */
     return true;
 }
@@ -317,10 +319,11 @@ static bool release_host(void *unused, uint64_t id) {
     return true;
 }
 /* A failed charge-profile transaction or uncertain VBUS restoration MUST
- * retain the chip claim; a software grant release is not hardware quiescence. */
+ * retain the chip claim; a failed RELEASE of that claim is independently
+ * retryable because it has not transferred ownership to another provider. */
 static bool quiesce(void *unused) {
     (void)unused;
-    if (lease || source_requested || faulted) return false;
+    if (lease || source_requested || profile_uncertain) return false;
     if (bus_claim) {
         if (!bus || !bus->release_device(bus->context, bus_claim)) {
             faulted = true;
@@ -328,11 +331,13 @@ static bool quiesce(void *unused) {
         }
         bus_claim = 0;
     }
+    faulted = false;
     return true;
 }
 static bool driver_quiesce(void) { return quiesce(NULL); }
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
-    if (started || bus_claim || lease || faulted || !deps || count != 2u) return false;
+    if (started || bus_claim || lease || faulted || profile_uncertain ||
+        !deps || count != 2u) return false;
     const risc_i2c_bus_api_v1 *b = NULL;
     const risc_platform_clock_api_v1 *t = NULL;
     for (size_t i = 0; i < count; ++i) {
@@ -360,7 +365,7 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     return true;
 }
 static void stop(void) {
-    if (lease || bus_claim || source_requested || faulted) return;
+    if (lease || bus_claim || source_requested || faulted || profile_uncertain) return;
     bus = NULL; clock_api = NULL; started = false; saved = false;
 }
 static const risc_usb_vbus_charger_api_v1 capability = {
