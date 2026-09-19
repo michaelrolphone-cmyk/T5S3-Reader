@@ -2,12 +2,16 @@
 
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <Logging.h>
+
+#include <string>
 
 #include "MappedInputManager.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "runtime/network/NetworkService.h"
+#include "native/InstalledAppPath.h"
 #include "native/NativeAppHost.h"
 
 void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
@@ -39,11 +43,21 @@ void OtaUpdateActivity::onExit() {
 void OtaUpdateActivity::loop() {
   if (state == LAUNCH_PENDING && !launchAttempted) {
     launchAttempted = true;
-    const esp_err_t result = runNativeApp("/sd/Apps/ota_update.elf", renderer, mappedInput);
+    // The package manager installs into /Apps/<package-id>/<artifact>. The
+    // old hard-coded loose-file path failed even with a valid OTA package.
+    std::string updaterPath;
+    if (!resolveInstalledAppPath("ota_update.elf", updaterPath)) {
+      LOG_ERR("OTA", "Firmware Update app is missing, incompatible or failed package verification");
+      state = LAUNCH_FAILED;
+      requestUpdate();
+      return;
+    }
+    const esp_err_t result = runNativeApp(updaterPath.c_str(), renderer, mappedInput);
     if (result == ESP_OK) {
       finish();
       return;
     }
+    LOG_ERR("OTA", "Firmware Update ELF launch failed: 0x%lX", static_cast<unsigned long>(result));
     state = LAUNCH_FAILED;
     requestUpdate();
     return;
@@ -76,7 +90,7 @@ void OtaUpdateActivity::render(RenderLock&&) {
   if (state == LAUNCH_FAILED) {
     renderer.drawCenteredText(UI_10_FONT_ID, y, "ota_update.elf could not be launched");
     renderer.drawCenteredText(SMALL_FONT_ID, y + 36,
-                              "Install Firmware Update from the App Store or copy it to /Apps.");
+                              "Install Firmware Update from the App Store or check its package.");
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "OK", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else if (state == LAUNCH_PENDING) {
