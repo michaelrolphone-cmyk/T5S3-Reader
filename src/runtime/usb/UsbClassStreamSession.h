@@ -4,8 +4,7 @@
 #include <cstring>
 
 // Firmware-internal binding between an installed USB class ELF and published
-// serial.port endpoints. The class ELF owns transfers. This session never
-// calls T5UsbApi and never stores ELF function pointers inside StreamRuntime.
+// serial.port endpoints. Transfers belong to the ELF, never T5UsbApi.
 namespace RuntimeUsb {
 
 struct ClassPort {
@@ -34,9 +33,12 @@ class ClassStreamSession {
     return true;
   }
 
-  void unbind() {
-    (void)close(nullptr);
+  // Never discard the function table when an ELF reports that its physical
+  // session has not quiesced; an unresolved close pins that exact generation.
+  bool unbind() {
+    if (token_ && close(nullptr) != T5_STREAM_OK) return false;
     port_ = {};
+    return true;
   }
 
   int32_t open(RuntimeStreams::Registry& registry, uint32_t owner, uint64_t device,
@@ -48,15 +50,15 @@ class ClassStreamSession {
     const uint64_t opened = port_.open(port_.context, device);
     if (!opened) return T5_STREAM_IO;
     if (!port_.configure(port_.context, opened, baud, bits, parity, stop_bits)) {
-      (void)port_.close(port_.context, opened);
-      return T5_STREAM_INVALID;
+      if (!port_.close(port_.context, opened)) token_ = opened;
+      return T5_STREAM_IO;
     }
     t5_stream_t newRx = 0, newTx = 0;
     auto r = registry.publishEndpoint(owner, T5_STREAM_BYTES, T5_STREAM_READ,
                                       kCapacity, nullptr, 0, 0,
                                       RuntimeStreams::kStreamPublic, &newRx);
     if (r != T5_STREAM_OK) {
-      (void)port_.close(port_.context, opened);
+      if (!port_.close(port_.context, opened)) token_ = opened;
       return r;
     }
     r = registry.publishEndpoint(owner, T5_STREAM_BYTES, T5_STREAM_WRITE,
@@ -64,7 +66,7 @@ class ClassStreamSession {
                                  RuntimeStreams::kStreamPublic, &newTx);
     if (r != T5_STREAM_OK) {
       (void)registry.close(owner, newRx);
-      (void)port_.close(port_.context, opened);
+      if (!port_.close(port_.context, opened)) token_ = opened;
       return r;
     }
     token_ = opened;
@@ -90,7 +92,6 @@ class ClassStreamSession {
     return port_.control(port_.context, token_, dtr, rts) ? T5_STREAM_OK : T5_STREAM_IO;
   }
 
-  // Bind already-opened class token to published serial.port endpoints.
   int32_t attachPublished(uint32_t owner, uint64_t token, t5_stream_t rx, t5_stream_t tx) {
     if (!bound() || token_ || !token || !owner || !rx || !tx) return T5_STREAM_INVALID;
     token_ = token;
@@ -100,11 +101,12 @@ class ClassStreamSession {
     return T5_STREAM_OK;
   }
 
-  // Class I/O runs here, not under a stream-registry mutex.
+  // Class operations execute outside the stream registry mutex.
   int32_t pump(RuntimeStreams::Registry& registry) {
     if (!token_) return T5_STREAM_CLOSED;
     uint8_t chunk[T5_STREAM_CHUNK];
     int32_t n = port_.read(port_.context, token_, chunk, sizeof(chunk), 1);
+    if (n > static_cast<int32_t>(sizeof(chunk))) return T5_STREAM_IO;
     if (n > 0) {
       uint32_t accepted = 0;
       const auto r = registry.produce(owner_, rx_, chunk, static_cast<uint32_t>(n), &accepted);
@@ -124,16 +126,18 @@ class ClassStreamSession {
 
   int32_t close(RuntimeStreams::Registry* registry) {
     if (!token_) return T5_STREAM_CLOSED;
-    const uint64_t token = token_;
+    // Check physical close FIRST. On failure retain token, port, endpoints and
+    // generation pin; the caller may retry or quarantine without force-unload.
+    if (!port_.close || !port_.close(port_.context, token_)) return T5_STREAM_IO;
     const uint32_t owner = owner_;
     const t5_stream_t rx = rx_, tx = tx_;
     token_ = owner_ = 0;
     rx_ = tx_ = 0;
     if (registry) {
-      (void)registry->close(owner, rx);
-      (void)registry->close(owner, tx);
+      if (rx) (void)registry->close(owner, rx);
+      if (tx) (void)registry->close(owner, tx);
     }
-    return port_.close(port_.context, token) ? T5_STREAM_OK : T5_STREAM_IO;
+    return T5_STREAM_OK;
   }
 
   t5_stream_t rx() const { return rx_; }
@@ -147,4 +151,4 @@ class ClassStreamSession {
   t5_stream_t rx_ = 0, tx_ = 0;
 };
 
-}  // namespace RuntimeUsb
+} // namespace RuntimeUsb
