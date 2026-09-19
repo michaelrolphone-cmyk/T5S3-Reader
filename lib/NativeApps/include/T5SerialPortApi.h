@@ -109,8 +109,13 @@ typedef struct {
     t5_serial_result_t (*release)(t5_serial_port_lease_t lease);
 
     /* ABI-v1 append-only extension. Check struct_size and pointer before use;
-     * older providers remain valid and report only the acquire return code. */
+     * older providers remain valid and report only the acquire return code.
+     * C++ default avoids -Wmissing-field-initializers for legacy tables. */
+#ifdef __cplusplus
+    bool (*last_diagnostic)(t5_serial_diagnostic_t *out) = nullptr;
+#else
     bool (*last_diagnostic)(t5_serial_diagnostic_t *out);
+#endif
 } t5_serial_port_api_v1;
 
 const t5_serial_port_api_v1 *t5_serial_port_get_api(uint32_t version);
