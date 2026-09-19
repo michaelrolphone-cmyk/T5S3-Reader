@@ -8,6 +8,7 @@
 #include "RiscPlatformClockV1.h"
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #define BQ_ADDRESS 0x6bu /* T5S3 hardware profile */
 #define REG_ADC_CONTROL 0x02u
@@ -93,26 +94,54 @@ static bool disable_and_restore(void) {
 }
 static bool preflight(void) {
     uint8_t status = 0, adc = 0, power = 0;
-    return read_reg(REG_STATUS, &status) && read_reg(REG_VBUS_ADC, &adc) &&
-           read_reg(REG_POWER, &power) &&
-           (status & (VBUS_STATUS_MASK | POWER_GOOD)) == 0 &&
-           (adc & VBUS_GOOD) == 0 && (power & OTG_ENABLE) == 0;
+    if (!read_reg(REG_STATUS, &status)) {
+        printf("VBUSREF failure=preflight-read reg=0x0b\n");
+        return false;
+    }
+    if (!read_reg(REG_VBUS_ADC, &adc)) {
+        printf("VBUSREF failure=preflight-read reg=0x11\n");
+        return false;
+    }
+    if (!read_reg(REG_POWER, &power)) {
+        printf("VBUSREF failure=preflight-read reg=0x03\n");
+        return false;
+    }
+    if ((status & (VBUS_STATUS_MASK | POWER_GOOD)) != 0 ||
+        (adc & VBUS_GOOD) != 0 || (power & OTG_ENABLE) != 0) {
+        printf("VBUSREF failure=preflight-conflict status=0x%02x adc=0x%02x power=0x%02x\n",
+               (unsigned)status, (unsigned)adc, (unsigned)power);
+        return false;
+    }
+    return true;
 }
 static bool verify_source(void) {
     uint64_t begun = clock_api->monotonic_ms(clock_api->context);
-    if (begun == UINT64_MAX) return false;
+    if (begun == UINT64_MAX) {
+        printf("VBUSREF failure=boost-clock\n");
+        return false;
+    }
     for (;;) {
         uint8_t power = 0, status = 0, adc = 0, faults = 0;
         if (!read_reg(REG_POWER, &power) || !read_reg(REG_STATUS, &status) ||
-            !read_reg(REG_VBUS_ADC, &adc) || !read_reg(REG_FAULT, &faults))
+            !read_reg(REG_VBUS_ADC, &adc) || !read_reg(REG_FAULT, &faults)) {
+            printf("VBUSREF failure=boost-read\n");
             return false;
-        if ((faults & BOOST_FAULT) || !(power & OTG_ENABLE)) return false;
+        }
+        if ((faults & BOOST_FAULT) || !(power & OTG_ENABLE)) {
+            printf("VBUSREF failure=boost-fault power=0x%02x status=0x%02x adc=0x%02x fault=0x%02x\n",
+                   (unsigned)power, (unsigned)status, (unsigned)adc, (unsigned)faults);
+            return false;
+        }
         /* REG11[6:0] = 2.6V + 100mV/count. REG11 VBUS_GD reports INPUT
          * attachment and can be zero while OTG is successfully SOURCING.
          * Use VBUS_STAT=OTG, actual ADC voltage, and boost fault instead. */
         if ((status & VBUS_STATUS_MASK) == VBUS_OTG &&
             (adc & 0x7fu) >= 18u) return true; /* at least 4.4 V */
-        if (timed_out(begun, STARTUP_TIMEOUT_MS)) return false;
+        if (timed_out(begun, STARTUP_TIMEOUT_MS)) {
+            printf("VBUSREF failure=boost-timeout power=0x%02x status=0x%02x adc=0x%02x fault=0x%02x\n",
+                   (unsigned)power, (unsigned)status, (unsigned)adc, (unsigned)faults);
+            return false;
+        }
         delay_ms(10u);
     }
 }
@@ -121,29 +150,54 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
     if (out) *out = 0;
     if (!out || !started || !bus_claim || lease || faulted ||
         !requested_ma || requested_ma > 500u || sequence == UINT64_MAX ||
-        !clock_api || clock_api->monotonic_ms(clock_api->context) == UINT64_MAX ||
-        !preflight() || !read_reg(REG_POWER, &saved_power) ||
+        !clock_api) {
+        printf("VBUSREF failure=acquire-state started=%u claimed=%u leased=%u faulted=%u requested_ma=%u\n",
+               (unsigned)started, (unsigned)(bus_claim != 0),
+               (unsigned)(lease != 0), (unsigned)faulted, (unsigned)requested_ma);
+        return false;
+    }
+    if (clock_api->monotonic_ms(clock_api->context) == UINT64_MAX) {
+        printf("VBUSREF failure=acquire-clock\n");
+        return false;
+    }
+    if (!preflight()) return false;
+    if (!read_reg(REG_POWER, &saved_power) ||
         !read_reg(REG_BOOST, &saved_boost) ||
-        !read_reg(REG_ADC_CONTROL, &saved_adc)) return false;
+        !read_reg(REG_ADC_CONTROL, &saved_adc)) {
+        printf("VBUSREF failure=snapshot-read\n");
+        return false;
+    }
     saved = true;
     lease = ++sequence; /* A partially applied write MUST pin the provider. */
     const uint8_t boost = (uint8_t)((saved_boost & 0x08u) |
                                  BOOST_VOLTAGE_5126MV | BOOST_500MA);
     bool ok = write_reg(REG_BOOST, boost);
-    if (ok) ok = write_reg(REG_ADC_CONTROL, saved_adc | ADC_CONTINUOUS);
+    if (!ok) printf("VBUSREF failure=boost-config-write\n");
+    if (ok) {
+        ok = write_reg(REG_ADC_CONTROL, saved_adc | ADC_CONTINUOUS);
+        if (!ok) printf("VBUSREF failure=adc-config-write\n");
+    }
     if (ok) {
         const uint8_t value = (uint8_t)((saved_power &
                                  (uint8_t)~CHARGE_ENABLE) | OTG_ENABLE);
         source_requested = true; /* Even a failed write may have applied. */
         ok = write_reg(REG_POWER, value);
+        if (!ok) printf("VBUSREF failure=otg-enable-write\n");
     }
     if (ok) ok = verify_source();
     if (!ok) {
-        if (disable_and_restore()) { lease = 0; saved = false; }
-        else faulted = true;
+        if (disable_and_restore()) {
+            lease = 0;
+            saved = false;
+            printf("VBUSREF stage=rollback-complete\n");
+        } else {
+            faulted = true;
+            printf("VBUSREF failure=rollback-unsafe lease-retained=1\n");
+        }
         return false;
     }
     *out = lease;
+    printf("VBUSREF stage=source-verified\n");
     return true;
 }
 static bool release_host(void *unused, uint64_t id) {
