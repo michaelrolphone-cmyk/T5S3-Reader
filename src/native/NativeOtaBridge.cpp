@@ -20,11 +20,29 @@ constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
 
 // Settings connects Wi-Fi before launching this ELF, but a user can also
-// launch the same updater directly from Apps or Home. Never enter ESP-IDF HTTP
-// with an uninitialized/disconnected lwIP interface: its tcpip mailbox can be
-// invalid and the HTTP request will assert instead of returning an error.
+// launch the updater directly from Apps or Home. Never invoke ESP-IDF HTTP
+// without a connected interface and usable IP: an uninitialized lwIP stack
+// can assert in tcpip_send_msg_wait_sem with "Invalid mbox".
 bool ensureOtaNetworkReady() {
   if (RuntimeNetwork::ready()) return true;
+
+  // The Wi-Fi picker can report WL_CONNECTED before DHCP assigns an IP. Keep
+  // its selected network, including unsaved credentials, rather than forcibly
+  // reconnecting a different saved SSID while address assignment is underway.
+  if (RuntimeNetwork::state().connection == RuntimeNetwork::ConnectionState::Connected) {
+    LOG_INF("OTA", "Wi-Fi associated; waiting for an IP address");
+    const uint32_t started = millis();
+    while (millis() - started < kWifiConnectTimeoutMs) {
+      esp_task_wdt_reset();
+      const auto state = RuntimeNetwork::state();
+      if (state.connection == RuntimeNetwork::ConnectionState::Connected && state.hasAddress)
+        return true;
+      if (state.connection != RuntimeNetwork::ConnectionState::Connected) break;
+      delay(100);
+    }
+    LOG_ERR("OTA", "Selected Wi-Fi did not obtain an IP address; skipping HTTP request");
+    return false;
+  }
 
   WIFI_STORE.loadFromFile();
   const WifiCredential* credential = nullptr;
