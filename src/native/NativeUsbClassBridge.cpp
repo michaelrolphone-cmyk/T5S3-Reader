@@ -209,25 +209,37 @@ void nativeUsbClassPump(RuntimeStreams::Registry& registry) {
 }
 
 #if defined(ESP_PLATFORM)
-bool nativeUsbClassEnsureInstalled(uint16_t vid) {
-  if (valid(ops) && (!token || started)) return true;
-  if (token || session.token()) return false;
-  const char* first = vid == 0x10c4u ? "usb-cp210x-v2" : "usb-cdc-acm-v2";
-  const char* second = vid == 0x10c4u ? "usb-cdc-acm-v2" : "usb-cp210x-v2";
-  const char* ids[] = {first, second};
-  for (const char* id : ids) {
+bool nativeUsbClassBindNextInstalled(size_t* cursor) {
+  if (!cursor || token || session.token() || valid(ops)) return false;
+  char id[96]{};
+  while (RuntimeInstalledProviders::nextProvider("serial.port", 1, cursor,
+                                                 id, sizeof(id))) {
     RuntimeInstalledProviders::Lease grant{};
-    if (!RuntimeInstalledProviders::acquire(id, "serial.port", 1, &grant)) continue;
+    // A failed start can be unsafe to tear down. Do not activate another
+    // candidate after that failure; the graph retains any unquiesced module.
+    if (!RuntimeInstalledProviders::acquire(id, "serial.port", 1, &grant)) return false;
+    if (!apiValid(static_cast<const risc_usb_cdc_api_v1*>(grant.interface))) {
+      if (!RuntimeInstalledProviders::release(&grant)) return false;
+      continue;
+    }
     if (!nativeUsbClassBindApi(grant.interface)) {
       (void)RuntimeInstalledProviders::release(&grant);
-      continue;
+      return false;
     }
     installedClass = grant;
     return true;
   }
   return false;
 }
+bool nativeUsbClassEnsureInstalled(uint16_t vid) {
+  (void)vid;
+  if (valid(ops) && (!token || started)) return true;
+  if (token || session.token()) return false;
+  size_t cursor = 0;
+  return nativeUsbClassBindNextInstalled(&cursor);
+}
 #else
+bool nativeUsbClassBindNextInstalled(size_t*) { return false; }
 bool nativeUsbClassEnsureInstalled(uint16_t) {
   return valid(ops) && (!token || started);
 }
