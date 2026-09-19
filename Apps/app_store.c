@@ -11,6 +11,7 @@
 #define SUBTITLE_SIZE 96u
 #define VALUE_SIZE 40u
 #define STATUS_SIZE 160u
+#define INBOX_NAME_SIZE 128u
 
 typedef enum { RELEASES, SD_INBOX } view_t;
 static view_t view;
@@ -18,13 +19,13 @@ static t5_ui_list_row_t rows[MAX_ROWS];
 static char titles[MAX_ROWS][TITLE_SIZE];
 static char subtitles[MAX_ROWS][SUBTITLE_SIZE];
 static char values[MAX_ROWS][VALUE_SIZE];
-static char folders[MAX_ROWS][T5_PACKAGE_ID_MAX];
+static char folders[MAX_ROWS][INBOX_NAME_SIZE];
+static bool archive_rows[MAX_ROWS];
 static t5_package_preview_t packages[MAX_ROWS];
 static uint32_t release_indices[MAX_ROWS];
 static uint32_t row_count;
 
-// Native ELF symbols are a deliberately bounded ABI. Never import libc
-// functions (such as strnlen) that firmware does not explicitly export.
+// Native ELF symbols are bounded: avoid importing unexported libc helpers.
 static size_t bounded_length(const char *value, size_t bound) {
     size_t n = 0;
     if (value) while (n < bound && value[n]) ++n;
@@ -37,6 +38,10 @@ static void copy_text(char *destination, size_t capacity, const char *source) {
     memcpy(destination, source, length);
     destination[length] = '\0';
 }
+static bool zip_name(const char *name) {
+    const size_t n = bounded_length(name, INBOX_NAME_SIZE);
+    return n > 8u && n < INBOX_NAME_SIZE && !strcmp(name + n - 8u, ".rte.zip");
+}
 static bool catalog_available(const t5_app_api_v1 *app) {
     return app && app->struct_size >= offsetof(t5_app_api_v1, app_catalog_download) +
         sizeof(app->app_catalog_download) && app->app_catalog_refresh &&
@@ -44,8 +49,13 @@ static bool catalog_available(const t5_app_api_v1 *app) {
 }
 static bool package_available(const t5_package_manager_api_v1 *manager) {
     return manager && manager->api_version == T5_PACKAGE_MANAGER_API_VERSION &&
-        manager->struct_size >= sizeof(*manager) && manager->preview &&
-        manager->install && manager->uninstall;
+        manager->struct_size >= offsetof(t5_package_manager_api_v1, preview_archive) &&
+        manager->preview && manager->install && manager->uninstall;
+}
+static bool zip_available(const t5_package_manager_api_v1 *manager) {
+    return manager->struct_size >= offsetof(t5_package_manager_api_v1, install_archive) +
+        sizeof(manager->install_archive) && manager->preview_archive &&
+        manager->install_archive;
 }
 static bool ui_available(const t5_ui_api_v1 *ui) {
     return ui && ui->struct_size >= offsetof(t5_ui_api_v1, previous_index) +
@@ -70,7 +80,7 @@ static void row(uint32_t index, const char *title, const char *subtitle,
     copy_text(subtitles[index], sizeof(subtitles[index]), subtitle);
     copy_text(values[index], sizeof(values[index]), value);
     rows[index] = (t5_ui_list_row_t){titles[index], subtitles[index], values[index],
-                    highlighted ? T5_UI_LIST_HIGHLIGHT_VALUE : 0};
+                                    highlighted ? T5_UI_LIST_HIGHLIGHT_VALUE : 0};
 }
 static bool release_versions(const t5_app_api_v1 *app, uint32_t index,
                              const t5_app_manifest_t *manifest,
@@ -79,7 +89,7 @@ static bool release_versions(const t5_app_api_v1 *app, uint32_t index,
     if (!manifest || !version_available(app) ||
         !app->app_catalog_version_get(index, available, T5_APP_VERSION_MAX)) return false;
     return app->installed_app_version_get(manifest->file_name, installed,
-                                           T5_APP_VERSION_MAX);
+                                         T5_APP_VERSION_MAX);
 }
 static void build_releases(const t5_app_api_v1 *app) {
     row_count = 0;
@@ -109,15 +119,18 @@ static bool build_inbox(const t5_app_api_v1 *app,
     if (!app->dir_open("/sd/Packages/Inbox")) return false;
     t5_app_dirent_t entry = {0};
     while (app->dir_next(&entry)) {
-        if (!entry.is_directory || row_count == MAX_ROWS) continue;
+        if (row_count == MAX_ROWS) break;
         const size_t length = bounded_length(entry.name, sizeof(entry.name));
-        // Refuse truncated identities, never turn one directory into another.
-        if (!length || length >= sizeof(folders[0]) ||
-            length == sizeof(entry.name)) continue;
+        if (!length || length >= sizeof(entry.name) || length >= INBOX_NAME_SIZE) continue;
+        const bool archive = !entry.is_directory && zip_name(entry.name) &&
+                             zip_available(manager);
+        if (!entry.is_directory && !archive) continue;
         t5_package_preview_t info = {0};
-        if (!manager->preview(entry.name, &info) ||
-            info.kind != T5_PACKAGE_APPLICATION) continue;
+        const bool described = archive ? manager->preview_archive(entry.name, &info) :
+                                        manager->preview(entry.name, &info);
+        if (!described || info.kind != T5_PACKAGE_APPLICATION) continue;
         memcpy(folders[row_count], entry.name, length + 1u);
+        archive_rows[row_count] = archive;
         packages[row_count] = info;
         char detail[SUBTITLE_SIZE] = {0};
         if (!info.valid_installation)
@@ -126,7 +139,8 @@ static bool build_inbox(const t5_app_api_v1 *app,
             snprintf(detail, sizeof(detail), "Installed %.31s; %s", info.installed_version,
                      info.install_allowed ? "update available" : "no update");
         } else copy_text(detail, sizeof(detail), info.install_allowed ?
-            "SD inbox: ready to install" : "Dependency, version or stage blocked");
+            archive ? "SD ZIP: ready to install" : "SD directory: ready to install" :
+            "Dependency, version or stage blocked");
         row(row_count, info.id, detail, info.version, info.install_allowed != 0);
         ++row_count;
     }
@@ -188,7 +202,7 @@ static void render(const t5_app_api_v1 *app, const t5_ui_api_v1 *ui,
                    int32_t selected, const char *status) {
     const t5_ui_chrome_t chrome = {
         .title = "App Store",
-        .subtitle = view == SD_INBOX ? "SD packages; tap header for releases" :
+        .subtitle = view == SD_INBOX ? "SD ZIP/packages; tap header for releases" :
                     "Latest release; tap header for SD packages",
         .status = status,
         .back_label = "Back", .confirm_label = action_label(app, selected),
@@ -197,7 +211,8 @@ static void render(const t5_app_api_v1 *app, const t5_ui_api_v1 *ui,
     if (row_count) ui->render_list(&chrome, rows, row_count, selected);
     else {
         const t5_ui_list_row_t empty = {"No applications", view == SD_INBOX ?
-            "Add a package under /Packages/Inbox" : "Release catalog unavailable", "", 0};
+            "Add .rte.zip or package under /Packages/Inbox" :
+            "Release catalog unavailable", "", 0};
         ui->render_list(&chrome, &empty, 1, 0);
     }
 }
@@ -208,7 +223,8 @@ static void activate_inbox(const t5_package_manager_api_v1 *manager,
     if (!package.valid_installation) {
         snprintf(status, capacity, "%.63s: recovery required", package.id);
     } else if (package.install_allowed) {
-        const bool ok = manager->install(folders[selected]);
+        const bool ok = archive_rows[selected] ? manager->install_archive(folders[selected]) :
+                                                manager->install(folders[selected]);
         snprintf(status, capacity, "%.63s: %s", package.id,
                  ok ? "verified package installed" : "install refused: check stage/dependencies");
     } else if (package.installed_version[0] && removal_confirmed(ui, package.id)) {
