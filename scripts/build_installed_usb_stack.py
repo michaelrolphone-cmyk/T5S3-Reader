@@ -32,6 +32,11 @@ DRIVERS = (
     ('usb-cdc-acm-v2', 'usb_cdc_v2', 'usb-cdc-acm-v2', 'driver.elf'),
     ('usb-cp210x-v2', 'usb_cp210x_v2', 'usb-cp210x-v2', 'driver.elf'),
 )
+EXPECTED_VERSIONS = {
+    'i2c-esp32s3-v2': '0.1.2',
+    'board-power-t5s3-v2': '0.1.1',
+    'usb-controller-esp32s3': '0.1.1',
+}
 
 
 def entry(path: Path, executable: bool) -> dict:
@@ -54,7 +59,7 @@ def build() -> list[dict]:
             raise ValueError(f'unexpected source identity: {source}')
         capability, api = canonical_manifest(source)
         version = metadata.get('version', '0.1.0')
-        expected_version = '0.1.2' if identity == 'i2c-esp32s3-v2' else '0.1.0'
+        expected_version = EXPECTED_VERSIONS.get(identity, '0.1.0')
         if version != expected_version:
             raise ValueError(f'unknown package version for {identity}: {version}')
         elf = SOURCE / output_name / elf_name
