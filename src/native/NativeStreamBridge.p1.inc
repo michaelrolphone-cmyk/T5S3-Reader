@@ -162,11 +162,7 @@ int32_t openFile(const char* path, uint32_t mode, t5_stream_t* out) {
 struct Usb {
   const t5_usb_api_v1* api;
   uint32_t epoch;
-  bool direct = false;
-  bool physicalReady = false;
 };
-Usb* directUsb = nullptr;
-t5_stream_t directHandle = 0;
 Usb* pairUsb = nullptr;
 t5_stream_t pairRx = 0, pairTx = 0;
 void notePairClosed(t5_stream_t handle) {
@@ -183,7 +179,6 @@ bool usbRevoked(const Usb& u) {
 }
 int32_t usbState(Usb& u) {
   if (usbRevoked(u)) return T5_STREAM_DISCONNECTED;
-  if (u.direct && !u.physicalReady) return T5_STREAM_AGAIN;
   t5_usb_serial_state_t s{};
   if (!u.api->serial_read_state(&s)) return T5_STREAM_IO;
   if (usbRevoked(u)) return T5_STREAM_DISCONNECTED;
@@ -206,68 +201,10 @@ int32_t usbWrite(void* ctx, const void* data, uint32_t size, uint32_t* count) {
   if (usbRevoked(u)) { *count = 0; return T5_STREAM_DISCONNECTED; }
   return *count ? T5_STREAM_OK : T5_STREAM_AGAIN;
 }
-void usbClose(void* ctx) {
-  auto* u = static_cast<Usb*>(ctx);
-  if (directUsb == u) { directUsb = nullptr; directHandle = 0; }
-  delete u;
-  if (usbRefs) --usbRefs;
-  if (!usbRefs) usbOpen = false;
-}
-int32_t refreshDirect(t5_stream_t handle) {
-  uint32_t expectedEpoch = 0;
-  {
-    Lock lock;
-    if (!directUsb || handle != directHandle) return T5_STREAM_OK;
-    expectedEpoch = directUsb->epoch;
-  }
-  const bool claimed = nativeUsbDirectStreamClaim(expectedEpoch);
-  if (nativeUsbProviderEpoch() != expectedEpoch) return T5_STREAM_DISCONNECTED;
-  if (!claimed) return T5_STREAM_BUSY;
-  const bool ready = nativeUsbDirectStreamBound();
-  {
-    Lock lock;
-    if (directUsb && directHandle == handle && directUsb->epoch == expectedEpoch)
-      directUsb->physicalReady = ready;
-  }
-  return T5_STREAM_OK;
-}
 int32_t openUsb(t5_stream_t* out) {
   if (out) *out = 0;
   if (!authorized()) return T5_STREAM_DENIED;
-  if (!out) return T5_STREAM_INVALID;
-  const auto* api = t5_usb_get_api(T5_USB_API_VERSION);
-  if (!api || !api->supported || !api->supported()) return T5_STREAM_UNSUPPORTED;
-  if (!initialize()) return T5_STREAM_LIMIT;
-  {
-    Lock lock;
-    if (usbOpen) return T5_STREAM_BUSY;
-  }
-  const uint32_t expectedEpoch = nativeUsbProviderEpoch();
-  if (!nativeUsbDirectStreamClaim(expectedEpoch))
-    return nativeUsbProviderEpoch() != expectedEpoch ? T5_STREAM_DISCONNECTED : T5_STREAM_BUSY;
-  const bool ready = nativeUsbDirectStreamBound();
-  int32_t result = T5_STREAM_BUSY;
-  {
-    Lock lock;
-    if (!usbOpen) {
-      auto* u = new (std::nothrow) Usb{api, expectedEpoch, true, ready};
-      if (!u) result = T5_STREAM_LIMIT;
-      else {
-        RuntimeStreams::Provider p{u, usbRead, usbWrite, nullptr, nullptr, usbClose};
-        result = registry.attach(owner, T5_STREAM_BYTES,
-                                 T5_STREAM_READ | T5_STREAM_WRITE, p, out);
-        if (result != T5_STREAM_OK) delete u;
-        else {
-          usbOpen = true;
-          usbRefs = 1;
-          directUsb = u;
-          directHandle = *out;
-        }
-      }
-    }
-  }
-  if (result != T5_STREAM_OK && result != T5_STREAM_BUSY) nativeUsbDirectStreamRelease();
-  return result;
+  return T5_STREAM_UNSUPPORTED;
 }
 struct HttpJob { uint32_t owner; t5_stream_t stream; char url[1024]; };
 class HttpSink final : public Stream {
