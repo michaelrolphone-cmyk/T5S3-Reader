@@ -20,6 +20,7 @@ struct FakeClass {
   uint32_t rxLen = 0;
   uint8_t tx[64]{};
   uint32_t txLen = 0;
+  uint32_t maxWrite = sizeof(tx);
   uint32_t reads = 0, writes = 0;
 };
 uint64_t openDev(void* ctx, uint64_t device) {
@@ -56,10 +57,11 @@ int32_t writeDev(void* ctx, uint64_t token, const uint8_t* src, uint32_t len, ui
   auto* f = static_cast<FakeClass*>(ctx);
   if (token != f->open || !src || !len) return -1;
   ++f->writes;
-  if (f->txLen + len > sizeof(f->tx)) return -1;
-  std::memcpy(f->tx + f->txLen, src, len);
-  f->txLen += len;
-  return static_cast<int32_t>(len);
+  const uint32_t accepted = len < f->maxWrite ? len : f->maxWrite;
+  if (f->txLen + accepted > sizeof(f->tx)) return -1;
+  if (accepted) std::memcpy(f->tx + f->txLen, src, accepted);
+  f->txLen += accepted;
+  return static_cast<int32_t>(accepted);
 }
 bool closeDev(void* ctx, uint64_t token) {
   auto* f = static_cast<FakeClass*>(ctx);
@@ -82,13 +84,17 @@ int main() {
   require(rx && tx && rx != tx, "pair");
   require(fake.baud == 115200, "baud");
   require(session.grant(registry, 9, T5_STREAM_READ | T5_STREAM_WRITE) == T5_STREAM_OK, "grant");
+  require(session.grant(registry, 10, T5_STREAM_READ) == T5_STREAM_OK, "read-only-grant");
+  require(session.grant(registry, 11, T5_STREAM_WRITE) == T5_STREAM_OK, "write-only-grant");
+  uint32_t n = 0;
+  char got[32]{};
+  require(registry.write(10, tx, "x", 1, &n) == T5_STREAM_INVALID, "read-only-is-not-tx");
+  require(registry.read(11, rx, got, 1, &n) == T5_STREAM_INVALID, "write-only-is-not-rx");
 
   const char inbound[] = "from-device";
   std::memcpy(fake.rx, inbound, sizeof(inbound) - 1);
   fake.rxLen = sizeof(inbound) - 1;
   require(session.pump(registry) == T5_STREAM_OK, "pump-rx");
-  char got[32]{};
-  uint32_t n = 0;
   require(registry.read(9, rx, got, sizeof(got), &n) == T5_STREAM_OK, "consumer-read");
   require(n == sizeof(inbound) - 1, "rx-len");
   require(std::memcmp(got, inbound, n) == 0, "rx-bytes");
@@ -99,13 +105,59 @@ int main() {
   require(fake.writes == 1, "class-write");
   require(fake.txLen == sizeof(outbound) - 1, "tx-len");
   require(std::memcmp(fake.tx, outbound, fake.txLen) == 0, "tx-bytes");
+
+  // The class can accept a prefix or zero bytes; neither may lose or
+  // duplicate any previously consumed stream bytes.
+  fake.txLen = 0;
+  const char partial[] = "partial-transfer";
+  fake.maxWrite = 3;
+  require(registry.write(9, tx, partial, sizeof(partial) - 1, &n) == T5_STREAM_OK,
+          "queue-partial");
+  require(session.pump(registry) == T5_STREAM_OK && fake.txLen == 3,
+          "first-short-write");
+  fake.maxWrite = 0;
+  require(session.pump(registry) == T5_STREAM_OK && fake.txLen == 3,
+          "zero-write-retains-pending");
+  fake.maxWrite = 3;
+  for (unsigned attempt = 0; attempt < 6; ++attempt)
+    require(session.pump(registry) == T5_STREAM_OK, "resume-short-write");
+  require(fake.txLen == sizeof(partial) - 1 &&
+          std::memcmp(fake.tx, partial, fake.txLen) == 0, "short-writes-ordered");
+
+  // A full RX endpoint must stop class reads and preserve the pending chunk.
+  uint8_t padding[T5_STREAM_CHUNK]{};
+  std::memset(padding, 'P', sizeof(padding));
+  for (uint32_t i = 0; i < session.kCapacity / sizeof(padding); ++i)
+    require(registry.produce(7, rx, padding, sizeof(padding), &n) == T5_STREAM_OK &&
+            n == sizeof(padding), "fill-rx");
+  std::memcpy(fake.rx, inbound, sizeof(inbound) - 1);
+  fake.rxLen = sizeof(inbound) - 1;
+  const uint32_t readsBefore = fake.reads;
+  require(session.pump(registry) == T5_STREAM_OK && fake.reads == readsBefore + 1,
+          "class-read-under-pressure");
+  require(session.pump(registry) == T5_STREAM_OK && fake.reads == readsBefore + 1,
+          "no-read-ahead-while-full");
+  uint8_t drained[T5_STREAM_CHUNK]{};
+  require(registry.read(9, rx, drained, sizeof(drained), &n) == T5_STREAM_OK &&
+          n == sizeof(drained), "make-rx-room");
+  require(session.pump(registry) == T5_STREAM_OK && fake.reads == readsBefore + 1,
+          "replay-held-rx-before-next-class-read");
+  for (uint32_t i = 0; i < session.kCapacity / sizeof(padding) - 1; ++i) {
+    require(registry.read(9, rx, drained, sizeof(drained), &n) == T5_STREAM_OK &&
+            n == sizeof(drained), "drain-padding");
+    for (uint32_t j = 0; j < n; ++j) require(drained[j] == 'P', "padding-order");
+  }
+  require(registry.read(9, rx, got, sizeof(got), &n) == T5_STREAM_OK &&
+          n == sizeof(inbound) - 1 && std::memcmp(got, inbound, n) == 0,
+          "held-rx-delivered-exactly-once");
   require(session.control(true, false) == T5_STREAM_OK && fake.dtr && !fake.rts, "lines");
 
   fake.failClose = true;
   require(session.close(&registry) == T5_STREAM_IO, "failed-close-reported");
   require(session.token() == fake.open && session.bound(), "failed-close-pins-elf");
   require(!session.unbind(), "failed-close-refuses-unbind");
-  require(registry.read(9, rx, got, 1, &n) == T5_STREAM_AGAIN, "failed-close-preserves-endpoints");
+  require(registry.read(9, rx, got, 1, &n) == T5_STREAM_AGAIN,
+          "failed-close-preserves-endpoints");
   fake.failClose = false;
   require(session.close(&registry) == T5_STREAM_OK, "retry-close");
   require(!fake.open, "class-closed");
