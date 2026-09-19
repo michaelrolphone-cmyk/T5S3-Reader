@@ -15,12 +15,14 @@ on:
       - "sdk/driver/RiscUsbControllerV1.h"
       - "sdk/driver/RiscUsbVbusV1.h"
       - "sdk/driver/RiscI2cBusV1.h"
+      - "sdk/driver/RiscFirmwareI2cCompatV1.h"
       - "sdk/driver/RiscPlatformClockV1.h"
       - "lib/elf_loader/**"
       - "lib/NativeApps/src/NativeAppLauncher.c"
       - "src/runtime/drivers/**"
       - "src/runtime/packages/**"
       - "src/native/NativeUsbBridge.cpp"
+      - "src/native/FirmwareI2cCompat.cpp"
       - "scripts/native_app_symbols.py"
       - "scripts/generate_privileged_imports_v1.py"
       - "scripts/generate_provider_package_inputs_v1.py"
@@ -90,7 +92,7 @@ jobs:
         run: |
           python scripts/audit_usb_controller_elf.py --strict
           bash test/run_native_app_test.sh dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf
-      - name: Build physical I2C controller and PIC IDF I2C/GPIO implementation
+      - name: Build firmware-backed I2C capability ELF and audit private transport
         run: |
           python scripts/probe_i2c_esp32s3_v2.py
           python scripts/audit_i2c_esp32s3_elf.py --strict
@@ -108,13 +110,15 @@ jobs:
           python scripts/build_platform_clock_v1.py
           python scripts/audit_usb_controller_elf.py dist/experimental/platform-clock-v1/driver.elf --strict
           bash test/run_native_app_test.sh dist/experimental/platform-clock-v1/driver.elf
-      - name: Validate private C ABI and exact import matcher against physical linked ELFs
+      - name: Validate board-private C ABI and exact import matcher against linked ELFs
         run: |
-          cc -std=gnu11 -O2 -Wall -Wextra -Werror \
+          # The firmware preflight admits the temporary I2C import only under
+          # BOARD_T5S3_PRO; compile its host test with the same target define.
+          cc -std=gnu11 -O2 -Wall -Wextra -Werror -DBOARD_T5S3_PRO \
             -Itest/drivers/stub_os_cpu -Ilib/elf_loader/include \
             lib/elf_loader/src/esp_privileged_imports.c \
             test/drivers/privileged_imports_v1_cli.c -o /tmp/riscrte-privileged-imports-ci
-          cc -std=gnu11 -O2 -Wall -Wextra -Werror \
+          cc -std=gnu11 -O2 -Wall -Wextra -Werror -DBOARD_T5S3_PRO \
             -Itest/drivers/stub_os_cpu -Ilib/elf_loader/include \
             lib/elf_loader/src/esp_privileged_imports.c \
             lib/elf_loader/src/esp_privileged_manifest_imports.c \

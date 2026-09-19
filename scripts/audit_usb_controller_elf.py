@@ -12,6 +12,7 @@ from pathlib import Path
 from elftools.elf.elffile import ELFFile
 from native_app_symbols import (firmware_exports, privileged_os_cpu_exports,
                                 privileged_loader_public_libc_v1)
+from verify_provider_relocation_map import audit_loader_map
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ELF = ROOT / 'dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf'
@@ -40,6 +41,7 @@ def classify_imports(imports, exported, privileged=(), loader_public=()):
 def audit(path):
     if not path.is_file():
         raise FileNotFoundError('Build physical controller first: ' + str(path))
+    mapping = audit_loader_map(path)
     with path.open('rb') as stream:
         elf = ELFFile(stream)
         header = elf.header
@@ -86,7 +88,10 @@ def audit(path):
         unexpected_exports = sorted({sym.name for sym in dynsym.iter_symbols()
                                      if sym.name and sym['st_shndx'] != 'SHN_UNDEF' and
                                      sym['st_info']['bind'] == 'STB_GLOBAL'} - allowed_symbols)
-        structural = (identity_ok and not unsupported and not textrel and
+        layout_ok = not (mapping['unmapped_relocations'] or
+                         mapping['unmapped_relative_values'] or
+                         mapping['unmapped_executable_sections'])
+        structural = (identity_ok and not unsupported and layout_ok and not textrel and
                       not unexpected_exports and
                       not import_report['forbidden_usb_or_firmware_api_imports'])
         privileged_compatible = (structural and
@@ -100,6 +105,7 @@ def audit(path):
             'text_relocations': textrel,
             'unexpected_exports': unexpected_exports,
             **import_report,
+            **mapping,
             'current_loader_abi_compatible': structural and not import_report['missing_current_firmware_exports'],
             'privileged_os_cpu_v1_import_compatible': privileged_compatible,
             'privileged_loader_admission_integrated': False,
@@ -128,6 +134,9 @@ def main():
     print('Rejected by runtime private import preflight:',
           *result['rejected_by_private_loader_import_preflight'], sep='\n  ', flush=True)
     print('Unsupported relocations:', result['unsupported_relocations'], flush=True)
+    print('Unmapped sites:', result['unmapped_relocations'],
+          'invalid pointer values:', result['unmapped_relative_values'],
+          'validated ABS MMIO:', len(result['absolute_peripheral_relocations']), flush=True)
     print('Report:', output, flush=True)
     print('Not installable: signed admission, ownership and board validation pending.', flush=True)
     if args.strict and not result['privileged_os_cpu_v1_import_compatible']:

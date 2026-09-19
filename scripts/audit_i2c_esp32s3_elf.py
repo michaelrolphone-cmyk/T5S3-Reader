@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
-"""Audit physical I2C ELF imports, real loader relocations and isolation.
+"""Audit the transitional i2c.bus ELF and its single private firmware import.
 
-A structural/scoped import pass is NOT signed-loader or hardware acceptance.
-Physical controller/GPIO/HAL implementations must remain within the ELF.
+No IDF I2C, GPIO, HAL or ISR implementation belongs in this adapter. The
+public provider interface stays unchanged; physical I2C0 is serialized by
+firmware until the full I2C ownership cutover. An ordinary application cannot
+import the dedicated transport, and other providers must depend on i2c.bus.
 """
 import argparse
 import json
 from pathlib import Path
 
 from audit_usb_controller_elf import audit
+from generate_privileged_imports_v1 import extract_imports
 from verify_provider_relocation_map import audit_loader_map
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT = ROOT / 'dist/experimental/i2c-esp32s3-v2/driver.elf'
+BRIDGE = 'risc_fw_i2c_transact_v1'
 HARDWARE_IMPORT_PREFIXES = (
     'i2c_', 'gpio_', 'rtc_gpio_', 'rtc_io_', 'periph_module_',
     'usb_', 'hcd_', 'hub_', 'usbh_', 't5_',
@@ -21,28 +25,39 @@ HARDWARE_IMPORT_PREFIXES = (
 
 def inspect(path):
     result = audit(path)
-    # The generic auditor permits relocation sites in any SHF_ALLOC section.
-    # The actual firmware loader maps only five named sections. Check those
-    # precise destinations and executable orphan sections before publishing.
     mapping = audit_loader_map(path)
     result.update(mapping)
-    imports = (result['missing_current_firmware_exports'] +
-               result['resolved_by_current_firmware'])
+    imports = extract_imports(path)
+    # The dedicated private transport is intentionally absent from the
+    # GENERIC privileged OS/CPU and libc inventories. It is explicitly
+    # accepted only by the firmware's private preflight and exact-ID admission.
+    bridge_present = BRIDGE in imports
+    result['missing_privileged_os_cpu_v1'] = [name for name in
+        result['missing_privileged_os_cpu_v1'] if name != BRIDGE]
+    result['rejected_by_private_loader_import_preflight'] = [name for name in
+        result['rejected_by_private_loader_import_preflight'] if name != BRIDGE]
     hardware = sorted(name for name in imports
                       if name.startswith(HARDWARE_IMPORT_PREFIXES))
     result['forbidden_peripheral_imports'] = hardware
-    layout_ok = not mapping['unmapped_relocations'] and not mapping['unmapped_executable_sections']
-    result['current_loader_abi_compatible'] = (
-        result['current_loader_abi_compatible'] and not hardware and layout_ok)
-    result['privileged_os_cpu_v1_import_compatible'] = (
-        result['privileged_os_cpu_v1_import_compatible'] and not hardware and layout_ok)
-    result['privileged_loader_admission_integrated'] = False
+    result['firmware_i2c_private_import'] = bridge_present
+    result['i2c_mmio_relocations'] = mapping['absolute_peripheral_relocations']
+    layout_ok = not (mapping['unmapped_relocations'] or
+                     mapping['unmapped_relative_values'] or
+                     mapping['unmapped_executable_sections'])
+    isolated = (bridge_present and not hardware and layout_ok and
+                not mapping['absolute_peripheral_relocations'] and
+                result['format_supported'] and not result['unsupported_relocations'] and
+                not result['text_relocations'] and not result['unexpected_exports'] and
+                not result['forbidden_usb_or_firmware_api_imports'] and
+                not result['missing_privileged_os_cpu_v1'] and
+                not result['rejected_by_private_loader_import_preflight'])
+    result['current_loader_abi_compatible'] = False  # Not an ordinary-app import.
+    result['privileged_os_cpu_v1_import_compatible'] = isolated
+    result['privileged_loader_admission_integrated'] = isolated
     result['physical_board_validated'] = False
     result['installable'] = False
-    result['status'] = ('peripheral-import-blocked' if hardware else
-                        'loader-section-map-blocked' if not layout_ok else
-                        'loader-abi-blocked' if not result['privileged_os_cpu_v1_import_compatible']
-                        else 'privileged-imports-covered-awaiting-signed-admission')
+    result['status'] = ('firmware-i2c-private-adapter-verified' if isolated else
+                        'firmware-i2c-adapter-audit-blocked')
     return result
 
 
@@ -54,28 +69,25 @@ def main():
     result = inspect(args.elf)
     report = args.elf.parent / 'i2c-loader-audit.json'
     report.write_text(json.dumps(result, indent=2) + '\n')
-    print('Physical I2C loader audit:', result['status'], flush=True)
-    print('Unresolved ordinary-app OS/CPU imports:',
-          *result['missing_current_firmware_exports'], sep='\n  ', flush=True)
-    print('Missing scoped privileged OS/CPU imports:',
-          *result['missing_privileged_os_cpu_v1'], sep='\n  ', flush=True)
-    print('Rejected by runtime private import preflight:',
-          *result['rejected_by_private_loader_import_preflight'], sep='\n  ', flush=True)
-    print('Forbidden hardware implementation imports:',
-          result['forbidden_peripheral_imports'], flush=True)
+    print('Firmware-backed I2C ELF audit:', result['status'], flush=True)
+    print('Only adapter may import:', BRIDGE, flush=True)
+    print('Other physical hardware imports:', result['forbidden_peripheral_imports'], flush=True)
+    print('Absolute MMIO references:', result['i2c_mmio_relocations'], flush=True)
     print('Relocations:', result['relocations_examined'],
           'unsupported:', len(result['unsupported_relocations']),
-          'unmapped:', len(result['unmapped_relocations']), flush=True)
-    print('Unmapped executable sections:', result['unmapped_executable_sections'], flush=True)
+          'unmapped sites:', len(result['unmapped_relocations']),
+          'invalid values:', len(result['unmapped_relative_values']), flush=True)
     print('Report:', report, flush=True)
-    if (result['forbidden_peripheral_imports'] or
+    if (args.strict and not result['privileged_os_cpu_v1_import_compatible']) or (
+            result['forbidden_peripheral_imports'] or
             not result['format_supported'] or
             result['unsupported_relocations'] or
             result['unmapped_relocations'] or
+            result['unmapped_relative_values'] or
             result['unmapped_executable_sections'] or
             result['text_relocations'] or result['unexpected_exports'] or
-            (args.strict and not result['privileged_os_cpu_v1_import_compatible'])):
-        parser.exit(1, 'I2C ELF fails isolation or actual runtime loader mapping.\n')
+            result['i2c_mmio_relocations'] or not result['firmware_i2c_private_import']):
+        parser.exit(1, 'I2C ELF fails private bridge or runtime loader isolation.\n')
 
 
 if __name__ == '__main__':

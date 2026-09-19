@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Assemble already-linked hardware-owning ELFs into installable ordinary packages.
+"""Assemble linked providers into installable ordinary packages.
 
-Run after the seven actual provider build/probe commands, not against mock
-objects or the old firmware USB driver. Each folder is directly consumable by
-Package Manager at /Packages/Inbox/<id>. No firmware flashing or publishing.
+The I2C provider is a temporary firmware-backed capability ELF; the other
+hardware-owning USB providers stay in independently installed ELFs. Run after
+all seven real provider builds, not mock objects. No flashing or publishing.
 """
 from __future__ import annotations
 
@@ -14,11 +14,13 @@ import shutil
 import sys
 
 from generate_provider_package_inputs_v1 import prepare as provider_inputs
+from generate_privileged_imports_v1 import extract_imports
 from verify_provider_relocation_map import audit_loader_map
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'dist/experimental'
 DESTINATION = ROOT / 'dist/packages'
+BRIDGE = 'risc_fw_i2c_transact_v1'
 # Dependency order doubles as a direct-install order for an initially empty SD.
 DRIVERS = (
     ('platform-clock-v1', 'platform_clock_v1', 'platform-clock-v1', 'driver.elf'),
@@ -52,20 +54,26 @@ def build() -> list[dict]:
             raise ValueError(f'unexpected source identity: {source}')
         capability, api = canonical_manifest(source)
         version = metadata.get('version', '0.1.0')
-        expected_version = '0.1.1' if identity == 'i2c-esp32s3-v2' else '0.1.0'
+        expected_version = '0.1.2' if identity == 'i2c-esp32s3-v2' else '0.1.0'
         if version != expected_version:
             raise ValueError(f'unknown package version for {identity}: {version}')
         elf = SOURCE / output_name / elf_name
         if not elf.is_file() or elf.stat().st_size < 52:
             raise FileNotFoundError(f'actual linked provider ELF missing: {elf}')
-        # An ELF can pass the generic SHF_ALLOC structural check and still be
-        # impossible to load. Every RELA destination and executable section
-        # must be in one of esp_elf_load_section's five mapped outputs.
+        # Validate the FINAL linked executable. Internal relative targets must
+        # map; absolute controller MMIO pointers must be declared and kept.
         mapping = audit_loader_map(elf)
-        if mapping['unmapped_relocations'] or mapping['unmapped_executable_sections']:
+        if (mapping['unmapped_relocations'] or mapping['unmapped_relative_values'] or
+                mapping['unmapped_executable_sections']):
             raise ValueError(f'provider {identity} is not relocatable by runtime: '
-                             f"{len(mapping['unmapped_relocations'])} unmapped relocation targets; "
+                             f"{len(mapping['unmapped_relocations'])} unmapped sites; "
+                             f"{len(mapping['unmapped_relative_values'])} invalid values; "
                              f"executable orphans={mapping['unmapped_executable_sections']}")
+        imports = extract_imports(elf)
+        is_adapter = identity == 'i2c-esp32s3-v2'
+        if ((BRIDGE in imports) != is_adapter or
+                (is_adapter and mapping['absolute_peripheral_relocations'])):
+            raise ValueError(f'firmware I2C bridge isolation violated by {identity}')
         target = DESTINATION / identity
         target.mkdir(parents=True, exist_ok=True)
         executable = target / 'driver.elf'

@@ -9,6 +9,7 @@
 #include "esp_elf.h"
 #include "esp_log.h"
 #include "private/elf_platform.h"
+#include "private/esp_privileged_os_cpu.h"
 
 /** @brief Xtensa relocations defined by the ABIs */
 
@@ -62,6 +63,24 @@
 
 static const char *TAG = "elf_arch";
 
+/* Architecture-level address classification, never a firmware-side GPIO/I2C
+ * driver or a grant to an ordinary ELF. The S3 peripheral register window is
+ * fixed physical address space; the RTC RAM aperture starts at 0x600fe000.
+ * Only the task that owns the privileged provider relocation scope may keep
+ * these linker-defined absolute addresses unchanged. The package audit must
+ * independently prove each external RELATIVE value is a matching SHN_ABS
+ * symbol. Other unmappable values fail closed instead of becoming NULL. */
+static bool privileged_peripheral_address(uint32_t address)
+{
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+    return address >= 0x60000000u && address < 0x600fe000u &&
+           esp_elf_privileged_os_cpu_scope_owned_v1();
+#else
+    (void)address;
+    return false;
+#endif
+}
+
 /**
  * @brief Relocates target architecture symbol of ELF
  *
@@ -90,6 +109,18 @@ int esp_elf_arch_relocate(esp_elf_t *elf, const elf32_rela_t *rela,
     switch (ELF_R_TYPE(rela->info)) {
     case R_XTENSA_RELATIVE:
         val = esp_elf_map_sym(elf, *where);
+        if (!val) {
+            if (*where == 0) break; /* An intentional null remains null. */
+            if (privileged_peripheral_address(*where)) {
+                /* ABS MMIO pointer already contains its final bus address.
+                 * Remapping it as an ELF-relative pointer used to replace
+                 * I2C0/GPIO context pointers with zero and panic at +0x14. */
+                break;
+            }
+            ESP_LOGE(TAG, "unmappable relative target 0x%08x at 0x%08x",
+                     (unsigned)*where, (unsigned)rela->offset);
+            return -EINVAL;
+        }
 #ifdef CONFIG_ELF_LOADER_CACHE_OFFSET
         *where = elf_remap_text(elf, val);
 #else

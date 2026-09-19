@@ -1,7 +1,11 @@
 #pragma once
-/* Provider-to-provider I2C contract. This is NOT a firmware I2C bridge: an
- * installable bus-controller ELF owns the peripheral, locks, clock and pins.
- * Capability identifiers remain opaque to the runtime. */
+/* Stable provider-to-provider I2C contract. Upstream drivers depend on
+ * i2c.bus, never a firmware peripheral function or a particular SPI/I2C
+ * implementation. The current i2c-esp32s3-v2 ELF delegates transactions to
+ * firmware-owned, shared-lock Wire/I2C0 through a private compatibility ABI.
+ * Once I2C ownership moves entirely into its ELF, this public ABI and its
+ * upstream consumers remain unchanged. Capability IDs are opaque to runtime.
+ */
 #include "RiscProviderV2.h"
 #ifdef __cplusplus
 extern "C" {

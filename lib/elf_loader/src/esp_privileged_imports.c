@@ -37,6 +37,11 @@ static bool within(size_t length, uint32_t start, uint32_t size)
 
 static bool permitted(const char *name)
 {
+#ifdef BOARD_T5S3_PRO
+    /* Single temporary peripheral exception. The manager independently
+     * checks that ONLY i2c-esp32s3-v2 may declare this exact import. */
+    if (strcmp(name, "risc_fw_i2c_transact_v1") == 0) return true;
+#endif
     for (size_t i = 0; i < sizeof(s_public_libc) / sizeof(s_public_libc[0]); ++i)
         if (strcmp(name, s_public_libc[i]) == 0) return true;
     for (size_t i = 0; i < sizeof(s_privileged) / sizeof(s_privileged[0]); ++i)
