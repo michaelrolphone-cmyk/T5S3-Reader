@@ -83,6 +83,8 @@ extern "C" const t5_usb_api_v1* t5_usb_get_api(uint32_t version) {
   return version == T5_USB_API_VERSION ? &usb : nullptr;
 }
 bool nativeUsbClassAvailable() { return usbSupported; }
+bool nativeUsbClassEnsureInstalled(uint16_t) { return usbSupported; }
+bool nativeUsbClassAttachPair(uint32_t, t5_stream_t, t5_stream_t) { return true; }
 bool nativeUsbClassStart(const t5_serial_config_t&) {
   if (classStarted) return false;
   ++usbStarts;
