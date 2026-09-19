@@ -2,9 +2,10 @@
 #include "ProviderModuleV2.h"
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 /* Generic graph owns all registration metadata and dependency interface
- * tables. Privileged admission belongs only to the trusted signed executor;
+ * tables. Privileged admission belongs only to the trusted executor;
  * a caller-supplied digest/import set must never confer OS/CPU rights. */
 namespace RuntimePackages { class DeviceProviderExecutorV2; }
 namespace RuntimeProviders {
@@ -50,10 +51,22 @@ class GraphV2 final {
   size_t moduleCount() const { return count_; }
   size_t liveGrants() const;
 
+  // Enumerate only independently admitted package identities. Enumeration
+  // grants no capability, invokes no ELF and permits multiple providers of
+  // the same semantic capability. The caller must acquire the exact ID and
+  // must not retain the returned string across graph destruction.
+  const char* matchingProviderId(size_t index, const char* capability,
+                                 uint32_t api) const {
+    if (index >= count_ || !capability || !*capability || !api) return nullptr;
+    const SpecV2& spec = nodes_[index].spec;
+    return spec.provides && spec.id && spec.api == api &&
+                   std::strcmp(spec.provides, capability) == 0 ? spec.id : nullptr;
+  }
+
  private:
   // Compiled-in firmware executor only; not an ordinary ELF export. The
-  // executor must verify P-256 signer, signed entry hashes, identity, policy,
-  // rollback floor and exact import declarations BEFORE entering this API.
+  // executor must verify package identity, policy, rollback floor, exact
+  // digest and import declarations BEFORE entering this API.
   // Friendship is an API boundary, not a memory-isolation guarantee.
   friend class ::RuntimePackages::DeviceProviderExecutorV2;
   bool addAuthenticatedPrivileged(const SpecV2& spec);
