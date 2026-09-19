@@ -6,17 +6,18 @@ from pathlib import Path
 import struct
 import sys
 import tempfile
+import unittest
 from zipfile import ZipFile, ZIP_STORED
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from generate_privileged_imports_v1 import extract_imports, encode_imports
 from verify_provider_relocation_map import audit_loader_map
+from provider_discovery_test import ProviderDiscoveryTest
 PACKAGES = ROOT / 'dist/packages'
 CATALOG = PACKAGES / 'package-catalog.json'
 BRIDGE = 'risc_fw_i2c_transact_v1'
-# These contracts describe existing U1 witnesses, not an exhaustive catalog.
-# A new class driver must appear automatically via its ABI-v2 source manifest.
+# Baseline U1 witnesses, NOT the release's exhaustive provider allowlist.
 BASELINE = {
     'platform-clock-v1': ('platform.clock', []),
     'i2c-esp32s3-v2': ('i2c.bus', []),
@@ -152,6 +153,9 @@ def run():
 
 
 if __name__ == '__main__':
+    synthetic = unittest.defaultTestLoader.loadTestsFromTestCase(ProviderDiscoveryTest)
+    if not unittest.TextTestRunner(verbosity=2).run(synthetic).wasSuccessful():
+        sys.exit(1)
     try:
         run()
     except (AssertionError, OSError, ValueError, KeyError) as exc:
