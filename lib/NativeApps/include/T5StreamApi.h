@@ -42,7 +42,7 @@ typedef struct {
   uint32_t api_version, struct_size;
   t5_stream_result_t (*open_buffer)(uint32_t capacity, t5_stream_t *out);
   t5_stream_result_t (*open_file)(const char *path, uint32_t mode, t5_stream_t *out);
-  /* Borrows the already-started USB service; close never stops VBUS. */
+  /* ABI slot retained. Returns UNSUPPORTED; use serial.port RX/TX instead. */
   t5_stream_result_t (*open_usb)(t5_stream_t *out);
   /* Starts one asynchronous HTTP body request. Uses existing network/TLS policy. */
   t5_stream_result_t (*open_http)(const char *url, t5_stream_t *out);
