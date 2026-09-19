@@ -163,18 +163,31 @@ int32_t Registry::transfer(Stream& s, bool reading, void* data, uint32_t size, u
   if (reading) s.read += *count; else s.written += *count;
   return result;
 }
-int32_t Registry::read(uint32_t owner, t5_stream_t h, void* data, uint32_t size, uint32_t* count) {
+
+// Generation alone does not grant rights. A present, unauthorized handle is
+// INVALID; a recognized grantee/owner missing the requested right is DENIED.
+int32_t Registry::read(uint32_t caller, t5_stream_t h, void* data, uint32_t size, uint32_t* count) {
   if (count) *count = 0;
-  auto* s = stream(owner, h);
-  if (!s || !count || (!data && size)) return T5_STREAM_INVALID;
+  auto* s = streamByHandle(h);
+  if (!s || !caller || !count || (!data && size)) return T5_STREAM_INVALID;
+  bool recognized = s->owner == caller;
+  for (const auto& grant : s->grants)
+    if (grant.consumer == caller) { recognized = true; break; }
+  if (!recognized) return T5_STREAM_INVALID;
+  if (!allowed(*s, caller, T5_STREAM_READ)) return T5_STREAM_DENIED;
   if (s->kind != T5_STREAM_BYTES) return T5_STREAM_UNSUPPORTED;
   if (leased(h, true)) return T5_STREAM_BUSY;
   return transfer(*s, true, data, size, count);
 }
-int32_t Registry::write(uint32_t owner, t5_stream_t h, const void* data, uint32_t size, uint32_t* count) {
+int32_t Registry::write(uint32_t caller, t5_stream_t h, const void* data, uint32_t size, uint32_t* count) {
   if (count) *count = 0;
-  auto* s = stream(owner, h);
-  if (!s || !count || (!data && size)) return T5_STREAM_INVALID;
+  auto* s = streamByHandle(h);
+  if (!s || !caller || !count || (!data && size)) return T5_STREAM_INVALID;
+  bool recognized = s->owner == caller;
+  for (const auto& grant : s->grants)
+    if (grant.consumer == caller) { recognized = true; break; }
+  if (!recognized) return T5_STREAM_INVALID;
+  if (!allowed(*s, caller, T5_STREAM_WRITE)) return T5_STREAM_DENIED;
   if (s->kind != T5_STREAM_BYTES) return T5_STREAM_UNSUPPORTED;
   if (leased(h, false)) return T5_STREAM_BUSY;
   return transfer(*s, false, const_cast<void*>(data), size, count);
