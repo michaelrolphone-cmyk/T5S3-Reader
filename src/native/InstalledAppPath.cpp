@@ -7,8 +7,10 @@
 
 #include <cstring>
 #include <string>
+#include <utility>
 
 #include "AppManifest.h"
+#include "AppPackageInstaller.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageIdentity.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
