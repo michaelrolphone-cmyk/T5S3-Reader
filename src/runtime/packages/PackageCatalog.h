@@ -11,6 +11,7 @@ namespace RuntimePackages {
 // Generic four-kind discovery index. One archive asset per package. Not an
 // authorization token, chipset selector, or usb-provider-catalog.json.
 constexpr size_t kCatalogMaxPackages = 64;
+constexpr size_t kCatalogMaxBytes = 32768;
 constexpr const char* kCatalogName = "package-catalog.json";
 
 struct CatalogPackage {
@@ -63,12 +64,36 @@ inline bool archiveName(const char* name) {
   }
   return size > 8 && std::strcmp(name + size - 8, ".rte.zip") == 0;
 }
+inline bool safeReleaseTag(const char* tag) {
+  if (!tag || !*tag) return false;
+  size_t n = 0;
+  for (; tag[n]; ++n) {
+    const char c = tag[n];
+    const bool alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                       (c >= '0' && c <= '9');
+    if (!alnum && c != '-' && c != '_' && c != '.') return false;
+    if (c == '.' && n && tag[n - 1] == '.') return false;
+    if (n + 1 >= sizeof(PackageCatalog::release)) return false;
+  }
+  return n > 0;
+}
+inline bool lowerSha256(const char* sha) {
+  if (!sha) return false;
+  for (size_t i = 0; i < 64; ++i) {
+    const char c = sha[i];
+    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
+  }
+  return sha[64] == 0;
+}
 } // namespace CatalogDetail
 
 inline bool parsePackageCatalog(const char* json, size_t length,
                                 PackageCatalog& out) {
   clearPackageCatalog(out);
-  if (!safePackageJsonObject(json, length)) return false;
+  // Ordinary manifests retain their independent 4096-byte lexical bound.
+  // This strict ASCII reader rejects aliases, escapes, duplicates and trailing
+  // material itself; a 64-row catalog can legitimately exceed 4096 bytes.
+  if (!json || length < 2 || length > kCatalogMaxBytes) return false;
   CatalogDetail::Reader r(json, length);
   if (!r.take('{')) return false;
   unsigned seen = 0;
@@ -82,7 +107,8 @@ inline bool parsePackageCatalog(const char* json, size_t length,
       out.schema = 1;
       seen |= 1u;
     } else if (!std::strcmp(key, "release")) {
-      valid = !(seen & 2u) && r.text(out.release, sizeof(out.release));
+      valid = !(seen & 2u) && r.text(out.release, sizeof(out.release)) &&
+              CatalogDetail::safeReleaseTag(out.release);
       seen |= 2u;
     } else if (!std::strcmp(key, "packages")) {
       if (seen & 4u || !r.take('[')) { valid = false; break; }
@@ -138,7 +164,8 @@ inline bool parsePackageCatalog(const char* json, size_t length,
         if (!valid || fields != 255u ||
             !makeIdentity(kind, id, version, artifact, false, &pkg.identity) ||
             !CatalogDetail::archiveName(pkg.archive) ||
-            std::strlen(pkg.sha256) != 64)
+            !CatalogDetail::lowerSha256(pkg.sha256) ||
+            pkg.sizeBytes > 4u * 1024u * 1024u + 8192u)
           valid = false;
         if (!valid) break;
         for (size_t i = 0; i < out.packageCount; ++i) {
