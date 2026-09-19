@@ -146,6 +146,27 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
     report(expectedId, "invalid-elf-request");
     return false;
   }
+  // The sole transitional firmware peripheral entry point is available to
+  // the exact I2C provider only. The private relocator later matches these
+  // declarations to BOTH ELF symbol tables, so a caller cannot hide imports.
+  // Upstream USB/board-power providers must bind the i2c.bus capability,
+  // never import the firmware transport themselves. This runs before mapping.
+  bool importsFirmwareI2c = false;
+  for (size_t i = 0; i < signedImportCount; ++i) {
+    if (!signedImports[i]) {
+      report(expectedId, "invalid-provider-import");
+      return false;
+    }
+    if (std::strcmp(signedImports[i], "risc_fw_i2c_transact_v1") == 0)
+      importsFirmwareI2c = true;
+  }
+  const bool isFirmwareI2cAdapter =
+      std::strcmp(expectedId, "i2c-esp32s3-v2") == 0 &&
+      std::strcmp(expectedCapability, "i2c.bus") == 0 && expectedApi == 1;
+  if (importsFirmwareI2c != isFirmwareI2cAdapter) {
+    report(expectedId, "i2c-firmware-compat-import-policy");
+    return false;
+  }
   state_ = State::Failed;
   trace(expectedId, "elf-relocate-begin");
   auto* snapshot = static_cast<uint8_t*>(
