@@ -1,6 +1,7 @@
 #include "NativeStreamBridge.h"
 #include "NativeSerialPortBridge.h"
 #include "NativeUsbDeviceRegistry.h"
+#include "NativeUsbClassBridge.h"
 #include <Arduino.h>
 #include "runtime/streams/StreamRuntime.h"
 #include "runtime/resources/ExecutionContext.h"
@@ -160,7 +161,6 @@ int32_t openFile(const char* path, uint32_t mode, t5_stream_t* out) {
   return r;
 }
 struct Usb {
-  const t5_usb_api_v1* api;
   uint32_t epoch;
 };
 Usb* pairUsb = nullptr;
@@ -180,7 +180,7 @@ bool usbRevoked(const Usb& u) {
 int32_t usbState(Usb& u) {
   if (usbRevoked(u)) return T5_STREAM_DISCONNECTED;
   t5_usb_serial_state_t s{};
-  if (!u.api->serial_read_state(&s)) return T5_STREAM_IO;
+  if (!nativeUsbClassReadState(&s)) return T5_STREAM_IO;
   if (usbRevoked(u)) return T5_STREAM_DISCONNECTED;
   if (s.status == T5_USB_STATUS_ERROR) return T5_STREAM_IO;
   if (s.status == T5_USB_STATUS_OFF) return T5_STREAM_DISCONNECTED;
@@ -190,16 +190,16 @@ int32_t usbState(Usb& u) {
 int32_t usbRead(void* ctx, void* data, uint32_t size, uint32_t* count) {
   auto& u = *static_cast<Usb*>(ctx);
   auto r = usbState(u); if (r != T5_STREAM_OK) return r;
-  *count = u.api->serial_read(static_cast<uint8_t*>(data), size);
-  if (usbRevoked(u)) { *count = 0; return T5_STREAM_DISCONNECTED; }
-  return *count ? T5_STREAM_OK : T5_STREAM_AGAIN;
+  const auto result = nativeUsbClassRead(static_cast<uint8_t*>(data), size, count);
+  if (usbRevoked(u)) { if (count) *count = 0; return T5_STREAM_DISCONNECTED; }
+  return result;
 }
 int32_t usbWrite(void* ctx, const void* data, uint32_t size, uint32_t* count) {
   auto& u = *static_cast<Usb*>(ctx);
   auto r = usbState(u); if (r != T5_STREAM_OK) return r;
-  *count = u.api->serial_write(static_cast<const uint8_t*>(data), size);
-  if (usbRevoked(u)) { *count = 0; return T5_STREAM_DISCONNECTED; }
-  return *count ? T5_STREAM_OK : T5_STREAM_AGAIN;
+  const auto result = nativeUsbClassWrite(static_cast<const uint8_t*>(data), size, count);
+  if (usbRevoked(u)) { if (count) *count = 0; return T5_STREAM_DISCONNECTED; }
+  return result;
 }
 int32_t openUsb(t5_stream_t* out) {
   if (out) *out = 0;
