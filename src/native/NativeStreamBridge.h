@@ -9,9 +9,9 @@ void nativeStreamsBegin();
 void nativeStreamsEnd();
 
 // Runtime-provider helpers. These are firmware-internal and are not exported to
-// application ELFs. The pair borrows the active USB serial service and exposes
-// independently owned read/write published endpoints for a semantic serial
-// lease. open_usb is not a data plane; serial.port is the exclusive owner.
+// application ELFs. The pair publishes independently owned RX/TX endpoints and
+// attaches them to ClassStreamSession. Shuttle uses class-ELF read/write, not
+// T5UsbApi. open_usb is not a data plane; serial.port is the exclusive owner.
 bool nativeStreamUsbIsBusy();
 t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx);
 t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream);

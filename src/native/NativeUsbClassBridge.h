@@ -8,7 +8,12 @@
 // programmer call these instead of t5_usb_get_api(). Bytes move on published
 // serial.port endpoints owned by ClassStreamSession.
 bool nativeUsbClassAvailable();
-bool nativeUsbClassEnsureInstalled();
+// Bind usb-cdc-acm-v2 / usb-cp210x-v2 from the installed provider graph.
+// vid 0x10C4 prefers CP210x; any other value prefers CDC. Does not open a
+// session. A missing class ELF leaves usb.serial unavailable.
+bool nativeUsbClassEnsureInstalled(uint16_t vid = 0);
+bool nativeUsbClassAttachPair(uint32_t owner, t5_stream_t rx, t5_stream_t tx);
+void nativeUsbClassPump(RuntimeStreams::Registry& registry);
 bool nativeUsbClassHasDataPlane();
 bool nativeUsbClassStart(const t5_serial_config_t& config);
 void nativeUsbClassStop();

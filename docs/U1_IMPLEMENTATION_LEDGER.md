@@ -25,23 +25,27 @@ PR: [#96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) branch `i
 - Class-ELF control plane (`NativeUsbClassBridge`):
   - `nativeUsbClassBind` installs a class-ELF ops table. A missing bind makes `usb.serial` unavailable; there is no `t5_usb_get_api` fallback.
   - `NativeSerialPortBridge` acquire/configure/control/status/release call `nativeUsbClass*` instead of `T5UsbApi` `serial_*`.
-  - Discovery (`nativeUsbProviderAttach` / owner-task tick) and the published `serial.port` pair (`nativeStreamOpenUsbPair`) are unchanged.
+  - Discovery (`nativeUsbProviderAttach` / owner-task tick) remains snapshot-only.
   - Host check: `usb_class_bridge_bind_test` compiles production serial + class bridges with `t5_usb_get_api` returning null.
+- Installed class ELF bind + class-session data plane:
+  - `nativeUsbClassEnsureInstalled(vid)` acquires `usb-cdc-acm-v2` / `usb-cp210x-v2` from the provider graph and `BindApi` without opening.
+  - `usb.serial` acquire calls EnsureInstalled, starts the class token, publishes RX/TX, then `attachPublished`.
+  - `nativeStreamOpenUsbPair` no longer consults `t5_usb_get_api`. Pair shuttle uses `nativeUsbClassRead`/`Write`.
+  - `NativeUsbBridge` opens through the bound class table (`openBoundClass` / Adopt) and routes compatibility `serial_read`/`serial_write` through the class bridge when a token is adopted.
+  - Stream registry `read`/`write` honor grants (`streamByHandle` + `allowed`).
 
 ## Checks
 
 - `test/run_stream_test.sh` includes `usb_class_stream_session_test.cpp`, `usb_class_bridge_bind_test.cpp`, and the prior stream/bridge suite (ASan/UBSan).
 - Firmware image not built in this increment. Physical USB/VBUS not exercised.
-- On-device class ELF is not yet auto-bound from the installed provider graph; firmware serial stays unavailable until that bind lands.
 
 ## Remaining U1
 
-1. Bind an installed class ELF (`usb-cdc-acm-v2` / `usb-cp210x-v2`) into `NativeUsbClassBridge` from the provider graph; then wire acquire data-plane handles through `ClassStreamSession` instead of `nativeStreamOpenUsbPair`.
-2. Retire `NativeUsbBridge` `T5UsbApi` serial_* from the serial path once the class session owns RX/TX.
-3. Unified four-kind `.rte.zip` package engine; purge USB catalog and P-256 signing; keep SHA-256 / TLS / rollback.
-4. Installed-ELF verification performance (no repeated SHA/MD5 on ordinary launch).
-5. Integration/build defects only; no U2–U4 scope.
+1. Finish retiring leftover `NativeUsbBridge` `T5UsbApi` serial_* compatibility once host tests no longer poke that ABI.
+2. Unified four-kind `.rte.zip` package engine; purge USB catalog and P-256 signing; keep SHA-256 / TLS / rollback.
+3. Installed-ELF verification performance (no repeated SHA/MD5 on ordinary launch).
+4. Integration/build defects only; no U2–U4 scope.
 
 ## Next source action
 
-Bind the installed USB class ELF into `NativeUsbClassBridge` and return `ClassStreamSession` RX/TX from `usb.serial` acquire so Serial Monitor/programmer consume class-ELF streams.
+Four-kind `.rte.zip` package engine: one archive per package, catalog without `usb-provider-catalog.json`, signing/P-256 purge.
