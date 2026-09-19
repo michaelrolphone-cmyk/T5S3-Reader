@@ -123,13 +123,19 @@ bool openBoundClass(uint64_t token, uint16_t vid, uint16_t pid) {
     return true;
 }
 
-// A provider's open(device) determines whether it handles the device. The
-// candidate set is read from the verified installed graph, not VID/PID or a
-// firmware list of CDC/CP210x identities. An unsuccessful open must close and
-// release cleanly before trying the next candidate; uncertain close pins it.
+// A provider's open(device) determines whether it handles the device. A
+// lazily prebound class is first cleanly released so the new scan probes every
+// candidate exactly once. Binding/start failures are NOT ordinary no-match.
 bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
     if (nativeUsbClassToken()) return false;
-    if (nativeUsbClassAvailable()) {
+    if (nativeUsbClassBound() && !nativeUsbClassUnbindChecked()) {
+        quarantined = true;
+        error(-1204);
+        return false;
+    }
+    size_t cursor = 0;
+    bool faulted = false;
+    while (nativeUsbClassBindNextInstalled(&cursor, &faulted)) {
         if (openBoundClass(token, vid, pid)) return true;
         if (quarantined || nativeUsbClassToken() ||
             !nativeUsbClassUnbindChecked()) {
@@ -138,15 +144,9 @@ bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
             return false;
         }
     }
-    size_t cursor = 0;
-    while (nativeUsbClassBindNextInstalled(&cursor)) {
-        if (openBoundClass(token, vid, pid)) return true;
-        if (quarantined || nativeUsbClassToken() ||
-            !nativeUsbClassUnbindChecked()) {
-            quarantined = true;
-            error(-1204);
-            return false;
-        }
+    if (faulted) {
+        quarantined = true;
+        error(-1207);
     }
     return false;
 }
@@ -196,8 +196,8 @@ bool supported() {
 #endif
 }
 bool configureSession(const t5_usb_line_coding_t* coding) {
-    return !session || nativeUsbClassToken() == session &&
-           nativeUsbClassConfigure(classCoding(*coding));
+    return !session || (nativeUsbClassToken() == session &&
+                        nativeUsbClassConfigure(classCoding(*coding)));
 }
 bool serialStart(const t5_usb_line_coding_t* coding) {
     if (!active() || !codingValid(coding) || !initialize()) return false;
