@@ -23,7 +23,20 @@ static char *read_source(const char *path) {
 int main(void) {
     char *source = read_source("Apps/serial_monitor.c");
     assert(source);
-    const char *main = strstr(source, "void app_main(void) {");
+    const char *entry = source;
+    char *included = NULL;
+    /* If the app delegates its original entrypoint to a local implementation,
+     * inspect that actual compiled source rather than falsely failing solely
+     * because the entrypoint is not textually present in the wrapper. */
+    if (!strstr(source, "void app_main(void) {")) {
+        assert(strstr(source, "#include \"serial_monitor_implementation.inc\""));
+        included = read_source("Apps/serial_monitor_implementation.inc");
+        assert(included);
+        entry = included;
+        assert(strstr(source, "displayAcquire"));
+        assert(strstr(source, "last_diagnostic"));
+    }
+    const char *main = strstr(entry, "void app_main(void) {");
     assert(main);
     const char *render = strstr(main, "render_acquiring(false);");
     const char *acquire = strstr(main, "acquire_serial_session(&state, &coding)");
@@ -31,6 +44,7 @@ int main(void) {
     const char *poll = strstr(main, "ui->poll_event(&event, 75)");
     assert(render && acquire && render < acquire);
     assert(retry && poll && acquire < retry && retry < poll);
+    free(included);
     free(source);
     return 0;
 }

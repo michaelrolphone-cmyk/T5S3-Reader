@@ -9,6 +9,7 @@ extern "C" {
 #define T5_SERIAL_PORT_API_VERSION 1u
 #define T5_SERIAL_PORT_CAPABILITY "serial.port"
 #define T5_SERIAL_PORT_LABEL_MAX 96u
+#define T5_SERIAL_DIAGNOSTIC_MAX 256u
 
 typedef uint32_t t5_serial_port_lease_t;
 typedef uint32_t t5_serial_device_t;
@@ -79,6 +80,16 @@ typedef struct {
     char device_label[T5_SERIAL_PORT_LABEL_MAX];
 } t5_serial_port_state_t;
 
+/* Optional post-acquisition diagnostic. It remains available when no lease
+ * exists, unlike read_status(). The generic result and provider error are
+ * distinct; detail is a bounded, human-readable diagnostic, not a command or
+ * a transport-specific API. It must not include received serial payloads. */
+typedef struct {
+    t5_serial_result_t result;
+    int32_t provider_error;
+    char detail[T5_SERIAL_DIAGNOSTIC_MAX];
+} t5_serial_diagnostic_t;
+
 typedef struct {
     uint32_t api_version;
     uint32_t struct_size;
@@ -96,6 +107,15 @@ typedef struct {
     t5_serial_result_t (*set_control_lines)(t5_serial_port_lease_t lease,
                                             bool dtr, bool rts);
     t5_serial_result_t (*release)(t5_serial_port_lease_t lease);
+
+    /* ABI-v1 append-only extension. Check struct_size and pointer before use;
+     * older providers remain valid and report only the acquire return code.
+     * C++ default avoids -Wmissing-field-initializers for legacy tables. */
+#ifdef __cplusplus
+    bool (*last_diagnostic)(t5_serial_diagnostic_t *out) = nullptr;
+#else
+    bool (*last_diagnostic)(t5_serial_diagnostic_t *out);
+#endif
 } t5_serial_port_api_v1;
 
 const t5_serial_port_api_v1 *t5_serial_port_get_api(uint32_t version);
