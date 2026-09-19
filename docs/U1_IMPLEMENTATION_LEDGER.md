@@ -1,47 +1,61 @@
 # U1 implementation ledger
 
-PR: [#96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96), branch `impl/u1-riscrte`, originally based on master `52226bc` after spec PR #86. This ledger records code pushed, not inferred completion or hardware qualification.
+PR: [#96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96), branch `impl/u1-riscrte`, originally based on master `52226bc` after spec PR #86. This ledger records pushed code, not inferred completion or hardware qualification.
 
 ## Foundations pushed before this continuation
 
 - Generic ELF byte endpoints, grants/revoke/connectAcross, record compatibility and external provider I/O outside the stream mutex. The `open_usb` ABI slot is UNSUPPORTED.
 - `serial.port` RX/TX pair, native stream shuttles calling installed class ELF, provider graph and I²C/VBUS ownership inventory; USB controller ELF has unresolved IDF/link integration.
 - Native USB class bridge, USB ClassStreamSession, host test fixtures, ordinary manifest/preflight/stage/transaction installer.
-- Stored `.rte.zip` bootstrap (`PackageRteZip.h`, `PackageRteZipInstall.h`), generic `PackageCatalog.h` and `scripts/pack_rte_zip.py` existed. These were not wired to production SD/online install.
+- Stored `.rte.zip` bootstrap (`PackageRteZip.h`, `PackageRteZipInstall.h`), generic `PackageCatalog.h` and `scripts/pack_rte_zip.py`. The ZIP bootstrap is not yet wired to production SD/online intake.
 
-## Pushed during this continuation
+## Pushed in the preceding continuation
 
 ### Release package production
 
-- `d5fe7df`: manifest-discovered four-kind ZIP release exporter with generic `package-catalog.json` and bounded source inventory; nonempty destination is preserved rather than deleted.
-- `147a2d5`: seven hardware-dependent USB driver build targets now produce ZIP packages plus generic catalog and derive numeric versions from their source manifests, rather than a hardcoded version whitelist. This particular builder is still USB-specific and still uses legacy `usb-cdc-acm-v2` identity.
-- `78f237d`: USB package host test adapted to generic catalog, ZIP CRC/content, archive SHA-256, imports and relocation checks.
-- `c5eec42`: ZIP packer refuses unsafe/undeclared files, case-fold collisions, symlinks and packages that exceed the actual firmware bootstrap limits (17 archive entries including manifest, 1 MiB each, 4 MiB aggregate, 4096-byte manifest).
+- `d5fe7df`: manifest-discovered four-kind ZIP release exporter with generic `package-catalog.json` and bounded source inventory; preserves nonempty destination.
+- `147a2d5`: USB driver builder produces ZIP packages and derives numeric versions from source manifests instead of a hardcoded whitelist; the builder is still USB-specific and retains legacy `usb-cdc-acm-v2` identity.
+- `78f237d`: USB package host verifier checks generic catalog, ZIP content/CRC, archive SHA-256, imports and relocations.
+- `c5eec42`: ZIP host packer refuses undeclared/unsafe files, case-fold collisions, symlinks and packages outside actual firmware ZIP limits.
 
 ### Class ELF, lease safety and stream access
 
-- `932a9f8`, `e020ec3`: USB compatibility bridge opens/adopts installed class ELF, shuttles read/write/config/control through class bridge, and quarantines failed close before host lease release. No new firmware physical USB implementation.
-- `9fdec9d`, `555a509`, `b538f2d`, `152ab97`: USB class session/native bridge retain token, table and installed ELF lease on failed physical close, provide checked stop/unbind, reject invalid provider byte counts, and resolve installed class availability before provider selection.
-- `07e46ab`: `NativeSerialPortBridge` calls `EnsureInstalled`, starts class token, publishes RX/TX and attaches the exact pair to the current execution context; failed physical stop prevents normal lease clearing.
-- `09c598b`: semantic serial-provider registry keeps the same public lease retryable when its physical provider refuses teardown.
-- `d62227a`: registry byte-stream read/write honor cross-context grants. Unknown/non-granted handles yield INVALID; recognized owners/grantees missing a right yield DENIED.
-- `11fc77b`, `09c267d`, `29a4653`: added host regressions for byte grants/revoke, class close failure and retry, and serial public lease retry. `d92de11`, `b6d6e4a` add a host-only checked-close fake and link it into serial tests; real class-binding test continues to link the production bridge.
+- `932a9f8`, `e020ec3`, `9fdec9d`, `555a509`, `b538f2d`, `152ab97`: installed class binding and checked physical teardown retain token/ELF mapping/package pin on uncertain close; reject invalid provider byte counts.
+- `07e46ab`: serial bridge acquires installed class, starts it, publishes endpoints and checks exact owner/stream attachment; a failed physical stop prevents normal lease clearing.
+- `09c598b`: semantic serial-provider lease stays retryable if physical teardown fails.
+- `d62227a`: registry byte read/write honor cross-context grants and distinguish absent handles from denied rights.
+- `11fc77b`, `09c267d`, `29a4653`, `d92de11`, `b6d6e4a`: added host regressions/fixtures for stream grants, checked close/retry and physical serial provider lease; source compiled against real bridges but has not been rerun on these commits.
 
-## Actual validation
+## Pushed in the current continuation
 
-- Connector confirmed each file write/commit on `impl/u1-riscrte`; no new PR, merge, release or hardware operation was performed.
-- **Neither `test/run_stream_test.sh` nor `test/run_unified_package_mvp.sh` ran on these new commits.** The local container could not clone GitHub because DNS resolution failed. The previous agent's older green tests are not current validation. No firmware image, physical USB or VBUS test ran.
-- The current PR mergeability is false against master. Reconcile without dropping work when source integration is complete; do not merge automatically.
+### USB production RX/TX corrections
+
+- `9060914`: `ClassStreamSession` now retains bounded incoming and outgoing chunks across RX backpressure, partial/zero class writes, and refused physical closes. One-sided stream grants no longer invoke a zero-rights grant; failed second grant revokes the first.
+- `a668506`: class-session host test covers full RX, no read-ahead, exact replay, partial/zero TX writes, one-sided grants and failed-close recovery.
+- `4c34493`: app-facing `NativeStreamBridge.p2.inc` no longer drops the unaccepted RX suffix or unwritten TX suffix. It holds at most one 512-byte chunk per direction and copies session epoch before unlocking around class I/O.
+- `791a34c`, `6069253`: existing stream task retries pending TX at a bounded 10 ms cadence and clears the retry flag when drained/error/closed; app reads also supply a retry opportunity. `txInFlight` serializes concurrent app/task attempts.
+- `a1b02ce`: remove the premature pair attachment inside `nativeStreamOpenUsbPair`; `NativeSerialPortBridge` must first establish exclusive device ownership, then checked-attach exactly once. Before this change the double attachment could reject every otherwise-valid acquisition.
+
+### ZIP bootstrap preflight
+
+- `65e8709`: `installOrdinaryFromRteZip` now validates contiguous local data layout and every entry's stored ZIP CRC before ordinary staging. Checks use bounded 512-byte reads with cooperative checkpoints and heap-owned multi-kilobyte ZIP/manifest views. Ordinary SHA-256, ABI/import and transaction authority remain separate.
+- `d6598d3`, `98efddc`: CRC mutation, hidden-gap, reordered topology and failed-read regression added to ordinary package host runner.
+
+## Actual validation and limitations
+
+- GitHub confirmed the file writes on this same branch. No new branch/PR, merge, release, flash or hardware operation was performed.
+- **The revised stream and package host suites have not run** on these new commits; the container cannot clone GitHub because DNS resolution failed. No firmware build or physical USB/VBUS test was performed. New tests are assertions in source, not a PASS claim.
+- `get_commit_combined_status` for `98efddc` returned no status checks. PR mergeability was previously false against master; reconcile without dropping changes after source integration.
+- The current USB controller ELF remains unlinked against the required IDF host/power path. Existing `NativeUsbBridge` compatibility calls still need retirement; the class session and app-facing shuttle are two implementation helpers, not independent physical USB owners.
 
 ## Remaining U1
 
-1. Run/fix stream and package host suites and inspect actual code paths for duplicate host/class sessions, failed-close retries, context shutdown and provider grant ownership. Do not treat the committed regressions as passing until executed.
-2. Replace normal online and SD four-kind intake with pinned `package-catalog.json`, one immutable `.rte.zip` per package and `installOrdinaryFromRteZip` through the existing transaction; update Driver Manager/App Store/package manager, offline SD inbox, release workflow and retained bounded legacy adapters. Current `NativeOnlineDriverInstall.h`, `NativeDriverManagerBridge.cpp`, App Store adapters and `release.yml` still use legacy paths.
-3. Remove package-only P-256, signed RISC-PKG, trust-policy and device-security-floor logic from active production paths without removing ordinary SHA-256, TLS or rollback.
-4. Implement nested paths/schema revision and all four per-ID installation roots; migrate known existing installs safely and normalize CDC lineage to stable `usb-cdc-acm` with proper numeric version bumps.
-5. Remove repeated whole-file SHA/MD5 on normal ELF launch; resolve any source/firmware compile defects and remaining T5UsbApi serial compatibility paths. USB controller linkage remains a blocking source issue.
-6. No U2/U3/U4, automatic merge, tag, release, flash, fictional CI or hardware qualification.
+1. Run/fix stream and package host suites and address real source/build errors. Verify the new retry/close boundary against provider quiescence, app shutdown and USB disconnect. CI is feedback, not a gate to unrelated implementation.
+2. Wire SD inbox and online four-kind intake through `installOrdinaryFromRteZip`, one pinned generic `package-catalog.json` and one archive per package. Replace normal `NativeOnlineDriverInstall.h`, `NativeDriverManagerBridge.cpp`, App Store, package-manager and `release.yml` legacy paths while preserving bounded historical adapters and unknown user files.
+3. Remove package-only P-256/signed RISC-PKG/trust-policy/security-floor paths, preserving ordinary SHA-256, TLS, import authorization and rollback.
+4. Implement nested resource schema and all four per-ID roots, safe legacy migration and canonical `usb-cdc-acm` identity with monotonic manifest versions.
+5. Eliminate repeated installed-ELF whole-file hashing on normal launch, resolve USB controller linkage and remaining build/integration defects. No U2/U3/U4 scope.
 
 ## Next source action
 
-Wire existing ZIP bootstrap to the SD inbox and pinned immutable online generic catalog, preserving the ordinary installer and all unknown user files; then qualify changed host suites and repair any failing source tests.
+Wire the existing ZIP preflight/bootstrap into SD inbox and pinned online generic catalog, retaining the ordinary transaction and offline support. Run focused host checks when a source checkout becomes available; do not claim completion before four-kind consumer/install/release integration is real.
