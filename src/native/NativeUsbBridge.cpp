@@ -24,15 +24,13 @@ SemaphoreHandle_t mutex = nullptr;
 Lease hostGrant{};
 Lease classGrant{};
 const risc_usb_host_discovery_v1* host = nullptr;
-// Only populated by the bounded legacy acquisition adapter. An installed
-// class bound through NativeUsbClassBridge has one canonical session token.
+// Only populated by the bounded legacy acquisition adapter.
 const risc_usb_cdc_api_v1* serial = nullptr;
 uint64_t device = 0;
 uint64_t session = 0;
 bool running = false;
 bool quarantined = false;
 t5_usb_serial_state_t state{};
-// Avoid putting the host descriptor workspace on loopTask's stack.
 uint8_t configurationDescriptor[RISC_USB_CONFIG_LIMIT]{};
 
 bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
@@ -78,30 +76,26 @@ bool hostApiValid(const risc_usb_host_discovery_v1* api) {
         api->poll && api->devices && api->host.configuration;
 }
 
-// Failed ELF teardown may leave DMA/callback ownership outstanding. Keep the
-// host pinned and quarantine rather than reassigning an uncertain interface.
+// Do not drop the host/package pin or reassign an interface on uncertain
+// physical close. ClassStreamSession retains token/ELF mapping on failure.
 bool closeClass() {
     if (!session) return true;
     if (nativeUsbClassToken() == session) {
-        nativeUsbClassStop();
-        session = 0;
-        device = 0;
-        serial = nullptr;
-        state.connected = 0;
-        nativeUsbProviderDetach();
-        nativeUsbClassUnbind();
-    } else {
-        if (!serial || !serial->close(session)) {
+        if (!nativeUsbClassUnbindChecked()) {
             quarantined = true;
             error(-1201);
             return false;
         }
-        session = 0;
-        device = 0;
-        serial = nullptr;
-        state.connected = 0;
-        nativeUsbProviderDetach();
+    } else if (!serial || !serial->close(session)) {
+        quarantined = true;
+        error(-1201);
+        return false;
     }
+    session = 0;
+    device = 0;
+    serial = nullptr;
+    state.connected = 0;
+    nativeUsbProviderDetach();
     if (classGrant.grant.slot && !RuntimeInstalledProviders::release(&classGrant)) {
         quarantined = true;
         error(-1202);
@@ -125,15 +119,24 @@ void connected(const char* id, uint64_t token, uint16_t vid, uint16_t pid) {
             id, static_cast<unsigned>(vid), static_cast<unsigned>(pid));
 }
 
-// Normal path: installed class ELF is bound once and NativeUsbClassBridge
-// remains the only holder of its token and RX/TX function pointers.
 bool openBoundClass(uint64_t token, uint16_t vid, uint16_t pid) {
-    if (nativeUsbClassToken()) return false; // Another class consumer owns it.
+    if (nativeUsbClassToken()) return false;
     if (!nativeUsbClassEnsureInstalled(vid) || !nativeUsbClassAvailable()) return false;
     nativeUsbClassObserveDevice(token);
-    if (!nativeUsbClassStart(classCoding(state.line_coding))) return false;
+    if (!nativeUsbClassStart(classCoding(state.line_coding))) {
+        // Failed configure/close may leave a mapped ELF with an outstanding
+        // token. Never enumerate or bind another class in that condition.
+        if (nativeUsbClassToken()) {
+            quarantined = true;
+            error(-1205);
+        }
+        return false;
+    }
     if (!nativeUsbClassControl(state.dtr != 0, state.rts != 0)) {
-        nativeUsbClassStop();
+        if (!nativeUsbClassUnbindChecked()) {
+            quarantined = true;
+            error(-1206);
+        }
         return false;
     }
     session = nativeUsbClassToken();
@@ -143,11 +146,12 @@ bool openBoundClass(uint64_t token, uint16_t vid, uint16_t pid) {
     return true;
 }
 
-// Retain the old direct acquisition only as a finite compatibility adapter;
-// it must bind/adopt into the same class bridge before reporting ready.
+// Finite legacy acquisition adapter: bind and adopt into the same class ELF
+// control/data plane, never resurrect firmware USB class behavior.
 bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
     if (nativeUsbClassAvailable() || nativeUsbClassEnsureInstalled(vid))
         return openBoundClass(token, vid, pid);
+    if (nativeUsbClassToken()) return false;
     const char* first = vid == 0x10c4u ? "usb-cp210x-v2" : "usb-cdc-acm-v2";
     const char* second = vid == 0x10c4u ? "usb-cdc-acm-v2" : "usb-cp210x-v2";
     const char* choices[] = {first, second};
@@ -182,8 +186,7 @@ bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
             error(-1203);
             return false;
         }
-        nativeUsbClassUnbind();
-        if (!RuntimeInstalledProviders::release(&grant)) {
+        if (!nativeUsbClassUnbindChecked() || !RuntimeInstalledProviders::release(&grant)) {
             quarantined = true;
             error(-1204);
             return false;
@@ -192,8 +195,6 @@ bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
     return false;
 }
 
-// Poll only on the serialized provider executor; never perform discovery in a
-// USB callback. Generation-qualified host device tokens remain provider-owned.
 void reconcile() {
     if (!running || quarantined || !host) return;
     size_t processed = 0;
@@ -231,8 +232,6 @@ void reconcile() {
     if (!quarantined) state.status = T5_USB_STATUS_WAITING;
 }
 
-// Cheap hardware predicate, not package admission. Admission independently
-// checks installed requirements, imports and exact executable bytes.
 bool supported() {
 #ifdef BOARD_T5S3_PRO
     return Storage.ready();
@@ -249,20 +248,14 @@ bool configureSession(const t5_usb_line_coding_t* coding) {
 }
 bool serialStart(const t5_usb_line_coding_t* coding) {
     if (!active() || !codingValid(coding) || !initialize()) return false;
-    LOG_INF("USB", "USBREF stage=serial-start-enter");
     Lock lock;
-    if (!lock) {
-        LOG_ERR("USB", "USBREF stage=serial-start-lock-timeout");
-        return false;
-    }
-    if (quarantined) return false;
+    if (!lock || quarantined) return false;
     if (running) {
         if (!configureSession(coding)) return false;
         state.line_coding = *coding;
         return true;
     }
     (void)nativeUsbClassEnsureInstalled();
-    LOG_INF("USB", "USBREF stage=host-acquire-begin");
     if (!RuntimeInstalledProviders::acquire(
             "usb-host-v2", "usb.host", 1, &hostGrant)) {
         error(-1220);
@@ -352,7 +345,7 @@ size_t serialRead(uint8_t* bytes, size_t capacity) {
         state.rx_bytes += static_cast<uint32_t>(received);
         return static_cast<size_t>(received);
     }
-    return 0; // A timed-out IN is no data, not a detach.
+    return 0;
 }
 size_t serialWrite(const uint8_t* bytes, size_t length) {
     if (!bytes || !length || !initialize()) return 0;
