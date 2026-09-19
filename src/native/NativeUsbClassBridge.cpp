@@ -1,5 +1,8 @@
 #include "NativeUsbClassBridge.h"
 #include <RiscUsbProviderV1.h>
+#if defined(ESP_PLATFORM)
+#include "runtime/drivers/InstalledProviderGraph.h"
+#endif
 #include <cstring>
 
 namespace {
@@ -11,6 +14,9 @@ t5_serial_config_t coding{115200u, 8u, T5_SERIAL_PARITY_NONE, 1u, T5_SERIAL_FLOW
 bool dtr = false, rts = false;
 bool started = false;
 const risc_usb_cdc_api_v1* boundApi = nullptr;
+#if defined(ESP_PLATFORM)
+RuntimeInstalledProviders::Lease installedClass{};
+#endif
 
 bool valid(const NativeUsbClassOps& o) {
   return o.open && o.configure && o.control && o.close;
@@ -87,6 +93,9 @@ void nativeUsbClassUnbind() {
   ops = {};
   boundApi = nullptr;
   observedDevice = 1;
+#if defined(ESP_PLATFORM)
+  if (installedClass.grant.slot) (void)RuntimeInstalledProviders::release(&installedClass);
+#endif
 }
 
 bool nativeUsbClassAvailable() { return valid(ops); }
@@ -190,6 +199,33 @@ int32_t nativeUsbClassWrite(const uint8_t* src, uint32_t length, uint32_t* out) 
 
 RuntimeUsb::ClassStreamSession& nativeUsbClassSession() { return session; }
 
-#if !defined(ESP_PLATFORM)
-bool nativeUsbClassEnsureInstalled() { return nativeUsbClassAvailable(); }
+bool nativeUsbClassAttachPair(uint32_t owner, t5_stream_t rx, t5_stream_t tx) {
+  if (!session.bound() || !token || !owner || !rx || !tx) return false;
+  return session.attachPublished(owner, token, rx, tx) == T5_STREAM_OK;
+}
+
+void nativeUsbClassPump(RuntimeStreams::Registry& registry) {
+  if (session.bound() && session.token()) (void)session.pump(registry);
+}
+
+#if defined(ESP_PLATFORM)
+bool nativeUsbClassEnsureInstalled(uint16_t vid) {
+  if (nativeUsbClassAvailable()) return true;
+  const char* first = vid == 0x10c4u ? "usb-cp210x-v2" : "usb-cdc-acm-v2";
+  const char* second = vid == 0x10c4u ? "usb-cdc-acm-v2" : "usb-cp210x-v2";
+  const char* ids[] = {first, second};
+  for (const char* id : ids) {
+    RuntimeInstalledProviders::Lease grant{};
+    if (!RuntimeInstalledProviders::acquire(id, "serial.port", 1, &grant)) continue;
+    if (!nativeUsbClassBindApi(grant.interface)) {
+      (void)RuntimeInstalledProviders::release(&grant);
+      continue;
+    }
+    installedClass = grant;
+    return true;
+  }
+  return false;
+}
+#else
+bool nativeUsbClassEnsureInstalled(uint16_t) { return nativeUsbClassAvailable(); }
 #endif
