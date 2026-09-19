@@ -7,5 +7,5 @@
   "file_name": "driver.elf",
   "requires": [{"capability": "usb.host", "api": 1}],
   "provides": [{"capability": "serial.port", "api": 1}],
-  "status": "experimental-unpublished"
+  "status": "u1-class-functional"
 }

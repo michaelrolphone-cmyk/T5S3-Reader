@@ -7,5 +7,5 @@
   "file_name": "driver.elf",
   "requires": [{"capability": "usb.controller", "api": 1}],
   "provides": [{"capability": "usb.host", "api": 1}],
-  "status": "experimental-unpublished"
+  "status": "u1-host-functional"
 }

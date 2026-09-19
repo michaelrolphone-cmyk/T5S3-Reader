@@ -93,3 +93,9 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   "$repo/src/native/NativeSerialPortBridge.cpp" \
   "$repo/test/streams/usb_direct_ownership_test.cpp" -o "$build/usb-direct-ownership"
 "$build/usb-direct-ownership"
+# Installed USB class ELFs shuttle bytes through published endpoints, not T5UsbApi.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/lib/NativeApps/include" -I"$repo/src" \
+  "$repo/src/runtime/streams/StreamRuntime.cpp" \
+  "$repo/test/streams/usb_class_stream_session_test.cpp" -o "$build/usb-class-session"
+"$build/usb-class-session"
