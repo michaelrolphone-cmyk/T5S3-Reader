@@ -94,7 +94,8 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   "$repo/test/streams/usb_direct_ownership_test.cpp" -o "$build/usb-direct-ownership"
 "$build/usb-direct-ownership"
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
-  -I"$repo/lib/NativeApps/include" -I"$repo/src" \
+  -I"$repo/lib/NativeApps/include" -I"$repo/src" -I"$repo/sdk/driver" \
+  "$repo/src/runtime/streams/StreamRuntime.cpp" \
   "$repo/src/native/NativeSerialPortBridge.cpp" "$repo/src/native/NativeUsbClassBridge.cpp" \
   "$repo/test/streams/usb_class_bridge_bind_test.cpp" -o "$build/usb-class-bridge"
 "$build/usb-class-bridge"
