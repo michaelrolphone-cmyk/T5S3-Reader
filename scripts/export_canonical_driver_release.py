@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'dist/packages'
 TARGET = ROOT / 'dist/release-packages'
 KINDS = frozenset(('application', 'driver', 'service', 'provider'))
-SAFE = re.compile(r'[a-z0-9][a-z0-9_-]*\Z')
+SAFE = re.compile(r'[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?\Z')
 VERSION = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z')
 ARCH = re.compile(r'[a-z0-9][a-z0-9-]*\Z')
 ENTRY = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]*\Z')
@@ -31,8 +31,9 @@ def runtime_identity(kind: object, identity: object, version: object,
                      architecture: object, artifact: object) -> bool:
     """Mirror fixed-size Identity and catalog fields before emitting assets."""
     return (
-        kind in KINDS and isinstance(identity, str) and
-        0 < len(identity) < 64 and SAFE.fullmatch(identity) is not None and
+        isinstance(kind, str) and kind in KINDS and
+        isinstance(identity, str) and 0 < len(identity) < 64 and
+        SAFE.fullmatch(identity) is not None and
         isinstance(version, str) and len(version) < 32 and
         VERSION.fullmatch(version) is not None and
         all(int(component) <= MAX_VERSION_COMPONENT
@@ -40,8 +41,8 @@ def runtime_identity(kind: object, identity: object, version: object,
         isinstance(architecture, str) and 0 < len(architecture) < 32 and
         ARCH.fullmatch(architecture) is not None and
         isinstance(artifact, str) and 4 < len(artifact) < 128 and
-        ENTRY.fullmatch(artifact) is not None and artifact.endswith('.elf') and
-        '..' not in artifact
+        artifact[0] != '_' and ENTRY.fullmatch(artifact) is not None and
+        artifact.endswith('.elf') and '..' not in artifact
     )
 
 
