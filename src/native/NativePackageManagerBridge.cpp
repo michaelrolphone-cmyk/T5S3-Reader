@@ -1,7 +1,6 @@
 #include <T5PackageManagerApi.h>
 #include <HalStorage.h>
 #include <NativeAppLauncher.h>
-#include <atomic>
 #include <cctype>
 #include <cstring>
 #include <memory>
@@ -10,6 +9,7 @@
 
 #include "NativeOnlineOrdinaryCatalog.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
+#include "runtime/packages/PackageMutationGate.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/PackageOrdinarySdZipAdapter.h"
@@ -20,13 +20,7 @@ namespace {
 constexpr const char* kInbox = "/Packages/Inbox";
 constexpr RuntimePackages::PackageRuntimePolicy kPolicy{
     "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
-std::atomic_flag mutation = ATOMIC_FLAG_INIT;
-
-struct Mutation {
-    bool owned = !mutation.test_and_set(std::memory_order_acquire);
-    ~Mutation() { if (owned) mutation.clear(std::memory_order_release); }
-    explicit operator bool() const { return owned; }
-};
+using Mutation = RuntimePackages::ScopedPackageMutation;
 
 uint32_t availableCapability(const char* name) {
     return RuntimePackages::installedCapabilityVersion(name);
