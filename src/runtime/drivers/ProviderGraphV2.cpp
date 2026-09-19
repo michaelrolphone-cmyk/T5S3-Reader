@@ -214,16 +214,28 @@ GrantV2 GraphV2::acquireFrom(const char* providerId, const char* capability,
 const void* GraphV2::interfaceFor(GrantV2 grant) const {
   if (!grant.slot || grant.slot > kMaxGrants || !grant.generation) return nullptr;
   const GrantSlot& slot = grants_[grant.slot - 1];
-  if (!slot.occupied || slot.generation != grant.generation) return nullptr;
+  if (!slot.occupied || slot.pendingRelease ||
+      slot.generation != grant.generation) return nullptr;
   return nodes_[slot.node].module.capability();
 }
 
 bool GraphV2::release(GrantV2 grant) {
-  if (!interfaceFor(grant)) return false;
+  if (!grant.slot || grant.slot > kMaxGrants || !grant.generation) return false;
   GrantSlot& slot = grants_[grant.slot - 1];
+  if (!slot.occupied || slot.generation != grant.generation) return false;
   const size_t node = slot.node;
+  if (!slot.pendingRelease) {
+    // Revoke all future interface access and decrement the consumer exactly
+    // once, even if hardware quiescence fails repeatedly.
+    if (!nodes_[node].module.unpinConsumer()) return false;
+    slot.pendingRelease = true;
+  }
+  if (!deactivateIfUnused(node)) return false;
+  // Only a completed teardown (or another still-live consumer) can retire
+  // the slot. Until then retain its original generation for release retries.
   slot.occupied = false;
-  return nodes_[node].module.unpinConsumer() && deactivateIfUnused(node);
+  slot.pendingRelease = false;
+  return true;
 }
 
 size_t GraphV2::liveGrants() const {
