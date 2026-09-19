@@ -17,15 +17,10 @@
 namespace {
 using RuntimeInstalledProviders::Lease;
 constexpr uint32_t kMaxTransfer = 512;
-constexpr uint32_t kReadTimeoutMs = 10;
-constexpr uint32_t kWriteTimeoutMs = 100;
 constexpr uint32_t kMutexTimeoutMs = 250;
 SemaphoreHandle_t mutex = nullptr;
 Lease hostGrant{};
-Lease classGrant{};
 const risc_usb_host_discovery_v1* host = nullptr;
-// Only populated by the bounded legacy acquisition adapter.
-const risc_usb_cdc_api_v1* serial = nullptr;
 uint64_t device = 0;
 uint64_t session = 0;
 bool running = false;
@@ -65,42 +60,25 @@ t5_serial_config_t classCoding(const t5_usb_line_coding_t& coding) {
     return {coding.baud_rate, coding.data_bits, coding.parity, coding.stop_bits,
             T5_SERIAL_FLOW_NONE};
 }
-bool classApiValid(const risc_usb_cdc_api_v1* api) {
-    return api && api->api_version == RISC_USB_CDC_API_V1 &&
-        api->struct_size >= sizeof(risc_usb_cdc_api_v1) && api->open &&
-        api->configure && api->control_lines && api->read && api->write && api->close;
-}
 bool hostApiValid(const risc_usb_host_discovery_v1* api) {
     return api && api->host.api_version == RISC_USB_HOST_API_V1 &&
         api->host.struct_size >= sizeof(risc_usb_host_discovery_v1) &&
         api->poll && api->devices && api->host.configuration;
 }
 
-// Do not drop the host/package pin or reassign an interface on uncertain
-// physical close. ClassStreamSession retains token/ELF mapping on failure.
+// A failed hardware close keeps the class ELF and its package generation
+// pinned; never select another provider while a token is unquiesced.
 bool closeClass() {
     if (!session) return true;
-    if (nativeUsbClassToken() == session) {
-        if (!nativeUsbClassUnbindChecked()) {
-            quarantined = true;
-            error(-1201);
-            return false;
-        }
-    } else if (!serial || !serial->close(session)) {
+    if (nativeUsbClassToken() != session || !nativeUsbClassUnbindChecked()) {
         quarantined = true;
         error(-1201);
         return false;
     }
     session = 0;
     device = 0;
-    serial = nullptr;
     state.connected = 0;
     nativeUsbProviderDetach();
-    if (classGrant.grant.slot && !RuntimeInstalledProviders::release(&classGrant)) {
-        quarantined = true;
-        error(-1202);
-        return false;
-    }
     return true;
 }
 
@@ -121,7 +99,7 @@ void connected(const char* id, uint64_t token, uint16_t vid, uint16_t pid) {
 
 bool openBoundClass(uint64_t token, uint16_t vid, uint16_t pid) {
     if (nativeUsbClassToken()) return false;
-    if (!nativeUsbClassEnsureInstalled(vid) || !nativeUsbClassAvailable()) return false;
+    if (!nativeUsbClassEnsureInstalled() || !nativeUsbClassAvailable()) return false;
     nativeUsbClassObserveDevice(token);
     if (!nativeUsbClassStart(classCoding(state.line_coding))) {
         // Failed configure/close may leave a mapped ELF with an outstanding
@@ -141,52 +119,30 @@ bool openBoundClass(uint64_t token, uint16_t vid, uint16_t pid) {
     }
     session = nativeUsbClassToken();
     if (!session) return false;
-    serial = nullptr;
     connected("installed-class-elf", token, vid, pid);
     return true;
 }
 
-// Finite legacy acquisition adapter: bind and adopt into the same class ELF
-// control/data plane, never resurrect firmware USB class behavior.
+// A provider's open(device) determines whether it handles the device. The
+// candidate set is read from the verified installed graph, not VID/PID or a
+// firmware list of CDC/CP210x identities. An unsuccessful open must close and
+// release cleanly before trying the next candidate; uncertain close pins it.
 bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
-    if (nativeUsbClassAvailable() || nativeUsbClassEnsureInstalled(vid))
-        return openBoundClass(token, vid, pid);
     if (nativeUsbClassToken()) return false;
-    const char* first = vid == 0x10c4u ? "usb-cp210x-v2" : "usb-cdc-acm-v2";
-    const char* second = vid == 0x10c4u ? "usb-cdc-acm-v2" : "usb-cp210x-v2";
-    const char* choices[] = {first, second};
-    for (const char* id : choices) {
-        Lease grant{};
-        if (!RuntimeInstalledProviders::acquire(id, "serial.port", 1, &grant)) continue;
-        const auto* api = static_cast<const risc_usb_cdc_api_v1*>(grant.interface);
-        if (!classApiValid(api) || !nativeUsbClassBindApi(api)) {
-            if (!RuntimeInstalledProviders::release(&grant)) quarantined = true;
-            if (quarantined) return false;
-            continue;
-        }
-        nativeUsbClassObserveDevice(token);
-        const uint64_t opened = api->open(token);
-        if (opened && api->configure(opened, state.line_coding.baud_rate,
-                state.line_coding.data_bits, state.line_coding.parity,
-                state.line_coding.stop_bits) &&
-            api->control_lines(opened, state.dtr != 0, state.rts != 0) &&
-            nativeUsbClassAdopt(opened, classCoding(state.line_coding))) {
-            classGrant = grant;
-            serial = nullptr;
-            session = opened;
-            connected(id, token, vid, pid);
-            return true;
-        }
-        if (opened && !api->close(opened)) {
-            classGrant = grant;
-            serial = api;
-            session = opened;
-            device = token;
+    if (nativeUsbClassAvailable()) {
+        if (openBoundClass(token, vid, pid)) return true;
+        if (quarantined || nativeUsbClassToken() ||
+            !nativeUsbClassUnbindChecked()) {
             quarantined = true;
-            error(-1203);
+            error(-1204);
             return false;
         }
-        if (!nativeUsbClassUnbindChecked() || !RuntimeInstalledProviders::release(&grant)) {
+    }
+    size_t cursor = 0;
+    while (nativeUsbClassBindNextInstalled(&cursor)) {
+        if (openBoundClass(token, vid, pid)) return true;
+        if (quarantined || nativeUsbClassToken() ||
+            !nativeUsbClassUnbindChecked()) {
             quarantined = true;
             error(-1204);
             return false;
@@ -240,11 +196,8 @@ bool supported() {
 #endif
 }
 bool configureSession(const t5_usb_line_coding_t* coding) {
-    if (!session) return true;
-    if (nativeUsbClassToken() == session)
-        return nativeUsbClassConfigure(classCoding(*coding));
-    return serial && serial->configure(session, coding->baud_rate,
-                    coding->data_bits, coding->parity, coding->stop_bits);
+    return !session || nativeUsbClassToken() == session &&
+           nativeUsbClassConfigure(classCoding(*coding));
 }
 bool serialStart(const t5_usb_line_coding_t* coding) {
     if (!active() || !codingValid(coding) || !initialize()) return false;
@@ -255,9 +208,14 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
         state.line_coding = *coding;
         return true;
     }
-    (void)nativeUsbClassEnsureInstalled();
-    if (!RuntimeInstalledProviders::acquire(
-            "usb-host-v2", "usb.host", 1, &hostGrant)) {
+    // Resolve the verified host capability; never assume a package identity.
+    char hostId[96]{}, alternate[96]{};
+    size_t cursor = 0;
+    if (!RuntimeInstalledProviders::nextProvider("usb.host", 1, &cursor,
+                                                hostId, sizeof(hostId)) ||
+        RuntimeInstalledProviders::nextProvider("usb.host", 1, &cursor,
+                                                alternate, sizeof(alternate)) ||
+        !RuntimeInstalledProviders::acquire(hostId, "usb.host", 1, &hostGrant)) {
         error(-1220);
         return false;
     }
@@ -317,11 +275,8 @@ bool serialSetControlLines(bool dtr, bool rts) {
     if (!initialize()) return false;
     Lock lock;
     if (!lock || quarantined) return false;
-    if (session) {
-        if (nativeUsbClassToken() == session) {
-            if (!nativeUsbClassControl(dtr, rts)) return false;
-        } else if (!serial || !serial->control_lines(session, dtr, rts)) return false;
-    }
+    if (session && (nativeUsbClassToken() != session ||
+                    !nativeUsbClassControl(dtr, rts))) return false;
     state.dtr = dtr;
     state.rts = rts;
     return true;
@@ -331,19 +286,13 @@ size_t serialRead(uint8_t* bytes, size_t capacity) {
     Lock lock;
     if (!lock) return 0;
     reconcile();
-    if (!session || quarantined) return 0;
+    if (!session || quarantined || nativeUsbClassToken() != session) return 0;
     const size_t n = std::min<size_t>(capacity, kMaxTransfer);
-    int32_t received = 0;
-    if (nativeUsbClassToken() == session) {
-        uint32_t count = 0;
-        if (nativeUsbClassRead(bytes, static_cast<uint32_t>(n), &count) == T5_STREAM_OK)
-            received = static_cast<int32_t>(count);
-    } else if (serial) {
-        received = serial->read(session, bytes, n, kReadTimeoutMs);
-    }
-    if (received > 0 && static_cast<size_t>(received) <= n) {
-        state.rx_bytes += static_cast<uint32_t>(received);
-        return static_cast<size_t>(received);
+    uint32_t received = 0;
+    if (nativeUsbClassRead(bytes, static_cast<uint32_t>(n), &received) == T5_STREAM_OK &&
+        received <= n) {
+        state.rx_bytes += received;
+        return received;
     }
     return 0;
 }
@@ -352,19 +301,13 @@ size_t serialWrite(const uint8_t* bytes, size_t length) {
     Lock lock;
     if (!lock) return 0;
     reconcile();
-    if (!session || quarantined) return 0;
+    if (!session || quarantined || nativeUsbClassToken() != session) return 0;
     const size_t n = std::min<size_t>(length, kMaxTransfer);
-    int32_t sent = 0;
-    if (nativeUsbClassToken() == session) {
-        uint32_t count = 0;
-        if (nativeUsbClassWrite(bytes, static_cast<uint32_t>(n), &count) == T5_STREAM_OK)
-            sent = static_cast<int32_t>(count);
-    } else if (serial) {
-        sent = serial->write(session, bytes, n, kWriteTimeoutMs);
-    }
-    if (sent > 0 && static_cast<size_t>(sent) <= n) {
-        state.tx_bytes += static_cast<uint32_t>(sent);
-        return static_cast<size_t>(sent);
+    uint32_t sent = 0;
+    if (nativeUsbClassWrite(bytes, static_cast<uint32_t>(n), &sent) == T5_STREAM_OK &&
+        sent <= n) {
+        state.tx_bytes += sent;
+        return sent;
     }
     return 0;
 }
