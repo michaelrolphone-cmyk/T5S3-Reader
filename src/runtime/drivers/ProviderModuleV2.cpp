@@ -29,7 +29,9 @@ bool validDependencies(const risc_provider_dependency_v1* deps, size_t count) {
   return true;
 }
 bool hasQuiesce(const risc_driver_v2* driver) {
-  return driver && driver->struct_size >= sizeof(risc_driver_v2) && driver->quiesce;
+  // Preserve the old ABI-v2 quiesce extent when later optional members grow.
+  // sizeof(risc_driver_v2) would silently reject installed older drivers.
+  return driver && driver->struct_size >= RISC_DRIVER_V2_QUIESCE_SIZE && driver->quiesce;
 }
 bool validRequest(const char* expectedId, const char* expectedCapability,
                   uint32_t expectedApi,
@@ -96,6 +98,23 @@ bool ModuleV2::activateMapped(risc_driver_get_v2_fn get, const char* expectedId,
     return true;
   }
   report(expectedId, "hardware-start-rejected");
+  // An optional callback is read while the failed ELF is still mapped and
+  // before the ownership-sensitive quiesce/stop path. It is diagnostic only:
+  // never ask the provider to retry or change hardware in this callback.
+  if (candidate->struct_size >= RISC_DRIVER_V2_DIAGNOSTIC_SIZE &&
+      candidate->last_start_failure) {
+    char detail[144]{};
+    if (candidate->last_start_failure(detail, sizeof(detail))) {
+      detail[sizeof(detail) - 1u] = 0;
+      for (size_t i = 0; i < sizeof(detail) && detail[i]; ++i) {
+        const unsigned char ch = static_cast<unsigned char>(detail[i]);
+        if (ch < 0x20u || ch > 0x7eu) detail[i] = ' ';
+      }
+#ifdef ESP_PLATFORM
+      LOG_ERR("PROV", "PROVREF id=%s detail=%s", expectedId, detail);
+#endif
+    }
+  }
   // A rejected start may still own DMA, tasks, IRQs or a lower provider.
   if (hasQuiesce(candidate) && !candidate->quiesce()) {
     driver_ = candidate;
