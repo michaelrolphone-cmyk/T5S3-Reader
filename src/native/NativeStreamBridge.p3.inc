@@ -39,8 +39,11 @@ t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
   pairTx = *tx;
   usbOpen = true;
   usbRefs = 2;
-  if (nativeUsbClassHasDataPlane() && nativeUsbClassToken())
-    (void)nativeUsbClassAttachPair(owner, *rx, *tx);
+  usbTxRetry.store(false, std::memory_order_release);
+  // NativeSerialPortBridge must first acquire the exclusive physical lease.
+  // It subsequently checks nativeUsbClassAttachPair exactly once, or tears
+  // the pair down on failure. Attaching here would make that call fail and
+  // prevent serial.port from ever returning a working RX/TX pair.
   return T5_STREAM_OK;
 }
 
