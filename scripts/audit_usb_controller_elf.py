@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Audit physical controller ELF against the actual native loader contracts.
+"""Audit physical controller ELF against actual loader and scoped import contracts.
 
-A successful Xtensa link does not prove activation, verified-package admission,
-physical ownership, ISR/DMA quiescence, or electrical safety. Ordinary apps
-MUST NOT see the separately task-scoped privileged OS/CPU import inventory.
+Xtensa linking and relocation compatibility do not establish verified ordinary
+package admission, live provider ownership, ISR/DMA quiescence or board safety.
+No package signing or trust-root policy is required for ordinary packages.
 """
 import argparse
 import json
@@ -21,7 +21,7 @@ USB_INTERNAL_PREFIXES = ('usb_', 'usbh_', 'hcd_', 'hub_', 'urb_')
 
 
 def classify_imports(imports, exported, privileged=(), loader_public=()):
-    """Distinguish ordinary app names from the actual private preflight."""
+    """Distinguish ordinary-app exports from scoped private preflight."""
     names = set(imports)
     safe_exports = {name for name in exported if not name.startswith('t5_')}
     scoped = set(privileged)
@@ -59,7 +59,7 @@ def audit(path):
         privileged_exports = privileged_os_cpu_exports(ROOT)
         loader_public = privileged_loader_public_libc_v1(ROOT)
         if normal_exports & privileged_exports:
-            raise ValueError('Privileged symbols leaked into ordinary app export table: ' +
+            raise ValueError('Privileged symbols leaked into ordinary app exports: ' +
                              ', '.join(sorted(normal_exports & privileged_exports)))
         import_report = classify_imports(imports, normal_exports, privileged_exports,
                                          loader_public)
@@ -108,11 +108,13 @@ def audit(path):
             **mapping,
             'current_loader_abi_compatible': structural and not import_report['missing_current_firmware_exports'],
             'privileged_os_cpu_v1_import_compatible': privileged_compatible,
-            'privileged_loader_admission_integrated': False,
+            # A static ELF audit cannot prove real package admission or an
+            # installed provider's execution-context/physical lifetime.
+            'ordinary_package_admission_verified': False,
             'firmware_strong_symbol_link_confirmed': False,
             'physical_board_validated': False,
             'installable': False,
-            'status': ('privileged-imports-covered-awaiting-signed-admission'
+            'status': ('scoped-imports-compatible-admission-unverified'
                        if privileged_compatible else 'loader-abi-blocked'),
         }
 
@@ -138,7 +140,7 @@ def main():
           'invalid pointer values:', result['unmapped_relative_values'],
           'validated ABS MMIO:', len(result['absolute_peripheral_relocations']), flush=True)
     print('Report:', output, flush=True)
-    print('Not installable: signed admission, ownership and board validation pending.', flush=True)
+    print('Controller ELF audit alone does not establish ordinary package admission, physical ownership or board validation.', flush=True)
     if args.strict and not result['privileged_os_cpu_v1_import_compatible']:
         parser.exit(1, 'Controller not compatible with the scoped privileged ABI.\n')
 
