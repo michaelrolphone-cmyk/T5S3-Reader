@@ -26,9 +26,14 @@
 #define POWER_GOOD 0x04u
 #define BOOST_FAULT 0x40u
 #define VBUS_GOOD 0x80u
-#define BOOST_500MA 0x00u
+/* RiscRTE v1.2.16 set REG0A BOOST_LIM=010 (1.2 A) and BOOSTV=1001.
+ * The ELF migration incorrectly replaced this hardware peak/short-circuit
+ * threshold with BOOST_LIM=000 (500 mA). Keep the 500 mA logical host power
+ * request admission separate from the PMIC's board-qualified peak limit. */
+#define BOOST_1200MA 0x02u
 #define BOOST_VOLTAGE_5126MV 0x90u
 #define BUS_TIMEOUT_MS 100u
+#define BOOST_SETTLE_MS 80u /* Matches the working v1.2.16 OTG sequence. */
 /* BQ25896 REG02 continuous ADC produces new results at 1s intervals. The
  * former 300ms timeout rejected a valid first conversion as missing VBUS. */
 #define STARTUP_TIMEOUT_MS 1500u
@@ -122,7 +127,7 @@ static bool preflight(void) {
                (unsigned)status, (unsigned)adc, (unsigned)power);
         return false;
     }
-    /* Clear *historical* faults BEFORE requesting OTG. A leftover fault from
+    /* Clear historical faults BEFORE requesting OTG. A leftover fault from
      * a previous attempt is not evidence of a new boost failure. Conversely,
      * a live boost fault is not safe to ignore just because it was latched. */
     uint8_t latched = 0, live = 0;
@@ -159,8 +164,7 @@ static void report_boost_failure(const char *reason, uint8_t power,
            (unsigned)latched, (unsigned)live, (unsigned)battery,
            (unsigned)boost, (unsigned)adc_control, elapsed);
 }
-static bool verify_source(void) {
-    uint64_t begun = clock_api->monotonic_ms(clock_api->context);
+static bool verify_source(uint64_t begun) {
     if (begun == UINT64_MAX) {
         printf("VBUSREF failure=boost-clock\n");
         return false;
@@ -228,7 +232,7 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
     saved = true;
     lease = ++sequence; /* A partially applied write MUST pin the provider. */
     const uint8_t boost = (uint8_t)((saved_boost & 0x08u) |
-                                 BOOST_VOLTAGE_5126MV | BOOST_500MA);
+                                 BOOST_VOLTAGE_5126MV | BOOST_1200MA);
     bool ok = write_reg(REG_BOOST, boost);
     if (!ok) printf("VBUSREF failure=boost-config-write\n");
     if (ok) {
@@ -242,7 +246,18 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
         ok = write_reg(REG_POWER, value);
         if (!ok) printf("VBUSREF failure=otg-enable-write\n");
     }
-    if (ok) ok = verify_source();
+    if (ok) {
+        /* v1.2.16 allowed the boost circuit to settle for 80 ms. Its fault
+         * history is still checked afterward, so a transient is not hidden. */
+        const uint64_t enabled_at = clock_api->monotonic_ms(clock_api->context);
+        if (enabled_at == UINT64_MAX) {
+            printf("VBUSREF failure=boost-clock\n");
+            ok = false;
+        } else {
+            delay_ms(BOOST_SETTLE_MS);
+            ok = verify_source(enabled_at);
+        }
+    }
     if (!ok) {
         if (disable_and_restore()) {
             lease = 0;
@@ -255,7 +270,8 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
         return false;
     }
     *out = lease;
-    printf("VBUSREF stage=source-verified\n");
+    printf("VBUSREF stage=source-verified cfg=0x%02x limit-ma=1200 requested-ma=%u\n",
+           (unsigned)boost, (unsigned)requested_ma);
     return true;
 }
 static bool release_host(void *unused, uint64_t id) {
