@@ -28,14 +28,18 @@ class ProviderDiscoveryTest(unittest.TestCase):
         self.addCleanup(setattr, builder, 'SOURCE', old_artifacts)
 
     def provider(self, folder: str, identity: str, capability: str,
-                 requires=(), artifact: bool = True, version: str = '1.0.0'):
+                 requires=(), artifact: bool = True, version: str = '1.0.0', api: int = 1):
         directory = self.drivers / folder
         directory.mkdir()
+        requirements = [({'capability': name, 'api': minimum}
+                         if isinstance(name, str) else name)
+                        for name, minimum in ((item, 1) if isinstance(item, str)
+                                              else item for item in requires)]
         metadata = {'type': 'driver', 'id': identity, 'version': version,
                     'driver_abi': 2, 'architecture': 'xtensa-esp32s3',
                     'file_name': 'driver.elf',
-                    'provides': [{'capability': capability, 'api': 1}],
-                    'requires': [{'capability': name, 'api': 1} for name in requires]}
+                    'provides': [{'capability': capability, 'api': api}],
+                    'requires': requirements}
         (directory / 'manifest.json').write_text(json.dumps(metadata), encoding='utf-8')
         if artifact:
             output = self.artifacts / identity
@@ -47,15 +51,15 @@ class ProviderDiscoveryTest(unittest.TestCase):
         self.provider('usb_host', 'usb-host', 'usb.host', ['usb.controller'])
         self.provider('controller', 'usb-controller', 'usb.controller')
         discovered = builder.discovered()
-        assert {item['id'] for item in discovered} == {
-            'test-serial-class', 'usb-host', 'usb-controller'}
-        assert [item['id'] for item in builder.dependency_order(discovered)] == [
-            'usb-controller', 'usb-host', 'test-serial-class']
+        self.assertEqual({item['id'] for item in discovered},
+                         {'test-serial-class', 'usb-host', 'usb-controller'})
+        self.assertEqual([item['id'] for item in builder.dependency_order(discovered)],
+                         ['usb-controller', 'usb-host', 'test-serial-class'])
 
     def test_alternative_class_capability_is_not_identity_collision(self):
         self.provider('class_a', 'class-a', 'serial.port')
         self.provider('class_b', 'class-b', 'serial.port')
-        assert len(builder.dependency_order(builder.discovered())) == 2
+        self.assertEqual(len(builder.dependency_order(builder.discovered())), 2)
 
     def test_missing_or_ambiguous_artifact_fails_closed(self):
         self.provider('class_a', 'class-a', 'serial.port', artifact=False)
@@ -85,6 +89,16 @@ class ProviderDiscoveryTest(unittest.TestCase):
         self.provider('host', 'host', 'usb.host', ['serial.port'])
         with self.assertRaises(ValueError):
             builder.dependency_order(builder.discovered())
+
+    def test_api_floor_is_not_just_a_capability_name(self):
+        self.provider('host_old', 'host-old', 'usb.host', api=1)
+        self.provider('serial', 'serial', 'serial.port', [('usb.host', 2)])
+        with self.assertRaises(ValueError):
+            builder.dependency_order(builder.discovered())
+        self.provider('host_new', 'host-new', 'usb.host', api=2)
+        order = builder.dependency_order(builder.discovered())
+        self.assertLess([x['id'] for x in order].index('host-new'),
+                        [x['id'] for x in order].index('serial'))
 
 
 if __name__ == '__main__':
