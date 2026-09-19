@@ -28,18 +28,23 @@ typedef struct {
      * physical sessions, asynchronous callbacks, DMA and worker tasks have
      * ceased and stop() cannot fail. A false result keeps the ELF mapped and
      * its dependency providers pinned. The runtime MUST NOT interpret a
-     * software-grant release as proof of quiescence. Existing v2 modules
-     * lacking this member retain legacy stop behavior; hardware providers
-     * MUST implement it before becoming installable. */
+     * software-grant release as proof of quiescence. */
     bool (*quiesce)(void);
+    /* Optional, append-only diagnostic hook. Called synchronously by the
+     * generic loader after start() rejects, BEFORE quiesce()/stop()/unmap().
+     * The provider writes a NUL-terminated, bounded diagnostic into output;
+     * it must not include device RX/TX data or alter hardware state. */
+    bool (*last_start_failure)(char *output, size_t capacity);
 } risc_driver_v2;
 
-/* Minimum accepted ABI-v2 struct ends before the optional quiesce pointer. */
+/* Keep old ABI-v2 providers valid, including those without either extension. */
 #define RISC_DRIVER_V2_BASE_SIZE offsetof(risc_driver_v2, quiesce)
+#define RISC_DRIVER_V2_QUIESCE_SIZE \
+    (offsetof(risc_driver_v2, quiesce) + sizeof(((risc_driver_v2 *)0)->quiesce))
+#define RISC_DRIVER_V2_DIAGNOSTIC_SIZE \
+    (offsetof(risc_driver_v2, last_start_failure) + sizeof(((risc_driver_v2 *)0)->last_start_failure))
 
 typedef const risc_driver_v2 *(*risc_driver_get_v2_fn)(uint32_t abi);
-/* ABI-v1 loader must not activate this ABI. The generic dependency-aware
- * loader validates the package and manifest before invoking this symbol. */
 const risc_driver_v2 *t5_driver_get(uint32_t abi);
 #ifdef __cplusplus
 }
