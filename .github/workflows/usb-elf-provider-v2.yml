@@ -5,6 +5,7 @@ on:
     paths:
       - "Drivers/usb_cdc_v2/**"
       - "Drivers/usb_cp210x_v2/**"
+      - "Drivers/usb_ch34x_v2/**"
       - "Drivers/usb_host_v2/**"
       - "Drivers/usb_controller_esp32s3/**"
       - "Drivers/board_power_t5s3_v2/**"
@@ -29,6 +30,7 @@ on:
       - "scripts/build_installed_usb_stack.py"
       - "scripts/build_usb_cdc_v2.py"
       - "scripts/build_usb_cp210x_v2.py"
+      - "scripts/build_usb_ch34x_v2.py"
       - "scripts/build_usb_host_v2.py"
       - "scripts/build_board_power_t5s3_v2.py"
       - "scripts/build_platform_clock_v1.py"
@@ -36,14 +38,17 @@ on:
       - "scripts/probe_i2c_esp32s3_v2.py"
       - "scripts/audit_usb_controller_elf.py"
       - "scripts/audit_i2c_esp32s3_elf.py"
+      - "scripts/export_canonical_driver_release.py"
       - "test/drivers/usb_cdc_v2*.c"
       - "test/drivers/usb_cp210x_v2*.c"
+      - "test/drivers/usb_ch34x_v2*.c"
       - "test/drivers/usb_host_v2*.c"
       - "test/drivers/board_power_t5s3_v2_test.c"
       - "test/drivers/i2c_esp32s3_v2_test.c"
       - "test/drivers/platform_clock_v1_test.c"
       - "test/drivers/privileged_*"
       - "test/drivers/provider_package_inputs_v1_test.py"
+      - "test/drivers/installed_usb_stack_package_test.py"
       - "test/drivers/stub_os_cpu/**"
       - "test/drivers/stub_privileged_loader/**"
       - "test/drivers/mock_i2c_bus_elf_v2.c"
@@ -51,6 +56,7 @@ on:
       - "test/drivers/provider*.cpp"
       - "test/run_usb_cdc_v2_test.sh"
       - "test/run_usb_cp210x_v2_test.sh"
+      - "test/run_usb_ch34x_v2_test.sh"
       - "test/run_usb_host_v2_test.sh"
       - "test/run_board_power_t5s3_v2_test.sh"
       - "test/run_i2c_esp32s3_v2_test.sh"
@@ -78,6 +84,7 @@ jobs:
           bash test/run_provider_graph_v2_test.sh
           bash test/run_usb_cdc_v2_test.sh
           bash test/run_usb_cp210x_v2_test.sh
+          bash test/run_usb_ch34x_v2_test.sh
           bash test/run_board_power_t5s3_v2_test.sh
           bash test/run_i2c_esp32s3_v2_test.sh
           bash test/run_platform_clock_v1_test.sh
@@ -103,6 +110,8 @@ jobs:
           bash test/run_native_app_test.sh dist/experimental/usb-cdc-acm-v2/driver.elf
           python scripts/build_usb_cp210x_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-cp210x-v2/driver.elf
+          python scripts/build_usb_ch34x_v2.py
+          bash test/run_native_app_test.sh dist/experimental/usb-ch34x-v2/driver.elf
           python scripts/build_usb_host_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-host-v2/driver.elf
           python scripts/build_board_power_t5s3_v2.py
