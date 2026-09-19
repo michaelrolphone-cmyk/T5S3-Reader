@@ -11,13 +11,12 @@ t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
   if (!authorized()) return T5_STREAM_DENIED;
   if (!rx || !tx) return T5_STREAM_INVALID;
   if (!initialize()) return T5_STREAM_LIMIT;
-  const auto* usbApi = t5_usb_get_api(T5_USB_API_VERSION);
-  if (!usbApi || !usbApi->supported || !usbApi->supported()) return T5_STREAM_UNSUPPORTED;
+  if (!nativeUsbClassAvailable()) return T5_STREAM_UNSUPPORTED;
 
   Lock lock;
   if (usbOpen) return T5_STREAM_BUSY;
   const uint32_t sessionEpoch = nativeUsbProviderEpoch();
-  auto* session = new (std::nothrow) Usb{usbApi, sessionEpoch};
+  auto* session = new (std::nothrow) Usb{sessionEpoch};
   if (!session) return T5_STREAM_LIMIT;
   auto result = registry.publishEndpoint(owner, T5_STREAM_BYTES, T5_STREAM_READ,
                                          T5_STREAM_CHUNK * 4, nullptr, 0, 0,
@@ -40,6 +39,8 @@ t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
   pairTx = *tx;
   usbOpen = true;
   usbRefs = 2;
+  if (nativeUsbClassHasDataPlane() && nativeUsbClassToken())
+    (void)nativeUsbClassAttachPair(owner, *rx, *tx);
   return T5_STREAM_OK;
 }
 
