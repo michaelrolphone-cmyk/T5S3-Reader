@@ -9,9 +9,12 @@
 // shuttle through published serial.port endpoints, not t5_usb_get_api().
 bool nativeUsbClassAvailable();
 bool nativeUsbClassEnsureInstalled(uint16_t vid = 0);
-// Enumerate verified matching providers, with a caller-owned cursor; no fixed
-// VID/driver-id list. Must only be invoked after a previous class is unbound.
-bool nativeUsbClassBindNextInstalled(size_t* cursor);
+// No discovery side effect: callers can clear a lazily prebound provider
+// before a fresh per-device scan without attempting the same open twice.
+bool nativeUsbClassBound();
+// False with *faulted true means candidate activation or teardown failed,
+// NOT ordinary exhaustion. No other provider may be activated afterward.
+bool nativeUsbClassBindNextInstalled(size_t* cursor, bool* faulted = nullptr);
 bool nativeUsbClassAttachPair(uint32_t owner, t5_stream_t rx, t5_stream_t tx);
 void nativeUsbClassPump(RuntimeStreams::Registry& registry);
 bool nativeUsbClassHasDataPlane();
