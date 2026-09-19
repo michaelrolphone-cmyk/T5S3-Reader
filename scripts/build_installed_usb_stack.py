@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Assemble every linked ABI-v2 provider into ordinary, installable ZIP packages.
+"""Build and bundle every ABI-v2 provider discovered from source manifests.
 
-A validated source manifest and one matching linked ELF are the publication
-inputs; no USB class identity, package count, or version is built into this
-exporter. Build steps produce ELFs first. This script never flashes or publishes.
+A source manifest plus its ordinary build_<source-directory>.py script is the
+extension point for a new class. Existing linked outputs are reused, including
+the board-specific controller/I2C probes. No USB class ID, count or version is
+baked into the distribution path. No flashing or publication occurs here.
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
 
 from generate_provider_package_inputs_v1 import canonical_manifest, prepare as provider_inputs
@@ -39,38 +41,54 @@ def entry(path: Path, executable: bool) -> dict:
 
 
 def linked_elf(identity: str) -> Path:
-    """Resolve by manifest ID, allowing a historical build-directory prefix.
-
-    A new provider can be built under dist/experimental/<manifest-id>/driver.elf
-    without changing this script. A controller link experiment may use another
-    ELF basename, but must be the *only* ELF in its matching output directory.
-    Never silently choose between ambiguous/stale build outputs.
-    """
+    """Resolve one linked ELF by manifest ID, permitting an old build prefix."""
     if not SOURCE.is_dir():
         raise FileNotFoundError(f'linked ELF output root missing: {SOURCE}')
     folders = sorted(path for path in SOURCE.iterdir()
                      if path.is_dir() and not path.is_symlink() and
                      (path.name == identity or path.name.endswith('-' + identity)))
+    if not folders:
+        raise FileNotFoundError(f'{identity}: linked ELF output directory missing')
     if len(folders) != 1:
-        raise ValueError(f'{identity}: expected one linked ELF directory; found {folders}')
+        raise ValueError(f'{identity}: ambiguous linked ELF directories: {folders}')
     preferred = folders[0] / 'driver.elf'
     elfs = sorted(path for path in folders[0].glob('*.elf')
                   if path.is_file() and not path.is_symlink())
+    if not elfs:
+        raise FileNotFoundError(f'{identity}: linked ELF missing in {folders[0]}')
     if len(elfs) != 1:
-        raise ValueError(f'{identity}: expected exactly one linked ELF; found {elfs}')
+        raise ValueError(f'{identity}: ambiguous linked ELFs: {elfs}')
     elf = preferred if preferred in elfs else elfs[0]
     if elf.stat().st_size < 52:
         raise ValueError(f'{identity}: empty/truncated linked ELF: {elf}')
     return elf
 
 
-def discovered() -> list[dict]:
-    """Use the actual ABI-v2 manifests; do not select by known USB IDs.
+def linked_or_build(identity: str, source_directory: Path) -> Path:
+    """A new class joins with a manifest and build_<source-directory>.py.
 
-    ABI-v1 historical drivers are intentionally excluded from this builder.
-    Missing or ambiguous linked ABI-v2 outputs fail the build rather than
-    quietly vanishing from the release catalog.
+    Only genuinely missing linked output permits a build. Ambiguous, stale or
+    truncated files never trigger a build that could hide an unsafe artifact.
+    The script is a repository-owned deterministic path, not manifest-supplied
+    executable text or a filename from a downloaded catalog.
     """
+    try:
+        return linked_elf(identity)
+    except FileNotFoundError:
+        name = source_directory.name
+        if not re.fullmatch(r'[a-z0-9_]+', name) or source_directory.is_symlink():
+            raise ValueError(f'unsafe provider build source: {source_directory}')
+        script = ROOT / 'scripts' / f'build_{name}.py'
+        if not script.is_file() or script.is_symlink():
+            raise FileNotFoundError(
+                f'{identity}: missing ELF and no conventional builder {script.name}')
+        print(f'Building newly discovered provider {identity} using {script.name}', flush=True)
+        subprocess.run([sys.executable, str(script)], cwd=ROOT, check=True)
+        return linked_elf(identity)
+
+
+def discovered() -> list[dict]:
+    """Select real ABI-v2 manifests and reject missing/ambiguous build outputs."""
     candidates = []
     identities = set()
     for path in sorted(DRIVER_SOURCES.glob('*/manifest.json')):
@@ -87,8 +105,8 @@ def discovered() -> list[dict]:
         identities.add(identity)
         requirements = metadata['requires']
         candidates.append({'id': identity, 'source': path, 'metadata': metadata,
-                           'elf': linked_elf(identity), 'capability': capability,
-                           'api': api, 'version': version,
+                           'elf': linked_or_build(identity, path.parent),
+                           'capability': capability, 'api': api, 'version': version,
                            'requires': [required['capability'] for required in requirements]})
         if len(candidates) > MAX_PACKAGES:
             raise ValueError('provider count exceeds firmware package catalog bound')
@@ -98,11 +116,7 @@ def discovered() -> list[dict]:
 
 
 def dependency_order(candidates: list[dict]) -> list[dict]:
-    """Topologically stage dependencies before their consumers.
-
-    Different class drivers may legitimately provide the same serial.port
-    capability. This is an alternative, not an identity collision.
-    """
+    """Topologically stage dependencies; multiple class ELFs may offer serial.port."""
     offered = {candidate['capability'] for candidate in candidates}
     for candidate in candidates:
         missing = set(candidate['requires']) - offered
@@ -139,7 +153,7 @@ def build() -> list[dict]:
                              f"{len(mapping['unmapped_relative_values'])} invalid values; "
                              f"executable orphans={mapping['unmapped_executable_sections']}")
         imports = extract_imports(elf)
-        # The only U1 raw I2C port importer is the *bus* ELF, never a chip ELF.
+        # The sole permitted U1 raw I2C importer is the installed bus ELF.
         is_bus = candidate['capability'] == 'i2c.bus'
         if ((BRIDGE in imports) != is_bus or
                 (is_bus and mapping['absolute_peripheral_relocations'])):
@@ -173,7 +187,7 @@ def build() -> list[dict]:
     (DESTINATION / 'package-catalog.json').write_text(
         json.dumps({'schema': 1, 'release': release, 'packages': catalog},
                    indent=2) + '\n', encoding='utf-8')
-    print(f'{len(catalog)} manifest-discovered providers assembled as ZIPs; '
+    print(f'{len(catalog)} manifest-discovered providers bundled; '
           'no ELF activated or firmware flashed.', flush=True)
     return catalog
 
@@ -181,6 +195,6 @@ def build() -> list[dict]:
 if __name__ == '__main__':
     try:
         build()
-    except (OSError, ValueError, KeyError, TypeError) as exc:
+    except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:
         print(f'Provider package build FAILED: {exc}', file=sys.stderr)
         sys.exit(1)
