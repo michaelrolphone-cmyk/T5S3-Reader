@@ -65,6 +65,12 @@ for pair in \
   cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/$1.c" "$repo_dir/test/native_apps/$2.c" -o "$binary"
   "$binary"
 done
+# Absence of a USB device/provider is a normal disconnected UI state. Keep
+# navigation alive, rate-limit failed acquisitions, and never invent a lease.
+cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/Apps/serial_monitor.c" \
+  "$repo_dir/test/native_apps/serial_monitor_no_device_test.c" -o "$binary"
+"$binary"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" "$repo_dir/test/native_apps/image_api_stub.c" -o "$binary"
 "$binary"
 # Exercise actual Driver Manager and Package Manager app code, including
