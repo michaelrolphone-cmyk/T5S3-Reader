@@ -2,12 +2,11 @@
 """Stage one deterministic .rte.zip per ordinary package and a generic catalog.
 
 No publication occurs here. This script deliberately does not consume the old
-USB-only catalog or assume a fixed count, kind, version, or set of loose assets.
-The caller supplies RISC_PACKAGE_RELEASE for the immutable release identity.
+USB-only catalog or assume a fixed count, version, or identity allowlist. The
+caller supplies RISC_PACKAGE_RELEASE for the immutable release identity.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -19,11 +18,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'dist/packages'
 TARGET = ROOT / 'dist/release-packages'
 KINDS = frozenset(('application', 'driver', 'service', 'provider'))
-SAFE = re.compile(r'[a-z0-9][a-z0-9-]*\Z')
+SAFE = re.compile(r'[a-z0-9][a-z0-9_-]*\Z')
 VERSION = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z')
 ARCH = re.compile(r'[a-z0-9][a-z0-9-]*\Z')
 ENTRY = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]*\Z')
-MAX_PACKAGES = 64  # Match PackageCatalog.h; fail rather than truncate.
+MAX_PACKAGES = 64
 MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 
 
@@ -38,6 +37,7 @@ def export() -> None:
 
     staged = []
     identities = set()
+    observed_kinds = set()
     for directory in sorted(SOURCE.iterdir()):
         if not directory.is_dir() or directory.is_symlink():
             continue
@@ -58,6 +58,7 @@ def export() -> None:
         if key in identities:
             raise ValueError(f'duplicate package identity/target: {key}')
         identities.add(key)
+        observed_kinds.add(kind)
         declared = {'.package.json'}
         for item in manifest.get('entries', ()):
             name = item.get('name') if isinstance(item, dict) else None
@@ -73,7 +74,7 @@ def export() -> None:
         name = f'{kind}-{identity}-{version}-{architecture}.rte.zip'
         if len(name) >= 160:
             raise ValueError(f'archive name exceeds device catalog bound: {name}')
-        archive = pack_directory(directory)  # Checks every declared size and SHA-256.
+        archive = pack_directory(directory)
         if not archive or len(archive) > MAX_ARCHIVE_BYTES:
             raise ValueError(f'archive exceeds export bound: {identity}')
         staged.append((name, archive, catalog_row(directory, name, archive)))
@@ -81,9 +82,12 @@ def export() -> None:
             raise ValueError('catalog exceeds device package limit')
     if not staged:
         raise ValueError('no ordinary packages found')
+    # A real release drives both App Store and Driver Manager from this one
+    # catalog. Refuse a partial publication that would make either surface
+    # appear empty. Local/host packaging may intentionally exercise one kind.
+    if release != 'unpublished-build' and not {'application', 'driver'} <= observed_kinds:
+        raise ValueError(f'release catalog missing required U1 kinds: {observed_kinds}')
 
-    # Verify all sources before modifying the export destination. On a failed
-    # export, never delete unrelated files or silently reuse old release assets.
     TARGET.mkdir(parents=True, exist_ok=True)
     for name, archive, _ in staged:
         (TARGET / name).write_bytes(archive)
