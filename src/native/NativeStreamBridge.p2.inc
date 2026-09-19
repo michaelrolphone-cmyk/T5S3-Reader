@@ -1,47 +1,113 @@
+// The app-facing serial.port pair is distinct from the legacy open_usb slot.
+// These shuttles perform class ELF I/O without holding the stream mutex and
+// preserve a single bounded pending chunk in each direction on backpressure.
+namespace {
+struct PendingUsbPair {
+  t5_stream_t rx = 0, tx = 0;
+  uint8_t rxBytes[T5_STREAM_CHUNK]{};
+  uint8_t txBytes[T5_STREAM_CHUNK]{};
+  uint32_t rxSize = 0, rxOffset = 0;
+  uint32_t txSize = 0, txOffset = 0;
+  bool txInFlight = false;
+};
+PendingUsbPair pendingUsb;
+
+int32_t flushPairRxLocked(t5_stream_t handle) {
+  if (pendingUsb.rxOffset == pendingUsb.rxSize) return T5_STREAM_OK;
+  const uint32_t remaining = pendingUsb.rxSize - pendingUsb.rxOffset;
+  uint32_t accepted = 0;
+  const auto result = registry.produce(owner, handle,
+      pendingUsb.rxBytes + pendingUsb.rxOffset, remaining, &accepted);
+  if (accepted > remaining) return T5_STREAM_IO;
+  if (result != T5_STREAM_OK && result != T5_STREAM_AGAIN) return result;
+  pendingUsb.rxOffset += accepted;
+  if (pendingUsb.rxOffset == pendingUsb.rxSize)
+    pendingUsb.rxOffset = pendingUsb.rxSize = 0;
+  return T5_STREAM_OK;
+}
+} // namespace
+
 int32_t pairTransport(t5_stream_t handle) {
-  Usb* session;
+  Usb snapshot{};
   {
     Lock lock;
     if (handle != pairRx && handle != pairTx) return T5_STREAM_OK;
-    session = pairUsb;
+    if (!pairUsb) return T5_STREAM_DISCONNECTED;
+    snapshot = *pairUsb;  // Never dereference a session after dropping the lock.
   }
-  if (!session) return T5_STREAM_DISCONNECTED;
-  return usbState(*session);
+  return usbState(snapshot);
 }
 int32_t fillPairRx() {
-  Usb* session;
   t5_stream_t handle;
+  Usb snapshot{};
   {
     Lock lock;
-    session = pairUsb;
     handle = pairRx;
+    if (!pairUsb || !handle) return T5_STREAM_OK;
+    snapshot = *pairUsb;
+    if (pendingUsb.rx != handle) {
+      pendingUsb.rx = handle;
+      pendingUsb.rxSize = pendingUsb.rxOffset = 0;
+    }
+    // Do not poll the class again until every previously read byte fits in
+    // the bounded RX endpoint; the producer must honor downstream pressure.
+    if (pendingUsb.rxOffset < pendingUsb.rxSize)
+      return flushPairRxLocked(handle);
   }
-  if (!session || !handle) return T5_STREAM_OK;
-  uint8_t incoming[T5_STREAM_CHUNK];
-  uint32_t count = 0;
-  const auto result = usbRead(session, incoming, sizeof(incoming), &count);
-  if (result < 0 || !count) return result;
-  uint32_t wrote = 0;
+  uint8_t incoming[T5_STREAM_CHUNK]{};
+  uint32_t received = 0;
+  const auto result = usbRead(&snapshot, incoming, sizeof(incoming), &received);
+  if (result < 0 || !received) return result;
+  if (received > sizeof(incoming)) return T5_STREAM_IO;
   Lock lock;
-  if (pairUsb != session || pairRx != handle) return T5_STREAM_DISCONNECTED;
-  return registry.produce(owner, handle, incoming, count, &wrote);
+  if (!pairUsb || pairRx != handle || pairUsb->epoch != snapshot.epoch ||
+      pendingUsb.rx != handle) return T5_STREAM_DISCONNECTED;
+  std::memcpy(pendingUsb.rxBytes, incoming, received);
+  pendingUsb.rxSize = received;
+  pendingUsb.rxOffset = 0;
+  return flushPairRxLocked(handle);
 }
 int32_t drainPairTx() {
-  Usb* session;
   t5_stream_t handle;
-  uint8_t outgoing[T5_STREAM_CHUNK];
-  uint32_t count = 0;
-  int32_t result;
+  Usb snapshot{};
+  uint8_t outgoing[T5_STREAM_CHUNK]{};
+  uint32_t requested = 0;
   {
     Lock lock;
-    session = pairUsb;
     handle = pairTx;
-    if (!session || !handle) return T5_STREAM_OK;
-    result = registry.consume(owner, handle, outgoing, sizeof(outgoing), &count);
+    if (!pairUsb || !handle) return T5_STREAM_OK;
+    if (pendingUsb.txInFlight) return T5_STREAM_AGAIN;
+    snapshot = *pairUsb;
+    if (pendingUsb.tx != handle) {
+      pendingUsb.tx = handle;
+      pendingUsb.txSize = pendingUsb.txOffset = 0;
+    }
+    if (pendingUsb.txOffset == pendingUsb.txSize) {
+      uint32_t fetched = 0;
+      const auto result = registry.consume(owner, handle, pendingUsb.txBytes,
+                                            sizeof(pendingUsb.txBytes), &fetched);
+      if (result != T5_STREAM_OK && result != T5_STREAM_AGAIN) return result;
+      if (fetched > sizeof(pendingUsb.txBytes)) return T5_STREAM_IO;
+      pendingUsb.txOffset = 0;
+      pendingUsb.txSize = fetched;
+      if (!fetched) return T5_STREAM_AGAIN;
+    }
+    requested = pendingUsb.txSize - pendingUsb.txOffset;
+    std::memcpy(outgoing, pendingUsb.txBytes + pendingUsb.txOffset, requested);
+    pendingUsb.txInFlight = true;
   }
-  if (result < 0 || !count) return result;
-  uint32_t wrote = 0;
-  return usbWrite(session, outgoing, count, &wrote);
+  uint32_t written = 0;
+  const auto result = usbWrite(&snapshot, outgoing, requested, &written);
+  Lock lock;
+  pendingUsb.txInFlight = false;
+  if (!pairUsb || pairTx != handle || pairUsb->epoch != snapshot.epoch ||
+      pendingUsb.tx != handle) return T5_STREAM_DISCONNECTED;
+  if (written > requested) return T5_STREAM_IO;
+  if (result != T5_STREAM_OK && result != T5_STREAM_AGAIN) return result;
+  pendingUsb.txOffset += written;
+  if (pendingUsb.txOffset == pendingUsb.txSize)
+    pendingUsb.txOffset = pendingUsb.txSize = 0;
+  return written ? T5_STREAM_OK : T5_STREAM_AGAIN;
 }
 #define SESSION_CALL(expr) do { if (!authorized()) return T5_STREAM_DENIED; Lock lock; auto r = (expr); wake(); return r; } while (0)
 int32_t readStream(t5_stream_t h, void* d, uint32_t n, uint32_t* out) {
@@ -54,6 +120,9 @@ int32_t readStream(t5_stream_t h, void* d, uint32_t n, uint32_t* out) {
   if (h && h == pairRx) {
     const auto filled = fillPairRx();
     if (filled < 0) return filled;
+    // Reading the response is also a bounded retry opportunity for a short
+    // class write. The pending TX buffer is never consumed twice.
+    (void)drainPairTx();
   }
   Lock lock;
   const auto guard = guardGnssStream(h);
@@ -194,4 +263,4 @@ void releaseStreams(void*, uint32_t id) {
   wake();
 }
 void releaseSerial(void*, uint32_t) { nativeSerialPortsEnd(); }
-}  // namespace
+} // namespace
