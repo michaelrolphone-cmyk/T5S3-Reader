@@ -29,7 +29,7 @@ typedef struct {
 
 /* An append-only extension of the SAME physical BQ25896 owner, not another
  * provider that can claim address 0x6B. Consumers check base.struct_size
- * before calling read_charger. Register values are copied as raw snapshots:
+ * before using extension members. Register values are copied as raw snapshots:
  * ADC conversions may be stale, and REG0C is deliberately not read because
  * that read clears latched fault history needed by VBUS fault handling. */
 typedef struct {
@@ -49,6 +49,12 @@ typedef struct {
 typedef struct {
     risc_usb_vbus_api_v1 base;  /* Must remain the first member. */
     bool (*read_charger)(void *context, risc_bq25896_charger_snapshot_v1 *out);
+    /* Board-qualified 1000mA input/512mA charge/4208mV profile, applied by
+     * the single chip owner through its existing I2C claim. Reject during OTG
+     * and verify register readbacks. A partially applied or unverified write
+     * quarantines the provider and retains its device claim until recovery;
+     * callers must NOT fall back to a firmware BQ register writer. */
+    bool (*configure_charger)(void *context);
 } risc_usb_vbus_charger_api_v1;
 #ifdef __cplusplus
 }
