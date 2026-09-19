@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Stage one deterministic .rte.zip per ordinary package and a generic catalog.
+"""Stage deterministic ordinary package ZIPs and one generic release catalog.
 
-No publication occurs here. This script deliberately does not consume the old
-USB-only catalog or assume a fixed count, version, or identity allowlist. The
-caller supplies RISC_PACKAGE_RELEASE for the immutable release identity.
+The exporter must enforce the same identity bounds as the embedded parser:
+otherwise a successful build can publish an archive the device cannot admit.
+No release is created or published by this script.
 """
 from __future__ import annotations
 
@@ -24,6 +24,25 @@ ARCH = re.compile(r'[a-z0-9][a-z0-9-]*\Z')
 ENTRY = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]*\Z')
 MAX_PACKAGES = 64
 MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
+MAX_VERSION_COMPONENT = 0xffffffff
+
+
+def runtime_identity(kind: object, identity: object, version: object,
+                     architecture: object, artifact: object) -> bool:
+    """Mirror fixed-size Identity and catalog fields before emitting assets."""
+    return (
+        kind in KINDS and isinstance(identity, str) and
+        0 < len(identity) < 64 and SAFE.fullmatch(identity) is not None and
+        isinstance(version, str) and len(version) < 32 and
+        VERSION.fullmatch(version) is not None and
+        all(int(component) <= MAX_VERSION_COMPONENT
+            for component in version.split('.')) and
+        isinstance(architecture, str) and 0 < len(architecture) < 32 and
+        ARCH.fullmatch(architecture) is not None and
+        isinstance(artifact, str) and 4 < len(artifact) < 128 and
+        ENTRY.fullmatch(artifact) is not None and artifact.endswith('.elf') and
+        '..' not in artifact
+    )
 
 
 def export() -> None:
@@ -32,7 +51,8 @@ def export() -> None:
     if TARGET.exists() and (not TARGET.is_dir() or any(TARGET.iterdir())):
         raise FileExistsError(f'release export directory is not empty: {TARGET}')
     release = os.environ.get('RISC_PACKAGE_RELEASE', 'unpublished-build')
-    if not release or len(release.encode('ascii')) >= 64 or not re.fullmatch(r'[A-Za-z0-9._-]+', release):
+    if not isinstance(release, str) or not 0 < len(release) < 64 or not re.fullmatch(
+            r'[A-Za-z0-9._-]+', release) or '..' in release:
         raise ValueError('invalid immutable release identifier')
 
     staged = []
@@ -45,13 +65,11 @@ def export() -> None:
         if not manifest_path.is_file() or manifest_path.is_symlink():
             continue
         manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-        kind, identity, version, architecture = (
+        kind, identity, version, architecture, artifact = (
             manifest.get('kind'), manifest.get('id'), manifest.get('version'),
-            manifest.get('architecture'))
-        if (manifest.get('schema') != 1 or kind not in KINDS or
-                not isinstance(identity, str) or not SAFE.fullmatch(identity) or
-                not isinstance(version, str) or not VERSION.fullmatch(version) or
-                not isinstance(architecture, str) or not ARCH.fullmatch(architecture) or
+            manifest.get('architecture'), manifest.get('artifact'))
+        if (manifest.get('schema') != 1 or
+                not runtime_identity(kind, identity, version, architecture, artifact) or
                 directory.name != identity):
             raise ValueError(f'invalid package identity or schema: {directory}')
         key = (kind, identity, architecture)
@@ -82,9 +100,6 @@ def export() -> None:
             raise ValueError('catalog exceeds device package limit')
     if not staged:
         raise ValueError('no ordinary packages found')
-    # A real release drives both App Store and Driver Manager from this one
-    # catalog. Refuse a partial publication that would make either surface
-    # appear empty. Local/host packaging may intentionally exercise one kind.
     if release != 'unpublished-build' and not {'application', 'driver'} <= observed_kinds:
         raise ValueError(f'release catalog missing required U1 kinds: {observed_kinds}')
 
