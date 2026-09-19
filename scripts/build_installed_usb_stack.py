@@ -95,6 +95,9 @@ def discovered() -> list[dict]:
         metadata = json.loads(path.read_text(encoding='utf-8'))
         if metadata.get('type') != 'driver' or metadata.get('driver_abi') != 2:
             continue
+        # Enforce the bound before invoking any newly discovered build script.
+        if len(candidates) >= MAX_PACKAGES:
+            raise ValueError('provider count exceeds firmware package catalog bound')
         capability, api = canonical_manifest(path)
         identity = metadata['id']
         version = metadata.get('version')
@@ -108,32 +111,42 @@ def discovered() -> list[dict]:
                            'elf': linked_or_build(identity, path.parent),
                            'capability': capability, 'api': api, 'version': version,
                            'requires': [required['capability'] for required in requirements]})
-        if len(candidates) > MAX_PACKAGES:
-            raise ValueError('provider count exceeds firmware package catalog bound')
     if not candidates:
         raise ValueError('no linked ABI-v2 provider manifests found')
     return candidates
 
 
 def dependency_order(candidates: list[dict]) -> list[dict]:
-    """Topologically stage dependencies; multiple class ELFs may offer serial.port."""
-    offered = {candidate['capability'] for candidate in candidates}
+    """Topologically stage dependencies with minimum API versions.
+
+    Multiple independently installable class providers may expose the same
+    capability. Only a provider with a sufficient declared API can satisfy a
+    dependency; a matching string with a lower version is not sufficient.
+    """
+    offered = {}
     for candidate in candidates:
-        missing = set(candidate['requires']) - offered
+        name = candidate['capability']
+        offered[name] = max(offered.get(name, 0), candidate['api'])
+    for candidate in candidates:
+        missing = [f"{required['capability']}@{required['api']}"
+                   for required in candidate['metadata']['requires']
+                   if offered.get(required['capability'], 0) < required['api']]
         if missing:
-            raise ValueError(f"{candidate['id']}: missing linked dependencies {sorted(missing)}")
+            raise ValueError(f"{candidate['id']}: missing compatible linked dependencies {missing}")
     ordered = []
-    available = set()
+    available = {}
     pending = list(candidates)
     while pending:
         ready = next((candidate for candidate in pending
-                      if set(candidate['requires']) <= available), None)
+                      if all(available.get(required['capability'], 0) >= required['api']
+                             for required in candidate['metadata']['requires'])), None)
         if ready is None:
             raise ValueError('cyclic/unresolvable provider manifest dependency graph: ' +
                              ', '.join(item['id'] for item in pending))
         pending.remove(ready)
         ordered.append(ready)
-        available.add(ready['capability'])
+        name = ready['capability']
+        available[name] = max(available.get(name, 0), ready['api'])
     return ordered
 
 
