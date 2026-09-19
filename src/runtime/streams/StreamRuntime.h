@@ -60,6 +60,9 @@ class Registry {
   int32_t recordInfo(uint32_t owner, t5_stream_t, char* schema, uint32_t schemaCapacity,
                      RecordQueue::Stats* out);
   int32_t produce(uint32_t owner, t5_stream_t, const void*, uint32_t, uint32_t*);
+  // Firmware shuttle only: drain a write-only published endpoint without
+  // exposing READ to the ELF consumer.
+  int32_t consume(uint32_t owner, t5_stream_t, void*, uint32_t, uint32_t*);
   int32_t attach(uint32_t owner, uint32_t kind, uint32_t flags, Provider provider, t5_stream_t* out);
   int32_t read(uint32_t owner, t5_stream_t, void*, uint32_t, uint32_t*);
   int32_t write(uint32_t owner, t5_stream_t, const void*, uint32_t, uint32_t*);
