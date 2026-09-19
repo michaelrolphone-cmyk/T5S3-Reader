@@ -13,6 +13,13 @@
 #include "RiscFirmwareI2cCompatV1.h"
 #endif
 
+/* The firmware logger supplies generic printf/puts sinks for privileged
+ * provider diagnostics. Weak linkage keeps the OS/CPU host test harness
+ * independent of Arduino logging; firmware links strong Logging.cpp symbols.
+ * These are relocation-only substitutions, never process-global hooks. */
+extern int risc_provider_diagnostic_printf(const char *format, ...) __attribute__((weak));
+extern int risc_provider_diagnostic_puts(const char *message) __attribute__((weak));
+
 /* Strong links intentionally fail firmware builds when the port ABI is absent.
  * The table contains addresses, not forwarding hardware driver functions. */
 #define RISC_OS_CPU_SYMBOL(name) \
@@ -111,8 +118,8 @@ bool esp_elf_privileged_os_cpu_relocation_enter_v1(const void *module)
             allowed = true;
         }
     } else {
-        /* A different task may continue ordinary loads, but never mutate
-         * the SAME module while the private scope holds its relocation grant.
+        /* A different task may continue ordinary loads, but never mutate the
+         * SAME module while the private scope holds its relocation grant.
          * This is an identity guard, not a global app-loading mutex. */
         allowed = (s_scope_owner == NULL || s_scope_module == NULL ||
                    module != s_scope_module);
@@ -144,6 +151,13 @@ uintptr_t esp_elf_privileged_os_cpu_lookup_v1(const char *symbol)
 {
     if (symbol == NULL || symbol[0] == '\0' ||
         !esp_elf_privileged_os_cpu_scope_owned_v1()) return 0;
+    /* Provider printf imports can be folded into puts by the compiler.
+     * Only privileged relocations bind either to bounded diagnostic sinks;
+     * ordinary app symbols and provider hardware APIs remain unchanged. */
+    if (strcmp(symbol, "printf") == 0 && risc_provider_diagnostic_printf)
+        return (uintptr_t)&risc_provider_diagnostic_printf;
+    if (strcmp(symbol, "puts") == 0 && risc_provider_diagnostic_puts)
+        return (uintptr_t)&risc_provider_diagnostic_puts;
 #ifdef BOARD_T5S3_PRO
     /* The sole physical-bus compatibility exception. Never insert this into
      * privileged_os_cpu_symbols_v1.def or a globally visible ELF table. */

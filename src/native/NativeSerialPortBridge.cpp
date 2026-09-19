@@ -21,12 +21,17 @@ bool acquisitionFailed = false;
 t5_serial_port_api_v1 diagnosticApi{};
 
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
-// The existing firmware log ring records PROVREF and USBREF failure messages.
-// Select only bounded system diagnostics; never return serial RX/TX payloads.
-void recentProviderFailures(char* module, size_t moduleCapacity,
-                            char* usbStage, size_t stageCapacity) {
-    module[0] = 0;
-    usbStage[0] = 0;
+// Privileged ELF printf is captured by the generic firmware logger during
+// relocation. Report the root physical failure before generic graph errors.
+// Only bounded startup diagnostics are selected: never USB RX/TX payloads.
+void recentProviderFailures(char* primary, size_t primaryCapacity,
+                            char* secondary, size_t secondaryCapacity) {
+    primary[0] = 0;
+    secondary[0] = 0;
+    char power[112]{};
+    char controller[88]{};
+    char module[112]{};
+    char usbStage[80]{};
     const std::string logs = getLastLogs();
     for (size_t pos = 0; pos < logs.size();) {
         const size_t end = logs.find('\n', pos);
@@ -35,15 +40,28 @@ void recentProviderFailures(char* module, size_t moduleCapacity,
         size_t count = stop - pos;
         if (count >= sizeof(line)) count = sizeof(line) - 1u;
         std::memcpy(line, logs.data() + pos, count);
+        // Do not attribute a prior failed retry to this acquisition.
+        if (std::strstr(line, "USBREF stage=serial-start-enter")) {
+            power[0] = controller[0] = module[0] = usbStage[0] = 0;
+        }
+        const char* vbus = std::strstr(line, "VBUSREF failure=");
+        const char* usbController = std::strstr(line, "USBCTRL start-failed");
         const char* provider = std::strstr(line, "PROVREF id=");
         const char* usb = std::strstr(line, "USBREF stage=");
+        if (vbus) std::snprintf(power, sizeof(power), "%s", vbus);
+        if (usbController) std::snprintf(controller, sizeof(controller), "%s", usbController);
         if (provider && std::strstr(provider, "failure="))
-            std::snprintf(module, moduleCapacity, "%s", provider);
+            std::snprintf(module, sizeof(module), "%s", provider);
         if (usb && (std::strstr(usb, "failed") || std::strstr(usb, "quarantined") ||
                     std::strstr(usb, "timeout")))
-            std::snprintf(usbStage, stageCapacity, "%s", usb);
+            std::snprintf(usbStage, sizeof(usbStage), "%s", usb);
         pos = stop == logs.size() ? stop : stop + 1u;
     }
+    const char* physical = power[0] ? power : module[0] ? module :
+                           "No module failure reported";
+    const char* stage = controller[0] ? controller : usbStage;
+    std::snprintf(primary, primaryCapacity, "%s", physical);
+    if (stage[0]) std::snprintf(secondary, secondaryCapacity, "%s", stage);
 }
 #endif
 
@@ -63,17 +81,17 @@ t5_serial_result_t diagnosticAcquire(const t5_serial_port_request_t* request,
         usbProvider->serial_read_state(&usbState))
         acquisitionDiagnostic.provider_error = usbState.last_error;
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
-    char module[128]{};
-    char usbStage[84]{};
-    if (result == T5_SERIAL_IO) recentProviderFailures(module, sizeof(module),
-                                                       usbStage, sizeof(usbStage));
+    char physical[112]{};
+    char stage[88]{};
+    if (result == T5_SERIAL_IO)
+        recentProviderFailures(physical, sizeof(physical), stage, sizeof(stage));
     std::snprintf(acquisitionDiagnostic.detail, sizeof(acquisitionDiagnostic.detail),
                   "acquire rc=%ld; provider rc=%ld\n%s%s%s%s",
                   static_cast<long>(result),
                   static_cast<long>(acquisitionDiagnostic.provider_error),
-                  module[0] ? module : "No module failure reported",
-                  usbStage[0] ? "\n" : "",
-                  usbStage[0] ? usbStage : "",
+                  physical[0] ? physical : "No module failure reported",
+                  stage[0] ? "\n" : "",
+                  stage[0] ? stage : "",
                   result == T5_SERIAL_OK ? "\nMissing lease or streams" : "");
 #else
     std::snprintf(acquisitionDiagnostic.detail, sizeof(acquisitionDiagnostic.detail),
