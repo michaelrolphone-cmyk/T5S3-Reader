@@ -118,7 +118,7 @@ static bool uninstall(uint8_t kind, const char *id) {
 }
 static const t5_package_manager_api_v1 package_api = {
     T5_PACKAGE_MANAGER_API_VERSION, sizeof(t5_package_manager_api_v1),
-    preview, install, uninstall,
+    preview, install, uninstall, NULL, NULL,
 };
 const t5_package_manager_api_v1 *t5_package_manager_get_api(uint32_t version) {
     assert(version == T5_PACKAGE_MANAGER_API_VERSION);
