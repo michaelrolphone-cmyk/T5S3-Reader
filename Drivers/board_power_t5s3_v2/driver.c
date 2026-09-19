@@ -59,6 +59,28 @@ static bool write_reg(uint8_t reg, uint8_t value) {
     return bus && bus_claim && bus->transact(bus->context, bus_claim,
              command, 2u, NULL, 0u, BUS_TIMEOUT_MS);
 }
+/* The charger is the SAME BQ owner as USB VBUS; a battery consumer never
+ * claims 0x6B independently. This is a raw, side-effect-free snapshot rather
+ * than guessed ADC validity or a status read that clears fault history.
+ * Only publish complete results, including when an I2C read fails mid-way. */
+static bool read_charger(void *unused, risc_bq25896_charger_snapshot_v1 *out) {
+    (void)unused;
+    if (!out || !started || !bus_claim || faulted) return false;
+    risc_bq25896_charger_snapshot_v1 snapshot = {0};
+    if (!read_reg(0x00u, &snapshot.input_control) ||
+        !read_reg(REG_ADC_CONTROL, &snapshot.adc_control) ||
+        !read_reg(REG_POWER, &snapshot.power_control) ||
+        !read_reg(0x04u, &snapshot.charge_current) ||
+        !read_reg(0x05u, &snapshot.precharge_termination) ||
+        !read_reg(0x06u, &snapshot.charge_voltage) ||
+        !read_reg(0x07u, &snapshot.charge_timer) ||
+        !read_reg(REG_STATUS, &snapshot.system_status) ||
+        !read_reg(REG_BAT_ADC, &snapshot.battery_adc) ||
+        !read_reg(0x0fu, &snapshot.system_adc) ||
+        !read_reg(REG_VBUS_ADC, &snapshot.vbus_adc)) return false;
+    *out = snapshot;
+    return true;
+}
 /* TI SLUSC76C: the FIRST REG0C read returns faults latched since the last
  * read; the SECOND returns the live fault state. REG0C cannot be multi-read.
  * These must be distinct, consecutive single-register I2C transactions. */
@@ -333,9 +355,9 @@ static void stop(void) {
     if (lease || bus_claim || source_requested || faulted) return;
     bus = NULL; clock_api = NULL; started = false; saved = false;
 }
-static const risc_usb_vbus_api_v1 capability = {
-    RISC_USB_VBUS_API_V1, sizeof(risc_usb_vbus_api_v1), NULL,
-    acquire_host, release_host, quiesce
+static const risc_usb_vbus_charger_api_v1 capability = {
+    {RISC_USB_VBUS_API_V1, sizeof(risc_usb_vbus_charger_api_v1), NULL,
+     acquire_host, release_host, quiesce}, read_charger
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
