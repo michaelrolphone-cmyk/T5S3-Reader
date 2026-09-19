@@ -33,6 +33,14 @@ PR: [#96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) branch `i
   - `nativeStreamOpenUsbPair` no longer consults `t5_usb_get_api`. Pair shuttle uses `nativeUsbClassRead`/`Write`.
   - `NativeUsbBridge` opens through the bound class table (`openBoundClass` / Adopt) and routes compatibility `serial_read`/`serial_write` through the class bridge when a token is adopted.
   - Stream registry `read`/`write` honor grants (`streamByHandle` + `allowed`).
+- Four-kind `.rte.zip` bootstrap (this increment):
+  - `PackageRteZip.h` inspects/packs stored ZIP; rejects slip, case-folded
+    duplicates, encryption, DEFLATE/ZIP64, extra/comment, missing manifest.
+  - `planRteZip` binds archive files to ordinary `.package.json` entries.
+  - `PackageRteZipInstall.h` feeds the existing ordinary stage/transaction.
+  - Generic `package-catalog.json` parser (`PackageCatalog.h`) requires one
+    `.rte.zip` asset per package and refuses `usb-provider-catalog.json`.
+  - Host packer `scripts/pack_rte_zip.py` emits stored archives + catalog rows.
 
 ## Checks
 
@@ -41,11 +49,13 @@ PR: [#96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) branch `i
 
 ## Remaining U1
 
-1. Finish retiring leftover `NativeUsbBridge` `T5UsbApi` serial_* compatibility once host tests no longer poke that ABI.
-2. Unified four-kind `.rte.zip` package engine; purge USB catalog and P-256 signing; keep SHA-256 / TLS / rollback.
-3. Installed-ELF verification performance (no repeated SHA/MD5 on ordinary launch).
-4. Integration/build defects only; no U2–U4 scope.
+1. Route SD inbox and online intake through `installOrdinaryFromRteZip`; replace `usb-provider-catalog.json` exporters and Driver Manager URL.
+2. Purge package-only P-256 / signed RISC-PKG / security-floor code; keep SHA-256, TLS, ordinary rollback.
+3. Nested resource paths (schema bump) and per-ID installed roots for apps/services.
+4. Installed-ELF verification performance (no repeated SHA/MD5 on ordinary launch).
+5. Finish retiring leftover `NativeUsbBridge` `T5UsbApi` serial_* compatibility.
+6. Integration/build defects only; no U2–U4 scope.
 
 ## Next source action
 
-Four-kind `.rte.zip` package engine: one archive per package, catalog without `usb-provider-catalog.json`, signing/P-256 purge.
+Wire SD/online four-kind intake to `.rte.zip` + `package-catalog.json`; delete USB catalog and four-file export.
