@@ -7,8 +7,8 @@ common=(-std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-
   -I"$repo/lib/NativeApps/include" -I"$repo/src")
 stream="$repo/src/runtime/streams/StreamRuntime.cpp"
 serial="$repo/src/native/NativeSerialPortBridge.cpp"
-# Fakes model a successful physical shutdown. The production class bridge
-# binding test below links its real checked stop rather than this host adapter.
+# Successful-close test adapter: never link it into production or the real
+# installed-class binder test (which defines nativeUsbClassStopChecked itself).
 checked="$repo/test/streams/stubs/native_usb_checked_stop_stub.cpp"
 
 compile_run() {
@@ -17,7 +17,6 @@ compile_run() {
   c++ "${common[@]}" "$@" -o "$build/$name"
   "$build/$name"
 }
-
 compile_run test "$stream" "$repo/test/streams/runtime_test.cpp"
 compile_run elf-endpoints "$stream" "$repo/test/streams/elf_endpoint_test.cpp"
 compile_run record-queue "$repo/test/streams/record_queue_test.cpp"
@@ -28,28 +27,26 @@ compile_run gnss-producer "$stream" "$repo/test/streams/cooperative_gnss_produce
 compile_run location-lease-binding "$stream" "$repo/test/streams/location_lease_binding_test.cpp"
 compile_run location-production-registry "$stream" "$repo/test/streams/location_production_registry_test.cpp"
 compile_run http-transfer "$stream" "$repo/test/streams/http_transfer_test.cpp"
-
 printf '#include "T5StreamApi.h"\n#include "T5SerialPortApi.h"\n#include "T5DeviceApi.h"\n#include "RiscRteLocationRecords.h"\nint main(void) { return T5_STREAM_API_VERSION != 1 || T5_SERIAL_PORT_API_VERSION != 1 || T5_DEVICE_API_VERSION != 1 || RISCRTE_LOCATION_FIX_SIZE != 52; }\n' > "$build/abi.c"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/NativeApps/include" "$build/abi.c" -o "$build/abi"
 "$build/abi"
-
 compile_run execution-context "$repo/test/resources/execution_context_test.cpp"
 compile_run device-registry "$repo/test/streams/usb_device_registry_test.cpp"
 compile_run serial-provider-registry "$repo/test/streams/serial_provider_registry_test.cpp"
 compile_run serial-provider-bridge "$serial" "$checked" "$repo/test/streams/serial_provider_bridge_test.cpp"
 compile_run usb-semantic-bridge "$serial" "$checked" "$repo/test/streams/usb_semantic_bridge_test.cpp"
-# Host callback snapshots reconcile only on the owner-task discovery tick.
 compile_run usb-discovery-tick "$serial" "$checked" "$repo/test/streams/usb_discovery_tick_test.cpp"
 compile_run usb-device-abi "$serial" "$checked" "$repo/src/native/NativeDeviceBridge.cpp" \
   "$repo/test/streams/usb_device_api_test.cpp"
-# The stream bridge requires the host storage and scheduler shims.
+# These two bridge fixtures intentionally use fake storage/scheduler headers.
+production_common=("${common[@]}")
 common+=(-I"$repo/test/streams/stubs")
 compile_run bridge "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" "$checked" \
   "$repo/test/streams/bridge_test.cpp"
 compile_run usb-direct-ownership "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" "$checked" \
   "$repo/test/streams/usb_direct_ownership_test.cpp"
-# Real installed class binder tests cannot use the checked-stop fake.
-common+=(-I"$repo/sdk/driver")
+# Restore the original includes before testing the production class bridge.
+common=("${production_common[@]}" -I"$repo/sdk/driver")
 compile_run usb-class-bridge "$stream" "$serial" "$repo/src/native/NativeUsbClassBridge.cpp" \
   "$repo/test/streams/usb_class_bridge_bind_test.cpp"
 compile_run usb-class-session "$stream" "$repo/test/streams/usb_class_stream_session_test.cpp"
