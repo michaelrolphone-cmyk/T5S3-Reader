@@ -23,6 +23,11 @@ EXPECTED = {
     'usb-cdc-acm-v2': ('serial.port', ['usb.host']),
     'usb-cp210x-v2': ('serial.port', ['usb.host']),
 }
+EXPECTED_VERSIONS = {
+    'i2c-esp32s3-v2': '0.1.2',
+    'board-power-t5s3-v2': '0.1.1',
+    'usb-controller-esp32s3': '0.1.1',
+}
 # The firmware-backed I2C adapter has NO physical MMIO relocations. USB still
 # owns its own hardware in the controller ELF and requires the MMIO fix.
 EXPECTED_ABSOLUTE_POINTERS = {
@@ -65,7 +70,7 @@ def run():
         assert set(manifest) == {'schema', 'kind', 'id', 'version', 'artifact',
                                  'architecture', 'min_runtime_api', 'entries', 'requires'}
         assert manifest['schema'] == 1 and manifest['kind'] == 'driver'
-        expected_version = '0.1.2' if id == 'i2c-esp32s3-v2' else '0.1.0'
+        expected_version = EXPECTED_VERSIONS.get(id, '0.1.0')
         assert manifest['id'] == id and manifest['version'] == expected_version
         assert record['version'] == expected_version
         assert manifest['artifact'] == 'driver.elf'
