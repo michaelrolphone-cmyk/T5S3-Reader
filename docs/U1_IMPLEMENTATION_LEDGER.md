@@ -1,61 +1,54 @@
 # U1 implementation ledger
 
-PR: [#96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96), branch `impl/u1-riscrte`, originally based on master `52226bc` after spec PR #86. This ledger records pushed code, not inferred completion or hardware qualification.
+PR: [#96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96), branch `impl/u1-riscrte`. This ledger records pushed source, not inferred completion or hardware qualification.
 
-## Foundations pushed before this continuation
+## Branch integration
 
-- Generic ELF byte endpoints, grants/revoke/connectAcross, record compatibility and external provider I/O outside the stream mutex. The `open_usb` ABI slot is UNSUPPORTED.
-- `serial.port` RX/TX pair, native stream shuttles calling installed class ELF, provider graph and I²C/VBUS ownership inventory; USB controller ELF has unresolved IDF/link integration.
-- Native USB class bridge, USB ClassStreamSession, host test fixtures, ordinary manifest/preflight/stage/transaction installer.
-- Stored `.rte.zip` bootstrap (`PackageRteZip.h`, `PackageRteZipInstall.h`), generic `PackageCatalog.h` and `scripts/pack_rte_zip.py`. The ZIP bootstrap is not yet wired to production SD/online intake.
+- `0a8c21c`: merged current `master` (`1ebfbfe`) into `impl/u1-riscrte`. The merge preserved U1's generic package-builder/test versions where master still carried the fixed USB version whitelist, and incorporated the newer board-power/VBUS diagnostics, platform version, tests and firmware 1.2.33/1.2.34 artifacts.
+- GitHub compare after the merge reported the U1 branch **0 commits behind master**. No PR merge, tag, release or flash was performed.
 
-## Pushed in the preceding continuation
+## Stream / USB source landed
 
-### Release package production
+- Generic ELF byte endpoints, grants/revoke/connectAcross, records compatibility and external provider I/O outside the stream mutex. `open_usb` stays unsupported in favor of semantic `serial.port` RX/TX.
+- Installed USB class ELF binding, checked teardown and retryable semantic leases retain token/table/package pin on uncertain physical close.
+- `ClassStreamSession` and `NativeStreamBridge` retain RX/TX chunks across buffer backpressure, short/zero writes and retry; no accepted/unwritten byte suffix is intentionally discarded.
+- Duplicate class-session attachment was removed so `NativeSerialPortBridge` establishes physical ownership before attaching the published pair.
+- I²C/VBUS ownership and board-power provider source are present. USB controller ELF/IDF linkage remains unresolved U1 work.
 
-- `d5fe7df`: manifest-discovered four-kind ZIP release exporter with generic `package-catalog.json` and bounded source inventory; preserves nonempty destination.
-- `147a2d5`: USB driver builder produces ZIP packages and derives numeric versions from source manifests instead of a hardcoded whitelist; the builder is still USB-specific and retains legacy `usb-cdc-acm-v2` identity.
-- `78f237d`: USB package host verifier checks generic catalog, ZIP content/CRC, archive SHA-256, imports and relocations.
-- `c5eec42`: ZIP host packer refuses undeclared/unsafe files, case-fold collisions, symlinks and packages outside actual firmware ZIP limits.
+## Generic ordinary package path landed
 
-### Class ELF, lease safety and stream access
+- Schema-1 ordinary manifest/preflight/stage/transaction engine with four kinds: application, driver, service, provider.
+- Stored `.rte.zip` bootstrap validates bounded ZIP structure, contiguous local entry topology and every CRC before ordinary SHA-256/ABI/import verification and recoverable publication.
+- `PackageOrdinarySdZipAdapter` provides the production SD archive entrypoint and preserves unknown files.
+- `NativeOnlineOrdinaryCatalog` downloads one bounded generic `package-catalog.json`, retains its immutable release tag and never uses `latest` again after selecting an archive.
+- `NativeOnlineRtePackageInstall` downloads one selected `.rte.zip` to `/Packages/Inbox`, pins catalog size/SHA-256, then invokes the same SD ZIP transaction.
+- `NativePackageManagerBridge` exposes directory, ZIP and online generic package operations with caller-kind filtering. `fbc5b8e` authorizes both legacy flat management apps and their canonical `/sd/Apps/<id>/<artifact>` managed-package launch paths; metadata cannot widen privileges.
 
-- `932a9f8`, `e020ec3`, `9fdec9d`, `555a509`, `b538f2d`, `152ab97`: installed class binding and checked physical teardown retain token/ELF mapping/package pin on uncertain close; reject invalid provider byte counts.
-- `07e46ab`: serial bridge acquires installed class, starts it, publishes endpoints and checks exact owner/stream attachment; a failed physical stop prevents normal lease clearing.
-- `09c598b`: semantic serial-provider lease stays retryable if physical teardown fails.
-- `d62227a`: registry byte read/write honor cross-context grants and distinguish absent handles from denied rights.
-- `11fc77b`, `09c267d`, `29a4653`, `d92de11`, `b6d6e4a`: added host regressions/fixtures for stream grants, checked close/retry and physical serial provider lease; source compiled against real bridges but has not been rerun on these commits.
+## App Store / release integration landed
 
-## Pushed in the current continuation
+- `befe901`: App Store release view now uses `t5_package_manager_api_v1::online_*`; it no longer calls legacy `app_catalog_refresh/get/download` for online installation. SD directory/ZIP installation remains on the same package-manager API.
+- `41b5e5a`: App Store host fixture now exercises the generic online catalog/install ABI rather than the legacy app catalog.
+- `f0fbca2`: `build_all_apps.py` stages every built native app as an ordinary application package containing its ELF, app sidecar and `.package.json`, while temporarily retaining the aggregate legacy app catalog for older firmware.
+- `5f28827`: generic release export now accepts canonical underscore IDs and rejects a real release that omits either application or driver packages.
+- `01bedb8`: release catalog contract test verifies archive SHA/size, package identity/inventory and requires application + driver presence.
+- `12431f7`: release workflow executes that generic release-catalog contract before any publication. Firmware preservation/staging logic remains intact.
 
-### USB production RX/TX corrections
+## Actual validation / limits
 
-- `9060914`: `ClassStreamSession` now retains bounded incoming and outgoing chunks across RX backpressure, partial/zero class writes, and refused physical closes. One-sided stream grants no longer invoke a zero-rights grant; failed second grant revokes the first.
-- `a668506`: class-session host test covers full RX, no read-ahead, exact replay, partial/zero TX writes, one-sided grants and failed-close recovery.
-- `4c34493`: app-facing `NativeStreamBridge.p2.inc` no longer drops the unaccepted RX suffix or unwritten TX suffix. It holds at most one 512-byte chunk per direction and copies session epoch before unlocking around class I/O.
-- `791a34c`, `6069253`: existing stream task retries pending TX at a bounded 10 ms cadence and clears the retry flag when drained/error/closed; app reads also supply a retry opportunity. `txInFlight` serializes concurrent app/task attempts.
-- `a1b02ce`: remove the premature pair attachment inside `nativeStreamOpenUsbPair`; `NativeSerialPortBridge` must first establish exclusive device ownership, then checked-attach exactly once. Before this change the double attachment could reject every otherwise-valid acquisition.
-
-### ZIP bootstrap preflight
-
-- `65e8709`: `installOrdinaryFromRteZip` now validates contiguous local data layout and every entry's stored ZIP CRC before ordinary staging. Checks use bounded 512-byte reads with cooperative checkpoints and heap-owned multi-kilobyte ZIP/manifest views. Ordinary SHA-256, ABI/import and transaction authority remain separate.
-- `d6598d3`, `98efddc`: CRC mutation, hidden-gap, reordered topology and failed-read regression added to ordinary package host runner.
-
-## Actual validation and limitations
-
-- GitHub confirmed the file writes on this same branch. No new branch/PR, merge, release, flash or hardware operation was performed.
-- **The revised stream and package host suites have not run** on these new commits; the container cannot clone GitHub because DNS resolution failed. No firmware build or physical USB/VBUS test was performed. New tests are assertions in source, not a PASS claim.
-- `get_commit_combined_status` for `98efddc` returned no status checks. PR mergeability was previously false against master; reconcile without dropping changes after source integration.
-- The current USB controller ELF remains unlinked against the required IDF host/power path. Existing `NativeUsbBridge` compatibility calls still need retirement; the class session and app-facing shuttle are two implementation helpers, not independent physical USB owners.
+- GitHub confirmed the branch writes and merge ancestry. Recent source suites and firmware have **not** been executed on these commits; the local container still cannot obtain a repository checkout through normal Git network access.
+- No current green CI, firmware build, physical USB, VBUS or package-install hardware result is claimed.
+- The release workflow was edited only; it was not run or manually dispatched.
+- Legacy App Store release code remains in `NativeAppHost` as a compatibility ABI, but the U1 App Store no longer uses it for normal online installation.
+- Driver Manager's UI/native bridge still uses legacy driver/USB catalog discovery for its normal online path. Its recovery UI remains useful and should be retained while moving catalog/install underneath it to the generic package index.
 
 ## Remaining U1
 
-1. Run/fix stream and package host suites and address real source/build errors. Verify the new retry/close boundary against provider quiescence, app shutdown and USB disconnect. CI is feedback, not a gate to unrelated implementation.
-2. Wire SD inbox and online four-kind intake through `installOrdinaryFromRteZip`, one pinned generic `package-catalog.json` and one archive per package. Replace normal `NativeOnlineDriverInstall.h`, `NativeDriverManagerBridge.cpp`, App Store, package-manager and `release.yml` legacy paths while preserving bounded historical adapters and unknown user files.
-3. Remove package-only P-256/signed RISC-PKG/trust-policy/security-floor paths, preserving ordinary SHA-256, TLS, import authorization and rollback.
-4. Implement nested resource schema and all four per-ID roots, safe legacy migration and canonical `usb-cdc-acm` identity with monotonic manifest versions.
-5. Eliminate repeated installed-ELF whole-file hashing on normal launch, resolve USB controller linkage and remaining build/integration defects. No U2/U3/U4 scope.
+1. Convert Driver Manager online discovery/install to the generic pinned package catalog/ZIP path without losing recovery handling or dependency behavior; then remove normal dependence on `driver-catalog.json`, `usb-provider-catalog.json` and latest-release loose driver assets.
+2. Run/fix stream, native-app and package host suites; repair compile/link defects found by real builds. Validate shutdown/disconnect/quiescence boundaries.
+3. Remove package-only P-256/signed RISC-PKG/trust-policy/security-floor production paths while preserving ordinary SHA-256, TLS, ABI/import authorization and rollback.
+4. Complete per-ID/nested-resource migration for every package kind, normalize CDC lineage to stable `usb-cdc-acm`, and retain bounded migration support for known legacy installs.
+5. Eliminate redundant installed-ELF whole-file hashing on normal launch and resolve USB controller IDF linkage / remaining T5UsbApi compatibility ownership. No U2/U3/U4 scope.
 
 ## Next source action
 
-Wire the existing ZIP preflight/bootstrap into SD inbox and pinned online generic catalog, retaining the ordinary transaction and offline support. Run focused host checks when a source checkout becomes available; do not claim completion before four-kind consumer/install/release integration is real.
+Move Driver Manager catalog/install onto `RuntimeOnlinePackages::Catalog` + `OrdinaryZip` while preserving its recovery surface. Then qualify the changed host suites and firmware build when an executable checkout/CI path is available.
