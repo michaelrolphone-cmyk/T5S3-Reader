@@ -216,7 +216,7 @@ void nativeUsbClassPump(RuntimeStreams::Registry& registry) {
 #if defined(ESP_PLATFORM)
 bool nativeUsbClassBindNextInstalled(size_t* cursor, bool* faulted) {
   if (faulted) *faulted = false;
-  if (candidateFault || installedClass.grant.slot && !valid(ops)) {
+  if (candidateFault || (installedClass.grant.slot && !valid(ops))) {
     if (faulted) *faulted = true;
     return false;
   }
