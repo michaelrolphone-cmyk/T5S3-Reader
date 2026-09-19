@@ -7,6 +7,7 @@
 #include <new>
 #include <string>
 
+#include "NativeOnlineOrdinaryCatalog.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
@@ -30,7 +31,7 @@ uint32_t availableCapability(const char* name) {
 }
 
 // ELF callers can only select the package kind explicitly assigned to them.
-// This bridge never uses an archive filename to authorize a mutation.
+// Neither a remote catalog nor a package filename expands app privileges.
 int callerKind() {
     const char* path = native_app_current_path();
     if (!path) return -1;
@@ -139,10 +140,6 @@ bool describe(const RuntimePackages::OrdinaryPackagePlan& plan,
             availableCapability, installed) && installed.kind == identity.kind &&
             std::strcmp(installed.id, identity.id) == 0;
         if (good) std::strcpy(out->installed_version, installed.version);
-        if (!good && identity.kind == RuntimePackages::Kind::Driver) {
-            out->valid_installation = 0;
-            return true;
-        }
     }
     out->valid_installation = good ? 1 : 0;
     if (!good || Storage.exists(paths.stage) || Storage.exists(paths.backup) ||
@@ -150,6 +147,39 @@ bool describe(const RuntimePackages::OrdinaryPackagePlan& plan,
         RuntimePackages::systemPackageUseGate().pinned(paths.target)) return true;
     if (RuntimePackages::preflightOrdinaryPackage(plan, kPolicy, availableCapability) !=
         RuntimePackages::PreflightResult::ReadyForContentVerification) return true;
+    out->install_allowed = !out->installed_version[0] ||
+        RuntimePackages::comparePackageVersions(out->version, out->installed_version) ==
+            RuntimePackages::VersionOrder::Newer;
+    return true;
+}
+
+// A catalog does not contain a full package manifest. Consequently online
+// preview checks only identity/version/installed generation; the downloaded
+// ZIP MUST pass complete manifest, dependency, ELF and SHA verification later.
+bool describeCatalog(const RuntimePackages::CatalogPackage& pkg,
+                     t5_package_preview_t* out) {
+    if (!out || !permitted(static_cast<uint8_t>(pkg.identity.kind)) ||
+        std::strcmp(pkg.architecture, "xtensa-esp32s3")) return false;
+    const auto& identity = pkg.identity;
+    RuntimePackages::OrdinaryTransactionPaths paths{};
+    if (!RuntimePackages::ordinaryTransactionPaths(identity.kind, identity.id, paths)) return false;
+    *out = {};
+    out->kind = static_cast<uint8_t>(identity.kind);
+    std::strcpy(out->id, identity.id);
+    std::strcpy(out->version, identity.version);
+    std::strcpy(out->artifact, identity.artifact);
+    bool good = true;
+    if (Storage.exists(paths.target)) {
+        RuntimePackages::Identity installed{};
+        good = RuntimePackages::verifyOrdinarySdDirectory(paths.target, kPolicy,
+            availableCapability, installed) && installed.kind == identity.kind &&
+            std::strcmp(installed.id, identity.id) == 0;
+        if (good) std::strcpy(out->installed_version, installed.version);
+    }
+    out->valid_installation = good ? 1 : 0;
+    if (!good || Storage.exists(paths.stage) || Storage.exists(paths.backup) ||
+        Storage.exists(paths.removing) ||
+        RuntimePackages::systemPackageUseGate().pinned(paths.target)) return true;
     out->install_allowed = !out->installed_version[0] ||
         RuntimePackages::comparePackageVersions(out->version, out->installed_version) ==
             RuntimePackages::VersionOrder::Newer;
@@ -209,9 +239,46 @@ bool uninstall(uint8_t kind, const char* id) {
         static_cast<RuntimePackages::Kind>(kind), id, kPolicy, availableCapability);
     return result == RuntimePackages::OrdinaryTransactionResult::Removed;
 }
+
+bool onlineRefresh() {
+    if (callerKind() < 0) return false;
+    Mutation lock;
+    return lock && RuntimeOnlinePackages::Catalog::refresh();
+}
+uint32_t onlineCount() {
+    return RuntimeOnlinePackages::Catalog::count(callerKind());
+}
+bool onlineGet(uint32_t index, t5_package_catalog_row_t* out) {
+    if (out) *out = {};
+    if (callerKind() < 0 || !out) return false;
+    RuntimePackages::CatalogPackage candidate{};
+    char release[64]{};
+    if (!RuntimeOnlinePackages::Catalog::selected(callerKind(), index,
+                                                   candidate, release) ||
+        !describeCatalog(candidate, &out->package)) return false;
+    std::strcpy(out->archive, candidate.archive);
+    return true;
+}
+bool onlineInstall(uint32_t index) {
+    if (callerKind() < 0) return false;
+    Mutation lock;
+    if (!lock) return false;
+    RuntimePackages::CatalogPackage candidate{};
+    char release[64]{};
+    if (!RuntimeOnlinePackages::Catalog::selected(callerKind(), index,
+                                                   candidate, release)) return false;
+    t5_package_preview_t preview{};
+    if (!describeCatalog(candidate, &preview) || !preview.valid_installation ||
+        !preview.install_allowed || !permitted(preview.kind)) return false;
+    // The selected archive is pinned to this catalog's exact release tag and
+    // SHA; a late 'latest' update cannot change the selected executable.
+    return RuntimeOnlinePackages::OrdinaryZip::install(candidate, release);
+}
+
 const t5_package_manager_api_v1 api = {
     T5_PACKAGE_MANAGER_API_VERSION, sizeof(t5_package_manager_api_v1),
     preview, install, uninstall, previewArchive, installArchive,
+    onlineRefresh, onlineCount, onlineGet, onlineInstall,
 };
 } // namespace
 
