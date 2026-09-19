@@ -21,6 +21,43 @@ static t5_usb_api_v1 usb{};
 static t5_usb_serial_state_t usbStatus{};
 static int starts = 0, stops = 0, configs = 0, lineChanges = 0;
 extern "C" const t5_usb_api_v1* t5_usb_get_api(uint32_t) { return &usb; }
+static bool classStarted = false;
+bool nativeUsbClassAvailable() { return true; }
+bool nativeUsbClassStart(const t5_serial_config_t& config) {
+  if (classStarted) return false;
+  ++starts; ++configs;
+  usbStatus.line_coding.baud_rate = config.baud_rate;
+  usbStatus.line_coding.data_bits = config.data_bits;
+  usbStatus.line_coding.parity = config.parity;
+  usbStatus.line_coding.stop_bits = config.stop_bits;
+  classStarted = true;
+  return true;
+}
+void nativeUsbClassStop() {
+  ++stops;
+  classStarted = false;
+  nativeUsbProviderDetach();
+  usbStatus.status = T5_USB_STATUS_OFF;
+  usbStatus.connected = 0;
+}
+bool nativeUsbClassConfigure(const t5_serial_config_t& config) {
+  ++lineChanges;
+  usbStatus.line_coding.baud_rate = config.baud_rate;
+  usbStatus.line_coding.data_bits = config.data_bits;
+  usbStatus.line_coding.parity = config.parity;
+  usbStatus.line_coding.stop_bits = config.stop_bits;
+  return true;
+}
+bool nativeUsbClassControl(bool dtr, bool rts) {
+  usbStatus.dtr = dtr;
+  usbStatus.rts = rts;
+  return true;
+}
+bool nativeUsbClassReadState(t5_usb_serial_state_t* out) {
+  if (!out) return false;
+  *out = usbStatus;
+  return true;
+}
 static unsigned bodySize = 3;
 static bool unloadInRequest = false;
 static const t5_stream_api_v1* api;
