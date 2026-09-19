@@ -13,7 +13,7 @@ typedef struct {
     unsigned fail_power_write, fail_adc_write, fail_release, fail_probe;
     unsigned adc_ready_ms, fault_on_boost;
     uint8_t fault_latched;
-    int external, no_boost, clock_failed;
+    int external, no_boost, clock_failed, reject_500ma;
 } simulated_board;
 static bool claim_device(void *ctx, uint8_t address, uint64_t *out) {
     simulated_board *b = ctx;
@@ -58,7 +58,9 @@ static bool transact(void *ctx, uint64_t id, const uint8_t *wr, size_t nwr,
             return false;
         }
         b->regs[wr[0]] = wr[1];
-        if (wr[0] == 3 && (wr[1] & 0x20) && b->fault_on_boost) {
+        if (wr[0] == 3 && (wr[1] & 0x20) &&
+            (b->fault_on_boost ||
+             (b->reject_500ma && (b->regs[0x0a] & 0x07) == 0))) {
             b->fault_latched = 0x40;
             b->regs[0x0c] = b->fault_on_boost == 2 ? 0x40 : 0;
         }
@@ -129,9 +131,10 @@ int main(void) {
     assert(!power->acquire_host(NULL, 0, &token) && token == 0);
     assert(board.writes == 0);
     assert(power->acquire_host(NULL, 500, &token) && token != 0);
+    assert(board.now >= 80);             /* v1.2.16 settles for 80 ms. */
     assert(board.fault_reads >= 4);      /* preflight and OTG each read twice */
     assert(board.regs[3] == 0x20);       /* charger off, OTG on */
-    assert(board.regs[0x0a] == 0x90);    /* 5.126V and 500mA limit */
+    assert(board.regs[0x0a] == 0x92);    /* v1.2.16: 5.126 V, 1.2 A peak limit */
     assert(board.regs[2] == 0x55);      /* ADC turned on without losing settings */
     assert(!power->quiesce(NULL) && !driver->quiesce());
     assert(!power->acquire_host(NULL, 500, &(uint64_t){0}));
@@ -146,6 +149,16 @@ int main(void) {
     assert(!driver->quiesce() && board.claim);
     shutdown_board();
     assert(board.releases == 1 && !board.bad_claims);
+
+    /* Simulate hardware known to reject 500mA at OTG start; the historical
+     * 1.2A boost threshold must avoid that fault without masking REG0C. */
+    reset_board();
+    board.reject_500ma = 1;
+    assert(power->acquire_host(NULL, 500, &token));
+    assert(board.regs[0x0a] == 0x92);
+    assert(power->release_host(NULL, token));
+    assert_restored();
+    shutdown_board();
 
     reset_board();
     board.clock_failed = 1;
@@ -238,6 +251,6 @@ int main(void) {
     assert_restored();
     shutdown_board();
 
-    puts("T5S3 VBUS: real OTG, 1s ADC, historical/live/transient faults, conflicts, rollback, timeout, retry: PASS");
+    puts("T5S3 VBUS: v1.2.16 1.2A boost, 80ms settle, ADC, historical/live/transient faults, conflicts, rollback, timeout, retry: PASS");
     return 0;
 }
