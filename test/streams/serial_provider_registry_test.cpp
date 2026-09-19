@@ -8,7 +8,7 @@ using RuntimeSerial::Provider;
 namespace {
 struct Fake {
   t5_serial_device_t device = 0;
-  bool online = true, busy = false, malformed = false;
+  bool online = true, busy = false, malformed = false, failRelease = false;
   int acquired = 0, released = 0, configured = 0, controls = 0;
 };
 bool available(void* p) { return static_cast<Fake*>(p)->online; }
@@ -41,8 +41,9 @@ t5_serial_result_t control(void* p, t5_serial_port_lease_t lease, bool, bool) {
 }
 t5_serial_result_t release(void* p, t5_serial_port_lease_t lease) {
   assert(lease == 11);
-  ++static_cast<Fake*>(p)->released;
-  return T5_SERIAL_OK;
+  auto& f = *static_cast<Fake*>(p);
+  ++f.released;
+  return f.failRelease ? T5_SERIAL_IO : T5_SERIAL_OK;
 }
 Provider make(const char* name, uint8_t priority, Fake& f) {
   return {name, priority, &f, available, matches, acquire, configure, status, control, release};
@@ -74,11 +75,19 @@ int main() {
   t5_serial_port_state_t state{};
   assert(registry.status(lease, &state) == T5_SERIAL_OK && state.device == usb.device);
   assert(registry.control(lease, true, false) == T5_SERIAL_OK && usb.controls == 1);
-  assert(registry.release(lease) == T5_SERIAL_OK && usb.released == 1);
+
+  // Physical release failure retains the *same* public handle. No new owner
+  // may acquire the provider or unload it until an explicit retry succeeds.
+  usb.failRelease = true;
+  assert(registry.release(lease) == T5_SERIAL_IO && registry.leased());
+  t5_serial_port_lease_t refused = 91;
+  assert(registry.acquire(&request, &refused, &rx, &tx) == T5_SERIAL_BUSY && !refused);
+  assert(!registry.remove("usb.serial"));
+  usb.failRelease = false;
+  assert(registry.release(lease) == T5_SERIAL_OK && usb.released == 2);
   assert(registry.release(lease) == T5_SERIAL_CLOSED);
   const auto stale = lease;
 
-  // Defaults fall back only when the higher-priority provider is unavailable.
   usb.online = false;
   assert(registry.acquire(&request, &lease, &rx, &tx) == T5_SERIAL_OK);
   assert(uart.acquired == 1 && lease != stale);
@@ -86,7 +95,6 @@ int main() {
   registry.end();
   assert(uart.released == 1 && registry.configure(lease, &request.config) == T5_SERIAL_CLOSED);
 
-  // Explicit device selection is separate from transport identifiers.
   usb.online = true;
   request.device = uart.device;
   assert(registry.acquire(&request, &lease, &rx, &tx) == T5_SERIAL_OK);
@@ -98,19 +106,17 @@ int main() {
   assert(registry.remove("colliding.serial"));
   request.device = 0;
 
-  // A failed acquisition cannot issue a lease or block subsequent attempts.
   usb.busy = true;
   assert(registry.acquire(&request, &lease, &rx, &tx) == T5_SERIAL_BUSY && !lease);
   usb.busy = false;
   usb.malformed = true;
   assert(registry.acquire(&request, &lease, &rx, &tx) == T5_SERIAL_IO);
-  assert(!lease && !rx && !tx && usb.released == 2);
+  assert(!lease && !rx && !tx && usb.released == 3);
   usb.malformed = false;
   assert(registry.acquire(&request, &lease, &rx, &tx) == T5_SERIAL_OK);
   assert(lease != stale);
   registry.end();
 
-  // Fixed capacity and free-slot reuse; no provider can unload with its lease.
   assert(registry.add(make("fourth.serial", 20, fourth)));
   assert(registry.add(make("fifth.serial", 30, fifth)));
   Fake sixth{11};
