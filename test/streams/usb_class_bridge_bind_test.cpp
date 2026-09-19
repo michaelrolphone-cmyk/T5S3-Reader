@@ -35,6 +35,14 @@ bool classControl(void*, uint64_t t, bool, bool) {
   ++controls;
   return true;
 }
+int32_t classRead(void*, uint64_t t, uint8_t* bytes, uint32_t capacity, uint32_t) {
+  if (t != token || !bytes || !capacity) return -1;
+  return 0;
+}
+int32_t classWrite(void*, uint64_t t, const uint8_t* bytes, uint32_t count, uint32_t) {
+  if (t != token || !bytes || !count) return -1;
+  return static_cast<int32_t>(count);
+}
 bool classClose(void*, uint64_t t) {
   if (t != token) return false;
   ++closes;
@@ -62,9 +70,10 @@ t5_stream_result_t nativeStreamCloseOwned(t5_stream_t) {
 
 int main() {
   assert(!nativeUsbClassAvailable());
-  NativeUsbClassOps ops{nullptr, classOpen, classConfigure, classControl, nullptr, nullptr, classClose};
+  NativeUsbClassOps ops{nullptr, classOpen, classConfigure, classControl,
+                        classRead, classWrite, classClose};
   assert(nativeUsbClassBind(ops));
-  assert(nativeUsbClassAvailable());
+  assert(nativeUsbClassAvailable() && nativeUsbClassHasDataPlane());
 
   RuntimeResources::ExecutionContext context;
   assert(context.begin());
@@ -77,6 +86,8 @@ int main() {
   t5_stream_t rx = 0, tx = 0;
   assert(api->acquire(&request, &lease, &rx, &tx) == T5_SERIAL_OK);
   assert(lease && rx == 3 && tx == 4 && opens == 1 && configs == 1);
+  assert(nativeUsbClassSession().token() == token &&
+         nativeUsbClassSession().rx() == rx && nativeUsbClassSession().tx() == tx);
   assert(api->set_control_lines(lease, true, true) == T5_SERIAL_OK && controls == 1);
   auto next = request.config;
   next.baud_rate = 230400;
@@ -104,6 +115,6 @@ int main() {
   assert(nativeUsbClassAttachPair(1, 3, 4));
   nativeUsbClassStop();
   nativeUsbClassUnbind();
-  std::puts("usb class control plane bound; T5UsbApi unused");
+  std::puts("usb class control/data plane bound; T5UsbApi unused");
   return 0;
 }
