@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build USB host arbitration/discovery ELF; NOT a physical USB controller."""
+"""Build the U1 USB host arbitration/discovery ELF; not the physical controller."""
 import hashlib
 import json
 import os
@@ -20,10 +20,10 @@ def build(cc=None):
         "architecture": "xtensa-esp32s3", "file_name": "driver.elf",
         "requires": [{"capability": "usb.controller", "api": 1}],
         "provides": [{"capability": "usb.host", "api": 1}],
-        "status": "experimental-unpublished",
+        "status": "u1-host-functional",
     }
     if any(manifest.get(k) != v for k, v in required.items()):
-        raise ValueError("Invalid experimental USB host manifest")
+        raise ValueError("Invalid U1 USB host manifest")
     cc = cc or os.environ.get("NATIVE_DRIVER_CC") or shutil.which("xtensa-esp32s3-elf-gcc")
     if not cc:
         core = Path(os.environ.get("PLATFORMIO_CORE_DIR", Path.home() / ".platformio"))
@@ -51,7 +51,7 @@ def build(cc=None):
         raise ValueError("Invalid Xtensa USB host ELF")
     manifest.update(size_bytes=len(payload), sha256=hashlib.sha256(payload).hexdigest())
     (OUTPUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    print(f"Unpublished USB host arbitration ELF built: {elf}; real usb.controller ELF still required")
+    print(f"U1 USB host arbitration ELF built: {elf}; physical controller required")
     return elf
 
 
