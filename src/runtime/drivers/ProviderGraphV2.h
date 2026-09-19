@@ -88,6 +88,9 @@ class GraphV2 final {
     uint32_t generation = 0;
     uint8_t node = 0;
     bool occupied = false;
+    // First release revokes use and unpins exactly once. If quiesce fails,
+    // preserve this slot for an explicit retry; never call the ELF through it.
+    bool pendingRelease = false;
   };
   Node nodes_[kMaxModules]{};
   GrantSlot grants_[kMaxGrants]{};
