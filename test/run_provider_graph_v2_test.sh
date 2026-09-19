@@ -94,3 +94,6 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/provider_graph_destruction_guard_v2_test.cpp" \
   -ldl -o "$build/destruction-test"
 "$build/destruction-test" "$build/stuck.so"
+
+# Source check supplements the graph behavior test, not hardware acceptance.
+python3 "$repo/test/drivers/usb_dynamic_selection_source_test.py"
