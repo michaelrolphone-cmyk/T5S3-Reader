@@ -1,4 +1,5 @@
 import hashlib
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,5 +29,18 @@ class TestReleaseIntegrity(unittest.TestCase):
                 with self.assertRaises(ValueError): stamp_app_manifest(record, elf)
             with self.assertRaises(ValueError):
                 stamp_app_manifest({'file_name':'app.elf','note':'x'*2048}, elf)
+
+    def test_sequential_sd_reader_retains_one_handle_per_integrity_pass(self):
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / 'package-sequential-sd-reader-test'
+            subprocess.run([
+                'c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                '-I' + str(root / 'test/resources/stubs'),
+                '-I' + str(root / 'src'),
+                str(root / 'test/resources/package_sequential_sd_reader_test.cpp'),
+                '-o', str(binary),
+            ], check=True)
+            subprocess.run([str(binary)], check=True)
 
 if __name__ == '__main__': unittest.main()
