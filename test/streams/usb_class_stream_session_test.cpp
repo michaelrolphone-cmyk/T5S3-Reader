@@ -10,19 +10,18 @@ void require(bool ok, const char* what) {
     std::exit(1);
   }
 }
-
 struct FakeClass {
   uint64_t next = 1;
   uint64_t open = 0;
   uint32_t baud = 0;
   bool dtr = false, rts = false;
+  bool failClose = false;
   uint8_t rx[64]{};
   uint32_t rxLen = 0;
   uint8_t tx[64]{};
   uint32_t txLen = 0;
   uint32_t reads = 0, writes = 0;
 };
-
 uint64_t openDev(void* ctx, uint64_t device) {
   auto* f = static_cast<FakeClass*>(ctx);
   if (!device || f->open) return 0;
@@ -64,11 +63,11 @@ int32_t writeDev(void* ctx, uint64_t token, const uint8_t* src, uint32_t len, ui
 }
 bool closeDev(void* ctx, uint64_t token) {
   auto* f = static_cast<FakeClass*>(ctx);
-  if (token != f->open) return false;
+  if (token != f->open || f->failClose) return false;
   f->open = 0;
   return true;
 }
-}  // namespace
+} // namespace
 
 int main() {
   RuntimeStreams::Registry registry;
@@ -102,9 +101,16 @@ int main() {
   require(std::memcmp(fake.tx, outbound, fake.txLen) == 0, "tx-bytes");
   require(session.control(true, false) == T5_STREAM_OK && fake.dtr && !fake.rts, "lines");
 
-  require(session.close(&registry) == T5_STREAM_OK, "close");
+  fake.failClose = true;
+  require(session.close(&registry) == T5_STREAM_IO, "failed-close-reported");
+  require(session.token() == fake.open && session.bound(), "failed-close-pins-elf");
+  require(!session.unbind(), "failed-close-refuses-unbind");
+  require(registry.read(9, rx, got, 1, &n) == T5_STREAM_AGAIN, "failed-close-preserves-endpoints");
+  fake.failClose = false;
+  require(session.close(&registry) == T5_STREAM_OK, "retry-close");
   require(!fake.open, "class-closed");
   require(registry.read(9, rx, got, 1, &n) == T5_STREAM_INVALID, "revoked");
+  require(session.unbind() && !session.bound(), "unbind-after-close");
   std::puts("ok");
   return 0;
 }
