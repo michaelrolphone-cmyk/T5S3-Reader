@@ -96,5 +96,40 @@ class UsbCdcPackage(unittest.TestCase):
         self.assertIn('usb_host_install(', controller)
         self.assertIn('host->bulk_read(', cdc)
         self.assertIn('host->bulk_write(', cdc)
+    def test_vbus_cleanup_is_reached_from_normal_and_elf_error_return(self):
+        # Source-level lifecycle regression: an app's own release and the
+        # launcher's error/normal unwind must converge before dlclose.
+        app = (ROOT / 'Apps/serial_monitor_implementation.inc').read_text(encoding='utf-8')
+        host = (ROOT / 'src/native/NativeAppHost.cpp').read_text(encoding='utf-8')
+        streams = (ROOT / 'src/native/NativeStreamBridge.cpp').read_text(encoding='utf-8')
+        serial = (ROOT / 'src/native/NativeSerialPortBridge_implementation.inc').read_text(encoding='utf-8')
+        bridge = (ROOT / 'src/native/NativeUsbBridge.cpp').read_text(encoding='utf-8')
+        controller = (ROOT / 'Drivers/usb_controller_esp32s3/driver.cpp').read_text(encoding='utf-8')
+        self.assertIn('if (event.type == T5_UI_EVENT_EXIT) {\n            release_serial_session();', app)
+        self.assertLess(host.index('const esp_err_t result = launch_elf_app(path);'),
+                        host.index('nativeStreamsEnd();'))
+        self.assertIn('invocation.end();', streams)
+        self.assertIn('providers.end();', serial)
+        self.assertIn('if (stopUsb && usb && usb->serial_stop) usb->serial_stop();', serial)
+        self.assertIn('if (!RuntimeInstalledProviders::shutdown())', bridge)
+        self.assertIn('power->release_host(power->context, powerLease)', controller)
+    def test_usb_bulk_timeout_must_reclaim_callback_before_vbus_release(self):
+        # Static wiring guard, not a hardware simulation: physical build/ELF
+        # audit and owner measurement remain independent requirements.
+        source = (ROOT / 'Drivers/usb_controller_esp32s3/driver.cpp').read_text(encoding='utf-8')
+        wait = source.split('bool wait_completion(', 1)[1].split('bool idle_transfer(', 1)[0]
+        release = source.split('bool release_interface(', 1)[1].split('int32_t control(', 1)[0]
+        quiesce = source.split('bool quiesce(void *) {', 1)[1].split('void stop()', 1)[0]
+        drain = source.split('bool drain_bulk(', 1)[1].split('bool wait_completion(', 1)[0]
+        self.assertIn('usb_host_endpoint_halt(', drain)
+        self.assertIn('usb_host_endpoint_flush(', drain)
+        self.assertIn('while (inFlight)', drain)
+        self.assertIn('usb_host_endpoint_clear(', drain)
+        self.assertIn('drain_bulk(true)', wait)
+        self.assertLess(release.index('drain_bulk(false)'), release.index('usb_host_interface_release('))
+        self.assertLess(quiesce.index('drain_bulk(false)'), quiesce.index('usb_host_transfer_free('))
+        self.assertLess(quiesce.index('usb_host_uninstall()'),
+                        quiesce.index('power->release_host('))
+        self.assertIn('USBCTRL stage=vbus-released', quiesce)
 
 if __name__ == '__main__': unittest.main()
