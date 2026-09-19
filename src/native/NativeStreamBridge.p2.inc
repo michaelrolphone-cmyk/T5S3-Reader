@@ -75,8 +75,14 @@ int32_t drainPairTx() {
   {
     Lock lock;
     handle = pairTx;
-    if (!pairUsb || !handle) return T5_STREAM_OK;
-    if (pendingUsb.txInFlight) return T5_STREAM_AGAIN;
+    if (!pairUsb || !handle) {
+      usbTxRetry.store(false, std::memory_order_release);
+      return T5_STREAM_OK;
+    }
+    if (pendingUsb.txInFlight) {
+      usbTxRetry.store(true, std::memory_order_release);
+      return T5_STREAM_AGAIN;
+    }
     snapshot = *pairUsb;
     if (pendingUsb.tx != handle) {
       pendingUsb.tx = handle;
@@ -86,27 +92,47 @@ int32_t drainPairTx() {
       uint32_t fetched = 0;
       const auto result = registry.consume(owner, handle, pendingUsb.txBytes,
                                             sizeof(pendingUsb.txBytes), &fetched);
-      if (result != T5_STREAM_OK && result != T5_STREAM_AGAIN) return result;
-      if (fetched > sizeof(pendingUsb.txBytes)) return T5_STREAM_IO;
+      if (result != T5_STREAM_OK && result != T5_STREAM_AGAIN) {
+        usbTxRetry.store(false, std::memory_order_release);
+        return result;
+      }
+      if (fetched > sizeof(pendingUsb.txBytes)) {
+        usbTxRetry.store(false, std::memory_order_release);
+        return T5_STREAM_IO;
+      }
       pendingUsb.txOffset = 0;
       pendingUsb.txSize = fetched;
-      if (!fetched) return T5_STREAM_AGAIN;
+      if (!fetched) {
+        usbTxRetry.store(false, std::memory_order_release);
+        return T5_STREAM_AGAIN;
+      }
     }
     requested = pendingUsb.txSize - pendingUsb.txOffset;
     std::memcpy(outgoing, pendingUsb.txBytes + pendingUsb.txOffset, requested);
     pendingUsb.txInFlight = true;
+    usbTxRetry.store(true, std::memory_order_release);
   }
   uint32_t written = 0;
   const auto result = usbWrite(&snapshot, outgoing, requested, &written);
   Lock lock;
   pendingUsb.txInFlight = false;
   if (!pairUsb || pairTx != handle || pairUsb->epoch != snapshot.epoch ||
-      pendingUsb.tx != handle) return T5_STREAM_DISCONNECTED;
-  if (written > requested) return T5_STREAM_IO;
-  if (result != T5_STREAM_OK && result != T5_STREAM_AGAIN) return result;
+      pendingUsb.tx != handle) {
+    usbTxRetry.store(false, std::memory_order_release);
+    return T5_STREAM_DISCONNECTED;
+  }
+  if (written > requested || (result != T5_STREAM_OK && result != T5_STREAM_AGAIN)) {
+    // Keep the pending bytes for diagnosis/recovery, but do not spin on a
+    // persistent physical error. Never silently treat a short write as done.
+    usbTxRetry.store(false, std::memory_order_release);
+    return written > requested ? T5_STREAM_IO : result;
+  }
   pendingUsb.txOffset += written;
   if (pendingUsb.txOffset == pendingUsb.txSize)
     pendingUsb.txOffset = pendingUsb.txSize = 0;
+  // One additional bounded scheduler pass also drains bytes queued while the
+  // previous class write was in flight; an empty endpoint clears this flag.
+  usbTxRetry.store(true, std::memory_order_release);
   return written ? T5_STREAM_OK : T5_STREAM_AGAIN;
 }
 #define SESSION_CALL(expr) do { if (!authorized()) return T5_STREAM_DENIED; Lock lock; auto r = (expr); wake(); return r; } while (0)
