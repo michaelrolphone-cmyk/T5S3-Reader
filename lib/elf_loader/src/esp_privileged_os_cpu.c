@@ -7,6 +7,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "private/esp_privileged_os_cpu.h"
+#ifdef BOARD_T5S3_PRO
+/* Explicit temporary exception, NOT an OS/CPU inventory entry or an ordinary
+ * app export. Provider admission restricts this import to i2c-esp32s3-v2. */
+#include "RiscFirmwareI2cCompatV1.h"
+#endif
 
 /* Strong links intentionally fail firmware builds when the port ABI is absent.
  * The table contains addresses, not forwarding hardware driver functions. */
@@ -139,6 +144,12 @@ uintptr_t esp_elf_privileged_os_cpu_lookup_v1(const char *symbol)
 {
     if (symbol == NULL || symbol[0] == '\0' ||
         !esp_elf_privileged_os_cpu_scope_owned_v1()) return 0;
+#ifdef BOARD_T5S3_PRO
+    /* The sole physical-bus compatibility exception. Never insert this into
+     * privileged_os_cpu_symbols_v1.def or a globally visible ELF table. */
+    if (strcmp(symbol, "risc_fw_i2c_transact_v1") == 0)
+        return (uintptr_t)&risc_fw_i2c_transact_v1;
+#endif
     for (size_t i = 0; i < sizeof(s_privileged_symbols_v1) /
                            sizeof(s_privileged_symbols_v1[0]); ++i) {
         if (strcmp(symbol, s_privileged_symbols_v1[i].name) == 0)
