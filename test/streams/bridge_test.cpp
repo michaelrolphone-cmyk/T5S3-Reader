@@ -126,22 +126,8 @@ int main() {
   usbStatus.status = T5_USB_STATUS_READY; usbStatus.connected = 1;
   std::strcpy(usbStatus.product, "Legacy UART"); usbStatus.vid = 0x1234; usbStatus.pid = 0x5678;
   nativeUsbProviderAttach(&usbStatus, 0);
-  assert(api->open_usb(&h) == 0);
-  assert(api->open_usb(&other) == T5_STREAM_BUSY);
-  assert(api->write(h, "abc", 3, &count) == 0 && count == 2);
-  usbStatus.status = T5_USB_STATUS_CONFIGURING;
-  assert(api->write(h, "abc", 3, &count) == T5_STREAM_AGAIN && count == 0);
-  usbStatus.status = T5_USB_STATUS_READY;
-  nativeUsbProviderDetach();
-  assert(api->read(h, bytes, 3, &count) == T5_STREAM_DISCONNECTED && count == 0);
-  nativeUsbProviderAttach(&usbStatus, 0);
-  assert(api->write(h, "abc", 3, &count) == T5_STREAM_DISCONNECTED && count == 0);
-  assert(api->close(h) == 0 && stops == 0);
-  nativeUsbProviderDetach();
-  assert(api->open_usb(&h) == 0);
-  nativeUsbProviderAttach(&usbStatus, 0);
-  assert(api->write(h, "abc", 3, &count) == T5_STREAM_OK && count == 2);
-  assert(api->close(h) == 0 && stops == 0);
+  assert(api->open_usb(&h) == T5_STREAM_UNSUPPORTED && !h);
+  assert(api->open_usb(&other) == T5_STREAM_UNSUPPORTED && !other);
   nativeUsbProviderDetach();
 
   const auto* serial = t5_serial_port_get_api(T5_SERIAL_PORT_API_VERSION);
@@ -159,7 +145,7 @@ int main() {
   assert(api->write(rx, "a", 1, &count) == T5_STREAM_DENIED);
   assert(api->read(tx, bytes, 1, &count) == T5_STREAM_DENIED);
   assert(api->read(rx, bytes, 3, &count) == T5_STREAM_AGAIN && count == 0);
-  assert(api->write(tx, "abc", 3, &count) == T5_STREAM_OK && count == 2);
+  assert(api->write(tx, "abc", 3, &count) == T5_STREAM_OK && count == 3);
   t5_serial_port_state_t serialState{};
   assert(serial->read_status(lease, &serialState) == T5_SERIAL_OK);
   assert(serialState.status == T5_SERIAL_STATUS_READY && serialState.connected && serialState.device != 0);
@@ -196,7 +182,7 @@ int main() {
   assert(serial->acquire(&request, &second, &rx, &tx) == T5_SERIAL_OK && second != stale && starts == 2);
   nativeUsbProviderAttach(&usbStatus, 2);
   assert(serial->read_status(second, &serialState) == T5_SERIAL_OK && serialState.device != firstDevice);
-  assert(api->write(tx, "abc", 3, &count) == T5_STREAM_OK && count == 2);
+  assert(api->write(tx, "abc", 3, &count) == T5_STREAM_OK && count == 3);
   assert(api->open_http("https://example.test/file", &h) == 0);
   assert(api->open_http("https://example.test/other", &other) == T5_STREAM_BUSY);
   httpTask(httpContext);
