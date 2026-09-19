@@ -35,6 +35,9 @@ bash "$repo/test/run_provider_graph_v2_test.sh"
 bash "$repo/test/run_usb_provider_stack_v2_test.sh"
 # Full three-ELF chain with simulated controller ONLY, not hardware acceptance.
 bash "$repo/test/run_usb_three_elf_stack_v2_test.sh"
+# Firmware must recover from a consumed grant only through graph quiescence,
+# and retry failed teardown on exit/reopen rather than permanent quarantine.
+python3 "$repo/test/drivers/usb_teardown_retry_test.py"
 exports="$(nm -D --defined-only "$build/cdc-v2.so" | awk '{print $3}')"
 [[ "$exports" == "t5_driver_get" ]] || { echo "Unexpected ELF export: $exports" >&2; exit 1; }
 if nm -D --undefined-only "$build/cdc-v2.so" | grep -E 'usb_host_|nativeUsb|UsbCdcDriverRuntime|t5_usb_'; then
