@@ -12,6 +12,7 @@ typedef struct {
     unsigned writes, releases, bad_claims, fault_reads;
     unsigned fail_power_write, fail_adc_write, fail_release, fail_probe;
     unsigned adc_ready_ms, fault_on_boost;
+    unsigned late_fault_ms, late_fault_injected;
     uint8_t fault_latched;
     int external, no_boost, clock_failed, reject_500ma;
 } simulated_board;
@@ -41,6 +42,11 @@ static bool transact(void *ctx, uint64_t id, const uint8_t *wr, size_t nwr,
             else *rd = b->external ? 0x80 : 0;
         } else if (reg == 0x0c) {
             /* First REG0C read returns history; next read returns live fault. */
+            if (b->late_fault_ms && b->now >= b->late_fault_ms &&
+                !b->late_fault_injected) {
+                b->fault_latched = 0x40;
+                b->late_fault_injected = 1;
+            }
             ++b->fault_reads;
             *rd = b->fault_latched ? b->fault_latched : b->regs[0x0c];
             b->fault_latched = 0;
@@ -239,9 +245,36 @@ int main(void) {
     shutdown_board();
 
     reset_board();
-    board.fault_on_boost = 1; /* New transient on enable: fail, restore. */
-    assert(!power->acquire_host(NULL, 500, &token));
+    board.fault_on_boost = 1; /* One resolved inrush: qualify stable ADC. */
+    board.adc_ready_ms = 1000;
+    assert(power->acquire_host(NULL, 500, &token));
+    assert(board.now >= 1000 && board.now < 1500);
     assert(board.fault_reads >= 4);
+    assert(power->release_host(NULL, token));
+    assert_restored();
+    shutdown_board();
+
+    reset_board();
+    board.fault_on_boost = 1; /* A SECOND transient in same startup is unsafe. */
+    board.late_fault_ms = 200;
+    assert(!power->acquire_host(NULL, 500, &token));
+    assert(board.late_fault_injected);
+    assert(board.now < 1500);
+    assert_restored();
+    shutdown_board();
+
+    reset_board();
+    board.fault_on_boost = 1; /* Cleared fault without OTG regulation is unsafe. */
+    board.no_boost = 1;
+    assert(!power->acquire_host(NULL, 500, &token));
+    assert_restored();
+    shutdown_board();
+
+    reset_board();
+    board.fault_on_boost = 1; /* Cleared fault with no valid ADC still times out. */
+    board.adc_ready_ms = 2000;
+    assert(!power->acquire_host(NULL, 500, &token));
+    assert(board.now >= 1500);
     assert_restored();
     shutdown_board();
 
@@ -251,6 +284,6 @@ int main(void) {
     assert_restored();
     shutdown_board();
 
-    puts("T5S3 VBUS: v1.2.16 1.2A boost, 80ms settle, ADC, historical/live/transient faults, conflicts, rollback, timeout, retry: PASS");
+    puts("T5S3 VBUS: v1.2.16 1.2A boost, qualified transient recovery, repeat/live faults, ADC, conflicts, rollback, timeout, retry: PASS");
     return 0;
 }

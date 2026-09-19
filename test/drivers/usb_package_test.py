@@ -79,8 +79,19 @@ class UsbCdcPackage(unittest.TestCase):
         self.assertIn('RuntimeInstalledProviders::acquire(', bridge)
         self.assertIn('RuntimeInstalledProviders::shutdown()', bridge)
         self.assertNotIn('#include <usb/usb_host.h>', bridge)
-        self.assertNotIn('usb_host_install(', bridge)
-        self.assertNotIn('Wire.beginTransmission(', bridge)
+        # Hardware ownership checks apply to source statements, not comments
+        # documenting the ELF host; do not weaken checks for executable calls.
+        bridge_code = '\n'.join(line for line in bridge.splitlines()
+                                if not line.lstrip().startswith('//'))
+        self.assertNotIn('usb_host_install(', bridge_code)
+        self.assertNotIn('Wire.beginTransmission(', bridge_code)
+        # v1.2.16 released the shared debug USB PHY before host initialization.
+        # Guard this handoff against another firmware/ELF migration regression.
+        startup = bridge.split('bool serialStart(', 1)[1]
+        self.assertIn('Serial.end();', bridge)
+        self.assertIn('Serial.begin(115200);', bridge)
+        self.assertLess(startup.index('suspendDebugConsole();'),
+                        startup.index('RuntimeInstalledProviders::acquire('))
         self.assertIn('#include <usb/usb_host.h>', controller)
         self.assertIn('usb_host_install(', controller)
         self.assertIn('host->bulk_read(', cdc)
