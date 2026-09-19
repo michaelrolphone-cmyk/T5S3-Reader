@@ -4,7 +4,6 @@
 #include <T5DriverManagerApi.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -12,6 +11,7 @@
 
 #include "runtime/drivers/DriverStageActions.h"
 #include "runtime/packages/PackageIdentity.h"
+#include "runtime/packages/PackageMutationGate.h"
 
 namespace {
 // This ABI is retained ONLY for inspecting and explicitly recovering older
@@ -27,18 +27,9 @@ struct RecoveryItem {
     bool isDownload = false;
 };
 std::vector<RecoveryItem> recoveryItems;
-
-std::atomic_flag managerMutation = ATOMIC_FLAG_INIT;
-struct ManagerMutation {
-    ManagerMutation() : acquired(!managerMutation.test_and_set(std::memory_order_acquire)) {}
-    ~ManagerMutation() {
-        if (acquired) managerMutation.clear(std::memory_order_release);
-    }
-    ManagerMutation(const ManagerMutation&) = delete;
-    ManagerMutation& operator=(const ManagerMutation&) = delete;
-    explicit operator bool() const { return acquired; }
-    bool acquired;
-};
+// The ordinary installer and historical recovery share the same /Drivers
+// stage/backup/target paths. A bridge-local lock is NOT transaction isolation.
+using ManagerMutation = RuntimePackages::ScopedPackageMutation;
 
 // Privilege is derived from the authenticated execution path, not a package
 // catalog row, a proposed driver name, or a manifest supplied by a caller.
@@ -72,7 +63,7 @@ bool installWithProgress(uint32_t, t5_driver_install_progress_t, void*) { return
 // Inventory is bounded to manager-owned historical stages. Do not treat a
 // similarly named user folder as an executable, and do not delete anything
 // during discovery. Stage resolution and retry go through the ordinary
-// transaction, not this legacy catalog ABI.
+// transaction, not this legacy catalog ABI. Called with the shared gate held.
 bool rebuildRecoveryInventory() {
     if (!Storage.ready()) return false;
     std::vector<RecoveryItem> found;
@@ -123,12 +114,16 @@ bool recoveryRefresh() {
 }
 
 uint32_t recoveryCount() {
-    return managerApp() ? static_cast<uint32_t>(recoveryItems.size()) : 0u;
+    if (!managerApp()) return 0u;
+    ManagerMutation mutation;
+    return mutation ? static_cast<uint32_t>(recoveryItems.size()) : 0u;
 }
 
 bool recoveryGet(uint32_t index, t5_driver_recovery_entry_t* out) {
-    if (!managerApp() || !out || index >= recoveryItems.size()) return false;
-    *out = {};
+    if (out) *out = {};
+    if (!managerApp() || !out) return false;
+    ManagerMutation mutation;
+    if (!mutation || index >= recoveryItems.size()) return false;
     const RecoveryItem& item = recoveryItems[index];
     if (item.isDownload) {
         out->kind = T5_DRIVER_RECOVERY_DOWNLOAD;
