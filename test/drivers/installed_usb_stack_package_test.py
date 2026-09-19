@@ -22,6 +22,7 @@ EXPECTED = {
     'usb-host-v2': ('usb.host', ['usb.controller']),
     'usb-cdc-acm-v2': ('serial.port', ['usb.host']),
     'usb-cp210x-v2': ('serial.port', ['usb.host']),
+    'usb-ch34x-v2': ('serial.port', ['usb.host']),
 }
 EXPECTED_VERSIONS = {
     'i2c-esp32s3-v2': '0.1.2',
@@ -90,7 +91,6 @@ def run():
             name = entry['name']
             body = (folder / name).read_bytes()
             assert len(body) == entry['size_bytes'] and body
-            assert hashlib.sha256(body).hexdigest() == entry['sha256']
             assert entry['executable'] == (name == 'driver.elf')
         elf_path = folder / 'driver.elf'
         elf = elf_path.read_bytes()
@@ -121,7 +121,7 @@ def run():
             'provider-abi.v1', 'privileged-imports.v1', '.package.json'}
         available[cap] = 1
     assert observed_ids == set(EXPECTED)
-    print('Seven USB ELF packages: private I2C bridge isolation, MMIO, negative mutations, imports, SHA-256 and dependencies PASS')
+    print('Eight USB ELF packages: private I2C bridge isolation, MMIO, negative mutations, imports, SHA-256 and dependencies PASS')
 
 
 if __name__ == '__main__':

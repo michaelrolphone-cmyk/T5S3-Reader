@@ -30,6 +30,9 @@ const risc_usb_host_discovery_v1* host = nullptr;
 const risc_usb_cdc_api_v1* serial = nullptr;
 uint64_t device = 0;
 uint64_t session = 0;
+uint64_t unboundToken = 0;
+uint64_t pendingConfigurationToken = 0;
+int32_t lastDeviceCount = -1;
 bool running = false;
 bool quarantined = false;
 bool debugConsoleSuspended = false;
@@ -139,17 +142,19 @@ bool closeClass() {
     return true;
 }
 
-// Pick a class by actual descriptor-provided VID/PID, not by claiming a generic
-// USB capability from firmware. The class ELF parses and claims interfaces.
+// A class ELF examines the actual descriptors and VID/PID; the firmware does
+// not make chip-specific matching decisions. Probe each installable class by
+// stable package ID, never fall back to a resident hardware implementation.
 bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
-    const char* first = vid == 0x10c4u ? "usb-cp210x-v2" : "usb-cdc-acm-v2";
-    const char* second = vid == 0x10c4u ? "usb-cdc-acm-v2" : "usb-cp210x-v2";
-    const char* choices[] = {first, second};
+    const char* choices[] = {"usb-ch34x-v2", "usb-cdc-acm-v2", "usb-cp210x-v2"};
+    bool foundProvider = false;
     for (const char* id : choices) {
         Lease grant{};
         if (!RuntimeInstalledProviders::acquire(id, "serial.port", 1, &grant)) continue;
+        foundProvider = true;
         const auto* api = static_cast<const risc_usb_cdc_api_v1*>(grant.interface);
         if (!classApiValid(api)) {
+            LOG_ERR("USB", "USBREF stage=serial-class-abi-invalid provider=%s", id);
             if (!RuntimeInstalledProviders::release(&grant)) quarantined = true;
             if (quarantined) return false;
             continue;
@@ -163,6 +168,8 @@ bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
             serial = api;
             session = opened;
             device = token;
+            unboundToken = 0;
+            pendingConfigurationToken = 0;
             state.vid = vid;
             state.pid = pid;
             state.connected = 1;
@@ -193,6 +200,9 @@ bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
             return false;
         }
     }
+    LOG_ERR("USB", "USBREF stage=serial-class-unbound vid=%04X pid=%04X provider-installed=%u",
+            static_cast<unsigned>(vid), static_cast<unsigned>(pid),
+            static_cast<unsigned>(foundProvider));
     return false;
 }
 
@@ -215,6 +225,11 @@ void reconcile() {
         error(-1211);
         return;
     }
+    if (lastDeviceCount != static_cast<int32_t>(count)) {
+        lastDeviceCount = static_cast<int32_t>(count);
+        LOG_INF("USB", "USBREF stage=host-devices count=%u events=%u",
+                static_cast<unsigned>(count), static_cast<unsigned>(processed));
+    }
     if (session) {
         bool present = false;
         for (size_t i = 0; i < count; ++i)
@@ -224,16 +239,52 @@ void reconcile() {
             state.status = T5_USB_STATUS_WAITING;
         } else return;
     }
-    // A disconnected class never causes us to restart an old physical token.
+    if (!count) {
+        unboundToken = pendingConfigurationToken = 0;
+        state.status = T5_USB_STATUS_WAITING;
+        state.last_error = 0;
+        return;
+    }
+    bool missingConfiguration = false;
+    bool failedClass = false;
     for (size_t i = 0; i < count && !quarantined; ++i) {
+        if (devices[i] == unboundToken) {
+            failedClass = true;
+            continue; // Do not repeatedly execute vendor init for a rejected device.
+        }
         std::memset(configurationDescriptor, 0, sizeof(configurationDescriptor));
         size_t length = sizeof(configurationDescriptor);
         uint16_t vid = 0, pid = 0;
         if (!host->host.configuration(host->host.context, devices[i],
-                                      configurationDescriptor, &length, &vid, &pid)) continue;
+                                      configurationDescriptor, &length, &vid, &pid)) {
+            missingConfiguration = true;
+            if (pendingConfigurationToken != devices[i]) {
+                pendingConfigurationToken = devices[i];
+                LOG_ERR("USB", "USBREF stage=configuration-unavailable token=%llu",
+                        static_cast<unsigned long long>(devices[i]));
+            }
+            continue; // Enumeration may still be completing: retry on next poll.
+        }
+        pendingConfigurationToken = 0;
+        LOG_INF("USB", "USBREF stage=configuration-ready vid=%04X pid=%04X length=%u",
+                static_cast<unsigned>(vid), static_cast<unsigned>(pid),
+                static_cast<unsigned>(length));
         if (openClass(devices[i], vid, pid)) return;
+        if (quarantined) return;
+        unboundToken = devices[i];
+        failedClass = true;
     }
-    if (!quarantined) state.status = T5_USB_STATUS_WAITING;
+    if (quarantined) return;
+    if (failedClass) {
+        state.status = T5_USB_STATUS_ERROR;
+        state.last_error = -1240; // Device enumerated but no class ELF could bind.
+    } else if (missingConfiguration) {
+        state.status = T5_USB_STATUS_ERROR;
+        state.last_error = -1241; // USB attached, configuration not yet readable.
+    } else {
+        state.status = T5_USB_STATUS_WAITING;
+        state.last_error = 0;
+    }
 }
 
 // This is a CHEAP hardware-platform predicate, not an installed-package
@@ -289,6 +340,8 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
     }
     initialState(T5_USB_STATUS_WAITING);
     state.line_coding = *coding;
+    unboundToken = pendingConfigurationToken = 0;
+    lastDeviceCount = -1;
     running = true;
     LOG_INF("USB", "USBREF stage=initial-reconcile");
     reconcile();
@@ -315,6 +368,8 @@ void serialStop() {
         return;
     }
     running = false;
+    unboundToken = pendingConfigurationToken = 0;
+    lastDeviceCount = -1;
     initialState(T5_USB_STATUS_OFF);
     restoreDebugConsole();
     LOG_INF("USB", "USBREF state=stopped source=installed-elf");
