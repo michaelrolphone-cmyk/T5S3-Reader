@@ -82,7 +82,28 @@ class UsbTeardownRetry(unittest.TestCase):
         self.assertLess(quiesce.index("usb_host_uninstall()"),
                         quiesce.index("power->release_host("))
         self.assertIn("USBCTRL cleanup-failed stage=device-close", quiesce)
-        self.assertEqual(json.loads(MANIFEST.read_text(encoding="utf-8"))["version"], "0.1.3")
+        self.assertEqual(json.loads(MANIFEST.read_text(encoding="utf-8"))["version"], "0.1.4")
+
+    def test_idle_host_drains_no_clients_even_if_no_device_needs_freeing(self):
+        quiesce = self.controller.split("bool quiesce(void *)", 1)[1].split(
+            "void stop()", 1
+        )[0]
+        # ESP-IDF v4.4.7 posts NO_CLIENTS on deregistration. With zero
+        # devices, device_free_all returns ESP_OK so the !freed loop skips.
+        # A final library event pass MUST exist outside that loop, before
+        # uninstall and before releasing power; a timeout means already idle.
+        self.assertLess(quiesce.index("usb_host_client_deregister(client)"),
+                        quiesce.index("usb_host_device_free_all()"))
+        self.assertIn("bool freed = rc == ESP_OK;", quiesce)
+        self.assertIn("for (uint32_t i = 0; !freed && i < kTeardownTicks; ++i)", quiesce)
+        final = quiesce.split("if (!freed) {", 1)[1]
+        self.assertIn("rc = usb_host_lib_handle_events(0, &finalFlags);", final)
+        self.assertIn("rc != ESP_OK && rc != ESP_ERR_TIMEOUT", final)
+        self.assertIn("USBCTRL cleanup-failed stage=final-lib-events", final)
+        self.assertLess(final.index("usb_host_lib_handle_events(0, &finalFlags)"),
+                        final.index("usb_host_uninstall()"))
+        self.assertLess(final.index("usb_host_uninstall()"),
+                        final.index("power->release_host("))
 
 
 if __name__ == "__main__":
