@@ -82,10 +82,8 @@ jobs:
       - name: Build RiscRTE gh_release
         run: pio run -e gh_release
 
-      # Keep the release build's three firmware artifacts outside PlatformIO's
-      # mutable .pio tree and the dist tree used by subsequent ELF builders.
-      # The merged binary is checked here, not discovered missing after a full
-      # driver/app build when staging begins.
+      # Preserve firmware away from both the mutable PlatformIO workspace and
+      # the dist tree before ANY ELF builds; verify exact bytes again on stage.
       - name: Preserve firmware build outputs
         shell: bash
         run: |
@@ -93,7 +91,6 @@ jobs:
           SRC=".pio/build/gh_release"
           DST="$RUNNER_TEMP/riscrte-firmware"
           mkdir -p "$DST"
-
           for FILE in firmware.bin firmware-merged.bin firmware.elf; do
             if [[ ! -s "$SRC/$FILE" ]]; then
               echo "::error::Firmware build did not produce $SRC/$FILE"
@@ -101,7 +98,6 @@ jobs:
             fi
             cp "$SRC/$FILE" "$DST/$FILE"
           done
-
           sha256sum "$DST/firmware.bin" "$DST/firmware-merged.bin" "$DST/firmware.elf" \
             | tee "$DST/SHA256SUMS"
 
@@ -125,6 +121,8 @@ jobs:
           fi
           echo "Baked RiscRTE version $VER present in firmware.bin"
 
+      # Historical builders remain local input/validation adapters. Their
+      # loose output is NEVER a normal release asset or online install source.
       - name: Build and validate GPS driver package
         run: |
           python scripts/build_driver.py
@@ -136,11 +134,14 @@ jobs:
           python scripts/build_usb_cdc_driver.py
           bash test/run_native_app_test.sh dist/drivers/usb-cdc-acm/driver.elf
 
-      - name: Build native ELF apps and manifests
+      - name: Build native ELF apps and stage ordinary packages
         run: python scripts/build_all_apps.py
 
-      - name: Build real hardware-owning USB providers and canonical packages
+      - name: Build, verify and bundle ordinary driver and app packages
+        env:
+          RISC_PACKAGE_RELEASE: ${{ steps.ver.outputs.tag }}
         run: |
+          set -euo pipefail
           python -m pip install pyelftools
           pio pkg install -e t5s3-pro
           python scripts/probe_usb_controller_esp32s3.py --link-experiment
@@ -155,6 +156,7 @@ jobs:
           python scripts/build_installed_usb_stack.py
           python test/drivers/installed_usb_stack_package_test.py
           python scripts/export_canonical_driver_release.py
+          python test/resources/release_package_catalog_test.py
 
       - name: Stage RiscRTE firmware image
         shell: bash
@@ -163,11 +165,8 @@ jobs:
           SRC="$RUNNER_TEMP/riscrte-firmware"
           VER="${{ steps.ver.outputs.ver }}"
           MERGED="${{ steps.ver.outputs.bin }}"
-
-          # Verify the preserved images are unchanged before publishing them.
           sha256sum -c "$SRC/SHA256SUMS"
           mkdir -p firmware dist
-
           cp "$SRC/firmware-merged.bin" "$MERGED"
           cp "$SRC/firmware.bin" dist/firmware-t5s3-pro.bin
           cp "$SRC/firmware.bin" "dist/riscrte_lilygo_t5s3_${VER}-app.bin"
@@ -199,6 +198,9 @@ jobs:
             git push origin "$TAG"
           fi
 
+      # The publishing allowlist is firmware + one generic index + exactly
+      # its enumerated .rte.zip assets. Do not publish loose app/driver inputs,
+      # fixed USB catalogs, split manifests or an unverified extra archive.
       - name: Publish GitHub Release
         shell: bash
         env:
@@ -208,39 +210,39 @@ jobs:
           MERGED: ${{ steps.ver.outputs.bin }}
         run: |
           set -euo pipefail
+          NOTES="RiscRTE ${VER} firmware for the LilyGo T5S3 E-Paper Pro. firmware-t5s3-pro.bin and riscrte_lilygo_t5s3_${VER}-app.bin are OTA/SD app images (0x10000). riscrte_lilygo_t5s3_${VER}.bin is the merged USB image (0x0) and must not be used for SD/OTA. The matching .elf is a non-flashable debug-symbol image. Apps, drivers, services and providers are distributed only as verified .rte.zip archives in package-catalog.json. CrossPoint reader functionality is included as the ebook-reader subsystem of RiscRTE."
 
-          NOTES="RiscRTE ${VER} firmware for the LilyGo T5S3 E-Paper Pro. firmware-t5s3-pro.bin and riscrte_lilygo_t5s3_${VER}-app.bin are OTA/SD app images (0x10000). riscrte_lilygo_t5s3_${VER}.bin is the merged USB image (0x0) and must not be used for SD/OTA. The matching .elf is a non-flashable debug-symbol image retained for decoding panic backtraces. CrossPoint reader functionality is included as the ebook-reader subsystem of RiscRTE."
-
-          mapfile -d '' APP_ELFS < <(
-            find dist/apps -type f \( -name '*.elf' -o -name '*.json' \) -print0 | sort -z
+          # The validator checks the immutable tag, every referenced archive,
+          # exact archive inventory and per-archive size/SHA/manifest contract.
+          RISC_PACKAGE_RELEASE="$TAG" python test/resources/release_package_catalog_test.py
+          mapfile -d '' PACKAGE_ASSETS < <(
+            find dist/release-packages -maxdepth 1 -type f \
+              \( -name '*.rte.zip' -o -name 'package-catalog.json' \) -print0 | sort -z
           )
-          mapfile -d '' CANONICAL_DRIVER_ASSETS < <(
-            find dist/release-packages -maxdepth 1 -type f -print0 | sort -z
-          )
-
+          if (( ${#PACKAGE_ASSETS[@]} < 3 )); then
+            echo "::error::Missing ordinary package catalog or app/driver ZIPs"
+            exit 1
+          fi
           ASSETS=(
             "dist/firmware-t5s3-pro.bin"
             "dist/riscrte_lilygo_t5s3_${VER}-app.bin"
             "dist/riscrte_lilygo_t5s3_${VER}.elf"
             "$MERGED"
-            "${APP_ELFS[@]}"
-            "${CANONICAL_DRIVER_ASSETS[@]}"
-            "dist/drivers/driver-catalog.json"
-            dist/drivers/*.t5driver.zip
-            dist/drivers/*.t5driver.json
-            dist/drivers/*.t5driver.elf
+            "${PACKAGE_ASSETS[@]}"
           )
-
-          echo "RiscRTE release assets:"
+          for ASSET in "${ASSETS[@]}"; do
+            if [[ ! -s "$ASSET" ]]; then
+              echo "::error::Missing or empty release asset: $ASSET"
+              exit 1
+            fi
+          done
+          echo 'Validated RiscRTE release asset inventory:'
           printf '  %s\n' "${ASSETS[@]}"
 
+          # Never silently mutate an existing immutable tag/release's assets.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" \
-              "${ASSETS[@]}" \
-              --clobber
-          else
-            gh release create "$TAG" \
-              "${ASSETS[@]}" \
-              --title "RiscRTE ${VER}" \
-              --notes "$NOTES"
+            echo "::error::Refusing to replace an existing immutable release $TAG"
+            exit 1
           fi
+          gh release create "$TAG" "${ASSETS[@]}" \
+            --title "RiscRTE ${VER}" --notes "$NOTES"

@@ -1,27 +1,31 @@
 #!/usr/bin/env python3
-"""Assemble linked providers into installable ordinary packages.
+"""Assemble linked USB providers into ordinary, installable ZIP packages.
 
-The I2C provider is a temporary firmware-backed capability ELF; the other
-hardware-owning USB providers stay in independently installed ELFs. Run after
-all seven real provider builds, not mock objects. No flashing or publishing.
+The I2C provider temporarily uses a private firmware-backed controller port;
+other hardware-owning USB providers remain independently installed ELFs. Run
+after the real provider builds. This script does not flash or publish assets.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
+import re
 import shutil
 import sys
 
 from generate_provider_package_inputs_v1 import prepare as provider_inputs
 from generate_privileged_imports_v1 import extract_imports
+from pack_rte_zip import catalog_row, pack_directory
 from verify_provider_relocation_map import audit_loader_map
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'dist/experimental'
 DESTINATION = ROOT / 'dist/packages'
 BRIDGE = 'risc_fw_i2c_transact_v1'
-# Dependency order doubles as a direct-install order for an initially empty SD.
+# These seven build targets are hardware dependencies, not the release catalog
+# allowlist. The exporter discovers all four package kinds from their manifests.
 DRIVERS = (
     ('platform-clock-v1', 'platform_clock_v1', 'platform-clock-v1', 'driver.elf'),
     ('i2c-esp32s3-v2', 'i2c_esp32s3_v2', 'i2c-esp32s3-v2', 'driver.elf'),
@@ -32,11 +36,6 @@ DRIVERS = (
     ('usb-cdc-acm-v2', 'usb_cdc_v2', 'usb-cdc-acm-v2', 'driver.elf'),
     ('usb-cp210x-v2', 'usb_cp210x_v2', 'usb-cp210x-v2', 'driver.elf'),
 )
-EXPECTED_VERSIONS = {
-    'i2c-esp32s3-v2': '0.1.2',
-    'board-power-t5s3-v2': '0.1.3',
-    'usb-controller-esp32s3': '0.1.1',
-}
 
 
 def entry(path: Path, executable: bool) -> dict:
@@ -58,15 +57,15 @@ def build() -> list[dict]:
         if metadata.get('id') != identity or metadata.get('architecture') != 'xtensa-esp32s3':
             raise ValueError(f'unexpected source identity: {source}')
         capability, api = canonical_manifest(source)
-        version = metadata.get('version', '0.1.0')
-        expected_version = EXPECTED_VERSIONS.get(identity, '0.1.0')
-        if version != expected_version:
-            raise ValueError(f'unknown package version for {identity}: {version}')
+        version = metadata.get('version')
+        if not isinstance(version, str) or not re.fullmatch(
+                r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', version):
+            raise ValueError(f'invalid numeric package version for {identity}: {version!r}')
         elf = SOURCE / output_name / elf_name
         if not elf.is_file() or elf.stat().st_size < 52:
             raise FileNotFoundError(f'actual linked provider ELF missing: {elf}')
-        # Validate the FINAL linked executable. Internal relative targets must
-        # map; absolute controller MMIO pointers must be declared and kept.
+        # Validate the final linked executable, including absolute controller
+        # MMIO pointers which must stay declared and mapped.
         mapping = audit_loader_map(elf)
         if (mapping['unmapped_relocations'] or mapping['unmapped_relative_values'] or
                 mapping['unmapped_executable_sections']):
@@ -96,16 +95,18 @@ def build() -> list[dict]:
         if len(encoded) > 4096:
             raise ValueError(f'manifest exceeds device parser bound: {identity}')
         (target / '.package.json').write_bytes(encoded)
-        catalog.append({'id': identity, 'version': version, 'capability': capability,
-                        'api': api, 'requires': dependencies,
-                        'files': [entry(target / name, name == 'driver.elf') for name in
-                                  ('.package.json', 'driver.elf', 'provider-abi.v1',
-                                   'privileged-imports.v1')]})
-        print(f'Installable: {identity} -> {target} ({capability}@{api})', flush=True)
-    (DESTINATION / 'usb-provider-catalog.json').write_text(
-        json.dumps({'schema': 1, 'packages': catalog}, indent=2) + '\n',
-        encoding='utf-8')
-    print('Seven canonical packages assembled; no ELF activated or firmware flashed.', flush=True)
+        asset_name = f'driver-{identity}-{version}-xtensa-esp32s3.rte.zip'
+        archive = pack_directory(target)
+        (DESTINATION / asset_name).write_bytes(archive)
+        catalog.append(catalog_row(target, asset_name, archive))
+        print(f'Installable: {identity}@{version} -> {asset_name} ({capability}@{api})', flush=True)
+    release = os.environ.get('RISC_PACKAGE_RELEASE', 'unpublished-build')
+    if not re.fullmatch(r'[A-Za-z0-9._-]{1,63}', release):
+        raise ValueError('invalid immutable release identifier')
+    (DESTINATION / 'package-catalog.json').write_text(
+        json.dumps({'schema': 1, 'release': release, 'packages': catalog},
+                   indent=2) + '\n', encoding='utf-8')
+    print(f'{len(catalog)} USB packages assembled as ZIPs; no ELF activated or firmware flashed.', flush=True)
     return catalog
 
 

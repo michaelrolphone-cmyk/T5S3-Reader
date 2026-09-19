@@ -5,10 +5,11 @@
 #include <string.h>
 
 void app_main(void);
-static int downloads, saw_alpha, saw_beta, saw_installed, saw_update;
+static int online_refreshes, online_installs, saw_alpha, saw_beta, saw_installed, saw_update;
 static int back_disabled, back_restored, event_index;
-static uint32_t downloaded_index;
+static uint32_t installed_index;
 static int preview_calls, install_calls;
+
 static int32_t width(void) { return 540; }
 static int32_t height(void) { return 960; }
 static void clear(void) {}
@@ -19,48 +20,6 @@ static void rect(int32_t x, int32_t y, int32_t w, int32_t h, bool black) {
     assert(x + w <= 540 && y + h <= 960);
 }
 static void present(bool full) { (void)full; }
-static bool refresh(void) { return true; }
-static uint32_t count(void) { return 2; }
-static bool asset_get(uint32_t index, t5_app_release_asset_t *asset) {
-    assert(index < count());
-    memset(asset, 0, sizeof(*asset));
-    strcpy(asset->name, index == 0 ? "alpha.elf" : "beta.elf");
-    asset->size = 1234 + index;
-    return true;
-}
-static bool manifest_get(uint32_t index, t5_app_manifest_t *manifest) {
-    assert(index < count());
-    memset(manifest, 0, sizeof(*manifest));
-    strcpy(manifest->display_name, index == 0 ? "Alpha" : "Beta");
-    strcpy(manifest->file_name, index == 0 ? "alpha.elf" : "beta.elf");
-    strcpy(manifest->min_firmware_version, "1.1.5");
-    strcpy(manifest->icon, index == 0 ? "solid:f013" : "regular:f007");
-    manifest->compatible = true;
-    return true;
-}
-static bool installed_version_get(const char *file_name, char *version, size_t capacity) {
-    assert(file_name && version && capacity >= T5_APP_VERSION_MAX);
-    if (!strcmp(file_name, "alpha.elf")) {
-        strcpy(version, "1.0.0");
-        return true;
-    }
-    if (!strcmp(file_name, "beta.elf")) {
-        strcpy(version, "0.9.0");
-        return true;
-    }
-    return false;
-}
-static bool catalog_version_get(uint32_t index, char *version, size_t capacity) {
-    assert(index < count() && version && capacity >= T5_APP_VERSION_MAX);
-    strcpy(version, "1.0.0");
-    return true;
-}
-static bool download(uint32_t index) {
-    assert(index < count());
-    ++downloads;
-    downloaded_index = index;
-    return true;
-}
 static bool poll(t5_app_input_t *input, uint32_t wait_ms) {
     (void)wait_ms;
     memset(input, 0, sizeof(*input));
@@ -76,7 +35,7 @@ static bool directory_open(const char *path) {
 }
 static bool directory_next(t5_app_dirent_t *out) {
     assert(out);
-    return false; // Empty offline inventory in release-view regression.
+    return false;
 }
 static void directory_close(void) {}
 static const t5_app_api_v1 api = {
@@ -92,19 +51,13 @@ static const t5_app_api_v1 api = {
     .dir_open = directory_open,
     .dir_next = directory_next,
     .dir_close = directory_close,
-    .app_catalog_refresh = refresh,
-    .app_catalog_count = count,
-    .app_catalog_get = asset_get,
-    .app_catalog_download = download,
     .set_back_exits_app = set_back_exits_app,
-    .app_catalog_manifest_get = manifest_get,
-    .installed_app_version_get = installed_version_get,
-    .app_catalog_version_get = catalog_version_get,
 };
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) {
     assert(version == T5_APP_ABI_VERSION);
     return &api;
 }
+
 static bool preview(const char *folder, t5_package_preview_t *out) {
     assert(folder && out);
     ++preview_calls;
@@ -116,26 +69,68 @@ static bool uninstall(uint8_t kind, const char *id) {
     (void)kind; (void)id;
     return true;
 }
+static bool preview_archive(const char *archive, t5_package_preview_t *out) {
+    (void)archive; (void)out;
+    return false;
+}
+static bool install_archive(const char *archive) { (void)archive; return false; }
+static bool online_refresh(void) { ++online_refreshes; return true; }
+static uint32_t online_count(void) { return 2; }
+static bool online_get(uint32_t index, t5_package_catalog_row_t *out) {
+    assert(index < online_count() && out);
+    memset(out, 0, sizeof(*out));
+    out->package.kind = T5_PACKAGE_APPLICATION;
+    out->package.valid_installation = 1;
+    strcpy(out->package.id, index == 0 ? "alpha" : "beta");
+    strcpy(out->package.version, "1.0.0");
+    strcpy(out->package.artifact, "app.elf");
+    strcpy(out->archive, index == 0 ? "application-alpha-1.0.0-xtensa-esp32s3.rte.zip" :
+                                     "application-beta-1.0.0-xtensa-esp32s3.rte.zip");
+    if (index == 0) {
+        strcpy(out->package.installed_version, "1.0.0");
+        out->package.install_allowed = 0;
+    } else {
+        strcpy(out->package.installed_version, "0.9.0");
+        out->package.install_allowed = 1;
+    }
+    return true;
+}
+static bool online_install(uint32_t index) {
+    assert(index < online_count());
+    ++online_installs;
+    installed_index = index;
+    return true;
+}
 static const t5_package_manager_api_v1 package_api = {
-    T5_PACKAGE_MANAGER_API_VERSION, sizeof(t5_package_manager_api_v1),
-    preview, install, uninstall,
+    .api_version = T5_PACKAGE_MANAGER_API_VERSION,
+    .struct_size = sizeof(t5_package_manager_api_v1),
+    .preview = preview,
+    .install = install,
+    .uninstall = uninstall,
+    .preview_archive = preview_archive,
+    .install_archive = install_archive,
+    .online_refresh = online_refresh,
+    .online_count = online_count,
+    .online_get = online_get,
+    .online_install = online_install,
 };
 const t5_package_manager_api_v1 *t5_package_manager_get_api(uint32_t version) {
     assert(version == T5_PACKAGE_MANAGER_API_VERSION);
     return &package_api;
 }
+
 static void render_list(const t5_ui_chrome_t *chrome,
-                        const t5_ui_list_row_t *rows,
-                        uint32_t row_count,
+                        const t5_ui_list_row_t *list,
+                        uint32_t count,
                         int32_t selected_index) {
     assert(chrome && selected_index >= 0);
-    if (row_count == 2) {
-        assert(rows);
-        for (uint32_t i = 0; i < row_count; ++i) {
-            if (rows[i].title && !strcmp(rows[i].title, "Alpha")) saw_alpha = 1;
-            if (rows[i].title && !strcmp(rows[i].title, "Beta")) saw_beta = 1;
-            if (rows[i].subtitle && !strcmp(rows[i].subtitle, "Installed")) saw_installed = 1;
-            if ((rows[i].flags & T5_UI_LIST_HIGHLIGHT_VALUE) != 0) saw_update = 1;
+    if (count == 2) {
+        assert(list);
+        for (uint32_t i = 0; i < count; ++i) {
+            if (list[i].title && !strcmp(list[i].title, "alpha")) saw_alpha = 1;
+            if (list[i].title && !strcmp(list[i].title, "beta")) saw_beta = 1;
+            if (list[i].subtitle && strstr(list[i].subtitle, "Installed 1.0.0")) saw_installed = 1;
+            if ((list[i].flags & T5_UI_LIST_HIGHLIGHT_VALUE) != 0) saw_update = 1;
         }
         if (chrome->confirm_label && !strcmp(chrome->confirm_label, "Update")) saw_update = 1;
     }
@@ -174,10 +169,12 @@ const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) {
     assert(version == T5_UI_API_VERSION);
     return &ui_api;
 }
+
 int main(void) {
     app_main();
     assert(saw_alpha && saw_beta && saw_installed && saw_update);
-    assert(downloads == 1 && downloaded_index == 1);
+    assert(online_refreshes == 1);
+    assert(online_installs == 1 && installed_index == 1);
     assert(install_calls == 0 && preview_calls == 0);
     assert(back_disabled && back_restored);
     return 0;

@@ -4,6 +4,7 @@
 #include <T5SerialPortApi.h>
 #include <T5UsbApi.h>
 #include "native/NativeSerialPortBridge.h"
+#include "native/NativeUsbClassBridge.h"
 #include "native/NativeStreamBridge.h"
 #include "native/NativeUsbDeviceRegistry.h"
 #include "runtime/capabilities/DeviceRegistry.h"
@@ -18,12 +19,35 @@ t5_usb_api_v1 usb{};
 t5_usb_serial_state_t state{};
 bool streamBusy = false;
 unsigned starts = 0, stops = 0, closes = 0;
+bool classStarted = false;
 }
 extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
   return version == T5_APP_ABI_VERSION ? &app : nullptr;
 }
 extern "C" const t5_usb_api_v1* t5_usb_get_api(uint32_t version) {
   return version == T5_USB_API_VERSION ? &usb : nullptr;
+}
+bool nativeUsbClassAvailable() { return true; }
+bool nativeUsbClassEnsureInstalled(uint16_t) { return true; }
+bool nativeUsbClassAttachPair(uint32_t, t5_stream_t, t5_stream_t) { return true; }
+bool nativeUsbClassStart(const t5_serial_config_t&) {
+  if (classStarted) return false;
+  ++starts;
+  classStarted = true;
+  return true;
+}
+void nativeUsbClassStop() {
+  ++stops;
+  classStarted = false;
+  streamBusy = false;
+  nativeUsbProviderDetach();
+}
+bool nativeUsbClassConfigure(const t5_serial_config_t&) { return true; }
+bool nativeUsbClassControl(bool, bool) { return true; }
+bool nativeUsbClassReadState(t5_usb_serial_state_t* out) {
+  if (!out) return false;
+  *out = state;
+  return true;
 }
 bool nativeStreamUsbIsBusy() { return streamBusy; }
 t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {

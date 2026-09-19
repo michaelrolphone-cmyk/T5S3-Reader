@@ -4,7 +4,7 @@
 #include "../../Apps/package_manager.c"
 
 static t5_ui_event_t events[24];
-static unsigned total, next_event, installed, uninstalled, rendered;
+static unsigned total, next_event, installed, installed_zip, uninstalled, rendered;
 static bool uninstall_ok;
 static void reset_events(void) { total = next_event = 0; }
 static void add(uint8_t kind) {
@@ -33,6 +33,11 @@ static void render_mock(const t5_ui_chrome_t *chrome,
 static bool install_mock(const char* folder) {
     assert(!strcmp(folder, "gps-nmea"));
     ++installed;
+    return true;
+}
+static bool install_zip_mock(const char* archive) {
+    assert(!strcmp(archive, "driver-gps-nmea-1.0.1-xtensa-esp32s3.rte.zip"));
+    ++installed_zip;
     return true;
 }
 static bool uninstall_mock(uint8_t kind, const char* id) {
@@ -64,6 +69,7 @@ int main(void) {
         .struct_size = sizeof(t5_package_manager_api_v1),
         .preview = preview_mock, .install = install_mock,
         .uninstall = uninstall_mock,
+        .preview_archive = preview_mock, .install_archive = install_zip_mock,
     };
     assert(api_ready(&manager, &ui));
     t5_package_manager_api_v1 old = manager;
@@ -77,22 +83,31 @@ int main(void) {
     snprintf(packages[0].id, sizeof(packages[0].id), "gps-nmea");
     snprintf(packages[0].version, sizeof(packages[0].version), "1.0.1");
     snprintf(packages[0].installed_version, sizeof(packages[0].installed_version), "1.0.0");
+    snprintf(names[0], sizeof(names[0]), "gps-nmea");
+    archive_rows[0] = false;
     char status[STATUS_BYTES] = {0};
 
     // First Confirm on the action menu is Cancel; no implicit uninstall.
     reset_events(); add(T5_UI_EVENT_CONFIRM);
     activate(&manager, &ui, 0, status, sizeof(status));
-    assert(installed == 0 && uninstalled == 0);
+    assert(installed == 0 && installed_zip == 0 && uninstalled == 0);
     // Select update, then cancel the separate final confirmation.
     reset_events(); add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
     add(T5_UI_EVENT_CONFIRM);
     activate(&manager, &ui, 0, status, sizeof(status));
-    assert(installed == 0 && uninstalled == 0);
+    assert(installed == 0 && installed_zip == 0 && uninstalled == 0);
     // Select update, approve its separate confirmation.
     reset_events(); add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
     add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
     activate(&manager, &ui, 0, status, sizeof(status));
-    assert(installed == 1 && uninstalled == 0);
+    assert(installed == 1 && installed_zip == 0 && uninstalled == 0);
+    // The archive filename, NOT the package id, must reach the ZIP installer.
+    snprintf(names[0], sizeof(names[0]), "driver-gps-nmea-1.0.1-xtensa-esp32s3.rte.zip");
+    archive_rows[0] = true;
+    reset_events(); add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
+    add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
+    activate(&manager, &ui, 0, status, sizeof(status));
+    assert(installed == 1 && installed_zip == 1 && uninstalled == 0);
     // Explicitly select uninstall, cancel confirmation: no removal.
     reset_events(); add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_NEXT);
     add(T5_UI_EVENT_CONFIRM); add(T5_UI_EVENT_BACK);
@@ -111,8 +126,8 @@ int main(void) {
     packages[0].valid_installation = 0;
     reset_events();
     activate(&manager, &ui, 0, status, sizeof(status));
-    assert(installed == 1 && uninstalled == 2);
+    assert(installed == 1 && installed_zip == 1 && uninstalled == 2);
     assert(rendered > 0);
-    puts("Package Manager real UI: default cancel, independent install/uninstall, separate confirmation and firmware refusal PASS");
+    puts("Package Manager UI: named source, ZIP path, default cancel and explicit install/uninstall PASS");
     return 0;
 }

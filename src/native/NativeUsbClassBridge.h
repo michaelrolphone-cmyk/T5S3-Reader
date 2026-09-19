@@ -1,0 +1,44 @@
+#pragma once
+#include <T5SerialPortApi.h>
+#include <T5UsbApi.h>
+#include "runtime/usb/UsbClassStreamSession.h"
+#include <cstdint>
+
+// Firmware-internal control and data plane. Installed class ELF transfers
+// shuttle through published serial.port endpoints, not t5_usb_get_api().
+bool nativeUsbClassAvailable();
+bool nativeUsbClassEnsureInstalled(uint16_t vid = 0);
+bool nativeUsbClassAttachPair(uint32_t owner, t5_stream_t rx, t5_stream_t tx);
+void nativeUsbClassPump(RuntimeStreams::Registry& registry);
+bool nativeUsbClassHasDataPlane();
+bool nativeUsbClassStart(const t5_serial_config_t& config);
+// Checked shutdown leaves the exact generation pinned on uncertain close.
+bool nativeUsbClassStopChecked();
+bool nativeUsbClassUnbindChecked();
+void nativeUsbClassStop();
+bool nativeUsbClassConfigure(const t5_serial_config_t& config);
+bool nativeUsbClassControl(bool dtr, bool rts);
+bool nativeUsbClassReadState(t5_usb_serial_state_t* out);
+int32_t nativeUsbClassRead(uint8_t* dst, uint32_t capacity, uint32_t* out);
+int32_t nativeUsbClassWrite(const uint8_t* src, uint32_t length, uint32_t* out);
+uint64_t nativeUsbClassToken();
+void nativeUsbClassObserveDevice(uint64_t device);
+bool nativeUsbClassAdopt(uint64_t opened, const t5_serial_config_t& config);
+
+struct NativeUsbClassOps {
+  void* context = nullptr;
+  uint64_t (*open)(void*, uint64_t device) = nullptr;
+  bool (*configure)(void*, uint64_t token, uint32_t baud, uint8_t bits,
+                    uint8_t parity, uint8_t stop_bits) = nullptr;
+  bool (*control)(void*, uint64_t token, bool dtr, bool rts) = nullptr;
+  int32_t (*read)(void*, uint64_t token, uint8_t* dst, uint32_t capacity,
+                  uint32_t timeout_ms) = nullptr;
+  int32_t (*write)(void*, uint64_t token, const uint8_t* src, uint32_t length,
+                   uint32_t timeout_ms) = nullptr;
+  bool (*close)(void*, uint64_t token) = nullptr;
+};
+bool nativeUsbClassBind(const NativeUsbClassOps& ops);
+bool nativeUsbClassBindPort(const RuntimeUsb::ClassPort& port);
+bool nativeUsbClassBindApi(const void* riscUsbCdcApiV1);
+void nativeUsbClassUnbind();
+RuntimeUsb::ClassStreamSession& nativeUsbClassSession();

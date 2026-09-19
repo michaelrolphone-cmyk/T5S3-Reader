@@ -5,14 +5,13 @@
 #include <cstdint>
 #include <cstring>
 
-// Firmware-internal capability registration. Providers implement semantic serial
-// operations; applications see only T5SerialPortApi.h. Registration/removal and
-// lease operations run on the native app owner's task. The provider must remain
-// loaded while registered and may not be removed with an outstanding lease.
+// Semantic serial providers own their own lifecycle; the owner task serializes
+// registrations and lease calls. Failed physical teardown must not forget the
+// public lease while the provider still owns callbacks/DMA or a package pin.
 namespace RuntimeSerial {
 struct Provider {
-  const char* id = nullptr; // Stable, unique runtime name; never exposed as a device selector.
-  uint8_t priority = 100;   // Lower value wins unconstrained resolution.
+  const char* id = nullptr;
+  uint8_t priority = 100;
   void* context = nullptr;
   bool (*available)(void*) = nullptr;
   bool (*matches)(void*, t5_serial_device_t) = nullptr;
@@ -33,7 +32,7 @@ class Registry final {
   static constexpr size_t kNameBytes = 32;
 
   bool add(const Provider& provider) {
-    if (active_ || !provider.id || !provider.available || !provider.matches ||
+    if (active_ || releasing_ || !provider.id || !provider.available || !provider.matches ||
         !provider.acquire || !provider.configure || !provider.read_status ||
         !provider.set_control_lines || !provider.release) return false;
     const size_t length = strnlen(provider.id, kNameBytes);
@@ -51,7 +50,7 @@ class Registry final {
   }
 
   bool remove(const char* id) {
-    if (!id) return false;
+    if (!id || releasing_) return false;
     for (auto& slot : slots_) {
       if (!slot.used || std::strcmp(slot.name, id) != 0) continue;
       if (&slot == active_) return false;
@@ -68,7 +67,7 @@ class Registry final {
     if (rx) *rx = 0;
     if (tx) *tx = 0;
     if (!request || !lease || !rx || !tx) return T5_SERIAL_INVALID;
-    if (active_) return T5_SERIAL_BUSY;
+    if (active_ || releasing_) return T5_SERIAL_BUSY;
     if (generation_ >= 0x7fffffffu) return T5_SERIAL_LIMIT;
 
     Slot* selected = nullptr;
@@ -78,13 +77,10 @@ class Registry final {
       const Provider& p = slot.provider;
       if (request->device) {
         if (!p.matches(p.context, request->device)) continue;
-        // Ambiguous handles must never resolve to the wrong transport.
         if (selected) return T5_SERIAL_INVALID;
         selected = &slot;
         selectedAvailable = p.available(p.context);
       } else {
-        // Availability may verify an entire installed capability inventory.
-        // Evaluate it once, not again after selecting the same provider.
         const bool available = p.available(p.context);
         if (available && (!selected || p.priority < selected->provider.priority)) {
           selected = &slot;
@@ -132,10 +128,16 @@ class Registry final {
     if (!valid(lease)) return T5_SERIAL_CLOSED;
     const Provider p = active_->provider;
     const auto privateLease = privateLease_;
-    // Invalidate the public handle before entering provider teardown.
-    active_ = nullptr;
-    publicLease_ = privateLease_ = 0;
-    return p.release(p.context, privateLease);
+    // Disallow reentry during teardown, but retain a retryable lease if the
+    // provider refuses or cannot prove physical quiescence.
+    releasing_ = true;
+    const auto result = p.release(p.context, privateLease);
+    if (result == T5_SERIAL_OK) {
+      active_ = nullptr;
+      publicLease_ = privateLease_ = 0;
+    }
+    releasing_ = false;
+    return result;
   }
   void end() {
     if (active_) (void)release(publicLease_);
@@ -149,10 +151,11 @@ class Registry final {
     bool used = false;
   };
   bool valid(t5_serial_port_lease_t lease) const {
-    return active_ && lease != 0 && lease == publicLease_;
+    return active_ && !releasing_ && lease != 0 && lease == publicLease_;
   }
   Slot slots_[kMaxProviders]{};
   Slot* active_ = nullptr;
+  bool releasing_ = false;
   uint32_t generation_ = 0;
   t5_serial_port_lease_t publicLease_ = 0, privateLease_ = 0;
 };

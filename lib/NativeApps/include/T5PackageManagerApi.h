@@ -30,6 +30,11 @@ typedef struct {
 } t5_package_preview_t;
 
 typedef struct {
+    t5_package_preview_t package;
+    char archive[160];
+} t5_package_catalog_row_t;
+
+typedef struct {
     uint32_t api_version;
     uint32_t struct_size;
     // 'folder' is exactly ONE safe basename under /Packages/Inbox. An app
@@ -41,6 +46,22 @@ typedef struct {
     // Uninstall a canonical package selected by its kind and ID; requires
     // unmapping first. Legacy flat app and old-layout driver data is retained.
     bool (*uninstall)(uint8_t kind, const char *id);
+    // Additive v1 ABI tail. Inspect struct_size before calling either slot.
+    // 'archive' is one .rte.zip basename under /Packages/Inbox, never a path.
+    // All four kinds share the same bounded ordinary transaction. These
+    // operations never delete the archive or load/activate its ELF.
+    bool (*preview_archive)(const char *archive, t5_package_preview_t *out);
+    bool (*install_archive)(const char *archive);
+    // Generic immutable-release index, not the legacy app or USB catalogs.
+    // online_refresh fetches one bounded package-catalog.json and pins its
+    // declared release tag; count/get are filtered to the caller's permitted
+    // kinds. Indexes are valid only until the next refresh. No metadata alone
+    // authorizes an install or ELF execution: online_install independently
+    // checks the selected archive SHA, retained manifest and transaction.
+    bool (*online_refresh)(void);
+    uint32_t (*online_count)(void);
+    bool (*online_get)(uint32_t index, t5_package_catalog_row_t *out);
+    bool (*online_install)(uint32_t index);
 } t5_package_manager_api_v1;
 
 const t5_package_manager_api_v1 *t5_package_manager_get_api(uint32_t version);
