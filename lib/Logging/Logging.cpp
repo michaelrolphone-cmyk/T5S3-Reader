@@ -1,5 +1,8 @@
 #include "Logging.h"
 
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
 #include <string>
 
 #define MAX_ENTRY_LEN 256
@@ -9,10 +12,6 @@
 RTC_NOINIT_ATTR char logMessages[MAX_LOG_LINES][MAX_ENTRY_LEN];
 RTC_NOINIT_ATTR size_t logHead = 0;
 // Magic word written alongside logHead to detect uninitialized RTC memory.
-// RTC_NOINIT_ATTR is not zeroed on cold boot, so logHead may appear in-range
-// (0..MAX_LOG_LINES-1) by chance even though logMessages is garbage. The magic
-// value is only set by clearLastLogs(), so its absence means the buffer was
-// never properly initialized.
 RTC_NOINIT_ATTR uint32_t rtcLogMagic;
 static constexpr uint32_t LOG_RTC_MAGIC = 0xDEADBEEF;
 
@@ -65,6 +64,35 @@ void logPrintf(const char* level, const char* origin, const char* format, ...) {
   addToLogRingBuffer(buf);
 }
 
+// Private relocation maps printf for privileged provider ELFs to this generic
+// logging endpoint only. Ordinary apps and firmware retain libc printf.
+// Capture only driver-owned startup diagnostics, NEVER arbitrary USB data,
+// serial payloads or other provider printf output in the UI-readable log ring.
+extern "C" int risc_provider_diagnostic_printf(const char* format, ...) {
+  if (!format) return -1;
+  va_list args;
+  va_start(args, format);
+  char message[192];
+  va_list copy;
+  va_copy(copy, args);
+  const int length = vsnprintf(message, sizeof(message), format, copy);
+  va_end(copy);
+  if (length < 0) {
+    va_end(args);
+    return length;
+  }
+  if (strncmp(message, "VBUSREF ", 8) == 0 ||
+      strncmp(message, "USBCTRL ", 8) == 0) {
+    logPrintf("ERR", "PROVELF", "%s", message);
+    va_end(args);
+    return length;
+  }
+  // Preserve libc printf behavior for all unrelated provider output.
+  const int forwarded = vprintf(format, args);
+  va_end(args);
+  return forwarded;
+}
+
 std::string getLastLogs() {
   if (rtcLogMagic != LOG_RTC_MAGIC) {
     return {};
@@ -80,7 +108,7 @@ std::string getLastLogs() {
   return output;
 }
 
-// Checks whether the RTC log state is consistent: rtcLogMagic must equal
+// Checks whether the RTC log state is consistent: rtcLogMagic must be
 // LOG_RTC_MAGIC and logHead must be in 0..MAX_LOG_LINES-1. Returns true if
 // corruption is detected, in which case rtcLogMagic is still invalid and
 // logMessages may contain garbage. Callers (e.g. HalSystem::begin on the
