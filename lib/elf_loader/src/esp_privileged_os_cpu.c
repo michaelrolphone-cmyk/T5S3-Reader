@@ -13,6 +13,12 @@
 #include "RiscFirmwareI2cCompatV1.h"
 #endif
 
+/* The firmware logger supplies a generic printf sink for privileged provider
+ * diagnostics. Weak linkage keeps the OS/CPU host test harness independent of
+ * Arduino's logging implementation; firmware links the strong Logging.cpp
+ * definition. This is a relocation-only substitution, never a global hook. */
+extern int risc_provider_diagnostic_printf(const char *format, ...) __attribute__((weak));
+
 /* Strong links intentionally fail firmware builds when the port ABI is absent.
  * The table contains addresses, not forwarding hardware driver functions. */
 #define RISC_OS_CPU_SYMBOL(name) \
@@ -111,8 +117,8 @@ bool esp_elf_privileged_os_cpu_relocation_enter_v1(const void *module)
             allowed = true;
         }
     } else {
-        /* A different task may continue ordinary loads, but never mutate
-         * the SAME module while the private scope holds its relocation grant.
+        /* A different task may continue ordinary loads, but never mutate the
+         * SAME module while the private scope holds its relocation grant.
          * This is an identity guard, not a global app-loading mutex. */
         allowed = (s_scope_owner == NULL || s_scope_module == NULL ||
                    module != s_scope_module);
@@ -144,6 +150,12 @@ uintptr_t esp_elf_privileged_os_cpu_lookup_v1(const char *symbol)
 {
     if (symbol == NULL || symbol[0] == '\0' ||
         !esp_elf_privileged_os_cpu_scope_owned_v1()) return 0;
+    /* Providers still import the normal libc name "printf". Only their
+     * relocation resolves it to the bounded diagnostic logger, allowing
+     * physical failure details to reach a headless device's future log path
+     * and today's on-screen Serial Monitor without exposing any peripherals. */
+    if (strcmp(symbol, "printf") == 0 && risc_provider_diagnostic_printf)
+        return (uintptr_t)&risc_provider_diagnostic_printf;
 #ifdef BOARD_T5S3_PRO
     /* The sole physical-bus compatibility exception. Never insert this into
      * privileged_os_cpu_symbols_v1.def or a globally visible ELF table. */
