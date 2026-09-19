@@ -56,17 +56,19 @@ bool apiValid(const risc_usb_cdc_api_v1* api) {
          api->configure && api->control_lines && api->read && api->write &&
          api->close;
 }
-
 RuntimeUsb::ClassPort portFromOps(const NativeUsbClassOps& o) {
   return {o.context, o.open, o.configure, o.control, o.read, o.write, o.close};
 }
 }  // namespace
 
 bool nativeUsbClassBind(const NativeUsbClassOps& incoming) {
-  if (started || token || !valid(incoming)) return false;
+  if (started || token || session.token() || !valid(incoming) ||
+      !session.unbind()) return false;
   ops = incoming;
-  session.unbind();
-  if (incoming.read && incoming.write) (void)session.bind(portFromOps(incoming));
+  if (incoming.read && incoming.write && !session.bind(portFromOps(incoming))) {
+    ops = {};
+    return false;
+  }
   return true;
 }
 
@@ -87,18 +89,37 @@ bool nativeUsbClassBindApi(const void* riscUsbCdcApiV1) {
   return true;
 }
 
-void nativeUsbClassUnbind() {
-  nativeUsbClassStop();
-  session.unbind();
+// A failed physical close retains token, function pointers and the installed
+// package lease; freeing mapped driver code while DMA/callbacks may remain is
+// never a recoverable fallback.
+bool nativeUsbClassStopChecked() {
+  if (session.token()) {
+    if (session.close(nullptr) != T5_STREAM_OK) return false;
+  } else if (token && (!ops.close || !ops.close(ops.context, token))) {
+    return false;
+  }
+  token = 0;
+  started = false;
+  dtr = rts = false;
+  return true;
+}
+
+bool nativeUsbClassUnbindChecked() {
+  if (!nativeUsbClassStopChecked() || !session.unbind()) return false;
+#if defined(ESP_PLATFORM)
+  if (installedClass.grant.slot && !RuntimeInstalledProviders::release(&installedClass))
+    return false;
+#endif
   ops = {};
   boundApi = nullptr;
   observedDevice = 1;
-#if defined(ESP_PLATFORM)
-  if (installedClass.grant.slot) (void)RuntimeInstalledProviders::release(&installedClass);
-#endif
+  return true;
 }
 
-bool nativeUsbClassAvailable() { return valid(ops); }
+void nativeUsbClassUnbind() { (void)nativeUsbClassUnbindChecked(); }
+void nativeUsbClassStop() { (void)nativeUsbClassStopChecked(); }
+
+bool nativeUsbClassAvailable() { return valid(ops) && !token && !session.token(); }
 bool nativeUsbClassHasDataPlane() { return session.bound(); }
 uint64_t nativeUsbClassToken() { return token; }
 
@@ -107,8 +128,8 @@ void nativeUsbClassObserveDevice(uint64_t device) {
 }
 
 bool nativeUsbClassAdopt(uint64_t opened, const t5_serial_config_t& config) {
-  if (!valid(ops) || !opened) return false;
-  if (started && token != opened) return false;
+  if (!valid(ops) || !opened || (started && token != opened) ||
+      (token && token != opened)) return false;
   token = opened;
   coding = config;
   started = true;
@@ -116,8 +137,7 @@ bool nativeUsbClassAdopt(uint64_t opened, const t5_serial_config_t& config) {
 }
 
 bool nativeUsbClassStart(const t5_serial_config_t& config) {
-  if (!valid(ops)) return false;
-  if (started) return token != 0;
+  if (!valid(ops) || token || session.token()) return false;
   if (config.baud_rate < 300u || config.baud_rate > 3000000u ||
       config.data_bits < 5u || config.data_bits > 8u ||
       (config.stop_bits != 1u && config.stop_bits != 2u)) return false;
@@ -125,7 +145,7 @@ bool nativeUsbClassStart(const t5_serial_config_t& config) {
   if (!opened) return false;
   if (!ops.configure(ops.context, opened, config.baud_rate, config.data_bits,
                      config.parity, config.stop_bits)) {
-    (void)ops.close(ops.context, opened);
+    if (!ops.close(ops.context, opened)) token = opened; // Pin on uncertain close.
     return false;
   }
   token = opened;
@@ -134,21 +154,10 @@ bool nativeUsbClassStart(const t5_serial_config_t& config) {
   return true;
 }
 
-void nativeUsbClassStop() {
-  if (session.token()) {
-    (void)session.close(nullptr);
-  } else if (token && ops.close) {
-    (void)ops.close(ops.context, token);
-  }
-  token = 0;
-  started = false;
-  dtr = rts = false;
-}
-
 bool nativeUsbClassConfigure(const t5_serial_config_t& config) {
   if (!started || !token) return false;
-  if (!ops.configure(ops.context, token, config.baud_rate, config.data_bits,
-                     config.parity, config.stop_bits)) return false;
+  if (!ops.configure(ops.context, token, config.baud_rate,
+                     config.data_bits, config.parity, config.stop_bits)) return false;
   coding = config;
   return true;
 }
@@ -181,7 +190,7 @@ int32_t nativeUsbClassRead(uint8_t* dst, uint32_t capacity, uint32_t* out) {
   if (!started || !token) return T5_STREAM_CLOSED;
   if (!ops.read) return T5_STREAM_AGAIN;
   const int32_t n = ops.read(ops.context, token, dst, capacity, 1);
-  if (n < 0) return T5_STREAM_IO;
+  if (n < 0 || static_cast<uint32_t>(n) > capacity) return T5_STREAM_IO;
   if (out) *out = static_cast<uint32_t>(n);
   return n ? T5_STREAM_OK : T5_STREAM_AGAIN;
 }
@@ -192,7 +201,7 @@ int32_t nativeUsbClassWrite(const uint8_t* src, uint32_t length, uint32_t* out) 
   if (!started || !token) return T5_STREAM_CLOSED;
   if (!ops.write) return T5_STREAM_AGAIN;
   const int32_t n = ops.write(ops.context, token, src, length, 1);
-  if (n < 0) return T5_STREAM_IO;
+  if (n < 0 || static_cast<uint32_t>(n) > length) return T5_STREAM_IO;
   if (out) *out = static_cast<uint32_t>(n);
   return n ? T5_STREAM_OK : T5_STREAM_AGAIN;
 }
@@ -211,6 +220,7 @@ void nativeUsbClassPump(RuntimeStreams::Registry& registry) {
 #if defined(ESP_PLATFORM)
 bool nativeUsbClassEnsureInstalled(uint16_t vid) {
   if (nativeUsbClassAvailable()) return true;
+  if (token || session.token()) return false;
   const char* first = vid == 0x10c4u ? "usb-cp210x-v2" : "usb-cdc-acm-v2";
   const char* second = vid == 0x10c4u ? "usb-cdc-acm-v2" : "usb-cp210x-v2";
   const char* ids[] = {first, second};
