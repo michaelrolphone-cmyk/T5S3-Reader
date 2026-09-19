@@ -4,6 +4,7 @@
 #include <T5SerialPortApi.h>
 #include <T5UsbApi.h>
 #include "native/NativeSerialPortBridge.h"
+#include "native/NativeUsbClassBridge.h"
 #include "native/NativeStreamBridge.h"
 #include "native/NativeUsbDeviceRegistry.h"
 #include "runtime/resources/ExecutionContext.h"
@@ -16,6 +17,7 @@ t5_app_api_v1 app{};
 t5_usb_api_v1 usb{};
 t5_usb_serial_state_t usbStatus{};
 bool appAllowed = true, usbSupported = true, usbStreamBusy = false;
+bool classStarted = false;
 int usbStarts = 0, usbStops = 0, usbCloses = 0;
 constexpr t5_serial_device_t kAlternativeDevice = 0x80001001u;
 struct Fake {
@@ -79,6 +81,36 @@ extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
 }
 extern "C" const t5_usb_api_v1* t5_usb_get_api(uint32_t version) {
   return version == T5_USB_API_VERSION ? &usb : nullptr;
+}
+bool nativeUsbClassAvailable() { return usbSupported; }
+bool nativeUsbClassStart(const t5_serial_config_t&) {
+  if (classStarted) return false;
+  ++usbStarts;
+  classStarted = true;
+  return true;
+}
+void nativeUsbClassStop() {
+  ++usbStops;
+  classStarted = false;
+  usbStreamBusy = false;
+  nativeUsbProviderDetach();
+}
+bool nativeUsbClassConfigure(const t5_serial_config_t& config) {
+  usbStatus.line_coding.baud_rate = config.baud_rate;
+  usbStatus.line_coding.data_bits = config.data_bits;
+  usbStatus.line_coding.parity = config.parity;
+  usbStatus.line_coding.stop_bits = config.stop_bits;
+  return true;
+}
+bool nativeUsbClassControl(bool dtr, bool rts) {
+  usbStatus.dtr = dtr;
+  usbStatus.rts = rts;
+  return true;
+}
+bool nativeUsbClassReadState(t5_usb_serial_state_t* out) {
+  if (!out) return false;
+  *out = usbStatus;
+  return true;
 }
 bool nativeStreamUsbIsBusy() { return usbStreamBusy; }
 t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
