@@ -10,23 +10,41 @@
 #define TITLE_BYTES 88u
 #define SUBTITLE_BYTES 128u
 #define STATUS_BYTES 160u
+#define INBOX_NAME_BYTES 128u
 
 static t5_package_preview_t packages[MAX_ITEMS];
 static t5_ui_list_row_t rows[MAX_ITEMS];
 static char titles[MAX_ITEMS][TITLE_BYTES];
 static char subtitles[MAX_ITEMS][SUBTITLE_BYTES];
 static char values[MAX_ITEMS][T5_PACKAGE_VERSION_MAX];
+static char names[MAX_ITEMS][INBOX_NAME_BYTES];
+static bool archive_rows[MAX_ITEMS];
 static uint32_t row_count;
 
 static bool api_ready(const t5_package_manager_api_v1 *manager,
                       const t5_ui_api_v1 *ui) {
     return manager && manager->api_version == T5_PACKAGE_MANAGER_API_VERSION &&
-           manager->struct_size >= sizeof(t5_package_manager_api_v1) &&
+           manager->struct_size >= offsetof(t5_package_manager_api_v1, preview_archive) &&
            manager->preview && manager->install && manager->uninstall &&
            ui && ui->api_version == T5_UI_API_VERSION &&
            ui->struct_size >= offsetof(t5_ui_api_v1, previous_index) + sizeof(ui->previous_index) &&
            ui->render_list && ui->poll_event && ui->hit_test &&
            ui->next_index && ui->previous_index;
+}
+static bool zip_available(const t5_package_manager_api_v1 *manager) {
+    return manager->struct_size >= offsetof(t5_package_manager_api_v1, install_archive) +
+           sizeof(manager->install_archive) && manager->preview_archive &&
+           manager->install_archive;
+}
+static size_t bounded_length(const char *value, size_t capacity) {
+    size_t used = 0;
+    if (value) while (used < capacity && value[used]) ++used;
+    return used;
+}
+static bool zip_name(const char *name) {
+    if (!name) return false;
+    const size_t n = bounded_length(name, INBOX_NAME_BYTES);
+    return n > 8 && n < INBOX_NAME_BYTES && !strcmp(name + n - 8, ".rte.zip");
 }
 static const char* kind_name(uint8_t kind) {
     switch (kind) {
@@ -43,9 +61,18 @@ static void refresh(const t5_app_api_v1 *app,
     if (!app->dir_open("/sd/Packages/Inbox")) return;
     t5_app_dirent_t entry = {0};
     while (app->dir_next(&entry)) {
-        if (!entry.is_directory || row_count >= MAX_ITEMS) continue;
+        if (row_count >= MAX_ITEMS) break;
+        const size_t n = bounded_length(entry.name, sizeof(entry.name));
+        if (!n || n >= sizeof(entry.name) || n >= INBOX_NAME_BYTES) continue;
+        const bool archive = !entry.is_directory && zip_name(entry.name) &&
+                             zip_available(manager);
+        if (!entry.is_directory && !archive) continue;
         t5_package_preview_t info = {0};
-        if (!manager->preview(entry.name, &info)) continue;
+        const bool described = archive ? manager->preview_archive(entry.name, &info) :
+                                        manager->preview(entry.name, &info);
+        if (!described) continue;
+        memcpy(names[row_count], entry.name, n + 1u);
+        archive_rows[row_count] = archive;
         packages[row_count] = info;
         snprintf(titles[row_count], sizeof(titles[row_count]), "%s [%s]",
                  info.id, kind_name(info.kind));
@@ -58,7 +85,8 @@ static void refresh(const t5_app_api_v1 *app,
                      info.install_allowed ? "update available" : "no update");
         else
             snprintf(subtitles[row_count], sizeof(subtitles[row_count]), "%s",
-                     info.install_allowed ? "SD inbox: ready to install" :
+                     info.install_allowed ? (archive ? "SD ZIP: ready to install" :
+                                                  "SD directory: ready to install") :
                      "Unavailable: dependency, version or pending stage");
         snprintf(values[row_count], sizeof(values[row_count]), "%s", info.version);
         rows[row_count] = (t5_ui_list_row_t){titles[row_count], subtitles[row_count],
@@ -71,7 +99,7 @@ static void refresh(const t5_app_api_v1 *app,
 static void render(const t5_ui_api_v1 *ui, int32_t selected, const char *status) {
     const t5_ui_chrome_t chrome = {
         .title = "Package Manager",
-        .subtitle = "Offline SD: /Packages/Inbox/<id>",
+        .subtitle = "Offline SD: /Packages/Inbox (ZIP or directory)",
         .status = status ? status : "",
         .back_label = "Back", .confirm_label = row_count ? "Actions" : "",
         .previous_label = "Up", .next_label = "Down",
@@ -79,7 +107,8 @@ static void render(const t5_ui_api_v1 *ui, int32_t selected, const char *status)
     if (row_count) ui->render_list(&chrome, rows, row_count, selected);
     else {
         const t5_ui_list_row_t empty = {
-            "No packages in SD inbox", "Add <id>/.package.json and declared files", "Offline", 0,
+            "No packages in SD inbox", "Add a .rte.zip or <id>/.package.json",
+            "Offline", 0,
         };
         ui->render_list(&chrome, &empty, 1, 0);
     }
@@ -158,7 +187,8 @@ static void activate(const t5_package_manager_api_v1 *manager,
     if (action == 1 &&
         confirm(ui, "Confirm installation",
                 "Integrity checked; no activation or privilege grant", "Install now")) {
-        const bool okay = manager->install(info.id);
+        const bool okay = archive_rows[selected] ?
+            manager->install_archive(names[selected]) : manager->install(names[selected]);
         snprintf(status, capacity, "%s: %s; no activation", info.id,
                  okay ? "installed" : "install refused; inspect SD/recovery");
     } else if (action == 2 &&
