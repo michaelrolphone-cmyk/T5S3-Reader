@@ -36,7 +36,7 @@ DRIVERS = (
 EXPECTED_VERSIONS = {
     'i2c-esp32s3-v2': '0.1.2',
     'board-power-t5s3-v2': '0.1.4',
-    'usb-controller-esp32s3': '0.1.2',
+    'usb-controller-esp32s3': '0.1.3',
 }
 
 
