@@ -2,12 +2,16 @@
 #include <T5SerialPortApi.h>
 #include <T5UsbApi.h>
 #include "runtime/usb/UsbClassStreamSession.h"
+#include <cstddef>
 #include <cstdint>
 
 // Firmware-internal control and data plane. Installed class ELF transfers
 // shuttle through published serial.port endpoints, not t5_usb_get_api().
 bool nativeUsbClassAvailable();
 bool nativeUsbClassEnsureInstalled(uint16_t vid = 0);
+// Enumerate verified matching providers, with a caller-owned cursor; no fixed
+// VID/driver-id list. Must only be invoked after a previous class is unbound.
+bool nativeUsbClassBindNextInstalled(size_t* cursor);
 bool nativeUsbClassAttachPair(uint32_t owner, t5_stream_t rx, t5_stream_t tx);
 void nativeUsbClassPump(RuntimeStreams::Registry& registry);
 bool nativeUsbClassHasDataPlane();
