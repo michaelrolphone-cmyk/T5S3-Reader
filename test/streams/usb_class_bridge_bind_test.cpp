@@ -97,6 +97,12 @@ int main() {
   cdcApi.close = [](uint64_t) { return true; };
   assert(nativeUsbClassBindApi(&cdcApi));
   assert(nativeUsbClassHasDataPlane());
+  assert(nativeUsbClassEnsureInstalled());
+  t5_serial_config_t cfg{115200, 8, T5_SERIAL_PARITY_NONE, 1, T5_SERIAL_FLOW_NONE};
+  assert(nativeUsbClassStart(cfg));
+  assert(nativeUsbClassToken());
+  assert(nativeUsbClassAttachPair(1, 3, 4));
+  nativeUsbClassStop();
   nativeUsbClassUnbind();
   std::puts("usb class control plane bound; T5UsbApi unused");
   return 0;
