@@ -14,6 +14,7 @@
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <new>
 #include <string>
@@ -29,6 +30,10 @@ TaskHandle_t scheduler = nullptr;
 uint32_t owner = 0;
 bool active = false, httpBusy = false, usbOpen = false;
 uint32_t usbRefs = 0;
+// The already-running stream task also retries a bounded pending USB write.
+// No hardware transfer occurs while its registry mutex is held.
+std::atomic<bool> usbTxRetry{false};
+int32_t drainPairTx();
 struct Lock {
   Lock() { xSemaphoreTake(mutex, portMAX_DELAY); }
   ~Lock() { xSemaphoreGive(mutex); }
@@ -41,12 +46,14 @@ void schedule(void*) {
   TickType_t wait = portMAX_DELAY;
   for (;;) {
     ulTaskNotifyTake(pdTRUE, wait);
+    if (usbTxRetry.load(std::memory_order_acquire)) (void)drainPairTx();
     for (;;) {
       RuntimeStreams::ExternalIo io{};
       {
         Lock lock;
         if (!registry.pumpPrepare(&io)) {
-          wait = registry.runnable() ? pdMS_TO_TICKS(10) : portMAX_DELAY;
+          wait = (registry.runnable() || usbTxRetry.load(std::memory_order_acquire))
+                     ? pdMS_TO_TICKS(10) : portMAX_DELAY;
           break;
         }
       }
@@ -169,6 +176,7 @@ void notePairClosed(t5_stream_t handle) {
   if (handle && handle == pairRx) pairRx = 0;
   if (handle && handle == pairTx) pairTx = 0;
   if (pairRx || pairTx) return;
+  usbTxRetry.store(false, std::memory_order_release);
   delete pairUsb;
   pairUsb = nullptr;
   usbOpen = false;
