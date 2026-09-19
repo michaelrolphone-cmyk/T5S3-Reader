@@ -280,6 +280,22 @@ bool prepare() {
     return true;
 }
 
+bool nextProvider(const char* capability, uint32_t version, size_t* cursor,
+                  char* providerId, size_t capacity) {
+    if (providerId && capacity) providerId[0] = 0;
+    if (!capability || !*capability || !version || !cursor || !providerId ||
+        capacity < 2 || !prepare()) return false;
+    while (*cursor < graph->moduleCount()) {
+        const char* candidate = graph->matchingProviderId((*cursor)++, capability, version);
+        if (!candidate) continue;
+        const size_t length = std::strlen(candidate);
+        if (!length || length >= capacity) return false; // never emit truncated IDs
+        std::memcpy(providerId, candidate, length + 1);
+        return true;
+    }
+    return false;
+}
+
 bool acquire(const char* providerId, const char* capability, uint32_t version,
              Lease* out) {
     if (out) *out = {};
