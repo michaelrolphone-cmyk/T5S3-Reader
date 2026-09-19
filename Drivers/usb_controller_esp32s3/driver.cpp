@@ -425,6 +425,21 @@ bool quiesce(void *) {
             std::printf("USBCTRL cleanup-failed stage=device-free-timeout\n");
             return false;
         }
+        /* IDF v4.4.7: deregistering the last client enqueues NO_CLIENTS and
+         * wakes the library handler. device_free_all() returns ESP_OK when
+         * no device ever attached, bypassing the loop above. Uninstall then
+         * fails ESP_ERR_INVALID_STATE unless its pending flags are consumed.
+         * Pump once on BOTH paths, including a retry after partial teardown;
+         * timeout means the event queue was already empty. */
+        uint32_t finalFlags = 0;
+        rc = usb_host_lib_handle_events(0, &finalFlags);
+        if (rc != ESP_OK && rc != ESP_ERR_TIMEOUT) {
+            std::printf("USBCTRL cleanup-failed stage=final-lib-events rc=%d\n",
+                        static_cast<int>(rc));
+            return false;
+        }
+        std::printf("USBCTRL stage=final-lib-events flags=%lu\n",
+                    static_cast<unsigned long>(finalFlags));
         rc = usb_host_uninstall();
         if (rc != ESP_OK) {
             std::printf("USBCTRL cleanup-failed stage=host-uninstall rc=%d\n",
