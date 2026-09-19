@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guard ordinary driver package intake, exclusive transfer and recovery wiring."""
+"""Guard ordinary driver ZIP intake, scoped legacy recovery, and exclusive download."""
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[2]
@@ -15,8 +15,8 @@ for required in ('publishOrdinaryPackage(', 'ordinaryTransactionPaths(',
 assert 'publishDirectoryTransaction(' not in installer
 assert 'removeManagedDirectory(stage)' not in installer
 
-# A generic archive is downloaded only from the catalog's immutable release,
-# checked by complete SHA-256, then installed by the shared ordinary transaction.
+# The new archive is downloaded from the exact catalog-pinned release, SHA
+# checked, then passed through the same ordinary ZIP transaction as SD intake.
 online = (root / 'src/native/NativeOnlineRtePackageInstall.h').read_text(encoding='utf-8')
 for required in ('releases/download/', 'archiveMatches(',
                  'HttpDownloader::downloadToFile(url, part, progress)',
@@ -34,9 +34,9 @@ assert 'Mutation lock;' in bridge
 assert 'installOrdinaryFromSdZip(' in bridge
 assert 'systemPackageUseGate().pinned(paths.target)' in bridge
 
-# The UI no longer asks for the old USB-only or loose-ELF driver catalog.
-# Historical retained stages remain independently inspectable and removable
-# only after explicit confirmation, without touching unrelated SD contents.
+# All normal operations in the Driver Manager are common package operations.
+# No transport-specific URL, device-class identity or loose ELF install may
+# remain callable via the historical driver manager's ABI.
 ui = (root / 'Apps/driver_manager.c').read_text(encoding='utf-8')
 app = ui[ui.index('__attribute__((visibility("default"))) void app_main(void)'):]
 assert app.index('recovery_screen(driver, ui)') < app.index('refresh_online(manager, ui)')
@@ -53,9 +53,16 @@ assert 'catalog_refresh(' not in ui and 'install_with_progress(' not in ui
 assert 'else populate_online(manager);' in app
 assert 'else if (!refresh_online(manager, ui))' not in app
 
-# Recovery retains the old driver stage interface for deployed SDs and always
-# shares an exclusive mutation lock with historical transactions.
 legacy = (root / 'src/native/NativeDriverManagerBridge.cpp').read_text(encoding='utf-8')
+assert 'NativeOnlineDriverInstall.h' not in legacy
+assert 'HttpDownloader' not in legacy and 'latest/download/' not in legacy
+assert 'usb-provider-catalog.json' not in legacy and 'driver-catalog.json' not in legacy
+assert 'bool catalogRefresh() { return false; }' in legacy
+assert 'bool install(uint32_t) { return false; }' in legacy
+assert 'bool managerApp()' in legacy
+assert 'native_app_current_path()' in legacy
+assert '"/sd/Apps/driver_manager/driver_manager.elf"' in legacy
+assert 'version == T5_DRIVER_MANAGER_API_VERSION && managerApp()' in legacy
 recovery = legacy[legacy.index('bool rebuildRecoveryInventory()'):]
 for name in ('bool recoveryRefresh()', 'bool recoveryGet(',
              'bool recoveryRetry(', 'bool recoveryDiscard('):
@@ -72,7 +79,7 @@ for required in ('RuntimePackages::safeId(id.c_str())',
     assert required in recovery, required
 assert 'Storage.remove(paths.target)' not in recovery
 
-# Existing HTTP staged transfer must never overwrite an unknown .part file.
+# Unknown .part files belong to their creator, not to a failed new download.
 download = (root / 'src/network/HttpDownloader.cpp').read_text(encoding='utf-8')
 transfer = download[download.index('HttpDownloader::DownloadError HttpDownloader::downloadToFile('):]
 for required in ('Storage.exists(destPath.c_str())',
@@ -85,4 +92,4 @@ stream = (root / 'src/runtime/streams/HttpStreamTransfer.h').read_text(encoding=
 stream_download = stream[stream.index('inline Result download('):]
 assert 'T5_STREAM_FILE_CREATE_NEW' in stream_download
 assert stream_download.index('T5_STREAM_FILE_CREATE_NEW') < stream_download.index('if (destinationCreated) *destinationCreated = true;')
-print('Driver ZIP intake, immutable catalog, recovery and exclusive staged transfer source guards passed')
+print('Driver ZIP intake, scoped recovery, legacy ABI retirement and exclusive staging guards passed')
