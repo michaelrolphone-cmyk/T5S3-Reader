@@ -7,9 +7,10 @@ common=(-std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-
   -I"$repo/lib/NativeApps/include" -I"$repo/src")
 stream="$repo/src/runtime/streams/StreamRuntime.cpp"
 serial="$repo/src/native/NativeSerialPortBridge.cpp"
-# Successful-close test adapter: never link it into production or the real
-# installed-class binder test (which defines nativeUsbClassStopChecked itself).
+# Successful-close and transport fakes are host-only. Keep both OUT of the
+# production class-binding test, which links NativeUsbClassBridge.cpp itself.
 checked="$repo/test/streams/stubs/native_usb_checked_stop_stub.cpp"
+bridge_io="$repo/test/streams/stubs/native_usb_bridge_io_stub.cpp"
 
 compile_run() {
   local name="$1"
@@ -41,11 +42,11 @@ compile_run usb-device-abi "$serial" "$checked" "$repo/src/native/NativeDeviceBr
 # These two bridge fixtures intentionally use fake storage/scheduler headers.
 production_common=("${common[@]}")
 common+=(-I"$repo/test/streams/stubs")
-compile_run bridge "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" "$checked" \
-  "$repo/test/streams/bridge_test.cpp"
-compile_run usb-direct-ownership "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" "$checked" \
-  "$repo/test/streams/usb_direct_ownership_test.cpp"
-# Restore the original includes before testing the production class bridge.
+compile_run bridge "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" \
+  "$checked" "$bridge_io" "$repo/test/streams/bridge_test.cpp"
+compile_run usb-direct-ownership "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" \
+  "$checked" "$bridge_io" "$repo/test/streams/usb_direct_ownership_test.cpp"
+# Restore original includes before linking the real installed class bridge.
 common=("${production_common[@]}" -I"$repo/sdk/driver")
 compile_run usb-class-bridge "$stream" "$serial" "$repo/src/native/NativeUsbClassBridge.cpp" \
   "$repo/test/streams/usb_class_bridge_bind_test.cpp"
