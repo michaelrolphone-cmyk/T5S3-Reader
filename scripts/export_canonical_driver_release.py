@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Flatten seven canonical physical ELF packages into unique release assets.
+"""Flatten eight canonical physical ELF packages into unique release assets.
 
 No publication occurs here. Names intentionally match NativeOnlineDriverInstall:
   <id>--package.json, <id>--driver.elf,
@@ -21,8 +21,8 @@ def export() -> None:
     index_path = SOURCE / 'usb-provider-catalog.json'
     index = json.loads(index_path.read_text(encoding='utf-8'))
     packages = index.get('packages')
-    if index.get('schema') != 1 or not isinstance(packages, list) or len(packages) != 7:
-        raise ValueError('canonical seven-driver index is absent or incomplete')
+    if index.get('schema') != 1 or not isinstance(packages, list) or len(packages) != 8:
+        raise ValueError('canonical eight-driver index is absent or incomplete')
     if TARGET.exists():
         # Never silently reuse stale publication assets from another build.
         if any(TARGET.iterdir()):
