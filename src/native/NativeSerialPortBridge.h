@@ -23,3 +23,6 @@ bool nativeUnregisterSerialProvider(const char* id);
 
 // serial.port is the only firmware USB serial consumer. Direct open_usb
 // streams no longer claim the physical device or a capability lease.
+// usb.serial acquire/configure/control/status go through NativeUsbClassBridge
+// (installed class ELF), not t5_usb_get_api(). Bytes still move on the
+// published serial.port pair from nativeStreamOpenUsbPair.
