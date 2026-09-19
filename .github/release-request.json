@@ -1,5 +1,5 @@
 {
-  "enabled": false,
-  "tag": "",
+  "enabled": true,
+  "tag": "v1.2.32",
   "commit_firmware": true
 }
