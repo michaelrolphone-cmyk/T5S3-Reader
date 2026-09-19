@@ -19,7 +19,9 @@ static char subtitles[MAX_ITEMS][SUBTITLE_BYTES];
 static char values[MAX_ITEMS][T5_PACKAGE_VERSION_MAX];
 static char names[MAX_ITEMS][INBOX_NAME_BYTES];
 static bool archive_rows[MAX_ITEMS];
+static uint32_t online_indices[MAX_ITEMS];
 static uint32_t row_count;
+static bool online_view;
 
 static bool api_ready(const t5_package_manager_api_v1 *manager,
                       const t5_ui_api_v1 *ui) {
@@ -35,6 +37,11 @@ static bool zip_available(const t5_package_manager_api_v1 *manager) {
     return manager->struct_size >= offsetof(t5_package_manager_api_v1, install_archive) +
            sizeof(manager->install_archive) && manager->preview_archive &&
            manager->install_archive;
+}
+static bool online_available(const t5_package_manager_api_v1 *manager) {
+    return manager->struct_size >= offsetof(t5_package_manager_api_v1, online_install) +
+        sizeof(manager->online_install) && manager->online_refresh &&
+        manager->online_count && manager->online_get && manager->online_install;
 }
 static size_t bounded_length(const char *value, size_t capacity) {
     size_t used = 0;
@@ -55,6 +62,26 @@ static const char* kind_name(uint8_t kind) {
         default: return "Invalid";
     }
 }
+static void set_row(uint32_t index, const t5_package_preview_t *info,
+                    const char *available) {
+    packages[index] = *info;
+    snprintf(titles[index], sizeof(titles[index]), "%.63s [%s]",
+             info->id, kind_name(info->kind));
+    if (!info->valid_installation)
+        snprintf(subtitles[index], sizeof(subtitles[index]),
+                 "Installed generation needs recovery; no mutation");
+    else if (info->installed_version[0])
+        snprintf(subtitles[index], sizeof(subtitles[index]),
+                 "Installed %.31s; %s", info->installed_version,
+                 info->install_allowed ? "update available" : "no update");
+    else
+        snprintf(subtitles[index], sizeof(subtitles[index]), "%s",
+                 info->install_allowed ? available :
+                 "Unavailable: dependency, version or pending stage");
+    snprintf(values[index], sizeof(values[index]), "%s", info->version);
+    rows[index] = (t5_ui_list_row_t){titles[index], subtitles[index], values[index],
+                                    info->install_allowed ? T5_UI_LIST_HIGHLIGHT_VALUE : 0};
+}
 static void refresh(const t5_app_api_v1 *app,
                     const t5_package_manager_api_v1 *manager) {
     row_count = 0;
@@ -73,33 +100,46 @@ static void refresh(const t5_app_api_v1 *app,
         if (!described) continue;
         memcpy(names[row_count], entry.name, n + 1u);
         archive_rows[row_count] = archive;
-        packages[row_count] = info;
-        snprintf(titles[row_count], sizeof(titles[row_count]), "%s [%s]",
-                 info.id, kind_name(info.kind));
-        if (!info.valid_installation)
-            snprintf(subtitles[row_count], sizeof(subtitles[row_count]),
-                     "Installed generation needs recovery; no mutation");
-        else if (info.installed_version[0])
-            snprintf(subtitles[row_count], sizeof(subtitles[row_count]),
-                     "Installed %s; %s", info.installed_version,
-                     info.install_allowed ? "update available" : "no update");
-        else
-            snprintf(subtitles[row_count], sizeof(subtitles[row_count]), "%s",
-                     info.install_allowed ? (archive ? "SD ZIP: ready to install" :
-                                                  "SD directory: ready to install") :
-                     "Unavailable: dependency, version or pending stage");
-        snprintf(values[row_count], sizeof(values[row_count]), "%s", info.version);
-        rows[row_count] = (t5_ui_list_row_t){titles[row_count], subtitles[row_count],
-                                            values[row_count],
-                                            info.install_allowed ? T5_UI_LIST_HIGHLIGHT_VALUE : 0};
+        set_row(row_count, &info, archive ? "SD ZIP: ready to install" :
+                                           "SD directory: ready to install");
         ++row_count;
     }
     app->dir_close();
 }
+static bool refresh_online(const t5_package_manager_api_v1 *manager) {
+    row_count = 0;
+    if (!online_available(manager) || !manager->online_refresh()) return false;
+    const uint32_t count = manager->online_count();
+    for (uint32_t i = 0; i < count && row_count < MAX_ITEMS; ++i) {
+        t5_package_catalog_row_t item = {0};
+        if (!manager->online_get(i, &item)) continue;
+        online_indices[row_count] = i;
+        set_row(row_count, &item.package, "Release ZIP: ready to install");
+        ++row_count;
+    }
+    return true;
+}
+static void refresh_current(const t5_app_api_v1 *app,
+                            const t5_package_manager_api_v1 *manager) {
+    if (online_view) {
+        // Do not change the selected release while a user is on its list.
+        // Refresh explicitly when entering online view, not after an install.
+        row_count = 0;
+        const uint32_t count = manager->online_count();
+        for (uint32_t i = 0; i < count && row_count < MAX_ITEMS; ++i) {
+            t5_package_catalog_row_t item = {0};
+            if (!manager->online_get(i, &item)) continue;
+            online_indices[row_count] = i;
+            set_row(row_count, &item.package, "Release ZIP: ready to install");
+            ++row_count;
+        }
+    } else refresh(app, manager);
+}
 static void render(const t5_ui_api_v1 *ui, int32_t selected, const char *status) {
     const t5_ui_chrome_t chrome = {
         .title = "Package Manager",
-        .subtitle = "Offline SD: /Packages/Inbox (ZIP or directory)",
+        .subtitle = online_view ? "Pinned release ZIPs; tap header for SD" :
+                    "Offline /Packages/Inbox; tap header for online",
         .status = status ? status : "",
         .back_label = "Back", .confirm_label = row_count ? "Actions" : "",
         .previous_label = "Up", .next_label = "Down",
@@ -107,8 +147,9 @@ static void render(const t5_ui_api_v1 *ui, int32_t selected, const char *status)
     if (row_count) ui->render_list(&chrome, rows, row_count, selected);
     else {
         const t5_ui_list_row_t empty = {
-            "No packages in SD inbox", "Add a .rte.zip or <id>/.package.json",
-            "Offline", 0,
+            online_view ? "No release packages" : "No packages in SD inbox",
+            online_view ? "Check saved Wi-Fi or generic package catalog" :
+                "Add a .rte.zip or <id>/.package.json", online_view ? "Online" : "Offline", 0,
         };
         ui->render_list(&chrome, &empty, 1, 0);
     }
@@ -180,22 +221,23 @@ static void activate(const t5_package_manager_api_v1 *manager,
     if (!status || !capacity || selected < 0 || selected >= (int32_t)row_count) return;
     const t5_package_preview_t info = packages[selected];
     if (!info.valid_installation) {
-        snprintf(status, capacity, "%s: recover invalid generation before changing it", info.id);
+        snprintf(status, capacity, "%.63s: recover invalid generation before changing it", info.id);
         return;
     }
     const int32_t action = select_action(ui, &info);
     if (action == 1 &&
         confirm(ui, "Confirm installation",
                 "Integrity checked; no activation or privilege grant", "Install now")) {
-        const bool okay = archive_rows[selected] ?
-            manager->install_archive(names[selected]) : manager->install(names[selected]);
-        snprintf(status, capacity, "%s: %s; no activation", info.id,
-                 okay ? "installed" : "install refused; inspect SD/recovery");
+        const bool okay = online_view ? manager->online_install(online_indices[selected]) :
+            archive_rows[selected] ? manager->install_archive(names[selected]) :
+                                     manager->install(names[selected]);
+        snprintf(status, capacity, "%.63s: %s; no activation", info.id,
+                 okay ? "installed" : "install refused; inspect package/recovery");
     } else if (action == 2 &&
                confirm(ui, "Confirm uninstall",
                        "Remove selected package; cannot be undone", "Uninstall now")) {
         const bool okay = manager->uninstall(info.kind, info.id);
-        snprintf(status, capacity, "%s: %s", info.id,
+        snprintf(status, capacity, "%.63s: %s", info.id,
                  okay ? "uninstalled" : "uninstall refused; stop mapped users");
     }
 }
@@ -208,6 +250,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     if (!app || !app->dir_open || !app->dir_next || !app->dir_close ||
         !app->set_back_exits_app || !api_ready(manager, ui)) return;
     app->set_back_exits_app(false);
+    online_view = false;
     refresh(app, manager);
     int32_t selected = 0;
     char status[STATUS_BYTES] = {0};
@@ -227,7 +270,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                 break;
             case T5_UI_EVENT_CONFIRM:
                 activate(manager, ui, selected, status, sizeof(status));
-                refresh(app, manager);
+                refresh_current(app, manager);
                 redraw = true;
                 break;
             case T5_UI_EVENT_TAP: {
@@ -235,10 +278,19 @@ __attribute__((visibility("default"))) void app_main(void) {
                 if (hit >= 0 && hit < (int32_t)row_count) {
                     if (hit == selected) activate(manager, ui, selected, status, sizeof(status));
                     selected = hit;
-                    refresh(app, manager);
+                    refresh_current(app, manager);
                     redraw = true;
                 } else if (hit == T5_UI_HIT_HEADER) {
-                    refresh(app, manager);
+                    if (!online_view && online_available(manager)) {
+                        online_view = true;
+                        if (!refresh_online(manager))
+                            snprintf(status, sizeof(status), "Online catalog unavailable; SD still accessible");
+                        else status[0] = '\0';
+                    } else {
+                        online_view = false;
+                        refresh(app, manager);
+                        status[0] = '\0';
+                    }
                     selected = 0;
                     redraw = true;
                 }
