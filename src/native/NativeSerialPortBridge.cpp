@@ -22,8 +22,7 @@ t5_stream_t rxHandle = 0;
 t5_stream_t txHandle = 0;
 uint32_t leaseGeneration = 0;
 uint32_t leaseEpoch = 0;
-// USB host callbacks update ONLY the legacy lock-protected snapshot. All
-// unified registry mutations occur later on the application's owner task.
+// Host callbacks publish snapshots; only the owner task touches the registry.
 NativeUsbDevices::Registry devices;
 RuntimeDevices::UsbSerialProjection usbProjection(RuntimeDevices::systemRegistry());
 RuntimeDevices::LeaseHandle physicalLease = 0;
@@ -33,8 +32,7 @@ UsbConsumer physicalConsumer = UsbConsumer::None;
 RuntimeSerial::Registry providers;
 t5_serial_config_t currentConfig = {115200u, 8u, T5_SERIAL_PARITY_NONE, 1u, T5_SERIAL_FLOW_NONE};
 
-// Only status transitions and API calls are logged. Polls, received content,
-// transmitted content and protocol payloads must not flood the debug channel.
+// State transitions, not serial payloads or every poll, are logged.
 t5_serial_port_lease_t lastLoggedLease = 0;
 uint8_t lastLoggedStatus = 0xff;
 uint8_t lastLoggedConnected = 0xff;
@@ -81,21 +79,15 @@ void traceStatus(t5_serial_port_lease_t lease, const t5_serial_port_state_t& sta
 bool authorized() {
   return active && t5_app_get_api(T5_APP_ABI_VERSION) != nullptr;
 }
-
-// The host callback never touches systemRegistry(). A snapshot is projected
-// only by the owner task; loss revokes the physical lease but intentionally
-// keeps the session reservation until its original consumer closes it.
 void synchronizeUsbDevice() {
   const auto snapshot = devices.diagnostics();
   const auto& d = snapshot.device;
   (void)usbProjection.reconcile(snapshot.epoch, d.id,
       d.presence == NativeUsbDevices::Presence::Bound,
       d.vid, d.pid, d.interface_number, d.product);
-  if (physicalLease && !RuntimeDevices::systemRegistry().valid(physicalLease, physicalOwner)) {
+  if (physicalLease && !RuntimeDevices::systemRegistry().valid(physicalLease, physicalOwner))
     physicalLease = 0;
-  }
 }
-
 void releasePhysicalDevice(UsbConsumer consumer) {
   if (physicalConsumer != consumer) return;
   if (physicalLease) {
@@ -105,10 +97,6 @@ void releasePhysicalDevice(UsbConsumer consumer) {
   physicalOwner = 0;
   physicalConsumer = UsbConsumer::None;
 }
-
-// Both USB consumers reserve the same session even while the host is still
-// enumerating. A bound interface additionally receives ONE exclusive
-// serial.port lease, never a second lease under a different owner or API.
 bool claimPhysicalDevice(UsbConsumer consumer) {
   synchronizeUsbDevice();
   auto* context = RuntimeResources::ExecutionContext::current();
@@ -119,7 +107,7 @@ bool claimPhysicalDevice(UsbConsumer consumer) {
   if (!usbProjection.device()) {
     physicalConsumer = consumer;
     physicalOwner = context->id();
-    return true;  // Initial host enumeration is asynchronous.
+    return true;  // Enumeration remains asynchronous.
   }
   RuntimeDevices::LeaseHandle next = 0;
   if (RuntimeDevices::systemRegistry().acquire(
@@ -130,7 +118,6 @@ bool claimPhysicalDevice(UsbConsumer consumer) {
   physicalOwner = context->id();
   return true;
 }
-
 bool validConfig(const t5_serial_config_t* config) {
   return config && config->baud_rate >= 300u && config->baud_rate <= 3000000u &&
          config->data_bits >= 5u && config->data_bits <= 8u &&
@@ -138,7 +125,6 @@ bool validConfig(const t5_serial_config_t* config) {
          (config->stop_bits == 1u || config->stop_bits == 2u) &&
          config->flow_control == T5_SERIAL_FLOW_NONE;
 }
-
 uint8_t semanticStatus(uint8_t status) {
   switch (status) {
     case T5_USB_STATUS_OFF: return T5_SERIAL_STATUS_OFF;
@@ -149,29 +135,28 @@ uint8_t semanticStatus(uint8_t status) {
     default: return T5_SERIAL_STATUS_UNAVAILABLE;
   }
 }
-
 bool validLease(t5_serial_port_lease_t lease) {
   return lease != 0 && lease == leaseHandle;
 }
-
 bool leaseRevoked() {
   return devices.epoch() != leaseEpoch || leaseEpoch == UINT32_MAX;
 }
 
-void clearLease(bool stopUsb) {
+// Never relinquish stream/physical leases if the installed ELF has an
+// uncertain physical close. The old code cleared both unconditionally.
+bool clearLease(bool stopUsb) {
+  if (stopUsb && !nativeUsbClassStopChecked()) return false;
   if (rxHandle) (void)nativeStreamCloseOwned(rxHandle);
   if (txHandle) (void)nativeStreamCloseOwned(txHandle);
   rxHandle = txHandle = 0;
   releasePhysicalDevice(UsbConsumer::SerialPort);
-  if (stopUsb) nativeUsbClassStop();
   leaseHandle = 0;
   leaseEpoch = 0;
-  // Host stop and app unload invalidate even an identical VID/PID device.
   devices.detach();
   synchronizeUsbDevice();
+  return true;
 }
 
-// USB is one provider; its host/power/epoch/stream details stay private.
 t5_serial_result_t usbAcquirePort(const t5_serial_port_request_t* request,
                                   t5_serial_port_lease_t* lease,
                                   t5_stream_t* rx,
@@ -188,15 +173,19 @@ t5_serial_result_t usbAcquirePort(const t5_serial_port_request_t* request,
   if (request->device && !devices.resolve(request->device, NativeUsbDevices::Provider::UsbSerial))
     return T5_SERIAL_INVALID;
 
+  if (!nativeUsbClassEnsureInstalled()) return T5_SERIAL_UNSUPPORTED;
   if (!nativeUsbClassAvailable()) return T5_SERIAL_UNSUPPORTED;
   if (!nativeUsbClassStart(request->config)) return T5_SERIAL_IO;
   const uint32_t startEpoch = devices.epoch();
-  if (startEpoch == UINT32_MAX) { nativeUsbClassStop(); return T5_SERIAL_LIMIT; }
+  if (startEpoch == UINT32_MAX) {
+    (void)nativeUsbClassStopChecked();
+    return T5_SERIAL_LIMIT;
+  }
 
   t5_stream_t newRx = 0, newTx = 0;
   const auto streamResult = nativeStreamOpenUsbPair(&newRx, &newTx);
   if (streamResult != T5_STREAM_OK) {
-    nativeUsbClassStop();
+    (void)nativeUsbClassStopChecked();
     devices.detach();
     synchronizeUsbDevice();
     if (streamResult == T5_STREAM_BUSY) return T5_SERIAL_BUSY;
@@ -205,19 +194,29 @@ t5_serial_result_t usbAcquirePort(const t5_serial_port_request_t* request,
     if (streamResult == T5_STREAM_LIMIT) return T5_SERIAL_LIMIT;
     return T5_SERIAL_IO;
   }
-  // Reject detach during acquisition rather than issuing streams for another
-  // physical device. Preserve the original epoch before teardown changes it.
   const bool detached = devices.epoch() != startEpoch;
   if (detached || !claimPhysicalDevice(UsbConsumer::SerialPort)) {
     (void)nativeStreamCloseOwned(newRx);
     (void)nativeStreamCloseOwned(newTx);
-    releasePhysicalDevice(UsbConsumer::SerialPort);
-    nativeUsbClassStop();
+    if (nativeUsbClassStopChecked())
+      releasePhysicalDevice(UsbConsumer::SerialPort);
     devices.detach();
     synchronizeUsbDevice();
     return detached ? T5_SERIAL_DISCONNECTED : T5_SERIAL_BUSY;
   }
 
+  // The pair is not usable until its exact owner and class generation are
+  // attached. Do not return orphaned streams to a consumer on attach failure.
+  auto* owner = RuntimeResources::ExecutionContext::current();
+  if (!owner || !nativeUsbClassAttachPair(owner->id(), newRx, newTx)) {
+    (void)nativeStreamCloseOwned(newRx);
+    (void)nativeStreamCloseOwned(newTx);
+    if (nativeUsbClassStopChecked())
+      releasePhysicalDevice(UsbConsumer::SerialPort);
+    devices.detach();
+    synchronizeUsbDevice();
+    return T5_SERIAL_IO;
+  }
   ++leaseGeneration;
   leaseHandle = (leaseGeneration << 1u) | 1u;
   leaseEpoch = startEpoch;
@@ -297,17 +296,12 @@ t5_serial_result_t usbSetControlLines(t5_serial_port_lease_t lease, bool dtr, bo
   if (!claimPhysicalDevice(UsbConsumer::SerialPort)) return T5_SERIAL_BUSY;
   return nativeUsbClassControl(dtr, rts) ? T5_SERIAL_OK : T5_SERIAL_IO;
 }
-
 t5_serial_result_t usbReleasePort(t5_serial_port_lease_t lease) {
   if (!authorized()) return T5_SERIAL_DENIED;
   if (!validLease(lease)) return T5_SERIAL_CLOSED;
-  clearLease(true);
-  return T5_SERIAL_OK;
+  return clearLease(true) ? T5_SERIAL_OK : T5_SERIAL_IO;
 }
-
-bool usbAvailable(void*) {
-  return nativeUsbClassAvailable();
-}
+bool usbAvailable(void*) { return nativeUsbClassAvailable(); }
 bool usbMatches(void*, t5_serial_device_t id) {
   return devices.resolve(id, NativeUsbDevices::Provider::UsbSerial);
 }
@@ -335,7 +329,6 @@ void ensureUsbRegistered() {
   if (!usbRegistered) usbRegistered = providers.add(usbProvider);
 }
 
-// Public ABI only dispatches through the semantic provider/lease resolver.
 t5_serial_result_t acquirePort(const t5_serial_port_request_t* request,
                                t5_serial_port_lease_t* lease,
                                t5_stream_t* rx,
@@ -390,8 +383,6 @@ const t5_serial_port_api_v1 api = {
 };
 } // namespace
 
-// Trusted registration only; applications cannot import these hooks.
-// Register on the owning task with no active serial lease.
 bool nativeRegisterSerialProvider(const RuntimeSerial::Provider& provider) {
   ensureUsbRegistered();
   return providers.add(provider);
@@ -400,28 +391,13 @@ bool nativeUnregisterSerialProvider(const char* id) {
   if (!id || std::strcmp(id, "usb.serial") == 0) return false;
   return providers.remove(id);
 }
-
-// USB host task publishes device identity separately from registration.
 void nativeUsbProviderAttach(const t5_usb_serial_state_t* state, uint8_t dataInterface) {
   if (state) devices.observe(*state, dataInterface);
 }
-void nativeUsbProviderDetach() {
-  devices.detach();
-}
-uint32_t nativeUsbProviderEpoch() {
-  return devices.epoch();
-}
+void nativeUsbProviderDetach() { devices.detach(); }
+uint32_t nativeUsbProviderEpoch() { return devices.epoch(); }
+void nativeDeviceDiscoveryTick() { synchronizeUsbDevice(); }
 
-// Trusted owner-task discovery path, callable with no active app context. A
-// host callback only updates its own lock-protected snapshot; the main loop
-// and native app input polling perform unified registry mutations here.
-void nativeDeviceDiscoveryTick() {
-  synchronizeUsbDevice();
-}
-
-// Reconcile even for a stale handle: the owner task must revoke the old
-// physical lease on detach, without ever claiming its replacement for that
-// handle. The USB host and stream scheduler never mutate the unified registry.
 bool nativeUsbDirectStreamClaim(uint32_t expectedEpoch) {
   if (!authorized()) return false;
   synchronizeUsbDevice();
@@ -434,12 +410,10 @@ bool nativeUsbDirectStreamClaim(uint32_t expectedEpoch) {
   }
   return true;
 }
-void nativeUsbDirectStreamRelease() {
-  releasePhysicalDevice(UsbConsumer::DirectStream);
-}
+void nativeUsbDirectStreamRelease() { releasePhysicalDevice(UsbConsumer::DirectStream); }
 
 void nativeSerialPortsBegin() {
-  clearLease(false);
+  if (!clearLease(false)) return;
   active = true;
   resetStatusTrace();
   synchronizeUsbDevice();
@@ -447,10 +421,13 @@ void nativeSerialPortsBegin() {
   traceResult("context-begin", T5_SERIAL_OK, 0, 0);
 }
 void nativeSerialPortsEnd() {
-  // Release the selected provider before reclaiming streams. A non-USB
-  // provider must never trigger an unrelated USB serial_stop.
   providers.end();
-  if (leaseHandle) clearLease(true);
+  if (leaseHandle && !clearLease(true)) {
+    // Do not release physical ownership while class teardown is uncertain.
+    active = false;
+    traceResult("context-end-quarantined", T5_SERIAL_IO, leaseHandle, 0);
+    return;
+  }
   releasePhysicalDevice(UsbConsumer::SerialPort);
   releasePhysicalDevice(UsbConsumer::DirectStream);
   devices.detach();
