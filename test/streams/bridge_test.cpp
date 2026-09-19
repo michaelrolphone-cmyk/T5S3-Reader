@@ -164,7 +164,7 @@ int main() {
   assert(api->write(rx, "a", 1, &count) == T5_STREAM_DENIED);
   assert(api->read(tx, bytes, 1, &count) == T5_STREAM_DENIED);
   assert(api->read(rx, bytes, 3, &count) == T5_STREAM_AGAIN && count == 0);
-  assert(api->write(tx, "abc", 3, &count) == T5_STREAM_OK && count == 2);
+  assert(api->write(tx, "abc", 3, &count) == T5_STREAM_OK && count == 3);
   t5_serial_port_state_t serialState{};
   assert(serial->read_status(lease, &serialState) == T5_SERIAL_OK);
   assert(serialState.status == T5_SERIAL_STATUS_READY && serialState.connected && serialState.device != 0);
@@ -204,7 +204,7 @@ int main() {
   assert(serial->acquire(&request, &second, &rx, &tx) == T5_SERIAL_OK && second != stale && starts == 2);
   nativeUsbProviderAttach(&usbStatus, 2);
   assert(serial->read_status(second, &serialState) == T5_SERIAL_OK && serialState.device != firstDevice);
-  assert(api->write(tx, "abc", 3, &count) == T5_STREAM_OK && count == 2);
+  assert(api->write(tx, "abc", 3, &count) == T5_STREAM_OK && count == 3);
   assert(api->open_http("https://example.test/file", &h) == 0);
   assert(api->open_http("https://example.test/other", &other) == T5_STREAM_BUSY);
   httpTask(httpContext);
