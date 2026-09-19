@@ -1,6 +1,6 @@
-/* Verify only the privileged provider's relocation scope substitutes printf.
- * Real physical USB and power ELFs use the existing libc printf import; the
- * ordinary app resolver must never inherit this diagnostic endpoint. */
+/* Verify only a privileged provider's relocation scope substitutes printf
+ * and compiler-optimized puts. Ordinary applications cannot inherit the
+ * diagnostics sink or any USB hardware implementation from the resolver. */
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -20,19 +20,28 @@ int risc_provider_diagnostic_printf(const char *format, ...) {
     (void)format;
     return 0;
 }
+int risc_provider_diagnostic_puts(const char *message) {
+    (void)message;
+    return 0;
+}
 
 int main(void) {
     active_task = &owner;
     assert(esp_elf_privileged_os_cpu_lookup_v1("printf") == 0);
+    assert(esp_elf_privileged_os_cpu_lookup_v1("puts") == 0);
     assert(esp_elf_privileged_os_cpu_begin_v1());
     assert(esp_elf_privileged_os_cpu_lookup_v1("printf") ==
            (uintptr_t)&risc_provider_diagnostic_printf);
+    assert(esp_elf_privileged_os_cpu_lookup_v1("puts") ==
+           (uintptr_t)&risc_provider_diagnostic_puts);
     assert(esp_elf_privileged_os_cpu_lookup_v1("t5_usb_get_api") == 0);
     active_task = &bystander;
     assert(esp_elf_privileged_os_cpu_lookup_v1("printf") == 0);
+    assert(esp_elf_privileged_os_cpu_lookup_v1("puts") == 0);
     active_task = &owner;
     assert(esp_elf_privileged_os_cpu_end_v1());
     assert(esp_elf_privileged_os_cpu_lookup_v1("printf") == 0);
-    puts("Privileged provider printf diagnostics remain task-scoped: PASS");
+    assert(esp_elf_privileged_os_cpu_lookup_v1("puts") == 0);
+    puts("Privileged provider printf/puts diagnostics remain task-scoped: PASS");
     return 0;
 }

@@ -64,10 +64,10 @@ void logPrintf(const char* level, const char* origin, const char* format, ...) {
   addToLogRingBuffer(buf);
 }
 
-// Private relocation maps printf for privileged provider ELFs to this generic
-// logging endpoint only. Ordinary apps and firmware retain libc printf.
-// Capture only driver-owned startup diagnostics, NEVER arbitrary USB data,
-// serial payloads or other provider printf output in the UI-readable log ring.
+// Private relocation maps printf and puts for privileged provider ELFs to
+// these generic logging endpoints only. Ordinary apps and firmware retain
+// libc functions. Capture only physical startup diagnostics, NEVER arbitrary
+// USB RX/TX or other provider output in the UI-readable log ring.
 extern "C" int risc_provider_diagnostic_printf(const char* format, ...) {
   if (!format) return -1;
   va_list args;
@@ -91,6 +91,19 @@ extern "C" int risc_provider_diagnostic_printf(const char* format, ...) {
   const int forwarded = vprintf(format, args);
   va_end(args);
   return forwarded;
+}
+
+// GCC may transform printf("constant\n") into puts("constant"). Without the
+// second scoped entry point preflight-read, clock and rollback failures would
+// still disappear from the display. Keep the ordinary libc path untouched.
+extern "C" int risc_provider_diagnostic_puts(const char* message) {
+  if (!message) return EOF;
+  if (strncmp(message, "VBUSREF ", 8) == 0 ||
+      strncmp(message, "USBCTRL ", 8) == 0) {
+    logPrintf("ERR", "PROVELF", "%s\n", message);
+    return 0;
+  }
+  return puts(message);
 }
 
 std::string getLastLogs() {
