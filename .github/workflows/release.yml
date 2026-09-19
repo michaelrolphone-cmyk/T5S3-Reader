@@ -157,6 +157,7 @@ jobs:
           python scripts/build_installed_usb_stack.py
           python test/drivers/installed_usb_stack_package_test.py
           python scripts/export_canonical_driver_release.py
+          python test/resources/release_package_catalog_test.py
 
       - name: Stage RiscRTE firmware image
         shell: bash
@@ -166,7 +167,6 @@ jobs:
           VER="${{ steps.ver.outputs.ver }}"
           MERGED="${{ steps.ver.outputs.bin }}"
 
-          # Verify the preserved images are unchanged before publishing them.
           sha256sum -c "$SRC/SHA256SUMS"
           mkdir -p firmware dist
 
