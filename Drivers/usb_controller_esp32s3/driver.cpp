@@ -11,6 +11,7 @@
 #include <freertos/task.h>
 #include <cstring>
 #include <cstdint>
+#include <cstdio>
 
 namespace {
 constexpr size_t kEvents = 16;
@@ -333,43 +334,65 @@ void stop() {
 bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     if (running || installed || client || transfer || powerLease || fault ||
         !deps || count != 1 || !equals(deps[0].capability_id, "board.power.vbus") ||
-        deps[0].api_version != RISC_USB_VBUS_API_V1 || !deps[0].api) return false;
+        deps[0].api_version != RISC_USB_VBUS_API_V1 || !deps[0].api) {
+        std::printf("USBCTRL start-failed stage=dependency-or-state rc=0\n");
+        return false;
+    }
     const auto *api = static_cast<const risc_usb_vbus_api_v1 *>(deps[0].api);
     if (api->api_version != RISC_USB_VBUS_API_V1 ||
         api->struct_size < sizeof(*api) || !api->acquire_host ||
-        !api->release_host || !api->quiesce) return false;
+        !api->release_host || !api->quiesce) {
+        std::printf("USBCTRL start-failed stage=vbus-abi rc=0\n");
+        return false;
+    }
     power = api;
     /* The board provider alone decides whether host sourcing is electrically
      * legal. The controller never touches charger/I2C registers in firmware. */
     if (!power->acquire_host(power->context, 500, &powerLease) || !powerLease) {
+        std::printf("USBCTRL start-failed stage=vbus-acquire rc=0 lease=%u\n",
+                    powerLease ? 1u : 0u);
         // Acquire may fail after partially changing the board state. A lease
         // must be released by its owner before the ELF can be reused/unmapped.
-        if (powerLease) (void)quiesce(nullptr);
-        else power = nullptr;
+        if (powerLease && !quiesce(nullptr))
+            std::printf("USBCTRL cleanup-failed stage=vbus-acquire\n");
+        else if (!powerLease) power = nullptr;
         return false;
     }
+    std::printf("USBCTRL stage=vbus-acquired\n");
     usb_host_config_t config = {};
     config.skip_phy_setup = false;
     config.intr_flags = ESP_INTR_FLAG_LEVEL1;
-    if (usb_host_install(&config) != ESP_OK) {
-        (void)quiesce(nullptr);  // Releases the exclusively acquired VBUS.
+    const esp_err_t install_rc = usb_host_install(&config);
+    if (install_rc != ESP_OK) {
+        std::printf("USBCTRL start-failed stage=usb-host-install rc=%d\n",
+                    static_cast<int>(install_rc));
+        if (!quiesce(nullptr)) std::printf("USBCTRL cleanup-failed stage=usb-host-install\n");
         return false;
     }
     installed = true;
+    std::printf("USBCTRL stage=usb-host-installed\n");
     usb_host_client_config_t registration = {};
     registration.is_synchronous = false;
     registration.max_num_event_msg = kEvents;
     registration.async.client_event_callback = client_event;
     registration.async.callback_arg = nullptr;
-    if (usb_host_client_register(&registration, &client) != ESP_OK) {
-        (void)quiesce(nullptr);  // Uninstalls IDF host before releasing VBUS.
+    const esp_err_t register_rc = usb_host_client_register(&registration, &client);
+    if (register_rc != ESP_OK) {
+        std::printf("USBCTRL start-failed stage=client-register rc=%d\n",
+                    static_cast<int>(register_rc));
+        if (!quiesce(nullptr)) std::printf("USBCTRL cleanup-failed stage=client-register\n");
         return false;
     }
-    if (usb_host_transfer_alloc(kBuffer, 0, &transfer) != ESP_OK) {
-        (void)quiesce(nullptr);  // Deregisters client, host and VBUS in order.
+    std::printf("USBCTRL stage=client-registered\n");
+    const esp_err_t alloc_rc = usb_host_transfer_alloc(kBuffer, 0, &transfer);
+    if (alloc_rc != ESP_OK) {
+        std::printf("USBCTRL start-failed stage=transfer-alloc rc=%d\n",
+                    static_cast<int>(alloc_rc));
+        if (!quiesce(nullptr)) std::printf("USBCTRL cleanup-failed stage=transfer-alloc\n");
         return false;
     }
     running = true;
+    std::printf("USBCTRL stage=controller-running\n");
     return true;
 }
 static const risc_usb_controller_api_v1 interface = {

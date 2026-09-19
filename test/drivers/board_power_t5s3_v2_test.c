@@ -9,8 +9,10 @@
 typedef struct {
     uint8_t regs[0x20];
     uint64_t claim, next_claim, now;
-    unsigned writes, releases, bad_claims;
+    unsigned writes, releases, bad_claims, fault_reads;
     unsigned fail_power_write, fail_adc_write, fail_release, fail_probe;
+    unsigned adc_ready_ms, fault_on_boost;
+    uint8_t fault_latched;
     int external, no_boost, clock_failed;
 } simulated_board;
 static bool claim_device(void *ctx, uint8_t address, uint64_t *out) {
@@ -33,9 +35,15 @@ static bool transact(void *ctx, uint64_t id, const uint8_t *wr, size_t nwr,
             else *rd = b->external ? 0x24 : 0;
         } else if (reg == 0x11) {
             if (b->regs[3] & 0x20)
-                /* TI BQ25896: VBUS_GD=0 in OTG. ADC only valid when enabled. */
-                *rd = (b->no_boost || !(b->regs[2] & 0x40)) ? 0 : 25;
+                /* TI BQ25896: VBUS_GD=0 in OTG; ADC data is not immediate. */
+                *rd = (b->no_boost || !(b->regs[2] & 0x40) ||
+                       b->now < b->adc_ready_ms) ? 0 : 25;
             else *rd = b->external ? 0x80 : 0;
+        } else if (reg == 0x0c) {
+            /* First REG0C read returns history; next read returns live fault. */
+            ++b->fault_reads;
+            *rd = b->fault_latched ? b->fault_latched : b->regs[0x0c];
+            b->fault_latched = 0;
         } else *rd = b->regs[reg];
         return true;
     }
@@ -50,6 +58,10 @@ static bool transact(void *ctx, uint64_t id, const uint8_t *wr, size_t nwr,
             return false;
         }
         b->regs[wr[0]] = wr[1];
+        if (wr[0] == 3 && (wr[1] & 0x20) && b->fault_on_boost) {
+            b->fault_latched = 0x40;
+            b->regs[0x0c] = b->fault_on_boost == 2 ? 0x40 : 0;
+        }
         return true;
     }
     return false;
@@ -117,6 +129,7 @@ int main(void) {
     assert(!power->acquire_host(NULL, 0, &token) && token == 0);
     assert(board.writes == 0);
     assert(power->acquire_host(NULL, 500, &token) && token != 0);
+    assert(board.fault_reads >= 4);      /* preflight and OTG each read twice */
     assert(board.regs[3] == 0x20);       /* charger off, OTG on */
     assert(board.regs[0x0a] == 0x90);    /* 5.126V and 500mA limit */
     assert(board.regs[2] == 0x55);      /* ADC turned on without losing settings */
@@ -158,6 +171,7 @@ int main(void) {
     token = 9;
     assert(!power->acquire_host(NULL, 500, &token) && token == 0);
     assert(board.writes == 0);
+    assert(board.fault_reads == 0); /* conflict check precedes fault clearing */
     shutdown_board();
 
     reset_board();
@@ -177,15 +191,53 @@ int main(void) {
     board.no_boost = 1;
     token = 8;
     assert(!power->acquire_host(NULL, 500, &token) && token == 0);
-    assert(board.now >= 300);
+    assert(board.now >= 1500);
     assert_restored();
     shutdown_board();
 
     reset_board();
-    board.regs[0x0c] = 0x40; /* overcurrent/boost OVP */
+    board.adc_ready_ms = 1000; /* Real ADC can take up to 1s to complete. */
+    assert(power->acquire_host(NULL, 500, &token));
+    assert(board.now >= 1000 && board.now < 1500);
+    assert(power->release_host(NULL, token));
+    assert_restored();
+    shutdown_board();
+
+    reset_board();
+    board.adc_ready_ms = 2000; /* Invalid ADC still fails closed on timeout. */
+    assert(!power->acquire_host(NULL, 500, &token));
+    assert(board.now >= 1500);
+    assert_restored();
+    shutdown_board();
+
+    reset_board();
+    board.fault_latched = 0x40; /* Old, resolved fault must not block OTG. */
+    assert(power->acquire_host(NULL, 500, &token));
+    assert(board.fault_reads >= 4);
+    assert(power->release_host(NULL, token));
+    assert_restored();
+    shutdown_board();
+
+    reset_board();
+    board.regs[0x0c] = 0x40; /* Actual current fault: no OTG writes allowed. */
+    assert(!power->acquire_host(NULL, 500, &token));
+    assert(board.writes == 0);
+    assert_restored();
+    shutdown_board();
+
+    reset_board();
+    board.fault_on_boost = 1; /* New transient on enable: fail, restore. */
+    assert(!power->acquire_host(NULL, 500, &token));
+    assert(board.fault_reads >= 4);
+    assert_restored();
+    shutdown_board();
+
+    reset_board();
+    board.fault_on_boost = 2; /* New persistent fault: fail, restore. */
     assert(!power->acquire_host(NULL, 500, &token));
     assert_restored();
     shutdown_board();
-    puts("T5S3 VBUS: real OTG, ADC, power conflicts, clock loss, rollback, timeout, retry: PASS");
+
+    puts("T5S3 VBUS: real OTG, 1s ADC, historical/live/transient faults, conflicts, rollback, timeout, retry: PASS");
     return 0;
 }
