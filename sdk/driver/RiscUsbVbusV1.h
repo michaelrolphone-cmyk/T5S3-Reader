@@ -26,6 +26,30 @@ typedef struct {
      * into this provider, or lower-device claim can outlive the ELF. */
     bool (*quiesce)(void *context);
 } risc_usb_vbus_api_v1;
+
+/* An append-only extension of the SAME physical BQ25896 owner, not another
+ * provider that can claim address 0x6B. Consumers check base.struct_size
+ * before calling read_charger. Register values are copied as raw snapshots:
+ * ADC conversions may be stale, and REG0C is deliberately not read because
+ * that read clears latched fault history needed by VBUS fault handling. */
+typedef struct {
+    uint8_t input_control;       /* REG00 */
+    uint8_t adc_control;         /* REG02 */
+    uint8_t power_control;       /* REG03 */
+    uint8_t charge_current;      /* REG04 */
+    uint8_t precharge_termination; /* REG05 */
+    uint8_t charge_voltage;      /* REG06 */
+    uint8_t charge_timer;        /* REG07 */
+    uint8_t system_status;       /* REG0B */
+    uint8_t battery_adc;         /* REG0E */
+    uint8_t system_adc;          /* REG0F */
+    uint8_t vbus_adc;            /* REG11 */
+} risc_bq25896_charger_snapshot_v1;
+
+typedef struct {
+    risc_usb_vbus_api_v1 base;  /* Must remain the first member. */
+    bool (*read_charger)(void *context, risc_bq25896_charger_snapshot_v1 *out);
+} risc_usb_vbus_charger_api_v1;
 #ifdef __cplusplus
 }
 #endif
