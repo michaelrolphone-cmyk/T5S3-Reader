@@ -4,6 +4,7 @@
 #include "runtime/capabilities/SerialProviderRegistry.h"
 #include "runtime/capabilities/UsbSerialProjection.h"
 #include "runtime/resources/ExecutionContext.h"
+#include "NativeUsbClassBridge.h"
 #include <T5AppApi.h>
 #include <T5SerialPortApi.h>
 #include <T5UsbApi.h>
@@ -15,7 +16,6 @@
 
 namespace {
 constexpr uint32_t kMaxHandleGeneration = 0x7fffffffu;
-const t5_usb_api_v1* usb = nullptr;
 bool active = false;
 t5_serial_port_lease_t leaseHandle = 0;
 t5_stream_t rxHandle = 0;
@@ -139,15 +139,6 @@ bool validConfig(const t5_serial_config_t* config) {
          config->flow_control == T5_SERIAL_FLOW_NONE;
 }
 
-t5_usb_line_coding_t toUsb(const t5_serial_config_t& config) {
-  t5_usb_line_coding_t coding{};
-  coding.baud_rate = config.baud_rate;
-  coding.data_bits = config.data_bits;
-  coding.parity = config.parity;
-  coding.stop_bits = config.stop_bits;
-  return coding;
-}
-
 uint8_t semanticStatus(uint8_t status) {
   switch (status) {
     case T5_USB_STATUS_OFF: return T5_SERIAL_STATUS_OFF;
@@ -172,7 +163,7 @@ void clearLease(bool stopUsb) {
   if (txHandle) (void)nativeStreamCloseOwned(txHandle);
   rxHandle = txHandle = 0;
   releasePhysicalDevice(UsbConsumer::SerialPort);
-  if (stopUsb && usb && usb->serial_stop) usb->serial_stop();
+  if (stopUsb) nativeUsbClassStop();
   leaseHandle = 0;
   leaseEpoch = 0;
   // Host stop and app unload invalidate even an identical VID/PID device.
@@ -197,20 +188,15 @@ t5_serial_result_t usbAcquirePort(const t5_serial_port_request_t* request,
   if (request->device && !devices.resolve(request->device, NativeUsbDevices::Provider::UsbSerial))
     return T5_SERIAL_INVALID;
 
-  usb = t5_usb_get_api(T5_USB_API_VERSION);
-  if (!usb || !usb->supported || !usb->supported() || !usb->serial_start || !usb->serial_stop ||
-      !usb->serial_read_state || !usb->serial_set_line_coding || !usb->serial_set_control_lines)
-    return T5_SERIAL_UNSUPPORTED;
-
-  const auto coding = toUsb(request->config);
-  if (!usb->serial_start(&coding)) return T5_SERIAL_IO;
+  if (!nativeUsbClassAvailable()) return T5_SERIAL_UNSUPPORTED;
+  if (!nativeUsbClassStart(request->config)) return T5_SERIAL_IO;
   const uint32_t startEpoch = devices.epoch();
-  if (startEpoch == UINT32_MAX) { usb->serial_stop(); return T5_SERIAL_LIMIT; }
+  if (startEpoch == UINT32_MAX) { nativeUsbClassStop(); return T5_SERIAL_LIMIT; }
 
   t5_stream_t newRx = 0, newTx = 0;
   const auto streamResult = nativeStreamOpenUsbPair(&newRx, &newTx);
   if (streamResult != T5_STREAM_OK) {
-    usb->serial_stop();
+    nativeUsbClassStop();
     devices.detach();
     synchronizeUsbDevice();
     if (streamResult == T5_STREAM_BUSY) return T5_SERIAL_BUSY;
@@ -226,7 +212,7 @@ t5_serial_result_t usbAcquirePort(const t5_serial_port_request_t* request,
     (void)nativeStreamCloseOwned(newRx);
     (void)nativeStreamCloseOwned(newTx);
     releasePhysicalDevice(UsbConsumer::SerialPort);
-    usb->serial_stop();
+    nativeUsbClassStop();
     devices.detach();
     synchronizeUsbDevice();
     return detached ? T5_SERIAL_DISCONNECTED : T5_SERIAL_BUSY;
@@ -252,8 +238,7 @@ t5_serial_result_t usbConfigurePort(t5_serial_port_lease_t lease, const t5_seria
   if (!claimPhysicalDevice(UsbConsumer::SerialPort)) return T5_SERIAL_BUSY;
   if (config && config->flow_control != T5_SERIAL_FLOW_NONE) return T5_SERIAL_UNSUPPORTED;
   if (!validConfig(config)) return T5_SERIAL_INVALID;
-  const auto coding = toUsb(*config);
-  if (!usb->serial_set_line_coding(&coding)) return T5_SERIAL_IO;
+  if (!nativeUsbClassConfigure(*config)) return T5_SERIAL_IO;
   currentConfig = *config;
   return T5_SERIAL_OK;
 }
@@ -271,7 +256,7 @@ t5_serial_result_t usbReadStatus(t5_serial_port_lease_t lease, t5_serial_port_st
     return T5_SERIAL_OK;
   }
   t5_usb_serial_state_t state{};
-  if (!usb->serial_read_state(&state)) return T5_SERIAL_IO;
+  if (!nativeUsbClassReadState(&state)) return T5_SERIAL_IO;
   const auto device = devices.snapshot();
   synchronizeUsbDevice();
   if (leaseRevoked()) {
@@ -310,7 +295,7 @@ t5_serial_result_t usbSetControlLines(t5_serial_port_lease_t lease, bool dtr, bo
   synchronizeUsbDevice();
   if (leaseRevoked()) return T5_SERIAL_DISCONNECTED;
   if (!claimPhysicalDevice(UsbConsumer::SerialPort)) return T5_SERIAL_BUSY;
-  return usb->serial_set_control_lines(dtr, rts) ? T5_SERIAL_OK : T5_SERIAL_IO;
+  return nativeUsbClassControl(dtr, rts) ? T5_SERIAL_OK : T5_SERIAL_IO;
 }
 
 t5_serial_result_t usbReleasePort(t5_serial_port_lease_t lease) {
@@ -321,10 +306,7 @@ t5_serial_result_t usbReleasePort(t5_serial_port_lease_t lease) {
 }
 
 bool usbAvailable(void*) {
-  const auto* api = t5_usb_get_api(T5_USB_API_VERSION);
-  return api && api->supported && api->supported() && api->serial_start &&
-         api->serial_stop && api->serial_read_state && api->serial_set_line_coding &&
-         api->serial_set_control_lines;
+  return nativeUsbClassAvailable();
 }
 bool usbMatches(void*, t5_serial_device_t id) {
   return devices.resolve(id, NativeUsbDevices::Provider::UsbSerial);
@@ -458,7 +440,6 @@ void nativeUsbDirectStreamRelease() {
 
 void nativeSerialPortsBegin() {
   clearLease(false);
-  usb = nullptr;
   active = true;
   resetStatusTrace();
   synchronizeUsbDevice();
@@ -475,7 +456,6 @@ void nativeSerialPortsEnd() {
   devices.detach();
   synchronizeUsbDevice();
   active = false;
-  usb = nullptr;
   resetStatusTrace();
   traceResult("context-end", T5_SERIAL_OK, 0, 0);
 }
