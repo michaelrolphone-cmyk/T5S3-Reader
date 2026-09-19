@@ -47,8 +47,6 @@ int32_t drainPairTx() {
 int32_t readStream(t5_stream_t h, void* d, uint32_t n, uint32_t* out) {
   if (out) *out = 0;
   if (!authorized()) return T5_STREAM_DENIED;
-  const auto claim = refreshDirect(h);
-  if (claim != T5_STREAM_OK) return claim;
   if (h && (h == pairRx || h == pairTx)) {
     const auto transport = pairTransport(h);
     if (transport < 0) return transport;
@@ -66,8 +64,6 @@ int32_t readStream(t5_stream_t h, void* d, uint32_t n, uint32_t* out) {
 int32_t writeStream(t5_stream_t h, const void* d, uint32_t n, uint32_t* out) {
   if (out) *out = 0;
   if (!authorized()) return T5_STREAM_DENIED;
-  const auto claim = refreshDirect(h);
-  if (claim != T5_STREAM_OK) return claim;
   if (h && (h == pairRx || h == pairTx)) {
     const auto transport = pairTransport(h);
     if (transport < 0) return transport;
@@ -87,17 +83,13 @@ int32_t seek(t5_stream_t h, uint64_t offset) { SESSION_CALL(registry.seek(owner,
 int32_t closeStream(t5_stream_t h) {
   if (!authorized()) return T5_STREAM_DENIED;
   int32_t result;
-  bool closedDirect;
   {
     Lock lock;
-    const bool wasDirect = directUsb && h == directHandle;
     result = registry.close(owner, h);
-    closedDirect = wasDirect && !directUsb;
     if (result == T5_STREAM_OK) notePairClosed(h);
     forgetClosedGnssStream(h);
     (void)gnss.beforePoll(gnss.owner());
   }
-  if (closedDirect) nativeUsbDirectStreamRelease();
   wake();
   return result;
 }
@@ -112,10 +104,6 @@ int32_t info(t5_stream_t h, t5_stream_info_t* out) {
 int32_t connect(t5_stream_t s, t5_stream_t d, uint32_t policy, t5_pipe_t* out) {
   if (out) *out = 0;
   if (!authorized()) return T5_STREAM_DENIED;
-  const auto src = refreshDirect(s);
-  if (src != T5_STREAM_OK) return src;
-  const auto dst = refreshDirect(d);
-  if (dst != T5_STREAM_OK) return dst;
   Lock lock;
   if (guardGnssStream(s) != T5_STREAM_OK || guardGnssStream(d) != T5_STREAM_OK)
     return T5_STREAM_DENIED;
@@ -203,7 +191,6 @@ void releaseStreams(void*, uint32_t id) {
     notePairClosed(pairRx);
     notePairClosed(pairTx);
   }
-  nativeUsbDirectStreamRelease();
   wake();
 }
 void releaseSerial(void*, uint32_t) { nativeSerialPortsEnd(); }
