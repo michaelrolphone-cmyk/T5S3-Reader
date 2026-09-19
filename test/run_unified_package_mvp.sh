@@ -24,6 +24,7 @@ for test_case in package_identity package_preflight package_json_guard \
       -lcrypto -o "$binary"
   "$binary"
 done
+python3 "$repo_dir/test/resources/release_runtime_identity_test.py"
 python3 "$repo_dir/test/resources/package_driver_bridge_source_test.py"
-echo 'PASS: ordinary package MVP host tests (four kinds, source-neutral integrity, early download refusal, ZIP CRC/topology, staging, versioned driver upgrades and recoverable publication).'
+echo 'PASS: ordinary package MVP host tests (four kinds, runtime-compatible release identity, source-neutral integrity, early download refusal, ZIP CRC/topology, staging, versioned driver upgrades and recoverable publication).'
 echo 'Deferred signer/P-256 prototype: test/run_signed_package_experiment.sh (not an MVP gate).'
