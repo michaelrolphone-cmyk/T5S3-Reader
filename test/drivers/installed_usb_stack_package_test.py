@@ -25,7 +25,7 @@ EXPECTED = {
 }
 EXPECTED_VERSIONS = {
     'i2c-esp32s3-v2': '0.1.2',
-    'board-power-t5s3-v2': '0.1.1',
+    'board-power-t5s3-v2': '0.1.2',
     'usb-controller-esp32s3': '0.1.1',
 }
 # The firmware-backed I2C adapter has NO physical MMIO relocations. USB still
