@@ -34,6 +34,22 @@ assert 'Mutation lock;' in bridge
 assert 'installOrdinaryFromSdZip(' in bridge
 assert 'systemPackageUseGate().pinned(paths.target)' in bridge
 
+# Historical driver-stage repair and normal package transaction mutate the
+# same /Drivers stage/backup/target directories. Guard the entire operation
+# and its recovery inventory with ONE cross-translation-unit atomic flag.
+gate = (root / 'src/runtime/packages/PackageMutationGate.h').read_text(encoding='utf-8')
+assert 'inline std::atomic_flag& packageMutationFlag()' in gate
+assert 'static std::atomic_flag gate = ATOMIC_FLAG_INIT;' in gate
+assert 'test_and_set(std::memory_order_acquire)' in gate
+assert 'clear(std::memory_order_release)' in gate
+assert 'ScopedPackageMutation(const ScopedPackageMutation&) = delete;' in gate
+assert 'using Mutation = RuntimePackages::ScopedPackageMutation;' in bridge
+assert 'std::atomic_flag mutation =' not in bridge
+for operation in ('bool install(', 'bool installArchive(', 'bool uninstall(',
+                  'bool onlineRefresh(', 'bool onlineInstall('):
+    block = bridge[bridge.index(operation):].split('\n}', 1)[0]
+    assert 'Mutation lock;' in block, operation
+
 # All normal operations in the Driver Manager are common package operations.
 # No transport-specific URL, device-class identity or loose ELF install may
 # remain callable via the historical driver manager's ABI.
@@ -63,11 +79,11 @@ assert 'bool managerApp()' in legacy
 assert 'native_app_current_path()' in legacy
 assert '"/sd/Apps/driver_manager/driver_manager.elf"' in legacy
 assert 'version == T5_DRIVER_MANAGER_API_VERSION && managerApp()' in legacy
+assert 'using ManagerMutation = RuntimePackages::ScopedPackageMutation;' in legacy
+assert 'std::atomic_flag managerMutation =' not in legacy
 recovery = legacy[legacy.index('bool rebuildRecoveryInventory()'):]
-for name in ('bool recoveryRefresh()', 'bool recoveryGet(',
+for name in ('bool recoveryRefresh()', 'bool recoveryCount()', 'bool recoveryGet(',
              'bool recoveryRetry(', 'bool recoveryDiscard('):
-    assert name in recovery, name
-for name in ('bool recoveryRefresh()', 'bool recoveryRetry(', 'bool recoveryDiscard('):
     function = recovery[recovery.index(name):]
     assert 'ManagerMutation mutation;' in function.split('\n}', 1)[0], name
 for required in ('RuntimePackages::safeId(id.c_str())',
@@ -92,4 +108,4 @@ stream = (root / 'src/runtime/streams/HttpStreamTransfer.h').read_text(encoding=
 stream_download = stream[stream.index('inline Result download('):]
 assert 'T5_STREAM_FILE_CREATE_NEW' in stream_download
 assert stream_download.index('T5_STREAM_FILE_CREATE_NEW') < stream_download.index('if (destinationCreated) *destinationCreated = true;')
-print('Driver ZIP intake, scoped recovery, legacy ABI retirement and exclusive staging guards passed')
+print('Driver ZIP intake, shared transaction gate, scoped recovery, legacy ABI retirement and exclusive staging guards passed')
