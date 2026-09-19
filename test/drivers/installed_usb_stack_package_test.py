@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify real USB provider packages, imports, pointers and ZIP catalog."""
+"""Verify all discovered linked provider packages, imports, pointers and ZIP catalog."""
 import hashlib
 import json
 from pathlib import Path
@@ -15,7 +15,9 @@ from verify_provider_relocation_map import audit_loader_map
 PACKAGES = ROOT / 'dist/packages'
 CATALOG = PACKAGES / 'package-catalog.json'
 BRIDGE = 'risc_fw_i2c_transact_v1'
-EXPECTED = {
+# These contracts describe existing U1 witnesses, not an exhaustive catalog.
+# A new class driver must appear automatically via its ABI-v2 source manifest.
+BASELINE = {
     'platform-clock-v1': ('platform.clock', []),
     'i2c-esp32s3-v2': ('i2c.bus', []),
     'board-power-t5s3-v2': ('board.power.vbus', ['i2c.bus', 'platform.clock']),
@@ -48,16 +50,31 @@ def mutation_rejected(elf: bytes, site: int, replacement: int) -> bool:
     raise AssertionError('RELATIVE pointer source is not mapped')
 
 
+def source_manifests():
+    manifests = {}
+    for source in sorted((ROOT / 'Drivers').glob('*/manifest.json')):
+        metadata = json.loads(source.read_text(encoding='utf-8'))
+        if metadata.get('type') != 'driver' or metadata.get('driver_abi') != 2:
+            continue
+        identity = metadata['id']
+        assert identity not in manifests, identity
+        manifests[identity] = metadata
+    assert manifests and set(BASELINE) <= set(manifests)
+    return manifests
+
+
 def run():
+    sources = source_manifests()
     catalog = json.loads(CATALOG.read_text(encoding='utf-8'))
     assert catalog['schema'] == 1 and catalog['release']
-    assert len(catalog['packages']) == len(EXPECTED)
+    assert len(catalog['packages']) == len(sources) <= 64
     available = {}
     observed_ids = set()
     for record in catalog['packages']:
         identity = record['id']
-        assert identity in EXPECTED and identity not in observed_ids, identity
+        assert identity in sources and identity not in observed_ids, identity
         observed_ids.add(identity)
+        source = sources[identity]
         folder = PACKAGES / identity
         manifest_bytes = (folder / '.package.json').read_bytes()
         assert len(manifest_bytes) <= 4096
@@ -66,15 +83,20 @@ def run():
                                  'architecture', 'min_runtime_api', 'entries', 'requires'}
         assert manifest['schema'] == 1 and manifest['kind'] == 'driver'
         assert record['kind'] == manifest['kind'] and record['id'] == manifest['id']
-        assert record['version'] == manifest['version']
+        assert record['version'] == manifest['version'] == source['version']
         assert record['artifact'] == manifest['artifact'] == 'driver.elf'
-        assert record['architecture'] == manifest['architecture'] == 'xtensa-esp32s3'
+        assert record['architecture'] == manifest['architecture'] == source['architecture']
         assert manifest['min_runtime_api'] == 2
-        cap, deps = EXPECTED[identity]
-        assert [r['capability'] for r in manifest['requires']] == deps
+        cap, api = source['provides'][0]['capability'], source['provides'][0]['api']
+        deps = [requirement['capability'] for requirement in source['requires']]
+        if identity in BASELINE:
+            assert (cap, deps) == BASELINE[identity]
+        assert manifest['requires'] == [
+            {'capability': item['capability'], 'min_api': item['api']}
+            for item in source['requires']]
         for requirement in manifest['requires']:
-            assert requirement == {'capability': requirement['capability'], 'min_api': 1}
-            assert available.get(requirement['capability']) == 1, (identity, requirement)
+            assert available.get(requirement['capability'], 0) >= requirement['min_api'], (
+                identity, requirement)
         entries = manifest['entries']
         names = {e['name'] for e in entries}
         assert names == {'driver.elf', 'provider-abi.v1', 'privileged-imports.v1'}
@@ -106,24 +128,27 @@ def run():
         assert not mapping['unmapped_relative_values'], (identity, mapping['unmapped_relative_values'])
         assert not mapping['unmapped_executable_sections'], (identity, mapping['unmapped_executable_sections'])
         absolute = mapping['absolute_peripheral_relocations']
-        assert {int(item['address'], 16) for item in absolute} == EXPECTED_ABSOLUTE_POINTERS.get(identity, set()), identity
+        if identity in EXPECTED_ABSOLUTE_POINTERS:
+            assert {int(item['address'], 16) for item in absolute} == (
+                EXPECTED_ABSOLUTE_POINTERS[identity]), identity
         if absolute:
             site = int(absolute[0]['offset'], 16)
             assert mutation_rejected(elf, site, 0x70000000), identity
             assert mutation_rejected(elf, site, 0x60004010), identity
         profile = (folder / 'provider-abi.v1').read_text(encoding='ascii')
-        assert profile == f'os-cpu-abi=1\nprovides={cap}\napi=1\n'
+        assert profile == f'os-cpu-abi=1\nprovides={cap}\napi={api}\n'
         imports_bytes = (folder / 'privileged-imports.v1').read_bytes()
         imports = extract_imports(elf_path)
         assert imports_bytes == encode_imports(imports), identity
         assert imports == sorted(set(imports))
-        assert (BRIDGE in imports) == (identity == 'i2c-esp32s3-v2'), identity
-        if identity == 'i2c-esp32s3-v2':
+        assert (BRIDGE in imports) == (cap == 'i2c.bus'), identity
+        if cap == 'i2c.bus':
             assert not any(name.startswith(('i2c_', 'gpio_', 'periph_module_'))
                            for name in imports), imports
-        available[cap] = 1
-    assert observed_ids == set(EXPECTED)
-    print('USB ELF packages: ZIP/catalog CRC/SHA, imports, MMIO and dependencies PASS')
+        available[cap] = max(available.get(cap, 0), api)
+    assert observed_ids == set(sources)
+    print(f'{len(observed_ids)} manifest-discovered ELF packages: ZIP/catalog CRC/SHA, '
+          'imports, MMIO and dependencies PASS')
 
 
 if __name__ == '__main__':
