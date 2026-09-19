@@ -5,6 +5,7 @@
 #include <RiscUsbControllerV1.h>
 #include <HalStorage.h>
 #include <Logging.h>
+#include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <algorithm>
@@ -31,10 +32,40 @@ uint64_t device = 0;
 uint64_t session = 0;
 bool running = false;
 bool quarantined = false;
+bool debugConsoleSuspended = false;
 t5_usb_serial_state_t state{};
 // reconcile() is always invoked with the bridge mutex held. Keeping the USB
 // descriptor workspace static avoids putting 4096 bytes on loopTask's stack.
 uint8_t configurationDescriptor[RISC_USB_CONFIG_LIMIT]{};
+
+// Arduino's boot debug CDC and the USB host share the internal PHY on this
+// board. The known-good v1.2.16 firmware released debug CDC and waited 20 ms
+// BEFORE powering VBUS or installing the host. This is only boot-console
+// arbitration: the physical host, PHY and USB device operations stay in ELFs.
+// Never re-enable the debug interface while an ELF may still own the PHY.
+void suspendDebugConsole() {
+#if defined(ENABLE_SERIAL_LOG) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE && \
+    defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+    if (!debugConsoleSuspended) {
+        LOG_INF("USB", "USBREF stage=debug-console-release");
+        Serial.end();
+        delay(20);
+        debugConsoleSuspended = true;
+        LOG_INF("USB", "USBREF stage=debug-console-released");
+    }
+#endif
+}
+void restoreDebugConsole() {
+#if defined(ENABLE_SERIAL_LOG) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE && \
+    defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+    if (debugConsoleSuspended) {
+        delay(20);
+        Serial.begin(115200);
+        debugConsoleSuspended = false;
+        LOG_INF("USB", "USBREF stage=debug-console-restored");
+    }
+#endif
+}
 
 bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
 bool initialize() {
@@ -57,6 +88,17 @@ void error(int32_t code) {
     state.last_error = code;
     state.connected = 0;
     nativeUsbProviderDetach();
+}
+// Failed activation or a rejected host ABI can leave a partially started ELF.
+// Only reclaim the boot debug PHY after graph shutdown proves quiescence.
+bool restoreAfterSafeShutdown() {
+    if (!RuntimeInstalledProviders::shutdown()) {
+        quarantined = true;
+        LOG_ERR("USB", "USBREF stage=debug-console-restore-denied reason=unsafe-provider-shutdown");
+        return false;
+    }
+    restoreDebugConsole();
+    return true;
 }
 bool codingValid(const t5_usb_line_coding_t* coding) {
     return coding && coding->baud_rate >= 300 && coding->baud_rate <= 3000000 &&
@@ -222,11 +264,17 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
         return !session || (serial && serial->configure(session, coding->baud_rate,
                     coding->data_bits, coding->parity, coding->stop_bits));
     }
+    // Release the boot debug console BEFORE any provider may power VBUS or
+    // usb_host_install() allocates the shared internal PHY/interrupt. Restoring
+    // it later is conditional on a fully quiescent graph, not merely on an
+    // unsuccessful acquire() result.
+    suspendDebugConsole();
     LOG_INF("USB", "USBREF stage=host-acquire-begin");
     if (!RuntimeInstalledProviders::acquire(
             "usb-host-v2", "usb.host", 1, &hostGrant)) {
         LOG_ERR("USB", "USBREF stage=host-acquire-failed");
         error(-1220);
+        (void)restoreAfterSafeShutdown();
         return false;
     }
     LOG_INF("USB", "USBREF stage=host-acquired");
@@ -236,6 +284,7 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
         if (!RuntimeInstalledProviders::release(&hostGrant)) quarantined = true;
         host = nullptr;
         error(-1221);
+        if (!quarantined) (void)restoreAfterSafeShutdown();
         return false;
     }
     initialState(T5_USB_STATUS_WAITING);
@@ -267,6 +316,7 @@ void serialStop() {
     }
     running = false;
     initialState(T5_USB_STATUS_OFF);
+    restoreDebugConsole();
     LOG_INF("USB", "USBREF state=stopped source=installed-elf");
 }
 bool serialReadState(t5_usb_serial_state_t* out) {
