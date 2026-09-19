@@ -16,6 +16,7 @@ bool started = false;
 const risc_usb_cdc_api_v1* boundApi = nullptr;
 #if defined(ESP_PLATFORM)
 RuntimeInstalledProviders::Lease installedClass{};
+bool candidateFault = false;
 #endif
 
 bool valid(const NativeUsbClassOps& o) {
@@ -100,8 +101,11 @@ bool nativeUsbClassStopChecked() {
 bool nativeUsbClassUnbindChecked() {
   if (!nativeUsbClassStopChecked() || !session.unbind()) return false;
 #if defined(ESP_PLATFORM)
-  if (installedClass.grant.slot && !RuntimeInstalledProviders::release(&installedClass))
+  if (installedClass.grant.slot && !RuntimeInstalledProviders::release(&installedClass)) {
+    candidateFault = true;
     return false;
+  }
+  candidateFault = false;
 #endif
   ops = {};
   boundApi = nullptr;
@@ -117,11 +121,12 @@ void nativeUsbClassStop() { (void)nativeUsbClassStopChecked(); }
 // bound table do not rescan the SD card or rehash the package.
 bool nativeUsbClassAvailable() {
 #if defined(ESP_PLATFORM)
-  if (!valid(ops) && !token && !session.token())
+  if (!valid(ops) && !token && !session.token() && !candidateFault)
     (void)nativeUsbClassEnsureInstalled(0);
 #endif
   return valid(ops) && (!token || started);
 }
+bool nativeUsbClassBound() { return valid(ops); }
 bool nativeUsbClassHasDataPlane() { return session.bound(); }
 uint64_t nativeUsbClassToken() { return token; }
 void nativeUsbClassObserveDevice(uint64_t device) {
@@ -209,21 +214,39 @@ void nativeUsbClassPump(RuntimeStreams::Registry& registry) {
 }
 
 #if defined(ESP_PLATFORM)
-bool nativeUsbClassBindNextInstalled(size_t* cursor) {
+bool nativeUsbClassBindNextInstalled(size_t* cursor, bool* faulted) {
+  if (faulted) *faulted = false;
+  if (candidateFault || installedClass.grant.slot && !valid(ops)) {
+    if (faulted) *faulted = true;
+    return false;
+  }
   if (!cursor || token || session.token() || valid(ops)) return false;
   char id[96]{};
   while (RuntimeInstalledProviders::nextProvider("serial.port", 1, cursor,
                                                  id, sizeof(id))) {
     RuntimeInstalledProviders::Lease grant{};
-    // A failed start can be unsafe to tear down. Do not activate another
-    // candidate after that failure; the graph retains any unquiesced module.
-    if (!RuntimeInstalledProviders::acquire(id, "serial.port", 1, &grant)) return false;
+    // A failed start may retain hardware even if acquire returned no grant.
+    // Stop selection rather than trying another class after that ambiguity.
+    if (!RuntimeInstalledProviders::acquire(id, "serial.port", 1, &grant)) {
+      candidateFault = true;
+      if (faulted) *faulted = true;
+      return false;
+    }
     if (!apiValid(static_cast<const risc_usb_cdc_api_v1*>(grant.interface))) {
-      if (!RuntimeInstalledProviders::release(&grant)) return false;
+      if (!RuntimeInstalledProviders::release(&grant)) {
+        installedClass = grant;
+        candidateFault = true;
+        if (faulted) *faulted = true;
+        return false;
+      }
       continue;
     }
     if (!nativeUsbClassBindApi(grant.interface)) {
-      (void)RuntimeInstalledProviders::release(&grant);
+      // Keep the exact grant for explicit retry if release fails. A binding
+      // failure is not ordinary device rejection, unlike open() returning 0.
+      if (!RuntimeInstalledProviders::release(&grant)) installedClass = grant;
+      candidateFault = true;
+      if (faulted) *faulted = true;
       return false;
     }
     installedClass = grant;
@@ -233,13 +256,17 @@ bool nativeUsbClassBindNextInstalled(size_t* cursor) {
 }
 bool nativeUsbClassEnsureInstalled(uint16_t vid) {
   (void)vid;
+  if (candidateFault) return false;
   if (valid(ops) && (!token || started)) return true;
   if (token || session.token()) return false;
   size_t cursor = 0;
   return nativeUsbClassBindNextInstalled(&cursor);
 }
 #else
-bool nativeUsbClassBindNextInstalled(size_t*) { return false; }
+bool nativeUsbClassBindNextInstalled(size_t*, bool* faulted) {
+  if (faulted) *faulted = false;
+  return false;
+}
 bool nativeUsbClassEnsureInstalled(uint16_t) {
   return valid(ops) && (!token || started);
 }
