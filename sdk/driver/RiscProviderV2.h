@@ -34,7 +34,11 @@ typedef struct {
      * generic loader after start() rejects, BEFORE quiesce()/stop()/unmap().
      * The provider writes a NUL-terminated, bounded diagnostic into output;
      * it must not include device RX/TX data or alter hardware state. */
+#ifdef __cplusplus
+    bool (*last_start_failure)(char *output, size_t capacity) = nullptr;
+#else
     bool (*last_start_failure)(char *output, size_t capacity);
+#endif
 } risc_driver_v2;
 
 /* Keep old ABI-v2 providers valid, including those without either extension. */
