@@ -3,7 +3,7 @@
 
 The I2C provider is a temporary firmware-backed capability ELF; the other
 hardware-owning USB providers stay in independently installed ELFs. Run after
-all seven real provider builds, not mock objects. No flashing or publishing.
+all eight real provider builds, not mock objects. No flashing or publishing.
 """
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ DRIVERS = (
     ('usb-host-v2', 'usb_host_v2', 'usb-host-v2', 'driver.elf'),
     ('usb-cdc-acm-v2', 'usb_cdc_v2', 'usb-cdc-acm-v2', 'driver.elf'),
     ('usb-cp210x-v2', 'usb_cp210x_v2', 'usb-cp210x-v2', 'driver.elf'),
+    ('usb-ch34x-v2', 'usb_ch34x_v2', 'usb-ch34x-v2', 'driver.elf'),
 )
 EXPECTED_VERSIONS = {
     'i2c-esp32s3-v2': '0.1.2',
@@ -105,7 +106,7 @@ def build() -> list[dict]:
     (DESTINATION / 'usb-provider-catalog.json').write_text(
         json.dumps({'schema': 1, 'packages': catalog}, indent=2) + '\n',
         encoding='utf-8')
-    print('Seven canonical packages assembled; no ELF activated or firmware flashed.', flush=True)
+    print('Eight canonical packages assembled; no ELF activated or firmware flashed.', flush=True)
     return catalog
 
 
