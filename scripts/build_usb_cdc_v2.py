@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build experimental hardware-owning CDC ELF. NOT a release-catalog entry yet."""
+"""Build the U1 hardware-owning CDC class ELF without changing its ABI."""
 import hashlib
 import json
 import os
@@ -21,10 +21,10 @@ def build(cc=None):
         "architecture": "xtensa-esp32s3", "file_name": "driver.elf",
         "requires": [{"capability": "usb.host", "api": 1}],
         "provides": [{"capability": "serial.port", "api": 1}],
-        "status": "experimental-unpublished",
+        "status": "u1-class-functional",
     }
     if any(manifest.get(key) != value for key, value in required.items()):
-        raise ValueError("Invalid experimental USB provider manifest")
+        raise ValueError("Invalid U1 USB CDC provider manifest")
     cc = cc or os.environ.get("NATIVE_DRIVER_CC") or shutil.which("xtensa-esp32s3-elf-gcc")
     if not cc:
         core = Path(os.environ.get("PLATFORMIO_CORE_DIR", Path.home() / ".platformio"))
@@ -52,7 +52,7 @@ def build(cc=None):
         raise ValueError("Invalid Xtensa ELF")
     manifest.update(size_bytes=len(payload), sha256=hashlib.sha256(payload).hexdigest())
     (OUTPUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    print(f"Experimental USB provider built: {elf}; NOT installable with ABI-v1 firmware")
+    print(f"U1 USB CDC class provider built: {elf}; board qualification pending")
     return elf
 
 
