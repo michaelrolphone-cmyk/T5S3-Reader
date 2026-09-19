@@ -121,9 +121,11 @@ static bool divisor(uint32_t speed, uint8_t version, uint16_t *out) {
     if (div < 9u || div > 255u) { div /= 2u; clock_div *= 2u; factor = 0; }
     if (div < 2u || div > 256u) return false;
     if (div < 256u) {
-        const uint64_t actual = 16ull * clock_rate / (clock_div * div);
-        const uint64_t next = 16ull * clock_rate / (clock_div * (div + 1u));
-        const uint64_t requested = 16ull * speed;
+        /* 16 * 48 MHz = 768,000,000 fits uint32_t. Avoid unnecessary libgcc
+         * 64-bit divide helpers that produce unsupported ELF relocations. */
+        const uint32_t actual = (16u * clock_rate) / (clock_div * div);
+        const uint32_t next = (16u * clock_rate) / (clock_div * (div + 1u));
+        const uint32_t requested = 16u * speed;
         if (actual >= requested && requested >= next &&
             actual - requested >= requested - next) ++div;
     }
