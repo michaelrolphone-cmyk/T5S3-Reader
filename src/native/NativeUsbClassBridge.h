@@ -4,18 +4,17 @@
 #include "runtime/usb/UsbClassStreamSession.h"
 #include <cstdint>
 
-// Firmware-internal class-ELF control and data plane. Serial Monitor and the
-// programmer call these instead of t5_usb_get_api(). Bytes move on published
-// serial.port endpoints owned by ClassStreamSession.
+// Firmware-internal control and data plane. Installed class ELF transfers
+// shuttle through published serial.port endpoints, not t5_usb_get_api().
 bool nativeUsbClassAvailable();
-// Bind usb-cdc-acm-v2 / usb-cp210x-v2 from the installed provider graph.
-// vid 0x10C4 prefers CP210x; any other value prefers CDC. Does not open a
-// session. A missing class ELF leaves usb.serial unavailable.
 bool nativeUsbClassEnsureInstalled(uint16_t vid = 0);
 bool nativeUsbClassAttachPair(uint32_t owner, t5_stream_t rx, t5_stream_t tx);
 void nativeUsbClassPump(RuntimeStreams::Registry& registry);
 bool nativeUsbClassHasDataPlane();
 bool nativeUsbClassStart(const t5_serial_config_t& config);
+// Checked shutdown leaves the exact generation pinned on uncertain close.
+bool nativeUsbClassStopChecked();
+bool nativeUsbClassUnbindChecked();
 void nativeUsbClassStop();
 bool nativeUsbClassConfigure(const t5_serial_config_t& config);
 bool nativeUsbClassControl(bool dtr, bool rts);
@@ -26,8 +25,6 @@ uint64_t nativeUsbClassToken();
 void nativeUsbClassObserveDevice(uint64_t device);
 bool nativeUsbClassAdopt(uint64_t opened, const t5_serial_config_t& config);
 
-// Bind an installed class ELF. The function table must outlive the bind.
-// A missing bind makes usb.serial unavailable (no firmware USB fallback).
 struct NativeUsbClassOps {
   void* context = nullptr;
   uint64_t (*open)(void*, uint64_t device) = nullptr;
@@ -42,8 +39,6 @@ struct NativeUsbClassOps {
 };
 bool nativeUsbClassBind(const NativeUsbClassOps& ops);
 bool nativeUsbClassBindPort(const RuntimeUsb::ClassPort& port);
-// `api` is a risc_usb_cdc_api_v1 published by usb-cdc-acm-v2 / usb-cp210x-v2.
 bool nativeUsbClassBindApi(const void* riscUsbCdcApiV1);
 void nativeUsbClassUnbind();
-
 RuntimeUsb::ClassStreamSession& nativeUsbClassSession();
