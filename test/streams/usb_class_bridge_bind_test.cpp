@@ -2,6 +2,7 @@
 #include <T5AppApi.h>
 #include <T5SerialPortApi.h>
 #include <T5UsbApi.h>
+#include <RiscUsbProviderV1.h>
 #include "native/NativeSerialPortBridge.h"
 #include "native/NativeStreamBridge.h"
 #include "native/NativeUsbClassBridge.h"
@@ -61,7 +62,7 @@ t5_stream_result_t nativeStreamCloseOwned(t5_stream_t) {
 
 int main() {
   assert(!nativeUsbClassAvailable());
-  NativeUsbClassOps ops{nullptr, classOpen, classConfigure, classControl, classClose};
+  NativeUsbClassOps ops{nullptr, classOpen, classConfigure, classControl, nullptr, nullptr, classClose};
   assert(nativeUsbClassBind(ops));
   assert(nativeUsbClassAvailable());
 
@@ -85,6 +86,18 @@ int main() {
   context.end();
   nativeUsbClassUnbind();
   assert(!nativeUsbClassAvailable());
+  risc_usb_cdc_api_v1 cdcApi{};
+  cdcApi.api_version = RISC_USB_CDC_API_V1;
+  cdcApi.struct_size = sizeof(cdcApi);
+  cdcApi.open = [](uint64_t d) -> uint64_t { return d ? 9u : 0u; };
+  cdcApi.configure = [](uint64_t, uint32_t, uint8_t, uint8_t, uint8_t) { return true; };
+  cdcApi.control_lines = [](uint64_t, bool, bool) { return true; };
+  cdcApi.read = [](uint64_t, uint8_t*, size_t, uint32_t) -> int32_t { return 0; };
+  cdcApi.write = [](uint64_t, const uint8_t*, size_t, uint32_t) -> int32_t { return 0; };
+  cdcApi.close = [](uint64_t) { return true; };
+  assert(nativeUsbClassBindApi(&cdcApi));
+  assert(nativeUsbClassHasDataPlane());
+  nativeUsbClassUnbind();
   std::puts("usb class control plane bound; T5UsbApi unused");
   return 0;
 }
