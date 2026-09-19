@@ -1,15 +1,18 @@
-"""Source wiring regression for the real firmware USB bridge lifecycle.
+"""Source wiring regression for the firmware and physical USB ELF lifecycle.
 
 The separate provider graph host tests exercise failed quiescence and the
-consumed-grant contract. This checks that the bridge actually uses those
-semantics on both app exit and a subsequent open, without faking hardware.
+consumed-grant contract; the full physical ELF compile remains an independent
+CI job, not a hardware acceptance claim.
 """
 from pathlib import Path
+import json
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 BRIDGE = ROOT / "src/native/NativeUsbBridge.cpp"
 GRAPH = ROOT / "src/runtime/drivers/ProviderGraphV2.cpp"
+CONTROLLER = ROOT / "Drivers/usb_controller_esp32s3/driver.cpp"
+MANIFEST = ROOT / "Drivers/usb_controller_esp32s3/manifest.json"
 
 
 class UsbTeardownRetry(unittest.TestCase):
@@ -17,6 +20,7 @@ class UsbTeardownRetry(unittest.TestCase):
     def setUpClass(cls):
         cls.bridge = BRIDGE.read_text(encoding="utf-8")
         cls.graph = GRAPH.read_text(encoding="utf-8")
+        cls.controller = CONTROLLER.read_text(encoding="utf-8")
 
     def test_grant_consumption_is_followed_by_verified_graph_shutdown(self):
         release = self.graph.split("bool GraphV2::release(GrantV2 grant)", 1)[1].split(
@@ -56,6 +60,29 @@ class UsbTeardownRetry(unittest.TestCase):
         self.assertIn("if (!stopLocked())", startup)
         self.assertIn("USBREF stage=serial-start-quarantined error=", startup)
         self.assertIn("(void)stopLocked();", exit_fn)
+
+    def test_physical_claim_is_not_lost_when_device_close_is_deferred(self):
+        release = self.controller.split("bool release_interface(", 1)[1].split(
+            "int32_t control(", 1
+        )[0]
+        self.assertNotIn("Claim *c = claim(id);", release)
+        self.assertIn("usb_host_interface_release(", release)
+        self.assertLess(release.index("*c = {};"),
+                        release.index("usb_host_device_close("))
+        deferred = release.split("if (closed != ESP_OK)", 1)[1]
+        self.assertIn("USBCTRL stage=device-close-deferred", deferred)
+        self.assertIn("return true;", deferred)
+        self.assertIn("*d = {};", release)
+        quiesce = self.controller.split("bool quiesce(void *)", 1)[1].split(
+            "void stop()", 1
+        )[0]
+        self.assertNotIn("if (fault || claimed(0)) return false;", quiesce)
+        self.assertIn("if (inFlight && !drain_bulk(false)) return false;", quiesce)
+        self.assertIn("USBCTRL cleanup-failed stage=outstanding-claim", quiesce)
+        self.assertLess(quiesce.index("usb_host_uninstall()"),
+                        quiesce.index("power->release_host("))
+        self.assertIn("USBCTRL cleanup-failed stage=device-close", quiesce)
+        self.assertEqual(json.loads(MANIFEST.read_text(encoding="utf-8"))["version"], "0.1.3")
 
 
 if __name__ == "__main__":
