@@ -80,6 +80,9 @@ esp_err_t launch_elf_app(const char *sd_path)
         return ESP_ERR_INVALID_STATE;
     }
     bool compat_registered = false;
+    bool module_initialized = false;
+    bool takeover_active = false;
+    elf_app_module_fini_t module_fini = NULL;
     esp_err_t result = native_app_register_sd_vfs();
     if (result != ESP_OK) {
         ESP_LOGE(TAG, "SD VFS unavailable: %s", esp_err_to_name(result));
@@ -161,6 +164,32 @@ esp_err_t launch_elf_app(const char *sd_path)
         goto close_module;
     }
 
+    // dlopen relocates an ESP ELF but does not execute C++ constructor tables.
+    // Apps that contain nontrivial static objects expose bounded lifecycle
+    // hooks; keep legacy C apps compatible by treating both symbols as optional.
+    (void)dlerror();
+    void *init_symbol = dlsym(handle, "app_module_init");
+    const char *init_error = dlerror();
+    const bool init_present = init_error == NULL && init_symbol != NULL;
+    (void)dlerror();
+    void *fini_symbol = dlsym(handle, "app_module_fini");
+    const char *fini_error = dlerror();
+    const bool fini_present = fini_error == NULL && fini_symbol != NULL;
+    if (init_present != fini_present) {
+        ESP_LOGE(TAG, "Incomplete module lifecycle exports in %s", sd_path);
+        result = ESP_ERR_INVALID_STATE;
+        goto close_module;
+    }
+    if (init_present) {
+        module_fini = (elf_app_module_fini_t)fini_symbol;
+        if (((elf_app_module_init_t)init_symbol)() != 0) {
+            ESP_LOGE(TAG, "Module initialization failed for %s", sd_path);
+            result = ESP_ERR_INVALID_STATE;
+            goto close_module;
+        }
+        module_initialized = true;
+    }
+
     // Opt-in, generic ABI: missing symbol means the legacy UI/display path.
     // Query the mask only after mapping succeeds; do not release the panel for
     // a corrupt ELF, a missing app_main, or a module that does not request it.
@@ -178,6 +207,7 @@ esp_err_t launch_elf_app(const char *sd_path)
                      sd_path, (unsigned long)requested, esp_err_to_name(result));
             goto close_module;
         }
+        takeover_active = true;
     }
 
     ESP_LOGI(TAG, "Starting %s", sd_path);
@@ -187,20 +217,26 @@ esp_err_t launch_elf_app(const char *sd_path)
     ESP_LOGI(TAG, "Application returned: %s", sd_path);
     result = ESP_OK;
 
+close_module:
+    s_current_path = NULL;
+    // Destructors may release app-owned peripherals and callbacks, so run them
+    // while the module is mapped and before the host restores shared hardware.
+    if (module_initialized && module_fini != NULL) {
+        module_fini();
+        module_initialized = false;
+    }
     // An ELF MUST stop all of its hardware tasks/IRQs/DMA before returning.
     // Restore before dlclose so the app and its callbacks cannot reference
     // unmapped code after host hardware is reinitialized.
-    if (requested != 0U) {
+    if (takeover_active) {
         esp_err_t restore = native_hardware_takeover_end(requested);
         if (restore != ESP_OK) {
             ESP_LOGE(TAG, "Failed to restore host hardware for %s: %s",
                      sd_path, esp_err_to_name(restore));
             result = restore;
         }
+        takeover_active = false;
     }
-
-close_module:
-    s_current_path = NULL;
     native_app_capabilities_release();
     (void)dlerror();
     if (dlclose(handle) != 0) {

@@ -47,10 +47,15 @@ static bool takeover_denied;
 static bool restore_failed;
 static uint32_t takeover_request;
 static int takeover_begins, takeover_ends;
+static bool lifecycle_init_exported, lifecycle_fini_exported, lifecycle_init_fails;
+static bool lifecycle_fini_saw_takeover;
+static int lifecycle_inits, lifecycle_finis;
 
 const char *dlerror(void) { const char *e = pending; pending = NULL; return e; }
 
 static uint32_t declare_takeover(void) { return takeover_request; }
+static int module_init(void) { ++lifecycle_inits; return lifecycle_init_fails ? -1 : 0; }
+static void module_fini(void) { ++lifecycle_finis; lifecycle_fini_saw_takeover = takeover_active; }
 static void child(void)
 {
     running = true;
@@ -77,6 +82,14 @@ void *dlsym(void *handle, const char *name)
     if (strcmp(name, "app_hardware_takeover") == 0) {
         if (!takeover_exported) { pending = "optional symbol absent"; return NULL; }
         return (void *)declare_takeover;
+    }
+    if (strcmp(name, "app_module_init") == 0) {
+        if (!lifecycle_init_exported) { pending = "optional symbol absent"; return NULL; }
+        return (void *)module_init;
+    }
+    if (strcmp(name, "app_module_fini") == 0) {
+        if (!lifecycle_fini_exported) { pending = "optional symbol absent"; return NULL; }
+        return (void *)module_fini;
     }
     assert(strcmp(name, "app_main") == 0);
     if (mode == 2) { pending = "symbol missing"; return NULL; }
@@ -119,6 +132,9 @@ static void reset_takeover(void)
     restore_failed = false;
     takeover_request = 0U;
     takeover_begins = takeover_ends = 0;
+    lifecycle_init_exported = lifecycle_fini_exported = lifecycle_init_fails = false;
+    lifecycle_fini_saw_takeover = false;
+    lifecycle_inits = lifecycle_finis = 0;
     opens = closes = calls = 0;
     mode = 0;
 }
@@ -184,6 +200,25 @@ int main(void)
     assert(launch_elf_app("/sd/apps/game.elf") == ESP_ERR_INVALID_STATE);
     assert(calls == 0 && closes == 1 && takeover_begins == 1 && takeover_ends == 0);
     assert(!takeover_active);
+
+    // Paired lifecycle hooks wrap app_main and complete before host restore.
+    reset_takeover();
+    lifecycle_init_exported = lifecycle_fini_exported = true;
+    takeover_exported = true;
+    takeover_request = T5_HARDWARE_TAKEOVER_DISPLAY;
+    assert(launch_elf_app("/sd/apps/game.elf") == ESP_OK);
+    assert(lifecycle_inits == 1 && lifecycle_finis == 1 && calls == 1);
+    assert(lifecycle_fini_saw_takeover && takeover_ends == 1 && !takeover_active);
+
+    // A partial lifecycle contract and failed initialization both fail closed.
+    reset_takeover();
+    lifecycle_init_exported = true;
+    assert(launch_elf_app("/sd/apps/game.elf") == ESP_ERR_INVALID_STATE);
+    assert(lifecycle_inits == 0 && lifecycle_finis == 0 && calls == 0 && closes == 1);
+    reset_takeover();
+    lifecycle_init_exported = lifecycle_fini_exported = lifecycle_init_fails = true;
+    assert(launch_elf_app("/sd/apps/game.elf") == ESP_ERR_INVALID_STATE);
+    assert(lifecycle_inits == 1 && lifecycle_finis == 0 && calls == 0 && closes == 1);
 
     // Unsupported future bits fail closed instead of quietly granting rights.
     reset_takeover();
