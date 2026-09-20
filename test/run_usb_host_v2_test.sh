@@ -19,3 +19,10 @@ if nm -D --undefined-only "$build/usb-host-v2.so" | grep -E 'usb_host_|nativeUsb
   echo 'Host ELF forwards to forbidden compiled firmware USB implementation' >&2
   exit 1
 fi
+
+# The physical controller compiles this same two-stage release policy inside
+# its ELF. Exercise it independently from unavailable hardware/IDF dependencies.
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/Drivers/usb_controller_esp32s3" \
+  "$repo/test/drivers/usb_controller_claim_release_test.cpp" \
+  -o "$build/usb-controller-claim-release-test"
+"$build/usb-controller-claim-release-test"
