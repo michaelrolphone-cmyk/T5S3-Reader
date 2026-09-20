@@ -1,11 +1,12 @@
 #include "RiscUsbControllerV1.h"
 
-/* The installed usb.host ELF owns physical USB operations. This class ELF
- * owns CP210x matching, vendor requests and generation-qualified sessions. */
+/* Installed usb.host owns physical USB. This class ELF owns CP210x vendor
+ * controls, descriptor matching and generation-qualified serial sessions. */
 typedef struct {
     uint64_t token, device, claim;
     uint8_t interface_number, alternate, in_ep, out_ep;
     bool disabled;
+    bool orphaned; /* Open failed; its session token was never returned. */
 } cp_session;
 static const risc_usb_host_api_v1 *host;
 static const risc_usb_host_discovery_v1 *discovery;
@@ -39,19 +40,14 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     discovery = extended;
     return true;
 }
-static bool quiesce(void) {
-    for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
-        if (sessions[i].token) return false;
-    return true;
-}
 static int32_t command(uint64_t device, uint8_t iface, uint8_t req,
                        uint16_t value, uint8_t *payload, uint16_t length) {
     return host->control(host->context, device, 0x41u, req, value, iface,
                          payload, length, 1000);
 }
-/* Disabling the UART and releasing the physical interface are separate
- * operations. Retry a failed release without repeating a completed disable.
- * Never recycle the class session until release_checked confirms success. */
+/* Disabling UART and releasing the claim are independent. A successful
+ * disable is not repeated if a later release fails; the same physical claim
+ * is retained until release_checked acknowledges teardown. */
 static bool close_device(uint64_t token) {
     cp_session *s = lookup(token);
     if (!s || !discovery) return false;
@@ -64,9 +60,17 @@ static bool close_device(uint64_t token) {
     *s = (cp_session){0};
     return true;
 }
+static bool quiesce(void) {
+    /* Consumer-owned sessions remain open. Failed-open claims have no caller
+     * token, so retry them here with a fixed four-slot work bound. */
+    for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i) {
+        if (sessions[i].orphaned && !close_device(sessions[i].token)) return false;
+        if (sessions[i].token) return false;
+    }
+    return true;
+}
 static void stop(void) {
-    /* Generic lifecycle MUST call quiesce first. Test/recovery stop can only
-     * retire sessions by verified release, never force-drop a failed claim. */
+    /* A direct stop cannot bypass physical release or discard claim tokens. */
     if (!host) return;
     for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
         if (sessions[i].token && !close_device(sessions[i].token)) return;
@@ -147,13 +151,12 @@ static uint64_t open_device(uint64_t device) {
     candidate.device = device;
     if (!host->claim(host->context, device, candidate.interface_number,
                      candidate.alternate, &candidate.claim) || !candidate.claim) return 0;
-    /* Establish a session before vendor initialization. If the enable command
-     * or its cleanup is ambiguous, quiesce will pin the ELF and host claim. */
     ++generation;
     if (!generation) ++generation;
     candidate.token = generation;
     *slot = candidate;
     if (command(device, candidate.interface_number, 0x00u, 1u, 0, 0) != 0) {
+        slot->orphaned = true;
         (void)close_device(candidate.token);
         return 0;
     }
@@ -162,7 +165,7 @@ static uint64_t open_device(uint64_t device) {
 static bool configure(uint64_t token, uint32_t baud, uint8_t bits,
                       uint8_t parity, uint8_t stop_bits) {
     cp_session *s = lookup(token);
-    if (!s || s->disabled || baud < 300 || baud > 3000000 ||
+    if (!s || s->disabled || s->orphaned || baud < 300 || baud > 3000000 ||
         bits < 5 || bits > 8 || parity > 4 ||
         (stop_bits != 1 && stop_bits != 2)) return false;
     uint8_t speed[4] = {(uint8_t)baud, (uint8_t)(baud >> 8),
@@ -175,7 +178,7 @@ static bool configure(uint64_t token, uint32_t baud, uint8_t bits,
 }
 static bool control_lines(uint64_t token, bool dtr, bool rts) {
     cp_session *s = lookup(token);
-    if (!s || s->disabled) return false;
+    if (!s || s->disabled || s->orphaned) return false;
     uint16_t value = (uint16_t)(0x0300u | (dtr ? 1u : 0u) |
                                 (rts ? 2u : 0u));
     return command(s->device, s->interface_number, 0x07u, value, 0, 0) == 0;
@@ -183,7 +186,7 @@ static bool control_lines(uint64_t token, bool dtr, bool rts) {
 static int32_t read_data(uint64_t token, uint8_t *dst, size_t capacity,
                          uint32_t timeout_ms) {
     cp_session *s = lookup(token);
-    if (!s || s->disabled || !dst || !capacity ||
+    if (!s || s->disabled || s->orphaned || !dst || !capacity ||
         capacity > RISC_USB_CONFIG_LIMIT) return -1;
     int32_t n = host->bulk_read(host->context, s->claim, s->in_ep,
                                 dst, capacity, timeout_ms);
@@ -192,7 +195,7 @@ static int32_t read_data(uint64_t token, uint8_t *dst, size_t capacity,
 static int32_t write_data(uint64_t token, const uint8_t *src, size_t length,
                           uint32_t timeout_ms) {
     cp_session *s = lookup(token);
-    if (!s || s->disabled || !src || !length ||
+    if (!s || s->disabled || s->orphaned || !src || !length ||
         length > RISC_USB_CONFIG_LIMIT) return -1;
     int32_t n = host->bulk_write(host->context, s->claim, s->out_ep,
                                  src, length, timeout_ms);
