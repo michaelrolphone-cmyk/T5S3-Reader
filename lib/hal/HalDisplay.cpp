@@ -9,6 +9,7 @@
 #include <lgfx/v1/platforms/esp32/Panel_EPD.hpp>
 #include <Wire.h>
 #include <esp_heap_caps.h>
+#include <esp_lcd_panel_io.h>
 
 #include <algorithm>
 #include <cstring>
@@ -120,6 +121,33 @@ class T5S3BusEPD : public lgfx::Bus_EPD {
     powerOffSequence();
     return true;
   }
+
+  // M5GFX 0.2.20 Bus_EPD inherits Bus_NULL::release(), which does NOTHING.
+  // Explicitly destroy the panel I/O before the i80 bus; otherwise the next
+  // hardware-owning ELF cannot claim GPIO, LCD peripheral or GDMA resources.
+  void release() override {
+    wait();
+    if (_pwr_on) (void)powerControl(false);
+    if (_io_handle) {
+      const esp_err_t err = esp_lcd_panel_io_del(_io_handle);
+      if (err == ESP_OK) {
+        _io_handle = nullptr;
+      } else {
+        LOG_ERR("DSP", "EPD panel I/O release failed: %d", static_cast<int>(err));
+        return;  // Never destroy the bus while its I/O still owns it.
+      }
+    }
+    if (_i80_bus_handle) {
+      const esp_err_t err = esp_lcd_del_i80_bus(_i80_bus_handle);
+      if (err == ESP_OK) {
+        _i80_bus_handle = nullptr;
+      } else {
+        LOG_ERR("DSP", "EPD i80 bus release failed: %d", static_cast<int>(err));
+      }
+    }
+  }
+
+  bool released() const { return _io_handle == nullptr && _i80_bus_handle == nullptr; }
 
  private:
   bool preparePowerPins() {
@@ -291,6 +319,15 @@ class T5S3M5GfxDisplay : public lgfx::LGFX_Device {
     setPanel(&panel_);
   }
 
+  ~T5S3M5GfxDisplay() { bus_.release(); }
+
+  // Releasability is checked before the host transfers ownership. Normal
+  // RiscRTE display initialization and rendering remain unchanged.
+  bool releaseHardware() {
+    bus_.release();
+    return bus_.released();
+  }
+
  private:
   T5S3BusEPD bus_;
   lgfx::Panel_EPD panel_;
@@ -335,7 +372,39 @@ bool HalDisplay::initializePanelCanvas() {
   return panelCanvas->createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT) != nullptr;
 }
 
+bool HalDisplay::suspendForExternalOwner() {
+  if (externalOwner || !displayReady || !gfx) return false;
+  // The native launcher holds RenderLock: no concurrent activity render can
+  // queue another transfer after this wait. Keep SD, touch, I2C, and logical
+  // framebuffer allocations intact; only relinquish EPD hardware resources.
+  gfx->waitDisplay();
+  gfx->powerSave(true);
+  if (!gfx->releaseHardware()) {
+    LOG_ERR("DSP", "Cannot give display to ELF: LCD bus teardown incomplete");
+    return false;
+  }
+  releaseBackend();
+  externalOwner = true;
+  return true;
+}
+
+bool HalDisplay::resumeFromExternalOwner() {
+  if (!externalOwner) return false;
+  externalOwner = false;
+  begin();
+  if (!displayReady) {
+    LOG_ERR("DSP", "Could not restore display after ELF released hardware");
+    return false;
+  }
+  requestNextRefresh(FULL_REFRESH);
+  return true;
+}
+
 void HalDisplay::begin() {
+  if (externalOwner) {
+    LOG_ERR("DSP", "Cannot initialize host display while an ELF owns it");
+    return;
+  }
   releaseBackend();
   Board::beginI2C();
 
