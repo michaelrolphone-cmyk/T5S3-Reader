@@ -53,7 +53,8 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
   if (!sizeNode.isNull()) {
     if (!sizeNode.is<unsigned>() || !digestNode.is<const char*>()) return false;
     const unsigned bytes = sizeNode.as<unsigned>();
-    if (bytes < 52 || bytes > 1024u * 1024u) return false;
+    // Match both legacy pair verification and ordinary application packages.
+    if (bytes < 52 || bytes > 8u * 1024u * 1024u) return false;
     const char* digest = digestNode.as<const char*>();
     if (std::strlen(digest) != 64) return false;
     for (unsigned i = 0; i < 64; ++i) {
