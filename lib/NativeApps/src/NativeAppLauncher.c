@@ -54,6 +54,10 @@ extern void native_app_capabilities_release(void);
 // RenderLock. Individual ELFs only declare their requested resource mask.
 extern esp_err_t native_hardware_takeover_begin(uint32_t requested);
 extern esp_err_t native_hardware_takeover_end(uint32_t requested);
+// Temporary direct hardware import inventory, registered only for the
+// lifetime of the current ELF. Neither function is an ELF export.
+extern int native_hardware_compat_register(void);
+extern void native_hardware_compat_unregister(void);
 
 static const char *TAG = "sd_elf_launcher";
 static atomic_flag s_running = ATOMIC_FLAG_INIT;
@@ -75,7 +79,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_LOGE(TAG, "An ELF application is already running");
         return ESP_ERR_INVALID_STATE;
     }
-
+    bool compat_registered = false;
     esp_err_t result = native_app_register_sd_vfs();
     if (result != ESP_OK) {
         ESP_LOGE(TAG, "SD VFS unavailable: %s", esp_err_to_name(result));
@@ -128,6 +132,15 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_LOGE(TAG, "Could not register native app APIs");
         goto done;
     }
+    // These direct imports are temporary; normal RiscRTE API exports remain
+    // registered, and provider relocation still uses its isolated resolver.
+    const int compat_rc = native_hardware_compat_register();
+    if (compat_rc != 0) {
+        result = ESP_ERR_NO_MEM;
+        ESP_LOGE(TAG, "Could not register native hardware compatibility symbols: %d", compat_rc);
+        goto done;
+    }
+    compat_registered = true;
     result = ESP_FAIL;
     (void)dlerror();
     void *handle = dlopen(sd_path, RTLD_NOW);
@@ -197,6 +210,7 @@ close_module:
         result = ESP_FAIL;
     }
 done:
+    if (compat_registered) native_hardware_compat_unregister();
     native_app_capabilities_release();
     s_current_path = NULL;
     atomic_flag_clear_explicit(&s_running, memory_order_release);
