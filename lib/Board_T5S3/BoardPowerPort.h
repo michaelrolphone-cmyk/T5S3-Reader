@@ -5,6 +5,7 @@
 // The board library must not know the provider identity, bus address or ABI.
 namespace BoardT5S3 { struct BatteryState; }
 namespace BoardPowerPort {
+bool readyForActivation();
 bool configure();
 bool read(BoardT5S3::BatteryState* state);
 bool externalPower(bool* connected);
