@@ -48,16 +48,17 @@ typedef struct {
     bool (*quiesce)(void *context);
 } risc_usb_controller_api_v1;
 
-/* Optional append-only extension of the original USB host v1 interface. Old
- * class ELFs use only .host and need no changes. Discovery belongs to the
- * USB provider, never a firmware USB-specific enumerator. Call poll() on
- * the serialized provider executor; devices() copies currently present,
- * generation-qualified tokens into a bounded caller-owned buffer. */
+/* Append-only extension: the initial .host / poll / devices layout remains
+ * compatible with existing v1 consumers. New class ELFs require
+ * release_checked, which returns false while the physical claim remains
+ * owned. Retry with the SAME token; never discard an ambiguous release.
+ * Discovery belongs to USB providers, not a firmware USB enumerator. */
 typedef struct {
     risc_usb_host_api_v1 host;
     bool (*poll)(void *context, size_t max_events, size_t *processed);
     bool (*devices)(void *context, uint64_t *out,
                     size_t *inout_count);
+    bool (*release_checked)(void *context, uint64_t claim);
 } risc_usb_host_discovery_v1;
 #ifdef __cplusplus
 }
