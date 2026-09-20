@@ -42,6 +42,19 @@ class HalDisplay {
   // Initialize the display hardware and driver
   void begin();
 
+  // Exclusive native ELF display takeover. The host MUST hold RenderLock and
+  // stop other display users for the entire interval. No UI/display calls are
+  // allowed between successful suspend and resume. Logical framebuffers stay
+  // allocated at the same addresses so the existing GfxRenderer remains valid.
+  // Other boards fail closed until their backend implements a real handoff.
+#if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
+  bool suspendForExternalOwner();
+  bool resumeFromExternalOwner();
+#else
+  bool suspendForExternalOwner() { return false; }
+  bool resumeFromExternalOwner() { return false; }
+#endif
+
   // Display dimensions
   static constexpr uint16_t VISIBLE_WIDTH = BoardPins::LogicalWidth;
   static constexpr uint16_t VISIBLE_HEIGHT = BoardPins::LogicalHeight;
@@ -97,6 +110,7 @@ class HalDisplay {
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
   T5S3M5GfxDisplay* gfx = nullptr;
   lgfx::LGFX_Sprite* panelCanvas = nullptr;
+  bool externalOwner = false;
 #elif defined(BOARD_LILYGO_EPD47_S3)
   uint8_t* epdFrameBuffer = nullptr;
 #endif
