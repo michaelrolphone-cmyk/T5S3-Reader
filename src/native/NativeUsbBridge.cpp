@@ -66,11 +66,14 @@ bool hostApiValid(const risc_usb_host_discovery_v1* api) {
         api->poll && api->devices && api->host.configuration;
 }
 
-// A failed hardware close keeps the class ELF and its package generation
-// pinned; never select another provider while a token is unquiesced.
+// Release even an unstarted, lazily prebound class. Availability probes can
+// have acquired an ELF grant before USB serialStart(), and the host must not
+// be released while such a class still owns a dependency on it. A failed
+// class close/release quarantines the exact owner instead of dropping pins.
 bool closeClass() {
-    if (!session) return true;
-    if (nativeUsbClassToken() != session || !nativeUsbClassUnbindChecked()) {
+    if (!session && !nativeUsbClassBound() && !nativeUsbClassToken()) return true;
+    if ((session && nativeUsbClassToken() != session) ||
+        !nativeUsbClassUnbindChecked()) {
         quarantined = true;
         error(-1201);
         return false;
@@ -102,8 +105,6 @@ bool openBoundClass(uint64_t token, uint16_t vid, uint16_t pid) {
     if (!nativeUsbClassEnsureInstalled() || !nativeUsbClassAvailable()) return false;
     nativeUsbClassObserveDevice(token);
     if (!nativeUsbClassStart(classCoding(state.line_coding))) {
-        // Failed configure/close may leave a mapped ELF with an outstanding
-        // token. Never enumerate or bind another class in that condition.
         if (nativeUsbClassToken()) {
             quarantined = true;
             error(-1205);
@@ -123,9 +124,8 @@ bool openBoundClass(uint64_t token, uint16_t vid, uint16_t pid) {
     return true;
 }
 
-// A provider's open(device) determines whether it handles the device. A
-// lazily prebound class is first cleanly released so the new scan probes every
-// candidate exactly once. Binding/start failures are NOT ordinary no-match.
+// A class ELF's open(device) performs the match, not a firmware VID table.
+// A binding/start failure is not ordinary no-match: preserve quarantined pins.
 bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
     if (nativeUsbClassToken()) return false;
     if (nativeUsbClassBound() && !nativeUsbClassUnbindChecked()) {
@@ -208,7 +208,6 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
         state.line_coding = *coding;
         return true;
     }
-    // Resolve the verified host capability; never assume a package identity.
     char hostId[96]{}, alternate[96]{};
     size_t cursor = 0;
     if (!RuntimeInstalledProviders::nextProvider("usb.host", 1, &cursor,
@@ -246,12 +245,14 @@ void serialStop() {
         error(-1230);
         return;
     }
+    // Do not call RuntimeInstalledProviders::shutdown(): that is a GLOBAL
+    // graph operation and can unload GNSS, power, or other services unrelated
+    // to this serial session. Graph release deactivates only unused USB nodes
+    // and their dependencies after verified quiescence; failed release pins
+    // the original generation and remains quarantined above.
     host = nullptr;
-    if (!RuntimeInstalledProviders::shutdown()) {
-        quarantined = true;
-        error(-1231);
-        return;
-    }
+    device = 0;
+    session = 0;
     running = false;
     initialState(T5_USB_STATUS_OFF);
     LOG_INF("USB", "USBREF state=stopped source=installed-elf");
