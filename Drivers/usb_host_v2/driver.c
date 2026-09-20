@@ -5,9 +5,8 @@
  * layer owns enumeration publication, device generations, interface arbitration
  * and class transfer authorization. It requires a separate physical-controller
  * ELF implementing usb.controller@1; the controller must own IDF/OTG, VBUS,
- * event workers, DMA, callbacks and the real hardware. This ELF is NOT usable
- * on a board until that lower provider is implemented. Calls are serialized
- * by the future provider executor; no cross-thread protection is implied. */
+ * event workers, DMA, callbacks and the real hardware. Calls are serialized
+ * by the provider executor; no cross-thread protection is implied. */
 typedef struct {
     uint64_t token, physical;
     bool present;
@@ -73,7 +72,7 @@ static bool quiesce(void) {
         if (!c->token) continue;
         if (!c->closing || !controller->release(controller->context,
                                                  c->physical_claim)) return false;
-        c->token = c->physical_claim = c->device_token = 0;
+        *c = (claim_slot){0};
     }
     /* A controller failure MUST NOT be interpreted as cleared callbacks/DMA. */
     if (event_fault || !controller->quiesce(controller->context)) return false;
@@ -126,9 +125,8 @@ static bool poll_devices(void *ctx, size_t max_events, size_t *processed) {
                 event_fault = true; return false;
             }
             devices[found].present = false;
-            /* Old device tokens and all associated transfers now fail closed.
-             * The class must release its claims; controller drains physical
-             * transfers on disconnect before acknowledging release. */
+            /* Old tokens and transfers now fail closed. The class releases
+             * its claims, and the controller drains physical transactions. */
         }
     }
     return true;
@@ -196,8 +194,7 @@ static bool endpoints(uint64_t physical, uint8_t iface, uint8_t alt,
         }
         pos += size;
     }
-    /* Zero endpoints are valid for a CDC control interface. A missing
-     * interface/alternate is not: track that independently. */
+    /* Zero endpoints are valid for CDC control. Missing iface/alt is not. */
     for (size_t pos = 0; pos < length;) {
         uint8_t size = descriptor[pos], type = descriptor[pos + 1];
         if (type == 4 && descriptor[pos + 2] == iface &&
@@ -225,8 +222,8 @@ static bool claim_interface(void *ctx, uint64_t token, uint8_t iface,
                            &physical_claim) || !physical_claim) return false;
     uint64_t new_token = next_token();
     if (!new_token) {
-        /* If release fails, retain it under a quarantine claim so the DLL
-         * cannot unload. Token exhaustion is theoretically unreachable. */
+        /* If release fails, retain a quarantine claim so this DLL cannot
+         * unload even after token exhaustion (effectively unreachable). */
         claims[free_slot] = (claim_slot){UINT64_MAX, physical_claim, token,
                                          iface, alt, in, out_mask, true};
         return false;
@@ -236,18 +233,26 @@ static bool claim_interface(void *ctx, uint64_t token, uint8_t iface,
     *out = new_token;
     return true;
 }
-static void release_claim(void *ctx, uint64_t token) {
+/* The old void release remains at its original ABI offset for old consumers.
+ * New class ELFs call checked release and retain their session on failure.
+ * A closing claim cannot authorize any further data I/O but can be retried
+ * with the SAME token, even after device detach or a lost event. */
+static bool release_checked(void *ctx, uint64_t token) {
     (void)ctx;
-    if (!controller || !token) return;
+    if (!controller || !token) return false;
     for (size_t i = 0; i < RISC_USB_HOST_MAX_CLAIMS; ++i) {
         claim_slot *c = &claims[i];
-        if (c->token != token || c->closing) continue;
+        if (c->token != token) continue;
         c->closing = true;
-        if (controller->release(controller->context, c->physical_claim))
-            *c = (claim_slot){0};
-        /* Failed release stays quarantined for quiesce() retry. */
-        return;
+        if (!controller->release(controller->context, c->physical_claim))
+            return false;
+        *c = (claim_slot){0};
+        return true;
     }
+    return false;
+}
+static void release_claim(void *ctx, uint64_t token) {
+    (void)release_checked(ctx, token);
 }
 static int32_t control(void *ctx, uint64_t token, uint8_t type,
                        uint8_t request, uint16_t value, uint16_t index,
@@ -256,8 +261,6 @@ static int32_t control(void *ctx, uint64_t token, uint8_t type,
     device_slot *d = device_for(token);
     if (!d || length > RISC_USB_CONFIG_LIMIT || (length && !payload) ||
         !timeout) return -1;
-    /* Class/interface requests must be backed by a claim to the actual
-     * target interface, not merely knowledge of the device token. */
     if ((type & 0x1fu) == 1u) {
         bool authorized = false;
         for (size_t i = 0; i < RISC_USB_HOST_MAX_CLAIMS; ++i)
@@ -301,7 +304,7 @@ static const risc_usb_host_discovery_v1 interface = {
     {RISC_USB_HOST_API_V1, sizeof(risc_usb_host_discovery_v1), 0,
      configuration, claim_interface, release_claim, control,
      bulk_read, bulk_write},
-    poll_devices, list_devices
+    poll_devices, list_devices, release_checked
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
