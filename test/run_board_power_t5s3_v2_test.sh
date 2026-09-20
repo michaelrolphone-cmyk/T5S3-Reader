@@ -13,3 +13,4 @@ for test_case in board_power_t5s3_v2 board_power_snapshot board_power_charge_pro
     "$binary" batfet-nack
   fi
 done
+python3 "$repo/test/resources/board_power_cutover_source_test.py"
