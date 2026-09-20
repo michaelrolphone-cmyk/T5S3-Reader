@@ -66,12 +66,13 @@ bool hostApiValid(const risc_usb_host_discovery_v1* api) {
         api->poll && api->devices && api->host.configuration;
 }
 
-// Release even an unstarted, lazily prebound class. Availability probes can
-// have acquired an ELF grant before USB serialStart(), and the host must not
-// be released while such a class still owns a dependency on it. A failed
-// class close/release quarantines the exact owner instead of dropping pins.
+// Release an idle, lazily prebound class so it cannot leak a USB host
+// dependency. Never close a live token if this bridge has no matching session:
+// that class may belong to a different stream consumer. Failed close/release
+// quarantines the exact grant and must not free the host dependency.
 bool closeClass() {
-    if (!session && !nativeUsbClassBound() && !nativeUsbClassToken()) return true;
+    if (!session && nativeUsbClassToken()) return true;
+    if (!session && !nativeUsbClassBound()) return true;
     if ((session && nativeUsbClassToken() != session) ||
         !nativeUsbClassUnbindChecked()) {
         quarantined = true;
