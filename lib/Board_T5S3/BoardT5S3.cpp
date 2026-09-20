@@ -201,6 +201,10 @@ void begin() {
 }
 
 void deinitForSleep() {
+  // HalDisplay::deepSleep calls this while the SD package is still mounted.
+  // Acquire a verified owner before SD_CS becomes INPUT; power-off runs later
+  // in main.cpp and must not attempt to map a driver from a disabled SD bus.
+  (void)BoardPowerPort::prepareShutdown();
   setBacklightLevel(0);
   pinMode(T5S3_BL_EN, OUTPUT);
   digitalWrite(T5S3_BL_EN, LOW);
@@ -214,22 +218,21 @@ const BatteryProfile& batteryProfile() { return kBatteryProfile; }
 
 bool beginBatteryManagement() {
   // Gauge is a separate chip and remains accessible during early boot.
-  // The BQ25896 ELF cannot be loaded until verified SD packages are ready;
-  // unlike the old resident initializer, a premature call must not latch a
-  // permanent failure or reset charge/OTG registers behind the ELF.
+  // A pre-mount call must not attempt to map an ELF or latch charger failure.
   if (!gaugeInitAttempted) {
     gaugeInitAttempted = true;
     bq27220Ready = configureBq27220();
   }
-  if (!chargerConfigured) chargerConfigured = BoardPowerPort::configure();
+  if (!chargerConfigured && BoardPowerPort::readyForActivation())
+    chargerConfigured = BoardPowerPort::configure();
   return chargerConfigured || bq27220Ready;
 }
 
 bool isBatteryManagementReady() { return chargerConfigured || bq27220Ready; }
 
 bool shutdownBatteryPower() {
-  // The installed chip owner rejects source leases, unknown external input,
-  // and uncertain writes. Never fall back to resident BQ register operations.
+  // Installed owner always checks live input, OTG leases and uncertain writes.
+  // No BQ25896 register-level firmware fallback exists.
   return BoardPowerPort::shutdown();
 }
 
@@ -333,16 +336,38 @@ bool readBatteryAverageCurrentMa(int16_t* current) {
 }
 
 bool isUsbConnected() {
+  // GPIO polls this every loop. Avoid reloading the installed ELF and making
+  // eleven I2C reads on every button/touch scan; keep physical safety checks
+  // inside the ELF fresh (the shutdown path NEVER consumes this UI cache).
+  static bool sampled = false;
+  static bool connected = false;
+  static unsigned long lastSampleMs = 0;
+  static bool attemptedStartupCharge = false;
+  static unsigned long lastChargeAttemptMs = 0;
+  const unsigned long now = millis();
+  if (!chargerConfigured && BoardPowerPort::readyForActivation() &&
+      (!attemptedStartupCharge || now - lastChargeAttemptMs >= 30000UL)) {
+    attemptedStartupCharge = true;
+    lastChargeAttemptMs = now;
+    chargerConfigured = BoardPowerPort::configure();
+  }
+  if (sampled && now - lastSampleMs < 1000UL) return connected;
   bool external = false;
-  if (BoardPowerPort::externalPower(&external)) return external;
-  // Early-boot/missing-ELF fallback reads ONLY the independent fuel gauge,
-  // never BQ25896 registers or a competing charger configuration path.
-  int16_t currentMa = 0;
-  int16_t averageCurrentMa = 0;
-  if (readBatteryAverageCurrentMa(&averageCurrentMa))
-    return averageCurrentMa > kBatteryProfile.currentThresholdMa;
-  return readBatteryCurrentMa(&currentMa) &&
-         currentMa > kBatteryProfile.currentThresholdMa;
+  if (BoardPowerPort::externalPower(&external)) {
+    connected = external;
+  } else {
+    // Early boot or absent ELF: fallback reads ONLY the separate fuel gauge.
+    // It does not claim BQ25896 nor attempt a competing charger reset.
+    int16_t currentMa = 0;
+    int16_t averageCurrentMa = 0;
+    if (readBatteryAverageCurrentMa(&averageCurrentMa))
+      connected = averageCurrentMa > kBatteryProfile.currentThresholdMa;
+    else connected = readBatteryCurrentMa(&currentMa) &&
+                     currentMa > kBatteryProfile.currentThresholdMa;
+  }
+  lastSampleMs = now;
+  sampled = true;
+  return connected;
 }
 
 bool GT911Touch::writeReg8(uint16_t reg, uint8_t value) {
