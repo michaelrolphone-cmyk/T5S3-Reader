@@ -8,6 +8,13 @@ extern "C" {
 // Native faults are not recoverable loader errors. See docs/NATIVE_APPS.md.
 esp_err_t launch_elf_app(const char *sd_path);
 
+// Optional module lifecycle exports. The loader calls app_module_init() after
+// relocation and before any hardware takeover request, then calls
+// app_module_fini() before restoring hardware and unmapping the ELF. C++ apps
+// use these hooks to run linker-collected constructors and destructors.
+typedef int (*elf_app_module_init_t)(void);
+typedef void (*elf_app_module_fini_t)(void);
+
 // Host-side helper used by reusable firmware services while app_main is active.
 // Returns the exact /sd/... path passed to launch_elf_app(), or NULL otherwise.
 // This symbol is not exported into the ELF application namespace.

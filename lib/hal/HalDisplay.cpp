@@ -379,8 +379,14 @@ bool HalDisplay::suspendForExternalOwner() {
   // framebuffer allocations intact; only relinquish EPD hardware resources.
   gfx->waitDisplay();
   gfx->powerSave(true);
+  // The T5S3 board's PCA9535 power-good input remains high after PWRUP and
+  // WAKEUP are lowered, so it is not a valid power-down completion signal.
+  // Give the TPS shutdown sequence a bounded settling interval; the incoming
+  // owner performs bounded address retries while bringing it back up.
+  delay(10);
   if (!gfx->releaseHardware()) {
     LOG_ERR("DSP", "Cannot give display to ELF: LCD bus teardown incomplete");
+    gfx->powerSave(false);
     return false;
   }
   releaseBackend();
