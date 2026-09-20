@@ -7,6 +7,26 @@ import pathlib
 import re
 
 
+def native_hardware_compat_exports(repo):
+    """Exact, temporarily registered direct-hardware imports on T5S3.
+
+    Require the firmware table to include the same .def inventory in its
+    declarations AND initializers; a handwritten wish list is not an export.
+    """
+    repo = pathlib.Path(repo)
+    source = (repo / 'src/native/NativeHardwareCompat.cpp').read_text()
+    definition = 'NativeHardwareCompatSymbols.def'
+    if source.count(f'#include "{definition}"') != 2 or (
+            'native_hardware_compat_register' not in source or
+            'native_hardware_compat_unregister' not in source):
+        raise ValueError('Native hardware compatibility table is missing or malformed')
+    entries = (repo / 'lib/NativeApps/include' / definition).read_text()
+    names = re.findall(r'^RISC_COMPAT_SYMBOL\((\w+)\)\s*$', entries, re.M)
+    if not names or len(names) != len(set(names)):
+        raise ValueError('Empty or duplicate native hardware compatibility exports')
+    return set(names)
+
+
 def firmware_exports(repo):
     repo = pathlib.Path(repo)
     tables = [
@@ -23,7 +43,7 @@ def firmware_exports(repo):
     flags = (repo / 'platformio.ini').read_text()
     if '-DCONFIG_ELF_LOADER_LIBC_SYMBOLS=1' not in flags:
         raise ValueError('Native import validation requires the configured libc export table')
-    return exports
+    return exports | native_hardware_compat_exports(repo)
 
 
 def privileged_os_cpu_exports(repo):
