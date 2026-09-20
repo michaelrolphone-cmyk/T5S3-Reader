@@ -1,6 +1,6 @@
 #pragma once
 
-#include <InflateReader.h>
+#include "../InflateReader/InflateReader.h"
 
 #include <vector>
 
@@ -34,12 +34,12 @@ class FontDecompressor {
     uint32_t cacheMisses = 0;
     uint32_t decompressTimeMs = 0;
     uint16_t uniqueGroupsAccessed = 0;
-    uint32_t pageBufferBytes = 0;  // pageBuffer allocation
+    uint32_t pageBufferBytes = 0;  // page buffer allocation
     uint32_t pageGlyphsBytes = 0;  // pageGlyphs lookup table allocation
-    uint32_t hotGroupBytes = 0;    // current hot group allocation
+    uint32_t hotGroupBytes = 0;    // hot group allocation
     uint32_t peakTempBytes = 0;    // largest temp buffer in prewarm
     uint32_t getBitmapTimeUs = 0;  // cumulative getBitmap time (micros)
-    uint32_t getBitmapCalls = 0;   // number of getBitmap calls
+    uint32_t getBitmapCalls = 0;   // cumulative getBitmap calls
   };
   void logStats(const char* label = "FDC");
   void resetStats();
@@ -66,7 +66,7 @@ class FontDecompressor {
   uint8_t pageSlotCount = 0;
 
   // Hot group: last decompressed group (byte-aligned) for non-prewarmed fallback path.
-  // Kept in byte-aligned format; individual glyphs are compacted on demand into hotGlyphBuf.
+  // Kept in byte-aligned format; individual glyphs are compacted on demand.
   const EpdFontData* hotGroupFont = nullptr;
   uint16_t hotGroupIndex = UINT16_MAX;
   std::vector<uint8_t> hotGroup;
