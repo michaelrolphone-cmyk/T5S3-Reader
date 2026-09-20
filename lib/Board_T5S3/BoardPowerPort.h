@@ -8,5 +8,8 @@ namespace BoardPowerPort {
 bool configure();
 bool read(BoardT5S3::BatteryState* state);
 bool externalPower(bool* connected);
+// Pin the verified ELF before display.deepSleep() deinitializes SD pins.
+// Only use this for the one-way transition into sleep or hard power-off.
+bool prepareShutdown();
 bool shutdown();
 }
