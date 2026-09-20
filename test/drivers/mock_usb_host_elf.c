@@ -1,4 +1,4 @@
-#include "RiscUsbProviderV1.h"
+#include "RiscUsbControllerV1.h"
 #include <string.h>
 
 /* Test fixture only: separately dlopen'ed usb.host, never a hardware driver. */
@@ -31,15 +31,19 @@ static bool claim(void *ctx, uint64_t dev, uint8_t iface,
     ++outstanding;
     return true;
 }
-static void release_claim(void *ctx, uint64_t token) {
+static bool release_checked(void *ctx, uint64_t token) {
     (void)ctx;
-    if (token && outstanding) --outstanding;
+    if (!running || !token || !outstanding) return false;
+    --outstanding;
+    return true;
+}
+static void release_claim(void *ctx, uint64_t token) {
+    (void)release_checked(ctx, token);
 }
 static int32_t control(void *ctx, uint64_t dev, uint8_t request_type,
                        uint8_t request, uint16_t value, uint16_t index,
                        uint8_t *payload, uint16_t length, uint32_t timeout_ms) {
-    (void)ctx;
-    (void)value;
+    (void)ctx; (void)value;
     if (!running || dev != 42 || request_type != 0x21 || index != 0 ||
         timeout_ms != 1000) return -1;
     if (request == 0x20 && payload && length == 7) return 7;
@@ -60,9 +64,10 @@ static int32_t write_bulk(void *ctx, uint64_t token, uint8_t ep,
         length > RISC_USB_CONFIG_LIMIT) return -1;
     return (int32_t)length;
 }
-static const risc_usb_host_api_v1 usb_host = {
-    RISC_USB_HOST_API_V1, sizeof(risc_usb_host_api_v1), 0,
-    configuration, claim, release_claim, control, read_bulk, write_bulk
+static const risc_usb_host_discovery_v1 usb_host = {
+    {RISC_USB_HOST_API_V1, sizeof(risc_usb_host_discovery_v1), 0,
+     configuration, claim, release_claim, control, read_bulk, write_bulk},
+    0, 0, release_checked
 };
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     if (running || deps || count) return false;
@@ -70,11 +75,11 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     return true;
 }
 static bool quiesce(void) { return outstanding == 0; }
-static void stop(void) { running = false; }
+static void stop(void) { if (quiesce()) running = false; }
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
     "fixture-usb-host", "usb.host", RISC_USB_HOST_API_V1,
-    &usb_host, start, stop, quiesce
+    &usb_host.host, start, stop, quiesce
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
