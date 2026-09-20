@@ -15,10 +15,11 @@ close = bridge.split('bool closeClass() {', 1)[1].split('\n}\n', 1)[0]
 stop = bridge.split('void serialStop() {', 1)[1].split('\n}\n', 1)[0]
 release = graph.split('bool GraphV2::release(GrantV2 grant) {', 1)[1].split('\n}\n', 1)[0]
 
-# Even a class that was lazily activated by nativeUsbClassAvailable() has a
-# provider grant: no active serial token does not imply no class ownership.
-assert 'nativeUsbClassBound()' in close
-assert 'nativeUsbClassToken()' in close
+# An active class token with no matching session belongs to another consumer.
+# An idle, lazily bound class can hold a provider grant even without a token.
+assert 'if (!session && nativeUsbClassToken()) return true;' in close
+assert 'if (!session && !nativeUsbClassBound()) return true;' in close
+assert '(session && nativeUsbClassToken() != session)' in close
 assert '!nativeUsbClassUnbindChecked()' in close
 assert 'quarantined = true;' in close
 
@@ -39,4 +40,4 @@ assert 'if (!deactivateIfUnused(node)) return false;' in release
 assert release.index('if (!deactivateIfUnused(node)) return false;') < release.index('slot.occupied = false;')
 assert 'if (installedClass.grant.slot && !RuntimeInstalledProviders::release(&installedClass))' in classes
 
-print('USB serial teardown scope: class-before-host, no global shutdown, quarantine: PASS')
+print('USB serial teardown scope: class-before-host, no global shutdown, external class protected: PASS')
