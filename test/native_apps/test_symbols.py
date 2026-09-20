@@ -46,7 +46,7 @@ class ImportsTest(unittest.TestCase):
         provider = (repo / 'src/native/NativeEspRomBridge.cpp').read_text()
         self.assertIn('T5ProgramEspRomApi.h', flasher)
         self.assertIn('streams->open_file', flasher)
-        self.assertIn('programmer->program', provider)
+        self.assertIn('programmer->program', flasher)
         self.assertNotIn('T5UsbApi.h', flasher)
         self.assertNotIn('t5_usb_get_api', flasher)
         self.assertNotIn('usb_host_', flasher)
