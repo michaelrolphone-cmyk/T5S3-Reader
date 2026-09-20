@@ -18,6 +18,7 @@
 #include "T5FileBrowserApi.h"
 #include "T5FontApi.h"
 #include "T5GpsApi.h"
+#include "T5HardwareTakeover.h"
 #include "T5ImageApi.h"
 #include "T5KOReaderApi.h"
 #include "T5LanguageApi.h"
@@ -49,6 +50,10 @@
 extern bool native_app_capabilities_ready(const char *sd_path);
 extern bool native_app_capabilities_bind(const char *sd_path);
 extern void native_app_capabilities_release(void);
+// All physical handoff is performed by the host while NativeAppHost holds
+// RenderLock. Individual ELFs only declare their requested resource mask.
+extern esp_err_t native_hardware_takeover_begin(uint32_t requested);
+extern esp_err_t native_hardware_takeover_end(uint32_t requested);
 
 static const char *TAG = "sd_elf_launcher";
 static atomic_flag s_running = ATOMIC_FLAG_INIT;
@@ -143,12 +148,43 @@ esp_err_t launch_elf_app(const char *sd_path)
         goto close_module;
     }
 
+    // Opt-in, generic ABI: missing symbol means the legacy UI/display path.
+    // Query the mask only after mapping succeeds; do not release the panel for
+    // a corrupt ELF, a missing app_main, or a module that does not request it.
+    uint32_t requested = 0U;
+    (void)dlerror();
+    void *request_symbol = dlsym(handle, "app_hardware_takeover");
+    const char *request_error = dlerror();
+    if (request_error == NULL && request_symbol != NULL) {
+        requested = ((t5_hardware_takeover_request_fn)request_symbol)();
+    }
+    if (requested != 0U) {
+        result = native_hardware_takeover_begin(requested);
+        if (result != ESP_OK) {
+            ESP_LOGE(TAG, "Hardware takeover denied for %s, mask=0x%08lx: %s",
+                     sd_path, (unsigned long)requested, esp_err_to_name(result));
+            goto close_module;
+        }
+    }
+
     ESP_LOGI(TAG, "Starting %s", sd_path);
     s_current_path = sd_path;
     ((elf_app_main_t)symbol)();
     s_current_path = NULL;
     ESP_LOGI(TAG, "Application returned: %s", sd_path);
     result = ESP_OK;
+
+    // An ELF MUST stop all of its hardware tasks/IRQs/DMA before returning.
+    // Restore before dlclose so the app and its callbacks cannot reference
+    // unmapped code after host hardware is reinitialized.
+    if (requested != 0U) {
+        esp_err_t restore = native_hardware_takeover_end(requested);
+        if (restore != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to restore host hardware for %s: %s",
+                     sd_path, esp_err_to_name(restore));
+            result = restore;
+        }
+    }
 
 close_module:
     s_current_path = NULL;
