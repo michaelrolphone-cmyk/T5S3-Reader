@@ -7,15 +7,16 @@
 #include <Logging.h>
 #include <cstdint>
 
-// Board-specific compatibility adapter only: no Wire, address, I2C HAL,
-// charger reset, USB role arbitration, or hardware register transactions.
-// The independently installed board.power.vbus ELF owns all those operations.
+// Compatibility boundary only. Hardware register access and all charge,
+// source, shutdown and recovery policies reside in the installed owner ELF.
 namespace BoardPowerPort {
 namespace {
 using RuntimeInstalledProviders::Lease;
 static bool quarantined = false;
 static bool shutdownPending = false;
 static Lease retainedShutdownGrant{};
+static Lease preparedShutdownGrant{};
+static const risc_usb_vbus_charger_api_v1* preparedShutdownApi = nullptr;
 
 struct Session {
   Lease grant{};
@@ -25,9 +26,8 @@ struct Session {
 bool release(Session& session) {
   if (!session.grant.grant.slot) return true;
   if (!RuntimeInstalledProviders::release(&session.grant)) {
-    // The graph retains the same generation as a pending release. Its ELF
-    // and bus claim must never be force-unloaded or replaced after an
-    // uncertain PMIC transition or unverified hardware quiescence.
+    // Failed quiescence keeps the exact generation pending in the graph.
+    // It is never safe to remap a different chip owner after that failure.
     quarantined = true;
     LOG_ERR("BAT", "Board power provider retained after failed release");
     return false;
@@ -38,8 +38,6 @@ bool release(Session& session) {
 
 bool acquire(Session& session) {
   if (quarantined || shutdownPending) return false;
-  // A board-specific adapter may request this semantic capability, but it
-  // must not assume a package ID or select an arbitrary ambiguous provider.
   size_t cursor = 0;
   char id[96]{}, alternate[96]{};
   if (!RuntimeInstalledProviders::nextProvider("board.power.vbus", 1u,
@@ -75,8 +73,7 @@ bool configure() {
   Session session{};
   if (!acquire(session)) return false;
   const bool ok = session.api->configure_charger(session.api->base.context);
-  // On a partial PMIC write the ELF refuses quiescence, and release() pins
-  // the original grant rather than risking a second device owner.
+  // A partial PMIC write prevents ELF quiescence and retains this generation.
   return release(session) && ok;
 }
 
@@ -107,13 +104,12 @@ bool read(BoardT5S3::BatteryState* state) {
       20u * (raw.battery_adc & 0x7fu));
   state->systemVoltageMv = static_cast<uint16_t>(2304u +
       20u * (raw.system_adc & 0x7fu));
-  // Do not report a stale conversion as an externally present VBUS voltage.
+  // REG11's conversion can be stale when the VBUS-good flag is clear.
   state->vbusVoltageMv = (raw.vbus_adc & 0x80u) ?
       static_cast<uint16_t>(2600u + 100u * (raw.vbus_adc & 0x7fu)) : 0u;
   state->gaugeChargeVoltageMv = state->chargeVoltageMv;
   state->gaugeTaperCurrentMa = state->terminationCurrentMa;
-  // The current snapshot ABI does not contain REG12. Keep this field
-  // explicitly unavailable rather than synthesizing a PMIC measurement.
+  // REG12 is not exposed by the current snapshot ABI; do not invent a value.
   state->chargerAdcCurrentMa = 0u;
   return true;
 }
@@ -127,19 +123,40 @@ bool externalPower(bool* connected) {
   return true;
 }
 
-bool shutdown() {
+bool prepareShutdown() {
+  if (quarantined || shutdownPending) return false;
+  if (preparedShutdownGrant.grant.slot) return true;
+  // display.deepSleep() releases SD pins before Board::shutdownBatteryPower.
+  // Map and pin the verified ELF while the package store is still reachable.
   Session session{};
   if (!acquire(session)) return false;
+  preparedShutdownGrant = session.grant;
+  preparedShutdownApi = session.api;
+  session.grant = {};
+  session.api = nullptr;
+  return true;
+}
+
+bool shutdown() {
+  Session session{};
+  if (preparedShutdownGrant.grant.slot) {
+    session.grant = preparedShutdownGrant;
+    session.api = preparedShutdownApi;
+    preparedShutdownGrant = {};
+    preparedShutdownApi = nullptr;
+  } else if (!acquire(session)) {
+    return false;
+  }
   const bool requested = session.api->request_shutdown(session.api->base.context);
   if (requested) {
-    // BATFET_DIS can remove power before a readback. Do not release this
-    // grant or let another caller remap a provider on a dying power rail.
+    // BATFET_DIS may remove power before readback. Keep ELF, I2C claim and
+    // original generation pinned until physical reboot; never release here.
     retainedShutdownGrant = session.grant;
     session.grant = {};
     shutdownPending = true;
     return true;
   }
-  (void)release(session);  // Unsafe transition retains the pending grant.
+  (void)release(session);  // Unsafe write retains the pending grant.
   return false;
 }
 }  // namespace BoardPowerPort
