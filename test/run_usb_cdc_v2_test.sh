@@ -41,3 +41,5 @@ if nm -D --undefined-only "$build/cdc-v2.so" | grep -E 'usb_host_|nativeUsb|UsbC
   echo 'USB v2 ELF imports a firmware USB implementation' >&2
   exit 1
 fi
+# A serial port shutdown must never unload unrelated installed drivers.
+python3 "$repo/test/drivers/usb_serial_teardown_source_test.py"
