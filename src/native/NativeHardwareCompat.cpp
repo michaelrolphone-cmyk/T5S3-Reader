@@ -16,7 +16,6 @@
 #include <driver/ledc.h>
 #include <driver/gpio.h>
 #include <esp_lcd_panel_io.h>
-#include <esp_lcd_panel_io_i80.h>
 #include <esp_heap_caps.h>
 
 // Assembly aliases bind the *existing* implementation by its exact linker
