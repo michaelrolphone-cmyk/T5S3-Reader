@@ -59,6 +59,10 @@ for required in ('RuntimeInstalledProviders::nextProvider("board.power.vbus"',
                  'shutdownPending = true;',
                  'RuntimeInstalledProviders::release(&session.grant)'):
     assert required in port, required
+prepare = port.split('bool prepareShutdown()', 1)[1].split('\n}', 1)[0]
+shutdown = port.split('bool shutdown()', 1)[1].split('\n}', 1)[0]
+assert prepare.index('shutdownPreparationAttempted = true;') < prepare.index('if (!acquire(session))')
+assert 'if (shutdownPreparationAttempted || !acquire(session)) return false;' in shutdown
 for prohibited in ('#include <Wire.h>', 'T5S3_BQ25896_ADDR', 'bq25896_reset('):
     assert prohibited not in port, prohibited
 assert 'risc_bq_request_shutdown(&io)' in owner
