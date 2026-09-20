@@ -5,6 +5,7 @@
  * the sole IDF callback executes in that same context. Not a mock. */
 #include "RiscUsbControllerV1.h"
 #include "RiscUsbVbusV1.h"
+#include "ClaimReleasePolicy.h"
 #include <usb/usb_host.h>
 #include <esp_intr_alloc.h>
 #include <freertos/FreeRTOS.h>
@@ -26,6 +27,7 @@ struct Device {
 struct Claim {
     uint64_t token, physical_device;
     uint8_t number, alternate;
+    bool interfaceReleased;
 };
 struct Event {
     uint8_t kind, address;
@@ -62,6 +64,22 @@ Claim *claim(uint64_t id) {
 bool claimed(uint64_t id) {
     for (const auto &c : claims) if (c.token && c.physical_device == id) return true;
     return false;
+}
+bool otherClaims(uint64_t deviceId, uint64_t except) {
+    for (const auto &c : claims)
+        if (c.token && c.token != except && c.physical_device == deviceId)
+            return true;
+    return false;
+}
+/* Detach with no interface claim is still an owned open IDF device handle.
+ * Reap it promptly; a failed close pins the slot, is retried on subsequent
+ * bounded event polls, and must never be mistaken for an empty slot. */
+void reapDetachedUnclaimed() {
+    if (!client || inFlight) return;
+    for (auto &d : devices) {
+        if (!d.handle || d.attached || claimed(d.token)) continue;
+        if (usb_host_device_close(client, d.handle) == ESP_OK) d = {};
+    }
 }
 bool enqueue(uint8_t kind, uint8_t address, usb_device_handle_t handle) {
     if (queueCount == kEvents) { fault = true; return false; }
@@ -135,6 +153,7 @@ bool endpoint_mps(Device *d, uint8_t iface, uint8_t alt,
 
 int32_t next_event(void *, risc_usb_controller_event_v1 *out) {
     if (!running || !out || fault || !pump(0)) return -1;
+    reapDetachedUnclaimed();
     if (!queueCount) return 0;
     Event e = queue[queueHead];
     queueHead = (queueHead + 1) % kEvents;
@@ -161,8 +180,13 @@ int32_t next_event(void *, risc_usb_controller_event_v1 *out) {
     for (auto &d : devices) {
         if (d.handle != e.handle) continue;
         if (!d.attached) { fault = true; return -1; }
+        const uint64_t id = d.token;
         d.attached = false;
-        *out = {2, d.token};
+        *out = {2, id};
+        /* A device never claimed by a class must be closed on detach, not
+         * accumulated forever until controller shutdown. A failed close is
+         * retained in the device slot for the next bounded event poll. */
+        reapDetachedUnclaimed();
         return 1;
     }
     fault = true;
@@ -195,12 +219,11 @@ bool claim_interface(void *, uint64_t id, uint8_t iface, uint8_t alt,
         if (!c.token && !slot) slot = &c;
     }
     if (!slot) return false;
-    /* Existence of the requested interface/alternate is verified by IDF. */
     if (usb_host_interface_claim(client, d->handle, iface, alt) != ESP_OK)
         return false;
     uint64_t assigned = token();
     if (!assigned) { fault = true; return false; }
-    *slot = {assigned, id, iface, alt};
+    *slot = {assigned, id, iface, alt, false};
     *out = assigned;
     return true;
 }
@@ -208,13 +231,20 @@ bool release_interface(void *, uint64_t id) {
     Claim *c = claim(id);
     if (!running || !c || inFlight) return false;
     Device *d = device(c->physical_device);
-    if (!d || usb_host_interface_release(client, d->handle, c->number) != ESP_OK)
+    if (!d) return false;
+    const bool detached = !d->attached;
+    const bool others = otherClaims(d->token, c->token);
+    /* The interface release may have succeeded on an earlier attempt while
+     * closing the detached device failed. Keep the SAME claim token pinned,
+     * skip the completed release, and retry only the remaining device close. */
+    if (!RiscUsbController::releaseClaim(
+            c->interfaceReleased, detached, others,
+            [&]() { return usb_host_interface_release(client, d->handle,
+                                                       c->number) == ESP_OK; },
+            [&]() { return usb_host_device_close(client, d->handle) == ESP_OK; }))
         return false;
+    if (detached && !others) *d = {};
     *c = {};
-    if (!d->attached && !claimed(d->token)) {
-        if (usb_host_device_close(client, d->handle) != ESP_OK) return false;
-        *d = {};
-    }
     return true;
 }
 int32_t control(void *, uint64_t id, uint8_t type, uint8_t request,
@@ -253,7 +283,7 @@ int32_t bulk(void *, uint64_t id, uint8_t endpoint,
     Claim *c = claim(id);
     Device *d = c ? device(c->physical_device) : nullptr;
     uint16_t mps = 0;
-    if (!running || !d || !d->attached || !length ||
+    if (!running || !d || !d->attached || !c || c->interfaceReleased || !length ||
         length > RISC_USB_CONFIG_LIMIT || !timeout ||
         (reading ? (!dst || !(endpoint & 0x80u)) : (!src || (endpoint & 0x80u))) ||
         !endpoint_mps(d, c->number, c->alternate, endpoint, &mps) ||
@@ -289,7 +319,7 @@ int32_t bulk_write(void *ctx, uint64_t id, uint8_t ep, const uint8_t *src,
 }
 
 bool quiesce(void *) {
-    if (inFlight || fault || claimed(0)) return false;
+    if (inFlight || fault) return false;
     for (const auto &c : claims) if (c.token) return false;
     /* A device close, client deregistration, USB library uninstall or VBUS
      * release failure leaves the ELF mapped for retry/recovery. */
@@ -351,8 +381,6 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     if (!power->acquire_host(power->context, 500, &powerLease) || !powerLease) {
         std::printf("USBCTRL start-failed stage=vbus-acquire rc=0 lease=%u\n",
                     powerLease ? 1u : 0u);
-        // Acquire may fail after partially changing the board state. A lease
-        // must be released by its owner before the ELF can be reused/unmapped.
         if (powerLease && !quiesce(nullptr))
             std::printf("USBCTRL cleanup-failed stage=vbus-acquire\n");
         else if (!powerLease) power = nullptr;
