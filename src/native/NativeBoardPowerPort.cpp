@@ -14,6 +14,7 @@ namespace {
 using RuntimeInstalledProviders::Lease;
 static bool quarantined = false;
 static bool shutdownPending = false;
+static bool shutdownPreparationAttempted = false;
 static Lease retainedShutdownGrant{};
 static Lease preparedShutdownGrant{};
 static const risc_usb_vbus_charger_api_v1* preparedShutdownApi = nullptr;
@@ -126,8 +127,10 @@ bool externalPower(bool* connected) {
 bool prepareShutdown() {
   if (quarantined || shutdownPending) return false;
   if (preparedShutdownGrant.grant.slot) return true;
-  // display.deepSleep() releases SD pins before Board::shutdownBatteryPower.
-  // Map and pin the verified ELF while the package store is still reachable.
+  // HalDisplay::deepSleep() deinitializes SD after this call. A failed first
+  // reservation must not trigger a second driver load from disconnected SD.
+  if (shutdownPreparationAttempted) return false;
+  shutdownPreparationAttempted = true;
   Session session{};
   if (!acquire(session)) return false;
   preparedShutdownGrant = session.grant;
@@ -144,8 +147,10 @@ bool shutdown() {
     session.api = preparedShutdownApi;
     preparedShutdownGrant = {};
     preparedShutdownApi = nullptr;
-  } else if (!acquire(session)) {
-    return false;
+  } else {
+    // Reservation was attempted before SD_CS was made INPUT and failed.
+    // Never try a fresh SD-backed ELF mapping after that irreversible step.
+    if (shutdownPreparationAttempted || !acquire(session)) return false;
   }
   const bool requested = session.api->request_shutdown(session.api->base.context);
   if (requested) {
