@@ -7,6 +7,7 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/NativeApps/src/NativeAppLauncher.c" \
   "$repo_dir/test/native_apps/programmer_api_stub.c" \
+  "$repo_dir/test/native_apps/compat_registration_stub.c" \
   "$repo_dir/test/native_apps/launcher_test.c" -o "$binary"
 "$binary"
 # The real firmware device ABI bridge must authorize by execution context and
