@@ -74,16 +74,20 @@ bool readTpsRegister(const uint8_t reg, uint8_t* data, const size_t len) {
   return true;
 }
 
-bool waitForPcaPinHigh(const uint8_t pin, const uint32_t timeoutMs) {
+bool waitForPcaPinState(const uint8_t pin, const bool expectedHigh, const uint32_t timeoutMs) {
   const uint32_t start = millis();
   bool high = false;
   while (millis() - start < timeoutMs) {
-    if (Board::readPca9535Pin(pin, &high) && high) {
+    if (Board::readPca9535Pin(pin, &high) && high == expectedHigh) {
       return true;
     }
     delay(1);
   }
   return false;
+}
+
+bool waitForPcaPinHigh(const uint8_t pin, const uint32_t timeoutMs) {
+  return waitForPcaPinState(pin, true, timeoutMs);
 }
 
 bool waitForTpsReady(const uint32_t timeoutMs) {
@@ -379,8 +383,18 @@ bool HalDisplay::suspendForExternalOwner() {
   // framebuffer allocations intact; only relinquish EPD hardware resources.
   gfx->waitDisplay();
   gfx->powerSave(true);
+  // TPS65185 power-down is asynchronous. Do not let another display owner
+  // assert WAKEUP/PWRUP or access its I2C registers until the previous rail
+  // sequence has completed. A premature handoff leaves the TPS address
+  // temporarily NACKing even though the PCA9535 input can still read high.
+  if (!waitForPcaPinState(PCA9535_IO16_TPS_PWR_GOOD, false, 400)) {
+    LOG_ERR("DSP", "Cannot give display to ELF: TPS65185 power-down timed out");
+    gfx->powerSave(false);
+    return false;
+  }
   if (!gfx->releaseHardware()) {
     LOG_ERR("DSP", "Cannot give display to ELF: LCD bus teardown incomplete");
+    gfx->powerSave(false);
     return false;
   }
   releaseBackend();
