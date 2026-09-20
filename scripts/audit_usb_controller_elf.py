@@ -2,15 +2,18 @@
 """Audit physical controller ELF against the actual native loader contracts.
 
 A successful Xtensa link does not prove activation, verified-package admission,
-physical ownership, ISR/DMA quiescence, or electrical safety. Ordinary apps
-MUST NOT see the separately task-scoped privileged OS/CPU import inventory.
+physical ownership, ISR/DMA quiescence, or electrical safety. Privileged provider
+imports remain separately task-scoped; the explicitly inventoried temporary
+native-hardware compatibility exports are an intentional exception for ordinary
+native ELFs and must not be mistaken for a private-provider import grant.
 """
 import argparse
 import json
 from pathlib import Path
 
 from elftools.elf.elffile import ELFFile
-from native_app_symbols import (firmware_exports, privileged_os_cpu_exports,
+from native_app_symbols import (firmware_exports, native_hardware_compat_exports,
+                                privileged_os_cpu_exports,
                                 privileged_loader_public_libc_v1)
 from verify_provider_relocation_map import audit_loader_map
 
@@ -58,9 +61,16 @@ def audit(path):
         normal_exports = firmware_exports(ROOT)
         privileged_exports = privileged_os_cpu_exports(ROOT)
         loader_public = privileged_loader_public_libc_v1(ROOT)
-        if normal_exports & privileged_exports:
-            raise ValueError('Privileged symbols leaked into ordinary app export table: ' +
-                             ', '.join(sorted(normal_exports & privileged_exports)))
+        # The native-ELF compatibility layer deliberately exposes a handful of
+        # OS/CPU symbols while the GameBoy's full-source port is brought up.
+        # Exempt only names explicitly listed in that exact .def inventory;
+        # newly leaked privileged names must still fail this audit. This does
+        # NOT expand the private provider's import preflight.
+        compatibility_overlap = (normal_exports & privileged_exports) & native_hardware_compat_exports(ROOT)
+        unauthorized_overlap = (normal_exports & privileged_exports) - compatibility_overlap
+        if unauthorized_overlap:
+            raise ValueError('Unapproved privileged symbols leaked into ordinary app export table: ' +
+                             ', '.join(sorted(unauthorized_overlap)))
         import_report = classify_imports(imports, normal_exports, privileged_exports,
                                          loader_public)
         alloc = [(section['sh_addr'], section['sh_addr'] + section['sh_size'])
@@ -104,6 +114,7 @@ def audit(path):
             'unsupported_relocations': unsupported,
             'text_relocations': textrel,
             'unexpected_exports': unexpected_exports,
+            'temporary_native_compat_privileged_overlap': sorted(compatibility_overlap),
             **import_report,
             **mapping,
             'current_loader_abi_compatible': structural and not import_report['missing_current_firmware_exports'],
@@ -127,6 +138,8 @@ def main():
     output = args.elf.parent / 'controller-loader-audit.json'
     output.write_text(json.dumps(result, indent=2) + '\n')
     print('Physical controller loader audit:', result['status'], flush=True)
+    print('Temporary ordinary-app/privileged overlap:',
+          *result['temporary_native_compat_privileged_overlap'], sep='\n  ', flush=True)
     print('Exact unavailable ordinary-app imports:',
           *result['missing_current_firmware_exports'], sep='\n  ', flush=True)
     print('Missing scoped privileged OS/CPU imports:',
