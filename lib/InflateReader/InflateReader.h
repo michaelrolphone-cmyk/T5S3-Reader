@@ -1,6 +1,6 @@
 #pragma once
 
-#include <uzlib.h>
+#include "../uzlib/src/uzlib.h"
 
 #include <cstddef>
 
@@ -16,12 +16,12 @@ enum class InflateStatus {
 // Two modes:
 //   init(false)  — one-shot: input is a contiguous buffer, call read() once.
 //   init(true)   — streaming: allocates a 32KB ring buffer for back-references
-//                  across multiple read() / readAtMost() calls.
+//                 across multiple read() / readAtMost() calls.
 //
 // Streaming callback pattern:
 //   The uzlib read callback receives a `struct uzlib_uncomp*` with no separate
-//   context pointer. To attach context, make InflateReader the *first member* of
-//   your context struct, then cast inside the callback:
+//   context pointer. To attach context, make InflateReader the *first member*
+//   of your context struct, then cast inside the callback:
 //
 //     struct MyCtx {
 //       InflateReader reader;   // must be first
@@ -57,7 +57,6 @@ class InflateReader {
   void setSource(const uint8_t* src, size_t len);
 
   // Set a uzlib-compatible read callback for streaming input.
-  // See class-level comment for the expected callback/context struct pattern.
   void setReadCallback(int (*cb)(uzlib_uncomp*));
 
   // Consume the 2-byte zlib header (CMF + FLG) from the input stream.

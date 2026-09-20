@@ -11,3 +11,5 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/lib/hal" \
   "$repo_dir/test/desk_clock/ClockFormatTest.cpp" -o "$test_binary"
 "$test_binary"
 echo '12/24-hour clock format tests passed'
+python3 "$repo_dir/test/desk_clock/DeepSleepWiringTest.py"
+echo 'Deep-sleep clock wiring tests passed'
