@@ -20,7 +20,9 @@
 
 namespace RuntimePackages {
 namespace {
-constexpr uint64_t kMaxAppBytes = 1024u * 1024u;
+// Match the online ordinary-application package policy. Large full-source
+// native ELFs must not be misclassified as corrupt legacy pairs at boot.
+constexpr uint64_t kMaxAppBytes = 8u * 1024u * 1024u;
 
 bool validFilename(const char* filename) { return t5_safe_elf_name(filename); }
 
@@ -52,6 +54,10 @@ bool verifyBytes(const char* elfPath, uint64_t declaredSize, const char* declare
   if (!elf.isOpen() || elf.isDirectory()) return false;
   const uint64_t size = elf.fileSize64();
   if (size < 52 || size > kMaxAppBytes || (hasDigest && size != declaredSize)) {
+    LOG_ERR("APPSTORE", "Invalid ELF length for %s: actual=%llu declared=%llu limit=%llu",
+            elfPath, static_cast<unsigned long long>(size),
+            static_cast<unsigned long long>(hasDigest ? declaredSize : 0),
+            static_cast<unsigned long long>(kMaxAppBytes));
     elf.close();
     return false;
   }
