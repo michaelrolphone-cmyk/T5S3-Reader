@@ -1,12 +1,14 @@
-#include "RiscUsbProviderV1.h"
+#include "RiscUsbControllerV1.h"
 
-/* The separately installed usb.host ELF owns physical USB operations. This
- * class ELF owns CP210x matching, vendor requests and serial sessions. */
+/* The installed usb.host ELF owns physical USB operations. This class ELF
+ * owns CP210x matching, vendor requests and generation-qualified sessions. */
 typedef struct {
     uint64_t token, device, claim;
     uint8_t interface_number, alternate, in_ep, out_ep;
+    bool disabled;
 } cp_session;
 static const risc_usb_host_api_v1 *host;
+static const risc_usb_host_discovery_v1 *discovery;
 static cp_session sessions[RISC_USB_CDC_MAX_SESSIONS];
 static uint8_t descriptors[RISC_USB_CONFIG_LIMIT];
 static uint64_t generation;
@@ -27,9 +29,14 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         deps[0].api_version != RISC_USB_HOST_API_V1 || !deps[0].api) return false;
     const risc_usb_host_api_v1 *api = (const risc_usb_host_api_v1 *)deps[0].api;
     if (api->api_version != RISC_USB_HOST_API_V1 ||
-        api->struct_size < sizeof(*api) || !api->configuration || !api->claim ||
-        !api->release || !api->control || !api->bulk_read || !api->bulk_write) return false;
+        api->struct_size < sizeof(risc_usb_host_discovery_v1) ||
+        !api->configuration || !api->claim || !api->release || !api->control ||
+        !api->bulk_read || !api->bulk_write) return false;
+    const risc_usb_host_discovery_v1 *extended =
+        (const risc_usb_host_discovery_v1 *)api;
+    if (!extended->release_checked) return false;
     host = api;
+    discovery = extended;
     return true;
 }
 static bool quiesce(void) {
@@ -37,9 +44,35 @@ static bool quiesce(void) {
         if (sessions[i].token) return false;
     return true;
 }
+static int32_t command(uint64_t device, uint8_t iface, uint8_t req,
+                       uint16_t value, uint8_t *payload, uint16_t length) {
+    return host->control(host->context, device, 0x41u, req, value, iface,
+                         payload, length, 1000);
+}
+/* Disabling the UART and releasing the physical interface are separate
+ * operations. Retry a failed release without repeating a completed disable.
+ * Never recycle the class session until release_checked confirms success. */
+static bool close_device(uint64_t token) {
+    cp_session *s = lookup(token);
+    if (!s || !discovery) return false;
+    if (!s->disabled) {
+        if (command(s->device, s->interface_number, 0x00u, 0, 0, 0) != 0)
+            return false;
+        s->disabled = true;
+    }
+    if (!discovery->release_checked(host->context, s->claim)) return false;
+    *s = (cp_session){0};
+    return true;
+}
 static void stop(void) {
-    /* Generic lifecycle MUST call quiesce first. Never unmap with sessions. */
-    if (quiesce()) host = 0;
+    /* Generic lifecycle MUST call quiesce first. Test/recovery stop can only
+     * retire sessions by verified release, never force-drop a failed claim. */
+    if (!host) return;
+    for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
+        if (sessions[i].token && !close_device(sessions[i].token)) return;
+    if (!quiesce()) return;
+    discovery = 0;
+    host = 0;
 }
 
 static bool parse(size_t length, cp_session *result) {
@@ -56,8 +89,6 @@ static bool parse(size_t length, cp_session *result) {
         const uint8_t n = descriptors[pos], kind = descriptors[pos + 1];
         if (n < 2 || n > total - pos) return false;
         if (kind == 4) {
-            /* Commit the PREVIOUS interface after all its endpoints, not
-             * before processing the final endpoint of the configuration. */
             if (cls == 0xff && iface != 0xff && in && out) {
                 ++candidates;
                 found.interface_number = iface;
@@ -100,12 +131,6 @@ static bool parse(size_t length, cp_session *result) {
     *result = found;
     return true;
 }
-
-static int32_t command(uint64_t device, uint8_t iface, uint8_t req,
-                       uint16_t value, uint8_t *payload, uint16_t length) {
-    return host->control(host->context, device, 0x41u, req, value, iface,
-                         payload, length, 1000);
-}
 static uint64_t open_device(uint64_t device) {
     if (!host || !device) return 0;
     cp_session *slot = 0;
@@ -116,27 +141,30 @@ static uint64_t open_device(uint64_t device) {
     uint16_t vid = 0, pid = 0;
     if (!host->configuration(host->context, device, descriptors, &length, &vid, &pid) ||
         vid != 0x10c4u) return 0;
-    (void)pid; /* Future device profiles may constrain the vendor PID set. */
+    (void)pid;
     cp_session candidate = {0};
     if (!parse(length, &candidate)) return 0;
     candidate.device = device;
     if (!host->claim(host->context, device, candidate.interface_number,
                      candidate.alternate, &candidate.claim) || !candidate.claim) return 0;
-    if (command(device, candidate.interface_number, 0x00u, 1u, 0, 0) != 0) {
-        host->release(host->context, candidate.claim);
-        return 0;
-    }
+    /* Establish a session before vendor initialization. If the enable command
+     * or its cleanup is ambiguous, quiesce will pin the ELF and host claim. */
     ++generation;
     if (!generation) ++generation;
     candidate.token = generation;
     *slot = candidate;
+    if (command(device, candidate.interface_number, 0x00u, 1u, 0, 0) != 0) {
+        (void)close_device(candidate.token);
+        return 0;
+    }
     return candidate.token;
 }
 static bool configure(uint64_t token, uint32_t baud, uint8_t bits,
                       uint8_t parity, uint8_t stop_bits) {
     cp_session *s = lookup(token);
-    if (!s || baud < 300 || baud > 3000000 || bits < 5 || bits > 8 ||
-        parity > 4 || (stop_bits != 1 && stop_bits != 2)) return false;
+    if (!s || s->disabled || baud < 300 || baud > 3000000 ||
+        bits < 5 || bits > 8 || parity > 4 ||
+        (stop_bits != 1 && stop_bits != 2)) return false;
     uint8_t speed[4] = {(uint8_t)baud, (uint8_t)(baud >> 8),
                         (uint8_t)(baud >> 16), (uint8_t)(baud >> 24)};
     if (command(s->device, s->interface_number, 0x1eu, 0, speed, 4) != 4) return false;
@@ -147,7 +175,7 @@ static bool configure(uint64_t token, uint32_t baud, uint8_t bits,
 }
 static bool control_lines(uint64_t token, bool dtr, bool rts) {
     cp_session *s = lookup(token);
-    if (!s) return false;
+    if (!s || s->disabled) return false;
     uint16_t value = (uint16_t)(0x0300u | (dtr ? 1u : 0u) |
                                 (rts ? 2u : 0u));
     return command(s->device, s->interface_number, 0x07u, value, 0, 0) == 0;
@@ -155,7 +183,8 @@ static bool control_lines(uint64_t token, bool dtr, bool rts) {
 static int32_t read_data(uint64_t token, uint8_t *dst, size_t capacity,
                          uint32_t timeout_ms) {
     cp_session *s = lookup(token);
-    if (!s || !dst || !capacity || capacity > RISC_USB_CONFIG_LIMIT) return -1;
+    if (!s || s->disabled || !dst || !capacity ||
+        capacity > RISC_USB_CONFIG_LIMIT) return -1;
     int32_t n = host->bulk_read(host->context, s->claim, s->in_ep,
                                 dst, capacity, timeout_ms);
     return n >= 0 && (size_t)n <= capacity ? n : -1;
@@ -163,19 +192,11 @@ static int32_t read_data(uint64_t token, uint8_t *dst, size_t capacity,
 static int32_t write_data(uint64_t token, const uint8_t *src, size_t length,
                           uint32_t timeout_ms) {
     cp_session *s = lookup(token);
-    if (!s || !src || !length || length > RISC_USB_CONFIG_LIMIT) return -1;
+    if (!s || s->disabled || !src || !length ||
+        length > RISC_USB_CONFIG_LIMIT) return -1;
     int32_t n = host->bulk_write(host->context, s->claim, s->out_ep,
                                  src, length, timeout_ms);
     return n >= 0 && (size_t)n <= length ? n : -1;
-}
-static bool close_device(uint64_t token) {
-    cp_session *s = lookup(token);
-    if (!s) return false;
-    /* Failed physical disable is NOT successful cleanup or safe ELF unload. */
-    if (command(s->device, s->interface_number, 0x00u, 0, 0, 0) != 0) return false;
-    host->release(host->context, s->claim);
-    s->token = s->device = s->claim = 0;
-    return true;
 }
 static const risc_usb_cdc_api_v1 capability = {
     RISC_USB_CDC_API_V1, sizeof(risc_usb_cdc_api_v1),
