@@ -50,8 +50,6 @@ static bool field_add(gamepad *pad, uint32_t bit, uint32_t size,
                       uint8_t kind, uint8_t index, const globals *g) {
     if (pad->field_count >= FIELDS || bit + size > RISC_USB_HID_MAX_REPORT * 8u ||
         size == 0 || size > 16) return false;
-    /* A 16-bit input cannot express a span above 65535. Ensure that scaling
-     * arithmetic remains bounded even for hostile/malformed descriptors. */
     if (kind == 2 && (g->minimum < -32768 || g->maximum > 65535 ||
         g->maximum <= g->minimum ||
         (uint32_t)g->maximum - (uint32_t)g->minimum > 65535u)) return false;
@@ -164,9 +162,8 @@ static int32_t extract(const uint8_t *data, const field *f) {
         value |= ~((1u << f->size) - 1u);
     return (int32_t)value;
 }
-/* Local bounded unsigned division avoids libgcc's 64-bit divider, which
- * contributes an R_XTENSA_NONE entry the RiscRTE loader does not implement.
- * Denominator is nonzero and <=65535; remainder/shift cannot overflow. */
+/* Bounded unsigned division avoids libgcc's 64-bit divider, which contributes
+ * an unsupported R_XTENSA_NONE RELA. Denominator is nonzero and <=65535. */
 static uint32_t divide_bounded(uint32_t numerator, uint32_t denominator) {
     uint32_t quotient = 0, remainder = 0;
     for (unsigned i = 32; i-- > 0;) {
@@ -370,9 +367,12 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     hid = api; return true;
 }
 static bool quiesce(void) {
-    for (unsigned i = 0; i < PADS; ++i) if (pads[i].session) return false;
+    /* Final lease release must close physical claims even when the controller
+     * remains attached. A live subscriber still forbids module unload. */
     for (unsigned i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i)
         if (subscribers[i].token) return false;
+    for (unsigned i = 0; i < PADS; ++i)
+        if (pads[i].session && !release_pad(&pads[i])) return false;
     return true;
 }
 static void stop(void) { if (quiesce()) hid = 0; }
