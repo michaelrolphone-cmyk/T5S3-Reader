@@ -77,7 +77,11 @@ class UsbCdcPackage(unittest.TestCase):
         controller = (ROOT / 'Drivers/usb_controller_esp32s3/driver.cpp').read_text(encoding='utf-8')
         cdc = (ROOT / 'Drivers/usb_cdc_v2/driver.c').read_text(encoding='utf-8')
         self.assertIn('RuntimeInstalledProviders::acquire(', bridge)
-        self.assertIn('RuntimeInstalledProviders::shutdown()', bridge)
+        # A comment mentioning shutdown must never pass this test: serial
+        # stop releases only its class/host grants, not unrelated providers.
+        self.assertNotIn('if (!RuntimeInstalledProviders::shutdown())', bridge)
+        self.assertIn('if (!closeClass()) return;', bridge)
+        self.assertIn('!RuntimeInstalledProviders::release(&hostGrant)', bridge)
         self.assertNotIn('#include <usb/usb_host.h>', bridge)
         self.assertNotIn('usb_host_install(', bridge)
         self.assertNotIn('Wire.beginTransmission(', bridge)
