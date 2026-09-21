@@ -25,6 +25,13 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/usb_host_control_scope_test.c" -ldl \
   -o "$build/usb-host-control-scope-test"
 "$build/usb-host-control-scope-test" "$build/usb-host-v2.so"
+# One provider-owned event/identity snapshot, not a firmware descriptor loop.
+# Physical presence survives transient identity failure; fault never looks
+# like an empty healthy inventory.
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/usb_host_snapshot_test.c" -ldl \
+  -o "$build/usb-host-snapshot-test"
+"$build/usb-host-snapshot-test" "$build/usb-host-v2.so"
 exports="$(nm -D --defined-only "$build/usb-host-v2.so" | awk '{print $3}')"
 [[ "$exports" == "t5_driver_get" ]] || { echo "Unexpected host ELF exports: $exports" >&2; exit 1; }
 if nm -D --undefined-only "$build/usb-host-v2.so" | grep -E 'usb_host_|nativeUsb|UsbCdcDriverRuntime|t5_usb_'; then
