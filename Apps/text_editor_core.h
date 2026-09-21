@@ -26,15 +26,22 @@ static inline bool te_has_selection(const te_document *d) {
 static inline void te_move(te_document *d, size_t target, bool extend) {
     if (target > d->length) target = d->length;
     if (extend && !d->selected) d->anchor = d->cursor;
-    if (!extend) d->selected = false;
-    else d->selected = true;
+    d->selected = extend;
     d->cursor = target;
 }
 static inline bool te_replace(te_document *d, const char *bytes, size_t count) {
     const size_t first = te_first(d), last = te_last(d);
     const size_t removed = last - first;
     if (count > TE_CAPACITY - (d->length - removed) || (!bytes && count)) return false;
-    memmove(d->text + first + count, d->text + last, d->length - last + 1);
+    const size_t tail = d->length - last + 1;
+    // App loader does not export memmove: overlap-safe bounded local copy.
+    if (first + count > last) {
+        for (size_t i = tail; i; --i)
+            d->text[first + count + i - 1] = d->text[last + i - 1];
+    } else {
+        for (size_t i = 0; i < tail; ++i)
+            d->text[first + count + i] = d->text[last + i];
+    }
     if (count) memcpy(d->text + first, bytes, count);
     d->length = d->length - removed + count;
     d->cursor = first + count;
@@ -106,16 +113,19 @@ static inline void te_reset(te_document *d) {
     d->text[0] = 0;
     d->selected = d->dirty = false;
 }
-// Reject binary/non-ASCII rather than silently corrupting it on save. CRLF is
-// normalized to LF. Never truncate oversized documents or accept embedded NUL.
+// Validate before mutation: rejected files must preserve the current buffer.
+// Reject binary and non-ASCII files; normalize CRLF line endings to LF.
 static inline bool te_import(te_document *d, const char *source, size_t length) {
     if ((!source && length) || length > TE_CAPACITY) return false;
-    size_t output = 0;
     for (size_t i = 0; i < length; ++i) {
         const unsigned char ch = (unsigned char)source[i];
         if (ch == '\r' && i + 1 < length && source[i + 1] == '\n') continue;
         if (ch != '\n' && ch != '\t' && (ch < 32 || ch > 126)) return false;
-        d->text[output++] = (char)ch;
+    }
+    size_t output = 0;
+    for (size_t i = 0; i < length; ++i) {
+        if (source[i] == '\r' && i + 1 < length && source[i + 1] == '\n') continue;
+        d->text[output++] = source[i];
     }
     d->text[output] = 0;
     d->length = output;
