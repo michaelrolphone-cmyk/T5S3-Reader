@@ -13,6 +13,12 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/usb_host_checked_release_test.c" -ldl \
   -o "$build/usb-host-checked-release-test"
 "$build/usb-host-checked-release-test" "$build/usb-host-v2.so"
+# Device-recipient WCH vendor control must require a live claim; discovery
+# faults must not bypass physical quiescence or pin verified-idle VBUS forever.
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/usb_host_control_claim_test.c" -ldl \
+  -o "$build/usb-host-control-claim-test"
+"$build/usb-host-control-claim-test" "$build/usb-host-v2.so"
 exports="$(nm -D --defined-only "$build/usb-host-v2.so" | awk '{print $3}')"
 [[ "$exports" == "t5_driver_get" ]] || { echo "Unexpected host ELF exports: $exports" >&2; exit 1; }
 if nm -D --undefined-only "$build/usb-host-v2.so" | grep -E 'usb_host_|nativeUsb|UsbCdcDriverRuntime|t5_usb_'; then
