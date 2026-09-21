@@ -48,10 +48,10 @@ typedef struct {
     bool (*quiesce)(void *context);
 } risc_usb_controller_api_v1;
 
-/* Append-only extension: the initial .host / poll / devices layout remains
- * compatible with existing v1 consumers. New class ELFs require
- * release_checked, which returns false while the physical claim remains
- * owned. Retry with the SAME token; never discard an ambiguous release.
+/* Append-only extension: the initial .host / poll / devices / release_checked
+ * layout remains compatible with v1 consumers. Class ELFs require checked
+ * release and claim-scoped control. Retry the SAME claim after failed release;
+ * a closing/stale claim never authorizes transfer or control.
  * Discovery belongs to USB providers, not a firmware USB enumerator. */
 typedef struct {
     risc_usb_host_api_v1 host;
@@ -59,6 +59,15 @@ typedef struct {
     bool (*devices)(void *context, uint64_t *out,
                     size_t *inout_count);
     bool (*release_checked)(void *context, uint64_t claim);
+    /* The caller presents its own claim rather than a publicly discoverable
+     * device token. Interface recipient: index must equal claimed interface.
+     * Device recipient: claim must be the device's sole live claim, preventing
+     * one class from issuing device-wide vendor commands against another.
+     * Endpoint/other recipients and stale/closing/detached claims fail closed. */
+    int32_t (*control_claim)(void *context, uint64_t claim,
+                             uint8_t request_type, uint8_t request,
+                             uint16_t value, uint16_t index, uint8_t *payload,
+                             uint16_t length, uint32_t timeout_ms);
 } risc_usb_host_discovery_v1;
 #ifdef __cplusplus
 }
