@@ -59,16 +59,17 @@ int main() {
   assert(registry.acquire(&request, &lease, &rx, &tx) == T5_SERIAL_BUSY);
   assert(sim.acquired == 1);
   registry.end();
-  assert(registry.leased() && sim.released == 2);
+  assert(registry.leased() && sim.released == 3);
   sim.failRelease = false;
   registry.end();
-  assert(!registry.leased() && sim.released == 3);
+  assert(!registry.leased() && sim.released == 4);
   sim.failAcquire = false;
   assert(registry.acquire(&request, &lease, &rx, &tx) == T5_SERIAL_OK && lease);
   assert(registry.release(lease) == T5_SERIAL_OK);
 
   // A successful provider acquire with invalid streams is equally unsafe
-  // when cleanup fails. No bogus streams or public lease may escape.
+  // when cleanup fails. A later acquisition must retry the same orphan
+  // before it can activate the device again, without ending the context.
   Simulated bad{};
   bad.malformed = true;
   RuntimeSerial::Registry malformed;
@@ -76,8 +77,12 @@ int main() {
   assert(malformed.acquire(&request, &lease, &rx, &tx) == T5_SERIAL_IO);
   assert(!lease && !rx && !tx && malformed.leased());
   assert(malformed.acquire(&request, &lease, &rx, &tx) == T5_SERIAL_BUSY);
+  assert(bad.acquired == 1);
   bad.failRelease = false;
-  malformed.end();
+  bad.malformed = false;
+  assert(malformed.acquire(&request, &lease, &rx, &tx) == T5_SERIAL_OK);
+  assert(bad.released == 3 && bad.acquired == 2 && lease && rx != tx);
+  assert(malformed.release(lease) == T5_SERIAL_OK);
   assert(!malformed.leased());
-  std::puts("Serial partial-acquisition quarantine and retry tests passed");
+  std::puts("Serial partial-acquisition quarantine and reconnect tests passed");
 }
