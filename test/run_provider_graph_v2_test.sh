@@ -103,5 +103,14 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -o "$build/installed-selector-test"
 "$build/installed-selector-test"
 
-# Source check supplements the graph behavior test, not hardware acceptance.
+# The same generic session now owns class grant lifetimes in production.
+# Exercise failed acquisition with and without an exact grant, rejected-class
+# quiescence retry and no cross-candidate activation while quarantined.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/sdk/driver" -I"$repo/src" \
+  "$repo/test/drivers/installed_provider_session_test.cpp" \
+  -o "$build/installed-session-test"
+"$build/installed-session-test"
+
+# Source check supplements graph behavior tests, not hardware acceptance.
 python3 "$repo/test/drivers/usb_dynamic_selection_source_test.py"
