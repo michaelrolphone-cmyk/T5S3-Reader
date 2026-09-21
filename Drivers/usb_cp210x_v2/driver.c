@@ -37,16 +37,17 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         (const risc_usb_host_discovery_v1 *)api;
     /* A detached CP210x cannot acknowledge its UART-disable vendor request.
      * Require provider-owned discovery to distinguish detach from failed I/O. */
-    if (!extended->poll || !extended->devices || !extended->release_checked)
-        return false;
+    if (!extended->poll || !extended->devices || !extended->release_checked ||
+        !extended->control_claim) return false;
     host = api;
     discovery = extended;
     return true;
 }
-static int32_t command(uint64_t device, uint8_t iface, uint8_t req,
+static int32_t command(uint64_t claim, uint8_t iface, uint8_t req,
                        uint16_t value, uint8_t *payload, uint16_t length) {
-    return host->control(host->context, device, 0x41u, req, value, iface,
-                         payload, length, 1000);
+    if (!discovery || !claim) return -1;
+    return discovery->control_claim(host->context, claim, 0x41u, req, value, iface,
+                                    payload, length, 1000);
 }
 
 /* The host ELF is the sole authority for physical presence. A failed poll or
@@ -77,7 +78,7 @@ static bool close_device(uint64_t token) {
     if (!s->disabled) {
         bool present = false;
         if (!attached(s->device, &present)) return false;
-        if (present && command(s->device, s->interface_number, 0x00u, 0, 0, 0) != 0)
+        if (present && command(s->claim, s->interface_number, 0x00u, 0, 0, 0) != 0)
             return false;
         s->disabled = true;
     }
@@ -180,7 +181,7 @@ static uint64_t open_device(uint64_t device) {
     if (!generation) ++generation;
     candidate.token = generation;
     *slot = candidate;
-    if (command(device, candidate.interface_number, 0x00u, 1u, 0, 0) != 0) {
+    if (command(candidate.claim, candidate.interface_number, 0x00u, 1u, 0, 0) != 0) {
         slot->orphaned = true;
         (void)close_device(candidate.token);
         return 0;
@@ -195,18 +196,18 @@ static bool configure(uint64_t token, uint32_t baud, uint8_t bits,
         (stop_bits != 1 && stop_bits != 2)) return false;
     uint8_t speed[4] = {(uint8_t)baud, (uint8_t)(baud >> 8),
                         (uint8_t)(baud >> 16), (uint8_t)(baud >> 24)};
-    if (command(s->device, s->interface_number, 0x1eu, 0, speed, 4) != 4) return false;
+    if (command(s->claim, s->interface_number, 0x1eu, 0, speed, 4) != 4) return false;
     uint16_t line = (uint16_t)bits << 8;
     if (parity) line |= (uint16_t)parity << 4;
     if (stop_bits == 2) line |= 2u;
-    return command(s->device, s->interface_number, 0x03u, line, 0, 0) == 0;
+    return command(s->claim, s->interface_number, 0x03u, line, 0, 0) == 0;
 }
 static bool control_lines(uint64_t token, bool dtr, bool rts) {
     cp_session *s = lookup(token);
     if (!s || s->disabled || s->orphaned) return false;
     uint16_t value = (uint16_t)(0x0300u | (dtr ? 1u : 0u) |
                                 (rts ? 2u : 0u));
-    return command(s->device, s->interface_number, 0x07u, value, 0, 0) == 0;
+    return command(s->claim, s->interface_number, 0x07u, value, 0, 0) == 0;
 }
 static int32_t read_data(uint64_t token, uint8_t *dst, size_t capacity,
                          uint32_t timeout_ms) {
