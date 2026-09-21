@@ -123,5 +123,14 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -o "$build/installed-session-test"
 "$build/installed-session-test"
 
+# One hardware-agnostic monitor enumerates every installed serial class by
+# manifest, holds exact provider grants, publishes generation-bound devices
+# and fails closed on uncertain identities or checked quiescence failure.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/sdk/driver" -I"$repo/src" \
+  "$repo/test/drivers/installed_serial_inventory_test.cpp" \
+  -o "$build/installed-serial-inventory-test"
+"$build/installed-serial-inventory-test"
+
 # Source check supplements graph behavior tests, not hardware acceptance.
 python3 "$repo/test/drivers/usb_dynamic_selection_source_test.py"
