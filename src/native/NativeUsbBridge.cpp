@@ -10,6 +10,7 @@
 #include <freertos/semphr.h>
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 
 // Compatibility-only T5UsbApi surface. The installed ELFs own the controller,
 // host, device class and physical transfers; no firmware USB data plane.
@@ -20,6 +21,9 @@ constexpr uint32_t kMutexTimeoutMs = 250;
 SemaphoreHandle_t mutex = nullptr;
 Lease hostGrant{};
 const risc_usb_host_snapshot_v1* hostSnapshot = nullptr;
+// Activation can fail after mapping an ELF but BEFORE issuing any grant.
+// Keep the exact installed identity until targeted checked recovery succeeds.
+char failedHostId[96]{};
 uint64_t device = 0;
 uint64_t session = 0;
 bool running = false;
@@ -64,10 +68,8 @@ bool hostApiValid(const risc_usb_host_snapshot_v1* api) {
         api->discovery.poll && api->discovery.devices && api->snapshot;
 }
 
-// Release an idle, lazily prebound class so it cannot leak a USB host
-// dependency. Never close a live token if this bridge has no matching session:
-// that class may belong to a different stream consumer. Failed close/release
-// quarantines the exact grant and must not free the host dependency.
+// Never close a live token owned by a different stream consumer. Failed
+// physical close/release retains the exact class and host provider grants.
 bool closeClass() {
     if (!session && nativeUsbClassToken()) return true;
     if (!session && !nativeUsbClassBound()) return true;
@@ -123,10 +125,8 @@ bool openBoundClass(uint64_t token, uint16_t vid, uint16_t pid) {
     return true;
 }
 
-// The host ELF supplies the generation token; each independently installed
-// class ELF now probes that exact device BEFORE it can be selected or opened.
-// Checked rejection resets the bridge's observed device, so restore it for
-// EVERY candidate, not merely the first. No firmware VID/driver allowlist.
+// Class ELFs probe the exact host generation before selection/open. This
+// compiled loop is transitional and still requires provider-side extraction.
 bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
     if (nativeUsbClassToken()) return false;
     if (nativeUsbClassBound() && !nativeUsbClassUnbindChecked()) {
@@ -154,9 +154,7 @@ bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
     return false;
 }
 
-// All USB event pumping, generation tracking and descriptor interpretation
-// occur inside the installed host ELF. This compatibility bridge consumes its
-// bounded presence/identity snapshot and handles only legacy serial UI state.
+// Provider-host snapshot owns USB event pumping and device generations.
 void reconcile() {
     if (!running || quarantined || !hostSnapshot) return;
     risc_usb_device_identity_v1 devices[RISC_USB_HOST_MAX_DEVICES]{};
@@ -198,14 +196,12 @@ bool configureSession(const t5_usb_line_coding_t* coding) {
 bool serialStart(const t5_usb_line_coding_t* coding) {
     if (!active() || !codingValid(coding) || !initialize()) return false;
     Lock lock;
-    if (!lock || quarantined) return false;
+    if (!lock || quarantined || failedHostId[0]) return false;
     if (running) {
         if (!configureSession(coding)) return false;
         state.line_coding = *coding;
         return true;
     }
-    // A previous unsuccessful acquisition may have retained a generation.
-    // Never overwrite it with a fresh grant before checked serialStop().
     if (hostGrant.grant.slot) return false;
     char hostId[96]{}, alternate[96]{};
     size_t cursor = 0;
@@ -217,9 +213,13 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
         return false;
     }
     if (!RuntimeInstalledProviders::acquire(hostId, "usb.host", 1, &hostGrant)) {
-        // An interface-less acquisition may have failed its checked release.
-        // Quarantine the EXACT returned grant so serialStop can retry it.
-        if (hostGrant.grant.slot) quarantined = true;
+        // A failed activation without a grant may still have mapped hardware
+        // and pinned dependencies. Record the exact identity and require
+        // targeted graph recovery; do not try another host on the next start.
+        if (!hostGrant.grant.slot) {
+            std::memcpy(failedHostId, hostId, std::strlen(hostId) + 1u);
+        }
+        quarantined = true;
         error(-1220);
         return false;
     }
@@ -249,12 +249,20 @@ void serialStop() {
         error(-1230);
         return;
     }
-    // Never use global shutdown here: it can unload unrelated packages.
+    if (failedHostId[0]) {
+        if (!RuntimeInstalledProviders::recoverFailedProvider(failedHostId, "usb.host", 1)) {
+            quarantined = true;
+            error(-1231);
+            return;
+        }
+        failedHostId[0] = 0;
+    }
+    // Neither unrelated providers nor their dependencies are shut down.
     hostSnapshot = nullptr;
     device = 0;
     session = 0;
     running = false;
-    quarantined = false; // Clear ONLY after both checked releases succeeded.
+    quarantined = false; // Only after every exact checked release succeeds.
     initialState(T5_USB_STATUS_OFF);
     LOG_INF("USB", "USBREF state=stopped source=installed-elf");
 }
