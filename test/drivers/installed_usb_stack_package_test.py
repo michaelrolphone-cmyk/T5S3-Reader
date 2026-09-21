@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify real USB provider packages, including exact imports and ELF pointers."""
+"""Verify real USB provider packages, including HID classes and ELF pointers."""
 import hashlib
 import json
 from pathlib import Path
@@ -23,14 +23,16 @@ EXPECTED = {
     'usb-cdc-acm-v2': ('serial.port', ['usb.host']),
     'usb-cp210x-v2': ('serial.port', ['usb.host']),
     'usb-ch34x-v2': ('serial.port', ['usb.host']),
+    'usb-hid': ('usb.hid', ['usb.host']),
+    'usb-hid-keyboard': ('usb.hid.keyboard', ['usb.hid']),
+    'usb-hid-gamepad': ('usb.hid.gamepad', ['usb.hid']),
 }
 EXPECTED_VERSIONS = {
     'i2c-esp32s3-v2': '0.1.2',
     'board-power-t5s3-v2': '0.1.4',
-    'usb-controller-esp32s3': '0.1.4',
+    'usb-controller-esp32s3': '0.1.5',
+    'usb-host-v2': '0.1.1',
 }
-# The firmware-backed I2C adapter has NO physical MMIO relocations. USB still
-# owns its own hardware in the controller ELF and requires the MMIO fix.
 EXPECTED_ABSOLUTE_POINTERS = {
     'usb-controller-esp32s3': {0x600c0000, 0x60039000, 0x60008000,
                                0x60038000, 0x60080000},
@@ -38,7 +40,6 @@ EXPECTED_ABSOLUTE_POINTERS = {
 
 
 def mutation_rejected(elf: bytes, site: int, replacement: int) -> bool:
-    """Change a mapped RELATIVE pointer value, leaving its relocation intact."""
     data = bytearray(elf)
     hdr = struct.unpack_from('<HHIIIIIHHHHHH', data, 16)
     shoff, shentsize, shnum = hdr[5], hdr[10], hdr[11]
@@ -121,7 +122,7 @@ def run():
             'provider-abi.v1', 'privileged-imports.v1', '.package.json'}
         available[cap] = 1
     assert observed_ids == set(EXPECTED)
-    print('Eight USB ELF packages: private I2C bridge isolation, MMIO, negative mutations, imports, SHA-256 and dependencies PASS')
+    print(f'{len(EXPECTED)} USB ELF packages: HID dependencies, MMIO, negative mutations, imports, SHA-256 PASS')
 
 
 if __name__ == '__main__':
