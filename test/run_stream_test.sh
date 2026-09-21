@@ -33,6 +33,7 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/NativeApps/include" "$build/abi.c
 "$build/abi"
 compile_run execution-context "$repo/test/resources/execution_context_test.cpp"
 compile_run device-registry "$repo/test/streams/usb_device_registry_test.cpp"
+compile_run provider-publication "$repo/test/streams/provider_device_publisher_test.cpp"
 compile_run serial-provider-registry "$repo/test/streams/serial_provider_registry_test.cpp"
 compile_run serial-provider-bridge "$serial" "$checked" "$repo/test/streams/serial_provider_bridge_test.cpp"
 compile_run usb-semantic-bridge "$serial" "$checked" "$repo/test/streams/usb_semantic_bridge_test.cpp"
