@@ -69,6 +69,28 @@ typedef struct {
                              uint16_t value, uint16_t index, uint8_t *payload,
                              uint16_t length, uint32_t timeout_ms);
 } risc_usb_host_discovery_v1;
+
+/* Provider-owned, bounded and coherent discovery result. Presence and
+ * identification are distinct: if descriptor retrieval transiently fails,
+ * identified=0 but the same live token remains visible so an established
+ * session is NOT falsely closed. No descriptor bytes enter firmware. */
+typedef struct {
+    uint64_t token;
+    uint16_t vid, pid;
+    uint8_t identified;
+    uint8_t reserved[3];
+} risc_usb_device_identity_v1;
+
+/* The discovery ABI prefix above stays intact for independently installed
+ * classes. snapshot() consumes at most 16 controller events, then returns one
+ * ordered host-owned generation-token snapshot. Capacity failure publishes no
+ * partial records and returns the required count. Failed event polling returns
+ * false, never an apparently empty device set. */
+typedef struct {
+    risc_usb_host_discovery_v1 discovery;
+    bool (*snapshot)(void *context, risc_usb_device_identity_v1 *out,
+                     size_t *inout_count);
+} risc_usb_host_snapshot_v1;
 #ifdef __cplusplus
 }
 #endif
