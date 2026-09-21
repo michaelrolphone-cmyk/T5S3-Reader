@@ -5,9 +5,9 @@
 #include <cstdint>
 #include <cstring>
 
-// Semantic serial providers own their own lifecycle; the owner task serializes
-// registrations and lease calls. Failed physical teardown must not forget the
-// public lease while the provider still owns callbacks/DMA or a package pin.
+// Semantic serial providers own physical lifecycle. The owner task serializes
+// registrations and lease calls; uncertain release pins the exact private
+// token without keeping an ended invocation's public handle usable.
 namespace RuntimeSerial {
 struct Provider {
   const char* id = nullptr;
@@ -67,9 +67,8 @@ class Registry final {
     if (rx) *rx = 0;
     if (tx) *tx = 0;
     if (!request || !lease || !rx || !tx) return T5_SERIAL_INVALID;
-    // A failed open may retain a private token whose caller has no public
-    // lease. Retry exactly that release ONCE before any new provider is used.
-    // If still uncertain, retain the original pin and deny reconnection.
+    // A failed open or an ended invocation may retain a private token. Retry
+    // precisely that release ONCE; never admit a new provider while uncertain.
     if (orphaned_ && !retryOrphan()) return T5_SERIAL_BUSY;
     if (active_ || releasing_) return T5_SERIAL_BUSY;
     if (generation_ >= 0x7fffffffu) return T5_SERIAL_LIMIT;
@@ -99,8 +98,7 @@ class Registry final {
     t5_stream_t newRx = 0, newTx = 0;
     const auto result = p.acquire(p.context, request, &privateLease, &newRx, &newTx);
     if (result != T5_SERIAL_OK) {
-      // A provider may fail after returning a partial physical acquisition.
-      // Its release failure is not proof of cleanup: retain exact ownership.
+      // No failed-open stream or private grant is ever published to the app.
       if (privateLease) (void)discardOrRetain(*selected, privateLease);
       return result;
     }
@@ -138,8 +136,6 @@ class Registry final {
     if (!valid(lease)) return T5_SERIAL_CLOSED;
     const Provider p = active_->provider;
     const auto privateLease = privateLease_;
-    // Disallow reentry during teardown, but retain a retryable lease if the
-    // provider refuses or cannot prove physical quiescence.
     releasing_ = true;
     const auto result = p.release(p.context, privateLease);
     if (result == T5_SERIAL_OK) clearActive();
@@ -147,10 +143,14 @@ class Registry final {
     return result;
   }
   void end() {
-    if (orphaned_) {
-      (void)retryOrphan();
-    } else if (active_) {
-      (void)release(publicLease_);
+    if (orphaned_) { (void)retryOrphan(); return; }
+    if (!active_) return;
+    // The execution context is ending. Even if hardware refuses teardown,
+    // revoke this context's public handle immediately while preserving the
+    // exact private token and provider pin for checked retry by the owner.
+    if (release(publicLease_) != T5_SERIAL_OK) {
+      orphaned_ = true;
+      publicLease_ = 0;
     }
   }
   bool leased() const { return active_ != nullptr; }
