@@ -1,7 +1,7 @@
 #include "NativeUsbClassBridge.h"
 #include <RiscUsbProviderV1.h>
 #if defined(ESP_PLATFORM)
-#include "runtime/drivers/InstalledProviderSelector.h"
+#include "runtime/drivers/InstalledProviderSession.h"
 #endif
 #include <cstring>
 
@@ -15,8 +15,7 @@ bool dtr = false, rts = false;
 bool started = false;
 const risc_usb_cdc_api_v1* boundApi = nullptr;
 #if defined(ESP_PLATFORM)
-RuntimeInstalledProviders::Lease installedClass{};
-bool candidateFault = false;
+RuntimeInstalledProviders::SelectedSession installedClass;
 #endif
 
 bool valid(const NativeUsbClassOps& o) {
@@ -42,8 +41,7 @@ int32_t apiRead(void* ctx, uint64_t t, uint8_t* dst, uint32_t cap, uint32_t time
 }
 int32_t apiWrite(void* ctx, uint64_t t, const uint8_t* src, uint32_t len, uint32_t timeout) {
   auto* api = static_cast<const risc_usb_cdc_api_v1*>(ctx);
-  if (!api || !api->write || !src || !len) return -1;
-  return api->write(t, src, len, timeout);
+  return api && api->write ? api->write(t, src, len, timeout) : -1;
 }
 bool apiClose(void* ctx, uint64_t t) {
   auto* api = static_cast<const risc_usb_cdc_api_v1*>(ctx);
@@ -59,9 +57,8 @@ RuntimeUsb::ClassPort portFromOps(const NativeUsbClassOps& o) {
   return {o.context, o.open, o.configure, o.control, o.read, o.write, o.close};
 }
 #if defined(ESP_PLATFORM)
-// The runtime chooses admitted package candidates and owns checked rejected
-// grants. This adapter only validates the common serial interface and binds
-// its byte-stream shuttle; vendor matching happens in the class ELF open().
+// The generic runtime enumerates admitted packages and owns selected grants.
+// USB/class matching is implemented only by each installed class ELF open().
 RuntimeInstalledProviders::CandidateDecision probeInstalled(const void* candidate, void*) {
   if (!apiValid(static_cast<const risc_usb_cdc_api_v1*>(candidate)))
     return RuntimeInstalledProviders::CandidateDecision::Unsupported;
@@ -113,11 +110,9 @@ bool nativeUsbClassStopChecked() {
 bool nativeUsbClassUnbindChecked() {
   if (!nativeUsbClassStopChecked() || !session.unbind()) return false;
 #if defined(ESP_PLATFORM)
-  if (installedClass.grant.slot && !RuntimeInstalledProviders::release(&installedClass)) {
-    candidateFault = true;
-    return false;
-  }
-  candidateFault = false;
+  // The session retains a failed activation even without a usable interface.
+  // Do not clear that quarantine or release a dependent host speculatively.
+  if (!installedClass.releaseChecked()) return false;
 #endif
   ops = {};
   boundApi = nullptr;
@@ -127,21 +122,16 @@ bool nativeUsbClassUnbindChecked() {
 void nativeUsbClassUnbind() { (void)nativeUsbClassUnbindChecked(); }
 void nativeUsbClassStop() { (void)nativeUsbClassStopChecked(); }
 
-// Transitional compatibility availability: the generic runtime scans
-// installed serial.port provider manifests, not hardcoded class IDs.
 bool nativeUsbClassAvailable() {
 #if defined(ESP_PLATFORM)
-  if (!valid(ops) && !token && !session.token() && !candidateFault)
+  if (!valid(ops) && !token && !session.token() && !installedClass.faulted())
     (void)nativeUsbClassEnsureInstalled(0);
 #endif
   return valid(ops) && (!token || started);
 }
-// A failed candidate can own an ELF grant without a bound stream table. The
-// compatibility bridge must observe that obligation and retry checked release
-// during serialStop(), not skip it as if no class had ever been acquired.
 bool nativeUsbClassBound() {
 #if defined(ESP_PLATFORM)
-  return valid(ops) || installedClass.grant.slot != 0;
+  return valid(ops) || installedClass.acquired() || installedClass.faulted();
 #else
   return valid(ops);
 #endif
@@ -235,30 +225,23 @@ void nativeUsbClassPump(RuntimeStreams::Registry& registry) {
 #if defined(ESP_PLATFORM)
 bool nativeUsbClassBindNextInstalled(size_t* cursor, bool* faulted) {
   if (faulted) *faulted = false;
-  if (candidateFault || (installedClass.grant.slot && !valid(ops))) {
+  if (installedClass.faulted() ||
+      (installedClass.acquired() && !valid(ops))) {
     if (faulted) *faulted = true;
     return false;
   }
   if (!cursor || token || session.token() || valid(ops)) return false;
-  RuntimeInstalledProviders::Lease selected{};
-  const auto outcome = RuntimeInstalledProviders::selectNext(
-      "serial.port", 1, cursor, probeInstalled, nullptr, &selected);
-  if (outcome == RuntimeInstalledProviders::SelectionResult::Selected) {
-    installedClass = selected;
+  const auto outcome = installedClass.select(
+      "serial.port", 1, cursor, probeInstalled, nullptr);
+  if (outcome == RuntimeInstalledProviders::SelectionResult::Selected)
     return true;
-  }
-  if (outcome == RuntimeInstalledProviders::SelectionResult::Fault) {
-    // Selection returns exact ownership if a reject/quiesce failed. No
-    // subsequent class may be considered until checked cleanup succeeds.
-    if (selected.grant.slot) installedClass = selected;
-    candidateFault = true;
-    if (faulted) *faulted = true;
-  }
+  if (outcome == RuntimeInstalledProviders::SelectionResult::Fault && faulted)
+    *faulted = true;
   return false;
 }
 bool nativeUsbClassEnsureInstalled(uint16_t vid) {
   (void)vid;
-  if (candidateFault) return false;
+  if (installedClass.faulted()) return false;
   if (valid(ops) && (!token || started)) return true;
   if (token || session.token()) return false;
   size_t cursor = 0;
