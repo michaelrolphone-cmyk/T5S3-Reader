@@ -1,8 +1,7 @@
 #include "RiscUsbHidV1.h"
 
-/* HID report-descriptor interpretation stays inside the gamepad ELF. No
- * vendor IDs, fixed byte offsets, keyboard reports or firmware HID callbacks.
- * The provider executor serializes all calls and owns every subscriber. */
+/* Descriptor-driven HID gamepad provider. Driver calls and queues are
+ * serialized by the provider executor; no firmware HID handlers exist. */
 #define PADS 4u
 #define FIELDS 40u
 #define GLOBAL_STACK 4u
@@ -51,14 +50,18 @@ static bool field_add(gamepad *pad, uint32_t bit, uint32_t size,
                       uint8_t kind, uint8_t index, const globals *g) {
     if (pad->field_count >= FIELDS || bit + size > RISC_USB_HID_MAX_REPORT * 8u ||
         size == 0 || size > 16) return false;
+    /* A 16-bit input cannot express a span above 65535. Ensure that scaling
+     * arithmetic remains bounded even for hostile/malformed descriptors. */
+    if (kind == 2 && (g->minimum < -32768 || g->maximum > 65535 ||
+        g->maximum <= g->minimum ||
+        (uint32_t)g->maximum - (uint32_t)g->minimum > 65535u)) return false;
     field *f = &pad->fields[pad->field_count++];
     *f = (field){(uint16_t)bit, g->minimum, g->maximum,
                  (uint8_t)size, kind, index};
     return true;
 }
-/* Parse bounded HID short items; long items cannot define our supported axes
- * and are skipped only when wholly present. Multiple report IDs in a single
- * gamepad application are rejected rather than silently mixing layouts. */
+/* Parse bounded HID short items. Multiple report IDs within one application
+ * are rejected rather than silently conflating different report layouts. */
 static bool layout(gamepad *pad, const uint8_t *data, size_t length) {
     globals g = {0}, stack[GLOBAL_STACK];
     unsigned sp = 0, depth = 0;
@@ -109,7 +112,7 @@ static bool layout(gamepad *pad, const uint8_t *data, size_t length) {
             } else if (tag == 1) { usage_min = value; min_set = true; }
             else if (tag == 2) { usage_max = value; max_set = true; }
         } else if (type == 0) {
-            if (tag == 10) { /* Collection */
+            if (tag == 10) {
                 uint32_t usage = usage_count ? usages[0] : (min_set ? usage_min : 0);
                 if (depth == 0 && value == 1 && g.page == 1 &&
                     (usage == 4 || usage == 5)) {
@@ -117,10 +120,10 @@ static bool layout(gamepad *pad, const uint8_t *data, size_t length) {
                     selected = found = true;
                 }
                 if (++depth > 16) return false;
-            } else if (tag == 12) { /* End Collection */
+            } else if (tag == 12) {
                 if (!depth) return false;
                 if (--depth == 0) selected = false;
-            } else if (tag == 8) { /* Input */
+            } else if (tag == 8) {
                 if (!g.size || !g.count || g.size > 32 || g.count > 64 ||
                     g.size * g.count > 512 || bit + g.size * g.count > 512)
                     return false;
@@ -161,11 +164,27 @@ static int32_t extract(const uint8_t *data, const field *f) {
         value |= ~((1u << f->size) - 1u);
     return (int32_t)value;
 }
+/* Local bounded unsigned division avoids libgcc's 64-bit divider, which
+ * contributes an R_XTENSA_NONE entry the RiscRTE loader does not implement.
+ * Denominator is nonzero and <=65535; remainder/shift cannot overflow. */
+static uint32_t divide_bounded(uint32_t numerator, uint32_t denominator) {
+    uint32_t quotient = 0, remainder = 0;
+    for (unsigned i = 32; i-- > 0;) {
+        remainder = (remainder << 1u) | ((numerator >> i) & 1u);
+        if (remainder >= denominator) {
+            remainder -= denominator;
+            quotient |= 1u << i;
+        }
+    }
+    return quotient;
+}
 static int16_t normalize(int32_t v, int32_t lo, int32_t hi) {
     if (hi <= lo) return 0;
     if (v < lo) v = lo;
     if (v > hi) v = hi;
-    return (int16_t)(-32767 + ((int64_t)v - lo) * 65534 / ((int64_t)hi - lo));
+    uint32_t offset = (uint32_t)v - (uint32_t)lo;
+    uint32_t span = (uint32_t)hi - (uint32_t)lo;
+    return (int16_t)(-32767 + (int32_t)divide_bounded(offset * 65534u, span));
 }
 static bool emit(uint8_t kind, const risc_usb_gamepad_state_v1 *state) {
     if (sequence == UINT64_MAX) return false;
@@ -268,7 +287,7 @@ static bool poll(void *ctx, size_t max_reports) {
         if (!hid->report_descriptor(hid->context, session, descriptor, &length) ||
             length > sizeof(descriptor) || !layout(&candidate, descriptor, length)) {
             if (!hid->close(hid->context, session)) return false;
-            continue; /* Not a supported gamepad; release the HID interface. */
+            continue;
         }
         candidate.session = session; candidate.device = item->device;
         candidate.iface = item->interface_number; candidate.alt = item->alternate;
