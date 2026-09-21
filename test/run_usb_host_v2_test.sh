@@ -19,6 +19,12 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/usb_host_control_claim_test.c" -ldl \
   -o "$build/usb-host-control-claim-test"
 "$build/usb-host-control-claim-test" "$build/usb-host-v2.so"
+# Independent class ELFs on composite devices must not authorize one another's
+# interface controls or device-wide vendor commands. Test the production ELF.
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/usb_host_control_scope_test.c" -ldl \
+  -o "$build/usb-host-control-scope-test"
+"$build/usb-host-control-scope-test" "$build/usb-host-v2.so"
 exports="$(nm -D --defined-only "$build/usb-host-v2.so" | awk '{print $3}')"
 [[ "$exports" == "t5_driver_get" ]] || { echo "Unexpected host ELF exports: $exports" >&2; exit 1; }
 if nm -D --undefined-only "$build/usb-host-v2.so" | grep -E 'usb_host_|nativeUsb|UsbCdcDriverRuntime|t5_usb_'; then
