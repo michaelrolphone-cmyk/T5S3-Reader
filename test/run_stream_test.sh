@@ -4,7 +4,7 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build="$(mktemp -d)"
 trap 'rm -rf "$build"' EXIT
 common=(-std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer
-  -I"$repo/lib/NativeApps/include" -I"$repo/src")
+  -I"$repo/lib/NativeApps/include" -I"$repo/src" -I"$repo/sdk/driver")
 stream="$repo/src/runtime/streams/StreamRuntime.cpp"
 serial="$repo/src/native/NativeSerialPortBridge.cpp"
 # Successful-close and transport fakes are host-only. Keep both OUT of the
@@ -34,6 +34,7 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/NativeApps/include" "$build/abi.c
 compile_run execution-context "$repo/test/resources/execution_context_test.cpp"
 compile_run device-registry "$repo/test/streams/usb_device_registry_test.cpp"
 compile_run provider-publication "$repo/test/streams/provider_device_publisher_test.cpp"
+compile_run serial-provider-inventory "$repo/test/streams/serial_provider_devices_test.cpp"
 compile_run serial-provider-registry "$repo/test/streams/serial_provider_registry_test.cpp"
 compile_run serial-structured-diagnostic "$repo/test/streams/serial_structured_diagnostic_test.cpp"
 compile_run serial-failed-acquire "$repo/test/streams/serial_failed_acquire_test.cpp"
@@ -51,7 +52,7 @@ compile_run bridge "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial"
 compile_run usb-direct-ownership "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" \
   "$checked" "$bridge_io" "$repo/test/streams/usb_direct_ownership_test.cpp"
 # Restore original includes before linking the real installed class bridge.
-common=("${production_common[@]}" -I"$repo/sdk/driver")
+common=("${production_common[@]}")
 compile_run usb-class-bridge "$stream" "$serial" "$repo/src/native/NativeUsbClassBridge.cpp" \
   "$repo/test/streams/usb_class_bridge_bind_test.cpp"
 compile_run usb-class-session "$stream" "$repo/test/streams/usb_class_stream_session_test.cpp"
