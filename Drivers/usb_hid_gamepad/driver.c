@@ -1,0 +1,372 @@
+#include "RiscUsbHidV1.h"
+
+/* HID report-descriptor interpretation stays inside the gamepad ELF. No
+ * vendor IDs, fixed byte offsets, keyboard reports or firmware HID callbacks.
+ * The provider executor serializes all calls and owns every subscriber. */
+#define PADS 4u
+#define FIELDS 40u
+#define GLOBAL_STACK 4u
+#define USAGES 32u
+typedef struct { uint16_t bit; int32_t minimum, maximum; uint8_t size, kind, index; } field;
+typedef struct {
+    uint64_t session, device;
+    uint8_t iface, alt, report_id;
+    uint16_t report_bits;
+    uint8_t field_count;
+    field fields[FIELDS];
+    risc_usb_gamepad_state_v1 state;
+} gamepad;
+typedef struct {
+    uint64_t token, filter;
+    risc_usb_gamepad_event_v1 queue[RISC_USB_INPUT_QUEUE_LENGTH];
+    uint8_t head, count;
+    bool gap;
+} subscriber;
+typedef struct {
+    uint32_t page, size, count, report_id;
+    int32_t minimum, maximum;
+} globals;
+static const risc_usb_hid_api_v1 *hid;
+static gamepad pads[PADS];
+static subscriber subscribers[RISC_USB_INPUT_MAX_SUBSCRIBERS];
+static uint64_t serial, sequence;
+
+static bool equal(const char *a, const char *b) {
+    if (!a || !b) return false;
+    while (*a && *a == *b) { ++a; ++b; }
+    return *a == *b;
+}
+static uint32_t unsigned_item(const uint8_t *p, size_t n) {
+    uint32_t v = 0;
+    for (size_t i = 0; i < n; ++i) v |= (uint32_t)p[i] << (8u * i);
+    return v;
+}
+static int32_t signed_item(const uint8_t *p, size_t n) {
+    uint32_t v = unsigned_item(p, n);
+    if (n && n < 4 && (v & (1u << (n * 8u - 1u))))
+        v |= ~((1u << (n * 8u)) - 1u);
+    return (int32_t)v;
+}
+static bool field_add(gamepad *pad, uint32_t bit, uint32_t size,
+                      uint8_t kind, uint8_t index, const globals *g) {
+    if (pad->field_count >= FIELDS || bit + size > RISC_USB_HID_MAX_REPORT * 8u ||
+        size == 0 || size > 16) return false;
+    field *f = &pad->fields[pad->field_count++];
+    *f = (field){(uint16_t)bit, g->minimum, g->maximum,
+                 (uint8_t)size, kind, index};
+    return true;
+}
+/* Parse bounded HID short items; long items cannot define our supported axes
+ * and are skipped only when wholly present. Multiple report IDs in a single
+ * gamepad application are rejected rather than silently mixing layouts. */
+static bool layout(gamepad *pad, const uint8_t *data, size_t length) {
+    globals g = {0}, stack[GLOBAL_STACK];
+    unsigned sp = 0, depth = 0;
+    uint32_t usages[USAGES], usage_min = 0, usage_max = 0;
+    unsigned usage_count = 0;
+    bool min_set = false, max_set = false, selected = false, found = false;
+    uint32_t bit = 0;
+    for (size_t at = 0; at < length;) {
+        uint8_t prefix = data[at++];
+        if (prefix == 0xfe) {
+            if (length - at < 2) return false;
+            size_t n = data[at];
+            at += 2;
+            if (n > length - at) return false;
+            at += n; continue;
+        }
+        size_t n = prefix & 3u;
+        if (n == 3) n = 4;
+        if (n > length - at) return false;
+        uint32_t value = unsigned_item(data + at, n);
+        int32_t signed_value = signed_item(data + at, n);
+        at += n;
+        uint8_t type = (prefix >> 2u) & 3u, tag = prefix >> 4u;
+        if (type == 1) {
+            switch (tag) {
+                case 0: g.page = value; break;
+                case 1: g.minimum = signed_value; break;
+                case 2: g.maximum = g.minimum < 0 ? signed_value : (int32_t)value; break;
+                case 7: g.size = value; break;
+                case 8:
+                    if (!value || value > 255 || (pad->report_id && pad->report_id != value))
+                        return false;
+                    pad->report_id = (uint8_t)value;
+                    g.report_id = value; break;
+                case 9: g.count = value; break;
+                case 10:
+                    if (sp == GLOBAL_STACK) return false;
+                    stack[sp++] = g; break;
+                case 11:
+                    if (!sp) return false;
+                    g = stack[--sp]; break;
+                default: break;
+            }
+        } else if (type == 2) {
+            if (tag == 0) {
+                if (usage_count == USAGES) return false;
+                usages[usage_count++] = value;
+            } else if (tag == 1) { usage_min = value; min_set = true; }
+            else if (tag == 2) { usage_max = value; max_set = true; }
+        } else if (type == 0) {
+            if (tag == 10) { /* Collection */
+                uint32_t usage = usage_count ? usages[0] : (min_set ? usage_min : 0);
+                if (depth == 0 && value == 1 && g.page == 1 &&
+                    (usage == 4 || usage == 5)) {
+                    if (found) return false;
+                    selected = found = true;
+                }
+                if (++depth > 16) return false;
+            } else if (tag == 12) { /* End Collection */
+                if (!depth) return false;
+                if (--depth == 0) selected = false;
+            } else if (tag == 8) { /* Input */
+                if (!g.size || !g.count || g.size > 32 || g.count > 64 ||
+                    g.size * g.count > 512 || bit + g.size * g.count > 512)
+                    return false;
+                if (selected && !(value & 1u) && (value & 2u)) {
+                    for (uint32_t i = 0; i < g.count; ++i) {
+                        uint32_t usage = i < usage_count ? usages[i] :
+                            (min_set && max_set && usage_min + i <= usage_max ?
+                             usage_min + i : 0);
+                        uint8_t kind = 0, index = 0;
+                        if (g.page == 9 && usage >= 1 && usage <= 32 && g.size == 1) {
+                            kind = 1; index = (uint8_t)(usage - 1u);
+                        } else if (g.page == 1 && g.size <= 16) {
+                            if (usage >= 0x30 && usage <= 0x35) {
+                                kind = 2; index = (uint8_t)(usage - 0x30);
+                            } else if (usage == 0x39 && g.size <= 8) kind = 3;
+                        }
+                        if (kind && !field_add(pad, bit + i * g.size,
+                                               g.size, kind, index, &g)) return false;
+                    }
+                }
+                bit += g.size * g.count;
+                if (selected && g.report_id != pad->report_id) return false;
+            }
+            usage_count = 0; min_set = max_set = false;
+        }
+    }
+    if (!found || depth || !pad->field_count || bit > 512 || sp) return false;
+    pad->report_bits = (uint16_t)bit;
+    return true;
+}
+static int32_t extract(const uint8_t *data, const field *f) {
+    uint32_t value = 0;
+    for (unsigned i = 0; i < f->size; ++i) {
+        unsigned bit = f->bit + i;
+        if (data[bit / 8u] & (1u << (bit % 8u))) value |= (1u << i);
+    }
+    if (f->minimum < 0 && (value & (1u << (f->size - 1u))))
+        value |= ~((1u << f->size) - 1u);
+    return (int32_t)value;
+}
+static int16_t normalize(int32_t v, int32_t lo, int32_t hi) {
+    if (hi <= lo) return 0;
+    if (v < lo) v = lo;
+    if (v > hi) v = hi;
+    return (int16_t)(-32767 + ((int64_t)v - lo) * 65534 / ((int64_t)hi - lo));
+}
+static bool emit(uint8_t kind, const risc_usb_gamepad_state_v1 *state) {
+    if (sequence == UINT64_MAX) return false;
+    risc_usb_gamepad_event_v1 event = {0};
+    event.sequence = ++sequence; event.kind = kind; event.state = *state;
+    for (unsigned i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i) {
+        subscriber *s = &subscribers[i];
+        if (!s->token || (s->filter && s->filter != state->device) || s->gap) continue;
+        if (s->count == RISC_USB_INPUT_QUEUE_LENGTH) {
+            s->head = s->count = 0; s->gap = true; continue;
+        }
+        s->queue[(s->head + s->count) % RISC_USB_INPUT_QUEUE_LENGTH] = event;
+        ++s->count;
+    }
+    return true;
+}
+static bool state_changed(const risc_usb_gamepad_state_v1 *a,
+                          const risc_usb_gamepad_state_v1 *b) {
+    return a->buttons != b->buttons || a->x != b->x || a->y != b->y ||
+           a->z != b->z || a->rx != b->rx || a->ry != b->ry ||
+           a->rz != b->rz || a->hat != b->hat;
+}
+static bool apply(gamepad *pad, const uint8_t *report, size_t n) {
+    if (pad->report_id) {
+        if (!n || report[0] != pad->report_id) return true;
+        ++report; --n;
+    }
+    if (n * 8u < pad->report_bits) return true;
+    risc_usb_gamepad_state_v1 state = pad->state;
+    state.buttons = 0; state.hat = 8;
+    for (unsigned i = 0; i < pad->field_count; ++i) {
+        const field *f = &pad->fields[i];
+        int32_t v = extract(report, f);
+        if (f->kind == 1 && v) state.buttons |= 1u << f->index;
+        else if (f->kind == 2) {
+            int16_t norm = normalize(v, f->minimum, f->maximum);
+            switch (f->index) {
+                case 0: state.x = norm; break;
+                case 1: state.y = norm; break;
+                case 2: state.z = norm; break;
+                case 3: state.rx = norm; break;
+                case 4: state.ry = norm; break;
+                case 5: state.rz = norm; break;
+            }
+        } else if (f->kind == 3)
+            state.hat = v >= f->minimum && v <= f->maximum &&
+                        v - f->minimum < 8 ? (uint8_t)(v - f->minimum) : 8;
+    }
+    if (state_changed(&pad->state, &state)) {
+        pad->state = state;
+        return emit(3, &state);
+    }
+    return true;
+}
+static bool release_pad(gamepad *pad) {
+    if (!pad->session) return true;
+    pad->state.connected = 0; pad->state.buttons = 0; pad->state.hat = 8;
+    pad->state.x = pad->state.y = pad->state.z = 0;
+    pad->state.rx = pad->state.ry = pad->state.rz = 0;
+    if (!emit(2, &pad->state) || !hid->close(hid->context, pad->session)) return false;
+    *pad = (gamepad){0};
+    return true;
+}
+static bool poll(void *ctx, size_t max_reports) {
+    (void)ctx;
+    if (!hid || !max_reports || max_reports > 16 ||
+        !hid->scan(hid->context, 16)) return false;
+    risc_usb_hid_interface_v1 items[RISC_USB_HID_MAX_INTERFACES];
+    size_t count = RISC_USB_HID_MAX_INTERFACES;
+    if (!hid->interfaces(hid->context, items, &count) ||
+        count > RISC_USB_HID_MAX_INTERFACES) return false;
+    for (unsigned j = 0; j < PADS; ++j) {
+        gamepad *p = &pads[j];
+        if (!p->session) continue;
+        bool found = false;
+        for (size_t i = 0; i < count; ++i)
+            if (items[i].device == p->device && items[i].interface_number == p->iface &&
+                items[i].alternate == p->alt) found = true;
+        if ((!found || !hid->present(hid->context, p->session)) &&
+            !release_pad(p)) return false;
+    }
+    for (size_t i = 0; i < count; ++i) {
+        const risc_usb_hid_interface_v1 *item = &items[i];
+        bool known = false;
+        for (unsigned j = 0; j < PADS; ++j)
+            if (pads[j].session && pads[j].device == item->device &&
+                pads[j].iface == item->interface_number && pads[j].alt == item->alternate)
+                known = true;
+        if (known || item->protocol == 1 || item->protocol == 2) continue;
+        gamepad *slot = 0;
+        for (unsigned j = 0; j < PADS; ++j)
+            if (!pads[j].session) { slot = &pads[j]; break; }
+        if (!slot) return false;
+        uint64_t session = hid->open(hid->context, item->device,
+                                     item->interface_number, item->alternate);
+        if (!session) continue;
+        uint8_t descriptor[RISC_USB_HID_MAX_DESCRIPTOR];
+        size_t length = sizeof(descriptor);
+        gamepad candidate = {0};
+        if (!hid->report_descriptor(hid->context, session, descriptor, &length) ||
+            length > sizeof(descriptor) || !layout(&candidate, descriptor, length)) {
+            if (!hid->close(hid->context, session)) return false;
+            continue; /* Not a supported gamepad; release the HID interface. */
+        }
+        candidate.session = session; candidate.device = item->device;
+        candidate.iface = item->interface_number; candidate.alt = item->alternate;
+        candidate.state.device = item->device;
+        candidate.state.hat = 8; candidate.state.connected = 1;
+        candidate.state.report_id = candidate.report_id;
+        *slot = candidate;
+        if (!emit(1, &slot->state)) return false;
+    }
+    size_t attempted = 0;
+    for (unsigned j = 0; j < PADS && attempted < max_reports; ++j) {
+        gamepad *p = &pads[j];
+        if (!p->session) continue;
+        uint8_t report[RISC_USB_HID_MAX_REPORT] = {0};
+        int32_t n = hid->read(hid->context, p->session, report, sizeof(report), 10);
+        ++attempted;
+        if (n < 0) {
+            if (!hid->present(hid->context, p->session)) {
+                if (!release_pad(p)) return false;
+            } else return false;
+        } else if (n && !apply(p, report, (size_t)n)) return false;
+    }
+    return true;
+}
+static uint64_t subscribe(void *ctx, uint64_t filter) {
+    (void)ctx;
+    if (!hid || serial == UINT64_MAX) return 0;
+    for (unsigned i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i)
+        if (!subscribers[i].token) {
+            subscribers[i] = (subscriber){0};
+            subscribers[i].token = ++serial;
+            subscribers[i].filter = filter;
+            return subscribers[i].token;
+        }
+    return 0;
+}
+static bool unsubscribe(void *ctx, uint64_t token) {
+    (void)ctx;
+    if (!token) return false;
+    for (unsigned i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i)
+        if (subscribers[i].token == token) {
+            subscribers[i] = (subscriber){0}; return true;
+        }
+    return false;
+}
+static int32_t next(void *ctx, uint64_t token, risc_usb_gamepad_event_v1 *out) {
+    (void)ctx;
+    if (!hid || !token || !out) return -1;
+    for (unsigned i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i) {
+        subscriber *s = &subscribers[i];
+        if (s->token != token) continue;
+        if (s->gap) { s->gap = false; s->head = s->count = 0; return -1; }
+        if (!s->count) return 0;
+        *out = s->queue[s->head];
+        s->head = (s->head + 1u) % RISC_USB_INPUT_QUEUE_LENGTH; --s->count;
+        return 1;
+    }
+    return -1;
+}
+static bool snapshot(void *ctx, risc_usb_gamepad_state_v1 *out, size_t *capacity) {
+    (void)ctx;
+    if (!hid || !capacity) return false;
+    size_t count = 0;
+    for (unsigned i = 0; i < PADS; ++i) if (pads[i].session) ++count;
+    if (*capacity < count || (count && !out)) { *capacity = count; return false; }
+    size_t n = 0;
+    for (unsigned i = 0; i < PADS; ++i)
+        if (pads[i].session) out[n++] = pads[i].state;
+    *capacity = count;
+    return true;
+}
+static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
+    if (hid || !deps || count != 1 || !equal(deps[0].capability_id, "usb.hid") ||
+        deps[0].api_version != RISC_USB_HID_API_V1 || !deps[0].api) return false;
+    const risc_usb_hid_api_v1 *api = (const risc_usb_hid_api_v1 *)deps[0].api;
+    if (api->api_version != RISC_USB_HID_API_V1 ||
+        api->struct_size < sizeof(*api) || !api->scan || !api->interfaces ||
+        !api->open || !api->report_descriptor || !api->read ||
+        !api->present || !api->close) return false;
+    hid = api; return true;
+}
+static bool quiesce(void) {
+    for (unsigned i = 0; i < PADS; ++i) if (pads[i].session) return false;
+    for (unsigned i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i)
+        if (subscribers[i].token) return false;
+    return true;
+}
+static void stop(void) { if (quiesce()) hid = 0; }
+static const risc_usb_gamepad_api_v1 api = {
+    RISC_USB_GAMEPAD_API_V1, sizeof(risc_usb_gamepad_api_v1), 0,
+    subscribe, unsubscribe, poll, next, snapshot
+};
+static const risc_driver_v2 driver = {
+    RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
+    "usb-hid-gamepad", "usb.hid.gamepad", RISC_USB_GAMEPAD_API_V1,
+    &api, start, stop, quiesce
+};
+__attribute__((visibility("default")))
+const risc_driver_v2 *t5_driver_get(uint32_t abi) {
+    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &driver : 0;
+}
