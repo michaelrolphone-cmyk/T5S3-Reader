@@ -20,3 +20,7 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/usb_hid_test.c" -ldl -o "$build/hid-test"
 "$build/hid-test" "$build/usb_hid.so" \
   "$build/usb_hid_keyboard.so" "$build/usb_hid_gamepad.so"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/usb_hid_quiesce_test.c" -ldl -o "$build/hid-quiesce-test"
+"$build/hid-quiesce-test" "$build/usb_hid.so" \
+  "$build/usb_hid_keyboard.so" "$build/usb_hid_gamepad.so"
