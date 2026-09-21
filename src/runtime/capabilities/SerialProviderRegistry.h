@@ -67,8 +67,10 @@ class Registry final {
     if (rx) *rx = 0;
     if (tx) *tx = 0;
     if (!request || !lease || !rx || !tx) return T5_SERIAL_INVALID;
-    // An orphan private lease has no app-visible handle. It must be retried
-    // by end(), never silently displaced by another provider's acquisition.
+    // A failed open may retain a private token whose caller has no public
+    // lease. Retry exactly that release ONCE before any new provider is used.
+    // If still uncertain, retain the original pin and deny reconnection.
+    if (orphaned_ && !retryOrphan()) return T5_SERIAL_BUSY;
     if (active_ || releasing_) return T5_SERIAL_BUSY;
     if (generation_ >= 0x7fffffffu) return T5_SERIAL_LIMIT;
 
@@ -145,13 +147,8 @@ class Registry final {
     return result;
   }
   void end() {
-    if (orphaned_ && active_) {
-      // The consumer never received a public lease. Only the registry can
-      // retry this exact private handle, including across repeated end().
-      releasing_ = true;
-      if (active_->provider.release(active_->provider.context, privateLease_) == T5_SERIAL_OK)
-        clearActive();
-      releasing_ = false;
+    if (orphaned_) {
+      (void)retryOrphan();
     } else if (active_) {
       (void)release(publicLease_);
     }
@@ -164,6 +161,15 @@ class Registry final {
     char name[kNameBytes]{};
     bool used = false;
   };
+  bool retryOrphan() {
+    if (!orphaned_ || !active_ || !privateLease_ || releasing_) return false;
+    releasing_ = true;
+    const bool released = active_->provider.release(active_->provider.context, privateLease_) ==
+                          T5_SERIAL_OK;
+    if (released) clearActive();
+    releasing_ = false;
+    return released;
+  }
   bool discardOrRetain(Slot& selected, t5_serial_port_lease_t privateLease) {
     releasing_ = true;
     const bool released = selected.provider.release(selected.provider.context, privateLease) ==
