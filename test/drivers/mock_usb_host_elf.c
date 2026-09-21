@@ -50,6 +50,13 @@ static int32_t control(void *ctx, uint64_t dev, uint8_t request_type,
     if (request == 0x22 && !payload && length == 0) return 0;
     return -1;
 }
+static int32_t control_claim(void *ctx, uint64_t token, uint8_t request_type,
+                             uint8_t request, uint16_t value, uint16_t index,
+                             uint8_t *payload, uint16_t length, uint32_t timeout_ms) {
+    if (!token || !outstanding || (token & 0xffu) != index) return -1;
+    return control(ctx, 42, request_type, request, value, index,
+                   payload, length, timeout_ms);
+}
 static int32_t read_bulk(void *ctx, uint64_t token, uint8_t ep, uint8_t *dst,
                          size_t capacity, uint32_t timeout) {
     (void)ctx; (void)timeout;
@@ -67,7 +74,7 @@ static int32_t write_bulk(void *ctx, uint64_t token, uint8_t ep,
 static const risc_usb_host_discovery_v1 usb_host = {
     {RISC_USB_HOST_API_V1, sizeof(risc_usb_host_discovery_v1), 0,
      configuration, claim, release_claim, control, read_bulk, write_bulk},
-    0, 0, release_checked
+    0, 0, release_checked, control_claim
 };
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     if (running || deps || count) return false;
