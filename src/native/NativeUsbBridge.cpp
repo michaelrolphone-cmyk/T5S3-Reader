@@ -194,12 +194,15 @@ bool configureSession(const t5_usb_line_coding_t* coding) {
 bool serialStart(const t5_usb_line_coding_t* coding) {
     if (!active() || !codingValid(coding) || !initialize()) return false;
     Lock lock;
-    if (!lock || quarantined || hostGrant.grant.slot) return false;
+    if (!lock || quarantined) return false;
     if (running) {
         if (!configureSession(coding)) return false;
         state.line_coding = *coding;
         return true;
     }
+    // A previous unsuccessful acquisition may have retained a generation.
+    // Never overwrite it with a fresh grant before checked serialStop().
+    if (hostGrant.grant.slot) return false;
     char hostId[96]{}, alternate[96]{};
     size_t cursor = 0;
     if (!RuntimeInstalledProviders::nextProvider("usb.host", 1, &cursor,
@@ -209,10 +212,9 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
         error(-1220);
         return false;
     }
-    // acquire() may return false with an exact grant if its interface is
-    // missing AND checked physical release failed. Retain and quarantine that
-    // grant; a subsequent start may not overwrite its generation or VBUS pin.
     if (!RuntimeInstalledProviders::acquire(hostId, "usb.host", 1, &hostGrant)) {
+        // An interface-less acquisition may have failed its checked release.
+        // Quarantine the EXACT returned grant so serialStop can retry it.
         if (hostGrant.grant.slot) quarantined = true;
         error(-1220);
         return false;
@@ -237,20 +239,13 @@ void serialStop() {
     Lock lock;
     if (!lock) { LOG_ERR("USB", "USBREF stage=serial-stop-lock-timeout"); return; }
     nativeUsbProviderDetach();
-    // Quarantine forbids NEW I/O/acquisition, not a retry of the SAME checked
-    // close and grant release. Leaving early here pinned recoverable host/VBUS
-    // failures forever, even after the physical controller could quiesce.
     if (!closeClass()) return;
     if (hostGrant.grant.slot && !RuntimeInstalledProviders::release(&hostGrant)) {
         quarantined = true;
         error(-1230);
         return;
     }
-    // Do not call RuntimeInstalledProviders::shutdown(): that is a GLOBAL
-    // graph operation and can unload GNSS, power, or other services unrelated
-    // to this serial session. Graph release deactivates only unused USB nodes
-    // and their dependencies after verified quiescence; failed release pins
-    // the original generation and remains quarantined above.
+    // Never use global shutdown here: it can unload unrelated packages.
     hostSnapshot = nullptr;
     device = 0;
     session = 0;
