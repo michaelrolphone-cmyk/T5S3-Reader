@@ -10,6 +10,7 @@ NativeUsbClassOps ops{};
 RuntimeUsb::ClassStreamSession session;
 uint64_t token = 0;
 uint64_t observedDevice = 1;
+bool explicitDevice = false;
 t5_serial_config_t coding{115200u, 8u, T5_SERIAL_PARITY_NONE, 1u, T5_SERIAL_FLOW_NONE};
 bool dtr = false, rts = false;
 bool started = false;
@@ -57,11 +58,23 @@ RuntimeUsb::ClassPort portFromOps(const NativeUsbClassOps& o) {
   return {o.context, o.open, o.configure, o.control, o.read, o.write, o.close};
 }
 #if defined(ESP_PLATFORM)
-// The generic runtime enumerates admitted packages and owns selected grants.
-// USB/class matching is implemented only by each installed class ELF open().
+// Only the installed class ELF interprets the device and its descriptors.
+// The generic selector owns candidate grants, checked rejects and quarantine.
+// A negative probe is UNKNOWN and MUST NOT allow another class to start.
 RuntimeInstalledProviders::CandidateDecision probeInstalled(const void* candidate, void*) {
-  if (!apiValid(static_cast<const risc_usb_cdc_api_v1*>(candidate)))
-    return RuntimeInstalledProviders::CandidateDecision::Unsupported;
+  const auto* api = static_cast<const risc_usb_cdc_api_v1*>(candidate);
+  if (!apiValid(api)) return RuntimeInstalledProviders::CandidateDecision::Unsupported;
+  if (explicitDevice) {
+    if (api->struct_size < sizeof(risc_usb_serial_class_discovery_v1))
+      return RuntimeInstalledProviders::CandidateDecision::Unsupported;
+    const auto* discovery = static_cast<const risc_usb_serial_class_discovery_v1*>(candidate);
+    if (!discovery->probe) return RuntimeInstalledProviders::CandidateDecision::Unsupported;
+    const int32_t result = discovery->probe(observedDevice);
+    if (result < 0) return RuntimeInstalledProviders::CandidateDecision::Fault;
+    if (result != 1) return RuntimeInstalledProviders::CandidateDecision::Unsupported;
+  }
+  // The legacy no-device availability route remains transitional. No USB
+  // descriptor is parsed here; the class owns all matching and open semantics.
   return nativeUsbClassBindApi(candidate)
       ? RuntimeInstalledProviders::CandidateDecision::Accepted
       : RuntimeInstalledProviders::CandidateDecision::Fault;
@@ -117,6 +130,7 @@ bool nativeUsbClassUnbindChecked() {
   ops = {};
   boundApi = nullptr;
   observedDevice = 1;
+  explicitDevice = false;
   return true;
 }
 void nativeUsbClassUnbind() { (void)nativeUsbClassUnbindChecked(); }
@@ -139,7 +153,7 @@ bool nativeUsbClassBound() {
 bool nativeUsbClassHasDataPlane() { return session.bound(); }
 uint64_t nativeUsbClassToken() { return token; }
 void nativeUsbClassObserveDevice(uint64_t device) {
-  if (device) observedDevice = device;
+  if (device) { observedDevice = device; explicitDevice = true; }
 }
 bool nativeUsbClassAdopt(uint64_t opened, const t5_serial_config_t& config) {
   if (!valid(ops) || !opened || (started && token != opened) ||
