@@ -1,8 +1,8 @@
 #include "RiscUsbHidV1.h"
 
-/* USB boot keyboard usage-page 0x07: modifiers, six simultaneous keys and
- * rollover handling. Pull subscriptions contain copied events, never an app
- * callback pointer. All entry points run on the serialized provider executor. */
+/* USB boot keyboard page 0x07, six-key rollover and modifier transitions.
+ * Each subscriber receives copied events, not a callback into another ELF.
+ * The generic provider executor serializes all entry points. */
 #define KEYBOARDS 4u
 typedef struct {
     uint64_t device, session;
@@ -36,19 +36,15 @@ static bool emit(uint64_t device, uint8_t kind, uint8_t usage, uint8_t modifiers
         subscriber *s = &subscribers[i];
         if (!s->token || (s->filter && s->filter != device) || s->gap) continue;
         if (s->count == RISC_USB_INPUT_QUEUE_LENGTH) {
-            s->gap = true;
-            s->head = s->count = 0;
-            continue;
+            s->gap = true; s->head = s->count = 0; continue;
         }
         unsigned tail = (s->head + s->count) % RISC_USB_INPUT_QUEUE_LENGTH;
-        s->queue[tail] = event;
-        ++s->count;
+        s->queue[tail] = event; ++s->count;
     }
     return true;
 }
 static bool release_board(keyboard *b) {
     if (!b->session) return true;
-    /* Never leave keys logically held when USB disconnects or unloads. */
     for (unsigned i = 0; i < 6; ++i)
         if (b->keys[i] && !emit(b->device, 4, b->keys[i], 0)) return false;
     for (unsigned i = 0; i < 8; ++i)
@@ -64,38 +60,17 @@ static keyboard *by_device(uint64_t device) {
         if (boards[i].session && boards[i].device == device) return &boards[i];
     return 0;
 }
-static bool update_keys(keyboard *b, const uint8_t *report, size_t n) {
-    if (n != 8 || report[1] != 0) return true; /* reject partial/malformed */
-    uint8_t next[6];
-    for (unsigned i = 0; i < 6; ++i) {
-        uint8_t key = report[i + 2];
-        if (key >= 1 && key <= 3) return true; /* HID rollover: keep old state */
-        if (key && contains(next, key)) return true;
-        next[i] = key;
-    }
-    uint8_t previous = b->modifiers;
-    b->modifiers = report[0];
-    for (unsigned i = 0; i < 6; ++i) b->keys[i] = next[i];
-    for (unsigned i = 0; i < 8; ++i)
-        if ((previous & (1u << i)) && !(b->modifiers & (1u << i)) &&
-            !emit(b->device, 4, (uint8_t)(0xe0u + i), b->modifiers)) return false;
-    for (unsigned i = 0; i < 6; ++i)
-        if (report[i + 2] && !contains(next, report[i + 2])) return false;
-    /* Previous non-modifier releases are computed from a retained copy below.
-     * Keep it in the caller's stack instead of sharing a transient pointer. */
-    return true;
-}
 static bool apply_report(keyboard *b, const uint8_t *report, size_t n) {
-    if (n != 8 || report[1] != 0) return true;
+    if (n != 8 || report[1] != 0) return true; /* malformed/partial */
     uint8_t next[6] = {0};
     for (unsigned i = 0; i < 6; ++i) {
-        uint8_t key = report[i + 2];
-        if (key >= 1 && key <= 3) return true;
-        if (key && contains(next, key)) return true;
-        next[i] = key;
+        uint8_t usage = report[i + 2];
+        if (usage >= 1 && usage <= 3) return true; /* rollover, retain state */
+        if (usage && contains(next, usage)) return true;
+        next[i] = usage;
     }
-    uint8_t old[6];
-    for (unsigned i = 0; i < 6; ++i) old[i] = b->keys[i];
+    uint8_t previous[6];
+    for (unsigned i = 0; i < 6; ++i) previous[i] = b->keys[i];
     uint8_t old_modifiers = b->modifiers;
     b->modifiers = report[0];
     for (unsigned i = 0; i < 6; ++i) b->keys[i] = next[i];
@@ -103,19 +78,19 @@ static bool apply_report(keyboard *b, const uint8_t *report, size_t n) {
         if ((old_modifiers & (1u << i)) && !(b->modifiers & (1u << i)) &&
             !emit(b->device, 4, (uint8_t)(0xe0u + i), b->modifiers)) return false;
     for (unsigned i = 0; i < 6; ++i)
-        if (old[i] && !contains(next, old[i]) &&
-            !emit(b->device, 4, old[i], b->modifiers)) return false;
+        if (previous[i] && !contains(next, previous[i]) &&
+            !emit(b->device, 4, previous[i], b->modifiers)) return false;
     for (unsigned i = 0; i < 8; ++i)
         if (!(old_modifiers & (1u << i)) && (b->modifiers & (1u << i)) &&
             !emit(b->device, 3, (uint8_t)(0xe0u + i), b->modifiers)) return false;
     for (unsigned i = 0; i < 6; ++i)
-        if (next[i] && !contains(old, next[i]) &&
+        if (next[i] && !contains(previous, next[i]) &&
             !emit(b->device, 3, next[i], b->modifiers)) return false;
     return true;
 }
 static bool poll(void *context, size_t max_reports) {
     (void)context;
-    if (!hid || max_reports == 0 || max_reports > 16 ||
+    if (!hid || !max_reports || max_reports > 16 ||
         !hid->scan(hid->context, 16)) return false;
     risc_usb_hid_interface_v1 items[RISC_USB_HID_MAX_INTERFACES];
     size_t count = RISC_USB_HID_MAX_INTERFACES;
@@ -139,27 +114,25 @@ static bool poll(void *context, size_t max_reports) {
         keyboard *slot = 0;
         for (unsigned j = 0; j < KEYBOARDS; ++j)
             if (!boards[j].session) { slot = &boards[j]; break; }
-        if (!slot) return false; /* explicit capacity failure, no eviction */
+        if (!slot) return false; /* no silent eviction */
         uint64_t handle = hid->open(hid->context, item->device,
                                     item->interface_number, item->alternate);
-        if (!handle) continue; /* another class may own the interface */
+        if (!handle) continue;
         if (!hid->set_boot_protocol(hid->context, handle, true)) {
-            (void)hid->close(hid->context, handle);
-            continue;
+            (void)hid->close(hid->context, handle); continue;
         }
         *slot = (keyboard){0};
         slot->device = item->device; slot->session = handle;
         slot->iface = item->interface_number; slot->alt = item->alternate;
         if (!emit(slot->device, 1, 0, 0)) return false;
     }
-    size_t processed = 0;
-    for (unsigned j = 0; j < KEYBOARDS && processed < max_reports; ++j) {
+    size_t attempted = 0;
+    for (unsigned j = 0; j < KEYBOARDS && attempted < max_reports; ++j) {
         keyboard *b = &boards[j];
         if (!b->session) continue;
         uint8_t report[RISC_USB_HID_MAX_REPORT] = {0};
-        int32_t n = hid->read(hid->context, b->session, report,
-                              sizeof(report), 10);
-        ++processed; /* A quiet device still consumes one bounded I/O attempt. */
+        int32_t n = hid->read(hid->context, b->session, report, sizeof(report), 10);
+        ++attempted;
         if (n < 0) {
             if (!hid->present(hid->context, b->session)) {
                 if (!release_board(b)) return false;
@@ -199,8 +172,7 @@ static int32_t next(void *context, uint64_t token,
         if (s->gap) { s->gap = false; s->head = s->count = 0; return -1; }
         if (!s->count) return 0;
         *out = s->queue[s->head];
-        s->head = (s->head + 1u) % RISC_USB_INPUT_QUEUE_LENGTH;
-        --s->count;
+        s->head = (s->head + 1u) % RISC_USB_INPUT_QUEUE_LENGTH; --s->count;
         return 1;
     }
     return -1;
@@ -232,12 +204,10 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         api->struct_size < sizeof(*api) || !api->scan || !api->interfaces ||
         !api->open || !api->set_boot_protocol || !api->read ||
         !api->present || !api->close) return false;
-    hid = api;
-    return true;
+    hid = api; return true;
 }
 static bool quiesce(void) {
-    for (unsigned i = 0; i < KEYBOARDS; ++i)
-        if (boards[i].session) return false;
+    for (unsigned i = 0; i < KEYBOARDS; ++i) if (boards[i].session) return false;
     for (unsigned i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i)
         if (subscribers[i].token) return false;
     return true;
