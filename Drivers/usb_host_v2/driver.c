@@ -74,15 +74,17 @@ static bool quiesce(void) {
                                                  c->physical_claim)) return false;
         *c = (claim_slot){0};
     }
-    /* A controller failure MUST NOT be interpreted as cleared callbacks/DMA. */
-    if (event_fault || !controller->quiesce(controller->context)) return false;
-    return true;
+    /* A lost/invalid discovery event stops new I/O, but must not strand VBUS
+     * forever if the hardware-owning controller independently proves all
+     * callbacks, interfaces and DMA are quiescent. Failure still pins both. */
+    return controller->quiesce(controller->context);
 }
 static void stop(void) {
     if (!quiesce()) return; /* A direct stop cannot bypass the quiescence gate. */
     for (size_t i = 0; i < RISC_USB_HOST_MAX_DEVICES; ++i)
         devices[i] = (device_slot){0};
     controller = 0;
+    event_fault = false; /* Only after physical quiescence, never on a retry. */
     /* sequence intentionally persists across stop/start of this ELF image. */
 }
 
@@ -261,16 +263,20 @@ static int32_t control(void *ctx, uint64_t token, uint8_t type,
     device_slot *d = device_for(token);
     if (!d || length > RISC_USB_CONFIG_LIMIT || (length && !payload) ||
         !timeout) return -1;
-    if ((type & 0x1fu) == 1u) {
-        bool authorized = false;
-        for (size_t i = 0; i < RISC_USB_HOST_MAX_CLAIMS; ++i)
-            if (claims[i].token && !claims[i].closing &&
-                claims[i].device_token == token &&
-                claims[i].interface_number == (uint8_t)index) {
-                authorized = true; break;
-            }
-        if (!authorized || index > 255u) return -1;
-    }
+    const uint8_t recipient = type & 0x1fu;
+    if ((recipient != 0u && recipient != 1u) ||
+        (recipient == 1u && index > 255u)) return -1;
+    /* CH34x uses device-recipient vendor control, CDC and CP210x use interface
+     * recipient controls. Both require a live nonclosing claim for THIS device;
+     * no arbitrary app or failed-open class may issue requests before claim. */
+    bool authorized = false;
+    for (size_t i = 0; i < RISC_USB_HOST_MAX_CLAIMS; ++i)
+        if (claims[i].token && !claims[i].closing &&
+            claims[i].device_token == token &&
+            (recipient != 1u || claims[i].interface_number == (uint8_t)index)) {
+            authorized = true; break;
+        }
+    if (!authorized) return -1;
     int32_t n = controller->control(controller->context, d->physical, type,
                                     request, value, index, payload,
                                     length, timeout);
