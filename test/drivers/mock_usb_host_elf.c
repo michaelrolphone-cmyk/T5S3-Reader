@@ -71,10 +71,24 @@ static int32_t write_bulk(void *ctx, uint64_t token, uint8_t ep,
         length > RISC_USB_CONFIG_LIMIT) return -1;
     return (int32_t)length;
 }
+static bool poll(void *ctx, size_t maximum, size_t *processed) {
+    (void)ctx;
+    if (!running || !maximum || !processed) return false;
+    *processed = 0;
+    return true;
+}
+static bool devices(void *ctx, uint64_t *out, size_t *count) {
+    (void)ctx;
+    if (!running || !count) return false;
+    if (*count < 1 || !out) { *count = 1; return false; }
+    out[0] = 42;
+    *count = 1;
+    return true;
+}
 static const risc_usb_host_discovery_v1 usb_host = {
     {RISC_USB_HOST_API_V1, sizeof(risc_usb_host_discovery_v1), 0,
      configuration, claim, release_claim, control, read_bulk, write_bulk},
-    0, 0, release_checked, control_claim
+    poll, devices, release_checked, control_claim
 };
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     if (running || deps || count) return false;
