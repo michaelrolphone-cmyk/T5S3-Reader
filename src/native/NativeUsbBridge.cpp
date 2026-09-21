@@ -10,7 +10,6 @@
 #include <freertos/semphr.h>
 #include <algorithm>
 #include <cstdio>
-#include <cstring>
 
 // Compatibility-only T5UsbApi surface. The installed ELFs own the controller,
 // host, device class and physical transfers; no firmware USB data plane.
@@ -20,13 +19,12 @@ constexpr uint32_t kMaxTransfer = 512;
 constexpr uint32_t kMutexTimeoutMs = 250;
 SemaphoreHandle_t mutex = nullptr;
 Lease hostGrant{};
-const risc_usb_host_discovery_v1* host = nullptr;
+const risc_usb_host_snapshot_v1* hostSnapshot = nullptr;
 uint64_t device = 0;
 uint64_t session = 0;
 bool running = false;
 bool quarantined = false;
 t5_usb_serial_state_t state{};
-uint8_t configurationDescriptor[RISC_USB_CONFIG_LIMIT]{};
 
 bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
 bool initialize() {
@@ -60,10 +58,10 @@ t5_serial_config_t classCoding(const t5_usb_line_coding_t& coding) {
     return {coding.baud_rate, coding.data_bits, coding.parity, coding.stop_bits,
             T5_SERIAL_FLOW_NONE};
 }
-bool hostApiValid(const risc_usb_host_discovery_v1* api) {
-    return api && api->host.api_version == RISC_USB_HOST_API_V1 &&
-        api->host.struct_size >= sizeof(risc_usb_host_discovery_v1) &&
-        api->poll && api->devices && api->host.configuration;
+bool hostApiValid(const risc_usb_host_snapshot_v1* api) {
+    return api && api->discovery.host.api_version == RISC_USB_HOST_API_V1 &&
+        api->discovery.host.struct_size >= sizeof(risc_usb_host_snapshot_v1) &&
+        api->discovery.poll && api->discovery.devices && api->snapshot;
 }
 
 // Release an idle, lazily prebound class so it cannot leak a USB host
@@ -152,19 +150,16 @@ bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
     return false;
 }
 
+// All USB event pumping, generation tracking and descriptor interpretation
+// occur inside the installed host ELF. This compatibility bridge consumes its
+// bounded presence/identity snapshot and handles only legacy serial UI state.
 void reconcile() {
-    if (!running || quarantined || !host) return;
-    size_t processed = 0;
-    if (!host->poll(host->host.context, 16, &processed)) {
-        LOG_ERR("USB", "USBREF stage=host-poll-failed");
-        quarantined = true;
-        error(-1210);
-        return;
-    }
-    uint64_t devices[RISC_USB_HOST_MAX_DEVICES]{};
+    if (!running || quarantined || !hostSnapshot) return;
+    risc_usb_device_identity_v1 devices[RISC_USB_HOST_MAX_DEVICES]{};
     size_t count = RISC_USB_HOST_MAX_DEVICES;
-    if (!host->devices(host->host.context, devices, &count) || count > RISC_USB_HOST_MAX_DEVICES) {
-        LOG_ERR("USB", "USBREF stage=host-devices-failed");
+    if (!hostSnapshot->snapshot(hostSnapshot->discovery.host.context, devices, &count) ||
+        count > RISC_USB_HOST_MAX_DEVICES) {
+        LOG_ERR("USB", "USBREF stage=host-snapshot-failed");
         quarantined = true;
         error(-1211);
         return;
@@ -172,19 +167,15 @@ void reconcile() {
     if (session) {
         bool present = false;
         for (size_t i = 0; i < count; ++i)
-            if (devices[i] == device) { present = true; break; }
+            if (devices[i].token == device) { present = true; break; }
         if (!present) {
             if (!closeClass()) return;
             state.status = T5_USB_STATUS_WAITING;
         } else return;
     }
     for (size_t i = 0; i < count && !quarantined; ++i) {
-        std::memset(configurationDescriptor, 0, sizeof(configurationDescriptor));
-        size_t length = sizeof(configurationDescriptor);
-        uint16_t vid = 0, pid = 0;
-        if (!host->host.configuration(host->host.context, devices[i],
-                                      configurationDescriptor, &length, &vid, &pid)) continue;
-        if (openClass(devices[i], vid, pid)) return;
+        if (!devices[i].identified) continue;
+        if (openClass(devices[i].token, devices[i].vid, devices[i].pid)) return;
     }
     if (!quarantined) state.status = T5_USB_STATUS_WAITING;
 }
@@ -219,10 +210,10 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
         error(-1220);
         return false;
     }
-    host = static_cast<const risc_usb_host_discovery_v1*>(hostGrant.interface);
-    if (!hostApiValid(host)) {
+    hostSnapshot = static_cast<const risc_usb_host_snapshot_v1*>(hostGrant.interface);
+    if (!hostApiValid(hostSnapshot)) {
         if (!RuntimeInstalledProviders::release(&hostGrant)) quarantined = true;
-        host = nullptr;
+        hostSnapshot = nullptr;
         error(-1221);
         return false;
     }
@@ -239,7 +230,9 @@ void serialStop() {
     Lock lock;
     if (!lock) { LOG_ERR("USB", "USBREF stage=serial-stop-lock-timeout"); return; }
     nativeUsbProviderDetach();
-    if (quarantined) return;
+    // Quarantine forbids NEW I/O/acquisition, not a retry of the SAME checked
+    // close and grant release. Leaving early here pinned recoverable host/VBUS
+    // failures forever, even after the physical controller could quiesce.
     if (!closeClass()) return;
     if (hostGrant.grant.slot && !RuntimeInstalledProviders::release(&hostGrant)) {
         quarantined = true;
@@ -251,10 +244,11 @@ void serialStop() {
     // to this serial session. Graph release deactivates only unused USB nodes
     // and their dependencies after verified quiescence; failed release pins
     // the original generation and remains quarantined above.
-    host = nullptr;
+    hostSnapshot = nullptr;
     device = 0;
     session = 0;
     running = false;
+    quarantined = false; // Clear ONLY after both checked releases succeeded.
     initialState(T5_USB_STATUS_OFF);
     LOG_INF("USB", "USBREF state=stopped source=installed-elf");
 }
