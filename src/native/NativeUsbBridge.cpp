@@ -194,7 +194,7 @@ bool configureSession(const t5_usb_line_coding_t* coding) {
 bool serialStart(const t5_usb_line_coding_t* coding) {
     if (!active() || !codingValid(coding) || !initialize()) return false;
     Lock lock;
-    if (!lock || quarantined) return false;
+    if (!lock || quarantined || hostGrant.grant.slot) return false;
     if (running) {
         if (!configureSession(coding)) return false;
         state.line_coding = *coding;
@@ -205,8 +205,15 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
     if (!RuntimeInstalledProviders::nextProvider("usb.host", 1, &cursor,
                                                 hostId, sizeof(hostId)) ||
         RuntimeInstalledProviders::nextProvider("usb.host", 1, &cursor,
-                                                alternate, sizeof(alternate)) ||
-        !RuntimeInstalledProviders::acquire(hostId, "usb.host", 1, &hostGrant)) {
+                                                alternate, sizeof(alternate))) {
+        error(-1220);
+        return false;
+    }
+    // acquire() may return false with an exact grant if its interface is
+    // missing AND checked physical release failed. Retain and quarantine that
+    // grant; a subsequent start may not overwrite its generation or VBUS pin.
+    if (!RuntimeInstalledProviders::acquire(hostId, "usb.host", 1, &hostGrant)) {
+        if (hostGrant.grant.slot) quarantined = true;
         error(-1220);
         return false;
     }
