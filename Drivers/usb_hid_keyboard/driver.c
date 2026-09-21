@@ -45,6 +45,8 @@ static bool emit(uint64_t device, uint8_t kind, uint8_t usage, uint8_t modifiers
 }
 static bool release_board(keyboard *b) {
     if (!b->session) return true;
+    /* A USB disconnect releases all pressed keys. An unused class provider
+     * also closes its claims during quiesce, before dependency ELF unload. */
     for (unsigned i = 0; i < 6; ++i)
         if (b->keys[i] && !emit(b->device, 4, b->keys[i], 0)) return false;
     for (unsigned i = 0; i < 8; ++i)
@@ -61,11 +63,11 @@ static keyboard *by_device(uint64_t device) {
     return 0;
 }
 static bool apply_report(keyboard *b, const uint8_t *report, size_t n) {
-    if (n != 8 || report[1] != 0) return true; /* malformed/partial */
+    if (n != 8 || report[1] != 0) return true;
     uint8_t next[6] = {0};
     for (unsigned i = 0; i < 6; ++i) {
         uint8_t usage = report[i + 2];
-        if (usage >= 1 && usage <= 3) return true; /* rollover, retain state */
+        if (usage >= 1 && usage <= 3) return true;
         if (usage && contains(next, usage)) return true;
         next[i] = usage;
     }
@@ -114,7 +116,7 @@ static bool poll(void *context, size_t max_reports) {
         keyboard *slot = 0;
         for (unsigned j = 0; j < KEYBOARDS; ++j)
             if (!boards[j].session) { slot = &boards[j]; break; }
-        if (!slot) return false; /* no silent eviction */
+        if (!slot) return false;
         uint64_t handle = hid->open(hid->context, item->device,
                                     item->interface_number, item->alternate);
         if (!handle) continue;
@@ -207,9 +209,13 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     hid = api; return true;
 }
 static bool quiesce(void) {
-    for (unsigned i = 0; i < KEYBOARDS; ++i) if (boards[i].session) return false;
+    /* A class provider must not pin VBUS and the parent HID/host ELFs after
+     * its final subscriber exits while the physical keyboard stays attached.
+     * Releasing a provider with any live subscriber remains forbidden. */
     for (unsigned i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i)
         if (subscribers[i].token) return false;
+    for (unsigned i = 0; i < KEYBOARDS; ++i)
+        if (boards[i].session && !release_board(&boards[i])) return false;
     return true;
 }
 static void stop(void) { if (quiesce()) hid = 0; }
