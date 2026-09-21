@@ -103,8 +103,6 @@ bool parseExactImports(uint8_t* bytes, size_t length,
                        const char* (&symbols)[128], size_t& count) {
     count = 0;
     if (!bytes || !length) return false;
-    // A single LF is a canonical, digest-checked declaration of zero imports;
-    // the private relocation matcher independently validates the ELF tables.
     if (length == 1 && bytes[0] == '\n') return true;
     char* begin = reinterpret_cast<char*>(bytes);
     char* previous = nullptr;
@@ -125,9 +123,6 @@ bool parseExactImports(uint8_t* bytes, size_t length,
     return count > 0;
 }
 
-// The snapshot is owned by prepare() and is never reused after this startup.
-// Every directory is still independently checked against its own complete
-// inventory and SHA-256 before executable bytes can enter the provider graph.
 bool registerOne(RuntimeProviders::GraphV2& destination,
                  const char* root, const char* id, Kind kind,
                  const InstalledCapabilitySnapshot* verified) {
@@ -139,9 +134,6 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
     bool accepted = false;
     do {
         Identity identity{};
-        // Structural verification never trusts requirements to self-authorize.
-        // Their actual versions are checked against the verified snapshot
-        // below, exactly once per startup rather than by rehashing every ELF.
         if (!verifyOrdinarySdDirectory(target, kPolicy,
                 [](const char*) -> uint32_t { return UINT32_MAX; }, identity) ||
             identity.kind != kind || std::strcmp(identity.id, id) ||
@@ -151,8 +143,6 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         size_t jsonSize = 0;
         uint8_t* json = readFile(name, 4096, jsonSize);
         if (!json) break;
-        // A multi-kilobyte manifest plan must not live on loopTask's stack
-        // during ELF read, SHA-256 and downstream graph registration.
         std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
         const bool parsed = plan && parseOrdinaryManifest(
             reinterpret_cast<const char*>(json), jsonSize, *plan);
@@ -238,9 +228,6 @@ void undoPins() {
 bool prepare() {
     if (graph) return true;
     if (!Storage.ready()) return false;
-    // One integrity-verified, operation-scoped capability inventory is shared
-    // across every registered provider and every one of its requirements.
-    // A failed snapshot leaves the existing graph untouched and grants nothing.
     std::unique_ptr<InstalledCapabilitySnapshot, void(*)(InstalledCapabilitySnapshot*)>
         verified(captureInstalledCapabilities(), releaseInstalledCapabilities);
     if (!verified) return false;
@@ -257,7 +244,6 @@ bool prepare() {
             continue;
         }
         for (size_t i = 0; i < 64 && pinCount < kMaxProviders; ++i) {
-            // A bounded scan still needs scheduler cooperation between entries.
             ordinaryCooperativeYield(1, 1);
             HalFile item = directory.openNextFile();
             if (!item.isOpen()) break;
@@ -289,7 +275,7 @@ bool nextProvider(const char* capability, uint32_t version, size_t* cursor,
         const char* candidate = graph->matchingProviderId((*cursor)++, capability, version);
         if (!candidate) continue;
         const size_t length = std::strlen(candidate);
-        if (!length || length >= capacity) return false; // never emit truncated IDs
+        if (!length || length >= capacity) return false;
         std::memcpy(providerId, candidate, length + 1);
         return true;
     }
@@ -301,9 +287,13 @@ bool acquire(const char* providerId, const char* capability, uint32_t version,
     if (out) *out = {};
     if (!out || !providerId || !capability || !version || !prepare()) return false;
     const auto grant = graph->acquireFrom(providerId, capability, version);
+    if (!grant.slot) return false;
     const void* interface = graph->interfaceFor(grant);
     if (!interface) {
-        if (grant.slot) (void)graph->release(grant);
+        // A mapped ELF may be quiescence-uncertain even though its interface
+        // cannot be used. Preserve the EXACT grant for checked retry rather
+        // than orphaning an occupied slot and losing physical cleanup.
+        if (!graph->release(grant)) *out = {grant, nullptr};
         return false;
     }
     *out = {grant, interface};
