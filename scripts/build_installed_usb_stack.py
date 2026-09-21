@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Assemble linked providers into installable ordinary packages.
+"""Assemble actual linked ELF providers as ordinary unsigned driver packages.
 
-The I2C provider is a temporary firmware-backed capability ELF; the other
-hardware-owning USB providers stay in independently installed ELFs. Run after
-all eight real provider builds, not mock objects. No flashing or publishing.
+The HID class chain is installable separately from serial classes and retains
+complete dependency order. No flashing, merging or release publishing occurs.
 """
 from __future__ import annotations
 
@@ -21,7 +20,6 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'dist/experimental'
 DESTINATION = ROOT / 'dist/packages'
 BRIDGE = 'risc_fw_i2c_transact_v1'
-# Dependency order doubles as a direct-install order for an initially empty SD.
 DRIVERS = (
     ('platform-clock-v1', 'platform_clock_v1', 'platform-clock-v1', 'driver.elf'),
     ('i2c-esp32s3-v2', 'i2c_esp32s3_v2', 'i2c-esp32s3-v2', 'driver.elf'),
@@ -32,11 +30,15 @@ DRIVERS = (
     ('usb-cdc-acm-v2', 'usb_cdc_v2', 'usb-cdc-acm-v2', 'driver.elf'),
     ('usb-cp210x-v2', 'usb_cp210x_v2', 'usb-cp210x-v2', 'driver.elf'),
     ('usb-ch34x-v2', 'usb_ch34x_v2', 'usb-ch34x-v2', 'driver.elf'),
+    ('usb-hid', 'usb_hid', 'usb-hid', 'driver.elf'),
+    ('usb-hid-keyboard', 'usb_hid_keyboard', 'usb-hid-keyboard', 'driver.elf'),
+    ('usb-hid-gamepad', 'usb_hid_gamepad', 'usb-hid-gamepad', 'driver.elf'),
 )
 EXPECTED_VERSIONS = {
     'i2c-esp32s3-v2': '0.1.2',
     'board-power-t5s3-v2': '0.1.4',
-    'usb-controller-esp32s3': '0.1.4',
+    'usb-controller-esp32s3': '0.1.5',
+    'usb-host-v2': '0.1.1',
 }
 
 
@@ -66,8 +68,6 @@ def build() -> list[dict]:
         elf = SOURCE / output_name / elf_name
         if not elf.is_file() or elf.stat().st_size < 52:
             raise FileNotFoundError(f'actual linked provider ELF missing: {elf}')
-        # Validate the FINAL linked executable. Internal relative targets must
-        # map; absolute controller MMIO pointers must be declared and kept.
         mapping = audit_loader_map(elf)
         if (mapping['unmapped_relocations'] or mapping['unmapped_relative_values'] or
                 mapping['unmapped_executable_sections']):
@@ -106,7 +106,7 @@ def build() -> list[dict]:
     (DESTINATION / 'usb-provider-catalog.json').write_text(
         json.dumps({'schema': 1, 'packages': catalog}, indent=2) + '\n',
         encoding='utf-8')
-    print('Eight canonical packages assembled; no ELF activated or firmware flashed.', flush=True)
+    print(f'{len(catalog)} canonical packages assembled; no ELF activated or firmware flashed.', flush=True)
     return catalog
 
 
