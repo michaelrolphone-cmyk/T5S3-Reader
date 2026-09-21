@@ -1,5 +1,5 @@
-// Production serial bridge with a simulated asynchronous USB host. Verifies
-// that legacy USB events become unified, execution-context-owned devices.
+// Production serial bridge with a simulated asynchronous USB host. Device
+// lifetime is provider-owned, not coupled to a consumer closing its lease.
 #include <T5AppApi.h>
 #include <T5SerialPortApi.h>
 #include <T5UsbApi.h>
@@ -40,7 +40,7 @@ void nativeUsbClassStop() {
   ++stops;
   classStarted = false;
   streamBusy = false;
-  nativeUsbProviderDetach();
+  // Closing a class session is not an unplug event. The host issues detach.
 }
 bool nativeUsbClassConfigure(const t5_serial_config_t&) { return true; }
 bool nativeUsbClassControl(bool, bool) { return true; }
@@ -87,7 +87,6 @@ int main() {
   assert(serial->acquire(&request, &lease, &rx, &tx) == T5_SERIAL_OK);
   assert(lease && starts == 1 && devices.count() == 0 && devices.leaseCount() == 0);
 
-  // Enumeration arrives after serial host startup, on the USB callback path.
   nativeUsbProviderAttach(&state, 2);
   t5_serial_port_state_t status{};
   assert(serial->read_status(lease, &status) == T5_SERIAL_OK && status.connected);
@@ -122,9 +121,16 @@ int main() {
   }
   assert(found && replacement.handle != first.handle);
   assert(serial->release(lease) == T5_SERIAL_OK);
-  assert(stops == 1 && closes == 2 && devices.count() == 0 && devices.leaseCount() == 0);
+  assert(stops == 1 && closes == 2 && devices.count() == 1 && devices.leaseCount() == 0);
+  RuntimeDevices::DeviceInfo stillPresent{};
+  assert(devices.get(replacement.handle, &stillPresent));
   nativeSerialPortsEnd();
+  assert(devices.count() == 1 && devices.get(replacement.handle, &stillPresent));
   invocation.end();
   assert(!RuntimeResources::ExecutionContext::current());
-  std::puts("USB semantic device/owner lease bridge tests passed");
+  // Only an actual provider removal revokes the persistent device identity.
+  nativeUsbProviderDetach();
+  nativeDeviceDiscoveryTick();
+  assert(devices.count() == 0 && devices.leaseCount() == 0);
+  std::puts("USB semantic device identity survives consumer lease/context teardown");
 }
