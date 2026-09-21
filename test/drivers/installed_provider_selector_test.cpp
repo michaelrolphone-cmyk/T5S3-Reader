@@ -13,9 +13,11 @@ constexpr size_t count = sizeof(ids) / sizeof(ids[0]);
 int acquisitions = 0, releases = 0, probes = 0;
 int failAcquireAt = 0, failReleaseAt = 0, faultProbeAt = 0, acceptProbeAt = 2;
 unsigned serial = 0;
+bool inventoryAvailable = true;
 }
 
 namespace RuntimeInstalledProviders {
+bool prepare() { return inventoryAvailable; }
 bool nextProvider(const char* cap, uint32_t api, size_t* cursor, char* id, size_t capacity) {
   assert(cap && std::strcmp(cap, "serial.port") == 0 && api == 1);
   if (!cursor || !id || capacity < 16 || *cursor >= count) return false;
@@ -55,6 +57,7 @@ RuntimeInstalledProviders::CandidateDecision probe(const void* capability, void*
 void reset() {
   acquisitions = releases = probes = failAcquireAt = failReleaseAt = faultProbeAt = 0;
   acceptProbeAt = 2;
+  inventoryAvailable = true;
 }
 
 int main() {
@@ -114,5 +117,19 @@ int main() {
   assert(selectNext("serial.port", 1, &cursor, probe, nullptr, &selected) ==
          SelectionResult::Fault);
   assert(!selected.grant.slot && acquisitions == 1 && probes == 0 && cursor == 1);
-  std::puts("Generic selector admits fourth installed class and retains faults: PASS");
+
+  // Inventory/read/verification fault must not masquerade as an ordinary
+  // device-class nonmatch, even when there are zero physical grants.
+  reset();
+  cursor = 0;
+  inventoryAvailable = false;
+  assert(selectNext("serial.port", 1, &cursor, probe, nullptr, &selected) ==
+         SelectionResult::Fault);
+  assert(cursor == 0 && !selected.grant.slot && !acquisitions && !probes);
+  inventoryAvailable = true;
+  acceptProbeAt = 4;
+  assert(selectNext("serial.port", 1, &cursor, probe, nullptr, &selected) ==
+         SelectionResult::Selected && selected.grant.slot == 4);
+  assert(release(&selected));
+  std::puts("Generic selector admits fourth installed class and retains inventory faults: PASS");
 }
