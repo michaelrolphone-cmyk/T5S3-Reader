@@ -47,6 +47,18 @@ typedef struct {
                      uint32_t timeout_ms);
     bool (*close)(uint64_t session);
 } risc_usb_cdc_api_v1;
+
+/* Append-only class-owned discovery extension. The original serial.port@1
+ * function-table prefix and provider manifest API remain unchanged. probe()
+ * MUST be non-mutating: it can inspect descriptors through its host ELF, but
+ * MUST NOT claim an interface, create a session, configure, or send controls.
+ * Return 1=match, 0=definite nonmatch, negative=identity/descriptor failure.
+ * A caller must never try another candidate on negative/uncertain results.
+ * open() still revalidates and performs all physical work in the class ELF. */
+typedef struct {
+    risc_usb_cdc_api_v1 serial;
+    int32_t (*probe)(uint64_t device);
+} risc_usb_serial_class_discovery_v1;
 #ifdef __cplusplus
 }
 #endif
