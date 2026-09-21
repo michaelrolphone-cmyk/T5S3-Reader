@@ -67,6 +67,8 @@ class Registry final {
     if (rx) *rx = 0;
     if (tx) *tx = 0;
     if (!request || !lease || !rx || !tx) return T5_SERIAL_INVALID;
+    // An orphan private lease has no app-visible handle. It must be retried
+    // by end(), never silently displaced by another provider's acquisition.
     if (active_ || releasing_) return T5_SERIAL_BUSY;
     if (generation_ >= 0x7fffffffu) return T5_SERIAL_LIMIT;
 
@@ -94,15 +96,21 @@ class Registry final {
     t5_serial_port_lease_t privateLease = 0;
     t5_stream_t newRx = 0, newTx = 0;
     const auto result = p.acquire(p.context, request, &privateLease, &newRx, &newTx);
-    if (result != T5_SERIAL_OK) return result;
+    if (result != T5_SERIAL_OK) {
+      // A provider may fail after returning a partial physical acquisition.
+      // Its release failure is not proof of cleanup: retain exact ownership.
+      if (privateLease) (void)discardOrRetain(*selected, privateLease);
+      return result;
+    }
     if (!privateLease || !newRx || !newTx || newRx == newTx) {
-      if (privateLease) (void)p.release(p.context, privateLease);
+      if (privateLease) (void)discardOrRetain(*selected, privateLease);
       return T5_SERIAL_IO;
     }
     ++generation_;
     publicLease_ = (generation_ << 1u) | 1u;
     privateLease_ = privateLease;
     active_ = selected;
+    orphaned_ = false;
     *lease = publicLease_;
     *rx = newRx;
     *tx = newTx;
@@ -132,15 +140,21 @@ class Registry final {
     // provider refuses or cannot prove physical quiescence.
     releasing_ = true;
     const auto result = p.release(p.context, privateLease);
-    if (result == T5_SERIAL_OK) {
-      active_ = nullptr;
-      publicLease_ = privateLease_ = 0;
-    }
+    if (result == T5_SERIAL_OK) clearActive();
     releasing_ = false;
     return result;
   }
   void end() {
-    if (active_) (void)release(publicLease_);
+    if (orphaned_ && active_) {
+      // The consumer never received a public lease. Only the registry can
+      // retry this exact private handle, including across repeated end().
+      releasing_ = true;
+      if (active_->provider.release(active_->provider.context, privateLease_) == T5_SERIAL_OK)
+        clearActive();
+      releasing_ = false;
+    } else if (active_) {
+      (void)release(publicLease_);
+    }
   }
   bool leased() const { return active_ != nullptr; }
 
@@ -150,12 +164,31 @@ class Registry final {
     char name[kNameBytes]{};
     bool used = false;
   };
+  bool discardOrRetain(Slot& selected, t5_serial_port_lease_t privateLease) {
+    releasing_ = true;
+    const bool released = selected.provider.release(selected.provider.context, privateLease) ==
+                          T5_SERIAL_OK;
+    releasing_ = false;
+    if (!released) {
+      active_ = &selected;
+      privateLease_ = privateLease;
+      publicLease_ = 0;
+      orphaned_ = true;
+    }
+    return released;
+  }
+  void clearActive() {
+    active_ = nullptr;
+    publicLease_ = privateLease_ = 0;
+    orphaned_ = false;
+  }
   bool valid(t5_serial_port_lease_t lease) const {
-    return active_ && !releasing_ && lease != 0 && lease == publicLease_;
+    return active_ && !orphaned_ && !releasing_ && lease != 0 && lease == publicLease_;
   }
   Slot slots_[kMaxProviders]{};
   Slot* active_ = nullptr;
   bool releasing_ = false;
+  bool orphaned_ = false;
   uint32_t generation_ = 0;
   t5_serial_port_lease_t publicLease_ = 0, privateLease_ = 0;
 };
