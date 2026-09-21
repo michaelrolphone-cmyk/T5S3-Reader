@@ -38,6 +38,7 @@ compile_run serial-provider-registry "$repo/test/streams/serial_provider_registr
 compile_run serial-structured-diagnostic "$repo/test/streams/serial_structured_diagnostic_test.cpp"
 compile_run serial-failed-acquire "$repo/test/streams/serial_failed_acquire_test.cpp"
 compile_run serial-provider-bridge "$serial" "$checked" "$repo/test/streams/serial_provider_bridge_test.cpp"
+compile_run serial-diagnostic-context "$serial" "$checked" "$repo/test/streams/serial_diagnostic_context_test.cpp"
 compile_run usb-semantic-bridge "$serial" "$checked" "$repo/test/streams/usb_semantic_bridge_test.cpp"
 compile_run usb-discovery-tick "$serial" "$checked" "$repo/test/streams/usb_discovery_tick_test.cpp"
 compile_run usb-device-abi "$serial" "$checked" "$repo/src/native/NativeDeviceBridge.cpp" \
