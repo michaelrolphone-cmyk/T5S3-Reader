@@ -211,6 +211,18 @@ static bool parse(size_t length, cdc_session *out) {
     out->ep_out = chosen_out;
     return true;
 }
+/* Provider-owned matching is read-only. A failed descriptor read is UNKNOWN,
+ * not a nonmatch that authorizes trying a different class. */
+static int32_t probe_device(uint64_t device) {
+    if (!host || !device) return -1;
+    size_t length = sizeof(config_bytes);
+    uint16_t vid = 0, pid = 0;
+    if (!host->configuration(host->context, device, config_bytes, &length,
+                             &vid, &pid)) return -1;
+    (void)vid; (void)pid;
+    cdc_session candidate = {0};
+    return parse(length, &candidate) ? 1 : 0;
+}
 static uint64_t open_device(uint64_t device) {
     if (!host || !device) return 0;
     cdc_session *slot = 0;
@@ -281,14 +293,15 @@ static bool close_device(uint64_t token) {
     cdc_session *s = lookup(token);
     return s && release_session(s);
 }
-static const risc_usb_cdc_api_v1 capability = {
-    RISC_USB_CDC_API_V1, sizeof(risc_usb_cdc_api_v1),
-    open_device, configure, control_lines, read_data, write_data, close_device
+static const risc_usb_serial_class_discovery_v1 capability = {
+    {RISC_USB_CDC_API_V1, sizeof(risc_usb_serial_class_discovery_v1),
+     open_device, configure, control_lines, read_data, write_data, close_device},
+    probe_device
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
     "usb-cdc-acm-v2", "serial.port", RISC_USB_CDC_API_V1,
-    &capability, start, stop, quiesce
+    &capability.serial, start, stop, quiesce
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
