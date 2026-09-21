@@ -44,11 +44,11 @@ static bool release_checked(void *ctx, uint64_t token) {
 static void release_claim(void *ctx, uint64_t token) {
     (void)release_checked(ctx, token);
 }
-static int32_t control(void *ctx, uint64_t device, uint8_t type, uint8_t request,
+static int32_t control(void *ctx, uint64_t claim_token, uint8_t type, uint8_t request,
                        uint16_t value, uint16_t index, uint8_t *data,
                        uint16_t length, uint32_t timeout) {
     (void)ctx;
-    assert(device == 7 && timeout == 1000 && controls < 32);
+    assert(claim_token == 17 && timeout == 1000 && controls < 32);
     types[controls] = type; requests[controls] = request;
     values[controls] = value; indices[controls] = index;
     ++controls;
@@ -93,7 +93,7 @@ int main(int argc, char **argv) {
     risc_usb_host_discovery_v1 host = {
         {RISC_USB_HOST_API_V1, sizeof(host), NULL,
          configuration, claim, release_claim, control, read_data, write_data},
-        NULL, NULL, release_checked
+        NULL, NULL, release_checked, control
     };
     dep.api = &host.host;
     assert(driver->start(&dep, 1));
@@ -142,6 +142,6 @@ int main(int argc, char **argv) {
     assert(!serial->open(7));
     driver->stop();
     assert(dlclose(lib) == 0);
-    puts("CH34x ELF protocol, checked release, orphan recovery and quiescence: PASS");
+    puts("CH34x ELF protocol, scoped control, orphan recovery and quiescence: PASS");
     return 0;
 }
