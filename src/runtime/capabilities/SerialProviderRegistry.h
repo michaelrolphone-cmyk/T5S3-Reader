@@ -5,9 +5,9 @@
 #include <cstdint>
 #include <cstring>
 
-// Semantic serial providers own physical lifecycle. The owner task serializes
-// registrations and lease calls; uncertain release pins the exact private
-// token without keeping an ended invocation's public handle usable.
+// Semantic serial providers own their physical lifecycle. The owner task
+// serializes operations; uncertain release pins the exact private token while
+// an ended invocation's public handle becomes unusable.
 namespace RuntimeSerial {
 struct Provider {
   const char* id = nullptr;
@@ -24,12 +24,19 @@ struct Provider {
   t5_serial_result_t (*set_control_lines)(void*, t5_serial_port_lease_t,
                                           bool, bool) = nullptr;
   t5_serial_result_t (*release)(void*, t5_serial_port_lease_t) = nullptr;
+  // Optional, read-only structured status from the selected provider. Never
+  // scrape logging buffers, start hardware, retry a grant or return payloads.
+  bool (*diagnostic)(void*, t5_serial_diagnostic_t*) = nullptr;
 };
 
 class Registry final {
  public:
   static constexpr size_t kMaxProviders = 4;
   static constexpr size_t kNameBytes = 32;
+  struct Failure {
+    char provider[kNameBytes]{};
+    t5_serial_diagnostic_t diagnostic{};
+  };
 
   bool add(const Provider& provider) {
     if (active_ || releasing_ || !provider.id || !provider.available || !provider.matches ||
@@ -60,18 +67,24 @@ class Registry final {
     return false;
   }
 
+  // Stable copied diagnostic from the most recent unsuccessful acquire. A
+  // successful acquire clears it. No provider pointer crosses this boundary.
+  bool lastFailure(Failure* out) const {
+    if (!out || !failed_) return false;
+    *out = failure_;
+    return true;
+  }
+
   t5_serial_result_t acquire(const t5_serial_port_request_t* request,
                              t5_serial_port_lease_t* lease,
                              t5_stream_t* rx, t5_stream_t* tx) {
     if (lease) *lease = 0;
     if (rx) *rx = 0;
     if (tx) *tx = 0;
-    if (!request || !lease || !rx || !tx) return T5_SERIAL_INVALID;
-    // A failed open or an ended invocation may retain a private token. Retry
-    // precisely that release ONCE; never admit a new provider while uncertain.
-    if (orphaned_ && !retryOrphan()) return T5_SERIAL_BUSY;
-    if (active_ || releasing_) return T5_SERIAL_BUSY;
-    if (generation_ >= 0x7fffffffu) return T5_SERIAL_LIMIT;
+    if (!request || !lease || !rx || !tx) return fail(T5_SERIAL_INVALID);
+    if (orphaned_ && !retryOrphan()) return fail(T5_SERIAL_BUSY, active_);
+    if (active_ || releasing_) return fail(T5_SERIAL_BUSY, active_);
+    if (generation_ >= 0x7fffffffu) return fail(T5_SERIAL_LIMIT);
 
     Slot* selected = nullptr;
     bool selectedAvailable = false;
@@ -80,7 +93,7 @@ class Registry final {
       const Provider& p = slot.provider;
       if (request->device) {
         if (!p.matches(p.context, request->device)) continue;
-        if (selected) return T5_SERIAL_INVALID;
+        if (selected) return fail(T5_SERIAL_INVALID); // Ambiguous device selector.
         selected = &slot;
         selectedAvailable = p.available(p.context);
       } else {
@@ -91,18 +104,20 @@ class Registry final {
         }
       }
     }
-    if (!selected) return request->device ? T5_SERIAL_INVALID : T5_SERIAL_UNSUPPORTED;
-    if (!selectedAvailable) return T5_SERIAL_UNSUPPORTED;
+    if (!selected) return fail(request->device ? T5_SERIAL_INVALID : T5_SERIAL_UNSUPPORTED);
+    if (!selectedAvailable) return fail(T5_SERIAL_UNSUPPORTED, selected);
     const Provider& p = selected->provider;
     t5_serial_port_lease_t privateLease = 0;
     t5_stream_t newRx = 0, newTx = 0;
     const auto result = p.acquire(p.context, request, &privateLease, &newRx, &newTx);
     if (result != T5_SERIAL_OK) {
-      // No failed-open stream or private grant is ever published to the app.
+      // Snapshot provider status BEFORE attempted cleanup can overwrite it.
+      (void)fail(result, selected);
       if (privateLease) (void)discardOrRetain(*selected, privateLease);
       return result;
     }
     if (!privateLease || !newRx || !newTx || newRx == newTx) {
+      (void)fail(T5_SERIAL_IO, selected);
       if (privateLease) (void)discardOrRetain(*selected, privateLease);
       return T5_SERIAL_IO;
     }
@@ -111,6 +126,8 @@ class Registry final {
     privateLease_ = privateLease;
     active_ = selected;
     orphaned_ = false;
+    failed_ = false;
+    failure_ = {};
     *lease = publicLease_;
     *rx = newRx;
     *tx = newTx;
@@ -145,9 +162,8 @@ class Registry final {
   void end() {
     if (orphaned_) { (void)retryOrphan(); return; }
     if (!active_) return;
-    // The execution context is ending. Even if hardware refuses teardown,
-    // revoke this context's public handle immediately while preserving the
-    // exact private token and provider pin for checked retry by the owner.
+    // Context exit revokes public use immediately even if physical cleanup
+    // must be retried by a later invocation on the same provider generation.
     if (release(publicLease_) != T5_SERIAL_OK) {
       orphaned_ = true;
       publicLease_ = 0;
@@ -161,6 +177,26 @@ class Registry final {
     char name[kNameBytes]{};
     bool used = false;
   };
+  t5_serial_result_t fail(t5_serial_result_t result, const Slot* slot = nullptr) {
+    failed_ = true;
+    failure_ = {};
+    failure_.diagnostic.result = result;
+    if (!slot) return result;
+    std::memcpy(failure_.provider, slot->name, sizeof(failure_.provider));
+    if (!slot->provider.diagnostic) return result;
+    t5_serial_diagnostic_t status{};
+    if (!slot->provider.diagnostic(slot->provider.context, &status)) return result;
+    failure_.diagnostic.provider_error = status.provider_error;
+    // Status text is copied and made printable; an ELF cannot smuggle an
+    // unterminated string or binary serial payload into the consumer UI.
+    for (size_t i = 0; i + 1 < sizeof(failure_.diagnostic.detail); ++i) {
+      const unsigned char ch = static_cast<unsigned char>(status.detail[i]);
+      if (!ch) break;
+      failure_.diagnostic.detail[i] = ch >= 0x20u && ch <= 0x7eu
+          ? static_cast<char>(ch) : '?';
+    }
+    return result;
+  }
   bool retryOrphan() {
     if (!orphaned_ || !active_ || !privateLease_ || releasing_) return false;
     releasing_ = true;
@@ -195,6 +231,8 @@ class Registry final {
   Slot* active_ = nullptr;
   bool releasing_ = false;
   bool orphaned_ = false;
+  bool failed_ = false;
+  Failure failure_{};
   uint32_t generation_ = 0;
   t5_serial_port_lease_t publicLease_ = 0, privateLease_ = 0;
 };
