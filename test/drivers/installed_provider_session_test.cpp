@@ -7,11 +7,12 @@ namespace {
 unsigned acquired = 0, released = 0, probed = 0, recovered = 0;
 bool rejectFirst = false, failFirstRelease = false;
 bool failedAcquireWithGrant = false, failedAcquireWithoutGrant = false;
-bool permitRecovery = false;
+bool permitRecovery = false, permitInventory = true;
 int first = 11, second = 22;
 }
 
 namespace RuntimeInstalledProviders {
+bool prepare() { return permitInventory; }
 bool nextProvider(const char* capability, uint32_t version, size_t* cursor,
                   char* id, size_t capacity) {
   assert(capability && std::strcmp(capability, "serial.port") == 0);
@@ -56,6 +57,7 @@ void reset() {
   acquired = released = probed = recovered = 0;
   rejectFirst = failFirstRelease = false;
   failedAcquireWithGrant = failedAcquireWithoutGrant = permitRecovery = false;
+  permitInventory = true;
 }
 
 int main() {
@@ -123,6 +125,17 @@ int main() {
            SelectionResult::Selected && acquired == 2);
     assert(session.interface() == &second);
     assert(session.releaseChecked());
+  }
+
+  // Failed verification must never resemble ordinary empty inventory or
+  // activate an arbitrary later provider.
+  reset(); cursor = 0;
+  permitInventory = false;
+  {
+    SelectedSession session;
+    assert(session.select("serial.port", 1, &cursor, probe, nullptr) ==
+           SelectionResult::Fault && session.faulted());
+    assert(acquired == 0 && probed == 0 && cursor == 0);
   }
   std::puts("Generic installed-provider session ownership tests passed");
 }
