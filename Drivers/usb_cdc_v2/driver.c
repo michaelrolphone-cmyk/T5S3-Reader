@@ -58,7 +58,7 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         !api->bulk_read || !api->bulk_write) return false;
     const risc_usb_host_discovery_v1 *discovery =
         (const risc_usb_host_discovery_v1 *)api;
-    if (!discovery->release_checked) return false;
+    if (!discovery->release_checked || !discovery->control_claim) return false;
     host = api;
     host_discovery = discovery;
     return true;
@@ -251,15 +251,15 @@ static bool configure(uint64_t token, uint32_t baud, uint8_t bits,
     uint8_t payload[7] = {(uint8_t)baud, (uint8_t)(baud >> 8),
         (uint8_t)(baud >> 16), (uint8_t)(baud >> 24),
         stop_bits == 2 ? 2u : 0u, parity, bits};
-    return host->control(host->context, s->device, 0x21, 0x20, 0,
-                         s->control_interface, payload, 7, 1000) == 7;
+    return host_discovery->control_claim(host->context, s->control_claim, 0x21, 0x20, 0,
+                                         s->control_interface, payload, 7, 1000) == 7;
 }
 static bool control_lines(uint64_t token, bool dtr, bool rts) {
     cdc_session *s = lookup(token);
     if (!s || s->orphaned || !s->control_claim || !s->data_claim) return false;
     uint16_t value = (uint16_t)((dtr ? 1u : 0u) | (rts ? 2u : 0u));
-    return host->control(host->context, s->device, 0x21, 0x22, value,
-                         s->control_interface, 0, 0, 1000) == 0;
+    return host_discovery->control_claim(host->context, s->control_claim, 0x21, 0x22, value,
+                                         s->control_interface, 0, 0, 1000) == 0;
 }
 static int32_t read_data(uint64_t token, uint8_t *dst, size_t capacity,
                          uint32_t timeout_ms) {
