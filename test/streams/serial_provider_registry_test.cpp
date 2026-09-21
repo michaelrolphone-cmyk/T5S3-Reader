@@ -76,8 +76,7 @@ int main() {
   assert(registry.status(lease, &state) == T5_SERIAL_OK && state.device == usb.device);
   assert(registry.control(lease, true, false) == T5_SERIAL_OK && usb.controls == 1);
 
-  // Physical release failure retains the *same* public handle. No new owner
-  // may acquire the provider or unload it until an explicit retry succeeds.
+  // Explicit release failure preserves the live handle for its owner's retry.
   usb.failRelease = true;
   assert(registry.release(lease) == T5_SERIAL_IO && registry.leased());
   t5_serial_port_lease_t refused = 91;
@@ -117,6 +116,29 @@ int main() {
   assert(lease != stale);
   registry.end();
 
+  // Context exit is NOT an ordinary failed release: the old invocation's
+  // public lease must be revoked immediately, but the private device token
+  // must remain pinned and retried without permitting a second provider.
+  assert(registry.acquire(&request, &lease, &rx, &tx) == T5_SERIAL_OK);
+  const auto exitedLease = lease;
+  const int oldAcquired = usb.acquired;
+  usb.failRelease = true;
+  registry.end();
+  assert(registry.leased());
+  assert(registry.configure(exitedLease, &request.config) == T5_SERIAL_CLOSED);
+  assert(registry.release(exitedLease) == T5_SERIAL_CLOSED);
+  assert(!registry.remove("usb.serial"));
+  registry.end(); // Retry failed: do not detach or acquire another provider.
+  assert(registry.acquire(&request, &lease, &rx, &tx) == T5_SERIAL_BUSY);
+  assert(!lease && !rx && !tx && usb.acquired == oldAcquired);
+  usb.failRelease = false;
+  registry.end(); // Same private lease can now quiesce successfully.
+  assert(!registry.leased());
+  assert(registry.acquire(&request, &lease, &rx, &tx) == T5_SERIAL_OK);
+  assert(lease && lease != exitedLease && usb.acquired == oldAcquired + 1);
+  registry.end();
+  assert(!registry.leased());
+
   assert(registry.add(make("fourth.serial", 20, fourth)));
   assert(registry.add(make("fifth.serial", 30, fifth)));
   Fake sixth{11};
@@ -124,5 +146,5 @@ int main() {
   assert(registry.remove("fourth.serial"));
   assert(registry.add(make("sixth.serial", 40, sixth)));
   assert(!registry.remove("missing.serial"));
-  std::puts("Bounded serial provider resolver and generation tests passed");
+  std::puts("Bounded serial provider resolver, context-end quarantine and generation tests passed");
 }
