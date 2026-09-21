@@ -49,7 +49,7 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         !api->bulk_read || !api->bulk_write) return false;
     const risc_usb_host_discovery_v1 *extension =
         (const risc_usb_host_discovery_v1 *)api;
-    if (!extension->release_checked) return false;
+    if (!extension->release_checked || !extension->control_claim) return false;
     host = api;
     discovery = extension;
     return true;
@@ -118,11 +118,12 @@ static bool parse(size_t length, ch_session *result) {
     *result = found;
     return true;
 }
-static int32_t command(uint64_t device, uint8_t request_type, uint8_t request,
+static int32_t command(uint64_t claim, uint8_t request_type, uint8_t request,
                        uint16_t value, uint16_t index, uint8_t *payload,
                        uint16_t length) {
-    return host->control(host->context, device, request_type, request, value,
-                         index, payload, length, 1000);
+    if (!discovery || !claim) return -1;
+    return discovery->control_claim(host->context, claim, request_type, request, value,
+                                    index, payload, length, 1000);
 }
 static bool divisor(uint32_t speed, uint8_t version, uint16_t *out) {
     if (!out || speed < 300u || speed > 3000000u) return false;
@@ -176,8 +177,8 @@ static uint64_t open_device(uint64_t device) {
     if (!host->claim(host->context, device, candidate.iface, candidate.alt,
                      &candidate.claim) || !candidate.claim) return 0;
     uint8_t version[2] = {0};
-    if (command(device, 0xc0u, 0x5fu, 0, 0, version, 2) != 2 ||
-        command(device, 0x40u, 0xa1u, 0, 0, 0, 0) != 0) {
+    if (command(candidate.claim, 0xc0u, 0x5fu, 0, 0, version, 2) != 2 ||
+        command(candidate.claim, 0x40u, 0xa1u, 0, 0, 0, 0) != 0) {
         /* Claim was acquired, but the open failed before returning a token.
          * Retain an orphan in this slot if physical release is uncertain. */
         if (!discovery->release_checked(host->context, candidate.claim)) {
@@ -199,7 +200,7 @@ static bool configure(uint64_t token, uint32_t baud, uint8_t bits,
         return false;
     uint16_t value = 0;
     if (!divisor(baud, s->version, &value) ||
-        command(s->device, 0x40u, 0x9au, 0x1312u, value, 0, 0) != 0)
+        command(s->claim, 0x40u, 0x9au, 0x1312u, value, 0, 0) != 0)
         return false;
     if (s->version >= 0x30u) {
         uint8_t lcr = (uint8_t)(0xc0u | (bits - 5u));
@@ -211,7 +212,7 @@ static bool configure(uint64_t token, uint32_t baud, uint8_t bits,
             default: break;
         }
         if (stops == 2) lcr |= 0x04u;
-        if (command(s->device, 0x40u, 0x9au, 0x2518u, lcr, 0, 0) != 0)
+        if (command(s->claim, 0x40u, 0x9au, 0x2518u, lcr, 0, 0) != 0)
             return false;
     }
     return true;
@@ -222,7 +223,7 @@ static bool control_lines(uint64_t token, bool dtr, bool rts) {
     uint8_t control = 0;
     if (rts) control |= 0x40u;
     if (dtr) control |= 0x20u;
-    return command(s->device, 0x40u, 0xa4u,
+    return command(s->claim, 0x40u, 0xa4u,
                    (uint16_t)~(uint16_t)control, 0, 0, 0) == 0;
 }
 static int32_t read_data(uint64_t token, uint8_t *dst, size_t capacity,
