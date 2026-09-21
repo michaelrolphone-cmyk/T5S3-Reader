@@ -13,7 +13,7 @@ static const uint8_t configuration_bytes[] = {
 static uint16_t vendor = 0x1a86, product = 0x7523;
 static uint8_t version = 0x30;
 static int claimed, releases, release_attempts, controls, fail_request = -1, reads, writes;
-static bool fail_release;
+static bool fail_release, fail_configuration;
 static uint8_t requests[32], types[32];
 static uint16_t values[32], indices[32];
 
@@ -21,7 +21,8 @@ static bool configuration(void *ctx, uint64_t device, uint8_t *data,
                           size_t *length, uint16_t *vid, uint16_t *pid) {
     (void)ctx;
     assert(device == 7);
-    if (!data || !length || *length < sizeof(configuration_bytes)) return false;
+    if (fail_configuration || !data || !length ||
+        *length < sizeof(configuration_bytes)) return false;
     memcpy(data, configuration_bytes, sizeof(configuration_bytes));
     *length = sizeof(configuration_bytes);
     *vid = vendor; *pid = product;
@@ -84,7 +85,10 @@ int main(int argc, char **argv) {
     assert(driver && strcmp(driver->driver_id, "usb-ch34x-v2") == 0);
     assert(strcmp(driver->capability_id, "serial.port") == 0);
     const risc_usb_cdc_api_v1 *serial = (const risc_usb_cdc_api_v1 *)driver->capability;
-    assert(serial && serial->api_version == 1 && serial->struct_size == sizeof(*serial));
+    assert(serial && serial->api_version == 1 && serial->struct_size >= sizeof(*serial));
+    const risc_usb_serial_class_discovery_v1 *probe =
+        (const risc_usb_serial_class_discovery_v1 *)serial;
+    assert(serial->struct_size >= sizeof(*probe) && probe->probe);
     assert(!driver->start(NULL, 0));
     risc_usb_host_api_v1 legacy = {RISC_USB_HOST_API_V1, sizeof(legacy), NULL,
         configuration, claim, release_claim, control, read_data, write_data};
@@ -99,8 +103,13 @@ int main(int argc, char **argv) {
     assert(driver->start(&dep, 1));
     assert(!driver->start(&dep, 1) && driver->quiesce());
     vendor = 0x10c4;
+    assert(probe->probe(7) == 0 && claimed == 0 && controls == 0);
     assert(!serial->open(7) && claimed == 0);
     vendor = 0x1a86;
+    assert(probe->probe(7) == 1 && claimed == 0 && controls == 0);
+    fail_configuration = true;
+    assert(probe->probe(7) < 0 && claimed == 0 && controls == 0);
+    fail_configuration = false;
     fail_request = 0xa1;
     fail_release = true;
     assert(!serial->open(7) && claimed == 1 && releases == 0);
@@ -139,9 +148,9 @@ int main(int argc, char **argv) {
     assert(controls == before + 1 && requests[controls - 1] == 0x9a);
     assert(serial->close(old) && driver->quiesce());
     vendor = 0x1234;
-    assert(!serial->open(7));
+    assert(probe->probe(7) == 0 && !serial->open(7));
     driver->stop();
     assert(dlclose(lib) == 0);
-    puts("CH34x ELF protocol, scoped control, orphan recovery and quiescence: PASS");
+    puts("CH34x ELF probe, protocol, scoped control, orphan recovery: PASS");
     return 0;
 }
