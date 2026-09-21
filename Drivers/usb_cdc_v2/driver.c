@@ -58,7 +58,8 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         !api->bulk_read || !api->bulk_write) return false;
     const risc_usb_host_discovery_v1 *discovery =
         (const risc_usb_host_discovery_v1 *)api;
-    if (!discovery->release_checked || !discovery->control_claim) return false;
+    if (!discovery->poll || !discovery->devices ||
+        !discovery->release_checked || !discovery->control_claim) return false;
     host = api;
     host_discovery = discovery;
     return true;
@@ -223,6 +224,38 @@ static int32_t probe_device(uint64_t device) {
     cdc_session candidate = {0};
     return parse(length, &candidate) ? 1 : 0;
 }
+
+/* CDC itself announces coherent, generation-bound devices. A descriptor
+ * failure makes the entire inventory uncertain; no claimed session is
+ * touched, no partial enumeration is exposed and no firmware USB scan runs. */
+static bool snapshot_devices(risc_serial_device_v1 *out, size_t *inout_count) {
+    if (!host || !host_discovery || !inout_count) return false;
+    size_t processed = 0;
+    if (!host_discovery->poll(host->context, 16, &processed)) return false;
+    uint64_t tokens[RISC_USB_HOST_MAX_DEVICES] = {0};
+    size_t count = RISC_USB_HOST_MAX_DEVICES;
+    if (!host_discovery->devices(host->context, tokens, &count) ||
+        count > RISC_USB_HOST_MAX_DEVICES) return false;
+    risc_serial_device_v1 found[RISC_USB_HOST_MAX_DEVICES] = {{0}};
+    size_t matches = 0;
+    for (size_t i = 0; i < count; ++i) {
+        if (!tokens[i]) return false;
+        const int32_t result = probe_device(tokens[i]);
+        if (result < 0) return false;
+        if (!result) continue;
+        found[matches].provider_device = tokens[i];
+        found[matches].generation = tokens[i];
+        found[matches].transport = RISC_SERIAL_TRANSPORT_USB;
+        ++matches;
+    }
+    if (*inout_count < matches || (matches && !out)) {
+        *inout_count = matches;
+        return false;
+    }
+    for (size_t i = 0; i < matches; ++i) out[i] = found[i];
+    *inout_count = matches;
+    return true;
+}
 static uint64_t open_device(uint64_t device) {
     if (!host || !device) return 0;
     cdc_session *slot = 0;
@@ -293,15 +326,16 @@ static bool close_device(uint64_t token) {
     cdc_session *s = lookup(token);
     return s && release_session(s);
 }
-static const risc_usb_serial_class_discovery_v1 capability = {
-    {RISC_USB_CDC_API_V1, sizeof(risc_usb_serial_class_discovery_v1),
-     open_device, configure, control_lines, read_data, write_data, close_device},
-    probe_device
+static const risc_usb_serial_class_inventory_v1 capability = {
+    {{RISC_USB_CDC_API_V1, sizeof(risc_usb_serial_class_inventory_v1),
+      open_device, configure, control_lines, read_data, write_data, close_device},
+     probe_device},
+    snapshot_devices
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
     "usb-cdc-acm-v2", "serial.port", RISC_USB_CDC_API_V1,
-    &capability.serial, start, stop, quiesce
+    &capability.discovery.serial, start, stop, quiesce
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
