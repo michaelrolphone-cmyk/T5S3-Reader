@@ -24,3 +24,6 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/usb_hid_quiesce_test.c" -ldl -o "$build/hid-quiesce-test"
 "$build/hid-quiesce-test" "$build/usb_hid.so" \
   "$build/usb_hid_keyboard.so" "$build/usb_hid_gamepad.so"
+cc -std=c11 -Wall -Wextra -Werror \
+  "$repo/test/native_apps/text_editor_core_test.c" -o "$build/text-editor-test"
+"$build/text-editor-test"
