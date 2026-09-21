@@ -22,7 +22,8 @@ t5_stream_t rxHandle = 0;
 t5_stream_t txHandle = 0;
 uint32_t leaseGeneration = 0;
 uint32_t leaseEpoch = 0;
-// Host callbacks publish snapshots; only the owner task touches the registry.
+// Transitional observations are host-originated; application lease changes
+// must never manufacture a physical disconnect or a fresh device identity.
 NativeUsbDevices::Registry devices;
 RuntimeDevices::UsbSerialProjection usbProjection(RuntimeDevices::systemRegistry());
 RuntimeDevices::LeaseHandle physicalLease = 0;
@@ -32,7 +33,6 @@ UsbConsumer physicalConsumer = UsbConsumer::None;
 RuntimeSerial::Registry providers;
 t5_serial_config_t currentConfig = {115200u, 8u, T5_SERIAL_PARITY_NONE, 1u, T5_SERIAL_FLOW_NONE};
 
-// State transitions, not serial payloads or every poll, are logged.
 t5_serial_port_lease_t lastLoggedLease = 0;
 uint8_t lastLoggedStatus = 0xff;
 uint8_t lastLoggedConnected = 0xff;
@@ -142,8 +142,8 @@ bool leaseRevoked() {
   return devices.epoch() != leaseEpoch || leaseEpoch == UINT32_MAX;
 }
 
-// Never relinquish stream/physical leases if the installed ELF has an
-// uncertain physical close. The old code cleared both unconditionally.
+// Checked class teardown precedes any stream/physical-lease release. Device
+// presence belongs to its provider, not this application lease.
 bool clearLease(bool stopUsb) {
   if (stopUsb && !nativeUsbClassStopChecked()) return false;
   if (rxHandle) (void)nativeStreamCloseOwned(rxHandle);
@@ -152,9 +152,25 @@ bool clearLease(bool stopUsb) {
   releasePhysicalDevice(UsbConsumer::SerialPort);
   leaseHandle = 0;
   leaseEpoch = 0;
-  devices.detach();
   synchronizeUsbDevice();
   return true;
+}
+
+// The generic serial registry must receive an exact PRIVATE token on every
+// failed open whose class close cannot be verified. It immediately retries
+// release and retains the token across contexts if the retry also fails.
+// No token or unpublished streams escape to an application on an error.
+t5_serial_result_t failedOpen(t5_serial_port_lease_t pending,
+                              t5_serial_port_lease_t* privateLease,
+                              t5_serial_result_t result) {
+  if (!nativeUsbClassStopChecked()) {
+    leaseHandle = pending;
+    leaseEpoch = devices.epoch();
+    if (privateLease) *privateLease = pending;
+  } else {
+    releasePhysicalDevice(UsbConsumer::SerialPort);
+  }
+  return result;
 }
 
 t5_serial_result_t usbAcquirePort(const t5_serial_port_request_t* request,
@@ -175,50 +191,45 @@ t5_serial_result_t usbAcquirePort(const t5_serial_port_request_t* request,
 
   if (!nativeUsbClassEnsureInstalled()) return T5_SERIAL_UNSUPPORTED;
   if (!nativeUsbClassAvailable()) return T5_SERIAL_UNSUPPORTED;
-  if (!nativeUsbClassStart(request->config)) return T5_SERIAL_IO;
+  // Reserve an identity BEFORE touching hardware, including for an open that
+  // fails after obtaining a physical session but before publishing streams.
+  const t5_serial_port_lease_t pending = ((++leaseGeneration) << 1u) | 1u;
+  if (!nativeUsbClassStart(request->config))
+    return failedOpen(pending, lease, T5_SERIAL_IO);
   const uint32_t startEpoch = devices.epoch();
-  if (startEpoch == UINT32_MAX) {
-    (void)nativeUsbClassStopChecked();
-    return T5_SERIAL_LIMIT;
-  }
+  if (startEpoch == UINT32_MAX)
+    return failedOpen(pending, lease, T5_SERIAL_LIMIT);
 
   t5_stream_t newRx = 0, newTx = 0;
   const auto streamResult = nativeStreamOpenUsbPair(&newRx, &newTx);
   if (streamResult != T5_STREAM_OK) {
-    (void)nativeUsbClassStopChecked();
-    devices.detach();
-    synchronizeUsbDevice();
-    if (streamResult == T5_STREAM_BUSY) return T5_SERIAL_BUSY;
-    if (streamResult == T5_STREAM_UNSUPPORTED) return T5_SERIAL_UNSUPPORTED;
-    if (streamResult == T5_STREAM_DENIED) return T5_SERIAL_DENIED;
-    if (streamResult == T5_STREAM_LIMIT) return T5_SERIAL_LIMIT;
-    return T5_SERIAL_IO;
+    if (streamResult == T5_STREAM_BUSY)
+      return failedOpen(pending, lease, T5_SERIAL_BUSY);
+    if (streamResult == T5_STREAM_UNSUPPORTED)
+      return failedOpen(pending, lease, T5_SERIAL_UNSUPPORTED);
+    if (streamResult == T5_STREAM_DENIED)
+      return failedOpen(pending, lease, T5_SERIAL_DENIED);
+    if (streamResult == T5_STREAM_LIMIT)
+      return failedOpen(pending, lease, T5_SERIAL_LIMIT);
+    return failedOpen(pending, lease, T5_SERIAL_IO);
   }
   const bool detached = devices.epoch() != startEpoch;
   if (detached || !claimPhysicalDevice(UsbConsumer::SerialPort)) {
     (void)nativeStreamCloseOwned(newRx);
     (void)nativeStreamCloseOwned(newTx);
-    if (nativeUsbClassStopChecked())
-      releasePhysicalDevice(UsbConsumer::SerialPort);
-    devices.detach();
-    synchronizeUsbDevice();
-    return detached ? T5_SERIAL_DISCONNECTED : T5_SERIAL_BUSY;
+    return failedOpen(pending, lease,
+                      detached ? T5_SERIAL_DISCONNECTED : T5_SERIAL_BUSY);
   }
 
-  // The pair is not usable until its exact owner and class generation are
-  // attached. Do not return orphaned streams to a consumer on attach failure.
+  // Never return an unattached pair. A failure still retains its private
+  // physical token if the class refuses checked close.
   auto* owner = RuntimeResources::ExecutionContext::current();
   if (!owner || !nativeUsbClassAttachPair(owner->id(), newRx, newTx)) {
     (void)nativeStreamCloseOwned(newRx);
     (void)nativeStreamCloseOwned(newTx);
-    if (nativeUsbClassStopChecked())
-      releasePhysicalDevice(UsbConsumer::SerialPort);
-    devices.detach();
-    synchronizeUsbDevice();
-    return T5_SERIAL_IO;
+    return failedOpen(pending, lease, T5_SERIAL_IO);
   }
-  ++leaseGeneration;
-  leaseHandle = (leaseGeneration << 1u) | 1u;
+  leaseHandle = pending;
   leaseEpoch = startEpoch;
   rxHandle = newRx;
   txHandle = newTx;
@@ -413,8 +424,16 @@ bool nativeUsbDirectStreamClaim(uint32_t expectedEpoch) {
 void nativeUsbDirectStreamRelease() { releasePhysicalDevice(UsbConsumer::DirectStream); }
 
 void nativeSerialPortsBegin() {
-  if (!clearLease(false)) return;
+  // A previous context may have died during checked physical teardown.
+  // Only the generic registry may retry its retained PRIVATE provider token;
+  // clearing bridge handles here would turn an exact retry into a stale ID.
   active = true;
+  providers.end();
+  if (providers.leased() || leaseHandle) {
+    active = false;
+    traceResult("context-begin-quarantined", T5_SERIAL_BUSY, leaseHandle, 0);
+    return;
+  }
   resetStatusTrace();
   synchronizeUsbDevice();
   ensureUsbRegistered();
@@ -422,15 +441,17 @@ void nativeSerialPortsBegin() {
 }
 void nativeSerialPortsEnd() {
   providers.end();
-  if (leaseHandle && !clearLease(true)) {
-    // Do not release physical ownership while class teardown is uncertain.
+  if (providers.leased() || leaseHandle) {
+    // The old provider generation remains pinned. Do not reset its handles or
+    // release its physical lease until its exact checked close succeeds.
     active = false;
     traceResult("context-end-quarantined", T5_SERIAL_IO, leaseHandle, 0);
     return;
   }
   releasePhysicalDevice(UsbConsumer::SerialPort);
   releasePhysicalDevice(UsbConsumer::DirectStream);
-  devices.detach();
+  // A physical device can outlive this app context. Only its installed
+  // provider may announce detach; context teardown does not revoke identity.
   synchronizeUsbDevice();
   active = false;
   resetStatusTrace();
