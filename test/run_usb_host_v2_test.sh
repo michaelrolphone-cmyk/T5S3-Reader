@@ -48,6 +48,15 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
 "$build/usb-host-class-integration-test" "$build/usb-host-v2.so" \
   "$build/usb-cdc.so" "$build/usb-cp210x.so" "$build/usb-ch34x.so"
 
+# The EXACT same production ELFs also announce their own coherent devices.
+# A short inventory, uncertain physical identity or reconnect cannot create
+# a partial healthy snapshot or claim/transfer hardware during discovery.
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/usb_class_inventory_integration_test.c" -ldl \
+  -o "$build/usb-class-inventory-test"
+"$build/usb-class-inventory-test" "$build/usb-host-v2.so" \
+  "$build/usb-cdc.so" "$build/usb-cp210x.so" "$build/usb-ch34x.so"
+
 exports="$(nm -D --defined-only "$build/usb-host-v2.so" | awk '{print $3}')"
 [[ "$exports" == "t5_driver_get" ]] || { echo "Unexpected host ELF exports: $exports" >&2; exit 1; }
 if nm -D --undefined-only "$build/usb-host-v2.so" | grep -E 'usb_host_|nativeUsb|UsbCdcDriverRuntime|t5_usb_'; then
