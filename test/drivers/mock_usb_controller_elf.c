@@ -1,7 +1,7 @@
-#include "RiscUsbControllerV1.h"
+#include "RiscUsbInterruptV1.h"
 
 /* TEST FIXTURE ONLY. It does not operate ESP32 silicon and MUST NOT be
- * catalog-published. The production usb.controller provider remains missing. */
+ * catalog-published. Physical host/controller remain separate ELF providers. */
 static const uint8_t configuration_bytes[] = {
     9,2,41,0,2,1,0,0x80,50,
     9,4,0,0,0,2,2,1,0,
@@ -70,11 +70,18 @@ static int32_t write_bulk(void *ctx, uint64_t token, uint8_t endpoint,
         !src || !length || length > RISC_USB_CONFIG_LIMIT) return -1;
     return (int32_t)length;
 }
+static int32_t read_interrupt(void *ctx, uint64_t token, uint8_t endpoint,
+                              uint8_t *dst, size_t capacity, uint32_t timeout) {
+    (void)ctx; (void)token; (void)endpoint; (void)dst;
+    (void)capacity; (void)timeout;
+    return -1; /* This fixture models a bulk-only CDC device. */
+}
 static bool controller_quiesce(void *ctx) { (void)ctx; return claims == 0; }
-static const risc_usb_controller_api_v1 api = {
-    RISC_USB_CONTROLLER_API_V1, sizeof(risc_usb_controller_api_v1), 0,
-    next_event, configuration, claim, release_claim, control,
-    read_bulk, write_bulk, controller_quiesce
+static const risc_usb_controller_interrupt_v1 api = {
+    {RISC_USB_CONTROLLER_API_V1, sizeof(risc_usb_controller_interrupt_v1), 0,
+     next_event, configuration, claim, release_claim, control,
+     read_bulk, write_bulk, controller_quiesce},
+    read_interrupt
 };
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     if (running || deps || count) return false;
@@ -87,7 +94,7 @@ static void stop(void) { if (quiesce()) running = false; }
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
     "fixture-usb-controller", "usb.controller", RISC_USB_CONTROLLER_API_V1,
-    &api, start, stop, quiesce
+    &api.controller, start, stop, quiesce
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t version) {
