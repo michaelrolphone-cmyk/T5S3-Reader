@@ -4,9 +4,10 @@
 #include <cstring>
 
 namespace {
-unsigned acquired = 0, released = 0, probed = 0;
+unsigned acquired = 0, released = 0, probed = 0, recovered = 0;
 bool rejectFirst = false, failFirstRelease = false;
 bool failedAcquireWithGrant = false, failedAcquireWithoutGrant = false;
+bool permitRecovery = false;
 int first = 11, second = 22;
 }
 
@@ -36,6 +37,12 @@ bool release(Lease* lease) {
   *lease = {};
   return true;
 }
+bool recoverFailedProvider(const char* id, const char* capability, uint32_t version) {
+  assert(id && std::strcmp(id, "candidate.0") == 0);
+  assert(capability && std::strcmp(capability, "serial.port") == 0 && version == 1);
+  ++recovered;
+  return permitRecovery;
+}
 }
 
 RuntimeInstalledProviders::CandidateDecision probe(const void* value, void*) {
@@ -46,9 +53,9 @@ RuntimeInstalledProviders::CandidateDecision probe(const void* value, void*) {
   return RuntimeInstalledProviders::CandidateDecision::Accepted;
 }
 void reset() {
-  acquired = released = probed = 0;
+  acquired = released = probed = recovered = 0;
   rejectFirst = failFirstRelease = false;
-  failedAcquireWithGrant = failedAcquireWithoutGrant = false;
+  failedAcquireWithGrant = failedAcquireWithoutGrant = permitRecovery = false;
 }
 
 int main() {
@@ -93,11 +100,12 @@ int main() {
            SelectionResult::Fault);
     assert(session.acquired() && session.faulted() && !session.interface());
     assert(probed == 0 && acquired == 1);
-    assert(session.releaseChecked() && released == 1);
+    assert(session.releaseChecked() && released == 1 && recovered == 0);
   }
 
-  // A failed activation WITHOUT a grant may retain untracked physical state.
-  // It cannot be silently reset by the session's ordinary release path.
+  // An activation WITHOUT a grant may retain physical state. Failed recovery
+  // must NOT try another candidate or clear quarantine. A later successful
+  // quiescence recovers ONLY candidate.0, then candidate.1 becomes admissible.
   reset(); cursor = 0;
   failedAcquireWithoutGrant = true;
   {
@@ -105,9 +113,16 @@ int main() {
     assert(session.select("serial.port", 1, &cursor, probe, nullptr) ==
            SelectionResult::Fault);
     assert(!session.acquired() && session.faulted());
-    assert(!session.releaseChecked());
+    assert(!session.releaseChecked() && recovered == 1);
     assert(session.select("serial.port", 1, &cursor, probe, nullptr) ==
            SelectionResult::Fault && acquired == 1 && released == 0);
+    permitRecovery = true;
+    assert(session.releaseChecked() && !session.faulted() && recovered == 2);
+    failedAcquireWithoutGrant = false;
+    assert(session.select("serial.port", 1, &cursor, probe, nullptr) ==
+           SelectionResult::Selected && acquired == 2);
+    assert(session.interface() == &second);
+    assert(session.releaseChecked());
   }
   std::puts("Generic installed-provider session ownership tests passed");
 }
