@@ -25,6 +25,11 @@ bool nextProvider(const char* capability, uint32_t version, size_t* cursor,
 bool acquire(const char* providerId, const char* capability, uint32_t version,
              Lease* out);
 bool release(Lease* lease);
+// Retry a failed activation that returned NO grant. The exact provider is
+// quiesced before its dependencies are released; no unrelated ELF is stopped.
+// An uncertain quiesce leaves the mapping and graph pinned for later retry.
+bool recoverFailedProvider(const char* providerId, const char* capability,
+                           uint32_t version);
 // Refuses destruction while any provider is still granted or not quiescent.
 // An unsuccessful shutdown deliberately retains every ELF and package pin.
 bool shutdown();
