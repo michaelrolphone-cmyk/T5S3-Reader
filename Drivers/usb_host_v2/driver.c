@@ -256,27 +256,35 @@ static bool release_checked(void *ctx, uint64_t token) {
 static void release_claim(void *ctx, uint64_t token) {
     (void)release_checked(ctx, token);
 }
+/* The legacy device-token control slot cannot identify which class calls it.
+ * Retain its ABI offset but disable execution; all installed classes must use
+ * the append-only exact-claim entry point instead. */
 static int32_t control(void *ctx, uint64_t token, uint8_t type,
                        uint8_t request, uint16_t value, uint16_t index,
                        uint8_t *payload, uint16_t length, uint32_t timeout) {
+    (void)ctx; (void)token; (void)type; (void)request; (void)value;
+    (void)index; (void)payload; (void)length; (void)timeout;
+    return -1;
+}
+static int32_t control_claim(void *ctx, uint64_t token, uint8_t type,
+                             uint8_t request, uint16_t value, uint16_t index,
+                             uint8_t *payload, uint16_t length, uint32_t timeout) {
     (void)ctx;
-    device_slot *d = device_for(token);
-    if (!d || length > RISC_USB_CONFIG_LIMIT || (length && !payload) ||
-        !timeout) return -1;
+    claim_slot *c = claim_for(token);
+    if (!c || !device_for(c->device_token) || !timeout ||
+        length > RISC_USB_CONFIG_LIMIT || (length && !payload)) return -1;
     const uint8_t recipient = type & 0x1fu;
-    if ((recipient != 0u && recipient != 1u) ||
-        (recipient == 1u && index > 255u)) return -1;
-    /* CH34x uses device-recipient vendor control, CDC and CP210x use interface
-     * recipient controls. Both require a live nonclosing claim for THIS device;
-     * no arbitrary app or failed-open class may issue requests before claim. */
-    bool authorized = false;
-    for (size_t i = 0; i < RISC_USB_HOST_MAX_CLAIMS; ++i)
-        if (claims[i].token && !claims[i].closing &&
-            claims[i].device_token == token &&
-            (recipient != 1u || claims[i].interface_number == (uint8_t)index)) {
-            authorized = true; break;
-        }
-    if (!authorized) return -1;
+    if (recipient == 1u) {
+        if (index > 255u || (uint8_t)index != c->interface_number) return -1;
+    } else if (recipient == 0u) {
+        /* Device-wide commands require exclusive ownership on that device.
+         * A second class's claim (including a closing one) denies access. */
+        for (size_t i = 0; i < RISC_USB_HOST_MAX_CLAIMS; ++i)
+            if (claims[i].token && claims[i].token != token &&
+                claims[i].device_token == c->device_token) return -1;
+    } else return -1;
+    device_slot *d = device_for(c->device_token);
+    if (!d) return -1;
     int32_t n = controller->control(controller->context, d->physical, type,
                                     request, value, index, payload,
                                     length, timeout);
@@ -310,7 +318,7 @@ static const risc_usb_host_discovery_v1 interface = {
     {RISC_USB_HOST_API_V1, sizeof(risc_usb_host_discovery_v1), 0,
      configuration, claim_interface, release_claim, control,
      bulk_read, bulk_write},
-    poll_devices, list_devices, release_checked
+    poll_devices, list_devices, release_checked, control_claim
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
