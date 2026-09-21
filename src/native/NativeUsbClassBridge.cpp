@@ -136,7 +136,16 @@ bool nativeUsbClassAvailable() {
 #endif
   return valid(ops) && (!token || started);
 }
-bool nativeUsbClassBound() { return valid(ops); }
+// A failed candidate can own an ELF grant without a bound stream table. The
+// compatibility bridge must observe that obligation and retry checked release
+// during serialStop(), not skip it as if no class had ever been acquired.
+bool nativeUsbClassBound() {
+#if defined(ESP_PLATFORM)
+  return valid(ops) || installedClass.grant.slot != 0;
+#else
+  return valid(ops);
+#endif
+}
 bool nativeUsbClassHasDataPlane() { return session.bound(); }
 uint64_t nativeUsbClassToken() { return token; }
 void nativeUsbClassObserveDevice(uint64_t device) {
