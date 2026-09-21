@@ -75,6 +75,20 @@ static int32_t write_data(void *ctx, uint64_t token, uint8_t endpoint,
     assert(data[0] == 'H' && data[1] == 'I');
     ++writes; return 2;
 }
+static bool poll(void *ctx, size_t maximum, size_t *processed) {
+    (void)ctx;
+    if (!maximum || !processed) return false;
+    *processed = 0;
+    return true;
+}
+static bool devices(void *ctx, uint64_t *out, size_t *count) {
+    (void)ctx;
+    if (!count) return false;
+    if (*count < 1 || !out) { *count = 1; return false; }
+    out[0] = 7;
+    *count = 1;
+    return true;
+}
 int main(int argc, char **argv) {
     assert(argc == 2);
     void *lib = dlopen(argv[1], RTLD_NOW);
@@ -89,6 +103,9 @@ int main(int argc, char **argv) {
     const risc_usb_serial_class_discovery_v1 *probe =
         (const risc_usb_serial_class_discovery_v1 *)serial;
     assert(serial->struct_size >= sizeof(*probe) && probe->probe);
+    const risc_usb_serial_class_inventory_v1 *inventory =
+        (const risc_usb_serial_class_inventory_v1 *)serial;
+    assert(serial->struct_size >= sizeof(*inventory) && inventory->snapshot);
     assert(!driver->start(NULL, 0));
     risc_usb_host_api_v1 legacy = {RISC_USB_HOST_API_V1, sizeof(legacy), NULL,
         configuration, claim, release_claim, control, read_data, write_data};
@@ -100,14 +117,25 @@ int main(int argc, char **argv) {
         NULL, NULL, release_checked, control
     };
     dep.api = &host.host;
+    assert(!driver->start(&dep, 1));
+    host.poll = poll; host.devices = devices;
     assert(driver->start(&dep, 1));
     assert(!driver->start(&dep, 1) && driver->quiesce());
+    risc_serial_device_v1 observed[1] = {{0}};
+    size_t observed_count = 1;
+    assert(inventory->snapshot(observed, &observed_count) && observed_count == 1 &&
+           observed[0].provider_device == 7 && observed[0].generation == 7 &&
+           observed[0].transport == RISC_SERIAL_TRANSPORT_USB && !claimed && !controls);
     vendor = 0x10c4;
+    observed_count = 1;
+    assert(inventory->snapshot(observed, &observed_count) && !observed_count);
     assert(probe->probe(7) == 0 && claimed == 0 && controls == 0);
     assert(!serial->open(7) && claimed == 0);
     vendor = 0x1a86;
     assert(probe->probe(7) == 1 && claimed == 0 && controls == 0);
     fail_configuration = true;
+    observed_count = 1;
+    assert(!inventory->snapshot(observed, &observed_count));
     assert(probe->probe(7) < 0 && claimed == 0 && controls == 0);
     fail_configuration = false;
     fail_request = 0xa1;
@@ -151,6 +179,6 @@ int main(int argc, char **argv) {
     assert(probe->probe(7) == 0 && !serial->open(7));
     driver->stop();
     assert(dlclose(lib) == 0);
-    puts("CH34x ELF probe, protocol, scoped control, orphan recovery: PASS");
+    puts("CH34x ELF inventory, protocol, scoped control, orphan recovery: PASS");
     return 0;
 }
