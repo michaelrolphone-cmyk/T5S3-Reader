@@ -35,7 +35,10 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         !api->bulk_read || !api->bulk_write) return false;
     const risc_usb_host_discovery_v1 *extended =
         (const risc_usb_host_discovery_v1 *)api;
-    if (!extended->release_checked) return false;
+    /* A detached CP210x cannot acknowledge its UART-disable vendor request.
+     * Require provider-owned discovery to distinguish detach from failed I/O. */
+    if (!extended->poll || !extended->devices || !extended->release_checked)
+        return false;
     host = api;
     discovery = extended;
     return true;
@@ -45,14 +48,36 @@ static int32_t command(uint64_t device, uint8_t iface, uint8_t req,
     return host->control(host->context, device, 0x41u, req, value, iface,
                          payload, length, 1000);
 }
-/* Disabling UART and releasing the claim are independent. A successful
- * disable is not repeated if a later release fails; the same physical claim
- * is retained until release_checked acknowledges teardown. */
+
+/* The host ELF is the sole authority for physical presence. A failed poll or
+ * inventory is UNKNOWN, not detach: keep the claim and dependent VBUS lease.
+ * Poll before snapshot so a queued unplug cannot strand UART disable forever.
+ * The eight-device scan is bounded; never infer detach from a vendor NACK. */
+static bool attached(uint64_t device, bool *present) {
+    if (!host || !discovery || !device || !present) return false;
+    size_t processed = 0;
+    if (!discovery->poll(host->context, 16, &processed)) return false;
+    uint64_t tokens[RISC_USB_HOST_MAX_DEVICES] = {0};
+    size_t count = RISC_USB_HOST_MAX_DEVICES;
+    if (!discovery->devices(host->context, tokens, &count) ||
+        count > RISC_USB_HOST_MAX_DEVICES) return false;
+    *present = false;
+    for (size_t i = 0; i < count; ++i)
+        if (tokens[i] == device) { *present = true; break; }
+    return true;
+}
+
+/* UART disable and claim release are independent acknowledged stages. If the
+ * host confirms detach, USB vendor controls can no longer succeed: skip that
+ * impossible operation and release the SAME claim through the checked API.
+ * While attached, failed UART disable remains uncertain and pins the claim. */
 static bool close_device(uint64_t token) {
     cp_session *s = lookup(token);
     if (!s || !discovery) return false;
     if (!s->disabled) {
-        if (command(s->device, s->interface_number, 0x00u, 0, 0, 0) != 0)
+        bool present = false;
+        if (!attached(s->device, &present)) return false;
+        if (present && command(s->device, s->interface_number, 0x00u, 0, 0, 0) != 0)
             return false;
         s->disabled = true;
     }
