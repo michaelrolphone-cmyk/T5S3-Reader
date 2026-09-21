@@ -85,7 +85,14 @@ class InstalledSerialInventory final {
           fault_ = true;
           return Result::Fault;
         }
-        *slot = Slot{};
+        slot = nullptr;
+        // The candidate has been verified quiescent, so it may be forgotten.
+        // Reuse its reserved slot at a later enumeration without touching it.
+        for (Slot& released : slots_)
+          if (released.occupied && !std::strcmp(released.id, id)) {
+            released = Slot{};
+            break;
+          }
         continue;
       }
       slot->devices.reset(new (std::nothrow) RuntimeDevices::SerialProviderDevices(registry_));
@@ -145,7 +152,9 @@ class InstalledSerialInventory final {
       }
       slot = Slot{};
     }
-    if (ok) fault_ = false;
+    // A partially stopped graph must not be rediscovered or rebound. Only
+    // another stopChecked() may retry the exact retained provider generation.
+    fault_ = !ok;
     return ok;
   }
   bool faulted() const { return fault_; }
