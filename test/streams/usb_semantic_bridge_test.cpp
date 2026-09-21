@@ -13,11 +13,12 @@
 #include <cstdio>
 #include <cstring>
 
+void nativeUsbTestFailCheckedStop(bool fail); // test-only checked-close injection
 namespace {
 t5_app_api_v1 app{};
 t5_usb_api_v1 usb{};
 t5_usb_serial_state_t state{};
-bool streamBusy = false;
+bool streamBusy = false, rejectOpenPair = false;
 unsigned starts = 0, stops = 0, closes = 0;
 bool classStarted = false;
 }
@@ -51,6 +52,7 @@ bool nativeUsbClassReadState(t5_usb_serial_state_t* out) {
 }
 bool nativeStreamUsbIsBusy() { return streamBusy; }
 t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
+  if (rejectOpenPair) return T5_STREAM_IO; // Fail AFTER physical class open.
   if (!rx || !tx || streamBusy) return T5_STREAM_BUSY;
   *rx = 11; *tx = 12; streamBusy = true;
   return T5_STREAM_OK;
@@ -124,6 +126,24 @@ int main() {
   assert(stops == 1 && closes == 2 && devices.count() == 1 && devices.leaseCount() == 0);
   RuntimeDevices::DeviceInfo stillPresent{};
   assert(devices.get(replacement.handle, &stillPresent));
+
+  // Fail after a class session opened but before publishing endpoints. A
+  // checked-close failure returns a private token ONLY to the generic owner.
+  // No app may use it; retry cannot activate another provider until quiescent.
+  rejectOpenPair = true;
+  nativeUsbTestFailCheckedStop(true);
+  lease = rx = tx = 91;
+  assert(serial->acquire(&request, &lease, &rx, &tx) == T5_SERIAL_IO);
+  assert(!lease && !rx && !tx && starts == 2 && stops == 1);
+  assert(serial->acquire(&request, &lease, &rx, &tx) == T5_SERIAL_BUSY);
+  assert(!lease && !rx && !tx && starts == 2 && stops == 1);
+  nativeUsbTestFailCheckedStop(false);
+  rejectOpenPair = false;
+  assert(serial->acquire(&request, &lease, &rx, &tx) == T5_SERIAL_OK);
+  assert(lease && rx == 11 && tx == 12 && starts == 3 && stops == 2);
+  assert(serial->release(lease) == T5_SERIAL_OK);
+  assert(stops == 3 && closes == 4 && devices.count() == 1 && devices.leaseCount() == 0);
+
   nativeSerialPortsEnd();
   assert(devices.count() == 1 && devices.get(replacement.handle, &stillPresent));
   invocation.end();
@@ -132,5 +152,5 @@ int main() {
   nativeUsbProviderDetach();
   nativeDeviceDiscoveryTick();
   assert(devices.count() == 0 && devices.leaseCount() == 0);
-  std::puts("USB semantic device identity survives consumer lease/context teardown");
+  std::puts("USB serial failed-open quarantine, retry and persistent device identity");
 }
