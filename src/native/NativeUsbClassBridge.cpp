@@ -1,7 +1,7 @@
 #include "NativeUsbClassBridge.h"
 #include <RiscUsbProviderV1.h>
 #if defined(ESP_PLATFORM)
-#include "runtime/drivers/InstalledProviderGraph.h"
+#include "runtime/drivers/InstalledProviderSelector.h"
 #endif
 #include <cstring>
 
@@ -58,6 +58,18 @@ bool apiValid(const risc_usb_cdc_api_v1* api) {
 RuntimeUsb::ClassPort portFromOps(const NativeUsbClassOps& o) {
   return {o.context, o.open, o.configure, o.control, o.read, o.write, o.close};
 }
+#if defined(ESP_PLATFORM)
+// The runtime chooses admitted package candidates and owns checked rejected
+// grants. This adapter only validates the common serial interface and binds
+// its byte-stream shuttle; vendor matching happens in the class ELF open().
+RuntimeInstalledProviders::CandidateDecision probeInstalled(const void* candidate, void*) {
+  if (!apiValid(static_cast<const risc_usb_cdc_api_v1*>(candidate)))
+    return RuntimeInstalledProviders::CandidateDecision::Unsupported;
+  return nativeUsbClassBindApi(candidate)
+      ? RuntimeInstalledProviders::CandidateDecision::Accepted
+      : RuntimeInstalledProviders::CandidateDecision::Fault;
+}
+#endif
 }  // namespace
 
 bool nativeUsbClassBind(const NativeUsbClassOps& incoming) {
@@ -115,10 +127,8 @@ bool nativeUsbClassUnbindChecked() {
 void nativeUsbClassUnbind() { (void)nativeUsbClassUnbindChecked(); }
 void nativeUsbClassStop() { (void)nativeUsbClassStopChecked(); }
 
-// Availability is evaluated BEFORE ProviderRegistry calls acquire. Lazily
-// resolve the installed class once here, or serial.port is undiscoverable on a
-// cold boot despite a fully installed driver. Repeated calls with a valid
-// bound table do not rescan the SD card or rehash the package.
+// Transitional compatibility availability: the generic runtime scans
+// installed serial.port provider manifests, not hardcoded class IDs.
 bool nativeUsbClassAvailable() {
 #if defined(ESP_PLATFORM)
   if (!valid(ops) && !token && !session.token() && !candidateFault)
@@ -221,36 +231,19 @@ bool nativeUsbClassBindNextInstalled(size_t* cursor, bool* faulted) {
     return false;
   }
   if (!cursor || token || session.token() || valid(ops)) return false;
-  char id[96]{};
-  while (RuntimeInstalledProviders::nextProvider("serial.port", 1, cursor,
-                                                 id, sizeof(id))) {
-    RuntimeInstalledProviders::Lease grant{};
-    // A failed start may retain hardware even if acquire returned no grant.
-    // Stop selection rather than trying another class after that ambiguity.
-    if (!RuntimeInstalledProviders::acquire(id, "serial.port", 1, &grant)) {
-      candidateFault = true;
-      if (faulted) *faulted = true;
-      return false;
-    }
-    if (!apiValid(static_cast<const risc_usb_cdc_api_v1*>(grant.interface))) {
-      if (!RuntimeInstalledProviders::release(&grant)) {
-        installedClass = grant;
-        candidateFault = true;
-        if (faulted) *faulted = true;
-        return false;
-      }
-      continue;
-    }
-    if (!nativeUsbClassBindApi(grant.interface)) {
-      // Keep the exact grant for explicit retry if release fails. A binding
-      // failure is not ordinary device rejection, unlike open() returning 0.
-      if (!RuntimeInstalledProviders::release(&grant)) installedClass = grant;
-      candidateFault = true;
-      if (faulted) *faulted = true;
-      return false;
-    }
-    installedClass = grant;
+  RuntimeInstalledProviders::Lease selected{};
+  const auto outcome = RuntimeInstalledProviders::selectNext(
+      "serial.port", 1, cursor, probeInstalled, nullptr, &selected);
+  if (outcome == RuntimeInstalledProviders::SelectionResult::Selected) {
+    installedClass = selected;
     return true;
+  }
+  if (outcome == RuntimeInstalledProviders::SelectionResult::Fault) {
+    // Selection returns exact ownership if a reject/quiesce failed. No
+    // subsequent class may be considered until checked cleanup succeeds.
+    if (selected.grant.slot) installedClass = selected;
+    candidateFault = true;
+    if (faulted) *faulted = true;
   }
   return false;
 }
