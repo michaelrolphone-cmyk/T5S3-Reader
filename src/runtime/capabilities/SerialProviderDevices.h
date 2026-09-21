@@ -16,9 +16,8 @@ class SerialProviderDevices final {
  public:
   enum class Result : uint8_t { Updated, Uncertain, Invalid, RegistryFault };
   explicit SerialProviderDevices(Registry& registry)
-      : registry_(registry),
-        slots_{{registry}, {registry}, {registry}, {registry},
-               {registry}, {registry}, {registry}, {registry}} {}
+      : slots_{Slot(registry), Slot(registry), Slot(registry), Slot(registry),
+               Slot(registry), Slot(registry), Slot(registry), Slot(registry)} {}
   SerialProviderDevices(const SerialProviderDevices&) = delete;
   SerialProviderDevices& operator=(const SerialProviderDevices&) = delete;
 
@@ -109,6 +108,24 @@ class SerialProviderDevices final {
       if (slot.token == providerDevice && slot.generation == generation)
         return slot.publisher.device();
     return 0;
+  }
+  // Applications see only registry handles. Resolve back to an exact provider
+  // token/generation only while its same-generation publication remains live.
+  bool resolve(DeviceHandle handle, uint64_t* providerDevice, uint64_t* generation) const {
+    if (providerDevice) *providerDevice = 0;
+    if (generation) *generation = 0;
+    if (!handle || !providerDevice || !generation) return false;
+    for (const Slot& slot : slots_) {
+      if (slot.publisher.device() != handle || !slot.token || !slot.generation)
+        continue;
+      DeviceInfo live{};
+      // A stale registry generation cannot authorize physical reopen.
+      if (!registry_.get(handle, &live)) return false;
+      *providerDevice = slot.token;
+      *generation = slot.generation;
+      return true;
+    }
+    return false;
   }
   size_t count() const {
     size_t n = 0;
