@@ -35,7 +35,8 @@ class SelectedSession final {
       // On a grantless fault, retain a bounded immutable copy of the actual
       // failing candidate ID; a later retry must never target a different ELF.
       if (!next.grant.slot && failedId[0] && capability) {
-        const size_t length = std::strlen(capability);
+        size_t length = 0;
+        while (length < sizeof(capability_) && capability[length]) ++length;
         if (length && length < sizeof(capability_)) {
           std::memcpy(failedProvider_, failedId, sizeof(failedProvider_));
           std::memcpy(capability_, capability, length + 1);
