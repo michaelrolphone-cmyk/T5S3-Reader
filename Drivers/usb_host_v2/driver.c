@@ -162,6 +162,38 @@ static bool configuration(void *ctx, uint64_t token, uint8_t *bytes,
     size_t total = (size_t)bytes[2] | ((size_t)bytes[3] << 8);
     return total == *length;
 }
+/* This operation belongs to the host ELF. Firmware consumers receive opaque
+ * generation identities and presentation metadata, never USB descriptor data
+ * or an event-poll loop. Keep presence independent from identification so a
+ * temporary descriptor error cannot invent an unplug or revoke a live claim. */
+static bool snapshot(void *ctx, risc_usb_device_identity_v1 *out, size_t *count) {
+    if (!count) return false;
+    size_t processed = 0;
+    if (!poll_devices(ctx, 16, &processed)) return false;
+    size_t actual = 0;
+    for (size_t i = 0; i < RISC_USB_HOST_MAX_DEVICES; ++i)
+        if (devices[i].present) ++actual;
+    if (*count < actual || (actual && !out)) {
+        *count = actual;
+        return false;
+    }
+    size_t n = 0;
+    for (size_t i = 0; i < RISC_USB_HOST_MAX_DEVICES; ++i) {
+        if (!devices[i].present) continue;
+        risc_usb_device_identity_v1 entry = {0};
+        entry.token = devices[i].token;
+        size_t length = sizeof(descriptor);
+        uint16_t vid = 0, pid = 0;
+        if (configuration(ctx, entry.token, descriptor, &length, &vid, &pid)) {
+            entry.vid = vid;
+            entry.pid = pid;
+            entry.identified = 1;
+        }
+        out[n++] = entry;
+    }
+    *count = n;
+    return true;
+}
 static bool endpoints(uint64_t physical, uint8_t iface, uint8_t alt,
                       uint16_t *in, uint16_t *out) {
     size_t length = sizeof(descriptor);
@@ -314,16 +346,17 @@ static int32_t bulk_write(void *ctx, uint64_t token, uint8_t endpoint,
                                        endpoint, src, length, timeout);
     return n >= 0 && (size_t)n <= length ? n : -1;
 }
-static const risc_usb_host_discovery_v1 interface = {
-    {RISC_USB_HOST_API_V1, sizeof(risc_usb_host_discovery_v1), 0,
-     configuration, claim_interface, release_claim, control,
-     bulk_read, bulk_write},
-    poll_devices, list_devices, release_checked, control_claim
+static const risc_usb_host_snapshot_v1 interface = {
+    {{RISC_USB_HOST_API_V1, sizeof(risc_usb_host_snapshot_v1), 0,
+      configuration, claim_interface, release_claim, control,
+      bulk_read, bulk_write},
+     poll_devices, list_devices, release_checked, control_claim},
+    snapshot
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
     "usb-host-v2", "usb.host", RISC_USB_HOST_API_V1,
-    &interface.host, start, stop, quiesce
+    &interface.discovery.host, start, stop, quiesce
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
