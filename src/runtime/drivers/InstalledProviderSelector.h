@@ -29,7 +29,10 @@ inline SelectionResult selectNext(const char* capability, uint32_t api,
       out->grant.slot) return SelectionResult::Fault;
   *out = {};
   char id[96]{};
-  while (nextProvider(capability, api, cursor, id, sizeof(id))) {
+  for (;;) {
+    const auto next = nextProviderChecked(capability, api, cursor, id, sizeof(id));
+    if (next == EnumerationResult::Fault) return SelectionResult::Fault;
+    if (next == EnumerationResult::Exhausted) return SelectionResult::Exhausted;
     Lease candidate{};
     if (!acquire(id, capability, api, &candidate) || !candidate.grant.slot ||
         !candidate.interface) {
@@ -56,6 +59,5 @@ inline SelectionResult selectNext(const char* capability, uint32_t api,
       return SelectionResult::Fault;
     }
   }
-  return SelectionResult::Exhausted;
 }
 }  // namespace RuntimeInstalledProviders
