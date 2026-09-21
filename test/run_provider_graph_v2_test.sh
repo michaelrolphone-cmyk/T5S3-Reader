@@ -95,5 +95,13 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   -ldl -o "$build/destruction-test"
 "$build/destruction-test" "$build/stuck.so"
 
+# Select exclusively from installed semantic capabilities, pin uncertain
+# rejects, and never try another class after a failed acquire/probe/teardown.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/sdk/driver" -I"$repo/src" \
+  "$repo/test/drivers/installed_provider_selector_test.cpp" \
+  -o "$build/installed-selector-test"
+"$build/installed-selector-test"
+
 # Source check supplements the graph behavior test, not hardware acceptance.
 python3 "$repo/test/drivers/usb_dynamic_selection_source_test.py"
