@@ -18,9 +18,26 @@ bool prepare();
 // Enumerate verified candidates for one semantic capability and API version.
 // The cursor advances across inspected slots and never activates hardware.
 // The identity is copied into caller storage: no graph-owned pointer escapes.
-// False means exhausted, unavailable, or invalid; no execution grant results.
+// The legacy bool conflates exhaustion with invalid/unverified inventory.
 bool nextProvider(const char* capability, uint32_t version, size_t* cursor,
                   char* providerId, size_t capacity);
+enum class EnumerationResult : uint8_t { Candidate, Exhausted, Fault };
+// A corrupt, inaccessible or unverified inventory is NOT evidence that no
+// installed device class exists. Never silently fall through to a competing
+// provider after an inventory fault. Call on the same owner task as prepare().
+inline EnumerationResult nextProviderChecked(const char* capability,
+                                             uint32_t version, size_t* cursor,
+                                             char* providerId, size_t capacity) {
+    if (providerId && capacity) providerId[0] = 0;
+    if (!capability || !*capability || !version || !cursor || !providerId ||
+        capacity < 2 || !prepare()) return EnumerationResult::Fault;
+    // The verified installer bounds provider IDs to <64 bytes. Callers use a
+    // 96-byte identity buffer, so failure after successful prepare() is only
+    // normal exhaustion for this checked selector.
+    if (capacity < 96) return EnumerationResult::Fault;
+    return nextProvider(capability, version, cursor, providerId, capacity)
+        ? EnumerationResult::Candidate : EnumerationResult::Exhausted;
+}
 // Resolves the *named* installed provider, never an ambiguous first match.
 bool acquire(const char* providerId, const char* capability, uint32_t version,
              Lease* out);
