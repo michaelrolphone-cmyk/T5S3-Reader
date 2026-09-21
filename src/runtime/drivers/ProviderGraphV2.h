@@ -51,6 +51,28 @@ class GraphV2 final {
   size_t moduleCount() const { return count_; }
   size_t liveGrants() const;
 
+  // Recover only the exact provider whose activation failed before a grant
+  // could be issued. Never revoke a live or pending-release grant, unload a
+  // dependency held by another provider, or reset uncertain physical state.
+  // A failed quiesce keeps the mapped ELF and dependency pointers intact for
+  // a later checked retry; this is NOT a global graph shutdown.
+  bool recoverFailedFrom(const char* providerId, const char* capability, uint32_t api) {
+    const int target = findProvider(providerId, capability, api);
+    if (target < 0) return false;
+    const size_t index = static_cast<size_t>(target);
+    Node& node = nodes_[index];
+    if (node.visit == Visit::Visiting || node.module.consumers()) return false;
+    for (const GrantSlot& grant : grants_)
+      if (grant.occupied && grant.node == index) return false;
+    if (node.visit == Visit::Idle && node.module.state() == ModuleV2::State::Absent)
+      return true; // Failed before mapping, or already recovered.
+    if (node.module.state() != ModuleV2::State::Failed ||
+        !node.module.unload()) return false;
+    node.visit = Visit::Idle;
+    releaseDependencies(index); // Only after verified physical quiescence.
+    return true;
+  }
+
   // Enumerate only independently admitted package identities. Enumeration
   // grants no capability, invokes no ELF and permits multiple providers of
   // the same semantic capability. The caller must acquire the exact ID and
