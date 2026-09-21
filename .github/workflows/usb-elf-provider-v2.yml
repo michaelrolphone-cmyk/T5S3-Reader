@@ -8,12 +8,17 @@ on:
       - "Drivers/usb_ch34x_v2/**"
       - "Drivers/usb_host_v2/**"
       - "Drivers/usb_controller_esp32s3/**"
+      - "Drivers/usb_hid/**"
+      - "Drivers/usb_hid_keyboard/**"
+      - "Drivers/usb_hid_gamepad/**"
       - "Drivers/board_power_t5s3_v2/**"
       - "Drivers/i2c_esp32s3_v2/**"
       - "Drivers/platform_clock_v1/**"
       - "sdk/driver/RiscProviderV2.h"
       - "sdk/driver/RiscUsbProviderV1.h"
       - "sdk/driver/RiscUsbControllerV1.h"
+      - "sdk/driver/RiscUsbInterruptV1.h"
+      - "sdk/driver/RiscUsbHidV1.h"
       - "sdk/driver/RiscUsbVbusV1.h"
       - "sdk/driver/RiscI2cBusV1.h"
       - "sdk/driver/RiscFirmwareI2cCompatV1.h"
@@ -32,6 +37,7 @@ on:
       - "scripts/build_usb_cp210x_v2.py"
       - "scripts/build_usb_ch34x_v2.py"
       - "scripts/build_usb_host_v2.py"
+      - "scripts/build_usb_hid*.py"
       - "scripts/build_board_power_t5s3_v2.py"
       - "scripts/build_platform_clock_v1.py"
       - "scripts/probe_usb_controller_esp32s3.py"
@@ -43,6 +49,7 @@ on:
       - "test/drivers/usb_cp210x_v2*.c"
       - "test/drivers/usb_ch34x_v2*.c"
       - "test/drivers/usb_host_v2*.c"
+      - "test/drivers/usb_hid*.c"
       - "test/drivers/board_power_t5s3_v2_test.c"
       - "test/drivers/i2c_esp32s3_v2_test.c"
       - "test/drivers/platform_clock_v1_test.c"
@@ -58,6 +65,7 @@ on:
       - "test/run_usb_cp210x_v2_test.sh"
       - "test/run_usb_ch34x_v2_test.sh"
       - "test/run_usb_host_v2_test.sh"
+      - "test/run_usb_hid_test.sh"
       - "test/run_board_power_t5s3_v2_test.sh"
       - "test/run_i2c_esp32s3_v2_test.sh"
       - "test/run_platform_clock_v1_test.sh"
@@ -85,6 +93,8 @@ jobs:
           bash test/run_usb_cdc_v2_test.sh
           bash test/run_usb_cp210x_v2_test.sh
           bash test/run_usb_ch34x_v2_test.sh
+          bash test/run_usb_host_v2_test.sh
+          bash test/run_usb_hid_test.sh
           bash test/run_board_power_t5s3_v2_test.sh
           bash test/run_i2c_esp32s3_v2_test.sh
           bash test/run_platform_clock_v1_test.sh
@@ -114,6 +124,12 @@ jobs:
           bash test/run_native_app_test.sh dist/experimental/usb-ch34x-v2/driver.elf
           python scripts/build_usb_host_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-host-v2/driver.elf
+          python scripts/build_usb_hid.py
+          bash test/run_native_app_test.sh dist/experimental/usb-hid/driver.elf
+          python scripts/build_usb_hid_keyboard.py
+          bash test/run_native_app_test.sh dist/experimental/usb-hid-keyboard/driver.elf
+          python scripts/build_usb_hid_gamepad.py
+          bash test/run_native_app_test.sh dist/experimental/usb-hid-gamepad/driver.elf
           python scripts/build_board_power_t5s3_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-board-power-t5s3-v2/driver.elf
           python scripts/build_platform_clock_v1.py
@@ -121,8 +137,6 @@ jobs:
           bash test/run_native_app_test.sh dist/experimental/platform-clock-v1/driver.elf
       - name: Validate board-private C ABI and exact import matcher against linked ELFs
         run: |
-          # The firmware preflight admits the temporary I2C import only under
-          # BOARD_T5S3_PRO; compile its host test with the same target define.
           cc -std=gnu11 -O2 -Wall -Wextra -Werror -DBOARD_T5S3_PRO \
             -Itest/drivers/stub_os_cpu -Ilib/elf_loader/include \
             lib/elf_loader/src/esp_privileged_imports.c \
@@ -153,14 +167,16 @@ jobs:
         run: |
           python scripts/build_installed_usb_stack.py
           python test/drivers/installed_usb_stack_package_test.py
+          python scripts/export_canonical_driver_release.py
       - name: Preserve installable unsigned package directories and experimental binaries
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: usb-v2-elves-and-canonical-packages-unqualified-for-board
+          name: usb-v2-elves-and-hid-packages-unqualified-for-board
           path: |
             dist/experimental/usb-*/
             dist/experimental/i2c-*/
             dist/experimental/platform-clock-v1/
             dist/packages/
+            dist/release-packages/
           if-no-files-found: warn
