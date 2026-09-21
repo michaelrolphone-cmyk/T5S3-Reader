@@ -63,11 +63,11 @@ static bool devices(void *ctx, uint64_t *out, size_t *count) {
     *count = present ? 1u : 0u;
     return true;
 }
-static int32_t control(void *ctx, uint64_t dev, uint8_t type, uint8_t req,
+static int32_t control(void *ctx, uint64_t claim_token, uint8_t type, uint8_t req,
                        uint16_t value, uint16_t iface, uint8_t *data,
                        uint16_t length, uint32_t timeout) {
     (void)ctx;
-    assert(dev == 7 && present && type == 0x41 && iface == 0 && timeout == 1000);
+    assert(claim_token == 17 && present && type == 0x41 && iface == 0 && timeout == 1000);
     assert(controls < 32);
     requests[controls] = req;
     values[controls] = value;
@@ -117,7 +117,7 @@ int main(int argc, char **argv) {
     risc_usb_host_discovery_v1 host = {
         {RISC_USB_HOST_API_V1, sizeof(host), NULL, configuration, claim,
          release_claim, control, read_data, write_data},
-        NULL, devices, checked_release
+        NULL, devices, checked_release, control
     };
     dep.api = &host.host;
     assert(!driver->start(&dep, 1)); /* No reliable detach evidence. */
@@ -205,6 +205,6 @@ int main(int argc, char **argv) {
     assert(driver->quiesce());
     driver->stop();
     assert(dlclose(lib) == 0);
-    puts("CP210x checked release, unknown/detached recovery, vendor I/O and stale handles: PASS");
+    puts("CP210x claim-scoped control, release/detach recovery and stale handles: PASS");
     return 0;
 }
