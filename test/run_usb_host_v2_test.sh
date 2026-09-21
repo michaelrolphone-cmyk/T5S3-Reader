@@ -32,6 +32,22 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/usb_host_snapshot_test.c" -ldl \
   -o "$build/usb-host-snapshot-test"
 "$build/usb-host-snapshot-test" "$build/usb-host-v2.so"
+
+# Link the real independently installable class implementations against the
+# real host ELF in one simulated-controller run. No firmware USB bridge/mock
+# host is linked: descriptor matching, claims, class control and bulk transfer
+# all execute through provider-to-provider interfaces.
+for class in cdc cp210x ch34x; do
+  cc -std=c11 -Wall -Wextra -Werror -fPIC -fvisibility=hidden -shared \
+    -I"$repo/sdk/driver" "$repo/Drivers/usb_${class}_v2/driver.c" \
+    -o "$build/usb-${class}.so"
+done
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/usb_host_class_integration_test.c" -ldl \
+  -o "$build/usb-host-class-integration-test"
+"$build/usb-host-class-integration-test" "$build/usb-host-v2.so" \
+  "$build/usb-cdc.so" "$build/usb-cp210x.so" "$build/usb-ch34x.so"
+
 exports="$(nm -D --defined-only "$build/usb-host-v2.so" | awk '{print $3}')"
 [[ "$exports" == "t5_driver_get" ]] || { echo "Unexpected host ELF exports: $exports" >&2; exit 1; }
 if nm -D --undefined-only "$build/usb-host-v2.so" | grep -E 'usb_host_|nativeUsb|UsbCdcDriverRuntime|t5_usb_'; then
