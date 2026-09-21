@@ -49,7 +49,8 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         !api->bulk_read || !api->bulk_write) return false;
     const risc_usb_host_discovery_v1 *extension =
         (const risc_usb_host_discovery_v1 *)api;
-    if (!extension->release_checked || !extension->control_claim) return false;
+    if (!extension->poll || !extension->devices ||
+        !extension->release_checked || !extension->control_claim) return false;
     host = api;
     discovery = extension;
     return true;
@@ -173,6 +174,38 @@ static int32_t probe_device(uint64_t device) {
     ch_session candidate = {0};
     return parse(length, &candidate) ? 1 : 0;
 }
+
+/* The CH34x ELF itself enumerates its matching devices, not compiled core.
+ * The host owns token generations; uncertain identification never produces
+ * an empty healthy inventory or a partial result that could revoke leases. */
+static bool snapshot_devices(risc_serial_device_v1 *out, size_t *inout_count) {
+    if (!host || !discovery || !inout_count) return false;
+    size_t processed = 0;
+    if (!discovery->poll(host->context, 16, &processed)) return false;
+    uint64_t tokens[RISC_USB_HOST_MAX_DEVICES] = {0};
+    size_t count = RISC_USB_HOST_MAX_DEVICES;
+    if (!discovery->devices(host->context, tokens, &count) ||
+        count > RISC_USB_HOST_MAX_DEVICES) return false;
+    risc_serial_device_v1 found[RISC_USB_HOST_MAX_DEVICES] = {{0}};
+    size_t matches = 0;
+    for (size_t i = 0; i < count; ++i) {
+        if (!tokens[i]) return false;
+        const int32_t result = probe_device(tokens[i]);
+        if (result < 0) return false;
+        if (!result) continue;
+        found[matches].provider_device = tokens[i];
+        found[matches].generation = tokens[i];
+        found[matches].transport = RISC_SERIAL_TRANSPORT_USB;
+        ++matches;
+    }
+    if (*inout_count < matches || (matches && !out)) {
+        *inout_count = matches;
+        return false;
+    }
+    for (size_t i = 0; i < matches; ++i) out[i] = found[i];
+    *inout_count = matches;
+    return true;
+}
 static uint64_t open_device(uint64_t device) {
     if (!host || !discovery || !device || sequence == UINT64_MAX) return 0;
     ch_session *slot = 0;
@@ -261,15 +294,16 @@ static bool close_device(uint64_t token) {
      * next close retries the same physical token without a second owner. */
     return release_session(s);
 }
-static const risc_usb_serial_class_discovery_v1 capability = {
-    {RISC_USB_CDC_API_V1, sizeof(risc_usb_serial_class_discovery_v1),
-     open_device, configure, control_lines, read_data, write_data, close_device},
-    probe_device
+static const risc_usb_serial_class_inventory_v1 capability = {
+    {{RISC_USB_CDC_API_V1, sizeof(risc_usb_serial_class_inventory_v1),
+      open_device, configure, control_lines, read_data, write_data, close_device},
+     probe_device},
+    snapshot_devices
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
     "usb-ch34x-v2", "serial.port", RISC_USB_CDC_API_V1,
-    &capability.serial, start, stop, quiesce
+    &capability.discovery.serial, start, stop, quiesce
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
