@@ -52,6 +52,10 @@ int main() {
   const DeviceHandle first = devices.deviceFor(9, 9);
   const DeviceHandle second = devices.deviceFor(10, 10);
   assert(first && second && first != second);
+  uint64_t token = 0, generation = 0;
+  assert(devices.resolve(first, &token, &generation) && token == 9 && generation == 9);
+  assert(devices.resolve(second, &token, &generation) && token == 10 && generation == 10);
+  assert(!devices.resolve(0, &token, &generation) && !token && !generation);
   DeviceInfo info{};
   assert(registry.get(first, &info) && info.transport == Transport::Usb &&
          !std::strcmp(info.provider, "usb-cp210x-v2") &&
@@ -73,6 +77,7 @@ int main() {
          SerialProviderDevices::Result::Uncertain);
   assert(registry.valid(lease, 7) && registry.count() == 2 &&
          registry.cursor() == unchangedCursor);
+  assert(devices.resolve(first, &token, &generation) && token == 9 && generation == 9);
   uncertain = false;
   present = 2;
   records[1].provider_device = records[0].provider_device;
@@ -98,6 +103,7 @@ int main() {
          SerialProviderDevices::Result::Updated);
   assert(!registry.get(first, &info) && !registry.valid(lease, 7) &&
          registry.get(second, &info) && devices.count() == 1);
+  assert(!devices.resolve(first, &token, &generation) && !token && !generation);
   // Physical reconnect with identical provider identity creates a NEW handle.
   announce(1, 11);
   present = 2;
@@ -105,8 +111,12 @@ int main() {
          SerialProviderDevices::Result::Updated);
   const DeviceHandle replacement = devices.deviceFor(11, 11);
   assert(replacement && replacement != first && registry.count() == 2);
+  assert(devices.resolve(replacement, &token, &generation) &&
+         token == 11 && generation == 11);
+  assert(!devices.resolve(first, &token, &generation) && !token && !generation);
   assert(devices.withdrawAll() && !devices.count() && !registry.count());
   assert(!devices.deviceFor(11, 11) && !registry.valid(lease, 7));
+  assert(!devices.resolve(replacement, &token, &generation));
 
   // A separate packaged provider can independently publish the same opaque
   // physical token: identity contains the provider ID and is never an app
