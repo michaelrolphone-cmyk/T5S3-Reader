@@ -123,8 +123,10 @@ bool openBoundClass(uint64_t token, uint16_t vid, uint16_t pid) {
     return true;
 }
 
-// A class ELF's open(device) performs the match, not a firmware VID table.
-// A binding/start failure is not ordinary no-match: preserve quarantined pins.
+// The host ELF supplies the generation token; each independently installed
+// class ELF now probes that exact device BEFORE it can be selected or opened.
+// Checked rejection resets the bridge's observed device, so restore it for
+// EVERY candidate, not merely the first. No firmware VID/driver allowlist.
 bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
     if (nativeUsbClassToken()) return false;
     if (nativeUsbClassBound() && !nativeUsbClassUnbindChecked()) {
@@ -134,7 +136,9 @@ bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
     }
     size_t cursor = 0;
     bool faulted = false;
-    while (nativeUsbClassBindNextInstalled(&cursor, &faulted)) {
+    while (!quarantined) {
+        nativeUsbClassObserveDevice(token);
+        if (!nativeUsbClassBindNextInstalled(&cursor, &faulted)) break;
         if (openBoundClass(token, vid, pid)) return true;
         if (quarantined || nativeUsbClassToken() ||
             !nativeUsbClassUnbindChecked()) {
