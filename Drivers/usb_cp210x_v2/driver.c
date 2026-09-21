@@ -174,6 +174,39 @@ static int32_t probe_device(uint64_t device) {
     cp_session candidate = {0};
     return parse(length, &candidate) ? 1 : 0;
 }
+
+/* Semantic device inventory originates inside the installed CP210x ELF.
+ * No USB descriptors or vendor policies cross into generic core; a single
+ * failed identity poll makes the entire snapshot UNKNOWN, not detached.
+ * In particular, never hand a partial device set to the registry. */
+static bool snapshot_devices(risc_serial_device_v1 *out, size_t *inout_count) {
+    if (!host || !discovery || !inout_count) return false;
+    size_t processed = 0;
+    if (!discovery->poll(host->context, 16, &processed)) return false;
+    uint64_t tokens[RISC_USB_HOST_MAX_DEVICES] = {0};
+    size_t count = RISC_USB_HOST_MAX_DEVICES;
+    if (!discovery->devices(host->context, tokens, &count) ||
+        count > RISC_USB_HOST_MAX_DEVICES) return false;
+    risc_serial_device_v1 found[RISC_USB_HOST_MAX_DEVICES] = {{0}};
+    size_t matches = 0;
+    for (size_t i = 0; i < count; ++i) {
+        if (!tokens[i]) return false;
+        const int32_t decision = probe_device(tokens[i]);
+        if (decision < 0) return false;
+        if (decision == 0) continue;
+        found[matches].provider_device = tokens[i];
+        found[matches].generation = tokens[i];
+        found[matches].transport = RISC_SERIAL_TRANSPORT_USB;
+        ++matches;
+    }
+    if (*inout_count < matches || (matches && !out)) {
+        *inout_count = matches;
+        return false;
+    }
+    for (size_t i = 0; i < matches; ++i) out[i] = found[i];
+    *inout_count = matches;
+    return true;
+}
 static uint64_t open_device(uint64_t device) {
     if (!host || !device) return 0;
     cp_session *slot = 0;
@@ -240,15 +273,16 @@ static int32_t write_data(uint64_t token, const uint8_t *src, size_t length,
                                  src, length, timeout_ms);
     return n >= 0 && (size_t)n <= length ? n : -1;
 }
-static const risc_usb_serial_class_discovery_v1 capability = {
-    {RISC_USB_CDC_API_V1, sizeof(risc_usb_serial_class_discovery_v1),
-     open_device, configure, control_lines, read_data, write_data, close_device},
-    probe_device
+static const risc_usb_serial_class_inventory_v1 capability = {
+    {{RISC_USB_CDC_API_V1, sizeof(risc_usb_serial_class_inventory_v1),
+      open_device, configure, control_lines, read_data, write_data, close_device},
+     probe_device},
+    snapshot_devices
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
     "usb-cp210x-v2", "serial.port", RISC_USB_CDC_API_V1,
-    &capability.serial, start, stop, quiesce
+    &capability.discovery.serial, start, stop, quiesce
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
