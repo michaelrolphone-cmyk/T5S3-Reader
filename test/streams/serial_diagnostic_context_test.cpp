@@ -1,8 +1,11 @@
 // Link the real app-facing production serial API with its existing simulated
 // bridge fixture; no test reimplementation of diagnostics is permitted.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wreturn-type"
 #define main unused_serial_provider_fixture_main
 #include "serial_provider_bridge_test.cpp"
 #undef main
+#pragma GCC diagnostic pop
 
 int main() {
   RuntimeResources::ExecutionContext first;
