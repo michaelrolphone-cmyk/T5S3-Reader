@@ -26,3 +26,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/Drivers/usb_controller_esp32s3" \
   "$repo/test/drivers/usb_controller_claim_release_test.cpp" \
   -o "$build/usb-controller-claim-release-test"
 "$build/usb-controller-claim-release-test"
+
+# Guard actual production source wiring: timeout drain, retained retry state,
+# and VBUS release must all survive subsequent provider refactors.
+python3 "$repo/test/drivers/usb_controller_bulk_drain_source_test.py"
