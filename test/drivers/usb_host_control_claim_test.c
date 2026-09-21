@@ -87,7 +87,8 @@ int main(int argc, char **argv) {
     assert(host && host->struct_size >= sizeof(risc_usb_host_discovery_v1));
     const risc_usb_host_discovery_v1 *discovery =
         (const risc_usb_host_discovery_v1 *)host;
-    assert(discovery->release_checked && discovery->poll && discovery->devices);
+    assert(discovery->release_checked && discovery->poll && discovery->devices &&
+           discovery->control_claim);
     risc_usb_controller_api_v1 controller = {
         RISC_USB_CONTROLLER_API_V1, sizeof(controller), NULL,
         next_event, configuration, claim, release_claim, control,
@@ -106,27 +107,29 @@ int main(int argc, char **argv) {
     /* Device-recipient vendor controls must not bypass interface ownership. */
     assert(host->control(host->context, device, 0x40, 0x5f,
                          0, 0, NULL, 0, 1000) == -1);
-    assert(host->control(host->context, device, 0x21, 0x22,
-                         0, 0, NULL, 0, 1000) == -1);
+    assert(discovery->control_claim(host->context, device, 0x21, 0x22,
+                                    0, 0, NULL, 0, 1000) == -1);
     assert(!forwarded);
     uint64_t claim_token = 0;
     assert(host->claim(host->context, device, 0, 0, &claim_token) && claim_token);
     assert(host->control(host->context, device, 0x40, 0x5f,
-                         0, 0, NULL, 0, 1000) == 0);
-    assert(host->control(host->context, device, 0x21, 0x22,
-                         0, 0, NULL, 0, 1000) == 0);
-    assert(host->control(host->context, device, 0x21, 0x22,
-                         0, 1, NULL, 0, 1000) == -1);
-    assert(host->control(host->context, device, 0x22, 0x22,
                          0, 0, NULL, 0, 1000) == -1);
+    assert(discovery->control_claim(host->context, claim_token, 0x40, 0x5f,
+                                    0, 0, NULL, 0, 1000) == 0);
+    assert(discovery->control_claim(host->context, claim_token, 0x21, 0x22,
+                                    0, 0, NULL, 0, 1000) == 0);
+    assert(discovery->control_claim(host->context, claim_token, 0x21, 0x22,
+                                    0, 1, NULL, 0, 1000) == -1);
+    assert(discovery->control_claim(host->context, claim_token, 0x22, 0x22,
+                                    0, 0, NULL, 0, 1000) == -1);
     assert(forwarded == 2 && claims == 1);
 
     /* An event overflow/fault revokes new operations but NOT known claims.
      * Physical quiescence is independently required before resetting state. */
     fail_events = true;
     assert(!discovery->poll(host->context, 8, &processed));
-    assert(host->control(host->context, device, 0x40, 0x5f,
-                         0, 0, NULL, 0, 1000) == -1);
+    assert(discovery->control_claim(host->context, claim_token, 0x40, 0x5f,
+                                    0, 0, NULL, 0, 1000) == -1);
     count = RISC_USB_HOST_MAX_DEVICES;
     assert(!discovery->devices(host->context, tokens, &count));
     assert(!driver->quiesce()); /* The consumer still owns its claim. */
@@ -146,11 +149,11 @@ int main(int argc, char **argv) {
     assert(driver->start(&dep, 1));
     count = RISC_USB_HOST_MAX_DEVICES;
     assert(discovery->devices(host->context, tokens, &count) && count == 0);
-    assert(host->control(host->context, device, 0x40, 0x5f,
-                         0, 0, NULL, 0, 1000) == -1);
+    assert(discovery->control_claim(host->context, claim_token, 0x40, 0x5f,
+                                    0, 0, NULL, 0, 1000) == -1);
     assert(driver->quiesce());
     driver->stop();
     assert(dlclose(elf) == 0);
-    puts("USB host claim-gated device controls and verified fault cleanup: PASS");
+    puts("USB host claim-scoped controls and verified fault cleanup: PASS");
     return 0;
 }
