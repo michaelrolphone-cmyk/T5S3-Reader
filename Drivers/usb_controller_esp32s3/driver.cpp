@@ -1,6 +1,6 @@
-/* HID-capable ESP32-S3 controller. Keep the existing physical USB/VBUS/event,
- * bulk, control, DMA and teardown implementation in driver_base.cpp; compile
- * additional claimed interrupt transfers in this SAME hardware-owning ELF. */
+/* HID-capable ESP32-S3 controller. Original physical hardware ownership,
+ * VBUS, DMA, callbacks, control, bulk and recovery remain in driver_base.cpp.
+ * This file extends the SAME ELF rather than introducing a firmware bridge. */
 #include "RiscUsbHidV1.h"
 #include "RiscUsbInterruptV1.h"
 #define t5_driver_get t5_usb_controller_base_get
@@ -8,8 +8,6 @@
 #undef t5_driver_get
 
 namespace {
-/* Verify physical descriptor ownership independent of the usb.host claim
- * check. Never read another interface's endpoint on a composite device. */
 bool interrupt_mps(Device *d, const Claim *c, uint8_t endpoint,
                    uint16_t *out_packet) {
     const usb_config_desc_t *config = nullptr;
@@ -35,7 +33,6 @@ bool interrupt_mps(Device *d, const Claim *c, uint8_t endpoint,
                 (bytes[pos + 3] & 3u) == 3u) {
                 const uint16_t packet = static_cast<uint16_t>(bytes[pos + 4] |
                                                                (bytes[pos + 5] << 8));
-                /* IDF requires a complete endpoint MPS for interrupt IN. */
                 if (found || !packet || packet > RISC_USB_HID_MAX_REPORT)
                     return false;
                 *out_packet = packet;
@@ -56,6 +53,7 @@ int32_t interrupt_read(void *, uint64_t id, uint8_t endpoint,
         capacity > RISC_USB_HID_MAX_REPORT || !idle_transfer()) return -1;
     transfer->device_handle = d->handle;
     transfer->bEndpointAddress = endpoint;
+    /* ESP-IDF requires whole endpoint-MPS transfer sizes for interrupt IN. */
     transfer->num_bytes = packet;
     transfer->callback = complete_transfer;
     transfer->context = nullptr;
@@ -66,9 +64,9 @@ int32_t interrupt_read(void *, uint64_t id, uint8_t endpoint,
         return -1;
     }
     if (!wait_completion(timeout)) {
-        /* A no-input timeout returns zero ONLY after the existing controller
-         * flushes the endpoint and drains its callback. A failed drain or
-         * transfer status must not be disguised as an empty report. */
+        /* Empty is distinct from failure, and legal only after IDF callback
+         * completion and endpoint drain. The base timeout path halts, flushes
+         * and clears a pending non-control transfer. */
         return !inFlight && !completed && !fault ? 0 : -1;
     }
     const int32_t n = transfer->actual_num_bytes;
@@ -76,11 +74,31 @@ int32_t interrupt_read(void *, uint64_t id, uint8_t endpoint,
     if (n) std::memcpy(dst, transfer->data_buffer, static_cast<size_t>(n));
     return n;
 }
-/* Explicitly set the extended struct_size; the legacy table reports its own
- * smaller size and would otherwise fail closed at usb.host startup. */
+bool release_with_interrupt(void *context, uint64_t id) {
+    /* The legacy release checks only bulk endpoint membership. An in-flight
+     * HID read must be drained against its own claimed interrupt endpoint
+     * before that release, rather than leaving callbacks targeting freed ELF. */
+    Claim *c = nullptr;
+    for (auto &candidate : claims)
+        if (id && candidate.token == id) { c = &candidate; break; }
+    Device *d = nullptr;
+    if (c) for (auto &candidate : devices)
+        if (candidate.handle && candidate.token == c->physical_device) {
+            d = &candidate; break;
+        }
+    if (!running || !c || !d) return false;
+    if (inFlight && transfer && transfer->device_handle == d->handle &&
+        transfer->bEndpointAddress) {
+        uint16_t packet = 0;
+        if (interrupt_mps(d, c, transfer->bEndpointAddress, &packet)) {
+            if (!drain_bulk(false)) return false;
+        }
+    }
+    return release_interface(context, id);
+}
 static const risc_usb_controller_interrupt_v1 hid_interface = {
     {RISC_USB_CONTROLLER_API_V1, sizeof(risc_usb_controller_interrupt_v1), nullptr,
-     next_event, configuration, claim_interface, release_interface,
+     next_event, configuration, claim_interface, release_with_interrupt,
      control, bulk_read, bulk_write, quiesce},
     interrupt_read
 };
