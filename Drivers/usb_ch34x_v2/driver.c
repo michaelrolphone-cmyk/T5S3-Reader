@@ -161,6 +161,18 @@ static bool valid_format(uint32_t baud, uint8_t bits, uint8_t parity, uint8_t st
     return baud >= 300u && baud <= 3000000u && bits >= 5 && bits <= 8 &&
            parity <= 4 && (stops == 1 || stops == 2);
 }
+/* Match is read-only: WCH PID policy and descriptor parsing live in this ELF.
+ * No claim, vendor request or UART initialization may occur during probing. */
+static int32_t probe_device(uint64_t device) {
+    if (!host || !device) return -1;
+    size_t length = sizeof(descriptor);
+    uint16_t vid = 0, pid = 0;
+    if (!host->configuration(host->context, device, descriptor, &length,
+                             &vid, &pid)) return -1;
+    if (!supported(vid, pid)) return 0;
+    ch_session candidate = {0};
+    return parse(length, &candidate) ? 1 : 0;
+}
 static uint64_t open_device(uint64_t device) {
     if (!host || !discovery || !device || sequence == UINT64_MAX) return 0;
     ch_session *slot = 0;
@@ -212,8 +224,8 @@ static bool configure(uint64_t token, uint32_t baud, uint8_t bits,
             default: break;
         }
         if (stops == 2) lcr |= 0x04u;
-        if (command(s->claim, 0x40u, 0x9au, 0x2518u, lcr, 0, 0) != 0)
-            return false;
+        if (command(s->claim, 0x40u, 0x9au, 0x2518u, lcr, 0, 0)
+            != 0) return false;
     }
     return true;
 }
@@ -249,14 +261,15 @@ static bool close_device(uint64_t token) {
      * next close retries the same physical token without a second owner. */
     return release_session(s);
 }
-static const risc_usb_cdc_api_v1 capability = {
-    RISC_USB_CDC_API_V1, sizeof(risc_usb_cdc_api_v1),
-    open_device, configure, control_lines, read_data, write_data, close_device
+static const risc_usb_serial_class_discovery_v1 capability = {
+    {RISC_USB_CDC_API_V1, sizeof(risc_usb_serial_class_discovery_v1),
+     open_device, configure, control_lines, read_data, write_data, close_device},
+    probe_device
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
     "usb-ch34x-v2", "serial.port", RISC_USB_CDC_API_V1,
-    &capability, start, stop, quiesce
+    &capability.serial, start, stop, quiesce
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
