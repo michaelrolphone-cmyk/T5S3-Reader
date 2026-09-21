@@ -106,7 +106,10 @@ int main(int argc, char **argv) {
            strcmp(driver->driver_id, "usb-cp210x-v2") == 0 &&
            strcmp(driver->capability_id, "serial.port") == 0 && driver->quiesce);
     const risc_usb_cdc_api_v1 *serial = (const risc_usb_cdc_api_v1 *)driver->capability;
-    assert(serial && serial->api_version == 1 && serial->struct_size == sizeof(*serial));
+    assert(serial && serial->api_version == 1 && serial->struct_size >= sizeof(*serial));
+    const risc_usb_serial_class_discovery_v1 *class_probe =
+        (const risc_usb_serial_class_discovery_v1 *)serial;
+    assert(serial->struct_size >= sizeof(*class_probe) && class_probe->probe);
     assert(!driver->start(NULL, 0));
     risc_usb_host_api_v1 legacy = {
         RISC_USB_HOST_API_V1, sizeof(legacy), NULL, configuration, claim,
@@ -128,8 +131,13 @@ int main(int argc, char **argv) {
     assert(driver->start(&dep, 1) && !driver->start(&dep, 1) && driver->quiesce());
 
     vendor = 0xffff;
+    assert(class_probe->probe(7) == 0 && claims == 0 && controls == 0);
     assert(!serial->open(7) && claims == 0);
     vendor = 0x10c4;
+    assert(class_probe->probe(7) == 1 && claims == 0 && controls == 0);
+    present = false;
+    assert(class_probe->probe(7) < 0 && claims == 0 && controls == 0);
+    present = true;
     fail_request = 0;
     assert(!serial->open(7) && claims == 1 && !driver->quiesce() && releases == 0);
     driver->stop();
@@ -205,6 +213,6 @@ int main(int argc, char **argv) {
     assert(driver->quiesce());
     driver->stop();
     assert(dlclose(lib) == 0);
-    puts("CP210x claim-scoped control, release/detach recovery and stale handles: PASS");
+    puts("CP210x probe, claim-scoped control, release/detach recovery: PASS");
     return 0;
 }
