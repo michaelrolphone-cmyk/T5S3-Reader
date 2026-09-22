@@ -16,7 +16,7 @@ const char* ids[] = {"class.one", "class.four"};
 uint64_t fourthToken = 44;
 bool fourthUncertain = false;
 unsigned graphAcquires = 0, graphReleases = 0;
-unsigned providerOpens = 0, providerCloses = 0;
+unsigned providerOpens = 0, providerCloses = 0;\nuint64_t lastOpenedDevice = 0;
 unsigned alternativeAcquires = 0, alternativeReleases = 0;
 const risc_serial_port_api_v1* boundApi = nullptr;
 uint64_t observedDevice = 0, classToken = 0;
@@ -24,7 +24,7 @@ bool classBound = false, classStarted = false, streamBusy = false;
 bool dtr = false, rts = false;
 t5_serial_config_t coding{115200, 8, T5_SERIAL_PARITY_NONE, 1, T5_SERIAL_FLOW_NONE};
 
-uint64_t openPort(uint64_t device) { ++providerOpens; return device ? device + 1000u : 0; }
+uint64_t openPort(uint64_t device) { ++providerOpens; lastOpenedDevice = device; return device ? device + 1000u : 0; }
 bool configurePort(uint64_t token, uint32_t baud, uint8_t bits,
                    uint8_t parity, uint8_t stops) {
   if (!token) return false;
@@ -186,8 +186,8 @@ bool nativeUsbClassAttachPair(uint32_t owner, t5_stream_t rx, t5_stream_t tx) {
 }
 uint64_t nativeUsbClassToken() { return classToken; }
 
-bool nativeStreamUsbIsBusy() { return streamBusy; }
-t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
+bool nativeStreamSerialIsBusy() { return streamBusy; }
+t5_stream_result_t nativeStreamOpenSerialPair(t5_stream_t* rx, t5_stream_t* tx) {
   if (!rx || !tx || streamBusy) return T5_STREAM_BUSY;
   *rx = 101; *tx = 102; streamBusy = true;
   return T5_STREAM_OK;
@@ -223,7 +223,9 @@ int main() {
   t5_stream_t rx = 0, tx = 0;
   assert(serial->acquire(&request, &lease, &rx, &tx) == T5_SERIAL_OK);
   assert(lease && rx == 101 && tx == 102 && providerOpens == 1 &&
-         observedDevice == 44 && boundApi == &fourth.discovery.serial);
+         lastOpenedDevice == 44);
+  // The old USB class bridge was not involved in exact semantic binding.
+  assert(boundApi == nullptr && observedDevice == 0 && !classBound);
   t5_serial_port_state_t status{};
   assert(serial->read_status(lease, &status) == T5_SERIAL_OK &&
          status.connected && status.device == published.handle &&
