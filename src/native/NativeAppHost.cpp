@@ -378,15 +378,23 @@ bool loadAggregateCatalog(std::vector<CatalogAsset>& catalog, const std::string&
     esp_task_wdt_reset();
     std::string version;
     t5_app_manifest_t manifest{};
-    if (!parseAppManifest(json, manifest, &version, true)) return false;
+    if (!parseAppManifest(json, manifest, &version, true)) {
+      LOG_ERR("APPSTORE", "Aggregate app manifest %u failed validation (file=%s)",
+              static_cast<unsigned>(validated.size() + 1), manifest.file_name);
+      return false;
+    }
 
     const auto asset = std::find_if(catalog.begin(), catalog.end(), [&](const CatalogAsset& candidate) {
       return candidate.name == manifest.file_name;
     });
-    if (asset == catalog.end()) return false;
+    if (asset == catalog.end()) {
+      LOG_ERR("APPSTORE", "Aggregate app %s has no matching release ELF", manifest.file_name);
+      return false;
+    }
     if (std::any_of(validated.begin(), validated.end(), [&](const CatalogAsset& candidate) {
           return candidate.name == asset->name;
         })) {
+      LOG_ERR("APPSTORE", "Aggregate catalog repeats app %s", manifest.file_name);
       return false;
     }
 
@@ -407,12 +415,24 @@ bool loadCatalogManifests(std::vector<CatalogAsset>& catalog) {
   validated.reserve(catalog.size());
   for (auto& asset : catalog) {
     esp_task_wdt_reset();
-    if (asset.manifestUrl.empty()) continue;
+    if (asset.manifestUrl.empty()) {
+      LOG_ERR("APPSTORE", "Skipping release ELF %s: no JSON sidecar", asset.name.c_str());
+      continue;
+    }
     std::string json;
     std::string version;
     t5_app_manifest_t manifest{};
-    if (!HttpDownloader::fetchUrl(asset.manifestUrl, json) ||
-        !parseAppManifest(json, manifest, &version, true) || asset.name != manifest.file_name) {
+    if (!HttpDownloader::fetchUrl(asset.manifestUrl, json)) {
+      LOG_ERR("APPSTORE", "Fallback manifest download failed: %s", asset.manifestUrl.c_str());
+      continue;
+    }
+    if (!parseAppManifest(json, manifest, &version, true)) {
+      LOG_ERR("APPSTORE", "Fallback manifest validation failed: %s", asset.name.c_str());
+      continue;
+    }
+    if (asset.name != manifest.file_name) {
+      LOG_ERR("APPSTORE", "Fallback filename mismatch: asset=%s manifest=%s",
+              asset.name.c_str(), manifest.file_name);
       continue;
     }
     asset.manifest = manifest;
@@ -484,14 +504,20 @@ bool appCatalogRefresh() {
   }
   LOG_INF("APPSTORE", "Found %u ELF assets in latest release", static_cast<unsigned>(s->catalog.size()));
 
+  if (catalogUrl.empty()) {
+    LOG_ERR("APPSTORE", "Release is missing %s", kAggregateAppCatalogName);
+  }
   if (!catalogUrl.empty() && loadAggregateCatalog(s->catalog, catalogUrl)) {
     LOG_INF("APPSTORE", "Loaded %u apps from aggregate release catalog",
             static_cast<unsigned>(s->catalog.size()));
     return true;
   }
 
-  LOG_INF("APPSTORE", "Aggregate catalog unavailable; falling back to per-app manifests");
-  return loadCatalogManifests(s->catalog);
+  LOG_ERR("APPSTORE", "Aggregate catalog unavailable; loading up to %u per-app manifests (slower)",
+          static_cast<unsigned>(s->catalog.size()));
+  const bool loaded = loadCatalogManifests(s->catalog);
+  LOG_INF("APPSTORE", "Fallback loaded %u apps", static_cast<unsigned>(s->catalog.size()));
+  return loaded;
 }
 
 uint32_t appCatalogCount() {
