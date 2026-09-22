@@ -1,28 +1,29 @@
 
-bool nativeStreamUsbIsBusy() {
+bool nativeStreamSerialIsBusy() {
   if (!authorized() || !initialize()) return true;
   Lock lock;
-  return usbOpen;
+  return serialOpen;
 }
 
-t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
+t5_stream_result_t nativeStreamOpenSerialPair(t5_stream_t* rx, t5_stream_t* tx) {
   if (rx) *rx = 0;
   if (tx) *tx = 0;
   if (!authorized()) return T5_STREAM_DENIED;
   if (!rx || !tx) return T5_STREAM_INVALID;
   if (!initialize()) return T5_STREAM_LIMIT;
-  if (!nativeUsbClassAvailable()) return T5_STREAM_UNSUPPORTED;
+  if (!nativeSerialProviderActive()) return T5_STREAM_UNSUPPORTED;
 
   Lock lock;
-  if (usbOpen) return T5_STREAM_BUSY;
-  const uint32_t sessionEpoch = nativeUsbProviderEpoch();
-  auto* session = new (std::nothrow) Usb{sessionEpoch};
-  if (!session) return T5_STREAM_LIMIT;
+  if (serialOpen) return T5_STREAM_BUSY;
+  const uint32_t sessionEpoch = nativeSerialProviderEpoch();
+  if (!sessionEpoch) return T5_STREAM_DISCONNECTED;
+  auto* link = new (std::nothrow) SerialLink{sessionEpoch};
+  if (!link) return T5_STREAM_LIMIT;
   auto result = registry.publishEndpoint(owner, T5_STREAM_BYTES, T5_STREAM_READ,
                                          T5_STREAM_CHUNK * 4, nullptr, 0, 0,
                                          RuntimeStreams::kStreamPublic, rx);
   if (result != T5_STREAM_OK) {
-    delete session;
+    delete link;
     return result;
   }
   result = registry.publishEndpoint(owner, T5_STREAM_BYTES, T5_STREAM_WRITE,
@@ -31,21 +32,24 @@ t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
   if (result != T5_STREAM_OK) {
     (void)registry.close(owner, *rx);
     *rx = 0;
-    delete session;
+    delete link;
     return result;
   }
-  pairUsb = session;
+  pairSerial = link;
   pairRx = *rx;
   pairTx = *tx;
-  usbOpen = true;
-  usbRefs = 2;
-  usbTxRetry.store(false, std::memory_order_release);
-  // NativeSerialPortBridge must first acquire the exclusive physical lease.
-  // It subsequently checks nativeUsbClassAttachPair exactly once, or tears
-  // the pair down on failure. Attaching here would make that call fail and
-  // prevent serial.port from ever returning a working RX/TX pair.
+  serialOpen = true;
+  serialRefs = 2;
+  serialTxRetry.store(false, std::memory_order_release);
   return T5_STREAM_OK;
 }
+
+#if !defined(ESP_PLATFORM) && !defined(ARDUINO_ARCH_ESP32)
+bool nativeStreamUsbIsBusy() { return nativeStreamSerialIsBusy(); }
+t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx) {
+  return nativeStreamOpenSerialPair(rx, tx);
+}
+#endif
 
 t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream) {
   if (!active || invocation.id() != owner || !t5_app_get_api(T5_APP_ABI_VERSION))
