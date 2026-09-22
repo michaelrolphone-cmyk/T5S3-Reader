@@ -57,7 +57,8 @@ def build() -> list[dict]:
         if metadata.get('id') != identity or metadata.get('architecture') != 'xtensa-esp32s3':
             raise ValueError(f'unexpected source identity: {source}')
         capability, api = canonical_manifest(source)
-        version = metadata.get('version')
+        # Legacy source manifests without a version were shipped as 0.1.0.
+        version = metadata.get('version', '0.1.0')
         if not isinstance(version, str) or not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', version):
             raise ValueError(f'invalid package version for {identity}: {version}')
         elf = SOURCE / output_name / elf_name

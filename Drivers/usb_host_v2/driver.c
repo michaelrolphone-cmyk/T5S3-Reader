@@ -171,8 +171,14 @@ static bool endpoints(uint64_t physical, uint8_t iface, uint8_t alt,
         uint8_t size = descriptor[pos], type = descriptor[pos + 1];
         if (size < 2 || size > length - pos) return false;
         if (type == 4) {
-            if (size < 9) return false;
-            selected = descriptor[pos + 2] == iface && descriptor[pos + 3] == alt;
+            /* Once the requested interface is complete, descriptors belonging
+             * to another composite function cannot change its endpoint set.
+             * Do not reject a valid claim because that unrelated function has
+             * a vendor-shortened interface record. */
+            if (selected) return found;
+            if (size < 6) return false;
+            selected = size >= 9 && descriptor[pos + 2] == iface &&
+                       descriptor[pos + 3] == alt;
             if (selected) {
                 if (found) return false;
                 found = true;

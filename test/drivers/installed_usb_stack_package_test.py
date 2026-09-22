@@ -68,7 +68,7 @@ def run():
                                  'architecture', 'min_runtime_api', 'entries', 'requires'}
         assert manifest['schema'] == 1 and manifest['kind'] == 'driver'
         source_name = next(source for identity, source, _, _ in DRIVERS if identity == id)
-        expected_version = json.loads((ROOT / 'Drivers' / source_name / 'manifest.json').read_text())['version']
+        expected_version = json.loads((ROOT / 'Drivers' / source_name / 'manifest.json').read_text()).get('version', '0.1.0')
         assert manifest['id'] == id and manifest['version'] == expected_version
         assert record['version'] == expected_version
         assert manifest['artifact'] == 'driver.elf'
