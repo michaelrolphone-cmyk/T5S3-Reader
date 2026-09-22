@@ -94,3 +94,8 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/provider_graph_destruction_guard_v2_test.cpp" \
   -ldl -o "$build/destruction-test"
 "$build/destruction-test" "$build/stuck.so"
+
+# Controller diagnostic formatting is local to the ELF, bounded and import-free.
+c++ -std=c++17 -Wall -Wextra -Werror \
+  "$repo/test/drivers/controller_startup_diagnostic_test.cpp" -o "$build/controller-diagnostic-test"
+"$build/controller-diagnostic-test"

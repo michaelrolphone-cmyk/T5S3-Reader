@@ -3,6 +3,7 @@
  * Provider calls and IDF callbacks are serialized on one executor. */
 #include "RiscUsbControllerV1.h"
 #include "RiscUsbVbusV1.h"
+#include "StartupDiagnostic.h"
 #include <usb/usb_host.h>
 #include <esp_intr_alloc.h>
 #include <freertos/FreeRTOS.h>
@@ -465,26 +466,27 @@ void stop() {
     queueHead = queueTail = queueCount = 0;
     fault = false;
 }
-char startupError[112]{};
+StartupDiagnostic startupError;
 bool startup_error(char *destination, size_t capacity) {
-    if (!destination || !capacity) return false;
-    std::snprintf(destination, capacity, "%s", startupError);
-    return startupError[0] != 0;
+    return startupError.copy(destination, capacity);
 }
 void start_failure(const char *stage, int code) {
-    std::snprintf(startupError, sizeof(startupError),
-                  "%s rc=%d (0x%x)", stage, code, static_cast<unsigned>(code));
+    startupError.failure(stage, code);
 }
 bool start(const risc_provider_dependency_v1 *deps, size_t count) {
-    startupError[0] = 0;
+    startupError.clear();
     if (running || installed || client || transfer || powerLease || fault ||
         !deps || count != 1 || !equals(deps[0].capability_id, "board.power.vbus") ||
         deps[0].api_version != RISC_USB_VBUS_API_V1 || !deps[0].api) {
-        std::snprintf(startupError, sizeof(startupError),
-            "dependency/state count=%u deps=%u run=%u host=%u client=%u dma=%u lease=%u fault=%u",
-            static_cast<unsigned>(count), deps ? 1u : 0u, running ? 1u : 0u,
-            installed ? 1u : 0u, client ? 1u : 0u, transfer ? 1u : 0u,
-            powerLease ? 1u : 0u, fault ? 1u : 0u);
+        startupError.text("dependency/state");
+        startupError.number(" count=", static_cast<uint32_t>(count));
+        startupError.number(" deps=", deps != nullptr);
+        startupError.number(" run=", running);
+        startupError.number(" host=", installed);
+        startupError.number(" client=", client != nullptr);
+        startupError.number(" dma=", transfer != nullptr);
+        startupError.number(" lease=", powerLease != 0);
+        startupError.number(" fault=", fault);
         std::printf("USBCTRL start-failed stage=dependency-or-state rc=0\n");
         return false;
     }
@@ -492,19 +494,22 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     if (api->api_version != RISC_USB_VBUS_API_V1 ||
         api->struct_size < sizeof(*api) || !api->acquire_host ||
         !api->release_host || !api->quiesce) {
-        std::snprintf(startupError, sizeof(startupError),
-            "vbus-abi api=%u size=%u acquire=%u release=%u quiesce=%u",
-            static_cast<unsigned>(api->api_version), static_cast<unsigned>(api->struct_size),
-            api->acquire_host ? 1u : 0u, api->release_host ? 1u : 0u, api->quiesce ? 1u : 0u);
+        startupError.text("vbus-abi");
+        startupError.number(" api=", api->api_version);
+        startupError.number(" size=", api->struct_size);
+        startupError.number(" acquire=", api->acquire_host != nullptr);
+        startupError.number(" release=", api->release_host != nullptr);
+        startupError.number(" quiesce=", api->quiesce != nullptr);
         std::printf("USBCTRL start-failed stage=vbus-abi rc=0\n");
         return false;
     }
     power = api;
     const bool acquired = power->acquire_host(power->context, 500, &powerLease);
     if (!acquired || !powerLease) {
-        std::snprintf(startupError, sizeof(startupError),
-            "vbus-acquire returned=%u lease=%u timeout=500ms", acquired ? 1u : 0u,
-            powerLease ? 1u : 0u);
+        startupError.text("vbus-acquire");
+        startupError.number(" returned=", acquired);
+        startupError.number(" lease=", powerLease != 0);
+        startupError.text(" timeout=500ms");
         std::printf("USBCTRL start-failed stage=vbus-acquire rc=0 lease=%u\n",
                     powerLease ? 1u : 0u);
         if (powerLease && !quiesce(nullptr))
