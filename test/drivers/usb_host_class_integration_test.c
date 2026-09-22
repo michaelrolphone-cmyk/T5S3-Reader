@@ -84,13 +84,18 @@ static int32_t control(void *ctx, uint64_t physical, uint8_t request_type,
         assert(request_type == 0x41u && index == 0u);
         assert(request == 0x00u || request == 0x1eu || request == 0x03u ||
                request == 0x07u);
-    } else {
-        assert(active_vid == 0x1a86u && index == 0u);
+    } else if (active_vid == 0x1a86u) {
+        assert(index == 0u);
         assert((request_type == 0xc0u && request == 0x5fu &&
                 length == 2u && payload) ||
                (request_type == 0x40u && (request == 0xa1u ||
                 request == 0x9au || request == 0xa4u)));
         if (request == 0x5fu) { payload[0] = 0x30u; payload[1] = 0u; }
+    } else {
+        assert(active_vid == 0xcafeu && active_pid == 0x4001u && index == 0u);
+        assert(request_type == 0x41u);
+        assert((request == 0x30u && length == 7u && payload) ||
+               (request == 0x31u && length == 0u));
     }
     return length;
 }
@@ -184,15 +189,17 @@ static void scenario(const risc_driver_v2 *driver,
 }
 
 int main(int argc, char **argv) {
-    assert(argc == 5);
+    assert(argc == 6);
     void *host_library = dlopen(argv[1], RTLD_NOW);
     void *cdc_library = dlopen(argv[2], RTLD_NOW);
     void *cp_library = dlopen(argv[3], RTLD_NOW);
     void *ch_library = dlopen(argv[4], RTLD_NOW);
+    void *witness_library = dlopen(argv[5], RTLD_NOW);
     const risc_driver_v2 *host_driver = load(host_library, "usb-host-v2");
     const risc_driver_v2 *cdc = load(cdc_library, "usb-cdc-acm-v2");
     const risc_driver_v2 *cp = load(cp_library, "usb-cp210x-v2");
     const risc_driver_v2 *ch = load(ch_library, "usb-ch34x-v2");
+    const risc_driver_v2 *witness = load(witness_library, "usb-serial-witness");
     risc_usb_controller_api_v1 controller = {
         RISC_USB_CONTROLLER_API_V1, sizeof(controller), NULL, next_event,
         configuration, claim, release_claim, control, bulk_read, bulk_write,
@@ -206,12 +213,14 @@ int main(int argc, char **argv) {
     scenario(cdc, snapshot, 0x2341u, 0x0043u);
     scenario(cp, snapshot, 0x10c4u, 0xea60u);
     scenario(ch, snapshot, 0x1a86u, 0x7523u);
-    assert(claim_calls == release_calls - 3 && live_claims == 0);
-    assert(control_calls >= 9 && read_calls == 3 && write_calls == 3);
+    scenario(witness, snapshot, 0xcafeu, 0x4001u);
+    assert(claim_calls == release_calls - 4 && live_claims == 0);
+    assert(control_calls >= 11 && read_calls == 4 && write_calls == 4);
     assert(host_driver->quiesce());
     host_driver->stop();
-    assert(dlclose(ch_library) == 0 && dlclose(cp_library) == 0 &&
-           dlclose(cdc_library) == 0 && dlclose(host_library) == 0);
-    puts("Production host + CDC/CP210x/CH34x ELF simulated integration: PASS");
+    assert(dlclose(witness_library) == 0 && dlclose(ch_library) == 0 &&
+           dlclose(cp_library) == 0 && dlclose(cdc_library) == 0 &&
+           dlclose(host_library) == 0);
+    puts("Production host + four independently installable serial class ELFs: PASS");
     return 0;
 }
