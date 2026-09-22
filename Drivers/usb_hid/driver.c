@@ -67,11 +67,18 @@ static bool parse(uint64_t device, uint16_t vid, uint16_t pid, size_t length,
             if (selected && (!append(candidate, count, &item) ||
                              (hid_descriptor && !item.report_descriptor_length)))
                 return false;
-            if (n < 9) return false;
+            /* Only HID interfaces belong to this provider.  Composite USB
+             * devices in the field sometimes carry shortened/vendor-specific
+             * interface records for an unrelated function.  They must not
+             * invalidate an otherwise complete keyboard/gamepad interface.
+             * Six bytes are enough to identify bInterfaceClass; HID itself
+             * remains subject to the complete nine-byte descriptor contract. */
+            if (n < 6) return false;
             selected = config[pos + 5] == 3;
             hid_descriptor = endpoint = false;
             item = (risc_usb_hid_interface_v1){0};
             if (selected) {
+                if (n < 9) return false;
                 item.device = device;
                 item.vid = vid; item.pid = pid;
                 item.interface_number = config[pos + 2];

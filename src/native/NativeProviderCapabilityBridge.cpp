@@ -20,7 +20,8 @@ struct Slot {
     uint32_t owner = 0;
     uint32_t generation = 0;
 };
-Slot active{};
+constexpr size_t kMaxActiveLeases = 4;
+Slot active[kMaxActiveLeases]{};
 uint32_t generation = 0;
 char error[160]{};
 uint32_t errorOwner = 0;
@@ -128,9 +129,13 @@ bool acquire(const char* capability, uint32_t version,
     errorOwner = invocation;
     error[0] = 0;
     if (!token || !interface) return fail("Invalid capability request");
-    if (active.owner) return fail("Another capability lease is already active");
     if (!declaredOptional(capability, version))
         return fail("App JSON missing/invalid optional capability declaration");
+    Slot* available = nullptr;
+    for (auto& slot : active) {
+        if (!slot.owner && !available) available = &slot;
+    }
+    if (!available) return fail("Capability lease table full");
     char id[64]{};
     if (!findProvider(capability, version, id)) return false;
     Lease grant{};
@@ -138,22 +143,26 @@ bool acquire(const char* capability, uint32_t version,
         !grant.grant.slot || !grant.interface) return fail(RuntimeInstalledProviders::lastError());
     generation = generation == UINT32_MAX ? 1u : generation + 1u;
     if (!generation) generation = 1u;
-    active.provider = grant;
-    active.owner = invocation;
-    active.generation = generation;
+    available->provider = grant;
+    available->owner = invocation;
+    available->generation = generation;
     *token = generation;
     *interface = grant.interface;
     return true;
 }
 
 bool release(t5_provider_capability_lease_t token) {
-    if (!token || !owner() || active.owner != owner() ||
-        token != active.generation) return false;
-    Lease grant = active.provider;
-    active = {};
-    // A failed quiesce may consume the grant and quarantine an ELF. Never hand
-    // out a stale interface or retry a consumed generation.
-    return RuntimeInstalledProviders::release(&grant);
+    const uint32_t invocation = owner();
+    if (!token || !invocation) return false;
+    for (auto& slot : active) {
+        if (slot.owner != invocation || slot.generation != token) continue;
+        Lease grant = slot.provider;
+        slot = {};
+        // A failed quiesce may consume the grant and quarantine an ELF. Never
+        // hand out a stale interface or retry a consumed generation.
+        return RuntimeInstalledProviders::release(&grant);
+    }
+    return false;
 }
 bool lastError(char* out, size_t capacity) {
     if (!out || !capacity) return false;
@@ -175,8 +184,10 @@ t5_provider_capability_get_api(uint32_t version) {
 
 // Idempotent loader cleanup before dlclose; no provider retains an app pointer.
 extern "C" void native_app_provider_capabilities_release(void) {
-    if (!active.owner) return;
-    Lease grant = active.provider;
-    active = {};
-    (void)RuntimeInstalledProviders::release(&grant);
+    for (auto& slot : active) {
+        if (!slot.owner) continue;
+        Lease grant = slot.provider;
+        slot = {};
+        (void)RuntimeInstalledProviders::release(&grant);
+    }
 }

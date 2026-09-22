@@ -81,7 +81,7 @@ class UsbTeardownRetry(unittest.TestCase):
         self.assertLess(quiesce.index("usb_host_uninstall()"),
                         quiesce.index("power->release_host("))
         self.assertIn("USBCTRL cleanup-failed stage=device-close", quiesce)
-        self.assertEqual(json.loads(MANIFEST.read_text(encoding="utf-8"))["version"], "0.1.5")
+        self.assertEqual(json.loads(MANIFEST.read_text(encoding="utf-8"))["version"], "0.1.6")
 
     def test_idle_host_drains_no_clients_even_if_no_device_needs_freeing(self):
         quiesce = self.controller.split("bool quiesce(void *)", 1)[1].split(

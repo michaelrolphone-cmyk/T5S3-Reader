@@ -5,10 +5,11 @@
 #include <string.h>
 
 static const uint8_t config[] = {
-    9,2,32,0,1,1,0,0x80,50,
+    9,2,38,0,2,1,0,0x80,50,
     9,4,0,0,2,0xff,0,0,0,
     7,5,0x81,2,64,0,0,
-    7,5,0x02,2,64,0,0
+    7,5,0x02,2,64,0,0,
+    6,4,1,0,0,0xff
 };
 static risc_usb_controller_event_v1 events[8];
 static size_t event_head, event_tail;
