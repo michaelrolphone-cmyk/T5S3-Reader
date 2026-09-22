@@ -117,6 +117,7 @@ void releasePhysicalDevice(UsbConsumer consumer) {
   physicalOwner = 0;
   physicalConsumer = UsbConsumer::None;
 }
+#if !RISCRTE_INSTALLED_SERIAL_PATH
 bool claimPhysicalDevice(UsbConsumer consumer) {
   synchronizeSerialDevices();
   auto* context = RuntimeResources::ExecutionContext::current();
@@ -138,6 +139,7 @@ bool claimPhysicalDevice(UsbConsumer consumer) {
   physicalOwner = context->id();
   return true;
 }
+#endif
 bool validConfig(const t5_serial_config_t* config) {
   return config && config->baud_rate >= 300u && config->baud_rate <= 3000000u &&
          config->data_bits >= 5u && config->data_bits <= 8u &&
