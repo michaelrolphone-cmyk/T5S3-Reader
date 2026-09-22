@@ -24,8 +24,9 @@ bool interrupt_mps(Device *d, const Claim *c, uint8_t endpoint,
         const uint8_t n = bytes[pos], type = bytes[pos + 1];
         if (n < 2 || n > length - pos) return false;
         if (type == 4) {
-            if (n < 9) return false;
-            selected = bytes[pos + 2] == c->number &&
+            if (selected) return found;
+            if (n < 6) return false;
+            selected = n >= 9 && bytes[pos + 2] == c->number &&
                        bytes[pos + 3] == c->alternate;
         } else if (selected && type == 5) {
             if (n < 7) return false;

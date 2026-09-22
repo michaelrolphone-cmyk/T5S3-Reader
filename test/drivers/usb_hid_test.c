@@ -15,13 +15,16 @@ static const uint8_t gamepad_descriptor[] = {
     0xc0
 };
 static const uint8_t configuration_descriptor[] = {
-    9,2,59,0,2,1,0,0x80,50,
+    9,2,65,0,3,1,0,0x80,50,
     9,4,0,0,1,3,1,1,0,
     9,0x21,0x11,0x01,0,1,0x22,63,0,
     7,5,0x81,3,8,0,10,
     9,4,1,0,1,3,0,0,0,
     9,0x21,0x11,0x01,0,1,0x22,sizeof(gamepad_descriptor),0,
-    7,5,0x82,3,8,0,10
+    7,5,0x82,3,8,0,10,
+    /* Unrelated vendor function with a shortened interface record.  Its
+     * private layout must not poison either complete HID interface above. */
+    6,4,2,0,0,0xff
 };
 static bool attached = true, claimed[2];
 static unsigned keyboard_reports, gamepad_reports, releases;
@@ -138,6 +141,12 @@ int main(int argc, char **argv) {
     uint64_t key_sub = keys->subscribe(keys->context, 42);
     uint64_t pad_sub = pads->subscribe(pads->context, 42);
     assert(key_sub && pad_sub);
+    /* An activated HID stack with an empty bus is a normal steady state, not
+     * an acquisition or polling failure. */
+    attached = false;
+    assert(keys->poll(keys->context, 4));
+    assert(pads->poll(pads->context, 4));
+    attached = true;
     assert(keys->poll(keys->context, 4));
     assert(pads->poll(pads->context, 4));
     risc_usb_keyboard_event_v1 key_event = {0};
