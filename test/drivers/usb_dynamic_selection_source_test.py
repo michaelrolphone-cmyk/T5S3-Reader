@@ -91,7 +91,7 @@ assert stream3.index('nativeStreamOpenUsbPair', alias) > alias
 
 # Actual class ELFs still own transport matching and provider-originated
 # inventory, with no physical claim/control merely to discover a match.
-for name in ('cdc', 'cp210x', 'ch34x'):
+for name in ('cdc', 'cp210x', 'ch34x', 'serial_witness'):
     driver = (root / f'Drivers/usb_{name}_v2/driver.c').read_text()
     assert 'static int32_t probe_device(uint64_t device)' in driver
     probe_start = driver.index('static int32_t probe_device(')
