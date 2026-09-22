@@ -200,6 +200,7 @@ void HomeActivity::onEnter() {
   firstRenderDone = false;
   coverRendered = false;
   coverBufferStored = false;
+  pendingHomeAppArtifact.clear();
   lastVisibleTextPrewarmKey.clear();
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
@@ -251,6 +252,21 @@ void HomeActivity::freeCoverBuffer() {
 }
 
 void HomeActivity::loop() {
+  if (!pendingHomeAppArtifact.empty()) {
+    // Home selections run inside ActivityManager's current touch/button
+    // dispatch. Defer the ELF until the next owner-task iteration so input
+    // cleanup and UI dispatch fully finish first, matching Springboard and
+    // File Browser child-app handoff.
+    const std::string artifact = pendingHomeAppArtifact;
+    pendingHomeAppArtifact.clear();
+    std::string resolvedPath;
+    if (resolveInstalledAppPath(artifact.c_str(), resolvedPath)) {
+      runNativeApp(resolvedPath.c_str(), renderer, mappedInput);
+    }
+    loadHomeApps();
+    requestUpdate();
+    return;
+  }
   if (appsPending) {
     appsPending = false;
     appsPending = runNativeSpringboard(renderer, mappedInput, appsResume);
@@ -440,14 +456,10 @@ void HomeActivity::onHomeAppOpen(size_t index) {
   if (index >= homeApps.size()) {
     return;
   }
-  // Revalidate just before launch; a package may have been upgraded or
-  // uninstalled after this Home screen was populated.
-  std::string resolvedPath;
-  if (resolveInstalledAppPath(homeApps[index].file_name, resolvedPath)) {
-    runNativeApp(resolvedPath.c_str(), renderer, mappedInput);
-  }
-  loadHomeApps();
-  requestUpdate();
+  // Queue the basename, then resolve it again immediately before the deferred
+  // launch. This preserves upgrade/uninstall revalidation without entering an
+  // ELF from inside the current Home input-dispatch stack.
+  pendingHomeAppArtifact = homeApps[index].file_name;
 }
 
 void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }
