@@ -1,8 +1,8 @@
 // The app-facing serial.port pair is distinct from the legacy open_usb slot.
-// These shuttles perform class ELF I/O without holding the stream mutex and
-// preserve a single bounded pending chunk in each direction on backpressure.
+// The bounded shuttle is transport-neutral and calls the selected semantic
+// serial provider outside the stream mutex, preserving backpressure exactly.
 namespace {
-struct PendingUsbPair {
+struct PendingSerialPair {
   t5_stream_t rx = 0, tx = 0;
   uint8_t rxBytes[T5_STREAM_CHUNK]{};
   uint8_t txBytes[T5_STREAM_CHUNK]{};
@@ -10,129 +10,129 @@ struct PendingUsbPair {
   uint32_t txSize = 0, txOffset = 0;
   bool txInFlight = false;
 };
-PendingUsbPair pendingUsb;
+PendingSerialPair pendingSerial;
 
 int32_t flushPairRxLocked(t5_stream_t handle) {
-  if (pendingUsb.rxOffset == pendingUsb.rxSize) return T5_STREAM_OK;
-  const uint32_t remaining = pendingUsb.rxSize - pendingUsb.rxOffset;
+  if (pendingSerial.rxOffset == pendingSerial.rxSize) return T5_STREAM_OK;
+  const uint32_t remaining = pendingSerial.rxSize - pendingSerial.rxOffset;
   uint32_t accepted = 0;
   const auto result = registry.produce(owner, handle,
-      pendingUsb.rxBytes + pendingUsb.rxOffset, remaining, &accepted);
+      pendingSerial.rxBytes + pendingSerial.rxOffset, remaining, &accepted);
   if (accepted > remaining) return T5_STREAM_IO;
   if (result != T5_STREAM_OK && result != T5_STREAM_AGAIN) return result;
-  pendingUsb.rxOffset += accepted;
-  if (pendingUsb.rxOffset == pendingUsb.rxSize)
-    pendingUsb.rxOffset = pendingUsb.rxSize = 0;
+  pendingSerial.rxOffset += accepted;
+  if (pendingSerial.rxOffset == pendingSerial.rxSize)
+    pendingSerial.rxOffset = pendingSerial.rxSize = 0;
   return T5_STREAM_OK;
 }
 } // namespace
 
 int32_t pairTransport(t5_stream_t handle) {
-  Usb snapshot{};
+  SerialLink snapshot{};
   {
     Lock lock;
     if (handle != pairRx && handle != pairTx) return T5_STREAM_OK;
-    if (!pairUsb) return T5_STREAM_DISCONNECTED;
-    snapshot = *pairUsb;  // Never dereference a session after dropping the lock.
+    if (!pairSerial) return T5_STREAM_DISCONNECTED;
+    snapshot = *pairSerial;  // Never dereference a session after dropping the lock.
   }
-  return usbState(snapshot);
+  return serialState(snapshot);
 }
 int32_t fillPairRx() {
   t5_stream_t handle;
-  Usb snapshot{};
+  SerialLink snapshot{};
   {
     Lock lock;
     handle = pairRx;
-    if (!pairUsb || !handle) return T5_STREAM_OK;
-    snapshot = *pairUsb;
-    if (pendingUsb.rx != handle) {
-      pendingUsb.rx = handle;
-      pendingUsb.rxSize = pendingUsb.rxOffset = 0;
+    if (!pairSerial || !handle) return T5_STREAM_OK;
+    snapshot = *pairSerial;
+    if (pendingSerial.rx != handle) {
+      pendingSerial.rx = handle;
+      pendingSerial.rxSize = pendingSerial.rxOffset = 0;
     }
-    // Do not poll the class again until every previously read byte fits in
+    // Do not poll the provider again until every previously read byte fits in
     // the bounded RX endpoint; the producer must honor downstream pressure.
-    if (pendingUsb.rxOffset < pendingUsb.rxSize)
+    if (pendingSerial.rxOffset < pendingSerial.rxSize)
       return flushPairRxLocked(handle);
   }
   uint8_t incoming[T5_STREAM_CHUNK]{};
   uint32_t received = 0;
-  const auto result = usbRead(&snapshot, incoming, sizeof(incoming), &received);
+  const auto result = serialReadProvider(&snapshot, incoming, sizeof(incoming), &received);
   if (result < 0 || !received) return result;
   if (received > sizeof(incoming)) return T5_STREAM_IO;
   Lock lock;
-  if (!pairUsb || pairRx != handle || pairUsb->epoch != snapshot.epoch ||
-      pendingUsb.rx != handle) return T5_STREAM_DISCONNECTED;
-  std::memcpy(pendingUsb.rxBytes, incoming, received);
-  pendingUsb.rxSize = received;
-  pendingUsb.rxOffset = 0;
+  if (!pairSerial || pairRx != handle || pairSerial->epoch != snapshot.epoch ||
+      pendingSerial.rx != handle) return T5_STREAM_DISCONNECTED;
+  std::memcpy(pendingSerial.rxBytes, incoming, received);
+  pendingSerial.rxSize = received;
+  pendingSerial.rxOffset = 0;
   return flushPairRxLocked(handle);
 }
 int32_t drainPairTx() {
   t5_stream_t handle;
-  Usb snapshot{};
+  SerialLink snapshot{};
   uint8_t outgoing[T5_STREAM_CHUNK]{};
   uint32_t requested = 0;
   {
     Lock lock;
     handle = pairTx;
-    if (!pairUsb || !handle) {
-      usbTxRetry.store(false, std::memory_order_release);
+    if (!pairSerial || !handle) {
+      serialTxRetry.store(false, std::memory_order_release);
       return T5_STREAM_OK;
     }
-    if (pendingUsb.txInFlight) {
-      usbTxRetry.store(true, std::memory_order_release);
+    if (pendingSerial.txInFlight) {
+      serialTxRetry.store(true, std::memory_order_release);
       return T5_STREAM_AGAIN;
     }
-    snapshot = *pairUsb;
-    if (pendingUsb.tx != handle) {
-      pendingUsb.tx = handle;
-      pendingUsb.txSize = pendingUsb.txOffset = 0;
+    snapshot = *pairSerial;
+    if (pendingSerial.tx != handle) {
+      pendingSerial.tx = handle;
+      pendingSerial.txSize = pendingSerial.txOffset = 0;
     }
-    if (pendingUsb.txOffset == pendingUsb.txSize) {
+    if (pendingSerial.txOffset == pendingSerial.txSize) {
       uint32_t fetched = 0;
-      const auto result = registry.consume(owner, handle, pendingUsb.txBytes,
-                                            sizeof(pendingUsb.txBytes), &fetched);
+      const auto result = registry.consume(owner, handle, pendingSerial.txBytes,
+                                            sizeof(pendingSerial.txBytes), &fetched);
       if (result != T5_STREAM_OK && result != T5_STREAM_AGAIN) {
-        usbTxRetry.store(false, std::memory_order_release);
+        serialTxRetry.store(false, std::memory_order_release);
         return result;
       }
-      if (fetched > sizeof(pendingUsb.txBytes)) {
-        usbTxRetry.store(false, std::memory_order_release);
+      if (fetched > sizeof(pendingSerial.txBytes)) {
+        serialTxRetry.store(false, std::memory_order_release);
         return T5_STREAM_IO;
       }
-      pendingUsb.txOffset = 0;
-      pendingUsb.txSize = fetched;
+      pendingSerial.txOffset = 0;
+      pendingSerial.txSize = fetched;
       if (!fetched) {
-        usbTxRetry.store(false, std::memory_order_release);
+        serialTxRetry.store(false, std::memory_order_release);
         return T5_STREAM_AGAIN;
       }
     }
-    requested = pendingUsb.txSize - pendingUsb.txOffset;
-    std::memcpy(outgoing, pendingUsb.txBytes + pendingUsb.txOffset, requested);
-    pendingUsb.txInFlight = true;
-    usbTxRetry.store(true, std::memory_order_release);
+    requested = pendingSerial.txSize - pendingSerial.txOffset;
+    std::memcpy(outgoing, pendingSerial.txBytes + pendingSerial.txOffset, requested);
+    pendingSerial.txInFlight = true;
+    serialTxRetry.store(true, std::memory_order_release);
   }
   uint32_t written = 0;
-  const auto result = usbWrite(&snapshot, outgoing, requested, &written);
+  const auto result = serialWriteProvider(&snapshot, outgoing, requested, &written);
   Lock lock;
-  pendingUsb.txInFlight = false;
-  if (!pairUsb || pairTx != handle || pairUsb->epoch != snapshot.epoch ||
-      pendingUsb.tx != handle) {
-    usbTxRetry.store(false, std::memory_order_release);
+  pendingSerial.txInFlight = false;
+  if (!pairSerial || pairTx != handle || pairSerial->epoch != snapshot.epoch ||
+      pendingSerial.tx != handle) {
+    serialTxRetry.store(false, std::memory_order_release);
     return T5_STREAM_DISCONNECTED;
   }
   if (written > requested || (result != T5_STREAM_OK && result != T5_STREAM_AGAIN)) {
     // Keep the pending bytes for diagnosis/recovery, but do not spin on a
     // persistent physical error. Never silently treat a short write as done.
-    usbTxRetry.store(false, std::memory_order_release);
+    serialTxRetry.store(false, std::memory_order_release);
     return written > requested ? T5_STREAM_IO : result;
   }
-  pendingUsb.txOffset += written;
-  if (pendingUsb.txOffset == pendingUsb.txSize)
-    pendingUsb.txOffset = pendingUsb.txSize = 0;
+  pendingSerial.txOffset += written;
+  if (pendingSerial.txOffset == pendingSerial.txSize)
+    pendingSerial.txOffset = pendingSerial.txSize = 0;
   // One additional bounded scheduler pass also drains bytes queued while the
-  // previous class write was in flight; an empty endpoint clears this flag.
-  usbTxRetry.store(true, std::memory_order_release);
+  // previous provider write was in flight; an empty endpoint clears this flag.
+  serialTxRetry.store(true, std::memory_order_release);
   return written ? T5_STREAM_OK : T5_STREAM_AGAIN;
 }
 #define SESSION_CALL(expr) do { if (!authorized()) return T5_STREAM_DENIED; Lock lock; auto r = (expr); wake(); return r; } while (0)
@@ -147,7 +147,7 @@ int32_t readStream(t5_stream_t h, void* d, uint32_t n, uint32_t* out) {
     const auto filled = fillPairRx();
     if (filled < 0) return filled;
     // Reading the response is also a bounded retry opportunity for a short
-    // class write. The pending TX buffer is never consumed twice.
+    // provider write. The pending TX buffer is never consumed twice.
     (void)drainPairTx();
   }
   Lock lock;
