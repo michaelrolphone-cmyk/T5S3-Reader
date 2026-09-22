@@ -1,14 +1,11 @@
 #include "NativeStreamBridge.h"
 #include "NativeSerialPortBridge.h"
-#include "NativeUsbDeviceRegistry.h"
-#include "NativeUsbClassBridge.h"
 #include <Arduino.h>
 #include "runtime/streams/StreamRuntime.h"
 #include "runtime/resources/ExecutionContext.h"
 #include "runtime/capabilities/GnssStreamAuthority.h"
 #include "network/HttpDownloader.h"
 #include <T5AppApi.h>
-#include <T5UsbApi.h>
 #include <HalStorage.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
