@@ -376,8 +376,13 @@ t5_serial_result_t installedReleasePort(t5_serial_port_lease_t lease) {
 }
 
 bool installedAvailable(void*) {
-  return installedSerial.refresh() ==
-      RuntimeInstalledProviders::InstalledSerialInventory::Result::Updated;
+  const auto result = installedSerial.refresh();
+  // A verified empty inventory may yield to another semantic serial transport.
+  // Uncertain/corrupt inventory must remain selected so acquire() returns a
+  // fail-closed error rather than silently activating unrelated hardware.
+  if (result == RuntimeInstalledProviders::InstalledSerialInventory::Result::Updated)
+    return installedSerial.publishedDevices() != 0;
+  return true;
 }
 bool installedMatches(void*, t5_serial_device_t id) {
   const risc_serial_port_api_v1* providerApi = nullptr;
