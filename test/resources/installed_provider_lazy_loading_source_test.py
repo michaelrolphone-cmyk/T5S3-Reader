@@ -22,7 +22,7 @@ register_start = text.index("bool registerOne(")
 selector_start = text.index("bool registerCapability(", register_start + 1)
 register = text[register_start:selector_start]
 dependency = register.index("registerCapability(destination, verified")
-elf_read = register.index('"driver.elf"')
+elf_read = register.index('if (!pathFor(name, root, id, "driver.elf"))')
 assert dependency < elf_read
 assert "destination.hasProvider(id, expectedCapability, expectedApi)" in register
 
