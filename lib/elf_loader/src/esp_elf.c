@@ -555,6 +555,18 @@ int esp_elf_relocate(esp_elf_t *elf, const uint8_t *pbuf)
     if (!elf || !pbuf) return -EINVAL;
     if (!esp_elf_privileged_os_cpu_relocation_enter_v1(elf)) return -EPERM;
     int result = esp_elf_relocate_impl(elf, pbuf);
+#if CONFIG_ELF_LOADER_BUS_ADDRESS_MIRROR
+    if (result == 0) {
+        // Retained by the SDK log sink for decoding dynamically loaded PCs.
+        uintptr_t code = elf->sec[ELF_SEC_TEXT].addr;
+#ifdef CONFIG_ELF_LOADER_CACHE_OFFSET
+        code = elf_remap_text(elf, code);
+#endif
+        ESP_LOGI(TAG, "Mapped ELF text: runtime=0x%08lx virtual=0x%08lx size=0x%lx",
+                 (unsigned long)code, (unsigned long)elf->sec[ELF_SEC_TEXT].v_addr,
+                 (unsigned long)elf->sec[ELF_SEC_TEXT].size);
+    }
+#endif
     if (!esp_elf_privileged_os_cpu_relocation_leave_v1(elf)) return -EIO;
     return result;
 }

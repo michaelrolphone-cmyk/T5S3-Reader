@@ -149,6 +149,7 @@ esp_err_t launch_elf_app(const char *sd_path)
     compat_registered = true;
     result = ESP_FAIL;
     (void)dlerror();
+    ESP_LOGI(TAG, "Loading %s", sd_path);
     void *handle = dlopen(sd_path, RTLD_NOW);
     if (handle == NULL) {
         const char *error = dlerror();
@@ -184,6 +185,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         goto close_module;
     }
     if (init_present) {
+        ESP_LOGI(TAG, "Module init %s at %p", sd_path, init_symbol);
         module_fini = (elf_app_module_fini_t)fini_symbol;
         if (((elf_app_module_init_t)init_symbol)() != 0) {
             ESP_LOGE(TAG, "Module initialization failed for %s", sd_path);
@@ -204,6 +206,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         requested = ((t5_hardware_takeover_request_fn)request_symbol)();
     }
     if (requested != 0U) {
+        ESP_LOGI(TAG, "Hardware takeover %s mask=0x%08lx", sd_path, (unsigned long)requested);
         result = native_hardware_takeover_begin(requested);
         if (result != ESP_OK) {
             ESP_LOGE(TAG, "Hardware takeover denied for %s, mask=0x%08lx: %s",
@@ -213,7 +216,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         takeover_active = true;
     }
 
-    ESP_LOGI(TAG, "Starting %s", sd_path);
+    ESP_LOGI(TAG, "Starting %s app_main=%p", sd_path, symbol);
     s_current_path = sd_path;
     ((elf_app_main_t)symbol)();
     s_current_path = NULL;
