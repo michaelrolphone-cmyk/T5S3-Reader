@@ -16,15 +16,18 @@ int main(int argc, char** argv) {
   const SpecV2 alternate = {"fixture-root-alt", argv[4], "cap.root", 1, nullptr, 0};
 
   GraphV2 graph;
-  assert(graph.addVerified(root) && graph.addVerified(child) && graph.addVerified(other));
-  assert(graph.moduleCount() == 3);
+  assert(graph.addVerified(root) && graph.addVerified(child));
+  assert(graph.moduleCount() == 2);
   assert(!graph.addVerified(root));
   assert(!graph.acquire("cap.unknown", 1).slot);
   assert(!graph.acquire("cap.child", 2).slot);
   auto childGrant = graph.acquire("cap.child", 1);
   assert(childGrant.slot && graph.interfaceFor(childGrant));
   assert(*static_cast<const int*>(graph.interfaceFor(childGrant)) == 42);
-  assert(!graph.addVerified({"extra", argv[1], "cap.extra", 1, nullptr, 0}));
+  // Lazy installed-provider admission must be append-only and safe while the
+  // already loaded dependency chain and its consumer grant remain live.
+  assert(graph.addVerified(other));
+  assert(graph.moduleCount() == 3);
   auto otherGrant = graph.acquire("cap.other", 1);
   assert(otherGrant.slot && graph.liveGrants() == 2);
   assert(!graph.shutdown());
@@ -97,5 +100,5 @@ int main(int argc, char** argv) {
                                duplicateRequirements, 2}));
   assert(!invalid.addVerified({"invalid", "relative/path", "cap.invalid", 1,
                                nullptr, 0}));
-  std::puts("Generic graph: dependencies, competing provider choice, cycle detection and grants PASS");
+  std::puts("Generic graph: lazy admission, dependencies, competing provider choice, cycle detection and grants PASS");
 }

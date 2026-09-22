@@ -47,6 +47,8 @@ class GraphV2 final {
   bool release(GrantV2 grant);
   const void* interfaceFor(GrantV2 grant) const;
   bool shutdown();
+  bool hasProvider(const char* providerId, const char* capability, uint32_t api) const;
+  bool hasProviderId(const char* providerId) const;
   size_t moduleCount() const { return count_; }
   size_t liveGrants() const;
   const char* lastError() const { return error_; }

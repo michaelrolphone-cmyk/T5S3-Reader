@@ -47,6 +47,18 @@ int GraphV2::findProvider(const char* id, const char* capability, uint32_t api) 
   return -1;
 }
 
+bool GraphV2::hasProvider(const char* providerId, const char* capability,
+                          uint32_t api) const {
+  return findProvider(providerId, capability, api) >= 0;
+}
+
+bool GraphV2::hasProviderId(const char* providerId) const {
+  if (!validName(providerId)) return false;
+  for (size_t i = 0; i < count_; ++i)
+    if (std::strcmp(nodes_[i].spec.id, providerId) == 0) return true;
+  return false;
+}
+
 bool GraphV2::addVerified(const SpecV2& spec) {
   return addChecked(spec, false);
 }
@@ -90,12 +102,12 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
         return false;
     }
   }
-  for (size_t i = 0; i < count_; ++i) {
-    if (nodes_[i].visit != Visit::Idle ||
-        nodes_[i].module.state() != ModuleV2::State::Absent ||
-        std::strcmp(nodes_[i].spec.id, spec.id) == 0) return false;
-  }
-  if (liveGrants()) return false;
+  // nodes_ is fixed storage: appending a new absent provider cannot move or
+  // invalidate active modules, retained dependency tables, or live grants.
+  // This is required for lazy admission of a second capability chain while a
+  // previously acquired provider remains active.
+  for (size_t i = 0; i < count_; ++i)
+    if (std::strcmp(nodes_[i].spec.id, spec.id) == 0) return false;
   for (size_t i = 0; i < spec.requirementCount; ++i) {
     if (!validName(spec.requirements[i].capability) || !spec.requirements[i].api)
       return false;
