@@ -243,7 +243,7 @@ t5_serial_result_t installedAcquirePort(const t5_serial_port_request_t* request,
   if (!request || !lease || !rx || !tx) return T5_SERIAL_INVALID;
   if (request->config.flow_control != T5_SERIAL_FLOW_NONE) return T5_SERIAL_UNSUPPORTED;
   if (!validConfig(&request->config)) return T5_SERIAL_INVALID;
-  if (leaseHandle || physicalLease || nativeStreamUsbIsBusy()) return T5_SERIAL_BUSY;
+  if (leaseHandle || physicalLease || nativeStreamSerialIsBusy()) return T5_SERIAL_BUSY;
   if (leaseGeneration >= kMaxHandleGeneration || nextStreamEpoch == UINT32_MAX)
     return T5_SERIAL_LIMIT;
 
