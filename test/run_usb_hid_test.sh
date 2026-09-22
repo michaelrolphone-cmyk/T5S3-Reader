@@ -27,3 +27,8 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
 cc -std=c11 -Wall -Wextra -Werror \
   "$repo/test/native_apps/text_editor_core_test.c" -o "$build/text-editor-test"
 "$build/text-editor-test"
+
+cc -std=c11 -Wall -Wextra -Werror \
+  -I"$repo/lib/NativeApps/include" -I"$repo/sdk/driver" \
+  "$repo/test/native_apps/text_editor_ui_test.c" -o "$build/text-editor-ui-test"
+"$build/text-editor-ui-test"

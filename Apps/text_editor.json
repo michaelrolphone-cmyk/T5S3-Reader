@@ -1,6 +1,6 @@
 {
   "min_firmware_version": "1.2.48",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "display_name": "Text Editor",
   "file_name": "text_editor.elf",
   "icon": "solid:f15c",
