@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <string>
 #include <fcntl.h>
+#include <Logging.h>
 
 namespace {
 using RuntimeInstalledProviders::Lease;
@@ -23,11 +24,71 @@ struct Slot {
 Slot active{};
 uint32_t generation = 0;
 
+// Only the current invocation may inspect its most recent failed acquire.
+// Never return the global log ring to an application. A successful acquire,
+// new attempt or app teardown clears the previous error.
+char lastFailure[256]{};
+uint32_t failureOwner = 0;
+
 uint32_t owner() {
     auto* context = RuntimeResources::ExecutionContext::current();
     return context && context->id() && context->running(context->id()) &&
                    t5_app_get_api(T5_APP_ABI_VERSION) && native_app_current_path()
                ? context->id() : 0;
+}
+void clearFailure() {
+    lastFailure[0] = 0;
+    failureOwner = 0;
+}
+void fail(uint32_t invocation, const char* message) {
+    if (!invocation) return;
+    failureOwner = invocation;
+    (void)std::snprintf(lastFailure, sizeof(lastFailure), "%s", message);
+}
+
+// Extract only diagnostics emitted by the privileged-provider diagnostic
+// endpoint DURING this acquire. Use the largest overlap between the old ring
+// suffix and the new ring prefix to handle the ring wrapping. Never expose
+// unrelated firmware logs, old errors, arbitrary provider output or RX data.
+bool captureCurrentProviderError(const std::string& before) {
+    const std::string after = getLastLogs();
+    size_t overlap = before.size() < after.size() ? before.size() : after.size();
+    while (overlap && before.compare(before.size() - overlap, overlap,
+                                     after, 0, overlap) != 0) --overlap;
+    const std::string appended = after.substr(overlap);
+    constexpr char marker[] = "[ERR] [PROVELF] ";
+    constexpr size_t markerLength = sizeof(marker) - 1;
+    std::string extracted;
+    size_t start = 0;
+    while (start < appended.size()) {
+        const size_t found = appended.find(marker, start);
+        if (found == std::string::npos) break;
+        const size_t content = found + markerLength;
+        const size_t end = appended.find('\n', content);
+        const size_t stop = end == std::string::npos ? appended.size() : end;
+        // Keep the newest two bounded failure lines. The provider logging
+        // endpoint admits only USBCTRL/VBUSREF diagnostic prefixes today.
+        if (stop > content && stop - content < 192) {
+            const std::string line = appended.substr(content, stop - content);
+            if (extracted.size() + line.size() + 3 >= sizeof(lastFailure))
+                extracted.clear();
+            if (!extracted.empty()) extracted += " | ";
+            extracted += line;
+        }
+        start = stop == appended.size() ? stop : stop + 1;
+    }
+    if (extracted.empty()) return false;
+    (void)std::snprintf(lastFailure, sizeof(lastFailure), "%s", extracted.c_str());
+    return true;
+}
+
+bool lastError(char* output, size_t capacity) {
+    const uint32_t invocation = owner();
+    if (!invocation || invocation != failureOwner || !lastFailure[0] ||
+        !output || !capacity) return false;
+    output[0] = 0;
+    const int written = std::snprintf(output, capacity, "%s", lastFailure);
+    return written >= 0 && static_cast<size_t>(written) < capacity;
 }
 
 // The validated sidecar acts as a bounded development-time allowlist. This is
@@ -115,13 +176,33 @@ bool acquire(const char* capability, uint32_t version,
     if (token) *token = 0;
     if (interface) *interface = nullptr;
     const uint32_t invocation = owner();
-    if (!token || !interface || !invocation || active.owner ||
-        !declaredOptional(capability, version)) return false;
+    clearFailure();
+    if (!invocation) return false;
+    if (!token || !interface || !capability || !version) {
+        fail(invocation, "Provider acquire: invalid arguments or API version");
+        return false;
+    }
+    if (active.owner) {
+        fail(invocation, "Provider acquire: another capability lease is active");
+        return false;
+    }
+    if (!declaredOptional(capability, version)) {
+        fail(invocation, "Provider acquire: app manifest does not authorize this optional capability");
+        return false;
+    }
     char id[64]{};
-    if (!findProvider(capability, version, id)) return false;
+    if (!findProvider(capability, version, id)) {
+        fail(invocation, "Provider discovery: no unique matching installed profile/API");
+        return false;
+    }
+    const std::string beforeLogs = getLastLogs();
     Lease grant{};
     if (!RuntimeInstalledProviders::acquire(id, capability, version, &grant) ||
-        !grant.grant.slot || !grant.interface) return false;
+        !grant.grant.slot || !grant.interface) {
+        fail(invocation, "Provider activation failed (verify, ELF, dependency or hardware start)");
+        (void)captureCurrentProviderError(beforeLogs);
+        return false;
+    }
     generation = generation == UINT32_MAX ? 1u : generation + 1u;
     if (!generation) generation = 1u;
     active.provider = grant;
@@ -129,6 +210,7 @@ bool acquire(const char* capability, uint32_t version,
     active.generation = generation;
     *token = generation;
     *interface = grant.interface;
+    clearFailure();
     return true;
 }
 
@@ -137,13 +219,14 @@ bool release(t5_provider_capability_lease_t token) {
         token != active.generation) return false;
     Lease grant = active.provider;
     active = {};
+    clearFailure();
     // A failed quiesce may consume the grant and quarantine an ELF. Never hand
     // out a stale interface or retry a consumed generation.
     return RuntimeInstalledProviders::release(&grant);
 }
 const t5_provider_capability_api_v1 api = {
     T5_PROVIDER_CAPABILITY_API_VERSION, sizeof(t5_provider_capability_api_v1),
-    acquire, release
+    acquire, release, lastError
 };
 } // namespace
 
@@ -154,6 +237,7 @@ t5_provider_capability_get_api(uint32_t version) {
 
 // Idempotent loader cleanup before dlclose; no provider retains an app pointer.
 extern "C" void native_app_provider_capabilities_release(void) {
+    clearFailure();
     if (!active.owner) return;
     Lease grant = active.provider;
     active = {};
