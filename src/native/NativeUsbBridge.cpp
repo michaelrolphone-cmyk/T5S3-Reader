@@ -1,3 +1,15 @@
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+#include <T5UsbApi.h>
+
+// U1 production cutover: hardware USB is reachable only through installed
+// providers and semantic serial/device/stream capabilities. The historical
+// T5UsbApi is retained as an ABI symbol but cannot start, enumerate, claim,
+// configure or transfer physical USB in firmware.
+extern "C" const t5_usb_api_v1* t5_usb_get_api(uint32_t version) {
+    (void)version;
+    return nullptr;
+}
+#else
 #include <T5AppApi.h>
 #include <T5UsbApi.h>
 #include "NativeUsbClassBridge.h"
@@ -331,3 +343,5 @@ const t5_usb_api_v1 api = {
 extern "C" const t5_usb_api_v1* t5_usb_get_api(uint32_t version) {
     return version == T5_USB_API_VERSION && active() ? &api : nullptr;
 }
+
+#endif
