@@ -103,14 +103,14 @@ static const risc_usb_controller_interrupt_v1 hid_interface = {
      control, bulk_read, bulk_write, quiesce},
     interrupt_read
 };
-static const risc_driver_v2 hid_driver = {
-    RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
+static const risc_driver_diagnostics_v2 hid_driver = {{
+    RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_diagnostics_v2),
     "usb-controller-esp32s3", "usb.controller", RISC_USB_CONTROLLER_API_V1,
     &hid_interface.controller, start, stop,
     []() -> bool { return quiesce(nullptr); }
-};
+}, startup_error};
 } // namespace
 extern "C" __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
-    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &hid_driver : nullptr;
+    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &hid_driver.base : nullptr;
 }

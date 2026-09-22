@@ -88,7 +88,7 @@ int main(int argc, char** argv) {
   GraphV2 mismatch;
   assert(mismatch.addVerified({"not-the-ELF-id", argv[1], "cap.root", 1, nullptr, 0}));
   assert(!mismatch.acquire("cap.root", 1).slot);
-  assert(std::strstr(mismatch.lastError(), "Provider load/start failed: not-the-ELF-id"));
+  assert(std::strstr(mismatch.lastError(), "not-the-ELF-id: elf-interface-or-identity"));
   assert(mismatch.shutdown());
 
   const RequirementV2 duplicateRequirements[] = {{"cap.root", 1}, {"cap.root", 2}};

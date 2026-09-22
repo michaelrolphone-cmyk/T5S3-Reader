@@ -1,6 +1,7 @@
 #include "runtime/drivers/ProviderGraphV2.h"
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 
 int main(int argc, char **argv) {
   assert(argc == 3);
@@ -14,6 +15,10 @@ int main(int argc, char **argv) {
   const auto failed = graph.acquire("cap.failed-start", 1);
   assert(!failed.slot && !graph.interfaceFor(failed));
   assert(graph.liveGrants() == 0);
+  assert(std::strcmp(graph.lastError(),
+      "fixture-failed-start: usb-host-install rc=259 (0x103)") == 0);
+  assert(!graph.acquire("cap.failed-start", 1).slot);
+  assert(std::strstr(graph.lastError(), "usb-host-install rc=259 (0x103)"));
   assert(!graph.shutdown()); // Cannot unmap or release the dependency yet.
   assert(!graph.addVerified({"unsafe-edit", argv[1], "cap.edit", 1, nullptr, 0}));
 
