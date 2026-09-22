@@ -3,9 +3,11 @@
 static int32_t test_width = 540, test_height = 960;
 static unsigned polls, acquisitions, labels;
 static bool inside;
+static char rendered_error[160];
+static const char failure[] = "usb-controller-esp32s3: usb-host-install rc=259 (0x103)";
 static int32_t width(void) { return test_width; }
 static int32_t height(void) { return test_height; }
-static void clear(void) {}
+static void clear(void) { rendered_error[0] = 0; }
 static void present(bool full) { (void)full; }
 static void back(bool enabled) { (void)enabled; }
 static uint32_t millis(void) { return 200; }
@@ -15,6 +17,10 @@ static void text(int32_t x, int32_t y, const char *value) {
 static void label(int32_t x, int32_t y, int32_t w, const char *value) {
     assert(x >= 0 && x + w <= test_width); text(x, y, value); ++labels;
     assert(!strstr(value, "Confirm"));
+    if (keyboard_error[0] && y >= 88 && y < 248) {
+        assert(strlen(rendered_error) + strlen(value) < sizeof(rendered_error));
+        strcat(rendered_error, value);
+    }
 }
 static void rect(int32_t x, int32_t y, int32_t w, int32_t h, bool black) {
     (void)black; assert(x >= 0 && y >= 0 && x + w <= test_width && y + h <= test_height);
@@ -50,7 +56,7 @@ static const t5_storage_api_v1 fake_storage = {
     .exists=exists, .read_file=read_file, .write_file_atomic=write_file
 };
 static bool last_error(char *out, size_t size) {
-    (void)snprintf(out, size, "Provider load/start failed: usb-host-v2"); return true;
+    (void)snprintf(out, size, "%s", failure); return true;
 }
 static t5_provider_capability_api_v1 fake_providers = {
     T5_PROVIDER_CAPABILITY_API_VERSION, sizeof(t5_provider_capability_api_v1), acquire, release, last_error
@@ -62,7 +68,8 @@ int main(void) {
     for (unsigned landscape = 0; landscape < 2; ++landscape) {
         test_width = landscape ? 960 : 540; test_height = landscape ? 540 : 960;
         inside = true; polls = acquisitions = labels = 0; app_main();
-        assert(strstr(keyboard_error, "usb-host-v2"));
+        assert(!strcmp(keyboard_error, failure));
+        assert(!strcmp(rendered_error, failure));
         assert(acquisitions == 2 && labels >= 3); // Touch activation and retry, no buttons.
         inside = false; polls = acquisitions = 0; app_main(); assert(!acquisitions);
     }

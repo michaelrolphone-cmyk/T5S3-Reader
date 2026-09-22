@@ -49,9 +49,19 @@ extern "C" void esp_elf_deinit(esp_elf_t*) {}
 
 static bool attempt(const uint8_t* image, size_t length, const uint8_t digest[32]) {
   RuntimeProviders::ModuleV2 module;
-  return module.loadVerifiedBytes(image, length, digest,
+  const bool loaded = module.loadVerifiedBytes(image, length, digest,
                                   signed_imports, 2, "fixture-signed",
                                   "cap.generic", 1, nullptr, 0);
+  assert(!loaded && module.lastError()[0]);
+  if (image && digest && length == sizeof(expected_payload) &&
+      !reject_allocations && !reject_hash &&
+      std::memcmp(image, expected_payload, length) == 0) {
+    uint8_t actual[32];
+    assert(SHA256(image, length, actual));
+    if (std::memcmp(actual, digest, 32) == 0)
+      assert(std::strstr(module.lastError(), "elf-relocation-failed rc=-1"));
+  }
+  return loaded;
 }
 
 int main() {

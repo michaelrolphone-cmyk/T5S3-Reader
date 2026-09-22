@@ -9,6 +9,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
+from build_installed_usb_stack import DRIVERS
 from generate_privileged_imports_v1 import extract_imports, encode_imports
 from verify_provider_relocation_map import audit_loader_map
 PACKAGES = ROOT / 'dist/packages'
@@ -26,13 +27,6 @@ EXPECTED = {
     'usb-hid': ('usb.hid', ['usb.host']),
     'usb-hid-keyboard': ('usb.hid.keyboard', ['usb.hid']),
     'usb-hid-gamepad': ('usb.hid.gamepad', ['usb.hid']),
-}
-EXPECTED_VERSIONS = {
-    'i2c-esp32s3-v2': '0.1.2',
-    'board-power-t5s3-v2': '0.1.4',
-    'usb-controller-esp32s3': '0.1.6',
-    'usb-host-v2': '0.1.2',
-    'usb-hid': '0.1.1',
 }
 EXPECTED_ABSOLUTE_POINTERS = {
     'usb-controller-esp32s3': {0x600c0000, 0x60039000, 0x60008000,
@@ -73,7 +67,8 @@ def run():
         assert set(manifest) == {'schema', 'kind', 'id', 'version', 'artifact',
                                  'architecture', 'min_runtime_api', 'entries', 'requires'}
         assert manifest['schema'] == 1 and manifest['kind'] == 'driver'
-        expected_version = EXPECTED_VERSIONS.get(id, '0.1.0')
+        source_name = next(source for identity, source, _, _ in DRIVERS if identity == id)
+        expected_version = json.loads((ROOT / 'Drivers' / source_name / 'manifest.json').read_text()).get('version', '0.1.0')
         assert manifest['id'] == id and manifest['version'] == expected_version
         assert record['version'] == expected_version
         assert manifest['artifact'] == 'driver.elf'

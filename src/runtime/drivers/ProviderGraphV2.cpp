@@ -143,10 +143,15 @@ bool GraphV2::fail(const char* stage, const char* identity) {
 
 bool GraphV2::activate(size_t index) {
   Node& node = nodes_[index];
-  if (node.visit == Visit::Active)
-    return node.module.state() == ModuleV2::State::Active || fail("Provider quarantined", node.spec.id);
   if (node.visit == Visit::Visiting) return fail("Dependency cycle", node.spec.id);
-  if (node.module.state() == ModuleV2::State::Failed) return fail("Provider failed", node.spec.id);
+  if (node.module.state() == ModuleV2::State::Failed) {
+    if (node.module.lastError()[0]) {
+      std::snprintf(error_, sizeof(error_), "%s", node.module.lastError());
+      return false;
+    }
+    return fail("Provider failed", node.spec.id);
+  }
+  if (node.visit == Visit::Active) return true;
   node.visit = Visit::Visiting;
   for (size_t i = 0; i < node.spec.requirementCount; ++i) {
     const RequirementV2& requirement = node.spec.requirements[i];
@@ -179,7 +184,9 @@ bool GraphV2::activate(size_t index) {
                          node.spec.requirementCount ? node.boundDependencies : nullptr,
                          node.spec.requirementCount);
   if (!loaded) {
-    fail("Provider load/start failed", node.spec.id);
+    if (node.module.lastError()[0])
+      std::snprintf(error_, sizeof(error_), "%s", node.module.lastError());
+    else fail("Provider load/start failed (no diagnostic)", node.spec.id);
     if (node.module.unload()) {
       releaseDependencies(index);
       node.visit = Visit::Idle;
