@@ -163,6 +163,12 @@ class InstalledSerialInventory final {
     for (const Slot& slot : slots_) if (slot.occupied) ++n;
     return n;
   }
+  size_t publishedDevices() const {
+    size_t n = 0;
+    for (const Slot& slot : slots_)
+      if (slot.occupied && slot.devices) n += slot.devices->count();
+    return n;
+  }
 
  private:
   struct Slot {
