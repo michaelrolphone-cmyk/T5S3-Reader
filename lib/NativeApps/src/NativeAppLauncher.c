@@ -29,6 +29,7 @@
 #include "T5OtaApi.h"
 #include "T5PackageManagerApi.h"
 #include "T5ProgramEspRomApi.h"
+#include "T5ProviderCapabilityApi.h"
 #include "T5SdFirmwareApi.h"
 #include "T5SerialPortApi.h"
 #include "T5StatusBarApi.h"
@@ -50,6 +51,7 @@
 extern bool native_app_capabilities_ready(const char *sd_path);
 extern bool native_app_capabilities_bind(const char *sd_path);
 extern void native_app_capabilities_release(void);
+extern void native_app_provider_capabilities_release(void);
 // All physical handoff is performed by the host while NativeAppHost holds
 // RenderLock. Individual ELFs only declare their requested resource mask.
 extern esp_err_t native_hardware_takeover_begin(uint32_t requested);
@@ -108,6 +110,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_opds_get_api),
         ESP_ELFSYM_EXPORT(t5_ota_get_api),
         ESP_ELFSYM_EXPORT(t5_program_esp_rom_get_api),
+        ESP_ELFSYM_EXPORT(t5_provider_capability_get_api),
         ESP_ELFSYM_EXPORT(t5_sd_firmware_get_api),
         ESP_ELFSYM_EXPORT(t5_serial_port_get_api),
         ESP_ELFSYM_EXPORT(t5_status_bar_get_api),
@@ -225,6 +228,9 @@ close_module:
         module_fini();
         module_initialized = false;
     }
+    // Never unload a module with an outstanding provider grant. This owner-task
+    // cleanup also runs on early exits and is idempotent.
+    native_app_provider_capabilities_release();
     // An ELF MUST stop all of its hardware tasks/IRQs/DMA before returning.
     // Restore before dlclose so the app and its callbacks cannot reference
     // unmapped code after host hardware is reinitialized.
@@ -242,10 +248,11 @@ close_module:
     if (dlclose(handle) != 0) {
         const char *close_error = dlerror();
         ESP_LOGE(TAG, "dlclose(%s): %s", sd_path,
-                 close_error != NULL ? close_error : "unload failed without a diagnostic");
+                 close_error != NULL ? error : "unload failed without a diagnostic");
         result = ESP_FAIL;
     }
 done:
+    native_app_provider_capabilities_release();
     if (compat_registered) native_hardware_compat_unregister();
     native_app_capabilities_release();
     s_current_path = NULL;

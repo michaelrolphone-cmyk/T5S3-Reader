@@ -1,8 +1,7 @@
-"""Source wiring regression for the firmware and physical USB ELF lifecycle.
+"""Source wiring regression for firmware and physical USB ELF lifecycle.
 
-The separate provider graph host tests exercise failed quiescence and the
-consumed-grant contract; the full physical ELF compile remains an independent
-CI job, not a hardware acceptance claim.
+The HID wrapper extends driver_base.cpp in the same physical ELF. Check the
+actual verified teardown implementation, not the thin translation-unit entry.
 """
 from pathlib import Path
 import json
@@ -11,7 +10,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 BRIDGE = ROOT / "src/native/NativeUsbBridge.cpp"
 GRAPH = ROOT / "src/runtime/drivers/ProviderGraphV2.cpp"
-CONTROLLER = ROOT / "Drivers/usb_controller_esp32s3/driver.cpp"
+CONTROLLER = ROOT / "Drivers/usb_controller_esp32s3/driver_base.cpp"
 MANIFEST = ROOT / "Drivers/usb_controller_esp32s3/manifest.json"
 
 
@@ -82,16 +81,12 @@ class UsbTeardownRetry(unittest.TestCase):
         self.assertLess(quiesce.index("usb_host_uninstall()"),
                         quiesce.index("power->release_host("))
         self.assertIn("USBCTRL cleanup-failed stage=device-close", quiesce)
-        self.assertEqual(json.loads(MANIFEST.read_text(encoding="utf-8"))["version"], "0.1.4")
+        self.assertEqual(json.loads(MANIFEST.read_text(encoding="utf-8"))["version"], "0.1.5")
 
     def test_idle_host_drains_no_clients_even_if_no_device_needs_freeing(self):
         quiesce = self.controller.split("bool quiesce(void *)", 1)[1].split(
             "void stop()", 1
         )[0]
-        # ESP-IDF v4.4.7 posts NO_CLIENTS on deregistration. With zero
-        # devices, device_free_all returns ESP_OK so the !freed loop skips.
-        # A final library event pass MUST exist outside that loop, before
-        # uninstall and before releasing power; a timeout means already idle.
         self.assertLess(quiesce.index("usb_host_client_deregister(client)"),
                         quiesce.index("usb_host_device_free_all()"))
         self.assertIn("bool freed = rc == ESP_OK;", quiesce)

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Flatten eight canonical physical ELF packages into unique release assets.
+"""Flatten all canonical physical/class ELF packages into unique release assets.
 
-No publication occurs here. Names intentionally match NativeOnlineDriverInstall:
+No publication occurs here. Asset names match NativeOnlineDriverInstall:
   <id>--package.json, <id>--driver.elf,
   <id>--provider-abi.v1, <id>--privileged-imports.v1
-The verified index is usb-provider-catalog.json.
+The branch's legacy source index is usb-provider-catalog.json; the separate
+U1 milestone will replace this with generic package-catalog.json.
 """
 from pathlib import Path
 import hashlib
@@ -15,18 +16,23 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'dist/packages'
 TARGET = ROOT / 'dist/release-packages'
 FILES = ('.package.json', 'driver.elf', 'provider-abi.v1', 'privileged-imports.v1')
+EXPECTED_IDS = {
+    'platform-clock-v1', 'i2c-esp32s3-v2', 'board-power-t5s3-v2',
+    'usb-controller-esp32s3', 'usb-host-v2', 'usb-cdc-acm-v2',
+    'usb-cp210x-v2', 'usb-ch34x-v2', 'usb-hid',
+    'usb-hid-keyboard', 'usb-hid-gamepad',
+}
 
 
 def export() -> None:
     index_path = SOURCE / 'usb-provider-catalog.json'
     index = json.loads(index_path.read_text(encoding='utf-8'))
     packages = index.get('packages')
-    if index.get('schema') != 1 or not isinstance(packages, list) or len(packages) != 8:
-        raise ValueError('canonical eight-driver index is absent or incomplete')
-    if TARGET.exists():
-        # Never silently reuse stale publication assets from another build.
-        if any(TARGET.iterdir()):
-            raise FileExistsError(f'release export directory is not empty: {TARGET}')
+    if index.get('schema') != 1 or not isinstance(packages, list) or \
+       {p['id'] for p in packages} != EXPECTED_IDS or len(packages) != len(EXPECTED_IDS):
+        raise ValueError('canonical 11-driver index is absent or incomplete')
+    if TARGET.exists() and any(TARGET.iterdir()):
+        raise FileExistsError(f'release export directory is not empty: {TARGET}')
     TARGET.mkdir(parents=True, exist_ok=True)
     observed = set()
     for package in packages:

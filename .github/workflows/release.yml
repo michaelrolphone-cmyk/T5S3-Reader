@@ -153,6 +153,9 @@ jobs:
           python scripts/build_usb_cdc_v2.py
           python scripts/build_usb_cp210x_v2.py
           python scripts/build_usb_ch34x_v2.py
+          python scripts/build_usb_hid.py
+          python scripts/build_usb_hid_keyboard.py
+          python scripts/build_usb_hid_gamepad.py
           python scripts/build_installed_usb_stack.py
           python test/drivers/installed_usb_stack_package_test.py
           python scripts/export_canonical_driver_release.py
