@@ -126,8 +126,8 @@ bool parseExactImports(uint8_t* bytes, size_t length,
 }
 
 // The snapshot is owned by prepare() and is never reused after this startup.
-// Every directory is still independently checked against its own complete
-// inventory and SHA-256 before executable bytes can enter the provider graph.
+// Runtime inspection checks metadata, inventory, sizes and ELF headers. Full
+// payload integrity belongs to installation/update, never capability acquisition.
 bool registerOne(RuntimeProviders::GraphV2& destination,
                  const char* root, const char* id, Kind kind,
                  const InstalledCapabilitySnapshot* verified) {
@@ -142,7 +142,7 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         // Structural verification never trusts requirements to self-authorize.
         // Their actual versions are checked against the verified snapshot
         // below, exactly once per startup rather than by rehashing every ELF.
-        if (!verifyOrdinarySdDirectory(target, kPolicy,
+        if (!inspectInstalledOrdinarySdDirectory(target, kPolicy,
                 [](const char*) -> uint32_t { return UINT32_MAX; }, identity) ||
             identity.kind != kind || std::strcmp(identity.id, id) ||
             std::strcmp(identity.artifact, "driver.elf")) break;
@@ -214,7 +214,7 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
             candidate.importedSymbols = symbols;
             candidate.importedSymbolCount = symbolCount;
             candidate.requiredOsCpuAbi = 1;
-            accepted = DeviceProviderExecutorV2::registerManagerValidated(destination, candidate);
+            accepted = DeviceProviderExecutorV2::registerManagerValidated(destination, candidate, false);
         }
         std::free(elf);
         std::free(imports);

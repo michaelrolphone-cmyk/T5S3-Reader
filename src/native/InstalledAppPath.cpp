@@ -31,7 +31,7 @@ bool validManagedCandidate(const char* id, const char* artifact,
   // package while resolving a single saved ELF basename.
   if (!Storage.exists(elf.c_str()) || !Storage.exists(sidecar.c_str())) return false;
   RuntimePackages::Identity identity{};
-  if (!RuntimePackages::verifyOrdinarySdDirectory(root.c_str(), kAppPolicy,
+  if (!RuntimePackages::inspectInstalledOrdinarySdDirectory(root.c_str(), kAppPolicy,
           RuntimePackages::installedCapabilityVersion, identity) ||
       identity.kind != RuntimePackages::Kind::Application ||
       std::strcmp(identity.id, id) || std::strcmp(identity.artifact, artifact) ||
@@ -100,7 +100,7 @@ bool resolveInstalledAppPath(const char* artifact, std::string& sdPath,
   if (!Storage.exists(elf.c_str()) || !Storage.exists(sidecar.c_str()) ||
       Storage.exists((elf + ".bak").c_str()) ||
       Storage.exists((sidecar + ".bak").c_str()) ||
-      !RuntimePackages::verifyAppPair(elf.c_str(), sidecar.c_str(), artifact, false)) return false;
+      !RuntimePackages::inspectInstalledAppPair(elf.c_str(), sidecar.c_str(), artifact)) return false;
   t5_app_manifest_t parsed{};
   if (!readAppManifest(sidecar.c_str(), parsed) || !parsed.compatible ||
       std::strcmp(parsed.file_name, artifact)) return false;

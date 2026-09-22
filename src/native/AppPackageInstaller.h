@@ -9,6 +9,8 @@ namespace RuntimePackages {
 // declares a digest, hashes the actual ELF. A new staged release MUST declare
 // both size_bytes and sha256; old installed sidecars may omit both solely for
 // migration compatibility and are never represented as authenticated.
+bool inspectInstalledAppPair(const char* elfPath, const char* manifestPath,
+                             const char* expectedFilename);
 bool verifyAppPair(const char* elfPath, const char* manifestPath,
                    const char* expectedFilename, bool requireDigest);
 

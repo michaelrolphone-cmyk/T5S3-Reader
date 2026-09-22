@@ -541,7 +541,7 @@ bool installedVersionGet(const char* id, char* version, size_t capacity) {
     constexpr RuntimePackages::PackageRuntimePolicy policy{
         "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
     RuntimePackages::Identity observed{};
-    if (RuntimePackages::verifyOrdinarySdDirectory(canonicalPath.c_str(), policy,
+    if (RuntimePackages::inspectInstalledOrdinarySdDirectory(canonicalPath.c_str(), policy,
             RuntimePackages::installedCapabilityVersion, observed) &&
         observed.kind == RuntimePackages::Kind::Driver &&
         !std::strcmp(observed.id, id)) {

@@ -53,7 +53,7 @@ bool GraphV2::addVerified(const SpecV2& spec) {
 
 bool GraphV2::addAuthenticatedPrivileged(const SpecV2& spec) {
   // Manager-validated private entry; signing is optional, exact privileged
-  // import validation and checksum matching remain mandatory on relocation.
+  // import validation remains mandatory on relocation; checksums are install-time.
   return addChecked(spec, true);
 }
 
@@ -71,7 +71,7 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
                           spec.verifiedElfLength > 0 &&
                           spec.verifiedElfLength <= 8u * 1024u * 1024u &&
                           spec.signedImports != nullptr &&
-                          spec.signedImportCount <= 128 && !emptyDigest;
+                          spec.signedImportCount <= 128;
   if (count_ == kMaxModules || !validName(spec.id) ||
       !validName(spec.provides) || !spec.api ||
       (spec.verifiedElfPath && spec.verifiedElfPath[0] != '/') ||

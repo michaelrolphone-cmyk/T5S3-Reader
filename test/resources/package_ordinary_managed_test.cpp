@@ -54,6 +54,12 @@ struct RetainedDirectory {
   }
 };
 
+struct ForbiddenRuntimeHash {
+  bool start() { assert(false && "runtime hashing"); return false; }
+  bool update(const uint8_t*, size_t) { assert(false && "runtime hashing"); return false; }
+  bool finish(uint8_t*) { assert(false && "runtime hashing"); return false; }
+};
+
 int main() {
   for (Kind kind : {Kind::Application, Kind::Driver, Kind::Service, Kind::Provider}) {
     Source source = makeSource();
@@ -74,12 +80,23 @@ int main() {
                                            kPolicy, io, verified));
     assert(samePackage(candidate.identity, verified) &&
            std::strcmp(candidate.identity.version, verified.version) == 0);
+    ForbiddenRuntimeHash noHash;
+    assert(verifyCanonicalOrdinaryDirectory(retained, noHash, resolver,
+                                           kPolicy, io, verified, false));
     stage.files["module.elf"][35] ^= 1;
+    assert(verifyCanonicalOrdinaryDirectory(retained, noHash, resolver,
+                                           kPolicy, io, verified, false));
     assert(!verifyCanonicalOrdinaryDirectory(retained, hash, resolver,
                                             kPolicy, io, verified));
     assert(!verified.id[0]);
     stage.files["module.elf"][35] ^= 1;
+    stage.files["module.elf"][0] = 0;
+    assert(!verifyCanonicalOrdinaryDirectory(retained, noHash, resolver,
+                                            kPolicy, io, verified, false));
+    stage.files["module.elf"][0] = 0x7f;
     stage.files["unexpected.txt"] = {1};
+    assert(!verifyCanonicalOrdinaryDirectory(retained, noHash, resolver,
+                                            kPolicy, io, verified, false));
     assert(!verifyCanonicalOrdinaryDirectory(retained, hash, resolver,
                                             kPolicy, io, verified));
     stage.files.erase("unexpected.txt");

@@ -592,7 +592,7 @@ bool verifiedManagedApp(const char* id, RuntimePackages::Identity& identity,
   identity = {};
   if (!id || !RuntimePackages::safeId(id)) return false;
   const std::string root = std::string("/Apps/") + id;
-  if (!RuntimePackages::verifyOrdinarySdDirectory(root.c_str(), kCanonicalAppPolicy,
+  if (!RuntimePackages::inspectInstalledOrdinarySdDirectory(root.c_str(), kCanonicalAppPolicy,
           RuntimePackages::installedCapabilityVersion, identity) ||
       identity.kind != RuntimePackages::Kind::Application ||
       std::strcmp(identity.id, id) || !t5_safe_elf_name(identity.artifact))
@@ -621,7 +621,7 @@ bool installedAppVersionGet(const char* fileName, char* out, size_t capacity) {
   const std::string sidecar = destination.substr(0, destination.size() - 4) + ".json";
   if (!RuntimePackages::recoverAppPair(fileName) ||
       !Storage.exists(destination.c_str()) || !Storage.exists(sidecar.c_str()) ||
-      !RuntimePackages::verifyAppPair(destination.c_str(), sidecar.c_str(), fileName, false))
+      !RuntimePackages::inspectInstalledAppPair(destination.c_str(), sidecar.c_str(), fileName))
     return false;
   t5_app_manifest_t manifest{};
   std::string version;
@@ -837,8 +837,8 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
       lastLaunchError = "Manifest file name does not match the ELF.";
       return ESP_ERR_NOT_SUPPORTED;
     }
-    if (!RuntimePackages::verifyAppPair(elf.c_str(), sidecar.c_str(), filename.c_str(), false)) {
-      lastLaunchError = "Application ELF integrity validation failed.";
+    if (!RuntimePackages::inspectInstalledAppPair(elf.c_str(), sidecar.c_str(), filename.c_str())) {
+      lastLaunchError = "Application metadata or executable is unavailable.";
       return ESP_ERR_NOT_SUPPORTED;
     }
     if (!manifest.compatible) {
