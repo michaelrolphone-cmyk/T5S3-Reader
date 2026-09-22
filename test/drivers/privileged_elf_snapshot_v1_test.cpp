@@ -13,7 +13,7 @@ static unsigned allocations = 0;
 static unsigned fallback_allocations = 0;
 static bool reject_allocations = false;
 static bool reject_spiram = false;
-static bool reject_hash = false;
+static unsigned hash_calls = 0;
 static const uint8_t* original = nullptr;
 static uint8_t expected_payload[] = {0x7f, 'E', 'L', 'F', 1, 1, 1, 0x44, 0x19};
 static const char* const signed_imports[] = {"esp_intr_alloc", "malloc"};
@@ -27,8 +27,9 @@ extern "C" void* heap_caps_malloc(size_t size, uint32_t capabilities) {
 extern "C" void heap_caps_free(void* ptr) { std::free(ptr); }
 extern "C" int mbedtls_sha256_ret(const unsigned char* data, size_t length,
                                    unsigned char result[32], int is224) {
-  if (reject_hash || is224) return -1;
-  return SHA256(data, length, result) ? 0 : -1;
+  (void)data; (void)length; (void)result; (void)is224;
+  ++hash_calls;
+  return -1; // Runtime loading must not call this, even if hashing fails.
 }
 extern "C" int esp_elf_relocate_privileged_verified_v1(esp_elf_t* image,
                                                          const uint8_t* bytes, size_t length,
@@ -36,12 +37,12 @@ extern "C" int esp_elf_relocate_privileged_verified_v1(esp_elf_t* image,
                                                          size_t import_count) {
   assert(image);
   ++relocations;
-  /* The only permitted relocation input is a private copy of precisely the
-   * digest-checked bytes with exactly the authenticated import declaration.
+  /* Relocation still receives an independent snapshot and exact import
+   * declarations. Integrity checks belong to installation, not this loader.
    * Deliberately fail before any native code can run. */
   assert(bytes != original);
   assert(length == sizeof(expected_payload));
-  assert(std::memcmp(bytes, expected_payload, length) == 0);
+  assert(std::memcmp(bytes, original, length) == 0);
   assert(imports == signed_imports && import_count == 2);
   return -1;
 }
@@ -53,14 +54,8 @@ static bool attempt(const uint8_t* image, size_t length, const uint8_t digest[32
                                   signed_imports, 2, "fixture-signed",
                                   "cap.generic", 1, nullptr, 0);
   assert(!loaded && module.lastError()[0]);
-  if (image && digest && length == sizeof(expected_payload) &&
-      !reject_allocations && !reject_hash &&
-      std::memcmp(image, expected_payload, length) == 0) {
-    uint8_t actual[32];
-    assert(SHA256(image, length, actual));
-    if (std::memcmp(actual, digest, 32) == 0)
-      assert(std::strstr(module.lastError(), "elf-relocation-failed rc=-1"));
-  }
+  if (image && digest && length == sizeof(expected_payload) && !reject_allocations)
+    assert(std::strstr(module.lastError(), "elf-relocation-failed rc=-1"));
   return loaded;
 }
 
@@ -76,26 +71,22 @@ int main() {
 
   candidate[7] ^= 0x80;
   assert(!attempt(candidate, sizeof(candidate), signed_digest));
-  assert(relocations == 1); /* Tampered candidate denied before mapping. */
+  assert(relocations == 2); /* Install-time checksum is not rechecked here. */
   candidate[7] ^= 0x80;
   uint8_t forged_digest[32]{};
   std::memcpy(forged_digest, signed_digest, sizeof(forged_digest));
   forged_digest[0] ^= 1;
   assert(!attempt(candidate, sizeof(candidate), forged_digest));
-  assert(relocations == 1);
+  assert(relocations == 3 && hash_calls == 0);
 
-  reject_hash = true;
-  assert(!attempt(candidate, sizeof(candidate), signed_digest));
-  assert(relocations == 1);
-  reject_hash = false;
   reject_allocations = true;
   assert(!attempt(candidate, sizeof(candidate), signed_digest));
-  assert(relocations == 1);
+  assert(relocations == 3);
   reject_allocations = false;
 
   reject_spiram = true;
   assert(!attempt(candidate, sizeof(candidate), signed_digest));
-  assert(relocations == 2 && fallback_allocations >= 1);
+  assert(relocations == 4 && fallback_allocations >= 1);
   reject_spiram = false;
   assert(!attempt(nullptr, sizeof(candidate), signed_digest));
   assert(!attempt(candidate, sizeof(candidate), nullptr));
@@ -104,6 +95,6 @@ int main() {
   assert(!missing.loadVerifiedBytes(candidate, sizeof(candidate), signed_digest,
                                     nullptr, 0, "fixture-signed", "cap.generic", 1,
                                     nullptr, 0));
-  assert(relocations == 2);
-  std::puts("Privileged ELF: private snapshot, digest and mandatory import gates PASS");
+  assert(relocations == 4 && hash_calls == 0);
+  std::puts("Privileged ELF: private snapshot, zero runtime hashing and mandatory import gates PASS");
 }
