@@ -1,6 +1,6 @@
 #include "NativeUsbClassBridge.h"
 #include <RiscUsbProviderV1.h>
-#if defined(ESP_PLATFORM)
+#if defined(RISCRTE_ENABLE_LEGACY_USB_CLASS_SELECTOR)
 #include "runtime/drivers/InstalledProviderSession.h"
 #endif
 #include <cstring>
@@ -15,7 +15,7 @@ t5_serial_config_t coding{115200u, 8u, T5_SERIAL_PARITY_NONE, 1u, T5_SERIAL_FLOW
 bool dtr = false, rts = false;
 bool started = false;
 const risc_usb_cdc_api_v1* boundApi = nullptr;
-#if defined(ESP_PLATFORM)
+#if defined(RISCRTE_ENABLE_LEGACY_USB_CLASS_SELECTOR)
 RuntimeInstalledProviders::SelectedSession installedClass;
 #endif
 
@@ -57,7 +57,7 @@ bool apiValid(const risc_usb_cdc_api_v1* api) {
 RuntimeUsb::ClassPort portFromOps(const NativeUsbClassOps& o) {
   return {o.context, o.open, o.configure, o.control, o.read, o.write, o.close};
 }
-#if defined(ESP_PLATFORM)
+#if defined(RISCRTE_ENABLE_LEGACY_USB_CLASS_SELECTOR)
 // Only the installed class ELF interprets the device and its descriptors.
 // The generic selector owns candidate grants, checked rejects and quarantine.
 // A negative probe is UNKNOWN and MUST NOT allow another class to start.
@@ -122,7 +122,7 @@ bool nativeUsbClassStopChecked() {
 }
 bool nativeUsbClassUnbindChecked() {
   if (!nativeUsbClassStopChecked() || !session.unbind()) return false;
-#if defined(ESP_PLATFORM)
+#if defined(RISCRTE_ENABLE_LEGACY_USB_CLASS_SELECTOR)
   // The session retains a failed activation even without a usable interface.
   // Do not clear that quarantine or release a dependent host speculatively.
   if (!installedClass.releaseChecked()) return false;
@@ -137,14 +137,14 @@ void nativeUsbClassUnbind() { (void)nativeUsbClassUnbindChecked(); }
 void nativeUsbClassStop() { (void)nativeUsbClassStopChecked(); }
 
 bool nativeUsbClassAvailable() {
-#if defined(ESP_PLATFORM)
+#if defined(RISCRTE_ENABLE_LEGACY_USB_CLASS_SELECTOR)
   if (!valid(ops) && !token && !session.token() && !installedClass.faulted())
     (void)nativeUsbClassEnsureInstalled(0);
 #endif
   return valid(ops) && (!token || started);
 }
 bool nativeUsbClassBound() {
-#if defined(ESP_PLATFORM)
+#if defined(RISCRTE_ENABLE_LEGACY_USB_CLASS_SELECTOR)
   return valid(ops) || installedClass.acquired() || installedClass.faulted();
 #else
   return valid(ops);
@@ -236,7 +236,7 @@ void nativeUsbClassPump(RuntimeStreams::Registry& registry) {
   if (session.bound() && session.token()) (void)session.pump(registry);
 }
 
-#if defined(ESP_PLATFORM)
+#if defined(RISCRTE_ENABLE_LEGACY_USB_CLASS_SELECTOR)
 bool nativeUsbClassBindNextInstalled(size_t* cursor, bool* faulted) {
   if (faulted) *faulted = false;
   if (installedClass.faulted() ||
