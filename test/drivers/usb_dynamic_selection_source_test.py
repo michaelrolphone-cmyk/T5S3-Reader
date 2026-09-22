@@ -44,6 +44,11 @@ assert 'recoverFailedProvider(slot.id,' in manager
 assert 'registry_.get(handle, &live)' in publisher
 assert 'InstalledSerialSession' in serial_session
 assert 'providerDevice_' in serial_session and 'providerGeneration_' in serial_session
+assert 'defined(ARDUINO_ARCH_ESP32)' in serial
+assert 'serialIoInFlight.fetch_add(' in serial
+assert 'activeStreamEpoch.store(0, std::memory_order_release)' in serial
+assert 'waitInstalledSerialIoIdle()' in serial
+assert 'vTaskDelay(1)' in serial
 
 # The production T5UsbApi symbol is now explicitly non-hardware. Historical
 # orchestration may remain below #else for host fixtures only.
