@@ -6,6 +6,7 @@ on:
       - "Drivers/usb_cdc_v2/**"
       - "Drivers/usb_cp210x_v2/**"
       - "Drivers/usb_ch34x_v2/**"
+      - "Drivers/usb_serial_witness_v2/**"
       - "Drivers/usb_host_v2/**"
       - "Drivers/usb_controller_esp32s3/**"
       - "Drivers/board_power_t5s3_v2/**"
@@ -37,6 +38,7 @@ on:
       - "scripts/build_usb_cdc_v2.py"
       - "scripts/build_usb_cp210x_v2.py"
       - "scripts/build_usb_ch34x_v2.py"
+      - "scripts/build_usb_serial_witness_v2.py"
       - "scripts/build_usb_host_v2.py"
       - "scripts/build_board_power_t5s3_v2.py"
       - "scripts/build_platform_clock_v1.py"
@@ -122,6 +124,8 @@ jobs:
           bash test/run_native_app_test.sh dist/experimental/usb-cp210x-v2/driver.elf
           python scripts/build_usb_ch34x_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-ch34x-v2/driver.elf
+          python scripts/build_usb_serial_witness_v2.py
+          bash test/run_native_app_test.sh dist/experimental/usb-serial-witness/driver.elf
           python scripts/build_usb_host_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-host-v2/driver.elf
           python scripts/build_board_power_t5s3_v2.py
