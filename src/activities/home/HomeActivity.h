@@ -25,6 +25,7 @@ class HomeActivity final : public Activity {
   uint8_t* coverBuffer = nullptr;
   std::vector<RecentBook> recentBooks;
   std::vector<t5_app_manifest_t> homeApps;
+  std::string pendingHomeAppArtifact;
   std::string lastVisibleTextPrewarmKey;
   void onSelectBook(const std::string& path);
   void onFileBrowserOpen();
