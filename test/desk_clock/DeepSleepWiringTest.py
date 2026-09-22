@@ -5,6 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 CLOCK = (ROOT / "src/DeskClockSleep.cpp").read_text()
+DISPLAY = (ROOT / "lib/hal/HalDisplay.cpp").read_text()
 SYSTEM = (ROOT / "lib/hal/HalSystem.cpp").read_text()
 
 
@@ -34,6 +35,14 @@ class ClockDeepSleepWiring(unittest.TestCase):
             self.assertNotIn(forbidden, resume)
         self.assertIn("display.deepSleep()", CLOCK)
         self.assertIn("Board::deinitForSleep()", CLOCK)
+
+    def test_timer_refresh_reconstructs_previous_frame_and_clips_diff(self):
+        self.assertIn("displayedMinuteEpoch", CLOCK)
+        self.assertIn("renderClockFrame(gfx, previousDisplayedMinute)", CLOCK)
+        self.assertIn("memcpy(previousFrame, display.getFrameBuffer(), display.getBufferSize())", CLOCK)
+        self.assertIn("display.displayBufferDiff(previousFrame, HalDisplay::HALF_REFRESH)", CLOCK)
+        self.assertIn("frameBuffer[index] == previousBuffer[index]", DISPLAY)
+        self.assertIn("gfx->setClipRect(clipX, clipY, clipW, clipH)", DISPLAY)
 
 
 if __name__ == "__main__":

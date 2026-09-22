@@ -709,6 +709,93 @@ void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen)
   grayscaleBaseCaptured = false;
 }
 
+void HalDisplay::displayBufferDiff(const uint8_t* previousBuffer, HalDisplay::RefreshMode mode) {
+  if (!previousBuffer || !displayReady || !gfx || !panelCanvas || !frameBuffer || mode == FULL_REFRESH ||
+      forceFullRefresh) {
+    displayBuffer(mode);
+    return;
+  }
+
+  uint16_t minX = DISPLAY_WIDTH;
+  uint16_t minY = DISPLAY_HEIGHT;
+  uint16_t maxX = 0;
+  uint16_t maxY = 0;
+  bool changed = false;
+
+  for (uint16_t y = 0; y < DISPLAY_HEIGHT; ++y) {
+    const uint32_t rowOffset = static_cast<uint32_t>(y) * DISPLAY_WIDTH_BYTES;
+    for (uint16_t byteX = 0; byteX < DISPLAY_WIDTH_BYTES; ++byteX) {
+      const uint32_t index = rowOffset + byteX;
+      if (frameBuffer[index] == previousBuffer[index]) {
+        continue;
+      }
+      changed = true;
+      minX = std::min<uint16_t>(minX, byteX * 8);
+      maxX = std::max<uint16_t>(maxX, std::min<uint16_t>(DISPLAY_WIDTH - 1, byteX * 8 + 7));
+      minY = std::min<uint16_t>(minY, y);
+      maxY = std::max<uint16_t>(maxY, y);
+    }
+  }
+
+  if (!changed) {
+    forcedRefreshPending = false;
+    pendingDisplayEffect = EFFECT_NONE;
+    grayscaleBaseCaptured = false;
+    return;
+  }
+
+  if (forcedRefreshPending && (mode == FAST_REFRESH || mode == BALANCED_REFRESH)) {
+    mode = forcedRefreshMode;
+  }
+  if (mode == FULL_REFRESH) {
+    displayBuffer(FULL_REFRESH);
+    return;
+  }
+
+  renderBwToPanelCanvas();
+
+  lgfx::epd_mode::epd_mode_t epdMode = lgfx::epd_mode::epd_fastest;
+  if (mode == HALF_REFRESH) {
+    epdMode = lgfx::epd_mode::epd_text;
+    refreshCycleCount = 0;
+  } else if (mode == BALANCED_REFRESH) {
+    epdMode = lgfx::epd_mode::epd_fast;
+    refreshCycleCount = 0;
+  } else {
+    const bool useQualityMode = refreshCycleCount >= kQualityRefreshThreshold;
+    const bool useMiddleMode = !useQualityMode && refreshCycleCount >= kMiddleRefreshThreshold &&
+                               (refreshCycleCount % kMiddleRefreshThreshold) == 0;
+    if (useQualityMode) {
+      epdMode = lgfx::epd_mode::epd_quality;
+      refreshCycleCount = 0;
+    } else {
+      epdMode = useMiddleMode ? lgfx::epd_mode::epd_fast : lgfx::epd_mode::epd_fastest;
+      refreshCycleCount++;
+    }
+  }
+
+  int clipX = minX;
+  int clipY = minY;
+  const int clipW = maxX - minX + 1;
+  const int clipH = maxY - minY + 1;
+  if (flipOutput) {
+    clipX = DISPLAY_WIDTH - 1 - maxX;
+    clipY = DISPLAY_HEIGHT - 1 - maxY;
+  }
+
+  gfx->waitDisplay();
+  gfx->setEpdMode(epdMode);
+  gfx->setClipRect(clipX, clipY, clipW, clipH);
+  panelCanvas->pushSprite(gfx, 0, 0);
+  gfx->clearClipRect();
+  gfx->waitDisplay();
+
+  forceFullRefresh = false;
+  forcedRefreshPending = false;
+  pendingDisplayEffect = EFFECT_NONE;
+  grayscaleBaseCaptured = false;
+}
+
 void HalDisplay::refreshDisplay(HalDisplay::RefreshMode mode, bool turnOffScreen) { displayBuffer(mode, turnOffScreen); }
 
 void HalDisplay::setFlipOutput(bool enabled) {

@@ -202,6 +202,14 @@ void HalDisplay::displayBuffer(RefreshMode mode, bool turnOffScreen) {
   pendingDisplayEffect = EFFECT_NONE;
 }
 
+void HalDisplay::displayBufferDiff(const uint8_t* previousBuffer, const RefreshMode mode) {
+  // The current EPD47 backend still submits a full-screen image. Keep the API
+  // available so shared desk-clock code builds; T5S3 Paper Pro uses the
+  // clipped differential path in HalDisplay.cpp.
+  (void)previousBuffer;
+  displayBuffer(mode);
+}
+
 void HalDisplay::refreshDisplay(const RefreshMode mode, const bool turnOffScreen) { displayBuffer(mode, turnOffScreen); }
 
 void HalDisplay::setFlipOutput(const bool enabled) {

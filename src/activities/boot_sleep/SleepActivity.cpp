@@ -19,8 +19,8 @@
 void SleepActivity::onEnter() {
   Activity::onEnter();
 
-  // The main sleep controller owns the clock's minute timer and light-sleep
-  // loop. Do not flash a static popup/image before the landscape clock.
+  // The main sleep controller owns the clock's minute timer and deep-sleep
+  // wake loop. Do not flash a static popup/image before the landscape clock.
   if (!poweringOff && activeScreenMode() == CrossPointSettings::DIGITAL_CLOCK) {
     return;
   }
