@@ -148,6 +148,8 @@ A separate application-facing `usb.hub` capability is optional. Basic multi-devi
 
 CDC ACM, CP210x, CH34x, FTDI, HID, MSC, debug-probe and other class providers SHALL remain hub-agnostic.
 
+USB MSC devices behind hubs additionally follow [USB Mass Storage and Generic Block/Volume Architecture](USB_MASS_STORAGE_SUPPORT.md); hub attachment changes topology only, not the MSC/block/volume layering.
+
 A class provider receives an opaque generation-qualified device identity from `usb.host` and uses the same descriptor/claim/control/transfer contract whether the device is:
 
 ```text

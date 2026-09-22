@@ -21,7 +21,7 @@ Applications describe *what* they require rather than *which* hardware implement
 
 ## 2. Existing foundations and authority
 
-This roadmap connects `RUNTIME_DRIVER_ARCHITECTURE.md`, `RUNTIME_DRIVER_IMPLEMENTATION.md` (current-state only), `SCENE_RUNTIME_ARCHITECTURE.md`, `SERVICE_RUNTIME_ARCHITECTURE.md`, `MEMORY_ARCHITECTURE.md`, `SECURITY_ARCHITECTURE.md`, `USB_OTG_HOST_ARCHITECTURE.md`, `USB_HUB_SUPPORT.md`, `PROGRAMMER_DEBUGGER_ARCHITECTURE.md`, `BLUETOOTH_SENSOR_ARCHITECTURE.md` and `PLATFORM_ABSTRACTION_ARCHITECTURE.md`. The hardware boundary overrides contrary historical wording. `HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md` is the required implementation/review gate for every hardware-related priority below. A new device capability must be introduced by installing a provider, not adding a transport branch in firmware.
+This roadmap connects `RUNTIME_DRIVER_ARCHITECTURE.md`, `RUNTIME_DRIVER_IMPLEMENTATION.md` (current-state only), `SCENE_RUNTIME_ARCHITECTURE.md`, `SERVICE_RUNTIME_ARCHITECTURE.md`, `MEMORY_ARCHITECTURE.md`, `SECURITY_ARCHITECTURE.md`, `USB_OTG_HOST_ARCHITECTURE.md`, `USB_HUB_SUPPORT.md`, `USB_MASS_STORAGE_SUPPORT.md`, `PROGRAMMER_DEBUGGER_ARCHITECTURE.md`, `BLUETOOTH_SENSOR_ARCHITECTURE.md` and `PLATFORM_ABSTRACTION_ARCHITECTURE.md`. The hardware boundary overrides contrary historical wording. `HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md` is the required implementation/review gate for every hardware-related priority below. A new device capability must be introduced by installing a provider, not adding a transport branch in firmware.
 
 # Part I — Core Platform Unification
 
@@ -95,7 +95,7 @@ Expand generic events for `system.*`, `power.*`, `network.*`, `storage.*`, `devi
 
 ## 13. Unified Storage Provider Layer
 
-SD, USB MSC, internal flash and network volumes expose a shared logical volume ABI; provider ELFs own media-specific controllers and filesystem/protocol behavior. Generic volume metadata: ID, provider/device, mount point, filesystem type, capacity/free space, read/write, removability, generic ownership and health. Publish volume-added, mounted, unmounting, unmounted, removed, low-space and error events. Safe removal coordinates open handles, mappings, recorder buffers, jobs, export clients and filesystem flush through providers; the generic mount/namespace manager does not implement USB MSC or SDMMC.
+SD, USB MSC, internal flash and network volumes expose a shared logical volume ABI; provider ELFs own media-specific controllers and filesystem/protocol behavior. Generic volume metadata: ID, provider/device, mount point, filesystem type, capacity/free space, read/write, removability, generic ownership and health. USB MSC specifically follows [USB Mass Storage and Generic Block/Volume Architecture](USB_MASS_STORAGE_SUPPORT.md): USB class/BOT/SCSI publishes generic `storage.block`; a separate filesystem provider publishes `storage.volume`. Publish volume-added, mounted, unmounting, unmounted, removed, low-space and error events. Safe removal coordinates open handles, mappings, recorder buffers, jobs, export clients and filesystem flush through providers; the generic mount/namespace manager does not implement USB MSC or SDMMC.
 
 ## 14. Unified Data Recorder and Time-Series Store
 
