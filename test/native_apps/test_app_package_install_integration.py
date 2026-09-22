@@ -98,10 +98,10 @@ class LiveInstallContract(unittest.TestCase):
         self.assertLess(ADAPTER.index('native_app_current_path()'),
                         ADAPTER.index('publishPairTransaction('))
 
-    def test_launch_and_version_query_validate_installed_content(self):
-        self.assertIn('RuntimePackages::verifyAppPair(destination.c_str(), sidecar.c_str(), fileName, false)', HOST)
-        self.assertIn('RuntimePackages::verifyAppPair(elf.c_str(), sidecar.c_str(), filename.c_str(), false)', HOST)
-        self.assertIn('Application ELF integrity validation failed.', HOST)
+    def test_launch_and_version_query_inspect_without_payload_hashing(self):
+        self.assertIn('RuntimePackages::inspectInstalledAppPair(destination.c_str(), sidecar.c_str(), fileName)', HOST)
+        self.assertIn('RuntimePackages::inspectInstalledAppPair(elf.c_str(), sidecar.c_str(), filename.c_str())', HOST)
+        self.assertIn('Application metadata or executable is unavailable.', HOST)
         self.assertIn('Application update cannot be safely recovered.', HOST)
 
     def test_recovery_runs_before_springboard_presence_and_inventory_open(self):

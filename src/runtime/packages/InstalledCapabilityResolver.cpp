@@ -108,7 +108,7 @@ bool snapshotCandidates(std::vector<Candidate>& candidates) {
       // Structural dependency resolution during integrity verification avoids
       // trusting a declaration merely because its own dependency claims it.
       Identity installed{};
-      if (!verifyOrdinarySdDirectory(path, kPolicy,
+      if (!inspectInstalledOrdinarySdDirectory(path, kPolicy,
               [](const char*) -> uint32_t { return UINT32_MAX; }, installed) ||
           std::strcmp(installed.id, id) ||
           (installed.kind != Kind::Driver && installed.kind != Kind::Provider &&

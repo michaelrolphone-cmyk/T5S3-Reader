@@ -21,6 +21,12 @@ bool verifyOrdinarySdDirectory(const char* managedDirectory,
     const PackageRuntimePolicy& policy,
     uint32_t (*resolveCapability)(const char*), Identity& observed);
 
+// Runtime inspection: manifest, inventory, sizes and ELF headers; no hashing.
+// Installation/update verification above remains independent and mandatory.
+bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
+    const PackageRuntimePolicy& policy,
+    uint32_t (*resolveCapability)(const char*), Identity& observed);
+
 // Canonical packages only; legacy files stay under their original managers.
 // Uninstall acquires the ordinary package's exclusive mapping lease, commits
 // removal by renaming to a tombstone and selectively deletes only declared

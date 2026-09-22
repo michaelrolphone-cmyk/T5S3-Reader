@@ -29,12 +29,12 @@ struct ManagerProviderCandidateV2 {
 class DeviceProviderExecutorV2 final {
  public:
   // Manager-only native firmware entry. Copies all metadata and executable
-  // bytes into the graph; computes SHA-256 itself and optionally compares the
-  // package's claimed checksum. Does NOT activate or grant consumer rights.
+  // bytes into the graph. Installation callers verify checksums by default;
+  // installed-provider discovery passes verifyContents=false. Does NOT activate or grant consumer rights.
   // Graph/loader independently enforce generic OS/CPU imports and relocation.
   // No P-256 signer, trust root or NVS security floor is required.
   static bool registerManagerValidated(RuntimeProviders::GraphV2& graph,
-                                       const ManagerProviderCandidateV2& input);
+                                       const ManagerProviderCandidateV2& input, bool verifyContents = true);
 };
 
 }  // namespace RuntimePackages

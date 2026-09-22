@@ -38,7 +38,7 @@ OrdinaryInstallOutcome installCanonicalOrdinaryPackage(
 template <typename Directory, typename Hash, typename Resolver>
 bool verifyCanonicalOrdinaryDirectory(Directory& directory, Hash& hash,
     Resolver resolver, const PackageRuntimePolicy& policy,
-    uint8_t (&io)[kOrdinaryIoBytes], Identity& observed) {
+    uint8_t (&io)[kOrdinaryIoBytes], Identity& observed, bool verifyContents = true) {
   observed = {};
   // These two allocations used to live in the same nested call chain as the
   // SD reader's second 4 KiB buffer. A 16-entry plan plus two manifests could
@@ -50,7 +50,7 @@ bool verifyCanonicalOrdinaryDirectory(Directory& directory, Hash& hash,
   if (!directory.readManifest(manifest.get(), PackageJsonGuard::kMaxBytes, used) ||
       !used || used > PackageJsonGuard::kMaxBytes) return false;
   if (!parseOrdinaryManifest(manifest.get(), used, *plan) ||
-      !verifyOrdinaryDirectory(*plan, directory, hash, resolver, policy, io))
+      !verifyOrdinaryDirectory(*plan, directory, hash, resolver, policy, io, verifyContents))
     return false;
   observed = plan->identity;
   return true;

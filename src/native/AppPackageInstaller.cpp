@@ -114,7 +114,7 @@ bool verifyBytes(const char* elfPath, uint64_t declaredSize, const char* declare
 }
 
 bool verifyNamedPair(const char* elf, const char* manifest, const char* filename,
-                     bool requireDigest) {
+                     bool requireDigest, bool verifyContents = true) {
   if (!elf || !manifest || !validFilename(filename)) return false;
   t5_app_manifest_t parsed{};
   if (!readAppManifest(manifest, parsed) || std::strcmp(parsed.file_name, filename) != 0) return false;
@@ -135,7 +135,7 @@ bool verifyNamedPair(const char* elf, const char* manifest, const char* filename
   // to managed ELF-header rules. The ELF loader remains the compatibility
   // authority for these manually copied files. Staged/new installs and any
   // sidecar that declares integrity metadata continue through strict hashing.
-  if (!hasDigest) return existingRegularFile(elf);
+  if (!hasDigest || !verifyContents) return existingRegularFile(elf);
 
   return verifyBytes(elf, declaredSize.as<unsigned>(), declaredSha.as<const char*>(), true);
 }
@@ -147,10 +147,20 @@ bool verifyAppPair(const char* elfPath, const char* manifestPath,
   return verifyNamedPair(elfPath, manifestPath, expectedFilename, requireDigest);
 }
 
+bool inspectInstalledAppPair(const char* elfPath, const char* manifestPath,
+                             const char* expectedFilename) {
+  return Storage.ready() && verifyNamedPair(elfPath, manifestPath,
+                                           expectedFilename, false, false);
+}
+
 bool recoverAppPair(const char* filename) {
   if (!Storage.ready() || !validFilename(filename)) return false;
   Paths paths(filename);
   StorageOps ops;
+  // No transaction to recover: never rehash an already installed pair.
+  if (!ops.exists(paths.backupElf.c_str()) && !ops.exists(paths.backupManifest.c_str()) &&
+      ops.exists(paths.targetElf.c_str()) && ops.exists(paths.targetManifest.c_str()))
+    return inspectInstalledAppPair(paths.targetElf.c_str(), paths.targetManifest.c_str(), filename);
   const auto verify = [filename](const char* elf, const char* manifest) {
     return verifyNamedPair(elf, manifest, filename, false);
   };

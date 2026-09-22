@@ -324,13 +324,13 @@ struct Ops {
   }
 };
 bool verifyCanonical(const char* path, const PackageRuntimePolicy& policy,
-                     uint32_t (*resolver)(const char*), Identity& observed) {
+                     uint32_t (*resolver)(const char*), Identity& observed, bool verifyContents = true) {
   if (!path || !resolver || !directoryExists(path)) return false;
   SdDirectory directory(path);
   SdHash hash;
   uint8_t io[kOrdinaryIoBytes]{};
   return verifyCanonicalOrdinaryDirectory(directory, hash, resolver, policy,
-                                          io, observed);
+                                          io, observed, verifyContents);
 }
 bool purgeManaged(const char* path, Kind kind, const char* expectedId) {
   if (!path || !safeId(expectedId) || !directoryExists(path)) return false;
@@ -362,6 +362,13 @@ bool verifyOrdinarySdDirectory(const char* managedDirectory,
   observed = {};
   return Storage.ready() && safeSourcePath(managedDirectory) &&
       verifyCanonical(managedDirectory, policy, resolveCapability, observed);
+}
+bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
+    const PackageRuntimePolicy& policy,
+    uint32_t (*resolveCapability)(const char*), Identity& observed) {
+  observed = {};
+  return Storage.ready() && safeSourcePath(managedDirectory) &&
+      verifyCanonical(managedDirectory, policy, resolveCapability, observed, false);
 }
 OrdinaryInstallOutcome installOrdinaryFromSd(
     const char* sourceDirectory, const PackageRuntimePolicy& policy,

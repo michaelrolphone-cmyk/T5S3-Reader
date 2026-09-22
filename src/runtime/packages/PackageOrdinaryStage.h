@@ -203,15 +203,24 @@ OrdinaryStageResult stageOrdinaryPackage(const OrdinaryPackagePlan& plan,
 template <typename Directory, typename Hash, typename Resolver>
 bool verifyOrdinaryDirectory(const OrdinaryPackagePlan& plan,
     Directory& directory, Hash& hash, Resolver resolver,
-    const PackageRuntimePolicy& limits, uint8_t (&io)[kOrdinaryIoBytes]) {
+    const PackageRuntimePolicy& limits, uint8_t (&io)[kOrdinaryIoBytes],
+    bool verifyContents = true) {
   if (preflightOrdinaryPackage(plan, limits, resolver) !=
       PreflightResult::ReadyForContentVerification ||
       !directory.exactEntries(plan)) return false;
   for (size_t i = 0; i < plan.entryCount; ++i) {
     const OrdinaryEntry& entry = plan.entries[i];
     uint64_t size = 0;
-    if (!directory.entrySize(entry.name, size) || size != entry.sizeBytes ||
-        !hash.start()) return false;
+    if (!directory.entrySize(entry.name, size) || size != entry.sizeBytes) return false;
+    // Installed-package inspection reads headers only. Integrity is established
+    // by installation/update, not by discovery or capability acquisition.
+    if (!verifyContents) {
+      if (entry.executable &&
+          (!directory.readAt(entry.name, 0, io, 52) ||
+           !ordinaryElfHeader(io, 52, plan.architecture))) return false;
+      continue;
+    }
+    if (!hash.start()) return false;
     uint64_t at = 0;
     while (at < entry.sizeBytes) {
       const size_t count = entry.sizeBytes - at < sizeof(io) ?
