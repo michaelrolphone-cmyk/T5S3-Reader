@@ -42,11 +42,15 @@ for class in cdc cp210x ch34x; do
     -I"$repo/sdk/driver" "$repo/Drivers/usb_${class}_v2/driver.c" \
     -o "$build/usb-${class}.so"
 done
+cc -std=c11 -Wall -Wextra -Werror -fPIC -fvisibility=hidden -shared \
+  -I"$repo/sdk/driver" "$repo/Drivers/usb_serial_witness_v2/driver.c" \
+  -o "$build/usb-serial-witness.so"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/usb_host_class_integration_test.c" -ldl \
   -o "$build/usb-host-class-integration-test"
 "$build/usb-host-class-integration-test" "$build/usb-host-v2.so" \
-  "$build/usb-cdc.so" "$build/usb-cp210x.so" "$build/usb-ch34x.so"
+  "$build/usb-cdc.so" "$build/usb-cp210x.so" "$build/usb-ch34x.so" \
+  "$build/usb-serial-witness.so"
 
 # The EXACT same production ELFs also announce their own coherent devices.
 # A short inventory, uncertain physical identity or reconnect cannot create
