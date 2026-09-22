@@ -48,6 +48,16 @@ struct StorageOps {
   bool remove(const char* path) const { return Storage.remove(path); }
 };
 
+bool existingRegularFile(const char* path) {
+  if (!path) return false;
+  HalFile file = Storage.open(path, O_RDONLY);
+  if (!file.isOpen() || file.isDirectory()) {
+    if (file.isOpen()) file.close();
+    return false;
+  }
+  return file.close();
+}
+
 bool verifyBytes(const char* elfPath, uint64_t declaredSize, const char* declaredSha,
                  bool hasDigest) {
   HalFile elf = Storage.open(elfPath, O_RDONLY);
@@ -118,8 +128,16 @@ bool verifyNamedPair(const char* elf, const char* manifest, const char* filename
   const JsonVariantConst declaredSha = json["sha256"];
   const bool hasDigest = declaredSize.is<unsigned>() && declaredSha.is<const char*>();
   if (requireDigest && !hasDigest) return false;
-  return verifyBytes(elf, hasDigest ? declaredSize.as<unsigned>() : 0,
-                     hasDigest ? declaredSha.as<const char*>() : nullptr, hasDigest);
+
+  // Manual/legacy installs intentionally predate the managed-package format.
+  // A valid matching digestless sidecar identifies the app for discovery, but
+  // does not claim package integrity and must not be retroactively subjected
+  // to managed ELF-header rules. The ELF loader remains the compatibility
+  // authority for these manually copied files. Staged/new installs and any
+  // sidecar that declares integrity metadata continue through strict hashing.
+  if (!hasDigest) return existingRegularFile(elf);
+
+  return verifyBytes(elf, declaredSize.as<unsigned>(), declaredSha.as<const char*>(), true);
 }
 } // namespace
 
