@@ -1,4 +1,4 @@
-#if defined(ESP_PLATFORM) || defined(RISCRTE_TEST_INSTALLED_SERIAL_PATH)
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32) || defined(RISCRTE_TEST_INSTALLED_SERIAL_PATH)
 #define RISCRTE_INSTALLED_SERIAL_PATH 1
 #else
 #define RISCRTE_INSTALLED_SERIAL_PATH 0
@@ -24,6 +24,8 @@
 #include <cstring>
 #include <atomic>
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <Logging.h>
 #endif
 
@@ -47,6 +49,7 @@ const risc_serial_port_api_v1* activeInstalledApi = nullptr;
 uint64_t activeProviderDevice = 0;
 uint64_t activeProviderGeneration = 0;
 std::atomic<uint32_t> activeStreamEpoch{0};
+std::atomic<uint32_t> serialIoInFlight{0};
 uint32_t nextStreamEpoch = 0;
 #endif
 RuntimeDevices::LeaseHandle physicalLease = 0;
@@ -195,8 +198,22 @@ bool installedLeaseRevoked() {
          generation != installedSession.providerGeneration();
 }
 
+bool waitInstalledSerialIoIdle() {
+  if (!serialIoInFlight.load(std::memory_order_acquire)) return true;
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  // Provider transfers use a 1 ms timeout. Twenty cooperative scheduler ticks
+  // is a bounded teardown grace period, not an unbounded owner-task wait.
+  for (unsigned attempt = 0; attempt < 20; ++attempt) {
+    if (!serialIoInFlight.load(std::memory_order_acquire)) return true;
+    vTaskDelay(1);
+  }
+#endif
+  return serialIoInFlight.load(std::memory_order_acquire) == 0;
+}
+
 bool clearInstalledLease(bool stopPhysical) {
   activeStreamEpoch.store(0, std::memory_order_release);
+  if (!waitInstalledSerialIoIdle()) return false;
   if (stopPhysical && !installedSession.closeChecked()) return false;
   if (rxHandle) {
     const auto result = nativeStreamCloseOwned(rxHandle);
@@ -697,18 +714,44 @@ uint32_t nativeSerialProviderEpoch() {
   return activeStreamEpoch.load(std::memory_order_acquire);
 }
 int32_t nativeSerialProviderRead(uint8_t* dst, uint32_t capacity, uint32_t* out) {
-  if (!nativeSerialProviderActive()) {
+  if (out) *out = 0;
+  const uint32_t epoch = activeStreamEpoch.load(std::memory_order_acquire);
+  if (!epoch) return T5_STREAM_DISCONNECTED;
+  if (serialIoInFlight.fetch_add(1, std::memory_order_acq_rel) == UINT32_MAX) {
+    serialIoInFlight.fetch_sub(1, std::memory_order_acq_rel);
+    return T5_STREAM_IO;
+  }
+  if (activeStreamEpoch.load(std::memory_order_acquire) != epoch) {
+    serialIoInFlight.fetch_sub(1, std::memory_order_release);
+    return T5_STREAM_DISCONNECTED;
+  }
+  const int32_t result = installedSession.read(dst, capacity, out);
+  serialIoInFlight.fetch_sub(1, std::memory_order_release);
+  if (activeStreamEpoch.load(std::memory_order_acquire) != epoch) {
     if (out) *out = 0;
     return T5_STREAM_DISCONNECTED;
   }
-  return installedSession.read(dst, capacity, out);
+  return result;
 }
 int32_t nativeSerialProviderWrite(const uint8_t* src, uint32_t length, uint32_t* out) {
-  if (!nativeSerialProviderActive()) {
+  if (out) *out = 0;
+  const uint32_t epoch = activeStreamEpoch.load(std::memory_order_acquire);
+  if (!epoch) return T5_STREAM_DISCONNECTED;
+  if (serialIoInFlight.fetch_add(1, std::memory_order_acq_rel) == UINT32_MAX) {
+    serialIoInFlight.fetch_sub(1, std::memory_order_acq_rel);
+    return T5_STREAM_IO;
+  }
+  if (activeStreamEpoch.load(std::memory_order_acquire) != epoch) {
+    serialIoInFlight.fetch_sub(1, std::memory_order_release);
+    return T5_STREAM_DISCONNECTED;
+  }
+  const int32_t result = installedSession.write(src, length, out);
+  serialIoInFlight.fetch_sub(1, std::memory_order_release);
+  if (activeStreamEpoch.load(std::memory_order_acquire) != epoch) {
     if (out) *out = 0;
     return T5_STREAM_DISCONNECTED;
   }
-  return installedSession.write(src, length, out);
+  return result;
 }
 #else
 bool nativeSerialProviderActive() { return nativeUsbClassAvailable(); }
