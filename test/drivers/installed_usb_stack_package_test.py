@@ -26,6 +26,7 @@ BASELINE = {
     'usb-host-v2': ('usb.host', ['usb.controller']),
     'usb-cdc-acm-v2': ('serial.port', ['usb.host']),
     'usb-cp210x-v2': ('serial.port', ['usb.host']),
+    'usb-serial-witness': ('serial.port', ['usb.host']),
 }
 EXPECTED_ABSOLUTE_POINTERS = {
     'usb-controller-esp32s3': {0x600c0000, 0x60039000, 0x60008000,
