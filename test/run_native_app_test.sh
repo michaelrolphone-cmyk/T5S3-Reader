@@ -30,6 +30,7 @@ else
 fi
 python3 "$repo_dir/test/native_apps/test_symbols.py"
 python3 "$repo_dir/test/native_apps/test_capability_manifest.py"
+python3 "$repo_dir/test/native_apps/home_shortcut_launch_contract_test.py"
 python3 "$repo_dir/test/resources/driver_install_stack_progress_source_test.py"
 bash "$repo_dir/test/run_serial_launch_contract.sh"
 cc -std=c11 -Wall -Wextra -Werror \
