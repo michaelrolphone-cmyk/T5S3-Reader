@@ -83,4 +83,7 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
 "$binary"
 python3 "$repo_dir/test/native_apps/test_manifest.py"
 python3 "$repo_dir/test/native_apps/test_app_package_install_integration.py"
+# Keep the touch-only offline diagnostic UI and HID producer/client contract
+# covered by the normal PR host job, not only a manually dispatched USB job.
+bash "$repo_dir/test/run_usb_hid_test.sh"
 echo 'Native app regressions passed: canonical four-kind manifests/install/readback, staging/publication/retry/explicit discard, standard-UI Package Manager and Driver Manager recovery (no mandatory signing).'
