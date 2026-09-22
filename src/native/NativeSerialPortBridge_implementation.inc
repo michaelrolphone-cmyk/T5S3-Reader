@@ -726,44 +726,22 @@ void nativeUsbProviderAttach(const t5_usb_serial_state_t* state, uint8_t dataInt
   if (state) devices.observe(*state, dataInterface);
 }
 void nativeUsbProviderDetach() { devices.detach(); }
-uint32_t nativeUsbProviderEpoch() {
-#if RISCRTE_INSTALLED_SERIAL_PATH
-  if (!activeStreamEpoch.load(std::memory_order_acquire) || !activeSemanticDevice || !activeInstalledApi)
-    return UINT32_MAX;
-  const risc_serial_port_api_v1* api = nullptr;
-  uint64_t providerDevice = 0, generation = 0;
-  if (!installedSerial.resolve(activeSemanticDevice, &api, &providerDevice, &generation) ||
-      api != activeInstalledApi || providerDevice != activeProviderDevice ||
-      generation != activeProviderGeneration) return UINT32_MAX;
-  return activeStreamEpoch.load(std::memory_order_acquire);
-#else
-  return devices.epoch();
-#endif
-}
+uint32_t nativeUsbProviderEpoch() { return devices.epoch(); }
 
 bool nativeUsbDirectStreamClaim(uint32_t expectedEpoch) {
-#if RISCRTE_INSTALLED_SERIAL_PATH
-  (void)expectedEpoch;
-  return false; // legacy open_usb has no production hardware path
-#else
   if (!authorized()) return false;
   synchronizeSerialDevices();
   if (devices.epoch() != expectedEpoch) return false;
   if (!claimPhysicalDevice(SerialConsumer::LegacyDirectStream)) return false;
   if (devices.epoch() != expectedEpoch) {
     synchronizeSerialDevices();
-  #if !RISCRTE_INSTALLED_SERIAL_PATH
-  releasePhysicalDevice(SerialConsumer::LegacyDirectStream);
-#endif
+    releasePhysicalDevice(SerialConsumer::LegacyDirectStream);
     return false;
   }
   return true;
-#endif
 }
 void nativeUsbDirectStreamRelease() {
-#if !RISCRTE_INSTALLED_SERIAL_PATH
   releasePhysicalDevice(SerialConsumer::LegacyDirectStream);
-#endif
 }
 #endif
 void nativeDeviceDiscoveryTick() { synchronizeSerialDevices(); }
