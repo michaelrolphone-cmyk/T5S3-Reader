@@ -37,6 +37,8 @@ compile_run provider-publication "$repo/test/streams/provider_device_publisher_t
 compile_run serial-provider-inventory "$repo/test/streams/serial_provider_devices_test.cpp"
 compile_run serial-provider-registry "$repo/test/streams/serial_provider_registry_test.cpp"
 compile_run serial-structured-diagnostic "$repo/test/streams/serial_structured_diagnostic_test.cpp"
+compile_run installed-serial-bridge -DRISCRTE_TEST_INSTALLED_SERIAL_PATH "$serial" \
+  "$repo/test/streams/installed_serial_bridge_test.cpp"
 compile_run serial-failed-acquire "$repo/test/streams/serial_failed_acquire_test.cpp"
 compile_run serial-provider-bridge "$serial" "$checked" "$repo/test/streams/serial_provider_bridge_test.cpp"
 compile_run serial-diagnostic-context "$serial" "$checked" "$repo/test/streams/serial_diagnostic_context_test.cpp"
