@@ -11,6 +11,7 @@
 #include <Logging.h>
 #include <WiFi.h>
 #include <esp_attr.h>
+#include <esp_heap_caps.h>
 #include <esp_sleep.h>
 #include <soc/soc_caps.h>
 #include <sys/time.h>
@@ -31,12 +32,13 @@ extern EpdFontFamily ui12FontFamily;
 extern EpdFontFamily smallFontFamily;
 
 namespace {
-constexpr uint32_t kClockMagic = 0x434C4B32;  // CLK2; discard stale light-sleep state.
+constexpr uint32_t kClockMagic = 0x434C4B32;  // CLK2; discard stale retained clock state.
 constexpr uint16_t kFullRefreshMinutes = 30;
 
 struct ClockRetention {
   uint32_t magic;
   uint32_t rtcReferenceEpoch;
+  int64_t displayedMinuteEpoch;
   uint16_t refreshCount;
   uint8_t timeFormat;
   uint8_t language;
@@ -62,7 +64,7 @@ void drawDigit(GfxRenderer& gfx, int digit, int x, int y, int unit) {
   if (mask & 0x40) gfx.fillRect(x + unit, y + height / 2 - unit / 2, width - 2 * unit, unit - gap);
 }
 
-void drawClock(GfxRenderer& gfx, time_t now, bool fullRefresh) {
+void renderClockFrame(GfxRenderer& gfx, time_t now) {
   tm local = {};
   const bool valid = halClock.isSystemTimeValid() && localtime_r(&now, &local) != nullptr;
   const bool use12Hour = clockState.timeFormat == CrossPointSettings::TIME_12H;
@@ -90,9 +92,48 @@ void drawClock(GfxRenderer& gfx, time_t now, bool fullRefresh) {
     gfx.drawCenteredText(UI_12_FONT_ID, top + 10 * unit + 12, ClockFormat::period(local.tm_hour));
   }
   gfx.drawCenteredText(SMALL_FONT_ID, height - 44, tr(STR_CLOCK_WAKE_BUTTON));
+}
+
+uint8_t* allocatePreviousFrameBuffer() {
+  const size_t bytes = display.getBufferSize();
+  auto* buffer = static_cast<uint8_t*>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!buffer) {
+    buffer = static_cast<uint8_t*>(heap_caps_malloc(bytes, MALLOC_CAP_8BIT));
+  }
+  return buffer;
+}
+
+void drawClock(GfxRenderer& gfx, time_t now, bool fullRefresh, time_t previousDisplayedMinute) {
+  if (fullRefresh || previousDisplayedMinute <= 0) {
+    renderClockFrame(gfx, now);
+    display.setIdlePowerSaving(false);
+    gfx.displayBuffer(HalDisplay::FULL_REFRESH);
+    display.setIdlePowerSaving(true);
+    return;
+  }
+
+  uint8_t* previousFrame = allocatePreviousFrameBuffer();
+  if (!previousFrame) {
+    LOG_ERR("CLOCK", "Could not allocate previous clock frame; using full refresh");
+    renderClockFrame(gfx, now);
+    display.setIdlePowerSaving(false);
+    gfx.displayBuffer(HalDisplay::FULL_REFRESH);
+    display.setIdlePowerSaving(true);
+    return;
+  }
+
+  // Deep sleep discards RAM but leaves the e-paper image in place. Re-render
+  // exactly the retained minute that is physically on the panel, copy that
+  // 1-bit frame to temporary PSRAM, then render the new minute. HalDisplay uses
+  // the two logical frames to clip the panel update to only the changed area.
+  renderClockFrame(gfx, previousDisplayedMinute);
+  memcpy(previousFrame, display.getFrameBuffer(), display.getBufferSize());
+  renderClockFrame(gfx, now);
+
   display.setIdlePowerSaving(false);
-  gfx.displayBuffer(fullRefresh ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
+  display.displayBufferDiff(previousFrame, HalDisplay::HALF_REFRESH);
   display.setIdlePowerSaving(true);
+  heap_caps_free(previousFrame);
 }
 
 // The timer and button are armed together AFTER clearing wake sources. In
@@ -137,7 +178,9 @@ void paintAndSleep(GfxRenderer& gfx, bool timerWake) {
   timeval after = {};
   do {
     gettimeofday(&before, nullptr);
-    drawClock(gfx, before.tv_sec, fullRefresh);
+    const time_t previousDisplayedMinute = static_cast<time_t>(clockState.displayedMinuteEpoch);
+    drawClock(gfx, before.tv_sec, fullRefresh, previousDisplayedMinute);
+    clockState.displayedMinuteEpoch = (before.tv_sec / 60) * 60;
     gettimeofday(&after, nullptr);
     // An unusually slow refresh can cross a minute boundary. Never sleep for
     // another minute showing the previous one.

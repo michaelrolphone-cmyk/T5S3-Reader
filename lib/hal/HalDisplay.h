@@ -73,6 +73,11 @@ class HalDisplay {
                             bool fromProgmem = false) const;
 
   void displayBuffer(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
+  // Compare the current logical framebuffer with a reconstructed previous frame
+  // and drive only the bounding rectangle that changed. This is intended for
+  // deep-sleep clients such as the desk clock, where panel contents survive but
+  // RAM does not. Falls back to displayBuffer() when a full refresh is required.
+  void displayBufferDiff(const uint8_t* previousBuffer, RefreshMode mode = RefreshMode::HALF_REFRESH);
   void refreshDisplay(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
 
   // When enabled, the physical panel output is mirrored 180° (whole UI upside down).
