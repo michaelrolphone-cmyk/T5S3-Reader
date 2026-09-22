@@ -27,7 +27,7 @@ static const uint8_t configuration_descriptor[] = {
     6,4,2,0,0,0xff
 };
 static bool attached = true, claimed[2];
-static unsigned malformed;
+static unsigned malformed, burst, burst_read;
 static unsigned keyboard_reports, gamepad_reports, releases;
 static bool host_poll(void *ctx, size_t max, size_t *processed) {
     (void)ctx;
@@ -103,6 +103,10 @@ static int32_t interrupt_read(void *ctx, uint64_t claim, uint8_t ep,
     (void)ctx;
     assert(ms && dst && cap >= 8 && attached);
     if (claim == 100 && ep == 0x81 && claimed[0]) {
+        if (burst && burst_read < 4) {
+            const uint8_t usages[] = {0, 5, 0, 4};
+            memset(dst, 0, 8); dst[2] = usages[burst_read++]; return 8;
+        }
         if (keyboard_reports++) return 0;
         const uint8_t report[8] = {0,0,4,0,0,0,0,0};
         memcpy(dst, report, 8);
@@ -198,6 +202,14 @@ int main(int argc, char **argv) {
     n = 4;
     assert(pads->snapshot(pads->context, pad_state, &n) && n == 1 &&
            pad_state[0].buttons == 1);
+    burst = 1;
+    assert(keys->poll(keys->context, 4) && burst_read == 4);
+    const unsigned kinds[] = {4, 3, 4, 3}, usages[] = {4, 5, 5, 4};
+    for (unsigned i = 0; i < 4; ++i) {
+        assert(keys->next(keys->context, key_sub, &key_event) == 1);
+        assert(key_event.kind == kinds[i] && key_event.usage == usages[i]);
+    }
+    burst = 0;
     assert(!keyboard->quiesce() && !gamepad->quiesce() && !generic->quiesce());
     attached = false;
     assert(keys->poll(keys->context, 4));

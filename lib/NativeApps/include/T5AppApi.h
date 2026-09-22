@@ -132,6 +132,12 @@ typedef struct {
     // its sidecar is invalid. Callers must check struct_size before accessing these.
     bool (*installed_app_version_get)(const char *file_name, char *version, size_t capacity);
     bool (*app_catalog_version_get)(uint32_t index, char *version, size_t capacity);
+    // Present a fast frame while periodically calling service on the app owner
+    // task. The callback may collect provider input, but MUST NOT draw, call UI
+    // APIs, launch/exit an app, or block indefinitely. Framebuffer remains frozen.
+    // Returns only after display completion; no callback/framebuffer access outlives this call.
+    // False means no refresh started (busy or allocation failure). Size-check.
+    bool (*present_serviced)(bool full_refresh, void (*service)(void *), void *context);
 } t5_app_api_v1;
 
 // Native application entry point. Native ELFs are built with -fvisibility=hidden,

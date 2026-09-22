@@ -21,6 +21,7 @@
 #include <T5AppApi.h>
 #include <esp_task_wdt.h>
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -68,6 +69,7 @@ struct Session {
   std::string launchPath;
   bool backExitsApp = true;
   bool exiting = false;
+  bool presenting = false;
 };
 Session* session = nullptr;
 bool returned = false;
@@ -75,7 +77,7 @@ std::string queuedLaunch;
 std::string lastLaunchError;
 bool homeRequested = false;
 bool firmwareActionPending = false;
-Session* current() { return session && session->owner == xTaskGetCurrentTaskHandle() ? session : nullptr; }
+Session* current() { return session && !session->presenting && session->owner == xTaskGetCurrentTaskHandle() ? session : nullptr; }
 int32_t width() { auto* s = current(); return s ? s->renderer.getScreenWidth() : 0; }
 int32_t height() { auto* s = current(); return s ? s->renderer.getScreenHeight() : 0; }
 void clear() { if (auto* s = current()) s->renderer.clearScreen(); }
@@ -91,6 +93,38 @@ void present(bool full) {
     s->renderer.displayBuffer(full ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
     esp_task_wdt_reset();
   }
+}
+struct ServicedFrame {
+  GfxRenderer* renderer;
+  bool full;
+  std::atomic<bool> done{false};
+};
+void renderServicedFrame(void* opaque) {
+  auto* frame = static_cast<ServicedFrame*>(opaque);
+  frame->renderer->displayBuffer(frame->full ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+  frame->done.store(true, std::memory_order_release);
+  // No frame/session access after publication; this firmware task never runs ELF code.
+  vTaskDelete(nullptr);
+}
+bool presentServiced(bool full, void (*service)(void*), void* context) {
+  auto* s = current();
+  if (!s || !service) return false;
+  ServicedFrame frame{&s->renderer, full};
+  s->presenting = true;
+  if (xTaskCreatePinnedToCore(renderServicedFrame, "app-refresh", 8192, &frame,
+                            1, nullptr, xPortGetCoreID()) != pdPASS) {
+    s->presenting = false;
+    return false;
+  }
+  // Like present(), join the physical refresh before allowing framebuffer reuse
+  // or app unload. Yield every pass; collect input on its authorized owner task.
+  while (!frame.done.load(std::memory_order_acquire)) {
+    service(context);
+    esp_task_wdt_reset();
+    vTaskDelay(1);
+  }
+  s->presenting = false;
+  return true;
 }
 void setBackExitsApp(bool enabled) {
   if (auto* s = current()) s->backExitsApp = enabled;
@@ -737,7 +771,8 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            installedRefresh, installedCount, installedGet, requestLaunch, drawIcon, drawLabel,
                            appCatalogManifestGet,
                            installedAppVersionGet,
-                           appCatalogVersionGet};
+                           appCatalogVersionGet,
+                           presentServiced};
 }  // namespace
 
 extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {

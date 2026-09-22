@@ -128,18 +128,27 @@ static bool poll(void *context, size_t max_reports) {
         slot->iface = item->interface_number; slot->alt = item->alternate;
         if (!emit(slot->device, 1, 0, 0)) return false;
     }
+    // Spend the requested budget across rounds, so one keyboard can deliver
+    // a burst. Stop reading a quiet endpoint after its first empty response.
+    bool quiet[KEYBOARDS] = {0};
     size_t attempted = 0;
-    for (unsigned j = 0; j < KEYBOARDS && attempted < max_reports; ++j) {
-        keyboard *b = &boards[j];
-        if (!b->session) continue;
-        uint8_t report[RISC_USB_HID_MAX_REPORT] = {0};
-        int32_t n = hid->read(hid->context, b->session, report, sizeof(report), 10);
-        ++attempted;
-        if (n < 0) {
-            if (!hid->present(hid->context, b->session)) {
-                if (!release_board(b)) return false;
-            } else return false;
-        } else if (n && !apply_report(b, report, (size_t)n)) return false;
+    for (size_t round = 0; round < max_reports && attempted < max_reports; ++round) {
+        bool active = false;
+        for (unsigned j = 0; j < KEYBOARDS && attempted < max_reports; ++j) {
+            keyboard *b = &boards[j];
+            if (!b->session || quiet[j]) continue;
+            active = true;
+            uint8_t report[RISC_USB_HID_MAX_REPORT] = {0};
+            int32_t n = hid->read(hid->context, b->session, report, sizeof(report), 10);
+            ++attempted;
+            if (n < 0) {
+                if (!hid->present(hid->context, b->session)) {
+                    if (!release_board(b)) return false;
+                } else return false;
+            } else if (!n) quiet[j] = true;
+            else if (!apply_report(b, report, (size_t)n)) return false;
+        }
+        if (!active) break;
     }
     return true;
 }

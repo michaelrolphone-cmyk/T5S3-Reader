@@ -34,6 +34,29 @@ static editor_mode_t mode;
 static after_t after;
 static bool resume_after_save, caps, plugged, redraw;
 static uint8_t old_buttons;
+// Keep transitions collected during physical refresh separate from document/UI
+// actions: Ctrl+O and similar commands may draw or touch storage after the join.
+static struct { uint8_t kind, usage, modifiers; } pending_keys[256];
+static size_t pending_head, pending_count;
+static bool pending_gap, pending_fault;
+static void collect_keyboard(void *unused) {
+    (void)unused;
+    if (!keyboard || !subscription) return;
+    if (!keyboard->poll(keyboard->context, 4)) { pending_fault = true; return; }
+    for (unsigned i = 0; i < 32; ++i) {
+        risc_usb_keyboard_event_v1 event = {0};
+        int32_t result = keyboard->next(keyboard->context, subscription, &event);
+        if (!result) break;
+        if (result < 0 || event.kind == 5 || pending_count == 256) {
+            pending_gap = true;
+            break;
+        }
+        const size_t slot = (pending_head + pending_count++) % 256;
+        pending_keys[slot].kind = event.kind;
+        pending_keys[slot].usage = event.usage;
+        pending_keys[slot].modifiers = event.modifiers;
+    }
+}
 
 static void report(const char *text) {
     (void)snprintf(status, sizeof(status), "%s", text);
@@ -356,8 +379,13 @@ static void paint(void) {
     } else {
         app->draw_label(8, height - 44, width - 16, "Ctrl+S Save / Ctrl+O Open");
     }
-    app->present(false);
-    redraw = false;
+    if (keyboard && app->struct_size >= offsetof(t5_app_api_v1, present_serviced) +
+            sizeof(app->present_serviced) && app->present_serviced) {
+        redraw = !app->present_serviced(false, collect_keyboard, NULL);
+    } else {
+        app->present(false);
+        redraw = false;
+    }
 }
 void app_main(void) {
     app = t5_app_get_api(T5_APP_ABI_VERSION);
@@ -379,13 +407,15 @@ void app_main(void) {
     path[0] = filename[0] = 0; // Never implicitly save an empty buffer over an existing file.
     caps = plugged = false;
     old_buttons = 0;
+    pending_head = pending_count = 0;
+    pending_gap = pending_fault = false;
     keyboard_error[0] = 0;
     mode = EDITING;
     report("Untitled. Ctrl+N new / Ctrl+O open.");
     uint32_t last_paint = 0;
     for (;;) {
         t5_app_input_t input = {0};
-        if (!app->poll(&input, 25) || input.exit_requested) break;
+        if (!app->poll(&input, keyboard ? 1 : 25) || input.exit_requested) break;
         const uint8_t buttons = (uint8_t)input.buttons;
         const uint8_t pressed = buttons & (uint8_t)~old_buttons;
         old_buttons = buttons;
@@ -429,31 +459,31 @@ void app_main(void) {
                 }
             }
         }
-        if (keyboard && subscription) {
-            if (!keyboard->poll(keyboard->context, 4)) {
-                // Poll failure does not authorize fallback to firmware USB.
-                report("HID poll failed; reconnect device or restart app.");
-            } else {
-                for (unsigned i = 0; i < 32; ++i) {
-                    risc_usb_keyboard_event_v1 event = {0};
-                    const int32_t result = keyboard->next(keyboard->context, subscription, &event);
-                    if (!result) break;
-                    if (result < 0 || event.kind == 5) {
-                        risc_usb_keyboard_state_v1 states[4] = {{0}};
-                        size_t count = 4;
-                        plugged = keyboard->snapshot(keyboard->context, states, &count) && count != 0;
-                        caps = false;
-                        report("HID queue gap: state resynchronized.");
-                        break;
-                    }
-                    if (event.kind == 1) { plugged = true; report("Keyboard connected."); }
-                    else if (event.kind == 2) {
-                        plugged = caps = false;
-                        report("Keyboard disconnected; reconnect to continue.");
-                    } else if (event.kind == 3 && event.usage < 0xe0)
-                        key_press(event.usage, event.modifiers);
-                }
-            }
+        collect_keyboard(NULL);
+        if (pending_fault) {
+            pending_fault = false;
+            report("HID poll failed; reconnect device or restart app.");
+        }
+        if (pending_gap) {
+            pending_gap = false;
+            pending_head = pending_count = 0;
+            risc_usb_keyboard_state_v1 states[4] = {{0}};
+            size_t count = 4;
+            plugged = keyboard && keyboard->snapshot(keyboard->context, states, &count) && count != 0;
+            caps = false;
+            report("HID queue gap: state resynchronized.");
+        }
+        for (unsigned i = 0; i < 256 && pending_count && mode != DONE; ++i) {
+            const uint8_t kind = pending_keys[pending_head].kind;
+            const uint8_t usage = pending_keys[pending_head].usage;
+            const uint8_t modifiers = pending_keys[pending_head].modifiers;
+            pending_head = (pending_head + 1) % 256;
+            --pending_count;
+            if (kind == 1) { plugged = true; report("Keyboard connected."); }
+            else if (kind == 2) {
+                plugged = caps = false;
+                report("Keyboard disconnected; reconnect to continue.");
+            } else if (kind == 3 && usage < 0xe0) key_press(usage, modifiers);
         }
         if (mode == DONE) break;
         const uint32_t now = app->millis();

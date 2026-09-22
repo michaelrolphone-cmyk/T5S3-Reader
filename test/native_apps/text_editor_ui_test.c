@@ -2,7 +2,9 @@
 #include <assert.h>
 static int32_t test_width = 540, test_height = 960;
 static unsigned polls, acquisitions, labels;
-static bool inside;
+static bool inside, keyboard_ok, refreshing;
+static unsigned generated, received;
+static const risc_usb_keyboard_api_v1 fake_keyboard;
 static char rendered_error[160];
 static const char failure[] = "usb-controller-esp32s3: usb-host-install rc=259 (0x103)";
 static int32_t width(void) { return test_width; }
@@ -35,7 +37,9 @@ static bool poll_input(t5_app_input_t *input, uint32_t wait) {
 }
 static bool acquire(const char *name, uint32_t version, t5_provider_capability_lease_t *lease, const void **api) {
     (void)version; (void)lease; (void)api;
-    assert(!strcmp(name, "usb.hid.keyboard")); ++acquisitions; return false;
+    assert(!strcmp(name, "usb.hid.keyboard")); ++acquisitions;
+    if (keyboard_ok) { *lease = 1; *api = &fake_keyboard; return true; }
+    return false;
 }
 static bool release(t5_provider_capability_lease_t lease) { (void)lease; return true; }
 static bool exists(const char *p) { (void)p; return false; }
@@ -44,12 +48,43 @@ static bool write_file(const char *p, const void *b, size_t n) { (void)p;(void)b
 static bool dir_open(const char *p) { (void)p;return false; }
 static bool dir_next(t5_app_dirent_t *e) { (void)e;return false; }
 static void dir_close(void) {}
+static uint64_t key_subscribe(void *ctx, uint64_t device) { (void)ctx; (void)device; return 1; }
+static bool key_unsubscribe(void *ctx, uint64_t token) { (void)ctx; (void)token; return true; }
+static bool key_poll(void *ctx, size_t budget) {
+    (void)ctx; assert(budget == 4);
+    if (refreshing && generated < 40) generated += 4;
+    return true;
+}
+static int32_t key_next(void *ctx, uint64_t token, risc_usb_keyboard_event_v1 *event) {
+    (void)ctx; (void)token;
+    if (received == generated) return 0;
+    *event = (risc_usb_keyboard_event_v1){0};
+    event->kind = received % 2 ? 4 : 3;
+    event->usage = 4 + received / 2;
+    ++received;
+    return 1;
+}
+static bool key_snapshot(void *ctx, risc_usb_keyboard_state_v1 *states, size_t *count) {
+    (void)ctx; (void)states; *count = 0; return true;
+}
+static const risc_usb_keyboard_api_v1 fake_keyboard = {
+    1, sizeof(risc_usb_keyboard_api_v1), NULL, key_subscribe, key_unsubscribe,
+    key_poll, key_next, key_snapshot
+};
+static bool serviced_present(bool full, void (*service)(void *), void *context) {
+    (void)full;
+    refreshing = true;
+    for (unsigned i = 0; i < 10; ++i) service(context);
+    refreshing = false;
+    assert(document.length == 0); // Input collected; no document/UI action during refresh.
+    return true;
+}
 static const t5_app_api_v1 fake_app = {
     .abi_version=T5_APP_ABI_VERSION, .struct_size=sizeof(t5_app_api_v1),
     .screen_width=width, .screen_height=height, .clear=clear, .present=present,
     .draw_text=text, .draw_label=label, .fill_rect=rect, .poll=poll_input,
     .millis=millis, .set_back_exits_app=back, .dir_open=dir_open,
-    .dir_next=dir_next, .dir_close=dir_close
+    .dir_next=dir_next, .dir_close=dir_close, .present_serviced=serviced_present
 };
 static const t5_storage_api_v1 fake_storage = {
     .api_version=T5_STORAGE_API_VERSION, .struct_size=sizeof(t5_storage_api_v1),
@@ -76,5 +111,12 @@ int main(void) {
     fake_providers.struct_size = offsetof(t5_provider_capability_api_v1, last_error);
     inside = true; polls = 0; app_main();
     assert(strstr(keyboard_error, "Update firmware"));
-    puts("text_editor_ui_test: PASS");
+    fake_providers.struct_size = sizeof(fake_providers);
+    keyboard_ok = true; inside = true; polls = acquisitions = 0;
+    generated = received = 0;
+    app_main();
+    assert(generated == 40 && received == 40);
+    assert(document.length == 20);
+    assert(!memcmp(document.text, "abcdefghijklmnopqrst", 20));
+    puts("text_editor_ui_test: PASS (ordered typing during refresh included)");
 }
