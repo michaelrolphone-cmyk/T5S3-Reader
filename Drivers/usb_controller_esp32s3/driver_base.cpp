@@ -520,10 +520,16 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     std::printf("USBCTRL stage=vbus-acquired\n");
     usb_host_config_t config = {};
     config.skip_phy_setup = false;
-    config.intr_flags = ESP_INTR_FLAG_LEVEL1;
+    // IDF's C-callable non-shared default permits levels 1, 2 and 3.
+    // Restricting this to level 1 rejects installation when those vectors are
+    // occupied even if another supported priority remains available. Do not
+    // share the USB source with another controller owner to bypass contention.
+    config.intr_flags = ESP_INTR_FLAG_LOWMED;
     const esp_err_t install_rc = usb_host_install(&config);
     if (install_rc != ESP_OK) {
-        start_failure("usb-host-install", install_rc);
+        start_failure(install_rc == ESP_ERR_NOT_FOUND
+                          ? "usb-host-install/IRQ-unavailable" : "usb-host-install", install_rc);
+        startupError.number(" flags=0x", static_cast<uint32_t>(config.intr_flags), 16);
         std::printf("USBCTRL start-failed stage=usb-host-install rc=%d\n",
                     static_cast<int>(install_rc));
         if (!quiesce(nullptr)) std::printf("USBCTRL cleanup-failed stage=usb-host-install\n");
