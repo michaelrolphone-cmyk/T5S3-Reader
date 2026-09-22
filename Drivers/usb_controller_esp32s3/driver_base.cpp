@@ -3,6 +3,7 @@
  * Provider calls and IDF callbacks are serialized on one executor. */
 #include "RiscUsbControllerV1.h"
 #include "RiscUsbVbusV1.h"
+#include "StartupDiagnostic.h"
 #include <usb/usb_host.h>
 #include <esp_intr_alloc.h>
 #include <freertos/FreeRTOS.h>
@@ -465,10 +466,27 @@ void stop() {
     queueHead = queueTail = queueCount = 0;
     fault = false;
 }
+StartupDiagnostic startupError;
+bool startup_error(char *destination, size_t capacity) {
+    return startupError.copy(destination, capacity);
+}
+void start_failure(const char *stage, int code) {
+    startupError.failure(stage, code);
+}
 bool start(const risc_provider_dependency_v1 *deps, size_t count) {
+    startupError.clear();
     if (running || installed || client || transfer || powerLease || fault ||
         !deps || count != 1 || !equals(deps[0].capability_id, "board.power.vbus") ||
         deps[0].api_version != RISC_USB_VBUS_API_V1 || !deps[0].api) {
+        startupError.text("dependency/state");
+        startupError.number(" count=", static_cast<uint32_t>(count));
+        startupError.number(" deps=", deps != nullptr);
+        startupError.number(" run=", running);
+        startupError.number(" host=", installed);
+        startupError.number(" client=", client != nullptr);
+        startupError.number(" dma=", transfer != nullptr);
+        startupError.number(" lease=", powerLease != 0);
+        startupError.number(" fault=", fault);
         std::printf("USBCTRL start-failed stage=dependency-or-state rc=0\n");
         return false;
     }
@@ -476,11 +494,22 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     if (api->api_version != RISC_USB_VBUS_API_V1 ||
         api->struct_size < sizeof(*api) || !api->acquire_host ||
         !api->release_host || !api->quiesce) {
+        startupError.text("vbus-abi");
+        startupError.number(" api=", api->api_version);
+        startupError.number(" size=", api->struct_size);
+        startupError.number(" acquire=", api->acquire_host != nullptr);
+        startupError.number(" release=", api->release_host != nullptr);
+        startupError.number(" quiesce=", api->quiesce != nullptr);
         std::printf("USBCTRL start-failed stage=vbus-abi rc=0\n");
         return false;
     }
     power = api;
-    if (!power->acquire_host(power->context, 500, &powerLease) || !powerLease) {
+    const bool acquired = power->acquire_host(power->context, 500, &powerLease);
+    if (!acquired || !powerLease) {
+        startupError.text("vbus-acquire");
+        startupError.number(" returned=", acquired);
+        startupError.number(" lease=", powerLease != 0);
+        startupError.text(" timeout=500ms");
         std::printf("USBCTRL start-failed stage=vbus-acquire rc=0 lease=%u\n",
                     powerLease ? 1u : 0u);
         if (powerLease && !quiesce(nullptr))
@@ -494,6 +523,7 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     config.intr_flags = ESP_INTR_FLAG_LEVEL1;
     const esp_err_t install_rc = usb_host_install(&config);
     if (install_rc != ESP_OK) {
+        start_failure("usb-host-install", install_rc);
         std::printf("USBCTRL start-failed stage=usb-host-install rc=%d\n",
                     static_cast<int>(install_rc));
         if (!quiesce(nullptr)) std::printf("USBCTRL cleanup-failed stage=usb-host-install\n");
@@ -508,6 +538,7 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     registration.async.callback_arg = nullptr;
     const esp_err_t register_rc = usb_host_client_register(&registration, &client);
     if (register_rc != ESP_OK) {
+        start_failure("client-register", register_rc);
         std::printf("USBCTRL start-failed stage=client-register rc=%d\n",
                     static_cast<int>(register_rc));
         if (!quiesce(nullptr)) std::printf("USBCTRL cleanup-failed stage=client-register\n");
@@ -516,6 +547,7 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     std::printf("USBCTRL stage=client-registered\n");
     const esp_err_t alloc_rc = usb_host_transfer_alloc(kBuffer, 0, &transfer);
     if (alloc_rc != ESP_OK) {
+        start_failure("transfer-alloc", alloc_rc);
         std::printf("USBCTRL start-failed stage=transfer-alloc rc=%d\n",
                     static_cast<int>(alloc_rc));
         if (!quiesce(nullptr)) std::printf("USBCTRL cleanup-failed stage=transfer-alloc\n");
@@ -530,13 +562,13 @@ static const risc_usb_controller_api_v1 interface = {
     next_event, configuration, claim_interface, release_interface,
     control, bulk_read, bulk_write, quiesce
 };
-static const risc_driver_v2 driver = {
-    RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
+static const risc_driver_diagnostics_v2 driver = {{
+    RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_diagnostics_v2),
     "usb-controller-esp32s3", "usb.controller", RISC_USB_CONTROLLER_API_V1,
     &interface, start, stop, []() -> bool { return quiesce(nullptr); }
-};
+}, startup_error};
 } // namespace
 extern "C" __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
-    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &driver : nullptr;
+    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &driver.base : nullptr;
 }

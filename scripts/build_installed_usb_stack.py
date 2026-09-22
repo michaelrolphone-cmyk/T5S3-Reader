@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 import shutil
 import sys
@@ -34,13 +35,7 @@ DRIVERS = (
     ('usb-hid-keyboard', 'usb_hid_keyboard', 'usb-hid-keyboard', 'driver.elf'),
     ('usb-hid-gamepad', 'usb_hid_gamepad', 'usb-hid-gamepad', 'driver.elf'),
 )
-EXPECTED_VERSIONS = {
-    'i2c-esp32s3-v2': '0.1.2',
-    'board-power-t5s3-v2': '0.1.4',
-    'usb-controller-esp32s3': '0.1.6',
-    'usb-host-v2': '0.1.2',
-    'usb-hid': '0.1.1',
-}
+
 
 
 def entry(path: Path, executable: bool) -> dict:
@@ -62,10 +57,10 @@ def build() -> list[dict]:
         if metadata.get('id') != identity or metadata.get('architecture') != 'xtensa-esp32s3':
             raise ValueError(f'unexpected source identity: {source}')
         capability, api = canonical_manifest(source)
+        # Legacy source manifests without a version were shipped as 0.1.0.
         version = metadata.get('version', '0.1.0')
-        expected_version = EXPECTED_VERSIONS.get(identity, '0.1.0')
-        if version != expected_version:
-            raise ValueError(f'unknown package version for {identity}: {version}')
+        if not isinstance(version, str) or not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', version):
+            raise ValueError(f'invalid package version for {identity}: {version}')
         elf = SOURCE / output_name / elf_name
         if not elf.is_file() or elf.stat().st_size < 52:
             raise FileNotFoundError(f'actual linked provider ELF missing: {elf}')
