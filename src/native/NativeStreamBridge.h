@@ -9,12 +9,16 @@ void nativeStreamsBegin();
 void nativeStreamsEnd();
 
 // Runtime-provider helpers. These are firmware-internal and are not exported to
-// application ELFs. The pair publishes independently owned RX/TX endpoints and
-// attaches them to ClassStreamSession. Shuttle uses class-ELF read/write, not
-// T5UsbApi. open_usb is not a data plane; serial.port is the exclusive owner.
-bool nativeStreamUsbIsBusy();
-t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx);
+// application ELFs. The semantic serial pair is buffer-backed; provider I/O is
+// pumped outside the registry mutex through NativeSerialPortBridge's generic
+// session hooks. No transport-specific API or ELF pointer is stored in streams.
+bool nativeStreamSerialIsBusy();
+t5_stream_result_t nativeStreamOpenSerialPair(t5_stream_t* rx, t5_stream_t* tx);
 t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream);
+#if !defined(ESP_PLATFORM) && !defined(ARDUINO_ARCH_ESP32)
+bool nativeStreamUsbIsBusy(); // host-fixture compatibility only
+t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx);
+#endif
 
 // GNSS uses the VERY SAME stream registry/mutex as public streams and pipes.
 // Only the claiming driver task may attach/poll/publish/stop. Caller-supplied
