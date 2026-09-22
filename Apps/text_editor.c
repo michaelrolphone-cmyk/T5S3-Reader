@@ -28,6 +28,10 @@ static char scratch[TE_CAPACITY + 1];
 static char path[160], filename[NAME_LIMIT + 1], proposed[NAME_LIMIT + 1];
 static char files[FILE_LIMIT][NAME_LIMIT + 1];
 static char status[96];
+// A failure is displayed in the document viewport, not clipped to the single
+// footer status line. No document data is changed, and touch retry stays live.
+static char hid_diagnostic[256];
+static bool hid_error;
 static size_t file_count, selected_file, proposed_size, first_row;
 static editor_mode_t mode;
 static after_t after;
@@ -37,6 +41,19 @@ static uint8_t old_buttons;
 static void report(const char *text) {
     (void)snprintf(status, sizeof(status), "%s", text);
     redraw = true;
+}
+
+static void hid_problem(const char *fallback, bool query_firmware) {
+    hid_diagnostic[0] = 0;
+    const size_t diagnostic_api_end =
+        offsetof(t5_provider_capability_api_v1, last_error) + sizeof(providers->last_error);
+    if (query_firmware && providers->struct_size >= diagnostic_api_end &&
+        providers->last_error)
+        (void)providers->last_error(hid_diagnostic, sizeof(hid_diagnostic));
+    if (!hid_diagnostic[0])
+        (void)snprintf(hid_diagnostic, sizeof(hid_diagnostic), "%s", fallback);
+    hid_error = true;
+    report("HID failure. Read details above; tap Enable keyboard to retry.");
 }
 
 // Documents is intentionally the only editable directory in this initial app.
@@ -168,6 +185,7 @@ static char translate(uint8_t key, bool shift) {
         default: return 0;
     }
 }
+
 static void key_press(uint8_t key, uint8_t modifiers) {
     const bool shift = (modifiers & 0x22u) != 0;
     const bool ctrl = (modifiers & 0x11u) != 0;
@@ -215,7 +233,7 @@ static void key_press(uint8_t key, uint8_t modifiers) {
         } else if (!ctrl && !alt && proposed_size < NAME_LIMIT) {
             const char ch = translate(key, shift);
             if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-                (ch >= '0' && ch <= '9') || ch == '_' || ch == '-' || ch == '.') {
+                (ch >= '0' && ch <= '9') || c == '_' || c == '-' || c == '.') {
                 proposed[proposed_size++] = ch;
                 proposed[proposed_size] = 0;
             }
@@ -275,6 +293,32 @@ static size_t cursor_visual_row(size_t columns, size_t *column) {
     *column = col;
     return row;
 }
+
+// Draw complete failure text in the scroll-free document viewport. The footer
+// and Enable button remain in their original positions for touch-only retry.
+static void paint_hid_diagnostic(int32_t width, int32_t height) {
+    app->draw_label(8, 42, width - 16, "HID acquisition diagnostic (current attempt):");
+    size_t columns = (size_t)(width - 24) / 10u;
+    if (columns < 8) columns = 8;
+    if (columns > 90) columns = 90;
+    const int32_t bottom = height - FOOTER_HEIGHT - 24;
+    int32_t y = 68;
+    size_t offset = 0;
+    while (hid_diagnostic[offset] && y + 22 < bottom) {
+        char line[96];
+        size_t used = 0;
+        while (hid_diagnostic[offset] && hid_diagnostic[offset] != '\n' &&
+               used < columns && used + 1 < sizeof(line))
+            line[used++] = hid_diagnostic[offset++];
+        if (hid_diagnostic[offset] == '\n') ++offset;
+        line[used] = 0;
+        app->draw_label(8, y, width - 16, line);
+        y += 22;
+    }
+    if (y + 32 < bottom)
+        app->draw_label(8, y + 8, width - 16, "Tap Enable keyboard to retry.");
+}
+
 static void paint(void) {
     const int32_t width = app->screen_width(), height = app->screen_height();
     if (width < 120 || height < 120) return;
@@ -291,7 +335,9 @@ static void paint(void) {
     app->clear();
     app->draw_text(8, 6, heading);
     app->fill_rect(8, 30, width - 16, 1, true);
-    if (mode == EDITING) {
+    if (hid_error) {
+        paint_hid_diagnostic(width, height);
+    } else if (mode == EDITING) {
         size_t column = 0;
         const size_t cursor_row = cursor_visual_row(columns, &column);
         if (cursor_row < first_row) first_row = cursor_row;
@@ -361,11 +407,13 @@ void app_main(void) {
         storage->struct_size < offsetof(t5_storage_api_v1, remove_file) + sizeof(storage->remove_file) ||
         !storage->exists || !storage->read_file || !storage->write_file_atomic ||
         !providers || providers->api_version != T5_PROVIDER_CAPABILITY_API_VERSION ||
-        providers->struct_size < sizeof(*providers) || !providers->acquire || !providers->release) return;
+        providers->struct_size < offsetof(t5_provider_capability_api_v1, last_error) ||
+        !providers->acquire || !providers->release) return;
     app->set_back_exits_app(false);
     te_reset(&document);
     path[0] = filename[0] = 0; // Never implicitly save an empty buffer over an existing file.
     caps = plugged = false;
+    hid_error = false; hid_diagnostic[0] = 0;
     old_buttons = 0;
     mode = EDITING;
     report("Untitled. Ctrl+N new / Ctrl+O open.");
@@ -387,7 +435,7 @@ void app_main(void) {
             const void *interface = NULL;
             if (!providers->acquire("usb.hid.keyboard", RISC_USB_KEYBOARD_API_V1,
                                     &grant, &interface)) {
-                report("HID unavailable. Install drivers; tap to retry.");
+                hid_problem("Acquire failed; firmware has no detailed provider diagnostic.", true);
             } else {
                 const risc_usb_keyboard_api_v1 *api = (const risc_usb_keyboard_api_v1*)interface;
                 if (!api || api->api_version != RISC_USB_KEYBOARD_API_V1 ||
@@ -395,7 +443,7 @@ void app_main(void) {
                     !api->unsubscribe || !api->poll || !api->next || !api->snapshot) {
                     (void)providers->release(grant);
                     grant = 0;
-                    report("Keyboard capability ABI mismatch.");
+                    hid_problem("usb.hid.keyboard interface ABI mismatch or missing methods.", false);
                 } else {
                     keyboard = api;
                     subscription = keyboard->subscribe(keyboard->context, 0);
@@ -403,8 +451,11 @@ void app_main(void) {
                         keyboard = NULL;
                         (void)providers->release(grant);
                         grant = 0;
-                        report("Keyboard has no free subscription.");
-                    } else report("USB keyboard active: connect a boot keyboard.");
+                        hid_problem("usb.hid.keyboard started but subscribe() returned zero.", false);
+                    } else {
+                        hid_error = false; hid_diagnostic[0] = 0;
+                        report("USB keyboard active: connect a boot keyboard.");
+                    }
                 }
             }
         }
