@@ -12,9 +12,9 @@ static bool fail_configuration(void *ctx, uint64_t physical, uint8_t *bytes,
 }
 
 int main(int argc, char **argv) {
-    assert(argc == 5);
-    void *libraries[4] = {0};
-    for (size_t i = 0; i < 4; ++i) {
+    assert(argc == 6);
+    void *libraries[5] = {0};
+    for (size_t i = 0; i < 5; ++i) {
         libraries[i] = dlopen(argv[i + 1], RTLD_NOW);
         assert(libraries[i]);
     }
@@ -22,10 +22,11 @@ int main(int argc, char **argv) {
     const risc_driver_v2 *classes[] = {
         load(libraries[1], "usb-cdc-acm-v2"),
         load(libraries[2], "usb-cp210x-v2"),
-        load(libraries[3], "usb-ch34x-v2")
+        load(libraries[3], "usb-ch34x-v2"),
+        load(libraries[4], "usb-serial-witness")
     };
-    const uint16_t vids[] = {0x2341u, 0x10c4u, 0x1a86u};
-    const uint16_t pids[] = {0x0043u, 0xea60u, 0x7523u};
+    const uint16_t vids[] = {0x2341u, 0x10c4u, 0x1a86u, 0xcafeu};
+    const uint16_t pids[] = {0x0043u, 0xea60u, 0x7523u, 0x4001u};
     risc_usb_controller_api_v1 controller = {
         RISC_USB_CONTROLLER_API_V1, sizeof(controller), NULL, next_event,
         configuration, claim, release_claim, control, bulk_read, bulk_write,
@@ -42,7 +43,7 @@ int main(int argc, char **argv) {
         "usb.host", 1, &host_api->discovery.host
     };
     uint64_t previous_generation = 0;
-    for (size_t i = 0; i < 3; ++i) {
+    for (size_t i = 0; i < 4; ++i) {
         active_vid = vids[i];
         active_pid = pids[i];
         const risc_driver_v2 *driver = classes[i];
@@ -94,7 +95,7 @@ int main(int argc, char **argv) {
     assert(host_driver->quiesce() && live_claims == 0 &&
            claim_calls == 0 && control_calls == 0 && release_calls == 0);
     host_driver->stop();
-    for (size_t i = 4; i > 0; --i) assert(dlclose(libraries[i - 1]) == 0);
-    puts("Production CDC/CP210x/CH34x provider-owned inventory: PASS");
+    for (size_t i = 5; i > 0; --i) assert(dlclose(libraries[i - 1]) == 0);
+    puts("Production four-class provider-owned inventory: PASS");
     return 0;
 }
