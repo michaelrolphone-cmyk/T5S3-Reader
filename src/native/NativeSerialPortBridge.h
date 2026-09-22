@@ -17,12 +17,16 @@ void nativeDeviceDiscoveryTick();
 
 // Register/unregister on the native app owner task while the selected provider
 // is idle. The callback code and context must outlive their registration.
-// USB is registered permanently as the default provider and resident fallback.
+// Production's built-in provider resolves installed semantic serial.port
+// devices; it does not contain a transport-specific fallback.
 bool nativeRegisterSerialProvider(const RuntimeSerial::Provider& provider);
 bool nativeUnregisterSerialProvider(const char* id);
 
-// serial.port is the only firmware USB serial consumer. Direct open_usb
-// streams no longer claim the physical device or a capability lease.
-// usb.serial acquire/configure/control/status go through NativeUsbClassBridge
-// (installed class ELF from the provider graph), not t5_usb_get_api().
-// Acquire returns ClassStreamSession RX/TX after attachPublished.
+// Transport-neutral stream shuttle hooks. The stream scheduler may call these
+// outside its registry mutex; provider selection/discovery remains owner-task
+// only. Epoch 0 means no usable session. No provider interface pointer or
+// physical device token is exposed to applications.
+bool nativeSerialProviderActive();
+uint32_t nativeSerialProviderEpoch();
+int32_t nativeSerialProviderRead(uint8_t* dst, uint32_t capacity, uint32_t* out);
+int32_t nativeSerialProviderWrite(const uint8_t* src, uint32_t length, uint32_t* out);
