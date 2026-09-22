@@ -48,7 +48,7 @@ bool declaredOptional(const char* capability, uint32_t version) {
     JsonDocument doc;
     if (deserializeJson(doc, json) || !doc["optional"].is<JsonArray>()) return false;
     for (JsonVariantConst item : doc["optional"].as<JsonArrayConst>()) {
-        if (!item.is<JsonObject>() || !item["capability"].is<const char*>() ||
+        if (!item.is<JsonObjectConst>() || !item["capability"].is<const char*>() ||
             !item["api"].is<const char*>()) continue;
         const char* name = item["capability"].as<const char*>();
         uint16_t minimum = 0;

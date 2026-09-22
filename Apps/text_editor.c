@@ -12,6 +12,8 @@
 #define DOCUMENTS "/sd/Documents"
 #define NAME_LIMIT 63u
 #define FILE_LIMIT 64u
+#define FOOTER_HEIGHT 144
+#define KEYBOARD_BUTTON_HEIGHT 44
 
 typedef enum { EDITING, FILE_PICKER, NEW_NAME, SAVE_NAME, UNSAVED, DONE } editor_mode_t;
 typedef enum { DO_OPEN, DO_NEW, DO_EXIT } after_t;
@@ -120,7 +122,7 @@ static void list_files(void) {
     for (unsigned seen = 0; seen < 128 && file_count < FILE_LIMIT; ++seen) {
         if (!app->dir_next(&item)) break;
         if (!item.is_directory && valid_name(item.name))
-            (void)snprintf(files[file_count++], NAME_LIMIT + 1, "%s", item.name);
+            (void)snprintf(files[file_count++], NAME_LIMIT + 1, "%.*s", (int)NAME_LIMIT, item.name);
         if ((seen & 15u) == 15u) {
             t5_app_input_t unused = {0};
             (void)app->poll(&unused, 0); // Cooperative checkpoint during scan.
@@ -277,10 +279,11 @@ static void paint(void) {
     const int32_t width = app->screen_width(), height = app->screen_height();
     if (width < 120 || height < 120) return;
     size_t columns = (size_t)(width - 16) / 10u;
-    size_t rows = (size_t)(height - 90) / 18u;
+    size_t rows = height > FOOTER_HEIGHT + 82 ?
+        (size_t)(height - FOOTER_HEIGHT - 82) / 18u : 1;
     if (columns < 8) columns = 8;
     if (columns > 90) columns = 90;
-    if (rows < 2) rows = 2;
+    if (rows < 1) rows = 1;
     if (rows > 48) rows = 48;
     char heading[100];
     (void)snprintf(heading, sizeof(heading), "Text Editor  %s%s",
@@ -325,12 +328,22 @@ static void paint(void) {
     } else if (mode == UNSAVED) {
         app->draw_text(8, 55, "Unsaved: S save / D discard / Esc cancel");
     }
-    app->fill_rect(8, height - 46, width - 16, 1, true);
-    app->draw_text(8, height - 40, status);
-    app->draw_text(8, height - 20,
-        keyboard ? (plugged ? "Keyboard connected | Ctrl+S Save | Ctrl+O Open" :
-                             "Keyboard disconnected | Reconnect, or Back") :
-                   "Press device Confirm to activate USB keyboard; Back exits");
+    const int32_t footer = height - FOOTER_HEIGHT;
+    app->fill_rect(8, footer, width - 16, 1, true);
+    app->draw_label(8, footer + 8, width - 16, status);
+    app->draw_label(8, footer + 40, width - 16,
+        keyboard ? (plugged ? "USB keyboard connected" : "Connect USB keyboard") :
+                   "Tap below to enable USB keyboard");
+    if (!keyboard) {
+        const int32_t top = height - KEYBOARD_BUTTON_HEIGHT - 12;
+        app->fill_rect(8, top, width - 16, 1, true);
+        app->fill_rect(8, top + KEYBOARD_BUTTON_HEIGHT - 1, width - 16, 1, true);
+        app->fill_rect(8, top, 1, KEYBOARD_BUTTON_HEIGHT, true);
+        app->fill_rect(width - 9, top, 1, KEYBOARD_BUTTON_HEIGHT, true);
+        app->draw_label(16, top + 8, width - 32, "Enable keyboard");
+    } else {
+        app->draw_label(8, height - 44, width - 16, "Ctrl+S Save / Ctrl+O Open");
+    }
     app->present(false);
     redraw = false;
 }
@@ -339,9 +352,10 @@ void app_main(void) {
     storage = t5_storage_get_api(T5_STORAGE_API_VERSION);
     providers = t5_provider_capability_get_api(T5_PROVIDER_CAPABILITY_API_VERSION);
     if (!app || app->abi_version != T5_APP_ABI_VERSION ||
-        app->struct_size < offsetof(t5_app_api_v1, set_back_exits_app) + sizeof(app->set_back_exits_app) ||
+        app->struct_size < offsetof(t5_app_api_v1, draw_label) + sizeof(app->draw_label) ||
         !app->poll || !app->present || !app->draw_text || !app->clear ||
         !app->screen_width || !app->screen_height || !app->fill_rect ||
+        !app->draw_label || !app->set_back_exits_app ||
         !app->dir_open || !app->dir_next || !app->dir_close || !app->millis ||
         !storage || storage->api_version != T5_STORAGE_API_VERSION ||
         storage->struct_size < offsetof(t5_storage_api_v1, remove_file) + sizeof(storage->remove_file) ||
@@ -352,8 +366,9 @@ void app_main(void) {
     te_reset(&document);
     path[0] = filename[0] = 0; // Never implicitly save an empty buffer over an existing file.
     caps = plugged = false;
+    old_buttons = 0;
     mode = EDITING;
-    report("Untitled. Confirm enables USB; Ctrl+N new / Ctrl+O open.");
+    report("Untitled. Ctrl+N new / Ctrl+O open.");
     uint32_t last_paint = 0;
     for (;;) {
         t5_app_input_t input = {0};
@@ -362,11 +377,17 @@ void app_main(void) {
         const uint8_t pressed = buttons & (uint8_t)~old_buttons;
         old_buttons = buttons;
         if (pressed & T5_APP_BUTTON_BACK) transition(DO_EXIT);
-        if ((pressed & T5_APP_BUTTON_CONFIRM) && !keyboard) {
+        const int32_t button_top = app->screen_height() - KEYBOARD_BUTTON_HEIGHT - 12;
+        const bool enable_tapped = input.tapped &&
+            input.touch_x >= 8 && input.touch_x < app->screen_width() - 8 &&
+            input.touch_y >= button_top &&
+            input.touch_y < button_top + KEYBOARD_BUTTON_HEIGHT;
+        if (mode != DONE && !keyboard &&
+            ((pressed & T5_APP_BUTTON_CONFIRM) || enable_tapped)) {
             const void *interface = NULL;
             if (!providers->acquire("usb.hid.keyboard", RISC_USB_KEYBOARD_API_V1,
                                     &grant, &interface)) {
-                report("HID unavailable. Install driver stack then retry Confirm.");
+                report("HID unavailable. Install drivers; tap to retry.");
             } else {
                 const risc_usb_keyboard_api_v1 *api = (const risc_usb_keyboard_api_v1*)interface;
                 if (!api || api->api_version != RISC_USB_KEYBOARD_API_V1 ||
