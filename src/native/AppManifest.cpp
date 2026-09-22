@@ -77,11 +77,13 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
                        RuntimeDevices::AppCapabilityRequirements& parsed) -> bool {
     const JsonVariantConst value = doc[key];
     if (value.isNull()) return true;  // Old manifests did not declare capabilities.
-    if (!value.is<JsonArray>()) return false;
+    // Read-only variants cannot expose mutable ArduinoJson containers; testing
+    // JsonArray/JsonObject here rejects even valid empty capability lists.
+    if (!value.is<JsonArrayConst>()) return false;
     const JsonArrayConst entries = value.as<JsonArrayConst>();
     if (entries.size() > RuntimeDevices::kMaxAppRequirements) return false;
     for (JsonVariantConst item : entries) {
-      if (!item.is<JsonObject>()) return false;
+      if (!item.is<JsonObjectConst>()) return false;
       const JsonObjectConst record = item.as<JsonObjectConst>();
       if (record.size() != 2 || !record["capability"].is<const char*>() ||
           !record["api"].is<const char*>()) return false;
