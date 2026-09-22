@@ -18,6 +18,7 @@ bool prepare();
 bool acquire(const char* providerId, const char* capability, uint32_t version,
              Lease* out);
 bool release(Lease* lease);
+const char* lastError();
 // Refuses destruction while any provider is still granted or not quiescent.
 // An unsuccessful shutdown deliberately retains every ELF and package pin.
 bool shutdown();

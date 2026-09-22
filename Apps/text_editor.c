@@ -28,6 +28,7 @@ static char scratch[TE_CAPACITY + 1];
 static char path[160], filename[NAME_LIMIT + 1], proposed[NAME_LIMIT + 1];
 static char files[FILE_LIMIT][NAME_LIMIT + 1];
 static char status[96];
+static char keyboard_error[160];
 static size_t file_count, selected_file, proposed_size, first_row;
 static editor_mode_t mode;
 static after_t after;
@@ -291,7 +292,18 @@ static void paint(void) {
     app->clear();
     app->draw_text(8, 6, heading);
     app->fill_rect(8, 30, width - 16, 1, true);
-    if (mode == EDITING) {
+    if (keyboard_error[0] && !keyboard) {
+        app->draw_label(8, 48, width - 16, "Keyboard activation failed");
+        // Short rows keep the complete diagnostic readable in both orientations.
+        for (size_t offset = 0, row = 0; keyboard_error[offset] && row < 5; ++row) {
+            char line[33] = {0};
+            size_t count = strlen(keyboard_error + offset);
+            if (count > 32) count = 32;
+            memcpy(line, keyboard_error + offset, count);
+            app->draw_label(8, 88 + (int32_t)row * 32, width - 16, line);
+            offset += count;
+        }
+    } else if (mode == EDITING) {
         size_t column = 0;
         const size_t cursor_row = cursor_visual_row(columns, &column);
         if (cursor_row < first_row) first_row = cursor_row;
@@ -361,12 +373,13 @@ void app_main(void) {
         storage->struct_size < offsetof(t5_storage_api_v1, remove_file) + sizeof(storage->remove_file) ||
         !storage->exists || !storage->read_file || !storage->write_file_atomic ||
         !providers || providers->api_version != T5_PROVIDER_CAPABILITY_API_VERSION ||
-        providers->struct_size < sizeof(*providers) || !providers->acquire || !providers->release) return;
+        providers->struct_size < offsetof(t5_provider_capability_api_v1, release) + sizeof(providers->release) || !providers->acquire || !providers->release) return;
     app->set_back_exits_app(false);
     te_reset(&document);
     path[0] = filename[0] = 0; // Never implicitly save an empty buffer over an existing file.
     caps = plugged = false;
     old_buttons = 0;
+    keyboard_error[0] = 0;
     mode = EDITING;
     report("Untitled. Ctrl+N new / Ctrl+O open.");
     uint32_t last_paint = 0;
@@ -387,8 +400,16 @@ void app_main(void) {
             const void *interface = NULL;
             if (!providers->acquire("usb.hid.keyboard", RISC_USB_KEYBOARD_API_V1,
                                     &grant, &interface)) {
-                report("HID unavailable. Install drivers; tap to retry.");
+                (void)snprintf(keyboard_error, sizeof(keyboard_error),
+                    "Firmware has no detailed capability diagnostics. Update firmware to see failure cause.");
+                if (providers->struct_size >= offsetof(t5_provider_capability_api_v1, last_error) +
+                        sizeof(providers->last_error) && providers->last_error) {
+                    if (!providers->last_error(keyboard_error, sizeof(keyboard_error)))
+                        (void)snprintf(keyboard_error, sizeof(keyboard_error), "Capability request failed without a diagnostic.");
+                }
+                report("See error above. Tap Enable keyboard to retry.");
             } else {
+                keyboard_error[0] = 0;
                 const risc_usb_keyboard_api_v1 *api = (const risc_usb_keyboard_api_v1*)interface;
                 if (!api || api->api_version != RISC_USB_KEYBOARD_API_V1 ||
                     api->struct_size < sizeof(*api) || !api->subscribe ||

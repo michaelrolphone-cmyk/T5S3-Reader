@@ -22,6 +22,12 @@ struct Slot {
 };
 Slot active{};
 uint32_t generation = 0;
+char error[160]{};
+uint32_t errorOwner = 0;
+bool fail(const char* message) {
+    std::snprintf(error, sizeof(error), "%s", message);
+    return false;
+}
 
 uint32_t owner() {
     auto* context = RuntimeResources::ExecutionContext::current();
@@ -102,12 +108,15 @@ bool findProvider(const char* capability, uint32_t version, char (&id)[64]) {
                 std::memcmp(data, expected, static_cast<size_t>(n)) == 0;
             (void)profile.close();
             if (!matching) continue;
-            if (id[0]) { (void)dir.close(); id[0] = 0; return false; }
+            if (id[0]) {
+                (void)dir.close(); id[0] = 0;
+                return fail("Multiple installed providers match capability");
+            }
             std::strcpy(id, name);
         }
         (void)dir.close();
     }
-    return id[0] != 0;
+    return id[0] != 0 || fail("No installed provider profile matches capability");
 }
 
 bool acquire(const char* capability, uint32_t version,
@@ -115,13 +124,18 @@ bool acquire(const char* capability, uint32_t version,
     if (token) *token = 0;
     if (interface) *interface = nullptr;
     const uint32_t invocation = owner();
-    if (!token || !interface || !invocation || active.owner ||
-        !declaredOptional(capability, version)) return false;
+    if (!invocation) return false;
+    errorOwner = invocation;
+    error[0] = 0;
+    if (!token || !interface) return fail("Invalid capability request");
+    if (active.owner) return fail("Another capability lease is already active");
+    if (!declaredOptional(capability, version))
+        return fail("App JSON missing/invalid optional capability declaration");
     char id[64]{};
     if (!findProvider(capability, version, id)) return false;
     Lease grant{};
     if (!RuntimeInstalledProviders::acquire(id, capability, version, &grant) ||
-        !grant.grant.slot || !grant.interface) return false;
+        !grant.grant.slot || !grant.interface) return fail(RuntimeInstalledProviders::lastError());
     generation = generation == UINT32_MAX ? 1u : generation + 1u;
     if (!generation) generation = 1u;
     active.provider = grant;
@@ -141,9 +155,16 @@ bool release(t5_provider_capability_lease_t token) {
     // out a stale interface or retry a consumed generation.
     return RuntimeInstalledProviders::release(&grant);
 }
+bool lastError(char* out, size_t capacity) {
+    if (!out || !capacity) return false;
+    out[0] = 0;
+    if (!owner() || owner() != errorOwner || !error[0]) return false;
+    std::snprintf(out, capacity, "%s", error);
+    return true;
+}
 const t5_provider_capability_api_v1 api = {
     T5_PROVIDER_CAPABILITY_API_VERSION, sizeof(t5_provider_capability_api_v1),
-    acquire, release
+    acquire, release, lastError
 };
 } // namespace
 

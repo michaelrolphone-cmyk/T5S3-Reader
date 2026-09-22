@@ -280,6 +280,10 @@ bool prepare() {
     return true;
 }
 
+const char* lastError() {
+    return graph ? graph->lastError() : "Provider inventory verification failed";
+}
+
 bool acquire(const char* providerId, const char* capability, uint32_t version,
              Lease* out) {
     if (out) *out = {};

@@ -1,5 +1,6 @@
 #include "runtime/drivers/ProviderGraphV2.h"
 #include <cassert>
+#include <cstring>
 #include <cstdio>
 
 using RuntimeProviders::GraphV2;
@@ -46,6 +47,7 @@ int main(int argc, char** argv) {
     assert(grants[i].slot);
   }
   assert(!capacity.acquire("cap.root", 1).slot);
+  assert(std::strstr(capacity.lastError(), "Grant table full"));
   for (auto grant : grants) assert(capacity.release(grant));
   assert(capacity.shutdown());
 
@@ -73,6 +75,7 @@ int main(int argc, char** argv) {
   GraphV2 missing;
   assert(missing.addVerified(child));
   assert(!missing.acquire("cap.child", 1).slot && missing.shutdown());
+  assert(std::strstr(missing.lastError(), "cap.root"));
 
   const RequirementV2 needsB[] = {{"cycle.b", 1}};
   const RequirementV2 needsA[] = {{"cycle.a", 1}};
@@ -80,10 +83,12 @@ int main(int argc, char** argv) {
   assert(cycle.addVerified({"cycle-a", argv[1], "cycle.a", 1, needsB, 1}));
   assert(cycle.addVerified({"cycle-b", argv[2], "cycle.b", 1, needsA, 1}));
   assert(!cycle.acquire("cycle.a", 1).slot && cycle.shutdown());
+  assert(std::strstr(cycle.lastError(), "Dependency cycle"));
 
   GraphV2 mismatch;
   assert(mismatch.addVerified({"not-the-ELF-id", argv[1], "cap.root", 1, nullptr, 0}));
   assert(!mismatch.acquire("cap.root", 1).slot);
+  assert(std::strstr(mismatch.lastError(), "Provider load/start failed: not-the-ELF-id"));
   assert(mismatch.shutdown());
 
   const RequirementV2 duplicateRequirements[] = {{"cap.root", 1}, {"cap.root", 2}};
