@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <esp_log.h>
 
 #define MAX_ENTRY_LEN 256
 #define MAX_LOG_LINES 16
@@ -15,7 +16,11 @@ RTC_NOINIT_ATTR size_t logHead = 0;
 RTC_NOINIT_ATTR uint32_t rtcLogMagic;
 static constexpr uint32_t LOG_RTC_MAGIC = 0xDEADBEEF;
 
+static bool preserveLogs = false;
+void preserveLastLogs(bool preserve) { preserveLogs = preserve; }
+
 void addToLogRingBuffer(const char* message) {
+  if (preserveLogs) return;
   // Add the message to the ring buffer, overwriting old messages if necessary.
   // If the magic is wrong or logHead is out of range (RTC_NOINIT_ATTR garbage
   // on cold boot), clear the entire buffer so subsequent reads are safe.
@@ -141,4 +146,23 @@ void clearLastLogs() {
   }
   logHead = 0;
   rtcLogMagic = LOG_RTC_MAGIC;
+}
+
+// ESP_LOG* from SDK and loaded app/driver ELFs otherwise bypasses the RTC
+// logger entirely. Keep a bounded copy before forwarding to the serial sink.
+static vprintf_like_t previousSdkSink = nullptr;
+static int captureSdkLog(const char *format, va_list args) {
+  char message[MAX_ENTRY_LEN];
+  va_list copy;
+  va_copy(copy, args);
+  const int count = vsnprintf(message, sizeof(message), format, copy);
+  va_end(copy);
+  if (count >= 0) addToLogRingBuffer(message);
+  return previousSdkSink ? previousSdkSink(format, args) : count;
+}
+void installSdkLogCapture() {
+  static bool installed = false;
+  if (installed) return;
+  previousSdkSink = esp_log_set_vprintf(captureSdkLog);
+  installed = true;
 }

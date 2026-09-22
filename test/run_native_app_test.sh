@@ -36,3 +36,5 @@ cc -std=c11 -Wall -Wextra -Werror \
   "$repo_dir/test/native_apps/gnss_consent_contract_test.c" -o "$binary"
 (cd "$repo_dir" && "$binary")
 echo 'Native app launcher tests passed'
+
+bash "$repo_dir/test/run_panic_capture_test.sh"
