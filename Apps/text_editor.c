@@ -233,7 +233,7 @@ static void key_press(uint8_t key, uint8_t modifiers) {
         } else if (!ctrl && !alt && proposed_size < NAME_LIMIT) {
             const char ch = translate(key, shift);
             if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-                (ch >= '0' && ch <= '9') || c == '_' || c == '-' || c == '.') {
+                (ch >= '0' && ch <= '9') || ch == '_' || ch == '-' || ch == '.') {
                 proposed[proposed_size++] = ch;
                 proposed[proposed_size] = 0;
             }
