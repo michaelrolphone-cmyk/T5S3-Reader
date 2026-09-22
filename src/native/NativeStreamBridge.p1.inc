@@ -28,11 +28,11 @@ RuntimeResources::ExecutionContext invocation;
 SemaphoreHandle_t mutex = nullptr;
 TaskHandle_t scheduler = nullptr;
 uint32_t owner = 0;
-bool active = false, httpBusy = false, usbOpen = false;
-uint32_t usbRefs = 0;
-// The already-running stream task also retries a bounded pending USB write.
+bool active = false, httpBusy = false, serialOpen = false;
+uint32_t serialRefs = 0;
+// The already-running stream task also retries a bounded pending serial write.
 // No hardware transfer occurs while its registry mutex is held.
-std::atomic<bool> usbTxRetry{false};
+std::atomic<bool> serialTxRetry{false};
 int32_t drainPairTx();
 struct Lock {
   Lock() { xSemaphoreTake(mutex, portMAX_DELAY); }
@@ -46,13 +46,13 @@ void schedule(void*) {
   TickType_t wait = portMAX_DELAY;
   for (;;) {
     ulTaskNotifyTake(pdTRUE, wait);
-    if (usbTxRetry.load(std::memory_order_acquire)) (void)drainPairTx();
+    if (serialTxRetry.load(std::memory_order_acquire)) (void)drainPairTx();
     for (;;) {
       RuntimeStreams::ExternalIo io{};
       {
         Lock lock;
         if (!registry.pumpPrepare(&io)) {
-          wait = (registry.runnable() || usbTxRetry.load(std::memory_order_acquire))
+          wait = (registry.runnable() || serialTxRetry.load(std::memory_order_acquire))
                      ? pdMS_TO_TICKS(10) : portMAX_DELAY;
           break;
         }
@@ -167,46 +167,45 @@ int32_t openFile(const char* path, uint32_t mode, t5_stream_t* out) {
   }
   return r;
 }
-struct Usb {
+struct SerialLink {
   uint32_t epoch;
 };
-Usb* pairUsb = nullptr;
+SerialLink* pairSerial = nullptr;
 t5_stream_t pairRx = 0, pairTx = 0;
 void notePairClosed(t5_stream_t handle) {
   if (handle && handle == pairRx) pairRx = 0;
   if (handle && handle == pairTx) pairTx = 0;
   if (pairRx || pairTx) return;
-  usbTxRetry.store(false, std::memory_order_release);
-  delete pairUsb;
-  pairUsb = nullptr;
-  usbOpen = false;
-  usbRefs = 0;
+  serialTxRetry.store(false, std::memory_order_release);
+  delete pairSerial;
+  pairSerial = nullptr;
+  serialOpen = false;
+  serialRefs = 0;
 }
-bool usbRevoked(const Usb& u) {
-  return u.epoch == UINT32_MAX || nativeUsbProviderEpoch() != u.epoch;
+bool serialRevoked(const SerialLink& link) {
+  const uint32_t current = nativeSerialProviderEpoch();
+  return !link.epoch || !current || current != link.epoch;
 }
-int32_t usbState(Usb& u) {
-  if (usbRevoked(u)) return T5_STREAM_DISCONNECTED;
-  t5_usb_serial_state_t s{};
-  if (!nativeUsbClassReadState(&s)) return T5_STREAM_IO;
-  if (usbRevoked(u)) return T5_STREAM_DISCONNECTED;
-  if (s.status == T5_USB_STATUS_ERROR) return T5_STREAM_IO;
-  if (s.status == T5_USB_STATUS_OFF) return T5_STREAM_DISCONNECTED;
-  if (!s.connected) return T5_STREAM_AGAIN;
-  return s.status == T5_USB_STATUS_READY ? T5_STREAM_OK : T5_STREAM_AGAIN;
+int32_t serialState(const SerialLink& link) {
+  if (serialRevoked(link) || !nativeSerialProviderActive())
+    return T5_STREAM_DISCONNECTED;
+  return T5_STREAM_OK;
 }
-int32_t usbRead(void* ctx, void* data, uint32_t size, uint32_t* count) {
-  auto& u = *static_cast<Usb*>(ctx);
-  auto r = usbState(u); if (r != T5_STREAM_OK) return r;
-  const auto result = nativeUsbClassRead(static_cast<uint8_t*>(data), size, count);
-  if (usbRevoked(u)) { if (count) *count = 0; return T5_STREAM_DISCONNECTED; }
+int32_t serialReadProvider(void* ctx, void* data, uint32_t size, uint32_t* count) {
+  auto& link = *static_cast<SerialLink*>(ctx);
+  const auto state = serialState(link);
+  if (state != T5_STREAM_OK) return state;
+  const auto result = nativeSerialProviderRead(static_cast<uint8_t*>(data), size, count);
+  if (serialRevoked(link)) { if (count) *count = 0; return T5_STREAM_DISCONNECTED; }
   return result;
 }
-int32_t usbWrite(void* ctx, const void* data, uint32_t size, uint32_t* count) {
-  auto& u = *static_cast<Usb*>(ctx);
-  auto r = usbState(u); if (r != T5_STREAM_OK) return r;
-  const auto result = nativeUsbClassWrite(static_cast<const uint8_t*>(data), size, count);
-  if (usbRevoked(u)) { if (count) *count = 0; return T5_STREAM_DISCONNECTED; }
+int32_t serialWriteProvider(void* ctx, const void* data, uint32_t size, uint32_t* count) {
+  auto& link = *static_cast<SerialLink*>(ctx);
+  const auto state = serialState(link);
+  if (state != T5_STREAM_OK) return state;
+  const auto result = nativeSerialProviderWrite(
+      static_cast<const uint8_t*>(data), size, count);
+  if (serialRevoked(link)) { if (count) *count = 0; return T5_STREAM_DISCONNECTED; }
   return result;
 }
 int32_t openUsb(t5_stream_t* out) {
