@@ -1,21 +1,25 @@
-#include "NativeSerialPortBridge.h"
-#include "NativeStreamBridge.h"
-#include "NativeUsbDeviceRegistry.h"
-#include "runtime/capabilities/SerialProviderRegistry.h"
-#include "runtime/capabilities/UsbSerialProjection.h"
-#include "runtime/resources/ExecutionContext.h"
 #if defined(ESP_PLATFORM) || defined(RISCRTE_TEST_INSTALLED_SERIAL_PATH)
-#include "runtime/drivers/InstalledSerialInventory.h"
-#include "runtime/drivers/InstalledSerialSession.h"
-#include <RiscSerialPortV1.h>
 #define RISCRTE_INSTALLED_SERIAL_PATH 1
 #else
 #define RISCRTE_INSTALLED_SERIAL_PATH 0
 #endif
+
+#include "NativeSerialPortBridge.h"
+#include "NativeStreamBridge.h"
+#include "runtime/capabilities/SerialProviderRegistry.h"
+#include "runtime/resources/ExecutionContext.h"
+#if RISCRTE_INSTALLED_SERIAL_PATH
+#include "runtime/drivers/InstalledSerialInventory.h"
+#include "runtime/drivers/InstalledSerialSession.h"
+#include <RiscSerialPortV1.h>
+#else
+#include "NativeUsbDeviceRegistry.h"
 #include "NativeUsbClassBridge.h"
+#include "runtime/capabilities/UsbSerialProjection.h"
+#include <T5UsbApi.h>
+#endif
 #include <T5AppApi.h>
 #include <T5SerialPortApi.h>
-#include <T5UsbApi.h>
 #include <cstdio>
 #include <cstring>
 #include <atomic>
@@ -31,9 +35,9 @@ t5_stream_t rxHandle = 0;
 t5_stream_t txHandle = 0;
 uint32_t leaseGeneration = 0;
 uint32_t leaseEpoch = 0;
-// The installed host announces presence independently of app lease lifetime.
-NativeUsbDevices::Registry devices; // compatibility T5UsbApi observation only
 #if !RISCRTE_INSTALLED_SERIAL_PATH
+// Non-production fixture compatibility only.
+NativeUsbDevices::Registry devices;
 RuntimeDevices::UsbSerialProjection usbProjection(RuntimeDevices::systemRegistry());
 #else
 RuntimeInstalledProviders::InstalledSerialInventory installedSerial(RuntimeDevices::systemRegistry());
@@ -47,8 +51,8 @@ uint32_t nextStreamEpoch = 0;
 #endif
 RuntimeDevices::LeaseHandle physicalLease = 0;
 uint32_t physicalOwner = 0;
-enum class UsbConsumer : uint8_t { None, SerialPort, DirectStream };
-UsbConsumer physicalConsumer = UsbConsumer::None;
+enum class SerialConsumer : uint8_t { None, SerialPort, LegacyDirectStream };
+SerialConsumer physicalConsumer = SerialConsumer::None;
 RuntimeSerial::Registry providers;
 t5_serial_config_t currentConfig = {115200u, 8u, T5_SERIAL_PARITY_NONE, 1u, T5_SERIAL_FLOW_NONE};
 
@@ -121,21 +125,21 @@ void synchronizeSerialDevices() {
   if (physicalLease && !RuntimeDevices::systemRegistry().valid(physicalLease, physicalOwner))
     physicalLease = 0;
 }
-void releasePhysicalDevice(UsbConsumer consumer) {
+void releasePhysicalDevice(SerialConsumer consumer) {
   if (physicalConsumer != consumer) return;
   if (physicalLease) {
     (void)RuntimeDevices::systemRegistry().release(physicalLease, physicalOwner);
     physicalLease = 0;
   }
   physicalOwner = 0;
-  physicalConsumer = UsbConsumer::None;
+  physicalConsumer = SerialConsumer::None;
 }
 #if !RISCRTE_INSTALLED_SERIAL_PATH
-bool claimPhysicalDevice(UsbConsumer consumer) {
+bool claimPhysicalDevice(SerialConsumer consumer) {
   synchronizeSerialDevices();
   auto* context = RuntimeResources::ExecutionContext::current();
   if (!context || !context->running(context->id())) return false;
-  if (physicalConsumer != UsbConsumer::None &&
+  if (physicalConsumer != SerialConsumer::None &&
       (physicalConsumer != consumer || physicalOwner != context->id())) return false;
   if (physicalLease) return RuntimeDevices::systemRegistry().valid(physicalLease, context->id());
   if (!usbProjection.device()) {
@@ -160,6 +164,7 @@ bool validConfig(const t5_serial_config_t* config) {
          (config->stop_bits == 1u || config->stop_bits == 2u) &&
          config->flow_control == T5_SERIAL_FLOW_NONE;
 }
+#if !RISCRTE_INSTALLED_SERIAL_PATH
 uint8_t semanticStatus(uint8_t status) {
   switch (status) {
     case T5_USB_STATUS_OFF: return T5_SERIAL_STATUS_OFF;
@@ -170,6 +175,7 @@ uint8_t semanticStatus(uint8_t status) {
     default: return T5_SERIAL_STATUS_UNAVAILABLE;
   }
 }
+#endif
 bool validLease(t5_serial_port_lease_t lease) {
   return lease != 0 && lease == leaseHandle;
 }
@@ -210,7 +216,7 @@ bool clearInstalledLease(bool stopPhysical) {
   }
   physicalLease = 0;
   physicalOwner = 0;
-  physicalConsumer = UsbConsumer::None;
+  physicalConsumer = SerialConsumer::None;
   activeSemanticDevice = 0;
   activeInstalledApi = nullptr;
   activeProviderDevice = 0;
@@ -282,7 +288,7 @@ t5_serial_result_t installedAcquirePort(const t5_serial_port_request_t* request,
 
   physicalLease = deviceLease;
   physicalOwner = context->id();
-  physicalConsumer = UsbConsumer::SerialPort;
+  physicalConsumer = SerialConsumer::SerialPort;
   activeSemanticDevice = selectedLease.device;
   activeInstalledApi = providerApi;
   activeProviderDevice = providerDevice;
@@ -433,7 +439,7 @@ bool clearLease(bool stopUsb) {
     if (result != T5_STREAM_OK && result != T5_STREAM_INVALID) return false;
     txHandle = 0;
   }
-  releasePhysicalDevice(UsbConsumer::SerialPort);
+  releasePhysicalDevice(SerialConsumer::SerialPort);
   leaseHandle = 0;
   leaseEpoch = 0;
   synchronizeSerialDevices();
@@ -495,7 +501,7 @@ t5_serial_result_t usbAcquirePort(const t5_serial_port_request_t* request,
     return failedOpen(pending, lease, T5_SERIAL_IO, newRx, newTx);
   }
   const bool detached = devices.epoch() != startEpoch;
-  if (detached || !claimPhysicalDevice(UsbConsumer::SerialPort))
+  if (detached || !claimPhysicalDevice(SerialConsumer::SerialPort))
     return failedOpen(pending, lease,
                       detached ? T5_SERIAL_DISCONNECTED : T5_SERIAL_BUSY,
                       newRx, newTx);
@@ -519,7 +525,7 @@ t5_serial_result_t usbConfigurePort(t5_serial_port_lease_t lease, const t5_seria
   if (!validLease(lease)) return T5_SERIAL_CLOSED;
   synchronizeSerialDevices();
   if (leaseRevoked()) return T5_SERIAL_DISCONNECTED;
-  if (!claimPhysicalDevice(UsbConsumer::SerialPort)) return T5_SERIAL_BUSY;
+  if (!claimPhysicalDevice(SerialConsumer::SerialPort)) return T5_SERIAL_BUSY;
   if (config && config->flow_control != T5_SERIAL_FLOW_NONE) return T5_SERIAL_UNSUPPORTED;
   if (!validConfig(config)) return T5_SERIAL_INVALID;
   if (!nativeUsbClassConfigure(*config)) return T5_SERIAL_IO;
@@ -550,7 +556,7 @@ t5_serial_result_t usbReadStatus(t5_serial_port_lease_t lease, t5_serial_port_st
     return T5_SERIAL_OK;
   }
   const bool bound = device.presence == NativeUsbDevices::Presence::Bound;
-  if (state.connected && bound && !claimPhysicalDevice(UsbConsumer::SerialPort)) return T5_SERIAL_BUSY;
+  if (state.connected && bound && !claimPhysicalDevice(SerialConsumer::SerialPort)) return T5_SERIAL_BUSY;
   out->status = semanticStatus(state.status);
   out->connected = state.connected && bound;
   if (!bound && out->status != T5_SERIAL_STATUS_ERROR && out->status != T5_SERIAL_STATUS_OFF)
@@ -578,7 +584,7 @@ t5_serial_result_t usbSetControlLines(t5_serial_port_lease_t lease, bool dtr, bo
   if (!validLease(lease)) return T5_SERIAL_CLOSED;
   synchronizeSerialDevices();
   if (leaseRevoked()) return T5_SERIAL_DISCONNECTED;
-  if (!claimPhysicalDevice(UsbConsumer::SerialPort)) return T5_SERIAL_BUSY;
+  if (!claimPhysicalDevice(SerialConsumer::SerialPort)) return T5_SERIAL_BUSY;
   return nativeUsbClassControl(dtr, rts) ? T5_SERIAL_OK : T5_SERIAL_IO;
 }
 t5_serial_result_t usbReleasePort(t5_serial_port_lease_t lease) {
@@ -715,6 +721,7 @@ int32_t nativeSerialProviderWrite(const uint8_t* src, uint32_t length, uint32_t*
 }
 #endif
 
+#if !RISCRTE_INSTALLED_SERIAL_PATH
 void nativeUsbProviderAttach(const t5_usb_serial_state_t* state, uint8_t dataInterface) {
   if (state) devices.observe(*state, dataInterface);
 }
@@ -733,7 +740,6 @@ uint32_t nativeUsbProviderEpoch() {
   return devices.epoch();
 #endif
 }
-void nativeDeviceDiscoveryTick() { synchronizeSerialDevices(); }
 
 bool nativeUsbDirectStreamClaim(uint32_t expectedEpoch) {
 #if RISCRTE_INSTALLED_SERIAL_PATH
@@ -743,10 +749,12 @@ bool nativeUsbDirectStreamClaim(uint32_t expectedEpoch) {
   if (!authorized()) return false;
   synchronizeSerialDevices();
   if (devices.epoch() != expectedEpoch) return false;
-  if (!claimPhysicalDevice(UsbConsumer::DirectStream)) return false;
+  if (!claimPhysicalDevice(SerialConsumer::LegacyDirectStream)) return false;
   if (devices.epoch() != expectedEpoch) {
     synchronizeSerialDevices();
-    releasePhysicalDevice(UsbConsumer::DirectStream);
+  #if !RISCRTE_INSTALLED_SERIAL_PATH
+  releasePhysicalDevice(SerialConsumer::LegacyDirectStream);
+#endif
     return false;
   }
   return true;
@@ -754,9 +762,11 @@ bool nativeUsbDirectStreamClaim(uint32_t expectedEpoch) {
 }
 void nativeUsbDirectStreamRelease() {
 #if !RISCRTE_INSTALLED_SERIAL_PATH
-  releasePhysicalDevice(UsbConsumer::DirectStream);
+  releasePhysicalDevice(SerialConsumer::LegacyDirectStream);
 #endif
 }
+#endif
+void nativeDeviceDiscoveryTick() { synchronizeSerialDevices(); }
 
 void nativeSerialPortsBegin() {
   active = true;
@@ -778,8 +788,8 @@ void nativeSerialPortsEnd() {
     traceResult("context-end-quarantined", T5_SERIAL_IO, leaseHandle, 0);
     return;
   }
-  releasePhysicalDevice(UsbConsumer::SerialPort);
-  releasePhysicalDevice(UsbConsumer::DirectStream);
+  releasePhysicalDevice(SerialConsumer::SerialPort);
+  releasePhysicalDevice(SerialConsumer::LegacyDirectStream);
   synchronizeSerialDevices();
   active = false;
   resetStatusTrace();
