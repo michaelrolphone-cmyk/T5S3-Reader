@@ -294,18 +294,27 @@ static bool poll(void *ctx, size_t max_reports) {
         *slot = candidate;
         if (!emit(1, &slot->state)) return false;
     }
+    /* Drain bursts fairly across active pads, within the caller's work budget.
+     * Each read has a cooperative 10 ms deadline; an idle pad is tried once. */
+    bool quiet[PADS] = {0};
     size_t attempted = 0;
-    for (unsigned j = 0; j < PADS && attempted < max_reports; ++j) {
-        gamepad *p = &pads[j];
-        if (!p->session) continue;
-        uint8_t report[RISC_USB_HID_MAX_REPORT] = {0};
-        int32_t n = hid->read(hid->context, p->session, report, sizeof(report), 10);
-        ++attempted;
-        if (n < 0) {
-            if (!hid->present(hid->context, p->session)) {
-                if (!release_pad(p)) return false;
-            } else return false;
-        } else if (n && !apply(p, report, (size_t)n)) return false;
+    for (size_t round = 0; round < max_reports && attempted < max_reports; ++round) {
+        bool active = false;
+        for (unsigned j = 0; j < PADS && attempted < max_reports; ++j) {
+            gamepad *p = &pads[j];
+            if (!p->session || quiet[j]) continue;
+            active = true;
+            uint8_t report[RISC_USB_HID_MAX_REPORT] = {0};
+            int32_t n = hid->read(hid->context, p->session, report, sizeof(report), 10);
+            ++attempted;
+            if (n < 0) {
+                if (!hid->present(hid->context, p->session)) {
+                    if (!release_pad(p)) return false;
+                } else return false;
+            } else if (!n) quiet[j] = true;
+            else if (!apply(p, report, (size_t)n)) return false;
+        }
+        if (!active) break;
     }
     return true;
 }

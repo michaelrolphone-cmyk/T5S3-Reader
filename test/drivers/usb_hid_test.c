@@ -28,6 +28,7 @@ static const uint8_t configuration_descriptor[] = {
 };
 static bool attached = true, claimed[2];
 static unsigned malformed, burst, burst_read;
+static unsigned pad_burst, pad_burst_read, pad_reads;
 static unsigned keyboard_reports, gamepad_reports, releases;
 static bool host_poll(void *ctx, size_t max, size_t *processed) {
     (void)ctx;
@@ -113,6 +114,11 @@ static int32_t interrupt_read(void *ctx, uint64_t claim, uint8_t ep,
         return 8;
     }
     if (claim == 101 && ep == 0x82 && claimed[1]) {
+        ++pad_reads;
+        if (pad_burst && pad_burst_read < 4) {
+            const uint8_t reports[4][3] = {{0,0,0}, {2,129,127}, {0,0,0}, {1,127,129}};
+            memcpy(dst, reports[pad_burst_read++], 3); return 3;
+        }
         if (gamepad_reports++) return 0;
         const uint8_t report[3] = {1,127,129};
         memcpy(dst, report, sizeof(report));
@@ -210,6 +216,21 @@ int main(int argc, char **argv) {
         assert(key_event.kind == kinds[i] && key_event.usage == usages[i]);
     }
     burst = 0;
+    pad_burst = 1;
+    unsigned reads_before = pad_reads;
+    assert(pads->poll(pads->context, 2) && pad_burst_read == 2);
+    assert(pad_reads == reads_before + 2); /* Honor a smaller work budget. */
+    assert(pads->poll(pads->context, 4) && pad_burst_read == 4);
+    assert(pad_reads == reads_before + 5); /* Stop after the first idle read. */
+    const unsigned buttons[] = {0, 2, 0, 1};
+    const int axes[] = {0, -32767, 0, 32767};
+    for (unsigned i = 0; i < 4; ++i) {
+        assert(pads->next(pads->context, pad_sub, &pad_event) == 1);
+        assert(pad_event.kind == 3 && pad_event.state.buttons == buttons[i]);
+        assert(pad_event.state.x == axes[i] && pad_event.state.y == -axes[i]);
+    }
+    assert(pads->next(pads->context, pad_sub, &pad_event) == 0);
+    pad_burst = 0;
     assert(!keyboard->quiesce() && !gamepad->quiesce() && !generic->quiesce());
     attached = false;
     assert(keys->poll(keys->context, 4));
