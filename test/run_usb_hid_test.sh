@@ -32,3 +32,7 @@ cc -std=c11 -Wall -Wextra -Werror \
   -I"$repo/lib/NativeApps/include" -I"$repo/sdk/driver" \
   "$repo/test/native_apps/text_editor_ui_test.c" -o "$build/text-editor-ui-test"
 "$build/text-editor-ui-test"
+
+c++ -std=c++17 -Wall -Wextra -Werror \
+  "$repo/test/drivers/controller_interrupt_test.cpp" -o "$build/controller-interrupt-test"
+"$build/controller-interrupt-test"
