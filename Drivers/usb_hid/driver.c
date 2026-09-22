@@ -58,19 +58,20 @@ static bool parse(uint64_t device, uint16_t vid, uint16_t pid, size_t length,
         config[1] != 2 || ((size_t)config[2] | ((size_t)config[3] << 8)) != length)
         return false;
     risc_usb_hid_interface_v1 item = {0};
-    bool selected = false, hid_descriptor = false, endpoint = false;
+    bool selected = false, valid = true, hid_descriptor = false, endpoint = false;
     for (size_t pos = 0; pos < length;) {
-        if (length - pos < 2) return false;
+        /* Broken framing has no trustworthy next boundary. Keep only already
+         * completed interfaces; discard this scope and never byte-resynchronize. */
+        if (length - pos < 2) return true;
         uint8_t n = config[pos], type = config[pos + 1];
-        if (n < 2 || n > length - pos) return false;
+        if (n < 2 || n > length - pos) return true;
         if (type == 4) {
-            if (selected && (!append(candidate, count, &item) ||
-                             (hid_descriptor && !item.report_descriptor_length)))
-                return false;
-            if (n < 9) return false;
-            selected = config[pos + 5] == 3;
+            if (selected && valid && !append(candidate, count, &item)) return false;
+            selected = false;
+            valid = true;
             hid_descriptor = endpoint = false;
             item = (risc_usb_hid_interface_v1){0};
+            if (n >= 9) selected = config[pos + 5] == 3;
             if (selected) {
                 item.device = device;
                 item.vid = vid; item.pid = pid;
@@ -79,38 +80,49 @@ static bool parse(uint64_t device, uint16_t vid, uint16_t pid, size_t length,
                 item.subclass = config[pos + 6];
                 item.protocol = config[pos + 7];
             }
-        } else if (selected && type == 0x21) {
+        } else if (selected && valid && type == 0x21) {
             if (hid_descriptor || n < 9 || config[pos + 5] == 0 ||
-                (size_t)n < 6u + 3u * config[pos + 5]) return false;
-            hid_descriptor = true;
-            for (size_t j = 0; j < config[pos + 5]; ++j) {
-                size_t off = pos + 6u + 3u * j;
-                if (config[off] != 0x22) continue;
-                if (item.report_descriptor_length) return false;
-                item.report_descriptor_length =
-                    (uint16_t)config[off + 1] | ((uint16_t)config[off + 2] << 8);
-                if (!item.report_descriptor_length ||
-                    item.report_descriptor_length > RISC_USB_HID_MAX_DESCRIPTOR)
-                    return false;
+                (size_t)n < 6u + 3u * config[pos + 5]) {
+                valid = false;
+            } else {
+                hid_descriptor = true;
+                for (size_t j = 0; j < config[pos + 5]; ++j) {
+                    size_t off = pos + 6u + 3u * j;
+                    if (config[off] != 0x22) continue;
+                    if (item.report_descriptor_length) { valid = false; break; }
+                    item.report_descriptor_length =
+                        (uint16_t)config[off + 1] | ((uint16_t)config[off + 2] << 8);
+                    if (!item.report_descriptor_length ||
+                        item.report_descriptor_length > RISC_USB_HID_MAX_DESCRIPTOR) {
+                        valid = false;
+                        break;
+                    }
+                }
+                if (!item.report_descriptor_length) valid = false;
             }
-        } else if (selected && type == 5) {
-            if (n < 7) return false;
-            uint8_t address = config[pos + 2];
-            uint16_t packet = (uint16_t)config[pos + 4] |
-                              ((uint16_t)config[pos + 5] << 8);
-            if ((config[pos + 3] & 3u) == 3u && (address & 0x80u)) {
-                if (endpoint || !(address & 15u) || (address & 0x70u) ||
-                    !packet || packet > RISC_USB_HID_MAX_REPORT) return false;
-                endpoint = true;
-                item.interrupt_in = address;
-                item.interval = config[pos + 6];
-                item.max_packet = packet;
+        } else if (selected && valid && type == 5) {
+            if (n < 7) {
+                valid = false;
+            } else {
+                uint8_t address = config[pos + 2];
+                uint16_t packet = (uint16_t)config[pos + 4] |
+                                  ((uint16_t)config[pos + 5] << 8);
+                if ((config[pos + 3] & 3u) == 3u && (address & 0x80u)) {
+                    if (endpoint || !(address & 15u) || (address & 0x70u) ||
+                        !packet || packet > RISC_USB_HID_MAX_REPORT) {
+                        valid = false;
+                    } else {
+                        endpoint = true;
+                        item.interrupt_in = address;
+                        item.interval = config[pos + 6];
+                        item.max_packet = packet;
+                    }
+                }
             }
         }
         pos += n;
     }
-    return !selected || (append(candidate, count, &item) &&
-                         (!hid_descriptor || item.report_descriptor_length));
+    return !selected || !valid || append(candidate, count, &item);
 }
 
 static bool scan(void *context, size_t max_events) {

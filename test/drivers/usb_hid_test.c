@@ -24,6 +24,7 @@ static const uint8_t configuration_descriptor[] = {
     7,5,0x82,3,8,0,10
 };
 static bool attached = true, claimed[2];
+static unsigned malformed;
 static unsigned keyboard_reports, gamepad_reports, releases;
 static bool host_poll(void *ctx, size_t max, size_t *processed) {
     (void)ctx;
@@ -41,9 +42,18 @@ static bool host_devices(void *ctx, uint64_t *devices, size_t *count) {
 static bool host_configuration(void *ctx, uint64_t token, uint8_t *bytes,
                                size_t *len, uint16_t *vid, uint16_t *pid) {
     (void)ctx;
+    if (malformed == 8) return false; // transport failure retains last snapshot
     if (!attached || token != 42 || !bytes || !len || !vid || !pid ||
         *len < sizeof(configuration_descriptor)) return false;
     memcpy(bytes, configuration_descriptor, sizeof(configuration_descriptor));
+    // One physical composite device, with corruption in either sibling.
+    if (malformed == 1) bytes[48] = 0;       // sibling HID bNumDescriptors
+    if (malformed == 2) bytes[54] = 0xf2;    // sibling reserved endpoint bits
+    if (malformed == 3) bytes[43] = 0;       // broken framing in sibling
+    if (malformed == 4) bytes[23] = 0;       // first interface invalid; second survives
+    if (malformed == 5) bytes[18] = 0;       // first scope framing lost; cannot find sibling
+    if (malformed == 6) bytes[43] = 255;     // sibling length beyond buffer
+    if (malformed == 7) bytes[56] = 65;      // sibling oversized report packet
     *len = sizeof(configuration_descriptor); *vid = 0x1234; *pid = 0x9876;
     return true;
 }
@@ -130,6 +140,26 @@ int main(int argc, char **argv) {
     risc_provider_dependency_v1 host_dep = {"usb.host", 1, &fake_host.discovery.host};
     assert(generic->start(&host_dep, 1));
     const risc_usb_hid_api_v1 *hid = generic->capability;
+    for (malformed = 0; malformed <= 7; ++malformed) {
+        assert(hid->scan(hid->context, 4));
+        risc_usb_hid_interface_v1 found[4] = {{0}};
+        size_t count = 4;
+        assert(hid->interfaces(hid->context, found, &count));
+        assert(count == (malformed == 0 ? 2u : malformed == 5 ? 0u : 1u));
+        if (count == 1) {
+            assert(found[0].interface_number == (malformed == 4 ? 1 : 0));
+            const uint64_t session = hid->open(hid->context, 42, found[0].interface_number, 0);
+            assert(session && hid->close(hid->context, session));
+        }
+    }
+    malformed = 0;
+    assert(hid->scan(hid->context, 4));
+    malformed = 8;
+    assert(!hid->scan(hid->context, 4));
+    risc_usb_hid_interface_v1 preserved[4] = {{0}};
+    size_t preserved_count = 4;
+    assert(hid->interfaces(hid->context, preserved, &preserved_count) && preserved_count == 2);
+    malformed = 0; releases = 0;
     risc_provider_dependency_v1 hid_dep = {"usb.hid", 1, hid};
     assert(keyboard->start(&hid_dep, 1));
     assert(gamepad->start(&hid_dep, 1));
