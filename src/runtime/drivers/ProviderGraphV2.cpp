@@ -103,11 +103,15 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
     }
   }
   // nodes_ is fixed storage: appending a new absent provider cannot move or
-  // invalidate active modules, retained dependency tables, or live grants.
-  // This is required for lazy admission of a second capability chain while a
-  // previously acquired provider remains active.
-  for (size_t i = 0; i < count_; ++i)
-    if (std::strcmp(nodes_[i].spec.id, spec.id) == 0) return false;
+  // invalidate healthy active modules, retained dependency tables, or live
+  // grants. Never mutate the graph while a provider is mid-activation or
+  // quarantined after failed start/quiesce; those states deliberately retain
+  // mapped code and dependency pins until explicit recovery succeeds.
+  for (size_t i = 0; i < count_; ++i) {
+    if (std::strcmp(nodes_[i].spec.id, spec.id) == 0 ||
+        nodes_[i].visit == Visit::Visiting ||
+        nodes_[i].module.state() == ModuleV2::State::Failed) return false;
+  }
   for (size_t i = 0; i < spec.requirementCount; ++i) {
     if (!validName(spec.requirements[i].capability) || !spec.requirements[i].api)
       return false;
