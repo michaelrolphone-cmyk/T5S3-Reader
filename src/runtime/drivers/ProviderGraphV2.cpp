@@ -1,6 +1,7 @@
 #include "ProviderGraphV2.h"
 #include "ProviderOwnedSpecV2.h"
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <new>
 
@@ -135,12 +136,17 @@ bool GraphV2::deactivateIfUnused(size_t index) {
   return true;
 }
 
+bool GraphV2::fail(const char* stage, const char* identity) {
+  std::snprintf(error_, sizeof(error_), "%s: %s", stage, identity ? identity : "unknown");
+  return false;
+}
+
 bool GraphV2::activate(size_t index) {
   Node& node = nodes_[index];
   if (node.visit == Visit::Active)
-    return node.module.state() == ModuleV2::State::Active;
-  if (node.visit == Visit::Visiting ||
-      node.module.state() == ModuleV2::State::Failed) return false;
+    return node.module.state() == ModuleV2::State::Active || fail("Provider quarantined", node.spec.id);
+  if (node.visit == Visit::Visiting) return fail("Dependency cycle", node.spec.id);
+  if (node.module.state() == ModuleV2::State::Failed) return fail("Provider failed", node.spec.id);
   node.visit = Visit::Visiting;
   for (size_t i = 0; i < node.spec.requirementCount; ++i) {
     const RequirementV2& requirement = node.spec.requirements[i];
@@ -148,6 +154,8 @@ bool GraphV2::activate(size_t index) {
     if (dependency < 0 ||
         !activate(static_cast<size_t>(dependency)) ||
         !nodes_[dependency].module.pinConsumer()) {
+      if (dependency < 0) fail("Dependency missing/ambiguous", requirement.capability);
+      else if (!error_[0]) fail("Dependency pin failed", requirement.capability);
       releaseDependencies(index);
       node.visit = Visit::Idle;
       return false;
@@ -171,6 +179,7 @@ bool GraphV2::activate(size_t index) {
                          node.spec.requirementCount ? node.boundDependencies : nullptr,
                          node.spec.requirementCount);
   if (!loaded) {
+    fail("Provider load/start failed", node.spec.id);
     if (node.module.unload()) {
       releaseDependencies(index);
       node.visit = Visit::Idle;
@@ -189,8 +198,10 @@ GrantV2 GraphV2::acquireIndex(size_t index) {
   size_t slot = kMaxGrants;
   for (size_t i = 0; i < kMaxGrants; ++i)
     if (!grants_[i].occupied) { slot = i; break; }
-  if (slot == kMaxGrants || !activate(index)) return {};
+  if (slot == kMaxGrants) { fail("Grant table full", nodes_[index].spec.id); return {}; }
+  if (!activate(index)) return {};
   if (!nodes_[index].module.pinConsumer()) {
+    fail("Provider pin failed", nodes_[index].spec.id);
     (void)deactivateIfUnused(index);
     return {};
   }
@@ -201,13 +212,17 @@ GrantV2 GraphV2::acquireIndex(size_t index) {
 }
 
 GrantV2 GraphV2::acquire(const char* capability, uint32_t api) {
+  error_[0] = 0;
   const int target = find(capability, api);
+  if (target < 0) fail("Capability missing/ambiguous", capability);
   return target < 0 ? GrantV2{} : acquireIndex(static_cast<size_t>(target));
 }
 
 GrantV2 GraphV2::acquireFrom(const char* providerId, const char* capability,
                            uint32_t api) {
+  error_[0] = 0;
   const int target = findProvider(providerId, capability, api);
+  if (target < 0) fail("Provider not admitted", providerId);
   return target < 0 ? GrantV2{} : acquireIndex(static_cast<size_t>(target));
 }
 

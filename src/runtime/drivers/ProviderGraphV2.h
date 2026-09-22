@@ -49,6 +49,7 @@ class GraphV2 final {
   bool shutdown();
   size_t moduleCount() const { return count_; }
   size_t liveGrants() const;
+  const char* lastError() const { return error_; }
 
  private:
   // Compiled-in firmware executor only; not an ordinary ELF export. The
@@ -76,6 +77,8 @@ class GraphV2 final {
     uint8_t node = 0;
     bool occupied = false;
   };
+  bool fail(const char* stage, const char* identity);
+  char error_[160]{};
   Node nodes_[kMaxModules]{};
   GrantSlot grants_[kMaxGrants]{};
   size_t count_ = 0;

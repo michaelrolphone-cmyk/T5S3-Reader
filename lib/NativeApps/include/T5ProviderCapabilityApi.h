@@ -22,6 +22,9 @@ typedef struct {
                     t5_provider_capability_lease_t *lease,
                     const void **interface_out);
     bool (*release)(t5_provider_capability_lease_t lease);
+    /* Append-only: copy the last acquire failure on the owning app task.
+     * Check struct_size before use. No permissions are granted by diagnostics. */
+    bool (*last_error)(char *out, size_t capacity);
 } t5_provider_capability_api_v1;
 
 const t5_provider_capability_api_v1 *t5_provider_capability_get_api(uint32_t version);

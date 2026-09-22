@@ -49,8 +49,11 @@ static const t5_storage_api_v1 fake_storage = {
     .api_version=T5_STORAGE_API_VERSION, .struct_size=sizeof(t5_storage_api_v1),
     .exists=exists, .read_file=read_file, .write_file_atomic=write_file
 };
-static const t5_provider_capability_api_v1 fake_providers = {
-    T5_PROVIDER_CAPABILITY_API_VERSION, sizeof(t5_provider_capability_api_v1), acquire, release
+static bool last_error(char *out, size_t size) {
+    (void)snprintf(out, size, "Provider load/start failed: usb-host-v2"); return true;
+}
+static t5_provider_capability_api_v1 fake_providers = {
+    T5_PROVIDER_CAPABILITY_API_VERSION, sizeof(t5_provider_capability_api_v1), acquire, release, last_error
 };
 const t5_app_api_v1 *t5_app_get_api(uint32_t v) { (void)v;return &fake_app; }
 const t5_storage_api_v1 *t5_storage_get_api(uint32_t v) { (void)v;return &fake_storage; }
@@ -59,8 +62,12 @@ int main(void) {
     for (unsigned landscape = 0; landscape < 2; ++landscape) {
         test_width = landscape ? 960 : 540; test_height = landscape ? 540 : 960;
         inside = true; polls = acquisitions = labels = 0; app_main();
+        assert(strstr(keyboard_error, "usb-host-v2"));
         assert(acquisitions == 2 && labels >= 3); // Touch activation and retry, no buttons.
         inside = false; polls = acquisitions = 0; app_main(); assert(!acquisitions);
     }
+    fake_providers.struct_size = offsetof(t5_provider_capability_api_v1, last_error);
+    inside = true; polls = 0; app_main();
+    assert(strstr(keyboard_error, "Update firmware"));
     puts("text_editor_ui_test: PASS");
 }
