@@ -125,6 +125,8 @@ Provide message/packet endpoint/routing semantics over BLE, LoRa, Wi-Fi/IP, USB 
 
 ## 20. Device and Service Discovery
 
+For USB implementation, follow [USB Host Startup and Detection](USB_HOST_STARTUP_AND_DETECTION.md): host role and pull-downs before VBUS, event readiness before attachment, distinct enumeration/class/report stages, bounded polling and ownership-preserving shutdown. The guide records the controller 0.1.14 auto-connect correction and the regression checks that protect it.
+
 BLE advertisements, USB enumeration, mDNS, known UART/I2C devices and LoRa peers are discovered **inside independently installed providers**. Those providers publish generic observations to one registry; the core merely stores copied records and reports events. It MUST NOT enumerate these transports itself. A weather station may publish sensor capabilities, a PC network/debug capabilities, a probe SWD, and a GNSS receiver location, without a built-in transport-specific registry path.
 
 # Part VI — System Services and User-Facing Facilities

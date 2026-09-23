@@ -48,6 +48,7 @@ The architecture is defined in `docs/`:
 - `SECURITY_ARCHITECTURE.md` — hardware trust, signed modules, authorization, and production policy.
 - `SERVICE_RUNTIME_ARCHITECTURE.md` — pluggable ELF system services, event delivery, scheduling, persistence, and background work.
 - `USB_OTG_HOST_ARCHITECTURE.md` — USB OTG host/device roles, hubs, class providers, storage, HID, CDC, and composite functions.
+- [USB Host Startup and Detection](docs/USB_HOST_STARTUP_AND_DETECTION.md) — driver implementation guide for power sequencing, auto-connect, diagnostics, cleanup and input semantics.
 - `PROGRAMMER_DEBUGGER_ARCHITECTURE.md` — multi-probe firmware programming/debugging over USB hubs, serial, SWD/JTAG, and target-specific protocols.
 - `NATIVE_APPS.md` — current native ELF application ABI and implementation.
 
@@ -128,7 +129,7 @@ Storage-backed objects enter PSRAM only through bounded mappings. Ordinary point
 
 ## USB and programmer direction
 
-The native USB OTG controller is intended to be framework-owned. In host mode RiscRTE can build a topology containing hubs and multiple simultaneously attached devices. Host providers can expose generic capabilities such as removable storage, HID input, serial transports, and programming/debug transports.
+Installed USB controller, host, class and power provider ELFs own physical USB operations; the generic RiscRTE core resolves capabilities and supervises lifetimes. Host providers can expose capabilities such as removable storage, HID input, serial transports, and programming/debug transports. The architecture includes hub/multiple-device support; see [USB Host Startup and Detection](docs/USB_HOST_STARTUP_AND_DETECTION.md) for the current startup sequence and the scope of confirmed hardware behavior.
 
 The programmer/debugger architecture is explicitly designed for a powered hub containing multiple probes at once—for example an FTDI-based ESP programming path, an ST programming/debug probe, and an MSP programming/debug probe. The initial execution model programs and verifies each target sequentially while all probes remain connected and independently addressable.
 
