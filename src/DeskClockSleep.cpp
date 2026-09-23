@@ -246,7 +246,9 @@ bool DeskClockSleep::resumeAfterTimerWake() {
     return false;
   }
   I18N.setLanguage(static_cast<Language>(clockState.language));
-  display.begin();
+  // The physical e-paper image survives deep sleep. Do not use the normal
+  // M5GFX init path here: gfx->init() explicitly clears EPD panels.
+  display.begin(false);
   if (display.getFrameBuffer() == nullptr) {
     LOG_ERR("CLOCK", "Clock display initialization failed; returning to normal boot");
     clockState.magic = 0;
