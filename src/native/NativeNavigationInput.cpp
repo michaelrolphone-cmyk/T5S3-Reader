@@ -68,7 +68,13 @@ void nativeNavigationRetry() { if (!api && !quarantined) attempted = false; }
 bool nativeNavigationSuspend() {
     clearFrame();
     enabled = false;
-    if (!api) return !quarantined;
+    if (!api) {
+        // Failed activation can retain a physical dependency even though no
+        // navigation API was returned. Absence of our grant is not quiescence.
+        if (!attempted && !quarantined) return true;
+        quarantined = !RuntimeInstalledProviders::shutdown();
+        return !quarantined;
+    }
     if (!api->reset(api->context)) return false;
     const bool released = RuntimeInstalledProviders::release(&lease);
     // Graph release may consume the grant even when a module is quarantined.

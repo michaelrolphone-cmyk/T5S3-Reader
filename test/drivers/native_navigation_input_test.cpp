@@ -36,6 +36,11 @@ int main() {
     nativeNavigationTick();
     for (unsigned i = 0; i < 100; ++i) { fakeTime += 20; nativeNavigationTick(); }
     assert(acquisitions == 1); // absent provider never causes per-frame SD scans
+    shutdownOkay = false;
+    assert(!nativeNavigationSuspend()); // failed start may retain a lower module without an API
+    shutdownOkay = true;
+    assert(nativeNavigationSuspend());
+    nativeNavigationResume();
     assert(nativeNavigationClaim(1, "test.input", 1));
     available = true; nativeNavigationRetry(); nativeNavigationTick();
     assert(acquisitions == 2 && foregroundCount == 1 && polls == 1);
@@ -45,7 +50,7 @@ int main() {
     assert(foregroundCount == 0 && !nativeNavigationFrame().buttons);
     assert(acquisitions == 2 && releases == 0); // focus transfer keeps host lease
     nativeNavigationBoundary(); assert(resets >= 2);
-    assert(nativeNavigationSuspend() && releases == 1 && shutdowns == 1);
+    assert(nativeNavigationSuspend() && releases == 1 && shutdowns == 3);
     nativeNavigationTick(); assert(acquisitions == 2);
     nativeNavigationResume(); fakeTime += 20; nativeNavigationTick();
     assert(acquisitions == 3);

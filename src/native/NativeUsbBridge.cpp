@@ -105,8 +105,8 @@ bool releaseGrant(Lease& grant, const char* phase) {
 }
 
 // Failed activation or a rejected host ABI can leave partially started ELFs.
-// A successful graph shutdown proves *every* module absent and unpinned before
-// state is reset, the debug PHY is restored or quarantine can be cleared.
+// Clearing quarantine or restoring the debug PHY requires graph-wide shutdown.
+// A clean serial release may instead leave another consumer's grant active.
 bool restoreAfterSafeShutdown(bool allowShared = false) {
     // A UI navigation lease can legitimately keep the same host alive after
     // serial closes. This is not failed quiescence. Failed serial cleanup must
