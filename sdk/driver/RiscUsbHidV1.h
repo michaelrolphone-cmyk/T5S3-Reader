@@ -70,7 +70,10 @@ typedef struct {
                      size_t *inout_count);
 } risc_usb_keyboard_api_v1;
 
-/* Full semantic gamepad state is copied with each change. Button bit zero is
+/* Gamepads expose current state: call poll(), then snapshot(). No historical
+ * button sequence is retained. Legacy next() coalesces changes per device,
+ * including connect/disconnect, and is not an ordered input journal. Keyboard
+ * next() remains an ordered event queue. Button bit zero is
  * HID Button 1. Axes are normalized to signed 16-bit; hat is 0..7 or 8=none.
  * Kinds: 1=connect, 2=disconnect, 3=state, 5=GAP. */
 typedef struct {

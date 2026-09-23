@@ -101,7 +101,6 @@ int main(void) {
     packet[12] = 0xff; packet[13] = 0x7f;
     assert(input->poll(0, 4));
     assert(input->next(0, subscription, &event) == 1 && event.kind == 1);
-    assert(input->next(0, subscription, &event) == 1 && event.kind == 3);
     assert(event.state.device == fake_device && event.state.connected && event.state.hat == 1);
     assert(event.state.buttons == 0x13ff && event.state.x == -32768 && event.state.y == 32767);
     assert(event.state.rx == 32767 && event.state.ry == -32768);
@@ -132,10 +131,11 @@ int main(void) {
     assert(input->poll(0, 4)); count = 1;
     assert(input->snapshot(0, &state, &count) && state.buttons == 0x1fff);
     drain(input, subscription);
-    for (unsigned i = 0; i < 40; ++i) {
+    for (unsigned i = 0; i < 4096; ++i) {
         send(0, i & 1 ? 0x20 : 0); assert(input->poll(0, 4));
     }
-    assert(input->next(0, subscription, &event) == -1);
+    assert(input->next(0, subscription, &event) == 1 && event.state.buttons == 1);
+    assert(input->next(0, subscription, &event) == 0);
     count = 1;
     assert(input->snapshot(0, &state, &count) && state.buttons == 1);
     fake_device = 0;

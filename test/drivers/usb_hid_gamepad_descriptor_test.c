@@ -77,7 +77,6 @@ int main(void) {
     assert(subscription && poll(0, 4));
     risc_usb_gamepad_event_v1 event;
     assert(next(0, subscription, &event) == 1 && event.kind == 1);
-    assert(next(0, subscription, &event) == 1 && event.kind == 3);
     assert(event.state.report_id == 1 && event.state.buttons == 2);
     assert(event.state.x == 32767 && event.state.y == -32767);
     assert(next(0, subscription, &event) == 0 && opens == 1);
@@ -103,7 +102,7 @@ int main(void) {
     ++descriptor_length; reads = 0;
     assert(poll(0, 4) && claimed);
     assert(next(0, subscription, &event) == 1 && event.kind == 1);
-    assert(next(0, subscription, &event) == 1 && event.kind == 3);
+    assert(next(0, subscription, &event) == 0);
     assert(unsubscribe(0, subscription) && quiesce());
     stop();
     puts("Gamepad feature IDs, unrelated inputs, multiple collections, input delivery and detach: PASS");
