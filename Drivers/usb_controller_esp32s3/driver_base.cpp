@@ -7,6 +7,7 @@
 #include "EnumerationDiagnostic.h"
 #include <usb/usb_host.h>
 #include <esp_intr_alloc.h>
+#include <esp_private/usb_phy.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <cstring>
@@ -35,6 +36,8 @@ static const risc_usb_vbus_api_v1 *power;
 static uint64_t powerLease, serial;
 static bool running, installed, fault;
 static EnumerationDiagnostic enumerationDiagnostic;
+static usb_phy_handle_t phy;
+static StartupDiagnostic startupError;
 static usb_host_client_handle_t client;
 static usb_transfer_t *transfer;
 static bool inFlight, completed;
@@ -78,6 +81,12 @@ void client_event(const usb_host_client_event_msg_t *msg, void *) {
         (void)enqueue(2, 0, msg->dev_gone.dev_hdl);
 }
 void complete_transfer(usb_transfer_t *) { inFlight = false; completed = true; }
+bool start_failure(const char *stage, int code) {
+    startupError.failure(stage, code);
+    std::printf("USBCTRL start-failed stage=%s rc=%d\n", stage, code);
+    return false;
+}
+#include "HostStartup.h"
 bool pump(TickType_t delay) {
     if (!installed || !client) return false;
     uint32_t flags = 0;
@@ -451,6 +460,7 @@ bool quiesce(void *) {
         }
         installed = false;
     }
+    if (!release_host_phy()) return false;
     if (powerLease) {
         if (!power || !power->release_host(power->context, powerLease)) {
             std::printf("USBCTRL cleanup-failed stage=vbus-release\n");
@@ -468,17 +478,13 @@ void stop() {
     queueHead = queueTail = queueCount = 0;
     fault = false;
 }
-StartupDiagnostic startupError;
 bool startup_error(char *destination, size_t capacity) {
     return startupError.copy(destination, capacity);
-}
-void start_failure(const char *stage, int code) {
-    startupError.failure(stage, code);
 }
 bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     startupError.clear();
     enumerationDiagnostic.clear();
-    if (running || installed || client || transfer || powerLease || fault ||
+    if (running || installed || phy || client || transfer || powerLease || fault ||
         !deps || count != 1 || !equals(deps[0].capability_id, "board.power.vbus") ||
         deps[0].api_version != RISC_USB_VBUS_API_V1 || !deps[0].api) {
         startupError.text("dependency/state");
@@ -486,6 +492,7 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         startupError.number(" deps=", deps != nullptr);
         startupError.number(" run=", running);
         startupError.number(" host=", installed);
+        startupError.number(" phy=", phy != nullptr);
         startupError.number(" client=", client != nullptr);
         startupError.number(" dma=", transfer != nullptr);
         startupError.number(" lease=", powerLease != 0);
@@ -521,45 +528,8 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         return false;
     }
     std::printf("USBCTRL stage=vbus-acquired\n");
-    usb_host_config_t config = {};
-    config.skip_phy_setup = false;
-    // IDF's C-callable non-shared default permits levels 1, 2 and 3.
-    // Restricting this to level 1 rejects installation when those vectors are
-    // occupied even if another supported priority remains available. Do not
-    // share the USB source with another controller owner to bypass contention.
-    config.intr_flags = ESP_INTR_FLAG_LOWMED;
-    const esp_err_t install_rc = usb_host_install(&config);
-    if (install_rc != ESP_OK) {
-        start_failure(install_rc == ESP_ERR_NOT_FOUND
-                          ? "usb-host-install/IRQ-unavailable" : "usb-host-install", install_rc);
-        startupError.number(" flags=0x", static_cast<uint32_t>(config.intr_flags), 16);
-        std::printf("USBCTRL start-failed stage=usb-host-install rc=%d\n",
-                    static_cast<int>(install_rc));
-        if (!quiesce(nullptr)) std::printf("USBCTRL cleanup-failed stage=usb-host-install\n");
-        return false;
-    }
-    installed = true;
-    std::printf("USBCTRL stage=usb-host-installed\n");
-    usb_host_client_config_t registration = {};
-    registration.is_synchronous = false;
-    registration.max_num_event_msg = kEvents;
-    registration.async.client_event_callback = client_event;
-    registration.async.callback_arg = nullptr;
-    const esp_err_t register_rc = usb_host_client_register(&registration, &client);
-    if (register_rc != ESP_OK) {
-        start_failure("client-register", register_rc);
-        std::printf("USBCTRL start-failed stage=client-register rc=%d\n",
-                    static_cast<int>(register_rc));
-        if (!quiesce(nullptr)) std::printf("USBCTRL cleanup-failed stage=client-register\n");
-        return false;
-    }
-    std::printf("USBCTRL stage=client-registered\n");
-    const esp_err_t alloc_rc = usb_host_transfer_alloc(kBuffer, 0, &transfer);
-    if (alloc_rc != ESP_OK) {
-        start_failure("transfer-alloc", alloc_rc);
-        std::printf("USBCTRL start-failed stage=transfer-alloc rc=%d\n",
-                    static_cast<int>(alloc_rc));
-        if (!quiesce(nullptr)) std::printf("USBCTRL cleanup-failed stage=transfer-alloc\n");
+    if (!start_host_controller()) {
+        if (!quiesce(nullptr)) std::printf("USBCTRL cleanup-failed stage=host-startup\n");
         return false;
     }
     running = true;
