@@ -741,7 +741,8 @@ static int esp_elf_relocate_impl(esp_elf_t *elf, const uint8_t *pbuf)
     }
 
 #ifdef CONFIG_ELF_LOADER_LOAD_PSRAM
-    esp_elf_arch_flush();
+    ret = esp_elf_arch_flush(elf);
+    if (ret) return ret;
 #endif
 
     return 0;
