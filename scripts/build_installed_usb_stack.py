@@ -35,6 +35,7 @@ DRIVERS = (
     ('usb-hid-keyboard', 'usb_hid_keyboard', 'usb-hid-keyboard', 'driver.elf'),
     ('usb-hid-gamepad', 'usb_hid_gamepad', 'usb-hid-gamepad', 'driver.elf'),
     ('usb-xinput-gamepad', 'usb_xinput_gamepad', 'usb-xinput-gamepad', 'driver.elf'),
+    ('usb-ui-navigation', 'usb_ui_navigation', 'usb-ui-navigation', 'driver.elf'),
 )
 
 

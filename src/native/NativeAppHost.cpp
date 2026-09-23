@@ -1,5 +1,6 @@
 #include "NativeStreamBridge.h"
 #include "NativeAppHost.h"
+#include "NativeNavigationInput.h"
 #include "NativeOnlineAppInstall.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
 #include "AppCatalogIndex.h"
@@ -859,6 +860,7 @@ HalPowerManager::Lock powerLock;
   const auto orientation = renderer.getOrientation();
   const auto mode = renderer.getRenderMode();
   renderer.setRenderMode(GfxRenderer::BW);
+  nativeNavigationBoundary();
   input.clearInjectedButtonTap();
   input.update();
   Session active{renderer, input, xTaskGetCurrentTaskHandle()};
@@ -888,6 +890,8 @@ HalPowerManager::Lock powerLock;
   if (active.directory.isOpen()) active.directory.close();
   active.catalog.clear();
   session = nullptr;
+  nativeNavigationBoundary();
+  nativeNavigationRetry(); // An installer may have added the navigation provider.
   nativeSettingsEnd();
   renderer.setOrientation(orientation);
   renderer.setRenderMode(mode);

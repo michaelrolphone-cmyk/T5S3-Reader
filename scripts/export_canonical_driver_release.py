@@ -21,6 +21,7 @@ EXPECTED_IDS = {
     'usb-controller-esp32s3', 'usb-host-v2', 'usb-cdc-acm-v2',
     'usb-cp210x-v2', 'usb-ch34x-v2', 'usb-hid',
     'usb-hid-keyboard', 'usb-hid-gamepad', 'usb-xinput-gamepad',
+    'usb-ui-navigation',
 }
 
 

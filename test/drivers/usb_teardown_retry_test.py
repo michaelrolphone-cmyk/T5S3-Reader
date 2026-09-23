@@ -28,17 +28,19 @@ class UsbTeardownRetry(unittest.TestCase):
         self.assertLess(release.index("slot.occupied = false;"),
                         release.index("deactivateIfUnused(node)"))
         helper = self.bridge.split("bool releaseGrant(", 1)[1].split(
-            "bool restoreAfterSafeShutdown()", 1
+            "bool restoreAfterSafeShutdown(", 1
         )[0]
         self.assertIn("RuntimeInstalledProviders::release(&grant)", helper)
         self.assertIn("grant = {};", helper)
-        recovery = self.bridge.split("bool restoreAfterSafeShutdown()", 1)[1].split(
+        recovery = self.bridge.split("bool restoreAfterSafeShutdown(", 1)[1].split(
             "bool codingValid(", 1
         )[0]
-        self.assertLess(recovery.index("if (!RuntimeInstalledProviders::shutdown())"),
+        self.assertIn("allowShared && !quarantined && RuntimeInstalledProviders::hasLiveGrants()", recovery)
+        self.assertLess(recovery.index("if (!shared && !RuntimeInstalledProviders::shutdown())"),
                         recovery.index("quarantined = false;"))
         self.assertLess(recovery.index("quarantined = false;"),
                         recovery.index("restoreDebugConsole();"))
+        self.assertIn("if (!shared) restoreDebugConsole();", recovery)
 
     def test_session_close_and_grant_release_are_independent(self):
         close = self.bridge.split("bool closeClass()", 1)[1].split("bool openClass(", 1)[0]
@@ -55,7 +57,7 @@ class UsbTeardownRetry(unittest.TestCase):
         self.assertNotIn("if (quarantined) return;", stop)
         self.assertIn("if (session) return false;", stop)
         self.assertIn('releaseGrant(hostGrant, "host-grant-release")', stop)
-        self.assertIn("if (!restoreAfterSafeShutdown())", stop)
+        self.assertIn("if (!restoreAfterSafeShutdown(grantOkay))", stop)
         self.assertIn("if (!stopLocked())", startup)
         self.assertIn("USBREF stage=serial-start-quarantined error=", startup)
         self.assertIn("(void)stopLocked();", exit_fn)

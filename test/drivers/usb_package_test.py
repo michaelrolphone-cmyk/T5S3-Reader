@@ -115,7 +115,9 @@ class UsbCdcPackage(unittest.TestCase):
         self.assertIn('invocation.end();', streams)
         self.assertIn('providers.end();', serial)
         self.assertIn('if (stopUsb && usb && usb->serial_stop) usb->serial_stop();', serial)
-        self.assertIn('if (!RuntimeInstalledProviders::shutdown())', bridge)
+        self.assertIn('if (!shared && !RuntimeInstalledProviders::shutdown())', bridge)
+        self.assertIn('allowShared && !quarantined && RuntimeInstalledProviders::hasLiveGrants()', bridge)
+        self.assertIn('if (!shared) restoreDebugConsole();', bridge)
         self.assertIn('power->release_host(power->context, powerLease)', controller)
     def test_usb_bulk_timeout_must_reclaim_callback_before_vbus_release(self):
         source = self.physical_controller()

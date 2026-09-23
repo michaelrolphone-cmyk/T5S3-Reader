@@ -107,8 +107,12 @@ bool releaseGrant(Lease& grant, const char* phase) {
 // Failed activation or a rejected host ABI can leave partially started ELFs.
 // A successful graph shutdown proves *every* module absent and unpinned before
 // state is reset, the debug PHY is restored or quarantine can be cleared.
-bool restoreAfterSafeShutdown() {
-    if (!RuntimeInstalledProviders::shutdown()) {
+bool restoreAfterSafeShutdown(bool allowShared = false) {
+    // A UI navigation lease can legitimately keep the same host alive after
+    // serial closes. This is not failed quiescence. Failed serial cleanup must
+    // still prove graph-wide shutdown before clearing its quarantine.
+    const bool shared = allowShared && !quarantined && RuntimeInstalledProviders::hasLiveGrants();
+    if (!shared && !RuntimeInstalledProviders::shutdown()) {
         quarantined = true;
         LOG_ERR("USB", "USBREF stage=debug-console-restore-denied reason=unsafe-provider-shutdown error=%ld",
                 static_cast<long>(state.last_error));
@@ -124,8 +128,8 @@ bool restoreAfterSafeShutdown() {
     lastDeviceCount = -1;
     quarantined = false;
     initialState(T5_USB_STATUS_OFF);
-    restoreDebugConsole();
-    LOG_INF("USB", "USBREF stage=safe-shutdown-complete");
+    if (!shared) restoreDebugConsole();
+    LOG_INF("USB", "USBREF stage=serial-released shared=%u", shared ? 1u : 0u);
     return true;
 }
 bool codingValid(const t5_usb_line_coding_t* coding) {
@@ -350,7 +354,7 @@ bool stopLocked() {
     // A failed release may have consumed its grant and left a Failed module.
     // Graph shutdown safely retries such modules; success is the ONLY gate
     // which clears quarantine and permits VBUS/PHY reuse.
-    if (!restoreAfterSafeShutdown()) {
+    if (!restoreAfterSafeShutdown(grantOkay)) {
         quarantined = true;
         error(-1231);
         LOG_ERR("USB", "USBREF stage=serial-stop-quarantined error=%ld",
@@ -386,7 +390,7 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
     // usb_host_install() allocates the shared internal PHY/interrupt. Restoring
     // it later is conditional on a fully quiescent graph, not merely on an
     // unsuccessful acquire() result.
-    suspendDebugConsole();
+    if (!RuntimeInstalledProviders::hasLiveGrants()) suspendDebugConsole();
     LOG_INF("USB", "USBREF stage=host-acquire-begin");
     if (!RuntimeInstalledProviders::acquire(
             "usb-host-v2", "usb.host", 1, &hostGrant)) {

@@ -18,7 +18,11 @@ bool prepare();
 // Resolves the *named* installed provider, never an ambiguous first match.
 bool acquire(const char* providerId, const char* capability, uint32_t version,
              Lease* out);
+// Trusted firmware consumers may select one unambiguous installed capability.
+// Metadata/dependencies use the same ordinary package admission as named apps.
+bool acquireCapability(const char* capability, uint32_t minimumVersion, Lease* out);
 bool release(Lease* lease);
+bool hasLiveGrants();
 const char* lastError();
 // Refuses destruction while any provider is still granted or not quiescent.
 // An unsuccessful shutdown deliberately retains every ELF and package pin.
