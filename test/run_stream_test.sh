@@ -59,6 +59,9 @@ compile_run direct-io-bridge "$stream" "$repo/src/native/NativeStreamBridge.cpp"
   "$checked" "$bridge_io" "$repo/test/streams/direct_io_bridge_test.cpp"
 compile_run usb-direct-ownership "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" \
   "$checked" "$bridge_io" "$repo/test/streams/usb_direct_ownership_test.cpp"
+compile_run serial-pipe-scheduler -DRISCRTE_TEST_INSTALLED_SERIAL_PATH \
+  "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" \
+  "$repo/test/streams/serial_pipe_scheduler_test.cpp"
 # Restore original includes before linking the real installed class bridge.
 common=("${production_common[@]}")
 compile_run usb-class-bridge "$stream" "$serial" "$repo/src/native/NativeUsbClassBridge.cpp" \

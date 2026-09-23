@@ -488,6 +488,21 @@ int32_t Registry::pipeInfo(uint32_t owner, t5_pipe_t h, t5_pipe_info_t* out) {
           p->error, p->transferred, p->stalls};
   return T5_STREAM_OK;
 }
+bool Registry::pipeRunning(t5_stream_t h, bool reading) const {
+  if (!h) return false;
+  for (const auto& p : pipes_)
+    if (p.owner && p.state == T5_PIPE_RUNNING &&
+        (reading ? p.source : p.destination) == h) return true;
+  return false;
+}
+int32_t Registry::failEndpoint(uint32_t owner, t5_stream_t h, int32_t error) {
+  auto* s = stream(owner, h);
+  if (!s || error >= 0) return T5_STREAM_INVALID;
+  s->terminal = error;
+  if (s->kind == T5_STREAM_RECORDS) (void)s->records.finish(error);
+  failPipes(h, error);
+  return T5_STREAM_OK;
+}
 bool Registry::runnable() const {
   for (const auto& p : pipes_) if (p.owner && p.state == T5_PIPE_RUNNING) return true;
   return false;

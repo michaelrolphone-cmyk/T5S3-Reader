@@ -8,15 +8,28 @@ struct PendingSerialPair {
   uint8_t txBytes[T5_STREAM_CHUNK]{};
   uint32_t rxSize = 0, rxOffset = 0;
   uint32_t txSize = 0, txOffset = 0;
-  bool txInFlight = false;
+  bool rxInFlight = false, txInFlight = false;
+  int32_t rxError = 0, txError = 0;
 };
 PendingSerialPair pendingSerial;
 
+void failPairLocked(t5_stream_t handle, int32_t error) {
+  if (!pairSerial || error >= 0) return;
+  if (handle == pairRx || error == T5_STREAM_DISCONNECTED) {
+    pendingSerial.rxError = error;
+    if (pairRx) (void)registry.failEndpoint(pairSerial->owner, pairRx, error);
+  }
+  if (handle == pairTx || error == T5_STREAM_DISCONNECTED) {
+    pendingSerial.txError = error;
+    serialTxRetry.store(false, std::memory_order_release);
+    if (pairTx) (void)registry.failEndpoint(pairSerial->owner, pairTx, error);
+  }
+}
 int32_t flushPairRxLocked(t5_stream_t handle) {
   if (pendingSerial.rxOffset == pendingSerial.rxSize) return T5_STREAM_OK;
   const uint32_t remaining = pendingSerial.rxSize - pendingSerial.rxOffset;
   uint32_t accepted = 0;
-  const auto result = registry.produce(owner, handle,
+  const auto result = registry.produce(pairSerial->owner, handle,
       pendingSerial.rxBytes + pendingSerial.rxOffset, remaining, &accepted);
   if (accepted > remaining) return T5_STREAM_IO;
   if (result != T5_STREAM_OK && result != T5_STREAM_AGAIN) return result;
@@ -33,6 +46,8 @@ int32_t pairTransport(t5_stream_t handle) {
     Lock lock;
     if (handle != pairRx && handle != pairTx) return T5_STREAM_OK;
     if (!pairSerial) return T5_STREAM_DISCONNECTED;
+    const int32_t error = handle == pairRx ? pendingSerial.rxError : pendingSerial.txError;
+    if (error) return error;
     snapshot = *pairSerial;  // Never dereference a session after dropping the lock.
   }
   return serialState(snapshot);
@@ -40,32 +55,66 @@ int32_t pairTransport(t5_stream_t handle) {
 int32_t fillPairRx() {
   t5_stream_t handle;
   SerialLink snapshot{};
+  uint32_t capacity = 0;
   {
     Lock lock;
     handle = pairRx;
     if (!pairSerial || !handle) return T5_STREAM_OK;
+    if (pendingSerial.rxError) return pendingSerial.rxError;
+    if (pendingSerial.rxInFlight) return T5_STREAM_AGAIN;
     snapshot = *pairSerial;
-    if (pendingSerial.rx != handle) {
-      pendingSerial.rx = handle;
-      pendingSerial.rxSize = pendingSerial.rxOffset = 0;
-    }
-    // Do not poll the provider again until every previously read byte fits in
-    // the bounded RX endpoint; the producer must honor downstream pressure.
     if (pendingSerial.rxOffset < pendingSerial.rxSize)
       return flushPairRxLocked(handle);
+    t5_stream_info_t info{}; info.struct_size = sizeof(info);
+    const auto state = registry.info(snapshot.owner, handle, &info);
+    if (state != T5_STREAM_OK) return state;
+    capacity = std::min<uint32_t>(T5_STREAM_CHUNK, info.capacity - info.buffered);
+    if (!capacity) return T5_STREAM_AGAIN;
+    pendingSerial.rxInFlight = true;
   }
   uint8_t incoming[T5_STREAM_CHUNK]{};
   uint32_t received = 0;
-  const auto result = serialReadProvider(&snapshot, incoming, sizeof(incoming), &received);
-  if (result < 0 || !received) return result;
-  if (received > sizeof(incoming)) return T5_STREAM_IO;
+  const auto result = serialReadProvider(&snapshot, incoming, capacity, &received);
   Lock lock;
+  // An old completion cannot clear a replacement session's in-flight flag.
   if (!pairSerial || pairRx != handle || pairSerial->epoch != snapshot.epoch ||
       pendingSerial.rx != handle) return T5_STREAM_DISCONNECTED;
+  pendingSerial.rxInFlight = false;
+  if (result < 0 || received > capacity ||
+      (result != T5_STREAM_OK && result != T5_STREAM_AGAIN)) {
+    const int32_t error = result < 0 ? result : T5_STREAM_IO;
+    failPairLocked(handle, error);
+    return error;
+  }
+  if (!received) return T5_STREAM_AGAIN;
   std::memcpy(pendingSerial.rxBytes, incoming, received);
   pendingSerial.rxSize = received;
   pendingSerial.rxOffset = 0;
-  return flushPairRxLocked(handle);
+  const auto flushed = flushPairRxLocked(handle);
+  if (flushed < 0) failPairLocked(handle, flushed);
+  return flushed;
+}
+void serviceSerialPipeRx() {
+  SerialLink snapshot{};
+  t5_stream_t handle = 0;
+  bool poll = false;
+  {
+    Lock lock;
+    if (!pairSerial) return;
+    snapshot = *pairSerial;
+    handle = pairRx;
+    poll = !pendingSerial.rxError && registry.pipeRunning(handle, true);
+  }
+  // Check revocation even with a saturated/paused RX queue. This performs no
+  // physical I/O or discovery and never holds the stream lock over a provider.
+  const auto state = serialState(snapshot);
+  if (state < 0) {
+    Lock lock;
+    if (pairSerial && pairSerial->epoch == snapshot.epoch && pairRx == handle)
+      failPairLocked(handle, state);
+    return;
+  }
+  if (poll) (void)fillPairRx();
 }
 int32_t drainPairTx() {
   t5_stream_t handle;
@@ -79,25 +128,23 @@ int32_t drainPairTx() {
       serialTxRetry.store(false, std::memory_order_release);
       return T5_STREAM_OK;
     }
+    if (pendingSerial.txError) return pendingSerial.txError;
     if (pendingSerial.txInFlight) {
       serialTxRetry.store(true, std::memory_order_release);
       return T5_STREAM_AGAIN;
     }
     snapshot = *pairSerial;
-    if (pendingSerial.tx != handle) {
-      pendingSerial.tx = handle;
-      pendingSerial.txSize = pendingSerial.txOffset = 0;
-    }
     if (pendingSerial.txOffset == pendingSerial.txSize) {
       uint32_t fetched = 0;
-      const auto result = registry.consume(owner, handle, pendingSerial.txBytes,
+      const auto result = registry.consume(snapshot.owner, handle, pendingSerial.txBytes,
                                             sizeof(pendingSerial.txBytes), &fetched);
       if (result != T5_STREAM_OK && result != T5_STREAM_AGAIN) {
         serialTxRetry.store(false, std::memory_order_release);
+        if (result < 0) failPairLocked(handle, result);
         return result;
       }
       if (fetched > sizeof(pendingSerial.txBytes)) {
-        serialTxRetry.store(false, std::memory_order_release);
+        failPairLocked(handle, T5_STREAM_IO);
         return T5_STREAM_IO;
       }
       pendingSerial.txOffset = 0;
@@ -115,17 +162,15 @@ int32_t drainPairTx() {
   uint32_t written = 0;
   const auto result = serialWriteProvider(&snapshot, outgoing, requested, &written);
   Lock lock;
-  pendingSerial.txInFlight = false;
   if (!pairSerial || pairTx != handle || pairSerial->epoch != snapshot.epoch ||
-      pendingSerial.tx != handle) {
-    serialTxRetry.store(false, std::memory_order_release);
-    return T5_STREAM_DISCONNECTED;
-  }
+      pendingSerial.tx != handle) return T5_STREAM_DISCONNECTED;
+  pendingSerial.txInFlight = false;
   if (written > requested || (result != T5_STREAM_OK && result != T5_STREAM_AGAIN)) {
     // Keep the pending bytes for diagnosis/recovery, but do not spin on a
     // persistent physical error. Never silently treat a short write as done.
-    serialTxRetry.store(false, std::memory_order_release);
-    return written > requested ? T5_STREAM_IO : result;
+    const int32_t error = written > requested || result >= 0 ? T5_STREAM_IO : result;
+    failPairLocked(handle, error);
+    return error;
   }
   pendingSerial.txOffset += written;
   if (pendingSerial.txOffset == pendingSerial.txSize)
@@ -183,6 +228,25 @@ int32_t writeStream(t5_stream_t h, const void* d, uint32_t n, uint32_t* out) {
 }
 int32_t finish(t5_stream_t h) {
   if (!authorized()) return T5_STREAM_DENIED;
+  if (h && h == pairTx) {
+    const auto state = pairTransport(h);
+    if (state < 0) return state;
+    const auto drained = drainPairTx();
+    if (drained < 0) return drained;
+    Lock lock;
+    if (h != pairTx || !pairSerial) return T5_STREAM_DISCONNECTED;
+    t5_stream_info_t info{}; info.struct_size = sizeof(info);
+    const auto status = registry.info(owner, h, &info);
+    if (status != T5_STREAM_OK) return status;
+    if (pendingSerial.txInFlight || pendingSerial.txSize != pendingSerial.txOffset || info.buffered) {
+      serialTxRetry.store(true, std::memory_order_release);
+      wake(); return T5_STREAM_AGAIN;
+    }
+    // The drain check and EOF publication share one lock: a concurrent writer
+    // cannot enqueue between them. Serial endpoints have no finish callback.
+    const auto result = registry.finish(owner, h);
+    wake(); return result;
+  }
   RuntimeStreams::DirectIo operation{};
   int32_t result;
   { Lock lock; result = registry.finish(owner, h, T5_STREAM_EOF, &operation); }

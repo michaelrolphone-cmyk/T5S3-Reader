@@ -17,7 +17,7 @@ t5_stream_result_t nativeStreamOpenSerialPair(t5_stream_t* rx, t5_stream_t* tx) 
   if (serialOpen) return T5_STREAM_BUSY;
   const uint32_t sessionEpoch = nativeSerialProviderEpoch();
   if (!sessionEpoch) return T5_STREAM_DISCONNECTED;
-  auto* link = new (std::nothrow) SerialLink{sessionEpoch};
+  auto* link = new (std::nothrow) SerialLink{sessionEpoch, owner};
   if (!link) return T5_STREAM_LIMIT;
   auto result = registry.publishEndpoint(owner, T5_STREAM_BYTES, T5_STREAM_READ,
                                          T5_STREAM_CHUNK * 4, nullptr, 0, 0,
@@ -40,7 +40,11 @@ t5_stream_result_t nativeStreamOpenSerialPair(t5_stream_t* rx, t5_stream_t* tx) 
   pairTx = *tx;
   serialOpen = true;
   serialRefs = 2;
+  pendingSerial = {};
+  pendingSerial.rx = *rx;
+  pendingSerial.tx = *tx;
   serialTxRetry.store(false, std::memory_order_release);
+  wake();
   return T5_STREAM_OK;
 }
 

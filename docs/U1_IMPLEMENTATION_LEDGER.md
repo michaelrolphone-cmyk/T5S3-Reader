@@ -2,6 +2,53 @@
 
 [PR #96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) on `impl/u1-riscrte` is the **only** implementation PR/branch. `AGENTS.md`, [USB remediation](USB_CONTRACT_VIOLATION_REMEDIATION.md), [execution order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [claim-scoped USB control](U1_USB_CONTROL_SCOPE_IMPLEMENTATION.md) and [package identity](PACKAGE_IDENTITY_VERSION_POLICY.md) govern the work. Owner controls merge, tag, release, flash and hardware qualification. A committed test is not a PASS.
 
+## September 23 continuation: installed serial pipes without app polling
+
+The preceding direct-I/O tree was published as `4f715a4` (same tree as local
+`3b498e3`). This continuation connects the existing installed-provider serial
+shuttle to the real bounded stream scheduler:
+
+- Running RX pipes poll one bounded provider chunk before pipe work; TX drains
+  one chunk after pipe work, including bytes queued without an app `write`.
+  Partial/zero writes retain pending bytes and scheduler demand. Full RX queues
+  stop provider reads; paused/cancelled RX pipes do not request further reads.
+- Serial callbacks run outside the stream mutex. RX and TX each admit only one
+  in-flight operation; completion checks endpoint generation/session identity
+  before clearing flags or publishing bytes. Captured owner IDs replace mutable
+  global ownership in provider queue operations.
+- Trusted I/O hooks now require the captured epoch and check it when acquiring
+  the installed-session pin. An operation prepared for an old session cannot
+  touch a replacement provider after a preflight/reconnect race. Availability
+  reads the atomically published epoch rather than racing mutable session state.
+- Disconnects and sticky provider errors mark affected endpoints and attached
+  pipes failed; fatal TX writes do not replay or spin. Disconnect checks also
+  run on scheduler turns with saturated/paused queues. Idle sessions remain
+  event-driven; this is not a new periodic device-discovery loop.
+- Serial TX `finish` returns AGAIN until buffered/staged bytes have been accepted
+  by the provider, then publishes EOF under the same lock as its empty check.
+  This establishes provider acceptance, not an electrical wire-drain guarantee.
+
+The new host regression runs the actual scheduler, native stream bridge and
+production installed-serial bridge against the fourth inventory provider. It
+covers progress without direct RX/TX calls, saturation/recovery, pause/resume,
+zero/partial writes, finish retries, disconnect, reconnect, stale epochs and
+handles, terminal errors, and absence of provider callbacks under the mutex.
+Public v1/v2 ELF ABI layouts and distributable package sources are unchanged;
+no app/driver manifest version bump applies.
+
+Observed validation: all 32 C++ programs plus the C11 ABI check in
+`test/run_stream_test.sh` passed on this final source tree with
+`-Wall -Wextra -Werror`, AddressSanitizer and UndefinedBehaviorSanitizer.
+`ASAN_OPTIONS=detect_leaks=0` was required because LeakSanitizer cannot run
+under the local ptrace environment. The scheduler regression also passed
+separately before the final epoch/finish hardening, which the full run covers.
+Shell syntax and `git diff --check` passed. Publication uses the existing
+PR #96 branch; its commit metadata can differ from the tested local commit,
+so the exact Git tree is compared before updating the branch.
+The existing PR merge conflicts, generic installed-ELF stream import/publication
+wiring, firmware build and hardware qualification remain outstanding; these
+host callbacks do not execute a packaged ELF or qualify physical hardware.
+
 ## September 23 continuation: direct file I/O and deferred cleanup
 
 The previous locally tested tree was published to PR #96 as `caf5779` through

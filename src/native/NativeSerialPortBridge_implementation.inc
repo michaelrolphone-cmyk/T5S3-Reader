@@ -707,16 +707,18 @@ bool nativeUnregisterSerialProvider(const char* id) {
 }
 #if RISCRTE_INSTALLED_SERIAL_PATH
 bool nativeSerialProviderActive() {
-  return activeStreamEpoch.load(std::memory_order_acquire) != 0 &&
-         installedSession.started();
+  // Session fields may change during checked teardown. Epoch publication is
+  // the cross-task availability signal; actual I/O acquires its in-flight pin
+  // and rechecks that epoch before touching the session.
+  return activeStreamEpoch.load(std::memory_order_acquire) != 0;
 }
 uint32_t nativeSerialProviderEpoch() {
   return activeStreamEpoch.load(std::memory_order_acquire);
 }
-int32_t nativeSerialProviderRead(uint8_t* dst, uint32_t capacity, uint32_t* out) {
+int32_t nativeSerialProviderRead(uint32_t expectedEpoch, uint8_t* dst, uint32_t capacity, uint32_t* out) {
   if (out) *out = 0;
   const uint32_t epoch = activeStreamEpoch.load(std::memory_order_acquire);
-  if (!epoch) return T5_STREAM_DISCONNECTED;
+  if (!epoch || epoch != expectedEpoch) return T5_STREAM_DISCONNECTED;
   if (serialIoInFlight.fetch_add(1, std::memory_order_acq_rel) == UINT32_MAX) {
     serialIoInFlight.fetch_sub(1, std::memory_order_acq_rel);
     return T5_STREAM_IO;
@@ -733,10 +735,10 @@ int32_t nativeSerialProviderRead(uint8_t* dst, uint32_t capacity, uint32_t* out)
   }
   return result;
 }
-int32_t nativeSerialProviderWrite(const uint8_t* src, uint32_t length, uint32_t* out) {
+int32_t nativeSerialProviderWrite(uint32_t expectedEpoch, const uint8_t* src, uint32_t length, uint32_t* out) {
   if (out) *out = 0;
   const uint32_t epoch = activeStreamEpoch.load(std::memory_order_acquire);
-  if (!epoch) return T5_STREAM_DISCONNECTED;
+  if (!epoch || epoch != expectedEpoch) return T5_STREAM_DISCONNECTED;
   if (serialIoInFlight.fetch_add(1, std::memory_order_acq_rel) == UINT32_MAX) {
     serialIoInFlight.fetch_sub(1, std::memory_order_acq_rel);
     return T5_STREAM_IO;
@@ -761,10 +763,14 @@ uint32_t nativeSerialProviderEpoch() {
   const uint32_t epoch = devices.epoch();
   return epoch == UINT32_MAX ? 0 : epoch + 1u;
 }
-int32_t nativeSerialProviderRead(uint8_t* dst, uint32_t capacity, uint32_t* out) {
+int32_t nativeSerialProviderRead(uint32_t expectedEpoch, uint8_t* dst, uint32_t capacity, uint32_t* out) {
+  if (out) *out = 0;
+  if (!expectedEpoch || expectedEpoch != nativeSerialProviderEpoch()) return T5_STREAM_DISCONNECTED;
   return nativeUsbClassRead(dst, capacity, out);
 }
-int32_t nativeSerialProviderWrite(const uint8_t* src, uint32_t length, uint32_t* out) {
+int32_t nativeSerialProviderWrite(uint32_t expectedEpoch, const uint8_t* src, uint32_t length, uint32_t* out) {
+  if (out) *out = 0;
+  if (!expectedEpoch || expectedEpoch != nativeSerialProviderEpoch()) return T5_STREAM_DISCONNECTED;
   return nativeUsbClassWrite(src, length, out);
 }
 #endif

@@ -25,8 +25,10 @@ bool nativeUnregisterSerialProvider(const char* id);
 // Transport-neutral stream shuttle hooks. The stream scheduler may call these
 // outside its registry mutex; provider selection/discovery remains owner-task
 // only. Epoch 0 means no usable session. No provider interface pointer or
-// physical device token is exposed to applications.
+// physical device token is exposed to applications. I/O must supply the
+// captured epoch so replacement between a preflight check and pin acquisition
+// cannot redirect an old operation into a new session.
 bool nativeSerialProviderActive();
 uint32_t nativeSerialProviderEpoch();
-int32_t nativeSerialProviderRead(uint8_t* dst, uint32_t capacity, uint32_t* out);
-int32_t nativeSerialProviderWrite(const uint8_t* src, uint32_t length, uint32_t* out);
+int32_t nativeSerialProviderRead(uint32_t expectedEpoch, uint8_t* dst, uint32_t capacity, uint32_t* out);
+int32_t nativeSerialProviderWrite(uint32_t expectedEpoch, const uint8_t* src, uint32_t length, uint32_t* out);

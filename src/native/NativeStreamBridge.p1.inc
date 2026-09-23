@@ -31,6 +31,7 @@ uint32_t serialRefs = 0;
 // No hardware transfer occurs while its registry mutex is held.
 std::atomic<bool> serialTxRetry{false};
 int32_t drainPairTx();
+void serviceSerialPipeRx();
 struct Lock {
   Lock() { xSemaphoreTake(mutex, portMAX_DELAY); }
   ~Lock() { xSemaphoreGive(mutex); }
@@ -63,7 +64,7 @@ void schedule(void*) {
   TickType_t wait = portMAX_DELAY;
   for (;;) {
     ulTaskNotifyTake(pdTRUE, wait);
-    if (serialTxRetry.load(std::memory_order_acquire)) (void)drainPairTx();
+    serviceSerialPipeRx();
     // At most four external chunks or ten milliseconds per turn, then really
     // block even when notifications or a permanently AGAIN provider persist.
     const uint32_t started = millis();
@@ -72,11 +73,7 @@ void schedule(void*) {
       RuntimeStreams::ExternalIo io{};
       {
         Lock lock;
-        if (!registry.pumpPrepare(&io)) {
-          wait = (registry.runnable() || serialTxRetry.load(std::memory_order_acquire))
-                     ? pdMS_TO_TICKS(10) : portMAX_DELAY;
-          break;
-        }
+        if (!registry.pumpPrepare(&io)) break;
       }
       uint8_t incoming[T5_STREAM_CHUNK];
       uint32_t count = 0;
@@ -96,11 +93,18 @@ void schedule(void*) {
       }
       if (++operations >= RuntimeStreams::Registry::MaxPipes ||
           static_cast<uint32_t>(millis() - started) >= 10) {
-        wait = pdMS_TO_TICKS(10);
-        vTaskDelay(1);
         break;
       }
     }
+    // A pipe may have queued TX bytes in this turn without an app write().
+    // Drain once after pipe work; partial writes retain scheduler retry demand.
+    (void)drainPairTx();
+    {
+      Lock lock;
+      wait = (registry.runnable() || serialTxRetry.load(std::memory_order_acquire))
+                 ? pdMS_TO_TICKS(10) : portMAX_DELAY;
+    }
+    if (wait != portMAX_DELAY) vTaskDelay(1);
   }
 }
 int32_t executeDirect(RuntimeStreams::DirectIo& operation, void* output = nullptr,
@@ -242,6 +246,7 @@ int32_t openFile(const char* path, uint32_t mode, t5_stream_t* out) {
 
 struct SerialLink {
   uint32_t epoch;
+  uint32_t owner;
 };
 SerialLink* pairSerial = nullptr;
 t5_stream_t pairRx = 0, pairTx = 0;
@@ -268,7 +273,7 @@ int32_t serialReadProvider(void* ctx, void* data, uint32_t size, uint32_t* count
   auto& link = *static_cast<SerialLink*>(ctx);
   const auto state = serialState(link);
   if (state != T5_STREAM_OK) return state;
-  const auto result = nativeSerialProviderRead(static_cast<uint8_t*>(data), size, count);
+  const auto result = nativeSerialProviderRead(link.epoch, static_cast<uint8_t*>(data), size, count);
   if (serialRevoked(link)) { if (count) *count = 0; return T5_STREAM_DISCONNECTED; }
   return result;
 }
@@ -277,7 +282,7 @@ int32_t serialWriteProvider(void* ctx, const void* data, uint32_t size, uint32_t
   const auto state = serialState(link);
   if (state != T5_STREAM_OK) return state;
   const auto result = nativeSerialProviderWrite(
-      static_cast<const uint8_t*>(data), size, count);
+      link.epoch, static_cast<const uint8_t*>(data), size, count);
   if (serialRevoked(link)) { if (count) *count = 0; return T5_STREAM_DISCONNECTED; }
   return result;
 }

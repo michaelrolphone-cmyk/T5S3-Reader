@@ -110,6 +110,10 @@ class Registry {
   int32_t pipeInfo(uint32_t owner, t5_pipe_t, t5_pipe_info_t*);
   void release(uint32_t owner, std::array<Provider, MaxStreams>* retired = nullptr);
   bool runnable() const;
+  bool pipeRunning(t5_stream_t, bool reading) const;
+  // Provider failure terminates attached pipes immediately, even while the
+  // destination is pipe-leased. Buffered bytes remain for bounded diagnostics.
+  int32_t failEndpoint(uint32_t owner, t5_stream_t, int32_t error);
   void pump(); // one bounded byte chunk or one atomic record per pipe, rotating first
   // Under the registry lock: advance in-memory work or fill *io for a provider
   // transfer that MUST run after the lock is dropped. Returns true when *io is

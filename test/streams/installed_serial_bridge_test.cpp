@@ -21,7 +21,10 @@ uint64_t lastOpenedDevice = 0;
 unsigned alternativeAcquires = 0, alternativeReleases = 0;
 const risc_serial_port_api_v1* boundApi = nullptr;
 uint64_t observedDevice = 0, classToken = 0;
-bool classBound = false, classStarted = false, streamBusy = false;
+bool classBound = false, classStarted = false;
+#ifndef RISCRTE_TEST_REAL_STREAM_BRIDGE
+bool streamBusy = false;
+#endif
 bool dtr = false, rts = false;
 t5_serial_config_t coding{115200, 8, T5_SERIAL_PARITY_NONE, 1, T5_SERIAL_FLOW_NONE};
 
@@ -36,8 +39,14 @@ bool controlPort(uint64_t token, bool nextDtr, bool nextRts) {
   if (!token) return false;
   dtr = nextDtr; rts = nextRts; return true;
 }
-int32_t readPort(uint64_t, uint8_t*, size_t, uint32_t) { return 0; }
-int32_t writePort(uint64_t, const uint8_t*, size_t, uint32_t) { return 0; }
+int32_t (*providerReadHook)(uint64_t, uint8_t*, size_t, uint32_t) = nullptr;
+int32_t (*providerWriteHook)(uint64_t, const uint8_t*, size_t, uint32_t) = nullptr;
+int32_t readPort(uint64_t t, uint8_t* p, size_t n, uint32_t ms) {
+  return providerReadHook ? providerReadHook(t, p, n, ms) : 0;
+}
+int32_t writePort(uint64_t t, const uint8_t* p, size_t n, uint32_t ms) {
+  return providerWriteHook ? providerWriteHook(t, p, n, ms) : 0;
+}
 bool closePort(uint64_t token) { if (!token) return false; ++providerCloses; return true; }
 int32_t probe(uint64_t) { return 1; }
 
@@ -187,6 +196,7 @@ bool nativeUsbClassAttachPair(uint32_t owner, t5_stream_t rx, t5_stream_t tx) {
 }
 uint64_t nativeUsbClassToken() { return classToken; }
 
+#ifndef RISCRTE_TEST_REAL_STREAM_BRIDGE
 bool nativeStreamSerialIsBusy() { return streamBusy; }
 t5_stream_result_t nativeStreamOpenSerialPair(t5_stream_t* rx, t5_stream_t* tx) {
   if (!rx || !tx || streamBusy) return T5_STREAM_BUSY;
@@ -199,6 +209,8 @@ t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream) {
   if (++closes % 2u == 0u) streamBusy = false;
   return T5_STREAM_OK;
 }
+
+#endif
 
 int main() {
   RuntimeResources::ExecutionContext context;
