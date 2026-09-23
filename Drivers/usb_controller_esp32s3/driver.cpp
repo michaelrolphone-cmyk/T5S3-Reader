@@ -5,6 +5,7 @@
 #include "RiscUsbInterruptV1.h"
 #include "RiscUsbDiscoveryDiagnosticsV1.h"
 #include <soc/usb_dwc_struct.h>
+#include <soc/usb_wrap_struct.h>
 #define t5_driver_get t5_usb_controller_base_get
 #include "driver_base.cpp"
 #undef t5_driver_get
@@ -73,7 +74,12 @@ void stop_with_interrupt() {
 }
 bool enumeration_diagnostic(void *, char *out, size_t capacity) {
     if (!installed) return false;
-    return enumerationDiagnostic.copy(USB_DWC.hprt_reg.val, out, capacity);
+    const char *phyRoute = !RTCCNTL.usb_conf.sw_hw_usb_phy_sel ? "AUTO" :
+        !RTCCNTL.usb_conf.sw_usb_phy_sel ? "JTAG" : USB_WRAP.otg_conf.phy_sel ? "EXT" :
+        !USB_WRAP.otg_conf.pad_enable ? "OFF" : "OTG";
+    return enumerationDiagnostic.copy(USB_DWC.hprt_reg.val, out, capacity,
+        phyRoute, USB_WRAP.otg_conf.pad_pull_override && USB_WRAP.otg_conf.dp_pulldown,
+        USB_WRAP.otg_conf.pad_pull_override && USB_WRAP.otg_conf.dm_pulldown);
 }
 static const risc_usb_controller_diagnostics_v1 hid_interface = {
     {{RISC_USB_CONTROLLER_API_V1, sizeof(risc_usb_controller_diagnostics_v1), nullptr,

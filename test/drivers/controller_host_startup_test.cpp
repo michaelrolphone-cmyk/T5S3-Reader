@@ -1,4 +1,5 @@
 #include "../../Drivers/usb_controller_esp32s3/StartupDiagnostic.h"
+#include "../../sdk/driver/RiscUsbVbusV1.h"
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -36,7 +37,15 @@ static StartupDiagnostic startupError;
 static usb_transfer_t dma;
 static int step, fail_at, delete_calls;
 static bool disconnected, delayed, present, attach_edge;
+static bool host_role, partial_power_failure, zero_power_lease;
+static uint64_t powerLease;
+static unsigned power_calls;
 static unsigned tick_ms = 1;
+struct RtcRegisters {
+    struct { bool sw_hw_usb_phy_sel, sw_usb_phy_sel; } usb_conf;
+} RTCCNTL;
+#include "../../Drivers/usb_controller_esp32s3/PhyRoute.h"
+
 static void client_event(const usb_host_client_event_msg_t *, void *) {}
 static bool start_failure(const char *stage, int code) {
     startupError.failure(stage, code);
@@ -49,9 +58,13 @@ static esp_err_t operation(int expected_step) {
 static esp_err_t usb_new_phy(const usb_phy_config_t *config, usb_phy_handle_t *out) {
     assert(config->controller == USB_PHY_CTRL_OTG && config->target == USB_PHY_TARGET_INT);
     assert(config->otg_mode == USB_OTG_MODE_HOST && config->otg_speed == USB_PHY_SPEED_UNDEFINED);
-    assert(!config->gpio_conf && !*out);
+    assert(!config->gpio_conf && !*out && !powerLease && !power_calls);
     const auto rc = operation(1);
-    if (rc == ESP_OK) *out = &dma;
+    if (rc == ESP_OK) {
+        *out = &dma; host_role = true;
+        RTCCNTL.usb_conf.sw_hw_usb_phy_sel = true;
+        RTCCNTL.usb_conf.sw_usb_phy_sel = true;
+    }
     return rc;
 }
 static esp_err_t usb_phy_action(usb_phy_handle_t handle, int action) {
@@ -63,8 +76,8 @@ static esp_err_t usb_phy_action(usb_phy_handle_t handle, int action) {
         return rc;
     }
     assert(action == USB_PHY_ACTION_HOST_ALLOW_CONN);
-    assert(disconnected && installed && client && transfer && delayed);
-    const auto rc = operation(6);
+    assert(disconnected && installed && client && transfer && delayed && powerLease);
+    const auto rc = operation(7);
     if (rc == ESP_OK) {
         disconnected = false;
         // A pre-attached device gets the same detector edge as a hotplug.
@@ -96,20 +109,43 @@ static esp_err_t usb_host_transfer_alloc(size_t bytes, int flags, usb_transfer_t
 static TickType_t pdMS_TO_TICKS(unsigned ms) { return ms / tick_ms; }
 static void vTaskDelay(TickType_t ticks) {
     assert(step == 5 && disconnected && installed && client && transfer);
-    assert(ticks >= 1);
+    assert(ticks >= 1 && host_role && !power_calls && !powerLease);
     delayed = true;
 }
 static esp_err_t usb_del_phy(usb_phy_handle_t handle) {
     assert(handle && handle == phy && !installed && !client && !transfer);
     ++delete_calls;
-    return fail_at == 7 ? ESP_ERR_NOT_FOUND : ESP_OK;
+    return fail_at == 8 ? ESP_ERR_NOT_FOUND : ESP_OK;
 }
+static bool acquire_power(void *, uint32_t milliamps, uint64_t *lease) {
+    ++power_calls;
+    // The receiver must NEVER power up against boot USB Serial/JTAG's device
+    // role. All host resources must exist before this side effect is possible.
+    assert(host_role && disconnected && installed && client && transfer && delayed);
+    assert(milliamps == 500 && !*lease);
+    assert(phyRouteCaptured && RTCCNTL.usb_conf.sw_hw_usb_phy_sel && RTCCNTL.usb_conf.sw_usb_phy_sel);
+    const auto rc = operation(6);
+    if ((rc == ESP_OK && !zero_power_lease) || partial_power_failure) *lease = 42;
+    return rc == ESP_OK;
+}
+static bool release_power(void *, uint64_t lease) {
+    assert(lease == 42 && !phy && !installed && !client && !transfer);
+    return true;
+}
+static const risc_usb_vbus_api_v1 powerApi = {
+    RISC_USB_VBUS_API_V1, sizeof(risc_usb_vbus_api_v1), nullptr,
+    acquire_power, release_power, nullptr
+};
+static const risc_usb_vbus_api_v1 *power = &powerApi;
 #include "../../Drivers/usb_controller_esp32s3/HostStartup.h"
 
 static void reset(bool already_present, int failure) {
-    assert(!phy && !client && !transfer && !installed);
+    assert(!phy && !client && !transfer && !installed && !powerLease && !phyRouteCaptured);
     step = delete_calls = 0; fail_at = failure;
     disconnected = delayed = attach_edge = false;
+    host_role = partial_power_failure = zero_power_lease = false;
+    power_calls = 0;
+    RTCCNTL.usb_conf = {true, false}; // Explicit boot serial/JTAG route.
     present = already_present;
     startupError.clear();
 }
@@ -123,38 +159,77 @@ static void teardown_host() {
     if (installed) assert(!release_host_phy());
     installed = false;
 }
+static void release_power_after_phy() {
+    if (powerLease) {
+        assert(power->release_host(power->context, powerLease));
+        powerLease = 0;
+    }
+    assert(phyRouteCaptured);
+    restore_phy_route();
+    assert(!phyRouteCaptured && RTCCNTL.usb_conf.sw_hw_usb_phy_sel && !RTCCNTL.usb_conf.sw_usb_phy_sel);
+}
 int main() {
     for (unsigned period : {1u, 100u}) {
         tick_ms = period;
         reset(true, 0);
-        assert(start_host_controller() && step == 6 && attach_edge);
+        assert(start_host_controller() && step == 7 && attach_edge && power_calls == 1);
         assert(phy && installed && client && transfer && !disconnected);
         teardown_host();
-        fail_at = 7;
-        assert(!release_host_phy() && phy && delete_calls == 1);
+        fail_at = 8;
+        assert(!release_host_phy() && phy && delete_calls == 1 && powerLease == 42);
         fail_at = 0;
         assert(release_host_phy() && !phy && delete_calls == 2);
         assert(release_host_phy() && delete_calls == 2);
+        release_power_after_phy();
     }
     reset(false, 0);
     assert(start_host_controller() && !attach_edge && !disconnected);
     teardown_host();
     assert(release_host_phy());
+    release_power_after_phy();
     const char *stages[] = {"", "phy-create", "phy-hold-disconnected",
         "usb-host-install/IRQ-unavailable", "client-register", "transfer-alloc",
-        "phy-allow-connection"};
-    for (int failure = 1; failure <= 6; ++failure) {
+        "vbus-acquire", "phy-allow-connection"};
+    for (int failure = 1; failure <= 7; ++failure) {
         reset(true, failure);
         assert(!start_host_controller() && step == failure && !attach_edge);
         assert(bool(phy) == (failure > 1));
         assert(installed == (failure > 3));
         assert(bool(client) == (failure > 4));
         assert(bool(transfer) == (failure > 5));
+        assert(power_calls == (failure >= 6 ? 1u : 0u));
+        assert(bool(powerLease) == (failure > 6));
         char error[112] = {};
         assert(startupError.copy(error, sizeof(error)) && strstr(error, stages[failure]));
         teardown_host();
         fail_at = 0;
         assert(release_host_phy() && !phy);
+        release_power_after_phy();
     }
-    puts("Controller attachment barrier and partial-start PHY cleanup: PASS");
+    // A power provider can fail after an uncertain write and retain a lease.
+    // Conversely a malformed success without a lease must not enable attach.
+    for (bool partial : {true, false}) {
+        reset(true, partial ? 6 : 0);
+        partial_power_failure = partial;
+        zero_power_lease = !partial;
+        assert(!start_host_controller() && step == 6 && !attach_edge);
+        assert(bool(powerLease) == partial);
+        assert(phy && installed && client && transfer && disconnected);
+        char error[112] = {};
+        assert(startupError.copy(error, sizeof(error)) && strstr(error, "vbus-acquire"));
+        assert(strstr(error, "requested-ma=500") && !strstr(error, "timeout=500ms"));
+        teardown_host();
+        assert(release_host_phy());
+        release_power_after_phy();
+    }
+    // Also preserve the boot ROM's automatic (eFuse-controlled) selection.
+    reset(false, 0);
+    RTCCNTL.usb_conf = {false, false};
+    assert(start_host_controller());
+    teardown_host();
+    assert(release_host_phy());
+    assert(power->release_host(power->context, powerLease)); powerLease = 0;
+    restore_phy_route();
+    assert(!phyRouteCaptured && !RTCCNTL.usb_conf.sw_hw_usb_phy_sel && !RTCCNTL.usb_conf.sw_usb_phy_sel);
+    puts("USB host role before receiver power; startup failures and retained ownership: PASS");
 }

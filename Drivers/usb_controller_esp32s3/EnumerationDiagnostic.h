@@ -28,7 +28,8 @@ class EnumerationDiagnostic {
       } else { char literal[] = {format[i], 0}; error_.text(literal); }
     }
   }
-  bool copy(uint32_t port, char *out, size_t capacity) const {
+  bool copy(uint32_t port, char *out, size_t capacity,
+            const char *phy = nullptr, bool dpDown = false, bool dmDown = false) const {
     StartupDiagnostic result;
     // ESP32-S3 DWC HPRT: bit 0 connection, bit 2 enabled, bit 12 port power.
     if (!(port & (1u << 12))) result.text("PORT OFF; ");
@@ -39,6 +40,14 @@ class EnumerationDiagnostic {
       result.text("NO ENUM EVENT");
     }
     result.text(detail);
+    // Compact read-only hardware state fits Gameboy's existing 48-byte stage
+    // when no enumeration has started. Do not require serial to identify a
+    // later PHY handoff or lost host pull-downs on the single USB connector.
+    if (phy && !failed_) {
+      result.text(" PHY="); result.text(phy);
+      result.text(" PD="); result.text(dpDown ? "1" : "0");
+      result.text(dmDown ? "1" : "0");
+    }
     return result.copy(out, capacity);
   }
  private:
