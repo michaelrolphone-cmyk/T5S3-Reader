@@ -57,6 +57,7 @@ on:
       - "test/drivers/usb_hid*.c"
       - "test/drivers/usb_xinput_gamepad_test.c"
       - "test/drivers/controller_startup_diagnostic_test.cpp"
+      - "test/drivers/controller_host_startup_test.cpp"
       - "test/drivers/board_power_t5s3_v2_test.c"
       - "test/drivers/i2c_esp32s3_v2_test.c"
       - "test/drivers/platform_clock_v1_test.c"

@@ -69,7 +69,10 @@ class UsbCdcPackage(unittest.TestCase):
         # remains hardware-owning and is compiled directly into that ELF.
         self.assertIn('#include "driver_base.cpp"', wrapper)
         self.assertIn('interrupt_read(', wrapper)
-        return (ROOT / 'Drivers/usb_controller_esp32s3/driver_base.cpp').read_text(encoding='utf-8')
+        base = (ROOT / 'Drivers/usb_controller_esp32s3/driver_base.cpp').read_text(encoding='utf-8')
+        self.assertIn('#include "HostStartup.h"', base)
+        startup = (ROOT / 'Drivers/usb_controller_esp32s3/HostStartup.h').read_text(encoding='utf-8')
+        return base.replace('#include "HostStartup.h"', startup)
     def test_installed_usb_cdc_elf_activation_uses_explicit_json_strings(self):
         source = (ROOT / 'src/runtime/drivers/UsbCdcDriverRuntime.cpp').read_text(encoding='utf-8')
         self.assertNotIn(' | nullptr;', source)
