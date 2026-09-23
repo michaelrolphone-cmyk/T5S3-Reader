@@ -30,6 +30,11 @@ int main() {
   assert(!std::strcmp(out, "PORT OFF; NO ENUM EVENT"));
   assert(enumeration.copy(1u << 12, out, sizeof(out)));
   assert(!std::strcmp(out, "NO ATTACH; NO ENUM EVENT"));
+  char appStage[48];
+  assert(enumeration.copy(1u << 12, appStage, sizeof(appStage), "OTG", true, true));
+  assert(!std::strcmp(appStage, "NO ATTACH; NO ENUM EVENT PHY=OTG PD=11"));
+  assert(enumeration.copy(1u << 12, appStage, sizeof(appStage), "JTAG", false, false));
+  assert(!std::strcmp(appStage, "NO ATTACH; NO ENUM EVENT PHY=JTAG PD=00"));
   const uint32_t attached = (1u << 12) | 1u;
   enumeration.stage("GET_SHORT_DEV_DESC");
   assert(enumeration.copy(attached, out, sizeof(out)));

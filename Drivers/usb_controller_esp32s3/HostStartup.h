@@ -1,11 +1,13 @@
 #pragma once
 
 /* Included in the controller's private namespace, after its state and
- * callbacks. Keep connection detection disabled until the host, client and
- * DMA workspace are ready. An already-powered receiver must get a fresh
- * disconnected -> connected transition after the root port is initialized.
- * This is a startup barrier, not a periodic reset of attached devices. */
+ * callbacks. Configure the host PHY/pull-downs and event client BEFORE
+ * supplying VBUS. RiscRTE boots with USB Serial/JTAG on the internal PHY;
+ * powering a receiver first lets it boot against the previous device role.
+ * Holding the host's receive detector disconnected cannot correct what the
+ * receiver already saw. No periodic resets or power cycling are needed. */
 bool start_host_controller() {
+    capture_phy_route();
     usb_phy_config_t phyConfig = {};
     phyConfig.controller = USB_PHY_CTRL_OTG;
     phyConfig.target = USB_PHY_TARGET_INT;
@@ -43,10 +45,22 @@ bool start_host_controller() {
     rc = usb_host_transfer_alloc(kBuffer, 0, &transfer);
     if (rc != ESP_OK) return start_failure("transfer-alloc", rc);
 
-    // Let the initialized controller observe a disconnected bus before
-    // restoring the real DP/DM levels. This does not switch VBUS power.
+    // Settle the role/pull-down handoff with the receiver still unpowered.
     const TickType_t ticks = pdMS_TO_TICKS(20);
     vTaskDelay(ticks ? ticks : 1);
+    const bool acquired = power->acquire_host(power->context, 500, &powerLease);
+    if (!acquired || !powerLease) {
+        startupError.text("vbus-acquire");
+        startupError.number(" returned=", acquired);
+        startupError.number(" lease=", powerLease != 0);
+        startupError.text(" requested-ma=500");
+        std::printf("USBCTRL start-failed stage=vbus-acquire rc=0 lease=%u\n",
+                    powerLease ? 1u : 0u);
+        // start() quiesces the partially installed host and then releases
+        // any retained power lease. Never release VBUS under live DMA/IRQs.
+        return false;
+    }
+    std::printf("USBCTRL stage=vbus-acquired-after-host-ready\n");
     rc = usb_phy_action(phy, USB_PHY_ACTION_HOST_ALLOW_CONN);
     if (rc != ESP_OK) return start_failure("phy-allow-connection", rc);
     std::printf("USBCTRL stage=phy-connection-enabled\n");

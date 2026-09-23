@@ -8,6 +8,7 @@
 #include <usb/usb_host.h>
 #include <esp_intr_alloc.h>
 #include <esp_private/usb_phy.h>
+#include <soc/rtc_cntl_struct.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <cstring>
@@ -15,6 +16,7 @@
 #include <cstdio>
 
 namespace {
+#include "PhyRoute.h"
 constexpr size_t kEvents = 16;
 constexpr size_t kBuffer = RISC_USB_CONFIG_LIMIT + 8;
 constexpr uint32_t kTeardownTicks = 500;
@@ -469,6 +471,7 @@ bool quiesce(void *) {
         powerLease = 0;
         std::printf("USBCTRL stage=vbus-released\n");
     }
+    restore_phy_route();
     running = false;
     return !power || power->quiesce(power->context);
 }
@@ -484,7 +487,7 @@ bool startup_error(char *destination, size_t capacity) {
 bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     startupError.clear();
     enumerationDiagnostic.clear();
-    if (running || installed || phy || client || transfer || powerLease || fault ||
+    if (running || installed || phy || phyRouteCaptured || client || transfer || powerLease || fault ||
         !deps || count != 1 || !equals(deps[0].capability_id, "board.power.vbus") ||
         deps[0].api_version != RISC_USB_VBUS_API_V1 || !deps[0].api) {
         startupError.text("dependency/state");
@@ -514,20 +517,6 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         return false;
     }
     power = api;
-    const bool acquired = power->acquire_host(power->context, 500, &powerLease);
-    if (!acquired || !powerLease) {
-        startupError.text("vbus-acquire");
-        startupError.number(" returned=", acquired);
-        startupError.number(" lease=", powerLease != 0);
-        startupError.text(" timeout=500ms");
-        std::printf("USBCTRL start-failed stage=vbus-acquire rc=0 lease=%u\n",
-                    powerLease ? 1u : 0u);
-        if (powerLease && !quiesce(nullptr))
-            std::printf("USBCTRL cleanup-failed stage=vbus-acquire\n");
-        else if (!powerLease) power = nullptr;
-        return false;
-    }
-    std::printf("USBCTRL stage=vbus-acquired\n");
     if (!start_host_controller()) {
         if (!quiesce(nullptr)) std::printf("USBCTRL cleanup-failed stage=host-startup\n");
         return false;
