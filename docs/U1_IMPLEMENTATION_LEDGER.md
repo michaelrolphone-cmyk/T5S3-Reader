@@ -2,6 +2,61 @@
 
 [PR #96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) on `impl/u1-riscrte` is the **only** implementation PR/branch. `AGENTS.md`, [USB remediation](USB_CONTRACT_VIOLATION_REMEDIATION.md), [execution order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [claim-scoped USB control](U1_USB_CONTROL_SCOPE_IMPLEMENTATION.md) and [package identity](PACKAGE_IDENTITY_VERSION_POLICY.md) govern the work. Owner controls merge, tag, release, flash and hardware qualification. A committed test is not a PASS.
 
+## September 23 continuation: direct file I/O and deferred cleanup
+
+The previous locally tested tree was published to PR #96 as `caf5779` through
+the connected GitHub API after the owner continued. Its tree exactly matches
+local `83085c2`; the commit ID differs because the API supplied commit metadata.
+The CLI has no GitHub push credentials. PR #96 remains open and has unresolved
+merge conflicts; the matching-head workflow query returned no runs.
+
+Production changes in this continuation:
+
+- Direct stream read/write/seek/finish now reserve the same exact in-flight
+  tickets used by pipes, execute adapter callbacks outside the global stream
+  mutex, and commit results under the lock. Byte transfers remain capped at
+  512 bytes. Writes use copied input; reads enter caller memory only after the
+  stream generation, caller and grant are revalidated.
+- Grant tickets distinguish a fresh grant from one revoked while I/O was in
+  progress. Revoke followed by regrant cannot authorize an older completion.
+  Stale/duplicate completions cannot release a newer operation's pin. Ticket
+  exhaustion fails closed instead of wrapping.
+- Explicit close, owner-wide release, and deferred close after direct or pipe
+  completion detach adapter cleanup under the lock and execute it outside.
+  Outstanding I/O retains the exact adapter until completion; context-wide
+  cleanup has fixed 12-slot storage and item/time checkpoints with real yields.
+- File open, metadata inspection, failed-open cleanup and staged-file rollback
+  run outside the stream lock. Open rechecks the captured execution-context ID
+  before publishing a handle; a rejected CREATE_NEW rolls back only its created
+  file, while rejected reads preserve existing content.
+- A provider finish result of AGAIN leaves the stream open for retry; a failed
+  seek preserves its prior terminal state. Prepared control operations serialize
+  with reads, writes and pipes through the same stream pin.
+
+The storage fixture now rejects any storage operation/destructor under the
+stream mutex. Production-bridge tests exercise reentrant access to another
+stream, concurrent-operation rejection, close/context replacement during reads,
+stale opens and context-wide cleanup. Portable runtime tests cover independent
+READ/WRITE rights, revoke/regrant, partial writes, finish retries, malformed
+provider counts and exact once-only retirement. No exported ELF ABI changed,
+and no app/driver package payload was edited.
+
+Verification: the final unchanged runner completed with exit 0 using
+`ASAN_OPTIONS=detect_leaks=0 bash test/run_stream_test.sh`: 31 C++ programs plus
+the C11 ABI check, with `-Wall -Wextra -Werror` and ASan/UBSan for C++ tests.
+Both new regression programs also passed separately. `bash -n` and
+`git diff --check` passed. Leak checking remains unavailable under this container's
+ptrace environment. An earlier exploratory run was interrupted by editing its
+running shell script; the full final run above used the completed runner and
+passed. No firmware/Xtensa build or hardware validation is claimed.
+
+Remaining: this removes stream-mutex coupling; it does not add cancellation or
+timeouts to synchronous HalStorage/SD calls that do not expose them. Provider
+publication/import/context wiring still needs full installed-ELF boundary proof,
+and protected downstream retention/purge is intentionally fail-closed. Master
+reconciliation, broader U1 work, firmware/Xtensa builds and physical qualification
+remain outstanding. No merge, release, tag or flash was performed.
+
 ## September 23: stream scheduling, ownership and authorization
 
 Continuation base: `1ed82d151281b92df6f7b79856349de18f35cd1d`, PR #96 still open.
@@ -56,10 +111,9 @@ fixture also passed cancellation/reused-pipe coverage. `git diff --check` passed
 No firmware/Xtensa build, new matching-head GitHub CI result, or hardware result
 was observed in this continuation; PlatformIO is not installed locally.
 
-Remaining stream work: this fixes asynchronous pipe dispatch, not all synchronous
-file adapter entry points. Direct read/write/seek/finish/close still need their
-own audit for global-lock I/O and underlying finite operation/cancellation
-bounds. Generic installed-ELF publication/import/context wiring and downstream
+Remaining at `caf5779`: direct file I/O and cleanup still held the stream
+mutex; the continuation above addresses that lock coupling. Underlying finite
+operation/cancellation bounds remain to be resolved where adapters lack them. Generic installed-ELF publication/import/context wiring and downstream
 protected retention/purge must be verified at the real provider-to-app boundary;
 registry-level grant tests are not proof of that entire boundary. Master
 reconciliation and the other U1 acceptance items remain open; no merge, release,

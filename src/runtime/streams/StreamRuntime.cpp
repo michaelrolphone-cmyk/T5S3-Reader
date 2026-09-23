@@ -184,7 +184,8 @@ int32_t Registry::transfer(Stream& s, bool reading, void* data, uint32_t size, u
 
 // Generation alone does not grant rights. A present, unauthorized handle is
 // INVALID; a recognized grantee/owner missing the requested right is DENIED.
-int32_t Registry::read(uint32_t caller, t5_stream_t h, void* data, uint32_t size, uint32_t* count) {
+int32_t Registry::read(uint32_t caller, t5_stream_t h, void* data, uint32_t size, uint32_t* count, DirectIo* io) {
+  if (io) *io = {};
   if (count) *count = 0;
   auto* s = accessible(caller, h);
   if (!s || !count || (!data && size)) return T5_STREAM_INVALID;
@@ -192,9 +193,15 @@ int32_t Registry::read(uint32_t caller, t5_stream_t h, void* data, uint32_t size
   if (s->kind != T5_STREAM_BYTES) return T5_STREAM_UNSUPPORTED;
   if (leased(h, true)) return T5_STREAM_BUSY;
   if (s->inFlight) return T5_STREAM_BUSY;
+  if (io && usesExternalProvider(*s) && size && !s->terminal) {
+    auto result = prepareDirect(*s, h, caller, DirectIo::Operation::Read, *io);
+    if (result == T5_STREAM_OK) io->transfer.request = std::min(size, T5_STREAM_CHUNK);
+    return result;
+  }
   return transfer(*s, true, data, size, count);
 }
-int32_t Registry::write(uint32_t caller, t5_stream_t h, const void* data, uint32_t size, uint32_t* count) {
+int32_t Registry::write(uint32_t caller, t5_stream_t h, const void* data, uint32_t size, uint32_t* count, DirectIo* io) {
+  if (io) *io = {};
   if (count) *count = 0;
   auto* s = accessible(caller, h);
   if (!s || !count || (!data && size)) return T5_STREAM_INVALID;
@@ -202,9 +209,18 @@ int32_t Registry::write(uint32_t caller, t5_stream_t h, const void* data, uint32
   if (s->kind != T5_STREAM_BYTES) return T5_STREAM_UNSUPPORTED;
   if (leased(h, false)) return T5_STREAM_BUSY;
   if (s->inFlight) return T5_STREAM_BUSY;
+  if (io && usesExternalProvider(*s) && size && !s->terminal) {
+    auto result = prepareDirect(*s, h, caller, DirectIo::Operation::Write, *io);
+    if (result == T5_STREAM_OK) {
+      io->transfer.request = std::min(size, T5_STREAM_CHUNK);
+      std::memcpy(io->transfer.payload.data(), data, io->transfer.request);
+    }
+    return result;
+  }
   return transfer(*s, false, const_cast<void*>(data), size, count);
 }
-int32_t Registry::finish(uint32_t owner, t5_stream_t h, int32_t terminal) {
+int32_t Registry::finish(uint32_t owner, t5_stream_t h, int32_t terminal, DirectIo* io) {
+  if (io) *io = {};
   auto* s = stream(owner, h);
   if (!s || (terminal != T5_STREAM_EOF && terminal >= 0)) return T5_STREAM_INVALID;
   if (s->closing || s->inFlight || leased(h, false)) return T5_STREAM_BUSY;
@@ -215,21 +231,90 @@ int32_t Registry::finish(uint32_t owner, t5_stream_t h, int32_t terminal) {
     return result;
   }
   if (s->provider.finish && terminal == T5_STREAM_EOF) {
-    auto r = s->provider.finish(s->provider.context); if (r != T5_STREAM_OK) { s->terminal = r; return r; }
+    if (io) return prepareDirect(*s, h, owner, DirectIo::Operation::Finish, *io);
+    auto r = s->provider.finish(s->provider.context); if (r != T5_STREAM_OK) { if (r < 0) s->terminal = r; return r; }
   }
   s->terminal = terminal; return T5_STREAM_OK;
 }
-int32_t Registry::seek(uint32_t owner, t5_stream_t h, uint64_t offset) {
+int32_t Registry::seek(uint32_t owner, t5_stream_t h, uint64_t offset, DirectIo* io) {
+  if (io) *io = {};
   auto* s = stream(owner, h);
   if (!s) return T5_STREAM_INVALID;
   if (s->kind != T5_STREAM_BYTES) return T5_STREAM_UNSUPPORTED;
   if (s->closing || s->inFlight || leased(h, true) || leased(h, false)) return T5_STREAM_BUSY;
   if (!(s->flags & T5_STREAM_SEEK) || !s->provider.seek) return T5_STREAM_UNSUPPORTED;
+  if (io) {
+    const auto result = prepareDirect(*s, h, owner, DirectIo::Operation::Seek, *io);
+    io->offset = offset;
+    return result;
+  }
   auto r = s->provider.seek(s->provider.context, offset);
   if (r == T5_STREAM_OK) s->terminal = 0;
   return r;
 }
-int32_t Registry::close(uint32_t owner, t5_stream_t h) {
+int32_t Registry::prepareDirect(Stream& s, t5_stream_t h, uint32_t caller,
+                                  DirectIo::Operation operation, DirectIo& io) {
+  if (nextTicket_ == UINT64_MAX) return T5_STREAM_LIMIT;
+  io.operation = operation;
+  io.caller = caller;
+  if (s.owner != caller)
+    for (const auto& grant : s.grants)
+      if (grant.consumer == caller) { io.grantTicket = grant.ticket; break; }
+  io.transfer.pending = true;
+  io.transfer.reading = operation == DirectIo::Operation::Read;
+  io.transfer.streamIndex = (h & 255) - 1;
+  io.transfer.streamGeneration = s.generation;
+  io.transfer.provider = s.provider;
+  io.transfer.ticket = s.inFlight = ++nextTicket_;
+  return T5_STREAM_OK;
+}
+int32_t Registry::directComplete(const DirectIo& operation, int32_t result, uint32_t count,
+                                  void* output, uint32_t* actual, Provider* retired) {
+  if (actual) *actual = 0;
+  if (retired) *retired = {};
+  const auto& io = operation.transfer;
+  if (!io.pending || io.streamIndex >= MaxStreams) return T5_STREAM_INVALID;
+  auto& s = streams_[io.streamIndex];
+  if (!s.owner || s.generation != io.streamGeneration || !io.ticket ||
+      s.inFlight != io.ticket) return T5_STREAM_CLOSED;
+  s.inFlight = 0;
+  if (s.closing) {
+    (void)close(s.owner, handle(s.generation, io.streamIndex), retired);
+    return T5_STREAM_CLOSED;
+  }
+  using Op = DirectIo::Operation;
+  const auto op = operation.operation;
+  if (op == Op::Read || op == Op::Write) {
+    bool sameGrant = s.owner == operation.caller;
+    for (const auto& grant : s.grants)
+      if (grant.consumer == operation.caller && operation.grantTicket &&
+          grant.ticket == operation.grantTicket) sameGrant = true;
+    if (!sameGrant || !allowed(s, operation.caller, op == Op::Read ? T5_STREAM_READ : T5_STREAM_WRITE))
+      return T5_STREAM_DENIED;
+    if (count > io.request || count > io.payload.size() || !actual ||
+        (op == Op::Read && count && !output)) {
+      s.terminal = T5_STREAM_IO;
+      return T5_STREAM_IO;
+    }
+    if (result < 0 || result == T5_STREAM_EOF) s.terminal = result;
+    if (op == Op::Read) {
+      if (count) std::memcpy(output, io.payload.data(), count);
+      s.read += count;
+    } else s.written += count;
+    *actual = count;
+  } else {
+    if (s.owner != operation.caller) return T5_STREAM_DENIED;
+    if (op == Op::Seek && result == T5_STREAM_OK) s.terminal = 0;
+    if (op == Op::Finish) {
+      // AGAIN means flush is incomplete, not EOF or a sticky terminal state.
+      if (result == T5_STREAM_OK) s.terminal = T5_STREAM_EOF;
+      else if (result < 0) s.terminal = result;
+    }
+  }
+  return result;
+}
+int32_t Registry::close(uint32_t owner, t5_stream_t h, Provider* retired) {
+  if (retired) *retired = {};
   auto* s = stream(owner, h);
   if (!s) return T5_STREAM_INVALID;
   failPipes(h, T5_STREAM_CLOSED);
@@ -238,7 +323,8 @@ int32_t Registry::close(uint32_t owner, t5_stream_t h) {
   s->closing = true;
   clearGrants(*s);
   if (s->inFlight) return T5_STREAM_BUSY;
-  if (s->provider.close) s->provider.close(s->provider.context);
+  if (retired) *retired = s->provider;
+  else if (s->provider.close) s->provider.close(s->provider.context);
   s->buffer.reset(); s->records.reset(); s->provider = {};
   clearGrants(*s);
   s->elfEndpoint = false; s->protection = kStreamPublic;
@@ -330,14 +416,18 @@ int32_t Registry::grant(uint32_t publisher, t5_stream_t h, uint32_t consumer, ui
   int free = -1;
   for (unsigned i = 0; i < MaxGrants; ++i) {
     if (s->grants[i].consumer == consumer) {
+      if (s->grants[i].rights == rights) return T5_STREAM_OK;
+      if (nextTicket_ == UINT64_MAX) return T5_STREAM_LIMIT;
       s->grants[i].rights = rights;
+      s->grants[i].ticket = ++nextTicket_;
       invalidateUnauthorizedPipes();
       return T5_STREAM_OK;
     }
     if (free < 0 && !s->grants[i].consumer) free = static_cast<int>(i);
   }
   if (free < 0) return T5_STREAM_LIMIT;
-  s->grants[free] = {consumer, rights};
+  if (nextTicket_ == UINT64_MAX) return T5_STREAM_LIMIT;
+  s->grants[free] = {consumer, rights, ++nextTicket_};
   return T5_STREAM_OK;
 }
 int32_t Registry::revoke(uint32_t publisher, t5_stream_t h, uint32_t consumer) {
@@ -413,6 +503,11 @@ Registry::Step Registry::pumpIndex(unsigned index, ExternalIo* io) {
     return Step::Progressed;
   }
   if (s->inFlight || d->inFlight) return Step::Idle;
+  if (nextTicket_ == UINT64_MAX && (usesExternalProvider(*s) || usesExternalProvider(*d))) {
+    p.state = T5_PIPE_FAILED; p.error = T5_STREAM_LIMIT;
+    p.used = p.offset = 0; p.recordPending = false;
+    return Step::Progressed;
+  }
   if (s->kind == T5_STREAM_RECORDS) {
     if (!p.recordPending) {
       p.used = p.offset = 0;
@@ -504,14 +599,15 @@ bool Registry::pumpPrepare(ExternalIo* io) {
   first_ = (first_ + 1) % MaxPipes;
   return false;
 }
-void Registry::pumpComplete(const ExternalIo& io, int32_t result, const void* data, uint32_t count) {
+void Registry::pumpComplete(const ExternalIo& io, int32_t result, const void* data, uint32_t count, Provider* retired) {
+  if (retired) *retired = {};
   if (!io.pending || io.pipeIndex >= MaxPipes || io.streamIndex >= MaxStreams) return;
   auto& p = pipes_[io.pipeIndex];
   auto& s = streams_[io.streamIndex];
   if (!s.owner || s.generation != io.streamGeneration || !io.ticket || s.inFlight != io.ticket) return;
   s.inFlight = 0;
   if (s.closing) {
-    (void)close(s.owner, handle(s.generation, io.streamIndex));
+    (void)close(s.owner, handle(s.generation, io.streamIndex), retired);
     return;
   }
   // Pausing prevents the next dispatch; it must not discard bytes already
@@ -537,7 +633,8 @@ void Registry::pumpComplete(const ExternalIo& io, int32_t result, const void* da
     if (!count) ++p.stalls;
   }
 }
-void Registry::release(uint32_t owner) {
+void Registry::release(uint32_t owner, std::array<Provider, MaxStreams>* retired) {
+  if (retired) *retired = {};
   for (auto& p : pipes_) if (p.owner == owner) {
     p.owner = 0; p.used = p.offset = 0; p.recordPending = false;
   }
@@ -546,6 +643,6 @@ void Registry::release(uint32_t owner) {
     for (auto& g : s.grants) if (g.consumer == owner) g = {};
   }
   for (unsigned i = 0; i < MaxStreams; ++i)
-    if (streams_[i].owner == owner) close(owner, handle(streams_[i].generation, i));
+    if (streams_[i].owner == owner) close(owner, handle(streams_[i].generation, i), retired ? &(*retired)[i] : nullptr);
 }
 }

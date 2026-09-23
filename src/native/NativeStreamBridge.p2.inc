@@ -150,12 +150,18 @@ int32_t readStream(t5_stream_t h, void* d, uint32_t n, uint32_t* out) {
     // provider write. The pending TX buffer is never consumed twice.
     (void)drainPairTx();
   }
-  Lock lock;
-  const auto guard = guardGnssStream(h);
-  if (guard != T5_STREAM_OK) return guard;
-  const auto result = registry.read(owner, h, d, n, out);
+  RuntimeStreams::DirectIo operation{};
+  int32_t result;
+  {
+    Lock lock;
+    const auto guard = guardGnssStream(h);
+    if (guard != T5_STREAM_OK) return guard;
+    result = registry.read(owner, h, d, n, out, &operation);
+  }
+  if (operation.transfer.pending) result = executeDirect(operation, d, out);
   wake(); return result;
 }
+
 int32_t writeStream(t5_stream_t h, const void* d, uint32_t n, uint32_t* out) {
   if (out) *out = 0;
   if (!authorized()) return T5_STREAM_DENIED;
@@ -163,24 +169,41 @@ int32_t writeStream(t5_stream_t h, const void* d, uint32_t n, uint32_t* out) {
     const auto transport = pairTransport(h);
     if (transport < 0) return transport;
   }
+  RuntimeStreams::DirectIo operation{};
   int32_t result;
   {
     Lock lock;
     const auto guard = guardGnssStream(h);
     if (guard != T5_STREAM_OK) return guard;
-    result = registry.write(owner, h, d, n, out);
+    result = registry.write(owner, h, d, n, out, &operation);
   }
+  if (operation.transfer.pending) result = executeDirect(operation, nullptr, out);
   if (result == T5_STREAM_OK && h && h == pairTx) (void)drainPairTx();
   wake(); return result;
 }
-int32_t finish(t5_stream_t h) { SESSION_CALL(registry.finish(owner, h)); }
-int32_t seek(t5_stream_t h, uint64_t offset) { SESSION_CALL(registry.seek(owner, h, offset)); }
+int32_t finish(t5_stream_t h) {
+  if (!authorized()) return T5_STREAM_DENIED;
+  RuntimeStreams::DirectIo operation{};
+  int32_t result;
+  { Lock lock; result = registry.finish(owner, h, T5_STREAM_EOF, &operation); }
+  if (operation.transfer.pending) result = executeDirect(operation);
+  wake(); return result;
+}
+int32_t seek(t5_stream_t h, uint64_t offset) {
+  if (!authorized()) return T5_STREAM_DENIED;
+  RuntimeStreams::DirectIo operation{};
+  int32_t result;
+  { Lock lock; result = registry.seek(owner, h, offset, &operation); }
+  if (operation.transfer.pending) result = executeDirect(operation);
+  wake(); return result;
+}
 int32_t closeStream(t5_stream_t h) {
   if (!authorized()) return T5_STREAM_DENIED;
+  RetiredProvider retired;
   int32_t result;
   {
     Lock lock;
-    result = registry.close(owner, h);
+    result = registry.close(owner, h, &retired.value);
     if (result == T5_STREAM_OK) notePairClosed(h);
     forgetClosedGnssStream(h);
     (void)gnss.beforePoll(gnss.owner());
@@ -278,11 +301,12 @@ const riscrte_stream_api_v2 api2 = {{RISCRTE_STREAM_API_VERSION_2, sizeof(riscrt
   openRecordBuffer, readRecord, writeRecord, recordInfo};
 
 void releaseStreams(void*, uint32_t id) {
+  RetiredProviders retired;
   if (mutex) {
     Lock lock;
     gnss.releaseOwner(id);
     gnssGrants.releaseOwner(id);
-    registry.release(id);
+    registry.release(id, &retired.values);
     notePairClosed(pairRx);
     notePairClosed(pairTx);
   }

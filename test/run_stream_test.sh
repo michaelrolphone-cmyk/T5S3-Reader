@@ -19,6 +19,7 @@ compile_run() {
   "$build/$name"
 }
 compile_run test "$stream" "$repo/test/streams/runtime_test.cpp"
+compile_run direct-io "$stream" "$repo/test/streams/direct_io_test.cpp"
 compile_run async-pipes "$stream" "$repo/test/streams/async_pipe_test.cpp"
 compile_run elf-endpoints "$stream" "$repo/test/streams/elf_endpoint_test.cpp"
 compile_run record-queue "$repo/test/streams/record_queue_test.cpp"
@@ -49,11 +50,13 @@ compile_run usb-semantic-bridge -DRISCRTE_TEST_CLASS_BINDING_PROVIDED "$serial" 
 compile_run usb-discovery-tick -DRISCRTE_TEST_CLASS_BINDING_PROVIDED "$serial" "$checked" "$bridge_io" "$repo/test/streams/usb_discovery_tick_test.cpp"
 compile_run usb-device-abi -DRISCRTE_TEST_CLASS_BINDING_PROVIDED "$serial" "$checked" "$bridge_io" "$repo/src/native/NativeDeviceBridge.cpp" \
   "$repo/test/streams/usb_device_api_test.cpp"
-# These two bridge fixtures intentionally use fake storage/scheduler headers.
+# These bridge fixtures intentionally use fake storage/scheduler headers.
 production_common=("${common[@]}")
 common+=(-I"$repo/test/streams/stubs")
 compile_run bridge "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" \
   "$checked" "$bridge_io" "$repo/test/streams/bridge_test.cpp"
+compile_run direct-io-bridge "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" \
+  "$checked" "$bridge_io" "$repo/test/streams/direct_io_bridge_test.cpp"
 compile_run usb-direct-ownership "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" \
   "$checked" "$bridge_io" "$repo/test/streams/usb_direct_ownership_test.cpp"
 # Restore original includes before linking the real installed class bridge.

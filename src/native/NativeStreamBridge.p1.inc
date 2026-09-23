@@ -35,6 +35,26 @@ struct Lock {
   Lock() { xSemaphoreTake(mutex, portMAX_DELAY); }
   ~Lock() { xSemaphoreGive(mutex); }
 };
+// Declare before a Lock scope so adapter destruction happens after unlocking.
+// These callbacks belong to firmware adapters, never to unloadable ELF code.
+struct RetiredProvider {
+  RuntimeStreams::Provider value{};
+  ~RetiredProvider() { if (value.close) value.close(value.context); }
+};
+struct RetiredProviders {
+  std::array<RuntimeStreams::Provider, RuntimeStreams::Registry::MaxStreams> values{};
+  ~RetiredProviders() {
+    unsigned released = 0;
+    uint32_t checkpoint = millis();
+    for (auto& provider : values) {
+      if (!provider.close) continue;
+      provider.close(provider.context);
+      if (++released >= 4 || static_cast<uint32_t>(millis() - checkpoint) >= 10) {
+        vTaskDelay(1); released = 0; checkpoint = millis();
+      }
+    }
+  }
+};
 bool authorized() {
   return active && invocation.running(owner) && t5_app_get_api(T5_APP_ABI_VERSION);
 }
@@ -70,8 +90,9 @@ void schedule(void*) {
                      : T5_STREAM_UNSUPPORTED;
       }
       {
+        RetiredProvider retired;
         Lock lock;
-        registry.pumpComplete(io, result, io.reading ? incoming : nullptr, count);
+        registry.pumpComplete(io, result, io.reading ? incoming : nullptr, count, &retired.value);
       }
       if (++operations >= RuntimeStreams::Registry::MaxPipes ||
           static_cast<uint32_t>(millis() - started) >= 10) {
@@ -81,6 +102,35 @@ void schedule(void*) {
       }
     }
   }
+}
+int32_t executeDirect(RuntimeStreams::DirectIo& operation, void* output = nullptr,
+                      uint32_t* actual = nullptr) {
+  if (!operation.transfer.pending) return T5_STREAM_INVALID;
+  auto& io = operation.transfer;
+  const auto& p = io.provider;
+  uint32_t count = 0;
+  int32_t result = T5_STREAM_UNSUPPORTED;
+  using Op = RuntimeStreams::DirectIo::Operation;
+  switch (operation.operation) {
+    case Op::Read:
+      if (p.read) result = p.read(p.context, io.payload.data(), io.request, &count);
+      break;
+    case Op::Write:
+      if (p.write) result = p.write(p.context, io.payload.data(), io.request, &count);
+      break;
+    case Op::Seek:
+      if (p.seek) result = p.seek(p.context, operation.offset);
+      break;
+    case Op::Finish:
+      if (p.finish) result = p.finish(p.context);
+      break;
+  }
+  RetiredProvider retired;
+  {
+    Lock lock;
+    result = registry.directComplete(operation, result, count, output, actual, &retired.value);
+  }
+  return result;
 }
 bool initialize() {
   if (!mutex) mutex = xSemaphoreCreateMutex();
@@ -158,22 +208,38 @@ int32_t openFile(const char* path, uint32_t mode, t5_stream_t* out) {
   if (!authorized()) return T5_STREAM_DENIED;
   if (!out || !filePath(path)) return T5_STREAM_INVALID;
   if (mode != T5_STREAM_FILE_READ && mode != T5_STREAM_FILE_CREATE_NEW) return T5_STREAM_UNSUPPORTED;
-  Lock lock;
+  uint32_t openingOwner;
+  {
+    Lock lock;
+    openingOwner = owner;
+    if (!authorized()) return T5_STREAM_DENIED;
+  }
+  // Copy the path before releasing the invocation's storage work to the
+  // adapter. No SD call or HalFile destructor runs under the stream mutex.
+  char copiedPath[256];
+  std::strcpy(copiedPath, path);
   if (!Storage.ready()) return T5_STREAM_IO;
   auto* f = new (std::nothrow) File;
   if (!f) return T5_STREAM_LIMIT;
-  f->file = Storage.open(path + 3, mode == T5_STREAM_FILE_READ ? O_RDONLY : (O_WRONLY | O_CREAT | O_EXCL));
+  f->file = Storage.open(copiedPath + 3, mode == T5_STREAM_FILE_READ ? O_RDONLY : (O_WRONLY | O_CREAT | O_EXCL));
   if (!f->file || f->file.isDirectory()) { delete f; return T5_STREAM_IO; }
   f->length = f->file.fileSize64();
   RuntimeStreams::Provider p{f, fileRead, fileWrite, fileSeek, fileFinish, fileClose};
   auto flags = mode == T5_STREAM_FILE_READ ? T5_STREAM_READ | T5_STREAM_SEEK : T5_STREAM_WRITE;
-  auto r = registry.attach(owner, T5_STREAM_BYTES, flags, p, out);
-  if (r != T5_STREAM_OK) {
-    delete f;
-    if (mode == T5_STREAM_FILE_CREATE_NEW) Storage.remove(path + 3);
+  int32_t result;
+  {
+    Lock lock;
+    result = authorized() && owner == openingOwner
+                 ? registry.attach(openingOwner, T5_STREAM_BYTES, flags, p, out)
+                 : T5_STREAM_DENIED;
   }
-  return r;
+  if (result != T5_STREAM_OK) {
+    delete f;
+    if (mode == T5_STREAM_FILE_CREATE_NEW) Storage.remove(copiedPath + 3);
+  }
+  return result;
 }
+
 struct SerialLink {
   uint32_t epoch;
 };

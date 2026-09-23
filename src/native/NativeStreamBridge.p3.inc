@@ -55,10 +55,11 @@ t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream) {
   if (!active || invocation.id() != owner || !t5_app_get_api(T5_APP_ABI_VERSION))
     return T5_STREAM_DENIED;
   if (!stream || !initialize()) return T5_STREAM_INVALID;
+  RetiredProvider retired;
   t5_stream_result_t result;
   {
     Lock lock;
-    result = registry.close(owner, stream);
+    result = registry.close(owner, stream, &retired.value);
     if (result == T5_STREAM_OK) notePairClosed(stream);
     forgetClosedGnssStream(stream);
   }

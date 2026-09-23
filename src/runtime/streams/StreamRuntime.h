@@ -33,6 +33,15 @@ struct ExternalIo {
   uint64_t ticket = 0;
   std::array<uint8_t, T5_STREAM_CHUNK> payload{};
 };
+// Direct byte/control calls use the same stream ticket as pipe operations.
+// Only copied bytes and firmware adapter pointers survive the lock boundary.
+struct DirectIo {
+  enum class Operation { Read, Write, Seek, Finish } operation = Operation::Read;
+  ExternalIo transfer{};
+  uint32_t caller = 0;
+  uint64_t grantTicket = 0;
+  uint64_t offset = 0;
+};
 class Registry {
  public:
   static constexpr unsigned MaxStreams = 12, MaxPipes = 4, MaxGrants = 4;
@@ -73,13 +82,15 @@ class Registry {
     s->flags = flags; return r;
   }
   int32_t attach(uint32_t owner, uint32_t kind, uint32_t flags, Provider provider, t5_stream_t* out);
-  int32_t read(uint32_t owner, t5_stream_t, void*, uint32_t, uint32_t*);
-  int32_t write(uint32_t owner, t5_stream_t, const void*, uint32_t, uint32_t*);
-  int32_t finish(uint32_t owner, t5_stream_t, int32_t terminal = T5_STREAM_EOF);
-  int32_t seek(uint32_t owner, t5_stream_t, uint64_t);
+  int32_t read(uint32_t owner, t5_stream_t, void*, uint32_t, uint32_t*, DirectIo* = nullptr);
+  int32_t write(uint32_t owner, t5_stream_t, const void*, uint32_t, uint32_t*, DirectIo* = nullptr);
+  int32_t finish(uint32_t owner, t5_stream_t, int32_t terminal = T5_STREAM_EOF, DirectIo* = nullptr);
+  int32_t seek(uint32_t owner, t5_stream_t, uint64_t, DirectIo* = nullptr);
   // BUSY revokes immediately and defers destruction until the already prepared
   // I/O completes. The caller must still submit that completion exactly once.
-  int32_t close(uint32_t owner, t5_stream_t);
+  // Supplying retired moves the adapter out; invoke its close callback only
+  // AFTER dropping the registry lock. The stream handle is already revoked.
+  int32_t close(uint32_t owner, t5_stream_t, Provider* retired = nullptr);
   int32_t info(uint32_t owner, t5_stream_t, t5_stream_info_t*);
   int32_t connect(uint32_t owner, t5_stream_t, t5_stream_t, uint32_t, t5_pipe_t*);
   // Installed-ELF endpoints are buffer-backed and never store ELF callbacks.
@@ -97,18 +108,25 @@ class Registry {
   int32_t cancel(uint32_t owner, t5_pipe_t);
   int32_t closePipe(uint32_t owner, t5_pipe_t);
   int32_t pipeInfo(uint32_t owner, t5_pipe_t, t5_pipe_info_t*);
-  void release(uint32_t owner);
+  void release(uint32_t owner, std::array<Provider, MaxStreams>* retired = nullptr);
   bool runnable() const;
   void pump(); // one bounded byte chunk or one atomic record per pipe, rotating first
   // Under the registry lock: advance in-memory work or fill *io for a provider
   // transfer that MUST run after the lock is dropped. Returns true when *io is
   // pending. Host tests may keep calling pump(), which runs I/O inline.
   bool pumpPrepare(ExternalIo* io);
-  void pumpComplete(const ExternalIo& io, int32_t result, const void* data, uint32_t count);
+  void pumpComplete(const ExternalIo& io, int32_t result, const void* data, uint32_t count,
+                    Provider* retired = nullptr);
+  // Call after executing a pending DirectIo outside the registry lock. The
+  // read payload is in transfer.payload and is copied out only after rechecking
+  // the exact generation, ticket and caller grant. A close may return retirement.
+  int32_t directComplete(const DirectIo&, int32_t result, uint32_t count,
+                         void* output, uint32_t* actual, Provider* retired = nullptr);
  private:
   struct Grant {
     uint32_t consumer = 0;
     uint32_t rights = 0;
+    uint64_t ticket = 0;
   };
   struct Stream {
     uint32_t generation = 0, owner = 0, flags = 0, kind = T5_STREAM_BYTES;
@@ -150,6 +168,8 @@ class Registry {
   bool usesExternalProvider(const Stream&) const;
   int32_t connectInternal(uint32_t pipeOwner, Stream* s, t5_stream_t source,
                           Stream* d, t5_stream_t dest, uint32_t policy, t5_pipe_t* out);
+  int32_t prepareDirect(Stream&, t5_stream_t, uint32_t caller,
+                        DirectIo::Operation, DirectIo&);
   enum class Step { Idle, Progressed, NeedIo };
   Step pumpIndex(unsigned index, ExternalIo* io);
 };
