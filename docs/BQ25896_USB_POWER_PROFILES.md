@@ -14,6 +14,23 @@ installations. Version **0.1.5** replaces **0.1.4** within this unreleased PR.
 The source folder and manifest no longer restrict the chip driver to T5S3.
 Do not fork that chip package into a second simultaneous register owner.
 
+## Normal installation
+
+After the release containing this change is published, open Driver Manager and
+update **board-power-t5s3-v2** normally. Its catalog requirement identifies
+`board.power.bq25896.profile@1`; the existing dependency installer downloads
+and installs the missing **t5s3-usb-power-profile** package first, then installs
+the power driver. No driver editing, manual filename changes, separate profile
+installation or compilation is required. An unpublished PR build is not yet
+available through the latest-release catalog.
+
+Turn keyboard/controller navigation Off and close USB apps before updating
+active USB providers. Update the controller and firmware as described in
+[Firmware input navigation](FIRMWARE_INPUT_NAVIGATION.md).
+
+The following profile-authoring information is for developers supporting a
+new board; it is not an installation procedure for users.
+
 ## Profiles and wiring
 
 `Drivers/t5s3_usb_power_profile` is a separate ordinary package,
@@ -67,9 +84,10 @@ for source-off observation remain chip logic. Profile values specify board
 margins and electrical choices, without changing the generic monitor ABI.
 
 The profile stays leased as a dependency while the chip driver is loaded.
-Turn navigation Off and close USB apps before updating it. On T5S3, install
-the new profile **before** power driver 0.1.5, then controller 0.1.15.
-Missing profile means no VBUS sourcing, never fallback to T5S3 constants.
+Turn navigation Off and close USB apps before updating it. Driver Manager
+resolves and installs the declared profile dependency before power driver
+0.1.5; the user does not perform that ordering manually. Missing profile means
+no VBUS sourcing, never fallback to T5S3 constants.
 During normal operation, focus handoff retains physical leases; empty-host
 role switching retains the chip's I2C claim; actual shutdown releases it only
 after source-off and restoration are verified. Failed cleanup retains ownership.

@@ -18,8 +18,12 @@ Automatic charging/computer-serial switching additionally requires
 **board-power-t5s3-v2 0.1.5** (was 0.1.4), the new
 **t5s3-usb-power-profile 0.1.0**, plus the firmware change that keeps
 the boot serial service initialized. These versions exceed the v1.2.65 release.
-Install the profile before updating the power driver, with navigation Off and
-no app holding USB grants, then update the controller.
+After the release is published, use Driver Manager to update the power driver
+with navigation Off and no app holding USB grants, then update the controller.
+The power driver declares the profile dependency, so Driver Manager downloads
+and installs the missing profile automatically before the power driver. Users
+do not edit driver files, assemble packages or install the profile separately.
+An unreleased PR does not appear in the latest-release catalog.
 The controller checks the additive power-monitor interface size and rejects an
 older power driver with an explicit upgrade diagnostic. Existing consumers of
 the original power v1 prefix remain compatible.
