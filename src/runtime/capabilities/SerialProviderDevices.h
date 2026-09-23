@@ -16,7 +16,7 @@ class SerialProviderDevices final {
  public:
   enum class Result : uint8_t { Updated, Uncertain, Invalid, RegistryFault };
   explicit SerialProviderDevices(Registry& registry)
-      : slots_{Slot(registry), Slot(registry), Slot(registry), Slot(registry),
+      : registry_(registry), slots_{Slot(registry), Slot(registry), Slot(registry), Slot(registry),
                Slot(registry), Slot(registry), Slot(registry), Slot(registry)} {}
   SerialProviderDevices(const SerialProviderDevices&) = delete;
   SerialProviderDevices& operator=(const SerialProviderDevices&) = delete;

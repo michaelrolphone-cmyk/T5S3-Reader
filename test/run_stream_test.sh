@@ -19,6 +19,7 @@ compile_run() {
   "$build/$name"
 }
 compile_run test "$stream" "$repo/test/streams/runtime_test.cpp"
+compile_run async-pipes "$stream" "$repo/test/streams/async_pipe_test.cpp"
 compile_run elf-endpoints "$stream" "$repo/test/streams/elf_endpoint_test.cpp"
 compile_run record-queue "$repo/test/streams/record_queue_test.cpp"
 compile_run record-registry "$stream" "$repo/test/streams/record_registry_test.cpp"
@@ -42,11 +43,11 @@ compile_run installed-serial-session -I"$repo/sdk/driver" \
 compile_run installed-serial-bridge -DRISCRTE_TEST_INSTALLED_SERIAL_PATH \
   -I"$repo/sdk/driver" "$serial" "$repo/test/streams/installed_serial_bridge_test.cpp"
 compile_run serial-failed-acquire "$repo/test/streams/serial_failed_acquire_test.cpp"
-compile_run serial-provider-bridge "$serial" "$checked" "$repo/test/streams/serial_provider_bridge_test.cpp"
-compile_run serial-diagnostic-context "$serial" "$checked" "$repo/test/streams/serial_diagnostic_context_test.cpp"
-compile_run usb-semantic-bridge "$serial" "$checked" "$repo/test/streams/usb_semantic_bridge_test.cpp"
-compile_run usb-discovery-tick "$serial" "$checked" "$repo/test/streams/usb_discovery_tick_test.cpp"
-compile_run usb-device-abi "$serial" "$checked" "$repo/src/native/NativeDeviceBridge.cpp" \
+compile_run serial-provider-bridge -DRISCRTE_TEST_CLASS_BINDING_PROVIDED "$serial" "$checked" "$bridge_io" "$repo/test/streams/serial_provider_bridge_test.cpp"
+compile_run serial-diagnostic-context -DRISCRTE_TEST_CLASS_BINDING_PROVIDED "$serial" "$checked" "$bridge_io" "$repo/test/streams/serial_diagnostic_context_test.cpp"
+compile_run usb-semantic-bridge -DRISCRTE_TEST_CLASS_BINDING_PROVIDED "$serial" "$checked" "$bridge_io" "$repo/test/streams/usb_semantic_bridge_test.cpp"
+compile_run usb-discovery-tick -DRISCRTE_TEST_CLASS_BINDING_PROVIDED "$serial" "$checked" "$bridge_io" "$repo/test/streams/usb_discovery_tick_test.cpp"
+compile_run usb-device-abi -DRISCRTE_TEST_CLASS_BINDING_PROVIDED "$serial" "$checked" "$bridge_io" "$repo/src/native/NativeDeviceBridge.cpp" \
   "$repo/test/streams/usb_device_api_test.cpp"
 # These two bridge fixtures intentionally use fake storage/scheduler headers.
 production_common=("${common[@]}")

@@ -11,3 +11,5 @@ inline int xTaskCreate(void (*fn)(void*), const char* name, unsigned, void* ctx,
 inline unsigned ulTaskNotifyTake(int, unsigned) { return 0; }
 inline void xTaskNotifyGive(TaskHandle_t) {}
 inline void vTaskDelete(void*) {}
+
+inline void vTaskDelay(unsigned) {}

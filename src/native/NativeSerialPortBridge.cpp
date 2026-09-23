@@ -40,7 +40,7 @@ t5_serial_result_t diagnosticAcquire(const t5_serial_port_request_t* request,
     const char* detail = recorded && failure.diagnostic.detail[0]
         ? failure.diagnostic.detail : "No structured provider detail available";
     std::snprintf(acquisitionDiagnostic.detail, sizeof(acquisitionDiagnostic.detail),
-                  "acquire rc=%ld; provider=%s; provider rc=%ld; %s",
+                  "acquire rc=%ld; provider=%s; provider rc=%ld; %.128s",
                   static_cast<long>(reported), provider,
                   static_cast<long>(acquisitionDiagnostic.provider_error),
                   result == T5_SERIAL_OK ? "Provider returned incomplete lease or streams" : detail);

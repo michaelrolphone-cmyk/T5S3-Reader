@@ -2,6 +2,69 @@
 
 [PR #96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) on `impl/u1-riscrte` is the **only** implementation PR/branch. `AGENTS.md`, [USB remediation](USB_CONTRACT_VIOLATION_REMEDIATION.md), [execution order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [claim-scoped USB control](U1_USB_CONTROL_SCOPE_IMPLEMENTATION.md) and [package identity](PACKAGE_IDENTITY_VERSION_POLICY.md) govern the work. Owner controls merge, tag, release, flash and hardware qualification. A committed test is not a PASS.
 
+## September 23: stream scheduling, ownership and authorization
+
+Continuation base: `1ed82d151281b92df6f7b79856349de18f35cd1d`, PR #96 still open.
+A complete checkout is available in this continuation. Historical verification
+and remaining-work statements below describe earlier revisions, not this HEAD.
+In particular, `f8830fe` through `eeb4a6d` already wired installed serial inventory
+and sessions into the ESP32 production branch, disabled the legacy production USB
+API/class selector, and added the fourth serial witness. The earlier statement
+that the inventory manager is not invoked by production is superseded. Those
+changes alone do not establish physical or complete end-to-end acceptance.
+
+This continuation implements:
+
+- Fair `pumpPrepare` rotation across external-I/O pipes, with four-operation or
+  10-ms scheduler checkpoints and an actual task delay. An always-AGAIN adapter
+  cannot keep the inner scheduler loop running forever or starve other pipes.
+- Exact in-flight transfer tickets retaining firmware adapter state until the
+  corresponding completion. Close/context exit revoke scheduling immediately
+  and defer adapter destruction; duplicate/stale completions cannot mutate a
+  replacement stream or unpin a newer operation. Concurrent I/O to a pinned
+  adapter is refused. Provider write buffers are copied before dispatch.
+- Pause/resume preserves a completed read and accounts for partial writes.
+  EOF returned with a final payload drains that payload and terminates without
+  repeatedly calling the source. Cancellation discards staged work without
+  delivering late data into a reused pipe slot.
+- Direct typed-record reads/writes and metadata honor explicit context grants,
+  retaining atomic short-buffer behavior and independent READ/WRITE rights.
+  The existing pipe-connect API accepts authorized granted endpoints without
+  exposing publisher owner IDs. Downgrading rights fails affected live/paused
+  pipes and discards their staging; each scheduling turn rechecks authority.
+- Protected-source pipe copies fail closed, including into a self-declared
+  protected sink. A destination flag does not establish downstream retention,
+  revocation or purge authority. Direct authorized consumption remains available.
+- Existing compile/fixture defects repaired: initialize the serial publication
+  adapter's registry reference; bound diagnostic detail formatting; replace a
+  literal escaped newline in the installed-serial fixture; link the existing
+  host-only class-I/O adapter into legacy serial bridge fixtures without
+  duplicating their class-binding stubs. The non-production legacy epoch adapter
+  now maps epoch zero to a live nonzero semantic generation and exhaustion to
+  inactive zero. No production fallback was added.
+
+No public byte-v1/record-v2 ABI layout, app or driver payload changed. No package
+version bump or release is implied. The new asynchronous lifecycle regressions
+and grant/record regressions are part of the existing stream test runner.
+
+Verification: `ASAN_OPTIONS=detect_leaks=0 bash test/run_stream_test.sh` completed
+with exit 0 after the repairs: all 29 C++ test programs plus the C11 ABI check.
+C++ checks use `-Wall -Wextra -Werror` and AddressSanitizer/UndefinedBehaviorSanitizer.
+LeakSanitizer was disabled only because this container reports that it cannot
+operate under ptrace; leak checking is not claimed. The standalone asynchronous
+fixture also passed cancellation/reused-pipe coverage. `git diff --check` passed.
+No firmware/Xtensa build, new matching-head GitHub CI result, or hardware result
+was observed in this continuation; PlatformIO is not installed locally.
+
+Remaining stream work: this fixes asynchronous pipe dispatch, not all synchronous
+file adapter entry points. Direct read/write/seek/finish/close still need their
+own audit for global-lock I/O and underlying finite operation/cancellation
+bounds. Generic installed-ELF publication/import/context wiring and downstream
+protected retention/purge must be verified at the real provider-to-app boundary;
+registry-level grant tests are not proof of that entire boundary. Master
+reconciliation and the other U1 acceptance items remain open; no merge, release,
+flash or hardware qualification occurred.
+
 ## Ancestry, versions and scope
 
 Last measured ancestry, September 21 at `6e0a52b`: master `839f66c` had 119 master-only commits and U1 had 283 branch-only then. Last complete master backmerge `1ebfbfe` at `0a8c21c`. Master PR #103 CH34x and #105 DMA/VBUS were selectively incorporated, **not fully backmerged**. Master firmware 1.2.48 then; U1 firmware 1.2.35 remains unreleased. U1 apps: Driver Manager 1.0.5, App Store 1.0.3, Package Manager 1.0.1. Driver manifests: board-power 0.1.6, USB controller 0.1.5, host 0.1.4; CDC forked `usb-cdc-acm-v2` 0.1.2→0.1.3 (`c846628`)→**0.1.4** (`af6ba50`); CP210x 0.1.3→0.1.4 (`ad38c6f`)→**0.1.5** (`9fa6f47`); CH34x 0.1.2→0.1.3 (`d62ace1`)→**0.1.4** (`3a9c351`). CDC canonical ID migration remains unresolved; CH34x remains experimental/unpublished. No release was cut.
@@ -43,7 +106,7 @@ Last measured ancestry, September 21 at `6e0a52b`: master `839f66c` had 119 mast
 - `6495e81`, `4582d70`: hardware-blind `InstalledSerialInventory` manager uses installed capability enumeration and exact provider grants, consumes each class-owned inventory and publishes devices, retains exact grant/ID for checked shutdown and grantless graph recovery. Partial shutdown quarantines further discovery until exact retry; no compiled USB host or class switch. `c9db447` adds a two-provider manager fault/reconnect/release fixture; `3439663` wires it into existing provider-graph runner. `f5bb491` updates source-boundary checks for the real new ABI and generic monitor, instead of asserting the now-superseded legacy class ABI text. Manager source is **not yet invoked by production application discovery or serial acquisition**.
 - Class manifests updated without publishing: CDC `usb-cdc-acm-v2` 0.1.4 (`af6ba50`), CP210x 0.1.5 (`9fa6f47`), CH34x 0.1.4 (`3a9c351`), with the experimental CH34x publication status unchanged. Packaging derives version dynamically from manifests; no loose asset or release was produced.
 
-## Verification and outstanding acceptance
+## Historical September 21 verification and remaining-work snapshot
 
 Historical green GitHub workflow `35427506383` ran at old `7bffec3`, NOT these commits. GitHub branch/action lookup still showed only old workflow results and no workflow run for checked new code SHA `3a9c351`; complete checkout is blocked by container DNS resolving github.com (reproduced this continuation). Isolated C/C++ struct/constructor smoke checked a limited syntax fix, **not a repository build/test PASS**. Production host/class inventory, generic monitor, serial-stream and firmware/Xtensa/app/package/catalog/import/relocation tests are all **committed or runner-wired but not observed passing**. No merge, release, tag, flash, owner hardware qualification, manually gated workflow or second implementation PR.
 

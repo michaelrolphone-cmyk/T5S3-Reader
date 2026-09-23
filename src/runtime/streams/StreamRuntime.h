@@ -30,6 +30,7 @@ struct ExternalIo {
   uint32_t streamGeneration = 0;
   Provider provider{};
   uint32_t request = 0;
+  uint64_t ticket = 0;
   std::array<uint8_t, T5_STREAM_CHUNK> payload{};
 };
 class Registry {
@@ -76,11 +77,14 @@ class Registry {
   int32_t write(uint32_t owner, t5_stream_t, const void*, uint32_t, uint32_t*);
   int32_t finish(uint32_t owner, t5_stream_t, int32_t terminal = T5_STREAM_EOF);
   int32_t seek(uint32_t owner, t5_stream_t, uint64_t);
+  // BUSY revokes immediately and defers destruction until the already prepared
+  // I/O completes. The caller must still submit that completion exactly once.
   int32_t close(uint32_t owner, t5_stream_t);
   int32_t info(uint32_t owner, t5_stream_t, t5_stream_info_t*);
   int32_t connect(uint32_t owner, t5_stream_t, t5_stream_t, uint32_t, t5_pipe_t*);
   // Installed-ELF endpoints are buffer-backed and never store ELF callbacks.
-  // protection=kStreamProtected refuses pipes into a public sink.
+  // Protected sources refuse pipe copies until downstream retention/purge
+  // authority exists; self-declared destination protection is insufficient.
   int32_t publishEndpoint(uint32_t publisher, uint32_t kind, uint32_t flags,
                           uint32_t byteCapacity, const char* schema,
                           uint32_t maxRecord, uint32_t capacityRecords,
@@ -116,6 +120,8 @@ class Registry {
     uint64_t read = 0, written = 0;
     uint32_t protection = kStreamPublic;
     bool elfEndpoint = false;
+    bool closing = false;
+    uint64_t inFlight = 0;
     Grant grants[MaxGrants]{};
   };
   struct Pipe {
@@ -130,11 +136,14 @@ class Registry {
   std::array<Stream, MaxStreams> streams_{};
   std::array<Pipe, MaxPipes> pipes_{};
   unsigned first_ = 0;
+  uint64_t nextTicket_ = 0;
   Stream* stream(uint32_t owner, t5_stream_t);
   Stream* streamByHandle(t5_stream_t);
   Pipe* pipe(uint32_t owner, t5_pipe_t);
   bool leased(t5_stream_t, bool reading) const;
   bool allowed(const Stream&, uint32_t caller, uint32_t need) const;
+  Stream* accessible(uint32_t caller, t5_stream_t);
+  void invalidateUnauthorizedPipes();
   void failPipes(t5_stream_t, int32_t error);
   void clearGrants(Stream&);
   int32_t transfer(Stream&, bool reading, void*, uint32_t, uint32_t*);

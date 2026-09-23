@@ -44,6 +44,10 @@ void schedule(void*) {
   for (;;) {
     ulTaskNotifyTake(pdTRUE, wait);
     if (serialTxRetry.load(std::memory_order_acquire)) (void)drainPairTx();
+    // At most four external chunks or ten milliseconds per turn, then really
+    // block even when notifications or a permanently AGAIN provider persist.
+    const uint32_t started = millis();
+    unsigned operations = 0;
     for (;;) {
       RuntimeStreams::ExternalIo io{};
       {
@@ -68,6 +72,12 @@ void schedule(void*) {
       {
         Lock lock;
         registry.pumpComplete(io, result, io.reading ? incoming : nullptr, count);
+      }
+      if (++operations >= RuntimeStreams::Registry::MaxPipes ||
+          static_cast<uint32_t>(millis() - started) >= 10) {
+        wait = pdMS_TO_TICKS(10);
+        vTaskDelay(1);
+        break;
       }
     }
   }

@@ -5,10 +5,12 @@
 // The stream bridge fixture owns the USB serial fake. This translation unit
 // adapts it to the installed-class interface without changing production
 // routing. Never link it with the production NativeUsbClassBridge.cpp.
+#ifndef RISCRTE_TEST_CLASS_BINDING_PROVIDED
 bool nativeUsbClassEnsureInstalled(uint16_t) { return nativeUsbClassAvailable(); }
 bool nativeUsbClassAttachPair(uint32_t owner, t5_stream_t rx, t5_stream_t tx) {
   return owner != 0 && rx != 0 && tx != 0 && rx != tx;
 }
+#endif
 int32_t nativeUsbClassRead(uint8_t* data, uint32_t capacity, uint32_t* count) {
   if (count) *count = 0;
   if (!data || !capacity || !count) return T5_STREAM_INVALID;

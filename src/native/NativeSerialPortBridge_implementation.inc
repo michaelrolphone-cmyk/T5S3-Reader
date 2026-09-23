@@ -755,7 +755,12 @@ int32_t nativeSerialProviderWrite(const uint8_t* src, uint32_t length, uint32_t*
 }
 #else
 bool nativeSerialProviderActive() { return nativeUsbClassAvailable(); }
-uint32_t nativeSerialProviderEpoch() { return devices.epoch(); }
+uint32_t nativeSerialProviderEpoch() {
+  // The legacy host fixture starts at epoch zero, while semantic streams
+  // reserve zero for an inactive provider. Preserve every valid generation.
+  const uint32_t epoch = devices.epoch();
+  return epoch == UINT32_MAX ? 0 : epoch + 1u;
+}
 int32_t nativeSerialProviderRead(uint8_t* dst, uint32_t capacity, uint32_t* out) {
   return nativeUsbClassRead(dst, capacity, out);
 }
