@@ -17,6 +17,12 @@
 #include <freertos/task.h>
 #endif
 
+// This loader runs below an app on loopTask's 16 KiB stack. Dependency depth
+// is bounded, but large frames multiplied by that depth still overflow it.
+#if defined(__GNUC__)
+#pragma GCC diagnostic error "-Wframe-larger-than=384"
+#endif
+
 namespace RuntimeInstalledProviders {
 namespace {
 using namespace RuntimePackages;
@@ -38,8 +44,23 @@ constexpr Root kRoots[] = {
     {"/Services", Kind::Service},
 };
 
+struct RegistrationFrame {
+    char target[96]{};
+    char name[160]{};
+    char id[64]{};
+    char capability[64]{};
+    Identity identity{};
+    RuntimeProviders::RequirementV2 needs[kMaxPackageRequirements]{};
+    const char* symbols[128]{};
+    ManagerProviderCandidateV2 candidate{};
+};
+
 struct ProviderAncestry {
     char ids[kMaxProviders][64]{};
+    // One heap-owned workspace per acquisition, with a distinct slot for
+    // each permitted depth. A child cannot overwrite its parent's paths,
+    // requirements or import table. Nothing here outlives registration.
+    RegistrationFrame frames[kMaxProviders]{};
 };
 
 bool providerFail(const char* stage, const char* identity) {
@@ -167,13 +188,15 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
     for (size_t i = 0; i < depth; ++i)
         if (std::strcmp(ancestry.ids[i], id) == 0) return false;
     std::snprintf(ancestry.ids[depth], sizeof(ancestry.ids[depth]), "%s", id);
-    char target[96]{};
+    auto& frame = ancestry.frames[depth];
+    auto& target = frame.target;
     const int n = std::snprintf(target, sizeof(target), "%s/%s", root, id);
     if (n <= 0 || static_cast<size_t>(n) >= sizeof(target) ||
         !systemPackageUseGate().pin(target)) return false;
     bool accepted = false;
     do {
-        Identity identity{};
+        auto& identity = frame.identity;
+        identity = {};
         // Structural verification never trusts requirements to self-authorize.
         // Their actual versions are checked against the verified snapshot
         // below, exactly once per startup rather than by rehashing every ELF.
@@ -181,7 +204,7 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
                 [](const char*) -> uint32_t { return UINT32_MAX; }, identity) ||
             identity.kind != kind || std::strcmp(identity.id, id) ||
             std::strcmp(identity.artifact, "driver.elf")) break;
-        char name[160]{};
+        auto& name = frame.name;
         if (!pathFor(name, root, id, ".package.json")) break;
         size_t jsonSize = 0;
         uint8_t* json = readFile(name, 4096, jsonSize);
@@ -207,7 +230,7 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         size_t profileSize = 0;
         uint8_t* profileBytes = readFile(name, 191, profileSize);
         if (!profileBytes) break;
-        char capability[64]{};
+        auto& capability = frame.capability;
         uint32_t api = 0;
         const bool goodProfile = profile(reinterpret_cast<const char*>(profileBytes),
                                          profileSize, capability, api);
@@ -215,7 +238,7 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         if (!goodProfile || std::strcmp(capability, expectedCapability) ||
             api != expectedApi) break;
 
-        RuntimeProviders::RequirementV2 needs[kMaxPackageRequirements]{};
+        auto& needs = frame.needs;
         bool goodRequirements = plan->requirementCount <= kMaxPackageRequirements;
         for (size_t i = 0; goodRequirements && i < plan->requirementCount; ++i) {
             uint32_t selected = 0;
@@ -234,7 +257,7 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         size_t importsSize = 0;
         uint8_t* imports = readFile(name, 128u * 128u, importsSize);
         if (!imports) break;
-        const char* symbols[128]{};
+        auto& symbols = frame.symbols;
         size_t symbolCount = 0;
         const bool goodImports = parseExactImports(imports, importsSize, symbols, symbolCount);
         if (!goodImports) { std::free(imports); break; }
@@ -245,7 +268,8 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         size_t elfSize = 0;
         uint8_t* elf = readFile(name, 8u * 1024u * 1024u, elfSize);
         if (!elf) { std::free(imports); break; }
-        ManagerProviderCandidateV2 candidate{};
+        auto& candidate = frame.candidate;
+        candidate = {};
         candidate.driverId = id;
         candidate.provides = capability;
         candidate.providesApi = api;
@@ -275,6 +299,7 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
     if (selectedApi) *selectedApi = 0;
     if (!verified || !capability || !minimumApi || depth >= kMaxProviders)
         return false;
+    auto& frame = ancestry.frames[depth];
     const uint32_t available = versionInInstalledSnapshot(verified, capability);
     if (available < minimumApi)
         return providerFail("Provider dependency unavailable", capability);
@@ -290,18 +315,18 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
             ordinaryCooperativeYield(1, 1);
             HalFile item = directory.openNextFile();
             if (!item.isOpen()) break;
-            char id[64]{};
+            auto& id = frame.id;
             const size_t length = item.getName(id, sizeof(id));
             const bool valid = item.isDirectory() && length && length < sizeof(id) &&
                                safeId(id);
             (void)item.close();
             if (!valid) continue;
-            char name[160]{};
+            auto& name = frame.name;
             if (!pathFor(name, root.path, id, "provider-abi.v1")) continue;
             size_t profileSize = 0;
             uint8_t* profileBytes = readFile(name, 191, profileSize);
             if (!profileBytes) continue;
-            char provided[64]{};
+            auto& provided = frame.capability;
             uint32_t api = 0;
             const bool matching =
                 profile(reinterpret_cast<const char*>(profileBytes), profileSize,
