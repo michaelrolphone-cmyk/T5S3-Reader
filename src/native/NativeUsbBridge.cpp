@@ -35,41 +35,15 @@ uint64_t pendingConfigurationToken = 0;
 int32_t lastDeviceCount = -1;
 bool running = false;
 bool quarantined = false;
-bool debugConsoleSuspended = false;
 t5_usb_serial_state_t state{};
 // reconcile() is always invoked with the bridge mutex held. Keeping the USB
 // descriptor workspace static avoids putting 4096 bytes on loopTask's stack.
 uint8_t configurationDescriptor[RISC_USB_CONFIG_LIMIT]{};
 
-// Arduino's boot debug CDC and the USB host share the internal PHY on this
-// board. The known-good v1.2.16 firmware released debug CDC and waited 20 ms
-// BEFORE powering VBUS or installing the host. This is only boot-console
-// arbitration: the physical host, PHY and USB device operations stay in ELFs.
-// Never re-enable the debug interface while an ELF may still own the PHY.
-void suspendDebugConsole() {
-#if defined(ENABLE_SERIAL_LOG) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE && \
-    defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
-    if (!debugConsoleSuspended) {
-        LOG_INF("USB", "USBREF stage=debug-console-release");
-        Serial.end();
-        delay(20);
-        debugConsoleSuspended = true;
-        LOG_INF("USB", "USBREF stage=debug-console-released");
-    }
-#endif
-}
-void restoreDebugConsole() {
-#if defined(ENABLE_SERIAL_LOG) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE && \
-    defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
-    if (debugConsoleSuspended) {
-        delay(20);
-        Serial.begin(115200);
-        debugConsoleSuspended = false;
-        LOG_INF("USB", "USBREF stage=debug-console-restored");
-    }
-#endif
-}
-
+// Keep the boot Serial/JTAG service initialized. The installed controller
+// owns the PHY route and returns it while externally powered, even when this
+// host consumer remains open. Serial.end()/begin() here would prevent that
+// automatic return or steal the PHY from a live host.
 bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
 bool initialize() {
     if (!mutex) mutex = xSemaphoreCreateMutex();
@@ -105,7 +79,7 @@ bool releaseGrant(Lease& grant, const char* phase) {
 }
 
 // Failed activation or a rejected host ABI can leave partially started ELFs.
-// Clearing quarantine or restoring the debug PHY requires graph-wide shutdown.
+// Clearing quarantine requires graph-wide shutdown; PHY routing belongs to the ELF.
 // A clean serial release may instead leave another consumer's grant active.
 bool restoreAfterSafeShutdown(bool allowShared = false) {
     // A UI navigation lease can legitimately keep the same host alive after
@@ -128,7 +102,6 @@ bool restoreAfterSafeShutdown(bool allowShared = false) {
     lastDeviceCount = -1;
     quarantined = false;
     initialState(T5_USB_STATUS_OFF);
-    if (!shared) restoreDebugConsole();
     LOG_INF("USB", "USBREF stage=serial-released shared=%u", shared ? 1u : 0u);
     return true;
 }
@@ -386,11 +359,6 @@ bool serialStart(const t5_usb_line_coding_t* coding) {
         return !session || (serial && serial->configure(session, coding->baud_rate,
                     coding->data_bits, coding->parity, coding->stop_bits));
     }
-    // Release the boot debug console BEFORE any provider may power VBUS or
-    // usb_host_install() allocates the shared internal PHY/interrupt. Restoring
-    // it later is conditional on a fully quiescent graph, not merely on an
-    // unsuccessful acquire() result.
-    if (!RuntimeInstalledProviders::hasLiveGrants()) suspendDebugConsole();
     LOG_INF("USB", "USBREF stage=host-acquire-begin");
     if (!RuntimeInstalledProviders::acquire(
             "usb-host-v2", "usb.host", 1, &hostGrant)) {

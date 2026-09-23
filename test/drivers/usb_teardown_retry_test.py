@@ -38,9 +38,8 @@ class UsbTeardownRetry(unittest.TestCase):
         self.assertIn("allowShared && !quarantined && RuntimeInstalledProviders::hasLiveGrants()", recovery)
         self.assertLess(recovery.index("if (!shared && !RuntimeInstalledProviders::shutdown())"),
                         recovery.index("quarantined = false;"))
-        self.assertLess(recovery.index("quarantined = false;"),
-                        recovery.index("restoreDebugConsole();"))
-        self.assertIn("if (!shared) restoreDebugConsole();", recovery)
+        self.assertNotIn("Serial.end();", self.bridge)
+        self.assertNotIn("Serial.begin(", self.bridge)
 
     def test_session_close_and_grant_release_are_independent(self):
         close = self.bridge.split("bool closeClass()", 1)[1].split("bool openClass(", 1)[0]
@@ -74,7 +73,7 @@ class UsbTeardownRetry(unittest.TestCase):
         self.assertIn("USBCTRL stage=device-close-deferred", deferred)
         self.assertIn("return true;", deferred)
         self.assertIn("*d = {};", release)
-        quiesce = self.controller.split("bool quiesce(void *)", 1)[1].split(
+        quiesce = self.controller.split("bool quiesce_host()", 1)[1].split(
             "void stop()", 1
         )[0]
         self.assertNotIn("if (fault || claimed(0)) return false;", quiesce)
@@ -88,7 +87,7 @@ class UsbTeardownRetry(unittest.TestCase):
             (0, 1, 6))
 
     def test_idle_host_drains_no_clients_even_if_no_device_needs_freeing(self):
-        quiesce = self.controller.split("bool quiesce(void *)", 1)[1].split(
+        quiesce = self.controller.split("bool quiesce_host()", 1)[1].split(
             "void stop()", 1
         )[0]
         self.assertLess(quiesce.index("usb_host_client_deregister(client)"),

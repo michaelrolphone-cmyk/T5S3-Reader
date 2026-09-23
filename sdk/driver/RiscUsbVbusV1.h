@@ -26,6 +26,21 @@ typedef struct {
      * into this provider, or lower-device claim can outlive the ELF. */
     bool (*quiesce)(void *context);
 } risc_usb_vbus_api_v1;
+/* Additive v1 extension. Consumers must check base.struct_size before using
+ * it. Status is observed by the sole chip owner, never by firmware/UI code.
+ * SOURCE is our own OTG output, not evidence of a charger/computer. While
+ * sourcing, an empty host must release its source and allow input detection
+ * to settle before it can reliably distinguish another source on VBUS. */
+enum {
+    RISC_USB_POWER_UNKNOWN = -1,
+    RISC_USB_POWER_ABSENT = 0,
+    RISC_USB_POWER_EXTERNAL = 1,
+    RISC_USB_POWER_SOURCE = 2
+};
+typedef struct {
+    risc_usb_vbus_api_v1 base;
+    int32_t (*input_status)(void *context);
+} risc_usb_vbus_monitor_api_v1;
 #ifdef __cplusplus
 }
 #endif

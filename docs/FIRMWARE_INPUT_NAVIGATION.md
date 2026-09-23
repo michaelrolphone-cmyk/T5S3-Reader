@@ -13,6 +13,15 @@ providers; physical devices of all three kinds need not be connected. The
 existing controller/power drivers retain physical USB ownership and their
 host-role-before-VBUS startup sequence.
 
+Automatic charging/computer-serial switching additionally requires
+**usb-controller-esp32s3 0.1.15** (was 0.1.14) and
+**board-power-t5s3-v2 0.1.5** (was 0.1.4), plus the firmware change that keeps
+the boot serial service initialized. These versions exceed the v1.2.65 release.
+Update both drivers together with navigation Off and no app holding USB grants.
+The controller checks the additive power-monitor interface size and rejects an
+older power driver with an explicit upgrade diagnostic. Existing consumers of
+the original power v1 prefix remain compatible.
+
 **Settings → Controls → Keyboard/controller navigation** enables this UI
 consumer (default On). Turn it Off to release the UI's provider/package leases
 before updating USB drivers, or when external navigation is unwanted. Use touch
@@ -106,9 +115,55 @@ sleep and retains unsafe modules/dependencies. Wake reacquires normally. Keyboar
 and controller input are not deep-sleep wake sources in this change.
 
 The legacy serial bridge also respects shared provider lifetime: a clean serial
-close may leave the host active for another grant, without declaring quarantine
-or restoring the boot-console PHY. Failed serial cleanup still requires verified
-shutdown before reuse.
+close may leave the host active for another grant, without declaring quarantine.
+It keeps the boot Serial/JTAG service initialized and does not call Serial.end()
+or Serial.begin() during host sessions. The controller ELF alone switches the
+PHY route. Failed serial cleanup still requires verified shutdown before reuse.
+
+## Automatic charging and computer serial priority
+
+The physical controller manages the port role while its API and dependency
+grants stay valid. The firmware UI and apps do not write charger registers,
+guess the USB role or repeatedly unload/reload drivers.
+
+| Observed state | Provider behavior |
+| --- | --- |
+| External power at startup or while parked | Leave host uninstalled and its power output off; retain boot serial route and normal charging settings |
+| Charger/computer removed | Require two absent-input readings 500 ms apart, then use the established host-before-VBUS startup sequence |
+| Device attached, enumerating, or still claimed | Keep the host intact; no idle power probes or input interruption |
+| Empty host for 2 seconds | Drain hardware, release VBUS, restore charging and saved boot PHY; wait 500 ms before checking for incoming power |
+| Unknown power or failed startup | Block unsafe sourcing; at most three failed samples/start attempts before a visible stopped state |
+| Cleanup failure | Retain unsafe resources; never announce a successful serial handback or restart the host |
+
+The BQ25896 chip owner reads source/input status through its existing I2C
+capability. OTG output is explicitly distinguished from incoming power. The
+legacy Board::isUsbConnected() boolean includes OTG and is **not** used for role
+selection. A voltage reading while sourcing cannot reliably distinguish our
+own output from another source, so an empty host periodically enters the
+source-off observation window. It never does so during enumeration or gameplay.
+The 500 ms interval exceeds the charger's 220 ms input qualification delay.
+
+No computer-versus-charger guess is required: both keep host discovery stopped.
+A computer with a data cable can enumerate the restored Serial/JTAG interface;
+a charger supplies power without enumeration. The board's shared internal PHY
+supports one role at a time. This is direct single-port role switching, not
+powered-hub, USB-PD or simultaneous host-and-PC support. Charging follows the
+existing battery profile and charge limits; a full battery need not draw charge.
+
+The role machine runs from bounded controller polling. It waits by returning to
+the owner loop, reads power at most once per 500 ms in normal parked operation,
+backs off failed startups, and makes no repeated SD/provider scans. Empty-port
+host shutdown verifies claims, interrupt/bulk DMA, callbacks, devices, client,
+host and PHY before restoring VBUS/serial state. Its I2C dependency stays claimed
+for observation and is released on actual provider shutdown. Physical detach
+flows through the existing device events and class cleanup, preserving keyboard
+event order and gamepad current-state semantics. All observations depend on the
+consumer continuing to poll; rendering or long app work can delay transitions.
+
+Role changes and failures appear through the existing controller diagnostic
+interface (including Gameboy's test screen) and bounded transition logs. After
+a stopped failure, close USB-using apps and toggle navigation Off/On to retry;
+unverified cleanup continues to block restart.
 
 ## Verification
 
@@ -116,10 +171,19 @@ shutdown before reuse.
 keyboard ordering, HID/XInput mappings, focus suppression, duplicate grants,
 failure rollback, held-input handback, unplug, absent-provider scan bounds and
 sleep cleanup. Existing keyboard/text-editor and controller DMA tests run in
-the same suite. USB packaging and target-build workflows include the new ELF.
+the same suite. The production role-machine test covers external power at boot,
+debounced unplug, active-device protection, empty-host probing, reconnect,
+failed cleanup, bounded retries and tick rollover.
+`test/run_board_power_t5s3_v2_test.sh` exercises the real chip-owner implementation
+with external/input/source status, charge restoration and repeated power leases.
+USB packaging and target-build workflows include the new ELF.
 
 Hardware acceptance still requires installing the new firmware and navigation
 package: navigate Home/settings, open an app that requests input, exit with a
 button held, and verify navigation returns after release without replugging.
 Check both keyboard typing and gamepad current-state behavior. These scenarios
 are validation guidance, not claims that new hardware testing has occurred.
+Also boot with a charger and with a computer, swap a controller for each while
+the UI/app stays open, confirm charging/COM-port return, then swap back to the
+controller without rebooting. The gamepad test screen should show external-power
+mode while connected to the computer; use the single port sequentially.

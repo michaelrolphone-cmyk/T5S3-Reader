@@ -43,6 +43,10 @@ c++ -std=c++17 -Wall -Wextra -Werror \
   "$repo/test/drivers/controller_interrupt_test.cpp" -o "$build/controller-interrupt-test"
 "$build/controller-interrupt-test"
 
+c++ -std=c++11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/controller_role_switch_test.cpp" -o "$build/controller-role-test"
+"$build/controller-role-test"
+
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/usb_ui_navigation_test.c" -o "$build/navigation-test"
 "$build/navigation-test"

@@ -366,9 +366,23 @@ static void stop(void) {
     if (lease || bus_claim || source_requested || faulted) return;
     bus = NULL; clock_api = NULL; started = false; saved = false;
 }
-static const risc_usb_vbus_api_v1 capability = {
-    RISC_USB_VBUS_API_V1, sizeof(risc_usb_vbus_api_v1), NULL,
-    acquire_host, release_host, quiesce
+static int32_t input_status(void *unused) {
+    (void)unused;
+    uint8_t status = 0, adc = 0, power = 0;
+    if (!started || !bus_claim || faulted ||
+        !read_reg(REG_POWER, &power) || !read_reg(REG_STATUS, &status) ||
+        !read_reg(REG_VBUS_ADC, &adc)) return RISC_USB_POWER_UNKNOWN;
+    /* Never mistake the OTG output for incoming USB power. Treat an
+     * unowned source or incomplete source transition as unknown. */
+    if ((power & OTG_ENABLE) || (status & VBUS_STATUS_MASK) == VBUS_OTG)
+        return lease && source_requested ? RISC_USB_POWER_SOURCE : RISC_USB_POWER_UNKNOWN;
+    if ((status & (VBUS_STATUS_MASK | POWER_GOOD)) || (adc & VBUS_GOOD))
+        return RISC_USB_POWER_EXTERNAL;
+    return RISC_USB_POWER_ABSENT;
+}
+static const risc_usb_vbus_monitor_api_v1 capability = {
+    {RISC_USB_VBUS_API_V1, sizeof(risc_usb_vbus_monitor_api_v1), NULL,
+     acquire_host, release_host, quiesce}, input_status
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),

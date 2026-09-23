@@ -131,6 +131,37 @@ int main(void) {
            power->release_host && power->quiesce && driver->quiesce);
     assert(!driver->start(deps, 1));
 
+    /* The actual chip-owner extension distinguishes incoming power from
+     * our own source, survives repeated park/reacquire without releasing
+     * I2C, and never treats an I2C error as permission to start the host. */
+    const risc_usb_vbus_monitor_api_v1 *monitor = driver->capability;
+    assert(power->struct_size >= sizeof(*monitor) && monitor->input_status);
+    reset_board();
+    assert(monitor->input_status(NULL) == RISC_USB_POWER_ABSENT);
+    board.external = 1;
+    assert(monitor->input_status(NULL) == RISC_USB_POWER_EXTERNAL);
+    assert(board.writes == 0);
+    board.external = 0;
+    board.fail_probe = 1;
+    assert(monitor->input_status(NULL) == RISC_USB_POWER_UNKNOWN);
+    board.fail_probe = 0;
+    board.regs[3] = 0x20; /* unowned OTG is not a clean battery-only state */
+    assert(monitor->input_status(NULL) == RISC_USB_POWER_UNKNOWN);
+    board.regs[3] = 0x10;
+    for (unsigned i = 0; i < 3; ++i) {
+        uint64_t source = 0;
+        assert(power->acquire_host(NULL, 500, &source));
+        assert(monitor->input_status(NULL) == RISC_USB_POWER_SOURCE);
+        board.external = 1;
+        assert(power->release_host(NULL, source));
+        assert(board.claim && !board.releases);
+        assert_restored(); /* OTG off, charge enabled */
+        assert(monitor->input_status(NULL) == RISC_USB_POWER_EXTERNAL);
+        board.external = 0;
+    }
+    shutdown_board();
+    assert(monitor->input_status(NULL) == RISC_USB_POWER_UNKNOWN);
+
     reset_board();
     uint64_t token = UINT64_MAX;
     assert(!power->acquire_host(NULL, 501, &token) && token == 0);
