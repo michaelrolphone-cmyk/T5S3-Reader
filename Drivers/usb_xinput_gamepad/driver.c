@@ -13,12 +13,7 @@ typedef struct {
     bool wireless;
     risc_usb_gamepad_state_v1 state;
 } gamepad;
-typedef struct {
-    uint64_t token, filter;
-    risc_usb_gamepad_event_v1 queue[RISC_USB_INPUT_QUEUE_LENGTH];
-    uint8_t head, count;
-    bool gap;
-} subscriber;
+#include "../usb_hid_gamepad/StateMailbox.h"
 typedef struct { uint64_t device; const char *status; } inspected_device;
 static const risc_usb_host_interrupt_v1 *host;
 static gamepad pads[PADS];
@@ -43,14 +38,8 @@ static bool emit(uint8_t kind, const risc_usb_gamepad_state_v1 *state) {
     if (sequence == UINT64_MAX) return false;
     risc_usb_gamepad_event_v1 event = {0};
     event.sequence = ++sequence; event.kind = kind; event.state = *state;
-    for (size_t i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i) {
-        subscriber *s = &subscribers[i];
-        if (!s->token || s->gap || (s->filter && s->filter != state->device)) continue;
-        if (s->count == RISC_USB_INPUT_QUEUE_LENGTH) {
-            s->head = s->count = 0; s->gap = true; continue;
-        }
-        s->queue[(s->head + s->count++) % RISC_USB_INPUT_QUEUE_LENGTH] = event;
-    }
+    for (size_t i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i)
+        mailbox_publish(&subscribers[i], &event);
     return true;
 }
 static uint16_t le16(const uint8_t *p) { return (uint16_t)p[0] | ((uint16_t)p[1] << 8); }
@@ -218,8 +207,8 @@ static bool poll(void *ctx, size_t max_reports) {
             if (!pad->claim || quiet[i]) continue;
             active = true;
             uint8_t report[64];
-            // The host's persistent interrupt transfer cooperatively waits
-            // at most 10 ms; max_reports caps total I/O and wall time.
+            // Drain already completed transfers without waiting for future input.
+            // max_reports bounds work; current state replaces earlier input.
             int32_t length = host->interrupt_read(bus->context, pad->claim, pad->endpoint,
                                                   report, sizeof(report), 10);
             ++attempted;
@@ -269,11 +258,7 @@ static int32_t next(void *ctx, uint64_t token, risc_usb_gamepad_event_v1 *out) {
     for (size_t i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i) {
         subscriber *s = &subscribers[i];
         if (s->token != token) continue;
-        if (s->gap) { s->gap = false; s->head = s->count = 0; return -1; }
-        if (!s->count) return 0;
-        *out = s->queue[s->head];
-        s->head = (s->head + 1u) % RISC_USB_INPUT_QUEUE_LENGTH; --s->count;
-        return 1;
+        return mailbox_take(s, out);
     }
     return -1;
 }

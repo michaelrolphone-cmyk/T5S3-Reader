@@ -197,8 +197,7 @@ int main(int argc, char **argv) {
     risc_usb_gamepad_event_v1 pad_event = {0};
     assert(pads->next(pads->context, pad_sub, &pad_event) == 1 &&
            pad_event.kind == 1 && pad_event.state.connected);
-    assert(pads->next(pads->context, pad_sub, &pad_event) == 1 &&
-           pad_event.kind == 3 && (pad_event.state.buttons & 1u) &&
+    assert((pad_event.state.buttons & 1u) &&
            pad_event.state.x == 32767 && pad_event.state.y == -32767);
     risc_usb_keyboard_state_v1 key_state[4] = {{0}};
     risc_usb_gamepad_state_v1 pad_state[4] = {{0}};
@@ -222,13 +221,10 @@ int main(int argc, char **argv) {
     assert(pad_reads == reads_before + 2); /* Honor a smaller work budget. */
     assert(pads->poll(pads->context, 4) && pad_burst_read == 4);
     assert(pad_reads == reads_before + 5); /* Stop after the first idle read. */
-    const unsigned buttons[] = {0, 2, 0, 1};
-    const int axes[] = {0, -32767, 0, 32767};
-    for (unsigned i = 0; i < 4; ++i) {
-        assert(pads->next(pads->context, pad_sub, &pad_event) == 1);
-        assert(pad_event.kind == 3 && pad_event.state.buttons == buttons[i]);
-        assert(pad_event.state.x == axes[i] && pad_event.state.y == -axes[i]);
-    }
+    /* Four past states collapse to the controller's current state. */
+    assert(pads->next(pads->context, pad_sub, &pad_event) == 1);
+    assert(pad_event.kind == 3 && pad_event.state.buttons == 1);
+    assert(pad_event.state.x == 32767 && pad_event.state.y == -32767);
     assert(pads->next(pads->context, pad_sub, &pad_event) == 0);
     pad_burst = 0;
     assert(!keyboard->quiesce() && !gamepad->quiesce() && !generic->quiesce());

@@ -16,12 +16,7 @@ typedef struct {
     field fields[FIELDS];
     risc_usb_gamepad_state_v1 state;
 } gamepad;
-typedef struct {
-    uint64_t token, filter;
-    risc_usb_gamepad_event_v1 queue[RISC_USB_INPUT_QUEUE_LENGTH];
-    uint8_t head, count;
-    bool gap;
-} subscriber;
+#include "StateMailbox.h"
 typedef struct {
     uint32_t page, size, count, report_id;
     int32_t minimum, maximum;
@@ -206,15 +201,8 @@ static bool emit(uint8_t kind, const risc_usb_gamepad_state_v1 *state) {
     if (sequence == UINT64_MAX) return false;
     risc_usb_gamepad_event_v1 event = {0};
     event.sequence = ++sequence; event.kind = kind; event.state = *state;
-    for (unsigned i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i) {
-        subscriber *s = &subscribers[i];
-        if (!s->token || (s->filter && s->filter != state->device) || s->gap) continue;
-        if (s->count == RISC_USB_INPUT_QUEUE_LENGTH) {
-            s->head = s->count = 0; s->gap = true; continue;
-        }
-        s->queue[(s->head + s->count) % RISC_USB_INPUT_QUEUE_LENGTH] = event;
-        ++s->count;
-    }
+    for (size_t i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i)
+        mailbox_publish(&subscribers[i], &event);
     return true;
 }
 static bool state_changed(const risc_usb_gamepad_state_v1 *a,
@@ -371,11 +359,7 @@ static int32_t next(void *ctx, uint64_t token, risc_usb_gamepad_event_v1 *out) {
     for (unsigned i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i) {
         subscriber *s = &subscribers[i];
         if (s->token != token) continue;
-        if (s->gap) { s->gap = false; s->head = s->count = 0; return -1; }
-        if (!s->count) return 0;
-        *out = s->queue[s->head];
-        s->head = (s->head + 1u) % RISC_USB_INPUT_QUEUE_LENGTH; --s->count;
-        return 1;
+        return mailbox_take(s, out);
     }
     return -1;
 }
