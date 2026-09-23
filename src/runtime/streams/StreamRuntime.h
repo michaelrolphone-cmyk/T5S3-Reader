@@ -77,9 +77,18 @@ class Registry {
     auto* s = stream(owner, h);
     if (!s || !count || (!data && size)) return T5_STREAM_INVALID;
     if (s->kind != T5_STREAM_BYTES || !s->buffer) return T5_STREAM_UNSUPPORTED;
+    if (s->closing || s->inFlight || leased(h, true)) return T5_STREAM_BUSY;
     auto flags = s->flags; s->flags |= T5_STREAM_READ;
     auto r = transfer(*s, true, data, size, count);
     s->flags = flags; return r;
+  }
+  int32_t consumeRecord(uint32_t owner, t5_stream_t h, void* data, uint32_t size, uint32_t* count) {
+    if (count) *count = 0;
+    auto* s = stream(owner, h);
+    if (!s) return T5_STREAM_INVALID;
+    const auto flags = s->flags; s->flags |= T5_STREAM_READ;
+    const auto result = readRecord(owner, h, data, size, count);
+    s->flags = flags; return result;
   }
   int32_t attach(uint32_t owner, uint32_t kind, uint32_t flags, Provider provider, t5_stream_t* out);
   int32_t read(uint32_t owner, t5_stream_t, void*, uint32_t, uint32_t*, DirectIo* = nullptr);

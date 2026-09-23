@@ -370,6 +370,7 @@ void releaseStreams(void*, uint32_t id) {
     Lock lock;
     gnss.releaseOwner(id);
     gnssGrants.releaseOwner(id);
+    forgetProviderConsumer(id);
     registry.release(id, &retired.values);
     notePairClosed(pairRx);
     notePairClosed(pairTx);

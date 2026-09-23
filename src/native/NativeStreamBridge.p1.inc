@@ -32,6 +32,7 @@ uint32_t serialRefs = 0;
 std::atomic<bool> serialTxRetry{false};
 int32_t drainPairTx();
 void serviceSerialPipeRx();
+void forgetProviderConsumer(uint32_t);
 struct Lock {
   Lock() { xSemaphoreTake(mutex, portMAX_DELAY); }
   ~Lock() { xSemaphoreGive(mutex); }

@@ -2,6 +2,48 @@
 
 [PR #96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) on `impl/u1-riscrte` is the **only** implementation PR/branch. `AGENTS.md`, [USB remediation](USB_CONTRACT_VIOLATION_REMEDIATION.md), [execution order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [claim-scoped USB control](U1_USB_CONTROL_SCOPE_IMPLEMENTATION.md) and [package identity](PACKAGE_IDENTITY_VERSION_POLICY.md) govern the work. Owner controls merge, tag, release, flash and hardware qualification. A committed test is not a PASS.
 
+## September 23 continuation: loader-owned provider stream contexts
+
+The preceding serial scheduler tree was published as `7eb5a7e`. This continuation
+connects the generic stream registry to mapped ABI-v2 providers:
+
+- Optional `risc_driver_streams_v2` descriptor suffix binds a C host table before
+  start without changing existing descriptors or app byte-v1/record-v2 layouts.
+  The actual installed graph supplies the native factory. No new ELF import or
+  hardware-specific callback is introduced.
+- Provider contexts share the execution-context identity allocator and the same
+  stream registry, mutex and scheduler. Their lifetime is independent of the
+  foreground app. Copied byte/record operations are direction-checked, bounded,
+  backpressured, and limited to four published endpoints per provider.
+- Trusted capability attachment verifies the exact live lease and authenticated
+  app context. Each stream grant is lease-bound; release recomputes any rights
+  retained through another lease. App teardown removes bindings. Handles alone
+  confer no access. Source reads and destination writes honor pipe exclusivity,
+  including provider-side ingestion/drain operations.
+- Unload and failed start revoke queues before quiescence. Failed quiescence
+  keeps the ELF, dependency graph and revoked table mapped for checked retry.
+  New generations cannot reuse old context authority or endpoint handles.
+- The new C shared-object fixture runs through the real module loader, graph,
+  native bridge and scheduler, including provider-to-app byte and record pipes.
+  It is part of the normal stream suite; no new workflow or manual approval gate
+  is created. Details and limits: [provider binding](PROVIDER_STREAM_BINDING.md).
+
+Observed validation: the final stream suite passed 33 C++ programs, its C11 ABI
+check, and the two C shared-provider builds with strict warnings and ASan/UBSan.
+The new dynamic-provider test passed actual byte and record pipes, lease release
+with another live lease, app-context replacement, record read atomicity, queue
+quotas, revoked/quarantined contexts, reload and repeated failed starts.
+The existing provider graph suite passed all 13 reported checks. Its first run
+stopped because an internal ASAN_OPTIONS override re-enabled LeakSanitizer under
+ptrace; rerunning with `LSAN_OPTIONS=detect_leaks=0` passed. Leak checking is not
+claimed. Shell syntax, workflow YAML parsing and `git diff --check` passed.
+No firmware/Xtensa result is inferred from these host results.
+
+No distributable provider/app source changed; no manifest version bump applies. Packaged serial providers still
+need to adopt this descriptor and expose stream handles through their capability
+contract before the resident serial shuttle can be removed. Master conflicts,
+firmware/Xtensa builds and physical hardware qualification remain outstanding.
+
 ## September 23 continuation: installed serial pipes without app polling
 
 The preceding direct-I/O tree was published as `4f715a4` (same tree as local

@@ -1,4 +1,5 @@
 #include "InstalledProviderGraph.h"
+#include "native/NativeStreamBridge.h"
 #include "DeviceProviderExecutorV2.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
@@ -244,7 +245,7 @@ bool prepare() {
     std::unique_ptr<InstalledCapabilitySnapshot, void(*)(InstalledCapabilitySnapshot*)>
         verified(captureInstalledCapabilities(), releaseInstalledCapabilities);
     if (!verified) return false;
-    auto* candidate = new (std::nothrow) RuntimeProviders::GraphV2();
+    auto* candidate = new (std::nothrow) RuntimeProviders::GraphV2(nativeProviderStreamHost());
     if (!candidate) return false;
     const struct Root { const char* path; Kind kind; } roots[] = {
         {"/Drivers", Kind::Driver}, {"/Providers", Kind::Provider},
@@ -312,6 +313,12 @@ bool acquire(const char* providerId, const char* capability, uint32_t version,
     }
     *out = {grant, interface};
     return true;
+}
+bool attachStream(const Lease& lease, uint32_t endpoint, uint32_t rights) {
+    const uint32_t consumer = nativeProviderStreamConsumer();
+    return graph && consumer && lease.interface &&
+        graph->interfaceFor(lease.grant) == lease.interface &&
+        graph->grantStream(lease.grant, consumer, endpoint, rights);
 }
 bool release(Lease* lease) {
     if (!lease || !lease->grant.slot || !graph) return false;

@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "RiscStreamProviderV1.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -33,6 +34,18 @@ typedef struct {
      * MUST implement it before becoming installable. */
     bool (*quiesce)(void);
 } risc_driver_v2;
+
+/* Optional descriptor suffix. Existing risc_driver_v2 layouts stay unchanged.
+ * Set driver.struct_size to sizeof(risc_driver_streams_v2). bind_streams runs
+ * before start and may retain the host table through stop. A provider using
+ * this extension MUST implement quiesce. Stream authority is revoked before
+ * quiesce, including failed activation; teardown must tolerate CLOSED/DENIED.
+ * Only the loader grants consumer access separately through capability policy.
+ */
+typedef struct {
+    risc_driver_v2 driver;
+    bool (*bind_streams)(const risc_stream_provider_v1 *host);
+} risc_driver_streams_v2;
 
 /* Minimum accepted ABI-v2 struct ends before the optional quiesce pointer. */
 #define RISC_DRIVER_V2_BASE_SIZE offsetof(risc_driver_v2, quiesce)

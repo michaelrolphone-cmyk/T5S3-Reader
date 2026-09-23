@@ -142,6 +142,7 @@ int32_t Registry::produce(uint32_t owner, t5_stream_t h, const void* data, uint3
   auto* s = stream(owner, h);
   if (!s || !count || (!data && size)) return T5_STREAM_INVALID;
   if (s->kind != T5_STREAM_BYTES || !s->buffer) return T5_STREAM_UNSUPPORTED;
+  if (s->closing || s->inFlight || leased(h, false)) return T5_STREAM_BUSY;
   auto flags = s->flags; s->flags |= T5_STREAM_WRITE;
   auto r = transfer(*s, false, const_cast<void*>(data), size, count);
   s->flags = flags; return r;

@@ -42,6 +42,9 @@ inline EnumerationResult nextProviderChecked(const char* capability,
 bool acquire(const char* providerId, const char* capability, uint32_t version,
              Lease* out);
 bool release(Lease* lease);
+// Attach only a live exact capability lease to the authenticated app context.
+// Registry rights are revoked when this lease or either context terminates.
+bool attachStream(const Lease&, uint32_t endpoint, uint32_t rights);
 // Retry a failed activation that returned NO grant. The exact provider is
 // quiesced before its dependencies are released; no unrelated ELF is stopped.
 // An uncertain quiesce leaves the mapping and graph pinned for later retry.

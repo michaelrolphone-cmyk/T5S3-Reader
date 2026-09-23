@@ -34,3 +34,10 @@ t5_stream_result_t nativeGnssSubscribe(uint32_t authenticatedOwner, uint32_t aut
                                       uint32_t issuedReadConsent,
                                       uint64_t* subscription, t5_stream_t* stream);
 t5_stream_result_t nativeGnssUnsubscribe(uint32_t authenticatedOwner, uint64_t subscription);
+
+namespace RuntimeProviders { struct StreamHostV1; }
+// Trusted loader hook. Creation/teardown are owner-task operations; the issued
+// table permits bounded copied queue operations from provider worker tasks.
+const RuntimeProviders::StreamHostV1* nativeProviderStreamHost();
+// Returns zero outside an authenticated foreground invocation. Not an ELF import.
+uint32_t nativeProviderStreamConsumer();

@@ -156,6 +156,7 @@ bool GraphV2::activate(size_t index) {
     node.boundDependencies[i] = {requirement.capability, requirement.api,
                                  nodes_[dependency].module.capability()};
   }
+  (void)node.module.setStreamHost(streamHost_);
   const bool loaded = node.spec.requiredOsCpuAbi
       ? node.module.loadVerifiedBytes(node.spec.verifiedElfBytes,
                                       node.spec.verifiedElfLength,
@@ -219,10 +220,21 @@ const void* GraphV2::interfaceFor(GrantV2 grant) const {
   return nodes_[slot.node].module.capability();
 }
 
+bool GraphV2::grantStream(GrantV2 grant, uint32_t consumer, uint32_t endpoint, uint32_t rights) {
+  if (!interfaceFor(grant) || !streamHost_ || !streamHost_->grant || !streamHost_->revokeGrant)
+    return false;
+  const uint64_t context = nodes_[grants_[grant.slot - 1].node].module.streamContext();
+  const uint64_t lease = (uint64_t(grant.generation) << 32) | grant.slot;
+  return context && streamHost_->grant(context, lease, consumer, endpoint, rights);
+}
 bool GraphV2::release(GrantV2 grant) {
   if (!grant.slot || grant.slot > kMaxGrants || !grant.generation) return false;
   GrantSlot& slot = grants_[grant.slot - 1];
   if (!slot.occupied || slot.generation != grant.generation) return false;
+  if (!slot.pendingRelease && streamHost_ && streamHost_->revokeGrant) {
+    const uint64_t context = nodes_[slot.node].module.streamContext();
+    if (context) streamHost_->revokeGrant(context, (uint64_t(grant.generation) << 32) | grant.slot);
+  }
   const size_t node = slot.node;
   if (!slot.pendingRelease) {
     // Revoke all future interface access and decrement the consumer exactly

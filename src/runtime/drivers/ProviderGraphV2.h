@@ -37,7 +37,7 @@ class GraphV2 final {
  public:
   static constexpr size_t kMaxModules = 16;
   static constexpr size_t kMaxGrants = 32;
-  GraphV2() = default;
+  explicit GraphV2(const StreamHostV1* streams = nullptr) : streamHost_(streams) {}
   GraphV2(const GraphV2&) = delete;
   GraphV2& operator=(const GraphV2&) = delete;
   ~GraphV2();
@@ -46,6 +46,8 @@ class GraphV2 final {
   GrantV2 acquire(const char* capability, uint32_t api);
   GrantV2 acquireFrom(const char* providerId, const char* capability, uint32_t api);
   bool release(GrantV2 grant);
+  // Trusted capability broker only; consumer is an authenticated context ID.
+  bool grantStream(GrantV2, uint32_t consumer, uint32_t endpoint, uint32_t rights);
   const void* interfaceFor(GrantV2 grant) const;
   bool shutdown();
   size_t moduleCount() const { return count_; }
@@ -116,6 +118,7 @@ class GraphV2 final {
   };
   Node nodes_[kMaxModules]{};
   GrantSlot grants_[kMaxGrants]{};
+  const StreamHostV1* streamHost_ = nullptr;
   size_t count_ = 0;
   uint32_t nextGeneration_ = 0;
 

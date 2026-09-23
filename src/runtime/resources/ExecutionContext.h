@@ -21,10 +21,15 @@ class ExecutionContext final {
 
   static ExecutionContext* current() { return activeSlot(); }
 
+  // Owner-task allocation shared by app and installed-provider lifetimes.
+  // IDs never wrap or alias, including contexts with no foreground app.
+  static uint32_t reserveIdentity() {
+    return nextId_ == UINT32_MAX ? 0 : ++nextId_;
+  }
   bool begin() {
     if (activeSlot() || state_ != State::Terminated || ending_ || notifying_ ||
         nextId_ == UINT32_MAX) return false;
-    id_ = ++nextId_;
+    id_ = reserveIdentity();
     count_ = 0;
     state_ = State::Running;
     activeSlot() = this;

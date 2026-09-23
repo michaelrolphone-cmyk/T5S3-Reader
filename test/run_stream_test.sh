@@ -67,3 +67,6 @@ common=("${production_common[@]}")
 compile_run usb-class-bridge "$stream" "$serial" "$repo/src/native/NativeUsbClassBridge.cpp" \
   "$repo/test/streams/usb_class_bridge_bind_test.cpp"
 compile_run usb-class-session "$stream" "$repo/test/streams/usb_class_stream_session_test.cpp"
+
+# Load a real host ELF and connect its context-owned byte/record queues.
+bash "$repo/test/run_provider_stream_context_test.sh"
