@@ -137,6 +137,7 @@ The generic registry/resolver/context facilities are parent abstractions for pro
 - [GPS Driver](GPS_DRIVER.md)
 - [USB OTG Host Architecture](USB_OTG_HOST_ARCHITECTURE.md) — older firmware ownership claims overridden by hardware contract and U1.
 - [USB Host Startup and Detection](USB_HOST_STARTUP_AND_DETECTION.md) — mandatory USB implementation guide: role before VBUS, detection stages, safe cleanup and input semantics; records the owner-confirmed controller 0.1.14 fix.
+- [Firmware Input Navigation](FIRMWARE_INPUT_NAVIGATION.md) — installed navigation provider, keyboard/gamepad controls and foreground application handoff.
 - [USB Capability/Stream Reference Implementation](USB_CAPABILITY_STREAM_REFERENCE_IMPLEMENTATION.md) — legacy snapshot, not target.
 - [Programmer/Debugger Architecture](PROGRAMMER_DEBUGGER_ARCHITECTURE.md)
 

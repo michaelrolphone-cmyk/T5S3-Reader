@@ -48,6 +48,16 @@ The authoritative implementation is
 `start_host_controller()`, and
 [`PhyRoute.h`](../Drivers/usb_controller_esp32s3/PhyRoute.h).
 
+Controller **0.1.15** adds automatic role selection in
+[`RoleSwitch.h`](../Drivers/usb_controller_esp32s3/RoleSwitch.h). Provider
+`start()` initially parks the host and polls the power-monitor extension.
+External input keeps our source off and the boot Serial/JTAG route available;
+settling or unknown readings never authorize sourcing. Only qualified absent
+input permits the physical startup sequence below. Active attachment,
+enumeration or claims prevent idle source-off probes. See
+[Firmware Input Navigation](FIRMWARE_INPUT_NAVIGATION.md) for role switching
+and UI/application handoff; handoff alone does not restart the physical host.
+
 | Order | Operation | Required result before advancing |
 | --- | --- | --- |
 | 1 | Validate stopped state and `board.power.vbus@1` dependency, API size/version and callbacks. | No retained controller resources or fault permitting unsafe reentry. Save the API pointer; **do not acquire VBUS yet**. |
@@ -65,9 +75,12 @@ The 20 ms handoff is this implementation's setting, not a universal USB-device
 delay or a substitute for the ordering invariant. A new controller/board port
 must establish its own role, pin, power and settling requirements.
 
-[`board_power_t5s3_v2/driver.c`](../Drivers/board_power_t5s3_v2/driver.c) owns
-source admission, external-power/fault checks, rail configuration, bounded
-settling, measured-source verification and rollback. Resolving this dependency
+[`bq25896/driver.c`](../Drivers/bq25896/driver.c) owns the BQ25896 register
+protocol, source admission, external-power/fault checks, rail configuration,
+bounded settling, measured-source verification and rollback. Its separate
+installed [electrical profile](BQ25896_USB_POWER_PROFILES.md) supplies board
+settings; chip identity does not imply T5S3 wiring. Other chips implement the
+same power-monitor contract, and electrical qualification stays in that provider. Resolving this dependency
 is different from calling `acquire_host()`. Keep those operations separate;
 dependency startup must not secretly power a receiver ahead of host preparation.
 Do not bypass a rejected power request or adjust charger policy to conceal an
@@ -93,6 +106,8 @@ listening only for subsequent arrival events misses already-enumerated devices.
 | Observation | What is established | Investigate next |
 | --- | --- | --- |
 | Grant/subscription succeeds; waiting for connection | Software provider access exists. | Physical controller startup and host snapshot. |
+| `EXTERNAL POWER; USB SERIAL AVAILABLE` | The provider reports incoming power and the host is parked. | Expected charging/computer mode; no host enumeration should be attempted. |
+| `SOURCE OFF; CHECKING USB INPUT POWER` | The host is waiting for qualified power observations. | Power-provider settling/status and continued owner polling. |
 | Startup fails at `vbus-acquire` | Host preparation reached power acquisition. | Board power diagnostic, return value and lease ownership; do not assume a timeout. |
 | `PORT OFF` | HPRT port-power bit is clear. | Controller lifecycle and power-provider state. This bit is not an external VBUS voltage measurement. |
 | `NO ATTACH; NO ENUM EVENT`, zero devices | No root attachment/enumeration has been observed. | PHY route, host pull-downs, role-before-VBUS ordering, event pumping, cable/physical connection. Class retries and button decoders cannot create attachment. |
@@ -166,8 +181,11 @@ button history or retain an app buffer. A polling deadline never cancels DMA.
 
 Run the same ownership-aware cleanup after partial startup and normal shutdown.
 The implementation is `quiesce_with_interrupt()` in
-[`driver.cpp`](../Drivers/usb_controller_esp32s3/driver.cpp), then `quiesce()` in
-[`driver_base.cpp`](../Drivers/usb_controller_esp32s3/driver_base.cpp).
+[`driver.cpp`](../Drivers/usb_controller_esp32s3/driver.cpp), then `quiesce()`
+and its physical `quiesce_host()` helper in
+[`driver_base.cpp`](../Drivers/usb_controller_esp32s3/driver_base.cpp). Idle
+role parking uses the same interrupt drain and physical helper while retaining
+provider APIs and lower dependencies for continued power observation.
 
 1. End consumer subscriptions/admission and release class claims. Drain/flush
    outstanding interrupt and control/bulk transfers with bounded event pumping.
@@ -184,10 +202,12 @@ The implementation is `quiesce_with_interrupt()` in
    uninstall or PHY deletion retains ownership and any controller-held VBUS lease.
 5. Release the controller's VBUS lease through the power provider. A failed
    release retains the lease and dependency; do not claim shutdown succeeded.
-6. After host, PHY and the controller's VBUS lease are released, restore the
-   captured mux selection, including the automatic-selection case and a
-   rejected startup. Finish with the power provider's `quiesce()`; it must
-   release its lower bus claim before the dependency chain can unload.
+6. After host, PHY and the controller's VBUS lease are released and the power
+   monitor verifies source-off, restore the captured mux selection, including
+   the automatic-selection case and a rejected startup. For actual provider
+   shutdown, finish with the power provider's `quiesce()`; it must release its
+   lower bus claim before the dependency chain can unload. Idle role parking
+   retains that dependency and bus claim to continue observing input power.
 
 Power acquisition failure needs two distinct checks. The VBUS API requires a
 false return to expose no lease; its provider must internally retain an unsafe
@@ -209,7 +229,7 @@ cleanup only under the existing bounded lifecycle rules.
 | [PR #137](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/137): bounded XInput configuration/claim retries | Useful after host enumeration. Cannot fix a zero-device root port with no attach event. |
 | [PR #138](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/138), controller 0.1.13: explicit PHY and detector barrier | VBUS was still acquired before entering the host startup helper. Masking the local detector after receiver power-up left the ordering defect intact. Passing helper tests did not establish the order at the power-provider boundary. |
 | [PR #139](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/139), controller 0.1.14 | Put actual VBUS acquisition inside the tested sequence, after host preparation and before allowing detection. Owner confirmed auto-connect works. |
-| Legacy serial path already appeared to hand over USB correctly | [NativeUsbBridge.cpp](../src/native/NativeUsbBridge.cpp) conditionally calls `Serial.end()` and delays before provider acquisition. Direct semantic HID/XInput acquisition does not traverse that helper. Correctness must reside in the controller ELF regardless of application launch path; do not copy legacy firmware ownership into new code. |
+| Legacy serial path already appeared to hand over USB correctly | Before controller 0.1.15, the serial bridge ended the boot console before acquiring providers, while direct HID/XInput acquisition did not traverse that helper. Current [NativeUsbBridge.cpp](../src/native/NativeUsbBridge.cpp) leaves the boot service initialized and the controller ELF owns PHY handback. Correctness belongs in that ELF for every acquisition path. |
 | Working standalone firmware implies the ELF path is equivalent | Compare boot USB role, physical power timing, event execution and scheduling as well as class decoding. The same decoder cannot compensate for a different controller startup sequence. |
 
 ## Focused regression coverage for future changes
@@ -220,6 +240,7 @@ change rather than creating a new blanket qualification gate.
 | Existing check | What it protects |
 | --- | --- |
 | [controller_host_startup_test.cpp](../test/drivers/controller_host_startup_test.cpp), included in [run_provider_graph_v2_test.sh](../test/run_provider_graph_v2_test.sh) | Production startup/route helpers: host role, client, DMA and scheduler handoff before the **first power call**; preattached/absent device; startup failures, invalid/retained leases, PHY-delete failure and route restoration. Fakes do not model receiver electronics. |
+| [controller_role_switch_test.cpp](../test/drivers/controller_role_switch_test.cpp) and [run_board_power_t5s3_v2_test.sh](../test/run_board_power_t5s3_v2_test.sh) | Qualified power observations, external-power parking, active-device protection, bounded retries and real chip/profile policy with simulated hardware. |
 | [controller_startup_diagnostic_test.cpp](../test/drivers/controller_startup_diagnostic_test.cpp) | Retained first errors, bounded formatting and PHY status fitting the consumer field. |
 | [usb_teardown_retry_test.py](../test/drivers/usb_teardown_retry_test.py) and [usb_package_test.py](../test/drivers/usb_package_test.py) | Ownership/cleanup wiring, bounded teardown and final no-client event pumping. |
 | [run_usb_hid_test.sh](../test/run_usb_hid_test.sh) | HID/XInput parsing, current gamepad state, ordered keyboard events and shutdown while devices remain attached. |

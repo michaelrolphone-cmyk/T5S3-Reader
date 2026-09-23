@@ -22,6 +22,7 @@
 #include "CrossPointState.h"
 #include "DeskClockSleep.h"
 #include "native/NativeAppHost.h"
+#include "native/NativeNavigationInput.h"
 #include "KOReaderCredentialStore.h"
 #include "PowerControl.h"
 #include "MappedInputManager.h"
@@ -208,6 +209,11 @@ void enterDeepSleep() {
   }
 
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
+  if (!nativeNavigationSuspend()) {
+    LOG_ERR("INPUT", "Sleep refused: navigation provider has not quiesced");
+    nativeNavigationResume();
+    return;
+  }
   APP_STATE.lastSleepFromReader = APP_STATE.lastSleepFromReader || activityManager.isReaderActivityInStack();
   APP_STATE.saveToFile();
 
@@ -218,6 +224,7 @@ void enterDeepSleep() {
     // SleepActivity has closed the reader and saved its position. Light sleep
     // keeps the display/touch initialized and avoids a boot on every minute.
     DeskClockSleep::run(renderer, gpio);
+    nativeNavigationResume();
     Board::setBacklightLevel(SETTINGS.backlightLevel);
     renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
     if (SETTINGS.resumeReaderOnBoot && APP_STATE.lastSleepFromReader && !APP_STATE.openEpubPath.empty()) {
@@ -237,6 +244,7 @@ void enterDeepSleep() {
 
 void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
   HalPowerManager::Lock powerLock;
+  if (!nativeNavigationSuspend()) { nativeNavigationResume(); return; }
   APP_STATE.lastSleepFromReader = APP_STATE.lastSleepFromReader || activityManager.isReaderActivityInStack();
   APP_STATE.saveToFile();
 
@@ -250,6 +258,7 @@ void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
 
 void enterPowerOffKeepingScreen(const char* status) {
   (void)status;  // Status line intentionally not shown; the sleep screen setting is used instead.
+  if (!nativeNavigationSuspend()) { nativeNavigationResume(); return; }
   {
     HalPowerManager::Lock powerLock;
     APP_STATE.lastSleepFromReader = activityManager.isReaderActivityInStack();
@@ -477,7 +486,10 @@ void loop() {
   const unsigned long loopStartTime = millis();
   static unsigned long lastMemPrint = 0;
 
-  gpio.update();
+  mappedInputManager.update();
+  // External power/connection changes allow a new bounded admission attempt.
+  // No provider inventory scans on every frame after a failed/missing provider.
+  if (gpio.wasUsbStateChanged()) nativeNavigationRetry();
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
 
   // Handle a shutdown requested by an activity (e.g. the reader menu Shut Down button).
@@ -514,7 +526,8 @@ void loop() {
 
   // Check for any user activity (button press or release) or active background work
   static unsigned long lastActivityTime = millis();
-  if (gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.hadTouchActivity() || halTiltSensor.hadActivity() ||
+  if (mappedInputManager.wasAnyPressed() || mappedInputManager.wasAnyReleased() ||
+      nativeNavigationFrame().buttons || gpio.hadTouchActivity() || halTiltSensor.hadActivity() ||
       activityManager.preventAutoSleep()
 #ifdef ENABLE_SERIAL_LOG
       || (Serial && SETTINGS.sleepScreen != CrossPointSettings::DIGITAL_CLOCK)

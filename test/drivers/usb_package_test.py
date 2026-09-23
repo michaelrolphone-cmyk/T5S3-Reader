@@ -93,11 +93,8 @@ class UsbCdcPackage(unittest.TestCase):
                                 if not line.lstrip().startswith('//'))
         self.assertNotIn('usb_host_install(', bridge_code)
         self.assertNotIn('Wire.beginTransmission(', bridge_code)
-        startup = bridge.split('bool serialStart(', 1)[1]
-        self.assertIn('Serial.end();', bridge)
-        self.assertIn('Serial.begin(115200);', bridge)
-        self.assertLess(startup.index('suspendDebugConsole();'),
-                        startup.index('RuntimeInstalledProviders::acquire('))
+        self.assertNotIn('Serial.end();', bridge)
+        self.assertNotIn('Serial.begin(', bridge)
         self.assertIn('#include <usb/usb_host.h>', controller)
         self.assertIn('usb_host_install(', controller)
         self.assertIn('host->bulk_read(', cdc)
@@ -115,13 +112,15 @@ class UsbCdcPackage(unittest.TestCase):
         self.assertIn('invocation.end();', streams)
         self.assertIn('providers.end();', serial)
         self.assertIn('if (stopUsb && usb && usb->serial_stop) usb->serial_stop();', serial)
-        self.assertIn('if (!RuntimeInstalledProviders::shutdown())', bridge)
+        self.assertIn('if (!shared && !RuntimeInstalledProviders::shutdown())', bridge)
+        self.assertIn('allowShared && !quarantined && RuntimeInstalledProviders::hasLiveGrants()', bridge)
+        self.assertIn('restore_phy_route();', controller)
         self.assertIn('power->release_host(power->context, powerLease)', controller)
     def test_usb_bulk_timeout_must_reclaim_callback_before_vbus_release(self):
         source = self.physical_controller()
         wait = source.split('bool wait_completion(', 1)[1].split('bool idle_transfer(', 1)[0]
         release = source.split('bool release_interface(', 1)[1].split('int32_t control(', 1)[0]
-        quiesce = source.split('bool quiesce(void *) {', 1)[1].split('void stop()', 1)[0]
+        quiesce = source.split('bool quiesce_host() {', 1)[1].split('void stop()', 1)[0]
         drain = source.split('bool drain_bulk(', 1)[1].split('bool wait_completion(', 1)[0]
         self.assertIn('usb_host_endpoint_halt(', drain)
         self.assertIn('usb_host_endpoint_flush(', drain)

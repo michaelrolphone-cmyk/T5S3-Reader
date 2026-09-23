@@ -16,7 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def build(source_name: str, identity: str, dependency: str | tuple[str, ...], capability: str,
           cc: str | None = None) -> Path:
-    if source_name not in ('usb_hid', 'usb_hid_keyboard', 'usb_hid_gamepad', 'usb_xinput_gamepad'):
+    if source_name not in ('usb_hid', 'usb_hid_keyboard', 'usb_hid_gamepad',
+                           'usb_xinput_gamepad', 'usb_ui_navigation'):
         raise ValueError('invalid source driver')
     source = ROOT / 'Drivers' / source_name
     manifest = json.loads((source / 'manifest.json').read_text(encoding='utf-8'))

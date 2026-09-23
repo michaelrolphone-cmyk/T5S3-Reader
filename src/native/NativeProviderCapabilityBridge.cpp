@@ -2,6 +2,7 @@
 #include <T5AppApi.h>
 #include <NativeAppLauncher.h>
 #include "AppManifest.h"
+#include "NativeNavigationInput.h"
 #include "runtime/drivers/InstalledProviderGraph.h"
 #include "runtime/resources/ExecutionContext.h"
 #include "runtime/packages/PackageIdentity.h"
@@ -143,6 +144,12 @@ bool acquire(const char* capability, uint32_t version,
         !grant.grant.slot || !grant.interface) return fail(RuntimeInstalledProviders::lastError());
     generation = generation == UINT32_MAX ? 1u : generation + 1u;
     if (!generation) generation = 1u;
+    // The navigation provider interprets which sources overlap this opaque
+    // capability. Yield them before the app can subscribe or poll its grant.
+    if (!nativeNavigationClaim(generation, capability, version)) {
+        (void)RuntimeInstalledProviders::release(&grant);
+        return fail("Input ownership handoff failed");
+    }
     available->provider = grant;
     available->owner = invocation;
     available->generation = generation;
@@ -160,7 +167,9 @@ bool release(t5_provider_capability_lease_t token) {
         slot = {};
         // A failed quiesce may consume the grant and quarantine an ELF. Never
         // hand out a stale interface or retry a consumed generation.
-        return RuntimeInstalledProviders::release(&grant);
+        const bool released = RuntimeInstalledProviders::release(&grant);
+        nativeNavigationRelease(token);
+        return released;
     }
     return false;
 }
@@ -187,7 +196,9 @@ extern "C" void native_app_provider_capabilities_release(void) {
     for (auto& slot : active) {
         if (!slot.owner) continue;
         Lease grant = slot.provider;
+        const uint32_t token = slot.generation;
         slot = {};
         (void)RuntimeInstalledProviders::release(&grant);
+        nativeNavigationRelease(token);
     }
 }

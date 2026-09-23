@@ -49,6 +49,7 @@ The architecture is defined in `docs/`:
 - `SERVICE_RUNTIME_ARCHITECTURE.md` — pluggable ELF system services, event delivery, scheduling, persistence, and background work.
 - `USB_OTG_HOST_ARCHITECTURE.md` — USB OTG host/device roles, hubs, class providers, storage, HID, CDC, and composite functions.
 - [USB Host Startup and Detection](docs/USB_HOST_STARTUP_AND_DETECTION.md) — driver implementation guide for power sequencing, auto-connect, diagnostics, cleanup and input semantics.
+- [Firmware Input Navigation](docs/FIRMWARE_INPUT_NAVIGATION.md) — keyboard/controller menu controls and input handoff to apps.
 - `PROGRAMMER_DEBUGGER_ARCHITECTURE.md` — multi-probe firmware programming/debugging over USB hubs, serial, SWD/JTAG, and target-specific protocols.
 - `NATIVE_APPS.md` — current native ELF application ABI and implementation.
 

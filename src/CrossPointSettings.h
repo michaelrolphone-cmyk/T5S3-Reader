@@ -261,6 +261,8 @@ class CrossPointSettings {
   uint8_t confirmShutdown = 0;
   // Open the global drag-down menu with a double-click of the home button.
   uint8_t doubleClickHomeMenu = 0;
+  // Consume an installed input.navigation provider for firmware/app UI.
+  uint8_t externalInputNavigation = 1;
   // Flip the entire UI 180° (upside down) and swap the two side buttons' up/down + page-turn roles.
   uint8_t flipUi = 0;
   // Resume the last open book on boot (1). When 0, always boot to the home screen.
