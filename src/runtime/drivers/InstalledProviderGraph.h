@@ -11,7 +11,8 @@ struct Lease {
     const void* interface = nullptr;
 };
 
-// Import only fully verified canonical package generations into one graph.
+// Initialize the installed-provider graph without reading every installed ELF.
+// Exact provider/dependency chains are admitted lazily by acquire().
 // Installs alone do not call this function and do not grant privileges.
 bool prepare();
 // Resolves the *named* installed provider, never an ambiguous first match.

@@ -99,3 +99,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
 c++ -std=c++17 -Wall -Wextra -Werror \
   "$repo/test/drivers/controller_startup_diagnostic_test.cpp" -o "$build/controller-diagnostic-test"
 "$build/controller-diagnostic-test"
+
+# Installed provider discovery must stay metadata-first and must not return to
+# bulk reading every installed ELF during prepare().
+python3 "$repo/test/resources/installed_provider_lazy_loading_source_test.py"
