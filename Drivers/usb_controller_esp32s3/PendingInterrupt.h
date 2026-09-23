@@ -82,5 +82,13 @@ int32_t read_interrupt(uint64_t id, usb_device_handle_t handle, uint8_t endpoint
     if (slot->dma->status != USB_TRANSFER_STATUS_COMPLETED || n < 0 || n > packet)
         return -1;
     if (n) std::memcpy(dst, slot->dma->data_buffer, static_cast<size_t>(n));
+    // Keep an IN request armed while the caller processes the report or sleeps.
+    // Only DMA owned by this controller is retained; dst has already been copied.
+    // The next callback holds one completed packet until the next bounded read.
+    slot->pending = true;
+    if (usb_host_transfer_submit(slot->dma) != ESP_OK) {
+        slot->pending = false;
+        return -1;
+    }
     return n;
 }

@@ -126,6 +126,11 @@ not report a connected gamepad: valid input or wireless presence does.
 `usb-controller-esp32s3` 0.1.11 clears a stalled interrupt endpoint before the
 next bounded read resubmits, matching standalone recovery. Idle transfers
 remain pending, and failed physical teardown still pins the controller.
+Version 0.1.12 also rearms a successful interrupt-IN request before returning
+its copied report. Releases can therefore arrive during the app's processing
+or sleep interval. One completion remains bounded in controller-owned DMA
+until consumed; app buffers are never retained. Rearm failures surface as read
+errors, and pending transfers still drain before release/unload.
 
 Discovery inspects one newly attached host generation per poll and caches its
 result until removal. Four gamepads, four subscribers and 32 queued events per
