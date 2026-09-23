@@ -62,12 +62,13 @@ uintptr_t elf_remap_text(esp_elf_t *elf, uintptr_t sym);
 #endif
 
 /**
- * @brief Flush data from cache to external RAM.
+ * @brief Publish relocated code to the instruction bus before executing it.
  *
- * @return None
+ * @param elf - Relocated, not yet executing ELF.
+ * @return 0 on success, negative errno on failure.
  */
 #ifdef CONFIG_ELF_LOADER_LOAD_PSRAM
-void esp_elf_arch_flush(void);
+int esp_elf_arch_flush(esp_elf_t *elf);
 #endif
 
 /**
