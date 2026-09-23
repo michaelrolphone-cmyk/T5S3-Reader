@@ -16,7 +16,13 @@ static uint16_t fake_vid = 0x045e, fake_pid = 0x028e;
 static uint8_t packet[64];
 static int32_t packet_length;
 static unsigned claims, releases, configurations, reads;
-static bool reject_claim;
+static bool reject_claim, reject_config;
+static uint64_t fake_ms;
+static uint64_t fake_monotonic(void *ctx) { (void)ctx; return fake_ms; }
+static risc_platform_clock_api_v1 fake_clock = {
+    .api_version = 1, .struct_size = sizeof(risc_platform_clock_api_v1),
+    .monotonic_ms = fake_monotonic
+};
 static bool fake_poll(void *ctx, size_t budget, size_t *processed) {
     (void)ctx; assert(budget == 8); *processed = 0; return true;
 }
@@ -28,8 +34,10 @@ static bool fake_devices(void *ctx, uint64_t *out, size_t *count) {
 static bool fake_config(void *ctx, uint64_t device, uint8_t *out, size_t *count,
                          uint16_t *vid, uint16_t *pid) {
     (void)ctx; assert(device == fake_device && *count >= sizeof(config));
+    ++configurations;
+    if (reject_config) return false;
     memcpy(out, config, sizeof(config)); *count = sizeof(config);
-    *vid = fake_vid; *pid = fake_pid; ++configurations; return true;
+    *vid = fake_vid; *pid = fake_pid; return true;
 }
 static bool fake_claim(void *ctx, uint64_t device, uint8_t iface, uint8_t alt, uint64_t *out) {
     (void)ctx; assert(device == fake_device && iface == 2 && alt == config[28]);
@@ -54,6 +62,10 @@ static risc_usb_host_interrupt_v1 fake_host = {
         .poll = fake_poll, .devices = fake_devices
     }, .interrupt_read = fake_read
 };
+// Dependencies need not arrive in manifest order.
+static risc_provider_dependency_v1 dependencies[] = {
+    {"platform.clock", 1, &fake_clock}, {"usb.host", 1, &fake_host}
+};
 static void send(uint8_t directions, uint8_t buttons) {
     memset(packet, 0, sizeof(packet)); packet[1] = 20;
     packet[2] = directions; packet[3] = buttons; packet_length = 20;
@@ -62,17 +74,92 @@ static void drain(const risc_usb_gamepad_api_v1 *input, uint64_t subscription) {
     risc_usb_gamepad_event_v1 event;
     while (input->next(0, subscription, &event) > 0) {}
 }
+static void startup_recovery_test(const risc_driver_v2 *driver) {
+    const risc_usb_gamepad_api_v1 *input = driver->capability;
+    // Device was present before start. Recover two failed configuration reads
+    // on the SAME attachment; snapshots need no event subscription to connect.
+    fake_device = 100; fake_ms = 0; reject_config = true;
+    claims = configurations = releases = 0;
+    assert(driver->start(dependencies, 2));
+    assert(input->poll(0, 4) && configurations == 1 && claims == 0);
+    for (unsigned i = 0; i < 1000; ++i) assert(input->poll(0, 4));
+    assert(configurations == 1); // Polling frequency does not shorten backoff.
+    fake_ms = 100; assert(input->poll(0, 4) && configurations == 2);
+    reject_config = false; send(0, 0x10);
+    fake_ms = 299; assert(input->poll(0, 4) && configurations == 2);
+    fake_ms = 300; assert(input->poll(0, 4) && configurations == 3 && claims == 1);
+    risc_usb_gamepad_state_v1 state; size_t count = 1;
+    assert(input->snapshot(0, &state, &count) && count == 1 && state.connected);
+    assert(state.device == 100 && state.buttons == 2);
+    driver->stop(); assert(releases == 1);
+
+    // Persistent claim failure terminates after the finite attempt budget.
+    // Successful descriptors are reused instead of repeatedly read.
+    reject_claim = true; fake_ms = 0; claims = configurations = 0;
+    assert(driver->start(dependencies, 2));
+    assert(input->poll(0, 4) && claims == 1);
+    const unsigned delays[] = {100, 200, 400, 800, 1600, 2000, 2000};
+    for (unsigned i = 0; i < sizeof(delays) / sizeof(delays[0]); ++i) {
+        fake_ms += delays[i] - 1;
+        assert(input->poll(0, 4) && claims == i + 1);
+        ++fake_ms; assert(input->poll(0, 4) && claims == i + 2);
+    }
+    fake_ms += 100000;
+    assert(input->poll(0, 4) && claims == 8 && configurations == 1);
+    char reason[64]; assert(diagnostic(0, reason, sizeof(reason)));
+    assert(!strcmp(reason, "XINPUT INTERFACE CLAIM RETRY LIMIT"));
+    driver->stop();
+
+    // Elapsed deadline also stops retries when the consumer was not polling.
+    claims = 0; assert(driver->start(dependencies, 2));
+    assert(input->poll(0, 4) && claims == 1);
+    fake_ms += 10000; assert(input->poll(0, 4) && claims == 1);
+    assert(diagnostic(0, reason, sizeof(reason)));
+    assert(!strcmp(reason, "XINPUT DISCOVERY RETRY DEADLINE"));
+    driver->stop(); reject_claim = false;
+
+    // A clock failure pauses discovery without consuming the attached device.
+    claims = configurations = 0; fake_ms = UINT64_MAX;
+    assert(driver->start(dependencies, 2));
+    assert(input->poll(0, 4) && configurations == 0);
+    fake_ms = 0; send(0, 0x20);
+    assert(input->poll(0, 4) && claims == 1);
+    count = 1;
+    assert(input->snapshot(0, &state, &count) && state.device == 100 && state.connected);
+    driver->stop();
+
+    // Failed attachment disappears during backoff: never claim a stale handle.
+    claims = 0; reject_claim = true;
+    assert(driver->start(dependencies, 2));
+    assert(input->poll(0, 4) && claims == 1);
+    fake_device = 0; fake_ms = 100;
+    assert(input->poll(0, 4) && claims == 1);
+    fake_device = 101; reject_claim = false; send(0, 0x10);
+    assert(input->poll(0, 4) && claims == 2);
+    driver->stop();
+
+    // Unsupported interfaces remain cached even after the retry deadline.
+    config[32] = 0x82; claims = configurations = 0;
+    assert(driver->start(dependencies, 2));
+    assert(input->poll(0, 4) && configurations == 1 && claims == 0);
+    fake_ms += 100000;
+    assert(input->poll(0, 4) && configurations == 1 && claims == 0);
+    driver->stop(); config[32] = 1;
+}
 int main(void) {
     assert(!t5_driver_get(1));
     const risc_driver_v2 *driver = t5_driver_get(2);
     assert(!strcmp(driver->capability_id, "usb.xinput.gamepad"));
     const risc_usb_gamepad_api_v1 *input = driver->capability;
-    risc_provider_dependency_v1 dependency = {"usb.host", 1, &fake_host};
     assert(!driver->start(0, 0));
+    assert(!driver->start(dependencies + 1, 1)); // Missing clock dependency.
     fake_host.discovery.host.struct_size = sizeof(risc_usb_host_discovery_v1);
-    assert(!driver->start(&dependency, 1));
+    assert(!driver->start(dependencies, 2));
     fake_host.discovery.host.struct_size = sizeof(fake_host);
-    assert(driver->start(&dependency, 1) && !driver->start(&dependency, 1));
+    fake_clock.monotonic_ms = 0;
+    assert(!driver->start(dependencies, 2));
+    fake_clock.monotonic_ms = fake_monotonic;
+    assert(driver->start(dependencies, 2) && !driver->start(dependencies, 2));
     uint64_t subscription = input->subscribe(0, 0), filtered = input->subscribe(0, 999);
     assert(subscription && filtered && !driver->quiesce());
     assert(!input->poll(0, 0) && !input->poll(0, 17));
@@ -171,10 +258,16 @@ int main(void) {
     fake_device = 56; config[2] = 54; reject_claim = true;
     assert(input->poll(0, 4) && claims == 3);
     char reason[64]; assert(diagnostic(0, reason, sizeof(reason)));
-    assert(!strcmp(reason, "XINPUT INTERFACE CLAIM FAILED"));
+    assert(!strcmp(reason, "XINPUT INTERFACE CLAIM RETRYING"));
     assert(input->poll(0, 4) && claims == 3); // Failed attachment never busy-retries claims.
+    reject_claim = false; send(0, 0x10);
+    fake_ms = 99; assert(input->poll(0, 4) && claims == 3);
+    fake_ms = 100; assert(input->poll(0, 4) && claims == 4);
+    assert(input->next(0, subscription, &event) == 1 && event.state.device == 56);
+    assert(event.state.connected && event.state.buttons == 2); // No unplug/replug.
     fake_device = 57; reject_claim = false; send(0, 0x10);
-    assert(input->poll(0, 4) && claims == 4);
+    assert(input->poll(0, 4) && claims == 5);
+    assert(input->next(0, subscription, &event) == 1 && event.kind == 2 && event.state.device == 56);
     assert(input->next(0, subscription, &event) == 1 && event.kind == 1 && event.state.device == 57);
     drain(input, subscription);
     packet_length = -1;
@@ -184,11 +277,12 @@ int main(void) {
     assert(input->next(0, subscription, &event) == 1 && event.kind == 1 && event.state.buttons == 1);
     assert(!driver->quiesce());
     assert(input->unsubscribe(0, subscription) && input->unsubscribe(0, filtered));
-    assert(driver->quiesce() && releases == 3); // Still-plugged shutdown.
+    assert(driver->quiesce() && releases == 4); // Still-plugged shutdown.
     driver->stop();
-    assert(driver->start(&dependency, 1));
+    assert(driver->start(dependencies, 2));
     uint64_t fresh = input->subscribe(0, 0); assert(fresh && fresh != subscription);
     assert(input->next(0, subscription, &event) == -1);
     assert(input->unsubscribe(0, fresh)); driver->stop();
-    puts("XInput composite discovery, packet validation, mapping, overflow, hotplug and shutdown: PASS");
+    startup_recovery_test(driver);
+    puts("XInput discovery, current state, bounded startup retries, hotplug and shutdown: PASS");
 }

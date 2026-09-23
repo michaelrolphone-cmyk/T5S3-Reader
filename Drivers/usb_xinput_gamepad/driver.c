@@ -1,5 +1,6 @@
 #include "RiscUsbInterruptV1.h"
 #include "RiscUsbGamepadDiagnosticsV1.h"
+#include "RiscPlatformClockV1.h"
 
 /* Xbox 360 wired/wireless-format input, including 2.4 GHz receivers advertising
  * 045e:028e. USB ownership stays with usb.host; no HID requests, firmware
@@ -14,8 +15,20 @@ typedef struct {
     risc_usb_gamepad_state_v1 state;
 } gamepad;
 #include "../usb_hid_gamepad/StateMailbox.h"
-typedef struct { uint64_t device; const char *status; } inspected_device;
+/* Discovery is incremental: one attempt per poll, at most eight attempts in
+ * ten seconds per attachment. Backoff is elapsed time, never a busy wait.
+ * The caller returns to its scheduler between polls (as for interrupt input).
+ * Cache successful descriptors; only a failed read/claim is retried. */
+#define DISCOVERY_ATTEMPTS 8u
+#define DISCOVERY_DEADLINE_MS 10000u
+typedef struct {
+    uint64_t device, begun_ms, attempted_ms;
+    const char *status;
+    uint8_t attempts, iface, alternate, endpoint;
+    bool retry, configured, wireless, waiting_capacity;
+} inspected_device;
 static const risc_usb_host_interrupt_v1 *host;
+static const risc_platform_clock_api_v1 *clock_api;
 static gamepad pads[PADS];
 static inspected_device inspected[RISC_USB_HOST_MAX_DEVICES];
 static subscriber subscribers[RISC_USB_INPUT_MAX_SUBSCRIBERS];
@@ -144,6 +157,11 @@ static bool input_interface(const uint8_t *data, size_t length,
     }
     return selected && *endpoint;
 }
+static void discovery_failed(inspected_device *slot, const char *retrying,
+                             const char *failed) {
+    slot->retry = slot->attempts < DISCOVERY_ATTEMPTS;
+    slot->status = slot->retry ? retrying : failed;
+}
 static bool poll(void *ctx, size_t max_reports) {
     (void)ctx;
     if (!host || !max_reports || max_reports > 16) return false;
@@ -160,44 +178,80 @@ static bool poll(void *ctx, size_t max_reports) {
     for (size_t i = 0; i < RISC_USB_HOST_MAX_DEVICES; ++i)
         if (inspected[i].device && !present(devices, count, inspected[i].device))
             inspected[i] = (inspected_device){0};
+    const uint64_t now = clock_api->monotonic_ms(clock_api->context);
     status = "NO XINPUT DEVICE DISCOVERED";
-    // Inspect at most one new generation per poll, once per attachment.
-    // Configurations are cached by the physical host, not fetched via USB here.
     for (size_t i = 0; i < count; ++i) {
-        bool known = false;
-        inspected_device *slot = 0;
+        inspected_device *slot = 0, *empty = 0;
         for (size_t j = 0; j < RISC_USB_HOST_MAX_DEVICES; ++j) {
-            if (inspected[j].device == devices[i]) known = true;
-            if (!inspected[j].device && !slot) slot = &inspected[j];
+            if (inspected[j].device == devices[i]) slot = &inspected[j];
+            if (!inspected[j].device && !empty) empty = &inspected[j];
         }
-        if (known || !slot) continue;
-        *slot = (inspected_device){devices[i], 0};
-        uint8_t config[RISC_USB_CONFIG_LIMIT], iface = 0, alt = 0, endpoint = 0;
-        bool wireless = false;
-        size_t length = sizeof(config);
-        uint16_t vid = 0, pid = 0;
-        if (!bus->configuration(bus->context, devices[i], config, &length, &vid, &pid))
-            slot->status = "XINPUT CONFIGURATION READ FAILED";
-        else if (input_interface(config, length, &iface, &alt, &endpoint, &wireless)) {
-            gamepad *pad = 0;
-            for (size_t j = 0; j < PADS; ++j) if (!pads[j].claim) { pad = &pads[j]; break; }
-            if (!pad) slot->status = "XINPUT CAPACITY EXHAUSTED";
-            else {
-                uint64_t claim = 0;
-                if (!bus->claim(bus->context, devices[i], iface, alt, &claim) || !claim)
-                    slot->status = "XINPUT INTERFACE CLAIM FAILED";
-                else {
-                    *pad = (gamepad){0};
-                    pad->device = devices[i]; pad->claim = claim; pad->endpoint = endpoint;
-                    pad->wireless = wireless;
-                    pad->state.device = devices[i]; pad->state.hat = 8;
-                }
+        if (!slot) {
+            if (!empty) continue;
+            slot = empty;
+            *slot = (inspected_device){.device = devices[i], .retry = true};
+        }
+        if (!slot->retry) continue;
+        // A broken clock must not turn backoff into repeated USB operations.
+        if (now == UINT64_MAX || (slot->attempts && now < slot->attempted_ms)) continue;
+        gamepad *pad = 0;
+        for (size_t j = 0; j < PADS; ++j) if (!pads[j].claim) { pad = &pads[j]; break; }
+        if (slot->waiting_capacity) {
+            if (!pad) continue; // Resume only when the resource actually changes.
+            slot->waiting_capacity = false;
+            slot->attempts = 0;
+        }
+        if (slot->attempts) {
+            if (now - slot->begun_ms >= DISCOVERY_DEADLINE_MS) {
+                slot->retry = false;
+                slot->status = "XINPUT DISCOVERY RETRY DEADLINE";
+                continue;
             }
+            uint32_t delay_ms = 100u << (slot->attempts - 1);
+            if (delay_ms > 2000u) delay_ms = 2000u;
+            if (now - slot->attempted_ms < delay_ms) continue;
+        } else slot->begun_ms = now;
+        slot->attempted_ms = now;
+        ++slot->attempts;
+        if (!slot->configured) {
+            uint8_t config[RISC_USB_CONFIG_LIMIT];
+            size_t length = sizeof(config);
+            uint16_t vid = 0, pid = 0;
+            if (!bus->configuration(bus->context, devices[i], config, &length, &vid, &pid)) {
+                discovery_failed(slot, "XINPUT CONFIGURATION READ RETRYING",
+                                  "XINPUT CONFIGURATION READ RETRY LIMIT");
+                break;
+            }
+            if (!input_interface(config, length, &slot->iface, &slot->alternate,
+                                 &slot->endpoint, &slot->wireless)) {
+                slot->retry = false; // Unsupported descriptors do not become valid later.
+                slot->status = 0;
+                break;
+            }
+            slot->configured = true;
+        }
+        if (!pad) {
+            slot->waiting_capacity = true;
+            slot->status = "XINPUT WAITING FOR FREE PAD SLOT";
+            break;
+        }
+        uint64_t claim = 0;
+        if (!bus->claim(bus->context, devices[i], slot->iface, slot->alternate, &claim) || !claim) {
+            discovery_failed(slot, "XINPUT INTERFACE CLAIM RETRYING",
+                              "XINPUT INTERFACE CLAIM RETRY LIMIT");
+        } else {
+            *pad = (gamepad){0};
+            pad->device = devices[i]; pad->claim = claim; pad->endpoint = slot->endpoint;
+            pad->wireless = slot->wireless;
+            pad->state.device = devices[i]; pad->state.hat = 8;
+            slot->retry = false;
+            slot->status = 0;
         }
         break;
     }
     for (size_t i = 0; i < RISC_USB_HOST_MAX_DEVICES; ++i)
         if (inspected[i].status) status = inspected[i].status;
+    if (now == UINT64_MAX) status = "XINPUT DISCOVERY CLOCK FAILED";
     bool quiet[PADS] = {0};
     size_t attempted = 0;
     for (size_t round = 0; round < max_reports && attempted < max_reports; ++round) {
@@ -273,14 +327,26 @@ static bool snapshot(void *ctx, risc_usb_gamepad_state_v1 *out, size_t *capacity
     *capacity = count; return true;
 }
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
-    if (host || !deps || count != 1 || !equal(deps[0].capability_id, "usb.host") ||
-        deps[0].api_version != RISC_USB_HOST_API_V1 || !deps[0].api) return false;
-    const risc_usb_host_interrupt_v1 *api = (const risc_usb_host_interrupt_v1 *)deps[0].api;
-    if (api->discovery.host.api_version != RISC_USB_HOST_API_V1 ||
+    if (host || !deps || count != 2) return false;
+    const risc_usb_host_interrupt_v1 *api = 0;
+    const risc_platform_clock_api_v1 *clock = 0;
+    for (size_t i = 0; i < count; ++i) {
+        if (equal(deps[i].capability_id, "usb.host") &&
+            deps[i].api_version == RISC_USB_HOST_API_V1 && !api)
+            api = (const risc_usb_host_interrupt_v1 *)deps[i].api;
+        else if (equal(deps[i].capability_id, "platform.clock") &&
+                 deps[i].api_version == RISC_PLATFORM_CLOCK_API_V1 && !clock)
+            clock = (const risc_platform_clock_api_v1 *)deps[i].api;
+        else return false;
+    }
+    if (!api || api->discovery.host.api_version != RISC_USB_HOST_API_V1 ||
         api->discovery.host.struct_size < sizeof(*api) || !api->discovery.poll ||
         !api->discovery.devices || !api->discovery.host.configuration ||
-        !api->discovery.host.claim || !api->discovery.host.release || !api->interrupt_read) return false;
-    host = api; status = "WAITING FOR XINPUT DISCOVERY"; return true;
+        !api->discovery.host.claim || !api->discovery.host.release || !api->interrupt_read ||
+        !clock || clock->api_version != RISC_PLATFORM_CLOCK_API_V1 ||
+        clock->struct_size < sizeof(*clock) || !clock->monotonic_ms) return false;
+    host = api; clock_api = clock;
+    status = "WAITING FOR XINPUT DISCOVERY"; return true;
 }
 static bool quiesce(void) {
     for (size_t i = 0; i < RISC_USB_INPUT_MAX_SUBSCRIBERS; ++i)
@@ -290,7 +356,7 @@ static bool quiesce(void) {
 }
 static void stop(void) {
     if (!quiesce()) return;
-    host = 0;
+    host = 0; clock_api = 0;
     for (size_t i = 0; i < RISC_USB_HOST_MAX_DEVICES; ++i) inspected[i] = (inspected_device){0};
     status = "XINPUT DRIVER NOT STARTED";
 }
