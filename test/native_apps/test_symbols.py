@@ -4,7 +4,8 @@ import unittest
 
 repo = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(repo / 'scripts'))
-from native_app_symbols import firmware_exports, validate_imports
+from native_app_symbols import (firmware_exports, native_hardware_compat_exports,
+                                privileged_os_cpu_exports, validate_imports)
 
 class ImportsTest(unittest.TestCase):
     def test_file_browser_formatting_export(self):
@@ -28,6 +29,17 @@ class ImportsTest(unittest.TestCase):
     def test_programmer_api_export(self):
         imports = '1: 00000000 0 NOTYPE GLOBAL DEFAULT UND t5_program_esp_rom_get_api'
         self.assertEqual(validate_imports(imports, firmware_exports(repo)), {'t5_program_esp_rom_get_api'})
+
+    def test_temporary_privileged_overlap_is_exactly_in_compat_inventory(self):
+        ordinary = firmware_exports(repo)
+        privileged = privileged_os_cpu_exports(repo)
+        temporary = native_hardware_compat_exports(repo)
+        overlap = ordinary & privileged
+        self.assertTrue(overlap, 'The temporary compatibility exception should be exercised')
+        self.assertFalse(overlap - temporary,
+                         'An uninventoried privileged import leaked into ordinary apps')
+        self.assertTrue(privileged - temporary,
+                        'The scoped privileged inventory must not be wholly public')
 
     def test_flasher_and_programmer_boundaries(self):
         flasher = (repo / 'Apps/esp_rom_flasher.c').read_text()

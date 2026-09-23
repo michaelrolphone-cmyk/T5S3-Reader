@@ -16,7 +16,7 @@ bool parseDriverPackageManifest(const std::string& json, DriverPackageInfo& out)
 
 // Validates manifest contract, ELF structure, declared size, and SHA-256.
 bool validateDriverPayload(const std::string& manifestJson, const char* elfVfsPath,
-                           DriverPackageInfo* out = nullptr);
+                           DriverPackageInfo* out = nullptr, bool verifyContents = true);
 
 // Returns the installed manifest version for a managed driver package.
 bool getInstalledDriverVersion(const char* id, char* version, size_t capacity);

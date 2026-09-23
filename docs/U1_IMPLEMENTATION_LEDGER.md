@@ -2,6 +2,47 @@
 
 [PR #96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) on `impl/u1-riscrte` is the **only** implementation PR/branch. `AGENTS.md`, [USB remediation](USB_CONTRACT_VIOLATION_REMEDIATION.md), [execution order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [claim-scoped USB control](U1_USB_CONTROL_SCOPE_IMPLEMENTATION.md) and [package identity](PACKAGE_IDENTITY_VERSION_POLICY.md) govern the work. Owner controls merge, tag, release, flash and hardware qualification. A committed test is not a PASS.
 
+## September 23: backmerge current master into the U1 branch
+
+Merged master `6569b81d3abe6c7ea44e71eed150bb4324d5909d` (275 master-only
+commits) into U1 starting at `0be4f69`. Resolved 27 conflicted files. Future U1
+continuations check master and periodically integrate new commits, as requested
+by the owner; this does not authorize merging PR #96 into master.
+
+- Preserved master's HID/XInput providers, interrupt receive handling, controller
+  startup/PHY sequence, diagnostics, lazy dependency admission, UI/app changes,
+  firmware version 1.2.65 and existing released assets. U1 retains generic ZIP
+  packaging/catalog discovery, stream contexts, serial endpoints, coherent host
+  snapshots and exact checked physical/session teardown.
+- Resolved actual descriptor collisions: published driver diagnostics precede
+  the U1 stream-binding suffix; published USB interrupt/diagnostic offsets precede
+  U1 checked-release/control/snapshot slots. Compile-time layout checks cover
+  these relationships. The unpublished U1 stream providers are rebuilt/versioned.
+- Lazy graph preparation no longer preloads unrelated ELFs. Serial candidate
+  discovery uses a bounded metadata-only snapshot; executable admission stays
+  in exact named acquisition. Enumeration faults remain distinct from exhaustion.
+- Combined master's fault-tolerant controller cleanup with U1's retained staged
+  interface/device-close transaction. Closing interfaces reject further bulk
+  and interrupt work. Published HID report-descriptor/SET_PROTOCOL requests keep
+  their legacy interface-claim checks; arbitrary controls use exact-claim API.
+- Changed package versions: CDC 0.1.6, CP210x 0.1.7, CH34x 0.1.6, simulated serial
+  test class 0.1.3, USB host 0.1.5, controller 0.1.15, board power 0.1.7, all under
+  existing IDs and above both parent versions.
+
+Observed local validation: CDC aggregate suite (including host/class, provider
+lifecycle, all four installed stream/pipe paths, startup/PHY and teardown checks),
+HID/XInput tests, board-power tests, stream suite and manifest-discovery tests
+passed. Host stream/stack regressions use ASan/UBSan with leak checking disabled
+under ptrace. Normal Xtensa build scripts passed for CDC, CP210x, CH34x, simulated
+serial test class, host, board power, HID and XInput. No physical result is claimed.
+
+The full firmware build did not complete. PlatformIO waited while obtaining
+SdFat, and automatic approval review rejected an external collector request
+because it could send project/environment metadata. That request was not retried
+or bypassed. No full firmware or physical-controller target-build result is
+claimed for this merge. Remaining U1 work below still applies, except master
+conflicts resolved by this merge and features explicitly superseded above.
+
 ## September 23 continuation: CDC, CP210x and CH34x own stream endpoints
 
 Starting at `b3bdb4b`, all three existing USB serial class ELFs now bind the

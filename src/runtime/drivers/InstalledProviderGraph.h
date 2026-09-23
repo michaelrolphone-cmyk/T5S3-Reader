@@ -12,7 +12,8 @@ struct Lease {
     const void* interface = nullptr;
 };
 
-// Import only fully verified canonical package generations into one graph.
+// Initialize the installed-provider graph without reading every installed ELF.
+// Exact provider/dependency chains are admitted lazily by acquire().
 // Installs alone do not call this function and do not grant privileges.
 bool prepare();
 // Generic owner-loop work; never scans storage or loads a provider.
@@ -33,12 +34,10 @@ inline EnumerationResult nextProviderChecked(const char* capability,
     if (providerId && capacity) providerId[0] = 0;
     if (!capability || !*capability || !version || !cursor || !providerId ||
         capacity < 2 || !prepare()) return EnumerationResult::Fault;
-    // The verified installer bounds provider IDs to <64 bytes. Callers use a
-    // 96-byte identity buffer, so failure after successful prepare() is only
-    // normal exhaustion for this checked selector.
     if (capacity < 96) return EnumerationResult::Fault;
-    return nextProvider(capability, version, cursor, providerId, capacity)
-        ? EnumerationResult::Candidate : EnumerationResult::Exhausted;
+    if (nextProvider(capability, version, cursor, providerId, capacity))
+        return EnumerationResult::Candidate;
+    return *cursor == SIZE_MAX ? EnumerationResult::Fault : EnumerationResult::Exhausted;
 }
 // Resolves the *named* installed provider, never an ambiguous first match.
 bool acquire(const char* providerId, const char* capability, uint32_t version,
@@ -52,6 +51,7 @@ bool attachStream(const Lease&, uint32_t endpoint, uint32_t rights);
 // An uncertain quiesce leaves the mapping and graph pinned for later retry.
 bool recoverFailedProvider(const char* providerId, const char* capability,
                            uint32_t version);
+const char* lastError();
 // Refuses destruction while any provider is still granted or not quiescent.
 // An unsuccessful shutdown deliberately retains every ELF and package pin.
 bool shutdown();

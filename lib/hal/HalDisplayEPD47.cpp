@@ -80,7 +80,7 @@ uint8_t* HalDisplay::allocatePlane() {
   return allocatePsramBuffer(BUFFER_SIZE);
 }
 
-void HalDisplay::begin() {
+void HalDisplay::begin(const bool clearPanel) {
   if (!frameBuffer) {
     frameBuffer = allocatePlane();
   }
@@ -93,7 +93,9 @@ void HalDisplay::begin() {
   }
 
   epd_init();
-  clearScreen(0xFF);
+  if (clearPanel) {
+    clearScreen(0xFF);
+  }
   displayReady = true;
   forceFullRefresh = true;
   forcedRefreshPending = false;
@@ -200,6 +202,14 @@ void HalDisplay::displayBuffer(RefreshMode mode, bool turnOffScreen) {
   forcedRefreshPending = false;
   forceFullRefresh = false;
   pendingDisplayEffect = EFFECT_NONE;
+}
+
+void HalDisplay::displayBufferDiff(const uint8_t* previousBuffer, const RefreshMode mode) {
+  // The current EPD47 backend still submits a full-screen image. Keep the API
+  // available so shared desk-clock code builds; T5S3 Paper Pro uses the
+  // clipped differential path in HalDisplay.cpp.
+  (void)previousBuffer;
+  displayBuffer(mode);
 }
 
 void HalDisplay::refreshDisplay(const RefreshMode mode, const bool turnOffScreen) { displayBuffer(mode, turnOffScreen); }

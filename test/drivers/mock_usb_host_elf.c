@@ -88,7 +88,7 @@ static bool devices(void *ctx, uint64_t *out, size_t *count) {
 static const risc_usb_host_discovery_v1 usb_host = {
     {RISC_USB_HOST_API_V1, sizeof(risc_usb_host_discovery_v1), 0,
      configuration, claim, release_claim, control, read_bulk, write_bulk},
-    poll, devices, release_checked, control_claim
+    poll, devices,  0, 0, release_checked, control_claim
 };
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     if (running || deps || count) return false;

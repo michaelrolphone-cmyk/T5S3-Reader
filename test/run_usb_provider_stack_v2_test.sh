@@ -3,6 +3,9 @@ set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build="$(mktemp -d)"
 trap 'rm -rf "$build"' EXIT
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/provider_extension_layout_test.c" -o "$build/extension-layout-test"
+"$build/extension-layout-test"
 cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fPIC -fvisibility=hidden -shared \
   -I"$repo/sdk/driver" "$repo/test/drivers/mock_usb_host_elf.c" -o "$build/host.so"
 cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fPIC -fvisibility=hidden -shared \

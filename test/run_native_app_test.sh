@@ -7,6 +7,7 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/NativeApps/src/NativeAppLauncher.c" \
   "$repo_dir/test/native_apps/programmer_api_stub.c" \
+  "$repo_dir/test/native_apps/compat_registration_stub.c" \
   "$repo_dir/test/native_apps/launcher_test.c" -o "$binary"
 "$binary"
 # The real firmware device ABI bridge must authorize by execution context and
@@ -28,10 +29,14 @@ else
   "$binary"
 fi
 python3 "$repo_dir/test/native_apps/test_symbols.py"
+python3 "$repo_dir/test/native_apps/test_elf_cache_sync.py"
 python3 "$repo_dir/test/native_apps/test_capability_manifest.py"
+python3 "$repo_dir/test/native_apps/home_shortcut_launch_contract_test.py"
 python3 "$repo_dir/test/resources/driver_install_stack_progress_source_test.py"
 bash "$repo_dir/test/run_serial_launch_contract.sh"
 cc -std=c11 -Wall -Wextra -Werror \
   "$repo_dir/test/native_apps/gnss_consent_contract_test.c" -o "$binary"
 (cd "$repo_dir" && "$binary")
 echo 'Native app launcher tests passed'
+
+bash "$repo_dir/test/run_panic_capture_test.sh"

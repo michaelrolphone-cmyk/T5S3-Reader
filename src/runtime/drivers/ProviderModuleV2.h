@@ -28,13 +28,11 @@ class ModuleV2 final {
   bool load(const char* validatedElf, const char* expectedId,
             const char* expectedCapability, uint32_t expectedApi,
             const risc_provider_dependency_v1* dependencies, size_t count);
-  /* PRIVATE firmware admission path. The caller MUST authenticate the signed
-   * package/identity/ABI, exact signed entry digest AND canonical exact import
-   * declarations. This function snapshots candidate bytes, hashes that
-   * private snapshot and relocates from ONLY that matching snapshot.
-   * Digest/import declarations supplied by an untrusted caller are NOT signer
-   * authentication. Host builds deny this path; ownership still requires
-   * separate grants and successful quiescence before unmapping. */
+  /* PRIVATE firmware admission path. Installation checks payload integrity.
+   * Runtime loading snapshots the bytes and checks ABI, exact allowed imports
+   * and relocation structure. It does not recompute package checksums.
+   * Host builds deny this path; ownership requires separate capability grants
+   * and successful quiescence before unmapping. */
   bool loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
                          const uint8_t authenticatedSha256[32],
                          const char* const* signedImports, size_t signedImportCount,
@@ -52,9 +50,12 @@ class ModuleV2 final {
   bool unpinConsumer();
   bool unload();
   const void* capability() const { return state_ == State::Active ? api_ : nullptr; }
+  const char* lastError() const { return error_; }
   State state() const { return state_; }
   uint32_t consumers() const { return consumers_; }
  private:
+  char error_[160]{};
+  void report(const char* id, const char* stage, int code = 0);
   bool activateMapped(risc_driver_get_v2_fn get, const char* expectedId,
                       const char* expectedCapability, uint32_t expectedApi,
                       const risc_provider_dependency_v1* dependencies, size_t count);

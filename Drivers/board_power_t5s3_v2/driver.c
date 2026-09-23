@@ -32,8 +32,14 @@
 #define BOOST_1200MA 0x02u
 #define BOOST_VOLTAGE_5126MV 0x90u
 #define BUS_TIMEOUT_MS 100u
-#define BOOST_SETTLE_MS 80u
-/* REG02 continuous ADC updates at 1s intervals, not 300ms. */
+#define BOOST_SETTLE_MS 80u /* Matches the working v1.2.16 OTG sequence. */
+/* Only ONE cleared/latching fault observed during the initial OTG inrush may
+ * be qualified for recovery, never a live or repeated fault. The first clean
+ * sample must precede a sustained clean OTG interval and a measured 4.4V+. */
+#define BOOST_STARTUP_FAULT_WINDOW_MS 250u
+#define BOOST_RECOVERY_STABLE_MS 200u
+/* BQ25896 REG02 continuous ADC produces new results at 1s intervals. The
+ * former 300ms timeout rejected a valid first conversion as missing VBUS. */
 #define STARTUP_TIMEOUT_MS 1500u
 #define SHUTDOWN_TIMEOUT_MS 400u
 
@@ -233,6 +239,8 @@ static bool verify_source(uint64_t begun) {
         printf("VBUSREF failure=boost-clock\n");
         return false;
     }
+    bool startup_transient = false;
+    uint64_t clean_since = 0;
     for (;;) {
         uint8_t power = 0, status = 0, adc = 0, latched = 0, live = 0;
         if (!read_reg(REG_POWER, &power) || !read_reg(REG_STATUS, &status) ||
@@ -241,13 +249,13 @@ static bool verify_source(uint64_t begun) {
             printf("VBUSREF failure=boost-read\n");
             return false;
         }
-        if (live & BOOST_FAULT) {
-            report_boost_failure("boost-fault", power, status, adc,
-                                 latched, live, begun);
+        const uint64_t now = clock_api->monotonic_ms(clock_api->context);
+        if (now == UINT64_MAX || now < begun) {
+            printf("VBUSREF failure=boost-clock\n");
             return false;
         }
-        if (latched & BOOST_FAULT) {
-            report_boost_failure("boost-transient", power, status, adc,
+        if (live & BOOST_FAULT) {
+            report_boost_failure("boost-fault", power, status, adc,
                                  latched, live, begun);
             return false;
         }
@@ -256,10 +264,38 @@ static bool verify_source(uint64_t begun) {
                                  latched, live, begun);
             return false;
         }
-        /* REG11[6:0] = 2.6V + 100mV/count, VBUS_GD reports INPUT and may
-         * be zero while successfully sourcing OTG. */
+        /* Startup inrush on the known-good 1.2 A configuration can briefly
+         * trip REG0C while the PMIC already reports live fault clear and OTG.
+         * Do NOT grant VBUS on that observation: wait for a fresh adequate ADC
+         * reading, an uninterrupted clean interval and no repeated fault. */
+        if (latched & BOOST_FAULT) {
+            if (startup_transient || now - begun > BOOST_STARTUP_FAULT_WINDOW_MS ||
+                (status & VBUS_STATUS_MASK) != VBUS_OTG) {
+                report_boost_failure("boost-transient-repeat", power, status, adc,
+                                     latched, live, begun);
+                return false;
+            }
+            startup_transient = true;
+            clean_since = now;
+            printf("VBUSREF stage=boost-transient-observed prev=%02x now=%02x ms=%u\n",
+                   (unsigned)latched, (unsigned)live, (unsigned)(now - begun));
+        }
+        if (startup_transient && (status & VBUS_STATUS_MASK) != VBUS_OTG) {
+            report_boost_failure("boost-unstable", power, status, adc,
+                                 latched, live, begun);
+            return false;
+        }
+        /* REG11[6:0] = 2.6V + 100mV/count. REG11 VBUS_GD reports INPUT
+         * attachment and can be zero while OTG is successfully SOURCING.
+         * Require VBUS_STAT=OTG and a completed, adequate ADC measurement. */
         if ((status & VBUS_STATUS_MASK) == VBUS_OTG &&
-            (adc & 0x7fu) >= 18u) return true;
+            (adc & 0x7fu) >= 18u && /* at least 4.4 V */
+            (!startup_transient || now - clean_since >= BOOST_RECOVERY_STABLE_MS)) {
+            if (startup_transient)
+                printf("VBUSREF stage=boost-transient-recovered v=%02x ms=%u\n",
+                       (unsigned)adc, (unsigned)(now - begun));
+            return true;
+        }
         if (timed_out(begun, STARTUP_TIMEOUT_MS)) {
             report_boost_failure("boost-timeout", power, status, adc,
                                  latched, live, begun);
@@ -308,6 +344,9 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
         if (!ok) printf("VBUSREF failure=otg-enable-write\n");
     }
     if (ok) {
+        /* v1.2.16 allowed the boost circuit to settle for 80 ms. Historical
+         * faults receive explicit bounded recovery verification, never a
+         * blanket exception to live/recurring faults or VBUS measurement. */
         const uint64_t enabled_at = clock_api->monotonic_ms(clock_api->context);
         if (enabled_at == UINT64_MAX) {
             printf("VBUSREF failure=boost-clock\n");

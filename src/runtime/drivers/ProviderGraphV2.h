@@ -53,8 +53,11 @@ class GraphV2 final {
   // Serialized owner-task dispatcher: <=4 callbacks, 2ms each, 10ms per turn.
   // Caller supplies monotonic time and a real scheduler yield; no graph lock.
   void poll(uint32_t (*nowMs)(), void (*yield)());
+  bool hasProvider(const char* providerId, const char* capability, uint32_t api) const;
+  bool hasProviderId(const char* providerId) const;
   size_t moduleCount() const { return count_; }
   size_t liveGrants() const;
+  const char* lastError() const { return error_; }
 
   // Recover only the exact provider whose activation failed before a grant
   // could be issued. Never revoke a live or pending-release grant, unload a
@@ -119,6 +122,8 @@ class GraphV2 final {
     // preserve this slot for an explicit retry; never call the ELF through it.
     bool pendingRelease = false;
   };
+  bool fail(const char* stage, const char* identity);
+  char error_[160]{};
   Node nodes_[kMaxModules]{};
   GrantSlot grants_[kMaxGrants]{};
   const StreamHostV1* streamHost_ = nullptr;

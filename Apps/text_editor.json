@@ -1,0 +1,8 @@
+{
+  "min_firmware_version": "1.2.55",
+  "version": "0.1.3",
+  "display_name": "Text Editor",
+  "file_name": "text_editor.elf",
+  "icon": "solid:f15c",
+  "optional": [{"capability": "usb.hid.keyboard", "api": ">=1"}]
+}

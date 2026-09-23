@@ -44,6 +44,7 @@ typedef struct {
  */
 typedef struct {
     risc_driver_v2 driver;
+    bool (*last_error)(char *destination, size_t capacity);
     bool (*bind_streams)(const risc_stream_provider_v1 *host);
 } risc_driver_streams_v2;
 
@@ -54,6 +55,15 @@ typedef struct {
     risc_driver_streams_v2 streams;
     void (*poll)(uint32_t budget_ms);
 } risc_driver_poll_v2;
+/* Optional append-only diagnostic extension. The base layout remains unchanged
+ * for existing binaries and source initializers. Set base.struct_size to the
+ * full extended size. Runtime copies this text BEFORE quiesce/stop/unmapping.
+ * Callback must be bounded, nonblocking, perform no I/O and NUL-terminate;
+ * returns false if no diagnostic is available. Older runtimes ignore it. */
+typedef struct {
+    risc_driver_v2 base;
+    bool (*last_error)(char *destination, size_t capacity);
+} risc_driver_diagnostics_v2;
 
 /* Minimum accepted ABI-v2 struct ends before the optional quiesce pointer. */
 #define RISC_DRIVER_V2_BASE_SIZE offsetof(risc_driver_v2, quiesce)

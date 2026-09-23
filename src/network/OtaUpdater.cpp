@@ -9,6 +9,7 @@
 #include <esp_wifi.h>
 
 #include "GithubTlsCerts.h"
+#include "runtime/network/NetworkService.h"
 
 namespace {
 constexpr char latestReleaseUrl[] =
@@ -37,6 +38,14 @@ const char* skipVersionPrefix(const char* version) {
 }  // namespace
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
+  // A direct ELF launch does not pass through Settings' Wi-Fi picker. Do not
+  // invoke ESP-IDF HTTP until an initialized interface has a usable IP; lwIP
+  // otherwise can assert at tcpip_send_msg_wait_sem with "Invalid mbox".
+  if (!RuntimeNetwork::ready()) {
+    LOG_ERR("OTA", "Update check refused: network is not ready");
+    return HTTP_ERROR;
+  }
+
   esp_err_t esp_err;
   ReleaseJsonParser releaseParser(Board::id());
 
@@ -137,6 +146,13 @@ const std::string& OtaUpdater::getLatestVersion() const { return latestVersion; 
 OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgress, void* ctx) {
   if (!isUpdateNewer()) {
     return UPDATE_OLDER_ERROR;
+  }
+  // An OTA image transfer must not start after Wi-Fi teardown or before the
+  // connection acquires an IP. Return an error instead of entering lwIP with
+  // an invalid TCP/IP mailbox.
+  if (!RuntimeNetwork::ready()) {
+    LOG_ERR("OTA", "Firmware install refused: network is not ready");
+    return HTTP_ERROR;
   }
 
   esp_https_ota_handle_t ota_handle = NULL;

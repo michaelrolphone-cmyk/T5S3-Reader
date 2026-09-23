@@ -211,7 +211,7 @@ bool exactLegacyDriverFiles(const char* path) {
     return closed && valid && count == 2 && sawElf && sawManifest;
 }
 
-bool validateElfAndHash(const char* path, unsigned expectedSize, const char* expectedSha) {
+bool validateElfAndHash(const char* path, unsigned expectedSize, const char* expectedSha, bool verifyContents) {
     FILE* file = std::fopen(path, "rb");
     if (!file) {
         LOG_ERR("DRIVER", "ELF validation: cannot open %s", path);
@@ -226,6 +226,12 @@ bool validateElfAndHash(const char* path, unsigned expectedSize, const char* exp
         LOG_ERR("DRIVER", "ELF validation: invalid header or seek failed: %s", path);
         std::fclose(file);
         return false;
+    }
+    if (!verifyContents) {
+        const bool sized = std::fseek(file, 0, SEEK_END) == 0 &&
+                           std::ftell(file) == static_cast<long>(expectedSize);
+        std::fclose(file);
+        return sized;
     }
     mbedtls_sha256_context hash;
     mbedtls_sha256_init(&hash);
@@ -270,13 +276,13 @@ struct DriverStorageOps {
 // checks ELF bytes, identity and exact file inventory; no signing receipt or
 // claimed SHA-256 alone grants execution rights.
 bool verifiedDriverDirectoryIdentity(const char* path, const char* expectedId,
-                                     RuntimePackages::Identity& observed) {
+                                     RuntimePackages::Identity& observed, bool verifyContents = true) {
     observed = {};
     if (!path || !safeDriverId(expectedId) || !exactLegacyDriverFiles(path)) return false;
     std::string json;
     if (!readFile((std::string("/sd") + path + "/manifest.json").c_str(), json)) return false;
     DriverPackageInfo info{};
-    if (!validateDriverPayload(json, (std::string("/sd") + path + "/driver.elf").c_str(), &info) ||
+    if (!validateDriverPayload(json, (std::string("/sd") + path + "/driver.elf").c_str(), &info, verifyContents) ||
         std::strcmp(info.id, expectedId) != 0) return false;
     return RuntimePackages::makeIdentity(RuntimePackages::Kind::Driver, info.id,
                                         info.version, "driver.elf", false, &observed);
@@ -293,6 +299,14 @@ bool recoverDriverDirectory(const char* id) {
     const std::string legacyStage = std::string("/Drivers/.") + id + ".install";
     const std::string legacyBackup = std::string("/Drivers/.") + id + ".previous";
     DriverStorageOps ops;
+    RuntimePackages::OrdinaryTransactionPaths current{};
+    if (!RuntimePackages::ordinaryTransactionPaths(RuntimePackages::Kind::Driver, id, current)) return false;
+    if (!Storage.exists(legacyBackup.c_str()) && !Storage.exists(current.backup) &&
+        !Storage.exists(current.removing)) {
+        RuntimePackages::Identity identity{};
+        return !Storage.exists(target.c_str()) ||
+            verifiedDriverDirectoryIdentity(target.c_str(), id, identity, false);
+    }
     const auto verifyLegacy = [id](const char* path) { return verifiedDriverDirectory(path, id); };
     const auto purge = [](const char* path) { return removeManagedDirectory(path); };
     if (Storage.exists(legacyBackup.c_str())) {
@@ -323,7 +337,7 @@ bool parseDriverPackageManifest(const std::string& json, DriverPackageInfo& out)
     return parseManifest(json, doc, out);
 }
 
-bool validateDriverPayload(const std::string& manifestJson, const char* elfVfsPath, DriverPackageInfo* out) {
+bool validateDriverPayload(const std::string& manifestJson, const char* elfVfsPath, DriverPackageInfo* out, bool verifyContents) {
     if (!elfVfsPath || native_app_register_sd_vfs() != ESP_OK) {
         LOG_ERR("DRIVER", "ELF validation: missing path or read-only SD VFS unavailable");
         return false;
@@ -332,7 +346,7 @@ bool validateDriverPayload(const std::string& manifestJson, const char* elfVfsPa
     DriverPackageInfo info{};
     if (!parseManifest(manifestJson, doc, info)) return false;
     const char* sha = doc["sha256"].as<const char*>();
-    if (!validateElfAndHash(elfVfsPath, info.sizeBytes, sha)) return false;
+    if (!validateElfAndHash(elfVfsPath, info.sizeBytes, sha, verifyContents)) return false;
     if (out) *out = info;
     return true;
 }
@@ -343,7 +357,7 @@ bool getInstalledDriverVersion(const char* id, char* version, size_t capacity) {
     const std::string storagePath = std::string("/Drivers/") + id;
     if (!Storage.exists((storagePath + "/driver.elf").c_str())) return false;
     RuntimePackages::Identity observed{};
-    if (!verifiedDriverDirectoryIdentity(storagePath.c_str(), id, observed)) return false;
+    if (!verifiedDriverDirectoryIdentity(storagePath.c_str(), id, observed, false)) return false;
     return copyString(observed.version, version, capacity);
 }
 
@@ -436,7 +450,7 @@ bool validateGpsDriverPackage() {
         return false;
     }
     DriverPackageInfo info{};
-    if (!validateDriverPayload(json, GPS_DRIVER_ELF, &info) || std::strcmp(info.id, "gps-nmea") != 0 ||
+    if (!validateDriverPayload(json, GPS_DRIVER_ELF, &info, false) || std::strcmp(info.id, "gps-nmea") != 0 ||
         std::strcmp(info.capability, T5_GNSS_CAPABILITY) != 0) {
         LOG_ERR("DRIVER", "GPS package integrity or identity mismatch");
         return false;

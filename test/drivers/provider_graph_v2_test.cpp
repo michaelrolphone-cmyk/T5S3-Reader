@@ -1,5 +1,6 @@
 #include "runtime/drivers/ProviderGraphV2.h"
 #include <cassert>
+#include <cstring>
 #include <cstdio>
 #include <cstring>
 
@@ -16,15 +17,18 @@ int main(int argc, char** argv) {
   const SpecV2 alternate = {"fixture-root-alt", argv[4], "cap.root", 1, nullptr, 0};
 
   GraphV2 graph;
-  assert(graph.addVerified(root) && graph.addVerified(child) && graph.addVerified(other));
-  assert(graph.moduleCount() == 3);
+  assert(graph.addVerified(root) && graph.addVerified(child));
+  assert(graph.moduleCount() == 2);
   assert(!graph.addVerified(root));
   assert(!graph.acquire("cap.unknown", 1).slot);
   assert(!graph.acquire("cap.child", 2).slot);
   auto childGrant = graph.acquire("cap.child", 1);
   assert(childGrant.slot && graph.interfaceFor(childGrant));
   assert(*static_cast<const int*>(graph.interfaceFor(childGrant)) == 42);
-  assert(!graph.addVerified({"extra", argv[1], "cap.extra", 1, nullptr, 0}));
+  // Lazy installed-provider admission must be append-only and safe while the
+  // already loaded dependency chain and its consumer grant remain live.
+  assert(graph.addVerified(other));
+  assert(graph.moduleCount() == 3);
   auto otherGrant = graph.acquire("cap.other", 1);
   assert(otherGrant.slot && graph.liveGrants() == 2);
   assert(!graph.shutdown());
@@ -47,6 +51,7 @@ int main(int argc, char** argv) {
     assert(grants[i].slot);
   }
   assert(!capacity.acquire("cap.root", 1).slot);
+  assert(std::strstr(capacity.lastError(), "Grant table full"));
   for (auto grant : grants) assert(capacity.release(grant));
   assert(capacity.shutdown());
 
@@ -89,6 +94,7 @@ int main(int argc, char** argv) {
   GraphV2 missing;
   assert(missing.addVerified(child));
   assert(!missing.acquire("cap.child", 1).slot && missing.shutdown());
+  assert(std::strstr(missing.lastError(), "cap.root"));
 
   const RequirementV2 needsB[] = {{"cycle.b", 1}};
   const RequirementV2 needsA[] = {{"cycle.a", 1}};
@@ -96,10 +102,12 @@ int main(int argc, char** argv) {
   assert(cycle.addVerified({"cycle-a", argv[1], "cycle.a", 1, needsB, 1}));
   assert(cycle.addVerified({"cycle-b", argv[2], "cycle.b", 1, needsA, 1}));
   assert(!cycle.acquire("cycle.a", 1).slot && cycle.shutdown());
+  assert(std::strstr(cycle.lastError(), "Dependency cycle"));
 
   GraphV2 mismatch;
   assert(mismatch.addVerified({"not-the-ELF-id", argv[1], "cap.root", 1, nullptr, 0}));
   assert(!mismatch.acquire("cap.root", 1).slot);
+  assert(std::strstr(mismatch.lastError(), "not-the-ELF-id: elf-interface-or-identity"));
   assert(mismatch.shutdown());
 
   const RequirementV2 duplicateRequirements[] = {{"cap.root", 1}, {"cap.root", 2}};

@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+from instrument_usb_enumeration import instrument
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'Drivers/usb_controller_esp32s3/driver.cpp'
@@ -40,7 +41,9 @@ def tool(compiler, suffix):
 
 
 def compile_target(argv, entry, source, output, c_compiler=False, extra=()):
-    command = list(argv)
+    # PlatformIO can add this newer GCC flag to the compilation database.
+    # The pinned Xtensa GCC 8 toolchain does not recognize it in C or C++.
+    command = [arg for arg in argv if arg != '-Wno-bidi-chars']
     changed_source = changed_output = False
     for i, argument in enumerate(command):
         if Path(argument).as_posix().endswith('src/native/NativeUsbBridge.cpp'):
@@ -57,7 +60,7 @@ def compile_target(argv, entry, source, output, c_compiler=False, extra=()):
             raise RuntimeError('Expected Xtensa C++ toolchain to derive C compiler')
         command[0] = str(tool(compiler, 'gcc'))
         command = [arg for arg in command if not arg.startswith('-std=') and
-                   arg not in ('-fno-rtti', '-Wno-bidi-chars')]
+                   arg != '-fno-rtti']
         command.append('-std=gnu11')
     command.extend(['-fPIC', '-fvisibility=hidden', '-I' + str(ROOT / 'sdk/driver')])
     command.extend(extra)
@@ -141,6 +144,10 @@ def run():
     objects = [controller]
     for index, path in enumerate(paths):
         obj = OUTPUT / f'idf-usb-{index}-{path.name}.o'
+        if path.name == 'hub.c':
+            staged_hub = OUTPUT / 'hub-enumeration-diagnostics.c'
+            staged_hub.write_text(instrument(path.read_text()))
+            path = staged_hub
         compile_target(argv, entry, path, obj, c_compiler=True, extra=includes)
         objects.append(obj)
     phy_gpio = OUTPUT / 'phy-gpio.o'
@@ -156,7 +163,7 @@ def run():
     imported = subprocess.check_output([str(nm), '-u', str(elf)], text=True)
     (OUTPUT / 'unresolved-symbols.txt').write_text(imported)
     namespaces = ('usb_host_', 'usbh_', 'hcd_', 'hub_', 'usb_phy_',
-                  'usb_new_phy', 'urb_')
+                  'usb_new_phy', 'urb_', 'risc_usb_enum_')
     offenders = [line.strip() for line in imported.splitlines()
                  if any(namespace in line for namespace in namespaces)]
     if offenders:

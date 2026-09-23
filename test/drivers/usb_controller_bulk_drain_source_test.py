@@ -10,7 +10,7 @@ import json
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / 'Drivers/usb_controller_esp32s3/driver.cpp'
+SOURCE = ROOT / 'Drivers/usb_controller_esp32s3/driver_base.cpp'
 MANIFEST = ROOT / 'Drivers/usb_controller_esp32s3/manifest.json'
 
 

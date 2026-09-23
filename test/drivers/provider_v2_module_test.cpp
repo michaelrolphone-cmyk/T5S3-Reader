@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
        configuration, claim, release, control, read, write},
       [](void*, size_t, size_t*) { return false; },
       [](void*, uint64_t*, size_t*) { return false; },
-      [](void*, uint64_t) { return true; }, control};
+      nullptr, nullptr, [](void*, uint64_t) { return true; }, control};
   risc_provider_dependency_v1 dep = {"usb.host", RISC_USB_HOST_API_V1, &api};
   RuntimeProviders::ModuleV2 module;
   assert(module.setStreamHost(&streamHost));

@@ -21,6 +21,7 @@
 #include <T5AppApi.h>
 #include <esp_task_wdt.h>
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -68,6 +69,7 @@ struct Session {
   std::string launchPath;
   bool backExitsApp = true;
   bool exiting = false;
+  bool presenting = false;
 };
 Session* session = nullptr;
 bool returned = false;
@@ -75,7 +77,7 @@ std::string queuedLaunch;
 std::string lastLaunchError;
 bool homeRequested = false;
 bool firmwareActionPending = false;
-Session* current() { return session && session->owner == xTaskGetCurrentTaskHandle() ? session : nullptr; }
+Session* current() { return session && !session->presenting && session->owner == xTaskGetCurrentTaskHandle() ? session : nullptr; }
 int32_t width() { auto* s = current(); return s ? s->renderer.getScreenWidth() : 0; }
 int32_t height() { auto* s = current(); return s ? s->renderer.getScreenHeight() : 0; }
 void clear() { if (auto* s = current()) s->renderer.clearScreen(); }
@@ -91,6 +93,38 @@ void present(bool full) {
     s->renderer.displayBuffer(full ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
     esp_task_wdt_reset();
   }
+}
+struct ServicedFrame {
+  GfxRenderer* renderer;
+  bool full;
+  std::atomic<bool> done{false};
+};
+void renderServicedFrame(void* opaque) {
+  auto* frame = static_cast<ServicedFrame*>(opaque);
+  frame->renderer->displayBuffer(frame->full ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+  frame->done.store(true, std::memory_order_release);
+  // No frame/session access after publication; this firmware task never runs ELF code.
+  vTaskDelete(nullptr);
+}
+bool presentServiced(bool full, void (*service)(void*), void* context) {
+  auto* s = current();
+  if (!s || !service) return false;
+  ServicedFrame frame{&s->renderer, full};
+  s->presenting = true;
+  if (xTaskCreatePinnedToCore(renderServicedFrame, "app-refresh", 8192, &frame,
+                            1, nullptr, xPortGetCoreID()) != pdPASS) {
+    s->presenting = false;
+    return false;
+  }
+  // Like present(), join the physical refresh before allowing framebuffer reuse
+  // or app unload. Yield every pass; collect input on its authorized owner task.
+  while (!frame.done.load(std::memory_order_acquire)) {
+    service(context);
+    esp_task_wdt_reset();
+    vTaskDelay(1);
+  }
+  s->presenting = false;
+  return true;
 }
 void setBackExitsApp(bool enabled) {
   if (auto* s = current()) s->backExitsApp = enabled;
@@ -378,15 +412,23 @@ bool loadAggregateCatalog(std::vector<CatalogAsset>& catalog, const std::string&
     esp_task_wdt_reset();
     std::string version;
     t5_app_manifest_t manifest{};
-    if (!parseAppManifest(json, manifest, &version, true)) return false;
+    if (!parseAppManifest(json, manifest, &version, true)) {
+      LOG_ERR("APPSTORE", "Aggregate app manifest %u failed validation (file=%s)",
+              static_cast<unsigned>(validated.size() + 1), manifest.file_name);
+      return false;
+    }
 
     const auto asset = std::find_if(catalog.begin(), catalog.end(), [&](const CatalogAsset& candidate) {
       return candidate.name == manifest.file_name;
     });
-    if (asset == catalog.end()) return false;
+    if (asset == catalog.end()) {
+      LOG_ERR("APPSTORE", "Aggregate app %s has no matching release ELF", manifest.file_name);
+      return false;
+    }
     if (std::any_of(validated.begin(), validated.end(), [&](const CatalogAsset& candidate) {
           return candidate.name == asset->name;
         })) {
+      LOG_ERR("APPSTORE", "Aggregate catalog repeats app %s", manifest.file_name);
       return false;
     }
 
@@ -407,12 +449,24 @@ bool loadCatalogManifests(std::vector<CatalogAsset>& catalog) {
   validated.reserve(catalog.size());
   for (auto& asset : catalog) {
     esp_task_wdt_reset();
-    if (asset.manifestUrl.empty()) continue;
+    if (asset.manifestUrl.empty()) {
+      LOG_ERR("APPSTORE", "Skipping release ELF %s: no JSON sidecar", asset.name.c_str());
+      continue;
+    }
     std::string json;
     std::string version;
     t5_app_manifest_t manifest{};
-    if (!HttpDownloader::fetchUrl(asset.manifestUrl, json) ||
-        !parseAppManifest(json, manifest, &version, true) || asset.name != manifest.file_name) {
+    if (!HttpDownloader::fetchUrl(asset.manifestUrl, json)) {
+      LOG_ERR("APPSTORE", "Fallback manifest download failed: %s", asset.manifestUrl.c_str());
+      continue;
+    }
+    if (!parseAppManifest(json, manifest, &version, true)) {
+      LOG_ERR("APPSTORE", "Fallback manifest validation failed: %s", asset.name.c_str());
+      continue;
+    }
+    if (asset.name != manifest.file_name) {
+      LOG_ERR("APPSTORE", "Fallback filename mismatch: asset=%s manifest=%s",
+              asset.name.c_str(), manifest.file_name);
       continue;
     }
     asset.manifest = manifest;
@@ -484,14 +538,20 @@ bool appCatalogRefresh() {
   }
   LOG_INF("APPSTORE", "Found %u ELF assets in latest release", static_cast<unsigned>(s->catalog.size()));
 
+  if (catalogUrl.empty()) {
+    LOG_ERR("APPSTORE", "Release is missing %s", kAggregateAppCatalogName);
+  }
   if (!catalogUrl.empty() && loadAggregateCatalog(s->catalog, catalogUrl)) {
     LOG_INF("APPSTORE", "Loaded %u apps from aggregate release catalog",
             static_cast<unsigned>(s->catalog.size()));
     return true;
   }
 
-  LOG_INF("APPSTORE", "Aggregate catalog unavailable; falling back to per-app manifests");
-  return loadCatalogManifests(s->catalog);
+  LOG_ERR("APPSTORE", "Aggregate catalog unavailable; loading up to %u per-app manifests (slower)",
+          static_cast<unsigned>(s->catalog.size()));
+  const bool loaded = loadCatalogManifests(s->catalog);
+  LOG_INF("APPSTORE", "Fallback loaded %u apps", static_cast<unsigned>(s->catalog.size()));
+  return loaded;
 }
 
 uint32_t appCatalogCount() {
@@ -532,7 +592,7 @@ bool verifiedManagedApp(const char* id, RuntimePackages::Identity& identity,
   identity = {};
   if (!id || !RuntimePackages::safeId(id)) return false;
   const std::string root = std::string("/Apps/") + id;
-  if (!RuntimePackages::verifyOrdinarySdDirectory(root.c_str(), kCanonicalAppPolicy,
+  if (!RuntimePackages::inspectInstalledOrdinarySdDirectory(root.c_str(), kCanonicalAppPolicy,
           RuntimePackages::installedCapabilityVersion, identity) ||
       identity.kind != RuntimePackages::Kind::Application ||
       std::strcmp(identity.id, id) || !t5_safe_elf_name(identity.artifact))
@@ -561,7 +621,7 @@ bool installedAppVersionGet(const char* fileName, char* out, size_t capacity) {
   const std::string sidecar = destination.substr(0, destination.size() - 4) + ".json";
   if (!RuntimePackages::recoverAppPair(fileName) ||
       !Storage.exists(destination.c_str()) || !Storage.exists(sidecar.c_str()) ||
-      !RuntimePackages::verifyAppPair(destination.c_str(), sidecar.c_str(), fileName, false))
+      !RuntimePackages::inspectInstalledAppPair(destination.c_str(), sidecar.c_str(), fileName))
     return false;
   t5_app_manifest_t manifest{};
   std::string version;
@@ -711,7 +771,8 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            installedRefresh, installedCount, installedGet, requestLaunch, drawIcon, drawLabel,
                            appCatalogManifestGet,
                            installedAppVersionGet,
-                           appCatalogVersionGet};
+                           appCatalogVersionGet,
+                           presentServiced};
 }  // namespace
 
 extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
@@ -776,8 +837,8 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
       lastLaunchError = "Manifest file name does not match the ELF.";
       return ESP_ERR_NOT_SUPPORTED;
     }
-    if (!RuntimePackages::verifyAppPair(elf.c_str(), sidecar.c_str(), filename.c_str(), false)) {
-      lastLaunchError = "Application ELF integrity validation failed.";
+    if (!RuntimePackages::inspectInstalledAppPair(elf.c_str(), sidecar.c_str(), filename.c_str())) {
+      lastLaunchError = "Application metadata or executable is unavailable.";
       return ESP_ERR_NOT_SUPPORTED;
     }
     if (!manifest.compatible) {

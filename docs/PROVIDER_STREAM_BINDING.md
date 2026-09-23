@@ -3,6 +3,8 @@
 An ABI-v2 provider can opt into copied streams by returning the `driver` prefix
 of `risc_driver_streams_v2` from `t5_driver_get`. Set `driver.struct_size` to the
 size of the extended descriptor and implement `bind_streams` and `quiesce`.
+The published `last_error` diagnostic slot precedes `bind_streams`; initialize
+it to NULL when unused. U1 extensions follow published master ABI prefixes.
 Existing `risc_driver_v2` descriptors and app byte-v1/record-v2 layouts are
 unchanged. See `sdk/driver/RiscStreamProviderV1.h` for the C host-table contract.
 

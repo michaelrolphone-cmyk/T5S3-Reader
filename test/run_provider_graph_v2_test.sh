@@ -134,3 +134,16 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
 
 # Source check supplements graph behavior tests, not hardware acceptance.
 python3 "$repo/test/drivers/usb_dynamic_selection_source_test.py"
+# Controller diagnostic formatting is local to the ELF, bounded and import-free.
+c++ -std=c++17 -Wall -Wextra -Werror \
+  "$repo/test/drivers/controller_startup_diagnostic_test.cpp" -o "$build/controller-diagnostic-test"
+"$build/controller-diagnostic-test"
+
+# Exercise the physical controller's actual startup barrier and PHY ownership.
+c++ -std=c++11 -Wall -Wextra -Werror \
+  "$repo/test/drivers/controller_host_startup_test.cpp" -o "$build/controller-host-startup-test"
+"$build/controller-host-startup-test"
+
+# Installed provider discovery must stay metadata-first and must not return to
+# bulk reading every installed ELF during prepare().
+python3 "$repo/test/resources/installed_provider_lazy_loading_source_test.py"

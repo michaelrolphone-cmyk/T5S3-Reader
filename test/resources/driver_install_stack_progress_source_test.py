@@ -9,16 +9,18 @@ recovery = (repo / 'src/native/NativeOnlinePackageRecovery.h').read_text()
 ui = (repo / 'Apps/driver_manager.c').read_text()
 manifest = json.loads((repo / 'Apps/driver_manager.json').read_text())
 
-# Dependency traversal uses one operation-scoped bounded snapshot rather than
-# repeatedly opening and hashing packages at every graph edge.
+# Installed metadata inspection runs only while constructing a fresh
+# operation-scoped snapshot. Runtime discovery never hashes payloads;
+# dependency traversal must not reopen SD handles or allocate manifests.
 assert 'bool snapshotCandidates(' in resolver
 snapshot = resolver.split('bool snapshotCandidates(', 1)[1].split('uint32_t resolveSnapshot(', 1)[0]
 graph = resolver.split('uint32_t resolveSnapshot(', 1)[1]
-assert snapshot.count('verifyOrdinarySdDirectory(') == 1
+assert snapshot.count('inspectInstalledOrdinarySdDirectory(') == 1
+assert 'verifyOrdinarySdDirectory(' not in resolver
 assert 'UINT32_MAX' in snapshot and 'parseOrdinaryManifest(' in snapshot
 assert 'plan->requirements + plan->requirementCount' in snapshot
 assert 'depth >= kMaxDepth' in graph and 'ancestry[depth] = index;' in graph
-assert 'verifyOrdinarySdDirectory(' not in graph
+assert 'inspectInstalledOrdinarySdDirectory(' not in graph
 assert 'Storage.open(' not in graph
 assert 'snapshotCandidates(snapshot->candidates)' in resolver
 assert 'releaseInstalledCapabilities(snapshot)' in resolver

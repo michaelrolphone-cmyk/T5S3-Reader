@@ -2,16 +2,86 @@
 #include <T5OtaApi.h>
 
 #include <Arduino.h>
+#include <Logging.h>
+#include <esp_task_wdt.h>
 
 #include <cstring>
+#include <string>
 
+#include "WifiCredentialStore.h"
 #include "network/OtaUpdater.h"
+#include "runtime/network/NetworkService.h"
 
 namespace {
 
 OtaUpdater updater;
+constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 
 bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
+
+// Settings connects Wi-Fi before launching this ELF, but a user can also
+// launch the updater directly from Apps or Home. Never invoke ESP-IDF HTTP
+// without a connected interface and usable IP: an uninitialized lwIP stack
+// can assert in tcpip_send_msg_wait_sem with "Invalid mbox".
+bool ensureOtaNetworkReady() {
+  if (RuntimeNetwork::ready()) return true;
+
+  // The Wi-Fi picker can report WL_CONNECTED before DHCP assigns an IP. Keep
+  // its selected network, including unsaved credentials, rather than forcibly
+  // reconnecting a different saved SSID while address assignment is underway.
+  if (RuntimeNetwork::state().connection == RuntimeNetwork::ConnectionState::Connected) {
+    LOG_INF("OTA", "Wi-Fi associated; waiting for an IP address");
+    const uint32_t started = millis();
+    while (millis() - started < kWifiConnectTimeoutMs) {
+      esp_task_wdt_reset();
+      const auto state = RuntimeNetwork::state();
+      if (state.connection == RuntimeNetwork::ConnectionState::Connected && state.hasAddress)
+        return true;
+      if (state.connection != RuntimeNetwork::ConnectionState::Connected) break;
+      delay(100);
+    }
+    LOG_ERR("OTA", "Selected Wi-Fi did not obtain an IP address; skipping HTTP request");
+    return false;
+  }
+
+  WIFI_STORE.loadFromFile();
+  const WifiCredential* credential = nullptr;
+  const std::string last = WIFI_STORE.getLastConnectedSsid();
+  if (!last.empty()) credential = WIFI_STORE.findCredential(last);
+  if (!credential) {
+    const auto& saved = WIFI_STORE.getCredentials();
+    if (!saved.empty()) credential = &saved.front();
+  }
+  if (!credential || credential->ssid.empty()) {
+    LOG_ERR("OTA", "No active network or saved Wi-Fi credentials; skipping HTTP request");
+    return false;
+  }
+
+  // Copy credentials before modifying the store on successful connection.
+  const std::string ssid = credential->ssid;
+  const std::string password = credential->password;
+  LOG_INF("OTA", "No ready network; connecting saved Wi-Fi before update request");
+  RuntimeNetwork::wifi().connect(ssid.c_str(), password.empty() ? nullptr : password.c_str());
+
+  const uint32_t started = millis();
+  while (millis() - started < kWifiConnectTimeoutMs) {
+    esp_task_wdt_reset();
+    const auto state = RuntimeNetwork::state();
+    if (state.connection == RuntimeNetwork::ConnectionState::Connected && state.hasAddress) {
+      WIFI_STORE.setLastConnectedSsid(ssid);
+      LOG_INF("OTA", "Network ready for firmware update");
+      return true;
+    }
+    if (state.connection == RuntimeNetwork::ConnectionState::Failed ||
+        state.connection == RuntimeNetwork::ConnectionState::NetworkNotFound) {
+      LOG_ERR("OTA", "Saved Wi-Fi connection failed before IP assignment");
+      return false;
+    }
+    delay(100);
+  }
+  LOG_ERR("OTA", "Timed out waiting for Wi-Fi and an IP address");
+  return RuntimeNetwork::ready();
+}
 
 t5_ota_result_t mapResult(OtaUpdater::OtaUpdaterError result) {
   switch (result) {
@@ -34,7 +104,7 @@ t5_ota_result_t mapResult(OtaUpdater::OtaUpdaterError result) {
 }
 
 t5_ota_result_t checkForUpdate() {
-  if (!active()) return T5_OTA_UNAVAILABLE;
+  if (!active() || !ensureOtaNetworkReady()) return T5_OTA_UNAVAILABLE;
   return mapResult(updater.checkForUpdate());
 }
 
@@ -52,7 +122,7 @@ size_t processedSize() { return active() ? updater.getProcessedSize() : 0; }
 size_t totalSize() { return active() ? updater.getTotalSize() : 0; }
 
 t5_ota_result_t installUpdate(t5_ota_progress_callback_t callback, void* ctx) {
-  if (!active()) return T5_OTA_UNAVAILABLE;
+  if (!active() || !ensureOtaNetworkReady()) return T5_OTA_UNAVAILABLE;
   return mapResult(updater.installUpdate(callback, ctx));
 }
 

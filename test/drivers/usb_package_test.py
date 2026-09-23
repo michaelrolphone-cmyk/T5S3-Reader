@@ -63,6 +63,16 @@ class UsbCdcPackage(unittest.TestCase):
                              {'gps-nmea', 'usb-cdc-acm'})
             self.assertEqual({entry['elf_asset'] for entry in catalog['drivers']},
                              {'gps-nmea-1.0.0.t5driver.elf', 'usb-cdc-acm-0.1.0.t5driver.elf'})
+    def physical_controller(self):
+        wrapper = (ROOT / 'Drivers/usb_controller_esp32s3/driver.cpp').read_text(encoding='utf-8')
+        # HID extended the SAME executable using a source include. The base
+        # remains hardware-owning and is compiled directly into that ELF.
+        self.assertIn('#include "driver_base.cpp"', wrapper)
+        self.assertIn('interrupt_read(', wrapper)
+        base = (ROOT / 'Drivers/usb_controller_esp32s3/driver_base.cpp').read_text(encoding='utf-8')
+        self.assertIn('#include "HostStartup.h"', base)
+        startup = (ROOT / 'Drivers/usb_controller_esp32s3/HostStartup.h').read_text(encoding='utf-8')
+        return base.replace('#include "HostStartup.h"', startup)
     def test_installed_usb_cdc_elf_activation_uses_explicit_json_strings(self):
         source = (ROOT / 'src/runtime/drivers/UsbCdcDriverRuntime.cpp').read_text(encoding='utf-8')
         self.assertNotIn(' | nullptr;', source)
@@ -74,7 +84,7 @@ class UsbCdcPackage(unittest.TestCase):
         self.assertIn('USBREF phase=driver_load result=active', source)
     def test_usb_class_descriptor_and_physical_ownership_are_in_elves(self):
         bridge = (ROOT / 'src/native/NativeUsbBridge.cpp').read_text(encoding='utf-8')
-        controller = (ROOT / 'Drivers/usb_controller_esp32s3/driver.cpp').read_text(encoding='utf-8')
+        controller = self.physical_controller()
         cdc = (ROOT / 'Drivers/usb_cdc_v2/driver.c').read_text(encoding='utf-8')
         self.assertIn('RuntimeInstalledProviders::acquire(', bridge)
         # A comment mentioning shutdown must never pass this test: serial
@@ -83,11 +93,49 @@ class UsbCdcPackage(unittest.TestCase):
         self.assertIn('if (!closeClass()) return;', bridge)
         self.assertIn('!RuntimeInstalledProviders::release(&hostGrant)', bridge)
         self.assertNotIn('#include <usb/usb_host.h>', bridge)
-        self.assertNotIn('usb_host_install(', bridge)
-        self.assertNotIn('Wire.beginTransmission(', bridge)
+        bridge_code = '\n'.join(line for line in bridge.splitlines()
+                                if not line.lstrip().startswith('//'))
+        self.assertNotIn('usb_host_install(', bridge_code)
+        self.assertNotIn('Wire.beginTransmission(', bridge_code)
+        startup = bridge.split('bool serialStart(', 1)[1]
+        self.assertIn('Serial.end();', bridge)
+        self.assertIn('Serial.begin(115200);', bridge)
+        self.assertLess(startup.index('suspendDebugConsole();'),
+                        startup.index('RuntimeInstalledProviders::acquire('))
         self.assertIn('#include <usb/usb_host.h>', controller)
         self.assertIn('usb_host_install(', controller)
         self.assertIn('host->bulk_read(', cdc)
         self.assertIn('host->bulk_write(', cdc)
+    def test_vbus_cleanup_is_reached_from_normal_and_elf_error_return(self):
+        app = (ROOT / 'Apps/serial_monitor_implementation.inc').read_text(encoding='utf-8')
+        host = (ROOT / 'src/native/NativeAppHost.cpp').read_text(encoding='utf-8')
+        streams = (ROOT / 'src/native/NativeStreamBridge.cpp').read_text(encoding='utf-8')
+        serial = (ROOT / 'src/native/NativeSerialPortBridge_implementation.inc').read_text(encoding='utf-8')
+        bridge = (ROOT / 'src/native/NativeUsbBridge.cpp').read_text(encoding='utf-8')
+        controller = self.physical_controller()
+        self.assertIn('if (event.type == T5_UI_EVENT_EXIT) {\n            release_serial_session();', app)
+        self.assertLess(host.index('const esp_err_t result = launch_elf_app(path);'),
+                        host.index('nativeStreamsEnd();'))
+        self.assertIn('invocation.end();', streams)
+        self.assertIn('providers.end();', serial)
+        self.assertIn('if (stopUsb && usb && usb->serial_stop) usb->serial_stop();', serial)
+        self.assertIn('if (!RuntimeInstalledProviders::shutdown())', bridge)
+        self.assertIn('power->release_host(power->context, powerLease)', controller)
+    def test_usb_bulk_timeout_must_reclaim_callback_before_vbus_release(self):
+        source = self.physical_controller()
+        wait = source.split('bool wait_completion(', 1)[1].split('bool idle_transfer(', 1)[0]
+        release = source.split('bool release_interface(', 1)[1].split('int32_t control(', 1)[0]
+        quiesce = source.split('bool quiesce(void *) {', 1)[1].split('void stop()', 1)[0]
+        drain = source.split('bool drain_bulk(', 1)[1].split('bool wait_completion(', 1)[0]
+        self.assertIn('usb_host_endpoint_halt(', drain)
+        self.assertIn('usb_host_endpoint_flush(', drain)
+        self.assertIn('while (inFlight)', drain)
+        self.assertIn('usb_host_endpoint_clear(', drain)
+        self.assertIn('drain_bulk(true)', wait)
+        self.assertLess(release.index('drain_bulk(false)'), release.index('usb_host_interface_release('))
+        self.assertLess(quiesce.index('drain_bulk(false)'), quiesce.index('usb_host_transfer_free('))
+        self.assertLess(quiesce.index('usb_host_uninstall()'),
+                        quiesce.index('power->release_host('))
+        self.assertIn('USBCTRL stage=vbus-released', quiesce)
 
 if __name__ == '__main__': unittest.main()

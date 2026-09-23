@@ -1,6 +1,7 @@
 #include "ProviderGraphV2.h"
 #include "ProviderOwnedSpecV2.h"
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <new>
 
@@ -46,13 +47,25 @@ int GraphV2::findProvider(const char* id, const char* capability, uint32_t api) 
   return -1;
 }
 
+bool GraphV2::hasProvider(const char* providerId, const char* capability,
+                          uint32_t api) const {
+  return findProvider(providerId, capability, api) >= 0;
+}
+
+bool GraphV2::hasProviderId(const char* providerId) const {
+  if (!validName(providerId)) return false;
+  for (size_t i = 0; i < count_; ++i)
+    if (std::strcmp(nodes_[i].spec.id, providerId) == 0) return true;
+  return false;
+}
+
 bool GraphV2::addVerified(const SpecV2& spec) {
   return addChecked(spec, false);
 }
 
 bool GraphV2::addAuthenticatedPrivileged(const SpecV2& spec) {
   // Manager-validated private entry; signing is optional, exact privileged
-  // import validation and checksum matching remain mandatory on relocation.
+  // import validation remains mandatory on relocation; checksums are install-time.
   return addChecked(spec, true);
 }
 
@@ -70,7 +83,7 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
                           spec.verifiedElfLength > 0 &&
                           spec.verifiedElfLength <= 8u * 1024u * 1024u &&
                           spec.signedImports != nullptr &&
-                          spec.signedImportCount <= 128 && !emptyDigest;
+                          spec.signedImportCount <= 128;
   if (count_ == kMaxModules || !validName(spec.id) ||
       !validName(spec.provides) || !spec.api ||
       (spec.verifiedElfPath && spec.verifiedElfPath[0] != '/') ||
@@ -89,12 +102,16 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
         return false;
     }
   }
+  // nodes_ is fixed storage: appending a new absent provider cannot move or
+  // invalidate healthy active modules, retained dependency tables, or live
+  // grants. Never mutate the graph while a provider is mid-activation or
+  // quarantined after failed start/quiesce; those states deliberately retain
+  // mapped code and dependency pins until explicit recovery succeeds.
   for (size_t i = 0; i < count_; ++i) {
-    if (nodes_[i].visit != Visit::Idle ||
-        nodes_[i].module.state() != ModuleV2::State::Absent ||
-        std::strcmp(nodes_[i].spec.id, spec.id) == 0) return false;
+    if (std::strcmp(nodes_[i].spec.id, spec.id) == 0 ||
+        nodes_[i].visit == Visit::Visiting ||
+        nodes_[i].module.state() == ModuleV2::State::Failed) return false;
   }
-  if (liveGrants()) return false;
   for (size_t i = 0; i < spec.requirementCount; ++i) {
     if (!validName(spec.requirements[i].capability) || !spec.requirements[i].api)
       return false;
@@ -135,12 +152,23 @@ bool GraphV2::deactivateIfUnused(size_t index) {
   return true;
 }
 
+bool GraphV2::fail(const char* stage, const char* identity) {
+  std::snprintf(error_, sizeof(error_), "%s: %s", stage, identity ? identity : "unknown");
+  return false;
+}
+
 bool GraphV2::activate(size_t index) {
   Node& node = nodes_[index];
+  if (node.visit == Visit::Visiting) return fail("Dependency cycle", node.spec.id);
+  if (node.module.state() == ModuleV2::State::Failed) {
+    if (node.module.lastError()[0]) {
+      std::snprintf(error_, sizeof(error_), "%s", node.module.lastError());
+      return false;
+    }
+    return fail("Provider failed", node.spec.id);
+  }
   if (node.visit == Visit::Active)
     return node.module.state() == ModuleV2::State::Active;
-  if (node.visit == Visit::Visiting ||
-      node.module.state() == ModuleV2::State::Failed) return false;
   node.visit = Visit::Visiting;
   for (size_t i = 0; i < node.spec.requirementCount; ++i) {
     const RequirementV2& requirement = node.spec.requirements[i];
@@ -148,6 +176,8 @@ bool GraphV2::activate(size_t index) {
     if (dependency < 0 ||
         !activate(static_cast<size_t>(dependency)) ||
         !nodes_[dependency].module.pinConsumer()) {
+      if (dependency < 0) fail("Dependency missing/ambiguous", requirement.capability);
+      else if (!error_[0]) fail("Dependency pin failed", requirement.capability);
       releaseDependencies(index);
       node.visit = Visit::Idle;
       return false;
@@ -172,6 +202,9 @@ bool GraphV2::activate(size_t index) {
                          node.spec.requirementCount ? node.boundDependencies : nullptr,
                          node.spec.requirementCount);
   if (!loaded) {
+    if (node.module.lastError()[0])
+      std::snprintf(error_, sizeof(error_), "%s", node.module.lastError());
+    else fail("Provider load/start failed (no diagnostic)", node.spec.id);
     if (node.module.unload()) {
       releaseDependencies(index);
       node.visit = Visit::Idle;
@@ -190,8 +223,10 @@ GrantV2 GraphV2::acquireIndex(size_t index) {
   size_t slot = kMaxGrants;
   for (size_t i = 0; i < kMaxGrants; ++i)
     if (!grants_[i].occupied) { slot = i; break; }
-  if (slot == kMaxGrants || !activate(index)) return {};
+  if (slot == kMaxGrants) { fail("Grant table full", nodes_[index].spec.id); return {}; }
+  if (!activate(index)) return {};
   if (!nodes_[index].module.pinConsumer()) {
+    fail("Provider pin failed", nodes_[index].spec.id);
     (void)deactivateIfUnused(index);
     return {};
   }
@@ -216,13 +251,17 @@ void GraphV2::poll(uint32_t (*nowMs)(), void (*yield)()) {
   polling_ = false;
 }
 GrantV2 GraphV2::acquire(const char* capability, uint32_t api) {
+  error_[0] = 0;
   const int target = find(capability, api);
+  if (target < 0) fail("Capability missing/ambiguous", capability);
   return target < 0 ? GrantV2{} : acquireIndex(static_cast<size_t>(target));
 }
 
 GrantV2 GraphV2::acquireFrom(const char* providerId, const char* capability,
                            uint32_t api) {
+  error_[0] = 0;
   const int target = findProvider(providerId, capability, api);
+  if (target < 0) fail("Provider not admitted", providerId);
   return target < 0 ? GrantV2{} : acquireIndex(static_cast<size_t>(target));
 }
 

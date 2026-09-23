@@ -289,7 +289,7 @@ static const risc_serial_port_streams_v1 capability = {
 static const risc_driver_poll_v2 driver = {
     {{RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_poll_v2),
       "usb-cp210x-v2", "serial.port", RISC_USB_CDC_API_V1,
-      &capability.inventory.discovery.serial, start, stop, quiesce}, bind_streams},
+      &capability.inventory.discovery.serial, start, stop, quiesce}, 0, bind_streams},
     poll_streams
 };
 __attribute__((visibility("default")))

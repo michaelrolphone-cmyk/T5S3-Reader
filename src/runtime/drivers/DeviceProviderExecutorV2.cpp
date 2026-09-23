@@ -37,7 +37,7 @@ bool equalDigest(const uint8_t* a, const uint8_t* b) {
 } // namespace
 
 bool DeviceProviderExecutorV2::registerManagerValidated(
-    RuntimeProviders::GraphV2& graph, const ManagerProviderCandidateV2& input) {
+    RuntimeProviders::GraphV2& graph, const ManagerProviderCandidateV2& input, bool verifyContents) {
   // A nonnull declaration with count zero denotes an intentionally empty
   // exact import set. The private ELF matcher must find no undefined symbols.
   if (input.requiredOsCpuAbi != 1 || !input.driverId || !input.provides ||
@@ -47,9 +47,13 @@ bool DeviceProviderExecutorV2::registerManagerValidated(
       (input.requirementCount && !input.requirements) ||
       !xtensaDynamicallyLinkedElf(input.elfBytes, input.elfLength)) return false;
   uint8_t calculated[32]{};
-  if (!sha256(input.elfBytes, input.elfLength, calculated)) return false;
-  if (input.declaredSha256 &&
-      !equalDigest(calculated, input.declaredSha256)) return false;
+  if (verifyContents) {
+    if (!sha256(input.elfBytes, input.elfLength, calculated)) return false;
+    if (input.declaredSha256 &&
+        !equalDigest(calculated, input.declaredSha256)) return false;
+  } else if (input.declaredSha256) {
+    std::memcpy(calculated, input.declaredSha256, sizeof(calculated));
+  }
 
   RuntimeProviders::SpecV2 spec{input.driverId, nullptr, input.provides,
       input.providesApi, input.requirements, input.requirementCount};

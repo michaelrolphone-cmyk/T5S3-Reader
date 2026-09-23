@@ -48,16 +48,22 @@ typedef struct {
     bool (*quiesce)(void *context);
 } risc_usb_controller_api_v1;
 
-/* Append-only extension: the initial .host / poll / devices / release_checked
- * layout remains compatible with v1 consumers. Class ELFs require checked
- * release and claim-scoped control. Retry the SAME claim after failed release;
- * a closing/stale claim never authorizes transfer or control.
- * Discovery belongs to USB providers, not a firmware USB enumerator. */
+/* Preserve the deployed discovery/interrupt/diagnostic prefix. U1 checked
+ * release/control slots follow it, so published HID binaries keep offsets. */
+typedef struct {
+    risc_usb_host_api_v1 host;
+    bool (*poll)(void *context, size_t max_events, size_t *processed);
+    bool (*devices)(void *context, uint64_t *out, size_t *inout_count);
+} risc_usb_host_legacy_discovery_v1;
+
 typedef struct {
     risc_usb_host_api_v1 host;
     bool (*poll)(void *context, size_t max_events, size_t *processed);
     bool (*devices)(void *context, uint64_t *out,
                     size_t *inout_count);
+    int32_t (*interrupt_read)(void *context, uint64_t claim, uint8_t endpoint,
+                              uint8_t *dst, size_t capacity, uint32_t timeout_ms);
+    bool (*diagnostic)(void *context, char *out, size_t capacity);
     bool (*release_checked)(void *context, uint64_t claim);
     /* The caller presents its own claim rather than a publicly discoverable
      * device token. Interface recipient: index must equal claimed interface.

@@ -20,7 +20,9 @@
 
 namespace RuntimePackages {
 namespace {
-constexpr uint64_t kMaxAppBytes = 1024u * 1024u;
+// Match the online ordinary-application package policy. Large full-source
+// native ELFs must not be misclassified as corrupt legacy pairs at boot.
+constexpr uint64_t kMaxAppBytes = 8u * 1024u * 1024u;
 
 bool validFilename(const char* filename) { return t5_safe_elf_name(filename); }
 
@@ -46,12 +48,26 @@ struct StorageOps {
   bool remove(const char* path) const { return Storage.remove(path); }
 };
 
+bool existingRegularFile(const char* path) {
+  if (!path) return false;
+  HalFile file = Storage.open(path, O_RDONLY);
+  if (!file.isOpen() || file.isDirectory()) {
+    if (file.isOpen()) file.close();
+    return false;
+  }
+  return file.close();
+}
+
 bool verifyBytes(const char* elfPath, uint64_t declaredSize, const char* declaredSha,
                  bool hasDigest) {
   HalFile elf = Storage.open(elfPath, O_RDONLY);
   if (!elf.isOpen() || elf.isDirectory()) return false;
   const uint64_t size = elf.fileSize64();
   if (size < 52 || size > kMaxAppBytes || (hasDigest && size != declaredSize)) {
+    LOG_ERR("APPSTORE", "Invalid ELF length for %s: actual=%llu declared=%llu limit=%llu",
+            elfPath, static_cast<unsigned long long>(size),
+            static_cast<unsigned long long>(hasDigest ? declaredSize : 0),
+            static_cast<unsigned long long>(kMaxAppBytes));
     elf.close();
     return false;
   }
@@ -98,7 +114,7 @@ bool verifyBytes(const char* elfPath, uint64_t declaredSize, const char* declare
 }
 
 bool verifyNamedPair(const char* elf, const char* manifest, const char* filename,
-                     bool requireDigest) {
+                     bool requireDigest, bool verifyContents = true) {
   if (!elf || !manifest || !validFilename(filename)) return false;
   t5_app_manifest_t parsed{};
   if (!readAppManifest(manifest, parsed) || std::strcmp(parsed.file_name, filename) != 0) return false;
@@ -112,8 +128,16 @@ bool verifyNamedPair(const char* elf, const char* manifest, const char* filename
   const JsonVariantConst declaredSha = json["sha256"];
   const bool hasDigest = declaredSize.is<unsigned>() && declaredSha.is<const char*>();
   if (requireDigest && !hasDigest) return false;
-  return verifyBytes(elf, hasDigest ? declaredSize.as<unsigned>() : 0,
-                     hasDigest ? declaredSha.as<const char*>() : nullptr, hasDigest);
+
+  // Manual/legacy installs intentionally predate the managed-package format.
+  // A valid matching digestless sidecar identifies the app for discovery, but
+  // does not claim package integrity and must not be retroactively subjected
+  // to managed ELF-header rules. The ELF loader remains the compatibility
+  // authority for these manually copied files. Staged/new installs and any
+  // sidecar that declares integrity metadata continue through strict hashing.
+  if (!hasDigest || !verifyContents) return existingRegularFile(elf);
+
+  return verifyBytes(elf, declaredSize.as<unsigned>(), declaredSha.as<const char*>(), true);
 }
 } // namespace
 
@@ -123,10 +147,20 @@ bool verifyAppPair(const char* elfPath, const char* manifestPath,
   return verifyNamedPair(elfPath, manifestPath, expectedFilename, requireDigest);
 }
 
+bool inspectInstalledAppPair(const char* elfPath, const char* manifestPath,
+                             const char* expectedFilename) {
+  return Storage.ready() && verifyNamedPair(elfPath, manifestPath,
+                                           expectedFilename, false, false);
+}
+
 bool recoverAppPair(const char* filename) {
   if (!Storage.ready() || !validFilename(filename)) return false;
   Paths paths(filename);
   StorageOps ops;
+  // No transaction to recover: never rehash an already installed pair.
+  if (!ops.exists(paths.backupElf.c_str()) && !ops.exists(paths.backupManifest.c_str()) &&
+      ops.exists(paths.targetElf.c_str()) && ops.exists(paths.targetManifest.c_str()))
+    return inspectInstalledAppPair(paths.targetElf.c_str(), paths.targetManifest.c_str(), filename);
   const auto verify = [filename](const char* elf, const char* manifest) {
     return verifyNamedPair(elf, manifest, filename, false);
   };

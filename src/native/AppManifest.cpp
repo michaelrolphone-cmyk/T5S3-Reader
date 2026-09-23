@@ -53,7 +53,8 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
   if (!sizeNode.isNull()) {
     if (!sizeNode.is<unsigned>() || !digestNode.is<const char*>()) return false;
     const unsigned bytes = sizeNode.as<unsigned>();
-    if (bytes < 52 || bytes > 1024u * 1024u) return false;
+    // Match both legacy pair verification and ordinary application packages.
+    if (bytes < 52 || bytes > 8u * 1024u * 1024u) return false;
     const char* digest = digestNode.as<const char*>();
     if (std::strlen(digest) != 64) return false;
     for (unsigned i = 0; i < 64; ++i) {
@@ -76,11 +77,13 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
                        RuntimeDevices::AppCapabilityRequirements& parsed) -> bool {
     const JsonVariantConst value = doc[key];
     if (value.isNull()) return true;  // Old manifests did not declare capabilities.
-    if (!value.is<JsonArray>()) return false;
+    // Read-only variants cannot expose mutable ArduinoJson containers; testing
+    // JsonArray/JsonObject here rejects even valid empty capability lists.
+    if (!value.is<JsonArrayConst>()) return false;
     const JsonArrayConst entries = value.as<JsonArrayConst>();
     if (entries.size() > RuntimeDevices::kMaxAppRequirements) return false;
     for (JsonVariantConst item : entries) {
-      if (!item.is<JsonObject>()) return false;
+      if (!item.is<JsonObjectConst>()) return false;
       const JsonObjectConst record = item.as<JsonObjectConst>();
       if (record.size() != 2 || !record["capability"].is<const char*>() ||
           !record["api"].is<const char*>()) return false;

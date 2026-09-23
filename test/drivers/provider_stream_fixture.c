@@ -36,7 +36,7 @@ static void poll(uint32_t budget) { assert(budget && budget <= 2); ++poll_count;
 static const provider_stream_fixture_api api = {streams, source_handle, block_quiesce, polls};
 static const risc_driver_poll_v2 driver = {
     {{RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_poll_v2),
-      "fixture-streams", "fixture.streams", 1, &api, start, stop, quiesce}, bind_streams},
+      "fixture-streams", "fixture.streams", 1, &api, start, stop, quiesce}, 0, bind_streams},
     poll
 };
 __attribute__((visibility("default")))

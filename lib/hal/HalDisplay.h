@@ -39,8 +39,23 @@ class HalDisplay {
     EFFECT_READER_TURN_BACKWARD_FAST
   };
 
-  // Initialize the display hardware and driver
-  void begin();
+  // Initialize the display hardware and driver. Ordinary boots clear the
+  // panel during M5GFX initialization; deep-sleep clock timer wakes can retain
+  // the physical e-paper image and skip that startup clear.
+  void begin(bool clearPanel = true);
+
+  // Exclusive native ELF display takeover. The host MUST hold RenderLock and
+  // stop other display users for the entire interval. No UI/display calls are
+  // allowed between successful suspend and resume. Logical framebuffers stay
+  // allocated at the same addresses so the existing GfxRenderer remains valid.
+  // Other boards fail closed until their backend implements a real handoff.
+#if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
+  bool suspendForExternalOwner();
+  bool resumeFromExternalOwner();
+#else
+  bool suspendForExternalOwner() { return false; }
+  bool resumeFromExternalOwner() { return false; }
+#endif
 
   // Display dimensions
   static constexpr uint16_t VISIBLE_WIDTH = BoardPins::LogicalWidth;
@@ -60,6 +75,11 @@ class HalDisplay {
                             bool fromProgmem = false) const;
 
   void displayBuffer(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
+  // Compare the current logical framebuffer with a reconstructed previous frame
+  // and drive only the bounding rectangle that changed. This is intended for
+  // deep-sleep clients such as the desk clock, where panel contents survive but
+  // RAM does not. Falls back to displayBuffer() when a full refresh is required.
+  void displayBufferDiff(const uint8_t* previousBuffer, RefreshMode mode = RefreshMode::HALF_REFRESH);
   void refreshDisplay(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
 
   // When enabled, the physical panel output is mirrored 180° (whole UI upside down).
@@ -97,6 +117,7 @@ class HalDisplay {
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
   T5S3M5GfxDisplay* gfx = nullptr;
   lgfx::LGFX_Sprite* panelCanvas = nullptr;
+  bool externalOwner = false;
 #elif defined(BOARD_LILYGO_EPD47_S3)
   uint8_t* epdFrameBuffer = nullptr;
 #endif
@@ -120,6 +141,7 @@ class HalDisplay {
   void pushPanelCanvas(RefreshMode mode, lgfx::epd_mode::epd_mode_t epdMode);
   void pushPanelCanvasWithEffect(DisplayEffect effect) const;
   void renderBwToPanelCanvas() const;
+  void renderBwToPanelCanvas(const uint8_t* sourceBuffer) const;
   void renderGrayToPanelCanvas() const;
 #endif
 };

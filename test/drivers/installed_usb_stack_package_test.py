@@ -27,6 +27,10 @@ BASELINE = {
     'usb-cdc-acm-v2': ('serial.port', ['usb.host']),
     'usb-cp210x-v2': ('serial.port', ['usb.host']),
     'usb-serial-witness': ('serial.port', ['usb.host']),
+    'usb-hid': ('usb.hid', ['usb.host']),
+    'usb-hid-keyboard': ('usb.hid.keyboard', ['usb.hid']),
+    'usb-hid-gamepad': ('usb.hid.gamepad', ['usb.hid']),
+    'usb-xinput-gamepad': ('usb.xinput.gamepad', ['usb.host', 'platform.clock']),
 }
 EXPECTED_ABSOLUTE_POINTERS = {
     'usb-controller-esp32s3': {0x600c0000, 0x60039000, 0x60008000,
@@ -35,7 +39,6 @@ EXPECTED_ABSOLUTE_POINTERS = {
 
 
 def mutation_rejected(elf: bytes, site: int, replacement: int) -> bool:
-    """Change a mapped RELATIVE pointer value, leaving its relocation intact."""
     data = bytearray(elf)
     hdr = struct.unpack_from('<HHIIIIIHHHHHH', data, 16)
     shoff, shentsize, shnum = hdr[5], hdr[10], hdr[11]

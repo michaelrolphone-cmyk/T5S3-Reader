@@ -561,6 +561,13 @@ A non-returning app cannot be forcibly unloaded safely.
 Before returning, an app must stop/join its own tasks, timers, DMA, interrupts,
 and callbacks; close resources; and free app-owned allocations. Nothing may
 continue executing code or dereferencing data from the ELF after `dlclose()`.
+
+C++ ELF modules whose static objects require construction export both
+`int app_module_init(void)` and `void app_module_fini(void)`. The loader calls
+the init hook after relocation and the fini hook before hardware restoration
+and `dlclose()`. The linker/build remains responsible for collecting the
+constructor and destructor functions invoked by those hooks. Exporting only one
+hook is rejected so partially initialized module state cannot be unloaded.
 The framework does not promise recovery from native faults, assertions, `exit()`,
 app-created task deletion, or watchdog resets.
 

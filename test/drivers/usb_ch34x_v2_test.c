@@ -114,7 +114,7 @@ int main(int argc, char **argv) {
     risc_usb_host_discovery_v1 host = {
         {RISC_USB_HOST_API_V1, sizeof(host), NULL,
          configuration, claim, release_claim, control, read_data, write_data},
-        NULL, NULL, release_checked, control
+        NULL, NULL,  0, 0, release_checked, control
     };
     dep.api = &host.host;
     assert(!driver->start(&dep, 1));

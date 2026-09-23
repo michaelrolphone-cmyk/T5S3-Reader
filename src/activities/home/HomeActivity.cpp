@@ -18,6 +18,7 @@
 
 #include "CrossPointSettings.h"
 #include "native/AppManifest.h"
+#include "native/InstalledAppPath.h"
 #include "native/NativeAppHost.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
@@ -80,6 +81,12 @@ void HomeActivity::loadHomeApps() {
     return;
   }
 
+  // Springboard persists ELF basenames, not package IDs or absolute paths.
+  // Resolve each pin against the verified installed package inventory so
+  // upgrades and canonical /Apps/<id>/<artifact> installs remain visible.
+  HalFile pinFile = Storage.open(HOME_APPS_PATH, O_RDONLY);
+  if (!pinFile.isOpen() || pinFile.isDirectory() || pinFile.fileSize64() > 16384u) return;
+  pinFile.close();
   const String pins = Storage.readFile(HOME_APPS_PATH);
   const char* data = pins.c_str();
   const size_t length = pins.length();
@@ -94,23 +101,18 @@ void HomeActivity::loadHomeApps() {
     if (end > start) {
       const std::string fileName(data + start, end - start);
       if (t5_safe_elf_name(fileName.c_str()) && fileName != "springboard.elf") {
-        const std::string elfPath = std::string("/Apps/") + fileName;
-        const std::string sidecar = elfPath.substr(0, elfPath.size() - 4) + ".json";
-        if (Storage.exists(elfPath.c_str()) && Storage.exists(sidecar.c_str()) &&
-            !Storage.exists((elfPath + ".bak").c_str()) && !Storage.exists((sidecar + ".bak").c_str())) {
-          t5_app_manifest_t manifest{};
-          if (readAppManifest(sidecar.c_str(), manifest) && manifest.compatible &&
-              fileName == manifest.file_name) {
-            bool duplicate = false;
-            for (const auto& existing : homeApps) {
-              if (!std::strcmp(existing.file_name, manifest.file_name)) {
-                duplicate = true;
-                break;
-              }
+        std::string resolvedPath;
+        t5_app_manifest_t manifest{};
+        if (resolveInstalledAppPath(fileName.c_str(), resolvedPath, &manifest)) {
+          bool duplicate = false;
+          for (const auto& existing : homeApps) {
+            if (!std::strcmp(existing.file_name, manifest.file_name)) {
+              duplicate = true;
+              break;
             }
-            if (!duplicate) {
-              homeApps.push_back(manifest);
-            }
+          }
+          if (!duplicate) {
+            homeApps.push_back(manifest);
           }
         }
       }
@@ -198,6 +200,7 @@ void HomeActivity::onEnter() {
   firstRenderDone = false;
   coverRendered = false;
   coverBufferStored = false;
+  pendingHomeAppArtifact.clear();
   lastVisibleTextPrewarmKey.clear();
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
@@ -249,6 +252,21 @@ void HomeActivity::freeCoverBuffer() {
 }
 
 void HomeActivity::loop() {
+  if (!pendingHomeAppArtifact.empty()) {
+    // Home selections run inside ActivityManager's current touch/button
+    // dispatch. Defer the ELF until the next owner-task iteration so input
+    // cleanup and UI dispatch fully finish first, matching Springboard and
+    // File Browser child-app handoff.
+    const std::string artifact = pendingHomeAppArtifact;
+    pendingHomeAppArtifact.clear();
+    std::string resolvedPath;
+    if (resolveInstalledAppPath(artifact.c_str(), resolvedPath)) {
+      runNativeApp(resolvedPath.c_str(), renderer, mappedInput);
+    }
+    loadHomeApps();
+    requestUpdate();
+    return;
+  }
   if (appsPending) {
     appsPending = false;
     appsPending = runNativeSpringboard(renderer, mappedInput, appsResume);
@@ -438,10 +456,10 @@ void HomeActivity::onHomeAppOpen(size_t index) {
   if (index >= homeApps.size()) {
     return;
   }
-  const std::string path = std::string("/sd/Apps/") + homeApps[index].file_name;
-  runNativeApp(path.c_str(), renderer, mappedInput);
-  loadHomeApps();
-  requestUpdate();
+  // Queue the basename, then resolve it again immediately before the deferred
+  // launch. This preserves upgrade/uninstall revalidation without entering an
+  // ELF from inside the current Home input-dispatch stack.
+  pendingHomeAppArtifact = homeApps[index].file_name;
 }
 
 void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }

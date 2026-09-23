@@ -138,9 +138,9 @@ bool describeIdentity(const RuntimePackages::Identity& identity,
     bool good = true;
     if (Storage.exists(paths.target)) {
         RuntimePackages::Identity installed{};
-        good = RuntimePackages::verifyOrdinarySdDirectory(
-            paths.target, kPolicy, availableCapability, installed) &&
-            installed.kind == identity.kind && !std::strcmp(installed.id, identity.id);
+        good = RuntimePackages::inspectInstalledOrdinarySdDirectory(paths.target, kPolicy,
+            availableCapability, installed) && installed.kind == identity.kind &&
+            std::strcmp(installed.id, identity.id) == 0;
         if (good) std::strcpy(out->installed_version, installed.version);
     }
     out->valid_installation = good ? 1 : 0;

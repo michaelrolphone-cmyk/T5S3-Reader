@@ -1,5 +1,6 @@
 #include "PackageOrdinarySdAdapter.h"
 #include "PackageOrdinaryManagedInstall.h"
+#include "PackageSequentialSdReader.h"
 #include "runtime/drivers/DriverPackage.h"
 
 #include <HalStorage.h>
@@ -207,10 +208,11 @@ class SdSource {
     return sizeOf(root_ + "/" + name, size);
   }
   bool readAt(const char* name, uint64_t offset, uint8_t* data, size_t length) {
-    return RuntimePackages::readAt(root_ + "/" + name, offset, data, length);
+    return reader_.readAt(root_ + "/" + name, offset, data, length);
   }
  private:
   std::string root_;
+  OrdinarySequentialSdReader reader_;
 };
 class SdHash {
  public:
@@ -242,10 +244,11 @@ class SdDirectory {
     return sizeOf(root_ + "/" + name, size);
   }
   bool readAt(const char* name, uint64_t offset, uint8_t* data, size_t length) {
-    return ::RuntimePackages::readAt(root_ + "/" + name, offset, data, length);
+    return reader_.readAt(root_ + "/" + name, offset, data, length);
   }
  private:
   std::string root_;
+  OrdinarySequentialSdReader reader_;
 };
 class SdStage {
  public:
@@ -278,8 +281,7 @@ class SdStage {
   }
   bool endEntry() { return writer_.isOpen() && writer_.close(); }
   bool readEntry(const char* name, uint64_t offset, uint8_t* data, size_t length) {
-    return owns_ && ::RuntimePackages::readAt(root_ + "/" + name,
-                                               offset, data, length);
+    return owns_ && reader_.readAt(root_ + "/" + name, offset, data, length);
   }
   bool writeManifest(const uint8_t* metadata, size_t length) {
     if (!owns_ || !metadata || !length || length > kManifestBytes ||
@@ -312,6 +314,7 @@ class SdStage {
   std::string root_;
   OrdinaryPackagePlan plan_{};
   HalFile writer_;
+  OrdinarySequentialSdReader reader_;
   bool owns_ = false;
 };
 struct Ops {
@@ -321,13 +324,13 @@ struct Ops {
   }
 };
 bool verifyCanonical(const char* path, const PackageRuntimePolicy& policy,
-                     uint32_t (*resolver)(const char*), Identity& observed) {
+                     uint32_t (*resolver)(const char*), Identity& observed, bool verifyContents = true) {
   if (!path || !resolver || !directoryExists(path)) return false;
   SdDirectory directory(path);
   SdHash hash;
   uint8_t io[kOrdinaryIoBytes]{};
   return verifyCanonicalOrdinaryDirectory(directory, hash, resolver, policy,
-                                          io, observed);
+                                          io, observed, verifyContents);
 }
 bool purgeManaged(const char* path, Kind kind, const char* expectedId) {
   if (!path || !safeId(expectedId) || !directoryExists(path)) return false;
@@ -359,6 +362,13 @@ bool verifyOrdinarySdDirectory(const char* managedDirectory,
   observed = {};
   return Storage.ready() && safeSourcePath(managedDirectory) &&
       verifyCanonical(managedDirectory, policy, resolveCapability, observed);
+}
+bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
+    const PackageRuntimePolicy& policy,
+    uint32_t (*resolveCapability)(const char*), Identity& observed) {
+  observed = {};
+  return Storage.ready() && safeSourcePath(managedDirectory) &&
+      verifyCanonical(managedDirectory, policy, resolveCapability, observed, false);
 }
 OrdinaryInstallOutcome installOrdinaryFromSd(
     const char* sourceDirectory, const PackageRuntimePolicy& policy,
