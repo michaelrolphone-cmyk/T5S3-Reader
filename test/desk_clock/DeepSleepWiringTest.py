@@ -42,6 +42,9 @@ class ClockDeepSleepWiring(unittest.TestCase):
         self.assertIn("memcpy(previousFrame, display.getFrameBuffer(), display.getBufferSize())", CLOCK)
         self.assertIn("display.displayBufferDiff(previousFrame, HalDisplay::HALF_REFRESH)", CLOCK)
         self.assertIn("frameBuffer[index] == previousBuffer[index]", DISPLAY)
+        self.assertIn("renderBwToPanelCanvas(previousBuffer)", DISPLAY)
+        self.assertIn("gfx->setPanelOutputSuppressed(true)", DISPLAY)
+        self.assertIn("gfx->setPanelOutputSuppressed(false)", DISPLAY)
         self.assertIn("gfx->setClipRect(clipX, clipY, clipW, clipH)", DISPLAY)
 
 
