@@ -13,7 +13,8 @@ on:
       - "Drivers/usb_hid_gamepad/**"
       - "Drivers/usb_xinput_gamepad/**"
       - "Drivers/usb_ui_navigation/**"
-      - "Drivers/board_power_t5s3_v2/**"
+      - "Drivers/bq25896/**"
+      - "Drivers/t5s3_usb_power_profile/**"
       - "Drivers/i2c_esp32s3_v2/**"
       - "Drivers/platform_clock_v1/**"
       - "sdk/driver/RiscProviderV2.h"
@@ -24,6 +25,7 @@ on:
       - "sdk/driver/RiscUsbGamepadDiagnosticsV1.h"
       - "sdk/driver/RiscUsbDiscoveryDiagnosticsV1.h"
       - "sdk/driver/RiscUsbVbusV1.h"
+      - "sdk/driver/RiscBq25896ProfileV1.h"
       - "sdk/driver/RiscI2cBusV1.h"
       - "sdk/driver/RiscFirmwareI2cCompatV1.h"
       - "sdk/driver/RiscPlatformClockV1.h"
@@ -152,6 +154,7 @@ jobs:
           bash test/run_native_app_test.sh dist/experimental/usb-ui-navigation/driver.elf
           python scripts/build_board_power_t5s3_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-board-power-t5s3-v2/driver.elf
+          bash test/run_native_app_test.sh dist/experimental/t5s3-usb-power-profile/driver.elf
           python scripts/build_platform_clock_v1.py
           python scripts/audit_usb_controller_elf.py dist/experimental/platform-clock-v1/driver.elf --strict
           bash test/run_native_app_test.sh dist/experimental/platform-clock-v1/driver.elf

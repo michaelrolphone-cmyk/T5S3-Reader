@@ -15,17 +15,23 @@ host-role-before-VBUS startup sequence.
 
 Automatic charging/computer-serial switching additionally requires
 **usb-controller-esp32s3 0.1.15** (was 0.1.14) and
-**board-power-t5s3-v2 0.1.5** (was 0.1.4), plus the firmware change that keeps
+**board-power-t5s3-v2 0.1.5** (was 0.1.4), the new
+**t5s3-usb-power-profile 0.1.0**, plus the firmware change that keeps
 the boot serial service initialized. These versions exceed the v1.2.65 release.
-Update both drivers together with navigation Off and no app holding USB grants.
+Install the profile before updating the power driver, with navigation Off and
+no app holding USB grants, then update the controller.
 The controller checks the additive power-monitor interface size and rejects an
 older power driver with an explicit upgrade diagnostic. Existing consumers of
 the original power v1 prefix remain compatible.
 
-Those package names describe the T5S3 installation, not a universal power-chip
-requirement. Another board supplies its own `board.power.vbus` provider with
-the same monitor contract, using its actual PMIC, GPIO or role detector. The
-USB controller and generic firmware do not select a power-chip model.
+The reusable chip implementation lives in `Drivers/bq25896`; its old
+`board-power-t5s3-v2` package ID remains solely to preserve upgrade lineage.
+It has no T5S3 board restriction or implicit electrical defaults. Another board
+with the same chip and compatible VBUS wiring reuses the same chip ELF with
+its own installed profile and I2C bus. A different PMIC/GPIO detector implements
+the same `board.power.vbus` monitor interface. The USB controller and generic
+firmware do not select a power-chip model. See
+[BQ25896 reuse and profiles](BQ25896_USB_POWER_PROFILES.md).
 
 **Settings → Controls → Keyboard/controller navigation** enables this UI
 consumer (default On). Turn it Off to release the UI's provider/package leases
@@ -149,11 +155,13 @@ not counted as a failed read and never authorizes host startup. The 500 ms
 consumer interval throttles polling and debounces cable changes; it is not an
 assumption about any chip's detection time.
 
-On T5S3, the BQ25896 driver uses its existing I2C capability, implements a 500 ms
-qualification margin over the chip's 220 ms delay, and declares
+The BQ25896 driver uses the installed I2C capability and electrical profile.
+T5S3's profile supplies a 500 ms qualification margin over the chip's 220 ms
+delay. The chip's integrated detector requires source-off observation; the
+driver declares
 `RISC_USB_POWER_IDLE_PROBE_REQUIRED`. A voltage reading while it is sourcing
 cannot reliably distinguish our own output from another source, so only this
-declared board limitation requests empty-host source-off probes. Providers with
+declared detector limitation requests empty-host source-off probes. Providers with
 an independent detector clear the flag and observe without those power cycles.
 The legacy Board::isUsbConnected() boolean includes OTG and is **not** used for
 role selection. Active enumeration/devices/claims prevent idle probes.
@@ -194,7 +202,11 @@ independent detector that does not require source-off probes; these are interfac
 simulations, not claims of support or hardware testing for a particular new chip.
 `test/run_board_power_t5s3_v2_test.sh` exercises the real chip-owner implementation
 with external/input/source status, charge restoration and repeated power leases.
-USB packaging and target-build workflows include the new ELF.
+It loads T5S3's real profile and also exercises the same compiled chip driver
+with a synthetic alternate profile, invalid profiles and a different part ID.
+The four-ELF dependency test loads the real profile, chip and clock providers
+with a simulated I2C bus, including a missing-profile failure. USB packaging and
+target-build workflows include the profile ELF as a separate package.
 
 Hardware acceptance still requires installing the new firmware and navigation
 package: navigate Home/settings, open an app that requests input, exit with a

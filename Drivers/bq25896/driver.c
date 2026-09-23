@@ -1,16 +1,18 @@
-/* T5S3 BQ25896 VBUS source provider. Charger register I/O lives HERE and
+/* Reusable BQ25896 VBUS source provider. Charger register I/O lives HERE and
  * uses an independently installed i2c.bus controller provider. No compiled
  * firmware USB, Wire, charger or board-management forwarding is permitted.
  * Calls must be serialized by the generic provider executor. This provider
  * must not activate while legacy firmware owns the charger or OTG role. */
 #include "RiscUsbVbusV1.h"
+#include "RiscBq25896ProfileV1.h"
 #include "RiscI2cBusV1.h"
 #include "RiscPlatformClockV1.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
-#define BQ_ADDRESS 0x6bu /* T5S3 hardware profile */
+#define BQ_ADDRESS 0x6bu /* Fixed chip address, independent of board wiring. */
+#define REG_ID 0x14u
 #define REG_ADC_CONTROL 0x02u
 #define REG_POWER 0x03u
 #define REG_BOOST 0x0au
@@ -26,26 +28,40 @@
 #define POWER_GOOD 0x04u
 #define BOOST_FAULT 0x40u
 #define VBUS_GOOD 0x80u
-/* RiscRTE v1.2.16 set REG0A BOOST_LIM=010 (1.2 A) and BOOSTV=1001.
- * The ELF migration incorrectly replaced this hardware peak/short-circuit
- * threshold with BOOST_LIM=000 (500 mA). Keep the 500 mA logical host power
- * request admission separate from the PMIC's board-qualified peak limit. */
-#define BOOST_1200MA 0x02u
-#define BOOST_VOLTAGE_5126MV 0x90u
+/* Chip transaction/conversion bounds are independent of board policy.
+ * BQ25896 continuous ADC produces new results at 1s intervals. */
 #define BUS_TIMEOUT_MS 100u
-#define BOOST_SETTLE_MS 80u /* Matches the working v1.2.16 OTG sequence. */
-/* Only ONE cleared/latching fault observed during the initial OTG inrush may
- * be qualified for recovery, never a live or repeated fault. The first clean
- * sample must precede a sustained clean OTG interval and a measured 4.4V+. */
-#define BOOST_STARTUP_FAULT_WINDOW_MS 250u
-#define BOOST_RECOVERY_STABLE_MS 200u
-/* BQ25896 REG02 continuous ADC produces new results at 1s intervals. The
- * former 300ms timeout rejected a valid first conversion as missing VBUS. */
 #define STARTUP_TIMEOUT_MS 1500u
 #define SHUTDOWN_TIMEOUT_MS 400u
-/* BQ25896 input qualification includes a 220 ms delay after source-off.
- * Keep this chip/board margin HERE, not in the USB controller or firmware. */
-#define INPUT_SETTLE_MS 500u
+
+static risc_bq25896_profile_api_v1 profile;
+static uint8_t boost_settings;
+
+/* Validate before any bus claim/write. No board-name checks or defaults.
+ * TI SLUSC76C REG0A: exact voltage steps and seven non-reserved limits. */
+static bool configure(const risc_bq25896_profile_api_v1 *p) {
+    static const uint16_t limits[] = {500, 750, 1200, 1400, 1650, 1875, 2150};
+    if (!p || p->api_version != RISC_BQ25896_PROFILE_API_V1 ||
+        p->struct_size < sizeof(*p)) return false;
+    const risc_bq25896_profile_api_v1 candidate = *p;
+    if (!candidate.max_host_milliamps ||
+        candidate.max_host_milliamps > candidate.boost_limit_milliamps ||
+        candidate.boost_millivolts < 4550u || candidate.boost_millivolts > 5510u ||
+        (candidate.boost_millivolts - 4550u) % 64u ||
+        !candidate.boost_settle_ms || candidate.boost_settle_ms > 500u ||
+        candidate.input_settle_ms < 220u || candidate.input_settle_ms > 5000u ||
+        candidate.transient_window_ms > 500u ||
+        (candidate.transient_window_ms ?
+            (candidate.transient_stable_ms < 200u || candidate.transient_stable_ms > 500u) :
+            candidate.transient_stable_ms != 0u)) return false;
+    for (size_t i = 0; i < sizeof(limits) / sizeof(limits[0]); ++i) {
+        if (candidate.boost_limit_milliamps != limits[i]) continue;
+        profile = candidate;
+        boost_settings = (uint8_t)(((candidate.boost_millivolts - 4550u) / 64u << 4) | i);
+        return true;
+    }
+    return false;
+}
 
 static const risc_i2c_bus_api_v1 *bus;
 static const risc_platform_clock_api_v1 *clock_api;
@@ -90,7 +106,7 @@ static void delay_ms(uint32_t milliseconds) {
 static bool wait_source_off(void) {
     uint64_t begun = clock_api->monotonic_ms(clock_api->context);
     if (begun == UINT64_MAX) return false;
-    for (;;) {
+    for (unsigned sample = 0; sample <= SHUTDOWN_TIMEOUT_MS / 10u; ++sample) {
         uint8_t power = 0, status = 0;
         if (!read_reg(REG_POWER, &power) || !read_reg(REG_STATUS, &status))
             return false;
@@ -99,6 +115,7 @@ static bool wait_source_off(void) {
         if (timed_out(begun, SHUTDOWN_TIMEOUT_MS)) return false;
         delay_ms(10u);
     }
+    return false; /* Also bounded if the clock stops advancing. */
 }
 /* Retain the lease on any uncertain write, failed source-off verification or
  * incomplete restoration; no unmapped callback may own this charger state. */
@@ -182,7 +199,7 @@ static bool verify_source(uint64_t begun) {
     }
     bool startup_transient = false;
     uint64_t clean_since = 0;
-    for (;;) {
+    for (unsigned sample = 0; sample <= STARTUP_TIMEOUT_MS / 10u; ++sample) {
         uint8_t power = 0, status = 0, adc = 0, latched = 0, live = 0;
         if (!read_reg(REG_POWER, &power) || !read_reg(REG_STATUS, &status) ||
             !read_reg(REG_VBUS_ADC, &adc) ||
@@ -205,12 +222,13 @@ static bool verify_source(uint64_t begun) {
                                  latched, live, begun);
             return false;
         }
-        /* Startup inrush on the known-good 1.2 A configuration can briefly
+        /* Startup inrush on some board configurations can briefly
          * trip REG0C while the PMIC already reports live fault clear and OTG.
          * Do NOT grant VBUS on that observation: wait for a fresh adequate ADC
          * reading, an uninterrupted clean interval and no repeated fault. */
         if (latched & BOOST_FAULT) {
-            if (startup_transient || now - begun > BOOST_STARTUP_FAULT_WINDOW_MS ||
+            if (startup_transient || !profile.transient_window_ms ||
+                now - begun > profile.transient_window_ms ||
                 (status & VBUS_STATUS_MASK) != VBUS_OTG) {
                 report_boost_failure("boost-transient-repeat", power, status, adc,
                                      latched, live, begun);
@@ -231,7 +249,7 @@ static bool verify_source(uint64_t begun) {
          * Require VBUS_STAT=OTG and a completed, adequate ADC measurement. */
         if ((status & VBUS_STATUS_MASK) == VBUS_OTG &&
             (adc & 0x7fu) >= 18u && /* at least 4.4 V */
-            (!startup_transient || now - clean_since >= BOOST_RECOVERY_STABLE_MS)) {
+            (!startup_transient || now - clean_since >= profile.transient_stable_ms)) {
             if (startup_transient)
                 printf("VBUSREF stage=boost-transient-recovered v=%02x ms=%u\n",
                        (unsigned)adc, (unsigned)(now - begun));
@@ -244,12 +262,14 @@ static bool verify_source(uint64_t begun) {
         }
         delay_ms(10u);
     }
+    printf("VBUSREF failure=boost-sample-limit\n");
+    return false;
 }
 static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
     (void)unused;
     if (out) *out = 0;
     if (!out || !started || !bus_claim || lease || faulted ||
-        !requested_ma || requested_ma > 500u || sequence == UINT64_MAX ||
+        !requested_ma || requested_ma > profile.max_host_milliamps || sequence == UINT64_MAX ||
         !clock_api) {
         printf("VBUSREF failure=acquire-state started=%u claimed=%u leased=%u faulted=%u requested_ma=%u\n",
                (unsigned)started, (unsigned)(bus_claim != 0),
@@ -270,7 +290,7 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
     saved = true;
     lease = ++sequence; /* A partially applied write MUST pin the provider. */
     const uint8_t boost = (uint8_t)((saved_boost & 0x08u) |
-                                 BOOST_VOLTAGE_5126MV | BOOST_1200MA);
+                                 boost_settings);
     bool ok = write_reg(REG_BOOST, boost);
     if (!ok) printf("VBUSREF failure=boost-config-write\n");
     if (ok) {
@@ -285,7 +305,7 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
         if (!ok) printf("VBUSREF failure=otg-enable-write\n");
     }
     if (ok) {
-        /* v1.2.16 allowed the boost circuit to settle for 80 ms. Historical
+        /* Board policy supplies the initial settle time. Historical
          * faults receive explicit bounded recovery verification, never a
          * blanket exception to live/recurring faults or VBUS measurement. */
         const uint64_t enabled_at = clock_api->monotonic_ms(clock_api->context);
@@ -293,7 +313,7 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
             printf("VBUSREF failure=boost-clock\n");
             ok = false;
         } else {
-            delay_ms(BOOST_SETTLE_MS);
+            delay_ms(profile.boost_settle_ms);
             ok = verify_source(enabled_at);
         }
     }
@@ -309,8 +329,8 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
         return false;
     }
     *out = lease;
-    printf("VBUSREF stage=source-verified cfg=0x%02x limit-ma=1200 requested-ma=%u\n",
-           (unsigned)boost, (unsigned)requested_ma);
+    printf("VBUSREF stage=source-verified cfg=0x%02x limit-ma=%u requested-ma=%u\n",
+           (unsigned)boost, (unsigned)profile.boost_limit_milliamps, (unsigned)requested_ma);
     return true;
 }
 static bool release_host(void *unused, uint64_t id) {
@@ -340,9 +360,10 @@ static bool quiesce(void *unused) {
 }
 static bool driver_quiesce(void) { return quiesce(NULL); }
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
-    if (started || bus_claim || lease || faulted || !deps || count != 2u) return false;
+    if (started || bus_claim || lease || faulted || !deps || count != 3u) return false;
     const risc_i2c_bus_api_v1 *b = NULL;
     const risc_platform_clock_api_v1 *t = NULL;
+    const risc_bq25896_profile_api_v1 *p = NULL;
     for (size_t i = 0; i < count; ++i) {
         if (equal(deps[i].capability_id, "i2c.bus") &&
             deps[i].api_version == RISC_I2C_BUS_API_V1 && !b)
@@ -350,12 +371,19 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         else if (equal(deps[i].capability_id, "platform.clock") &&
                  deps[i].api_version == RISC_PLATFORM_CLOCK_API_V1 && !t)
             t = (const risc_platform_clock_api_v1 *)deps[i].api;
+        else if (equal(deps[i].capability_id, RISC_BQ25896_PROFILE_CAPABILITY) &&
+                 deps[i].api_version == RISC_BQ25896_PROFILE_API_V1 && !p)
+            p = (const risc_bq25896_profile_api_v1 *)deps[i].api;
         else return false;
     }
     if (!b || b->api_version != RISC_I2C_BUS_API_V1 ||
         b->struct_size < sizeof(*b) || !b->claim_device || !b->transact ||
         !b->release_device || !t || t->api_version != RISC_PLATFORM_CLOCK_API_V1 ||
         t->struct_size < sizeof(*t) || !t->monotonic_ms || !t->sleep_ms) return false;
+    if (!configure(p)) {
+        printf("VBUSREF failure=bq25896-profile\n");
+        return false;
+    }
     bus = b; clock_api = t;
     uint64_t acquired = 0;
     if (!bus->claim_device(bus->context, BQ_ADDRESS, &acquired) || !acquired) {
@@ -363,8 +391,15 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     }
     bus_claim = acquired;
     started = true;
-    uint8_t power = 0;
-    if (!read_reg(REG_POWER, &power)) return false; /* loader retries quiesce */
+    uint8_t part = 0, power = 0;
+    /* PN=000 identifies BQ25896. An ACK at 0x6b does not identify a board
+     * or authorize using this driver for a different chip. Read-only probe;
+     * loader retries quiesce to release the claim on failure. */
+    if (!read_reg(REG_ID, &part) || (part & 0x38u) != 0u ||
+        !read_reg(REG_POWER, &power)) {
+        printf("VBUSREF failure=bq25896-probe\n");
+        return false;
+    }
     input_observation_started = clock_api->monotonic_ms(clock_api->context);
     return input_observation_started != UINT64_MAX;
 }
@@ -385,7 +420,7 @@ static int32_t input_status(void *unused) {
         return lease && source_requested ? RISC_USB_POWER_SOURCE : RISC_USB_POWER_UNKNOWN;
     const uint64_t now = clock_api->monotonic_ms(clock_api->context);
     if (now == UINT64_MAX || now < input_observation_started) return RISC_USB_POWER_UNKNOWN;
-    if (now - input_observation_started < INPUT_SETTLE_MS) return RISC_USB_POWER_SETTLING;
+    if (now - input_observation_started < profile.input_settle_ms) return RISC_USB_POWER_SETTLING;
     if ((status & (VBUS_STATUS_MASK | POWER_GOOD)) || (adc & VBUS_GOOD))
         return RISC_USB_POWER_EXTERNAL;
     return RISC_USB_POWER_ABSENT;
@@ -396,6 +431,7 @@ static const risc_usb_vbus_monitor_api_v1 capability = {
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
+    /* Stable update identity; not a board compatibility constraint. */
     "board-power-t5s3-v2", "board.power.vbus", RISC_USB_VBUS_API_V1,
     &capability, start, stop, driver_quiesce
 };
