@@ -3,4 +3,5 @@
 from build_usb_hid_common import build
 
 if __name__ == '__main__':
-    build('usb_xinput_gamepad', 'usb-xinput-gamepad', 'usb.host', 'usb.xinput.gamepad')
+    build('usb_xinput_gamepad', 'usb-xinput-gamepad',
+          ('usb.host', 'platform.clock'), 'usb.xinput.gamepad')

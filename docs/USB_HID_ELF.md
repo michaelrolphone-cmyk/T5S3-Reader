@@ -84,7 +84,8 @@ surfaced as a gap; snapshots restore current state.
   claimed interrupt-IN reads. Maximum interrupt report is 64 bytes, descriptor
   at most 512 bytes.
 - Resource caps: 16 discovered interfaces, 8 generic sessions, 4 keyboards,
-  4 gamepads, 4 subscriptions per class and 32 queued events per subscriber.
+  4 gamepads and 4 subscriptions per class. Keyboards retain 32 ordered events
+  per subscriber; gamepads retain only the latest state per device.
   Capacity exhaustion and unsupported descriptors fail explicitly, without
   falling back to firmware HID handlers.
 
@@ -99,8 +100,9 @@ connected controller. The original API-v1 prefix and firmware are unchanged.
 
 ## Xbox 360-format receivers
 
-`usb-xinput-gamepad` 0.1.1 is an independent class ELF requiring `usb.host@1`
-and publishing `usb.xinput.gamepad@1`. It matches Xbox 360 vendor interfaces
+`usb-xinput-gamepad` 0.1.3 is an independent class ELF requiring `usb.host@1`
+and `platform.clock@1`, and publishing `usb.xinput.gamepad@1`.
+It matches Xbox 360 vendor interfaces
 by class/subclass/protocol `ff/5d/01` (wired-format, including `045e:028e`
 2.4 GHz receivers) or `ff/5d/81` (wireless-format), including compatible
 VID/PID clones and nonzero alternate settings. Standard HID, Xbox One,
@@ -122,6 +124,19 @@ suffix. Button bits are: 0 B, 1 A, 2 Y, 3 X, 4/5 shoulders,
 use the same bitwise inversion as that decoder; trigger axes span -32768..32767.
 Gameboy combines XInput D-pad and analog directions. A USB claim alone does
 not report a connected gamepad: valid input or wireless presence does.
+
+Discovery includes devices already attached before the class starts. A failed
+configuration read or interface claim remains retryable on that attachment;
+previous versions cached the failure until unplug. The driver makes at most one
+discovery attempt per poll, with monotonic backoff of 100, 200, 400, 800, 1600,
+2000 and 2000 ms, at most eight attempts and a ten-second deadline. It returns
+to the caller between attempts without sleeping in the input path. Callers must
+yield between polls. Successful descriptors are cached during claim retries;
+unsupported interfaces are not retried. Full gamepad capacity waits for a slot
+to become free without repeating USB operations. Diagnostics distinguish retries,
+exhaustion, deadline and clock failure. A stopped/restarted class can retry an
+exhausted attachment without physically unplugging it. Update the installed
+package metadata together with the ELF so the clock dependency is resolved.
 
 `usb-controller-esp32s3` 0.1.11 clears a stalled interrupt endpoint before the
 next bounded read resubmits, matching standalone recovery. Idle transfers
