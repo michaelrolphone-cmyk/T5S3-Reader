@@ -6,10 +6,12 @@ struct Port {
     uint32_t clock = 0;
     int32_t status = RISC_USB_POWER_ABSENT;
     bool occupied = false, parkOK = true, startOK = true, powered = false;
+    bool probeRequired = true;
     unsigned starts = 0, parks = 0, reads = 0, reports = 0;
     uint32_t now() const { return clock; }
     bool busy() const { return occupied; }
-    int32_t input() { ++reads; assert(!powered); return status; }
+    bool idle_probe_required() const { return probeRequired; }
+    int32_t input() { ++reads; assert(!powered || !probeRequired); return status; }
     bool park() { ++parks; if (parkOK) powered = false; return parkOK; }
     bool start() { ++starts; assert(!powered); powered = true; return startOK; }
     void report(const char *) { ++reports; }
@@ -68,6 +70,40 @@ int main() {
     role.begin(unknown.clock);
     for (unsigned i = 0; i < 10; ++i) unknown.advance(role, 500);
     assert(role.state() == State::Failed && unknown.reads == 3 && !unknown.starts);
+
+    // Different board implementation: detector takes longer than the T5S3.
+    // The controller waits for the provider instead of applying a chip delay
+    // or treating legitimate settling as three failed I2C reads.
+    Port slow;
+    slow.status = RISC_USB_POWER_SETTLING;
+    role.begin(slow.clock);
+    for (unsigned i = 0; i < 8; ++i) slow.advance(role, 500);
+    assert(role.state() == State::Sense && !slow.starts);
+    slow.status = RISC_USB_POWER_ABSENT;
+    slow.advance(role, 500); slow.advance(role, 500);
+    assert(slow.starts == 1);
+
+    Port stalled;
+    stalled.status = RISC_USB_POWER_SETTLING;
+    role.begin(stalled.clock);
+    for (unsigned i = 0; i < 30; ++i) stalled.advance(role, 500);
+    assert(role.state() == State::Failed && !stalled.starts);
+
+    // Another board has an independent role/VBUS detector: observe it while
+    // an empty host is powered, without periodic source-off probing.
+    Port independent;
+    independent.probeRequired = false;
+    role.begin(independent.clock);
+    independent.advance(role, 500); independent.advance(role, 500);
+    assert(independent.starts == 1);
+    independent.status = RISC_USB_POWER_SOURCE;
+    for (unsigned i = 0; i < 60; ++i) independent.advance(role, 500);
+    assert(independent.powered && !independent.parks);
+    independent.status = RISC_USB_POWER_EXTERNAL;
+    independent.advance(role, 500);
+    assert(!independent.powered && independent.parks == 1);
+    for (unsigned i = 0; i < 60; ++i) independent.advance(role, 500);
+    assert(independent.starts == 1 && role.state() == State::Sense);
 
     Port failed;
     failed.startOK = false;

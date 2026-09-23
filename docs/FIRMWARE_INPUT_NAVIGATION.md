@@ -22,6 +22,11 @@ The controller checks the additive power-monitor interface size and rejects an
 older power driver with an explicit upgrade diagnostic. Existing consumers of
 the original power v1 prefix remain compatible.
 
+Those package names describe the T5S3 installation, not a universal power-chip
+requirement. Another board supplies its own `board.power.vbus` provider with
+the same monitor contract, using its actual PMIC, GPIO or role detector. The
+USB controller and generic firmware do not select a power-chip model.
+
 **Settings → Controls → Keyboard/controller navigation** enables this UI
 consumer (default On). Turn it Off to release the UI's provider/package leases
 before updating USB drivers, or when external navigation is unwanted. Use touch
@@ -129,19 +134,29 @@ guess the USB role or repeatedly unload/reload drivers.
 | Observed state | Provider behavior |
 | --- | --- |
 | External power at startup or while parked | Leave host uninstalled and its power output off; retain boot serial route and normal charging settings |
-| Charger/computer removed | Require two absent-input readings 500 ms apart, then use the established host-before-VBUS startup sequence |
+| Charger/computer removed | Wait for provider-qualified status, then require two absent-input readings 500 ms apart before the established host-before-VBUS startup sequence |
 | Device attached, enumerating, or still claimed | Keep the host intact; no idle power probes or input interruption |
-| Empty host for 2 seconds | Drain hardware, release VBUS, restore charging and saved boot PHY; wait 500 ms before checking for incoming power |
+| Empty host on a board requiring source-off observation | After 2 seconds, drain hardware, release VBUS, restore board state and saved boot PHY, then ask the provider for input status |
+| Empty host on a board with independent input detection | Read the provider's status without cycling output power; park when it no longer reports our own source |
+| Provider reports detection still settling | Keep source off and wait cooperatively, with a generic 10-second liveness budget |
 | Unknown power or failed startup | Block unsafe sourcing; at most three failed samples/start attempts before a visible stopped state |
 | Cleanup failure | Retain unsafe resources; never announce a successful serial handback or restart the host |
 
-The BQ25896 chip owner reads source/input status through its existing I2C
-capability. OTG output is explicitly distinguished from incoming power. The
-legacy Board::isUsbConnected() boolean includes OTG and is **not** used for role
-selection. A voltage reading while sourcing cannot reliably distinguish our
-own output from another source, so an empty host periodically enters the
-source-off observation window. It never does so during enumeration or gameplay.
-The 500 ms interval exceeds the charger's 220 ms input qualification delay.
+The board-power provider owns all electrical qualification, settling and chip
+registers. Its monitor reports absent input, external power, our own source,
+verified-source-off/detection-settling, or an unknown/error state. SETTLING is
+not counted as a failed read and never authorizes host startup. The 500 ms
+consumer interval throttles polling and debounces cable changes; it is not an
+assumption about any chip's detection time.
+
+On T5S3, the BQ25896 driver uses its existing I2C capability, implements a 500 ms
+qualification margin over the chip's 220 ms delay, and declares
+`RISC_USB_POWER_IDLE_PROBE_REQUIRED`. A voltage reading while it is sourcing
+cannot reliably distinguish our own output from another source, so only this
+declared board limitation requests empty-host source-off probes. Providers with
+an independent detector clear the flag and observe without those power cycles.
+The legacy Board::isUsbConnected() boolean includes OTG and is **not** used for
+role selection. Active enumeration/devices/claims prevent idle probes.
 
 No computer-versus-charger guess is required: both keep host discovery stopped.
 A computer with a data cable can enumerate the restored Serial/JTAG interface;
@@ -174,6 +189,9 @@ sleep cleanup. Existing keyboard/text-editor and controller DMA tests run in
 the same suite. The production role-machine test covers external power at boot,
 debounced unplug, active-device protection, empty-host probing, reconnect,
 failed cleanup, bounded retries and tick rollover.
+The same production role machine is also tested with a slow detector and an
+independent detector that does not require source-off probes; these are interface
+simulations, not claims of support or hardware testing for a particular new chip.
 `test/run_board_power_t5s3_v2_test.sh` exercises the real chip-owner implementation
 with external/input/source status, charge restoration and repeated power leases.
 USB packaging and target-build workflows include the new ELF.

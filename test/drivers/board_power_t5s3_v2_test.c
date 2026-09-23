@@ -136,7 +136,10 @@ int main(void) {
      * I2C, and never treats an I2C error as permission to start the host. */
     const risc_usb_vbus_monitor_api_v1 *monitor = driver->capability;
     assert(power->struct_size >= sizeof(*monitor) && monitor->input_status);
+    assert(monitor->flags & RISC_USB_POWER_IDLE_PROBE_REQUIRED);
     reset_board();
+    assert(monitor->input_status(NULL) == RISC_USB_POWER_SETTLING);
+    board.now += 500;
     assert(monitor->input_status(NULL) == RISC_USB_POWER_ABSENT);
     board.external = 1;
     assert(monitor->input_status(NULL) == RISC_USB_POWER_EXTERNAL);
@@ -156,6 +159,8 @@ int main(void) {
         assert(power->release_host(NULL, source));
         assert(board.claim && !board.releases);
         assert_restored(); /* OTG off, charge enabled */
+        assert(monitor->input_status(NULL) == RISC_USB_POWER_SETTLING);
+        board.now += 500;
         assert(monitor->input_status(NULL) == RISC_USB_POWER_EXTERNAL);
         board.external = 0;
     }

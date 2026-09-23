@@ -492,7 +492,8 @@ bool quiesce_host() {
     // independently observed. Keep the power chip claimed while monitoring.
     if (powerMonitor) {
         const int32_t status = powerMonitor->input_status(power->context);
-        if (status != RISC_USB_POWER_ABSENT && status != RISC_USB_POWER_EXTERNAL)
+        if (status != RISC_USB_POWER_ABSENT && status != RISC_USB_POWER_EXTERNAL &&
+            status != RISC_USB_POWER_SETTLING)
             return false;
     }
     restore_phy_route();
@@ -541,7 +542,7 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     if (api->api_version != RISC_USB_VBUS_API_V1 ||
         api->struct_size < sizeof(risc_usb_vbus_monitor_api_v1) || !api->acquire_host ||
         !api->release_host || !api->quiesce) {
-        startupError.text("vbus-monitor-abi: update board-power-t5s3-v2 >=0.1.5;");
+        startupError.text("board.power.vbus: input-monitor extension required;");
         startupError.number(" api=", api->api_version);
         startupError.number(" size=", api->struct_size);
         startupError.number(" acquire=", api->acquire_host != nullptr);
@@ -560,6 +561,9 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
 struct RolePort {
     uint32_t now() const { return static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS); }
     int32_t input() const { return powerMonitor->input_status(power->context); }
+    bool idle_probe_required() const {
+        return (powerMonitor->flags & RISC_USB_POWER_IDLE_PROBE_REQUIRED) != 0;
+    }
     bool busy() const {
         if (queueCount || inFlight || (USB_DWC.hprt_reg.val & 1u)) return true;
         for (const auto &d : devices) if (d.attached) return true;

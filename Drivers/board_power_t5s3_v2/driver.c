@@ -43,12 +43,16 @@
  * former 300ms timeout rejected a valid first conversion as missing VBUS. */
 #define STARTUP_TIMEOUT_MS 1500u
 #define SHUTDOWN_TIMEOUT_MS 400u
+/* BQ25896 input qualification includes a 220 ms delay after source-off.
+ * Keep this chip/board margin HERE, not in the USB controller or firmware. */
+#define INPUT_SETTLE_MS 500u
 
 static const risc_i2c_bus_api_v1 *bus;
 static const risc_platform_clock_api_v1 *clock_api;
 static uint64_t bus_claim, lease, sequence;
 static uint8_t saved_power, saved_boost, saved_adc;
 static bool started, saved, source_requested, faulted;
+static uint64_t input_observation_started;
 
 static bool equal(const char *a, const char *b) {
     if (!a || !b) return false;
@@ -110,6 +114,8 @@ static bool disable_and_restore(void) {
             (saved_power & CHARGE_ENABLE) || boost != saved_boost ||
         (adc & ADC_CONTINUOUS) != (saved_adc & ADC_CONTINUOUS)) return false;
     source_requested = false;
+    input_observation_started = clock_api->monotonic_ms(clock_api->context);
+    if (input_observation_started == UINT64_MAX) return false;
     return true;
 }
 static bool preflight(void) {
@@ -359,7 +365,8 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     started = true;
     uint8_t power = 0;
     if (!read_reg(REG_POWER, &power)) return false; /* loader retries quiesce */
-    return true;
+    input_observation_started = clock_api->monotonic_ms(clock_api->context);
+    return input_observation_started != UINT64_MAX;
 }
 static void stop(void) {
     /* quiesce must have fully released both the VBUS and I2C leases. */
@@ -376,13 +383,16 @@ static int32_t input_status(void *unused) {
      * unowned source or incomplete source transition as unknown. */
     if ((power & OTG_ENABLE) || (status & VBUS_STATUS_MASK) == VBUS_OTG)
         return lease && source_requested ? RISC_USB_POWER_SOURCE : RISC_USB_POWER_UNKNOWN;
+    const uint64_t now = clock_api->monotonic_ms(clock_api->context);
+    if (now == UINT64_MAX || now < input_observation_started) return RISC_USB_POWER_UNKNOWN;
+    if (now - input_observation_started < INPUT_SETTLE_MS) return RISC_USB_POWER_SETTLING;
     if ((status & (VBUS_STATUS_MASK | POWER_GOOD)) || (adc & VBUS_GOOD))
         return RISC_USB_POWER_EXTERNAL;
     return RISC_USB_POWER_ABSENT;
 }
 static const risc_usb_vbus_monitor_api_v1 capability = {
     {RISC_USB_VBUS_API_V1, sizeof(risc_usb_vbus_monitor_api_v1), NULL,
-     acquire_host, release_host, quiesce}, input_status
+     acquire_host, release_host, quiesce}, input_status, RISC_USB_POWER_IDLE_PROBE_REQUIRED
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
