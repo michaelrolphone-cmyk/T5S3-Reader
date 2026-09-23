@@ -33,9 +33,12 @@ The retained RTC state records the minute that is physically displayed. On a
 timer boot, the firmware performs only the minimum board/RTC/display setup. For
 ordinary minute changes it renders that retained minute into the logical
 framebuffer, copies the 1-bit result to a temporary PSRAM buffer, renders the
-new minute, compares the two frames, and submits only the bounding rectangle
-whose pixels changed. This normally limits panel drive to the changing minute
-digit instead of redrawing the whole 960×540 screen. Hour, AM/PM, and date
+new minute, and compares the two frames. Because M5GFX's EPD history is also
+lost in deep sleep, RiscRTE first primes that driver's history for the dirty
+rectangle with the reconstructed previous pixels while the real panel output
+rails are suppressed. It then submits the new dirty rectangle normally. This
+normally limits physical panel drive to the changing minute digit instead of
+redrawing or clearing the whole 960×540 screen. Hour, AM/PM, and date
 transitions naturally expand the dirty rectangle. A periodic full refresh is
 still performed every 30 clock updates to control e-paper ghosting.
 
