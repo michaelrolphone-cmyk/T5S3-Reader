@@ -3,6 +3,8 @@
  * This file extends the SAME ELF rather than introducing a firmware bridge. */
 #include "RiscUsbHidV1.h"
 #include "RiscUsbInterruptV1.h"
+#include "RiscUsbDiscoveryDiagnosticsV1.h"
+#include <soc/usb_dwc_struct.h>
 #define t5_driver_get t5_usb_controller_base_get
 #include "driver_base.cpp"
 #undef t5_driver_get
@@ -69,19 +71,31 @@ bool quiesce_with_interrupt(void *context) {
 void stop_with_interrupt() {
     if (quiesce_with_interrupt(nullptr)) stop();
 }
-static const risc_usb_controller_interrupt_v1 hid_interface = {
-    {RISC_USB_CONTROLLER_API_V1, sizeof(risc_usb_controller_interrupt_v1), nullptr,
+bool enumeration_diagnostic(void *, char *out, size_t capacity) {
+    if (!installed) return false;
+    return enumerationDiagnostic.copy(USB_DWC.hprt_reg.val, out, capacity);
+}
+static const risc_usb_controller_diagnostics_v1 hid_interface = {
+    {{RISC_USB_CONTROLLER_API_V1, sizeof(risc_usb_controller_diagnostics_v1), nullptr,
      next_event, configuration, claim_interface, release_with_interrupt,
      control, bulk_read, bulk_write, quiesce_with_interrupt},
-    interrupt_read
+    interrupt_read}, enumeration_diagnostic
 };
 static const risc_driver_diagnostics_v2 hid_driver = {{
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_diagnostics_v2),
     "usb-controller-esp32s3", "usb.controller", RISC_USB_CONTROLLER_API_V1,
-    &hid_interface.controller, start, stop_with_interrupt,
+    &hid_interface.base.controller, start, stop_with_interrupt,
     []() -> bool { return quiesce_with_interrupt(nullptr); }
 }, startup_error};
 } // namespace
+extern "C" void risc_usb_enum_reset(void) { enumerationDiagnostic.clear(); }
+extern "C" void risc_usb_enum_stage(const char *stage) { enumerationDiagnostic.stage(stage); }
+extern "C" void risc_usb_enum_error(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    enumerationDiagnostic.error(format, args);
+    va_end(args);
+}
 extern "C" __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
     return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &hid_driver.base : nullptr;

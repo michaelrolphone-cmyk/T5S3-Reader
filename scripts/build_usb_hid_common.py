@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build one independently installable HID class ELF, without firmware stubs."""
+"""Build an independently installable HID or XInput class ELF."""
 from __future__ import annotations
 
 import hashlib
@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def build(source_name: str, identity: str, dependency: str, capability: str,
           cc: str | None = None) -> Path:
-    if source_name not in ('usb_hid', 'usb_hid_keyboard', 'usb_hid_gamepad'):
+    if source_name not in ('usb_hid', 'usb_hid_keyboard', 'usb_hid_gamepad', 'usb_xinput_gamepad'):
         raise ValueError('invalid source driver')
     source = ROOT / 'Drivers' / source_name
     manifest = json.loads((source / 'manifest.json').read_text(encoding='utf-8'))
@@ -28,7 +28,7 @@ def build(source_name: str, identity: str, dependency: str, capability: str,
         'status': 'experimental-unpublished',
     }
     if any(manifest.get(k) != v for k, v in expected.items()) or not isinstance(manifest.get('version'), str):
-        raise ValueError(f'invalid HID source manifest {source}')
+        raise ValueError(f'invalid input class source manifest {source}')
     cc = cc or os.environ.get('NATIVE_DRIVER_CC') or shutil.which('xtensa-esp32s3-elf-gcc')
     if not cc:
         core = Path(os.environ.get('PLATFORMIO_CORE_DIR', Path.home() / '.platformio'))
@@ -60,5 +60,5 @@ def build(source_name: str, identity: str, dependency: str, capability: str,
     manifest.update(size_bytes=len(payload), sha256=hashlib.sha256(payload).hexdigest())
     (output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n',
                                           encoding='utf-8')
-    print(f'HID class ELF built: {identity} -> {elf}')
+    print(f'USB input class ELF built: {identity} -> {elf}')
     return elf

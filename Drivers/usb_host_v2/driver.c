@@ -1,4 +1,5 @@
 #include "RiscUsbInterruptV1.h"
+#include "RiscUsbDiscoveryDiagnosticsV1.h"
 
 /* The USB host is an independently installed ELF. The runtime sees usb.host
  * as an opaque capability; the physical controller owns transfers and VBUS.
@@ -307,16 +308,24 @@ static int32_t interrupt_read(void *ctx, uint64_t token, uint8_t endpoint,
                                            dst, capacity, timeout);
     return n >= 0 && (size_t)n <= capacity ? n : -1;
 }
-static const risc_usb_host_interrupt_v1 interface = {
-    {{RISC_USB_HOST_API_V1, sizeof(risc_usb_host_interrupt_v1), 0,
+static bool diagnostic(void *ctx, char *out, size_t capacity) {
+    (void)ctx;
+    if (!controller || !out || !capacity ||
+        controller->controller.struct_size < sizeof(risc_usb_controller_diagnostics_v1)) return false;
+    const risc_usb_controller_diagnostics_v1 *extended =
+        (const risc_usb_controller_diagnostics_v1 *)controller;
+    return extended->diagnostic && extended->diagnostic(controller->controller.context, out, capacity);
+}
+static const risc_usb_host_diagnostics_v1 interface = {
+    {{{RISC_USB_HOST_API_V1, sizeof(risc_usb_host_diagnostics_v1), 0,
       configuration, claim_interface, release_claim, control,
       bulk_read, bulk_write}, poll_devices, list_devices},
-    interrupt_read
+    interrupt_read}, diagnostic
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
     "usb-host-v2", "usb.host", RISC_USB_HOST_API_V1,
-    &interface.discovery.host, start, stop, quiesce
+    &interface.base.discovery.host, start, stop, quiesce
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
