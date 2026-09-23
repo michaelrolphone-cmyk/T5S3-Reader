@@ -74,6 +74,8 @@ A generic RiscRTE resolver MUST NOT know any class identifiers, USB-specific sel
 
 ## 8. VBUS, electrical safety and runtime power
 
+Implementation MUST follow [USB Host Startup and Detection](USB_HOST_STARTUP_AND_DETECTION.md). Establish host PHY routing and pull-downs before supplying VBUS to an attached device; prepare event handling and transfer resources before allowing detection. On ESP32-S3, forcing the local receive detector disconnected after power-up does not correct a receiver starting against the previous boot-console role. Preserve the documented partial-start cleanup and distinguish root attachment, enumeration, class binding and reports when diagnosing failures.
+
 The USB controller provider coordinates host VBUS enable/disable through its own implementation or by consuming an installed board power capability. Charger register access, I2C transaction semantics and board-specific sequencing reside in power/bus ELFs. Generic runtime power/suspend policy may request capability suspension and receive state reports; it does not toggle USB rails or know that an app's lease implies a USB power lock. During suspend/unplug/cancellation, the owning providers drain/cancel transfers, detach class clients, release interfaces, relinquish VBUS as safe, publish capability loss and acknowledge quiescence before unload. Fail closed on uncertain hardware teardown; never treat a generic software lease release as proof of safe PHY shutdown.
 
 ## 9. Security and execution lifetime

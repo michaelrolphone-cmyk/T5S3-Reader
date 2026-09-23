@@ -125,6 +125,8 @@ Provide message/packet endpoint/routing semantics over BLE, LoRa, Wi-Fi/IP, USB 
 
 ## 20. Device and Service Discovery
 
+For USB implementation, follow [USB Host Startup and Detection](USB_HOST_STARTUP_AND_DETECTION.md): host role and pull-downs before VBUS, event readiness before attachment, distinct enumeration/class/report stages, bounded polling and ownership-preserving shutdown. The guide records the controller 0.1.14 auto-connect correction and the regression checks that protect it.
+
 [Firmware Input Navigation](FIRMWARE_INPUT_NAVIGATION.md) describes the installed
 `input.navigation` consumer path and foreground app handoff. USB class mapping
 stays in the composite ELF; the firmware handles generic navigation and lifetime.

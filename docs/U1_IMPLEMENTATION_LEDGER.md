@@ -8,6 +8,8 @@ The previous backmerge included `6569b81`, but the claim that the PR was current
 was not verified against the remote mergeability result. PR #96 was still
 conflicted against newer master. This follow-up integrates `8f51db1` and the
 subsequent master firmware-asset commit `14b35df` into the same U1 branch.
+The post-push check then detected master `ea3804f`; its documentation-only
+specification-link conflict is also resolved, preserving all three links.
 
 Preserves the reusable BQ25896 driver and separately installed board profile,
 input-power monitoring, USB role switching and firmware navigation from master.
