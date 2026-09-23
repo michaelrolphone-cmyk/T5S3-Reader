@@ -13,6 +13,12 @@ providers; physical devices of all three kinds need not be connected. The
 existing controller/power drivers retain physical USB ownership and their
 host-role-before-VBUS startup sequence.
 
+**Settings → Controls → Keyboard/controller navigation** enables this UI
+consumer (default On). Turn it Off to release the UI's provider/package leases
+before updating USB drivers, or when external navigation is unwanted. Use touch
+or hardware buttons to turn it back On. Apps' independent input grants are not
+revoked by this setting. Failed cleanup still retains unsafe packages.
+
 | Input | Navigation |
 | --- | --- |
 | Keyboard arrows | Move selection; turn reader pages |

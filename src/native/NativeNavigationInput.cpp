@@ -10,7 +10,7 @@ RuntimeInstalledProviders::Lease lease;
 RuntimeInput::NavigationFocus focus;
 const risc_input_navigation_api_v1* api = nullptr;
 risc_input_navigation_frame_v1 frame{};
-bool enabled = true, attempted = false, quarantined = false, usable = true;
+bool configured = true, enabled = true, attempted = false, quarantined = false, usable = true;
 uint32_t lastPoll = 0, heldSince = 0;
 
 void clearFrame() { frame = {}; heldSince = millis(); }
@@ -65,13 +65,14 @@ void nativeNavigationBoundary() {
     usable = focus.apply(api) && (!api || api->reset(api->context));
 }
 void nativeNavigationRetry() { if (!api && !quarantined) attempted = false; }
-bool nativeNavigationSuspend() {
+static bool releaseNavigation(bool requireGraphShutdown) {
     clearFrame();
     enabled = false;
     if (!api) {
         // Failed activation can retain a physical dependency even though no
         // navigation API was returned. Absence of our grant is not quiescence.
         if (!attempted && !quarantined) return true;
+        if (!requireGraphShutdown && !quarantined && RuntimeInstalledProviders::hasLiveGrants()) return true;
         quarantined = !RuntimeInstalledProviders::shutdown();
         return !quarantined;
     }
@@ -81,11 +82,19 @@ bool nativeNavigationSuspend() {
     api = nullptr; lease = {};
     // Releasing this composite can leave a failed lower dependency pinned.
     // Prove the whole graph quiescent before sleep, not just our top-level ELF.
-    quarantined = !released || !RuntimeInstalledProviders::shutdown();
+    const bool shared = !requireGraphShutdown && RuntimeInstalledProviders::hasLiveGrants();
+    quarantined = !released || (!shared && !RuntimeInstalledProviders::shutdown());
     return !quarantined;
 }
+bool nativeNavigationSuspend() { return releaseNavigation(true); }
+void nativeNavigationConfigure(bool requested) {
+    if (configured == requested) return;
+    configured = requested;
+    if (requested) nativeNavigationResume();
+    else if (!releaseNavigation(false)) LOG_ERR("INPUT", "Navigation disabled; unsafe provider retained");
+}
 void nativeNavigationResume() {
-    enabled = true;
+    enabled = configured;
     nativeNavigationRetry();
     nativeNavigationBoundary();
 }

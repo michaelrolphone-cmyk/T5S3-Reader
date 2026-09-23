@@ -7,7 +7,7 @@ uint32_t fakeTime = 1000;
 bool storageReady = true, closeOk = true;
 std::map<std::string, std::shared_ptr<TestFile>> files;
 HalStorage Storage;
-static bool available, shutdownOkay = true;
+static bool available, shutdownOkay = true, sharedGrant = false;
 static unsigned acquisitions, releases, shutdowns, polls, resets;
 static size_t foregroundCount;
 static bool fakePoll(void*, risc_input_navigation_frame_v1* out) {
@@ -30,6 +30,7 @@ bool acquireCapability(const char* capability, uint32_t version, Lease* out) {
 }
 bool release(Lease* out) { ++releases; *out = {}; return true; }
 bool shutdown() { ++shutdowns; return shutdownOkay; }
+bool hasLiveGrants() { return sharedGrant; }
 const char* lastError() { return "fixture unavailable"; }
 }
 int main() {
@@ -54,9 +55,17 @@ int main() {
     nativeNavigationTick(); assert(acquisitions == 2);
     nativeNavigationResume(); fakeTime += 20; nativeNavigationTick();
     assert(acquisitions == 3);
+    sharedGrant = true;
+    nativeNavigationConfigure(false);
+    assert(releases == 2 && shutdowns == 3); // app keeps its independent grant
+    nativeNavigationResume(); nativeNavigationTick();
+    assert(acquisitions == 3); // persisted Off survives wake
+    sharedGrant = false;
+    nativeNavigationConfigure(true); fakeTime += 20; nativeNavigationTick();
+    assert(acquisitions == 4);
     shutdownOkay = false;
     assert(!nativeNavigationSuspend()); // lower-provider failure blocks sleep
     nativeNavigationResume(); nativeNavigationTick();
-    assert(acquisitions == 3); // quarantined resources never silently restarted
+    assert(acquisitions == 4); // quarantined resources never silently restarted
     puts("Firmware navigation acquisition, focus, polling and sleep lifetime: PASS");
 }

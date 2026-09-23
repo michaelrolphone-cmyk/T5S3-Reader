@@ -124,6 +124,7 @@ bool MappedInputManager::isPressed(const Button button) const {
 void MappedInputManager::update() const {
   gpio.update();
   nativeDeviceDiscoveryTick();
+  nativeNavigationConfigure(SETTINGS.externalInputNavigation != 0);
   nativeNavigationTick();
 }
 
