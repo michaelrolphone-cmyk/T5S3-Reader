@@ -139,6 +139,7 @@ class HalDisplay {
   void pushPanelCanvas(RefreshMode mode, lgfx::epd_mode::epd_mode_t epdMode);
   void pushPanelCanvasWithEffect(DisplayEffect effect) const;
   void renderBwToPanelCanvas() const;
+  void renderBwToPanelCanvas(const uint8_t* sourceBuffer) const;
   void renderGrayToPanelCanvas() const;
 #endif
 };
