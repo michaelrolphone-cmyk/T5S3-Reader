@@ -41,7 +41,9 @@ def tool(compiler, suffix):
 
 
 def compile_target(argv, entry, source, output, c_compiler=False, extra=()):
-    command = list(argv)
+    # PlatformIO can add this newer GCC flag to the compilation database.
+    # The pinned Xtensa GCC 8 toolchain does not recognize it in C or C++.
+    command = [arg for arg in argv if arg != '-Wno-bidi-chars']
     changed_source = changed_output = False
     for i, argument in enumerate(command):
         if Path(argument).as_posix().endswith('src/native/NativeUsbBridge.cpp'):
@@ -58,7 +60,7 @@ def compile_target(argv, entry, source, output, c_compiler=False, extra=()):
             raise RuntimeError('Expected Xtensa C++ toolchain to derive C compiler')
         command[0] = str(tool(compiler, 'gcc'))
         command = [arg for arg in command if not arg.startswith('-std=') and
-                   arg not in ('-fno-rtti', '-Wno-bidi-chars')]
+                   arg != '-fno-rtti']
         command.append('-std=gnu11')
     command.extend(['-fPIC', '-fvisibility=hidden', '-I' + str(ROOT / 'sdk/driver')])
     command.extend(extra)

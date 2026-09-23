@@ -4,7 +4,7 @@
 #include "RiscUsbHidV1.h"
 #include "RiscUsbInterruptV1.h"
 #include "RiscUsbDiscoveryDiagnosticsV1.h"
-#include <soc/usb_struct.h>
+#include <soc/usb_dwc_struct.h>
 #define t5_driver_get t5_usb_controller_base_get
 #include "driver_base.cpp"
 #undef t5_driver_get
@@ -73,7 +73,7 @@ void stop_with_interrupt() {
 }
 bool enumeration_diagnostic(void *, char *out, size_t capacity) {
     if (!installed) return false;
-    return enumerationDiagnostic.copy(USB_DWC.hprt, out, capacity);
+    return enumerationDiagnostic.copy(USB_DWC.hprt_reg.val, out, capacity);
 }
 static const risc_usb_controller_diagnostics_v1 hid_interface = {
     {{RISC_USB_CONTROLLER_API_V1, sizeof(risc_usb_controller_diagnostics_v1), nullptr,
