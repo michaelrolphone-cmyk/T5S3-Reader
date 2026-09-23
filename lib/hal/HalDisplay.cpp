@@ -351,6 +351,11 @@ class T5S3M5GfxDisplay : public lgfx::LGFX_Device {
 
   void setPanelOutputSuppressed(const bool suppressed) { bus_.setPanelOutputSuppressed(suppressed); }
 
+  // M5GFX::init() always calls init_impl(true, true), whose second argument
+  // clears EPD panels. Timer-wake desk-clock resumes need the same hardware
+  // reset/init but must preserve the image retained by the unpowered panel.
+  bool initPreservingPanel() { return init_impl(true, false); }
+
  private:
   T5S3BusEPD bus_;
   lgfx::Panel_EPD panel_;
@@ -429,7 +434,7 @@ bool HalDisplay::resumeFromExternalOwner() {
   return true;
 }
 
-void HalDisplay::begin() {
+void HalDisplay::begin(const bool clearPanel) {
   if (externalOwner) {
     LOG_ERR("DSP", "Cannot initialize host display while an ELF owns it");
     return;
@@ -451,8 +456,9 @@ void HalDisplay::begin() {
     return;
   }
 
-  if (!gfx->init()) {
-    LOG_ERR("DSP", "M5GFX init failed");
+  const bool initOk = clearPanel ? gfx->init() : gfx->initPreservingPanel();
+  if (!initOk) {
+    LOG_ERR("DSP", "M5GFX init failed (clearPanel=%d)", clearPanel ? 1 : 0);
     releaseBackend();
     return;
   }
