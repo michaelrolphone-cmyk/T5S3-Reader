@@ -1,4 +1,6 @@
 #include "RiscUsbVbusV1.h"
+#include "RiscBq25896ProfileV1.h"
+extern const risc_driver_v2 *t5_profile_get(uint32_t abi);
 #include "RiscI2cBusV1.h"
 #include "RiscPlatformClockV1.h"
 #include <assert.h>
@@ -59,7 +61,8 @@ int main(void) {
     };
     const risc_provider_dependency_v1 dependencies[] = {
         {"i2c.bus", RISC_I2C_BUS_API_V1, &bus},
-        {"platform.clock", RISC_PLATFORM_CLOCK_API_V1, &clock}
+        {"platform.clock", RISC_PLATFORM_CLOCK_API_V1, &clock},
+        {RISC_BQ25896_PROFILE_CAPABILITY, 1, t5_profile_get(2)->capability}
     };
     const risc_driver_v2 *driver = t5_driver_get(RISC_PROVIDER_DRIVER_ABI_V2);
     assert(driver && strcmp(driver->capability_id, "board.power.vbus") == 0);
@@ -88,7 +91,7 @@ int main(void) {
     registers[0x0f] = 0x29u;
     registers[0x11] = 0x80u;
     registers[0x0c] = 0x40u; /* Reading this would clear fault history. */
-    assert(driver->start(dependencies, 2u));
+    assert(driver->start(dependencies, 3u));
     assert(claimed == 7u);
     assert(owner->read_charger(owner->base.context, &snapshot));
     assert(snapshot.input_control == 0x25u);
@@ -102,7 +105,7 @@ int main(void) {
     assert(snapshot.battery_adc == 0x17u);
     assert(snapshot.system_adc == 0x29u);
     assert(snapshot.vbus_adc == 0x80u);
-    assert(fault_reads == 0 && write_count == 0 && read_count == 12u);
+    assert(fault_reads == 0 && write_count == 0 && read_count == 13u);
 
     failing_register = 0x06u;
     risc_bq25896_charger_snapshot_v1 sentinel = snapshot;

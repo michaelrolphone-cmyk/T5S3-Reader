@@ -48,7 +48,7 @@ class UsbTeardownRetry(unittest.TestCase):
         self.assertLess(release.index("RiscUsbController::releaseClaim("),
                         release.index("*c = {};"))
         self.assertIn("if (detached && !others) *d = {};", release)
-        quiesce = self.controller.split("bool quiesce(void *)", 1)[1].split(
+        quiesce = self.controller.split("bool quiesce_host()", 1)[1].split(
             "void stop()", 1
         )[0]
         self.assertNotIn("if (fault || claimed(0)) return false;", quiesce)
@@ -62,7 +62,7 @@ class UsbTeardownRetry(unittest.TestCase):
             (0, 1, 6))
 
     def test_idle_host_drains_no_clients_even_if_no_device_needs_freeing(self):
-        quiesce = self.controller.split("bool quiesce(void *)", 1)[1].split(
+        quiesce = self.controller.split("bool quiesce_host()", 1)[1].split(
             "void stop()", 1
         )[0]
         self.assertLess(quiesce.index("usb_host_client_deregister(client)"),

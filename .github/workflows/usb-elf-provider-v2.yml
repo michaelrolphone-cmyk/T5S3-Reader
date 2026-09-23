@@ -14,7 +14,9 @@ on:
       - "Drivers/usb_hid_keyboard/**"
       - "Drivers/usb_hid_gamepad/**"
       - "Drivers/usb_xinput_gamepad/**"
-      - "Drivers/board_power_t5s3_v2/**"
+      - "Drivers/usb_ui_navigation/**"
+      - "Drivers/bq25896/**"
+      - "Drivers/t5s3_usb_power_profile/**"
       - "Drivers/i2c_esp32s3_v2/**"
       - "Drivers/platform_clock_v1/**"
       - "sdk/driver/RiscProviderV2.h"
@@ -27,6 +29,7 @@ on:
       - "sdk/driver/RiscUsbGamepadDiagnosticsV1.h"
       - "sdk/driver/RiscUsbDiscoveryDiagnosticsV1.h"
       - "sdk/driver/RiscUsbVbusV1.h"
+      - "sdk/driver/RiscBq25896ProfileV1.h"
       - "sdk/driver/RiscI2cBusV1.h"
       - "sdk/driver/RiscFirmwareI2cCompatV1.h"
       - "sdk/driver/RiscPlatformClockV1.h"
@@ -53,6 +56,9 @@ on:
       - "scripts/build_usb_host_v2.py"
       - "scripts/build_usb_hid*.py"
       - "scripts/build_usb_xinput_gamepad.py"
+      - "scripts/build_usb_ui_navigation.py"
+      - "src/runtime/input/**"
+      - "src/native/NativeNavigationInput*"
       - "scripts/build_board_power_t5s3_v2.py"
       - "scripts/build_platform_clock_v1.py"
       - "scripts/probe_usb_controller_esp32s3.py"
@@ -69,8 +75,12 @@ on:
       - "test/drivers/usb_controller_bulk_drain_source_test.py"
       - "test/drivers/usb_hid*.c"
       - "test/drivers/usb_xinput_gamepad_test.c"
+      - "test/drivers/usb_ui_navigation_test.c"
+      - "test/drivers/navigation_focus_test.cpp"
+      - "test/drivers/native_navigation_input_test.cpp"
       - "test/drivers/controller_startup_diagnostic_test.cpp"
       - "test/drivers/controller_host_startup_test.cpp"
+      - "test/drivers/controller_role_switch_test.cpp"
       - "test/drivers/board_power_t5s3_v2_test.c"
       - "test/drivers/i2c_esp32s3_v2_test.c"
       - "test/drivers/platform_clock_v1_test.c"
@@ -162,8 +172,11 @@ jobs:
           bash test/run_native_app_test.sh dist/experimental/usb-hid-gamepad/driver.elf
           python scripts/build_usb_xinput_gamepad.py
           bash test/run_native_app_test.sh dist/experimental/usb-xinput-gamepad/driver.elf
+          python scripts/build_usb_ui_navigation.py
+          bash test/run_native_app_test.sh dist/experimental/usb-ui-navigation/driver.elf
           python scripts/build_board_power_t5s3_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-board-power-t5s3-v2/driver.elf
+          bash test/run_native_app_test.sh dist/experimental/t5s3-usb-power-profile/driver.elf
           python scripts/build_platform_clock_v1.py
           python scripts/audit_usb_controller_elf.py dist/experimental/platform-clock-v1/driver.elf --strict
           bash test/run_native_app_test.sh dist/experimental/platform-clock-v1/driver.elf

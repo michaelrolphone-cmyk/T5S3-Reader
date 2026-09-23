@@ -6,10 +6,12 @@
 #include "StartupDiagnostic.h"
 #include "ClaimReleasePolicy.h"
 #include "EnumerationDiagnostic.h"
+#include "RoleSwitch.h"
 #include <usb/usb_host.h>
 #include <esp_intr_alloc.h>
 #include <esp_private/usb_phy.h>
 #include <soc/rtc_cntl_struct.h>
+#include <soc/usb_dwc_struct.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <cstring>
@@ -37,6 +39,11 @@ struct Event {
     usb_device_handle_t handle;
 };
 static const risc_usb_vbus_api_v1 *power;
+static const risc_usb_vbus_monitor_api_v1 *powerMonitor;
+static UsbRoleSwitch role;
+// The HID extension installs its DMA drain before activating this controller.
+static bool (*drainRoleInterrupts)();
+void service_role();
 static uint64_t powerLease, serial;
 static bool running, installed, fault;
 static EnumerationDiagnostic enumerationDiagnostic;
@@ -207,7 +214,11 @@ bool endpoint_mps(Device *d, uint8_t iface, uint8_t alt,
 }
 
 int32_t next_event(void *, risc_usb_controller_event_v1 *out) {
-    if (!running || !out || fault || !pump(0)) return -1;
+    if (!out || fault || role.state() == UsbRoleSwitch::State::Off) return -1;
+    if (role.state() == UsbRoleSwitch::State::Failed) return 0;
+    if (installed && !pump(0)) return -1;
+    service_role();
+    if (role.state() != UsbRoleSwitch::State::Host) return 0;
     reapDetachedUnclaimed();
     if (!queueCount) return 0;
     Event e = queue[queueHead];
@@ -387,7 +398,7 @@ int32_t bulk_write(void *ctx, uint64_t id, uint8_t ep, const uint8_t *src,
     return bulk(ctx, id, ep, nullptr, src, len, timeout, false);
 }
 
-bool quiesce(void *) {
+bool quiesce_host() {
     if (inFlight && !drain_bulk(false)) return false;
     /* A discovery/event fault blocks new work, not verified cleanup. We may
      * release VBUS only after claims, DMA, devices, callbacks and IDF host
@@ -438,7 +449,10 @@ bool quiesce(void *) {
             return false;
         }
         bool freed = rc == ESP_OK;
+        const TickType_t freeingBegan = xTaskGetTickCount();
         for (uint32_t i = 0; !freed && i < kTeardownTicks; ++i) {
+            if (static_cast<TickType_t>(xTaskGetTickCount() - freeingBegan) >=
+                pdMS_TO_TICKS(kTeardownTicks)) break;
             uint32_t flags = 0;
             rc = usb_host_lib_handle_events(1, &flags);
             if (rc != ESP_OK && rc != ESP_ERR_TIMEOUT) {
@@ -447,6 +461,8 @@ bool quiesce(void *) {
                 return false;
             }
             if (flags & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE) freed = true;
+            // A ready event need not block. Yield even under an event flood.
+            if (!freed) vTaskDelay(1);
         }
         if (!freed) {
             std::printf("USBCTRL cleanup-failed stage=device-free-timeout\n");
@@ -484,13 +500,32 @@ bool quiesce(void *) {
         powerLease = 0;
         std::printf("USBCTRL stage=vbus-released\n");
     }
+    // A failed acquire may retain an internal source lease even when the
+    // caller's token is zero. Do not expose the boot PHY until source-off is
+    // independently observed. Keep the power chip claimed while monitoring.
+    if (powerMonitor) {
+        const int32_t status = powerMonitor->input_status(power->context);
+        if (status != RISC_USB_POWER_ABSENT && status != RISC_USB_POWER_EXTERNAL &&
+            status != RISC_USB_POWER_SETTLING)
+            return false;
+    }
     restore_phy_route();
     running = false;
+    queueHead = queueTail = queueCount = 0;
+    return true;
+}
+bool quiesce(void *) {
+    role.stop();
+    // Repeated graph cleanup may already have released the chip's I2C claim.
+    if (running || installed || phy || phyRouteCaptured || client || transfer || powerLease) {
+        if (!quiesce_host()) return false;
+    }
     return !power || power->quiesce(power->context);
 }
 void stop() {
     if (!quiesce(nullptr)) return;
     power = nullptr;
+    powerMonitor = nullptr;
     queueHead = queueTail = queueCount = 0;
     fault = false;
 }
@@ -500,7 +535,7 @@ bool startup_error(char *destination, size_t capacity) {
 bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     startupError.clear();
     enumerationDiagnostic.clear();
-    if (running || installed || phy || phyRouteCaptured || client || transfer || powerLease || fault ||
+    if (role.state() != UsbRoleSwitch::State::Off || running || installed || phy || phyRouteCaptured || client || transfer || powerLease || fault ||
         !deps || count != 1 || !equals(deps[0].capability_id, "board.power.vbus") ||
         deps[0].api_version != RISC_USB_VBUS_API_V1 || !deps[0].api) {
         startupError.text("dependency/state");
@@ -518,9 +553,9 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     }
     const auto *api = static_cast<const risc_usb_vbus_api_v1 *>(deps[0].api);
     if (api->api_version != RISC_USB_VBUS_API_V1 ||
-        api->struct_size < sizeof(*api) || !api->acquire_host ||
+        api->struct_size < sizeof(risc_usb_vbus_monitor_api_v1) || !api->acquire_host ||
         !api->release_host || !api->quiesce) {
-        startupError.text("vbus-abi");
+        startupError.text("board.power.vbus: input-monitor extension required;");
         startupError.number(" api=", api->api_version);
         startupError.number(" size=", api->struct_size);
         startupError.number(" acquire=", api->acquire_host != nullptr);
@@ -530,14 +565,36 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         return false;
     }
     power = api;
-    if (!start_host_controller()) {
-        if (!quiesce(nullptr)) std::printf("USBCTRL cleanup-failed stage=host-startup\n");
-        return false;
-    }
-    running = true;
-    std::printf("USBCTRL stage=controller-running\n");
+    powerMonitor = reinterpret_cast<const risc_usb_vbus_monitor_api_v1 *>(api);
+    if (!powerMonitor->input_status) return start_failure("vbus-monitor-abi", 0);
+    role.begin(static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS));
+    std::printf("USBCTRL stage=role-monitor-started\n");
     return true;
 }
+struct RolePort {
+    uint32_t now() const { return static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS); }
+    int32_t input() const { return powerMonitor->input_status(power->context); }
+    bool idle_probe_required() const {
+        return (powerMonitor->flags & RISC_USB_POWER_IDLE_PROBE_REQUIRED) != 0;
+    }
+    bool busy() const {
+        if (queueCount || inFlight || (USB_DWC.hprt_reg.val & 1u)) return true;
+        for (const auto &d : devices) if (d.attached) return true;
+        for (const auto &c : claims) if (c.token) return true;
+        return false;
+    }
+    bool park() const {
+        return (!drainRoleInterrupts || drainRoleInterrupts()) && quiesce_host();
+    }
+    bool start() const {
+        startupError.clear(); enumerationDiagnostic.clear();
+        if (!start_host_controller()) return false;
+        running = true;
+        return true;
+    }
+    void report(const char *state) const { std::printf("USBCTRL role=%s\n", state); }
+};
+void service_role() { RolePort port; role.poll(port, port.now()); }
 static const risc_usb_controller_api_v1 interface = {
     RISC_USB_CONTROLLER_API_V1, sizeof(risc_usb_controller_api_v1), nullptr,
     next_event, configuration, claim_interface, release_interface,

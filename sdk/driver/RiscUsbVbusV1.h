@@ -26,6 +26,31 @@ typedef struct {
      * into this provider, or lower-device claim can outlive the ELF. */
     bool (*quiesce)(void *context);
 } risc_usb_vbus_api_v1;
+/* Additive v1 extension. Consumers must check base.struct_size before using
+ * it. Status is observed by the board's power provider, never by firmware/UI
+ * code. This contract requires no particular chip, register bus or detector.
+ * The provider owns electrical qualification and settling delays. SOURCE is
+ * our own output, not evidence of a charger/computer. EXTERNAL has priority
+ * when an independent detector can observe incoming power while sourcing. */
+enum {
+    RISC_USB_POWER_UNKNOWN = -1,
+    RISC_USB_POWER_ABSENT = 0,
+    RISC_USB_POWER_EXTERNAL = 1,
+    RISC_USB_POWER_SOURCE = 2,
+    /* Source-off has been verified, but input detection is still settling.
+     * Do not start a host or count this as a failed read. This is not evidence
+     * of absence. The consumer imposes a bounded overall observation budget. */
+    RISC_USB_POWER_SETTLING = 3
+};
+/* Set only for boards unable to distinguish incoming power while sourcing.
+ * Those boards need source-off observation while the host is empty. Other
+ * providers can use an independent VBUS/role detector without power probes. */
+#define RISC_USB_POWER_IDLE_PROBE_REQUIRED 1u
+typedef struct {
+    risc_usb_vbus_api_v1 base;
+    int32_t (*input_status)(void *context);
+    uint32_t flags;
+} risc_usb_vbus_monitor_api_v1;
 
 /* An append-only extension of the SAME physical BQ25896 owner, not another
  * provider that can claim address 0x6B. Consumers check base.struct_size
@@ -47,7 +72,9 @@ typedef struct {
 } risc_bq25896_charger_snapshot_v1;
 
 typedef struct {
-    risc_usb_vbus_api_v1 base;  /* Must remain the first member. */
+    risc_usb_vbus_api_v1 base;  /* Published monitor prefix must remain intact. */
+    int32_t (*input_status)(void *context);
+    uint32_t flags;
     bool (*read_charger)(void *context, risc_bq25896_charger_snapshot_v1 *out);
     /* Board-qualified 1000mA input/512mA charge/4208mV profile, applied by
      * the single chip owner through its existing I2C claim. Reject during OTG

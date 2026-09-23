@@ -18,13 +18,14 @@ usb-cdc-acm-v2 / usb-cp210x-v2 : serial.port@1
                    -> usb-controller-esp32s3 : usb.controller@1
                         -> board-power-t5s3-v2 : board.power.vbus@1
                              -> i2c-esp32s3-v2 : i2c.bus@1
-                                  -> platform-clock-v1 : platform.clock@1
+                             -> platform-clock-v1 : platform.clock@1
+                             -> t5s3-usb-power-profile : board.power.bq25896.profile@1
 ```
 
 - `Drivers/usb_controller_esp32s3/driver.cpp` links real ESP32-S3 host/OTG/PHY/interrupt/control/bulk/DMA code. Source-level link and audit success is not proof of IRQ/DMA draining, backfeed protection or role safety.
 - `Drivers/usb_host_v2` performs enumeration, device identity generation and USB claims; publish its arrivals/removals through generic provider-originated registry events rather than firmware snapshots.
 - `Drivers/usb_cdc_v2` owns CDC matching, alternate/interface claims, line coding and bulk I/O. `Drivers/usb_cp210x_v2` owns vendor-specific control and data. Qualify CP210x using exact supported VID/PID/profile rather than vendor ID alone; ambiguous composites require explicit policy/selection.
-- `Drivers/i2c_esp32s3_v2`, `Drivers/board_power_t5s3_v2` and `Drivers/platform_clock_v1` provide bus, VBUS/charger and timing requirements. Compiled `Wire` ownership of I²C0 must not coexist with the activated I²C provider. Real VBUS/current, NACK/fault and thermal/electrical behavior remain for the owner's test.
+- `Drivers/i2c_esp32s3_v2`, `Drivers/bq25896` and `Drivers/platform_clock_v1` provide bus, VBUS/charger and timing requirements. Compiled `Wire` ownership of I²C0 must not coexist with the activated I²C provider. Real VBUS/current, NACK/fault and thermal/electrical behavior remain for the owner's test.
 - `InstalledProviderGraph` and `DeviceProviderExecutorV2` use a privately checked module/metadata snapshot, independent privileged import policy and conservative quiescence; none of this is a publisher signature or physical isolation.
 
 ## CURRENT/LEGACY, NONCOMPLIANT — USB firmware residue

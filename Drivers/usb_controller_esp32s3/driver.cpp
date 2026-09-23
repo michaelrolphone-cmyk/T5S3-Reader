@@ -69,10 +69,23 @@ bool quiesce_with_interrupt(void *context) {
     for (auto &slot : interrupts) if (!drain_interrupt(slot)) return false;
     return quiesce(context);
 }
+bool drain_role_interrupts() {
+    for (auto &slot : interrupts) if (!drain_interrupt(slot)) return false;
+    return true;
+}
+bool start_with_role(const risc_provider_dependency_v1 *deps, size_t count) {
+    drainRoleInterrupts = drain_role_interrupts;
+    return start(deps, count);
+}
 void stop_with_interrupt() {
     if (quiesce_with_interrupt(nullptr)) stop();
 }
 bool enumeration_diagnostic(void *, char *out, size_t capacity) {
+    if (role.state() != UsbRoleSwitch::State::Host) {
+        StartupDiagnostic detail;
+        detail.text(role.diagnostic());
+        return detail.copy(out, capacity);
+    }
     if (!installed) return false;
     const char *phyRoute = !RTCCNTL.usb_conf.sw_hw_usb_phy_sel ? "AUTO" :
         !RTCCNTL.usb_conf.sw_usb_phy_sel ? "JTAG" : USB_WRAP.otg_conf.phy_sel ? "EXT" :
@@ -90,7 +103,7 @@ static const risc_usb_controller_diagnostics_v1 hid_interface = {
 static const risc_driver_diagnostics_v2 hid_driver = {{
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_diagnostics_v2),
     "usb-controller-esp32s3", "usb.controller", RISC_USB_CONTROLLER_API_V1,
-    &hid_interface.base.controller, start, stop_with_interrupt,
+    &hid_interface.base.controller, start_with_role, stop_with_interrupt,
     []() -> bool { return quiesce_with_interrupt(nullptr); }
 }, startup_error};
 } // namespace

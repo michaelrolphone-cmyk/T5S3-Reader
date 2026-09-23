@@ -21,16 +21,20 @@ BRIDGE = 'risc_fw_i2c_transact_v1'
 BASELINE = {
     'platform-clock-v1': ('platform.clock', []),
     'i2c-esp32s3-v2': ('i2c.bus', []),
-    'board-power-t5s3-v2': ('board.power.vbus', ['i2c.bus', 'platform.clock']),
+    't5s3-usb-power-profile': ('board.power.bq25896.profile', []),
+    'board-power-t5s3-v2': ('board.power.vbus',
+                             ['i2c.bus', 'platform.clock', 'board.power.bq25896.profile']),
     'usb-controller-esp32s3': ('usb.controller', ['board.power.vbus']),
     'usb-host-v2': ('usb.host', ['usb.controller']),
-    'usb-cdc-acm-v2': ('serial.port', ['usb.host']),
+    'usb-cdc-acm': ('serial.port', ['usb.host']),
     'usb-cp210x-v2': ('serial.port', ['usb.host']),
     'usb-serial-witness': ('serial.port', ['usb.host']),
     'usb-hid': ('usb.hid', ['usb.host']),
     'usb-hid-keyboard': ('usb.hid.keyboard', ['usb.hid']),
     'usb-hid-gamepad': ('usb.hid.gamepad', ['usb.hid']),
     'usb-xinput-gamepad': ('usb.xinput.gamepad', ['usb.host', 'platform.clock']),
+    'usb-ui-navigation': ('input.navigation',
+                          ['usb.hid.keyboard', 'usb.hid.gamepad', 'usb.xinput.gamepad']),
 }
 EXPECTED_ABSOLUTE_POINTERS = {
     'usb-controller-esp32s3': {0x600c0000, 0x60039000, 0x60008000,

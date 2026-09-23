@@ -1,4 +1,6 @@
 #include "RiscUsbVbusV1.h"
+#include "RiscBq25896ProfileV1.h"
+extern const risc_driver_v2 *t5_profile_get(uint32_t abi);
 #include "RiscI2cBusV1.h"
 #include "RiscPlatformClockV1.h"
 #include <assert.h>
@@ -63,7 +65,8 @@ int main(int argc, char **argv) {
         sizeof(risc_platform_clock_api_v1), NULL, monotonic_ms, sleep_ms};
     const risc_provider_dependency_v1 deps[] = {
         {"i2c.bus", RISC_I2C_BUS_API_V1, &bus},
-        {"platform.clock", RISC_PLATFORM_CLOCK_API_V1, &clock}
+        {"platform.clock", RISC_PLATFORM_CLOCK_API_V1, &clock},
+        {RISC_BQ25896_PROFILE_CAPABILITY, 1, t5_profile_get(2)->capability}
     };
     const risc_driver_v2 *driver = t5_driver_get(RISC_PROVIDER_DRIVER_ABI_V2);
     assert(driver && driver->capability);
@@ -74,7 +77,7 @@ int main(int argc, char **argv) {
     chip.fail_read = 0xffu;
     chip.registers[0x03] = 0x10u;
     chip.registers[0x14] = 0x01u; /* Known BQ25896 PN, revision 1. */
-    assert(driver->start(deps, 2u) && chip.claims == 1u);
+    assert(driver->start(deps, 3u) && chip.claims == 1u);
 
     chip.registers[0x0b] = 0x04u; /* PG external power veto. */
     assert(!power->request_shutdown(NULL) && !chip.writes);

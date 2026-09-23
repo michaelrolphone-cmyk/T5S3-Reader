@@ -50,7 +50,7 @@ class UsbControllerDrainTests(unittest.TestCase):
                                                               'bool configuration('))
 
     def test_quiesce_drains_before_dma_free_and_vbus_release(self):
-        quiesce = self.section('bool quiesce(void *) {', 'void stop()')
+        quiesce = self.section('bool quiesce_host() {', 'void stop()')
         self.assertIn('if (inFlight && !drain_bulk(false)) return false;', quiesce)
         self.assertLess(quiesce.index('drain_bulk(false)'),
                         quiesce.index('usb_host_transfer_free('))

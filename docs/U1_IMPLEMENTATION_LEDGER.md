@@ -2,6 +2,30 @@
 
 [PR #96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) on `impl/u1-riscrte` is the **only** implementation PR/branch. `AGENTS.md`, [USB remediation](USB_CONTRACT_VIOLATION_REMEDIATION.md), [execution order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [claim-scoped USB control](U1_USB_CONTROL_SCOPE_IMPLEMENTATION.md) and [package identity](PACKAGE_IDENTITY_VERSION_POLICY.md) govern the work. Owner controls merge, tag, release, flash and hardware qualification. A committed test is not a PASS.
 
+## September 23: repair conflicts with the newer master
+
+The previous backmerge included `6569b81`, but the claim that the PR was current
+was not verified against the remote mergeability result. PR #96 was still
+conflicted against newer master. This follow-up integrates `8f51db1` and the
+subsequent master firmware-asset commit `14b35df` into the same U1 branch.
+
+Preserves the reusable BQ25896 driver and separately installed board profile,
+input-power monitoring, USB role switching and firmware navigation from master.
+Retains U1 charger/shutdown ownership, stream endpoints, generic package discovery
+and exact failed-release grants. The charger API now extends the published power
+monitor prefix; a layout assertion guards callback offsets. Navigation cleanup
+retains a failed grant and retries it before graph shutdown. Conventional builder
+entrypoints let generic package discovery find both new power packages.
+
+Existing package IDs: board-power-t5s3-v2 0.1.7 -> 0.1.8 and
+usb-controller-esp32s3 0.1.15 -> 0.1.16, above both merged parent versions.
+
+Local CDC aggregate, power/charger/shutdown, HID/XInput/navigation and provider
+manifest discovery checks passed. Both power-provider Xtensa ELF builds passed.
+Host-side tests cover simulated devices, not physical hardware. Full firmware and
+physical-controller target builds remain unverified; the previously rejected
+PlatformIO external collector request has not been retried or bypassed.
+
 ## September 23: backmerge current master into the U1 branch
 
 Merged master `6569b81d3abe6c7ea44e71eed150bb4324d5909d` (275 master-only

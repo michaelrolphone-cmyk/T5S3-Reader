@@ -1,4 +1,6 @@
 #include "RiscUsbVbusV1.h"
+#include "RiscBq25896ProfileV1.h"
+extern const risc_driver_v2 *t5_profile_get(uint32_t abi);
 #include "RiscI2cBusV1.h"
 #include "RiscPlatformClockV1.h"
 #include <assert.h>
@@ -60,14 +62,16 @@ static risc_platform_clock_api_v1 clock_api = {
     RISC_PLATFORM_CLOCK_API_V1, sizeof(risc_platform_clock_api_v1), NULL,
     monotonic_ms, sleep_ms
 };
-static const risc_provider_dependency_v1 deps[] = {
+static risc_provider_dependency_v1 deps[] = {
     {"i2c.bus", RISC_I2C_BUS_API_V1, &i2c},
-    {"platform.clock", RISC_PLATFORM_CLOCK_API_V1, &clock_api}
+    {"platform.clock", RISC_PLATFORM_CLOCK_API_V1, &clock_api},
+    {RISC_BQ25896_PROFILE_CAPABILITY, 1, NULL}
 };
 static const risc_driver_v2 *driver;
 static const risc_usb_vbus_charger_api_v1 *charger;
 
 static void begin_chip(void) {
+    deps[2].api = t5_profile_get(2)->capability;
     memset(&chip, 0, sizeof(chip));
     chip.fail_read_reg = 0xffu;
     chip.reg[0x00] = 0x80u;
@@ -79,7 +83,7 @@ static void begin_chip(void) {
     chip.reg[0x07] = 0x3au;
     chip.reg[0x09] = 0x20u;
     chip.reg[0x14] = 0x01u; /* BQ25896 PN=0, revision=1. */
-    assert(driver->start(deps, 2u));
+    assert(driver->start(deps, 3u));
     assert(chip.claim && chip.claims == 1u);
 }
 static void end_chip(void) {

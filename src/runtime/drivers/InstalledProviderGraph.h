@@ -42,6 +42,9 @@ inline EnumerationResult nextProviderChecked(const char* capability,
 // Resolves the *named* installed provider, never an ambiguous first match.
 bool acquire(const char* providerId, const char* capability, uint32_t version,
              Lease* out);
+// Trusted firmware consumers may select one unambiguous installed capability.
+// Metadata/dependencies use the same ordinary package admission as named apps.
+bool acquireCapability(const char* capability, uint32_t minimumVersion, Lease* out);
 bool release(Lease* lease);
 // Attach only a live exact capability lease to the authenticated app context.
 // Registry rights are revoked when this lease or either context terminates.
@@ -51,6 +54,7 @@ bool attachStream(const Lease&, uint32_t endpoint, uint32_t rights);
 // An uncertain quiesce leaves the mapping and graph pinned for later retry.
 bool recoverFailedProvider(const char* providerId, const char* capability,
                            uint32_t version);
+bool hasLiveGrants();
 const char* lastError();
 // Refuses destruction while any provider is still granted or not quiescent.
 // An unsuccessful shutdown deliberately retains every ELF and package pin.

@@ -158,6 +158,7 @@ jobs:
           python scripts/build_usb_hid_keyboard.py
           python scripts/build_usb_hid_gamepad.py
           python scripts/build_usb_xinput_gamepad.py
+          python scripts/build_usb_ui_navigation.py
           python scripts/build_installed_usb_stack.py
           python test/drivers/installed_usb_stack_package_test.py
           python scripts/export_canonical_driver_release.py

@@ -9,7 +9,7 @@ port = (root / 'src/native/NativeBoardPowerPort.cpp').read_text(encoding='utf-8'
 readiness = (root / 'src/native/NativeBoardPowerReadiness.cpp').read_text(encoding='utf-8')
 bridge = (root / 'src/native/NativeBatteryBridge.cpp').read_text(encoding='utf-8')
 display = (root / 'lib/hal/HalDisplay.cpp').read_text(encoding='utf-8')
-owner = (root / 'Drivers/board_power_t5s3_v2/driver.c').read_text(encoding='utf-8')
+owner = (root / 'Drivers/bq25896/driver.c').read_text(encoding='utf-8')
 
 # Neither the legacy board nor the app-facing battery shim may own, reset,
 # read or write chip registers. The fuel gauge stays a separate I2C chip.
