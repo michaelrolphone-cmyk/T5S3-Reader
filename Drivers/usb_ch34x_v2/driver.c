@@ -9,12 +9,17 @@ typedef struct {
     uint64_t token, device, claim;
     uint8_t iface, alt, in_ep, out_ep, version;
     bool orphaned; /* Failed open: no consumer received a session token. */
+    uint32_t rx, tx;
+    uint32_t rx_size, rx_offset, tx_size, tx_offset;
+    bool failed;
 } ch_session;
 static const risc_usb_host_api_v1 *host;
 static const risc_usb_host_discovery_v1 *discovery;
 static ch_session sessions[RISC_USB_CDC_MAX_SESSIONS];
 static uint8_t descriptor[RISC_USB_CONFIG_LIMIT];
 static uint64_t sequence;
+typedef ch_session serial_session;
+#include "../common/SerialStreamPump.inc"
 
 static bool same(const char *a, const char *b) {
     if (!a || !b) return false;
@@ -68,6 +73,8 @@ static void stop(void) {
     if (!quiesce()) return; /* Uncertain physical state keeps this ELF pinned. */
     discovery = 0;
     host = 0;
+    streams = 0;
+    next_session = 0;
 }
 static bool parse(size_t length, ch_session *result) {
     if (!result || length < 9 || length > sizeof(descriptor) ||
@@ -202,6 +209,7 @@ static bool snapshot_devices(risc_serial_device_v1 *out, size_t *inout_count) {
         *inout_count = matches;
         return false;
     }
+    reconcile_endpoints(tokens, count);
     for (size_t i = 0; i < matches; ++i) out[i] = found[i];
     *inout_count = matches;
     return true;
@@ -290,22 +298,23 @@ static int32_t write_data(uint64_t token, const uint8_t *src, size_t length,
 static bool close_device(uint64_t token) {
     ch_session *s = lookup(token);
     if (!s) return false;
+    close_endpoints(s);
     /* A false result preserves the caller's exact session and claim, so the
      * next close retries the same physical token without a second owner. */
     return release_session(s);
 }
-static const risc_usb_serial_class_inventory_v1 capability = {
-    {{RISC_USB_CDC_API_V1, sizeof(risc_usb_serial_class_inventory_v1),
-      open_device, configure, control_lines, read_data, write_data, close_device},
-     probe_device},
-    snapshot_devices
+static const risc_serial_port_streams_v1 capability = {
+    {{{RISC_USB_CDC_API_V1, sizeof(risc_serial_port_streams_v1),
+       open_device, configure, control_lines, legacy_read, legacy_write, close_device},
+      probe_device}, snapshot_devices}, endpoints
 };
-static const risc_driver_v2 driver = {
-    RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
-    "usb-ch34x-v2", "serial.port", RISC_USB_CDC_API_V1,
-    &capability.discovery.serial, start, stop, quiesce
+static const risc_driver_poll_v2 driver = {
+    {{RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_poll_v2),
+      "usb-ch34x-v2", "serial.port", RISC_USB_CDC_API_V1,
+      &capability.inventory.discovery.serial, start, stop, quiesce}, bind_streams},
+    poll_streams
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
-    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &driver : 0;
+    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &driver.streams.driver : 0;
 }

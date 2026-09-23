@@ -36,4 +36,18 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   "$repo/test/drivers/usb_witness_provider_graph_test.cpp" -ldl \
   -o "$build/witness-graph-test"
 "$build/witness-graph-test" "$build/witness-controller.so" \
-  "$build/production-host.so" "$build/witness.so"
+  "$build/production-host.so" "$build/witness.so" usb-serial-witness
+
+# Repeat the same installed-stream/pipe regression with all production classes.
+classes=(cdc cp210x ch34x)
+ids=(usb-cdc-acm-v2 usb-cp210x-v2 usb-ch34x-v2)
+for index in 0 1 2; do
+  class="${classes[$index]}"
+  cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fPIC -fvisibility=hidden -shared \
+    -DSERIAL_FIXTURE="$((index + 1))" -I"$repo/sdk/driver" \
+    "$repo/test/drivers/mock_usb_witness_controller_elf.c" -o "$build/$class-controller.so"
+  cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fPIC -fvisibility=hidden -shared \
+    -I"$repo/sdk/driver" "$repo/Drivers/usb_${class}_v2/driver.c" -o "$build/$class.so"
+  "$build/witness-graph-test" "$build/$class-controller.so" \
+    "$build/production-host.so" "$build/$class.so" "${ids[$index]}"
+done

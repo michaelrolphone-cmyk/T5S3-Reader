@@ -19,12 +19,19 @@ static void release_claim(void *ctx,uint64_t id){(void)checked_release(ctx,id);}
 static int32_t control(void *ctx,uint64_t claim_token,uint8_t type,uint8_t request,uint16_t value,uint16_t index,uint8_t *payload,uint16_t size,uint32_t timeout){(void)ctx;(void)value;(void)payload;assert(claim_token==(uint64_t)(100+last_control)&&type==0x21&&timeout==1000&&index==last_control);assert(request==0x20||request==0x22);return size;}
 static int32_t read_data(void *ctx,uint64_t lease,uint8_t ep,uint8_t *dst,size_t cap,uint32_t ms){(void)ctx;(void)ms;assert(lease==data_lease&&ep==last_in&&cap);dst[0]=0x5a;return 1;}
 static int32_t write_data(void *ctx,uint64_t lease,uint8_t ep,const uint8_t *src,size_t n,uint32_t ms){(void)ctx;(void)ms;assert(lease==data_lease&&ep==last_out&&src&&n);return (int32_t)n;}
+static bool poll_host(void *ctx, size_t budget, size_t *processed) {
+    (void)ctx; assert(budget && processed); *processed = 0; return true;
+}
+static bool devices(void *ctx, uint64_t *tokens, size_t *count) {
+    (void)ctx; if (!tokens || !count || *count < 1) return false;
+    tokens[0] = 19; *count = 1; return true;
+}
 static void add_control(uint8_t iface){ADD(9,4,iface,0,1,2,2,1,0);}
 static void add_data(uint8_t iface,uint8_t alt,bool endpoints){ADD(9,4,iface,alt,endpoints?2:0,10,0,0,0);if(endpoints){ADD(7,5,0x83,2,64,0,0);ADD(7,5,0x04,2,64,0,0);}}
 static void expect_open(const risc_usb_cdc_api_v1 *cdc,uint8_t ctl,uint8_t data,uint8_t alt){uint64_t session=cdc->open(19);assert(session&&claims==2&&last_control==ctl&&last_data==data&&last_alt==alt);assert(cdc->configure(session,9600,8,0,1)&&cdc->control_lines(session,true,true));uint8_t v=0;last_in=0x83;last_out=0x04;assert(cdc->read(session,&v,1,1)==1&&v==0x5a);assert(cdc->write(session,&v,1,1)==1);assert(cdc->close(session)&&releases==2);}
 static void expect_rejected(const risc_usb_cdc_api_v1 *cdc){assert(!cdc->open(19)&&claims==0&&releases==0);}
 int main(int argc,char **argv){assert(argc==2);void *lib=dlopen(argv[1],RTLD_NOW);assert(lib);risc_driver_get_v2_fn get=(risc_driver_get_v2_fn)dlsym(lib,"t5_driver_get");assert(get);const risc_driver_v2 *driver=get(RISC_PROVIDER_DRIVER_ABI_V2);assert(driver);const risc_usb_cdc_api_v1 *cdc=(const risc_usb_cdc_api_v1 *)driver->capability;
- risc_usb_host_discovery_v1 host={{RISC_USB_HOST_API_V1,sizeof(host),NULL,configuration,claim,release_claim,control,read_data,write_data},0,0,checked_release,control};risc_provider_dependency_v1 dep={"usb.host",1,&host.host};assert(driver->start(&dep,1));
+ risc_usb_host_discovery_v1 host={{RISC_USB_HOST_API_V1,sizeof(host),NULL,configuration,claim,release_claim,control,read_data,write_data},poll_host,devices,checked_release,control};risc_provider_dependency_v1 dep={"usb.host",1,&host.host};assert(driver->start(&dep,1));
  /* Composite/IAD/union: alternate 0 has no endpoints; alternate 1 owns I/O. */
  begin_config(3);ADD(8,11,1,2,2,2,1,0);ADD(9,4,0,0,0,0xff,0,0,0);add_control(1);ADD(5,0x24,6,1,2);add_data(2,0,false);add_data(2,1,true);finish_config();expect_open(cdc,1,2,1);
  /* Union disambiguates multiple data interfaces; absence fails closed. */

@@ -2,6 +2,54 @@
 
 [PR #96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) on `impl/u1-riscrte` is the **only** implementation PR/branch. `AGENTS.md`, [USB remediation](USB_CONTRACT_VIOLATION_REMEDIATION.md), [execution order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [claim-scoped USB control](U1_USB_CONTROL_SCOPE_IMPLEMENTATION.md) and [package identity](PACKAGE_IDENTITY_VERSION_POLICY.md) govern the work. Owner controls merge, tag, release, flash and hardware qualification. A committed test is not a PASS.
 
+## September 23 continuation: CDC, CP210x and CH34x own stream endpoints
+
+Starting at `b3bdb4b`, all three existing USB serial class ELFs now bind the
+loader's stream host, advertise RX/TX endpoints and use generic cooperative
+provider polling. Installed serial acquisition attaches their queues directly;
+these versions no longer activate the resident serial shuttle.
+
+- Shared private `Drivers/common/SerialStreamPump.inc` implements bounded
+  staging, saturation, partial/zero writes, endpoint allocation rollback,
+  sticky I/O errors, authoritative detach and stopping data before checked
+  physical close. Raw compatibility calls cannot bypass active queue ordering.
+  The simulated serial test driver uses the same helper; it models no hardware
+  assumed present on the owner's device.
+- Each turn visits at most four session slots, services one session and issues
+  at most one 512-byte read and write with one-millisecond timeouts. The generic
+  dispatcher supplies elapsed checkpoints and scheduler cooperation. Staging
+  remains in fixed ELF storage, outside temporary descriptor/open structs, to
+  avoid increasing those embedded stack frames by kilobytes.
+- CDC/CP210x session sequences now refuse exhaustion instead of wrapping to an
+  old token. Existing CDC staged claim release and CP210x UART-disable/detach
+  cleanup remain checked and retryable. App byte-v1/record-v2 layouts are unchanged.
+- Same-ID versions: `usb-cdc-acm-v2` **0.1.4 -> 0.1.5**,
+  `usb-cp210x-v2` **0.1.5 -> 0.1.6**, `usb-ch34x-v2` **0.1.4 -> 0.1.5**,
+  `usb-serial-witness` **0.1.1 -> 0.1.2**. Fetched master and local release tag
+  `v1.2.34` contain CDC/CP210x 0.1.0; CH34x and simulated test class are later
+  unpublished additions. Canonical CDC identity migration remains outstanding.
+
+Validation: the dynamic stack runner passes the actual installed serial bridge,
+registry, scheduler and production host/class ELFs against emulated controllers
+for all four classes. It checks allocation failure without fallback, controls,
+RX/TX pipes, saturation, partial/zero writes, fatal errors, failed-close retry,
+stale handles, detach and reconnect. The C/C++ stack builds use ASan/UBSan and
+strict warnings, with LeakSanitizer disabled under ptrace. The CDC aggregate
+suite includes descriptor, module, host/class, inventory, provider graph, stack,
+three-ELF and teardown checks. CP210x and CH34x protocol suites also passed.
+Older fixtures were repaired to supply required discovery/stream binding,
+recognize extended descriptor sizes and validate CH34x register payloads in
+wIndex. The stale teardown source guard now checks delegated exact-lease cleanup
+and production inventory withdrawal, rather than a removed field expression.
+
+All four normal driver build scripts produced Xtensa ELFs with their existing
+export/import and ELF checks; generated manifests match source ID/version and
+actual payload size/SHA-256. No `.rte.zip`, firmware or hardware result is claimed.
+The shared helper is included in the existing USB workflow path triggers.
+Remaining work: remove the older-prefix resident shuttle, generalize owner-loop
+dispatch, reconcile master conflicts, canonical CDC migration and the other U1
+blockers below. No release, merge, tag or flash occurred.
+
 ## September 23 continuation: packaged witness owns the serial data path
 
 Starting from published `34bcb65`, this continuation adds an optional generic

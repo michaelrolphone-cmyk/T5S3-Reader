@@ -7,12 +7,17 @@ typedef struct {
     uint8_t interface_number, alternate, in_ep, out_ep;
     bool disabled;
     bool orphaned; /* Open failed; its session token was never returned. */
+    uint32_t rx, tx;
+    uint32_t rx_size, rx_offset, tx_size, tx_offset;
+    bool failed;
 } cp_session;
 static const risc_usb_host_api_v1 *host;
 static const risc_usb_host_discovery_v1 *discovery;
 static cp_session sessions[RISC_USB_CDC_MAX_SESSIONS];
 static uint8_t descriptors[RISC_USB_CONFIG_LIMIT];
 static uint64_t generation;
+typedef cp_session serial_session;
+#include "../common/SerialStreamPump.inc"
 
 static bool equal(const char *a, const char *b) {
     if (!a || !b) return false;
@@ -75,6 +80,7 @@ static bool attached(uint64_t device, bool *present) {
 static bool close_device(uint64_t token) {
     cp_session *s = lookup(token);
     if (!s || !discovery) return false;
+    close_endpoints(s);
     if (!s->disabled) {
         bool present = false;
         if (!attached(s->device, &present)) return false;
@@ -103,6 +109,8 @@ static void stop(void) {
     if (!quiesce()) return;
     discovery = 0;
     host = 0;
+    streams = 0;
+    next_session = 0;
 }
 
 static bool parse(size_t length, cp_session *result) {
@@ -203,12 +211,13 @@ static bool snapshot_devices(risc_serial_device_v1 *out, size_t *inout_count) {
         *inout_count = matches;
         return false;
     }
+    reconcile_endpoints(tokens, count);
     for (size_t i = 0; i < matches; ++i) out[i] = found[i];
     *inout_count = matches;
     return true;
 }
 static uint64_t open_device(uint64_t device) {
-    if (!host || !device) return 0;
+    if (!host || !device || generation == UINT64_MAX) return 0;
     cp_session *slot = 0;
     for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
         if (!sessions[i].token) { slot = &sessions[i]; break; }
@@ -224,7 +233,6 @@ static uint64_t open_device(uint64_t device) {
     if (!host->claim(host->context, device, candidate.interface_number,
                      candidate.alternate, &candidate.claim) || !candidate.claim) return 0;
     ++generation;
-    if (!generation) ++generation;
     candidate.token = generation;
     *slot = candidate;
     if (command(candidate.claim, candidate.interface_number, 0x00u, 1u, 0, 0) != 0) {
@@ -273,18 +281,18 @@ static int32_t write_data(uint64_t token, const uint8_t *src, size_t length,
                                  src, length, timeout_ms);
     return n >= 0 && (size_t)n <= length ? n : -1;
 }
-static const risc_usb_serial_class_inventory_v1 capability = {
-    {{RISC_USB_CDC_API_V1, sizeof(risc_usb_serial_class_inventory_v1),
-      open_device, configure, control_lines, read_data, write_data, close_device},
-     probe_device},
-    snapshot_devices
+static const risc_serial_port_streams_v1 capability = {
+    {{{RISC_USB_CDC_API_V1, sizeof(risc_serial_port_streams_v1),
+       open_device, configure, control_lines, legacy_read, legacy_write, close_device},
+      probe_device}, snapshot_devices}, endpoints
 };
-static const risc_driver_v2 driver = {
-    RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
-    "usb-cp210x-v2", "serial.port", RISC_USB_CDC_API_V1,
-    &capability.discovery.serial, start, stop, quiesce
+static const risc_driver_poll_v2 driver = {
+    {{RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_poll_v2),
+      "usb-cp210x-v2", "serial.port", RISC_USB_CDC_API_V1,
+      &capability.inventory.discovery.serial, start, stop, quiesce}, bind_streams},
+    poll_streams
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
-    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &driver : 0;
+    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &driver.streams.driver : 0;
 }

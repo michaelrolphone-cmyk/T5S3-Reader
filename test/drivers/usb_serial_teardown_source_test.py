@@ -53,6 +53,15 @@ assert 'entry.token = devices[i].token;' in host
 assert 'slot.pendingRelease = true;' in release
 assert 'if (!deactivateIfUnused(node)) return false;' in release
 assert release.index('if (!deactivateIfUnused(node)) return false;') < release.index('slot.occupied = false;')
-assert 'if (installedClass.grant.slot && !RuntimeInstalledProviders::release(&installedClass))' in classes
+# The opt-in legacy bridge delegates checked ownership to SelectedSession.
+assert 'if (!installedClass.releaseChecked()) return false;' in classes
+session = (root / 'src/runtime/drivers/InstalledProviderSession.h').read_text()
+assert 'if (!release(&lease_)) {\n      faulted_ = true;\n      return false;' in session
+# The production inventory must withdraw publication before releasing its exact lease.
+inventory = (root / 'src/runtime/drivers/InstalledSerialInventory.h').read_text()
+shutdown = inventory.split('bool stopChecked() {', 1)[1]
+assert shutdown.index('slot.devices->withdrawAll()') < shutdown.index('release(&slot.lease)')
+assert 'if (!release(&slot.lease)) {\n          ok = false;\n          continue;' in shutdown
+assert shutdown.index('release(&slot.lease)') < shutdown.index('slot = Slot{};')
 
 print('USB serial teardown retry and provider-owned host snapshot source: PASS')

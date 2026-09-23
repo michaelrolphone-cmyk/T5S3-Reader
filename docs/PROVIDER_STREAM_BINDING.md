@@ -48,11 +48,12 @@ work. It does not scan storage or activate providers. Inactive, unpinned and
 quarantined modules receive no callback. Providers must bound their underlying
 I/O; the dispatcher cannot preempt a callback that violates its budget.
 
-The `usb-serial-witness@0.1.1` package uses this dispatcher and advertises
+The CDC, CP210x, CH34x and simulated serial test packages use this dispatcher
+and advertise
 `risc_serial_port_streams_v1::endpoints`. Its source and sink are attached through
 the exact inventory capability lease after semantic session acquisition. The
 serial bridge does not create or pump a resident pair for this extension and
-never falls back when advertised endpoint acquisition fails. The witness stages
+never falls back when advertised endpoint acquisition fails. The shared ELF-side pump in `Drivers/common/SerialStreamPump.inc` stages
 at most 512 RX and 512 TX bytes per session, retains partial/zero writes, and
 performs at most one read and one write (one-millisecond timeouts) per turn.
 Successful detach inventory closes its endpoints and revokes consumer grants.
@@ -62,7 +63,7 @@ work remains stopped. Queue finish denotes queue EOF, not electrical wire drain.
 The owner-loop discovery hook currently invokes the generic dispatcher after
 inventory updates. This requires owner-loop progress, but no app RX/TX polling.
 The witness is a simulated-class package, not supported commercial hardware.
-CDC, CP210x and CH34x packages still need conversion; the resident shuttle remains
-for their existing capability prefixes. Protected streams and consent
+CDC, CP210x and CH34x now publish endpoints directly. The resident shuttle
+remains reachable for older installed capability prefixes and still needs retirement. Protected streams and consent
 propagation remain governed by their existing fail-closed policy; this public
 queue table does not grant protected-source publication or delegation.

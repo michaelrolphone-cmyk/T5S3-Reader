@@ -4,14 +4,24 @@ static witness_controller_stats stats;
 __attribute__((visibility("default")))
 witness_controller_stats *fixture_witness_stats(void) { return &stats; }
 
-/* TEST FIXTURE ONLY. It provides one vendor-specific bulk interface matching
- * usb-serial-witness. Production usb.host and the real witness ELF sit above
- * this controller in the provider graph. */
+/* Emulated controller only. SERIAL_FIXTURE selects CDC, CP210x, CH34x
+ * or the simulated test class. Production host/class ELFs run above it. */
+#ifndef SERIAL_FIXTURE
+#define SERIAL_FIXTURE 0
+#endif
 static const uint8_t configuration_bytes[] = {
+#if SERIAL_FIXTURE == 1
+    9,2,41,0,2,1,0,0x80,50,
+    9,4,0,0,0,2,2,1,0,
+    9,4,1,0,2,10,0,0,0,
+    7,5,0x81,2,64,0,0,
+    7,5,0x02,2,64,0,0
+#else
     9,2,32,0,1,1,0,0x80,50,
     9,4,0,0,2,0xff,0,0,0,
     7,5,0x81,2,64,0,0,
     7,5,0x02,2,64,0,0
+#endif
 };
 static bool running, attached;
 static unsigned claims, sequence;
@@ -38,14 +48,19 @@ static bool configuration(void *ctx, uint64_t device, uint8_t *dst,
     for (size_t i = 0; i < sizeof(configuration_bytes); ++i)
         dst[i] = configuration_bytes[i];
     *length = sizeof(configuration_bytes);
-    *vid = 0xcafeu;
-    *pid = 0x4001u;
+#if SERIAL_FIXTURE == 2
+    *vid = 0x10c4u; *pid = 0xea60u;
+#elif SERIAL_FIXTURE == 3
+    *vid = 0x1a86u; *pid = 0x7523u;
+#else
+    *vid = 0xcafeu; *pid = 0x4001u;
+#endif
     return true;
 }
 static bool claim(void *ctx, uint64_t device, uint8_t iface,
                   uint8_t alt, uint64_t *token) {
     (void)ctx;
-    if (!running || device != 77 || iface != 0 || alt || !token) return false;
+    if (!running || device != 77 || iface > (SERIAL_FIXTURE == 1 ? 1 : 0) || alt || !token) return false;
     *token = ++sequence;
     ++claims;
     return true;
@@ -60,10 +75,26 @@ static int32_t control(void *ctx, uint64_t device, uint8_t type,
                        uint8_t request, uint16_t value, uint16_t iface,
                        uint8_t *payload, uint16_t length, uint32_t timeout) {
     (void)ctx; (void)value;
-    if (!running || device != 77 || type != 0x41u || iface != 0 ||
-        timeout != 1000 || !claims) return -1;
+    if (!running || device != 77 || timeout != 1000 || !claims) return -1;
+#if SERIAL_FIXTURE == 1
+    if (type != 0x21u || iface) return -1;
+    if (request == 0x20u && payload && length == 7u) return 7;
+    if (request == 0x22u && !payload && !length) return 0;
+#elif SERIAL_FIXTURE == 2
+    if (type != 0x41u || iface) return -1;
+    if (request == 0x1eu && payload && length == 4u) return 4;
+    if ((request == 0 || request == 3 || request == 7) && !length) return 0;
+#elif SERIAL_FIXTURE == 3
+    (void)iface;
+    if (type == 0xc0u && request == 0x5fu && payload && length == 2) {
+        payload[0] = 0x30; payload[1] = 0; return 2;
+    }
+    if (type == 0x40u && (request == 0xa1u || request == 0x9au || request == 0xa4u) && !length) return 0;
+#else
+    if (type != 0x41u || iface) return -1;
     if (request == 0x30u && payload && length == 7u) return 7;
     if (request == 0x31u && !payload && !length) return 0;
+#endif
     return -1;
 }
 static int32_t read_bulk(void *ctx, uint64_t token, uint8_t endpoint,

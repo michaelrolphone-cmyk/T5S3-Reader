@@ -16,7 +16,6 @@ typedef struct {
     uint8_t ep_in;
     uint8_t ep_out;
     uint32_t rx, tx;
-    uint8_t rx_pending[512], tx_pending[512];
     uint32_t rx_size, rx_offset, tx_size, tx_offset;
     bool failed;
 } witness_session;
@@ -26,25 +25,8 @@ static const risc_usb_host_discovery_v1 *discovery;
 static witness_session sessions[RISC_USB_CDC_MAX_SESSIONS];
 static uint8_t descriptor[RISC_USB_CONFIG_LIMIT];
 static uint64_t sequence;
-static const risc_stream_provider_v1 *streams;
-static size_t next_session;
-static void fail_endpoints(witness_session *, int32_t);
-static int32_t read_data(uint64_t, uint8_t *, size_t, uint32_t);
-static int32_t write_data(uint64_t, const uint8_t *, size_t, uint32_t);
-static bool bind_streams(const risc_stream_provider_v1 *api) {
-    if (host || streams || !api || api->api_version != RISC_STREAM_PROVIDER_API_V1 ||
-        api->struct_size < sizeof(*api) || !api->context || !api->publish ||
-        !api->produce || !api->consume || !api->finish || !api->close) return false;
-    streams = api;
-    return true;
-}
-static void close_endpoints(witness_session *s) {
-    s->failed = true; // Stop data work before any physical close can fail.
-    if (streams && s->rx) (void)streams->close(streams->context, s->rx);
-    if (streams && s->tx) (void)streams->close(streams->context, s->tx);
-    s->rx = s->tx = 0;
-    s->rx_size = s->rx_offset = s->tx_size = s->tx_offset = 0;
-}
+typedef witness_session serial_session;
+#include "../common/SerialStreamPump.inc"
 
 static bool same(const char *a, const char *b) {
     if (!a || !b) return false;
@@ -185,18 +167,7 @@ static bool snapshot_devices(risc_serial_device_v1 *out, size_t *inout_count) {
         *inout_count = matches;
         return false;
     }
-    // A successful inventory is authoritative for disconnect. Revoke copied
-    // endpoints immediately; physical claim cleanup remains checked close.
-    for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i) {
-        witness_session *s = &sessions[i];
-        if (!s->token || !s->rx || !s->tx) continue;
-        bool present = false;
-        for (size_t j = 0; j < count; ++j) present |= tokens[j] == s->device;
-        if (!present) {
-            fail_endpoints(s, -6);
-            close_endpoints(s);
-        }
-    }
+    reconcile_endpoints(tokens, count);
     for (size_t i = 0; i < matches; ++i) out[i] = found[i];
     *inout_count = matches;
     return true;
@@ -267,86 +238,6 @@ static bool close_device(uint64_t token) {
     if (!s) return false;
     close_endpoints(s);
     return release_session(s);
-}
-static bool endpoints(uint64_t token, uint32_t *rx, uint32_t *tx) {
-    if (rx) *rx = 0;
-    if (tx) *tx = 0;
-    witness_session *s = lookup(token);
-    if (!streams || !s || s->failed || !rx || !tx) return false;
-    if (!s->rx && !s->tx) {
-        const risc_stream_endpoint_v1 source = {sizeof(source), 1, 1, 2048, 0, 0, 0};
-        const risc_stream_endpoint_v1 sink = {sizeof(sink), 1, 2, 2048, 0, 0, 0};
-        if (streams->publish(streams->context, &source, &s->rx) != 0 ||
-            streams->publish(streams->context, &sink, &s->tx) != 0) {
-            close_endpoints(s);
-            return false;
-        }
-    }
-    if (!s->rx || !s->tx) return false;
-    *rx = s->rx; *tx = s->tx;
-    return true;
-}
-static void fail_endpoints(witness_session *s, int32_t error) {
-    s->failed = true;
-    (void)streams->finish(streams->context, s->rx, error);
-    (void)streams->finish(streams->context, s->tx, error);
-}
-static bool flush_rx(witness_session *s) {
-    if (s->rx_size == s->rx_offset) return true;
-    uint32_t accepted = 0;
-    const uint32_t remaining = s->rx_size - s->rx_offset;
-    const int32_t result = streams->produce(streams->context, s->rx,
-        s->rx_pending + s->rx_offset, remaining, &accepted);
-    if (result < 0 || result > 1 || accepted > remaining) {
-        fail_endpoints(s, -5);
-        return false;
-    }
-    s->rx_offset += accepted;
-    if (s->rx_offset == s->rx_size) s->rx_offset = s->rx_size = 0;
-    return true;
-}
-static void poll_streams(uint32_t budget_ms) {
-    if (!streams || !host || budget_ms < 2) return;
-    // One session per turn, <= one 512-byte read and write, each <=1 ms.
-    // The generic dispatcher enforces item/time checkpoints and yields.
-    for (size_t visited = 0; visited < RISC_USB_CDC_MAX_SESSIONS; ++visited) {
-        witness_session *s = &sessions[next_session];
-        next_session = (next_session + 1) % RISC_USB_CDC_MAX_SESSIONS;
-        if (!s->token || !s->rx || !s->tx || s->failed) continue;
-        if (!flush_rx(s)) return;
-        if (!s->rx_size) {
-            const int32_t n = read_data(s->token, s->rx_pending, sizeof(s->rx_pending), 1);
-            if (n < 0) { fail_endpoints(s, -5); return; }
-            s->rx_size = (uint32_t)n;
-            if (!flush_rx(s)) return;
-        }
-        if (s->tx_size == s->tx_offset) {
-            uint32_t n = 0;
-            const int32_t result = streams->consume(streams->context, s->tx,
-                s->tx_pending, sizeof(s->tx_pending), &n);
-            if (result < 0 || result > 2 || n > sizeof(s->tx_pending)) {
-                fail_endpoints(s, -5); return;
-            }
-            s->tx_size = n; s->tx_offset = 0;
-        }
-        if (s->tx_size > s->tx_offset) {
-            const uint32_t remaining = s->tx_size - s->tx_offset;
-            const int32_t n = write_data(s->token, s->tx_pending + s->tx_offset, remaining, 1);
-            if (n < 0) { fail_endpoints(s, -5); return; }
-            s->tx_offset += (uint32_t)n;
-            if (s->tx_offset == s->tx_size) s->tx_offset = s->tx_size = 0;
-        }
-        return;
-    }
-}
-// Raw capability calls cannot bypass an activated endpoint pair's ordering.
-static int32_t legacy_read(uint64_t token, uint8_t *data, size_t n, uint32_t ms) {
-    witness_session *s = lookup(token);
-    return s && !s->rx && !s->failed ? read_data(token, data, n, ms) : -1;
-}
-static int32_t legacy_write(uint64_t token, const uint8_t *data, size_t n, uint32_t ms) {
-    witness_session *s = lookup(token);
-    return s && !s->tx && !s->failed ? write_data(token, data, n, ms) : -1;
 }
 
 static const risc_serial_port_streams_v1 capability = {

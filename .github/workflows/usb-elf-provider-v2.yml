@@ -3,6 +3,7 @@ name: Experimental USB ELF Provider v2
 on:
   pull_request:
     paths:
+      - "Drivers/common/**"
       - "Drivers/usb_cdc_v2/**"
       - "Drivers/usb_cp210x_v2/**"
       - "Drivers/usb_ch34x_v2/**"

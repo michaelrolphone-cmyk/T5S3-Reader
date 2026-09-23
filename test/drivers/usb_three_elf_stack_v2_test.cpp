@@ -1,13 +1,14 @@
 #include "runtime/drivers/ProviderGraphV2.h"
 #include <RiscUsbControllerV1.h>
 #include <cassert>
+#include "serial_prefix_stream_host.h"
 #include <cstdio>
 
 int main(int argc, char **argv) {
   assert(argc == 4);
   const RuntimeProviders::RequirementV2 needsController[] = {{"usb.controller", 1}};
   const RuntimeProviders::RequirementV2 needsHost[] = {{"usb.host", 1}};
-  RuntimeProviders::GraphV2 graph;
+  RuntimeProviders::GraphV2 graph(&streamHost);
   assert(graph.addVerified({"fixture-usb-controller", argv[1],
                             "usb.controller", 1, nullptr, 0}));
   assert(graph.addVerified({"usb-host-v2", argv[2], "usb.host", 1,

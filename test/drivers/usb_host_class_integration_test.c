@@ -85,7 +85,11 @@ static int32_t control(void *ctx, uint64_t physical, uint8_t request_type,
         assert(request == 0x00u || request == 0x1eu || request == 0x03u ||
                request == 0x07u);
     } else if (active_vid == 0x1a86u) {
-        assert(index == 0u);
+        if (request == 0x9au) {
+            /* CH34x write-register request carries divisor/LCR data in index. */
+            assert((value == 0x1312u && index != 0u) ||
+                   (value == 0x2518u && index == 0xc3u));
+        } else assert(index == 0u);
         assert((request_type == 0xc0u && request == 0x5fu &&
                 length == 2u && payload) ||
                (request_type == 0x40u && (request == 0xa1u ||

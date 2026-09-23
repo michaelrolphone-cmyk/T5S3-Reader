@@ -65,7 +65,7 @@ void turn() {
 }
 }
 int main(int argc, char** argv) {
-  assert(argc == 4);
+  assert(argc == 5);
   void* monitor = dlopen(argv[1], RTLD_NOW); assert(monitor);
   auto statsFn = reinterpret_cast<witness_controller_stats*(*)()>(dlsym(monitor, "fixture_witness_stats"));
   assert(statsFn); auto* stats = statsFn();
@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
   const RuntimeProviders::RequirementV2 serialNeeds[] = {{"usb.host", 1}};
   assert(graph.addVerified({"fixture-witness-controller", argv[1], "usb.controller", 1, nullptr, 0}));
   assert(graph.addVerified({"usb-host-v2", argv[2], "usb.host", 1, hostNeeds, 1}));
-  assert(graph.addVerified({"usb-serial-witness", argv[3], "serial.port", 1, serialNeeds, 1}));
+  assert(graph.addVerified({argv[4], argv[3], "serial.port", 1, serialNeeds, 1}));
   nativeStreamsBegin();
   const auto* serial = t5_serial_port_get_api(1); const auto* api = t5_stream_get_api(1);
   assert(serial && api);
@@ -150,5 +150,5 @@ int main(int argc, char** argv) {
   assert(nativeSerialProviderInventoryStopChecked());
   assert(graph.shutdown()); installedGraph = nullptr;
   assert(dlclose(monitor) == 0);
-  puts("Packaged witness -> installed serial -> shared pipes, backpressure and close retry: PASS");
+  printf("%s -> installed serial -> shared pipes, backpressure and close retry: PASS\n", argv[4]);
 }
