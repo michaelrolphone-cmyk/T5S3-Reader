@@ -76,6 +76,17 @@ class InstalledSerialSession final {
     return n ? T5_STREAM_OK : T5_STREAM_AGAIN;
   }
 
+  bool hasEndpoints() const {
+    return api_ && api_->struct_size >= sizeof(risc_serial_port_streams_v1);
+  }
+  bool endpoints(uint32_t* rx, uint32_t* tx) const {
+    if (rx) *rx = 0;
+    if (tx) *tx = 0;
+    if (!started_ || !hasEndpoints() || !rx || !tx) return false;
+    const auto* extended = reinterpret_cast<const risc_serial_port_streams_v1*>(api_);
+    return extended->endpoints && extended->endpoints(token_, rx, tx) &&
+        *rx && *tx && *rx != *tx;
+  }
   bool closeChecked() {
     if (!token_) { started_ = false; dtr_ = rts_ = false; return true; }
     if (!api_ || !api_->close(token_)) return false;

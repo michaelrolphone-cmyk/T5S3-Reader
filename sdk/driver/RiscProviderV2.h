@@ -47,6 +47,14 @@ typedef struct {
     bool (*bind_streams)(const risc_stream_provider_v1 *host);
 } risc_driver_streams_v2;
 
+/* Optional cooperative work suffix. Invoked on the serialized provider-owner
+ * task, outside stream/graph locks. Each call must honor budget_ms and return;
+ * no nested graph lifecycle calls. No callback runs after revocation starts. */
+typedef struct {
+    risc_driver_streams_v2 streams;
+    void (*poll)(uint32_t budget_ms);
+} risc_driver_poll_v2;
+
 /* Minimum accepted ABI-v2 struct ends before the optional quiesce pointer. */
 #define RISC_DRIVER_V2_BASE_SIZE offsetof(risc_driver_v2, quiesce)
 

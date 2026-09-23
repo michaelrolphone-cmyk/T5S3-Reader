@@ -15,6 +15,8 @@ struct Lease {
 // Import only fully verified canonical package generations into one graph.
 // Installs alone do not call this function and do not grant privileges.
 bool prepare();
+// Generic owner-loop work; never scans storage or loads a provider.
+void poll();
 // Enumerate verified candidates for one semantic capability and API version.
 // The cursor advances across inspected slots and never activates hardware.
 // The identity is copied into caller storage: no graph-owned pointer escapes.

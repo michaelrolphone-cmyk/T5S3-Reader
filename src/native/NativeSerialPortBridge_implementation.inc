@@ -318,10 +318,19 @@ t5_serial_result_t installedAcquirePort(const t5_serial_port_request_t* request,
   if (!installedSession.bind(providerApi, providerDevice, providerGeneration) ||
       !installedSession.open(request->config))
     return failedInstalledOpen(pending, lease, T5_SERIAL_IO);
-  activeStreamEpoch.store(++nextStreamEpoch, std::memory_order_release);
-
   t5_stream_t newRx = 0, newTx = 0;
-  const auto streamResult = nativeStreamOpenSerialPair(&newRx, &newTx);
+  int32_t streamResult;
+  if (installedSession.hasEndpoints()) {
+    streamResult = installedSession.endpoints(&newRx, &newTx) &&
+        installedSerial.attachEndpoint(activeSemanticDevice, newRx, T5_STREAM_READ) &&
+        installedSerial.attachEndpoint(activeSemanticDevice, newTx, T5_STREAM_WRITE)
+        ? T5_STREAM_OK : T5_STREAM_DENIED;
+  } else {
+    // Transitional old providers retain the old path until their package
+    // adopts endpoints. An advertised endpoint failure never falls back.
+    activeStreamEpoch.store(++nextStreamEpoch, std::memory_order_release);
+    streamResult = nativeStreamOpenSerialPair(&newRx, &newTx);
+  }
   if (streamResult != T5_STREAM_OK) {
     const auto mapped = streamResult == T5_STREAM_BUSY ? T5_SERIAL_BUSY :
         streamResult == T5_STREAM_UNSUPPORTED ? T5_SERIAL_UNSUPPORTED :
@@ -798,8 +807,23 @@ void nativeUsbDirectStreamRelease() {
   releasePhysicalDevice(SerialConsumer::LegacyDirectStream);
 }
 #endif
-void nativeDeviceDiscoveryTick() { synchronizeSerialDevices(); }
+void nativeDeviceDiscoveryTick() {
+  synchronizeSerialDevices();
+#if RISCRTE_INSTALLED_SERIAL_PATH
+  // Publish confirmed detach/revocation before servicing queued provider work.
+  RuntimeInstalledProviders::poll();
+#endif
+}
 
+bool nativeSerialProviderInventoryStopChecked() {
+  if (active || leaseHandle || physicalLease || providers.leased()) return false;
+#if RISCRTE_INSTALLED_SERIAL_PATH
+  if (installedSession.bound() || serialIoInFlight.load(std::memory_order_acquire)) return false;
+  return installedSerial.stopChecked();
+#else
+  return true;
+#endif
+}
 void nativeSerialPortsBegin() {
   active = true;
   providers.end();

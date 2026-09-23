@@ -40,8 +40,29 @@ context and endpoint generations. No registry operation can call an unloaded ELF
 
 The production installed graph supplies this host factory. The dynamic host
 fixture demonstrates byte and record pipes, exact-lease rights, app isolation,
-quarantine, and reload. Existing packaged serial providers have not yet opted
-into the descriptor or advertised these endpoints through their capability API;
-the serial shuttle remains until that conversion. Protected streams and consent
+quarantine, and reload. An optional `risc_driver_poll_v2` suffix supplies a
+cooperative owner-task work callback. The installed graph dispatches at most
+four callbacks per turn with a two-millisecond budget per callback and a
+10-millisecond elapsed checkpoint, rotates the first module, and yields after
+work. It does not scan storage or activate providers. Inactive, unpinned and
+quarantined modules receive no callback. Providers must bound their underlying
+I/O; the dispatcher cannot preempt a callback that violates its budget.
+
+The `usb-serial-witness@0.1.1` package uses this dispatcher and advertises
+`risc_serial_port_streams_v1::endpoints`. Its source and sink are attached through
+the exact inventory capability lease after semantic session acquisition. The
+serial bridge does not create or pump a resident pair for this extension and
+never falls back when advertised endpoint acquisition fails. The witness stages
+at most 512 RX and 512 TX bytes per session, retains partial/zero writes, and
+performs at most one read and one write (one-millisecond timeouts) per turn.
+Successful detach inventory closes its endpoints and revokes consumer grants.
+Checked physical close failure keeps the original claim for retry while data
+work remains stopped. Queue finish denotes queue EOF, not electrical wire drain.
+
+The owner-loop discovery hook currently invokes the generic dispatcher after
+inventory updates. This requires owner-loop progress, but no app RX/TX polling.
+The witness is a simulated-class package, not supported commercial hardware.
+CDC, CP210x and CH34x packages still need conversion; the resident shuttle remains
+for their existing capability prefixes. Protected streams and consent
 propagation remain governed by their existing fail-closed policy; this public
 queue table does not grant protected-source publication or delegation.

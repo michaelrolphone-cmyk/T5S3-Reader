@@ -1,4 +1,8 @@
 #include "RiscUsbControllerV1.h"
+#include "witness_controller_fixture.h"
+static witness_controller_stats stats;
+__attribute__((visibility("default")))
+witness_controller_stats *fixture_witness_stats(void) { return &stats; }
 
 /* TEST FIXTURE ONLY. It provides one vendor-specific bulk interface matching
  * usb-serial-witness. Production usb.host and the real witness ELF sit above
@@ -15,6 +19,12 @@ static unsigned claims, sequence;
 static int32_t next_event(void *ctx, risc_usb_controller_event_v1 *event) {
     (void)ctx;
     if (!running || !event) return -1;
+    if (stats.detached) {
+        if (!attached) return 0;
+        attached = false;
+        *event = (risc_usb_controller_event_v1){2, 77};
+        return 1;
+    }
     if (attached) return 0;
     attached = true;
     *event = (risc_usb_controller_event_v1){1, 77};
@@ -42,7 +52,7 @@ static bool claim(void *ctx, uint64_t device, uint8_t iface,
 }
 static bool release_claim(void *ctx, uint64_t token) {
     (void)ctx;
-    if (!running || !token || !claims) return false;
+    if (!running || !token || !claims || stats.close_error) return false;
     --claims;
     return true;
 }
@@ -61,6 +71,7 @@ static int32_t read_bulk(void *ctx, uint64_t token, uint8_t endpoint,
     (void)ctx; (void)timeout;
     if (!running || !token || !claims || endpoint != 0x81u ||
         !dst || capacity < 3) return -1;
+    ++stats.reads; stats.read_timeout = timeout;
     dst[0] = 'N'; dst[1] = 'E'; dst[2] = 'W';
     return 3;
 }
@@ -69,7 +80,13 @@ static int32_t write_bulk(void *ctx, uint64_t token, uint8_t endpoint,
     (void)ctx; (void)timeout;
     if (!running || !token || !claims || endpoint != 0x02u ||
         !src || !length) return -1;
-    return length < 2 ? (int32_t)length : 2;
+    ++stats.writes; stats.write_timeout = timeout;
+    if (stats.write_error) return -1;
+    if (stats.blocked) return 0;
+    const size_t n = length < 2 ? length : 2;
+    if (stats.used + n > sizeof(stats.transmitted)) return -1;
+    for (size_t i = 0; i < n; ++i) stats.transmitted[stats.used++] = src[i];
+    return (int32_t)n;
 }
 static bool controller_quiesce(void *ctx) { (void)ctx; return claims == 0; }
 

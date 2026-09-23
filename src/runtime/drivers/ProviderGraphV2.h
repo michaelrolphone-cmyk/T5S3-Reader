@@ -50,6 +50,9 @@ class GraphV2 final {
   bool grantStream(GrantV2, uint32_t consumer, uint32_t endpoint, uint32_t rights);
   const void* interfaceFor(GrantV2 grant) const;
   bool shutdown();
+  // Serialized owner-task dispatcher: <=4 callbacks, 2ms each, 10ms per turn.
+  // Caller supplies monotonic time and a real scheduler yield; no graph lock.
+  void poll(uint32_t (*nowMs)(), void (*yield)());
   size_t moduleCount() const { return count_; }
   size_t liveGrants() const;
 
@@ -121,6 +124,8 @@ class GraphV2 final {
   const StreamHostV1* streamHost_ = nullptr;
   size_t count_ = 0;
   uint32_t nextGeneration_ = 0;
+  size_t nextPoll_ = 0;
+  bool polling_ = false;
 
   int find(const char* capability, uint32_t api) const;
   int findProvider(const char* id, const char* capability, uint32_t api) const;

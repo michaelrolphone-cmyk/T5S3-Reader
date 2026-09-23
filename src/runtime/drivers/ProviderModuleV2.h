@@ -47,6 +47,7 @@ class ModuleV2 final {
     streamHost_ = host; return true;
   }
   uint64_t streamContext() const { return state_ == State::Active ? streamApi_.context : 0; }
+  bool poll(uint32_t budgetMs);
   bool pinConsumer();
   bool unpinConsumer();
   bool unload();

@@ -7,6 +7,7 @@
 #include "runtime/packages/PackageOrdinaryStage.h"
 #include "runtime/packages/PackageUseGate.h"
 #include <HalStorage.h>
+#include <Arduino.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -313,6 +314,16 @@ bool acquire(const char* providerId, const char* capability, uint32_t version,
     }
     *out = {grant, interface};
     return true;
+}
+void poll() {
+    if (!graph) return;
+    graph->poll([]() -> uint32_t { return millis(); }, []() {
+#if defined(ESP_PLATFORM)
+        vTaskDelay(1);
+#else
+        delay(1);
+#endif
+    });
 }
 bool attachStream(const Lease& lease, uint32_t endpoint, uint32_t rights) {
     const uint32_t consumer = nativeProviderStreamConsumer();

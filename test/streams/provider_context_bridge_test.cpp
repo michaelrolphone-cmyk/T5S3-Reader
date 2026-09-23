@@ -34,6 +34,10 @@ int main(int argc, char** argv) {
   auto grant = graph.acquire("fixture.streams", 1); assert(grant.slot);
   const auto* provider = static_cast<const provider_stream_fixture_api*>(graph.interfaceFor(grant));
   assert(provider);
+  assert(provider->polls() == 0);
+  const uint32_t beforePoll = fakeTime;
+  graph.poll([]() { return fakeTime; }, []() { ++fakeTime; });
+  assert(provider->polls() == 1 && fakeTime == beforePoll + 1);
   const auto host = *provider->streams();
   const auto source = provider->source();
   uint32_t n = 99; char bytes[16]{};
@@ -101,6 +105,8 @@ int main(int argc, char** argv) {
   // Quarantine revokes queues immediately but retains the ELF and host table.
   provider->block_quiesce(true);
   assert(!graph.release(grant) && !graph.interfaceFor(grant));
+  graph.poll([]() { return fakeTime; }, []() { ++fakeTime; });
+  assert(provider->polls() == 1); // Revoked/quarantined ELF is never polled.
   t5_pipe_info_t pipeState{}; pipeState.struct_size = sizeof(pipeState);
   assert(api->pipe_info(pipe, &pipeState) == 0 && pipeState.state == T5_PIPE_FAILED &&
          pipeState.last_error == T5_STREAM_DISCONNECTED);

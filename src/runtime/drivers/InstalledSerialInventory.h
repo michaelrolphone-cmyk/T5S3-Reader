@@ -129,6 +129,17 @@ class InstalledSerialInventory final {
     return false;
   }
 
+  bool attachEndpoint(RuntimeDevices::DeviceHandle device, uint32_t endpoint, uint32_t rights) const {
+    if (fault_ || !device || !endpoint) return false;
+    for (const Slot& slot : slots_) {
+      uint64_t token = 0, generation = 0;
+      if (slot.occupied && slot.devices && slot.lease.grant.slot &&
+          slot.devices->resolve(device, &token, &generation))
+        return attachStream(slot.lease, endpoint, rights);
+    }
+    return false;
+  }
+
   // Revoke every published device before graph release. An uncertain physical
   // quiesce keeps the exact grant/ID for retry, not a silent alternative ELF.
   bool stopChecked() {

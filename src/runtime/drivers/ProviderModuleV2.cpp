@@ -246,6 +246,14 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
 #endif
 }
 
+bool ModuleV2::poll(uint32_t budgetMs) {
+  if (!budgetMs || state_ != State::Active || !driver_ || !consumers_ ||
+      driver_->struct_size < sizeof(risc_driver_poll_v2)) return false;
+  const auto* extended = reinterpret_cast<const risc_driver_poll_v2*>(driver_);
+  if (!extended->poll) return false;
+  extended->poll(budgetMs);
+  return true;
+}
 bool ModuleV2::pinConsumer() {
   if (state_ != State::Active || consumers_ == std::numeric_limits<uint32_t>::max())
     return false;

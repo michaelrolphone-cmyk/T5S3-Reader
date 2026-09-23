@@ -109,7 +109,8 @@ for name in ('cdc', 'cp210x', 'ch34x', 'serial_witness'):
     assert 'probe_device(' in inventory and 'return false;' in inventory
     assert 'host->claim(' not in inventory and 'command(' not in inventory
     assert 'RISC_SERIAL_TRANSPORT_USB' in inventory
-    assert 'static const risc_usb_serial_class_inventory_v1 capability' in driver
-    assert 'snapshot_devices\n};' in driver
+    assert any(f'static const {kind} capability' in driver for kind in
+               ('risc_usb_serial_class_inventory_v1', 'risc_serial_port_streams_v1'))
+    assert 'snapshot_devices' in driver[driver.index('static const '):]
 
 print('U1 provider-originated semantic serial source boundary: PASS')

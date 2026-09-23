@@ -116,6 +116,8 @@ extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
 }
 
 namespace RuntimeInstalledProviders {
+void poll() {}
+bool attachStream(const Lease&, uint32_t, uint32_t) { return false; }
 bool prepare() { return true; }
 bool nextProvider(const char* capability, uint32_t api, size_t* cursor,
                   char* id, size_t capacity) {

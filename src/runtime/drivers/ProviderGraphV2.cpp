@@ -201,6 +201,20 @@ GrantV2 GraphV2::acquireIndex(size_t index) {
   return {static_cast<uint32_t>(slot + 1), nextGeneration_};
 }
 
+void GraphV2::poll(uint32_t (*nowMs)(), void (*yield)()) {
+  if (!nowMs || !yield || !count_ || polling_) return;
+  polling_ = true;
+  const uint32_t began = nowMs();
+  unsigned calls = 0;
+  for (size_t visited = 0; visited < count_; ++visited) {
+    const size_t index = nextPoll_;
+    nextPoll_ = (nextPoll_ + 1) % count_;
+    if (nodes_[index].module.poll(2)) ++calls;
+    if (calls >= 4 || static_cast<uint32_t>(nowMs() - began) >= 10) break;
+  }
+  if (calls) yield();
+  polling_ = false;
+}
 GrantV2 GraphV2::acquire(const char* capability, uint32_t api) {
   const int target = find(capability, api);
   return target < 0 ? GrantV2{} : acquireIndex(static_cast<size_t>(target));

@@ -2,6 +2,51 @@
 
 [PR #96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) on `impl/u1-riscrte` is the **only** implementation PR/branch. `AGENTS.md`, [USB remediation](USB_CONTRACT_VIOLATION_REMEDIATION.md), [execution order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [claim-scoped USB control](U1_USB_CONTROL_SCOPE_IMPLEMENTATION.md) and [package identity](PACKAGE_IDENTITY_VERSION_POLICY.md) govern the work. Owner controls merge, tag, release, flash and hardware qualification. A committed test is not a PASS.
 
+## September 23 continuation: packaged witness owns the serial data path
+
+Starting from published `34bcb65`, this continuation adds an optional generic
+provider poll suffix, owner-task dispatch with rotating fairness and item/time
+checkpoints, and a packaged endpoint consumer of that mechanism:
+
+- `usb-serial-witness` version **0.1.0 -> 0.1.1**, same package ID. The package is
+  marked unpublished test-only and absent from the fetched current master tree.
+  Its source now binds the stream host table, publishes bounded RX/TX endpoints,
+  owns partial-transfer staging, and pumps at most one read/write per turn with
+  one-millisecond I/O timeouts. No hardware identity or protocol is added to core.
+- The serial capability's optional endpoint suffix allows the native acquisition
+  path to grant provider-owned handles directly. Advertised endpoint failure
+  fails closed; legacy raw callbacks are not used as a fallback. Other serial
+  packages retain their existing path until converted.
+- Confirmed detach revokes witness endpoints before further queued data work.
+  Closing stops queue work before checked physical release, retaining a failed
+  claim for retry. A trusted inventory shutdown refuses active/quarantined apps
+  or sessions and withdraws device publication before releasing module pins.
+- The dynamic stack regression uses the actual host ELF, packaged witness ELF,
+  installed serial/session bridge, generic registry and scheduler, with only
+  the physical controller and RTOS/storage emulated. It covers RX/TX pipes with
+  no direct app serial reads/writes, saturation, partial/zero writes, controls,
+  endpoint-allocation failure without fallback, error, close retry and reopen.
+  The generic provider regression also checks that revoked modules are not polled.
+
+Observed validation on the final source tree:
+
+- `test/run_stream_test.sh`: all 33 C++ programs, C11 ABI check and two C
+  shared-provider fixtures passed with strict warnings and ASan/UBSan.
+- `test/run_usb_provider_stack_v2_test.sh`: both dynamic stack tests passed;
+  all C provider/controller/host builds and C++ runners now use ASan/UBSan.
+  The witness path also passed confirmed detach/reconnect and immediate stale
+  endpoint rejection. This uses host-built versions of the package sources,
+  not a built Xtensa archive or physical controller.
+- `test/run_provider_graph_v2_test.sh`: all 13 reported checks passed. The old
+  source guard was updated to recognize the append-only endpoint capability;
+  its no-physical-claim/control inventory checks remain in place.
+- Shell syntax, manifest JSON, workflow YAML and `git diff --check` passed.
+  LeakSanitizer remained disabled because of the local ptrace environment.
+
+This is not a firmware/Xtensa build or physical hardware result. Remaining work includes CDC/CP210x/CH34x conversion,
+complete removal of the resident shuttle, generalizing the owner-loop dispatch
+entrypoint, master conflict reconciliation and the previously listed U1 blockers.
+
 ## September 23 continuation: loader-owned provider stream contexts
 
 The preceding serial scheduler tree was published as `7eb5a7e`. This continuation

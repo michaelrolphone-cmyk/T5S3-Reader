@@ -3,6 +3,7 @@
 static const risc_stream_provider_v1 *host;
 static uint32_t source;
 static bool blocked;
+static uint32_t poll_count;
 static bool bind_streams(const risc_stream_provider_v1 *api) {
     assert(api && api->api_version == RISC_STREAM_PROVIDER_API_V1);
     assert(api->struct_size >= sizeof(*api) && api->context);
@@ -30,13 +31,15 @@ static void stop(void) { assert(quiesce()); host = 0; source = 0; }
 static const risc_stream_provider_v1 *streams(void) { return host; }
 static uint32_t source_handle(void) { return source; }
 static void block_quiesce(bool value) { blocked = value; }
-static const provider_stream_fixture_api api = {streams, source_handle, block_quiesce};
-static const risc_driver_streams_v2 driver = {
-    {RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_streams_v2),
-     "fixture-streams", "fixture.streams", 1, &api, start, stop, quiesce},
-    bind_streams
+static uint32_t polls(void) { return poll_count; }
+static void poll(uint32_t budget) { assert(budget && budget <= 2); ++poll_count; }
+static const provider_stream_fixture_api api = {streams, source_handle, block_quiesce, polls};
+static const risc_driver_poll_v2 driver = {
+    {{RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_poll_v2),
+      "fixture-streams", "fixture.streams", 1, &api, start, stop, quiesce}, bind_streams},
+    poll
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
-    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &driver.driver : 0;
+    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &driver.streams.driver : 0;
 }

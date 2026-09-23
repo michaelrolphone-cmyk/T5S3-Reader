@@ -7,6 +7,9 @@
 
 void nativeSerialPortsBegin();
 void nativeSerialPortsEnd();
+// Owner-task shutdown: refuse while an app/session is active or quarantined;
+// withdraw published devices before releasing the inventory's graph pins.
+bool nativeSerialProviderInventoryStopChecked();
 
 // Trusted firmware only: never exported through the native app ELF ABI.
 // Called by the main owner-task loop and native app's owner-task input poll.

@@ -65,6 +65,14 @@ typedef struct {
     risc_serial_port_discovery_v1 discovery;
     bool (*snapshot)(risc_serial_device_v1 *out, size_t *inout_count);
 } risc_serial_port_inventory_v1;
+/* Optional provider-owned stream endpoints for an already-open session.
+ * The provider owns publication, bounded physical pumping, and close. A
+ * false return fails acquisition; core must not fall back to raw read/write.
+ * Consumer grants are issued separately against the exact capability lease. */
+typedef struct {
+    risc_serial_port_inventory_v1 inventory;
+    bool (*endpoints)(uint64_t session, uint32_t *rx, uint32_t *tx);
+} risc_serial_port_streams_v1;
 #ifdef __cplusplus
 }
 #endif
