@@ -99,27 +99,33 @@ connected controller. The original API-v1 prefix and firmware are unchanged.
 
 ## Xbox 360-format receivers
 
-`usb-xinput-gamepad` 0.1.0 is an independent class ELF requiring `usb.host@1`
-and publishing `usb.xinput.gamepad@1`. It supports `045e:028e` receivers with
-an alternate-zero vendor interface of class/subclass/protocol `ff/5d/01`.
-The radio link is transparent to USB: this is the Xbox 360 **wired-format**
-protocol, not Microsoft's `045e:0719` wireless receiver protocol. Standard HID,
-Xbox One, protocol `81`, force feedback and LED output are outside this driver.
+`usb-xinput-gamepad` 0.1.1 is an independent class ELF requiring `usb.host@1`
+and publishing `usb.xinput.gamepad@1`. It matches Xbox 360 vendor interfaces
+by class/subclass/protocol `ff/5d/01` (wired-format, including `045e:028e`
+2.4 GHz receivers) or `ff/5d/81` (wireless-format), including compatible
+VID/PID clones and nonzero alternate settings. Standard HID, Xbox One,
+force feedback and LED output are outside this driver.
 
-The driver selects the first matching interface and discovers its interrupt-IN
-endpoint from the configuration. It accepts complete 20-byte input packets
-(`00 14` header, optionally followed by USB padding), ignores other messages,
-and normalizes buttons, D-pad, sticks and triggers. The protocol layout is
-documented by the primary Linux
-[xpad implementation](https://github.com/torvalds/linux/blob/master/drivers/input/joystick/xpad.c).
-It sends no HID report-descriptor or protocol requests to the XInput interface.
+The driver selects the first matching interface with an interrupt-IN endpoint
+and claims its advertised alternate setting. Input requires at least 20 received
+bytes, byte 0 equal to zero and byte 1 at least 14, matching the hardware-tested
+Gameboy standalone decoder. Wireless-format input skips a four-byte transport
+prefix; presence notifications connect/disconnect the pad without counting as
+input. Short/status packets do not erase held input. Interrupt endpoint packet
+sizes are limited to 20..64 bytes. The driver sends no HID report-descriptor,
+protocol or initialization-output requests to the XInput interface.
 
 The capability reuses `risc_usb_gamepad_api_v1` and its optional diagnostics
-suffix. Button bits are: 0 south, 1 east, 2 west, 3 north, 4/5 shoulders,
+suffix. Button bits are: 0 B, 1 A, 2 Y, 3 X, 4/5 shoulders,
 6/7 triggers (pressed at raw value 128), 8 Back, 9 Start, 10/11 stick clicks,
-12 Guide. Y axes increase downward; trigger axes span -32768..32767.
-Gameboy maps south/east/west/north to B/A/Y/X by position. A USB claim alone
-does not report a connected gamepad: the first valid input packet does.
+12 Guide. Face buttons follow Xbox names, matching standalone Gameboy. Y axes
+use the same bitwise inversion as that decoder; trigger axes span -32768..32767.
+Gameboy combines XInput D-pad and analog directions. A USB claim alone does
+not report a connected gamepad: valid input or wireless presence does.
+
+`usb-controller-esp32s3` 0.1.11 clears a stalled interrupt endpoint before the
+next bounded read resubmits, matching standalone recovery. Idle transfers
+remain pending, and failed physical teardown still pins the controller.
 
 Discovery inspects one newly attached host generation per poll and caches its
 result until removal. Four gamepads, four subscribers and 32 queued events per
@@ -153,7 +159,7 @@ itself establish why a particular board failed to enumerate the receiver.
 
 Gameboy displays these states/errors on its existing test screen without a
 serial connection. Class diagnostics distinguish `XINPUT WAITING FOR REPORT`,
-`XINPUT GAMEPAD CONNECTED`, unsupported interface, claim and transfer failures.
+`XINPUT GAMEPAD CONNECTED`, configuration, claim and transfer failures.
 
 ## Verification and deployment
 
