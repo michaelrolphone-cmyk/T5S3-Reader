@@ -40,6 +40,7 @@ bool drain_interrupt(PendingInterrupt &slot) {
 
 int32_t read_interrupt(uint64_t id, usb_device_handle_t handle, uint8_t endpoint,
                        uint16_t packet, uint8_t *dst, uint32_t timeout) {
+    (void)timeout; // Caller deadline is an upper bound, never a forced wait.
     PendingInterrupt *slot = nullptr;
     for (auto &candidate : interrupts) {
         if (candidate.claim_id == id && candidate.dma &&
@@ -62,14 +63,11 @@ int32_t read_interrupt(uint64_t id, usb_device_handle_t handle, uint8_t endpoint
             return -1;
         }
     }
-    const TickType_t begun = xTaskGetTickCount();
-    TickType_t budget = pdMS_TO_TICKS(timeout);
-    if (!budget) budget = 1;
-    while (!slot->ready) {
-        if (!pump(1)) return -1;
-        if (!slot->ready && static_cast<TickType_t>(xTaskGetTickCount() - begun) >= budget)
-            return 0; // Still owned by IDF. The next poll resumes this request.
-    }
+    // Class poll() drains reports already completed; it must not accumulate
+    // one blocking wait per requested report or per quiet endpoint. The app's
+    // owner loop supplies scheduler cooperation between bounded poll calls.
+    if (!slot->ready && !pump(0)) return -1;
+    if (!slot->ready) return 0; // IDF retains the armed request across polls.
     slot->ready = false;
     const int32_t n = slot->dma->actual_num_bytes;
     // Match the standalone host: a STALL halts the endpoint until explicitly
@@ -82,5 +80,13 @@ int32_t read_interrupt(uint64_t id, usb_device_handle_t handle, uint8_t endpoint
     if (slot->dma->status != USB_TRANSFER_STATUS_COMPLETED || n < 0 || n > packet)
         return -1;
     if (n) std::memcpy(dst, slot->dma->data_buffer, static_cast<size_t>(n));
+    // Keep an IN request armed while the caller processes the report or sleeps.
+    // Only DMA owned by this controller is retained; dst has already been copied.
+    // The next callback holds one completed packet until the next bounded read.
+    slot->pending = true;
+    if (usb_host_transfer_submit(slot->dma) != ESP_OK) {
+        slot->pending = false;
+        return -1;
+    }
     return n;
 }
