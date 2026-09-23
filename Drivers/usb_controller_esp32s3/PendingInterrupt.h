@@ -40,6 +40,7 @@ bool drain_interrupt(PendingInterrupt &slot) {
 
 int32_t read_interrupt(uint64_t id, usb_device_handle_t handle, uint8_t endpoint,
                        uint16_t packet, uint8_t *dst, uint32_t timeout) {
+    (void)timeout; // Caller deadline is an upper bound, never a forced wait.
     PendingInterrupt *slot = nullptr;
     for (auto &candidate : interrupts) {
         if (candidate.claim_id == id && candidate.dma &&
@@ -62,14 +63,11 @@ int32_t read_interrupt(uint64_t id, usb_device_handle_t handle, uint8_t endpoint
             return -1;
         }
     }
-    const TickType_t begun = xTaskGetTickCount();
-    TickType_t budget = pdMS_TO_TICKS(timeout);
-    if (!budget) budget = 1;
-    while (!slot->ready) {
-        if (!pump(1)) return -1;
-        if (!slot->ready && static_cast<TickType_t>(xTaskGetTickCount() - begun) >= budget)
-            return 0; // Still owned by IDF. The next poll resumes this request.
-    }
+    // Class poll() drains reports already completed; it must not accumulate
+    // one blocking wait per requested report or per quiet endpoint. The app's
+    // owner loop supplies scheduler cooperation between bounded poll calls.
+    if (!slot->ready && !pump(0)) return -1;
+    if (!slot->ready) return 0; // IDF retains the armed request across polls.
     slot->ready = false;
     const int32_t n = slot->dma->actual_num_bytes;
     // Match the standalone host: a STALL halts the endpoint until explicitly
