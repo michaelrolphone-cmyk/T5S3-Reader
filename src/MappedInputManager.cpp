@@ -2,9 +2,25 @@
 
 #include "CrossPointSettings.h"
 #include "GfxRenderer.h"
+#include "native/NativeNavigationInput.h"
 
 namespace {
 using ButtonIndex = uint8_t;
+uint32_t navigationBit(MappedInputManager::Button button) {
+  using Button = MappedInputManager::Button;
+  switch (button) {
+    case Button::Back: return RISC_NAV_BACK;
+    case Button::Confirm: return RISC_NAV_CONFIRM;
+    case Button::Left: return RISC_NAV_LEFT;
+    case Button::Right: return RISC_NAV_RIGHT;
+    case Button::Up: return RISC_NAV_UP;
+    case Button::Down: return RISC_NAV_DOWN;
+    case Button::PageBack: return RISC_NAV_PAGE_BACK | RISC_NAV_UP | RISC_NAV_LEFT;
+    case Button::PageForward: return RISC_NAV_PAGE_FORWARD | RISC_NAV_DOWN | RISC_NAV_RIGHT;
+    case Button::Power: return 0; // External navigation cannot request power-off.
+  }
+  return 0;
+}
 
 struct SideLayoutMap {
   ButtonIndex pageBack;
@@ -89,25 +105,41 @@ bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint
 }
 
 bool MappedInputManager::wasPressed(const Button button) const {
-  return mapButton(button, &HalGPIO::wasPressed) || (hasInjectedButtonTap && injectedButtonTap == button);
+  return mapButton(button, &HalGPIO::wasPressed) || (hasInjectedButtonTap && injectedButtonTap == button) ||
+         (nativeNavigationFrame().pressed & navigationBit(button));
 }
 
 bool MappedInputManager::wasReleased(const Button button) const {
-  return mapButton(button, &HalGPIO::wasReleased) || (hasInjectedButtonTap && injectedButtonTap == button);
+  return mapButton(button, &HalGPIO::wasReleased) || (hasInjectedButtonTap && injectedButtonTap == button) ||
+         (nativeNavigationFrame().released & navigationBit(button));
 }
 
 bool MappedInputManager::isPressed(const Button button) const {
   if (hasInjectedButtonTap && injectedButtonTap == button) {
     return false;
   }
-  return mapButton(button, &HalGPIO::isPressed);
+  return mapButton(button, &HalGPIO::isPressed) || (nativeNavigationFrame().buttons & navigationBit(button));
 }
 
-bool MappedInputManager::wasAnyPressed() const { return gpio.wasAnyPressed() || hasInjectedButtonTap; }
+void MappedInputManager::update() const {
+  gpio.update();
+  nativeDeviceDiscoveryTick();
+  nativeNavigationConfigure(SETTINGS.externalInputNavigation != 0);
+  nativeNavigationTick();
+}
 
-bool MappedInputManager::wasAnyReleased() const { return gpio.wasAnyReleased() || hasInjectedButtonTap; }
+bool MappedInputManager::wasAnyPressed() const {
+  return gpio.wasAnyPressed() || hasInjectedButtonTap || nativeNavigationFrame().pressed;
+}
 
-unsigned long MappedInputManager::getHeldTime() const { return hasInjectedButtonTap ? 0 : gpio.getHeldTime(); }
+bool MappedInputManager::wasAnyReleased() const {
+  return gpio.wasAnyReleased() || hasInjectedButtonTap || nativeNavigationFrame().released;
+}
+
+unsigned long MappedInputManager::getHeldTime() const {
+  if (hasInjectedButtonTap) return 0;
+  return nativeNavigationFrame().buttons ? nativeNavigationHeldMs() : gpio.getHeldTime();
+}
 
 bool MappedInputManager::wasTouchTapped(TouchPoint& point, const GfxRenderer& renderer) const {
   HalGPIO::TouchPoint raw;
@@ -140,7 +172,9 @@ bool MappedInputManager::getTouchSwipe(TouchPoint& start, TouchPoint& end, const
   return true;
 }
 
-bool MappedInputManager::wasTouchHomeButtonPressed() const { return gpio.wasTouchHomeButtonPressed(); }
+bool MappedInputManager::wasTouchHomeButtonPressed() const {
+  return gpio.wasTouchHomeButtonPressed() || (nativeNavigationFrame().pressed & RISC_NAV_HOME);
+}
 
 MappedInputManager::Labels MappedInputManager::mapLabels(const char* back, const char* confirm, const char* previous,
                                                          const char* next) const {

@@ -432,6 +432,25 @@ bool release(Lease* lease) {
     if (okay) *lease = {};
     return okay;
 }
+bool acquireCapability(const char* capability, uint32_t minimumVersion, Lease* out) {
+    if (out) *out = {};
+    loadError[0] = 0;
+    if (!out || !capability || !minimumVersion || !prepare()) return false;
+    std::unique_ptr<InstalledCapabilitySnapshot, void(*)(InstalledCapabilitySnapshot*)>
+        verified(captureInstalledCapabilities(), releaseInstalledCapabilities);
+    std::unique_ptr<ProviderAncestry> ancestry(new (std::nothrow) ProviderAncestry{});
+    uint32_t selected = 0;
+    if (!verified || !ancestry || !registerCapability(*graph, verified.get(), capability,
+            minimumVersion, &selected, *ancestry, 0)) return false;
+    const auto grant = graph->acquire(capability, selected);
+    const void* interface = graph->interfaceFor(grant);
+    if (!interface) {
+        if (grant.slot) (void)graph->release(grant);
+        return false;
+    }
+    *out = {grant, interface};
+    return true;
+}
 bool shutdown() {
     if (!graph) return true;
     if (!graph->shutdown()) return false;
@@ -440,4 +459,5 @@ bool shutdown() {
     undoPins();
     return true;
 }
+bool hasLiveGrants() { return graph && graph->liveGrants() != 0; }
 } // namespace RuntimeInstalledProviders

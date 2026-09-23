@@ -125,6 +125,10 @@ Provide message/packet endpoint/routing semantics over BLE, LoRa, Wi-Fi/IP, USB 
 
 ## 20. Device and Service Discovery
 
+[Firmware Input Navigation](FIRMWARE_INPUT_NAVIGATION.md) describes the installed
+`input.navigation` consumer path and foreground app handoff. USB class mapping
+stays in the composite ELF; the firmware handles generic navigation and lifetime.
+
 BLE advertisements, USB enumeration, mDNS, known UART/I2C devices and LoRa peers are discovered **inside independently installed providers**. Those providers publish generic observations to one registry; the core merely stores copied records and reports events. It MUST NOT enumerate these transports itself. A weather station may publish sensor capabilities, a PC network/debug capabilities, a probe SWD, and a GNSS receiver location, without a built-in transport-specific registry path.
 
 # Part VI — System Services and User-Facing Facilities

@@ -48,6 +48,7 @@ The architecture is defined in `docs/`:
 - `SECURITY_ARCHITECTURE.md` — hardware trust, signed modules, authorization, and production policy.
 - `SERVICE_RUNTIME_ARCHITECTURE.md` — pluggable ELF system services, event delivery, scheduling, persistence, and background work.
 - `USB_OTG_HOST_ARCHITECTURE.md` — USB OTG host/device roles, hubs, class providers, storage, HID, CDC, and composite functions.
+- [Firmware Input Navigation](docs/FIRMWARE_INPUT_NAVIGATION.md) — keyboard/controller menu controls and input handoff to apps.
 - `PROGRAMMER_DEBUGGER_ARCHITECTURE.md` — multi-probe firmware programming/debugging over USB hubs, serial, SWD/JTAG, and target-specific protocols.
 - `NATIVE_APPS.md` — current native ELF application ABI and implementation.
 

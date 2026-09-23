@@ -435,6 +435,13 @@ inline std::vector<SettingInfo> getSettingsList(
             "doubleClickHomeMenu",
             StrId::STR_CAT_CONTROLS));
 
+    v.emplace_back(
+        SettingInfo::Toggle(
+            StrId::STR_EXTERNAL_INPUT_NAVIGATION,
+            &CrossPointSettings::externalInputNavigation,
+            "externalInputNavigation",
+            StrId::STR_CAT_CONTROLS));
+
 
     // ---------------------------------------------------------------------
     // System

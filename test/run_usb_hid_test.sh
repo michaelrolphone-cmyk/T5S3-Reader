@@ -3,7 +3,7 @@ set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build="$(mktemp -d)"
 trap 'rm -rf "$build"' EXIT
-for class in usb_hid usb_hid_keyboard usb_hid_gamepad usb_xinput_gamepad; do
+for class in usb_hid usb_hid_keyboard usb_hid_gamepad usb_xinput_gamepad usb_ui_navigation; do
   cc -std=c11 -Wall -Wextra -Werror -fPIC -fvisibility=hidden -shared \
     -I"$repo/sdk/driver" "$repo/Drivers/$class/driver.c" \
     -o "$build/$class.so"
@@ -42,3 +42,18 @@ cc -std=c11 -Wall -Wextra -Werror \
 c++ -std=c++17 -Wall -Wextra -Werror \
   "$repo/test/drivers/controller_interrupt_test.cpp" -o "$build/controller-interrupt-test"
 "$build/controller-interrupt-test"
+
+c++ -std=c++11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/controller_role_switch_test.cpp" -o "$build/controller-role-test"
+"$build/controller-role-test"
+
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/usb_ui_navigation_test.c" -o "$build/navigation-test"
+"$build/navigation-test"
+c++ -std=c++11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/navigation_focus_test.cpp" -o "$build/navigation-focus-test"
+"$build/navigation-focus-test"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/src" \
+  -I"$repo/test/streams/stubs" -I"$repo/test/drivers/stubs" \
+  "$repo/test/drivers/native_navigation_input_test.cpp" -o "$build/native-navigation-test"
+"$build/native-navigation-test"
