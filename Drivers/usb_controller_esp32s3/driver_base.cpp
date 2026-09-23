@@ -4,6 +4,7 @@
 #include "RiscUsbControllerV1.h"
 #include "RiscUsbVbusV1.h"
 #include "StartupDiagnostic.h"
+#include "EnumerationDiagnostic.h"
 #include <usb/usb_host.h>
 #include <esp_intr_alloc.h>
 #include <freertos/FreeRTOS.h>
@@ -33,6 +34,7 @@ struct Event {
 static const risc_usb_vbus_api_v1 *power;
 static uint64_t powerLease, serial;
 static bool running, installed, fault;
+static EnumerationDiagnostic enumerationDiagnostic;
 static usb_host_client_handle_t client;
 static usb_transfer_t *transfer;
 static bool inFlight, completed;
@@ -475,6 +477,7 @@ void start_failure(const char *stage, int code) {
 }
 bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     startupError.clear();
+    enumerationDiagnostic.clear();
     if (running || installed || client || transfer || powerLease || fault ||
         !deps || count != 1 || !equals(deps[0].capability_id, "board.power.vbus") ||
         deps[0].api_version != RISC_USB_VBUS_API_V1 || !deps[0].api) {

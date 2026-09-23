@@ -11,6 +11,7 @@ on:
       - "Drivers/usb_hid/**"
       - "Drivers/usb_hid_keyboard/**"
       - "Drivers/usb_hid_gamepad/**"
+      - "Drivers/usb_xinput_gamepad/**"
       - "Drivers/board_power_t5s3_v2/**"
       - "Drivers/i2c_esp32s3_v2/**"
       - "Drivers/platform_clock_v1/**"
@@ -19,6 +20,8 @@ on:
       - "sdk/driver/RiscUsbControllerV1.h"
       - "sdk/driver/RiscUsbInterruptV1.h"
       - "sdk/driver/RiscUsbHidV1.h"
+      - "sdk/driver/RiscUsbGamepadDiagnosticsV1.h"
+      - "sdk/driver/RiscUsbDiscoveryDiagnosticsV1.h"
       - "sdk/driver/RiscUsbVbusV1.h"
       - "sdk/driver/RiscI2cBusV1.h"
       - "sdk/driver/RiscFirmwareI2cCompatV1.h"
@@ -38,9 +41,11 @@ on:
       - "scripts/build_usb_ch34x_v2.py"
       - "scripts/build_usb_host_v2.py"
       - "scripts/build_usb_hid*.py"
+      - "scripts/build_usb_xinput_gamepad.py"
       - "scripts/build_board_power_t5s3_v2.py"
       - "scripts/build_platform_clock_v1.py"
       - "scripts/probe_usb_controller_esp32s3.py"
+      - "scripts/instrument_usb_enumeration.py"
       - "scripts/probe_i2c_esp32s3_v2.py"
       - "scripts/audit_usb_controller_elf.py"
       - "scripts/audit_i2c_esp32s3_elf.py"
@@ -50,6 +55,8 @@ on:
       - "test/drivers/usb_ch34x_v2*.c"
       - "test/drivers/usb_host_v2*.c"
       - "test/drivers/usb_hid*.c"
+      - "test/drivers/usb_xinput_gamepad_test.c"
+      - "test/drivers/controller_startup_diagnostic_test.cpp"
       - "test/drivers/board_power_t5s3_v2_test.c"
       - "test/drivers/i2c_esp32s3_v2_test.c"
       - "test/drivers/platform_clock_v1_test.c"
@@ -130,6 +137,8 @@ jobs:
           bash test/run_native_app_test.sh dist/experimental/usb-hid-keyboard/driver.elf
           python scripts/build_usb_hid_gamepad.py
           bash test/run_native_app_test.sh dist/experimental/usb-hid-gamepad/driver.elf
+          python scripts/build_usb_xinput_gamepad.py
+          bash test/run_native_app_test.sh dist/experimental/usb-xinput-gamepad/driver.elf
           python scripts/build_board_power_t5s3_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-board-power-t5s3-v2/driver.elf
           python scripts/build_platform_clock_v1.py

@@ -3,7 +3,7 @@ set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build="$(mktemp -d)"
 trap 'rm -rf "$build"' EXIT
-for class in usb_hid usb_hid_keyboard usb_hid_gamepad; do
+for class in usb_hid usb_hid_keyboard usb_hid_gamepad usb_xinput_gamepad; do
   cc -std=c11 -Wall -Wextra -Werror -fPIC -fvisibility=hidden -shared \
     -I"$repo/sdk/driver" "$repo/Drivers/$class/driver.c" \
     -o "$build/$class.so"
@@ -20,6 +20,12 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/usb_hid_test.c" -ldl -o "$build/hid-test"
 "$build/hid-test" "$build/usb_hid.so" \
   "$build/usb_hid_keyboard.so" "$build/usb_hid_gamepad.so"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/usb_hid_gamepad_descriptor_test.c" -o "$build/hid-descriptor-test"
+"$build/hid-descriptor-test"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/usb_xinput_gamepad_test.c" -o "$build/xinput-test"
+"$build/xinput-test"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/usb_hid_quiesce_test.c" -ldl -o "$build/hid-quiesce-test"
 "$build/hid-quiesce-test" "$build/usb_hid.so" \

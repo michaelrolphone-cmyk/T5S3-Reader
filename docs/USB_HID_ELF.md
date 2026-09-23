@@ -71,11 +71,14 @@ surfaced as a gap; snapshots restore current state.
 - Keyboard: USB HID boot keyboard (subclass 1/protocol 1), 8-byte input reports
   and six-key rollover. Rollover error reports are ignored, not translated to
   releases. NKRO and consumer-page multimedia keys are outside this first version.
-- Gamepad: HID Generic Desktop joystick/gamepad report collections, one report
-  layout and optional single report ID, up to 32 buttons, six standard axes and
-  a hat. Bounded descriptor parsing. Proprietary gamepad protocols, XInput-only
-  transport, rumble, output reports and composite multi-report gamepads are
-  outside this first version. Axis spans beyond 16 bits are rejected.
+- Gamepad: the first Generic Desktop joystick/gamepad application collection
+  and its first supported input report, up to 32 buttons, six standard axes
+  and a hat. Input offsets are tracked separately for every Report ID; other
+  input, output and feature IDs and later gamepad collections do not reject
+  that layout. They are not combined into additional logical controllers.
+  Proprietary protocols, XInput-only transport, rumble and controls split
+  across several input reports remain unsupported. Axis spans beyond 16 bits
+  are rejected.
 - Generic HID: configuration descriptor discovery, interface claim exclusivity,
   HID report descriptor GET_DESCRIPTOR, boot-protocol control request and
   claimed interrupt-IN reads. Maximum interrupt report is 64 bytes, descriptor
@@ -84,6 +87,73 @@ surfaced as a gap; snapshots restore current state.
   4 gamepads, 4 subscriptions per class and 32 queued events per subscriber.
   Capacity exhaustion and unsupported descriptors fail explicitly, without
   falling back to firmware HID handlers.
+
+`usb-hid-gamepad` 0.1.2 adds the optional table suffix in
+`RiscUsbGamepadDiagnosticsV1.h`. Check the base `struct_size` before calling
+`diagnostic(context, out, capacity)`. It copies the latest discovery state
+without USB I/O, distinguishing no HID interface, claim failure, descriptor
+read failure, unsupported layout and interrupt read failure. Poll can succeed
+while an individual unsupported interface is skipped; consumers should show
+this diagnostic instead of interpreting a successful subscription as a
+connected controller. The original API-v1 prefix and firmware are unchanged.
+
+## Xbox 360-format receivers
+
+`usb-xinput-gamepad` 0.1.0 is an independent class ELF requiring `usb.host@1`
+and publishing `usb.xinput.gamepad@1`. It supports `045e:028e` receivers with
+an alternate-zero vendor interface of class/subclass/protocol `ff/5d/01`.
+The radio link is transparent to USB: this is the Xbox 360 **wired-format**
+protocol, not Microsoft's `045e:0719` wireless receiver protocol. Standard HID,
+Xbox One, protocol `81`, force feedback and LED output are outside this driver.
+
+The driver selects the first matching interface and discovers its interrupt-IN
+endpoint from the configuration. It accepts complete 20-byte input packets
+(`00 14` header, optionally followed by USB padding), ignores other messages,
+and normalizes buttons, D-pad, sticks and triggers. The protocol layout is
+documented by the primary Linux
+[xpad implementation](https://github.com/torvalds/linux/blob/master/drivers/input/joystick/xpad.c).
+It sends no HID report-descriptor or protocol requests to the XInput interface.
+
+The capability reuses `risc_usb_gamepad_api_v1` and its optional diagnostics
+suffix. Button bits are: 0 south, 1 east, 2 west, 3 north, 4/5 shoulders,
+6/7 triggers (pressed at raw value 128), 8 Back, 9 Start, 10/11 stick clicks,
+12 Guide. Y axes increase downward; trigger axes span -32768..32767.
+Gameboy maps south/east/west/north to B/A/Y/X by position. A USB claim alone
+does not report a connected gamepad: the first valid input packet does.
+
+Discovery inspects one newly attached host generation per poll and caches its
+result until removal. Four gamepads, four subscribers and 32 queued events per
+subscriber bound memory. Each poll performs at most 16 interrupt reads with
+10 ms cooperative deadlines, normally four reads when called by Gameboy.
+USB removal or read failure releases held input; a later valid packet reconnects.
+The last subscriber must leave before quiescence closes claims, including while
+the receiver remains plugged in. Failed physical drains remain owned by the host.
+
+Build with `python scripts/build_usb_xinput_gamepad.py`. It is included in the
+installed stack, canonical driver catalog, export and existing CI/release build
+paths. Gameboy 1.2.18 adds an optional grant for this capability and polls HID
+and XInput independently. Install the new driver and updated app together;
+updating only the app does not install the XInput driver.
+
+## USB enumeration diagnostics
+
+`usb-controller-esp32s3` 0.1.9 -> 0.1.10 and `usb-host-v2` 0.1.2 -> 0.1.3 add
+the optional `RiscUsbDiscoveryDiagnosticsV1.h` suffix. The host forwards a
+bounded snapshot of the controller's root-port state and retained IDF
+enumeration error. Consumers check `struct_size` before reading the suffix;
+older installed drivers retain their original API prefixes.
+
+The build instruments its private copy of pinned IDF 4.4.7 `hub.c`, observes
+enumeration stages/errors, and retains the first error per physical connection.
+It changes no enumeration decisions and installs no firmware logging callback.
+`PORT OFF`, `NO ATTACH`, and `ATTACHED` are controller register states; the power
+bit is not a measurement of external VBUS voltage. A zero-device host snapshot
+still prevents class drivers from running. Adding XInput decoding does not by
+itself establish why a particular board failed to enumerate the receiver.
+
+Gameboy displays these states/errors on its existing test screen without a
+serial connection. Class diagnostics distinguish `XINPUT WAITING FOR REPORT`,
+`XINPUT GAMEPAD CONNECTED`, unsupported interface, claim and transfer failures.
 
 ## Verification and deployment
 

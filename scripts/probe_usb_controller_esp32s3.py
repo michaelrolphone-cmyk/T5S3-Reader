@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+from instrument_usb_enumeration import instrument
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'Drivers/usb_controller_esp32s3/driver.cpp'
@@ -141,6 +142,10 @@ def run():
     objects = [controller]
     for index, path in enumerate(paths):
         obj = OUTPUT / f'idf-usb-{index}-{path.name}.o'
+        if path.name == 'hub.c':
+            staged_hub = OUTPUT / 'hub-enumeration-diagnostics.c'
+            staged_hub.write_text(instrument(path.read_text()))
+            path = staged_hub
         compile_target(argv, entry, path, obj, c_compiler=True, extra=includes)
         objects.append(obj)
     phy_gpio = OUTPUT / 'phy-gpio.o'
@@ -156,7 +161,7 @@ def run():
     imported = subprocess.check_output([str(nm), '-u', str(elf)], text=True)
     (OUTPUT / 'unresolved-symbols.txt').write_text(imported)
     namespaces = ('usb_host_', 'usbh_', 'hcd_', 'hub_', 'usb_phy_',
-                  'usb_new_phy', 'urb_')
+                  'usb_new_phy', 'urb_', 'risc_usb_enum_')
     offenders = [line.strip() for line in imported.splitlines()
                  if any(namespace in line for namespace in namespaces)]
     if offenders:

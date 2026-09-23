@@ -20,7 +20,7 @@ EXPECTED_IDS = {
     'platform-clock-v1', 'i2c-esp32s3-v2', 'board-power-t5s3-v2',
     'usb-controller-esp32s3', 'usb-host-v2', 'usb-cdc-acm-v2',
     'usb-cp210x-v2', 'usb-ch34x-v2', 'usb-hid',
-    'usb-hid-keyboard', 'usb-hid-gamepad',
+    'usb-hid-keyboard', 'usb-hid-gamepad', 'usb-xinput-gamepad',
 }
 
 
@@ -30,7 +30,7 @@ def export() -> None:
     packages = index.get('packages')
     if index.get('schema') != 1 or not isinstance(packages, list) or \
        {p['id'] for p in packages} != EXPECTED_IDS or len(packages) != len(EXPECTED_IDS):
-        raise ValueError('canonical 11-driver index is absent or incomplete')
+        raise ValueError('canonical driver index is absent or incomplete')
     if TARGET.exists() and any(TARGET.iterdir()):
         raise FileExistsError(f'release export directory is not empty: {TARGET}')
     TARGET.mkdir(parents=True, exist_ok=True)

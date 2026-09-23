@@ -1,4 +1,5 @@
 #include "RiscUsbInterruptV1.h"
+#include "RiscUsbDiscoveryDiagnosticsV1.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdio.h>
@@ -72,6 +73,11 @@ static int32_t interrupt_read(void *ctx, uint64_t claim_token, uint8_t endpoint,
     return -1; /* no interrupt endpoint in this bulk-only descriptor */
 }
 static bool quiesce_controller(void *ctx) { (void)ctx; return idle; }
+static bool controller_diagnostic(void *ctx, char *out, size_t capacity) {
+    assert(ctx == &events);
+    snprintf(out, capacity, "ATTACHED; ENUM FAIL: Root port reset failed");
+    return true;
+}
 
 int main(int argc, char **argv) {
     assert(argc == 2);
@@ -100,6 +106,11 @@ int main(int argc, char **argv) {
     risc_provider_dependency_v1 dependency = {"usb.controller", 1, &controller.controller};
     assert(driver->start(&dependency, 1));
     assert(!driver->start(&dependency, 1));
+    assert(host->struct_size >= sizeof(risc_usb_host_diagnostics_v1));
+    const risc_usb_host_diagnostics_v1 *diagnostics = (const risc_usb_host_diagnostics_v1 *)host;
+    char reason[80] = {0};
+    // Old controller allocation really ends at the interrupt extension.
+    assert(!diagnostics->diagnostic(host->context, reason, sizeof(reason)));
     size_t n = 8;
     uint64_t devices[8] = {0};
     assert(discovery->devices(host->context, devices, &n) && n == 0);
@@ -153,6 +164,20 @@ int main(int argc, char **argv) {
     assert(discovery->devices(host->context, devices, &n) && n == 1 &&
            devices[0] != first);
     assert(!host->claim(host->context, first, 0, 0, &claim_token));
+    assert(driver->quiesce());
+    driver->stop();
+    assert(!diagnostics->diagnostic(host->context, reason, sizeof(reason)));
+    risc_usb_controller_diagnostics_v1 diagnostic_controller = {controller, controller_diagnostic};
+    diagnostic_controller.base.controller.struct_size = sizeof(diagnostic_controller);
+    diagnostic_controller.base.controller.context = &events;
+    dependency.api = &diagnostic_controller.base.controller;
+    assert(driver->start(&dependency, 1));
+    assert(diagnostics->diagnostic(host->context, reason, sizeof(reason)));
+    assert(!strcmp(reason, "ATTACHED; ENUM FAIL: Root port reset failed"));
+    assert(!diagnostics->diagnostic(host->context, NULL, sizeof(reason)));
+    assert(!diagnostics->diagnostic(host->context, reason, 0));
+    diagnostic_controller.diagnostic = NULL;
+    assert(!diagnostics->diagnostic(host->context, reason, sizeof(reason)));
     assert(driver->quiesce());
     driver->stop();
     assert(dlclose(elf) == 0);
