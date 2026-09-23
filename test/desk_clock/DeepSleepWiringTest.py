@@ -35,6 +35,9 @@ class ClockDeepSleepWiring(unittest.TestCase):
             self.assertNotIn(forbidden, resume)
         self.assertIn("display.deepSleep()", CLOCK)
         self.assertIn("Board::deinitForSleep()", CLOCK)
+        self.assertIn("display.begin(false)", resume)
+        self.assertNotIn("display.begin();", resume)
+        self.assertIn("init_impl(true, false)", DISPLAY)
 
     def test_timer_refresh_reconstructs_previous_frame_and_clips_diff(self):
         self.assertIn("displayedMinuteEpoch", CLOCK)
