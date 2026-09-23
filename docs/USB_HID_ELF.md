@@ -1,5 +1,10 @@
 # USB HID ELF drivers
 
+Governed by the [Platform Specification](RISCRTE_PLATFORM_SPEC.md). Before
+changing USB startup, detection or polling, read
+[USB Host Startup and Detection](USB_HOST_STARTUP_AND_DETECTION.md), including
+the owner-confirmed controller 0.1.14 fix and safe shutdown sequence.
+
 ## Capability composition
 
 These are independently installable ABI-v2 providers. The runtime only registers
@@ -41,12 +46,15 @@ also comply with that app's execution-context and capability-grant rules.
 Use `subscribe(api->context, 0)` to observe all devices of the selected class
 or `subscribe(api->context, device_id)` for one host-generation-qualified
 USB device. The return value is a nonzero subscription handle or zero on
-capacity exhaustion. Use `poll(api->context, max_reports)` to advance input;
-then call `next(api->context, subscription, &event)` until it returns zero
-(empty). A result of `1` contains an event. A negative result means an invalid
-handle or queue discontinuity: discard derived state and call `snapshot()`.
-Each subscriber has a bounded independent queue. Keyboard and gamepad have
-the same subscribe/unsubscribe/poll/next/snapshot shape and distinct events.
+capacity exhaustion. Use bounded `poll(api->context, max_reports)` calls to
+advance input, with real scheduler cooperation between polling cycles.
+Keyboards retain ordered per-subscriber queues; consume `next()` events until
+empty within a bounded work budget. Gamepad consumers use `poll()` plus
+`snapshot()` to read current state. Their compatibility `next()` notifications
+retain only the latest state per device, never a history of button transitions.
+A `next()` result of `1` contains an event, zero means empty, and a negative
+result means an invalid handle or discontinuity requiring state recovery via
+`snapshot()`. Keyboard and gamepad share an API shape, not buffering semantics.
 
 Keyboard events use USB HID usage page 0x07, **not ASCII**. Kinds are connected=1,
 disconnected=2, press=3, release=4; modifiers use the boot keyboard bitset.
@@ -149,9 +157,10 @@ or sleep interval. One completion remains bounded in controller-owned DMA
 until consumed; app buffers are never retained. Rearm failures surface as read
 errors, and pending transfers still drain before release/unload.
 
-Discovery inspects one newly attached host generation per poll and caches its
-result until removal. Four gamepads, four subscribers and 32 queued events per
-subscriber bound memory. Each poll performs at most 16 interrupt reads with
+Discovery inspects one newly attached host generation per poll, with the bounded
+retry policy above. Four gamepads and four subscribers bound memory; each
+subscriber retains at most four latest per-device notifications, with no button
+history queue. Each poll performs at most 16 interrupt reads with
 10 ms maximum deadlines, normally four reads when called by Gameboy. With the
 0.1.12 controller these reads drain only ready data; the app owner yields
 between bounded polling cycles rather than blocking once per future report.
