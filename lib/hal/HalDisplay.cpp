@@ -109,6 +109,14 @@ class T5S3BusEPD : public lgfx::Bus_EPD {
   }
 
   bool powerControl(const bool powerOn) override {
+    if (panelOutputSuppressed_) {
+      // Advance Panel_EPD's software history while the real e-paper rails and
+      // output-enable remain inactive. Used to reconstruct retained panel state
+      // after deep sleep without visibly changing the screen.
+      _pwr_on = powerOn;
+      return true;
+    }
+
     if (_pwr_on == powerOn) {
       return true;
     }
@@ -120,6 +128,17 @@ class T5S3BusEPD : public lgfx::Bus_EPD {
 
     powerOffSequence();
     return true;
+  }
+
+  void setPanelOutputSuppressed(const bool suppressed) {
+    wait();
+    panelOutputSuppressed_ = suppressed;
+    if (suppressed) {
+      if (_pwr_on) {
+        powerOffSequence();
+      }
+      _pwr_on = false;
+    }
   }
 
   // M5GFX 0.2.20 Bus_EPD inherits Bus_NULL::release(), which does NOTHING.
@@ -150,6 +169,8 @@ class T5S3BusEPD : public lgfx::Bus_EPD {
   bool released() const { return _io_handle == nullptr && _i80_bus_handle == nullptr; }
 
  private:
+  bool panelOutputSuppressed_ = false;
+
   bool preparePowerPins() {
     // Keep the full expander setup sequence on the bus atomically. The render
     // task can power-cycle EPD rails while the main loop is polling RTC/touch.
@@ -327,6 +348,8 @@ class T5S3M5GfxDisplay : public lgfx::LGFX_Device {
     bus_.release();
     return bus_.released();
   }
+
+  void setPanelOutputSuppressed(const bool suppressed) { bus_.setPanelOutputSuppressed(suppressed); }
 
  private:
   T5S3BusEPD bus_;
@@ -515,8 +538,10 @@ void HalDisplay::drawImageTransparent(const uint8_t* imageData, uint16_t x, uint
   }
 }
 
-void HalDisplay::renderBwToPanelCanvas() const {
-  if (!panelCanvas || !frameBuffer) {
+void HalDisplay::renderBwToPanelCanvas() const { renderBwToPanelCanvas(frameBuffer); }
+
+void HalDisplay::renderBwToPanelCanvas(const uint8_t* sourceBuffer) const {
+  if (!panelCanvas || !sourceBuffer) {
     return;
   }
 
@@ -526,7 +551,7 @@ void HalDisplay::renderBwToPanelCanvas() const {
   }
 
   for (uint16_t y = 0; y < DISPLAY_HEIGHT; ++y) {
-    const uint8_t* srcRow = frameBuffer + static_cast<uint32_t>(y) * DISPLAY_WIDTH_BYTES;
+    const uint8_t* srcRow = sourceBuffer + static_cast<uint32_t>(y) * DISPLAY_WIDTH_BYTES;
     uint8_t* dstRow = grayBuffer + static_cast<uint32_t>(y) * DISPLAY_WIDTH;
     // When flipped, write into the 180°-mirrored destination row/column.
     uint8_t* dstRowFlipped = grayBuffer + static_cast<uint32_t>(DISPLAY_HEIGHT - 1 - y) * DISPLAY_WIDTH;
@@ -752,6 +777,32 @@ void HalDisplay::displayBufferDiff(const uint8_t* previousBuffer, HalDisplay::Re
     return;
   }
 
+  int clipX = minX;
+  int clipY = minY;
+  const int clipW = maxX - minX + 1;
+  const int clipH = maxY - minY + 1;
+  if (flipOutput) {
+    clipX = DISPLAY_WIDTH - 1 - maxX;
+    clipY = DISPLAY_HEIGHT - 1 - maxY;
+  }
+
+  // Panel_EPD's internal previous-pixel/LUT state lives in normal RAM and is
+  // lost in deep sleep, even though the physical e-paper image remains. Prime
+  // just the dirty rectangle from the reconstructed previous frame while the
+  // high-voltage output rails are suppressed. This updates M5GFX's software
+  // history without changing the visible panel.
+  renderBwToPanelCanvas(previousBuffer);
+  gfx->waitDisplay();
+  gfx->setPanelOutputSuppressed(true);
+  gfx->setEpdMode(lgfx::epd_mode::epd_fastest);
+  gfx->setClipRect(clipX, clipY, clipW, clipH);
+  panelCanvas->pushSprite(gfx, 0, 0);
+  gfx->clearClipRect();
+  gfx->waitDisplay();
+  gfx->setPanelOutputSuppressed(false);
+
+  // Replace the canvas with the new complete frame. Only the same dirty
+  // rectangle is physically transferred below.
   renderBwToPanelCanvas();
 
   lgfx::epd_mode::epd_mode_t epdMode = lgfx::epd_mode::epd_fastest;
@@ -772,15 +823,6 @@ void HalDisplay::displayBufferDiff(const uint8_t* previousBuffer, HalDisplay::Re
       epdMode = useMiddleMode ? lgfx::epd_mode::epd_fast : lgfx::epd_mode::epd_fastest;
       refreshCycleCount++;
     }
-  }
-
-  int clipX = minX;
-  int clipY = minY;
-  const int clipW = maxX - minX + 1;
-  const int clipH = maxY - minY + 1;
-  if (flipOutput) {
-    clipX = DISPLAY_WIDTH - 1 - maxX;
-    clipY = DISPLAY_HEIGHT - 1 - maxY;
   }
 
   gfx->waitDisplay();
