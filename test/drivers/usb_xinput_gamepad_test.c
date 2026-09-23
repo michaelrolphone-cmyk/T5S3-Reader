@@ -32,7 +32,7 @@ static bool fake_config(void *ctx, uint64_t device, uint8_t *out, size_t *count,
     *vid = fake_vid; *pid = fake_pid; ++configurations; return true;
 }
 static bool fake_claim(void *ctx, uint64_t device, uint8_t iface, uint8_t alt, uint64_t *out) {
-    (void)ctx; assert(device == fake_device && iface == 2 && alt == 0);
+    (void)ctx; assert(device == fake_device && iface == 2 && alt == config[28]);
     ++claims;
     if (reject_claim) return false;
     *out = device + 1000; return true;
@@ -91,7 +91,7 @@ int main(void) {
     }
     send(0, 0xf0); packet[0] = 1; // LED/status notification.
     assert(input->poll(0, 4) && input->next(0, subscription, &event) == 0);
-    send(0, 0xf0); packet[1] = 19;
+    send(0, 0xf0); packet[1] = 13;
     assert(input->poll(0, 4) && input->next(0, subscription, &event) == 0);
     send(0x39, 0xf7); // NE, Back, Start, all face/shoulder buttons and Guide.
     packet[4] = packet[5] = 255;
@@ -104,12 +104,24 @@ int main(void) {
     assert(input->next(0, subscription, &event) == 1 && event.kind == 3);
     assert(event.state.device == fake_device && event.state.connected && event.state.hat == 1);
     assert(event.state.buttons == 0x13ff && event.state.x == -32768 && event.state.y == 32767);
-    assert(event.state.rx == 32767 && event.state.ry == -32767);
+    assert(event.state.rx == 32767 && event.state.ry == -32768);
     assert(event.state.z == 32767 && event.state.rz == 32767);
     assert(input->next(0, filtered, &event) == 0);
     // Repeated unchanged data emits no extra state transition.
     packet_length = 20;
     assert(input->poll(0, 4) && input->next(0, subscription, &event) == 0);
+    // The working standalone accepts a 14-byte header length in a complete
+    // 20-byte transfer. Xbox A must remain A (semantic bit 1), not become B.
+    send(0, 0x10); packet[1] = 14;
+    assert(input->poll(0, 4));
+    assert(input->next(0, subscription, &event) == 1 && event.kind == 3 && event.state.buttons == 2);
+    const uint8_t face_bits[] = {0x10, 0x20, 0x40, 0x80};
+    const uint32_t face_expected[] = {2, 1, 8, 4};
+    for (size_t i = 0; i < 4; ++i) {
+        send(0, face_bits[i]); assert(input->poll(0, 4)); count = 1;
+        assert(input->snapshot(0, &state, &count) && state.buttons == face_expected[i]);
+        drain(input, subscription);
+    }
     const uint8_t hats[] = {8,0,4,8,6,7,5,6,2,1,3,2,8,0,4,8};
     for (uint8_t dpad = 0; dpad < 16; ++dpad) {
         send(dpad, 0); assert(input->poll(0, 4)); count = 1;
@@ -125,37 +137,54 @@ int main(void) {
     }
     assert(input->next(0, subscription, &event) == -1);
     count = 1;
-    assert(input->snapshot(0, &state, &count) && state.buttons == 2);
+    assert(input->snapshot(0, &state, &count) && state.buttons == 1);
     fake_device = 0;
     assert(input->poll(0, 4) && releases == 1);
     assert(input->next(0, subscription, &event) == 1 && event.kind == 2);
     assert(!event.state.connected && !event.state.buttons && !event.state.x && event.state.hat == 8);
     count = 1; assert(input->snapshot(0, &state, &count) && count == 0);
-    fake_device = 52; fake_pid = 0x0719; // Xbox wireless receiver is another protocol.
-    assert(input->poll(0, 4) && claims == 1);
-    fake_device = 53; fake_pid = 0x028e; config[32] = 0x81;
-    assert(input->poll(0, 4) && claims == 1); // Reject wireless protocol 0x81.
-    fake_device = 54; config[32] = 1; config[37] = 2;
-    assert(input->poll(0, 4) && claims == 1); // Reject bulk instead of interrupt.
-    fake_device = 55; config[37] = 3; config[2] = 53;
-    assert(input->poll(0, 4) && claims == 1); // Reject truncated/mismatched configuration.
-    fake_device = 56; config[2] = 54; reject_claim = true;
+    // Bind by the proven ff/5d/protocol interface, including a clone's VID/PID
+    // and a nonzero alternate. RF presence messages are not 20-byte inputs.
+    fake_device = 52; fake_vid = 0x1234; fake_pid = 0x9876;
+    config[32] = 0x81; config[28] = 1;
     assert(input->poll(0, 4) && claims == 2);
+    packet[0] = 8; packet[1] = 0x80; packet_length = 2;
+    assert(input->poll(0, 4));
+    assert(input->next(0, subscription, &event) == 1 && event.kind == 1);
+    send(0x18, 0x33);
+    memmove(packet + 4, packet, 20);
+    packet[0] = 0; packet[1] = 1; packet[2] = packet[3] = 0;
+    packet_length = 23;
+    assert(input->poll(0, 4) && input->next(0, subscription, &event) == 0);
+    packet_length = 24; assert(input->poll(0, 4));
+    assert(input->next(0, subscription, &event) == 1 && event.kind == 3);
+    assert(event.state.buttons == 0x233 && event.state.hat == 2);
+    packet[0] = 8; packet[1] = 0; packet_length = 2;
+    assert(input->poll(0, 4));
+    assert(input->next(0, subscription, &event) == 1 && event.kind == 2 && !event.state.buttons);
+    fake_device = 53; config[32] = 0x82; config[28] = 0;
+    assert(input->poll(0, 4) && claims == 2); // Unknown vendor protocol stays unclaimed.
+    fake_device = 54; config[32] = 1; config[37] = 2;
+    assert(input->poll(0, 4) && claims == 2); // Reject bulk instead of interrupt.
+    fake_device = 55; config[37] = 3; config[2] = 53;
+    assert(input->poll(0, 4) && claims == 2); // Reject truncated/mismatched configuration.
+    fake_device = 56; config[2] = 54; reject_claim = true;
+    assert(input->poll(0, 4) && claims == 3);
     char reason[64]; assert(diagnostic(0, reason, sizeof(reason)));
     assert(!strcmp(reason, "XINPUT INTERFACE CLAIM FAILED"));
-    assert(input->poll(0, 4) && claims == 2); // Failed attachment never busy-retries claims.
+    assert(input->poll(0, 4) && claims == 3); // Failed attachment never busy-retries claims.
     fake_device = 57; reject_claim = false; send(0, 0x10);
-    assert(input->poll(0, 4) && claims == 3);
+    assert(input->poll(0, 4) && claims == 4);
     assert(input->next(0, subscription, &event) == 1 && event.kind == 1 && event.state.device == 57);
     drain(input, subscription);
     packet_length = -1;
     assert(!input->poll(0, 4));
     assert(input->next(0, subscription, &event) == 1 && event.kind == 2 && !event.state.buttons);
     send(0, 0x20); assert(input->poll(0, 4));
-    assert(input->next(0, subscription, &event) == 1 && event.kind == 1 && event.state.buttons == 2);
+    assert(input->next(0, subscription, &event) == 1 && event.kind == 1 && event.state.buttons == 1);
     assert(!driver->quiesce());
     assert(input->unsubscribe(0, subscription) && input->unsubscribe(0, filtered));
-    assert(driver->quiesce() && releases == 2); // Still-plugged shutdown.
+    assert(driver->quiesce() && releases == 3); // Still-plugged shutdown.
     driver->stop();
     assert(driver->start(&dependency, 1));
     uint64_t fresh = input->subscribe(0, 0); assert(fresh && fresh != subscription);

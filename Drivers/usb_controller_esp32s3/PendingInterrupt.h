@@ -72,6 +72,13 @@ int32_t read_interrupt(uint64_t id, usb_device_handle_t handle, uint8_t endpoint
     }
     slot->ready = false;
     const int32_t n = slot->dma->actual_num_bytes;
+    // Match the standalone host: a STALL halts the endpoint until explicitly
+    // cleared. The completed callback has returned DMA ownership, so the next
+    // bounded read can safely resubmit after recovery.
+    if (slot->dma->status == USB_TRANSFER_STATUS_STALL) {
+        (void)usb_host_endpoint_clear(handle, endpoint);
+        return -1;
+    }
     if (slot->dma->status != USB_TRANSFER_STATUS_COMPLETED || n < 0 || n > packet)
         return -1;
     if (n) std::memcpy(dst, slot->dma->data_buffer, static_cast<size_t>(n));

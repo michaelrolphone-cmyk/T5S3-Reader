@@ -1,7 +1,7 @@
 #include "RiscUsbInterruptV1.h"
 #include "RiscUsbGamepadDiagnosticsV1.h"
 
-/* Xbox 360 wired-format input, including 2.4 GHz receivers advertising
+/* Xbox 360 wired/wireless-format input, including 2.4 GHz receivers advertising
  * 045e:028e. USB ownership stays with usb.host; no HID requests, firmware
  * callbacks, USB reset, output effects or controller-specific power changes.
  * Protocol facts: Linux drivers/input/joystick/xpad.c (XTYPE_XBOX360).
@@ -10,6 +10,7 @@
 typedef struct {
     uint64_t device, claim;
     uint8_t endpoint;
+    bool wireless;
     risc_usb_gamepad_state_v1 state;
 } gamepad;
 typedef struct {
@@ -53,16 +54,37 @@ static bool emit(uint8_t kind, const risc_usb_gamepad_state_v1 *state) {
     return true;
 }
 static uint16_t le16(const uint8_t *p) { return (uint16_t)p[0] | ((uint16_t)p[1] << 8); }
-static int16_t invert_y(int16_t value) { return value == INT16_MIN ? INT16_MAX : (int16_t)-value; }
+static int16_t invert_y(int16_t value) { return (int16_t)~value; }
 static bool apply(gamepad *pad, const uint8_t *data, size_t length) {
+    if (!data || length > 64) return true;
+    if (pad->wireless) {
+        if (length < 2) return true;
+        if ((data[0] & 8u) && !(data[1] & 0x80u)) {
+            if (!pad->state.connected) return true;
+            pad->state = (risc_usb_gamepad_state_v1){0};
+            pad->state.device = pad->device; pad->state.hat = 8;
+            return emit(2, &pad->state);
+        }
+        if (data[1] != 1) {
+            if ((data[0] & 8u) && (data[1] & 0x80u) && !pad->state.connected) {
+                pad->state.connected = 1;
+                return emit(1, &pad->state);
+            }
+            return true;
+        }
+        if (length < 24) return true;
+        data += 4; length -= 4;
+    }
     /* Ignore LED/status messages and partial/corrupt input without releasing
-     * held keys or reading beyond the transfer's actual length. */
-    if (length < 20 || length > 64 || data[0] != 0 || data[1] != 20) return true;
+     * held keys or reading beyond the transfer's actual length. Match the
+     * hardware-tested standalone decoder: 20 received bytes, header >=14. */
+    if (length < 20 || data[0] != 0 || data[1] < 14) return true;
     risc_usb_gamepad_state_v1 next = {0};
     next.device = pad->device; next.connected = 1; next.hat = 8;
-    // Button order matches the semantic SNES-position layout used by Gameboy:
-    // south/east/west/north, L/R, triggers, Back/Start, sticks, Guide.
-    next.buttons = ((uint32_t)data[3] >> 4) | ((uint32_t)(data[3] & 3u) << 4) |
+    // Match standalone named buttons: B/A/Y/X, L/R, triggers, Back/Start,
+    // stick clicks and Guide. Do not swap Xbox A/B or X/Y by physical position.
+    next.buttons = ((uint32_t)(data[3] & 0xa0u) >> 5) |
+        ((uint32_t)(data[3] & 0x50u) >> 3) | ((uint32_t)(data[3] & 3u) << 4) |
         (data[4] >= 128 ? 1u << 6 : 0) | (data[5] >= 128 ? 1u << 7 : 0) |
         ((data[2] & 0x20u) ? 1u << 8 : 0) | ((data[2] & 0x10u) ? 1u << 9 : 0) |
         ((uint32_t)(data[2] & 0xc0u) << 4) | ((uint32_t)(data[3] & 4u) << 10);
@@ -101,7 +123,8 @@ static bool present(const uint64_t *devices, size_t count, uint64_t device) {
     return false;
 }
 static bool input_interface(const uint8_t *data, size_t length,
-                            uint8_t *interface_number, uint8_t *endpoint) {
+                            uint8_t *interface_number, uint8_t *alternate,
+                            uint8_t *endpoint, bool *wireless) {
     if (length < 9 || length > RISC_USB_CONFIG_LIMIT || data[0] < 9 ||
         data[1] != 2 || le16(data + 2) != length) return false;
     bool selected = false;
@@ -111,10 +134,13 @@ static bool input_interface(const uint8_t *data, size_t length,
         const uint8_t size = data[at], type = data[at + 1];
         if (size < 2 || size > length - at) return false;
         if (type == 4) {
-            if (selected) return *endpoint != 0;
-            selected = size >= 9 && data[at + 3] == 0 && data[at + 5] == 0xff &&
-                       data[at + 6] == 0x5d && data[at + 7] == 1;
-            if (selected) *interface_number = data[at + 2];
+            if (selected && *endpoint) return true;
+            selected = size >= 9 && data[at + 5] == 0xff && data[at + 6] == 0x5d &&
+                       (data[at + 7] == 1 || data[at + 7] == 0x81);
+            if (selected) {
+                *interface_number = data[at + 2]; *alternate = data[at + 3];
+                *wireless = data[at + 7] == 0x81;
+            }
         } else if (type == 5 && selected) {
             if (size < 7) return false;
             const uint8_t address = data[at + 2];
@@ -157,27 +183,25 @@ static bool poll(void *ctx, size_t max_reports) {
         }
         if (known || !slot) continue;
         *slot = (inspected_device){devices[i], 0};
-        uint8_t config[RISC_USB_CONFIG_LIMIT], iface = 0, endpoint = 0;
+        uint8_t config[RISC_USB_CONFIG_LIMIT], iface = 0, alt = 0, endpoint = 0;
+        bool wireless = false;
         size_t length = sizeof(config);
         uint16_t vid = 0, pid = 0;
         if (!bus->configuration(bus->context, devices[i], config, &length, &vid, &pid))
             slot->status = "XINPUT CONFIGURATION READ FAILED";
-        else if (vid == 0x045e && pid == 0x028e) {
-            if (!input_interface(config, length, &iface, &endpoint))
-                slot->status = "XINPUT INTERFACE UNSUPPORTED";
+        else if (input_interface(config, length, &iface, &alt, &endpoint, &wireless)) {
+            gamepad *pad = 0;
+            for (size_t j = 0; j < PADS; ++j) if (!pads[j].claim) { pad = &pads[j]; break; }
+            if (!pad) slot->status = "XINPUT CAPACITY EXHAUSTED";
             else {
-                gamepad *pad = 0;
-                for (size_t j = 0; j < PADS; ++j) if (!pads[j].claim) { pad = &pads[j]; break; }
-                if (!pad) slot->status = "XINPUT CAPACITY EXHAUSTED";
+                uint64_t claim = 0;
+                if (!bus->claim(bus->context, devices[i], iface, alt, &claim) || !claim)
+                    slot->status = "XINPUT INTERFACE CLAIM FAILED";
                 else {
-                    uint64_t claim = 0;
-                    if (!bus->claim(bus->context, devices[i], iface, 0, &claim) || !claim)
-                        slot->status = "XINPUT INTERFACE CLAIM FAILED";
-                    else {
-                        *pad = (gamepad){0};
-                        pad->device = devices[i]; pad->claim = claim; pad->endpoint = endpoint;
-                        pad->state.device = devices[i]; pad->state.hat = 8;
-                    }
+                    *pad = (gamepad){0};
+                    pad->device = devices[i]; pad->claim = claim; pad->endpoint = endpoint;
+                    pad->wireless = wireless;
+                    pad->state.device = devices[i]; pad->state.hat = 8;
                 }
             }
         }

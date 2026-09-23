@@ -6,6 +6,7 @@ using TickType_t = uint32_t;
 using esp_err_t = int;
 using usb_device_handle_t = void *;
 constexpr int ESP_OK = 0, USB_TRANSFER_STATUS_COMPLETED = 0;
+constexpr int USB_TRANSFER_STATUS_STALL = 2;
 constexpr unsigned RISC_USB_HOST_MAX_CLAIMS = 4, kTeardownTicks = 8;
 #define pdMS_TO_TICKS(x) (x)
 struct usb_transfer_t {
@@ -15,9 +16,9 @@ struct usb_transfer_t {
     void (*callback)(usb_transfer_t *);
     uint8_t data_buffer[64];
 };
-static unsigned ticks, submits, halts, frees;
+static unsigned ticks, submits, halts, frees, clears;
 static usb_transfer_t *queued[4];
-static bool deliver, cancel, stuck;
+static bool deliver, cancel, stuck, stall;
 TickType_t xTaskGetTickCount() { return ticks; }
 int usb_host_transfer_alloc(unsigned n, int, usb_transfer_t **out) {
     assert(n <= 64); *out = new usb_transfer_t{}; return 0;
@@ -33,11 +34,12 @@ int usb_host_transfer_free(usb_transfer_t *t) {
 }
 int usb_host_endpoint_halt(void *, uint8_t) { ++halts; return 0; }
 int usb_host_endpoint_flush(void *, uint8_t) { cancel = true; return 0; }
+int usb_host_endpoint_clear(void *, uint8_t) { ++clears; return 0; }
 bool pump(unsigned) {
     ++ticks;
     if ((deliver || cancel) && !stuck) {
         for (auto &q : queued) if (q) {
-            q->status = cancel ? 1 : 0;
+            q->status = cancel ? 1 : stall ? USB_TRANSFER_STATUS_STALL : 0;
             q->actual_num_bytes = 1;
             q->data_buffer[0] = q->bEndpointAddress;
             auto *done = q; q = nullptr; done->callback(done);
@@ -60,6 +62,10 @@ int main() {
     assert(read_interrupt(2, handle, 0x82, 8, out, 10) == 1 && out[0] == 0x82);
     assert(read_interrupt(1, handle, 0x81, 8, out, 10) == 1 && out[0] == 0x81);
     assert(submits == 2 && halts == 0);
+    stall = true;
+    assert(read_interrupt(1, handle, 0x81, 8, out, 10) == -1 && clears == 1);
+    stall = false;
+    assert(read_interrupt(1, handle, 0x81, 8, out, 10) == 1 && clears == 1);
     deliver = false;
     assert(read_interrupt(1, handle, 0x81, 8, out, 10) == 0);
     stuck = true;
