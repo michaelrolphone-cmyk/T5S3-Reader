@@ -73,6 +73,7 @@ jobs:
           cache: pip
 
       - name: Cache PlatformIO packages
+        if: ${{ needs.request.outputs.product == 'firmware' || needs.request.outputs.product == 'drivers' }}
         uses: actions/cache@v4
         with:
           path: |
@@ -84,9 +85,11 @@ jobs:
             ${{ runner.os }}-platformio-
 
       - name: Install PlatformIO
+        if: ${{ needs.request.outputs.product == 'firmware' || needs.request.outputs.product == 'drivers' }}
         run: python -m pip install platformio==6.1.19
 
       - name: Build RiscRTE gh_release
+        if: ${{ needs.request.outputs.product == 'firmware' }}
         run: pio run -e gh_release
 
       # Keep the release build's three firmware artifacts outside PlatformIO's
@@ -94,6 +97,7 @@ jobs:
       # The merged binary is checked here, not discovered missing after a full
       # driver/app build when staging begins.
       - name: Preserve firmware build outputs
+        if: ${{ needs.request.outputs.product == 'firmware' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -134,20 +138,26 @@ jobs:
           echo "Baked RiscRTE version $VER present in firmware.bin"
 
       - name: Build and validate GPS driver package
+        if: ${{ needs.request.outputs.product == 'drivers' }}
         run: |
           python scripts/build_driver.py
           bash test/run_driver_test.sh
           bash test/run_native_app_test.sh dist/drivers/gps-nmea/driver.elf
 
       - name: Build and validate USB CDC driver package
+        if: ${{ needs.request.outputs.product == 'drivers' }}
         run: |
           python scripts/build_usb_cdc_driver.py
           bash test/run_native_app_test.sh dist/drivers/usb-cdc-acm/driver.elf
 
-      - name: Build native ELF apps and manifests
-        run: python scripts/build_all_apps.py
+      - name: Build native ELF app and manifest
+        if: ${{ needs.request.outputs.product == 'apps' }}
+        env:
+          PRODUCT_ID: ${{ needs.request.outputs.id }}
+        run: python scripts/build_all_apps.py --id "$PRODUCT_ID"
 
       - name: Build real hardware-owning USB providers and canonical packages
+        if: ${{ needs.request.outputs.product == 'drivers' }}
         run: |
           python -m pip install pyelftools
           pio pkg install -e t5s3-pro
@@ -171,6 +181,7 @@ jobs:
           python scripts/export_canonical_driver_release.py
 
       - name: Stage RiscRTE firmware image
+        if: ${{ needs.request.outputs.product == 'firmware' }}
         shell: bash
         run: |
           set -euo pipefail
