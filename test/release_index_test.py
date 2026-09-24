@@ -15,10 +15,17 @@ SHA = "a" * 64
 def package(product, package_id, version, digest=SHA):
     prefix = "app" if product == "apps" else "driver"
     tag = f"{prefix}-{package_id}-v{version}"
-    asset = f"{package_id}-{version}.rte.zip"
-    manifest = {"id": package_id, "version": version}
+    asset = f"{package_id}.elf" if product == "apps" else f"{package_id}--driver.elf"
     if product == "apps":
         manifest = {"file_name": f"{package_id}.elf", "version": version}
+    else:
+        manifest = {
+            "id": package_id, "version": version, "capability": "usb.host", "api": 1,
+            "files": [
+                {"name": name, "size_bytes": 12, "sha256": digest}
+                for name in (".package.json", "driver.elf", "provider-abi.v1", "privileged-imports.v1")
+            ],
+        }
     return {
         "id": package_id,
         "version": version,
