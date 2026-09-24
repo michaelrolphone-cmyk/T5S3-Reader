@@ -11,7 +11,7 @@ static uint8_t memory[256];
 static uint8_t jtag_id = 0x99;
 static uint8_t last_open_mode;
 static uint8_t last_fid;
-static unsigned opens, closes, polls;
+static unsigned opens, closes, polls, syncs, releases_target, configures;
 static size_t probe_count = 1;
 
 static bool poll_msp(void *ctx, size_t max_events) {
@@ -79,6 +79,34 @@ static int32_t execute_msp(void *ctx, uint64_t session, uint8_t fid,
         response[0] = jtag_id;
         return 1;
     }
+    if (fid == 0x07) {
+        assert(request && request_length == 8);
+        ++configures;
+        return 0;
+    }
+    if (fid == 0x4c) {
+        assert(!request && request_length == 0);
+        return 0;
+    }
+    if (fid == 0x3a) {
+        assert(request && request_length == 21 && response && response_capacity >= 8);
+        assert(request[0] == 0x5c && request[1] == 0x01 &&
+               request[2] == 0x80 && request[3] == 0x5a);
+        memset(response, 0, 8);
+        response[0] = 0x80;
+        response[2] = 0x00; response[3] = 0x44; /* PC = 0x4400 */
+        ++syncs;
+        return 8;
+    }
+    if (fid == 0x3c) {
+        assert(request && request_length == 18);
+        assert(request[0] == 0x5c && request[1] == 0x01 &&
+               request[2] == 0x80 && request[3] == 0x5a);
+        assert(request[4] == 0x00 && request[5] == 0x44);
+        assert(request[10] == 7 && request[14] == 1);
+        ++releases_target;
+        return 0;
+    }
     if (fid == 0x3d) {
         assert(request && request_length == 8 && response);
         const uint32_t address = get32(request);
@@ -139,7 +167,7 @@ int main(int argc, char **argv) {
     assert(last_open_mode == RISC_MSP_FET_INTERFACE_SBW);
     assert(target.probe_device == 7 && target.jtag_id == 0x99);
     assert(target.protocol_major == 3 && target.protocol_minor == 8);
-    assert(last_fid == 0x0c);
+    assert(configures >= 8 && syncs == 1 && last_fid == 0x3a);
     assert(!driver->quiesce());
 
     const uint8_t bytes[] = {0x11, 0x22, 0x33};
@@ -155,6 +183,7 @@ int main(int argc, char **argv) {
     assert(strstr(error, "differs"));
 
     assert(api->close(api->context, session));
+    assert(syncs == 2 && releases_target == 1);
     assert(closes == 1 && driver->quiesce());
 
     /* Ambiguous default probe selection fails before opening hardware. */
