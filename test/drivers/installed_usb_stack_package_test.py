@@ -26,6 +26,7 @@ EXPECTED = {
     'usb-cdc-acm-v2': ('serial.port', ['usb.host']),
     'usb-cp210x-v2': ('serial.port', ['usb.host']),
     'usb-ch34x-v2': ('serial.port', ['usb.host']),
+    'usb-ftdi': ('serial.port', ['usb.host']),
     'usb-hid': ('usb.hid', ['usb.host']),
     'usb-hid-keyboard': ('usb.hid.keyboard', ['usb.hid']),
     'usb-hid-gamepad': ('usb.hid.gamepad', ['usb.hid']),
