@@ -11,6 +11,8 @@ static size_t saved_size;
 static uint64_t last_claim_device;
 static uint8_t last_claim_interface;
 static unsigned release_count;
+static bool fail_device_descriptor;
+static uint8_t current_configuration_value = 1;
 
 static const uint8_t device_descriptor[] = {
     18, 1, 0x00, 0x02, 0x00, 0x00, 0x00, 64,
@@ -51,7 +53,7 @@ static int32_t mock_control(void *context, uint64_t device,
     }
     if (request == USB_REQ_GET_CONFIGURATION && request_type == 0x80u &&
         value == 0 && index == 0 && length == 1) {
-        payload[0] = 1;
+        payload[0] = current_configuration_value;
         return 1;
     }
     if (request != USB_REQ_GET_DESCRIPTOR) return -1;
@@ -61,6 +63,7 @@ static int32_t mock_control(void *context, uint64_t device,
     const uint8_t *source = NULL;
     size_t source_length = 0;
     if (type == USB_DESC_DEVICE && descriptor_index == 0 && request_type == 0x80u) {
+        if (fail_device_descriptor) return -1;
         source = device_descriptor; source_length = sizeof(device_descriptor);
     } else if (type == USB_DESC_CONFIGURATION && descriptor_index == 0 &&
                request_type == 0x80u) {
@@ -192,6 +195,23 @@ int main(void) {
     assert(strcmp(saved_path, "/sd/usb-debug/usb_1234_5678_ABC123.txt") == 0);
     assert(saved_size == log_length && saved_size > 0);
 
-    puts("USB Debug descriptor capture, HID report read, identifier and SD log path PASS");
+    /* A control-read failure must still leave a VID/PID identifier that can
+     * name a useful failure log, using the host's active-config snapshot. */
+    fail_device_descriptor = true;
+    usb_debug_device_t fallback = {0};
+    assert(!read_device_summary(0x1122334455667788ULL, &fallback));
+    assert(fallback.vid == 0x1234 && fallback.pid == 0x5678);
+    assert(strcmp(fallback.identifier, "usb_1234_5678") == 0);
+    fail_device_descriptor = false;
+
+    /* Never claim an interface from a configuration that is not active. */
+    release_count = 0;
+    last_claim_device = 0;
+    current_configuration_value = 2;
+    assert(build_report(&device));
+    assert(strstr(log_buffer, "HID report descriptor: skipped; configuration is not active"));
+    assert(release_count == 0 && last_claim_device == 0);
+
+    puts("USB Debug descriptor capture, safe HID probing, fallback identifier and SD log path PASS");
     return 0;
 }
