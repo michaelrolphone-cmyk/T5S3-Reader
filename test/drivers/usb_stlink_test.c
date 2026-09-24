@@ -176,7 +176,7 @@ int main(int argc, char **argv) {
     };
     risc_platform_clock_api_v1 clock = {
         RISC_PLATFORM_CLOCK_API_V1, sizeof(risc_platform_clock_api_v1), NULL,
-        monotonic_ms
+        monotonic_ms, NULL
     };
     risc_provider_dependency_v1 deps[2] = {
         {"usb.host", 1, &host},
