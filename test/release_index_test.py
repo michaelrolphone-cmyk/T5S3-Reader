@@ -61,6 +61,11 @@ class ReleaseIndexTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "move clock backwards"):
             update_index(index, "apps", package("apps", "clock", "1.0.0"))
 
+    def test_rejects_index_larger_than_the_on_device_app_limit(self):
+        index = {**self.empty, "apps": [{"id": f"app-{number}"} for number in range(128)]}
+        with self.assertRaisesRegex(ValueError, "128-entry limit"):
+            update_index(index, "apps", package("apps", "clock", "1.0.0"))
+
     def test_rejects_cross_release_asset_url(self):
         record = package("drivers", "usb-host", "0.2.0")
         record["url"] = record["url"].replace("driver-usb-host-v0.2.0", "firmware-v9.9.9")
