@@ -7,7 +7,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -72,6 +71,7 @@ static uint8_t descriptor_buffer[RISC_USB_CONFIG_LIMIT];
 static uint8_t hid_report_buffer[USB_DEBUG_HID_REPORT_LIMIT];
 static uint8_t string_buffer[USB_DEBUG_STRING_BYTES];
 static char log_buffer[USB_DEBUG_LOG_CAPACITY];
+static char format_buffer[256];
 static size_t log_length;
 static bool log_truncated;
 static char status_text[USB_DEBUG_STATUS];
@@ -145,22 +145,28 @@ static void log_reset(void) {
     log_buffer[0] = '\0';
 }
 
-static void log_append(const char *format, ...) {
-    if (log_truncated || log_length >= sizeof(log_buffer) - 1u) return;
-    va_list args;
-    va_start(args, format);
-    const size_t remaining = sizeof(log_buffer) - log_length;
-    int written = vsnprintf(log_buffer + log_length, remaining, format, args);
-    va_end(args);
-    if (written < 0) return;
-    if ((size_t)written >= remaining) {
-        log_length = sizeof(log_buffer) - 1u;
-        log_buffer[log_length] = '\0';
-        log_truncated = true;
+static void log_append_text(const char *text, size_t length, bool source_truncated) {
+    if (!text || !length || log_truncated || log_length >= sizeof(log_buffer) - 1u)
         return;
-    }
-    log_length += (size_t)written;
+    const size_t available = sizeof(log_buffer) - log_length - 1u;
+    const size_t copied = length < available ? length : available;
+    memcpy(log_buffer + log_length, text, copied);
+    log_length += copied;
+    log_buffer[log_length] = '\0';
+    if (source_truncated || copied != length) log_truncated = true;
 }
+
+/* Native apps export snprintf but not vsnprintf. Keep formatting entirely on
+ * the existing app ABI rather than widening firmware symbols for this tool. */
+#define log_append(...) do { \
+    const int _usb_debug_n = snprintf(format_buffer, sizeof(format_buffer), __VA_ARGS__); \
+    if (_usb_debug_n > 0) { \
+        const bool _usb_debug_cut = (size_t)_usb_debug_n >= sizeof(format_buffer); \
+        const size_t _usb_debug_len = _usb_debug_cut ? sizeof(format_buffer) - 1u : \
+                                                     (size_t)_usb_debug_n; \
+        log_append_text(format_buffer, _usb_debug_len, _usb_debug_cut); \
+    } \
+} while (0)
 
 static void log_hex(const uint8_t *bytes, size_t length, const char *prefix) {
     if (!bytes) return;
