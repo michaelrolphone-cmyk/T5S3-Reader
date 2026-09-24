@@ -2,6 +2,27 @@
 
 [PR #96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) on `impl/u1-riscrte` is the **only** implementation PR/branch. `AGENTS.md`, [USB remediation](USB_CONTRACT_VIOLATION_REMEDIATION.md), [execution order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [claim-scoped USB control](U1_USB_CONTROL_SCOPE_IMPLEMENTATION.md) and [package identity](PACKAGE_IDENTITY_VERSION_POLICY.md) govern the work. Owner controls merge, tag, release, flash and hardware qualification. A committed test is not a PASS.
 
+## September 24: repair CI package checks after integration
+
+At `98405e6`, both firmware targets, native applications, physical USB controller,
+I2C ELF, provider ELFs and USB/stream lifecycle tests passed in GitHub Actions.
+The two workflow failures were package checks: legacy catalog assertions survived
+the generic package-manager cutover, and the installed-stack baseline incorrectly
+used `usb-cdc-acm` while this branch still ships `usb-cdc-acm-v2` pending the
+separately tracked identity migration. Corrected the baseline to the actual
+manifest without changing or pretending to complete that migration.
+
+Updated cleanup checks to read the included stream implementation and verify
+exact-grant quarantine/recovery rather than obsolete global graph shutdown.
+Preserved manifest parsing, integrity, installation/rollback and scoped recovery
+checks. Fixed the recovery-count source guard's return type. Package verification
+now prints a traceback and missing baseline IDs instead of an empty assertion.
+
+Validation: the actual 15 CI-built package archives passed CRC/SHA, import,
+relocation/MMIO, dependency and version checks; generic release export passed.
+Driver checks passed through package tests after correction, as did USB package,
+integrity and generic driver-bridge guards. No driver/app payload changed.
+
 ## September 23: repair conflicts with the newer master
 
 The previous backmerge included `6569b81`, but the claim that the PR was current

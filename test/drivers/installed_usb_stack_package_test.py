@@ -6,6 +6,7 @@ from pathlib import Path
 import struct
 import sys
 import tempfile
+import traceback
 import unittest
 from zipfile import ZipFile, ZIP_STORED
 
@@ -26,7 +27,7 @@ BASELINE = {
                              ['i2c.bus', 'platform.clock', 'board.power.bq25896.profile']),
     'usb-controller-esp32s3': ('usb.controller', ['board.power.vbus']),
     'usb-host-v2': ('usb.host', ['usb.controller']),
-    'usb-cdc-acm': ('serial.port', ['usb.host']),
+    'usb-cdc-acm-v2': ('serial.port', ['usb.host']),
     'usb-cp210x-v2': ('serial.port', ['usb.host']),
     'usb-serial-witness': ('serial.port', ['usb.host']),
     'usb-hid': ('usb.hid', ['usb.host']),
@@ -68,7 +69,9 @@ def source_manifests():
         identity = metadata['id']
         assert identity not in manifests, identity
         manifests[identity] = metadata
-    assert manifests and set(BASELINE) <= set(manifests)
+    assert manifests, "No ABI-v2 source manifests found"
+    missing = set(BASELINE) - set(manifests)
+    assert not missing, f"Missing baseline provider IDs: {sorted(missing)}"
     return manifests
 
 
@@ -167,5 +170,6 @@ if __name__ == '__main__':
     try:
         run()
     except (AssertionError, OSError, ValueError, KeyError) as exc:
+        traceback.print_exc()
         print(f'USB stack package verification FAIL: {exc}', file=sys.stderr)
         sys.exit(1)

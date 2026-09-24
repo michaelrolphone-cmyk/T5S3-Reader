@@ -82,7 +82,7 @@ assert 'version == T5_DRIVER_MANAGER_API_VERSION && managerApp()' in legacy
 assert 'using ManagerMutation = RuntimePackages::ScopedPackageMutation;' in legacy
 assert 'std::atomic_flag managerMutation =' not in legacy
 recovery = legacy[legacy.index('bool rebuildRecoveryInventory()'):]
-for name in ('bool recoveryRefresh()', 'bool recoveryCount()', 'bool recoveryGet(',
+for name in ('bool recoveryRefresh()', 'uint32_t recoveryCount()', 'bool recoveryGet(',
              'bool recoveryRetry(', 'bool recoveryDiscard('):
     function = recovery[recovery.index(name):]
     assert 'ManagerMutation mutation;' in function.split('\n}', 1)[0], name
