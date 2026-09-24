@@ -11,8 +11,12 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from build_release_record import build_record
-from update_release_index import update_index, version_tuple
+try:
+    from .build_release_record import build_record
+    from .update_release_index import update_index, version_tuple
+except ImportError:
+    from build_release_record import build_record
+    from update_release_index import update_index, version_tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX_BRANCH = "release-index"
@@ -46,7 +50,9 @@ def discover_candidates(root: Path, index: dict[str, Any]) -> list[dict[str, str
     candidates: list[dict[str, str]] = []
 
     app_catalog = read_json(root / "dist/apps/app-catalog.json")
-    apps = app_catalog.get("apps") if isinstance(app_catalog, dict) else None
+    if not isinstance(app_catalog, dict):
+        raise ValueError("built app catalog is missing or malformed")
+    apps = app_catalog.get("apps")
     if app_catalog.get("schema") != 1 or not isinstance(apps, list):
         raise ValueError("built app catalog is missing or malformed")
     seen_apps = set()
@@ -67,7 +73,9 @@ def discover_candidates(root: Path, index: dict[str, Any]) -> list[dict[str, str
             candidates.append({"product": "apps", "id": identity, "version": version})
 
     driver_catalog = read_json(root / "dist/packages/usb-provider-catalog.json")
-    drivers = driver_catalog.get("packages") if isinstance(driver_catalog, dict) else None
+    if not isinstance(driver_catalog, dict):
+        raise ValueError("built canonical driver catalog is missing or malformed")
+    drivers = driver_catalog.get("packages")
     if driver_catalog.get("schema") != 1 or not isinstance(drivers, list):
         raise ValueError("built canonical driver catalog is missing or malformed")
     seen_drivers = set()
