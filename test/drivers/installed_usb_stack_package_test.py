@@ -28,6 +28,7 @@ EXPECTED = {
     'usb-cp210x-v2': ('serial.port', ['usb.host']),
     'usb-ch34x-v2': ('serial.port', ['usb.host']),
     'usb-ftdi': ('serial.port', ['usb.host']),
+    'usb-stlink': ('debug.vendor.stlink', ['usb.host', 'platform.clock']),
     'usb-hid': ('usb.hid', ['usb.host']),
     'usb-hid-keyboard': ('usb.hid.keyboard', ['usb.hid']),
     'usb-hid-gamepad': ('usb.hid.gamepad', ['usb.hid']),
