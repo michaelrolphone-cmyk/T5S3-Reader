@@ -54,8 +54,8 @@ class DiscoverCandidatesTest(unittest.TestCase):
         self.assertEqual(
             discover_candidates(self.root, index),
             [
-                {"product": "drivers", "id": "new-provider", "version": "1.0.0"},
                 {"product": "apps", "id": "clock", "version": "1.0.2"},
+                {"product": "drivers", "id": "new-provider", "version": "1.0.0"},
             ],
         )
 
