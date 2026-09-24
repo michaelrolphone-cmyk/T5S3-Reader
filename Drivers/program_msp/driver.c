@@ -9,7 +9,6 @@
 #define MSP_FID_GET_JTAG_ID 0x0cu
 #define MSP_FID_READ_MEM_WORDS_XV2 0x3du
 #define MSP_FID_WRITE_FRAM_QUICK_XV2 0x4eu
-#define MSP_FID_RESET_STATIC_GLOBAL_VARS 0x52u
 #define PROGRAM_SESSIONS 2u
 
 typedef struct {
@@ -268,14 +267,6 @@ static uint64_t open_target(void *context, uint64_t requested_device,
     candidate.protocol = protocol;
     candidate.probe_variant = selected->variant;
     candidate.interface_mode = opened_mode;
-
-    uint8_t ignored[16] = {0};
-    if (execute(&candidate, MSP_FID_RESET_STATIC_GLOBAL_VARS,
-                0, 0, ignored, sizeof(ignored), 1000u) < 0) {
-        (void)msp->close(msp->context, transport);
-        set_error("MSP-FET HAL reset failed");
-        return 0;
-    }
 
     uint8_t identity[16] = {0};
     const int32_t id_length = execute(&candidate, MSP_FID_GET_JTAG_ID,
