@@ -48,6 +48,12 @@ The workflow sequence is:
 
 A failed build or release leaves the index unchanged. A failed index update is retryable: rerun the same product request, which verifies the existing release's primary asset digest and fills any missing release assets without overwriting them.
 
+## Bulk app and driver publishing
+
+Run the manual `Publish updated RiscRTE packages` workflow to compare every built app and canonical driver package with its latest entry in `release-index.json`. It creates an individual immutable release for each package whose manifest version is newer, including packages that have not been released before. Packages at the same version or behind their latest release are skipped. Firmware is not built or published by this workflow.
+
+The workflow builds all app manifests and the canonical driver package catalog, validates the full candidate batch and index size before publishing, then publishes candidates sequentially. After each release succeeds, it updates that package's index entry. The workflow runs on the selected branch and shares release serialization with the single-product release workflow.
+
 ## Migration and acceptance
 
 Keep existing combined releases intact as historical assets. During cutover, the readers may support the existing aggregate catalog as a bounded fallback while preferring the new index. Remove that fallback only after the new index and all three readers ship together. Do not rename or duplicate package IDs to create release channels.
