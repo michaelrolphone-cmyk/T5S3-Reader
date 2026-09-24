@@ -23,10 +23,12 @@ concurrency:
 
 jobs:
   request:
-    name: Validate RiscRTE release request
+    name: Validate product release request
     runs-on: ubuntu-latest
     outputs:
       publish: ${{ steps.request.outputs.publish }}
+      product: ${{ steps.request.outputs.product }}
+      id: ${{ steps.request.outputs.id }}
       tag: ${{ steps.request.outputs.tag }}
       ver: ${{ steps.request.outputs.ver }}
       commit_firmware: ${{ steps.request.outputs.commit_firmware }}
@@ -36,7 +38,7 @@ jobs:
           fetch-depth: 0
       - name: Validate request and version
         id: request
-        run: python3 scripts/resolve_release_request.py
+        run: python3 scripts/resolve_product_release.py
 
   release:
     needs: request
@@ -105,7 +107,7 @@ jobs:
           sha256sum "$DST/firmware.bin" "$DST/firmware-merged.bin" "$DST/firmware.elf" \
             | tee "$DST/SHA256SUMS"
 
-      - name: Verify baked RiscRTE version string
+      - name: Verify baked RiscRTE version string\n        if: ${{ needs.request.outputs.product == 'firmware' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -182,7 +184,7 @@ jobs:
           ls -lh "$MERGED" dist/
 
       - name: Commit firmware tree
-        if: ${{ needs.request.outputs.commit_firmware == 'true' }}
+        if: ${{ needs.request.outputs.product == 'firmware' && needs.request.outputs.commit_firmware == 'true' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -205,48 +207,103 @@ jobs:
             git push origin "$TAG"
           fi
 
-      - name: Publish GitHub Release
+      - name: Select assets and prepare release index record
+        shell: bash
+        env:
+          PRODUCT: ${{ needs.request.outputs.product }}
+          PRODUCT_ID: ${{ needs.request.outputs.id }}
+          VERSION: ${{ needs.request.outputs.ver }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/product-release
+          case "$PRODUCT" in
+            firmware)
+              ASSETS=(
+                dist/firmware-t5s3-pro.bin
+                "dist/riscrte_lilygo_t5s3_${VERSION}-app.bin"
+                "dist/riscrte_lilygo_t5s3_${VERSION}.elf"
+                "firmware/riscrte_lilygo_t5s3_${VERSION}.bin"
+              )
+              ;;
+            apps)
+              ASSETS=("dist/apps/${PRODUCT_ID}.elf" "dist/apps/${PRODUCT_ID}.json")
+              ;;
+            drivers)
+              mapfile -d '' ASSETS < <(find dist/release-packages -maxdepth 1 -type f -name "${PRODUCT_ID}--*" -print0 | sort -z)
+              if [[ ${#ASSETS[@]} -eq 0 ]]; then
+                echo "::error::No canonical release package assets found for driver ${PRODUCT_ID}"
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Unsupported product $PRODUCT"
+              exit 1
+              ;;
+          esac
+          for asset in "${ASSETS[@]}"; do
+            if [[ ! -s "$asset" ]]; then
+              echo "::error::Missing selected product asset: $asset"
+              exit 1
+            fi
+          done
+          python3 scripts/build_release_record.py --product "$PRODUCT" --id "$PRODUCT_ID" \
+            --version "$VERSION" --output "$RUNNER_TEMP/record.json"
+          printf '%s\n' "${ASSETS[@]}" > "$RUNNER_TEMP/assets.txt"
+
+      - name: Create immutable product tag
+        shell: bash
+        env:
+          TAG: ${{ needs.request.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists"
+            exit 1
+          fi
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
+
+      - name: Publish only the selected product assets
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.ver.outputs.tag }}
-          VER: ${{ steps.ver.outputs.ver }}
-          MERGED: ${{ steps.ver.outputs.bin }}
+          TAG: ${{ needs.request.outputs.tag }}
+          PRODUCT: ${{ needs.request.outputs.product }}
+          PRODUCT_ID: ${{ needs.request.outputs.id }}
+          VERSION: ${{ needs.request.outputs.ver }}
         run: |
           set -euo pipefail
+          mapfile -t ASSETS < "$RUNNER_TEMP/assets.txt"
+          NOTES="Independent ${PRODUCT} release ${VERSION} for ${PRODUCT_ID:-RiscRTE firmware}. The release contains only the selected product's payload."
+          gh release create "$TAG" "${ASSETS[@]}" --title "$TAG" --notes "$NOTES"
 
-          NOTES="RiscRTE ${VER} firmware for the LilyGo T5S3 E-Paper Pro. firmware-t5s3-pro.bin and riscrte_lilygo_t5s3_${VER}-app.bin are OTA/SD app images (0x10000). riscrte_lilygo_t5s3_${VER}.bin is the merged USB image (0x0) and must not be used for SD/OTA. The matching .elf is a non-flashable debug-symbol image retained for decoding panic backtraces. CrossPoint reader functionality is included as the ebook-reader subsystem of RiscRTE."
-
-          mapfile -d '' APP_ELFS < <(
-            find dist/apps -type f \( -name '*.elf' -o -name '*.json' \) -print0 | sort -z
-          )
-          mapfile -d '' CANONICAL_DRIVER_ASSETS < <(
-            find dist/release-packages -maxdepth 1 -type f -print0 | sort -z
-          )
-
-          ASSETS=(
-            "dist/firmware-t5s3-pro.bin"
-            "dist/riscrte_lilygo_t5s3_${VER}-app.bin"
-            "dist/riscrte_lilygo_t5s3_${VER}.elf"
-            "$MERGED"
-            "${APP_ELFS[@]}"
-            "${CANONICAL_DRIVER_ASSETS[@]}"
-            "dist/drivers/driver-catalog.json"
-            dist/drivers/*.t5driver.zip
-            dist/drivers/*.t5driver.json
-            dist/drivers/*.t5driver.elf
-          )
-
-          echo "RiscRTE release assets:"
-          printf '  %s\n' "${ASSETS[@]}"
-
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" \
-              "${ASSETS[@]}" \
-              --clobber
+      - name: Update release index after successful publication
+        shell: bash
+        env:
+          PRODUCT: ${{ needs.request.outputs.product }}
+        run: |
+          set -euo pipefail
+          cp scripts/update_release_index.py "$RUNNER_TEMP/update_release_index.py"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin release-index >/dev/null 2>&1; then
+            git fetch origin refs/heads/release-index
+            git checkout --detach FETCH_HEAD
+            if [[ ! -s release-index.json ]]; then
+              echo "::error::release-index branch exists but release-index.json is missing"
+              exit 1
+            fi
           else
-            gh release create "$TAG" \
-              "${ASSETS[@]}" \
-              --title "RiscRTE ${VER}" \
-              --notes "$NOTES"
+            git checkout --orphan release-index
+            git rm -rf --ignore-unmatch .
+            printf '{"schema":1,"firmware":null,"apps":[],"drivers":[]}\n' > release-index.json
+          fi
+          python3 "$RUNNER_TEMP/update_release_index.py" --index release-index.json \
+            --record "$RUNNER_TEMP/record.json" --product "$PRODUCT"
+          git add release-index.json
+          if git diff --cached --quiet; then
+            echo "Release index already points at this immutable package"
+          else
+            git commit -m "Publish $PRODUCT release index entry"
+            git push origin HEAD:refs/heads/release-index
           fi
