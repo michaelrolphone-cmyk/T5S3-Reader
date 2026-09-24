@@ -95,7 +95,7 @@ def main() -> None:
                       Path("."))
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
         for key, value in outputs.items():
-            stream.write(f"{key}={value}\\n")
+            stream.write(f"{key}={value}" + chr(10))
     print("Product release request validated." if outputs["publish"] == "true"
           else "Release publishing disabled; validation complete.")
 
