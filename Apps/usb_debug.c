@@ -797,10 +797,10 @@ static bool save_report(const usb_debug_device_t *device) {
     char path[160] = {0};
     snprintf(path, sizeof(path), "/sd/usb-debug/%s.txt", device->identifier);
     if (!storage_api->write_file_atomic(path, log_buffer, log_length)) {
-        snprintf(status_text, sizeof(status_text), "Save failed: %s", path);
+        snprintf(status_text, sizeof(status_text), "Save failed: %.140s", path);
         return false;
     }
-    snprintf(status_text, sizeof(status_text), "Saved %s", path);
+    snprintf(status_text, sizeof(status_text), "Saved %.140s", path);
     return true;
 }
 
