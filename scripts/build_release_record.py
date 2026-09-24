@@ -34,9 +34,16 @@ def build_record(product: str, identity: str, version: str, root: Path) -> dict:
             raise ValueError("built app manifest identity/version does not match the request")
         asset_path = root / "dist/apps" / f"{identity}.elf"
     else:
-        manifest_path = root / "dist/packages" / identity / ".package.json"
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if manifest.get("id") != identity or manifest.get("version") != version:
+        catalog_path = root / "dist/packages/usb-provider-catalog.json"
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        packages = catalog.get("packages")
+        if catalog.get("schema") != 1 or not isinstance(packages, list):
+            raise ValueError("built canonical driver catalog is missing or malformed")
+        matches = [item for item in packages if isinstance(item, dict) and item.get("id") == identity]
+        if len(matches) != 1:
+            raise ValueError(f"expected one built package for driver {identity!r}")
+        manifest = matches[0]
+        if manifest.get("version") != version:
             raise ValueError("built driver manifest identity/version does not match the request")
         asset_path = root / "dist/release-packages" / f"{identity}--driver.elf"
         inventory = manifest.get("files")
