@@ -2,6 +2,7 @@
 """Verify real USB provider packages, including HID classes and ELF pointers."""
 import hashlib
 import json
+import re
 from pathlib import Path
 import struct
 import sys
@@ -27,6 +28,7 @@ EXPECTED = {
     'usb-cp210x-v2': ('serial.port', ['usb.host']),
     'usb-ch34x-v2': ('serial.port', ['usb.host']),
     'usb-ftdi': ('serial.port', ['usb.host']),
+    'usb-stlink': ('debug.vendor.stlink', ['usb.host', 'platform.clock']),
     'usb-hid': ('usb.hid', ['usb.host']),
     'usb-hid-keyboard': ('usb.hid.keyboard', ['usb.hid']),
     'usb-hid-gamepad': ('usb.hid.gamepad', ['usb.hid']),
@@ -124,6 +126,19 @@ def run():
             'provider-abi.v1', 'privileged-imports.v1', '.package.json'}
         available[cap] = 1
     assert observed_ids == set(EXPECTED)
+
+    # The firmware compatibility bridge must probe every installed serial.port
+    # class package. Keep this coupled to the canonical package inventory so a
+    # newly added serial driver cannot be released but remain unreachable by
+    # Serial Monitor.
+    bridge_source = (ROOT / 'src/native/NativeUsbBridge.cpp').read_text(encoding='utf-8')
+    match = re.search(r'const char\* choices\[\]\s*=\s*\{([^}]*)\};', bridge_source)
+    assert match, 'USB serial provider choice table missing'
+    runtime_serial = set(re.findall(r'"([a-z0-9-]+)"', match.group(1)))
+    expected_serial = {identity for identity, (capability, _) in EXPECTED.items()
+                       if capability == 'serial.port'}
+    assert runtime_serial == expected_serial, (runtime_serial, expected_serial)
+
     print(f'{len(EXPECTED)} USB ELF packages: HID dependencies, MMIO, negative mutations, imports, SHA-256 PASS')
 
 
