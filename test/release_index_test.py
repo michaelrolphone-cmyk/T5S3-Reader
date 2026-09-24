@@ -16,6 +16,9 @@ def package(product, package_id, version, digest=SHA):
     prefix = "app" if product == "apps" else "driver"
     tag = f"{prefix}-{package_id}-v{version}"
     asset = f"{package_id}-{version}.rte.zip"
+    manifest = {"id": package_id, "version": version}
+    if product == "apps":
+        manifest = {"file_name": f"{package_id}.elf", "version": version}
     return {
         "id": package_id,
         "version": version,
@@ -24,7 +27,7 @@ def package(product, package_id, version, digest=SHA):
         "url": f"https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/{tag}/{asset}",
         "size": 123,
         "sha256": digest,
-        "manifest": {"id": package_id, "version": version},
+        "manifest": manifest,
     }
 
 
