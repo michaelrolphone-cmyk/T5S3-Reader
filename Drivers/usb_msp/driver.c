@@ -37,6 +37,7 @@
 #define HAL_FID_VERSION 0x00u
 #define HAL_FID_START_JTAG 0x04u
 #define HAL_FID_STOP_JTAG 0x06u
+#define HAL_FID_RESET_STATIC_GLOBAL_VARS 0x52u
 
 #define DISCOVERY_ATTEMPTS 8u
 #define DISCOVERY_DEADLINE_MS 10000u
@@ -55,6 +56,7 @@ typedef struct {
     uint64_t token, device, control_claim, data_claim;
     uint8_t control_iface, data_iface, rx_ep, tx_ep;
     uint8_t ref_id, interface_mode;
+    uint16_t protocol;
     uint8_t rx_buf[FRAME_MAX];
     size_t rx_len;
 } session_slot;
@@ -337,6 +339,28 @@ static bool snapshot_probes(void *context, risc_msp_fet_probe_v1 *out,
     return true;
 }
 
+static uint32_t le32(const uint8_t *p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+static uint16_t parse_protocol(const uint8_t *version, size_t length) {
+    if (!version || length < 4u) return 0u;
+    if (length >= 40u) {
+        const uint16_t sw = (uint16_t)le32(version);
+        const uint8_t major = (uint8_t)((sw >> 14) + 1u);
+        const uint8_t minor = (uint8_t)((sw >> 8) & 0x3fu);
+        return (uint16_t)(((uint16_t)major << 8) | minor);
+    }
+    if (length < 8u) return 0u;
+    return (uint16_t)(((uint16_t)(version[1] >> 6) << 8) |
+                      (uint16_t)(version[1] & 0x3fu));
+}
+
+static uint8_t map_version(uint16_t protocol, uint8_t fid) {
+    return protocol < 0x0300u && fid > 0x11u ? (uint8_t)(fid - 1u) : fid;
+}
+
 static uint32_t remaining_ms(uint64_t deadline) {
     const uint64_t now = clock_api->monotonic_ms(clock_api->context);
     if (now == UINT64_MAX || now >= deadline) return 0u;
@@ -610,15 +634,21 @@ static uint64_t open_probe(void *context, uint64_t device, uint8_t mode) {
     *slot = (session_slot){
         token, device, control_claim, data_claim,
         probe->control_iface, probe->data_iface, probe->rx_ep, probe->tx_ep,
-        0u, RISC_MSP_FET_INTERFACE_NONE, {0}, 0u
+        0u, RISC_MSP_FET_INTERFACE_NONE, 0u, {0}, 0u
     };
 
     uint8_t version[64] = {0};
     const uint8_t version_request = 0u;
-    if (!communication_reset(slot) ||
+    const int32_t version_length = communication_reset(slot) ?
         execute_internal(slot, HAL_FID_VERSION, &version_request,
                          sizeof(version_request), version, sizeof(version),
-                         1000u) < 1 ||
+                         1000u) : -1;
+    slot->protocol = version_length > 0 ?
+        parse_protocol(version, (size_t)version_length) : 0u;
+    uint8_t ignored[8] = {0};
+    if (!slot->protocol ||
+        execute_internal(slot, map_version(slot->protocol, HAL_FID_RESET_STATIC_GLOBAL_VARS),
+                         0, 0, ignored, sizeof(ignored), 1000u) < 0 ||
         !start_target(slot, mode)) {
         if (slot->data_claim != slot->control_claim)
             host->host.release(host->host.context, slot->data_claim);
