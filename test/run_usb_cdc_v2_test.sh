@@ -11,6 +11,9 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/usb_cdc_v2_descriptors_test.c" -ldl -o "$build/cdc-descriptors-test"
 "$build/cdc-descriptors-test" "$build/cdc-v2.so"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/usb_stlink_vcp_test.c" -ldl -o "$build/stlink-vcp-test"
+"$build/stlink-vcp-test" "$build/cdc-v2.so"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/src" \
   -I"$repo/test/drivers/stubs" \
   "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \

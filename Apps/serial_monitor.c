@@ -121,7 +121,7 @@ static t5_serial_result_t displayReadStatus(t5_serial_port_lease_t lease,
         char notice[192];
         if (code == -1240)
             snprintf(notice, sizeof(notice),
-                     "USB device enumerated, but no serial class ELF bound. Check CH34x/CDC/CP210x driver installation (error %ld)",
+                     "USB device enumerated, but no serial class ELF bound. Check CH34x/CDC (including ST-LINK VCP)/CP210x/FTDI driver installation (error %ld)",
                      (long)code);
         else if (code == -1241)
             snprintf(notice, sizeof(notice),
