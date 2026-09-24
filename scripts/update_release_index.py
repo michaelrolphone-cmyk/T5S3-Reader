@@ -17,6 +17,9 @@ VERSION_RE = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 ID_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}\Z")
 ASSET_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,159}\Z")
 SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
+MAX_INDEX_BYTES = 64 * 1024
+MAX_ENTRIES = {"apps": 128, "drivers": 64}
+DRIVER_FILES = {".package.json", "driver.elf", "provider-abi.v1", "privileged-imports.v1"}
 
 
 def version_tuple(value: str) -> tuple[int, int, int]:
