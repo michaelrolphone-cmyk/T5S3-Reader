@@ -172,8 +172,11 @@ static bool parse_configuration(const uint8_t *data, size_t length,
                 if (!mps || mps > 512u || !(ep & 0x0fu) || (ep & 0x70u))
                     return false;
                 if (ep & 0x80u) {
-                    if (rx) return false;
-                    rx = ep; rx_mps = mps;
+                    /* EP1 IN is the ST-LINK command/data response endpoint.
+                     * V2.1/V3 may also expose EP2 IN for SWO trace; ignore it. */
+                    if (!rx || (ep & 0x0fu) == 1u) {
+                        rx = ep; rx_mps = mps;
+                    }
                 } else {
                     if (tx) return false;
                     tx = ep; tx_mps = mps;
@@ -354,24 +357,19 @@ static bool current_mode(session_slot *s, uint8_t *mode) {
 
 static bool exit_mode(session_slot *s, uint8_t mode) {
     uint8_t command[2] = {0};
-    uint8_t response[2] = {0};
-    uint8_t expected = 0;
 
     if (mode == STLINK_DEV_DEBUG_MODE) {
         command[0] = STLINK_DEBUG_COMMAND;
         command[1] = STLINK_DEBUG_EXIT;
-        expected = STLINK_DEBUG_OK;
     } else if (mode == STLINK_DEV_SWIM_MODE) {
         command[0] = STLINK_SWIM_COMMAND;
         command[1] = STLINK_SWIM_EXIT;
-        expected = STLINK_SWIM_OK;
     } else {
         return mode == STLINK_DEV_MASS_MODE;
     }
 
-    const int32_t n = exchange(s, command, sizeof(command), 0, 0,
-                               response, sizeof(response), 1000u);
-    return n >= 1 && (response[0] == expected || response[0] == 0u);
+    /* ST-LINK mode-leave commands have no reply. */
+    return exchange(s, command, sizeof(command), 0, 0, 0, 0, 1000u) == 0;
 }
 
 static bool set_transport_api(void *context, uint64_t token, uint8_t transport) {
@@ -415,9 +413,9 @@ static bool set_transport_api(void *context, uint64_t token, uint8_t transport) 
         }
     } else {
         uint8_t command[2] = {STLINK_SWIM_COMMAND, STLINK_SWIM_ENTER};
-        const int32_t n = exchange(s, command, sizeof(command), 0, 0,
-                                   response, sizeof(response), 1000u);
-        if (n < 1 || response[0] != STLINK_SWIM_OK) return false;
+        /* SWIM enter is also a no-reply command. */
+        if (exchange(s, command, sizeof(command), 0, 0, 0, 0, 1000u) != 0)
+            return false;
     }
 
     s->transport = transport;
