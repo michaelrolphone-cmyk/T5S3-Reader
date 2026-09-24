@@ -8,6 +8,7 @@
 #include <esp_idf_version.h>
 #include <esp_wifi.h>
 #include <ArduinoJson.h>
+#include <cstring>
 #include "network/HttpDownloader.h"
 
 #include "GithubTlsCerts.h"
