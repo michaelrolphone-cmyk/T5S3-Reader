@@ -72,6 +72,14 @@ static bool user_cancelled(void) {
            (event.type == T5_UI_EVENT_BACK || event.type == T5_UI_EVENT_EXIT);
 }
 
+static bool cooperative_cancelled(void) {
+    t5_app_input_t input = {0};
+    if (app->poll && app->poll(&input, 1u) &&
+        (input.exit_requested || (input.buttons & T5_APP_BUTTON_BACK)))
+        return true;
+    return user_cancelled();
+}
+
 static void render_list(void) {
     t5_ui_list_row_t rows[MAX_IMAGES];
     for (uint32_t i = 0; i < image_count; ++i) {
@@ -283,6 +291,10 @@ static bool scan_titxt(t5_stream_t stream, uint32_t *total_bytes) {
     uint32_t address = 0, total = 0;
 
     for (uint32_t tokens = 0; tokens < 2u * MSP_IMAGE_MAX + 1024u; ++tokens) {
+        if ((tokens & 0xffu) == 0u && cooperative_cancelled()) {
+            snprintf(failure_text, sizeof(failure_text), "Programming cancelled");
+            return false;
+        }
         const int rc = next_token(&reader, token);
         if (rc < 0) return false;
         if (!rc) break;
@@ -342,7 +354,8 @@ static bool flush_msp_chunk(const risc_program_msp_api_v1 *msp, uint64_t session
     snprintf(message, sizeof(message), "%u%% | %lu/%lu bytes verified",
              percent, (unsigned long)*done, (unsigned long)total);
     render_status("Programming MSP430FR - do not disconnect", "Write + verify", message);
-    return !user_cancelled() || (snprintf(failure_text, sizeof(failure_text), "Programming cancelled"), false);
+    return !cooperative_cancelled() ||
+           (snprintf(failure_text, sizeof(failure_text), "Programming cancelled"), false);
 }
 
 static bool program_titxt(const risc_program_msp_api_v1 *msp, uint64_t session,
@@ -356,6 +369,10 @@ static bool program_titxt(const risc_program_msp_api_v1 *msp, uint64_t session,
     bool have_address = false;
 
     for (uint32_t tokens = 0; tokens < 2u * MSP_IMAGE_MAX + 1024u; ++tokens) {
+        if ((tokens & 0xffu) == 0u && cooperative_cancelled()) {
+            snprintf(failure_text, sizeof(failure_text), "Programming cancelled");
+            return false;
+        }
         const int rc = next_token(&reader, token);
         if (rc < 0) return false;
         if (!rc) break;
@@ -484,7 +501,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         esp_programmer->struct_size < offsetof(t5_program_esp_rom_api_v1, program) + sizeof(esp_programmer->program) ||
         !esp_programmer->capability_id ||
         strcmp(esp_programmer->capability_id, T5_PROGRAM_ESP_ROM_CAPABILITY) != 0 ||
-        !app->set_back_exits_app || !app->dir_open || !app->dir_next || !app->dir_close ||
+        !app->set_back_exits_app || !app->poll || !app->dir_open || !app->dir_next || !app->dir_close ||
         !ui->render_list || !ui->poll_event || !ui->hit_test || !ui->next_index ||
         !ui->previous_index || !streams->open_file || !streams->read || !streams->seek ||
         !streams->close || !esp_programmer->program) return;
