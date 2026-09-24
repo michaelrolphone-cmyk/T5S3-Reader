@@ -213,17 +213,6 @@ jobs:
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
 
-      - name: Create tag
-        run: |
-          TAG="${{ steps.ver.outputs.tag }}"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists"
-            exit 1
-          else
-            git tag -a "$TAG" -m "RiscRTE $TAG"
-            git push origin "$TAG"
-          fi
-
       - name: Select assets and prepare release index record
         shell: bash
         env:
