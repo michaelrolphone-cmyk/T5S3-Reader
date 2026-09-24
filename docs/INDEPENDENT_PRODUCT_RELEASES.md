@@ -12,13 +12,13 @@ The existing combined release is a migration source only. New releases use immut
 
 | Product | Version authority | Tag format | Release contents |
 | --- | --- | --- | --- |
-| Firmware | `[riscrte] version` in `platformio.ini` | `firmware-v<version>` | Firmware flash/OTA images, matching ELF, checksums, release notes |
-| App | That app's `Apps/<name>.json` stable ID and `version` | `app-<id>-v<version>` | One app's `.elf`, matching `.json` manifest, and checksums |
-| Driver | That driver's package manifest stable ID and `version` | `driver-<id>-v<version>` | One canonical package's driver ELF, package descriptor, provider ABI, privileged import inventory, and checksums |
+| Firmware | `[riscrte] version` in `platformio.ini` | `firmware-v<version>` | Firmware flash/OTA images and matching ELF; the index records size and SHA-256 |
+| App | That app's `Apps/<name>.json` stable ID and `version` | `app-<id>-v<version>` | One app's `.elf` and matching `.json` manifest; the index records size and SHA-256 |
+| Driver | That driver's package manifest stable ID and `version` | `driver-<id>-v<version>` | One canonical package's driver ELF, package descriptor, provider ABI, and privileged import inventory; the index records size and SHA-256 |
 
 App and driver versions continue to use numeric MAJOR.MINOR.PATCH and must increase for every changed distributable package, under the existing version policies. Firmware version changes do not change app or driver versions. Package compatibility requirements such as minimum firmware, driver ABI, architecture, and capability API remain separate fields and are still enforced.
 
-A release tag is immutable. A package ID/version pair cannot be reused with different bytes or metadata. An app or driver release must contain the complete package archive, including its manifest, ELF, and declared resources. Firmware releases contain no app or driver payloads.
+A release tag is immutable. A package ID/version pair cannot be reused with different bytes or metadata. An app release contains its manifest and ELF. A canonical driver release contains the complete four-file package inventory. Any declared app resources must also be included in that app's release. Firmware releases contain no app or driver payloads.
 
 ## Release index
 
@@ -27,7 +27,7 @@ The runtime needs to find the newest release of each product without relying on 
 The index contains:
 
 - the latest firmware tag, version, asset names, sizes, and SHA-256 values;
-- the latest package release for each stable app or driver ID, with kind, package version, compatibility metadata, release tag, archive name, size, and SHA-256;
+- the latest package release for each stable app or driver ID, with kind, package version, compatibility metadata, release tag, asset name, size, and SHA-256;
 - a schema version and bounded entry counts.
 
 The index is a locator. It does not authorize code or hardware access. Installers must pin downloads to the indexed immutable release tag, validate package identity and compatibility, check the declared size and SHA-256, and retain their existing transactional install and rollback behavior.
