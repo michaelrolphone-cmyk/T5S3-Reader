@@ -66,6 +66,8 @@ static const risc_usb_host_diagnostics_v1 *diagnostics_api;
 static t5_provider_capability_lease_t host_lease;
 
 static uint8_t descriptor_buffer[RISC_USB_CONFIG_LIMIT];
+/* HID report reads must not overwrite a configuration descriptor while it is being parsed. */
+static uint8_t hid_report_buffer[USB_DEBUG_HID_REPORT_LIMIT];
 static uint8_t string_buffer[USB_DEBUG_STRING_BYTES];
 static char log_buffer[USB_DEBUG_LOG_CAPACITY];
 static size_t log_length;
@@ -180,7 +182,7 @@ static bool host_get_descriptor(uint64_t token, uint8_t type, uint8_t index,
                                       language, out, capacity,
                                       USB_DEBUG_CONTROL_TIMEOUT_MS);
     if (count < 2 || count > capacity || out[1] != type || out[0] < 2u ||
-        out[0] > (uint8_t)count) return false;
+        (uint16_t)out[0] > (uint16_t)count) return false;
     if (size_out) *size_out = (uint16_t)count;
     return true;
 }
@@ -384,15 +386,18 @@ static void append_hid_report(uint64_t token, uint8_t interface_number,
         log_append("    HID report descriptor: interface busy/unavailable\n");
         return;
     }
-    uint16_t actual = 0;
-    bool ok = host_get_descriptor(token, USB_DESC_REPORT, 0,
-                                  interface_number, descriptor_buffer,
-                                  requested_length, &actual);
-    if (ok) {
-        log_append("    HID report descriptor (%u bytes%s):\n",
-                   (unsigned)actual,
+    /* HID report descriptors are opaque report bytes, not USB descriptor
+     * records: unlike DEVICE/CONFIG/STRING, byte 1 is not descriptor type
+     * 0x22. Issue the standard interface-recipient request directly. */
+    const int32_t actual = host_api->control(
+        host_api->context, token, 0x81u, USB_REQ_GET_DESCRIPTOR,
+        (uint16_t)((uint16_t)USB_DESC_REPORT << 8), interface_number,
+        hid_report_buffer, requested_length, USB_DEBUG_CONTROL_TIMEOUT_MS);
+    if (actual > 0 && actual <= requested_length) {
+        log_append("    HID report descriptor (%ld bytes%s):\n",
+                   (long)actual,
                    actual == USB_DEBUG_HID_REPORT_LIMIT ? ", capped" : "");
-        log_hex(descriptor_buffer, actual, "      ");
+        log_hex(hid_report_buffer, (size_t)actual, "      ");
     } else {
         log_append("    HID report descriptor: read failed\n");
     }
