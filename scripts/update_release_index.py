@@ -64,6 +64,24 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
             manifest_id = manifest.get("id")
         if manifest_id != stable_id:
             raise ValueError("manifest identity must match the release record")
+        if product == "drivers":
+            if (not isinstance(manifest.get("capability"), str) or not manifest["capability"] or
+                    type(manifest.get("api")) is not int or manifest["api"] <= 0):
+                raise ValueError("driver manifest requires a capability and positive API")
+            files = manifest.get("files")
+            if not isinstance(files, list) or len(files) != 4:
+                raise ValueError("driver manifest must list its four package files")
+            inventory = {}
+            for item in files:
+                if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+                    raise ValueError("driver package inventory is malformed")
+                if item["name"] in inventory or type(item.get("size_bytes")) is not int or item["size_bytes"] <= 0:
+                    raise ValueError("driver package inventory has duplicate or invalid files")
+                if not isinstance(item.get("sha256"), str) or not SHA256_RE.fullmatch(item["sha256"]):
+                    raise ValueError("driver package inventory requires SHA-256 digests")
+                inventory[item["name"]] = item
+            if set(inventory) != DRIVER_FILES:
+                raise ValueError("driver package inventory does not match the installable package format")
         expected_tag = f"{expected_prefix}{stable_id}-v{version}"
 
     tag = record["tag"]
@@ -72,6 +90,11 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
     asset = record["asset"]
     if not isinstance(asset, str) or not ASSET_RE.fullmatch(asset) or ".." in asset:
         raise ValueError("asset must be a safe basename")
+    expected_asset = "firmware-t5s3-pro.bin" if product == "firmware" else (
+        f"{stable_id}.elf" if product == "apps" else f"{stable_id}--driver.elf"
+    )
+    if asset != expected_asset:
+        raise ValueError(f"asset must be {expected_asset!r}")
     expected_url = f"https://github.com/{REPOSITORY}/releases/download/{tag}/{asset}"
     if record["url"] != expected_url:
         raise ValueError("url must point to the record's immutable GitHub release asset")
@@ -85,6 +108,17 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
     clean = {key: value for key, value in record.items()}
     clean["kind"] = product[:-1] if product != "firmware" else "firmware"
     return clean
+
+
+def validate_index_budget(index: dict[str, Any]) -> dict[str, Any]:
+    for kind, maximum in MAX_ENTRIES.items():
+        entries = index.get(kind)
+        if not isinstance(entries, list) or len(entries) > maximum:
+            raise ValueError(f"{kind} index exceeds its {maximum}-entry limit")
+    encoded = json.dumps(index, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    if len(encoded) > MAX_INDEX_BYTES:
+        raise ValueError(f"release index exceeds its {MAX_INDEX_BYTES}-byte limit")
+    return index
 
 
 def update_index(index: Any, product: str, record: Any) -> dict[str, Any]:
@@ -110,7 +144,7 @@ def update_index(index: Any, product: str, record: Any) -> dict[str, Any]:
             if new_version == old_version and old != normalized:
                 raise ValueError("firmware version already points to different content")
         result["firmware"] = normalized
-        return result
+        return validate_index_budget(result)
 
     key = "apps" if product == "apps" else "drivers"
     entries = result[key]
@@ -127,7 +161,7 @@ def update_index(index: Any, product: str, record: Any) -> dict[str, Any]:
             raise ValueError(f"{normalized['id']} version already points to different content")
     current[normalized["id"]] = normalized
     result[key] = [current[item] for item in sorted(current)]
-    return result
+    return validate_index_budget(result)
 
 
 def main() -> int:
