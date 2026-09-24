@@ -19,7 +19,9 @@
 #define USB_DEBUG_STATUS 160u
 #define USB_DEBUG_CONTROL_TIMEOUT_MS 100u
 #define USB_DEBUG_HID_REPORT_LIMIT 1024u
+#define USB_REQ_GET_STATUS 0u
 #define USB_REQ_GET_DESCRIPTOR 6u
+#define USB_REQ_GET_CONFIGURATION 8u
 #define USB_DESC_DEVICE 1u
 #define USB_DESC_CONFIGURATION 2u
 #define USB_DESC_STRING 3u
@@ -183,6 +185,20 @@ static bool host_get_descriptor(uint64_t token, uint8_t type, uint8_t index,
                                       USB_DEBUG_CONTROL_TIMEOUT_MS);
     if (count < 2 || count > capacity || out[1] != type || out[0] < 2u ||
         (uint16_t)out[0] > (uint16_t)count) return false;
+    if (size_out) *size_out = (uint16_t)count;
+    return true;
+}
+
+static bool host_control_in(uint64_t token, uint8_t request_type,
+                            uint8_t request, uint16_t value, uint16_t index,
+                            uint8_t *out, uint16_t capacity,
+                            uint16_t *size_out) {
+    if (size_out) *size_out = 0;
+    if (!host_api || !host_api->control || !out || !capacity) return false;
+    const int32_t count = host_api->control(
+        host_api->context, token, request_type, request, value, index,
+        out, capacity, USB_DEBUG_CONTROL_TIMEOUT_MS);
+    if (count < 0 || count > capacity) return false;
     if (size_out) *size_out = (uint16_t)count;
     return true;
 }
@@ -538,13 +554,30 @@ static void append_optional_descriptor(uint64_t token, uint8_t type,
 static void append_string_table(uint64_t token, uint16_t language,
                                 uint8_t *indices, size_t count) {
     log_append("STRING DESCRIPTORS\n");
+    uint16_t language_bytes = 0;
+    if (host_get_descriptor(token, USB_DESC_STRING, 0, 0, string_buffer,
+                            sizeof(string_buffer), &language_bytes)) {
+        log_append("  Languages raw:\n");
+        log_hex(string_buffer, language_bytes, "    ");
+    }
     log_append("  Preferred language: 0x%04X\n", (unsigned)language);
     for (size_t i = 0; i < count; ++i) {
         char value[USB_DEBUG_STRING_TEXT] = {0};
-        if (read_string(token, indices[i], language, value, sizeof(value)))
-            log_append("  [%u] %s\n", (unsigned)indices[i], value);
-        else
+        uint16_t raw_bytes = 0;
+        const bool raw_ok = host_get_descriptor(
+            token, USB_DESC_STRING, indices[i], language,
+            string_buffer, sizeof(string_buffer), &raw_bytes);
+        if (raw_ok) {
+            utf16le_to_utf8(string_buffer, raw_bytes, value, sizeof(value));
+            log_append("  [%u] %s\n", (unsigned)indices[i],
+                       value[0] ? value : "(empty)");
+            log_hex(string_buffer, raw_bytes, "    ");
+        } else if (read_string(token, indices[i], language, value, sizeof(value))) {
+            log_append("  [%u] %s (fallback language)\n",
+                       (unsigned)indices[i], value);
+        } else {
             log_append("  [%u] (unavailable)\n", (unsigned)indices[i]);
+        }
     }
     log_append("\n");
 }
@@ -574,6 +607,36 @@ static bool build_report(const usb_debug_device_t *device) {
         return false;
     }
     append_device_descriptor(device, descriptor_buffer, device_length);
+
+    uint8_t status_bytes[2] = {0};
+    uint16_t status_count = 0;
+    if (host_control_in(device->token, 0x80u, USB_REQ_GET_STATUS, 0, 0,
+                        status_bytes, sizeof(status_bytes), &status_count) &&
+        status_count == sizeof(status_bytes)) {
+        const uint16_t flags = le16(status_bytes);
+        log_append("DEVICE STATUS\n");
+        log_append("  Raw: 0x%04X\n", (unsigned)flags);
+        log_append("  Self powered: %s\n", (flags & 0x0001u) ? "yes" : "no");
+        log_append("  Remote wakeup enabled: %s\n",
+                   (flags & 0x0002u) ? "yes" : "no");
+        log_append("\n");
+    } else {
+        log_append("DEVICE STATUS unavailable\n\n");
+    }
+
+    uint8_t configuration_value = 0;
+    uint16_t configuration_count = 0;
+    if (host_control_in(device->token, 0x80u, USB_REQ_GET_CONFIGURATION, 0, 0,
+                        &configuration_value, 1u, &configuration_count) &&
+        configuration_count == 1u)
+        log_append("CURRENT CONFIGURATION: %u\n\n",
+                   (unsigned)configuration_value);
+    else
+        log_append("CURRENT CONFIGURATION unavailable\n\n");
+
+    log_append("HOST METADATA\n");
+    log_append("  usb.host@1 device token is provider-local and generation-qualified.\n");
+    log_append("  Bus address, negotiated speed and hub path are not exposed by the current usb.host@1 ABI.\n\n");
 
     uint8_t string_indices[32] = {0};
     size_t string_index_count = 0;
