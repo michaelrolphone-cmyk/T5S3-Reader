@@ -291,11 +291,23 @@ static bool read_device_summary(uint64_t token, usb_debug_device_t *device) {
     if (!host_get_descriptor(token, USB_DESC_DEVICE, 0, 0, descriptor_buffer,
                              18u, &count) || count < 18u ||
         descriptor_buffer[0] < 18u) {
+        size_t config_length = sizeof(descriptor_buffer);
+        uint16_t fallback_vid = 0, fallback_pid = 0;
+        if (host_api && host_api->configuration &&
+            host_api->configuration(host_api->context, token, descriptor_buffer,
+                                    &config_length, &fallback_vid, &fallback_pid)) {
+            device->vid = fallback_vid;
+            device->pid = fallback_pid;
+            make_identifier(device);
+            snprintf(device->value, sizeof(device->value), "%04X:%04X",
+                     (unsigned)device->vid, (unsigned)device->pid);
+        } else {
+            snprintf(device->value, sizeof(device->value), "token %08lx",
+                     (unsigned long)(uint32_t)token);
+        }
         snprintf(device->title, sizeof(device->title), "USB device");
         snprintf(device->subtitle, sizeof(device->subtitle),
                  "Device descriptor unavailable");
-        snprintf(device->value, sizeof(device->value), "token %08lx",
-                 (unsigned long)(uint32_t)token);
         return false;
     }
     device->descriptor_ok = true;
@@ -421,6 +433,8 @@ static void append_hid_report(uint64_t token, uint8_t interface_number,
 }
 
 static bool append_configuration(uint64_t token, uint8_t index,
+                                 uint8_t current_configuration,
+                                 bool current_configuration_known,
                                  uint8_t *string_indices,
                                  size_t *string_index_count) {
     size_t length = 0;
@@ -429,8 +443,13 @@ static bool append_configuration(uint64_t token, uint8_t index,
         log_append("CONFIGURATION %u: unavailable\n\n", (unsigned)index);
         return false;
     }
-    log_append("CONFIGURATION %u (%lu bytes)\n", (unsigned)index,
-               (unsigned long)length);
+    const uint8_t configuration_value =
+        length >= 6u ? descriptor_buffer[5] : 0u;
+    const bool active_configuration =
+        current_configuration_known && configuration_value == current_configuration;
+    log_append("CONFIGURATION %u (%lu bytes)%s\n", (unsigned)index,
+               (unsigned long)length,
+               active_configuration ? " [ACTIVE]" : "");
     size_t pos = 0;
     uint8_t current_interface = 0xffu;
     uint8_t current_alternate = 0;
@@ -468,8 +487,11 @@ static bool append_configuration(uint64_t token, uint8_t index,
                                   string_indices, string_index_count);
         } else if (type == USB_DESC_INTERFACE && size >= 9u) {
             if (hid_probe_pending) {
-                append_hid_report(token, current_interface, current_alternate,
-                                  hid_report_length);
+                if (active_configuration)
+                    append_hid_report(token, current_interface, current_alternate,
+                                      hid_report_length);
+                else
+                    log_append("    HID report descriptor: skipped; configuration is not active\n");
                 hid_probe_pending = false;
                 hid_report_length = 0;
             }
@@ -523,9 +545,13 @@ static bool append_configuration(uint64_t token, uint8_t index,
         }
         pos += size;
     }
-    if (hid_probe_pending)
-        append_hid_report(token, current_interface, current_alternate,
-                          hid_report_length);
+    if (hid_probe_pending) {
+        if (active_configuration)
+            append_hid_report(token, current_interface, current_alternate,
+                              hid_report_length);
+        else
+            log_append("    HID report descriptor: skipped; configuration is not active\n");
+    }
     log_append("  Raw configuration bytes:\n");
     log_hex(descriptor_buffer, length, "    ");
     log_append("\n");
@@ -626,9 +652,11 @@ static bool build_report(const usb_debug_device_t *device) {
 
     uint8_t configuration_value = 0;
     uint16_t configuration_count = 0;
-    if (host_control_in(device->token, 0x80u, USB_REQ_GET_CONFIGURATION, 0, 0,
+    const bool current_configuration_known =
+        host_control_in(device->token, 0x80u, USB_REQ_GET_CONFIGURATION, 0, 0,
                         &configuration_value, 1u, &configuration_count) &&
-        configuration_count == 1u)
+        configuration_count == 1u;
+    if (current_configuration_known)
         log_append("CURRENT CONFIGURATION: %u\n\n",
                    (unsigned)configuration_value);
     else
@@ -665,8 +693,10 @@ static bool build_report(const usb_debug_device_t *device) {
     for (uint8_t index = 0;
          index < device->configuration_count && index < 16u && !log_truncated;
          ++index)
-        (void)append_configuration(device->token, index, string_indices,
-                                   &string_index_count);
+        (void)append_configuration(device->token, index,
+                                   configuration_value,
+                                   current_configuration_known,
+                                   string_indices, &string_index_count);
 
     append_optional_descriptor(device->token, USB_DESC_DEVICE_QUALIFIER,
                                "DEVICE QUALIFIER", 10u, 0u);
