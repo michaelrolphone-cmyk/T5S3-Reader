@@ -82,7 +82,8 @@ def resolve(event_name: str, event: dict[str, Any], root: Path) -> dict[str, str
         tag = f"firmware-v{version}"
     else:
         _path, manifest = package_manifest(root, product, identity)
-        if manifest.get("version") != version:
+        manifest_version = manifest.get("version")
+        if manifest_version is not None and manifest_version != version:
             raise ValueError(f"Requested version must match {identity}'s manifest version")
         tag = f"{'app' if product == 'apps' else 'driver'}-{identity}-v{version}"
     return {"publish": "true", "product": product, "id": identity, "tag": tag,
