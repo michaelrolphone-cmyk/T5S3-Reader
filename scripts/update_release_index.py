@@ -53,8 +53,17 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
         manifest = record["manifest"]
         if not isinstance(manifest, dict):
             raise ValueError("manifest must be an object")
-        if manifest.get("id") != stable_id or manifest.get("version") != version:
-            raise ValueError("manifest id and version must match the release record")
+        if manifest.get("version") != version:
+            raise ValueError("manifest version must match the release record")
+        if product == "apps":
+            filename = manifest.get("file_name")
+            if not isinstance(filename, str) or not filename.endswith(".elf"):
+                raise ValueError("app manifest must name its .elf file")
+            manifest_id = filename[:-4]
+        else:
+            manifest_id = manifest.get("id")
+        if manifest_id != stable_id:
+            raise ValueError("manifest identity must match the release record")
         expected_tag = f"{expected_prefix}{stable_id}-v{version}"
 
     tag = record["tag"]
