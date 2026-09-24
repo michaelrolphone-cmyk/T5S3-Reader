@@ -256,6 +256,26 @@ jobs:
             --version "$VERSION" --output "$RUNNER_TEMP/record.json"
           printf '%s\n' "${ASSETS[@]}" > "$RUNNER_TEMP/assets.txt"
 
+      - name: Validate release index update before publication
+        shell: bash
+        env:
+          PRODUCT: ${{ needs.request.outputs.product }}
+        run: |
+          set -euo pipefail
+          INDEX_DIR="$RUNNER_TEMP/index-preflight"
+          mkdir -p "$INDEX_DIR"
+          if git ls-remote --exit-code --heads origin release-index >/dev/null 2>&1; then
+            git fetch origin refs/heads/release-index
+            if ! git show FETCH_HEAD:release-index.json > "$INDEX_DIR/release-index.json"; then
+              echo "::error::release-index branch exists but its JSON index is missing"
+              exit 1
+            fi
+          else
+            printf '{"schema":1,"firmware":null,"apps":[],"drivers":[]}\n' > "$INDEX_DIR/release-index.json"
+          fi
+          python3 scripts/update_release_index.py --index "$INDEX_DIR/release-index.json" \
+            --record "$RUNNER_TEMP/record.json" --product "$PRODUCT"
+
       - name: Publish or verify the immutable product release
         shell: bash
         env:
