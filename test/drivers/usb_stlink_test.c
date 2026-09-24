@@ -7,11 +7,20 @@
 #include <stdio.h>
 #include <string.h>
 
-static const uint8_t config[] = {
+static const uint8_t config_v2[] = {
     9, 2, 32, 0, 1, 1, 0, 0x80, 50,
     9, 4, 0, 0, 2, 0xff, 0xff, 0xff, 0,
     7, 5, 0x81, 2, 64, 0, 0,
     7, 5, 0x02, 2, 64, 0, 0
+};
+/* V2.1/V3 command RX is EP1 IN, command TX is EP1 OUT, and an
+ * additional EP2 IN may carry SWO trace. */
+static const uint8_t config_v21[] = {
+    9, 2, 39, 0, 1, 1, 0, 0x80, 50,
+    9, 4, 0, 0, 3, 0xff, 0xff, 0xff, 0,
+    7, 5, 0x81, 2, 64, 0, 0,
+    7, 5, 0x01, 2, 64, 0, 0,
+    7, 5, 0x82, 2, 64, 0, 0
 };
 
 static uint16_t vendor = 0x0483, product = 0x3748;
@@ -26,9 +35,11 @@ static bool configuration(void *ctx, uint64_t device, uint8_t *data,
                           size_t *length, uint16_t *vid, uint16_t *pid) {
     (void)ctx;
     assert(device == 7 && data && length && vid && pid);
-    if (*length < sizeof(config)) return false;
-    memcpy(data, config, sizeof(config));
-    *length = sizeof(config);
+    const uint8_t *source = product == 0x3748 ? config_v2 : config_v21;
+    const size_t size = product == 0x3748 ? sizeof(config_v2) : sizeof(config_v21);
+    if (*length < size) return false;
+    memcpy(data, source, size);
+    *length = size;
     *vid = vendor;
     *pid = product;
     return true;
@@ -60,11 +71,15 @@ static int32_t control(void *ctx, uint64_t device, uint8_t type, uint8_t request
 static int32_t bulk_write(void *ctx, uint64_t claim_id, uint8_t endpoint,
                           const uint8_t *data, size_t length, uint32_t timeout) {
     (void)ctx;
-    assert(claim_id == 17 && endpoint == 0x02 && data && timeout <= 5000);
+    const uint8_t expected = product == 0x3748 ? 0x02 : 0x01;
+    assert(claim_id == 17 && endpoint == expected && data && timeout <= 5000);
     ++writes;
     if (length == RISC_STLINK_COMMAND_BYTES) {
         memcpy(last_command, data, length);
         last_command_length = length;
+        if (data[0] == 0xf2 && data[1] == 0x21) current_mode = 1;
+        if (data[0] == 0xf4 && data[1] == 0x01) current_mode = 1;
+        if (data[0] == 0xf4 && data[1] == 0x00) current_mode = 3;
     }
     return (int32_t)length;
 }
@@ -80,26 +95,11 @@ static int32_t bulk_read(void *ctx, uint64_t claim_id, uint8_t endpoint,
         data[0] = current_mode;
         return length >= 2 ? 2 : 1;
     }
-    if (last_command[0] == 0xf2 && last_command[1] == 0x21) {
-        current_mode = 1;
-        data[0] = 0x80;
-        return length >= 2 ? 2 : 1;
-    }
     if (last_command[0] == 0xf2 &&
         (last_command[1] == 0x30 || last_command[1] == 0x20)) {
         assert(last_command[2] == 0xa3);
         current_mode = 2;
         data[0] = 0x80;
-        return length >= 2 ? 2 : 1;
-    }
-    if (last_command[0] == 0xf4 && last_command[1] == 0x00) {
-        current_mode = 3;
-        data[0] = 0x00;
-        return length >= 2 ? 2 : 1;
-    }
-    if (last_command[0] == 0xf4 && last_command[1] == 0x01) {
-        current_mode = 1;
-        data[0] = 0x00;
         return length >= 2 ? 2 : 1;
     }
     memset(data, 0xa5, length);
@@ -219,7 +219,7 @@ int main(int argc, char **argv) {
     uint64_t swd = stlink->open(NULL, 7, RISC_STLINK_TRANSPORT_SWD);
     assert(swd && claims == 1 && !driver->quiesce());
     assert(current_mode == 2);
-    assert(writes >= 3 && reads >= 3);
+    assert(writes >= 3 && reads >= 2);
 
     uint8_t command[1] = {0xf7};
     uint8_t response[4] = {0};
@@ -242,6 +242,7 @@ int main(int argc, char **argv) {
     count = 1;
     assert(stlink->snapshot(NULL, &probe, &count) && count == 1);
     assert(probe.variant == RISC_STLINK_VARIANT_V2_1);
+    assert(probe.rx_endpoint == 0x81 && probe.tx_endpoint == 0x01);
     reset_io();
     current_mode = 2;
     uint64_t swim = stlink->open(NULL, 7, RISC_STLINK_TRANSPORT_SWIM);
@@ -261,6 +262,7 @@ int main(int argc, char **argv) {
     count = 1;
     assert(stlink->snapshot(NULL, &probe, &count) && count == 1);
     assert(probe.variant == RISC_STLINK_VARIANT_V3);
+    assert(probe.rx_endpoint == 0x81 && probe.tx_endpoint == 0x01);
 
     /* DFU/bootloader mode is not silently exited because it re-enumerates. */
     reset_io();
