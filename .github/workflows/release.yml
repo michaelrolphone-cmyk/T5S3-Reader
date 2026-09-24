@@ -112,7 +112,8 @@ jobs:
           sha256sum "$DST/firmware.bin" "$DST/firmware-merged.bin" "$DST/firmware.elf" \
             | tee "$DST/SHA256SUMS"
 
-      - name: Verify baked RiscRTE version string\n        if: ${{ needs.request.outputs.product == 'firmware' }}
+      - name: Verify baked RiscRTE version string
+        if: ${{ needs.request.outputs.product == 'firmware' }}
         shell: bash
         run: |
           set -euo pipefail
