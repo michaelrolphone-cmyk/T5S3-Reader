@@ -35,6 +35,7 @@ void HalPowerManager::setPowerSaving(bool enabled) {
       return;
     }
     isLowPower = true;
+    LOG_INF("PWR", "Idle CPU clock: %d MHz", LOW_POWER_FREQ);
   } else if ((!enabled || mode != None) && isLowPower) {
     LOG_DBG("PWR", "Restoring normal CPU frequency");
     if (!setCpuFrequencyMhz(normalFreq)) {

@@ -136,6 +136,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Verify idle clock and USB input-power telemetry
+        run: bash test/run_idle_power_test.sh
+
       - name: Run streaming JSON parser tests
         run: bash test/run_streaming_json_parser_test.sh
 

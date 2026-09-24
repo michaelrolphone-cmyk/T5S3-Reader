@@ -344,7 +344,8 @@ bool readBatteryState(BatteryState* state) {
     const bq25896_err_t configRc = bq25896_read_charge_config(&bq25896, &chargerConfig);
     state->chargerReadOk = BQ25896_SUCCEEDED(statusRc) && BQ25896_SUCCEEDED(adcRc) && BQ25896_SUCCEEDED(configRc);
     if (state->chargerReadOk) {
-      state->vbusConnected = chargerStatus.vbus_good || chargerStatus.power_good;
+      state->vbusConnected = bq25896_has_external_input(
+          chargerConfig.raw_reg03, chargerStatus.raw_reg0b, chargerStatus.raw_reg11);
       state->chargeEnabled = chargerConfig.charge_enabled;
       state->chargerVbusStatus = static_cast<uint8_t>(chargerStatus.vbus_status);
       state->chargerStatus = static_cast<BatteryChargeStatus>(chargerStatus.charge_status);
@@ -479,23 +480,20 @@ bool readBatteryAverageCurrentMa(int16_t* current) {
 }
 
 bool isUsbConnected() {
-  uint8_t systemStatus = 0;
-  if (readBQ25896Reg8(BQ25896_REG_0B, &systemStatus) &&
-      (systemStatus & (BQ25896_REG0B_VBUS_STAT_MASK | BQ25896_REG0B_PG_STAT_MASK)) != 0) {
-    return true;
+  // Legacy UI telemetry, not the installed USB driver's role detector. Our
+  // own boost output used to look like a charger attachment here, causing a
+  // full UI redraw at each empty-host source-off observation. Keep one
+  // coherent, read-only snapshot and retain it through a failed transaction;
+  // an I2C failure or stale gauge current is not a cable edge.
+  ScopedI2CLock lock;
+  static bool connected = false;
+  uint8_t power = 0, status = 0, vbus = 0;
+  if (readBQ25896Reg8(BQ25896_REG_03, &power) &&
+      readBQ25896Reg8(BQ25896_REG_0B, &status) &&
+      readBQ25896Reg8(BQ25896_REG_11, &vbus)) {
+    connected = bq25896_has_external_input(power, status, vbus);
   }
-
-  uint8_t vbusStatus = 0;
-  if (readBQ25896Reg8(BQ25896_REG_11, &vbusStatus) && (vbusStatus & BQ25896_REG11_VBUS_GD_MASK) != 0) {
-    return true;
-  }
-
-  int16_t currentMa = 0;
-  int16_t averageCurrentMa = 0;
-  if (readBatteryAverageCurrentMa(&averageCurrentMa)) {
-    return averageCurrentMa > kBatteryProfile.currentThresholdMa;
-  }
-  return readBatteryCurrentMa(&currentMa) && currentMa > kBatteryProfile.currentThresholdMa;
+  return connected;
 }
 
 bool GT911Touch::writeReg8(uint16_t reg, uint8_t value) {
