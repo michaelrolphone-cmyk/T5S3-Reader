@@ -124,6 +124,11 @@ static bool commit_interface(probe_slot *candidate, uint8_t iface, uint8_t alt,
                              uint16_t rx_mps, uint16_t tx_mps,
                              size_t *count) {
     if (cls != 0xffu || iface == 0xffu || !rx || !tx) return true;
+    /* ST-LINK command responses use bulk EP1 IN. Other vendor interfaces on
+     * composite probes are not the debug transport and must be ignored. */
+    if ((rx & 0x0fu) != 1u ||
+        ((tx & 0x0fu) != 1u && (tx & 0x0fu) != 2u))
+        return true;
     if (!rx_mps || !tx_mps || rx_mps > 512u || tx_mps > 512u) return false;
     ++*count;
     candidate->iface = iface;
