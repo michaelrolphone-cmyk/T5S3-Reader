@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """Build every shipped ELF and publish a compact aggregate app catalog."""
+import argparse
 import json
 import pathlib
 import subprocess
 import sys
 from package_integrity import stamp_app_manifest
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--id", help="Build one stable app ID instead of every app")
+args = parser.parse_args()
+
 repo = pathlib.Path(__file__).resolve().parents[1]
 outputs = set()
 catalog = []
 for source in sorted((repo / 'Apps').rglob('*.c')):
     name = str(source.relative_to(repo / 'Apps').with_suffix('')).replace('/', '__') + '.elf'
+    if args.id and name != args.id + '.elf':
+        continue
     if name in outputs:
         raise SystemExit(f'Duplicate release asset: {name}')
     outputs.add(name)
@@ -29,7 +36,7 @@ for source in sorted((repo / 'Apps').rglob('*.c')):
         raise SystemExit(f'Published ELF digest mismatch for {name}')
     catalog.append(manifest)
 if not outputs:
-    raise SystemExit('No apps found')
+    raise SystemExit(f"No app found for ID {args.id!r}" if args.id else 'No apps found')
 
 catalog.sort(key=lambda item: (item['display_name'].casefold(), item['file_name']))
 encoded = json.dumps({'schema': 1, 'apps': catalog}, separators=(',', ':')) + '\n'
