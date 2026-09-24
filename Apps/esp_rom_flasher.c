@@ -349,7 +349,9 @@ static bool flush_msp_chunk(const risc_program_msp_api_v1 *msp, uint64_t session
     if (msp->verify(msp->context, session, address, data, length) != (int32_t)length)
         return msp_error(msp, "MSP FRAM verification failed");
     *done += (uint32_t)length;
-    const unsigned percent = total ? (unsigned)(((uint64_t)*done * 100u) / total) : 0u;
+    /* MSP_IMAGE_MAX is 1 MiB, so done*100 is bounded well within uint32_t.
+     * Keep this 32-bit so the native ELF does not import Xtensa __divdi3. */
+    const unsigned percent = total ? (unsigned)((*done * 100u) / total) : 0u;
     char message[STATUS_CAP];
     snprintf(message, sizeof(message), "%u%% | %lu/%lu bytes verified",
              percent, (unsigned long)*done, (unsigned long)total);
