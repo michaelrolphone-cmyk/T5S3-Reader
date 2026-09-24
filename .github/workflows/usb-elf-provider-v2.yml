@@ -6,6 +6,7 @@ on:
       - "Drivers/usb_cdc_v2/**"
       - "Drivers/usb_cp210x_v2/**"
       - "Drivers/usb_ch34x_v2/**"
+      - "Drivers/usb_ftdi/**"
       - "Drivers/usb_host_v2/**"
       - "Drivers/usb_controller_esp32s3/**"
       - "Drivers/usb_hid/**"
@@ -42,6 +43,7 @@ on:
       - "scripts/build_usb_cdc_v2.py"
       - "scripts/build_usb_cp210x_v2.py"
       - "scripts/build_usb_ch34x_v2.py"
+      - "scripts/build_usb_ftdi.py"
       - "scripts/build_usb_host_v2.py"
       - "scripts/build_usb_hid*.py"
       - "scripts/build_usb_xinput_gamepad.py"
@@ -59,6 +61,7 @@ on:
       - "test/drivers/usb_cdc_v2*.c"
       - "test/drivers/usb_cp210x_v2*.c"
       - "test/drivers/usb_ch34x_v2*.c"
+      - "test/drivers/usb_ftdi*.c"
       - "test/drivers/usb_host_v2*.c"
       - "test/drivers/usb_hid*.c"
       - "test/drivers/usb_xinput_gamepad_test.c"
@@ -82,6 +85,7 @@ on:
       - "test/run_usb_cdc_v2_test.sh"
       - "test/run_usb_cp210x_v2_test.sh"
       - "test/run_usb_ch34x_v2_test.sh"
+      - "test/run_usb_ftdi_test.sh"
       - "test/run_usb_host_v2_test.sh"
       - "test/run_usb_hid_test.sh"
       - "test/run_board_power_t5s3_v2_test.sh"
@@ -111,6 +115,7 @@ jobs:
           bash test/run_usb_cdc_v2_test.sh
           bash test/run_usb_cp210x_v2_test.sh
           bash test/run_usb_ch34x_v2_test.sh
+          bash test/run_usb_ftdi_test.sh
           bash test/run_usb_host_v2_test.sh
           bash test/run_usb_hid_test.sh
           bash test/run_board_power_t5s3_v2_test.sh
@@ -140,6 +145,8 @@ jobs:
           bash test/run_native_app_test.sh dist/experimental/usb-cp210x-v2/driver.elf
           python scripts/build_usb_ch34x_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-ch34x-v2/driver.elf
+          python scripts/build_usb_ftdi.py
+          bash test/run_native_app_test.sh dist/experimental/usb-ftdi/driver.elf
           python scripts/build_usb_host_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-host-v2/driver.elf
           python scripts/build_usb_hid.py
