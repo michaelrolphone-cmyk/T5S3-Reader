@@ -153,7 +153,7 @@ bool closeClass() {
 // not make chip-specific matching decisions. Probe each installable class by
 // stable package ID, never fall back to a resident hardware implementation.
 bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
-    const char* choices[] = {"usb-ch34x-v2", "usb-cdc-acm-v2", "usb-cp210x-v2"};
+    const char* choices[] = {"usb-ch34x-v2", "usb-cdc-acm-v2", "usb-cp210x-v2", "usb-ftdi"};
     bool foundProvider = false;
     for (const char* id : choices) {
         Lease grant{};
