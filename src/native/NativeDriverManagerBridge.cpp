@@ -30,7 +30,7 @@ namespace {
 constexpr const char* kLatestReleaseApi =
     "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
 constexpr const char* kCanonicalProviderCatalogUrl =
-    "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/latest/download/usb-provider-catalog.json";
+    "https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/release-index/release-index.json";
 constexpr const char* kDriverCatalogUrl =
     "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/latest/download/driver-catalog.json";
 constexpr const char* kLatestReleaseDownloadBase =
@@ -431,27 +431,43 @@ bool loadCanonicalDriverCatalog() {
         json.empty() || json.size() > kMaxDriverCatalogBytes) return false;
     JsonDocument document;
     if (deserializeJson(document, json) || !document.is<JsonObjectConst>() ||
-        document["schema"] != 1 || !document["packages"].is<JsonArrayConst>())
+        document["schema"] != 1 || !document["drivers"].is<JsonArrayConst>())
         return false;
-    const JsonArrayConst entries = document["packages"].as<JsonArrayConst>();
+    const JsonArrayConst entries = document["drivers"].as<JsonArrayConst>();
     if (entries.size() == 0 || entries.size() > kMaxDriverAssets) return false;
     std::vector<CatalogDriver> found;
     found.reserve(entries.size());
     for (JsonVariantConst entry : entries) {
-        if (!entry.is<JsonObjectConst>() || !entry["id"].is<const char*>() ||
-            !entry["version"].is<const char*>() ||
-            !entry["capability"].is<const char*>() ||
-            !entry["api"].is<unsigned>() ||
-            !entry["files"].is<JsonArrayConst>()) return false;
-        const char* id = entry["id"].as<const char*>();
-        const char* version = entry["version"].as<const char*>();
-        const char* capability = entry["capability"].as<const char*>();
+        if (!entry.is<JsonObjectConst>() || !entry["tag"].is<const char*>() ||
+            !entry["manifest"].is<JsonObjectConst>()) return false;
+        const JsonObjectConst manifest = entry["manifest"].as<JsonObjectConst>();
+        if (!manifest["id"].is<const char*>() ||
+            !manifest["version"].is<const char*>() ||
+            !manifest["capability"].is<const char*>() ||
+            !manifest["api"].is<unsigned>() ||
+            !manifest["files"].is<JsonArrayConst>() ||
+            !entry["asset"].is<const char*>() || !entry["url"].is<const char*>())
+            return false;
+        const char* id = manifest["id"].as<const char*>();
+        const char* version = manifest["version"].as<const char*>();
+        const char* capability = manifest["capability"].as<const char*>();
+        const char* tag = entry["tag"].as<const char*>();
+        const char* asset = entry["asset"].as<const char*>();
+        const char* assetUrl = entry["url"].as<const char*>();
         if (!RuntimePackages::safeId(id) || !RuntimePackages::safeVersion(version) ||
             !RuntimePackages::safePackageCapability(capability) ||
-            entry["api"].as<unsigned>() == 0) return false;
+            manifest["api"].as<unsigned>() == 0) return false;
+        const std::string expectedTag = std::string("driver-") + id + "-v" + version;
+        const std::string expectedAsset = std::string(id) + "--driver.elf";
+        const std::string expectedUrl =
+            std::string("https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/") +
+            tag + "/" + asset;
+        if (std::strcmp(tag, expectedTag.c_str()) ||
+            std::strcmp(asset, expectedAsset.c_str()) ||
+            std::strcmp(assetUrl, expectedUrl.c_str())) return false;
         uint32_t parts[3]{};
         if (!RuntimePackages::parsePackageVersion(version, parts)) return false;
-        const JsonArrayConst files = entry["files"].as<JsonArrayConst>();
+        const JsonArrayConst files = manifest["files"].as<JsonArrayConst>();
         if (files.size() != 4) return false;
         bool elf = false, descriptor = false, profile = false, imports = false;
         uint64_t size = 0;
@@ -479,13 +495,17 @@ bool loadCanonicalDriverCatalog() {
         std::snprintf(candidate.info.version, sizeof(candidate.info.version), "%s", version);
         std::snprintf(candidate.info.capability, sizeof(candidate.info.capability), "%s", capability);
         candidate.info.sizeBytes = static_cast<uint32_t>(size);
-        serializeJson(entry, candidate.canonicalMetadata);
+        JsonDocument metadata;
+        if (deserializeJson(metadata, manifest) || !metadata.is<JsonObject>())
+            return false;
+        metadata["tag"] = tag;
+        serializeJson(metadata, candidate.canonicalMetadata);
         if (candidate.canonicalMetadata.empty() || candidate.canonicalMetadata.size() > 8192) return false;
         found.push_back(std::move(candidate));
     }
     catalog.swap(found);
     sortCatalog();
-    LOG_INF("DRVMGR", "Discovered %u canonical hardware-owning driver packages",
+    LOG_INF("DRVMGR", "Discovered %u drivers from the independent release index",
             static_cast<unsigned>(catalog.size()));
     return true;
 }
