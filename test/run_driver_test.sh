@@ -145,6 +145,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -DBOARD_T5S3_PRO \
   "$repo/test/drivers/power_test.cpp" -o "$build/power-test"
 "$build/power-test"
 bash "$repo/test/run_usb_cdc_driver_test.sh"
+bash "$repo/test/run_usb_stlink_test.sh"
 python3 "$repo/test/drivers/package_test.py"
 python3 "$repo/test/drivers/usb_package_test.py"
 python3 "$repo/test/resources/package_integrity_test.py"
