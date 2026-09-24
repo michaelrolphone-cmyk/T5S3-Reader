@@ -1,6 +1,6 @@
 # Independent RiscRTE product releases
 
-**Status:** implementation target for independent RiscRTE delivery. This document defines the release contract; it does not claim that the current release workflow or clients already implement it.
+**Status:** implementation in progress on `feature/independent-product-releases`. The release workflow and index readers are wired for product-scoped tags; validate each product stream before enabling production releases.
 
 ## Goal
 
@@ -13,8 +13,8 @@ The existing combined release is a migration source only. New releases use immut
 | Product | Version authority | Tag format | Release contents |
 | --- | --- | --- | --- |
 | Firmware | `[riscrte] version` in `platformio.ini` | `firmware-v<version>` | Firmware flash/OTA images, matching ELF, checksums, release notes |
-| App | That app's `Apps/<name>.json` stable ID and `version` | `app-<id>-v<version>` | One app's `.rte.zip` and checksums |
-| Driver | That driver's manifest stable ID and `version` | `driver-<id>-v<version>` | One driver's `.rte.zip` and checksums |
+| App | That app's `Apps/<name>.json` stable ID and `version` | `app-<id>-v<version>` | One app's `.elf`, matching `.json` manifest, and checksums |
+| Driver | That driver's package manifest stable ID and `version` | `driver-<id>-v<version>` | One canonical package's driver ELF, package descriptor, provider ABI, privileged import inventory, and checksums |
 
 App and driver versions continue to use numeric MAJOR.MINOR.PATCH and must increase for every changed distributable package, under the existing version policies. Firmware version changes do not change app or driver versions. Package compatibility requirements such as minimum firmware, driver ABI, architecture, and capability API remain separate fields and are still enforced.
 
@@ -36,23 +36,23 @@ The App Store reads only app entries. Driver Manager reads only driver entries. 
 
 ## Release request and build behavior
 
-A release request identifies exactly one product: firmware, one app ID, or one driver ID. Validation checks the requested version against that product's authoritative version and rejects an existing release tag or reused ID/version. Product-specific workflows build and validate only the requested payload and do not stage artifacts from the other product streams.
+A manual `Cut RiscRTE release` workflow request identifies exactly one product (`firmware`, `apps`, or `drivers`), its version, and an app or driver ID when applicable. Validation checks the version against that product's authoritative manifest or firmware configuration. Tags and package versions are immutable. The workflow builds only the selected stream, publishes only the selected package assets, then updates the index.
 
 The workflow sequence is:
 
-1. Validate the product selector, stable ID, version, manifest, compatibility fields, and absence of a conflicting immutable tag/version.
-2. Build the selected payload, run its applicable package/firmware checks, and produce deterministic release assets plus SHA-256/size metadata.
+1. Validate the product selector, stable ID, version, source manifest, compatibility fields, and immutable tag identity.
+2. Build and test the selected product. The driver build validates its provider package set, then selects one stable ID for publication. Produce release assets plus SHA-256/size metadata.
 3. Create the immutable product-scoped GitHub Release.
 4. Atomically update `release-index.json` on `release-index` from the last published index, changing only the selected firmware pointer or package ID entry.
 5. Verify the index points to the created tag and exact asset digest.
 
-A failed build or release leaves the index unchanged. A failed index update is retryable and must not recreate or overwrite the immutable product release.
+A failed build or release leaves the index unchanged. A failed index update is retryable: rerun the same product request, which verifies the existing release's primary asset digest and fills any missing release assets without overwriting them.
 
 ## Migration and acceptance
 
 Keep existing combined releases intact as historical assets. During cutover, the readers may support the existing aggregate catalog as a bounded fallback while preferring the new index. Remove that fallback only after the new index and all three readers ship together. Do not rename or duplicate package IDs to create release channels.
 
-Acceptance requires:
+The release-index updater enforces at most 128 apps, 64 drivers, and 64 KiB total, matching the on-device readers. Acceptance requires:
 
 - publishing a driver updates only its stable ID and index entry; the firmware version and firmware assets do not change;
 - publishing an app updates only its stable ID and index entry; other app/driver versions and firmware do not change;
