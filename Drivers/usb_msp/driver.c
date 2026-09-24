@@ -48,6 +48,7 @@ typedef struct {
     uint64_t device;
     uint16_t vid, pid;
     uint8_t control_iface, data_iface, data_alt, rx_ep, tx_ep, variant;
+    uint8_t has_backchannel;
 } probe_slot;
 
 typedef struct {
@@ -111,6 +112,7 @@ static bool parse_debug_cdc(const uint8_t *data, size_t length, probe_slot *out)
 
     uint8_t first_control = 0xffu;
     uint8_t union_data = 0xffu;
+    uint8_t cdc_control_count = 0u;
 
     for (size_t at = 0; at < length;) {
         if (length - at < 2u) return false;
@@ -120,9 +122,11 @@ static bool parse_debug_cdc(const uint8_t *data, size_t length, probe_slot *out)
 
         if (type == 4u) {
             if (n < 9u) return false;
-            if (first_control == 0xffu && data[at + 3u] == 0u &&
-                data[at + 5u] == 2u && data[at + 6u] == 2u)
-                first_control = data[at + 2u];
+            if (data[at + 3u] == 0u &&
+                data[at + 5u] == 2u && data[at + 6u] == 2u) {
+                if (cdc_control_count != UINT8_MAX) ++cdc_control_count;
+                if (first_control == 0xffu) first_control = data[at + 2u];
+            }
         } else if (type == 0x24u && n == 5u && data[at + 2u] == 6u &&
                    first_control != 0xffu && data[at + 3u] == first_control) {
             union_data = data[at + 4u];
@@ -194,6 +198,7 @@ static bool parse_debug_cdc(const uint8_t *data, size_t length, probe_slot *out)
     out->data_alt = selected_alt;
     out->rx_ep = selected_rx;
     out->tx_ep = selected_tx;
+    out->has_backchannel = cdc_control_count > 1u ? 1u : 0u;
     return true;
 }
 
@@ -325,7 +330,7 @@ static bool snapshot_probes(void *context, risc_msp_fet_probe_v1 *out,
         if (!p->device) continue;
         out[n++] = (risc_msp_fet_probe_v1){
             p->device, p->vid, p->pid, p->control_iface, p->data_iface,
-            p->rx_ep, p->tx_ep, p->variant, 1u, 1u, 1u
+            p->rx_ep, p->tx_ep, p->variant, 1u, 1u, p->has_backchannel
         };
     }
     *capacity = count;
@@ -439,6 +444,10 @@ static int32_t execute_internal(session_slot *s, uint8_t function_id,
         !timeout_ms || timeout_ms > 5000u)
         return -1;
 
+    const uint64_t started = clock_api->monotonic_ms(clock_api->context);
+    if (started == UINT64_MAX || UINT64_MAX - started < timeout_ms) return -1;
+    const uint64_t deadline = started + timeout_ms;
+
     uint8_t payload[RISC_MSP_FET_MAX_REQUEST + 2u] = {0};
     payload[0] = function_id;
     payload[1] = 0u;
@@ -446,8 +455,10 @@ static int32_t execute_internal(session_slot *s, uint8_t function_id,
 
     const uint8_t command_ref = s->ref_id;
     s->ref_id = (uint8_t)((s->ref_id + 1u) & 0x7fu);
-    if (!send_frame(s, HAL_TYPE_EXECUTE, command_ref,
-                    payload, request_length + 2u, timeout_ms))
+    uint32_t remaining = remaining_ms(deadline);
+    if (!remaining ||
+        !send_frame(s, HAL_TYPE_EXECUTE, command_ref,
+                    payload, request_length + 2u, remaining))
         return -1;
 
     size_t total = 0;
@@ -455,7 +466,9 @@ static int32_t execute_internal(session_slot *s, uint8_t function_id,
         uint8_t type = 0, ref = 0;
         uint8_t bytes[FRAME_MAX] = {0};
         size_t length = sizeof(bytes);
-        if (!receive_frame(s, &type, &ref, bytes, &length, timeout_ms))
+        remaining = remaining_ms(deadline);
+        if (!remaining ||
+            !receive_frame(s, &type, &ref, bytes, &length, remaining))
             return -1;
 
         if (type == HAL_TYPE_EXCEPTION) return -2;
@@ -469,7 +482,9 @@ static int32_t execute_internal(session_slot *s, uint8_t function_id,
         if (length) memcpy(response + total, bytes, length);
         total += length;
 
-        if (!send_frame(s, HAL_TYPE_ACK, command_ref, 0, 0, timeout_ms))
+        remaining = remaining_ms(deadline);
+        if (!remaining ||
+            !send_frame(s, HAL_TYPE_ACK, command_ref, 0, 0, remaining))
             return -1;
     }
     return -1;
