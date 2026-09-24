@@ -255,20 +255,7 @@ jobs:
             --version "$VERSION" --output "$RUNNER_TEMP/record.json"
           printf '%s\n' "${ASSETS[@]}" > "$RUNNER_TEMP/assets.txt"
 
-      - name: Create immutable product tag
-        shell: bash
-        env:
-          TAG: ${{ needs.request.outputs.tag }}
-        run: |
-          set -euo pipefail
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "::error::Tag $TAG already exists"
-            exit 1
-          fi
-          git tag -a "$TAG" -m "$TAG"
-          git push origin "$TAG"
-
-      - name: Publish only the selected product assets
+      - name: Publish or verify the immutable product release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -280,7 +267,40 @@ jobs:
           set -euo pipefail
           mapfile -t ASSETS < "$RUNNER_TEMP/assets.txt"
           NOTES="Independent ${PRODUCT} release ${VERSION} for ${PRODUCT_ID:-RiscRTE firmware}. The release contains only the selected product's payload."
-          gh release create "$TAG" "${ASSETS[@]}" --title "$TAG" --notes "$NOTES"
+          if gh release view "$TAG" --json assets >/dev/null 2>&1; then
+            mapfile -t EXISTING < <(gh release view "$TAG" --json assets --jq '.assets[].name')
+            expected_names=()
+            for path in "${ASSETS[@]}"; do expected_names+=("$(basename "$path")"); done
+            for name in "${EXISTING[@]}"; do
+              if [[ ! " ${expected_names[*]} " == *" $name "* ]]; then
+                echo "::error::Existing release $TAG contains an unexpected asset: $name"
+                exit 1
+              fi
+            done
+            MAIN_ASSET="$(jq -r .asset "$RUNNER_TEMP/record.json")"
+            MAIN_SHA="$(jq -r .sha256 "$RUNNER_TEMP/record.json")"
+            mkdir -p "$RUNNER_TEMP/existing-release"
+            if ! printf '%s\n' "${EXISTING[@]}" | grep -Fxq "$MAIN_ASSET"; then
+              echo "::error::Existing release $TAG is missing its indexed asset $MAIN_ASSET"
+              exit 1
+            fi
+            gh release download "$TAG" --pattern "$MAIN_ASSET" --dir "$RUNNER_TEMP/existing-release"
+            ACTUAL_SHA="$(sha256sum "$RUNNER_TEMP/existing-release/$MAIN_ASSET" | awk '{print $1}')"
+            if [[ "$ACTUAL_SHA" != "$MAIN_SHA" ]]; then
+              echo "::error::Existing release $TAG has a different digest for $MAIN_ASSET"
+              exit 1
+            fi
+            missing=()
+            for i in "${!ASSETS[@]}"; do
+              name="$(basename "${ASSETS[$i]}")"
+              if ! printf '%s\n' "${EXISTING[@]}" | grep -Fxq "$name"; then
+                missing+=("${ASSETS[$i]}")
+              fi
+            done
+            if [[ ${#missing[@]} -gt 0 ]]; then gh release upload "$TAG" "${missing[@]}"; fi
+          else
+            gh release create "$TAG" "${ASSETS[@]}" --title "$TAG" --notes "$NOTES"
+          fi
 
       - name: Update release index after successful publication
         shell: bash
