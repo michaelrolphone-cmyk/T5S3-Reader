@@ -45,6 +45,8 @@
 namespace {
 constexpr const char* kLatestReleaseApi =
     "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
+constexpr const char* kReleaseIndexUrl =
+    "https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/release-index/release-index.json";
 constexpr const char* kAggregateAppCatalogName = "app-catalog.json";
 constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr size_t kMaxCatalogAssets = 128;
@@ -54,6 +56,7 @@ struct CatalogAsset {
   std::string name;
   std::string url;
   std::string manifestUrl;
+  std::string manifestJson;
   std::string version;
   uint64_t size = 0;
   t5_app_manifest_t manifest{};
@@ -480,6 +483,67 @@ bool loadCatalogManifests(std::vector<CatalogAsset>& catalog) {
   return true;
 }
 
+bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
+  std::string json;
+  esp_task_wdt_reset();
+  if (!HttpDownloader::fetchUrl(kReleaseIndexUrl, json) ||
+      json.empty() || json.size() > kMaxCatalogBytes) return false;
+  JsonDocument document;
+  if (deserializeJson(document, json) || !document.is<JsonObjectConst>() ||
+      document["schema"] != 1 || !document["apps"].is<JsonArrayConst>()) return false;
+  const JsonArrayConst entries = document["apps"].as<JsonArrayConst>();
+  if (entries.size() == 0 || entries.size() > kMaxCatalogAssets) return false;
+
+  std::vector<CatalogAsset> indexed;
+  indexed.reserve(entries.size());
+  for (JsonVariantConst entry : entries) {
+    esp_task_wdt_reset();
+    if (!entry.is<JsonObjectConst>() || !entry["id"].is<const char*>() ||
+        !entry["version"].is<const char*>() || !entry["tag"].is<const char*>() ||
+        !entry["asset"].is<const char*>() || !entry["url"].is<const char*>() ||
+        !entry["size"].is<uint64_t>() || !entry["sha256"].is<const char*>() ||
+        !entry["manifest"].is<JsonObjectConst>()) return false;
+    CatalogAsset asset;
+    asset.name = entry["asset"].as<const char*>();
+    const char* id = entry["id"].as<const char*>();
+    const char* version = entry["version"].as<const char*>();
+    const char* tag = entry["tag"].as<const char*>();
+    const char* url = entry["url"].as<const char*>();
+    const char* digest = entry["sha256"].as<const char*>();
+    asset.size = entry["size"].as<uint64_t>();
+    if (!safeAssetName(asset.name) || asset.name.size() <= 4 ||
+        asset.name.substr(asset.name.size() - 4) != ".elf" ||
+        !RuntimePackages::validSha256Hex(digest) ||
+        asset.size < 52 || asset.size > 8u * 1024u * 1024u) return false;
+    const std::string expectedId = asset.name.substr(0, asset.name.size() - 4);
+    const std::string expectedTag = std::string("app-") + expectedId + "-v" + version;
+    const std::string expectedUrl = std::string("https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/") +
+        tag + "/" + asset.name;
+    if (std::strcmp(id, expectedId.c_str()) || std::strcmp(tag, expectedTag.c_str()) ||
+        std::strcmp(url, expectedUrl.c_str())) return false;
+    serializeJson(entry["manifest"], asset.manifestJson);
+    std::string parsedVersion;
+    if (asset.manifestJson.empty() || asset.manifestJson.size() > kMaxManifestBytes ||
+        !parseAppManifest(asset.manifestJson, asset.manifest, &parsedVersion, true) ||
+        !asset.manifest.compatible || asset.manifest.file_name != asset.name ||
+        parsedVersion != version) return false;
+    JsonDocument sidecar;
+    if (deserializeJson(sidecar, asset.manifestJson) || !sidecar.is<JsonObjectConst>() ||
+        !sidecar["sha256"].is<const char*>() || !sidecar["size_bytes"].is<uint64_t>() ||
+        sidecar["size_bytes"].as<uint64_t>() != asset.size ||
+        std::strcmp(sidecar["sha256"].as<const char*>(), digest)) return false;
+    asset.version = version;
+    asset.manifestValid = true;
+    if (std::any_of(indexed.begin(), indexed.end(), [&](const CatalogAsset& existing) {
+          return existing.name == asset.name;
+        })) return false;
+    indexed.push_back(std::move(asset));
+  }
+  sortCatalog(indexed);
+  catalog.swap(indexed);
+  return true;
+}
+
 bool connectSavedWifi() {
   if (RuntimeNetwork::ready()) return true;
 
@@ -525,6 +589,12 @@ bool appCatalogRefresh() {
   s->catalog.clear();
   if (!connectSavedWifi()) return false;
 
+  if (loadIndependentAppIndex(s->catalog)) {
+    LOG_INF("APPSTORE", "Loaded %u apps from the independent release index",
+            static_cast<unsigned>(s->catalog.size()));
+    return true;
+  }
+  s->catalog.clear();
   std::string catalogUrl;
   CatalogReleaseStream release(s->catalog, catalogUrl);
   esp_task_wdt_reset();
@@ -637,12 +707,13 @@ bool appCatalogDownload(uint32_t index) {
   const CatalogAsset selected = s->catalog[index];
   if (!safeAssetName(selected.name) ||
       !RuntimePackages::safePackageEntryName(selected.name.c_str()) ||
-      !selected.manifestValid || selected.manifestUrl.empty() ||
+      !selected.manifestValid ||
+      (selected.manifestJson.empty() && selected.manifestUrl.empty()) ||
       selected.size < 52 || selected.size > 8u * 1024u * 1024u) return false;
 
-  std::string json, version;
+  std::string json = selected.manifestJson, version;
   t5_app_manifest_t manifest{};
-  if (!HttpDownloader::fetchUrl(selected.manifestUrl, json) ||
+  if ((json.empty() && !HttpDownloader::fetchUrl(selected.manifestUrl, json)) ||
       json.empty() || json.size() > 4096 ||
       !parseAppManifest(json, manifest, &version, true) ||
       !manifest.compatible || selected.name != manifest.file_name ||
