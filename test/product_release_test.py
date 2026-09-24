@@ -37,6 +37,12 @@ class ProductReleaseTests(unittest.TestCase):
         result = resolve("workflow_dispatch", self.event("drivers", "platform-clock-v1", "2.0.1"), self.root)
         self.assertEqual(result["tag"], "driver-platform-clock-v1-v2.0.1")
 
+    def test_driver_without_source_version_is_checked_against_built_catalog_later(self):
+        (self.root / "Drivers" / "clock" / "manifest.json").write_text(
+            json.dumps({"id": "platform-clock-v1"}))
+        result = resolve("workflow_dispatch", self.event("drivers", "platform-clock-v1", "0.1.0"), self.root)
+        self.assertEqual(result["tag"], "driver-platform-clock-v1-v0.1.0")
+
     def test_rejects_version_that_differs_from_manifest(self):
         (self.root / "Apps" / "clock.json").write_text(
             json.dumps({"file_name": "clock.elf", "version": "1.2.3"}))
