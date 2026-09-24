@@ -300,7 +300,8 @@ jobs:
             done
             if [[ ${#missing[@]} -gt 0 ]]; then gh release upload "$TAG" "${missing[@]}"; fi
           else
-            gh release create "$TAG" "${ASSETS[@]}" --title "$TAG" --notes "$NOTES"
+            TARGET_SHA="$(git rev-parse HEAD)"
+            gh release create "$TAG" "${ASSETS[@]}" --title "$TAG" --notes "$NOTES" --target "$TARGET_SHA"
           fi
 
       - name: Update release index after successful publication
