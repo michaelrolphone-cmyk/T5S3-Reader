@@ -459,6 +459,9 @@ static int32_t execute_internal(session_slot *s, uint8_t function_id,
             return -1;
 
         if (type == HAL_TYPE_EXCEPTION) return -2;
+        /* DATA continuation uses the high bit of ref; the low seven bits must
+         * still identify the command we issued. Never accept a stale reply. */
+        if ((ref & 0x7fu) != command_ref) return -1;
         if (type == HAL_TYPE_ACK) return (int32_t)total;
         if (type != HAL_TYPE_DATA) return -1;
 
