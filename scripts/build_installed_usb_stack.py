@@ -34,6 +34,7 @@ DRIVERS = (
     ('usb-ch34x-v2', 'usb_ch34x_v2', 'usb-ch34x-v2', 'driver.elf'),
     ('usb-ftdi', 'usb_ftdi', 'usb-ftdi', 'driver.elf'),
     ('usb-stlink', 'usb_stlink', 'usb-stlink', 'driver.elf'),
+    ('usb-msp', 'usb_msp', 'usb-msp', 'driver.elf'),
     ('usb-hid', 'usb_hid', 'usb-hid', 'driver.elf'),
     ('usb-hid-keyboard', 'usb_hid_keyboard', 'usb-hid-keyboard', 'driver.elf'),
     ('usb-hid-gamepad', 'usb_hid_gamepad', 'usb-hid-gamepad', 'driver.elf'),
