@@ -6,9 +6,23 @@
 #include <string.h>
 
 #define MSP_FID_VERSION 0x00u
+#define MSP_FID_CONFIGURE 0x07u
 #define MSP_FID_GET_JTAG_ID 0x0cu
+#define MSP_FID_SJ_ASSERT_POR_SC_XV2 0x3au
+#define MSP_FID_RC_RELEASE_JTAG_XV2 0x3cu
 #define MSP_FID_READ_MEM_WORDS_XV2 0x3du
+#define MSP_FID_IS_JTAG_FUSE_BLOWN 0x4cu
 #define MSP_FID_WRITE_FRAM_QUICK_XV2 0x4eu
+
+#define MSP_CFG_ENHANCED_PSA 0x01u
+#define MSP_CFG_PSA_TCKL_HIGH 0x02u
+#define MSP_CFG_DEFAULT_CLK_CONTROL 0x03u
+#define MSP_CFG_POWER_TESTREG_MASK 0x04u
+#define MSP_CFG_POWER_TESTREG3V_MASK 0x07u
+#define MSP_CFG_CLK_CONTROL_TYPE 0x0au
+#define MSP_CFG_SFLLDEH 0x0cu
+#define MSP_CFG_NO_BSL 0x0du
+#define MSP_CFG_ALT_ROM_ADDR_FOR_CPU_READ 0x0eu
 #define PROGRAM_SESSIONS 2u
 
 typedef struct {
@@ -19,6 +33,10 @@ typedef struct {
     uint8_t probe_variant;
     uint8_t interface_mode;
     uint8_t jtag_id;
+    uint8_t wdtctl;
+    uint16_t sr;
+    uint32_t pc;
+    bool synced;
 } program_session;
 
 static const risc_msp_fet_api_v1 *msp;
@@ -39,9 +57,15 @@ static void set_error(const char *text) {
     error_text[i] = 0;
 }
 
+static uint16_t le16(const uint8_t *p) {
+    return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+}
 static uint32_t le32(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
            ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+static void put16(uint8_t *p, uint16_t value) {
+    p[0] = (uint8_t)value; p[1] = (uint8_t)(value >> 8);
 }
 static void put32(uint8_t *p, uint32_t value) {
     p[0] = (uint8_t)value; p[1] = (uint8_t)(value >> 8);
@@ -81,6 +105,96 @@ static int32_t execute(program_session *s, uint8_t fid,
     return msp->execute(msp->context, s->transport, map_version(s, fid),
                         request, request_length, response, response_capacity,
                         timeout_ms);
+}
+
+static bool configure_param(program_session *s, uint8_t parameter,
+                            uint32_t value, bool required) {
+    uint8_t request[8] = {0};
+    request[0] = parameter;
+    put32(request + 4u, value);
+    uint8_t response[8] = {0};
+    const int32_t rc = execute(s, MSP_FID_CONFIGURE, request, sizeof(request),
+                               response, sizeof(response), 1000u);
+    if (rc < 0 && required) {
+        set_error("MSP-FET target configuration failed");
+        return false;
+    }
+    return rc >= 0 || !required;
+}
+
+static bool configure_target(program_session *s) {
+    return configure_param(s, MSP_CFG_CLK_CONTROL_TYPE, 0u, true) &&
+           configure_param(s, MSP_CFG_SFLLDEH, 0u, true) &&
+           configure_param(s, MSP_CFG_DEFAULT_CLK_CONTROL, 0x040fu, true) &&
+           configure_param(s, MSP_CFG_ENHANCED_PSA, 0u, true) &&
+           configure_param(s, MSP_CFG_PSA_TCKL_HIGH, 0u, true) &&
+           configure_param(s, MSP_CFG_POWER_TESTREG_MASK, 0u, true) &&
+           configure_param(s, MSP_CFG_POWER_TESTREG3V_MASK, 0u, true) &&
+           configure_param(s, MSP_CFG_ALT_ROM_ADDR_FOR_CPU_READ, 0u, true) &&
+           configure_param(s, MSP_CFG_NO_BSL, 0u, false);
+}
+
+static bool check_fuse(program_session *s) {
+    uint8_t response[8] = {0};
+    const int32_t rc = execute(s, MSP_FID_IS_JTAG_FUSE_BLOWN,
+                               0, 0, response, sizeof(response), 1000u);
+    if (rc < 0) {
+        set_error("MSP-FET JTAG fuse check failed");
+        return false;
+    }
+    if (rc >= 2 && response[0] == 0x55u && response[1] == 0x55u) {
+        set_error("MSP target JTAG fuse is blown");
+        return false;
+    }
+    return true;
+}
+
+static bool sync_target(program_session *s) {
+    if (!s || (s->jtag_id != 0x91u && s->jtag_id != 0x95u && s->jtag_id != 0x99u))
+        return false;
+    uint8_t request[21] = {0};
+    request[0] = 0x5cu; /* WDTCTL address low byte (0x015c) */
+    request[1] = 0x01u;
+    request[2] = 0x80u; /* WDTHOLD */
+    request[3] = 0x5au; /* WDTPW */
+    request[4] = s->jtag_id;
+    request[5] = 1u;
+    request[15] = 40u;
+
+    uint8_t response[16] = {0};
+    const int32_t rc = execute(s, MSP_FID_SJ_ASSERT_POR_SC_XV2,
+                               request, sizeof(request),
+                               response, sizeof(response), 1500u);
+    if (rc < 8) {
+        set_error("MSP target POR/synchronization failed");
+        return false;
+    }
+    s->wdtctl = response[0];
+    s->pc = le32(response + 2u);
+    s->sr = le16(response + 6u);
+    s->synced = true;
+    return true;
+}
+
+static bool release_target(program_session *s) {
+    if (!s || !s->synced) return false;
+    uint8_t request[18] = {0};
+    request[0] = 0x5cu;
+    request[1] = 0x01u;
+    request[2] = s->wdtctl;
+    request[3] = 0x5au;
+    put32(request + 4u, s->pc);
+    put16(request + 8u, s->sr);
+    request[10] = 7u;
+    request[14] = 1u;
+    uint8_t response[8] = {0};
+    if (execute(s, MSP_FID_RC_RELEASE_JTAG_XV2,
+                request, sizeof(request), response, sizeof(response), 1500u) < 0) {
+        set_error("MSP target context release failed");
+        return false;
+    }
+    s->synced = false;
+    return true;
 }
 
 static bool read_words(program_session *s, uint32_t address,
@@ -175,6 +289,10 @@ static bool close_session(void *context, uint64_t token) {
     (void)context;
     program_session *s = lookup(token);
     if (!s) return false;
+
+    /* Assert POR again after programming, then release that reset context so
+     * the target runs the newly written firmware instead of remaining halted. */
+    if (!sync_target(s) || !release_target(s)) return false;
     if (!msp->close(msp->context, s->transport)) {
         set_error("MSP-FET did not quiesce");
         return false;
@@ -282,11 +400,16 @@ static uint64_t open_target(void *context, uint64_t requested_device,
         set_error("MSP target is not an XV2 device supported by the FRAM programmer");
         return 0;
     }
+    candidate.jtag_id = jtag_id;
+    if (!configure_target(&candidate) || !check_fuse(&candidate) ||
+        !sync_target(&candidate)) {
+        (void)msp->close(msp->context, transport);
+        return 0;
+    }
 
     uint64_t token = ++serial;
     if (!token) token = ++serial;
     candidate.token = token;
-    candidate.jtag_id = jtag_id;
     *slot = candidate;
 
     target->probe_device = candidate.probe_device;
