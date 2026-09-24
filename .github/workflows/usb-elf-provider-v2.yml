@@ -8,6 +8,7 @@ on:
       - "Drivers/usb_ch34x_v2/**"
       - "Drivers/usb_ftdi/**"
       - "Drivers/usb_stlink/**"
+      - "Drivers/usb_msp/**"
       - "Drivers/usb_host_v2/**"
       - "Drivers/usb_controller_esp32s3/**"
       - "Drivers/usb_hid/**"
@@ -23,6 +24,7 @@ on:
       - "sdk/driver/RiscUsbProviderV1.h"
       - "sdk/driver/RiscUsbControllerV1.h"
       - "sdk/driver/RiscStlinkV1.h"
+      - "sdk/driver/RiscMspFetV1.h"
       - "sdk/driver/RiscUsbInterruptV1.h"
       - "sdk/driver/RiscUsbHidV1.h"
       - "sdk/driver/RiscUsbGamepadDiagnosticsV1.h"
@@ -47,6 +49,7 @@ on:
       - "scripts/build_usb_ch34x_v2.py"
       - "scripts/build_usb_ftdi.py"
       - "scripts/build_usb_stlink.py"
+      - "scripts/build_usb_msp.py"
       - "scripts/build_usb_host_v2.py"
       - "scripts/build_usb_hid*.py"
       - "scripts/build_usb_xinput_gamepad.py"
@@ -66,6 +69,7 @@ on:
       - "test/drivers/usb_ch34x_v2*.c"
       - "test/drivers/usb_ftdi*.c"
       - "test/drivers/usb_stlink*.c"
+      - "test/drivers/usb_msp*.c"
       - "test/drivers/usb_host_v2*.c"
       - "test/drivers/usb_hid*.c"
       - "test/drivers/usb_xinput_gamepad_test.c"
@@ -91,6 +95,7 @@ on:
       - "test/run_usb_ch34x_v2_test.sh"
       - "test/run_usb_ftdi_test.sh"
       - "test/run_usb_stlink_test.sh"
+      - "test/run_usb_msp_test.sh"
       - "test/run_usb_host_v2_test.sh"
       - "test/run_usb_hid_test.sh"
       - "test/run_board_power_t5s3_v2_test.sh"
@@ -122,6 +127,7 @@ jobs:
           bash test/run_usb_ch34x_v2_test.sh
           bash test/run_usb_ftdi_test.sh
           bash test/run_usb_stlink_test.sh
+          bash test/run_usb_msp_test.sh
           bash test/run_usb_host_v2_test.sh
           bash test/run_usb_hid_test.sh
           bash test/run_board_power_t5s3_v2_test.sh
@@ -155,6 +161,8 @@ jobs:
           bash test/run_native_app_test.sh dist/experimental/usb-ftdi/driver.elf
           python scripts/build_usb_stlink.py
           bash test/run_native_app_test.sh dist/experimental/usb-stlink/driver.elf
+          python scripts/build_usb_msp.py
+          bash test/run_native_app_test.sh dist/experimental/usb-msp/driver.elf
           python scripts/build_usb_host_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-host-v2/driver.elf
           python scripts/build_usb_hid.py
