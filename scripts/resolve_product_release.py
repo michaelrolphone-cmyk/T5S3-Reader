@@ -10,8 +10,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-VERSION_RE = re.compile("(0|[1-9][0-9]*)\\\\.(0|[1-9][0-9]*)\\\\.(0|[1-9][0-9]*)\\\\Z")
-ID_RE = re.compile("[a-z0-9][a-z0-9._-]{0,63}\\\\Z")
+VERSION_RE = re.compile("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\Z")
+ID_RE = re.compile("[a-z0-9][a-z0-9._-]{0,63}\\Z")
 
 
 def package_manifest(root: Path, product: str, identity: str) -> tuple[Path, dict[str, Any]]:
