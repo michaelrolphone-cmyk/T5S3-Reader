@@ -57,6 +57,9 @@ jobs:
           python scripts/build_usb_cdc_v2.py
           python scripts/build_usb_cp210x_v2.py
           python scripts/build_usb_ch34x_v2.py
+          python scripts/build_usb_ftdi.py
+          python scripts/build_usb_stlink.py
+          python scripts/build_usb_msp.py
           python scripts/build_usb_hid.py
           python scripts/build_usb_hid_keyboard.py
           python scripts/build_usb_hid_gamepad.py
