@@ -1,0 +1,8 @@
+{
+  "min_firmware_version": "1.2.67",
+  "version": "0.1.0",
+  "display_name": "USB Debug",
+  "file_name": "usb_debug.elf",
+  "icon": "solid:f287",
+  "optional": [{"capability": "usb.host", "api": ">=1"}]
+}
