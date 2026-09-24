@@ -1,4 +1,5 @@
 #include "RiscStlinkV1.h"
+#include "RiscPlatformClockV1.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -47,6 +48,8 @@
 #define STLINK_DEBUG_OK 0x80u
 #define STLINK_SWIM_OK 0x00u
 #define STLINK_TIMEOUT_MAX_MS 5000u
+#define DISCOVERY_ATTEMPTS 8u
+#define DISCOVERY_DEADLINE_MS 10000u
 
 typedef struct {
     uint64_t device;
@@ -59,9 +62,17 @@ typedef struct {
     uint8_t transport, rx_ep, tx_ep;
 } session_slot;
 
+typedef struct {
+    uint64_t device, begun_ms, attempted_ms;
+    uint8_t attempts;
+    bool done;
+} inspected_slot;
+
 static const risc_usb_host_discovery_v1 *host;
+static const risc_platform_clock_api_v1 *clock_api;
 static probe_slot probes[RISC_STLINK_MAX_PROBES];
 static session_slot sessions[RISC_STLINK_MAX_PROBES];
+static inspected_slot inspected[RISC_USB_HOST_MAX_DEVICES];
 static uint64_t serial;
 
 static bool equal(const char *a, const char *b) {
@@ -182,7 +193,7 @@ static bool parse_configuration(const uint8_t *data, size_t length,
 
 static bool poll_probes(void *context, size_t max_events) {
     (void)context;
-    if (!host || !max_events || max_events > 16u) return false;
+    if (!host || !clock_api || !max_events || max_events > 16u) return false;
 
     size_t processed = 0;
     if (!host->poll(host->host.context, max_events, &processed)) return false;
@@ -196,16 +207,46 @@ static bool poll_probes(void *context, size_t max_events) {
     for (size_t i = 0; i < RISC_STLINK_MAX_PROBES; ++i)
         if (probes[i].device && !present(devices, count, probes[i].device))
             probes[i] = (probe_slot){0};
+    for (size_t i = 0; i < RISC_USB_HOST_MAX_DEVICES; ++i)
+        if (inspected[i].device && !present(devices, count, inspected[i].device))
+            inspected[i] = (inspected_slot){0};
 
-    size_t inspected = 0;
-    for (size_t i = 0; i < count && inspected < max_events; ++i) {
+    const uint64_t now = clock_api->monotonic_ms(clock_api->context);
+    if (now == UINT64_MAX) return false;
+
+    size_t work = 0;
+    for (size_t i = 0; i < count && work < max_events; ++i) {
         if (probe_for(devices[i])) continue;
-        ++inspected;
 
-        probe_slot *slot = 0;
-        for (size_t j = 0; j < RISC_STLINK_MAX_PROBES; ++j)
-            if (!probes[j].device) { slot = &probes[j]; break; }
-        if (!slot) break;
+        inspected_slot *state = 0, *empty = 0;
+        for (size_t j = 0; j < RISC_USB_HOST_MAX_DEVICES; ++j) {
+            if (inspected[j].device == devices[i]) state = &inspected[j];
+            if (!inspected[j].device && !empty) empty = &inspected[j];
+        }
+        if (!state) {
+            if (!empty) continue;
+            state = empty;
+            *state = (inspected_slot){.device = devices[i], .begun_ms = now};
+        }
+        if (state->done) continue;
+        if (state->attempts >= DISCOVERY_ATTEMPTS ||
+            (state->attempts && now - state->begun_ms >= DISCOVERY_DEADLINE_MS)) {
+            state->done = true;
+            continue;
+        }
+        if (state->attempts) {
+            if (now < state->attempted_ms) {
+                state->done = true;
+                continue;
+            }
+            uint32_t delay_ms = 100u << (state->attempts - 1u);
+            if (delay_ms > 2000u) delay_ms = 2000u;
+            if (now - state->attempted_ms < delay_ms) continue;
+        }
+
+        ++work;
+        state->attempted_ms = now;
+        ++state->attempts;
 
         uint8_t config[RISC_USB_CONFIG_LIMIT];
         size_t length = sizeof(config);
@@ -213,11 +254,19 @@ static bool poll_probes(void *context, size_t max_events) {
         if (!host->host.configuration(host->host.context, devices[i],
                                       config, &length, &vid, &pid))
             continue;
+
+        state->done = true;
         const uint8_t variant = variant_for_pid(vid, pid);
         if (!variant) continue;
 
         probe_slot candidate = {0};
         if (!parse_configuration(config, length, &candidate)) continue;
+
+        probe_slot *slot = 0;
+        for (size_t j = 0; j < RISC_STLINK_MAX_PROBES; ++j)
+            if (!probes[j].device) { slot = &probes[j]; break; }
+        if (!slot) continue;
+
         candidate.device = devices[i];
         candidate.vid = vid;
         candidate.pid = pid;
@@ -427,21 +476,32 @@ static bool close_probe(void *context, uint64_t token) {
 }
 
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
-    if (host || !deps || count != 1 ||
-        !equal(deps[0].capability_id, "usb.host") ||
-        deps[0].api_version != RISC_USB_HOST_API_V1 || !deps[0].api)
+    if (host || clock_api || !deps || count != 2) return false;
+
+    const risc_usb_host_discovery_v1 *usb = 0;
+    const risc_platform_clock_api_v1 *clock = 0;
+    for (size_t i = 0; i < count; ++i) {
+        if (equal(deps[i].capability_id, "usb.host") &&
+            deps[i].api_version == RISC_USB_HOST_API_V1 && !usb)
+            usb = (const risc_usb_host_discovery_v1 *)deps[i].api;
+        else if (equal(deps[i].capability_id, "platform.clock") &&
+                 deps[i].api_version == RISC_PLATFORM_CLOCK_API_V1 && !clock)
+            clock = (const risc_platform_clock_api_v1 *)deps[i].api;
+        else
+            return false;
+    }
+
+    if (!usb || usb->host.api_version != RISC_USB_HOST_API_V1 ||
+        usb->host.struct_size < sizeof(*usb) ||
+        !usb->host.configuration || !usb->host.claim || !usb->host.release ||
+        !usb->host.bulk_read || !usb->host.bulk_write ||
+        !usb->poll || !usb->devices ||
+        !clock || clock->api_version != RISC_PLATFORM_CLOCK_API_V1 ||
+        clock->struct_size < sizeof(*clock) || !clock->monotonic_ms)
         return false;
 
-    const risc_usb_host_discovery_v1 *api =
-        (const risc_usb_host_discovery_v1 *)deps[0].api;
-    if (api->host.api_version != RISC_USB_HOST_API_V1 ||
-        api->host.struct_size < sizeof(*api) ||
-        !api->host.configuration || !api->host.claim || !api->host.release ||
-        !api->host.bulk_read || !api->host.bulk_write ||
-        !api->poll || !api->devices)
-        return false;
-
-    host = api;
+    host = usb;
+    clock_api = clock;
     return true;
 }
 
@@ -454,7 +514,9 @@ static bool quiesce(void) {
 static void stop(void) {
     if (!quiesce()) return;
     host = 0;
+    clock_api = 0;
     memset(probes, 0, sizeof(probes));
+    memset(inspected, 0, sizeof(inspected));
 }
 
 static const risc_stlink_api_v1 capability = {
