@@ -50,6 +50,8 @@ constexpr const char* kReleaseIndexUrl =
 constexpr const char* kAggregateAppCatalogName = "app-catalog.json";
 constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr size_t kMaxCatalogAssets = 128;
+constexpr size_t kMaxCatalogBytes = 64 * 1024;
+constexpr size_t kMaxManifestBytes = 8 * 1024;
 constexpr size_t kMaxReleaseAssetObjectBytes = 8192;
 
 struct CatalogAsset {
