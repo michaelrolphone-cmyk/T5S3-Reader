@@ -1,24 +1,29 @@
 name: Cut RiscRTE release
 
 on:
-  push:
-    branches: [master]
-    paths: ['.github/release-request.json']
   workflow_dispatch:
     inputs:
-      tag:
-        description: RiscRTE tag to create
+      product:
+        description: Product stream to release
+        type: choice
+        options: [firmware, apps, drivers]
+        required: true
+      id:
+        description: Stable app or driver ID (leave empty for firmware)
+        required: false
+      version:
+        description: Product version (MAJOR.MINOR.PATCH)
         required: true
       commit_firmware:
-        description: Commit merged bin into firmware/
+        description: Commit merged image into the selected branch
         type: boolean
-        default: true
+        default: false
 
 permissions:
   contents: write
 
 concurrency:
-  group: cut-riscrte-release
+  group: independent-riscrte-product-release
   cancel-in-progress: false
 
 jobs:
@@ -43,7 +48,7 @@ jobs:
   release:
     needs: request
     if: ${{ needs.request.outputs.publish == 'true' }}
-    name: Build and publish RiscRTE
+    name: Build and publish selected product
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
