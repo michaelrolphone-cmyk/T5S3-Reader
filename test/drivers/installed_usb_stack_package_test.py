@@ -131,7 +131,7 @@ def run():
     # newly added serial driver cannot be released but remain unreachable by
     # Serial Monitor.
     bridge_source = (ROOT / 'src/native/NativeUsbBridge.cpp').read_text(encoding='utf-8')
-    match = re.search(r'const char\\* choices\\[\\]\\s*=\\s*\\{([^}]*)\\};', bridge_source)
+    match = re.search(r'const char\* choices\[\]\s*=\s*\{([^}]*)\};', bridge_source)
     assert match, 'USB serial provider choice table missing'
     runtime_serial = set(re.findall(r'"([a-z0-9-]+)"', match.group(1)))
     expected_serial = {identity for identity, (capability, _) in EXPECTED.items()
