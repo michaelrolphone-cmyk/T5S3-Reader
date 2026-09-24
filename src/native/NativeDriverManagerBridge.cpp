@@ -495,8 +495,11 @@ bool loadCanonicalDriverCatalog() {
         std::snprintf(candidate.info.version, sizeof(candidate.info.version), "%s", version);
         std::snprintf(candidate.info.capability, sizeof(candidate.info.capability), "%s", capability);
         candidate.info.sizeBytes = static_cast<uint32_t>(size);
+        std::string manifestJson;
+        serializeJson(manifest, manifestJson);
         JsonDocument metadata;
-        if (deserializeJson(metadata, manifest) || !metadata.is<JsonObject>())
+        if (manifestJson.empty() || deserializeJson(metadata, manifestJson) ||
+            !metadata.is<JsonObject>())
             return false;
         metadata["tag"] = tag;
         serializeJson(metadata, candidate.canonicalMetadata);
