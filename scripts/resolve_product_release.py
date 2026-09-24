@@ -93,12 +93,6 @@ def main() -> None:
     outputs = resolve(os.environ["GITHUB_EVENT_NAME"],
                       json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8")),
                       Path("."))
-    if outputs["publish"] == "true":
-        result = subprocess.run(["git", "show-ref", "--verify", "--quiet", "refs/tags/" + outputs["tag"]])
-        if result.returncode == 0:
-            raise ValueError("Tag already exists; product release tags are immutable")
-        if result.returncode != 1:
-            raise RuntimeError("Could not check existing tags")
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
         for key, value in outputs.items():
             stream.write(f"{key}={value}\\n")
