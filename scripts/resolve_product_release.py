@@ -68,6 +68,8 @@ def resolve(event_name: str, event: dict[str, Any], root: Path) -> dict[str, str
         return {"publish": "false", "product": "", "id": "", "tag": "", "ver": "", "commit_firmware": "false"}
     if product not in ("firmware", "apps", "drivers"):
         raise ValueError("product must be firmware, apps, or drivers")
+    if product != "firmware" and commit_firmware:
+        raise ValueError("commit_firmware is only valid for firmware releases")
     if not isinstance(identity, str) or (product != "firmware" and not ID_RE.fullmatch(identity)):
         raise ValueError("package release requires a safe stable id")
     if product == "firmware" and identity not in ("", "firmware"):
