@@ -48,6 +48,27 @@ class ProductReleaseTests(unittest.TestCase):
         result = resolve("workflow_dispatch", self.event("firmware", "", "1.2.3"), self.root)
         self.assertEqual(result["tag"], "firmware-v1.2.3")
 
+    def test_driver_record_uses_the_canonical_provider_catalog(self):
+        data = b"driver elf"
+        packages = self.root / "dist" / "packages"
+        packages.mkdir(parents=True)
+        release_assets = self.root / "dist" / "release-packages"
+        release_assets.mkdir(parents=True)
+        (release_assets / "usb-host-v2--driver.elf").write_bytes(data)
+        files = []
+        for name in (".package.json", "driver.elf", "provider-abi.v1", "privileged-imports.v1"):
+            payload = data if name == "driver.elf" else name.encode()
+            files.append({"name": name, "size_bytes": len(payload),
+                          "sha256": hashlib.sha256(payload).hexdigest()})
+        package = {"id": "usb-host-v2", "version": "2.0.1",
+                   "capability": "usb.host", "api": 1, "files": files}
+        (packages / "usb-provider-catalog.json").write_text(
+            json.dumps({"schema": 1, "packages": [package]}))
+        record = build_record("drivers", "usb-host-v2", "2.0.1", self.root)
+        self.assertEqual(record["asset"], "usb-host-v2--driver.elf")
+        self.assertEqual(record["manifest"]["capability"], "usb.host")
+        self.assertEqual(record["sha256"], hashlib.sha256(data).hexdigest())
+
     def test_app_record_hashes_only_the_selected_app_asset(self):
         data = b"clock app image"
         app_dir = self.root / "dist" / "apps"
