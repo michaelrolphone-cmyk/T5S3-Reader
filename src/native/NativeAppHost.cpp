@@ -4,7 +4,7 @@
 #include "NativeOnlineAppInstall.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
 #include "AppCatalogIndex.h"
-#include "native/AppCatalogPolicy.h"
+#include "AppCatalogPolicy.h"
 #include "AppReleaseAssetRules.h"
 #include "AppManifest.h"
 #include "AppPackageInstaller.h"
