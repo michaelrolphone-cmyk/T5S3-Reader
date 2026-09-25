@@ -30,6 +30,7 @@ EXPECTED = {
     'usb-ftdi': ('serial.port', ['usb.host']),
     'usb-stlink': ('debug.vendor.stlink', ['usb.host', 'platform.clock']),
     'usb-msp': ('debug.vendor.msp', ['usb.host', 'platform.clock']),
+    'program-msp': ('program.msp', ['debug.vendor.msp']),
     'usb-hid': ('usb.hid', ['usb.host']),
     'usb-hid-keyboard': ('usb.hid.keyboard', ['usb.hid']),
     'usb-hid-gamepad': ('usb.hid.gamepad', ['usb.hid']),

@@ -35,6 +35,7 @@ DRIVERS = (
     ('usb-ftdi', 'usb_ftdi', 'usb-ftdi', 'driver.elf'),
     ('usb-stlink', 'usb_stlink', 'usb-stlink', 'driver.elf'),
     ('usb-msp', 'usb_msp', 'usb-msp', 'driver.elf'),
+    ('program-msp', 'program_msp', 'program-msp', 'driver.elf'),
     ('usb-hid', 'usb_hid', 'usb-hid', 'driver.elf'),
     ('usb-hid-keyboard', 'usb_hid_keyboard', 'usb-hid-keyboard', 'driver.elf'),
     ('usb-hid-gamepad', 'usb_hid_gamepad', 'usb-hid-gamepad', 'driver.elf'),
