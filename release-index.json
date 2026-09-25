@@ -75,6 +75,31 @@
       "tag": "app-driver_manager-v1.0.4",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-driver_manager-v1.0.4/driver_manager.elf",
       "version": "1.0.4"
+    },
+    {
+      "asset": "esp_rom_flasher.elf",
+      "id": "esp_rom_flasher",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Firmware Flasher",
+        "file_name": "esp_rom_flasher.elf",
+        "icon": "solid:f1ea",
+        "min_firmware_version": "1.2.69",
+        "optional": [
+          {
+            "api": ">=1",
+            "capability": "program.msp"
+          }
+        ],
+        "sha256": "7d44907ad01b65a9c5bd12f4c502b13d9705f1f43c1ec49f665c86d8e92cb0df",
+        "size_bytes": 14136,
+        "version": "1.1.0"
+      },
+      "sha256": "7d44907ad01b65a9c5bd12f4c502b13d9705f1f43c1ec49f665c86d8e92cb0df",
+      "size": 14136,
+      "tag": "app-esp_rom_flasher-v1.1.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-esp_rom_flasher-v1.1.0/esp_rom_flasher.elf",
+      "version": "1.1.0"
     }
   ],
   "drivers": [],
