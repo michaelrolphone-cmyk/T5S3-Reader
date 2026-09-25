@@ -1,4 +1,5 @@
 #include "T5AppApi.h"
+#include "T5FileOpenApi.h"
 #include "T5StorageApi.h"
 #include "T5ProviderCapabilityApi.h"
 #include "RiscUsbHidV1.h"
@@ -18,13 +19,14 @@ typedef enum { EDITING, FILE_PICKER, NEW_NAME, SAVE_NAME, UNSAVED, DONE } editor
 typedef enum { DO_OPEN, DO_NEW, DO_EXIT } after_t;
 static const t5_app_api_v1 *app;
 static const t5_storage_api_v1 *storage;
+static const t5_file_open_api_v1 *file_open;
 static const t5_provider_capability_api_v1 *providers;
 static const risc_usb_keyboard_api_v1 *keyboard;
 static t5_provider_capability_lease_t grant;
 static uint64_t subscription;
 static te_document document;
 static char scratch[TE_CAPACITY + 1];
-static char path[160], filename[NAME_LIMIT + 1], proposed[NAME_LIMIT + 1];
+static char path[T5_FILE_OPEN_PATH_MAX], filename[NAME_LIMIT + 1], proposed[NAME_LIMIT + 1];
 static char files[FILE_LIMIT][NAME_LIMIT + 1];
 static char status[96];
 static char keyboard_error[160];
@@ -122,6 +124,29 @@ static bool load_file(const char *name) {
     report("Opened. Ctrl+S save / Ctrl+O open / Ctrl+N new.");
     return true;
 }
+static bool load_handoff_path(const char *source) {
+    size_t size = 0, count = 0;
+    if (!source || strncmp(source, "/sd/", 4) != 0) return false;
+    const char *storage_path = source + 3; /* Keep the leading slash after /sd. */
+    if (!storage_path[0] || strstr(storage_path, "/../") || strstr(storage_path, "/./"))
+        return false;
+    const char *name = strrchr(storage_path, '/');
+    name = name ? name + 1 : storage_path;
+    if (!valid_name(name) || strlen(storage_path) >= sizeof(path) ||
+        !storage->read_file(storage_path, NULL, 0, &size) || size > TE_CAPACITY ||
+        !storage->read_file(storage_path, scratch, TE_CAPACITY, &count) ||
+        count != size || !te_import(&document, scratch, count)) {
+        report("Open rejected: missing, >16 KiB, binary or non-ASCII.");
+        return false;
+    }
+    (void)snprintf(path, sizeof(path), "%s", storage_path);
+    (void)snprintf(filename, sizeof(filename), "%s", name);
+    first_row = 0;
+    mode = EDITING;
+    report("Opened from file handoff. Ctrl+S saves in place.");
+    return true;
+}
+
 static bool make_new(const char *name) {
     char target[160] = {0};
     if (!filename_path(name, target, sizeof(target)) || storage->exists(target)) {
@@ -381,6 +406,7 @@ static void paint(void) {
 void app_main(void) {
     app = t5_app_get_api(T5_APP_ABI_VERSION);
     storage = t5_storage_get_api(T5_STORAGE_API_VERSION);
+    file_open = t5_file_open_get_api(T5_FILE_OPEN_API_VERSION);
     providers = t5_provider_capability_get_api(T5_PROVIDER_CAPABILITY_API_VERSION);
     if (!app || app->abi_version != T5_APP_ABI_VERSION ||
         app->struct_size < offsetof(t5_app_api_v1, draw_label) + sizeof(app->draw_label) ||
@@ -391,6 +417,9 @@ void app_main(void) {
         !storage || storage->api_version != T5_STORAGE_API_VERSION ||
         storage->struct_size < offsetof(t5_storage_api_v1, remove_file) + sizeof(storage->remove_file) ||
         !storage->exists || !storage->read_file || !storage->write_file_atomic ||
+        !file_open || file_open->api_version != T5_FILE_OPEN_API_VERSION ||
+        file_open->struct_size < offsetof(t5_file_open_api_v1, source_path_get) + sizeof(file_open->source_path_get) ||
+        !file_open->source_path_get ||
         !providers || providers->api_version != T5_PROVIDER_CAPABILITY_API_VERSION ||
         providers->struct_size < offsetof(t5_provider_capability_api_v1, release) + sizeof(providers->release) || !providers->acquire || !providers->release) return;
     app->set_back_exits_app(false);
@@ -402,7 +431,10 @@ void app_main(void) {
     pending_gap = pending_fault = false;
     keyboard_error[0] = 0;
     mode = EDITING;
-    report("Untitled. Ctrl+N new / Ctrl+O open.");
+    char handed_path[T5_FILE_OPEN_PATH_MAX] = {0};
+    if (!file_open->source_path_get(handed_path, sizeof(handed_path)) ||
+        !load_handoff_path(handed_path))
+        report("Untitled. Ctrl+N new / Ctrl+O open.");
     uint32_t last_paint = 0;
     uint32_t last_keyboard_attempt = 0;
     bool keyboard_attempted = false;
