@@ -252,6 +252,25 @@
       "tag": "app-image_viewer-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-image_viewer-v1.0.0/image_viewer.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "koreader_auth.elf",
+      "id": "koreader_auth",
+      "kind": "app",
+      "manifest": {
+        "display_name": "KOReader Authentication",
+        "file_name": "koreader_auth.elf",
+        "icon": "solid:f2f6",
+        "min_firmware_version": "1.1.24",
+        "sha256": "9e54f6b5a3375443d95f74fe57318281807bfb4d0e8c23f3bde932b8ecb297b4",
+        "size_bytes": 5056,
+        "version": "1.0.0"
+      },
+      "sha256": "9e54f6b5a3375443d95f74fe57318281807bfb4d0e8c23f3bde932b8ecb297b4",
+      "size": 5056,
+      "tag": "app-koreader_auth-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-koreader_auth-v1.0.0/koreader_auth.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
