@@ -30,6 +30,15 @@ typedef struct {
 } t5_package_preview_t;
 
 typedef struct {
+    uint8_t kind;
+    uint8_t valid_installation;
+    uint8_t reserved[2];
+    char id[T5_PACKAGE_ID_MAX];
+    char version[T5_PACKAGE_VERSION_MAX];
+    char artifact[T5_PACKAGE_ARTIFACT_MAX];
+} t5_installed_package_t;
+
+typedef struct {
     uint32_t api_version;
     uint32_t struct_size;
     // 'folder' is exactly ONE safe basename under /Packages/Inbox. An app
@@ -41,6 +50,19 @@ typedef struct {
     // Uninstall a canonical package selected by its kind and ID; requires
     // unmapping first. Legacy flat app and old-layout driver data is retained.
     bool (*uninstall)(uint8_t kind, const char *id);
+
+    // Append-only package-manager inventory API. Only Package Manager may
+    // enumerate all four canonical installed package kinds. refresh performs
+    // one bounded SD scan and caches at most 128 entries for count/get.
+    bool (*installed_refresh)(void);
+    uint32_t (*installed_count)(void);
+    bool (*installed_get)(uint32_t index, t5_installed_package_t *out);
+
+    // Explicit replacement from /Packages/Inbox/<id>. Unlike install(), this
+    // may publish a verified OLDER version of the same installed identity.
+    // Equal-version replacement is rejected. Only Package Manager is allowed
+    // to call this; App Store and Driver Manager remain upgrade-only.
+    bool (*replace)(const char *folder);
 } t5_package_manager_api_v1;
 
 const t5_package_manager_api_v1 *t5_package_manager_get_api(uint32_t version);
