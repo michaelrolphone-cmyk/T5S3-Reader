@@ -794,12 +794,6 @@ static int32_t baud_index(uint32_t baud) {
     return (int32_t)(sizeof(baud_rates) / sizeof(baud_rates[0]));
 }
 
-static bool coding_equal(const t5_serial_config_t *a, const t5_serial_config_t *b) {
-    return a->baud_rate == b->baud_rate && a->data_bits == b->data_bits &&
-           a->parity == b->parity && a->stop_bits == b->stop_bits &&
-           a->flow_control == b->flow_control;
-}
-
 static bool apply_coding(t5_serial_port_state_t *state, t5_serial_config_t coding) {
     t5_serial_config_t previous;
     if (!state || !serial_port) return false;
