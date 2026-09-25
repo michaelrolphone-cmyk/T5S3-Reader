@@ -20,6 +20,7 @@ TAG_RE = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 MAX_MANIFEST_BYTES = 8192
 MAX_APP_BYTES = 8 * 1024 * 1024
+MIN_PROVIDER_FIRMWARE_VERSION = "1.2.71"
 
 
 def release_asset(release: dict[str, Any], name: str) -> dict[str, Any]:
@@ -53,6 +54,8 @@ def record_from_release(release: Any, manifest: Any) -> dict[str, Any]:
             not isinstance(manifest.get("min_firmware_version"), str)):
         raise ValueError("GameBoy release manifest is missing its app identity or version fields")
     version_tuple(manifest["version"])
+    if manifest["version"] != version:
+        raise ValueError("GameBoy app manifest version must match its firmware release tag")
     version_tuple(manifest["min_firmware_version"])
     size = manifest.get("size_bytes")
     digest = manifest.get("sha256")
@@ -105,6 +108,14 @@ def upsert_gameboy_app(index: Any, record: dict[str, Any]) -> tuple[dict[str, An
     return updated, updated != index
 
 
+def provider_firmware_ready(index: Any) -> bool:
+    firmware = index.get("firmware") if isinstance(index, dict) else None
+    version = firmware.get("version") if isinstance(firmware, dict) else None
+    if not isinstance(version, str):
+        return False
+    return version_tuple(version) >= version_tuple(MIN_PROVIDER_FIRMWARE_VERSION)
+
+
 def _run(command: list[str], *, capture: bool = False) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=ROOT, check=True, text=True, capture_output=capture)
 
@@ -133,6 +144,9 @@ def sync_index(record: dict[str, Any]) -> bool:
     _run(["git", "fetch", "origin", f"refs/heads/{INDEX_BRANCH}"])
     raw_index = _run(["git", "show", "FETCH_HEAD:release-index.json"], capture=True).stdout
     index = json.loads(raw_index)
+    if not provider_firmware_ready(index):
+        print(f"Waiting for RiscRTE firmware v{MIN_PROVIDER_FIRMWARE_VERSION} before indexing the GameBoy provider.")
+        return False
     updated, changed = upsert_gameboy_app(index, record)
     if not changed:
         print(f"GameBoy app v{record['version']} is already indexed.")
