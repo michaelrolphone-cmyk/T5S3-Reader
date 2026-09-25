@@ -7,6 +7,7 @@ No publication occurs here. Asset names match NativeOnlineDriverInstall:
 The branch's legacy source index is usb-provider-catalog.json; the separate
 U1 milestone will replace this with generic package-catalog.json.
 """
+import argparse
 from pathlib import Path
 import hashlib
 import json
@@ -25,13 +26,19 @@ EXPECTED_IDS = {
 }
 
 
-def export() -> None:
+def export(identities: set[str] | None = None) -> None:
     index_path = SOURCE / 'usb-provider-catalog.json'
     index = json.loads(index_path.read_text(encoding='utf-8'))
     packages = index.get('packages')
-    if index.get('schema') != 1 or not isinstance(packages, list) or \
-       {p['id'] for p in packages} != EXPECTED_IDS or len(packages) != len(EXPECTED_IDS):
-        raise ValueError('canonical driver index is absent or incomplete')
+    if index.get('schema') != 1 or not isinstance(packages, list):
+        raise ValueError('canonical driver index is absent or malformed')
+    requested = identities if identities is not None else EXPECTED_IDS
+    if not requested or not requested <= EXPECTED_IDS:
+        raise ValueError(f'invalid requested canonical driver IDs: {sorted(requested - EXPECTED_IDS)}')
+    packages = [package for package in packages
+                if isinstance(package, dict) and package.get('id') in requested]
+    if {package.get('id') for package in packages} != requested or len(packages) != len(requested):
+        raise ValueError('canonical driver index is incomplete for requested IDs')
     if TARGET.exists() and any(TARGET.iterdir()):
         raise FileExistsError(f'release export directory is not empty: {TARGET}')
     TARGET.mkdir(parents=True, exist_ok=True)
@@ -59,4 +66,7 @@ def export() -> None:
 
 
 if __name__ == '__main__':
-    export()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--ids', nargs='+', help='export only these canonical driver package IDs')
+    args = parser.parse_args()
+    export(set(args.ids) if args.ids else None)
