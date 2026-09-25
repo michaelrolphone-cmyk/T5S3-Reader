@@ -1282,6 +1282,54 @@
       "tag": "driver-usb-hid-keyboard-v0.1.1",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-hid-keyboard-v0.1.1/usb-hid-keyboard--driver.elf",
       "version": "0.1.1"
+    },
+    {
+      "asset": "usb-host-v2--driver.elf",
+      "id": "usb-host-v2",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "usb.host",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "9db06b67fa7d33a4673a1702ea6bea921ed8fc77b84be36a47f275dec8b73412",
+            "size_bytes": 626
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "c94dea393a6ddae1e9fcf4ae309654b8f9a0d26df6da7d222a1f8c85f93ea183",
+            "size_bytes": 8580
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "270e93fd7526e0193fa8670e18410c96b2b081b202823448bba14bdf5ef5faa9",
+            "size_bytes": 37
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "1591d47dab39b502bcc6e3e65dc1d466fb29f53433054fe5046f432ab4a6d16d",
+            "size_bytes": 7
+          }
+        ],
+        "id": "usb-host-v2",
+        "requires": [
+          {
+            "capability": "usb.controller",
+            "min_api": 1
+          }
+        ],
+        "version": "0.1.3"
+      },
+      "sha256": "c94dea393a6ddae1e9fcf4ae309654b8f9a0d26df6da7d222a1f8c85f93ea183",
+      "size": 8580,
+      "tag": "driver-usb-host-v2-v0.1.3",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-host-v2-v0.1.3/usb-host-v2--driver.elf",
+      "version": "0.1.3"
     }
   ],
   "firmware": {
