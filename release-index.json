@@ -807,6 +807,54 @@
       "tag": "driver-platform-clock-v1-v0.1.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-platform-clock-v1-v0.1.0/platform-clock-v1--driver.elf",
       "version": "0.1.0"
+    },
+    {
+      "asset": "program-msp--driver.elf",
+      "id": "program-msp",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "program.msp",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "0c9851e7e19c17fddc2a2fd125e658a25f554b40d737aed3a366d744f8cddd2c",
+            "size_bytes": 629
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "19b0999f41e45522e877097addf3cfd55651b2fd00ae925fa6084b769b66527f",
+            "size_bytes": 9128
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "b6b86c3401e1d4098bf39647a8a19d1b3cc45f06c5378117395e1297e9c1d8e6",
+            "size_bytes": 40
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "28b4f8106d151f7b292bbaa29a9973df97ec0a177d2800619f5cad0debbb6da1",
+            "size_bytes": 21
+          }
+        ],
+        "id": "program-msp",
+        "requires": [
+          {
+            "capability": "debug.vendor.msp",
+            "min_api": 1
+          }
+        ],
+        "version": "0.1.0"
+      },
+      "sha256": "19b0999f41e45522e877097addf3cfd55651b2fd00ae925fa6084b769b66527f",
+      "size": 9128,
+      "tag": "driver-program-msp-v0.1.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-program-msp-v0.1.0/program-msp--driver.elf",
+      "version": "0.1.0"
     }
   ],
   "firmware": {
