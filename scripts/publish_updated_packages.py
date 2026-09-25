@@ -71,8 +71,6 @@ def discover_candidates(root: Path, index: dict[str, Any]) -> list[dict[str, str
     }
     seen_apps: set[str] = set()
     for path in (root / "Apps").rglob("*.json"):
-        if path.name == "app_store.json":
-            continue
         try:
             manifest = read_json(path)
         except (OSError, json.JSONDecodeError):
