@@ -26,6 +26,10 @@ bool fetchAppCatalogIndex(const std::string& url, std::vector<std::string>& mani
     LOG_ERR("APPSTORE", "Aggregate catalog download failed: %s", url.c_str());
     return false;
   }
+  // The native HTTP adapter completes on a short-lived worker. Yield once so
+  // the idle task can reclaim that worker stack before ArduinoJson allocates
+  // its document from the same internal heap used by mbedTLS.
+  delay(1);
   if (json.empty() || json.size() > kMaxCatalogBytes) {
     LOG_ERR("APPSTORE", "Aggregate catalog size invalid: %u bytes (limit %u)",
             static_cast<unsigned>(json.size()), static_cast<unsigned>(kMaxCatalogBytes));
@@ -38,6 +42,9 @@ bool fetchAppCatalogIndex(const std::string& url, std::vector<std::string>& mani
     LOG_ERR("APPSTORE", "Aggregate catalog JSON parse failed: %s", error.c_str());
     return false;
   }
+  // ArduinoJson owns the parsed values now. Release the raw release catalog
+  // buffer before serializing individual manifests into the bounded result.
+  std::string().swap(json);
   if (!doc.is<JsonObjectConst>() || doc["schema"] != 1 || !doc["apps"].is<JsonArrayConst>()) {
     LOG_ERR("APPSTORE", "Aggregate catalog requires schema=1 and an apps array");
     return false;
