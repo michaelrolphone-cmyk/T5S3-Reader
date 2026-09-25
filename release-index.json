@@ -56,6 +56,25 @@
       "tag": "app-clear_cache-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-clear_cache-v1.0.0/clear_cache.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "driver_manager.elf",
+      "id": "driver_manager",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Driver Manager",
+        "file_name": "driver_manager.elf",
+        "icon": "solid:f085",
+        "min_firmware_version": "1.2.23",
+        "sha256": "59226faf3474afa03d568630c755e1be4f6bd4d09c6a3f68011d4b78e1f7e12a",
+        "size_bytes": 18696,
+        "version": "1.0.4"
+      },
+      "sha256": "59226faf3474afa03d568630c755e1be4f6bd4d09c6a3f68011d4b78e1f7e12a",
+      "size": 18696,
+      "tag": "app-driver_manager-v1.0.4",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-driver_manager-v1.0.4/driver_manager.elf",
+      "version": "1.0.4"
     }
   ],
   "drivers": [],
