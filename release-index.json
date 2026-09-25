@@ -518,6 +518,25 @@
       "tag": "app-springboard-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-springboard-v1.0.0/springboard.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "status_bar_settings.elf",
+      "id": "status_bar_settings",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Customize Status Bar",
+        "file_name": "status_bar_settings.elf",
+        "icon": "solid:f550",
+        "min_firmware_version": "1.1.24",
+        "sha256": "aea1b9604702292eda69a6bd69ccdd6db784c161beb37783b32cad686ebce6ac",
+        "size_bytes": 3788,
+        "version": "1.0.0"
+      },
+      "sha256": "aea1b9604702292eda69a6bd69ccdd6db784c161beb37783b32cad686ebce6ac",
+      "size": 3788,
+      "tag": "app-status_bar_settings-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-status_bar_settings-v1.0.0/status_bar_settings.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
