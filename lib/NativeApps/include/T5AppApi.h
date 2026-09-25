@@ -138,6 +138,9 @@ typedef struct {
     // Returns only after display completion; no callback/framebuffer access outlives this call.
     // False means no refresh started (busy or allocation failure). Size-check.
     bool (*present_serviced)(bool full_refresh, void (*service)(void *), void *context);
+    // App Store failure detail for display when serial logging is unavailable.
+    // Optional append-only member; callers must check struct_size and pointer.
+    bool (*app_catalog_download_last_error)(char *out, size_t capacity);
 } t5_app_api_v1;
 
 // Native application entry point. Native ELFs are built with -fvisibility=hidden,
