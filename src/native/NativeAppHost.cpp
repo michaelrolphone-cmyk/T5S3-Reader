@@ -200,14 +200,6 @@ void dirClose() {
   if (auto* s = current(); s && s->directory.isOpen()) s->directory.close();
 }
 
-bool endsWithElf(const std::string& name) {
-  if (name.size() < 4) return false;
-  const size_t n = name.size();
-  return name[n - 4] == '.' && std::tolower(static_cast<unsigned char>(name[n - 3])) == 'e' &&
-         std::tolower(static_cast<unsigned char>(name[n - 2])) == 'l' &&
-         std::tolower(static_cast<unsigned char>(name[n - 1])) == 'f';
-}
-
 bool safeAssetName(const std::string& name) {
   return name.size() < T5_APP_ASSET_NAME_MAX &&
          NativeAppReleaseRules::appElfAssetName(name);
