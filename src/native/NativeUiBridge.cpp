@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "MappedInputManager.h"
+#include "NativeAppHost.h"
 #include "activities/ActivityManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -129,7 +130,7 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
   hitLayout.pageStart = rowCount ? (selected / pageItems) * pageItems : 0;
   hitLayout.rowCount = static_cast<int>(rowCount);
 
-  r->displayBuffer(HalDisplay::BALANCED_REFRESH);
+  (void)presentNativeAppUiFrame();
 }
 
 void renderTable(const t5_ui_chrome_t* chrome, const t5_ui_table_column_t* columns, uint32_t columnCount,
@@ -203,7 +204,7 @@ void renderTable(const t5_ui_chrome_t* chrome, const t5_ui_table_column_t* colum
   hitLayout.pageItems = pageItems;
   hitLayout.pageStart = pageStart;
   hitLayout.rowCount = static_cast<int>(rowCount);
-  r->displayBuffer(HalDisplay::BALANCED_REFRESH);
+  (void)presentNativeAppUiFrame();
 }
 
 void renderTextView(const t5_ui_chrome_t* chrome, const char* text, int32_t scrollFromBottom,
@@ -268,7 +269,7 @@ void renderTextView(const t5_ui_chrome_t* chrome, const char* text, int32_t scro
     result->total_lines = static_cast<uint32_t>(lines.size());
     result->visible_lines = static_cast<uint32_t>(visibleLines);
   }
-  r->displayBuffer(HalDisplay::BALANCED_REFRESH);
+  (void)presentNativeAppUiFrame();
 }
 
 int32_t hitTest(int16_t x, int16_t y) {
