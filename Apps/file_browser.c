@@ -1,6 +1,7 @@
 #include "T5AppApi.h"
 #include "T5FileBrowserApi.h"
-#include "T5ImageApi.h"
+#include "T5FileOpenApi.h"
+#include "T5UiApi.h"
 #include "T5StorageApi.h"
 #include "T5SystemUiApi.h"
 
@@ -25,7 +26,8 @@ static const t5_app_api_v1 *app;
 static const t5_storage_api_v1 *storage;
 static const t5_system_ui_api_v1 *system_ui;
 static const t5_file_browser_api_v1 *browser;
-static const t5_image_api_v1 *image;
+static const t5_file_open_api_v1 *file_open;
+static const t5_ui_api_v1 *ui;
 
 static browser_entry_t entries[MAX_ENTRIES];
 static t5_file_browser_entry_t ui_entries[MAX_ENTRIES];
@@ -58,17 +60,6 @@ static bool ends_with_ci(const char *value, const char *suffix) {
         if (lower_ascii(value[n - s + i]) != lower_ascii(suffix[i])) return false;
     }
     return true;
-}
-
-static bool image_file(const char *name) {
-    return ends_with_ci(name, ".jpg") || ends_with_ci(name, ".jpeg") ||
-           ends_with_ci(name, ".png") || ends_with_ci(name, ".bmp");
-}
-
-static bool supported_file(const char *name) {
-    return ends_with_ci(name, ".epub") || ends_with_ci(name, ".xtc") || ends_with_ci(name, ".xtch") ||
-           ends_with_ci(name, ".txt") || ends_with_ci(name, ".md") || image_file(name) ||
-           ends_with_ci(name, ".elf");
 }
 
 static int natural_compare(const browser_entry_t *a, const browser_entry_t *b) {
@@ -257,6 +248,81 @@ static bool go_up(void) {
     return true;
 }
 
+#define MAX_OPEN_HANDLERS 8u
+
+static int32_t choose_handler(const char *vfs_path, t5_file_handler_t *handlers, uint32_t *count_out) {
+    t5_ui_list_row_t rows[MAX_OPEN_HANDLERS];
+    char subtitles[MAX_OPEN_HANDLERS][40];
+    uint32_t count = file_open->handler_count(vfs_path);
+    if (count > MAX_OPEN_HANDLERS) count = MAX_OPEN_HANDLERS;
+    if (count_out) *count_out = count;
+    if (!count) return -1;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        memset(&handlers[i], 0, sizeof(handlers[i]));
+        if (!file_open->handler_get(vfs_path, i, &handlers[i])) return -1;
+        snprintf(subtitles[i], sizeof(subtitles[i]), "%s",
+                 handlers[i].kind == T5_FILE_HANDLER_SYSTEM_READER ? "System" : "App");
+        rows[i] = (t5_ui_list_row_t){
+            handlers[i].display_name, subtitles[i], handlers[i].app_id, 0
+        };
+    }
+    if (count == 1) return 0;
+
+    const t5_ui_chrome_t chrome = {
+        .title = "Open with",
+        .subtitle = "Choose an app for this file",
+        .status = "",
+        .back_label = "Cancel",
+        .confirm_label = "Open",
+        .previous_label = "Up",
+        .next_label = "Down",
+    };
+    int32_t selected = 0;
+    ui->render_list(&chrome, rows, count, selected);
+    for (;;) {
+        t5_ui_event_t event = {0};
+        if (!ui->poll_event(&event, 20) || event.type == T5_UI_EVENT_BACK ||
+            event.type == T5_UI_EVENT_EXIT) return -1;
+        if (event.type == T5_UI_EVENT_PREVIOUS)
+            selected = ui->previous_index(selected, count);
+        else if (event.type == T5_UI_EVENT_NEXT)
+            selected = ui->next_index(selected, count);
+        else if (event.type == T5_UI_EVENT_TAP) {
+            const int32_t hit = ui->hit_test(event.touch_x, event.touch_y);
+            if (hit < 0 || hit >= (int32_t)count) continue;
+            selected = hit;
+            return selected;
+        } else if (event.type == T5_UI_EVENT_CONFIRM) {
+            return selected;
+        } else {
+            continue;
+        }
+        ui->render_list(&chrome, rows, count, selected);
+    }
+}
+
+static bool open_with_handler(const char *name, const t5_file_handler_t *handler) {
+    char vfs_path[PATH_CAP + 4];
+    char storage_path[PATH_CAP];
+    make_vfs_path(name, vfs_path, sizeof(vfs_path));
+    make_storage_path(name, storage_path, sizeof(storage_path));
+
+    if (handler->kind == T5_FILE_HANDLER_SYSTEM_READER) {
+        clear_session();
+        if (browser->open_document(storage_path)) return true;
+        copy_text(status_text, sizeof(status_text), "System reader could not open file");
+        return false;
+    }
+
+    pending_delete_path[0] = 0;
+    save_session();
+    if (file_open->open_request(vfs_path, handler->app_id, HANDOFF_COOKIE)) return true;
+    clear_session();
+    snprintf(status_text, sizeof(status_text), "Failed to open with %.80s", handler->display_name);
+    return false;
+}
+
 static bool open_selected(void) {
     if (!entry_count || selected_index < 0 || selected_index >= (int32_t)entry_count) return false;
     browser_entry_t *entry = &entries[selected_index];
@@ -275,16 +341,6 @@ static bool open_selected(void) {
         load_files(NULL);
         return false;
     }
-    if (image_file(entry->name)) {
-        char vfs_path[PATH_CAP + 4];
-        make_vfs_path(entry->name, vfs_path, sizeof(vfs_path));
-        pending_delete_path[0] = 0;
-        save_session();
-        if (image->viewer_open_request(vfs_path, HANDOFF_COOKIE)) return true;
-        clear_session();
-        copy_text(status_text, sizeof(status_text), "Image Viewer unavailable");
-        return false;
-    }
     if (ends_with_ci(entry->name, ".elf")) {
         char vfs_path[PATH_CAP + 4];
         make_vfs_path(entry->name, vfs_path, sizeof(vfs_path));
@@ -295,16 +351,21 @@ static bool open_selected(void) {
         copy_text(status_text, sizeof(status_text), "Native app failed");
         return false;
     }
-    if (!supported_file(entry->name)) {
-        copy_text(status_text, sizeof(status_text), "Unsupported file type");
+
+    char vfs_path[PATH_CAP + 4];
+    make_vfs_path(entry->name, vfs_path, sizeof(vfs_path));
+    t5_file_handler_t handlers[MAX_OPEN_HANDLERS];
+    uint32_t handler_count = 0;
+    const int32_t choice = choose_handler(vfs_path, handlers, &handler_count);
+    if (!handler_count) {
+        copy_text(status_text, sizeof(status_text), "No registered app for this file type");
         return false;
     }
-    char document[PATH_CAP];
-    make_storage_path(entry->name, document, sizeof(document));
-    clear_session();
-    if (browser->open_document(document)) return true;
-    copy_text(status_text, sizeof(status_text), "Unable to open file");
-    return false;
+    if (choice < 0 || choice >= (int32_t)handler_count) {
+        copy_text(status_text, sizeof(status_text), "Open cancelled");
+        return false;
+    }
+    return open_with_handler(entry->name, &handlers[choice]);
 }
 
 static bool request_delete(void) {
@@ -335,12 +396,14 @@ static void consume_handoff_results(void) {
         else selected_index = old_index;
         clear_session();
     }
-    int32_t image_error = 0;
-    if (image->viewer_open_take_result(&image_error, &cookie)) {
+    int32_t open_error = 0;
+    if (file_open->open_take_result(&open_error, &cookie)) {
         char selected[T5_APP_DIRENT_NAME_MAX] = {0};
         selected_name(selected, sizeof(selected));
-        if (image_error != 0) snprintf(status_text, sizeof(status_text), "Image Viewer failed: %ld", (long)image_error);
-        else status_text[0] = 0;
+        if (open_error != 0)
+            snprintf(status_text, sizeof(status_text), "File handler failed: %ld", (long)open_error);
+        else
+            status_text[0] = 0;
         load_files(selected);
         clear_session();
     }
@@ -360,13 +423,22 @@ void app_main(void) {
     storage = t5_storage_get_api(T5_STORAGE_API_VERSION);
     system_ui = t5_system_ui_get_api(T5_SYSTEM_UI_API_VERSION);
     browser = t5_file_browser_get_api(T5_FILE_BROWSER_API_VERSION);
-    image = t5_image_get_api(T5_IMAGE_API_VERSION);
-    if (!app || !storage || !system_ui || !browser || !image || !app->dir_open || !app->dir_next || !app->dir_close ||
+    file_open = t5_file_open_get_api(T5_FILE_OPEN_API_VERSION);
+    ui = t5_ui_get_api(T5_UI_API_VERSION);
+    if (!app || !storage || !system_ui || !browser || !file_open || !ui ||
+        !app->dir_open || !app->dir_next || !app->dir_close ||
         !app->set_back_exits_app || !storage->read_file || !storage->write_file_atomic || !storage->remove_file ||
         !system_ui->navigate_home || !browser->show_hidden_files || !browser->render || !browser->poll_event ||
         !browser->page_items || !browser->confirm_delete_request || !browser->confirm_delete_take_result ||
         !browser->delete_document || !browser->open_document || !browser->launch_elf_request ||
-        !browser->launch_elf_take_result || !image->viewer_open_request || !image->viewer_open_take_result) return;
+        !browser->launch_elf_take_result ||
+        file_open->api_version != T5_FILE_OPEN_API_VERSION ||
+        file_open->struct_size < sizeof(*file_open) ||
+        !file_open->handler_count || !file_open->handler_get ||
+        !file_open->open_request || !file_open->open_take_result ||
+        ui->api_version != T5_UI_API_VERSION ||
+        !ui->render_list || !ui->poll_event || !ui->hit_test ||
+        !ui->next_index || !ui->previous_index) return;
 
     app->set_back_exits_app(false);
     status_text[0] = 0;
