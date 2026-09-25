@@ -603,6 +603,7 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
         "/releases/download/" + tag + "/" + asset.name;
     if (std::strcmp(id, expectedId.c_str()) || std::strcmp(tag, expectedTag.c_str()) ||
         std::strcmp(url, expectedUrl.c_str())) return false;
+    asset.url = url;
     // Sidecars are fetched on demand after the cached catalog JSON is reclaimed.
     asset.manifestUrl = expectedUrl.substr(0, expectedUrl.size() - asset.name.size()) +
         expectedId + ".json";
