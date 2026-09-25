@@ -593,6 +593,9 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
         "/releases/download/" + tag + "/" + asset.name;
     if (std::strcmp(id, expectedId.c_str()) || std::strcmp(tag, expectedTag.c_str()) ||
         std::strcmp(url, expectedUrl.c_str())) return false;
+    // Sidecars are fetched on demand after the cached catalog JSON is reclaimed.
+    asset.manifestUrl = expectedUrl.substr(0, expectedUrl.size() - asset.name.size()) +
+        expectedId + ".json";
     if (NativeAppCatalogPolicy::isRetiredId(id)) continue;
     serializeJson(entry["manifest"], asset.manifestJson);
     std::string parsedVersion;
@@ -804,8 +807,13 @@ bool appCatalogDownload(uint32_t index) {
 
   std::string json = std::move(selected.manifestJson), version;
   t5_app_manifest_t manifest{};
-  if ((json.empty() && !HttpDownloader::fetchUrl(selected.manifestUrl, json)) ||
-      json.empty() || json.size() > 4096 ||
+  if (json.empty()) {
+    if (!HttpDownloader::fetchUrl(selected.manifestUrl, json)) return false;
+    // Let the completed metadata worker's stack be reclaimed before creating
+    // the larger binary-transfer worker.
+    delay(1);
+  }
+  if (json.empty() || json.size() > 4096 ||
       !parseAppManifest(json, manifest, &version, true) ||
       !manifest.compatible || selected.name != manifest.file_name ||
       version != selected.version) return false;
