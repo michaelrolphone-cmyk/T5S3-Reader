@@ -157,6 +157,25 @@
       "tag": "app-font_manager-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-font_manager-v1.0.0/font_manager.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "font_selection.elf",
+      "id": "font_selection",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Font Family",
+        "file_name": "font_selection.elf",
+        "icon": "solid:f031",
+        "min_firmware_version": "1.1.24",
+        "sha256": "468e9549319dea78f22bac44d9fdc206706b34a63516ebc6857916e3bd42071e",
+        "size_bytes": 3836,
+        "version": "1.0.0"
+      },
+      "sha256": "468e9549319dea78f22bac44d9fdc206706b34a63516ebc6857916e3bd42071e",
+      "size": 3836,
+      "tag": "app-font_selection-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-font_selection-v1.0.0/font_selection.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
