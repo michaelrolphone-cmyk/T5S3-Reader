@@ -423,6 +423,25 @@
       "tag": "app-package_manager-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-package_manager-v1.0.0/package_manager.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "sd_firmware_update.elf",
+      "id": "sd_firmware_update",
+      "kind": "app",
+      "manifest": {
+        "display_name": "SD Firmware Update",
+        "file_name": "sd_firmware_update.elf",
+        "icon": "solid:f021",
+        "min_firmware_version": "1.1.23",
+        "sha256": "e2d7a5ed38511ef0195c69badf3154730fa07da5de5d99ccb559cb5abad0a2ed",
+        "size_bytes": 5344,
+        "version": "1.0.0"
+      },
+      "sha256": "e2d7a5ed38511ef0195c69badf3154730fa07da5de5d99ccb559cb5abad0a2ed",
+      "size": 5344,
+      "tag": "app-sd_firmware_update-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-sd_firmware_update-v1.0.0/sd_firmware_update.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
