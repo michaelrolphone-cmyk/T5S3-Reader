@@ -19,6 +19,10 @@ namespace RuntimePackages {
 // reader, with no URL, hardware or network logic in the package engine.
 constexpr size_t kOrdinaryIoBytes = 512;
 constexpr const char* kOrdinaryManifestName = ".package.json";
+// Match the largest ordinary app payload accepted by the online installer.
+// Package-specific runtime policies may impose smaller limits at install time.
+constexpr uint64_t kOrdinaryMaxEntryBytes = 8u * 1024u * 1024u;
+constexpr uint64_t kOrdinaryMaxTotalBytes = 16u * 1024u * 1024u;
 
 struct OrdinaryEntry {
   char name[128]{};

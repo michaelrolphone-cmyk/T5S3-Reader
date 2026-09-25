@@ -35,7 +35,7 @@ inline bool installApplication(const char* artifact, const char* version,
   };
   if (!artifact || !version || !url || !elfDigest ||
       !safePackageEntryName(artifact) || !safeVersion(version) ||
-      !validSha256Hex(elfDigest) || size < 52 || size > 8u * 1024u * 1024u ||
+      !validSha256Hex(elfDigest) || size < 52 || size > kOrdinaryMaxEntryBytes ||
       sidecar.empty() || sidecar.size() > 4096) return fail("release metadata rejected");
   const size_t nameBytes = std::strlen(artifact);
   if (nameBytes <= 4 || std::strcmp(artifact + nameBytes - 4, ".elf")) return fail("invalid ELF name");
@@ -71,7 +71,7 @@ inline bool installApplication(const char* artifact, const char* version,
       plan->identity.kind != Kind::Application ||
       std::strcmp(plan->identity.id, id.c_str())) return fail("package descriptor rejected");
   constexpr PackageRuntimePolicy policy{"xtensa-esp32s3", 2, 0,
-                                        8u * 1024u * 1024u, 16u * 1024u * 1024u};
+      kOrdinaryMaxEntryBytes, kOrdinaryMaxTotalBytes};
   const std::string root = "/Packages/Inbox/" + id;
   if (!Storage.ready() ||
       (!Storage.exists("/Packages") && !Storage.mkdir("/Packages", false)) ||
