@@ -19,8 +19,8 @@
 
 namespace RuntimeOnlinePackages {
 namespace DriverIntake {
-constexpr const char* kRelease =
-    "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/latest/download/";
+constexpr const char* kReleaseBase =
+    "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/";
 constexpr const char* kNames[] = {
     ".package.json", "driver.elf", "provider-abi.v1", "privileged-imports.v1"};
 
@@ -72,9 +72,13 @@ inline bool install(const char* id, const char* version, const std::string& cata
     JsonDocument catalog;
     if (deserializeJson(catalog, catalogEntry) || !catalog.is<JsonObjectConst>() ||
         !catalog["id"].is<const char*>() || !catalog["version"].is<const char*>() ||
+        !catalog["tag"].is<const char*>() ||
         std::strcmp(catalog["id"].as<const char*>(), id) ||
         std::strcmp(catalog["version"].as<const char*>(), version) ||
         !catalog["files"].is<JsonArrayConst>()) return false;
+    const char* tag = catalog["tag"].as<const char*>();
+    const std::string expectedTag = std::string("driver-") + id + "-v" + version;
+    if (std::strcmp(tag, expectedTag.c_str())) return false;
     const JsonArrayConst files = catalog["files"].as<JsonArrayConst>();
     if (files.size() != 4) return false;
     const char* expectedSha[4]{};
@@ -96,7 +100,7 @@ inline bool install(const char* id, const char* version, const std::string& cata
     }
     for (bool found : seen) if (!found) return false;
     if (expectedSize[0] > 4096) return false;
-    const std::string prefix = std::string(kRelease) + id + "--";
+    const std::string prefix = std::string(kReleaseBase) + tag + "/" + id + "--";
     std::string descriptor;
     emitProgress(progress, context, id, T5_DRIVER_INSTALL_METADATA, ".package.json");
     if (!HttpDownloader::fetchUrl(prefix + "package.json", descriptor) ||

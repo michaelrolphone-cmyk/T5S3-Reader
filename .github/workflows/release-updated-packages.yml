@@ -1,0 +1,75 @@
+name: Publish updated RiscRTE packages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: independent-riscrte-product-release
+  cancel-in-progress: false
+
+jobs:
+  publish-updated-packages:
+    name: Build and publish newer apps and drivers
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out the selected branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-
+
+      - name: Install build tools
+        run: |
+          python -m pip install platformio==6.1.19 pyelftools
+          pio pkg install -e t5s3-pro
+
+      - name: Build all apps and manifests
+        run: python scripts/build_all_apps.py
+
+      - name: Build canonical driver packages and catalog
+        run: |
+          python scripts/probe_usb_controller_esp32s3.py --link-experiment
+          python scripts/audit_usb_controller_elf.py --strict
+          python scripts/probe_i2c_esp32s3_v2.py
+          python scripts/audit_i2c_esp32s3_elf.py --strict
+          python scripts/build_platform_clock_v1.py
+          python scripts/build_board_power_t5s3_v2.py
+          python scripts/build_usb_host_v2.py
+          python scripts/build_usb_cdc_v2.py
+          python scripts/build_usb_cp210x_v2.py
+          python scripts/build_usb_ch34x_v2.py
+          python scripts/build_usb_ftdi.py
+          python scripts/build_usb_stlink.py
+          python scripts/build_usb_msp.py
+          python scripts/build_usb_hid.py
+          python scripts/build_usb_hid_keyboard.py
+          python scripts/build_usb_hid_gamepad.py
+          python scripts/build_usb_xinput_gamepad.py
+          python scripts/build_usb_ui_navigation.py
+          python scripts/build_installed_usb_stack.py
+          python test/drivers/installed_usb_stack_package_test.py
+          python scripts/export_canonical_driver_release.py
+
+      - name: Publish packages newer than their latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/publish_updated_packages.py
