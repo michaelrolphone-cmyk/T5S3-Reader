@@ -2,6 +2,7 @@
 
 #include "AppPackageInstaller.h"
 #include "NativeOnlinePackageRecovery.h"
+#include <T5AppApi.h>
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
@@ -26,6 +27,8 @@ namespace RuntimeOnlinePackages {
 inline bool installApplication(const char* artifact, const char* version,
                                const char* url, const std::string& sidecar,
                                uint64_t size, const char* elfDigest,
+                               t5_app_catalog_progress_fn progress = nullptr,
+                               void* progressContext = nullptr,
                                const char** failureReason = nullptr) {
   using namespace RuntimePackages;
   if (failureReason) *failureReason = nullptr;
@@ -100,8 +103,12 @@ inline bool installApplication(const char* artifact, const char* version,
   if (!writeExclusive(jsonPath, sidecar.data(), sidecar.size())) return fail("could not stage app manifest");
   const std::string elfPath = root + "/" + artifact;
   const std::string elfStage = elfPath + ".part";
+  if (progress) progress(progressContext, 0, size);
   if (HttpDownloader::downloadToFile(url, elfStage,
-          [](size_t, size_t) { esp_task_wdt_reset(); }) != HttpDownloader::OK)
+          [progress, progressContext, size](size_t downloaded, size_t) {
+            esp_task_wdt_reset();
+            if (progress) progress(progressContext, downloaded, size);
+          }) != HttpDownloader::OK)
     return fail("HTTP download failed");
   if (Storage.exists(elfPath.c_str())) return fail("download target already exists");
   if (!Storage.rename(elfStage.c_str(), elfPath.c_str()))
