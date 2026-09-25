@@ -473,7 +473,11 @@ void setup() {
     activityManager.goToCrashReport();
   } else if (!resumeReaderOnBoot) {
     prepareStartupRefresh(HalDisplay::HALF_REFRESH);
-    // Replace the already-presented boot logo with the home screen.
+    {
+      RenderLock lock;
+      StartupScreen::armBootFade();
+    }
+    // Home fades the logo only when its first render is ready to take over.
     activityManager.goHome();
   } else {
     // Clear app state to avoid getting into a boot loop if the epub doesn't load

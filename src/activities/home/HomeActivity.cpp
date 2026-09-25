@@ -25,6 +25,7 @@
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
+#include "components/StartupScreen.h"
 #include "fontIds.h"
 
 namespace {
@@ -327,6 +328,7 @@ bool HomeActivity::onTouchTap(int16_t, int16_t y) {
 }
 
 void HomeActivity::render(RenderLock&&) {
+  StartupScreen::finishBoot(renderer);
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
