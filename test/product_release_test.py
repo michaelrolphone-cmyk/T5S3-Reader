@@ -54,7 +54,7 @@ class ProductReleaseTests(unittest.TestCase):
     def test_firmware_release_assets_include_both_board_builds(self):
         version = "1.2.3"
         (self.root / "platformio.ini").write_text(
-            f"[riscrte]\\nversion = {version}\\n", encoding="utf-8")
+            f"[riscrte]\nversion = {version}\n", encoding="utf-8")
         names = [
             "dist/firmware-t5s3-pro.bin",
             f"dist/riscrte_lilygo_t5s3_{version}-app.bin",
