@@ -290,6 +290,25 @@
       "tag": "app-koreader_sync-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-koreader_sync-v1.0.0/koreader_sync.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "language_settings.elf",
+      "id": "language_settings",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Language",
+        "file_name": "language_settings.elf",
+        "icon": "solid:f1ab",
+        "min_firmware_version": "1.1.24",
+        "sha256": "7b083503c49ccdd2c774f17a106c14649722e4d6e7464187e502f266e629b12d",
+        "size_bytes": 6524,
+        "version": "1.0.0"
+      },
+      "sha256": "7b083503c49ccdd2c774f17a106c14649722e4d6e7464187e502f266e629b12d",
+      "size": 6524,
+      "tag": "app-language_settings-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-language_settings-v1.0.0/language_settings.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
