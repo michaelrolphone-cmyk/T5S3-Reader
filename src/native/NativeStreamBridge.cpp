@@ -10,6 +10,7 @@
 #include <T5AppApi.h>
 #include <T5UsbApi.h>
 #include <HalStorage.h>
+#include <Logging.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
