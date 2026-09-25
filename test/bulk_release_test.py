@@ -83,6 +83,17 @@ class DiscoverCandidatesTest(unittest.TestCase):
         index["apps"][0]["version"] = "1.0.2"
         self.assertEqual(discover_candidates(self.root, index), [])
 
+    def test_app_store_version_is_a_normal_release_candidate(self):
+        (self.root / "Apps" / "app_store.c").write_text("int main(void) { return 0; }")
+        (self.root / "Apps" / "app_store.json").write_text(
+            json.dumps({"file_name": "app_store.elf", "version": "1.0.3"}))
+        index = self.current_index()
+        index["apps"].append({"id": "app_store", "version": "1.0.2"})
+        self.assertIn(
+            {"product": "apps", "id": "app_store", "version": "1.0.3"},
+            discover_candidates(self.root, index),
+        )
+
     def test_ignores_driver_manifests_outside_canonical_release_packages(self):
         legacy = self.root / "Drivers" / "gps_nmea"
         legacy.mkdir()
