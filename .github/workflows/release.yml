@@ -2,19 +2,6 @@ name: Cut RiscRTE release
 
 on:
   workflow_dispatch:
-    inputs:
-      product:
-        description: Product stream to release
-        type: choice
-        options: [firmware, apps, drivers]
-        required: true
-      id:
-        description: Stable app or driver ID (leave empty for firmware; version is detected)
-        required: false
-      commit_firmware:
-        description: Commit merged image into the selected branch
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -24,53 +11,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  request:
-    name: Validate product release request
-    runs-on: ubuntu-latest
-    outputs:
-      publish: ${{ steps.request.outputs.publish }}
-      product: ${{ steps.request.outputs.product }}
-      id: ${{ steps.request.outputs.id }}
-      tag: ${{ steps.request.outputs.tag }}
-      ver: ${{ steps.request.outputs.ver }}
-      commit_firmware: ${{ steps.request.outputs.commit_firmware }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Detect release version and validate request
-        id: request
-        run: python3 scripts/resolve_product_release.py
-
   release:
-    needs: request
-    if: ${{ needs.request.outputs.publish == 'true' }}
-    name: Build and publish selected product
+    name: Build and publish changed firmware, apps, and drivers
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Resolve version
-        id: ver
-        env:
-          TAG: ${{ needs.request.outputs.tag }}
-          VER: ${{ needs.request.outputs.ver }}
-        run: |
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "ver=$VER" >> "$GITHUB_OUTPUT"
-          echo "bin=firmware/riscrte_lilygo_t5s3_${VER}.bin" >> "$GITHUB_OUTPUT"
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
-
       - name: Cache PlatformIO packages
-        if: ${{ needs.request.outputs.product == 'firmware' || needs.request.outputs.product == 'drivers' }}
         uses: actions/cache@v4
         with:
           path: |
@@ -80,278 +35,17 @@ jobs:
           key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
           restore-keys: |
             ${{ runner.os }}-platformio-
-
-      - name: Install PlatformIO
-        if: ${{ needs.request.outputs.product == 'firmware' || needs.request.outputs.product == 'drivers' }}
-        run: python -m pip install platformio==6.1.19
-
-      - name: Build RiscRTE gh_release
-        if: ${{ needs.request.outputs.product == 'firmware' }}
-        run: pio run -e gh_release
-
-      # Keep the release build's three firmware artifacts outside PlatformIO's
-      # mutable .pio tree and the dist tree used by subsequent ELF builders.
-      # The merged binary is checked here, not discovered missing after a full
-      # driver/app build when staging begins.
-      - name: Preserve firmware build outputs
-        if: ${{ needs.request.outputs.product == 'firmware' }}
-        shell: bash
+      - name: Install build tools
         run: |
-          set -euo pipefail
-          SRC=".pio/build/gh_release"
-          DST="$RUNNER_TEMP/riscrte-firmware"
-          mkdir -p "$DST"
-
-          for FILE in firmware.bin firmware-merged.bin firmware.elf; do
-            if [[ ! -s "$SRC/$FILE" ]]; then
-              echo "::error::Firmware build did not produce $SRC/$FILE"
-              exit 1
-            fi
-            cp "$SRC/$FILE" "$DST/$FILE"
-          done
-
-          sha256sum "$DST/firmware.bin" "$DST/firmware-merged.bin" "$DST/firmware.elf" \
-            | tee "$DST/SHA256SUMS"
-
-      - name: Verify baked RiscRTE version string
-        if: ${{ needs.request.outputs.product == 'firmware' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          VER="${{ steps.ver.outputs.ver }}"
-          BIN="$RUNNER_TEMP/riscrte-firmware/firmware.bin"
-          if [[ -z "$VER" ]]; then
-            echo "::error::Release version is empty"
-            exit 1
-          fi
-          if ! grep -a -F -q -- "$VER" "$BIN"; then
-            echo "::error::firmware.bin does not contain RiscRTE version string $VER"
-            exit 1
-          fi
-          if grep -a -F -q -- "-dev-" "$BIN"; then
-            echo "::error::firmware.bin still contains a -dev- version string; gh_release must stamp a clean version"
-            exit 1
-          fi
-          echo "Baked RiscRTE version $VER present in firmware.bin"
-
-      - name: Build and validate GPS driver package
-        if: ${{ needs.request.outputs.product == 'drivers' }}
-        run: |
-          python scripts/build_driver.py
-          bash test/run_driver_test.sh
-          bash test/run_native_app_test.sh dist/drivers/gps-nmea/driver.elf
-
-      - name: Build and validate USB CDC driver package
-        if: ${{ needs.request.outputs.product == 'drivers' }}
-        run: |
-          python scripts/build_usb_cdc_driver.py
-          bash test/run_native_app_test.sh dist/drivers/usb-cdc-acm/driver.elf
-
-      - name: Build native ELF app and manifest
-        if: ${{ needs.request.outputs.product == 'apps' }}
-        env:
-          PRODUCT_ID: ${{ needs.request.outputs.id }}
-        run: python scripts/build_all_apps.py --id "$PRODUCT_ID"
-
-      - name: Build real hardware-owning USB providers and canonical packages
-        if: ${{ needs.request.outputs.product == 'drivers' }}
-        run: |
-          python -m pip install pyelftools
+          python -m pip install platformio==6.1.19 pyelftools
           pio pkg install -e t5s3-pro
-          python scripts/probe_usb_controller_esp32s3.py --link-experiment
-          python scripts/audit_usb_controller_elf.py --strict
-          python scripts/probe_i2c_esp32s3_v2.py
-          python scripts/audit_i2c_esp32s3_elf.py --strict
-          python scripts/build_platform_clock_v1.py
-          python scripts/build_board_power_t5s3_v2.py
-          python scripts/build_usb_host_v2.py
-          python scripts/build_usb_cdc_v2.py
-          python scripts/build_usb_cp210x_v2.py
-          python scripts/build_usb_ch34x_v2.py
-          python scripts/build_usb_ftdi.py
-          python scripts/build_usb_stlink.py
-          python scripts/build_usb_msp.py
-          python scripts/build_program_msp.py
-          python scripts/build_usb_hid.py
-          python scripts/build_usb_hid_keyboard.py
-          python scripts/build_usb_hid_gamepad.py
-          python scripts/build_usb_xinput_gamepad.py
-          python scripts/build_usb_ui_navigation.py
-          python scripts/build_installed_usb_stack.py
-          python test/drivers/installed_usb_stack_package_test.py
-          python scripts/export_canonical_driver_release.py
-
-      - name: Stage RiscRTE firmware image
-        if: ${{ needs.request.outputs.product == 'firmware' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          SRC="$RUNNER_TEMP/riscrte-firmware"
-          VER="${{ steps.ver.outputs.ver }}"
-          MERGED="${{ steps.ver.outputs.bin }}"
-
-          # Verify the preserved images are unchanged before publishing them.
-          sha256sum -c "$SRC/SHA256SUMS"
-          mkdir -p firmware dist
-
-          cp "$SRC/firmware-merged.bin" "$MERGED"
-          cp "$SRC/firmware.bin" dist/firmware-t5s3-pro.bin
-          cp "$SRC/firmware.bin" "dist/riscrte_lilygo_t5s3_${VER}-app.bin"
-          cp "$SRC/firmware-merged.bin" "dist/riscrte_lilygo_t5s3_${VER}.bin"
-          cp "$SRC/firmware.elf" "dist/riscrte_lilygo_t5s3_${VER}.elf"
-          ls -lh "$MERGED" dist/
-
-      - name: Commit firmware tree
-        if: ${{ needs.request.outputs.product == 'firmware' && needs.request.outputs.commit_firmware == 'true' }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "${{ steps.ver.outputs.bin }}"
-          if git diff --cached --quiet; then
-            echo "RiscRTE firmware image already committed"
-          else
-            git commit -m "Add ${{ steps.ver.outputs.bin }}"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
-
-      - name: Select assets and prepare release index record
-        shell: bash
-        env:
-          PRODUCT: ${{ needs.request.outputs.product }}
-          PRODUCT_ID: ${{ needs.request.outputs.id }}
-          VERSION: ${{ needs.request.outputs.ver }}
-        run: |
-          set -euo pipefail
-          mkdir -p dist/product-release
-          case "$PRODUCT" in
-            firmware)
-              ASSETS=(
-                dist/firmware-t5s3-pro.bin
-                "dist/riscrte_lilygo_t5s3_${VERSION}-app.bin"
-                "dist/riscrte_lilygo_t5s3_${VERSION}.elf"
-                "firmware/riscrte_lilygo_t5s3_${VERSION}.bin"
-              )
-              ;;
-            apps)
-              ASSETS=("dist/apps/${PRODUCT_ID}.elf" "dist/apps/${PRODUCT_ID}.json")
-              ;;
-            drivers)
-              mapfile -d '' ASSETS < <(find dist/release-packages -maxdepth 1 -type f -name "${PRODUCT_ID}--*" -print0 | sort -z)
-              if [[ ${#ASSETS[@]} -eq 0 ]]; then
-                echo "::error::No canonical release package assets found for driver ${PRODUCT_ID}"
-                exit 1
-              fi
-              ;;
-            *)
-              echo "::error::Unsupported product $PRODUCT"
-              exit 1
-              ;;
-          esac
-          for asset in "${ASSETS[@]}"; do
-            if [[ ! -s "$asset" ]]; then
-              echo "::error::Missing selected product asset: $asset"
-              exit 1
-            fi
-          done
-          python3 scripts/build_release_record.py --product "$PRODUCT" --id "$PRODUCT_ID" \
-            --version "$VERSION" --output "$RUNNER_TEMP/record.json"
-          printf '%s\n' "${ASSETS[@]}" > "$RUNNER_TEMP/assets.txt"
-
-      - name: Validate release index update before publication
-        shell: bash
-        env:
-          PRODUCT: ${{ needs.request.outputs.product }}
-        run: |
-          set -euo pipefail
-          INDEX_DIR="$RUNNER_TEMP/index-preflight"
-          mkdir -p "$INDEX_DIR"
-          if git ls-remote --exit-code --heads origin release-index >/dev/null 2>&1; then
-            git fetch origin refs/heads/release-index
-            if ! git show FETCH_HEAD:release-index.json > "$INDEX_DIR/release-index.json"; then
-              echo "::error::release-index branch exists but its JSON index is missing"
-              exit 1
-            fi
-          else
-            printf '{"schema":1,"firmware":null,"apps":[],"drivers":[]}\n' > "$INDEX_DIR/release-index.json"
-          fi
-          python3 scripts/update_release_index.py --index "$INDEX_DIR/release-index.json" \
-            --record "$RUNNER_TEMP/record.json" --product "$PRODUCT"
-
-      - name: Publish or verify the immutable product release
-        shell: bash
+      - name: Scan source manifests and plan changed releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.request.outputs.tag }}
-          PRODUCT: ${{ needs.request.outputs.product }}
-          PRODUCT_ID: ${{ needs.request.outputs.id }}
-          VERSION: ${{ needs.request.outputs.ver }}
-        run: |
-          set -euo pipefail
-          mapfile -t ASSETS < "$RUNNER_TEMP/assets.txt"
-          NOTES="Independent ${PRODUCT} release ${VERSION} for ${PRODUCT_ID:-RiscRTE firmware}. The release contains only the selected product's payload."
-          if gh release view "$TAG" --json assets >/dev/null 2>&1; then
-            mapfile -t EXISTING < <(gh release view "$TAG" --json assets --jq '.assets[].name')
-            expected_names=()
-            for path in "${ASSETS[@]}"; do expected_names+=("$(basename "$path")"); done
-            for name in "${EXISTING[@]}"; do
-              if [[ ! " ${expected_names[*]} " == *" $name "* ]]; then
-                echo "::error::Existing release $TAG contains an unexpected asset: $name"
-                exit 1
-              fi
-            done
-            MAIN_ASSET="$(jq -r .asset "$RUNNER_TEMP/record.json")"
-            MAIN_SHA="$(jq -r .sha256 "$RUNNER_TEMP/record.json")"
-            mkdir -p "$RUNNER_TEMP/existing-release"
-            if ! printf '%s\n' "${EXISTING[@]}" | grep -Fxq "$MAIN_ASSET"; then
-              echo "::error::Existing release $TAG is missing its indexed asset $MAIN_ASSET"
-              exit 1
-            fi
-            gh release download "$TAG" --pattern "$MAIN_ASSET" --dir "$RUNNER_TEMP/existing-release"
-            ACTUAL_SHA="$(sha256sum "$RUNNER_TEMP/existing-release/$MAIN_ASSET" | awk '{print $1}')"
-            if [[ "$ACTUAL_SHA" != "$MAIN_SHA" ]]; then
-              echo "::error::Existing release $TAG has a different digest for $MAIN_ASSET"
-              exit 1
-            fi
-            missing=()
-            for i in "${!ASSETS[@]}"; do
-              name="$(basename "${ASSETS[$i]}")"
-              if ! printf '%s\n' "${EXISTING[@]}" | grep -Fxq "$name"; then
-                missing+=("${ASSETS[$i]}")
-              fi
-            done
-            if [[ ${#missing[@]} -gt 0 ]]; then gh release upload "$TAG" "${missing[@]}"; fi
-          else
-            TARGET_SHA="$(git rev-parse HEAD)"
-            gh release create "$TAG" "${ASSETS[@]}" --title "$TAG" --notes "$NOTES" --target "$TARGET_SHA"
-          fi
-
-      - name: Update release index after successful publication
-        shell: bash
+        run: python scripts/publish_updated_packages.py --plan-only --plan-file "$RUNNER_TEMP/release-plan.json"
+      - name: Build only planned changed products
+        run: python scripts/build_release_candidates.py --plan "$RUNNER_TEMP/release-plan.json"
+      - name: Publish planned product releases
         env:
-          PRODUCT: ${{ needs.request.outputs.product }}
-        run: |
-          set -euo pipefail
-          cp scripts/update_release_index.py "$RUNNER_TEMP/update_release_index.py"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git ls-remote --exit-code --heads origin release-index >/dev/null 2>&1; then
-            git fetch origin refs/heads/release-index
-            git checkout --detach FETCH_HEAD
-            if [[ ! -s release-index.json ]]; then
-              echo "::error::release-index branch exists but release-index.json is missing"
-              exit 1
-            fi
-          else
-            git checkout --orphan release-index
-            git rm -rf --ignore-unmatch .
-            printf '{"schema":1,"firmware":null,"apps":[],"drivers":[]}\n' > release-index.json
-          fi
-          python3 "$RUNNER_TEMP/update_release_index.py" --index release-index.json \
-            --record "$RUNNER_TEMP/record.json" --product "$PRODUCT"
-          git add release-index.json
-          if git diff --cached --quiet; then
-            echo "Release index already points at this immutable package"
-          else
-            git commit -m "Publish $PRODUCT release index entry"
-            git push origin HEAD:refs/heads/release-index
-          fi
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/publish_updated_packages.py --plan-file "$RUNNER_TEMP/release-plan.json"
