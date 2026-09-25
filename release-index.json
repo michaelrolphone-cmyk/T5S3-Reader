@@ -385,6 +385,25 @@
       "tag": "app-opds_settings-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-opds_settings-v1.0.0/opds_settings.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "ota_update.elf",
+      "id": "ota_update",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Firmware Update",
+        "file_name": "ota_update.elf",
+        "icon": "solid:f021",
+        "min_firmware_version": "1.1.22",
+        "sha256": "2fa61ffeca506f22635f469d005fd335c2b4223037a500272abf81385c00e607",
+        "size_bytes": 5064,
+        "version": "1.0.0"
+      },
+      "sha256": "2fa61ffeca506f22635f469d005fd335c2b4223037a500272abf81385c00e607",
+      "size": 5064,
+      "tag": "app-ota_update-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-ota_update-v1.0.0/ota_update.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
