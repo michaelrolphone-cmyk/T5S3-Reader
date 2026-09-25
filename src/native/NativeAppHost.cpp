@@ -4,6 +4,7 @@
 #include "NativeOnlineAppInstall.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
 #include "AppCatalogIndex.h"
+#include "AppCatalogPolicy.h"
 #include "AppReleaseAssetRules.h"
 #include "AppManifest.h"
 #include "AppPackageInstaller.h"
@@ -440,6 +441,7 @@ bool loadAggregateCatalog(const std::vector<ReleaseCatalogAsset>& releaseAssets,
               static_cast<unsigned>(validated.size() + 1), manifest.file_name);
       return false;
     }
+    if (NativeAppCatalogPolicy::isRetiredArtifact(manifest.file_name)) continue;
     // The parsed manifest is copied into the final catalog below; discard its
     // serialized JSON now instead of retaining every app's raw metadata.
     std::string().swap(json);
@@ -504,6 +506,7 @@ bool loadCatalogManifests(std::vector<ReleaseCatalogAsset>& releaseAssets,
               asset.name.c_str(), manifest.file_name);
       continue;
     }
+    if (NativeAppCatalogPolicy::isRetiredArtifact(manifest.file_name)) continue;
 
     CatalogAsset resolved;
     resolved.name = std::move(asset.name);
@@ -590,6 +593,7 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
         "/releases/download/" + tag + "/" + asset.name;
     if (std::strcmp(id, expectedId.c_str()) || std::strcmp(tag, expectedTag.c_str()) ||
         std::strcmp(url, expectedUrl.c_str())) return false;
+    if (NativeAppCatalogPolicy::isRetiredId(id)) continue;
     serializeJson(entry["manifest"], asset.manifestJson);
     std::string parsedVersion;
     if (asset.manifestJson.empty() || asset.manifestJson.size() > kMaxManifestBytes ||

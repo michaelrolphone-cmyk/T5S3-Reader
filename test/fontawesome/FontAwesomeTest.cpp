@@ -17,6 +17,9 @@ int main(int argc, char** argv) {
   // The Serial Monitor manifest must reference a glyph actually shipped on
   // the SD card, not an icon present only in an unrelated font distribution.
   assert(font.getEpdFont(0)->getGlyph(0xf120));
+  // USB Debug uses the shipped plug glyph; U+F287 (the historic USB icon) is
+  // absent from the bundled Classic Solid font.
+  assert(font.getEpdFont(0)->getGlyph(0xf1e6));
 
   // Exercise the production draw helper, retaining only a fake display driver.
   static GfxRenderer renderer;
@@ -26,6 +29,7 @@ int main(int argc, char** argv) {
     assert(renderer.pixels > before);
     assert(FontAwesomeIcons::draw(renderer, 0, 0, "regular:f017", size));
     assert(FontAwesomeIcons::draw(renderer, 0, 0, "solid:f120", size));
+    assert(FontAwesomeIcons::draw(renderer, 0, 0, "solid:f1e6", size));
   }
   assert(renderer.pixels > 0 && renderer.placeholders == 0);
   const int pixels = renderer.pixels;

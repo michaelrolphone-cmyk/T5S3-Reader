@@ -1,9 +1,14 @@
 #include "native/AppReleaseAssetRules.h"
+#include "native/AppCatalogPolicy.h"
 #include <cassert>
 #include <iostream>
 
 int main() {
   using NativeAppReleaseRules::appElfAssetName;
+  assert(NativeAppCatalogPolicy::isRetiredId("hello"));
+  assert(NativeAppCatalogPolicy::isRetiredArtifact("hello.elf"));
+  assert(!NativeAppCatalogPolicy::isRetiredId("usb_debug"));
+  assert(!NativeAppCatalogPolicy::isRetiredArtifact("usb_debug.elf"));
   assert(appElfAssetName("app_store.elf"));
   assert(appElfAssetName("driver_manager.elf"));
   assert(appElfAssetName("ESP_ROM_FLASHER.ELF"));

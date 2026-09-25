@@ -86,8 +86,8 @@ jobs:
 
       - name: Build and validate native ELFs
         run: |
-          python scripts/build_native_app.py examples/native_apps/hello.c --output dist/hello.elf
-          bash test/run_native_app_test.sh dist/hello.elf
+          python scripts/build_native_app.py examples/native_apps/hello.c --output /tmp/riscrte-native-app-hello.elf
+          bash test/run_native_app_test.sh /tmp/riscrte-native-app-hello.elf
           python scripts/build_native_app.py Apps/timecard.c --output dist/timecard.elf
           bash test/run_native_app_test.sh dist/timecard.elf
 
@@ -121,7 +121,6 @@ jobs:
             dist/${{ matrix.firmware_name }}
             dist/${{ matrix.merged_firmware_name }}
             dist/${{ matrix.elf_name }}
-            dist/hello.elf
             dist/apps/*
             dist/drivers/*.t5driver.zip
             dist/timecard.elf

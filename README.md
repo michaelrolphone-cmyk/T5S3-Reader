@@ -57,11 +57,14 @@ All architecture documents should use **RiscRTE** when referring to the runtime,
 
 ## Native ELF applications
 
-Installed applications live under `/Apps` as an ELF plus a JSON manifest:
+Installed applications live under `/Apps` as an ELF plus a JSON manifest. For
+example, the springboard and Timecard app are installed as:
 
 ```text
-/Apps/hello.elf
-/Apps/hello.json
+/Apps/springboard.elf
+/Apps/springboard.json
+/Apps/timecard.elf
+/Apps/timecard.json
 ```
 
 A typical manifest contains the minimum compatible firmware/runtime version, display name, ELF filename, and Font Awesome icon. Applications execute through versioned host APIs and are unloaded when their execution lifetime ends.
