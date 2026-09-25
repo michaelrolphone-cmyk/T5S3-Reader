@@ -98,7 +98,7 @@ download = (root / 'src/network/HttpDownloader.cpp').read_text(encoding='utf-8')
 start = download.index('HttpDownloader::DownloadError HttpDownloader::downloadToFile(')
 transfer = download[start:]
 for required in ('if (staged && (destPath.front()', 'Storage.exists(destPath.c_str())',
-                 'bool destinationCreated = false;', '&transferred, &destinationCreated);',
+                 'bool destinationCreated = false;', '&transferred, &destinationCreated, &httpOpenStatus);',
                  'if (destinationCreated) Storage.remove(destPath.c_str());',
                  'if (staged) {\n    file = Storage.open(destPath.c_str(), O_WRONLY | O_CREAT | O_EXCL);',
                  'Storage.openFileForWrite("HTTP", destPath.c_str(), file);'):
