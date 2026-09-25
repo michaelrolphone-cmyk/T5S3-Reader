@@ -1,0 +1,14 @@
+{
+  "apps": [],
+  "drivers": [],
+  "firmware": {
+    "asset": "firmware-t5s3-pro.bin",
+    "kind": "firmware",
+    "sha256": "b729f819a13729ba16bba0489455dca13bc4324f87f908ad79cd2f46fa7480e0",
+    "size": 5958576,
+    "tag": "firmware-v1.2.7",
+    "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/firmware-v1.2.7/firmware-t5s3-pro.bin",
+    "version": "1.2.7"
+  },
+  "schema": 1
+}
