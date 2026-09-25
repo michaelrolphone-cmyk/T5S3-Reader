@@ -372,7 +372,7 @@ bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
 }
 OrdinaryInstallOutcome installOrdinaryFromSd(
     const char* sourceDirectory, const PackageRuntimePolicy& policy,
-    uint32_t (*resolveCapability)(const char*)) {
+    uint32_t (*resolveCapability)(const char*), bool allowDowngrade) {
   OrdinaryInstallOutcome invalid{};
   if (!Storage.ready() || !safeSourcePath(sourceDirectory) ||
       !resolveCapability || !directoryExists(sourceDirectory)) return invalid;
@@ -415,6 +415,7 @@ OrdinaryInstallOutcome installOrdinaryFromSd(
   // The caller must own the per-identity manager mutation lock; publication
   // itself takes an exclusive mapping lease and independently re-verifies.
   return installCanonicalOrdinaryPackage(metadata.get(), length, source, *destination,
-      hash, resolveCapability, policy, io, ops, verify, purge, true);
+      hash, resolveCapability, policy, io, ops, verify, purge, true,
+      allowDowngrade);
 }
 } // namespace RuntimePackages
