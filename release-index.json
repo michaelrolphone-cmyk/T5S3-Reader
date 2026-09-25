@@ -537,6 +537,31 @@
       "tag": "app-status_bar_settings-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-status_bar_settings-v1.0.0/status_bar_settings.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "text_editor.elf",
+      "id": "text_editor",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Text Editor",
+        "file_name": "text_editor.elf",
+        "icon": "solid:f15c",
+        "min_firmware_version": "1.2.55",
+        "optional": [
+          {
+            "api": ">=1",
+            "capability": "usb.hid.keyboard"
+          }
+        ],
+        "sha256": "8ccece12636adeecaefd7aeac2790976f971671044273892cb9edd3c92c1fa3c",
+        "size_bytes": 19880,
+        "version": "0.1.3"
+      },
+      "sha256": "8ccece12636adeecaefd7aeac2790976f971671044273892cb9edd3c92c1fa3c",
+      "size": 19880,
+      "tag": "app-text_editor-v0.1.3",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-text_editor-v0.1.3/text_editor.elf",
+      "version": "0.1.3"
     }
   ],
   "drivers": [],
