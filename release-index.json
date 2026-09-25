@@ -1434,6 +1434,62 @@
       "tag": "driver-usb-stlink-v0.1.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-stlink-v0.1.0/usb-stlink--driver.elf",
       "version": "0.1.0"
+    },
+    {
+      "asset": "usb-ui-navigation--driver.elf",
+      "id": "usb-ui-navigation",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "input.navigation",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "430b3928956b89ce473561eac7389f450bc510ba6c9962163e5e90f5089e5271",
+            "size_bytes": 727
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "9b5e6b41f49d7e4aa56c973ec5f778b3dcd84318081ad88312e9efae1ecde5ae",
+            "size_bytes": 7700
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "550d6acf2cfc1f4a90fe32f3190d532714ec6b245ad4547cd24823c7df2e219c",
+            "size_bytes": 45
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "1591d47dab39b502bcc6e3e65dc1d466fb29f53433054fe5046f432ab4a6d16d",
+            "size_bytes": 7
+          }
+        ],
+        "id": "usb-ui-navigation",
+        "requires": [
+          {
+            "capability": "usb.hid.keyboard",
+            "min_api": 1
+          },
+          {
+            "capability": "usb.hid.gamepad",
+            "min_api": 1
+          },
+          {
+            "capability": "usb.xinput.gamepad",
+            "min_api": 1
+          }
+        ],
+        "version": "0.1.0"
+      },
+      "sha256": "9b5e6b41f49d7e4aa56c973ec5f778b3dcd84318081ad88312e9efae1ecde5ae",
+      "size": 7700,
+      "tag": "driver-usb-ui-navigation-v0.1.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-ui-navigation-v0.1.0/usb-ui-navigation--driver.elf",
+      "version": "0.1.0"
     }
   ],
   "firmware": {
