@@ -794,13 +794,41 @@ static int32_t baud_index(uint32_t baud) {
     return (int32_t)(sizeof(baud_rates) / sizeof(baud_rates[0]));
 }
 
+static bool coding_equal(const t5_serial_config_t *a, const t5_serial_config_t *b) {
+    return a->baud_rate == b->baud_rate && a->data_bits == b->data_bits &&
+           a->parity == b->parity && a->stop_bits == b->stop_bits &&
+           a->flow_control == b->flow_control;
+}
+
 static bool apply_coding(t5_serial_port_state_t *state, t5_serial_config_t coding) {
-    if (!serial_lease || serial_port->configure(serial_lease, &coding) != T5_SERIAL_OK) {
-        append_notice("Unable to apply line settings");
-        return false;
+    t5_serial_config_t previous;
+    if (!state || !serial_port) return false;
+    previous = state->config;
+    if (coding_equal(&previous, &coding)) return true;
+
+    /* Some USB serial classes do not reliably accept a live line-coding
+     * change while their bulk streams are active. Auto Detect already uses
+     * the stronger provider lifecycle contract: release the old lease and
+     * reacquire the serial.port capability with the requested coding. Use the
+     * same path for manual baud/framing changes so the provider applies the
+     * settings during session setup, then verify what it reports back. */
+    if (restart_serial_session(state, &coding) && coding_equal(&state->config, &coding)) {
+        drain_serial_stream();
+        return true;
     }
-    state->config = coding;
-    return true;
+
+    /* A failed change must not strand the monitor without its prior working
+     * session. Reacquire the previous coding before returning to the Actions
+     * view. If that also fails, make the loss explicit instead of displaying
+     * the requested baud as though it had taken effect. */
+    if (restart_serial_session(state, &previous)) {
+        append_notice("Unable to apply line settings; previous settings restored");
+    } else {
+        state->status = T5_SERIAL_STATUS_UNAVAILABLE;
+        state->config = previous;
+        append_notice("Unable to apply line settings; serial session unavailable");
+    }
+    return false;
 }
 
 static bool state_changed(const t5_serial_port_state_t *a, const t5_serial_port_state_t *b) {
