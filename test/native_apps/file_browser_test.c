@@ -148,33 +148,36 @@ static void render_browser(const char *path, const char *status,
     assert(status[0] == 0);
     if (phase == 1) {
         if (render_index == 0) {
-            assert(strcmp(path, "/") == 0 && count == 6 && selected == 0);
+            assert(strcmp(path, "/") == 0 && count == 7 && selected == 0);
             assert_entry(entries, 0, "Books", true);
             assert_entry(entries, 1, "Book2.epub", false);
             assert_entry(entries, 2, "Book10.epub", false);
             assert_entry(entries, 3, "game.elf", false);
-            assert_entry(entries, 4, "image.bmp", false);
-            assert_entry(entries, 5, "notes.md", false);
+            assert_entry(entries, 4, "ignore.pdf", false);
+            assert_entry(entries, 5, "image.bmp", false);
+            assert_entry(entries, 6, "notes.md", false);
         } else if (render_index == 1) {
             assert(strcmp(path, "/Books") == 0 && count == 2 && selected == 0);
             assert_entry(entries, 0, "Child2.txt", false);
             assert_entry(entries, 1, "Child10.txt", false);
         } else if (render_index == 2) {
-            assert(strcmp(path, "/") == 0 && count == 6 && selected == 0);
+            assert(strcmp(path, "/") == 0 && count == 7 && selected == 0);
             assert_entry(entries, 0, "Books", true);
         } else if (render_index == 3) {
-            assert(strcmp(path, "/") == 0 && count == 6 && selected == 1);
+            assert(strcmp(path, "/") == 0 && count == 7 && selected == 1);
             assert_entry(entries, 1, "Book2.epub", false);
+            assert_entry(entries, 4, "ignore.pdf", false);
         } else {
             assert(!"unexpected phase-1 render");
         }
     } else {
         assert(phase == 2);
         assert(render_index == 0);
-        assert(strcmp(path, "/") == 0 && count == 5 && selected == 1);
+        assert(strcmp(path, "/") == 0 && count == 6 && selected == 1);
         assert_entry(entries, 0, "Books", true);
         assert_entry(entries, 1, "Book10.epub", false);
         assert_entry(entries, 2, "game.elf", false);
+        assert_entry(entries, 3, "ignore.pdf", false);
     }
     ++render_index;
 }
