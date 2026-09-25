@@ -43,7 +43,7 @@ class LiveInstallContract(unittest.TestCase):
         # Retain exclusive new-directory/file creation and verified publication.
         for required in ('safePackageEntryName(artifact)',
                          'Recovery::discardMatchingInbox(',
-                         'if (!Storage.mkdir(root.c_str(), false)) return false',
+                         'if (!Storage.mkdir(root.c_str(), false)) return fail("could not create package inbox")',
                          'O_WRONLY | O_CREAT | O_EXCL',
                          'HttpDownloader::downloadToFile(url, elfStage,',
                          '!Storage.rename(elfStage.c_str(), elfPath.c_str())',

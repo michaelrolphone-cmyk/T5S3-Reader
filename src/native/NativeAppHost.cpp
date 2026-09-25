@@ -88,6 +88,7 @@ struct Session {
   std::vector<CatalogAsset> catalog;
   std::vector<t5_app_manifest_t> installed;
   std::string launchPath;
+  char catalogDownloadError[128]{};
   bool backExitsApp = true;
   bool exiting = false;
   bool presenting = false;
@@ -806,54 +807,88 @@ bool installedAppVersionGet(const char* fileName, char* out, size_t capacity) {
   return copyVersion(version, out, capacity);
 }
 
+bool catalogDownloadFailed(Session* s, const char* reason) {
+  if (s) {
+    std::snprintf(s->catalogDownloadError, sizeof(s->catalogDownloadError), "%s",
+                  reason ? reason : "unknown install failure");
+    LOG_ERR("APPSTORE", "App install failed: %s", s->catalogDownloadError);
+  }
+  return false;
+}
+
 bool appCatalogDownload(uint32_t index) {
   auto* s = current();
-  if (!s || !Storage.ready() || index >= s->catalog.size()) return false;
+  if (!s) return false;
+  s->catalogDownloadError[0] = '\0';
+  if (!Storage.ready()) return catalogDownloadFailed(s, "SD storage is unavailable");
+  if (index >= s->catalog.size()) return catalogDownloadFailed(s, "catalog selection is invalid");
+
   CatalogAsset selected = s->catalog[index];
   if (!safeAssetName(selected.name) ||
       !RuntimePackages::safePackageEntryName(selected.name.c_str()) ||
       !selected.manifestValid ||
       (selected.manifestJson.empty() && selected.manifestUrl.empty()) ||
-      selected.size < 52 || selected.size > 8u * 1024u * 1024u) return false;
+      selected.url.empty() ||
+      selected.size < 52 || selected.size > 8u * 1024u * 1024u)
+    return catalogDownloadFailed(s, "release catalog entry is incomplete");
 
   std::string json = std::move(selected.manifestJson), version;
   t5_app_manifest_t manifest{};
   if (json.empty()) {
-    if (!HttpDownloader::fetchUrl(selected.manifestUrl, json)) return false;
+    if (!HttpDownloader::fetchUrl(selected.manifestUrl, json))
+      return catalogDownloadFailed(s, "app manifest download failed");
     // Let the completed metadata worker's stack be reclaimed before creating
     // the larger binary-transfer worker.
     delay(1);
   }
-  if (json.empty() || json.size() > 4096 ||
-      !parseAppManifest(json, manifest, &version, true) ||
-      !manifest.compatible || selected.name != manifest.file_name ||
-      version != selected.version) return false;
+  if (json.empty() || json.size() > 4096)
+    return catalogDownloadFailed(s, "app manifest is empty or too large");
+  if (!parseAppManifest(json, manifest, &version, true))
+    return catalogDownloadFailed(s, "app manifest is invalid");
+  if (!manifest.compatible)
+    return catalogDownloadFailed(s, "app requires newer firmware");
+  if (selected.name != manifest.file_name)
+    return catalogDownloadFailed(s, "app manifest filename does not match release");
+  if (version != selected.version)
+    return catalogDownloadFailed(s, "app manifest version does not match release");
+
   JsonDocument metadata;
   if (deserializeJson(metadata, json) || !metadata.is<JsonObjectConst>() ||
       !metadata["sha256"].is<const char*>() ||
       !metadata["size_bytes"].is<unsigned>() ||
       metadata["size_bytes"].as<unsigned>() != selected.size) {
     LOG_ERR("APPSTORE", "Release metadata lacks matching executable length and digest");
-    return false;
+    return catalogDownloadFailed(s, "app size or digest metadata does not match release");
   }
   const char* digest = metadata["sha256"].as<const char*>();
-  if (!RuntimePackages::validSha256Hex(digest)) return false;
+  if (!RuntimePackages::validSha256Hex(digest))
+    return catalogDownloadFailed(s, "app digest is invalid");
+
   char installed[T5_APP_VERSION_MAX]{};
   if (installedAppVersionGet(selected.name.c_str(), installed, sizeof(installed)) &&
       RuntimePackages::comparePackageVersions(version.c_str(), installed) !=
-          RuntimePackages::VersionOrder::Newer) return false;
+          RuntimePackages::VersionOrder::Newer)
+    return catalogDownloadFailed(s, "catalog version is not newer than installed app");
 
-  // The independent release index retains a serialized manifest for every app.
-  // Keep the selected sidecar locally, then free all catalog JSON before the
-  // HTTP provider allocates its worker stack, 4 KiB FIFO and TLS buffers. This
-  // bounds the transfer-time heap to the selected package's metadata.
+  // Free cached catalog JSON before the HTTP worker allocates its stack, FIFO
+  // and TLS buffers. The selected sidecar is already owned by this invocation.
   for (auto& asset : s->catalog) std::string().swap(asset.manifestJson);
 
-  // There is exactly one publication mechanism for all four ordinary package
-  // kinds. A release is first converted to an exclusive canonical SD source;
-  // that source is independently verified by the shared transaction engine.
-  return RuntimeOnlinePackages::installApplication(selected.name.c_str(),
-      version.c_str(), selected.url.c_str(), json, selected.size, digest);
+  const char* failureReason = nullptr;
+  if (!RuntimeOnlinePackages::installApplication(selected.name.c_str(),
+      version.c_str(), selected.url.c_str(), json, selected.size, digest, &failureReason))
+    return catalogDownloadFailed(s, failureReason ? failureReason : "package installation failed");
+  return true;
+}
+
+bool appCatalogDownloadLastError(char* out, size_t capacity) {
+  auto* s = current();
+  if (!s || !out || !capacity || !s->catalogDownloadError[0]) return false;
+  const size_t length = std::strlen(s->catalogDownloadError);
+  const size_t copied = std::min(length, capacity - 1);
+  std::memcpy(out, s->catalogDownloadError, copied);
+  out[copied] = '\0';
+  return true;
 }
 
 bool installedRefresh() {
@@ -960,7 +995,8 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            appCatalogManifestGet,
                            installedAppVersionGet,
                            appCatalogVersionGet,
-                           presentServiced};
+                           presentServiced,
+                           appCatalogDownloadLastError};
 }  // namespace
 
 bool presentNativeAppUiFrame() {
