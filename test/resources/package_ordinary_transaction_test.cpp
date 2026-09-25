@@ -71,12 +71,13 @@ struct Harness {
     assert(!storage.exists(paths.stage));
     storage.dirs[paths.stage] = {identity(kind, id, version), true, false};
   }
-  OrdinaryTransactionResult install(const char* version) {
+  OrdinaryTransactionResult install(const char* version, bool allowDowngrade = false) {
     return publishOrdinaryPackage(storage, identity(kind, id, version),
         [this](const char* path, Identity& result) {
           return storage.verify(path, result);
         },
-        [this](const char* path) { return storage.purge(path); }, observed);
+        [this](const char* path) { return storage.purge(path); }, observed,
+        allowDowngrade);
   }
   OrdinaryTransactionResult recover() {
     return recoverOrdinaryPackage(storage, kind, id,
@@ -113,6 +114,23 @@ void lifecycle(Kind kind) {
   assert(h.uninstall() == OrdinaryTransactionResult::Removed);
   assert(h.recover() == OrdinaryTransactionResult::NoInstalledPackage);
   assert(!h.storage.exists(h.paths.target));
+}
+
+void explicitDowngradePolicy() {
+  Harness h(Kind::Application, "downgrade-app");
+  h.stage("2.0.0");
+  assert(h.install("2.0.0") == OrdinaryTransactionResult::Published);
+  h.stage("1.5.0");
+  assert(h.install("1.5.0") == OrdinaryTransactionResult::VersionRejected);
+  assert(h.storage.exists(h.paths.stage));
+  h.storage.dirs.erase(h.paths.stage);
+  h.stage("1.5.0");
+  assert(h.install("1.5.0", true) == OrdinaryTransactionResult::Published);
+  assert(std::strcmp(h.observed.version, "1.5.0") == 0);
+  h.stage("1.5.0");
+  assert(h.install("1.5.0", true) == OrdinaryTransactionResult::VersionRejected);
+  assert(h.storage.exists(h.paths.target) && h.storage.exists(h.paths.stage));
+  h.storage.dirs.erase(h.paths.stage);
 }
 
 void powerCutsAndFailures() {
@@ -170,6 +188,7 @@ int main() {
   lifecycle(Kind::Driver);
   lifecycle(Kind::Service);
   lifecycle(Kind::Provider);
+  explicitDowngradePolicy();
   powerCutsAndFailures();
   invalidAndPinned();
   std::puts("Ordinary lifecycle: four-kind install/update/inventory/uninstall, mapping gate and power-cut recovery passed");

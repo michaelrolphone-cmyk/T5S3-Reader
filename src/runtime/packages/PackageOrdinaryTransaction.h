@@ -134,11 +134,13 @@ OrdinaryTransactionResult recoverOrdinaryPackage(Ops& ops, Kind kind,
 
 // The target and staged directory have already been fully integrity-checked;
 // this re-verifies both under the exclusive identity lease before publication.
-// The only accepted update is a NEWER semver, or a fresh installation. Neither
-// the caller nor package metadata may bypass the active mapping gate.
+// Normal callers accept only a NEWER semver or a fresh installation. An
+// explicit package-manager replacement may allow an OLDER semver, but neither
+// metadata nor the caller can bypass the active mapping gate or identity check.
 template <typename Ops, typename Verify, typename Purge>
 OrdinaryTransactionResult publishOrdinaryPackage(Ops& ops,
-    const Identity& candidate, Verify verify, Purge purge, Identity& observed) {
+    const Identity& candidate, Verify verify, Purge purge, Identity& observed,
+    bool allowDowngrade = false) {
   OrdinaryTransactionPaths paths{};
   Identity canonical{};
   if (!makeIdentity(candidate.kind, candidate.id, candidate.version,
@@ -165,7 +167,9 @@ OrdinaryTransactionResult publishOrdinaryPackage(Ops& ops,
     if (!OrdinaryTransactionDetail::inspect(verify, paths.target,
         candidate.kind, candidate.id, observed))
       return OrdinaryTransactionResult::InvalidInstalled;
-    if (decidePackageVersion(candidate, &observed) != InstallDecision::Upgrade)
+    const auto decision = decidePackageVersion(candidate, &observed, allowDowngrade);
+    if (decision != InstallDecision::Upgrade &&
+        decision != InstallDecision::DowngradeAllowed)
       return OrdinaryTransactionResult::VersionRejected;
   }
   if (!OrdinaryTransactionDetail::inspect(verify, paths.stage,
