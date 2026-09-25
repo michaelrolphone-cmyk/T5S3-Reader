@@ -138,6 +138,25 @@
       "tag": "app-file_transfer-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-file_transfer-v1.0.0/file_transfer.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "font_manager.elf",
+      "id": "font_manager",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Manage Fonts",
+        "file_name": "font_manager.elf",
+        "icon": "solid:f031",
+        "min_firmware_version": "1.1.24",
+        "sha256": "584378f117f1c7c4a0b48324957a63d0dd317f5a81455315bb82d8d447a1a507",
+        "size_bytes": 5544,
+        "version": "1.0.0"
+      },
+      "sha256": "584378f117f1c7c4a0b48324957a63d0dd317f5a81455315bb82d8d447a1a507",
+      "size": 5544,
+      "tag": "app-font_manager-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-font_manager-v1.0.0/font_manager.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
