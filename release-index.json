@@ -309,6 +309,25 @@
       "tag": "app-language_settings-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-language_settings-v1.0.0/language_settings.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "llm_ask.elf",
+      "id": "llm_ask",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Ask",
+        "file_name": "llm_ask.elf",
+        "icon": "regular:f4ad",
+        "min_firmware_version": "1.1.9",
+        "sha256": "34b08394bee50ae3ed9a2e5358946fce6de32528c069bcc68347a60f2ae0831a",
+        "size_bytes": 14240,
+        "version": "1.0.0"
+      },
+      "sha256": "34b08394bee50ae3ed9a2e5358946fce6de32528c069bcc68347a60f2ae0831a",
+      "size": 14240,
+      "tag": "app-llm_ask-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-llm_ask-v1.0.0/llm_ask.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
