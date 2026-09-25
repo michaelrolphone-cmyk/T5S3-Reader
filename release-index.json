@@ -404,6 +404,25 @@
       "tag": "app-ota_update-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-ota_update-v1.0.0/ota_update.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "package_manager.elf",
+      "id": "package_manager",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Package Manager",
+        "file_name": "package_manager.elf",
+        "icon": "solid:f187",
+        "min_firmware_version": "1.2.8",
+        "sha256": "410ac21f5aeb90d27c6a8ed41f54651260379b5e0add18915379ed45173ec61a",
+        "size_bytes": 7736,
+        "version": "1.0.0"
+      },
+      "sha256": "410ac21f5aeb90d27c6a8ed41f54651260379b5e0add18915379ed45173ec61a",
+      "size": 7736,
+      "tag": "app-package_manager-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-package_manager-v1.0.0/package_manager.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
