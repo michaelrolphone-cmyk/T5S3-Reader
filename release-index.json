@@ -994,6 +994,54 @@
       "tag": "driver-usb-ch34x-v2-v0.1.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-ch34x-v2-v0.1.0/usb-ch34x-v2--driver.elf",
       "version": "0.1.0"
+    },
+    {
+      "asset": "usb-controller-esp32s3--driver.elf",
+      "id": "usb-controller-esp32s3",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "usb.controller",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "aa56af8c548922d267b6837e6df6bb702921d4f88c46b4148f62684aacbfb4ec",
+            "size_bytes": 644
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "17f23fed7cc174e544315dfad7fae90717f330db7ab78cd7e31bc34af515f006",
+            "size_bytes": 781972
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "45267b2e246bdb6a0ff9639d3fed88e0be35f54841d191273a6d96312bc2796e",
+            "size_bytes": 43
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "c4afa934bdd799046a244e94f82c2d202f72f7010c419c86c6f62095ded168fe",
+            "size_bytes": 801
+          }
+        ],
+        "id": "usb-controller-esp32s3",
+        "requires": [
+          {
+            "capability": "board.power.vbus",
+            "min_api": 1
+          }
+        ],
+        "version": "0.1.15"
+      },
+      "sha256": "17f23fed7cc174e544315dfad7fae90717f330db7ab78cd7e31bc34af515f006",
+      "size": 781972,
+      "tag": "driver-usb-controller-esp32s3-v0.1.15",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-controller-esp32s3-v0.1.15/usb-controller-esp32s3--driver.elf",
+      "version": "0.1.15"
     }
   ],
   "firmware": {
