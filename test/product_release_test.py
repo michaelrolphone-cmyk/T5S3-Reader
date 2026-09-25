@@ -20,38 +20,37 @@ class ProductReleaseTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def event(self, product, identity, version):
-        return {"inputs": {"product": product, "id": identity, "version": version,
-                           "commit_firmware": "false"}}
+    def event(self, product, identity=""):
+        return {"inputs": {"product": product, "id": identity, "commit_firmware": "false"}}
 
     def test_app_release_uses_app_manifest_version_and_identity(self):
         (self.root / "Apps" / "clock.json").write_text(
             json.dumps({"file_name": "clock.elf", "version": "1.2.3"}))
-        result = resolve("workflow_dispatch", self.event("apps", "clock", "1.2.3"), self.root)
+        result = resolve("workflow_dispatch", self.event("apps", "clock"), self.root)
         self.assertEqual((result["tag"], result["product"], result["id"]),
                          ("app-clock-v1.2.3", "apps", "clock"))
 
     def test_driver_release_uses_driver_manifest_version_and_identity(self):
         (self.root / "Drivers" / "clock" / "manifest.json").write_text(
             json.dumps({"id": "platform-clock-v1", "version": "2.0.1"}))
-        result = resolve("workflow_dispatch", self.event("drivers", "platform-clock-v1", "2.0.1"), self.root)
+        result = resolve("workflow_dispatch", self.event("drivers", "platform-clock-v1"), self.root)
         self.assertEqual(result["tag"], "driver-platform-clock-v1-v2.0.1")
 
-    def test_driver_without_source_version_is_checked_against_built_catalog_later(self):
+    def test_driver_release_requires_manifest_version(self):
         (self.root / "Drivers" / "clock" / "manifest.json").write_text(
             json.dumps({"id": "platform-clock-v1"}))
-        result = resolve("workflow_dispatch", self.event("drivers", "platform-clock-v1", "0.1.0"), self.root)
-        self.assertEqual(result["tag"], "driver-platform-clock-v1-v0.1.0")
+        with self.assertRaisesRegex(ValueError, "manifest must include a numeric"):
+            resolve("workflow_dispatch", self.event("drivers", "platform-clock-v1"), self.root)
 
-    def test_rejects_version_that_differs_from_manifest(self):
+    def test_app_release_requires_manifest_version(self):
         (self.root / "Apps" / "clock.json").write_text(
-            json.dumps({"file_name": "clock.elf", "version": "1.2.3"}))
-        with self.assertRaisesRegex(ValueError, "manifest version"):
-            resolve("workflow_dispatch", self.event("apps", "clock", "1.2.4"), self.root)
+            json.dumps({"file_name": "clock.elf"}))
+        with self.assertRaisesRegex(ValueError, "manifest must include a numeric"):
+            resolve("workflow_dispatch", self.event("apps", "clock"), self.root)
 
     def test_firmware_release_uses_firmware_version_authority(self):
         (self.root / "platformio.ini").write_text("[riscrte]\nversion = 1.2.3\n")
-        result = resolve("workflow_dispatch", self.event("firmware", "", "1.2.3"), self.root)
+        result = resolve("workflow_dispatch", self.event("firmware"), self.root)
         self.assertEqual(result["tag"], "firmware-v1.2.3")
 
     def test_driver_record_uses_the_canonical_provider_catalog(self):
