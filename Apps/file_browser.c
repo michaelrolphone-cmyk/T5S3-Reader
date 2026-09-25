@@ -167,7 +167,6 @@ static bool load_files(const char *preserve_name) {
     if (!app->dir_open(dir)) return false;
     while (entry_count < MAX_ENTRIES && app->dir_next(&item)) {
         if ((!show_hidden && item.name[0] == '.') || strcmp(item.name, "System Volume Information") == 0) continue;
-        if (!item.is_directory && !supported_file(item.name)) continue;
         copy_text(entries[entry_count].name, sizeof(entries[entry_count].name), item.name);
         entries[entry_count].is_directory = item.is_directory != 0;
         ++entry_count;
@@ -294,6 +293,10 @@ static bool open_selected(void) {
         if (browser->launch_elf_request(vfs_path, HANDOFF_COOKIE)) return true;
         clear_session();
         copy_text(status_text, sizeof(status_text), "Native app failed");
+        return false;
+    }
+    if (!supported_file(entry->name)) {
+        copy_text(status_text, sizeof(status_text), "Unsupported file type");
         return false;
     }
     char document[PATH_CAP];
