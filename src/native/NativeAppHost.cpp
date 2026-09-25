@@ -795,14 +795,14 @@ bool installedAppVersionGet(const char* fileName, char* out, size_t capacity) {
 bool appCatalogDownload(uint32_t index) {
   auto* s = current();
   if (!s || !Storage.ready() || index >= s->catalog.size()) return false;
-  const CatalogAsset selected = s->catalog[index];
+  CatalogAsset selected = s->catalog[index];
   if (!safeAssetName(selected.name) ||
       !RuntimePackages::safePackageEntryName(selected.name.c_str()) ||
       !selected.manifestValid ||
       (selected.manifestJson.empty() && selected.manifestUrl.empty()) ||
       selected.size < 52 || selected.size > 8u * 1024u * 1024u) return false;
 
-  std::string json = selected.manifestJson, version;
+  std::string json = std::move(selected.manifestJson), version;
   t5_app_manifest_t manifest{};
   if ((json.empty() && !HttpDownloader::fetchUrl(selected.manifestUrl, json)) ||
       json.empty() || json.size() > 4096 ||
@@ -823,6 +823,12 @@ bool appCatalogDownload(uint32_t index) {
   if (installedAppVersionGet(selected.name.c_str(), installed, sizeof(installed)) &&
       RuntimePackages::comparePackageVersions(version.c_str(), installed) !=
           RuntimePackages::VersionOrder::Newer) return false;
+
+  // The independent release index retains a serialized manifest for every app.
+  // Keep the selected sidecar locally, then free all catalog JSON before the
+  // HTTP provider allocates its worker stack, 4 KiB FIFO and TLS buffers. This
+  // bounds the transfer-time heap to the selected package's metadata.
+  for (auto& asset : s->catalog) std::string().swap(asset.manifestJson);
 
   // There is exactly one publication mechanism for all four ordinary package
   // kinds. A release is first converted to an exclusive canonical SD source;
