@@ -328,6 +328,25 @@
       "tag": "app-llm_ask-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-llm_ask-v1.0.0/llm_ask.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "lora.elf",
+      "id": "lora",
+      "kind": "app",
+      "manifest": {
+        "display_name": "LoRa",
+        "file_name": "lora.elf",
+        "icon": "solid:f519",
+        "min_firmware_version": "1.1.15",
+        "sha256": "eda3aeef9715ec4a2d1fc37d0e506f00c59055d97c10542265f03ff855e76da5",
+        "size_bytes": 7992,
+        "version": "1.0.0"
+      },
+      "sha256": "eda3aeef9715ec4a2d1fc37d0e506f00c59055d97c10542265f03ff855e76da5",
+      "size": 7992,
+      "tag": "app-lora-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-lora-v1.0.0/lora.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
