@@ -267,7 +267,6 @@ class CatalogReleaseStream final : public Stream {
       : catalog_(catalog), catalogUrl_(catalogUrl) {
     catalog_.clear();
     catalogUrl_.clear();
-    manifests_.reserve(kMaxCatalogAssets);
   }
 
   size_t write(uint8_t byte) override { return write(&byte, 1); }
