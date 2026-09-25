@@ -1330,6 +1330,58 @@
       "tag": "driver-usb-host-v2-v0.1.3",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-host-v2-v0.1.3/usb-host-v2--driver.elf",
       "version": "0.1.3"
+    },
+    {
+      "asset": "usb-msp--driver.elf",
+      "id": "usb-msp",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "debug.vendor.msp",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "768afcdf3e7f084a50dd4771b8e23c81f576b058e0598162b81a32d013591732",
+            "size_bytes": 662
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "d0f48fdd2a4da3afd41d74960017bd10a0e49cb7396cf7ce4a9ca3a5bb397ede",
+            "size_bytes": 14116
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "04b1bf96e25a247b60764fd47a614d17bb8b5a681c46a59a85d19321f4b11789",
+            "size_bytes": 45
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "1a06e116d0a87beb043f45441b7671526c56c678fa69cbb7823caecb1dc09393",
+            "size_bytes": 22
+          }
+        ],
+        "id": "usb-msp",
+        "requires": [
+          {
+            "capability": "usb.host",
+            "min_api": 1
+          },
+          {
+            "capability": "platform.clock",
+            "min_api": 1
+          }
+        ],
+        "version": "0.1.1"
+      },
+      "sha256": "d0f48fdd2a4da3afd41d74960017bd10a0e49cb7396cf7ce4a9ca3a5bb397ede",
+      "size": 14116,
+      "tag": "driver-usb-msp-v0.1.1",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-msp-v0.1.1/usb-msp--driver.elf",
+      "version": "0.1.1"
     }
   ],
   "firmware": {
