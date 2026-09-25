@@ -461,6 +461,25 @@
       "tag": "app-sd_list-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-sd_list-v1.0.0/sd_list.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "serial_monitor.elf",
+      "id": "serial_monitor",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Serial Monitor",
+        "file_name": "serial_monitor.elf",
+        "icon": "solid:f120",
+        "min_firmware_version": "1.2.31",
+        "sha256": "3ac9b5bfb3e164889b618ba8ed7190dbf22e10a3f7d7c4d5bf48e3197ab62549",
+        "size_bytes": 23732,
+        "version": "1.2.5"
+      },
+      "sha256": "3ac9b5bfb3e164889b618ba8ed7190dbf22e10a3f7d7c4d5bf48e3197ab62549",
+      "size": 23732,
+      "tag": "app-serial_monitor-v1.2.5",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-serial_monitor-v1.2.5/serial_monitor.elf",
+      "version": "1.2.5"
     }
   ],
   "drivers": [],
