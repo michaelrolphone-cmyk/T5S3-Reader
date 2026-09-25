@@ -176,6 +176,25 @@
       "tag": "app-font_selection-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-font_selection-v1.0.0/font_selection.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "gnss_stream_diagnostic.elf",
+      "id": "gnss_stream_diagnostic",
+      "kind": "app",
+      "manifest": {
+        "display_name": "GNSS Stream Diagnostic",
+        "file_name": "gnss_stream_diagnostic.elf",
+        "icon": "solid:f05b",
+        "min_firmware_version": "1.2.26",
+        "sha256": "7349b78db2486c79895b06730c1158bb000e914530abfc5b381b173c8a7d4cdb",
+        "size_bytes": 8372,
+        "version": "0.1.1"
+      },
+      "sha256": "7349b78db2486c79895b06730c1158bb000e914530abfc5b381b173c8a7d4cdb",
+      "size": 8372,
+      "tag": "app-gnss_stream_diagnostic-v0.1.1",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-gnss_stream_diagnostic-v0.1.1/gnss_stream_diagnostic.elf",
+      "version": "0.1.1"
     }
   ],
   "drivers": [],
