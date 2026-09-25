@@ -1038,6 +1038,20 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   if (displayName.size() > 4 && displayName.compare(displayName.size() - 4, 4, ".elf") == 0)
     displayName.resize(displayName.size() - 4);
   const std::string sidecar = elf.substr(0, elf.size() - 4) + ".json";
+  HalPowerManager::Lock powerLock;
+  RenderLock lock;
+  // Only read the bounded (2 KiB) sidecar for presentation before showing
+  // feedback. This is not launch authorization: normal checks below still
+  // re-read the manifest after recovery may have replaced the installed pair.
+  t5_app_manifest_t preview{};
+  const char* icon = "solid:f2d0";
+  if (readAppManifest(sidecar.c_str(), preview) && filename == preview.file_name) {
+    displayName = preview.display_name;
+    icon = preview.icon;
+  }
+  StartupScreen::app(renderer, displayName.c_str(), icon);
+  // Keep the render lock through launch so an outstanding activity repaint
+  // cannot overwrite this frame during package recovery or dependency loading.
   // Nested /Apps/<id>/<artifact> entries are independently verified against
   // their exact canonical package inventory. A failed verification never
   // falls through to the loose-file compatibility loader.
@@ -1075,7 +1089,6 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
       lastLaunchError = "Manifest file name does not match the ELF.";
       return ESP_ERR_NOT_SUPPORTED;
     }
-    displayName = manifest.display_name;
     if (!RuntimePackages::inspectInstalledAppPair(elf.c_str(), sidecar.c_str(), filename.c_str())) {
       lastLaunchError = "Application metadata or executable is unavailable.";
       return ESP_ERR_NOT_SUPPORTED;
@@ -1086,21 +1099,16 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
       return ESP_ERR_NOT_SUPPORTED;
     }
   }
-  // Refuse a concurrent managed-package replacement before changing app UI
-// state. Keep failed dlclose generations pinned for safe recovery.
-if (!canonicalRoot.empty() &&
-    !RuntimePackages::systemPackageUseGate().pin(canonicalRoot.c_str())) {
-  lastLaunchError = "Managed application is being replaced or is unavailable.";
-  return ESP_ERR_INVALID_STATE;
-}
-HalPowerManager::Lock powerLock;
-  RenderLock lock;
+  // Refuse a concurrent managed-package replacement before mapping the ELF.
+  // Keep failed dlclose generations pinned for safe recovery.
+  if (!canonicalRoot.empty() &&
+      !RuntimePackages::systemPackageUseGate().pin(canonicalRoot.c_str())) {
+    lastLaunchError = "Managed application is being replaced or is unavailable.";
+    return ESP_ERR_INVALID_STATE;
+  }
   const auto orientation = renderer.getOrientation();
   const auto mode = renderer.getRenderMode();
   renderer.setRenderMode(GfxRenderer::BW);
-  // Commit feedback while we exclusively own the display, before input.update
-  // can load navigation drivers and before launch_elf_app resolves/maps ELFs.
-  StartupScreen::app(renderer, displayName.c_str());
   nativeNavigationBoundary();
   input.clearInjectedButtonTap();
   input.update();
