@@ -5,7 +5,8 @@
 namespace StartupScreen {
 namespace {
 bool fadePending = false;  // Accessed only while holding RenderLock.
-constexpr unsigned long kAnimationBudgetMs = 2500;
+constexpr unsigned long kAnimationBudgetMs = 3500;
+constexpr unsigned long kFadeBudgetMs = kAnimationBudgetMs / 6;  // 875 ms
 constexpr int kLogoSize = 240;
 constexpr int kFrameHeight = 320;
 
@@ -62,7 +63,7 @@ void finishBoot(GfxRenderer& renderer) {
   const int x = (renderer.getScreenWidth() - kLogoSize) / 2;
   const int y = (renderer.getScreenHeight() - kFrameHeight) / 2;
   for (int threshold : {5, 11, 16}) {
-    if (millis() - start >= kAnimationBudgetMs) break;
+    if (millis() - start >= kFadeBudgetMs) break;
     drawBootFrame(renderer, 4);
     for (int py = 0; py < kFrameHeight; ++py) {
       for (int px = 0; px < kLogoSize; ++px) {
