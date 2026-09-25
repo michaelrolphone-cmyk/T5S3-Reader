@@ -470,16 +470,16 @@
         "display_name": "Package Manager",
         "file_name": "package_manager.elf",
         "icon": "solid:f187",
-        "min_firmware_version": "1.2.8",
-        "sha256": "410ac21f5aeb90d27c6a8ed41f54651260379b5e0add18915379ed45173ec61a",
-        "size_bytes": 7736,
-        "version": "1.0.0"
+        "min_firmware_version": "1.2.84",
+        "sha256": "62ba7a169030476d4f87985d58f6a6f619c0f69cb5f9ee55af5f30c0c5701904",
+        "size_bytes": 10368,
+        "version": "1.1.0"
       },
-      "sha256": "410ac21f5aeb90d27c6a8ed41f54651260379b5e0add18915379ed45173ec61a",
-      "size": 7736,
-      "tag": "app-package_manager-v1.0.0",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-package_manager-v1.0.0/package_manager.elf",
-      "version": "1.0.0"
+      "sha256": "62ba7a169030476d4f87985d58f6a6f619c0f69cb5f9ee55af5f30c0c5701904",
+      "size": 10368,
+      "tag": "app-package_manager-v1.1.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-package_manager-v1.1.0/package_manager.elf",
+      "version": "1.1.0"
     },
     {
       "asset": "sd_firmware_update.elf",
