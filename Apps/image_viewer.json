@@ -1,7 +1,13 @@
 {
-  "min_firmware_version": "1.1.13",
-  "version": "1.0.0",
+  "min_firmware_version": "1.2.85",
+  "version": "1.1.0",
   "display_name": "Image Viewer",
   "file_name": "image_viewer.elf",
-  "icon": "regular:f03e"
+  "icon": "regular:f03e",
+  "supported_file_types": [
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".bmp"
+  ]
 }
