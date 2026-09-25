@@ -67,6 +67,18 @@ class LiveInstallContract(unittest.TestCase):
         self.assertIn('new (std::nothrow) char[4096]', ONLINE)
         self.assertIn('new (std::nothrow) OrdinaryPackagePlan', ONLINE)
 
+        # The progress ABI must not trigger e-paper UI rendering while the HTTP
+        # worker still owns TLS buffers. That transient 8 KiB refresh task can
+        # consume the heap headroom required by the native stream transport.
+        transfer_start = ONLINE.index('HttpDownloader::downloadToFile(url, elfStage,')
+        transfer_end = ONLINE.index('return fail("HTTP download failed");', transfer_start)
+        transfer = ONLINE[transfer_start:transfer_end]
+        self.assertIn('[](size_t, size_t) { esp_task_wdt_reset(); }', transfer)
+        self.assertNotIn('progress(progressContext', transfer)
+        terminal_progress = ONLINE.index('progress(progressContext, size, size);', transfer_end)
+        self.assertGreater(terminal_progress, transfer_end)
+        self.assertLess(ONLINE.index('delay(1);', transfer_end), terminal_progress)
+
     def test_recovery_is_exact_inventory_and_preserves_foreign_files(self):
         for required in ('equalFile(root + "/" + sidecarName, sidecar.data()',
                          'descriptorSeen && !equalFile(',
