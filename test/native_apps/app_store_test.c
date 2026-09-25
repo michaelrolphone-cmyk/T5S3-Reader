@@ -5,7 +5,7 @@
 #include <string.h>
 
 void app_main(void);
-static int downloads, saw_alpha, saw_beta, saw_installed, saw_update;
+static int downloads, saw_alpha, saw_beta, saw_installed, saw_update, saw_failure_detail;
 static int back_disabled, back_restored, event_index;
 static uint32_t downloaded_index;
 static int preview_calls, install_calls;
@@ -59,6 +59,11 @@ static bool download(uint32_t index) {
     assert(index < count());
     ++downloads;
     downloaded_index = index;
+    return false;
+}
+static bool download_last_error(char *out, size_t capacity) {
+    if (!out || capacity < sizeof("HTTP download failed")) return false;
+    strcpy(out, "HTTP download failed");
     return true;
 }
 static bool poll(t5_app_input_t *input, uint32_t wait_ms) {
@@ -100,6 +105,7 @@ static const t5_app_api_v1 api = {
     .app_catalog_manifest_get = manifest_get,
     .installed_app_version_get = installed_version_get,
     .app_catalog_version_get = catalog_version_get,
+    .app_catalog_download_last_error = download_last_error,
 };
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) {
     assert(version == T5_APP_ABI_VERSION);
@@ -129,6 +135,8 @@ static void render_list(const t5_ui_chrome_t *chrome,
                         uint32_t row_count,
                         int32_t selected_index) {
     assert(chrome && selected_index >= 0);
+    if (chrome->status && strstr(chrome->status, "Beta: HTTP download failed"))
+        saw_failure_detail = 1;
     if (row_count == 2) {
         assert(rows);
         for (uint32_t i = 0; i < row_count; ++i) {
@@ -178,6 +186,7 @@ int main(void) {
     app_main();
     assert(saw_alpha && saw_beta && saw_installed && saw_update);
     assert(downloads == 1 && downloaded_index == 1);
+    assert(saw_failure_detail);
     assert(install_calls == 0 && preview_calls == 0);
     assert(back_disabled && back_restored);
     return 0;
