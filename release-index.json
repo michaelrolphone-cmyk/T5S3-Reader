@@ -608,7 +608,7 @@
       "manifest": {
         "display_name": "USB Debug",
         "file_name": "usb_debug.elf",
-        "icon": "solid:f287",
+        "icon": "solid:f1e6",
         "min_firmware_version": "1.2.67",
         "optional": [
           {
@@ -618,13 +618,13 @@
         ],
         "sha256": "a2f2db52df3821df24f2d4c168f14aaff93c5278624bf2e3e0071958fda102d7",
         "size_bytes": 22988,
-        "version": "0.1.0"
+        "version": "0.1.1"
       },
       "sha256": "a2f2db52df3821df24f2d4c168f14aaff93c5278624bf2e3e0071958fda102d7",
       "size": 22988,
-      "tag": "app-usb_debug-v0.1.0",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-usb_debug-v0.1.0/usb_debug.elf",
-      "version": "0.1.0"
+      "tag": "app-usb_debug-v0.1.1",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-usb_debug-v0.1.1/usb_debug.elf",
+      "version": "0.1.1"
     },
     {
       "asset": "web_server.elf",
