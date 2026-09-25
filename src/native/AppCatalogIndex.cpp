@@ -22,14 +22,15 @@ bool fetchAppCatalogIndex(const std::string& url, std::vector<std::string>& mani
 
   std::string json;
   esp_task_wdt_reset();
-  if (!HttpDownloader::fetchUrl(url, json)) {
+  const bool fetched = HttpDownloader::fetchUrl(url, json);
+  // The native HTTP adapter completes on a short-lived worker. Yield once on
+  // both success and failure so the idle task can reclaim that worker stack
+  // before ArduinoJson allocation or a fallback TLS connection starts.
+  delay(1);
+  if (!fetched) {
     LOG_ERR("APPSTORE", "Aggregate catalog download failed: %s", url.c_str());
     return false;
   }
-  // The native HTTP adapter completes on a short-lived worker. Yield once so
-  // the idle task can reclaim that worker stack before ArduinoJson allocates
-  // its document from the same internal heap used by mbedTLS.
-  delay(1);
   if (json.empty() || json.size() > kMaxCatalogBytes) {
     LOG_ERR("APPSTORE", "Aggregate catalog size invalid: %u bytes (limit %u)",
             static_cast<unsigned>(json.size()), static_cast<unsigned>(kMaxCatalogBytes));
