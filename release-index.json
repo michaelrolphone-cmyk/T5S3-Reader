@@ -1382,6 +1382,58 @@
       "tag": "driver-usb-msp-v0.1.1",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-msp-v0.1.1/usb-msp--driver.elf",
       "version": "0.1.1"
+    },
+    {
+      "asset": "usb-stlink--driver.elf",
+      "id": "usb-stlink",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "debug.vendor.stlink",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "d9ac2e4e5d0e106825e55a32b8a72a030a551079cd6e50e3b90df157b5636ce6",
+            "size_bytes": 664
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "21500939b991239598ae57a97667c5004e8bccf988a1052d350eca427b5af3be",
+            "size_bytes": 9304
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "f63530c5bc8135503bf1871e91449522cd35fed8c039f5869430914b7dd0a9bc",
+            "size_bytes": 48
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca",
+            "size_bytes": 14
+          }
+        ],
+        "id": "usb-stlink",
+        "requires": [
+          {
+            "capability": "usb.host",
+            "min_api": 1
+          },
+          {
+            "capability": "platform.clock",
+            "min_api": 1
+          }
+        ],
+        "version": "0.1.0"
+      },
+      "sha256": "21500939b991239598ae57a97667c5004e8bccf988a1052d350eca427b5af3be",
+      "size": 9304,
+      "tag": "driver-usb-stlink-v0.1.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-stlink-v0.1.0/usb-stlink--driver.elf",
+      "version": "0.1.0"
     }
   ],
   "firmware": {
