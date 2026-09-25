@@ -3,6 +3,7 @@
 #include "NativeUsbDeviceRegistry.h"
 #include <Arduino.h>
 #include "runtime/streams/StreamRuntime.h"
+#include "runtime/streams/HttpUrlValidation.h"
 #include "runtime/resources/ExecutionContext.h"
 #include "runtime/capabilities/GnssStreamAuthority.h"
 #include "network/HttpDownloader.h"
@@ -287,8 +288,14 @@ void httpRequest(void* context) {
 int32_t openHttp(const char* url, t5_stream_t* out) {
   if (out) *out = 0;
   if (!authorized()) return T5_STREAM_DENIED;
-  if (!out || !url || strnlen(url, 1024) >= 1024 ||
-      (std::strncmp(url, "https://", 8) && std::strncmp(url, "http://", 7))) return T5_STREAM_INVALID;
+  if (!out) return T5_STREAM_INVALID;
+  size_t urlLength = 0;
+  const auto urlStatus = RuntimeHttpUrl::validate(url, 1024, &urlLength);
+  if (urlStatus != RuntimeHttpUrl::Status::Valid) {
+    LOG_ERR("HTTP", "open_http rejected URL: reason=%s bytes=%u",
+            RuntimeHttpUrl::statusName(urlStatus), static_cast<unsigned>(urlLength));
+    return T5_STREAM_INVALID;
+  }
   Lock lock;
   if (httpBusy) return T5_STREAM_BUSY;
   auto* job = new (std::nothrow) HttpJob{};
