@@ -13,6 +13,8 @@ from typing import Any
 
 
 REPOSITORY = "michaelrolphone-cmyk/T5S3-Reader"
+TEMP_GAMEBOY_REPOSITORY = "michaelrolphone-cmyk/T5S3-GameBoy"
+GAMEBOY_TAG_RE = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 VERSION_RE = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 ID_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}\Z")
 ASSET_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,159}\Z")
@@ -85,7 +87,16 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
                 inventory[item["name"]] = item
             if set(inventory) != DRIVER_FILES:
                 raise ValueError("driver package inventory does not match the installable package format")
-        expected_tag = f"{expected_prefix}{stable_id}-v{version}"
+        source_repo = record.get("source_repo")
+        if source_repo is not None:
+            if (product != "apps" or stable_id != "gameboy" or
+                    source_repo != TEMP_GAMEBOY_REPOSITORY):
+                raise ValueError("source_repo is reserved for the temporary GameBoy app provider")
+            expected_tag = record.get("tag")
+            if not isinstance(expected_tag, str) or not GAMEBOY_TAG_RE.fullmatch(expected_tag):
+                raise ValueError("GameBoy provider release tag must be vMAJOR.MINOR.PATCH")
+        else:
+            expected_tag = f"{expected_prefix}{stable_id}-v{version}"
 
     tag = record["tag"]
     if tag != expected_tag:
@@ -98,7 +109,8 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
     )
     if asset != expected_asset:
         raise ValueError(f"asset must be {expected_asset!r}")
-    expected_url = f"https://github.com/{REPOSITORY}/releases/download/{tag}/{asset}"
+    release_repository = record.get("source_repo", REPOSITORY)
+    expected_url = f"https://github.com/{release_repository}/releases/download/{tag}/{asset}"
     if record["url"] != expected_url:
         raise ValueError("url must point to the record's immutable GitHub release asset")
     size = record["size"]

@@ -66,6 +66,36 @@ class ReleaseIndexTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "128-entry limit"):
             update_index(index, "apps", package("apps", "clock", "1.0.0"))
 
+    def test_accepts_only_the_allowlisted_third_party_gameboy_app(self):
+        manifest = {
+            "display_name": "GameBoy",
+            "file_name": "gameboy.elf",
+            "min_firmware_version": "1.2.48",
+            "version": "1.2.29",
+            "size_bytes": 2107828,
+            "sha256": SHA,
+            "icon": "solid:f11b",
+            "optional": [{"capability": "usb.hid.gamepad", "api": ">=1"}],
+        }
+        record = {
+            "id": "gameboy",
+            "version": "1.2.29",
+            "tag": "v1.3.1",
+            "asset": "gameboy.elf",
+            "url": "https://github.com/michaelrolphone-cmyk/T5S3-GameBoy/releases/download/v1.3.1/gameboy.elf",
+            "size": 2107828,
+            "sha256": SHA,
+            "manifest": manifest,
+            "source_repo": "michaelrolphone-cmyk/T5S3-GameBoy",
+        }
+        index = update_index(self.empty, "apps", record)
+        self.assertEqual(index["apps"][0]["source_repo"], "michaelrolphone-cmyk/T5S3-GameBoy")
+        self.assertEqual(index["apps"][0]["tag"], "v1.3.1")
+
+        record["source_repo"] = "attacker/example"
+        with self.assertRaisesRegex(ValueError, "source_repo is reserved"):
+            update_index(self.empty, "apps", record)
+
     def test_rejects_cross_release_asset_url(self):
         record = package("drivers", "usb-host", "0.2.0")
         record["url"] = record["url"].replace("driver-usb-host-v0.2.0", "firmware-v9.9.9")

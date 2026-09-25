@@ -42,6 +42,12 @@ Firmware version comes from `[riscrte] version` in `platformio.ini`; app version
 
 The workflow validates all candidates and the final index budget before publishing the first release. Run it from the branch whose code and package manifests should be built and released.
 
+## Temporary third-party app listing
+
+The App Store temporarily includes the RiscRTE ELF from the T5S3-GameBoy repository through the shared release index. A scheduled workflow checks the upstream stable release every five minutes, validates the published `gameboy.json` identity, firmware requirement, ELF size and SHA-256, then updates only the GameBoy app entry on the `release-index` branch. The app remains hosted by the GameBoy release, so GameBoy app updates do not require a RiscRTE firmware or app release.
+
+The device continues to fetch one bounded release index during App Store refresh; it does not make a second live request to the GameBoy repository. The temporary trust rule accepts only the `gameboy` app from `michaelrolphone-cmyk/T5S3-GameBoy`. Replace this rule and the polling workflow when general third-party provider capabilities are available.
+
 ## Migration and acceptance
 
 Keep existing combined releases intact as historical assets. During cutover, the readers may support the existing aggregate catalog as a bounded fallback while preferring the new index. Remove that fallback only after the new index and all three readers ship together. Do not rename or duplicate package IDs to create release channels.
