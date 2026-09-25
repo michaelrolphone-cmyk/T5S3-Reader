@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from scripts.build_release_record import build_record
+from scripts.publish_updated_packages import release_assets
 
 
 class ProductReleaseTests(unittest.TestCase):
@@ -16,6 +17,7 @@ class ProductReleaseTests(unittest.TestCase):
         (self.root / "dist/apps").mkdir(parents=True)
         (self.root / "dist/packages").mkdir(parents=True)
         (self.root / "dist/release-packages").mkdir(parents=True)
+        (self.root / "firmware").mkdir(parents=True)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -48,6 +50,29 @@ class ProductReleaseTests(unittest.TestCase):
         self.assertEqual(record["asset"], "clock.elf")
         self.assertEqual(record["size"], len(data))
         self.assertEqual(record["sha256"], hashlib.sha256(data).hexdigest())
+
+    def test_firmware_release_assets_include_both_board_builds(self):
+        version = "1.2.3"
+        (self.root / "platformio.ini").write_text(
+            f"[riscrte]\\nversion = {version}\\n", encoding="utf-8")
+        names = [
+            "dist/firmware-t5s3-pro.bin",
+            f"dist/riscrte_lilygo_t5s3_{version}-app.bin",
+            f"dist/riscrte_lilygo_t5s3_{version}.bin",
+            f"dist/riscrte_lilygo_t5s3_{version}.elf",
+            f"firmware/riscrte_lilygo_t5s3_{version}.bin",
+            "dist/firmware-lilygo-epd47-s3.bin",
+            f"dist/riscrte_lilygo_epd47_s3_{version}-app.bin",
+            f"dist/riscrte_lilygo_epd47_s3_{version}.bin",
+            f"dist/riscrte_lilygo_epd47_s3_{version}.elf",
+            f"firmware/riscrte_lilygo_epd47_s3_{version}.bin",
+        ]
+        for name in names:
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"firmware")
+        assets = release_assets(self.root, "firmware", "")
+        self.assertEqual([str(path.relative_to(self.root)) for path in assets], names)
 
     def test_firmware_record_uses_configured_version_and_firmware_asset(self):
         data = b"firmware image"
