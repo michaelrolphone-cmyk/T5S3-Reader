@@ -534,7 +534,10 @@ bool connectSavedWifi() {
 bool appCatalogRefresh() {
   auto* s = current();
   if (!s) return false;
-  s->catalog.clear();
+  // A refresh invalidates every prior release record. Free the backing storage,
+  // not just the elements, so stale catalog capacity is not carried into the
+  // next TLS handshake on a memory-constrained ESP32-S3.
+  std::vector<CatalogAsset>().swap(s->catalog);
   if (!connectSavedWifi()) return false;
 
   std::string catalogUrl;
