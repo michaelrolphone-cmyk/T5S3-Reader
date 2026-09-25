@@ -4,6 +4,7 @@
 #include "NativeOnlineAppInstall.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
 #include "AppCatalogIndex.h"
+#include "AppReleaseAssetRules.h"
 #include "AppManifest.h"
 #include "AppPackageInstaller.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
@@ -208,9 +209,8 @@ bool endsWithElf(const std::string& name) {
 }
 
 bool safeAssetName(const std::string& name) {
-  if (name.empty() || name.size() >= T5_APP_ASSET_NAME_MAX || !endsWithElf(name)) return false;
-  if (name.find("..") != std::string::npos) return false;
-  return name.find('/') == std::string::npos && name.find('\\') == std::string::npos;
+  return name.size() < T5_APP_ASSET_NAME_MAX &&
+         NativeAppReleaseRules::appElfAssetName(name);
 }
 
 bool copyVersion(const std::string& value, char* out, size_t capacity) {
