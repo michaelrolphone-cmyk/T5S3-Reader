@@ -53,11 +53,21 @@ jobs:
           retention-days: 1
 
   build_firmware:
-    name: Build changed firmware
+    name: Build firmware for ${ matrix.board_id }}
     needs: plan
-    if: ${{ needs.plan.outputs.firmware == 'true' }}
+    if: ${ needs.plan.outputs.firmware == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - board_id: t5s3-pro
+            environment: gh_release
+            asset_stem: riscrte_lilygo_t5s3
+          - board_id: lilygo-epd47-s3
+            environment: lilygo-epd47-s3-release
+            asset_stem: riscrte_lilygo_epd47_s3
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -73,28 +83,28 @@ jobs:
             ~/.platformio/.cache
             ~/.platformio/packages
             ~/.platformio/platforms
-          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+          key: ${ runner.os }}-platformio-${ hashFiles('platformio.ini') }}
           restore-keys: |
-            ${{ runner.os }}-platformio-
-      - name: Install firmware build tools
+            ${ runner.os }}-platformio-
+      - name: Install firmware build tools and board dependencies
         run: |
           python -m pip install platformio==6.1.19
-          pio pkg install -e t5s3-pro
+          pio pkg install -e ${ matrix.environment }}
       - name: Download release plan
         uses: actions/download-artifact@v4
         with:
           name: rte-release-plan
-          path: ${{ runner.temp }}/release-plan
-      - name: Build and stage firmware release assets
-        run: python scripts/build_release_candidates.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product firmware
-      - name: Save firmware release assets
+          path: ${ runner.temp }}/release-plan
+      - name: Build and stage ${ matrix.board_id }} firmware
+        run: python scripts/build_release_candidates.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product firmware --firmware-board ${ matrix.board_id }}
+      - name: Save ${ matrix.board_id }} firmware assets
         uses: actions/upload-artifact@v4
         with:
-          name: rte-firmware
+          name: rte-firmware-${ matrix.board_id }}
           path: |
-            dist/firmware-t5s3-pro.bin
-            dist/riscrte_lilygo_t5s3_*
-            firmware/riscrte_lilygo_t5s3_*
+            dist/firmware-${ matrix.board_id }}.bin
+            dist/${ matrix.asset_stem }}_*
+            firmware/${ matrix.asset_stem }}_*.bin
           if-no-files-found: error
           retention-days: 1
 
@@ -216,8 +226,9 @@ jobs:
         if: ${{ needs.plan.outputs.firmware == 'true' }}
         uses: actions/download-artifact@v4
         with:
-          name: rte-firmware
+          pattern: rte-firmware-*
           path: .
+          merge-multiple: true
       - name: Restore app release assets
         if: ${{ needs.plan.outputs.apps == 'true' }}
         uses: actions/download-artifact@v4
