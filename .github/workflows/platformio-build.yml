@@ -165,7 +165,9 @@ jobs:
       - name: Run Font Awesome tests with shipped SD fonts
         run: bash test/run_fontawesome_test.sh
 
-      - name: Run release index and GameBoy provider tests
+      - name: Run release planning and asset tests
         run: |
+          python3 test/bulk_release_test.py
+          python3 test/product_release_test.py
           python3 test/release_index_test.py
           python3 test/sync_gameboy_app_test.py
