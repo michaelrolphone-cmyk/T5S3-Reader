@@ -898,6 +898,54 @@
       "tag": "driver-t5s3-usb-power-profile-v0.1.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-t5s3-usb-power-profile-v0.1.0/t5s3-usb-power-profile--driver.elf",
       "version": "0.1.0"
+    },
+    {
+      "asset": "usb-cdc-acm-v2--driver.elf",
+      "id": "usb-cdc-acm-v2",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "serial.port",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "37bef861997b4e1e028ff1e98a1764f99c87df99dcacaf83f529c9382803481a",
+            "size_bytes": 624
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "34b3eeea0cca3927517e849298a1f088cbd1a14651bf81ff2b74f655a78af56f",
+            "size_bytes": 6584
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "892780d027085bbba39fce0d795850388a019cb47ec5a4497a5249a01e1a2f60",
+            "size_bytes": 40
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca",
+            "size_bytes": 14
+          }
+        ],
+        "id": "usb-cdc-acm-v2",
+        "requires": [
+          {
+            "capability": "usb.host",
+            "min_api": 1
+          }
+        ],
+        "version": "0.1.0"
+      },
+      "sha256": "34b3eeea0cca3927517e849298a1f088cbd1a14651bf81ff2b74f655a78af56f",
+      "size": 6584,
+      "tag": "driver-usb-cdc-acm-v2-v0.1.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-cdc-acm-v2-v0.1.0/usb-cdc-acm-v2--driver.elf",
+      "version": "0.1.0"
     }
   ],
   "firmware": {
