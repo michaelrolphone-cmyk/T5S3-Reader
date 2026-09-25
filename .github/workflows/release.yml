@@ -9,11 +9,8 @@ on:
         options: [firmware, apps, drivers]
         required: true
       id:
-        description: Stable app or driver ID (leave empty for firmware)
+        description: Stable app or driver ID (leave empty for firmware; version is detected)
         required: false
-      version:
-        description: Product version (MAJOR.MINOR.PATCH)
-        required: true
       commit_firmware:
         description: Commit merged image into the selected branch
         type: boolean
@@ -41,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Validate request and version
+      - name: Detect release version and validate request
         id: request
         run: python3 scripts/resolve_product_release.py
 
