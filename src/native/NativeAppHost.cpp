@@ -60,6 +60,11 @@ struct CatalogAsset {
   bool manifestValid = false;
 };
 
+struct CatalogManifestAsset {
+  std::string name;
+  std::string url;
+};
+
 struct Session {
   GfxRenderer& renderer;
   MappedInputManager& input;
@@ -288,15 +293,25 @@ class CatalogReleaseStream final : public Stream {
 
   bool finish() {
     if (failed_ || !assetsComplete_) return false;
-    for (auto& asset : catalog_) {
+
+    // A release now contains app ELFs plus independently versioned driver and
+    // provider ELFs. Only an ELF with an exact sibling <basename>.json sidecar
+    // is an application candidate. Prune everything else before the next TLS
+    // handshake so driver packages cannot enter the App Store fallback path
+    // and their large CatalogAsset slots do not remain resident.
+    size_t write = 0;
+    for (size_t read = 0; read < catalog_.size(); ++read) {
+      auto& asset = catalog_[read];
       const auto expected = asset.name.substr(0, asset.name.size() - 4) + ".json";
-      for (const auto& manifest : manifests_) {
-        if (manifest.name == expected) {
-          asset.manifestUrl = manifest.url;
-          break;
-        }
-      }
+      const auto manifest = std::find_if(manifests_.begin(), manifests_.end(),
+          [&](const CatalogManifestAsset& candidate) { return candidate.name == expected; });
+      if (manifest == manifests_.end()) continue;
+      asset.manifestUrl = manifest->url;
+      if (write != read) catalog_[write] = std::move(asset);
+      ++write;
     }
+    catalog_.resize(write);
+    catalog_.shrink_to_fit();
     return true;
   }
 
@@ -378,14 +393,15 @@ class CatalogReleaseStream final : public Stream {
     } else if (safeAssetName(asset.name)) {
       if (catalog_.size() < kMaxCatalogAssets) catalog_.push_back(std::move(asset));
     } else if (asset.name.size() > 5 && asset.name.substr(asset.name.size() - 5) == ".json") {
-      if (manifests_.size() < kMaxCatalogAssets) manifests_.push_back(std::move(asset));
+      if (manifests_.size() < kMaxCatalogAssets)
+        manifests_.push_back(CatalogManifestAsset{std::move(asset.name), std::move(asset.url)});
     }
     object_.clear();
   }
 
   std::vector<CatalogAsset>& catalog_;
   std::string& catalogUrl_;
-  std::vector<CatalogAsset> manifests_;
+  std::vector<CatalogManifestAsset> manifests_;
   std::string object_;
   size_t keyMatch_ = 0;
   int objectDepth_ = 0;
@@ -457,7 +473,12 @@ bool loadCatalogManifests(std::vector<CatalogAsset>& catalog) {
     std::string json;
     std::string version;
     t5_app_manifest_t manifest{};
-    if (!HttpDownloader::fetchUrl(asset.manifestUrl, json)) {
+    const bool fetched = HttpDownloader::fetchUrl(asset.manifestUrl, json);
+    // Reclaim the metadata worker before either JSON parsing or the next TLS
+    // connection. Without this, repeated per-app fallback requests can overlap
+    // an idle-task-delayed FreeRTOS task deletion and fragment internal heap.
+    delay(1);
+    if (!fetched) {
       LOG_ERR("APPSTORE", "Fallback manifest download failed: %s", asset.manifestUrl.c_str());
       continue;
     }
@@ -526,18 +547,26 @@ bool appCatalogRefresh() {
   if (!connectSavedWifi()) return false;
 
   std::string catalogUrl;
-  CatalogReleaseStream release(s->catalog, catalogUrl);
-  esp_task_wdt_reset();
-  if (!HttpDownloader::fetchUrl(kLatestReleaseApi, release)) {
-    LOG_ERR("APPSTORE", "Failed to fetch latest GitHub release");
-    return false;
-  }
-  esp_task_wdt_reset();
-  if (!release.finish()) {
-    LOG_ERR("APPSTORE", "Latest release asset stream was incomplete or invalid");
-    return false;
-  }
-  LOG_INF("APPSTORE", "Found %u ELF assets in latest release", static_cast<unsigned>(s->catalog.size()));
+  {
+    CatalogReleaseStream release(s->catalog, catalogUrl);
+    esp_task_wdt_reset();
+    if (!HttpDownloader::fetchUrl(kLatestReleaseApi, release)) {
+      LOG_ERR("APPSTORE", "Failed to fetch latest GitHub release");
+      return false;
+    }
+    esp_task_wdt_reset();
+    if (!release.finish()) {
+      LOG_ERR("APPSTORE", "Latest release asset stream was incomplete or invalid");
+      return false;
+    }
+  }  // Drop release JSON parser scratch and sidecar inventory before next TLS handshake.
+
+  // HTTP metadata is produced by a short-lived worker task. Give FreeRTOS idle
+  // one scheduling point to reclaim a just-deleted worker stack before mbedTLS
+  // allocates the next connection's record buffers.
+  delay(1);
+  LOG_INF("APPSTORE", "Found %u application ELF/JSON pairs in latest release",
+          static_cast<unsigned>(s->catalog.size()));
 
   if (catalogUrl.empty()) {
     LOG_ERR("APPSTORE", "Release is missing %s", kAggregateAppCatalogName);
