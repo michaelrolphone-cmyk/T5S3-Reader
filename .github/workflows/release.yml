@@ -11,15 +11,56 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Build and publish changed firmware, apps, and drivers
+  plan:
+    name: Scan versions and plan releases
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    outputs:
+      firmware: ${{ steps.outputs.outputs.firmware }}
+      apps: ${{ steps.outputs.outputs.apps }}
+      drivers: ${{ steps.outputs.outputs.drivers }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compare source versions with the release index
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/publish_updated_packages.py --plan-only --plan-file "$RUNNER_TEMP/release-plan.json"
+      - name: Expose changed product groups
+        id: outputs
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          plan = json.loads((Path(os.environ["RUNNER_TEMP"]) / "release-plan.json").read_text())
+          products = {item["product"] for item in plan}
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              for product in ("firmware", "apps", "drivers"):
+                  output.write(f"{product}={str(product in products).lower()}\n")
+          PY
+      - name: Save release plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: rte-release-plan
+          path: ${{ runner.temp }}/release-plan.json
+          if-no-files-found: error
+          retention-days: 1
+
+  build_firmware:
+    name: Build changed firmware
+    needs: plan
+    if: ${{ needs.plan.outputs.firmware == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -35,17 +76,161 @@ jobs:
           key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
           restore-keys: |
             ${{ runner.os }}-platformio-
-      - name: Install build tools
+      - name: Install firmware build tools
+        run: |
+          python -m pip install platformio==6.1.19
+          pio pkg install -e t5s3-pro
+      - name: Download release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: rte-release-plan
+          path: ${{ runner.temp }}/release-plan
+      - name: Build and stage firmware release assets
+        run: python scripts/build_release_candidates.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product firmware
+      - name: Save firmware release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: rte-firmware
+          path: |
+            dist/firmware-t5s3-pro.bin
+            dist/riscrte_lilygo_t5s3_*
+            firmware/riscrte_lilygo_t5s3_*
+          if-no-files-found: error
+          retention-days: 1
+
+  build_apps:
+    name: Build changed apps
+    needs: plan
+    if: ${{ needs.plan.outputs.apps == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-
+      - name: Install app build tools
+        run: |
+          python -m pip install platformio==6.1.19
+          pio pkg install -e t5s3-pro
+      - name: Download release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: rte-release-plan
+          path: ${{ runner.temp }}/release-plan
+      - name: Build only changed app packages
+        run: python scripts/build_release_candidates.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product apps
+      - name: Stage app release assets
+        run: |
+          mkdir -p "$RUNNER_TEMP/release-artifacts/dist/apps"
+          cp dist/apps/*.elf dist/apps/*.json "$RUNNER_TEMP/release-artifacts/dist/apps/"
+      - name: Save app release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: rte-apps
+          path: ${{ runner.temp }}/release-artifacts
+          if-no-files-found: error
+          retention-days: 1
+
+  build_drivers:
+    name: Build changed drivers
+    needs: plan
+    if: ${{ needs.plan.outputs.drivers == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-
+      - name: Install driver build tools
         run: |
           python -m pip install platformio==6.1.19 pyelftools
           pio pkg install -e t5s3-pro
-      - name: Scan source manifests and plan changed releases
+      - name: Download release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: rte-release-plan
+          path: ${{ runner.temp }}/release-plan
+      - name: Build, validate, and export only changed drivers
+        run: python scripts/build_release_candidates.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product drivers
+      - name: Stage driver release assets
+        run: |
+          mkdir -p "$RUNNER_TEMP/release-artifacts/dist"
+          cp -a dist/packages "$RUNNER_TEMP/release-artifacts/dist/"
+          cp -a dist/release-packages "$RUNNER_TEMP/release-artifacts/dist/"
+      - name: Save driver release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: rte-drivers
+          path: ${{ runner.temp }}/release-artifacts
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish releases and update the index
+    needs: [plan, build_firmware, build_apps, build_drivers]
+    if: ${{ always() && needs.plan.result == 'success' && needs.build_firmware.result != 'failure' && needs.build_firmware.result != 'cancelled' && needs.build_apps.result != 'failure' && needs.build_apps.result != 'cancelled' && needs.build_drivers.result != 'failure' && needs.build_drivers.result != 'cancelled' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: rte-release-plan
+          path: ${{ runner.temp }}/release-plan
+      - name: Restore firmware release assets
+        if: ${{ needs.plan.outputs.firmware == 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: rte-firmware
+          path: .
+      - name: Restore app release assets
+        if: ${{ needs.plan.outputs.apps == 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: rte-apps
+          path: .
+      - name: Restore driver release assets
+        if: ${{ needs.plan.outputs.drivers == 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: rte-drivers
+          path: .
+      - name: Publish planned releases and update the release index
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/publish_updated_packages.py --plan-only --plan-file "$RUNNER_TEMP/release-plan.json"
-      - name: Build only planned changed products
-        run: python scripts/build_release_candidates.py --plan "$RUNNER_TEMP/release-plan.json"
-      - name: Publish planned product releases
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/publish_updated_packages.py --plan-file "$RUNNER_TEMP/release-plan.json"
+        run: python scripts/publish_updated_packages.py --plan-file "$RUNNER_TEMP/release-plan/release-plan.json"
