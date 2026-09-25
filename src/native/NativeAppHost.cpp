@@ -1,5 +1,6 @@
 #include "NativeStreamBridge.h"
 #include "NativeAppHost.h"
+#include "components/StartupScreen.h"
 #include "NativeNavigationInput.h"
 #include "NativeOnlineAppInstall.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
@@ -1033,6 +1034,9 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     return ESP_ERR_INVALID_ARG;
   }
   const std::string filename = elf.substr(elf.find_last_of('/') + 1);
+  std::string displayName = filename;
+  if (displayName.size() > 4 && displayName.compare(displayName.size() - 4, 4, ".elf") == 0)
+    displayName.resize(displayName.size() - 4);
   const std::string sidecar = elf.substr(0, elf.size() - 4) + ".json";
   // Nested /Apps/<id>/<artifact> entries are independently verified against
   // their exact canonical package inventory. A failed verification never
@@ -1071,6 +1075,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
       lastLaunchError = "Manifest file name does not match the ELF.";
       return ESP_ERR_NOT_SUPPORTED;
     }
+    displayName = manifest.display_name;
     if (!RuntimePackages::inspectInstalledAppPair(elf.c_str(), sidecar.c_str(), filename.c_str())) {
       lastLaunchError = "Application metadata or executable is unavailable.";
       return ESP_ERR_NOT_SUPPORTED;
@@ -1093,6 +1098,9 @@ HalPowerManager::Lock powerLock;
   const auto orientation = renderer.getOrientation();
   const auto mode = renderer.getRenderMode();
   renderer.setRenderMode(GfxRenderer::BW);
+  // Commit feedback while we exclusively own the display, before input.update
+  // can load navigation drivers and before launch_elf_app resolves/maps ELFs.
+  StartupScreen::app(renderer, displayName.c_str());
   nativeNavigationBoundary();
   input.clearInjectedButtonTap();
   input.update();

@@ -33,6 +33,7 @@
 #include "activities/ActivityManager.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "components/UITheme.h"
+#include "components/StartupScreen.h"
 #include "fontIds.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
@@ -445,6 +446,13 @@ void setup() {
   setupDisplayAndFonts();
   display.setFlipOutput(SETTINGS.flipUi != 0);
 
+  // Present before any activity or mapped-input update can activate installed
+  // ELF providers. Recovery and panic reports retain their direct boot paths.
+  if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic()) {
+    RenderLock lock;
+    StartupScreen::boot(renderer);
+  }
+
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
   const bool resumeReaderOnBoot = shouldResumeReaderOnBoot();
@@ -465,7 +473,7 @@ void setup() {
     activityManager.goToCrashReport();
   } else if (!resumeReaderOnBoot) {
     prepareStartupRefresh(HalDisplay::HALF_REFRESH);
-    // Boot directly to home screen to avoid a full-refresh boot splash before the main page.
+    // Replace the already-presented boot logo with the home screen.
     activityManager.goHome();
   } else {
     // Clear app state to avoid getting into a boot loop if the epub doesn't load
