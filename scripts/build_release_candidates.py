@@ -15,6 +15,10 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 FIRMWARE_OUTPUTS = ("firmware.bin", "firmware-merged.bin", "firmware.elf")
+FIRMWARE_BOARDS = {
+    "t5s3-pro": ("gh_release", "riscrte_lilygo_t5s3"),
+    "lilygo-epd47-s3": ("lilygo-epd47-s3-release", "riscrte_lilygo_epd47_s3"),
+}
 
 DRIVER_BUILDERS = {
     "platform-clock-v1": [("scripts/build_platform_clock_v1.py",)],
@@ -58,10 +62,14 @@ def firmware_version() -> str:
     return version
 
 
-def build_firmware() -> None:
-    run(["pio", "run", "-e", "gh_release"])
-    output = ROOT / ".pio/build/gh_release"
-    preserved = Path(os.environ["RUNNER_TEMP"]) / "riscrte-firmware"
+def build_firmware(board_id: str) -> None:
+    try:
+        environment, _ = FIRMWARE_BOARDS[board_id]
+    except KeyError as exc:
+        raise ValueError(f"unsupported firmware board {board_id!r}") from exc
+    run(["pio", "run", "-e", environment])
+    output = ROOT / f".pio/build/{environment}"
+    preserved = Path(os.environ["RUNNER_TEMP"]) / "riscrte-firmware" / board_id
     preserved.mkdir(parents=True, exist_ok=True)
     for name in FIRMWARE_OUTPUTS:
         source = output / name
@@ -74,7 +82,7 @@ def build_firmware() -> None:
     binary = (preserved / "firmware.bin").read_bytes()
     version = firmware_version().encode("ascii")
     if version not in binary or b"-dev-" in binary:
-        raise ValueError("firmware image does not contain the configured clean RiscRTE version")
+        raise ValueError(f"{board_id} firmware image does not contain the configured clean RiscRTE version")
 
 
 def build_apps(candidates: list[dict[str, str]]) -> None:
@@ -95,9 +103,13 @@ def build_drivers(candidates: list[dict[str, str]]) -> None:
     run([sys.executable, "scripts/export_canonical_driver_release.py", "--ids", *identities])
 
 
-def stage_firmware() -> None:
+def stage_firmware(board_id: str) -> None:
+    try:
+        _, asset_stem = FIRMWARE_BOARDS[board_id]
+    except KeyError as exc:
+        raise ValueError(f"unsupported firmware board {board_id!r}") from exc
     temp = Path(os.environ["RUNNER_TEMP"])
-    preserved = temp / "riscrte-firmware"
+    preserved = temp / "riscrte-firmware" / board_id
     subprocess.run(["sha256sum", "-c", str(preserved / "SHA256SUMS")],
                    cwd=ROOT, check=True)
     version = firmware_version()
@@ -105,26 +117,28 @@ def stage_firmware() -> None:
     firmware = ROOT / "firmware"
     dist.mkdir(exist_ok=True)
     firmware.mkdir(exist_ok=True)
-    shutil.copyfile(preserved / "firmware.bin", dist / "firmware-t5s3-pro.bin")
-    shutil.copyfile(preserved / "firmware.bin", dist / f"riscrte_lilygo_t5s3_{version}-app.bin")
-    shutil.copyfile(preserved / "firmware-merged.bin", dist / f"riscrte_lilygo_t5s3_{version}.bin")
-    shutil.copyfile(preserved / "firmware.elf", dist / f"riscrte_lilygo_t5s3_{version}.elf")
-    shutil.copyfile(preserved / "firmware-merged.bin", firmware / f"riscrte_lilygo_t5s3_{version}.bin")
+    shutil.copyfile(preserved / "firmware.bin", dist / f"firmware-{board_id}.bin")
+    shutil.copyfile(preserved / "firmware.bin", dist / f"{asset_stem}_{version}-app.bin")
+    shutil.copyfile(preserved / "firmware-merged.bin", dist / f"{asset_stem}_{version}.bin")
+    shutil.copyfile(preserved / "firmware.elf", dist / f"{asset_stem}_{version}.elf")
+    shutil.copyfile(preserved / "firmware-merged.bin", firmware / f"{asset_stem}_{version}.bin")
 
 
-def build_plan(plan: list[dict[str, str]]) -> None:
+def build_plan(plan: list[dict[str, str]], firmware_board: str | None = None) -> None:
     if not plan:
         print("Nothing changed; no product builds are needed.")
         return
     products = {candidate["product"] for candidate in plan}
     if "firmware" in products:
-        build_firmware()
+        if firmware_board is None:
+            raise ValueError("a firmware board must be selected for a firmware build")
+        build_firmware(firmware_board)
     if "apps" in products:
         build_apps([item for item in plan if item["product"] == "apps"])
     if "drivers" in products:
         build_drivers([item for item in plan if item["product"] == "drivers"])
     if "firmware" in products:
-        stage_firmware()
+        stage_firmware(firmware_board)
     print("Built only planned changed products: " + ", ".join(
         f"{item['product']} {item['id'] or 'firmware'} v{item['version']}" for item in plan))
 
@@ -134,6 +148,8 @@ def main() -> None:
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--product", choices=("firmware", "apps", "drivers"))
     parser.add_argument("--id", help="build only this planned package ID")
+    parser.add_argument("--firmware-board", choices=tuple(FIRMWARE_BOARDS),
+                        help="build and stage only this board's firmware")
     args = parser.parse_args()
     plan: Any = json.loads(args.plan.read_text(encoding="utf-8"))
     if not isinstance(plan, list):
@@ -143,10 +159,14 @@ def main() -> None:
     selected = [item for item in plan
                 if (args.product is None or item.get("product") == args.product)
                 and (args.id is None or item.get("id") == args.id)]
+    if args.product == "firmware" and args.firmware_board is None:
+        parser.error("--firmware-board is required for firmware release builds")
+    if args.product != "firmware" and args.firmware_board is not None:
+        parser.error("--firmware-board requires --product firmware")
     if args.product and not selected:
         print(f"No changed {args.product} candidates to build.")
         return
-    build_plan(selected)
+    build_plan(selected, firmware_board=args.firmware_board)
 
 
 if __name__ == "__main__":
