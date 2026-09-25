@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build reusable BQ25896 ELF and separate T5S3 profile (legacy command name)."""
+import argparse
 import hashlib
 import json
 import os
@@ -55,18 +56,29 @@ def build_provider(source, output, identity, dependencies, capability, cc=None):
     return elf
 
 
-def build(cc=None):
-    # Both are independent ordinary packages. Only the profile describes a
-    # particular board; compatible boards reuse the identical chip ELF.
-    build_provider(ROOT / 'Drivers/t5s3_usb_power_profile',
-                   ROOT / 'dist/experimental/t5s3-usb-power-profile',
-                   't5s3-usb-power-profile', (), 'board.power.bq25896.profile', cc)
-    return build_provider(ROOT / 'Drivers/bq25896',
+def build(cc=None, identities=None):
+    # The profile and chip driver are separate packages. Build only the IDs
+    # selected by the release plan.
+    valid = {'t5s3-usb-power-profile', 'board-power-t5s3-v2'}
+    requested = set(identities) if identities else valid
+    if not requested or not requested <= valid:
+        raise ValueError(f'Invalid board power package IDs: {sorted(requested - valid)}')
+    results = []
+    if 't5s3-usb-power-profile' in requested:
+        results.append(build_provider(ROOT / 'Drivers/t5s3_usb_power_profile',
+                       ROOT / 'dist/experimental/t5s3-usb-power-profile',
+                       't5s3-usb-power-profile', (), 'board.power.bq25896.profile', cc))
+    if 'board-power-t5s3-v2' in requested:
+        results.append(build_provider(ROOT / 'Drivers/bq25896',
                           ROOT / 'dist/experimental/usb-board-power-t5s3-v2',
                           'board-power-t5s3-v2',
-                          ('i2c.bus', 'platform.clock', 'board.power.bq25896.profile'),
-                          'board.power.vbus', cc)
+                          ('i2c.bus', 'platform.clock', 'board.power.bq25896.profile'), 
+                          'board.power.vbus', cc))
+    return results
 
 
 if __name__ == '__main__':
-    build()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--ids', nargs='+', help='build only these board power package IDs')
+    args = parser.parse_args()
+    build(identities=args.ids)

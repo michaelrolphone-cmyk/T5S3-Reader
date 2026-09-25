@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Publish every newer canonical app and driver package as its own release."""
+"""Publish every firmware, app, and driver version newer than the release index."""
 from __future__ import annotations
 
+import configparser
 import hashlib
+import re
 import json
 import os
 import subprocess
@@ -21,6 +23,7 @@ except ImportError:
 ROOT = Path(__file__).resolve().parents[1]
 INDEX_BRANCH = "release-index"
 EMPTY_INDEX = {"schema": 1, "firmware": None, "apps": [], "drivers": []}
+VERSION_RE = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 
 
 def read_json(path: Path) -> Any:
@@ -49,22 +52,40 @@ def discover_candidates(root: Path, index: dict[str, Any]) -> list[dict[str, str
     drivers_released = indexed_versions(index, "drivers")
     candidates: list[dict[str, str]] = []
 
-    app_catalog = read_json(root / "dist/apps/app-catalog.json")
-    if not isinstance(app_catalog, dict):
-        raise ValueError("built app catalog is missing or malformed")
-    apps = app_catalog.get("apps")
-    if app_catalog.get("schema") != 1 or not isinstance(apps, list):
-        raise ValueError("built app catalog is missing or malformed")
-    seen_apps = set()
-    for manifest in apps:
+    config = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=(";", "#"))
+    config.read(root / "platformio.ini")
+    firmware_version = config.get("riscrte", "version", fallback=None)
+    if not isinstance(firmware_version, str) or not VERSION_RE.fullmatch(firmware_version):
+        raise ValueError("[riscrte] version in platformio.ini must be numeric MAJOR.MINOR.PATCH")
+    firmware_current = version_tuple(firmware_version)
+    firmware_entry = index.get("firmware")
+    if firmware_entry is not None and not isinstance(firmware_entry, dict):
+        raise ValueError("release index firmware entry must be an object or null")
+    if firmware_entry is None or firmware_current > version_tuple(firmware_entry.get("version")):
+        candidates.append({"product": "firmware", "id": "", "version": firmware_version})
+
+    app_sources = {
+        str(path.relative_to(root / "Apps").with_suffix("")).replace("/", "__")
+        for path in (root / "Apps").rglob("*.c")
+    }
+    seen_apps: set[str] = set()
+    for path in (root / "Apps").rglob("*.json"):
+        if path.name == "app_store.json":
+            continue
+        try:
+            manifest = read_json(path)
+        except (OSError, json.JSONDecodeError):
+            continue
         if not isinstance(manifest, dict):
-            raise ValueError("built app catalog contains a malformed manifest")
+            continue
         filename = manifest.get("file_name")
         if not isinstance(filename, str) or not filename.endswith(".elf"):
-            raise ValueError("built app catalog contains an invalid ELF name")
+            continue
         identity = filename[:-4]
+        if identity not in app_sources:
+            continue
         if identity in seen_apps:
-            raise ValueError(f"built app catalog contains duplicate ID {identity}")
+            raise ValueError(f"duplicate app manifest ID {identity}")
         seen_apps.add(identity)
         version = manifest.get("version")
         current = version_tuple(version)
@@ -72,30 +93,49 @@ def discover_candidates(root: Path, index: dict[str, Any]) -> list[dict[str, str
         if latest is None or current > latest:
             candidates.append({"product": "apps", "id": identity, "version": version})
 
-    driver_catalog = read_json(root / "dist/packages/usb-provider-catalog.json")
-    if not isinstance(driver_catalog, dict):
-        raise ValueError("built canonical driver catalog is missing or malformed")
-    drivers = driver_catalog.get("packages")
-    if driver_catalog.get("schema") != 1 or not isinstance(drivers, list):
-        raise ValueError("built canonical driver catalog is missing or malformed")
-    seen_drivers = set()
-    for package in drivers:
-        if not isinstance(package, dict) or not isinstance(package.get("id"), str):
-            raise ValueError("built driver catalog contains a malformed package")
-        identity, version = package["id"], package.get("version")
+    canonical_driver_ids = {
+        "platform-clock-v1", "i2c-esp32s3-v2", "board-power-t5s3-v2",
+        "usb-controller-esp32s3", "usb-host-v2", "usb-cdc-acm-v2",
+        "usb-cp210x-v2", "usb-ch34x-v2", "usb-ftdi", "usb-stlink",
+        "usb-msp", "program-msp", "usb-hid", "usb-hid-keyboard",
+        "usb-hid-gamepad", "usb-xinput-gamepad", "usb-ui-navigation",
+        "t5s3-usb-power-profile",
+    }
+    seen_drivers: set[str] = set()
+    for path in (root / "Drivers").rglob("manifest.json"):
+        try:
+            manifest = read_json(path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(manifest, dict):
+            continue
+        identity = manifest.get("id")
+        if identity not in canonical_driver_ids:
+            continue
         if identity in seen_drivers:
-            raise ValueError(f"built driver catalog contains duplicate ID {identity}")
+            raise ValueError(f"duplicate canonical driver manifest ID {identity}")
         seen_drivers.add(identity)
+        version = manifest.get("version")
         current = version_tuple(version)
         latest = drivers_released.get(identity)
         if latest is None or current > latest:
             candidates.append({"product": "drivers", "id": identity, "version": version})
 
-    return sorted(candidates, key=lambda item: (item["product"], item["id"]))
-
+    order = {"firmware": 0, "apps": 1, "drivers": 2}
+    return sorted(candidates, key=lambda item: (order[item["product"]], item["id"]))
 
 def release_assets(root: Path, product: str, identity: str) -> list[Path]:
-    if product == "apps":
+    if product == "firmware":
+        config = configparser.ConfigParser(interpolation=None)
+        config.read(root / "platformio.ini")
+        firmware_version = config.get("riscrte", "version")
+        assets = [
+            root / "dist/firmware-t5s3-pro.bin",
+            root / "dist" / f"riscrte_lilygo_t5s3_{firmware_version}-app.bin",
+            root / "dist" / f"riscrte_lilygo_t5s3_{firmware_version}.elf",
+            root / "firmware" / f"riscrte_lilygo_t5s3_{firmware_version}.bin",
+        ]
+    elif product == "apps":
         assets = [root / "dist/apps" / f"{identity}.elf",
                   root / "dist/apps" / f"{identity}.json"]
     else:
@@ -147,7 +187,7 @@ def publish_or_verify(root: Path, source_sha: str, candidate: dict[str, str],
     view = subprocess.run(["gh", "release", "view", tag, "--json", "assets",
                            "--jq", "[.assets[].name]"], cwd=root, text=True, capture_output=True)
     if view.returncode != 0:
-        notes = f"Independent {candidate['product']} release {candidate['version']} for {candidate['id']}."
+        notes = f"Independent {candidate['product']} release {candidate['version']} for {candidate['id'] or 'RiscRTE firmware'}."
         run(["gh", "release", "create", tag, *[str(path) for path in assets],
              "--title", tag, "--notes", notes, "--target", source_sha], cwd=root)
         return
@@ -189,12 +229,14 @@ def write_index(root: Path, index: dict[str, Any], product: str) -> None:
         raise RuntimeError("could not inspect release-index changes")
 
 
-def publish_all(root: Path = ROOT) -> int:
+def publish_all(root: Path = ROOT, planned: list[dict[str, str]] | None = None) -> int:
     source_sha = run(["git", "rev-parse", "HEAD"], cwd=root, capture=True).stdout.strip()
     index, index_exists = current_remote_index(root)
     candidates = discover_candidates(root, index)
+    if planned is not None and candidates != planned:
+        raise ValueError("release plan no longer matches source manifests or the current index; rerun planning")
     if not candidates:
-        print("No newer app or canonical driver versions to publish.")
+        print("No firmware, app, or driver versions are newer than the release index.")
         return 0
 
     # Check every proposed version and the final index budget before publishing
@@ -223,9 +265,34 @@ def publish_all(root: Path = ROOT) -> int:
     return 0
 
 
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--plan-only", action="store_true",
+                        help="write newer source-manifest versions to a JSON plan")
+    parser.add_argument("--plan-file", type=Path, required=True)
+    args = parser.parse_args()
+    if args.plan_only:
+        index, _exists = current_remote_index(ROOT)
+        candidates = discover_candidates(ROOT, index)
+        args.plan_file.write_text(json.dumps(candidates, indent=2) + "\n", encoding="utf-8")
+        if candidates:
+            print("Planned releases: " + ", ".join(
+                f"{item['product']} {item['id'] or 'firmware'} v{item['version']}"
+                for item in candidates))
+        else:
+            print("No firmware, app, or driver versions are newer than the release index.")
+        return
+    planned = json.loads(args.plan_file.read_text(encoding="utf-8"))
+    if not isinstance(planned, list):
+        raise ValueError("release plan must be a JSON array")
+    raise SystemExit(publish_all(ROOT, planned))
+
+
 if __name__ == "__main__":
     try:
-        raise SystemExit(publish_all())
+        main()
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:
-        print(f"Bulk package release failed: {exc}", file=sys.stderr)
+        print(f"RiscRTE release failed: {exc}", file=sys.stderr)
         raise SystemExit(1)

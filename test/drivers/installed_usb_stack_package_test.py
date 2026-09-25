@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify real USB provider packages, including HID classes and ELF pointers."""
+import argparse
 import hashlib
 import json
 import re
@@ -61,14 +62,17 @@ def mutation_rejected(elf: bytes, site: int, replacement: int) -> bool:
     raise AssertionError('RELATIVE pointer source is not mapped')
 
 
-def run():
+def run(identities=None):
+    selected = set(identities) if identities else set(EXPECTED)
+    assert selected and selected <= set(EXPECTED), selected
+    selected_capabilities = {EXPECTED[identity][0] for identity in selected}
     catalog = json.loads(CATALOG.read_text(encoding='utf-8'))
-    assert catalog['schema'] == 1 and len(catalog['packages']) == len(EXPECTED)
+    assert catalog['schema'] == 1 and len(catalog['packages']) == len(selected)
     available = {}
     observed_ids = set()
     for record in catalog['packages']:
         id = record['id']
-        assert id in EXPECTED and id not in observed_ids, id
+        assert id in selected and id not in observed_ids, id
         observed_ids.add(id)
         folder = PACKAGES / id
         manifest_bytes = (folder / '.package.json').read_bytes()
@@ -89,7 +93,8 @@ def run():
         assert [r['capability'] for r in manifest['requires']] == deps
         for requirement in manifest['requires']:
             assert requirement == {'capability': requirement['capability'], 'min_api': 1}
-            assert available.get(requirement['capability']) == 1, (id, requirement)
+            if requirement['capability'] in selected_capabilities:
+                assert available.get(requirement['capability']) == 1, (id, requirement)
         entries = manifest['entries']
         names = {e['name'] for e in entries}
         assert names == {'driver.elf', 'provider-abi.v1', 'privileged-imports.v1'}
@@ -127,7 +132,7 @@ def run():
         assert {e['name'] for e in record['files']} == {'driver.elf',
             'provider-abi.v1', 'privileged-imports.v1', '.package.json'}
         available[cap] = 1
-    assert observed_ids == set(EXPECTED)
+    assert observed_ids == selected
 
     # The firmware compatibility bridge must probe every installed serial.port
     # class package. Keep this coupled to the canonical package inventory so a
@@ -141,12 +146,15 @@ def run():
                        if capability == 'serial.port'}
     assert runtime_serial == expected_serial, (runtime_serial, expected_serial)
 
-    print(f'{len(EXPECTED)} USB ELF packages: HID dependencies, MMIO, negative mutations, imports, SHA-256 PASS')
+    print(f'{len(selected)} selected USB ELF packages: MMIO, negative mutations, imports, SHA-256 PASS')
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--ids', nargs='+', help='verify only these canonical driver package IDs')
+    args = parser.parse_args()
     try:
-        run()
+        run(args.ids)
     except (AssertionError, OSError, ValueError, KeyError) as exc:
         print(f'USB stack package verification FAIL: {exc}', file=sys.stderr)
         sys.exit(1)
