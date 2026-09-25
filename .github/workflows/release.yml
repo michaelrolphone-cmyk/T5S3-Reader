@@ -53,9 +53,9 @@ jobs:
           retention-days: 1
 
   build_firmware:
-    name: Build firmware for ${ matrix.board_id }}
+    name: Build firmware for ${{ matrix.board_id }}
     needs: plan
-    if: ${ needs.plan.outputs.firmware == 'true' }}
+    if: ${{ needs.plan.outputs.firmware == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -83,28 +83,28 @@ jobs:
             ~/.platformio/.cache
             ~/.platformio/packages
             ~/.platformio/platforms
-          key: ${ runner.os }}-platformio-${ hashFiles('platformio.ini') }}
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
           restore-keys: |
-            ${ runner.os }}-platformio-
+            ${{ runner.os }}-platformio-
       - name: Install firmware build tools and board dependencies
         run: |
           python -m pip install platformio==6.1.19
-          pio pkg install -e ${ matrix.environment }}
+          pio pkg install -e ${{ matrix.environment }}
       - name: Download release plan
         uses: actions/download-artifact@v4
         with:
           name: rte-release-plan
-          path: ${ runner.temp }}/release-plan
-      - name: Build and stage ${ matrix.board_id }} firmware
-        run: python scripts/build_release_candidates.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product firmware --firmware-board ${ matrix.board_id }}
-      - name: Save ${ matrix.board_id }} firmware assets
+          path: ${{ runner.temp }}/release-plan
+      - name: Build and stage ${{ matrix.board_id }} firmware
+        run: python scripts/build_release_candidates.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product firmware --firmware-board ${{ matrix.board_id }}
+      - name: Save ${{ matrix.board_id }} firmware assets
         uses: actions/upload-artifact@v4
         with:
-          name: rte-firmware-${ matrix.board_id }}
+          name: rte-firmware-${{ matrix.board_id }}
           path: |
-            dist/firmware-${ matrix.board_id }}.bin
-            dist/${ matrix.asset_stem }}_*
-            firmware/${ matrix.asset_stem }}_*.bin
+            dist/firmware-${{ matrix.board_id }}.bin
+            dist/${{ matrix.asset_stem }}_*
+            firmware/${{ matrix.asset_stem }}_*.bin
           if-no-files-found: error
           retention-days: 1
 
