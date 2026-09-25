@@ -1138,6 +1138,54 @@
       "tag": "driver-usb-ftdi-v0.1.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-ftdi-v0.1.0/usb-ftdi--driver.elf",
       "version": "0.1.0"
+    },
+    {
+      "asset": "usb-hid--driver.elf",
+      "id": "usb-hid",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "usb.hid",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "db748cf938b70e41e1238150dfea2403efa1297021fb1c5a7d587e99f274349d",
+            "size_bytes": 617
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "b50db48b09c71a1f4a0f5885526657ba8f4324e5ccef4a28e0e2ed7908b12ffb",
+            "size_bytes": 7380
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "1c7cb1cf375e55ae85b5c9cb3981969fb89fe5f36678609df90640c48a3fe53b",
+            "size_bytes": 36
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca",
+            "size_bytes": 14
+          }
+        ],
+        "id": "usb-hid",
+        "requires": [
+          {
+            "capability": "usb.host",
+            "min_api": 1
+          }
+        ],
+        "version": "0.1.2"
+      },
+      "sha256": "b50db48b09c71a1f4a0f5885526657ba8f4324e5ccef4a28e0e2ed7908b12ffb",
+      "size": 7380,
+      "tag": "driver-usb-hid-v0.1.2",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-hid-v0.1.2/usb-hid--driver.elf",
+      "version": "0.1.2"
     }
   ],
   "firmware": {
