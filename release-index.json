@@ -764,6 +764,49 @@
       "tag": "driver-i2c-esp32s3-v2-v0.1.2",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-i2c-esp32s3-v2-v0.1.2/i2c-esp32s3-v2--driver.elf",
       "version": "0.1.2"
+    },
+    {
+      "asset": "platform-clock-v1--driver.elf",
+      "id": "platform-clock-v1",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "platform.clock",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "a51f5842af04014356e93ebf0158600ef742b902cbe68b1c4f08bd550b288f00",
+            "size_bytes": 591
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "a5231d3f21931261b10ae82a3e16248d60a678aa6ebc67b61cb702491d6a0ece",
+            "size_bytes": 29544
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "dca95c5cb8970a152329037bfff9adae0d06648cb9f93aaacff0c11c9deb6064",
+            "size_bytes": 43
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "81b1a0e4cdc20acd7b99564c77ec5cdcaf196c41d5c6a020a6fc61c9603f8b7e",
+            "size_bytes": 21
+          }
+        ],
+        "id": "platform-clock-v1",
+        "requires": [],
+        "version": "0.1.0"
+      },
+      "sha256": "a5231d3f21931261b10ae82a3e16248d60a678aa6ebc67b61cb702491d6a0ece",
+      "size": 29544,
+      "tag": "driver-platform-clock-v1-v0.1.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-platform-clock-v1-v0.1.0/platform-clock-v1--driver.elf",
+      "version": "0.1.0"
     }
   ],
   "firmware": {
