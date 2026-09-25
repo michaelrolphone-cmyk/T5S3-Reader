@@ -22,6 +22,13 @@ static char folders[MAX_ROWS][T5_PACKAGE_ID_MAX];
 static t5_package_preview_t packages[MAX_ROWS];
 static uint32_t release_indices[MAX_ROWS];
 static uint32_t row_count;
+typedef struct {
+    const t5_ui_api_v1 *ui;
+    char title[TITLE_SIZE];
+    uint32_t last_bucket;
+    bool rendered;
+} download_view_t;
+static download_view_t download_view;
 
 // Native ELF symbols are a deliberately bounded ABI. Never import libc
 // functions (such as strnlen) that firmware does not explicitly export.
@@ -201,6 +208,25 @@ static void render(const t5_app_api_v1 *app, const t5_ui_api_v1 *ui,
         ui->render_list(&chrome, &empty, 1, 0);
     }
 }
+static void render_download_progress(void *context, uint64_t downloaded, uint64_t total) {
+    download_view_t *progress = (download_view_t *)context;
+    if (!progress || !progress->ui || !total) return;
+    const uint64_t bounded = downloaded > total ? total : downloaded;
+    const uint32_t bucket = (uint32_t)(bounded * 10u / total);
+    if (progress->rendered && bucket == progress->last_bucket) return;
+    progress->last_bucket = bucket;
+    progress->rendered = true;
+    const unsigned percent = (unsigned)(bounded * 100u / total);
+    char status[STATUS_SIZE];
+    char amount[VALUE_SIZE];
+    snprintf(status, sizeof(status), "Downloading release | %u%% | Keep power on", percent);
+    snprintf(amount, sizeof(amount), "%llu / %llu B",
+             (unsigned long long)bounded, (unsigned long long)total);
+    const t5_ui_chrome_t chrome = {"App Store", progress->title, status,
+                                   "", "", "", ""};
+    const t5_ui_list_row_t row = {"Download progress", "Verified release ELF", amount, 0};
+    progress->ui->render_list(&chrome, &row, 1, 0);
+}
 static void activate_inbox(const t5_package_manager_api_v1 *manager,
                            const t5_ui_api_v1 *ui, int32_t selected,
                            char *status, size_t capacity) {
@@ -239,7 +265,20 @@ static void activate_release(const t5_app_api_v1 *app, const t5_ui_api_v1 *ui,
     }
     snprintf(status, capacity, "%s %.95s...", installed_now ? "Updating" : "Installing", name);
     render(app, ui, selected, status);
-    const bool okay = app->app_catalog_download(index);
+    bool okay;
+    if (app->struct_size >= offsetof(t5_app_api_v1, app_catalog_download_with_progress) +
+                            sizeof(app->app_catalog_download_with_progress) &&
+        app->app_catalog_download_with_progress) {
+        memset(&download_view, 0, sizeof(download_view));
+        download_view.ui = ui;
+        copy_text(download_view.title, sizeof(download_view.title), name);
+        okay = app->app_catalog_download_with_progress(index,
+                                                       render_download_progress,
+                                                       &download_view);
+    } else {
+        // Retain compatibility with firmware predating progress reporting.
+        okay = app->app_catalog_download(index);
+    }
     build_releases(app);
     if (okay) {
         snprintf(status, capacity, "%.95s: installed", name);

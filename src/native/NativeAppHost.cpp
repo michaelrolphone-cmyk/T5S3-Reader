@@ -817,7 +817,9 @@ bool catalogDownloadFailed(Session* s, const char* reason) {
   return false;
 }
 
-bool appCatalogDownload(uint32_t index) {
+bool appCatalogDownloadWithProgress(uint32_t index,
+                                    t5_app_catalog_progress_fn progress,
+                                    void* progressContext) {
   auto* s = current();
   if (!s) return false;
   s->catalogDownloadError[0] = '\0';
@@ -877,9 +879,14 @@ bool appCatalogDownload(uint32_t index) {
 
   const char* failureReason = nullptr;
   if (!RuntimeOnlinePackages::installApplication(selected.name.c_str(),
-      version.c_str(), selected.url.c_str(), json, selected.size, digest, &failureReason))
+      version.c_str(), selected.url.c_str(), json, selected.size, digest,
+      progress, progressContext, &failureReason))
     return catalogDownloadFailed(s, failureReason ? failureReason : "package installation failed");
   return true;
+}
+
+bool appCatalogDownload(uint32_t index) {
+  return appCatalogDownloadWithProgress(index, nullptr, nullptr);
 }
 
 bool appCatalogDownloadLastError(char* out, size_t capacity) {
@@ -997,7 +1004,8 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            installedAppVersionGet,
                            appCatalogVersionGet,
                            presentServiced,
-                           appCatalogDownloadLastError};
+                           appCatalogDownloadLastError,
+                           appCatalogDownloadWithProgress};
 }  // namespace
 
 bool presentNativeAppUiFrame() {

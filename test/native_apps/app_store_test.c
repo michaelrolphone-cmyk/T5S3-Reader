@@ -6,6 +6,7 @@
 
 void app_main(void);
 static int downloads, saw_alpha, saw_beta, saw_installed, saw_update, saw_failure_detail;
+static int saw_download_progress, progress_callbacks;
 static int back_disabled, back_restored, event_index;
 static uint32_t downloaded_index;
 static int preview_calls, install_calls;
@@ -61,6 +62,16 @@ static bool download(uint32_t index) {
     downloaded_index = index;
     return false;
 }
+static bool download_with_progress(uint32_t index, t5_app_catalog_progress_fn progress,
+                                   void *context) {
+    assert(index < count() && progress && context);
+    ++downloads;
+    downloaded_index = index;
+    progress(context, 0, 200);
+    progress(context, 100, 200);
+    progress(context, 200, 200);
+    return false;
+}
 static bool download_last_error(char *out, size_t capacity) {
     if (!out || capacity < sizeof("HTTP download failed")) return false;
     strcpy(out, "HTTP download failed");
@@ -106,6 +117,7 @@ static const t5_app_api_v1 api = {
     .installed_app_version_get = installed_version_get,
     .app_catalog_version_get = catalog_version_get,
     .app_catalog_download_last_error = download_last_error,
+    .app_catalog_download_with_progress = download_with_progress,
 };
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) {
     assert(version == T5_APP_ABI_VERSION);
@@ -137,6 +149,12 @@ static void render_list(const t5_ui_chrome_t *chrome,
     assert(chrome && selected_index >= 0);
     if (chrome->status && strstr(chrome->status, "Beta: HTTP download failed"))
         saw_failure_detail = 1;
+    if (chrome->status && strstr(chrome->status, "Downloading release |")) {
+        assert(row_count == 1 && rows && rows[0].title &&
+               !strcmp(rows[0].title, "Download progress"));
+        saw_download_progress = 1;
+        ++progress_callbacks;
+    }
     if (row_count == 2) {
         assert(rows);
         for (uint32_t i = 0; i < row_count; ++i) {
@@ -187,6 +205,7 @@ int main(void) {
     assert(saw_alpha && saw_beta && saw_installed && saw_update);
     assert(downloads == 1 && downloaded_index == 1);
     assert(saw_failure_detail);
+    assert(saw_download_progress && progress_callbacks == 3);
     assert(install_calls == 0 && preview_calls == 0);
     assert(back_disabled && back_restored);
     return 0;

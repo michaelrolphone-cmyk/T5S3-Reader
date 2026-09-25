@@ -21,7 +21,7 @@ PACKAGE_MANAGER = (ROOT / 'src/native/NativePackageManagerBridge.cpp').read_text
 
 class LiveInstallContract(unittest.TestCase):
     def test_live_installer_is_digest_verified_and_publishes_pair(self):
-        start = HOST.index('bool appCatalogDownload(uint32_t index)')
+        start = HOST.index('bool appCatalogDownloadWithProgress(uint32_t index,')
         end = HOST.index('\nbool installedRefresh()', start)
         install = HOST[start:end]
         # Source metadata is checked before the canonical online adapter is invoked.
@@ -34,6 +34,8 @@ class LiveInstallContract(unittest.TestCase):
             self.assertIn(required, install)
         self.assertLess(install.index('metadata["sha256"]'),
                         install.index('RuntimeOnlinePackages::installApplication('))
+        self.assertIn('appCatalogDownloadWithProgress(uint32_t index,', install)
+        self.assertIn('progress, progressContext, &failureReason', install)
         for obsolete in ('RuntimePackages::clearAppStage(',
                          'RuntimePackages::publishAppPair(',
                          'Storage.remove(destination.c_str())'):
