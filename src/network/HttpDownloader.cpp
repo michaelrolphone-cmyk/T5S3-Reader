@@ -25,6 +25,7 @@ using CrossPointHttpClientSecure = WiFiClientSecure;
 
 #include "runtime/network/NetworkService.h"
 #include "runtime/streams/HttpStreamTransfer.h"
+#include "runtime/streams/HttpUrlValidation.h"
 #include "util/UrlUtils.h"
 
 namespace {
@@ -225,6 +226,13 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
                                                       streamHooks(), reportProgress, &progress,
                                                       &transferred, &destinationCreated, &httpOpenStatus);
     if (result != RuntimeHttpStreams::Result::Ok) {
+      if (httpOpenStatus == T5_STREAM_INVALID) {
+        size_t callerUrlLength = 0;
+        const auto callerUrlStatus = RuntimeHttpUrl::validate(url.c_str(), 1024, &callerUrlLength);
+        LOG_ERR("HTTP", "Native staged URL at call site: reason=%s bytes=%u",
+                RuntimeHttpUrl::statusName(callerUrlStatus),
+                static_cast<unsigned>(callerUrlLength));
+      }
       LOG_ERR("HTTP", "Native staged transfer failed: %d (open_http=%ld)",
               static_cast<int>(result), static_cast<long>(httpOpenStatus));
       // Exclusive open can fail because a different writer won the race after

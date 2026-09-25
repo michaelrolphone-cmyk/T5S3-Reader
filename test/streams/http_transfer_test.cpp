@@ -1,10 +1,12 @@
 #include "runtime/streams/HttpStreamTransfer.h"
+#include "runtime/streams/HttpUrlValidation.h"
 #include "runtime/streams/StreamRuntime.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <string>
 #include <vector>
 
 using namespace RuntimeHttpStreams;
@@ -123,6 +125,21 @@ void assertReleased(Mock& mock) {
 } // namespace
 
 int main() {
+  {
+    size_t length = 0;
+    assert(RuntimeHttpUrl::validate("https://example.test/app.elf", 1024, &length) ==
+           RuntimeHttpUrl::Status::Valid);
+    assert(length == std::strlen("https://example.test/app.elf"));
+    assert(RuntimeHttpUrl::validate("http://example.test/app.elf", 1024) ==
+           RuntimeHttpUrl::Status::Valid);
+    assert(RuntimeHttpUrl::validate(nullptr, 1024) == RuntimeHttpUrl::Status::Null);
+    assert(RuntimeHttpUrl::validate("ftp://example.test/app.elf", 1024) ==
+           RuntimeHttpUrl::Status::UnsupportedScheme);
+    const std::string tooLong(1024, 'x');
+    assert(RuntimeHttpUrl::validate(tooLong.c_str(), 1024, &length) ==
+           RuntimeHttpUrl::Status::TooLong);
+    assert(length == 1024);
+  }
   {
     Mock mock(10000);
     std::vector<uint8_t> output;
