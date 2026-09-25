@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from update_release_index import update_index  # noqa: E402
+from update_release_index import MAX_INDEX_BYTES, update_index  # noqa: E402
 
 
 SHA = "a" * 64
@@ -65,6 +65,14 @@ class ReleaseIndexTests(unittest.TestCase):
         index = {**self.empty, "apps": [{"id": f"app-{number}"} for number in range(128)]}
         with self.assertRaisesRegex(ValueError, "128-entry limit"):
             update_index(index, "apps", package("apps", "clock", "1.0.0"))
+
+    def test_ota_reader_accepts_the_full_published_index_budget_and_filters_packages(self):
+        updater = (Path(__file__).resolve().parents[1] / "src/network/OtaUpdater.cpp").read_text()
+        self.assertEqual(MAX_INDEX_BYTES, 64 * 1024)
+        self.assertIn("kReleaseIndexMaxBytes = 64u * 1024u", updater)
+        self.assertIn("DeserializationOption::Filter(filter)", updater)
+        for field in ("version", "tag", "asset", "url", "size", "sha256"):
+            self.assertIn(f'filter["firmware"]["{field}"] = true;', updater)
 
     def test_accepts_only_the_allowlisted_third_party_gameboy_app(self):
         manifest = {

@@ -19,6 +19,7 @@ constexpr char latestReleaseUrl[] =
     "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
 constexpr char releaseIndexUrl[] =
     "https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/release-index/release-index.json";
+constexpr size_t kReleaseIndexMaxBytes = 64u * 1024u;
 
 esp_err_t http_client_set_header_cb(esp_http_client_handle_t http_client) {
   return esp_http_client_set_header(http_client, "User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
@@ -55,12 +56,24 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   // available yet, retain the legacy GitHub Release lookup during migration.
   std::string indexJson;
   if (HttpDownloader::fetchUrl(releaseIndexUrl, indexJson)) {
-    if (indexJson.empty() || indexJson.size() > 16u * 1024u) {
+    if (indexJson.empty() || indexJson.size() > kReleaseIndexMaxBytes) {
       LOG_ERR("OTA", "Release index has an invalid size: %u", static_cast<unsigned>(indexJson.size()));
       return JSON_PARSE_ERROR;
     }
+    // The shared index also contains every app and driver record. Keep those
+    // entries out of the JSON document; the release-index publisher and native
+    // HTTP string reader both bound this complete document at 64 KiB.
+    JsonDocument filter;
+    filter["schema"] = true;
+    filter["firmware"]["version"] = true;
+    filter["firmware"]["tag"] = true;
+    filter["firmware"]["asset"] = true;
+    filter["firmware"]["url"] = true;
+    filter["firmware"]["size"] = true;
+    filter["firmware"]["sha256"] = true;
     JsonDocument index;
-    if (deserializeJson(index, indexJson) || !index.is<JsonObjectConst>() ||
+    if (deserializeJson(index, indexJson, DeserializationOption::Filter(filter)) ||
+        !index.is<JsonObjectConst>() ||
         index["schema"] != 1 || !index["firmware"].is<JsonObjectConst>()) {
       LOG_ERR("OTA", "Release index has no valid firmware entry");
       return JSON_PARSE_ERROR;
