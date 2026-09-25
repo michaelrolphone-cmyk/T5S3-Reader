@@ -117,23 +117,28 @@ void present(bool full) {
 }
 struct ServicedFrame {
   GfxRenderer* renderer;
-  bool full;
+  HalDisplay::RefreshMode mode;
   std::atomic<bool> done{false};
 };
 void renderServicedFrame(void* opaque) {
   auto* frame = static_cast<ServicedFrame*>(opaque);
-  frame->renderer->displayBuffer(frame->full ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+  frame->renderer->displayBuffer(frame->mode);
   frame->done.store(true, std::memory_order_release);
   // No frame/session access after publication; this firmware task never runs ELF code.
   vTaskDelete(nullptr);
 }
-bool presentServiced(bool full, void (*service)(void*), void* context) {
+bool presentServicedMode(HalDisplay::RefreshMode mode,
+                         void (*service)(void*), void* context) {
   auto* s = current();
   if (!s || !service) return false;
-  ServicedFrame frame{&s->renderer, full};
+  ServicedFrame frame{&s->renderer, mode};
   s->presenting = true;
+  // Panel_EPD pixel transfer can keep the calling loop task running long
+  // enough to starve IDLE0. Put the blocking renderer work on the other core
+  // while this owner task yields and services input/watchdog state.
+  const BaseType_t refreshCore = xPortGetCoreID() == 0 ? 1 : 0;
   if (xTaskCreatePinnedToCore(renderServicedFrame, "app-refresh", 8192, &frame,
-                            1, nullptr, xPortGetCoreID()) != pdPASS) {
+                            1, nullptr, refreshCore) != pdPASS) {
     s->presenting = false;
     return false;
   }
@@ -146,6 +151,11 @@ bool presentServiced(bool full, void (*service)(void*), void* context) {
   }
   s->presenting = false;
   return true;
+}
+void noRefreshService(void*) {}
+bool presentServiced(bool full, void (*service)(void*), void* context) {
+  return presentServicedMode(full ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH,
+                             service, context);
 }
 void setBackExitsApp(bool enabled) {
   if (auto* s = current()) s->backExitsApp = enabled;
@@ -937,6 +947,16 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            appCatalogVersionGet,
                            presentServiced};
 }  // namespace
+
+bool presentNativeAppUiFrame() {
+  // Native UI lists and tables use the reader-friendly balanced waveform.
+  // Reuse the serviced refresh path so synchronous panel pixel transfer does
+  // not starve the loop task's core idle watchdog.
+  const bool presented = presentServicedMode(HalDisplay::BALANCED_REFRESH,
+                                              noRefreshService, nullptr);
+  if (!presented) LOG_ERR("APPSTORE", "Could not start cooperative native UI refresh");
+  return presented;
+}
 
 extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
   return version == T5_APP_ABI_VERSION && current() ? &api : nullptr;
