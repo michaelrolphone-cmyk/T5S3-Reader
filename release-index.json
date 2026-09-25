@@ -214,6 +214,25 @@
       "tag": "app-gps-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-gps-v1.0.0/gps.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "hello.elf",
+      "id": "hello",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Hello",
+        "file_name": "hello.elf",
+        "icon": "solid:f256",
+        "min_firmware_version": "1.1.5",
+        "sha256": "85771734e1615502dbb55ea518a8b0890a8c3d0b794d15ca36f465bd1683c487",
+        "size_bytes": 2364,
+        "version": "1.0.0"
+      },
+      "sha256": "85771734e1615502dbb55ea518a8b0890a8c3d0b794d15ca36f465bd1683c487",
+      "size": 2364,
+      "tag": "app-hello-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-hello-v1.0.0/hello.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
