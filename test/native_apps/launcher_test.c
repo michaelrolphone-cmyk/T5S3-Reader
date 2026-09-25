@@ -14,6 +14,7 @@
 #include "T5DeviceApi.h"
 #include "T5DriverManagerApi.h"
 #include "T5FileBrowserApi.h"
+#include "T5FileOpenApi.h"
 #include "T5FontApi.h"
 #include "T5GpsApi.h"
 #include "T5HardwareTakeover.h"
@@ -272,6 +273,7 @@ const t5_button_remap_api_v1 *t5_button_remap_get_api(uint32_t version) { (void)
 const t5_cache_api_v1 *t5_cache_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_driver_manager_api_v1 *t5_driver_manager_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_file_browser_api_v1 *t5_file_browser_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_file_open_api_v1 *t5_file_open_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_font_api_v1 *t5_font_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_gps_api_v1 *t5_gps_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_image_api_v1 *t5_image_get_api(uint32_t version) { (void)version; return NULL; }
