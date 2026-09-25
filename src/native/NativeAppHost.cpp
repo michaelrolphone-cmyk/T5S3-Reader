@@ -48,6 +48,7 @@ constexpr const char* kLatestReleaseApi =
     "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
 constexpr const char* kReleaseIndexUrl =
     "https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/release-index/release-index.json";
+constexpr const char* kGameBoyRepository = "michaelrolphone-cmyk/T5S3-GameBoy";
 constexpr const char* kAggregateAppCatalogName = "app-catalog.json";
 constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr size_t kMaxCatalogAssets = 128;
@@ -519,6 +520,23 @@ bool loadCatalogManifests(std::vector<ReleaseCatalogAsset>& releaseAssets,
   return true;
 }
 
+bool validThirdPartyReleaseTag(const char* tag) {
+  if (!tag || tag[0] != 'v') return false;
+  unsigned dots = 0;
+  bool digit = false;
+  for (const char* cursor = tag + 1; *cursor; ++cursor) {
+    if (*cursor >= '0' && *cursor <= '9') {
+      digit = true;
+    } else if (*cursor == '.' && digit && dots < 2) {
+      ++dots;
+      digit = false;
+    } else {
+      return false;
+    }
+  }
+  return dots == 2 && digit;
+}
+
 bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
   std::string json;
   esp_task_wdt_reset();
@@ -546,15 +564,30 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
     const char* tag = entry["tag"].as<const char*>();
     const char* url = entry["url"].as<const char*>();
     const char* digest = entry["sha256"].as<const char*>();
+    JsonVariantConst sourceRepoValue = entry["source_repo"];
+    if (!sourceRepoValue.isNull() && !sourceRepoValue.is<const char*>()) return false;
+    const char* sourceRepo = sourceRepoValue.is<const char*>() ?
+        sourceRepoValue.as<const char*>() : "";
     asset.size = entry["size"].as<uint64_t>();
     if (!safeAssetName(asset.name) || asset.name.size() <= 4 ||
         asset.name.substr(asset.name.size() - 4) != ".elf" ||
         !RuntimePackages::validSha256Hex(digest) ||
         asset.size < 52 || asset.size > 8u * 1024u * 1024u) return false;
     const std::string expectedId = asset.name.substr(0, asset.name.size() - 4);
-    const std::string expectedTag = std::string("app-") + expectedId + "-v" + version;
-    const std::string expectedUrl = std::string("https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/") +
-        tag + "/" + asset.name;
+    const bool gameBoyProvider = !std::strcmp(id, "gameboy") &&
+        !std::strcmp(sourceRepo, kGameBoyRepository);
+    if (sourceRepo[0] && !gameBoyProvider) return false;
+    std::string expectedTag;
+    std::string releaseRepository = "michaelrolphone-cmyk/T5S3-Reader";
+    if (gameBoyProvider) {
+      if (!validThirdPartyReleaseTag(tag)) return false;
+      expectedTag = tag;
+      releaseRepository = kGameBoyRepository;
+    } else {
+      expectedTag = std::string("app-") + expectedId + "-v" + version;
+    }
+    const std::string expectedUrl = "https://github.com/" + releaseRepository +
+        "/releases/download/" + tag + "/" + asset.name;
     if (std::strcmp(id, expectedId.c_str()) || std::strcmp(tag, expectedTag.c_str()) ||
         std::strcmp(url, expectedUrl.c_str())) return false;
     serializeJson(entry["manifest"], asset.manifestJson);
