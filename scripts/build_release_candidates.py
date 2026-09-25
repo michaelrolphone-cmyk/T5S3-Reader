@@ -132,11 +132,21 @@ def build_plan(plan: list[dict[str, str]]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plan", type=Path, required=True)
+    parser.add_argument("--product", choices=("firmware", "apps", "drivers"))
+    parser.add_argument("--id", help="build only this planned package ID")
     args = parser.parse_args()
     plan: Any = json.loads(args.plan.read_text(encoding="utf-8"))
     if not isinstance(plan, list):
         raise ValueError("release plan must be a JSON array")
-    build_plan(plan)
+    if args.id and not args.product:
+        parser.error("--id requires --product")
+    selected = [item for item in plan
+                if (args.product is None or item.get("product") == args.product)
+                and (args.id is None or item.get("id") == args.id)]
+    if args.product and not selected:
+        print(f"No changed {args.product} candidates to build.")
+        return
+    build_plan(selected)
 
 
 if __name__ == "__main__":
