@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from sync_gameboy_app import record_from_release, upsert_gameboy_app  # noqa: E402
+from sync_gameboy_app import record_from_release, upsert_gameboy_app, provider_firmware_ready  # noqa: E402
 
 
 SHA = "a" * 64
@@ -13,7 +13,7 @@ MANIFEST = {
     "display_name": "GameBoy",
     "file_name": "gameboy.elf",
     "min_firmware_version": "1.2.48",
-    "version": "1.2.29",
+    "version": "1.3.1",
     "size_bytes": 2107828,
     "sha256": SHA,
     "icon": "solid:f11b",
@@ -39,11 +39,21 @@ class GameBoyAppIndexTests(unittest.TestCase):
     def test_builds_an_index_record_pointing_to_the_upstream_release(self):
         record = record_from_release(RELEASE, MANIFEST)
         self.assertEqual(record["id"], "gameboy")
-        self.assertEqual(record["version"], "1.2.29")
+        self.assertEqual(record["version"], "1.3.1")
         self.assertEqual(record["source_repo"], "michaelrolphone-cmyk/T5S3-GameBoy")
         index, changed = upsert_gameboy_app(self.empty, record)
         self.assertTrue(changed)
         self.assertEqual(index["apps"][0]["url"], RELEASE["assets"][0]["browser_download_url"])
+
+    def test_rejects_app_version_that_differs_from_release_tag(self):
+        manifest = {**MANIFEST, "version": "1.2.29"}
+        with self.assertRaisesRegex(ValueError, "must match its firmware release tag"):
+            record_from_release(RELEASE, manifest)
+
+    def test_waits_until_provider_capable_firmware_is_indexed(self):
+        self.assertFalse(provider_firmware_ready({"firmware": {"version": "1.2.70"}}))
+        self.assertTrue(provider_firmware_ready({"firmware": {"version": "1.2.71"}}))
+        self.assertFalse(provider_firmware_ready({"firmware": None}))
 
     def test_rejects_a_release_asset_from_an_untrusted_host_or_repo(self):
         release = {**RELEASE, "assets": [dict(item) for item in RELEASE["assets"]]}
