@@ -51,6 +51,13 @@ constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr size_t kMaxCatalogAssets = 128;
 constexpr size_t kMaxReleaseAssetObjectBytes = 8192;
 
+struct ReleaseCatalogAsset {
+  std::string name;
+  std::string url;
+  std::string manifestUrl;
+  uint64_t size = 0;
+};
+
 struct CatalogAsset {
   std::string name;
   std::string url;
@@ -263,7 +270,7 @@ uint64_t jsonUintField(const std::string& object, const char* field) {
 
 class CatalogReleaseStream final : public Stream {
  public:
-  CatalogReleaseStream(std::vector<CatalogAsset>& catalog, std::string& catalogUrl)
+  CatalogReleaseStream(std::vector<ReleaseCatalogAsset>& catalog, std::string& catalogUrl)
       : catalog_(catalog), catalogUrl_(catalogUrl) {
     catalog_.clear();
     catalogUrl_.clear();
@@ -372,7 +379,7 @@ class CatalogReleaseStream final : public Stream {
   }
 
   void parseObject() {
-    CatalogAsset asset;
+    ReleaseCatalogAsset asset;
     if (!jsonStringField(object_, "name", asset.name) ||
         !jsonStringField(object_, "browser_download_url", asset.url)) {
       object_.clear();
@@ -390,7 +397,7 @@ class CatalogReleaseStream final : public Stream {
     object_.clear();
   }
 
-  std::vector<CatalogAsset>& catalog_;
+  std::vector<ReleaseCatalogAsset>& catalog_;
   std::string& catalogUrl_;
   std::vector<CatalogManifestAsset> manifests_;
   std::string object_;
@@ -410,13 +417,15 @@ void sortCatalog(std::vector<CatalogAsset>& catalog) {
   });
 }
 
-bool loadAggregateCatalog(std::vector<CatalogAsset>& catalog, const std::string& catalogUrl) {
+bool loadAggregateCatalog(const std::vector<ReleaseCatalogAsset>& releaseAssets,
+                          std::vector<CatalogAsset>& catalog,
+                          const std::string& catalogUrl) {
   std::vector<std::string> manifests;
   if (!fetchAppCatalogIndex(catalogUrl, manifests)) return false;
 
   std::vector<CatalogAsset> validated;
   validated.reserve(manifests.size());
-  for (const auto& json : manifests) {
+  for (auto& json : manifests) {
     esp_task_wdt_reset();
     std::string version;
     t5_app_manifest_t manifest{};
@@ -425,11 +434,15 @@ bool loadAggregateCatalog(std::vector<CatalogAsset>& catalog, const std::string&
               static_cast<unsigned>(validated.size() + 1), manifest.file_name);
       return false;
     }
+    // The parsed manifest is copied into the final catalog below; discard its
+    // serialized JSON now instead of retaining every app's raw metadata.
+    std::string().swap(json);
 
-    const auto asset = std::find_if(catalog.begin(), catalog.end(), [&](const CatalogAsset& candidate) {
-      return candidate.name == manifest.file_name;
-    });
-    if (asset == catalog.end()) {
+    const auto asset = std::find_if(releaseAssets.begin(), releaseAssets.end(),
+        [&](const ReleaseCatalogAsset& candidate) {
+          return candidate.name == manifest.file_name;
+        });
+    if (asset == releaseAssets.end()) {
       LOG_ERR("APPSTORE", "Aggregate app %s has no matching release ELF", manifest.file_name);
       return false;
     }
@@ -440,7 +453,11 @@ bool loadAggregateCatalog(std::vector<CatalogAsset>& catalog, const std::string&
       return false;
     }
 
-    CatalogAsset resolved = *asset;
+    CatalogAsset resolved;
+    resolved.name = asset->name;
+    resolved.url = asset->url;
+    resolved.manifestUrl = asset->manifestUrl;
+    resolved.size = asset->size;
     resolved.manifest = manifest;
     resolved.version = std::move(version);
     resolved.manifestValid = true;
@@ -452,15 +469,14 @@ bool loadAggregateCatalog(std::vector<CatalogAsset>& catalog, const std::string&
   return true;
 }
 
-bool loadCatalogManifests(std::vector<CatalogAsset>& catalog) {
+bool loadCatalogManifests(std::vector<ReleaseCatalogAsset>& releaseAssets,
+                          std::vector<CatalogAsset>& catalog) {
   std::vector<CatalogAsset> validated;
-  validated.reserve(catalog.size());
-  for (auto& asset : catalog) {
+  validated.reserve(releaseAssets.size());
+  for (auto& asset : releaseAssets) {
     esp_task_wdt_reset();
-    if (asset.manifestUrl.empty()) {
-      LOG_ERR("APPSTORE", "Skipping release ELF %s: no JSON sidecar", asset.name.c_str());
-      continue;
-    }
+    if (asset.manifestUrl.empty()) continue;
+
     std::string json;
     std::string version;
     t5_app_manifest_t manifest{};
@@ -482,10 +498,16 @@ bool loadCatalogManifests(std::vector<CatalogAsset>& catalog) {
               asset.name.c_str(), manifest.file_name);
       continue;
     }
-    asset.manifest = manifest;
-    asset.version = std::move(version);
-    asset.manifestValid = true;
-    validated.push_back(std::move(asset));
+
+    CatalogAsset resolved;
+    resolved.name = std::move(asset.name);
+    resolved.url = std::move(asset.url);
+    resolved.manifestUrl = std::move(asset.manifestUrl);
+    resolved.size = asset.size;
+    resolved.manifest = manifest;
+    resolved.version = std::move(version);
+    resolved.manifestValid = true;
+    validated.push_back(std::move(resolved));
   }
   sortCatalog(validated);
   catalog.swap(validated);
@@ -541,8 +563,9 @@ bool appCatalogRefresh() {
   if (!connectSavedWifi()) return false;
 
   std::string catalogUrl;
+  std::vector<ReleaseCatalogAsset> releaseAssets;
   {
-    CatalogReleaseStream release(s->catalog, catalogUrl);
+    CatalogReleaseStream release(releaseAssets, catalogUrl);
     esp_task_wdt_reset();
     if (!HttpDownloader::fetchUrl(kLatestReleaseApi, release)) {
       LOG_ERR("APPSTORE", "Failed to fetch latest GitHub release");
@@ -560,10 +583,10 @@ bool appCatalogRefresh() {
   // allocates the next connection's record buffers.
   delay(1);
   LOG_INF("APPSTORE", "Found %u application ELF/JSON pairs in latest release",
-          static_cast<unsigned>(s->catalog.size()));
+          static_cast<unsigned>(releaseAssets.size()));
 
   if (!catalogUrl.empty()) {
-    if (loadAggregateCatalog(s->catalog, catalogUrl)) {
+    if (loadAggregateCatalog(releaseAssets, s->catalog, catalogUrl)) {
       LOG_INF("APPSTORE", "Loaded %u apps from aggregate release catalog",
               static_cast<unsigned>(s->catalog.size()));
       return true;
@@ -578,8 +601,8 @@ bool appCatalogRefresh() {
   }
 
   LOG_ERR("APPSTORE", "Release is missing %s; loading up to %u paired app manifests",
-          kAggregateAppCatalogName, static_cast<unsigned>(s->catalog.size()));
-  const bool loaded = loadCatalogManifests(s->catalog);
+          kAggregateAppCatalogName, static_cast<unsigned>(releaseAssets.size()));
+  const bool loaded = loadCatalogManifests(releaseAssets, s->catalog);
   LOG_INF("APPSTORE", "Legacy fallback loaded %u apps", static_cast<unsigned>(s->catalog.size()));
   return loaded;
 }
