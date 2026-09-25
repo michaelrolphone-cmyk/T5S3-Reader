@@ -18,6 +18,25 @@
       "tag": "app-battery-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-battery-v1.0.0/battery.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "button_remap.elf",
+      "id": "button_remap",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Remap Front Buttons",
+        "file_name": "button_remap.elf",
+        "icon": "solid:f11c",
+        "min_firmware_version": "1.1.24",
+        "sha256": "296d98355dc7d44e1e917b704858ba747f5192441a7b52d006a6f3e9090d9376",
+        "size_bytes": 4808,
+        "version": "1.0.0"
+      },
+      "sha256": "296d98355dc7d44e1e917b704858ba747f5192441a7b52d006a6f3e9090d9376",
+      "size": 4808,
+      "tag": "app-button_remap-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-button_remap-v1.0.0/button_remap.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
