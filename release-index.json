@@ -855,6 +855,49 @@
       "tag": "driver-program-msp-v0.1.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-program-msp-v0.1.0/program-msp--driver.elf",
       "version": "0.1.0"
+    },
+    {
+      "asset": "t5s3-usb-power-profile--driver.elf",
+      "id": "t5s3-usb-power-profile",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "board.power.bq25896.profile",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "b562716b6f4c89d8aea702a22e715679176b44631d8a7b120198987bbbd83a94",
+            "size_bytes": 594
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "f4512fabd137cc1e6ecd8bd5e09f59829a02600368b35d4f4011ade722647e74",
+            "size_bytes": 2356
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "ce73bd38038a7c183bcd3d4f980f34c92eeb04bd66008391b4c454c7a6674cb5",
+            "size_bytes": 56
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "size_bytes": 1
+          }
+        ],
+        "id": "t5s3-usb-power-profile",
+        "requires": [],
+        "version": "0.1.0"
+      },
+      "sha256": "f4512fabd137cc1e6ecd8bd5e09f59829a02600368b35d4f4011ade722647e74",
+      "size": 2356,
+      "tag": "driver-t5s3-usb-power-profile-v0.1.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-t5s3-usb-power-profile-v0.1.0/t5s3-usb-power-profile--driver.elf",
+      "version": "0.1.0"
     }
   ],
   "firmware": {
