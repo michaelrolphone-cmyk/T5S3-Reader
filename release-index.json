@@ -625,6 +625,25 @@
       "tag": "app-usb_debug-v0.1.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-usb_debug-v0.1.0/usb_debug.elf",
       "version": "0.1.0"
+    },
+    {
+      "asset": "web_server.elf",
+      "id": "web_server",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Web Server",
+        "file_name": "web_server.elf",
+        "icon": "solid:f0ac",
+        "min_firmware_version": "1.1.16",
+        "sha256": "063047a55f2f6bd292724a9ccb0e4a974cedb1be5eacb265730ca2f28fd310b5",
+        "size_bytes": 5076,
+        "version": "1.0.0"
+      },
+      "sha256": "063047a55f2f6bd292724a9ccb0e4a974cedb1be5eacb265730ca2f28fd310b5",
+      "size": 5076,
+      "tag": "app-web_server-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-web_server-v1.0.0/web_server.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
