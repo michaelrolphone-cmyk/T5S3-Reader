@@ -216,15 +216,17 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
     const std::string streamPath = "/sd" + destPath;
     uint64_t transferred = 0;
     bool destinationCreated = false;
+    int32_t httpOpenStatus = T5_STREAM_OK;
     auto reportProgress = [](void* context, uint64_t count) {
       auto* callback = static_cast<ProgressCallback*>(context);
       if (*callback) (*callback)(static_cast<size_t>(count), 0);
     };
     const auto result = RuntimeHttpStreams::download(streams, url.c_str(), streamPath.c_str(),
                                                       streamHooks(), reportProgress, &progress,
-                                                      &transferred, &destinationCreated);
+                                                      &transferred, &destinationCreated, &httpOpenStatus);
     if (result != RuntimeHttpStreams::Result::Ok) {
-      LOG_ERR("HTTP", "Native staged transfer failed: %d", static_cast<int>(result));
+      LOG_ERR("HTTP", "Native staged transfer failed: %d (open_http=%ld)",
+              static_cast<int>(result), static_cast<long>(httpOpenStatus));
       // Exclusive open can fail because a different writer won the race after
       // exists(). That file is not ours, so never remove it on failed open.
       if (destinationCreated) Storage.remove(destPath.c_str());

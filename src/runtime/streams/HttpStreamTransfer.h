@@ -111,16 +111,20 @@ inline Result fetch(const t5_stream_api_v1* api, const char* url, const Hooks& h
 inline Result download(const t5_stream_api_v1* api, const char* url,
                        const char* newStagePath, const Hooks& hooks,
                        Progress progress = nullptr, void* progressContext = nullptr,
-                       uint64_t* transferred = nullptr, bool* destinationCreated = nullptr) {
+                       uint64_t* transferred = nullptr, bool* destinationCreated = nullptr,
+                       int32_t* httpOpenStatus = nullptr) {
   if (transferred) *transferred = 0;
   if (destinationCreated) *destinationCreated = false;
+  if (httpOpenStatus) *httpOpenStatus = T5_STREAM_OK;
   if (!hasApi(api) || !url || !newStagePath || !hooks.now_ms ||
       !hooks.cooperate || !hooks.stall_timeout_ms) return Result::Invalid;
   Handles handles(api);
   if (api->open_file(newStagePath, T5_STREAM_FILE_CREATE_NEW, &handles.destination) != T5_STREAM_OK)
     return Result::File;
   if (destinationCreated) *destinationCreated = true;
-  if (api->open_http(url, &handles.source) != T5_STREAM_OK) return Result::Http;
+  const int32_t openStatus = api->open_http(url, &handles.source);
+  if (httpOpenStatus) *httpOpenStatus = openStatus;
+  if (openStatus != T5_STREAM_OK) return Result::Http;
   if (api->pipe_connect(handles.source, handles.destination, T5_PIPE_BLOCK_PRODUCER,
                         &handles.pipe) != T5_STREAM_OK) return Result::Transfer;
 
