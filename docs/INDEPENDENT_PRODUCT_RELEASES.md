@@ -1,6 +1,6 @@
 # Independent RiscRTE product releases
 
-**Status:** implementation in progress on `feature/independent-product-releases`. The release workflow and index readers are wired for product-scoped tags; validate each product stream before enabling production releases.
+**Status:** release publication is driven by the `Cut RiscRTE release` workflow.
 
 ## Goal
 
@@ -36,23 +36,11 @@ The App Store reads only app entries. Driver Manager reads only driver entries. 
 
 ## Release request and build behavior
 
-A manual `Cut RiscRTE release` workflow request identifies exactly one product (`firmware`, `apps`, or `drivers`) and an app or driver ID when applicable. The workflow detects firmware version from `[riscrte] version` in `platformio.ini`, and app or driver version from the selected package manifest. The version is shown in the workflow logs and used to form the immutable tag; it is not a user input. The workflow builds only the selected stream, publishes only the selected package assets, then updates the index.
+The manual `Cut RiscRTE release` workflow takes no product, package ID, or version inputs. Each run compares source versions with the latest entries in `release-index.json` before building. It builds firmware only when its configured version is newer, and builds only the apps and canonical drivers whose manifest versions are newer. A product is published only when its current version is newer than its indexed release, or when that product has no indexed release yet. If nothing is newer, the workflow reports that no releases are needed.
 
-The workflow sequence is:
+Firmware version comes from `[riscrte] version` in `platformio.ini`; app versions come from app manifests; driver versions come from canonical package manifests. Each changed firmware, app, or driver package receives its own immutable product-scoped tag and release assets. Firmware is published first when multiple product versions changed, and the index is updated after each successful release. A failed build or release leaves the affected index entry unchanged; rerunning verifies any already-created immutable release before completing its index update.
 
-1. Validate the product selector, stable ID, version, source manifest, compatibility fields, and immutable tag identity.
-2. Build and test the selected product. The driver build validates its provider package set, then selects one stable ID for publication. Produce release assets plus SHA-256/size metadata.
-3. Create the immutable product-scoped GitHub Release.
-4. Atomically update `release-index.json` on `release-index` from the last published index, changing only the selected firmware pointer or package ID entry.
-5. Verify the index points to the created tag and exact asset digest.
-
-A failed build or release leaves the index unchanged. A failed index update is retryable: rerun the same product request, which verifies the existing release's primary asset digest and fills any missing release assets without overwriting them.
-
-## Bulk app and driver publishing
-
-Run the manual `Publish updated RiscRTE packages` workflow to compare every built app and canonical driver package with its latest entry in `release-index.json`. It creates an individual immutable release for each package whose manifest version is newer, including packages that have not been released before. Packages at the same version or behind their latest release are skipped. Firmware is not built or published by this workflow.
-
-The workflow builds all app manifests and the canonical driver package catalog, validates the full candidate batch and index size before publishing, then publishes candidates sequentially. After each release succeeds, it updates that package's index entry. The workflow runs on the selected branch and shares release serialization with the single-product release workflow.
+The workflow validates all candidates and the final index budget before publishing the first release. Run it from the branch whose code and package manifests should be built and released.
 
 ## Migration and acceptance
 
