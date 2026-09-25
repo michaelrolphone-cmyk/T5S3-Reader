@@ -241,7 +241,18 @@ static void activate_release(const t5_app_api_v1 *app, const t5_ui_api_v1 *ui,
     render(app, ui, selected, status);
     const bool okay = app->app_catalog_download(index);
     build_releases(app);
-    snprintf(status, capacity, "%.95s: %s", name, okay ? "installed" : "installation failed");
+    if (okay) {
+        snprintf(status, capacity, "%.95s: installed", name);
+        return;
+    }
+    char detail[96] = {0};
+    const bool has_detail = app->struct_size >=
+        offsetof(t5_app_api_v1, app_catalog_download_last_error) +
+        sizeof(app->app_catalog_download_last_error) &&
+        app->app_catalog_download_last_error &&
+        app->app_catalog_download_last_error(detail, sizeof(detail)) && detail[0];
+    if (has_detail) snprintf(status, capacity, "%.60s: %.90s", name, detail);
+    else snprintf(status, capacity, "%.95s: installation failed", name);
 }
 
 __attribute__((visibility("default"))) void app_main(void) {
