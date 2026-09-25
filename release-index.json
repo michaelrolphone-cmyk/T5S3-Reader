@@ -1,5 +1,25 @@
 {
-  "apps": [],
+  "apps": [
+    {
+      "asset": "battery.elf",
+      "id": "battery",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Battery Status",
+        "file_name": "battery.elf",
+        "icon": "solid:f240",
+        "min_firmware_version": "1.1.18",
+        "sha256": "48972f0d5562af2289196175e3435193a7d088008aaf5250eee82cc106244dac",
+        "size_bytes": 7268,
+        "version": "1.0.0"
+      },
+      "sha256": "48972f0d5562af2289196175e3435193a7d088008aaf5250eee82cc106244dac",
+      "size": 7268,
+      "tag": "app-battery-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-battery-v1.0.0/battery.elf",
+      "version": "1.0.0"
+    }
+  ],
   "drivers": [],
   "firmware": {
     "asset": "firmware-t5s3-pro.bin",
