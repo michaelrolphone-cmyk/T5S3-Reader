@@ -105,8 +105,8 @@ int main(void) {
         inside = true; polls = acquisitions = labels = 0; app_main();
         assert(!strcmp(keyboard_error, failure));
         assert(!strcmp(rendered_error, failure));
-        assert(acquisitions == 2 && labels >= 3); // Touch activation and retry, no buttons.
-        inside = false; polls = acquisitions = 0; app_main(); assert(!acquisitions);
+        assert(acquisitions == 1 && labels >= 3); // One automatic probe; no touch activation or retry elapsed.
+        inside = false; polls = acquisitions = 0; app_main(); assert(acquisitions == 1);
     }
     fake_providers.struct_size = offsetof(t5_provider_capability_api_v1, last_error);
     inside = true; polls = 0; app_main();
