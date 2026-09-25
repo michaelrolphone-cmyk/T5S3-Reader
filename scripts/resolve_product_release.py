@@ -45,7 +45,6 @@ def resolve(event_name: str, event: dict[str, Any], root: Path) -> dict[str, str
         inputs = event.get("inputs", {})
         product = inputs.get("product", "")
         identity = inputs.get("id", "")
-        version = inputs.get("version", "")
         enabled = True
         commit_firmware = inputs.get("commit_firmware", "false")
         if isinstance(commit_firmware, str):
@@ -54,11 +53,11 @@ def resolve(event_name: str, event: dict[str, Any], root: Path) -> dict[str, str
             commit_firmware = commit_firmware == "true"
     elif event_name == "push":
         request = json.loads((root / ".github/release-request.json").read_text(encoding="utf-8"))
-        expected = {"enabled", "product", "id", "version", "commit_firmware"}
-        if set(request) != expected:
-            raise ValueError("Request must contain enabled, product, id, version, and commit_firmware only")
+        expected = {"enabled", "product", "id", "commit_firmware"}
+        if set(request) not in (expected, expected | {"version"}):
+            raise ValueError("Request must contain enabled, product, id, and commit_firmware")
         enabled = request["enabled"]
-        product, identity, version = request["product"], request["id"], request["version"]
+        product, identity = request["product"], request["id"]
         commit_firmware = request["commit_firmware"]
     else:
         raise ValueError("Unsupported event")
@@ -74,19 +73,18 @@ def resolve(event_name: str, event: dict[str, Any], root: Path) -> dict[str, str
         raise ValueError("package release requires a safe stable id")
     if product == "firmware" and identity not in ("", "firmware"):
         raise ValueError("firmware id must be empty or 'firmware'")
-    if not isinstance(version, str) or not VERSION_RE.fullmatch(version):
-        raise ValueError("version must be numeric MAJOR.MINOR.PATCH")
     if product == "firmware":
         config = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=(";", "#"))
         config.read(root / "platformio.ini")
-        if config.get("riscrte", "version") != version:
-            raise ValueError("Firmware version must match [riscrte] version in platformio.ini")
+        version = config.get("riscrte", "version", fallback=None)
+        if not isinstance(version, str) or not VERSION_RE.fullmatch(version):
+            raise ValueError("[riscrte] version in platformio.ini must be numeric MAJOR.MINOR.PATCH")
         tag = f"firmware-v{version}"
     else:
         _path, manifest = package_manifest(root, product, identity)
-        manifest_version = manifest.get("version")
-        if manifest_version is not None and manifest_version != version:
-            raise ValueError(f"Requested version must match {identity}'s manifest version")
+        version = manifest.get("version")
+        if not isinstance(version, str) or not VERSION_RE.fullmatch(version):
+            raise ValueError(f"{product[:-1]} {identity!r} manifest must include a numeric MAJOR.MINOR.PATCH version")
         tag = f"{'app' if product == 'apps' else 'driver'}-{identity}-v{version}"
     return {"publish": "true", "product": product, "id": identity, "tag": tag,
             "ver": version, "commit_firmware": str(commit_firmware).lower()}
@@ -99,8 +97,11 @@ def main() -> None:
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
         for key, value in outputs.items():
             stream.write(f"{key}={value}" + chr(10))
-    print("Product release request validated." if outputs["publish"] == "true"
-          else "Release publishing disabled; validation complete.")
+    if outputs["publish"] == "true":
+        target = outputs["id"] or "RiscRTE firmware"
+        print(f"Resolved {outputs['product']} {target} version {outputs['ver']} as {outputs['tag']}.")
+    else:
+        print("Release publishing disabled; validation complete.")
 
 
 if __name__ == "__main__":
