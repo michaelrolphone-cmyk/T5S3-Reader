@@ -36,7 +36,7 @@ The App Store reads only app entries. Driver Manager reads only driver entries. 
 
 ## Release request and build behavior
 
-A manual `Cut RiscRTE release` workflow request identifies exactly one product (`firmware`, `apps`, or `drivers`), its version, and an app or driver ID when applicable. Validation checks the version against that product's authoritative manifest or firmware configuration. Tags and package versions are immutable. The workflow builds only the selected stream, publishes only the selected package assets, then updates the index.
+A manual `Cut RiscRTE release` workflow request identifies exactly one product (`firmware`, `apps`, or `drivers`) and an app or driver ID when applicable. The workflow detects firmware version from `[riscrte] version` in `platformio.ini`, and app or driver version from the selected package manifest. The version is shown in the workflow logs and used to form the immutable tag; it is not a user input. The workflow builds only the selected stream, publishes only the selected package assets, then updates the index.
 
 The workflow sequence is:
 
