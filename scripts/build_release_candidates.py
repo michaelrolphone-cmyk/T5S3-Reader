@@ -91,6 +91,7 @@ def build_drivers(candidates: list[dict[str, str]]) -> None:
         for command in commands:
             run([sys.executable, *command])
     run([sys.executable, "scripts/build_installed_usb_stack.py", "--ids", *identities])
+    run([sys.executable, "test/drivers/installed_usb_stack_package_test.py", "--ids", *identities])
     run([sys.executable, "scripts/export_canonical_driver_release.py", "--ids", *identities])
 
 
