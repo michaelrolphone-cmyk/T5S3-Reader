@@ -13,6 +13,7 @@
 
 #include "I18n.h"
 #include "RecentBooksStore.h"
+#include "components/FontAwesomeIcons.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -842,7 +843,8 @@ BaseTheme::ButtonMenuLayout BaseTheme::buttonMenuLayout(const GfxRenderer& rende
 
 void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
-                               const std::function<UIIcon(int index)>& rowIcon) const {
+                               const std::function<UIIcon(int index)>& rowIcon,
+                               const std::function<const char*(int index)>& rowAppIcon) const {
   const auto layout = buttonMenuLayout(renderer, rect, selectedIndex);
   for (int i = layout.start; i < buttonCount && i < layout.start + layout.pageSize; ++i) {
     const int tileY = layout.top + (i - layout.start) * layout.rowStep;
@@ -855,6 +857,16 @@ void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
     } else {
       renderer.drawRect(rect.x + BaseMetrics::values.contentSidePadding, tileY,
                         rect.width - BaseMetrics::values.contentSidePadding * 2, BaseMetrics::values.menuRowHeight);
+    }
+
+    if (rowAppIcon) {
+      const char* appIcon = rowAppIcon(i);
+      if (appIcon && appIcon[0] != '\0') {
+        constexpr int kAppIconSize = 18;
+        const int iconX = rect.x + BaseMetrics::values.contentSidePadding + 12;
+        const int iconY = tileY + (BaseMetrics::values.menuRowHeight - kAppIconSize) / 2;
+        (void)FontAwesomeIcons::draw(renderer, iconX, iconY, appIcon, kAppIconSize, !selected);
+      }
     }
 
     std::string labelStr = buttonLabel(i);
