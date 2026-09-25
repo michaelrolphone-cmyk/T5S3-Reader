@@ -562,19 +562,25 @@ bool appCatalogRefresh() {
   LOG_INF("APPSTORE", "Found %u application ELF/JSON pairs in latest release",
           static_cast<unsigned>(s->catalog.size()));
 
-  if (catalogUrl.empty()) {
-    LOG_ERR("APPSTORE", "Release is missing %s", kAggregateAppCatalogName);
-  }
-  if (!catalogUrl.empty() && loadAggregateCatalog(s->catalog, catalogUrl)) {
-    LOG_INF("APPSTORE", "Loaded %u apps from aggregate release catalog",
-            static_cast<unsigned>(s->catalog.size()));
-    return true;
+  if (!catalogUrl.empty()) {
+    if (loadAggregateCatalog(s->catalog, catalogUrl)) {
+      LOG_INF("APPSTORE", "Loaded %u apps from aggregate release catalog",
+              static_cast<unsigned>(s->catalog.size()));
+      return true;
+    }
+    // A present aggregate catalog is the canonical metadata path for current
+    // releases. If that one request fails, starting dozens of fresh TLS
+    // handshakes cannot repair a low-memory/network failure and can make heap
+    // fragmentation worse. Return cleanly; the user can retry the refresh.
+    LOG_ERR("APPSTORE", "Aggregate catalog present but unavailable; refusing per-app TLS fan-out");
+    s->catalog.clear();
+    return false;
   }
 
-  LOG_ERR("APPSTORE", "Aggregate catalog unavailable; loading up to %u per-app manifests (slower)",
-          static_cast<unsigned>(s->catalog.size()));
+  LOG_ERR("APPSTORE", "Release is missing %s; loading up to %u paired app manifests",
+          kAggregateAppCatalogName, static_cast<unsigned>(s->catalog.size()));
   const bool loaded = loadCatalogManifests(s->catalog);
-  LOG_INF("APPSTORE", "Fallback loaded %u apps", static_cast<unsigned>(s->catalog.size()));
+  LOG_INF("APPSTORE", "Legacy fallback loaded %u apps", static_cast<unsigned>(s->catalog.size()));
   return loaded;
 }
 
