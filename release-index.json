@@ -100,6 +100,25 @@
       "tag": "app-esp_rom_flasher-v1.1.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-esp_rom_flasher-v1.1.0/esp_rom_flasher.elf",
       "version": "1.1.0"
+    },
+    {
+      "asset": "file_browser.elf",
+      "id": "file_browser",
+      "kind": "app",
+      "manifest": {
+        "display_name": "File Browser",
+        "file_name": "file_browser.elf",
+        "icon": "solid:f07c",
+        "min_firmware_version": "1.1.13",
+        "sha256": "8849f37c1a87b88169e10465673fc5788a5c2c2687068685ad20278f450a9587",
+        "size_bytes": 13868,
+        "version": "1.0.2"
+      },
+      "sha256": "8849f37c1a87b88169e10465673fc5788a5c2c2687068685ad20278f450a9587",
+      "size": 13868,
+      "tag": "app-file_browser-v1.0.2",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-file_browser-v1.0.2/file_browser.elf",
+      "version": "1.0.2"
     }
   ],
   "drivers": [],
