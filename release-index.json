@@ -195,6 +195,25 @@
       "tag": "app-gnss_stream_diagnostic-v0.1.1",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-gnss_stream_diagnostic-v0.1.1/gnss_stream_diagnostic.elf",
       "version": "0.1.1"
+    },
+    {
+      "asset": "gps.elf",
+      "id": "gps",
+      "kind": "app",
+      "manifest": {
+        "display_name": "GPS",
+        "file_name": "gps.elf",
+        "icon": "solid:f3c5",
+        "min_firmware_version": "1.1.14",
+        "sha256": "380a1a0f496688dc4f1fd61bbb0cc59b2c00e07269b879a8156d6af870e78430",
+        "size_bytes": 4800,
+        "version": "1.0.0"
+      },
+      "sha256": "380a1a0f496688dc4f1fd61bbb0cc59b2c00e07269b879a8156d6af870e78430",
+      "size": 4800,
+      "tag": "app-gps-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-gps-v1.0.0/gps.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
