@@ -665,7 +665,64 @@
       "version": "1.0.0"
     }
   ],
-  "drivers": [],
+  "drivers": [
+    {
+      "asset": "board-power-t5s3-v2--driver.elf",
+      "id": "board-power-t5s3-v2",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "board.power.vbus",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "0ea6762f0f66b59f9dbad06e2334851237d9bdf470779b4c895ef69596c60bd8",
+            "size_bytes": 730
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "1f6e43bf15610b6ce2e30131c830d9d1b2643ec114471d216f90322fbdde3834",
+            "size_bytes": 10860
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "6c45893d4c9b14d7dfbc8f6b1008fc6e1758f78a45e8a53e7c2bbc8f4c58a67c",
+            "size_bytes": 45
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "fe6240d8e0702eb2fb282f9dc78519ccef9f86bf78f01fb02978b3c392796a33",
+            "size_bytes": 19
+          }
+        ],
+        "id": "board-power-t5s3-v2",
+        "requires": [
+          {
+            "capability": "i2c.bus",
+            "min_api": 1
+          },
+          {
+            "capability": "platform.clock",
+            "min_api": 1
+          },
+          {
+            "capability": "board.power.bq25896.profile",
+            "min_api": 1
+          }
+        ],
+        "version": "0.1.5"
+      },
+      "sha256": "1f6e43bf15610b6ce2e30131c830d9d1b2643ec114471d216f90322fbdde3834",
+      "size": 10860,
+      "tag": "driver-board-power-t5s3-v2-v0.1.5",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-board-power-t5s3-v2-v0.1.5/board-power-t5s3-v2--driver.elf",
+      "version": "0.1.5"
+    }
+  ],
   "firmware": {
     "asset": "firmware-t5s3-pro.bin",
     "kind": "firmware",
