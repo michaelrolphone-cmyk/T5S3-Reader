@@ -2,6 +2,7 @@
 
 #include "AppPackageInstaller.h"
 #include "NativeOnlinePackageRecovery.h"
+#include <Arduino.h>
 #include <T5AppApi.h>
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
@@ -103,13 +104,21 @@ inline bool installApplication(const char* artifact, const char* version,
   if (!writeExclusive(jsonPath, sidecar.data(), sidecar.size())) return fail("could not stage app manifest");
   const std::string elfPath = root + "/" + artifact;
   const std::string elfStage = elfPath + ".part";
-  if (progress) progress(progressContext, 0, size);
+  // Do not re-enter the native UI while the HTTP stream worker owns its TLS
+  // stack/buffers. Native list rendering starts a separate 8 KiB e-paper task;
+  // doing that from the byte-progress callback competes with the exact heap
+  // headroom this path preserves for TLS and can abort otherwise valid installs.
+  // Keep the transfer callback allocation-free except for the watchdog reset.
   if (HttpDownloader::downloadToFile(url, elfStage,
-          [progress, progressContext, size](size_t downloaded, size_t) {
-            esp_task_wdt_reset();
-            if (progress) progress(progressContext, downloaded, size);
-          }) != HttpDownloader::OK)
+          [](size_t, size_t) { esp_task_wdt_reset(); }) != HttpDownloader::OK)
     return fail("HTTP download failed");
+  // The HTTP worker publishes EOF before the pipe can complete. Give the
+  // scheduler one turn to reclaim its task stack, then permit the ELF to show a
+  // terminal 100% frame before digest verification/publication continues.
+  if (progress) {
+    delay(1);
+    progress(progressContext, size, size);
+  }
   if (Storage.exists(elfPath.c_str())) return fail("download target already exists");
   if (!Storage.rename(elfStage.c_str(), elfPath.c_str()))
     return fail("could not finalize downloaded ELF");
