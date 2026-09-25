@@ -38,6 +38,7 @@ for test_case in package_ordinary_transaction package_ordinary_stage_recovery pa
 done
 python3 "$repo_dir/test/resources/package_driver_bridge_source_test.py"
 python3 "$repo_dir/test/native_apps/native_ui_refresh_contract_test.py"
+python3 "$repo_dir/test/native_apps/home_shortcut_launch_contract_test.py"
 # The old P-256/provenance/NVS experiment is not a normal build/merge gate.
 # Run test/run_signed_package_experiment.sh explicitly only when requested.
 for pair in \
