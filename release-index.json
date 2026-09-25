@@ -233,6 +233,25 @@
       "tag": "app-hello-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-hello-v1.0.0/hello.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "image_viewer.elf",
+      "id": "image_viewer",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Image Viewer",
+        "file_name": "image_viewer.elf",
+        "icon": "regular:f03e",
+        "min_firmware_version": "1.1.13",
+        "sha256": "28013b3a77bda7090b138d30b6104ad5bf277e689b9928907e862509843cb386",
+        "size_bytes": 3788,
+        "version": "1.0.0"
+      },
+      "sha256": "28013b3a77bda7090b138d30b6104ad5bf277e689b9928907e862509843cb386",
+      "size": 3788,
+      "tag": "app-image_viewer-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-image_viewer-v1.0.0/image_viewer.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
