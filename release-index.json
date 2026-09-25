@@ -442,6 +442,25 @@
       "tag": "app-sd_firmware_update-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-sd_firmware_update-v1.0.0/sd_firmware_update.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "sd_list.elf",
+      "id": "sd_list",
+      "kind": "app",
+      "manifest": {
+        "display_name": "SD Files",
+        "file_name": "sd_list.elf",
+        "icon": "solid:f07b",
+        "min_firmware_version": "1.1.5",
+        "sha256": "2626f53540422f8594a70d2ae73bf2bf53e312d6c3b3fa5d18b9a548f668ba78",
+        "size_bytes": 3516,
+        "version": "1.0.0"
+      },
+      "sha256": "2626f53540422f8594a70d2ae73bf2bf53e312d6c3b3fa5d18b9a548f668ba78",
+      "size": 3516,
+      "tag": "app-sd_list-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-sd_list-v1.0.0/sd_list.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
