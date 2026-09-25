@@ -644,6 +644,25 @@
       "tag": "app-web_server-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-web_server-v1.0.0/web_server.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "wifi_settings.elf",
+      "id": "wifi_settings",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Wi-Fi Networks",
+        "file_name": "wifi_settings.elf",
+        "icon": "solid:f1eb",
+        "min_firmware_version": "1.1.24",
+        "sha256": "85e11c24a6cbd6b92084c5eb7e45515c822d41d44e36427e78029fffc4ebe1f8",
+        "size_bytes": 3928,
+        "version": "1.0.0"
+      },
+      "sha256": "85e11c24a6cbd6b92084c5eb7e45515c822d41d44e36427e78029fffc4ebe1f8",
+      "size": 3928,
+      "tag": "app-wifi_settings-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-wifi_settings-v1.0.0/wifi_settings.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
