@@ -3,6 +3,7 @@
 #include <NativeAppLauncher.h>
 #include <atomic>
 #include <cstring>
+#include <cstdio>
 #include <memory>
 #include <new>
 #include <string>
