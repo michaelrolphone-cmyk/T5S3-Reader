@@ -156,7 +156,8 @@ class BaseTheme {
   virtual ButtonMenuLayout buttonMenuLayout(const GfxRenderer& renderer, Rect rect, int selectedIndex) const;
   virtual void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                               const std::function<std::string(int index)>& buttonLabel,
-                              const std::function<UIIcon(int index)>& rowIcon) const;
+                              const std::function<UIIcon(int index)>& rowIcon,
+                              const std::function<const char*(int index)>& rowAppIcon = nullptr) const;
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message) const;
   virtual void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const;
   virtual void drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage,
