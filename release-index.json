@@ -119,6 +119,25 @@
       "tag": "app-file_browser-v1.0.2",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-file_browser-v1.0.2/file_browser.elf",
       "version": "1.0.2"
+    },
+    {
+      "asset": "file_transfer.elf",
+      "id": "file_transfer",
+      "kind": "app",
+      "manifest": {
+        "display_name": "File Transfer",
+        "file_name": "file_transfer.elf",
+        "icon": "solid:f0ec",
+        "min_firmware_version": "1.1.24",
+        "sha256": "684f3bca5f4ea3cc76ad7ff60de570954020e1180916bd2d6906e18471a95771",
+        "size_bytes": 3024,
+        "version": "1.0.0"
+      },
+      "sha256": "684f3bca5f4ea3cc76ad7ff60de570954020e1180916bd2d6906e18471a95771",
+      "size": 3024,
+      "tag": "app-file_transfer-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-file_transfer-v1.0.0/file_transfer.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
