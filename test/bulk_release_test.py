@@ -1,9 +1,11 @@
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.publish_updated_packages import discover_candidates
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.publish_updated_packages import discover_candidates  # noqa: E402
 
 
 class DiscoverCandidatesTest(unittest.TestCase):
