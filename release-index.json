@@ -721,6 +721,49 @@
       "tag": "driver-board-power-t5s3-v2-v0.1.5",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-board-power-t5s3-v2-v0.1.5/board-power-t5s3-v2--driver.elf",
       "version": "0.1.5"
+    },
+    {
+      "asset": "i2c-esp32s3-v2--driver.elf",
+      "id": "i2c-esp32s3-v2",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "i2c.bus",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "8a9aa0653e49a0db6c99913dd574aaa5276c878df39987799a12d9f57fb811b0",
+            "size_bytes": 588
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "b04186764dc30fa8b161832bc40267c9bd82146f79a743e81d2cf7d22f44a97d",
+            "size_bytes": 11196
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "5b40fe49054c4e3e69ffab68aa4ae41be769e5a77928a8cdea5a666a37447f14",
+            "size_bytes": 36
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "8b61e76d03eee30103179a37f061fcab06604372d7598b78e53b875fba516814",
+            "size_bytes": 24
+          }
+        ],
+        "id": "i2c-esp32s3-v2",
+        "requires": [],
+        "version": "0.1.2"
+      },
+      "sha256": "b04186764dc30fa8b161832bc40267c9bd82146f79a743e81d2cf7d22f44a97d",
+      "size": 11196,
+      "tag": "driver-i2c-esp32s3-v2-v0.1.2",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-i2c-esp32s3-v2-v0.1.2/i2c-esp32s3-v2--driver.elf",
+      "version": "0.1.2"
     }
   ],
   "firmware": {
