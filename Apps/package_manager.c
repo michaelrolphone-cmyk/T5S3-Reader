@@ -337,7 +337,7 @@ static void activate(const t5_package_manager_api_v1 *manager,
 
     if (action == PACKAGE_ACTION_REPLACE) {
         const int order = version_order(item.staged.version, item.installed.version);
-        char description[160];
+        char description[224];
         snprintf(description, sizeof(description),
                  "%s %s %s -> %s; verified replacement only",
                  order < 0 ? "Downgrade" : "Replace",
