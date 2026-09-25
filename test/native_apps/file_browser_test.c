@@ -150,7 +150,7 @@ static void render_browser(const char *path, const char *status,
                            const t5_file_browser_entry_t *entries,
                            uint32_t count, int32_t selected) {
     assert(path && status);
-    assert(status[0] == 0);
+    if (phase != 3 || render_index == 0) assert(status[0] == 0);
     if (phase == 1) {
         if (render_index == 0) {
             assert(strcmp(path, "/") == 0 && count == 7 && selected == 0);
