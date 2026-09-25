@@ -25,24 +25,30 @@ namespace RuntimeOnlinePackages {
 // whose every byte matches the freshly verified source. Unknown paths remain.
 inline bool installApplication(const char* artifact, const char* version,
                                const char* url, const std::string& sidecar,
-                               uint64_t size, const char* elfDigest) {
+                               uint64_t size, const char* elfDigest,
+                               const char** failureReason = nullptr) {
   using namespace RuntimePackages;
+  if (failureReason) *failureReason = nullptr;
+  const auto fail = [failureReason](const char* reason) {
+    if (failureReason) *failureReason = reason;
+    return false;
+  };
   if (!artifact || !version || !url || !elfDigest ||
       !safePackageEntryName(artifact) || !safeVersion(version) ||
       !validSha256Hex(elfDigest) || size < 52 || size > 8u * 1024u * 1024u ||
-      sidecar.empty() || sidecar.size() > 4096) return false;
+      sidecar.empty() || sidecar.size() > 4096) return fail("release metadata rejected");
   const size_t nameBytes = std::strlen(artifact);
-  if (nameBytes <= 4 || std::strcmp(artifact + nameBytes - 4, ".elf")) return false;
+  if (nameBytes <= 4 || std::strcmp(artifact + nameBytes - 4, ".elf")) return fail("invalid ELF name");
   const std::string id(artifact, nameBytes - 4);
-  if (!safeId(id.c_str())) return false;
+  if (!safeId(id.c_str())) return fail("invalid app identity");
   const std::string manifestName = id + ".json";
-  if (!safePackageEntryName(manifestName.c_str())) return false;
+  if (!safePackageEntryName(manifestName.c_str())) return fail("invalid manifest name");
 
   // The retained JSON buffer and up-to-16-entry plan together exceed 8 KiB.
   // Build them on the heap before calling the separately staged SD installer.
   uint8_t digest[32]{};
   if (mbedtls_sha256_ret(reinterpret_cast<const unsigned char*>(sidecar.data()),
-                         sidecar.size(), digest, 0) != 0) return false;
+                         sidecar.size(), digest, 0) != 0) return fail("manifest digest failed");
   constexpr char alphabet[] = "0123456789abcdef";
   char jsonDigest[65]{};
   for (size_t i = 0; i < 32; ++i) {
@@ -51,7 +57,7 @@ inline bool installApplication(const char* artifact, const char* version,
   }
   std::unique_ptr<char[]> descriptor(new (std::nothrow) char[4096]{});
   std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
-  if (!descriptor || !plan) return false;
+  if (!descriptor || !plan) return fail("not enough memory for package plan");
   const int count = std::snprintf(descriptor.get(), 4096,
       "{\"schema\":1,\"kind\":\"application\",\"id\":\"%s\",\"version\":\"%s\","
       "\"artifact\":\"%s\",\"architecture\":\"xtensa-esp32s3\",\"min_runtime_api\":2,"
@@ -63,22 +69,22 @@ inline bool installApplication(const char* artifact, const char* version,
   if (count <= 0 || count >= 4096 ||
       !parseOrdinaryManifest(descriptor.get(), static_cast<size_t>(count), *plan) ||
       plan->identity.kind != Kind::Application ||
-      std::strcmp(plan->identity.id, id.c_str())) return false;
+      std::strcmp(plan->identity.id, id.c_str())) return fail("package descriptor rejected");
   constexpr PackageRuntimePolicy policy{"xtensa-esp32s3", 2, 0,
                                         8u * 1024u * 1024u, 16u * 1024u * 1024u};
   const std::string root = "/Packages/Inbox/" + id;
   if (!Storage.ready() ||
       (!Storage.exists("/Packages") && !Storage.mkdir("/Packages", false)) ||
-      (!Storage.exists("/Packages/Inbox") && !Storage.mkdir("/Packages/Inbox", false))) return false;
+      (!Storage.exists("/Packages/Inbox") && !Storage.mkdir("/Packages/Inbox", false))) return fail("package inbox unavailable");
   if (Storage.exists(root.c_str())) {
     if (!Recovery::discardMatchingInbox(root, manifestName, sidecar, artifact,
             descriptor.get(), static_cast<size_t>(count))) {
       LOG_ERR("APPSTORE", "Existing inbox differs from this release; preserved for inspection: %s", root.c_str());
-      return false;
+      return fail("interrupted package differs from this release");
     }
     LOG_INF("APPSTORE", "Recovered matching interrupted download for %s", id.c_str());
   }
-  if (!Storage.mkdir(root.c_str(), false)) return false;
+  if (!Storage.mkdir(root.c_str(), false)) return fail("could not create package inbox");
 
   auto writeExclusive = [](const std::string& filename,
                            const char* contents, size_t bytes) -> bool {
@@ -91,22 +97,25 @@ inline bool installApplication(const char* artifact, const char* version,
     return file.close() && written;
   };
   const std::string jsonPath = root + "/" + manifestName;
-  if (!writeExclusive(jsonPath, sidecar.data(), sidecar.size())) return false;
+  if (!writeExclusive(jsonPath, sidecar.data(), sidecar.size())) return fail("could not stage app manifest");
   const std::string elfPath = root + "/" + artifact;
   const std::string elfStage = elfPath + ".part";
   if (HttpDownloader::downloadToFile(url, elfStage,
-          [](size_t, size_t) { esp_task_wdt_reset(); }) != HttpDownloader::OK ||
-      Storage.exists(elfPath.c_str()) ||
-      !Storage.rename(elfStage.c_str(), elfPath.c_str()) ||
-      !verifyAppPair(elfPath.c_str(), jsonPath.c_str(), artifact, true)) return false;
+          [](size_t, size_t) { esp_task_wdt_reset(); }) != HttpDownloader::OK)
+    return fail("HTTP download failed");
+  if (Storage.exists(elfPath.c_str())) return fail("download target already exists");
+  if (!Storage.rename(elfStage.c_str(), elfPath.c_str()))
+    return fail("could not finalize downloaded ELF");
+  if (!verifyAppPair(elfPath.c_str(), jsonPath.c_str(), artifact, true))
+    return fail("downloaded ELF failed size, format or SHA-256 verification");
   if (!writeExclusive(root + "/.package.json", descriptor.get(), static_cast<size_t>(count)))
-    return false;
+    return fail("could not stage package descriptor");
   // The source has passed the release digest and exact sidecar checks. Before
   // re-staging, recover only a previous stage whose contents match this source
   // byte for byte (or its interrupted prefix). Never remove an unknown stage.
   if (!Recovery::discardMatchingStage(root, *plan, policy, installedCapabilityVersion)) {
     LOG_ERR("APPSTORE", "Unrecognized or mismatched package stage preserved for inspection: %s", id.c_str());
-    return false;
+    return fail("existing package stage does not match release");
   }
   const auto installed = installOrdinaryFromSd(root.c_str(), policy,
                                                 installedCapabilityVersion);
@@ -114,7 +123,7 @@ inline bool installApplication(const char* artifact, const char* version,
     LOG_ERR("APPSTORE", "Canonical install rejected for %s: result=%u stage=%u transaction=%u",
             id.c_str(), static_cast<unsigned>(installed.result),
             static_cast<unsigned>(installed.staging), static_cast<unsigned>(installed.transaction));
-    return false;
+    return fail("package staging or publication rejected");
   }
 
   // Source directory belongs to this invocation; clean up only exact files
