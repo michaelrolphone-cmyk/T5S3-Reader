@@ -58,13 +58,13 @@ class ProductReleaseTests(unittest.TestCase):
         names = [
             "dist/firmware-t5s3-pro.bin",
             f"dist/riscrte_lilygo_t5s3_{version}-app.bin",
-            f"dist/riscrte_lilygo_t5s3_{version}.bin",
             f"dist/riscrte_lilygo_t5s3_{version}.elf",
+            f"dist/riscrte_lilygo_t5s3_{version}.bin",
             f"firmware/riscrte_lilygo_t5s3_{version}.bin",
             "dist/firmware-lilygo-epd47-s3.bin",
             f"dist/riscrte_lilygo_epd47_s3_{version}-app.bin",
-            f"dist/riscrte_lilygo_epd47_s3_{version}.bin",
             f"dist/riscrte_lilygo_epd47_s3_{version}.elf",
+            f"dist/riscrte_lilygo_epd47_s3_{version}.bin",
             f"firmware/riscrte_lilygo_epd47_s3_{version}.bin",
         ]
         for name in names:
