@@ -573,7 +573,7 @@ bool appCatalogRefresh() {
     // handshakes cannot repair a low-memory/network failure and can make heap
     // fragmentation worse. Return cleanly; the user can retry the refresh.
     LOG_ERR("APPSTORE", "Aggregate catalog present but unavailable; refusing per-app TLS fan-out");
-    s->catalog.clear();
+    std::vector<CatalogAsset>().swap(s->catalog);
     return false;
   }
 
