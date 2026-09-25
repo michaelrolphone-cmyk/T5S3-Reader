@@ -79,7 +79,7 @@ def build_firmware() -> None:
 
 def build_apps(candidates: list[dict[str, str]]) -> None:
     for candidate in candidates:
-        run([sys.executable, "scripts/build_all_apps.py", "--id", candidate["id"] + ".elf"])
+        run([sys.executable, "scripts/build_all_apps.py", "--id", candidate["id"]])
 
 
 def build_drivers(candidates: list[dict[str, str]]) -> None:
