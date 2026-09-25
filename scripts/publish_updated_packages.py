@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -184,31 +185,104 @@ def publish_or_verify(root: Path, source_sha: str, candidate: dict[str, str],
                       record: dict[str, Any], assets: list[Path]) -> None:
     tag = record["tag"]
     expected_names = [path.name for path in assets]
-    view = subprocess.run(["gh", "release", "view", tag, "--json", "assets",
-                           "--jq", "[.assets[].name]"], cwd=root, text=True, capture_output=True)
-    if view.returncode != 0:
-        notes = f"Independent {candidate['product']} release {candidate['version']} for {candidate['id'] or 'RiscRTE firmware'}."
-        run(["gh", "release", "create", tag, *[str(path) for path in assets],
-             "--title", tag, "--notes", notes, "--target", source_sha], cwd=root)
-        return
+    create = ["gh", "release", "create", tag, *[str(path) for path in assets],
+              "--title", tag,
+              "--notes", f"Independent {candidate['product']} release {candidate['version']} "
+                         f"for {candidate['id'] or 'RiscRTE firmware'}.",
+              "--target", source_sha]
 
-    existing = json.loads(view.stdout)
-    unexpected = sorted(set(existing) - set(expected_names))
-    if unexpected:
-        raise ValueError(f"existing release {tag} contains unexpected assets: {unexpected}")
-    if record["asset"] not in existing:
-        raise ValueError(f"existing release {tag} is missing indexed asset {record['asset']}")
-    with tempfile.TemporaryDirectory(prefix="rte-release-verify-") as directory:
-        run(["gh", "release", "download", tag, "--pattern", record["asset"], "--dir", directory],
-            cwd=root)
-        published_asset = Path(directory) / record["asset"]
-        digest = hashlib.sha256(published_asset.read_bytes()).hexdigest()
-        if digest != record["sha256"]:
-            raise ValueError(f"existing release {tag} has different bytes for {record['asset']}")
-    missing = [path for path in assets if path.name not in existing]
-    if missing:
-        run(["gh", "release", "upload", tag, *[str(path) for path in missing]], cwd=root)
+    def retryable(output: str) -> bool:
+        lowered = output.lower()
+        return (any(code in lowered for code in ("http 500", "http 502", "http 503",
+                                                  "http 504", "http 429")) or
+                "rate limit" in lowered or "temporarily unavailable" in lowered or
+                "connection reset" in lowered or "timed out" in lowered or
+                "already exists" in lowered)
 
+    def wait_before_retry(attempt: int, output: str) -> None:
+        delay = min(2 ** (attempt - 1), 20)
+        print(f"GitHub release API transient error for {tag}; retry {attempt}/7 "
+              f"in {delay}s: {output.strip()[-500:]}", flush=True)
+        time.sleep(delay)
+
+    last_error = ""
+    for attempt in range(1, 8):
+        view = subprocess.run(["gh", "release", "view", tag, "--json", "assets",
+                               "--jq", "[.assets[].name]"], cwd=root, text=True, capture_output=True)
+        if view.returncode != 0:
+            diagnostic = (view.stdout or "") + (view.stderr or "")
+            not_found = any(term in diagnostic.lower()
+                            for term in ("release not found", "not found", "http 404", "404"))
+            if not not_found and retryable(diagnostic):
+                last_error = diagnostic
+                if attempt < 7:
+                    wait_before_retry(attempt, diagnostic)
+                    continue
+                break
+            if not not_found:
+                raise RuntimeError(f"could not inspect release {tag}: {diagnostic.strip()}")
+
+            created = subprocess.run(create, cwd=root, text=True, capture_output=True)
+            if created.returncode == 0:
+                print(f"Created release {tag} with {len(assets)} assets.", flush=True)
+                return
+            diagnostic = (created.stdout or "") + (created.stderr or "")
+            if retryable(diagnostic):
+                last_error = diagnostic
+                if attempt < 7:
+                    wait_before_retry(attempt, diagnostic)
+                    continue
+                break
+            raise subprocess.CalledProcessError(created.returncode, create,
+                                                output=created.stdout, stderr=created.stderr)
+
+        existing = json.loads(view.stdout)
+        unexpected = sorted(set(existing) - set(expected_names))
+        if unexpected:
+            raise ValueError(f"existing release {tag} contains unexpected assets: {unexpected}")
+
+        # A prior HTTP error can leave the release record or only some assets
+        # behind. Upload every missing asset, and verify the indexed payload
+        # whenever it is already present.
+        if record["asset"] in existing:
+            with tempfile.TemporaryDirectory(prefix="rte-release-verify-") as directory:
+                download = subprocess.run(
+                    ["gh", "release", "download", tag, "--pattern", record["asset"],
+                     "--dir", directory],
+                    cwd=root, text=True, capture_output=True)
+                if download.returncode != 0:
+                    diagnostic = (download.stdout or "") + (download.stderr or "")
+                    if retryable(diagnostic) and attempt < 7:
+                        last_error = diagnostic
+                        wait_before_retry(attempt, diagnostic)
+                        continue
+                    raise RuntimeError(f"could not verify release asset {record['asset']}: "
+                                       f"{diagnostic.strip()}")
+                published_asset = Path(directory) / record["asset"]
+                digest = hashlib.sha256(published_asset.read_bytes()).hexdigest()
+                if digest != record["sha256"]:
+                    raise ValueError(f"existing release {tag} has different bytes for {record['asset']}")
+
+        missing = [path for path in assets if path.name not in existing]
+        if not missing:
+            return
+        upload = ["gh", "release", "upload", tag, *[str(path) for path in missing]]
+        uploaded = subprocess.run(upload, cwd=root, text=True, capture_output=True)
+        if uploaded.returncode == 0:
+            print(f"Uploaded {len(missing)} missing assets to {tag}.", flush=True)
+            continue
+        diagnostic = (uploaded.stdout or "") + (uploaded.stderr or "")
+        if retryable(diagnostic):
+            last_error = diagnostic
+            if attempt < 7:
+                wait_before_retry(attempt, diagnostic)
+                continue
+            break
+        raise subprocess.CalledProcessError(uploaded.returncode, upload,
+                                            output=uploaded.stdout, stderr=uploaded.stderr)
+
+    raise RuntimeError(f"GitHub release API did not recover for {tag} after 7 attempts: "
+                       f"{last_error.strip()}")
 
 def write_index(root: Path, index: dict[str, Any], product: str) -> None:
     path = root / "release-index.json"
