@@ -1,8 +1,17 @@
 {
-  "min_firmware_version": "1.2.55",
-  "version": "0.1.4",
+  "min_firmware_version": "1.2.85",
+  "version": "0.2.0",
   "display_name": "Text Editor",
   "file_name": "text_editor.elf",
   "icon": "solid:f15c",
-  "optional": [{"capability": "usb.hid.keyboard", "api": ">=1"}]
+  "optional": [
+    {
+      "capability": "usb.hid.keyboard",
+      "api": ">=1"
+    }
+  ],
+  "supported_file_types": [
+    ".txt",
+    ".md"
+  ]
 }
