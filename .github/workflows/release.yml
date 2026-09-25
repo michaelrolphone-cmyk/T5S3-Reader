@@ -1,6 +1,16 @@
 name: Cut RiscRTE release
 
 on:
+  # Version-bearing source files are the only automatic wake-up paths. The
+  # planner below still compares source versions against release-index, so a
+  # metadata-only edit cannot accidentally publish a release.
+  push:
+    branches:
+      - master
+    paths:
+      - "platformio.ini"
+      - "Apps/**/*.json"
+      - "Drivers/**/manifest.json"
   workflow_dispatch:
 
 permissions:
