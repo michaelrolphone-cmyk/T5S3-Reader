@@ -132,17 +132,16 @@ def release_assets(root: Path, product: str, identity: str) -> list[Path]:
         firmware_version = config.get("riscrte", "version")
         assets = [
             root / "dist/firmware-t5s3-pro.bin",
-            root / "dist/riscrte_lilygo_t5s3_" / f"{firmware_version}-app.bin",
-            root / "dist/riscrte_lilygo_t5s3_{firmware_version}.elf",
-            root / "dist/riscrte_lilygo_t5s3_{firmware_version}.bin",
-            root / "firmware/riscrte_lilygo_t5s3_{firmware_version}.bin",
+            root / f"dist/riscrte_lilygo_t5s3_{firmware_version}-app.bin",
+            root / f"dist/riscrte_lilygo_t5s3_{firmware_version}.elf",
+            root / f"dist/riscrte_lilygo_t5s3_{firmware_version}.bin",
+            root / f"firmware/riscrte_lilygo_t5s3_{firmware_version}.bin",
             root / "dist/firmware-lilygo-epd47-s3.bin",
-            root / "dist/riscrte_lilygo_epd47_s3_{firmware_version}-app.bin",
-            root / "dist/riscrte_lilygo_epd47_s3_{firmware_version}.elf",
-            root / "dist/riscrte_lilygo_epd47_s3_{firmware_version}.bin",
-            root / "firmware/riscrte_lilygo_epd47_s3_{firmware_version}.bin",
+            root / f"dist/riscrte_lilygo_epd47_s3_{firmware_version}-app.bin",
+            root / f"dist/riscrte_lilygo_epd47_s3_{firmware_version}.elf",
+            root / f"dist/riscrte_lilygo_epd47_s3_{firmware_version}.bin",
+            root / f"firmware/riscrte_lilygo_epd47_s3_{firmware_version}.bin",
         ]
-        assets = [Path(str(path).format(firmware_version=firmware_version)) for path in assets]
     elif product == "apps":
         assets = [root / "dist/apps" / f"{identity}.elf",
                   root / "dist/apps" / f"{identity}.json"]
