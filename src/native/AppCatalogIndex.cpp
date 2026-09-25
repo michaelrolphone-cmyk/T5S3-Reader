@@ -22,7 +22,12 @@ bool fetchAppCatalogIndex(const std::string& url, std::vector<std::string>& mani
 
   std::string json;
   esp_task_wdt_reset();
-  if (!HttpDownloader::fetchUrl(url, json)) {
+  const bool fetched = HttpDownloader::fetchUrl(url, json);
+  // The native HTTP adapter completes on a short-lived worker. Yield once on
+  // both success and failure so the idle task can reclaim that worker stack
+  // before ArduinoJson allocation or a fallback TLS connection starts.
+  delay(1);
+  if (!fetched) {
     LOG_ERR("APPSTORE", "Aggregate catalog download failed: %s", url.c_str());
     return false;
   }
@@ -38,6 +43,9 @@ bool fetchAppCatalogIndex(const std::string& url, std::vector<std::string>& mani
     LOG_ERR("APPSTORE", "Aggregate catalog JSON parse failed: %s", error.c_str());
     return false;
   }
+  // ArduinoJson owns the parsed values now. Release the raw release catalog
+  // buffer before serializing individual manifests into the bounded result.
+  std::string().swap(json);
   if (!doc.is<JsonObjectConst>() || doc["schema"] != 1 || !doc["apps"].is<JsonArrayConst>()) {
     LOG_ERR("APPSTORE", "Aggregate catalog requires schema=1 and an apps array");
     return false;

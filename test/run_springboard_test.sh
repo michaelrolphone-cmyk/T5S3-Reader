@@ -5,6 +5,9 @@ binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/test/native_apps/manifest_test.cpp" -o "$binary"
 "$binary"
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/src" \
+  "$repo_dir/test/native_apps/app_release_asset_rules_test.cpp" -o "$binary"
+"$binary"
 # Legacy app pair recovery and mapped-ELF replacement reservations.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
   -I"$repo_dir/src" -I"$repo_dir/lib/NativeApps/include" \
