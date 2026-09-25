@@ -2,6 +2,7 @@
 
 #include "AppPackageInstaller.h"
 #include "NativeOnlinePackageRecovery.h"
+#include <Arduino.h>
 #include <T5AppApi.h>
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
