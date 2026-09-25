@@ -376,31 +376,41 @@ void HomeActivity::render(RenderLock&&) {
 
   std::vector<const char*> menuItems;
   std::vector<UIIcon> menuIcons;
+  std::vector<const char*> menuAppIcons;
   menuItems.reserve(5 + homeApps.size() + (hasOpdsServers ? 1 : 0) + (metrics.homeContinueReadingInMenu ? 1 : 0));
   menuIcons.reserve(menuItems.capacity());
+  menuAppIcons.reserve(menuItems.capacity());
 
   menuItems.push_back(tr(STR_BROWSE_FILES));
   menuIcons.push_back(Folder);
+  menuAppIcons.push_back(nullptr);
   menuItems.push_back(tr(STR_MENU_RECENT_BOOKS));
   menuIcons.push_back(Recent);
+  menuAppIcons.push_back(nullptr);
   if (hasOpdsServers) {
     menuItems.push_back(tr(STR_OPDS_BROWSER));
     menuIcons.push_back(Library);
+    menuAppIcons.push_back(nullptr);
   }
   menuItems.push_back(tr(STR_FILE_TRANSFER));
   menuIcons.push_back(Transfer);
+  menuAppIcons.push_back(nullptr);
   menuItems.push_back(tr(STR_APPS));
   menuIcons.push_back(Library);
+  menuAppIcons.push_back(nullptr);
   for (const auto& app : homeApps) {
     menuItems.push_back(app.display_name);
-    menuIcons.push_back(Library);
+    menuIcons.push_back(Library);  // Fallback only when the manifest has no usable icon.
+    menuAppIcons.push_back(app.icon);
   }
   menuItems.push_back(tr(STR_SETTINGS_TITLE));
   menuIcons.push_back(Settings);
+  menuAppIcons.push_back(nullptr);
 
   if (metrics.homeContinueReadingInMenu) {
     menuItems.insert(menuItems.begin(), tr(STR_CONTINUE_READING));
     menuIcons.insert(menuIcons.begin(), Book);
+    menuAppIcons.insert(menuAppIcons.begin(), nullptr);
   }
 
   GUI.drawButtonMenu(
@@ -411,7 +421,8 @@ void HomeActivity::render(RenderLock&&) {
       static_cast<int>(menuItems.size()),
       metrics.homeContinueReadingInMenu ? selectorIndex : selectorIndex - recentBooks.size(),
       [&menuItems](int index) { return std::string(menuItems[index]); },
-      [&menuIcons](int index) { return menuIcons[index]; });
+      [&menuIcons](int index) { return menuIcons[index]; },
+      [&menuAppIcons](int index) { return menuAppIcons[index]; });
 
   const auto labels = mappedInput.mapLabels("", tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
