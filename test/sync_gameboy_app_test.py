@@ -24,7 +24,7 @@ RELEASE = {
     "draft": False,
     "prerelease": False,
     "assets": [
-        {"name": "gameboy.elf", "size": 2107828,
+        {"name": "gameboy.elf", "size": 2107828, "digest": "sha256:" + SHA,
          "browser_download_url": "https://github.com/michaelrolphone-cmyk/T5S3-GameBoy/releases/download/v1.3.1/gameboy.elf"},
         {"name": "gameboy.json", "size": 551,
          "browser_download_url": "https://github.com/michaelrolphone-cmyk/T5S3-GameBoy/releases/download/v1.3.1/gameboy.json"},
@@ -49,6 +49,12 @@ class GameBoyAppIndexTests(unittest.TestCase):
         release = {**RELEASE, "assets": [dict(item) for item in RELEASE["assets"]]}
         release["assets"][0]["browser_download_url"] = "https://example.com/gameboy.elf"
         with self.assertRaisesRegex(ValueError, "asset URL is invalid"):
+            record_from_release(release, MANIFEST)
+
+    def test_rejects_api_asset_digest_disagreement(self):
+        release = {**RELEASE, "assets": [dict(item) for item in RELEASE["assets"]]}
+        release["assets"][0]["digest"] = "sha256:" + "b" * 64
+        with self.assertRaisesRegex(ValueError, "digest does not match"):
             record_from_release(release, MANIFEST)
 
     def test_rejects_unpublished_prereleases(self):
