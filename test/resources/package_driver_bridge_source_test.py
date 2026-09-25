@@ -93,6 +93,14 @@ assert 'api->install(release_indices[selected])' in ui  # legacy firmware fallba
 assert 'else (void)populate_release(drivers);' in app
 assert 'else if (!load_release(drivers, ui))' not in app  # no post-install network fetch
 
+# Independent App Store index URLs must survive validation into the selected catalog row.
+app_host = (root / 'src/native/NativeAppHost.cpp').read_text(encoding='utf-8')
+start = app_host.index('bool loadIndependentAppIndex(')
+end = app_host.index('\nbool connectSavedWifi()', start)
+index_loader = app_host[start:end]
+assert 'asset.url = url;' in index_loader
+assert index_loader.index('asset.url = url;') < index_loader.index('indexed.push_back(std::move(asset))')
+
 # Staged downloads never overwrite or delete someone else's .part file.
 download = (root / 'src/network/HttpDownloader.cpp').read_text(encoding='utf-8')
 start = download.index('HttpDownloader::DownloadError HttpDownloader::downloadToFile(')
