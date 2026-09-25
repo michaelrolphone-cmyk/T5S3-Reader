@@ -480,6 +480,25 @@
       "tag": "app-serial_monitor-v1.2.5",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-serial_monitor-v1.2.5/serial_monitor.elf",
       "version": "1.2.5"
+    },
+    {
+      "asset": "settings.elf",
+      "id": "settings",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Settings",
+        "file_name": "settings.elf",
+        "icon": "solid:f013",
+        "min_firmware_version": "1.1.24",
+        "sha256": "68344680f7125a2b460ce2e9b5e2ed570c1292e0de1493ed3569a0e1e77cd901",
+        "size_bytes": 3252,
+        "version": "1.0.0"
+      },
+      "sha256": "68344680f7125a2b460ce2e9b5e2ed570c1292e0de1493ed3569a0e1e77cd901",
+      "size": 3252,
+      "tag": "app-settings-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-settings-v1.0.0/settings.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
