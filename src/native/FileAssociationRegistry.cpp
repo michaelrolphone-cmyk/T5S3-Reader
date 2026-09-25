@@ -234,7 +234,15 @@ bool rebuild() {
 
   loaded = true;
   const bool written = persist();
-  if (!written) LOG_ERR("FILEOPEN", "Failed to persist file association manifest");
+  if (!written) {
+    // The in-memory table was rebuilt from installed packages and is current.
+    // Never knowingly leave an older generated manifest on disk advertising
+    // handlers that may have just been removed or replaced. A later ensure()
+    // or reboot can regenerate it from the installed source of truth.
+    (void)Storage.remove(kManifest);
+    (void)Storage.remove(kTemporary);
+    LOG_ERR("FILEOPEN", "Failed to persist file association manifest; stale manifest removed");
+  }
   return true;
 }
 
