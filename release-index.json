@@ -347,6 +347,25 @@
       "tag": "app-lora-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-lora-v1.0.0/lora.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "mahjong.elf",
+      "id": "mahjong",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Mahjong",
+        "file_name": "mahjong.elf",
+        "icon": "solid:f522",
+        "min_firmware_version": "1.1.5",
+        "sha256": "f543c35e64873e01e10b06a0882767d7276d0f743ec09f30c8d93a468a6e52c6",
+        "size_bytes": 6816,
+        "version": "1.0.0"
+      },
+      "sha256": "f543c35e64873e01e10b06a0882767d7276d0f743ec09f30c8d93a468a6e52c6",
+      "size": 6816,
+      "tag": "app-mahjong-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-mahjong-v1.0.0/mahjong.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
