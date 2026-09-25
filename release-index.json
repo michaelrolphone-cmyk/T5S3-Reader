@@ -499,6 +499,25 @@
       "tag": "app-settings-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-settings-v1.0.0/settings.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "springboard.elf",
+      "id": "springboard",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Apps",
+        "file_name": "springboard.elf",
+        "icon": "solid:f00a",
+        "min_firmware_version": "1.1.5",
+        "sha256": "b21a0caf0da0c130fb6ba77e9a91866b74afa86ab86fe3a18c3f7fc6800a983b",
+        "size_bytes": 7948,
+        "version": "1.0.0"
+      },
+      "sha256": "b21a0caf0da0c130fb6ba77e9a91866b74afa86ab86fe3a18c3f7fc6800a983b",
+      "size": 7948,
+      "tag": "app-springboard-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-springboard-v1.0.0/springboard.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
