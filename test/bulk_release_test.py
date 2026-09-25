@@ -19,6 +19,9 @@ class DiscoverCandidatesTest(unittest.TestCase):
             json.dumps({"file_name": "clock.elf", "version": "1.0.2"}))
         (self.root / "Apps" / "reminders.json").write_text(
             json.dumps({"file_name": "reminders.elf", "version": "1.0.0"}))
+        (self.root / "Apps" / "app_store.c").write_text("int main(void) { return 0; }")
+        (self.root / "Apps" / "app_store.json").write_text(
+            json.dumps({"file_name": "app_store.elf", "version": "1.0.2"}))
         (self.root / "Drivers/platform_clock_v1/manifest.json").write_text(
             json.dumps({"id": "platform-clock-v1", "version": "0.1.0"}))
         (self.root / "Drivers/usb_host_v2/manifest.json").write_text(
@@ -36,6 +39,7 @@ class DiscoverCandidatesTest(unittest.TestCase):
             "apps": [
                 {"id": "clock", "version": "1.0.1"},
                 {"id": "reminders", "version": "1.0.0"},
+                {"id": "app_store", "version": "1.0.2"},
             ],
             "drivers": [
                 {"id": "platform-clock-v1", "version": "0.1.0"},
@@ -50,6 +54,14 @@ class DiscoverCandidatesTest(unittest.TestCase):
                 {"product": "apps", "id": "clock", "version": "1.0.2"},
                 {"product": "drivers", "id": "usb-host-v2", "version": "0.1.4"},
             ],
+        )
+
+    def test_plans_the_app_store_as_an_independent_app_when_not_released(self):
+        index = self.current_index()
+        index["apps"] = [item for item in index["apps"] if item["id"] != "app_store"]
+        self.assertEqual(
+            discover_candidates(self.root, index),
+            [{"product": "apps", "id": "app_store", "version": "1.0.2"}],
         )
 
     def test_includes_firmware_and_orders_it_first_when_newer(self):
