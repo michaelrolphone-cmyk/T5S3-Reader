@@ -581,6 +581,25 @@
       "tag": "app-time_zone-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-time_zone-v1.0.0/time_zone.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "timecard.elf",
+      "id": "timecard",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Timecard",
+        "file_name": "timecard.elf",
+        "icon": "solid:f017",
+        "min_firmware_version": "1.1.8",
+        "sha256": "b4726ca23d3b15c614455210458646b64628333564ac1c324086bb8a956249af",
+        "size_bytes": 16164,
+        "version": "1.0.0"
+      },
+      "sha256": "b4726ca23d3b15c614455210458646b64628333564ac1c324086bb8a956249af",
+      "size": 16164,
+      "tag": "app-timecard-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-timecard-v1.0.0/timecard.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
