@@ -37,6 +37,25 @@
       "tag": "app-button_remap-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-button_remap-v1.0.0/button_remap.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "clear_cache.elf",
+      "id": "clear_cache",
+      "kind": "app",
+      "manifest": {
+        "display_name": "Clear Reading Cache",
+        "file_name": "clear_cache.elf",
+        "icon": "solid:f2ed",
+        "min_firmware_version": "1.1.21",
+        "sha256": "b3e47191d1d7fa4f2e4a70501655c2f542056919ec0dbc1292bec3fbb3b93efc",
+        "size_bytes": 4556,
+        "version": "1.0.0"
+      },
+      "sha256": "b3e47191d1d7fa4f2e4a70501655c2f542056919ec0dbc1292bec3fbb3b93efc",
+      "size": 4556,
+      "tag": "app-clear_cache-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-clear_cache-v1.0.0/clear_cache.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
