@@ -553,15 +553,15 @@
             "capability": "usb.hid.keyboard"
           }
         ],
-        "sha256": "8ccece12636adeecaefd7aeac2790976f971671044273892cb9edd3c92c1fa3c",
-        "size_bytes": 19880,
-        "version": "0.1.3"
+        "sha256": "e522d8f9333ea0c931d7b6bab38ce27b9cb6da573d42e0581b0bcdd77b3aab3b",
+        "size_bytes": 19808,
+        "version": "0.1.4"
       },
-      "sha256": "8ccece12636adeecaefd7aeac2790976f971671044273892cb9edd3c92c1fa3c",
-      "size": 19880,
-      "tag": "app-text_editor-v0.1.3",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-text_editor-v0.1.3/text_editor.elf",
-      "version": "0.1.3"
+      "sha256": "e522d8f9333ea0c931d7b6bab38ce27b9cb6da573d42e0581b0bcdd77b3aab3b",
+      "size": 19808,
+      "tag": "app-text_editor-v0.1.4",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-text_editor-v0.1.4/text_editor.elf",
+      "version": "0.1.4"
     },
     {
       "asset": "time_zone.elf",
