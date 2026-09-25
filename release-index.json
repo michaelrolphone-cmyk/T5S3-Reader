@@ -946,6 +946,54 @@
       "tag": "driver-usb-cdc-acm-v2-v0.1.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-cdc-acm-v2-v0.1.0/usb-cdc-acm-v2--driver.elf",
       "version": "0.1.0"
+    },
+    {
+      "asset": "usb-ch34x-v2--driver.elf",
+      "id": "usb-ch34x-v2",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "serial.port",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "e96f413b514dbdb3407e9374e33149499d1178de4ee60ecb2b39a5698662ba8e",
+            "size_bytes": 622
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "8d88d227ac61116116b0ffb7c0e4052b7b547a0a19edc13a13af08792b95d621",
+            "size_bytes": 6340
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "892780d027085bbba39fce0d795850388a019cb47ec5a4497a5249a01e1a2f60",
+            "size_bytes": 40
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca",
+            "size_bytes": 14
+          }
+        ],
+        "id": "usb-ch34x-v2",
+        "requires": [
+          {
+            "capability": "usb.host",
+            "min_api": 1
+          }
+        ],
+        "version": "0.1.0"
+      },
+      "sha256": "8d88d227ac61116116b0ffb7c0e4052b7b547a0a19edc13a13af08792b95d621",
+      "size": 6340,
+      "tag": "driver-usb-ch34x-v2-v0.1.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-ch34x-v2-v0.1.0/usb-ch34x-v2--driver.elf",
+      "version": "0.1.0"
     }
   ],
   "firmware": {
