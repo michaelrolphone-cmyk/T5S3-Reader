@@ -271,6 +271,25 @@
       "tag": "app-koreader_auth-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-koreader_auth-v1.0.0/koreader_auth.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "koreader_sync.elf",
+      "id": "koreader_sync",
+      "kind": "app",
+      "manifest": {
+        "display_name": "KOReader Sync",
+        "file_name": "koreader_sync.elf",
+        "icon": "solid:f021",
+        "min_firmware_version": "1.1.19",
+        "sha256": "1750138be0951b122846d5d0044639d6492d26055fbd79d888939f22d2e361b5",
+        "size_bytes": 7864,
+        "version": "1.0.0"
+      },
+      "sha256": "1750138be0951b122846d5d0044639d6492d26055fbd79d888939f22d2e361b5",
+      "size": 7864,
+      "tag": "app-koreader_sync-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-koreader_sync-v1.0.0/koreader_sync.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
