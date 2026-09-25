@@ -366,6 +366,25 @@
       "tag": "app-mahjong-v1.0.0",
       "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-mahjong-v1.0.0/mahjong.elf",
       "version": "1.0.0"
+    },
+    {
+      "asset": "opds_settings.elf",
+      "id": "opds_settings",
+      "kind": "app",
+      "manifest": {
+        "display_name": "OPDS Servers",
+        "file_name": "opds_settings.elf",
+        "icon": "solid:f02d",
+        "min_firmware_version": "1.1.20",
+        "sha256": "ead4c5ed9ed0a2c4c23813e5cc4d45a997368f3fa9117e1d8c4c498daad6e121",
+        "size_bytes": 7292,
+        "version": "1.0.0"
+      },
+      "sha256": "ead4c5ed9ed0a2c4c23813e5cc4d45a997368f3fa9117e1d8c4c498daad6e121",
+      "size": 7292,
+      "tag": "app-opds_settings-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-opds_settings-v1.0.0/opds_settings.elf",
+      "version": "1.0.0"
     }
   ],
   "drivers": [],
