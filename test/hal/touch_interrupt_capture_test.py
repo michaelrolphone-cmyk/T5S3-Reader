@@ -71,16 +71,29 @@ assert "Board::ScopedI2CLock lock;" in tps_read
 assert "delay(1);" in power_on
 assert "delay(1);" in power_off
 
-# Firmware acquires input.touch.raw and always has snapshot recovery when a
-# bounded event cursor gaps or polling fails.
+# Firmware acquires input.touch.raw and continuously services that opaque
+# provider on a dedicated capture task. UI/render cadence must never be the
+# sampler: nativeTouchTick only observes queued activity, while the worker
+# polls/drains the provider at a bounded cadence and snapshot-recovers gaps.
 assert 'acquireCapability("input.touch.raw", RISC_TOUCH_API_V1' in TOUCH
 assert "candidateApi->subscribe" in TOUCH
 assert "candidateApi->poll" in TOUCH
 assert "candidateApi->next" in TOUCH
 assert "candidateApi->snapshot" in TOUCH
+assert 'xTaskCreate(touchWorker, "touch-provider"' in TOUCH
+assert "kCaptureIntervalMs = 5" in TOUCH
+assert "serviceProvider();" in TOUCH
+assert "ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(kCaptureIntervalMs))" in TOUCH
 assert "if (result < 0)" in TOUCH
-assert "resync();" in TOUCH
+assert "resync(false)" in TOUCH
 assert "gestureEligible = false;" in TOUCH
+tick_body = TOUCH.split("void nativeTouchTick()", 1)[1].split(
+    "bool nativeTouchSuspend()", 1)[0]
+assert "api->poll" not in tick_body
+assert "api->next" not in tick_body
+suspend_body = TOUCH.split("bool nativeTouchSuspend()", 1)[1].split(
+    "bool nativeTouchResume()", 1)[0]
+assert suspend_body.index("stopWorker()") < suspend_body.index("api->unsubscribe")
 assert "nativeTouchGetTap" in TOUCH_H
 assert "nativeTouchGetHold" in TOUCH_H
 assert "nativeTouchGetSwipe" in TOUCH_H
@@ -130,7 +143,17 @@ for sticky in ("tapCount", "swipeCount", "homeCount"):
 tick = TOUCH.split("void nativeTouchTick()", 1)[1].split(
     "bool nativeTouchSuspend()", 1)[0]
 assert "activityThisTick = false;" in tick
-assert "activityThisTick = true;" in tick
+assert "activitySerial != observedActivitySerial" in tick
+assert "activityThisTick = true;" not in tick
+
+# Snapshot recovery after a transient poll/I2C failure must invalidate only the
+# in-flight gesture; already completed tap/swipe/home queues remain deliverable.
+resync_body = TOUCH.split("bool resync(bool clearQueues)", 1)[1].split(
+    "void process(", 1)[0]
+assert "clearTransient(clearQueues)" in resync_body
+service_body = TOUCH.split("void serviceProvider()", 1)[1].split(
+    "bool workerShouldRun()", 1)[0]
+assert "resync(false)" in service_body
 
 # Display takeover releases only the firmware consumer lease. This leaves no
 # active provider for legacy direct-GT911 apps, while a migrated app can acquire
