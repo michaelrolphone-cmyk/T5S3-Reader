@@ -56,6 +56,7 @@ void HalGPIO::begin() {
           Board::isUsbConnected());
 
   lastUsbConnected = isUsbConnected();
+  lastUsbPollTime = millis();
   update();
 }
 
@@ -189,9 +190,13 @@ void HalGPIO::update() {
     }
   }
 
-  const bool connected = isUsbConnected();
-  usbStateChanged = (connected != lastUsbConnected);
-  lastUsbConnected = connected;
+  usbStateChanged = false;
+  if (static_cast<unsigned long>(currentTime - lastUsbPollTime) >= USB_STATE_POLL_MS) {
+    lastUsbPollTime = currentTime;
+    const bool connected = isUsbConnected();
+    usbStateChanged = (connected != lastUsbConnected);
+    lastUsbConnected = connected;
+  }
 }
 
 bool HalGPIO::wasUsbStateChanged() const { return usbStateChanged; }
