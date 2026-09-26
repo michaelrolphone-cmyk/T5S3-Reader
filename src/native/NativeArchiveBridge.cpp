@@ -1,4 +1,5 @@
 #include <T5ArchiveApi.h>
+#include <T5AppApi.h>
 #include <Arduino.h>
 #include <HalStorage.h>
 #include <ZipFile.h>
@@ -22,31 +23,21 @@ bool mapPath(const char *path, std::string &mapped) {
   }
   return true;
 }
-bool hasSuffix(const char *value, const char *suffix) {
-  if (!value || !suffix || !suffix[0]) return false;
-  const size_t n = std::strlen(value), s = std::strlen(suffix);
-  if (n < s) return false;
-  for (size_t i = 0; i < s; ++i) {
-    char a = value[n - s + i], b = suffix[i];
-    if (a >= 'A' && a <= 'Z') a = static_cast<char>(a + ('a' - 'A'));
-    if (b >= 'A' && b <= 'Z') b = static_cast<char>(b + ('a' - 'A'));
-    if (a != b) return false;
-  }
-  return true;
-}
 class BoundedOutput final : public Print {
  public:
-  BoundedOutput(HalFile &file, uint64_t limit, uint64_t total,
+  BoundedOutput(HalFile &file, uint64_t limit, uint64_t total, uint32_t timeoutMs,
                 t5_archive_progress_fn cb, void *ctx)
-      : file_(file), limit_(limit), total_(total), cb_(cb), ctx_(ctx), lastReport_(millis()) {}
+      : file_(file), limit_(limit), total_(total), timeoutMs_(timeoutMs),
+        cb_(cb), ctx_(ctx), started_(millis()), lastReport_(started_) {}
   size_t write(uint8_t byte) override { return write(&byte, 1); }
   size_t write(const uint8_t *data, size_t size) override {
-    if (failed_ || !data || written_ > limit_ || size > limit_ - written_) { failed_ = true; return 0; }
+    const uint32_t now = millis();
+    if (failed_ || !data || now - started_ >= timeoutMs_ ||
+        written_ > limit_ || size > limit_ - written_) { failed_ = true; return 0; }
     const size_t n = file_.write(data, size);
     written_ += n;
-    const uint32_t now = millis();
     if (cb_ && (written_ == total_ || written_ - lastBytes_ >= 65536u || now - lastReport_ >= 250u)) {
-      cb_(ctx_, written_, total_);
+      if (!cb_(ctx_, written_, total_)) { failed_ = true; return 0; }
       lastBytes_ = written_;
       lastReport_ = now;
     }
@@ -57,9 +48,10 @@ class BoundedOutput final : public Print {
  private:
   HalFile &file_;
   uint64_t limit_, total_, written_ = 0, lastBytes_ = 0;
+  uint32_t timeoutMs_;
   t5_archive_progress_fn cb_;
   void *ctx_;
-  uint32_t lastReport_;
+  uint32_t started_, lastReport_;
   bool failed_ = false;
 };
 bool findFirst(const char *zipPath, const char *suffix, char *name, size_t cap, uint64_t *size) {
@@ -75,8 +67,10 @@ bool findFirst(const char *zipPath, const char *suffix, char *name, size_t cap, 
   return true;
 }
 bool extract(const char *zipPath, const char *entryName, const char *destinationPath,
-             uint64_t maxSize, t5_archive_progress_fn progress, void *context) {
-  if (!zipPath || !entryName || !destinationPath || !maxSize || !Storage.ready()) return false;
+             uint64_t maxSize, uint32_t timeoutMs,
+             t5_archive_progress_fn progress, void *context) {
+  if (!zipPath || !entryName || !destinationPath || !maxSize || !timeoutMs ||
+      timeoutMs > 300000u || !Storage.ready()) return false;
   std::string zipMapped, destMapped;
   if (!mapPath(zipPath, zipMapped) || !mapPath(destinationPath, destMapped)) return false;
   if (Storage.exists(destMapped.c_str())) return false;
@@ -92,7 +86,7 @@ bool extract(const char *zipPath, const char *entryName, const char *destination
   if (Storage.exists(part.c_str())) Storage.remove(part.c_str());
   HalFile output = Storage.open(part.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
   if (!output || output.isDirectory()) { if (output) output.close(); return false; }
-  BoundedOutput sink(output, maxSize, expected, progress, context);
+  BoundedOutput sink(output, maxSize, expected, timeoutMs, progress, context);
   const bool okay = zip.readFileToStream(entryName, sink, 4096u) && sink.good();
   output.flush();
   output.close();
@@ -108,5 +102,6 @@ const t5_archive_api_v1 api = {
 };
 }
 extern "C" const t5_archive_api_v1 *t5_archive_get_api(uint32_t version) {
-  return version == T5_ARCHIVE_API_VERSION ? &api : nullptr;
+  if (version != T5_ARCHIVE_API_VERSION || !t5_app_get_api(T5_APP_ABI_VERSION)) return nullptr;
+  return &api;
 }
