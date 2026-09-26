@@ -167,7 +167,8 @@ bool GraphV2::activate(size_t index) {
     }
     return fail("Provider failed", node.spec.id);
   }
-  if (node.visit == Visit::Active) return true;
+  if (node.visit == Visit::Active)
+    return node.module.state() == ModuleV2::State::Active;
   node.visit = Visit::Visiting;
   for (size_t i = 0; i < node.spec.requirementCount; ++i) {
     const RequirementV2& requirement = node.spec.requirements[i];
@@ -185,6 +186,7 @@ bool GraphV2::activate(size_t index) {
     node.boundDependencies[i] = {requirement.capability, requirement.api,
                                  nodes_[dependency].module.capability()};
   }
+  (void)node.module.setStreamHost(streamHost_);
   const bool loaded = node.spec.requiredOsCpuAbi
       ? node.module.loadVerifiedBytes(node.spec.verifiedElfBytes,
                                       node.spec.verifiedElfLength,
@@ -234,6 +236,20 @@ GrantV2 GraphV2::acquireIndex(size_t index) {
   return {static_cast<uint32_t>(slot + 1), nextGeneration_};
 }
 
+void GraphV2::poll(uint32_t (*nowMs)(), void (*yield)()) {
+  if (!nowMs || !yield || !count_ || polling_) return;
+  polling_ = true;
+  const uint32_t began = nowMs();
+  unsigned calls = 0;
+  for (size_t visited = 0; visited < count_; ++visited) {
+    const size_t index = nextPoll_;
+    nextPoll_ = (nextPoll_ + 1) % count_;
+    if (nodes_[index].module.poll(2)) ++calls;
+    if (calls >= 4 || static_cast<uint32_t>(nowMs() - began) >= 10) break;
+  }
+  if (calls) yield();
+  polling_ = false;
+}
 GrantV2 GraphV2::acquire(const char* capability, uint32_t api) {
   error_[0] = 0;
   const int target = find(capability, api);
@@ -252,16 +268,39 @@ GrantV2 GraphV2::acquireFrom(const char* providerId, const char* capability,
 const void* GraphV2::interfaceFor(GrantV2 grant) const {
   if (!grant.slot || grant.slot > kMaxGrants || !grant.generation) return nullptr;
   const GrantSlot& slot = grants_[grant.slot - 1];
-  if (!slot.occupied || slot.generation != grant.generation) return nullptr;
+  if (!slot.occupied || slot.pendingRelease ||
+      slot.generation != grant.generation) return nullptr;
   return nodes_[slot.node].module.capability();
 }
 
+bool GraphV2::grantStream(GrantV2 grant, uint32_t consumer, uint32_t endpoint, uint32_t rights) {
+  if (!interfaceFor(grant) || !streamHost_ || !streamHost_->grant || !streamHost_->revokeGrant)
+    return false;
+  const uint64_t context = nodes_[grants_[grant.slot - 1].node].module.streamContext();
+  const uint64_t lease = (uint64_t(grant.generation) << 32) | grant.slot;
+  return context && streamHost_->grant(context, lease, consumer, endpoint, rights);
+}
 bool GraphV2::release(GrantV2 grant) {
-  if (!interfaceFor(grant)) return false;
+  if (!grant.slot || grant.slot > kMaxGrants || !grant.generation) return false;
   GrantSlot& slot = grants_[grant.slot - 1];
+  if (!slot.occupied || slot.generation != grant.generation) return false;
+  if (!slot.pendingRelease && streamHost_ && streamHost_->revokeGrant) {
+    const uint64_t context = nodes_[slot.node].module.streamContext();
+    if (context) streamHost_->revokeGrant(context, (uint64_t(grant.generation) << 32) | grant.slot);
+  }
   const size_t node = slot.node;
+  if (!slot.pendingRelease) {
+    // Revoke all future interface access and decrement the consumer exactly
+    // once, even if hardware quiescence fails repeatedly.
+    if (!nodes_[node].module.unpinConsumer()) return false;
+    slot.pendingRelease = true;
+  }
+  if (!deactivateIfUnused(node)) return false;
+  // Only a completed teardown (or another still-live consumer) can retire
+  // the slot. Until then retain its original generation for release retries.
   slot.occupied = false;
-  return nodes_[node].module.unpinConsumer() && deactivateIfUnused(node);
+  slot.pendingRelease = false;
+  return true;
 }
 
 size_t GraphV2::liveGrants() const {

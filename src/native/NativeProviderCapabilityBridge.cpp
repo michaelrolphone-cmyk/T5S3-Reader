@@ -141,13 +141,23 @@ bool acquire(const char* capability, uint32_t version,
     if (!findProvider(capability, version, id)) return false;
     Lease grant{};
     if (!RuntimeInstalledProviders::acquire(id, capability, version, &grant) ||
-        !grant.grant.slot || !grant.interface) return fail(RuntimeInstalledProviders::lastError());
+        !grant.grant.slot || !grant.interface) {
+        if (grant.grant.slot) {
+            available->provider = grant;
+            available->owner = invocation;
+        }
+        return fail(RuntimeInstalledProviders::lastError());
+    }
     generation = generation == UINT32_MAX ? 1u : generation + 1u;
     if (!generation) generation = 1u;
     // The navigation provider interprets which sources overlap this opaque
     // capability. Yield them before the app can subscribe or poll its grant.
     if (!nativeNavigationClaim(generation, capability, version)) {
-        (void)RuntimeInstalledProviders::release(&grant);
+        if (!RuntimeInstalledProviders::release(&grant)) {
+            available->provider = grant;
+            available->owner = invocation;
+            available->generation = generation;
+        }
         return fail("Input ownership handoff failed");
     }
     available->provider = grant;
@@ -163,13 +173,10 @@ bool release(t5_provider_capability_lease_t token) {
     if (!token || !invocation) return false;
     for (auto& slot : active) {
         if (slot.owner != invocation || slot.generation != token) continue;
-        Lease grant = slot.provider;
+        if (!RuntimeInstalledProviders::release(&slot.provider)) return false;
         slot = {};
-        // A failed quiesce may consume the grant and quarantine an ELF. Never
-        // hand out a stale interface or retry a consumed generation.
-        const bool released = RuntimeInstalledProviders::release(&grant);
         nativeNavigationRelease(token);
-        return released;
+        return true;
     }
     return false;
 }
@@ -195,10 +202,9 @@ t5_provider_capability_get_api(uint32_t version) {
 extern "C" void native_app_provider_capabilities_release(void) {
     for (auto& slot : active) {
         if (!slot.owner) continue;
-        Lease grant = slot.provider;
         const uint32_t token = slot.generation;
+        if (!RuntimeInstalledProviders::release(&slot.provider)) continue;
         slot = {};
-        (void)RuntimeInstalledProviders::release(&grant);
         nativeNavigationRelease(token);
     }
 }

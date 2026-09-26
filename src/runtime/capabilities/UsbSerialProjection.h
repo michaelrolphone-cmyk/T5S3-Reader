@@ -1,31 +1,26 @@
 #pragma once
 
-#include "DeviceRegistry.h"
+#include "ProviderDevicePublisher.h"
 #include <cstdint>
 #include <cstdio>
 
-// Firmware-only adapter. The USB host publishes a lock-protected snapshot;
-// the native app owner task calls reconcile() with that snapshot. Never call
-// this class from a USB callback or make the unified Registry cross-core.
+// Transitional compatibility adapter only: provider announcements ultimately
+// need to originate in installed ELFs. Actual registry lifetime, lease
+// revocation and generation identity are handled by the generic publisher.
 namespace RuntimeDevices {
 class UsbSerialProjection final {
  public:
-  explicit UsbSerialProjection(Registry& registry) : registry_(registry) {}
+  explicit UsbSerialProjection(Registry& registry) : publication_(registry) {}
 
-  // A legacy USB ID identifies an enumeration session, NOT the underlying
-  // permanent device. Do not claim persistent identity from VID/PID/product.
-  // epoch changes on disconnect, even if an identical peripheral reattaches.
+  // USB event epochs and ephemeral legacy IDs form a monotonically increasing
+  // binding generation. VID/PID/product are presentation, never identity.
   bool reconcile(uint32_t epoch, uint32_t legacyId, bool bound,
                  uint16_t vid, uint16_t pid, uint8_t interfaceNumber,
                  const char* product) {
-    if (bound && (!legacyId || epoch == UINT32_MAX)) return clear();
-    if (epoch == epoch_ && legacyId == legacyId_ && bound == (handle_ != 0)) {
-      DeviceInfo info{};
-      if (!handle_ || registry_.get(handle_, &info)) return true;
-    }
-    clear();
-    epoch_ = epoch;
-    if (!bound) return true;
+    if (!bound) return clear();
+    if (!legacyId || epoch == UINT32_MAX) return false;
+    const uint64_t generation = (static_cast<uint64_t>(epoch) << 32u) | legacyId;
+    if (generation < publication_.generation()) return false;
 
     char identity[kIdentityBytes]{};
     std::snprintf(identity, sizeof(identity), "usb.serial.session.%08lX",
@@ -44,37 +39,26 @@ class UsbSerialProjection final {
                     static_cast<unsigned>(vid), static_cast<unsigned>(pid));
     }
     static constexpr const char* capabilities[] = {"serial.port", "serial.host"};
-    // serial.port exposes the versioned serial-port v1 ABI; serial.host has no
-    // public semantic contract yet. Keep its version UNKNOWN, never guessed.
-    static constexpr uint16_t capabilityVersions[] = {1, 0};
+    static constexpr uint16_t versions[] = {1, 0};
     (void)interfaceNumber;
     const Descriptor descriptor{identity, label, "usb.serial", Transport::Usb,
-                                capabilities, 2, 100, capabilityVersions};
-    if (!registry_.add(descriptor, State::Available, &handle_)) {
-      handle_ = 0;
-      return false;
-    }
+                                capabilities, 2, 100, versions};
+    if (!publication_.publish(generation, descriptor)) return false;
     legacyId_ = legacyId;
     return true;
   }
 
   bool clear() {
-    if (handle_) {
-      (void)registry_.remove(handle_);
-      handle_ = 0;
-    }
+    if (!publication_.withdraw()) return false;
     legacyId_ = 0;
-    epoch_ = UINT32_MAX;
     return true;
   }
 
-  DeviceHandle device() const { return handle_; }
+  DeviceHandle device() const { return publication_.device(); }
   uint32_t legacyId() const { return legacyId_; }
 
  private:
-  Registry& registry_;
-  DeviceHandle handle_ = 0;
+  ProviderDevicePublisher publication_;
   uint32_t legacyId_ = 0;
-  uint32_t epoch_ = UINT32_MAX;
 };
 }  // namespace RuntimeDevices

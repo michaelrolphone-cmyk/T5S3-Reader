@@ -1,72 +1,137 @@
 #!/usr/bin/env python3
-"""Flatten all canonical physical/class ELF packages into unique release assets.
+"""Stage deterministic ordinary package ZIPs and one generic release catalog.
 
-No publication occurs here. Asset names match NativeOnlineDriverInstall:
-  <id>--package.json, <id>--driver.elf,
-  <id>--provider-abi.v1, <id>--privileged-imports.v1
-The branch's legacy source index is usb-provider-catalog.json; the separate
-U1 milestone will replace this with generic package-catalog.json.
+The exporter must enforce the same identity bounds as the embedded parser:
+otherwise a successful build can publish an archive the device cannot admit.
+No release is created or published by this script.
 """
+from __future__ import annotations
+
 import argparse
-from pathlib import Path
-import hashlib
 import json
-import shutil
+import os
+from pathlib import Path
+import re
+
+from pack_rte_zip import catalog_row, pack_directory
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'dist/packages'
 TARGET = ROOT / 'dist/release-packages'
-FILES = ('.package.json', 'driver.elf', 'provider-abi.v1', 'privileged-imports.v1')
-EXPECTED_IDS = {
-    'platform-clock-v1', 'i2c-esp32s3-v2', 'board-power-t5s3-v2',
-    'usb-controller-esp32s3', 'usb-host-v2', 'usb-cdc-acm-v2',
-    'usb-cp210x-v2', 'usb-ch34x-v2', 'usb-ftdi', 'usb-stlink', 'usb-msp', 'program-msp', 'usb-hid',
-    'usb-hid-keyboard', 'usb-hid-gamepad', 'usb-xinput-gamepad',
-    'usb-ui-navigation', 't5s3-usb-power-profile',
-}
+KINDS = frozenset(('application', 'driver', 'service', 'provider'))
+SAFE = re.compile(r'[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?\Z')
+VERSION = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z')
+ARCH = re.compile(r'[a-z0-9][a-z0-9-]*\Z')
+ENTRY = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]*\Z')
+MAX_PACKAGES = 64
+MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
+MAX_VERSION_COMPONENT = 0xffffffff
+
+
+def runtime_identity(kind: object, identity: object, version: object,
+                     architecture: object, artifact: object) -> bool:
+    """Mirror fixed-size Identity and catalog fields before emitting assets."""
+    return (
+        isinstance(kind, str) and kind in KINDS and
+        isinstance(identity, str) and 0 < len(identity) < 64 and
+        SAFE.fullmatch(identity) is not None and
+        isinstance(version, str) and len(version) < 32 and
+        VERSION.fullmatch(version) is not None and
+        all(int(component) <= MAX_VERSION_COMPONENT
+            for component in version.split('.')) and
+        isinstance(architecture, str) and 0 < len(architecture) < 32 and
+        ARCH.fullmatch(architecture) is not None and
+        isinstance(artifact, str) and 4 < len(artifact) < 128 and
+        artifact[0] != '_' and ENTRY.fullmatch(artifact) is not None and
+        artifact.endswith('.elf') and '..' not in artifact
+    )
 
 
 def export(identities: set[str] | None = None) -> None:
-    index_path = SOURCE / 'usb-provider-catalog.json'
-    index = json.loads(index_path.read_text(encoding='utf-8'))
-    packages = index.get('packages')
-    if index.get('schema') != 1 or not isinstance(packages, list):
-        raise ValueError('canonical driver index is absent or malformed')
-    requested = identities if identities is not None else EXPECTED_IDS
-    if not requested or not requested <= EXPECTED_IDS:
-        raise ValueError(f'invalid requested canonical driver IDs: {sorted(requested - EXPECTED_IDS)}')
-    packages = [package for package in packages
-                if isinstance(package, dict) and package.get('id') in requested]
-    if {package.get('id') for package in packages} != requested or len(packages) != len(requested):
-        raise ValueError('canonical driver index is incomplete for requested IDs')
-    if TARGET.exists() and any(TARGET.iterdir()):
+    if not SOURCE.is_dir():
+        raise FileNotFoundError(f'ordinary package source missing: {SOURCE}')
+    if TARGET.exists() and (not TARGET.is_dir() or any(TARGET.iterdir())):
         raise FileExistsError(f'release export directory is not empty: {TARGET}')
+    release = os.environ.get('RISC_PACKAGE_RELEASE', 'unpublished-build')
+    if not isinstance(release, str) or not 0 < len(release) < 64 or not re.fullmatch(
+            r'[A-Za-z0-9._-]+', release) or '..' in release:
+        raise ValueError('invalid immutable release identifier')
+
+    requested = identities
+    if requested is not None and (
+            not requested or any(not isinstance(identity, str) or
+                                 not 0 < len(identity) < 64 or
+                                 SAFE.fullmatch(identity) is None
+                                 for identity in requested)):
+        raise ValueError(f'invalid requested package IDs: {list(requested)}')
+
+    staged = []
+    seen = set()
+    selected = set()
+    observed_kinds = set()
+    for directory in sorted(SOURCE.iterdir()):
+        if not directory.is_dir() or directory.is_symlink():
+            continue
+        if requested is not None and directory.name not in requested:
+            continue
+        manifest_path = directory / '.package.json'
+        if not manifest_path.is_file() or manifest_path.is_symlink():
+            continue
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+        kind, identity, version, architecture, artifact = (
+            manifest.get('kind'), manifest.get('id'), manifest.get('version'),
+            manifest.get('architecture'), manifest.get('artifact'))
+        if (manifest.get('schema') != 1 or
+                not runtime_identity(kind, identity, version, architecture, artifact) or
+                directory.name != identity):
+            raise ValueError(f'invalid package identity or schema: {directory}')
+        key = (kind, identity, architecture)
+        if key in seen:
+            raise ValueError(f'duplicate package identity/target: {key}')
+        seen.add(key)
+        selected.add(identity)
+        observed_kinds.add(kind)
+        declared = {'.package.json'}
+        for item in manifest.get('entries', ()):
+            name = item.get('name') if isinstance(item, dict) else None
+            if not isinstance(name, str) or not ENTRY.fullmatch(name) or name in declared:
+                raise ValueError(f'unsafe or duplicate schema-1 entry: {identity}/{name}')
+            declared.add(name)
+            path = directory / name
+            if not path.is_file() or path.is_symlink():
+                raise ValueError(f'missing or nonregular entry: {identity}/{name}')
+        actual = {item.name for item in directory.iterdir()}
+        if actual != declared:
+            raise ValueError(f'undeclared or missing package files: {identity}: {actual ^ declared}')
+        name = f'{kind}-{identity}-{version}-{architecture}.rte.zip'
+        if len(name) >= 160:
+            raise ValueError(f'archive name exceeds device catalog bound: {name}')
+        archive = pack_directory(directory)
+        if not archive or len(archive) > MAX_ARCHIVE_BYTES:
+            raise ValueError(f'archive exceeds export bound: {identity}')
+        staged.append((name, archive, catalog_row(directory, name, archive)))
+        if len(staged) > MAX_PACKAGES:
+            raise ValueError('catalog exceeds device package limit')
+    if requested is not None and selected != requested:
+        raise ValueError(f'package source missing requested IDs: {sorted(requested - selected)}')
+    if not staged:
+        raise ValueError('no ordinary packages found')
+    if (release != 'unpublished-build' and requested is None and
+            not {'application', 'driver'} <= observed_kinds):
+        raise ValueError(f'release catalog missing required U1 kinds: {observed_kinds}')
+
     TARGET.mkdir(parents=True, exist_ok=True)
-    observed = set()
-    for package in packages:
-        identity = package['id']
-        if (identity in observed or not isinstance(identity, str) or
-                not identity or any(c not in 'abcdefghijklmnopqrstuvwxyz0123456789-' for c in identity)):
-            raise ValueError(f'invalid/duplicate package identity: {identity!r}')
-        observed.add(identity)
-        indexed = {file['name']: file for file in package['files']}
-        if set(indexed) != set(FILES):
-            raise ValueError(f'incomplete declared file inventory: {identity}')
-        for name in FILES:
-            source = SOURCE / identity / name
-            contents = source.read_bytes()
-            declaration = indexed[name]
-            if (not contents or declaration['size_bytes'] != len(contents) or
-                    declaration['sha256'] != hashlib.sha256(contents).hexdigest()):
-                raise ValueError(f'payload not equal to package inventory: {identity}/{name}')
-            asset = f'{identity}--{name.lstrip(".")}'
-            shutil.copyfile(source, TARGET / asset)
-    shutil.copyfile(index_path, TARGET / 'usb-provider-catalog.json')
-    print(f'Exported {len(packages)} complete canonical driver packages; no release published.')
+    for name, archive, _ in staged:
+        (TARGET / name).write_bytes(archive)
+    index = {'schema': 1, 'release': release,
+             'packages': [row for _, _, row in staged]}
+    (TARGET / 'package-catalog.json').write_text(
+        json.dumps(index, indent=2, ensure_ascii=True) + '\n', encoding='utf-8')
+    print(f'Exported {len(staged)} bundled packages + package-catalog.json; no release published.')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--ids', nargs='+', help='export only these canonical driver package IDs')
+    parser.add_argument('--ids', nargs='+', help='export only these canonical package IDs')
     args = parser.parse_args()
     export(set(args.ids) if args.ids else None)

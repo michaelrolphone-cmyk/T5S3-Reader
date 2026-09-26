@@ -137,6 +137,8 @@ The generic registry/resolver/context facilities are parent abstractions for pro
 - [Bluetooth Sensor Architecture](BLUETOOTH_SENSOR_ARCHITECTURE.md)
 - [GPS Driver](GPS_DRIVER.md)
 - [USB OTG Host Architecture](USB_OTG_HOST_ARCHITECTURE.md) — older firmware ownership claims overridden by hardware contract and U1.
+- [USB Hub and Multi-Device Host Support](USB_HUB_SUPPORT.md) — normative external-hub topology, multi-device transfer scheduling, resource/power accounting, hotplug and acceptance requirements.
+- [USB Mass Storage and Generic Block/Volume Architecture](USB_MASS_STORAGE_SUPPORT.md) — normative USB MSC/BOT/SCSI, generic `storage.block`, filesystem/volume layering, removable-media lifecycle and acceptance requirements.
 - [USB Host Startup and Detection](USB_HOST_STARTUP_AND_DETECTION.md) — mandatory USB implementation guide: role before VBUS, detection stages, safe cleanup and input semantics; records the owner-confirmed controller 0.1.14 fix.
 - [Firmware Input Navigation](FIRMWARE_INPUT_NAVIGATION.md) — installed navigation provider, keyboard/gamepad controls and foreground application handoff.
 - [USB Capability/Stream Reference Implementation](USB_CAPABILITY_STREAM_REFERENCE_IMPLEMENTATION.md) — legacy snapshot, not target.

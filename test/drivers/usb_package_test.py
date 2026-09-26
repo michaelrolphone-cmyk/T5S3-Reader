@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import re
 from pathlib import Path
 import struct
 import sys
@@ -87,7 +88,11 @@ class UsbCdcPackage(unittest.TestCase):
         controller = self.physical_controller()
         cdc = (ROOT / 'Drivers/usb_cdc_v2/driver.c').read_text(encoding='utf-8')
         self.assertIn('RuntimeInstalledProviders::acquire(', bridge)
-        self.assertIn('RuntimeInstalledProviders::shutdown()', bridge)
+        # A comment mentioning shutdown must never pass this test: serial
+        # stop releases only its class/host grants, not unrelated providers.
+        self.assertNotIn('if (!RuntimeInstalledProviders::shutdown())', bridge)
+        self.assertIn('if (!closeClass()) return;', bridge)
+        self.assertIn('!RuntimeInstalledProviders::release(&hostGrant)', bridge)
         self.assertNotIn('#include <usb/usb_host.h>', bridge)
         bridge_code = '\n'.join(line for line in bridge.splitlines()
                                 if not line.lstrip().startswith('//'))
@@ -102,7 +107,10 @@ class UsbCdcPackage(unittest.TestCase):
     def test_vbus_cleanup_is_reached_from_normal_and_elf_error_return(self):
         app = (ROOT / 'Apps/serial_monitor_implementation.inc').read_text(encoding='utf-8')
         host = (ROOT / 'src/native/NativeAppHost.cpp').read_text(encoding='utf-8')
-        streams = (ROOT / 'src/native/NativeStreamBridge.cpp').read_text(encoding='utf-8')
+        stream_path = ROOT / 'src/native/NativeStreamBridge.cpp'
+        streams = stream_path.read_text(encoding='utf-8')
+        streams = re.sub(r'#include "(NativeStreamBridge\.p[0-9]+\.inc)"',
+                         lambda match: (stream_path.parent / match[1]).read_text(), streams)
         serial = (ROOT / 'src/native/NativeSerialPortBridge_implementation.inc').read_text(encoding='utf-8')
         bridge = (ROOT / 'src/native/NativeUsbBridge.cpp').read_text(encoding='utf-8')
         controller = self.physical_controller()
@@ -111,9 +119,12 @@ class UsbCdcPackage(unittest.TestCase):
                         host.index('nativeStreamsEnd();'))
         self.assertIn('invocation.end();', streams)
         self.assertIn('providers.end();', serial)
-        self.assertIn('if (stopUsb && usb && usb->serial_stop) usb->serial_stop();', serial)
-        self.assertIn('if (!shared && !RuntimeInstalledProviders::shutdown())', bridge)
-        self.assertIn('allowShared && !quarantined && RuntimeInstalledProviders::hasLiveGrants()', bridge)
+        cleanup = serial.split('void nativeSerialPortsEnd() {', 1)[1]
+        self.assertIn('if (providers.leased() || leaseHandle)', cleanup)
+        self.assertIn('context-end-quarantined', cleanup)
+        self.assertIn('!RuntimeInstalledProviders::release(&hostGrant)', bridge)
+        self.assertIn('RuntimeInstalledProviders::recoverFailedProvider(failedHostId', bridge)
+        self.assertNotIn('RuntimeInstalledProviders::shutdown()', bridge)
         self.assertIn('restore_phy_route();', controller)
         self.assertIn('power->release_host(power->context, powerLease)', controller)
     def test_usb_bulk_timeout_must_reclaim_callback_before_vbus_release(self):

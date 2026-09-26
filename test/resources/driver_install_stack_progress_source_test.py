@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression guards for the Driver Manager recovery/stack/UI incident."""
+"""Source guards for installed-capability snapshot, recovery and generic driver UI."""
 import json
 from pathlib import Path
 
@@ -26,24 +26,28 @@ assert 'snapshotCandidates(snapshot->candidates)' in resolver
 assert 'releaseInstalledCapabilities(snapshot)' in resolver
 assert 'static std::vector<Candidate>' not in resolver
 
-# Interrupted stages must remain untouched on OOM and retain the existing
-# exact byte comparison before removal. No nested 1 KiB stack workspace.
+# Failed/interrupted stages are inspected with heap-bounded buffers. No file
+# deletion follows an unverified partial comparison or allocation failure.
 comparison = recovery.split('inline bool stagePrefixMatches(', 1)[1].split('inline bool discardMatchingStage(', 1)[0]
 assert 'new (std::nothrow) uint8_t[1024]' in comparison
 assert 'if (!buffers)' in comparison
 assert 'std::memcmp(lhs, rhs, n)' in comparison
 assert 'uint8_t lhs[512]' not in comparison
 
-# The initial e-paper draw must PRECEDE installed-version verification; status
-# labels must never perform SD IO from a routine UI render. New app bytes must
-# be distinguishable from the prior release to enable an update.
+# The Driver Manager renders a busy screen BEFORE the blocking shared ZIP
+# operation. Normal discovery/install uses the package API exclusively; the
+# old driver ABI remains limited to explicit offline stage recovery.
 activate = ui.split('static void activate(', 1)[1].split('static void header(', 1)[0]
-assert activate.index('begin_install_progress(') < activate.index('action_for(')
-assert activate.index('ui->render_list(&busy, &row, 1, 0)') < activate.index('action_for(')
-labels = ui.split('static const char *action_label(', 1)[1].split('static void render(', 1)[0]
-assert 'release_actions[selected]' in labels
-assert 'action_for(' not in labels and 'installed_version_get' not in labels
-assert 'T5_DRIVER_INSTALL_METADATA ||' in ui
-assert 'T5_DRIVER_INSTALL_RECOVERY ||' in ui
-assert manifest['version'] == '1.0.4'
-print('Driver install regression: bounded snapshot, stage recovery, immediate UI and app version PASS')
+assert activate.index('ui->render_list(&busy, &waiting, 1, 0)') < activate.index('manager->online_install(')
+assert 'manager->install_archive(' in activate and 'manager->install(' in activate
+assert 'manager->uninstall(T5_PACKAGE_DRIVER,' in activate
+assert 'catalog_refresh(' not in ui and 'install_with_progress(' not in ui
+assert 'online_refresh(' in ui and 'online_get(' in ui and 'online_install(' in ui
+assert 'offsetof(t5_package_manager_api_v1, online_install)' in ui
+assert 'driver->recovery_retry(' in ui and 'driver->recovery_discard(' in ui
+assert 'confirm(ui, item.id, "Discard retained files")' in ui
+assert 'static const char *recovery_state(' in ui
+render = ui.split('static void render(', 1)[1].split('static void activate(', 1)[0]
+assert 'Storage.open(' not in render and 'verifyOrdinarySdDirectory(' not in render
+assert tuple(map(int, manifest['version'].split('.'))) > (1, 0, 4)
+print('Driver install regression: bounded snapshot, recovery, generic catalog and UI contract PASS')

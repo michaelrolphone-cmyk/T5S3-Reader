@@ -1,49 +1,47 @@
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+#include <T5UsbApi.h>
+
+// U1 production cutover: hardware USB is reachable only through installed
+// providers and semantic serial/device/stream capabilities. The historical
+// T5UsbApi is retained as an ABI symbol but cannot start, enumerate, claim,
+// configure or transfer physical USB in firmware.
+extern "C" const t5_usb_api_v1* t5_usb_get_api(uint32_t version) {
+    (void)version;
+    return nullptr;
+}
+#else
 #include <T5AppApi.h>
 #include <T5UsbApi.h>
+#include "NativeUsbClassBridge.h"
 #include "NativeUsbDeviceRegistry.h"
 #include "runtime/drivers/InstalledProviderGraph.h"
 #include <RiscUsbControllerV1.h>
 #include <HalStorage.h>
 #include <Logging.h>
-#include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
 
-// Compatibility-only translation of T5UsbApi to the installed provider graph.
-// There is NO IDF USB host, charger, I2C, VBUS, DMA, device enumeration, class
-// descriptor parser, hardware worker, or peripheral ownership in firmware.
-// The installed ELFs implement i2c.bus -> board.power.vbus -> usb.controller
-// -> usb.host -> serial.port. The runtime only holds opaque, versioned grants.
+// Compatibility-only T5UsbApi surface. The installed ELFs own the controller,
+// host, device class and physical transfers; no firmware USB data plane.
 namespace {
 using RuntimeInstalledProviders::Lease;
 constexpr uint32_t kMaxTransfer = 512;
-constexpr uint32_t kReadTimeoutMs = 10;
-constexpr uint32_t kWriteTimeoutMs = 100;
 constexpr uint32_t kMutexTimeoutMs = 250;
 SemaphoreHandle_t mutex = nullptr;
 Lease hostGrant{};
-Lease classGrant{};
-const risc_usb_host_discovery_v1* host = nullptr;
-const risc_usb_cdc_api_v1* serial = nullptr;
+const risc_usb_host_snapshot_v1* hostSnapshot = nullptr;
+// Activation can fail after mapping an ELF but BEFORE issuing any grant.
+// Keep the exact installed identity until targeted checked recovery succeeds.
+char failedHostId[96]{};
 uint64_t device = 0;
 uint64_t session = 0;
-uint64_t unboundToken = 0;
-uint64_t pendingConfigurationToken = 0;
-int32_t lastDeviceCount = -1;
 bool running = false;
 bool quarantined = false;
 t5_usb_serial_state_t state{};
-// reconcile() is always invoked with the bridge mutex held. Keeping the USB
-// descriptor workspace static avoids putting 4096 bytes on loopTask's stack.
-uint8_t configurationDescriptor[RISC_USB_CONFIG_LIMIT]{};
 
-// Keep the boot Serial/JTAG service initialized. The installed controller
-// owns the PHY route and returns it while externally powered, even when this
-// host consumer remains open. Serial.end()/begin() here would prevent that
-// automatic return or steal the PHY from a live host.
 bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
 bool initialize() {
     if (!mutex) mutex = xSemaphoreCreateMutex();
@@ -66,239 +64,136 @@ void error(int32_t code) {
     state.connected = 0;
     nativeUsbProviderDetach();
 }
-// GraphV2::release consumes a generation-qualified grant BEFORE calling
-// deactivateIfUnused(). A false return can therefore mean a failed physical
-// quiescence with an already consumed grant, not a grant that can be retried.
-// Only the graph's independently verified shutdown can retry that module.
-bool releaseGrant(Lease& grant, const char* phase) {
-    if (!grant.grant.slot) return true;
-    const bool released = RuntimeInstalledProviders::release(&grant);
-    grant = {}; // This bridge owns and releases each grant exactly once.
-    if (!released) LOG_ERR("USB", "USBREF stage=%s result=graph-release-failed", phase);
-    return released;
-}
-
-// Failed activation or a rejected host ABI can leave partially started ELFs.
-// Clearing quarantine requires graph-wide shutdown; PHY routing belongs to the ELF.
-// A clean serial release may instead leave another consumer's grant active.
-bool restoreAfterSafeShutdown(bool allowShared = false) {
-    // A UI navigation lease can legitimately keep the same host alive after
-    // serial closes. This is not failed quiescence. Failed serial cleanup must
-    // still prove graph-wide shutdown before clearing its quarantine.
-    const bool shared = allowShared && !quarantined && RuntimeInstalledProviders::hasLiveGrants();
-    if (!shared && !RuntimeInstalledProviders::shutdown()) {
-        quarantined = true;
-        LOG_ERR("USB", "USBREF stage=debug-console-restore-denied reason=unsafe-provider-shutdown error=%ld",
-                static_cast<long>(state.last_error));
-        return false;
-    }
-    hostGrant = {};
-    classGrant = {};
-    host = nullptr;
-    serial = nullptr;
-    device = session = 0;
-    running = false;
-    unboundToken = pendingConfigurationToken = 0;
-    lastDeviceCount = -1;
-    quarantined = false;
-    initialState(T5_USB_STATUS_OFF);
-    LOG_INF("USB", "USBREF stage=serial-released shared=%u", shared ? 1u : 0u);
-    return true;
-}
 bool codingValid(const t5_usb_line_coding_t* coding) {
     return coding && coding->baud_rate >= 300 && coding->baud_rate <= 3000000 &&
         coding->data_bits >= 5 && coding->data_bits <= 8 &&
         coding->parity <= T5_USB_PARITY_SPACE &&
         (coding->stop_bits == 1 || coding->stop_bits == 2);
 }
-bool classApiValid(const risc_usb_cdc_api_v1* api) {
-    return api && api->api_version == RISC_USB_CDC_API_V1 &&
-        api->struct_size >= sizeof(risc_usb_cdc_api_v1) && api->open &&
-        api->configure && api->control_lines && api->read && api->write && api->close;
+t5_serial_config_t classCoding(const t5_usb_line_coding_t& coding) {
+    return {coding.baud_rate, coding.data_bits, coding.parity, coding.stop_bits,
+            T5_SERIAL_FLOW_NONE};
 }
-bool hostApiValid(const risc_usb_host_discovery_v1* api) {
-    return api && api->host.api_version == RISC_USB_HOST_API_V1 &&
-        api->host.struct_size >= sizeof(risc_usb_host_discovery_v1) &&
-        api->poll && api->devices && api->host.configuration;
+bool hostApiValid(const risc_usb_host_snapshot_v1* api) {
+    return api && api->discovery.host.api_version == RISC_USB_HOST_API_V1 &&
+        api->discovery.host.struct_size >= sizeof(risc_usb_host_snapshot_v1) &&
+        api->discovery.poll && api->discovery.devices && api->snapshot;
 }
 
-// A failed ELF release may leave DMA or callback ownership outstanding.
-// Never release a class grant while its physical session is still open.
+// Never close a live token owned by a different stream consumer. Failed
+// physical close/release retains the exact class and host provider grants.
 bool closeClass() {
-    if (session) {
-        if (!serial || !serial->close(session)) {
-            quarantined = true;
-            error(-1201);
-            LOG_ERR("USB", "USBREF stage=class-close-failed session=%llu",
-                    static_cast<unsigned long long>(session));
-            return false;
-        }
-        session = 0;
-        device = 0;
-        serial = nullptr;
-        state.connected = 0;
-        nativeUsbProviderDetach();
-    }
-    // Session close and grant release are distinct phases. A previous graph
-    // unload failure may leave a consumed grant and a still-mapped module.
-    if (!releaseGrant(classGrant, "class-grant-release")) {
+    if (!session && nativeUsbClassToken()) return true;
+    if (!session && !nativeUsbClassBound()) return true;
+    if ((session && nativeUsbClassToken() != session) ||
+        !nativeUsbClassUnbindChecked()) {
         quarantined = true;
-        error(-1202);
+        error(-1201);
         return false;
     }
+    session = 0;
+    device = 0;
+    state.connected = 0;
+    nativeUsbProviderDetach();
     return true;
 }
 
-// A class ELF examines the actual descriptors and VID/PID; the firmware does
-// not make chip-specific matching decisions. Probe each installable class by
-// stable package ID, never fall back to a resident hardware implementation.
-bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
-    const char* choices[] = {"usb-ch34x-v2", "usb-cdc-acm-v2", "usb-cp210x-v2", "usb-ftdi"};
-    bool foundProvider = false;
-    for (const char* id : choices) {
-        Lease grant{};
-        if (!RuntimeInstalledProviders::acquire(id, "serial.port", 1, &grant)) continue;
-        foundProvider = true;
-        const auto* api = static_cast<const risc_usb_cdc_api_v1*>(grant.interface);
-        if (!classApiValid(api)) {
-            LOG_ERR("USB", "USBREF stage=serial-class-abi-invalid provider=%s", id);
-            if (!releaseGrant(grant, "class-abi-grant-release")) quarantined = true;
-            if (quarantined) return false;
-            continue;
-        }
-        const uint64_t opened = api->open(token);
-        if (opened && api->configure(opened, state.line_coding.baud_rate,
-                state.line_coding.data_bits, state.line_coding.parity,
-                state.line_coding.stop_bits) &&
-            api->control_lines(opened, state.dtr != 0, state.rts != 0)) {
-            classGrant = grant;
-            serial = api;
-            session = opened;
-            device = token;
-            unboundToken = 0;
-            pendingConfigurationToken = 0;
-            state.vid = vid;
-            state.pid = pid;
-            state.connected = 1;
-            state.status = T5_USB_STATUS_READY;
-            state.last_error = 0;
-            std::snprintf(state.product, sizeof(state.product),
-                          "%s %04X:%04X", id, static_cast<unsigned>(vid),
-                          static_cast<unsigned>(pid));
-            nativeUsbProviderAttach(&state, 0xff);
-            LOG_INF("USB", "USBREF provider=%s state=bound vid=%04X pid=%04X",
-                    id, static_cast<unsigned>(vid), static_cast<unsigned>(pid));
-            return true;
-        }
-        if (opened && !api->close(opened)) {
-            // Retain the grant, executable mapping and package pin on an
-            // uncertain physical teardown; never reassign this interface.
-            classGrant = grant;
-            serial = api;
-            session = opened;
-            device = token;
+void connected(const char* id, uint64_t token, uint16_t vid, uint16_t pid) {
+    device = token;
+    state.vid = vid;
+    state.pid = pid;
+    state.connected = 1;
+    state.status = T5_USB_STATUS_READY;
+    state.last_error = 0;
+    std::snprintf(state.product, sizeof(state.product),
+                  "%s %04X:%04X", id, static_cast<unsigned>(vid),
+                  static_cast<unsigned>(pid));
+    nativeUsbProviderAttach(&state, 0xff);
+    LOG_INF("USB", "USBREF provider=%s state=bound vid=%04X pid=%04X",
+            id, static_cast<unsigned>(vid), static_cast<unsigned>(pid));
+}
+
+bool openBoundClass(uint64_t token, uint16_t vid, uint16_t pid) {
+    if (nativeUsbClassToken()) return false;
+    if (!nativeUsbClassEnsureInstalled() || !nativeUsbClassAvailable()) return false;
+    nativeUsbClassObserveDevice(token);
+    if (!nativeUsbClassStart(classCoding(state.line_coding))) {
+        if (nativeUsbClassToken()) {
             quarantined = true;
-            error(-1203);
-            LOG_ERR("USB", "USBREF stage=class-probe-close-failed provider=%s", id);
-            return false;
+            error(-1205);
         }
-        if (!releaseGrant(grant, "class-probe-grant-release")) {
+        return false;
+    }
+    if (!nativeUsbClassControl(state.dtr != 0, state.rts != 0)) {
+        if (!nativeUsbClassUnbindChecked()) {
+            quarantined = true;
+            error(-1206);
+        }
+        return false;
+    }
+    session = nativeUsbClassToken();
+    if (!session) return false;
+    connected("installed-class-elf", token, vid, pid);
+    return true;
+}
+
+// Class ELFs probe the exact host generation before selection/open. This
+// compiled loop is transitional and still requires provider-side extraction.
+bool openClass(uint64_t token, uint16_t vid, uint16_t pid) {
+    if (nativeUsbClassToken()) return false;
+    if (nativeUsbClassBound() && !nativeUsbClassUnbindChecked()) {
+        quarantined = true;
+        error(-1204);
+        return false;
+    }
+    size_t cursor = 0;
+    bool faulted = false;
+    while (!quarantined) {
+        nativeUsbClassObserveDevice(token);
+        if (!nativeUsbClassBindNextInstalled(&cursor, &faulted)) break;
+        if (openBoundClass(token, vid, pid)) return true;
+        if (quarantined || nativeUsbClassToken() ||
+            !nativeUsbClassUnbindChecked()) {
             quarantined = true;
             error(-1204);
             return false;
         }
     }
-    LOG_ERR("USB", "USBREF stage=serial-class-unbound vid=%04X pid=%04X provider-installed=%u",
-            static_cast<unsigned>(vid), static_cast<unsigned>(pid),
-            static_cast<unsigned>(foundProvider));
+    if (faulted) {
+        quarantined = true;
+        error(-1207);
+    }
     return false;
 }
 
-// Poll on the serialized provider executor, not in a USB callback. Only
-// generation-qualified device tokens supplied by the host ELF are retained.
+// Provider-host snapshot owns USB event pumping and device generations.
 void reconcile() {
-    if (!running || quarantined || !host) return;
-    size_t processed = 0;
-    if (!host->poll(host->host.context, 16, &processed)) {
-        LOG_ERR("USB", "USBREF stage=host-poll-failed");
-        quarantined = true;
-        error(-1210);
-        return;
-    }
-    uint64_t devices[RISC_USB_HOST_MAX_DEVICES]{};
+    if (!running || quarantined || !hostSnapshot) return;
+    risc_usb_device_identity_v1 devices[RISC_USB_HOST_MAX_DEVICES]{};
     size_t count = RISC_USB_HOST_MAX_DEVICES;
-    if (!host->devices(host->host.context, devices, &count) || count > RISC_USB_HOST_MAX_DEVICES) {
-        LOG_ERR("USB", "USBREF stage=host-devices-failed");
+    if (!hostSnapshot->snapshot(hostSnapshot->discovery.host.context, devices, &count) ||
+        count > RISC_USB_HOST_MAX_DEVICES) {
+        LOG_ERR("USB", "USBREF stage=host-snapshot-failed");
         quarantined = true;
         error(-1211);
         return;
     }
-    if (lastDeviceCount != static_cast<int32_t>(count)) {
-        lastDeviceCount = static_cast<int32_t>(count);
-        LOG_INF("USB", "USBREF stage=host-devices count=%u events=%u",
-                static_cast<unsigned>(count), static_cast<unsigned>(processed));
-    }
     if (session) {
         bool present = false;
         for (size_t i = 0; i < count; ++i)
-            if (devices[i] == device) { present = true; break; }
+            if (devices[i].token == device) { present = true; break; }
         if (!present) {
             if (!closeClass()) return;
             state.status = T5_USB_STATUS_WAITING;
         } else return;
     }
-    if (!count) {
-        unboundToken = pendingConfigurationToken = 0;
-        state.status = T5_USB_STATUS_WAITING;
-        state.last_error = 0;
-        return;
-    }
-    bool missingConfiguration = false;
-    bool failedClass = false;
     for (size_t i = 0; i < count && !quarantined; ++i) {
-        if (devices[i] == unboundToken) {
-            failedClass = true;
-            continue; // Do not repeatedly execute vendor init for a rejected device.
-        }
-        std::memset(configurationDescriptor, 0, sizeof(configurationDescriptor));
-        size_t length = sizeof(configurationDescriptor);
-        uint16_t vid = 0, pid = 0;
-        if (!host->host.configuration(host->host.context, devices[i],
-                                      configurationDescriptor, &length, &vid, &pid)) {
-            missingConfiguration = true;
-            if (pendingConfigurationToken != devices[i]) {
-                pendingConfigurationToken = devices[i];
-                LOG_ERR("USB", "USBREF stage=configuration-unavailable token=%llu",
-                        static_cast<unsigned long long>(devices[i]));
-            }
-            continue; // Enumeration may still be completing: retry on next poll.
-        }
-        pendingConfigurationToken = 0;
-        LOG_INF("USB", "USBREF stage=configuration-ready vid=%04X pid=%04X length=%u",
-                static_cast<unsigned>(vid), static_cast<unsigned>(pid),
-                static_cast<unsigned>(length));
-        if (openClass(devices[i], vid, pid)) return;
-        if (quarantined) return;
-        unboundToken = devices[i];
-        failedClass = true;
+        if (!devices[i].identified) continue;
+        if (openClass(devices[i].token, devices[i].vid, devices[i].pid)) return;
     }
-    if (quarantined) return;
-    if (failedClass) {
-        state.status = T5_USB_STATUS_ERROR;
-        state.last_error = -1240; // Device enumerated but no class ELF could bind.
-    } else if (missingConfiguration) {
-        state.status = T5_USB_STATUS_ERROR;
-        state.last_error = -1241; // USB attached, configuration not yet readable.
-    } else {
-        state.status = T5_USB_STATUS_WAITING;
-        state.last_error = 0;
-    }
+    if (!quarantined) state.status = T5_USB_STATUS_WAITING;
 }
 
-// This is a CHEAP hardware-platform predicate, not an installed-package
-// integrity result. Calls from provider selection and stream creation must
-// never rescan SD. Graph admission independently validates the complete
-// installed package inventory, requirements, exact imports and ELF bytes.
 bool supported() {
 #ifdef BOARD_T5S3_PRO
     return Storage.ready();
@@ -306,93 +201,82 @@ bool supported() {
     return false;
 #endif
 }
-// Only call under Lock. A prior failure can be recoverable on the next
-// attempt, but USB may be restarted ONLY after graph shutdown proves that
-// every physical provider (including board.power.vbus) is fully quiescent.
-bool stopLocked() {
-    nativeUsbProviderDetach();
-    LOG_INF("USB", "USBREF stage=serial-stop-begin quarantined=%u error=%ld",
-            static_cast<unsigned>(quarantined), static_cast<long>(state.last_error));
-    if (!closeClass()) {
-        // A failed class grant unload consumes its grant, so the physical
-        // session must be closed but a safe graph shutdown may still recover.
-        if (session) return false;
-    }
-    bool grantOkay = releaseGrant(hostGrant, "host-grant-release");
-    host = nullptr;
-    if (!grantOkay) {
-        quarantined = true;
-        error(-1230);
-    }
-    // A failed release may have consumed its grant and left a Failed module.
-    // Graph shutdown safely retries such modules; success is the ONLY gate
-    // which clears quarantine and permits VBUS/PHY reuse.
-    if (!restoreAfterSafeShutdown(grantOkay)) {
-        quarantined = true;
-        error(-1231);
-        LOG_ERR("USB", "USBREF stage=serial-stop-quarantined error=%ld",
-                static_cast<long>(state.last_error));
-        return false;
-    }
-    LOG_INF("USB", "USBREF state=stopped source=installed-elf");
-    return true;
+bool configureSession(const t5_usb_line_coding_t* coding) {
+    return !session || (nativeUsbClassToken() == session &&
+                        nativeUsbClassConfigure(classCoding(*coding)));
 }
 bool serialStart(const t5_usb_line_coding_t* coding) {
     if (!active() || !codingValid(coding) || !initialize()) return false;
-    LOG_INF("USB", "USBREF stage=serial-start-enter");
     Lock lock;
-    if (!lock) {
-        LOG_ERR("USB", "USBREF stage=serial-start-lock-timeout");
-        return false;
-    }
-    if (quarantined) {
-        LOG_INF("USB", "USBREF stage=serial-start-retry-shutdown error=%ld",
-                static_cast<long>(state.last_error));
-        if (!stopLocked()) {
-            LOG_ERR("USB", "USBREF stage=serial-start-quarantined error=%ld",
-                    static_cast<long>(state.last_error));
-            return false;
-        }
-    }
+    if (!lock || quarantined || failedHostId[0]) return false;
     if (running) {
+        if (!configureSession(coding)) return false;
         state.line_coding = *coding;
-        return !session || (serial && serial->configure(session, coding->baud_rate,
-                    coding->data_bits, coding->parity, coding->stop_bits));
+        return true;
     }
-    LOG_INF("USB", "USBREF stage=host-acquire-begin");
-    if (!RuntimeInstalledProviders::acquire(
-            "usb-host-v2", "usb.host", 1, &hostGrant)) {
-        LOG_ERR("USB", "USBREF stage=host-acquire-failed");
+    if (hostGrant.grant.slot) return false;
+    char hostId[96]{}, alternate[96]{};
+    size_t cursor = 0;
+    if (!RuntimeInstalledProviders::nextProvider("usb.host", 1, &cursor,
+                                                hostId, sizeof(hostId)) ||
+        RuntimeInstalledProviders::nextProvider("usb.host", 1, &cursor,
+                                                alternate, sizeof(alternate))) {
         error(-1220);
-        (void)restoreAfterSafeShutdown();
         return false;
     }
-    LOG_INF("USB", "USBREF stage=host-acquired");
-    host = static_cast<const risc_usb_host_discovery_v1*>(hostGrant.interface);
-    if (!hostApiValid(host)) {
-        LOG_ERR("USB", "USBREF stage=host-api-invalid");
-        if (!releaseGrant(hostGrant, "host-abi-grant-release")) quarantined = true;
-        host = nullptr;
+    if (!RuntimeInstalledProviders::acquire(hostId, "usb.host", 1, &hostGrant)) {
+        // A failed activation without a grant may still have mapped hardware
+        // and pinned dependencies. Record the exact identity and require
+        // targeted graph recovery; do not try another host on the next start.
+        if (!hostGrant.grant.slot) {
+            std::memcpy(failedHostId, hostId, std::strlen(hostId) + 1u);
+        }
+        quarantined = true;
+        error(-1220);
+        return false;
+    }
+    hostSnapshot = static_cast<const risc_usb_host_snapshot_v1*>(hostGrant.interface);
+    if (!hostApiValid(hostSnapshot)) {
+        if (!RuntimeInstalledProviders::release(&hostGrant)) quarantined = true;
+        hostSnapshot = nullptr;
         error(-1221);
-        if (!quarantined) (void)restoreAfterSafeShutdown();
         return false;
     }
     initialState(T5_USB_STATUS_WAITING);
     state.line_coding = *coding;
-    unboundToken = pendingConfigurationToken = 0;
-    lastDeviceCount = -1;
     running = true;
-    LOG_INF("USB", "USBREF stage=initial-reconcile");
     reconcile();
     if (quarantined) return false;
     LOG_INF("USB", "USBREF state=host-active source=installed-elf");
-    return true; // Physical enumeration remains asynchronous.
+    return true;
 }
 void serialStop() {
     if (!initialize()) return;
     Lock lock;
     if (!lock) { LOG_ERR("USB", "USBREF stage=serial-stop-lock-timeout"); return; }
-    (void)stopLocked();
+    nativeUsbProviderDetach();
+    if (!closeClass()) return;
+    if (hostGrant.grant.slot && !RuntimeInstalledProviders::release(&hostGrant)) {
+        quarantined = true;
+        error(-1230);
+        return;
+    }
+    if (failedHostId[0]) {
+        if (!RuntimeInstalledProviders::recoverFailedProvider(failedHostId, "usb.host", 1)) {
+            quarantined = true;
+            error(-1231);
+            return;
+        }
+        failedHostId[0] = 0;
+    }
+    // Neither unrelated providers nor their dependencies are shut down.
+    hostSnapshot = nullptr;
+    device = 0;
+    session = 0;
+    running = false;
+    quarantined = false; // Only after every exact checked release succeeds.
+    initialState(T5_USB_STATUS_OFF);
+    LOG_INF("USB", "USBREF state=stopped source=installed-elf");
 }
 bool serialReadState(t5_usb_serial_state_t* out) {
     if (!out || !initialize()) return false;
@@ -405,19 +289,16 @@ bool serialReadState(t5_usb_serial_state_t* out) {
 bool serialSetLineCoding(const t5_usb_line_coding_t* coding) {
     if (!codingValid(coding) || !initialize()) return false;
     Lock lock;
-    if (!lock) return false;
-    if (quarantined) return false;
-    if (session && (!serial || !serial->configure(session, coding->baud_rate,
-                coding->data_bits, coding->parity, coding->stop_bits))) return false;
+    if (!lock || quarantined || !configureSession(coding)) return false;
     state.line_coding = *coding;
     return true;
 }
 bool serialSetControlLines(bool dtr, bool rts) {
     if (!initialize()) return false;
     Lock lock;
-    if (!lock) return false;
-    if (quarantined) return false;
-    if (session && (!serial || !serial->control_lines(session, dtr, rts))) return false;
+    if (!lock || quarantined) return false;
+    if (session && (nativeUsbClassToken() != session ||
+                    !nativeUsbClassControl(dtr, rts))) return false;
     state.dtr = dtr;
     state.rts = rts;
     return true;
@@ -427,15 +308,14 @@ size_t serialRead(uint8_t* bytes, size_t capacity) {
     Lock lock;
     if (!lock) return 0;
     reconcile();
-    if (!session || !serial || quarantined) return 0;
+    if (!session || quarantined || nativeUsbClassToken() != session) return 0;
     const size_t n = std::min<size_t>(capacity, kMaxTransfer);
-    const int32_t received = serial->read(session, bytes, n, kReadTimeoutMs);
-    if (received > 0 && static_cast<size_t>(received) <= n) {
-        state.rx_bytes += static_cast<uint32_t>(received);
-        return static_cast<size_t>(received);
+    uint32_t received = 0;
+    if (nativeUsbClassRead(bytes, static_cast<uint32_t>(n), &received) == T5_STREAM_OK &&
+        received <= n) {
+        state.rx_bytes += received;
+        return received;
     }
-    // A timed-out bulk IN is no data, not a reason to discard an active
-    // device. A host detach is separately detected through reconcile().
     return 0;
 }
 size_t serialWrite(const uint8_t* bytes, size_t length) {
@@ -443,12 +323,13 @@ size_t serialWrite(const uint8_t* bytes, size_t length) {
     Lock lock;
     if (!lock) return 0;
     reconcile();
-    if (!session || !serial || quarantined) return 0;
+    if (!session || quarantined || nativeUsbClassToken() != session) return 0;
     const size_t n = std::min<size_t>(length, kMaxTransfer);
-    const int32_t sent = serial->write(session, bytes, n, kWriteTimeoutMs);
-    if (sent > 0 && static_cast<size_t>(sent) <= n) {
-        state.tx_bytes += static_cast<uint32_t>(sent);
-        return static_cast<size_t>(sent);
+    uint32_t sent = 0;
+    if (nativeUsbClassWrite(bytes, static_cast<uint32_t>(n), &sent) == T5_STREAM_OK &&
+        sent <= n) {
+        state.tx_bytes += sent;
+        return sent;
     }
     return 0;
 }
@@ -462,3 +343,5 @@ const t5_usb_api_v1 api = {
 extern "C" const t5_usb_api_v1* t5_usb_get_api(uint32_t version) {
     return version == T5_USB_API_VERSION && active() ? &api : nullptr;
 }
+
+#endif

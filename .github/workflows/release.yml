@@ -132,18 +132,34 @@ jobs:
           key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
           restore-keys: |
             ${{ runner.os }}-platformio-
-      - name: Install app build tools
+
+      - name: Install PlatformIO
+        run: python -m pip install platformio==6.1.19
+
+      - name: Build RiscRTE gh_release
+        run: pio run -e gh_release
+
+      # Preserve firmware away from both the mutable PlatformIO workspace and
+      # the dist tree before ANY ELF builds; verify exact bytes again on stage.
+      - name: Preserve firmware build outputs
+        shell: bash
         run: |
-          python -m pip install platformio==6.1.19
-          pio pkg install -e t5s3-pro
-      - name: Download release plan
-        uses: actions/download-artifact@v4
-        with:
-          name: rte-release-plan
-          path: ${{ runner.temp }}/release-plan
-      - name: Build only changed app packages
-        run: python scripts/build_release_candidates.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product apps
-      - name: Stage app release assets
+          set -euo pipefail
+          SRC=".pio/build/gh_release"
+          DST="$RUNNER_TEMP/riscrte-firmware"
+          mkdir -p "$DST"
+          for FILE in firmware.bin firmware-merged.bin firmware.elf; do
+            if [[ ! -s "$SRC/$FILE" ]]; then
+              echo "::error::Firmware build did not produce $SRC/$FILE"
+              exit 1
+            fi
+            cp "$SRC/$FILE" "$DST/$FILE"
+          done
+          sha256sum "$DST/firmware.bin" "$DST/firmware-merged.bin" "$DST/firmware.elf" \
+            | tee "$DST/SHA256SUMS"
+
+      - name: Verify baked RiscRTE version string
+        shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/release-artifacts/dist/apps"
           cp dist/apps/*.elf dist/apps/*.json "$RUNNER_TEMP/release-artifacts/dist/apps/"
@@ -155,6 +171,8 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      # Historical builders remain local input/validation adapters. Their
+      # loose output is NEVER a normal release asset or online install source.
   build_drivers:
     name: Build changed drivers
     needs: plan
@@ -181,16 +199,47 @@ jobs:
             ${{ runner.os }}-platformio-
       - name: Install driver build tools
         run: |
-          python -m pip install platformio==6.1.19 pyelftools
+          python scripts/build_driver.py
+          bash test/run_driver_test.sh
+          bash test/run_native_app_test.sh dist/drivers/gps-nmea/driver.elf
+
+      - name: Build and validate USB CDC driver package
+        run: |
+          python scripts/build_usb_cdc_driver.py
+          bash test/run_native_app_test.sh dist/drivers/usb-cdc-acm/driver.elf
+
+      - name: Build native ELF apps and stage ordinary packages
+        run: python scripts/build_all_apps.py
+
+      - name: Build, verify and bundle ordinary driver and app packages
+        env:
+          RISC_PACKAGE_RELEASE: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          python -m pip install pyelftools
           pio pkg install -e t5s3-pro
-      - name: Download release plan
-        uses: actions/download-artifact@v4
-        with:
-          name: rte-release-plan
-          path: ${{ runner.temp }}/release-plan
-      - name: Build, validate, and export only changed drivers
-        run: python scripts/build_release_candidates.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product drivers
-      - name: Stage driver release assets
+          python scripts/probe_usb_controller_esp32s3.py --link-experiment
+          python scripts/audit_usb_controller_elf.py --strict
+          python scripts/probe_i2c_esp32s3_v2.py
+          python scripts/audit_i2c_esp32s3_elf.py --strict
+          python scripts/build_platform_clock_v1.py
+          python scripts/build_board_power_t5s3_v2.py
+          python scripts/build_usb_host_v2.py
+          python scripts/build_usb_cdc_v2.py
+          python scripts/build_usb_cp210x_v2.py
+          python scripts/build_usb_ch34x_v2.py
+          python scripts/build_usb_hid.py
+          python scripts/build_usb_hid_keyboard.py
+          python scripts/build_usb_hid_gamepad.py
+          python scripts/build_usb_xinput_gamepad.py
+          python scripts/build_usb_ui_navigation.py
+          python scripts/build_installed_usb_stack.py
+          python test/drivers/installed_usb_stack_package_test.py
+          python scripts/export_canonical_driver_release.py
+          python test/resources/release_package_catalog_test.py
+
+      - name: Stage RiscRTE firmware image
+        shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/release-artifacts/dist"
           cp -a dist/packages "$RUNNER_TEMP/release-artifacts/dist/"
@@ -202,45 +251,84 @@ jobs:
           path: ${{ runner.temp }}/release-artifacts
           if-no-files-found: error
           retention-days: 1
+          sha256sum -c "$SRC/SHA256SUMS"
+          mkdir -p firmware dist
+          cp "$SRC/firmware-merged.bin" "$MERGED"
+          cp "$SRC/firmware.bin" dist/firmware-t5s3-pro.bin
+          cp "$SRC/firmware.bin" "dist/riscrte_lilygo_t5s3_${VER}-app.bin"
+          cp "$SRC/firmware-merged.bin" "dist/riscrte_lilygo_t5s3_${VER}.bin"
+          cp "$SRC/firmware.elf" "dist/riscrte_lilygo_t5s3_${VER}.elf"
+          ls -lh "$MERGED" dist/
 
-  publish:
-    name: Publish releases and update the index
-    needs: [plan, build_firmware, build_apps, build_drivers]
-    if: ${{ always() && needs.plan.result == 'success' && needs.build_firmware.result != 'failure' && needs.build_firmware.result != 'cancelled' && needs.build_apps.result != 'failure' && needs.build_apps.result != 'cancelled' && needs.build_drivers.result != 'failure' && needs.build_drivers.result != 'cancelled' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Download release plan
-        uses: actions/download-artifact@v4
-        with:
-          name: rte-release-plan
-          path: ${{ runner.temp }}/release-plan
-      - name: Restore firmware release assets
-        if: ${{ needs.plan.outputs.firmware == 'true' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: rte-firmware
-          path: .
-      - name: Restore app release assets
-        if: ${{ needs.plan.outputs.apps == 'true' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: rte-apps
-          path: .
-      - name: Restore driver release assets
-        if: ${{ needs.plan.outputs.drivers == 'true' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: rte-drivers
-          path: .
-      - name: Publish planned releases and update the release index
+      - name: Commit firmware tree
+        if: ${{ needs.request.outputs.commit_firmware == 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${{ steps.ver.outputs.bin }}"
+          if git diff --cached --quiet; then
+            echo "RiscRTE firmware image already committed"
+          else
+            git commit -m "Add ${{ steps.ver.outputs.bin }}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Create tag
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists"
+            exit 1
+          else
+            git tag -a "$TAG" -m "RiscRTE $TAG"
+            git push origin "$TAG"
+          fi
+
+      # The publishing allowlist is firmware + one generic index + exactly
+      # its enumerated .rte.zip assets. Do not publish loose app/driver inputs,
+      # fixed USB catalogs, split manifests or an unverified extra archive.
+      - name: Publish GitHub Release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python scripts/publish_updated_packages.py --plan-file "$RUNNER_TEMP/release-plan/release-plan.json"
+          TAG: ${{ steps.ver.outputs.tag }}
+          VER: ${{ steps.ver.outputs.ver }}
+          MERGED: ${{ steps.ver.outputs.bin }}
+        run: |
+          set -euo pipefail
+          NOTES="RiscRTE ${VER} firmware for the LilyGo T5S3 E-Paper Pro. firmware-t5s3-pro.bin and riscrte_lilygo_t5s3_${VER}-app.bin are OTA/SD app images (0x10000). riscrte_lilygo_t5s3_${VER}.bin is the merged USB image (0x0) and must not be used for SD/OTA. The matching .elf is a non-flashable debug-symbol image. Apps, drivers, services and providers are distributed only as verified .rte.zip archives in package-catalog.json. CrossPoint reader functionality is included as the ebook-reader subsystem of RiscRTE."
+
+          # The validator checks the immutable tag, every referenced archive,
+          # exact archive inventory and per-archive size/SHA/manifest contract.
+          RISC_PACKAGE_RELEASE="$TAG" python test/resources/release_package_catalog_test.py
+          mapfile -d '' PACKAGE_ASSETS < <(
+            find dist/release-packages -maxdepth 1 -type f \
+              \( -name '*.rte.zip' -o -name 'package-catalog.json' \) -print0 | sort -z
+          )
+          if (( ${#PACKAGE_ASSETS[@]} < 3 )); then
+            echo "::error::Missing ordinary package catalog or app/driver ZIPs"
+            exit 1
+          fi
+          ASSETS=(
+            "dist/firmware-t5s3-pro.bin"
+            "dist/riscrte_lilygo_t5s3_${VER}-app.bin"
+            "dist/riscrte_lilygo_t5s3_${VER}.elf"
+            "$MERGED"
+            "${PACKAGE_ASSETS[@]}"
+          )
+          for ASSET in "${ASSETS[@]}"; do
+            if [[ ! -s "$ASSET" ]]; then
+              echo "::error::Missing or empty release asset: $ASSET"
+              exit 1
+            fi
+          done
+          echo 'Validated RiscRTE release asset inventory:'
+          printf '  %s\n' "${ASSETS[@]}"
+
+          # Never silently mutate an existing immutable tag/release's assets.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Refusing to replace an existing immutable release $TAG"
+            exit 1
+          fi
+          gh release create "$TAG" "${ASSETS[@]}" \
+            --title "RiscRTE ${VER}" --notes "$NOTES"

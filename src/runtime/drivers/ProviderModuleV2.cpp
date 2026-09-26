@@ -92,8 +92,22 @@ bool ModuleV2::activateMapped(risc_driver_get_v2_fn get, const char* expectedId,
     report(expectedId, "elf-interface-or-identity");
     return false;
   }
+  bool bound = true;
+  if (candidate->struct_size >= sizeof(risc_driver_streams_v2)) {
+    const auto* extended = reinterpret_cast<const risc_driver_streams_v2*>(candidate);
+    if (extended->bind_streams) {
+      if (!hasQuiesce(candidate) || !streamHost_ || !streamHost_->open ||
+          !streamHost_->revoke || !streamHost_->close ||
+          !streamHost_->open(&streamApi_)) {
+        report(expectedId, "stream-context-unavailable");
+        return false;
+      }
+      streamsRevoked_ = false;
+      bound = extended->bind_streams(&streamApi_);
+    }
+  }
   trace(expectedId, "hardware-start-begin");
-  if (candidate->start(deps, count)) {
+  if (bound && candidate->start(deps, count)) {
     driver_ = candidate;
     api_ = candidate->capability;
     state_ = State::Active;
@@ -109,6 +123,7 @@ bool ModuleV2::activateMapped(risc_driver_get_v2_fn get, const char* expectedId,
     }
   }
   if (!error_[0]) report(expectedId, "start rejected; update driver for diagnostics");
+  revokeStreams();
   // A rejected start may still own DMA, tasks, IRQs or a lower provider.
   if (hasQuiesce(candidate) && !candidate->quiesce()) {
     driver_ = candidate;
@@ -116,6 +131,7 @@ bool ModuleV2::activateMapped(risc_driver_get_v2_fn get, const char* expectedId,
     return false;
   }
   candidate->stop();
+  closeStreams();
   return false;
 }
 
@@ -239,6 +255,14 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
 #endif
 }
 
+bool ModuleV2::poll(uint32_t budgetMs) {
+  if (!budgetMs || state_ != State::Active || !driver_ || !consumers_ ||
+      driver_->struct_size < sizeof(risc_driver_poll_v2)) return false;
+  const auto* extended = reinterpret_cast<const risc_driver_poll_v2*>(driver_);
+  if (!extended->poll) return false;
+  extended->poll(budgetMs);
+  return true;
+}
 bool ModuleV2::pinConsumer() {
   if (state_ != State::Active || consumers_ == std::numeric_limits<uint32_t>::max())
     return false;
@@ -252,8 +276,21 @@ bool ModuleV2::unpinConsumer() {
   return true;
 }
 
+void ModuleV2::revokeStreams() {
+  if (streamApi_.context && !streamsRevoked_) {
+    streamHost_->revoke(streamApi_.context);
+    streamsRevoked_ = true;
+  }
+}
+void ModuleV2::closeStreams() {
+  if (!streamApi_.context) return;
+  revokeStreams();
+  streamHost_->close(streamApi_.context);
+  streamApi_ = {};
+}
 bool ModuleV2::unload() {
   if (consumers_) return false;
+  revokeStreams();
   if (state_ == State::Failed && handle_ && driver_) {
     if (!hasQuiesce(driver_) || !driver_->quiesce()) return false;
     driver_->stop();
@@ -267,6 +304,7 @@ bool ModuleV2::unload() {
     driver_->stop();
     driver_ = nullptr;
   }
+  closeStreams();
   api_ = nullptr;
   if (!closeMapped()) {
     state_ = State::Failed;

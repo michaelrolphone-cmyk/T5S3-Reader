@@ -7,7 +7,7 @@ uint32_t fakeTime = 1000;
 bool storageReady = true, closeOk = true;
 std::map<std::string, std::shared_ptr<TestFile>> files;
 HalStorage Storage;
-static bool available, shutdownOkay = true, sharedGrant = false;
+static bool available, shutdownOkay = true, sharedGrant = false, releaseOkay = true;
 static unsigned acquisitions, releases, shutdowns, polls, resets;
 static size_t foregroundCount;
 static bool fakePoll(void*, risc_input_navigation_frame_v1* out) {
@@ -28,7 +28,11 @@ bool acquireCapability(const char* capability, uint32_t version, Lease* out) {
     if (!available) return false;
     *out = {{1, 1}, &navigation}; return true;
 }
-bool release(Lease* out) { ++releases; *out = {}; return true; }
+bool release(Lease* out) {
+    ++releases; assert(out->grant.slot == 1);
+    if (!releaseOkay) return false;
+    *out = {}; return true;
+}
 bool shutdown() { ++shutdowns; return shutdownOkay; }
 bool hasLiveGrants() { return sharedGrant; }
 const char* lastError() { return "fixture unavailable"; }
@@ -67,5 +71,13 @@ int main() {
     assert(!nativeNavigationSuspend()); // lower-provider failure blocks sleep
     nativeNavigationResume(); nativeNavigationTick();
     assert(acquisitions == 4); // quarantined resources never silently restarted
+    shutdownOkay = true;
+    assert(nativeNavigationSuspend());
+    nativeNavigationResume(); fakeTime += 20; nativeNavigationTick();
+    releaseOkay = false;
+    assert(!nativeNavigationSuspend());
+    assert(lease.grant.slot == 1); // quarantine retains exact ownership
+    releaseOkay = true;
+    assert(nativeNavigationSuspend() && !lease.grant.slot);
     puts("Firmware navigation acquisition, focus, polling and sleep lifetime: PASS");
 }

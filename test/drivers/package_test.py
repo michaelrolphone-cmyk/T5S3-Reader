@@ -56,8 +56,12 @@ class Packages(unittest.TestCase):
         self.assertIn('entry["capability"].as<const char*>()', parser)
         self.assertIn('provided[0]["capability"].as<const char*>()', parser)
         self.assertIn('doc["sha256"].as<const char*>()', parser)
-        self.assertIn('entry["elf_asset"].as<const char*>()', manager)
-        self.assertIn('std::string(info.id) + "-" + info.version + ".t5driver.elf"', manager)
+        # Legacy ABI remains callable only for scoped recovery. Normal discovery
+        # and installation belong to the generic package API after U1 cutover.
+        self.assertNotIn('entry["elf_asset"]', manager)
+        self.assertNotIn('.t5driver.elf', manager)
+        self.assertIn('bool catalogRefresh() { return false; }', manager)
+        self.assertIn('bool install(uint32_t) { return false; }', manager)
         self.assertIn('Storage.rename(kDownloadedStorage, stageElf.c_str())', parser)
         self.assertIn('"/driver.elf"', parser)
     def test_firmware_install_writable_storage_contract(self):
@@ -106,11 +110,16 @@ class Packages(unittest.TestCase):
         for field in ('type', 'architecture', 'file_name', 'driver_abi', 'size_bytes type',
                       'sha256 type', 'requires array', 'provides array'):
             self.assertIn(f', "{field}");', parser)
-        self.assertIn('Aggregate catalog HTTP fetch failed', manager)
-        self.assertIn('Aggregate catalog JSON decode failed', manager)
-        self.assertIn('Aggregate catalog entry[%u] manifest rejected', manager)
-        self.assertIn('manifest.size() != manifestAsset.size', manager)
-        self.assertIn('Driver manifest length mismatch', manager)
+        # Keep admission guards at the current catalog/archive boundary.
+        catalog = (root / 'src/native/NativeOnlineOrdinaryCatalog.h').read_text()
+        online = (root / 'src/native/NativeOnlineRtePackageInstall.h').read_text()
+        self.assertIn('BoundedCatalogSink response;', catalog)
+        self.assertIn('!HttpDownloader::fetchUrl(kLatestCatalog, response) || !response.ready()', catalog)
+        self.assertIn('RuntimePackages::parsePackageCatalog(', catalog)
+        self.assertIn('archiveMatches(part.c_str(), package)', online)
+        self.assertLess(online.index('archiveMatches(part.c_str(), package)'),
+                        online.index('Storage.rename(part.c_str(), archive.c_str())'))
+        self.assertIn('RuntimeDrivers::inspectDriverStage(', manager)
     def test_release_catalog(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)

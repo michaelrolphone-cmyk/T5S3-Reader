@@ -1,6 +1,7 @@
-#include <RiscUsbProviderV1.h>
+#include <RiscUsbControllerV1.h>
 #include "runtime/drivers/ProviderModuleV2.h"
 #include <cassert>
+#include "serial_prefix_stream_host.h"
 #include <cstdint>
 #include <cstdio>
 
@@ -16,10 +17,15 @@ int32_t write(void*, uint64_t, uint8_t, const uint8_t*, size_t, uint32_t) { retu
 
 int main(int argc, char** argv) {
   assert(argc == 2);
-  risc_usb_host_api_v1 api = {RISC_USB_HOST_API_V1, sizeof(api), nullptr,
-      configuration, claim, release, control, read, write};
+  risc_usb_host_discovery_v1 api = {
+      {RISC_USB_HOST_API_V1, sizeof(api), nullptr,
+       configuration, claim, release, control, read, write},
+      [](void*, size_t, size_t*) { return false; },
+      [](void*, uint64_t*, size_t*) { return false; },
+      nullptr, nullptr, [](void*, uint64_t) { return true; }, control};
   risc_provider_dependency_v1 dep = {"usb.host", RISC_USB_HOST_API_V1, &api};
   RuntimeProviders::ModuleV2 module;
+  assert(module.setStreamHost(&streamHost));
   assert(!module.load(argv[1], "usb-cdc-acm-v2", "serial.port", 1, nullptr, 1));
   assert(module.state() == RuntimeProviders::ModuleV2::State::Absent);
   assert(!module.load(argv[1], "wrong-id", "serial.port", 1, &dep, 1));

@@ -4,6 +4,8 @@
 using TaskHandle_t = void*;
 extern void (*httpTask)(void*);
 extern void* httpContext;
+inline void (*testStreamTask)(void*) = nullptr;
+inline void (*testTaskWaitHook)() = nullptr;
 
 namespace test_freertos {
 struct TaskBlocked {};
@@ -27,17 +29,12 @@ inline int xTaskCreate(void (*fn)(void*), const char* name, unsigned, void* ctx,
     httpTask = test_freertos::runHttpWorkerOnce;
     httpContext = ctx;
   }
+  if (!std::strcmp(name, "stream-pipes")) testStreamTask = fn;
   if (out) *out = reinterpret_cast<void*>(1);
   return 1;
 }
-
-inline unsigned ulTaskNotifyTake(int, unsigned) {
-  if (test_freertos::httpNotified) {
-    test_freertos::httpNotified = false;
-    return 1;
-  }
-  throw test_freertos::TaskBlocked{};
-}
-
-inline void xTaskNotifyGive(TaskHandle_t) { test_freertos::httpNotified = true; }
+inline unsigned ulTaskNotifyTake(int, unsigned) { if (testTaskWaitHook) testTaskWaitHook(); return 0; }
+inline void xTaskNotifyGive(TaskHandle_t) {}
 inline void vTaskDelete(void*) {}
+
+inline void vTaskDelay(unsigned) {}

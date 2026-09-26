@@ -9,13 +9,16 @@ void nativeStreamsBegin();
 void nativeStreamsEnd();
 
 // Runtime-provider helpers. These are firmware-internal and are not exported to
-// application ELFs. The pair borrows the active USB serial service and exposes
-// independently owned read/write stream handles for a semantic serial lease.
-// Check ownership BEFORE starting USB: an already-open compatibility stream
-// must never be powered down because a new serial.port acquisition is busy.
-bool nativeStreamUsbIsBusy();
-t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx);
+// application ELFs. The semantic serial pair is buffer-backed; provider I/O is
+// pumped outside the registry mutex through NativeSerialPortBridge's generic
+// session hooks. No transport-specific API or ELF pointer is stored in streams.
+bool nativeStreamSerialIsBusy();
+t5_stream_result_t nativeStreamOpenSerialPair(t5_stream_t* rx, t5_stream_t* tx);
 t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream);
+#if !defined(ESP_PLATFORM) && !defined(ARDUINO_ARCH_ESP32)
+bool nativeStreamUsbIsBusy(); // host-fixture compatibility only
+t5_stream_result_t nativeStreamOpenUsbPair(t5_stream_t* rx, t5_stream_t* tx);
+#endif
 
 // GNSS uses the VERY SAME stream registry/mutex as public streams and pipes.
 // Only the claiming driver task may attach/poll/publish/stop. Caller-supplied
@@ -31,3 +34,10 @@ t5_stream_result_t nativeGnssSubscribe(uint32_t authenticatedOwner, uint32_t aut
                                       uint32_t issuedReadConsent,
                                       uint64_t* subscription, t5_stream_t* stream);
 t5_stream_result_t nativeGnssUnsubscribe(uint32_t authenticatedOwner, uint64_t subscription);
+
+namespace RuntimeProviders { struct StreamHostV1; }
+// Trusted loader hook. Creation/teardown are owner-task operations; the issued
+// table permits bounded copied queue operations from provider worker tasks.
+const RuntimeProviders::StreamHostV1* nativeProviderStreamHost();
+// Returns zero outside an authenticated foreground invocation. Not an ELF import.
+uint32_t nativeProviderStreamConsumer();

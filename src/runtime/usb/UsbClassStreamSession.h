@@ -1,0 +1,196 @@
+#pragma once
+#include "runtime/streams/StreamRuntime.h"
+#include <cstdint>
+#include <cstring>
+
+// Firmware-internal binding between an installed USB class ELF and published
+// serial.port endpoints. Transfers belong to the ELF, never T5UsbApi.
+namespace RuntimeUsb {
+
+struct ClassPort {
+  void* context = nullptr;
+  uint64_t (*open)(void*, uint64_t device) = nullptr;
+  bool (*configure)(void*, uint64_t token, uint32_t baud, uint8_t bits,
+                    uint8_t parity, uint8_t stop_bits) = nullptr;
+  bool (*control)(void*, uint64_t token, bool dtr, bool rts) = nullptr;
+  int32_t (*read)(void*, uint64_t token, uint8_t* dst, uint32_t capacity,
+                  uint32_t timeout_ms) = nullptr;
+  int32_t (*write)(void*, uint64_t token, const uint8_t* src, uint32_t length,
+                   uint32_t timeout_ms) = nullptr;
+  bool (*close)(void*, uint64_t token) = nullptr;
+};
+
+class ClassStreamSession {
+ public:
+  static constexpr uint32_t kCapacity = 4096;
+
+  bool bound() const { return port_.open && port_.read && port_.write && port_.close; }
+
+  bool bind(const ClassPort& port) {
+    if (bound() || token_ || !port.open || !port.configure || !port.control ||
+        !port.read || !port.write || !port.close) return false;
+    port_ = port;
+    return true;
+  }
+
+  // Never discard the function table when an ELF reports that its physical
+  // session has not quiesced; an unresolved close pins that exact generation.
+  bool unbind() {
+    if (token_ && close(nullptr) != T5_STREAM_OK) return false;
+    port_ = {};
+    return true;
+  }
+
+  int32_t open(RuntimeStreams::Registry& registry, uint32_t owner, uint64_t device,
+               uint32_t baud, uint8_t bits, uint8_t parity, uint8_t stop_bits,
+               t5_stream_t* rx, t5_stream_t* tx) {
+    if (rx) *rx = 0;
+    if (tx) *tx = 0;
+    if (!bound() || token_ || !owner || !rx || !tx || !device) return T5_STREAM_INVALID;
+    const uint64_t opened = port_.open(port_.context, device);
+    if (!opened) return T5_STREAM_IO;
+    if (!port_.configure(port_.context, opened, baud, bits, parity, stop_bits)) {
+      if (!port_.close(port_.context, opened)) token_ = opened;
+      return T5_STREAM_IO;
+    }
+    t5_stream_t newRx = 0, newTx = 0;
+    auto r = registry.publishEndpoint(owner, T5_STREAM_BYTES, T5_STREAM_READ,
+                                      kCapacity, nullptr, 0, 0,
+                                      RuntimeStreams::kStreamPublic, &newRx);
+    if (r != T5_STREAM_OK) {
+      if (!port_.close(port_.context, opened)) token_ = opened;
+      return r;
+    }
+    r = registry.publishEndpoint(owner, T5_STREAM_BYTES, T5_STREAM_WRITE,
+                                 kCapacity, nullptr, 0, 0,
+                                 RuntimeStreams::kStreamPublic, &newTx);
+    if (r != T5_STREAM_OK) {
+      (void)registry.close(owner, newRx);
+      if (!port_.close(port_.context, opened)) token_ = opened;
+      return r;
+    }
+    token_ = opened;
+    owner_ = owner;
+    rx_ = newRx;
+    tx_ = newTx;
+    rxSize_ = rxOffset_ = txSize_ = txOffset_ = 0;
+    *rx = newRx;
+    *tx = newTx;
+    return T5_STREAM_OK;
+  }
+
+  int32_t grant(RuntimeStreams::Registry& registry, uint32_t consumer, uint32_t rights) {
+    if (!token_ || !owner_) return T5_STREAM_CLOSED;
+    if (!consumer || !(rights & (T5_STREAM_READ | T5_STREAM_WRITE)) ||
+        (rights & ~(T5_STREAM_READ | T5_STREAM_WRITE))) return T5_STREAM_INVALID;
+    const auto rxRights = rights & T5_STREAM_READ;
+    const auto txRights = rights & T5_STREAM_WRITE;
+    if (rxRights) {
+      const auto r = registry.grant(owner_, rx_, consumer, rxRights);
+      if (r != T5_STREAM_OK) return r;
+    }
+    if (txRights) {
+      const auto r = registry.grant(owner_, tx_, consumer, txRights);
+      if (r != T5_STREAM_OK) {
+        if (rxRights) (void)registry.revoke(owner_, rx_, consumer);
+        return r;
+      }
+    }
+    return T5_STREAM_OK;
+  }
+
+  int32_t control(bool dtr, bool rts) {
+    if (!token_) return T5_STREAM_CLOSED;
+    return port_.control(port_.context, token_, dtr, rts) ? T5_STREAM_OK : T5_STREAM_IO;
+  }
+
+  // Bind already-opened class token to published serial.port endpoints.
+  int32_t attachPublished(uint32_t owner, uint64_t token, t5_stream_t rx, t5_stream_t tx) {
+    if (!bound() || token_ || !token || !owner || !rx || !tx || rx == tx)
+      return T5_STREAM_INVALID;
+    token_ = token;
+    owner_ = owner;
+    rx_ = rx;
+    tx_ = tx;
+    rxSize_ = rxOffset_ = txSize_ = txOffset_ = 0;
+    return T5_STREAM_OK;
+  }
+
+  // One bounded read and write attempt per pump. If an endpoint is full, hold
+  // the already-received bytes instead of polling the class again. If a class
+  // write accepts only a prefix (including zero), retain the rest in order.
+  // All class calls occur outside the stream registry's global mutex.
+  int32_t pump(RuntimeStreams::Registry& registry) {
+    if (!token_ || !owner_ || !rx_ || !tx_) return T5_STREAM_CLOSED;
+    if (rxSize_ == rxOffset_) {
+      rxSize_ = rxOffset_ = 0;
+      const int32_t received = port_.read(port_.context, token_, rxPending_,
+                                           sizeof(rxPending_), 1);
+      if (received < 0 || static_cast<uint32_t>(received) > sizeof(rxPending_))
+        return T5_STREAM_IO;
+      rxSize_ = static_cast<uint32_t>(received);
+    }
+    if (rxOffset_ < rxSize_) {
+      uint32_t accepted = 0;
+      const auto r = registry.produce(owner_, rx_, rxPending_ + rxOffset_,
+                                      rxSize_ - rxOffset_, &accepted);
+      if ((r != T5_STREAM_OK && r != T5_STREAM_AGAIN) ||
+          accepted > rxSize_ - rxOffset_) return T5_STREAM_IO;
+      rxOffset_ += accepted;
+      if (rxOffset_ == rxSize_) rxSize_ = rxOffset_ = 0;
+    }
+
+    if (txSize_ == txOffset_) {
+      txSize_ = txOffset_ = 0;
+      uint32_t pending = 0;
+      const auto r = registry.consume(owner_, tx_, txPending_,
+                                      sizeof(txPending_), &pending);
+      if ((r != T5_STREAM_OK && r != T5_STREAM_AGAIN) ||
+          pending > sizeof(txPending_)) return T5_STREAM_IO;
+      txSize_ = pending;
+    }
+    if (txOffset_ < txSize_) {
+      const auto remaining = txSize_ - txOffset_;
+      const int32_t written = port_.write(port_.context, token_,
+                                           txPending_ + txOffset_, remaining, 1);
+      if (written < 0 || static_cast<uint32_t>(written) > remaining)
+        return T5_STREAM_IO;
+      txOffset_ += static_cast<uint32_t>(written);
+      if (txOffset_ == txSize_) txSize_ = txOffset_ = 0;
+    }
+    return T5_STREAM_OK;
+  }
+
+  int32_t close(RuntimeStreams::Registry* registry) {
+    if (!token_) return T5_STREAM_CLOSED;
+    // Check physical close FIRST. On failure retain token, port, endpoints and
+    // generation pin; the caller may retry or quarantine without force-unload.
+    if (!port_.close || !port_.close(port_.context, token_)) return T5_STREAM_IO;
+    const uint32_t owner = owner_;
+    const t5_stream_t rx = rx_, tx = tx_;
+    token_ = owner_ = 0;
+    rx_ = tx_ = 0;
+    rxSize_ = rxOffset_ = txSize_ = txOffset_ = 0;
+    if (registry && owner) {
+      if (rx) (void)registry->close(owner, rx);
+      if (tx) (void)registry->close(owner, tx);
+    }
+    return T5_STREAM_OK;
+  }
+
+  t5_stream_t rx() const { return rx_; }
+  t5_stream_t tx() const { return tx_; }
+  uint64_t token() const { return token_; }
+
+ private:
+  ClassPort port_{};
+  uint64_t token_ = 0;
+  uint32_t owner_ = 0;
+  t5_stream_t rx_ = 0, tx_ = 0;
+  uint8_t rxPending_[T5_STREAM_CHUNK]{};
+  uint8_t txPending_[T5_STREAM_CHUNK]{};
+  uint32_t rxSize_ = 0, rxOffset_ = 0;
+  uint32_t txSize_ = 0, txOffset_ = 0;
+};
+
+}  // namespace RuntimeUsb

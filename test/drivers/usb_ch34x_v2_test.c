@@ -1,4 +1,4 @@
-#include "RiscUsbProviderV1.h"
+#include "RiscUsbControllerV1.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdio.h>
@@ -12,7 +12,8 @@ static const uint8_t configuration_bytes[] = {
 };
 static uint16_t vendor = 0x1a86, product = 0x7523;
 static uint8_t version = 0x30;
-static int claimed, releases, controls, fail_request = -1, reads, writes;
+static int claimed, releases, release_attempts, controls, fail_request = -1, reads, writes;
+static bool fail_release, fail_configuration;
 static uint8_t requests[32], types[32];
 static uint16_t values[32], indices[32];
 
@@ -20,7 +21,8 @@ static bool configuration(void *ctx, uint64_t device, uint8_t *data,
                           size_t *length, uint16_t *vid, uint16_t *pid) {
     (void)ctx;
     assert(device == 7);
-    if (!data || !length || *length < sizeof(configuration_bytes)) return false;
+    if (fail_configuration || !data || !length ||
+        *length < sizeof(configuration_bytes)) return false;
     memcpy(data, configuration_bytes, sizeof(configuration_bytes));
     *length = sizeof(configuration_bytes);
     *vid = vendor; *pid = product;
@@ -32,16 +34,22 @@ static bool claim(void *ctx, uint64_t device, uint8_t iface, uint8_t alt, uint64
     ++claimed; *out = 17;
     return true;
 }
-static void release_claim(void *ctx, uint64_t token) {
+static bool release_checked(void *ctx, uint64_t token) {
     (void)ctx;
     assert(token == 17);
+    ++release_attempts;
+    if (fail_release) return false;
     ++releases;
+    return true;
 }
-static int32_t control(void *ctx, uint64_t device, uint8_t type, uint8_t request,
+static void release_claim(void *ctx, uint64_t token) {
+    (void)release_checked(ctx, token);
+}
+static int32_t control(void *ctx, uint64_t claim_token, uint8_t type, uint8_t request,
                        uint16_t value, uint16_t index, uint8_t *data,
                        uint16_t length, uint32_t timeout) {
     (void)ctx;
-    assert(device == 7 && timeout == 1000 && controls < 32);
+    assert(claim_token == 17 && timeout == 1000 && controls < 32);
     types[controls] = type; requests[controls] = request;
     values[controls] = value; indices[controls] = index;
     ++controls;
@@ -67,6 +75,20 @@ static int32_t write_data(void *ctx, uint64_t token, uint8_t endpoint,
     assert(data[0] == 'H' && data[1] == 'I');
     ++writes; return 2;
 }
+static bool poll(void *ctx, size_t maximum, size_t *processed) {
+    (void)ctx;
+    if (!maximum || !processed) return false;
+    *processed = 0;
+    return true;
+}
+static bool devices(void *ctx, uint64_t *out, size_t *count) {
+    (void)ctx;
+    if (!count) return false;
+    if (*count < 1 || !out) { *count = 1; return false; }
+    out[0] = 7;
+    *count = 1;
+    return true;
+}
 int main(int argc, char **argv) {
     assert(argc == 2);
     void *lib = dlopen(argv[1], RTLD_NOW);
@@ -77,18 +99,51 @@ int main(int argc, char **argv) {
     assert(driver && strcmp(driver->driver_id, "usb-ch34x-v2") == 0);
     assert(strcmp(driver->capability_id, "serial.port") == 0);
     const risc_usb_cdc_api_v1 *serial = (const risc_usb_cdc_api_v1 *)driver->capability;
-    assert(serial && serial->api_version == 1 && serial->struct_size == sizeof(*serial));
+    assert(serial && serial->api_version == 1 && serial->struct_size >= sizeof(*serial));
+    const risc_usb_serial_class_discovery_v1 *probe =
+        (const risc_usb_serial_class_discovery_v1 *)serial;
+    assert(serial->struct_size >= sizeof(*probe) && probe->probe);
+    const risc_usb_serial_class_inventory_v1 *inventory =
+        (const risc_usb_serial_class_inventory_v1 *)serial;
+    assert(serial->struct_size >= sizeof(*inventory) && inventory->snapshot);
     assert(!driver->start(NULL, 0));
-    risc_usb_host_api_v1 host = {RISC_USB_HOST_API_V1, sizeof(host), NULL,
+    risc_usb_host_api_v1 legacy = {RISC_USB_HOST_API_V1, sizeof(legacy), NULL,
         configuration, claim, release_claim, control, read_data, write_data};
-    risc_provider_dependency_v1 dep = {"usb.host", 1, &host};
+    risc_provider_dependency_v1 dep = {"usb.host", 1, &legacy};
+    assert(!driver->start(&dep, 1)); /* No success signal for physical release. */
+    risc_usb_host_discovery_v1 host = {
+        {RISC_USB_HOST_API_V1, sizeof(host), NULL,
+         configuration, claim, release_claim, control, read_data, write_data},
+        NULL, NULL,  0, 0, release_checked, control
+    };
+    dep.api = &host.host;
+    assert(!driver->start(&dep, 1));
+    host.poll = poll; host.devices = devices;
     assert(driver->start(&dep, 1));
     assert(!driver->start(&dep, 1) && driver->quiesce());
+    risc_serial_device_v1 observed[1] = {{0}};
+    size_t observed_count = 1;
+    assert(inventory->snapshot(observed, &observed_count) && observed_count == 1 &&
+           observed[0].provider_device == 7 && observed[0].generation == 7 &&
+           observed[0].transport == RISC_SERIAL_TRANSPORT_USB && !claimed && !controls);
     vendor = 0x10c4;
+    observed_count = 1;
+    assert(inventory->snapshot(observed, &observed_count) && !observed_count);
+    assert(probe->probe(7) == 0 && claimed == 0 && controls == 0);
     assert(!serial->open(7) && claimed == 0);
     vendor = 0x1a86;
+    assert(probe->probe(7) == 1 && claimed == 0 && controls == 0);
+    fail_configuration = true;
+    observed_count = 1;
+    assert(!inventory->snapshot(observed, &observed_count));
+    assert(probe->probe(7) < 0 && claimed == 0 && controls == 0);
+    fail_configuration = false;
     fail_request = 0xa1;
-    assert(!serial->open(7) && claimed == 1 && releases == 1);
+    fail_release = true;
+    assert(!serial->open(7) && claimed == 1 && releases == 0);
+    assert(!driver->quiesce()); /* Failed-open orphan still holds claim. */
+    fail_release = false;
+    assert(driver->quiesce() && releases == 1 && release_attempts == 3);
     fail_request = -1;
     uint64_t session = serial->open(7);
     assert(session && !driver->quiesce());
@@ -107,6 +162,9 @@ int main(int argc, char **argv) {
     assert(read[0] == 'O' && read[1] == 'K');
     assert(serial->write(session, (const uint8_t *)"HI", 2, 40) == 2);
     assert(reads == 1 && writes == 1);
+    fail_release = true;
+    assert(!serial->close(session) && !driver->quiesce());
+    fail_release = false;
     assert(serial->close(session) && driver->quiesce());
     assert(!serial->close(session) && serial->read(session, read, 2, 30) < 0);
     version = 0x27;
@@ -118,9 +176,9 @@ int main(int argc, char **argv) {
     assert(controls == before + 1 && requests[controls - 1] == 0x9a);
     assert(serial->close(old) && driver->quiesce());
     vendor = 0x1234;
-    assert(!serial->open(7));
+    assert(probe->probe(7) == 0 && !serial->open(7));
     driver->stop();
     assert(dlclose(lib) == 0);
-    puts("CH34x ELF VID/PID, protocol, framing, transfers and quiescence: PASS");
+    puts("CH34x ELF inventory, protocol, scoped control, orphan recovery: PASS");
     return 0;
 }

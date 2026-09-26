@@ -39,28 +39,30 @@ int main() {
   std::strcpy(usbStatus.product, "USB direct regression");
   nativeUsbProviderAttach(&usbStatus, 2);
 
-  t5_stream_t direct = 0, duplicate = 0;
-  assert(streams->open_usb(&direct) == T5_STREAM_OK && direct);
-  assert(devices.count() == 1 && devices.leaseCount() == 1);
-  assert(streams->open_usb(&duplicate) == T5_STREAM_BUSY && !duplicate);
-  // A failed duplicate open must not release the FIRST stream's ownership.
-  assert(devices.count() == 1 && devices.leaseCount() == 1);
+  t5_stream_t rejected = 0;
+  assert(streams->open_usb(&rejected) == T5_STREAM_UNSUPPORTED && !rejected);
+  assert(devices.leaseCount() == 0);
+
   t5_serial_port_request_t request{};
   request.config = {115200u, 8u, T5_SERIAL_PARITY_NONE, 1u, T5_SERIAL_FLOW_NONE};
-  t5_serial_port_lease_t port = 0;
-  t5_stream_t rx = 0, tx = 0;
-  assert(serial->acquire(&request, &port, &rx, &tx) == T5_SERIAL_BUSY);
+  t5_serial_port_lease_t port = 0, duplicate = 0;
+  t5_stream_t rx = 0, tx = 0, busyRx = 0, busyTx = 0;
+  assert(serial->acquire(&request, &port, &rx, &tx) == T5_SERIAL_OK && port && rx && tx);
+  assert(devices.count() == 1 && devices.leaseCount() == 1);
+  assert(serial->acquire(&request, &duplicate, &busyRx, &busyTx) == T5_SERIAL_BUSY);
+  assert(devices.count() == 1 && devices.leaseCount() == 1);
+  assert(streams->open_usb(&rejected) == T5_STREAM_UNSUPPORTED && !rejected);
   uint32_t n = 0;
-  assert(streams->write(direct, "abc", 3, &n) == T5_STREAM_OK && n == 2);
+  assert(streams->write(tx, "abc", 3, &n) == T5_STREAM_OK && n == 3);
+  assert(streams->write(rx, "a", 1, &n) == T5_STREAM_DENIED);
 
   nativeUsbProviderDetach();
   nativeUsbProviderAttach(&usbStatus, 2);
-  assert(streams->write(direct, "abc", 3, &n) == T5_STREAM_DISCONNECTED && n == 0);
-  assert(devices.leaseCount() == 0);
-  assert(streams->close(direct) == T5_STREAM_OK);
+  assert(streams->write(tx, "abc", 3, &n) == T5_STREAM_DISCONNECTED && n == 0);
+  assert(serial->release(port) == T5_SERIAL_OK);
   assert(devices.leaseCount() == 0);
   nativeStreamsEnd();
   assert(devices.count() == 0 && devices.leaseCount() == 0);
-  std::puts("Direct USB physical ownership and stale-stream tests passed");
+  std::puts("serial.port exclusive ownership tests passed");
   return 0;
 }

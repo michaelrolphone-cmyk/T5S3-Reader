@@ -4,6 +4,7 @@
 #include "RiscUsbControllerV1.h"
 #include "RiscUsbVbusV1.h"
 #include "StartupDiagnostic.h"
+#include "ClaimReleasePolicy.h"
 #include "EnumerationDiagnostic.h"
 #include "RoleSwitch.h"
 #include <usb/usb_host.h>
@@ -31,6 +32,7 @@ struct Device {
 struct Claim {
     uint64_t token, physical_device;
     uint8_t number, alternate;
+    bool interfaceReleased;
 };
 struct Event {
     uint8_t kind, address;
@@ -75,6 +77,21 @@ Claim *claim(uint64_t id) {
 bool claimed(uint64_t id) {
     for (const auto &c : claims) if (c.token && c.physical_device == id) return true;
     return false;
+}
+bool otherClaims(uint64_t deviceId, uint64_t except) {
+    for (const auto &c : claims)
+        if (c.token && c.token != except && c.physical_device == deviceId)
+            return true;
+    return false;
+}
+/* Detached unclaimed handles are still owned. A failed close keeps the slot
+ * occupied and is retried by later bounded event polls, never reused early. */
+void reapDetachedUnclaimed() {
+    if (!client || inFlight) return;
+    for (auto &d : devices) {
+        if (!d.handle || d.attached || claimed(d.token)) continue;
+        if (usb_host_device_close(client, d.handle) == ESP_OK) d = {};
+    }
 }
 bool enqueue(uint8_t kind, uint8_t address, usb_device_handle_t handle) {
     if (queueCount == kEvents) { fault = true; return false; }
@@ -202,6 +219,7 @@ int32_t next_event(void *, risc_usb_controller_event_v1 *out) {
     if (installed && !pump(0)) return -1;
     service_role();
     if (role.state() != UsbRoleSwitch::State::Host) return 0;
+    reapDetachedUnclaimed();
     if (!queueCount) return 0;
     Event e = queue[queueHead];
     queueHead = (queueHead + 1) % kEvents;
@@ -230,6 +248,7 @@ int32_t next_event(void *, risc_usb_controller_event_v1 *out) {
         if (!d.attached) { fault = true; return -1; }
         d.attached = false;
         *out = {2, d.token};
+        reapDetachedUnclaimed();
         return 1;
     }
     fault = true;
@@ -266,7 +285,7 @@ bool claim_interface(void *, uint64_t id, uint8_t iface, uint8_t alt,
         return false;
     uint64_t assigned = token();
     if (!assigned) { fault = true; return false; }
-    *slot = {assigned, id, iface, alt};
+    *slot = {assigned, id, iface, alt, false};
     *out = assigned;
     return true;
 }
@@ -283,8 +302,8 @@ bool release_interface(void *, uint64_t id) {
             d = &candidate; break;
         }
     if (!d) return false;
-    /* An idle USB-UART can have an unanswered bulk IN when its app exits.
-     * Drain ONLY the transfer belonging to this claimed interface. */
+    /* Do not strand an unanswered bulk IN when the serial app exits. Never
+     * drain another interface's transfer, nor an in-flight control request. */
     if (inFlight) {
         uint16_t mps = 0;
         if (!transfer || transfer->device_handle != d->handle ||
@@ -293,25 +312,19 @@ bool release_interface(void *, uint64_t id) {
                           transfer->bEndpointAddress, &mps) || !drain_bulk(false))
             return false;
     }
-    const esp_err_t released = usb_host_interface_release(client, d->handle, c->number);
-    if (released != ESP_OK) {
-        std::printf("USBCTRL cleanup-failed stage=interface-release rc=%d\n",
-                    static_cast<int>(released));
+    const bool detached = !d->attached;
+    const bool others = otherClaims(d->token, c->token);
+    /* The interface might have been released on an earlier attempt while
+     * device close failed. Keep this exact claim, retry only the unfinished
+     * stage, and never repeat an acknowledged interface release. */
+    if (!RiscUsbController::releaseClaim(
+            c->interfaceReleased, detached, others,
+            [&]() { return usb_host_interface_release(client, d->handle,
+                                                       c->number) == ESP_OK; },
+            [&]() { return usb_host_device_close(client, d->handle) == ESP_OK; }))
         return false;
-    }
+    if (detached && !others) *d = {};
     *c = {};
-    if (!d->attached && !claimed(d->token)) {
-        const esp_err_t closed = usb_host_device_close(client, d->handle);
-        if (closed != ESP_OK) {
-            /* Interface release has already succeeded. Returning failure
-             * here would make usb.host retain a claim that can NEVER be
-             * released again. Keep the device handle for verified quiesce. */
-            std::printf("USBCTRL stage=device-close-deferred rc=%d\n",
-                        static_cast<int>(closed));
-            return true;
-        }
-        *d = {};
-    }
     return true;
 }
 int32_t control(void *, uint64_t id, uint8_t type, uint8_t request,
@@ -350,7 +363,7 @@ int32_t bulk(void *, uint64_t id, uint8_t endpoint,
     Claim *c = claim(id);
     Device *d = c ? device(c->physical_device) : nullptr;
     uint16_t mps = 0;
-    if (!running || !d || !d->attached || !length ||
+    if (!running || !d || !d->attached || c->interfaceReleased || !length ||
         length > RISC_USB_CONFIG_LIMIT || !timeout ||
         (reading ? (!dst || !(endpoint & 0x80u)) : (!src || (endpoint & 0x80u))) ||
         !endpoint_mps(d, c->number, c->alternate, endpoint, &mps) ||
