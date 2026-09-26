@@ -587,18 +587,28 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
     const char* sourceRepo = sourceRepoValue.is<const char*>() ?
         sourceRepoValue.as<const char*>() : "";
     asset.size = entry["size"].as<uint64_t>();
+    const std::string expectedId = asset.name.size() > 4 ?
+        asset.name.substr(0, asset.name.size() - 4) : std::string();
+    const bool gameBoyProvider = !std::strcmp(id, "gameboy") &&
+        !std::strcmp(sourceRepo, kGameBoyRepository);
     if (!safeAssetName(asset.name) || asset.name.size() <= 4 ||
         asset.name.substr(asset.name.size() - 4) != ".elf" ||
         !RuntimePackages::validSha256Hex(digest) ||
-        asset.size < 52 || asset.size > 8u * 1024u * 1024u) return false;
-    const std::string expectedId = asset.name.substr(0, asset.name.size() - 4);
-    const bool gameBoyProvider = !std::strcmp(id, "gameboy") &&
-        !std::strcmp(sourceRepo, kGameBoyRepository);
+        asset.size < 52 || asset.size > 8u * 1024u * 1024u) {
+      if (gameBoyProvider) {
+        LOG_ERR("APPSTORE", "Ignoring malformed cached GameBoy record; external resolver will retry");
+        continue;
+      }
+      return false;
+    }
     if (sourceRepo[0] && !gameBoyProvider) return false;
     std::string expectedTag;
     std::string releaseRepository = "michaelrolphone-cmyk/T5S3-Reader";
     if (gameBoyProvider) {
-      if (!validThirdPartyReleaseTag(tag)) return false;
+      if (!validThirdPartyReleaseTag(tag)) {
+        LOG_ERR("APPSTORE", "Ignoring malformed cached GameBoy tag");
+        continue;
+      }
       expectedTag = tag;
       releaseRepository = kGameBoyRepository;
     } else {
@@ -607,7 +617,13 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
     const std::string expectedUrl = "https://github.com/" + releaseRepository +
         "/releases/download/" + tag + "/" + asset.name;
     if (std::strcmp(id, expectedId.c_str()) || std::strcmp(tag, expectedTag.c_str()) ||
-        std::strcmp(url, expectedUrl.c_str())) return false;
+        std::strcmp(url, expectedUrl.c_str())) {
+      if (gameBoyProvider) {
+        LOG_ERR("APPSTORE", "Ignoring malformed cached GameBoy identity/URL");
+        continue;
+      }
+      return false;
+    }
     asset.url = url;
     // Sidecars are fetched on demand after the cached catalog JSON is reclaimed.
     asset.manifestUrl = expectedUrl.substr(0, expectedUrl.size() - asset.name.size()) +
@@ -618,12 +634,24 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
     if (asset.manifestJson.empty() || asset.manifestJson.size() > kMaxManifestBytes ||
         !parseAppManifest(asset.manifestJson, asset.manifest, &parsedVersion, true) ||
         !asset.manifest.compatible || asset.manifest.file_name != asset.name ||
-        parsedVersion != version) return false;
+        parsedVersion != version) {
+      if (gameBoyProvider) {
+        LOG_ERR("APPSTORE", "Ignoring malformed cached GameBoy manifest");
+        continue;
+      }
+      return false;
+    }
     JsonDocument sidecar;
     if (deserializeJson(sidecar, asset.manifestJson) || !sidecar.is<JsonObjectConst>() ||
         !sidecar["sha256"].is<const char*>() || !sidecar["size_bytes"].is<uint64_t>() ||
         sidecar["size_bytes"].as<uint64_t>() != asset.size ||
-        std::strcmp(sidecar["sha256"].as<const char*>(), digest)) return false;
+        std::strcmp(sidecar["sha256"].as<const char*>(), digest)) {
+      if (gameBoyProvider) {
+        LOG_ERR("APPSTORE", "Ignoring cached GameBoy digest/size mismatch");
+        continue;
+      }
+      return false;
+    }
     asset.version = version;
     asset.manifestValid = true;
     if (std::any_of(indexed.begin(), indexed.end(), [&](const CatalogAsset& existing) {
@@ -641,7 +669,6 @@ bool refreshExternalGameBoy(std::vector<CatalogAsset>& catalog) {
   auto currentEntry = std::find_if(catalog.begin(), catalog.end(), [](const CatalogAsset& asset) {
     return asset.name == "gameboy.elf";
   });
-  if (currentEntry == catalog.end()) return true;  // Provider not configured in the bootstrap index.
 
   std::string releaseJson;
   esp_task_wdt_reset();
@@ -744,7 +771,10 @@ bool refreshExternalGameBoy(std::vector<CatalogAsset>& catalog) {
   resolved.size = elfSize;
   resolved.manifest = manifest;
   resolved.manifestValid = true;
-  *currentEntry = std::move(resolved);
+  if (currentEntry == catalog.end())
+    catalog.push_back(std::move(resolved));
+  else
+    *currentEntry = std::move(resolved);
   sortCatalog(catalog);
   LOG_INF("APPSTORE", "Resolved GameBoy v%s directly from external release", version.c_str());
   return true;
