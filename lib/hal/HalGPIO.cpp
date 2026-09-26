@@ -49,7 +49,15 @@ void HalGPIO::begin() {
 
 void HalGPIO::startTouchCapture() {
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
-  if (touchAsyncReady || !touch.isAvailable()) return;
+  if (touchAsyncReady) return;
+
+  // Display initialization reinitializes the shared I2C bus. Re-probe/reset
+  // GT911 here so the worker starts from a known-good controller state rather
+  // than relying on the early-boot probe remaining valid.
+  if (!touch.begin()) {
+    LOG_ERR("HW", "Touch controller re-probe failed after display init");
+    return;
+  }
 
   if (!touchTapQueue) touchTapQueue = xQueueCreate(TOUCH_TAP_QUEUE_DEPTH, sizeof(TouchPoint));
   if (!touchSwipeQueue) touchSwipeQueue = xQueueCreate(TOUCH_SWIPE_QUEUE_DEPTH, sizeof(TouchSwipeEvent));
@@ -92,7 +100,10 @@ void IRAM_ATTR HalGPIO::touchInterruptThunk(void* context) {
 void HalGPIO::touchTaskTrampoline(void* context) {
   auto* self = static_cast<HalGPIO*>(context);
   for (;;) {
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    // Interrupts provide immediate wakeups when the panel asserts INT. The
+    // bounded timeout is a hardware-safe fallback for GT911 configurations
+    // whose interrupt mode does not produce an ESP32 edge after boot.
+    (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(20));
     self->serviceTouchController();
   }
 }
