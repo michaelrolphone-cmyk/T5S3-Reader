@@ -609,22 +609,26 @@
         "display_name": "Text Editor",
         "file_name": "text_editor.elf",
         "icon": "solid:f15c",
-        "min_firmware_version": "1.2.55",
+        "min_firmware_version": "1.2.85",
         "optional": [
           {
             "api": ">=1",
             "capability": "usb.hid.keyboard"
           }
         ],
-        "sha256": "e522d8f9333ea0c931d7b6bab38ce27b9cb6da573d42e0581b0bcdd77b3aab3b",
-        "size_bytes": 19808,
-        "version": "0.1.4"
+        "sha256": "663df91ced310c8a867bb24aac1027997fe174001f34c01e12aa1749da6abb00",
+        "size_bytes": 20204,
+        "supported_file_types": [
+          ".txt",
+          ".md"
+        ],
+        "version": "0.2.0"
       },
-      "sha256": "e522d8f9333ea0c931d7b6bab38ce27b9cb6da573d42e0581b0bcdd77b3aab3b",
-      "size": 19808,
-      "tag": "app-text_editor-v0.1.4",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-text_editor-v0.1.4/text_editor.elf",
-      "version": "0.1.4"
+      "sha256": "663df91ced310c8a867bb24aac1027997fe174001f34c01e12aa1749da6abb00",
+      "size": 20204,
+      "tag": "app-text_editor-v0.2.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-text_editor-v0.2.0/text_editor.elf",
+      "version": "0.2.0"
     },
     {
       "asset": "time_zone.elf",
