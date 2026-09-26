@@ -124,7 +124,7 @@ class ReleaseIndexTests(unittest.TestCase):
     def test_firmware_incompatible_app_does_not_invalidate_full_catalog(self):
         host = (Path(__file__).resolve().parents[1] / "src/native/NativeAppHost.cpp").read_text()
         start = host.index("bool loadIndependentAppIndex(")
-        end = host.index("\nbool refreshExternalGameBoy(", start)
+        end = host.index("\nbool loadAuthoritativeAppCatalog(", start)
         loader = host[start:end]
         self.assertIn("parseAppManifest(asset.manifestJson, asset.manifest, &parsedVersion, true)", loader)
         self.assertNotIn("!asset.manifest.compatible", loader)
