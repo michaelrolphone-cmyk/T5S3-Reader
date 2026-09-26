@@ -21,7 +21,7 @@
 #define PATH_CAP 384u
 #define STATUS_CAP 160u
 #define DETAIL_CAP 8192u
-#define HTML_CAP (128u * 1024u)
+#define HTML_CAP (48u * 1024u)
 #define MAX_DOWNLOAD_BYTES (32u * 1024u * 1024u)
 #define MAX_ROM_BYTES (16u * 1024u * 1024u)
 #define COOKIE_SEARCH 0x524f4d5345415243ULL
@@ -335,18 +335,35 @@ static bool vimm_allowed_url(const char *url){
   return true;
 }
 static bool fetch_vimm_document(const char *url){
-  if(!vimm_allowed_url(url))return false;
-  html_size=0; t5_stream_t h=0; if(streams->open_http(url,&h)!=T5_STREAM_OK)return false;
+  if(!vimm_allowed_url(url)){copy_text(status_text,sizeof(status_text),"Blocked unsupported Vimm URL");return false;}
+  html_size=0; t5_stream_t h=0;
+  if(streams->open_http(url,&h)!=T5_STREAM_OK){
+    copy_text(status_text,sizeof(status_text),"Could not open Vimm HTTPS stream");
+    return false;
+  }
   uint32_t last_progress=app->millis(),started=last_progress;
   while(html_size<HTML_CAP){
     uint32_t got=0; int32_t r=streams->read(h,html+html_size,(uint32_t)(HTML_CAP-html_size),&got);
     if(got){html_size+=got;last_progress=app->millis();}
-    if(r==T5_STREAM_EOF)break; if(r<0&&r!=T5_STREAM_AGAIN){streams->close(h);return false;}
-    t5_ui_event_t ev={0}; if(!ui->poll_event(&ev,5)||ev.type==T5_UI_EVENT_EXIT||ev.type==T5_UI_EVENT_BACK){streams->close(h);return false;}
-    uint32_t now=app->millis(); if(now-last_progress>30000u||now-started>60000u){streams->close(h);return false;}
+    if(r==T5_STREAM_EOF)break;
+    if(r<0&&r!=T5_STREAM_AGAIN){
+      streams->close(h);
+      copy_text(status_text,sizeof(status_text),"Vimm HTTPS read failed");
+      return false;
+    }
+    t5_ui_event_t ev={0};
+    if(!ui->poll_event(&ev,5)){streams->close(h);copy_text(status_text,sizeof(status_text),"UI poll failed during Vimm fetch");return false;}
+    if(ev.type==T5_UI_EVENT_EXIT||ev.type==T5_UI_EVENT_BACK){streams->close(h);copy_text(status_text,sizeof(status_text),"Vimm fetch cancelled");return false;}
+    uint32_t now=app->millis();
+    if(now-last_progress>30000u||now-started>60000u){
+      streams->close(h);
+      copy_text(status_text,sizeof(status_text),"Vimm HTTPS fetch timed out");
+      return false;
+    }
   }
   streams->close(h); html[html_size]=0;
-  return html_size>0;
+  if(!html_size){copy_text(status_text,sizeof(status_text),"Vimm returned an empty response");return false;}
+  return true;
 }
 static bool decode_anchor_text(const char *start,const char *end,char *out,size_t cap){
   if(!start||!end||start>=end||!out||cap<2u)return false;
