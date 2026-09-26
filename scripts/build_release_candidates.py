@@ -30,6 +30,7 @@ DRIVER_BUILDERS = {
         ("scripts/audit_usb_controller_elf.py", "--strict"),
     ],
     "usb-host-v2": [("scripts/build_usb_host_v2.py",)],
+    "usb-mass-storage": [("scripts/build_usb_mass_storage.py",)],
     "usb-cdc-acm-v2": [("scripts/build_usb_cdc_v2.py",)],
     "usb-cp210x-v2": [("scripts/build_usb_cp210x_v2.py",)],
     "usb-ch34x-v2": [("scripts/build_usb_ch34x_v2.py",)],
