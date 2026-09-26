@@ -30,6 +30,15 @@ typedef struct {
 } t5_package_preview_t;
 
 typedef struct {
+    uint8_t kind;
+    uint8_t valid_installation;
+    uint8_t reserved[2];
+    char id[T5_PACKAGE_ID_MAX];
+    char version[T5_PACKAGE_VERSION_MAX];
+    char artifact[T5_PACKAGE_ARTIFACT_MAX];
+} t5_installed_package_t;
+
+typedef struct {
     t5_package_preview_t package;
     char archive[160];
 } t5_package_catalog_row_t;
@@ -62,6 +71,13 @@ typedef struct {
     uint32_t (*online_count)(void);
     bool (*online_get)(uint32_t index, t5_package_catalog_row_t *out);
     bool (*online_install)(uint32_t index);
+
+    // Append-only U1 ABI tail. Keep archive/online slots above at their
+    // deployed offsets; installed inventory and replacement follow them.
+    bool (*installed_refresh)(void);
+    uint32_t (*installed_count)(void);
+    bool (*installed_get)(uint32_t index, t5_installed_package_t *out);
+    bool (*replace)(const char *folder);
 } t5_package_manager_api_v1;
 
 const t5_package_manager_api_v1 *t5_package_manager_get_api(uint32_t version);
