@@ -29,7 +29,6 @@ def build(cc=None):
         ],
         "provides": [{"capability": "input.touch.raw", "api": 1}],
         "status": "experimental-unpublished",
-        "board": "t5s3-pro",
     }
     if any(manifest.get(key) != value for key, value in required.items()):
         raise ValueError("Invalid GT911 touch provider manifest")
