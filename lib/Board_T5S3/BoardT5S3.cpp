@@ -283,6 +283,10 @@ void begin() {
 
   prepareSdBus();
   disableGpsLora();
+  // The expander button is a fixed input. Configure it once at board startup;
+  // rewriting PCA9535 direction on every UI frame adds two avoidable I2C
+  // transactions to the input hot path.
+  (void)setPca9535PinMode(PCA9535_IO12_BUTTON, INPUT);
 }
 
 void deinitForSleep() {
@@ -430,10 +434,7 @@ bool readPca9535Pin(uint8_t pin, bool* high) {
 
 bool readButton() {
   bool high = true;
-  setPca9535PinMode(PCA9535_IO12_BUTTON, INPUT);
-  if (!readPca9535Pin(PCA9535_IO12_BUTTON, &high)) {
-    return false;
-  }
+  if (!readPca9535Pin(PCA9535_IO12_BUTTON, &high)) return false;
   return !high;
 }
 
