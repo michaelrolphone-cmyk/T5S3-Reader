@@ -13,7 +13,7 @@ static const t5_network_api_v1 *network;
 static const t5_system_ui_api_v1 *system_ui;
 static const t5_ui_api_v1 *ui;
 
-static void render_result(bool connected, bool cancelled) {
+static void render_result(bool connected, bool cancelled, int32_t selected) {
     const t5_ui_list_row_t rows[] = {
         {
             .title = "Wi-Fi status",
@@ -37,7 +37,7 @@ static void render_result(bool connected, bool cancelled) {
         .previous_label = "Up",
         .next_label = "Down",
     };
-    ui->render_list(&chrome, rows, 2, 0);
+    ui->render_list(&chrome, rows, 2, selected);
 }
 
 void app_main(void) {
@@ -58,28 +58,16 @@ void app_main(void) {
     }
 
     int32_t selected = 0;
-    render_result(connected, cancelled);
+    render_result(connected, cancelled, selected);
     for (;;) {
         t5_app_input_t input;
         if (!app->poll(&input, 50) || input.exit_requested || (input.buttons & T5_APP_BUTTON_BACK)) break;
         if ((input.buttons & T5_APP_BUTTON_UP) || (input.buttons & T5_APP_BUTTON_LEFT)) {
             selected = ui->previous_index(selected, 2);
-            if (selected != 0) {
-                const t5_ui_list_row_t rows[] = {
-                    {.title="Wi-Fi status", .subtitle=cancelled ? "Selection cancelled" : "Network selection complete", .value=connected ? "Connected" : "Not connected", .flags=connected ? T5_UI_LIST_HIGHLIGHT_VALUE : 0},
-                    {.title="Choose another network", .subtitle="Open the firmware Wi-Fi selector", .value="", .flags=0},
-                };
-                const t5_ui_chrome_t chrome = {.title="Wi-Fi Networks", .subtitle="Manage the active wireless connection", .status="", .back_label="Back", .confirm_label="Select", .previous_label="Up", .next_label="Down"};
-                ui->render_list(&chrome, rows, 2, selected);
-            }
+            render_result(connected, cancelled, selected);
         } else if ((input.buttons & T5_APP_BUTTON_DOWN) || (input.buttons & T5_APP_BUTTON_RIGHT)) {
             selected = ui->next_index(selected, 2);
-            const t5_ui_list_row_t rows[] = {
-                {.title="Wi-Fi status", .subtitle=cancelled ? "Selection cancelled" : "Network selection complete", .value=connected ? "Connected" : "Not connected", .flags=connected ? T5_UI_LIST_HIGHLIGHT_VALUE : 0},
-                {.title="Choose another network", .subtitle="Open the firmware Wi-Fi selector", .value="", .flags=0},
-            };
-            const t5_ui_chrome_t chrome = {.title="Wi-Fi Networks", .subtitle="Manage the active wireless connection", .status="", .back_label="Back", .confirm_label="Select", .previous_label="Up", .next_label="Down"};
-            ui->render_list(&chrome, rows, 2, selected);
+            render_result(connected, cancelled, selected);
         } else if (input.tapped) {
             const int32_t hit = ui->hit_test(input.touch_x, input.touch_y);
             if (hit == 1) {
