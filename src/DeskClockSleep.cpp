@@ -214,6 +214,8 @@ void DeskClockSleep::run(GfxRenderer& gfx, HalGPIO& input) {
     input.update();
   }
 
+  clockUiWakeMagic = 0;
+  userWakePending = false;
   clockState = {};
   clockState.magic = kClockMagic;
   clockState.rtcReferenceEpoch = SETTINGS.rtcReferenceEpoch;
