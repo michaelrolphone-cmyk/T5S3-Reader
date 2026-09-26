@@ -138,6 +138,9 @@ jobs:
       - name: Verify idle clock and USB input-power telemetry
         run: bash test/run_idle_power_test.sh
 
+      - name: Verify SD file lifetime synchronization
+        run: python3 test/hal/storage_file_lifetime_test.py
+
       - name: Run streaming JSON parser tests
         run: bash test/run_streaming_json_parser_test.sh
 
