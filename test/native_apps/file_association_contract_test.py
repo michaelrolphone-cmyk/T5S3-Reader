@@ -21,6 +21,8 @@ assert image_manifest["supported_file_types"] == [".jpg", ".jpeg", ".png", ".bmp
 assert editor_manifest["supported_file_types"] == [".txt", ".md"]
 
 assert '/System/Registry/FileAssociations.json' in registry
+assert '/System/State/FileBrowser/Session.txt' in browser
+assert '/sd/.crosspoint/file_browser.session' not in browser
 assert '"riscrte-reader"' in registry
 for extension in (".epub", ".xtc", ".xtch", ".txt", ".md"):
     assert f'"{extension}"' in registry
