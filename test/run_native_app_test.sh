@@ -41,6 +41,10 @@ cc -std=c11 -Wall -Wextra -Werror \
   -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
   "$repo_dir/test/native_apps/usb_debug_test.c" -o "$binary"
 (cd "$repo_dir" && "$binary")
+cc -std=c11 -Wall -Wextra -Werror \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/rom_manager_vimm_parser_test.c" -o "$binary"
+(cd "$repo_dir" && "$binary")
 echo 'Native app launcher tests passed'
 
 bash "$repo_dir/test/run_panic_capture_test.sh"
