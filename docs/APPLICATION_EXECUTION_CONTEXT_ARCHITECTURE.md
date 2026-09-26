@@ -135,6 +135,44 @@ For new application development, trusted system pickers and mediated resource ac
 
 If a picker is missing, implement the reusable picker/intent/platform API first when feasible.
 
+### 3.3 Required-application workflow continuation
+
+A firmware-owned workflow that delegates a step to an installable application
+MUST NOT strand the user at a dead-end "app not installed" screen.
+
+The canonical firmware pattern is:
+
+```text
+workflow activity
+    |
+    | resolve verified installed app
+    v
+missing? -> RequiredAppActivity
+               |
+               | Install
+               v
+        authoritative app catalog
+               |
+               | verified package publication
+               v
+        return success to parent
+               |
+               v
+repeat the exact workflow launch step
+```
+
+The parent workflow remains on the Activity stack while the required-app prompt
+and installation run. Installation targets the exact requested artifact rather
+than opening the general App Store. After publication, RiscRTE MUST resolve the
+installed application through the normal verified inventory before reporting
+success. The parent then repeats the same launch step automatically, preserving
+the user's workflow instead of requiring navigation back through Home/Apps.
+
+Cancel returns control to the parent without granting or fabricating an
+installation result. Network/catalog/install failures remain on the required-app
+screen with an explicit retry path. Firmware workflows SHOULD use the reusable
+`RequiredAppActivity` rather than implementing private missing-app prompts.
+
 ## 4. Private application storage — HIGH PRIORITY
 
 Each installed application SHOULD have a runtime-defined private persistent storage namespace keyed by stable package identity.
