@@ -1,132 +1,67 @@
 #!/usr/bin/env python3
-"""Contracts for interrupt-backed GT911 capture independent of the UI loop."""
+"""Contracts for provider-owned touch and firmware consumer migration."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 HAL_H = (ROOT / "lib/hal/HalGPIO.h").read_text(encoding="utf-8")
 HAL_CPP = (ROOT / "lib/hal/HalGPIO.cpp").read_text(encoding="utf-8")
+MAPPED = (ROOT / "src/MappedInputManager.cpp").read_text(encoding="utf-8")
 MAIN = (ROOT / "src/main.cpp").read_text(encoding="utf-8")
-T5_H = (ROOT / "lib/Board_T5S3/BoardT5S3.h").read_text(encoding="utf-8")
-T5_CPP = (ROOT / "lib/Board_T5S3/BoardT5S3.cpp").read_text(encoding="utf-8")
-EPD_H = (ROOT / "lib/Board_EPD47/BoardEPD47.h").read_text(encoding="utf-8")
-EPD_CPP = (ROOT / "lib/Board_EPD47/BoardEPD47.cpp").read_text(encoding="utf-8")
-THEME = (ROOT / "src/components/themes/BaseTheme.cpp").read_text(encoding="utf-8")
-T5_BOARD = (ROOT / "lib/Board_T5S3/BoardT5S3.cpp").read_text(encoding="utf-8")
 TAKEOVER = (ROOT / "src/native/NativeHardwareTakeover.cpp").read_text(encoding="utf-8")
+TOUCH = (ROOT / "src/native/NativeTouchInput.cpp").read_text(encoding="utf-8")
+TOUCH_H = (ROOT / "src/native/NativeTouchInput.h").read_text(encoding="utf-8")
+PROVIDER = (ROOT / "Drivers/gt911_touch/driver.c").read_text(encoding="utf-8")
 
-assert "attachInterruptArg(BoardPins::TouchInterrupt" in HAL_CPP
-assert "touchInterruptThunk, this, CHANGE" in HAL_CPP
-assert 'xTaskCreate(touchTaskTrampoline, "touch-input"' in HAL_CPP
+# HalGPIO must no longer own, probe, poll, acknowledge, or spawn a worker for
+# GT911. It retains only physical buttons, USB state and deep-sleep wake pins.
+for forbidden in (
+    "Board::GT911Touch", "touch.begin()", "touch.readEvent",
+    "startTouchCapture", "suspendTouchCapture", "resumeTouchCapture",
+    "touchTaskTrampoline", "touchInterruptThunk", "touchTapQueue",
+):
+    assert forbidden not in HAL_H
+    assert forbidden not in HAL_CPP
 
-# Early boot only probes the controller. The worker/ISR are armed after
-# SD/settings/RTC/display initialization, so boot-critical setup stays
-# single-threaded.
-begin_start = HAL_CPP.index("void HalGPIO::begin()")
-capture_start = HAL_CPP.index("void HalGPIO::startTouchCapture()")
-begin = HAL_CPP[begin_start:capture_start]
-capture = HAL_CPP[capture_start:HAL_CPP.index("void IRAM_ATTR HalGPIO::touchInterruptThunk")]
-assert "xTaskCreate" not in begin
-assert "attachInterruptArg" not in begin
-assert "xTaskCreate" in capture
-assert "attachInterruptArg" in capture
-display_setup = MAIN.index("setupDisplayAndFonts();")
-touch_start = MAIN.index("gpio.startTouchCapture();")
-assert display_setup < touch_start
-assert "vTaskNotifyGiveFromISR" in HAL_CPP
-assert "pdMS_TO_TICKS(20)" in HAL_CPP
-assert "touch.begin()" in HAL_CPP[HAL_CPP.index("void HalGPIO::startTouchCapture()"):
-                                  HAL_CPP.index("void IRAM_ATTR HalGPIO::touchInterruptThunk")]
-assert "touch.readEvent(&point, &homeButtonPressed, &contactActive)" in HAL_CPP
+# The installed provider is the only production component that knows GT911
+# status/data registers and clears READY.
+assert "GT911_STATUS_REG" in PROVIDER
+assert "GT911_FIRST_POINT_REG" in PROVIDER
+assert "write_reg8(GT911_STATUS_REG, 0u)" in PROVIDER
 
-# Hardware-takeover apps must never race the firmware worker for the GT911
-# READY register. Pause is cooperative: detach IRQ, wait for in-flight I2C to
-# drain, then clear gesture queues. Resume re-probes GT911 only after display
-# ownership and the shared board bus have returned to firmware.
-assert "bool suspendTouchCapture();" in HAL_H
-assert "bool resumeTouchCapture();" in HAL_H
-suspend_start = HAL_CPP.index("bool HalGPIO::suspendTouchCapture()")
-resume_start = HAL_CPP.index("bool HalGPIO::resumeTouchCapture()")
-isr_start = HAL_CPP.index("void IRAM_ATTR HalGPIO::touchInterruptThunk")
-suspend = HAL_CPP[suspend_start:resume_start]
-resume = HAL_CPP[resume_start:isr_start]
-assert "touchCapturePaused = true" in suspend
-assert "detachInterrupt" in suspend
-assert "touchWorkerActive" in suspend
-assert "pdMS_TO_TICKS(100)" in suspend
-assert "xQueueReset(touchTapQueue)" in suspend
-assert "touch.begin()" in resume
-assert "attachInterruptArg" in resume
+# Firmware acquires input.touch.raw and always has snapshot recovery when a
+# bounded event cursor gaps or polling fails.
+assert 'acquireCapability("input.touch.raw", RISC_TOUCH_API_V1' in TOUCH
+assert "candidateApi->subscribe" in TOUCH
+assert "candidateApi->poll" in TOUCH
+assert "candidateApi->next" in TOUCH
+assert "candidateApi->snapshot" in TOUCH
+assert "if (result < 0)" in TOUCH
+assert "resync();" in TOUCH
+assert "gestureEligible = false;" in TOUCH
+assert "nativeTouchGetTap" in TOUCH_H
+assert "nativeTouchGetHold" in TOUCH_H
+assert "nativeTouchGetSwipe" in TOUCH_H
 
-task_start = HAL_CPP.index("void HalGPIO::touchTaskTrampoline")
-task_end = HAL_CPP.index("void HalGPIO::serviceTouchController", task_start)
-task_loop = HAL_CPP[task_start:task_end]
-assert "touchCapturePaused" in task_loop
-assert "touchWorkerActive = true" in task_loop
-assert "touchWorkerActive = false" in task_loop
+# MappedInputManager now derives UI gestures from the provider consumer rather
+# than HalGPIO. Startup activates it only after SD/provider storage is ready.
+assert "nativeTouchTick();" in MAPPED
+assert "nativeTouchGetTap" in MAPPED
+assert "nativeTouchGetHold" in MAPPED
+assert "nativeTouchGetSwipe" in MAPPED
+assert "nativeTouchTakeHomePress" in MAPPED
+for old in ("gpio.getTouchTap", "gpio.getTouchHold", "gpio.getTouchSwipe",
+            "gpio.wasTouchHomeButtonPressed"):
+    assert old not in MAPPED
+assert "(void)nativeTouchResume();" in MAIN
+assert "gpio.startTouchCapture()" not in MAIN
+assert "gpio.isTouchAvailable()" not in MAIN
 
-take_begin = TAKEOVER.index("native_hardware_takeover_begin")
-take_end = TAKEOVER.index("native_hardware_takeover_end")
-begin_takeover = TAKEOVER[take_begin:take_end]
-end_takeover = TAKEOVER[take_end:]
-assert begin_takeover.index("gpio.suspendTouchCapture()") < begin_takeover.index(
-    "display.suspendForExternalOwner()")
-assert end_takeover.index("display.resumeFromExternalOwner()") < end_takeover.index(
-    "gpio.resumeTouchCapture()")
-assert "xQueueSend(touchTapQueue" in HAL_CPP
-assert "xQueueReceive(touchTapQueue" in HAL_CPP
-assert "xQueueSend(touchSwipeQueue" in HAL_CPP
-assert "xQueueReceive(touchSwipeQueue" in HAL_CPP
-assert "xQueueSend(touchHomeQueue" in HAL_CPP
-assert "xQueueReceive(touchHomeQueue" in HAL_CPP
+# Display takeover releases only the firmware consumer lease. This leaves no
+# active provider for legacy direct-GT911 apps, while a migrated app can acquire
+# input.touch.raw itself after takeover begins.
+assert "nativeTouchSuspend()" in TAKEOVER
+assert "nativeTouchResume()" in TAKEOVER
+assert "gpio.suspendTouchCapture()" not in TAKEOVER
+assert "gpio.resumeTouchCapture()" not in TAKEOVER
 
-# The UI loop must not poll or clear GT911 state. It only consumes queued events.
-get_state = HAL_CPP[HAL_CPP.index("uint8_t HalGPIO::getState()"):
-                    HAL_CPP.index("void HalGPIO::update()")]
-update = HAL_CPP[HAL_CPP.index("void HalGPIO::update()"):
-                 HAL_CPP.index("bool HalGPIO::wasUsbStateChanged")]
-assert "touch." not in get_state
-assert "touch." not in update
-for stale in ("touchTapEvent", "touchSwipeEvent", "touchHomeButtonEvent",
-              "TOUCH_RELEASE_GRACE_MS", "readTouchState"):
-    assert stale not in HAL_CPP
-
-# Both board drivers must expose an acknowledged READY event even when contact
-# count is zero, so release is captured by the interrupt worker rather than
-# inferred later by UI-loop polling.
-for header in (T5_H, EPD_H):
-    assert "bool readEvent(TouchPoint* point, bool* homeButtonPressed, bool* contactActive);" in header
-for source in (T5_CPP, EPD_CPP):
-    start = source.index("bool GT911Touch::readEvent(")
-    end = source.index("bool GT911Touch::readPoint(", start)
-    event = source[start:end]
-    assert "GT911_STATUS_READY" in event
-    assert "touchCount == 0" in event or "GT911_TOUCH_COUNT_MASK) == 0" in event
-    assert "writeReg8(GT911_STATUS_REG, 0);" in event
-    assert "return true;" in event
-
-# Preserve existing gesture/hit-target semantics; this change is capture
-# architecture, not a swipe threshold or shared-nav geometry tweak.
-assert "constexpr uint16_t TOUCH_SWIPE_THRESHOLD = 25;" in HAL_CPP
-assert "constexpr int buttonHeight = BaseMetrics::values.buttonHintsHeight;" in THEME
-assert "touchPadTop" not in THEME
-
-
-
-# Keep slow board telemetry out of the per-frame input hot path.
-assert "static constexpr unsigned long USB_STATE_POLL_MS = 250;" in HAL_H
-update_start = HAL_CPP.index("void HalGPIO::update()")
-update_end = HAL_CPP.index("bool HalGPIO::wasUsbStateChanged", update_start)
-update = HAL_CPP[update_start:update_end]
-assert "currentTime - lastUsbPollTime" in update
-assert update.count("isUsbConnected()") == 1
-
-begin_start = T5_BOARD.index("void begin()")
-begin_end = T5_BOARD.index("\nvoid deinitForSleep()", begin_start)
-board_begin = T5_BOARD[begin_start:begin_end]
-button_start = T5_BOARD.index("bool readButton()")
-button_end = T5_BOARD.index("\nbool readBQ27220Reg16", button_start)
-button_read = T5_BOARD[button_start:button_end]
-assert "setPca9535PinMode(PCA9535_IO12_BUTTON, INPUT)" in board_begin
-assert "setPca9535PinMode" not in button_read
-
-print("Interrupt-backed touch capture contracts passed")
+print("Provider-owned firmware touch migration contracts passed")
