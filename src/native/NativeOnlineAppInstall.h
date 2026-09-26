@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AppPackageInstaller.h"
+#include "FileAssociationRegistry.h"
 #include "NativeOnlinePackageRecovery.h"
 #include <Arduino.h>
 #include <T5AppApi.h>
@@ -149,6 +150,9 @@ inline bool installApplication(const char* artifact, const char* version,
   (void)Storage.remove(elfPath.c_str());
   (void)Storage.remove(jsonPath.c_str());
   (void)Storage.rmdir(root.c_str());
+  // Publication is already committed; rebuild the derived association index
+  // immediately so installs and updates change File Browser resolution now.
+  (void)NativeFileAssociations::rebuild();
   return true;
 }
 } // namespace RuntimeOnlinePackages

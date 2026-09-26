@@ -1,4 +1,5 @@
 #include "T5AppApi.h"
+#include "T5FileOpenApi.h"
 #include "T5ImageApi.h"
 
 #include <stdbool.h>
@@ -10,6 +11,7 @@
 
 static const t5_app_api_v1 *app;
 static const t5_image_api_v1 *image;
+static const t5_file_open_api_v1 *file_open;
 
 static const char *format_name(uint32_t format) {
     switch (format) {
@@ -40,10 +42,13 @@ void app_main(void) {
 
     app = t5_app_get_api(T5_APP_ABI_VERSION);
     image = t5_image_get_api(T5_IMAGE_API_VERSION);
-    if (!app || !image || image->struct_size < sizeof(*image) || !image->source_path_get ||
-        !image->probe || !image->render_fit) return;
+    file_open = t5_file_open_get_api(T5_FILE_OPEN_API_VERSION);
+    if (!app || !image || image->struct_size < sizeof(*image) ||
+        !image->probe || !image->render_fit ||
+        !file_open || file_open->struct_size < sizeof(*file_open) ||
+        !file_open->source_path_get) return;
 
-    if (!image->source_path_get(path, sizeof(path))) {
+    if (!file_open->source_path_get(path, sizeof(path))) {
         draw_message("Image Viewer", "Open a JPG, PNG, or BMP from File Browser.");
     } else if (!image->probe(path, &info)) {
         draw_message("Image Viewer", "Unable to read this image.");

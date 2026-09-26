@@ -98,6 +98,18 @@ static t5_provider_capability_api_v1 fake_providers = {
 };
 const t5_app_api_v1 *t5_app_get_api(uint32_t v) { (void)v;return &fake_app; }
 const t5_storage_api_v1 *t5_storage_get_api(uint32_t v) { (void)v;return &fake_storage; }
+static bool no_handoff(char *out, size_t capacity) {
+    if (out && capacity) out[0] = 0;
+    return false;
+}
+static const t5_file_open_api_v1 fake_file_open = {
+    .api_version = T5_FILE_OPEN_API_VERSION,
+    .struct_size = sizeof(t5_file_open_api_v1),
+    .source_path_get = no_handoff,
+};
+const t5_file_open_api_v1 *t5_file_open_get_api(uint32_t v) {
+    return v == T5_FILE_OPEN_API_VERSION ? &fake_file_open : NULL;
+}
 const t5_provider_capability_api_v1 *t5_provider_capability_get_api(uint32_t v) { (void)v;return &fake_providers; }
 int main(void) {
     for (unsigned landscape = 0; landscape < 2; ++landscape) {

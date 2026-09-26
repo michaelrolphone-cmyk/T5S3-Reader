@@ -14,6 +14,22 @@ class ImportsTest(unittest.TestCase):
             validate_imports(imports, {'printf'})
         self.assertEqual(validate_imports(imports, firmware_exports(repo)), {'snprintf'})
 
+    def test_baseline_libc_exports(self):
+        expected = {
+            'memset', 'memcpy', 'memmove', 'memcmp', 'memchr',
+            'strlen', 'strcpy', 'strncpy', 'strcmp', 'strncmp',
+            'strchr', 'strrchr', 'strstr', 'snprintf',
+        }
+        exports = firmware_exports(repo)
+        self.assertFalse(expected - exports,
+                         'Missing baseline native-app libc exports: ' +
+                         ', '.join(sorted(expected - exports)))
+        listing = '\n'.join(
+            f'{i}: 00000000 0 NOTYPE GLOBAL DEFAULT UND {name}'
+            for i, name in enumerate(sorted(expected), 1)
+        )
+        self.assertEqual(validate_imports(listing, exports), expected)
+
     def test_stream_api_export(self):
         imports = '1: 00000000 0 NOTYPE GLOBAL DEFAULT UND t5_stream_get_api'
         self.assertEqual(validate_imports(imports, firmware_exports(repo)), {'t5_stream_get_api'})
@@ -21,6 +37,10 @@ class ImportsTest(unittest.TestCase):
     def test_serial_port_api_export(self):
         imports = '1: 00000000 0 NOTYPE GLOBAL DEFAULT UND t5_serial_port_get_api'
         self.assertEqual(validate_imports(imports, firmware_exports(repo)), {'t5_serial_port_get_api'})
+
+    def test_file_open_api_export(self):
+        imports = '1: 00000000 0 NOTYPE GLOBAL DEFAULT UND t5_file_open_get_api'
+        self.assertEqual(validate_imports(imports, firmware_exports(repo)), {'t5_file_open_get_api'})
 
     def test_device_observation_api_export(self):
         imports = '1: 00000000 0 NOTYPE GLOBAL DEFAULT UND t5_device_get_api'

@@ -39,6 +39,7 @@ done
 python3 "$repo_dir/test/resources/package_driver_bridge_source_test.py"
 python3 "$repo_dir/test/native_apps/native_ui_refresh_contract_test.py"
 python3 "$repo_dir/test/native_apps/home_shortcut_launch_contract_test.py"
+python3 "$repo_dir/test/native_apps/file_association_contract_test.py"
 # The old P-256/provenance/NVS experiment is not a normal build/merge gate.
 # Run test/run_signed_package_experiment.sh explicitly only when requested.
 for pair in \
@@ -80,7 +81,7 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/Apps/serial_monitor.c" \
   "$repo_dir/test/native_apps/serial_monitor_baud_test.c" -o "$binary"
 "$binary"
-cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" "$repo_dir/test/native_apps/image_api_stub.c" -o "$binary"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" -o "$binary"
 "$binary"
 # Exercise actual Driver Manager and Package Manager app code, including
 # cancellation, offline recovery and independently confirmed uninstall.

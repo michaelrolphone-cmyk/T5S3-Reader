@@ -145,7 +145,7 @@ Applications SHOULD address this through a logical namespace/API such as:
 app://data/...
 ```
 
-The physical backing path is an implementation detail and MUST NOT be treated as part of the application ABI. A current implementation may map package-private storage under SD/internal storage, for example an `AppData/<package-id>/` hierarchy, while preserving the logical API.
+The physical backing path is an implementation detail and MUST NOT be treated as part of the application ABI. When RiscRTE backs private/runtime application state on the system volume, the physical organization MUST follow [RiscRTE System Storage Layout](SYSTEM_STORAGE_LAYOUT.md), currently reserving `/System/State/Applications/<stable-app-id>/` for application-owned runtime state. Applications still address private storage through a logical/scoped API rather than depending on that physical path.
 
 ### 4.1 Storage classes
 
@@ -164,6 +164,7 @@ Private application data is available to its owning package without granting arb
 ### 4.2 Storage invariants
 
 - Package identity, not display name or ELF filename alone, determines the private namespace.
+- Applications MUST NOT invent arbitrary direct children of `/System`; physical system-backed state uses the owner-class hierarchy defined by [RiscRTE System Storage Layout](SYSTEM_STORAGE_LAYOUT.md).
 - Applications cannot traverse into another package's private namespace through the public application API.
 - Uninstall/update policy MUST define whether private data is preserved, migrated, or removed.
 - Atomic replacement and streaming APIs SHOULD be available without requiring whole-file RAM buffering.
@@ -181,7 +182,7 @@ app-owned state        -> private application storage
 user-selected content  -> trusted picker + scoped handle
 large sequential data  -> stream
 shared/exported data   -> explicit share/save intent
-platform/system data   -> platform service/capability
+platform/system data   -> platform service/capability + /System semantic class
 ```
 
 ## 5. Memory quotas and resource accounting

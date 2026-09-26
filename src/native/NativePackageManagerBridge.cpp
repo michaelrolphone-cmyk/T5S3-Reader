@@ -1,6 +1,7 @@
 #include <T5PackageManagerApi.h>
 #include <HalStorage.h>
 #include <NativeAppLauncher.h>
+#include "FileAssociationRegistry.h"
 #include <atomic>
 #include <cstring>
 #include <cstdio>
@@ -204,7 +205,11 @@ bool install(const char* folder) {
     const auto result = RuntimePackages::installOrdinaryFromSd(source.c_str(),
                                                                kPolicy, availableCapability);
     const bool okay = result.result == RuntimePackages::OrdinaryInstallResult::Installed;
-    if (okay) clearInstalledCache();
+    if (okay) {
+        clearInstalledCache();
+        if (candidate.kind == T5_PACKAGE_APPLICATION)
+            (void)NativeFileAssociations::rebuild();
+    }
     return okay;
 }
 
@@ -240,7 +245,11 @@ bool replacePackage(const char* folder) {
     const auto result = RuntimePackages::installOrdinaryFromSd(
         source.c_str(), kPolicy, availableCapability, true);
     const bool okay = result.result == RuntimePackages::OrdinaryInstallResult::Installed;
-    if (okay) clearInstalledCache();
+    if (okay) {
+        clearInstalledCache();
+        if (identity.kind == RuntimePackages::Kind::Application)
+            (void)NativeFileAssociations::rebuild();
+    }
     return okay;
 }
 bool uninstall(uint8_t kind, const char* id) {
@@ -250,7 +259,11 @@ bool uninstall(uint8_t kind, const char* id) {
     const auto result = RuntimePackages::uninstallOrdinaryFromSd(
         static_cast<RuntimePackages::Kind>(kind), id, kPolicy, availableCapability);
     const bool okay = result == RuntimePackages::OrdinaryTransactionResult::Removed;
-    if (okay) clearInstalledCache();
+    if (okay) {
+        clearInstalledCache();
+        if (kind == T5_PACKAGE_APPLICATION)
+            (void)NativeFileAssociations::rebuild();
+    }
     return okay;
 }
 const t5_package_manager_api_v1 api = {
