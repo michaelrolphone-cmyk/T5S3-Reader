@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "KOReader Authentication",
   "file_name": "koreader_auth.elf",
-  "icon": "solid:f2f6"
+  "icon": "solid:f2f6",
+  "category": [
+    "Reading",
+    "Connectivity"
+  ]
 }
