@@ -12,11 +12,14 @@ extern "C" {
 #define RISC_TOUCH_MAX_CONTACTS 5u
 #define RISC_TOUCH_MAX_SUBSCRIBERS 4u
 #define RISC_TOUCH_QUEUE_LENGTH 32u
+#define RISC_TOUCH_BUTTON_PRIMARY (1u << 0)
 
 enum {
     RISC_TOUCH_EVENT_DOWN = 1u,
     RISC_TOUCH_EVENT_MOVE = 2u,
-    RISC_TOUCH_EVENT_UP = 3u
+    RISC_TOUCH_EVENT_UP = 3u,
+    RISC_TOUCH_EVENT_BUTTON_DOWN = 4u,
+    RISC_TOUCH_EVENT_BUTTON_UP = 5u
 };
 
 typedef struct {
@@ -30,6 +33,7 @@ typedef struct {
     uint64_t sequence;
     uint64_t timestamp_ms;
     uint8_t kind;
+    /* Contact ID for DOWN/MOVE/UP; button bit index for BUTTON_DOWN/UP. */
     uint8_t id;
     uint16_t x;
     uint16_t y;
@@ -42,6 +46,7 @@ typedef struct {
     uint16_t height;
     uint8_t contact_count;
     uint8_t reserved[3];
+    uint32_t buttons;
     risc_touch_contact_v1 contacts[RISC_TOUCH_MAX_CONTACTS];
 } risc_touch_snapshot_v1;
 
