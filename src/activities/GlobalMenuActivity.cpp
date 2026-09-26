@@ -3,6 +3,8 @@
 #include <Board.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <cstring>
+#include <esp_task_wdt.h>
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
@@ -10,6 +12,7 @@
 #include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "runtime/memory/PsramBuffer.h"
 
 namespace {
 constexpr int kPanelMargin = 10;   // gap from the screen edges
@@ -23,6 +26,45 @@ constexpr int kArrowHalfWidth = 20;
 constexpr int kArrowHeight = 18;
 
 bool hasBacklight() { return Board::capabilities().hasBacklight; }
+
+bool modalShutdownConfirmed(GfxRenderer& renderer, MappedInputManager& input) {
+  constexpr int margin = 20;
+  constexpr int spacing = 30;
+  constexpr int fontId = UI_10_FONT_ID;
+  const int lineHeight = renderer.getLineHeight(fontId);
+  const int maxWidth = renderer.getScreenWidth() - margin * 2;
+  const std::string heading =
+      renderer.truncatedText(fontId, I18N.get(StrId::STR_SHUTDOWN), maxWidth, EpdFontFamily::BOLD);
+  const std::string body =
+      renderer.truncatedText(fontId, I18N.get(StrId::STR_SHUTDOWN_PROMPT), maxWidth, EpdFontFamily::REGULAR);
+  int totalHeight = lineHeight * 2 + spacing;
+  int y = (renderer.getScreenHeight() - totalHeight) / 2;
+
+  renderer.clearScreen();
+  renderer.drawCenteredText(fontId, y, heading.c_str(), true, EpdFontFamily::BOLD);
+  y += lineHeight + spacing;
+  renderer.drawCenteredText(fontId, y, body.c_str(), true, EpdFontFamily::REGULAR);
+  const auto labels = input.mapLabels("", "", I18N.get(StrId::STR_CANCEL), I18N.get(StrId::STR_CONFIRM));
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+
+  for (;;) {
+    esp_task_wdt_reset();
+    delay(10);
+    input.update();
+
+    if (input.wasTouchHomeButtonPressed() ||
+        input.wasReleased(MappedInputManager::Button::Back) ||
+        input.wasReleased(MappedInputManager::Button::Left)) {
+      return false;
+    }
+    if (input.wasReleased(MappedInputManager::Button::Right)) return true;
+
+    MappedInputManager::TouchPoint point{};
+    if (input.wasTouchTapped(point, renderer))
+      return point.x >= renderer.getScreenWidth() / 2;
+  }
+}
 }  // namespace
 
 GlobalMenuActivity::GlobalMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -135,7 +177,7 @@ void GlobalMenuActivity::activateSelection() {
   triggerShutdown();
 }
 
-void GlobalMenuActivity::applyBacklightLevel(int level) {
+void GlobalMenuActivity::applyBacklightLevel(int level, bool scheduleRender) {
   if (!hasBacklight()) {
     return;
   }
@@ -147,7 +189,7 @@ void GlobalMenuActivity::applyBacklightLevel(int level) {
   SETTINGS.backlightLevel = static_cast<uint8_t>(level);
   Board::setBacklightLevel(SETTINGS.backlightLevel);
   SETTINGS.saveToFile();
-  requestUpdate();
+  if (scheduleRender) requestUpdate();
 }
 
 void GlobalMenuActivity::triggerShutdown() {
@@ -203,18 +245,15 @@ void GlobalMenuActivity::drawActionButton(int x, int y, int width, int height, b
   renderer.drawText(UI_10_FONT_ID, x + (width - labelWidth) / 2, textY, label.c_str(), textBlack);
 }
 
-void GlobalMenuActivity::render(RenderLock&&) {
+void GlobalMenuActivity::renderOverlay(HalDisplay::RefreshMode refreshMode) {
   // Top-only overlay: paint an opaque white band over just the top of the screen for
-  // the panel, and leave everything below untouched so the previous content (e.g. the
-  // reader page still in the shared framebuffer) shows through. An up-arrow under the
-  // Shut Down button is the affordance to hide the menu.
+  // the panel, and leave everything below untouched so the previous content remains visible.
   int panelX, panelY, panelW, panelH;
   getPanelLayout(panelX, panelY, panelW, panelH);
   const int screenW = renderer.getScreenWidth();
   const int panelBottom = panelY + panelH;
   const int dividerY = panelBottom + kArrowRegionHeight;
 
-  // White background over the top band only (false = white); bottom content preserved.
   renderer.fillRect(0, 0, screenW, dividerY, false);
 
   int bx, by, bw, bh;
@@ -226,20 +265,132 @@ void GlobalMenuActivity::render(RenderLock&&) {
   getButtonRect(BUTTON_SHUTDOWN, bx, by, bw, bh);
   drawActionButton(bx, by, bw, bh, selectedIndex == BUTTON_SHUTDOWN, I18N.get(StrId::STR_SHUTDOWN));
 
-  // Up-arrow centered under the Shut Down button (full-width button, so screen center).
-  // Apex on top, base below -> points up to signal "hide / collapse the menu".
   const int arrowCenterX = screenW / 2;
   const int arrowTopY = panelBottom + (kArrowRegionHeight - kArrowHeight) / 2;
   const int arrowXPoints[3] = {arrowCenterX, arrowCenterX - kArrowHalfWidth, arrowCenterX + kArrowHalfWidth};
   const int arrowYPoints[3] = {arrowTopY, arrowTopY + kArrowHeight, arrowTopY + kArrowHeight};
   renderer.fillPolygon(arrowXPoints, arrowYPoints, 3, true);
-
-  // Thin divider separating the menu band from the preserved content below.
   renderer.drawLine(0, dividerY, screenW, dividerY, true);
+  renderer.displayBuffer(refreshMode);
+}
 
-  // Over a reader the panel is in a grayscale state; only a full refresh transitions
-  // it cleanly to the menu's 1-bit BW content and keeps the preserved page below crisp.
-  // Elsewhere FAST_REFRESH is overridden to HALF_REFRESH by the push transition, so this
-  // preserves the existing (working) behavior for non-reader screens.
-  renderer.displayBuffer(overGrayscaleReader ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+GlobalMenuActivity::ModalResult GlobalMenuActivity::runFirmwareModal(
+    GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  RuntimeMemory::PsramBuffer snapshot(renderer.getBufferSize(), false);
+  if (!snapshot || !renderer.getFrameBuffer()) return ModalResult::Unavailable;
+  std::memcpy(snapshot.data(), renderer.getFrameBuffer(), renderer.getBufferSize());
+
+  GlobalMenuActivity menu(renderer, mappedInput, false);
+  if (!hasBacklight()) menu.selectedIndex = BUTTON_SHUTDOWN;
+
+  auto redraw = [&] {
+    esp_task_wdt_reset();
+    menu.renderOverlay(HalDisplay::HALF_REFRESH);
+    esp_task_wdt_reset();
+  };
+  auto restoreApp = [&] {
+    std::memcpy(renderer.getFrameBuffer(), snapshot.data(), renderer.getBufferSize());
+    renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  };
+  auto requestModalShutdown = [&]() -> bool {
+    if (SETTINGS.confirmShutdown && !modalShutdownConfirmed(renderer, mappedInput)) {
+      redraw();
+      return false;
+    }
+    requestShutdown();
+    return true;
+  };
+
+  redraw();
+
+  for (;;) {
+    esp_task_wdt_reset();
+    delay(10);
+    mappedInput.update();
+
+    if (mappedInput.wasTouchHomeButtonPressed() ||
+        mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      restoreApp();
+      return ModalResult::Dismissed;
+    }
+
+    MappedInputManager::TouchPoint point{};
+    if (mappedInput.wasTouchTapped(point, renderer)) {
+      int panelX, panelY, panelW, panelH;
+      menu.getPanelLayout(panelX, panelY, panelW, panelH);
+      const bool inside = point.x >= panelX && point.x < panelX + panelW &&
+                          point.y >= panelY && point.y < panelY + panelH;
+      if (!inside) {
+        restoreApp();
+        return ModalResult::Dismissed;
+      }
+
+      int bx, by, bw, bh;
+      if (hasBacklight()) {
+        menu.getButtonRect(BUTTON_BACKLIGHT, bx, by, bw, bh);
+        if (point.x >= bx && point.x < bx + bw && point.y >= by && point.y < by + bh) {
+          menu.selectedIndex = BUTTON_BACKLIGHT;
+          menu.applyBacklightLevel(
+              point.x < bx + bw / 2 ? SETTINGS.backlightLevel - 1 : SETTINGS.backlightLevel + 1,
+              false);
+          redraw();
+          continue;
+        }
+      }
+
+      menu.getButtonRect(BUTTON_SHUTDOWN, bx, by, bw, bh);
+      if (point.x >= bx && point.x < bx + bw && point.y >= by && point.y < by + bh) {
+        menu.selectedIndex = BUTTON_SHUTDOWN;
+        if (requestModalShutdown()) return ModalResult::ShutdownRequested;
+        continue;
+      }
+    }
+
+    bool redrawNeeded = false;
+    const auto moveNext = [&] {
+      menu.selectedIndex = ButtonNavigator::nextIndex(menu.selectedIndex, BUTTON_COUNT);
+      redrawNeeded = true;
+    };
+    const auto movePrevious = [&] {
+      menu.selectedIndex = ButtonNavigator::previousIndex(menu.selectedIndex, BUTTON_COUNT);
+      redrawNeeded = true;
+    };
+
+    if (!hasBacklight()) {
+      menu.selectedIndex = BUTTON_SHUTDOWN;
+    } else if (menu.selectedIndex == BUTTON_BACKLIGHT) {
+      menu.buttonNavigator.onPressAndContinuous(
+          {MappedInputManager::Button::Right}, [&] {
+            const int before = SETTINGS.backlightLevel;
+            menu.applyBacklightLevel(before + 1, false);
+            redrawNeeded = redrawNeeded || before != SETTINGS.backlightLevel;
+          });
+      menu.buttonNavigator.onPressAndContinuous(
+          {MappedInputManager::Button::Left}, [&] {
+            const int before = SETTINGS.backlightLevel;
+            menu.applyBacklightLevel(before - 1, false);
+            redrawNeeded = redrawNeeded || before != SETTINGS.backlightLevel;
+          });
+      menu.buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Down}, moveNext);
+      menu.buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Up}, movePrevious);
+    } else {
+      menu.buttonNavigator.onNext(moveNext);
+      menu.buttonNavigator.onPrevious(movePrevious);
+    }
+
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      if (menu.selectedIndex == BUTTON_BACKLIGHT) {
+        menu.applyBacklightLevel(SETTINGS.backlightLevel >= 10 ? 0 : SETTINGS.backlightLevel + 1, false);
+        redrawNeeded = true;
+      } else if (requestModalShutdown()) {
+        return ModalResult::ShutdownRequested;
+      }
+    }
+
+    if (redrawNeeded) redraw();
+  }
+}
+
+void GlobalMenuActivity::render(RenderLock&&) {
+  renderOverlay(overGrayscaleReader ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
 }
