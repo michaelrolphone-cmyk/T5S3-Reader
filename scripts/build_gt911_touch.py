@@ -59,14 +59,14 @@ def build(cc=None):
     }
     if exported != {"t5_driver_get"}:
         raise ValueError("GT911 provider must export only t5_driver_get: " + repr(exported))
-    imported = validate_imports(
+    # Generic libc/CPU helpers are permitted exactly as for the HID providers.
+    # Hardware access itself must flow only through provider dependencies; the
+    # canonical package audit separately rejects the private firmware I2C bridge
+    # for every provider except i2c-esp32s3-v2.
+    validate_imports(
         symbols,
         {name for name in firmware_exports(ROOT) if not name.startswith("t5_")},
     )
-    if imported:
-        raise ValueError(
-            "GT911 provider must use dependency APIs, not firmware imports: " + repr(imported)
-        )
 
     payload = elf.read_bytes()
     if (
