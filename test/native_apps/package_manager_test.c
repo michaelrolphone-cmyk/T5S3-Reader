@@ -3,9 +3,11 @@
 #include <string.h>
 #include "../../Apps/package_manager.c"
 
-static t5_ui_event_t events[24];
-static unsigned total, next_event, installed, installed_zip, uninstalled, rendered;
-static bool uninstall_ok;
+static t5_ui_event_t events[32];
+static unsigned total, next_event, installed, replaced, uninstalled, rendered;
+static bool uninstall_ok = true;
+static bool replace_ok = true;
+
 static void reset_events(void) { total = next_event = 0; }
 static void add(uint8_t kind) {
     assert(total < sizeof(events) / sizeof(events[0]));
@@ -60,10 +62,10 @@ static bool install_mock(const char* folder) {
     ++installed;
     return true;
 }
-static bool install_zip_mock(const char* archive) {
-    assert(!strcmp(archive, "driver-gps-nmea-1.0.1-xtensa-esp32s3.rte.zip"));
-    ++installed_zip;
-    return true;
+static bool replace_mock(const char* folder) {
+    assert(folder && !strcmp(folder, "gps-nmea"));
+    ++replaced;
+    return replace_ok;
 }
 static bool uninstall_mock(uint8_t kind, const char* id) {
     assert(kind == T5_PACKAGE_DRIVER && id && !strcmp(id, "gps-nmea"));
@@ -110,7 +112,10 @@ int main(void) {
         .preview = preview_mock,
         .install = install_mock,
         .uninstall = uninstall_mock,
-        .preview_archive = preview_mock, .install_archive = install_zip_mock,
+        .installed_refresh = installed_refresh_mock,
+        .installed_count = installed_count_mock,
+        .installed_get = installed_get_mock,
+        .replace = replace_mock,
     };
 
     assert(api_ready(&manager, &ui));
@@ -126,34 +131,35 @@ int main(void) {
     assert(!strcmp(packages[0].staged.version, "1.5.0"));
     assert(strstr(subtitles[0], "older"));
 
-    snprintf(names[0], sizeof(names[0]), "gps-nmea");
-    archive_rows[0] = false;
     char status[STATUS_BYTES] = {0};
 
     // Default action remains Cancel.
     reset_events(); add(T5_UI_EVENT_CONFIRM);
     activate(&manager, &ui, 0, status, sizeof(status));
-    assert(installed == 0 && installed_zip == 0 && uninstalled == 0);
-    // Select update, then cancel the separate final confirmation.
-    reset_events(); add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
-    add(T5_UI_EVENT_CONFIRM);
-    activate(&manager, &ui, 0, status, sizeof(status));
-    assert(installed == 0 && installed_zip == 0 && uninstalled == 0);
-    // Select update, approve its separate confirmation.
-    reset_events(); add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
+    assert(replaced == 0 && uninstalled == 0);
+
+    // Explicitly choose the older staged version and approve the downgrade.
+    reset_events();
+    add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
     add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
     activate(&manager, &ui, 0, status, sizeof(status));
-    assert(installed == 1 && installed_zip == 0 && uninstalled == 0);
-    // The archive filename, NOT the package id, must reach the ZIP installer.
-    snprintf(names[0], sizeof(names[0]), "driver-gps-nmea-1.0.1-xtensa-esp32s3.rte.zip");
-    archive_rows[0] = true;
-    reset_events(); add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
+    assert(replaced == 1);
+    assert(strstr(status, "downgraded"));
+    assert(strstr(status, "2.0.0 -> 1.5.0"));
+
+    // Explicit uninstall is a separate action and confirmation.
+    reset_events();
+    add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
     add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
     activate(&manager, &ui, 0, status, sizeof(status));
-    assert(installed == 1 && installed_zip == 1 && uninstalled == 0);
-    // Explicitly select uninstall, cancel confirmation: no removal.
-    reset_events(); add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_NEXT);
-    add(T5_UI_EVENT_CONFIRM); add(T5_UI_EVENT_BACK);
+    assert(uninstalled == 1);
+    assert(strstr(status, "uninstalled"));
+
+    // Firmware refusal is visible and does not masquerade as success.
+    uninstall_ok = false;
+    reset_events();
+    add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
+    add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
     activate(&manager, &ui, 0, status, sizeof(status));
     assert(uninstalled == 2);
     assert(strstr(status, "refused"));
@@ -172,8 +178,10 @@ int main(void) {
     add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
     add(T5_UI_EVENT_NEXT); add(T5_UI_EVENT_CONFIRM);
     activate(&manager, &ui, 0, status, sizeof(status));
-    assert(installed == 1 && installed_zip == 1 && uninstalled == 2);
+    assert(installed == 1);
+    assert(strstr(status, "installed"));
+
     assert(rendered > 0);
-    puts("Package Manager UI: named source, ZIP path, default cancel and explicit install/uninstall PASS");
+    puts("Package Manager UI: installed inventory, explicit downgrade, uninstall, refusal and fresh install PASS");
     return 0;
 }
