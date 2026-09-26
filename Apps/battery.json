@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "Battery Status",
   "file_name": "battery.elf",
-  "icon": "solid:f240"
+  "icon": "solid:f240",
+  "category": [
+    "System",
+    "Hardware"
+  ]
 }
