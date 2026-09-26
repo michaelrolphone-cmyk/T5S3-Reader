@@ -300,7 +300,7 @@ void RoundedRaffTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int butt
     int textX = rowX + kInteractiveInsetX;
     if (hasAppIcon) {
       const int iconY = rowY + (rowHeight - kAppIconSize) / 2;
-      (void)FontAwesomeIcons::drawRegular(renderer, textX, iconY, appIcon, kAppIconSize, !isSelected);
+      (void)FontAwesomeIcons::draw(renderer, textX, iconY, appIcon, kAppIconSize, !isSelected);
       textX += iconAreaWidth;
     }
     if (isSelected) {
