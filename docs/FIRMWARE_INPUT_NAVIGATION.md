@@ -115,8 +115,13 @@ Each provider poll performs at most four ready reports per input class and
 consumes at most one keyboard navigation transition, scanning no more than the
 existing 32-event queue. The firmware polls at most once per 20 ms owner-loop
 interval and preserves held state between polls. Existing menu repeat logic
-uses that held state. Rendering/scheduling can make the interval longer; no
-separate worker calls provider interfaces concurrently.
+uses that held state. E-paper rendering runs on its separate render task and
+must not hold a shared hardware-bus lock across panel power sequencing or
+waveform waits. Individual bus transactions and atomic read-modify-write
+operations remain serialized, allowing touch polling to continue while a
+redraw is still physically completing. Other owner-loop work or scheduler
+latency can still extend the polling interval; no separate worker calls
+provider interfaces concurrently.
 
 App entry/return, focus changes, input gaps and failures clear derived UI state.
 The returning source must become neutral before it can trigger navigation. This
