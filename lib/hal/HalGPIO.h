@@ -88,6 +88,7 @@ class HalGPIO {
   // Reports the start and end points of the most recent swipe/drag (a moved touch), in
   // raw portrait-native coordinates. One-shot per release.
   bool getTouchSwipe(TouchPoint& start, TouchPoint& end) const;
+  bool takeTouchHomeButtonPress(unsigned long& eventMs) const;
   bool wasTouchHomeButtonPressed() const;
 
   void startDeepSleep(bool wakeOnTouch = true);
