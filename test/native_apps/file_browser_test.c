@@ -89,7 +89,7 @@ const t5_app_api_v1 *t5_app_get_api(uint32_t version) {
 }
 
 static bool storage_read(const char *path, void *buffer, size_t capacity, size_t *size_out) {
-    assert(strcmp(path, "/sd/.crosspoint/file_browser.session") == 0);
+    assert(strcmp(path, "/sd/System/State/FileBrowser/Session.txt") == 0);
     if (!session_exists) return false;
     if (size_out) *size_out = session_size;
     if (!buffer || capacity == 0) return true;
@@ -99,7 +99,7 @@ static bool storage_read(const char *path, void *buffer, size_t capacity, size_t
 }
 
 static bool storage_write(const char *path, const void *data, size_t size) {
-    assert(strcmp(path, "/sd/.crosspoint/file_browser.session") == 0);
+    assert(strcmp(path, "/sd/System/State/FileBrowser/Session.txt") == 0);
     assert(data && size < sizeof(session_data));
     memcpy(session_data, data, size);
     session_size = size;
@@ -108,7 +108,7 @@ static bool storage_write(const char *path, const void *data, size_t size) {
 }
 
 static bool storage_remove(const char *path) {
-    assert(strcmp(path, "/sd/.crosspoint/file_browser.session") == 0);
+    assert(strcmp(path, "/sd/System/State/FileBrowser/Session.txt") == 0);
     session_exists = false;
     session_size = 0;
     return true;
