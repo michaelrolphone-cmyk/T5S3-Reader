@@ -900,6 +900,22 @@ bool appCatalogDownloadWithProgress(uint32_t index,
       version.c_str(), downloadUrl.c_str(), json, selectedSize, digest,
       progress, progressContext, &failureReason))
     return catalogDownloadFailed(s, failureReason ? failureReason : "package installation failed");
+
+  // The install path intentionally releases every catalog URL/raw manifest
+  // before opening TLS so mbedTLS gets maximum contiguous internal RAM. Those
+  // entries must not remain visible with their download metadata stripped:
+  // a second install in the same App Store session would otherwise fail as
+  // "release catalog entry is incomplete". Rehydrate the authoritative index
+  // after TLS/package publication has completed.
+  std::vector<CatalogAsset>().swap(s->catalog);
+  if (!loadIndependentAppIndex(s->catalog)) {
+    LOG_ERR("APPSTORE", "App installed, but catalog refresh after install failed");
+    // Installation itself succeeded. Leave the catalog empty rather than
+    // exposing unusable entries; the user can explicitly refresh the store.
+  } else {
+    LOG_INF("APPSTORE", "Reloaded %u apps after install",
+            static_cast<unsigned>(s->catalog.size()));
+  }
   return true;
 }
 
