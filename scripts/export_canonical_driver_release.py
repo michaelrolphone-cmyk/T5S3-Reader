@@ -57,11 +57,22 @@ def export(identities: set[str] | None = None) -> None:
             r'[A-Za-z0-9._-]+', release) or '..' in release:
         raise ValueError('invalid immutable release identifier')
 
+    requested = identities
+    if requested is not None and (
+            not requested or any(not isinstance(identity, str) or
+                                 not 0 < len(identity) < 64 or
+                                 SAFE.fullmatch(identity) is None
+                                 for identity in requested)):
+        raise ValueError(f'invalid requested package IDs: {list(requested)}')
+
     staged = []
-    identities = set()
+    seen = set()
+    selected = set()
     observed_kinds = set()
     for directory in sorted(SOURCE.iterdir()):
         if not directory.is_dir() or directory.is_symlink():
+            continue
+        if requested is not None and directory.name not in requested:
             continue
         manifest_path = directory / '.package.json'
         if not manifest_path.is_file() or manifest_path.is_symlink():
@@ -75,9 +86,10 @@ def export(identities: set[str] | None = None) -> None:
                 directory.name != identity):
             raise ValueError(f'invalid package identity or schema: {directory}')
         key = (kind, identity, architecture)
-        if key in identities:
+        if key in seen:
             raise ValueError(f'duplicate package identity/target: {key}')
-        identities.add(key)
+        seen.add(key)
+        selected.add(identity)
         observed_kinds.add(kind)
         declared = {'.package.json'}
         for item in manifest.get('entries', ()):
@@ -100,9 +112,12 @@ def export(identities: set[str] | None = None) -> None:
         staged.append((name, archive, catalog_row(directory, name, archive)))
         if len(staged) > MAX_PACKAGES:
             raise ValueError('catalog exceeds device package limit')
+    if requested is not None and selected != requested:
+        raise ValueError(f'package source missing requested IDs: {sorted(requested - selected)}')
     if not staged:
         raise ValueError('no ordinary packages found')
-    if release != 'unpublished-build' and not {'application', 'driver'} <= observed_kinds:
+    if (release != 'unpublished-build' and requested is None and
+            not {'application', 'driver'} <= observed_kinds):
         raise ValueError(f'release catalog missing required U1 kinds: {observed_kinds}')
 
     TARGET.mkdir(parents=True, exist_ok=True)
@@ -117,6 +132,6 @@ def export(identities: set[str] | None = None) -> None:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--ids', nargs='+', help='export only these canonical driver package IDs')
+    parser.add_argument('--ids', nargs='+', help='export only these canonical package IDs')
     args = parser.parse_args()
     export(set(args.ids) if args.ids else None)
