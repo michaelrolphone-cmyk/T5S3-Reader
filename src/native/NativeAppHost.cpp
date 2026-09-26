@@ -9,6 +9,7 @@
 #include "AppReleaseAssetRules.h"
 #include "AppManifest.h"
 #include "AppPackageInstaller.h"
+#include "InstalledAppPath.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageUseGate.h"
@@ -729,20 +730,14 @@ bool loadAuthoritativeAppCatalog(std::vector<CatalogAsset>& catalog) {
 }
 
 
-bool appCatalogRefresh() {
-  auto* s = current();
-  if (!s) return false;
-  s->catalogNeedsRefresh = false;
-  // A refresh invalidates every prior release record. Free the backing storage,
-  // not just the elements, so stale catalog capacity is not carried into the
-  // next TLS handshake on a memory-constrained ESP32-S3.
-  std::vector<CatalogAsset>().swap(s->catalog);
-  if (loadAuthoritativeAppCatalog(s->catalog)) {
+bool loadAvailableAppCatalog(std::vector<CatalogAsset>& catalog) {
+  if (loadAuthoritativeAppCatalog(catalog)) {
     LOG_INF("APPSTORE", "Loaded %u apps from the independent/external catalog",
-            static_cast<unsigned>(s->catalog.size()));
+            static_cast<unsigned>(catalog.size()));
     return true;
   }
-  s->catalog.clear();
+
+  catalog.clear();
   std::string catalogUrl;
   std::vector<ReleaseCatalogAsset> releaseAssets;
   {
@@ -757,35 +752,40 @@ bool appCatalogRefresh() {
       LOG_ERR("APPSTORE", "Latest release asset stream was incomplete or invalid");
       return false;
     }
-  }  // Drop release JSON parser scratch and sidecar inventory before next TLS handshake.
+  }
 
-  // HTTP metadata is produced by a short-lived worker task. Give FreeRTOS idle
-  // one scheduling point to reclaim a just-deleted worker stack before mbedTLS
-  // allocates the next connection's record buffers.
   delay(1);
   LOG_INF("APPSTORE", "Found %u application ELF/JSON pairs in latest release",
           static_cast<unsigned>(releaseAssets.size()));
 
   if (!catalogUrl.empty()) {
-    if (loadAggregateCatalog(releaseAssets, s->catalog, catalogUrl)) {
+    if (loadAggregateCatalog(releaseAssets, catalog, catalogUrl)) {
       LOG_INF("APPSTORE", "Loaded %u apps from aggregate release catalog",
-              static_cast<unsigned>(s->catalog.size()));
+              static_cast<unsigned>(catalog.size()));
       return true;
     }
-    // A present aggregate catalog is the canonical metadata path for current
-    // releases. If that one request fails, starting dozens of fresh TLS
-    // handshakes cannot repair a low-memory/network failure and can make heap
-    // fragmentation worse. Return cleanly; the user can retry the refresh.
     LOG_ERR("APPSTORE", "Aggregate catalog present but unavailable; refusing per-app TLS fan-out");
-    std::vector<CatalogAsset>().swap(s->catalog);
+    std::vector<CatalogAsset>().swap(catalog);
     return false;
   }
 
   LOG_ERR("APPSTORE", "Release is missing %s; loading up to %u paired app manifests",
           kAggregateAppCatalogName, static_cast<unsigned>(releaseAssets.size()));
-  const bool loaded = loadCatalogManifests(releaseAssets, s->catalog);
-  LOG_INF("APPSTORE", "Legacy fallback loaded %u apps", static_cast<unsigned>(s->catalog.size()));
+  const bool loaded = loadCatalogManifests(releaseAssets, catalog);
+  LOG_INF("APPSTORE", "Legacy fallback loaded %u apps", static_cast<unsigned>(catalog.size()));
   return loaded;
+}
+
+
+bool appCatalogRefresh() {
+  auto* s = current();
+  if (!s) return false;
+  s->catalogNeedsRefresh = false;
+  // A refresh invalidates every prior release record. Free the backing storage,
+  // not just the elements, so stale catalog capacity is not carried into the
+  // next TLS handshake on a memory-constrained ESP32-S3.
+  std::vector<CatalogAsset>().swap(s->catalog);
+  return loadAvailableAppCatalog(s->catalog);
 }
 
 bool ensureCatalogReady(Session* s) {
@@ -1128,6 +1128,117 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            psramAlloc,
                            psramFree};
 }  // namespace
+
+bool installRequiredNativeApp(const char* artifact, std::string& displayName,
+                              std::string& failureDetail) {
+  displayName.clear();
+  failureDetail.clear();
+  if (!artifact || !t5_safe_elf_name(artifact) || !Storage.ready()) {
+    failureDetail = "Invalid app request or SD unavailable";
+    return false;
+  }
+
+  std::string installedPath;
+  t5_app_manifest_t installedManifest{};
+  if (resolveInstalledAppPath(artifact, installedPath, &installedManifest)) {
+    displayName = installedManifest.display_name;
+    return true;
+  }
+
+  std::vector<CatalogAsset> catalog;
+  if (!loadAvailableAppCatalog(catalog)) {
+    failureDetail = "Application catalog is unavailable";
+    return false;
+  }
+  const auto match = std::find_if(catalog.begin(), catalog.end(),
+      [artifact](const CatalogAsset& candidate) {
+        return candidate.manifestValid &&
+               candidate.name == artifact &&
+               !std::strcmp(candidate.manifest.file_name, artifact);
+      });
+  if (match == catalog.end()) {
+    failureDetail = "Required app is not in the current catalog";
+    return false;
+  }
+  if (!match->manifest.compatible) {
+    displayName = match->manifest.display_name;
+    failureDetail = std::string("Requires firmware ") + match->manifest.min_firmware_version;
+    return false;
+  }
+
+  // Retain only the selected bounded fields before binary TLS. Releasing the
+  // rest of the catalog preserves the same SRAM/PSRAM discipline as App Store.
+  displayName = match->manifest.display_name;
+  std::string downloadUrl = match->url;
+  std::string manifestUrl = match->manifestUrl;
+  std::string json = match->manifestJson;
+  const uint64_t selectedSize = match->size;
+  const std::string catalogVersion = match->version;
+  std::vector<CatalogAsset>().swap(catalog);
+
+  if (json.empty()) {
+    if (manifestUrl.empty() || !HttpDownloader::fetchUrl(manifestUrl, json)) {
+      failureDetail = "Required app manifest download failed";
+      return false;
+    }
+    delay(1);
+  }
+  if (json.empty() || json.size() > 4096) {
+    failureDetail = "Required app manifest is invalid";
+    return false;
+  }
+
+  t5_app_manifest_t manifest{};
+  std::string version;
+  if (!parseAppManifest(json, manifest, &version, true) ||
+      std::strcmp(manifest.file_name, artifact) ||
+      version != catalogVersion ||
+      !manifest.compatible) {
+    failureDetail = "Required app release metadata is invalid";
+    return false;
+  }
+  displayName = manifest.display_name;
+
+  char digest[65]{};
+  {
+    RuntimeMemory::PsramJsonAllocator metadataAllocator;
+    JsonDocument metadata(&metadataAllocator);
+    if (deserializeJson(metadata, json) || !metadata.is<JsonObjectConst>() ||
+        !metadata["sha256"].is<const char*>() ||
+        !metadata["size_bytes"].is<uint64_t>() ||
+        metadata["size_bytes"].as<uint64_t>() != selectedSize) {
+      failureDetail = "Required app size or digest does not match catalog";
+      return false;
+    }
+    const char* value = metadata["sha256"].as<const char*>();
+    if (!RuntimePackages::validSha256Hex(value)) {
+      failureDetail = "Required app digest is invalid";
+      return false;
+    }
+    std::memcpy(digest, value, sizeof(digest) - 1);
+  }
+
+  const char* installFailure = nullptr;
+  if (!RuntimeOnlinePackages::installApplication(
+          artifact, version.c_str(), downloadUrl.c_str(), std::move(json),
+          selectedSize, digest, nullptr, nullptr, &installFailure)) {
+    failureDetail = installFailure ? installFailure : "Application installation failed";
+    return false;
+  }
+
+  // Never trust publication success alone for workflow continuation. Resolve
+  // the exact installed app through the normal verified inventory before the
+  // parent repeats its launch step.
+  installedPath.clear();
+  installedManifest = {};
+  if (!resolveInstalledAppPath(artifact, installedPath, &installedManifest)) {
+    failureDetail = "Installed app could not be verified";
+    return false;
+  }
+  displayName = installedManifest.display_name;
+  return true;
+}
+
 
 bool presentNativeAppUiFrame() {
   // Native UI lists and tables use the reader-friendly balanced waveform.
