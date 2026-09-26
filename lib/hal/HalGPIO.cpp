@@ -68,10 +68,11 @@ void HalGPIO::startTouchCapture() {
   }
 
   pinMode(BoardPins::TouchInterrupt, INPUT_PULLUP);
-  // GT911 data-ready/wake is active-low on these boards. Only notify on the
-  // assertion edge; acknowledging READY raises INT again and must not
-  // recursively wake the worker.
-  attachInterruptArg(BoardPins::TouchInterrupt, touchInterruptThunk, this, FALLING);
+  // Preserve the controller's existing edge behavior. GT911 trigger polarity
+  // is configuration-dependent, and we do not rewrite that configuration at
+  // boot. CHANGE safely captures whichever transition the panel asserts while
+  // the worker itself drains/acknowledges READY reports.
+  attachInterruptArg(BoardPins::TouchInterrupt, touchInterruptThunk, this, CHANGE);
   touchAsyncReady = true;
 
   // Drain any READY report that appeared after controller probe but before the
