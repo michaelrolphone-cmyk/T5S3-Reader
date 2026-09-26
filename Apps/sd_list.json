@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "SD Files",
   "file_name": "sd_list.elf",
-  "icon": "solid:f07b"
+  "icon": "solid:f07b",
+  "category": [
+    "Files",
+    "Diagnostics"
+  ]
 }
