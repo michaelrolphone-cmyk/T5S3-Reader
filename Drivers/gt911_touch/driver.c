@@ -13,6 +13,19 @@
 #define GT911_TOUCH_COUNT_MASK 0x0fu
 #define GT911_HAVE_KEY_MASK 0x10u
 #define GT911_TIMEOUT_MS 20u
+#define GT911_INT_PIN 3u
+#define GT911_RESET_PIN 9u
+#define GPIO_INPUT 0x01u
+#define GPIO_OUTPUT 0x03u
+#define GPIO_LOW 0u
+#define GPIO_HIGH 1u
+
+/* Generic platform GPIO/time primitives. GT911-specific reset/address policy
+ * remains entirely inside this physical provider. */
+extern void pinMode(uint8_t pin, uint8_t mode);
+extern void digitalWrite(uint8_t pin, uint8_t value);
+extern void delay(unsigned long milliseconds);
+
 
 typedef struct {
     uint64_t token;
@@ -60,6 +73,20 @@ static bool write_reg8(uint16_t reg, uint8_t value) {
     return bus && bus_claim &&
         bus->transact(bus->context, bus_claim, command, sizeof(command),
                       NULL, 0, GT911_TIMEOUT_MS);
+}
+
+static void reset_for_address(uint8_t address) {
+    /* GT911 samples INT as RESET rises: low selects 0x5d, high selects 0x14. */
+    pinMode(GT911_INT_PIN, GPIO_OUTPUT);
+    digitalWrite(GT911_INT_PIN,
+                 address == GT911_PRIMARY_ADDRESS ? GPIO_LOW : GPIO_HIGH);
+    pinMode(GT911_RESET_PIN, GPIO_OUTPUT);
+    digitalWrite(GT911_RESET_PIN, GPIO_LOW);
+    delay(20u);
+    digitalWrite(GT911_RESET_PIN, GPIO_HIGH);
+    delay(60u);
+    pinMode(GT911_INT_PIN, GPIO_INPUT);
+    delay(5u);
 }
 
 static bool probe(uint8_t address) {
@@ -311,12 +338,20 @@ static bool start(const risc_provider_dependency_v1 *dependencies,
 
     bus = candidate_bus;
     clock_api = candidate_clock;
-    if (monotonic_ms() == UINT64_MAX ||
-        (!probe(GT911_PRIMARY_ADDRESS) && !probe(GT911_FALLBACK_ADDRESS))) {
+    if (monotonic_ms() == UINT64_MAX) {
         bus = NULL;
         clock_api = NULL;
-        bus_claim = 0;
         return false;
+    }
+    reset_for_address(GT911_PRIMARY_ADDRESS);
+    if (!probe(GT911_PRIMARY_ADDRESS)) {
+        reset_for_address(GT911_FALLBACK_ADDRESS);
+        if (!probe(GT911_FALLBACK_ADDRESS)) {
+            bus = NULL;
+            clock_api = NULL;
+            bus_claim = 0;
+            return false;
+        }
     }
 
     sequence = 0;
