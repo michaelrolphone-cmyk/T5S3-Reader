@@ -17,6 +17,8 @@ RECOVERY = (ROOT / 'src/native/NativeOnlinePackageRecovery.h').read_text(encodin
 SD_ADAPTER = (ROOT / 'src/runtime/packages/PackageOrdinarySdAdapter.cpp').read_text(encoding='utf-8')
 MANAGED = (ROOT / 'src/runtime/packages/PackageOrdinaryManagedInstall.h').read_text(encoding='utf-8')
 PACKAGE_MANAGER = (ROOT / 'src/native/NativePackageManagerBridge.cpp').read_text(encoding='utf-8')
+CATALOG_INDEX = (ROOT / 'src/native/AppCatalogIndex.cpp').read_text(encoding='utf-8')
+MAIN = (ROOT / 'src/main.cpp').read_text(encoding='utf-8')
 
 
 class LiveInstallContract(unittest.TestCase):
@@ -118,6 +120,24 @@ class LiveInstallContract(unittest.TestCase):
         self.assertNotIn('discardMatchingStage(', ONLINE)
         self.assertNotIn('Recovered matching interrupted download', ONLINE)
         self.assertNotIn('interrupted package differs from this release', ONLINE)
+
+    def test_app_catalog_metadata_is_psram_first_and_single_fetch(self):
+        loader_start = HOST.index('bool loadIndependentAppIndex(')
+        loader_end = HOST.index('\nbool refreshExternalGameBoy(', loader_start)
+        loader = HOST[loader_start:loader_end]
+        self.assertIn('RuntimeMemory::PsramTextStream json(kMaxCatalogBytes)', loader)
+        self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', loader)
+        self.assertIn('JsonDocument document(&allocator)', loader)
+
+        authoritative_start = HOST.index('bool loadAuthoritativeAppCatalog(')
+        authoritative_end = HOST.index('\nbool connectSavedWifi()', authoritative_start)
+        authoritative = HOST[authoritative_start:authoritative_end]
+        self.assertIn('return loadIndependentAppIndex(catalog);', authoritative)
+        self.assertNotIn('refreshExternalGameBoy(', authoritative)
+
+        self.assertIn('RuntimeMemory::PsramTextStream json(kMaxCatalogBytes)', CATALOG_INDEX)
+        self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', CATALOG_INDEX)
+        self.assertIn('heap_caps_malloc_extmem_enable(128);', MAIN)
 
     def test_package_manager_and_shared_verifier_do_not_retain_large_stack_buffers(self):
         self.assertIn('new (std::nothrow) char[4096]', PACKAGE_MANAGER)
