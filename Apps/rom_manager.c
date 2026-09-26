@@ -382,23 +382,32 @@ static bool find_form_input_value(const char *form_start,const char *form_end,
   }
   return false;
 }
+static bool vimm_download_form_id(const char *form_start,const char *tag_end){
+  char id[40];
+  if(!copy_attr_value(form_start,tag_end,"id",id,sizeof(id)))return false;
+  return !strcmp(id,"dl-form")||!strcmp(id,"dl_form")||!strcmp(id,"download_form");
+}
 static bool resolve_vimm_dl_form(char *out,size_t cap){
   const char *p=html;
   while((p=strstr(p,"<form"))){
     const char *tag_end=strchr(p,'>');
     if(!tag_end)return false;
-    if(!range_contains(p,tag_end,"id=\"dl-form\"")){p=tag_end+1;continue;}
+    if(!vimm_download_form_id(p,tag_end)){p=tag_end+1;continue;}
     const char *form_end=strstr(tag_end,"</form>");
     if(!form_end)return false;
-    char action[192],media_id[32],token[256],base[256],encoded_id[96],encoded_token[768];
+    char action[192],media_id[32],token[256]={0},base[256],encoded_id[96],encoded_token[768];
     if(!copy_attr_value(p,tag_end,"action",action,sizeof(action))||
        !find_form_input_value(tag_end,form_end,"mediaId",media_id,sizeof(media_id))||
-       !find_form_input_value(tag_end,form_end,"token",token,sizeof(token))||
        !normalize_form_action(action,base,sizeof(base))||
-       !append_url_encoded(encoded_id,sizeof(encoded_id),media_id)||
-       !append_url_encoded(encoded_token,sizeof(encoded_token),token))return false;
+       !append_url_encoded(encoded_id,sizeof(encoded_id),media_id))return false;
+    const bool has_token=find_form_input_value(tag_end,form_end,"token",token,sizeof(token));
     const char separator=strchr(base,'?')?'&':'?';
-    int n=snprintf(out,cap,"%s%cmediaId=%s&token=%s",base,separator,encoded_id,encoded_token);
+    if(has_token){
+      if(!append_url_encoded(encoded_token,sizeof(encoded_token),token))return false;
+      int n=snprintf(out,cap,"%s%cmediaId=%s&token=%s",base,separator,encoded_id,encoded_token);
+      return n>0&&(size_t)n<cap;
+    }
+    int n=snprintf(out,cap,"%s%cmediaId=%s",base,separator,encoded_id);
     return n>0&&(size_t)n<cap;
   }
   return false;
@@ -407,9 +416,8 @@ static bool resolve_vimm_dl_form(char *out,size_t cap){
 static bool resolve_vimm_download_url(char *out,size_t cap){
   if(!out||cap<32u)return false;
   out[0]=0;
-  /* Vimm title pages use form#dl-form. submitDL() changes that form to GET;
-     resolve its action + hidden mediaId/token deterministically before any
-     generic fallback scanning. */
+  /* Vimm has used dl-form, dl_form and download_form across revisions.
+     Resolve the form action + mediaId first; token is optional on newer forms. */
   if(resolve_vimm_dl_form(out,cap))return true;
   const char *attrs[]={"href=\"","action=\"","data-href=\"","data-url=\""};
   for(size_t a=0;a<sizeof(attrs)/sizeof(attrs[0]);++a){
@@ -450,7 +458,16 @@ static bool vimm_allowed_url(const char *url){
   while(*id){if(*id<'0'||*id>'9')return false;++id;}
   return true;
 }
-static bool fetch_vimm_document(const char *url){
+static bool vimm_detail_document_marker(void){
+  if(!html||!html_size)return false;
+  return strstr(html,"name=\"mediaId\"")||strstr(html,"name='mediaId'")||
+         strstr(html,"id=\"dl-form\"")||strstr(html,"id='dl-form'")||
+         strstr(html,"id=\"dl_form\"")||strstr(html,"id='dl_form'")||
+         strstr(html,"id=\"download_form\"")||strstr(html,"id='download_form'")||
+         strstr(html,"allMedia")||
+         strstr(html,"Download, box art, and screen shots unavailable");
+}
+static bool fetch_vimm_document_mode(const char *url,bool allow_detail_soft_404){
   static const t5_http_header_t headers[]={
     {"User-Agent","Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36"},
     {"Accept","text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
@@ -477,11 +494,6 @@ static bool fetch_vimm_document(const char *url){
   if(!ok){
     debug_flush();
     copy_text(status_text,sizeof(status_text),"Vimm HTTPS request failed");
-    return false;
-  }
-  if(result.status_code<200||result.status_code>=300){
-    snprintf(status_text,sizeof(status_text),"Vimm HTTP %ld",(long)result.status_code);
-    debug_flush();
     return false;
   }
   if(result.flags&T5_HTTP_RESPONSE_TRUNCATED){
@@ -512,8 +524,24 @@ static bool fetch_vimm_document(const char *url){
     copy_text(status_text,sizeof(status_text),"Vimm returned an empty response");
     return false;
   }
+  if(result.status_code<200||result.status_code>=300){
+    const bool soft_404=allow_detail_soft_404&&result.status_code==404&&vimm_detail_document_marker();
+    debug_append("http_non2xx detail_soft_404=%u accepted=%u\n",
+      allow_detail_soft_404?1u:0u,soft_404?1u:0u);
+    if(!soft_404){
+      snprintf(status_text,sizeof(status_text),"Vimm HTTP %ld",(long)result.status_code);
+      debug_flush();
+      return false;
+    }
+  }
   debug_flush();
   return true;
+}
+static bool fetch_vimm_document(const char *url){
+  return fetch_vimm_document_mode(url,false);
+}
+static bool fetch_vimm_detail_document(const char *url){
+  return fetch_vimm_document_mode(url,true);
 }
 static bool decode_anchor_text(const char *start,const char *end,char *out,size_t cap){
   if(!start||!end||start>=end||!out||cap<2u)return false;
@@ -756,7 +784,7 @@ static int show_vimm_detail(const char *name,const char *path){
   if(n<=0||(size_t)n>=sizeof(url))return false;
   const t5_ui_list_row_t loading={name,"Loading Game Boy title details","",0};
   render_rows("Rom Manager","Vimm Vault",&loading,1,0,"");
-  if(!fetch_vimm_document(url))return DETAIL_FAILED;
+  if(!fetch_vimm_detail_document(url))return DETAIL_FAILED;
   html_to_detail_text(name);
   if(!detail_text[0])return DETAIL_FAILED;
   int32_t scroll=0;
