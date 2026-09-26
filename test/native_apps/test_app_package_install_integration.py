@@ -18,6 +18,7 @@ SD_ADAPTER = (ROOT / 'src/runtime/packages/PackageOrdinarySdAdapter.cpp').read_t
 MANAGED = (ROOT / 'src/runtime/packages/PackageOrdinaryManagedInstall.h').read_text(encoding='utf-8')
 PACKAGE_MANAGER = (ROOT / 'src/native/NativePackageManagerBridge.cpp').read_text(encoding='utf-8')
 CATALOG_INDEX = (ROOT / 'src/native/AppCatalogIndex.cpp').read_text(encoding='utf-8')
+APP_MANIFEST = (ROOT / 'src/native/AppManifest.cpp').read_text(encoding='utf-8')
 MAIN = (ROOT / 'src/main.cpp').read_text(encoding='utf-8')
 
 
@@ -137,6 +138,10 @@ class LiveInstallContract(unittest.TestCase):
 
         self.assertIn('RuntimeMemory::PsramTextStream json(kMaxCatalogBytes)', CATALOG_INDEX)
         self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', CATALOG_INDEX)
+        self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', APP_MANIFEST)
+        self.assertIn('JsonDocument doc(&allocator)', APP_MANIFEST)
+        self.assertIn('RuntimeMemory::PsramJsonAllocator metadataAllocator', HOST)
+        self.assertIn('JsonDocument metadata(&metadataAllocator)', HOST)
         self.assertIn('heap_caps_malloc_extmem_enable(128);', MAIN)
 
     def test_package_manager_and_shared_verifier_do_not_retain_large_stack_buffers(self):
