@@ -99,14 +99,20 @@ static void release_workspaces(void){
   if(html){app->psram_free(html);html=NULL;}
 }
 static void debug_append(const char *fmt,...){
-  if(!debug_text||debug_size+1u>=DEBUG_CAP||!fmt)return;
+  if(!fmt)return;
+  char line[384];
   va_list args;va_start(args,fmt);
-  int n=vsnprintf(debug_text+debug_size,DEBUG_CAP-debug_size,fmt,args);
+  int n=vsnprintf(line,sizeof(line),fmt,args);
   va_end(args);
   if(n<=0)return;
+  line[sizeof(line)-1u]=0;
+  if(app&&app->log_message)app->log_message(line);
+  if(!debug_text||debug_size+1u>=DEBUG_CAP)return;
   size_t wrote=(size_t)n;
-  if(wrote>=DEBUG_CAP-debug_size)debug_size=DEBUG_CAP-1u;
-  else debug_size+=wrote;
+  if(wrote>=sizeof(line))wrote=sizeof(line)-1u;
+  if(wrote>=DEBUG_CAP-debug_size)wrote=DEBUG_CAP-debug_size-1u;
+  memcpy(debug_text+debug_size,line,wrote);
+  debug_size+=wrote;
   debug_text[debug_size]=0;
 }
 static void debug_reset(const char *operation,const char *url){
@@ -319,18 +325,23 @@ static bool range_contains(const char *start,const char *end,const char *needle)
 }
 static bool copy_attr_value(const char *tag_start,const char *tag_end,const char *attr,
                             char *out,size_t cap){
-  if(!tag_start||!tag_end||tag_start>=tag_end||!attr||!out||cap<2u)return false;
-  char pattern[40];
-  int n=snprintf(pattern,sizeof(pattern),"%s=\"",attr);
-  if(n<=0||(size_t)n>=sizeof(pattern))return false;
-  const char *p=tag_start;
-  while(p<tag_end){
-    const char *hit=strstr(p,pattern);
-    if(!hit||hit>=tag_end)return false;
-    const char *value=hit+n;
-    const char *end=strchr(value,'"');
-    if(!end||end>tag_end)return false;
-    const size_t len=(size_t)(end-value);
+  if(!tag_start||!tag_end||tag_start>=tag_end||!attr||!attr[0]||!out||cap<2u)return false;
+  const size_t attr_len=strlen(attr);
+  for(const char *p=tag_start;p+attr_len<tag_end;++p){
+    if(strncmp(p,attr,attr_len)!=0)continue;
+    const char before=(p==tag_start)?' ':p[-1];
+    if(before!=' '&&before!='\t'&&before!='\r'&&before!='\n'&&before!='<')continue;
+    const char *q=p+attr_len;
+    while(q<tag_end&&(*q==' '||*q=='\t'||*q=='\r'||*q=='\n'))++q;
+    if(q>=tag_end||*q!='=')continue;
+    ++q;
+    while(q<tag_end&&(*q==' '||*q=='\t'||*q=='\r'||*q=='\n'))++q;
+    if(q>=tag_end||(*q!='\"'&&*q!='\''))continue;
+    const char quote=*q++;
+    const char *value=q;
+    while(q<tag_end&&*q!=quote)++q;
+    if(q>=tag_end)return false;
+    const size_t len=(size_t)(q-value);
     if(len>=cap)return false;
     memcpy(out,value,len);out[len]=0;return true;
   }
@@ -543,6 +554,51 @@ static bool add_vimm_entry(const char *path,size_t plen,const char *title,uint8_
   ++vimm_count;
   return true;
 }
+static bool numeric_only_text(const char *text){
+  if(!text||!text[0])return false;
+  bool digit=false;
+  for(const char *p=text;*p;++p){
+    if(*p>='0'&&*p<='9'){digit=true;continue;}
+    if(*p==' '||*p=='\t'||*p=='.'||*p==',')continue;
+    return false;
+  }
+  return digit;
+}
+static bool hidden_anchor(const char *tag_start,const char *tag_end){
+  char style[128];
+  if(!copy_attr_value(tag_start,tag_end,"style",style,sizeof(style)))return false;
+  for(size_t i=0;style[i];++i)style[i]=lower_ascii(style[i]);
+  return strstr(style,"display:none")||strstr(style,"display: none");
+}
+static bool first_visible_game_anchor(const char *td_start,const char *td_end,
+                                      char *path,size_t path_cap,
+                                      char *title,size_t title_cap){
+  const char *anchor=td_start;
+  while((anchor=strstr(anchor,"<a"))&&anchor<td_end){
+    const char *tag_end=strchr(anchor,'>');
+    if(!tag_end||tag_end>=td_end)return false;
+    const char *anchor_end=strstr(tag_end,"</a>");
+    if(!anchor_end||anchor_end>td_end)return false;
+    char candidate_path[NAME_CAP]={0},candidate_title[NAME_CAP]={0};
+    const bool have_href=copy_attr_value(anchor,tag_end,"href",candidate_path,sizeof(candidate_path));
+    const bool have_title=decode_anchor_text(tag_end+1,anchor_end,candidate_title,sizeof(candidate_title));
+    const bool hidden=hidden_anchor(anchor,tag_end);
+    debug_append("anchor href=%s title=%s hidden=%u numeric_path=%u numeric_title=%u\n",
+      have_href?candidate_path:"<none>",have_title?candidate_title:"<none>",
+      hidden?1u:0u,
+      have_href&&vimm_game_path(candidate_path,strlen(candidate_path))?1u:0u,
+      have_title&&numeric_only_text(candidate_title)?1u:0u);
+    if(!hidden&&have_href&&have_title&&!numeric_only_text(candidate_title)&&
+       vimm_game_path(candidate_path,strlen(candidate_path))){
+      copy_text(path,path_cap,candidate_path);
+      copy_text(title,title_cap,candidate_title);
+      return true;
+    }
+    anchor=anchor_end+4;
+  }
+  return false;
+}
+
 static bool fetch_vimm_url(const char *url,bool include_pages,bool server_filtered){
   vimm_count=0;
   if(!fetch_vimm_document(url))return false;
@@ -588,24 +644,18 @@ static bool fetch_vimm_url(const char *url,bool include_pages,bool server_filter
     char *anchor=strstr(td_tag_end,"<a");
     if(!anchor||anchor>=td_end){row=row_end+5;continue;}
     ++first_anchor_count;
-    char *anchor_tag_end=strchr(anchor,'>');
-    if(!anchor_tag_end||anchor_tag_end>=td_end){row=row_end+5;continue;}
 
     char path[NAME_CAP]={0},title[NAME_CAP]={0};
-    const bool have_href=copy_attr_value(anchor,anchor_tag_end,"href",path,sizeof(path));
-    char *anchor_end=strstr(anchor_tag_end,"</a>");
-    const bool have_title=anchor_end&&anchor_end<=td_end&&
-        decode_anchor_text(anchor_tag_end+1,anchor_end,title,sizeof(title));
-    const bool numeric=have_href&&vimm_game_path(path,strlen(path));
-    if(numeric)++numeric_first_anchor_count;
+    const bool found=first_visible_game_anchor(td_tag_end,td_end,path,sizeof(path),title,sizeof(title));
+    if(found)++numeric_first_anchor_count;
 
     if(sampled<12u){
-      debug_append("row[%lu] href=%s title=%s numeric=%u\n",
-                   (unsigned long)row_count,have_href?path:"<none>",
-                   have_title?title:"<none>",numeric?1u:0u);
+      debug_append("row[%lu] selected_href=%s selected_title=%s found=%u\n",
+                   (unsigned long)row_count,found?path:"<none>",
+                   found?title:"<none>",found?1u:0u);
       ++sampled;
     }
-    if(numeric&&have_title)
+    if(found)
       (void)add_vimm_entry(path,strlen(path),title,VIMM_GAME,server_filtered);
     row=row_end+5;
   }
@@ -750,9 +800,9 @@ static view_t consume_keyboard(void){
 __attribute__((visibility("default"))) void app_main(void){
   app=t5_app_get_api(T5_APP_ABI_VERSION);archive=t5_archive_get_api(T5_ARCHIVE_API_VERSION);storage=t5_storage_get_api(T5_STORAGE_API_VERSION);streams=t5_stream_get_api(T5_STREAM_API_VERSION);system_ui=t5_system_ui_get_api(T5_SYSTEM_UI_API_VERSION);ui=t5_ui_get_api(T5_UI_API_VERSION);
   const size_t rename_required=offsetof(t5_storage_api_v1,rename_file)+sizeof(storage->rename_file);
-  const size_t psram_required=offsetof(t5_app_api_v1,psram_free)+sizeof(app->psram_free);
+  const size_t log_required=offsetof(t5_app_api_v1,log_message)+sizeof(app->log_message);
   if(!app||!archive||!storage||!streams||!system_ui||!ui||
-     app->struct_size<psram_required||!app->psram_alloc||!app->psram_free||
+     app->struct_size<log_required||!app->psram_alloc||!app->psram_free||!app->log_message||
      archive->api_version!=T5_ARCHIVE_API_VERSION||archive->struct_size<sizeof(*archive)||
      !archive->find_first_suffix||!archive->extract_file||
      storage->struct_size<rename_required||!storage->exists||!storage->read_file||

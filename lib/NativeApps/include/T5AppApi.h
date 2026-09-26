@@ -158,6 +158,10 @@ typedef struct {
     // hardware-facing allocations. This never falls back to internal RAM.
     void *(*psram_alloc)(size_t size);
     void (*psram_free)(void *ptr);
+
+    // Append-only firmware logger. Emits one application-supplied message
+    // through the normal RiscRTE serial/logging path. Size-check before use.
+    void (*log_message)(const char *message);
 } t5_app_api_v1;
 
 // Native application entry point. Native ELFs are built with -fvisibility=hidden,

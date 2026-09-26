@@ -1039,6 +1039,10 @@ bool requestLaunch(uint32_t index) {
 bool drawIcon(int32_t x, int32_t y, const char* icon, uint8_t size, bool black) {
   auto* s = current(); return s && FontAwesomeIcons::draw(s->renderer, x, y, icon, size, black);
 }
+void logMessage(const char* message) {
+  if (!current() || !message) return;
+  LOG_INF("APP", "%s", message);
+}
 void drawLabel(int32_t x, int32_t y, int32_t w, const char* value) {
   auto* s = current();
   if (!s || !value || w <= 0) return;
@@ -1080,7 +1084,8 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            appCatalogDownloadLastError,
                            appCatalogDownloadWithProgress,
                            psramAlloc,
-                           psramFree};
+                           psramFree,
+                           logMessage};
 }  // namespace
 
 bool installRequiredNativeApp(const char* artifact, std::string& displayName,
