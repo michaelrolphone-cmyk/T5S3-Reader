@@ -375,25 +375,82 @@ bool onlineGet(uint32_t index, t5_package_catalog_row_t* out) {
     return true;
 }
 
-bool onlineInstall(uint32_t index) {
-    if (callerKind() < 0) return false;
+char onlineInstallError[96]{};
+
+void setOnlineInstallError(const char* message) {
+    if (!message) message = "package download or install failed";
+    std::snprintf(onlineInstallError, sizeof(onlineInstallError), "%s", message);
+}
+
+bool onlineInstallCommon(uint32_t index, t5_package_progress_fn progress, void* context) {
+    onlineInstallError[0] = 0;
+    if (callerKind() < 0) {
+        setOnlineInstallError("caller is not allowed to install packages");
+        return false;
+    }
     Mutation lock;
-    if (!lock) return false;
+    if (!lock) {
+        setOnlineInstallError("another package mutation is active");
+        return false;
+    }
     RuntimePackages::CatalogPackage candidate{};
     char release[64]{};
-    if (!RuntimeOnlinePackages::Catalog::selected(callerKind(), index, candidate, release))
+    if (!RuntimeOnlinePackages::Catalog::selected(callerKind(), index, candidate, release)) {
+        setOnlineInstallError("selected package is no longer available");
         return false;
+    }
     t5_package_preview_t state{};
     if (!describeIdentity(candidate.identity, &state) || !state.valid_installation ||
-        !state.install_allowed || !permitted(state.kind)) return false;
-    return RuntimeOnlinePackages::OrdinaryZip::install(candidate, release);
+        !state.install_allowed || !permitted(state.kind)) {
+        setOnlineInstallError("package is blocked by version, dependency, or recovery state");
+        return false;
+    }
+
+    HttpDownloader::ProgressCallback callback;
+    if (progress) {
+        const uint64_t total = candidate.sizeBytes;
+        callback = [progress, context, total](size_t downloaded, size_t) {
+            progress(context, static_cast<uint64_t>(downloaded), total);
+        };
+        progress(context, 0, total);
+    }
+
+    const bool okay = RuntimeOnlinePackages::OrdinaryZip::install(
+        candidate, release, callback);
+    if (!okay) {
+        setOnlineInstallError("package download, verification, or publication failed");
+        return false;
+    }
+    if (progress) progress(context, candidate.sizeBytes, candidate.sizeBytes);
+    clearInstalledCache();
+    if (candidate.identity.kind == RuntimePackages::Kind::Application)
+        (void)NativeFileAssociations::rebuild();
+    return true;
 }
+
+bool onlineInstall(uint32_t index) {
+    return onlineInstallCommon(index, nullptr, nullptr);
+}
+
+bool onlineInstallWithProgress(uint32_t index,
+                               t5_package_progress_fn progress,
+                               void* context) {
+    return onlineInstallCommon(index, progress, context);
+}
+
+bool onlineLastError(char* out, size_t capacity) {
+    if (!out || !capacity || !onlineInstallError[0]) return false;
+    std::snprintf(out, capacity, "%s", onlineInstallError);
+    return true;
+}
+
 
 const t5_package_manager_api_v1 api = {
     T5_PACKAGE_MANAGER_API_VERSION, sizeof(t5_package_manager_api_v1),
     preview, install, uninstall, previewArchive, installArchive,
     onlineRefresh, onlineCount, onlineGet, onlineInstall,
     refreshInstalled, installedCount, installedGet, replacePackage,
+    onlineInstallWithProgress, onlineLastError,
 };
 } // namespace
 
