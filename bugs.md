@@ -4,6 +4,7 @@
 
 ### 1. Battery Status drops the minus sign for temperatures from -0.1 C through -0.9 C
 
+- **Status:** Incomplete — fix implemented and focused regression-tested on branch `fix/battery-negative-subdegree-temperature`; PR creation is still pending. Resume this same branch and open a single PR targeting `master` rather than creating a new branch.
 - **Affected code:** `Apps/battery.c`, `add_temperature(uint16_t deci_kelvin)`.
 - **Trigger / reproduction:** Supply battery telemetry where `temperature_dk` converts to a deci-Celsius value between `-1` and `-9` (for example, `2730` deci-kelvin produces `deci_c == -1`). Open Battery Status and inspect the Temperature row.
 - **Observed / logically demonstrated failure:** The formatter computes `deci_c / 10` and a separately absolute-valued fractional digit. In C integer division truncates toward zero, so `-1 / 10` is `0`; the screen therefore renders `0.1 C` instead of `-0.1 C`. The same sign loss occurs through `-0.9 C`.
