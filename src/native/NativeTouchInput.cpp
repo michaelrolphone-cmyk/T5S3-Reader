@@ -27,6 +27,7 @@ bool quarantined = false;
 uint32_t lastAttemptMs = 0;
 
 bool touchActive = false;
+bool activityThisTick = false;
 bool touchMoved = false;
 bool gestureEligible = false;
 uint8_t activeContactId = 0;
@@ -42,6 +43,7 @@ uint8_t homeCount = 0;
 
 void clearTransient() {
   touchActive = false;
+  activityThisTick = false;
   touchMoved = false;
   gestureEligible = false;
   activeContactId = 0;
@@ -193,6 +195,10 @@ bool activate() {
 }  // namespace
 
 void nativeTouchTick() {
+  // Inactivity is driven by physical activity observed during this service
+  // pass, not by gesture records that may remain queued for a screen that does
+  // not consume them.
+  activityThisTick = false;
   if (!activate()) return;
 
   const bool pollOk = api->poll(api->context, 16u);
@@ -205,6 +211,7 @@ void nativeTouchTick() {
       needResync = true;
       break;
     }
+    activityThisTick = true;
     process(event);
   }
   if (needResync) resync();
@@ -242,7 +249,10 @@ bool nativeTouchResume() {
 bool nativeTouchAvailable() { return api != nullptr && subscription != 0; }
 
 bool nativeTouchHadActivity() {
-  return touchActive || tapCount || swipeCount || homeCount;
+  // A physically held contact keeps the device awake. Completed gestures do
+  // not: tap/swipe/home queues are delivery state, not continuing user
+  // activity, and may legitimately remain unconsumed on some screens.
+  return touchActive || activityThisTick;
 }
 
 bool nativeTouchGetTap(NativeTouchPoint& point) {

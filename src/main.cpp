@@ -204,6 +204,30 @@ bool shouldSuppressDeepSleepForDebug() {
 #endif
 }
 
+bool suspendInputProvidersForSleep() {
+  // Touch and navigation share lower provider dependencies. Release the touch
+  // lease first so navigation can prove the entire graph quiescent before the
+  // board tears down SD/I2C/power for sleep.
+  if (!nativeTouchSuspend()) {
+    LOG_ERR("INPUT", "Sleep refused: touch provider has not quiesced");
+    (void)nativeTouchResume();
+    return false;
+  }
+  if (!nativeNavigationSuspend()) {
+    LOG_ERR("INPUT", "Sleep refused: navigation/provider graph has not quiesced");
+    nativeNavigationResume();
+    (void)nativeTouchResume();
+    return false;
+  }
+  return true;
+}
+
+void resumeInputProvidersAfterSleep() {
+  // Bootstrap/navigation first; touch can then join the already healthy graph.
+  nativeNavigationResume();
+  (void)nativeTouchResume();
+}
+
 // Enter deep sleep mode
 void enterDeepSleep() {
   const bool deskClock = SETTINGS.sleepScreen == CrossPointSettings::DIGITAL_CLOCK;
@@ -214,11 +238,7 @@ void enterDeepSleep() {
   }
 
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
-  if (!nativeNavigationSuspend()) {
-    LOG_ERR("INPUT", "Sleep refused: navigation provider has not quiesced");
-    nativeNavigationResume();
-    return;
-  }
+  if (!suspendInputProvidersForSleep()) return;
   APP_STATE.lastSleepFromReader = APP_STATE.lastSleepFromReader || activityManager.isReaderActivityInStack();
   APP_STATE.saveToFile();
 
@@ -226,10 +246,10 @@ void enterDeepSleep() {
   Board::setBacklightLevel(0);
 
   if (deskClock) {
-    // SleepActivity has closed the reader and saved its position. Light sleep
-    // keeps the display/touch initialized and avoids a boot on every minute.
+    // SleepActivity has closed the reader and saved its position. The input
+    // provider graph stays quiesced while the retained clock owns sleep/wake.
     DeskClockSleep::run(renderer, gpio);
-    nativeNavigationResume();
+    resumeInputProvidersAfterSleep();
     Board::setBacklightLevel(SETTINGS.backlightLevel);
     renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
     if (SETTINGS.resumeReaderOnBoot && APP_STATE.lastSleepFromReader && !APP_STATE.openEpubPath.empty()) {
@@ -249,7 +269,7 @@ void enterDeepSleep() {
 
 void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
   HalPowerManager::Lock powerLock;
-  if (!nativeNavigationSuspend()) { nativeNavigationResume(); return; }
+  if (!suspendInputProvidersForSleep()) return;
   APP_STATE.lastSleepFromReader = APP_STATE.lastSleepFromReader || activityManager.isReaderActivityInStack();
   APP_STATE.saveToFile();
 
@@ -263,7 +283,7 @@ void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
 
 void enterPowerOffKeepingScreen(const char* status) {
   (void)status;  // Status line intentionally not shown; the sleep screen setting is used instead.
-  if (!nativeNavigationSuspend()) { nativeNavigationResume(); return; }
+  if (!suspendInputProvidersForSleep()) return;
   {
     HalPowerManager::Lock powerLock;
     APP_STATE.lastSleepFromReader = activityManager.isReaderActivityInStack();

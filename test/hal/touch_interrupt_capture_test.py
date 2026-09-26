@@ -69,7 +69,10 @@ assert "nativeTouchTakeHomePress" in MAPPED
 for old in ("gpio.getTouchTap", "gpio.getTouchHold", "gpio.getTouchSwipe",
             "gpio.wasTouchHomeButtonPressed"):
     assert old not in MAPPED
-assert "(void)nativeTouchResume();" not in MAIN
+setup_start = MAIN.index("void setup()")
+loop_start = MAIN.index("void loop()", setup_start)
+setup = MAIN[setup_start:loop_start]
+assert "(void)nativeTouchResume();" not in setup
 update_start = MAPPED.index("void MappedInputManager::update() const")
 update_end = MAPPED.index("bool MappedInputManager::wasAnyPressed()", update_start)
 update = MAPPED[update_start:update_end]
@@ -81,6 +84,26 @@ assert 'versionInInstalledSnapshot(snapshot, "platform.clock")' in MAIN
 assert 'versionInInstalledSnapshot(snapshot, "input.touch.raw")' in MAIN
 assert 'versionInInstalledSnapshot(snapshot, "input.navigation")' in MAIN
 assert "Foundational platform drivers incomplete" in MAIN
+
+# Auto-sleep must quiesce touch before navigation attempts graph-wide shutdown.
+sleep_helper = MAIN.split("bool suspendInputProvidersForSleep()", 1)[1].split(
+    "void resumeInputProvidersAfterSleep()", 1)[0]
+assert sleep_helper.index("nativeTouchSuspend()") < sleep_helper.index("nativeNavigationSuspend()")
+resume_helper = MAIN.split("void resumeInputProvidersAfterSleep()", 1)[1].split(
+    "// Enter deep sleep mode", 1)[0]
+assert resume_helper.index("nativeNavigationResume()") < resume_helper.index("nativeTouchResume()")
+assert "if (!suspendInputProvidersForSleep()) return;" in MAIN
+
+# Pending UI gesture delivery must not keep resetting the inactivity timer.
+activity = TOUCH.split("bool nativeTouchHadActivity()", 1)[1].split(
+    "bool nativeTouchGetTap", 1)[0]
+assert "touchActive || activityThisTick" in activity
+for sticky in ("tapCount", "swipeCount", "homeCount"):
+    assert sticky not in activity
+tick = TOUCH.split("void nativeTouchTick()", 1)[1].split(
+    "bool nativeTouchSuspend()", 1)[0]
+assert "activityThisTick = false;" in tick
+assert "activityThisTick = true;" in tick
 
 # Display takeover releases only the firmware consumer lease. This leaves no
 # active provider for legacy direct-GT911 apps, while a migrated app can acquire
