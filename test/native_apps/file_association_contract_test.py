@@ -20,7 +20,7 @@ editor_manifest = json.loads((ROOT / "Apps/text_editor.json").read_text(encoding
 assert image_manifest["supported_file_types"] == [".jpg", ".jpeg", ".png", ".bmp"]
 assert editor_manifest["supported_file_types"] == [".txt", ".md"]
 
-assert '/.crosspoint/file-associations.json' in registry
+assert '/System/Registry/FileAssociations.json' in registry
 assert '"riscrte-reader"' in registry
 for extension in (".epub", ".xtc", ".xtch", ".txt", ".md"):
     assert f'"{extension}"' in registry
@@ -46,3 +46,5 @@ assert "NativeFileAssociations::rebuild()" in online
 assert packages.count("NativeFileAssociations::rebuild()") >= 3
 
 print("File associations: metadata, generated manifest, mutation hooks, chooser and common handoff PASS")
+
+assert '/.crosspoint/file-associations.json' not in registry
