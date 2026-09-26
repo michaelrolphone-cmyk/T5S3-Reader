@@ -8,10 +8,12 @@
 #undef app_main
 
 static const char kLetterHtml[] =
-    "<table><tr>"
-    "<td><a href=\"/vault/11111\">9</a></td>"
-    "<td><a href=\"/vault/46856\"><canvas data-v=\"VGV0cmlz\"></canvas></a></td>"
-    "</tr></table>";
+    "<table class=\"hovertable\">"
+    "<tr><td><a href=\"/vault/46856\">Tetris</a></td>"
+    "<td><a href=\"/vault/90001\">9</a></td></tr>"
+    "<tr><td><a href=\"/vault/12345\">Wario Land</a></td>"
+    "<td><a href=\"/vault/90002\">9</a></td></tr>"
+    "</table>";
 static bool served;
 static uint32_t fake_millis(void){return 100u;}
 static const t5_app_api_v1 kApp={
@@ -21,7 +23,9 @@ static const t5_app_api_v1 kApp={
 };
 
 static int32_t fake_open_http(const char *url,t5_stream_t *out){
-  assert(url&&out);served=false;*out=1;return T5_STREAM_OK;
+  assert(url&&out);
+  assert(strcmp(url,"https://vimm.net/vault/?p=list&system=GB&section=W")==0);
+  served=false;*out=1;return T5_STREAM_OK;
 }
 static int32_t fake_read(t5_stream_t h,void *buffer,uint32_t cap,uint32_t *count){
   assert(h==1&&buffer&&count);
@@ -59,10 +63,13 @@ int main(void){
   search_query[0]=0;
   status_text[0]=0;
 
-  assert(fetch_vimm_url("https://vimm.net/vault/GB/W",false,false));
-  assert(vimm_count==1);
+  assert(open_vimm_page("/vault/GB/W"));
+  assert(vimm_count==2);
   assert(strcmp(vimm_names[0],"Tetris")==0);
   assert(strcmp(vimm_paths[0],"/vault/46856")==0);
   assert(vimm_kinds[0]==VIMM_GAME);
+  assert(strcmp(vimm_names[1],"Wario Land")==0);
+  assert(strcmp(vimm_paths[1],"/vault/12345")==0);
+  assert(vimm_kinds[1]==VIMM_GAME);
   return 0;
 }
