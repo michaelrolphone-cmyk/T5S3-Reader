@@ -69,7 +69,14 @@ static const char *TAG = "ELF_SYMBOL";
 
 static const struct esp_elfsym g_esp_libc_elfsyms[] = {
 
-    /* string.h */
+    /* string.h
+     *
+     * Stable baseline for ordinary native applications. Keep fundamental,
+     * side-effect-free string/memory helpers here rather than registering
+     * them ad hoc in individual app API tables. This same public-libc table is
+     * also safe for admitted providers; hardware/OS primitives remain outside
+     * it and continue through scoped capability/privileged interfaces.
+     */
 
     ESP_ELFSYM_EXPORT(strerror),
     ESP_ELFSYM_EXPORT(memset),
