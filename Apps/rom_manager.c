@@ -136,7 +136,7 @@ static bool fetch_vimm(void){
   }
   streams->close(h); html[html_size]=0;
   char *p=html;
-  while(vimm_count<MAX_VIMM&&(p=strstr(p,"href=\\\"/vault/"))){
+  while(vimm_count<MAX_VIMM&&(p=strstr(p,"href=\"/vault/"))){
     p+=6; char *q=strchr(p,'"'); if(!q)break; size_t plen=(size_t)(q-p); if(plen>=NAME_CAP){p=q+1;continue;}
     char *gt=strchr(q,'>'); if(!gt)break; char *lt=strchr(gt+1,'<'); if(!lt)break; size_t nlen=(size_t)(lt-(gt+1));
     if(nlen&&nlen<NAME_CAP&&plen>7){memcpy(vimm_paths[vimm_count],p,plen);vimm_paths[vimm_count][plen]=0;memcpy(vimm_names[vimm_count],gt+1,nlen);vimm_names[vimm_count][nlen]=0;
