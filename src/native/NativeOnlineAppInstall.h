@@ -60,8 +60,7 @@ inline bool installApplication(const char* artifact, const char* version,
     jsonDigest[i * 2 + 1] = alphabet[digest[i] & 15];
   }
   std::unique_ptr<char[]> descriptor(new (std::nothrow) char[4096]{});
-  std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
-  if (!descriptor || !plan) return fail("not enough memory for package plan");
+  if (!descriptor) return fail("not enough memory for package descriptor");
   const int count = std::snprintf(descriptor.get(), 4096,
       "{\"schema\":1,\"kind\":\"application\",\"id\":\"%s\",\"version\":\"%s\","
       "\"artifact\":\"%s\",\"architecture\":\"xtensa-esp32s3\",\"min_runtime_api\":2,"
@@ -70,10 +69,8 @@ inline bool installApplication(const char* artifact, const char* version,
       "\"requires\":[]}", id.c_str(), version, artifact, artifact,
       static_cast<unsigned long long>(size), elfDigest, manifestName.c_str(),
       static_cast<unsigned long long>(sidecar.size()), jsonDigest);
-  if (count <= 0 || count >= 4096 ||
-      !parseOrdinaryManifest(descriptor.get(), static_cast<size_t>(count), *plan) ||
-      plan->identity.kind != Kind::Application ||
-      std::strcmp(plan->identity.id, id.c_str())) return fail("package descriptor rejected");
+  if (count <= 0 || count >= 4096)
+    return fail("package descriptor rejected");
   constexpr PackageRuntimePolicy policy{"xtensa-esp32s3", 2, 0,
       kOrdinaryMaxEntryBytes, kOrdinaryMaxTotalBytes};
   const std::string root = "/Packages/Inbox/" + id;
@@ -119,6 +116,16 @@ inline bool installApplication(const char* artifact, const char* version,
     delay(1);
     progress(progressContext, size, size);
   }
+  // The full parsed package plan is sizeable and is not needed to establish
+  // the TLS transfer. Allocate and validate it only after the ELF download has
+  // finished so it cannot reduce contiguous heap available to mbedTLS.
+  std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
+  if (!plan ||
+      !parseOrdinaryManifest(descriptor.get(), static_cast<size_t>(count), *plan) ||
+      plan->identity.kind != Kind::Application ||
+      std::strcmp(plan->identity.id, id.c_str()))
+    return fail("package descriptor rejected");
+
   if (Storage.exists(elfPath.c_str())) return fail("download target already exists");
   if (!Storage.rename(elfStage.c_str(), elfPath.c_str()))
     return fail("could not finalize downloaded ELF");
