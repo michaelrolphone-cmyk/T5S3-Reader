@@ -17,7 +17,6 @@ using RiscRteSecureClient = WiFiClientSecure;
 #include <climits>
 #include <cstring>
 
-
 #include "runtime/network/NetworkService.h"
 #include "runtime/network/SavedNetworkConnection.h"
 
@@ -105,7 +104,7 @@ bool performInsecureHttps(const char* url, uint8_t method,
   esp_task_wdt_reset();
   int status = 0;
   if (method == T5_HTTP_METHOD_POST) {
-    status = http.sendRequest("POST", static_cast<const uint8_t*>(body), bodySize);
+    status = http.sendRequest("POST", const_cast<uint8_t*>(static_cast<const uint8_t*>(body)), bodySize);
   } else {
     status = http.GET();
   }
