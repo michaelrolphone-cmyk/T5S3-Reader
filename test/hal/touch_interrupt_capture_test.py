@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 HAL_H = (ROOT / "lib/hal/HalGPIO.h").read_text(encoding="utf-8")
 HAL_CPP = (ROOT / "lib/hal/HalGPIO.cpp").read_text(encoding="utf-8")
+MAIN = (ROOT / "src/main.cpp").read_text(encoding="utf-8")
 T5_H = (ROOT / "lib/Board_T5S3/BoardT5S3.h").read_text(encoding="utf-8")
 T5_CPP = (ROOT / "lib/Board_T5S3/BoardT5S3.cpp").read_text(encoding="utf-8")
 EPD_H = (ROOT / "lib/Board_EPD47/BoardEPD47.h").read_text(encoding="utf-8")
@@ -13,7 +14,23 @@ THEME = (ROOT / "src/components/themes/BaseTheme.cpp").read_text(encoding="utf-8
 T5_BOARD = (ROOT / "lib/Board_T5S3/BoardT5S3.cpp").read_text(encoding="utf-8")
 
 assert "attachInterruptArg(BoardPins::TouchInterrupt" in HAL_CPP
+assert "touchInterruptThunk, this, FALLING" in HAL_CPP
 assert 'xTaskCreate(touchTaskTrampoline, "touch-input"' in HAL_CPP
+
+# Early boot only probes the controller. The worker/ISR are armed after
+# SD/settings/RTC/display initialization, so boot-critical setup stays
+# single-threaded.
+begin_start = HAL_CPP.index("void HalGPIO::begin()")
+capture_start = HAL_CPP.index("void HalGPIO::startTouchCapture()")
+begin = HAL_CPP[begin_start:capture_start]
+capture = HAL_CPP[capture_start:HAL_CPP.index("void IRAM_ATTR HalGPIO::touchInterruptThunk")]
+assert "xTaskCreate" not in begin
+assert "attachInterruptArg" not in begin
+assert "xTaskCreate" in capture
+assert "attachInterruptArg" in capture
+display_setup = MAIN.index("setupDisplayAndFonts();")
+touch_start = MAIN.index("gpio.startTouchCapture();")
+assert display_setup < touch_start
 assert "vTaskNotifyGiveFromISR" in HAL_CPP
 assert "touch.readEvent(&point, &homeButtonPressed, &contactActive)" in HAL_CPP
 assert "xQueueSend(touchTapQueue" in HAL_CPP

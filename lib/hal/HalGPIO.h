@@ -73,6 +73,10 @@ class HalGPIO {
   inline const char* getDeviceName() const { return Board::displayName(); }
 
   void begin();
+  // Arm interrupt-backed touch capture after core boot initialization has
+  // completed. begin() only probes the controller so early boot remains
+  // single-threaded while SD/settings/RTC/display state is established.
+  void startTouchCapture();
   bool isTouchAvailable() const { return touch.isAvailable(); }
 
   void update();
