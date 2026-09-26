@@ -7,8 +7,11 @@
 HalGPIO gpio;
 
 namespace {
-constexpr uint16_t TOUCH_SWIPE_THRESHOLD = 25;
-constexpr unsigned long TOUCH_RELEASE_GRACE_MS = 300;
+// GT911 can briefly omit a sample while a finger is still down. Keep only a
+// short dropout guard: the previous 300 ms grace made every tap feel delayed
+// and merged quick successive taps into one gesture.
+constexpr uint16_t TOUCH_SWIPE_THRESHOLD = 40;
+constexpr unsigned long TOUCH_RELEASE_GRACE_MS = 40;
 constexpr unsigned long TOUCH_HOME_BUTTON_DEBOUNCE_MS = 40;
 constexpr uint64_t POWER_WAKE_MASK = 1ULL << BoardPins::PowerButton;
 constexpr uint64_t TOUCH_WAKE_MASK = 1ULL << BoardPins::TouchInterrupt;
