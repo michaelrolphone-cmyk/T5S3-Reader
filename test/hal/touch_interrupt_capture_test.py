@@ -58,8 +58,9 @@ assert "nativeTouchGetTap" in TOUCH_H
 assert "nativeTouchGetHold" in TOUCH_H
 assert "nativeTouchGetSwipe" in TOUCH_H
 
-# MappedInputManager now derives UI gestures from the provider consumer rather
-# than HalGPIO. Startup activates it only after SD/provider storage is ready.
+# MappedInputManager derives UI gestures from the provider consumer rather
+# than HalGPIO. Provider activation is deferred to the normal input loop so
+# navigation gets first access to the provider graph when touch is absent.
 assert "nativeTouchTick();" in MAPPED
 assert "nativeTouchGetTap" in MAPPED
 assert "nativeTouchGetHold" in MAPPED
@@ -68,7 +69,11 @@ assert "nativeTouchTakeHomePress" in MAPPED
 for old in ("gpio.getTouchTap", "gpio.getTouchHold", "gpio.getTouchSwipe",
             "gpio.wasTouchHomeButtonPressed"):
     assert old not in MAPPED
-assert "(void)nativeTouchResume();" in MAIN
+assert "(void)nativeTouchResume();" not in MAIN
+update_start = MAPPED.index("void MappedInputManager::update() const")
+update_end = MAPPED.index("bool MappedInputManager::wasAnyPressed()", update_start)
+update = MAPPED[update_start:update_end]
+assert update.index("nativeNavigationTick();") < update.index("nativeTouchTick();")
 assert "gpio.startTouchCapture()" not in MAIN
 assert "gpio.isTouchAvailable()" not in MAIN
 
