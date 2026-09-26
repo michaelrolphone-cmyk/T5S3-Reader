@@ -33,6 +33,7 @@ extern EpdFontFamily smallFontFamily;
 
 namespace {
 constexpr uint32_t kClockMagic = 0x434C4B32;  // CLK2; discard stale retained clock state.
+constexpr uint32_t kClockUiWakeMagic = 0x57414B45;  // WAKE; survive the explicit restart below.
 constexpr uint16_t kFullRefreshMinutes = 30;
 
 struct ClockRetention {
@@ -48,6 +49,8 @@ struct ClockRetention {
   char timeZoneId[40];
 };
 RTC_DATA_ATTR ClockRetention clockState = {};
+RTC_DATA_ATTR uint32_t clockUiWakeMagic = 0;
+bool userWakePending = false;
 
 void drawDigit(GfxRenderer& gfx, int digit, int x, int y, int unit) {
   static constexpr uint8_t masks[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f};
@@ -189,6 +192,10 @@ void paintAndSleep(GfxRenderer& gfx, bool timerWake) {
   // If the button was pressed while painting, leave clock mode and let normal
   // startup handle that press, instead of sleeping through it.
   if (digitalRead(BoardPins::PowerButton) == LOW) {
+    // A press can arrive after a timer wake while the clock is repainting.
+    // Preserve that user intent across the explicit software restart so normal
+    // startup can skip the cold-boot splash and continue directly to resume/Home.
+    clockUiWakeMagic = kClockUiWakeMagic;
     clockState.magic = 0;
     ESP.restart();
     return;
@@ -207,6 +214,8 @@ void DeskClockSleep::run(GfxRenderer& gfx, HalGPIO& input) {
     input.update();
   }
 
+  clockUiWakeMagic = 0;
+  userWakePending = false;
   clockState = {};
   clockState.magic = kClockMagic;
   clockState.rtcReferenceEpoch = SETTINGS.rtcReferenceEpoch;
@@ -228,9 +237,28 @@ void DeskClockSleep::run(GfxRenderer& gfx, HalGPIO& input) {
 }
 
 bool DeskClockSleep::resumeAfterTimerWake() {
-  const bool timerWake = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER;
-  if (!timerWake || clockState.magic != kClockMagic) {
-    clockState.magic = 0;  // Power button, reset, panic or normal boot exits clock.
+  const esp_sleep_wakeup_cause_t wakeCause = esp_sleep_get_wakeup_cause();
+
+  // If a button arrived while a timer-wake repaint was already running, the
+  // clock path performs an explicit restart. RTC retention is the only signal
+  // available on the following software-reset boot.
+  if (clockUiWakeMagic == kClockUiWakeMagic) {
+    clockUiWakeMagic = 0;
+    clockState.magic = 0;
+    userWakePending = true;
+    return false;
+  }
+
+  const bool retainedClock = clockState.magic == kClockMagic;
+  const bool timerWake = wakeCause == ESP_SLEEP_WAKEUP_TIMER;
+  if (!timerWake || !retainedClock) {
+    // sleepUntilNextMinute() disables every wake source before arming only the
+    // minute timer and power button. Therefore any defined non-timer wake while
+    // retained clock state is valid is the user's request to leave desk-clock
+    // mode. Panic/reset/cold boots report UNDEFINED and retain normal boot UI.
+    userWakePending =
+        retainedClock && wakeCause != ESP_SLEEP_WAKEUP_UNDEFINED;
+    clockState.magic = 0;
     return false;
   }
 
@@ -260,4 +288,10 @@ bool DeskClockSleep::resumeAfterTimerWake() {
   display.setFlipOutput(clockState.flipUi != 0);
   paintAndSleep(renderer, true);
   return false;  // Deep sleep never returns; the fallback is a normal boot.
+}
+
+bool DeskClockSleep::consumeUserWake() {
+  const bool pending = userWakePending;
+  userWakePending = false;
+  return pending;
 }

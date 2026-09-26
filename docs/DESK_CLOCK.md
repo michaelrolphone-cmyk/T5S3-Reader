@@ -47,10 +47,13 @@ visible update, so display latency does not accumulate into a drifting
 60-second cadence. If a refresh crosses a minute boundary, the clock immediately
 renders the newly current minute before sleeping again.
 
-Press PWR to leave the clock. The wake press is consumed by the normal boot
-path. Reader resumption follows the existing Resume Reader on Boot preference
-and last-sleep reader state; otherwise Home opens. Shutdown still uses the
-existing Power Off Screen and does not run a clock.
+Press PWR to leave the clock. A retained-clock user wake bypasses the
+cold-boot RiscRTE logo reveal and Home fade; normal firmware initialization
+still runs so storage, installed apps/providers, settings and input are ready.
+Reader resumption keeps its existing priority: when Resume Reader on Boot and
+the saved reader state apply, the reader opens directly; otherwise Home opens.
+The wake press is consumed and does not become a menu action. Shutdown still
+uses the existing Power Off Screen and does not run a clock.
 
 ## Implementation and checks
 
