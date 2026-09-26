@@ -47,6 +47,7 @@ inline bool installApplication(const char* artifact, const char* version,
   if (!safeId(id.c_str())) return fail("invalid app identity");
   const std::string manifestName = id + ".json";
   if (!safePackageEntryName(manifestName.c_str())) return fail("invalid manifest name");
+  const uint64_t sidecarSize = sidecar.size();
 
   // The retained JSON buffer and up-to-16-entry plan together exceed 8 KiB.
   // Build them on the heap before calling the separately staged SD installer.
@@ -68,7 +69,7 @@ inline bool installApplication(const char* artifact, const char* version,
       "{\"name\":\"%s\",\"size_bytes\":%llu,\"sha256\":\"%s\",\"executable\":false}],"
       "\"requires\":[]}", id.c_str(), version, artifact, artifact,
       static_cast<unsigned long long>(size), elfDigest, manifestName.c_str(),
-      static_cast<unsigned long long>(sidecar.size()), jsonDigest);
+      static_cast<unsigned long long>(sidecarSize), jsonDigest);
   if (count <= 0 || count >= 4096)
     return fail("package descriptor rejected");
   constexpr PackageRuntimePolicy policy{"xtensa-esp32s3", 2, 0,
@@ -133,7 +134,7 @@ inline bool installApplication(const char* artifact, const char* version,
       "{\"name\":\"%s\",\"size_bytes\":%llu,\"sha256\":\"%s\",\"executable\":false}],"
       "\"requires\":[]}", id.c_str(), version, artifact, artifact,
       static_cast<unsigned long long>(size), elfDigest, manifestName.c_str(),
-      static_cast<unsigned long long>(Storage.open(jsonPath.c_str(), O_RDONLY).fileSize64()), jsonDigest);
+      static_cast<unsigned long long>(sidecarSize), jsonDigest);
   if (rebuiltCount <= 0 || rebuiltCount >= 4096) return fail("package descriptor rejected");
   std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
   if (!plan ||
