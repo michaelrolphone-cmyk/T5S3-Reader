@@ -324,8 +324,8 @@ static bool vimm_game_path(const char *path,size_t length){
 static bool vimm_allowed_url(const char *url){
   if(!url)return false;
   if(strncmp(url,VIMM_URL,strlen(VIMM_URL))==0)return true;
-  const char search_prefix[]="https://vimm.net/vault/?p=list&system=GB&q=";
-  if(strncmp(url,search_prefix,sizeof(search_prefix)-1u)==0)return true;
+  const char list_url[]="https://vimm.net/vault/?p=list&system=GB";
+  if(!strncmp(url,list_url,sizeof(list_url)-1u))return true;
   const char detail_prefix[]="https://vimm.net/vault/";
   const size_t detail_len=sizeof(detail_prefix)-1u;
   if(strncmp(url,detail_prefix,detail_len)!=0)return false;
@@ -409,7 +409,11 @@ static bool fetch_vimm_url(const char *url,bool include_pages,bool server_filter
   }
   return true;
 }
-static bool fetch_vimm(void){return fetch_vimm_url(VIMM_URL,true,false);}
+static bool fetch_vimm(void){
+  if(fetch_vimm_url(VIMM_URL,true,false))return true;
+  const char fallback[]="https://vimm.net/vault/?p=list&system=GB";
+  return fetch_vimm_url(fallback,true,false);
+}
 static bool append_url_encoded(char *out,size_t cap,const char *text){
   static const char hex[]="0123456789ABCDEF";
   size_t w=0;
@@ -526,7 +530,7 @@ static view_t consume_keyboard(void){
   if(!system_ui->keyboard_take_result(text,sizeof(text),&cancelled,&cookie))return VIEW_HOME;
   if(cancelled){if(cookie==COOKIE_RENAME)(void)storage->remove_file(RENAME_STATE);return VIEW_HOME;}
   if(cookie==COOKIE_IMPORT){(void)import_url(text);return VIEW_ROMS;}
-  if(cookie==COOKIE_SEARCH){if(!search_vimm(text)){copy_text(status_text,sizeof(status_text),"Could not search Vimm Game Boy catalog");return VIEW_HOME;}return VIEW_VIMM;}
+  if(cookie==COOKIE_SEARCH){if(!search_vimm(text)){if(!status_text[0])copy_text(status_text,sizeof(status_text),"Could not search Vimm Game Boy catalog");return VIEW_HOME;}return VIEW_VIMM;}
   if(cookie==COOKIE_RENAME){do_rename(text);return VIEW_ROMS;}
   return VIEW_HOME;
 }
@@ -564,7 +568,7 @@ __attribute__((visibility("default"))) void app_main(void){
     if(ev.type!=T5_UI_EVENT_CONFIRM)continue;
     if(view==VIEW_HOME){
       if(selected==0){view=VIEW_ROMS;selected=0;}
-      else if(selected==1){search_query[0]=0;copy_text(status_text,sizeof(status_text),"Loading Vimm catalog...");if(fetch_vimm()){view=VIEW_VIMM;selected=0;}else copy_text(status_text,sizeof(status_text),"Could not load Vimm catalog");}
+      else if(selected==1){search_query[0]=0;copy_text(status_text,sizeof(status_text),"Loading Vimm catalog...");if(fetch_vimm()){view=VIEW_VIMM;selected=0;status_text[0]=0;}else if(!status_text[0])copy_text(status_text,sizeof(status_text),"Could not load Vimm catalog");}
       else if(selected==2){system_ui->keyboard_request("Search Vimm Vault","",79,T5_SYSTEM_KEYBOARD_TEXT,COOKIE_SEARCH);return;}
       else if(selected==3){system_ui->keyboard_request("Authorized ROM URL","https://",383,T5_SYSTEM_KEYBOARD_URL,COOKIE_IMPORT);return;}
     }else if(view==VIEW_VIMM){
