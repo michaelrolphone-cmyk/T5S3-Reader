@@ -313,6 +313,7 @@ bool ZipFile::findFirstBySuffix(const char* suffix, char* filename, size_t capac
   const ScopedOpenClose zip{*this};
   if (!zip || !loadZipDetails()) return false;
 
+  if (zipDetails.totalEntries > 4096u) return false;
   const size_t suffixLen = strlen(suffix);
   file.seek(zipDetails.centralDirOffset);
   uint32_t sig = 0;
