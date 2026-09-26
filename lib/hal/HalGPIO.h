@@ -2,9 +2,11 @@
 
 #include <Arduino.h>
 #include <Board.h>
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
+#endif
 
 class HalGPIO {
  public:
@@ -38,11 +40,13 @@ class HalGPIO {
   bool touchHomeButtonHeld = false;
   unsigned long lastTouchHomeButtonEventTime = 0;
 
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
   TaskHandle_t touchTaskHandle = nullptr;
   QueueHandle_t touchTapQueue = nullptr;
   QueueHandle_t touchSwipeQueue = nullptr;
   QueueHandle_t touchHomeQueue = nullptr;
   mutable portMUX_TYPE touchStateMux = portMUX_INITIALIZER_UNLOCKED;
+#endif
   bool touchAsyncReady = false;
 
   bool lastUsbConnected = false;
