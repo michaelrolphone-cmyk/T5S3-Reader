@@ -38,7 +38,6 @@
 #include "MappedInputManager.h"
 #include "NativeSettingsBridge.h"
 #include "NativeSystemUiBridge.h"
-#include "WifiCredentialStore.h"
 #include "activities/RenderLock.h"
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
@@ -55,7 +54,6 @@ constexpr const char* kReleaseIndexUrl =
     "https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/release-index/release-index.json";
 constexpr const char* kGameBoyRepository = "michaelrolphone-cmyk/T5S3-GameBoy";
 constexpr const char* kAggregateAppCatalogName = "app-catalog.json";
-constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr size_t kMaxCatalogAssets = 128;
 constexpr size_t kMaxCatalogBytes = 64 * 1024;
 constexpr size_t kMaxManifestBytes = 8 * 1024;
@@ -685,44 +683,6 @@ bool loadAuthoritativeAppCatalog(std::vector<CatalogAsset>& catalog) {
   return loadIndependentAppIndex(catalog);
 }
 
-bool connectSavedWifi() {
-  if (RuntimeNetwork::ready()) return true;
-
-  WIFI_STORE.loadFromFile();
-  const WifiCredential* cred = nullptr;
-  const std::string last = WIFI_STORE.getLastConnectedSsid();
-  if (!last.empty()) cred = WIFI_STORE.findCredential(last);
-  if (!cred) {
-    const auto& credentials = WIFI_STORE.getCredentials();
-    if (!credentials.empty()) cred = &credentials.front();
-  }
-  if (!cred || cred->ssid.empty()) {
-    LOG_ERR("APPSTORE", "No saved Wi-Fi credentials are available");
-    return false;
-  }
-
-  LOG_INF("APPSTORE", "Connecting to saved Wi-Fi: %s", cred->ssid.c_str());
-  RuntimeNetwork::wifi().connect(cred->ssid.c_str(), cred->password.empty() ? nullptr : cred->password.c_str());
-
-  const uint32_t started = millis();
-  while (millis() - started < kWifiConnectTimeoutMs) {
-    esp_task_wdt_reset();
-    const auto state = RuntimeNetwork::state();
-    if (state.connection == RuntimeNetwork::ConnectionState::Connected && state.hasAddress) {
-      WIFI_STORE.setLastConnectedSsid(cred->ssid);
-      LOG_INF("APPSTORE", "Wi-Fi ready: %s", state.address);
-      return true;
-    }
-    if (state.connection == RuntimeNetwork::ConnectionState::Failed ||
-        state.connection == RuntimeNetwork::ConnectionState::NetworkNotFound) {
-      LOG_ERR("APPSTORE", "Saved Wi-Fi connection failed before IP assignment");
-      return false;
-    }
-    delay(100);
-  }
-  LOG_ERR("APPSTORE", "Timed out waiting for saved Wi-Fi and IP address");
-  return RuntimeNetwork::ready();
-}
 
 bool loadAvailableAppCatalog(std::vector<CatalogAsset>& catalog) {
   if (loadAuthoritativeAppCatalog(catalog)) {
@@ -770,6 +730,7 @@ bool loadAvailableAppCatalog(std::vector<CatalogAsset>& catalog) {
   return loaded;
 }
 
+
 bool appCatalogRefresh() {
   auto* s = current();
   if (!s) return false;
@@ -778,7 +739,6 @@ bool appCatalogRefresh() {
   // not just the elements, so stale catalog capacity is not carried into the
   // next TLS handshake on a memory-constrained ESP32-S3.
   std::vector<CatalogAsset>().swap(s->catalog);
-  if (!connectSavedWifi()) return false;
   return loadAvailableAppCatalog(s->catalog);
 }
 
@@ -1139,11 +1099,6 @@ bool installRequiredNativeApp(const char* artifact, std::string& displayName,
     return true;
   }
 
-  if (!connectSavedWifi()) {
-    failureDetail = "Connect Wi-Fi or save a network, then retry";
-    return false;
-  }
-
   std::vector<CatalogAsset> catalog;
   if (!loadAvailableAppCatalog(catalog)) {
     failureDetail = "Application catalog is unavailable";
@@ -1237,6 +1192,7 @@ bool installRequiredNativeApp(const char* artifact, std::string& displayName,
   displayName = installedManifest.display_name;
   return true;
 }
+
 
 bool presentNativeAppUiFrame() {
   // Native UI lists and tables use the reader-friendly balanced waveform.
