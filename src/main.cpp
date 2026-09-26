@@ -25,6 +25,7 @@
 #include "DeskClockSleep.h"
 #include "native/NativeAppHost.h"
 #include "native/NativeNavigationInput.h"
+#include "native/NativeTouchInput.h"
 #include "KOReaderCredentialStore.h"
 #include "PowerControl.h"
 #include "MappedInputManager.h"
@@ -378,7 +379,6 @@ void setup() {
 #endif
 
   LOG_INF("MAIN", "Hardware detect: %s", gpio.getDeviceName());
-  LOG_INF("MAIN", "Touch detect: %d", gpio.isTouchAvailable());
 
   // SD Card Initialization
   // We need 6 open files concurrently when parsing a new chapter
@@ -458,9 +458,11 @@ void setup() {
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
 
   setupDisplayAndFonts();
-  // Touch IRQ capture is intentionally armed only after boot-critical
-  // SD/settings/RTC/display initialization has completed.
-  gpio.startTouchCapture();
+  // Touch is an installed provider capability. It is acquired only after SD
+  // package storage and display initialization are ready; firmware never probes
+  // or acknowledges GT911 registers directly.
+  (void)nativeTouchResume();
+  LOG_INF("MAIN", "Touch provider: %s", nativeTouchAvailable() ? "ready" : "unavailable");
   display.setFlipOutput(SETTINGS.flipUi != 0);
 
   // Present before any activity or mapped-input update can activate installed
@@ -557,7 +559,7 @@ void loop() {
   // Check for any user activity (button press or release) or active background work
   static unsigned long lastActivityTime = millis();
   if (mappedInputManager.wasAnyPressed() || mappedInputManager.wasAnyReleased() ||
-      nativeNavigationFrame().buttons || gpio.hadTouchActivity() || halTiltSensor.hadActivity() ||
+      nativeNavigationFrame().buttons || nativeTouchHadActivity() || halTiltSensor.hadActivity() ||
       activityManager.preventAutoSleep()
 #ifdef ENABLE_SERIAL_LOG
       || (Serial && SETTINGS.sleepScreen != CrossPointSettings::DIGITAL_CLOCK)

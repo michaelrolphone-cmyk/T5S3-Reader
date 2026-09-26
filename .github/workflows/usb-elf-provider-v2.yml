@@ -21,6 +21,7 @@ on:
       - "Drivers/t5s3_usb_power_profile/**"
       - "Drivers/i2c_esp32s3_v2/**"
       - "Drivers/platform_clock_v1/**"
+      - "Drivers/gt911_touch/**"
       - "sdk/driver/RiscProviderV2.h"
       - "sdk/driver/RiscUsbProviderV1.h"
       - "sdk/driver/RiscUsbControllerV1.h"
@@ -36,6 +37,7 @@ on:
       - "sdk/driver/RiscI2cBusV1.h"
       - "sdk/driver/RiscFirmwareI2cCompatV1.h"
       - "sdk/driver/RiscPlatformClockV1.h"
+      - "sdk/driver/RiscTouchV1.h"
       - "lib/elf_loader/**"
       - "lib/NativeApps/src/NativeAppLauncher.c"
       - "src/runtime/drivers/**"
@@ -61,6 +63,7 @@ on:
       - "src/native/NativeNavigationInput*"
       - "scripts/build_board_power_t5s3_v2.py"
       - "scripts/build_platform_clock_v1.py"
+      - "scripts/build_gt911_touch.py"
       - "scripts/probe_usb_controller_esp32s3.py"
       - "scripts/instrument_usb_enumeration.py"
       - "scripts/probe_i2c_esp32s3_v2.py"
@@ -86,6 +89,8 @@ on:
       - "test/drivers/board_power_t5s3_v2_test.c"
       - "test/drivers/i2c_esp32s3_v2_test.c"
       - "test/drivers/platform_clock_v1_test.c"
+      - "test/drivers/gt911_touch_test.c"
+      - "test/run_gt911_touch_test.sh"
       - "test/drivers/privileged_*"
       - "test/drivers/provider_package_inputs_v1_test.py"
       - "test/drivers/installed_usb_stack_package_test.py"
@@ -139,6 +144,7 @@ jobs:
           bash test/run_board_power_t5s3_v2_test.sh
           bash test/run_i2c_esp32s3_v2_test.sh
           bash test/run_platform_clock_v1_test.sh
+          bash test/run_gt911_touch_test.sh
           bash test/run_vbus_provider_chain_v2_test.sh
       - name: Install PlatformIO and target toolchain
         run: |
@@ -189,6 +195,8 @@ jobs:
           python scripts/build_platform_clock_v1.py
           python scripts/audit_usb_controller_elf.py dist/experimental/platform-clock-v1/driver.elf --strict
           bash test/run_native_app_test.sh dist/experimental/platform-clock-v1/driver.elf
+          python scripts/build_gt911_touch.py
+          bash test/run_native_app_test.sh dist/experimental/gt911-touch/driver.elf
       - name: Validate board-private C ABI and exact import matcher against linked ELFs
         run: |
           cc -std=gnu11 -O2 -Wall -Wextra -Werror -DBOARD_T5S3_PRO \
@@ -231,6 +239,7 @@ jobs:
             dist/experimental/usb-*/
             dist/experimental/i2c-*/
             dist/experimental/platform-clock-v1/
+            dist/experimental/gt911-touch/
             dist/packages/
             dist/release-packages/
           if-no-files-found: warn
