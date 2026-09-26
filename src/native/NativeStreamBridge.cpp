@@ -32,6 +32,9 @@ TaskHandle_t scheduler = nullptr;
 uint32_t owner = 0;
 bool active = false, httpBusy = false, usbOpen = false;
 uint32_t usbRefs = 0;
+TaskHandle_t httpWorkerTask = nullptr;
+struct HttpJob;
+HttpJob* pendingHttpJob = nullptr;
 struct Lock {
   Lock() { xSemaphoreTake(mutex, portMAX_DELAY); }
   ~Lock() { xSemaphoreGive(mutex); }
@@ -277,14 +280,31 @@ class HttpSink final : public Stream {
  private:
   HttpJob& job_;
 };
-void httpRequest(void* context) {
-  auto* job = static_cast<HttpJob*>(context);
-  HttpSink sink(*job);
-  bool ok = HttpDownloader::fetchUrl(job->url, sink);
-  { Lock lock; registry.finish(job->owner, job->stream, ok ? T5_STREAM_EOF : T5_STREAM_IO); httpBusy = false; }
-  delete job;
-  wake();
-  vTaskDelete(nullptr);
+void httpWorker(void*) {
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    HttpJob* job = nullptr;
+    {
+      Lock lock;
+      job = pendingHttpJob;
+      pendingHttpJob = nullptr;
+    }
+    if (!job) continue;
+
+    // Keep one reusable worker for the firmware lifetime. Repeatedly creating
+    // and self-deleting an 8 KiB task allowed the next TLS request to start
+    // before IDLE reclaimed the previous task stack, fragmenting internal heap
+    // until mbedTLS could no longer obtain a contiguous record buffer.
+    HttpSink sink(*job);
+    const bool ok = HttpDownloader::fetchUrl(job->url, sink);
+    {
+      Lock lock;
+      registry.finish(job->owner, job->stream, ok ? T5_STREAM_EOF : T5_STREAM_IO);
+      httpBusy = false;
+    }
+    delete job;
+    wake();
+  }
 }
 int32_t openHttp(const char* url, t5_stream_t* out) {
   if (out) *out = 0;
@@ -304,10 +324,13 @@ int32_t openHttp(const char* url, t5_stream_t* out) {
   auto r = registry.buffer(owner, T5_STREAM_MAX_BUFFER, out, T5_STREAM_READ);
   if (r != T5_STREAM_OK) { delete job; return r; }
   job->owner = owner; job->stream = *out; std::strcpy(job->url, url);
-  httpBusy = true;
-  if (xTaskCreate(httpRequest, "stream-http", 8192, job, 1, nullptr) != pdPASS) {
-    httpBusy = false; registry.close(owner, *out); *out = 0; delete job; return T5_STREAM_LIMIT;
+  if (!httpWorkerTask &&
+      xTaskCreate(httpWorker, "stream-http", 8192, nullptr, 1, &httpWorkerTask) != pdPASS) {
+    registry.close(owner, *out); *out = 0; delete job; return T5_STREAM_LIMIT;
   }
+  pendingHttpJob = job;
+  httpBusy = true;
+  xTaskNotifyGive(httpWorkerTask);
   return r;
 }
 #define SESSION_CALL(expr) do { if (!authorized()) return T5_STREAM_DENIED; Lock lock; auto r = (expr); wake(); return r; } while (0)

@@ -520,25 +520,23 @@ bool catalogRefresh() {
     catalog.clear();
     if (!connectSavedWifi()) return false;
     const bool canonical = loadCanonicalDriverCatalog();
-    std::vector<CatalogDriver> physical;
-    if (canonical) physical.swap(catalog);
-    catalog.clear();
-    bool legacy = loadAggregateDriverCatalog();
-    if (!legacy) {
-        catalog.clear();
-        legacy = loadLegacyReleaseCatalog();
+    if (canonical) {
+        // The independent release index is the authoritative current driver
+        // catalog. Do not immediately open two more TLS connections for the
+        // aggregate catalog and latest-release legacy scan after it succeeded.
+        // Besides being redundant for current packages, that fan-out used to
+        // overlap short-lived HTTP worker reclamation and exhaust contiguous
+        // internal heap on ESP32-S3.
+        return true;
     }
-    // A canonical physical ELF always supersedes a same-ID legacy proxy.
-    // Preserve unrelated old releases, including GPS, during the transition.
-    for (auto& driver : physical) {
-        catalog.erase(std::remove_if(catalog.begin(), catalog.end(),
-            [&driver](const CatalogDriver& existing) {
-                return !std::strcmp(existing.info.id, driver.info.id);
-            }), catalog.end());
-        catalog.push_back(std::move(driver));
-    }
-    sortCatalog();
-    return canonical || legacy;
+
+    // Compatibility discovery remains available only when the independent
+    // index itself cannot be loaded, so older releases still have a bounded
+    // fallback without penalizing the normal path.
+    std::vector<CatalogDriver>().swap(catalog);
+    if (loadAggregateDriverCatalog()) return true;
+    std::vector<CatalogDriver>().swap(catalog);
+    return loadLegacyReleaseCatalog();
 }
 
 
