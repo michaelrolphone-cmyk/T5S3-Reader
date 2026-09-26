@@ -6,6 +6,7 @@
 
 void app_main(void);
 static int online_refreshes, online_installs, saw_alpha, saw_beta, saw_installed, saw_update;
+static int saw_failure_detail, saw_download_progress, progress_callbacks;
 static int back_disabled, back_restored, event_index;
 static uint32_t installed_index;
 static int preview_calls, install_calls;
@@ -52,8 +53,6 @@ static const t5_app_api_v1 api = {
     .dir_next = directory_next,
     .dir_close = directory_close,
     .set_back_exits_app = set_back_exits_app,
-    .app_catalog_download_last_error = download_last_error,
-    .app_catalog_download_with_progress = download_with_progress,
 };
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) {
     assert(version == T5_APP_ABI_VERSION);
@@ -103,6 +102,22 @@ static bool online_install(uint32_t index) {
     installed_index = index;
     return true;
 }
+static bool online_install_with_progress(uint32_t index,
+                                         t5_package_progress_fn progress,
+                                         void *context) {
+    assert(index < online_count() && progress && context);
+    ++online_installs;
+    installed_index = index;
+    progress(context, 0, 200);
+    progress(context, 100, 200);
+    progress(context, 200, 200);
+    return false;
+}
+static bool online_last_error(char *out, size_t capacity) {
+    if (!out || capacity < sizeof("HTTP download failed")) return false;
+    strcpy(out, "HTTP download failed");
+    return true;
+}
 static const t5_package_manager_api_v1 package_api = {
     .api_version = T5_PACKAGE_MANAGER_API_VERSION,
     .struct_size = sizeof(t5_package_manager_api_v1),
@@ -115,6 +130,8 @@ static const t5_package_manager_api_v1 package_api = {
     .online_count = online_count,
     .online_get = online_get,
     .online_install = online_install,
+    .online_install_with_progress = online_install_with_progress,
+    .online_last_error = online_last_error,
 };
 const t5_package_manager_api_v1 *t5_package_manager_get_api(uint32_t version) {
     assert(version == T5_PACKAGE_MANAGER_API_VERSION);
@@ -126,11 +143,11 @@ static void render_list(const t5_ui_chrome_t *chrome,
                         uint32_t count,
                         int32_t selected_index) {
     assert(chrome && selected_index >= 0);
-    if (chrome->status && strstr(chrome->status, "Beta: HTTP download failed"))
+    if (chrome->status && strstr(chrome->status, "beta: HTTP download failed"))
         saw_failure_detail = 1;
     if (chrome->status && strstr(chrome->status, "Downloading release |")) {
-        assert(row_count == 1 && rows && rows[0].title &&
-               !strcmp(rows[0].title, "Download progress"));
+        assert(count == 1 && list && list[0].title &&
+               !strcmp(list[0].title, "Download progress"));
         saw_download_progress = 1;
         ++progress_callbacks;
     }
