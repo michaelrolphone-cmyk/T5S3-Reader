@@ -304,7 +304,6 @@ bool readPca9535Pin(uint8_t pin, bool* high) {
 
 bool readButton() {
   bool high = true;
-  setPca9535PinMode(PCA9535_IO12_BUTTON, INPUT);
   if (!readPca9535Pin(PCA9535_IO12_BUTTON, &high)) return false;
   return !high;
 }
