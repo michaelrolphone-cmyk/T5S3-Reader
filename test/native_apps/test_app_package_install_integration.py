@@ -42,10 +42,10 @@ class LiveInstallContract(unittest.TestCase):
                          'Storage.remove(destination.c_str())'):
             self.assertNotIn(obsolete, install)
 
-        # New paths may reclaim only an exactly matched previous online source.
-        # Retain exclusive new-directory/file creation and verified publication.
+        # Online installs discard only manager-owned stale scratch and always
+        # rebuild from a fresh download; unknown content remains protected.
         for required in ('safePackageEntryName(artifact)',
-                         'Recovery::discardMatchingInbox(',
+                         'Recovery::discardOwnedInbox(',
                          'if (!Storage.mkdir(root.c_str(), false)) return fail("could not create package inbox")',
                          'O_WRONLY | O_CREAT | O_EXCL',
                          'HttpDownloader::downloadToFile(url, elfStage,',
@@ -55,7 +55,7 @@ class LiveInstallContract(unittest.TestCase):
                          'RuntimeMemory::PsramBuffer descriptor(4096)',
                          'RuntimeMemory::PsramBuffer planStorage(sizeof(OrdinaryPackagePlan))',
                          'parseOrdinaryManifest(descriptor.chars(), static_cast<size_t>(rebuiltCount), *plan)',
-                         'Recovery::discardMatchingStage(',
+                         'Recovery::discardOwnedStage(',
                          'installOrdinaryFromSd(root.c_str(), policy,',
                          'installed.result != OrdinaryInstallResult::Installed'):
             self.assertIn(required, ONLINE)
@@ -64,8 +64,8 @@ class LiveInstallContract(unittest.TestCase):
         self.assertLess(ONLINE.index('downloadToFile(url, elfStage,'),
                         ONLINE.index('verifyAppPair(elfPath.c_str()'))
         self.assertLess(ONLINE.index('verifyAppPair(elfPath.c_str()'),
-                        ONLINE.index('discardMatchingStage(root,'))
-        self.assertLess(ONLINE.index('discardMatchingStage(root,'),
+                        ONLINE.index('discardOwnedStage(*plan)'))
+        self.assertLess(ONLINE.index('discardOwnedStage(*plan)'),
                         ONLINE.index('installOrdinaryFromSd(root.c_str()'))
         self.assertIn('RuntimeMemory::PsramBuffer descriptor(4096)', ONLINE)
         self.assertIn('RuntimeMemory::PsramBuffer planStorage(sizeof(OrdinaryPackagePlan))', ONLINE)
@@ -98,18 +98,20 @@ class LiveInstallContract(unittest.TestCase):
         self.assertLess(install_call, post_refresh)
         self.assertLess(post_refresh, failure_check)
 
-    def test_recovery_is_exact_inventory_and_preserves_foreign_files(self):
-        for required in ('equalFile(root + "/" + sidecarName, sidecar.data()',
-                         'descriptorSeen && !equalFile(',
+    def test_online_recovery_discards_only_owned_scratch(self):
+        for required in ('discardOwnedInbox(',
+                         'discardOwnedStage(',
                          'else { valid = false; break; }',
-                         'if (!valid || !closed || !sidecarSeen',
-                         'verifyOrdinarySdDirectory(sourceRoot.c_str(), policy, resolver, verified)',
-                         'stagePrefixMatches(',
                          'if (!valid || !closed) return false;',
+                         'Storage.rmdir(root.c_str())',
                          'Storage.rmdir(paths.stage)'):
             self.assertIn(required, RECOVERY)
-        self.assertLess(RECOVERY.index('verifyOrdinarySdDirectory(sourceRoot.c_str()'),
-                        RECOVERY.index('Storage.rmdir(paths.stage)'))
+        for obsolete in ('equalFile(', 'stagePrefixMatches(',
+                         'verifyOrdinarySdDirectory(sourceRoot.c_str()'):
+            self.assertNotIn(obsolete, RECOVERY)
+        self.assertIn('starting over', ONLINE)
+        self.assertNotIn('Recovered matching interrupted download', ONLINE)
+        self.assertNotIn('interrupted package differs from this release', ONLINE)
 
     def test_package_manager_and_shared_verifier_do_not_retain_large_stack_buffers(self):
         self.assertIn('new (std::nothrow) char[4096]', PACKAGE_MANAGER)
