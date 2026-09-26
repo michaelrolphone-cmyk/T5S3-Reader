@@ -106,10 +106,11 @@ class LiveInstallContract(unittest.TestCase):
                          'Storage.rmdir(root.c_str())',
                          'Storage.rmdir(paths.stage)'):
             self.assertIn(required, RECOVERY)
-        for obsolete in ('equalFile(', 'stagePrefixMatches(',
-                         'verifyOrdinarySdDirectory(sourceRoot.c_str()'):
-            self.assertNotIn(obsolete, RECOVERY)
+        # Exact-match helpers remain available for driver intake, but the
+        # online application installer must no longer call resume/replay paths.
         self.assertIn('starting over', ONLINE)
+        self.assertNotIn('discardMatchingInbox(', ONLINE)
+        self.assertNotIn('discardMatchingStage(', ONLINE)
         self.assertNotIn('Recovered matching interrupted download', ONLINE)
         self.assertNotIn('interrupted package differs from this release', ONLINE)
 
