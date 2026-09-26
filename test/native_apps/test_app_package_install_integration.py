@@ -84,6 +84,18 @@ class LiveInstallContract(unittest.TestCase):
         self.assertGreater(terminal_progress, transfer_end)
         self.assertLess(ONLINE.index('delay(1);', transfer_end), terminal_progress)
 
+    def test_failed_install_does_not_leave_catalog_stripped(self):
+        start = HOST.index('bool appCatalogDownloadWithProgress(uint32_t index,')
+        end = HOST.index('\nbool appCatalogDownload(uint32_t index)', start)
+        install = HOST[start:end]
+        self.assertIn('Selected catalog entry lost download metadata; reloading catalog', install)
+        self.assertIn('const bool installedOk = RuntimeOnlinePackages::installApplication(', install)
+        self.assertIn('Always restore the catalog', install)
+        self.assertLess(install.index('const bool installedOk = RuntimeOnlinePackages::installApplication('),
+                        install.index('loadAuthoritativeAppCatalog(s->catalog)'))
+        self.assertLess(install.index('loadAuthoritativeAppCatalog(s->catalog)'),
+                        install.index('if (!installedOk)'))
+
     def test_recovery_is_exact_inventory_and_preserves_foreign_files(self):
         for required in ('equalFile(root + "/" + sidecarName, sidecar.data()',
                          'descriptorSeen && !equalFile(',
