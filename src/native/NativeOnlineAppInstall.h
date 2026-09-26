@@ -116,9 +116,18 @@ inline bool installApplication(const char* artifact, const char* version,
   // doing that from the byte-progress callback competes with the exact heap
   // headroom this path preserves for TLS and can abort otherwise valid installs.
   // Keep the transfer callback allocation-free except for the watchdog reset.
-  if (HttpDownloader::downloadToFile(url, elfStage,
-          [](size_t, size_t) { esp_task_wdt_reset(); }) != HttpDownloader::OK)
-    return fail("HTTP download failed");
+  const auto downloadResult = HttpDownloader::downloadToFile(
+      url, elfStage, [](size_t, size_t) { esp_task_wdt_reset(); });
+  if (downloadResult != HttpDownloader::OK) {
+    switch (downloadResult) {
+      case HttpDownloader::HTTP_ERROR: return fail("HTTP download failed");
+      case HttpDownloader::FILE_ERROR: return fail("download staging file failed");
+      case HttpDownloader::ABORTED: return fail("download aborted");
+      case HttpDownloader::STREAM_ERROR: return fail("download stream failed");
+      case HttpDownloader::OK: break;
+    }
+    return fail("download failed");
+  }
   // The HTTP worker publishes EOF before the pipe can complete. Give the
   // scheduler one turn to reclaim its task stack, then permit the ELF to show a
   // terminal 100% frame before digest verification/publication continues.
