@@ -338,11 +338,37 @@ HalFile::HalFile() = default;
 
 HalFile::HalFile(std::unique_ptr<Impl> impl) : impl(std::move(impl)) {}
 
-HalFile::~HalFile() = default;
+HalFile::~HalFile() {
+  if (!impl) {
+    return;
+  }
+
+  // SdFat is built with DESTRUCTOR_CLOSES_FILE, so destroying an open FsFile
+  // can sync the card and end an Arduino SPI transaction. Keep the entire raw
+  // FsFile destruction inside the same storage mutex used by every HalFile I/O
+  // call; otherwise another task can acquire the SD bus between the final read
+  // and this destructor and trigger SPI.endTransaction() from the wrong owner.
+  HalStorage::StorageLock lock;
+  impl.reset();
+}
 
 HalFile::HalFile(HalFile&&) = default;
 
-HalFile& HalFile::operator=(HalFile&&) = default;
+HalFile& HalFile::operator=(HalFile&& other) {
+  if (this == &other) {
+    return *this;
+  }
+
+  // unique_ptr move-assignment destroys the previous Impl. Do that explicitly
+  // under StorageLock for the same reason as the destructor before adopting the
+  // incoming handle.
+  if (impl) {
+    HalStorage::StorageLock lock;
+    impl.reset();
+  }
+  impl = std::move(other.impl);
+  return *this;
+}
 
 HalFile HalStorage::open(const char* path, const oflag_t oflag) {
   StorageLock lock;
@@ -374,9 +400,15 @@ bool HalStorage::rmdir(const char* path) {
 }
 
 bool HalStorage::openFileForRead(const char* moduleName, const char* path, HalFile& file) {
-  StorageLock lock;
   FsFile fsFile;
-  bool ok = openFileForReadUnlocked(moduleName, path, fsFile);
+  bool ok = false;
+  {
+    StorageLock lock;
+    ok = openFileForReadUnlocked(moduleName, path, fsFile);
+  }
+  // HalFile move-assignment may need to destroy a previously open destination,
+  // which takes StorageLock itself. Assign only after the open transaction's
+  // lock has been released.
   file = HalFile(std::make_unique<HalFile::Impl>(std::move(fsFile)));
   return ok;
 }
@@ -390,9 +422,14 @@ bool HalStorage::openFileForRead(const char* moduleName, const String& path, Hal
 }
 
 bool HalStorage::openFileForWrite(const char* moduleName, const char* path, HalFile& file) {
-  StorageLock lock;
   FsFile fsFile;
-  bool ok = openFileForWriteUnlocked(moduleName, path, fsFile);
+  bool ok = false;
+  {
+    StorageLock lock;
+    ok = openFileForWriteUnlocked(moduleName, path, fsFile);
+  }
+  // See openFileForRead(): never call HalFile move-assignment while already
+  // holding the non-recursive storage mutex.
   file = HalFile(std::make_unique<HalFile::Impl>(std::move(fsFile)));
   return ok;
 }
