@@ -13,6 +13,12 @@ static const char kLetterHtml[] =
     "<td><a href=\"/vault/46856\"><canvas data-v=\"VGV0cmlz\"></canvas></a></td>"
     "</tr></table>";
 static bool served;
+static uint32_t fake_millis(void){return 100u;}
+static const t5_app_api_v1 kApp={
+  .abi_version=T5_APP_ABI_VERSION,
+  .struct_size=sizeof(t5_app_api_v1),
+  .millis=fake_millis,
+};
 
 static int32_t fake_open_http(const char *url,t5_stream_t *out){
   assert(url&&out);served=false;*out=1;return T5_STREAM_OK;
@@ -48,6 +54,7 @@ int main(void){
   char buffer[4096];
   html=buffer;
   detail_text=buffer;
+  app=&kApp;
   streams=&kStreams;
   search_query[0]=0;
   status_text[0]=0;
