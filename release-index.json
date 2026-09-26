@@ -269,16 +269,16 @@
             "capability": "usb.host"
           }
         ],
-        "sha256": "585fd11250fff0425316880eb35c1846f0140b17d54d914804b22120b7205158",
-        "size_bytes": 2115364,
-        "version": "1.3.3"
+        "sha256": "71adc614db687a325b982c3a7fa1ba786d4ff474453f4f8de5b8286c2ed1466f",
+        "size_bytes": 2142100,
+        "version": "1.3.5"
       },
-      "sha256": "585fd11250fff0425316880eb35c1846f0140b17d54d914804b22120b7205158",
-      "size": 2115364,
+      "sha256": "71adc614db687a325b982c3a7fa1ba786d4ff474453f4f8de5b8286c2ed1466f",
+      "size": 2142100,
       "source_repo": "michaelrolphone-cmyk/T5S3-GameBoy",
-      "tag": "v1.3.3",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-GameBoy/releases/download/v1.3.3/gameboy.elf",
-      "version": "1.3.3"
+      "tag": "v1.3.5",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-GameBoy/releases/download/v1.3.5/gameboy.elf",
+      "version": "1.3.5"
     },
     {
       "asset": "gnss_stream_diagnostic.elf",
