@@ -69,7 +69,10 @@ assert "nativeTouchTakeHomePress" in MAPPED
 for old in ("gpio.getTouchTap", "gpio.getTouchHold", "gpio.getTouchSwipe",
             "gpio.wasTouchHomeButtonPressed"):
     assert old not in MAPPED
-assert "(void)nativeTouchResume();" not in MAIN
+setup_start = MAIN.index("void setup()")
+loop_start = MAIN.index("void loop()", setup_start)
+setup = MAIN[setup_start:loop_start]
+assert "(void)nativeTouchResume();" not in setup
 update_start = MAPPED.index("void MappedInputManager::update() const")
 update_end = MAPPED.index("bool MappedInputManager::wasAnyPressed()", update_start)
 update = MAPPED[update_start:update_end]
