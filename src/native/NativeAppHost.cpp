@@ -633,7 +633,7 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
     std::string parsedVersion;
     if (asset.manifestJson.empty() || asset.manifestJson.size() > kMaxManifestBytes ||
         !parseAppManifest(asset.manifestJson, asset.manifest, &parsedVersion, true) ||
-        !asset.manifest.compatible || asset.manifest.file_name != asset.name ||
+        asset.manifest.file_name != asset.name ||
         parsedVersion != version) {
       if (gameBoyProvider) {
         LOG_ERR("APPSTORE", "Ignoring malformed cached GameBoy manifest");
