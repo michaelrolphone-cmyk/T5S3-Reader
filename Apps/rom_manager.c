@@ -152,8 +152,14 @@ static bool vimm_game_path(const char *path,size_t length){
   for(size_t i=7u;i<length;++i)if(path[i]<'0'||path[i]>'9')return false;
   return true;
 }
-static bool fetch_vimm_url(const char *url){
-  if(!url||strncmp(url,VIMM_URL,strlen(VIMM_URL))!=0)return false;
+static bool vimm_allowed_url(const char *url){
+  if(!url)return false;
+  if(strncmp(url,VIMM_URL,strlen(VIMM_URL))==0)return true;
+  const char search_prefix[]="https://vimm.net/vault/?p=list&system=GB&q=";
+  return strncmp(url,search_prefix,sizeof(search_prefix)-1u)==0;
+}
+static bool fetch_vimm_url(const char *url,bool include_pages){
+  if(!vimm_allowed_url(url))return false;
   html_size=0; vimm_count=0; t5_stream_t h=0; if(streams->open_http(url,&h)!=T5_STREAM_OK)return false;
   uint32_t last_progress=app->millis(),started=last_progress;
   while(html_size<HTML_CAP){
@@ -167,7 +173,8 @@ static bool fetch_vimm_url(const char *url){
   char *p=html;
   while(vimm_count<MAX_VIMM&&(p=strstr(p,"href=\"/vault/"))){
     p+=6; char *q=strchr(p,'"'); if(!q)break; size_t plen=(size_t)(q-p); if(plen>=NAME_CAP){p=q+1;continue;}
-    const uint8_t kind=vimm_game_path(p,plen)?VIMM_GAME:(vimm_page_path(p,plen)?VIMM_PAGE:0u);
+    const uint8_t kind=vimm_game_path(p,plen)?VIMM_GAME:
+        (include_pages&&vimm_page_path(p,plen)?VIMM_PAGE:0u);
     if(!kind){p=q+1;continue;}
     char *gt=strchr(q,'>'); if(!gt)break; char *lt=strchr(gt+1,'<'); if(!lt)break; size_t nlen=(size_t)(lt-(gt+1));
     if(nlen&&nlen<NAME_CAP){
@@ -182,14 +189,43 @@ static bool fetch_vimm_url(const char *url){
   }
   return true;
 }
-static bool fetch_vimm(void){return fetch_vimm_url(VIMM_URL);}
+static bool fetch_vimm(void){return fetch_vimm_url(VIMM_URL,true);}
+static bool append_url_encoded(char *out,size_t cap,const char *text){
+  static const char hex[]="0123456789ABCDEF";
+  size_t w=0;
+  for(size_t i=0;text&&text[i];++i){
+    const unsigned char c=(unsigned char)text[i];
+    const bool safe=(c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||
+                    c=='-'||c=='_'||c=='.'||c=='~';
+    if(safe){
+      if(w+1u>=cap)return false;
+      out[w++]=(char)c;
+    }else{
+      if(w+3u>=cap)return false;
+      out[w++]='%';out[w++]=hex[c>>4];out[w++]=hex[c&15u];
+    }
+  }
+  if(w>=cap)return false;
+  out[w]=0;
+  return true;
+}
+static bool search_vimm(const char *query){
+  if(!query||!query[0])return false;
+  char encoded[240];
+  if(!append_url_encoded(encoded,sizeof(encoded),query))return false;
+  char url[320];
+  int n=snprintf(url,sizeof(url),"https://vimm.net/vault/?p=list&system=GB&q=%s",encoded);
+  if(n<=0||(size_t)n>=sizeof(url))return false;
+  copy_text(search_query,sizeof(search_query),query);
+  return fetch_vimm_url(url,false);
+}
 static bool open_vimm_page(const char *path){
   if(!path||!vimm_page_path(path,strlen(path)))return false;
   char url[NAME_CAP+32u];
   int n=snprintf(url,sizeof(url),"https://vimm.net%s",path);
   if(n<=0||(size_t)n>=sizeof(url))return false;
   search_query[0]=0;
-  return fetch_vimm_url(url);
+  return fetch_vimm_url(url,true);
 }
 static void do_rename(const char *new_text){
   char old_name[NAME_CAP]={0}; size_t n=0;
@@ -203,7 +239,7 @@ static view_t consume_keyboard(void){
   if(!system_ui->keyboard_take_result(text,sizeof(text),&cancelled,&cookie))return VIEW_HOME;
   if(cancelled){if(cookie==COOKIE_RENAME)(void)storage->remove_file(RENAME_STATE);return VIEW_HOME;}
   if(cookie==COOKIE_IMPORT){(void)import_url(text);return VIEW_ROMS;}
-  if(cookie==COOKIE_SEARCH){copy_text(search_query,sizeof(search_query),text);if(!fetch_vimm()){copy_text(status_text,sizeof(status_text),"Could not load Vimm catalog");return VIEW_HOME;}return VIEW_VIMM;}
+  if(cookie==COOKIE_SEARCH){if(!search_vimm(text)){copy_text(status_text,sizeof(status_text),"Could not search Vimm Game Boy catalog");return VIEW_HOME;}return VIEW_VIMM;}
   if(cookie==COOKIE_RENAME){do_rename(text);return VIEW_ROMS;}
   return VIEW_HOME;
 }
