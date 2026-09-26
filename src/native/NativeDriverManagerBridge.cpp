@@ -17,6 +17,8 @@
 #include <vector>
 
 #include "WifiCredentialStore.h"
+#include "native/NativeNavigationInput.h"
+#include "native/NativeTouchInput.h"
 #include "network/HttpDownloader.h"
 #include "runtime/drivers/DriverInstallIntake.h"
 #include "runtime/drivers/DriverPackage.h"
@@ -730,7 +732,25 @@ bool installWithProgress(uint32_t index, t5_driver_install_progress_t progress, 
     std::strncpy(id, catalog[index].info.id, sizeof(id) - 1);
     RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
         id, T5_DRIVER_INSTALL_RESOLVING);
-    const bool ok = installImpl(index, progress, context);
+
+    /* Driver publication must never race mapped provider packages. Driver
+     * Manager is already inside a synchronous user-confirmed operation, so it
+     * needs no input until this call returns. Release touch first because it may
+     * share i2c/clock dependencies with the package being installed, then
+     * release navigation and require graph-wide quiescence. Restore navigation
+     * before touch so bootstrap input is available even if the new touch driver
+     * still cannot activate. */
+    const bool touchStopped = nativeTouchSuspend();
+    const bool navigationStopped = touchStopped && nativeNavigationSuspend();
+    bool ok = false;
+    if (!navigationStopped) {
+        LOG_ERR("DRVMGR", "Driver install refused: active provider graph could not quiesce");
+    } else {
+        ok = installImpl(index, progress, context);
+    }
+    nativeNavigationResume();
+    (void)nativeTouchResume();
+
     RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
         id, ok ? T5_DRIVER_INSTALL_INSTALLED : T5_DRIVER_INSTALL_FAILED);
     return ok;
