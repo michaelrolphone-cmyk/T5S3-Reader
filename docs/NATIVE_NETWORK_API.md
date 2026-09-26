@@ -31,6 +31,7 @@ The current firmware-owned layer provides:
 - creating and performing an ESP HTTP client request;
 - applying caller-supplied headers;
 - preserving the compatibility API's explicit insecure-HTTPS mode when the caller omits `cert_pem`, while using caller-supplied CA material when present;
+- maintaining a bounded, domain/path-aware HTTP cookie jar for insecure-HTTPS requests during one native application invocation, and clearing it at application exit so session cookies cannot cross application contexts;
 - temporarily disabling Wi-Fi power saving during the request and restoring the prior mode afterward;
 - watchdog servicing while the request is active;
 - returning transport error, HTTP status, response length and response-truncated state.
@@ -77,6 +78,8 @@ bool completed = network->http_request(
 `http_request()` returns `true` when the transport completed. A completed request can still have a non-2xx HTTP status, so applications must inspect `result.status_code`. On transport failure, `result.transport_error` contains the underlying `esp_err_t` value.
 
 When the body is larger than the response buffer, the buffer remains NUL-terminated, `result.response_bytes` reports the full observed byte count, and `T5_HTTP_RESPONSE_TRUNCATED` is set in `result.flags`.
+
+For the compatibility insecure-HTTPS path, the host attaches Arduino HTTPClient's cookie jar for the duration of the current native app execution. Cookies are matched by the HTTP client's domain/path rules, capped to eight retained cookies with bounded name/value/domain/path sizes, and destroyed on app exit. `T5_HTTP_SESSION_COOKIES_AVAILABLE` indicates that the session already held cookies before the request; `T5_HTTP_SESSION_COOKIES_STORED` indicates that the session holds cookies after the response. The flags never expose cookie values.
 
 ### Reference application
 
