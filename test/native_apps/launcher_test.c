@@ -8,6 +8,7 @@
 #include "esp_dlfcn.h"
 #include "esp_elf.h"
 #include "T5AppApi.h"
+#include "T5ArchiveApi.h"
 #include "T5BatteryApi.h"
 #include "T5ButtonRemapApi.h"
 #include "T5CacheApi.h"
@@ -268,6 +269,7 @@ int esp_elf_register_symbol(const struct esp_elfsym *s)
     return 0;
 }
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_archive_api_v1 *t5_archive_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_battery_api_v1 *t5_battery_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_button_remap_api_v1 *t5_button_remap_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_cache_api_v1 *t5_cache_get_api(uint32_t version) { (void)version; return NULL; }
