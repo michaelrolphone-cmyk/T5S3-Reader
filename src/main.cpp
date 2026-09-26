@@ -351,12 +351,12 @@ bool shouldResumeReaderOnBoot() {
 void setup() {
   t1 = millis();
 
-  // Keep medium/large general-purpose allocations out of scarce internal RAM.
-  // App catalogs contain many URL/manifest/vector allocations well below 1 KiB;
-  // a 1 KiB cutoff leaves those in internal heap and fragments the contiguous
-  // blocks mbedTLS needs. Explicit INTERNAL/DMA allocations remain unaffected.
+  // Keep large general-purpose allocations out of scarce internal RAM without
+  // relocating small networking/stream/storage control objects. App Store bulk
+  // metadata has explicit PSRAM allocators; the global threshold remains high
+  // enough to avoid changing transport object placement.
   if (psramFound()) {
-    heap_caps_malloc_extmem_enable(128);
+    heap_caps_malloc_extmem_enable(1024);
   }
 
   HalSystem::begin();
