@@ -620,9 +620,18 @@ bool installCanonicalDependencies(size_t index, std::vector<uint8_t>& visiting,
                 catalog[prerequisite].info.id, selected.info.id);
         RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
             catalog[prerequisite].info.id, T5_DRIVER_INSTALL_DEPENDENCY);
-        if (!installCanonicalDependencies(prerequisite, visiting, progress, context) ||
-            RuntimePackages::installedCapabilityVersion(capability) < minimumApi)
+        if (!installCanonicalDependencies(prerequisite, visiting, progress, context)) {
+            LOG_ERR("DRVMGR", "Dependency install failed: %s required by %s",
+                    catalog[prerequisite].info.id, selected.info.id);
             return false;
+        }
+        const uint32_t installedApi = RuntimePackages::installedCapabilityVersion(capability);
+        if (installedApi < minimumApi) {
+            LOG_ERR("DRVMGR", "Dependency installed but capability unavailable: %s api=%lu required=%lu",
+                    capability, static_cast<unsigned long>(installedApi),
+                    static_cast<unsigned long>(minimumApi));
+            return false;
+        }
     }
     RuntimeOnlinePackages::DriverIntake::emitProgress(progress, context,
         selected.info.id, T5_DRIVER_INSTALL_CHECKING);
