@@ -92,6 +92,7 @@ struct Session {
   std::vector<t5_app_manifest_t> installed;
   std::string launchPath;
   char catalogDownloadError[128]{};
+  bool catalogNeedsRefresh = false;
   bool backExitsApp = true;
   bool exiting = false;
   bool presenting = false;
@@ -831,6 +832,7 @@ bool connectSavedWifi() {
 bool appCatalogRefresh() {
   auto* s = current();
   if (!s) return false;
+  s->catalogNeedsRefresh = false;
   // A refresh invalidates every prior release record. Free the backing storage,
   // not just the elements, so stale catalog capacity is not carried into the
   // next TLS handshake on a memory-constrained ESP32-S3.
@@ -888,14 +890,30 @@ bool appCatalogRefresh() {
   return loaded;
 }
 
+bool ensureCatalogReady(Session* s) {
+  if (!s) return false;
+  if (!s->catalogNeedsRefresh) return true;
+  s->catalogNeedsRefresh = false;
+  delay(1);  // Let the completed install frame fully unwind before metadata TLS.
+  if (!loadAuthoritativeAppCatalog(s->catalog)) {
+    LOG_ERR("APPSTORE", "Deferred catalog refresh after install attempt failed");
+    std::vector<CatalogAsset>().swap(s->catalog);
+    return false;
+  }
+  LOG_INF("APPSTORE", "Deferred catalog reload: %u apps",
+          static_cast<unsigned>(s->catalog.size()));
+  return true;
+}
+
 uint32_t appCatalogCount() {
   auto* s = current();
-  return s ? static_cast<uint32_t>(s->catalog.size()) : 0u;
+  if (!ensureCatalogReady(s)) return 0u;
+  return static_cast<uint32_t>(s->catalog.size());
 }
 
 bool appCatalogGet(uint32_t index, t5_app_release_asset_t* out) {
   auto* s = current();
-  if (!s || !out || index >= s->catalog.size()) return false;
+  if (!out || !ensureCatalogReady(s) || index >= s->catalog.size()) return false;
   *out = {};
   const auto& asset = s->catalog[index];
   std::strncpy(out->name, asset.name.c_str(), sizeof(out->name) - 1);
@@ -906,14 +924,16 @@ bool appCatalogGet(uint32_t index, t5_app_release_asset_t* out) {
 
 bool appCatalogManifestGet(uint32_t index, t5_app_manifest_t* out) {
   auto* s = current();
-  if (!s || !out || index >= s->catalog.size() || !s->catalog[index].manifestValid) return false;
+  if (!out || !ensureCatalogReady(s) || index >= s->catalog.size() ||
+      !s->catalog[index].manifestValid) return false;
   *out = s->catalog[index].manifest;
   return true;
 }
 
 bool appCatalogVersionGet(uint32_t index, char* out, size_t capacity) {
   auto* s = current();
-  if (!s || index >= s->catalog.size() || !s->catalog[index].manifestValid) return false;
+  if (!ensureCatalogReady(s) || index >= s->catalog.size() ||
+      !s->catalog[index].manifestValid) return false;
   return copyVersion(s->catalog[index].version, out, capacity);
 }
 
@@ -1074,16 +1094,11 @@ bool appCatalogDownloadWithProgress(uint32_t index,
       artifact.c_str(), version.c_str(), downloadUrl.c_str(), json,
       selectedSize, digest, progress, progressContext, &failureReason);
 
-  // Always restore the catalog, including after download/verification/install
-  // failure. Otherwise one failed update poisons every subsequent action in the
-  // same App Store session with "release catalog entry is incomplete".
+  // Do not open metadata TLS again while this install frame still owns
+  // package/verification scratch. Mark the catalog dirty and let the App Store's
+  // next catalog query reload it after this function has fully returned.
   std::vector<CatalogAsset>().swap(s->catalog);
-  if (!loadAuthoritativeAppCatalog(s->catalog)) {
-    LOG_ERR("APPSTORE", "Catalog refresh after install attempt failed");
-  } else {
-    LOG_INF("APPSTORE", "Reloaded %u apps after install attempt",
-            static_cast<unsigned>(s->catalog.size()));
-  }
+  s->catalogNeedsRefresh = true;
 
   if (!installedOk)
     return catalogDownloadFailed(s, failureReason ? failureReason : "package installation failed");
