@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "LoRa",
   "file_name": "lora.elf",
-  "icon": "solid:f519"
+  "icon": "solid:f519",
+  "category": [
+    "Connectivity",
+    "Hardware"
+  ]
 }
