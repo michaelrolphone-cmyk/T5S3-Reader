@@ -76,6 +76,11 @@ update = MAPPED[update_start:update_end]
 assert update.index("nativeNavigationTick();") < update.index("nativeTouchTick();")
 assert "gpio.startTouchCapture()" not in MAIN
 assert "gpio.isTouchAvailable()" not in MAIN
+assert 'versionInInstalledSnapshot(snapshot, "i2c.bus")' in MAIN
+assert 'versionInInstalledSnapshot(snapshot, "platform.clock")' in MAIN
+assert 'versionInInstalledSnapshot(snapshot, "input.touch.raw")' in MAIN
+assert 'versionInInstalledSnapshot(snapshot, "input.navigation")' in MAIN
+assert "Foundational platform drivers incomplete" in MAIN
 
 # Display takeover releases only the firmware consumer lease. This leaves no
 # active provider for legacy direct-GT911 apps, while a migrated app can acquire
