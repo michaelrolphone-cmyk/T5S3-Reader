@@ -1629,6 +1629,54 @@
       "version": "0.1.3"
     },
     {
+      "asset": "usb-mass-storage--driver.elf",
+      "id": "usb-mass-storage",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "storage.volume",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "5f543e99611749c973f58f7c4d7bd88d92b11cd9f708e49ba15b618504bb9d16",
+            "size_bytes": 627
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "af0cd0a820f8b163c8cf2efff9890c5ccfa538a2339a2411d6a43135172ac3a6",
+            "size_bytes": 23792
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "e16b6352d537660ad2da358814e8e22f8f0488febe22851c05012d371a503df4",
+            "size_bytes": 43
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca",
+            "size_bytes": 14
+          }
+        ],
+        "id": "usb-mass-storage",
+        "requires": [
+          {
+            "capability": "usb.host",
+            "min_api": 1
+          }
+        ],
+        "version": "0.1.1"
+      },
+      "sha256": "af0cd0a820f8b163c8cf2efff9890c5ccfa538a2339a2411d6a43135172ac3a6",
+      "size": 23792,
+      "tag": "driver-usb-mass-storage-v0.1.1",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-mass-storage-v0.1.1/usb-mass-storage--driver.elf",
+      "version": "0.1.1"
+    },
+    {
       "asset": "usb-msp--driver.elf",
       "id": "usb-msp",
       "kind": "driver",
