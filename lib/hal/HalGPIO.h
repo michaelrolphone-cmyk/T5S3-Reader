@@ -54,10 +54,12 @@ class HalGPIO {
   unsigned long lastUsbPollTime = 0;
 
   uint8_t getState();
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
   void serviceTouchController();
   void processTouchEvent(const Board::TouchPoint& point, bool homeButtonPressed, bool contactActive);
   static void touchTaskTrampoline(void* context);
   static void IRAM_ATTR touchInterruptThunk(void* context);
+#endif
 
  public:
   enum class DeviceType : uint8_t { T5S3Pro, LilyGoEPD47 };
