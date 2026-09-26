@@ -399,25 +399,107 @@ static bool decode_anchor_text(const char *start,const char *end,char *out,size_
   out[w]=0;
   return w>0;
 }
+static int b64_value(char c){
+  if(c>='A'&&c<='Z')return c-'A';
+  if(c>='a'&&c<='z')return c-'a'+26;
+  if(c>='0'&&c<='9')return c-'0'+52;
+  if(c=='+')return 62;
+  if(c=='/')return 63;
+  return -1;
+}
+static bool decode_data_v(const char *start,const char *end,char *out,size_t cap){
+  if(!start||!end||start>=end||!out||cap<2u)return false;
+  uint32_t bits=0; unsigned bit_count=0; size_t w=0;
+  for(const char *p=start;p<end;++p){
+    if(*p=='=')break;
+    const int v=b64_value(*p);
+    if(v<0)continue;
+    bits=(bits<<6)|(uint32_t)v;
+    bit_count+=6;
+    while(bit_count>=8){
+      bit_count-=8;
+      if(w+1u>=cap)return false;
+      const unsigned shift=bit_count;
+      const char c=(char)((bits>>shift)&0xffu);
+      if((unsigned char)c<32u&&c!='\t')return false;
+      out[w++]=c;
+      if(bit_count==0)bits=0;
+      else bits&=((1u<<bit_count)-1u);
+    }
+  }
+  while(w&&out[w-1]==' ')--w;
+  out[w]=0;
+  return w>0;
+}
+static bool decode_data_v_from_range(const char *start,const char *end,char *out,size_t cap){
+  const char needle[]="data-v=\"";
+  const size_t nlen=sizeof(needle)-1u;
+  const char *p=start;
+  while(p&&p<end){
+    p=strstr(p,needle);
+    if(!p||p>=end)return false;
+    const char *value=p+nlen;
+    const char *quote=strchr(value,'"');
+    if(!quote||quote>end)return false;
+    if(decode_data_v(value,quote,out,cap))return true;
+    p=quote+1;
+  }
+  return false;
+}
+static bool vimm_path_seen(const char *path){
+  for(uint32_t i=0;i<vimm_count;++i)if(!strcmp(vimm_paths[i],path))return true;
+  return false;
+}
+static bool add_vimm_entry(const char *path,size_t plen,const char *title,uint8_t kind,bool server_filtered){
+  if(!path||!title||!title[0]||plen>=NAME_CAP||vimm_count>=MAX_VIMM)return false;
+  char path_copy[NAME_CAP];
+  memcpy(path_copy,path,plen);path_copy[plen]=0;
+  if(vimm_path_seen(path_copy))return false;
+  if(!server_filtered&&!contains_ci(title,search_query))return false;
+  copy_text(vimm_paths[vimm_count],NAME_CAP,path_copy);
+  copy_text(vimm_names[vimm_count],NAME_CAP,title);
+  vimm_kinds[vimm_count]=kind;
+  ++vimm_count;
+  return true;
+}
 static bool fetch_vimm_url(const char *url,bool include_pages,bool server_filtered){
   vimm_count=0;
   if(!fetch_vimm_document(url))return false;
+
+  /* Top-level Game Boy navigation is ordinary anchor text. Keep it separate
+     from game-title parsing so numeric links elsewhere in a result row cannot
+     masquerade as titles. */
+  if(include_pages){
+    char *p=html;
+    while(vimm_count<MAX_VIMM&&(p=strstr(p,"href=\"/vault/GB"))){
+      p+=6;
+      char *q=strchr(p,'"'); if(!q)break;
+      const size_t plen=(size_t)(q-p);
+      if(plen>=NAME_CAP||!vimm_page_path(p,plen)){p=q+1;continue;}
+      char *gt=strchr(q,'>'); if(!gt)break;
+      char *close=strstr(gt+1,"</a>"); if(!close){p=gt+1;continue;}
+      char title[NAME_CAP];
+      if(decode_anchor_text(gt+1,close,title,sizeof(title)))
+        (void)add_vimm_entry(p,plen,title,VIMM_PAGE,true);
+      p=close+4;
+    }
+  }
+
+  /* Vimm obscures catalog titles in data-v Base64 canvas attributes. Only a
+     numeric /vault/<id> anchor that actually contains a decodable data-v title
+     is a game row. This deliberately rejects rating/score/action anchors such
+     as the visible "9" links that previously polluted the list. */
   char *p=html;
   while(vimm_count<MAX_VIMM&&(p=strstr(p,"href=\"/vault/"))){
-    p+=6; char *q=strchr(p,'"'); if(!q)break; size_t plen=(size_t)(q-p); if(plen>=NAME_CAP){p=q+1;continue;}
-    const uint8_t kind=vimm_game_path(p,plen)?VIMM_GAME:
-        (include_pages&&vimm_page_path(p,plen)?VIMM_PAGE:0u);
-    if(!kind){p=q+1;continue;}
+    p+=6;
+    char *q=strchr(p,'"'); if(!q)break;
+    const size_t plen=(size_t)(q-p);
+    if(plen>=NAME_CAP||!vimm_game_path(p,plen)){p=q+1;continue;}
     char *gt=strchr(q,'>'); if(!gt)break;
     char *close=strstr(gt+1,"</a>"); if(!close){p=gt+1;continue;}
     char title[NAME_CAP];
-    if(decode_anchor_text(gt+1,close,title,sizeof(title))&&
-       (server_filtered||contains_ci(title,search_query))){
-      memcpy(vimm_paths[vimm_count],p,plen);vimm_paths[vimm_count][plen]=0;
-      copy_text(vimm_names[vimm_count],NAME_CAP,title);
-      vimm_kinds[vimm_count]=kind;
-      ++vimm_count;
-    }
+    if(decode_data_v_from_range(gt+1,close,title,sizeof(title)))
+      (void)add_vimm_entry(p,plen,title,VIMM_GAME,server_filtered);
     p=close+4;
   }
   return true;
