@@ -8,6 +8,13 @@ resolver = (repo / 'src/runtime/packages/InstalledCapabilityResolver.cpp').read_
 recovery = (repo / 'src/native/NativeOnlinePackageRecovery.h').read_text()
 ui = (repo / 'Apps/driver_manager.c').read_text()
 manifest = json.loads((repo / 'Apps/driver_manager.json').read_text())
+bridge = (repo / 'src/native/NativeDriverManagerBridge.cpp').read_text()
+install_wrapper = bridge.split('bool installWithProgress(', 1)[1].split('\nbool install(uint32_t index)', 1)[0]
+assert install_wrapper.index('nativeTouchSuspend()') < install_wrapper.index('nativeNavigationSuspend()')
+assert install_wrapper.index('nativeNavigationSuspend()') < install_wrapper.index('installImpl(index, progress, context)')
+assert install_wrapper.index('nativeNavigationResume()') < install_wrapper.index('nativeTouchResume()')
+assert 'active provider graph could not quiesce' in install_wrapper
+
 
 # Installed metadata inspection runs only while constructing a fresh
 # operation-scoped snapshot. Runtime discovery never hashes payloads;

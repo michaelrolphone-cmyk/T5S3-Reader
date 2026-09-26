@@ -26,6 +26,7 @@
 #include "native/NativeAppHost.h"
 #include "native/NativeNavigationInput.h"
 #include "native/NativeTouchInput.h"
+#include "runtime/packages/InstalledCapabilityResolver.h"
 #include "KOReaderCredentialStore.h"
 #include "PowerControl.h"
 #include "MappedInputManager.h"
@@ -349,6 +350,31 @@ bool shouldResumeReaderOnBoot() {
          !mappedInputManager.isPressed(MappedInputManager::Button::Back) && APP_STATE.readerActivityLoadCount == 0;
 }
 
+void logPlatformInputHealth() {
+  auto* snapshot = RuntimePackages::captureInstalledCapabilities();
+  if (!snapshot) {
+    LOG_ERR("INPUT", "Platform driver inventory unavailable; touch/controller capabilities cannot be verified");
+    return;
+  }
+  const uint32_t i2c = RuntimePackages::versionInInstalledSnapshot(snapshot, "i2c.bus");
+  const uint32_t clock = RuntimePackages::versionInInstalledSnapshot(snapshot, "platform.clock");
+  const uint32_t touch = RuntimePackages::versionInInstalledSnapshot(snapshot, "input.touch.raw");
+  const uint32_t navigation = RuntimePackages::versionInInstalledSnapshot(snapshot, "input.navigation");
+  RuntimePackages::releaseInstalledCapabilities(snapshot);
+  LOG_INF("INPUT", "Platform driver health: i2c.bus=%lu platform.clock=%lu touch=%lu navigation=%lu",
+          static_cast<unsigned long>(i2c), static_cast<unsigned long>(clock),
+          static_cast<unsigned long>(touch), static_cast<unsigned long>(navigation));
+  if (!i2c || !clock) {
+    LOG_ERR("INPUT",
+            "Foundational platform drivers incomplete: install i2c-esp32s3-v2 and platform-clock-v1; "
+            "touch and USB/controller providers may be unavailable");
+  } else {
+    if (!touch) LOG_ERR("INPUT", "Touch capability unavailable: install/repair gt911-touch");
+    if (SETTINGS.externalInputNavigation && !navigation)
+      LOG_ERR("INPUT", "Controller navigation capability unavailable: install/repair usb-ui-navigation dependency stack");
+  }
+}
+
 void setup() {
   t1 = millis();
 
@@ -458,11 +484,13 @@ void setup() {
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
 
   setupDisplayAndFonts();
-  // Touch is an installed provider capability. It is acquired only after SD
-  // package storage and display initialization are ready; firmware never probes
-  // or acknowledges GT911 registers directly.
-  (void)nativeTouchResume();
-  LOG_INF("MAIN", "Touch provider: %s", nativeTouchAvailable() ? "ready" : "unavailable");
+  logPlatformInputHealth();
+  // Touch is an optional installed provider capability. Do not attempt to
+  // activate it during setup: input.navigation gets the first provider-graph
+  // opportunity from MappedInputManager::update(), so a missing touch package
+  // can never strand USB/controller navigation before Driver Manager is usable.
+  // nativeTouchTick() activates touch later in the normal input loop.
+  LOG_INF("MAIN", "Touch provider activation deferred to input loop");
   display.setFlipOutput(SETTINGS.flipUi != 0);
 
   // Present before any activity or mapped-input update can activate installed
