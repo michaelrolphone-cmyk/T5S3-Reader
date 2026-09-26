@@ -83,6 +83,7 @@ class HalGPIO {
   // cooperative and waits until the touch worker has left I2C before returning.
   bool suspendTouchCapture();
   bool resumeTouchCapture();
+  bool isTouchCaptureRunning() const { return touchAsyncReady; }
   bool isTouchAvailable() const { return touch.isAvailable(); }
 
   void update();
