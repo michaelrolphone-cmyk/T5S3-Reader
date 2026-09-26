@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "Manage Fonts",
   "file_name": "font_manager.elf",
-  "icon": "solid:f031"
+  "icon": "solid:f031",
+  "category": [
+    "Settings",
+    "Appearance"
+  ]
 }
