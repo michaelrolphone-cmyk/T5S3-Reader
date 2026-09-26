@@ -15,6 +15,7 @@ T5_BOARD = (ROOT / "lib/Board_T5S3/BoardT5S3.cpp").read_text(encoding="utf-8")
 T5_HEADER = (ROOT / "lib/Board_T5S3/BoardT5S3.h").read_text(encoding="utf-8")
 EPD_BOARD = (ROOT / "lib/Board_EPD47/BoardEPD47.cpp").read_text(encoding="utf-8")
 EPD_HEADER = (ROOT / "lib/Board_EPD47/BoardEPD47.h").read_text(encoding="utf-8")
+T5_DISPLAY = (ROOT / "lib/hal/HalDisplay.cpp").read_text(encoding="utf-8")
 
 # HalGPIO must no longer own, probe, poll, acknowledge, or spawn a worker for
 # GT911. It retains only physical buttons, USB state and deep-sleep wake pins.
@@ -43,6 +44,32 @@ assert "prepareTouchControllerForProvider();" in T5_BOARD
 assert "digitalWrite(T5S3_TOUCH_RST, LOW);" in T5_BOARD
 assert "digitalWrite(T5S3_TOUCH_INT, LOW);" in T5_BOARD
 assert "digitalWrite(EPD47_TOUCH_INT, HIGH);" in EPD_BOARD
+
+# The render task and input owner loop share the physical I2C controller on
+# T5S3. Panel power sequencing must never monopolize that bus across its waits:
+# each transaction locks independently, while PCA9535 bit updates retain an
+# atomic read-modify-write critical section.
+pca_update = T5_BOARD.split("bool updatePca9535Bit", 1)[1].split(
+    "bool readReg16LE", 1)[0]
+assert "ScopedI2CLock lock;" in pca_update
+
+prepare_power = T5_DISPLAY.split("bool preparePowerPins()", 1)[1].split(
+    "bool powerOnSequence()", 1)[0]
+power_on = T5_DISPLAY.split("bool powerOnSequence()", 1)[1].split(
+    "void powerOffSequence()", 1)[0]
+power_off = T5_DISPLAY.split("void powerOffSequence()", 1)[1].split(
+    "uint8_t grayscaleValueForBit", 1)[0]
+for sequence in (prepare_power, power_on, power_off):
+    assert "Board::ScopedI2CLock busLock;" not in sequence
+
+tps_write = T5_DISPLAY.split("bool writeTpsRegister(", 1)[1].split(
+    "bool writeTpsRegister8", 1)[0]
+tps_read = T5_DISPLAY.split("bool readTpsRegister(", 1)[1].split(
+    "bool waitForPcaPinHigh", 1)[0]
+assert "Board::ScopedI2CLock lock;" in tps_write
+assert "Board::ScopedI2CLock lock;" in tps_read
+assert "delay(1);" in power_on
+assert "delay(1);" in power_off
 
 # Firmware acquires input.touch.raw and always has snapshot recovery when a
 # bounded event cursor gaps or polling fails.

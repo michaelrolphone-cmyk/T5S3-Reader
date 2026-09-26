@@ -103,6 +103,10 @@ bool i2cReadReg(uint8_t addr, uint8_t reg, uint8_t* data, size_t len) {
 }
 
 bool updatePca9535Bit(uint8_t baseReg, uint8_t pin, bool high) {
+  // PCA9535 bit writes are read-modify-write operations. Keep that pair
+  // atomic, but release the shared bus immediately afterwards so unrelated
+  // clients such as the GT911 touch provider are not starved by display work.
+  ScopedI2CLock lock;
   const uint8_t port = pin / 8;
   const uint8_t bit = pin % 8;
   uint8_t value = 0;
