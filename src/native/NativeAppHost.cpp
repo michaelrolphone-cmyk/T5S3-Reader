@@ -51,6 +51,8 @@ constexpr const char* kLatestReleaseApi =
 constexpr const char* kReleaseIndexUrl =
     "https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/release-index/release-index.json";
 constexpr const char* kGameBoyRepository = "michaelrolphone-cmyk/T5S3-GameBoy";
+constexpr const char* kGameBoyLatestReleaseApi =
+    "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-GameBoy/releases/latest";
 constexpr const char* kAggregateAppCatalogName = "app-catalog.json";
 constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr size_t kMaxCatalogAssets = 128;
@@ -585,18 +587,28 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
     const char* sourceRepo = sourceRepoValue.is<const char*>() ?
         sourceRepoValue.as<const char*>() : "";
     asset.size = entry["size"].as<uint64_t>();
+    const std::string expectedId = asset.name.size() > 4 ?
+        asset.name.substr(0, asset.name.size() - 4) : std::string();
+    const bool gameBoyProvider = !std::strcmp(id, "gameboy") &&
+        !std::strcmp(sourceRepo, kGameBoyRepository);
     if (!safeAssetName(asset.name) || asset.name.size() <= 4 ||
         asset.name.substr(asset.name.size() - 4) != ".elf" ||
         !RuntimePackages::validSha256Hex(digest) ||
-        asset.size < 52 || asset.size > 8u * 1024u * 1024u) return false;
-    const std::string expectedId = asset.name.substr(0, asset.name.size() - 4);
-    const bool gameBoyProvider = !std::strcmp(id, "gameboy") &&
-        !std::strcmp(sourceRepo, kGameBoyRepository);
+        asset.size < 52 || asset.size > 8u * 1024u * 1024u) {
+      if (gameBoyProvider) {
+        LOG_ERR("APPSTORE", "Ignoring malformed cached GameBoy record; external resolver will retry");
+        continue;
+      }
+      return false;
+    }
     if (sourceRepo[0] && !gameBoyProvider) return false;
     std::string expectedTag;
     std::string releaseRepository = "michaelrolphone-cmyk/T5S3-Reader";
     if (gameBoyProvider) {
-      if (!validThirdPartyReleaseTag(tag)) return false;
+      if (!validThirdPartyReleaseTag(tag)) {
+        LOG_ERR("APPSTORE", "Ignoring malformed cached GameBoy tag");
+        continue;
+      }
       expectedTag = tag;
       releaseRepository = kGameBoyRepository;
     } else {
@@ -605,7 +617,13 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
     const std::string expectedUrl = "https://github.com/" + releaseRepository +
         "/releases/download/" + tag + "/" + asset.name;
     if (std::strcmp(id, expectedId.c_str()) || std::strcmp(tag, expectedTag.c_str()) ||
-        std::strcmp(url, expectedUrl.c_str())) return false;
+        std::strcmp(url, expectedUrl.c_str())) {
+      if (gameBoyProvider) {
+        LOG_ERR("APPSTORE", "Ignoring malformed cached GameBoy identity/URL");
+        continue;
+      }
+      return false;
+    }
     asset.url = url;
     // Sidecars are fetched on demand after the cached catalog JSON is reclaimed.
     asset.manifestUrl = expectedUrl.substr(0, expectedUrl.size() - asset.name.size()) +
@@ -616,12 +634,24 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
     if (asset.manifestJson.empty() || asset.manifestJson.size() > kMaxManifestBytes ||
         !parseAppManifest(asset.manifestJson, asset.manifest, &parsedVersion, true) ||
         !asset.manifest.compatible || asset.manifest.file_name != asset.name ||
-        parsedVersion != version) return false;
+        parsedVersion != version) {
+      if (gameBoyProvider) {
+        LOG_ERR("APPSTORE", "Ignoring malformed cached GameBoy manifest");
+        continue;
+      }
+      return false;
+    }
     JsonDocument sidecar;
     if (deserializeJson(sidecar, asset.manifestJson) || !sidecar.is<JsonObjectConst>() ||
         !sidecar["sha256"].is<const char*>() || !sidecar["size_bytes"].is<uint64_t>() ||
         sidecar["size_bytes"].as<uint64_t>() != asset.size ||
-        std::strcmp(sidecar["sha256"].as<const char*>(), digest)) return false;
+        std::strcmp(sidecar["sha256"].as<const char*>(), digest)) {
+      if (gameBoyProvider) {
+        LOG_ERR("APPSTORE", "Ignoring cached GameBoy digest/size mismatch");
+        continue;
+      }
+      return false;
+    }
     asset.version = version;
     asset.manifestValid = true;
     if (std::any_of(indexed.begin(), indexed.end(), [&](const CatalogAsset& existing) {
@@ -631,6 +661,131 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
   }
   sortCatalog(indexed);
   catalog.swap(indexed);
+  return true;
+}
+
+
+bool refreshExternalGameBoy(std::vector<CatalogAsset>& catalog) {
+  auto currentEntry = std::find_if(catalog.begin(), catalog.end(), [](const CatalogAsset& asset) {
+    return asset.name == "gameboy.elf";
+  });
+
+  std::string releaseJson;
+  esp_task_wdt_reset();
+  if (!HttpDownloader::fetchUrl(kGameBoyLatestReleaseApi, releaseJson) ||
+      releaseJson.empty() || releaseJson.size() > kMaxCatalogBytes) {
+    LOG_ERR("APPSTORE", "GameBoy latest-release lookup failed; using indexed fallback");
+    return false;
+  }
+
+  JsonDocument release;
+  if (deserializeJson(release, releaseJson) || !release.is<JsonObjectConst>() ||
+      release["draft"].as<bool>() || release["prerelease"].as<bool>() ||
+      !release["tag_name"].is<const char*>() || !release["assets"].is<JsonArrayConst>()) {
+    LOG_ERR("APPSTORE", "GameBoy latest release metadata is invalid; using indexed fallback");
+    return false;
+  }
+
+  const char* tag = release["tag_name"].as<const char*>();
+  if (!validThirdPartyReleaseTag(tag)) {
+    LOG_ERR("APPSTORE", "GameBoy latest release tag is invalid; using indexed fallback");
+    return false;
+  }
+  const std::string version(tag + 1);
+  const std::string base = std::string("https://github.com/") + kGameBoyRepository +
+      "/releases/download/" + tag + "/";
+
+  JsonObjectConst elfAsset;
+  JsonObjectConst manifestAsset;
+  unsigned elfMatches = 0;
+  unsigned manifestMatches = 0;
+  for (JsonVariantConst value : release["assets"].as<JsonArrayConst>()) {
+    if (!value.is<JsonObjectConst>() || !value["name"].is<const char*>()) continue;
+    const char* name = value["name"].as<const char*>();
+    if (!std::strcmp(name, "gameboy.elf")) {
+      elfAsset = value.as<JsonObjectConst>();
+      ++elfMatches;
+    } else if (!std::strcmp(name, "gameboy.json")) {
+      manifestAsset = value.as<JsonObjectConst>();
+      ++manifestMatches;
+    }
+  }
+  if (elfMatches != 1 || manifestMatches != 1 ||
+      !elfAsset["browser_download_url"].is<const char*>() ||
+      !elfAsset["size"].is<uint64_t>() ||
+      !manifestAsset["browser_download_url"].is<const char*>()) {
+    LOG_ERR("APPSTORE", "GameBoy release is missing a unique ELF/manifest pair; using indexed fallback");
+    return false;
+  }
+
+  const std::string elfUrl = elfAsset["browser_download_url"].as<const char*>();
+  const std::string manifestUrl = manifestAsset["browser_download_url"].as<const char*>();
+  const uint64_t elfSize = elfAsset["size"].as<uint64_t>();
+  if (elfUrl != base + "gameboy.elf" || manifestUrl != base + "gameboy.json" ||
+      elfSize < 52 || elfSize > 8u * 1024u * 1024u) {
+    LOG_ERR("APPSTORE", "GameBoy release asset identity is invalid; using indexed fallback");
+    return false;
+  }
+
+  std::string manifestJson;
+  delay(1);
+  if (!HttpDownloader::fetchUrl(manifestUrl, manifestJson) ||
+      manifestJson.empty() || manifestJson.size() > kMaxManifestBytes) {
+    LOG_ERR("APPSTORE", "GameBoy release manifest download failed; using indexed fallback");
+    return false;
+  }
+
+  t5_app_manifest_t manifest{};
+  std::string manifestVersion;
+  if (!parseAppManifest(manifestJson, manifest, &manifestVersion, true) ||
+      std::strcmp(manifest.file_name, "gameboy.elf") ||
+      manifestVersion != version) {
+    LOG_ERR("APPSTORE", "GameBoy release manifest does not match its tag; using indexed fallback");
+    return false;
+  }
+
+  JsonDocument sidecar;
+  if (deserializeJson(sidecar, manifestJson) || !sidecar.is<JsonObjectConst>() ||
+      !sidecar["sha256"].is<const char*>() || !sidecar["size_bytes"].is<uint64_t>() ||
+      sidecar["size_bytes"].as<uint64_t>() != elfSize ||
+      !RuntimePackages::validSha256Hex(sidecar["sha256"].as<const char*>())) {
+    LOG_ERR("APPSTORE", "GameBoy release manifest digest/size is invalid; using indexed fallback");
+    return false;
+  }
+
+  const char* releaseDigest = elfAsset["digest"].is<const char*>() ?
+      elfAsset["digest"].as<const char*>() : nullptr;
+  const std::string expectedDigest =
+      std::string("sha256:") + sidecar["sha256"].as<const char*>();
+  if (releaseDigest && expectedDigest != releaseDigest) {
+    LOG_ERR("APPSTORE", "GameBoy GitHub asset digest disagrees with its manifest; using indexed fallback");
+    return false;
+  }
+
+  CatalogAsset resolved;
+  resolved.name = "gameboy.elf";
+  resolved.url = elfUrl;
+  resolved.manifestUrl = manifestUrl;
+  resolved.manifestJson = std::move(manifestJson);
+  resolved.version = version;
+  resolved.size = elfSize;
+  resolved.manifest = manifest;
+  resolved.manifestValid = true;
+  if (currentEntry == catalog.end())
+    catalog.push_back(std::move(resolved));
+  else
+    *currentEntry = std::move(resolved);
+  sortCatalog(catalog);
+  LOG_INF("APPSTORE", "Resolved GameBoy v%s directly from external release", version.c_str());
+  return true;
+}
+
+bool loadAuthoritativeAppCatalog(std::vector<CatalogAsset>& catalog) {
+  if (!loadIndependentAppIndex(catalog)) return false;
+  // External providers are resolved from their own release stream. The
+  // release-index entry is only a signed/bounded bootstrap and offline fallback,
+  // so publishing GameBoy never requires manually editing RiscRTE metadata.
+  (void)refreshExternalGameBoy(catalog);
   return true;
 }
 
@@ -682,8 +837,8 @@ bool appCatalogRefresh() {
   std::vector<CatalogAsset>().swap(s->catalog);
   if (!connectSavedWifi()) return false;
 
-  if (loadIndependentAppIndex(s->catalog)) {
-    LOG_INF("APPSTORE", "Loaded %u apps from the independent release index",
+  if (loadAuthoritativeAppCatalog(s->catalog)) {
+    LOG_INF("APPSTORE", "Loaded %u apps from the independent/external catalog",
             static_cast<unsigned>(s->catalog.size()));
     return true;
   }
@@ -900,6 +1055,22 @@ bool appCatalogDownloadWithProgress(uint32_t index,
       version.c_str(), downloadUrl.c_str(), json, selectedSize, digest,
       progress, progressContext, &failureReason))
     return catalogDownloadFailed(s, failureReason ? failureReason : "package installation failed");
+
+  // The install path intentionally releases every catalog URL/raw manifest
+  // before opening TLS so mbedTLS gets maximum contiguous internal RAM. Those
+  // entries must not remain visible with their download metadata stripped:
+  // a second install in the same App Store session would otherwise fail as
+  // "release catalog entry is incomplete". Rehydrate the authoritative index
+  // after TLS/package publication has completed.
+  std::vector<CatalogAsset>().swap(s->catalog);
+  if (!loadAuthoritativeAppCatalog(s->catalog)) {
+    LOG_ERR("APPSTORE", "App installed, but catalog refresh after install failed");
+    // Installation itself succeeded. Leave the catalog empty rather than
+    // exposing unusable entries; the user can explicitly refresh the store.
+  } else {
+    LOG_INF("APPSTORE", "Reloaded %u apps after install",
+            static_cast<unsigned>(s->catalog.size()));
+  }
   return true;
 }
 
