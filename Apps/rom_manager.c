@@ -40,7 +40,9 @@ static uint64_t rom_sizes[MAX_ROMS];
 static uint32_t rom_count;
 static char vimm_names[MAX_VIMM][NAME_CAP];
 static char vimm_paths[MAX_VIMM][NAME_CAP];
+static uint8_t vimm_kinds[MAX_VIMM];
 static uint32_t vimm_count;
+enum { VIMM_GAME = 1u, VIMM_PAGE = 2u };
 static char html[HTML_CAP + 1u];
 static uint32_t html_size;
 static char search_query[80];
@@ -139,8 +141,20 @@ static bool import_url(const char *url){
   }
   snprintf(status_text,sizeof(status_text),"Imported %.100s",out_name); return true;
 }
-static bool fetch_vimm(void){
-  html_size=0; vimm_count=0; t5_stream_t h=0; if(streams->open_http(VIMM_URL,&h)!=T5_STREAM_OK)return false;
+static bool vimm_page_path(const char *path,size_t length){
+  const char prefix[]="/vault/GB";
+  const size_t prefix_len=sizeof(prefix)-1u;
+  if(length<prefix_len||strncmp(path,prefix,prefix_len)!=0)return false;
+  return length==prefix_len||path[prefix_len]=='/'||path[prefix_len]=='?';
+}
+static bool vimm_game_path(const char *path,size_t length){
+  if(length<=7u||strncmp(path,"/vault/",7u)!=0)return false;
+  for(size_t i=7u;i<length;++i)if(path[i]<'0'||path[i]>'9')return false;
+  return true;
+}
+static bool fetch_vimm_url(const char *url){
+  if(!url||strncmp(url,VIMM_URL,strlen(VIMM_URL))!=0)return false;
+  html_size=0; vimm_count=0; t5_stream_t h=0; if(streams->open_http(url,&h)!=T5_STREAM_OK)return false;
   uint32_t last_progress=app->millis(),started=last_progress;
   while(html_size<HTML_CAP){
     uint32_t got=0; int32_t r=streams->read(h,html+html_size,(uint32_t)(HTML_CAP-html_size),&got);
@@ -153,19 +167,27 @@ static bool fetch_vimm(void){
   char *p=html;
   while(vimm_count<MAX_VIMM&&(p=strstr(p,"href=\"/vault/"))){
     p+=6; char *q=strchr(p,'"'); if(!q)break; size_t plen=(size_t)(q-p); if(plen>=NAME_CAP){p=q+1;continue;}
-    /* The GB page contains site-wide platform links under /vault/<platform>.
-       Actual game detail links are /vault/<numeric-id>. Reject every nonnumeric
-       path so Browse/Search stays scoped to titles from VIMM_URL (/vault/GB). */
-    const char *id=p+7;
-    bool numeric_id=id<q;
-    for(const char *c=id;c<q;++c){if(*c<'0'||*c>'9'){numeric_id=false;break;}}
-    if(!numeric_id){p=q+1;continue;}
+    const uint8_t kind=vimm_game_path(p,plen)?VIMM_GAME:(vimm_page_path(p,plen)?VIMM_PAGE:0u);
+    if(!kind){p=q+1;continue;}
     char *gt=strchr(q,'>'); if(!gt)break; char *lt=strchr(gt+1,'<'); if(!lt)break; size_t nlen=(size_t)(lt-(gt+1));
-    if(nlen&&nlen<NAME_CAP){memcpy(vimm_paths[vimm_count],p,plen);vimm_paths[vimm_count][plen]=0;memcpy(vimm_names[vimm_count],gt+1,nlen);vimm_names[vimm_count][nlen]=0;
-      if(contains_ci(vimm_names[vimm_count],search_query))++vimm_count;}
+    if(nlen&&nlen<NAME_CAP&&contains_ci(gt+1,search_query)){
+      memcpy(vimm_paths[vimm_count],p,plen);vimm_paths[vimm_count][plen]=0;
+      memcpy(vimm_names[vimm_count],gt+1,nlen);vimm_names[vimm_count][nlen]=0;
+      vimm_kinds[vimm_count]=kind;
+      ++vimm_count;
+    }
     p=lt+1;
   }
   return true;
+}
+static bool fetch_vimm(void){return fetch_vimm_url(VIMM_URL);}
+static bool open_vimm_page(const char *path){
+  if(!path||!vimm_page_path(path,strlen(path)))return false;
+  char url[NAME_CAP+32u];
+  int n=snprintf(url,sizeof(url),"https://vimm.net%s",path);
+  if(n<=0||(size_t)n>=sizeof(url))return false;
+  search_query[0]=0;
+  return fetch_vimm_url(url);
 }
 static void do_rename(const char *new_text){
   char old_name[NAME_CAP]={0}; size_t n=0;
@@ -206,7 +228,7 @@ __attribute__((visibility("default"))) void app_main(void){
     t5_ui_list_row_t rows[MAX_ROMS>MAX_VIMM?MAX_ROMS:MAX_VIMM]; uint32_t count=0; const char *confirm="";
     if(view==VIEW_HOME){rows[0]=(t5_ui_list_row_t){"My ROMs","Rename or delete downloaded .gb files","Open",0};rows[1]=(t5_ui_list_row_t){"Browse Vimm Vault","Browse Game Boy catalog metadata","Browse",0};rows[2]=(t5_ui_list_row_t){"Search Vimm Vault","Filter catalog metadata by title","Search",0};rows[3]=(t5_ui_list_row_t){"Import authorized URL","Download .gb or ZIP and extract first .gb","Import",0};count=4;confirm="Open";}
     else if(view==VIEW_ROMS){load_roms();for(uint32_t i=0;i<rom_count;++i){static char sizes[MAX_ROMS][24];snprintf(sizes[i],sizeof(sizes[i]),"%llu KB",(unsigned long long)(rom_sizes[i]/1024u));rows[i]=(t5_ui_list_row_t){rom_names[i],"Stored ROM",sizes[i],0};}count=rom_count;confirm=count?"Actions":"";}
-    else {for(uint32_t i=0;i<vimm_count;++i)rows[i]=(t5_ui_list_row_t){vimm_names[i],"Vimm Vault catalog (browse only)","Info",0};count=vimm_count;confirm=count?"Info":"";}
+    else {for(uint32_t i=0;i<vimm_count;++i)rows[i]=(t5_ui_list_row_t){vimm_names[i],vimm_kinds[i]==VIMM_PAGE?"Game Boy index":"Game Boy title",vimm_kinds[i]==VIMM_PAGE?"Open":"Info",0};count=vimm_count;confirm=count?(vimm_kinds[selected]==VIMM_PAGE?"Open":"Info"):"";}
     render_rows(view==VIEW_HOME?"Rom Manager":view==VIEW_ROMS?"My ROMs":"Vimm Vault",view==VIEW_VIMM?(search_query[0]?search_query:"Game Boy catalog"):ROM_DIR,rows,count,selected,confirm);
     t5_ui_event_t ev={0};if(!ui->poll_event(&ev,20))break;
     if(ev.type==T5_UI_EVENT_EXIT){break;}
@@ -220,7 +242,15 @@ __attribute__((visibility("default"))) void app_main(void){
       else if(selected==1){search_query[0]=0;copy_text(status_text,sizeof(status_text),"Loading Vimm catalog...");if(fetch_vimm()){view=VIEW_VIMM;selected=0;}else copy_text(status_text,sizeof(status_text),"Could not load Vimm catalog");}
       else if(selected==2){system_ui->keyboard_request("Search Vimm Vault","",79,T5_SYSTEM_KEYBOARD_TEXT,COOKIE_SEARCH);return;}
       else if(selected==3){system_ui->keyboard_request("Authorized ROM URL","https://",383,T5_SYSTEM_KEYBOARD_URL,COOKIE_IMPORT);return;}
-    }else if(view==VIEW_VIMM){snprintf(status_text,sizeof(status_text),"%.100s: catalog browsing only; import an authorized URL",vimm_names[selected]);}
+    }else if(view==VIEW_VIMM){
+      if(vimm_kinds[selected]==VIMM_PAGE){
+        copy_text(status_text,sizeof(status_text),"Loading Game Boy titles...");
+        if(open_vimm_page(vimm_paths[selected])){selected=0;status_text[0]=0;}
+        else copy_text(status_text,sizeof(status_text),"Could not open Game Boy index");
+      }else{
+        snprintf(status_text,sizeof(status_text),"%.100s: Game Boy title",vimm_names[selected]);
+      }
+    }
     else if(view==VIEW_ROMS&&rom_count){
       char old_path[PATH_CAP];make_path(rom_names[selected],old_path,sizeof(old_path));
       t5_ui_list_row_t actions[3]={{"Rename","Change filename","",0},{"Delete","Remove this ROM","",0},{"Cancel","Return to list","",0}};int32_t a=0;
