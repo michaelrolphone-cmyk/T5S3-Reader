@@ -29,7 +29,8 @@ assert online.index('archiveMatches(part.c_str(), package)') < online.index('Sto
 assert 'Storage.exists(part.c_str())' in online
 bridge = (root / 'src/native/NativePackageManagerBridge.cpp').read_text(encoding='utf-8')
 assert 'RuntimeOnlinePackages::Catalog::selected(' in bridge
-assert 'RuntimeOnlinePackages::OrdinaryZip::install(candidate, release)' in bridge
+assert 'RuntimeOnlinePackages::OrdinaryZip::install(' in bridge
+assert 'candidate, release, callback' in bridge
 assert 'Mutation lock;' in bridge
 assert 'installOrdinaryFromSdZip(' in bridge
 assert 'systemPackageUseGate().pinned(paths.target)' in bridge
@@ -46,9 +47,12 @@ assert 'ScopedPackageMutation(const ScopedPackageMutation&) = delete;' in gate
 assert 'using Mutation = RuntimePackages::ScopedPackageMutation;' in bridge
 assert 'std::atomic_flag mutation =' not in bridge
 for operation in ('bool install(', 'bool installArchive(', 'bool uninstall(',
-                  'bool onlineRefresh(', 'bool onlineInstall('):
+                  'bool onlineRefresh('):
     block = bridge[bridge.index(operation):].split('\n}', 1)[0]
     assert 'Mutation lock;' in block, operation
+online_common = bridge[bridge.index('bool onlineInstallCommon('):].split('\n}', 1)[0]
+assert 'Mutation lock;' in online_common
+assert 'return onlineInstallCommon(index, nullptr, nullptr);' in bridge
 
 # All normal operations in the Driver Manager are common package operations.
 # No transport-specific URL, device-class identity or loose ELF install may
