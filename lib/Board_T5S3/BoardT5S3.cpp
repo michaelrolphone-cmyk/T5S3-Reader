@@ -566,48 +566,38 @@ bool GT911Touch::begin() {
   return false;
 }
 
-bool GT911Touch::readPoint(TouchPoint* point, bool* homeButtonPressed) {
-  if (!available || point == nullptr) {
-    if (homeButtonPressed) {
-      *homeButtonPressed = false;
-    }
-    return false;
-  }
+bool GT911Touch::readEvent(TouchPoint* point, bool* homeButtonPressed, bool* contactActive) {
+  if (homeButtonPressed) *homeButtonPressed = false;
+  if (contactActive) *contactActive = false;
+  if (!available || point == nullptr || contactActive == nullptr) return false;
 
   uint8_t status = 0;
-  if (!readReg(GT911_STATUS_REG, &status, 1)) {
-    if (homeButtonPressed) {
-      *homeButtonPressed = false;
-    }
+  if (!readReg(GT911_STATUS_REG, &status, 1) || (status & GT911_STATUS_READY) == 0)
     return false;
-  }
-  if ((status & GT911_STATUS_READY) == 0) {
-    if (homeButtonPressed) {
-      *homeButtonPressed = false;
-    }
-    return false;
-  }
 
-  if (homeButtonPressed) {
+  if (homeButtonPressed)
     *homeButtonPressed = (status & GT911_STATUS_HAVE_KEY) != 0;
-  }
 
   const uint8_t touchCount = status & GT911_TOUCH_COUNT_MASK;
   if (touchCount == 0) {
     writeReg8(GT911_STATUS_REG, 0);
-    return false;
+    return true;
   }
 
   uint8_t data[8] = {0};
   const bool ok = readReg(GT911_POINT1_REG, data, sizeof(data));
   writeReg8(GT911_STATUS_REG, 0);
-  if (!ok) {
-    return false;
-  }
+  if (!ok) return false;
 
   point->x = static_cast<uint16_t>(data[1]) | (static_cast<uint16_t>(data[2]) << 8);
   point->y = static_cast<uint16_t>(data[3]) | (static_cast<uint16_t>(data[4]) << 8);
+  *contactActive = true;
   return true;
+}
+
+bool GT911Touch::readPoint(TouchPoint* point, bool* homeButtonPressed) {
+  bool active = false;
+  return readEvent(point, homeButtonPressed, &active) && active;
 }
 
 }  // namespace BoardT5S3
