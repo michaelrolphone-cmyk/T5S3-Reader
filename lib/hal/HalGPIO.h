@@ -48,6 +48,8 @@ class HalGPIO {
   mutable portMUX_TYPE touchStateMux = portMUX_INITIALIZER_UNLOCKED;
 #endif
   bool touchAsyncReady = false;
+  bool touchCapturePaused = false;
+  bool touchWorkerActive = false;
 
   bool lastUsbConnected = false;
   bool usbStateChanged = false;
@@ -77,6 +79,10 @@ class HalGPIO {
   // completed. begin() only probes the controller so early boot remains
   // single-threaded while SD/settings/RTC/display state is established.
   void startTouchCapture();
+  // Hardware-takeover apps temporarily become the sole GT911 owner. Pause is
+  // cooperative and waits until the touch worker has left I2C before returning.
+  bool suspendTouchCapture();
+  bool resumeTouchCapture();
   bool isTouchAvailable() const { return touch.isAvailable(); }
 
   void update();
