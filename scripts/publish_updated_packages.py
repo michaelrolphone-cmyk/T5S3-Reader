@@ -93,7 +93,7 @@ def discover_candidates(root: Path, index: dict[str, Any]) -> list[dict[str, str
             candidates.append({"product": "apps", "id": identity, "version": version})
 
     canonical_driver_ids = {
-        "platform-clock-v1", "i2c-esp32s3-v2", "board-power-t5s3-v2",
+        "platform-clock-v1", "i2c-esp32s3-v2", "gt911-touch", "board-power-t5s3-v2",
         "usb-controller-esp32s3", "usb-host-v2", "usb-cdc-acm-v2",
         "usb-cp210x-v2", "usb-ch34x-v2", "usb-ftdi", "usb-stlink",
         "usb-msp", "program-msp", "usb-hid", "usb-hid-keyboard",
