@@ -458,6 +458,9 @@ void setup() {
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
 
   setupDisplayAndFonts();
+  // Touch IRQ capture is intentionally armed only after boot-critical
+  // SD/settings/RTC/display initialization has completed.
+  gpio.startTouchCapture();
   display.setFlipOutput(SETTINGS.flipUi != 0);
 
   // Present before any activity or mapped-input update can activate installed

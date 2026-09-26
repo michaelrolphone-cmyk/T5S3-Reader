@@ -34,23 +34,10 @@ void HalGPIO::begin() {
   Board::begin();
   const bool touchReady = touch.begin();
 
-  if (touchReady) {
-    touchTapQueue = xQueueCreate(TOUCH_TAP_QUEUE_DEPTH, sizeof(TouchPoint));
-    touchSwipeQueue = xQueueCreate(TOUCH_SWIPE_QUEUE_DEPTH, sizeof(TouchSwipeEvent));
-    touchHomeQueue = xQueueCreate(TOUCH_HOME_QUEUE_DEPTH, sizeof(uint8_t));
-    if (touchTapQueue && touchSwipeQueue && touchHomeQueue &&
-        xTaskCreate(touchTaskTrampoline, "touch-input", 4096, this, 4,
-                    &touchTaskHandle) == pdPASS) {
-      pinMode(BoardPins::TouchInterrupt, INPUT_PULLUP);
-      attachInterruptArg(BoardPins::TouchInterrupt, touchInterruptThunk, this, CHANGE);
-      touchAsyncReady = true;
-      // Drain any READY report that appeared between controller init and ISR setup.
-      xTaskNotifyGive(touchTaskHandle);
-    } else {
-      LOG_ERR("HW", "Touch interrupt service failed to start");
-    }
-  }
-
+  // Do not create the touch worker or attach the GT911 interrupt here. begin()
+  // runs before SD/settings/RTC/display initialization. Keeping that phase
+  // single-threaded prevents an early GT911 interrupt from introducing
+  // concurrent I2C/task activity into the boot-critical path.
   LOG_INF("HW", "Board init: id=%s pca9535=%d touch=%d async=%d usb=%d",
           Board::id(), Board::pca9535Present(), touchReady, touchAsyncReady,
           Board::isUsbConnected());
@@ -58,6 +45,40 @@ void HalGPIO::begin() {
   lastUsbConnected = isUsbConnected();
   lastUsbPollTime = millis();
   update();
+}
+
+void HalGPIO::startTouchCapture() {
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  if (touchAsyncReady || !touch.isAvailable()) return;
+
+  if (!touchTapQueue) touchTapQueue = xQueueCreate(TOUCH_TAP_QUEUE_DEPTH, sizeof(TouchPoint));
+  if (!touchSwipeQueue) touchSwipeQueue = xQueueCreate(TOUCH_SWIPE_QUEUE_DEPTH, sizeof(TouchSwipeEvent));
+  if (!touchHomeQueue) touchHomeQueue = xQueueCreate(TOUCH_HOME_QUEUE_DEPTH, sizeof(uint8_t));
+
+  if (!touchTapQueue || !touchSwipeQueue || !touchHomeQueue) {
+    LOG_ERR("HW", "Touch interrupt queues failed to allocate");
+    return;
+  }
+
+  if (xTaskCreate(touchTaskTrampoline, "touch-input", 4096, this, 4,
+                  &touchTaskHandle) != pdPASS) {
+    touchTaskHandle = nullptr;
+    LOG_ERR("HW", "Touch interrupt service failed to start");
+    return;
+  }
+
+  pinMode(BoardPins::TouchInterrupt, INPUT_PULLUP);
+  // GT911 data-ready/wake is active-low on these boards. Only notify on the
+  // assertion edge; acknowledging READY raises INT again and must not
+  // recursively wake the worker.
+  attachInterruptArg(BoardPins::TouchInterrupt, touchInterruptThunk, this, FALLING);
+  touchAsyncReady = true;
+
+  // Drain any READY report that appeared after controller probe but before the
+  // ISR was armed.
+  xTaskNotifyGive(touchTaskHandle);
+  LOG_INF("HW", "Touch interrupt capture armed");
+#endif
 }
 
 void IRAM_ATTR HalGPIO::touchInterruptThunk(void* context) {
