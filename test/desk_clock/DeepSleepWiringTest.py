@@ -23,7 +23,7 @@ class ClockDeepSleepWiring(unittest.TestCase):
         self.assertNotIn("esp_sleep_enable_gpio_wakeup()", CLOCK)
 
     def test_timer_wakes_reenter_before_normal_boot(self):
-        self.assertIn("esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER", CLOCK)
+        self.assertIn("wakeCause == ESP_SLEEP_WAKEUP_TIMER", CLOCK)
         self.assertIn("RTC_DATA_ATTR ClockRetention", CLOCK)
         self.assertLess(SYSTEM.index("DeskClockSleep::resumeAfterTimerWake()"),
                         SYSTEM.index("if (!isRebootFromPanic())"))
