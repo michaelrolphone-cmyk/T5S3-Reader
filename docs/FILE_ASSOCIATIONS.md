@@ -30,10 +30,12 @@ normal ELF/package validation.
 Firmware derives the current association table from verified installed
 applications and writes:
 
-`/.crosspoint/file-associations.json`
+`/System/Registry/FileAssociations.json`
 
-The generated manifest is not user-authored package metadata. It records each
-normalized extension and the currently available handler. Application records
+The generated manifest is not user-authored package metadata. RiscRTE owns the
+`/System` namespace; generated lookup/index state is grouped under
+`/System/Registry`. The file-association registry records each normalized
+extension and the currently available handler. Application records
 include the app ID, display name, icon and launch path. Built-in Reader support
 is represented as a system handler.
 
