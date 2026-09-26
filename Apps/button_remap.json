@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "Remap Front Buttons",
   "file_name": "button_remap.elf",
-  "icon": "solid:f11c"
+  "icon": "solid:f11c",
+  "category": [
+    "Settings",
+    "Input"
+  ]
 }
