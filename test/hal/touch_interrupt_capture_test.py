@@ -12,6 +12,7 @@ EPD_H = (ROOT / "lib/Board_EPD47/BoardEPD47.h").read_text(encoding="utf-8")
 EPD_CPP = (ROOT / "lib/Board_EPD47/BoardEPD47.cpp").read_text(encoding="utf-8")
 THEME = (ROOT / "src/components/themes/BaseTheme.cpp").read_text(encoding="utf-8")
 T5_BOARD = (ROOT / "lib/Board_T5S3/BoardT5S3.cpp").read_text(encoding="utf-8")
+TAKEOVER = (ROOT / "src/native/NativeHardwareTakeover.cpp").read_text(encoding="utf-8")
 
 assert "attachInterruptArg(BoardPins::TouchInterrupt" in HAL_CPP
 assert "touchInterruptThunk, this, CHANGE" in HAL_CPP
@@ -36,6 +37,41 @@ assert "pdMS_TO_TICKS(20)" in HAL_CPP
 assert "touch.begin()" in HAL_CPP[HAL_CPP.index("void HalGPIO::startTouchCapture()"):
                                   HAL_CPP.index("void IRAM_ATTR HalGPIO::touchInterruptThunk")]
 assert "touch.readEvent(&point, &homeButtonPressed, &contactActive)" in HAL_CPP
+
+# Hardware-takeover apps must never race the firmware worker for the GT911
+# READY register. Pause is cooperative: detach IRQ, wait for in-flight I2C to
+# drain, then clear gesture queues. Resume re-probes GT911 only after display
+# ownership and the shared board bus have returned to firmware.
+assert "bool suspendTouchCapture();" in HAL_H
+assert "bool resumeTouchCapture();" in HAL_H
+suspend_start = HAL_CPP.index("bool HalGPIO::suspendTouchCapture()")
+resume_start = HAL_CPP.index("bool HalGPIO::resumeTouchCapture()")
+isr_start = HAL_CPP.index("void IRAM_ATTR HalGPIO::touchInterruptThunk")
+suspend = HAL_CPP[suspend_start:resume_start]
+resume = HAL_CPP[resume_start:isr_start]
+assert "touchCapturePaused = true" in suspend
+assert "detachInterrupt" in suspend
+assert "touchWorkerActive" in suspend
+assert "pdMS_TO_TICKS(100)" in suspend
+assert "xQueueReset(touchTapQueue)" in suspend
+assert "touch.begin()" in resume
+assert "attachInterruptArg" in resume
+
+task_start = HAL_CPP.index("void HalGPIO::touchTaskTrampoline")
+task_end = HAL_CPP.index("void HalGPIO::serviceTouchController", task_start)
+task_loop = HAL_CPP[task_start:task_end]
+assert "touchCapturePaused" in task_loop
+assert "touchWorkerActive = true" in task_loop
+assert "touchWorkerActive = false" in task_loop
+
+take_begin = TAKEOVER.index("native_hardware_takeover_begin")
+take_end = TAKEOVER.index("native_hardware_takeover_end")
+begin_takeover = TAKEOVER[take_begin:take_end]
+end_takeover = TAKEOVER[take_end:]
+assert begin_takeover.index("gpio.suspendTouchCapture()") < begin_takeover.index(
+    "display.suspendForExternalOwner()")
+assert end_takeover.index("display.resumeFromExternalOwner()") < end_takeover.index(
+    "gpio.resumeTouchCapture()")
 assert "xQueueSend(touchTapQueue" in HAL_CPP
 assert "xQueueReceive(touchTapQueue" in HAL_CPP
 assert "xQueueSend(touchSwipeQueue" in HAL_CPP
