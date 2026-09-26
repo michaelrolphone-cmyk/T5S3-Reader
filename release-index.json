@@ -893,15 +893,15 @@
         "file_name": "wifi_settings.elf",
         "icon": "solid:f1eb",
         "min_firmware_version": "1.1.24",
-        "sha256": "85e11c24a6cbd6b92084c5eb7e45515c822d41d44e36427e78029fffc4ebe1f8",
-        "size_bytes": 3928,
-        "version": "1.0.0"
+        "sha256": "3863b2d6bd718abceed93271ee8e7a42f2ad5e58ddd15978f53ea93b94d1df86",
+        "size_bytes": 3904,
+        "version": "1.0.1"
       },
-      "sha256": "85e11c24a6cbd6b92084c5eb7e45515c822d41d44e36427e78029fffc4ebe1f8",
-      "size": 3928,
-      "tag": "app-wifi_settings-v1.0.0",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-wifi_settings-v1.0.0/wifi_settings.elf",
-      "version": "1.0.0"
+      "sha256": "3863b2d6bd718abceed93271ee8e7a42f2ad5e58ddd15978f53ea93b94d1df86",
+      "size": 3904,
+      "tag": "app-wifi_settings-v1.0.1",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-wifi_settings-v1.0.1/wifi_settings.elf",
+      "version": "1.0.1"
     }
   ],
   "drivers": [
