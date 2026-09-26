@@ -36,7 +36,8 @@ class RequiredAppWorkflowContract(unittest.TestCase):
         self.assertIn("loadAvailableAppCatalog(catalog)", HOST)
         self.assertIn("RuntimeOnlinePackages::installApplication(", HOST)
         self.assertIn("resolveInstalledAppPath(artifact, installedPath, &installedManifest)", HOST)
-        self.assertIn("Connect Wi-Fi or save a network, then retry", HOST)
+        self.assertNotIn("bool connectSavedWifi()", HOST)
+        self.assertIn("HttpDownloader::fetchUrl", HOST)
 
     def test_app_store_and_required_flow_share_catalog_fallback(self):
         self.assertIn("bool loadAvailableAppCatalog(", HOST)
