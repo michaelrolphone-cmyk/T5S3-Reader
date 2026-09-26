@@ -50,7 +50,7 @@ void recordUserContentText(FontCacheManager* fcm, const int systemFontId, const 
 }  // namespace
 
 int HomeActivity::getMenuItemCount() const {
-  int count = 5 + static_cast<int>(homeApps.size());  // File Browser, Recents, File transfer, Apps, pinned apps, Settings
+  int count = 4 + static_cast<int>(homeApps.size());  // File Browser, Recents, Apps, pinned apps, Settings
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
@@ -377,7 +377,7 @@ void HomeActivity::render(RenderLock&&) {
   std::vector<const char*> menuItems;
   std::vector<UIIcon> menuIcons;
   std::vector<const char*> menuAppIcons;
-  menuItems.reserve(5 + homeApps.size() + (hasOpdsServers ? 1 : 0) + (metrics.homeContinueReadingInMenu ? 1 : 0));
+  menuItems.reserve(4 + homeApps.size() + (hasOpdsServers ? 1 : 0) + (metrics.homeContinueReadingInMenu ? 1 : 0));
   menuIcons.reserve(menuItems.capacity());
   menuAppIcons.reserve(menuItems.capacity());
 
@@ -392,9 +392,6 @@ void HomeActivity::render(RenderLock&&) {
     menuIcons.push_back(Library);
     menuAppIcons.push_back(nullptr);
   }
-  menuItems.push_back(tr(STR_FILE_TRANSFER));
-  menuIcons.push_back(Transfer);
-  menuAppIcons.push_back(nullptr);
   menuItems.push_back(tr(STR_APPS));
   menuIcons.push_back(Library);
   menuAppIcons.push_back(nullptr);
@@ -440,7 +437,6 @@ void HomeActivity::activateSelection(int index) {
   const int fileBrowserIdx = idx++;
   const int recentsIdx = idx++;
   const int opdsLibraryIdx = hasOpdsServers ? idx++ : -1;
-  const int fileTransferIdx = idx++;
   const int appsIdx = idx++;
   const int homeAppsStartIdx = idx;
   idx += static_cast<int>(homeApps.size());
@@ -454,8 +450,6 @@ void HomeActivity::activateSelection(int index) {
     onRecentsOpen();
   } else if (menuSelectedIndex == opdsLibraryIdx) {
     onOpdsBrowserOpen();
-  } else if (menuSelectedIndex == fileTransferIdx) {
-    onFileTransferOpen();
   } else if (menuSelectedIndex == appsIdx) {
     appsPending = true;
   } else if (menuSelectedIndex >= homeAppsStartIdx && menuSelectedIndex < settingsIdx) {
@@ -481,6 +475,5 @@ void HomeActivity::onRecentsOpen() { activityManager.goToRecentBooks(); }
 
 void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
 
-void HomeActivity::onFileTransferOpen() { activityManager.goToFileTransfer(); }
 
 void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }

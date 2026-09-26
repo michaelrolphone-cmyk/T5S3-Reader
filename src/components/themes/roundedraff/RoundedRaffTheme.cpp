@@ -283,7 +283,7 @@ void RoundedRaffTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int butt
     const std::string label = buttonLabel(i);
     const int rowY = menuTop + (i - pageStartIndex) * rowStep;
     constexpr int kRowPaddingX = 40;  // 20px L/R
-    constexpr int kAppIconSize = 18;
+    constexpr int kAppIconSize = 12;
     constexpr int kAppIconGap = 10;
     const char* appIcon = rowAppIcon ? rowAppIcon(i) : nullptr;
     const bool hasAppIcon = appIcon && appIcon[0] != '\0';
@@ -300,7 +300,7 @@ void RoundedRaffTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int butt
     int textX = rowX + kInteractiveInsetX;
     if (hasAppIcon) {
       const int iconY = rowY + (rowHeight - kAppIconSize) / 2;
-      (void)FontAwesomeIcons::draw(renderer, textX, iconY, appIcon, kAppIconSize, !isSelected);
+      (void)FontAwesomeIcons::drawRegular(renderer, textX, iconY, appIcon, kAppIconSize, !isSelected);
       textX += iconAreaWidth;
     }
     if (isSelected) {

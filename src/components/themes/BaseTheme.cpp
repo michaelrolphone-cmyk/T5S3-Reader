@@ -862,10 +862,10 @@ void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
     if (rowAppIcon) {
       const char* appIcon = rowAppIcon(i);
       if (appIcon && appIcon[0] != '\0') {
-        constexpr int kAppIconSize = 18;
+        constexpr int kAppIconSize = 12;
         const int iconX = rect.x + BaseMetrics::values.contentSidePadding + 12;
         const int iconY = tileY + (BaseMetrics::values.menuRowHeight - kAppIconSize) / 2;
-        (void)FontAwesomeIcons::draw(renderer, iconX, iconY, appIcon, kAppIconSize, !selected);
+        (void)FontAwesomeIcons::drawRegular(renderer, iconX, iconY, appIcon, kAppIconSize, !selected);
       }
     }
 

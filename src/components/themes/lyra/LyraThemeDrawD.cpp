@@ -50,10 +50,10 @@ void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
 
     const char* appIcon = rowAppIcon ? rowAppIcon(i) : nullptr;
     if (appIcon && appIcon[0] != '\0') {
-      constexpr int kAppIconSize = 18;
+      constexpr int kAppIconSize = 12;
       const int iconX = textX + (mainMenuIconSize - kAppIconSize) / 2;
       const int iconY = tileRect.y + (LyraMetrics::values.menuRowHeight - kAppIconSize) / 2;
-      (void)FontAwesomeIcons::draw(renderer, iconX, iconY, appIcon, kAppIconSize, true);
+      (void)FontAwesomeIcons::drawRegular(renderer, iconX, iconY, appIcon, kAppIconSize, true);
       textX += mainMenuIconSize + hPaddingInSelection + 2;
     } else if (rowIcon != nullptr) {
       UIIcon icon = rowIcon(i);

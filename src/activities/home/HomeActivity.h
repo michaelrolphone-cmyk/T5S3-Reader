@@ -31,7 +31,6 @@ class HomeActivity final : public Activity {
   void onFileBrowserOpen();
   void onRecentsOpen();
   void onSettingsOpen();
-  void onFileTransferOpen();
   void onOpdsBrowserOpen();
   void onHomeAppOpen(size_t index);
   void activateSelection(int index);
