@@ -4,8 +4,6 @@
 #include <Arduino.h>
 #include "runtime/streams/StreamRuntime.h"
 #include "runtime/streams/HttpUrlValidation.h"
-#include "runtime/network/NetworkService.h"
-#include "runtime/network/SavedNetworkConnection.h"
 #include "runtime/resources/ExecutionContext.h"
 #include "runtime/capabilities/GnssStreamAuthority.h"
 #include "network/HttpDownloader.h"
@@ -318,10 +316,6 @@ int32_t openHttp(const char* url, t5_stream_t* out) {
     LOG_ERR("HTTP", "open_http rejected URL: reason=%s bytes=%u",
             RuntimeHttpUrl::statusName(urlStatus), static_cast<unsigned>(urlLength));
     return T5_STREAM_INVALID;
-  }
-  if (!RuntimeNetwork::ensureSavedConnection(15000u)) {
-    LOG_ERR("HTTP", "open_http could not establish saved Wi-Fi connection");
-    return T5_STREAM_DISCONNECTED;
   }
   Lock lock;
   if (httpBusy) return T5_STREAM_BUSY;
