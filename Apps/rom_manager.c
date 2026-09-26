@@ -93,15 +93,18 @@ static bool stream_download(const char *url,const char *destination){
   }
   if(pipe)streams->pipe_close(pipe); streams->close(src); streams->close(dst); if(!ok)storage->remove_file(destination); return ok;
 }
-static void extraction_progress(void *ctx,uint64_t done,uint64_t total){
+static bool extraction_progress(void *ctx,uint64_t done,uint64_t total){
   (void)ctx;
   static uint32_t last_bucket=UINT32_MAX;
   uint32_t bucket=total?(uint32_t)((done>total?total:done)*10u/total):0;
-  if(bucket==last_bucket&&done!=total)return;
+  if(bucket==last_bucket&&done!=total)return true;
   last_bucket=bucket;
   snprintf(status_text,sizeof(status_text),"Extracting: %llu / %llu KB",(unsigned long long)(done/1024u),(unsigned long long)(total/1024u));
   const t5_ui_list_row_t row={"Extracting ROM","ZIP -> .gb","",0};
   render_rows("Rom Manager","Authorized ROM import",&row,1,0,"");
+  t5_ui_event_t event={0};
+  if(!ui->poll_event(&event,1))return false;
+  return event.type!=T5_UI_EVENT_BACK&&event.type!=T5_UI_EVENT_EXIT;
 }
 static bool import_url(const char *url){
   if(!url||strncmp(url,"https://",8)!=0){copy_text(status_text,sizeof(status_text),"Only HTTPS URLs are accepted");return false;}
@@ -115,7 +118,7 @@ static bool import_url(const char *url){
     uint64_t size=0; char entry[NAME_CAP]={0};
     if(!archive->find_first_suffix(tmp,".gb",entry,sizeof(entry),&size)||!size||size>MAX_ROM_BYTES){storage->remove_file(tmp);copy_text(status_text,sizeof(status_text),"ZIP contains no supported .gb ROM");return false;}
     safe_name(entry,out_name,sizeof(out_name),"game.gb"); make_path(out_name,out_path,sizeof(out_path));
-    if(!archive->extract_file(tmp,entry,out_path,MAX_ROM_BYTES,extraction_progress,NULL)){storage->remove_file(tmp);copy_text(status_text,sizeof(status_text),"ZIP extraction failed or target exists");return false;}
+    if(!archive->extract_file(tmp,entry,out_path,MAX_ROM_BYTES,60000u,extraction_progress,NULL)){storage->remove_file(tmp);copy_text(status_text,sizeof(status_text),"ZIP extraction failed or target exists");return false;}
     storage->remove_file(tmp);
   }else{
     const char *slash=strrchr(url,'/'); safe_name(slash?slash+1:url,out_name,sizeof(out_name),"game.gb"); if(!ends_ci(out_name,".gb"))strncat(out_name,".gb",sizeof(out_name)-strlen(out_name)-1);
