@@ -12,11 +12,17 @@
 // Currently hosts the Backlight and Shut Down controls.
 class GlobalMenuActivity final : public Activity {
  public:
+  enum class ModalResult { Dismissed, ShutdownRequested, Unavailable };
+
   // overGrayscaleReader must be set when the menu opens over a reader page, which
   // leaves the e-ink panel in a 4-level grayscale state. A partial waveform cannot
   // cleanly transition grayscale particles to the menu's 1-bit BW content, so the
   // first paint uses a FULL_REFRESH in that case.
   GlobalMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool overGrayscaleReader = false);
+
+  // Firmware-owned synchronous overlay for native ELF sessions. The caller
+  // already owns the RenderLock while the ELF is paused inside a firmware poll.
+  static ModalResult runFirmwareModal(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   void onEnter() override;
   void loop() override;
@@ -40,7 +46,8 @@ class GlobalMenuActivity final : public Activity {
   void drawButtonBox(int x, int y, int width, int height, bool focused);
   void drawBacklightButton(int x, int y, int width, int height, bool focused, int level);
   void drawActionButton(int x, int y, int width, int height, bool focused, const std::string& label);
-  void applyBacklightLevel(int level);
+  void applyBacklightLevel(int level, bool scheduleRender = true);
+  void renderOverlay(HalDisplay::RefreshMode refreshMode);
   void activateSelection();
   void triggerShutdown();
 
