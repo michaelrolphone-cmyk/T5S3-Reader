@@ -26,11 +26,11 @@ class LiveInstallContract(unittest.TestCase):
         install = HOST[start:end]
         # Source metadata is checked before the canonical online adapter is invoked.
         for required in ('RuntimePackages::safePackageEntryName',
-                         'metadata["size_bytes"].as<unsigned>() != selected.size',
+                         'metadata["size_bytes"].as<unsigned>() != selectedSize',
                          'metadata["sha256"].is<const char*>()',
-                         'RuntimePackages::validSha256Hex(digest)',
+                         'RuntimePackages::validSha256Hex(value)',
                          'RuntimePackages::comparePackageVersions(',
-                         'RuntimeOnlinePackages::installApplication(selected.name.c_str()'):
+                         'RuntimeOnlinePackages::installApplication(artifact.c_str()'):
             self.assertIn(required, install)
         self.assertLess(install.index('metadata["sha256"]'),
                         install.index('RuntimeOnlinePackages::installApplication('))
@@ -51,21 +51,26 @@ class LiveInstallContract(unittest.TestCase):
                          '!Storage.rename(elfStage.c_str(), elfPath.c_str())',
                          '!verifyAppPair(elfPath.c_str(), jsonPath.c_str(), artifact, true)',
                          'mbedtls_sha256_ret(',
-                         'parseOrdinaryManifest(descriptor.get(), static_cast<size_t>(count), *plan)',
+                         'RuntimeMemory::PsramBuffer descriptor(4096)',
+                         'RuntimeMemory::PsramBuffer planStorage(sizeof(OrdinaryPackagePlan))',
+                         'parseOrdinaryManifest(descriptor.chars(), static_cast<size_t>(rebuiltCount), *plan)',
                          'Recovery::discardMatchingStage(',
                          'installOrdinaryFromSd(root.c_str(), policy,',
                          'installed.result != OrdinaryInstallResult::Installed'):
             self.assertIn(required, ONLINE)
-        self.assertLess(ONLINE.index('parseOrdinaryManifest(descriptor.get(),'),
-                        ONLINE.index('Storage.mkdir(root.c_str(), false)'))
+        self.assertGreater(ONLINE.index('parseOrdinaryManifest(descriptor.chars(),'),
+                           ONLINE.index('downloadToFile(url, elfStage,'))
         self.assertLess(ONLINE.index('downloadToFile(url, elfStage,'),
                         ONLINE.index('verifyAppPair(elfPath.c_str()'))
         self.assertLess(ONLINE.index('verifyAppPair(elfPath.c_str()'),
                         ONLINE.index('discardMatchingStage(root,'))
         self.assertLess(ONLINE.index('discardMatchingStage(root,'),
                         ONLINE.index('installOrdinaryFromSd(root.c_str()'))
-        self.assertIn('new (std::nothrow) char[4096]', ONLINE)
-        self.assertIn('new (std::nothrow) OrdinaryPackagePlan', ONLINE)
+        self.assertIn('RuntimeMemory::PsramBuffer descriptor(4096)', ONLINE)
+        self.assertIn('RuntimeMemory::PsramBuffer planStorage(sizeof(OrdinaryPackagePlan))', ONLINE)
+        self.assertIn('descriptor.reset();', ONLINE)
+        self.assertLess(ONLINE.index('descriptor.reset();'),
+                        ONLINE.index('downloadToFile(url, elfStage,'))
 
         # The progress ABI must not trigger e-paper UI rendering while the HTTP
         # worker still owns TLS buffers. That transient 8 KiB refresh task can

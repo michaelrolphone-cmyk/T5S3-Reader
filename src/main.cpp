@@ -17,6 +17,8 @@
 #include <builtinFonts/all.h>
 
 #include <cstring>
+#include <esp_heap_caps.h>
+#include <esp32-hal-psram.h>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -348,6 +350,14 @@ bool shouldResumeReaderOnBoot() {
 
 void setup() {
   t1 = millis();
+
+  // Keep large general-purpose allocations out of scarce internal RAM.
+  // BOARD_HAS_PSRAM initializes external RAM, but malloc/new do not otherwise
+  // guarantee that bulk std::string/vector/ArduinoJson storage lands there.
+  // ESP-IDF continues to honor explicit INTERNAL/DMA capability allocations.
+  if (psramFound()) {
+    heap_caps_malloc_extmem_enable(1024);
+  }
 
   HalSystem::begin();
   gpio.begin();

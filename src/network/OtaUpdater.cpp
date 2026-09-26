@@ -241,11 +241,34 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     return INTERNAL_UPDATE_ERROR;
   }
 
+  size_t lastReportedBytes = 0;
+  uint32_t lastReportedMs = millis();
+  constexpr size_t kProgressByteStep = 64u * 1024u;
+  constexpr uint32_t kProgressIntervalMs = 750;
   do {
     esp_err = esp_https_ota_perform(ota_handle);
     processedSize = esp_https_ota_get_image_len_read(ota_handle);
-    if (onProgress) onProgress(ctx);
-    delay(100);
+
+    // esp_https_ota_perform() is incremental and may return after only a small
+    // socket read. Do not throttle every iteration or force an e-paper redraw
+    // for every tiny increment. Report progress only after meaningful byte or
+    // time advancement, while still yielding cooperatively to other tasks.
+    const uint32_t now = millis();
+    const bool byteCheckpoint =
+        processedSize >= lastReportedBytes + kProgressByteStep;
+    const bool timeCheckpoint =
+        processedSize != lastReportedBytes &&
+        now - lastReportedMs >= kProgressIntervalMs;
+    if (onProgress && (byteCheckpoint || timeCheckpoint ||
+                       esp_err != ESP_ERR_HTTPS_OTA_IN_PROGRESS)) {
+      onProgress(ctx);
+      lastReportedBytes = processedSize;
+      lastReportedMs = now;
+    }
+
+    if (esp_err == ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
+      delay(1);
+    }
   } while (esp_err == ESP_ERR_HTTPS_OTA_IN_PROGRESS);
 
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);

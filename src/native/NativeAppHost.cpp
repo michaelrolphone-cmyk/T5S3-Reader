@@ -827,7 +827,7 @@ bool appCatalogDownloadWithProgress(uint32_t index,
   if (!Storage.ready()) return catalogDownloadFailed(s, "SD storage is unavailable");
   if (index >= s->catalog.size()) return catalogDownloadFailed(s, "catalog selection is invalid");
 
-  CatalogAsset selected = s->catalog[index];
+  const CatalogAsset& selected = s->catalog[index];
   if (!safeAssetName(selected.name) ||
       !RuntimePackages::safePackageEntryName(selected.name.c_str()) ||
       !selected.manifestValid ||
@@ -836,13 +836,20 @@ bool appCatalogDownloadWithProgress(uint32_t index,
       selected.size < 52 || selected.size > 8u * 1024u * 1024u)
     return catalogDownloadFailed(s, "release catalog entry is incomplete");
 
-  std::string json = std::move(selected.manifestJson), version;
+  // Copy only the selected release fields needed after catalog scratch is
+  // reclaimed. Avoid duplicating the full CatalogAsset and its retained JSON.
+  std::string artifact = selected.name;
+  std::string downloadUrl = selected.url;
+  std::string manifestUrl = selected.manifestUrl;
+  std::string json = selected.manifestJson;
+  const uint64_t selectedSize = selected.size;
+  const std::string catalogVersion = selected.version;
+
+  std::string version;
   t5_app_manifest_t manifest{};
   if (json.empty()) {
-    if (!HttpDownloader::fetchUrl(selected.manifestUrl, json))
+    if (!HttpDownloader::fetchUrl(manifestUrl, json))
       return catalogDownloadFailed(s, "app manifest download failed");
-    // Let the completed metadata worker's stack be reclaimed before creating
-    // the larger binary-transfer worker.
     delay(1);
   }
   if (json.empty() || json.size() > 4096)
@@ -851,36 +858,46 @@ bool appCatalogDownloadWithProgress(uint32_t index,
     return catalogDownloadFailed(s, "app manifest is invalid");
   if (!manifest.compatible)
     return catalogDownloadFailed(s, "app requires newer firmware");
-  if (selected.name != manifest.file_name)
+  if (artifact != manifest.file_name)
     return catalogDownloadFailed(s, "app manifest filename does not match release");
-  if (version != selected.version)
+  if (version != catalogVersion)
     return catalogDownloadFailed(s, "app manifest version does not match release");
 
-  JsonDocument metadata;
-  if (deserializeJson(metadata, json) || !metadata.is<JsonObjectConst>() ||
-      !metadata["sha256"].is<const char*>() ||
-      !metadata["size_bytes"].is<unsigned>() ||
-      metadata["size_bytes"].as<unsigned>() != selected.size) {
-    LOG_ERR("APPSTORE", "Release metadata lacks matching executable length and digest");
-    return catalogDownloadFailed(s, "app size or digest metadata does not match release");
-  }
-  const char* digest = metadata["sha256"].as<const char*>();
-  if (!RuntimePackages::validSha256Hex(digest))
-    return catalogDownloadFailed(s, "app digest is invalid");
+  char digest[65]{};
+  {
+    JsonDocument metadata;
+    if (deserializeJson(metadata, json) || !metadata.is<JsonObjectConst>() ||
+        !metadata["sha256"].is<const char*>() ||
+        !metadata["size_bytes"].is<unsigned>() ||
+        metadata["size_bytes"].as<unsigned>() != selectedSize) {
+      LOG_ERR("APPSTORE", "Release metadata lacks matching executable length and digest");
+      return catalogDownloadFailed(s, "app size or digest metadata does not match release");
+    }
+    const char* value = metadata["sha256"].as<const char*>();
+    if (!RuntimePackages::validSha256Hex(value))
+      return catalogDownloadFailed(s, "app digest is invalid");
+    std::memcpy(digest, value, sizeof(digest) - 1);
+  }  // Release ArduinoJson heap before the binary TLS handshake.
 
   char installed[T5_APP_VERSION_MAX]{};
-  if (installedAppVersionGet(selected.name.c_str(), installed, sizeof(installed)) &&
+  if (installedAppVersionGet(artifact.c_str(), installed, sizeof(installed)) &&
       RuntimePackages::comparePackageVersions(version.c_str(), installed) !=
           RuntimePackages::VersionOrder::Newer)
     return catalogDownloadFailed(s, "catalog version is not newer than installed app");
 
-  // Free cached catalog JSON before the HTTP worker allocates its stack, FIFO
-  // and TLS buffers. The selected sidecar is already owned by this invocation.
-  for (auto& asset : s->catalog) std::string().swap(asset.manifestJson);
+  // The list UI only needs name/version/parsed manifest after this point.
+  // Release every retained URL and raw sidecar buffer before mbedTLS requests
+  // its large contiguous handshake buffers.
+  for (auto& asset : s->catalog) {
+    std::string().swap(asset.manifestJson);
+    std::string().swap(asset.manifestUrl);
+    std::string().swap(asset.url);
+  }
+  std::string().swap(manifestUrl);
 
   const char* failureReason = nullptr;
-  if (!RuntimeOnlinePackages::installApplication(selected.name.c_str(),
-      version.c_str(), selected.url.c_str(), json, selected.size, digest,
+  if (!RuntimeOnlinePackages::installApplication(artifact.c_str(),
+      version.c_str(), downloadUrl.c_str(), json, selectedSize, digest,
       progress, progressContext, &failureReason))
     return catalogDownloadFailed(s, failureReason ? failureReason : "package installation failed");
   return true;
