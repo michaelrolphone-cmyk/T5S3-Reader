@@ -47,6 +47,7 @@ class HalGPIO {
 
   bool lastUsbConnected = false;
   bool usbStateChanged = false;
+  unsigned long lastUsbPollTime = 0;
 
   uint8_t getState();
   void serviceTouchController();
@@ -109,6 +110,7 @@ class HalGPIO {
   static constexpr DeviceType Device = DeviceType::T5S3Pro;
 #endif
   static constexpr unsigned long DEBOUNCE_DELAY = 5;
+  static constexpr unsigned long USB_STATE_POLL_MS = 250;
 };
 
 extern HalGPIO gpio;
