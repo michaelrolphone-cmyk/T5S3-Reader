@@ -2,12 +2,6 @@
 
 #include <Arduino.h>
 #include <Board.h>
-#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
-#include <freertos/FreeRTOS.h>
-#include <freertos/queue.h>
-#include <freertos/task.h>
-#endif
-
 class HalGPIO {
  public:
   struct TouchPoint {
@@ -16,8 +10,6 @@ class HalGPIO {
   };
 
  private:
-  Board::GT911Touch touch;
-
   uint8_t currentState = 0;
   uint8_t lastState = 0;
   uint8_t pressedEvents = 0;
@@ -26,43 +18,11 @@ class HalGPIO {
   unsigned long buttonPressStart = 0;
   unsigned long buttonPressFinish = 0;
 
-  struct TouchSwipeEvent {
-    TouchPoint start;
-    TouchPoint end;
-  };
-
-  bool touchActive = false;
-  uint16_t touchStartX = 0;
-  uint16_t touchStartY = 0;
-  unsigned long touchStartTime = 0;
-  TouchPoint currentTouchPoint;
-  bool touchMoved = false;
-  bool touchHomeButtonHeld = false;
-  unsigned long lastTouchHomeButtonEventTime = 0;
-
-#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
-  TaskHandle_t touchTaskHandle = nullptr;
-  QueueHandle_t touchTapQueue = nullptr;
-  QueueHandle_t touchSwipeQueue = nullptr;
-  QueueHandle_t touchHomeQueue = nullptr;
-  mutable portMUX_TYPE touchStateMux = portMUX_INITIALIZER_UNLOCKED;
-#endif
-  bool touchAsyncReady = false;
-  bool touchCapturePaused = false;
-  bool touchWorkerActive = false;
-
   bool lastUsbConnected = false;
   bool usbStateChanged = false;
   unsigned long lastUsbPollTime = 0;
 
   uint8_t getState();
-#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
-  void serviceTouchController();
-  void processTouchEvent(const Board::TouchPoint& point, bool homeButtonPressed, bool contactActive);
-  static void touchTaskTrampoline(void* context);
-  static void IRAM_ATTR touchInterruptThunk(void* context);
-#endif
-
  public:
   enum class DeviceType : uint8_t { T5S3Pro, LilyGoEPD47 };
 
@@ -75,32 +35,13 @@ class HalGPIO {
   inline const char* getDeviceName() const { return Board::displayName(); }
 
   void begin();
-  // Arm interrupt-backed touch capture after core boot initialization has
-  // completed. begin() only probes the controller so early boot remains
-  // single-threaded while SD/settings/RTC/display state is established.
-  void startTouchCapture();
-  // Hardware-takeover apps temporarily become the sole GT911 owner. Pause is
-  // cooperative and waits until the touch worker has left I2C before returning.
-  bool suspendTouchCapture();
-  bool resumeTouchCapture();
-  bool isTouchCaptureRunning() const { return touchAsyncReady; }
-  bool isTouchAvailable() const { return touch.isAvailable(); }
-
   void update();
   bool isPressed(uint8_t buttonIndex) const;
   bool wasPressed(uint8_t buttonIndex) const;
   bool wasAnyPressed() const;
   bool wasReleased(uint8_t buttonIndex) const;
   bool wasAnyReleased() const;
-  bool hadTouchActivity() const;
   unsigned long getHeldTime() const;
-  bool getTouchTap(TouchPoint& point) const;
-  bool getTouchHold(TouchPoint& point, unsigned long& heldMs) const;
-  // Reports the start and end points of the most recent swipe/drag (a moved touch), in
-  // raw portrait-native coordinates. One-shot per release.
-  bool getTouchSwipe(TouchPoint& start, TouchPoint& end) const;
-  bool wasTouchHomeButtonPressed() const;
-
   void startDeepSleep(bool wakeOnTouch = true);
   void verifyPowerButtonWakeup(uint16_t requiredDurationMs, bool shortPressAllowed);
 
