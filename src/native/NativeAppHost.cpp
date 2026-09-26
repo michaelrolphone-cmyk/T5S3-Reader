@@ -24,6 +24,7 @@
 #include <NativeAppLauncher.h>
 #include <T5AppApi.h>
 #include <esp_task_wdt.h>
+#include <esp_heap_caps.h>
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -188,6 +189,14 @@ bool poll(t5_app_input_t* out, uint32_t waitMs) {
   return true;
 }
 uint32_t clockMs() { return ::millis(); }
+void* psramAlloc(size_t size) {
+  if (!current() || !size) return nullptr;
+  return heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+}
+void psramFree(void* ptr) {
+  if (!current() || !ptr) return;
+  heap_caps_free(ptr);
+}
 
 const char* storagePath(const char* path) {
   if (!path) return nullptr;
@@ -1210,7 +1219,9 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            appCatalogVersionGet,
                            presentServiced,
                            appCatalogDownloadLastError,
-                           appCatalogDownloadWithProgress};
+                           appCatalogDownloadWithProgress,
+                           psramAlloc,
+                           psramFree};
 }  // namespace
 
 bool presentNativeAppUiFrame() {
