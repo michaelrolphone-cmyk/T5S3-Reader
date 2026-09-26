@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -14,6 +15,8 @@
 #define TMP_ZIP ROM_DIR "/.download.zip"
 #define TMP_GB ROM_DIR "/.download.gb"
 #define RENAME_STATE ROM_DIR "/.rename.txt"
+#define VIMM_DEBUG_LOG ROM_DIR "/vimm-debug.log"
+#define VIMM_LAST_HTML ROM_DIR "/vimm-last.html"
 #define VIMM_URL "https://vimm.net/vault/GB"
 #define MAX_ROMS 128u
 #define MAX_VIMM 96u
@@ -21,6 +24,7 @@
 #define PATH_CAP 384u
 #define STATUS_CAP 160u
 #define DETAIL_CAP 8192u
+#define DEBUG_CAP 8192u
 #define HTML_CAP (128u * 1024u)
 #define MAX_DOWNLOAD_BYTES (32u * 1024u * 1024u)
 #define MAX_ROM_BYTES (16u * 1024u * 1024u)
@@ -48,6 +52,8 @@ static char *html;
 static uint32_t html_size;
 static char search_query[80];
 static char *detail_text;
+static char *debug_text;
+static size_t debug_size;
 
 static size_t bounded_len(const char *s, size_t cap) { size_t n=0; if(s) while(n<cap&&s[n])++n; return n; }
 static void copy_text(char *d,size_t c,const char*s){ if(!d||!c)return; if(!s)s=""; size_t n=bounded_len(s,c-1); memcpy(d,s,n); d[n]=0; }
@@ -80,11 +86,91 @@ static bool allocate_workspaces(void){
   if(!detail_text){
     app->psram_free(html);html=NULL;return false;
   }
-  html[0]=0;detail_text[0]=0;return true;
+  debug_text=(char*)app->psram_alloc(DEBUG_CAP);
+  if(!debug_text){
+    app->psram_free(detail_text);detail_text=NULL;
+    app->psram_free(html);html=NULL;return false;
+  }
+  html[0]=0;detail_text[0]=0;debug_text[0]=0;debug_size=0;return true;
 }
 static void release_workspaces(void){
+  if(debug_text){app->psram_free(debug_text);debug_text=NULL;debug_size=0;}
   if(detail_text){app->psram_free(detail_text);detail_text=NULL;}
   if(html){app->psram_free(html);html=NULL;}
+}
+static void debug_append(const char *fmt,...){
+  if(!debug_text||debug_size+1u>=DEBUG_CAP||!fmt)return;
+  va_list args;va_start(args,fmt);
+  int n=vsnprintf(debug_text+debug_size,DEBUG_CAP-debug_size,fmt,args);
+  va_end(args);
+  if(n<=0)return;
+  size_t wrote=(size_t)n;
+  if(wrote>=DEBUG_CAP-debug_size)debug_size=DEBUG_CAP-1u;
+  else debug_size+=wrote;
+  debug_text[debug_size]=0;
+}
+static void debug_reset(const char *operation,const char *url){
+  if(!debug_text)return;
+  debug_size=0;debug_text[0]=0;
+  debug_append("Rom Manager Vimm diagnostics\noperation=%s\nurl=%s\n",
+               operation?operation:"unknown",url?url:"");
+}
+static bool write_debug_snapshot(const char *path,const char *data,size_t size){
+  if(!path||(!data&&size))return false;
+  (void)storage->remove_file(path);
+  t5_stream_t out=0;
+  if(streams->open_file(path,T5_STREAM_FILE_CREATE_NEW,&out)!=T5_STREAM_OK)return false;
+  size_t offset=0;
+  while(offset<size){
+    uint32_t wrote=0;
+    const uint32_t chunk=(uint32_t)((size-offset)>T5_STREAM_CHUNK?T5_STREAM_CHUNK:(size-offset));
+    const int32_t rc=streams->write(out,data+offset,chunk,&wrote);
+    if(rc!=T5_STREAM_OK||!wrote){streams->close(out);return false;}
+    offset+=wrote;
+  }
+  const bool ok=streams->finish(out)==T5_STREAM_OK;
+  streams->close(out);
+  return ok;
+}
+static void debug_flush(void){
+  if(debug_text&&debug_size)(void)write_debug_snapshot(VIMM_DEBUG_LOG,debug_text,debug_size);
+}
+static uint32_t count_marker(const char *text,const char *needle){
+  if(!text||!needle||!needle[0])return 0;
+  uint32_t count=0;const size_t n=strlen(needle);const char *p=text;
+  while((p=strstr(p,needle))){++count;p+=n;}
+  return count;
+}
+static void debug_html_preview(void){
+  if(!html||!html_size)return;
+  char preview[321];size_t w=0;
+  for(size_t i=0;i<html_size&&w+1u<sizeof(preview);++i){
+    char c=html[i];
+    if(c=='\r'||c=='\n'||c=='\t')c=' ';
+    if((unsigned char)c<32u)c='?';
+    if(c==' '&&w&&preview[w-1]==' ')continue;
+    preview[w++]=c;
+  }
+  preview[w]=0;
+  debug_append("preview=%s\n",preview);
+}
+static void show_vimm_diagnostics(void){
+  const char *text=(debug_text&&debug_text[0])?debug_text:
+      "No Vimm diagnostics are available in this app session.\n"
+      "Persistent files:\n"
+      "/System/State/Applications/Rom Manager/vimm-debug.log\n"
+      "/System/State/Applications/Rom Manager/vimm-last.html";
+  int32_t scroll=0;
+  for(;;){
+    t5_ui_text_view_result_t result={0};
+    const t5_ui_chrome_t chrome={"Vimm diagnostics","Rom Manager",
+      "Raw response: vimm-last.html","Back","","Up","Down"};
+    ui->render_text_view(&chrome,text,scroll,&result);
+    t5_ui_event_t event={0};
+    if(!ui->poll_event(&event,20)||event.type==T5_UI_EVENT_BACK||event.type==T5_UI_EVENT_EXIT)return;
+    if(event.type==T5_UI_EVENT_PREVIOUS&&scroll<result.max_scroll_lines)++scroll;
+    else if(event.type==T5_UI_EVENT_NEXT&&scroll>0)--scroll;
+  }
 }
 static void render_rows(const char *title,const char *subtitle,const t5_ui_list_row_t *rows,uint32_t count,int32_t selected,const char *confirm){
   const t5_ui_chrome_t chrome={title,subtitle,status_text,"Back",confirm,"Up","Down"};
@@ -352,34 +438,72 @@ static bool vimm_allowed_url(const char *url){
   return true;
 }
 static bool fetch_vimm_document(const char *url){
-  if(!vimm_allowed_url(url)){copy_text(status_text,sizeof(status_text),"Blocked unsupported Vimm URL");return false;}
-  html_size=0; t5_stream_t h=0;
-  if(streams->open_http(url,&h)!=T5_STREAM_OK){
+  debug_reset("fetch",url);
+  if(!vimm_allowed_url(url)){
+    debug_append("allowlist=reject\n");
+    debug_flush();
+    copy_text(status_text,sizeof(status_text),"Blocked unsupported Vimm URL");return false;
+  }
+  debug_append("allowlist=accept\n");
+  html_size=0;t5_stream_t h=0;
+  const int32_t open_rc=streams->open_http(url,&h);
+  debug_append("open_http=%ld handle=%lu\n",(long)open_rc,(unsigned long)h);
+  if(open_rc!=T5_STREAM_OK){
+    debug_flush();
     copy_text(status_text,sizeof(status_text),"Could not open Vimm HTTPS stream");
     return false;
   }
-  uint32_t last_progress=app->millis(),started=last_progress;
+  uint32_t last_progress=app->millis(),started=last_progress,reads=0;
   while(html_size<HTML_CAP){
-    uint32_t got=0; int32_t r=streams->read(h,html+html_size,(uint32_t)(HTML_CAP-html_size),&got);
+    uint32_t got=0;int32_t r=streams->read(h,html+html_size,(uint32_t)(HTML_CAP-html_size),&got);
+    ++reads;
     if(got){html_size+=got;last_progress=app->millis();}
-    if(r==T5_STREAM_EOF)break;
+    if(r==T5_STREAM_EOF){debug_append("read_terminal=EOF reads=%lu\n",(unsigned long)reads);break;}
     if(r<0&&r!=T5_STREAM_AGAIN){
-      streams->close(h);
+      debug_append("read_terminal=error rc=%ld reads=%lu bytes=%lu\n",
+                   (long)r,(unsigned long)reads,(unsigned long)html_size);
+      streams->close(h);debug_flush();
       copy_text(status_text,sizeof(status_text),"Vimm HTTPS read failed");
       return false;
     }
     t5_ui_event_t ev={0};
-    if(!ui->poll_event(&ev,5)){streams->close(h);copy_text(status_text,sizeof(status_text),"UI poll failed during Vimm fetch");return false;}
-    if(ev.type==T5_UI_EVENT_EXIT||ev.type==T5_UI_EVENT_BACK){streams->close(h);copy_text(status_text,sizeof(status_text),"Vimm fetch cancelled");return false;}
+    if(!ui->poll_event(&ev,5)){
+      debug_append("read_terminal=ui_poll_failed bytes=%lu\n",(unsigned long)html_size);
+      streams->close(h);debug_flush();
+      copy_text(status_text,sizeof(status_text),"UI poll failed during Vimm fetch");return false;
+    }
+    if(ev.type==T5_UI_EVENT_EXIT||ev.type==T5_UI_EVENT_BACK){
+      debug_append("read_terminal=cancel event=%u bytes=%lu\n",(unsigned)ev.type,(unsigned long)html_size);
+      streams->close(h);debug_flush();
+      copy_text(status_text,sizeof(status_text),"Vimm fetch cancelled");return false;
+    }
     uint32_t now=app->millis();
     if(now-last_progress>30000u||now-started>60000u){
-      streams->close(h);
-      copy_text(status_text,sizeof(status_text),"Vimm HTTPS fetch timed out");
-      return false;
+      debug_append("read_terminal=timeout bytes=%lu elapsed=%lu\n",
+                   (unsigned long)html_size,(unsigned long)(now-started));
+      streams->close(h);debug_flush();
+      copy_text(status_text,sizeof(status_text),"Vimm HTTPS fetch timed out");return false;
     }
   }
-  streams->close(h); html[html_size]=0;
-  if(!html_size){copy_text(status_text,sizeof(status_text),"Vimm returned an empty response");return false;}
+  streams->close(h);html[html_size]=0;
+  debug_append("bytes=%lu capped=%u\n",(unsigned long)html_size,html_size==HTML_CAP?1u:0u);
+  if(html_size){
+    debug_append("markers table=%lu tr=%lu td=%lu hovertable=%lu vault_href=%lu data_v=%lu\n",
+      (unsigned long)count_marker(html,"<table"),
+      (unsigned long)count_marker(html,"<tr"),
+      (unsigned long)count_marker(html,"<td"),
+      (unsigned long)count_marker(html,"hovertable"),
+      (unsigned long)count_marker(html,"href=\"/vault/"),
+      (unsigned long)count_marker(html,"data-v=\""));
+    debug_html_preview();
+    const bool html_saved=write_debug_snapshot(VIMM_LAST_HTML,html,html_size);
+    debug_append("saved_last_html=%u\n",html_saved?1u:0u);
+  }
+  if(!html_size){
+    debug_append("result=empty_response\n");debug_flush();
+    copy_text(status_text,sizeof(status_text),"Vimm returned an empty response");return false;
+  }
+  debug_flush();
   return true;
 }
 static bool decode_anchor_text(const char *start,const char *end,char *out,size_t cap){
@@ -422,69 +546,77 @@ static bool add_vimm_entry(const char *path,size_t plen,const char *title,uint8_
 static bool fetch_vimm_url(const char *url,bool include_pages,bool server_filtered){
   vimm_count=0;
   if(!fetch_vimm_document(url))return false;
+  debug_append("parser include_pages=%u server_filtered=%u query=%s\n",
+               include_pages?1u:0u,server_filtered?1u:0u,search_query);
 
-  /* The Game Boy landing page exposes A-Z navigation as ordinary anchors. */
+  uint32_t nav_candidates=0,row_count=0,first_td_count=0,first_anchor_count=0;
+  uint32_t numeric_first_anchor_count=0,sampled=0;
+
   if(include_pages){
     char *p=html;
     while(vimm_count<MAX_VIMM&&(p=strstr(p,"href=\"/vault/GB"))){
-      p+=6;
-      char *q=strchr(p,'"'); if(!q)break;
+      p+=6;char *q=strchr(p,'"');if(!q)break;
       const size_t plen=(size_t)(q-p);
       if(plen>=NAME_CAP||!vimm_page_path(p,plen)){p=q+1;continue;}
-      char *gt=strchr(q,'>'); if(!gt)break;
-      char *close=strstr(gt+1,"</a>"); if(!close){p=gt+1;continue;}
+      char *gt=strchr(q,'>');if(!gt)break;
+      char *close=strstr(gt+1,"</a>");if(!close){p=gt+1;continue;}
       char title[NAME_CAP];
-      if(decode_anchor_text(gt+1,close,title,sizeof(title)))
+      if(decode_anchor_text(gt+1,close,title,sizeof(title))){
+        ++nav_candidates;
         (void)add_vimm_entry(p,plen,title,VIMM_PAGE,true);
+      }
       p=close+4;
     }
   }
 
-  /* Vimm's list pages are table.hovertable rows. The game identity is the
-     first anchor in the first TD. Other cells can contain numeric links
-     (ratings/actions), so never scan arbitrary /vault/<id> anchors. */
-  char *table=html;
-  while(vimm_count<MAX_VIMM&&(table=strstr(table,"<table"))){
-    char *table_tag_end=strchr(table,'>');
-    if(!table_tag_end)break;
-    if(!range_contains(table,table_tag_end,"hovertable")){table=table_tag_end+1;continue;}
-    char *table_end=strstr(table_tag_end,"</table>");
-    if(!table_end)break;
+  char *row=html;
+  while(vimm_count<MAX_VIMM&&(row=strstr(row,"<tr"))){
+    ++row_count;
+    char *row_tag_end=strchr(row,'>');
+    if(!row_tag_end)break;
+    char *row_end=strstr(row_tag_end,"</tr>");
+    if(!row_end)break;
 
-    char *row=table_tag_end+1;
-    while(vimm_count<MAX_VIMM&&(row=strstr(row,"<tr"))&&row<table_end){
-      char *row_tag_end=strchr(row,'>');
-      if(!row_tag_end||row_tag_end>=table_end)break;
-      char *row_end=strstr(row_tag_end,"</tr>");
-      if(!row_end||row_end>table_end)break;
+    char *td=strstr(row_tag_end,"<td");
+    if(!td||td>=row_end){row=row_end+5;continue;}
+    ++first_td_count;
+    char *td_tag_end=strchr(td,'>');
+    if(!td_tag_end||td_tag_end>=row_end){row=row_end+5;continue;}
+    char *td_end=strstr(td_tag_end,"</td>");
+    if(!td_end||td_end>row_end){row=row_end+5;continue;}
 
-      char *td=strstr(row_tag_end,"<td");
-      if(!td||td>=row_end){row=row_end+5;continue;}
-      char *td_tag_end=strchr(td,'>');
-      if(!td_tag_end||td_tag_end>=row_end){row=row_end+5;continue;}
-      char *td_end=strstr(td_tag_end,"</td>");
-      if(!td_end||td_end>row_end){row=row_end+5;continue;}
+    char *anchor=strstr(td_tag_end,"<a");
+    if(!anchor||anchor>=td_end){row=row_end+5;continue;}
+    ++first_anchor_count;
+    char *anchor_tag_end=strchr(anchor,'>');
+    if(!anchor_tag_end||anchor_tag_end>=td_end){row=row_end+5;continue;}
 
-      char *anchor=strstr(td_tag_end,"<a");
-      if(!anchor||anchor>=td_end){row=row_end+5;continue;}
-      char *anchor_tag_end=strchr(anchor,'>');
-      if(!anchor_tag_end||anchor_tag_end>=td_end){row=row_end+5;continue;}
+    char path[NAME_CAP]={0},title[NAME_CAP]={0};
+    const bool have_href=copy_attr_value(anchor,anchor_tag_end,"href",path,sizeof(path));
+    char *anchor_end=strstr(anchor_tag_end,"</a>");
+    const bool have_title=anchor_end&&anchor_end<=td_end&&
+        decode_anchor_text(anchor_tag_end+1,anchor_end,title,sizeof(title));
+    const bool numeric=have_href&&vimm_game_path(path,strlen(path));
+    if(numeric)++numeric_first_anchor_count;
 
-      char path[NAME_CAP];
-      if(!copy_attr_value(anchor,anchor_tag_end,"href",path,sizeof(path))||
-         !vimm_game_path(path,strlen(path))){
-        row=row_end+5;continue;
-      }
-
-      char *anchor_end=strstr(anchor_tag_end,"</a>");
-      if(!anchor_end||anchor_end>td_end){row=row_end+5;continue;}
-      char title[NAME_CAP];
-      if(decode_anchor_text(anchor_tag_end+1,anchor_end,title,sizeof(title)))
-        (void)add_vimm_entry(path,strlen(path),title,VIMM_GAME,server_filtered);
-      row=row_end+5;
+    if(sampled<12u){
+      debug_append("row[%lu] href=%s title=%s numeric=%u\n",
+                   (unsigned long)row_count,have_href?path:"<none>",
+                   have_title?title:"<none>",numeric?1u:0u);
+      ++sampled;
     }
-    table=table_end+8;
+    if(numeric&&have_title)
+      (void)add_vimm_entry(path,strlen(path),title,VIMM_GAME,server_filtered);
+    row=row_end+5;
   }
+
+  debug_append("parser_summary nav=%lu rows=%lu first_td=%lu first_anchor=%lu numeric_first=%lu added=%lu\n",
+    (unsigned long)nav_candidates,(unsigned long)row_count,(unsigned long)first_td_count,
+    (unsigned long)first_anchor_count,(unsigned long)numeric_first_anchor_count,
+    (unsigned long)vimm_count);
+  if(!include_pages&&vimm_count==0)
+    copy_text(status_text,sizeof(status_text),"0 games parsed; see Vimm diagnostics");
+  debug_flush();
   return true;
 }
 static bool fetch_vimm(void){
@@ -646,7 +778,7 @@ __attribute__((visibility("default"))) void app_main(void){
   view_t view=consume_keyboard(); int32_t selected=0;
   for(;;){
     t5_ui_list_row_t rows[MAX_ROMS>MAX_VIMM?MAX_ROMS:MAX_VIMM]; uint32_t count=0; const char *confirm="";
-    if(view==VIEW_HOME){rows[0]=(t5_ui_list_row_t){"My ROMs","Rename or delete downloaded .gb files","Open",0};rows[1]=(t5_ui_list_row_t){"Browse Vimm Vault","Browse Game Boy catalog metadata","Browse",0};rows[2]=(t5_ui_list_row_t){"Search Vimm Vault","Filter catalog metadata by title","Search",0};rows[3]=(t5_ui_list_row_t){"Import authorized URL","Download .gb or ZIP and extract first .gb","Import",0};count=4;confirm="Open";}
+    if(view==VIEW_HOME){rows[0]=(t5_ui_list_row_t){"My ROMs","Rename or delete downloaded .gb files","Open",0};rows[1]=(t5_ui_list_row_t){"Browse Vimm Vault","Browse Game Boy catalog metadata","Browse",0};rows[2]=(t5_ui_list_row_t){"Search Vimm Vault","Filter catalog metadata by title","Search",0};rows[3]=(t5_ui_list_row_t){"Import authorized URL","Download .gb or ZIP and extract first .gb","Import",0};rows[4]=(t5_ui_list_row_t){"Vimm diagnostics","View last fetch/parser diagnostics","Open",0};count=5;confirm="Open";}
     else if(view==VIEW_ROMS){load_roms();for(uint32_t i=0;i<rom_count;++i){static char sizes[MAX_ROMS][24];snprintf(sizes[i],sizeof(sizes[i]),"%llu KB",(unsigned long long)(rom_sizes[i]/1024u));rows[i]=(t5_ui_list_row_t){rom_names[i],"Stored ROM",sizes[i],0};}count=rom_count;confirm=count?"Actions":"";}
     else {for(uint32_t i=0;i<vimm_count;++i)rows[i]=(t5_ui_list_row_t){vimm_names[i],vimm_kinds[i]==VIMM_PAGE?"Game Boy index":"Game Boy title",vimm_kinds[i]==VIMM_PAGE?"Open":"Info",0};count=vimm_count;confirm=count?(vimm_kinds[selected]==VIMM_PAGE?"Open":"Info"):"";}
     render_rows(view==VIEW_HOME?"Rom Manager":view==VIEW_ROMS?"My ROMs":"Vimm Vault",view==VIEW_VIMM?(search_query[0]?search_query:"Game Boy catalog"):ROM_DIR,rows,count,selected,confirm);
@@ -662,6 +794,7 @@ __attribute__((visibility("default"))) void app_main(void){
       else if(selected==1){search_query[0]=0;copy_text(status_text,sizeof(status_text),"Loading Vimm catalog...");if(fetch_vimm()){view=VIEW_VIMM;selected=0;status_text[0]=0;}else if(!status_text[0])copy_text(status_text,sizeof(status_text),"Could not load Vimm catalog");}
       else if(selected==2){system_ui->keyboard_request("Search Vimm Vault","",79,T5_SYSTEM_KEYBOARD_TEXT,COOKIE_SEARCH);release_workspaces();return;}
       else if(selected==3){system_ui->keyboard_request("Authorized ROM URL","https://",383,T5_SYSTEM_KEYBOARD_URL,COOKIE_IMPORT);release_workspaces();return;}
+      else if(selected==4){show_vimm_diagnostics();selected=4;}
     }else if(view==VIEW_VIMM){
       if(vimm_kinds[selected]==VIMM_PAGE){
         copy_text(status_text,sizeof(status_text),"Loading Game Boy titles...");
