@@ -97,8 +97,10 @@ static void add_temperature(uint16_t deci_kelvin) {
         return;
     }
     const int deci_c = (int)deci_kelvin - 2731;
-    const int fraction = deci_c < 0 ? -(deci_c % 10) : deci_c % 10;
-    snprintf(text, sizeof(text), "%d.%d C", deci_c / 10, fraction);
+    const bool negative = deci_c < 0;
+    const unsigned magnitude = (unsigned)(negative ? -deci_c : deci_c);
+    snprintf(text, sizeof(text), "%s%u.%u C", negative ? "-" : "",
+             magnitude / 10u, magnitude % 10u);
     add_row("Temperature", text, 0);
 }
 
