@@ -123,7 +123,7 @@ class LiveInstallContract(unittest.TestCase):
 
     def test_app_catalog_metadata_is_psram_first_and_single_fetch(self):
         loader_start = HOST.index('bool loadIndependentAppIndex(')
-        loader_end = HOST.index('\nbool refreshExternalGameBoy(', loader_start)
+        loader_end = HOST.index('\nbool loadAuthoritativeAppCatalog(', loader_start)
         loader = HOST[loader_start:loader_end]
         self.assertIn('RuntimeMemory::PsramTextStream json(kMaxCatalogBytes)', loader)
         self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', loader)
