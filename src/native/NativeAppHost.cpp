@@ -944,7 +944,8 @@ bool appCatalogDownloadWithProgress(uint32_t index,
 
   char digest[65]{};
   {
-    JsonDocument metadata;
+    RuntimeMemory::PsramJsonAllocator metadataAllocator;
+    JsonDocument metadata(&metadataAllocator);
     if (deserializeJson(metadata, json) || !metadata.is<JsonObjectConst>() ||
         !metadata["sha256"].is<const char*>() ||
         !metadata["size_bytes"].is<unsigned>() ||
