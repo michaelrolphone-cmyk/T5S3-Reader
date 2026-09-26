@@ -865,7 +865,7 @@ void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
         constexpr int kAppIconSize = 12;
         const int iconX = rect.x + BaseMetrics::values.contentSidePadding + 12;
         const int iconY = tileY + (BaseMetrics::values.menuRowHeight - kAppIconSize) / 2;
-        (void)FontAwesomeIcons::drawRegular(renderer, iconX, iconY, appIcon, kAppIconSize, !selected);
+        (void)FontAwesomeIcons::draw(renderer, iconX, iconY, appIcon, kAppIconSize, !selected);
       }
     }
 
