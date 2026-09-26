@@ -52,8 +52,6 @@ constexpr const char* kLatestReleaseApi =
 constexpr const char* kReleaseIndexUrl =
     "https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/release-index/release-index.json";
 constexpr const char* kGameBoyRepository = "michaelrolphone-cmyk/T5S3-GameBoy";
-constexpr const char* kGameBoyLatestReleaseApi =
-    "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-GameBoy/releases/latest";
 constexpr const char* kAggregateAppCatalogName = "app-catalog.json";
 constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr size_t kMaxCatalogAssets = 128;
@@ -669,121 +667,6 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
   return true;
 }
 
-
-bool refreshExternalGameBoy(std::vector<CatalogAsset>& catalog) {
-  auto currentEntry = std::find_if(catalog.begin(), catalog.end(), [](const CatalogAsset& asset) {
-    return asset.name == "gameboy.elf";
-  });
-
-  std::string releaseJson;
-  esp_task_wdt_reset();
-  if (!HttpDownloader::fetchUrl(kGameBoyLatestReleaseApi, releaseJson) ||
-      releaseJson.empty() || releaseJson.size() > kMaxCatalogBytes) {
-    LOG_ERR("APPSTORE", "GameBoy latest-release lookup failed; using indexed fallback");
-    return false;
-  }
-
-  JsonDocument release;
-  if (deserializeJson(release, releaseJson) || !release.is<JsonObjectConst>() ||
-      release["draft"].as<bool>() || release["prerelease"].as<bool>() ||
-      !release["tag_name"].is<const char*>() || !release["assets"].is<JsonArrayConst>()) {
-    LOG_ERR("APPSTORE", "GameBoy latest release metadata is invalid; using indexed fallback");
-    return false;
-  }
-
-  const char* tag = release["tag_name"].as<const char*>();
-  if (!validThirdPartyReleaseTag(tag)) {
-    LOG_ERR("APPSTORE", "GameBoy latest release tag is invalid; using indexed fallback");
-    return false;
-  }
-  const std::string version(tag + 1);
-  const std::string base = std::string("https://github.com/") + kGameBoyRepository +
-      "/releases/download/" + tag + "/";
-
-  JsonObjectConst elfAsset;
-  JsonObjectConst manifestAsset;
-  unsigned elfMatches = 0;
-  unsigned manifestMatches = 0;
-  for (JsonVariantConst value : release["assets"].as<JsonArrayConst>()) {
-    if (!value.is<JsonObjectConst>() || !value["name"].is<const char*>()) continue;
-    const char* name = value["name"].as<const char*>();
-    if (!std::strcmp(name, "gameboy.elf")) {
-      elfAsset = value.as<JsonObjectConst>();
-      ++elfMatches;
-    } else if (!std::strcmp(name, "gameboy.json")) {
-      manifestAsset = value.as<JsonObjectConst>();
-      ++manifestMatches;
-    }
-  }
-  if (elfMatches != 1 || manifestMatches != 1 ||
-      !elfAsset["browser_download_url"].is<const char*>() ||
-      !elfAsset["size"].is<uint64_t>() ||
-      !manifestAsset["browser_download_url"].is<const char*>()) {
-    LOG_ERR("APPSTORE", "GameBoy release is missing a unique ELF/manifest pair; using indexed fallback");
-    return false;
-  }
-
-  const std::string elfUrl = elfAsset["browser_download_url"].as<const char*>();
-  const std::string manifestUrl = manifestAsset["browser_download_url"].as<const char*>();
-  const uint64_t elfSize = elfAsset["size"].as<uint64_t>();
-  if (elfUrl != base + "gameboy.elf" || manifestUrl != base + "gameboy.json" ||
-      elfSize < 52 || elfSize > 8u * 1024u * 1024u) {
-    LOG_ERR("APPSTORE", "GameBoy release asset identity is invalid; using indexed fallback");
-    return false;
-  }
-
-  std::string manifestJson;
-  delay(1);
-  if (!HttpDownloader::fetchUrl(manifestUrl, manifestJson) ||
-      manifestJson.empty() || manifestJson.size() > kMaxManifestBytes) {
-    LOG_ERR("APPSTORE", "GameBoy release manifest download failed; using indexed fallback");
-    return false;
-  }
-
-  t5_app_manifest_t manifest{};
-  std::string manifestVersion;
-  if (!parseAppManifest(manifestJson, manifest, &manifestVersion, true) ||
-      std::strcmp(manifest.file_name, "gameboy.elf") ||
-      manifestVersion != version) {
-    LOG_ERR("APPSTORE", "GameBoy release manifest does not match its tag; using indexed fallback");
-    return false;
-  }
-
-  JsonDocument sidecar;
-  if (deserializeJson(sidecar, manifestJson) || !sidecar.is<JsonObjectConst>() ||
-      !sidecar["sha256"].is<const char*>() || !sidecar["size_bytes"].is<uint64_t>() ||
-      sidecar["size_bytes"].as<uint64_t>() != elfSize ||
-      !RuntimePackages::validSha256Hex(sidecar["sha256"].as<const char*>())) {
-    LOG_ERR("APPSTORE", "GameBoy release manifest digest/size is invalid; using indexed fallback");
-    return false;
-  }
-
-  const char* releaseDigest = elfAsset["digest"].is<const char*>() ?
-      elfAsset["digest"].as<const char*>() : nullptr;
-  const std::string expectedDigest =
-      std::string("sha256:") + sidecar["sha256"].as<const char*>();
-  if (releaseDigest && expectedDigest != releaseDigest) {
-    LOG_ERR("APPSTORE", "GameBoy GitHub asset digest disagrees with its manifest; using indexed fallback");
-    return false;
-  }
-
-  CatalogAsset resolved;
-  resolved.name = "gameboy.elf";
-  resolved.url = elfUrl;
-  resolved.manifestUrl = manifestUrl;
-  resolved.manifestJson = std::move(manifestJson);
-  resolved.version = version;
-  resolved.size = elfSize;
-  resolved.manifest = manifest;
-  resolved.manifestValid = true;
-  if (currentEntry == catalog.end())
-    catalog.push_back(std::move(resolved));
-  else
-    *currentEntry = std::move(resolved);
-  sortCatalog(catalog);
-  LOG_INF("APPSTORE", "Resolved GameBoy v%s directly from external release", version.c_str());
-  return true;
-}
 
 bool loadAuthoritativeAppCatalog(std::vector<CatalogAsset>& catalog) {
   // The release-index workflow synchronizes external providers such as GameBoy.
