@@ -82,12 +82,11 @@ inline bool installApplication(const char* artifact, const char* version,
       (!Storage.exists("/Packages") && !Storage.mkdir("/Packages", false)) ||
       (!Storage.exists("/Packages/Inbox") && !Storage.mkdir("/Packages/Inbox", false))) return fail("package inbox unavailable");
   if (Storage.exists(root.c_str())) {
-    if (!Recovery::discardMatchingInbox(root, manifestName, sidecar, artifact,
-            descriptor.chars(), static_cast<size_t>(count))) {
-      LOG_ERR("APPSTORE", "Existing inbox differs from this release; preserved for inspection: %s", root.c_str());
-      return fail("interrupted package differs from this release");
+    if (!Recovery::discardOwnedInbox(root, manifestName, artifact)) {
+      LOG_ERR("APPSTORE", "Existing inbox contains unknown content; preserved: %s", root.c_str());
+      return fail("stale package scratch contains unknown files");
     }
-    LOG_INF("APPSTORE", "Recovered matching interrupted download for %s", id.c_str());
+    LOG_INF("APPSTORE", "Discarded stale partial install for %s; starting over", id.c_str());
   }
   if (!Storage.mkdir(root.c_str(), false)) return fail("could not create package inbox");
 
@@ -159,15 +158,14 @@ inline bool installApplication(const char* artifact, const char* version,
 #endif
   if (!writeExclusive(root + "/.package.json", descriptor.chars(), static_cast<size_t>(rebuiltCount)))
     return fail("could not stage package descriptor");
-  // The source has passed the release digest and exact sidecar checks. Before
-  // re-staging, recover only a previous stage whose contents match this source
-  // byte for byte (or its interrupted prefix). Never remove an unknown stage.
+  // Online installs always start over. Discard only manager-owned stage files
+  // named by the current plan; unknown content is preserved and blocks cleanup.
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
   vTaskDelay(1);
 #endif
-  if (!Recovery::discardMatchingStage(root, *plan, policy, installedCapabilityVersion)) {
-    LOG_ERR("APPSTORE", "Unrecognized or mismatched package stage preserved for inspection: %s", id.c_str());
-    return fail("existing package stage does not match release");
+  if (!Recovery::discardOwnedStage(*plan)) {
+    LOG_ERR("APPSTORE", "Existing package stage contains unknown content; preserved: %s", id.c_str());
+    return fail("stale package stage contains unknown files");
   }
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
   vTaskDelay(1);
