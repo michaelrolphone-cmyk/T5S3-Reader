@@ -1,5 +1,6 @@
 #include "T5AppApi.h"
 #include "T5ArchiveApi.h"
+#include "T5NetworkApi.h"
 #include "T5StorageApi.h"
 #include "T5StreamApi.h"
 #include "T5SystemUiApi.h"
@@ -35,6 +36,7 @@
 typedef enum { VIEW_HOME, VIEW_ROMS, VIEW_VIMM } view_t;
 static const t5_app_api_v1 *app;
 static const t5_archive_api_v1 *archive;
+static const t5_network_api_v1 *network;
 static const t5_storage_api_v1 *storage;
 static const t5_stream_api_v1 *streams;
 static const t5_system_ui_api_v1 *system_ui;
@@ -449,55 +451,49 @@ static bool vimm_allowed_url(const char *url){
   return true;
 }
 static bool fetch_vimm_document(const char *url){
+  static const t5_http_header_t headers[]={
+    {"User-Agent","Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36"},
+    {"Accept","text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+    {"Accept-Language","en-US,en;q=0.9"},
+    {"Referer","https://vimm.net/vault/GB"},
+  };
   debug_reset("fetch",url);
   if(!vimm_allowed_url(url)){
     debug_append("allowlist=reject\n");
     debug_flush();
-    copy_text(status_text,sizeof(status_text),"Blocked unsupported Vimm URL");return false;
-  }
-  debug_append("allowlist=accept\n");
-  html_size=0;t5_stream_t h=0;
-  const int32_t open_rc=streams->open_http(url,&h);
-  debug_append("open_http=%ld handle=%lu\n",(long)open_rc,(unsigned long)h);
-  if(open_rc!=T5_STREAM_OK){
-    debug_flush();
-    copy_text(status_text,sizeof(status_text),"Could not open Vimm HTTPS stream");
+    copy_text(status_text,sizeof(status_text),"Blocked unsupported Vimm URL");
     return false;
   }
-  uint32_t last_progress=app->millis(),started=last_progress,reads=0;
-  while(html_size<HTML_CAP){
-    uint32_t got=0;int32_t r=streams->read(h,html+html_size,(uint32_t)(HTML_CAP-html_size),&got);
-    ++reads;
-    if(got){html_size+=got;last_progress=app->millis();}
-    if(r==T5_STREAM_EOF){debug_append("read_terminal=EOF reads=%lu\n",(unsigned long)reads);break;}
-    if(r<0&&r!=T5_STREAM_AGAIN){
-      debug_append("read_terminal=error rc=%ld reads=%lu bytes=%lu\n",
-                   (long)r,(unsigned long)reads,(unsigned long)html_size);
-      streams->close(h);debug_flush();
-      copy_text(status_text,sizeof(status_text),"Vimm HTTPS read failed");
-      return false;
-    }
-    t5_ui_event_t ev={0};
-    if(!ui->poll_event(&ev,5)){
-      debug_append("read_terminal=ui_poll_failed bytes=%lu\n",(unsigned long)html_size);
-      streams->close(h);debug_flush();
-      copy_text(status_text,sizeof(status_text),"UI poll failed during Vimm fetch");return false;
-    }
-    if(ev.type==T5_UI_EVENT_EXIT||ev.type==T5_UI_EVENT_BACK){
-      debug_append("read_terminal=cancel event=%u bytes=%lu\n",(unsigned)ev.type,(unsigned long)html_size);
-      streams->close(h);debug_flush();
-      copy_text(status_text,sizeof(status_text),"Vimm fetch cancelled");return false;
-    }
-    uint32_t now=app->millis();
-    if(now-last_progress>30000u||now-started>60000u){
-      debug_append("read_terminal=timeout bytes=%lu elapsed=%lu\n",
-                   (unsigned long)html_size,(unsigned long)(now-started));
-      streams->close(h);debug_flush();
-      copy_text(status_text,sizeof(status_text),"Vimm HTTPS fetch timed out");return false;
-    }
+  debug_append("allowlist=accept transport=native_http browser_headers=1\n");
+  html_size=0;
+  t5_http_result_t result={0};
+  const bool ok=network->http_request(
+      url,T5_HTTP_METHOD_GET,headers,
+      (uint32_t)(sizeof(headers)/sizeof(headers[0])),
+      NULL,0,NULL,30000u,html,HTML_CAP+1u,&result);
+  debug_append("http_request ok=%u transport_error=%ld status=%ld response_bytes=%lu flags=0x%02x\n",
+    ok?1u:0u,(long)result.transport_error,(long)result.status_code,
+    (unsigned long)result.response_bytes,(unsigned)result.flags);
+  if(!ok){
+    debug_flush();
+    copy_text(status_text,sizeof(status_text),"Vimm HTTPS request failed");
+    return false;
   }
-  streams->close(h);html[html_size]=0;
-  debug_append("bytes=%lu capped=%u\n",(unsigned long)html_size,html_size==HTML_CAP?1u:0u);
+  if(result.status_code<200||result.status_code>=300){
+    snprintf(status_text,sizeof(status_text),"Vimm HTTP %ld",(long)result.status_code);
+    debug_flush();
+    return false;
+  }
+  if(result.flags&T5_HTTP_RESPONSE_TRUNCATED){
+    debug_append("result=response_truncated cap=%lu\n",(unsigned long)HTML_CAP);
+    debug_flush();
+    copy_text(status_text,sizeof(status_text),"Vimm response too large");
+    return false;
+  }
+  html_size=(uint32_t)result.response_bytes;
+  if(html_size>HTML_CAP)html_size=HTML_CAP;
+  html[html_size]=0;
+  debug_append("bytes=%lu capped=0\n",(unsigned long)html_size);
   if(html_size){
     debug_append("markers table=%lu tr=%lu td=%lu hovertable=%lu vault_href=%lu data_v=%lu\n",
       (unsigned long)count_marker(html,"<table"),
@@ -511,8 +507,10 @@ static bool fetch_vimm_document(const char *url){
     debug_append("saved_last_html=%u\n",html_saved?1u:0u);
   }
   if(!html_size){
-    debug_append("result=empty_response\n");debug_flush();
-    copy_text(status_text,sizeof(status_text),"Vimm returned an empty response");return false;
+    debug_append("result=empty_response\n");
+    debug_flush();
+    copy_text(status_text,sizeof(status_text),"Vimm returned an empty response");
+    return false;
   }
   debug_flush();
   return true;
@@ -798,13 +796,15 @@ static view_t consume_keyboard(void){
   return VIEW_HOME;
 }
 __attribute__((visibility("default"))) void app_main(void){
-  app=t5_app_get_api(T5_APP_ABI_VERSION);archive=t5_archive_get_api(T5_ARCHIVE_API_VERSION);storage=t5_storage_get_api(T5_STORAGE_API_VERSION);streams=t5_stream_get_api(T5_STREAM_API_VERSION);system_ui=t5_system_ui_get_api(T5_SYSTEM_UI_API_VERSION);ui=t5_ui_get_api(T5_UI_API_VERSION);
+  app=t5_app_get_api(T5_APP_ABI_VERSION);archive=t5_archive_get_api(T5_ARCHIVE_API_VERSION);network=t5_network_get_api(T5_NETWORK_API_VERSION);storage=t5_storage_get_api(T5_STORAGE_API_VERSION);streams=t5_stream_get_api(T5_STREAM_API_VERSION);system_ui=t5_system_ui_get_api(T5_SYSTEM_UI_API_VERSION);ui=t5_ui_get_api(T5_UI_API_VERSION);
   const size_t rename_required=offsetof(t5_storage_api_v1,rename_file)+sizeof(storage->rename_file);
   const size_t log_required=offsetof(t5_app_api_v1,log_message)+sizeof(app->log_message);
-  if(!app||!archive||!storage||!streams||!system_ui||!ui||
+  if(!app||!archive||!network||!storage||!streams||!system_ui||!ui||
      app->struct_size<log_required||!app->psram_alloc||!app->psram_free||!app->log_message||
      archive->api_version!=T5_ARCHIVE_API_VERSION||archive->struct_size<sizeof(*archive)||
      !archive->find_first_suffix||!archive->extract_file||
+     network->api_version!=T5_NETWORK_API_VERSION||network->struct_size<sizeof(*network)||
+     !network->http_request||
      storage->struct_size<rename_required||!storage->exists||!storage->read_file||
      !storage->write_file_atomic||!storage->remove_file||!storage->stream_open||
      !storage->stream_close||!storage->rename_file||
