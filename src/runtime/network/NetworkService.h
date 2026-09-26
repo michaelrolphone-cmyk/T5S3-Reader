@@ -60,10 +60,6 @@ const WifiControlApi* wifiControlApi(uint32_t version);
 InterfaceState state();
 bool connected();
 bool ready();
-// Ensure a usable station connection for any firmware/native network client.
-// If already connected this is a cheap no-op. Otherwise firmware-owned saved
-// credentials are used automatically; no app-level Wi-Fi check is required.
-bool ensureConnected(uint32_t timeoutMs = 15000);
 void shutdown();
 const WifiControlApi& wifi();
 }  // namespace RuntimeNetwork
