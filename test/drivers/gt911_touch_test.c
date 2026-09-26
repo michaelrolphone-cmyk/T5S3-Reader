@@ -13,6 +13,22 @@ static uint64_t claim_serial;
 static uint64_t active_claim;
 static uint8_t claimed_address;
 static unsigned release_calls;
+static unsigned reset_low_calls, reset_high_calls;
+static uint8_t int_level;
+
+void pinMode(uint8_t pin, uint8_t mode) {
+    assert((pin == 3u || pin == 9u) && (mode == 0x01u || mode == 0x03u));
+}
+void digitalWrite(uint8_t pin, uint8_t value) {
+    assert((pin == 3u || pin == 9u) && value <= 1u);
+    if (pin == 3u) int_level = value;
+    if (pin == 9u && value == 0u) ++reset_low_calls;
+    if (pin == 9u && value == 1u) ++reset_high_calls;
+}
+void delay(unsigned long milliseconds) {
+    assert(milliseconds == 20u || milliseconds == 60u || milliseconds == 5u);
+    fake_ms += milliseconds;
+}
 
 static bool claim_device(void *context, uint8_t address, uint64_t *out) {
     (void)context;
@@ -134,6 +150,7 @@ int main(void) {
     assert(!driver->start(NULL, 0));
     assert(driver->start(dependencies, 2u));
     assert(claimed_address == controller_address && active_claim);
+    assert(reset_low_calls == 1u && reset_high_calls == 1u && int_level == 0u);
     assert(!driver->start(dependencies, 2u));
 
     uint64_t a = api->subscribe(api->context);
@@ -217,8 +234,11 @@ int main(void) {
 
     controller_address = 0x14u;
     status_reg = 0;
+    const unsigned reset_before = reset_low_calls;
     assert(driver->start(dependencies, 2u));
     assert(claimed_address == 0x14u);
+    assert(reset_low_calls == reset_before + 2u &&
+           reset_high_calls == reset_before + 2u && int_level == 1u);
     assert(driver->quiesce());
     driver->stop();
     assert(release_calls == 2u);
