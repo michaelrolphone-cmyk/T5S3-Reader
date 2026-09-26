@@ -128,16 +128,16 @@
         "display_name": "File Browser",
         "file_name": "file_browser.elf",
         "icon": "solid:f07c",
-        "min_firmware_version": "1.1.13",
-        "sha256": "8849f37c1a87b88169e10465673fc5788a5c2c2687068685ad20278f450a9587",
-        "size_bytes": 13868,
-        "version": "1.0.2"
+        "min_firmware_version": "1.2.85",
+        "sha256": "d4237f95124b00aa5a3a31088f568e808172bdfc61ff2ebfc9792cbe6eea0abc",
+        "size_bytes": 14080,
+        "version": "1.1.0"
       },
-      "sha256": "8849f37c1a87b88169e10465673fc5788a5c2c2687068685ad20278f450a9587",
-      "size": 13868,
-      "tag": "app-file_browser-v1.0.2",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-file_browser-v1.0.2/file_browser.elf",
-      "version": "1.0.2"
+      "sha256": "d4237f95124b00aa5a3a31088f568e808172bdfc61ff2ebfc9792cbe6eea0abc",
+      "size": 14080,
+      "tag": "app-file_browser-v1.1.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-file_browser-v1.1.0/file_browser.elf",
+      "version": "1.1.0"
     },
     {
       "asset": "file_transfer.elf",
