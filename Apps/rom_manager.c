@@ -121,6 +121,12 @@ static bool import_url(const char *url){
     if(!archive->extract_file(tmp,entry,out_path,MAX_ROM_BYTES,60000u,extraction_progress,NULL)){storage->remove_file(tmp);copy_text(status_text,sizeof(status_text),"ZIP extraction failed or target exists");return false;}
     storage->remove_file(tmp);
   }else{
+    size_t raw_size=0; t5_storage_stream_t raw=storage->stream_open(tmp,&raw_size);
+    if(raw==T5_STORAGE_STREAM_INVALID||raw_size==0||raw_size>MAX_ROM_BYTES){
+      if(raw!=T5_STORAGE_STREAM_INVALID)storage->stream_close(raw);
+      storage->remove_file(tmp);copy_text(status_text,sizeof(status_text),"Downloaded .gb has an invalid size");return false;
+    }
+    storage->stream_close(raw);
     const char *slash=strrchr(url,'/'); safe_name(slash?slash+1:url,out_name,sizeof(out_name),"game.gb"); if(!ends_ci(out_name,".gb"))strncat(out_name,".gb",sizeof(out_name)-strlen(out_name)-1);
     make_path(out_name,out_path,sizeof(out_path));
     if(!storage->rename_file(tmp,out_path)){storage->remove_file(tmp);copy_text(status_text,sizeof(status_text),"ROM already exists or rename failed");return false;}
@@ -171,7 +177,8 @@ __attribute__((visibility("default"))) void app_main(void){
      archive->api_version!=T5_ARCHIVE_API_VERSION||archive->struct_size<sizeof(*archive)||
      !archive->find_first_suffix||!archive->extract_file||
      storage->struct_size<rename_required||!storage->exists||!storage->read_file||
-     !storage->write_file_atomic||!storage->remove_file||!storage->rename_file||
+     !storage->write_file_atomic||!storage->remove_file||!storage->stream_open||
+     !storage->stream_close||!storage->rename_file||
      streams->api_version!=T5_STREAM_API_VERSION||streams->struct_size<sizeof(*streams)||
      !streams->open_file||!streams->open_http||!streams->read||!streams->finish||
      !streams->close||!streams->pipe_connect||!streams->pipe_cancel||!streams->pipe_close||!streams->pipe_info||
