@@ -152,6 +152,12 @@ typedef struct {
     bool (*app_catalog_download_with_progress)(uint32_t index,
                                                t5_app_catalog_progress_fn progress,
                                                void *context);
+
+    // Append-only bulk resident memory service. Large app working sets belong
+    // in PSRAM so internal SRAM remains available for TLS, stacks, DMA and
+    // hardware-facing allocations. This never falls back to internal RAM.
+    void *(*psram_alloc)(size_t size);
+    void (*psram_free)(void *ptr);
 } t5_app_api_v1;
 
 // Native application entry point. Native ELFs are built with -fvisibility=hidden,
