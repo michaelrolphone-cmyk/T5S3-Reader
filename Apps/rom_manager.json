@@ -1,5 +1,5 @@
 {
-  "min_firmware_version": "1.2.87",
+  "min_firmware_version": "1.2.88",
   "version": "1.0.0",
   "display_name": "Rom Manager",
   "file_name": "rom_manager.elf",
