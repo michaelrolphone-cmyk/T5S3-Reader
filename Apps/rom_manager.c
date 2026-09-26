@@ -114,7 +114,11 @@ static bool stream_download(const char *url,const char *destination){
     if(info.state==T5_PIPE_DONE&&!info.buffered&&!info.last_error&&last){if(streams->pipe_close(pipe)==T5_STREAM_OK){pipe=0;if(streams->finish(dst)==T5_STREAM_OK)ok=true;}break;}
     if(info.state==T5_PIPE_FAILED||info.state==T5_PIPE_CANCELLED)break;
   }
-  if(pipe)streams->pipe_close(pipe); streams->close(src); streams->close(dst); if(!ok)storage->remove_file(destination); return ok;
+  if(pipe)streams->pipe_close(pipe);
+  streams->close(src);
+  streams->close(dst);
+  if(!ok)storage->remove_file(destination);
+  return ok;
 }
 static bool extraction_progress(void *ctx,uint64_t done,uint64_t total){
   (void)ctx;
