@@ -56,6 +56,12 @@ static void safe_name(const char *src,char *dst,size_t cap,const char *fallback)
   dst[w]=0; if(!w)copy_text(dst,cap,fallback);
 }
 static void make_path(const char *name,char *out,size_t cap){snprintf(out,cap,"%s/%s",ROM_DIR,name);}
+static void ensure_gb_suffix(char *name,size_t cap){
+  if(!name||!cap||ends_ci(name,".gb"))return;
+  size_t n=bounded_len(name,cap);
+  if(n+3u>=cap)return;
+  name[n++]='.';name[n++]='g';name[n++]='b';name[n]=0;
+}
 static bool ensure_rom_dir(void){
   static const char empty[]="";
   if(storage->exists(ROM_DIR))return true;
@@ -127,7 +133,7 @@ static bool import_url(const char *url){
       storage->remove_file(tmp);copy_text(status_text,sizeof(status_text),"Downloaded .gb has an invalid size");return false;
     }
     storage->stream_close(raw);
-    const char *slash=strrchr(url,'/'); safe_name(slash?slash+1:url,out_name,sizeof(out_name),"game.gb"); if(!ends_ci(out_name,".gb"))strncat(out_name,".gb",sizeof(out_name)-strlen(out_name)-1);
+    const char *slash=strrchr(url,'/'); safe_name(slash?slash+1:url,out_name,sizeof(out_name),"game.gb"); ensure_gb_suffix(out_name,sizeof(out_name));
     make_path(out_name,out_path,sizeof(out_path));
     if(!storage->rename_file(tmp,out_path)){storage->remove_file(tmp);copy_text(status_text,sizeof(status_text),"ROM already exists or rename failed");return false;}
   }
@@ -158,7 +164,7 @@ static void do_rename(const char *new_text){
   char old_name[NAME_CAP]={0}; size_t n=0;
   if(!new_text||!new_text[0]||!storage->read_file(RENAME_STATE,old_name,sizeof(old_name)-1,&n)||!n||n>=sizeof(old_name)){(void)storage->remove_file(RENAME_STATE);return;}
   old_name[n]=0; (void)storage->remove_file(RENAME_STATE);
-  char new_name[NAME_CAP],old_path[PATH_CAP],new_path[PATH_CAP];safe_name(new_text,new_name,sizeof(new_name),"game.gb");if(!ends_ci(new_name,".gb"))strncat(new_name,".gb",sizeof(new_name)-strlen(new_name)-1);make_path(old_name,old_path,sizeof(old_path));make_path(new_name,new_path,sizeof(new_path));
+  char new_name[NAME_CAP],old_path[PATH_CAP],new_path[PATH_CAP];safe_name(new_text,new_name,sizeof(new_name),"game.gb");ensure_gb_suffix(new_name,sizeof(new_name));make_path(old_name,old_path,sizeof(old_path));make_path(new_name,new_path,sizeof(new_path));
   if(storage->rename_file(old_path,new_path))snprintf(status_text,sizeof(status_text),"Renamed to %.100s",new_name);else copy_text(status_text,sizeof(status_text),"Rename failed or target exists");
 }
 static view_t consume_keyboard(void){
