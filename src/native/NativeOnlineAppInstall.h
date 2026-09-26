@@ -12,6 +12,7 @@
 #include "network/HttpDownloader.h"
 #include <HalStorage.h>
 #include <Logging.h>
+#include <NativeAppLauncher.h>
 #include <mbedtls/sha256.h>
 #include <esp_task_wdt.h>
 #include <cstdio>
