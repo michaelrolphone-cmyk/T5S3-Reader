@@ -598,16 +598,16 @@
         "display_name": "Rom Manager",
         "file_name": "rom_manager.elf",
         "icon": "solid:f11b",
-        "min_firmware_version": "1.2.88",
-        "sha256": "2f0eaeb3d5f86ea3804dd8ac5c9042e3c77b3624361fe90b60b3883e1626217a",
-        "size_bytes": 23688,
-        "version": "1.0.5"
+        "min_firmware_version": "1.2.91",
+        "sha256": "fa3b5a3ea7e1fb5a0d9c2ce0120e0982f628942b5539ed703217c78feb80e6e8",
+        "size_bytes": 25396,
+        "version": "1.0.7"
       },
-      "sha256": "2f0eaeb3d5f86ea3804dd8ac5c9042e3c77b3624361fe90b60b3883e1626217a",
-      "size": 23688,
-      "tag": "app-rom_manager-v1.0.5",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-rom_manager-v1.0.5/rom_manager.elf",
-      "version": "1.0.5"
+      "sha256": "fa3b5a3ea7e1fb5a0d9c2ce0120e0982f628942b5539ed703217c78feb80e6e8",
+      "size": 25396,
+      "tag": "app-rom_manager-v1.0.7",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-rom_manager-v1.0.7/rom_manager.elf",
+      "version": "1.0.7"
     },
     {
       "asset": "sd_firmware_update.elf",
