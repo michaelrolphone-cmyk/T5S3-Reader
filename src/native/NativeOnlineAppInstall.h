@@ -26,7 +26,7 @@ namespace RuntimeOnlinePackages {
 // prior source whose exact bounded contents match this release, and a stage
 // whose every byte matches the freshly verified source. Unknown paths remain.
 inline bool installApplication(const char* artifact, const char* version,
-                               const char* url, const std::string& sidecar,
+                               const char* url, std::string sidecar,
                                uint64_t size, const char* elfDigest,
                                t5_app_catalog_progress_fn progress = nullptr,
                                void* progressContext = nullptr,
@@ -99,6 +99,13 @@ inline bool installApplication(const char* artifact, const char* version,
   };
   const std::string jsonPath = root + "/" + manifestName;
   if (!writeExclusive(jsonPath, sidecar.data(), sidecar.size())) return fail("could not stage app manifest");
+  // The exact manifest is now durably staged. It is not needed during the ELF
+  // transfer, so release its heap before mbedTLS allocates handshake buffers.
+  std::string().swap(sidecar);
+  // The descriptor was needed only for interrupted-inbox comparison so far.
+  // Rebuild it after the download rather than carrying 4 KiB through TLS.
+  descriptor.reset();
+
   const std::string elfPath = root + "/" + artifact;
   const std::string elfStage = elfPath + ".part";
   // Do not re-enter the native UI while the HTTP stream worker owns its TLS
@@ -116,12 +123,21 @@ inline bool installApplication(const char* artifact, const char* version,
     delay(1);
     progress(progressContext, size, size);
   }
-  // The full parsed package plan is sizeable and is not needed to establish
-  // the TLS transfer. Allocate and validate it only after the ELF download has
-  // finished so it cannot reduce contiguous heap available to mbedTLS.
+  // Recreate the descriptor and full parsed plan only after TLS is finished.
+  descriptor.reset(new (std::nothrow) char[4096]{});
+  if (!descriptor) return fail("not enough memory for package descriptor");
+  const int rebuiltCount = std::snprintf(descriptor.get(), 4096,
+      "{\"schema\":1,\"kind\":\"application\",\"id\":\"%s\",\"version\":\"%s\","
+      "\"artifact\":\"%s\",\"architecture\":\"xtensa-esp32s3\",\"min_runtime_api\":2,"
+      "\"entries\":[{\"name\":\"%s\",\"size_bytes\":%llu,\"sha256\":\"%s\",\"executable\":true},"
+      "{\"name\":\"%s\",\"size_bytes\":%llu,\"sha256\":\"%s\",\"executable\":false}],"
+      "\"requires\":[]}", id.c_str(), version, artifact, artifact,
+      static_cast<unsigned long long>(size), elfDigest, manifestName.c_str(),
+      static_cast<unsigned long long>(Storage.open(jsonPath.c_str(), O_RDONLY).fileSize64()), jsonDigest);
+  if (rebuiltCount <= 0 || rebuiltCount >= 4096) return fail("package descriptor rejected");
   std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
   if (!plan ||
-      !parseOrdinaryManifest(descriptor.get(), static_cast<size_t>(count), *plan) ||
+      !parseOrdinaryManifest(descriptor.get(), static_cast<size_t>(rebuiltCount), *plan) ||
       plan->identity.kind != Kind::Application ||
       std::strcmp(plan->identity.id, id.c_str()))
     return fail("package descriptor rejected");
