@@ -59,9 +59,8 @@ def build(cc=None):
     }
     if exported != {"t5_driver_get"}:
         raise ValueError("GT911 provider must export only t5_driver_get: " + repr(exported))
-    # Generic platform primitives are exact-import checked. GT911 register I/O
-    # flows through i2c.bus; the physical provider itself owns its RESET/INT GPIO
-    # sequence using generic GPIO/time primitives.
+    # Generic libc/CPU helpers are permitted exactly as for other providers.
+    # GT911 register I/O flows only through the i2c.bus dependency.
     validate_imports(
         symbols,
         {name for name in firmware_exports(ROOT) if not name.startswith("t5_")},
@@ -78,7 +77,7 @@ def build(cc=None):
 
     manifest.update(size_bytes=len(payload), sha256=hashlib.sha256(payload).hexdigest())
     (OUTPUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    print("GT911 input.touch.raw provider built with provider-owned reset GPIO and i2c.bus register I/O")
+    print("GT911 input.touch.raw provider built with i2c.bus register I/O")
     return elf
 
 
