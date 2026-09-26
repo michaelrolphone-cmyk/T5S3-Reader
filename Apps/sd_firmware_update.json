@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "SD Firmware Update",
   "file_name": "sd_firmware_update.elf",
-  "icon": "solid:f021"
+  "icon": "solid:f021",
+  "category": [
+    "Firmware",
+    "Files"
+  ]
 }
