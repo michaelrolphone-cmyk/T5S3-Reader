@@ -19,10 +19,10 @@
 namespace NativeFileAssociations {
 namespace {
 
-constexpr const char* kDirectory = "/.crosspoint";
-constexpr const char* kManifest = "/.crosspoint/file-associations.json";
-constexpr const char* kTemporary = "/.crosspoint/file-associations.json.tmp";
-constexpr const char* kBackup = "/.crosspoint/file-associations.json.bak";
+constexpr const char* kDirectory = "/System/Registry";
+constexpr const char* kManifest = "/System/Registry/FileAssociations.json";
+constexpr const char* kTemporary = "/System/Registry/FileAssociations.json.tmp";
+constexpr const char* kBackup = "/System/Registry/FileAssociations.json.bak";
 constexpr RuntimePackages::PackageRuntimePolicy kPolicy{
     "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 
