@@ -7,6 +7,7 @@
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
+#include "runtime/memory/PsramBuffer.h"
 #include "network/HttpDownloader.h"
 #include <HalStorage.h>
 #include <Logging.h>
@@ -60,9 +61,9 @@ inline bool installApplication(const char* artifact, const char* version,
     jsonDigest[i * 2] = alphabet[digest[i] >> 4];
     jsonDigest[i * 2 + 1] = alphabet[digest[i] & 15];
   }
-  std::unique_ptr<char[]> descriptor(new (std::nothrow) char[4096]{});
-  if (!descriptor) return fail("not enough memory for package descriptor");
-  const int count = std::snprintf(descriptor.get(), 4096,
+  RuntimeMemory::PsramBuffer descriptor(4096);
+  if (!descriptor) return fail("PSRAM unavailable for package descriptor");
+  const int count = std::snprintf(descriptor.chars(), descriptor.size(),
       "{\"schema\":1,\"kind\":\"application\",\"id\":\"%s\",\"version\":\"%s\","
       "\"artifact\":\"%s\",\"architecture\":\"xtensa-esp32s3\",\"min_runtime_api\":2,"
       "\"entries\":[{\"name\":\"%s\",\"size_bytes\":%llu,\"sha256\":\"%s\",\"executable\":true},"
@@ -80,7 +81,7 @@ inline bool installApplication(const char* artifact, const char* version,
       (!Storage.exists("/Packages/Inbox") && !Storage.mkdir("/Packages/Inbox", false))) return fail("package inbox unavailable");
   if (Storage.exists(root.c_str())) {
     if (!Recovery::discardMatchingInbox(root, manifestName, sidecar, artifact,
-            descriptor.get(), static_cast<size_t>(count))) {
+            descriptor.chars(), static_cast<size_t>(count))) {
       LOG_ERR("APPSTORE", "Existing inbox differs from this release; preserved for inspection: %s", root.c_str());
       return fail("interrupted package differs from this release");
     }
@@ -125,9 +126,8 @@ inline bool installApplication(const char* artifact, const char* version,
     progress(progressContext, size, size);
   }
   // Recreate the descriptor and full parsed plan only after TLS is finished.
-  descriptor.reset(new (std::nothrow) char[4096]{});
-  if (!descriptor) return fail("not enough memory for package descriptor");
-  const int rebuiltCount = std::snprintf(descriptor.get(), 4096,
+  if (!descriptor.allocate(4096)) return fail("PSRAM unavailable for package descriptor");
+  const int rebuiltCount = std::snprintf(descriptor.chars(), descriptor.size(),
       "{\"schema\":1,\"kind\":\"application\",\"id\":\"%s\",\"version\":\"%s\","
       "\"artifact\":\"%s\",\"architecture\":\"xtensa-esp32s3\",\"min_runtime_api\":2,"
       "\"entries\":[{\"name\":\"%s\",\"size_bytes\":%llu,\"sha256\":\"%s\",\"executable\":true},"
@@ -136,9 +136,10 @@ inline bool installApplication(const char* artifact, const char* version,
       static_cast<unsigned long long>(size), elfDigest, manifestName.c_str(),
       static_cast<unsigned long long>(sidecarSize), jsonDigest);
   if (rebuiltCount <= 0 || rebuiltCount >= 4096) return fail("package descriptor rejected");
-  std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
-  if (!plan ||
-      !parseOrdinaryManifest(descriptor.get(), static_cast<size_t>(rebuiltCount), *plan) ||
+  RuntimeMemory::PsramBuffer planStorage(sizeof(OrdinaryPackagePlan));
+  auto* plan = reinterpret_cast<OrdinaryPackagePlan*>(planStorage.data());
+  if (!planStorage ||
+      !parseOrdinaryManifest(descriptor.chars(), static_cast<size_t>(rebuiltCount), *plan) ||
       plan->identity.kind != Kind::Application ||
       std::strcmp(plan->identity.id, id.c_str()))
     return fail("package descriptor rejected");
@@ -148,7 +149,7 @@ inline bool installApplication(const char* artifact, const char* version,
     return fail("could not finalize downloaded ELF");
   if (!verifyAppPair(elfPath.c_str(), jsonPath.c_str(), artifact, true))
     return fail("downloaded ELF failed size, format or SHA-256 verification");
-  if (!writeExclusive(root + "/.package.json", descriptor.get(), static_cast<size_t>(count)))
+  if (!writeExclusive(root + "/.package.json", descriptor.chars(), static_cast<size_t>(rebuiltCount)))
     return fail("could not stage package descriptor");
   // The source has passed the release digest and exact sidecar checks. Before
   // re-staging, recover only a previous stage whose contents match this source
