@@ -143,6 +143,88 @@ static bool import_url(const char *url){
   }
   snprintf(status_text,sizeof(status_text),"Imported %.100s",out_name); return true;
 }
+static bool import_archive_url(const char *url){
+  if(!url||strncmp(url,"https://",8)!=0){
+    copy_text(status_text,sizeof(status_text),"Resolved ROM URL is not HTTPS");
+    return false;
+  }
+  copy_text(status_text,sizeof(status_text),"Downloading ROM archive...");
+  if(!stream_download(url,TMP_ZIP)){
+    copy_text(status_text,sizeof(status_text),"ROM archive download failed or cancelled");
+    return false;
+  }
+  uint64_t size=0; char entry[NAME_CAP]={0};
+  if(!archive->find_first_suffix(TMP_ZIP,".gb",entry,sizeof(entry),&size)||!size||size>MAX_ROM_BYTES){
+    storage->remove_file(TMP_ZIP);
+    copy_text(status_text,sizeof(status_text),"Downloaded archive contains no supported .gb ROM");
+    return false;
+  }
+  char out_name[NAME_CAP],out_path[PATH_CAP];
+  safe_name(entry,out_name,sizeof(out_name),"game.gb");
+  make_path(out_name,out_path,sizeof(out_path));
+  if(!archive->extract_file(TMP_ZIP,entry,out_path,MAX_ROM_BYTES,60000u,extraction_progress,NULL)){
+    storage->remove_file(TMP_ZIP);
+    copy_text(status_text,sizeof(status_text),"ROM extraction failed or ROM already exists");
+    return false;
+  }
+  storage->remove_file(TMP_ZIP);
+  snprintf(status_text,sizeof(status_text),"Installed %.100s",out_name);
+  return true;
+}
+static bool copy_url_candidate(const char *start,const char *end,char *out,size_t cap){
+  if(!start||!end||start>=end||!out||cap<16u)return false;
+  size_t len=(size_t)(end-start);
+  if(len>=cap)return false;
+  if(len>=8u&&!strncmp(start,"https://",8u)){
+    memcpy(out,start,len);out[len]=0;return true;
+  }
+  const char host[]="https://vimm.net";
+  const size_t host_len=sizeof(host)-1u;
+  if(*start=='/'){
+    if(host_len+len>=cap)return false;
+    memcpy(out,host,host_len);memcpy(out+host_len,start,len);out[host_len+len]=0;return true;
+  }
+  if(*start=='?'){
+    const char vault[]="https://vimm.net/vault/";
+    const size_t vault_len=sizeof(vault)-1u;
+    if(vault_len+len>=cap)return false;
+    memcpy(out,vault,vault_len);memcpy(out+vault_len,start,len);out[vault_len+len]=0;return true;
+  }
+  return false;
+}
+static bool likely_download_target(const char *start,const char *end){
+  const size_t len=(size_t)(end-start);
+  if(len<4u)return false;
+  for(size_t i=0;i+4u<=len;++i){
+    if((i+4u<=len&&start[i]=='.'&&lower_ascii(start[i+1])=='z'&&lower_ascii(start[i+2])=='i'&&lower_ascii(start[i+3])=='p')||
+       (i+3u<=len&&start[i]=='.'&&lower_ascii(start[i+1])=='g'&&lower_ascii(start[i+2])=='b'))return true;
+  }
+  for(size_t i=0;i+8u<=len;++i){
+    if(!strncmp(start+i,"download",8u))return true;
+  }
+  for(size_t i=0;i+10u<=len;++i){
+    if(!strncmp(start+i,"p=download",10u))return true;
+  }
+  return false;
+}
+static bool resolve_vimm_download_url(char *out,size_t cap){
+  if(!out||cap<32u)return false;
+  out[0]=0;
+  const char *attrs[]={"href=\"","action=\"","data-href=\"","data-url=\""};
+  for(size_t a=0;a<sizeof(attrs)/sizeof(attrs[0]);++a){
+    const char *p=html;
+    const size_t attr_len=strlen(attrs[a]);
+    while((p=strstr(p,attrs[a]))){
+      const char *start=p+attr_len;
+      const char *end=strchr(start,'"');
+      if(!end)break;
+      if(likely_download_target(start,end)&&copy_url_candidate(start,end,out,cap))return true;
+      p=end+1;
+    }
+  }
+  return false;
+}
+
 static bool vimm_page_path(const char *path,size_t length){
   const char prefix[]="/vault/GB";
   const size_t prefix_len=sizeof(prefix)-1u;
@@ -251,7 +333,7 @@ static bool search_vimm(const char *query){
   if(!append_url_encoded(encoded,sizeof(encoded),query))return false;
   char url[320];
   int n=snprintf(url,sizeof(url),"https://vimm.net/vault/?p=list&system=GB&q=%s",encoded);
-  if(n<=0||(size_t)n>=sizeof(url))return DETAIL_FAILED;
+  if(n<=0||(size_t)n>=sizeof(url))return false;
   copy_text(search_query,sizeof(search_query),query);
   return fetch_vimm_url(url,false,true);
 }
@@ -299,7 +381,7 @@ static void html_to_detail_text(const char *title){
   while(w&&(detail_text[w-1]==' '||detail_text[w-1]=='\n'))--w;
   detail_text[w]=0;
 }
-enum { DETAIL_FAILED=-1, DETAIL_BACK=0, DETAIL_IMPORT_HANDOFF=1 };
+enum { DETAIL_FAILED=-1, DETAIL_BACK=0, DETAIL_INSTALLED=1 };
 static int show_vimm_detail(const char *name,const char *path){
   if(!name||!path||!vimm_game_path(path,strlen(path)))return DETAIL_FAILED;
   char url[NAME_CAP+32u];
@@ -313,13 +395,18 @@ static int show_vimm_detail(const char *name,const char *path){
   int32_t scroll=0;
   for(;;){
     t5_ui_text_view_result_t result={0};
-    const t5_ui_chrome_t chrome={"Game Boy title",name,"Vimm Vault","Back","Import ROM","Up","Down"};
+    const t5_ui_chrome_t chrome={"Game Boy title",name,"Vimm Vault","Back","Install ROM","Up","Down"};
     ui->render_text_view(&chrome,detail_text,scroll,&result);
     t5_ui_event_t event={0};
     if(!ui->poll_event(&event,20)||event.type==T5_UI_EVENT_BACK||event.type==T5_UI_EVENT_EXIT)return DETAIL_BACK;
     if(event.type==T5_UI_EVENT_CONFIRM){
-      if(system_ui->keyboard_request("Authorized ROM URL","https://",383,T5_SYSTEM_KEYBOARD_URL,COOKIE_IMPORT))
-        return DETAIL_IMPORT_HANDOFF;
+      char download_url[512];
+      if(!resolve_vimm_download_url(download_url,sizeof(download_url))){
+        copy_text(status_text,sizeof(status_text),"No ROM download target found on this title page");
+        continue;
+      }
+      if(import_archive_url(download_url))return DETAIL_INSTALLED;
+      continue;
     }else if(event.type==T5_UI_EVENT_PREVIOUS&&scroll<result.max_scroll_lines)++scroll;
     else if(event.type==T5_UI_EVENT_NEXT&&scroll>0)--scroll;
   }
@@ -385,9 +472,10 @@ __attribute__((visibility("default"))) void app_main(void){
         else copy_text(status_text,sizeof(status_text),"Could not open Game Boy index");
       }else{
         const int detail_result=show_vimm_detail(vimm_names[selected],vimm_paths[selected]);
-        if(detail_result==DETAIL_IMPORT_HANDOFF)return;
         if(detail_result==DETAIL_FAILED)
           copy_text(status_text,sizeof(status_text),"Could not load Game Boy title details");
+        else if(detail_result==DETAIL_INSTALLED)
+          copy_text(status_text,sizeof(status_text),"ROM installed");
         else status_text[0]=0;
       }
     }
