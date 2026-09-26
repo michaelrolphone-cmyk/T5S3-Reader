@@ -1,6 +1,5 @@
 #include "T5AppApi.h"
 #include "T5ArchiveApi.h"
-#include "T5NetworkApi.h"
 #include "T5StorageApi.h"
 #include "T5StreamApi.h"
 #include "T5SystemUiApi.h"
@@ -94,7 +93,16 @@ static bool stream_download(const char *url,const char *destination){
   }
   if(pipe)streams->pipe_close(pipe); streams->close(src); streams->close(dst); if(!ok)storage->remove_file(destination); return ok;
 }
-static void extraction_progress(void *ctx,uint64_t done,uint64_t total){(void)ctx;snprintf(status_text,sizeof(status_text),"Extracting: %llu / %llu KB",(unsigned long long)(done/1024u),(unsigned long long)(total/1024u));}
+static void extraction_progress(void *ctx,uint64_t done,uint64_t total){
+  (void)ctx;
+  static uint32_t last_bucket=UINT32_MAX;
+  uint32_t bucket=total?(uint32_t)((done>total?total:done)*10u/total):0;
+  if(bucket==last_bucket&&done!=total)return;
+  last_bucket=bucket;
+  snprintf(status_text,sizeof(status_text),"Extracting: %llu / %llu KB",(unsigned long long)(done/1024u),(unsigned long long)(total/1024u));
+  const t5_ui_list_row_t row={"Extracting ROM","ZIP -> .gb","",0};
+  render_rows("Rom Manager","Authorized ROM import",&row,1,0,"");
+}
 static bool import_url(const char *url){
   if(!url||strncmp(url,"https://",8)!=0){copy_text(status_text,sizeof(status_text),"Only HTTPS URLs are accepted");return false;}
   const bool zipped=ends_ci(url,".zip");
@@ -145,7 +153,9 @@ static void do_rename(const char *new_text){
   if(storage->rename_file(old_path,new_path))snprintf(status_text,sizeof(status_text),"Renamed to %.100s",new_name);else copy_text(status_text,sizeof(status_text),"Rename failed or target exists");
 }
 static view_t consume_keyboard(void){
-  char text[384]={0};bool cancelled=false;uint64_t cookie=0;if(!system_ui->keyboard_take_result(text,sizeof(text),&cancelled,&cookie)||cancelled)return VIEW_HOME;
+  char text[384]={0};bool cancelled=false;uint64_t cookie=0;
+  if(!system_ui->keyboard_take_result(text,sizeof(text),&cancelled,&cookie))return VIEW_HOME;
+  if(cancelled){if(cookie==COOKIE_RENAME)(void)storage->remove_file(RENAME_STATE);return VIEW_HOME;}
   if(cookie==COOKIE_IMPORT){(void)import_url(text);return VIEW_ROMS;}
   if(cookie==COOKIE_SEARCH){copy_text(search_query,sizeof(search_query),text);if(!fetch_vimm()){copy_text(status_text,sizeof(status_text),"Could not load Vimm catalog");return VIEW_HOME;}return VIEW_VIMM;}
   if(cookie==COOKIE_RENAME){do_rename(text);return VIEW_ROMS;}
@@ -154,7 +164,19 @@ static view_t consume_keyboard(void){
 __attribute__((visibility("default"))) void app_main(void){
   app=t5_app_get_api(T5_APP_ABI_VERSION);archive=t5_archive_get_api(T5_ARCHIVE_API_VERSION);storage=t5_storage_get_api(T5_STORAGE_API_VERSION);streams=t5_stream_get_api(T5_STREAM_API_VERSION);system_ui=t5_system_ui_get_api(T5_SYSTEM_UI_API_VERSION);ui=t5_ui_get_api(T5_UI_API_VERSION);
   const size_t rename_required=offsetof(t5_storage_api_v1,rename_file)+sizeof(storage->rename_file);
-  if(!app||!archive||!storage||!streams||!system_ui||!ui||storage->struct_size<rename_required||!storage->rename_file||!app->dir_open||!app->dir_next||!app->dir_close)return;
+  if(!app||!archive||!storage||!streams||!system_ui||!ui||
+     archive->api_version!=T5_ARCHIVE_API_VERSION||archive->struct_size<sizeof(*archive)||
+     !archive->find_first_suffix||!archive->extract_file||
+     storage->struct_size<rename_required||!storage->exists||!storage->read_file||
+     !storage->write_file_atomic||!storage->remove_file||!storage->rename_file||
+     streams->api_version!=T5_STREAM_API_VERSION||streams->struct_size<sizeof(*streams)||
+     !streams->open_file||!streams->open_http||!streams->read||!streams->finish||
+     !streams->close||!streams->pipe_connect||!streams->pipe_cancel||!streams->pipe_close||!streams->pipe_info||
+     system_ui->api_version!=T5_SYSTEM_UI_API_VERSION||system_ui->struct_size<sizeof(*system_ui)||
+     !system_ui->keyboard_request||!system_ui->keyboard_take_result||
+     ui->api_version!=T5_UI_API_VERSION||ui->struct_size<sizeof(*ui)||
+     !ui->render_list||!ui->poll_event||!ui->hit_test||!ui->next_index||!ui->previous_index||
+     !app->dir_open||!app->dir_next||!app->dir_close||!app->set_back_exits_app||!app->millis)return;
   app->set_back_exits_app(false); status_text[0]=0; search_query[0]=0; if(!ensure_rom_dir()){copy_text(status_text,sizeof(status_text),"ROM storage unavailable");}
   view_t view=consume_keyboard(); int32_t selected=0;
   for(;;){
