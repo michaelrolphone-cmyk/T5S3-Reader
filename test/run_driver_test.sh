@@ -14,6 +14,10 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/lib/NativeApp
 "$build/test" "$build/gps.so" "$build/bad.so"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/src" \
   "$repo/test/resources/device_registry_test.cpp" -o "$build/device-registry-test"
+# Raw touch is a provider capability with event + authoritative snapshot semantics.
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/resources/touch_api_v1_abi_test.c" -o "$build/touch-api-v1-abi"
+"$build/touch-api-v1-abi"
 "$build/device-registry-test"
 # Unified package identity is a bounded, transport-independent contract for
 # app, driver, service and provider metadata. It grants no executable trust.
