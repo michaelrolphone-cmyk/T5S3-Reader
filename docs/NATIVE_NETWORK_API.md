@@ -30,11 +30,12 @@ The current firmware-owned layer provides:
 - reporting whether station Wi-Fi is currently connected;
 - creating and performing an ESP HTTP client request;
 - applying caller-supplied headers;
+- preserving the compatibility API's explicit insecure-HTTPS mode when the caller omits `cert_pem`, while using caller-supplied CA material when present;
 - temporarily disabling Wi-Fi power saving during the request and restoring the prior mode afterward;
 - watchdog servicing while the request is active;
 - returning transport error, HTTP status, response length and response-truncated state.
 
-The current application ABI still owns service-specific endpoint/method/authentication/body/serialization/certificate selection, HTTP-status policy, response parsing, retries, and application-level error handling. This describes current implementation, not the final roadmap boundary: reusable connection lifecycle, TLS policy, retries, downloads, and common protocol mechanics should migrate into RiscRTE platform services where they are not inherently application-specific.
+The current application ABI still owns service-specific endpoint/method/authentication/body/serialization, certificate selection, HTTP-status policy, response parsing, retries, and application-level error handling. For compatibility, a null or empty `cert_pem` on HTTPS explicitly selects certificate verification bypass; supplying `cert_pem` selects CA verification for that request. Package/App Store/Driver Manager downloads use the separate stream/download transport and retain their existing insecure HTTPS compatibility path. This describes current implementation, not the final roadmap boundary: reusable connection lifecycle, TLS policy, retries, downloads, and common protocol mechanics should migrate into RiscRTE platform services where they are not inherently application-specific.
 
 For example, `Apps/llm_ask.c` currently owns its LLM7 endpoint, model, prompt, TLS roots and JSON parsing. Provider-specific semantics appropriately remain in the app; generic network mechanics should converge on platform services.
 
