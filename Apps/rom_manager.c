@@ -20,6 +20,7 @@
 #define NAME_CAP 128u
 #define PATH_CAP 384u
 #define STATUS_CAP 160u
+#define DETAIL_CAP 8192u
 #define HTML_CAP (128u * 1024u)
 #define MAX_DOWNLOAD_BYTES (32u * 1024u * 1024u)
 #define MAX_ROM_BYTES (16u * 1024u * 1024u)
@@ -46,6 +47,7 @@ enum { VIMM_GAME = 1u, VIMM_PAGE = 2u };
 static char html[HTML_CAP + 1u];
 static uint32_t html_size;
 static char search_query[80];
+static char detail_text[DETAIL_CAP];
 
 static size_t bounded_len(const char *s, size_t cap) { size_t n=0; if(s) while(n<cap&&s[n])++n; return n; }
 static void copy_text(char *d,size_t c,const char*s){ if(!d||!c)return; if(!s)s=""; size_t n=bounded_len(s,c-1); memcpy(d,s,n); d[n]=0; }
@@ -141,6 +143,173 @@ static bool import_url(const char *url){
   }
   snprintf(status_text,sizeof(status_text),"Imported %.100s",out_name); return true;
 }
+static bool import_archive_url(const char *url){
+  if(!url||strncmp(url,"https://",8)!=0){
+    copy_text(status_text,sizeof(status_text),"Resolved ROM URL is not HTTPS");
+    return false;
+  }
+  copy_text(status_text,sizeof(status_text),"Downloading ROM archive...");
+  if(!stream_download(url,TMP_ZIP)){
+    copy_text(status_text,sizeof(status_text),"ROM archive download failed or cancelled");
+    return false;
+  }
+  uint64_t size=0; char entry[NAME_CAP]={0};
+  if(!archive->find_first_suffix(TMP_ZIP,".gb",entry,sizeof(entry),&size)||!size||size>MAX_ROM_BYTES){
+    storage->remove_file(TMP_ZIP);
+    copy_text(status_text,sizeof(status_text),"Downloaded archive contains no supported .gb ROM");
+    return false;
+  }
+  char out_name[NAME_CAP],out_path[PATH_CAP];
+  safe_name(entry,out_name,sizeof(out_name),"game.gb");
+  make_path(out_name,out_path,sizeof(out_path));
+  if(!archive->extract_file(TMP_ZIP,entry,out_path,MAX_ROM_BYTES,60000u,extraction_progress,NULL)){
+    storage->remove_file(TMP_ZIP);
+    copy_text(status_text,sizeof(status_text),"ROM extraction failed or ROM already exists");
+    return false;
+  }
+  storage->remove_file(TMP_ZIP);
+  snprintf(status_text,sizeof(status_text),"Installed %.100s",out_name);
+  return true;
+}
+static bool copy_url_candidate(const char *start,const char *end,char *out,size_t cap){
+  if(!start||!end||start>=end||!out||cap<16u)return false;
+  size_t len=(size_t)(end-start);
+  if(len>=cap)return false;
+  if(len>=8u&&!strncmp(start,"https://",8u)){
+    memcpy(out,start,len);out[len]=0;return true;
+  }
+  const char host[]="https://vimm.net";
+  const size_t host_len=sizeof(host)-1u;
+  if(*start=='/'){
+    if(host_len+len>=cap)return false;
+    memcpy(out,host,host_len);memcpy(out+host_len,start,len);out[host_len+len]=0;return true;
+  }
+  if(*start=='?'){
+    const char vault[]="https://vimm.net/vault/";
+    const size_t vault_len=sizeof(vault)-1u;
+    if(vault_len+len>=cap)return false;
+    memcpy(out,vault,vault_len);memcpy(out+vault_len,start,len);out[vault_len+len]=0;return true;
+  }
+  return false;
+}
+static bool likely_download_target(const char *start,const char *end){
+  const size_t len=(size_t)(end-start);
+  if(len<4u)return false;
+  for(size_t i=0;i+4u<=len;++i){
+    if((i+4u<=len&&start[i]=='.'&&lower_ascii(start[i+1])=='z'&&lower_ascii(start[i+2])=='i'&&lower_ascii(start[i+3])=='p')||
+       (i+3u<=len&&start[i]=='.'&&lower_ascii(start[i+1])=='g'&&lower_ascii(start[i+2])=='b'))return true;
+  }
+  for(size_t i=0;i+8u<=len;++i){
+    if(!strncmp(start+i,"download",8u))return true;
+  }
+  for(size_t i=0;i+10u<=len;++i){
+    if(!strncmp(start+i,"p=download",10u))return true;
+  }
+  return false;
+}
+static bool append_url_encoded(char *out,size_t cap,const char *text);
+static bool range_contains(const char *start,const char *end,const char *needle){
+  if(!start||!end||start>=end||!needle||!needle[0])return false;
+  const size_t nlen=strlen(needle);
+  for(const char *p=start;p+nlen<=end;++p)if(!strncmp(p,needle,nlen))return true;
+  return false;
+}
+static bool copy_attr_value(const char *tag_start,const char *tag_end,const char *attr,
+                            char *out,size_t cap){
+  if(!tag_start||!tag_end||tag_start>=tag_end||!attr||!out||cap<2u)return false;
+  char pattern[40];
+  int n=snprintf(pattern,sizeof(pattern),"%s=\"",attr);
+  if(n<=0||(size_t)n>=sizeof(pattern))return false;
+  const char *p=tag_start;
+  while(p<tag_end){
+    const char *hit=strstr(p,pattern);
+    if(!hit||hit>=tag_end)return false;
+    const char *value=hit+n;
+    const char *end=strchr(value,'"');
+    if(!end||end>tag_end)return false;
+    const size_t len=(size_t)(end-value);
+    if(len>=cap)return false;
+    memcpy(out,value,len);out[len]=0;return true;
+  }
+  return false;
+}
+static bool normalize_form_action(const char *action,char *out,size_t cap){
+  if(!action||!action[0]||!out||cap<16u)return false;
+  if(!strncmp(action,"https://",8u)){
+    if(strlen(action)>=cap)return false;
+    copy_text(out,cap,action);return true;
+  }
+  if(!strncmp(action,"//",2u)){
+    const char prefix[]="https:";
+    const size_t plen=sizeof(prefix)-1u,len=strlen(action);
+    if(plen+len>=cap)return false;
+    memcpy(out,prefix,plen);memcpy(out+plen,action,len+1u);return true;
+  }
+  if(action[0]=='/'){
+    const char prefix[]="https://vimm.net";
+    const size_t plen=sizeof(prefix)-1u,len=strlen(action);
+    if(plen+len>=cap)return false;
+    memcpy(out,prefix,plen);memcpy(out+plen,action,len+1u);return true;
+  }
+  return false;
+}
+static bool find_form_input_value(const char *form_start,const char *form_end,
+                                  const char *name,char *out,size_t cap){
+  const char *p=form_start;
+  while((p=strstr(p,"<input"))&&p<form_end){
+    const char *tag_end=strchr(p,'>');
+    if(!tag_end||tag_end>form_end)return false;
+    char input_name[40];
+    if(copy_attr_value(p,tag_end,"name",input_name,sizeof(input_name))&&!strcmp(input_name,name))
+      return copy_attr_value(p,tag_end,"value",out,cap);
+    p=tag_end+1;
+  }
+  return false;
+}
+static bool resolve_vimm_dl_form(char *out,size_t cap){
+  const char *p=html;
+  while((p=strstr(p,"<form"))){
+    const char *tag_end=strchr(p,'>');
+    if(!tag_end)return false;
+    if(!range_contains(p,tag_end,"id=\"dl-form\"")){p=tag_end+1;continue;}
+    const char *form_end=strstr(tag_end,"</form>");
+    if(!form_end)return false;
+    char action[192],media_id[32],token[256],base[256],encoded_id[96],encoded_token[768];
+    if(!copy_attr_value(p,tag_end,"action",action,sizeof(action))||
+       !find_form_input_value(tag_end,form_end,"mediaId",media_id,sizeof(media_id))||
+       !find_form_input_value(tag_end,form_end,"token",token,sizeof(token))||
+       !normalize_form_action(action,base,sizeof(base))||
+       !append_url_encoded(encoded_id,sizeof(encoded_id),media_id)||
+       !append_url_encoded(encoded_token,sizeof(encoded_token),token))return false;
+    const char separator=strchr(base,'?')?'&':'?';
+    int n=snprintf(out,cap,"%s%cmediaId=%s&token=%s",base,separator,encoded_id,encoded_token);
+    return n>0&&(size_t)n<cap;
+  }
+  return false;
+}
+
+static bool resolve_vimm_download_url(char *out,size_t cap){
+  if(!out||cap<32u)return false;
+  out[0]=0;
+  /* Vimm title pages use form#dl-form. submitDL() changes that form to GET;
+     resolve its action + hidden mediaId/token deterministically before any
+     generic fallback scanning. */
+  if(resolve_vimm_dl_form(out,cap))return true;
+  const char *attrs[]={"href=\"","action=\"","data-href=\"","data-url=\""};
+  for(size_t a=0;a<sizeof(attrs)/sizeof(attrs[0]);++a){
+    const char *p=html;
+    const size_t attr_len=strlen(attrs[a]);
+    while((p=strstr(p,attrs[a]))){
+      const char *start=p+attr_len;
+      const char *end=strchr(start,'"');
+      if(!end)break;
+      if(likely_download_target(start,end)&&copy_url_candidate(start,end,out,cap))return true;
+      p=end+1;
+    }
+  }
+  return false;
+}
+
 static bool vimm_page_path(const char *path,size_t length){
   const char prefix[]="/vault/GB";
   const size_t prefix_len=sizeof(prefix)-1u;
@@ -156,11 +325,18 @@ static bool vimm_allowed_url(const char *url){
   if(!url)return false;
   if(strncmp(url,VIMM_URL,strlen(VIMM_URL))==0)return true;
   const char search_prefix[]="https://vimm.net/vault/?p=list&system=GB&q=";
-  return strncmp(url,search_prefix,sizeof(search_prefix)-1u)==0;
+  if(strncmp(url,search_prefix,sizeof(search_prefix)-1u)==0)return true;
+  const char detail_prefix[]="https://vimm.net/vault/";
+  const size_t detail_len=sizeof(detail_prefix)-1u;
+  if(strncmp(url,detail_prefix,detail_len)!=0)return false;
+  const char *id=url+detail_len;
+  if(!*id)return false;
+  while(*id){if(*id<'0'||*id>'9')return false;++id;}
+  return true;
 }
-static bool fetch_vimm_url(const char *url,bool include_pages){
+static bool fetch_vimm_document(const char *url){
   if(!vimm_allowed_url(url))return false;
-  html_size=0; vimm_count=0; t5_stream_t h=0; if(streams->open_http(url,&h)!=T5_STREAM_OK)return false;
+  html_size=0; t5_stream_t h=0; if(streams->open_http(url,&h)!=T5_STREAM_OK)return false;
   uint32_t last_progress=app->millis(),started=last_progress;
   while(html_size<HTML_CAP){
     uint32_t got=0; int32_t r=streams->read(h,html+html_size,(uint32_t)(HTML_CAP-html_size),&got);
@@ -170,26 +346,53 @@ static bool fetch_vimm_url(const char *url,bool include_pages){
     uint32_t now=app->millis(); if(now-last_progress>30000u||now-started>60000u){streams->close(h);return false;}
   }
   streams->close(h); html[html_size]=0;
+  return html_size>0;
+}
+static bool decode_anchor_text(const char *start,const char *end,char *out,size_t cap){
+  if(!start||!end||start>=end||!out||cap<2u)return false;
+  size_t w=0; bool in_tag=false;
+  for(const char *p=start;p<end&&w+1u<cap;){
+    if(!in_tag&&*p=='<'){in_tag=true;++p;continue;}
+    if(in_tag){if(*p=='>')in_tag=false;++p;continue;}
+    if(*p=='&'){
+      if(end-p>=5&&!strncmp(p,"&amp;",5)){out[w++]='&';p+=5;continue;}
+      if(end-p>=6&&!strncmp(p,"&quot;",6)){out[w++]='"';p+=6;continue;}
+      if(end-p>=5&&!strncmp(p,"&#39;",5)){out[w++]='\'';p+=5;continue;}
+      if(end-p>=6&&!strncmp(p,"&nbsp;",6)){if(w&&out[w-1]!=' ')out[w++]=' ';p+=6;continue;}
+    }
+    char c=*p++;
+    if(c=='\r'||c=='\n'||c=='\t')c=' ';
+    if(c==' '&&(!w||out[w-1]==' '))continue;
+    out[w++]=c;
+  }
+  while(w&&out[w-1]==' ')--w;
+  out[w]=0;
+  return w>0;
+}
+static bool fetch_vimm_url(const char *url,bool include_pages,bool server_filtered){
+  vimm_count=0;
+  if(!fetch_vimm_document(url))return false;
   char *p=html;
   while(vimm_count<MAX_VIMM&&(p=strstr(p,"href=\"/vault/"))){
     p+=6; char *q=strchr(p,'"'); if(!q)break; size_t plen=(size_t)(q-p); if(plen>=NAME_CAP){p=q+1;continue;}
     const uint8_t kind=vimm_game_path(p,plen)?VIMM_GAME:
         (include_pages&&vimm_page_path(p,plen)?VIMM_PAGE:0u);
     if(!kind){p=q+1;continue;}
-    char *gt=strchr(q,'>'); if(!gt)break; char *lt=strchr(gt+1,'<'); if(!lt)break; size_t nlen=(size_t)(lt-(gt+1));
-    if(nlen&&nlen<NAME_CAP){
+    char *gt=strchr(q,'>'); if(!gt)break;
+    char *close=strstr(gt+1,"</a>"); if(!close){p=gt+1;continue;}
+    char title[NAME_CAP];
+    if(decode_anchor_text(gt+1,close,title,sizeof(title))&&
+       (server_filtered||contains_ci(title,search_query))){
       memcpy(vimm_paths[vimm_count],p,plen);vimm_paths[vimm_count][plen]=0;
-      memcpy(vimm_names[vimm_count],gt+1,nlen);vimm_names[vimm_count][nlen]=0;
-      if(contains_ci(vimm_names[vimm_count],search_query)){
-        vimm_kinds[vimm_count]=kind;
-        ++vimm_count;
-      }
+      copy_text(vimm_names[vimm_count],NAME_CAP,title);
+      vimm_kinds[vimm_count]=kind;
+      ++vimm_count;
     }
-    p=lt+1;
+    p=close+4;
   }
   return true;
 }
-static bool fetch_vimm(void){return fetch_vimm_url(VIMM_URL,true);}
+static bool fetch_vimm(void){return fetch_vimm_url(VIMM_URL,true,false);}
 static bool append_url_encoded(char *out,size_t cap,const char *text){
   static const char hex[]="0123456789ABCDEF";
   size_t w=0;
@@ -217,7 +420,7 @@ static bool search_vimm(const char *query){
   int n=snprintf(url,sizeof(url),"https://vimm.net/vault/?p=list&system=GB&q=%s",encoded);
   if(n<=0||(size_t)n>=sizeof(url))return false;
   copy_text(search_query,sizeof(search_query),query);
-  return fetch_vimm_url(url,false);
+  return fetch_vimm_url(url,false,true);
 }
 static bool open_vimm_page(const char *path){
   if(!path||!vimm_page_path(path,strlen(path)))return false;
@@ -225,8 +428,75 @@ static bool open_vimm_page(const char *path){
   int n=snprintf(url,sizeof(url),"https://vimm.net%s",path);
   if(n<=0||(size_t)n>=sizeof(url))return false;
   search_query[0]=0;
-  return fetch_vimm_url(url,true);
+  /* A letter/index page contains the global A-Z navigation again. Once the
+     user opens a letter, expose only the Game Boy title links from that page
+     so resetting selection to row 0 lands on the first title, not "A". */
+  return fetch_vimm_url(url,false,false);
 }
+static void html_to_detail_text(const char *title){
+  size_t w=0; detail_text[0]=0;
+  if(title&&title[0]){
+    for(size_t i=0;title[i]&&w+1u<DETAIL_CAP;++i)detail_text[w++]=title[i];
+    if(w+2u<DETAIL_CAP){detail_text[w++]='\n';detail_text[w++]='\n';}
+  }
+  bool in_tag=false,skip=false;
+  for(const char *p=html;*p&&w+1u<DETAIL_CAP;){
+    if(!in_tag&&*p=='<'){
+      if(!strncmp(p,"<script",7)||!strncmp(p,"<style",6))skip=true;
+      if(!strncmp(p,"</script",8)||!strncmp(p,"</style",7))skip=false;
+      if(!strncmp(p,"<br",3)||!strncmp(p,"</p",3)||!strncmp(p,"</div",5)||
+         !strncmp(p,"</tr",4)||!strncmp(p,"</h",3)){
+        while(w&&detail_text[w-1]==' ')--w;
+        if(w&&detail_text[w-1]!='\n')detail_text[w++]='\n';
+      }
+      in_tag=true;++p;continue;
+    }
+    if(in_tag){if(*p=='>')in_tag=false;++p;continue;}
+    if(skip){++p;continue;}
+    if(*p=='&'){
+      if(!strncmp(p,"&amp;",5)){detail_text[w++]='&';p+=5;continue;}
+      if(!strncmp(p,"&quot;",6)){detail_text[w++]='"';p+=6;continue;}
+      if(!strncmp(p,"&#39;",5)){detail_text[w++]='\'';p+=5;continue;}
+      if(!strncmp(p,"&nbsp;",6)){if(w&&detail_text[w-1]!=' ')detail_text[w++]=' ';p+=6;continue;}
+    }
+    char c=*p++; if(c=='\r'||c=='\n'||c=='\t')c=' ';
+    if(c==' '&&(!w||detail_text[w-1]==' '||detail_text[w-1]=='\n'))continue;
+    detail_text[w++]=c;
+  }
+  while(w&&(detail_text[w-1]==' '||detail_text[w-1]=='\n'))--w;
+  detail_text[w]=0;
+}
+enum { DETAIL_FAILED=-1, DETAIL_BACK=0, DETAIL_INSTALLED=1 };
+static int show_vimm_detail(const char *name,const char *path){
+  if(!name||!path||!vimm_game_path(path,strlen(path)))return DETAIL_FAILED;
+  char url[NAME_CAP+32u];
+  int n=snprintf(url,sizeof(url),"https://vimm.net%s",path);
+  if(n<=0||(size_t)n>=sizeof(url))return false;
+  const t5_ui_list_row_t loading={name,"Loading Game Boy title details","",0};
+  render_rows("Rom Manager","Vimm Vault",&loading,1,0,"");
+  if(!fetch_vimm_document(url))return DETAIL_FAILED;
+  html_to_detail_text(name);
+  if(!detail_text[0])return DETAIL_FAILED;
+  int32_t scroll=0;
+  for(;;){
+    t5_ui_text_view_result_t result={0};
+    const t5_ui_chrome_t chrome={"Game Boy title",name,"Vimm Vault","Back","Install ROM","Up","Down"};
+    ui->render_text_view(&chrome,detail_text,scroll,&result);
+    t5_ui_event_t event={0};
+    if(!ui->poll_event(&event,20)||event.type==T5_UI_EVENT_BACK||event.type==T5_UI_EVENT_EXIT)return DETAIL_BACK;
+    if(event.type==T5_UI_EVENT_CONFIRM){
+      char download_url[512];
+      if(!resolve_vimm_download_url(download_url,sizeof(download_url))){
+        copy_text(status_text,sizeof(status_text),"No ROM download target found on this title page");
+        continue;
+      }
+      if(import_archive_url(download_url))return DETAIL_INSTALLED;
+      continue;
+    }else if(event.type==T5_UI_EVENT_PREVIOUS&&scroll<result.max_scroll_lines)++scroll;
+    else if(event.type==T5_UI_EVENT_NEXT&&scroll>0)--scroll;
+  }
+}
+
 static void do_rename(const char *new_text){
   char old_name[NAME_CAP]={0}; size_t n=0;
   if(!new_text||!new_text[0]||!storage->read_file(RENAME_STATE,old_name,sizeof(old_name)-1,&n)||!n||n>=sizeof(old_name)){(void)storage->remove_file(RENAME_STATE);return;}
@@ -258,7 +528,7 @@ __attribute__((visibility("default"))) void app_main(void){
      system_ui->api_version!=T5_SYSTEM_UI_API_VERSION||system_ui->struct_size<sizeof(*system_ui)||
      !system_ui->keyboard_request||!system_ui->keyboard_take_result||
      ui->api_version!=T5_UI_API_VERSION||ui->struct_size<sizeof(*ui)||
-     !ui->render_list||!ui->poll_event||!ui->hit_test||!ui->next_index||!ui->previous_index||
+     !ui->render_list||!ui->render_text_view||!ui->poll_event||!ui->hit_test||!ui->next_index||!ui->previous_index||
      !app->dir_open||!app->dir_next||!app->dir_close||!app->set_back_exits_app||!app->millis)return;
   app->set_back_exits_app(false); status_text[0]=0; search_query[0]=0; if(!ensure_rom_dir()){copy_text(status_text,sizeof(status_text),"ROM storage unavailable");}
   view_t view=consume_keyboard(); int32_t selected=0;
@@ -286,7 +556,12 @@ __attribute__((visibility("default"))) void app_main(void){
         if(open_vimm_page(vimm_paths[selected])){selected=0;status_text[0]=0;}
         else copy_text(status_text,sizeof(status_text),"Could not open Game Boy index");
       }else{
-        snprintf(status_text,sizeof(status_text),"%.100s: Game Boy title",vimm_names[selected]);
+        const int detail_result=show_vimm_detail(vimm_names[selected],vimm_paths[selected]);
+        if(detail_result==DETAIL_FAILED)
+          copy_text(status_text,sizeof(status_text),"Could not load Game Boy title details");
+        else if(detail_result==DETAIL_INSTALLED)
+          copy_text(status_text,sizeof(status_text),"ROM installed");
+        else status_text[0]=0;
       }
     }
     else if(view==VIEW_ROMS&&rom_count){
