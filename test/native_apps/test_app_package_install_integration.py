@@ -63,9 +63,11 @@ class LiveInstallContract(unittest.TestCase):
                          'installOrdinaryFromSd(root.c_str(), policy,',
                          'installed.result != OrdinaryInstallResult::Installed'):
             self.assertIn(required, ONLINE)
+        download_call = ONLINE.index(
+            'const auto downloadResult = HttpDownloader::downloadToFile(')
         self.assertGreater(ONLINE.index('parseOrdinaryManifest(descriptor.chars(),'),
-                           ONLINE.index('downloadToFile(url, elfStage,'))
-        self.assertLess(ONLINE.index('downloadToFile(url, elfStage,'),
+                           download_call)
+        self.assertLess(download_call,
                         ONLINE.index('verifyAppPair(elfPath.c_str()'))
         self.assertLess(ONLINE.index('verifyAppPair(elfPath.c_str()'),
                         ONLINE.index('discardOwnedStage(*plan)'))
@@ -74,8 +76,7 @@ class LiveInstallContract(unittest.TestCase):
         self.assertIn('RuntimeMemory::PsramBuffer descriptor(4096)', ONLINE)
         self.assertIn('RuntimeMemory::PsramBuffer planStorage(sizeof(OrdinaryPackagePlan))', ONLINE)
         self.assertIn('descriptor.reset();', ONLINE)
-        self.assertLess(ONLINE.index('descriptor.reset();'),
-                        ONLINE.index('downloadToFile(url, elfStage,'))
+        self.assertLess(ONLINE.index('descriptor.reset();'), download_call)
 
         # The progress ABI must not trigger e-paper UI rendering while the HTTP
         # worker still owns TLS buffers. That transient 8 KiB refresh task can
