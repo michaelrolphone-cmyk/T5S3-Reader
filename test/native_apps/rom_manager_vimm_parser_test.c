@@ -22,7 +22,6 @@ static const char kLetterHtml[] =
     "<a href= \"/vault/12345\">Wario Land</a></td>"
     "<td><a href=\"/vault/?p=rating&amp;id=12345\">8.5</a></td></tr>"
     "</table>";
-static bool served;
 static uint32_t fake_millis(void){return 100u;}
 static unsigned log_count;
 static void fake_log_message(const char *message){assert(message);++log_count;}
