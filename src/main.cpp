@@ -360,6 +360,10 @@ void setup() {
   }
 
   HalSystem::begin();
+  // Timer wakes never reach this point. A true value means the user explicitly
+  // left retained desk-clock deep sleep and normal startup should resume
+  // content/Home without replaying the cold-boot splash.
+  const bool deskClockUserWake = DeskClockSleep::consumeUserWake();
   gpio.begin();
   powerManager.begin();
   halClock.begin();
@@ -458,7 +462,7 @@ void setup() {
 
   // Present before any activity or mapped-input update can activate installed
   // ELF providers. Recovery and panic reports retain their direct boot paths.
-  if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic()) {
+  if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic() && !deskClockUserWake) {
     RenderLock lock;
     StartupScreen::boot(renderer);
   }
@@ -483,11 +487,12 @@ void setup() {
     activityManager.goToCrashReport();
   } else if (!resumeReaderOnBoot) {
     prepareStartupRefresh(HalDisplay::HALF_REFRESH);
-    {
+    if (!deskClockUserWake) {
       RenderLock lock;
       StartupScreen::armBootFade();
     }
-    // Home fades the logo only when its first render is ready to take over.
+    // A cold boot fades the logo when Home is ready. A desk-clock user wake
+    // has no splash to fade and proceeds directly into Home.
     activityManager.goHome();
   } else {
     // Clear app state to avoid getting into a boot loop if the epub doesn't load

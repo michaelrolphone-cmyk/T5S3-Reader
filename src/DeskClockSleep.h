@@ -14,4 +14,9 @@ void run(GfxRenderer& renderer, HalGPIO& input);
 // Returns false for ordinary boots and if timer-resume fails, allowing normal
 // firmware startup. A successful timer-resume never returns.
 bool resumeAfterTimerWake();
+
+// Returns true once when normal startup is continuing because the user woke a
+// retained desk clock with its button wake source. Timer wakes are handled
+// entirely inside resumeAfterTimerWake() and never reach normal startup.
+bool consumeUserWake();
 }  // namespace DeskClockSleep
