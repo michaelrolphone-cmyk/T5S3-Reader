@@ -49,7 +49,7 @@ static bool api_ready(const t5_package_manager_api_v1 *manager,
     const size_t manager_required =
         offsetof(t5_package_manager_api_v1, replace) + sizeof(manager->replace);
     return manager && manager->api_version == T5_PACKAGE_MANAGER_API_VERSION &&
-           manager->struct_size >= offsetof(t5_package_manager_api_v1, preview_archive) &&
+           manager->struct_size >= manager_required &&
            manager->preview && manager->install && manager->uninstall &&
            manager->installed_refresh && manager->installed_count &&
            manager->installed_get && manager->replace &&
@@ -87,9 +87,109 @@ static const char* kind_name(uint8_t kind) {
         default: return "Invalid";
     }
 }
+static bool parse_version(const char *text, uint32_t parts[3]) {
+    size_t component = 0;
+    if (!text || !parts) return false;
+    parts[0] = parts[1] = parts[2] = 0;
+    if (!*text) return false;
+    while (*text) {
+        if (*text == '.') {
+            if (++component >= 3u) return false;
+            ++text;
+            continue;
+        }
+        if (*text < '0' || *text > '9') return false;
+        const uint32_t digit = (uint32_t)(*text - '0');
+        if (parts[component] > (UINT32_MAX - digit) / 10u) return false;
+        parts[component] = parts[component] * 10u + digit;
+        ++text;
+    }
+    return component == 2u;
+}
+
+static int version_order(const char *candidate, const char *installed) {
+    uint32_t a[3], b[3];
+    size_t i;
+    if (!parse_version(candidate, a) || !parse_version(installed, b)) return 0;
+    for (i = 0; i < 3u; ++i) {
+        if (a[i] < b[i]) return -1;
+        if (a[i] > b[i]) return 1;
+    }
+    return 0;
+}
+
+static bool staged_matches_installed(const t5_package_preview_t *staged,
+                                     const t5_installed_package_t *installed) {
+    return staged && installed &&
+           staged->kind == installed->kind &&
+           strcmp(staged->id, installed->id) == 0;
+}
+
+static int32_t find_row(uint8_t kind, const char *id) {
+    uint32_t i;
+    for (i = 0; i < row_count; ++i) {
+        const package_row_t *item = &packages[i];
+        if (item->source == PACKAGE_ROW_INSTALLED &&
+            item->installed.kind == kind && strcmp(item->installed.id, id) == 0)
+            return (int32_t)i;
+        if (item->source == PACKAGE_ROW_INBOX &&
+            item->staged.kind == kind && strcmp(item->staged.id, id) == 0)
+            return (int32_t)i;
+    }
+    return -1;
+}
+
+static void format_installed_row(uint32_t index) {
+    package_row_t *item = &packages[index];
+    const t5_installed_package_t *installed = &item->installed;
+    snprintf(titles[index], sizeof(titles[index]), "%s [%s]",
+             installed->id, kind_name(installed->kind));
+    if (!installed->valid_installation) {
+        snprintf(subtitles[index], sizeof(subtitles[index]),
+                 "Installed generation is invalid; recovery required before mutation");
+        snprintf(values[index], sizeof(values[index]), "%s", "Invalid");
+    } else if (item->has_staged) {
+        const int order = version_order(item->staged.version, installed->version);
+        snprintf(subtitles[index], sizeof(subtitles[index]),
+                 "Installed %s; staged %s (%s)",
+                 installed->version, item->staged.version,
+                 order < 0 ? "older" : order > 0 ? "newer" : "same version");
+        snprintf(values[index], sizeof(values[index]), "%s", installed->version);
+    } else {
+        snprintf(subtitles[index], sizeof(subtitles[index]),
+                 "Installed %s; no staged replacement", installed->version);
+        snprintf(values[index], sizeof(values[index]), "%s", installed->version);
+    }
+    rows[index] = (t5_ui_list_row_t){
+        titles[index], subtitles[index], values[index],
+        item->has_staged && installed->valid_installation &&
+                version_order(item->staged.version, installed->version) != 0
+            ? T5_UI_LIST_HIGHLIGHT_VALUE : 0
+    };
+}
+
+static void format_inbox_row(uint32_t index) {
+    package_row_t *item = &packages[index];
+    const t5_package_preview_t *staged = &item->staged;
+    snprintf(titles[index], sizeof(titles[index]), "%s [%s]",
+             staged->id, kind_name(staged->kind));
+    snprintf(subtitles[index], sizeof(subtitles[index]), "%s",
+             staged->install_allowed ? "Inbox package ready for fresh installation" :
+             "Inbox package unavailable: dependency, version, stage, or active mapping");
+    snprintf(values[index], sizeof(values[index]), "%s", staged->version);
+    rows[index] = (t5_ui_list_row_t){
+        titles[index], subtitles[index], values[index],
+        staged->install_allowed ? T5_UI_LIST_HIGHLIGHT_VALUE : 0
+    };
+}
+
 static void set_row(uint32_t index, const t5_package_preview_t *info,
                     const char *available) {
-    packages[index] = *info;
+    package_row_t *item = &packages[index];
+    memset(item, 0, sizeof(*item));
+    item->source = PACKAGE_ROW_INBOX;
+    item->has_staged = 1;
+    item->staged = *info;
     snprintf(titles[index], sizeof(titles[index]), "%.63s [%s]",
              info->id, kind_name(info->kind));
     if (!info->valid_installation)
@@ -297,25 +397,56 @@ static void activate(const t5_package_manager_api_v1 *manager,
                      const t5_ui_api_v1 *ui, int32_t selected,
                      char *status, size_t capacity) {
     if (!status || !capacity || selected < 0 || selected >= (int32_t)row_count) return;
-    const t5_package_preview_t info = packages[selected];
-    if (!info.valid_installation) {
-        snprintf(status, capacity, "%.63s: recover invalid generation before changing it", info.id);
+    const package_row_t item = packages[selected];
+
+    if (item.source == PACKAGE_ROW_INSTALLED && !item.installed.valid_installation) {
+        snprintf(status, capacity, "%s: invalid installed generation; recovery required",
+                 item.installed.id);
         return;
     }
-    const int32_t action = select_action(ui, &info);
-    if (action == 1 &&
-        confirm(ui, "Confirm installation",
-                "Integrity checked; no activation or privilege grant", "Install now")) {
-        const bool okay = online_view ? manager->online_install(online_indices[selected]) :
-            archive_rows[selected] ? manager->install_archive(names[selected]) :
-                                     manager->install(names[selected]);
-        snprintf(status, capacity, "%.63s: %s; no activation", info.id,
-                 okay ? "installed" : "install refused; inspect package/recovery");
-    } else if (action == 2 &&
-               confirm(ui, "Confirm uninstall",
-                       "Remove selected package; cannot be undone", "Uninstall now")) {
-        const bool okay = manager->uninstall(info.kind, info.id);
-        snprintf(status, capacity, "%.63s: %s", info.id,
+
+    const package_action_t action = select_action(ui, &item);
+    if (action == PACKAGE_ACTION_INSTALL) {
+        if (confirm(ui, "Confirm installation",
+                    "Install verified package; no activation or privilege grant",
+                    "Install now")) {
+            bool okay = false;
+            if (online_view)
+                okay = manager->online_install(online_indices[selected]);
+            else if (archive_rows[selected])
+                okay = manager->install_archive(names[selected]);
+            else
+                okay = manager->install(item.staged.id);
+            snprintf(status, capacity, "%s: %s", item.staged.id,
+                     okay ? "installed" : "install refused; inspect package/recovery");
+        }
+        return;
+    }
+
+    if (action == PACKAGE_ACTION_REPLACE) {
+        const int order = version_order(item.staged.version, item.installed.version);
+        char description[224];
+        snprintf(description, sizeof(description),
+                 "%s %s %s -> %s; verified replacement only",
+                 order < 0 ? "Downgrade" : "Replace",
+                 item.installed.id, item.installed.version, item.staged.version);
+        if (confirm(ui, order < 0 ? "Confirm downgrade" : "Confirm replacement",
+                    description, order < 0 ? "Downgrade now" : "Replace now")) {
+            const bool okay = manager->replace(item.staged.id);
+            snprintf(status, capacity, "%s: %s %s -> %s",
+                     item.installed.id,
+                     okay ? (order < 0 ? "downgraded" : "replaced") : "replacement refused",
+                     item.installed.version, item.staged.version);
+        }
+        return;
+    }
+
+    if (action == PACKAGE_ACTION_UNINSTALL &&
+        confirm(ui, "Confirm uninstall",
+                "Remove selected package; active/mapped packages are refused",
+                "Uninstall now")) {
+        const bool okay = manager->uninstall(item.installed.kind, item.installed.id);
+        snprintf(status, capacity, "%s: %s", item.installed.id,
                  okay ? "uninstalled" : "uninstall refused; stop mapped users");
     }
 }
