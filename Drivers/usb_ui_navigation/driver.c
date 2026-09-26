@@ -148,7 +148,12 @@ static bool poll_pad(unsigned index) {
     const risc_usb_gamepad_api_v1 *api = pads[index];
     risc_usb_gamepad_state_v1 snapshot[DEVICES] = {{0}};
     size_t count = DEVICES;
-    if (!api->poll(api->context, 4) || !api->snapshot(api->context, snapshot, &count) || count > DEVICES)
+    /* UI navigation must preserve short press/release transitions. Gamepad
+     * providers publish authoritative current state, so draining multiple
+     * queued reports before snapshot() can collapse a complete tap back to
+     * neutral. Consume at most one report per UI cycle; the next 20 ms cycle
+     * observes the following transition without replaying stale history. */
+    if (!api->poll(api->context, 1) || !api->snapshot(api->context, snapshot, &count) || count > DEVICES)
         return false;
     uint32_t next = 0;
     for (unsigned old = 0; old < DEVICES; ++old) if (pad_devices[index][old]) {
