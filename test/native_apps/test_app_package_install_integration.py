@@ -30,7 +30,8 @@ class LiveInstallContract(unittest.TestCase):
                          'metadata["sha256"].is<const char*>()',
                          'RuntimePackages::validSha256Hex(value)',
                          'RuntimePackages::comparePackageVersions(',
-                         'RuntimeOnlinePackages::installApplication(artifact.c_str()'):
+                         'const bool installedOk = RuntimeOnlinePackages::installApplication(',
+                         'artifact.c_str(), version.c_str(), downloadUrl.c_str(), json,'):
             self.assertIn(required, install)
         self.assertLess(install.index('metadata["sha256"]'),
                         install.index('RuntimeOnlinePackages::installApplication('))
@@ -91,10 +92,11 @@ class LiveInstallContract(unittest.TestCase):
         self.assertIn('Selected catalog entry lost download metadata; reloading catalog', install)
         self.assertIn('const bool installedOk = RuntimeOnlinePackages::installApplication(', install)
         self.assertIn('Always restore the catalog', install)
-        self.assertLess(install.index('const bool installedOk = RuntimeOnlinePackages::installApplication('),
-                        install.index('loadAuthoritativeAppCatalog(s->catalog)'))
-        self.assertLess(install.index('loadAuthoritativeAppCatalog(s->catalog)'),
-                        install.index('if (!installedOk)'))
+        install_call = install.index('const bool installedOk = RuntimeOnlinePackages::installApplication(')
+        post_refresh = install.index('loadAuthoritativeAppCatalog(s->catalog)', install_call)
+        failure_check = install.index('if (!installedOk)', install_call)
+        self.assertLess(install_call, post_refresh)
+        self.assertLess(post_refresh, failure_check)
 
     def test_recovery_is_exact_inventory_and_preserves_foreign_files(self):
         for required in ('equalFile(root + "/" + sidecarName, sidecar.data()',
