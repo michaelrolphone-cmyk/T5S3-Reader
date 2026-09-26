@@ -51,7 +51,8 @@ class LiveInstallContract(unittest.TestCase):
                          'Recovery::discardOwnedInbox(',
                          'if (!Storage.mkdir(root.c_str(), false)) return fail("could not create package inbox")',
                          'O_WRONLY | O_CREAT | O_EXCL',
-                         'HttpDownloader::downloadToFile(url, elfStage,',
+                         'const auto downloadResult = HttpDownloader::downloadToFile(',
+                         'url, elfStage, [](size_t, size_t) { esp_task_wdt_reset(); }',
                          '!Storage.rename(elfStage.c_str(), elfPath.c_str())',
                          '!verifyAppPair(elfPath.c_str(), jsonPath.c_str(), artifact, true)',
                          'mbedtls_sha256_ret(',
@@ -62,9 +63,11 @@ class LiveInstallContract(unittest.TestCase):
                          'installOrdinaryFromSd(root.c_str(), policy,',
                          'installed.result != OrdinaryInstallResult::Installed'):
             self.assertIn(required, ONLINE)
+        download_call = ONLINE.index(
+            'const auto downloadResult = HttpDownloader::downloadToFile(')
         self.assertGreater(ONLINE.index('parseOrdinaryManifest(descriptor.chars(),'),
-                           ONLINE.index('downloadToFile(url, elfStage,'))
-        self.assertLess(ONLINE.index('downloadToFile(url, elfStage,'),
+                           download_call)
+        self.assertLess(download_call,
                         ONLINE.index('verifyAppPair(elfPath.c_str()'))
         self.assertLess(ONLINE.index('verifyAppPair(elfPath.c_str()'),
                         ONLINE.index('discardOwnedStage(*plan)'))
@@ -73,16 +76,18 @@ class LiveInstallContract(unittest.TestCase):
         self.assertIn('RuntimeMemory::PsramBuffer descriptor(4096)', ONLINE)
         self.assertIn('RuntimeMemory::PsramBuffer planStorage(sizeof(OrdinaryPackagePlan))', ONLINE)
         self.assertIn('descriptor.reset();', ONLINE)
-        self.assertLess(ONLINE.index('descriptor.reset();'),
-                        ONLINE.index('downloadToFile(url, elfStage,'))
+        self.assertLess(ONLINE.index('descriptor.reset();'), download_call)
 
         # The progress ABI must not trigger e-paper UI rendering while the HTTP
         # worker still owns TLS buffers. That transient 8 KiB refresh task can
         # consume the heap headroom required by the native stream transport.
-        transfer_start = ONLINE.index('HttpDownloader::downloadToFile(url, elfStage,')
-        transfer_end = ONLINE.index('return fail("HTTP download failed");', transfer_start)
+        transfer_start = ONLINE.index('const auto downloadResult = HttpDownloader::downloadToFile(')
+        transfer_end = ONLINE.index('if (progress) {', transfer_start)
         transfer = ONLINE[transfer_start:transfer_end]
         self.assertIn('[](size_t, size_t) { esp_task_wdt_reset(); }', transfer)
+        self.assertIn('case HttpDownloader::HTTP_ERROR: return fail("HTTP download failed");', transfer)
+        self.assertIn('case HttpDownloader::FILE_ERROR: return fail("download staging file failed");', transfer)
+        self.assertIn('case HttpDownloader::STREAM_ERROR: return fail("download stream failed");', transfer)
         self.assertNotIn('progress(progressContext', transfer)
         terminal_progress = ONLINE.index('progress(progressContext, size, size);', transfer_end)
         self.assertGreater(terminal_progress, transfer_end)
@@ -142,7 +147,8 @@ class LiveInstallContract(unittest.TestCase):
         self.assertIn('JsonDocument doc(&allocator)', APP_MANIFEST)
         self.assertIn('RuntimeMemory::PsramJsonAllocator metadataAllocator', HOST)
         self.assertIn('JsonDocument metadata(&metadataAllocator)', HOST)
-        self.assertIn('heap_caps_malloc_extmem_enable(128);', MAIN)
+        self.assertIn('heap_caps_malloc_extmem_enable(1024);', MAIN)
+        self.assertNotIn('heap_caps_malloc_extmem_enable(128);', MAIN)
 
     def test_package_manager_and_shared_verifier_do_not_retain_large_stack_buffers(self):
         self.assertIn('new (std::nothrow) char[4096]', PACKAGE_MANAGER)
