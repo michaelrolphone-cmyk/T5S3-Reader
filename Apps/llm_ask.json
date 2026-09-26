@@ -3,5 +3,9 @@
   "display_name": "Ask",
   "file_name": "llm_ask.elf",
   "version": "1.0.0",
-  "icon": "regular:f4ad"
+  "icon": "regular:f4ad",
+  "category": [
+    "AI",
+    "Productivity"
+  ]
 }
