@@ -13,5 +13,9 @@
   "supported_file_types": [
     ".txt",
     ".md"
+  ],
+  "category": [
+    "Productivity",
+    "Files"
   ]
 }
