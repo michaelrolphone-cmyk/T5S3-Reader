@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CLOCK = (ROOT / "src/DeskClockSleep.cpp").read_text()
 DISPLAY = (ROOT / "lib/hal/HalDisplay.cpp").read_text()
 SYSTEM = (ROOT / "lib/hal/HalSystem.cpp").read_text()
+MAIN = (ROOT / "src/main.cpp").read_text()
 
 
 class ClockDeepSleepWiring(unittest.TestCase):
@@ -26,8 +27,24 @@ class ClockDeepSleepWiring(unittest.TestCase):
         self.assertIn("RTC_DATA_ATTR ClockRetention", CLOCK)
         self.assertLess(SYSTEM.index("DeskClockSleep::resumeAfterTimerWake()"),
                         SYSTEM.index("if (!isRebootFromPanic())"))
-        self.assertLess(CLOCK.index("clockState.magic = 0;  // Power button"),
-                        CLOCK.index("Board::begin();", CLOCK.index("bool DeskClockSleep::resumeAfterTimerWake")))
+        resume = CLOCK.index("bool DeskClockSleep::resumeAfterTimerWake")
+        self.assertLess(CLOCK.index("clockState.magic = 0;", resume),
+                        CLOCK.index("Board::begin();", resume))
+
+    def test_user_wake_skips_splash_but_preserves_resume_policy(self):
+        self.assertIn("bool DeskClockSleep::consumeUserWake()", CLOCK)
+        self.assertIn("const bool deskClockUserWake = DeskClockSleep::consumeUserWake();", MAIN)
+        self.assertIn("&& !deskClockUserWake", MAIN)
+        self.assertIn("if (!deskClockUserWake)", MAIN)
+        self.assertIn("const bool resumeReaderOnBoot = shouldResumeReaderOnBoot();", MAIN)
+        self.assertLess(MAIN.index("const bool resumeReaderOnBoot = shouldResumeReaderOnBoot();"),
+                        MAIN.index("} else if (!resumeReaderOnBoot)"))
+        self.assertNotIn("deskClockUserWake && !resumeReaderOnBoot", MAIN)
+
+    def test_button_during_timer_repaint_survives_explicit_restart(self):
+        self.assertIn("clockUiWakeMagic = kClockUiWakeMagic;", CLOCK)
+        self.assertIn("if (clockUiWakeMagic == kClockUiWakeMagic)", CLOCK)
+        self.assertIn("userWakePending = true;", CLOCK)
 
     def test_timer_boot_avoids_touch_sd_and_app_startup(self):
         resume = CLOCK.split("bool DeskClockSleep::resumeAfterTimerWake()", 1)[1]
