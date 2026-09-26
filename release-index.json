@@ -1604,11 +1604,11 @@
   "firmware": {
     "asset": "firmware-t5s3-pro.bin",
     "kind": "firmware",
-    "sha256": "2f4279cb4dd49caa67b20609aef68abee61108cd5a9f55fb74e63dde210db8ef",
-    "size": 5968192,
-    "tag": "firmware-v1.2.84",
-    "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/firmware-v1.2.84/firmware-t5s3-pro.bin",
-    "version": "1.2.84"
+    "sha256": "86cff790ed583346b0d8464e0add99146b827be04b5a3eabce31a8f7f8da5e62",
+    "size": 5967904,
+    "tag": "firmware-v1.2.85",
+    "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/firmware-v1.2.85/firmware-t5s3-pro.bin",
+    "version": "1.2.85"
   },
   "schema": 1
 }
