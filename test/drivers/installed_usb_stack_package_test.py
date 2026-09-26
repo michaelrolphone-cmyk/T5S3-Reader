@@ -170,19 +170,22 @@ def run(identities=None):
     print(f'{len(observed_ids)} manifest-discovered ELF packages: ZIP/catalog CRC/SHA, '
           'imports, MMIO and dependencies PASS')
 
-    # The firmware compatibility bridge must probe every installed serial.port
-    # class package. Keep this coupled to the canonical package inventory so a
-    # newly added serial driver cannot be released but remain unreachable by
-    # Serial Monitor.
+    # The compatibility bridge must discover serial providers dynamically from
+    # the installed provider graph. A new serial.port package must therefore
+    # be reachable without maintaining a second hard-coded ID table.
     bridge_source = (ROOT / 'src/native/NativeUsbBridge.cpp').read_text(encoding='utf-8')
-    match = re.search(r'const char\* choices\[\]\s*=\s*\{([^}]*)\};', bridge_source)
-    assert match, 'USB serial provider choice table missing'
-    runtime_serial = set(re.findall(r'"([a-z0-9-]+)"', match.group(1)))
+    class_bridge_source = (
+        ROOT / 'src/native/NativeUsbClassBridge.cpp').read_text(encoding='utf-8')
+    assert 'nativeUsbClassBindNextInstalled(&cursor, &faulted)' in bridge_source, (
+        'USB serial provider iteration missing from compatibility bridge')
+    assert re.search(
+        r'installedClass\.select\(\s*"serial\.port"\s*,\s*1\s*,\s*cursor\s*,',
+        class_bridge_source), 'USB serial provider discovery is not capability-driven'
     expected_serial = {
         identity for identity, source in sources.items()
         if source['provides'][0]['capability'] == 'serial.port'
     }
-    assert runtime_serial == expected_serial, (runtime_serial, expected_serial)
+    assert expected_serial, 'no serial.port provider packages discovered'
 
     print(f'{len(selected)} selected USB ELF packages: MMIO, negative mutations, imports, SHA-256 PASS')
 
