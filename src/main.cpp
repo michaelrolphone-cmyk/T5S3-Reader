@@ -458,11 +458,12 @@ void setup() {
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
 
   setupDisplayAndFonts();
-  // Touch is an installed provider capability. It is acquired only after SD
-  // package storage and display initialization are ready; firmware never probes
-  // or acknowledges GT911 registers directly.
-  (void)nativeTouchResume();
-  LOG_INF("MAIN", "Touch provider: %s", nativeTouchAvailable() ? "ready" : "unavailable");
+  // Touch is an optional installed provider capability. Do not attempt to
+  // activate it during setup: input.navigation gets the first provider-graph
+  // opportunity from MappedInputManager::update(), so a missing touch package
+  // can never strand USB/controller navigation before Driver Manager is usable.
+  // nativeTouchTick() activates touch later in the normal input loop.
+  LOG_INF("MAIN", "Touch provider activation deferred to input loop");
   display.setFlipOutput(SETTINGS.flipUi != 0);
 
   // Present before any activity or mapped-input update can activate installed
