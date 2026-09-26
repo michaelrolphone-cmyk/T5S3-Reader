@@ -962,6 +962,58 @@
       "version": "0.1.5"
     },
     {
+      "asset": "gt911-touch--driver.elf",
+      "id": "gt911-touch",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "input.touch.raw",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "c63042a46a939f10b04901c5778edc0bbcb6ff46c3be623324d4944d09bc8ce4",
+            "size_bytes": 664
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "9b934b1056fc8a99f4973dccc311d991f4c4ff1e46b826d27fc2919e6555ec6d",
+            "size_bytes": 8736
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "b2e84b614f7f76e8dd0a971a4be0a7eea4374d22f8b79ce3062d041bfa1630ed",
+            "size_bytes": 44
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca",
+            "size_bytes": 14
+          }
+        ],
+        "id": "gt911-touch",
+        "requires": [
+          {
+            "capability": "i2c.bus",
+            "min_api": 1
+          },
+          {
+            "capability": "platform.clock",
+            "min_api": 1
+          }
+        ],
+        "version": "0.1.0"
+      },
+      "sha256": "9b934b1056fc8a99f4973dccc311d991f4c4ff1e46b826d27fc2919e6555ec6d",
+      "size": 8736,
+      "tag": "driver-gt911-touch-v0.1.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-gt911-touch-v0.1.0/gt911-touch--driver.elf",
+      "version": "0.1.0"
+    },
+    {
       "asset": "i2c-esp32s3-v2--driver.elf",
       "id": "i2c-esp32s3-v2",
       "kind": "driver",
