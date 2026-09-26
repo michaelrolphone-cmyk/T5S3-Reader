@@ -319,12 +319,6 @@ static bool likely_download_target(const char *start,const char *end){
   return false;
 }
 static bool append_url_encoded(char *out,size_t cap,const char *text);
-static bool range_contains(const char *start,const char *end,const char *needle){
-  if(!start||!end||start>=end||!needle||!needle[0])return false;
-  const size_t nlen=strlen(needle);
-  for(const char *p=start;p+nlen<=end;++p)if(!strncmp(p,needle,nlen))return true;
-  return false;
-}
 static bool copy_attr_value(const char *tag_start,const char *tag_end,const char *attr,
                             char *out,size_t cap){
   if(!tag_start||!tag_end||tag_start>=tag_end||!attr||!attr[0]||!out||cap<2u)return false;
