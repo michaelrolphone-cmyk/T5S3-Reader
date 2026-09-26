@@ -172,8 +172,18 @@ bool MappedInputManager::getTouchSwipe(TouchPoint& start, TouchPoint& end, const
   return true;
 }
 
+bool MappedInputManager::takeTouchHomeButtonPress(unsigned long& eventMs) const {
+  if (gpio.takeTouchHomeButtonPress(eventMs)) return true;
+  if (nativeNavigationFrame().pressed & RISC_NAV_HOME) {
+    eventMs = millis();
+    return true;
+  }
+  return false;
+}
+
 bool MappedInputManager::wasTouchHomeButtonPressed() const {
-  return gpio.wasTouchHomeButtonPressed() || (nativeNavigationFrame().pressed & RISC_NAV_HOME);
+  unsigned long eventMs = 0;
+  return takeTouchHomeButtonPress(eventMs);
 }
 
 MappedInputManager::Labels MappedInputManager::mapLabels(const char* back, const char* confirm, const char* previous,

@@ -37,7 +37,7 @@ void HalGPIO::begin() {
   if (touchReady) {
     touchTapQueue = xQueueCreate(TOUCH_TAP_QUEUE_DEPTH, sizeof(TouchPoint));
     touchSwipeQueue = xQueueCreate(TOUCH_SWIPE_QUEUE_DEPTH, sizeof(TouchSwipeEvent));
-    touchHomeQueue = xQueueCreate(TOUCH_HOME_QUEUE_DEPTH, sizeof(uint8_t));
+    touchHomeQueue = xQueueCreate(TOUCH_HOME_QUEUE_DEPTH, sizeof(unsigned long));
     if (touchTapQueue && touchSwipeQueue && touchHomeQueue &&
         xTaskCreate(touchTaskTrampoline, "touch-input", 4096, this, 4,
                     &touchTaskHandle) == pdPASS) {
@@ -96,8 +96,8 @@ void HalGPIO::processTouchEvent(const Board::TouchPoint& point,
   if (touchHomeButtonPressed) {
     if (!touchHomeButtonHeld &&
         now - lastTouchHomeButtonEventTime >= TOUCH_HOME_BUTTON_DEBOUNCE_MS) {
-      const uint8_t event = 1;
-      (void)xQueueSend(touchHomeQueue, &event, 0);
+      const unsigned long eventMs = now;
+      (void)xQueueSend(touchHomeQueue, &eventMs, 0);
       lastTouchHomeButtonEventTime = now;
     }
     touchHomeButtonHeld = true;
@@ -250,10 +250,14 @@ bool HalGPIO::getTouchSwipe(TouchPoint& start, TouchPoint& end) const {
   return true;
 }
 
-bool HalGPIO::wasTouchHomeButtonPressed() const {
+bool HalGPIO::takeTouchHomeButtonPress(unsigned long& eventMs) const {
   if (!touchHomeQueue) return false;
-  uint8_t event = 0;
-  return xQueueReceive(touchHomeQueue, &event, 0) == pdTRUE;
+  return xQueueReceive(touchHomeQueue, &eventMs, 0) == pdTRUE;
+}
+
+bool HalGPIO::wasTouchHomeButtonPressed() const {
+  unsigned long eventMs = 0;
+  return takeTouchHomeButtonPress(eventMs);
 }
 
 unsigned long HalGPIO::getHeldTime() const {
