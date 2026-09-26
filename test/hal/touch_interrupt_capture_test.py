@@ -14,7 +14,7 @@ THEME = (ROOT / "src/components/themes/BaseTheme.cpp").read_text(encoding="utf-8
 T5_BOARD = (ROOT / "lib/Board_T5S3/BoardT5S3.cpp").read_text(encoding="utf-8")
 
 assert "attachInterruptArg(BoardPins::TouchInterrupt" in HAL_CPP
-assert "touchInterruptThunk, this, FALLING" in HAL_CPP
+assert "touchInterruptThunk, this, CHANGE" in HAL_CPP
 assert 'xTaskCreate(touchTaskTrampoline, "touch-input"' in HAL_CPP
 
 # Early boot only probes the controller. The worker/ISR are armed after
