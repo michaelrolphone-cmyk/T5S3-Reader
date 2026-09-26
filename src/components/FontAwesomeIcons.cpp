@@ -150,4 +150,18 @@ bool draw(GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSi
   renderer.drawRect(x, y, size, size, black);
   return false;
 }
+
+bool drawRegular(GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSize, bool black) {
+  bool ignoredManifestRegular = false;
+  uint32_t cp = 0;
+  if (!t5_parse_icon(icon, &ignoredManifestRegular, &cp)) return false;
+
+  const int size = pointSize <= 12 ? 12 : pointSize <= 14 ? 14 : pointSize <= 16 ? 16 : 18;
+  if (drawWithFamily(renderer, x, y, cp, size, true, black)) return true;
+
+  LOG_ERR("FA", "No Font Awesome Regular glyph for '%s' (U+%04lX)",
+          icon ? icon : "", static_cast<unsigned long>(cp));
+  renderer.drawRect(x, y, size, size, black);
+  return false;
+}
 }  // namespace FontAwesomeIcons
