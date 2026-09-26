@@ -153,8 +153,15 @@ static bool fetch_vimm(void){
   char *p=html;
   while(vimm_count<MAX_VIMM&&(p=strstr(p,"href=\"/vault/"))){
     p+=6; char *q=strchr(p,'"'); if(!q)break; size_t plen=(size_t)(q-p); if(plen>=NAME_CAP){p=q+1;continue;}
+    /* The GB page contains site-wide platform links under /vault/<platform>.
+       Actual game detail links are /vault/<numeric-id>. Reject every nonnumeric
+       path so Browse/Search stays scoped to titles from VIMM_URL (/vault/GB). */
+    const char *id=p+7;
+    bool numeric_id=id<q;
+    for(const char *c=id;c<q;++c){if(*c<'0'||*c>'9'){numeric_id=false;break;}}
+    if(!numeric_id){p=q+1;continue;}
     char *gt=strchr(q,'>'); if(!gt)break; char *lt=strchr(gt+1,'<'); if(!lt)break; size_t nlen=(size_t)(lt-(gt+1));
-    if(nlen&&nlen<NAME_CAP&&plen>7){memcpy(vimm_paths[vimm_count],p,plen);vimm_paths[vimm_count][plen]=0;memcpy(vimm_names[vimm_count],gt+1,nlen);vimm_names[vimm_count][nlen]=0;
+    if(nlen&&nlen<NAME_CAP){memcpy(vimm_paths[vimm_count],p,plen);vimm_paths[vimm_count][plen]=0;memcpy(vimm_names[vimm_count],gt+1,nlen);vimm_names[vimm_count][nlen]=0;
       if(contains_ci(vimm_names[vimm_count],search_query))++vimm_count;}
     p=lt+1;
   }
