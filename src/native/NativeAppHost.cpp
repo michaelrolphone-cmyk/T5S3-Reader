@@ -9,6 +9,7 @@
 #include "AppReleaseAssetRules.h"
 #include "AppManifest.h"
 #include "AppPackageInstaller.h"
+#include "InstalledAppPath.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageUseGate.h"
@@ -1124,6 +1125,121 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            psramAlloc,
                            psramFree};
 }  // namespace
+
+bool installRequiredNativeApp(const char* artifact, std::string& displayName,
+                              std::string& failureDetail) {
+  displayName.clear();
+  failureDetail.clear();
+  if (!artifact || !t5_safe_elf_name(artifact) || !Storage.ready()) {
+    failureDetail = "Invalid app request or SD unavailable";
+    return false;
+  }
+
+  std::string installedPath;
+  t5_app_manifest_t installedManifest{};
+  if (resolveInstalledAppPath(artifact, installedPath, &installedManifest)) {
+    displayName = installedManifest.display_name;
+    return true;
+  }
+
+  if (!connectSavedWifi()) {
+    failureDetail = "Connect Wi-Fi or save a network, then retry";
+    return false;
+  }
+
+  std::vector<CatalogAsset> catalog;
+  if (!loadAuthoritativeAppCatalog(catalog)) {
+    failureDetail = "Application catalog is unavailable";
+    return false;
+  }
+  const auto match = std::find_if(catalog.begin(), catalog.end(),
+      [artifact](const CatalogAsset& candidate) {
+        return candidate.manifestValid &&
+               candidate.name == artifact &&
+               !std::strcmp(candidate.manifest.file_name, artifact);
+      });
+  if (match == catalog.end()) {
+    failureDetail = "Required app is not in the current catalog";
+    return false;
+  }
+  if (!match->manifest.compatible) {
+    displayName = match->manifest.display_name;
+    failureDetail = std::string("Requires firmware ") + match->manifest.min_firmware_version;
+    return false;
+  }
+
+  // Retain only the selected bounded fields before binary TLS. Releasing the
+  // rest of the catalog preserves the same SRAM/PSRAM discipline as App Store.
+  displayName = match->manifest.display_name;
+  std::string downloadUrl = match->url;
+  std::string manifestUrl = match->manifestUrl;
+  std::string json = match->manifestJson;
+  const uint64_t selectedSize = match->size;
+  const std::string catalogVersion = match->version;
+  std::vector<CatalogAsset>().swap(catalog);
+
+  if (json.empty()) {
+    if (manifestUrl.empty() || !HttpDownloader::fetchUrl(manifestUrl, json)) {
+      failureDetail = "Required app manifest download failed";
+      return false;
+    }
+    delay(1);
+  }
+  if (json.empty() || json.size() > 4096) {
+    failureDetail = "Required app manifest is invalid";
+    return false;
+  }
+
+  t5_app_manifest_t manifest{};
+  std::string version;
+  if (!parseAppManifest(json, manifest, &version, true) ||
+      std::strcmp(manifest.file_name, artifact) ||
+      version != catalogVersion ||
+      !manifest.compatible) {
+    failureDetail = "Required app release metadata is invalid";
+    return false;
+  }
+  displayName = manifest.display_name;
+
+  char digest[65]{};
+  {
+    RuntimeMemory::PsramJsonAllocator metadataAllocator;
+    JsonDocument metadata(&metadataAllocator);
+    if (deserializeJson(metadata, json) || !metadata.is<JsonObjectConst>() ||
+        !metadata["sha256"].is<const char*>() ||
+        !metadata["size_bytes"].is<uint64_t>() ||
+        metadata["size_bytes"].as<uint64_t>() != selectedSize) {
+      failureDetail = "Required app size or digest does not match catalog";
+      return false;
+    }
+    const char* value = metadata["sha256"].as<const char*>();
+    if (!RuntimePackages::validSha256Hex(value)) {
+      failureDetail = "Required app digest is invalid";
+      return false;
+    }
+    std::memcpy(digest, value, sizeof(digest) - 1);
+  }
+
+  const char* installFailure = nullptr;
+  if (!RuntimeOnlinePackages::installApplication(
+          artifact, version.c_str(), downloadUrl.c_str(), std::move(json),
+          selectedSize, digest, nullptr, nullptr, &installFailure)) {
+    failureDetail = installFailure ? installFailure : "Application installation failed";
+    return false;
+  }
+
+  // Never trust publication success alone for workflow continuation. Resolve
+  // the exact installed app through the normal verified inventory before the
+  // parent repeats its launch step.
+  installedPath.clear();
+  installedManifest = {};
+  if (!resolveInstalledAppPath(artifact, installedPath, &installedManifest)) {
+    failureDetail = "Installed app could not be verified";
+    return false;
+  }
+  displayName = installedManifest.display_name;
+  return true;
+}
 
 bool presentNativeAppUiFrame() {
   // Native UI lists and tables use the reader-friendly balanced waveform.
