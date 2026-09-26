@@ -403,53 +403,6 @@ static bool decode_anchor_text(const char *start,const char *end,char *out,size_
   out[w]=0;
   return w>0;
 }
-static int b64_value(char c){
-  if(c>='A'&&c<='Z')return c-'A';
-  if(c>='a'&&c<='z')return c-'a'+26;
-  if(c>='0'&&c<='9')return c-'0'+52;
-  if(c=='+')return 62;
-  if(c=='/')return 63;
-  return -1;
-}
-static bool decode_data_v(const char *start,const char *end,char *out,size_t cap){
-  if(!start||!end||start>=end||!out||cap<2u)return false;
-  uint32_t bits=0; unsigned bit_count=0; size_t w=0;
-  for(const char *p=start;p<end;++p){
-    if(*p=='=')break;
-    const int v=b64_value(*p);
-    if(v<0)continue;
-    bits=(bits<<6)|(uint32_t)v;
-    bit_count+=6;
-    while(bit_count>=8){
-      bit_count-=8;
-      if(w+1u>=cap)return false;
-      const unsigned shift=bit_count;
-      const char c=(char)((bits>>shift)&0xffu);
-      if((unsigned char)c<32u&&c!='\t')return false;
-      out[w++]=c;
-      if(bit_count==0)bits=0;
-      else bits&=((1u<<bit_count)-1u);
-    }
-  }
-  while(w&&out[w-1]==' ')--w;
-  out[w]=0;
-  return w>0;
-}
-static bool decode_data_v_from_range(const char *start,const char *end,char *out,size_t cap){
-  const char needle[]="data-v=\"";
-  const size_t nlen=sizeof(needle)-1u;
-  const char *p=start;
-  while(p&&p<end){
-    p=strstr(p,needle);
-    if(!p||p>=end)return false;
-    const char *value=p+nlen;
-    const char *quote=strchr(value,'"');
-    if(!quote||quote>end)return false;
-    if(decode_data_v(value,quote,out,cap))return true;
-    p=quote+1;
-  }
-  return false;
-}
 static bool vimm_path_seen(const char *path){
   for(uint32_t i=0;i<vimm_count;++i)if(!strcmp(vimm_paths[i],path))return true;
   return false;
@@ -470,9 +423,7 @@ static bool fetch_vimm_url(const char *url,bool include_pages,bool server_filter
   vimm_count=0;
   if(!fetch_vimm_document(url))return false;
 
-  /* Top-level Game Boy navigation is ordinary anchor text. Keep it separate
-     from game-title parsing so numeric links elsewhere in a result row cannot
-     masquerade as titles. */
+  /* The Game Boy landing page exposes A-Z navigation as ordinary anchors. */
   if(include_pages){
     char *p=html;
     while(vimm_count<MAX_VIMM&&(p=strstr(p,"href=\"/vault/GB"))){
@@ -489,22 +440,50 @@ static bool fetch_vimm_url(const char *url,bool include_pages,bool server_filter
     }
   }
 
-  /* Vimm obscures catalog titles in data-v Base64 canvas attributes. Only a
-     numeric /vault/<id> anchor that actually contains a decodable data-v title
-     is a game row. This deliberately rejects rating/score/action anchors such
-     as the visible "9" links that previously polluted the list. */
-  char *p=html;
-  while(vimm_count<MAX_VIMM&&(p=strstr(p,"href=\"/vault/"))){
-    p+=6;
-    char *q=strchr(p,'"'); if(!q)break;
-    const size_t plen=(size_t)(q-p);
-    if(plen>=NAME_CAP||!vimm_game_path(p,plen)){p=q+1;continue;}
-    char *gt=strchr(q,'>'); if(!gt)break;
-    char *close=strstr(gt+1,"</a>"); if(!close){p=gt+1;continue;}
-    char title[NAME_CAP];
-    if(decode_data_v_from_range(gt+1,close,title,sizeof(title)))
-      (void)add_vimm_entry(p,plen,title,VIMM_GAME,server_filtered);
-    p=close+4;
+  /* Vimm's list pages are table.hovertable rows. The game identity is the
+     first anchor in the first TD. Other cells can contain numeric links
+     (ratings/actions), so never scan arbitrary /vault/<id> anchors. */
+  char *table=html;
+  while(vimm_count<MAX_VIMM&&(table=strstr(table,"<table"))){
+    char *table_tag_end=strchr(table,'>');
+    if(!table_tag_end)break;
+    if(!range_contains(table,table_tag_end,"hovertable")){table=table_tag_end+1;continue;}
+    char *table_end=strstr(table_tag_end,"</table>");
+    if(!table_end)break;
+
+    char *row=table_tag_end+1;
+    while(vimm_count<MAX_VIMM&&(row=strstr(row,"<tr"))&&row<table_end){
+      char *row_tag_end=strchr(row,'>');
+      if(!row_tag_end||row_tag_end>=table_end)break;
+      char *row_end=strstr(row_tag_end,"</tr>");
+      if(!row_end||row_end>table_end)break;
+
+      char *td=strstr(row_tag_end,"<td");
+      if(!td||td>=row_end){row=row_end+5;continue;}
+      char *td_tag_end=strchr(td,'>');
+      if(!td_tag_end||td_tag_end>=row_end){row=row_end+5;continue;}
+      char *td_end=strstr(td_tag_end,"</td>");
+      if(!td_end||td_end>row_end){row=row_end+5;continue;}
+
+      char *anchor=strstr(td_tag_end,"<a");
+      if(!anchor||anchor>=td_end){row=row_end+5;continue;}
+      char *anchor_tag_end=strchr(anchor,'>');
+      if(!anchor_tag_end||anchor_tag_end>=td_end){row=row_end+5;continue;}
+
+      char path[NAME_CAP];
+      if(!copy_attr_value(anchor,anchor_tag_end,"href",path,sizeof(path))||
+         !vimm_game_path(path,strlen(path))){
+        row=row_end+5;continue;
+      }
+
+      char *anchor_end=strstr(anchor_tag_end,"</a>");
+      if(!anchor_end||anchor_end>td_end){row=row_end+5;continue;}
+      char title[NAME_CAP];
+      if(decode_anchor_text(anchor_tag_end+1,anchor_end,title,sizeof(title)))
+        (void)add_vimm_entry(path,strlen(path),title,VIMM_GAME,server_filtered);
+      row=row_end+5;
+    }
+    table=table_end+8;
   }
   return true;
 }
@@ -544,13 +523,16 @@ static bool search_vimm(const char *query){
 }
 static bool open_vimm_page(const char *path){
   if(!path||!vimm_page_path(path,strlen(path)))return false;
-  char url[NAME_CAP+32u];
-  int n=snprintf(url,sizeof(url),"https://vimm.net%s",path);
+  const char prefix[]="/vault/GB/";
+  const size_t prefix_len=sizeof(prefix)-1u;
+  if(strncmp(path,prefix,prefix_len)!=0||!path[prefix_len]||path[prefix_len+1])return false;
+  char section=path[prefix_len];
+  if(section>='a'&&section<='z')section=(char)(section-'a'+'A');
+  if(section<'A'||section>'Z')return false;
+  char url[96];
+  int n=snprintf(url,sizeof(url),"https://vimm.net/vault/?p=list&system=GB&section=%c",section);
   if(n<=0||(size_t)n>=sizeof(url))return false;
   search_query[0]=0;
-  /* A letter/index page contains the global A-Z navigation again. Once the
-     user opens a letter, expose only the Game Boy title links from that page
-     so resetting selection to row 0 lands on the first title, not "A". */
   return fetch_vimm_url(url,false,false);
 }
 static void html_to_detail_text(const char *title){
