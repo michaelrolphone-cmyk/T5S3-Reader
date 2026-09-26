@@ -61,6 +61,12 @@ bool httpRequest(const char* url, uint8_t method, const t5_http_header_t* header
   if (t5_app_get_api(T5_APP_ABI_VERSION) == nullptr) return false;
   if (response && responseCapacity) response[0] = '\0';
 
+  const uint32_t connectBudget = std::min(timeoutMs ? timeoutMs : kDefaultTimeoutMs, 15000u);
+  if (!RuntimeNetwork::ensureConnected(connectBudget)) {
+    result->transport_error = ESP_ERR_INVALID_STATE;
+    return false;
+  }
+
   ResponseSink sink{response, responseCapacity};
   esp_http_client_config_t config = {};
   config.url = url;
