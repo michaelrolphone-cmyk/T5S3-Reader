@@ -145,20 +145,32 @@ inline bool installApplication(const char* artifact, const char* version,
       std::strcmp(plan->identity.id, id.c_str()))
     return fail("package descriptor rejected");
 
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  vTaskDelay(1);
+#endif
   if (Storage.exists(elfPath.c_str())) return fail("download target already exists");
   if (!Storage.rename(elfStage.c_str(), elfPath.c_str()))
     return fail("could not finalize downloaded ELF");
   if (!verifyAppPair(elfPath.c_str(), jsonPath.c_str(), artifact, true))
     return fail("downloaded ELF failed size, format or SHA-256 verification");
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  vTaskDelay(1);
+#endif
   if (!writeExclusive(root + "/.package.json", descriptor.chars(), static_cast<size_t>(rebuiltCount)))
     return fail("could not stage package descriptor");
   // The source has passed the release digest and exact sidecar checks. Before
   // re-staging, recover only a previous stage whose contents match this source
   // byte for byte (or its interrupted prefix). Never remove an unknown stage.
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  vTaskDelay(1);
+#endif
   if (!Recovery::discardMatchingStage(root, *plan, policy, installedCapabilityVersion)) {
     LOG_ERR("APPSTORE", "Unrecognized or mismatched package stage preserved for inspection: %s", id.c_str());
     return fail("existing package stage does not match release");
   }
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  vTaskDelay(1);
+#endif
   const auto installed = installOrdinaryFromSd(root.c_str(), policy,
                                                 installedCapabilityVersion);
   if (installed.result != OrdinaryInstallResult::Installed) {
