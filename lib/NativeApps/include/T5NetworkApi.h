@@ -48,11 +48,6 @@ typedef struct {
                          char *response,
                          size_t response_capacity,
                          t5_http_result_t *result);
-
-    // Append-only: bring up station networking using firmware-owned saved
-    // credentials. Tries the last-connected SSID first, then the first saved
-    // network. The call is bounded by timeout_ms and never opens a picker.
-    bool (*wifi_connect_saved)(uint32_t timeout_ms);
 } t5_network_api_v1;
 
 const t5_network_api_v1 *t5_network_get_api(uint32_t api_version);
