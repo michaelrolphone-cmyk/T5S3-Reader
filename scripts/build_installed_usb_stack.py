@@ -153,7 +153,7 @@ def dependency_order(candidates: list[dict]) -> list[dict]:
 
 def build(identities: set[str] | None = None) -> list[dict]:
     candidates = dependency_order(discovered())
-    valid_ids = {item[0] for item in DRIVERS}
+    valid_ids = {candidate['id'] for candidate in candidates}
     if identities is not None and (not identities or not identities <= valid_ids):
         raise ValueError(f"invalid requested driver IDs: {sorted(identities - valid_ids)}")
     DESTINATION.mkdir(parents=True, exist_ok=True)
