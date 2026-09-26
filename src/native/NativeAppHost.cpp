@@ -13,6 +13,7 @@
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageUseGate.h"
 #include "runtime/packages/PackagePreflight.h"
+#include "runtime/memory/PsramJson.h"
 #include <AppManifestRules.h>
 #include <ArduinoJson.h>
 #include "components/FontAwesomeIcons.h"
@@ -557,12 +558,14 @@ bool validThirdPartyReleaseTag(const char* tag) {
 }
 
 bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
-  std::string json;
+  RuntimeMemory::PsramTextStream json(kMaxCatalogBytes);
   esp_task_wdt_reset();
-  if (!HttpDownloader::fetchUrl(kReleaseIndexUrl, json) ||
-      json.empty() || json.size() > kMaxCatalogBytes) return false;
-  JsonDocument document;
-  if (deserializeJson(document, json) || !document.is<JsonObjectConst>() ||
+  if (!json.good() || !HttpDownloader::fetchUrl(kReleaseIndexUrl, json) ||
+      !json.good() || json.empty()) return false;
+  delay(1);
+  RuntimeMemory::PsramJsonAllocator allocator;
+  JsonDocument document(&allocator);
+  if (deserializeJson(document, json.chars(), json.size()) || !document.is<JsonObjectConst>() ||
       document["schema"] != 1 || !document["apps"].is<JsonArrayConst>()) return false;
   const JsonArrayConst entries = document["apps"].as<JsonArrayConst>();
   if (entries.size() == 0 || entries.size() > kMaxCatalogAssets) return false;
@@ -642,7 +645,8 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
       }
       return false;
     }
-    JsonDocument sidecar;
+    RuntimeMemory::PsramJsonAllocator sidecarAllocator;
+    JsonDocument sidecar(&sidecarAllocator);
     if (deserializeJson(sidecar, asset.manifestJson) || !sidecar.is<JsonObjectConst>() ||
         !sidecar["sha256"].is<const char*>() || !sidecar["size_bytes"].is<uint64_t>() ||
         sidecar["size_bytes"].as<uint64_t>() != asset.size ||
@@ -782,12 +786,10 @@ bool refreshExternalGameBoy(std::vector<CatalogAsset>& catalog) {
 }
 
 bool loadAuthoritativeAppCatalog(std::vector<CatalogAsset>& catalog) {
-  if (!loadIndependentAppIndex(catalog)) return false;
-  // External providers are resolved from their own release stream. The
-  // release-index entry is only a signed/bounded bootstrap and offline fallback,
-  // so publishing GameBoy never requires manually editing RiscRTE metadata.
-  (void)refreshExternalGameBoy(catalog);
-  return true;
+  // The release-index workflow synchronizes external providers such as GameBoy.
+  // Keep the device catalog path to one bounded metadata TLS transaction; live
+  // provider API fan-out here needlessly fragments internal RAM before binary TLS.
+  return loadIndependentAppIndex(catalog);
 }
 
 bool connectSavedWifi() {
