@@ -6,6 +6,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 SETTINGS = (ROOT / "src/activities/settings/SettingsActivity.cpp").read_text(encoding="utf-8")
+BATTERY = (ROOT / "src/activities/settings/BatteryStatusActivity.cpp").read_text(encoding="utf-8")
 REQUIRED = (ROOT / "src/activities/util/RequiredAppActivity.cpp").read_text(encoding="utf-8")
 HOST = (ROOT / "src/native/NativeAppHost.cpp").read_text(encoding="utf-8")
 HOST_HEADER = (ROOT / "src/native/NativeAppHost.h").read_text(encoding="utf-8")
@@ -22,6 +23,14 @@ class RequiredAppWorkflowContract(unittest.TestCase):
         self.assertIn('"settings.elf", "Settings"', SETTINGS)
         self.assertIn("launchAttempted = false;", SETTINGS)
         self.assertIn("launchFailed = false;", SETTINGS)
+
+    def test_battery_settings_action_uses_required_app_install_and_resumes(self):
+        self.assertIn('resolveInstalledAppPath("battery.elf", batteryPath)', BATTERY)
+        self.assertIn('std::make_unique<RequiredAppActivity>', BATTERY)
+        self.assertIn('"battery.elf", "Battery Status"', BATTERY)
+        self.assertIn("launchAttempted = false;", BATTERY)
+        self.assertNotIn('runNativeApp("/sd/Apps/battery.elf"', BATTERY)
+        self.assertNotIn("Install Battery Status from the App Store", BATTERY)
 
     def test_required_app_screen_has_inline_install_and_retry(self):
         self.assertIn('mappedInput.mapLabels("Back"', REQUIRED)
