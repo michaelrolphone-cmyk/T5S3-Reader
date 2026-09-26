@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "RecentBooksStore.h"
+#include "components/FontAwesomeIcons.h"
 #include "components/UITheme.h"
 #include "LyraIcons.h"
 #include "fontIds.h"
@@ -26,7 +27,8 @@ BaseTheme::ButtonMenuLayout LyraTheme::buttonMenuLayout(const GfxRenderer& rende
 
 void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
-                               const std::function<UIIcon(int index)>& rowIcon) const {
+                               const std::function<UIIcon(int index)>& rowIcon,
+                               const std::function<const char*(int index)>& rowAppIcon) const {
   const auto layout = buttonMenuLayout(renderer, rect, selectedIndex);
   for (int i = layout.start; i < buttonCount && i < layout.start + layout.pageSize; ++i) {
     int tileWidth = rect.width - LyraMetrics::values.contentSidePadding * 2;
@@ -46,7 +48,14 @@ void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
     const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
     const int textY = tileRect.y + (LyraMetrics::values.menuRowHeight - lineHeight) / 2;
 
-    if (rowIcon != nullptr) {
+    const char* appIcon = rowAppIcon ? rowAppIcon(i) : nullptr;
+    if (appIcon && appIcon[0] != '\0') {
+      constexpr int kAppIconSize = 12;
+      const int iconX = textX + (mainMenuIconSize - kAppIconSize) / 2;
+      const int iconY = tileRect.y + (LyraMetrics::values.menuRowHeight - kAppIconSize) / 2;
+      (void)FontAwesomeIcons::drawRegular(renderer, iconX, iconY, appIcon, kAppIconSize, true);
+      textX += mainMenuIconSize + hPaddingInSelection + 2;
+    } else if (rowIcon != nullptr) {
       UIIcon icon = rowIcon(i);
       const uint8_t* iconBitmap = iconForName(icon, mainMenuIconSize);
       if (iconBitmap != nullptr) {

@@ -1,6 +1,7 @@
 #include "T5AppApi.h"
 #include "T5PackageManagerApi.h"
 #include "T5UiApi.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -8,11 +9,31 @@
 
 #define MAX_ITEMS 64u
 #define TITLE_BYTES 88u
-#define SUBTITLE_BYTES 128u
-#define STATUS_BYTES 160u
+#define SUBTITLE_BYTES 160u
+#define STATUS_BYTES 192u
 #define INBOX_NAME_BYTES 128u
 
-static t5_package_preview_t packages[MAX_ITEMS];
+typedef enum {
+    PACKAGE_ROW_INSTALLED = 1,
+    PACKAGE_ROW_INBOX = 2,
+} package_row_source_t;
+
+typedef struct {
+    uint8_t source;
+    uint8_t has_staged;
+    uint8_t reserved[2];
+    t5_installed_package_t installed;
+    t5_package_preview_t staged;
+} package_row_t;
+
+typedef enum {
+    PACKAGE_ACTION_NONE = 0,
+    PACKAGE_ACTION_INSTALL = 1,
+    PACKAGE_ACTION_REPLACE = 2,
+    PACKAGE_ACTION_UNINSTALL = 3,
+} package_action_t;
+
+static package_row_t packages[MAX_ITEMS];
 static t5_ui_list_row_t rows[MAX_ITEMS];
 static char titles[MAX_ITEMS][TITLE_BYTES];
 static char subtitles[MAX_ITEMS][SUBTITLE_BYTES];
@@ -25,9 +46,13 @@ static bool online_view;
 
 static bool api_ready(const t5_package_manager_api_v1 *manager,
                       const t5_ui_api_v1 *ui) {
+    const size_t manager_required =
+        offsetof(t5_package_manager_api_v1, replace) + sizeof(manager->replace);
     return manager && manager->api_version == T5_PACKAGE_MANAGER_API_VERSION &&
            manager->struct_size >= offsetof(t5_package_manager_api_v1, preview_archive) &&
            manager->preview && manager->install && manager->uninstall &&
+           manager->installed_refresh && manager->installed_count &&
+           manager->installed_get && manager->replace &&
            ui && ui->api_version == T5_UI_API_VERSION &&
            ui->struct_size >= offsetof(t5_ui_api_v1, previous_index) + sizeof(ui->previous_index) &&
            ui->render_list && ui->poll_event && ui->hit_test &&
@@ -84,7 +109,29 @@ static void set_row(uint32_t index, const t5_package_preview_t *info,
 }
 static void refresh(const t5_app_api_v1 *app,
                     const t5_package_manager_api_v1 *manager) {
+    uint32_t i;
     row_count = 0;
+    memset(packages, 0, sizeof(packages));
+
+    if (manager->installed_refresh()) {
+        const uint32_t installed_count = manager->installed_count();
+        for (i = 0; i < installed_count && row_count < MAX_ITEMS; ++i) {
+            t5_installed_package_t installed = {0};
+            if (!manager->installed_get(i, &installed)) continue;
+            package_row_t *item = &packages[row_count];
+            item->source = PACKAGE_ROW_INSTALLED;
+            item->installed = installed;
+            t5_package_preview_t staged = {0};
+            if (manager->preview(installed.id, &staged) &&
+                staged_matches_installed(&staged, &installed)) {
+                item->has_staged = 1;
+                item->staged = staged;
+            }
+            format_installed_row(row_count);
+            ++row_count;
+        }
+    }
+
     if (!app->dir_open("/sd/Packages/Inbox")) return;
     t5_app_dirent_t entry = {0};
     while (app->dir_next(&entry)) {
@@ -141,11 +188,12 @@ static void render(const t5_ui_api_v1 *ui, int32_t selected, const char *status)
         .subtitle = online_view ? "Pinned release ZIPs; tap header for SD" :
                     "Offline /Packages/Inbox; tap header for online",
         .status = status ? status : "",
-        .back_label = "Back", .confirm_label = row_count ? "Actions" : "",
+        .back_label = "Back", .confirm_label = row_count ? "Manage" : "",
         .previous_label = "Up", .next_label = "Down",
     };
-    if (row_count) ui->render_list(&chrome, rows, row_count, selected);
-    else {
+    if (row_count) {
+        ui->render_list(&chrome, rows, row_count, selected);
+    } else {
         const t5_ui_list_row_t empty = {
             online_view ? "No release packages" : "No packages in SD inbox",
             online_view ? "Check saved Wi-Fi or generic package catalog" :
@@ -183,38 +231,68 @@ static int32_t menu(const t5_ui_api_v1 *ui, const char* title,
         ui->render_list(&chrome, items, count, selected);
     }
 }
+
 static bool confirm(const t5_ui_api_v1 *ui, const char *heading,
                     const char *description, const char *action) {
     const t5_ui_list_row_t choices[2] = {
-        {"Cancel", "Keep all installed and staged files", "Back", 0},
+        {"Cancel", "Keep the installed package unchanged", "Back", 0},
         {action, description, "Confirm", T5_UI_LIST_HIGHLIGHT_VALUE},
     };
     return menu(ui, heading, description, choices, 2) == 1;
 }
-static int32_t select_action(const t5_ui_api_v1 *ui,
-                             const t5_package_preview_t *info) {
+
+static package_action_t select_action(const t5_ui_api_v1 *ui,
+                                      const package_row_t *item) {
     t5_ui_list_row_t actions[3] = {
-        {"Cancel", "Return to package list", "Back", 0},
+        {"Cancel", "Return to installed package list", "Back", 0},
         {"", "", "", 0},
         {"", "", "", 0},
     };
+    char replacement_title[64] = {0};
+    char replacement_subtitle[128] = {0};
+    char replacement_value[T5_PACKAGE_VERSION_MAX] = {0};
     uint32_t count = 1;
-    int32_t installIndex = -1, uninstallIndex = -1;
-    if (info->install_allowed) {
-        installIndex = (int32_t)count;
+    int32_t replace_index = -1, install_index = -1, uninstall_index = -1;
+
+    if (item->source == PACKAGE_ROW_INSTALLED) {
+        if (item->installed.valid_installation && item->has_staged &&
+            item->staged.valid_installation &&
+            staged_matches_installed(&item->staged, &item->installed)) {
+            const int order = version_order(item->staged.version, item->installed.version);
+            if (order != 0) {
+                replace_index = (int32_t)count;
+                snprintf(replacement_title, sizeof(replacement_title), "%s",
+                         order < 0 ? "Downgrade to staged version" : "Replace with staged version");
+                snprintf(replacement_subtitle, sizeof(replacement_subtitle),
+                         "Installed %s -> staged %s", item->installed.version, item->staged.version);
+                snprintf(replacement_value, sizeof(replacement_value), "%s", item->staged.version);
+                actions[count++] = (t5_ui_list_row_t){
+                    replacement_title, replacement_subtitle, replacement_value,
+                    T5_UI_LIST_HIGHLIGHT_VALUE};
+            }
+        }
+        if (item->installed.valid_installation) {
+            uninstall_index = (int32_t)count;
+            actions[count++] = (t5_ui_list_row_t){
+                "Uninstall package", "Remove this installed managed generation",
+                "Remove", 0};
+        }
+    } else if (item->source == PACKAGE_ROW_INBOX && item->staged.install_allowed) {
+        install_index = (int32_t)count;
         actions[count++] = (t5_ui_list_row_t){
-            info->installed_version[0] ? "Update package" : "Install package",
-            "Publish verified bytes; does not activate ELF", "Install", 0};
+            "Install package", "Publish verified staged bytes; no activation",
+            "Install", T5_UI_LIST_HIGHLIGHT_VALUE};
     }
-    if (info->installed_version[0]) {
-        uninstallIndex = (int32_t)count;
-        actions[count++] = (t5_ui_list_row_t){
-            "Uninstall package", "Requires inactive ELF; removes this version",
-            "Remove", 0};
-    }
-    const int32_t choice = menu(ui, "Package actions", info->id, actions, count);
-    return choice == installIndex ? 1 : choice == uninstallIndex ? 2 : 0;
+
+    const char *id = item->source == PACKAGE_ROW_INSTALLED ?
+        item->installed.id : item->staged.id;
+    const int32_t choice = menu(ui, "Package actions", id, actions, count);
+    if (choice == replace_index) return PACKAGE_ACTION_REPLACE;
+    if (choice == install_index) return PACKAGE_ACTION_INSTALL;
+    if (choice == uninstall_index) return PACKAGE_ACTION_UNINSTALL;
+    return PACKAGE_ACTION_NONE;
 }
+
 static void activate(const t5_package_manager_api_v1 *manager,
                      const t5_ui_api_v1 *ui, int32_t selected,
                      char *status, size_t capacity) {
@@ -249,12 +327,14 @@ __attribute__((visibility("default"))) void app_main(void) {
     const t5_ui_api_v1 *ui = t5_ui_get_api(T5_UI_API_VERSION);
     if (!app || !app->dir_open || !app->dir_next || !app->dir_close ||
         !app->set_back_exits_app || !api_ready(manager, ui)) return;
+
     app->set_back_exits_app(false);
     online_view = false;
     refresh(app, manager);
     int32_t selected = 0;
     char status[STATUS_BYTES] = {0};
     render(ui, selected, status);
+
     for (;;) {
         t5_ui_event_t event = {0};
         if (!ui->poll_event(&event, 20)) break;

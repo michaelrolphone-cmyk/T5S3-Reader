@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "Firmware Update",
   "file_name": "ota_update.elf",
-  "icon": "solid:f021"
+  "icon": "solid:f021",
+  "category": [
+    "Firmware",
+    "System"
+  ]
 }

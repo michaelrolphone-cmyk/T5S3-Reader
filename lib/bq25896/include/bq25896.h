@@ -51,6 +51,18 @@ typedef enum
     BQ25896_VBUS_STATUS_OTG = 7u
 } bq25896_vbus_status_t;
 
+/* Incoming power only. OTG is our own output, including the interval where
+ * REG03 has enabled boost but REG0B has not settled (and the reverse on
+ * shutdown). Never turn source on/off observations into charger plug events.
+ * This read-only classifier does not select a USB role or change registers. */
+static inline bool bq25896_has_external_input(uint8_t power, uint8_t status, uint8_t vbus)
+{
+    const uint8_t source = (status & BQ25896_REG0B_VBUS_STAT_MASK) >> BQ25896_REG0B_VBUS_STAT_SHIFT;
+    return !(power & BQ25896_REG03_OTG_CONFIG_MASK) && source != BQ25896_VBUS_STATUS_OTG &&
+           (source != BQ25896_VBUS_STATUS_NO_INPUT || (status & BQ25896_REG0B_PG_STAT_MASK) ||
+            (vbus & BQ25896_REG11_VBUS_GD_MASK));
+}
+
 /**
  * @brief REG0B[4:3] charging status.
  */

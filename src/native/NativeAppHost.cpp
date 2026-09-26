@@ -1,15 +1,20 @@
 #include "NativeStreamBridge.h"
 #include "NativeAppHost.h"
+#include "components/StartupScreen.h"
 #include "NativeNavigationInput.h"
 #include "NativeOnlineAppInstall.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
 #include "AppCatalogIndex.h"
+#include "AppCatalogPolicy.h"
+#include "AppReleaseAssetRules.h"
 #include "AppManifest.h"
 #include "AppPackageInstaller.h"
+#include "InstalledAppPath.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageUseGate.h"
 #include "runtime/packages/PackagePreflight.h"
+#include "runtime/memory/PsramJson.h"
 #include <AppManifestRules.h>
 #include <ArduinoJson.h>
 #include "components/FontAwesomeIcons.h"
@@ -21,6 +26,7 @@
 #include <NativeAppLauncher.h>
 #include <T5AppApi.h>
 #include <esp_task_wdt.h>
+#include <esp_heap_caps.h>
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -32,7 +38,6 @@
 #include "MappedInputManager.h"
 #include "NativeSettingsBridge.h"
 #include "NativeSystemUiBridge.h"
-#include "WifiCredentialStore.h"
 #include "activities/RenderLock.h"
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
@@ -45,19 +50,36 @@
 namespace {
 constexpr const char* kLatestReleaseApi =
     "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
+constexpr const char* kReleaseIndexUrl =
+    "https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/release-index/release-index.json";
+constexpr const char* kGameBoyRepository = "michaelrolphone-cmyk/T5S3-GameBoy";
 constexpr const char* kAggregateAppCatalogName = "app-catalog.json";
-constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr size_t kMaxCatalogAssets = 128;
+constexpr size_t kMaxCatalogBytes = 64 * 1024;
+constexpr size_t kMaxManifestBytes = 8 * 1024;
 constexpr size_t kMaxReleaseAssetObjectBytes = 8192;
+
+struct ReleaseCatalogAsset {
+  std::string name;
+  std::string url;
+  std::string manifestUrl;
+  uint64_t size = 0;
+};
 
 struct CatalogAsset {
   std::string name;
   std::string url;
   std::string manifestUrl;
+  std::string manifestJson;
   std::string version;
   uint64_t size = 0;
   t5_app_manifest_t manifest{};
   bool manifestValid = false;
+};
+
+struct CatalogManifestAsset {
+  std::string name;
+  std::string url;
 };
 
 struct Session {
@@ -68,6 +90,8 @@ struct Session {
   std::vector<CatalogAsset> catalog;
   std::vector<t5_app_manifest_t> installed;
   std::string launchPath;
+  char catalogDownloadError[128]{};
+  bool catalogNeedsRefresh = false;
   bool backExitsApp = true;
   bool exiting = false;
   bool presenting = false;
@@ -97,23 +121,28 @@ void present(bool full) {
 }
 struct ServicedFrame {
   GfxRenderer* renderer;
-  bool full;
+  HalDisplay::RefreshMode mode;
   std::atomic<bool> done{false};
 };
 void renderServicedFrame(void* opaque) {
   auto* frame = static_cast<ServicedFrame*>(opaque);
-  frame->renderer->displayBuffer(frame->full ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+  frame->renderer->displayBuffer(frame->mode);
   frame->done.store(true, std::memory_order_release);
   // No frame/session access after publication; this firmware task never runs ELF code.
   vTaskDelete(nullptr);
 }
-bool presentServiced(bool full, void (*service)(void*), void* context) {
+bool presentServicedMode(HalDisplay::RefreshMode mode,
+                         void (*service)(void*), void* context) {
   auto* s = current();
   if (!s || !service) return false;
-  ServicedFrame frame{&s->renderer, full};
+  ServicedFrame frame{&s->renderer, mode};
   s->presenting = true;
+  // Panel_EPD pixel transfer can keep the calling loop task running long
+  // enough to starve IDLE0. Put the blocking renderer work on the other core
+  // while this owner task yields and services input/watchdog state.
+  const BaseType_t refreshCore = xPortGetCoreID() == 0 ? 1 : 0;
   if (xTaskCreatePinnedToCore(renderServicedFrame, "app-refresh", 8192, &frame,
-                            1, nullptr, xPortGetCoreID()) != pdPASS) {
+                            1, nullptr, refreshCore) != pdPASS) {
     s->presenting = false;
     return false;
   }
@@ -126,6 +155,11 @@ bool presentServiced(bool full, void (*service)(void*), void* context) {
   }
   s->presenting = false;
   return true;
+}
+void noRefreshService(void*) {}
+bool presentServiced(bool full, void (*service)(void*), void* context) {
+  return presentServicedMode(full ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH,
+                             service, context);
 }
 void setBackExitsApp(bool enabled) {
   if (auto* s = current()) s->backExitsApp = enabled;
@@ -154,6 +188,14 @@ bool poll(t5_app_input_t* out, uint32_t waitMs) {
   return true;
 }
 uint32_t clockMs() { return ::millis(); }
+void* psramAlloc(size_t size) {
+  if (!current() || !size) return nullptr;
+  return heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+}
+void psramFree(void* ptr) {
+  if (!current() || !ptr) return;
+  heap_caps_free(ptr);
+}
 
 const char* storagePath(const char* path) {
   if (!path) return nullptr;
@@ -194,18 +236,9 @@ void dirClose() {
   if (auto* s = current(); s && s->directory.isOpen()) s->directory.close();
 }
 
-bool endsWithElf(const std::string& name) {
-  if (name.size() < 4) return false;
-  const size_t n = name.size();
-  return name[n - 4] == '.' && std::tolower(static_cast<unsigned char>(name[n - 3])) == 'e' &&
-         std::tolower(static_cast<unsigned char>(name[n - 2])) == 'l' &&
-         std::tolower(static_cast<unsigned char>(name[n - 1])) == 'f';
-}
-
 bool safeAssetName(const std::string& name) {
-  if (name.empty() || name.size() >= T5_APP_ASSET_NAME_MAX || !endsWithElf(name)) return false;
-  if (name.find("..") != std::string::npos) return false;
-  return name.find('/') == std::string::npos && name.find('\\') == std::string::npos;
+  return name.size() < T5_APP_ASSET_NAME_MAX &&
+         NativeAppReleaseRules::appElfAssetName(name);
 }
 
 bool copyVersion(const std::string& value, char* out, size_t capacity) {
@@ -266,11 +299,10 @@ uint64_t jsonUintField(const std::string& object, const char* field) {
 
 class CatalogReleaseStream final : public Stream {
  public:
-  CatalogReleaseStream(std::vector<CatalogAsset>& catalog, std::string& catalogUrl)
+  CatalogReleaseStream(std::vector<ReleaseCatalogAsset>& catalog, std::string& catalogUrl)
       : catalog_(catalog), catalogUrl_(catalogUrl) {
     catalog_.clear();
     catalogUrl_.clear();
-    manifests_.reserve(kMaxCatalogAssets);
   }
 
   size_t write(uint8_t byte) override { return write(&byte, 1); }
@@ -288,15 +320,25 @@ class CatalogReleaseStream final : public Stream {
 
   bool finish() {
     if (failed_ || !assetsComplete_) return false;
-    for (auto& asset : catalog_) {
+
+    // A release now contains app ELFs plus independently versioned driver and
+    // provider ELFs. Only an ELF with an exact sibling <basename>.json sidecar
+    // is an application candidate. Prune everything else before the next TLS
+    // handshake so driver packages cannot enter the App Store fallback path
+    // and their large CatalogAsset slots do not remain resident.
+    size_t write = 0;
+    for (size_t read = 0; read < catalog_.size(); ++read) {
+      auto& asset = catalog_[read];
       const auto expected = asset.name.substr(0, asset.name.size() - 4) + ".json";
-      for (const auto& manifest : manifests_) {
-        if (manifest.name == expected) {
-          asset.manifestUrl = manifest.url;
-          break;
-        }
-      }
+      const auto manifest = std::find_if(manifests_.begin(), manifests_.end(),
+          [&](const CatalogManifestAsset& candidate) { return candidate.name == expected; });
+      if (manifest == manifests_.end()) continue;
+      asset.manifestUrl = manifest->url;
+      if (write != read) catalog_[write] = std::move(asset);
+      ++write;
     }
+    catalog_.resize(write);
+    catalog_.shrink_to_fit();
     return true;
   }
 
@@ -366,7 +408,7 @@ class CatalogReleaseStream final : public Stream {
   }
 
   void parseObject() {
-    CatalogAsset asset;
+    ReleaseCatalogAsset asset;
     if (!jsonStringField(object_, "name", asset.name) ||
         !jsonStringField(object_, "browser_download_url", asset.url)) {
       object_.clear();
@@ -378,14 +420,15 @@ class CatalogReleaseStream final : public Stream {
     } else if (safeAssetName(asset.name)) {
       if (catalog_.size() < kMaxCatalogAssets) catalog_.push_back(std::move(asset));
     } else if (asset.name.size() > 5 && asset.name.substr(asset.name.size() - 5) == ".json") {
-      if (manifests_.size() < kMaxCatalogAssets) manifests_.push_back(std::move(asset));
+      if (manifests_.size() < kMaxCatalogAssets)
+        manifests_.push_back(CatalogManifestAsset{std::move(asset.name), std::move(asset.url)});
     }
     object_.clear();
   }
 
-  std::vector<CatalogAsset>& catalog_;
+  std::vector<ReleaseCatalogAsset>& catalog_;
   std::string& catalogUrl_;
-  std::vector<CatalogAsset> manifests_;
+  std::vector<CatalogManifestAsset> manifests_;
   std::string object_;
   size_t keyMatch_ = 0;
   int objectDepth_ = 0;
@@ -403,13 +446,15 @@ void sortCatalog(std::vector<CatalogAsset>& catalog) {
   });
 }
 
-bool loadAggregateCatalog(std::vector<CatalogAsset>& catalog, const std::string& catalogUrl) {
+bool loadAggregateCatalog(const std::vector<ReleaseCatalogAsset>& releaseAssets,
+                          std::vector<CatalogAsset>& catalog,
+                          const std::string& catalogUrl) {
   std::vector<std::string> manifests;
   if (!fetchAppCatalogIndex(catalogUrl, manifests)) return false;
 
   std::vector<CatalogAsset> validated;
   validated.reserve(manifests.size());
-  for (const auto& json : manifests) {
+  for (auto& json : manifests) {
     esp_task_wdt_reset();
     std::string version;
     t5_app_manifest_t manifest{};
@@ -418,11 +463,16 @@ bool loadAggregateCatalog(std::vector<CatalogAsset>& catalog, const std::string&
               static_cast<unsigned>(validated.size() + 1), manifest.file_name);
       return false;
     }
-
-    const auto asset = std::find_if(catalog.begin(), catalog.end(), [&](const CatalogAsset& candidate) {
-      return candidate.name == manifest.file_name;
-    });
-    if (asset == catalog.end()) {
+    if (NativeAppCatalogPolicy::isRetiredArtifact(manifest.file_name)) continue;
+    // Keep the bounded sidecar bytes with the validated catalog entry. Install
+    // needs the exact manifest again to stage the managed package. Reusing these
+    // already-downloaded bytes avoids a second TLS handshake while the App Store
+    // session and release catalog are resident.
+    const auto asset = std::find_if(releaseAssets.begin(), releaseAssets.end(),
+        [&](const ReleaseCatalogAsset& candidate) {
+          return candidate.name == manifest.file_name;
+        });
+    if (asset == releaseAssets.end()) {
       LOG_ERR("APPSTORE", "Aggregate app %s has no matching release ELF", manifest.file_name);
       return false;
     }
@@ -433,7 +483,12 @@ bool loadAggregateCatalog(std::vector<CatalogAsset>& catalog, const std::string&
       return false;
     }
 
-    CatalogAsset resolved = *asset;
+    CatalogAsset resolved;
+    resolved.name = asset->name;
+    resolved.url = asset->url;
+    resolved.manifestUrl = asset->manifestUrl;
+    resolved.size = asset->size;
+    resolved.manifestJson = std::move(json);
     resolved.manifest = manifest;
     resolved.version = std::move(version);
     resolved.manifestValid = true;
@@ -445,19 +500,23 @@ bool loadAggregateCatalog(std::vector<CatalogAsset>& catalog, const std::string&
   return true;
 }
 
-bool loadCatalogManifests(std::vector<CatalogAsset>& catalog) {
+bool loadCatalogManifests(std::vector<ReleaseCatalogAsset>& releaseAssets,
+                          std::vector<CatalogAsset>& catalog) {
   std::vector<CatalogAsset> validated;
-  validated.reserve(catalog.size());
-  for (auto& asset : catalog) {
+  validated.reserve(releaseAssets.size());
+  for (auto& asset : releaseAssets) {
     esp_task_wdt_reset();
-    if (asset.manifestUrl.empty()) {
-      LOG_ERR("APPSTORE", "Skipping release ELF %s: no JSON sidecar", asset.name.c_str());
-      continue;
-    }
+    if (asset.manifestUrl.empty()) continue;
+
     std::string json;
     std::string version;
     t5_app_manifest_t manifest{};
-    if (!HttpDownloader::fetchUrl(asset.manifestUrl, json)) {
+    const bool fetched = HttpDownloader::fetchUrl(asset.manifestUrl, json);
+    // Reclaim the metadata worker before either JSON parsing or the next TLS
+    // connection. Without this, repeated per-app fallback requests can overlap
+    // an idle-task-delayed FreeRTOS task deletion and fragment internal heap.
+    delay(1);
+    if (!fetched) {
       LOG_ERR("APPSTORE", "Fallback manifest download failed: %s", asset.manifestUrl.c_str());
       continue;
     }
@@ -470,99 +529,243 @@ bool loadCatalogManifests(std::vector<CatalogAsset>& catalog) {
               asset.name.c_str(), manifest.file_name);
       continue;
     }
-    asset.manifest = manifest;
-    asset.version = std::move(version);
-    asset.manifestValid = true;
-    validated.push_back(std::move(asset));
+    if (NativeAppCatalogPolicy::isRetiredArtifact(manifest.file_name)) continue;
+
+    CatalogAsset resolved;
+    resolved.name = std::move(asset.name);
+    resolved.url = std::move(asset.url);
+    resolved.manifestUrl = std::move(asset.manifestUrl);
+    resolved.size = asset.size;
+    resolved.manifest = manifest;
+    resolved.version = std::move(version);
+    resolved.manifestValid = true;
+    validated.push_back(std::move(resolved));
   }
   sortCatalog(validated);
   catalog.swap(validated);
   return true;
 }
 
-bool connectSavedWifi() {
-  if (RuntimeNetwork::ready()) return true;
-
-  WIFI_STORE.loadFromFile();
-  const WifiCredential* cred = nullptr;
-  const std::string last = WIFI_STORE.getLastConnectedSsid();
-  if (!last.empty()) cred = WIFI_STORE.findCredential(last);
-  if (!cred) {
-    const auto& credentials = WIFI_STORE.getCredentials();
-    if (!credentials.empty()) cred = &credentials.front();
+bool validThirdPartyReleaseTag(const char* tag) {
+  if (!tag || tag[0] != 'v') return false;
+  unsigned dots = 0;
+  bool digit = false;
+  for (const char* cursor = tag + 1; *cursor; ++cursor) {
+    if (*cursor >= '0' && *cursor <= '9') {
+      digit = true;
+    } else if (*cursor == '.' && digit && dots < 2) {
+      ++dots;
+      digit = false;
+    } else {
+      return false;
+    }
   }
-  if (!cred || cred->ssid.empty()) {
-    LOG_ERR("APPSTORE", "No saved Wi-Fi credentials are available");
+  return dots == 2 && digit;
+}
+
+bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
+  RuntimeMemory::PsramTextStream json(kMaxCatalogBytes);
+  esp_task_wdt_reset();
+  if (!json.good() || !HttpDownloader::fetchUrl(kReleaseIndexUrl, json) ||
+      !json.good() || json.empty()) return false;
+  delay(1);
+  RuntimeMemory::PsramJsonAllocator allocator;
+  JsonDocument document(&allocator);
+  if (deserializeJson(document, json.chars(), json.size()) || !document.is<JsonObjectConst>() ||
+      document["schema"] != 1 || !document["apps"].is<JsonArrayConst>()) return false;
+  const JsonArrayConst entries = document["apps"].as<JsonArrayConst>();
+  if (entries.size() == 0 || entries.size() > kMaxCatalogAssets) return false;
+
+  std::vector<CatalogAsset> indexed;
+  indexed.reserve(entries.size());
+  for (JsonVariantConst entry : entries) {
+    esp_task_wdt_reset();
+    if (!entry.is<JsonObjectConst>() || !entry["id"].is<const char*>() ||
+        !entry["version"].is<const char*>() || !entry["tag"].is<const char*>() ||
+        !entry["asset"].is<const char*>() || !entry["url"].is<const char*>() ||
+        !entry["size"].is<uint64_t>() || !entry["sha256"].is<const char*>() ||
+        !entry["manifest"].is<JsonObjectConst>()) return false;
+    CatalogAsset asset;
+    asset.name = entry["asset"].as<const char*>();
+    const char* id = entry["id"].as<const char*>();
+    const char* version = entry["version"].as<const char*>();
+    const char* tag = entry["tag"].as<const char*>();
+    const char* url = entry["url"].as<const char*>();
+    const char* digest = entry["sha256"].as<const char*>();
+    JsonVariantConst sourceRepoValue = entry["source_repo"];
+    if (!sourceRepoValue.isNull() && !sourceRepoValue.is<const char*>()) return false;
+    const char* sourceRepo = sourceRepoValue.is<const char*>() ?
+        sourceRepoValue.as<const char*>() : "";
+    asset.size = entry["size"].as<uint64_t>();
+    const std::string expectedId = asset.name.size() > 4 ?
+        asset.name.substr(0, asset.name.size() - 4) : std::string();
+    const bool gameBoyProvider = !std::strcmp(id, "gameboy") &&
+        !std::strcmp(sourceRepo, kGameBoyRepository);
+    if (!safeAssetName(asset.name) || asset.name.size() <= 4 ||
+        asset.name.substr(asset.name.size() - 4) != ".elf" ||
+        !RuntimePackages::validSha256Hex(digest) ||
+        asset.size < 52 || asset.size > 8u * 1024u * 1024u) {
+      if (gameBoyProvider) {
+        LOG_ERR("APPSTORE", "Ignoring malformed cached GameBoy record; external resolver will retry");
+        continue;
+      }
+      return false;
+    }
+    if (sourceRepo[0] && !gameBoyProvider) return false;
+    std::string expectedTag;
+    std::string releaseRepository = "michaelrolphone-cmyk/T5S3-Reader";
+    if (gameBoyProvider) {
+      if (!validThirdPartyReleaseTag(tag)) {
+        LOG_ERR("APPSTORE", "Ignoring malformed cached GameBoy tag");
+        continue;
+      }
+      expectedTag = tag;
+      releaseRepository = kGameBoyRepository;
+    } else {
+      expectedTag = std::string("app-") + expectedId + "-v" + version;
+    }
+    const std::string expectedUrl = "https://github.com/" + releaseRepository +
+        "/releases/download/" + tag + "/" + asset.name;
+    if (std::strcmp(id, expectedId.c_str()) || std::strcmp(tag, expectedTag.c_str()) ||
+        std::strcmp(url, expectedUrl.c_str())) {
+      if (gameBoyProvider) {
+        LOG_ERR("APPSTORE", "Ignoring malformed cached GameBoy identity/URL");
+        continue;
+      }
+      return false;
+    }
+    asset.url = url;
+    // Sidecars are fetched on demand after the cached catalog JSON is reclaimed.
+    asset.manifestUrl = expectedUrl.substr(0, expectedUrl.size() - asset.name.size()) +
+        expectedId + ".json";
+    if (NativeAppCatalogPolicy::isRetiredId(id)) continue;
+    serializeJson(entry["manifest"], asset.manifestJson);
+    std::string parsedVersion;
+    if (asset.manifestJson.empty() || asset.manifestJson.size() > kMaxManifestBytes ||
+        !parseAppManifest(asset.manifestJson, asset.manifest, &parsedVersion, true) ||
+        asset.manifest.file_name != asset.name ||
+        parsedVersion != version) {
+      if (gameBoyProvider) {
+        LOG_ERR("APPSTORE", "Ignoring malformed cached GameBoy manifest");
+        continue;
+      }
+      return false;
+    }
+    RuntimeMemory::PsramJsonAllocator sidecarAllocator;
+    JsonDocument sidecar(&sidecarAllocator);
+    if (deserializeJson(sidecar, asset.manifestJson) || !sidecar.is<JsonObjectConst>() ||
+        !sidecar["sha256"].is<const char*>() || !sidecar["size_bytes"].is<uint64_t>() ||
+        sidecar["size_bytes"].as<uint64_t>() != asset.size ||
+        std::strcmp(sidecar["sha256"].as<const char*>(), digest)) {
+      if (gameBoyProvider) {
+        LOG_ERR("APPSTORE", "Ignoring cached GameBoy digest/size mismatch");
+        continue;
+      }
+      return false;
+    }
+    asset.version = version;
+    asset.manifestValid = true;
+    if (std::any_of(indexed.begin(), indexed.end(), [&](const CatalogAsset& existing) {
+          return existing.name == asset.name;
+        })) return false;
+    indexed.push_back(std::move(asset));
+  }
+  sortCatalog(indexed);
+  catalog.swap(indexed);
+  return true;
+}
+
+
+bool loadAuthoritativeAppCatalog(std::vector<CatalogAsset>& catalog) {
+  // The release-index workflow synchronizes external providers such as GameBoy.
+  // Keep the device catalog path to one bounded metadata TLS transaction; live
+  // provider API fan-out here needlessly fragments internal RAM before binary TLS.
+  return loadIndependentAppIndex(catalog);
+}
+
+
+bool loadAvailableAppCatalog(std::vector<CatalogAsset>& catalog) {
+  if (loadAuthoritativeAppCatalog(catalog)) {
+    LOG_INF("APPSTORE", "Loaded %u apps from the independent/external catalog",
+            static_cast<unsigned>(catalog.size()));
+    return true;
+  }
+
+  catalog.clear();
+  std::string catalogUrl;
+  std::vector<ReleaseCatalogAsset> releaseAssets;
+  {
+    CatalogReleaseStream release(releaseAssets, catalogUrl);
+    esp_task_wdt_reset();
+    if (!HttpDownloader::fetchUrl(kLatestReleaseApi, release)) {
+      LOG_ERR("APPSTORE", "Failed to fetch latest GitHub release");
+      return false;
+    }
+    esp_task_wdt_reset();
+    if (!release.finish()) {
+      LOG_ERR("APPSTORE", "Latest release asset stream was incomplete or invalid");
+      return false;
+    }
+  }
+
+  delay(1);
+  LOG_INF("APPSTORE", "Found %u application ELF/JSON pairs in latest release",
+          static_cast<unsigned>(releaseAssets.size()));
+
+  if (!catalogUrl.empty()) {
+    if (loadAggregateCatalog(releaseAssets, catalog, catalogUrl)) {
+      LOG_INF("APPSTORE", "Loaded %u apps from aggregate release catalog",
+              static_cast<unsigned>(catalog.size()));
+      return true;
+    }
+    LOG_ERR("APPSTORE", "Aggregate catalog present but unavailable; refusing per-app TLS fan-out");
+    std::vector<CatalogAsset>().swap(catalog);
     return false;
   }
 
-  LOG_INF("APPSTORE", "Connecting to saved Wi-Fi: %s", cred->ssid.c_str());
-  RuntimeNetwork::wifi().connect(cred->ssid.c_str(), cred->password.empty() ? nullptr : cred->password.c_str());
-
-  const uint32_t started = millis();
-  while (millis() - started < kWifiConnectTimeoutMs) {
-    esp_task_wdt_reset();
-    const auto state = RuntimeNetwork::state();
-    if (state.connection == RuntimeNetwork::ConnectionState::Connected && state.hasAddress) {
-      WIFI_STORE.setLastConnectedSsid(cred->ssid);
-      LOG_INF("APPSTORE", "Wi-Fi ready: %s", state.address);
-      return true;
-    }
-    if (state.connection == RuntimeNetwork::ConnectionState::Failed ||
-        state.connection == RuntimeNetwork::ConnectionState::NetworkNotFound) {
-      LOG_ERR("APPSTORE", "Saved Wi-Fi connection failed before IP assignment");
-      return false;
-    }
-    delay(100);
-  }
-  LOG_ERR("APPSTORE", "Timed out waiting for saved Wi-Fi and IP address");
-  return RuntimeNetwork::ready();
+  LOG_ERR("APPSTORE", "Release is missing %s; loading up to %u paired app manifests",
+          kAggregateAppCatalogName, static_cast<unsigned>(releaseAssets.size()));
+  const bool loaded = loadCatalogManifests(releaseAssets, catalog);
+  LOG_INF("APPSTORE", "Legacy fallback loaded %u apps", static_cast<unsigned>(catalog.size()));
+  return loaded;
 }
+
 
 bool appCatalogRefresh() {
   auto* s = current();
   if (!s) return false;
-  s->catalog.clear();
-  if (!connectSavedWifi()) return false;
+  s->catalogNeedsRefresh = false;
+  // A refresh invalidates every prior release record. Free the backing storage,
+  // not just the elements, so stale catalog capacity is not carried into the
+  // next TLS handshake on a memory-constrained ESP32-S3.
+  std::vector<CatalogAsset>().swap(s->catalog);
+  return loadAvailableAppCatalog(s->catalog);
+}
 
-  std::string catalogUrl;
-  CatalogReleaseStream release(s->catalog, catalogUrl);
-  esp_task_wdt_reset();
-  if (!HttpDownloader::fetchUrl(kLatestReleaseApi, release)) {
-    LOG_ERR("APPSTORE", "Failed to fetch latest GitHub release");
+bool ensureCatalogReady(Session* s) {
+  if (!s) return false;
+  if (!s->catalogNeedsRefresh) return true;
+  s->catalogNeedsRefresh = false;
+  delay(1);  // Let the completed install frame fully unwind before metadata TLS.
+  if (!loadAuthoritativeAppCatalog(s->catalog)) {
+    LOG_ERR("APPSTORE", "Deferred catalog refresh after install attempt failed");
+    std::vector<CatalogAsset>().swap(s->catalog);
     return false;
   }
-  esp_task_wdt_reset();
-  if (!release.finish()) {
-    LOG_ERR("APPSTORE", "Latest release asset stream was incomplete or invalid");
-    return false;
-  }
-  LOG_INF("APPSTORE", "Found %u ELF assets in latest release", static_cast<unsigned>(s->catalog.size()));
-
-  if (catalogUrl.empty()) {
-    LOG_ERR("APPSTORE", "Release is missing %s", kAggregateAppCatalogName);
-  }
-  if (!catalogUrl.empty() && loadAggregateCatalog(s->catalog, catalogUrl)) {
-    LOG_INF("APPSTORE", "Loaded %u apps from aggregate release catalog",
-            static_cast<unsigned>(s->catalog.size()));
-    return true;
-  }
-
-  LOG_ERR("APPSTORE", "Aggregate catalog unavailable; loading up to %u per-app manifests (slower)",
+  LOG_INF("APPSTORE", "Deferred catalog reload: %u apps",
           static_cast<unsigned>(s->catalog.size()));
-  const bool loaded = loadCatalogManifests(s->catalog);
-  LOG_INF("APPSTORE", "Fallback loaded %u apps", static_cast<unsigned>(s->catalog.size()));
-  return loaded;
+  return true;
 }
 
 uint32_t appCatalogCount() {
   auto* s = current();
-  return s ? static_cast<uint32_t>(s->catalog.size()) : 0u;
+  if (!ensureCatalogReady(s)) return 0u;
+  return static_cast<uint32_t>(s->catalog.size());
 }
 
 bool appCatalogGet(uint32_t index, t5_app_release_asset_t* out) {
   auto* s = current();
-  if (!s || !out || index >= s->catalog.size()) return false;
+  if (!out || !ensureCatalogReady(s) || index >= s->catalog.size()) return false;
   *out = {};
   const auto& asset = s->catalog[index];
   std::strncpy(out->name, asset.name.c_str(), sizeof(out->name) - 1);
@@ -573,14 +776,16 @@ bool appCatalogGet(uint32_t index, t5_app_release_asset_t* out) {
 
 bool appCatalogManifestGet(uint32_t index, t5_app_manifest_t* out) {
   auto* s = current();
-  if (!s || !out || index >= s->catalog.size() || !s->catalog[index].manifestValid) return false;
+  if (!out || !ensureCatalogReady(s) || index >= s->catalog.size() ||
+      !s->catalog[index].manifestValid) return false;
   *out = s->catalog[index].manifest;
   return true;
 }
 
 bool appCatalogVersionGet(uint32_t index, char* out, size_t capacity) {
   auto* s = current();
-  if (!s || index >= s->catalog.size() || !s->catalog[index].manifestValid) return false;
+  if (!ensureCatalogReady(s) || index >= s->catalog.size() ||
+      !s->catalog[index].manifestValid) return false;
   return copyVersion(s->catalog[index].version, out, capacity);
 }
 
@@ -631,42 +836,140 @@ bool installedAppVersionGet(const char* fileName, char* out, size_t capacity) {
   return copyVersion(version, out, capacity);
 }
 
-bool appCatalogDownload(uint32_t index) {
-  auto* s = current();
-  if (!s || !Storage.ready() || index >= s->catalog.size()) return false;
-  const CatalogAsset selected = s->catalog[index];
-  if (!safeAssetName(selected.name) ||
-      !RuntimePackages::safePackageEntryName(selected.name.c_str()) ||
-      !selected.manifestValid || selected.manifestUrl.empty() ||
-      selected.size < 52 || selected.size > 8u * 1024u * 1024u) return false;
-
-  std::string json, version;
-  t5_app_manifest_t manifest{};
-  if (!HttpDownloader::fetchUrl(selected.manifestUrl, json) ||
-      json.empty() || json.size() > 4096 ||
-      !parseAppManifest(json, manifest, &version, true) ||
-      !manifest.compatible || selected.name != manifest.file_name ||
-      version != selected.version) return false;
-  JsonDocument metadata;
-  if (deserializeJson(metadata, json) || !metadata.is<JsonObjectConst>() ||
-      !metadata["sha256"].is<const char*>() ||
-      !metadata["size_bytes"].is<unsigned>() ||
-      metadata["size_bytes"].as<unsigned>() != selected.size) {
-    LOG_ERR("APPSTORE", "Release metadata lacks matching executable length and digest");
-    return false;
+bool catalogDownloadFailed(Session* s, const char* reason) {
+  if (s) {
+    std::snprintf(s->catalogDownloadError, sizeof(s->catalogDownloadError), "%s",
+                  reason ? reason : "unknown install failure");
+    LOG_ERR("APPSTORE", "App install failed: %s", s->catalogDownloadError);
   }
-  const char* digest = metadata["sha256"].as<const char*>();
-  if (!RuntimePackages::validSha256Hex(digest)) return false;
-  char installed[T5_APP_VERSION_MAX]{};
-  if (installedAppVersionGet(selected.name.c_str(), installed, sizeof(installed)) &&
-      RuntimePackages::comparePackageVersions(version.c_str(), installed) !=
-          RuntimePackages::VersionOrder::Newer) return false;
+  return false;
+}
 
-  // There is exactly one publication mechanism for all four ordinary package
-  // kinds. A release is first converted to an exclusive canonical SD source;
-  // that source is independently verified by the shared transaction engine.
-  return RuntimeOnlinePackages::installApplication(selected.name.c_str(),
-      version.c_str(), selected.url.c_str(), json, selected.size, digest);
+bool appCatalogDownloadWithProgress(uint32_t index,
+                                    t5_app_catalog_progress_fn progress,
+                                    void* progressContext) {
+  auto* s = current();
+  if (!s) return false;
+  s->catalogDownloadError[0] = '\0';
+  if (!Storage.ready()) return catalogDownloadFailed(s, "SD storage is unavailable");
+  if (index >= s->catalog.size()) return catalogDownloadFailed(s, "catalog selection is invalid");
+
+  const auto completeEntry = [](const CatalogAsset& asset) {
+    return safeAssetName(asset.name) &&
+        RuntimePackages::safePackageEntryName(asset.name.c_str()) &&
+        asset.manifestValid &&
+        (!asset.manifestJson.empty() || !asset.manifestUrl.empty()) &&
+        !asset.url.empty() &&
+        asset.size >= 52 && asset.size <= 8u * 1024u * 1024u;
+  };
+
+  // Catalog URLs/raw manifests are deliberately reclaimed before binary TLS.
+  // If a previous install failed after that reclamation, the visible catalog
+  // can still contain names/versions but no download metadata. Self-heal that
+  // state before rejecting the user's next Install/Update action.
+  std::string requestedName = s->catalog[index].name;
+  if (!completeEntry(s->catalog[index])) {
+    LOG_ERR("APPSTORE", "Selected catalog entry lost download metadata; reloading catalog");
+    std::vector<CatalogAsset>().swap(s->catalog);
+    if (!loadAuthoritativeAppCatalog(s->catalog))
+      return catalogDownloadFailed(s, "release catalog refresh failed");
+    const auto recovered = std::find_if(s->catalog.begin(), s->catalog.end(),
+        [&](const CatalogAsset& asset) { return asset.name == requestedName; });
+    if (recovered == s->catalog.end() || !completeEntry(*recovered))
+      return catalogDownloadFailed(s, "release catalog entry is incomplete");
+    index = static_cast<uint32_t>(std::distance(s->catalog.begin(), recovered));
+  }
+
+  const CatalogAsset& selected = s->catalog[index];
+
+  // Copy only the selected release fields needed after catalog scratch is
+  // reclaimed. Avoid duplicating the full CatalogAsset and its retained JSON.
+  std::string artifact = selected.name;
+  std::string downloadUrl = selected.url;
+  std::string manifestUrl = selected.manifestUrl;
+  std::string json = selected.manifestJson;
+  const uint64_t selectedSize = selected.size;
+  const std::string catalogVersion = selected.version;
+
+  std::string version;
+  t5_app_manifest_t manifest{};
+  if (json.empty()) {
+    if (!HttpDownloader::fetchUrl(manifestUrl, json))
+      return catalogDownloadFailed(s, "app manifest download failed");
+    delay(1);
+  }
+  if (json.empty() || json.size() > 4096)
+    return catalogDownloadFailed(s, "app manifest is empty or too large");
+  if (!parseAppManifest(json, manifest, &version, true))
+    return catalogDownloadFailed(s, "app manifest is invalid");
+  if (!manifest.compatible)
+    return catalogDownloadFailed(s, "app requires newer firmware");
+  if (artifact != manifest.file_name)
+    return catalogDownloadFailed(s, "app manifest filename does not match release");
+  if (version != catalogVersion)
+    return catalogDownloadFailed(s, "app manifest version does not match release");
+
+  char digest[65]{};
+  {
+    RuntimeMemory::PsramJsonAllocator metadataAllocator;
+    JsonDocument metadata(&metadataAllocator);
+    if (deserializeJson(metadata, json) || !metadata.is<JsonObjectConst>() ||
+        !metadata["sha256"].is<const char*>() ||
+        !metadata["size_bytes"].is<unsigned>() ||
+        metadata["size_bytes"].as<unsigned>() != selectedSize) {
+      LOG_ERR("APPSTORE", "Release metadata lacks matching executable length and digest");
+      return catalogDownloadFailed(s, "app size or digest metadata does not match release");
+    }
+    const char* value = metadata["sha256"].as<const char*>();
+    if (!RuntimePackages::validSha256Hex(value))
+      return catalogDownloadFailed(s, "app digest is invalid");
+    std::memcpy(digest, value, sizeof(digest) - 1);
+  }
+
+  char installed[T5_APP_VERSION_MAX]{};
+  if (installedAppVersionGet(artifact.c_str(), installed, sizeof(installed)) &&
+      RuntimePackages::comparePackageVersions(version.c_str(), installed) !=
+          RuntimePackages::VersionOrder::Newer)
+    return catalogDownloadFailed(s, "catalog version is not newer than installed app");
+
+  // Release every retained URL and raw sidecar buffer before mbedTLS requests
+  // its large contiguous handshake buffers. The selected fields above are now
+  // independent copies and survive this reclamation.
+  for (auto& asset : s->catalog) {
+    std::string().swap(asset.manifestJson);
+    std::string().swap(asset.manifestUrl);
+    std::string().swap(asset.url);
+  }
+  std::string().swap(manifestUrl);
+
+  const char* failureReason = nullptr;
+  const bool installedOk = RuntimeOnlinePackages::installApplication(
+      artifact.c_str(), version.c_str(), downloadUrl.c_str(), json,
+      selectedSize, digest, progress, progressContext, &failureReason);
+
+  // Do not open metadata TLS again while this install frame still owns
+  // package/verification scratch. Mark the catalog dirty and let the App Store's
+  // next catalog query reload it after this function has fully returned.
+  std::vector<CatalogAsset>().swap(s->catalog);
+  s->catalogNeedsRefresh = true;
+
+  if (!installedOk)
+    return catalogDownloadFailed(s, failureReason ? failureReason : "package installation failed");
+  return true;
+}
+
+bool appCatalogDownload(uint32_t index) {
+  return appCatalogDownloadWithProgress(index, nullptr, nullptr);
+}
+
+bool appCatalogDownloadLastError(char* out, size_t capacity) {
+  auto* s = current();
+  if (!s || !out || !capacity || !s->catalogDownloadError[0]) return false;
+  const size_t length = std::strlen(s->catalogDownloadError);
+  const size_t copied = std::min(length, capacity - 1);
+  std::memcpy(out, s->catalogDownloadError, copied);
+  out[copied] = '\0';
+  return true;
 }
 
 bool installedRefresh() {
@@ -773,8 +1076,133 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            appCatalogManifestGet,
                            installedAppVersionGet,
                            appCatalogVersionGet,
-                           presentServiced};
+                           presentServiced,
+                           appCatalogDownloadLastError,
+                           appCatalogDownloadWithProgress,
+                           psramAlloc,
+                           psramFree};
 }  // namespace
+
+bool installRequiredNativeApp(const char* artifact, std::string& displayName,
+                              std::string& failureDetail) {
+  displayName.clear();
+  failureDetail.clear();
+  if (!artifact || !t5_safe_elf_name(artifact) || !Storage.ready()) {
+    failureDetail = "Invalid app request or SD unavailable";
+    return false;
+  }
+
+  std::string installedPath;
+  t5_app_manifest_t installedManifest{};
+  if (resolveInstalledAppPath(artifact, installedPath, &installedManifest)) {
+    displayName = installedManifest.display_name;
+    return true;
+  }
+
+  std::vector<CatalogAsset> catalog;
+  if (!loadAvailableAppCatalog(catalog)) {
+    failureDetail = "Application catalog is unavailable";
+    return false;
+  }
+  const auto match = std::find_if(catalog.begin(), catalog.end(),
+      [artifact](const CatalogAsset& candidate) {
+        return candidate.manifestValid &&
+               candidate.name == artifact &&
+               !std::strcmp(candidate.manifest.file_name, artifact);
+      });
+  if (match == catalog.end()) {
+    failureDetail = "Required app is not in the current catalog";
+    return false;
+  }
+  if (!match->manifest.compatible) {
+    displayName = match->manifest.display_name;
+    failureDetail = std::string("Requires firmware ") + match->manifest.min_firmware_version;
+    return false;
+  }
+
+  // Retain only the selected bounded fields before binary TLS. Releasing the
+  // rest of the catalog preserves the same SRAM/PSRAM discipline as App Store.
+  displayName = match->manifest.display_name;
+  std::string downloadUrl = match->url;
+  std::string manifestUrl = match->manifestUrl;
+  std::string json = match->manifestJson;
+  const uint64_t selectedSize = match->size;
+  const std::string catalogVersion = match->version;
+  std::vector<CatalogAsset>().swap(catalog);
+
+  if (json.empty()) {
+    if (manifestUrl.empty() || !HttpDownloader::fetchUrl(manifestUrl, json)) {
+      failureDetail = "Required app manifest download failed";
+      return false;
+    }
+    delay(1);
+  }
+  if (json.empty() || json.size() > 4096) {
+    failureDetail = "Required app manifest is invalid";
+    return false;
+  }
+
+  t5_app_manifest_t manifest{};
+  std::string version;
+  if (!parseAppManifest(json, manifest, &version, true) ||
+      std::strcmp(manifest.file_name, artifact) ||
+      version != catalogVersion ||
+      !manifest.compatible) {
+    failureDetail = "Required app release metadata is invalid";
+    return false;
+  }
+  displayName = manifest.display_name;
+
+  char digest[65]{};
+  {
+    RuntimeMemory::PsramJsonAllocator metadataAllocator;
+    JsonDocument metadata(&metadataAllocator);
+    if (deserializeJson(metadata, json) || !metadata.is<JsonObjectConst>() ||
+        !metadata["sha256"].is<const char*>() ||
+        !metadata["size_bytes"].is<uint64_t>() ||
+        metadata["size_bytes"].as<uint64_t>() != selectedSize) {
+      failureDetail = "Required app size or digest does not match catalog";
+      return false;
+    }
+    const char* value = metadata["sha256"].as<const char*>();
+    if (!RuntimePackages::validSha256Hex(value)) {
+      failureDetail = "Required app digest is invalid";
+      return false;
+    }
+    std::memcpy(digest, value, sizeof(digest) - 1);
+  }
+
+  const char* installFailure = nullptr;
+  if (!RuntimeOnlinePackages::installApplication(
+          artifact, version.c_str(), downloadUrl.c_str(), std::move(json),
+          selectedSize, digest, nullptr, nullptr, &installFailure)) {
+    failureDetail = installFailure ? installFailure : "Application installation failed";
+    return false;
+  }
+
+  // Never trust publication success alone for workflow continuation. Resolve
+  // the exact installed app through the normal verified inventory before the
+  // parent repeats its launch step.
+  installedPath.clear();
+  installedManifest = {};
+  if (!resolveInstalledAppPath(artifact, installedPath, &installedManifest)) {
+    failureDetail = "Installed app could not be verified";
+    return false;
+  }
+  displayName = installedManifest.display_name;
+  return true;
+}
+
+
+bool presentNativeAppUiFrame() {
+  // Native UI lists and tables use the reader-friendly balanced waveform.
+  // Reuse the serviced refresh path so synchronous panel pixel transfer does
+  // not starve the loop task's core idle watchdog.
+  const bool presented = presentServicedMode(HalDisplay::BALANCED_REFRESH,
+                                              noRefreshService, nullptr);
+  if (!presented) LOG_ERR("APPSTORE", "Could not start cooperative native UI refresh");
+  return presented;
+}
 
 extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
   return version == T5_APP_ABI_VERSION && current() ? &api : nullptr;
@@ -800,7 +1228,24 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     return ESP_ERR_INVALID_ARG;
   }
   const std::string filename = elf.substr(elf.find_last_of('/') + 1);
+  std::string displayName = filename;
+  if (displayName.size() > 4 && displayName.compare(displayName.size() - 4, 4, ".elf") == 0)
+    displayName.resize(displayName.size() - 4);
   const std::string sidecar = elf.substr(0, elf.size() - 4) + ".json";
+  HalPowerManager::Lock powerLock;
+  RenderLock lock;
+  // Only read the bounded (2 KiB) sidecar for presentation before showing
+  // feedback. This is not launch authorization: normal checks below still
+  // re-read the manifest after recovery may have replaced the installed pair.
+  t5_app_manifest_t preview{};
+  const char* icon = "solid:f2d0";
+  if (readAppManifest(sidecar.c_str(), preview) && filename == preview.file_name) {
+    displayName = preview.display_name;
+    icon = preview.icon;
+  }
+  StartupScreen::app(renderer, displayName.c_str(), icon);
+  // Keep the render lock through launch so an outstanding activity repaint
+  // cannot overwrite this frame during package recovery or dependency loading.
   // Nested /Apps/<id>/<artifact> entries are independently verified against
   // their exact canonical package inventory. A failed verification never
   // falls through to the loose-file compatibility loader.
@@ -848,15 +1293,13 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
       return ESP_ERR_NOT_SUPPORTED;
     }
   }
-  // Refuse a concurrent managed-package replacement before changing app UI
-// state. Keep failed dlclose generations pinned for safe recovery.
-if (!canonicalRoot.empty() &&
-    !RuntimePackages::systemPackageUseGate().pin(canonicalRoot.c_str())) {
-  lastLaunchError = "Managed application is being replaced or is unavailable.";
-  return ESP_ERR_INVALID_STATE;
-}
-HalPowerManager::Lock powerLock;
-  RenderLock lock;
+  // Refuse a concurrent managed-package replacement before mapping the ELF.
+  // Keep failed dlclose generations pinned for safe recovery.
+  if (!canonicalRoot.empty() &&
+      !RuntimePackages::systemPackageUseGate().pin(canonicalRoot.c_str())) {
+    lastLaunchError = "Managed application is being replaced or is unavailable.";
+    return ESP_ERR_INVALID_STATE;
+  }
   const auto orientation = renderer.getOrientation();
   const auto mode = renderer.getRenderMode();
   renderer.setRenderMode(GfxRenderer::BW);

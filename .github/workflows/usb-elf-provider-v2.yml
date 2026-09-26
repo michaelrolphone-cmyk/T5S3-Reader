@@ -24,6 +24,9 @@ on:
       - "sdk/driver/RiscSerialPortV1.h"
       - "sdk/driver/RiscUsbProviderV1.h"
       - "sdk/driver/RiscUsbControllerV1.h"
+      - "sdk/driver/RiscStlinkV1.h"
+      - "sdk/driver/RiscMspFetV1.h"
+      - "sdk/driver/RiscProgramMspV1.h"
       - "sdk/driver/RiscUsbInterruptV1.h"
       - "sdk/driver/RiscUsbHidV1.h"
       - "sdk/driver/RiscUsbGamepadDiagnosticsV1.h"
@@ -70,6 +73,10 @@ on:
       - "test/drivers/usb_cdc_v2*.c"
       - "test/drivers/usb_cp210x_v2*.c"
       - "test/drivers/usb_ch34x_v2*.c"
+      - "test/drivers/usb_ftdi*.c"
+      - "test/drivers/usb_stlink*.c"
+      - "test/drivers/usb_msp*.c"
+      - "test/drivers/program_msp*.c"
       - "test/drivers/usb_host_v2*.c"
       - "test/drivers/usb_host_class_integration_test.c"
       - "test/drivers/usb_controller_bulk_drain_source_test.py"
@@ -100,6 +107,10 @@ on:
       - "test/run_usb_cdc_v2_test.sh"
       - "test/run_usb_cp210x_v2_test.sh"
       - "test/run_usb_ch34x_v2_test.sh"
+      - "test/run_usb_ftdi_test.sh"
+      - "test/run_usb_stlink_test.sh"
+      - "test/run_usb_msp_test.sh"
+      - "test/run_program_msp_test.sh"
       - "test/run_usb_host_v2_test.sh"
       - "test/run_usb_hid_test.sh"
       - "test/run_board_power_t5s3_v2_test.sh"
@@ -131,6 +142,10 @@ jobs:
           bash test/run_usb_cdc_v2_test.sh
           bash test/run_usb_cp210x_v2_test.sh
           bash test/run_usb_ch34x_v2_test.sh
+          bash test/run_usb_ftdi_test.sh
+          bash test/run_usb_stlink_test.sh
+          bash test/run_usb_msp_test.sh
+          bash test/run_program_msp_test.sh
           bash test/run_usb_host_v2_test.sh
           bash test/run_usb_hid_test.sh
           bash test/run_board_power_t5s3_v2_test.sh

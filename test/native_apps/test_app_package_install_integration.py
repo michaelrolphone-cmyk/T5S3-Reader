@@ -17,66 +17,145 @@ RECOVERY = (ROOT / 'src/native/NativeOnlinePackageRecovery.h').read_text(encodin
 SD_ADAPTER = (ROOT / 'src/runtime/packages/PackageOrdinarySdAdapter.cpp').read_text(encoding='utf-8')
 MANAGED = (ROOT / 'src/runtime/packages/PackageOrdinaryManagedInstall.h').read_text(encoding='utf-8')
 PACKAGE_MANAGER = (ROOT / 'src/native/NativePackageManagerBridge.cpp').read_text(encoding='utf-8')
+CATALOG_INDEX = (ROOT / 'src/native/AppCatalogIndex.cpp').read_text(encoding='utf-8')
+APP_MANIFEST = (ROOT / 'src/native/AppManifest.cpp').read_text(encoding='utf-8')
+MAIN = (ROOT / 'src/main.cpp').read_text(encoding='utf-8')
 
 
 class LiveInstallContract(unittest.TestCase):
     def test_live_installer_is_digest_verified_and_publishes_pair(self):
-        start = HOST.index('bool appCatalogDownload(uint32_t index)')
+        start = HOST.index('bool appCatalogDownloadWithProgress(uint32_t index,')
         end = HOST.index('\nbool installedRefresh()', start)
         install = HOST[start:end]
         # Source metadata is checked before the canonical online adapter is invoked.
         for required in ('RuntimePackages::safePackageEntryName',
-                         'metadata["size_bytes"].as<unsigned>() != selected.size',
+                         'metadata["size_bytes"].as<unsigned>() != selectedSize',
                          'metadata["sha256"].is<const char*>()',
-                         'RuntimePackages::validSha256Hex(digest)',
+                         'RuntimePackages::validSha256Hex(value)',
                          'RuntimePackages::comparePackageVersions(',
-                         'RuntimeOnlinePackages::installApplication(selected.name.c_str()'):
+                         'const bool installedOk = RuntimeOnlinePackages::installApplication(',
+                         'artifact.c_str(), version.c_str(), downloadUrl.c_str(), json,'):
             self.assertIn(required, install)
         self.assertLess(install.index('metadata["sha256"]'),
                         install.index('RuntimeOnlinePackages::installApplication('))
+        self.assertIn('appCatalogDownloadWithProgress(uint32_t index,', install)
+        self.assertIn('progress, progressContext, &failureReason', install)
         for obsolete in ('RuntimePackages::clearAppStage(',
                          'RuntimePackages::publishAppPair(',
                          'Storage.remove(destination.c_str())'):
             self.assertNotIn(obsolete, install)
 
-        # New paths may reclaim only an exactly matched previous online source.
-        # Retain exclusive new-directory/file creation and verified publication.
+        # Online installs discard only manager-owned stale scratch and always
+        # rebuild from a fresh download; unknown content remains protected.
         for required in ('safePackageEntryName(artifact)',
-                         'Recovery::discardMatchingInbox(',
-                         'if (!Storage.mkdir(root.c_str(), false)) return false',
+                         'Recovery::discardOwnedInbox(',
+                         'if (!Storage.mkdir(root.c_str(), false)) return fail("could not create package inbox")',
                          'O_WRONLY | O_CREAT | O_EXCL',
-                         'HttpDownloader::downloadToFile(url, elfStage,',
+                         'const auto downloadResult = HttpDownloader::downloadToFile(',
+                         'url, elfStage, [](size_t, size_t) { esp_task_wdt_reset(); }',
                          '!Storage.rename(elfStage.c_str(), elfPath.c_str())',
                          '!verifyAppPair(elfPath.c_str(), jsonPath.c_str(), artifact, true)',
                          'mbedtls_sha256_ret(',
-                         'parseOrdinaryManifest(descriptor.get(), static_cast<size_t>(count), *plan)',
-                         'Recovery::discardMatchingStage(',
+                         'RuntimeMemory::PsramBuffer descriptor(4096)',
+                         'RuntimeMemory::PsramBuffer planStorage(sizeof(OrdinaryPackagePlan))',
+                         'parseOrdinaryManifest(descriptor.chars(), static_cast<size_t>(rebuiltCount), *plan)',
+                         'Recovery::discardOwnedStage(',
                          'installOrdinaryFromSd(root.c_str(), policy,',
                          'installed.result != OrdinaryInstallResult::Installed'):
             self.assertIn(required, ONLINE)
-        self.assertLess(ONLINE.index('parseOrdinaryManifest(descriptor.get(),'),
-                        ONLINE.index('Storage.mkdir(root.c_str(), false)'))
-        self.assertLess(ONLINE.index('downloadToFile(url, elfStage,'),
+        download_call = ONLINE.index(
+            'const auto downloadResult = HttpDownloader::downloadToFile(')
+        self.assertGreater(ONLINE.index('parseOrdinaryManifest(descriptor.chars(),'),
+                           download_call)
+        self.assertLess(download_call,
                         ONLINE.index('verifyAppPair(elfPath.c_str()'))
         self.assertLess(ONLINE.index('verifyAppPair(elfPath.c_str()'),
-                        ONLINE.index('discardMatchingStage(root,'))
-        self.assertLess(ONLINE.index('discardMatchingStage(root,'),
+                        ONLINE.index('discardOwnedStage(*plan)'))
+        self.assertLess(ONLINE.index('discardOwnedStage(*plan)'),
                         ONLINE.index('installOrdinaryFromSd(root.c_str()'))
-        self.assertIn('new (std::nothrow) char[4096]', ONLINE)
-        self.assertIn('new (std::nothrow) OrdinaryPackagePlan', ONLINE)
+        self.assertIn('RuntimeMemory::PsramBuffer descriptor(4096)', ONLINE)
+        self.assertIn('RuntimeMemory::PsramBuffer planStorage(sizeof(OrdinaryPackagePlan))', ONLINE)
+        self.assertIn('descriptor.reset();', ONLINE)
+        self.assertLess(ONLINE.index('descriptor.reset();'), download_call)
 
-    def test_recovery_is_exact_inventory_and_preserves_foreign_files(self):
-        for required in ('equalFile(root + "/" + sidecarName, sidecar.data()',
-                         'descriptorSeen && !equalFile(',
+        # The progress ABI must not trigger e-paper UI rendering while the HTTP
+        # worker still owns TLS buffers. That transient 8 KiB refresh task can
+        # consume the heap headroom required by the native stream transport.
+        transfer_start = ONLINE.index('const auto downloadResult = HttpDownloader::downloadToFile(')
+        transfer_end = ONLINE.index('if (progress) {', transfer_start)
+        transfer = ONLINE[transfer_start:transfer_end]
+        self.assertIn('[](size_t, size_t) { esp_task_wdt_reset(); }', transfer)
+        self.assertIn('case HttpDownloader::HTTP_ERROR: return fail("HTTP download failed");', transfer)
+        self.assertIn('case HttpDownloader::FILE_ERROR: return fail("download staging file failed");', transfer)
+        self.assertIn('case HttpDownloader::STREAM_ERROR: return fail("download stream failed");', transfer)
+        self.assertNotIn('progress(progressContext', transfer)
+        terminal_progress = ONLINE.index('progress(progressContext, size, size);', transfer_end)
+        self.assertGreater(terminal_progress, transfer_end)
+        self.assertLess(ONLINE.index('delay(1);', transfer_end), terminal_progress)
+
+    def test_failed_install_defers_catalog_refresh_until_installer_returns(self):
+        start = HOST.index('bool appCatalogDownloadWithProgress(uint32_t index,')
+        end = HOST.index('\nbool appCatalogDownload(uint32_t index)', start)
+        install = HOST[start:end]
+        self.assertIn('Selected catalog entry lost download metadata; reloading catalog', install)
+        self.assertIn('const bool installedOk = RuntimeOnlinePackages::installApplication(', install)
+        self.assertIn('s->catalogNeedsRefresh = true;', install)
+        install_call = install.index('const bool installedOk = RuntimeOnlinePackages::installApplication(')
+        after_install = install[install_call:]
+        self.assertNotIn('loadAuthoritativeAppCatalog(s->catalog)', after_install)
+
+        helper_start = HOST.index('bool ensureCatalogReady(Session* s)')
+        helper_end = HOST.index('\nuint32_t appCatalogCount()', helper_start)
+        helper = HOST[helper_start:helper_end]
+        self.assertIn('if (!s->catalogNeedsRefresh) return true;', helper)
+        self.assertIn('delay(1);', helper)
+        self.assertIn('loadAuthoritativeAppCatalog(s->catalog)', helper)
+
+    def test_online_recovery_discards_only_owned_scratch(self):
+        for required in ('discardOwnedInbox(',
+                         'discardOwnedStage(',
                          'else { valid = false; break; }',
-                         'if (!valid || !closed || !sidecarSeen',
-                         'verifyOrdinarySdDirectory(sourceRoot.c_str(), policy, resolver, verified)',
-                         'stagePrefixMatches(',
                          'if (!valid || !closed) return false;',
+                         'Storage.rmdir(root.c_str())',
                          'Storage.rmdir(paths.stage)'):
             self.assertIn(required, RECOVERY)
-        self.assertLess(RECOVERY.index('verifyOrdinarySdDirectory(sourceRoot.c_str()'),
-                        RECOVERY.index('Storage.rmdir(paths.stage)'))
+        # Exact-match helpers remain available for driver intake, but the
+        # online application installer must no longer call resume/replay paths.
+        self.assertIn('starting over', ONLINE)
+        self.assertNotIn('discardMatchingInbox(', ONLINE)
+        self.assertNotIn('discardMatchingStage(', ONLINE)
+        self.assertNotIn('Recovered matching interrupted download', ONLINE)
+        self.assertNotIn('interrupted package differs from this release', ONLINE)
+
+    def test_app_catalog_metadata_is_psram_first_and_single_fetch(self):
+        loader_start = HOST.index('bool loadIndependentAppIndex(')
+        loader_end = HOST.index('\nbool loadAuthoritativeAppCatalog(', loader_start)
+        loader = HOST[loader_start:loader_end]
+        self.assertIn('RuntimeMemory::PsramTextStream json(kMaxCatalogBytes)', loader)
+        self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', loader)
+        self.assertIn('JsonDocument document(&allocator)', loader)
+
+        authoritative_start = HOST.index('bool loadAuthoritativeAppCatalog(')
+        authoritative_end = HOST.index('\nbool appCatalogRefresh()', authoritative_start)
+        authoritative = HOST[authoritative_start:authoritative_end]
+        self.assertIn('return loadIndependentAppIndex(catalog);', authoritative)
+        self.assertNotIn('refreshExternalGameBoy(', authoritative)
+
+        # App Store no longer owns Wi-Fi bootstrap; shared HTTP reconnects.
+        self.assertNotIn('bool connectSavedWifi()', HOST)
+        saved_network = (ROOT / 'src/runtime/network/SavedNetworkConnection.cpp').read_text(encoding='utf-8')
+        downloader = (ROOT / 'src/network/HttpDownloader.cpp').read_text(encoding='utf-8')
+        self.assertIn('bool ensureSavedConnection(', saved_network)
+        self.assertIn('RuntimeNetwork::ensureSavedConnection(kNetworkReadyTimeoutMs)', downloader)
+
+        self.assertIn('RuntimeMemory::PsramTextStream json(kMaxCatalogBytes)', CATALOG_INDEX)
+        self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', CATALOG_INDEX)
+        self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', APP_MANIFEST)
+        self.assertIn('JsonDocument doc(&allocator)', APP_MANIFEST)
+        self.assertIn('RuntimeMemory::PsramJsonAllocator metadataAllocator', HOST)
+        self.assertIn('JsonDocument metadata(&metadataAllocator)', HOST)
+        self.assertIn('heap_caps_malloc_extmem_enable(1024);', MAIN)
+        self.assertNotIn('heap_caps_malloc_extmem_enable(128);', MAIN)
 
     def test_package_manager_and_shared_verifier_do_not_retain_large_stack_buffers(self):
         self.assertIn('new (std::nothrow) char[4096]', PACKAGE_MANAGER)

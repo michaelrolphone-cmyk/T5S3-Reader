@@ -1,7 +1,11 @@
 {
-  "min_firmware_version": "1.1.13",
-  "version": "1.0.2",
+  "min_firmware_version": "1.2.85",
+  "version": "1.1.0",
   "display_name": "File Browser",
   "file_name": "file_browser.elf",
-  "icon": "solid:f07c"
+  "icon": "solid:f07c",
+  "category": [
+    "Files",
+    "Utilities"
+  ]
 }

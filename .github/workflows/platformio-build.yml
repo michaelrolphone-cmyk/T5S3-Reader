@@ -86,8 +86,8 @@ jobs:
 
       - name: Build and validate native ELFs
         run: |
-          python scripts/build_native_app.py examples/native_apps/hello.c --output dist/hello.elf
-          bash test/run_native_app_test.sh dist/hello.elf
+          python scripts/build_native_app.py examples/native_apps/hello.c --output /tmp/riscrte-native-app-hello.elf
+          bash test/run_native_app_test.sh /tmp/riscrte-native-app-hello.elf
           python scripts/build_native_app.py Apps/timecard.c --output dist/timecard.elf
           bash test/run_native_app_test.sh dist/timecard.elf
 
@@ -121,7 +121,6 @@ jobs:
             dist/${{ matrix.firmware_name }}
             dist/${{ matrix.merged_firmware_name }}
             dist/${{ matrix.elf_name }}
-            dist/hello.elf
             dist/apps/*
             dist/drivers/*.t5driver.zip
             dist/timecard.elf
@@ -135,6 +134,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Verify idle clock and USB input-power telemetry
+        run: bash test/run_idle_power_test.sh
 
       - name: Run streaming JSON parser tests
         run: bash test/run_streaming_json_parser_test.sh
@@ -162,3 +164,10 @@ jobs:
 
       - name: Run Font Awesome tests with shipped SD fonts
         run: bash test/run_fontawesome_test.sh
+
+      - name: Run release index and GameBoy provider tests
+        run: |
+          python3 test/release_index_test.py
+          python3 test/bulk_release_test.py
+          python3 test/release_workflow_trigger_test.py
+          python3 test/sync_gameboy_app_test.py

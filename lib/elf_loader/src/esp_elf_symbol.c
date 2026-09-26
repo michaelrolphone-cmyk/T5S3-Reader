@@ -69,22 +69,37 @@ static const char *TAG = "ELF_SYMBOL";
 
 static const struct esp_elfsym g_esp_libc_elfsyms[] = {
 
-    /* string.h */
+    /* string.h
+     *
+     * Stable baseline for ordinary native applications. Keep fundamental,
+     * side-effect-free string/memory helpers here rather than registering
+     * them ad hoc in individual app API tables. This same public-libc table is
+     * also safe for admitted providers; hardware/OS primitives remain outside
+     * it and continue through scoped capability/privileged interfaces.
+     */
 
     ESP_ELFSYM_EXPORT(strerror),
     ESP_ELFSYM_EXPORT(memset),
     ESP_ELFSYM_EXPORT(memcpy),
+    ESP_ELFSYM_EXPORT(memmove),
+    ESP_ELFSYM_EXPORT(memcmp),
+    ESP_ELFSYM_EXPORT(memchr),
     ESP_ELFSYM_EXPORT(strlen),
-    ESP_ELFSYM_EXPORT(strtod),
-    ESP_ELFSYM_EXPORT(strrchr),
-    ESP_ELFSYM_EXPORT(strchr),
+    ESP_ELFSYM_EXPORT(strcpy),
+    ESP_ELFSYM_EXPORT(strncpy),
     ESP_ELFSYM_EXPORT(strcmp),
+    ESP_ELFSYM_EXPORT(strncmp),
+    ESP_ELFSYM_EXPORT(strchr),
+    ESP_ELFSYM_EXPORT(strrchr),
+    ESP_ELFSYM_EXPORT(strstr),
+    ESP_ELFSYM_EXPORT(strtod),
     ESP_ELFSYM_EXPORT(strtol),
     ESP_ELFSYM_EXPORT(strcspn),
     ESP_ELFSYM_EXPORT(strncat),
 
     /* stdio.h */
 
+    ESP_ELFSYM_EXPORT(snprintf),
     ESP_ELFSYM_EXPORT(puts),
     ESP_ELFSYM_EXPORT(putchar),
     ESP_ELFSYM_EXPORT(fputc),

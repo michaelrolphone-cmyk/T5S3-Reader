@@ -1,4 +1,5 @@
 #include "T5AppApi.h"
+#include "T5FileOpenApi.h"
 #include "T5StorageApi.h"
 #include "T5ProviderCapabilityApi.h"
 #include "RiscUsbHidV1.h"
@@ -13,19 +14,19 @@
 #define NAME_LIMIT 63u
 #define FILE_LIMIT 64u
 #define FOOTER_HEIGHT 144
-#define KEYBOARD_BUTTON_HEIGHT 44
 
 typedef enum { EDITING, FILE_PICKER, NEW_NAME, SAVE_NAME, UNSAVED, DONE } editor_mode_t;
 typedef enum { DO_OPEN, DO_NEW, DO_EXIT } after_t;
 static const t5_app_api_v1 *app;
 static const t5_storage_api_v1 *storage;
+static const t5_file_open_api_v1 *file_open;
 static const t5_provider_capability_api_v1 *providers;
 static const risc_usb_keyboard_api_v1 *keyboard;
 static t5_provider_capability_lease_t grant;
 static uint64_t subscription;
 static te_document document;
 static char scratch[TE_CAPACITY + 1];
-static char path[160], filename[NAME_LIMIT + 1], proposed[NAME_LIMIT + 1];
+static char path[T5_FILE_OPEN_PATH_MAX], filename[NAME_LIMIT + 1], proposed[NAME_LIMIT + 1];
 static char files[FILE_LIMIT][NAME_LIMIT + 1];
 static char status[96];
 static char keyboard_error[160];
@@ -33,6 +34,7 @@ static size_t file_count, selected_file, proposed_size, first_row;
 static editor_mode_t mode;
 static after_t after;
 static bool resume_after_save, caps, plugged, redraw;
+#define KEYBOARD_RETRY_MS 1000u
 static uint8_t old_buttons;
 // Keep transitions collected during physical refresh separate from document/UI
 // actions: Ctrl+O and similar commands may draw or touch storage after the join.
@@ -122,6 +124,29 @@ static bool load_file(const char *name) {
     report("Opened. Ctrl+S save / Ctrl+O open / Ctrl+N new.");
     return true;
 }
+static bool load_handoff_path(const char *source) {
+    size_t size = 0, count = 0;
+    if (!source || strncmp(source, "/sd/", 4) != 0) return false;
+    const char *storage_path = source + 3; /* Keep the leading slash after /sd. */
+    if (!storage_path[0] || strstr(storage_path, "/../") || strstr(storage_path, "/./"))
+        return false;
+    const char *name = strrchr(storage_path, '/');
+    name = name ? name + 1 : storage_path;
+    if (!valid_name(name) || strlen(storage_path) >= sizeof(path) ||
+        !storage->read_file(storage_path, NULL, 0, &size) || size > TE_CAPACITY ||
+        !storage->read_file(storage_path, scratch, TE_CAPACITY, &count) ||
+        count != size || !te_import(&document, scratch, count)) {
+        report("Open rejected: missing, >16 KiB, binary or non-ASCII.");
+        return false;
+    }
+    (void)snprintf(path, sizeof(path), "%s", storage_path);
+    (void)snprintf(filename, sizeof(filename), "%s", name);
+    first_row = 0;
+    mode = EDITING;
+    report("Opened from file handoff. Ctrl+S saves in place.");
+    return true;
+}
+
 static bool make_new(const char *name) {
     char target[160] = {0};
     if (!filename_path(name, target, sizeof(target)) || storage->exists(target)) {
@@ -368,17 +393,8 @@ static void paint(void) {
     app->draw_label(8, footer + 8, width - 16, status);
     app->draw_label(8, footer + 40, width - 16,
         keyboard ? (plugged ? "USB keyboard connected" : "Connect USB keyboard") :
-                   "Tap below to enable USB keyboard");
-    if (!keyboard) {
-        const int32_t top = height - KEYBOARD_BUTTON_HEIGHT - 12;
-        app->fill_rect(8, top, width - 16, 1, true);
-        app->fill_rect(8, top + KEYBOARD_BUTTON_HEIGHT - 1, width - 16, 1, true);
-        app->fill_rect(8, top, 1, KEYBOARD_BUTTON_HEIGHT, true);
-        app->fill_rect(width - 9, top, 1, KEYBOARD_BUTTON_HEIGHT, true);
-        app->draw_label(16, top + 8, width - 32, "Enable keyboard");
-    } else {
-        app->draw_label(8, height - 44, width - 16, "Ctrl+S Save / Ctrl+O Open");
-    }
+                   "Searching for USB keyboard automatically");
+    app->draw_label(8, height - 44, width - 16, "Ctrl+S Save / Ctrl+O Open");
     if (keyboard && app->struct_size >= offsetof(t5_app_api_v1, present_serviced) +
             sizeof(app->present_serviced) && app->present_serviced) {
         redraw = !app->present_serviced(false, collect_keyboard, NULL);
@@ -390,6 +406,7 @@ static void paint(void) {
 void app_main(void) {
     app = t5_app_get_api(T5_APP_ABI_VERSION);
     storage = t5_storage_get_api(T5_STORAGE_API_VERSION);
+    file_open = t5_file_open_get_api(T5_FILE_OPEN_API_VERSION);
     providers = t5_provider_capability_get_api(T5_PROVIDER_CAPABILITY_API_VERSION);
     if (!app || app->abi_version != T5_APP_ABI_VERSION ||
         app->struct_size < offsetof(t5_app_api_v1, draw_label) + sizeof(app->draw_label) ||
@@ -400,6 +417,9 @@ void app_main(void) {
         !storage || storage->api_version != T5_STORAGE_API_VERSION ||
         storage->struct_size < offsetof(t5_storage_api_v1, remove_file) + sizeof(storage->remove_file) ||
         !storage->exists || !storage->read_file || !storage->write_file_atomic ||
+        !file_open || file_open->api_version != T5_FILE_OPEN_API_VERSION ||
+        file_open->struct_size < offsetof(t5_file_open_api_v1, source_path_get) + sizeof(file_open->source_path_get) ||
+        !file_open->source_path_get ||
         !providers || providers->api_version != T5_PROVIDER_CAPABILITY_API_VERSION ||
         providers->struct_size < offsetof(t5_provider_capability_api_v1, release) + sizeof(providers->release) || !providers->acquire || !providers->release) return;
     app->set_back_exits_app(false);
@@ -411,22 +431,26 @@ void app_main(void) {
     pending_gap = pending_fault = false;
     keyboard_error[0] = 0;
     mode = EDITING;
-    report("Untitled. Ctrl+N new / Ctrl+O open.");
+    char handed_path[T5_FILE_OPEN_PATH_MAX] = {0};
+    if (!file_open->source_path_get(handed_path, sizeof(handed_path)) ||
+        !load_handoff_path(handed_path))
+        report("Untitled. Ctrl+N new / Ctrl+O open.");
     uint32_t last_paint = 0;
+    uint32_t last_keyboard_attempt = 0;
+    bool keyboard_attempted = false;
     for (;;) {
         t5_app_input_t input = {0};
         if (!app->poll(&input, keyboard ? 1 : 25) || input.exit_requested) break;
+        const uint32_t now = app->millis();
         const uint8_t buttons = (uint8_t)input.buttons;
         const uint8_t pressed = buttons & (uint8_t)~old_buttons;
         old_buttons = buttons;
         if (pressed & T5_APP_BUTTON_BACK) transition(DO_EXIT);
-        const int32_t button_top = app->screen_height() - KEYBOARD_BUTTON_HEIGHT - 12;
-        const bool enable_tapped = input.tapped &&
-            input.touch_x >= 8 && input.touch_x < app->screen_width() - 8 &&
-            input.touch_y >= button_top &&
-            input.touch_y < button_top + KEYBOARD_BUTTON_HEIGHT;
         if (mode != DONE && !keyboard &&
-            ((pressed & T5_APP_BUTTON_CONFIRM) || enable_tapped)) {
+            (!keyboard_attempted ||
+             (uint32_t)(now - last_keyboard_attempt) >= KEYBOARD_RETRY_MS)) {
+            keyboard_attempted = true;
+            last_keyboard_attempt = now;
             const void *interface = NULL;
             if (!providers->acquire("usb.hid.keyboard", RISC_USB_KEYBOARD_API_V1,
                                     &grant, &interface)) {
@@ -437,7 +461,7 @@ void app_main(void) {
                     if (!providers->last_error(keyboard_error, sizeof(keyboard_error)))
                         (void)snprintf(keyboard_error, sizeof(keyboard_error), "Capability request failed without a diagnostic.");
                 }
-                report("See error above. Tap Enable keyboard to retry.");
+                report("Keyboard unavailable; retrying automatically.");
             } else {
                 keyboard_error[0] = 0;
                 const risc_usb_keyboard_api_v1 *api = (const risc_usb_keyboard_api_v1*)interface;
@@ -446,7 +470,7 @@ void app_main(void) {
                     !api->unsubscribe || !api->poll || !api->next || !api->snapshot) {
                     (void)providers->release(grant);
                     grant = 0;
-                    report("Keyboard capability ABI mismatch.");
+                    report("Keyboard capability ABI mismatch; retrying automatically.");
                 } else {
                     keyboard = api;
                     subscription = keyboard->subscribe(keyboard->context, 0);
@@ -454,7 +478,7 @@ void app_main(void) {
                         keyboard = NULL;
                         (void)providers->release(grant);
                         grant = 0;
-                        report("Keyboard has no free subscription.");
+                        report("Keyboard has no free subscription; retrying automatically.");
                     } else report("USB keyboard active: connect a boot keyboard.");
                 }
             }
@@ -486,7 +510,6 @@ void app_main(void) {
             } else if (kind == 3 && usage < 0xe0) key_press(usage, modifiers);
         }
         if (mode == DONE) break;
-        const uint32_t now = app->millis();
         if (redraw && (!last_paint || (uint32_t)(now - last_paint) >= 120)) {
             paint(); last_paint = now;
         }

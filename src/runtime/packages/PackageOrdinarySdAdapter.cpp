@@ -15,6 +15,11 @@
 #include <new>
 #include <string>
 
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
+
 namespace RuntimePackages {
 namespace {
 constexpr size_t kManifestBytes = 4096;
@@ -116,6 +121,9 @@ bool inventory(const char* root, const OrdinaryPackagePlan& plan, bool full) {
     }
     (void)entry.close();
     if (++count > plan.entryCount + 1) valid = false;
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+    vTaskDelay(1);
+#endif
   }
   const bool closed = dir.close();
   if (!closed || !valid) return false;
@@ -135,6 +143,9 @@ bool purgeKnown(const char* root, const OrdinaryPackagePlan& plan,
   for (size_t i = 0; i < plan.entryCount; ++i) {
     const std::string filename = std::string(root) + "/" + plan.entries[i].name;
     if (Storage.exists(filename.c_str()) && !Storage.remove(filename.c_str())) return false;
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+    vTaskDelay(1);
+#endif
   }
   if (exists && !Storage.remove(manifest.c_str())) return false;
   return Storage.rmdir(root);
@@ -162,6 +173,9 @@ bool legacyInventory(const char* path, bool full) {
     else good = false;
     (void)file.close();
     if (++count > 2) good = false;
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+    vTaskDelay(1);
+#endif
   }
   const bool closed = dir.close();
   return good && closed && (!full || (count == 2 && elf && manifest));
@@ -372,7 +386,7 @@ bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
 }
 OrdinaryInstallOutcome installOrdinaryFromSd(
     const char* sourceDirectory, const PackageRuntimePolicy& policy,
-    uint32_t (*resolveCapability)(const char*)) {
+    uint32_t (*resolveCapability)(const char*), bool allowDowngrade) {
   OrdinaryInstallOutcome invalid{};
   if (!Storage.ready() || !safeSourcePath(sourceDirectory) ||
       !resolveCapability || !directoryExists(sourceDirectory)) return invalid;
@@ -415,6 +429,7 @@ OrdinaryInstallOutcome installOrdinaryFromSd(
   // The caller must own the per-identity manager mutation lock; publication
   // itself takes an exclusive mapping lease and independently re-verifies.
   return installCanonicalOrdinaryPackage(metadata.get(), length, source, *destination,
-      hash, resolveCapability, policy, io, ops, verify, purge, true);
+      hash, resolveCapability, policy, io, ops, verify, purge, true,
+      allowDowngrade);
 }
 } // namespace RuntimePackages

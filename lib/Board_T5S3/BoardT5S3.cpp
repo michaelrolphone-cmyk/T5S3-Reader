@@ -198,6 +198,10 @@ void begin() {
   if (T5S3_PCA9535_INT > 0) pinMode(T5S3_PCA9535_INT, INPUT_PULLUP);
   prepareSdBus();
   disableGpsLora();
+  // The expander button is a fixed input. Configure it once at board startup;
+  // rewriting PCA9535 direction on every UI frame adds two avoidable I2C
+  // transactions to the input hot path.
+  (void)setPca9535PinMode(PCA9535_IO12_BUTTON, INPUT);
 }
 
 void deinitForSleep() {
@@ -439,7 +443,7 @@ bool GT911Touch::readPoint(TouchPoint* point, bool* homeButtonPressed) {
     *homeButtonPressed = (status & GT911_STATUS_HAVE_KEY) != 0;
   if ((status & GT911_TOUCH_COUNT_MASK) == 0) {
     writeReg8(GT911_STATUS_REG, 0);
-    return false;
+    return true;
   }
   uint8_t data[8] = {0};
   const bool ok = readReg(GT911_POINT1_REG, data, sizeof(data));
@@ -447,7 +451,13 @@ bool GT911Touch::readPoint(TouchPoint* point, bool* homeButtonPressed) {
   if (!ok) return false;
   point->x = static_cast<uint16_t>(data[1]) | (static_cast<uint16_t>(data[2]) << 8);
   point->y = static_cast<uint16_t>(data[3]) | (static_cast<uint16_t>(data[4]) << 8);
+  *contactActive = true;
   return true;
+}
+
+bool GT911Touch::readPoint(TouchPoint* point, bool* homeButtonPressed) {
+  bool active = false;
+  return readEvent(point, homeButtonPressed, &active) && active;
 }
 
 }  // namespace BoardT5S3

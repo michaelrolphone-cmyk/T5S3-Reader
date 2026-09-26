@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "RecentBooksStore.h"
+#include "components/FontAwesomeIcons.h"
 #include "components/UITheme.h"
 #include "components/icons/cover.h"
 #include "fontIds.h"
@@ -264,7 +265,8 @@ BaseTheme::ButtonMenuLayout RoundedRaffTheme::buttonMenuLayout(const GfxRenderer
 
 void RoundedRaffTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                       const std::function<std::string(int index)>& buttonLabel,
-                                      const std::function<UIIcon(int index)>& rowIcon) const {
+                                      const std::function<UIIcon(int index)>& rowIcon,
+                                      const std::function<const char*(int index)>& rowAppIcon) const {
   (void)rowIcon;
   const int sidePadding = RoundedRaffMetrics::values.contentSidePadding;
   const int rowX = rect.x + sidePadding;
@@ -281,16 +283,27 @@ void RoundedRaffTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int butt
     const std::string label = buttonLabel(i);
     const int rowY = menuTop + (i - pageStartIndex) * rowStep;
     constexpr int kRowPaddingX = 40;  // 20px L/R
-    const int maxLabelWidth = std::max(0, menuMaxWidth - kRowPaddingX);
+    constexpr int kAppIconSize = 12;
+    constexpr int kAppIconGap = 10;
+    const char* appIcon = rowAppIcon ? rowAppIcon(i) : nullptr;
+    const bool hasAppIcon = appIcon && appIcon[0] != '\0';
+    const int iconAreaWidth = hasAppIcon ? kAppIconSize + kAppIconGap : 0;
+    const int maxLabelWidth = std::max(0, menuMaxWidth - kRowPaddingX - iconAreaWidth);
     const std::string truncatedLabel =
         renderer.truncatedText(kTitleFontId, label.c_str(), maxLabelWidth, EpdFontFamily::BOLD);
     const int rowWidth = std::min(
-        menuMaxWidth, renderer.getTextWidth(kTitleFontId, truncatedLabel.c_str(), EpdFontFamily::BOLD) + kRowPaddingX);
+        menuMaxWidth, renderer.getTextWidth(kTitleFontId, truncatedLabel.c_str(), EpdFontFamily::BOLD) +
+                          kRowPaddingX + iconAreaWidth);
     const bool isSelected = selectedIndex == i;
     renderer.fillRoundedRect(rowX, rowY, rowWidth, rowHeight, kMenuRadius, isSelected ? Color::Black : Color::White);
     const int textY = rowY + (rowHeight - textLineHeight) / 2;
-    const int textX = rowX + kInteractiveInsetX;
-    if (selectedIndex == i) {
+    int textX = rowX + kInteractiveInsetX;
+    if (hasAppIcon) {
+      const int iconY = rowY + (rowHeight - kAppIconSize) / 2;
+      (void)FontAwesomeIcons::drawRegular(renderer, textX, iconY, appIcon, kAppIconSize, !isSelected);
+      textX += iconAreaWidth;
+    }
+    if (isSelected) {
       renderer.drawText(kTitleFontId, textX, textY, truncatedLabel.c_str(), false, EpdFontFamily::BOLD);
     } else {
       renderer.drawText(kTitleFontId, textX, textY, truncatedLabel.c_str(), true, EpdFontFamily::BOLD);

@@ -1,7 +1,18 @@
 {
-  "min_firmware_version": "1.2.9",
-  "version": "1.0.6",
-  "display_name": "ESP ROM Flasher",
+  "min_firmware_version": "1.2.69",
+  "version": "1.1.0",
+  "display_name": "Firmware Flasher",
   "file_name": "esp_rom_flasher.elf",
-  "icon": "solid:f1ea"
+  "icon": "solid:f1ea",
+  "optional": [
+    {
+      "capability": "program.msp",
+      "api": ">=1"
+    }
+  ],
+  "category": [
+    "Firmware",
+    "Developer",
+    "Hardware"
+  ]
 }

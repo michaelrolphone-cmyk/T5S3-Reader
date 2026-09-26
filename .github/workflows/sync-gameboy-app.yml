@@ -1,0 +1,33 @@
+name: Sync GameBoy app into RiscRTE store
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: independent-riscrte-product-release
+  cancel-in-progress: false
+
+jobs:
+  sync-gameboy:
+    if: ${{ github.ref == 'refs/heads/master' }}
+    name: Sync latest GameBoy app release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out RiscRTE
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify and index the latest GameBoy app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/sync_gameboy_app.py

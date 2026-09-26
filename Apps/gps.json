@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "GPS",
   "file_name": "gps.elf",
-  "icon": "solid:f3c5"
+  "icon": "solid:f3c5",
+  "category": [
+    "GNSS",
+    "Utilities"
+  ]
 }

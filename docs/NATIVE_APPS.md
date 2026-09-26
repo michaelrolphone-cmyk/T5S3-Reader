@@ -120,15 +120,15 @@ pio run -e t5s3-pro
 Build one app:
 
 ```sh
-python scripts/build_native_app.py Apps/hello.c --output dist/hello.elf
+python scripts/build_native_app.py Apps/timecard.c --output dist/timecard.elf
 ```
 
 If a sibling JSON exists, the helper validates it and copies it beside the ELF.
 Use `--require-manifest` when a manifest is mandatory:
 
 ```sh
-python scripts/build_native_app.py Apps/hello.c \
-  --output dist/apps/hello.elf \
+python scripts/build_native_app.py Apps/timecard.c \
+  --output dist/apps/timecard.elf \
   --require-manifest
 ```
 
@@ -604,7 +604,6 @@ The `Apps/` directory demonstrates the framework at increasing levels:
 
 | App | Demonstrates |
 | --- | --- |
-| `hello.c` | Minimal ABI acquisition, drawing, polling, exit |
 | `mahjong.c` | Larger interactive native UI |
 | `sd_list.c` | Native directory enumeration |
 | `app_store.c` | Firmware-owned release catalog, manifests, icons, paired install |
@@ -615,3 +614,6 @@ The `Apps/` directory demonstrates the framework at increasing levels:
 For new first-class applications, start with the closest shipped native example
 rather than adding a built-in C++ Activity unless the feature specifically needs
 direct firmware integration that is not yet represented by a native host API.
+
+The minimal ABI smoke-test example is kept in `examples/native_apps/hello.c`;
+it is built only for CI validation and is not a shipped or installable app.

@@ -116,6 +116,8 @@ listening only for subsequent arrival events misses already-enumerated devices.
 | Nonzero device count and VID/PID, but no class binding | Physical USB enumeration completed. | Configuration/interface descriptors, alternate setting, endpoint type, claim ownership and supported class protocol. |
 | `GAMEPAD INPUT LAYOUT CONNECTED` or `XINPUT WAITING FOR REPORT` | A layout/interface or protocol session is available. | First valid report, endpoint polling and protocol decoding. Binding is not proof that input arrived. |
 | Reports arrive but input lags or sticks | The failure is beyond initial enumeration. | Poll scheduling, pending transfers, state publication and consumer behavior. |
+| UI flashes with an empty port | A refresh may be software-requested; this is not proof of rail instability. | Incoming-power telemetry must exclude our own OTG output. See the [1.2.66 idle regression](FIRMWARE_INPUT_NAVIGATION.md#firmware-idle-regression-after-1266). |
+| `TG1WDT_SYS_RST` while external-power mode is parked | A watchdog reset occurred even without host startup. | CPU/peripheral clock transitions and interrupt stalls; do not attribute this solely to host power probes. |
 
 VID/PID alone does not select HID versus XInput. The original Windows report
 contained **045e:028e**; the later RiscRTE trace enumerated **0314:1809** as HID.

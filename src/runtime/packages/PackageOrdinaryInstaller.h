@@ -34,7 +34,8 @@ OrdinaryInstallOutcome installOrdinaryPackage(
     size_t manifestBytes, Source& source, Destination& destination, Hash& hash,
     Resolver resolver, const PackageRuntimePolicy& policy,
     uint8_t (&io)[kOrdinaryIoBytes], Ops& ops, Verify verifyDirectory,
-    Purge purgeManagedBackup, bool replacementAllowed) {
+    Purge purgeManagedBackup, bool replacementAllowed,
+    bool allowDowngrade = false) {
   OrdinaryInstallOutcome outcome{};
   OrdinaryTransactionPaths paths{};
   if (!replacementAllowed || !ordinaryTransactionPaths(plan.identity.kind,
@@ -73,7 +74,7 @@ OrdinaryInstallOutcome installOrdinaryPackage(
     return outcome;
   }
   outcome.transaction = publishOrdinaryPackage(ops, plan.identity,
-      verifyDirectory, purgeManagedBackup, observed);
+      verifyDirectory, purgeManagedBackup, observed, allowDowngrade);
   if (outcome.transaction == OrdinaryTransactionResult::CleanupPending) {
     // Newly published target is verified, but recovery must finish deleting
     // the previous managed generation before another package operation.

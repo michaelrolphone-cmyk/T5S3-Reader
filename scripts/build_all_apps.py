@@ -6,6 +6,7 @@ but U1 release publication discovers applications from dist/packages alongside
 drivers/services/providers and emits one immutable .rte.zip per package.
 """
 import hashlib
+import argparse
 import json
 import pathlib
 import shutil
@@ -13,6 +14,10 @@ import subprocess
 import sys
 
 from package_integrity import stamp_app_manifest
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--id", help="Build one stable app ID instead of every app")
+args = parser.parse_args()
 
 repo = pathlib.Path(__file__).resolve().parents[1]
 apps_out = repo / 'dist/apps'
@@ -37,6 +42,8 @@ def entry(path: pathlib.Path, executable: bool) -> dict:
 
 for source in sorted((repo / 'Apps').rglob('*.c')):
     name = str(source.relative_to(repo / 'Apps').with_suffix('')).replace('/', '__') + '.elf'
+    if args.id and name != args.id + '.elf':
+        continue
     if name in outputs:
         raise SystemExit(f'Duplicate release asset: {name}')
     outputs.add(name)
@@ -85,7 +92,7 @@ for source in sorted((repo / 'Apps').rglob('*.c')):
     catalog.append(manifest)
 
 if not outputs:
-    raise SystemExit('No apps found')
+    raise SystemExit(f"No app found for ID {args.id!r}" if args.id else 'No apps found')
 
 catalog.sort(key=lambda item: (item['display_name'].casefold(), item['file_name']))
 encoded = json.dumps({'schema': 1, 'apps': catalog}, separators=(',', ':')) + '\n'

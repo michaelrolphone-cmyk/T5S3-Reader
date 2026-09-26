@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "Web Server",
   "file_name": "web_server.elf",
-  "icon": "solid:f0ac"
+  "icon": "solid:f0ac",
+  "category": [
+    "Connectivity",
+    "Developer"
+  ]
 }

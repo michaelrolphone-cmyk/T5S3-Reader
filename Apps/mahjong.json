@@ -3,5 +3,8 @@
   "version": "1.0.0",
   "display_name": "Mahjong",
   "file_name": "mahjong.elf",
-  "icon": "solid:f522"
+  "icon": "solid:f522",
+  "category": [
+    "Games"
+  ]
 }

@@ -7,6 +7,9 @@
 #include <esp_https_ota.h>
 #include <esp_idf_version.h>
 #include <esp_wifi.h>
+#include <ArduinoJson.h>
+#include <cstring>
+#include "network/HttpDownloader.h"
 
 #include "GithubTlsCerts.h"
 #include "runtime/network/NetworkService.h"
@@ -14,6 +17,9 @@
 namespace {
 constexpr char latestReleaseUrl[] =
     "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
+constexpr char releaseIndexUrl[] =
+    "https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/release-index/release-index.json";
+constexpr size_t kReleaseIndexMaxBytes = 64u * 1024u;
 
 esp_err_t http_client_set_header_cb(esp_http_client_handle_t http_client) {
   return esp_http_client_set_header(http_client, "User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
@@ -44,6 +50,60 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   if (!RuntimeNetwork::ready()) {
     LOG_ERR("OTA", "Update check refused: network is not ready");
     return HTTP_ERROR;
+  }
+
+  // Prefer the independently published firmware pointer. If the index is not
+  // available yet, retain the legacy GitHub Release lookup during migration.
+  std::string indexJson;
+  if (HttpDownloader::fetchUrl(releaseIndexUrl, indexJson)) {
+    if (indexJson.empty() || indexJson.size() > kReleaseIndexMaxBytes) {
+      LOG_ERR("OTA", "Release index has an invalid size: %u", static_cast<unsigned>(indexJson.size()));
+      return JSON_PARSE_ERROR;
+    }
+    // The shared index also contains every app and driver record. Keep those
+    // entries out of the JSON document; the release-index publisher and native
+    // HTTP string reader both bound this complete document at 64 KiB.
+    JsonDocument filter;
+    filter["schema"] = true;
+    filter["firmware"]["version"] = true;
+    filter["firmware"]["tag"] = true;
+    filter["firmware"]["asset"] = true;
+    filter["firmware"]["url"] = true;
+    filter["firmware"]["size"] = true;
+    filter["firmware"]["sha256"] = true;
+    JsonDocument index;
+    if (deserializeJson(index, indexJson, DeserializationOption::Filter(filter)) ||
+        !index.is<JsonObjectConst>() ||
+        index["schema"] != 1 || !index["firmware"].is<JsonObjectConst>()) {
+      LOG_ERR("OTA", "Release index has no valid firmware entry");
+      return JSON_PARSE_ERROR;
+    }
+    const JsonObjectConst firmware = index["firmware"].as<JsonObjectConst>();
+    const char* version = firmware["version"].as<const char*>();
+    const char* tag = firmware["tag"].as<const char*>();
+    const char* asset = firmware["asset"].as<const char*>();
+    const char* url = firmware["url"].as<const char*>();
+    const uint64_t size = firmware["size"].as<uint64_t>();
+    const char* digest = firmware["sha256"].as<const char*>();
+    const std::string expectedAsset = std::string("firmware-") + Board::id() + ".bin";
+    const std::string expectedTag = version ? std::string("firmware-v") + version : std::string();
+    const std::string expectedUrl = tag && asset
+        ? std::string("https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/") +
+              tag + "/" + asset
+        : std::string();
+    if (!version || !tag || !asset || !url || !digest || !size ||
+        std::strcmp(tag, expectedTag.c_str()) || std::strcmp(asset, expectedAsset.c_str()) ||
+        std::strcmp(url, expectedUrl.c_str()) || std::strlen(digest) != 64) {
+      LOG_ERR("OTA", "Firmware index entry failed identity, URL, or integrity checks");
+      return JSON_PARSE_ERROR;
+    }
+    latestVersion = version;
+    otaUrl = url;
+    otaSize = static_cast<size_t>(size);
+    totalSize = otaSize;
+    updateAvailable = true;
+    LOG_DBG("OTA", "Found indexed firmware: tag=%s size=%zu", tag, otaSize);
+    return OK;
   }
 
   esp_err_t esp_err;
@@ -181,11 +241,34 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     return INTERNAL_UPDATE_ERROR;
   }
 
+  size_t lastReportedBytes = 0;
+  uint32_t lastReportedMs = millis();
+  constexpr size_t kProgressByteStep = 64u * 1024u;
+  constexpr uint32_t kProgressIntervalMs = 750;
   do {
     esp_err = esp_https_ota_perform(ota_handle);
     processedSize = esp_https_ota_get_image_len_read(ota_handle);
-    if (onProgress) onProgress(ctx);
-    delay(100);
+
+    // esp_https_ota_perform() is incremental and may return after only a small
+    // socket read. Do not throttle every iteration or force an e-paper redraw
+    // for every tiny increment. Report progress only after meaningful byte or
+    // time advancement, while still yielding cooperatively to other tasks.
+    const uint32_t now = millis();
+    const bool byteCheckpoint =
+        processedSize >= lastReportedBytes + kProgressByteStep;
+    const bool timeCheckpoint =
+        processedSize != lastReportedBytes &&
+        now - lastReportedMs >= kProgressIntervalMs;
+    if (onProgress && (byteCheckpoint || timeCheckpoint ||
+                       esp_err != ESP_ERR_HTTPS_OTA_IN_PROGRESS)) {
+      onProgress(ctx);
+      lastReportedBytes = processedSize;
+      lastReportedMs = now;
+    }
+
+    if (esp_err == ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
+      delay(1);
+    }
   } while (esp_err == ESP_ERR_HTTPS_OTA_IN_PROGRESS);
 
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);

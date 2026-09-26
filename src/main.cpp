@@ -17,6 +17,8 @@
 #include <builtinFonts/all.h>
 
 #include <cstring>
+#include <esp_heap_caps.h>
+#include <esp32-hal-psram.h>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -33,6 +35,7 @@
 #include "activities/ActivityManager.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "components/UITheme.h"
+#include "components/StartupScreen.h"
 #include "fontIds.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
@@ -348,7 +351,19 @@ bool shouldResumeReaderOnBoot() {
 void setup() {
   t1 = millis();
 
+  // Keep large general-purpose allocations out of scarce internal RAM without
+  // relocating small networking/stream/storage control objects. App Store bulk
+  // metadata has explicit PSRAM allocators; the global threshold remains high
+  // enough to avoid changing transport object placement.
+  if (psramFound()) {
+    heap_caps_malloc_extmem_enable(1024);
+  }
+
   HalSystem::begin();
+  // Timer wakes never reach this point. A true value means the user explicitly
+  // left retained desk-clock deep sleep and normal startup should resume
+  // content/Home without replaying the cold-boot splash.
+  const bool deskClockUserWake = DeskClockSleep::consumeUserWake();
   gpio.begin();
   powerManager.begin();
   halClock.begin();
@@ -445,6 +460,13 @@ void setup() {
   setupDisplayAndFonts();
   display.setFlipOutput(SETTINGS.flipUi != 0);
 
+  // Present before any activity or mapped-input update can activate installed
+  // ELF providers. Recovery and panic reports retain their direct boot paths.
+  if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic() && !deskClockUserWake) {
+    RenderLock lock;
+    StartupScreen::boot(renderer);
+  }
+
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
   const bool resumeReaderOnBoot = shouldResumeReaderOnBoot();
@@ -465,7 +487,12 @@ void setup() {
     activityManager.goToCrashReport();
   } else if (!resumeReaderOnBoot) {
     prepareStartupRefresh(HalDisplay::HALF_REFRESH);
-    // Boot directly to home screen to avoid a full-refresh boot splash before the main page.
+    if (!deskClockUserWake) {
+      RenderLock lock;
+      StartupScreen::armBootFade();
+    }
+    // A cold boot fades the logo when Home is ready. A desk-clock user wake
+    // has no splash to fade and proceeds directly into Home.
     activityManager.goHome();
   } else {
     // Clear app state to avoid getting into a boot loop if the epub doesn't load

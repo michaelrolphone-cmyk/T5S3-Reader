@@ -99,7 +99,7 @@ assert 'Storage.remove(paths.target)' not in recovery
 download = (root / 'src/network/HttpDownloader.cpp').read_text(encoding='utf-8')
 transfer = download[download.index('HttpDownloader::DownloadError HttpDownloader::downloadToFile('):]
 for required in ('Storage.exists(destPath.c_str())',
-                 'bool destinationCreated = false;', '&transferred, &destinationCreated);',
+                 'bool destinationCreated = false;', '&transferred, &destinationCreated, &httpOpenStatus);',
                  'if (destinationCreated) Storage.remove(destPath.c_str());',
                  'Storage.open(destPath.c_str(), O_WRONLY | O_CREAT | O_EXCL);'):
     assert required in transfer, required

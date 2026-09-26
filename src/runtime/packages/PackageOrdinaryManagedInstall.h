@@ -18,7 +18,7 @@ OrdinaryInstallOutcome installCanonicalOrdinaryPackage(
     Destination& destination, Hash& hash, Resolver resolver,
     const PackageRuntimePolicy& policy, uint8_t (&io)[kOrdinaryIoBytes],
     Ops& ops, Verify verifyDirectory, Purge purgeManagedBackup,
-    bool replacementAllowed) {
+    bool replacementAllowed, bool allowDowngrade = false) {
   // The plan contains up to sixteen file descriptors and dependencies. It
   // must not be retained on loopTask's stack throughout download, hashing,
   // staged publication and the nested post-install verification.
@@ -27,7 +27,8 @@ OrdinaryInstallOutcome installCanonicalOrdinaryPackage(
   return installOrdinaryPackage(*plan,
       reinterpret_cast<const uint8_t*>(manifest), manifestBytes,
       source, destination, hash, resolver, policy, io,
-      ops, verifyDirectory, purgeManagedBackup, replacementAllowed);
+      ops, verifyDirectory, purgeManagedBackup, replacementAllowed,
+      allowDowngrade);
 }
 
 // Directory::readManifest(out, capacity, used) reads its retained manifest,

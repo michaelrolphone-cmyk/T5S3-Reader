@@ -8,6 +8,7 @@ baked into the distribution path. No flashing or publication occurs here.
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
@@ -150,8 +151,11 @@ def dependency_order(candidates: list[dict]) -> list[dict]:
     return ordered
 
 
-def build() -> list[dict]:
+def build(identities: set[str] | None = None) -> list[dict]:
     candidates = dependency_order(discovered())
+    valid_ids = {item[0] for item in DRIVERS}
+    if identities is not None and (not identities or not identities <= valid_ids):
+        raise ValueError(f"invalid requested driver IDs: {sorted(identities - valid_ids)}")
     DESTINATION.mkdir(parents=True, exist_ok=True)
     catalog = []
     for candidate in candidates:
@@ -206,8 +210,11 @@ def build() -> list[dict]:
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--ids', nargs='+', help='build only these canonical driver package IDs')
+    args = parser.parse_args()
     try:
-        build()
+        build(set(args.ids) if args.ids else None)
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:
         print(f'Provider package build FAILED: {exc}', file=sys.stderr)
         sys.exit(1)

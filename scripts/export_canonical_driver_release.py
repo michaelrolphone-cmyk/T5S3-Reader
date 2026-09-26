@@ -5,6 +5,7 @@ The exporter must enforce the same identity bounds as the embedded parser:
 otherwise a successful build can publish an archive the device cannot admit.
 No release is created or published by this script.
 """
+import argparse
 from __future__ import annotations
 
 import json
@@ -46,7 +47,7 @@ def runtime_identity(kind: object, identity: object, version: object,
     )
 
 
-def export() -> None:
+def export(identities: set[str] | None = None) -> None:
     if not SOURCE.is_dir():
         raise FileNotFoundError(f'ordinary package source missing: {SOURCE}')
     if TARGET.exists() and (not TARGET.is_dir() or any(TARGET.iterdir())):
@@ -115,4 +116,7 @@ def export() -> None:
 
 
 if __name__ == '__main__':
-    export()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--ids', nargs='+', help='export only these canonical driver package IDs')
+    args = parser.parse_args()
+    export(set(args.ids) if args.ids else None)

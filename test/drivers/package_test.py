@@ -97,7 +97,9 @@ class Packages(unittest.TestCase):
         self.assertIn('if (!recoverDriverDirectory(id)) return false;', parser)
         self.assertIn('verify(paths.backup)', legacy)
         self.assertIn('PackageReplacementLease lease(paths.target)', ordinary)
-        self.assertIn('decidePackageVersion(candidate, &observed)', ordinary)
+        self.assertIn('decidePackageVersion(candidate, &observed, allowDowngrade)', ordinary)
+        self.assertIn('bool allowDowngrade = false', ordinary)
+        self.assertIn('InstallDecision::DowngradeAllowed', ordinary)
         self.assertIn('ops.exists(paths.stage)', ordinary)
     def test_release_discovery_diagnostic_guards(self):
         root = Path(__file__).resolve().parents[2]

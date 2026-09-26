@@ -1,10 +1,12 @@
 #include "runtime/streams/HttpStreamTransfer.h"
+#include "runtime/streams/HttpUrlValidation.h"
 #include "runtime/streams/StreamRuntime.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <string>
 #include <vector>
 
 using namespace RuntimeHttpStreams;
@@ -23,6 +25,7 @@ struct Mock {
   unsigned slowWrites = 0;
   unsigned sourceClose = 0, fileClose = 0, fileFinish = 0;
   bool stageExists = false, finishFails = false, cancelled = false, stall = false;
+  int32_t httpOpenResult = T5_STREAM_OK;
   t5_stream_t capturedSource = 0, capturedFile = 0;
   static Mock* active;
 
@@ -32,6 +35,7 @@ struct Mock {
     api.api_version = T5_STREAM_API_VERSION;
     api.struct_size = sizeof(api);
     api.open_http = [](const char* url, t5_stream_t* out) -> int32_t {
+      if (active->httpOpenResult != T5_STREAM_OK) return active->httpOpenResult;
       if (!url || std::strcmp(url, "https://example.test/payload")) return T5_STREAM_INVALID;
       Provider provider{active, readSource, nullptr, nullptr, nullptr, closeSource};
       const int32_t result = active->registry.attach(owner, T5_STREAM_BYTES, T5_STREAM_READ, provider, out);
@@ -122,6 +126,21 @@ void assertReleased(Mock& mock) {
 
 int main() {
   {
+    size_t length = 0;
+    assert(RuntimeHttpUrl::validate("https://example.test/app.elf", 1024, &length) ==
+           RuntimeHttpUrl::Status::Valid);
+    assert(length == std::strlen("https://example.test/app.elf"));
+    assert(RuntimeHttpUrl::validate("http://example.test/app.elf", 1024) ==
+           RuntimeHttpUrl::Status::Valid);
+    assert(RuntimeHttpUrl::validate(nullptr, 1024) == RuntimeHttpUrl::Status::Null);
+    assert(RuntimeHttpUrl::validate("ftp://example.test/app.elf", 1024) ==
+           RuntimeHttpUrl::Status::UnsupportedScheme);
+    const std::string tooLong(1024, 'x');
+    assert(RuntimeHttpUrl::validate(tooLong.c_str(), 1024, &length) ==
+           RuntimeHttpUrl::Status::TooLong);
+    assert(length == 1024);
+  }
+  {
     Mock mock(10000);
     std::vector<uint8_t> output;
     uint64_t total = 0;
@@ -167,6 +186,17 @@ int main() {
                     mock.hooks(), nullptr, nullptr, &total, &created) == Result::File);
     assert(!created && total == 0 && mock.staged == sentinel);
     assert(mock.sourceClose == 0 && mock.fileClose == 0);
+  }
+  {
+    Mock mock(1000);
+    mock.httpOpenResult = T5_STREAM_LIMIT;
+    bool created = false;
+    int32_t openStatus = T5_STREAM_OK;
+    assert(download(&mock.api, "https://example.test/payload", "/sd/Apps/test.elf.part",
+                    mock.hooks(), nullptr, nullptr, nullptr, &created, &openStatus) == Result::Http);
+    assert(created && openStatus == T5_STREAM_LIMIT);
+    assert(mock.sourceClose == 0 && mock.fileClose == 1);
+    mock.registry.release(owner);
   }
   {
     Mock mock(10000);

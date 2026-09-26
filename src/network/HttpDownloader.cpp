@@ -5,6 +5,7 @@
 #include <Logging.h>
 #include <T5StreamApi.h>
 #include <esp_task_wdt.h>
+#include <esp_heap_caps.h>
 #if __has_include(<NetworkClient.h>)
 #include <NetworkClient.h>
 #include <NetworkClientSecure.h>
@@ -24,21 +25,29 @@ using CrossPointHttpClientSecure = WiFiClientSecure;
 #include <utility>
 
 #include "runtime/network/NetworkService.h"
+#include "runtime/network/SavedNetworkConnection.h"
 #include "runtime/streams/HttpStreamTransfer.h"
+#include "runtime/streams/HttpUrlValidation.h"
 #include "util/UrlUtils.h"
 
 namespace {
-constexpr uint32_t kNetworkReadyTimeoutMs = 5000;
+constexpr uint32_t kNetworkReadyTimeoutMs = 15000;
 constexpr size_t kNativeMetadataLimit = 64 * 1024;
 
+void logHttpMemory(const char* stage) {
+  const size_t internalFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t internalMax =
+      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const size_t psramFree = heap_caps_get_free_size(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  LOG_ERR("HTTP", "%s memory: internalFree=%u internalMax=%u psramFree=%u",
+          stage ? stage : "HTTP",
+          static_cast<unsigned>(internalFree),
+          static_cast<unsigned>(internalMax),
+          static_cast<unsigned>(psramFree));
+}
+
 bool waitForNetworkReady() {
-  if (RuntimeNetwork::ready()) return true;
-  const uint32_t started = millis();
-  while (millis() - started < kNetworkReadyTimeoutMs) {
-    if (RuntimeNetwork::ready()) return true;
-    delay(50);
-  }
-  return RuntimeNetwork::ready();
+  return RuntimeNetwork::ensureSavedConnection(kNetworkReadyTimeoutMs);
 }
 
 // The native-app invocation is the only task authorized to request its stream
@@ -158,6 +167,7 @@ bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const 
   const int httpCode = http.GET();
   if (httpCode != HTTP_CODE_OK) {
     LOG_ERR("HTTP", "Fetch failed: %d", httpCode);
+    logHttpMemory("metadata TLS/GET failure");
     http.end();
     return false;
   }
@@ -216,19 +226,40 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
     const std::string streamPath = "/sd" + destPath;
     uint64_t transferred = 0;
     bool destinationCreated = false;
+    int32_t httpOpenStatus = T5_STREAM_OK;
     auto reportProgress = [](void* context, uint64_t count) {
       auto* callback = static_cast<ProgressCallback*>(context);
       if (*callback) (*callback)(static_cast<size_t>(count), 0);
     };
     const auto result = RuntimeHttpStreams::download(streams, url.c_str(), streamPath.c_str(),
                                                       streamHooks(), reportProgress, &progress,
-                                                      &transferred, &destinationCreated);
+                                                      &transferred, &destinationCreated, &httpOpenStatus);
     if (result != RuntimeHttpStreams::Result::Ok) {
-      LOG_ERR("HTTP", "Native staged transfer failed: %d", static_cast<int>(result));
+      if (httpOpenStatus == T5_STREAM_INVALID) {
+        size_t callerUrlLength = 0;
+        const auto callerUrlStatus = RuntimeHttpUrl::validate(url.c_str(), 1024, &callerUrlLength);
+        LOG_ERR("HTTP", "Native staged URL at call site: reason=%s bytes=%u",
+                RuntimeHttpUrl::statusName(callerUrlStatus),
+                static_cast<unsigned>(callerUrlLength));
+      }
+      LOG_ERR("HTTP", "Native staged transfer failed: %d (open_http=%ld)",
+              static_cast<int>(result), static_cast<long>(httpOpenStatus));
+      logHttpMemory("native staged transfer failure");
       // Exclusive open can fail because a different writer won the race after
       // exists(). That file is not ours, so never remove it on failed open.
       if (destinationCreated) Storage.remove(destPath.c_str());
-      return result == RuntimeHttpStreams::Result::File ? FILE_ERROR : HTTP_ERROR;
+      switch (result) {
+        case RuntimeHttpStreams::Result::File: return FILE_ERROR;
+        case RuntimeHttpStreams::Result::Cancelled: return ABORTED;
+        case RuntimeHttpStreams::Result::Http: return HTTP_ERROR;
+        case RuntimeHttpStreams::Result::Invalid:
+        case RuntimeHttpStreams::Result::Transfer:
+        case RuntimeHttpStreams::Result::Timeout:
+          return STREAM_ERROR;
+        case RuntimeHttpStreams::Result::Ok:
+          break;
+      }
+      return STREAM_ERROR;
     }
     // pipe DONE/finish prove the data-plane operation, not the SD artifact's
     // length. Reopen after file close and verify the byte count independently.
@@ -271,6 +302,7 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
   const int httpCode = http.GET();
   if (httpCode != HTTP_CODE_OK) {
     LOG_ERR("HTTP", "Download failed: %d", httpCode);
+    logHttpMemory("binary TLS/GET failure");
     http.end();
     return HTTP_ERROR;
   }
@@ -320,8 +352,9 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
 
   if (writeResult < 0) {
     LOG_ERR("HTTP", "writeToStream error: %d", writeResult);
+    logHttpMemory("binary stream failure");
     Storage.remove(destPath.c_str());
-    return HTTP_ERROR;
+    return STREAM_ERROR;
   }
 
   const size_t downloaded = fileStream.downloaded();

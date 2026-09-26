@@ -12,7 +12,7 @@ namespace RuntimePackages {
 // /Apps/*.elf and /Drivers/<id>/manifest.json installations are preserved.
 OrdinaryInstallOutcome installOrdinaryFromSd(
     const char* sourceDirectory, const PackageRuntimePolicy& policy,
-    uint32_t (*resolveCapability)(const char*));
+    uint32_t (*resolveCapability)(const char*), bool allowDowngrade = false);
 
 // Independently reparse the on-card manifest, verify its complete declared
 // inventory and SHA-256, and return observed identity. The caller checks

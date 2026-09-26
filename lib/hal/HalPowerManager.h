@@ -25,7 +25,16 @@ class HalPowerManager {
   SemaphoreHandle_t modeMutex = nullptr;  // Protect access to currentLockMode
 
  public:
-  static constexpr int LOW_POWER_FREQ = 10;                    // MHz
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  // Keep the S3 on PLL with an 80 MHz APB. Arduino 2.0.17's calculateApb()
+  // reports 80 MHz even for XTAL-divided CPU clocks, while IDF 4.4.7 actually
+  // lowers APB to that clock. Going to 10 MHz leaves live peripheral timing
+  // based on the wrong frequency. This CPU-port constraint applies to both
+  // USB roles and every S3 board, not just an attached controller or T5S3.
+  static constexpr int LOW_POWER_FREQ = 80;                   // MHz
+#else
+  static constexpr int LOW_POWER_FREQ = 10;                   // MHz
+#endif
   static constexpr unsigned long IDLE_POWER_SAVING_MS = 3000;  // ms
   static constexpr unsigned long BATTERY_POLL_MS = 1500;       // ms
 

@@ -1,13 +1,18 @@
 #pragma once
 
 #include "AppPackageInstaller.h"
+#include "FileAssociationRegistry.h"
 #include "NativeOnlinePackageRecovery.h"
+#include <Arduino.h>
+#include <T5AppApi.h>
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
+#include "runtime/memory/PsramBuffer.h"
 #include "network/HttpDownloader.h"
 #include <HalStorage.h>
 #include <Logging.h>
+#include <NativeAppLauncher.h>
 #include <mbedtls/sha256.h>
 #include <esp_task_wdt.h>
 #include <cstdio>
@@ -24,61 +29,66 @@ namespace RuntimeOnlinePackages {
 // prior source whose exact bounded contents match this release, and a stage
 // whose every byte matches the freshly verified source. Unknown paths remain.
 inline bool installApplication(const char* artifact, const char* version,
-                               const char* url, const std::string& sidecar,
-                               uint64_t size, const char* elfDigest) {
+                               const char* url, std::string sidecar,
+                               uint64_t size, const char* elfDigest,
+                               t5_app_catalog_progress_fn progress = nullptr,
+                               void* progressContext = nullptr,
+                               const char** failureReason = nullptr) {
   using namespace RuntimePackages;
+  if (failureReason) *failureReason = nullptr;
+  const auto fail = [failureReason](const char* reason) {
+    if (failureReason) *failureReason = reason;
+    return false;
+  };
   if (!artifact || !version || !url || !elfDigest ||
       !safePackageEntryName(artifact) || !safeVersion(version) ||
-      !validSha256Hex(elfDigest) || size < 52 || size > 8u * 1024u * 1024u ||
-      sidecar.empty() || sidecar.size() > 4096) return false;
+      !validSha256Hex(elfDigest) || size < 52 || size > kOrdinaryMaxEntryBytes ||
+      sidecar.empty() || sidecar.size() > 4096) return fail("release metadata rejected");
   const size_t nameBytes = std::strlen(artifact);
-  if (nameBytes <= 4 || std::strcmp(artifact + nameBytes - 4, ".elf")) return false;
+  if (nameBytes <= 4 || std::strcmp(artifact + nameBytes - 4, ".elf")) return fail("invalid ELF name");
   const std::string id(artifact, nameBytes - 4);
-  if (!safeId(id.c_str())) return false;
+  if (!safeId(id.c_str())) return fail("invalid app identity");
   const std::string manifestName = id + ".json";
-  if (!safePackageEntryName(manifestName.c_str())) return false;
+  if (!safePackageEntryName(manifestName.c_str())) return fail("invalid manifest name");
+  const uint64_t sidecarSize = sidecar.size();
 
   // The retained JSON buffer and up-to-16-entry plan together exceed 8 KiB.
   // Build them on the heap before calling the separately staged SD installer.
   uint8_t digest[32]{};
   if (mbedtls_sha256_ret(reinterpret_cast<const unsigned char*>(sidecar.data()),
-                         sidecar.size(), digest, 0) != 0) return false;
+                         sidecar.size(), digest, 0) != 0) return fail("manifest digest failed");
   constexpr char alphabet[] = "0123456789abcdef";
   char jsonDigest[65]{};
   for (size_t i = 0; i < 32; ++i) {
     jsonDigest[i * 2] = alphabet[digest[i] >> 4];
     jsonDigest[i * 2 + 1] = alphabet[digest[i] & 15];
   }
-  std::unique_ptr<char[]> descriptor(new (std::nothrow) char[4096]{});
-  std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
-  if (!descriptor || !plan) return false;
-  const int count = std::snprintf(descriptor.get(), 4096,
+  RuntimeMemory::PsramBuffer descriptor(4096);
+  if (!descriptor) return fail("PSRAM unavailable for package descriptor");
+  const int count = std::snprintf(descriptor.chars(), descriptor.size(),
       "{\"schema\":1,\"kind\":\"application\",\"id\":\"%s\",\"version\":\"%s\","
       "\"artifact\":\"%s\",\"architecture\":\"xtensa-esp32s3\",\"min_runtime_api\":2,"
       "\"entries\":[{\"name\":\"%s\",\"size_bytes\":%llu,\"sha256\":\"%s\",\"executable\":true},"
       "{\"name\":\"%s\",\"size_bytes\":%llu,\"sha256\":\"%s\",\"executable\":false}],"
       "\"requires\":[]}", id.c_str(), version, artifact, artifact,
       static_cast<unsigned long long>(size), elfDigest, manifestName.c_str(),
-      static_cast<unsigned long long>(sidecar.size()), jsonDigest);
-  if (count <= 0 || count >= 4096 ||
-      !parseOrdinaryManifest(descriptor.get(), static_cast<size_t>(count), *plan) ||
-      plan->identity.kind != Kind::Application ||
-      std::strcmp(plan->identity.id, id.c_str())) return false;
+      static_cast<unsigned long long>(sidecarSize), jsonDigest);
+  if (count <= 0 || count >= 4096)
+    return fail("package descriptor rejected");
   constexpr PackageRuntimePolicy policy{"xtensa-esp32s3", 2, 0,
-                                        8u * 1024u * 1024u, 16u * 1024u * 1024u};
+      kOrdinaryMaxEntryBytes, kOrdinaryMaxTotalBytes};
   const std::string root = "/Packages/Inbox/" + id;
   if (!Storage.ready() ||
       (!Storage.exists("/Packages") && !Storage.mkdir("/Packages", false)) ||
-      (!Storage.exists("/Packages/Inbox") && !Storage.mkdir("/Packages/Inbox", false))) return false;
+      (!Storage.exists("/Packages/Inbox") && !Storage.mkdir("/Packages/Inbox", false))) return fail("package inbox unavailable");
   if (Storage.exists(root.c_str())) {
-    if (!Recovery::discardMatchingInbox(root, manifestName, sidecar, artifact,
-            descriptor.get(), static_cast<size_t>(count))) {
-      LOG_ERR("APPSTORE", "Existing inbox differs from this release; preserved for inspection: %s", root.c_str());
-      return false;
+    if (!Recovery::discardOwnedInbox(root, manifestName, artifact)) {
+      LOG_ERR("APPSTORE", "Existing inbox contains unknown content; preserved: %s", root.c_str());
+      return fail("stale package scratch contains unknown files");
     }
-    LOG_INF("APPSTORE", "Recovered matching interrupted download for %s", id.c_str());
+    LOG_INF("APPSTORE", "Discarded stale partial install for %s; starting over", id.c_str());
   }
-  if (!Storage.mkdir(root.c_str(), false)) return false;
+  if (!Storage.mkdir(root.c_str(), false)) return fail("could not create package inbox");
 
   auto writeExclusive = [](const std::string& filename,
                            const char* contents, size_t bytes) -> bool {
@@ -91,30 +101,118 @@ inline bool installApplication(const char* artifact, const char* version,
     return file.close() && written;
   };
   const std::string jsonPath = root + "/" + manifestName;
-  if (!writeExclusive(jsonPath, sidecar.data(), sidecar.size())) return false;
+  if (!writeExclusive(jsonPath, sidecar.data(), sidecar.size())) return fail("could not stage app manifest");
+  // The exact manifest is now durably staged. It is not needed during the ELF
+  // transfer, so release its heap before mbedTLS allocates handshake buffers.
+  std::string().swap(sidecar);
+  // The descriptor was needed only for interrupted-inbox comparison so far.
+  // Rebuild it after the download rather than carrying 4 KiB through TLS.
+  descriptor.reset();
+
   const std::string elfPath = root + "/" + artifact;
   const std::string elfStage = elfPath + ".part";
-  if (HttpDownloader::downloadToFile(url, elfStage,
-          [](size_t, size_t) { esp_task_wdt_reset(); }) != HttpDownloader::OK ||
-      Storage.exists(elfPath.c_str()) ||
-      !Storage.rename(elfStage.c_str(), elfPath.c_str()) ||
-      !verifyAppPair(elfPath.c_str(), jsonPath.c_str(), artifact, true)) return false;
-  if (!writeExclusive(root + "/.package.json", descriptor.get(), static_cast<size_t>(count)))
-    return false;
-  // The source has passed the release digest and exact sidecar checks. Before
-  // re-staging, recover only a previous stage whose contents match this source
-  // byte for byte (or its interrupted prefix). Never remove an unknown stage.
-  if (!Recovery::discardMatchingStage(root, *plan, policy, installedCapabilityVersion)) {
-    LOG_ERR("APPSTORE", "Unrecognized or mismatched package stage preserved for inspection: %s", id.c_str());
-    return false;
+  // Do not re-enter the native UI while the HTTP stream worker owns its TLS
+  // stack/buffers. Native list rendering starts a separate 8 KiB e-paper task;
+  // doing that from the byte-progress callback competes with the exact heap
+  // headroom this path preserves for TLS and can abort otherwise valid installs.
+  // Keep the transfer callback allocation-free except for the watchdog reset.
+  const auto downloadResult = HttpDownloader::downloadToFile(
+      url, elfStage, [](size_t, size_t) { esp_task_wdt_reset(); });
+  if (downloadResult != HttpDownloader::OK) {
+    switch (downloadResult) {
+      case HttpDownloader::HTTP_ERROR: return fail("HTTP download failed");
+      case HttpDownloader::FILE_ERROR: return fail("download staging file failed");
+      case HttpDownloader::ABORTED: return fail("download aborted");
+      case HttpDownloader::STREAM_ERROR: return fail("download stream failed");
+      case HttpDownloader::OK: break;
+    }
+    return fail("download failed");
   }
+  // The HTTP worker publishes EOF before the pipe can complete. Give the
+  // scheduler one turn to reclaim its task stack, then permit the ELF to show a
+  // terminal 100% frame before digest verification/publication continues.
+  if (progress) {
+    delay(1);
+    progress(progressContext, size, size);
+  }
+  // Recreate the descriptor and full parsed plan only after TLS is finished.
+  if (!descriptor.allocate(4096)) return fail("PSRAM unavailable for package descriptor");
+  const int rebuiltCount = std::snprintf(descriptor.chars(), descriptor.size(),
+      "{\"schema\":1,\"kind\":\"application\",\"id\":\"%s\",\"version\":\"%s\","
+      "\"artifact\":\"%s\",\"architecture\":\"xtensa-esp32s3\",\"min_runtime_api\":2,"
+      "\"entries\":[{\"name\":\"%s\",\"size_bytes\":%llu,\"sha256\":\"%s\",\"executable\":true},"
+      "{\"name\":\"%s\",\"size_bytes\":%llu,\"sha256\":\"%s\",\"executable\":false}],"
+      "\"requires\":[]}", id.c_str(), version, artifact, artifact,
+      static_cast<unsigned long long>(size), elfDigest, manifestName.c_str(),
+      static_cast<unsigned long long>(sidecarSize), jsonDigest);
+  if (rebuiltCount <= 0 || rebuiltCount >= 4096) return fail("package descriptor rejected");
+  RuntimeMemory::PsramBuffer planStorage(sizeof(OrdinaryPackagePlan));
+  auto* plan = reinterpret_cast<OrdinaryPackagePlan*>(planStorage.data());
+  if (!planStorage ||
+      !parseOrdinaryManifest(descriptor.chars(), static_cast<size_t>(rebuiltCount), *plan) ||
+      plan->identity.kind != Kind::Application ||
+      std::strcmp(plan->identity.id, id.c_str()))
+    return fail("package descriptor rejected");
+
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  vTaskDelay(1);
+#endif
+  if (Storage.exists(elfPath.c_str())) return fail("download target already exists");
+  if (!Storage.rename(elfStage.c_str(), elfPath.c_str()))
+    return fail("could not finalize downloaded ELF");
+  if (!verifyAppPair(elfPath.c_str(), jsonPath.c_str(), artifact, true))
+    return fail("downloaded ELF failed size, format or SHA-256 verification");
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  vTaskDelay(1);
+#endif
+  if (!writeExclusive(root + "/.package.json", descriptor.chars(), static_cast<size_t>(rebuiltCount)))
+    return fail("could not stage package descriptor");
+  // Online installs always start over. Discard only manager-owned stage files
+  // named by the current plan; unknown content is preserved and blocks cleanup.
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  vTaskDelay(1);
+#endif
+  if (!Recovery::discardOwnedStage(*plan)) {
+    LOG_ERR("APPSTORE", "Existing package stage contains unknown content; preserved: %s", id.c_str());
+    return fail("stale package stage contains unknown files");
+  }
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  vTaskDelay(1);
+#endif
   const auto installed = installOrdinaryFromSd(root.c_str(), policy,
                                                 installedCapabilityVersion);
   if (installed.result != OrdinaryInstallResult::Installed) {
     LOG_ERR("APPSTORE", "Canonical install rejected for %s: result=%u stage=%u transaction=%u",
             id.c_str(), static_cast<unsigned>(installed.result),
             static_cast<unsigned>(installed.staging), static_cast<unsigned>(installed.transaction));
-    return false;
+    return fail("package staging or publication rejected");
+  }
+
+  // A manually installed app may still exist as the legacy loose
+  // /Apps/<artifact> + /Apps/<id>.json pair. Once the canonical package has
+  // been published successfully, retire that duplicate only if the loose pair
+  // independently validates as this exact artifact. Never delete unknown files
+  // or the currently mapped loose application.
+  const std::string legacyElf = std::string("/Apps/") + artifact;
+  const std::string legacyJson = std::string("/Apps/") + manifestName;
+  const std::string legacyVfsElf = std::string("/sd") + legacyElf;
+  const char* activePath = native_app_current_path();
+  if ((!activePath || legacyVfsElf != activePath) &&
+      Storage.exists(legacyElf.c_str()) && Storage.exists(legacyJson.c_str()) &&
+      inspectInstalledAppPair(legacyElf.c_str(), legacyJson.c_str(), artifact)) {
+    if (Storage.remove(legacyElf.c_str())) {
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+      vTaskDelay(1);
+#endif
+      if (!Storage.remove(legacyJson.c_str()))
+        LOG_ERR("APPSTORE", "Canonical app installed but legacy sidecar cleanup failed: %s",
+                legacyJson.c_str());
+      else
+        LOG_INF("APPSTORE", "Removed migrated legacy app pair for %s", artifact);
+    } else {
+      LOG_ERR("APPSTORE", "Canonical app installed but legacy ELF cleanup failed: %s",
+              legacyElf.c_str());
+    }
   }
 
   // Source directory belongs to this invocation; clean up only exact files
@@ -124,6 +222,9 @@ inline bool installApplication(const char* artifact, const char* version,
   (void)Storage.remove(elfPath.c_str());
   (void)Storage.remove(jsonPath.c_str());
   (void)Storage.rmdir(root.c_str());
+  // Publication is already committed; rebuild the derived association index
+  // immediately so installs and updates change File Browser resolution now.
+  (void)NativeFileAssociations::rebuild();
   return true;
 }
 } // namespace RuntimeOnlinePackages

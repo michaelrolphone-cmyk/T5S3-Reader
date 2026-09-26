@@ -135,6 +135,44 @@ For new application development, trusted system pickers and mediated resource ac
 
 If a picker is missing, implement the reusable picker/intent/platform API first when feasible.
 
+### 3.3 Required-application workflow continuation
+
+A firmware-owned workflow that delegates a step to an installable application
+MUST NOT strand the user at a dead-end "app not installed" screen.
+
+The canonical firmware pattern is:
+
+```text
+workflow activity
+    |
+    | resolve verified installed app
+    v
+missing? -> RequiredAppActivity
+               |
+               | Install
+               v
+        authoritative app catalog
+               |
+               | verified package publication
+               v
+        return success to parent
+               |
+               v
+repeat the exact workflow launch step
+```
+
+The parent workflow remains on the Activity stack while the required-app prompt
+and installation run. Installation targets the exact requested artifact rather
+than opening the general App Store. After publication, RiscRTE MUST resolve the
+installed application through the normal verified inventory before reporting
+success. The parent then repeats the same launch step automatically, preserving
+the user's workflow instead of requiring navigation back through Home/Apps.
+
+Cancel returns control to the parent without granting or fabricating an
+installation result. Network/catalog/install failures remain on the required-app
+screen with an explicit retry path. Firmware workflows SHOULD use the reusable
+`RequiredAppActivity` rather than implementing private missing-app prompts.
+
 ## 4. Private application storage — HIGH PRIORITY
 
 Each installed application SHOULD have a runtime-defined private persistent storage namespace keyed by stable package identity.
@@ -145,7 +183,7 @@ Applications SHOULD address this through a logical namespace/API such as:
 app://data/...
 ```
 
-The physical backing path is an implementation detail and MUST NOT be treated as part of the application ABI. A current implementation may map package-private storage under SD/internal storage, for example an `AppData/<package-id>/` hierarchy, while preserving the logical API.
+The physical backing path is an implementation detail and MUST NOT be treated as part of the application ABI. When RiscRTE backs private/runtime application state on the system volume, the physical organization MUST follow [RiscRTE System Storage Layout](SYSTEM_STORAGE_LAYOUT.md), currently reserving `/System/State/Applications/<stable-app-id>/` for application-owned runtime state. Applications still address private storage through a logical/scoped API rather than depending on that physical path.
 
 ### 4.1 Storage classes
 
@@ -164,6 +202,7 @@ Private application data is available to its owning package without granting arb
 ### 4.2 Storage invariants
 
 - Package identity, not display name or ELF filename alone, determines the private namespace.
+- Applications MUST NOT invent arbitrary direct children of `/System`; physical system-backed state uses the owner-class hierarchy defined by [RiscRTE System Storage Layout](SYSTEM_STORAGE_LAYOUT.md).
 - Applications cannot traverse into another package's private namespace through the public application API.
 - Uninstall/update policy MUST define whether private data is preserved, migrated, or removed.
 - Atomic replacement and streaming APIs SHOULD be available without requiring whole-file RAM buffering.
@@ -181,7 +220,7 @@ app-owned state        -> private application storage
 user-selected content  -> trusted picker + scoped handle
 large sequential data  -> stream
 shared/exported data   -> explicit share/save intent
-platform/system data   -> platform service/capability
+platform/system data   -> platform service/capability + /System semantic class
 ```
 
 ## 5. Memory quotas and resource accounting

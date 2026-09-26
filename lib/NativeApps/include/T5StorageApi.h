@@ -26,6 +26,9 @@ typedef struct {
     size_t (*stream_read)(t5_storage_stream_t stream, void *buffer, size_t capacity);
     bool (*stream_seek)(t5_storage_stream_t stream, size_t offset);
     void (*stream_close)(t5_storage_stream_t stream);
+
+    /* Append-only extension: atomic same-volume rename; destination must not exist. */
+    bool (*rename_file)(const char *source_path, const char *destination_path);
 } t5_storage_api_v1;
 
 const t5_storage_api_v1 *t5_storage_get_api(uint32_t api_version);

@@ -103,6 +103,7 @@ Events have monotonic sequence, generation-qualified opaque handle, copied remov
 - [Runtime Driver Implementation](RUNTIME_DRIVER_IMPLEMENTATION.md) — migration status and legacy facts, not normative hardware ownership.
 - [USB ELF Migration Status](USB_ELF_MIGRATION_STATUS.md) — current real ELF foundation and remaining firmware residue.
 - [Memory Architecture](MEMORY_ARCHITECTURE.md)
+- [RiscRTE System Storage Layout](SYSTEM_STORAGE_LAYOUT.md) — normative ownership and semantics for `/System/Registry`, `State`, `Config`, `Cache`, `Logs` and `Recovery`; new code must not create `/.crosspoint` state.
 - [Security Architecture](SECURITY_ARCHITECTURE.md) — longer-term scope, not a package-signing instruction.
 
 ### B. Application and execution model
@@ -165,7 +166,7 @@ Document in order: (1) target architecture, (2) implementation status, (3) legac
 
 ## Rules for new changes
 
-Before a change, read this master and governing roadmap/child spec; read hardware boundary for device/capability/driver work and [U1](NEXT_HARDWARE_TEST_MILESTONE.md) plus [bundled package spec](BUNDLED_PACKAGE_ARCHIVE_AND_INSTALL_LAYOUT.md) for package/USB/Serial Monitor/archive/layout work. For app work, read execution-context architecture and apply trusted UI/private storage within scope. Inspect code before treating a target as implemented. Use semantic capabilities and appropriate platform abstractions, never create new hardware-specific core bridges. Associate software grants with execution-context owners. Update normative specs with architectural/API changes and label remaining legacy behavior. Use RiscRTE naming for the platform.
+Before a change, read this master and governing roadmap/child spec; read hardware boundary for device/capability/driver work and [U1](NEXT_HARDWARE_TEST_MILESTONE.md) plus [bundled package spec](BUNDLED_PACKAGE_ARCHIVE_AND_INSTALL_LAYOUT.md) for package/USB/Serial Monitor/archive/layout work. Any new RiscRTE-owned SD state or generated system metadata must follow [RiscRTE System Storage Layout](SYSTEM_STORAGE_LAYOUT.md). For app work, read execution-context architecture and apply trusted UI/private storage within scope. Inspect code before treating a target as implemented. Use semantic capabilities and appropriate platform abstractions, never create new hardware-specific core bridges. Associate software grants with execution-context owners. Update normative specs with architectural/API changes and label remaining legacy behavior. Use RiscRTE naming for the platform.
 
 One explicit user request controls change scope; U1 is a single software milestone with internal workstreams and one owner hardware-test handoff. Do not require physical testing between commits, wait idle on CI instead of progressing independent work, conflate CI and hardware acceptance, create stacked interdependent PRs, or auto-merge/release/flash. Preserve a recoverable progress ledger across prompts.
 

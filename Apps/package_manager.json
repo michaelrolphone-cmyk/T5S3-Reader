@@ -3,5 +3,9 @@
   "version": "1.0.1",
   "display_name": "Package Manager",
   "file_name": "package_manager.elf",
-  "icon": "solid:f187"
+  "icon": "solid:f187",
+  "category": [
+    "System",
+    "Software"
+  ]
 }

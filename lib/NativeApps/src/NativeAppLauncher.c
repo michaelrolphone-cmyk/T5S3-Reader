@@ -10,12 +10,14 @@
 
 #include "esp_elf.h"
 #include "T5AppApi.h"
+#include "T5ArchiveApi.h"
 #include "T5BatteryApi.h"
 #include "T5ButtonRemapApi.h"
 #include "T5CacheApi.h"
 #include "T5DeviceApi.h"
 #include "T5DriverManagerApi.h"
 #include "T5FileBrowserApi.h"
+#include "T5FileOpenApi.h"
 #include "T5FontApi.h"
 #include "T5GpsApi.h"
 #include "T5HardwareTakeover.h"
@@ -97,6 +99,7 @@ esp_err_t launch_elf_app(const char *sd_path)
     }
     static const struct esp_elfsym host_symbols[] = {
         ESP_ELFSYM_EXPORT(t5_app_get_api),
+        ESP_ELFSYM_EXPORT(t5_archive_get_api),
         ESP_ELFSYM_EXPORT(t5_battery_get_api),
         ESP_ELFSYM_EXPORT(t5_button_remap_get_api),
         ESP_ELFSYM_EXPORT(t5_cache_get_api),
@@ -122,14 +125,12 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_ui_get_api),
         ESP_ELFSYM_EXPORT(t5_network_get_api),
         ESP_ELFSYM_EXPORT(t5_file_browser_get_api),
+        ESP_ELFSYM_EXPORT(t5_file_open_get_api),
         ESP_ELFSYM_EXPORT(t5_image_get_api),
         ESP_ELFSYM_EXPORT(t5_gps_get_api),
         ESP_ELFSYM_EXPORT(t5_lora_get_api),
         ESP_ELFSYM_EXPORT(t5_web_server_get_api),
         ESP_ELFSYM_EXPORT(t5_usb_get_api),
-        ESP_ELFSYM_EXPORT(snprintf),
-        ESP_ELFSYM_EXPORT(strcpy),
-        ESP_ELFSYM_EXPORT(strncpy),
         ESP_ELFSYM_END
     };
     const int registered = esp_elf_register_symbol(host_symbols);

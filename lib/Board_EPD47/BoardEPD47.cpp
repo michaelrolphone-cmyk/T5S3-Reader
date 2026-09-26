@@ -275,32 +275,27 @@ bool GT911Touch::begin() {
   return false;
 }
 
-bool GT911Touch::readPoint(TouchPoint* point, bool* homeButtonPressed) {
-  if (homeButtonPressed) {
-    *homeButtonPressed = false;
-  }
-  if (!available || point == nullptr) {
-    return false;
-  }
+bool GT911Touch::readEvent(TouchPoint* point, bool* homeButtonPressed, bool* contactActive) {
+  if (homeButtonPressed) *homeButtonPressed = false;
+  if (contactActive) *contactActive = false;
+  if (!available || point == nullptr || contactActive == nullptr) return false;
 
   uint8_t status = 0;
-  if (!readReg(GT911_STATUS_REG, &status, 1) || (status & GT911_STATUS_READY) == 0) {
+  if (!readReg(GT911_STATUS_REG, &status, 1) || (status & GT911_STATUS_READY) == 0)
     return false;
-  }
-  if (homeButtonPressed) {
+
+  if (homeButtonPressed)
     *homeButtonPressed = (status & GT911_STATUS_HAVE_KEY) != 0;
-  }
+
   if ((status & GT911_TOUCH_COUNT_MASK) == 0) {
     writeReg8(GT911_STATUS_REG, 0);
-    return false;
+    return true;
   }
 
   uint8_t data[8] = {};
   const bool ok = readReg(GT911_POINT1_REG, data, sizeof(data));
   writeReg8(GT911_STATUS_REG, 0);
-  if (!ok) {
-    return false;
-  }
+  if (!ok) return false;
 
   const uint16_t rawX = static_cast<uint16_t>(data[1]) | (static_cast<uint16_t>(data[2]) << 8);
   const uint16_t rawY = static_cast<uint16_t>(data[3]) | (static_cast<uint16_t>(data[4]) << 8);
@@ -308,7 +303,13 @@ bool GT911Touch::readPoint(TouchPoint* point, bool* homeButtonPressed) {
   // Match LilyGo's GT911 setup: swap XY, then mirror the physical Y axis.
   point->x = min<uint16_t>(rawY, EPD47_WIDTH - 1);
   point->y = rawX < EPD47_HEIGHT ? EPD47_HEIGHT - 1 - rawX : 0;
+  *contactActive = true;
   return true;
+}
+
+bool GT911Touch::readPoint(TouchPoint* point, bool* homeButtonPressed) {
+  bool active = false;
+  return readEvent(point, homeButtonPressed, &active) && active;
 }
 
 }  // namespace BoardEPD47

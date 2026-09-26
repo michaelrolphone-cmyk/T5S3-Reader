@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "File Transfer",
   "file_name": "file_transfer.elf",
-  "icon": "solid:f0ec"
+  "icon": "solid:f0ec",
+  "category": [
+    "Files",
+    "Connectivity"
+  ]
 }

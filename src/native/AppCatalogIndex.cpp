@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "network/HttpDownloader.h"
+#include "runtime/memory/PsramJson.h"
 
 namespace {
 constexpr size_t kMaxCatalogBytes = 64 * 1024;
@@ -20,20 +21,25 @@ bool fetchAppCatalogIndex(const std::string& url, std::vector<std::string>& mani
     return false;
   }
 
-  std::string json;
+  RuntimeMemory::PsramTextStream json(kMaxCatalogBytes);
   esp_task_wdt_reset();
-  if (!HttpDownloader::fetchUrl(url, json)) {
+  const bool fetched = json.good() && HttpDownloader::fetchUrl(url, json);
+  // The native HTTP adapter completes on a short-lived worker. Yield once on
+  // both success and failure so the idle task can reclaim that worker stack
+  // before ArduinoJson allocation or a fallback TLS connection starts.
+  delay(1);
+  if (!fetched || !json.good()) {
     LOG_ERR("APPSTORE", "Aggregate catalog download failed: %s", url.c_str());
     return false;
   }
-  if (json.empty() || json.size() > kMaxCatalogBytes) {
-    LOG_ERR("APPSTORE", "Aggregate catalog size invalid: %u bytes (limit %u)",
-            static_cast<unsigned>(json.size()), static_cast<unsigned>(kMaxCatalogBytes));
+  if (json.empty()) {
+    LOG_ERR("APPSTORE", "Aggregate catalog is empty");
     return false;
   }
 
-  JsonDocument doc;
-  const auto error = deserializeJson(doc, json);
+  RuntimeMemory::PsramJsonAllocator allocator;
+  JsonDocument doc(&allocator);
+  const auto error = deserializeJson(doc, json.chars(), json.size());
   if (error) {
     LOG_ERR("APPSTORE", "Aggregate catalog JSON parse failed: %s", error.c_str());
     return false;

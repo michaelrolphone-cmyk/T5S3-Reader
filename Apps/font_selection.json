@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "Font Family",
   "file_name": "font_selection.elf",
-  "icon": "solid:f031"
+  "icon": "solid:f031",
+  "category": [
+    "Settings",
+    "Appearance"
+  ]
 }

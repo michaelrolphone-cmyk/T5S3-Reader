@@ -36,6 +36,20 @@ def _validate_capabilities(path, data):
             seen.add(capability)
 
 
+def _validate_file_types(path, data):
+    if 'supported_file_types' not in data:
+        return
+    values = data['supported_file_types']
+    if not isinstance(values, list) or len(values) > 12:
+        raise ValueError(f'{path}: supported_file_types must be an array of at most twelve extensions')
+    seen = set()
+    for value in values:
+        if (not isinstance(value, str) or not re.fullmatch(r'\.[a-z0-9]{1,14}', value)
+                or value in seen):
+            raise ValueError(f'{path}: invalid or duplicate supported file type')
+        seen.add(value)
+
+
 def validate_manifest(source, output):
     path = Path(source).with_suffix('.json')
     raw = path.read_bytes()
@@ -58,4 +72,5 @@ def validate_manifest(source, output):
     if not icon or not 0 < int(icon[2], 16) <= 0x10ffff or 0xd800 <= int(icon[2], 16) <= 0xdfff:
         raise ValueError(f'{path}: invalid Classic icon')
     _validate_capabilities(path, data)
+    _validate_file_types(path, data)
     return path

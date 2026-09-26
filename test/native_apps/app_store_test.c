@@ -52,6 +52,8 @@ static const t5_app_api_v1 api = {
     .dir_next = directory_next,
     .dir_close = directory_close,
     .set_back_exits_app = set_back_exits_app,
+    .app_catalog_download_last_error = download_last_error,
+    .app_catalog_download_with_progress = download_with_progress,
 };
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) {
     assert(version == T5_APP_ABI_VERSION);
@@ -124,6 +126,14 @@ static void render_list(const t5_ui_chrome_t *chrome,
                         uint32_t count,
                         int32_t selected_index) {
     assert(chrome && selected_index >= 0);
+    if (chrome->status && strstr(chrome->status, "Beta: HTTP download failed"))
+        saw_failure_detail = 1;
+    if (chrome->status && strstr(chrome->status, "Downloading release |")) {
+        assert(row_count == 1 && rows && rows[0].title &&
+               !strcmp(rows[0].title, "Download progress"));
+        saw_download_progress = 1;
+        ++progress_callbacks;
+    }
     if (count == 2) {
         assert(list);
         for (uint32_t i = 0; i < count; ++i) {
@@ -175,6 +185,8 @@ int main(void) {
     assert(saw_alpha && saw_beta && saw_installed && saw_update);
     assert(online_refreshes == 1);
     assert(online_installs == 1 && installed_index == 1);
+    assert(saw_failure_detail);
+    assert(saw_download_progress && progress_callbacks == 3);
     assert(install_calls == 0 && preview_calls == 0);
     assert(back_disabled && back_restored);
     return 0;

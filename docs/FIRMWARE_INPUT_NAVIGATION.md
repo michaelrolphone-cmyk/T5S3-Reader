@@ -167,8 +167,9 @@ driver declares
 cannot reliably distinguish our own output from another source, so only this
 declared detector limitation requests empty-host source-off probes. Providers with
 an independent detector clear the flag and observe without those power cycles.
-The legacy Board::isUsbConnected() boolean includes OTG and is **not** used for
-role selection. Active enumeration/devices/claims prevent idle probes.
+The legacy Board::isUsbConnected() boolean is **not** used for role selection.
+It reports incoming power for the battery icon and sleep policy, excluding our
+own OTG output. Active enumeration/devices/claims prevent idle probes.
 
 No computer-versus-charger guess is required: both keep host discovery stopped.
 A computer with a data cable can enumerate the restored Serial/JTAG interface;
@@ -193,6 +194,42 @@ a stopped failure, close USB-using apps and toggle navigation Off/On to retry;
 unverified cleanup continues to block restart.
 
 ## Verification
+
+### Firmware idle regression after 1.2.66
+
+The reported screen flashing had a concrete UI trigger: the legacy board
+telemetry treated any nonzero BQ25896 VBUS type, including OTG output, as an
+incoming cable. Empty-host role checks therefore toggled `wasUsbStateChanged()`
+and queued screen refreshes without a charger attached. The read-only telemetry
+now excludes both OTG enable and OTG status, retains the last observation on an
+I2C error, and does not infer cable edges from delayed gauge-current readings.
+The installed driver still owns USB power and automatic role selection; this
+fix does not remove source-off observations or change keyboard/gamepad delivery.
+
+The supplied reboot log separately reported `TG1WDT_SYS_RST`, with the host
+parked in `EXTERNAL POWER; USB SERIAL AVAILABLE`. Host power cycling cannot
+explain that instance. Firmware was dropping CPU frequency to 10 MHz after
+three idle seconds. In the pinned
+[Arduino 2.0.17 clock code](https://github.com/espressif/arduino-esp32/blob/2.0.17/cores/esp32/esp32-hal-cpu.c),
+`calculateApb()` returns 80 MHz unconditionally on S3. The underlying
+[IDF 4.4.7 S3 clock code](https://github.com/espressif/esp-idf/blob/v4.4.7/components/esp_hw_support/port/esp32s3/rtc_clk.c)
+actually changes APB when `rtc_clk_cpu_freq_to_xtal()` selects that divided
+clock. Thus the peripheral clock callbacks receive incorrect old/new rates.
+The CPU port now uses 80 MHz for idle, keeping the PLL/APB domain stable on
+every ESP32-S3 board, including when USB is parked. Full-speed activity, render
+locks, Wi-Fi policy and sleep remain available. Idle power use will be higher
+than at 10 MHz; sub-80 MHz support requires a correct port clock transition and
+peripheral timing/lifetime policy, not a USB-device special case.
+
+These are source-established defects and a fix candidate for the reported
+watchdog reset. The saved PC alone is not a decoded panic backtrace or hardware
+confirmation of the stall mechanism. The new `PWR` transition log records the
+selected idle clock. `test/run_idle_power_test.sh` runs the actual power manager
+with simulated clock calls for both S3 boards and checks source/input telemetry
+through repeated OTG transitions. On-device validation must cover idle on
+battery, idle on computer power, attached-controller navigation and app handoff.
+
+### Existing input and role coverage
 
 `bash test/run_usb_hid_test.sh` covers the actual adapter and firmware consumer:
 keyboard ordering, HID/XInput mappings, focus suppression, duplicate grants,

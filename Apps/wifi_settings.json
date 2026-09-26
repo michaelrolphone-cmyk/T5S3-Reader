@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "Wi-Fi Networks",
   "file_name": "wifi_settings.elf",
-  "icon": "solid:f1eb"
+  "icon": "solid:f1eb",
+  "category": [
+    "Connectivity",
+    "Settings"
+  ]
 }

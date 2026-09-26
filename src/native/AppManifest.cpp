@@ -4,6 +4,7 @@
 #include <HalStorage.h>
 #include "runtime/packages/PackageIdentity.h"
 #include "runtime/packages/PackageJsonGuard.h"
+#include "runtime/memory/PsramJson.h"
 #include <cstring>
 
 #ifndef CROSSPOINT_COMPAT_VERSION
@@ -12,13 +13,16 @@
 
 bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
                       std::string* appVersion, bool requireAppVersion,
-                      RuntimeDevices::AppCapabilityRequirements* requirements) {
+                      RuntimeDevices::AppCapabilityRequirements* requirements,
+                      AppFileTypes* fileTypes) {
   out = {};
   if (appVersion) appVersion->clear();
   if (requirements) *requirements = {};
+  if (fileTypes) *fileTypes = {};
   if (json.empty() || json.size() > 2048 || json.find('\0') != std::string::npos ||
       !RuntimePackages::safePackageJsonObject(json.data(), json.size())) return false;
-  JsonDocument doc;
+  RuntimeMemory::PsramJsonAllocator allocator;
+  JsonDocument doc(&allocator);
   if (deserializeJson(doc, json) || !doc.is<JsonObject>()) return false;
   const char* keys[] = {"display_name", "file_name", "min_firmware_version", "icon"};
   char* fields[] = {out.display_name, out.file_name, out.min_firmware_version, out.icon};
@@ -92,6 +96,51 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
     }
     return true;
   };
+  AppFileTypes parsedFileTypes{};
+  const JsonVariantConst fileTypesNode = doc["supported_file_types"];
+  if (!fileTypesNode.isNull()) {
+    if (!fileTypesNode.is<JsonArrayConst>()) return false;
+    const JsonArrayConst types = fileTypesNode.as<JsonArrayConst>();
+    if (types.size() > kMaxAppFileTypes) return false;
+    for (JsonVariantConst item : types) {
+      if (!item.is<const char*>()) return false;
+      const char* value = item.as<const char*>();
+      const size_t n = std::strlen(value);
+      if (n < 2 || n >= kAppFileTypeBytes || value[0] != '.') return false;
+      for (size_t i = 1; i < n; ++i) {
+        const char ch = value[i];
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9'))) return false;
+      }
+      for (size_t i = 0; i < parsedFileTypes.count; ++i)
+        if (!std::strcmp(parsedFileTypes.values[i], value)) return false;
+      std::memcpy(parsedFileTypes.values[parsedFileTypes.count++], value, n + 1);
+    }
+  }
+
+  // Category metadata is optional for legacy installed manifests, but every
+  // newly maintained app manifest carries a non-empty array. Validate it here
+  // now so future App Store/springboard grouping can trust bounded strings
+  // without changing current presentation behavior.
+  const JsonVariantConst categoryNode = doc["category"];
+  if (!categoryNode.isNull()) {
+    if (!categoryNode.is<JsonArrayConst>()) return false;
+    const JsonArrayConst categories = categoryNode.as<JsonArrayConst>();
+    if (categories.size() == 0 || categories.size() > 8) return false;
+    const char* seen[8]{};
+    size_t seenCount = 0;
+    for (JsonVariantConst item : categories) {
+      if (!item.is<const char*>()) return false;
+      const char* value = item.as<const char*>();
+      const size_t n = std::strlen(value);
+      if (!n || n >= 32) return false;
+      for (size_t i = 0; i < n; ++i)
+        if (static_cast<unsigned char>(value[i]) < 32) return false;
+      for (size_t i = 0; i < seenCount; ++i)
+        if (!std::strcmp(seen[i], value)) return false;
+      seen[seenCount++] = value;
+    }
+  }
+
   RuntimeDevices::AppCapabilityRequirements mandatory{};
   RuntimeDevices::AppCapabilityRequirements optional{};
   if (!parseList("requires", mandatory) || !parseList("optional", optional)) return false;
@@ -124,16 +173,19 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
   // CROSSPOINT_COMPAT_VERSION is always the bare major.minor.patch firmware floor.
   out.compatible = t5_firmware_compatible(CROSSPOINT_COMPAT_VERSION, out.min_firmware_version);
   if (requirements) *requirements = mandatory;
+  if (fileTypes) *fileTypes = parsedFileTypes;
   return true;
 }
 bool readAppManifest(const char* path, t5_app_manifest_t& out,
                      std::string* appVersion, bool requireAppVersion,
-                     RuntimeDevices::AppCapabilityRequirements* requirements) {
+                     RuntimeDevices::AppCapabilityRequirements* requirements,
+                     AppFileTypes* fileTypes) {
   if (requirements) *requirements = {};
+  if (fileTypes) *fileTypes = {};
   HalFile file = Storage.open(path, O_RDONLY);
   if (!file.isOpen() || file.isDirectory() || file.fileSize64() > 2048) return false;
   file.close();
   const String json = Storage.readFile(path);
   return parseAppManifest(std::string(json.c_str(), json.length()), out, appVersion,
-                          requireAppVersion, requirements);
+                          requireAppVersion, requirements, fileTypes);
 }

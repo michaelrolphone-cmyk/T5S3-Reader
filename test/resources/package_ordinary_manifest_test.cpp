@@ -67,7 +67,7 @@ int main() {
   reject(replace(bytes, "\"size_bytes\":96", "\"size_bytes\":0"));
   reject(replace(bytes, "\"size_bytes\":96", "\"size_bytes\":18446744073709551616"));
   reject(replace(bytes, "\"size_bytes\":96", "\"size_bytes\":95.0"));
-  reject(replace(bytes, "\"size_bytes\":96", "\"size_bytes\":1048577"));
+  reject(replace(bytes, "\"size_bytes\":96", "\"size_bytes\":8388609"));
   reject(replace(bytes, "\"sha256\":\"" + std::string(64, 'a') + "\"",
                  "\"sha256\":\"deadbeef\""));
   reject(replace(bytes, "\"executable\":true", "\"executable\":\"true\""));
@@ -92,5 +92,10 @@ int main() {
   bytes = replace(bytes, "\"requires\":[{\"capability\":\"usb.host\",\"min_api\":1}]",
                   "\"requires\":[]");
   assert(accepted(bytes, plan) && plan.requirementCount == 0);
+  // The GameBoy release ELF is about 2.1 MiB. Descriptor validation must
+  // admit that size because the online installer supports ordinary entries
+  // up to its shared 8 MiB limit.
+  bytes = replace(manifest(), "\"size_bytes\":96", "\"size_bytes\":2107828");
+  assert(accepted(bytes, plan) && plan.entries[0].sizeBytes == 2107828);
   std::puts("Canonical manifest: four kinds, strict bounds/types/identity, aliases, duplicate keys and dependency separation PASS");
 }

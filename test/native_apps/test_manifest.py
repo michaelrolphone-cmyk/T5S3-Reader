@@ -27,6 +27,19 @@ class ManifestTest(unittest.TestCase):
                 source.with_suffix('.json').write_text(json.dumps(dict(valid, **{field: value})))
                 with self.assertRaises(ValueError): validate_manifest(source, Path('app.elf'))
 
+    def test_supported_file_types(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / 'app.c'
+            valid = dict(display_name='App', file_name='app.elf', min_firmware_version='1.2.85',
+                         version='1.0.0', icon='solid:f013',
+                         supported_file_types=['.txt', '.md'])
+            source.with_suffix('.json').write_text(json.dumps(valid))
+            validate_manifest(source, Path('app.elf'))
+            for bad in (['txt'], ['.TXT'], ['.bad/type'], ['.txt', '.txt'], ['.' + 'x' * 15]):
+                source.with_suffix('.json').write_text(json.dumps(dict(valid, supported_file_types=bad)))
+                with self.assertRaises(ValueError):
+                    validate_manifest(source, Path('app.elf'))
+
     def test_reject_missing_version(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / 'app.c'

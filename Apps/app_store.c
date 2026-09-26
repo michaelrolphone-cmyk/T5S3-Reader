@@ -24,6 +24,13 @@ static bool archive_rows[MAX_ROWS];
 static t5_package_preview_t packages[MAX_ROWS];
 static uint32_t release_indices[MAX_ROWS];
 static uint32_t row_count;
+typedef struct {
+    const t5_ui_api_v1 *ui;
+    char title[TITLE_SIZE];
+    uint32_t last_bucket;
+    bool rendered;
+} download_view_t;
+static download_view_t download_view;
 
 static size_t bounded_length(const char *value, size_t bound) {
     size_t n = 0;
@@ -174,6 +181,25 @@ static void render(const t5_ui_api_v1 *ui, int32_t selected, const char *status)
             "Package catalog unavailable", "", 0};
         ui->render_list(&chrome, &empty, 1, 0);
     }
+}
+static void render_download_progress(void *context, uint64_t downloaded, uint64_t total) {
+    download_view_t *progress = (download_view_t *)context;
+    if (!progress || !progress->ui || !total) return;
+    const uint64_t bounded = downloaded > total ? total : downloaded;
+    const uint32_t bucket = (uint32_t)(bounded * 10u / total);
+    if (progress->rendered && bucket == progress->last_bucket) return;
+    progress->last_bucket = bucket;
+    progress->rendered = true;
+    const unsigned percent = (unsigned)(bounded * 100u / total);
+    char status[STATUS_SIZE];
+    char amount[VALUE_SIZE];
+    snprintf(status, sizeof(status), "Downloading release | %u%% | Keep power on", percent);
+    snprintf(amount, sizeof(amount), "%llu / %llu B",
+             (unsigned long long)bounded, (unsigned long long)total);
+    const t5_ui_chrome_t chrome = {"App Store", progress->title, status,
+                                   "", "", "", ""};
+    const t5_ui_list_row_t row = {"Download progress", "Verified release ELF", amount, 0};
+    progress->ui->render_list(&chrome, &row, 1, 0);
 }
 static void activate_inbox(const t5_package_manager_api_v1 *manager,
                            const t5_ui_api_v1 *ui, int32_t selected,

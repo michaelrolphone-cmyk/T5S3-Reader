@@ -68,6 +68,13 @@ typedef struct {
     bool compatible;
 } t5_app_manifest_t;
 
+// Called synchronously on the App Store's owning native-app task while the
+// firmware streams the selected release ELF. total_bytes is the catalog's
+// verified size; callbacks and context are valid only for the download call.
+typedef void (*t5_app_catalog_progress_fn)(void *context,
+                                           uint64_t downloaded_bytes,
+                                           uint64_t total_bytes);
+
 typedef struct {
     uint32_t abi_version;
     uint32_t struct_size;
@@ -138,6 +145,19 @@ typedef struct {
     // Returns only after display completion; no callback/framebuffer access outlives this call.
     // False means no refresh started (busy or allocation failure). Size-check.
     bool (*present_serviced)(bool full_refresh, void (*service)(void *), void *context);
+    // App Store failure detail for display when serial logging is unavailable.
+    // Optional append-only member; callers must check struct_size and pointer.
+    bool (*app_catalog_download_last_error)(char *out, size_t capacity);
+    // Optional append-only variant that reports synchronous ELF download progress.
+    bool (*app_catalog_download_with_progress)(uint32_t index,
+                                               t5_app_catalog_progress_fn progress,
+                                               void *context);
+
+    // Append-only bulk resident memory service. Large app working sets belong
+    // in PSRAM so internal SRAM remains available for TLS, stacks, DMA and
+    // hardware-facing allocations. This never falls back to internal RAM.
+    void *(*psram_alloc)(size_t size);
+    void (*psram_free)(void *ptr);
 } t5_app_api_v1;
 
 // Native application entry point. Native ELFs are built with -fvisibility=hidden,
