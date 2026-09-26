@@ -3,5 +3,9 @@
   "version": "1.0.2",
   "display_name": "Rom Manager",
   "file_name": "rom_manager.elf",
-  "icon": "solid:f11b"
+  "icon": "solid:f11b",
+  "category": [
+    "Games",
+    "Files"
+  ]
 }

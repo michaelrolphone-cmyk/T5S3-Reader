@@ -115,6 +115,30 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
     }
   }
 
+  // Category metadata is optional for legacy installed manifests, but every
+  // newly maintained app manifest carries a non-empty array. Validate it here
+  // now so future App Store/springboard grouping can trust bounded strings
+  // without changing current presentation behavior.
+  const JsonVariantConst categoryNode = doc["category"];
+  if (!categoryNode.isNull()) {
+    if (!categoryNode.is<JsonArrayConst>()) return false;
+    const JsonArrayConst categories = categoryNode.as<JsonArrayConst>();
+    if (categories.size() == 0 || categories.size() > 8) return false;
+    const char* seen[8]{};
+    size_t seenCount = 0;
+    for (JsonVariantConst item : categories) {
+      if (!item.is<const char*>()) return false;
+      const char* value = item.as<const char*>();
+      const size_t n = std::strlen(value);
+      if (!n || n >= 32) return false;
+      for (size_t i = 0; i < n; ++i)
+        if (static_cast<unsigned char>(value[i]) < 32) return false;
+      for (size_t i = 0; i < seenCount; ++i)
+        if (!std::strcmp(seen[i], value)) return false;
+      seen[seenCount++] = value;
+    }
+  }
+
   RuntimeDevices::AppCapabilityRequirements mandatory{};
   RuntimeDevices::AppCapabilityRequirements optional{};
   if (!parseList("requires", mandatory) || !parseList("optional", optional)) return false;

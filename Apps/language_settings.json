@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "Language",
   "file_name": "language_settings.elf",
-  "icon": "solid:f1ab"
+  "icon": "solid:f1ab",
+  "category": [
+    "Settings",
+    "Localization"
+  ]
 }

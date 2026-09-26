@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "Timecard",
   "file_name": "timecard.elf",
-  "icon": "solid:f017"
+  "icon": "solid:f017",
+  "category": [
+    "Productivity",
+    "Time"
+  ]
 }

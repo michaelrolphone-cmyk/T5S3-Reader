@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "Customize Status Bar",
   "file_name": "status_bar_settings.elf",
-  "icon": "solid:f550"
+  "icon": "solid:f550",
+  "category": [
+    "Settings",
+    "Appearance"
+  ]
 }

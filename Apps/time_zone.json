@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "Time Zone",
   "file_name": "time_zone.elf",
-  "icon": "solid:f0ac"
+  "icon": "solid:f0ac",
+  "category": [
+    "Settings",
+    "Time"
+  ]
 }

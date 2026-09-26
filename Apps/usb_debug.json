@@ -4,5 +4,15 @@
   "display_name": "USB Debug",
   "file_name": "usb_debug.elf",
   "icon": "solid:f1e6",
-  "optional": [{"capability": "usb.host", "api": ">=1"}]
+  "optional": [
+    {
+      "capability": "usb.host",
+      "api": ">=1"
+    }
+  ],
+  "category": [
+    "Developer",
+    "Diagnostics",
+    "Hardware"
+  ]
 }

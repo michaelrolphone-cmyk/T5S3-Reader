@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "Clear Reading Cache",
   "file_name": "clear_cache.elf",
-  "icon": "solid:f2ed"
+  "icon": "solid:f2ed",
+  "category": [
+    "System",
+    "Maintenance"
+  ]
 }

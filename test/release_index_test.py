@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Focused invariants for independent release index updates."""
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -73,6 +74,22 @@ class ReleaseIndexTests(unittest.TestCase):
         self.assertIn("DeserializationOption::Filter(filter)", updater)
         for field in ("version", "tag", "asset", "url", "size", "sha256"):
             self.assertIn(f'filter["firmware"]["{field}"] = true;', updater)
+
+    def test_all_in_repo_apps_have_nonempty_category_arrays(self):
+        apps_dir = Path(__file__).resolve().parents[1] / "Apps"
+        manifests = sorted(apps_dir.glob("*.json"))
+        self.assertGreater(len(manifests), 0)
+        for path in manifests:
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            categories = manifest.get("category")
+            self.assertIsInstance(categories, list, path.name)
+            self.assertGreaterEqual(len(categories), 1, path.name)
+            self.assertLessEqual(len(categories), 8, path.name)
+            self.assertEqual(len(categories), len(set(categories)), path.name)
+            for category in categories:
+                self.assertIsInstance(category, str, path.name)
+                self.assertGreater(len(category), 0, path.name)
+                self.assertLess(len(category), 32, path.name)
 
     def test_accepts_only_the_allowlisted_third_party_gameboy_app(self):
         manifest = {

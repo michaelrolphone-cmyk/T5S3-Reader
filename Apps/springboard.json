@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "Apps",
   "file_name": "springboard.elf",
-  "icon": "solid:f00a"
+  "icon": "solid:f00a",
+  "category": [
+    "System",
+    "Launcher"
+  ]
 }

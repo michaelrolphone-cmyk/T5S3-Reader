@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "display_name": "KOReader Sync",
   "file_name": "koreader_sync.elf",
-  "icon": "solid:f021"
+  "icon": "solid:f021",
+  "category": [
+    "Reading",
+    "Connectivity"
+  ]
 }

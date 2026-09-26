@@ -9,5 +9,9 @@
     ".jpeg",
     ".png",
     ".bmp"
+  ],
+  "category": [
+    "Media",
+    "Files"
   ]
 }
