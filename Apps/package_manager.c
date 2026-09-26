@@ -125,20 +125,6 @@ static bool staged_matches_installed(const t5_package_preview_t *staged,
            strcmp(staged->id, installed->id) == 0;
 }
 
-static int32_t find_row(uint8_t kind, const char *id) {
-    uint32_t i;
-    for (i = 0; i < row_count; ++i) {
-        const package_row_t *item = &packages[i];
-        if (item->source == PACKAGE_ROW_INSTALLED &&
-            item->installed.kind == kind && strcmp(item->installed.id, id) == 0)
-            return (int32_t)i;
-        if (item->source == PACKAGE_ROW_INBOX &&
-            item->staged.kind == kind && strcmp(item->staged.id, id) == 0)
-            return (int32_t)i;
-    }
-    return -1;
-}
-
 static void format_installed_row(uint32_t index) {
     package_row_t *item = &packages[index];
     const t5_installed_package_t *installed = &item->installed;
@@ -165,21 +151,6 @@ static void format_installed_row(uint32_t index) {
         item->has_staged && installed->valid_installation &&
                 version_order(item->staged.version, installed->version) != 0
             ? T5_UI_LIST_HIGHLIGHT_VALUE : 0
-    };
-}
-
-static void format_inbox_row(uint32_t index) {
-    package_row_t *item = &packages[index];
-    const t5_package_preview_t *staged = &item->staged;
-    snprintf(titles[index], sizeof(titles[index]), "%s [%s]",
-             staged->id, kind_name(staged->kind));
-    snprintf(subtitles[index], sizeof(subtitles[index]), "%s",
-             staged->install_allowed ? "Inbox package ready for fresh installation" :
-             "Inbox package unavailable: dependency, version, stage, or active mapping");
-    snprintf(values[index], sizeof(values[index]), "%s", staged->version);
-    rows[index] = (t5_ui_list_row_t){
-        titles[index], subtitles[index], values[index],
-        staged->install_allowed ? T5_UI_LIST_HIGHLIGHT_VALUE : 0
     };
 }
 
