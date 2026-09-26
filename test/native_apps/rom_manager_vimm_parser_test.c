@@ -8,18 +8,23 @@
 #undef app_main
 
 static const char kLetterHtml[] =
-    "<table class=\"hovertable\">"
-    "<tr><td><a href=\"/vault/46856\">Tetris</a></td>"
-    "<td><a href=\"/vault/90001\">9</a></td></tr>"
-    "<tr><td><a href=\"/vault/12345\">Wario Land</a></td>"
-    "<td><a href=\"/vault/90002\">9</a></td></tr>"
+    "<table class=\"rounded centered cellpadding1 hovertable striped\">"
+    "<tr><td><a href=\"/vault/999999\" style=\"display:none\">9</a>"
+    "<a href= \"/vault/46856\">Tetris</a></td>"
+    "<td><a href=\"/vault/?p=rating&amp;id=46856\">10.0</a></td></tr>"
+    "<tr><td><a href=\"/vault/999999\" style=\"display:none\">9</a>"
+    "<a href= \"/vault/12345\">Wario Land</a></td>"
+    "<td><a href=\"/vault/?p=rating&amp;id=12345\">8.5</a></td></tr>"
     "</table>";
 static bool served;
 static uint32_t fake_millis(void){return 100u;}
+static unsigned log_count;
+static void fake_log_message(const char *message){assert(message);++log_count;}
 static const t5_app_api_v1 kApp={
   .abi_version=T5_APP_ABI_VERSION,
   .struct_size=sizeof(t5_app_api_v1),
   .millis=fake_millis,
+  .log_message=fake_log_message,
 };
 
 static bool fake_remove_file(const char *path){assert(path);return true;}
@@ -102,5 +107,8 @@ int main(void){
   assert(vimm_kinds[1]==VIMM_GAME);
   assert(strstr(debug_text,"parser_summary")!=0);
   assert(strstr(debug_text,"numeric_first=2")!=0);
+  assert(strstr(debug_text,"href=/vault/999999 title=9 hidden=1")!=0);
+  assert(strstr(debug_text,"selected_href=/vault/46856 selected_title=Tetris found=1")!=0);
+  assert(log_count>0);
   return 0;
 }
