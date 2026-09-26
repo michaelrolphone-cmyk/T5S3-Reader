@@ -13,6 +13,7 @@
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageUseGate.h"
 #include "runtime/packages/PackagePreflight.h"
+#include "runtime/memory/PsramJson.h"
 #include <AppManifestRules.h>
 #include <ArduinoJson.h>
 #include "components/FontAwesomeIcons.h"
@@ -52,8 +53,6 @@ constexpr const char* kLatestReleaseApi =
 constexpr const char* kReleaseIndexUrl =
     "https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/release-index/release-index.json";
 constexpr const char* kGameBoyRepository = "michaelrolphone-cmyk/T5S3-GameBoy";
-constexpr const char* kGameBoyLatestReleaseApi =
-    "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-GameBoy/releases/latest";
 constexpr const char* kAggregateAppCatalogName = "app-catalog.json";
 constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr size_t kMaxCatalogAssets = 128;
@@ -93,6 +92,7 @@ struct Session {
   std::vector<t5_app_manifest_t> installed;
   std::string launchPath;
   char catalogDownloadError[128]{};
+  bool catalogNeedsRefresh = false;
   bool backExitsApp = true;
   bool exiting = false;
   bool presenting = false;
@@ -565,12 +565,14 @@ bool validThirdPartyReleaseTag(const char* tag) {
 }
 
 bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
-  std::string json;
+  RuntimeMemory::PsramTextStream json(kMaxCatalogBytes);
   esp_task_wdt_reset();
-  if (!HttpDownloader::fetchUrl(kReleaseIndexUrl, json) ||
-      json.empty() || json.size() > kMaxCatalogBytes) return false;
-  JsonDocument document;
-  if (deserializeJson(document, json) || !document.is<JsonObjectConst>() ||
+  if (!json.good() || !HttpDownloader::fetchUrl(kReleaseIndexUrl, json) ||
+      !json.good() || json.empty()) return false;
+  delay(1);
+  RuntimeMemory::PsramJsonAllocator allocator;
+  JsonDocument document(&allocator);
+  if (deserializeJson(document, json.chars(), json.size()) || !document.is<JsonObjectConst>() ||
       document["schema"] != 1 || !document["apps"].is<JsonArrayConst>()) return false;
   const JsonArrayConst entries = document["apps"].as<JsonArrayConst>();
   if (entries.size() == 0 || entries.size() > kMaxCatalogAssets) return false;
@@ -650,7 +652,8 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
       }
       return false;
     }
-    JsonDocument sidecar;
+    RuntimeMemory::PsramJsonAllocator sidecarAllocator;
+    JsonDocument sidecar(&sidecarAllocator);
     if (deserializeJson(sidecar, asset.manifestJson) || !sidecar.is<JsonObjectConst>() ||
         !sidecar["sha256"].is<const char*>() || !sidecar["size_bytes"].is<uint64_t>() ||
         sidecar["size_bytes"].as<uint64_t>() != asset.size ||
@@ -674,128 +677,11 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
 }
 
 
-bool refreshExternalGameBoy(std::vector<CatalogAsset>& catalog) {
-  auto currentEntry = std::find_if(catalog.begin(), catalog.end(), [](const CatalogAsset& asset) {
-    return asset.name == "gameboy.elf";
-  });
-
-  std::string releaseJson;
-  esp_task_wdt_reset();
-  if (!HttpDownloader::fetchUrl(kGameBoyLatestReleaseApi, releaseJson) ||
-      releaseJson.empty() || releaseJson.size() > kMaxCatalogBytes) {
-    LOG_ERR("APPSTORE", "GameBoy latest-release lookup failed; using indexed fallback");
-    return false;
-  }
-
-  JsonDocument release;
-  if (deserializeJson(release, releaseJson) || !release.is<JsonObjectConst>() ||
-      release["draft"].as<bool>() || release["prerelease"].as<bool>() ||
-      !release["tag_name"].is<const char*>() || !release["assets"].is<JsonArrayConst>()) {
-    LOG_ERR("APPSTORE", "GameBoy latest release metadata is invalid; using indexed fallback");
-    return false;
-  }
-
-  const char* tag = release["tag_name"].as<const char*>();
-  if (!validThirdPartyReleaseTag(tag)) {
-    LOG_ERR("APPSTORE", "GameBoy latest release tag is invalid; using indexed fallback");
-    return false;
-  }
-  const std::string version(tag + 1);
-  const std::string base = std::string("https://github.com/") + kGameBoyRepository +
-      "/releases/download/" + tag + "/";
-
-  JsonObjectConst elfAsset;
-  JsonObjectConst manifestAsset;
-  unsigned elfMatches = 0;
-  unsigned manifestMatches = 0;
-  for (JsonVariantConst value : release["assets"].as<JsonArrayConst>()) {
-    if (!value.is<JsonObjectConst>() || !value["name"].is<const char*>()) continue;
-    const char* name = value["name"].as<const char*>();
-    if (!std::strcmp(name, "gameboy.elf")) {
-      elfAsset = value.as<JsonObjectConst>();
-      ++elfMatches;
-    } else if (!std::strcmp(name, "gameboy.json")) {
-      manifestAsset = value.as<JsonObjectConst>();
-      ++manifestMatches;
-    }
-  }
-  if (elfMatches != 1 || manifestMatches != 1 ||
-      !elfAsset["browser_download_url"].is<const char*>() ||
-      !elfAsset["size"].is<uint64_t>() ||
-      !manifestAsset["browser_download_url"].is<const char*>()) {
-    LOG_ERR("APPSTORE", "GameBoy release is missing a unique ELF/manifest pair; using indexed fallback");
-    return false;
-  }
-
-  const std::string elfUrl = elfAsset["browser_download_url"].as<const char*>();
-  const std::string manifestUrl = manifestAsset["browser_download_url"].as<const char*>();
-  const uint64_t elfSize = elfAsset["size"].as<uint64_t>();
-  if (elfUrl != base + "gameboy.elf" || manifestUrl != base + "gameboy.json" ||
-      elfSize < 52 || elfSize > 8u * 1024u * 1024u) {
-    LOG_ERR("APPSTORE", "GameBoy release asset identity is invalid; using indexed fallback");
-    return false;
-  }
-
-  std::string manifestJson;
-  delay(1);
-  if (!HttpDownloader::fetchUrl(manifestUrl, manifestJson) ||
-      manifestJson.empty() || manifestJson.size() > kMaxManifestBytes) {
-    LOG_ERR("APPSTORE", "GameBoy release manifest download failed; using indexed fallback");
-    return false;
-  }
-
-  t5_app_manifest_t manifest{};
-  std::string manifestVersion;
-  if (!parseAppManifest(manifestJson, manifest, &manifestVersion, true) ||
-      std::strcmp(manifest.file_name, "gameboy.elf") ||
-      manifestVersion != version) {
-    LOG_ERR("APPSTORE", "GameBoy release manifest does not match its tag; using indexed fallback");
-    return false;
-  }
-
-  JsonDocument sidecar;
-  if (deserializeJson(sidecar, manifestJson) || !sidecar.is<JsonObjectConst>() ||
-      !sidecar["sha256"].is<const char*>() || !sidecar["size_bytes"].is<uint64_t>() ||
-      sidecar["size_bytes"].as<uint64_t>() != elfSize ||
-      !RuntimePackages::validSha256Hex(sidecar["sha256"].as<const char*>())) {
-    LOG_ERR("APPSTORE", "GameBoy release manifest digest/size is invalid; using indexed fallback");
-    return false;
-  }
-
-  const char* releaseDigest = elfAsset["digest"].is<const char*>() ?
-      elfAsset["digest"].as<const char*>() : nullptr;
-  const std::string expectedDigest =
-      std::string("sha256:") + sidecar["sha256"].as<const char*>();
-  if (releaseDigest && expectedDigest != releaseDigest) {
-    LOG_ERR("APPSTORE", "GameBoy GitHub asset digest disagrees with its manifest; using indexed fallback");
-    return false;
-  }
-
-  CatalogAsset resolved;
-  resolved.name = "gameboy.elf";
-  resolved.url = elfUrl;
-  resolved.manifestUrl = manifestUrl;
-  resolved.manifestJson = std::move(manifestJson);
-  resolved.version = version;
-  resolved.size = elfSize;
-  resolved.manifest = manifest;
-  resolved.manifestValid = true;
-  if (currentEntry == catalog.end())
-    catalog.push_back(std::move(resolved));
-  else
-    *currentEntry = std::move(resolved);
-  sortCatalog(catalog);
-  LOG_INF("APPSTORE", "Resolved GameBoy v%s directly from external release", version.c_str());
-  return true;
-}
-
 bool loadAuthoritativeAppCatalog(std::vector<CatalogAsset>& catalog) {
-  if (!loadIndependentAppIndex(catalog)) return false;
-  // External providers are resolved from their own release stream. The
-  // release-index entry is only a signed/bounded bootstrap and offline fallback,
-  // so publishing GameBoy never requires manually editing RiscRTE metadata.
-  (void)refreshExternalGameBoy(catalog);
-  return true;
+  // The release-index workflow synchronizes external providers such as GameBoy.
+  // Keep the device catalog path to one bounded metadata TLS transaction; live
+  // provider API fan-out here needlessly fragments internal RAM before binary TLS.
+  return loadIndependentAppIndex(catalog);
 }
 
 bool connectSavedWifi() {
@@ -840,6 +726,7 @@ bool connectSavedWifi() {
 bool appCatalogRefresh() {
   auto* s = current();
   if (!s) return false;
+  s->catalogNeedsRefresh = false;
   // A refresh invalidates every prior release record. Free the backing storage,
   // not just the elements, so stale catalog capacity is not carried into the
   // next TLS handshake on a memory-constrained ESP32-S3.
@@ -897,14 +784,30 @@ bool appCatalogRefresh() {
   return loaded;
 }
 
+bool ensureCatalogReady(Session* s) {
+  if (!s) return false;
+  if (!s->catalogNeedsRefresh) return true;
+  s->catalogNeedsRefresh = false;
+  delay(1);  // Let the completed install frame fully unwind before metadata TLS.
+  if (!loadAuthoritativeAppCatalog(s->catalog)) {
+    LOG_ERR("APPSTORE", "Deferred catalog refresh after install attempt failed");
+    std::vector<CatalogAsset>().swap(s->catalog);
+    return false;
+  }
+  LOG_INF("APPSTORE", "Deferred catalog reload: %u apps",
+          static_cast<unsigned>(s->catalog.size()));
+  return true;
+}
+
 uint32_t appCatalogCount() {
   auto* s = current();
-  return s ? static_cast<uint32_t>(s->catalog.size()) : 0u;
+  if (!ensureCatalogReady(s)) return 0u;
+  return static_cast<uint32_t>(s->catalog.size());
 }
 
 bool appCatalogGet(uint32_t index, t5_app_release_asset_t* out) {
   auto* s = current();
-  if (!s || !out || index >= s->catalog.size()) return false;
+  if (!out || !ensureCatalogReady(s) || index >= s->catalog.size()) return false;
   *out = {};
   const auto& asset = s->catalog[index];
   std::strncpy(out->name, asset.name.c_str(), sizeof(out->name) - 1);
@@ -915,14 +818,16 @@ bool appCatalogGet(uint32_t index, t5_app_release_asset_t* out) {
 
 bool appCatalogManifestGet(uint32_t index, t5_app_manifest_t* out) {
   auto* s = current();
-  if (!s || !out || index >= s->catalog.size() || !s->catalog[index].manifestValid) return false;
+  if (!out || !ensureCatalogReady(s) || index >= s->catalog.size() ||
+      !s->catalog[index].manifestValid) return false;
   *out = s->catalog[index].manifest;
   return true;
 }
 
 bool appCatalogVersionGet(uint32_t index, char* out, size_t capacity) {
   auto* s = current();
-  if (!s || index >= s->catalog.size() || !s->catalog[index].manifestValid) return false;
+  if (!ensureCatalogReady(s) || index >= s->catalog.size() ||
+      !s->catalog[index].manifestValid) return false;
   return copyVersion(s->catalog[index].version, out, capacity);
 }
 
@@ -1048,7 +953,8 @@ bool appCatalogDownloadWithProgress(uint32_t index,
 
   char digest[65]{};
   {
-    JsonDocument metadata;
+    RuntimeMemory::PsramJsonAllocator metadataAllocator;
+    JsonDocument metadata(&metadataAllocator);
     if (deserializeJson(metadata, json) || !metadata.is<JsonObjectConst>() ||
         !metadata["sha256"].is<const char*>() ||
         !metadata["size_bytes"].is<unsigned>() ||
@@ -1083,16 +989,11 @@ bool appCatalogDownloadWithProgress(uint32_t index,
       artifact.c_str(), version.c_str(), downloadUrl.c_str(), json,
       selectedSize, digest, progress, progressContext, &failureReason);
 
-  // Always restore the catalog, including after download/verification/install
-  // failure. Otherwise one failed update poisons every subsequent action in the
-  // same App Store session with "release catalog entry is incomplete".
+  // Do not open metadata TLS again while this install frame still owns
+  // package/verification scratch. Mark the catalog dirty and let the App Store's
+  // next catalog query reload it after this function has fully returned.
   std::vector<CatalogAsset>().swap(s->catalog);
-  if (!loadAuthoritativeAppCatalog(s->catalog)) {
-    LOG_ERR("APPSTORE", "Catalog refresh after install attempt failed");
-  } else {
-    LOG_INF("APPSTORE", "Reloaded %u apps after install attempt",
-            static_cast<unsigned>(s->catalog.size()));
-  }
+  s->catalogNeedsRefresh = true;
 
   if (!installedOk)
     return catalogDownloadFailed(s, failureReason ? failureReason : "package installation failed");

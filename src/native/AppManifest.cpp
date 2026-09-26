@@ -4,6 +4,7 @@
 #include <HalStorage.h>
 #include "runtime/packages/PackageIdentity.h"
 #include "runtime/packages/PackageJsonGuard.h"
+#include "runtime/memory/PsramJson.h"
 #include <cstring>
 
 #ifndef CROSSPOINT_COMPAT_VERSION
@@ -20,7 +21,8 @@ bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
   if (fileTypes) *fileTypes = {};
   if (json.empty() || json.size() > 2048 || json.find('\0') != std::string::npos ||
       !RuntimePackages::safePackageJsonObject(json.data(), json.size())) return false;
-  JsonDocument doc;
+  RuntimeMemory::PsramJsonAllocator allocator;
+  JsonDocument doc(&allocator);
   if (deserializeJson(doc, json) || !doc.is<JsonObject>()) return false;
   const char* keys[] = {"display_name", "file_name", "min_firmware_version", "icon"};
   char* fields[] = {out.display_name, out.file_name, out.min_firmware_version, out.icon};

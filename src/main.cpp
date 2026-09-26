@@ -351,12 +351,12 @@ bool shouldResumeReaderOnBoot() {
 void setup() {
   t1 = millis();
 
-  // Keep large general-purpose allocations out of scarce internal RAM.
-  // BOARD_HAS_PSRAM initializes external RAM, but malloc/new do not otherwise
-  // guarantee that bulk std::string/vector/ArduinoJson storage lands there.
-  // ESP-IDF continues to honor explicit INTERNAL/DMA capability allocations.
+  // Keep medium/large general-purpose allocations out of scarce internal RAM.
+  // App catalogs contain many URL/manifest/vector allocations well below 1 KiB;
+  // a 1 KiB cutoff leaves those in internal heap and fragments the contiguous
+  // blocks mbedTLS needs. Explicit INTERNAL/DMA allocations remain unaffected.
   if (psramFound()) {
-    heap_caps_malloc_extmem_enable(1024);
+    heap_caps_malloc_extmem_enable(128);
   }
 
   HalSystem::begin();
