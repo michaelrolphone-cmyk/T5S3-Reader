@@ -56,10 +56,11 @@ class HomeShortcutLaunchContract(unittest.TestCase):
         self.assertNotIn("onFileTransferOpen()", SOURCE)
         self.assertIn("int count = 4 + static_cast<int>(homeApps.size())", SOURCE)
 
-    def test_pinned_shortcuts_use_regular_icons_at_menu_scale(self):
+    def test_pinned_shortcuts_use_authored_font_awesome_face_at_menu_scale(self):
         for theme in (BASE_THEME, LYRA_THEME, ROUNDED_THEME):
             self.assertIn("constexpr int kAppIconSize = 12;", theme)
-            self.assertIn("FontAwesomeIcons::drawRegular", theme)
+            self.assertIn("FontAwesomeIcons::draw(", theme)
+            self.assertNotIn("FontAwesomeIcons::drawRegular", theme)
 
     def test_pinned_shortcuts_use_manifest_font_awesome_icons(self):
         self.assertIn("std::vector<const char*> menuAppIcons;", SOURCE)
@@ -69,7 +70,8 @@ class HomeShortcutLaunchContract(unittest.TestCase):
             SOURCE,
         )
         for theme in (BASE_THEME, LYRA_THEME, ROUNDED_THEME):
-            self.assertIn("FontAwesomeIcons::drawRegular", theme)
+            self.assertIn("FontAwesomeIcons::draw(", theme)
+            self.assertNotIn("FontAwesomeIcons::drawRegular", theme)
             self.assertIn("rowAppIcon", theme)
 
 
