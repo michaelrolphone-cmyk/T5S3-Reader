@@ -43,6 +43,10 @@ typedef struct {
     char archive[160];
 } t5_package_catalog_row_t;
 
+typedef void (*t5_package_progress_fn)(void *context,
+                                       uint64_t downloaded_bytes,
+                                       uint64_t total_bytes);
+
 typedef struct {
     uint32_t api_version;
     uint32_t struct_size;
@@ -78,6 +82,13 @@ typedef struct {
     uint32_t (*installed_count)(void);
     bool (*installed_get)(uint32_t index, t5_installed_package_t *out);
     bool (*replace)(const char *folder);
+    // Optional generic release-install UX tail. Existing callers can keep
+    // using online_install; newer package UIs get bounded download progress
+    // and a short failure reason without changing the deployed prefix.
+    bool (*online_install_with_progress)(uint32_t index,
+                                         t5_package_progress_fn progress,
+                                         void *context);
+    bool (*online_last_error)(char *out, size_t capacity);
 } t5_package_manager_api_v1;
 
 const t5_package_manager_api_v1 *t5_package_manager_get_api(uint32_t version);
