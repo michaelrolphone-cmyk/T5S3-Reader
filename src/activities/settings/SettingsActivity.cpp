@@ -6,7 +6,9 @@
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "native/InstalledAppPath.h"
 #include "native/NativeAppHost.h"
+#include "activities/util/RequiredAppActivity.h"
 
 void SettingsActivity::onEnter() {
   Activity::onEnter();
@@ -23,7 +25,28 @@ void SettingsActivity::onExit() {
 void SettingsActivity::loop() {
   if (!launchAttempted) {
     launchAttempted = true;
-    const esp_err_t result = runNativeApp("/sd/Apps/settings.elf", renderer, mappedInput);
+
+    std::string settingsPath;
+    if (!resolveInstalledAppPath("settings.elf", settingsPath)) {
+      // Keep this Settings workflow on the activity stack while the required
+      // app is installed. A successful child result re-arms this exact launch
+      // step, so the user does not leave Settings or repeat the Home/menu action.
+      startActivityForResult(
+          std::make_unique<RequiredAppActivity>(
+              renderer, mappedInput, "settings.elf", "Settings"),
+          [this](const ActivityResult& result) {
+            if (result.isCancelled) {
+              launchFailed = true;
+            } else {
+              launchAttempted = false;
+              launchFailed = false;
+            }
+            requestUpdate();
+          });
+      return;
+    }
+
+    const esp_err_t result = runNativeApp(settingsPath.c_str(), renderer, mappedInput);
     if (result == ESP_OK) {
       // settings.elf returns both when the user leaves Settings and when it has
       // requested a firmware-owned Settings action. In the latter case
@@ -69,8 +92,8 @@ void SettingsActivity::render(RenderLock&&) {
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_SETTINGS_TITLE));
   const int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing * 3;
   if (launchFailed) {
-    renderer.drawCenteredText(UI_10_FONT_ID, y, "settings.elf could not be launched");
-    renderer.drawCenteredText(SMALL_FONT_ID, y + 36, "Install Settings from the App Store or copy it to /Apps.");
+    renderer.drawCenteredText(UI_10_FONT_ID, y, "Settings could not be launched");
+    renderer.drawCenteredText(SMALL_FONT_ID, y + 36, "Back returns to the previous screen.");
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "OK", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else {
