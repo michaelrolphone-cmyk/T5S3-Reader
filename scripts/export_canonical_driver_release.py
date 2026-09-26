@@ -5,9 +5,9 @@ The exporter must enforce the same identity bounds as the embedded parser:
 otherwise a successful build can publish an archive the device cannot admit.
 No release is created or published by this script.
 """
-import argparse
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from pathlib import Path
