@@ -54,9 +54,9 @@ void ActivityManager::renderTaskLoop() {
 }
 
 void ActivityManager::loop() {
-  // This is the firmware's owner task, not the asynchronous USB callback or
-  // render task. Observe host changes even if no application asks for serial.
-  nativeDeviceDiscoveryTick();
+  // MappedInputManager::update() already performs the owner-task discovery
+  // service immediately before this loop. Do not repeat provider/device work
+  // before dispatching captured input.
   bool injectedTouchButtonTap = false;
   if (currentActivity) {
     bool activityHandled = false;

@@ -2,6 +2,11 @@
 
 #include <Arduino.h>
 #include <Board.h>
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/task.h>
+#endif
 
 class HalGPIO {
  public:
@@ -21,27 +26,40 @@ class HalGPIO {
   unsigned long buttonPressStart = 0;
   unsigned long buttonPressFinish = 0;
 
+  struct TouchSwipeEvent {
+    TouchPoint start;
+    TouchPoint end;
+  };
+
   bool touchActive = false;
   uint16_t touchStartX = 0;
   uint16_t touchStartY = 0;
   unsigned long touchStartTime = 0;
   TouchPoint currentTouchPoint;
-  unsigned long lastTouchSeenTime = 0;
   bool touchMoved = false;
-  bool touchTapEvent = false;
-  TouchPoint touchTapPoint;
-  bool touchSwipeEvent = false;
-  TouchPoint touchSwipeStart;
-  TouchPoint touchSwipeEnd;
-  bool touchHomeButtonEvent = false;
   bool touchHomeButtonHeld = false;
   unsigned long lastTouchHomeButtonEventTime = 0;
 
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  TaskHandle_t touchTaskHandle = nullptr;
+  QueueHandle_t touchTapQueue = nullptr;
+  QueueHandle_t touchSwipeQueue = nullptr;
+  QueueHandle_t touchHomeQueue = nullptr;
+  mutable portMUX_TYPE touchStateMux = portMUX_INITIALIZER_UNLOCKED;
+#endif
+  bool touchAsyncReady = false;
+
   bool lastUsbConnected = false;
   bool usbStateChanged = false;
+  unsigned long lastUsbPollTime = 0;
 
   uint8_t getState();
-  void readTouchState();
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  void serviceTouchController();
+  void processTouchEvent(const Board::TouchPoint& point, bool homeButtonPressed, bool contactActive);
+  static void touchTaskTrampoline(void* context);
+  static void IRAM_ATTR touchInterruptThunk(void* context);
+#endif
 
  public:
   enum class DeviceType : uint8_t { T5S3Pro, LilyGoEPD47 };
@@ -98,6 +116,7 @@ class HalGPIO {
   static constexpr DeviceType Device = DeviceType::T5S3Pro;
 #endif
   static constexpr unsigned long DEBOUNCE_DELAY = 5;
+  static constexpr unsigned long USB_STATE_POLL_MS = 250;
 };
 
 extern HalGPIO gpio;

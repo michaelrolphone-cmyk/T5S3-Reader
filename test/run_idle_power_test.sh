@@ -13,4 +13,5 @@ for board in BOARD_T5S3_PRO BOARD_LILYGO_EPD47_S3; do
 done
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/bq25896/include" \
   "$repo/test/hal/usb_input_power_test.c" -o "$build/input-test"
+python3 "$repo/test/hal/touch_interrupt_capture_test.py"
 "$build/input-test"

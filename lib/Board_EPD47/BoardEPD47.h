@@ -127,6 +127,11 @@ struct TouchPoint {
 class GT911Touch {
  public:
   bool begin();
+  // Consume one GT911 READY report. Returns true when a controller event was
+  // acknowledged, including a zero-contact release. contactActive distinguishes
+  // a coordinate sample from that release event.
+  bool readEvent(TouchPoint* point, bool* homeButtonPressed, bool* contactActive);
+  // Compatibility helper for callers interested only in active coordinates.
   bool readPoint(TouchPoint* point, bool* homeButtonPressed = nullptr);
   bool isAvailable() const { return available; }
 
