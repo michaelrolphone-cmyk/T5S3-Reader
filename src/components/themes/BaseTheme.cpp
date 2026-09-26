@@ -347,15 +347,29 @@ std::array<Rect, 4> BaseTheme::getButtonHintTouchBounds(const GfxRenderer& rende
   constexpr int buttonWidth = 106;
   constexpr int buttonHeight = BaseMetrics::values.buttonHintsHeight;
   constexpr int buttonY = BaseMetrics::values.buttonHintsHeight;
+  constexpr int touchPadTop = 20;
+  constexpr int touchPadOuterX = 12;
   constexpr int x4ButtonPositions[] = {25, 130, 245, 350};
   constexpr int x3ButtonPositions[] = {38, 154, 268, 384};
   const int* buttonPositions = gpio.deviceIsX3() ? x3ButtonPositions : x4ButtonPositions;
+  const int pageWidth = renderer.getDisplayVisibleWidth();
   const int pageHeight = renderer.getDisplayVisibleHeight();
 
-  return {Rect{buttonPositions[0], pageHeight - buttonY, buttonWidth, buttonHeight},
-          Rect{buttonPositions[1], pageHeight - buttonY, buttonWidth, buttonHeight},
-          Rect{buttonPositions[2], pageHeight - buttonY, buttonWidth, buttonHeight},
-          Rect{buttonPositions[3], pageHeight - buttonY, buttonWidth, buttonHeight}};
+  std::array<Rect, 4> bounds{};
+  int centers[4]{};
+  for (int i = 0; i < 4; ++i) centers[i] = buttonPositions[i] + buttonWidth / 2;
+
+  for (int i = 0; i < 4; ++i) {
+    const int left = i == 0
+        ? std::max(0, buttonPositions[i] - touchPadOuterX)
+        : (centers[i - 1] + centers[i]) / 2;
+    const int right = i == 3
+        ? std::min(pageWidth, buttonPositions[i] + buttonWidth + touchPadOuterX)
+        : (centers[i] + centers[i + 1]) / 2;
+    bounds[i] = Rect{left, pageHeight - buttonY - touchPadTop,
+                     std::max(1, right - left), buttonHeight + touchPadTop};
+  }
+  return bounds;
 }
 
 void BaseTheme::drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const {
