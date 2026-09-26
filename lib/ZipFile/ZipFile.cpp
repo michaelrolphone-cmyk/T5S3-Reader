@@ -307,6 +307,65 @@ bool ZipFile::getInflatedFileSize(const char* filename, size_t* size) {
   return true;
 }
 
+bool ZipFile::findFirstBySuffix(const char* suffix, char* filename, size_t capacity, size_t* size) {
+  if (size) *size = 0;
+  if (!suffix || !suffix[0] || !filename || capacity == 0 || !size) return false;
+  const ScopedOpenClose zip{*this};
+  if (!zip || !loadZipDetails()) return false;
+
+  const size_t suffixLen = strlen(suffix);
+  file.seek(zipDetails.centralDirOffset);
+  uint32_t sig = 0;
+  char itemName[256];
+  int entriesScanned = 0;
+
+  for (uint16_t entry = 0; entry < zipDetails.totalEntries; ++entry) {
+    if (file.read(&sig, 4) != 4 || sig != 0x02014b50) return false;
+    file.seekCur(6);
+    uint16_t method = 0;
+    file.read(&method, 2);
+    file.seekCur(8);
+    uint32_t compressedSize = 0, uncompressedSize = 0;
+    file.read(&compressedSize, 4);
+    file.read(&uncompressedSize, 4);
+    uint16_t nameLen = 0, extraLen = 0, commentLen = 0;
+    file.read(&nameLen, 2);
+    file.read(&extraLen, 2);
+    file.read(&commentLen, 2);
+    file.seekCur(8);
+    uint32_t localHeaderOffset = 0;
+    file.read(&localHeaderOffset, 4);
+
+    bool matched = false;
+    if (nameLen > 0 && nameLen < sizeof(itemName)) {
+      if (file.read(itemName, nameLen) != nameLen) return false;
+      itemName[nameLen] = '\0';
+      if (nameLen >= suffixLen) {
+        matched = true;
+        for (size_t i = 0; i < suffixLen; ++i) {
+          char a = itemName[nameLen - suffixLen + i];
+          char b = suffix[i];
+          if (a >= 'A' && a <= 'Z') a = static_cast<char>(a + ('a' - 'A'));
+          if (b >= 'A' && b <= 'Z') b = static_cast<char>(b + ('a' - 'A'));
+          if (a != b) { matched = false; break; }
+        }
+      }
+    } else {
+      file.seekCur(nameLen);
+    }
+
+    file.seekCur(extraLen + commentLen);
+    if (matched) {
+      if (nameLen >= capacity) return false;
+      memcpy(filename, itemName, nameLen + 1);
+      *size = static_cast<size_t>(uncompressedSize);
+      return method == ZIP_METHOD_STORED || method == ZIP_METHOD_DEFLATED;
+    }
+    maybeYieldDuringZipScan(++entriesScanned);
+  }
+  return false;
+}
+
 int ZipFile::fillUncompressedSizes(std::deque<SizeTarget>& targets, std::deque<uint32_t>& sizes) {
   if (targets.empty()) {
     return 0;
