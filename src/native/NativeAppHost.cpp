@@ -454,10 +454,10 @@ bool loadAggregateCatalog(const std::vector<ReleaseCatalogAsset>& releaseAssets,
       return false;
     }
     if (NativeAppCatalogPolicy::isRetiredArtifact(manifest.file_name)) continue;
-    // The parsed manifest is copied into the final catalog below; discard its
-    // serialized JSON now instead of retaining every app's raw metadata.
-    std::string().swap(json);
-
+    // Keep the bounded sidecar bytes with the validated catalog entry. Install
+    // needs the exact manifest again to stage the managed package. Reusing these
+    // already-downloaded bytes avoids a second TLS handshake while the App Store
+    // session and release catalog are resident.
     const auto asset = std::find_if(releaseAssets.begin(), releaseAssets.end(),
         [&](const ReleaseCatalogAsset& candidate) {
           return candidate.name == manifest.file_name;
@@ -478,6 +478,7 @@ bool loadAggregateCatalog(const std::vector<ReleaseCatalogAsset>& releaseAssets,
     resolved.url = asset->url;
     resolved.manifestUrl = asset->manifestUrl;
     resolved.size = asset->size;
+    resolved.manifestJson = std::move(json);
     resolved.manifest = manifest;
     resolved.version = std::move(version);
     resolved.manifestValid = true;
