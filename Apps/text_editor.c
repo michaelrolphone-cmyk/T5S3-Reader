@@ -128,8 +128,12 @@ static bool load_handoff_path(const char *source) {
     size_t size = 0, count = 0;
     if (!source || strncmp(source, "/sd/", 4) != 0) return false;
     const char *storage_path = source + 3; /* Keep the leading slash after /sd. */
-    if (!storage_path[0] || strstr(storage_path, "/../") || strstr(storage_path, "/./"))
-        return false;
+    if (!storage_path[0]) return false;
+    for (const char *p = storage_path; *p; ++p) {
+        if (p[0] == '/' && p[1] == '.' &&
+            (p[2] == '/' || (p[2] == '.' && (p[3] == '/' || p[3] == '\0'))))
+            return false;
+    }
     const char *name = strrchr(storage_path, '/');
     name = name ? name + 1 : storage_path;
     if (!valid_name(name) || strlen(storage_path) >= sizeof(path) ||
