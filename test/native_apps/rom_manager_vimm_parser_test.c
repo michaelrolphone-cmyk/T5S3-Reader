@@ -7,6 +7,12 @@
 #include "../../Apps/rom_manager.c"
 #undef app_main
 
+static const char kDetailHtml[] =
+    "<!DOCTYPE html><html><head><title>The Vault: Castlevania: The Adventure (GB)</title></head>"
+    "<body><form action=\"//dl3.vimm.net/\" id=\"dl-form\">"
+    "<input type=\"hidden\" name=\"mediaId\" value=\"39985\">"
+    "<input type=\"hidden\" name=\"token\" value=\"abc123\"></form></body></html>";
+
 static const char kLetterHtml[] =
     "<table class=\"rounded centered cellpadding1 hovertable striped\">"
     "<tr><td><a href=\"/vault/999999\" style=\"display:none\">9</a>"
@@ -27,6 +33,46 @@ static const t5_app_api_v1 kApp={
   .log_message=fake_log_message,
 };
 
+static bool header_value(const t5_http_header_t *headers,uint32_t count,
+                              const char *name,const char **value){
+  for(uint32_t i=0;i<count;++i){
+    if(headers[i].name&&headers[i].value&&!strcmp(headers[i].name,name)){
+      if(value)*value=headers[i].value;
+      return true;
+    }
+  }
+  return false;
+}
+static bool fake_http_request(const char *url,uint8_t method,
+                              const t5_http_header_t *headers,uint32_t header_count,
+                              const void *body,size_t body_size,const char *cert_pem,
+                              uint32_t timeout_ms,char *response,size_t response_capacity,
+                              t5_http_result_t *result){
+  (void)body;(void)body_size;(void)cert_pem;
+  assert(url&&headers&&response&&result);
+  assert(method==T5_HTTP_METHOD_GET);
+  assert(timeout_ms==30000u);
+  const char *ua=0,*referer=0;
+  assert(header_value(headers,header_count,"User-Agent",&ua));
+  assert(header_value(headers,header_count,"Referer",&referer));
+  assert(strstr(ua,"Mozilla/5.0")!=0);
+  assert(strcmp(referer,"https://vimm.net/vault/GB")==0);
+  const char *payload=0;
+  if(!strcmp(url,"https://vimm.net/vault/?p=list&system=GB&section=W"))payload=kLetterHtml;
+  else if(!strcmp(url,"https://vimm.net/vault/3016"))payload=kDetailHtml;
+  else assert(!"unexpected URL");
+  const size_t n=strlen(payload);
+  assert(n+1u<=response_capacity);
+  memcpy(response,payload,n+1u);
+  *result=(t5_http_result_t){.transport_error=0,.status_code=200,.response_bytes=n,.flags=0};
+  return true;
+}
+static const t5_network_api_v1 kNetwork={
+  .api_version=T5_NETWORK_API_VERSION,
+  .struct_size=sizeof(t5_network_api_v1),
+  .http_request=fake_http_request,
+};
+
 static bool fake_remove_file(const char *path){assert(path);return true;}
 static const t5_storage_api_v1 kStorage={
   .api_version=T5_STORAGE_API_VERSION,
@@ -42,21 +88,6 @@ static const t5_ui_api_v1 kUi={
   .poll_event=fake_poll_event,
 };
 
-static int32_t fake_open_http(const char *url,t5_stream_t *out){
-  assert(url&&out);
-  assert(strcmp(url,"https://vimm.net/vault/?p=list&system=GB&section=W")==0);
-  served=false;*out=1;return T5_STREAM_OK;
-}
-static int32_t fake_read(t5_stream_t h,void *buffer,uint32_t cap,uint32_t *count){
-  assert(h==1&&buffer&&count);
-  if(served){*count=0;return T5_STREAM_EOF;}
-  const size_t n=strlen(kLetterHtml);
-  assert(n<=cap);
-  memcpy(buffer,kLetterHtml,n);
-  *count=(uint32_t)n;
-  served=true;
-  return T5_STREAM_EOF;
-}
 static int32_t fake_open_file(const char *path,uint32_t mode,t5_stream_t *out){
   assert(path&&out);assert(mode==T5_STREAM_FILE_CREATE_NEW);*out=2;return T5_STREAM_OK;
 }
@@ -70,8 +101,6 @@ static const t5_stream_api_v1 kStreams={
   .api_version=T5_STREAM_API_VERSION,
   .struct_size=sizeof(t5_stream_api_v1),
   .open_file=fake_open_file,
-  .open_http=fake_open_http,
-  .read=fake_read,
   .write=fake_write,
   .finish=fake_finish,
   .close=fake_close,
@@ -79,6 +108,7 @@ static const t5_stream_api_v1 kStreams={
 
 const t5_app_api_v1 *t5_app_get_api(uint32_t version){(void)version;return 0;}
 const t5_archive_api_v1 *t5_archive_get_api(uint32_t version){(void)version;return 0;}
+const t5_network_api_v1 *t5_network_get_api(uint32_t version){(void)version;return 0;}
 const t5_storage_api_v1 *t5_storage_get_api(uint32_t version){(void)version;return 0;}
 const t5_stream_api_v1 *t5_stream_get_api(uint32_t version){(void)version;return 0;}
 const t5_system_ui_api_v1 *t5_system_ui_get_api(uint32_t version){(void)version;return 0;}
@@ -91,6 +121,7 @@ int main(void){
   debug_text=debug;
   debug_text[0]=0;debug_size=0;
   app=&kApp;
+  network=&kNetwork;
   storage=&kStorage;
   streams=&kStreams;
   ui=&kUi;
@@ -110,5 +141,10 @@ int main(void){
   assert(strstr(debug_text,"href=/vault/999999 title=9 hidden=1")!=0);
   assert(strstr(debug_text,"selected_href=/vault/46856 selected_title=Tetris found=1")!=0);
   assert(log_count>0);
+
+  assert(fetch_vimm_document("https://vimm.net/vault/3016"));
+  assert(html_size==strlen(kDetailHtml));
+  assert(strstr(html,"Castlevania: The Adventure")!=0);
+  assert(strstr(debug_text,"status=200")!=0);
   return 0;
 }
