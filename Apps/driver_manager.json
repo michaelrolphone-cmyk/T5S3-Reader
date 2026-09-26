@@ -3,5 +3,10 @@
   "version": "1.0.4",
   "display_name": "Driver Manager",
   "file_name": "driver_manager.elf",
-  "icon": "solid:f085"
+  "icon": "solid:f085",
+  "category": [
+    "System",
+    "Hardware",
+    "Developer"
+  ]
 }
