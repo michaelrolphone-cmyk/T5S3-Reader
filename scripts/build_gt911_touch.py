@@ -59,10 +59,9 @@ def build(cc=None):
     }
     if exported != {"t5_driver_get"}:
         raise ValueError("GT911 provider must export only t5_driver_get: " + repr(exported))
-    # Generic libc/CPU helpers are permitted exactly as for the HID providers.
-    # Hardware access itself must flow only through provider dependencies; the
-    # canonical package audit separately rejects the private firmware I2C bridge
-    # for every provider except i2c-esp32s3-v2.
+    # Generic platform primitives are exact-import checked. GT911 register I/O
+    # flows through i2c.bus; the physical provider itself owns its RESET/INT GPIO
+    # sequence using generic GPIO/time primitives.
     validate_imports(
         symbols,
         {name for name in firmware_exports(ROOT) if not name.startswith("t5_")},
@@ -79,7 +78,7 @@ def build(cc=None):
 
     manifest.update(size_bytes=len(payload), sha256=hashlib.sha256(payload).hexdigest())
     (OUTPUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    print("GT911 input.touch.raw provider built with zero firmware hardware imports")
+    print("GT911 input.touch.raw provider built with provider-owned reset GPIO and i2c.bus register I/O")
     return elf
 
 
