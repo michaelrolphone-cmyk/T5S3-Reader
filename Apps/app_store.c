@@ -302,9 +302,9 @@ __attribute__((visibility("default"))) void app_main(void) {
         !app->set_back_exits_app || !app->dir_open || !app->dir_next || !app->dir_close) return;
     app->set_back_exits_app(false);
     view = RELEASES;
-    if (!refresh_releases(app, ui)) {
-        view = SD_INBOX;
-        (void)build_inbox(app, manager);
+    const bool releases_ready = refresh_releases(app, ui);
+    if (!releases_ready) {
+        row_count = 0;
     }
     int32_t selected = 0;
     char status[STATUS_SIZE] = {0};
