@@ -14,6 +14,7 @@
 #define ROM_DIR "/sd/System/State/Applications/Rom Manager"
 #define TMP_ZIP ROM_DIR "/.download.zip"
 #define TMP_GB ROM_DIR "/.download.gb"
+#define RENAME_STATE ROM_DIR "/.rename.txt"
 #define VIMM_URL "https://vimm.net/vault/GB"
 #define MAX_ROMS 128u
 #define MAX_VIMM 96u
@@ -44,7 +45,6 @@ static uint32_t vimm_count;
 static char html[HTML_CAP + 1u];
 static uint32_t html_size;
 static char search_query[80];
-static char pending_rename[NAME_CAP];
 
 static size_t bounded_len(const char *s, size_t cap) { size_t n=0; if(s) while(n<cap&&s[n])++n; return n; }
 static void copy_text(char *d,size_t c,const char*s){ if(!d||!c)return; if(!s)s=""; size_t n=bounded_len(s,c-1); memcpy(d,s,n); d[n]=0; }
@@ -57,6 +57,13 @@ static void safe_name(const char *src,char *dst,size_t cap,const char *fallback)
   dst[w]=0; if(!w)copy_text(dst,cap,fallback);
 }
 static void make_path(const char *name,char *out,size_t cap){snprintf(out,cap,"%s/%s",ROM_DIR,name);}
+static bool ensure_rom_dir(void){
+  static const char empty[]="";
+  if(storage->exists(ROM_DIR))return true;
+  if(!storage->write_file_atomic(ROM_DIR "/.init",empty,0))return false;
+  (void)storage->remove_file(ROM_DIR "/.init");
+  return true;
+}
 static void render_rows(const char *title,const char *subtitle,const t5_ui_list_row_t *rows,uint32_t count,int32_t selected,const char *confirm){
   const t5_ui_chrome_t chrome={title,subtitle,status_text,"Back",confirm,"Up","Down"};
   if(count)ui->render_list(&chrome,rows,count,selected); else {const t5_ui_list_row_t empty={"Nothing here","","",0};ui->render_list(&chrome,&empty,1,0);}
@@ -131,17 +138,25 @@ static bool fetch_vimm(void){
   return true;
 }
 static void do_rename(const char *new_text){
-  if(!pending_rename[0]||!new_text||!new_text[0])return; char new_name[NAME_CAP],old_path[PATH_CAP],new_path[PATH_CAP];safe_name(new_text,new_name,sizeof(new_name),"game.gb");if(!ends_ci(new_name,".gb"))strncat(new_name,".gb",sizeof(new_name)-strlen(new_name)-1);make_path(pending_rename,old_path,sizeof(old_path));make_path(new_name,new_path,sizeof(new_path));
-  if(storage->rename_file(old_path,new_path))snprintf(status_text,sizeof(status_text),"Renamed to %.100s",new_name);else copy_text(status_text,sizeof(status_text),"Rename failed or target exists");pending_rename[0]=0;
+  char old_name[NAME_CAP]={0}; size_t n=0;
+  if(!new_text||!new_text[0]||!storage->read_file(RENAME_STATE,old_name,sizeof(old_name)-1,&n)||!n||n>=sizeof(old_name)){(void)storage->remove_file(RENAME_STATE);return;}
+  old_name[n]=0; (void)storage->remove_file(RENAME_STATE);
+  char new_name[NAME_CAP],old_path[PATH_CAP],new_path[PATH_CAP];safe_name(new_text,new_name,sizeof(new_name),"game.gb");if(!ends_ci(new_name,".gb"))strncat(new_name,".gb",sizeof(new_name)-strlen(new_name)-1);make_path(old_name,old_path,sizeof(old_path));make_path(new_name,new_path,sizeof(new_path));
+  if(storage->rename_file(old_path,new_path))snprintf(status_text,sizeof(status_text),"Renamed to %.100s",new_name);else copy_text(status_text,sizeof(status_text),"Rename failed or target exists");
 }
-static void consume_keyboard(void){
-  char text[384]={0};bool cancelled=false;uint64_t cookie=0;if(!system_ui->keyboard_take_result(text,sizeof(text),&cancelled,&cookie)||cancelled)return;
-  if(cookie==COOKIE_IMPORT)(void)import_url(text);else if(cookie==COOKIE_SEARCH){copy_text(search_query,sizeof(search_query),text);if(!fetch_vimm())copy_text(status_text,sizeof(status_text),"Could not load Vimm catalog");}else if(cookie==COOKIE_RENAME)do_rename(text);
+static view_t consume_keyboard(void){
+  char text[384]={0};bool cancelled=false;uint64_t cookie=0;if(!system_ui->keyboard_take_result(text,sizeof(text),&cancelled,&cookie)||cancelled)return VIEW_HOME;
+  if(cookie==COOKIE_IMPORT){(void)import_url(text);return VIEW_ROMS;}
+  if(cookie==COOKIE_SEARCH){copy_text(search_query,sizeof(search_query),text);if(!fetch_vimm()){copy_text(status_text,sizeof(status_text),"Could not load Vimm catalog");return VIEW_HOME;}return VIEW_VIMM;}
+  if(cookie==COOKIE_RENAME){do_rename(text);return VIEW_ROMS;}
+  return VIEW_HOME;
 }
 __attribute__((visibility("default"))) void app_main(void){
   app=t5_app_get_api(T5_APP_ABI_VERSION);archive=t5_archive_get_api(T5_ARCHIVE_API_VERSION);storage=t5_storage_get_api(T5_STORAGE_API_VERSION);streams=t5_stream_get_api(T5_STREAM_API_VERSION);system_ui=t5_system_ui_get_api(T5_SYSTEM_UI_API_VERSION);ui=t5_ui_get_api(T5_UI_API_VERSION);
-  if(!app||!archive||!storage||!streams||!system_ui||!ui||!storage->rename_file||!app->dir_open||!app->dir_next||!app->dir_close)return;
-  app->set_back_exits_app(false); status_text[0]=0; search_query[0]=0; pending_rename[0]=0; consume_keyboard(); view_t view=VIEW_HOME; int32_t selected=0;
+  const size_t rename_required=offsetof(t5_storage_api_v1,rename_file)+sizeof(storage->rename_file);
+  if(!app||!archive||!storage||!streams||!system_ui||!ui||storage->struct_size<rename_required||!storage->rename_file||!app->dir_open||!app->dir_next||!app->dir_close)return;
+  app->set_back_exits_app(false); status_text[0]=0; search_query[0]=0; if(!ensure_rom_dir()){copy_text(status_text,sizeof(status_text),"ROM storage unavailable");}
+  view_t view=consume_keyboard(); int32_t selected=0;
   for(;;){
     t5_ui_list_row_t rows[MAX_ROMS>MAX_VIMM?MAX_ROMS:MAX_VIMM]; uint32_t count=0; const char *confirm="";
     if(view==VIEW_HOME){rows[0]=(t5_ui_list_row_t){"My ROMs","Rename or delete downloaded .gb files","Open",0};rows[1]=(t5_ui_list_row_t){"Browse Vimm Vault","Browse Game Boy catalog metadata","Browse",0};rows[2]=(t5_ui_list_row_t){"Search Vimm Vault","Filter catalog metadata by title","Search",0};rows[3]=(t5_ui_list_row_t){"Import authorized URL","Download .gb or ZIP and extract first .gb","Import",0};count=4;confirm="Open";}
@@ -164,7 +179,7 @@ __attribute__((visibility("default"))) void app_main(void){
     else if(view==VIEW_ROMS&&rom_count){
       char old_path[PATH_CAP];make_path(rom_names[selected],old_path,sizeof(old_path));
       t5_ui_list_row_t actions[3]={{"Rename","Change filename","",0},{"Delete","Remove this ROM","",0},{"Cancel","Return to list","",0}};int32_t a=0;
-      for(;;){render_rows("ROM actions",rom_names[selected],actions,3,a,"Select");t5_ui_event_t x={0};if(!ui->poll_event(&x,20)||x.type==T5_UI_EVENT_BACK||x.type==T5_UI_EVENT_EXIT)break;if(x.type==T5_UI_EVENT_PREVIOUS)a=ui->previous_index(a,3);else if(x.type==T5_UI_EVENT_NEXT)a=ui->next_index(a,3);else if(x.type==T5_UI_EVENT_CONFIRM){if(a==0){copy_text(pending_rename,sizeof(pending_rename),rom_names[selected]);system_ui->keyboard_request("Rename ROM",rom_names[selected],120,T5_SYSTEM_KEYBOARD_TEXT,COOKIE_RENAME);return;}if(a==1){if(storage->remove_file(old_path))copy_text(status_text,sizeof(status_text),"ROM deleted");else copy_text(status_text,sizeof(status_text),"Delete failed");load_roms();if(selected>=(int32_t)rom_count)selected=rom_count?(int32_t)rom_count-1:0;}break;}}
+      for(;;){render_rows("ROM actions",rom_names[selected],actions,3,a,"Select");t5_ui_event_t x={0};if(!ui->poll_event(&x,20)||x.type==T5_UI_EVENT_BACK||x.type==T5_UI_EVENT_EXIT)break;if(x.type==T5_UI_EVENT_PREVIOUS)a=ui->previous_index(a,3);else if(x.type==T5_UI_EVENT_NEXT)a=ui->next_index(a,3);else if(x.type==T5_UI_EVENT_CONFIRM){if(a==0){if(storage->write_file_atomic(RENAME_STATE,rom_names[selected],strlen(rom_names[selected]))){system_ui->keyboard_request("Rename ROM",rom_names[selected],120,T5_SYSTEM_KEYBOARD_TEXT,COOKIE_RENAME);return;}copy_text(status_text,sizeof(status_text),"Could not stage rename");}if(a==1){if(storage->remove_file(old_path))copy_text(status_text,sizeof(status_text),"ROM deleted");else copy_text(status_text,sizeof(status_text),"Delete failed");load_roms();if(selected>=(int32_t)rom_count)selected=rom_count?(int32_t)rom_count-1:0;}break;}}
     }
   }
   app->set_back_exits_app(true);
