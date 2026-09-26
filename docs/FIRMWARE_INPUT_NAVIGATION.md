@@ -111,17 +111,28 @@ quick taps. The UI cursor is independent of the app's keyboard cursor; focus
 handoff never flushes the app's buffered typing. Only navigation keys are mapped;
 text entry remains the keyboard consumer's responsibility.
 
-Each provider poll performs at most four ready reports per input class and
-consumes at most one keyboard navigation transition, scanning no more than the
-existing 32-event queue. The firmware polls at most once per 20 ms owner-loop
-interval and preserves held state between polls. Existing menu repeat logic
-uses that held state. E-paper rendering runs on its separate render task and
-must not hold a shared hardware-bus lock across panel power sequencing or
-waveform waits. Individual bus transactions and atomic read-modify-write
-operations remain serialized, allowing touch polling to continue while a
-redraw is still physically completing. Other owner-loop work or scheduler
-latency can still extend the polling interval; no separate worker calls
-provider interfaces concurrently.
+Each navigation-provider poll performs at most four ready reports per input
+class and consumes at most one keyboard navigation transition, scanning no more
+than the existing 32-event queue. Navigation remains owner-loop driven and
+preserves held state between polls.
+
+Touch capture is intentionally different. The firmware holds one
+`input.touch.raw@1` subscription and services that opaque provider from a
+dedicated 5 ms capture task. The capture task performs provider polling and
+drains DOWN/MOVE/UP events into firmware gesture queues; the UI/owner loop only
+consumes those queued gestures and observes activity state. A slow e-paper
+redraw or other owner-loop work therefore cannot make a short tap disappear
+between UI polls. The task is stopped and proven quiescent before the firmware
+unsubscribes/releases the touch provider for sleep, driver mutation, or app
+hardware takeover.
+
+E-paper rendering runs on its separate render task and must not hold a shared
+hardware-bus lock across panel power sequencing or waveform waits. Individual
+bus transactions and atomic read-modify-write operations remain serialized, so
+the touch capture task can obtain the provider's I2C transport between display
+transactions. Snapshot recovery after a transient provider/I2C failure
+invalidates only the in-flight gesture; already completed tap/swipe/Home events
+remain queued for delivery.
 
 App entry/return, focus changes, input gaps and failures clear derived UI state.
 The returning source must become neutral before it can trigger navigation. This
