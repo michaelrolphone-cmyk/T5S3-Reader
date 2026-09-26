@@ -24,12 +24,14 @@ extern "C" esp_err_t native_hardware_takeover_begin(uint32_t requested) {
   if ((requested & T5_HARDWARE_TAKEOVER_DISPLAY) != 0U) {
     // Legacy takeover apps such as GameBoy still access GT911 directly. Stop
     // the firmware worker before they enter so there is never more than one
-    // reader acknowledging the controller's READY/release reports.
-    if (!gpio.suspendTouchCapture()) {
+    // reader acknowledging the controller's READY/release reports. A board
+    // with no active firmware touch capture can still hand off its display.
+    s_touch_borrowed = gpio.isTouchCaptureRunning();
+    if (s_touch_borrowed && !gpio.suspendTouchCapture()) {
+      s_touch_borrowed = false;
       ESP_LOGE(kTag, "Touch input could not quiesce; refusing ELF entry");
       return ESP_ERR_INVALID_STATE;
     }
-    s_touch_borrowed = true;
     if (!display.suspendForExternalOwner()) {
       s_touch_borrowed = false;
       (void)gpio.resumeTouchCapture();
@@ -45,7 +47,7 @@ extern "C" esp_err_t native_hardware_takeover_begin(uint32_t requested) {
 extern "C" esp_err_t native_hardware_takeover_end(uint32_t requested) {
   if (requested == 0U) return ESP_OK;
   if ((requested & T5_HARDWARE_TAKEOVER_DISPLAY) != 0U) {
-    if (!s_display_borrowed || !s_touch_borrowed) return ESP_ERR_INVALID_STATE;
+    if (!s_display_borrowed) return ESP_ERR_INVALID_STATE;
     // app_main must already have terminated its scan task, DMA and callbacks.
     // A return without relinquishing app-owned hardware is an app bug.
     s_display_borrowed = false;
@@ -55,7 +57,7 @@ extern "C" esp_err_t native_hardware_takeover_end(uint32_t requested) {
 
     // Display resume may recreate the shared board bus, so GT911 is restored
     // only after display ownership is back in firmware.
-    const bool touchRestored = gpio.resumeTouchCapture();
+    const bool touchRestored = !s_touch_borrowed || gpio.resumeTouchCapture();
     if (touchRestored) s_touch_borrowed = false;
     else ESP_LOGE(kTag, "Failed to restore firmware touch capture after ELF exit");
 
