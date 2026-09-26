@@ -258,13 +258,13 @@ int esp_elf_register_symbol(const struct esp_elfsym *s)
     }
     assert(count >= 24);
     assert(serial_port_found && device_found);
-    const struct esp_elfsym *entry = s;
-    while (entry->name && strcmp(entry->name, "snprintf") != 0) ++entry;
-    assert(entry->name && entry->sym);
-    int (*format)(char *, size_t, const char *, ...) = entry->sym;
-    char text[8];
-    assert(format(text, sizeof(text), "%s %d", "test", 12345) == 10);
-    assert(strcmp(text, "test 12") == 0);
+    // Baseline libc helpers are resolved from g_esp_libc_elfsyms, not this
+    // app-specific host API table. test_symbols.py validates that stable set.
+    for (int i = 0; i < count; ++i) {
+        assert(strcmp(s[i].name, "snprintf") != 0);
+        assert(strcmp(s[i].name, "strcpy") != 0);
+        assert(strcmp(s[i].name, "strncpy") != 0);
+    }
     return 0;
 }
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) { (void)version; return NULL; }
