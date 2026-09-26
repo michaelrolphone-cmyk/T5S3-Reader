@@ -23,6 +23,36 @@ using RiscRteSecureClient = WiFiClientSecure;
 namespace {
 constexpr uint32_t kMaxHeaders = 16;
 constexpr uint32_t kDefaultTimeoutMs = 30000;
+constexpr size_t kMaxSessionCookies = 8;
+constexpr size_t kMaxCookieNameBytes = 64;
+constexpr size_t kMaxCookieValueBytes = 256;
+constexpr size_t kMaxCookieDomainBytes = 128;
+constexpr size_t kMaxCookiePathBytes = 128;
+
+CookieJar nativeCookieJar;
+bool nativeCookieSessionActive = false;
+
+void clearNativeCookieJar() {
+  CookieJar empty;
+  nativeCookieJar.swap(empty);
+}
+
+void boundNativeCookieJar() {
+  for (auto it = nativeCookieJar.begin(); it != nativeCookieJar.end();) {
+    if (it->name.length() > kMaxCookieNameBytes ||
+        it->value.length() > kMaxCookieValueBytes ||
+        it->domain.length() > kMaxCookieDomainBytes ||
+        it->path.length() > kMaxCookiePathBytes) {
+      it = nativeCookieJar.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  if (nativeCookieJar.size() > kMaxSessionCookies) {
+    nativeCookieJar.erase(nativeCookieJar.begin(),
+                          nativeCookieJar.begin() + (nativeCookieJar.size() - kMaxSessionCookies));
+  }
+}
 
 struct ResponseSink {
   char* buffer = nullptr;
@@ -82,6 +112,10 @@ bool performInsecureHttps(const char* url, uint8_t method,
   RiscRteSecureClient secureClient;
   secureClient.setInsecure();
   HTTPClient http;
+  if (nativeCookieSessionActive) {
+    if (!nativeCookieJar.empty()) result->flags |= T5_HTTP_SESSION_COOKIES_AVAILABLE;
+    http.setCookieJar(&nativeCookieJar);
+  }
   if (!http.begin(secureClient, url)) {
     result->transport_error = ESP_FAIL;
     return false;
@@ -119,6 +153,10 @@ bool performInsecureHttps(const char* url, uint8_t method,
   result->status_code = status > 0 ? status : 0;
   result->response_bytes = sink.total;
   if (sink.truncated) result->flags |= T5_HTTP_RESPONSE_TRUNCATED;
+  if (nativeCookieSessionActive) {
+    boundNativeCookieJar();
+    if (!nativeCookieJar.empty()) result->flags |= T5_HTTP_SESSION_COOKIES_STORED;
+  }
   http.end();
   if (status <= 0 || streamed < 0) {
     result->transport_error = ESP_FAIL;
@@ -214,6 +252,16 @@ const t5_network_api_v1 kNetworkApi = {
     httpRequest,
 };
 }  // namespace
+
+void nativeNetworkBegin() {
+  clearNativeCookieJar();
+  nativeCookieSessionActive = true;
+}
+
+void nativeNetworkEnd() {
+  nativeCookieSessionActive = false;
+  clearNativeCookieJar();
+}
 
 extern "C" const t5_network_api_v1* t5_network_get_api(uint32_t apiVersion) {
   if (apiVersion != T5_NETWORK_API_VERSION || t5_app_get_api(T5_APP_ABI_VERSION) == nullptr) return nullptr;
