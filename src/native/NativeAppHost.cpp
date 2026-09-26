@@ -724,22 +724,14 @@ bool connectSavedWifi() {
   return RuntimeNetwork::ready();
 }
 
-bool appCatalogRefresh() {
-  auto* s = current();
-  if (!s) return false;
-  s->catalogNeedsRefresh = false;
-  // A refresh invalidates every prior release record. Free the backing storage,
-  // not just the elements, so stale catalog capacity is not carried into the
-  // next TLS handshake on a memory-constrained ESP32-S3.
-  std::vector<CatalogAsset>().swap(s->catalog);
-  if (!connectSavedWifi()) return false;
-
-  if (loadAuthoritativeAppCatalog(s->catalog)) {
+bool loadAvailableAppCatalog(std::vector<CatalogAsset>& catalog) {
+  if (loadAuthoritativeAppCatalog(catalog)) {
     LOG_INF("APPSTORE", "Loaded %u apps from the independent/external catalog",
-            static_cast<unsigned>(s->catalog.size()));
+            static_cast<unsigned>(catalog.size()));
     return true;
   }
-  s->catalog.clear();
+
+  catalog.clear();
   std::string catalogUrl;
   std::vector<ReleaseCatalogAsset> releaseAssets;
   {
@@ -754,35 +746,40 @@ bool appCatalogRefresh() {
       LOG_ERR("APPSTORE", "Latest release asset stream was incomplete or invalid");
       return false;
     }
-  }  // Drop release JSON parser scratch and sidecar inventory before next TLS handshake.
+  }
 
-  // HTTP metadata is produced by a short-lived worker task. Give FreeRTOS idle
-  // one scheduling point to reclaim a just-deleted worker stack before mbedTLS
-  // allocates the next connection's record buffers.
   delay(1);
   LOG_INF("APPSTORE", "Found %u application ELF/JSON pairs in latest release",
           static_cast<unsigned>(releaseAssets.size()));
 
   if (!catalogUrl.empty()) {
-    if (loadAggregateCatalog(releaseAssets, s->catalog, catalogUrl)) {
+    if (loadAggregateCatalog(releaseAssets, catalog, catalogUrl)) {
       LOG_INF("APPSTORE", "Loaded %u apps from aggregate release catalog",
-              static_cast<unsigned>(s->catalog.size()));
+              static_cast<unsigned>(catalog.size()));
       return true;
     }
-    // A present aggregate catalog is the canonical metadata path for current
-    // releases. If that one request fails, starting dozens of fresh TLS
-    // handshakes cannot repair a low-memory/network failure and can make heap
-    // fragmentation worse. Return cleanly; the user can retry the refresh.
     LOG_ERR("APPSTORE", "Aggregate catalog present but unavailable; refusing per-app TLS fan-out");
-    std::vector<CatalogAsset>().swap(s->catalog);
+    std::vector<CatalogAsset>().swap(catalog);
     return false;
   }
 
   LOG_ERR("APPSTORE", "Release is missing %s; loading up to %u paired app manifests",
           kAggregateAppCatalogName, static_cast<unsigned>(releaseAssets.size()));
-  const bool loaded = loadCatalogManifests(releaseAssets, s->catalog);
-  LOG_INF("APPSTORE", "Legacy fallback loaded %u apps", static_cast<unsigned>(s->catalog.size()));
+  const bool loaded = loadCatalogManifests(releaseAssets, catalog);
+  LOG_INF("APPSTORE", "Legacy fallback loaded %u apps", static_cast<unsigned>(catalog.size()));
   return loaded;
+}
+
+bool appCatalogRefresh() {
+  auto* s = current();
+  if (!s) return false;
+  s->catalogNeedsRefresh = false;
+  // A refresh invalidates every prior release record. Free the backing storage,
+  // not just the elements, so stale catalog capacity is not carried into the
+  // next TLS handshake on a memory-constrained ESP32-S3.
+  std::vector<CatalogAsset>().swap(s->catalog);
+  if (!connectSavedWifi()) return false;
+  return loadAvailableAppCatalog(s->catalog);
 }
 
 bool ensureCatalogReady(Session* s) {
@@ -1148,7 +1145,7 @@ bool installRequiredNativeApp(const char* artifact, std::string& displayName,
   }
 
   std::vector<CatalogAsset> catalog;
-  if (!loadAuthoritativeAppCatalog(catalog)) {
+  if (!loadAvailableAppCatalog(catalog)) {
     failureDetail = "Application catalog is unavailable";
     return false;
   }
