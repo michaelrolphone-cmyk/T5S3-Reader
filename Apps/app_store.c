@@ -198,7 +198,7 @@ static void render_download_progress(void *context, uint64_t downloaded, uint64_
              (unsigned long long)bounded, (unsigned long long)total);
     const t5_ui_chrome_t chrome = {"App Store", progress->title, status,
                                    "", "", "", ""};
-    const t5_ui_list_row_t row = {"Download progress", "Verified release ELF", amount, 0};
+    const t5_ui_list_row_t row = {"Download progress", "Verified release package", amount, 0};
     progress->ui->render_list(&chrome, &row, 1, 0);
 }
 static void activate_inbox(const t5_package_manager_api_v1 *manager,
@@ -237,10 +237,37 @@ static void activate_release(const t5_package_manager_api_v1 *manager,
     snprintf(status, capacity, "%s %.63s...",
              package.installed_version[0] ? "Updating" : "Installing", package.id);
     render(ui, selected, status);
-    const bool okay = manager->online_install(release_indices[selected]);
+
+    bool okay = false;
+    if (manager->struct_size >=
+            offsetof(t5_package_manager_api_v1, online_install_with_progress) +
+                sizeof(manager->online_install_with_progress) &&
+        manager->online_install_with_progress) {
+        memset(&download_view, 0, sizeof(download_view));
+        download_view.ui = ui;
+        copy_text(download_view.title, sizeof(download_view.title), package.id);
+        okay = manager->online_install_with_progress(
+            release_indices[selected], render_download_progress, &download_view);
+    } else {
+        okay = manager->online_install(release_indices[selected]);
+    }
+
     build_releases(manager);
-    snprintf(status, capacity, "%.63s: %s", package.id,
-             okay ? "verified package installed" : "installation failed verification");
+    if (okay) {
+        snprintf(status, capacity, "%.63s: verified package installed", package.id);
+        return;
+    }
+
+    char detail[96] = {0};
+    const bool has_detail =
+        manager->struct_size >= offsetof(t5_package_manager_api_v1, online_last_error) +
+                                    sizeof(manager->online_last_error) &&
+        manager->online_last_error &&
+        manager->online_last_error(detail, sizeof(detail)) && detail[0];
+    if (has_detail)
+        snprintf(status, capacity, "%.60s: %.90s", package.id, detail);
+    else
+        snprintf(status, capacity, "%.63s: installation failed verification", package.id);
 }
 
 __attribute__((visibility("default"))) void app_main(void) {
