@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstring>
 
-#if defined(ESP_PLATFORM)
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #endif
@@ -48,7 +48,7 @@ struct OrdinaryPackagePlan {
 // Task watchdog resets alone do not service IDLE0. Keep the package algorithm
 // host-testable and yield only on its embedded FreeRTOS implementation.
 inline void ordinaryCooperativeYield(uint64_t processedBytes, uint64_t fileBytes) {
-#if defined(ESP_PLATFORM)
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
   // Many native app ELFs are smaller than 16 KiB; always yield after their
   // final chunk so a catalog-wide series of checks cannot starve IDLE0.
   if ((processedBytes & 0x3fffu) == 0u || processedBytes == fileBytes) vTaskDelay(1);
