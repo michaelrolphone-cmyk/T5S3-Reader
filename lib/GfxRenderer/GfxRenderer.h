@@ -1,7 +1,7 @@
 #pragma once
 
 #include <EpdFontFamily.h>
-#include <HalDisplay.h>
+#include <DisplaySurface.h>
 
 class FontCacheManager;
 class SdCardFont;
@@ -32,17 +32,18 @@ class GfxRenderer {
  private:
   static constexpr size_t BW_BUFFER_CHUNK_SIZE = 8000;  // 8KB chunks to allow for non-contiguous memory
 
-  HalDisplay& display;
+  DisplaySurface& display;
   RenderMode renderMode;
   Orientation orientation;
   bool fadingFix;
   uint8_t* frameBuffer = nullptr;
-  uint16_t panelWidth = HalDisplay::DISPLAY_WIDTH;
-  uint16_t panelHeight = HalDisplay::DISPLAY_HEIGHT;
-  uint16_t visibleWidth = HalDisplay::VISIBLE_WIDTH;
-  uint16_t visibleHeight = HalDisplay::VISIBLE_HEIGHT;
-  uint16_t panelWidthBytes = HalDisplay::DISPLAY_WIDTH_BYTES;
-  uint32_t frameBufferSize = HalDisplay::BUFFER_SIZE;
+  uint16_t panelWidth = 0;
+  uint16_t panelHeight = 0;
+  uint16_t visibleWidth = 0;
+  uint16_t visibleHeight = 0;
+  uint16_t panelWidthBytes = 0;
+  uint32_t frameBufferSize = 0;
+  DisplaySafeInsets safeInsets{};
   std::vector<uint8_t*> bwBufferChunks;
   std::map<int, EpdFontFamily> fontMap;
   // Mutable because ensureSdCardFontReady() is const (called from layout code
@@ -65,14 +66,9 @@ class GfxRenderer {
   void fillArc(int maxRadius, int cx, int cy, int xDir, int yDir) const;
 
  public:
-  explicit GfxRenderer(HalDisplay& halDisplay)
-      : display(halDisplay), renderMode(BW), orientation(Portrait), fadingFix(false) {}
+  explicit GfxRenderer(DisplaySurface& displaySurface)
+      : display(displaySurface), renderMode(BW), orientation(Portrait), fadingFix(false) {}
   ~GfxRenderer() { freeBwBufferChunks(); }
-
-  static constexpr int VIEWABLE_MARGIN_TOP = 9;
-  static constexpr int VIEWABLE_MARGIN_RIGHT = 3;
-  static constexpr int VIEWABLE_MARGIN_BOTTOM = 9;
-  static constexpr int VIEWABLE_MARGIN_LEFT = 3;
 
   // Setup
   void begin();  // must be called right after display.begin()
@@ -109,9 +105,9 @@ class GfxRenderer {
   // Screen ops
   int getScreenWidth() const;
   int getScreenHeight() const;
-  void displayBuffer(HalDisplay::RefreshMode refreshMode = HalDisplay::FAST_REFRESH) const;
-  void requestNextRefresh(HalDisplay::RefreshMode refreshMode = HalDisplay::HALF_REFRESH) const;
-  void requestNextDisplayEffect(HalDisplay::DisplayEffect effect) const;
+  void displayBuffer(DisplayPresentMode refreshMode = DisplayPresentMode::LowLatency) const;
+  void requestNextRefresh(DisplayPresentMode refreshMode = DisplayPresentMode::Quality) const;
+  void requestNextDisplayEffect(DisplayEffect effect) const;
   void requestNextPageTurnEffect(bool isForwardTurn) const;
   // EXPERIMENTAL: Windowed update - display only a rectangular region
   // void displayWindow(int x, int y, int width, int height) const;
@@ -177,7 +173,7 @@ class GfxRenderer {
   void copyGrayscaleLsbBuffers() const;
   void copyGrayscaleMsbBuffers() const;
   bool captureGrayscaleBaseBuffer() const;
-  void displayGrayBuffer(HalDisplay::RefreshMode refreshMode = HalDisplay::HALF_REFRESH) const;
+  void displayGrayBuffer(DisplayPresentMode refreshMode = DisplayPresentMode::Quality) const;
   bool storeBwBuffer();    // Returns true if buffer was stored successfully
   void restoreBwBuffer();  // Restore and free the stored buffer
   void cleanupGrayscaleWithFrameBuffer() const;

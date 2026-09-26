@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <Board.h>
+#include <DisplaySurface.h>
 
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
 class T5S3M5GfxDisplay;
@@ -15,7 +16,7 @@ enum epd_mode_t : uint8_t;
 }  // namespace lgfx
 #endif
 
-class HalDisplay {
+class HalDisplay : public DisplaySurface {
  public:
   // Constructor with pin configuration
   HalDisplay();
@@ -23,21 +24,19 @@ class HalDisplay {
   // Destructor
   ~HalDisplay();
 
-  // Refresh modes
-  enum RefreshMode {
-    FULL_REFRESH,  // Full refresh with complete waveform
-    HALF_REFRESH,  // Half refresh (1720ms) - balanced quality and speed
-    BALANCED_REFRESH,  // Reader-focused fast refresh using the cleaner mid waveform
-    FAST_REFRESH   // Fast refresh using custom LUT
-  };
+  // Legacy names preserve current call sites while the renderer uses generic presentation intent.
+  using RefreshMode = DisplayPresentMode;
+  static constexpr RefreshMode FULL_REFRESH = RefreshMode::Clean;
+  static constexpr RefreshMode HALF_REFRESH = RefreshMode::Quality;
+  static constexpr RefreshMode BALANCED_REFRESH = RefreshMode::Balanced;
+  static constexpr RefreshMode FAST_REFRESH = RefreshMode::LowLatency;
 
-  enum DisplayEffect {
-    EFFECT_NONE,
-    EFFECT_READER_TURN_FORWARD_STANDARD,
-    EFFECT_READER_TURN_BACKWARD_STANDARD,
-    EFFECT_READER_TURN_FORWARD_FAST,
-    EFFECT_READER_TURN_BACKWARD_FAST
-  };
+  using DisplayEffect = ::DisplayEffect;
+  static constexpr DisplayEffect EFFECT_NONE = DisplayEffect::None;
+  static constexpr DisplayEffect EFFECT_READER_TURN_FORWARD_STANDARD = DisplayEffect::PageTurnForwardStandard;
+  static constexpr DisplayEffect EFFECT_READER_TURN_BACKWARD_STANDARD = DisplayEffect::PageTurnBackwardStandard;
+  static constexpr DisplayEffect EFFECT_READER_TURN_FORWARD_FAST = DisplayEffect::PageTurnForwardFast;
+  static constexpr DisplayEffect EFFECT_READER_TURN_BACKWARD_FAST = DisplayEffect::PageTurnBackwardFast;
 
   // Initialize the display hardware and driver. Ordinary boots clear the
   // panel during M5GFX initialization; deep-sleep clock timer wakes can retain
@@ -74,18 +73,18 @@ class HalDisplay {
   void drawImageTransparent(const uint8_t* imageData, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
                             bool fromProgmem = false) const;
 
-  void displayBuffer(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
+  void displayBuffer(RefreshMode mode = FAST_REFRESH, bool turnOffScreen = false);
   // Compare the current logical framebuffer with a reconstructed previous frame
   // and drive only the bounding rectangle that changed. This is intended for
   // deep-sleep clients such as the desk clock, where panel contents survive but
   // RAM does not. Falls back to displayBuffer() when a full refresh is required.
-  void displayBufferDiff(const uint8_t* previousBuffer, RefreshMode mode = RefreshMode::HALF_REFRESH);
-  void refreshDisplay(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
+  void displayBufferDiff(const uint8_t* previousBuffer, RefreshMode mode = HALF_REFRESH);
+  void refreshDisplay(RefreshMode mode = FAST_REFRESH, bool turnOffScreen = false);
 
   // When enabled, the physical panel output is mirrored 180° (whole UI upside down).
   void setFlipOutput(bool enabled);
-  void requestNextRefresh(RefreshMode mode = RefreshMode::HALF_REFRESH);
-  void requestNextDisplayEffect(DisplayEffect effect = DisplayEffect::EFFECT_NONE);
+  void requestNextRefresh(RefreshMode mode = HALF_REFRESH);
+  void requestNextDisplayEffect(DisplayEffect effect = EFFECT_NONE);
   void suppressInitialFullRefresh();
 
   // Power management
@@ -103,7 +102,13 @@ class HalDisplay {
   bool captureGrayscaleBaseBuffer(const uint8_t* bwBuffer);
   void cleanupGrayscaleBuffers(const uint8_t* bwBuffer);
 
-  void displayGrayBuffer(RefreshMode mode = RefreshMode::HALF_REFRESH);
+  void displayGrayBuffer(RefreshMode mode = HALF_REFRESH);
+
+  DisplaySurfaceInfo getSurfaceInfo() const override {
+    return DisplaySurfaceInfo{DISPLAY_WIDTH, DISPLAY_HEIGHT, VISIBLE_WIDTH, VISIBLE_HEIGHT,
+                              DISPLAY_WIDTH_BYTES, BUFFER_SIZE, DisplayPixelFormat::Mono1,
+                              DisplaySafeInsets{9, 3, 9, 3}};
+  }
 
   // Runtime geometry passthrough
   uint16_t getDisplayWidth() const;
@@ -130,8 +135,8 @@ class HalDisplay {
   bool flipOutput = false;
   bool forceFullRefresh = true;
   bool forcedRefreshPending = false;
-  RefreshMode forcedRefreshMode = RefreshMode::HALF_REFRESH;
-  DisplayEffect pendingDisplayEffect = DisplayEffect::EFFECT_NONE;
+  RefreshMode forcedRefreshMode = HALF_REFRESH;
+  DisplayEffect pendingDisplayEffect = EFFECT_NONE;
   uint32_t refreshCycleCount = 0;
 
   uint8_t* allocatePlane();

@@ -76,17 +76,24 @@ void GfxRenderer::ensureSdCardFontReady(int fontId, const std::vector<std::strin
 }
 
 void GfxRenderer::begin() {
+  const DisplaySurfaceInfo info = display.getSurfaceInfo();
   frameBuffer = display.getFrameBuffer();
   if (!frameBuffer) {
     LOG_ERR("GFX", "!! No framebuffer");
     assert(false);
   }
-  panelWidth = display.getDisplayWidth();
-  panelHeight = display.getDisplayHeight();
-  visibleWidth = display.getVisibleWidth();
-  visibleHeight = display.getVisibleHeight();
-  panelWidthBytes = display.getDisplayWidthBytes();
-  frameBufferSize = display.getBufferSize();
+  if (info.pixelFormat != DisplayPixelFormat::Mono1 || info.width == 0 || info.height == 0 ||
+      info.visibleWidth == 0 || info.visibleHeight == 0 || info.strideBytes == 0 || info.bufferSize == 0) {
+    LOG_ERR("GFX", "Unsupported or invalid display surface");
+    assert(false);
+  }
+  panelWidth = info.width;
+  panelHeight = info.height;
+  visibleWidth = info.visibleWidth;
+  visibleHeight = info.visibleHeight;
+  panelWidthBytes = info.strideBytes;
+  frameBufferSize = info.bufferSize;
+  safeInsets = info.safeInsets;
   bwBufferChunks.assign((frameBufferSize + BW_BUFFER_CHUNK_SIZE - 1) / BW_BUFFER_CHUNK_SIZE, nullptr);
 }
 
@@ -1005,23 +1012,23 @@ void GfxRenderer::invertScreen() const {
   }
 }
 
-void GfxRenderer::displayBuffer(const HalDisplay::RefreshMode refreshMode) const {
+void GfxRenderer::displayBuffer(const DisplayPresentMode refreshMode) const {
   auto elapsed = millis() - start_ms;
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
   display.displayBuffer(refreshMode);
 }
 
-void GfxRenderer::requestNextRefresh(const HalDisplay::RefreshMode refreshMode) const {
+void GfxRenderer::requestNextRefresh(const DisplayPresentMode refreshMode) const {
   display.requestNextRefresh(refreshMode);
 }
 
-void GfxRenderer::requestNextDisplayEffect(const HalDisplay::DisplayEffect effect) const {
+void GfxRenderer::requestNextDisplayEffect(const DisplayEffect effect) const {
   display.requestNextDisplayEffect(effect);
 }
 
 void GfxRenderer::requestNextPageTurnEffect(const bool isForwardTurn) const {
-  display.requestNextDisplayEffect(isForwardTurn ? HalDisplay::EFFECT_READER_TURN_FORWARD_STANDARD
-                                                 : HalDisplay::EFFECT_READER_TURN_BACKWARD_STANDARD);
+  display.requestNextDisplayEffect(isForwardTurn ? DisplayEffect::PageTurnForwardStandard
+                                                 : DisplayEffect::PageTurnBackwardStandard);
 }
 
 std::string GfxRenderer::truncatedText(const int fontId, const char* text, const int maxWidth,
@@ -1326,7 +1333,7 @@ void GfxRenderer::copyGrayscaleMsbBuffers() const { display.copyGrayscaleMsbBuff
 
 bool GfxRenderer::captureGrayscaleBaseBuffer() const { return display.captureGrayscaleBaseBuffer(frameBuffer); }
 
-void GfxRenderer::displayGrayBuffer(const HalDisplay::RefreshMode refreshMode) const {
+void GfxRenderer::displayGrayBuffer(const DisplayPresentMode refreshMode) const {
   display.displayGrayBuffer(refreshMode);
 }
 
@@ -1418,28 +1425,28 @@ void GfxRenderer::cleanupGrayscaleWithFrameBuffer() const {
 void GfxRenderer::getOrientedViewableTRBL(int* outTop, int* outRight, int* outBottom, int* outLeft) const {
   switch (orientation) {
     case Portrait:
-      *outTop = VIEWABLE_MARGIN_TOP;
-      *outRight = VIEWABLE_MARGIN_RIGHT;
-      *outBottom = VIEWABLE_MARGIN_BOTTOM;
-      *outLeft = VIEWABLE_MARGIN_LEFT;
+      *outTop = safeInsets.top;
+      *outRight = safeInsets.right;
+      *outBottom = safeInsets.bottom;
+      *outLeft = safeInsets.left;
       break;
     case LandscapeClockwise:
-      *outTop = VIEWABLE_MARGIN_LEFT;
-      *outRight = VIEWABLE_MARGIN_TOP;
-      *outBottom = VIEWABLE_MARGIN_RIGHT;
-      *outLeft = VIEWABLE_MARGIN_BOTTOM;
+      *outTop = safeInsets.left;
+      *outRight = safeInsets.top;
+      *outBottom = safeInsets.right;
+      *outLeft = safeInsets.bottom;
       break;
     case PortraitInverted:
-      *outTop = VIEWABLE_MARGIN_BOTTOM;
-      *outRight = VIEWABLE_MARGIN_LEFT;
-      *outBottom = VIEWABLE_MARGIN_TOP;
-      *outLeft = VIEWABLE_MARGIN_RIGHT;
+      *outTop = safeInsets.bottom;
+      *outRight = safeInsets.left;
+      *outBottom = safeInsets.top;
+      *outLeft = safeInsets.right;
       break;
     case LandscapeCounterClockwise:
-      *outTop = VIEWABLE_MARGIN_RIGHT;
-      *outRight = VIEWABLE_MARGIN_BOTTOM;
-      *outBottom = VIEWABLE_MARGIN_LEFT;
-      *outLeft = VIEWABLE_MARGIN_TOP;
+      *outTop = safeInsets.right;
+      *outRight = safeInsets.bottom;
+      *outBottom = safeInsets.left;
+      *outLeft = safeInsets.top;
       break;
   }
 }
