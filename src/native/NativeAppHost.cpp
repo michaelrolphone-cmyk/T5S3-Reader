@@ -982,14 +982,33 @@ bool appCatalogDownloadWithProgress(uint32_t index,
   if (!Storage.ready()) return catalogDownloadFailed(s, "SD storage is unavailable");
   if (index >= s->catalog.size()) return catalogDownloadFailed(s, "catalog selection is invalid");
 
+  const auto completeEntry = [](const CatalogAsset& asset) {
+    return safeAssetName(asset.name) &&
+        RuntimePackages::safePackageEntryName(asset.name.c_str()) &&
+        asset.manifestValid &&
+        (!asset.manifestJson.empty() || !asset.manifestUrl.empty()) &&
+        !asset.url.empty() &&
+        asset.size >= 52 && asset.size <= 8u * 1024u * 1024u;
+  };
+
+  // Catalog URLs/raw manifests are deliberately reclaimed before binary TLS.
+  // If a previous install failed after that reclamation, the visible catalog
+  // can still contain names/versions but no download metadata. Self-heal that
+  // state before rejecting the user's next Install/Update action.
+  std::string requestedName = s->catalog[index].name;
+  if (!completeEntry(s->catalog[index])) {
+    LOG_ERR("APPSTORE", "Selected catalog entry lost download metadata; reloading catalog");
+    std::vector<CatalogAsset>().swap(s->catalog);
+    if (!loadAuthoritativeAppCatalog(s->catalog))
+      return catalogDownloadFailed(s, "release catalog refresh failed");
+    const auto recovered = std::find_if(s->catalog.begin(), s->catalog.end(),
+        [&](const CatalogAsset& asset) { return asset.name == requestedName; });
+    if (recovered == s->catalog.end() || !completeEntry(*recovered))
+      return catalogDownloadFailed(s, "release catalog entry is incomplete");
+    index = static_cast<uint32_t>(std::distance(s->catalog.begin(), recovered));
+  }
+
   const CatalogAsset& selected = s->catalog[index];
-  if (!safeAssetName(selected.name) ||
-      !RuntimePackages::safePackageEntryName(selected.name.c_str()) ||
-      !selected.manifestValid ||
-      (selected.manifestJson.empty() && selected.manifestUrl.empty()) ||
-      selected.url.empty() ||
-      selected.size < 52 || selected.size > 8u * 1024u * 1024u)
-    return catalogDownloadFailed(s, "release catalog entry is incomplete");
 
   // Copy only the selected release fields needed after catalog scratch is
   // reclaimed. Avoid duplicating the full CatalogAsset and its retained JSON.
@@ -1032,7 +1051,7 @@ bool appCatalogDownloadWithProgress(uint32_t index,
     if (!RuntimePackages::validSha256Hex(value))
       return catalogDownloadFailed(s, "app digest is invalid");
     std::memcpy(digest, value, sizeof(digest) - 1);
-  }  // Release ArduinoJson heap before the binary TLS handshake.
+  }
 
   char installed[T5_APP_VERSION_MAX]{};
   if (installedAppVersionGet(artifact.c_str(), installed, sizeof(installed)) &&
@@ -1040,9 +1059,9 @@ bool appCatalogDownloadWithProgress(uint32_t index,
           RuntimePackages::VersionOrder::Newer)
     return catalogDownloadFailed(s, "catalog version is not newer than installed app");
 
-  // The list UI only needs name/version/parsed manifest after this point.
   // Release every retained URL and raw sidecar buffer before mbedTLS requests
-  // its large contiguous handshake buffers.
+  // its large contiguous handshake buffers. The selected fields above are now
+  // independent copies and survive this reclamation.
   for (auto& asset : s->catalog) {
     std::string().swap(asset.manifestJson);
     std::string().swap(asset.manifestUrl);
@@ -1051,26 +1070,23 @@ bool appCatalogDownloadWithProgress(uint32_t index,
   std::string().swap(manifestUrl);
 
   const char* failureReason = nullptr;
-  if (!RuntimeOnlinePackages::installApplication(artifact.c_str(),
-      version.c_str(), downloadUrl.c_str(), json, selectedSize, digest,
-      progress, progressContext, &failureReason))
-    return catalogDownloadFailed(s, failureReason ? failureReason : "package installation failed");
+  const bool installedOk = RuntimeOnlinePackages::installApplication(
+      artifact.c_str(), version.c_str(), downloadUrl.c_str(), json,
+      selectedSize, digest, progress, progressContext, &failureReason);
 
-  // The install path intentionally releases every catalog URL/raw manifest
-  // before opening TLS so mbedTLS gets maximum contiguous internal RAM. Those
-  // entries must not remain visible with their download metadata stripped:
-  // a second install in the same App Store session would otherwise fail as
-  // "release catalog entry is incomplete". Rehydrate the authoritative index
-  // after TLS/package publication has completed.
+  // Always restore the catalog, including after download/verification/install
+  // failure. Otherwise one failed update poisons every subsequent action in the
+  // same App Store session with "release catalog entry is incomplete".
   std::vector<CatalogAsset>().swap(s->catalog);
   if (!loadAuthoritativeAppCatalog(s->catalog)) {
-    LOG_ERR("APPSTORE", "App installed, but catalog refresh after install failed");
-    // Installation itself succeeded. Leave the catalog empty rather than
-    // exposing unusable entries; the user can explicitly refresh the store.
+    LOG_ERR("APPSTORE", "Catalog refresh after install attempt failed");
   } else {
-    LOG_INF("APPSTORE", "Reloaded %u apps after install",
+    LOG_INF("APPSTORE", "Reloaded %u apps after install attempt",
             static_cast<unsigned>(s->catalog.size()));
   }
+
+  if (!installedOk)
+    return catalogDownloadFailed(s, failureReason ? failureReason : "package installation failed");
   return true;
 }
 
