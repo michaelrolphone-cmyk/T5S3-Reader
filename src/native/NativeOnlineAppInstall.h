@@ -180,6 +180,33 @@ inline bool installApplication(const char* artifact, const char* version,
     return fail("package staging or publication rejected");
   }
 
+  // A manually installed app may still exist as the legacy loose
+  // /Apps/<artifact> + /Apps/<id>.json pair. Once the canonical package has
+  // been published successfully, retire that duplicate only if the loose pair
+  // independently validates as this exact artifact. Never delete unknown files
+  // or the currently mapped loose application.
+  const std::string legacyElf = std::string("/Apps/") + artifact;
+  const std::string legacyJson = std::string("/Apps/") + manifestName;
+  const std::string legacyVfsElf = std::string("/sd") + legacyElf;
+  const char* activePath = native_app_current_path();
+  if ((!activePath || legacyVfsElf != activePath) &&
+      Storage.exists(legacyElf.c_str()) && Storage.exists(legacyJson.c_str()) &&
+      inspectInstalledAppPair(legacyElf.c_str(), legacyJson.c_str(), artifact)) {
+    if (Storage.remove(legacyElf.c_str())) {
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+      vTaskDelay(1);
+#endif
+      if (!Storage.remove(legacyJson.c_str()))
+        LOG_ERR("APPSTORE", "Canonical app installed but legacy sidecar cleanup failed: %s",
+                legacyJson.c_str());
+      else
+        LOG_INF("APPSTORE", "Removed migrated legacy app pair for %s", artifact);
+    } else {
+      LOG_ERR("APPSTORE", "Canonical app installed but legacy ELF cleanup failed: %s",
+              legacyElf.c_str());
+    }
+  }
+
   // Source directory belongs to this invocation; clean up only exact files
   // after the managed target has been committed. Cleanup failure must not
   // incorrectly report that a completed publication failed.
