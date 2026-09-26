@@ -8,8 +8,10 @@ HalGPIO gpio;
 
 namespace {
 constexpr uint16_t TOUCH_SWIPE_THRESHOLD = 25;
-constexpr unsigned long TOUCH_RELEASE_GRACE_MS = 300;
 constexpr unsigned long TOUCH_HOME_BUTTON_DEBOUNCE_MS = 40;
+constexpr UBaseType_t TOUCH_TAP_QUEUE_DEPTH = 16;
+constexpr UBaseType_t TOUCH_SWIPE_QUEUE_DEPTH = 8;
+constexpr UBaseType_t TOUCH_HOME_QUEUE_DEPTH = 16;
 constexpr uint64_t POWER_WAKE_MASK = 1ULL << BoardPins::PowerButton;
 constexpr uint64_t TOUCH_WAKE_MASK = 1ULL << BoardPins::TouchInterrupt;
 
@@ -31,70 +33,119 @@ void rotatePhysicalTouchToLogical(uint16_t* x, uint16_t* y) {
 void HalGPIO::begin() {
   Board::begin();
   const bool touchReady = touch.begin();
-  LOG_INF("HW", "Board init: id=%s pca9535=%d touch=%d usb=%d", Board::id(), Board::pca9535Present(), touchReady,
+
+  if (touchReady) {
+    touchTapQueue = xQueueCreate(TOUCH_TAP_QUEUE_DEPTH, sizeof(TouchPoint));
+    touchSwipeQueue = xQueueCreate(TOUCH_SWIPE_QUEUE_DEPTH, sizeof(TouchSwipeEvent));
+    touchHomeQueue = xQueueCreate(TOUCH_HOME_QUEUE_DEPTH, sizeof(uint8_t));
+    if (touchTapQueue && touchSwipeQueue && touchHomeQueue &&
+        xTaskCreate(touchTaskTrampoline, "touch-input", 4096, this, 4,
+                    &touchTaskHandle) == pdPASS) {
+      pinMode(BoardPins::TouchInterrupt, INPUT_PULLUP);
+      attachInterruptArg(BoardPins::TouchInterrupt, touchInterruptThunk, this, CHANGE);
+      touchAsyncReady = true;
+      // Drain any READY report that appeared between controller init and ISR setup.
+      xTaskNotifyGive(touchTaskHandle);
+    } else {
+      LOG_ERR("HW", "Touch interrupt service failed to start");
+    }
+  }
+
+  LOG_INF("HW", "Board init: id=%s pca9535=%d touch=%d async=%d usb=%d",
+          Board::id(), Board::pca9535Present(), touchReady, touchAsyncReady,
           Board::isUsbConnected());
 
   lastUsbConnected = isUsbConnected();
   update();
 }
 
-void HalGPIO::readTouchState() {
-  Board::TouchPoint point;
-  bool touchHomeButtonPressed = false;
-  const bool havePoint = touch.readPoint(&point, &touchHomeButtonPressed);
+void IRAM_ATTR HalGPIO::touchInterruptThunk(void* context) {
+  auto* self = static_cast<HalGPIO*>(context);
+  if (!self || !self->touchTaskHandle) return;
+  BaseType_t higherPriorityTaskWoken = pdFALSE;
+  vTaskNotifyGiveFromISR(self->touchTaskHandle, &higherPriorityTaskWoken);
+  if (higherPriorityTaskWoken == pdTRUE) portYIELD_FROM_ISR();
+}
 
-  // Edge-detect the touch home button: emit a single event on each press (the transition to
-  // pressed) rather than auto-repeating while the finger is held. This lets a quick second tap
-  // register instead of being swallowed by a rate-limit window, so fast double-taps work. A short
-  // debounce guards against contact bounce on the press edge.
+void HalGPIO::touchTaskTrampoline(void* context) {
+  auto* self = static_cast<HalGPIO*>(context);
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    self->serviceTouchController();
+  }
+}
+
+void HalGPIO::serviceTouchController() {
+  // A GT911 READY report stays pending until its status register is cleared.
+  // Drain all reports currently available after one interrupt notification.
+  for (unsigned i = 0; i < 16; ++i) {
+    Board::TouchPoint point{};
+    bool homeButtonPressed = false;
+    bool contactActive = false;
+    if (!touch.readEvent(&point, &homeButtonPressed, &contactActive)) break;
+    processTouchEvent(point, homeButtonPressed, contactActive);
+  }
+}
+
+void HalGPIO::processTouchEvent(const Board::TouchPoint& point,
+                                bool touchHomeButtonPressed,
+                                bool contactActive) {
+  const unsigned long now = millis();
+
   if (touchHomeButtonPressed) {
-    if (!touchHomeButtonHeld && millis() - lastTouchHomeButtonEventTime >= TOUCH_HOME_BUTTON_DEBOUNCE_MS) {
-      touchHomeButtonEvent = true;
-      lastTouchHomeButtonEventTime = millis();
+    if (!touchHomeButtonHeld &&
+        now - lastTouchHomeButtonEventTime >= TOUCH_HOME_BUTTON_DEBOUNCE_MS) {
+      const uint8_t event = 1;
+      (void)xQueueSend(touchHomeQueue, &event, 0);
+      lastTouchHomeButtonEventTime = now;
     }
     touchHomeButtonHeld = true;
   } else {
     touchHomeButtonHeld = false;
   }
 
-  if (!havePoint) {
-    if (touchActive && millis() - lastTouchSeenTime > TOUCH_RELEASE_GRACE_MS) {
+  if (!contactActive) {
+    TouchPoint tap{};
+    TouchSwipeEvent swipe{};
+    bool emitTap = false;
+    bool emitSwipe = false;
+    portENTER_CRITICAL(&touchStateMux);
+    if (touchActive) {
       if (!touchMoved) {
-        touchTapPoint = {touchStartX, touchStartY};
-        touchTapEvent = true;
+        tap = {touchStartX, touchStartY};
+        emitTap = true;
       } else {
-        // A moved touch is a swipe/drag. Latch its start and end so higher layers
-        // can detect directional gestures (e.g. a top-edge drag-down).
-        touchSwipeStart = {touchStartX, touchStartY};
-        touchSwipeEnd = currentTouchPoint;
-        touchSwipeEvent = true;
+        swipe = {{touchStartX, touchStartY}, currentTouchPoint};
+        emitSwipe = true;
       }
       touchActive = false;
     }
+    portEXIT_CRITICAL(&touchStateMux);
+    if (emitTap) (void)xQueueSend(touchTapQueue, &tap, 0);
+    if (emitSwipe) (void)xQueueSend(touchSwipeQueue, &swipe, 0);
     return;
   }
 
   uint16_t x = point.x;
   uint16_t y = point.y;
   rotatePhysicalTouchToLogical(&x, &y);
-  lastTouchSeenTime = millis();
 
+  portENTER_CRITICAL(&touchStateMux);
   if (!touchActive) {
     touchActive = true;
     touchStartX = x;
     touchStartY = y;
     currentTouchPoint = {x, y};
-    touchStartTime = millis();
+    touchStartTime = now;
     touchMoved = false;
-    LOG_DBG("HW", "Touch raw=(%u,%u) logical=(%u,%u)", point.x, point.y, x, y);
   } else {
     currentTouchPoint = {x, y};
     const int dx = static_cast<int>(x) - static_cast<int>(touchStartX);
     const int dy = static_cast<int>(y) - static_cast<int>(touchStartY);
-    if (abs(dx) >= TOUCH_SWIPE_THRESHOLD || abs(dy) >= TOUCH_SWIPE_THRESHOLD) {
+    if (abs(dx) >= TOUCH_SWIPE_THRESHOLD || abs(dy) >= TOUCH_SWIPE_THRESHOLD)
       touchMoved = true;
-    }
   }
+  portEXIT_CRITICAL(&touchStateMux);
 }
 
 uint8_t HalGPIO::getState() {
@@ -107,15 +158,11 @@ uint8_t HalGPIO::getState() {
     state |= buttonBit(BTN_POWER);
   }
 
-  readTouchState();
   return state;
 }
 
 void HalGPIO::update() {
   const unsigned long currentTime = millis();
-  touchTapEvent = false;
-  touchSwipeEvent = false;
-  touchHomeButtonEvent = false;
   const uint8_t state = getState();
 
   pressedEvents = 0;
@@ -159,36 +206,50 @@ bool HalGPIO::wasReleased(uint8_t buttonIndex) const { return releasedEvents & b
 
 bool HalGPIO::wasAnyReleased() const { return releasedEvents > 0; }
 
-bool HalGPIO::hadTouchActivity() const { return touchActive || touchTapEvent || touchHomeButtonEvent; }
+bool HalGPIO::hadTouchActivity() const {
+  bool active = false;
+  portENTER_CRITICAL(&touchStateMux);
+  active = touchActive;
+  portEXIT_CRITICAL(&touchStateMux);
+  return active ||
+         (touchTapQueue && uxQueueMessagesWaiting(touchTapQueue)) ||
+         (touchSwipeQueue && uxQueueMessagesWaiting(touchSwipeQueue)) ||
+         (touchHomeQueue && uxQueueMessagesWaiting(touchHomeQueue));
+}
 
 bool HalGPIO::getTouchTap(TouchPoint& point) const {
-  if (!touchTapEvent) {
-    return false;
-  }
-  point = touchTapPoint;
-  return true;
+  return touchTapQueue && xQueueReceive(touchTapQueue, &point, 0) == pdTRUE;
 }
 
 bool HalGPIO::getTouchHold(TouchPoint& point, unsigned long& heldMs) const {
-  if (!touchActive || touchMoved) {
-    return false;
-  }
-
+  bool active = false;
+  bool moved = false;
+  unsigned long started = 0;
+  portENTER_CRITICAL(&touchStateMux);
+  active = touchActive;
+  moved = touchMoved;
   point = currentTouchPoint;
-  heldMs = millis() - touchStartTime;
+  started = touchStartTime;
+  portEXIT_CRITICAL(&touchStateMux);
+  if (!active || moved) return false;
+  heldMs = millis() - started;
   return true;
 }
 
 bool HalGPIO::getTouchSwipe(TouchPoint& start, TouchPoint& end) const {
-  if (!touchSwipeEvent) {
-    return false;
-  }
-  start = touchSwipeStart;
-  end = touchSwipeEnd;
+  if (!touchSwipeQueue) return false;
+  TouchSwipeEvent event{};
+  if (xQueueReceive(touchSwipeQueue, &event, 0) != pdTRUE) return false;
+  start = event.start;
+  end = event.end;
   return true;
 }
 
-bool HalGPIO::wasTouchHomeButtonPressed() const { return touchHomeButtonEvent; }
+bool HalGPIO::wasTouchHomeButtonPressed() const {
+  if (!touchHomeQueue) return false;
+  uint8_t event = 0;
+  return xQueueReceive(touchHomeQueue, &event, 0) == pdTRUE;
+}
 
 unsigned long HalGPIO::getHeldTime() const {
   if (currentState > 0) {
