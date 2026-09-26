@@ -8,10 +8,19 @@
 #undef app_main
 
 static const char kDetailHtml[] =
+    "<!DOCTYPE html><html><head><title>The Vault: Adventure Island (GB)</title></head>"
+    "<body><script>const allMedia=[];</script>"
+    "<form action=\"//download4.vimm.net/download/\" id=\"download_form\">"
+    "<input type=\"hidden\" name=\"mediaId\" value=\"2943\">"
+    "<input type=\"hidden\" name=\"alt\" value=\"0\"></form></body></html>";
+static const char kTokenDetailHtml[] =
     "<!DOCTYPE html><html><head><title>The Vault: Castlevania: The Adventure (GB)</title></head>"
     "<body><form action=\"//dl3.vimm.net/\" id=\"dl-form\">"
     "<input type=\"hidden\" name=\"mediaId\" value=\"39985\">"
     "<input type=\"hidden\" name=\"token\" value=\"abc123\"></form></body></html>";
+static const char kNotFoundHtml[] =
+    "<!DOCTYPE html><html><head><title>Page Not Found</title></head>"
+    "<body><h1>404 - Page Not Found</h1></body></html>";
 
 static const char kLetterHtml[] =
     "<table class=\"rounded centered cellpadding1 hovertable striped\">"
@@ -57,13 +66,16 @@ static bool fake_http_request(const char *url,uint8_t method,
   assert(strstr(ua,"Mozilla/5.0")!=0);
   assert(strcmp(referer,"https://vimm.net/vault/GB")==0);
   const char *payload=0;
+  int32_t status=200;
   if(!strcmp(url,"https://vimm.net/vault/?p=list&system=GB&section=W"))payload=kLetterHtml;
-  else if(!strcmp(url,"https://vimm.net/vault/3016"))payload=kDetailHtml;
+  else if(!strcmp(url,"https://vimm.net/vault/2943")){payload=kDetailHtml;status=404;}
+  else if(!strcmp(url,"https://vimm.net/vault/3016"))payload=kTokenDetailHtml;
+  else if(!strcmp(url,"https://vimm.net/vault/9998")){payload=kNotFoundHtml;status=404;}
   else assert(!"unexpected URL");
   const size_t n=strlen(payload);
   assert(n+1u<=response_capacity);
   memcpy(response,payload,n+1u);
-  *result=(t5_http_result_t){.transport_error=0,.status_code=200,.response_bytes=n,.flags=0};
+  *result=(t5_http_result_t){.transport_error=0,.status_code=status,.response_bytes=n,.flags=0};
   return true;
 }
 static const t5_network_api_v1 kNetwork={
@@ -141,9 +153,23 @@ int main(void){
   assert(strstr(debug_text,"selected_href=/vault/46856 selected_title=Tetris found=1")!=0);
   assert(log_count>0);
 
-  assert(fetch_vimm_document("https://vimm.net/vault/3016"));
+  assert(fetch_vimm_detail_document("https://vimm.net/vault/2943"));
   assert(html_size==strlen(kDetailHtml));
+  assert(strstr(html,"Adventure Island")!=0);
+  assert(strstr(debug_text,"status=404")!=0);
+  assert(strstr(debug_text,"detail_soft_404=1 accepted=1")!=0);
+  char download_url[512];
+  assert(resolve_vimm_download_url(download_url,sizeof(download_url)));
+  assert(strcmp(download_url,"https://download4.vimm.net/download/?mediaId=2943")==0);
+
+  assert(fetch_vimm_document("https://vimm.net/vault/3016"));
+  assert(html_size==strlen(kTokenDetailHtml));
   assert(strstr(html,"Castlevania: The Adventure")!=0);
-  assert(strstr(debug_text,"status=200")!=0);
+  assert(resolve_vimm_download_url(download_url,sizeof(download_url)));
+  assert(strcmp(download_url,"https://dl3.vimm.net/?mediaId=39985&token=abc123")==0);
+
+  assert(!fetch_vimm_detail_document("https://vimm.net/vault/9998"));
+  assert(strcmp(status_text,"Vimm HTTP 404")==0);
+  assert(strstr(debug_text,"detail_soft_404=1 accepted=0")!=0);
   return 0;
 }
