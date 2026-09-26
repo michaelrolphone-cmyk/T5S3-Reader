@@ -162,6 +162,9 @@ jobs:
       - name: Run native app launcher tests
         run: bash test/run_native_app_test.sh
 
+      - name: Verify display abstraction contract
+        run: python3 test/native_apps/display_abstraction_contract_test.py
+
       - name: Run app manifest and springboard tests
         run: bash test/run_springboard_test.sh
 

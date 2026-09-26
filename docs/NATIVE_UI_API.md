@@ -31,3 +31,16 @@ The application owns application data, persistence, business logic, screen state
 ## Migration rule
 
 Keep `T5UiApi`, `t5_ui_get_api`, `T5_UI_*`, current source paths and firmware class names in documentation whenever they identify deployed code. New specifications and conceptual discussion use **RiscRTE UI Host API**, **RiscRTE UI service**, application, scene, capability and framework terminology. An eventual ABI rename requires an explicit compatibility/migration plan; documentation alone must not break existing ELF applications.
+
+## Runtime viewport extension (firmware 1.3.7)
+
+The append-only `get_viewport()` member reports the active logical screen size,
+orientation, safe insets, content padding, vertical spacing and compact/regular/
+expanded size class. Applications must check `struct_size` before dereferencing
+the member. New custom UI code should derive geometry from this viewport rather
+than assuming the current e-paper resolution.
+
+The firmware list/table/text implementations now derive their usable header,
+content, status and footer regions from the same runtime viewport. This is the
+first adaptive-layout migration step; theme-specific decorative metrics remain
+theme-owned and may evolve independently.
