@@ -27,11 +27,18 @@ bool ensureSavedConnection(uint32_t timeoutMs) {
   const uint32_t started = ::millis();
   const uint32_t budget = timeoutMs ? timeoutMs : 15000u;
   while (::millis() - started < budget) {
-    if (ready()) return true;
+    if (ready()) {
+      WIFI_STORE.setLastConnectedSsid(credential->ssid);
+      return true;
+    }
     esp_task_wdt_reset();
     delay(25);
   }
-  return ready();
+  if (ready()) {
+    WIFI_STORE.setLastConnectedSsid(credential->ssid);
+    return true;
+  }
+  return false;
 }
 
 }  // namespace RuntimeNetwork
