@@ -85,18 +85,21 @@ class LiveInstallContract(unittest.TestCase):
         self.assertGreater(terminal_progress, transfer_end)
         self.assertLess(ONLINE.index('delay(1);', transfer_end), terminal_progress)
 
-    def test_failed_install_does_not_leave_catalog_stripped(self):
+    def test_failed_install_defers_catalog_refresh_until_installer_returns(self):
         start = HOST.index('bool appCatalogDownloadWithProgress(uint32_t index,')
         end = HOST.index('\nbool appCatalogDownload(uint32_t index)', start)
         install = HOST[start:end]
         self.assertIn('Selected catalog entry lost download metadata; reloading catalog', install)
         self.assertIn('const bool installedOk = RuntimeOnlinePackages::installApplication(', install)
-        self.assertIn('Always restore the catalog', install)
-        install_call = install.index('const bool installedOk = RuntimeOnlinePackages::installApplication(')
-        post_refresh = install.index('loadAuthoritativeAppCatalog(s->catalog)', install_call)
-        failure_check = install.index('if (!installedOk)', install_call)
-        self.assertLess(install_call, post_refresh)
-        self.assertLess(post_refresh, failure_check)
+        self.assertIn('s->catalogNeedsRefresh = true;', install)
+        self.assertNotIn('loadAuthoritativeAppCatalog(s->catalog)', install)
+
+        helper_start = HOST.index('bool ensureCatalogReady(Session* s)')
+        helper_end = HOST.index('\nuint32_t appCatalogCount()', helper_start)
+        helper = HOST[helper_start:helper_end]
+        self.assertIn('if (!s->catalogNeedsRefresh) return true;', helper)
+        self.assertIn('delay(1);', helper)
+        self.assertIn('loadAuthoritativeAppCatalog(s->catalog)', helper)
 
     def test_online_recovery_discards_only_owned_scratch(self):
         for required in ('discardOwnedInbox(',
