@@ -1307,14 +1307,14 @@
           {
             "executable": false,
             "name": ".package.json",
-            "sha256": "aa56af8c548922d267b6837e6df6bb702921d4f88c46b4148f62684aacbfb4ec",
+            "sha256": "95951a1d4215462e9dc5c8469c186dbb4fb926c858610e01dad639e563c1e33a",
             "size_bytes": 644
           },
           {
             "executable": true,
             "name": "driver.elf",
-            "sha256": "17f23fed7cc174e544315dfad7fae90717f330db7ab78cd7e31bc34af515f006",
-            "size_bytes": 781972
+            "sha256": "8df8f4b01844fac725cbc819530d279bd8e55f10d949c2ed8505ae1baf9ba81f",
+            "size_bytes": 782184
           },
           {
             "executable": false,
@@ -1336,13 +1336,13 @@
             "min_api": 1
           }
         ],
-        "version": "0.1.15"
+        "version": "0.1.16"
       },
-      "sha256": "17f23fed7cc174e544315dfad7fae90717f330db7ab78cd7e31bc34af515f006",
-      "size": 781972,
-      "tag": "driver-usb-controller-esp32s3-v0.1.15",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-controller-esp32s3-v0.1.15/usb-controller-esp32s3--driver.elf",
-      "version": "0.1.15"
+      "sha256": "8df8f4b01844fac725cbc819530d279bd8e55f10d949c2ed8505ae1baf9ba81f",
+      "size": 782184,
+      "tag": "driver-usb-controller-esp32s3-v0.1.16",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-controller-esp32s3-v0.1.16/usb-controller-esp32s3--driver.elf",
+      "version": "0.1.16"
     },
     {
       "asset": "usb-cp210x-v2--driver.elf",
