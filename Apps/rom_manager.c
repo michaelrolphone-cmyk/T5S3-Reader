@@ -261,7 +261,10 @@ static bool open_vimm_page(const char *path){
   int n=snprintf(url,sizeof(url),"https://vimm.net%s",path);
   if(n<=0||(size_t)n>=sizeof(url))return false;
   search_query[0]=0;
-  return fetch_vimm_url(url,true,false);
+  /* A letter/index page contains the global A-Z navigation again. Once the
+     user opens a letter, expose only the Game Boy title links from that page
+     so resetting selection to row 0 lands on the first title, not "A". */
+  return fetch_vimm_url(url,false,false);
 }
 static void html_to_detail_text(const char *title){
   size_t w=0; detail_text[0]=0;
