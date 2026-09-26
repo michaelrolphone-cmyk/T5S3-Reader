@@ -94,6 +94,16 @@ bool removeFile(const char* path) {
   return Storage.remove(mapped.c_str());
 }
 
+bool renameFile(const char* sourcePath, const char* destinationPath) {
+  if (!Storage.ready()) return false;
+  std::string source, destination;
+  if (!mapStoragePath(sourcePath, source) || !mapStoragePath(destinationPath, destination) ||
+      source == "/" || destination == "/" || source == destination ||
+      !Storage.exists(source.c_str()) || Storage.exists(destination.c_str())) return false;
+  if (!ensureParentDirectory(destination)) return false;
+  return Storage.rename(source.c_str(), destination.c_str());
+}
+
 HalFile streamFile;
 constexpr t5_storage_stream_t kStreamHandle = 1u;
 
@@ -144,6 +154,7 @@ bool localDateTime(t5_local_datetime_t* out) {
 const t5_storage_api_v1 kStorageApi = {
     T5_STORAGE_API_VERSION, sizeof(t5_storage_api_v1), storageExists, readFile,
     writeFileAtomic, removeFile, streamOpen, streamRead, streamSeek, streamClose,
+    renameFile,
 };
 const t5_system_api_v1 kSystemApi = {
     T5_SYSTEM_API_VERSION, sizeof(t5_system_api_v1), localDateTime,
