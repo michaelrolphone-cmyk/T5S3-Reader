@@ -129,9 +129,6 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_lora_get_api),
         ESP_ELFSYM_EXPORT(t5_web_server_get_api),
         ESP_ELFSYM_EXPORT(t5_usb_get_api),
-        ESP_ELFSYM_EXPORT(snprintf),
-        ESP_ELFSYM_EXPORT(strcpy),
-        ESP_ELFSYM_EXPORT(strncpy),
         ESP_ELFSYM_END
     };
     const int registered = esp_elf_register_symbol(host_symbols);
