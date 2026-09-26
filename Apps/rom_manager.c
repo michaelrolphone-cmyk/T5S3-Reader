@@ -251,7 +251,7 @@ static bool search_vimm(const char *query){
   if(!append_url_encoded(encoded,sizeof(encoded),query))return false;
   char url[320];
   int n=snprintf(url,sizeof(url),"https://vimm.net/vault/?p=list&system=GB&q=%s",encoded);
-  if(n<=0||(size_t)n>=sizeof(url))return false;
+  if(n<=0||(size_t)n>=sizeof(url))return DETAIL_FAILED;
   copy_text(search_query,sizeof(search_query),query);
   return fetch_vimm_url(url,false,true);
 }
@@ -299,24 +299,28 @@ static void html_to_detail_text(const char *title){
   while(w&&(detail_text[w-1]==' '||detail_text[w-1]=='\n'))--w;
   detail_text[w]=0;
 }
-static bool show_vimm_detail(const char *name,const char *path){
-  if(!name||!path||!vimm_game_path(path,strlen(path)))return false;
+enum { DETAIL_FAILED=-1, DETAIL_BACK=0, DETAIL_IMPORT_HANDOFF=1 };
+static int show_vimm_detail(const char *name,const char *path){
+  if(!name||!path||!vimm_game_path(path,strlen(path)))return DETAIL_FAILED;
   char url[NAME_CAP+32u];
   int n=snprintf(url,sizeof(url),"https://vimm.net%s",path);
   if(n<=0||(size_t)n>=sizeof(url))return false;
   const t5_ui_list_row_t loading={name,"Loading Game Boy title details","",0};
   render_rows("Rom Manager","Vimm Vault",&loading,1,0,"");
-  if(!fetch_vimm_document(url))return false;
+  if(!fetch_vimm_document(url))return DETAIL_FAILED;
   html_to_detail_text(name);
-  if(!detail_text[0])return false;
+  if(!detail_text[0])return DETAIL_FAILED;
   int32_t scroll=0;
   for(;;){
     t5_ui_text_view_result_t result={0};
-    const t5_ui_chrome_t chrome={"Game Boy title",name,"Vimm Vault","Back","","Up","Down"};
+    const t5_ui_chrome_t chrome={"Game Boy title",name,"Vimm Vault","Back","Import ROM","Up","Down"};
     ui->render_text_view(&chrome,detail_text,scroll,&result);
     t5_ui_event_t event={0};
-    if(!ui->poll_event(&event,20)||event.type==T5_UI_EVENT_BACK||event.type==T5_UI_EVENT_EXIT)return true;
-    if(event.type==T5_UI_EVENT_PREVIOUS&&scroll<result.max_scroll_lines)++scroll;
+    if(!ui->poll_event(&event,20)||event.type==T5_UI_EVENT_BACK||event.type==T5_UI_EVENT_EXIT)return DETAIL_BACK;
+    if(event.type==T5_UI_EVENT_CONFIRM){
+      if(system_ui->keyboard_request("Authorized ROM URL","https://",383,T5_SYSTEM_KEYBOARD_URL,COOKIE_IMPORT))
+        return DETAIL_IMPORT_HANDOFF;
+    }else if(event.type==T5_UI_EVENT_PREVIOUS&&scroll<result.max_scroll_lines)++scroll;
     else if(event.type==T5_UI_EVENT_NEXT&&scroll>0)--scroll;
   }
 }
@@ -380,7 +384,9 @@ __attribute__((visibility("default"))) void app_main(void){
         if(open_vimm_page(vimm_paths[selected])){selected=0;status_text[0]=0;}
         else copy_text(status_text,sizeof(status_text),"Could not open Game Boy index");
       }else{
-        if(!show_vimm_detail(vimm_names[selected],vimm_paths[selected]))
+        const int detail_result=show_vimm_detail(vimm_names[selected],vimm_paths[selected]);
+        if(detail_result==DETAIL_IMPORT_HANDOFF)return;
+        if(detail_result==DETAIL_FAILED)
           copy_text(status_text,sizeof(status_text),"Could not load Game Boy title details");
         else status_text[0]=0;
       }
