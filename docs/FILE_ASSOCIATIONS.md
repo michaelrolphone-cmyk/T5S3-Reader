@@ -33,9 +33,15 @@ applications and writes:
 `/System/Registry/FileAssociations.json`
 
 The generated manifest is not user-authored package metadata. RiscRTE owns the
-`/System` namespace; generated lookup/index state is grouped under
-`/System/Registry`. The file-association registry records each normalized
-extension and the currently available handler. Application records
+`/System` namespace. This feature uses the following organization:
+
+- `/System/Registry/` — generated lookup/index data such as
+  `FileAssociations.json`;
+- `/System/State/<App>/` — transient per-app runtime state, such as File
+  Browser resume/handoff state.
+
+The file-association registry records each normalized extension and the
+currently available handler. Application records
 include the app ID, display name, icon and launch path. Built-in Reader support
 is represented as a system handler.
 
