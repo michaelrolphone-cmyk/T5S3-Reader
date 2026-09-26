@@ -86,15 +86,19 @@ class UsbTeardownRetry(unittest.TestCase):
             tuple(map(int, json.loads(MANIFEST.read_text(encoding="utf-8"))["version"].split("."))),
             (0, 1, 6))
 
-    def test_idle_host_drains_no_clients_even_if_no_device_needs_freeing(self):
+    def test_idle_host_waits_for_last_client_event_before_uninstall(self):
         quiesce = self.controller.split("bool quiesce_host()", 1)[1].split(
             "void stop()", 1
         )[0]
         self.assertLess(quiesce.index("usb_host_client_deregister(client)"),
                         quiesce.index("usb_host_device_free_all()"))
         self.assertIn("bool freed = rc == ESP_OK;", quiesce)
-        self.assertIn("for (uint32_t i = 0; !freed && i < kTeardownTicks; ++i)", quiesce)
-        final = quiesce.split("if (!freed) {", 1)[1]
+        self.assertIn("bool noClients = false;", quiesce)
+        self.assertIn("(!freed || !noClients) && i < kTeardownTicks", quiesce)
+        self.assertIn("USB_HOST_LIB_EVENT_FLAGS_ALL_FREE", quiesce)
+        self.assertIn("USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS", quiesce)
+        self.assertIn("USBCTRL cleanup-failed stage=no-clients-timeout", quiesce)
+        final = quiesce.split("if (!noClients) {", 1)[1]
         self.assertIn("rc = usb_host_lib_handle_events(0, &finalFlags);", final)
         self.assertIn("rc != ESP_OK && rc != ESP_ERR_TIMEOUT", final)
         self.assertIn("USBCTRL cleanup-failed stage=final-lib-events", final)
