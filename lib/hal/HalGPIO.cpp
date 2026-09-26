@@ -82,11 +82,94 @@ void HalGPIO::startTouchCapture() {
   attachInterruptArg(BoardPins::TouchInterrupt, touchInterruptThunk, this, CHANGE);
   touchAsyncReady = true;
 
+  portENTER_CRITICAL(&touchStateMux);
+  touchCapturePaused = false;
+  touchWorkerActive = false;
+  portEXIT_CRITICAL(&touchStateMux);
+
   // Drain any READY report that appeared after controller probe but before the
   // ISR was armed.
   xTaskNotifyGive(touchTaskHandle);
   LOG_INF("HW", "Touch interrupt capture armed");
 #endif
+}
+
+bool HalGPIO::suspendTouchCapture() {
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  if (!touchAsyncReady || !touchTaskHandle) return true;
+
+  bool alreadyPaused = false;
+  portENTER_CRITICAL(&touchStateMux);
+  alreadyPaused = touchCapturePaused;
+  touchCapturePaused = true;
+  portEXIT_CRITICAL(&touchStateMux);
+  if (alreadyPaused) return true;
+
+  detachInterrupt(digitalPinToInterrupt(BoardPins::TouchInterrupt));
+  xTaskNotifyGive(touchTaskHandle);
+
+  const TickType_t waitStart = xTaskGetTickCount();
+  while (true) {
+    bool active = false;
+    portENTER_CRITICAL(&touchStateMux);
+    active = touchWorkerActive;
+    portEXIT_CRITICAL(&touchStateMux);
+    if (!active) break;
+    if (static_cast<TickType_t>(xTaskGetTickCount() - waitStart) >=
+        pdMS_TO_TICKS(100)) {
+      portENTER_CRITICAL(&touchStateMux);
+      touchCapturePaused = false;
+      portEXIT_CRITICAL(&touchStateMux);
+      attachInterruptArg(BoardPins::TouchInterrupt, touchInterruptThunk, this, CHANGE);
+      xTaskNotifyGive(touchTaskHandle);
+      LOG_ERR("HW", "Touch capture did not quiesce for hardware takeover");
+      return false;
+    }
+    vTaskDelay(1);
+  }
+
+  portENTER_CRITICAL(&touchStateMux);
+  touchActive = false;
+  touchMoved = false;
+  touchHomeButtonHeld = false;
+  portEXIT_CRITICAL(&touchStateMux);
+  if (touchTapQueue) xQueueReset(touchTapQueue);
+  if (touchSwipeQueue) xQueueReset(touchSwipeQueue);
+  if (touchHomeQueue) xQueueReset(touchHomeQueue);
+  LOG_INF("HW", "Touch capture suspended for external hardware owner");
+#endif
+  return true;
+}
+
+bool HalGPIO::resumeTouchCapture() {
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  if (!touchAsyncReady || !touchTaskHandle) {
+    startTouchCapture();
+    return touchAsyncReady;
+  }
+
+  bool paused = false;
+  portENTER_CRITICAL(&touchStateMux);
+  paused = touchCapturePaused;
+  portEXIT_CRITICAL(&touchStateMux);
+  if (!paused) return true;
+
+  // A takeover app may have changed GT911 or shared-I2C state. Re-probe/reset
+  // only after that app has stopped and the firmware display has been restored.
+  if (!touch.begin()) {
+    LOG_ERR("HW", "Touch controller failed to reinitialize after hardware takeover");
+    return false;
+  }
+
+  portENTER_CRITICAL(&touchStateMux);
+  touchCapturePaused = false;
+  portEXIT_CRITICAL(&touchStateMux);
+  pinMode(BoardPins::TouchInterrupt, INPUT_PULLUP);
+  attachInterruptArg(BoardPins::TouchInterrupt, touchInterruptThunk, this, CHANGE);
+  xTaskNotifyGive(touchTaskHandle);
+  LOG_INF("HW", "Touch capture restored after external hardware owner");
+#endif
+  return true;
 }
 
 void IRAM_ATTR HalGPIO::touchInterruptThunk(void* context) {
@@ -104,7 +187,21 @@ void HalGPIO::touchTaskTrampoline(void* context) {
     // bounded timeout is a hardware-safe fallback for GT911 configurations
     // whose interrupt mode does not produce an ESP32 edge after boot.
     (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(20));
+
+    bool service = false;
+    portENTER_CRITICAL(&self->touchStateMux);
+    if (!self->touchCapturePaused) {
+      self->touchWorkerActive = true;
+      service = true;
+    }
+    portEXIT_CRITICAL(&self->touchStateMux);
+
+    if (!service) continue;
     self->serviceTouchController();
+
+    portENTER_CRITICAL(&self->touchStateMux);
+    self->touchWorkerActive = false;
+    portEXIT_CRITICAL(&self->touchStateMux);
   }
 }
 
