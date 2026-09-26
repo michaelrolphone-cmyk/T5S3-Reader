@@ -71,25 +71,8 @@ void encodeUtf8(uint32_t cp, char utf8[5]) {
   }
 }
 
-bool glyphPixelSet(const EpdFontData* data, const EpdGlyph* glyph,
-                   const uint8_t* bitmap, int gx, int gy) {
-  if (!data || !glyph || !bitmap || gx < 0 || gy < 0 ||
-      gx >= static_cast<int>(glyph->width) || gy >= static_cast<int>(glyph->height)) {
-    return false;
-  }
-  const int pixelPosition = gy * static_cast<int>(glyph->width) + gx;
-  if (data->is2Bit) {
-    const uint8_t byte = bitmap[pixelPosition >> 2];
-    const uint8_t shift = static_cast<uint8_t>((3 - (pixelPosition & 3)) * 2);
-    return ((byte >> shift) & 0x3) != 0;
-  }
-  const uint8_t byte = bitmap[pixelPosition >> 3];
-  const uint8_t shift = static_cast<uint8_t>(7 - (pixelPosition & 7));
-  return ((byte >> shift) & 1) != 0;
-}
-
 bool drawGlyphBitmap(GfxRenderer& renderer, int x, int y, int cellSize, const EpdFontData* data,
-                     const EpdGlyph* glyph, bool black, bool outlineOnly = false) {
+                     const EpdGlyph* glyph, bool black) {
   if (!data || !glyph || glyph->width == 0 || glyph->height == 0 || glyph->dataLength == 0) return false;
   const uint8_t* bitmap = renderer.getGlyphBitmap(data, glyph);
   if (!bitmap) return false;
@@ -100,25 +83,30 @@ bool drawGlyphBitmap(GfxRenderer& renderer, int x, int y, int cellSize, const Ep
   // font map.
   const int drawX = x + (cellSize - static_cast<int>(glyph->width)) / 2;
   const int drawY = y + (cellSize - static_cast<int>(glyph->height)) / 2;
+  int pixelPosition = 0;
 
-  for (int gy = 0; gy < glyph->height; ++gy) {
-    for (int gx = 0; gx < glyph->width; ++gx) {
-      if (!glyphPixelSet(data, glyph, bitmap, gx, gy)) continue;
-      if (outlineOnly &&
-          glyphPixelSet(data, glyph, bitmap, gx - 1, gy) &&
-          glyphPixelSet(data, glyph, bitmap, gx + 1, gy) &&
-          glyphPixelSet(data, glyph, bitmap, gx, gy - 1) &&
-          glyphPixelSet(data, glyph, bitmap, gx, gy + 1)) {
-        continue;
+  if (data->is2Bit) {
+    for (int gy = 0; gy < glyph->height; ++gy) {
+      for (int gx = 0; gx < glyph->width; ++gx, ++pixelPosition) {
+        const uint8_t byte = bitmap[pixelPosition >> 2];
+        const uint8_t shift = static_cast<uint8_t>((3 - (pixelPosition & 3)) * 2);
+        const uint8_t coverage = (byte >> shift) & 0x3;
+        if (coverage != 0) renderer.drawPixel(drawX + gx, drawY + gy, black);
       }
-      renderer.drawPixel(drawX + gx, drawY + gy, black);
+    }
+  } else {
+    for (int gy = 0; gy < glyph->height; ++gy) {
+      for (int gx = 0; gx < glyph->width; ++gx, ++pixelPosition) {
+        const uint8_t byte = bitmap[pixelPosition >> 3];
+        const uint8_t shift = static_cast<uint8_t>(7 - (pixelPosition & 7));
+        if ((byte >> shift) & 1) renderer.drawPixel(drawX + gx, drawY + gy, black);
+      }
     }
   }
   return true;
 }
 
-bool drawWithFamily(GfxRenderer& renderer, int x, int y, uint32_t cp, int size, bool regular,
-                    bool black, bool outlineOnly = false) {
+bool drawWithFamily(GfxRenderer& renderer, int x, int y, uint32_t cp, int size, bool regular, bool black) {
   if (!ensureFont(regular, size)) return false;
 
   Slot& slot = slots[regular ? 1 : 0];
@@ -141,7 +129,7 @@ bool drawWithFamily(GfxRenderer& renderer, int x, int y, uint32_t cp, int size, 
     return false;
   }
 
-  return drawGlyphBitmap(renderer, x, y, size, epd->data, glyph, black, outlineOnly);
+  return drawGlyphBitmap(renderer, x, y, size, epd->data, glyph, black);
 }
 }  // namespace
 
@@ -150,8 +138,7 @@ bool draw(GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSi
   uint32_t cp = 0;
   if (!t5_parse_icon(icon, &manifestRegular, &cp)) return false;
 
-  const int size = pointSize <= 12 ? 12 : pointSize <= 14 ? 14 : pointSize <= 16 ? 16 :
-                   pointSize <= 18 ? 18 : pointSize <= 24 ? 24 : 32;
+  const int size = pointSize <= 12 ? 12 : pointSize <= 14 ? 14 : pointSize <= 16 ? 16 : 18;
 
   // Honor the manifest face first. This matters for glyphs whose regular and
   // solid forms share a codepoint. If that face does not contain the glyph,
@@ -160,26 +147,6 @@ bool draw(GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSi
   if (drawWithFamily(renderer, x, y, cp, size, !manifestRegular, black)) return true;
 
   LOG_ERR("FA", "No Font Awesome glyph for '%s' (U+%04lX)", icon ? icon : "", static_cast<unsigned long>(cp));
-  renderer.drawRect(x, y, size, size, black);
-  return false;
-}
-
-bool drawOutline(GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSize, bool black) {
-  bool ignoredManifestRegular = false;
-  uint32_t cp = 0;
-  if (!t5_parse_icon(icon, &ignoredManifestRegular, &cp)) return false;
-
-  const int size = pointSize <= 12 ? 12 : pointSize <= 14 ? 14 : pointSize <= 16 ? 16 :
-                   pointSize <= 18 ? 18 : pointSize <= 24 ? 24 : 32;
-
-  // Prefer Font Awesome's authored outline. Many free icons are Solid-only;
-  // for those, draw just the boundary of the Solid raster rather than silently
-  // reverting to a filled home-screen icon.
-  if (drawWithFamily(renderer, x, y, cp, size, true, black)) return true;
-  if (drawWithFamily(renderer, x, y, cp, size, false, black, true)) return true;
-
-  LOG_ERR("FA", "No outline-capable Font Awesome glyph for '%s' (U+%04lX)",
-          icon ? icon : "", static_cast<unsigned long>(cp));
   renderer.drawRect(x, y, size, size, black);
   return false;
 }
