@@ -82,10 +82,9 @@ def source_manifests():
 
 
 def run(identities=None):
-    selected = set(identities) if identities else set(EXPECTED)
-    assert selected and selected <= set(EXPECTED), selected
-    selected_capabilities = {EXPECTED[identity][0] for identity in selected}
     sources = source_manifests()
+    selected = set(identities) if identities else set(sources)
+    assert selected and selected <= set(sources), selected
     catalog = json.loads(CATALOG.read_text(encoding='utf-8'))
     assert catalog['schema'] == 1 and catalog['release']
     assert len(catalog['packages']) == len(sources) <= 64
@@ -179,14 +178,20 @@ def run(identities=None):
     match = re.search(r'const char\* choices\[\]\s*=\s*\{([^}]*)\};', bridge_source)
     assert match, 'USB serial provider choice table missing'
     runtime_serial = set(re.findall(r'"([a-z0-9-]+)"', match.group(1)))
-    expected_serial = {identity for identity, (capability, _) in EXPECTED.items()
-                       if capability == 'serial.port'}
+    expected_serial = {
+        identity for identity, source in sources.items()
+        if source['provides'][0]['capability'] == 'serial.port'
+    }
     assert runtime_serial == expected_serial, (runtime_serial, expected_serial)
 
     print(f'{len(selected)} selected USB ELF packages: MMIO, negative mutations, imports, SHA-256 PASS')
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--ids', nargs='+',
+                        help='verify only these discovered driver package IDs')
+    args = parser.parse_args()
     synthetic = unittest.defaultTestLoader.loadTestsFromTestCase(ProviderDiscoveryTest)
     if not unittest.TextTestRunner(verbosity=2).run(synthetic).wasSuccessful():
         sys.exit(1)
