@@ -35,8 +35,16 @@ const char* lastError() { return "fixture unavailable"; }
 }
 int main() {
     nativeNavigationTick();
-    for (unsigned i = 0; i < 100; ++i) { fakeTime += 20; nativeNavigationTick(); }
-    assert(acquisitions == 1); // absent provider never causes per-frame SD scans
+    assert(acquisitions == 1);
+
+    // A provider that was not ready during the first UI frame must be retried
+    // later without requiring a USB power transition. Retry is bounded so an
+    // absent provider cannot cause a per-frame SD inventory scan.
+    for (unsigned i = 0; i < 49; ++i) { fakeTime += 20; nativeNavigationTick(); }
+    assert(acquisitions == 1);
+    fakeTime += 20; nativeNavigationTick();
+    assert(acquisitions == 2);
+
     shutdownOkay = false;
     assert(!nativeNavigationSuspend()); // failed start may retain a lower module without an API
     shutdownOkay = true;
@@ -44,28 +52,28 @@ int main() {
     nativeNavigationResume();
     assert(nativeNavigationClaim(1, "test.input", 1));
     available = true; nativeNavigationRetry(); nativeNavigationTick();
-    assert(acquisitions == 2 && foregroundCount == 1 && polls == 1);
+    assert(acquisitions == 3 && foregroundCount == 1 && polls == 1);
     nativeNavigationTick(); // same-time tick cannot replay an edge
     assert(!nativeNavigationFrame().pressed && polls == 1);
     nativeNavigationRelease(1);
     assert(foregroundCount == 0 && !nativeNavigationFrame().buttons);
-    assert(acquisitions == 2 && releases == 0); // focus transfer keeps host lease
+    assert(acquisitions == 3 && releases == 0); // focus transfer keeps host lease
     nativeNavigationBoundary(); assert(resets >= 2);
     assert(nativeNavigationSuspend() && releases == 1 && shutdowns == 3);
-    nativeNavigationTick(); assert(acquisitions == 2);
+    nativeNavigationTick(); assert(acquisitions == 3);
     nativeNavigationResume(); fakeTime += 20; nativeNavigationTick();
-    assert(acquisitions == 3);
+    assert(acquisitions == 4);
     sharedGrant = true;
     nativeNavigationConfigure(false);
     assert(releases == 2 && shutdowns == 3); // app keeps its independent grant
     nativeNavigationResume(); nativeNavigationTick();
-    assert(acquisitions == 3); // persisted Off survives wake
+    assert(acquisitions == 4); // persisted Off survives wake
     sharedGrant = false;
     nativeNavigationConfigure(true); fakeTime += 20; nativeNavigationTick();
-    assert(acquisitions == 4);
+    assert(acquisitions == 5);
     shutdownOkay = false;
     assert(!nativeNavigationSuspend()); // lower-provider failure blocks sleep
     nativeNavigationResume(); nativeNavigationTick();
-    assert(acquisitions == 4); // quarantined resources never silently restarted
-    puts("Firmware navigation acquisition, focus, polling and sleep lifetime: PASS");
+    assert(acquisitions == 5); // quarantined resources never silently restarted
+    puts("Firmware navigation acquisition, retry, focus, polling and sleep lifetime: PASS");
 }

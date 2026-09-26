@@ -1,4 +1,5 @@
 #include "NativeStreamBridge.h"
+#include "NativeNetworkBridge.h"
 #include "NativeAppHost.h"
 #include "components/StartupScreen.h"
 #include "NativeNavigationInput.h"
@@ -1313,6 +1314,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   input.update();
   Session active{renderer, input, xTaskGetCurrentTaskHandle()};
   session = &active;
+  nativeNetworkBegin();
   nativeSettingsBegin(renderer, input);
   nativeSystemUiBegin();
   esp_task_wdt_reset();
@@ -1322,6 +1324,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   nativeStreamsBegin();
   const esp_err_t result = launch_elf_app(path);
   nativeStreamsEnd();
+  nativeNetworkEnd();
   if (!canonicalRoot.empty() && result == ESP_OK)
     (void)RuntimePackages::systemPackageUseGate().unpin(canonicalRoot.c_str());
   // Clean up even when an app returns without calling its GPS stop callback.

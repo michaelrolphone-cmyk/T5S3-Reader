@@ -64,18 +64,25 @@ static bool fake_http_request(const char *url,uint8_t method,
   assert(header_value(headers,header_count,"User-Agent",&ua));
   assert(header_value(headers,header_count,"Referer",&referer));
   assert(strstr(ua,"Mozilla/5.0")!=0);
-  assert(strcmp(referer,"https://vimm.net/vault/GB")==0);
   const char *payload=0;
   int32_t status=200;
-  if(!strcmp(url,"https://vimm.net/vault/?p=list&system=GB&section=W"))payload=kLetterHtml;
-  else if(!strcmp(url,"https://vimm.net/vault/2943")){payload=kDetailHtml;status=404;}
-  else if(!strcmp(url,"https://vimm.net/vault/3016"))payload=kTokenDetailHtml;
-  else if(!strcmp(url,"https://vimm.net/vault/9998")){payload=kNotFoundHtml;status=404;}
-  else assert(!"unexpected URL");
+  uint8_t flags=0;
+  if(!strcmp(url,"https://vimm.net/vault/?p=list&system=GB&section=W")){
+    assert(strcmp(referer,"https://vimm.net/vault/GB")==0);
+    payload=kLetterHtml;
+    flags=T5_HTTP_SESSION_COOKIES_STORED;
+  }else{
+    assert(strcmp(referer,"https://vimm.net/vault/?p=list&system=GB&section=W")==0);
+    flags=T5_HTTP_SESSION_COOKIES_AVAILABLE|T5_HTTP_SESSION_COOKIES_STORED;
+    if(!strcmp(url,"https://vimm.net/vault/2943")){payload=kDetailHtml;status=404;}
+    else if(!strcmp(url,"https://vimm.net/vault/3016"))payload=kTokenDetailHtml;
+    else if(!strcmp(url,"https://vimm.net/vault/9998")){payload=kNotFoundHtml;status=404;}
+    else assert(!"unexpected URL");
+  }
   const size_t n=strlen(payload);
   assert(n+1u<=response_capacity);
   memcpy(response,payload,n+1u);
-  *result=(t5_http_result_t){.transport_error=0,.status_code=status,.response_bytes=n,.flags=0};
+  *result=(t5_http_result_t){.transport_error=0,.status_code=status,.response_bytes=n,.flags=flags};
   return true;
 }
 static const t5_network_api_v1 kNetwork={
@@ -137,6 +144,7 @@ int main(void){
   streams=&kStreams;
   ui=&kUi;
   search_query[0]=0;
+  copy_text(vimm_referer,sizeof(vimm_referer),VIMM_URL);
   status_text[0]=0;
 
   assert(open_vimm_page("/vault/GB/W"));
@@ -158,6 +166,8 @@ int main(void){
   assert(strstr(html,"Adventure Island")!=0);
   assert(strstr(debug_text,"status=404")!=0);
   assert(strstr(debug_text,"detail_soft_404=1 accepted=1")!=0);
+  assert(strstr(debug_text,"flags=0x06")!=0);
+  assert(strstr(debug_text,"referer=https://vimm.net/vault/?p=list&system=GB&section=W")!=0);
   char download_url[512];
   assert(resolve_vimm_download_url(download_url,sizeof(download_url)));
   assert(strcmp(download_url,"https://download4.vimm.net/download/?mediaId=2943")==0);

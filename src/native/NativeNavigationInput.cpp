@@ -10,14 +10,19 @@ RuntimeInstalledProviders::Lease lease;
 RuntimeInput::NavigationFocus focus;
 const risc_input_navigation_api_v1* api = nullptr;
 risc_input_navigation_frame_v1 frame{};
+constexpr uint32_t kActivationRetryMs = 1000;
 bool configured = true, enabled = true, attempted = false, quarantined = false, usable = true;
-uint32_t lastPoll = 0, heldSince = 0;
+uint32_t lastPoll = 0, heldSince = 0, lastAttemptMs = 0;
 
 void clearFrame() { frame = {}; heldSince = millis(); }
 bool ready() {
     if (api) return true;
-    if (attempted || quarantined || !Storage.ready()) return false;
+    if (quarantined || !Storage.ready()) return false;
+    const uint32_t now = millis();
+    if (attempted && static_cast<uint32_t>(now - lastAttemptMs) < kActivationRetryMs)
+        return false;
     attempted = true;
+    lastAttemptMs = now;
     if (!RuntimeInstalledProviders::acquireCapability("input.navigation", 1, &lease)) {
         LOG_INF("INPUT", "Navigation provider unavailable: %s", RuntimeInstalledProviders::lastError());
         return false;
@@ -64,7 +69,12 @@ void nativeNavigationBoundary() {
     clearFrame();
     usable = focus.apply(api) && (!api || api->reset(api->context));
 }
-void nativeNavigationRetry() { if (!api && !quarantined) attempted = false; }
+void nativeNavigationRetry() {
+    if (!api && !quarantined) {
+        attempted = false;
+        lastAttemptMs = 0;
+    }
+}
 static bool releaseNavigation(bool requireGraphShutdown) {
     clearFrame();
     enabled = false;

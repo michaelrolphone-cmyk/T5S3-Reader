@@ -53,6 +53,7 @@ enum { VIMM_GAME = 1u, VIMM_PAGE = 2u };
 static char *html;
 static uint32_t html_size;
 static char search_query[80];
+static char vimm_referer[320];
 static char *detail_text;
 static char *debug_text;
 static size_t debug_size;
@@ -462,11 +463,11 @@ static bool vimm_detail_document_marker(void){
          strstr(html,"Download, box art, and screen shots unavailable");
 }
 static bool fetch_vimm_document_mode(const char *url,bool allow_detail_soft_404){
-  static const t5_http_header_t headers[]={
+  const t5_http_header_t headers[]={
     {"User-Agent","Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36"},
     {"Accept","text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
     {"Accept-Language","en-US,en;q=0.9"},
-    {"Referer","https://vimm.net/vault/GB"},
+    {"Referer",vimm_referer[0]?vimm_referer:VIMM_URL},
   };
   debug_reset("fetch",url);
   if(!vimm_allowed_url(url)){
@@ -475,7 +476,7 @@ static bool fetch_vimm_document_mode(const char *url,bool allow_detail_soft_404)
     copy_text(status_text,sizeof(status_text),"Blocked unsupported Vimm URL");
     return false;
   }
-  debug_append("allowlist=accept transport=native_http browser_headers=1\n");
+  debug_append("allowlist=accept transport=native_http browser_headers=1 referer=%s\n",headers[3].value);
   html_size=0;
   t5_http_result_t result={0};
   const bool ok=network->http_request(
@@ -622,6 +623,7 @@ static bool first_visible_game_anchor(const char *td_start,const char *td_end,
 static bool fetch_vimm_url(const char *url,bool include_pages,bool server_filtered){
   vimm_count=0;
   if(!fetch_vimm_document(url))return false;
+  copy_text(vimm_referer,sizeof(vimm_referer),url);
   debug_append("parser include_pages=%u server_filtered=%u query=%s\n",
                include_pages?1u:0u,server_filtered?1u:0u,search_query);
 
@@ -838,7 +840,7 @@ __attribute__((visibility("default"))) void app_main(void){
      ui->api_version!=T5_UI_API_VERSION||ui->struct_size<sizeof(*ui)||
      !ui->render_list||!ui->render_text_view||!ui->poll_event||!ui->hit_test||!ui->next_index||!ui->previous_index||
      !app->dir_open||!app->dir_next||!app->dir_close||!app->set_back_exits_app||!app->millis)return;
-  app->set_back_exits_app(false); status_text[0]=0; search_query[0]=0;
+  app->set_back_exits_app(false); status_text[0]=0; search_query[0]=0; copy_text(vimm_referer,sizeof(vimm_referer),VIMM_URL);
   if(!allocate_workspaces()){
     copy_text(status_text,sizeof(status_text),"PSRAM workspace unavailable");
     const t5_ui_list_row_t row={"Rom Manager cannot start","PSRAM allocation failed","",0};

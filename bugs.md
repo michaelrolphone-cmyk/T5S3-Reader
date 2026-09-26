@@ -2,9 +2,27 @@
 
 ## 2026-09-26 scan
 
+### 1. Battery Status drops the minus sign for temperatures from -0.1 C through -0.9 C
+
+- **Status:** Open PR #205 on branch `fix/battery-negative-subdegree-temperature` targeting `master`; fix implemented, focused regression-tested, and Battery Status version bumped from `1.0.0` to `1.0.1` in the same PR.
+- **Affected code:** `Apps/battery.c`, `add_temperature(uint16_t deci_kelvin)`.
+- **Trigger / reproduction:** Supply battery telemetry where `temperature_dk` converts to a deci-Celsius value between `-1` and `-9` (for example, `2730` deci-kelvin produces `deci_c == -1`). Open Battery Status and inspect the Temperature row.
+- **Observed / logically demonstrated failure:** The formatter computes `deci_c / 10` and a separately absolute-valued fractional digit. In C integer division truncates toward zero, so `-1 / 10` is `0`; the screen therefore renders `0.1 C` instead of `-0.1 C`. The same sign loss occurs through `-0.9 C`.
+- **Likely root cause:** Sign handling is split across the integer and fractional pieces, but the integer piece becomes zero for magnitudes below 1 degree.
+- **Impact:** Cold battery telemetry near freezing is displayed with the wrong sign, which can mislead diagnostics and temperature-related charging decisions.
+- **Repair direction:** Format the sign independently from the magnitude (for example, convert to an absolute deci-C magnitude after recording `deci_c < 0`) and render `\"%s%d.%d C\"`. Add regression cases for `-0.1 C`, `-0.9 C`, `-1.0 C`, `0.0 C`, and positive values.
+
+### 2. Wi-Fi Settings can move selection back to row 0 without redrawing the highlight
+
+- **Affected code:** `Apps/wifi_settings.c`, input handling in `app_main()` for `T5_APP_BUTTON_UP` / `T5_APP_BUTTON_LEFT`.
+- **Trigger / reproduction:** Complete the firmware Wi-Fi selector so the result screen is shown. Move selection down/right to **Choose another network** (row 1), then press Up or Left once.
+- **Observed / logically demonstrated failure:** `selected = ui->previous_index(selected, 2)` changes the logical selection from row 1 to row 0, but the code redraws only inside `if (selected != 0)`. No render occurs when the new selection is row 0, so the display continues to show row 1 as selected even though subsequent button logic considers row 0 selected.
+- **Likely root cause:** The redraw is incorrectly conditional on the selected index rather than on whether navigation occurred.
+- **Impact:** Visual focus and logical focus diverge. A user can see **Choose another network** highlighted while Confirm does nothing because the internal selection is actually the status row.
+- **Repair direction:** Always rerender after Up/Left navigation, matching the Down/Right path. Prefer extracting the duplicated row/chrome construction into the existing result-render helper with a selected-index argument so both directions use one rendering path. Add a navigation regression test for `1 -> 0`.
+
 ### 3. Rom Manager title-detail Up/Down scrolling is reversed
 
-- **Status:** Incomplete — dedicated branch `fix/rom-manager-detail-scroll-direction` created from current `master`. The required two-line scroll-direction fix is identified, but GitHub write safety checks blocked updating `Apps/rom_manager.c` in this run. Resume this same branch; do not create another branch. No PR exists yet because the implementation could not be committed.
 - **Affected code:** `Apps/rom_manager.c`, `show_vimm_detail(const char *name, const char *path)`.
 - **Trigger / reproduction:** Browse Vimm Vault, open a Game Boy title whose detail text is long enough to scroll, then use the controls labelled **Up** and **Down**.
 - **Observed / logically demonstrated failure:** The chrome labels `previous_label = \"Up\"` and `next_label = \"Down\"`, but `T5_UI_EVENT_PREVIOUS` increments `scroll` while `T5_UI_EVENT_NEXT` decrements it. With `scroll == 0`, Up advances deeper into the document and Down cannot move at all; after scrolling, Down moves toward the top.
@@ -83,3 +101,33 @@ These three defects were checked against the existing entries above and the curr
 ## Duplicate check performed for this scan
 
 These defects were verified against the current `bugs.md`, the current open PR set (#208, #204, #194, and #96), and targeted all-state pull-request searches for Text Editor discard handling, Font Manager delete confirmation, and font update checksum detection. No existing tracked bug or matching PR was found for these three cases.
+
+
+## 2026-09-26 scan — 13:21 MDT
+
+### 10. App Store can act on stale release indices after a failed catalog refresh
+
+- **Affected code:** `Apps/app_store.c`, the view transition into the releases/catalog screen, `refresh_releases()`, and the release-row activation path using `release_indices[]`.
+- **Trigger / reproduction:** Open App Store, first visit a screen that populates the shared row buffers from SD/inbox packages, then switch to the online releases/catalog view while forcing the online catalog refresh to fail (network/TLS/catalog error).
+- **Observed / logically demonstrated failure:** The code changes the active view to the releases screen before a successful refresh has rebuilt that view's row/index state. If `refresh_releases()` fails, the shared row buffer/count can still describe the previously rendered SD/inbox entries, while subsequent release-mode actions resolve through stale `release_indices[]`. The visible row and the release object acted on can therefore diverge.
+- **Likely root cause:** The view/state transition is not transactional: UI mode changes before the new view's backing data has been successfully populated, and failure does not restore/clear the old shared state.
+- **Impact:** A user can select a row that visually represents one package while App Store attempts an operation on a different release entry, producing incorrect install/update behavior or misleading failures.
+- **Repair direction:** Build the release catalog and index mapping into temporary state first and only switch `view`/publish rows after success. On failure, retain the previous view or explicitly clear row/index state and render an error-only screen. Add a regression test that seeds inbox rows, forces release refresh failure, and proves no release action is possible from stale indices.
+
+### 11. Rom Manager's ROM actions modal does not support touch row selection
+
+- **Affected code:** `Apps/rom_manager.c`, the nested three-row ROM actions loop inside `app_main()`.
+- **Trigger / reproduction:** Open **My ROMs**, select a ROM, open its actions menu, then tap **Rename**, **Delete**, or **Cancel** directly on the touchscreen.
+- **Observed / logically demonstrated failure:** The nested actions loop handles `T5_UI_EVENT_PREVIOUS`, `T5_UI_EVENT_NEXT`, `T5_UI_EVENT_CONFIRM`, Back, and Exit, but has no `T5_UI_EVENT_TAP` branch and never calls `ui->hit_test()`. This differs from the outer Rom Manager lists, which do implement tap selection. Tapping an action row therefore cannot select/activate that row.
+- **Likely root cause:** The modal actions loop was implemented as button-only navigation and did not reuse the standard list touch handling used elsewhere in the app.
+- **Impact:** Touch users can navigate the main Rom Manager UI but become blocked or forced to use hardware/controller buttons in the per-ROM actions workflow.
+- **Repair direction:** Add tap handling to the modal: call `ui->hit_test()`, validate `0 <= hit < 3`, update `a`, and either activate on the tapped selected row or mirror the main-list tap semantics. Add a touch regression test for Rename/Delete/Cancel.
+
+### 12. Wi-Fi Settings accepts any pending Wi-Fi result without validating its request cookie
+
+- **Affected code:** `Apps/wifi_settings.c`, `app_main()` around `system_ui->wifi_take_result()`.
+- **Trigger / reproduction:** Arrange for a pending Wi-Fi UI result from another native-app workflow to exist before launching Wi-Fi Settings, with a cookie different from `WIFI_COOKIE`. Launch Wi-Fi Settings.
+- **Observed / logically demonstrated failure:** `wifi_take_result(&connected, &cancelled, &cookie)` returns the pending result and clears it, but Wi-Fi Settings never checks whether `cookie == WIFI_COOKIE`. Any unread Wi-Fi result is therefore treated as if it came from this app's own selector request, so Wi-Fi Settings can skip opening its selector and show unrelated connected/cancelled state.
+- **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
+- **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
+- **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
