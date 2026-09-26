@@ -26,6 +26,7 @@ EXPECTED = {
                              ['i2c.bus', 'platform.clock', 'board.power.bq25896.profile']),
     'usb-controller-esp32s3': ('usb.controller', ['board.power.vbus']),
     'usb-host-v2': ('usb.host', ['usb.controller']),
+    'usb-mass-storage': ('storage.volume', ['usb.host']),
     'usb-cdc-acm-v2': ('serial.port', ['usb.host']),
     'usb-cp210x-v2': ('serial.port', ['usb.host']),
     'usb-ch34x-v2': ('serial.port', ['usb.host']),
