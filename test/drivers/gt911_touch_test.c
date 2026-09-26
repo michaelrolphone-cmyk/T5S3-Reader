@@ -109,6 +109,10 @@ static void report_release(void) {
     status_reg = 0x80u;
 }
 
+static void report_home(bool pressed) {
+    status_reg = pressed ? 0x90u : 0x80u;
+}
+
 static risc_touch_event_v1 take(const risc_touch_api_v1 *api, uint64_t sub) {
     risc_touch_event_v1 event = {0};
     assert(api->next(api->context, sub, &event) == 1);
@@ -171,8 +175,27 @@ int main(void) {
     assert(event_a.kind == RISC_TOUCH_EVENT_UP && event_a.id == 3u &&
            event_b.kind == RISC_TOUCH_EVENT_UP);
     assert(api->snapshot(api->context, &snap) &&
-           snap.contact_count == 0u);
+           snap.contact_count == 0u && snap.buttons == 0u);
     assert(api->next(api->context, a, &event_a) == 0);
+
+    fake_ms = 1040u;
+    report_home(true);
+    assert(api->poll(api->context, 1u));
+    event_a = take(api, a);
+    event_b = take(api, b);
+    assert(event_a.kind == RISC_TOUCH_EVENT_BUTTON_DOWN &&
+           event_a.id == 0u && event_b.kind == event_a.kind);
+    assert(api->snapshot(api->context, &snap) &&
+           snap.buttons == RISC_TOUCH_BUTTON_PRIMARY);
+
+    fake_ms = 1050u;
+    report_home(false);
+    assert(api->poll(api->context, 1u));
+    event_a = take(api, a);
+    event_b = take(api, b);
+    assert(event_a.kind == RISC_TOUCH_EVENT_BUTTON_UP &&
+           event_b.kind == event_a.kind);
+    assert(api->snapshot(api->context, &snap) && snap.buttons == 0u);
 
     for (unsigned i = 0; i < RISC_TOUCH_QUEUE_LENGTH + 4u; ++i) {
         fake_ms++;
