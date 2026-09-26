@@ -32,6 +32,9 @@ display_setup = MAIN.index("setupDisplayAndFonts();")
 touch_start = MAIN.index("gpio.startTouchCapture();")
 assert display_setup < touch_start
 assert "vTaskNotifyGiveFromISR" in HAL_CPP
+assert "pdMS_TO_TICKS(20)" in HAL_CPP
+assert "touch.begin()" in HAL_CPP[HAL_CPP.index("void HalGPIO::startTouchCapture()"):
+                                  HAL_CPP.index("void IRAM_ATTR HalGPIO::touchInterruptThunk")]
 assert "touch.readEvent(&point, &homeButtonPressed, &contactActive)" in HAL_CPP
 assert "xQueueSend(touchTapQueue" in HAL_CPP
 assert "xQueueReceive(touchTapQueue" in HAL_CPP
