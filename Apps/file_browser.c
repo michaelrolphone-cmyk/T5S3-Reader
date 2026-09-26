@@ -14,7 +14,7 @@
 #define MAX_ENTRIES 256
 #define PATH_CAP 512
 #define STATUS_CAP 128
-#define SESSION_PATH "/sd/System/State/FileBrowser/Session.txt"
+#define SESSION_PATH "/sd/System/State/Applications/file_browser/Session.txt"
 #define HANDOFF_COOKIE 0x4642524f57534552ULL
 
 typedef struct {
