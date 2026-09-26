@@ -31,7 +31,7 @@ using CrossPointHttpClientSecure = WiFiClientSecure;
 #include "util/UrlUtils.h"
 
 namespace {
-constexpr uint32_t kNetworkReadyTimeoutMs = 5000;
+constexpr uint32_t kNetworkReadyTimeoutMs = 15000;
 constexpr size_t kNativeMetadataLimit = 64 * 1024;
 
 void logHttpMemory(const char* stage) {
