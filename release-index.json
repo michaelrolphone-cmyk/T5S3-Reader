@@ -299,16 +299,22 @@
         "display_name": "Image Viewer",
         "file_name": "image_viewer.elf",
         "icon": "regular:f03e",
-        "min_firmware_version": "1.1.13",
-        "sha256": "28013b3a77bda7090b138d30b6104ad5bf277e689b9928907e862509843cb386",
-        "size_bytes": 3788,
-        "version": "1.0.0"
+        "min_firmware_version": "1.2.85",
+        "sha256": "624d25088a6caec59674b54ee48a6a33b15218b50026579eba3c3ae3e9ecd24e",
+        "size_bytes": 3924,
+        "supported_file_types": [
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".bmp"
+        ],
+        "version": "1.1.0"
       },
-      "sha256": "28013b3a77bda7090b138d30b6104ad5bf277e689b9928907e862509843cb386",
-      "size": 3788,
-      "tag": "app-image_viewer-v1.0.0",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-image_viewer-v1.0.0/image_viewer.elf",
-      "version": "1.0.0"
+      "sha256": "624d25088a6caec59674b54ee48a6a33b15218b50026579eba3c3ae3e9ecd24e",
+      "size": 3924,
+      "tag": "app-image_viewer-v1.1.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-image_viewer-v1.1.0/image_viewer.elf",
+      "version": "1.1.0"
     },
     {
       "asset": "koreader_auth.elf",
