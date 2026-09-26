@@ -136,10 +136,17 @@ class LiveInstallContract(unittest.TestCase):
         self.assertIn('JsonDocument document(&allocator)', loader)
 
         authoritative_start = HOST.index('bool loadAuthoritativeAppCatalog(')
-        authoritative_end = HOST.index('\nbool connectSavedWifi()', authoritative_start)
+        authoritative_end = HOST.index('\nbool appCatalogRefresh()', authoritative_start)
         authoritative = HOST[authoritative_start:authoritative_end]
         self.assertIn('return loadIndependentAppIndex(catalog);', authoritative)
         self.assertNotIn('refreshExternalGameBoy(', authoritative)
+
+        # App Store no longer owns Wi-Fi bootstrap; shared HTTP reconnects.
+        self.assertNotIn('bool connectSavedWifi()', HOST)
+        saved_network = (ROOT / 'src/runtime/network/SavedNetworkConnection.cpp').read_text(encoding='utf-8')
+        downloader = (ROOT / 'src/network/HttpDownloader.cpp').read_text(encoding='utf-8')
+        self.assertIn('bool ensureSavedConnection(', saved_network)
+        self.assertIn('RuntimeNetwork::ensureSavedConnection(kNetworkReadyTimeoutMs)', downloader)
 
         self.assertIn('RuntimeMemory::PsramTextStream json(kMaxCatalogBytes)', CATALOG_INDEX)
         self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', CATALOG_INDEX)
