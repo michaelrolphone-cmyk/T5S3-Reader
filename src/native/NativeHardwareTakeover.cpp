@@ -1,4 +1,5 @@
 #include <HalDisplay.h>
+#include "NativeHardwareTakeover.h"
 #include <T5HardwareTakeover.h>
 #include <esp_err.h>
 #include <esp_log.h>
@@ -46,3 +47,6 @@ extern "C" esp_err_t native_hardware_takeover_end(uint32_t requested) {
   }
   return ESP_OK;
 }
+
+
+bool nativeHardwareTakeoverDisplayActive() { return s_display_borrowed; }
