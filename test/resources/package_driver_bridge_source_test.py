@@ -96,10 +96,17 @@ assert 'else if (!load_release(drivers, ui))' not in app  # no post-install netw
 # The independently validated URL must be copied into the selected catalog row.
 app_host = (root / 'src/native/NativeAppHost.cpp').read_text(encoding='utf-8')
 start = app_host.index('bool loadIndependentAppIndex(')
-end = app_host.index('\nbool connectSavedWifi()', start)
+end = app_host.index('\nbool loadAuthoritativeAppCatalog(', start)
 index_loader = app_host[start:end]
 assert 'asset.url = url;' in index_loader
 assert index_loader.index('asset.url = url;') < index_loader.index('indexed.push_back(std::move(asset))')
+
+# Network bootstrap belongs to the shared HTTP layer, not App Store.
+assert 'bool connectSavedWifi()' not in app_host
+saved_network = (root / 'src/runtime/network/SavedNetworkConnection.cpp').read_text(encoding='utf-8')
+assert 'bool ensureSavedConnection(' in saved_network
+downloader_source = (root / 'src/network/HttpDownloader.cpp').read_text(encoding='utf-8')
+assert 'RuntimeNetwork::ensureSavedConnection(kNetworkReadyTimeoutMs)' in downloader_source
 
 # Staged downloads never overwrite or delete someone else's .part file.
 download = (root / 'src/network/HttpDownloader.cpp').read_text(encoding='utf-8')
