@@ -3,5 +3,10 @@
   "version": "1.0.0",
   "display_name": "OPDS Servers",
   "file_name": "opds_settings.elf",
-  "icon": "solid:f02d"
+  "icon": "solid:f02d",
+  "category": [
+    "Reading",
+    "Connectivity",
+    "Settings"
+  ]
 }
