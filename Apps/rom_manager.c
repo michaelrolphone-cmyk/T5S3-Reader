@@ -207,9 +207,94 @@ static bool likely_download_target(const char *start,const char *end){
   }
   return false;
 }
+static bool append_url_encoded(char *out,size_t cap,const char *text);
+static bool range_contains(const char *start,const char *end,const char *needle){
+  if(!start||!end||start>=end||!needle||!needle[0])return false;
+  const size_t nlen=strlen(needle);
+  for(const char *p=start;p+nlen<=end;++p)if(!strncmp(p,needle,nlen))return true;
+  return false;
+}
+static bool copy_attr_value(const char *tag_start,const char *tag_end,const char *attr,
+                            char *out,size_t cap){
+  if(!tag_start||!tag_end||tag_start>=tag_end||!attr||!out||cap<2u)return false;
+  char pattern[40];
+  int n=snprintf(pattern,sizeof(pattern),"%s=\"",attr);
+  if(n<=0||(size_t)n>=sizeof(pattern))return false;
+  const char *p=tag_start;
+  while(p<tag_end){
+    const char *hit=strstr(p,pattern);
+    if(!hit||hit>=tag_end)return false;
+    const char *value=hit+n;
+    const char *end=strchr(value,'"');
+    if(!end||end>tag_end)return false;
+    const size_t len=(size_t)(end-value);
+    if(len>=cap)return false;
+    memcpy(out,value,len);out[len]=0;return true;
+  }
+  return false;
+}
+static bool normalize_form_action(const char *action,char *out,size_t cap){
+  if(!action||!action[0]||!out||cap<16u)return false;
+  if(!strncmp(action,"https://",8u)){
+    if(strlen(action)>=cap)return false;
+    copy_text(out,cap,action);return true;
+  }
+  if(!strncmp(action,"//",2u)){
+    const char prefix[]="https:";
+    const size_t plen=sizeof(prefix)-1u,len=strlen(action);
+    if(plen+len>=cap)return false;
+    memcpy(out,prefix,plen);memcpy(out+plen,action,len+1u);return true;
+  }
+  if(action[0]=='/'){
+    const char prefix[]="https://vimm.net";
+    const size_t plen=sizeof(prefix)-1u,len=strlen(action);
+    if(plen+len>=cap)return false;
+    memcpy(out,prefix,plen);memcpy(out+plen,action,len+1u);return true;
+  }
+  return false;
+}
+static bool find_form_input_value(const char *form_start,const char *form_end,
+                                  const char *name,char *out,size_t cap){
+  const char *p=form_start;
+  while((p=strstr(p,"<input"))&&p<form_end){
+    const char *tag_end=strchr(p,'>');
+    if(!tag_end||tag_end>form_end)return false;
+    char input_name[40];
+    if(copy_attr_value(p,tag_end,"name",input_name,sizeof(input_name))&&!strcmp(input_name,name))
+      return copy_attr_value(p,tag_end,"value",out,cap);
+    p=tag_end+1;
+  }
+  return false;
+}
+static bool resolve_vimm_dl_form(char *out,size_t cap){
+  const char *p=html;
+  while((p=strstr(p,"<form"))){
+    const char *tag_end=strchr(p,'>');
+    if(!tag_end)return false;
+    if(!range_contains(p,tag_end,"id=\"dl-form\"")){p=tag_end+1;continue;}
+    const char *form_end=strstr(tag_end,"</form>");
+    if(!form_end)return false;
+    char action[192],media_id[32],token[256],base[256],encoded_id[96],encoded_token[768];
+    if(!copy_attr_value(p,tag_end,"action",action,sizeof(action))||
+       !find_form_input_value(tag_end,form_end,"mediaId",media_id,sizeof(media_id))||
+       !find_form_input_value(tag_end,form_end,"token",token,sizeof(token))||
+       !normalize_form_action(action,base,sizeof(base))||
+       !append_url_encoded(encoded_id,sizeof(encoded_id),media_id)||
+       !append_url_encoded(encoded_token,sizeof(encoded_token),token))return false;
+    const char separator=strchr(base,'?')?'&':'?';
+    int n=snprintf(out,cap,"%s%cmediaId=%s&token=%s",base,separator,encoded_id,encoded_token);
+    return n>0&&(size_t)n<cap;
+  }
+  return false;
+}
+
 static bool resolve_vimm_download_url(char *out,size_t cap){
   if(!out||cap<32u)return false;
   out[0]=0;
+  /* Vimm title pages use form#dl-form. submitDL() changes that form to GET;
+     resolve its action + hidden mediaId/token deterministically before any
+     generic fallback scanning. */
+  if(resolve_vimm_dl_form(out,cap))return true;
   const char *attrs[]={"href=\"","action=\"","data-href=\"","data-url=\""};
   for(size_t a=0;a<sizeof(attrs)/sizeof(attrs[0]);++a){
     const char *p=html;
