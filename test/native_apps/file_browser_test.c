@@ -7,6 +7,7 @@
 #include "T5AppApi.h"
 #include "T5FileBrowserApi.h"
 #include "T5FileOpenApi.h"
+#include "T5ProviderCapabilityApi.h"
 #include "T5UiApi.h"
 #include "T5StorageApi.h"
 #include "T5SystemUiApi.h"
@@ -124,6 +125,11 @@ static const t5_storage_api_v1 storage_api = {
 
 const t5_storage_api_v1 *t5_storage_get_api(uint32_t version) {
     return version == T5_STORAGE_API_VERSION ? &storage_api : NULL;
+}
+
+const t5_provider_capability_api_v1 *t5_provider_capability_get_api(uint32_t version) {
+    (void)version;
+    return NULL;
 }
 
 static void navigate_home(void) { assert(!"File Browser unexpectedly navigated Home"); }

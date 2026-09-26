@@ -31,6 +31,7 @@ DRIVERS = (
     ('usb-controller-esp32s3', 'usb_controller_esp32s3', 'usb-controller-esp32s3',
      'controller-link-experiment.elf'),
     ('usb-host-v2', 'usb_host_v2', 'usb-host-v2', 'driver.elf'),
+    ('usb-mass-storage', 'usb_mass_storage', 'usb-mass-storage', 'driver.elf'),
     ('usb-cdc-acm-v2', 'usb_cdc_v2', 'usb-cdc-acm-v2', 'driver.elf'),
     ('usb-cp210x-v2', 'usb_cp210x_v2', 'usb-cp210x-v2', 'driver.elf'),
     ('usb-ch34x-v2', 'usb_ch34x_v2', 'usb-ch34x-v2', 'driver.elf'),
