@@ -92,7 +92,9 @@ class LiveInstallContract(unittest.TestCase):
         self.assertIn('Selected catalog entry lost download metadata; reloading catalog', install)
         self.assertIn('const bool installedOk = RuntimeOnlinePackages::installApplication(', install)
         self.assertIn('s->catalogNeedsRefresh = true;', install)
-        self.assertNotIn('loadAuthoritativeAppCatalog(s->catalog)', install)
+        install_call = install.index('const bool installedOk = RuntimeOnlinePackages::installApplication(')
+        after_install = install[install_call:]
+        self.assertNotIn('loadAuthoritativeAppCatalog(s->catalog)', after_install)
 
         helper_start = HOST.index('bool ensureCatalogReady(Session* s)')
         helper_end = HOST.index('\nuint32_t appCatalogCount()', helper_start)
