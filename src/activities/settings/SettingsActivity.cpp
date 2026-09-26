@@ -36,8 +36,13 @@ void SettingsActivity::loop() {
               renderer, mappedInput, "settings.elf", "Settings"),
           [this](const ActivityResult& result) {
             if (result.isCancelled) {
-              launchFailed = true;
+              // launchAttempted remains true and launchFailed remains false.
+              // On the next loop this wrapper finishes back to the screen that
+              // opened Settings instead of showing a second missing-app error.
+              launchFailed = false;
             } else {
+              // Repeat the exact workflow step automatically after verified
+              // installation; the user never has to reopen Settings.
               launchAttempted = false;
               launchFailed = false;
             }
