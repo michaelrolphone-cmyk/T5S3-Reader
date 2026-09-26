@@ -170,11 +170,13 @@ static bool fetch_vimm_url(const char *url){
     const uint8_t kind=vimm_game_path(p,plen)?VIMM_GAME:(vimm_page_path(p,plen)?VIMM_PAGE:0u);
     if(!kind){p=q+1;continue;}
     char *gt=strchr(q,'>'); if(!gt)break; char *lt=strchr(gt+1,'<'); if(!lt)break; size_t nlen=(size_t)(lt-(gt+1));
-    if(nlen&&nlen<NAME_CAP&&contains_ci(gt+1,search_query)){
+    if(nlen&&nlen<NAME_CAP){
       memcpy(vimm_paths[vimm_count],p,plen);vimm_paths[vimm_count][plen]=0;
       memcpy(vimm_names[vimm_count],gt+1,nlen);vimm_names[vimm_count][nlen]=0;
-      vimm_kinds[vimm_count]=kind;
-      ++vimm_count;
+      if(contains_ci(vimm_names[vimm_count],search_query)){
+        vimm_kinds[vimm_count]=kind;
+        ++vimm_count;
+      }
     }
     p=lt+1;
   }
