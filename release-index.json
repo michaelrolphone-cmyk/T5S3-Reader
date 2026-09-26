@@ -11,7 +11,11 @@
         "min_firmware_version": "1.2.17",
         "sha256": "0c21340001c7ce37e84ec03e75e0cb50d771604f3d7919207140c15544986507",
         "size_bytes": 11056,
-        "version": "1.0.4"
+        "version": "1.0.4",
+        "category": [
+          "System",
+          "Software"
+        ]
       },
       "sha256": "0c21340001c7ce37e84ec03e75e0cb50d771604f3d7919207140c15544986507",
       "size": 11056,
@@ -30,7 +34,11 @@
         "min_firmware_version": "1.1.18",
         "sha256": "48972f0d5562af2289196175e3435193a7d088008aaf5250eee82cc106244dac",
         "size_bytes": 7268,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "System",
+          "Hardware"
+        ]
       },
       "sha256": "48972f0d5562af2289196175e3435193a7d088008aaf5250eee82cc106244dac",
       "size": 7268,
@@ -49,7 +57,11 @@
         "min_firmware_version": "1.1.24",
         "sha256": "296d98355dc7d44e1e917b704858ba747f5192441a7b52d006a6f3e9090d9376",
         "size_bytes": 4808,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Settings",
+          "Input"
+        ]
       },
       "sha256": "296d98355dc7d44e1e917b704858ba747f5192441a7b52d006a6f3e9090d9376",
       "size": 4808,
@@ -68,7 +80,11 @@
         "min_firmware_version": "1.1.21",
         "sha256": "b3e47191d1d7fa4f2e4a70501655c2f542056919ec0dbc1292bec3fbb3b93efc",
         "size_bytes": 4556,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "System",
+          "Maintenance"
+        ]
       },
       "sha256": "b3e47191d1d7fa4f2e4a70501655c2f542056919ec0dbc1292bec3fbb3b93efc",
       "size": 4556,
@@ -87,7 +103,12 @@
         "min_firmware_version": "1.2.23",
         "sha256": "59226faf3474afa03d568630c755e1be4f6bd4d09c6a3f68011d4b78e1f7e12a",
         "size_bytes": 18696,
-        "version": "1.0.4"
+        "version": "1.0.4",
+        "category": [
+          "System",
+          "Hardware",
+          "Developer"
+        ]
       },
       "sha256": "59226faf3474afa03d568630c755e1be4f6bd4d09c6a3f68011d4b78e1f7e12a",
       "size": 18696,
@@ -112,7 +133,12 @@
         ],
         "sha256": "7d44907ad01b65a9c5bd12f4c502b13d9705f1f43c1ec49f665c86d8e92cb0df",
         "size_bytes": 14136,
-        "version": "1.1.0"
+        "version": "1.1.0",
+        "category": [
+          "Firmware",
+          "Developer",
+          "Hardware"
+        ]
       },
       "sha256": "7d44907ad01b65a9c5bd12f4c502b13d9705f1f43c1ec49f665c86d8e92cb0df",
       "size": 14136,
@@ -131,7 +157,11 @@
         "min_firmware_version": "1.2.85",
         "sha256": "d4237f95124b00aa5a3a31088f568e808172bdfc61ff2ebfc9792cbe6eea0abc",
         "size_bytes": 14080,
-        "version": "1.1.0"
+        "version": "1.1.0",
+        "category": [
+          "Files",
+          "Utilities"
+        ]
       },
       "sha256": "d4237f95124b00aa5a3a31088f568e808172bdfc61ff2ebfc9792cbe6eea0abc",
       "size": 14080,
@@ -150,7 +180,11 @@
         "min_firmware_version": "1.1.24",
         "sha256": "684f3bca5f4ea3cc76ad7ff60de570954020e1180916bd2d6906e18471a95771",
         "size_bytes": 3024,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Files",
+          "Connectivity"
+        ]
       },
       "sha256": "684f3bca5f4ea3cc76ad7ff60de570954020e1180916bd2d6906e18471a95771",
       "size": 3024,
@@ -169,7 +203,11 @@
         "min_firmware_version": "1.1.24",
         "sha256": "584378f117f1c7c4a0b48324957a63d0dd317f5a81455315bb82d8d447a1a507",
         "size_bytes": 5544,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Settings",
+          "Appearance"
+        ]
       },
       "sha256": "584378f117f1c7c4a0b48324957a63d0dd317f5a81455315bb82d8d447a1a507",
       "size": 5544,
@@ -188,7 +226,11 @@
         "min_firmware_version": "1.1.24",
         "sha256": "468e9549319dea78f22bac44d9fdc206706b34a63516ebc6857916e3bd42071e",
         "size_bytes": 3836,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Settings",
+          "Appearance"
+        ]
       },
       "sha256": "468e9549319dea78f22bac44d9fdc206706b34a63516ebc6857916e3bd42071e",
       "size": 3836,
@@ -225,7 +267,11 @@
         ],
         "sha256": "585fd11250fff0425316880eb35c1846f0140b17d54d914804b22120b7205158",
         "size_bytes": 2115364,
-        "version": "1.3.3"
+        "version": "1.3.3",
+        "category": [
+          "Games",
+          "Emulation"
+        ]
       },
       "sha256": "585fd11250fff0425316880eb35c1846f0140b17d54d914804b22120b7205158",
       "size": 2115364,
@@ -245,7 +291,12 @@
         "min_firmware_version": "1.2.26",
         "sha256": "7349b78db2486c79895b06730c1158bb000e914530abfc5b381b173c8a7d4cdb",
         "size_bytes": 8372,
-        "version": "0.1.1"
+        "version": "0.1.1",
+        "category": [
+          "Diagnostics",
+          "GNSS",
+          "Developer"
+        ]
       },
       "sha256": "7349b78db2486c79895b06730c1158bb000e914530abfc5b381b173c8a7d4cdb",
       "size": 8372,
@@ -264,7 +315,11 @@
         "min_firmware_version": "1.1.14",
         "sha256": "380a1a0f496688dc4f1fd61bbb0cc59b2c00e07269b879a8156d6af870e78430",
         "size_bytes": 4800,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "GNSS",
+          "Utilities"
+        ]
       },
       "sha256": "380a1a0f496688dc4f1fd61bbb0cc59b2c00e07269b879a8156d6af870e78430",
       "size": 4800,
@@ -283,7 +338,11 @@
         "min_firmware_version": "1.1.5",
         "sha256": "85771734e1615502dbb55ea518a8b0890a8c3d0b794d15ca36f465bd1683c487",
         "size_bytes": 2364,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Developer",
+          "Examples"
+        ]
       },
       "sha256": "85771734e1615502dbb55ea518a8b0890a8c3d0b794d15ca36f465bd1683c487",
       "size": 2364,
@@ -308,7 +367,11 @@
           ".png",
           ".bmp"
         ],
-        "version": "1.1.0"
+        "version": "1.1.0",
+        "category": [
+          "Media",
+          "Files"
+        ]
       },
       "sha256": "624d25088a6caec59674b54ee48a6a33b15218b50026579eba3c3ae3e9ecd24e",
       "size": 3924,
@@ -327,7 +390,11 @@
         "min_firmware_version": "1.1.24",
         "sha256": "9e54f6b5a3375443d95f74fe57318281807bfb4d0e8c23f3bde932b8ecb297b4",
         "size_bytes": 5056,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Reading",
+          "Connectivity"
+        ]
       },
       "sha256": "9e54f6b5a3375443d95f74fe57318281807bfb4d0e8c23f3bde932b8ecb297b4",
       "size": 5056,
@@ -346,7 +413,11 @@
         "min_firmware_version": "1.1.19",
         "sha256": "1750138be0951b122846d5d0044639d6492d26055fbd79d888939f22d2e361b5",
         "size_bytes": 7864,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Reading",
+          "Connectivity"
+        ]
       },
       "sha256": "1750138be0951b122846d5d0044639d6492d26055fbd79d888939f22d2e361b5",
       "size": 7864,
@@ -365,7 +436,11 @@
         "min_firmware_version": "1.1.24",
         "sha256": "7b083503c49ccdd2c774f17a106c14649722e4d6e7464187e502f266e629b12d",
         "size_bytes": 6524,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Settings",
+          "Localization"
+        ]
       },
       "sha256": "7b083503c49ccdd2c774f17a106c14649722e4d6e7464187e502f266e629b12d",
       "size": 6524,
@@ -384,7 +459,11 @@
         "min_firmware_version": "1.1.9",
         "sha256": "34b08394bee50ae3ed9a2e5358946fce6de32528c069bcc68347a60f2ae0831a",
         "size_bytes": 14240,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "AI",
+          "Productivity"
+        ]
       },
       "sha256": "34b08394bee50ae3ed9a2e5358946fce6de32528c069bcc68347a60f2ae0831a",
       "size": 14240,
@@ -403,7 +482,11 @@
         "min_firmware_version": "1.1.15",
         "sha256": "eda3aeef9715ec4a2d1fc37d0e506f00c59055d97c10542265f03ff855e76da5",
         "size_bytes": 7992,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Connectivity",
+          "Hardware"
+        ]
       },
       "sha256": "eda3aeef9715ec4a2d1fc37d0e506f00c59055d97c10542265f03ff855e76da5",
       "size": 7992,
@@ -422,7 +505,10 @@
         "min_firmware_version": "1.1.5",
         "sha256": "f543c35e64873e01e10b06a0882767d7276d0f743ec09f30c8d93a468a6e52c6",
         "size_bytes": 6816,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Games"
+        ]
       },
       "sha256": "f543c35e64873e01e10b06a0882767d7276d0f743ec09f30c8d93a468a6e52c6",
       "size": 6816,
@@ -441,7 +527,12 @@
         "min_firmware_version": "1.1.20",
         "sha256": "ead4c5ed9ed0a2c4c23813e5cc4d45a997368f3fa9117e1d8c4c498daad6e121",
         "size_bytes": 7292,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Reading",
+          "Connectivity",
+          "Settings"
+        ]
       },
       "sha256": "ead4c5ed9ed0a2c4c23813e5cc4d45a997368f3fa9117e1d8c4c498daad6e121",
       "size": 7292,
@@ -460,7 +551,11 @@
         "min_firmware_version": "1.1.22",
         "sha256": "2fa61ffeca506f22635f469d005fd335c2b4223037a500272abf81385c00e607",
         "size_bytes": 5064,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Firmware",
+          "System"
+        ]
       },
       "sha256": "2fa61ffeca506f22635f469d005fd335c2b4223037a500272abf81385c00e607",
       "size": 5064,
@@ -479,7 +574,11 @@
         "min_firmware_version": "1.2.84",
         "sha256": "62ba7a169030476d4f87985d58f6a6f619c0f69cb5f9ee55af5f30c0c5701904",
         "size_bytes": 10368,
-        "version": "1.1.0"
+        "version": "1.1.0",
+        "category": [
+          "System",
+          "Software"
+        ]
       },
       "sha256": "62ba7a169030476d4f87985d58f6a6f619c0f69cb5f9ee55af5f30c0c5701904",
       "size": 10368,
@@ -498,7 +597,11 @@
         "min_firmware_version": "1.2.88",
         "sha256": "9a09e670839cd44515cc622192c39d26ec7a5b8d92a5208e9bee15ec54d27878",
         "size_bytes": 16384,
-        "version": "1.0.2"
+        "version": "1.0.2",
+        "category": [
+          "Games",
+          "Files"
+        ]
       },
       "sha256": "9a09e670839cd44515cc622192c39d26ec7a5b8d92a5208e9bee15ec54d27878",
       "size": 16384,
@@ -517,7 +620,11 @@
         "min_firmware_version": "1.1.23",
         "sha256": "e2d7a5ed38511ef0195c69badf3154730fa07da5de5d99ccb559cb5abad0a2ed",
         "size_bytes": 5344,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Firmware",
+          "Files"
+        ]
       },
       "sha256": "e2d7a5ed38511ef0195c69badf3154730fa07da5de5d99ccb559cb5abad0a2ed",
       "size": 5344,
@@ -536,7 +643,11 @@
         "min_firmware_version": "1.1.5",
         "sha256": "2626f53540422f8594a70d2ae73bf2bf53e312d6c3b3fa5d18b9a548f668ba78",
         "size_bytes": 3516,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Files",
+          "Diagnostics"
+        ]
       },
       "sha256": "2626f53540422f8594a70d2ae73bf2bf53e312d6c3b3fa5d18b9a548f668ba78",
       "size": 3516,
@@ -555,7 +666,12 @@
         "min_firmware_version": "1.2.31",
         "sha256": "76b13092fac7713676bd0aa77104b332e23dc406da7a629394ab2bdfe1830d5f",
         "size_bytes": 24136,
-        "version": "1.2.6"
+        "version": "1.2.6",
+        "category": [
+          "Developer",
+          "Diagnostics",
+          "Connectivity"
+        ]
       },
       "sha256": "76b13092fac7713676bd0aa77104b332e23dc406da7a629394ab2bdfe1830d5f",
       "size": 24136,
@@ -574,7 +690,11 @@
         "min_firmware_version": "1.1.24",
         "sha256": "68344680f7125a2b460ce2e9b5e2ed570c1292e0de1493ed3569a0e1e77cd901",
         "size_bytes": 3252,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Settings",
+          "System"
+        ]
       },
       "sha256": "68344680f7125a2b460ce2e9b5e2ed570c1292e0de1493ed3569a0e1e77cd901",
       "size": 3252,
@@ -593,7 +713,11 @@
         "min_firmware_version": "1.1.5",
         "sha256": "b21a0caf0da0c130fb6ba77e9a91866b74afa86ab86fe3a18c3f7fc6800a983b",
         "size_bytes": 7948,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "System",
+          "Launcher"
+        ]
       },
       "sha256": "b21a0caf0da0c130fb6ba77e9a91866b74afa86ab86fe3a18c3f7fc6800a983b",
       "size": 7948,
@@ -612,7 +736,11 @@
         "min_firmware_version": "1.1.24",
         "sha256": "aea1b9604702292eda69a6bd69ccdd6db784c161beb37783b32cad686ebce6ac",
         "size_bytes": 3788,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Settings",
+          "Appearance"
+        ]
       },
       "sha256": "aea1b9604702292eda69a6bd69ccdd6db784c161beb37783b32cad686ebce6ac",
       "size": 3788,
@@ -641,7 +769,11 @@
           ".txt",
           ".md"
         ],
-        "version": "0.2.0"
+        "version": "0.2.0",
+        "category": [
+          "Productivity",
+          "Files"
+        ]
       },
       "sha256": "663df91ced310c8a867bb24aac1027997fe174001f34c01e12aa1749da6abb00",
       "size": 20204,
@@ -660,7 +792,11 @@
         "min_firmware_version": "1.1.24",
         "sha256": "68537451a344af956ee36630eeafa33380498b780e9647b69d4d4c2554aae068",
         "size_bytes": 4364,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Settings",
+          "Time"
+        ]
       },
       "sha256": "68537451a344af956ee36630eeafa33380498b780e9647b69d4d4c2554aae068",
       "size": 4364,
@@ -679,7 +815,11 @@
         "min_firmware_version": "1.1.8",
         "sha256": "b4726ca23d3b15c614455210458646b64628333564ac1c324086bb8a956249af",
         "size_bytes": 16164,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Productivity",
+          "Time"
+        ]
       },
       "sha256": "b4726ca23d3b15c614455210458646b64628333564ac1c324086bb8a956249af",
       "size": 16164,
@@ -704,7 +844,12 @@
         ],
         "sha256": "a2f2db52df3821df24f2d4c168f14aaff93c5278624bf2e3e0071958fda102d7",
         "size_bytes": 22988,
-        "version": "0.1.1"
+        "version": "0.1.1",
+        "category": [
+          "Developer",
+          "Diagnostics",
+          "Hardware"
+        ]
       },
       "sha256": "a2f2db52df3821df24f2d4c168f14aaff93c5278624bf2e3e0071958fda102d7",
       "size": 22988,
@@ -723,7 +868,11 @@
         "min_firmware_version": "1.1.16",
         "sha256": "063047a55f2f6bd292724a9ccb0e4a974cedb1be5eacb265730ca2f28fd310b5",
         "size_bytes": 5076,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Connectivity",
+          "Developer"
+        ]
       },
       "sha256": "063047a55f2f6bd292724a9ccb0e4a974cedb1be5eacb265730ca2f28fd310b5",
       "size": 5076,
@@ -742,7 +891,11 @@
         "min_firmware_version": "1.1.24",
         "sha256": "85e11c24a6cbd6b92084c5eb7e45515c822d41d44e36427e78029fffc4ebe1f8",
         "size_bytes": 3928,
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "category": [
+          "Connectivity",
+          "Settings"
+        ]
       },
       "sha256": "85e11c24a6cbd6b92084c5eb7e45515c822d41d44e36427e78029fffc4ebe1f8",
       "size": 3928,
