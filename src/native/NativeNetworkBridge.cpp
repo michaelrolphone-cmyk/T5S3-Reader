@@ -1,6 +1,7 @@
 #include <T5AppApi.h>
 #include <T5NetworkApi.h>
 
+#include <esp_crt_bundle.h>
 #include <esp_http_client.h>
 #include <esp_task_wdt.h>
 #include <esp_wifi.h>
@@ -69,10 +70,17 @@ bool httpRequest(const char* url, uint8_t method, const t5_http_header_t* header
   }
 
   ResponseSink sink{response, responseCapacity};
+  const bool hasCallerCertificate = certPem && certPem[0];
   esp_http_client_config_t config = {};
   config.url = url;
-  config.transport_type = HTTP_TRANSPORT_OVER_SSL;
-  config.cert_pem = certPem && certPem[0] ? certPem : nullptr;
+  // Let esp_http_client select plain HTTP vs TLS from the URL. For public
+  // HTTPS endpoints, use the firmware's Mozilla-derived root bundle unless
+  // the application supplied a service-specific CA certificate.
+  config.transport_type = HTTP_TRANSPORT_UNKNOWN;
+  config.cert_pem = hasCallerCertificate ? certPem : nullptr;
+  if (!hasCallerCertificate && std::strncmp(url, "https://", 8) == 0) {
+    config.crt_bundle_attach = esp_crt_bundle_attach;
+  }
   config.timeout_ms = timeoutMs ? static_cast<int>(timeoutMs) : static_cast<int>(kDefaultTimeoutMs);
   config.event_handler = onHttpEvent;
   config.buffer_size = 4096;
