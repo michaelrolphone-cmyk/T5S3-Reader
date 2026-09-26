@@ -1,6 +1,6 @@
 {
   "min_firmware_version": "1.2.100",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "display_name": "Rom Manager",
   "file_name": "rom_manager.elf",
   "icon": "solid:f11b",
