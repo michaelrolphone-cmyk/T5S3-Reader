@@ -25,6 +25,7 @@ using CrossPointHttpClientSecure = WiFiClientSecure;
 #include <utility>
 
 #include "runtime/network/NetworkService.h"
+#include "runtime/network/SavedNetworkConnection.h"
 #include "runtime/streams/HttpStreamTransfer.h"
 #include "runtime/streams/HttpUrlValidation.h"
 #include "util/UrlUtils.h"
@@ -46,13 +47,7 @@ void logHttpMemory(const char* stage) {
 }
 
 bool waitForNetworkReady() {
-  if (RuntimeNetwork::ready()) return true;
-  const uint32_t started = millis();
-  while (millis() - started < kNetworkReadyTimeoutMs) {
-    if (RuntimeNetwork::ready()) return true;
-    delay(50);
-  }
-  return RuntimeNetwork::ready();
+  return RuntimeNetwork::ensureSavedConnection(kNetworkReadyTimeoutMs);
 }
 
 // The native-app invocation is the only task authorized to request its stream
