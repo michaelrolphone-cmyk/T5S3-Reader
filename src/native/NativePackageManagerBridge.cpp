@@ -299,13 +299,59 @@ bool installArchive(const char* archive) {
     return result.result == RuntimePackages::OrdinaryInstallResult::Installed;
 }
 
+bool replacePackage(const char* folder) {
+    if (callerKind() != 4) return false;
+    std::unique_ptr<RuntimePackages::OrdinaryPackagePlan> plan(
+        new (std::nothrow) RuntimePackages::OrdinaryPackagePlan{});
+    if (!plan || !sourceMetadata(folder, *plan)) return false;
+    const auto& identity = plan->identity;
+    RuntimePackages::OrdinaryTransactionPaths paths{};
+    if (!RuntimePackages::ordinaryTransactionPaths(identity.kind, identity.id, paths) ||
+        !Storage.exists(paths.target) || Storage.exists(paths.stage) ||
+        Storage.exists(paths.backup) || Storage.exists(paths.removing) ||
+        RuntimePackages::systemPackageUseGate().pinned(paths.target))
+        return false;
+    RuntimePackages::Identity installed{};
+    if (!RuntimePackages::inspectInstalledOrdinarySdDirectory(
+            paths.target, kPolicy, availableCapability, installed) ||
+        installed.kind != identity.kind || std::strcmp(installed.id, identity.id))
+        return false;
+    const auto order = RuntimePackages::comparePackageVersions(identity.version, installed.version);
+    if (order != RuntimePackages::VersionOrder::Older &&
+        order != RuntimePackages::VersionOrder::Newer)
+        return false;
+    if (RuntimePackages::preflightOrdinaryPackage(*plan, kPolicy, availableCapability) !=
+        RuntimePackages::PreflightResult::ReadyForContentVerification)
+        return false;
+
+    Mutation lock;
+    if (!lock) return false;
+    std::string source;
+    if (!folderPath(folder, source)) return false;
+    const auto result = RuntimePackages::installOrdinaryFromSd(
+        source.c_str(), kPolicy, availableCapability, true);
+    const bool okay = result.result == RuntimePackages::OrdinaryInstallResult::Installed;
+    if (okay) {
+        clearInstalledCache();
+        if (identity.kind == RuntimePackages::Kind::Application)
+            (void)NativeFileAssociations::rebuild();
+    }
+    return okay;
+}
+
 bool uninstall(uint8_t kind, const char* id) {
     if (!permitted(kind) || !RuntimePackages::safeId(id)) return false;
     Mutation lock;
     if (!lock) return false;
-    return RuntimePackages::uninstallOrdinaryFromSd(
-        static_cast<RuntimePackages::Kind>(kind), id, kPolicy, availableCapability) ==
-        RuntimePackages::OrdinaryTransactionResult::Removed;
+    const auto result = RuntimePackages::uninstallOrdinaryFromSd(
+        static_cast<RuntimePackages::Kind>(kind), id, kPolicy, availableCapability);
+    const bool okay = result == RuntimePackages::OrdinaryTransactionResult::Removed;
+    if (okay) {
+        clearInstalledCache();
+        if (kind == T5_PACKAGE_APPLICATION)
+            (void)NativeFileAssociations::rebuild();
+    }
+    return okay;
 }
 
 bool onlineRefresh() {
