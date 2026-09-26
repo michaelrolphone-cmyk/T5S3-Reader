@@ -10,6 +10,7 @@
 #include <cstring>
 
 #include "runtime/network/NetworkService.h"
+#include "runtime/network/SavedNetworkConnection.h"
 
 namespace {
 constexpr uint32_t kMaxHeaders = 16;
@@ -62,7 +63,7 @@ bool httpRequest(const char* url, uint8_t method, const t5_http_header_t* header
   if (response && responseCapacity) response[0] = '\0';
 
   const uint32_t connectBudget = std::min(timeoutMs ? timeoutMs : kDefaultTimeoutMs, 15000u);
-  if (!RuntimeNetwork::ensureConnected(connectBudget)) {
+  if (!RuntimeNetwork::ensureSavedConnection(connectBudget)) {
     result->transport_error = ESP_ERR_INVALID_STATE;
     return false;
   }
