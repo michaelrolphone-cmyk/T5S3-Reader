@@ -83,6 +83,9 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
 "$binary"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/rom_manager_vimm_parser_test.c" -o "$binary"
+"$binary"
 # Exercise actual Driver Manager and Package Manager app code, including
 # cancellation, offline recovery and independently confirmed uninstall.
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
