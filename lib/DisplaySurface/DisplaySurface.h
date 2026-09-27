@@ -15,6 +15,15 @@ enum class DisplayPixelFormat : uint8_t {
   Rgb565 = 5,
 };
 
+static_assert(static_cast<uint8_t>(DisplayPixelFormat::Mono1) == 1u);
+static_assert(static_cast<uint8_t>(DisplayPixelFormat::Gray2) == 2u);
+static_assert(static_cast<uint8_t>(DisplayPixelFormat::Gray4) == 3u);
+static_assert(static_cast<uint8_t>(DisplayPixelFormat::Gray8) == 4u);
+static_assert(static_cast<uint8_t>(DisplayPixelFormat::Rgb565) == 5u);
+
+// These ordinals intentionally preserve the legacy HalDisplay refresh-mode
+// values. They are NOT the provider-ABI presentation intent ordinals in
+// RiscDisplayOutputV1.h. Future adapters must translate explicitly, never cast.
 enum class DisplayPresentMode : uint8_t {
   Clean = 0,
   Quality = 1,

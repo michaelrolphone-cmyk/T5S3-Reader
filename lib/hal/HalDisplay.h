@@ -90,6 +90,19 @@ class HalDisplay : public DisplaySurface {
   static_assert(validateDisplaySurfaceInfo(SURFACE_INFO) == DisplaySurfaceValidationError::None,
                 "HalDisplay surface metadata violates the generic display contract");
 
+  // The compiled-in compatibility backend is qualified only for the two
+  // currently shipped 4.7-inch e-paper profiles. Do not make a new panel fit
+  // by editing these numbers: new display hardware belongs behind display.output.
+  static_assert(DISPLAY_WIDTH == 960u && DISPLAY_HEIGHT == 540u,
+                "legacy e-paper scan geometry changed; use a display provider for new hardware");
+  static_assert(VISIBLE_WIDTH == 540u && VISIBLE_HEIGHT == 960u,
+                "legacy e-paper logical geometry changed; use a display provider for new hardware");
+  static_assert(DISPLAY_WIDTH_BYTES == 120u, "legacy MONO1 stride changed unexpectedly");
+  static_assert(BUFFER_SIZE == 64800u, "legacy MONO1 framebuffer size changed unexpectedly");
+  static_assert(SAFE_INSETS.top == 9u && SAFE_INSETS.right == 3u &&
+                    SAFE_INSETS.bottom == 9u && SAFE_INSETS.left == 3u,
+                "legacy e-paper safe insets changed unexpectedly");
+
   // Frame buffer operations
   void clearScreen(uint8_t color = 0xFF) const;
   void drawImage(const uint8_t* imageData, uint16_t x, uint16_t y, uint16_t w, uint16_t h,

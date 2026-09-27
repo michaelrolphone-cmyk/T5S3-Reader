@@ -152,3 +152,19 @@ assert "displayBuffer(" not in epd_begin_body
 assert "display.begin(false);" in setup_body
 assert "display.begin();" not in setup_body
 print("display retained-image initialization contract: ok")
+
+
+# Current compiled-in HalDisplay is qualified only for the shipped 4.7-inch
+# e-paper boards. Changing this geometry under the compatibility backend must
+# be a compile break; new panels belong behind display.output.
+for invariant in (
+    "static_assert(DISPLAY_WIDTH == 960u && DISPLAY_HEIGHT == 540u",
+    "static_assert(VISIBLE_WIDTH == 540u && VISIBLE_HEIGHT == 960u",
+    "static_assert(DISPLAY_WIDTH_BYTES == 120u",
+    "static_assert(BUFFER_SIZE == 64800u",
+    "SAFE_INSETS.top == 9u",
+):
+    assert invariant in hal, invariant
+
+assert "They are NOT the provider-ABI presentation intent ordinals" in surface
+print("display board-profile and ordinal tripwires: ok")

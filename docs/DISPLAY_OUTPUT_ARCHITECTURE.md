@@ -155,3 +155,20 @@ EPD47 also resets its software `displayReady` flag before every re-init so a
 failed restart cannot inherit a stale ready state. Only after metadata preflight,
 backend readiness, and transactional renderer binding succeed may normal UI
 rendering replace the retained image.
+
+
+### Current-board qualification pins
+
+While `HalDisplay` remains as the compatibility backend, it is compile-time
+qualified only for the currently shipped 4.7-inch e-paper profiles. Its physical
+scan size (960×540), portrait logical size (540×960), MONO1 stride (120 bytes),
+framebuffer size (64,800 bytes), and current safe insets are pinned with
+`static_assert` checks. Changing those values is intentionally a build break.
+A genuinely different resolution or panel must enter through the display
+provider/profile architecture instead of weakening the legacy compatibility
+backend.
+
+The internal compatibility `DisplayPresentMode` ordinals remain the old
+HalDisplay refresh ordinals and are deliberately *not* the same numeric values
+as `RiscDisplayOutputV1` presentation intents. A future provider adapter must
+map them explicitly rather than cast the enum numerically.
