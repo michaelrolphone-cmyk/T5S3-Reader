@@ -60,7 +60,8 @@ class RoundedRaffTheme : public BaseTheme {
                 const std::function<std::string(int index)>& rowSubtitle = nullptr,
                 const std::function<UIIcon(int index)>& rowIcon = nullptr,
                 const std::function<std::string(int index)>& rowValue = nullptr,
-                bool highlightValue = false, TextRole textRole = TextRole::System) const override;
+                bool highlightValue = false, TextRole textRole = TextRole::System,
+                const std::function<const char*(int index)>& rowFontAwesomeIcon = nullptr) const override;
   void drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                        const char* btn4) const override;
   std::array<Rect, 4> getButtonHintTouchBounds(const GfxRenderer& renderer) const override;
