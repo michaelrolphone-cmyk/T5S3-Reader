@@ -2,17 +2,6 @@
 
 ## 2026-09-26 scan
 
-### 3. Rom Manager title-detail Up/Down scrolling is reversed
-
-- **Status:** Open PR #212 on branch `fix/rom-manager-detail-scroll-direction` targeting `master`; fix implemented and Rom Manager patch version bumped from `1.0.16` to `1.0.17`.
-
-- **Affected code:** `Apps/rom_manager.c`, `show_vimm_detail(const char *name, const char *path)`.
-- **Trigger / reproduction:** Browse Vimm Vault, open a Game Boy title whose detail text is long enough to scroll, then use the controls labelled **Up** and **Down**.
-- **Observed / logically demonstrated failure:** The chrome labels `previous_label = \"Up\"` and `next_label = \"Down\"`, but `T5_UI_EVENT_PREVIOUS` increments `scroll` while `T5_UI_EVENT_NEXT` decrements it. With `scroll == 0`, Up advances deeper into the document and Down cannot move at all; after scrolling, Down moves toward the top.
-- **Likely root cause:** The scroll-delta conditions were inverted when the title detail view was added.
-- **Impact:** Physical/button navigation contradicts the UI labels and the rest of the application navigation model, making long title details awkward to read.
-- **Repair direction:** On **Up/PREVIOUS**, decrement `scroll` when `scroll > 0`; on **Down/NEXT**, increment `scroll` when `scroll < result.max_scroll_lines`. Add a focused test that checks both boundary conditions and direction.
-
 ## Duplicate check performed
 
 At scan time, `bugs.md` did not yet exist on `master`, the repository has GitHub Issues disabled/no issue records returned, and the current open PRs were reviewed for overlap. PR #198 concerns GT911 touch capture, PR #194 concerns global Home shortcuts, and PR #96 is the U1 implementation branch. Closed PR #183 introduced the Rom Manager title-detail view but does not document the reversed Up/Down behavior above.
@@ -89,6 +78,8 @@ These defects were verified against the current `bugs.md`, the current open PR s
 ## 2026-09-26 scan — 13:21 MDT
 
 ### 10. App Store can act on stale release indices after a failed catalog refresh
+
+- **Status:** Incomplete on branch `fix/app-store-stale-release-indices`; no PR. App Store version bumped to `1.0.7` and focused regression test added. Production `Apps/app_store.c` write and test-runner registration are blocked; resume this same branch and apply the transactional SD Inbox → Releases transition before marking fixed.
 
 - **Affected code:** `Apps/app_store.c`, the view transition into the releases/catalog screen, `refresh_releases()`, and the release-row activation path using `release_indices[]`.
 - **Trigger / reproduction:** Open App Store, first visit a screen that populates the shared row buffers from SD/inbox packages, then switch to the online releases/catalog view while forcing the online catalog refresh to fail (network/TLS/catalog error).
