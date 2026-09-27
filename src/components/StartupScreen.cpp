@@ -1,11 +1,29 @@
 #include "StartupScreen.h"
 
 #include <Arduino.h>
+#include <cstring>
+
+#if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
+#include <T5HardwareTakeover.h>
+#include <T5VideoApi.h>
+#include <esp_err.h>
+#include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
 
 namespace StartupScreen {
 namespace {
 
 bool fadePending = false;  // Accessed only while holding RenderLock.
+
+enum class BootBackend : uint8_t {
+  None,
+  Renderer,
+  Video,
+};
+
+BootBackend bootBackend = BootBackend::None;
 
 constexpr unsigned long kRevealBudgetMs = 3500;
 
@@ -72,51 +90,561 @@ void drawBootFrame(GfxRenderer& renderer, int rows) {
   }
 }
 
-}  // namespace
-
-void boot(GfxRenderer& renderer) {
-  fadePending = false;
-
+void bootWithRenderer(GfxRenderer& renderer) {
   const auto mode = renderer.getRenderMode();
   renderer.setRenderMode(GfxRenderer::BW);
 
-  //
-  // Initial panel refresh
-  //
-  // Do this BEFORE starting the reveal timer. HALF_REFRESH can be relatively
-  // slow on the e-paper panel, and previously that time consumed the entire
-  // animation budget before the reveal animation even began.
-  //
+  // Initial panel refresh is intentionally separate from the reveal timer.
   drawBootFrame(renderer, 1);
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
 
   delay(1);
 
-  //
-  // Reveal timing begins only after the initial panel refresh has completed.
-  //
   const unsigned long revealStart = millis();
 
   for (int rows = 2; rows <= 4; ++rows) {
-    //
-    // If the intermediate FAST_REFRESH frames themselves are unusually slow,
-    // skip remaining intermediate rows and finish with the complete logo.
-    //
-    // The initial HALF_REFRESH can no longer trigger this condition.
-    //
-    if (rows < 4 &&
-        millis() - revealStart >= kRevealBudgetMs) {
+    if (rows < 4 && millis() - revealStart >= kRevealBudgetMs) {
       rows = 4;
     }
 
     drawBootFrame(renderer, rows);
-
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
-
     delay(1);
   }
 
   renderer.setRenderMode(mode);
+  bootBackend = BootBackend::Renderer;
+}
+
+void finishRendererBoot(GfxRenderer& renderer) {
+  const auto mode = renderer.getRenderMode();
+  renderer.setRenderMode(GfxRenderer::BW);
+
+  constexpr uint8_t bayer[4][4] = {
+      {0, 8, 2, 10},
+      {12, 4, 14, 6},
+      {3, 11, 1, 9},
+      {15, 7, 13, 5},
+  };
+
+  const int x = (renderer.getScreenWidth() - kLogoSize) / 2;
+  const int y = (renderer.getScreenHeight() - kFrameHeight) / 2;
+
+  constexpr int fadeThresholds[] = {
+      4,
+      8,
+      12,
+  };
+
+  for (const int threshold : fadeThresholds) {
+    drawBootFrame(renderer, 4);
+
+    for (int py = 0; py < kFrameHeight; ++py) {
+      for (int px = 0; px < kLogoSize; ++px) {
+        if (bayer[py & 3][px & 3] < threshold) {
+          renderer.drawPixel(x + px, y + py, false);
+        }
+      }
+
+      if ((py & 63) == 63) {
+        delay(1);
+      }
+    }
+
+    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+  }
+
+  renderer.setRenderMode(mode);
+  renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
+}
+
+#if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
+
+constexpr char kBootVideoTag[] = "boot_video";
+constexpr uint8_t kDropFrames = 24;
+constexpr uint8_t kFadeFrames = 6;
+constexpr uint8_t kPulseFrames = 48;
+constexpr uint8_t kDropStartCoverage = 8;
+constexpr uint8_t kDropEndCoverage = 56;
+constexpr uint8_t kPulseMinCoverage = 24;
+constexpr uint8_t kPulseMaxCoverage = 60;
+constexpr uint32_t kMinimumPulseMs = 600;
+constexpr uint32_t kSubmitTimeoutMs = 350;
+constexpr uint32_t kIdleTimeoutMs = 1800;
+
+extern "C" esp_err_t native_hardware_takeover_begin(uint32_t requested);
+extern "C" esp_err_t native_hardware_takeover_end(uint32_t requested);
+
+const t5_video_api_v1* videoApi = nullptr;
+t5_video_surface_v1 videoSurface{};
+bool videoTakeoverActive = false;
+bool videoStarted = false;
+TaskHandle_t pulseTaskHandle = nullptr;
+volatile bool pulseStopRequested = false;
+volatile uint8_t lastPulseCoverage = kDropEndCoverage;
+uint32_t pulseStartedAtMs = 0;
+
+constexpr uint8_t kBayer8[8][8] = {
+    {0, 48, 12, 60, 3, 51, 15, 63},
+    {32, 16, 44, 28, 35, 19, 47, 31},
+    {8, 56, 4, 52, 11, 59, 7, 55},
+    {40, 24, 36, 20, 43, 27, 39, 23},
+    {2, 50, 14, 62, 1, 49, 13, 61},
+    {34, 18, 46, 30, 33, 17, 45, 29},
+    {10, 58, 6, 54, 9, 57, 5, 53},
+    {42, 26, 38, 22, 41, 25, 37, 21},
+};
+
+struct VideoRect {
+  int x;
+  int y;
+  int width;
+  int height;
+};
+
+constexpr VideoRect kLogoRects[] = {
+    {10, 14, 16, 16},
+    {31, 14, 16, 16},
+    {52, 14, 16, 16},
+    {73, 14, 16, 16},
+    {94, 14, 16, 16},
+    {10, 38, 47, 16},
+    {63, 38, 47, 16},
+    {10, 62, 100, 16},
+    {10, 86, 100, 24},
+};
+
+bool elapsedAtLeast(uint32_t start, uint32_t duration) {
+  return static_cast<uint32_t>(millis() - start) >= duration;
+}
+
+bool validateVideoApi(const t5_video_api_v1* api) {
+  return api != nullptr && api->api_version == T5_VIDEO_API_VERSION &&
+         api->struct_size >= sizeof(t5_video_api_v1) && api->start != nullptr &&
+         api->backbuffer != nullptr && api->can_submit != nullptr &&
+         api->submit != nullptr && api->pending != nullptr &&
+         api->frame_counter != nullptr && api->stop != nullptr;
+}
+
+bool validateVideoSurface(const t5_video_surface_v1& surface) {
+  if (surface.pixel_format != T5_VIDEO_PIXEL_MONO_1BPP_MSB) {
+    return false;
+  }
+  if (surface.width < static_cast<uint16_t>(kFrameHeight) ||
+      surface.height < static_cast<uint16_t>(kLogoSize)) {
+    return false;
+  }
+  return surface.stride_bytes >= static_cast<uint16_t>((surface.width + 7U) / 8U);
+}
+
+uint8_t whiteByte() {
+  return (videoSurface.flags & T5_VIDEO_FLAG_ONE_IS_BLACK) != 0U ? 0x00U : 0xFFU;
+}
+
+void setPhysicalPixel(uint8_t* buffer, size_t bufferSize, int logicalX,
+                      int logicalY, bool black) {
+  if (buffer == nullptr || logicalX < 0 || logicalY < 0 ||
+      logicalX >= static_cast<int>(videoSurface.height) ||
+      logicalY >= static_cast<int>(videoSurface.width)) {
+    return;
+  }
+
+  // The fast-video surface is physical landscape. RiscRTE's boot artwork is
+  // authored in portrait coordinates: logical (x,y) -> panel (y, H-1-x).
+  const int panelX = logicalY;
+  const int panelY = static_cast<int>(videoSurface.height) - 1 - logicalX;
+  const size_t offset = static_cast<size_t>(panelY) * videoSurface.stride_bytes +
+                        static_cast<size_t>(panelX >> 3);
+  if (offset >= bufferSize) {
+    return;
+  }
+
+  const uint8_t mask = static_cast<uint8_t>(0x80U >> (panelX & 7));
+  const bool oneIsBlack =
+      (videoSurface.flags & T5_VIDEO_FLAG_ONE_IS_BLACK) != 0U;
+  const bool setBit = black == oneIsBlack;
+  if (setBit) {
+    buffer[offset] |= mask;
+  } else {
+    buffer[offset] &= static_cast<uint8_t>(~mask);
+  }
+}
+
+bool ditherPixel(int x, int y, uint8_t coverage) {
+  return coverage >= 64U || kBayer8[y & 7][x & 7] < coverage;
+}
+
+bool insideRoundedRect(int px, int py, int width, int height, int radius) {
+  if (radius <= 0 || (px >= radius && px < width - radius) ||
+      (py >= radius && py < height - radius)) {
+    return true;
+  }
+
+  const int centerX = px < radius ? radius - 1 : width - radius;
+  const int centerY = py < radius ? radius - 1 : height - radius;
+  const int dx = px - centerX;
+  const int dy = py - centerY;
+  return dx * dx + dy * dy <= radius * radius;
+}
+
+void drawDitheredRoundedRect(uint8_t* buffer, size_t bufferSize, int x, int y,
+                             int width, int height, int radius,
+                             uint8_t coverage) {
+  for (int py = 0; py < height; ++py) {
+    for (int px = 0; px < width; ++px) {
+      const int screenX = x + px;
+      const int screenY = y + py;
+      if (insideRoundedRect(px, py, width, height, radius) &&
+          ditherPixel(screenX, screenY, coverage)) {
+        setPhysicalPixel(buffer, bufferSize, screenX, screenY, true);
+      }
+    }
+  }
+}
+
+const uint8_t* glyphFor(char ch) {
+  static constexpr uint8_t blank[5] = {0, 0, 0, 0, 0};
+  static constexpr uint8_t letters[26][5] = {
+      {0x7E, 0x09, 0x09, 0x09, 0x7E},
+      {0x7F, 0x49, 0x49, 0x49, 0x36},
+      {0x3E, 0x41, 0x41, 0x41, 0x22},
+      {0x7F, 0x41, 0x41, 0x22, 0x1C},
+      {0x7F, 0x49, 0x49, 0x49, 0x41},
+      {0x7F, 0x09, 0x09, 0x09, 0x01},
+      {0x3E, 0x41, 0x49, 0x49, 0x7A},
+      {0x7F, 0x08, 0x08, 0x08, 0x7F},
+      {0x00, 0x41, 0x7F, 0x41, 0x00},
+      {0x20, 0x40, 0x41, 0x3F, 0x01},
+      {0x7F, 0x08, 0x14, 0x22, 0x41},
+      {0x7F, 0x40, 0x40, 0x40, 0x40},
+      {0x7F, 0x02, 0x0C, 0x02, 0x7F},
+      {0x7F, 0x04, 0x08, 0x10, 0x7F},
+      {0x3E, 0x41, 0x41, 0x41, 0x3E},
+      {0x7F, 0x09, 0x09, 0x09, 0x06},
+      {0x3E, 0x41, 0x51, 0x21, 0x5E},
+      {0x7F, 0x09, 0x19, 0x29, 0x46},
+      {0x26, 0x49, 0x49, 0x49, 0x32},
+      {0x01, 0x01, 0x7F, 0x01, 0x01},
+      {0x3F, 0x40, 0x40, 0x40, 0x3F},
+      {0x1F, 0x20, 0x40, 0x20, 0x1F},
+      {0x7F, 0x20, 0x18, 0x20, 0x7F},
+      {0x63, 0x14, 0x08, 0x14, 0x63},
+      {0x03, 0x04, 0x78, 0x04, 0x03},
+      {0x61, 0x51, 0x49, 0x45, 0x43},
+  };
+  static constexpr uint8_t dot[5] = {0, 0x60, 0x60, 0, 0};
+
+  if (ch >= 'a' && ch <= 'z') {
+    ch = static_cast<char>(ch - ('a' - 'A'));
+  }
+  if (ch >= 'A' && ch <= 'Z') {
+    return letters[ch - 'A'];
+  }
+  if (ch == '.') {
+    return dot;
+  }
+  return blank;
+}
+
+void drawDitheredText(uint8_t* buffer, size_t bufferSize, int x, int y,
+                      const char* text, int scale, uint8_t coverage) {
+  if (text == nullptr || scale <= 0) {
+    return;
+  }
+
+  for (const char* p = text; *p != '\0'; ++p) {
+    const uint8_t* glyph = glyphFor(*p);
+    for (int column = 0; column < 5; ++column) {
+      for (int row = 0; row < 7; ++row) {
+        if ((glyph[column] & (1U << row)) == 0U) {
+          continue;
+        }
+        for (int sy = 0; sy < scale; ++sy) {
+          for (int sx = 0; sx < scale; ++sx) {
+            const int screenX = x + column * scale + sx;
+            const int screenY = y + row * scale + sy;
+            if (ditherPixel(screenX, screenY, coverage)) {
+              setPhysicalPixel(buffer, bufferSize, screenX, screenY, true);
+            }
+          }
+        }
+      }
+    }
+    x += 6 * scale;
+  }
+}
+
+int textWidth(const char* text, int scale) {
+  if (text == nullptr || text[0] == '\0') {
+    return 0;
+  }
+  return static_cast<int>((std::strlen(text) * 6U - 1U) *
+                          static_cast<size_t>(scale));
+}
+
+void drawVideoLogo(uint8_t* buffer, size_t bufferSize, int frameY,
+                   uint8_t logoCoverage) {
+  const int logicalWidth = static_cast<int>(videoSurface.height);
+  const int frameX = (logicalWidth - kLogoSize) / 2;
+
+  for (const auto& rect : kLogoRects) {
+    drawDitheredRoundedRect(buffer, bufferSize, frameX + rect.x * 2,
+                            frameY + rect.y * 2, rect.width * 2,
+                            rect.height * 2, 4, logoCoverage);
+  }
+
+  constexpr char title[] = "RISCRTE";
+  constexpr char status[] = "STARTING...";
+  constexpr int titleScale = 4;
+  constexpr int statusScale = 2;
+  const uint8_t titleCoverage =
+      static_cast<uint8_t>(logoCoverage > 56U ? logoCoverage : 56U);
+
+  drawDitheredText(buffer, bufferSize,
+                   (logicalWidth - textWidth(title, titleScale)) / 2,
+                   frameY + 244, title, titleScale, titleCoverage);
+  drawDitheredText(buffer, bufferSize,
+                   (logicalWidth - textWidth(status, statusScale)) / 2,
+                   frameY + 291, status, statusScale, 52U);
+}
+
+bool waitUntilVideoCanSubmit(uint32_t timeoutMs) {
+  const uint32_t start = millis();
+  while (videoApi != nullptr && !videoApi->can_submit()) {
+    if (elapsedAtLeast(start, timeoutMs)) {
+      return false;
+    }
+    delay(1);
+  }
+  return videoApi != nullptr;
+}
+
+bool submitVideoFrame(int frameY, uint8_t coverage) {
+  if (!videoStarted || videoApi == nullptr ||
+      !waitUntilVideoCanSubmit(kSubmitTimeoutMs)) {
+    return false;
+  }
+
+  size_t bufferSize = 0;
+  uint8_t* buffer = videoApi->backbuffer(&bufferSize);
+  const size_t requiredSize =
+      static_cast<size_t>(videoSurface.stride_bytes) * videoSurface.height;
+  if (buffer == nullptr || bufferSize < requiredSize) {
+    return false;
+  }
+
+  std::memset(buffer, whiteByte(), bufferSize);
+  drawVideoLogo(buffer, bufferSize, frameY, coverage);
+  return videoApi->submit(0, 0);
+}
+
+void waitForVideoIdle(uint32_t timeoutMs) {
+  if (videoApi == nullptr) {
+    return;
+  }
+  const uint32_t start = millis();
+  while (videoApi->pending() && !elapsedAtLeast(start, timeoutMs)) {
+    delay(1);
+  }
+}
+
+void releaseVideoOwner() {
+  pulseStopRequested = true;
+
+  if (videoStarted && videoApi != nullptr) {
+    videoApi->stop();
+  }
+  videoStarted = false;
+  videoApi = nullptr;
+  videoSurface = {};
+
+  if (videoTakeoverActive) {
+    const esp_err_t rc =
+        native_hardware_takeover_end(T5_HARDWARE_TAKEOVER_DISPLAY);
+    if (rc != ESP_OK) {
+      ESP_LOGE(kBootVideoTag, "display takeover release failed: %s",
+               esp_err_to_name(rc));
+    }
+  }
+  videoTakeoverActive = false;
+}
+
+void pulseTask(void*) {
+  uint8_t phase = 0;
+  const int targetY =
+      (static_cast<int>(videoSurface.width) - kFrameHeight) / 2;
+
+  while (!pulseStopRequested) {
+    const uint8_t ramp = phase < (kPulseFrames / 2U)
+                             ? phase
+                             : static_cast<uint8_t>(kPulseFrames - 1U - phase);
+    const uint32_t t =
+        static_cast<uint32_t>(ramp) * 1024U / (kPulseFrames / 2U - 1U);
+    const uint32_t smooth =
+        static_cast<uint32_t>((static_cast<uint64_t>(t) * t *
+                               (3072U - 2U * t)) /
+                              (1024ULL * 1024ULL));
+    const uint8_t coverage = static_cast<uint8_t>(
+        kPulseMinCoverage +
+        (static_cast<uint32_t>(kPulseMaxCoverage - kPulseMinCoverage) *
+         smooth) /
+            1024U);
+
+    if (submitVideoFrame(targetY, coverage)) {
+      lastPulseCoverage = coverage;
+      phase = static_cast<uint8_t>((phase + 1U) % kPulseFrames);
+    } else {
+      delay(2);
+    }
+  }
+
+  pulseTaskHandle = nullptr;
+  vTaskDelete(nullptr);
+}
+
+bool startPulseTask() {
+  pulseStopRequested = false;
+  lastPulseCoverage = kDropEndCoverage;
+  pulseStartedAtMs = millis();
+  const BaseType_t rc = xTaskCreatePinnedToCore(
+      pulseTask, "boot_pulse", 4096, nullptr, 1, &pulseTaskHandle, 0);
+  return rc == pdPASS;
+}
+
+void stopPulseTask() {
+  if (pulseTaskHandle == nullptr) {
+    return;
+  }
+
+  pulseStopRequested = true;
+  const uint32_t start = millis();
+  while (pulseTaskHandle != nullptr && !elapsedAtLeast(start, 1000U)) {
+    delay(1);
+  }
+
+  if (pulseTaskHandle != nullptr) {
+    TaskHandle_t stuckTask = pulseTaskHandle;
+    pulseTaskHandle = nullptr;
+    vTaskDelete(stuckTask);
+    ESP_LOGW(kBootVideoTag, "forced stalled pulse task to stop");
+  }
+}
+
+bool renderDropIn() {
+  const int targetY =
+      (static_cast<int>(videoSurface.width) - kFrameHeight) / 2;
+  const int startY = -kFrameHeight;
+  const int travel = targetY - startY;
+
+  for (uint8_t frame = 0; frame < kDropFrames; ++frame) {
+    const uint32_t t =
+        static_cast<uint32_t>(frame) * 1024U / (kDropFrames - 1U);
+    const uint32_t inverse = 1024U - t;
+    const uint32_t eased =
+        1024U - (inverse * inverse * inverse) / (1024U * 1024U);
+    const int frameY = startY +
+                       static_cast<int>((static_cast<int64_t>(travel) * eased) /
+                                        1024);
+    const uint8_t coverage = static_cast<uint8_t>(
+        kDropStartCoverage +
+        (static_cast<uint32_t>(kDropEndCoverage - kDropStartCoverage) *
+         eased) /
+            1024U);
+
+    if (!submitVideoFrame(frameY, coverage)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool bootWithVideo(GfxRenderer& renderer) {
+  const auto mode = renderer.getRenderMode();
+  renderer.setRenderMode(GfxRenderer::BW);
+  renderer.clearScreen();
+  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  renderer.setRenderMode(mode);
+
+  const esp_err_t takeoverRc =
+      native_hardware_takeover_begin(T5_HARDWARE_TAKEOVER_DISPLAY);
+  if (takeoverRc != ESP_OK) {
+    ESP_LOGW(kBootVideoTag, "display takeover unavailable: %s",
+             esp_err_to_name(takeoverRc));
+    return false;
+  }
+  videoTakeoverActive = true;
+
+  videoApi = t5_video_get_api(T5_VIDEO_API_VERSION);
+  if (!validateVideoApi(videoApi) || !videoApi->start(&videoSurface)) {
+    ESP_LOGE(kBootVideoTag, "EPD video service did not start");
+    releaseVideoOwner();
+    return false;
+  }
+  videoStarted = true;
+
+  if (!validateVideoSurface(videoSurface)) {
+    ESP_LOGE(kBootVideoTag,
+             "unsupported video surface %ux%u stride=%u format=%u",
+             videoSurface.width, videoSurface.height,
+             videoSurface.stride_bytes, videoSurface.pixel_format);
+    releaseVideoOwner();
+    return false;
+  }
+
+  if (!renderDropIn() || !startPulseTask()) {
+    ESP_LOGE(kBootVideoTag, "boot animation could not enter pulse state");
+    stopPulseTask();
+    releaseVideoOwner();
+    return false;
+  }
+
+  bootBackend = BootBackend::Video;
+  return true;
+}
+
+void finishVideoBoot(GfxRenderer& renderer) {
+  while (!elapsedAtLeast(pulseStartedAtMs, kMinimumPulseMs)) {
+    delay(1);
+  }
+
+  stopPulseTask();
+
+  const int targetY =
+      (static_cast<int>(videoSurface.width) - kFrameHeight) / 2;
+  const uint8_t startCoverage = lastPulseCoverage;
+  for (uint8_t frame = 1; frame <= kFadeFrames; ++frame) {
+    const uint32_t remaining = kFadeFrames - frame;
+    const uint8_t coverage = static_cast<uint8_t>(
+        (static_cast<uint32_t>(startCoverage) * remaining * remaining) /
+        (kFadeFrames * kFadeFrames));
+    if (!submitVideoFrame(targetY, coverage)) {
+      break;
+    }
+  }
+
+  waitForVideoIdle(kIdleTimeoutMs);
+  releaseVideoOwner();
+  renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
+}
+
+#endif
+
+}  // namespace
+
+void boot(GfxRenderer& renderer) {
+  fadePending = false;
+  bootBackend = BootBackend::None;
+
+#if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
+  if (bootWithVideo(renderer)) {
+    fadePending = true;
+    return;
+  }
+#endif
+
+  bootWithRenderer(renderer);
+  fadePending = true;
 }
 
 void armBootFade() {
@@ -128,86 +656,20 @@ void finishBoot(GfxRenderer& renderer) {
     return;
   }
 
-  // One-shot. Later Home redraws must never replay the splash fade.
   fadePending = false;
 
-  const auto mode = renderer.getRenderMode();
-  renderer.setRenderMode(GfxRenderer::BW);
-
-  //
-  // 4x4 Bayer ordered-dither matrix.
-  //
-  // We erase progressively more pixels from the complete logo at each stage.
-  //
-  constexpr uint8_t bayer[4][4] = {
-      {0,  8,  2, 10},
-      {12, 4, 14,  6},
-      {3, 11,  1,  9},
-      {15, 7, 13,  5},
-  };
-
-  const int x = (renderer.getScreenWidth() - kLogoSize) / 2;
-  const int y = (renderer.getScreenHeight() - kFrameHeight) / 2;
-
-  //
-  // Exactly three visible fade stages.
-  //
-  //   4  = 25% erased
-  //   8  = 50% erased
-  //   12 = 75% erased
-  //
-  // Do NOT put an elapsed-time cutoff around these frames. A physical
-  // e-paper FAST_REFRESH can take long enough to exhaust a short timer,
-  // which previously caused the fade to render one frame and then jump
-  // directly to Home.
-  //
-  constexpr int fadeThresholds[] = {
-      4,
-      8,
-      12,
-  };
-
-  for (const int threshold : fadeThresholds) {
-    //
-    // Reconstruct the complete splash in the framebuffer first. Each fade
-    // frame is therefore deterministic rather than accumulating pixel errors
-    // from the preceding frame.
-    //
-    drawBootFrame(renderer, 4);
-
-    for (int py = 0; py < kFrameHeight; ++py) {
-      for (int px = 0; px < kLogoSize; ++px) {
-        if (bayer[py & 3][px & 3] < threshold) {
-          renderer.drawPixel(
-              x + px,
-              y + py,
-              false);
-        }
-      }
-
-      //
-      // Keep the scheduler responsive without adding the large amount of
-      // delay that the old every-16-row yield introduced.
-      //
-      if ((py & 63) == 63) {
-        delay(1);
-      }
-    }
-
-    //
-    // Every fade stage is guaranteed to reach the panel.
-    //
-    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+#if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
+  if (bootBackend == BootBackend::Video) {
+    finishVideoBoot(renderer);
+    bootBackend = BootBackend::None;
+    return;
   }
+#endif
 
-  renderer.setRenderMode(mode);
-
-  //
-  // The splash ends at 75% erased. Home immediately replaces it, producing
-  // the final disappearance without wasting another FAST_REFRESH on a fully
-  // blank splash frame.
-  //
-  renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
+  if (bootBackend == BootBackend::Renderer) {
+    finishRendererBoot(renderer);
+  }
+  bootBackend = BootBackend::None;
 }
 
 }  // namespace StartupScreen
