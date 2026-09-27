@@ -188,10 +188,10 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
   for (int i = pageStart; i < pageEnd; ++i) {
     const char* icon = listStateIcon(rows[i].flags);
     if (!icon) continue;
-    const int iconX = layout.safeLeft + layout.padding;
+    const int iconX = metrics.contentSidePadding;
     const int rowY = content.y + (i - pageStart) * rowHeight;
     const int iconY = rowY + std::max(0, (rowHeight - stateIconSize) / 2);
-    FontAwesomeIcons::draw(*r, iconX, iconY, icon, stateIconSize, i != selectedIndex);
+    FontAwesomeIcons::draw(*r, layout.safeLeft + iconX, iconY, icon, stateIconSize, i != selectedIndex);
   }
 
   drawChrome(*r, *in, chrome);
