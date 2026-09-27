@@ -115,6 +115,9 @@ void HomeReadingCard::draw(GfxRenderer& renderer, Rect rect, const std::vector<R
                                              bitmap.getWidth(), bitmap.getHeight());
           const Box& cover = layout.cover;
           if (cover.width > 0 && cover.height > 0) {
+            // BMP drawing leaves white pixels untouched (including 1-bit
+            // covers). Supply their white paper before drawing onto graphite.
+            renderer.fillRect(cover.x, cover.y, cover.width, cover.height, false);
             renderer.drawBitmap(bitmap, cover.x, cover.y, cover.width, cover.height);
             renderer.drawRect(cover.x - 1, cover.y - 1, cover.width + 2, cover.height + 2, false);
           }

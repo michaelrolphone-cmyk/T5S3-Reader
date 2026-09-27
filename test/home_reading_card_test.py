@@ -45,13 +45,21 @@ class GfxRenderer {
  public:
   struct Text { int x, y, font; std::string value; bool black; };
   int width = 540, height = 960;
-  mutable int pixels = 0, bitmaps = 0, focus = 0;
+  mutable int pixels = 0, bitmaps = 0, focus = 0, coverBases = 0;
   mutable std::vector<Text> texts;
-  mutable Rect bitmapRect{};
+  mutable Rect bitmapRect{}, coverBase{};
   int getScreenWidth() const { return width; }
   int getScreenHeight() const { return height; }
   void drawPixel(int x, int y, bool) const { assert(x >= 0 && y >= 0 && x < width && y < height); ++pixels; }
+  void fillRect(int x, int y, int w, int h, bool black) const {
+    assert(!black && w > 0 && h > 0 && x >= 0 && y >= 0 && x + w <= width && y + h <= height);
+    coverBase = {x, y, w, h}; ++coverBases;
+  }
   void drawBitmap(const Bitmap&, int x, int y, int w, int h) const {
+    // Production BMP drawing skips white pixels, so the card must first supply
+    // a white paper base; neither the 1-bit nor 2-bit renderer upscales art.
+    assert(coverBases > 0 && coverBase.x == x && coverBase.y == y && coverBase.width == w && coverBase.height == h);
+    assert(w <= state.width && h <= state.height);
     assert(w > 0 && h > 0 && x >= 0 && y >= 0 && x + w <= width && y + h <= height);
     bitmapRect = {x, y, w, h}; ++bitmaps;
   }
@@ -145,7 +153,7 @@ int main() {
     if (failure == 2) state.width = 0;
     if (failure == 3) fallback[0].coverBmpPath.clear();
     HomeReadingCard::draw(r, slot, fallback, 1, painted, cached, restored, [] { return true; });
-    assert(r.bitmaps == 0 && r.texts.size() >= 3 && painted && cached);
+    assert(r.bitmaps == 0 && r.coverBases == 0 && r.texts.size() >= 3 && painted && cached);
     for (const auto& t : r.texts) assert(!t.black && t.x == 44);
   }
   reset();
@@ -215,6 +223,14 @@ int main() {
       assert(!text.black);
       assert(text.y >= slot.y && text.y + (text.value == "Continue reading" ? 20 : 100) <= slot.y + slot.height);
     }
+  }
+  reset();
+  {
+    state.width = 96; state.height = 128;
+    GfxRenderer r;
+    bool painted = false, cached = false, restored = false;
+    HomeReadingCard::draw(r, slot, books, 1, painted, cached, restored, [] { return true; });
+    assert(r.bitmaps == 1 && r.coverBases == 1 && r.bitmapRect.width == 96 && r.bitmapRect.height == 128);
   }
   std::cout << "PASS: production card rendering, white metadata, cache/focus isolation, failure fallback, theme routing and clipping\n";
 }

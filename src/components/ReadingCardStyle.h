@@ -34,8 +34,10 @@ inline Layout layout(Box bounds, int sidePadding, int coverHeight, int imageWidt
   // rather than stretching a cover or letting it overlap the title.
   if (imageWidth <= 0 || imageHeight <= 0 || coverHeight <= 0 || result.text.width < 240 ||
       result.text.height < 64) return result;
-  const int maxWidth = result.text.width * 2 / 5;
-  const int maxHeight = std::min(coverHeight, result.text.height);
+  // GfxRenderer downsizes BMPs but does not upscale them. Keep the frame and
+  // metadata aligned to the pixels that the renderer will actually produce.
+  const int maxWidth = std::min(result.text.width * 2 / 5, imageWidth);
+  const int maxHeight = std::min({coverHeight, result.text.height, imageHeight});
   int width = maxWidth;
   int height = 0;
   if (static_cast<int64_t>(imageHeight) * width > static_cast<int64_t>(maxHeight) * imageWidth) {

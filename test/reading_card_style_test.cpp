@@ -15,7 +15,7 @@ int main() {
   int layouts = 0;
   for (int width : {1, 8, 32, 96, 160, 240, 320, 480, 540, 960}) {
     for (int height : {1, 8, 32, 64, 160, 350, 400}) {
-      for (auto image : {Box{0, 0, 0, 0}, Box{0, 0, 240, 360}, Box{0, 0, 1000, 50},
+      for (auto image : {Box{0, 0, 0, 0}, Box{0, 0, 240, 360}, Box{0, 0, 96, 128}, Box{0, 0, 1000, 50},
                          Box{0, 0, 1, INT_MAX}, Box{0, 0, INT_MAX, 1}}) {
         Box bounds{13, 41, width, height};
         auto l = layout(bounds, 20, 300, image.width, image.height);
@@ -26,6 +26,7 @@ int main() {
           assert(contains(l.card, l.cover));
           assert(l.cover.x + l.cover.width + 20 <= l.text.x);
           assert(l.cover.height <= 300);
+          assert(l.cover.width <= image.width && l.cover.height <= image.height);
           assert(l.text.width > 0);
           const int64_t error = std::abs(static_cast<int64_t>(l.cover.width) * image.height -
                                           static_cast<int64_t>(l.cover.height) * image.width);
