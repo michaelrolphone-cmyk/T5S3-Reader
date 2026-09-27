@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**69 unresolved distinct reports.** Eight have scheduled fixes being consolidated on `consolidate/scheduled-bug-fixes`; they remain unresolved on master until that PR merges. See each status below. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**69 unresolved distinct reports.** Eight have fixes ready for review in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) on `consolidate/scheduled-bug-fixes`; they remain unresolved on master until that PR merges. See each status below. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -16,7 +16,7 @@ Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Dri
 
 ### 4. Font Family selections are not persisted across reboot
 
-- **Status:** Fix prepared on `fix/font-selection-persistence`; consolidation in progress on `consolidate/scheduled-bug-fixes`. Not merged.
+- **Status:** Fix prepared on `fix/font-selection-persistence`; consolidated in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244). Not merged.
 - **Sources:** pre-consolidation [master](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6d876ae443d873d06068ae866fa4eda403b95f90/bugs.md)
 
 - **Affected code:** `src/native/NativeFontBridge.cpp`, `selectChoice(uint32_t index)`.
@@ -40,7 +40,7 @@ Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Dri
 
 ### 6. Time Card subtracts lunch intervals that occur outside the work shift
 
-- **Status:** Fix prepared on `fix/timecard-lunch-outside-shift`; consolidation in progress on `consolidate/scheduled-bug-fixes`. Not merged.
+- **Status:** Fix prepared on `fix/timecard-lunch-outside-shift`; consolidated in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244). Not merged.
 - **Sources:** pre-consolidation [master](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6d876ae443d873d06068ae866fa4eda403b95f90/bugs.md)
 
 - **Affected code:** `Apps/timecard.c`, `worked(const tc_day_t *day)`.
@@ -52,7 +52,7 @@ Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Dri
 
 ### 7. Text Editor "Discard" leaves the edited buffer in memory but marks it clean
 
-- **Status:** Fix prepared on `fix/text-editor-discard-restore`; consolidation in progress on `consolidate/scheduled-bug-fixes`. Not merged.
+- **Status:** Fix prepared on `fix/text-editor-discard-restore`; consolidated in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244). Not merged.
 - **Sources:** pre-consolidation [master](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6d876ae443d873d06068ae866fa4eda403b95f90/bugs.md)
 
 - **Affected code:** `Apps/text_editor.c`, `key_press()` in `UNSAVED` mode, plus the transition flow through `transition()` and `continue_after()`.
@@ -64,7 +64,7 @@ Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Dri
 
 ### 8. Font Manager's two-step removal confirmation can be satisfied by one held Confirm press
 
-- **Status:** Fix prepared on `fix/font-manager-confirm-edge`; consolidation in progress on `consolidate/scheduled-bug-fixes`. Not merged.
+- **Status:** Fix prepared on `fix/font-manager-confirm-edge`; consolidated in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244). Not merged.
 - **Sources:** pre-consolidation [master](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6d876ae443d873d06068ae866fa4eda403b95f90/bugs.md)
 
 - **Affected code:** `Apps/font_manager.c`, `app_main()` and `activate_selected()`; input semantics originate from `src/native/NativeAppHost.cpp::poll()`.
@@ -76,7 +76,7 @@ Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Dri
 
 ### 9. Font Manager misses available updates when a changed font file keeps the same byte size
 
-- **Status:** Fix prepared on `fix/font-update-crc-detection`; consolidation in progress on `consolidate/scheduled-bug-fixes`. Not merged.
+- **Status:** Fix prepared on `fix/font-update-crc-detection`; consolidated in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244). Not merged.
 - **Sources:** pre-consolidation [master](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6d876ae443d873d06068ae866fa4eda403b95f90/bugs.md)
 
 - **Affected code:** `src/native/NativeFontBridge.cpp`, `refreshCatalog()`, specifically installed-family update detection.
@@ -88,7 +88,7 @@ Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Dri
 
 ### 10. App Store can act on stale release indices after a failed catalog refresh
 
-- **Status:** Fix prepared on `fix/app-store-stale-release-indices`; consolidation in progress on `consolidate/scheduled-bug-fixes`. Not merged. Original branch contains metadata/tests only; its production hunk is preserved in Drive and must be integrated before completion.
+- **Status:** Fix prepared on `fix/app-store-stale-release-indices`; consolidated in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244). Not merged. The missing production hunk from Drive is included in PR #244.
 - **Sources:** pre-consolidation [master](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6d876ae443d873d06068ae866fa4eda403b95f90/bugs.md)
 
 - **Affected code:** `Apps/app_store.c`, the view transition into the releases/catalog screen, `refresh_releases()`, and the release-row activation path using `release_indices[]`.
@@ -100,7 +100,7 @@ Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Dri
 
 ### 11. Rom Manager's ROM actions modal does not support touch row selection
 
-- **Status:** Fix prepared on `fix/rom-manager-actions-touch`; consolidation in progress on `consolidate/scheduled-bug-fixes`. Not merged.
+- **Status:** Fix prepared on `fix/rom-manager-actions-touch`; consolidated in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244). Not merged.
 - **Sources:** pre-consolidation [master](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6d876ae443d873d06068ae866fa4eda403b95f90/bugs.md)
 
 - **Affected code:** `Apps/rom_manager.c`, the nested three-row ROM actions loop inside `app_main()`.
@@ -112,7 +112,7 @@ Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Dri
 
 ### 12. Wi-Fi Settings accepts any pending Wi-Fi result without validating its request cookie
 
-- **Status:** Fix prepared on `fix/wifi-settings-result-cookie`; consolidation in progress on `consolidate/scheduled-bug-fixes`. Not merged.
+- **Status:** Fix prepared on `fix/wifi-settings-result-cookie`; consolidated in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244). Not merged.
 - **Sources:** pre-consolidation [master](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6d876ae443d873d06068ae866fa4eda403b95f90/bugs.md)
 
 - **Affected code:** `Apps/wifi_settings.c`, `app_main()` around `system_ui->wifi_take_result()`.
