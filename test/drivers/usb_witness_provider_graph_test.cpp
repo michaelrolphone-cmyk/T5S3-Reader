@@ -85,12 +85,17 @@ int main(int argc, char** argv) {
   t5_serial_port_lease_t lease = 0; t5_stream_t rx = 0, tx = 0;
   t5_stream_t blockers[11]{};
   for (auto& h : blockers) assert(api->open_buffer(8, &h) == 0);
-  assert(serial->acquire(&request, &lease, &rx, &tx) == T5_SERIAL_DENIED && !lease && !rx && !tx);
+  // Installed serial.port consumes provider endpoints. A full compiled
+  // buffer table cannot publish that pair, so acquire fails unsupported
+  // rather than denied-on-shuttle-open.
+  assert(serial->acquire(&request, &lease, &rx, &tx) == T5_SERIAL_UNSUPPORTED &&
+         !lease && !rx && !tx);
   assert(!nativeSerialProviderActive() && !nativeStreamSerialIsBusy());
   for (const auto h : blockers) assert(api->close(h) == 0);
   assert(serial->acquire(&request, &lease, &rx, &tx) == 0);
   assert(!nativeSerialProviderInventoryStopChecked());
-  assert(!nativeSerialProviderActive() && !nativeStreamSerialIsBusy()); // No resident shuttle.
+  // Epoch is published for endpoint I/O. The compiled shuttle pair stays closed.
+  assert(nativeSerialProviderActive() && !nativeStreamSerialIsBusy());
   assert(serial->set_control_lines(lease, 1, 0) == 0);
   t5_serial_port_state_t state{}; assert(serial->read_status(lease, &state) == 0 && state.dtr && !state.rts);
   t5_stream_t source = 0, sink = 0; t5_pipe_t input = 0, output = 0;

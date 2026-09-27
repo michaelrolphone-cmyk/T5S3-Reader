@@ -1,5 +1,18 @@
 # U1 implementation ledger
 
+## September 27: witness acquire maps endpoint exhaustion to UNSUPPORTED
+
+`usb_witness_provider_graph_test` filled the 12-slot compiled buffer table
+and expected `T5_SERIAL_DENIED` from shuttle-pair open. `installedAcquirePort`
+no longer opens that pair. When the provider cannot publish distinct RX/TX
+endpoints, acquire returns `T5_SERIAL_UNSUPPORTED` and leaves no lease or
+handles. Attach-grant failure remains `T5_SERIAL_DENIED`. A successful
+acquire publishes the stream epoch (`nativeSerialProviderActive`) and does
+not open the compiled shuttle (`nativeStreamSerialIsBusy` stays false).
+
+lilygo-epd47-s3 and t5s3-pro firmware jobs passed on `95cb973`. Host parser
+and build-experimental still failed this witness assertion.
+
 [PR #96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) on `impl/u1-riscrte` is the **only** implementation PR/branch. `AGENTS.md`, [USB remediation](USB_CONTRACT_VIOLATION_REMEDIATION.md), [execution order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [claim-scoped USB control](U1_USB_CONTROL_SCOPE_IMPLEMENTATION.md) and [package identity](PACKAGE_IDENTITY_VERSION_POLICY.md) govern the work. Owner controls merge, tag, release, flash and hardware qualification. A committed test is not a PASS.
 
 ## September 27: App Store header stays on SD inbox until refresh succeeds
