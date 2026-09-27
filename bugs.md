@@ -2,11 +2,11 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**69 unresolved distinct reports.** Eight have fixes ready for review in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) on `consolidate/scheduled-bug-fixes`; they remain unresolved on master until that PR merges. See each status below. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**72 unresolved distinct reports.** Eight have fixes ready for review in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) on `consolidate/scheduled-bug-fixes`; they remain unresolved on master until that PR merges. See each status below. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
-- Inspected all 28 `automation/bug-scan-*` branches and all eight pending scheduled fix branches through the 2026-09-27 15:24 MDT scan. Read 92 handoff files in the Bug Scan Diffs/Instructions and Bug Fix Work folders, including native Docs/Sheets and raw files.
+- Inspected all 29 `automation/bug-scan-*` branches and all eight pending scheduled fix branches through the 2026-09-27 16:24 MDT scan. Read 92 handoff files in the Bug Scan Diffs/Instructions and Bug Fix Work folders, including native Docs/Sheets and raw files.
 - Recovered uncommitted reports from the 2026-09-26 17:30, 18:23, 19:21 and 2026-09-27 06:24, 10:22, 12:21 Drive handoffs.
 - Merged repeated App Store/Package Manager row limits, Button Remap rollback, SD Firmware handoff, destination-picker overflow, native read truncation, legacy string deserialization, external-volume hiding and LoRa restoration findings. Distinct persistence/load failures remain separate and retain their affected functions.
 - The 2026-09-26 14:21, 15:21 and 17:24 branches contain no changes beyond their master bases. No populated handoff was found for those runs; the two 17:24 documents are empty. No findings were invented for empty runs. The 17:30 handoff's actual findings are included.
@@ -839,3 +839,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 73. Malformed indexed PNG bit depth can divide by zero during EPUB cover conversion
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260927-1624](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1624/bugs.md)
+
+- **Affected code:** `lib/PngToBmpConverter/PngToBmpConverter.cpp`, `PngToBmpConverter::pngFileToBmpStreamInternal()` and `convertScanlineToGray()`; reachable through `lib/Epub/Epub.cpp::generateCoverBmp()` and `generateThumbBmp()`.
+- **Trigger / reproduction:** Put a PNG cover in an EPUB with a syntactically readable IHDR that declares indexed color (`colorType == 3`) with an illegal bit depth greater than 8, for example 16, and provide enough PLTE/IDAT data for the converter to decode the first scanline. Open the book or let Home generate its cover thumbnail.
+- **Observed / logically demonstrated failure:** The converter validates dimensions, compression, filter method, and interlace, but never validates the PNG specification's legal bit-depth/color-type combinations. For indexed color it accepts the declared depth and later computes `ppb = 8 / ctx.bitDepth`. With `bitDepth == 16`, `ppb` is zero, after which `x % ppb` and `x / ppb` in `convertScanlineToGray()` perform integer division by zero instead of rejecting the malformed image.
+- **Likely root cause:** Header validation checks generic IHDR fields but omits the color-type-specific bit-depth constraints that later pixel-unpacking arithmetic assumes.
+- **Impact:** A malformed or corrupted PNG embedded as an EPUB cover can fault/reboot the reader during cover or thumbnail generation rather than producing a recoverable image-decode failure.
+- **Repair direction:** Reject invalid IHDR combinations before calculating row layout: grayscale 1/2/4/8/16, truecolor 8/16, indexed 1/2/4/8, grayscale+alpha 8/16, and RGBA 8/16. For indexed images also require a valid PLTE before decoding. Add malformed indexed-PNG fixtures at bit depths 16 and other unsupported values and verify conversion returns `false` without entering pixel unpacking.
+
+### 74. KOReader binary document hashing silently succeeds after partial SD reads
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260927-1624](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1624/bugs.md)
+
+- **Affected code:** `lib/KOReaderSync/KOReaderDocumentId.cpp`, `KOReaderDocumentId::calculate()`; caller `src/activities/reader/KOReaderSyncActivity.cpp::performSync()`.
+- **Trigger / reproduction:** Select KOReader's binary document-match method, then inject an SD seek failure at one sampled offset or make a sampled `file.read()` return fewer bytes than the requested `bytesToRead` while hashing an otherwise readable EPUB.
+- **Observed / logically demonstrated failure:** A failed `seekSet()` is logged and skipped with `continue`. A short read is accepted whenever it returns more than zero bytes, and only those bytes are added to the MD5. After the loop the function always finalizes and returns a non-empty digest; it never requires every in-range sample to have been read completely. `KOReaderSyncActivity` treats any non-empty digest as valid and uses it for remote progress lookup/upload.
+- **Likely root cause:** The binary matcher treats storage I/O as best-effort sampling even though the digest is a persistent document identity and must be deterministic for a given file.
+- **Impact:** A transient SD error can produce a different but apparently valid document ID, making existing KOReader progress appear missing and allowing progress to be uploaded under a phantom document key. Later healthy reads calculate the normal ID again, splitting sync history across hashes.
+- **Repair direction:** Treat any required seek failure or short read as a hash failure and return an empty result so the UI reports `STR_HASH_FAILED`. Require `bytesRead == bytesToRead` for each in-range sample and add failure-injection tests for seek failure, zero-byte read, and positive short read proving no digest is emitted.
+
+### 75. Wi-Fi credential mutations remain live when persistence fails
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260927-1624](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1624/bugs.md)
+
+- **Affected code:** `src/WifiCredentialStore.cpp`, `addCredential()`, `removeCredential()`, `setLastConnectedSsid()`, `clearLastConnectedSsid()`, and `clearAll()`.
+- **Trigger / reproduction:** Start with saved Wi-Fi credentials, force the next `saveToFile()` / `Storage.writeFile()` to fail, then update a password, add or remove a network, change the last-connected SSID, or clear all credentials.
+- **Observed / logically demonstrated failure:** Every mutation changes the process-global `credentials` / `lastConnectedSsid` state before persistence. `addCredential()` and `removeCredential()` can return `false` while leaving the failed edit active in RAM. The last-connected setters and `clearAll()` ignore the save result entirely; `clearAll()` even logs that credentials were cleared after an unsuccessful write. Subsequent network logic therefore observes state that was never committed, while a reboot can restore the older on-disk credentials.
+- **Likely root cause:** The credential store has no transactional candidate/snapshot layer or rollback path around durable publication.
+- **Impact:** A failed save can make a rejected password/network change affect the current session, or make a credential deletion appear successful only for the old credentials to reappear after reboot. This is especially misleading for credential removal and automatic reconnect behavior.
+- **Repair direction:** Apply edits to a temporary candidate state, persist that state, and commit it to the live store only after the write succeeds; alternatively snapshot and restore the previous state on failure. Propagate persistence failure from last-connected and clear-all operations where their API permits it, and add injected-failure tests for add, update, remove, last-connected changes, and clear-all.
