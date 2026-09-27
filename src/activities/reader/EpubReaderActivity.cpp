@@ -277,9 +277,9 @@ void EpubReaderActivity::loop() {
     }
   }
 
-  // Long press BACK (1s+) goes to file selection
+  // Long press BACK (1s+) leaves the reader and opens the installable File Browser.
   if (mappedInput.isPressed(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= ReaderUtils::GO_HOME_MS) {
-    activityManager.goToFileBrowser(epub ? epub->getPath() : "");
+    activityManager.goToInstalledApp("file_browser.elf", "File Browser");
     return;
   }
 
