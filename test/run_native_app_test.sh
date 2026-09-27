@@ -27,6 +27,10 @@ else
     "$repo_dir/lib/NativeApps/src/UnsignedDivisionCompat.c" \
     "$repo_dir/test/native_apps/unsigned_division_test.c" -o "$binary"
   "$binary"
+  cc -std=c11 -Wall -Wextra -Werror \
+    "$repo_dir/lib/NativeApps/src/SingleFloatDivisionCompat.c" \
+    "$repo_dir/test/native_apps/single_float_division_test.c" -o "$binary"
+  "$binary"
 fi
 python3 "$repo_dir/test/native_apps/test_symbols.py"
 python3 "$repo_dir/test/native_apps/test_elf_cache_sync.py"
