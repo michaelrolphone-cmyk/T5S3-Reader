@@ -100,7 +100,7 @@ The next display-specific milestones are deliberately outside this slice:
 Use a firmware build from this PR at version 1.3.23. Install the complete
 `display-epd-video@0.1.1` driver package, including `driver.elf`,
 `provider-abi.v1`, `privileged-imports.v1` and `.package.json`, before opening
-any of the migrated apps. Install Model Viewer 1.1.1, Risc Strike 1.0.1 and
+any of the migrated apps. Install Model Viewer 1.2.1, Risc Strike 1.0.1 and
 GameBoy 1.3.9 from their respective PR artifacts, with their matching JSON
 manifests. The GameBoy artifact is produced by its companion PR #25.
 
