@@ -200,6 +200,23 @@ bool endpoint_mps(Device *d, uint8_t iface, uint8_t alt,
 int32_t next_event(void *, risc_usb_controller_event_v1 *out) {
     if (!out || fault || role.state() == UsbRoleSwitch::State::Off) return -1;
     if (role.state() == UsbRoleSwitch::State::Failed) return 0;
+
+    // Cleanup can legitimately be partially complete: client may already be
+    // deregistered while the IDF host/PHY/VBUS are still retained. Retry that
+    // state before calling pump(), which requires a live client and would
+    // otherwise turn safe retained cleanup into a provider event fault.
+    if (role.state() == UsbRoleSwitch::State::Cleanup) {
+        service_role();
+        return 0;
+    }
+
+    // A parked provider may restart the physical host here. Do not require a
+    // client until the role transition has had a chance to create one.
+    if (role.state() == UsbRoleSwitch::State::Sense) {
+        service_role();
+        if (role.state() != UsbRoleSwitch::State::Host) return 0;
+    }
+
     if (installed && !pump(0)) return -1;
     service_role();
     if (role.state() != UsbRoleSwitch::State::Host) return 0;

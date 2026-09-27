@@ -86,6 +86,18 @@ class UsbTeardownRetry(unittest.TestCase):
             tuple(map(int, json.loads(MANIFEST.read_text(encoding="utf-8"))["version"].split("."))),
             (0, 1, 6))
 
+    def test_partial_idle_cleanup_is_retried_before_client_pump(self):
+        next_event = self.controller.split("int32_t next_event(", 1)[1].split(
+            "bool configuration(", 1
+        )[0]
+        cleanup = next_event.index("UsbRoleSwitch::State::Cleanup")
+        service = next_event.index("service_role();", cleanup)
+        pump = next_event.index("pump(0)")
+        self.assertLess(cleanup, service)
+        self.assertLess(service, pump)
+        self.assertIn("return 0;", next_event[service:pump])
+        self.assertIn("partially complete", next_event)
+
     def test_idle_host_processes_no_clients_before_device_free(self):
         quiesce = self.controller.split("bool quiesce_host()", 1)[1].split(
             "void stop()", 1
