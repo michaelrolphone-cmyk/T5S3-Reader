@@ -19,14 +19,15 @@ ASSOCIATIONS = (ROOT / "src/native/FileAssociationRegistry.cpp").read_text(encod
 
 class ModelViewerContract(unittest.TestCase):
     def test_manifest_and_release_contract(self):
-        self.assertEqual(MANIFEST["version"], "1.0.0")
+        self.assertEqual(MANIFEST["version"], "1.0.1")
         self.assertEqual(MANIFEST["min_firmware_version"], "1.3.18")
         self.assertEqual(MANIFEST["file_name"], "model_viewer.elf")
         self.assertEqual(MANIFEST["icon"], "solid:f1b2")
         self.assertEqual(set(MANIFEST["supported_file_types"]), {".obj", ".stl"})
+        self.assertNotIn("requires", MANIFEST)
         self.assertIn(
             {"capability": "input.touch.raw", "api": ">=1"},
-            MANIFEST["requires"],
+            MANIFEST["optional"],
         )
         self.assertIn("[riscrte]\nversion = 1.3.18", PLATFORMIO)
 
@@ -55,6 +56,13 @@ class ModelViewerContract(unittest.TestCase):
         self.assertIn("g_storage->stream_read", APP)
         self.assertIn("g_storage->stream_seek", APP)
         self.assertIn("MV_MAX_TRIANGLES 80000u", APP)
+
+    def test_missing_touch_does_not_block_viewer(self):
+        self.assertNotIn('"TOUCH UNAVAILABLE","INSTALL INPUT.TOUCH.RAW DRIVER"', APP)
+        self.assertIn("(void)mv_touch_begin();", APP)
+        self.assertIn("if(g_touch && mv_touch_snapshot", APP)
+        self.assertIn("ARROWS ROTATE  CONFIRM RESET", APP)
+        self.assertIn("INSTALL GT911-TOUCH FOR GESTURES", APP)
 
     def test_gestures_are_raw_touch_snapshot_based(self):
         self.assertIn('g_caps->acquire("input.touch.raw"', APP)
