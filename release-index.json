@@ -1034,14 +1034,14 @@
           {
             "executable": false,
             "name": ".package.json",
-            "sha256": "e7d8d415350b5fea9b4a81acee6e3a0ea689aed361b65bb99403242e5900a46e",
+            "sha256": "a0c7faf635a1b833fb66a658977efb88ab733cd13aae943c10067dabaaed0ca7",
             "size_bytes": 588
           },
           {
             "executable": true,
             "name": "driver.elf",
-            "sha256": "c8548cc7e72c32af3bb20e05fd17eda33d2b01b0072933b82edb8a78dca8b993",
-            "size_bytes": 13864
+            "sha256": "7b8f51f62da71e99949b093b6cdc531435a0cec01f87740921f9436544f8bd9c",
+            "size_bytes": 24496
           },
           {
             "executable": false,
@@ -1052,19 +1052,19 @@
           {
             "executable": false,
             "name": "privileged-imports.v1",
-            "sha256": "8b61e76d03eee30103179a37f061fcab06604372d7598b78e53b875fba516814",
-            "size_bytes": 24
+            "sha256": "570d72eb68371d6105885edefdbb4b058f71b24a71adff81dac88820ffbbd564",
+            "size_bytes": 93
           }
         ],
         "id": "i2c-esp32s3-v2",
         "requires": [],
-        "version": "0.1.4"
+        "version": "0.1.5"
       },
-      "sha256": "c8548cc7e72c32af3bb20e05fd17eda33d2b01b0072933b82edb8a78dca8b993",
-      "size": 13864,
-      "tag": "driver-i2c-esp32s3-v2-v0.1.4",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-i2c-esp32s3-v2-v0.1.4/i2c-esp32s3-v2--driver.elf",
-      "version": "0.1.4"
+      "sha256": "7b8f51f62da71e99949b093b6cdc531435a0cec01f87740921f9436544f8bd9c",
+      "size": 24496,
+      "tag": "driver-i2c-esp32s3-v2-v0.1.5",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-i2c-esp32s3-v2-v0.1.5/i2c-esp32s3-v2--driver.elf",
+      "version": "0.1.5"
     },
     {
       "asset": "platform-clock-v1--driver.elf",
