@@ -140,13 +140,18 @@ hardware takeover.
 E-paper rendering runs on its separate render task and must not hold a shared
 hardware-bus lock across panel power sequencing or waveform waits. Individual
 bus transactions and atomic read-modify-write operations remain serialized. The
-transitional installed `i2c.bus` provider queues concurrent callers at the
-firmware-owned board mutex instead of returning a synthetic busy failure, so
-normal overlap between touch capture, power telemetry and display control is not
-misreported as a device fault. A single transient touch poll failure also keeps
-the in-flight DOWN gesture eligible; only repeated bounded failures or an
-explicit provider queue GAP trigger snapshot recovery. Already completed
-tap/swipe/Home events remain queued for delivery.
+transitional installed `i2c.bus` provider queues concurrent callers instead of
+returning a synthetic busy failure, so normal overlap between touch capture,
+power telemetry and display control is not misreported as a device fault.
+`i2c-esp32s3-v2 0.1.5` supersedes the 0.1.3/0.1.4 relocatable-atomic design:
+provider-local state and complete synchronous transactions are serialized by an
+ordinary FreeRTOS mutex, while the existing firmware board mutex remains the
+physical Wire/I2C0 owner. Claim release waits for the provider mutex and
+therefore cannot report success while a transaction is still active. A single
+transient touch poll failure also keeps the in-flight DOWN gesture eligible;
+only repeated bounded failures or an explicit provider queue GAP trigger
+snapshot recovery. Already completed tap/swipe/Home events remain queued for
+delivery.
 
 The on-screen `KeyboardEntryActivity` has the same scheduling rule at the UI
 layer: input owns the mutable text/cursor/selection state. The render task takes
