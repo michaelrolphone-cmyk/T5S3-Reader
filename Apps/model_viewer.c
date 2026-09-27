@@ -5,6 +5,7 @@
 #include "T5StorageApi.h"
 #include "T5VideoApi.h"
 #include "RiscTouchV1.h"
+#include "model_viewer_shading.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -17,6 +18,11 @@
 #define MV_LOGICAL_H 960
 #define MV_VIEW_TOP 78
 #define MV_VIEW_BOTTOM 876
+#define MV_SHADE_LEFT (MV_LOGICAL_W - 174)
+#define MV_SHADE_RIGHT (MV_LOGICAL_W - 12)
+#define MV_SHADE_TOP 8
+#define MV_SHADE_BOTTOM 56
+#define MV_DEPTH_COUNT ((size_t)(MV_LOGICAL_W - 8) * (MV_VIEW_BOTTOM - MV_VIEW_TOP + 1))
 #define MV_LINE_CAP 1024
 #define MV_STREAM_CHUNK 768
 #define MV_MAX_TRIANGLES 80000u
@@ -86,6 +92,14 @@ static uint32_t g_touch_down_ms;
 static int g_touch_down_x;
 static int g_touch_down_y;
 static uint32_t g_last_tap_ms;
+static bool g_shaded;
+static uint16_t *g_depth;
+static bool g_shade_capture;
+static bool g_shade_tap;
+static uint8_t g_shade_touch_id;
+static t5_app_input_t g_render_input;
+static bool g_render_input_pending;
+static uint32_t g_render_service_ms;
 
 static int mv_iabs(int v) { return v < 0 ? -v : v; }
 static float mv_fabs(float v) { return v < 0.0f ? -v : v; }
@@ -607,7 +621,7 @@ static uint8_t const *mv_glyph(char ch) {
     return blank;
 }
 
-static void mv_text(uint8_t *buffer, int x, int y, const char *text, int scale) {
+static void mv_text_ink(uint8_t *buffer, int x, int y, const char *text, int scale, bool black) {
     for (const char *p = text; p && *p; ++p) {
         const uint8_t *glyph = mv_glyph(*p);
         for (int cx = 0; cx < 5; ++cx) {
@@ -615,11 +629,53 @@ static void mv_text(uint8_t *buffer, int x, int y, const char *text, int scale) 
                 if ((glyph[cx] & (1u << cy)) == 0u) continue;
                 for (int sy = 0; sy < scale; ++sy)
                     for (int sx = 0; sx < scale; ++sx)
-                        mv_pixel(buffer, x + cx * scale + sx, y + cy * scale + sy, true);
+                        mv_pixel(buffer, x + cx * scale + sx, y + cy * scale + sy, black);
             }
         }
         x += 6 * scale;
     }
+}
+
+static void mv_text(uint8_t *buffer, int x, int y, const char *text, int scale) {
+    mv_text_ink(buffer,x,y,text,scale,true);
+}
+
+static bool mv_shade_button_hit(int x, int y) {
+    return x>=MV_SHADE_LEFT && x<MV_SHADE_RIGHT && y>=MV_SHADE_TOP && y<MV_SHADE_BOTTOM;
+}
+
+static void mv_shade_button_draw(uint8_t *buffer) {
+    const int w=MV_SHADE_RIGHT-MV_SHADE_LEFT, h=MV_SHADE_BOTTOM-MV_SHADE_TOP;
+    for (int y=0; y<h; ++y) {
+        for (int x=0; x<w; ++x) {
+            const int dx=x<7?7-x:(x>=w-7?x-(w-8):0);
+            const int dy=y<7?7-y:(y>=h-7?y-(h-8):0);
+            if (dx*dx+dy*dy>49) continue;
+            const bool border=x<2 || x>=w-2 || y<2 || y>=h-2 || dx*dx+dy*dy>25;
+            mv_pixel(buffer,MV_SHADE_LEFT+x,MV_SHADE_TOP+y,g_shaded || border);
+        }
+    }
+    const char *label=g_shaded?"SHADE ON":"SHADE OFF";
+    const int text_w=(int)strlen(label)*12-2;
+    mv_text_ink(buffer,MV_SHADE_LEFT+(w-text_w)/2,MV_SHADE_TOP+(h-14)/2,label,2,!g_shaded);
+}
+
+static void mv_shade_release(void) {
+    mv_free(g_depth);
+    g_depth=NULL;
+    g_shaded=false;
+}
+
+static void mv_shade_toggle(void) {
+    g_status[0]=0;
+    if (g_shaded) { mv_shade_release(); return; }
+    /* Never consume internal SRAM for the large optional depth buffer. */
+    if (g_use_psram) g_depth=(uint16_t *)mv_alloc(MV_DEPTH_COUNT*sizeof(*g_depth));
+    if (!g_depth) {
+        snprintf(g_status,sizeof(g_status),"SHADING UNAVAILABLE - NOT ENOUGH PSRAM");
+        return;
+    }
+    g_shaded=true;
 }
 
 enum { MV_CLIP_LEFT=1, MV_CLIP_RIGHT=2, MV_CLIP_TOP=4, MV_CLIP_BOTTOM=8 };
@@ -678,20 +734,35 @@ static void mv_line(uint8_t *buffer, int x0, int y0, int x1, int y1) {
     }
 }
 
-static void mv_project(mv_vec3_t v, int *sx, int *sy) {
-    float x = (v.x - g_model.center.x) * g_model.normalize;
-    float y = (v.y - g_model.center.y) * g_model.normalize;
-    float z = (v.z - g_model.center.z) * g_model.normalize;
+typedef struct { float cy, sy, cp, sp; } mv_rotation_t;
 
-    const float cy = mv_cos(g_view.yaw), syaw = mv_sin(g_view.yaw);
-    const float cp = mv_cos(g_view.pitch), sp = mv_sin(g_view.pitch);
-    const float x1 = cy * x + syaw * z;
-    const float z1 = -syaw * x + cy * z;
-    const float y1 = cp * y - sp * z1;
+static mv_shade_vertex_t mv_camera_point(mv_vec3_t v, const mv_rotation_t *r) {
+    const float x=(v.x-g_model.center.x)*g_model.normalize;
+    const float y=(v.y-g_model.center.y)*g_model.normalize;
+    const float z=(v.z-g_model.center.z)*g_model.normalize;
+    const float x1=r->cy*x+r->sy*z, z1=-r->sy*x+r->cy*z;
+    return (mv_shade_vertex_t){x1,r->cp*y-r->sp*z1,r->sp*y+r->cp*z1};
+}
 
-    const float scale = 390.0f * g_view.zoom;
-    *sx = (int)(270.0f + g_view.pan_x + x1 * scale);
-    *sy = (int)(468.0f + g_view.pan_y - y1 * scale);
+static mv_shade_vertex_t mv_screen_point(mv_shade_vertex_t v) {
+    const float scale=390.0f*g_view.zoom;
+    return (mv_shade_vertex_t){270.0f+g_view.pan_x+v.x*scale,
+                              468.0f+g_view.pan_y-v.y*scale,v.z};
+}
+
+/* Bound long filled passes without losing controller/exit input consumed by
+ * poll(). Keep a single input snapshot, not an accumulating event queue. */
+static bool mv_render_service(void) {
+    if ((uint32_t)(g_app->millis()-g_render_service_ms)<16u) return true;
+    g_render_service_ms=g_app->millis();
+    t5_app_input_t input={0};
+    if (!g_app->poll(&input,1)) input.exit_requested=true;
+    if (input.buttons || input.exit_requested) {
+        g_render_input=input;
+        g_render_input_pending=true;
+        return false;
+    }
+    return true;
 }
 
 static const char *mv_basename(const char *path) {
@@ -723,24 +794,40 @@ static bool mv_render(bool interactive) {
 
     char info[96];
     mv_text(buffer, 14, 12, "3D MODEL VIEWER", 2);
-    mv_text(buffer, 14, 38, mv_basename(g_path), 1);
+    char filename[(MV_LOGICAL_W-28)/6+1];
+    snprintf(filename,sizeof(filename),"%s",mv_basename(g_path));
+    mv_text(buffer,14,64,filename,1);
+    mv_shade_button_draw(buffer);
 
-    const uint32_t step = mv_render_step(interactive);
+    const mv_rotation_t rotation={mv_cos(g_view.yaw),mv_sin(g_view.yaw),
+                                  mv_cos(g_view.pitch),mv_sin(g_view.pitch)};
+    mv_shade_surface_t shade={0};
+    g_render_service_ms=g_app->millis();
+    if (g_shaded && !mv_shade_begin(&shade,g_depth,MV_DEPTH_COUNT,4,MV_VIEW_TOP,
+                                    MV_LOGICAL_W-8,MV_VIEW_BOTTOM-MV_VIEW_TOP+1,
+                                    interactive?2:1,mv_render_service)) return false;
+    /* Never use triangle-stride LOD on filled geometry: it opens mesh holes. */
+    const uint32_t step = g_shaded ? 1u : mv_render_step(interactive);
     for (uint32_t i = 0; i < g_model.triangle_count; i += step) {
         const mv_triangle_t *t = &g_model.triangles[i];
-        int ax,ay,bx,by,cx,cy;
-        mv_project(t->a,&ax,&ay);
-        mv_project(t->b,&bx,&by);
-        mv_project(t->c,&cx,&cy);
-        mv_line(buffer,ax,ay,bx,by);
-        mv_line(buffer,bx,by,cx,cy);
-        mv_line(buffer,cx,cy,ax,ay);
+        const mv_shade_vertex_t a=mv_camera_point(t->a,&rotation);
+        const mv_shade_vertex_t b=mv_camera_point(t->b,&rotation);
+        const mv_shade_vertex_t c=mv_camera_point(t->c,&rotation);
+        const mv_shade_vertex_t pa=mv_screen_point(a), pb=mv_screen_point(b), pc=mv_screen_point(c);
+        if (g_shaded) {
+            if ((i&127u)==0u && !mv_render_service()) return false;
+            if (!mv_shade_triangle(&shade,buffer,mv_pixel,pa,pb,pc,mv_shade_density(a,b,c))) return false;
+        } else {
+            mv_line(buffer,(int)pa.x,(int)pa.y,(int)pb.x,(int)pb.y);
+            mv_line(buffer,(int)pb.x,(int)pb.y,(int)pc.x,(int)pc.y);
+            mv_line(buffer,(int)pc.x,(int)pc.y,(int)pa.x,(int)pa.y);
+        }
     }
 
     snprintf(info,sizeof(info),"%lu TRI  %s",
              (unsigned long)g_model.triangle_count,
              interactive ? "FAST" : (step == 1u ? "FULL" : "REFINED"));
-    mv_text(buffer,14,894,info,1);
+    mv_text(buffer,14,894,g_status[0]?g_status:info,1);
     mv_text(buffer,14,916,"DRAG ROTATE  2F PAN+ZOOM",1);
     mv_text(buffer,14,936,"DOUBLE TAP RESET  BACK EXIT",1);
 
@@ -825,6 +912,34 @@ static int mv_approx_distance(int dx,int dy) {
 
 static bool mv_handle_touch(const mv_contacts_t *prev,const mv_contacts_t *now,uint32_t ms) {
     bool changed=false;
+    /* Capture a header gesture from press through final release. A drag out,
+     * replacement contact, or second finger cancels the tap, not the capture. */
+    if (!prev->count && now->count && mv_shade_button_hit(now->x[0],now->y[0])) {
+        g_shade_capture=true;
+        g_shade_tap=now->count==1u;
+        g_shade_touch_id=now->id[0];
+        g_touch_down_ms=ms;
+        g_touch_down_x=now->x[0]; g_touch_down_y=now->y[0];
+        g_touch_was_down=false;
+        g_last_tap_ms=0;
+    }
+    if (g_shade_capture) {
+        if (now->count) {
+            if (now->count!=1u || now->id[0]!=g_shade_touch_id ||
+                !mv_shade_button_hit(now->x[0],now->y[0]) ||
+                mv_iabs(now->x[0]-g_touch_down_x)>MV_TAP_MOVE_PX ||
+                mv_iabs(now->y[0]-g_touch_down_y)>MV_TAP_MOVE_PX) g_shade_tap=false;
+            return false;
+        }
+        g_shade_capture=false;
+        if (g_shade_tap && (uint32_t)(ms-g_touch_down_ms)<=MV_TAP_MAX_MS) {
+            mv_shade_toggle();
+            g_last_interaction_ms=ms;
+            g_need_refine=true;
+            return true;
+        }
+        return false;
+    }
     if(now->count==1u) {
         const int pi=mv_contact_index(prev,now->id[0]);
         if(pi>=0 && prev->count==1u) {
@@ -903,6 +1018,10 @@ __attribute__((visibility("default"))) uint32_t app_hardware_takeover(void) {
 __attribute__((visibility("default"))) void app_main(void) {
     memset(&g_model,0,sizeof(g_model));
     memset(g_path,0,sizeof(g_path));
+    g_shaded=false; g_depth=NULL; g_status[0]=0;
+    g_shade_capture=false; g_shade_tap=false;
+    g_touch_was_down=false; g_last_tap_ms=0;
+    g_render_input_pending=false;
     g_touch_lease=T5_PROVIDER_CAPABILITY_LEASE_INVALID;
 
     g_app=t5_app_get_api(T5_APP_ABI_VERSION);
@@ -964,14 +1083,16 @@ __attribute__((visibility("default"))) void app_main(void) {
 
     mv_reset_view();
     g_last_interaction_ms=g_app->millis();
-    g_need_refine=false;
-    (void)mv_render(false);
+    g_need_refine=!mv_render(false);
 
     mv_contacts_t previous={0};
     bool running=true;
     while(running) {
         t5_app_input_t input={0};
-        if(!g_app->poll(&input,8)) break;
+        if (g_render_input_pending) {
+            input=g_render_input;
+            g_render_input_pending=false;
+        } else if(!g_app->poll(&input,8)) break;
         const uint32_t now=g_app->millis();
         if(!mv_buttons(&input,now)) break;
 
@@ -990,6 +1111,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
     }
 
+    mv_shade_release();
     mv_touch_end();
     g_video->stop();
     mv_model_free(&g_model);
