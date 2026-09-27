@@ -28,6 +28,8 @@ int main(int argc, char** argv) {
     assert(FontAwesomeIcons::draw(renderer, 0, 0, "solid:f013", size));
     assert(renderer.pixels > before);
     assert(FontAwesomeIcons::draw(renderer, 0, 0, "regular:f017", size));
+    // Package-manager installed state uses the bounded Regular circle-check.
+    assert(FontAwesomeIcons::draw(renderer, 0, 0, "regular:f058", size));
     assert(FontAwesomeIcons::draw(renderer, 0, 0, "solid:f120", size));
     assert(FontAwesomeIcons::draw(renderer, 0, 0, "solid:f1e6", size));
   }
