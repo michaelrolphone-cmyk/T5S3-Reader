@@ -10,7 +10,56 @@
 #include "fontIds.h"
 #include "native/NativeTextInput.h"
 
+namespace {
+class KeyboardStateLock {
+ public:
+  explicit KeyboardStateLock(SemaphoreHandle_t mutex) : mutex_(mutex) {
+    if (mutex_) xSemaphoreTake(mutex_, portMAX_DELAY);
+  }
+  ~KeyboardStateLock() {
+    if (mutex_) xSemaphoreGive(mutex_);
+  }
+
+  KeyboardStateLock(const KeyboardStateLock&) = delete;
+  KeyboardStateLock& operator=(const KeyboardStateLock&) = delete;
+
+ private:
+  SemaphoreHandle_t mutex_;
+};
+}  // namespace
+
 const char* const KeyboardEntryActivity::shiftString[2] = {"shift", "SHIFT"};
+
+KeyboardEntryActivity::~KeyboardEntryActivity() {
+  if (stateMutex) {
+    vSemaphoreDelete(stateMutex);
+    stateMutex = nullptr;
+  }
+}
+
+KeyboardEntryActivity::RenderState KeyboardEntryActivity::captureRenderState() {
+  KeyboardStateLock lock(stateMutex);
+  RenderState snapshot;
+  snapshot.text = text;
+  snapshot.cursorPos = cursorPos;
+  snapshot.passwordVisible = passwordVisible;
+  snapshot.selectedRow = selectedRow;
+  snapshot.selectedCol = selectedCol;
+  snapshot.shiftState = shiftState;
+  snapshot.symMode = symMode;
+  snapshot.cursorMode = cursorMode;
+  snapshot.togglePos = togglePos;
+  snapshot.urlMode = urlMode;
+  snapshot.hintVisible = hintVisible;
+  return snapshot;
+}
+
+void KeyboardEntryActivity::requestKeyboardUpdate() {
+  // Rendering is notified only; no O(text length) snapshot copy occurs on the
+  // input task. The render task takes one snapshot when it actually runs, so
+  // redraw requests naturally coalesce while typing continues.
+  Activity::requestUpdate();
+}
 
 void KeyboardEntryActivity::onEnter() {
   Activity::onEnter();
@@ -32,7 +81,7 @@ void KeyboardEntryActivity::onEnter() {
   rightStartCursorPos = 0;
   textInputLastAttempt = millis();
   (void)nativeTextInputBegin();
-  requestUpdate();
+  requestKeyboardUpdate();
 }
 
 void KeyboardEntryActivity::onExit() {
@@ -117,7 +166,7 @@ bool KeyboardEntryActivity::handleKeyPress() {
           symMode = false;
           selectedRow = getTotalRowCount() - 1;
           selectedCol = static_cast<int>(SpecialKeyType::Mode);
-          requestUpdate();
+          requestKeyboardUpdate();
           return true;
         }
         symMode = !symMode;
@@ -140,7 +189,7 @@ bool KeyboardEntryActivity::handleKeyPress() {
           }
           selectedRow = getTotalRowCount() - 1;
           selectedCol = static_cast<int>(SpecialKeyType::Space);
-          requestUpdate();
+          requestKeyboardUpdate();
         } else {
           return insertChar(' ');
         }
@@ -256,12 +305,13 @@ bool KeyboardEntryActivity::handleExternalTextInput(
   if (changed) {
     togglePos = false;
     hintVisible = false;
-    requestUpdate();
+    requestKeyboardUpdate();
   }
   return false;
 }
 
 void KeyboardEntryActivity::loop() {
+  KeyboardStateLock stateLock(stateMutex);
   constexpr unsigned long TEXT_INPUT_RETRY_MS = 1000;
   const unsigned long now = millis();
   if (!nativeTextInputActive() &&
@@ -293,7 +343,7 @@ void KeyboardEntryActivity::loop() {
     upLongHandled = true;
     hintVisible = true;
     hintShowTime = millis();
-    requestUpdate();
+    requestKeyboardUpdate();
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
@@ -308,7 +358,7 @@ void KeyboardEntryActivity::loop() {
       }
       int maxCol = isBottomRow(selectedRow) ? BOTTOM_KEY_COUNT - 1 : contentCols - 1;
       if (selectedCol > maxCol) selectedCol = maxCol;
-      requestUpdate();
+      requestKeyboardUpdate();
     }
     upHeld = false;
     upLongHandled = false;
@@ -322,7 +372,7 @@ void KeyboardEntryActivity::loop() {
       cursorMode = false;
       hintVisible = false;
       downLongHandled = true;
-      requestUpdate();
+      requestKeyboardUpdate();
     } else {
       downLongHandled = false;
     }
@@ -340,7 +390,7 @@ void KeyboardEntryActivity::loop() {
       }
       int maxCol = isBottomRow(selectedRow) ? BOTTOM_KEY_COUNT - 1 : contentCols - 1;
       if (selectedCol > maxCol) selectedCol = maxCol;
-      requestUpdate();
+      requestKeyboardUpdate();
     }
     downHeld = false;
     downLongHandled = false;
@@ -350,7 +400,7 @@ void KeyboardEntryActivity::loop() {
     if (cursorMode) return;
     int maxCol = isBottomRow(selectedRow) ? BOTTOM_KEY_COUNT - 1 : getContentColCount() - 1;
     selectedCol = ButtonNavigator::previousIndex(selectedCol, maxCol + 1);
-    requestUpdate();
+    requestKeyboardUpdate();
   });
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Left)) {
@@ -358,10 +408,10 @@ void KeyboardEntryActivity::loop() {
       if (togglePos) {
         cursorPos = savedCursorPos;
         togglePos = false;
-        requestUpdate();
+        requestKeyboardUpdate();
       } else if (cursorPos > 0) {
         cursorPos--;
-        requestUpdate();
+        requestKeyboardUpdate();
       }
     }
   }
@@ -378,7 +428,7 @@ void KeyboardEntryActivity::loop() {
     if (cursorMode) return;
     int maxCol = isBottomRow(selectedRow) ? BOTTOM_KEY_COUNT - 1 : getContentColCount() - 1;
     selectedCol = ButtonNavigator::nextIndex(selectedCol, maxCol + 1);
-    requestUpdate();
+    requestKeyboardUpdate();
   });
 
   if (rightHeld && !rightLongHandled && mappedInput.isPressed(MappedInputManager::Button::Right) &&
@@ -387,7 +437,7 @@ void KeyboardEntryActivity::loop() {
       savedCursorPos = rightStartCursorPos;
       togglePos = true;
       rightLongHandled = true;
-      requestUpdate();
+      requestKeyboardUpdate();
     }
   }
 
@@ -398,7 +448,7 @@ void KeyboardEntryActivity::loop() {
     }
     if (cursorMode && !togglePos && cursorPos < text.length()) {
       cursorPos++;
-      requestUpdate();
+      requestKeyboardUpdate();
     }
     if (cursorMode) return;
     rightHeld = false;
@@ -416,7 +466,7 @@ void KeyboardEntryActivity::loop() {
     text.clear();
     cursorPos = 0;
     confirmLongHandled = true;
-    requestUpdate();
+    requestKeyboardUpdate();
   }
 
   if (confirmHeld && !confirmLongHandled && mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
@@ -424,7 +474,7 @@ void KeyboardEntryActivity::loop() {
     char alt = getAlternativeChar();
     if (alt != '\0') {
       insertChar(alt);
-      requestUpdate();
+      requestKeyboardUpdate();
       confirmLongHandled = true;
     }
   }
@@ -432,11 +482,11 @@ void KeyboardEntryActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     if (confirmHeld && !confirmLongHandled && !cursorMode) {
       if (handleKeyPress()) {
-        requestUpdate();
+        requestKeyboardUpdate();
       }
     } else if (confirmHeld && !confirmLongHandled && cursorMode && inputType == InputType::Password && togglePos) {
       passwordVisible = !passwordVisible;
-      requestUpdate();
+      requestKeyboardUpdate();
     }
     confirmHeld = false;
     confirmLongHandled = false;
@@ -448,11 +498,12 @@ void KeyboardEntryActivity::loop() {
 
   if (hintVisible && !cursorMode && millis() - hintShowTime > 4000) {
     hintVisible = false;
-    requestUpdate();
+    requestKeyboardUpdate();
   }
 }
 
 bool KeyboardEntryActivity::onTouchTap(int16_t x, int16_t y) {
+  KeyboardStateLock stateLock(stateMutex);
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
   const auto& metrics = UITheme::getInstance().getMetrics();
@@ -460,19 +511,6 @@ bool KeyboardEntryActivity::onTouchTap(int16_t x, int16_t y) {
   const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
   const int inputStartY = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing +
                           metrics.verticalSpacing * 4 + metrics.keyboardVerticalOffset;
-
-  std::string displayText;
-  if (inputType == InputType::Password && !passwordVisible) {
-    const size_t revealPos = (text.length() > 0 && cursorPos > 0) ? cursorPos - 1 : std::string::npos;
-    displayText = text;
-    for (size_t i = 0; i < displayText.length(); i++) {
-      if (i != revealPos) {
-        displayText[i] = '*';
-      }
-    }
-  } else {
-    displayText = text;
-  }
 
   int availableWidth = pageWidth;
   if (gpio.deviceIsX3()) {
@@ -486,60 +524,34 @@ bool KeyboardEntryActivity::onTouchTap(int16_t x, int16_t y) {
           ? std::max(renderer.getTextWidth(UI_12_FONT_ID, "[abc]"), renderer.getTextWidth(UI_12_FONT_ID, "[***]")) +
                 toggleGap
           : 0;
-  const int textAreaWidth = pageWidth - 2 * effectiveMargin - toggleReserve;
-  const int maxLineWidth = textAreaWidth;
-
-  int inputHeight = 0;
-  int lineStartIdx = 0;
-  int lineEndIdx = static_cast<int>(displayText.length());
-  int textWidth = 0;
-  while (true) {
-    std::string lineText = displayText.substr(lineStartIdx, lineEndIdx - lineStartIdx);
-    textWidth = renderer.getTextAdvanceX(UI_12_FONT_ID, lineText.c_str(), EpdFontFamily::REGULAR);
-    if (textWidth <= maxLineWidth) {
-      if (lineEndIdx == static_cast<int>(displayText.length())) {
-        break;
-      }
-      inputHeight += lineHeight;
-      lineStartIdx = lineEndIdx;
-      lineEndIdx = static_cast<int>(displayText.length());
-    } else {
-      lineEndIdx -= 1;
-    }
-  }
-
-  if (isPassword) {
-    const char* toggleLabel = passwordVisible ? "[***]" : "[abc]";
-    const int toggleWidth = renderer.getTextWidth(UI_12_FONT_ID, toggleLabel);
-    const int toggleX = pageWidth - effectiveMargin - toggleWidth;
-    const int toggleY = inputStartY + inputHeight;
-    if (x >= toggleX - 4 && x <= toggleX + toggleWidth + 4 && y >= toggleY - 4 && y <= toggleY + lineHeight + 4) {
-      passwordVisible = !passwordVisible;
-      requestUpdate();
-      return true;
-    }
-  }
+  const int maxLineWidth = pageWidth - 2 * effectiveMargin - toggleReserve;
 
   const int keyHeight = metrics.keyboardKeyHeight;
   const int bottomKeyHeight = metrics.keyboardBottomKeyHeight;
   const int keySpacing = metrics.keyboardKeySpacing;
   const int contentCols = getContentColCount();
+  const int contentRows = getContentRowCount();
   const int keyboardWidth = pageWidth * metrics.keyboardWidthPercent / 100;
   const int keyWidth = (keyboardWidth - (contentCols - 1) * keySpacing) / contentCols;
   const int leftMargin = (pageWidth - (contentCols * keyWidth + (contentCols - 1) * keySpacing)) / 2;
   const int bottomRowGap = metrics.keyboardBottomKeySpacing > 0 ? 4 : 0;
-  const int keyboardStartY = metrics.keyboardBottomAligned
-                                 ? pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing -
-                                       (keyHeight + keySpacing) * getContentRowCount() - bottomKeyHeight -
-                                       bottomRowGap + metrics.keyboardVerticalOffset
-                                 : inputStartY + inputHeight + lineHeight + metrics.verticalSpacing;
-
   const int bkSpacing = metrics.keyboardBottomKeySpacing;
   const int abcKeyWidth = (keyboardWidth - (COLS - 1) * keySpacing) / COLS;
   const int contentTotalWidth = COLS * abcKeyWidth + (COLS - 1) * keySpacing;
   const int bottomKeyWidth = (contentTotalWidth - (BOTTOM_KEY_COUNT - 1) * bkSpacing) / BOTTOM_KEY_COUNT;
   const int bottomLeftMargin =
       (pageWidth - (BOTTOM_KEY_COUNT * bottomKeyWidth + (BOTTOM_KEY_COUNT - 1) * bkSpacing)) / 2;
+
+  int inputHeight = 0;
+  if (!metrics.keyboardBottomAligned) {
+    inputHeight = measureInputHeightForTouch(maxLineWidth, lineHeight);
+  }
+
+  const int keyboardStartY = metrics.keyboardBottomAligned
+                                 ? pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing -
+                                       (keyHeight + keySpacing) * contentRows - bottomKeyHeight -
+                                       bottomRowGap + metrics.keyboardVerticalOffset
+                                 : inputStartY + inputHeight + lineHeight + metrics.verticalSpacing;
 
   int urlLeftMargin = leftMargin;
   if (urlMode) {
@@ -549,7 +561,8 @@ bool KeyboardEntryActivity::onTouchTap(int16_t x, int16_t y) {
     urlLeftMargin = urlCenterX - urlTotalWidth / 2;
   }
 
-  const int contentRows = getContentRowCount();
+  // Keyboard key hit-testing is intentionally first for bottom-aligned layouts.
+  // Typing must not perform text wrapping/font measurement before accepting a key.
   for (int row = 0; row < contentRows; row++) {
     const int rowY = keyboardStartY + row * (keyHeight + keySpacing);
     const int rowLeftMargin = urlMode ? urlLeftMargin : leftMargin;
@@ -561,7 +574,7 @@ bool KeyboardEntryActivity::onTouchTap(int16_t x, int16_t y) {
         cursorMode = false;
         togglePos = false;
         if (handleKeyPress()) {
-          requestUpdate();
+          requestKeyboardUpdate();
         }
         return true;
       }
@@ -577,8 +590,27 @@ bool KeyboardEntryActivity::onTouchTap(int16_t x, int16_t y) {
       cursorMode = false;
       togglePos = false;
       if (handleKeyPress()) {
-        requestUpdate();
+        requestKeyboardUpdate();
       }
+      return true;
+    }
+  }
+
+  // Only non-key taps need text-field layout. On the normal bottom-aligned
+  // RiscRTE keyboard this keeps the entire text measurement path off typing.
+  if (metrics.keyboardBottomAligned) {
+    inputHeight = measureInputHeightForTouch(maxLineWidth, lineHeight);
+  }
+
+  if (isPassword) {
+    const char* toggleLabel = passwordVisible ? "[***]" : "[abc]";
+    const int toggleWidth = renderer.getTextWidth(UI_12_FONT_ID, toggleLabel);
+    const int toggleX = pageWidth - effectiveMargin - toggleWidth;
+    const int toggleY = inputStartY + inputHeight;
+    if (x >= toggleX - 4 && x <= toggleX + toggleWidth + 4 &&
+        y >= toggleY - 4 && y <= toggleY + lineHeight + 4) {
+      passwordVisible = !passwordVisible;
+      requestKeyboardUpdate();
       return true;
     }
   }
@@ -590,19 +622,49 @@ bool KeyboardEntryActivity::onTouchTap(int16_t x, int16_t y) {
     cursorPos = text.length();
     hintVisible = true;
     hintShowTime = millis();
-    requestUpdate();
+    requestKeyboardUpdate();
     return true;
   }
 
   return false;
 }
 
+int KeyboardEntryActivity::measureInputHeightForTouch(int maxLineWidth, int lineHeight) const {
+  std::string displayText = text;
+  if (inputType == InputType::Password && !passwordVisible) {
+    const size_t revealPos = (text.length() > 0 && cursorPos > 0) ? cursorPos - 1 : std::string::npos;
+    for (size_t i = 0; i < displayText.length(); ++i) {
+      if (i != revealPos) displayText[i] = '*';
+    }
+  }
+
+  int inputHeight = 0;
+  int lineStartIdx = 0;
+  int lineEndIdx = static_cast<int>(displayText.length());
+  while (true) {
+    std::string lineText = displayText.substr(lineStartIdx, lineEndIdx - lineStartIdx);
+    const int textWidth = renderer.getTextAdvanceX(UI_12_FONT_ID, lineText.c_str(), EpdFontFamily::REGULAR);
+    if (textWidth <= maxLineWidth || lineEndIdx <= lineStartIdx + 1) {
+      if (lineEndIdx == static_cast<int>(displayText.length())) break;
+      inputHeight += lineHeight;
+      lineStartIdx = lineEndIdx;
+      lineEndIdx = static_cast<int>(displayText.length());
+    } else {
+      --lineEndIdx;
+    }
+  }
+  return inputHeight;
+}
+
 void KeyboardEntryActivity::render(RenderLock&&) {
+  const RenderState state = captureRenderState();
   renderer.clearScreen();
 
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
   const auto& metrics = UITheme::getInstance().getMetrics();
+  const int contentRows = state.urlMode ? 3 : ABC_ROWS;
+  const int contentCols = state.urlMode ? 3 : COLS;
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, title.c_str());
 
@@ -612,21 +674,21 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   int inputHeight = 0;
 
   std::string displayText;
-  if (inputType == InputType::Password && !passwordVisible) {
+  if (inputType == InputType::Password && !state.passwordVisible) {
     size_t revealPos;
-    if (cursorMode) {
-      revealPos = text.length();  // no reveal in displayText; block draws actual char directly
+    if (state.cursorMode) {
+      revealPos = state.text.length();  // no reveal in displayText; block draws actual char directly
     } else {
-      revealPos = (text.length() > 0 && cursorPos > 0) ? cursorPos - 1 : std::string::npos;
+      revealPos = (state.text.length() > 0 && state.cursorPos > 0) ? state.cursorPos - 1 : std::string::npos;
     }
-    displayText = text;
+    displayText = state.text;
     for (size_t i = 0; i < displayText.length(); i++) {
       if (i != revealPos) {
         displayText[i] = '*';
       }
     }
   } else {
-    displayText = text;
+    displayText = state.text;
   }
 
   const bool isPassword = (inputType == InputType::Password);
@@ -645,8 +707,8 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   const bool centerText = metrics.keyboardCenteredText;
 
   int cursorCharWidth = 6;
-  if (cursorPos < text.length()) {
-    int w = renderer.getTextWidth(UI_12_FONT_ID, text.substr(cursorPos, 1).c_str());
+  if (state.cursorPos < state.text.length()) {
+    int w = renderer.getTextWidth(UI_12_FONT_ID, state.text.substr(state.cursorPos, 1).c_str());
     if (w > cursorCharWidth) cursorCharWidth = w;
   }
 
@@ -663,22 +725,22 @@ void KeyboardEntryActivity::render(RenderLock&&) {
     if (textWidth <= maxLineWidth) {
       const bool isLastLine = (lineEndIdx == static_cast<int>(displayText.length()));
       bool isCursorLine = false;
-      if (!cursorDrawn && cursorPos >= lineStartIdx &&
-          (isLastLine ? cursorPos <= lineEndIdx : cursorPos < lineEndIdx)) {
+      if (!cursorDrawn && state.cursorPos >= lineStartIdx &&
+          (isLastLine ? state.cursorPos <= lineEndIdx : state.cursorPos < lineEndIdx)) {
         std::string beforeCursor;
-        if (isPassword && !passwordVisible && cursorMode) {
-          beforeCursor = std::string(cursorPos - lineStartIdx, '*');
+        if (isPassword && !state.passwordVisible && state.cursorMode) {
+          beforeCursor = std::string(state.cursorPos - lineStartIdx, '*');
         } else {
-          beforeCursor = displayText.substr(lineStartIdx, cursorPos - lineStartIdx);
+          beforeCursor = displayText.substr(lineStartIdx, state.cursorPos - lineStartIdx);
         }
         int beforeWidth = renderer.getTextAdvanceX(UI_12_FONT_ID, beforeCursor.c_str(), EpdFontFamily::REGULAR);
         int kernOffset = 0;
-        if (cursorPos < displayText.length()) {
-          std::string beforeAndCursor = beforeCursor + displayText.substr(cursorPos, 1);
+        if (state.cursorPos < displayText.length()) {
+          std::string beforeAndCursor = beforeCursor + displayText.substr(state.cursorPos, 1);
           int beforeAndCursorWidth =
               renderer.getTextAdvanceX(UI_12_FONT_ID, beforeAndCursor.c_str(), EpdFontFamily::REGULAR);
           int charAdvance =
-              renderer.getTextAdvanceX(UI_12_FONT_ID, displayText.substr(cursorPos, 1).c_str(), EpdFontFamily::REGULAR);
+              renderer.getTextAdvanceX(UI_12_FONT_ID, displayText.substr(state.cursorPos, 1).c_str(), EpdFontFamily::REGULAR);
           kernOffset = beforeAndCursorWidth - beforeWidth - charAdvance;
         }
         if (centerText) {
@@ -692,15 +754,15 @@ void KeyboardEntryActivity::render(RenderLock&&) {
       }
 
       const int lineStartX = centerText ? effectiveMargin + (maxLineWidth - textWidth) / 2 : effectiveMargin;
-      if (isCursorLine && cursorMode && isPassword && !passwordVisible && !togglePos) {
-        // Draw text in 3 parts to avoid block cursor overflowing onto next char.
+      if (isCursorLine && state.cursorMode && isPassword && !state.passwordVisible && !state.togglePos) {
+        // Draw state.text in 3 parts to avoid block cursor overflowing onto next char.
         // displayText uses '*' for all chars; actual char may be wider than '*'.
         // Part 1: chars before cursor position
-        const std::string part1 = displayText.substr(lineStartIdx, cursorPos - lineStartIdx);
+        const std::string part1 = displayText.substr(lineStartIdx, state.cursorPos - lineStartIdx);
         renderer.drawText(UI_12_FONT_ID, lineStartX, inputStartY + inputHeight, part1.c_str());
         // Part 2: skip cursor slot (block + actual char drawn later)
         // Part 3: chars after cursor position (skip char under cursor), starting at cursorPixelX + cursorCharWidth
-        const int afterStart = static_cast<int>(cursorPos) + (cursorPos < text.length() ? 1 : 0);
+        const int afterStart = static_cast<int>(state.cursorPos) + (state.cursorPos < state.text.length() ? 1 : 0);
         const int afterEnd = lineEndIdx;
         if (afterStart < afterEnd) {
           const std::string part3 = displayText.substr(afterStart, afterEnd - afterStart);
@@ -723,17 +785,17 @@ void KeyboardEntryActivity::render(RenderLock&&) {
 
   const int fieldWidth = (inputHeight > 0) ? maxLineWidth : textWidth;
   const int lineMargin = effectiveMargin;
-  GUI.drawTextField(renderer, Rect{0, inputStartY, pageWidth, inputHeight}, fieldWidth, cursorMode, lineMargin,
+  GUI.drawTextField(renderer, Rect{0, inputStartY, pageWidth, inputHeight}, fieldWidth, state.cursorMode, lineMargin,
                     pageWidth - 2 * lineMargin);
 
-  if (cursorMode && !togglePos && cursorPos <= displayText.length()) {
+  if (state.cursorMode && !state.togglePos && state.cursorPos <= displayText.length()) {
     static constexpr int blockPadding = 1;
     renderer.fillRect(cursorPixelX - blockPadding, cursorLineY, cursorCharWidth + blockPadding * 2, lineHeight, true);
-    if (cursorPos < text.length()) {
-      const char buf[2] = {text[cursorPos], '\0'};
+    if (state.cursorPos < state.text.length()) {
+      const char buf[2] = {state.text[state.cursorPos], '\0'};
       renderer.drawText(UI_12_FONT_ID, cursorPixelX, cursorLineY, buf, false);
     }
-  } else if (cursorPos <= displayText.length()) {
+  } else if (state.cursorPos <= displayText.length()) {
     static constexpr int serifW = 3;
     const int cX = cursorPixelX;
     const int cY = cursorLineY;
@@ -746,11 +808,11 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   }
 
   if (isPassword) {
-    const char* toggleLabel = passwordVisible ? "[***]" : "[abc]";
+    const char* toggleLabel = state.passwordVisible ? "[***]" : "[abc]";
     const int toggleWidth = renderer.getTextWidth(UI_12_FONT_ID, toggleLabel);
     const int toggleX = pageWidth - effectiveMargin - toggleWidth;
     const int toggleY = inputStartY + inputHeight;
-    const bool toggleSelected = cursorMode && togglePos;
+    const bool toggleSelected = state.cursorMode && state.togglePos;
 
     if (toggleSelected) {
       renderer.fillRect(toggleX - 2, toggleY, toggleWidth + 5, lineHeight + 3, true);
@@ -760,23 +822,23 @@ void KeyboardEntryActivity::render(RenderLock&&) {
     }
   }
 
-  if (hintVisible && !text.empty()) {
+  if (state.hintVisible && !state.text.empty()) {
     const int hintLh = renderer.getLineHeight(SMALL_FONT_ID);
     const int underlineY = inputStartY + inputHeight + lineHeight + metrics.verticalSpacing;
     const int hintY = underlineY + 4;
-    if (cursorMode) {
+    if (state.cursorMode) {
       int hintLineY = hintY;
-      if (inputType == InputType::Password && togglePos) {
+      if (inputType == InputType::Password && state.togglePos) {
         renderer.drawCenteredText(
             SMALL_FONT_ID, hintLineY,
-            passwordVisible ? tr(STR_KB_HINT_TOGGLE_HIDE_PASSWORD) : tr(STR_KB_HINT_TOGGLE_SHOW_PASSWORD), true);
+            state.passwordVisible ? tr(STR_KB_HINT_TOGGLE_HIDE_PASSWORD) : tr(STR_KB_HINT_TOGGLE_SHOW_PASSWORD), true);
         hintLineY += hintLh;
         renderer.drawCenteredText(SMALL_FONT_ID, hintLineY, tr(STR_KB_HINT_RETURN_CURSOR), true);
       } else {
         renderer.drawCenteredText(SMALL_FONT_ID, hintLineY, tr(STR_KB_HINT_MOVE_CURSOR), true);
         hintLineY += hintLh;
         if (inputType == InputType::Password) {
-          const char* passTip = passwordVisible ? tr(STR_KB_HINT_HIDE_PASSWORD) : tr(STR_KB_HINT_SHOW_PASSWORD);
+          const char* passTip = state.passwordVisible ? tr(STR_KB_HINT_HIDE_PASSWORD) : tr(STR_KB_HINT_SHOW_PASSWORD);
           renderer.drawCenteredText(SMALL_FONT_ID, hintLineY, passTip, true);
         }
       }
@@ -788,7 +850,6 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   const int keyHeight = metrics.keyboardKeyHeight;
   const int bottomKeyHeight = metrics.keyboardBottomKeyHeight;
   const int keySpacing = metrics.keyboardKeySpacing;
-  const int contentCols = getContentColCount();
   const int keyboardWidth = pageWidth * metrics.keyboardWidthPercent / 100;
   const int keyWidth = (keyboardWidth - (contentCols - 1) * keySpacing) / contentCols;
   const int leftMargin = (pageWidth - (contentCols * keyWidth + (contentCols - 1) * keySpacing)) / 2;
@@ -796,7 +857,7 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   const int bottomRowGap = metrics.keyboardBottomKeySpacing > 0 ? 4 : 0;
   const int keyboardStartY = metrics.keyboardBottomAligned
                                  ? pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing -
-                                       (keyHeight + keySpacing) * getContentRowCount() - bottomKeyHeight -
+                                       (keyHeight + keySpacing) * contentRows - bottomKeyHeight -
                                        bottomRowGap + metrics.keyboardVerticalOffset
                                  : inputStartY + inputHeight + lineHeight + metrics.verticalSpacing;
 
@@ -805,37 +866,37 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   auto drawTip = [&](const char* tip, int y) { renderer.drawCenteredText(SMALL_FONT_ID, y, tip, true); };
 
   int tipCount = 0;
-  if (cursorMode) {
+  if (state.cursorMode) {
     tipCount = 1;
-  } else if (urlMode) {
-    tipCount = 1 + (!text.empty() ? 1 : 0);
-  } else if (symMode) {
-    tipCount = !text.empty() ? 1 : 0;
+  } else if (state.urlMode) {
+    tipCount = 1 + (!state.text.empty() ? 1 : 0);
+  } else if (state.symMode) {
+    tipCount = !state.text.empty() ? 1 : 0;
   } else {
-    tipCount = 1 + (inputType == InputType::Url ? 1 : 0) + (!text.empty() ? 1 : 0);
+    tipCount = 1 + (inputType == InputType::Url ? 1 : 0) + (!state.text.empty() ? 1 : 0);
   }
 
   if (tipCount > 0) {
     int y = (underlineBottom + keyboardStartY) / 2 - (tipCount + 1) * tipsLh / 2;
     drawTip(tr(STR_KB_TIPS), y);
     y += tipsLh;
-    if (cursorMode) {
+    if (state.cursorMode) {
       drawTip(tr(STR_KB_HINT_RETURN_KEYBOARD), y);
-    } else if (urlMode) {
+    } else if (state.urlMode) {
       drawTip(tr(STR_KB_HINT_EXIT_URL_MODE), y);
       y += tipsLh;
-      if (!text.empty()) {
+      if (!state.text.empty()) {
         drawTip(tr(STR_KB_HINT_CLEAR_TEXT), y);
       }
-    } else if (symMode) {
-      if (!text.empty()) {
+    } else if (state.symMode) {
+      if (!state.text.empty()) {
         drawTip(tr(STR_KB_HINT_CLEAR_TEXT), y);
       }
     } else {
       const char* altCharTip;
       if (inputType == InputType::Url) {
         altCharTip = tr(STR_KB_HINT_SECONDARY_CHAR);
-      } else if (shiftState > 0) {
+      } else if (state.shiftState > 0) {
         altCharTip = tr(STR_KB_HINT_LOWER_SECONDARY);
       } else {
         altCharTip = tr(STR_KB_HINT_UPPER_SECONDARY);
@@ -846,7 +907,7 @@ void KeyboardEntryActivity::render(RenderLock&&) {
         drawTip(tr(STR_KB_HINT_URL_SNIPPETS), y);
         y += tipsLh;
       }
-      if (!text.empty()) {
+      if (!state.text.empty()) {
         drawTip(tr(STR_KB_HINT_CLEAR_TEXT), y);
       }
     }
@@ -860,26 +921,25 @@ void KeyboardEntryActivity::render(RenderLock&&) {
       (pageWidth - (BOTTOM_KEY_COUNT * bottomKeyWidth + (BOTTOM_KEY_COUNT - 1) * bkSpacing)) / 2;
 
   int urlLeftMargin = leftMargin;
-  if (urlMode) {
+  if (state.urlMode) {
     const int urlTotalWidth = 3 * keyWidth + 2 * keySpacing;
     const int urlCenterX =
         bottomLeftMargin + static_cast<int>(SpecialKeyType::Space) * (bottomKeyWidth + bkSpacing) + bottomKeyWidth / 2;
     urlLeftMargin = urlCenterX - urlTotalWidth / 2;
   }
 
-  const KeyDef(*layout)[COLS] = symMode ? symLayout : (inputType == InputType::Url ? urlLayout : abcLayout);
-  const int contentRows = getContentRowCount();
+  const KeyDef(*layout)[COLS] = state.symMode ? symLayout : (inputType == InputType::Url ? urlLayout : abcLayout);
 
   for (int row = 0; row < contentRows; row++) {
     const int rowY = keyboardStartY + row * (keyHeight + keySpacing);
-    const int rowLeftMargin = urlMode ? urlLeftMargin : leftMargin;
+    const int rowLeftMargin = state.urlMode ? urlLeftMargin : leftMargin;
 
     for (int col = 0; col < contentCols; col++) {
       const int keyX = rowLeftMargin + col * (keyWidth + keySpacing);
-      const bool isSelected = row == selectedRow && col == selectedCol;
-      const bool activeKeySelected = isSelected && !cursorMode;
+      const bool isSelected = row == state.selectedRow && col == state.selectedCol;
+      const bool activeKeySelected = isSelected && !state.cursorMode;
 
-      if (urlMode) {
+      if (state.urlMode) {
         const int snippetIdx = col + row * 3;
         if (snippetIdx < URL_SNIPPET_COUNT) {
           GUI.drawKeyboardKey(renderer, Rect{keyX, rowY, keyWidth, keyHeight}, urlSnippets[snippetIdx],
@@ -891,14 +951,14 @@ void KeyboardEntryActivity::render(RenderLock&&) {
         char primaryChar = key.primary;
         char secondaryChar = key.secondary;
 
-        if (!symMode && shiftState > 0 && key.secondary != '\0') {
+        if (!state.symMode && state.shiftState > 0 && key.secondary != '\0') {
           primaryChar = key.secondary;
           secondaryChar = key.primary;
         }
 
         const char primaryBuf[2] = {primaryChar, '\0'};
         const char secondaryBuf[2] = {secondaryChar, '\0'};
-        const bool showSecondary = !symMode && row == 0 && secondaryChar != '\0';
+        const bool showSecondary = !state.symMode && row == 0 && secondaryChar != '\0';
         GUI.drawKeyboardKey(renderer, Rect{keyX, rowY, keyWidth, keyHeight}, primaryBuf, activeKeySelected,
                             showSecondary ? secondaryBuf : nullptr);
       }
@@ -906,16 +966,16 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   }
 
   const int bottomRowY = keyboardStartY + contentRows * (keyHeight + keySpacing) + bottomRowGap;
-  const bool bottomSelected = isBottomRow(selectedRow);
+  const bool bottomSelected = (state.selectedRow == contentRows);
 
   struct BottomKeyInfo {
     KeyboardKeyType themeType;
     const char* label;
   };
   const BottomKeyInfo bottomKeys[BOTTOM_KEY_COUNT] = {
-      {(symMode || urlMode || inputType == InputType::Url) ? KeyboardKeyType::Disabled : KeyboardKeyType::Shift,
-       (symMode || urlMode || inputType == InputType::Url) ? shiftString[0] : shiftString[shiftState]},
-      {KeyboardKeyType::Mode, urlMode ? "abc" : (symMode ? "abc" : "#@!")},
+      {(state.symMode || state.urlMode || inputType == InputType::Url) ? KeyboardKeyType::Disabled : KeyboardKeyType::Shift,
+       (state.symMode || state.urlMode || inputType == InputType::Url) ? shiftString[0] : shiftString[state.shiftState]},
+      {KeyboardKeyType::Mode, state.urlMode ? "abc" : (state.symMode ? "abc" : "#@!")},
       {inputType == InputType::Url ? KeyboardKeyType::Mode : KeyboardKeyType::Space,
        inputType == InputType::Url ? "URL" : nullptr},
       {KeyboardKeyType::Del, nullptr},
@@ -924,47 +984,47 @@ void KeyboardEntryActivity::render(RenderLock&&) {
 
   for (int i = 0; i < BOTTOM_KEY_COUNT; i++) {
     const int keyX = bottomLeftMargin + i * (bottomKeyWidth + bkSpacing);
-    const bool isSelected = bottomSelected && i == selectedCol;
+    const bool isSelected = bottomSelected && i == state.selectedCol;
 
-    const bool activeKeySelected = isSelected && !cursorMode;
+    const bool activeKeySelected = isSelected && !state.cursorMode;
     GUI.drawKeyboardKey(renderer, Rect{keyX, bottomRowY, bottomKeyWidth, bottomKeyHeight}, bottomKeys[i].label,
                         activeKeySelected, nullptr, bottomKeys[i].themeType);
   }
 
-  if (cursorMode) {
+  if (state.cursorMode) {
     int selKeyX, selKeyY, selKeyW, selKeyH;
-    if (isBottomRow(selectedRow)) {
-      selKeyX = bottomLeftMargin + selectedCol * (bottomKeyWidth + bkSpacing);
+    if ((state.selectedRow == contentRows)) {
+      selKeyX = bottomLeftMargin + state.selectedCol * (bottomKeyWidth + bkSpacing);
       selKeyY = bottomRowY;
       selKeyW = bottomKeyWidth;
       selKeyH = bottomKeyHeight;
     } else {
-      const int rowLM = urlMode ? urlLeftMargin : leftMargin;
-      selKeyX = rowLM + selectedCol * (keyWidth + keySpacing);
-      selKeyY = keyboardStartY + selectedRow * (keyHeight + keySpacing);
+      const int rowLM = state.urlMode ? urlLeftMargin : leftMargin;
+      selKeyX = rowLM + state.selectedCol * (keyWidth + keySpacing);
+      selKeyY = keyboardStartY + state.selectedRow * (keyHeight + keySpacing);
       selKeyW = keyWidth;
       selKeyH = keyHeight;
     }
-    if (isBottomRow(selectedRow)) {
-      GUI.drawKeyboardKey(renderer, Rect{selKeyX, selKeyY, selKeyW, selKeyH}, bottomKeys[selectedCol].label, true,
-                          nullptr, bottomKeys[selectedCol].themeType, true);
-    } else if (urlMode) {
-      const int idx = selectedCol + selectedRow * 3;
+    if ((state.selectedRow == contentRows)) {
+      GUI.drawKeyboardKey(renderer, Rect{selKeyX, selKeyY, selKeyW, selKeyH}, bottomKeys[state.selectedCol].label, true,
+                          nullptr, bottomKeys[state.selectedCol].themeType, true);
+    } else if (state.urlMode) {
+      const int idx = state.selectedCol + state.selectedRow * 3;
       if (idx < URL_SNIPPET_COUNT) {
         GUI.drawKeyboardKey(renderer, Rect{selKeyX, selKeyY, selKeyW, selKeyH}, urlSnippets[idx], true, nullptr,
                             KeyboardKeyType::Normal, true);
       }
     } else {
-      const KeyDef& selKey = layout[selectedRow][selectedCol];
+      const KeyDef& selKey = layout[state.selectedRow][state.selectedCol];
       char selPrimary = selKey.primary;
       char selSecondary = selKey.secondary;
-      if (!symMode && shiftState > 0 && selKey.secondary != '\0') {
+      if (!state.symMode && state.shiftState > 0 && selKey.secondary != '\0') {
         selPrimary = selKey.secondary;
         selSecondary = selKey.primary;
       }
       const char selPrimaryBuf[2] = {selPrimary, '\0'};
       const char selSecondaryBuf[2] = {selSecondary, '\0'};
-      const bool selShowSecondary = !symMode && selectedRow == 0 && selSecondary != '\0';
+      const bool selShowSecondary = !state.symMode && state.selectedRow == 0 && selSecondary != '\0';
       GUI.drawKeyboardKey(renderer, Rect{selKeyX, selKeyY, selKeyW, selKeyH}, selPrimaryBuf, true,
                           selShowSecondary ? selSecondaryBuf : nullptr, KeyboardKeyType::Normal, true);
     }

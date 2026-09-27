@@ -22,7 +22,7 @@ BRIDGE = 'risc_fw_i2c_transact_v1'
 def run():
     manifest = json.loads((SOURCE / 'manifest.json').read_text())
     if (manifest.get('id') != 'i2c-esp32s3-v2' or
-            manifest.get('version') != '0.1.2' or
+            manifest.get('version') != '0.1.3' or
             manifest.get('driver_abi') != 2 or manifest.get('requires') != [] or
             manifest.get('provides') != [{'capability': 'i2c.bus', 'api': 1}] or
             manifest.get('status') != 'experimental-unpublished' or

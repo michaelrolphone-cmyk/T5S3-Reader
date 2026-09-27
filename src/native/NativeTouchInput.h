@@ -7,7 +7,8 @@ struct NativeTouchPoint {
 };
 
 // Firmware-side consumer of the installed input.touch.raw provider.
-// All calls run on the serialized firmware/app owner task.
+// Provider sampling runs on the dedicated capture task; UI-facing getters and
+// lifecycle entry points are concurrency-safe and do not depend on render/UI cadence.
 void nativeTouchTick();
 bool nativeTouchResume();
 bool nativeTouchSuspend();
