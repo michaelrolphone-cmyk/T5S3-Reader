@@ -1795,14 +1795,14 @@
           {
             "executable": false,
             "name": ".package.json",
-            "sha256": "430b3928956b89ce473561eac7389f450bc510ba6c9962163e5e90f5089e5271",
-            "size_bytes": 727
+            "sha256": "8ae27aec16e769aab7e6b17ef425d985d2ca8b8985524b2994484a1de343b675",
+            "size_bytes": 721
           },
           {
             "executable": true,
             "name": "driver.elf",
-            "sha256": "9b5e6b41f49d7e4aa56c973ec5f778b3dcd84318081ad88312e9efae1ecde5ae",
-            "size_bytes": 7700
+            "sha256": "b7b38cf7d0769081e0e88c75091f59d9a1c3fda45e498a915ce0655d8c2e8631",
+            "size_bytes": 7208
           },
           {
             "executable": false,
@@ -1820,7 +1820,7 @@
         "id": "usb-ui-navigation",
         "requires": [
           {
-            "capability": "usb.hid.keyboard",
+            "capability": "input.text",
             "min_api": 1
           },
           {
@@ -1832,13 +1832,13 @@
             "min_api": 1
           }
         ],
-        "version": "0.1.0"
+        "version": "0.1.1"
       },
-      "sha256": "9b5e6b41f49d7e4aa56c973ec5f778b3dcd84318081ad88312e9efae1ecde5ae",
-      "size": 7700,
-      "tag": "driver-usb-ui-navigation-v0.1.0",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-ui-navigation-v0.1.0/usb-ui-navigation--driver.elf",
-      "version": "0.1.0"
+      "sha256": "b7b38cf7d0769081e0e88c75091f59d9a1c3fda45e498a915ce0655d8c2e8631",
+      "size": 7208,
+      "tag": "driver-usb-ui-navigation-v0.1.1",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-ui-navigation-v0.1.1/usb-ui-navigation--driver.elf",
+      "version": "0.1.1"
     },
     {
       "asset": "usb-xinput-gamepad--driver.elf",
