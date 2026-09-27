@@ -3,7 +3,6 @@
 #include <Arduino.h>
 #include <esp_heap_caps.h>
 #include <mbedtls/platform.h>
-#include <esp_mem.h>
 #include <Logging.h>
 #include <cstddef>
 #include <cstdint>
@@ -11,8 +10,8 @@
 namespace RuntimeNetwork {
 namespace {
 // The 16 KiB mbedTLS record buffers and large certificate working sets are
-// ordinary byte-addressable storage. Keep small crypto/control allocations on
-// the framework's original allocator for hardware-facing internal memory.
+// ordinary byte-addressable storage. Keep small crypto/control allocations in
+// internal memory for hardware-facing requirements.
 constexpr size_t kPsramTlsMinimum = 4096;
 
 void* tlsCalloc(size_t count, size_t bytes) {
@@ -20,7 +19,7 @@ void* tlsCalloc(size_t count, size_t bytes) {
   const size_t total = count * bytes;
   if (total >= kPsramTlsMinimum)
     return heap_caps_calloc(count, bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  return esp_mbedtls_mem_calloc(count, bytes);
+  return heap_caps_calloc(count, bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 }
 
 void tlsFree(void* pointer) { heap_caps_free(pointer); }
