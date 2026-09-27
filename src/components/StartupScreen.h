@@ -24,7 +24,7 @@ inline void app(GfxRenderer& renderer, const char* name, const char* icon) {
   const std::string message = std::string("Loading ") + name;
   const auto label = renderer.truncatedText(UI_12_FONT_ID, message.c_str(), renderer.getScreenWidth() - 48);
   renderer.drawCenteredText(UI_12_FONT_ID, centerY, label.c_str());
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Quality);
   renderer.setRenderMode(mode);
 }
 }  // namespace StartupScreen
