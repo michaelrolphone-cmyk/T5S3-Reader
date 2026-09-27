@@ -32,7 +32,7 @@ class KeyboardEntryActivity : public Activity {
         text(std::move(initialText)),
         maxLength(maxLength),
         inputType(inputType) {
-    renderStateMutex = xSemaphoreCreateMutexStatic(&renderStateMutexStorage);
+    renderStateMutex = xSemaphoreCreateMutex();
     assert(renderStateMutex != nullptr && "Failed to create keyboard render-state mutex");
   }
 
@@ -65,7 +65,6 @@ class KeyboardEntryActivity : public Activity {
     bool hintVisible = false;
   };
 
-  StaticSemaphore_t renderStateMutexStorage{};
   SemaphoreHandle_t renderStateMutex = nullptr;
   RenderState renderState;
 
