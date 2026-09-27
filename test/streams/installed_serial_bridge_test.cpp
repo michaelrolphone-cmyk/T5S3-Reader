@@ -9,6 +9,9 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#ifdef RISCRTE_TEST_REAL_STREAM_BRIDGE
+t5_stream_result_t nativeStreamOpenSerialPair(t5_stream_t* rx, t5_stream_t* tx);
+#endif
 
 namespace {
 t5_app_api_v1 app{};
@@ -64,16 +67,31 @@ bool fourthSnapshot(risc_serial_device_v1* out, size_t* count) {
   *count = wanted;
   return true;
 }
-const risc_serial_port_inventory_v1 first = {
-    {{RISC_SERIAL_PORT_API_V1, sizeof(risc_serial_port_inventory_v1),
-      openPort, configurePort, controlPort, readPort, writePort, closePort},
-     probe},
-    emptySnapshot};
-const risc_serial_port_inventory_v1 fourth = {
-    {{RISC_SERIAL_PORT_API_V1, sizeof(risc_serial_port_inventory_v1),
-      openPort, configurePort, controlPort, readPort, writePort, closePort},
-     probe},
-    fourthSnapshot};
+bool providerEndpoints(uint64_t session, uint32_t* rx, uint32_t* tx) {
+  if (!session || !rx || !tx) return false;
+#ifdef RISCRTE_TEST_REAL_STREAM_BRIDGE
+  return nativeStreamOpenSerialPair(rx, tx) == T5_STREAM_OK && *rx && *tx &&
+      *rx != *tx;
+#else
+  if (streamBusy) return false;
+  *rx = 101;
+  *tx = 102;
+  streamBusy = true;
+  return true;
+#endif
+}
+const risc_serial_port_streams_v1 first = {
+    {{{RISC_SERIAL_PORT_API_V1, sizeof(risc_serial_port_streams_v1),
+       openPort, configurePort, controlPort, readPort, writePort, closePort},
+      probe},
+     emptySnapshot},
+    providerEndpoints};
+const risc_serial_port_streams_v1 fourth = {
+    {{{RISC_SERIAL_PORT_API_V1, sizeof(risc_serial_port_streams_v1),
+       openPort, configurePort, controlPort, readPort, writePort, closePort},
+      probe},
+     fourthSnapshot},
+    providerEndpoints};
 
 constexpr t5_serial_device_t kAlternativeDevice = 0x80000001u;
 bool altAvailable(void*) { return true; }
@@ -117,7 +135,9 @@ extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
 
 namespace RuntimeInstalledProviders {
 void poll() {}
-bool attachStream(const Lease&, uint32_t, uint32_t) { return false; }
+bool attachStream(const Lease&, uint32_t endpoint, uint32_t rights) {
+  return endpoint && rights;
+}
 bool prepare() { return true; }
 bool nextProvider(const char* capability, uint32_t api, size_t* cursor,
                   char* id, size_t capacity) {
@@ -132,8 +152,10 @@ bool acquire(const char* id, const char* capability, uint32_t api, Lease* out) {
          api == RISC_SERIAL_PORT_API_V1 && out);
   ++graphAcquires;
   *out = {};
-  if (!std::strcmp(id, ids[0])) *out = {{1, graphAcquires}, &first.discovery.serial};
-  if (!std::strcmp(id, ids[1])) *out = {{2, graphAcquires}, &fourth.discovery.serial};
+  if (!std::strcmp(id, ids[0]))
+    *out = {{1, graphAcquires}, &first.inventory.discovery.serial};
+  if (!std::strcmp(id, ids[1]))
+    *out = {{2, graphAcquires}, &fourth.inventory.discovery.serial};
   return out->grant.slot != 0;
 }
 bool release(Lease* lease) {

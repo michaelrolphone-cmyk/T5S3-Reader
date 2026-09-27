@@ -2,6 +2,16 @@
 
 [PR #96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) on `impl/u1-riscrte` is the **only** implementation PR/branch. `AGENTS.md`, [USB remediation](USB_CONTRACT_VIOLATION_REMEDIATION.md), [execution order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [claim-scoped USB control](U1_USB_CONTROL_SCOPE_IMPLEMENTATION.md) and [package identity](PACKAGE_IDENTITY_VERSION_POLICY.md) govern the work. Owner controls merge, tag, release, flash and hardware qualification. A committed test is not a PASS.
 
+## September 27: endpoints-only serial.port acquire on merged master `9f687c35`
+
+PR head `bffb0f57` already parents U1 `332753ce` and master `9f687c35` (PSRAM catalogs, model-viewer, boot reveal, firmware 1.3.21). Merge-base equals current master; GitHub reports the PR mergeable. This follow-up does not reopen U2–U4.
+
+`installedAcquirePort` now requires a provider-published `risc_serial_port_streams_v1` pair. Core bumps the stream epoch, then attaches those exact endpoints. Missing, identical, or unpublished endpoints return `T5_SERIAL_UNSUPPORTED`. A failed `attachEndpoint` grant returns `T5_SERIAL_DENIED`. The production installed path no longer calls `nativeStreamOpenSerialPair`. An advertised-endpoint failure still never falls back to raw provider read/write. `usbAcquirePort` remains the compatibility `usb.serial` transport and still opens a compiled pair; T5UsbApi stays a compatibility symbol, not the installed data plane. `serial.port` remains the sole InstalledSerialInventory consumer.
+
+The installed-serial fixture advertises `streams_v1`, supplies endpoints, and grants `attachStream` when both endpoint and rights are nonzero. The host USB-controller drain source guard now matches master's quiesce event pump (`usb_host_lib_handle_events(1, &flags)`, `NO_CLIENTS`, `ALL_FREE`, free-all before uninstall) instead of the retired zero-timeout `finalFlags` snippet that broke CI after the backmerge.
+
+Verification: `ASAN_OPTIONS=detect_leaks=0 bash test/run_stream_test.sh` exit 0; drain source-guard unittest exit 0. No firmware/Xtensa or hardware result in this continuation. Canonical CDC identity migration and signing purge remain deferred.
+
 ## September 27: backmerge master `b2e2ece3` (1.3.21)
 
 Merged current master into `impl/u1-riscrte` at `32d6f104` so U1 is not

@@ -57,7 +57,11 @@ class UsbControllerDrainTests(unittest.TestCase):
         self.assertLess(quiesce.index('usb_host_uninstall()'),
                         quiesce.index('power->release_host('))
         self.assertIn('USBCTRL stage=vbus-released', quiesce)
-        self.assertIn('usb_host_lib_handle_events(0, &finalFlags)', quiesce)
+        self.assertIn('usb_host_lib_handle_events(1, &flags)', quiesce)
+        self.assertIn('USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS', quiesce)
+        self.assertIn('USB_HOST_LIB_EVENT_FLAGS_ALL_FREE', quiesce)
+        self.assertLess(quiesce.index('usb_host_device_free_all()'),
+                        quiesce.index('usb_host_uninstall()'))
         self.assertNotIn('NativeUsbBridge', self.section('bool drain_bulk(',
                                                          'bool wait_completion('))
 

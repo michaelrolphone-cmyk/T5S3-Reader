@@ -319,25 +319,17 @@ t5_serial_result_t installedAcquirePort(const t5_serial_port_request_t* request,
       !installedSession.open(request->config))
     return failedInstalledOpen(pending, lease, T5_SERIAL_IO);
   t5_stream_t newRx = 0, newTx = 0;
-  int32_t streamResult;
-  if (installedSession.hasEndpoints()) {
-    streamResult = installedSession.endpoints(&newRx, &newTx) &&
-        installedSerial.attachEndpoint(activeSemanticDevice, newRx, T5_STREAM_READ) &&
-        installedSerial.attachEndpoint(activeSemanticDevice, newTx, T5_STREAM_WRITE)
-        ? T5_STREAM_OK : T5_STREAM_DENIED;
-  } else {
-    // Transitional old providers retain the old path until their package
-    // adopts endpoints. An advertised endpoint failure never falls back.
-    activeStreamEpoch.store(++nextStreamEpoch, std::memory_order_release);
-    streamResult = nativeStreamOpenSerialPair(&newRx, &newTx);
-  }
-  if (streamResult != T5_STREAM_OK) {
-    const auto mapped = streamResult == T5_STREAM_BUSY ? T5_SERIAL_BUSY :
-        streamResult == T5_STREAM_UNSUPPORTED ? T5_SERIAL_UNSUPPORTED :
-        streamResult == T5_STREAM_DENIED ? T5_SERIAL_DENIED :
-        streamResult == T5_STREAM_LIMIT ? T5_SERIAL_LIMIT : T5_SERIAL_IO;
-    return failedInstalledOpen(pending, lease, mapped, newRx, newTx);
-  }
+  // serial.port acquisition consumes only provider-published endpoints.
+  // Core never opens a compiled shuttle pair, and an advertised endpoint
+  // failure never falls back to raw provider read/write.
+  activeStreamEpoch.store(++nextStreamEpoch, std::memory_order_release);
+  if (!installedSession.hasEndpoints() ||
+      !installedSession.endpoints(&newRx, &newTx) || !newRx || !newTx ||
+      newRx == newTx)
+    return failedInstalledOpen(pending, lease, T5_SERIAL_UNSUPPORTED);
+  if (!installedSerial.attachEndpoint(activeSemanticDevice, newRx, T5_STREAM_READ) ||
+      !installedSerial.attachEndpoint(activeSemanticDevice, newTx, T5_STREAM_WRITE))
+    return failedInstalledOpen(pending, lease, T5_SERIAL_DENIED, newRx, newTx);
   leaseHandle = pending;
   rxHandle = newRx;
   txHandle = newTx;
