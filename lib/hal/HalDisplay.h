@@ -31,6 +31,13 @@ class HalDisplay : public DisplaySurface {
   static constexpr RefreshMode BALANCED_REFRESH = RefreshMode::Balanced;
   static constexpr RefreshMode FAST_REFRESH = RefreshMode::LowLatency;
 
+  // Legacy refresh ordinals are persisted in settings and mapped throughout
+  // existing e-paper code. Never silently reorder these during abstraction work.
+  static_assert(static_cast<uint8_t>(FULL_REFRESH) == 0u);
+  static_assert(static_cast<uint8_t>(HALF_REFRESH) == 1u);
+  static_assert(static_cast<uint8_t>(BALANCED_REFRESH) == 2u);
+  static_assert(static_cast<uint8_t>(FAST_REFRESH) == 3u);
+
   using DisplayEffect = ::DisplayEffect;
   static constexpr DisplayEffect EFFECT_NONE = DisplayEffect::None;
   static constexpr DisplayEffect EFFECT_READER_TURN_FORWARD_STANDARD = DisplayEffect::PageTurnForwardStandard;
@@ -65,6 +72,9 @@ class HalDisplay : public DisplaySurface {
   static constexpr uint16_t DISPLAY_HEIGHT = BoardPins::DisplayHeight;
   static constexpr uint16_t DISPLAY_WIDTH_BYTES = DISPLAY_WIDTH / 8;
   static constexpr uint32_t BUFFER_SIZE = DISPLAY_WIDTH_BYTES * DISPLAY_HEIGHT;
+  static_assert((DISPLAY_WIDTH % 8u) == 0u, "MONO1 scan width must be byte aligned");
+  static_assert(BUFFER_SIZE == static_cast<uint32_t>(DISPLAY_WIDTH_BYTES) * DISPLAY_HEIGHT,
+                "display buffer geometry must remain internally consistent");
 
   // Frame buffer operations
   void clearScreen(uint8_t color = 0xFF) const;

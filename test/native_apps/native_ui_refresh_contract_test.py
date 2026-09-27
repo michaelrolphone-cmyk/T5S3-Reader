@@ -22,7 +22,11 @@ assert 'T5_UI_LIST_ICON_DOWNLOAD' in bridge and '"solid:f019"' in bridge
 assert 'T5_UI_LIST_ICON_UPDATE' in bridge and '"solid:f021"' in bridge
 assert 'T5_UI_LIST_ICON_INSTALLED' in bridge and '"regular:f058"' in bridge
 assert "stateIconGutter" not in bridge
-assert "const Rect content{0, listTop, pageWidth," in bridge
+# Adaptive display work must keep the theme-owned full-row icon rendering while
+# deriving the list rectangle from the active display's safe viewport.
+assert "struct NativeUiLayout" in bridge
+assert "renderer.getOrientedViewableTRBL" in bridge
+assert "const Rect content{layout.safeLeft, layout.contentTop, layout.safeWidth()," in bridge
 assert "stateIconFn" in bridge and "TextRole::System, stateIconFn" in bridge
 assert "FontAwesomeIcons::draw" not in bridge
 

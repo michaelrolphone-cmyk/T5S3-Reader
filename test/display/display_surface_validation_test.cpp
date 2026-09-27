@@ -9,6 +9,11 @@ static DisplaySurfaceInfo validMono() {
       DisplaySafeInsets{9, 3, 9, 3}};
 }
 
+static_assert(static_cast<uint8_t>(DisplayPresentMode::Clean) == 0u);
+static_assert(static_cast<uint8_t>(DisplayPresentMode::Quality) == 1u);
+static_assert(static_cast<uint8_t>(DisplayPresentMode::Balanced) == 2u);
+static_assert(static_cast<uint8_t>(DisplayPresentMode::LowLatency) == 3u);
+
 int main() {
   {
     const auto info = validMono();
