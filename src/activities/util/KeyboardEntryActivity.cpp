@@ -650,8 +650,8 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const int contentRows = state.state.urlMode ? 3 : ABC_ROWS;
-  const int contentCols = state.state.urlMode ? 3 : COLS;
+  const int contentRows = state.urlMode ? 3 : ABC_ROWS;
+  const int contentCols = state.urlMode ? 3 : COLS;
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, title.c_str());
 
