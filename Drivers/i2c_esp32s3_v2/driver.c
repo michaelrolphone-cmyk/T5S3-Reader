@@ -188,7 +188,10 @@ static bool start(const risc_provider_dependency_v1 *dependencies,
         claims[i].token = 0;
         claims[i].address = 0;
     }
-    next_token = 0;
+    /* UINT64_MAX is only the link-time .data placement sentinel. After the
+     * first start, preserve the monotonically increasing token generation
+     * across stop/start so stale handles can never become valid again. */
+    if (next_token == UINT64_MAX) next_token = 0;
     __atomic_store_n(&state, STATE_STARTED, __ATOMIC_RELEASE);
     return true;
 }
