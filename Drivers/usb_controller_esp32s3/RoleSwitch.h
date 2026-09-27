@@ -6,64 +6,36 @@
 // package reloads or input queues. Port owns every physical side effect.
 class UsbRoleSwitch {
  public:
-  enum class State { Off, Sense, Host, Cleanup, Failed };
+  enum class State { Off, Sense, Host, Failed };
   void begin(uint32_t now) {
     state_ = State::Sense; since_ = now;
     absent_ = external_ = false; readFailures_ = startFailures_ = 0;
-    settling_ = false; cleanupStops_ = false;
+    settling_ = false;
     error_ = nullptr;
   }
   void stop() { state_ = State::Off; }
   State state() const { return state_; }
   const char *diagnostic() const {
     if (state_ == State::Failed) return error_;
-    if (state_ == State::Cleanup)
-      return "ROLE: HOST CLEANUP PENDING; RESOURCES RETAINED";
     if (state_ == State::Sense)
       return external_ ? "EXTERNAL POWER; USB SERIAL AVAILABLE" : "SOURCE OFF; CHECKING USB INPUT POWER";
     return "USB ROLE OFF";
   }
   template <class Port> void poll(Port &port, uint32_t now) {
     if (state_ == State::Off || state_ == State::Failed) return;
-    if (state_ == State::Cleanup) {
-      // A failed teardown may have consumed some handles already. Retain the
-      // remaining ownership and retry the same idempotent cleanup path without
-      // pumping a client that may no longer exist or restarting the host.
-      if (static_cast<uint32_t>(now - since_) < 250u) return;
-      since_ = now;
-      if (!port.park()) return;
-      if (cleanupStops_) {
-        fail(port, "ROLE: HOST START FAILED THREE TIMES");
-        return;
-      }
-      state_ = State::Sense;
-      since_ = port.now();
-      absent_ = external_ = settling_ = false;
-      port.report(diagnostic());
-      return;
-    }
     if (state_ == State::Host) {
-      // Preserve the owner-confirmed 0.1.14 host lifetime. A USB host must
-      // remain installed while its provider is active so detach/re-attach is
-      // handled by the same IDF host/client instance. Boards that cannot
-      // distinguish incoming VBUS while sourcing MUST NOT periodically tear
-      // down the host merely to probe an empty connector.
+      // Preserve the owner-confirmed 0.1.14 host lifetime. A source-blind
+      // board cannot safely detect external VBUS while sourcing, but repeatedly
+      // destroying the IDF host/client/PHY is not a valid hotplug mechanism.
       if (port.busy()) { since_ = now; return; }
       if (port.idle_probe_required()) { since_ = now; return; }
 
-      // A board with an independent live VBUS/role detector may yield without
-      // source-off probing. Only a positive EXTERNAL observation authorizes a
-      // host teardown; SOURCE/ABSENT/UNKNOWN/SETTLING leave host discovery up.
+      // Independent detectors can observe incoming power while the host stays
+      // installed. Only a positive EXTERNAL observation authorizes yielding.
       if (static_cast<uint32_t>(now - since_) < 500u) return;
       since_ = now;
       if (port.input() != RISC_USB_POWER_EXTERNAL) return;
-      if (!port.park()) {
-        state_ = State::Cleanup;
-        since_ = port.now();
-        cleanupStops_ = false;
-        port.report(diagnostic());
-        return;
-      }
+      if (!port.park()) { fail(port, "ROLE: HOST CLEANUP FAILED; RESOURCES RETAINED"); return; }
       state_ = State::Sense; since_ = port.now(); absent_ = external_ = false;
       settling_ = false;
       port.report(diagnostic());
@@ -98,21 +70,13 @@ class UsbRoleSwitch {
     if (!absent_) { absent_ = true; return; }
     if (port.start()) {
       state_ = State::Host; since_ = port.now(); startFailures_ = 0;
-      cleanupStops_ = false;
       port.report("USB HOST; CONTROLLER DISCOVERY");
       return;
     }
     // A failed startup can still own DMA, PHY or a partial power lease.
     // Prove cleanup before restoring serial or attempting anything else.
-    ++startFailures_;
-    cleanupStops_ = startFailures_ >= 3;
-    if (!port.park()) {
-      state_ = State::Cleanup;
-      since_ = port.now();
-      port.report(diagnostic());
-      return;
-    }
-    if (cleanupStops_) { fail(port, "ROLE: HOST START FAILED THREE TIMES"); return; }
+    if (!port.park()) { fail(port, "ROLE: HOST CLEANUP FAILED; RESOURCES RETAINED"); return; }
+    if (++startFailures_ >= 3) { fail(port, "ROLE: HOST START FAILED THREE TIMES"); return; }
     since_ = port.now(); absent_ = false;
     port.report("HOST START FAILED; BOUNDED RETRY");
   }
@@ -126,7 +90,7 @@ class UsbRoleSwitch {
   uint32_t since_ = 0;
   uint8_t readFailures_ = 0, startFailures_ = 0;
   bool absent_ = false, external_ = false;
-  bool settling_ = false, cleanupStops_ = false;
+  bool settling_ = false;
   uint32_t settlingSince_ = 0;
   const char *error_ = nullptr;
 };
