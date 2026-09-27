@@ -139,11 +139,22 @@ hardware takeover.
 
 E-paper rendering runs on its separate render task and must not hold a shared
 hardware-bus lock across panel power sequencing or waveform waits. Individual
-bus transactions and atomic read-modify-write operations remain serialized, so
-the touch capture task can obtain the provider's I2C transport between display
-transactions. Snapshot recovery after a transient provider/I2C failure
-invalidates only the in-flight gesture; already completed tap/swipe/Home events
-remain queued for delivery.
+bus transactions and atomic read-modify-write operations remain serialized. The
+transitional installed `i2c.bus` provider queues concurrent callers at the
+firmware-owned board mutex instead of returning a synthetic busy failure, so
+normal overlap between touch capture, power telemetry and display control is not
+misreported as a device fault. A single transient touch poll failure also keeps
+the in-flight DOWN gesture eligible; only repeated bounded failures or an
+explicit provider queue GAP trigger snapshot recovery. Already completed
+tap/swipe/Home events remain queued for delivery.
+
+The on-screen `KeyboardEntryActivity` has the same scheduling rule at the UI
+layer: input owns the mutable text/cursor/selection state and publishes a short
+render snapshot before requesting a redraw. The render task draws only that
+snapshot, so it never races the live `std::string` while a tap inserts or
+deletes characters. Bottom-aligned keyboard hit-testing is performed before
+text wrapping/font measurement, keeping text layout work out of the key-press
+path even as the entered text grows.
 
 App entry/return, focus changes, input gaps and failures clear derived UI state.
 The returning source must become neutral before it can trigger navigation. This
