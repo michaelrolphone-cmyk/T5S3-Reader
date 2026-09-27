@@ -114,3 +114,37 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+
+## 2026-09-26 scan — 23:24 MDT
+
+### 13. File Browser root destination picker overruns its directory-name backing array
+
+- **Affected code:** `Apps/file_browser.c`, `PICKER_ENTRIES`, `picker_names[]`, `picker_rows[]`, `list_picker_directories()`, and `choose_destination()`.
+- **Trigger / reproduction:** Put at least 97 visible directories in the root of the destination volume, select a file, choose **Move** or **Copy**, and open the SD/USB destination picker at `/`.
+- **Observed / logically demonstrated failure:** `picker_names` contains 96 elements, while `picker_rows` contains 98. At the root, `choose_destination()` inserts only the fixed “<verb> here” row, so `list_picker_directories(..., offset=1)` starts with `count == 1`. Its loop permits `count < PICKER_ENTRIES + 2`, including `count == 97`, and stores the 97th directory name at `picker_names[count - offset]`, which is index 96 and outside the 0–95 array range. The same fixed-capacity scan provides no continuation for later directories.
+- **Likely root cause:** The enumeration bound is based on the larger row array instead of the smaller name backing array, while the number of fixed rows differs between root and non-root picker views.
+- **Impact:** Opening the destination chooser on a valid root containing 97 or more folders invokes undefined behavior and can overwrite unrelated app state. Directories beyond the fixed window are also unavailable as destinations.
+- **Repair direction:** Bound directory enumeration by `count - offset < PICKER_ENTRIES`, or make the row/name capacities explicitly consistent. Prefer pagination so every destination remains reachable. Add guarded or sanitizer-backed tests for 96, 97, and more than 98 root directories, plus a non-root picker containing the `..` row.
+
+### 14. File Browser silently hides registered Open-with handlers after the first eight
+
+- **Affected code:** `Apps/file_browser.c`, `MAX_OPEN_HANDLERS` and `choose_handler()`; `src/native/NativeFileOpenBridge.cpp`, `handlerCount()` and `handlerGet()`; `src/native/FileAssociationRegistry.h` and `src/native/FileAssociationRegistry.cpp`.
+- **Trigger / reproduction:** Install more than eight valid applications that register the same supported file extension, then select a file with that extension in File Browser and open the **Open with** chooser.
+- **Observed / logically demonstrated failure:** The native association registry permits up to 128 total handlers, and `handler_count()` reports every handler for the requested extension. File Browser immediately clamps that count to `MAX_OPEN_HANDLERS == 8` and fetches only indices 0 through 7. There is no pagination or truncation warning, so handlers 9 and later can never be selected even though the native bridge can return them.
+- **Likely root cause:** The fixed local stack arrays in the chooser are treated as the complete data model instead of one page over the registry's larger bounded result set.
+- **Impact:** A valid installed application can advertise support for a file type but remain unreachable from the system's normal file-opening workflow. Because the registry is sorted, adding another handler can also push a previously reachable app past the cutoff.
+- **Repair direction:** Page or otherwise enumerate the full `handler_count()`, fetching visible entries with `handler_get()`. If a deliberate UI maximum remains, report it instead of silently dropping handlers. Add a regression with at least ten handlers for one extension and verify handlers beyond index 7 can be selected and launch the intended app.
+
+### 15. Provider capability discovery ignores package directories after entry 64 and can miss ambiguity
+
+- **Affected code:** `src/native/NativeProviderCapabilityBridge.cpp`, `findProvider()`.
+- **Trigger / reproduction:** Place more than 64 valid package directories in one of `/Drivers`, `/Providers`, or `/Services`, with the only provider matching a requested capability positioned after the first 64 directory entries. A second case places one matching provider before the cutoff and another matching provider after it.
+- **Observed / logically demonstrated failure:** For each root, `findProvider()` executes `for (unsigned i = 0; i < 64; ++i)` and calls `openNextFile()` only inside that loop. Entry 65 and later are never examined. In the first case, capability acquisition can report “No installed provider profile matches capability” even though a valid provider is installed. In the second, it returns the earlier provider instead of noticing the later duplicate, despite the function's stated policy to reject ambiguous matches.
+- **Likely root cause:** A scan-work limit was applied to filesystem position even though this resolver needs no growing result collection; it can keep memory bounded while walking the directory to exhaustion.
+- **Impact:** Capability resolution becomes dependent on filesystem enumeration order and package count. Installing unrelated packages can make a valid capability disappear, and an ambiguous provider set can be accepted when it should be rejected.
+- **Repair direction:** Enumerate each provider root to exhaustion while retaining only the current match and an ambiguity flag, or implement explicit resumable paging that still covers every entry. Add tests with a matching provider at position 65 or later and with two matches straddling the old cutoff. The current U1 branch requires the same repair because its `findProvider()` retains the identical 64-entry loop.
+
+## Duplicate check performed for this scan
+
+These defects were checked against the current `bugs.md`, the empty open-issue set, and the current open PRs (#238, #239, #220, #194, and #96). Targeted all-state PR searches found PR #173 for the original file-association/Open-with feature and PR #64 for capability-lease architecture, but neither documents the eight-handler cutoff or the 64-directory provider-resolution failure. The current `impl/u1-riscrte` branch from PR #96 was inspected directly and retains the same 64-entry `findProvider()` loop. No tracked item describes the destination-picker array overrun.
