@@ -124,6 +124,9 @@ release invariants, not optional diagnostics:
   it cannot repeatedly clear/present a broken surface.
 - Runtime present calls against an unavailable T5S3 or EPD47 backend emit a
   one-time diagnostic instead of silently becoming a no-op.
+- Returning from an exclusive display-takeover ELF reinitializes the host
+  backend with panel preservation enabled. A failed GameBoy/host handoff cannot
+  erase the last useful e-paper image before recovery diagnostics are available.
 - The EPD47 logical framebuffer is initialized deterministically even when the
   physical panel image is being preserved.
 - CI has both executable metadata-validation tests and source-contract checks
