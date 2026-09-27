@@ -56,6 +56,8 @@ bool confirmPressStarted = false;
 unsigned long confirmPressedAt = 0;
 bool lockNextConfirmRelease = false;
 bool rootLongPressTriggered = false;
+Rect optionsBounds;
+bool optionsVisible = false;
 
 bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
 GfxRenderer* gfx() { return active() ? &activityManager.nativeAppRenderer() : nullptr; }
@@ -111,7 +113,9 @@ void renderBrowser(const char* pathValue, const char* statusValue, const t5_file
   if (!r || !in || (entryCount && !entries)) return;
   const std::string path = pathValue && pathValue[0] ? pathValue : "/";
   const std::string status = statusValue ? statusValue : "";
-  const int selected = entryCount ? std::clamp(selectedIndex, 0, static_cast<int32_t>(entryCount) - 1) : 0;
+  const bool hasSelection = entryCount && selectedIndex >= 0 &&
+                            selectedIndex < static_cast<int32_t>(entryCount);
+  const int selected = hasSelection ? selectedIndex : -1;
   r->clearScreen();
   const auto pageWidth = r->getScreenWidth();
   const auto pageHeight = r->getScreenHeight();
@@ -125,7 +129,7 @@ void renderBrowser(const char* pathValue, const char* statusValue, const t5_file
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing - pathReserved;
   const int pageItems = std::max(1, contentHeight / std::max(1, metrics.listRowHeight));
-  const int pageStart = entryCount ? (selected / pageItems) * pageItems : 0;
+  const int pageStart = entryCount ? ((hasSelection ? selected : 0) / pageItems) * pageItems : 0;
   if (entryCount == 0) {
     r->drawText(UI_10_FONT_ID, metrics.contentSidePadding, contentTop + 20, tr(STR_NO_FILES_FOUND));
   } else {
@@ -137,7 +141,10 @@ void renderBrowser(const char* pathValue, const char* statusValue, const t5_file
   const int pathY = pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing - pathLineHeight;
   const int separatorY = pathY - metrics.verticalSpacing / 2;
   r->drawLine(0, separatorY, pageWidth - 1, separatorY, 3, true);
-  const int pathMaxWidth = pageWidth - metrics.contentSidePadding * 2;
+  const int optionsWidth = hasSelection ? 92 : 0;
+  const int optionsGap = hasSelection ? metrics.verticalSpacing : 0;
+  const int pathMaxWidth = std::max(1, pageWidth - metrics.contentSidePadding * 2 -
+                                        optionsWidth - optionsGap);
   const char* pathStr = status.empty() ? path.c_str() : status.c_str();
   const char* pathDisplay = pathStr;
   char leftTruncBuf[256];
@@ -154,8 +161,23 @@ void renderBrowser(const char* pathValue, const char* statusValue, const t5_file
     pathDisplay = leftTruncBuf;
   }
   BaseTheme::drawTextForRole(*r, SMALL_FONT_ID, TextRole::UserContent, metrics.contentSidePadding, pathY, pathDisplay);
+  optionsVisible = hasSelection;
+  if (optionsVisible) {
+    const int optionsHeight = pathLineHeight + 10;
+    const int optionsX = pageWidth - metrics.contentSidePadding - optionsWidth;
+    const int optionsY = pathY - 5;
+    optionsBounds = Rect{optionsX, optionsY, optionsWidth, optionsHeight};
+    r->drawRect(optionsBounds.x, optionsBounds.y, optionsBounds.width, optionsBounds.height, 2, true);
+    constexpr const char* optionsLabel = "Options";
+    const int labelWidth =
+        BaseTheme::getTextWidthForRole(*r, SMALL_FONT_ID, TextRole::System, optionsLabel);
+    BaseTheme::drawTextForRole(*r, SMALL_FONT_ID, TextRole::System,
+                               optionsX + (optionsWidth - labelWidth) / 2, pathY, optionsLabel);
+  } else {
+    optionsBounds = {};
+  }
   const char* backLabel = path == "/" ? tr(STR_HOME) : tr(STR_BACK);
-  const char* confirmLabel = entryCount ? tr(STR_OPEN) : "";
+  const char* confirmLabel = hasSelection ? tr(STR_OPEN) : "";
   const auto labels = in->mapLabels(backLabel, confirmLabel, entryCount ? tr(STR_DIR_UP) : "",
                                     entryCount ? tr(STR_DIR_DOWN) : "");
   GUI.drawButtonHints(*r, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -196,6 +218,10 @@ bool pollBrowserEvent(t5_file_browser_event_t* event, uint32_t waitMs, bool atRo
     }
   }
   if (raw.tapped) {
+    if (optionsVisible && containsPoint(optionsBounds, raw.touch_x, raw.touch_y)) {
+      event->type = T5_FILE_BROWSER_EVENT_DELETE;
+      return true;
+    }
     const auto bounds = GUI.getButtonHintTouchBounds(*r);
     for (size_t i = 0; i < bounds.size(); ++i) {
       const Rect oriented = rotatePortraitRectToCurrentOrientation(bounds[i], *r);
@@ -326,7 +352,12 @@ bool confirmDeleteTakeResult(bool* confirmed, uint64_t* cookie) {
   return true;
 }
 bool deleteDocument(const char* path) {
-  if (!validStoragePath(path)) return false;
+  if (!validStoragePath(path) || !Storage.exists(path)) return false;
+  HalFile entry = Storage.open(path);
+  if (!entry) return false;
+  const bool isDirectory = entry.isDirectory();
+  entry.close();
+  if (isDirectory) return Storage.removeDir(path);
   const std::string_view documentPath(path);
   if (FsHelpers::hasEpubExtension(documentPath)) Epub(std::string(path), "/.crosspoint").clearCache();
   return Storage.remove(path);
@@ -366,6 +397,8 @@ extern "C" const t5_file_browser_api_v1* t5_file_browser_get_api(uint32_t versio
   ButtonNavigator::setMappedInputManager(in);
   navigator = std::make_unique<ButtonNavigator>();
   layout = {};
+  optionsBounds = {};
+  optionsVisible = false;
   confirmPressStarted = false;
   rootLongPressTriggered = false;
   lockNextConfirmRelease = in.isPressed(MappedInputManager::Button::Confirm);

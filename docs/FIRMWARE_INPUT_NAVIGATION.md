@@ -5,11 +5,13 @@ Governed by the [Platform Specification](RISCRTE_PLATFORM_SPEC.md) and
 
 ## Installation and controls
 
-Install **usb-ui-navigation 0.1.0** and its declared dependencies alongside
+Install **usb-ui-navigation 0.1.1** and its declared dependencies alongside
 firmware containing this integration. It is a separate composite driver that
 provides `input.navigation@1`, built and exported through the existing driver
-package workflow. It requires the HID keyboard, HID gamepad and XInput gamepad
-providers; physical devices of all three kinds need not be connected. The
+package workflow. Keyboard text entry additionally uses
+**usb-hid-text-input 0.1.0**, which provides transport-neutral `input.text@1`
+from the HID keyboard provider. The navigation package depends on `input.text`
+plus HID and XInput gamepad providers; physical devices need not be connected. The
 existing controller/power drivers retain physical USB ownership and their
 host-role-before-VBUS startup sequence.
 
@@ -69,11 +71,15 @@ polling for hotplug. An unsafe/quarantined generation is not silently restarted.
 
 ## Ownership and handoff
 
-The firmware consumes only the transport-neutral
-[`RiscInputNavigationV1.h`](../sdk/driver/RiscInputNavigationV1.h) interface.
-[`usb_ui_navigation/driver.c`](../Drivers/usb_ui_navigation/driver.c) implements
-USB input policy through class capabilities; no USB enumeration, descriptors,
-report decoder or rail control is added to the firmware navigation consumer.
+The firmware consumes transport-neutral
+[`RiscInputNavigationV1.h`](../sdk/driver/RiscInputNavigationV1.h) and
+[`RiscTextInputV1.h`](../sdk/driver/RiscTextInputV1.h) interfaces.
+[`usb_hid_text_input/driver.c`](../Drivers/usb_hid_text_input/driver.c)
+translates boot-keyboard HID usages into semantic text/key events, while
+[`usb_ui_navigation/driver.c`](../Drivers/usb_ui_navigation/driver.c)
+maps those semantic events plus gamepad state into navigation. No USB
+enumeration, descriptor parsing, report decoding or rail control is added to
+the firmware text/navigation consumers.
 
 1. The UI holds a navigation-provider grant. Its dependency grants keep the
    existing keyboard/gamepad/host/controller chain available.
@@ -107,9 +113,14 @@ UI adapter instance.
 
 Gamepads use bounded polling plus current snapshots, with no button-history
 FIFO. Keyboard navigation retains the order of key presses/releases, including
-quick taps. The UI cursor is independent of the app's keyboard cursor; focus
-handoff never flushes the app's buffered typing. Only navigation keys are mapped;
-text entry remains the keyboard consumer's responsibility.
+quick taps. The `input.text` provider publishes printable codepoints and
+semantic editing keys independently of USB. A firmware
+`KeyboardEntryActivity` temporarily claims `input.text`, suppressing only
+keyboard-derived navigation while the field is active; touch, hardware buttons
+and gamepads keep working. Enter completes the field, Escape cancels,
+Backspace/Delete edit, and Left/Right/Home/End move the text cursor. The
+semantic subscription and lease are released before keyboard navigation is
+rearmed.
 
 Each navigation-provider poll performs at most four ready reports per input
 class and consumes at most one keyboard navigation transition, scanning no more
