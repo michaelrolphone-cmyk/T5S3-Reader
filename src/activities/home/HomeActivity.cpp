@@ -24,8 +24,9 @@
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
-#include "components/UITheme.h"
+#include "components/HomeReadingCard.h"
 #include "components/StartupScreen.h"
+#include "components/UITheme.h"
 #include "fontIds.h"
 
 namespace {
@@ -370,9 +371,9 @@ void HomeActivity::render(RenderLock&&) {
                  metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr,
                  nullptr, TextRole::UserContent, TextRole::System, headerClockLabel);
 
-  GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight},
-                          recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
-                          std::bind(&HomeActivity::storeCoverBuffer, this));
+  HomeReadingCard::draw(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight},
+                        recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
+                        std::bind(&HomeActivity::storeCoverBuffer, this));
 
   std::vector<const char*> menuItems;
   std::vector<UIIcon> menuIcons;
@@ -420,7 +421,7 @@ void HomeActivity::render(RenderLock&&) {
 
   const auto labels = mappedInput.mapLabels("", tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  renderer.displayBuffer();
+  HomeReadingCard::present(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight});
   if (!firstRenderDone) {
     firstRenderDone = true;
   }
