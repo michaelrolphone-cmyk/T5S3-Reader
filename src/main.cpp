@@ -318,9 +318,15 @@ bool g_displayBootFailed = false;
 void requestShutdown() { g_shutdownRequested = true; }
 
 bool setupDisplayAndFonts() {
-  // Preserve the physical e-paper image until the compatibility backend and
-  // runtime surface contract have both been validated. A metadata regression
-  // must not erase the only visible diagnostic surface before we can report it.
+  // This runs before any display backend initialization. A bad width, stride,
+  // format or safe-area edit must be rejected before it can reconfigure the
+  // panel or disturb the retained e-paper image.
+  if (!renderer.preflightSurface()) {
+    LOG_ERR("MAIN", "Display metadata preflight failed; panel backend was not touched");
+    return false;
+  }
+
+  // Preserve the physical image while the already-validated backend starts.
   display.begin(false);
   if (!display.isReady()) {
     LOG_ERR("MAIN", "Display backend initialization failed; retained panel image left untouched");
