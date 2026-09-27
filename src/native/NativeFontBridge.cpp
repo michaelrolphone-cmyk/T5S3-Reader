@@ -41,7 +41,10 @@ bool computeCrc32(const char* path, uint32_t& out) {
   uint32_t crc = 0;
   while (f.available()) {
     const int n = f.read(buf, sizeof(buf));
-    if (n <= 0) break;
+    if (n <= 0) {
+      f.close();
+      return false;
+    }
     crc = esp_rom_crc32_le(crc, buf, static_cast<uint32_t>(n));
   }
   f.close();
@@ -88,6 +91,11 @@ t5_font_result_t refreshCatalog() {
         const size_t actual = installedFile.fileSize();
         installedFile.close();
         if (actual != entry.size) { family.hasUpdate = true; break; }
+        uint32_t installedCrc = 0;
+        if (!computeCrc32(path, installedCrc) || installedCrc != entry.crc32) {
+          family.hasUpdate = true;
+          break;
+        }
       }
     }
     families.push_back(std::move(family));
