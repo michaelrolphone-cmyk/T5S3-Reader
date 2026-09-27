@@ -14,10 +14,12 @@ required = (
     '"platformio.ini"',
     '"Apps/**/*.json"',
     '"Drivers/**/manifest.json"',
+    '"scripts/publish_updated_packages.py"',
+    '"scripts/build_release_candidates.py"',
     "workflow_dispatch:",
     "python scripts/publish_updated_packages.py --plan-only",
 )
 for token in required:
     assert token in WORKFLOW, f"release workflow is missing automatic trigger contract: {token}"
 
-print("Cut release workflow: master version-file pushes and manual dispatch enabled PASS")
+print("Cut release workflow: version/package-planner pushes and manual dispatch enabled PASS")
