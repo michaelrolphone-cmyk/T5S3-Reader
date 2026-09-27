@@ -99,9 +99,16 @@ The next display-specific milestones are deliberately outside this slice:
 Display bootstrap is deliberately fail-safe during this migration. These are
 release invariants, not optional diagnostics:
 
+- Runtime surface metadata is preflighted **before** the compatibility backend
+  is initialized. Invalid width/height, stride, buffer size, safe insets or
+  unsupported format cannot reach panel setup.
 - The physical e-paper image is preserved while the compatibility backend and
-  runtime surface metadata are initialized and validated. Normal rendering only
-  replaces it after the renderer accepts the surface.
+  renderer bind are completed. Normal rendering only replaces it after the
+  renderer accepts the surface.
+- Current HalDisplay geometry is tied to BoardPins with compile-time assertions,
+  and the entire canonical surface descriptor is compile-time validated. Legacy
+  refresh-mode ordinals are also pinned so enum edits cannot silently select a
+  different waveform.
 - `GfxRenderer::begin()` is transactional. Invalid dimensions, stride, buffer
   size, safe insets, unsupported format, missing framebuffer, or a backend that
   is not ready returns failure without overwriting a previously working renderer
@@ -115,6 +122,8 @@ release invariants, not optional diagnostics:
   e-paper image and does not enter normal `ActivityManager` rendering.
 - Once display bootstrap fails, the main loop is gated from normal UI rendering;
   it cannot repeatedly clear/present a broken surface.
+- Runtime present calls against an unavailable T5S3 or EPD47 backend emit a
+  one-time diagnostic instead of silently becoming a no-op.
 - The EPD47 logical framebuffer is initialized deterministically even when the
   physical panel image is being preserved.
 - CI has both executable metadata-validation tests and source-contract checks
