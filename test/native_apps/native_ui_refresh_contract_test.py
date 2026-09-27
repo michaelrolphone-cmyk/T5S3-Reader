@@ -34,5 +34,7 @@ assert "FontAwesomeIcons::draw" in base_theme
 assert "rowFontAwesomeIcon" in lyra_theme and "FontAwesomeIcons::draw" in lyra_theme
 assert "Lyra selection is light gray, so state icons remain black" in lyra_theme
 assert "rowFontAwesomeIcon" in rounded_theme and "FontAwesomeIcons::draw" in rounded_theme
+for theme_source in (base_theme, lyra_theme, rounded_theme):
+    assert "constexpr int kStateIconSize = 12;" in theme_source
 
 print("Native UI full-row selection and themed Font Awesome list-state rendering PASS")
