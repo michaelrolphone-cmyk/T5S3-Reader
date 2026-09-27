@@ -142,7 +142,8 @@ bool acquire(const char* capability, uint32_t version,
     Lease grant{};
     if (!RuntimeInstalledProviders::acquire(id, capability, version, &grant) ||
         !grant.grant.slot || !grant.interface) return fail(RuntimeInstalledProviders::lastError());
-    generation = generation == UINT32_MAX ? 1u : generation + 1u;
+    // UINT32_MAX is reserved for the firmware's semantic text-input focus.
+    generation = generation >= UINT32_MAX - 1u ? 1u : generation + 1u;
     if (!generation) generation = 1u;
     // The navigation provider interprets which sources overlap this opaque
     // capability. Yield them before the app can subscribe or poll its grant.

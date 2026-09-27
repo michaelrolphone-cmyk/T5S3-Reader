@@ -8,6 +8,7 @@
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "native/NativeTextInput.h"
 
 const char* const KeyboardEntryActivity::shiftString[2] = {"shift", "SHIFT"};
 
@@ -29,10 +30,15 @@ void KeyboardEntryActivity::onEnter() {
   rightLongHandled = false;
   savedCursorPos = 0;
   rightStartCursorPos = 0;
+  textInputLastAttempt = millis();
+  (void)nativeTextInputBegin();
   requestUpdate();
 }
 
-void KeyboardEntryActivity::onExit() { Activity::onExit(); }
+void KeyboardEntryActivity::onExit() {
+  (void)nativeTextInputEnd();
+  Activity::onExit();
+}
 
 int KeyboardEntryActivity::getContentRowCount() const {
   if (urlMode) return 3;
@@ -186,7 +192,94 @@ void KeyboardEntryActivity::mapColContentBottom(int& col, bool goingUp) const {
   }
 }
 
+bool KeyboardEntryActivity::handleExternalTextInput(
+    const risc_text_input_event_v1& event) {
+  if (event.kind != RISC_TEXT_EVENT_KEY_DOWN) return false;
+
+  bool changed = false;
+  switch (event.key) {
+    case RISC_TEXT_KEY_ENTER:
+      onComplete(text);
+      return true;
+    case RISC_TEXT_KEY_ESCAPE:
+      onCancel();
+      return true;
+    case RISC_TEXT_KEY_BACKSPACE:
+      if (cursorPos > 0 && !text.empty()) {
+        text.erase(cursorPos - 1, 1);
+        --cursorPos;
+        changed = true;
+      }
+      break;
+    case RISC_TEXT_KEY_DELETE:
+      if (cursorPos < text.length()) {
+        text.erase(cursorPos, 1);
+        changed = true;
+      }
+      break;
+    case RISC_TEXT_KEY_LEFT:
+      if (cursorPos > 0) {
+        --cursorPos;
+        changed = true;
+      }
+      break;
+    case RISC_TEXT_KEY_RIGHT:
+      if (cursorPos < text.length()) {
+        ++cursorPos;
+        changed = true;
+      }
+      break;
+    case RISC_TEXT_KEY_HOME:
+      if (cursorPos != 0) {
+        cursorPos = 0;
+        changed = true;
+      }
+      break;
+    case RISC_TEXT_KEY_END:
+      if (cursorPos != text.length()) {
+        cursorPos = text.length();
+        changed = true;
+      }
+      break;
+    default:
+      if (event.codepoint >= 0x20u && event.codepoint <= 0x7eu &&
+          !(event.modifiers &
+            (RISC_TEXT_MOD_CTRL | RISC_TEXT_MOD_ALT | RISC_TEXT_MOD_META)) &&
+          !(inputType == InputType::Url && event.codepoint == ' ')) {
+        const size_t before = text.length();
+        (void)insertChar(static_cast<char>(event.codepoint));
+        changed = text.length() != before;
+      }
+      break;
+  }
+
+  if (changed) {
+    togglePos = false;
+    hintVisible = false;
+    requestUpdate();
+  }
+  return false;
+}
+
 void KeyboardEntryActivity::loop() {
+  constexpr unsigned long TEXT_INPUT_RETRY_MS = 1000;
+  const unsigned long now = millis();
+  if (!nativeTextInputActive() &&
+      static_cast<unsigned long>(now - textInputLastAttempt) >=
+          TEXT_INPUT_RETRY_MS) {
+    textInputLastAttempt = now;
+    (void)nativeTextInputBegin();
+  }
+
+  if (nativeTextInputActive() && nativeTextInputPoll()) {
+    for (unsigned i = 0; i < RISC_TEXT_INPUT_QUEUE_LENGTH; ++i) {
+      risc_text_input_event_v1 event{};
+      const int32_t result = nativeTextInputNext(event);
+      if (result <= 0) break;
+      if (handleExternalTextInput(event)) return;
+    }
+  }
+
   const int totalRows = getTotalRowCount();
 
   if (!cursorMode && mappedInput.wasPressed(MappedInputManager::Button::Up)) {
