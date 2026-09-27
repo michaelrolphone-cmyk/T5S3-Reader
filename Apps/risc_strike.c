@@ -83,6 +83,7 @@ static uint32_t g_next_fire_ms;
 static uint32_t g_muzzle_until_ms;
 static uint32_t g_damage_until_ms;
 static uint32_t g_back_hold_start_ms;
+static bool g_back_holding;
 static uint32_t g_last_frame_ms;
 static fps_state_t g_state;
 
@@ -352,6 +353,7 @@ static void fps_reset_game(void) {
     g_muzzle_until_ms = 0;
     g_damage_until_ms = 0;
     g_back_hold_start_ms = 0;
+    g_back_holding = false;
     for (int i = 0; i < FPS_ENEMY_COUNT; ++i) {
         g_enemies[i].x = g_enemy_starts[i][0];
         g_enemies[i].y = g_enemy_starts[i][1];
@@ -699,7 +701,7 @@ static void fps_draw_hud(uint8_t *buffer, uint32_t now) {
                   FPS_VIEW_BOTTOM - FPS_VIEW_TOP - 12);
     }
 
-    if (g_back_hold_start_ms != 0u) {
+    if (g_back_holding) {
         const uint32_t held = now - g_back_hold_start_ms;
         const int width = (int)fps_min_i((int)(held * 180u / FPS_EXIT_HOLD_MS), 180);
         fps_frame(buffer, 348, 924, 180, 16);
@@ -767,11 +769,16 @@ static bool fps_back_requested(uint32_t buttons, uint32_t now) {
         (buttons & (T5_APP_BUTTON_LEFT | T5_APP_BUTTON_RIGHT |
                     T5_APP_BUTTON_UP | T5_APP_BUTTON_DOWN)) != 0u;
     if (!back || directional) {
+        g_back_holding = false;
         g_back_hold_start_ms = 0u;
         return false;
     }
     if (g_state != FPS_STATE_PLAYING) return true;
-    if (g_back_hold_start_ms == 0u) g_back_hold_start_ms = now ? now : 1u;
+    if (!g_back_holding) {
+        g_back_holding = true;
+        g_back_hold_start_ms = now;
+        return false;
+    }
     return now - g_back_hold_start_ms >= FPS_EXIT_HOLD_MS;
 }
 
@@ -810,6 +817,11 @@ static bool fps_update_input(uint32_t buttons, uint32_t down,
 }
 
 static void fps_show_video_error(void) {
+    if (g_surface.width != 960u || g_surface.height != 540u ||
+        g_surface.stride_bytes < 120u ||
+        g_surface.pixel_format != T5_VIDEO_PIXEL_MONO_1BPP_MSB) {
+        return;
+    }
     size_t bytes = 0;
     uint8_t *buffer = g_video->backbuffer(&bytes);
     if (!buffer || bytes < (size_t)g_surface.stride_bytes * g_surface.height) return;
@@ -866,6 +878,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     g_state = FPS_STATE_TITLE;
     g_prev_buttons = 0u;
     g_back_hold_start_ms = 0u;
+    g_back_holding = false;
     g_last_frame_ms = g_app->millis();
     (void)fps_render(g_last_frame_ms);
 
