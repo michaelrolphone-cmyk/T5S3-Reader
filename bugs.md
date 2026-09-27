@@ -114,3 +114,37 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+## 2026-09-26 scan — 22:21 MDT
+
+### 13. Status Bar settings can cycle repeatedly from one held Confirm press
+
+- **Affected code:** `Apps/status_bar_settings.c`, `app_main()`; `src/native/NativeAppHost.cpp`, `poll()`; `src/native/NativeStatusBarBridge.cpp`, `itemActivate()`.
+- **Trigger / reproduction:** Open **Customize Status Bar**, select any item, then press and hold Confirm for more than one 50 ms polling interval.
+- **Observed / logically demonstrated failure:** `NativeAppHost::poll()` exports button levels using `MappedInputManager::isPressed()`. Status Bar Settings calls `statusbar->item_activate()` on every loop where the Confirm bit is still set, without edge or release gating. A held press therefore toggles binary settings repeatedly and rapidly cycles three-state settings such as Progress Bar, Thickness, Title, and Clock. `itemActivate()` also calls `SETTINGS.saveToFile()` on every cycle, so one physical press can cause several persistence writes. The final setting depends on how many polling iterations the button remains down rather than on a single deliberate action.
+- **Likely root cause:** The app treats the native app ABI's level-triggered button state as a one-shot Confirm event.
+- **Impact:** A user can select one value but release the button with a different value active, and a single press can generate unnecessary repeated settings writes.
+- **Repair direction:** Track the previous button mask and act only on the Confirm rising edge, as Springboard already does, or move this app to the edge-based UI event API. Add a regression test that holds Confirm asserted across several polls and verifies exactly one activation/save occurs.
+
+### 14. Text Editor's Open picker silently hides documents after fixed scan limits
+
+- **Affected code:** `Apps/text_editor.c`, `list_files()`, `FILE_LIMIT`, and the `files` picker array.
+- **Trigger / reproduction:** Put more than 64 valid `.txt`/`.md` documents in `/sd/Documents`, then use Ctrl+O. A second trigger is to place a valid text document after the first 128 directory entries while enough earlier entries are directories or unsupported filenames that fewer than 64 valid documents have been collected.
+- **Observed / logically demonstrated failure:** `list_files()` stops when either `file_count == FILE_LIMIT` (64) or `seen == 128`. It provides no continuation page, cursor, or truncation warning. Valid documents beyond either boundary never enter `files[]`, so they cannot be selected through the editor's Open workflow even though they exist and are otherwise valid.
+- **Likely root cause:** The initial bounded picker implementation uses fixed in-memory arrays and a separate hard cap on directory entries examined, but does not expose pagination or resume state.
+- **Impact:** Larger Documents directories become partially inaccessible from Text Editor, and unrelated/non-text entries can cause valid documents to disappear even before the 64-document capacity is reached.
+- **Repair direction:** Stream/paginate directory entries and retain a directory cursor or page offset instead of materializing a single bounded list. At minimum continue scanning past unsupported entries and clearly expose truncation with a Next page. Add tests for 65+ valid documents and for a valid document positioned after 128 mixed directory entries.
+
+### 15. OPDS Add Server persists an incomplete server before a required URL exists
+
+- **Affected code:** `Apps/opds_settings.c`, `apply_keyboard_result()` and `persist_edit()`; `src/native/NativeOpdsBridge.cpp`, `addServer()`; `src/OpdsServerStore.cpp`, `addServer()`.
+- **Trigger / reproduction:** Open **OPDS Servers** -> **Add Server**, edit **Server Name** first, enter any name, then press Back before setting **Server URL**. The same incomplete state can be created by accepting the URL field while it contains only the placeholder `https://` or `http://`, because the app normalizes that placeholder to an empty string before persisting.
+- **Observed / logically demonstrated failure:** A new editor starts with an empty `edit_server`. After *any* field keyboard result, `apply_keyboard_result()` immediately calls `persist_edit()`. When `editor_is_new` is true, that calls `opds->add()` and converts the draft into a persisted server immediately. Neither `NativeOpdsBridge::addServer()` nor `OpdsServerStore::addServer()` validates that `url` is non-empty or usable. Editing the name first therefore writes an OPDS record with an empty URL; Back then leaves that invalid record installed.
+- **Likely root cause:** The edit workflow conflates per-field persistence with creation of the server object, and the storage/API layer has no required-field validation.
+- **Impact:** Normal field-entry order can create broken OPDS catalog entries that cannot be contacted and remain in the configured server list until manually repaired or deleted.
+- **Repair direction:** Keep a new server as an in-memory draft until required fields validate and the user explicitly saves/finishes it, or at minimum reject `addServer()` while the URL is empty/invalid. Preserve per-field autosave only after the initial valid record has been created. Add tests for Name-first, placeholder-only URL, Back-before-URL, and a valid URL-first creation flow.
+
+## Duplicate check performed for this scan
+
+These defects were checked against the current `bugs.md`, the empty open-issue set, the current open PRs (#236, #220, #194, and #96), and targeted all-state PR/issue searches for held-confirm Status Bar toggles, Text Editor Documents picker limits, and incomplete OPDS Add Server records. No existing tracked bug or matching PR was found. PR #64 surfaced only from a broad Text Editor search and concerns the unified device registry, not the file picker defect.
+
