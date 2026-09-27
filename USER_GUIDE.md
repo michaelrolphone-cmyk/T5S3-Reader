@@ -86,8 +86,8 @@ See [Reading Mode](#4-reading-mode) below for more information.
 The Browse Files screen acts as a file and folder browser.
 
 * **Navigate List:** Use **Left** (or **Volume Up**), or **Right** (or **Volume Down**) to move the selection cursor up and down through folders and books. You can also long-press these buttons to scroll a full page up or down.
-* **Open Selection:** Press **Confirm** to open a folder or read a selected book. 
-* **Delete Files:** Hold and release **Confirm** to delete the selected file. You will be given an option to either confirm or cancel deletion. Folder deletion is not supported.
+* **Open Selection:** With buttons, press **Confirm** to open the selected folder or file. On the touchscreen, a single tap selects an item and a double tap opens it.
+* **File and Folder Options:** Select an item to reveal the **Options** button. Tap **Options** to rename, move, copy (when a compatible destination is available), or delete the selected item. SD-card folders can be renamed, moved, and deleted; removable-storage actions are limited to operations exposed by that storage provider.
 
 ### 3.4 Recent Books Screen
 
