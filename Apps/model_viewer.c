@@ -78,7 +78,6 @@ static bool g_use_psram;
 static mv_model_t g_model;
 static mv_view_t g_view;
 static char g_path[T5_FILE_OPEN_PATH_MAX];
-static char g_status[96];
 static uint32_t g_last_interaction_ms;
 static bool g_need_refine;
 static bool g_touch_was_down;
@@ -88,7 +87,6 @@ static int g_touch_down_y;
 static uint32_t g_last_tap_ms;
 
 static int mv_iabs(int v) { return v < 0 ? -v : v; }
-static float mv_fabs(float v) { return v < 0.0f ? -v : v; }
 static float mv_maxf(float a, float b) { return a > b ? a : b; }
 static float mv_minf(float a, float b) { return a < b ? a : b; }
 static float mv_clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -741,8 +739,13 @@ static bool mv_render(bool interactive) {
              (unsigned long)g_model.triangle_count,
              interactive ? "FAST" : (step == 1u ? "FULL" : "REFINED"));
     mv_text(buffer,14,894,info,1);
-    mv_text(buffer,14,916,"DRAG ROTATE  2F PAN+ZOOM",1);
-    mv_text(buffer,14,936,"DOUBLE TAP RESET  BACK EXIT",1);
+    if (g_touch) {
+        mv_text(buffer,14,916,"DRAG ROTATE  2F PAN+ZOOM",1);
+        mv_text(buffer,14,936,"DOUBLE TAP RESET  BACK EXIT",1);
+    } else {
+        mv_text(buffer,14,916,"ARROWS ROTATE  CONFIRM RESET",1);
+        mv_text(buffer,14,936,"INSTALL GT911-TOUCH FOR GESTURES",1);
+    }
 
     return g_video->submit(0, g_surface.height);
 }
@@ -761,19 +764,34 @@ static void mv_message(const char *title, const char *detail) {
     }
 }
 
+static void mv_touch_end(void);
+
 static bool mv_touch_begin(void) {
     g_caps = t5_provider_capability_get_api(T5_PROVIDER_CAPABILITY_API_VERSION);
-    if (!g_caps || g_caps->struct_size < sizeof(*g_caps) || !g_caps->acquire || !g_caps->release) return false;
+    if (!g_caps || g_caps->struct_size < sizeof(*g_caps) || !g_caps->acquire || !g_caps->release) {
+        g_caps = NULL;
+        return false;
+    }
     const void *interface_ptr = NULL;
     g_touch_lease = T5_PROVIDER_CAPABILITY_LEASE_INVALID;
     if (!g_caps->acquire("input.touch.raw",RISC_TOUCH_API_V1,&g_touch_lease,&interface_ptr) ||
-        !interface_ptr || g_touch_lease == T5_PROVIDER_CAPABILITY_LEASE_INVALID) return false;
+        !interface_ptr || g_touch_lease == T5_PROVIDER_CAPABILITY_LEASE_INVALID) {
+        mv_touch_end();
+        return false;
+    }
     g_touch = (const risc_touch_api_v1 *)interface_ptr;
     if (g_touch->api_version != RISC_TOUCH_API_V1 || g_touch->struct_size < sizeof(*g_touch) ||
         !g_touch->subscribe || !g_touch->unsubscribe || !g_touch->poll ||
-        !g_touch->next || !g_touch->snapshot) return false;
+        !g_touch->next || !g_touch->snapshot) {
+        mv_touch_end();
+        return false;
+    }
     g_touch_subscription = g_touch->subscribe(g_touch->context);
-    return g_touch_subscription != 0u;
+    if (!g_touch_subscription) {
+        mv_touch_end();
+        return false;
+    }
+    return true;
 }
 
 static void mv_touch_end(void) {
@@ -951,16 +969,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         return;
     }
 
-    if(!mv_touch_begin()) {
-        mv_message("TOUCH UNAVAILABLE","INSTALL INPUT.TOUCH.RAW DRIVER");
-        for(;;){
-            t5_app_input_t input={0};
-            if(!g_app->poll(&input,30) || input.exit_requested || (input.buttons&T5_APP_BUTTON_BACK)) break;
-        }
-        g_video->stop();
-        mv_model_free(&g_model);
-        return;
-    }
+    (void)mv_touch_begin();
 
     mv_reset_view();
     g_last_interaction_ms=g_app->millis();
@@ -977,7 +986,7 @@ __attribute__((visibility("default"))) void app_main(void) {
 
         mv_contacts_t current={0};
         bool home=false;
-        if(mv_touch_snapshot(&current,&home)) {
+        if(g_touch && mv_touch_snapshot(&current,&home)) {
             if(home) break;
             const bool changed=mv_handle_touch(&previous,&current,now);
             if(changed) (void)mv_render(true);
