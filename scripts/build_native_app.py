@@ -32,10 +32,17 @@ flags = [cc, '-std=c11', '-Os', '-fPIC', '-mtext-section-literals', '-mlongcalls
          '-I' + str(repo / 'lib/NativeApps/include'),
          '-I' + str(repo / 'sdk/driver'), '-Wl,--hash-style=sysv']
 readelf = cc.replace('gcc', 'readelf')
+strip = cc.replace('gcc', 'strip')
 
 def build(support=()):
     subprocess.run([*flags, str(args.source), *map(str, support), '-o', str(args.output)], check=True)
     return subprocess.check_output([readelf, '--dyn-syms', '--wide', str(args.output)], text=True)
+
+def validate_dynamic_abi(info):
+    if not any('GLOBAL' in line and 'FUNC' in line and 'UND' not in line and line.split()[-1] == 'app_main'
+               for line in info.splitlines() if line.strip()):
+        raise SystemExit('The app must export void app_main(void) with default visibility')
+    validate_imports(info, firmware_exports(repo))
 
 info = build()
 # Xtensa lowers unsigned 64-bit division to a compiler helper. Supply the
@@ -47,10 +54,15 @@ if any(len(fields := line.split()) >= 8 and fields[4] == 'GLOBAL'
     helper = repo / 'lib/NativeApps/src/UnsignedDivisionCompat.c'
     info = build((helper,))
 
-if not any('GLOBAL' in line and 'FUNC' in line and 'UND' not in line and line.split()[-1] == 'app_main'
-           for line in info.splitlines() if line.strip()):
-    raise SystemExit('The app must export void app_main(void) with default visibility')
-validate_imports(info, firmware_exports(repo))
+validate_dynamic_abi(info)
+
+# Release ELFs need only their dynamic symbols and relocation targets. Keeping
+# the compiler's full local symbol/string tables wastes SD, catalog, download,
+# and loader-budget bytes without helping the runtime. Strip only symbols that
+# the linker marks unneeded, then revalidate the exact artifact we publish.
+subprocess.run([strip, '--strip-unneeded', str(args.output)], check=True)
+info = subprocess.check_output([readelf, '--dyn-syms', '--wide', str(args.output)], text=True)
+validate_dynamic_abi(info)
 print(info)
 if manifest:
     shutil.copyfile(manifest, args.output.with_suffix('.json'))
