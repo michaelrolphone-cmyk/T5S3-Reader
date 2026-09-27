@@ -14,7 +14,10 @@ from pathlib import Path
 import re
 import sys
 
-from generate_privileged_imports_v1 import extract_imports, encode_imports
+if __package__:
+    from .generate_privileged_imports_v1 import extract_imports, encode_imports
+else:
+    from generate_privileged_imports_v1 import extract_imports, encode_imports
 
 CAPABILITY = re.compile(r'[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\Z', re.ASCII)
 PACKAGE_ID = re.compile(r'[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?\Z', re.ASCII)
