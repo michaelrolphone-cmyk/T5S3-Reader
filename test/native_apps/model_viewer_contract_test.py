@@ -2,6 +2,7 @@
 """Contracts for the native OBJ/STL viewer and GameBoy-derived fast-video path."""
 
 import json
+import re
 from pathlib import Path
 import unittest
 
@@ -28,7 +29,11 @@ class ModelViewerContract(unittest.TestCase):
             {"capability": "input.touch.raw", "api": ">=1"},
             MANIFEST["requires"],
         )
-        self.assertIn("[riscrte]\nversion = 1.3.19", PLATFORMIO)
+        match = re.search(r"(?m)^version = ([0-9]+\.[0-9]+\.[0-9]+)$", PLATFORMIO)
+        self.assertIsNotNone(match)
+        current = tuple(map(int, match.group(1).split(".")))
+        minimum = tuple(map(int, MANIFEST["min_firmware_version"].split(".")))
+        self.assertGreaterEqual(current, minimum)
 
     def test_viewer_requests_display_takeover_and_fast_video(self):
         self.assertIn("app_hardware_takeover", APP)
