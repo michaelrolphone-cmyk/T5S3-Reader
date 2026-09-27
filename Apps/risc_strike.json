@@ -7,5 +7,11 @@
   "category": [
     "Games",
     "3D"
+  ],
+  "optional": [
+    {
+      "capability": "usb.xinput.gamepad",
+      "api": ">=1"
+    }
   ]
 }
