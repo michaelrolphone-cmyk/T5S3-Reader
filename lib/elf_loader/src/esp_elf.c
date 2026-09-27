@@ -23,6 +23,7 @@
 #endif
 
 #include "private/elf_platform.h"
+#include "private/elf_section_layout.h"
 #include "private/esp_privileged_os_cpu.h"
 
 #define stype(_s, _t)               ((_s)->type == (_t))
@@ -196,7 +197,8 @@ uintptr_t elf_find_sym(const char *sym_name)
 static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
 {
     uint32_t entry;
-    uint32_t size;
+    size_t size = 0;
+    uint32_t section_align[ELF_SECS] = {1u, 1u, 1u, 1u, 1u};
 
     const elf32_hdr_t *ehdr = (const elf32_hdr_t *)pbuf;
     const elf32_shdr_t *shdr = (const elf32_shdr_t *)(pbuf + ehdr->shoff);
@@ -217,6 +219,7 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
                  * or a following unaligned .rodata address aliases into .text. */
                 elf->sec[ELF_SEC_TEXT].size    = shdr[i].size;
                 elf->sec[ELF_SEC_TEXT].offset  = shdr[i].offset;
+                section_align[ELF_SEC_TEXT] = shdr[i].addralign;
 
                 ESP_LOGD(TAG, ".text   offset is 0x%lx size is 0x%x",
                          elf->sec[ELF_SEC_TEXT].offset,
@@ -228,6 +231,7 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
                 elf->sec[ELF_SEC_DATA].v_addr  = shdr[i].addr;
                 elf->sec[ELF_SEC_DATA].size    = shdr[i].size;
                 elf->sec[ELF_SEC_DATA].offset  = shdr[i].offset;
+                section_align[ELF_SEC_DATA] = shdr[i].addralign;
 
                 ESP_LOGD(TAG, ".data   offset is 0x%lx size is 0x%x",
                          elf->sec[ELF_SEC_DATA].offset,
@@ -239,6 +243,7 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
                 elf->sec[ELF_SEC_RODATA].v_addr  = shdr[i].addr;
                 elf->sec[ELF_SEC_RODATA].size    = shdr[i].size;
                 elf->sec[ELF_SEC_RODATA].offset  = shdr[i].offset;
+                section_align[ELF_SEC_RODATA] = shdr[i].addralign;
 
                 ESP_LOGD(TAG, ".rodata offset is 0x%lx size is 0x%x",
                          elf->sec[ELF_SEC_RODATA].offset,
@@ -250,6 +255,7 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
                 elf->sec[ELF_SEC_DRLRO].v_addr  = shdr[i].addr;
                 elf->sec[ELF_SEC_DRLRO].size    = shdr[i].size;
                 elf->sec[ELF_SEC_DRLRO].offset  = shdr[i].offset;
+                section_align[ELF_SEC_DRLRO] = shdr[i].addralign;
 
                 ESP_LOGD(TAG, ".data.rel.ro offset is 0x%lx size is 0x%x",
                          elf->sec[ELF_SEC_DRLRO].offset,
@@ -264,6 +270,7 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
             elf->sec[ELF_SEC_BSS].v_addr  = shdr[i].addr;
             elf->sec[ELF_SEC_BSS].size    = shdr[i].size;
             elf->sec[ELF_SEC_BSS].offset  = shdr[i].offset;
+            section_align[ELF_SEC_BSS] = shdr[i].addralign;
 
             ESP_LOGD(TAG, ".bss    offset is 0x%lx size is 0x%x",
                      elf->sec[ELF_SEC_BSS].offset,
@@ -284,14 +291,41 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
         return -ENOMEM;
     }
 
-    size = elf->sec[ELF_SEC_DATA].size +
-           elf->sec[ELF_SEC_RODATA].size +
-           elf->sec[ELF_SEC_BSS].size +
-           elf->sec[ELF_SEC_DRLRO].size;
+    /*
+     * Keep each runtime section aligned to its ELF sh_addralign. The old
+     * layout concatenated byte sizes directly; an odd-sized .rodata could
+     * therefore place a following 4/8-byte .data.rel.ro or .bss at an
+     * unaligned address. Xtensa L32I/S32C1I then panics with
+     * LoadStoreAlignment when a provider touches an aligned object.
+     *
+     * Reserve worst-case padding for each section. elf->pdata remains the raw
+     * allocation pointer for deinit; individual sec[].addr values point at
+     * aligned locations inside that allocation.
+     */
+    const int data_sections[] = {
+        ELF_SEC_DATA, ELF_SEC_RODATA, ELF_SEC_DRLRO, ELF_SEC_BSS
+    };
+    for (size_t i = 0; i < sizeof(data_sections) / sizeof(data_sections[0]); ++i) {
+        const int sec = data_sections[i];
+        if (!elf->sec[sec].size) continue;
+        if (!elf_section_capacity_add(&size, elf->sec[sec].size,
+                                      section_align[sec])) {
+            ESP_LOGE(TAG, "Invalid/overflowing section alignment sec=%d align=%"PRIu32,
+                     sec, section_align[sec]);
+            esp_elf_free(elf->ptext);
+            elf->ptext = NULL;
+            return -EINVAL;
+        }
+    }
     if (size) {
-        elf->pdata = esp_elf_malloc(size, false);
+        if (size > UINT32_MAX) {
+            esp_elf_free(elf->ptext);
+            elf->ptext = NULL;
+            return -EOVERFLOW;
+        }
+        elf->pdata = esp_elf_malloc((uint32_t)size, false);
         if (!elf->pdata) {
-            ESP_LOGE(TAG, "Failed to malloc %"PRIu32" bytes for data section", size);
+            ESP_LOGE(TAG, "Failed to malloc %zu bytes for data section", size);
             esp_elf_free(elf->ptext);
             elf->ptext = NULL;
             return -ENOMEM;
@@ -320,37 +354,32 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
 
     if (size) {
         uint8_t *pdata = elf->pdata;
+        const uintptr_t allocation_end = (uintptr_t)elf->pdata + size;
 
-        if (elf->sec[ELF_SEC_DATA].size) {
-            elf->sec[ELF_SEC_DATA].addr = (uint32_t)pdata;
+        for (size_t i = 0; i < sizeof(data_sections) / sizeof(data_sections[0]); ++i) {
+            const int sec = data_sections[i];
+            if (!elf->sec[sec].size) continue;
 
-            memcpy(pdata, pbuf + elf->sec[ELF_SEC_DATA].offset,
-                   elf->sec[ELF_SEC_DATA].size);
+            uint8_t *aligned = elf_section_align_pointer(pdata, section_align[sec]);
+            if (!aligned ||
+                (uintptr_t)aligned > allocation_end ||
+                elf->sec[sec].size > allocation_end - (uintptr_t)aligned) {
+                ESP_LOGE(TAG, "Aligned section placement overflow sec=%d", sec);
+                esp_elf_free(elf->ptext);
+                esp_elf_free(elf->pdata);
+                elf->ptext = NULL;
+                elf->pdata = NULL;
+                return -EOVERFLOW;
+            }
 
-            pdata += elf->sec[ELF_SEC_DATA].size;
-        }
-
-        if (elf->sec[ELF_SEC_RODATA].size) {
-            elf->sec[ELF_SEC_RODATA].addr = (uint32_t)pdata;
-
-            memcpy(pdata, pbuf + elf->sec[ELF_SEC_RODATA].offset,
-                   elf->sec[ELF_SEC_RODATA].size);
-
-            pdata += elf->sec[ELF_SEC_RODATA].size;
-        }
-
-        if (elf->sec[ELF_SEC_DRLRO].size) {
-            elf->sec[ELF_SEC_DRLRO].addr = (uint32_t)pdata;
-
-            memcpy(pdata, pbuf + elf->sec[ELF_SEC_DRLRO].offset,
-                   elf->sec[ELF_SEC_DRLRO].size);
-
-            pdata += elf->sec[ELF_SEC_DRLRO].size;
-        }
-
-        if (elf->sec[ELF_SEC_BSS].size) {
-            elf->sec[ELF_SEC_BSS].addr = (uint32_t)pdata;
-            memset(pdata, 0, elf->sec[ELF_SEC_BSS].size);
+            elf->sec[sec].addr = (uintptr_t)aligned;
+            if (sec == ELF_SEC_BSS) {
+                memset(aligned, 0, elf->sec[sec].size);
+            } else {
+                memcpy(aligned, pbuf + elf->sec[sec].offset,
+                       elf->sec[sec].size);
+            }
+            pdata = aligned + elf->sec[sec].size;
         }
     }
 
