@@ -187,7 +187,11 @@ The implementation is `quiesce_with_interrupt()` in
 and its physical `quiesce_host()` helper in
 [`driver_base.cpp`](../Drivers/usb_controller_esp32s3/driver_base.cpp). Idle
 role parking uses the same interrupt drain and physical helper while retaining
-provider APIs and lower dependencies for continued power observation.
+provider APIs and lower dependencies for continued power observation. If idle
+parking partially tears the host down and a later cleanup step fails, the
+controller enters a retained cleanup-pending state instead of a terminal role
+failure. Subsequent owner polls retry only the idempotent teardown path; they do
+not pump a deregistered client or restart the host until cleanup is complete.
 
 1. End consumer subscriptions/admission and release class claims. Drain/flush
    outstanding interrupt and control/bulk transfers with bounded event pumping.
