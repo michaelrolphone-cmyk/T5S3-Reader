@@ -114,3 +114,37 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+
+## 2026-09-27 scan — 00:23 MDT
+
+### 13. SD Firmware Update validates an empty path after a File Browser handoff
+
+- **Affected code:** `src/native/NativeSdFirmwareBridge.cpp`, `resolveSelectedPath()` and `validateSelected()`; handoff source in `src/native/NativeFileOpenBridge.cpp::activeSourceStoragePath()`; `Apps/sd_firmware_update.json`.
+- **Trigger / reproduction:** From the installable File Browser, open a valid firmware `.bin` using the SD Firmware Update file association. This is the normal non-recovery flow introduced with the File Browser retirement work. The bridge has no explicit `selectedPath` setter caller in the repository, so the selected image is supplied by `NativeFileOpenBridge::activeSourceStoragePath()`.
+- **Observed / logically demonstrated failure:** `validateSelected()` successfully resolves the selected image into local variable `path`, opens that resolved path, records its size, and checks the OTA partition. It then calls `firmware_flash::validateImageFile(selectedPath.c_str(), ...)` instead of `path.c_str()`. In a File Browser handoff `selectedPath` is still empty, so a valid selected image is re-opened as an empty pathname and validation returns an open/invalid-image failure. The app can display the selected filename because `selected_path()` uses `resolveSelectedPath()`, while validation still fails.
+- **Likely root cause:** The bridge was migrated from an explicit firmware-owned selected-path state to the File Browser active-source fallback, but the final validator call retained the old `selectedPath` member instead of using the resolved local path.
+- **Impact:** The newly migrated normal Settings/File Browser firmware-update path cannot validate a legitimate `.bin` selected through the association handoff, blocking firmware updates outside recovery mode.
+- **Repair direction:** Pass `path.c_str()` to `firmware_flash::validateImageFile()` and use the resolved path consistently throughout validation/install. Add an integration test that supplies the image only through `NativeFileOpenBridge::activeSourceStoragePath()` and verifies validation reaches the real file; the existing native-app test mocks `validate()` and does not exercise this bridge path.
+
+### 14. Language selection reports success even when the settings file was not saved
+
+- **Affected code:** `src/native/NativeLanguageBridge.cpp`, `selectLanguage(uint8_t languageId)`; caller `Apps/language_settings.c::select_current()`.
+- **Trigger / reproduction:** Make settings persistence fail (for example, unavailable/unwritable settings storage), open Language, and select a different language.
+- **Observed / logically demonstrated failure:** `selectLanguage()` immediately changes both `I18N` and `SETTINGS.language`, calls `SETTINGS.saveToFile()`, ignores its return value, and unconditionally returns `true`. `language_settings.c` treats that `true` as success and exits the app. The new language therefore appears active for the current session even though it was never committed; after settings are reloaded or the device reboots, the prior persisted language returns.
+- **Likely root cause:** The native language bridge treats an in-memory mutation as the success condition instead of the persistence result.
+- **Impact:** The Language app can falsely acknowledge a preference change and leave runtime state inconsistent with durable settings.
+- **Repair direction:** Preserve the previous language, attempt persistence, and return success only after `saveToFile()` succeeds. On failure, restore both `SETTINGS.language` and the active `I18N` language before returning `false`. Add a regression test with a failing settings writer proving the API returns failure and leaves the previous language active.
+
+### 15. A failed Time Zone save still changes the live timezone and system clock
+
+- **Affected code:** `src/native/NativeTimeZoneBridge.cpp`, `selectCity(uint32_t region, uint32_t city)`; caller `Apps/time_zone.c::activate()`.
+- **Trigger / reproduction:** Make settings persistence fail, then select a different city in Time Zone.
+- **Observed / logically demonstrated failure:** `selectCity()` writes the new ID into `SETTINGS.timeZoneId`, reconfigures `halClock`, synchronizes system time from the RTC, and updates `SETTINGS.rtcStoresUtc` before calling `SETTINGS.saveToFile()`. If the save fails, the function returns `false`, but none of those live mutations are rolled back. The app therefore receives a failure while the process is already operating with the new timezone/clock configuration; a later reboot can restore the old persisted zone.
+- **Likely root cause:** Persistence is treated as the final step of a multi-part state change without a transaction or rollback path.
+- **Impact:** A storage failure can leave displayed/system time and in-memory settings disagreeing with durable configuration, including a timezone change the UI did not successfully commit.
+- **Repair direction:** Snapshot the old timezone and RTC-related settings before applying the candidate. If persistence fails, restore the old fields and reconfigure/resynchronize `halClock` to the previous zone. Prefer a staged settings transaction so durable state and live clock configuration move together. Add a failure-injection test covering both the returned error and restoration of the old timezone.
+
+## Duplicate check performed for this scan
+
+These findings were checked against the current `bugs.md`, the current open issue set, the current open PR set, and targeted open/closed PR and issue searches. The SD Firmware Update path was introduced by merged PR #236, but that PR documents the File Browser handoff rather than the incorrect variable used by `validateSelected()`. No tracked bug or matching PR was found for Language save-result handling or Time Zone rollback on persistence failure. The existing Time Zone truncation finding from an earlier scan concerns list capacity, not failed-save state rollback.
