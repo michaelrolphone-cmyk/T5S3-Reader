@@ -7,6 +7,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = (ROOT / "src/activities/home/HomeActivity.cpp").read_text(encoding="utf-8")
 HEADER = (ROOT / "src/activities/home/HomeActivity.h").read_text(encoding="utf-8")
+HOST = (ROOT / "src/native/NativeAppHost.cpp").read_text(encoding="utf-8")
+RESOLVER = (ROOT / "src/native/InstalledAppPath.cpp").read_text(encoding="utf-8")
 BASE_THEME = (ROOT / "src/components/themes/BaseTheme.cpp").read_text(encoding="utf-8")
 LYRA_THEME = (ROOT / "src/components/themes/lyra/LyraThemeDrawD.cpp").read_text(encoding="utf-8")
 ROUNDED_THEME = (ROOT / "src/components/themes/roundedraff/RoundedRaffTheme.cpp").read_text(encoding="utf-8")
@@ -42,6 +44,33 @@ class HomeShortcutLaunchContract(unittest.TestCase):
             loop_block.index("if (!pendingHomeAppArtifact.empty())"),
             loop_block.index("if (appsPending)"),
         )
+
+    def test_apps_link_resolves_managed_or_bootstrap_springboard_each_launch(self):
+        self.assertNotIn(
+            '!std::strcmp(artifact, "springboard.elf")',
+            RESOLVER,
+        )
+        managed_return = RESOLVER.index("if (!managedPath.empty())")
+        legacy_recovery = RESOLVER.index("RuntimePackages::recoverAppPair(artifact)")
+        self.assertLess(managed_return, legacy_recovery)
+
+        start = HOST.index(
+            "bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool resume)"
+        )
+        block = HOST[start:]
+        self.assertNotIn(
+            'const char* springboard = "/sd/Apps/springboard.elf";',
+            block,
+        )
+        resolve = 'resolveInstalledAppPath("springboard.elf", springboard)'
+        launch = "runNativeApp(springboard.c_str(), renderer, input)"
+        resolve_pos = block.index(resolve)
+        launch_pos = block.index(launch)
+        launch_loop = block.rfind("for (;;) {", 0, resolve_pos)
+        self.assertGreater(launch_loop, 0)
+        self.assertIn("std::string springboard;", block[launch_loop:resolve_pos])
+        self.assertLess(launch_loop, resolve_pos)
+        self.assertLess(resolve_pos, launch_pos)
 
     def test_pending_shortcut_is_reset_when_home_is_entered(self):
         enter_start = SOURCE.index("void HomeActivity::onEnter()")

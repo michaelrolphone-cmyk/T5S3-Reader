@@ -1370,7 +1370,6 @@ bool consumeNativeAppReturn() { const bool value = returned; returned = false; r
 
 bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool resume) {
   if (resume && homeRequested) return false;
-  const char* springboard = "/sd/Apps/springboard.elf";
   auto showError = [&](const char* message) {
     RenderLock lock;
     renderer.clearScreen();
@@ -1387,22 +1386,22 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
       if (input.wasTouchTapped(point, renderer) || input.wasAnyPressed() || input.wasTouchHomeButtonPressed()) break;
     }
   };
-  // Recovery must run while no ELF is mapped, before checking for springboard
-  // files: a power cut can leave only springboard.elf.bak at this point.
-  if (Storage.exists("/Apps")) {
-    if (!RuntimePackages::recoverAppInventory())
-      LOG_ERR("APPSTORE", "Some managed apps require manual recovery");
-    if (!RuntimePackages::recoverAppPair("springboard.elf")) {
-      showError("Springboard update cannot be safely recovered.");
+  // Recover canonical package transactions before resolving the launcher.
+  // resolveInstalledAppPath() prefers a verified /Apps/<id>/springboard.elf
+  // package and falls back to the legacy loose /Apps/springboard.elf pair.
+  if (Storage.exists("/Apps") && !RuntimePackages::recoverAppInventory())
+    LOG_ERR("APPSTORE", "Some managed apps require manual recovery");
+
+  for (;;) {
+    // Resolve on every return to the Springboard. The App Store can migrate a
+    // bootstrapped loose Springboard into its canonical package while this Apps
+    // session is active, so caching the original path would immediately go stale.
+    std::string springboard;
+    if (!resolveInstalledAppPath("springboard.elf", springboard)) {
+      showError("Install Springboard or copy springboard.elf and .json to /Apps.");
       return false;
     }
-  }
-  if (!Storage.exists("/Apps/springboard.elf") || !Storage.exists("/Apps/springboard.json")) {
-    showError("Copy springboard.elf and .json to /Apps.");
-    return false;
-  }
-  for (;;) {
-    const auto result = runNativeApp(springboard, renderer, input);
+    const auto result = runNativeApp(springboard.c_str(), renderer, input);
     if (result != ESP_OK) {
       showError(lastLaunchError.empty() ? "Apps launcher failed." : lastLaunchError.c_str());
       return false;

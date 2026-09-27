@@ -166,11 +166,13 @@ static void render_list(const t5_ui_chrome_t *chrome,
             if (rows[i].title && !strcmp(rows[i].title, "Beta")) saw_beta = 1;
             if (rows[i].subtitle && !strcmp(rows[i].subtitle, "Installed")) {
                 saw_installed = 1;
-                if ((rows[i].flags & T5_UI_LIST_ICON_INSTALLED) != 0) saw_installed_icon = 1;
+                if ((rows[i].flags & T5_UI_LIST_ICON_INSTALLED) != 0 &&
+                    (rows[i].flags & T5_UI_LIST_ICON_COMPACT) != 0) saw_installed_icon = 1;
             }
             if ((rows[i].flags & T5_UI_LIST_HIGHLIGHT_VALUE) != 0) {
                 saw_update = 1;
-                if ((rows[i].flags & T5_UI_LIST_ICON_UPDATE) != 0) saw_update_icon = 1;
+                if ((rows[i].flags & T5_UI_LIST_ICON_UPDATE) != 0 &&
+                    (rows[i].flags & T5_UI_LIST_ICON_COMPACT) != 0) saw_update_icon = 1;
             }
         }
         if (chrome->confirm_label && !strcmp(chrome->confirm_label, "Update")) saw_update = 1;

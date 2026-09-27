@@ -23,6 +23,7 @@ bool installRequiredNativeApp(const char* artifact, std::string& displayName,
                               std::string& failureDetail,
                               bool forceCatalogInstall = false);
 
-// Home's Apps entry: the actual grid lives in /sd/Apps/springboard.elf.
+// Home's Apps entry: resolve Springboard from the verified managed package
+// inventory first, then fall back to the legacy loose /sd/Apps/springboard.elf pair.
 // Returns true when a firmware settings dialog must finish before resuming.
 bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool resume = false);
