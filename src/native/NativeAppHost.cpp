@@ -56,7 +56,6 @@ constexpr const char* kReleaseIndexUrl =
 constexpr const char* kGameBoyRepository = "michaelrolphone-cmyk/T5S3-GameBoy";
 constexpr const char* kAggregateAppCatalogName = "app-catalog.json";
 constexpr size_t kMaxCatalogAssets = 128;
-constexpr size_t kMaxCatalogBytes = 64 * 1024;
 constexpr size_t kMaxManifestBytes = 8 * 1024;
 constexpr size_t kMaxReleaseAssetObjectBytes = 8192;
 
@@ -618,7 +617,7 @@ bool validThirdPartyReleaseTag(const char* tag) {
 }
 
 bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
-  RuntimeMemory::PsramTextStream json(kMaxCatalogBytes);
+  RuntimeMemory::PsramGrowingTextStream json;
   esp_task_wdt_reset();
   if (!json.good() || !HttpDownloader::fetchUrl(kReleaseIndexUrl, json) ||
       !json.good() || json.empty()) return false;

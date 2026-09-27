@@ -19,7 +19,6 @@ VERSION_RE = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 ID_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}\Z")
 ASSET_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,159}\Z")
 SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
-MAX_INDEX_BYTES = 64 * 1024
 MAX_ENTRIES = {"apps": 128, "drivers": 64}
 DRIVER_FILES = {".package.json", "driver.elf", "provider-abi.v1", "privileged-imports.v1"}
 
@@ -130,10 +129,12 @@ def validate_index_budget(index: dict[str, Any]) -> dict[str, Any]:
         entries = index.get(kind)
         if not isinstance(entries, list) or len(entries) > maximum:
             raise ValueError(f"{kind} index exceeds its {maximum}-entry limit")
-    encoded = json.dumps(index, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    if len(encoded) > MAX_INDEX_BYTES:
-        raise ValueError(f"release index exceeds its {MAX_INDEX_BYTES}-byte limit")
     return index
+
+
+def serialize_index(index: dict[str, Any]) -> str:
+    """Keep the published index compact while allowing its catalog to grow."""
+    return json.dumps(index, separators=(",", ":"), sort_keys=True) + "\n"
 
 
 def update_index(index: Any, product: str, record: Any) -> dict[str, Any]:
@@ -193,8 +194,7 @@ def main() -> int:
     fd, temporary = tempfile.mkstemp(prefix=args.index.name + ".", dir=args.index.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump(updated, stream, indent=2, sort_keys=True)
-            stream.write("\n")
+            stream.write(serialize_index(updated))
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, args.index)
