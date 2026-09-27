@@ -10,7 +10,6 @@
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
 #include "home/CrashActivity.h"
-#include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
 #include "home/RecentBooksActivity.h"
 #include "network/CrossPointWebServerActivity.h"
@@ -18,6 +17,7 @@
 #include "settings/OpdsServerListActivity.h"
 #include "settings/SettingsActivity.h"
 #include "util/FullScreenMessageActivity.h"
+#include "util/InstalledAppActivity.h"
 
 namespace {
 constexpr HalDisplay::RefreshMode kUiPageTransitionRefreshMode = HalDisplay::HALF_REFRESH;
@@ -225,9 +225,10 @@ void ActivityManager::goToSettings() {
   replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
 }
 
-void ActivityManager::goToFileBrowser(std::string path) {
-  replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, std::move(path)),
-                  kUiPageTransitionRefreshMode);
+void ActivityManager::goToInstalledApp(std::string artifact, std::string displayName) {
+  replaceActivity(std::make_unique<InstalledAppActivity>(
+      renderer, mappedInput, std::move(artifact), std::move(displayName)),
+      kUiPageTransitionRefreshMode);
 }
 
 void ActivityManager::goToRecentBooks() {

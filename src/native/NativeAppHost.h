@@ -14,12 +14,14 @@ bool consumeNativeAppReturn();
 bool presentNativeAppUiFrame();
 
 // Install one exact application artifact from the authoritative online catalog.
-// Intended for firmware-owned workflows that require a child app. If already
-// installed, returns true without network I/O. On success displayName is the
-// installed/catalog display name when available. Failure detail is suitable for
-// a bounded system-UI status line.
+// Intended for firmware-owned workflows that require a child app. Normally an
+// already-installed verified app returns true without network I/O. Callers may
+// force a catalog install when a workflow requires newer manifest semantics.
+// On success displayName is the installed/catalog display name when available.
+// Failure detail is suitable for a bounded system-UI status line.
 bool installRequiredNativeApp(const char* artifact, std::string& displayName,
-                              std::string& failureDetail);
+                              std::string& failureDetail,
+                              bool forceCatalogInstall = false);
 
 // Home's Apps entry: the actual grid lives in /sd/Apps/springboard.elf.
 // Returns true when a firmware settings dialog must finish before resuming.

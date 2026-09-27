@@ -37,6 +37,8 @@ class RequiredAppWorkflowContract(unittest.TestCase):
         self.assertIn('"Install"', REQUIRED)
         self.assertIn('"Retry"', REQUIRED)
         self.assertIn("installRequiredNativeApp(", REQUIRED)
+        self.assertIn("forceCatalogInstall", REQUIRED)
+        self.assertIn("forceCatalogInstall", HOST)
         self.assertIn("requestUpdateAndWait();", REQUIRED)
         self.assertIn("result.isCancelled = false;", REQUIRED)
 

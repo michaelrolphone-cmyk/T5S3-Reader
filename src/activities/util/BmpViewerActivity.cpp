@@ -192,7 +192,7 @@ void BmpViewerActivity::loop() {
   Activity::loop();
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    activityManager.goToFileBrowser(filePath);
+    activityManager.goToInstalledApp("file_browser.elf", "File Browser");
     return;
   }
 

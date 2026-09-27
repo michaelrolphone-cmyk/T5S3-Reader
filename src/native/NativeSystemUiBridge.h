@@ -15,3 +15,7 @@ NativeSystemUiNavigation nativeSystemUiTakeNavigation();
 // Internal bridge hook for other firmware-owned native-app services that push an
 // Activity and must let NativeAppHost unwind the current ELF before it runs.
 void nativeSystemUiMarkActivityPending();
+
+// Firmware workflows that temporarily host a top-level app can suppress that
+// app's "go Home" request so Back unwinds to the caller instead.
+void nativeSystemUiSetHomeNavigationSuppressed(bool suppressed);
