@@ -112,6 +112,18 @@ static bool mv_float_finite(float v) {
     return v == v && v > -1.0e20f && v < 1.0e20f;
 }
 
+static float mv_reciprocal_positive(float value) {
+    uint32_t bits = 0;
+    float estimate = 0.0f;
+    memcpy(&bits, &value, sizeof(bits));
+    bits = 0x7ef311c3u - bits;
+    memcpy(&estimate, &bits, sizeof(estimate));
+    estimate = estimate * (2.0f - value * estimate);
+    estimate = estimate * (2.0f - value * estimate);
+    estimate = estimate * (2.0f - value * estimate);
+    return estimate;
+}
+
 static void *mv_alloc(size_t bytes) {
     if (!bytes) return NULL;
     if (g_use_psram && g_app && g_app->psram_alloc) return g_app->psram_alloc(bytes);
@@ -152,7 +164,7 @@ static bool mv_model_finalize(mv_model_t *model) {
     float extent = mv_maxf(model->max.x - model->min.x, model->max.y - model->min.y);
     extent = mv_maxf(extent, model->max.z - model->min.z);
     if (!mv_float_finite(extent) || extent < 0.000001f) return false;
-    model->normalize = 1.0f / extent;
+    model->normalize = mv_reciprocal_positive(extent);
     return true;
 }
 
@@ -839,7 +851,7 @@ static bool mv_handle_touch(const mv_contacts_t *prev,const mv_contacts_t *now,u
             if(mv_iabs(pan_dx)>0 || mv_iabs(pan_dy)>0 || mv_iabs(dd)>0) {
                 g_view.pan_x+=pan_dx;
                 g_view.pan_y+=pan_dy;
-                g_view.zoom=mv_clampf(g_view.zoom*(1.0f+(float)dd/220.0f),0.18f,7.0f);
+                g_view.zoom=mv_clampf(g_view.zoom*(1.0f+(float)dd*0.00454545455f),0.18f,7.0f);
                 changed=true;
             }
         }
