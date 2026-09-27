@@ -2,26 +2,9 @@
 
 ## 2026-09-26 scan
 
-### 1. Battery Status drops the minus sign for temperatures from -0.1 C through -0.9 C
-
-- **Status:** Open PR #205 on branch `fix/battery-negative-subdegree-temperature` targeting `master`; fix implemented, focused regression-tested, and Battery Status version bumped from `1.0.0` to `1.0.1` in the same PR.
-- **Affected code:** `Apps/battery.c`, `add_temperature(uint16_t deci_kelvin)`.
-- **Trigger / reproduction:** Supply battery telemetry where `temperature_dk` converts to a deci-Celsius value between `-1` and `-9` (for example, `2730` deci-kelvin produces `deci_c == -1`). Open Battery Status and inspect the Temperature row.
-- **Observed / logically demonstrated failure:** The formatter computes `deci_c / 10` and a separately absolute-valued fractional digit. In C integer division truncates toward zero, so `-1 / 10` is `0`; the screen therefore renders `0.1 C` instead of `-0.1 C`. The same sign loss occurs through `-0.9 C`.
-- **Likely root cause:** Sign handling is split across the integer and fractional pieces, but the integer piece becomes zero for magnitudes below 1 degree.
-- **Impact:** Cold battery telemetry near freezing is displayed with the wrong sign, which can mislead diagnostics and temperature-related charging decisions.
-- **Repair direction:** Format the sign independently from the magnitude (for example, convert to an absolute deci-C magnitude after recording `deci_c < 0`) and render `\"%s%d.%d C\"`. Add regression cases for `-0.1 C`, `-0.9 C`, `-1.0 C`, `0.0 C`, and positive values.
-
-### 2. Wi-Fi Settings can move selection back to row 0 without redrawing the highlight
-
-- **Affected code:** `Apps/wifi_settings.c`, input handling in `app_main()` for `T5_APP_BUTTON_UP` / `T5_APP_BUTTON_LEFT`.
-- **Trigger / reproduction:** Complete the firmware Wi-Fi selector so the result screen is shown. Move selection down/right to **Choose another network** (row 1), then press Up or Left once.
-- **Observed / logically demonstrated failure:** `selected = ui->previous_index(selected, 2)` changes the logical selection from row 1 to row 0, but the code redraws only inside `if (selected != 0)`. No render occurs when the new selection is row 0, so the display continues to show row 1 as selected even though subsequent button logic considers row 0 selected.
-- **Likely root cause:** The redraw is incorrectly conditional on the selected index rather than on whether navigation occurred.
-- **Impact:** Visual focus and logical focus diverge. A user can see **Choose another network** highlighted while Confirm does nothing because the internal selection is actually the status row.
-- **Repair direction:** Always rerender after Up/Left navigation, matching the Down/Right path. Prefer extracting the duplicated row/chrome construction into the existing result-render helper with a selected-index argument so both directions use one rendering path. Add a navigation regression test for `1 -> 0`.
-
 ### 3. Rom Manager title-detail Up/Down scrolling is reversed
+
+- **Status:** Open PR #212 on branch `fix/rom-manager-detail-scroll-direction` targeting `master`; fix implemented and Rom Manager patch version bumped from `1.0.16` to `1.0.17`.
 
 - **Affected code:** `Apps/rom_manager.c`, `show_vimm_detail(const char *name, const char *path)`.
 - **Trigger / reproduction:** Browse Vimm Vault, open a Game Boy title whose detail text is long enough to scroll, then use the controls labelled **Up** and **Down**.

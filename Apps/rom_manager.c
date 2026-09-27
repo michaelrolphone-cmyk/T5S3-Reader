@@ -798,8 +798,8 @@ static int show_vimm_detail(const char *name,const char *path){
       }
       if(import_archive_url(download_url))return DETAIL_INSTALLED;
       continue;
-    }else if(event.type==T5_UI_EVENT_PREVIOUS&&scroll<result.max_scroll_lines)++scroll;
-    else if(event.type==T5_UI_EVENT_NEXT&&scroll>0)--scroll;
+    }else if(event.type==T5_UI_EVENT_PREVIOUS&&scroll>0)--scroll;
+    else if(event.type==T5_UI_EVENT_NEXT&&scroll<result.max_scroll_lines)++scroll;
   }
 }
 
