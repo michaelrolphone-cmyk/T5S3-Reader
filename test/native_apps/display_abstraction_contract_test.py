@@ -56,6 +56,13 @@ assert "DISPLAY_WIDTH == ((BoardPins::DisplayWidth + 15) / 16) * 16" in hal
 assert 'LOG_ERR("DSP", "Present rejected:' in hal_cpp
 assert 'LOG_ERR("DSP", "Present rejected:' in epd47_cpp
 
+resume_start = hal_cpp.index("bool HalDisplay::resumeFromExternalOwner()")
+resume_end = hal_cpp.index("void HalDisplay::begin(", resume_start)
+resume_body = hal_cpp[resume_start:resume_end]
+assert "begin(false);" in resume_body
+assert "begin();" not in resume_body
+assert "retained panel image preserved" in resume_body
+
 assert "display.begin(false);" in main_cpp
 assert "if (!display.isReady())" in main_cpp
 assert "if (!renderer.begin())" in main_cpp
