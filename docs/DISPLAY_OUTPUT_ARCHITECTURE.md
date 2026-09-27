@@ -92,3 +92,31 @@ The next display-specific milestones are deliberately outside this slice:
 4. Remove GameBoy's fixed 540x960 layout and use the same viewport contract.
 5. Validate the same app ELFs against an LCD provider with a materially different
    resolution and aspect ratio.
+
+
+## Blank-screen safety invariants
+
+Display bootstrap is deliberately fail-safe during this migration. These are
+release invariants, not optional diagnostics:
+
+- The physical e-paper image is preserved while the compatibility backend and
+  runtime surface metadata are initialized and validated. Normal rendering only
+  replaces it after the renderer accepts the surface.
+- `GfxRenderer::begin()` is transactional. Invalid dimensions, stride, buffer
+  size, safe insets, unsupported format, missing framebuffer, or a backend that
+  is not ready returns failure without overwriting a previously working renderer
+  state. Display metadata must never be enforced with an assertion/reboot loop.
+- Surface validation is overflow-safe and bounded before any geometry is trusted.
+- If the compatibility panel backend itself is alive but renderer validation
+  fails, firmware draws a large renderer-independent emergency X plus an 8-bit
+  diagnostic pattern (boot code `0xD1`) directly through `HalDisplay`. This
+  path intentionally does not use runtime surface metadata or `GfxRenderer`.
+- If the hardware backend cannot initialize, firmware does not clear the retained
+  e-paper image and does not enter normal `ActivityManager` rendering.
+- Once display bootstrap fails, the main loop is gated from normal UI rendering;
+  it cannot repeatedly clear/present a broken surface.
+- The EPD47 logical framebuffer is initialized deterministically even when the
+  physical panel image is being preserved.
+- CI has both executable metadata-validation tests and source-contract checks
+  for these invariants. A refactor that removes the guards must intentionally
+  update those tests rather than silently weakening display recovery.
