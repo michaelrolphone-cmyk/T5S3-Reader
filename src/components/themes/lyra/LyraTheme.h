@@ -63,7 +63,7 @@ class LyraTheme : public BaseTheme {
                 const std::function<std::string(int index)>& rowSubtitle,
                 const std::function<UIIcon(int index)>& rowIcon, const std::function<std::string(int index)>& rowValue,
                 bool highlightValue, TextRole textRole,
-                const std::function<const char*(int index)>& rowFontAwesomeIcon) const override;
+                const std::function<const char*(int index)>& rowFontAwesomeIcon = nullptr) const override;
   void drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                        const char* btn4) const override;
   std::array<Rect, 4> getButtonHintTouchBounds(const GfxRenderer& renderer) const override;
