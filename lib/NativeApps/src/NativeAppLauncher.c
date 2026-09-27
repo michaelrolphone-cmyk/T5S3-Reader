@@ -42,6 +42,7 @@
 #include "T5TimeZoneApi.h"
 #include "T5UiApi.h"
 #include "T5UsbApi.h"
+#include "T5VideoApi.h"
 #include "T5WebServerApi.h"
 #include <errno.h>
 
@@ -131,6 +132,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_lora_get_api),
         ESP_ELFSYM_EXPORT(t5_web_server_get_api),
         ESP_ELFSYM_EXPORT(t5_usb_get_api),
+        ESP_ELFSYM_EXPORT(t5_video_get_api),
         ESP_ELFSYM_END
     };
     const int registered = esp_elf_register_symbol(host_symbols);

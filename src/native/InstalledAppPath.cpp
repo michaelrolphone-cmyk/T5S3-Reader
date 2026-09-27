@@ -46,8 +46,7 @@ bool resolveInstalledAppPath(const char* artifact, std::string& sdPath,
                              t5_app_manifest_t* manifest) {
   sdPath.clear();
   if (manifest) *manifest = {};
-  if (!Storage.ready() || !artifact || !t5_safe_elf_name(artifact) ||
-      !std::strcmp(artifact, "springboard.elf")) return false;
+  if (!Storage.ready() || !artifact || !t5_safe_elf_name(artifact)) return false;
 
   // Package IDs are not necessarily ELF basenames. Resolve by the verified
   // package inventory rather than synthesizing /Apps/<basename>/<basename>.elf.

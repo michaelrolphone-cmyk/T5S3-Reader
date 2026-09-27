@@ -275,7 +275,7 @@ class NativeSettingsActionActivity final : public Activity {
     const auto& metrics = UITheme::getInstance().getMetrics();
     GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight},
                    I18N.get(StrId::STR_SETTINGS_TITLE));
-    renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+    renderer.displayBuffer(DisplayPresentMode::Balanced);
   }
 };
 }  // namespace
@@ -397,7 +397,7 @@ void nativeSettingsRender(uint32_t category, int32_t selectedIndex) {
   const auto labels = input.mapLabels(I18N.get(StrId::STR_BACK), confirmLabel, I18N.get(StrId::STR_DIR_UP),
                                       I18N.get(StrId::STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Balanced);
 }
 
 uint8_t nativeSettingsTouch(int16_t x, int16_t y, uint32_t* category, int32_t* selectedIndex) {

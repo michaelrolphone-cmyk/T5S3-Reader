@@ -138,6 +138,11 @@ class HalDisplay : public DisplaySurface {
   void copyGrayscaleMsbBuffers(const uint8_t* msbBuffer);
   bool captureGrayscaleBaseBuffer(const uint8_t* bwBuffer);
   void cleanupGrayscaleBuffers(const uint8_t* bwBuffer);
+  // After capture and both copies: detect allocation failure before choosing
+  // gray presentation. This query neither mutates buffers nor touches hardware.
+  bool grayscaleBuffersReady() const override {
+    return grayscaleBaseCaptured && grayscaleBaseBuffer && grayscaleLsbBuffer && grayscaleMsbBuffer;
+  }
 
   void displayGrayBuffer(RefreshMode mode = HALF_REFRESH);
 

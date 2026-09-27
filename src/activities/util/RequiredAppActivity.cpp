@@ -11,15 +11,18 @@
 
 RequiredAppActivity::RequiredAppActivity(
     GfxRenderer& renderer, MappedInputManager& mappedInput,
-    std::string artifactName, std::string appName)
+    std::string artifactName, std::string appName, bool forceCatalogInstallValue)
     : Activity("RequiredApp", renderer, mappedInput),
       artifact(std::move(artifactName)),
-      displayName(std::move(appName)) {}
+      displayName(std::move(appName)),
+      forceCatalogInstall(forceCatalogInstallValue) {}
 
 void RequiredAppActivity::onEnter() {
   Activity::onEnter();
   if (displayName.empty()) displayName = artifact;
-  status = "Install it now to continue this workflow.";
+  status = forceCatalogInstall
+      ? "Update it now to continue this workflow."
+      : "Install it now to continue this workflow.";
   requestUpdate(true);
 }
 
@@ -32,7 +35,7 @@ void RequiredAppActivity::install() {
   std::string catalogName;
   std::string failure;
   const bool installed = installRequiredNativeApp(
-      artifact.c_str(), catalogName, failure);
+      artifact.c_str(), catalogName, failure, forceCatalogInstall);
   if (!catalogName.empty()) displayName = std::move(catalogName);
   installing = false;
 
@@ -103,9 +106,12 @@ void RequiredAppActivity::render(RenderLock&&) {
       SMALL_FONT_ID, status.c_str(), width - 48);
   renderer.drawCenteredText(SMALL_FONT_ID, y + 82, safeStatus.c_str());
 
+  const char* confirmLabel = status.rfind("Install", 0) == 0
+      ? "Install"
+      : status.rfind("Update", 0) == 0 ? "Update" : "Retry";
   const auto labels = installing
       ? mappedInput.mapLabels("", "", "", "")
-      : mappedInput.mapLabels("Back", status.rfind("Install", 0) == 0 ? "Install" : "Retry", "", "");
+      : mappedInput.mapLabels("Back", confirmLabel, "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Balanced);
 }

@@ -9,6 +9,7 @@
 #include <cstring>
 #include <string>
 
+#include "NativeFileOpenBridge.h"
 #include "network/FirmwareFlasher.h"
 
 namespace {
@@ -18,9 +19,19 @@ size_t writtenSize = 0;
 
 bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
 
+bool resolveSelectedPath(std::string& out) {
+  out.clear();
+  if (!selectedPath.empty()) {
+    out = selectedPath;
+    return true;
+  }
+  return NativeFileOpenBridge::activeSourceStoragePath(out);
+}
+
 bool copySelectedPath(char* buffer, size_t capacity) {
-  if (!active() || !buffer || capacity == 0 || selectedPath.empty()) return false;
-  std::strncpy(buffer, selectedPath.c_str(), capacity - 1);
+  std::string path;
+  if (!active() || !buffer || capacity == 0 || !resolveSelectedPath(path)) return false;
+  std::strncpy(buffer, path.c_str(), capacity - 1);
   buffer[capacity - 1] = '\0';
   return true;
 }
@@ -43,10 +54,11 @@ t5_sd_firmware_result_t mapResult(firmware_flash::Result result) {
 }
 
 t5_sd_firmware_result_t validateSelected() {
-  if (!active() || selectedPath.empty()) return T5_SD_FIRMWARE_UNAVAILABLE;
+  std::string path;
+  if (!active() || !resolveSelectedPath(path)) return T5_SD_FIRMWARE_UNAVAILABLE;
 
   HalFile file;
-  if (!Storage.openFileForRead("FW", selectedPath.c_str(), file) || !file) return T5_SD_FIRMWARE_FILE_OPEN_FAILED;
+  if (!Storage.openFileForRead("FW", path.c_str(), file) || !file) return T5_SD_FIRMWARE_FILE_OPEN_FAILED;
   selectedSize = file.fileSize();
   file.close();
 
@@ -69,10 +81,11 @@ void progressThunk(size_t written, size_t total, void* raw) {
 }
 
 t5_sd_firmware_result_t installSelected(t5_sd_firmware_progress_callback_t callback, void* ctx) {
-  if (!active() || selectedPath.empty()) return T5_SD_FIRMWARE_UNAVAILABLE;
+  std::string path;
+  if (!active() || !resolveSelectedPath(path)) return T5_SD_FIRMWARE_UNAVAILABLE;
   writtenSize = 0;
   ProgressContext progress{callback, ctx};
-  return mapResult(firmware_flash::flashFromSdPath(selectedPath.c_str(), progressThunk, &progress));
+  return mapResult(firmware_flash::flashFromSdPath(path.c_str(), progressThunk, &progress));
 }
 
 void restartAfterUpdate() {

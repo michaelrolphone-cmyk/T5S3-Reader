@@ -182,7 +182,7 @@ void renderBrowser(const char* pathValue, const char* statusValue, const t5_file
                                     entryCount ? tr(STR_DIR_DOWN) : "");
   GUI.drawButtonHints(*r, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   layout = {contentTop, metrics.listRowHeight, pageItems, pageStart, static_cast<int>(entryCount)};
-  r->displayBuffer(HalDisplay::BALANCED_REFRESH);
+  r->displayBuffer(DisplayPresentMode::Balanced);
 }
 
 uint8_t buttonEvent(MappedInputManager::Button button) {

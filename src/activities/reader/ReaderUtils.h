@@ -54,15 +54,15 @@ inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
   return {prev, next, tiltPrev || tiltNext};
 }
 
-inline HalDisplay::RefreshMode getReaderDisplayRefreshMode() {
+inline DisplayPresentMode getReaderDisplayRefreshMode() {
   switch (SETTINGS.readerDisplayMode) {
     case CrossPointSettings::READER_DISPLAY_FAST:
-      return HalDisplay::FAST_REFRESH;
+      return DisplayPresentMode::LowLatency;
     case CrossPointSettings::READER_DISPLAY_STANDARD:
-      return HalDisplay::BALANCED_REFRESH;
+      return DisplayPresentMode::Balanced;
     case CrossPointSettings::READER_DISPLAY_QUALITY:
     default:
-      return HalDisplay::HALF_REFRESH;
+      return DisplayPresentMode::Quality;
   }
 }
 
@@ -79,24 +79,24 @@ inline bool isPageTurnInputBlocked() {
 inline void requestPageTurnEffect(const GfxRenderer& renderer, const bool isForwardTurn) {
   switch (SETTINGS.readerDisplayMode) {
     case CrossPointSettings::READER_DISPLAY_FAST:
-      renderer.requestNextDisplayEffect(isForwardTurn ? HalDisplay::EFFECT_READER_TURN_FORWARD_FAST
-                                                      : HalDisplay::EFFECT_READER_TURN_BACKWARD_FAST);
+      renderer.requestNextDisplayEffect(isForwardTurn ? DisplayEffect::PageTurnForwardFast
+                                                      : DisplayEffect::PageTurnBackwardFast);
       return;
     case CrossPointSettings::READER_DISPLAY_STANDARD:
-      renderer.requestNextDisplayEffect(isForwardTurn ? HalDisplay::EFFECT_READER_TURN_FORWARD_STANDARD
-                                                      : HalDisplay::EFFECT_READER_TURN_BACKWARD_STANDARD);
+      renderer.requestNextDisplayEffect(isForwardTurn ? DisplayEffect::PageTurnForwardStandard
+                                                      : DisplayEffect::PageTurnBackwardStandard);
       return;
     case CrossPointSettings::READER_DISPLAY_QUALITY:
     default:
-      renderer.requestNextDisplayEffect(HalDisplay::EFFECT_NONE);
+      renderer.requestNextDisplayEffect(DisplayEffect::None);
       return;
   }
 }
 
-inline HalDisplay::RefreshMode takeReaderRefreshMode(int& pagesUntilFullRefresh) {
+inline DisplayPresentMode takeReaderRefreshMode(int& pagesUntilFullRefresh) {
   if (pagesUntilFullRefresh <= 1) {
     pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
-    return HalDisplay::FULL_REFRESH;
+    return DisplayPresentMode::Clean;
   }
 
   pagesUntilFullRefresh--;
@@ -111,8 +111,8 @@ inline void markRefreshCycleDisplayed(int& pagesUntilFullRefresh) {
   (void)takeReaderRefreshMode(pagesUntilFullRefresh);
 }
 
-inline int initialPagesUntilFullRefresh(const HalDisplay::RefreshMode initialRefreshMode) {
-  return initialRefreshMode == HalDisplay::FULL_REFRESH ? 0 : SETTINGS.getRefreshFrequency();
+inline int initialPagesUntilFullRefresh(const DisplayPresentMode initialRefreshMode) {
+  return initialRefreshMode == DisplayPresentMode::Clean ? 0 : SETTINGS.getRefreshFrequency();
 }
 
 // Grayscale anti-aliasing pass. The caller renders the BW page first,

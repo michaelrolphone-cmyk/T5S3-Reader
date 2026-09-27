@@ -97,5 +97,5 @@ void OtaUpdateActivity::render(RenderLock&&) {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, "Opening Firmware Update...");
   }
 
-  renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Balanced);
 }

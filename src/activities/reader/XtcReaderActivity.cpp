@@ -65,9 +65,9 @@ void XtcReaderActivity::loop() {
     openChapterSelection();
   }
 
-  // Long press BACK (1s+) goes to file selection
+  // Long press BACK (1s+) leaves the reader and opens the installable File Browser.
   if (mappedInput.isPressed(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= goHomeMs) {
-    activityManager.goToFileBrowser(xtc ? xtc->getPath() : "");
+    activityManager.goToInstalledApp("file_browser.elf", "File Browser");
     return;
   }
 

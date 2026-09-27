@@ -8,7 +8,8 @@
 // Caller owns RenderLock. These frames are presented synchronously, before
 // entering work that can block the activity render task.
 namespace StartupScreen {
-// The fade is armed only for a normal Home boot. Caller holds RenderLock.
+// boot() arms one fade for whichever normal startup destination renders first.
+// armBootFade() is idempotent and retained for Home's explicit handoff.
 void boot(GfxRenderer& renderer);
 void armBootFade();
 void finishBoot(GfxRenderer& renderer);

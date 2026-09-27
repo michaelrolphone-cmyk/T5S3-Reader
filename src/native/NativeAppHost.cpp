@@ -84,6 +84,15 @@ struct CatalogManifestAsset {
   std::string url;
 };
 
+struct ToneRectCommand {
+  int32_t x;
+  int32_t y;
+  int32_t w;
+  int32_t h;
+  int32_t radius;
+  uint8_t tone;
+};
+
 struct Session {
   GfxRenderer& renderer;
   MappedInputManager& input;
@@ -91,6 +100,7 @@ struct Session {
   HalFile directory;
   std::vector<CatalogAsset> catalog;
   std::vector<t5_app_manifest_t> installed;
+  std::vector<ToneRectCommand> toneRects;
   std::string launchPath;
   char catalogDownloadError[128]{};
   bool catalogNeedsRefresh = false;
@@ -107,23 +117,66 @@ bool firmwareActionPending = false;
 Session* current() { return session && !session->presenting && session->owner == xTaskGetCurrentTaskHandle() ? session : nullptr; }
 int32_t width() { auto* s = current(); return s ? s->renderer.getScreenWidth() : 0; }
 int32_t height() { auto* s = current(); return s ? s->renderer.getScreenHeight() : 0; }
-void clear() { if (auto* s = current()) s->renderer.clearScreen(); }
+void clear() {
+  if (auto* s = current()) {
+    s->toneRects.clear();
+    s->renderer.clearScreen();
+  }
+}
 void text(int32_t x, int32_t y, const char* value) {
   if (auto* s = current(); s && value) s->renderer.drawText(UI_12_FONT_ID, x, y, value);
 }
 void rect(int32_t x, int32_t y, int32_t w, int32_t h, bool black) {
   if (auto* s = current(); s && w > 0 && h > 0) s->renderer.fillRect(x, y, w, h, black);
 }
+void replayTonePlane(Session& s, bool lsbPlane) {
+  // Plane buffers use 1 bits to request a gray component over black base pixels.
+  s.renderer.clearScreen(0x00);
+  for (const auto& command : s.toneRects) {
+    const bool set = lsbPlane ? command.tone == T5_APP_TONE_DARK_GRAY
+                              : command.tone == T5_APP_TONE_LIGHT_GRAY;
+    s.renderer.fillRoundedRect(command.x, command.y, command.w, command.h,
+                               command.radius, set ? Color::White : Color::Black);
+  }
+}
+
+bool presentToneFrame(Session& s, DisplayPresentMode mode) {
+  if (s.toneRects.empty()) {
+    s.renderer.displayBuffer(mode);
+    return true;
+  }
+
+  // Preserve the application's normal BW frame while using the same framebuffer
+  // as bounded scratch space for the two grayscale planes.
+  if (!s.renderer.storeBwBuffer()) {
+    s.renderer.displayBuffer(mode);
+    return false;
+  }
+  if (!s.renderer.captureGrayscaleBaseBuffer()) {
+    s.renderer.restoreBwBuffer();
+    s.renderer.displayBuffer(mode);
+    return false;
+  }
+
+  replayTonePlane(s, true);
+  s.renderer.copyGrayscaleLsbBuffers();
+  replayTonePlane(s, false);
+  s.renderer.copyGrayscaleMsbBuffers();
+  s.renderer.displayGrayBuffer(mode);
+  s.renderer.restoreBwBuffer();
+  return true;
+}
+
 void present(bool full) {
   if (auto* s = current()) {
     esp_task_wdt_reset();
-    s->renderer.displayBuffer(full ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
+    (void)presentToneFrame(*s, full ? DisplayPresentMode::Clean : DisplayPresentMode::Quality);
     esp_task_wdt_reset();
   }
 }
 struct ServicedFrame {
   GfxRenderer* renderer;
-  HalDisplay::RefreshMode mode;
+  DisplayPresentMode mode;
   std::atomic<bool> done{false};
 };
 void renderServicedFrame(void* opaque) {
@@ -133,7 +186,7 @@ void renderServicedFrame(void* opaque) {
   // No frame/session access after publication; this firmware task never runs ELF code.
   vTaskDelete(nullptr);
 }
-bool presentServicedMode(HalDisplay::RefreshMode mode,
+bool presentServicedMode(DisplayPresentMode mode,
                          void (*service)(void*), void* context) {
   auto* s = current();
   if (!s || !service) return false;
@@ -160,7 +213,7 @@ bool presentServicedMode(HalDisplay::RefreshMode mode,
 }
 void noRefreshService(void*) {}
 bool presentServiced(bool full, void (*service)(void*), void* context) {
-  return presentServicedMode(full ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH,
+  return presentServicedMode(full ? DisplayPresentMode::Clean : DisplayPresentMode::LowLatency,
                              service, context);
 }
 void setBackExitsApp(bool enabled) {
@@ -1041,6 +1094,20 @@ bool requestLaunch(uint32_t index) {
 bool drawIcon(int32_t x, int32_t y, const char* icon, uint8_t size, bool black) {
   auto* s = current(); return s && FontAwesomeIcons::draw(s->renderer, x, y, icon, size, black);
 }
+void fillRoundedRectTone(int32_t x, int32_t y, int32_t w, int32_t h,
+                         int32_t radius, uint8_t tone) {
+  auto* s = current();
+  if (!s || w <= 0 || h <= 0 || s->toneRects.size() >= 256) return;
+  if (tone > T5_APP_TONE_BLACK) tone = T5_APP_TONE_BLACK;
+  radius = std::max(0, std::min(radius, std::min(w, h) / 2));
+
+  s->toneRects.push_back(ToneRectCommand{x, y, w, h, radius, tone});
+
+  // Gray pixels need a black bit in the base plane. White stays white; black
+  // and both gray levels use black base and are differentiated at presentation.
+  const Color base = tone == T5_APP_TONE_WHITE ? Color::White : Color::Black;
+  s->renderer.fillRoundedRect(x, y, w, h, radius, base);
+}
 void logMessage(const char* message) {
   if (!current() || !message) return;
   LOG_INF("APP", "%s", message);
@@ -1087,11 +1154,13 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            appCatalogDownloadWithProgress,
                            psramAlloc,
                            psramFree,
-                           logMessage};
+                           logMessage,
+                           fillRoundedRectTone};
 }  // namespace
 
 bool installRequiredNativeApp(const char* artifact, std::string& displayName,
-                              std::string& failureDetail) {
+                              std::string& failureDetail,
+                              bool forceCatalogInstall) {
   displayName.clear();
   failureDetail.clear();
   if (!artifact || !t5_safe_elf_name(artifact) || !Storage.ready()) {
@@ -1101,7 +1170,8 @@ bool installRequiredNativeApp(const char* artifact, std::string& displayName,
 
   std::string installedPath;
   t5_app_manifest_t installedManifest{};
-  if (resolveInstalledAppPath(artifact, installedPath, &installedManifest)) {
+  if (!forceCatalogInstall &&
+      resolveInstalledAppPath(artifact, installedPath, &installedManifest)) {
     displayName = installedManifest.display_name;
     return true;
   }
@@ -1205,7 +1275,7 @@ bool presentNativeAppUiFrame() {
   // Native UI lists and tables use the reader-friendly balanced waveform.
   // Reuse the serviced refresh path so synchronous panel pixel transfer does
   // not starve the loop task's core idle watchdog.
-  const bool presented = presentServicedMode(HalDisplay::BALANCED_REFRESH,
+  const bool presented = presentServicedMode(DisplayPresentMode::Balanced,
                                               noRefreshService, nullptr);
   if (!presented) LOG_ERR("APPSTORE", "Could not start cooperative native UI refresh");
   return presented;
@@ -1347,7 +1417,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   nativeSettingsEnd();
   renderer.setOrientation(orientation);
   renderer.setRenderMode(mode);
-  renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
+  renderer.requestNextRefresh(DisplayPresentMode::Clean);
   unsigned long quiet = millis();
   do {
     input.update();
@@ -1369,7 +1439,6 @@ bool consumeNativeAppReturn() { const bool value = returned; returned = false; r
 
 bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool resume) {
   if (resume && homeRequested) return false;
-  const char* springboard = "/sd/Apps/springboard.elf";
   auto showError = [&](const char* message) {
     RenderLock lock;
     renderer.clearScreen();
@@ -1379,29 +1448,29 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
     renderer.drawText(UI_12_FONT_ID, 24, 100, msg.substr(0, split).c_str());
     if (split != std::string::npos) renderer.drawText(UI_12_FONT_ID, 24, 136, msg.substr(split + 1).c_str());
     renderer.drawText(UI_12_FONT_ID, 24, 200, "Tap or press Back to return.");
-    renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+    renderer.displayBuffer(DisplayPresentMode::Clean);
     for (;;) {
       esp_task_wdt_reset(); delay(20); input.update();
       MappedInputManager::TouchPoint point{};
       if (input.wasTouchTapped(point, renderer) || input.wasAnyPressed() || input.wasTouchHomeButtonPressed()) break;
     }
   };
-  // Recovery must run while no ELF is mapped, before checking for springboard
-  // files: a power cut can leave only springboard.elf.bak at this point.
-  if (Storage.exists("/Apps")) {
-    if (!RuntimePackages::recoverAppInventory())
-      LOG_ERR("APPSTORE", "Some managed apps require manual recovery");
-    if (!RuntimePackages::recoverAppPair("springboard.elf")) {
-      showError("Springboard update cannot be safely recovered.");
+  // Recover canonical package transactions before resolving the launcher.
+  // resolveInstalledAppPath() prefers a verified /Apps/<id>/springboard.elf
+  // package and falls back to the legacy loose /Apps/springboard.elf pair.
+  if (Storage.exists("/Apps") && !RuntimePackages::recoverAppInventory())
+    LOG_ERR("APPSTORE", "Some managed apps require manual recovery");
+
+  for (;;) {
+    // Resolve on every return to the Springboard. The App Store can migrate a
+    // bootstrapped loose Springboard into its canonical package while this Apps
+    // session is active, so caching the original path would immediately go stale.
+    std::string springboard;
+    if (!resolveInstalledAppPath("springboard.elf", springboard)) {
+      showError("Install Springboard or copy springboard.elf and .json to /Apps.");
       return false;
     }
-  }
-  if (!Storage.exists("/Apps/springboard.elf") || !Storage.exists("/Apps/springboard.json")) {
-    showError("Copy springboard.elf and .json to /Apps.");
-    return false;
-  }
-  for (;;) {
-    const auto result = runNativeApp(springboard, renderer, input);
+    const auto result = runNativeApp(springboard.c_str(), renderer, input);
     if (result != ESP_OK) {
       showError(lastLaunchError.empty() ? "Apps launcher failed." : lastLaunchError.c_str());
       return false;

@@ -10,6 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 HOST = (ROOT / 'src/native/NativeAppHost.cpp').read_text(encoding='utf-8')
+INSTALLED_PATH = (ROOT / 'src/native/InstalledAppPath.cpp').read_text(encoding='utf-8')
 ADAPTER = (ROOT / 'src/native/AppPackageInstaller.cpp').read_text(encoding='utf-8')
 INVENTORY = (ROOT / 'src/native/AppPackageRecoveryInventory.cpp').read_text(encoding='utf-8')
 ONLINE = (ROOT / 'src/native/NativeOnlineAppInstall.h').read_text(encoding='utf-8')
@@ -183,13 +184,20 @@ class LiveInstallContract(unittest.TestCase):
         self.assertIn('Application metadata or executable is unavailable.', HOST)
         self.assertIn('Application update cannot be safely recovered.', HOST)
 
-    def test_recovery_runs_before_springboard_presence_and_inventory_open(self):
+    def test_recovery_runs_before_springboard_resolution_and_inventory_open(self):
         start = HOST.index('bool runNativeSpringboard(')
         boot = HOST[start:]
-        self.assertLess(boot.index('recoverAppInventory()'),
-                        boot.index('Storage.exists("/Apps/springboard.elf")'))
-        self.assertLess(boot.index('recoverAppPair("springboard.elf")'),
-                        boot.index('Storage.exists("/Apps/springboard.elf")'))
+        self.assertLess(
+            boot.index('recoverAppInventory()'),
+            boot.index('resolveInstalledAppPath("springboard.elf", springboard)'),
+        )
+        legacy = INSTALLED_PATH[INSTALLED_PATH.index(
+            '// Preserve legacy manually installed ELF/JSON pairs'
+        ):]
+        self.assertLess(
+            legacy.index('RuntimePackages::recoverAppPair(artifact)'),
+            legacy.index('Storage.exists(elf.c_str())'),
+        )
         installed = HOST[HOST.index('bool installedRefresh()'):HOST.index('\nuint32_t installedCount()')]
         self.assertLess(installed.index('recoverAppInventory()'),
                         installed.index('Storage.open("/Apps", O_RDONLY)'))

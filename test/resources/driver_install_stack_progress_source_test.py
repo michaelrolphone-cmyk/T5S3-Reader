@@ -52,5 +52,5 @@ assert 'release_actions[selected]' in labels
 assert 'action_for(' not in labels and 'installed_version_get' not in labels
 assert 'T5_DRIVER_INSTALL_METADATA ||' in ui
 assert 'T5_DRIVER_INSTALL_RECOVERY ||' in ui
-assert manifest['version'] == '1.0.5'
+assert manifest['version'] == '1.0.6'
 print('Driver install regression: bounded snapshot, stage recovery, immediate UI and app version PASS')

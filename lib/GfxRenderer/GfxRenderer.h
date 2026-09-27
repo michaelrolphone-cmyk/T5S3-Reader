@@ -178,6 +178,7 @@ class GfxRenderer {
   void copyGrayscaleLsbBuffers() const;
   void copyGrayscaleMsbBuffers() const;
   bool captureGrayscaleBaseBuffer() const;
+  bool grayscaleBuffersReady() const { return display.grayscaleBuffersReady(); }
   void displayGrayBuffer(DisplayPresentMode refreshMode = DisplayPresentMode::Quality) const;
   bool storeBwBuffer();    // Returns true if buffer was stored successfully
   void restoreBwBuffer();  // Restore and free the stored buffer

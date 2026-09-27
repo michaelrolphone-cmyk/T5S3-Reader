@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "../Activity.h"
-#include "./FileBrowserActivity.h"
 #include "util/ButtonNavigator.h"
 
 struct RecentBook;
@@ -28,7 +27,6 @@ class HomeActivity final : public Activity {
   std::string pendingHomeAppArtifact;
   std::string lastVisibleTextPrewarmKey;
   void onSelectBook(const std::string& path);
-  void onFileBrowserOpen();
   void onRecentsOpen();
   void onSettingsOpen();
   void onOpdsBrowserOpen();

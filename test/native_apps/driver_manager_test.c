@@ -180,7 +180,8 @@ int main(void) {
     installed_version = "1.9.99";
     assert(load_release(&manager, &ui));
     assert(row_count == 1 && strstr(descriptions[0], "Installed 1.9.99"));
-    assert(rows[0].flags == (T5_UI_LIST_HIGHLIGHT_VALUE | T5_UI_LIST_ICON_UPDATE));
+    assert(rows[0].flags == (T5_UI_LIST_HIGHLIGHT_VALUE | T5_UI_LIST_ICON_UPDATE |
+                              T5_UI_LIST_ICON_COMPACT));
     assert(strcmp(action_label(&manager, 0), "Update") == 0);
     activate(&manager, NULL, &ui, 0, status, sizeof(status));
     // Legacy firmware now shows a one-row busy screen in addition to loading.
@@ -190,6 +191,7 @@ int main(void) {
     assert(load_release(&manager, &ui));
     assert(strstr(descriptions[0], "Installed") && !strcmp(action_label(&manager, 0), ""));
     assert((rows[0].flags & T5_UI_LIST_ICON_INSTALLED) != 0);
+    assert((rows[0].flags & T5_UI_LIST_ICON_COMPACT) != 0);
     activate(&manager, NULL, &ui, 0, status, sizeof(status));
     assert(install_calls == 1);
 
@@ -213,6 +215,7 @@ int main(void) {
     assert(load_release(&manager, &ui));
     assert(strstr(descriptions[0], "Not installed"));
     assert((rows[0].flags & T5_UI_LIST_ICON_DOWNLOAD) != 0);
+    assert((rows[0].flags & T5_UI_LIST_ICON_COMPACT) != 0);
     assert(!strcmp(action_label(&manager, 0), "Install"));
 
     reset_queue(); enqueue(T5_UI_EVENT_CONFIRM);

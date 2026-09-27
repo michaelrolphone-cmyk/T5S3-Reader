@@ -168,6 +168,7 @@ class DisplaySurface {
   virtual void copyGrayscaleLsbBuffers(const uint8_t* buffer) = 0;
   virtual void copyGrayscaleMsbBuffers(const uint8_t* buffer) = 0;
   virtual bool captureGrayscaleBaseBuffer(const uint8_t* buffer) = 0;
+  virtual bool grayscaleBuffersReady() const = 0;
   virtual void cleanupGrayscaleBuffers(const uint8_t* buffer) = 0;
   virtual void displayGrayBuffer(DisplayPresentMode mode = DisplayPresentMode::Quality) = 0;
 };
