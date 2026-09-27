@@ -6,6 +6,7 @@
 #include "T5VideoApi.h"
 #include "RiscTouchV1.h"
 #include "model_viewer_shading.h"
+#include "model_viewer_controls.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -100,6 +101,11 @@ static uint8_t g_shade_touch_id;
 static t5_app_input_t g_render_input;
 static bool g_render_input_pending;
 static uint32_t g_render_service_ms;
+static mv_controller_t g_controller;
+static mv_motion_t g_motion;
+static uint32_t g_previous_pad_buttons;
+static bool g_draw_pending;
+static bool g_render_interactive;
 
 static int mv_iabs(int v) { return v < 0 ? -v : v; }
 static float mv_fabs(float v) { return v < 0.0f ? -v : v; }
@@ -757,9 +763,19 @@ static bool mv_render_service(void) {
     g_render_service_ms=g_app->millis();
     t5_app_input_t input={0};
     if (!g_app->poll(&input,1)) input.exit_requested=true;
+    const uint32_t held=mv_controller_poll(&g_controller);
+    mv_motion_delta_t ignored;
+    (void)mv_motion_step(&g_motion,held,g_app->millis(),false,&ignored);
+    if (held&MV_PAD_BACK) input.exit_requested=true;
     if (input.buttons || input.exit_requested) {
         g_render_input=input;
         g_render_input_pending=true;
+        return false;
+    }
+    /* Interrupt an idle refinement for new motion, never repeatedly abort an
+     * interactive frame merely because a direction is still held. */
+    if (!g_render_interactive && mv_motion_action(held)) {
+        g_draw_pending=true;
         return false;
     }
     return true;
@@ -791,6 +807,7 @@ static bool mv_render(bool interactive) {
     uint8_t *buffer = g_video->backbuffer(&bytes);
     if (!buffer || bytes < (size_t)g_surface.stride_bytes * g_surface.height) return false;
     memset(buffer, 0x00, bytes);
+    g_render_interactive=interactive;
 
     char info[96];
     mv_text(buffer, 14, 12, "3D MODEL VIEWER", 2);
@@ -809,13 +826,13 @@ static bool mv_render(bool interactive) {
     /* Never use triangle-stride LOD on filled geometry: it opens mesh holes. */
     const uint32_t step = g_shaded ? 1u : mv_render_step(interactive);
     for (uint32_t i = 0; i < g_model.triangle_count; i += step) {
+        if ((i&63u)==0u && !mv_render_service()) return false;
         const mv_triangle_t *t = &g_model.triangles[i];
         const mv_shade_vertex_t a=mv_camera_point(t->a,&rotation);
         const mv_shade_vertex_t b=mv_camera_point(t->b,&rotation);
         const mv_shade_vertex_t c=mv_camera_point(t->c,&rotation);
         const mv_shade_vertex_t pa=mv_screen_point(a), pb=mv_screen_point(b), pc=mv_screen_point(c);
         if (g_shaded) {
-            if ((i&127u)==0u && !mv_render_service()) return false;
             if (!mv_shade_triangle(&shade,buffer,mv_pixel,pa,pb,pc,mv_shade_density(a,b,c))) return false;
         } else {
             mv_line(buffer,(int)pa.x,(int)pa.y,(int)pb.x,(int)pb.y);
@@ -828,8 +845,9 @@ static bool mv_render(bool interactive) {
              (unsigned long)g_model.triangle_count,
              interactive ? "FAST" : (step == 1u ? "FULL" : "REFINED"));
     mv_text(buffer,14,894,g_status[0]?g_status:info,1);
-    mv_text(buffer,14,916,"DRAG ROTATE  2F PAN+ZOOM",1);
-    mv_text(buffer,14,936,"DOUBLE TAP RESET  BACK EXIT",1);
+    mv_text(buffer,14,910,"D-PAD ROTATE  LB+UP/DOWN ZOOM  RB+D-PAD PAN",1);
+    mv_text(buffer,14,926,"DRAG ROTATE  2F PAN+ZOOM",1);
+    mv_text(buffer,14,942,"DOUBLE TAP / CONFIRM RESET  BACK EXIT",1);
 
     return g_video->submit(0, g_surface.height);
 }
@@ -1000,14 +1018,31 @@ static bool mv_handle_touch(const mv_contacts_t *prev,const mv_contacts_t *now,u
 }
 
 static bool mv_buttons(const t5_app_input_t *input,uint32_t now) {
-    if(input->buttons&T5_APP_BUTTON_BACK || input->exit_requested) return false;
-    bool changed=false;
-    if(input->buttons&T5_APP_BUTTON_LEFT){g_view.yaw=mv_wrap_angle(g_view.yaw-0.08f);changed=true;}
-    if(input->buttons&T5_APP_BUTTON_RIGHT){g_view.yaw=mv_wrap_angle(g_view.yaw+0.08f);changed=true;}
-    if(input->buttons&T5_APP_BUTTON_UP){g_view.pitch=mv_wrap_angle(g_view.pitch-0.08f);changed=true;}
-    if(input->buttons&T5_APP_BUTTON_DOWN){g_view.pitch=mv_wrap_angle(g_view.pitch+0.08f);changed=true;}
-    if(input->buttons&T5_APP_BUTTON_CONFIRM){mv_reset_view();changed=true;}
-    if(changed){g_last_interaction_ms=now;g_need_refine=true;}
+    const uint32_t held=g_controller.held;
+    if(input->buttons&T5_APP_BUTTON_BACK || input->exit_requested || (held&MV_PAD_BACK)) return false;
+    const uint32_t pressed=held&~g_previous_pad_buttons;
+    g_previous_pad_buttons=held;
+    mv_motion_delta_t delta;
+    bool changed=mv_motion_step(&g_motion,held,now,g_video->can_submit(),&delta);
+    if(changed) {
+        g_view.yaw=mv_wrap_angle(g_view.yaw+delta.yaw);
+        g_view.pitch=mv_wrap_angle(g_view.pitch+delta.pitch);
+        g_view.zoom=mv_clampf(g_view.zoom*delta.zoom_factor,0.18f,7.0f);
+        g_view.pan_x=mv_clampf(g_view.pan_x+delta.pan_x,-4096.0f,4096.0f);
+        g_view.pan_y=mv_clampf(g_view.pan_y+delta.pan_y,-4096.0f,4096.0f);
+    }
+    /* Physical buttons/keyboard remain a small-step fallback. Acquiring the
+     * raw gamepad capabilities suppresses their duplicate UI repeat stream. */
+    if(input->buttons&T5_APP_BUTTON_LEFT){g_view.yaw=mv_wrap_angle(g_view.yaw-0.012f);changed=true;}
+    if(input->buttons&T5_APP_BUTTON_RIGHT){g_view.yaw=mv_wrap_angle(g_view.yaw+0.012f);changed=true;}
+    if(input->buttons&T5_APP_BUTTON_UP){g_view.pitch=mv_wrap_angle(g_view.pitch-0.012f);changed=true;}
+    if(input->buttons&T5_APP_BUTTON_DOWN){g_view.pitch=mv_wrap_angle(g_view.pitch+0.012f);changed=true;}
+    if((input->buttons&T5_APP_BUTTON_CONFIRM) || (pressed&MV_PAD_CONFIRM)) {
+        mv_reset_view();
+        memset(&g_motion,0,sizeof(g_motion));
+        changed=true;
+    }
+    if(changed){g_last_interaction_ms=now;g_need_refine=true;g_draw_pending=true;}
     return true;
 }
 
@@ -1022,6 +1057,10 @@ __attribute__((visibility("default"))) void app_main(void) {
     g_shade_capture=false; g_shade_tap=false;
     g_touch_was_down=false; g_last_tap_ms=0;
     g_render_input_pending=false;
+    memset(&g_controller,0,sizeof(g_controller));
+    memset(&g_motion,0,sizeof(g_motion));
+    g_previous_pad_buttons=0;
+    g_draw_pending=false;
     g_touch_lease=T5_PROVIDER_CAPABILITY_LEASE_INVALID;
 
     g_app=t5_app_get_api(T5_APP_ABI_VERSION);
@@ -1081,6 +1120,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         return;
     }
 
+    mv_controller_open(&g_controller,g_caps);
     mv_reset_view();
     g_last_interaction_ms=g_app->millis();
     g_need_refine=!mv_render(false);
@@ -1093,6 +1133,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             input=g_render_input;
             g_render_input_pending=false;
         } else if(!g_app->poll(&input,8)) break;
+        (void)mv_controller_poll(&g_controller);
         const uint32_t now=g_app->millis();
         if(!mv_buttons(&input,now)) break;
 
@@ -1101,16 +1142,22 @@ __attribute__((visibility("default"))) void app_main(void) {
         if(mv_touch_snapshot(&current,&home)) {
             if(home) break;
             const bool changed=mv_handle_touch(&previous,&current,now);
-            if(changed) (void)mv_render(true);
+            if(changed) g_draw_pending=true;
             previous=current;
         }
 
-        if(g_need_refine && previous.count==0u &&
+        /* Both touch and controller changes present while moving; a busy or
+         * aborted frame stays dirty instead of waiting for the idle timer. */
+        if(g_draw_pending && mv_render(true)) g_draw_pending=false;
+
+        if(g_need_refine && !g_draw_pending && previous.count==0u &&
+           !mv_motion_action(g_controller.held) &&
            (uint32_t)(now-g_last_interaction_ms)>=MV_REFINE_DELAY_MS) {
             if(mv_render(false)) g_need_refine=false;
         }
     }
 
+    mv_controller_close(&g_controller);
     mv_shade_release();
     mv_touch_end();
     g_video->stop();
