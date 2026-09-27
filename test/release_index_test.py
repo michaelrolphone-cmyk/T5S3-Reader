@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from update_release_index import MAX_INDEX_BYTES, update_index  # noqa: E402
+from update_release_index import serialize_index, update_index  # noqa: E402
 
 
 SHA = "a" * 64
@@ -67,13 +67,21 @@ class ReleaseIndexTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "128-entry limit"):
             update_index(index, "apps", package("apps", "clock", "1.0.0"))
 
-    def test_ota_reader_accepts_the_full_published_index_budget_and_filters_packages(self):
+    def test_ota_reader_uses_psram_and_filters_packages(self):
         updater = (Path(__file__).resolve().parents[1] / "src/network/OtaUpdater.cpp").read_text()
-        self.assertEqual(MAX_INDEX_BYTES, 64 * 1024)
-        self.assertIn("kReleaseIndexMaxBytes = 64u * 1024u", updater)
+        self.assertIn("PsramGrowingTextStream indexJson", updater)
+        self.assertIn("PsramJsonAllocator allocator", updater)
         self.assertIn("DeserializationOption::Filter(filter)", updater)
         for field in ("version", "tag", "asset", "url", "size", "sha256"):
             self.assertIn(f'filter["firmware"]["{field}"] = true;', updater)
+
+    def test_index_serialization_has_no_catalog_byte_ceiling(self):
+        index = {**self.empty, "apps": [{"id": f"app-{i}", "title": "x" * 500}
+                                           for i in range(120)]}
+        published = serialize_index(index)
+        self.assertEqual(json.loads(published), index)
+        index["apps"][0]["title"] = "x" * 16000
+        self.assertGreater(len(serialize_index(index).encode()), 65536)
 
     def test_all_in_repo_apps_have_nonempty_category_arrays(self):
         apps_dir = Path(__file__).resolve().parents[1] / "Apps"

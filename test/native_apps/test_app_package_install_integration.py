@@ -132,7 +132,7 @@ class LiveInstallContract(unittest.TestCase):
         loader_start = HOST.index('bool loadIndependentAppIndex(')
         loader_end = HOST.index('\nbool loadAuthoritativeAppCatalog(', loader_start)
         loader = HOST[loader_start:loader_end]
-        self.assertIn('RuntimeMemory::PsramTextStream json(kMaxCatalogBytes)', loader)
+        self.assertIn('RuntimeMemory::PsramGrowingTextStream json', loader)
         self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', loader)
         self.assertIn('JsonDocument document(&allocator)', loader)
 
@@ -149,7 +149,7 @@ class LiveInstallContract(unittest.TestCase):
         self.assertIn('bool ensureSavedConnection(', saved_network)
         self.assertIn('RuntimeNetwork::ensureSavedConnection(kNetworkReadyTimeoutMs)', downloader)
 
-        self.assertIn('RuntimeMemory::PsramTextStream json(kMaxCatalogBytes)', CATALOG_INDEX)
+        self.assertIn('RuntimeMemory::PsramGrowingTextStream json', CATALOG_INDEX)
         self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', CATALOG_INDEX)
         self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', APP_MANIFEST)
         self.assertIn('JsonDocument doc(&allocator)', APP_MANIFEST)

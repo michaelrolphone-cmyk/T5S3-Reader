@@ -17,11 +17,11 @@ from typing import Any
 try:
     from .build_release_candidates import DRIVER_BUILDERS
     from .build_release_record import build_record
-    from .update_release_index import update_index, version_tuple
+    from .update_release_index import serialize_index, update_index, version_tuple
 except ImportError:
     from build_release_candidates import DRIVER_BUILDERS
     from build_release_record import build_record
-    from update_release_index import update_index, version_tuple
+    from update_release_index import serialize_index, update_index, version_tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX_BRANCH = "release-index"
@@ -284,8 +284,7 @@ def write_index(root: Path, index: dict[str, Any], product: str) -> None:
     path = root / "release-index.json"
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=root,
                                      prefix=".release-index.", delete=False) as stream:
-        json.dump(index, stream, indent=2, sort_keys=True)
-        stream.write("\n")
+        stream.write(serialize_index(index))
         stream.flush()
         os.fsync(stream.fileno())
         temporary = Path(stream.name)

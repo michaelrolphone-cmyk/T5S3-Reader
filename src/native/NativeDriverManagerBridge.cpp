@@ -24,6 +24,7 @@
 #include "runtime/drivers/DriverPackage.h"
 #include "runtime/drivers/DriverStageActions.h"
 #include "runtime/network/NetworkService.h"
+#include "runtime/memory/PsramJson.h"
 #include "runtime/packages/PackageOrdinaryTransaction.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
@@ -40,7 +41,6 @@ constexpr const char* kLatestReleaseDownloadBase =
 constexpr const char* kDownloadStage = "/Drivers/.driver-manager.part";
 constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr size_t kMaxDriverAssets = 64;
-constexpr size_t kMaxDriverCatalogBytes = 64 * 1024;
 constexpr size_t kMaxReleaseAssetObjectBytes = 8192;
 
 struct ReleaseAsset {
@@ -276,25 +276,26 @@ bool connectSavedWifi() {
 }
 
 bool loadAggregateDriverCatalog() {
-    std::string json;
+    RuntimeMemory::PsramGrowingTextStream json;
     esp_task_wdt_reset();
     if (!HttpDownloader::fetchUrl(kDriverCatalogUrl, json)) {
         LOG_ERR("DRVMGR", "Aggregate catalog HTTP fetch failed (received=%u bytes)",
                 static_cast<unsigned>(json.size()));
         return false;
     }
-    if (json.empty() || json.size() > kMaxDriverCatalogBytes) {
+    if (!json.good() || json.empty()) {
         LOG_ERR("DRVMGR", "Aggregate catalog invalid response length: %u bytes",
                 static_cast<unsigned>(json.size()));
         return false;
     }
 
-    JsonDocument doc;
-    const DeserializationError error = deserializeJson(doc, json);
+    RuntimeMemory::PsramJsonAllocator allocator;
+    JsonDocument doc(&allocator);
+    const DeserializationError error = deserializeJson(doc, json.chars(), json.size());
     if (error) {
         LOG_ERR("DRVMGR", "Aggregate catalog JSON decode failed: %s (%u bytes, first_byte=0x%02x)",
                 error.c_str(), static_cast<unsigned>(json.size()),
-                static_cast<unsigned>(static_cast<unsigned char>(json[0])));
+                static_cast<unsigned>(static_cast<unsigned char>(json.chars()[0])));
         return false;
     }
     if (!doc.is<JsonObjectConst>() || doc["schema"] != 1 || !doc["drivers"].is<JsonArrayConst>()) {
@@ -428,11 +429,12 @@ bool loadLegacyReleaseCatalog() {
 // physical provider is only advertised when its four-file inventory can be
 // fetched and verified by the same transaction used by the SD inbox.
 bool loadCanonicalDriverCatalog() {
-    std::string json;
+    RuntimeMemory::PsramGrowingTextStream json;
     if (!HttpDownloader::fetchUrl(kCanonicalProviderCatalogUrl, json) ||
-        json.empty() || json.size() > kMaxDriverCatalogBytes) return false;
-    JsonDocument document;
-    if (deserializeJson(document, json) || !document.is<JsonObjectConst>() ||
+        !json.good() || json.empty()) return false;
+    RuntimeMemory::PsramJsonAllocator allocator;
+    JsonDocument document(&allocator);
+    if (deserializeJson(document, json.chars(), json.size()) || !document.is<JsonObjectConst>() ||
         document["schema"] != 1 || !document["drivers"].is<JsonArrayConst>())
         return false;
     const JsonArrayConst entries = document["drivers"].as<JsonArrayConst>();

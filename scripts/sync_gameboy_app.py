@@ -10,7 +10,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from update_release_index import update_index, version_tuple
+from update_release_index import serialize_index, update_index, version_tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 GAMEBOY_REPOSITORY = "michaelrolphone-cmyk/T5S3-GameBoy"
@@ -157,7 +157,7 @@ def sync_index(record: dict[str, Any]) -> bool:
           "41898282+github-actions[bot]@users.noreply.github.com"])
     _run(["git", "checkout", "--detach", "FETCH_HEAD"])
     path = ROOT / "release-index.json"
-    path.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(serialize_index(updated), encoding="utf-8")
     _run(["git", "add", "release-index.json"])
     changed_files = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT)
     if changed_files.returncode == 0:
