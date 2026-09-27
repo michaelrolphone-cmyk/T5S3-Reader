@@ -79,7 +79,7 @@ These defects were verified against the current `bugs.md`, the current open PR s
 
 ### 10. App Store can act on stale release indices after a failed catalog refresh
 
-- **Status:** Incomplete on branch `fix/app-store-stale-release-indices`; no PR. App Store version bumped to `1.0.7` and focused regression test added. Production `Apps/app_store.c` write and test-runner registration are blocked; resume this same branch and apply the transactional SD Inbox → Releases transition before marking fixed.
+- **Status:** Incomplete on branch `fix/app-store-stale-release-indices`; no PR. App Store version `1.0.7`, focused regression test, and aggregate test-runner registration are published. Production `Apps/app_store.c` is still blocked by GitHub/OpenAI write safety; resume this same branch, apply the transactional SD Inbox → Releases transition, run the committed regression test, then mark fixed.
 
 - **Affected code:** `Apps/app_store.c`, the view transition into the releases/catalog screen, `refresh_releases()`, and the release-row activation path using `release_indices[]`.
 - **Trigger / reproduction:** Open App Store, first visit a screen that populates the shared row buffers from SD/inbox packages, then switch to the online releases/catalog view while forcing the online catalog refresh to fail (network/TLS/catalog error).
