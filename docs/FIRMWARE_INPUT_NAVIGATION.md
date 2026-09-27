@@ -149,12 +149,14 @@ explicit provider queue GAP trigger snapshot recovery. Already completed
 tap/swipe/Home events remain queued for delivery.
 
 The on-screen `KeyboardEntryActivity` has the same scheduling rule at the UI
-layer: input owns the mutable text/cursor/selection state and publishes a short
-render snapshot before requesting a redraw. The render task draws only that
-snapshot, so it never races the live `std::string` while a tap inserts or
-deletes characters. Bottom-aligned keyboard hit-testing is performed before
-text wrapping/font measurement, keeping text layout work out of the key-press
-path even as the entered text grows.
+layer: input owns the mutable text/cursor/selection state. The render task takes
+one short protected snapshot only when it actually begins a render, then
+releases the state lock before font/layout/display work. Redraw requests may
+therefore coalesce without copying the whole entered string on every key press,
+and render never races the live `std::string` while input mutates it.
+Bottom-aligned keyboard hit-testing is performed before text wrapping/font
+measurement, keeping text layout work out of the key-press path even as the
+entered text grows.
 
 App entry/return, focus changes, input gaps and failures clear derived UI state.
 The returning source must become neutral before it can trigger navigation. This
