@@ -1090,7 +1090,8 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
 }  // namespace
 
 bool installRequiredNativeApp(const char* artifact, std::string& displayName,
-                              std::string& failureDetail) {
+                              std::string& failureDetail,
+                              bool forceCatalogInstall) {
   displayName.clear();
   failureDetail.clear();
   if (!artifact || !t5_safe_elf_name(artifact) || !Storage.ready()) {
