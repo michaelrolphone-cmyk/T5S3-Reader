@@ -728,15 +728,15 @@
         "file_name": "springboard.elf",
         "icon": "solid:f00a",
         "min_firmware_version": "1.1.5",
-        "sha256": "97ab0063c8cfdbc3985c64b76b5af391dd082ca053e89c6c5d70f2c5e067c17f",
-        "size_bytes": 8684,
-        "version": "1.1.0"
+        "sha256": "174b52502883c90491e434fa5891e712d021cada907a525bce82366a51ecafe3",
+        "size_bytes": 8784,
+        "version": "1.2.0"
       },
-      "sha256": "97ab0063c8cfdbc3985c64b76b5af391dd082ca053e89c6c5d70f2c5e067c17f",
-      "size": 8684,
-      "tag": "app-springboard-v1.1.0",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-springboard-v1.1.0/springboard.elf",
-      "version": "1.1.0"
+      "sha256": "174b52502883c90491e434fa5891e712d021cada907a525bce82366a51ecafe3",
+      "size": 8784,
+      "tag": "app-springboard-v1.2.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-springboard-v1.2.0/springboard.elf",
+      "version": "1.2.0"
     },
     {
       "asset": "status_bar_settings.elf",
