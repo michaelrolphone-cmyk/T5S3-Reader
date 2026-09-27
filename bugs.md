@@ -2,32 +2,12 @@
 
 ## 2026-09-26 scan
 
-### 3. Rom Manager title-detail Up/Down scrolling is reversed
-
-- **Status:** Open PR #212 on branch `fix/rom-manager-detail-scroll-direction` targeting `master`; fix implemented and Rom Manager patch version bumped from `1.0.16` to `1.0.17`.
-
-- **Affected code:** `Apps/rom_manager.c`, `show_vimm_detail(const char *name, const char *path)`.
-- **Trigger / reproduction:** Browse Vimm Vault, open a Game Boy title whose detail text is long enough to scroll, then use the controls labelled **Up** and **Down**.
-- **Observed / logically demonstrated failure:** The chrome labels `previous_label = \"Up\"` and `next_label = \"Down\"`, but `T5_UI_EVENT_PREVIOUS` increments `scroll` while `T5_UI_EVENT_NEXT` decrements it. With `scroll == 0`, Up advances deeper into the document and Down cannot move at all; after scrolling, Down moves toward the top.
-- **Likely root cause:** The scroll-delta conditions were inverted when the title detail view was added.
-- **Impact:** Physical/button navigation contradicts the UI labels and the rest of the application navigation model, making long title details awkward to read.
-- **Repair direction:** On **Up/PREVIOUS**, decrement `scroll` when `scroll > 0`; on **Down/NEXT**, increment `scroll` when `scroll < result.max_scroll_lines`. Add a focused test that checks both boundary conditions and direction.
-
 ## Duplicate check performed
 
 At scan time, `bugs.md` did not yet exist on `master`, the repository has GitHub Issues disabled/no issue records returned, and the current open PRs were reviewed for overlap. PR #198 concerns GT911 touch capture, PR #194 concerns global Home shortcuts, and PR #96 is the U1 implementation branch. Closed PR #183 introduced the Rom Manager title-detail view but does not document the reversed Up/Down behavior above.
 
 
 ## 2026-09-26 scan — 11:49 MDT
-
-### 4. Font Family selections are not persisted across reboot
-
-- **Affected code:** `src/native/NativeFontBridge.cpp`, `selectChoice(uint32_t index)`.
-- **Trigger / reproduction:** Open the Font Family app, select a different built-in or SD-card font family, confirm that the new font takes effect, then reboot the device.
-- **Observed / logically demonstrated failure:** `selectChoice()` updates `SETTINGS.fontFamily` and/or `SETTINGS.sdFontFamilyName`, calls `ensureSdFontLoaded()`, and returns `T5_FONT_OK`, but never calls `SETTINGS.saveToFile()`. Other settings paths explicitly persist through `SETTINGS.saveToFile()`. After reboot, the settings loader therefore restores the previously persisted font selection instead of the choice made through the Font Family app.
-- **Likely root cause:** The native font bridge mutates the in-memory settings object but omits the persistence step used by the main settings bridge.
-- **Impact:** Font selection appears successful during the current session but silently reverts after restart, making the Font Family app unreliable as a settings interface.
-- **Repair direction:** Persist the updated settings before returning success. If persistence can fail, preserve the old font fields, attempt the save, and restore/reload the previous selection on failure so the API cannot report success for an uncommitted preference. Add a regression test that changes the font through `selectChoice()`, reloads settings from storage, and verifies the selected family survives.
 
 ### 5. Time Card can overwrite valid history after a store-load failure
 
@@ -107,6 +87,8 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Repair direction:** Add tap handling to the modal: call `ui->hit_test()`, validate `0 <= hit < 3`, update `a`, and either activate on the tapped selected row or mirror the main-list tap semantics. Add a touch regression test for Rename/Delete/Cancel.
 
 ### 12. Wi-Fi Settings accepts any pending Wi-Fi result without validating its request cookie
+
+- **Status:** Fixed on branch `fix/wifi-settings-result-cookie` (no PR required); Wi-Fi Networks bumped from `1.0.1` to `1.0.2`; focused cookie-correlation regression added.
 
 - **Affected code:** `Apps/wifi_settings.c`, `app_main()` around `system_ui->wifi_take_result()`.
 - **Trigger / reproduction:** Arrange for a pending Wi-Fi UI result from another native-app workflow to exist before launching Wi-Fi Settings, with a cookie different from `WIFI_COOKIE`. Launch Wi-Fi Settings.
