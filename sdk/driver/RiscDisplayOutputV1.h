@@ -2,8 +2,9 @@
 /*
  * RiscRTE display.output v1 capability.
  *
- * Consumers normally bind "display.primary". Physical provider ELFs publish
- * "display.output". The generic runtime does not implement panel transfers,
+ * Consumers bind "display.output". The "display.primary" alias is reserved
+ * for a future resolver. Physical provider ELFs publish "display.output".
+ * MONO1 pixels are MSB first, with one denoting black. The generic runtime does not implement panel transfers,
  * waveforms, buses, DMA, backlight, refresh policy or display power sequencing.
  */
 #include <stdbool.h>

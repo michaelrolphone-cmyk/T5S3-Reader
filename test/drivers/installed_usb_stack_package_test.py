@@ -21,6 +21,7 @@ EXPECTED = {
     'platform-clock-v1': ('platform.clock', []),
     'i2c-esp32s3-v2': ('i2c.bus', []),
     'gt911-touch': ('input.touch.raw', ['i2c.bus', 'platform.clock']),
+    'display-epd-video': ('display.output', []),
     't5s3-usb-power-profile': ('board.power.bq25896.profile', []),
     'board-power-t5s3-v2': ('board.power.vbus',
                              ['i2c.bus', 'platform.clock', 'board.power.bq25896.profile']),
@@ -129,6 +130,7 @@ def run(identities=None):
         assert imports_bytes == encode_imports(names), id
         assert names == sorted(set(names))
         assert (BRIDGE in names) == (id == 'i2c-esp32s3-v2'), id
+        assert ('t5_video_get_api' in names) == (id == 'display-epd-video'), id
         if id == 'i2c-esp32s3-v2':
             assert not any(name.startswith(('i2c_', 'gpio_', 'periph_module_'))
                            for name in names), names

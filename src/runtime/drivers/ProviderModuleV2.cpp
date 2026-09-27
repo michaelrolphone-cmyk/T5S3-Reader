@@ -170,6 +170,7 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
   // Upstream USB/board-power providers must bind the i2c.bus capability,
   // never import the firmware transport themselves. This runs before mapping.
   bool importsFirmwareI2c = false;
+  bool importsFirmwareDisplay = false;
   for (size_t i = 0; i < signedImportCount; ++i) {
     if (!signedImports[i]) {
       report(expectedId, "invalid-provider-import");
@@ -177,12 +178,21 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
     }
     if (std::strcmp(signedImports[i], "risc_fw_i2c_transact_v1") == 0)
       importsFirmwareI2c = true;
+    if (std::strcmp(signedImports[i], "t5_video_get_api") == 0)
+      importsFirmwareDisplay = true;
   }
   const bool isFirmwareI2cAdapter =
       std::strcmp(expectedId, "i2c-esp32s3-v2") == 0 &&
       std::strcmp(expectedCapability, "i2c.bus") == 0 && expectedApi == 1;
   if (importsFirmwareI2c != isFirmwareI2cAdapter) {
     report(expectedId, "i2c-firmware-compat-import-policy");
+    return false;
+  }
+  const bool isDisplayAdapter =
+      std::strcmp(expectedId, "display-epd-video") == 0 &&
+      std::strcmp(expectedCapability, "display.output") == 0 && expectedApi == 1;
+  if (importsFirmwareDisplay != isDisplayAdapter) {
+    report(expectedId, "display-firmware-compat-import-policy");
     return false;
   }
   state_ = State::Failed;

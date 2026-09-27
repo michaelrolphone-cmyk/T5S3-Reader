@@ -22,6 +22,7 @@ DRIVERS = (
     ('platform-clock-v1', 'platform_clock_v1', 'platform-clock-v1', 'driver.elf'),
     ('i2c-esp32s3-v2', 'i2c_esp32s3_v2', 'i2c-esp32s3-v2', 'driver.elf'),
     ('gt911-touch', 'gt911_touch', 'gt911-touch', 'driver.elf'),
+    ('display-epd-video', 'display_epd_video', 'display-epd-video', 'driver.elf'),
     ('t5s3-usb-power-profile', 't5s3_usb_power_profile', 't5s3-usb-power-profile', 'driver.elf'),
     ('board-power-t5s3-v2', 'bq25896', 'usb-board-power-t5s3-v2', 'driver.elf'),
     ('usb-controller-esp32s3', 'usb_controller_esp32s3', 'usb-controller-esp32s3',

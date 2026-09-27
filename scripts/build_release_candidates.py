@@ -23,6 +23,7 @@ DRIVER_BUILDERS = {
         ("scripts/audit_i2c_esp32s3_elf.py", "--strict"),
     ],
     "gt911-touch": [("scripts/build_gt911_touch.py",)],
+    "display-epd-video": [("scripts/build_display_epd_video.py",)],
     "t5s3-usb-power-profile": [("scripts/build_board_power_t5s3_v2.py", "--ids", "t5s3-usb-power-profile")],
     "board-power-t5s3-v2": [("scripts/build_board_power_t5s3_v2.py", "--ids", "board-power-t5s3-v2")],
     "usb-controller-esp32s3": [

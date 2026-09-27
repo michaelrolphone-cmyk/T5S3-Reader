@@ -1,6 +1,6 @@
 #include "T5AppApi.h"
 #include "T5HardwareTakeover.h"
-#include "T5VideoApi.h"
+#include "display_output_client.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -69,8 +69,8 @@ static const float g_enemy_starts[FPS_ENEMY_COUNT][2] = {
 };
 
 static const t5_app_api_v1 *g_app;
-static const t5_video_api_v1 *g_video;
-static t5_video_surface_v1 g_surface;
+static const display_client_api *g_video;
+static display_client_surface g_surface;
 static fps_enemy_t g_enemies[FPS_ENEMY_COUNT];
 static float g_depth[FPS_LOGICAL_W];
 static float g_player_x;
@@ -819,7 +819,7 @@ static bool fps_update_input(uint32_t buttons, uint32_t down,
 static void fps_show_video_error(void) {
     if (g_surface.width != 960u || g_surface.height != 540u ||
         g_surface.stride_bytes < 120u ||
-        g_surface.pixel_format != T5_VIDEO_PIXEL_MONO_1BPP_MSB) {
+        g_surface.pixel_format != DISPLAY_CLIENT_MONO1) {
         return;
     }
     size_t bytes = 0;
@@ -838,8 +838,8 @@ __attribute__((visibility("default"))) uint32_t app_hardware_takeover(void) {
 
 __attribute__((visibility("default"))) void app_main(void) {
     g_app = t5_app_get_api(T5_APP_ABI_VERSION);
-    g_video = t5_video_get_api(T5_VIDEO_API_VERSION);
-    if (!g_app || !g_video || g_video->struct_size < sizeof(*g_video) ||
+    g_video = display_client_get_api();
+    if (!g_app || !g_video ||
         !g_app->poll || !g_app->millis || !g_video->start ||
         !g_video->backbuffer || !g_video->can_submit ||
         !g_video->submit || !g_video->stop) {
@@ -860,8 +860,8 @@ __attribute__((visibility("default"))) void app_main(void) {
 
     if (g_surface.width != 960u || g_surface.height != 540u ||
         g_surface.stride_bytes != 120u ||
-        g_surface.pixel_format != T5_VIDEO_PIXEL_MONO_1BPP_MSB ||
-        (g_surface.flags & T5_VIDEO_FLAG_ONE_IS_BLACK) == 0u) {
+        g_surface.pixel_format != DISPLAY_CLIENT_MONO1 ||
+        (g_surface.flags & DISPLAY_CLIENT_ONE_IS_BLACK) == 0u) {
         fps_show_video_error();
         const uint32_t deadline = g_app->millis() + 2500u;
         while (!fps_time_reached(g_app->millis(), deadline)) {
