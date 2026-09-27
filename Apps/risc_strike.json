@@ -1,0 +1,11 @@
+{
+  "min_firmware_version": "1.3.18",
+  "version": "1.0.0",
+  "display_name": "Risc Strike",
+  "file_name": "risc_strike.elf",
+  "icon": "solid:f05b",
+  "category": [
+    "Games",
+    "3D"
+  ]
+}
