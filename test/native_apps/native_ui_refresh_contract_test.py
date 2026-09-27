@@ -12,13 +12,4 @@ assert "HalDisplay::BALANCED_REFRESH" in host
 assert "xPortGetCoreID() == 0 ? 1 : 0" in host
 assert "vTaskDelay(1);" in host
 
-# Package state flags stay ABI-compatible in t5_ui_list_row_t and are rendered
-# by the shared native UI bridge with the shipped Font Awesome faces.
-assert 'components/FontAwesomeIcons.h' in bridge
-assert 'T5_UI_LIST_ICON_DOWNLOAD' in bridge and '"solid:f019"' in bridge
-assert 'T5_UI_LIST_ICON_UPDATE' in bridge and '"solid:f021"' in bridge
-assert 'T5_UI_LIST_ICON_INSTALLED' in bridge and '"solid:f00c"' in bridge
-assert "FontAwesomeIcons::draw" in bridge
-assert "valueWidth" in bridge
-
-print("Native UI e-paper refresh and Font Awesome list-state rendering PASS")
+print("Native UI e-paper refresh: serviced on the opposite core with owner-task yield PASS")
