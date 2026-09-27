@@ -5,6 +5,8 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <esp_rom_crc.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include <cstring>
 #include <string>
@@ -35,16 +37,52 @@ bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
 FontInstaller& installer() { static FontInstaller value(sdFontSystem.registry()); return value; }
 
 bool computeCrc32(const char* path, uint32_t& out) {
+  // Hash each file once, with bounded memory, bytes and elapsed time. Do not
+  // accept premature EOF as a complete checksum when media disappears.
+  constexpr uint64_t kMaxFontBytes = 64u * 1024u * 1024u;
+  constexpr uint32_t kDeadlineMs = 30000;
   FsFile f;
   if (!Storage.openFileForRead("FONT", path, f)) return false;
-  uint8_t buf[128];
+  const uint64_t expected = f.fileSize();
+  if (expected > kMaxFontBytes) { f.close(); return false; }
+  uint8_t buf[1024];
   uint32_t crc = 0;
-  while (f.available()) {
-    const int n = f.read(buf, sizeof(buf));
-    if (n <= 0) break;
+  uint64_t processed = 0;
+  uint32_t checkpointBytes = 0;
+  const uint32_t started = millis();
+  uint32_t checkpoint = started, lastProgress = started;
+  while (processed < expected) {
+    const uint32_t now = millis();
+    if (now - started >= kDeadlineMs) {
+      LOG_ERR("FONT", "CRC timed out: %s", path);
+      f.close();
+      return false;
+    }
+    const size_t count = expected - processed < sizeof(buf) ?
+        static_cast<size_t>(expected - processed) : sizeof(buf);
+    const int n = f.read(buf, count);
+    if (n <= 0 || static_cast<size_t>(n) > count) {
+      f.close();
+      return false;
+    }
     crc = esp_rom_crc32_le(crc, buf, static_cast<uint32_t>(n));
+    processed += static_cast<uint32_t>(n);
+    checkpointBytes += static_cast<uint32_t>(n);
+    const uint32_t afterRead = millis();
+    if (checkpointBytes >= 4096 || afterRead - checkpoint >= 10) {
+      if (afterRead - lastProgress >= 1000) {
+        LOG_DBG("FONT", "CRC %s: %lu/%lu bytes", path,
+                static_cast<unsigned long>(processed), static_cast<unsigned long>(expected));
+        lastProgress = afterRead;
+      }
+      vTaskDelay(1);
+      checkpointBytes = 0;
+      checkpoint = millis();
+    }
   }
+  const bool complete = f.fileSize() == expected && millis() - started < kDeadlineMs;
   f.close();
+  if (!complete) return false;
   out = crc;
   return true;
 }
@@ -88,6 +126,11 @@ t5_font_result_t refreshCatalog() {
         const size_t actual = installedFile.fileSize();
         installedFile.close();
         if (actual != entry.size) { family.hasUpdate = true; break; }
+        uint32_t installedCrc = 0;
+        if (!computeCrc32(path, installedCrc) || installedCrc != entry.crc32) {
+          family.hasUpdate = true;
+          break;
+        }
       }
     }
     families.push_back(std::move(family));
@@ -169,6 +212,11 @@ bool choiceInfo(uint32_t index, t5_font_choice_info_t* out) {
 
 t5_font_result_t selectChoice(uint32_t index) {
   if (!active() || index >= choiceCount()) return T5_FONT_INVALID_INDEX;
+
+  const uint8_t previousFontFamily = SETTINGS.fontFamily;
+  char previousSdFontFamilyName[sizeof(SETTINGS.sdFontFamilyName)];
+  std::memcpy(previousSdFontFamilyName, SETTINGS.sdFontFamilyName, sizeof(previousSdFontFamilyName));
+
   if (index < CrossPointSettings::BUILTIN_FONT_COUNT) {
     SETTINGS.fontFamily = static_cast<uint8_t>(index);
     SETTINGS.sdFontFamilyName[0] = '\0';
@@ -179,6 +227,15 @@ t5_font_result_t selectChoice(uint32_t index) {
     std::strncpy(SETTINGS.sdFontFamilyName, fontFamilies[sdIndex].name.c_str(), sizeof(SETTINGS.sdFontFamilyName) - 1);
     SETTINGS.sdFontFamilyName[sizeof(SETTINGS.sdFontFamilyName) - 1] = '\0';
   }
+
+  if (!SETTINGS.saveToFile()) {
+    SETTINGS.fontFamily = previousFontFamily;
+    std::memcpy(SETTINGS.sdFontFamilyName, previousSdFontFamilyName, sizeof(SETTINGS.sdFontFamilyName));
+    ensureSdFontLoaded();
+    LOG_ERR("FONT", "Failed to persist font family selection");
+    return T5_FONT_STORAGE_ERROR;
+  }
+
   ensureSdFontLoaded();
   return T5_FONT_OK;
 }
