@@ -15,6 +15,7 @@ on:
       - "Drivers/usb_controller_esp32s3/**"
       - "Drivers/usb_hid/**"
       - "Drivers/usb_hid_keyboard/**"
+      - "Drivers/usb_hid_text_input/**"
       - "Drivers/usb_hid_gamepad/**"
       - "Drivers/usb_xinput_gamepad/**"
       - "Drivers/usb_ui_navigation/**"
@@ -32,6 +33,7 @@ on:
       - "sdk/driver/RiscProgramMspV1.h"
       - "sdk/driver/RiscUsbInterruptV1.h"
       - "sdk/driver/RiscUsbHidV1.h"
+      - "sdk/driver/RiscTextInputV1.h"
       - "sdk/driver/RiscUsbGamepadDiagnosticsV1.h"
       - "sdk/driver/RiscUsbDiscoveryDiagnosticsV1.h"
       - "sdk/driver/RiscUsbVbusV1.h"
@@ -64,6 +66,7 @@ on:
       - "scripts/build_usb_ui_navigation.py"
       - "src/runtime/input/**"
       - "src/native/NativeNavigationInput*"
+      - "src/native/NativeTextInput*"
       - "scripts/build_board_power_t5s3_v2.py"
       - "scripts/build_platform_clock_v1.py"
       - "scripts/build_gt911_touch.py"
@@ -85,6 +88,8 @@ on:
       - "test/drivers/usb_hid*.c"
       - "test/drivers/usb_xinput_gamepad_test.c"
       - "test/drivers/usb_ui_navigation_test.c"
+      - "test/drivers/usb_hid_text_input_test.c"
+      - "test/drivers/native_text_input_test.cpp"
       - "test/drivers/navigation_focus_test.cpp"
       - "test/drivers/native_navigation_input_test.cpp"
       - "test/drivers/controller_startup_diagnostic_test.cpp"
@@ -191,6 +196,8 @@ jobs:
           bash test/run_native_app_test.sh dist/experimental/usb-hid/driver.elf
           python scripts/build_usb_hid_keyboard.py
           bash test/run_native_app_test.sh dist/experimental/usb-hid-keyboard/driver.elf
+          python scripts/build_usb_hid_text_input.py
+          bash test/run_native_app_test.sh dist/experimental/usb-hid-text-input/driver.elf
           python scripts/build_usb_hid_gamepad.py
           bash test/run_native_app_test.sh dist/experimental/usb-hid-gamepad/driver.elf
           python scripts/build_usb_xinput_gamepad.py

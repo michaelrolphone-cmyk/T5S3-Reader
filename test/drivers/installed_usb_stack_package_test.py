@@ -36,10 +36,11 @@ EXPECTED = {
     'program-msp': ('program.msp', ['debug.vendor.msp']),
     'usb-hid': ('usb.hid', ['usb.host']),
     'usb-hid-keyboard': ('usb.hid.keyboard', ['usb.hid']),
+    'usb-hid-text-input': ('input.text', ['usb.hid.keyboard']),
     'usb-hid-gamepad': ('usb.hid.gamepad', ['usb.hid']),
     'usb-xinput-gamepad': ('usb.xinput.gamepad', ['usb.host', 'platform.clock']),
     'usb-ui-navigation': ('input.navigation',
-                          ['usb.hid.keyboard', 'usb.hid.gamepad', 'usb.xinput.gamepad']),
+                          ['input.text', 'usb.hid.gamepad', 'usb.xinput.gamepad']),
 }
 EXPECTED_ABSOLUTE_POINTERS = {
     'usb-controller-esp32s3': {0x600c0000, 0x60039000, 0x60008000,

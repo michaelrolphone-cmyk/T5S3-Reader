@@ -1,5 +1,6 @@
 #pragma once
 #include <GfxRenderer.h>
+#include <RiscTextInputV1.h>
 
 #include <cstdint>
 #include <functional>
@@ -71,7 +72,9 @@ class KeyboardEntryActivity : public Activity {
   int delPressCount = 0;
   bool hintVisible = false;
   unsigned long hintShowTime = 0;
+  unsigned long textInputLastAttempt = 0;
 
+  bool handleExternalTextInput(const risc_text_input_event_v1& event);
   void onComplete(std::string text);
   void onCancel();
 
