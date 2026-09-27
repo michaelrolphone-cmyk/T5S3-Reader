@@ -20,6 +20,13 @@ enum class DisplayPresentMode : uint8_t {
   Quality = 1,
   Balanced = 2,
   LowLatency = 3,
+
+  // Transitional source-compatibility aliases. New code uses the hardware-
+  // neutral names above; remove these after legacy UI callers migrate.
+  FULL_REFRESH = Clean,
+  HALF_REFRESH = Quality,
+  BALANCED_REFRESH = Balanced,
+  FAST_REFRESH = LowLatency,
 };
 
 enum class DisplayEffect : uint8_t {
@@ -28,6 +35,13 @@ enum class DisplayEffect : uint8_t {
   PageTurnBackwardStandard = 2,
   PageTurnForwardFast = 3,
   PageTurnBackwardFast = 4,
+
+  // Transitional aliases for existing HalDisplay-scoped call sites.
+  EFFECT_NONE = None,
+  EFFECT_READER_TURN_FORWARD_STANDARD = PageTurnForwardStandard,
+  EFFECT_READER_TURN_BACKWARD_STANDARD = PageTurnBackwardStandard,
+  EFFECT_READER_TURN_FORWARD_FAST = PageTurnForwardFast,
+  EFFECT_READER_TURN_BACKWARD_FAST = PageTurnBackwardFast,
 };
 
 struct DisplaySafeInsets {
