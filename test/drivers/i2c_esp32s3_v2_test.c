@@ -14,10 +14,13 @@ static unsigned transactions, failures;
 static uint8_t last_address;
 static uint32_t last_timeout;
 static size_t last_write_length, last_read_length;
-static bool reenter;
+static bool reenter, nested;
+static uint64_t primary_claim;
 
-/* Match the exact private C ABI imported by the provider. Verify that the
- * provider holds its busy gate until the synchronous firmware call returns. */
+/* Match the exact private C ABI imported by the provider. The real firmware
+ * backend serializes physical Wire access with the board I2C mutex, so the
+ * provider must allow another caller to queue instead of returning a false
+ * "busy" device error. */
 bool risc_fw_i2c_transact_v1(uint8_t address,
                              const uint8_t *write_bytes, size_t write_length,
                              uint8_t *read_bytes, size_t read_length,
@@ -34,13 +37,15 @@ bool risc_fw_i2c_transact_v1(uint8_t address,
     last_timeout = timeout_ms;
     last_write_length = write_length;
     last_read_length = read_length;
-    if (reenter) {
-        uint64_t rejected = UINT64_MAX;
+    if (reenter && !nested) {
+        nested = true;
+        uint8_t nested_answer = 0u;
         assert(!provider->quiesce());
-        assert(!bus->claim_device(NULL, 0x50u, &rejected) && rejected == 0);
-        assert(!bus->transact(NULL, 1, write_bytes, write_length,
-                              read_bytes, read_length, timeout_ms));
-        assert(!bus->release_device(NULL, 1));
+        assert(!bus->release_device(NULL, primary_claim));
+        assert(bus->transact(NULL, primary_claim, write_bytes, write_length,
+                             &nested_answer, 1, timeout_ms));
+        assert(nested_answer == 0x42u);
+        nested = false;
     }
     if (failures) { --failures; return false; }
     for (size_t i = 0; i < read_length; ++i) read_bytes[i] = 0x42u;
@@ -64,6 +69,7 @@ int main(void) {
     assert(!bus->claim_device(NULL, 7u, &claim) && claim == 0);
     assert(!bus->claim_device(NULL, 0x78u, &claim) && claim == 0);
     assert(bus->claim_device(NULL, 0x6bu, &claim) && claim != 0);
+    primary_claim = claim;
     assert(!bus->claim_device(NULL, 0x6bu, &other) && other == 0);
     assert(bus->claim_device(NULL, 0x55u, &other) && other != claim);
     assert(!provider->quiesce());
@@ -81,7 +87,7 @@ int main(void) {
     reenter = true;
     assert(bus->transact(NULL, claim, &reg, 1, &answer, 1, 100));
     reenter = false;
-    assert(transactions == 1 && answer == 0x42u &&
+    assert(transactions == 2 && answer == 0x42u &&
            last_address == 0x6bu && last_timeout == 100 &&
            last_write_length == 1 && last_read_length == 1);
     assert(bus->transact(NULL, claim, command, 2, NULL, 0, 100));
@@ -91,7 +97,7 @@ int main(void) {
     failures = 1;
     assert(!bus->transact(NULL, claim, &reg, 1, &answer, 1, 100));
     assert(bus->transact(NULL, claim, &reg, 1, &answer, 1, 100));
-    assert(transactions == 5);
+    assert(transactions == 6);
 
     assert(!bus->release_device(NULL, claim + 99u));
     assert(bus->release_device(NULL, other));
@@ -107,6 +113,6 @@ int main(void) {
     assert(bus->release_device(NULL, fresh));
     assert(provider->quiesce());
     provider->stop();
-    puts("I2C firmware-compatibility provider: private transport, claims, bounds, failure and quiescence: PASS");
+    puts("I2C firmware-compatibility provider: queued contention, claims, bounds, failure and quiescence: PASS");
     return 0;
 }

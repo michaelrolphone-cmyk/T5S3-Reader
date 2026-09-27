@@ -153,6 +153,10 @@ resync_body = TOUCH.split("bool resync(bool clearQueues)", 1)[1].split(
 assert "clearTransient(clearQueues)" in resync_body
 service_body = TOUCH.split("void serviceProvider()", 1)[1].split(
     "bool workerShouldRun()", 1)[0]
+assert "kPollFailureResyncThreshold" in TOUCH
+assert "consecutivePollFailures" in service_body
+assert "if (!api->poll" in service_body
+assert service_body.index("kPollFailureResyncThreshold") < service_body.index("resync(false)")
 assert "resync(false)" in service_body
 
 # Display takeover releases only the firmware consumer lease. This leaves no
