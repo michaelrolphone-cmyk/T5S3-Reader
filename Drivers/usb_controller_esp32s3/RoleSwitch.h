@@ -43,14 +43,20 @@ class UsbRoleSwitch {
       return;
     }
     if (state_ == State::Host) {
-      // Include the root port's physical attach bit, queued events and claims,
-      // not just the published device count: enumeration may be in progress.
+      // Preserve the owner-confirmed 0.1.14 host lifetime. A USB host must
+      // remain installed while its provider is active so detach/re-attach is
+      // handled by the same IDF host/client instance. Boards that cannot
+      // distinguish incoming VBUS while sourcing MUST NOT periodically tear
+      // down the host merely to probe an empty connector.
       if (port.busy()) { since_ = now; return; }
-      const bool probe = port.idle_probe_required();
-      if (static_cast<uint32_t>(now - since_) < (probe ? 2000u : 500u)) return;
-      // Independent detectors can observe incoming power with the host on.
-      // Only boards declaring this limitation need idle power-off probes.
-      if (!probe && port.input() == RISC_USB_POWER_SOURCE) { since_ = now; return; }
+      if (port.idle_probe_required()) { since_ = now; return; }
+
+      // A board with an independent live VBUS/role detector may yield without
+      // source-off probing. Only a positive EXTERNAL observation authorizes a
+      // host teardown; SOURCE/ABSENT/UNKNOWN/SETTLING leave host discovery up.
+      if (static_cast<uint32_t>(now - since_) < 500u) return;
+      since_ = now;
+      if (port.input() != RISC_USB_POWER_EXTERNAL) return;
       if (!port.park()) {
         state_ = State::Cleanup;
         since_ = port.now();
