@@ -43,8 +43,11 @@ enum {
     RISC_USB_POWER_SETTLING = 3
 };
 /* Set only for boards unable to distinguish incoming power while sourcing.
- * Those boards need source-off observation while the host is empty. Other
- * providers can use an independent VBUS/role detector without power probes. */
+ * While a host provider is active, these boards must preserve the host/source
+ * lifetime rather than destroying the USB stack to perform periodic probes.
+ * Incoming power is qualified before host startup and again after normal host
+ * quiescence. Boards with an independent live VBUS/role detector omit this
+ * flag and may yield an idle host on a positive EXTERNAL observation. */
 #define RISC_USB_POWER_IDLE_PROBE_REQUIRED 1u
 typedef struct {
     risc_usb_vbus_api_v1 base;
