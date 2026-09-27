@@ -1100,7 +1100,8 @@ bool installRequiredNativeApp(const char* artifact, std::string& displayName,
 
   std::string installedPath;
   t5_app_manifest_t installedManifest{};
-  if (resolveInstalledAppPath(artifact, installedPath, &installedManifest)) {
+  if (!forceCatalogInstall &&
+      resolveInstalledAppPath(artifact, installedPath, &installedManifest)) {
     displayName = installedManifest.display_name;
     return true;
   }
