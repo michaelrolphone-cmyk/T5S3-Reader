@@ -114,3 +114,37 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+
+## 2026-09-27 scan — 04:24 MDT
+
+### 13. Mahjong hard-codes a 960×540 landscape UI onto the default portrait native-app surface
+
+- **Affected code:** `Apps/mahjong.c`, especially the fixed geometry constants, `render_game()`, `hand_tile_at()`, and the NEW-button hit test in `app_main()`; runtime geometry comes from `src/native/NativeAppHost.cpp::width()/height()` and `GfxRenderer::getScreenWidth()/getScreenHeight()`.
+- **Trigger / reproduction:** Launch the Mahjong app normally while the native-app renderer is in its default portrait orientation. The renderer defaults to `Portrait`, and `runNativeApp()` preserves the caller's current orientation rather than switching Mahjong to landscape.
+- **Observed / logically demonstrated failure:** Mahjong lays out controls as if the logical screen were always 960×540: the NEW button begins at x=780 and the 14 hand tiles span x=22 through x=926. On the T5S3 portrait native-app surface the logical width is 540, so the NEW button is completely off-screen and only the first eight hand tiles fit fully on-screen. The touch hit tests use the same unreachable landscape coordinates, so the hidden controls cannot be activated by touch.
+- **Likely root cause:** The demo was written against the panel's physical landscape dimensions instead of the runtime logical dimensions exposed by `T5AppApi`, and its manifest does not declare or establish a landscape-only presentation mode.
+- **Impact:** A normal portrait launch produces a clipped, partially unplayable game: the user cannot reach NEW and can be unable to discard tiles that sort into the hidden portion of the 14-tile hand.
+- **Repair direction:** Make Mahjong derive all layout and hit rectangles from `screen_width()/screen_height()` and provide a portrait layout, or introduce an explicit supported orientation handoff and transform input consistently. Add a regression check that every interactive rectangle and every hand slot lies within the runtime viewport for the normal launch orientation.
+
+### 14. Image Viewer rejects valid indexed BMPs that use a reduced color table
+
+- **Affected code:** `src/native/NativeImageBridge.cpp`, `decodeBmp()` and the BMP path through `bmpInfo()` / `renderFit()`.
+- **Trigger / reproduction:** Open an uncompressed 4-bit or 8-bit BMP whose BITMAPINFOHEADER sets `biClrUsed` to a nonzero value smaller than the format maximum, for example an 8-bpp BMP with `biClrUsed = 16`, a 16-entry BGRA palette, and `bfOffBits` immediately after those 16 entries.
+- **Observed / logically demonstrated failure:** `bmpInfo()` accepts the file, so probing reports a valid BMP. `decodeBmp()`, however, ignores `biClrUsed` and unconditionally calculates `paletteCount = 1 << bpp`. For the valid 8-bpp/16-color example it demands space for 256 palette entries before `bfOffBits`; the bounds check therefore returns false and Image Viewer reports a decode failure.
+- **Likely root cause:** The indexed-BMP decoder assumes every 1/4/8-bpp BI_RGB file stores the full maximum palette instead of honoring the DIB header's color-table count.
+- **Impact:** Standards-compliant indexed BMPs produced with compact palettes cannot be displayed even though their metadata probes successfully, creating a probe/render inconsistency and unnecessary image incompatibility.
+- **Repair direction:** For DIB headers that include `biClrUsed`, use that value when nonzero and otherwise fall back to `1 << bpp`; reject counts above the format maximum, validate the actual palette bytes against `bfOffBits`, and reject any pixel index outside the declared palette. Add fixtures for reduced and full 4/8-bpp palettes.
+
+### 15. Legacy binary string deserialization trusts corrupt length fields and can exhaust memory during boot migration
+
+- **Affected code:** `lib/Serialization/Serialization.h::readString(FsFile&, std::string&)` and `readPod(FsFile&, T&)`; callers include `src/RecentBooksStore.cpp::loadFromBinaryFile()` and `src/WifiCredentialStore.cpp::loadFromBinaryFile()`.
+- **Trigger / reproduction:** Leave no JSON replacement file and place a truncated or corrupted legacy `/.crosspoint/recent.bin` or `/.crosspoint/wifi.bin` on the SD card. For a deterministic case, encode a valid legacy version/count followed by a string length such as `0x7fffffff` with no corresponding payload, then boot.
+- **Observed / logically demonstrated failure:** `readString(FsFile&,...)` reads a 32-bit length without checking the number of bytes returned, immediately calls `std::string::resize(len)`, and then ignores the payload read count. A huge on-disk length therefore requests an impossible allocation on the ESP32-S3 before the file can be rejected. If the four-byte length itself is truncated, `len` is only partially initialized and can become an arbitrary allocation size. The store loaders cannot detect the failure because these serialization helpers return `void`. Recent-books migration is invoked from normal boot via `RECENT_BOOKS.loadFromFile()`.
+- **Likely root cause:** The legacy binary helpers were written for trusted, well-formed files and provide neither exact-read validation nor a caller-supplied maximum string length before resizing.
+- **Impact:** Ordinary SD corruption or a malformed legacy state file can cause heap exhaustion/abort and potentially a repeatable boot failure instead of a recoverable migration error; shorter malformed reads can also populate corrupted in-memory store data.
+- **Repair direction:** Make binary reads return success/failure, require exact byte counts, bound every string length before allocation using per-field limits and/or remaining file size, and make each migration abort without renaming or rewriting the legacy source on any failed read. Add regression files with truncated length words, truncated payloads, and oversized lengths and verify clean failure without allocation spikes.
+
+## Duplicate check performed for this scan
+
+The three findings above were checked against the current `bugs.md`, the current open-issue set (none), and the current open PRs (#241, #220, #194, and #96). PR #241 concerns installed-provider capability validation for Model Viewer; #220 is the display-abstraction foundation; #194 handles global Home double-taps; #96 is the U1 implementation branch. Targeted all-state PR searches for Mahjong orientation/geometry, indexed-BMP palette handling/`biClrUsed`, and legacy `readString` length validation returned no matching work.
