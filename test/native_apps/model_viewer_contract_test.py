@@ -13,6 +13,8 @@ VIDEO = (ROOT / "src/native/NativeVideoBridge.cpp").read_text(encoding="utf-8")
 TAKEOVER = (ROOT / "src/native/NativeHardwareTakeover.cpp").read_text(encoding="utf-8")
 LAUNCHER = (ROOT / "lib/NativeApps/src/NativeAppLauncher.c").read_text(encoding="utf-8")
 PLATFORMIO = (ROOT / "platformio.ini").read_text(encoding="utf-8")
+FILE_BROWSER = (ROOT / "Apps/file_browser.c").read_text(encoding="utf-8")
+ASSOCIATIONS = (ROOT / "src/native/FileAssociationRegistry.cpp").read_text(encoding="utf-8")
 
 
 class ModelViewerContract(unittest.TestCase):
@@ -34,6 +36,16 @@ class ModelViewerContract(unittest.TestCase):
         self.assertIn("t5_video_get_api(T5_VIDEO_API_VERSION)", APP)
         self.assertIn("T5_VIDEO_FLAG_ONE_IS_BLACK", APP)
         self.assertIn("g_video->submit(0, g_surface.height)", APP)
+
+    def test_file_browser_opens_obj_and_stl_directly_into_viewer(self):
+        self.assertEqual(set(MANIFEST["supported_file_types"]), {".obj", ".stl"})
+        self.assertIn("readAppManifest(manifestPath", ASSOCIATIONS)
+        self.assertIn("for (size_t i = 0; i < types.count; ++i)", ASSOCIATIONS)
+        self.assertIn("file_open->handler_count(vfs_path)", FILE_BROWSER)
+        self.assertIn("file_open->handler_get(vfs_path, i", FILE_BROWSER)
+        self.assertIn("file_open->open_request(vfs_path, handler->app_id", FILE_BROWSER)
+        self.assertIn("g_file_open->source_path_get(g_path,sizeof(g_path))", APP)
+        self.assertNotIn("dir_open(", APP)
 
     def test_obj_and_stl_are_stream_parsed(self):
         self.assertIn("mv_load_obj", APP)
