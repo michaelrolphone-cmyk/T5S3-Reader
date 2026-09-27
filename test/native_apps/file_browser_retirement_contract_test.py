@@ -12,6 +12,8 @@ SD_UPDATE = (ROOT / "src/activities/settings/SdFirmwareUpdateActivity.cpp").read
 SD_BRIDGE = (ROOT / "src/native/NativeSdFirmwareBridge.cpp").read_text(encoding="utf-8")
 FILE_OPEN = (ROOT / "src/native/NativeFileOpenBridge.cpp").read_text(encoding="utf-8")
 MANIFEST = json.loads((ROOT / "Apps/sd_firmware_update.json").read_text(encoding="utf-8"))
+READER = (ROOT / "src/activities/reader/EpubReaderActivity.cpp").read_text(encoding="utf-8")
+INSTALLED_APP = (ROOT / "src/activities/util/InstalledAppActivity.cpp").read_text(encoding="utf-8")
 
 
 class FileBrowserRetirementContract(unittest.TestCase):
@@ -24,6 +26,13 @@ class FileBrowserRetirementContract(unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             self.assertNotIn("FileBrowserActivity", text, str(path))
             self.assertNotIn("goToFileBrowser", text, str(path))
+
+    def test_reader_file_selection_uses_installed_file_browser(self):
+        self.assertNotIn("goToFileBrowser", READER)
+        self.assertIn('goToInstalledApp("file_browser.elf", "File Browser")', READER)
+        self.assertIn("resolveInstalledAppPath(artifact.c_str()", INSTALLED_APP)
+        self.assertIn("RequiredAppActivity", INSTALLED_APP)
+        self.assertIn("runNativeApp(path.c_str()", INSTALLED_APP)
 
     def test_settings_firmware_update_delegates_to_file_browser_app(self):
         self.assertNotIn("FileBrowserActivity", SD_UPDATE)
