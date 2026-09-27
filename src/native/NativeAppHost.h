@@ -19,7 +19,8 @@ bool presentNativeAppUiFrame();
 // installed/catalog display name when available. Failure detail is suitable for
 // a bounded system-UI status line.
 bool installRequiredNativeApp(const char* artifact, std::string& displayName,
-                              std::string& failureDetail);
+                              std::string& failureDetail,
+                              bool forceCatalogInstall = false);
 
 // Home's Apps entry: the actual grid lives in /sd/Apps/springboard.elf.
 // Returns true when a firmware settings dialog must finish before resuming.
