@@ -469,7 +469,7 @@ void BaseTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
     renderer.fillRect(rect.x, rect.y + selectedIndex % pageItems * rowHeight - 2, rect.width, rowHeight);
   }
   // Draw all items
-  constexpr int kStateIconSize = 16;
+  constexpr int kStateIconSize = 12;
   constexpr int kStateIconGap = 12;
   const int stateIconInset = rowFontAwesomeIcon ? kStateIconSize + kStateIconGap : 0;
   const auto pageStartIndex = selectedIndex / pageItems * pageItems;
