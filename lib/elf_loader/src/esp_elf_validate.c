@@ -4,6 +4,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include "private/elf_types.h"
+#include "private/elf_section_layout.h"
 
 #define MAX_IMAGE (8u * 1024u * 1024u)
 static bool range(size_t length, uint32_t offset, uint64_t size) {
@@ -43,6 +44,9 @@ bool esp_elf_validate_file(const uint8_t *buf, size_t length) {
             dynsym = true;
         }
         if (s[i].flags & SHF_ALLOC) {
+            if (!elf_section_alignment_valid(s[i].addralign)) return false;
+            const uint32_t alignment = s[i].addralign ? s[i].addralign : 1u;
+            if ((s[i].addr & (alignment - 1u)) != 0u) return false;
             allocated += s[i].size;
             if (allocated > MAX_IMAGE || (uint64_t)s[i].addr + s[i].size > UINT32_MAX) return false;
         }
