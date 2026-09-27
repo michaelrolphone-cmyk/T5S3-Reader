@@ -6,12 +6,14 @@
 
 static unsigned starts, stops, submits;
 static bool pending;
+static bool incompatible;
 static uint32_t frames;
 static uint8_t pixels[64800];
 static bool start_video(t5_video_surface_v1 *out) {
     ++starts;
     *out = (t5_video_surface_v1){960, 540, 120, T5_VIDEO_PIXEL_MONO_1BPP_MSB,
                                   T5_VIDEO_FLAG_ONE_IS_BLACK};
+    if (incompatible) out->width = 1;
     return true;
 }
 static uint8_t *buffer(size_t *bytes) { *bytes = sizeof(pixels); return pixels; }
@@ -54,4 +56,8 @@ int main(void) {
     assert(driver->quiesce() && stops == 1);
     driver->stop();
     assert(stops == 1);
+    assert(driver->start(NULL, 0));
+    incompatible = true;
+    assert(!output->acquire(NULL, RISC_DISPLAY_FORMAT_MONO1, &frame));
+    assert(stops == 2 && driver->quiesce());
 }

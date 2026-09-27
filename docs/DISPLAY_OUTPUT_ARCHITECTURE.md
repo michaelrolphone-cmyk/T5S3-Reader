@@ -2,12 +2,11 @@
 
 ## Status
 
-This document defines the display migration foundation implemented in firmware
-1.3.13. It follows the hardware ownership contract: the target physical display
-implementation is an independently installable provider ELF. The compatibility
-`HalDisplay` backend remains compiled into firmware only during the staged
-migration and is explicitly **CURRENT/LEGACY, NONCOMPLIANT** with the final
-hardware boundary.
+Firmware 1.3.23 retains `HalDisplay` for its own UI. Installable apps bind an
+independently installable `display.output` provider. The first T5S3 provider,
+`display-epd-video@0.1.1`, owns the app-facing display contract and temporarily
+uses the firmware video scan service as its private physical backend. The host
+UI compatibility backend is still compiled into firmware during migration.
 
 ## Layering
 
@@ -17,7 +16,7 @@ application ELF
   -> GfxRenderer or future format-aware graphics service
   -> DisplaySurface compatibility boundary
   -> CURRENT: HalDisplay firmware backend
-  -> TARGET: display.primary -> display.output provider ELF
+  -> app ELF: display.output provider ELF
   -> panel
 ```
 
@@ -28,12 +27,15 @@ timing, brightness/backlight and display-specific power sequencing.
 ## Provider ABI
 
 `sdk/driver/RiscDisplayOutputV1.h` defines `display.output` API v1. Consumers
-normally bind the logical alias `display.primary`. The ABI reports runtime
+bind `display.output`; the `display.primary` alias is reserved and is not yet
+resolved by the generic provider loader. The ABI reports runtime
 geometry, safe insets, physical dimensions when known, supported pixel formats,
 rotation support, damage alignment, presentation capabilities and timing hints.
 
 Supported initial format identifiers are MONO1, GRAY2, GRAY4, GRAY8 and RGB565.
-No application is required to assume a particular format.
+The current Model Viewer, Risc Strike and GameBoy renderers require the
+T5S3's 960×540 MONO1 surface. An incompatible driver fails their display
+initialization without writing to the panel.
 
 Presentation uses intent rather than panel terminology:
 
@@ -83,15 +85,40 @@ custom layouts should use the viewport query rather than fixed pixel origins.
 
 The next display-specific milestones are deliberately outside this slice:
 
-1. Replace the compatibility `HalDisplay` implementation with a real
-   `display.output` provider ELF and bind it as `display.primary`.
-2. Move the optimized GameBoy e-paper scan engine into that provider rather than
-   replacing it with per-pixel host calls.
+1. Replace the temporary provider-to-firmware scan backend with physical panel
+   control inside the installable driver. Keep the public `display.output` ABI.
+2. Bind the firmware UI compatibility renderer through the installed display
+   provider and implement `display.primary` resolution.
 3. Add a format-aware graphics path capable of writing RGB565 and other provider
    formats.
 4. Remove GameBoy's fixed 540x960 layout and use the same viewport contract.
 5. Validate the same app ELFs against an LCD provider with a materially different
    resolution and aspect ratio.
+
+## T5S3 hardware smoke test
+
+Use a firmware build from this PR at version 1.3.23. Install the complete
+`display-epd-video@0.1.1` driver package, including `driver.elf`,
+`provider-abi.v1`, `privileged-imports.v1` and `.package.json`, before opening
+any of the migrated apps. Install Model Viewer 1.1.1, Risc Strike 1.0.1 and
+GameBoy 1.3.8 from their respective PR artifacts, with their matching JSON
+manifests. The GameBoy artifact is produced by its companion PR #25.
+
+1. Confirm the Reader home UI starts and returns normally with the display
+   provider installed; the firmware UI still uses its compatibility backend.
+2. Open a model in Model Viewer. Rotate it, enable and disable the merged
+   shading button, then exit. Reopen it to exercise a second handoff.
+3. Open Risc Strike, draw a few frames, exit, then reopen. Confirm the host
+   UI returns with its previous image intact.
+4. Launch the GameBoy ELF, open a ROM, present several frames and exit. Confirm
+   the host UI returns and the power button still responds.
+5. Remove only the installed display provider and retry each app: mandatory
+   capability gating should deny launch without taking over or clearing the
+   firmware screen. Restore the provider before further app testing.
+
+Record firmware/app/driver versions and the first provider/launcher diagnostic
+on failure; this separates package discovery, display takeover, presentation
+and teardown failures.
 
 
 ## Blank-screen safety invariants
