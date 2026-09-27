@@ -58,7 +58,7 @@ void LyraTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
     textX += iconSize + hPaddingInSelection;
     textWidth -= iconSize + hPaddingInSelection;
   }
-  constexpr int kStateIconSize = 16;
+  constexpr int kStateIconSize = 12;
   constexpr int kStateIconGap = 12;
   if (rowFontAwesomeIcon) {
     textX += kStateIconSize + kStateIconGap;
