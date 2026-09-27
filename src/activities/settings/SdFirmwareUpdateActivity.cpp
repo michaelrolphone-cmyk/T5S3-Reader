@@ -19,6 +19,8 @@
 #include "activities/util/RequiredAppActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "native/AppManifest.h"
+#include "native/FileAssociationRegistry.h"
 #include "native/InstalledAppPath.h"
 #include "native/NativeAppHost.h"
 #include "network/FirmwareFlasher.h"
@@ -27,6 +29,29 @@ namespace {
 std::string recoveryDisplayName(const std::string& entry) {
   if (!entry.empty() && entry.back() == '/') return entry.substr(0, entry.size() - 1);
   return entry;
+}
+
+bool installedUpdaterHasBinAssociation(std::string& updaterPath, bool& installed) {
+  t5_app_manifest_t manifest{};
+  installed = resolveInstalledAppPath("sd_firmware_update.elf", updaterPath, &manifest);
+  if (!installed || updaterPath.rfind("/sd/", 0) != 0 || updaterPath.size() <= 7) return false;
+
+  std::string sidecar = updaterPath.substr(3);
+  if (sidecar.size() <= 4 || sidecar.compare(sidecar.size() - 4, 4, ".elf") != 0) return false;
+  sidecar.replace(sidecar.size() - 4, 4, ".json");
+
+  t5_app_manifest_t parsed{};
+  std::string version;
+  AppFileTypes fileTypes{};
+  if (!readAppManifest(sidecar.c_str(), parsed, &version, true, nullptr, &fileTypes) ||
+      std::strcmp(parsed.file_name, "sd_firmware_update.elf") != 0) {
+    return false;
+  }
+
+  for (size_t i = 0; i < fileTypes.count; ++i) {
+    if (std::strcmp(fileTypes.values[i], ".bin") == 0) return true;
+  }
+  return false;
 }
 }  // namespace
 
@@ -55,10 +80,12 @@ void SdFirmwareUpdateActivity::launchFileBrowser() {
   if (recoveryMode) return;
 
   std::string updaterPath;
-  if (!resolveInstalledAppPath("sd_firmware_update.elf", updaterPath)) {
+  bool updaterInstalled = false;
+  if (!installedUpdaterHasBinAssociation(updaterPath, updaterInstalled)) {
     startActivityForResult(
         std::make_unique<RequiredAppActivity>(
-            renderer, mappedInput, "sd_firmware_update.elf", "SD Firmware Update"),
+            renderer, mappedInput, "sd_firmware_update.elf", "SD Firmware Update",
+            updaterInstalled),
         [this](const ActivityResult& result) {
           if (result.isCancelled) {
             launchFailed = true;
@@ -85,6 +112,11 @@ void SdFirmwareUpdateActivity::launchFileBrowser() {
     return;
   }
 
+  // The updater may have just been installed or upgraded. Rebuild the derived
+  // association table before File Browser queries .bin handlers. Even if the
+  // persisted registry cannot be rewritten, rebuild() leaves its in-memory
+  // table current for this boot.
+  (void)NativeFileAssociations::rebuild();
   browserPending = true;
   requestUpdate();
 }
