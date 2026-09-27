@@ -12,7 +12,6 @@
 
 #include "MappedInputManager.h"
 #include "NativeAppHost.h"
-#include "components/FontAwesomeIcons.h"
 #include "activities/ActivityManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
