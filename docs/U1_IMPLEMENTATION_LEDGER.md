@@ -2,6 +2,19 @@
 
 [PR #96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) on `impl/u1-riscrte` is the **only** implementation PR/branch. `AGENTS.md`, [USB remediation](USB_CONTRACT_VIOLATION_REMEDIATION.md), [execution order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [claim-scoped USB control](U1_USB_CONTROL_SCOPE_IMPLEMENTATION.md) and [package identity](PACKAGE_IDENTITY_VERSION_POLICY.md) govern the work. Owner controls merge, tag, release, flash and hardware qualification. A committed test is not a PASS.
 
+## September 27: App Store header stays on SD inbox until refresh succeeds
+
+Firmware native-ELF validation on `f711e0b9` failed
+`test/native_apps/app_store_release_transition_source_test.py` because header
+tap still used `view = view == RELEASES ? SD_INBOX : RELEASES;` and switched
+into Releases before a successful catalog refresh.
+
+The header path now leaves Releases immediately, enters Releases only after
+`refresh_releases(manager, ui)`, and reports `Release refresh failed; SD
+packages available` without leaving the inbox. The source-guard matches U1's
+package-manager refresh arguments rather than master's app-catalog signature.
+ZIP inbox / version 1.0.8 are unchanged.
+
 ## September 27: source-guard matches endpoints-only acquire
 
 Host parser and build-experimental both failed at `f711e0b9` on
