@@ -16,6 +16,7 @@ constexpr uint8_t kSwipeDepth = 8;
 constexpr uint8_t kHomeDepth = 16;
 constexpr uint32_t kRetryMs = 1000;
 constexpr uint32_t kCaptureIntervalMs = 5;
+constexpr uint8_t kPollFailureResyncThreshold = 3;
 constexpr uint32_t kWorkerStopTimeoutMs = 100;
 
 struct SwipeEvent {
@@ -44,6 +45,7 @@ NativeTouchPoint touchStart{};
 NativeTouchPoint currentTouch{};
 uint32_t activitySerial = 0;
 uint32_t observedActivitySerial = 0;
+uint8_t consecutivePollFailures = 0;
 
 NativeTouchPoint taps[kTapDepth]{};
 uint8_t tapHead = 0, tapCount = 0;
@@ -204,21 +206,35 @@ void process(const risc_touch_event_v1& event) {
 void serviceProvider() {
   if (!api || !subscription) return;
 
-  const bool pollOk = api->poll(api->context, 16u);
-  bool needResync = !pollOk;
-  if (pollOk) {
-    for (unsigned i = 0; i < RISC_TOUCH_QUEUE_LENGTH; ++i) {
-      risc_touch_event_v1 event{};
-      const int32_t result = api->next(api->context, subscription, &event);
-      if (result == 0) break;
-      if (result < 0) {
-        needResync = true;
-        break;
-      }
-      process(event);
+  if (!api->poll(api->context, 16u)) {
+    /*
+     * A single I2C/provider miss is not evidence that the gesture stream is
+     * invalid. Resyncing immediately marks the current DOWN gesture
+     * ineligible, so an otherwise normal UP a few milliseconds later becomes
+     * a dropped tap. Allow a short bounded retry window and only abandon the
+     * in-flight gesture after repeated failures.
+     */
+    if (consecutivePollFailures < UINT8_MAX) ++consecutivePollFailures;
+    if (consecutivePollFailures >= kPollFailureResyncThreshold) {
+      consecutivePollFailures = 0;
+      (void)resync(false);
     }
+    return;
   }
-  if (needResync) (void)resync(false);
+
+  consecutivePollFailures = 0;
+  for (unsigned i = 0; i < RISC_TOUCH_QUEUE_LENGTH; ++i) {
+    risc_touch_event_v1 event{};
+    const int32_t result = api->next(api->context, subscription, &event);
+    if (result == 0) break;
+    if (result < 0) {
+      // Queue GAP/stale subscription is explicit stream invalidation and
+      // requires an authoritative snapshot immediately.
+      (void)resync(false);
+      break;
+    }
+    process(event);
+  }
 }
 
 bool workerShouldRun() {
@@ -318,6 +334,7 @@ bool activate() {
   lease = candidate;
   api = candidateApi;
   subscription = candidateSubscription;
+  consecutivePollFailures = 0;
   clearTransient();
   (void)resync(true);
   if (!startWorker()) {
@@ -361,6 +378,7 @@ bool nativeTouchSuspend() {
     return false;
   }
 
+  consecutivePollFailures = 0;
   clearTransient();
   if (!api) {
     subscription = 0;

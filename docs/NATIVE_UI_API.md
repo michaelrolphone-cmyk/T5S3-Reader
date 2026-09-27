@@ -20,7 +20,7 @@ The application owns application data, persistence, business logic, screen state
 
 ### Current surfaces
 
-`t5_ui_chrome_t` supplies logical title, subtitle, status and button labels. List rows supply title/subtitle/value data and are rendered using the active firmware theme. Tables use weighted columns instead of device pixel coordinates. `render_text_view()` supplies a wrapped document/chat/log viewport using the firmware's user-content font policy and returns line/scroll metadata.
+`t5_ui_chrome_t` supplies logical title, subtitle, status and button labels. List rows supply title/subtitle/value data and are rendered using the active firmware theme. The existing row `flags` byte also carries ABI-compatible semantic state hints: `T5_UI_LIST_ICON_DOWNLOAD`, `T5_UI_LIST_ICON_UPDATE`, and `T5_UI_LIST_ICON_INSTALLED`. The firmware renders those states with the shared Font Awesome faces while preserving the row layout and existing highlight flag. Tables use weighted columns instead of device pixel coordinates. `render_text_view()` supplies a wrapped document/chat/log viewport using the firmware's user-content font policy and returns line/scroll metadata.
 
 `poll_event()` is the standard compatibility navigation path. It returns semantic PREVIOUS, NEXT, CONFIRM, BACK, TAP and EXIT events rather than requiring applications to interpret raw physical buttons. `hit_test()` applies to the most recently rendered list or table. Physical button remapping remains firmware-owned.
 

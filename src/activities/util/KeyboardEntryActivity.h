@@ -1,7 +1,10 @@
 #pragma once
 #include <GfxRenderer.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include <RiscTextInputV1.h>
 
+#include <cassert>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -28,7 +31,12 @@ class KeyboardEntryActivity : public Activity {
         title(std::move(title)),
         text(std::move(initialText)),
         maxLength(maxLength),
-        inputType(inputType) {}
+        inputType(inputType) {
+    stateMutex = xSemaphoreCreateMutex();
+    assert(stateMutex != nullptr && "Failed to create keyboard state mutex");
+  }
+
+  ~KeyboardEntryActivity() override;
 
   void onEnter() override;
   void onExit() override;
@@ -42,6 +50,22 @@ class KeyboardEntryActivity : public Activity {
   size_t maxLength;
   InputType inputType;
   bool passwordVisible = false;
+
+  struct RenderState {
+    std::string text;
+    size_t cursorPos = 0;
+    bool passwordVisible = false;
+    int selectedRow = 0;
+    int selectedCol = 0;
+    int shiftState = 0;
+    bool symMode = false;
+    bool cursorMode = false;
+    bool togglePos = false;
+    bool urlMode = false;
+    bool hintVisible = false;
+  };
+
+  SemaphoreHandle_t stateMutex = nullptr;
 
   ButtonNavigator buttonNavigator;
 
@@ -75,6 +99,9 @@ class KeyboardEntryActivity : public Activity {
   unsigned long textInputLastAttempt = 0;
 
   bool handleExternalTextInput(const risc_text_input_event_v1& event);
+  RenderState captureRenderState();
+  void requestKeyboardUpdate();
+  int measureInputHeightForTouch(int maxLineWidth, int lineHeight) const;
   void onComplete(std::string text);
   void onCancel();
 

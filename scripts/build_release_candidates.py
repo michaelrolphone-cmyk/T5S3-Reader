@@ -40,6 +40,7 @@ DRIVER_BUILDERS = {
     "program-msp": [("scripts/build_program_msp.py",)],
     "usb-hid": [("scripts/build_usb_hid.py",)],
     "usb-hid-keyboard": [("scripts/build_usb_hid_keyboard.py",)],
+    "usb-hid-text-input": [("scripts/build_usb_hid_text_input.py",)],
     "usb-hid-gamepad": [("scripts/build_usb_hid_gamepad.py",)],
     "usb-xinput-gamepad": [("scripts/build_usb_xinput_gamepad.py",)],
     "usb-ui-navigation": [("scripts/build_usb_ui_navigation.py",)],
