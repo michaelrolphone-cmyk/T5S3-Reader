@@ -29,6 +29,8 @@ static int back_exit_false_count;
 static int back_exit_true_count;
 static int ui_event_index;
 static int chooser_renders;
+static int action_renders;
+static uint32_t fake_millis;
 static bool open_requested;
 
 static const t5_app_dirent_t root_entries[] = {
@@ -75,6 +77,7 @@ static void set_back_exits(bool enabled) {
     if (enabled) ++back_exit_true_count;
     else ++back_exit_false_count;
 }
+static uint32_t clock_ms(void) { return fake_millis; }
 
 static const t5_app_api_v1 app_api = {
     .abi_version = T5_APP_ABI_VERSION,
@@ -83,6 +86,7 @@ static const t5_app_api_v1 app_api = {
     .dir_next = dir_next,
     .dir_close = dir_close,
     .set_back_exits_app = set_back_exits,
+    .millis = clock_ms,
 };
 
 const t5_app_api_v1 *t5_app_get_api(uint32_t version) {
@@ -115,12 +119,18 @@ static bool storage_remove(const char *path) {
     return true;
 }
 
+static bool storage_exists(const char *path) { (void)path; return false; }
+static bool storage_rename(const char *source, const char *destination) {
+    (void)source; (void)destination; return false;
+}
 static const t5_storage_api_v1 storage_api = {
     .api_version = T5_STORAGE_API_VERSION,
     .struct_size = sizeof(t5_storage_api_v1),
+    .exists = storage_exists,
     .read_file = storage_read,
     .write_file_atomic = storage_write,
     .remove_file = storage_remove,
+    .rename_file = storage_rename,
 };
 
 const t5_storage_api_v1 *t5_storage_get_api(uint32_t version) {
@@ -132,10 +142,21 @@ const t5_provider_capability_api_v1 *t5_provider_capability_get_api(uint32_t ver
     return NULL;
 }
 
+static bool keyboard_request(const char *title, const char *initial_text, size_t max_length,
+                             uint8_t input_type, uint64_t cookie) {
+    (void)title; (void)initial_text; (void)max_length; (void)input_type; (void)cookie;
+    return false;
+}
+static bool keyboard_take(char *text, size_t capacity, bool *cancelled, uint64_t *cookie) {
+    (void)text; (void)capacity; (void)cancelled; (void)cookie;
+    return false;
+}
 static void navigate_home(void) { assert(!"File Browser unexpectedly navigated Home"); }
 static const t5_system_ui_api_v1 system_ui_api = {
     .api_version = T5_SYSTEM_UI_API_VERSION,
     .struct_size = sizeof(t5_system_ui_api_v1),
+    .keyboard_request = keyboard_request,
+    .keyboard_take_result = keyboard_take,
     .navigate_home = navigate_home,
 };
 
@@ -159,7 +180,7 @@ static void render_browser(const char *path, const char *status,
     if (phase != 3 || render_index == 0) assert(status[0] == 0);
     if (phase == 1) {
         if (render_index == 0) {
-            assert(strcmp(path, "/") == 0 && count == 7 && selected == 0);
+            assert(strcmp(path, "/") == 0 && count == 7 && selected == -1);
             assert_entry(entries, 0, "Books", true);
             assert_entry(entries, 1, "Book2.epub", false);
             assert_entry(entries, 2, "Book10.epub", false);
@@ -168,7 +189,7 @@ static void render_browser(const char *path, const char *status,
             assert_entry(entries, 5, "image.bmp", false);
             assert_entry(entries, 6, "notes.md", false);
         } else if (render_index == 1) {
-            assert(strcmp(path, "/Books") == 0 && count == 2 && selected == 0);
+            assert(strcmp(path, "/Books") == 0 && count == 2 && selected == -1);
             assert_entry(entries, 0, "Child2.txt", false);
             assert_entry(entries, 1, "Child10.txt", false);
         } else if (render_index == 2) {
@@ -191,7 +212,7 @@ static void render_browser(const char *path, const char *status,
     } else if (phase == 3) {
         assert(strcmp(path, "/") == 0 && count == 6);
         if (render_index == 0) {
-            assert(status[0] == 0);
+            assert(status[0] == 0 && selected == -1);
         } else if (render_index == 1) {
             assert(strstr(status, "No registered app") != NULL);
             assert(selected == 3);
@@ -200,7 +221,7 @@ static void render_browser(const char *path, const char *status,
         }
     } else {
         assert(phase == 4 && render_index == 0);
-        assert(strcmp(path, "/") == 0 && count == 6 && status[0] == 0);
+        assert(strcmp(path, "/") == 0 && count == 6 && status[0] == 0 && selected == -1);
         assert_entry(entries, 5, "notes.md", false);
     }
     ++render_index;
@@ -215,18 +236,25 @@ static bool poll_browser(t5_file_browser_event_t *event, uint32_t wait_ms,
         switch (event_index++) {
             case 0:
                 assert(at_root && selected_is_directory);
+                fake_millis = 100;
                 event->type = T5_FILE_BROWSER_EVENT_ROW;
                 event->row_index = 0;
                 return true;
             case 1:
+                assert(at_root && selected_is_directory);
+                fake_millis = 300;
+                event->type = T5_FILE_BROWSER_EVENT_ROW;
+                event->row_index = 0;
+                return true;
+            case 2:
                 assert(!at_root && !selected_is_directory);
                 event->type = T5_FILE_BROWSER_EVENT_BACK;
                 return true;
-            case 2:
+            case 3:
                 assert(at_root && selected_is_directory);
                 event->type = T5_FILE_BROWSER_EVENT_NEXT;
                 return true;
-            case 3:
+            case 4:
                 assert(at_root && !selected_is_directory);
                 event->type = T5_FILE_BROWSER_EVENT_DELETE;
                 return true;
@@ -242,18 +270,26 @@ static bool poll_browser(t5_file_browser_event_t *event, uint32_t wait_ms,
     }
     if (phase == 3) {
         assert(at_root);
-        if (event_index++ == 0) {
+        if (event_index == 0 || event_index == 1) {
+            fake_millis = event_index == 0 ? 100 : 300;
+            ++event_index;
             event->type = T5_FILE_BROWSER_EVENT_ROW;
             event->row_index = 3; /* ignore.pdf after Book2 is deleted */
         } else {
+            ++event_index;
             event->type = T5_FILE_BROWSER_EVENT_EXIT;
         }
         return true;
     }
-    assert(phase == 4 && event_index++ == 0 && at_root);
-    event->type = T5_FILE_BROWSER_EVENT_ROW;
-    event->row_index = 5; /* notes.md */
-    return true;
+    assert(phase == 4 && at_root);
+    if (event_index == 0 || event_index == 1) {
+        fake_millis = event_index == 0 ? 100 : 300;
+        ++event_index;
+        event->type = T5_FILE_BROWSER_EVENT_ROW;
+        event->row_index = 5; /* notes.md */
+        return true;
+    }
+    assert(!"unexpected phase-4 event poll"); return false;
 }
 
 static uint32_t page_items(void) { return 4; }
@@ -366,7 +402,19 @@ const t5_file_open_api_v1 *t5_file_open_get_api(uint32_t version) {
 
 static void ui_render(const t5_ui_chrome_t *chrome, const t5_ui_list_row_t *rows,
                       uint32_t count, int32_t selected) {
-    assert(phase == 4 && chrome && rows && count == 2);
+    assert(chrome && rows);
+    if (phase == 1) {
+        assert(count == 3);
+        assert(!strcmp(chrome->title, "Book2.epub"));
+        assert(!strcmp(chrome->subtitle, "Options"));
+        assert(!strcmp(rows[0].title, "Rename"));
+        assert(!strcmp(rows[1].title, "Move"));
+        assert(!strcmp(rows[2].title, "Delete"));
+        assert(selected >= 0 && selected < 3);
+        ++action_renders;
+        return;
+    }
+    assert(phase == 4 && count == 2);
     assert(!strcmp(chrome->title, "Open with"));
     assert(!strcmp(rows[0].title, "Reader"));
     assert(!strcmp(rows[1].title, "Text Editor"));
@@ -374,8 +422,13 @@ static void ui_render(const t5_ui_chrome_t *chrome, const t5_ui_list_row_t *rows
     ++chooser_renders;
 }
 static bool ui_poll(t5_ui_event_t *event, uint32_t wait_ms) {
-    assert(phase == 4 && event && wait_ms == 20);
+    assert(event && wait_ms == 20);
     memset(event, 0, sizeof(*event));
+    if (phase == 1) {
+        event->type = ui_event_index++ < 2 ? T5_UI_EVENT_NEXT : T5_UI_EVENT_CONFIRM;
+        return true;
+    }
+    assert(phase == 4);
     event->type = ui_event_index++ == 0 ? T5_UI_EVENT_NEXT : T5_UI_EVENT_CONFIRM;
     return true;
 }
@@ -420,12 +473,14 @@ const t5_file_browser_api_v1 *t5_file_browser_get_api(uint32_t version) {
 
 int main(void) {
     phase = 1;
-    event_index = render_index = 0;
+    event_index = render_index = ui_event_index = action_renders = 0;
+    fake_millis = 0;
     app_main();
     assert(delete_requested);
     assert(session_exists);
     assert(!book2_deleted);
     assert(render_index == 4);
+    assert(action_renders >= 3);
 
     phase = 2;
     event_index = render_index = 0;
@@ -444,9 +499,11 @@ int main(void) {
 
     phase = 4;
     event_index = render_index = ui_event_index = chooser_renders = 0;
+    fake_millis = 0;
     app_main();
     assert(open_requested);
     assert(chooser_renders >= 2);
+    assert(render_index == 1);
     assert(session_exists);
     assert(back_exit_false_count == 4);
     assert(back_exit_true_count == 4);

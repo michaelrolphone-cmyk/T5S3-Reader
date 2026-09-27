@@ -14,10 +14,6 @@ from pathlib import Path
 import shutil
 import sys
 
-from generate_provider_package_inputs_v1 import prepare as provider_inputs
-from generate_privileged_imports_v1 import extract_imports
-from verify_provider_relocation_map import audit_loader_map
-
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'dist/experimental'
 DESTINATION = ROOT / 'dist/packages'
@@ -41,6 +37,7 @@ DRIVERS = (
     ('program-msp', 'program_msp', 'program-msp', 'driver.elf'),
     ('usb-hid', 'usb_hid', 'usb-hid', 'driver.elf'),
     ('usb-hid-keyboard', 'usb_hid_keyboard', 'usb-hid-keyboard', 'driver.elf'),
+    ('usb-hid-text-input', 'usb_hid_text_input', 'usb-hid-text-input', 'driver.elf'),
     ('usb-hid-gamepad', 'usb_hid_gamepad', 'usb-hid-gamepad', 'driver.elf'),
     ('usb-xinput-gamepad', 'usb_xinput_gamepad', 'usb-xinput-gamepad', 'driver.elf'),
     ('usb-ui-navigation', 'usb_ui_navigation', 'usb-ui-navigation', 'driver.elf'),
@@ -58,7 +55,17 @@ def entry(path: Path, executable: bool) -> dict:
 
 
 def build(identities: set[str] | None = None) -> list[dict]:
-    from generate_provider_package_inputs_v1 import canonical_manifest
+    # Keep release metadata importable by lightweight host tests without
+    # requiring ELF analysis dependencies until an actual package build runs.
+    if __package__:
+        from .generate_provider_package_inputs_v1 import canonical_manifest, prepare as provider_inputs
+        from .generate_privileged_imports_v1 import extract_imports
+        from .verify_provider_relocation_map import audit_loader_map
+    else:
+        from generate_provider_package_inputs_v1 import canonical_manifest, prepare as provider_inputs
+        from generate_privileged_imports_v1 import extract_imports
+        from verify_provider_relocation_map import audit_loader_map
+
     valid_ids = {item[0] for item in DRIVERS}
     if identities is not None and (not identities or not identities <= valid_ids):
         raise ValueError(f"invalid requested driver IDs: {sorted(identities - valid_ids)}")

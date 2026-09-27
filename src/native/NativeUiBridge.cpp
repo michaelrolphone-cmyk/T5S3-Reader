@@ -12,6 +12,7 @@
 
 #include "MappedInputManager.h"
 #include "NativeAppHost.h"
+#include "components/FontAwesomeIcons.h"
 #include "activities/ActivityManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -31,6 +32,13 @@ HitLayout hitLayout;
 std::unique_ptr<ButtonNavigator> navigator;
 
 const char* safe(const char* value) { return value ? value : ""; }
+
+const char* listStateIcon(uint8_t flags) {
+  if (flags & T5_UI_LIST_ICON_UPDATE) return "solid:f021";
+  if (flags & T5_UI_LIST_ICON_INSTALLED) return "solid:f00c";
+  if (flags & T5_UI_LIST_ICON_DOWNLOAD) return "solid:f019";
+  return nullptr;
+}
 
 bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
 
@@ -144,17 +152,24 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
   r->clearScreen();
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto layout = layoutFor(*r, chrome);
-  const Rect content{layout.safeLeft, layout.contentTop, layout.safeWidth(),
-                     std::max(0, layout.contentBottom - layout.contentTop)};
 
   bool hasSubtitle = false;
   bool hasValue = false;
   bool highlightValue = false;
+  bool hasStateIcon = false;
   for (uint32_t i = 0; i < rowCount; ++i) {
     hasSubtitle = hasSubtitle || (rows[i].subtitle && rows[i].subtitle[0]);
     hasValue = hasValue || (rows[i].value && rows[i].value[0]);
     highlightValue = highlightValue || ((rows[i].flags & T5_UI_LIST_HIGHLIGHT_VALUE) != 0);
+    hasStateIcon = hasStateIcon || ((rows[i].flags & T5_UI_LIST_ICON_MASK) != 0);
   }
+
+  constexpr int stateIconSize = 16;
+  constexpr int stateIconGap = 12;
+  const int stateIconGutter = hasStateIcon ? stateIconSize + stateIconGap : 0;
+  const Rect content{layout.safeLeft + stateIconGutter, layout.contentTop,
+                     std::max(1, layout.safeWidth() - stateIconGutter),
+                     std::max(0, layout.contentBottom - layout.contentTop)};
 
   std::function<std::string(int)> subtitleFn;
   std::function<std::string(int)> valueFn;
@@ -164,16 +179,27 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
   GUI.drawList(*r, content, static_cast<int>(rowCount), selectedIndex,
                [rows](int i) { return std::string(safe(rows[i].title)); }, subtitleFn, nullptr, valueFn,
                highlightValue);
-  drawChrome(*r, *in, chrome);
 
   const int rowHeight = hasSubtitle ? metrics.listWithSubtitleRowHeight : metrics.listRowHeight;
   const int pageItems = std::max(1, content.height / std::max(1, rowHeight));
   const int selected = rowCount ? std::clamp(selectedIndex, 0, static_cast<int32_t>(rowCount) - 1) : 0;
+  const int pageStart = rowCount ? (selected / pageItems) * pageItems : 0;
+  const int pageEnd = std::min(static_cast<int>(rowCount), pageStart + pageItems);
+  for (int i = pageStart; i < pageEnd; ++i) {
+    const char* icon = listStateIcon(rows[i].flags);
+    if (!icon) continue;
+    const int iconX = layout.safeLeft + layout.padding;
+    const int rowY = content.y + (i - pageStart) * rowHeight;
+    const int iconY = rowY + std::max(0, (rowHeight - stateIconSize) / 2);
+    FontAwesomeIcons::draw(*r, iconX, iconY, icon, stateIconSize, i != selectedIndex);
+  }
+
+  drawChrome(*r, *in, chrome);
   hitLayout.headerBottom = layout.headerBottom;
   hitLayout.rowTop = content.y;
   hitLayout.rowHeight = rowHeight;
   hitLayout.pageItems = pageItems;
-  hitLayout.pageStart = rowCount ? (selected / pageItems) * pageItems : 0;
+  hitLayout.pageStart = pageStart;
   hitLayout.rowCount = static_cast<int>(rowCount);
   (void)presentNativeAppUiFrame();
 }

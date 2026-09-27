@@ -6,6 +6,7 @@
 
 void app_main(void);
 static int downloads, saw_alpha, saw_beta, saw_installed, saw_update, saw_failure_detail;
+static int saw_installed_icon, saw_update_icon;
 static int saw_download_progress, progress_callbacks;
 static int back_disabled, back_restored, event_index;
 static uint32_t downloaded_index;
@@ -163,8 +164,14 @@ static void render_list(const t5_ui_chrome_t *chrome,
         for (uint32_t i = 0; i < row_count; ++i) {
             if (rows[i].title && !strcmp(rows[i].title, "Alpha")) saw_alpha = 1;
             if (rows[i].title && !strcmp(rows[i].title, "Beta")) saw_beta = 1;
-            if (rows[i].subtitle && !strcmp(rows[i].subtitle, "Installed")) saw_installed = 1;
-            if ((rows[i].flags & T5_UI_LIST_HIGHLIGHT_VALUE) != 0) saw_update = 1;
+            if (rows[i].subtitle && !strcmp(rows[i].subtitle, "Installed")) {
+                saw_installed = 1;
+                if ((rows[i].flags & T5_UI_LIST_ICON_INSTALLED) != 0) saw_installed_icon = 1;
+            }
+            if ((rows[i].flags & T5_UI_LIST_HIGHLIGHT_VALUE) != 0) {
+                saw_update = 1;
+                if ((rows[i].flags & T5_UI_LIST_ICON_UPDATE) != 0) saw_update_icon = 1;
+            }
         }
         if (chrome->confirm_label && !strcmp(chrome->confirm_label, "Update")) saw_update = 1;
     }
@@ -206,6 +213,7 @@ const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) {
 int main(void) {
     app_main();
     assert(saw_alpha && saw_beta && saw_installed && saw_update);
+    assert(saw_installed_icon && saw_update_icon);
     assert(downloads == 1 && downloaded_index == 1);
     assert(saw_failure_detail);
     assert(saw_download_progress && progress_callbacks == 3);

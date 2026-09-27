@@ -22,7 +22,7 @@ BRIDGE = 'risc_fw_i2c_transact_v1'
 def run():
     manifest = json.loads((SOURCE / 'manifest.json').read_text())
     if (manifest.get('id') != 'i2c-esp32s3-v2' or
-            manifest.get('version') != '0.1.2' or
+            manifest.get('version') != '0.1.4' or
             manifest.get('driver_abi') != 2 or manifest.get('requires') != [] or
             manifest.get('provides') != [{'capability': 'i2c.bus', 'api': 1}] or
             manifest.get('status') != 'experimental-unpublished' or
@@ -59,9 +59,28 @@ def run():
     forbidden = sorted(name for name in unresolved if
                        name.startswith(('i2c_', 'gpio_', 'rtc_gpio_', 'rtc_io_',
                                         'periph_module_', 't5_', 'usb_')))
-    if BRIDGE not in unresolved or forbidden:
-        raise RuntimeError('I2C adapter must import only the private firmware transport, '
-                           'not physical device routines: ' + repr(forbidden))
+    unexpected = sorted(unresolved - {BRIDGE})
+    if BRIDGE not in unresolved or forbidden or unexpected:
+        raise RuntimeError('I2C adapter must import only the private firmware transport; '
+                           'forbidden=' + repr(forbidden) +
+                           ' unexpected=' + repr(unexpected))
+
+    # 0.1.3 introduced zero-initialized atomic state in .bss and triggered an
+    # on-device LoadStoreAlignment panic. 0.1.4 deliberately keeps all mutable
+    # coordination/claim state in the naturally aligned .data image. Verify the
+    # final linked ELF, not just the source spelling.
+    all_symbols = subprocess.check_output([str(nm), '-S', '--size-sort',
+                                           str(output)], text=True)
+    mutable_types = {}
+    for line in all_symbols.splitlines():
+        fields = line.split()
+        if len(fields) >= 4 and fields[-1] in {'state', 'claims', 'next_token'}:
+            mutable_types[fields[-1]] = fields[-2]
+    expected_mutable = {'state', 'claims', 'next_token'}
+    if set(mutable_types) != expected_mutable or any(
+            mutable_types[name] not in {'d', 'D'} for name in expected_mutable):
+        raise RuntimeError('I2C mutable state must remain in .data: ' +
+                           repr(mutable_types))
     symbols = subprocess.check_output([str(readelf), '--dyn-syms', '--wide',
                                        str(output)], text=True)
     exported = {p[7] for line in symbols.splitlines()

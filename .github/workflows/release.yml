@@ -11,6 +11,10 @@ on:
       - "platformio.ini"
       - "Apps/**/*.json"
       - "Drivers/**/manifest.json"
+      - "scripts/publish_updated_packages.py"
+      - "scripts/build_release_candidates.py"
+      - "scripts/build_installed_usb_stack.py"
+      - "scripts/export_canonical_driver_release.py"
   workflow_dispatch:
 
 permissions:

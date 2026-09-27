@@ -3,7 +3,7 @@
 ## Status
 
 This document defines the display migration foundation implemented in firmware
-1.3.7. It follows the hardware ownership contract: the target physical display
+1.3.12. It follows the hardware ownership contract: the target physical display
 implementation is an independently installable provider ELF. The compatibility
 `HalDisplay` backend remains compiled into firmware only during the staged
 migration and is explicitly **CURRENT/LEGACY, NONCOMPLIANT** with the final

@@ -72,12 +72,11 @@ static bool version_available(const t5_app_api_v1 *app) {
         app->installed_app_version_get;
 }
 static void row(uint32_t index, const char *title, const char *subtitle,
-                const char *value, bool highlighted) {
+                const char *value, uint8_t flags) {
     copy_text(titles[index], sizeof(titles[index]), title);
     copy_text(subtitles[index], sizeof(subtitles[index]), subtitle);
     copy_text(values[index], sizeof(values[index]), value);
-    rows[index] = (t5_ui_list_row_t){titles[index], subtitles[index], values[index],
-                    highlighted ? T5_UI_LIST_HIGHLIGHT_VALUE : 0};
+    rows[index] = (t5_ui_list_row_t){titles[index], subtitles[index], values[index], flags};
 }
 static bool release_versions(const t5_app_api_v1 *app, uint32_t index,
                              const t5_app_manifest_t *manifest,
@@ -104,9 +103,12 @@ static void build_releases(const t5_app_api_v1 *app) {
         const char *subtitle = has_manifest && !manifest.compatible ?
             "Requires newer firmware" : current ? "Installed" : installed_now ?
             "Update available" : "Not installed";
+        const uint8_t state_flags = current ? T5_UI_LIST_ICON_INSTALLED :
+            installed_now ? (T5_UI_LIST_HIGHLIGHT_VALUE | T5_UI_LIST_ICON_UPDATE) :
+            T5_UI_LIST_ICON_DOWNLOAD;
         row(row_count, has_manifest ? manifest.display_name : asset.name,
             subtitle, latest[0] ? latest : current ? "Current" :
-            installed_now ? "Update" : "Install", installed_now && !current);
+            installed_now ? "Update" : "Install", state_flags);
         release_indices[row_count++] = index;
     }
 }
@@ -134,7 +136,17 @@ static bool build_inbox(const t5_app_api_v1 *app,
                      info.install_allowed ? "update available" : "no update");
         } else copy_text(detail, sizeof(detail), info.install_allowed ?
             "SD inbox: ready to install" : "Dependency, version or stage blocked");
-        row(row_count, info.id, detail, info.version, info.install_allowed != 0);
+        uint8_t state_flags = 0;
+        if (info.valid_installation) {
+            if (info.installed_version[0]) {
+                state_flags = info.install_allowed ?
+                    (T5_UI_LIST_HIGHLIGHT_VALUE | T5_UI_LIST_ICON_UPDATE) :
+                    T5_UI_LIST_ICON_INSTALLED;
+            } else if (info.install_allowed) {
+                state_flags = T5_UI_LIST_ICON_DOWNLOAD;
+            }
+        }
+        row(row_count, info.id, detail, info.version, state_flags);
         ++row_count;
     }
     app->dir_close();
