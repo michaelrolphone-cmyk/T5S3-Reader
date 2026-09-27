@@ -114,3 +114,37 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+## 2026-09-27 scan — 11:24 MDT
+
+### 13. SD Firmware Update validates the wrong path when launched through File Browser
+
+- **Affected code:** `src/native/NativeSdFirmwareBridge.cpp`, `resolveSelectedPath()` and `validateSelected()`; launch path supplied by `src/native/NativeFileOpenBridge.cpp::activeSourceStoragePath()`.
+- **Trigger / reproduction:** In File Browser, select a valid merged firmware `.bin` file and open it with the registered **SD Firmware Update** handler instead of entering through the Settings-owned firmware picker.
+- **Observed / logically demonstrated failure:** `resolveSelectedPath(path)` correctly falls back to `NativeFileOpenBridge::activeSourceStoragePath(path)` when the bridge-global `selectedPath` is empty, and `validateSelected()` successfully opens that resolved local `path` to obtain its size. The final validation call then ignores the resolved path and calls `firmware_flash::validateImageFile(selectedPath.c_str(), ...)`. In the File Browser handoff flow, `selectedPath` was never populated, so validation receives an empty path and rejects an otherwise valid image. `installSelected()` already uses the resolved local `path.c_str()`, demonstrating the mismatch.
+- **Likely root cause:** The File Browser fallback was added to `resolveSelectedPath()`, but one validation call retained the older bridge-global path instead of using the resolved path consistently.
+- **Impact:** The advertised `.bin` file association for SD Firmware Update can fail deterministically when invoked from File Browser, blocking the installable-app firmware-update workflow introduced when the built-in file browser was retired.
+- **Repair direction:** Pass `path.c_str()` to `validateImageFile()` (or resolve once into a single canonical member used by both validate/install) and add regression coverage for both explicit Settings selection and `activeSourceStoragePath()` file-association handoff.
+
+### 14. MSP programmer can leak its transport/session forever when close-time target release fails
+
+- **Affected code:** `Drivers/program_msp/driver.c`, `close_session()`, `sync_target()`, `release_target()`, and `quiesce()`.
+- **Trigger / reproduction:** Open an MSP programming session successfully, then disconnect the target/probe or otherwise make the close-time `sync_target()` or `release_target()` command fail before calling `program.msp::close()`.
+- **Observed / logically demonstrated failure:** `close_session()` returns immediately when either `sync_target(s)` or `release_target(s)` fails. Those early returns occur before `msp->close(..., s->transport)` and before `*s = (program_session){0}`. The session token therefore remains allocated and its underlying MSP-FET transport is never explicitly closed. `quiesce()` subsequently returns false for any nonzero session token, so the provider can remain non-quiescent and future programming/driver shutdown can be blocked indefinitely after a target-loss error.
+- **Likely root cause:** Target reset/release and host transport cleanup are coupled into one all-or-nothing success path; cleanup is skipped precisely on the error paths where it is most necessary.
+- **Impact:** A cable pull or target communication failure during close can wedge `program.msp` until reboot/reload, retaining provider resources and preventing clean shutdown or later sessions.
+- **Repair direction:** Make target synchronization/release best-effort during close, but always attempt `msp->close()` and retire the local session slot. Preserve/report the first close error separately. Add failure-injection tests for `sync_target()`, `release_target()`, and transport close to prove `quiesce()` eventually succeeds and no session token remains live.
+
+### 15. File Browser destination picker writes past `picker_names` at the root with 97 directories
+
+- **Affected code:** `Apps/file_browser.c`, `PICKER_ENTRIES`, `list_picker_directories()`, and `choose_destination()`.
+- **Trigger / reproduction:** Put at least 97 visible subdirectories in the root of the SD card or mounted USB volume, select a file, choose **Move** or **Copy**, and open the destination picker at that volume root.
+- **Observed / logically demonstrated failure:** `picker_names` has exactly 96 elements. At the root, `choose_destination()` adds only the “Copy/Move here” row, so `directory_start == 1`. `list_picker_directories()` then loops while `count < PICKER_ENTRIES + 2u` (that is, `count < 98`) and stores names at `picker_names[count - offset]`. The 97th directory executes with `count == 97` and `offset == 1`, producing index 96—one past the valid `picker_names[0..95]` range. Both the SD and USB branches share this bound. Non-root folders happen to start at offset 2 because of the parent row, masking the defect there.
+- **Likely root cause:** The row-array capacity (which reserves space for action/parent rows) was reused as the directory-name capacity without accounting for the root having one fewer synthetic row.
+- **Impact:** A large root directory can corrupt adjacent native-app static memory while merely opening the move/copy picker, potentially causing crashes, damaged picker state, or unrelated misbehavior.
+- **Repair direction:** Bound directory insertion by the name-array capacity itself, for example `count - offset < PICKER_ENTRIES`, and separately bound `picker_rows` by its own capacity. Add boundary tests for 96/97 directories at root and non-root on both SD and USB backends.
+
+## Duplicate check performed for this scan
+
+The current `bugs.md`, all current open issues, and the current open PRs (#243, #242, #241, #220, #194, and #96) were checked before recording these entries. Targeted all-state searches found PR #236 for the intended SD Firmware Update/File Browser handoff and PR #215 for the destination picker, but neither documents the path-variable validation defect or the root-only one-past-end write above. Targeted searches found no existing PR/issue for the MSP close-session cleanup failure.
+
