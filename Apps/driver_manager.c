@@ -336,8 +336,15 @@ static bool populate_release(const t5_driver_manager_api_v1 *api) {
         else
             snprintf(descriptions[row_count], sizeof(descriptions[row_count]), "%s - Not installed", entry.capability);
         snprintf(versions[row_count], sizeof(versions[row_count]), "%s", entry.version);
+        uint8_t state_flags = 0;
+        if (action == UPDATE)
+            state_flags = T5_UI_LIST_HIGHLIGHT_VALUE | T5_UI_LIST_ICON_UPDATE;
+        else if (action == CURRENT || action == NEWER)
+            state_flags = T5_UI_LIST_ICON_INSTALLED;
+        else if (action == INSTALL)
+            state_flags = T5_UI_LIST_ICON_DOWNLOAD;
         rows[row_count] = (t5_ui_list_row_t){names[row_count], descriptions[row_count], versions[row_count],
-                         action == UPDATE ? T5_UI_LIST_HIGHLIGHT_VALUE : 0};
+                         state_flags};
         ++row_count;
     }
     return true;
@@ -376,8 +383,18 @@ static bool load_inbox(const t5_app_api_v1 *app, const t5_package_manager_api_v1
             snprintf(descriptions[row_count], sizeof(descriptions[row_count]), "%s",
                      info.install_allowed ? "SD inbox: ready" : "Dependency/version/stage blocked");
         snprintf(versions[row_count], sizeof(versions[row_count]), "%s", info.version);
+        uint8_t state_flags = 0;
+        if (info.valid_installation) {
+            if (info.installed_version[0]) {
+                state_flags = info.install_allowed ?
+                    (T5_UI_LIST_HIGHLIGHT_VALUE | T5_UI_LIST_ICON_UPDATE) :
+                    T5_UI_LIST_ICON_INSTALLED;
+            } else if (info.install_allowed) {
+                state_flags = T5_UI_LIST_ICON_DOWNLOAD;
+            }
+        }
         rows[row_count] = (t5_ui_list_row_t){names[row_count], descriptions[row_count], versions[row_count],
-                         info.install_allowed ? T5_UI_LIST_HIGHLIGHT_VALUE : 0};
+                         state_flags};
         ++row_count;
     }
     app->dir_close();
