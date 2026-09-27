@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
+#include <cstdint>
+#include <cstring>
 
 #include "runtime/memory/PsramBuffer.h"
 
@@ -60,6 +62,56 @@ class PsramTextStream final : public Stream {
   PsramBuffer buffer_;
   size_t capacity_ = 0;
   size_t length_ = 0;
+  bool failed_ = false;
+};
+
+// Grow metadata in PSRAM as needed. Allocation failure stops the HTTP transfer
+// cleanly; no fixed catalog byte ceiling or fallback into internal TLS memory.
+class PsramGrowingTextStream final : public Stream {
+ public:
+  PsramGrowingTextStream() = default;
+  ~PsramGrowingTextStream() override { if (data_) heap_caps_free(data_); }
+  PsramGrowingTextStream(const PsramGrowingTextStream&) = delete;
+  PsramGrowingTextStream& operator=(const PsramGrowingTextStream&) = delete;
+
+  size_t write(uint8_t byte) override { return write(&byte, 1); }
+  size_t write(const uint8_t* bytes, size_t count) override {
+    if (!bytes || failed_ || count > SIZE_MAX - length_ - 1) {
+      failed_ = true;
+      return 0;
+    }
+    const size_t required = length_ + count + 1;
+    if (required > capacity_) {
+      size_t next = capacity_ ? capacity_ : 4096;
+      while (next < required) {
+        if (next > SIZE_MAX / 2) { next = required; break; }
+        next *= 2;
+      }
+      void* grown = heap_caps_realloc(data_, next, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+      if (!grown) { failed_ = true; return 0; }
+      data_ = static_cast<char*>(grown);
+      capacity_ = next;
+    }
+    std::memcpy(data_ + length_, bytes, count);
+    length_ += count;
+    data_[length_] = '\0';
+    return count;
+  }
+
+  int available() override { return 0; }
+  int read() override { return -1; }
+  int peek() override { return -1; }
+  void flush() override {}
+
+  bool good() const { return !failed_; }
+  bool empty() const { return length_ == 0; }
+  const char* chars() const { return data_; }
+  size_t size() const { return length_; }
+
+ private:
+  char* data_ = nullptr;
+  size_t length_ = 0;
+  size_t capacity_ = 0;
   bool failed_ = false;
 };
 
