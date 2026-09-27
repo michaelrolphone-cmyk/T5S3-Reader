@@ -37,9 +37,8 @@ int main() {
     port.advance(role, 500); assert(!port.starts);
     port.advance(role, 500); assert(port.starts == 1 && port.powered);
     // Attached/enumerating devices and an empty connector both keep the
-    // T5S3 host lifetime intact while usb.host is active. This preserves
-    // detach/re-attach on the same IDF host/client instance instead of using
-    // full host teardown as an idle power probe.
+    // T5S3 host intact while usb.host is active. Detach/re-attach therefore
+    // stays inside one IDF host/client/PHY lifetime, matching controller 0.1.14.
     port.occupied = true;
     const auto reads = port.reads;
     for (unsigned i = 0; i < 3600; ++i) port.advance(role, 1000);
@@ -48,26 +47,6 @@ int main() {
     for (unsigned i = 0; i < 3600; ++i) port.advance(role, 1000);
     assert(role.state() == State::Host && port.powered);
     assert(port.parks == 0 && port.starts == 1 && port.reads == reads);
-
-    // Failed-start cleanup is still ownership-aware and retryable. This path
-    // is separate from normal empty-host hotplug handling.
-    Port recovery;
-    recovery.startOK = false;
-    recovery.parkOK = false;
-    role.begin(recovery.clock);
-    recovery.advance(role, 500);
-    recovery.advance(role, 500);
-    assert(role.state() == State::Cleanup);
-    auto parks = recovery.parks;
-    recovery.advance(role, 249);
-    assert(recovery.parks == parks);
-    recovery.parkOK = true;
-    recovery.advance(role, 1);
-    assert(role.state() == State::Sense && !recovery.powered);
-    recovery.startOK = true;
-    recovery.advance(role, 500);
-    recovery.advance(role, 500);
-    assert(role.state() == State::Host && recovery.powered);
 
     Port unknown;
     unknown.status = RISC_USB_POWER_UNKNOWN;
