@@ -5,7 +5,7 @@
 #include <string.h>
 void app_main(void);
 static int ticks, scenario, launched, labels, writes, highlight_rects;
-static int selection_underlines, edit_button_rects, edit_labels, forbidden_labels, apps_titles, page_dot_rects;
+static int selection_underlines, edit_button_rects, edit_labels, edit_label_y, forbidden_labels, apps_titles, page_dot_rects;
 static int white_icon_calls;
 static int tone_white_calls, tone_light_calls, tone_dark_calls, tone_black_calls;
 static uint32_t chosen;
@@ -52,7 +52,7 @@ static void tone_rect(int32_t x,int32_t y,int32_t w,int32_t h,int32_t radius,uin
 static void label(int32_t x,int32_t y,int32_t w,const char *s) {
   assert(x>=0 && x+w<=540 && y<960); labels++;
   if (!s) return;
-  if (!strcmp(s,"EDIT") || !strcmp(s,"DONE")) edit_labels++;
+  if (!strcmp(s,"EDIT") || !strcmp(s,"DONE")) { edit_labels++; edit_label_y=y; }
   if (!strcmp(s,"< Previous") || !strcmp(s,"Next >") ||
       strstr(s,"Tap app:") || strstr(s,"Tap apps to add/remove")) forbidden_labels++;
 }
@@ -107,6 +107,7 @@ int main(void) {
   for(scenario=0;scenario<6;scenario++) {
     ticks=launched=labels=writes=highlight_rects=0;
     selection_underlines=edit_button_rects=edit_labels=forbidden_labels=apps_titles=page_dot_rects=0;
+    edit_label_y=-1;
     white_icon_calls=0;
     tone_white_calls=tone_light_calls=tone_dark_calls=tone_black_calls=0;
     chosen=0; saved_size=0; app_main();
@@ -126,6 +127,7 @@ int main(void) {
     assert(forbidden_labels==0);
     assert(edit_button_rects>0);
     assert(edit_labels>0);
+    assert(edit_label_y==19);
     assert(page_dot_rects>0);
     if (scenario != 3) {
       assert(white_icon_calls>0);
