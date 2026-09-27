@@ -30,6 +30,9 @@ class FileBrowserRetirementContract(unittest.TestCase):
         self.assertIn('resolveInstalledAppPath("file_browser.elf"', SD_UPDATE)
         self.assertIn('"Select a .bin file to update firmware."', SD_UPDATE)
         self.assertIn("RequiredAppActivity", SD_UPDATE)
+        self.assertIn("installedUpdaterHasBinAssociation", SD_UPDATE)
+        self.assertIn("updaterInstalled)", SD_UPDATE)
+        self.assertIn("NativeFileAssociations::rebuild()", SD_UPDATE)
 
     def test_recovery_keeps_only_a_bin_picker(self):
         self.assertIn("loadRecoveryEntries()", SD_UPDATE)
