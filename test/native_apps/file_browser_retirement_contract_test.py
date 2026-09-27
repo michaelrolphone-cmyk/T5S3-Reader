@@ -18,9 +18,12 @@ class FileBrowserRetirementContract(unittest.TestCase):
     def test_general_firmware_file_browser_is_removed(self):
         self.assertFalse((ROOT / "src/activities/home/FileBrowserActivity.cpp").exists())
         self.assertFalse((ROOT / "src/activities/home/FileBrowserActivity.h").exists())
-        self.assertNotIn("FileBrowserActivity", ACTIVITY_MANAGER_CPP)
-        self.assertNotIn("goToFileBrowser", ACTIVITY_MANAGER_CPP)
-        self.assertNotIn("goToFileBrowser", ACTIVITY_MANAGER_H)
+        for path in (ROOT / "src").rglob("*"):
+            if path.suffix not in {".cpp", ".h"}:
+                continue
+            text = path.read_text(encoding="utf-8")
+            self.assertNotIn("FileBrowserActivity", text, str(path))
+            self.assertNotIn("goToFileBrowser", text, str(path))
 
     def test_settings_firmware_update_delegates_to_file_browser_app(self):
         self.assertNotIn("FileBrowserActivity", SD_UPDATE)
