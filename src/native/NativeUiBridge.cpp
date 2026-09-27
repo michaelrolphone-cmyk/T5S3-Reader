@@ -12,6 +12,7 @@
 
 #include "MappedInputManager.h"
 #include "NativeAppHost.h"
+#include "components/FontAwesomeIcons.h"
 #include "activities/ActivityManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -31,6 +32,13 @@ HitLayout hitLayout;
 std::unique_ptr<ButtonNavigator> navigator;
 
 const char* safe(const char* value) { return value ? value : ""; }
+
+const char* listStateIcon(uint8_t flags) {
+  if (flags & T5_UI_LIST_ICON_UPDATE) return "solid:f021";
+  if (flags & T5_UI_LIST_ICON_INSTALLED) return "solid:f00c";
+  if (flags & T5_UI_LIST_ICON_DOWNLOAD) return "solid:f019";
+  return nullptr;
+}
 
 bool active() { return t5_app_get_api(T5_APP_ABI_VERSION) != nullptr; }
 
@@ -118,11 +126,25 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
   GUI.drawList(*r, content, static_cast<int>(rowCount), selectedIndex,
                [rows](int i) { return std::string(safe(rows[i].title)); }, subtitleFn, nullptr, valueFn,
                highlightValue);
-  drawChrome(*r, *in, chrome);
 
   const int rowHeight = hasSubtitle ? metrics.listWithSubtitleRowHeight : metrics.listRowHeight;
   const int pageItems = std::max(1, content.height / std::max(1, rowHeight));
   const int selected = rowCount ? std::clamp(selectedIndex, 0, static_cast<int32_t>(rowCount) - 1) : 0;
+  const int pageStart = rowCount ? (selected / pageItems) * pageItems : 0;
+  const int pageEnd = std::min(static_cast<int>(rowCount), pageStart + pageItems);
+  const int contentWidth = content.width - 5;
+  for (int i = pageStart; i < pageEnd; ++i) {
+    const char* icon = listStateIcon(rows[i].flags);
+    if (!icon) continue;
+    const int valueWidth = rows[i].value && rows[i].value[0]
+        ? BaseTheme::getTextWidthForRole(*r, UI_10_FONT_ID, TextRole::System, rows[i].value)
+        : 0;
+    const int iconX = content.x + contentWidth - metrics.contentSidePadding - valueWidth - 20;
+    const int iconY = content.y + (i % pageItems) * rowHeight - 1;
+    FontAwesomeIcons::draw(*r, iconX, iconY, icon, 16, i != selectedIndex);
+  }
+
+  drawChrome(*r, *in, chrome);
   hitLayout.headerBottom = metrics.topPadding + metrics.headerHeight;
   hitLayout.rowTop = content.y;
   hitLayout.rowHeight = rowHeight;
