@@ -114,3 +114,37 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+
+## 2026-09-27 scan — 07:25 MDT
+
+### 13. App Store hides valid release-catalog entries after the first 64
+
+- **Affected code:** `Apps/app_store.c`, `MAX_ROWS` and `build_releases()`; upstream catalog limits are in `src/native/AppCatalogIndex.cpp` and `scripts/build_all_apps.py`.
+- **Trigger / reproduction:** Expose an authoritative app catalog containing more than 64 valid applications, open the App Store release view, and look for an application that sorts after the first 64 entries.
+- **Observed / logically demonstrated failure:** The authoritative catalog and build tooling accept up to 128 entries and `app_catalog_count()` returns the full count. The App Store UI allocates `MAX_ROWS == 64` and `build_releases()` stops when `row_count` reaches that limit. There is no pagination or truncation notice, so catalog entries 65–128 cannot be selected from the release view.
+- **Likely root cause:** Catalog capacity was raised from 64 to 128 without updating the fixed App Store row window.
+- **Impact:** Valid published applications or updates can disappear from the App Store based solely on sort order.
+- **Repair direction:** Page or window over the full catalog, keep `release_indices[]` scoped to the visible page, show page state, and test a catalog with at least 65 entries.
+
+### 14. An unconsumed System UI result blocks later keyboard and Wi-Fi requests
+
+- **Affected code:** `src/native/NativeSystemUiBridge.cpp`: `keyboardState`, `wifiState`, `hasUnreadResult()`, `keyboardRequest()`, `wifiRequest()`, the two wrapper activity `loop()` methods, and `nativeSystemUiBegin()`.
+- **Trigger / reproduction:** App A requests keyboard or Wi-Fi UI and returns. After the firmware activity completes and A is relaunched, make A return before consuming the pending result. Then launch app B and have it request keyboard or Wi-Fi UI.
+- **Observed / logically demonstrated failure:** The wrapper marks a global result available before relaunching A. A successful relaunch does not clear it, and normal app teardown also leaves it intact because `nativeSystemUiBegin()` resets only `navigation`. Both request functions reject while `hasUnreadResult()` is true, so one abandoned result prevents unrelated later apps from opening either shared UI.
+- **Likely root cause:** Pending continuation results are global and are not bound to the requesting native-app invocation or cleaned up when that resumed invocation ends.
+- **Impact:** An early-return or error path in one app can make keyboard entry and Wi-Fi selection unavailable to other apps until the stale result is consumed or the device restarts.
+- **Repair direction:** Bind each pending result to a request/session generation, allow only the resumed owner to consume it, and clear an unread result when that resumed invocation ends or a different app begins. Add a cross-app lifecycle regression.
+
+### 15. OPDS load failures expose stale servers from the previous successful load
+
+- **Affected code:** `src/OpdsServerStore.cpp::loadFromFile()`, `src/JsonSettingsIO.cpp::loadOpds()`, and `src/native/NativeOpdsBridge.cpp::countServers()` / `readServer()`.
+- **Trigger / reproduction:** Successfully load one or more OPDS servers, then make `/.crosspoint/opds.json` unreadable, empty, truncated, or malformed and call the native OPDS count/read path again.
+- **Observed / logically demonstrated failure:** On malformed JSON, `loadOpds()` returns before clearing the existing server vector. On an empty or failed file read, `loadFromFile()` also returns false without invalidating the prior vector. The native bridge ignores that false return and reports `getCount()` or `getServer(index)`, so callers receive the previous server data as though the reload succeeded.
+- **Likely root cause:** Reload failure leaves an old in-memory snapshot marked implicitly usable, and the bridge does not propagate load failure.
+- **Impact:** After storage corruption or removal, the UI can continue presenting and using obsolete OPDS endpoints and account data that are no longer backed by valid persistent state.
+- **Repair direction:** Parse into temporary state and publish it only after a successful complete load, or invalidate the live cache on failure. Make native count/read calls honor load failure. Add a regression that loads valid data, injects malformed/empty/read-failed storage, and verifies no old server is returned.
+
+## Duplicate check performed for this scan
+
+The current `bugs.md`, open PRs #241, #220, #194, and #96, the empty open-issue set, and targeted all-state PR/issue searches were checked before recording these findings. Closed PR #54 raised the release-catalog capacity from 64 to 128 but did not add App Store pagination. Targeted searches found no existing PR or issue describing the stale System UI-result or OPDS stale-load failures.
