@@ -72,9 +72,13 @@ generic_start = serial.index('#if RISCRTE_INSTALLED_SERIAL_PATH\nbool installedL
 generic_end = serial.index('\n#else\nbool leaseRevoked()', generic_start)
 generic = serial[generic_start:generic_end]
 for required in ('installedSerial.resolve(', 'installedSession.bind(',
-                 'installedSession.open(', 'nativeStreamOpenSerialPair(',
+                 'installedSession.open(', 'installedSession.hasEndpoints()',
+                 'installedSession.endpoints(', 'installedSerial.attachEndpoint(',
+                 'T5_SERIAL_UNSUPPORTED', 'T5_SERIAL_DENIED',
                  'RuntimeDevices::systemRegistry().acquire('):
     assert required in generic, f'missing production semantic serial step: {required}'
+assert 'nativeStreamOpenSerialPair(' not in generic, (
+    'installed serial.port still opens a compiled shuttle pair')
 for forbidden in ('nativeUsbClass', 'nativeStreamOpenUsbPair(',
                   'UsbSerialProjection', 'devices.resolve('):
     assert forbidden not in generic, f'USB-specific production serial path: {forbidden}'

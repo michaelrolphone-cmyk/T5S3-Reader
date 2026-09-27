@@ -2,6 +2,20 @@
 
 [PR #96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) on `impl/u1-riscrte` is the **only** implementation PR/branch. `AGENTS.md`, [USB remediation](USB_CONTRACT_VIOLATION_REMEDIATION.md), [execution order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [claim-scoped USB control](U1_USB_CONTROL_SCOPE_IMPLEMENTATION.md) and [package identity](PACKAGE_IDENTITY_VERSION_POLICY.md) govern the work. Owner controls merge, tag, release, flash and hardware qualification. A committed test is not a PASS.
 
+## September 27: source-guard matches endpoints-only acquire
+
+Host parser and build-experimental both failed at `f711e0b9` on
+`test/drivers/usb_dynamic_selection_source_test.py`: the production
+`installedAcquirePort` slice no longer calls `nativeStreamOpenSerialPair(`,
+but the source-guard still required that compiled shuttle step.
+
+The guard now requires `hasEndpoints` / `endpoints` / `attachEndpoint` and
+the fail-closed `T5_SERIAL_UNSUPPORTED` / `T5_SERIAL_DENIED` results, and
+forbids `nativeStreamOpenSerialPair(` inside the installed `#if` slice.
+`nativeStreamOpenSerialPair` remains a compatibility symbol in stream p3
+and `usbAcquirePort`. Local rerun of the source-guard prints PASS. No
+production serial path change in this follow-up.
+
 ## September 27: endpoints-only serial.port acquire on merged master `9f687c35`
 
 PR head `bffb0f57` already parents U1 `332753ce` and master `9f687c35` (PSRAM catalogs, model-viewer, boot reveal, firmware 1.3.21). Merge-base equals current master; GitHub reports the PR mergeable. This follow-up does not reopen U2–U4.
