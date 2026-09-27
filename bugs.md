@@ -114,3 +114,37 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+## 2026-09-27 scan — 01:25 MDT
+
+### 13. 3D Model Viewer can remain stuck on the loading frame when its first model render loses the video-submit race
+
+- **Affected code:** `Apps/model_viewer.c`, `mv_message()`, `mv_render()`, and `app_main()`; `src/native/NativeVideoBridge.cpp`, `epd_video_can_submit()` / `epd_video_submit()`.
+- **Trigger / reproduction:** Open a small, fast-to-parse OBJ/STL from File Browser so model loading and touch setup complete before the asynchronous raw-EPD scan task has consumed the preceding **LOADING MODEL** frame. This is easiest to provoke with a tiny model immediately after launch.
+- **Observed / logically demonstrated failure:** `mv_message("LOADING MODEL", ...)` only waits until `submit()` accepts the loading frame; it does not wait for that queued flip to be consumed. The video bridge reports `can_submit() == false` while `g_flip_req` is still set. After loading, `app_main()` explicitly sets `g_need_refine = false` and calls `(void)mv_render(false)` exactly once. If that call sees the still-pending loading flip, `mv_render()` returns `false`; the result is ignored and no idle retry is scheduled. With no subsequent touch/button interaction, the loading frame can therefore remain displayed indefinitely even though the model is loaded and the event loop is running.
+- **Likely root cause:** The first model frame is treated as fire-and-forget even though the video API is intentionally nonblocking and can reject a submit while a previous flip is queued.
+- **Impact:** Valid small models can appear to hang on **LOADING MODEL**, misleading the user into thinking parsing or the app has frozen; only later interaction may cause a render.
+- **Repair direction:** Treat a failed initial `mv_render(false)` as pending work: leave/set `g_need_refine = true` and retry when `can_submit()` becomes available, or use `pending()` / frame-counter synchronization before the first model render. Never clear the refine/retry flag until a render actually submits successfully. Add a test/fake video API that rejects the first post-loading submit and verify the viewer retries without user input.
+
+### 14. Web Server can emit multiple HTTP responses after a mid-file SD read failure
+
+- **Affected code:** `src/native/NativeWebServerBridge.cpp`, `streamFile(String path)` and `handleHttpRequest()`.
+- **Trigger / reproduction:** Request an existing portal file and cause the SD read to fail or terminate early after at least part of the file has been read, for example from a transient card I/O failure after the HTTP headers have been sent.
+- **Observed / logically demonstrated failure:** `streamFile()` sends `200`, `Content-Length`, and the response headers before streaming the file body. If a later `file.read()` returns `<= 0` before `sent == total`, the function returns `false` even though a 200 response and partial body have already been transmitted. `handleHttpRequest()` interprets `false` as “file not found”, tries a second `/index.html` path, and can finally call `send(404, ...)` on the same request. The client can receive a truncated 200 body followed by bytes or headers from another response, violating the advertised Content-Length and corrupting the HTTP transaction.
+- **Likely root cause:** `streamFile()` uses one boolean to mean both “nothing was served, try another path” and “serving started but failed partway through”.
+- **Impact:** SD read faults can produce malformed HTTP responses, confusing captive-portal and browser clients and potentially causing mixed response data to be parsed or cached.
+- **Repair direction:** Distinguish **not opened/not found** from **response started then failed**, for example with a tri-state result. Once headers or body transmission starts, never attempt another route or send a second status for that request; terminate the client connection on a short read and log the transfer failure. Add a fault-injected short-read test that proves no fallback 404 or second response is emitted after a 200 begins.
+
+### 15. USB Debug log filenames collide for distinct same-model devices that expose no serial number
+
+- **Affected code:** `Apps/usb_debug.c`, `make_identifier()` and `save_report()`.
+- **Trigger / reproduction:** Attach two distinct USB devices with the same VID/PID and no USB serial string. Inspect each device and choose **Save Log**.
+- **Observed / logically demonstrated failure:** `make_identifier()` produces `usb_<VID>_<PID>_<serial>` only when a serial string is present; otherwise every device with that VID/PID receives exactly `usb_<VID>_<PID>`. `save_report()` then uses only that identifier in `/sd/usb-debug/<identifier>.txt`. Two simultaneously attached, physically distinct devices can therefore never receive distinct log paths: a later save targets the same file as the first, either replacing the earlier report under the storage implementation or making the second save fail if replacement is refused.
+- **Likely root cause:** The human-readable VID/PID fallback is being used as a unique per-device persistence key even though VID/PID identifies a product model, not a device instance.
+- **Impact:** USB-debug evidence can be lost or attributed to the wrong physical device precisely in multi-device or hub debugging, where separate reports are most important.
+- **Repair direction:** Keep the VID/PID/serial prefix for readability but append a stable per-session disambiguator when serial is absent, such as the generation-qualified host token or a deterministic ordinal derived from the current device snapshot. Ensure repeated saves for one selected device use the same name while two distinct active tokens cannot collide. Add a regression test with two no-serial devices sharing VID/PID.
+
+## Duplicate check performed for this scan
+
+These defects were checked against the current `bugs.md`, the repository's current open issue set, and the current open PR set. Open PR #241 covers making 3D Model Viewer touch optional and unwinding partial touch-provider acquisition; it does not address the failed first video-submit/retry path above. Targeted searches for the 3D loading/render race, Web Server partial-stream handling, and USB Debug identifier/log collisions returned no matching open issue or PR.
+
