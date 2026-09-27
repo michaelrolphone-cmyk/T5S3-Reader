@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Lock retirement of the firmware-native general file browser."""
+
+import json
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+ACTIVITY_MANAGER_CPP = (ROOT / "src/activities/ActivityManager.cpp").read_text(encoding="utf-8")
+ACTIVITY_MANAGER_H = (ROOT / "src/activities/ActivityManager.h").read_text(encoding="utf-8")
+SD_UPDATE = (ROOT / "src/activities/settings/SdFirmwareUpdateActivity.cpp").read_text(encoding="utf-8")
+SD_BRIDGE = (ROOT / "src/native/NativeSdFirmwareBridge.cpp").read_text(encoding="utf-8")
+FILE_OPEN = (ROOT / "src/native/NativeFileOpenBridge.cpp").read_text(encoding="utf-8")
+MANIFEST = json.loads((ROOT / "Apps/sd_firmware_update.json").read_text(encoding="utf-8"))
+
+
+class FileBrowserRetirementContract(unittest.TestCase):
+    def test_general_firmware_file_browser_is_removed(self):
+        self.assertFalse((ROOT / "src/activities/home/FileBrowserActivity.cpp").exists())
+        self.assertFalse((ROOT / "src/activities/home/FileBrowserActivity.h").exists())
+        self.assertNotIn("FileBrowserActivity", ACTIVITY_MANAGER_CPP)
+        self.assertNotIn("goToFileBrowser", ACTIVITY_MANAGER_CPP)
+        self.assertNotIn("goToFileBrowser", ACTIVITY_MANAGER_H)
+
+    def test_settings_firmware_update_delegates_to_file_browser_app(self):
+        self.assertNotIn("FileBrowserActivity", SD_UPDATE)
+        self.assertIn('resolveInstalledAppPath("file_browser.elf"', SD_UPDATE)
+        self.assertIn('"Select a .bin file to update firmware."', SD_UPDATE)
+        self.assertIn("RequiredAppActivity", SD_UPDATE)
+
+    def test_recovery_keeps_only_a_bin_picker(self):
+        self.assertIn("loadRecoveryEntries()", SD_UPDATE)
+        self.assertIn('FsHelpers::checkFileExtension(std::string_view{name}, ".bin")', SD_UPDATE)
+        self.assertNotIn('checkFileExtension(std::string_view{name}, ".elf")', SD_UPDATE)
+
+    def test_bin_files_are_associated_with_sd_firmware_update(self):
+        self.assertEqual(MANIFEST["version"], "1.0.1")
+        self.assertIn(".bin", MANIFEST["supported_file_types"])
+
+    def test_sd_firmware_bridge_accepts_file_open_handoff(self):
+        self.assertIn("NativeFileOpenBridge.h", SD_BRIDGE)
+        self.assertIn("NativeFileOpenBridge::activeSourceStoragePath(out)", SD_BRIDGE)
+        self.assertIn("activeSourceStoragePath(std::string& out)", FILE_OPEN)
+
+
+if __name__ == "__main__":
+    unittest.main()
