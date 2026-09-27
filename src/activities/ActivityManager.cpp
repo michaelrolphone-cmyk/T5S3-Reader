@@ -5,6 +5,7 @@
 #include "CrossPointSettings.h"
 #include "GlobalMenuActivity.h"
 #include "OpdsServerStore.h"
+#include "components/StartupScreen.h"
 #include "native/NativeSerialPortBridge.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
@@ -245,6 +246,12 @@ void ActivityManager::goToBrowser() {
 }
 
 void ActivityManager::goToReader(std::string path, const HalDisplay::RefreshMode replaceRefreshMode) {
+  // A resume-reader boot has no Home render to finish the one-shot splash.
+  // Release the raw EPD video owner before constructing or entering Reader.
+  if (!currentActivity) {
+    RenderLock lock;
+    StartupScreen::finishBoot(renderer);
+  }
   replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path), replaceRefreshMode),
                   replaceRefreshMode);
 }
