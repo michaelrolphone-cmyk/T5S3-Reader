@@ -114,3 +114,31 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+
+### 13. Serial Monitor loses active line coding across keyboard handoff
+
+- **Affected code:** `Apps/serial_monitor_implementation.inc` in `app_main()`, Send, Custom baud, `acquire_serial_session()`, and keyboard result handling; `src/native/NativeSystemUiBridge.cpp` in `NativeKeyboardActivity::loop()`.
+- **Trigger / reproduction:** Configure a non-default serial format, then use Send with the firmware keyboard. Also test changing parity or stop bits followed by Custom baud entry.
+- **Observed / logically demonstrated failure:** Serial Monitor releases the serial session and returns for keyboard entry. The firmware later starts a fresh `app_main()`; it initializes and acquires at 115200/8/N/1 before reading the keyboard continuation. Send therefore uses the reset line coding. Custom baud changes only the baud on that reset configuration and loses the other prior settings.
+- **Likely root cause:** The complete `t5_serial_config_t` is local state and is not preserved across the keyboard continuation.
+- **Impact:** Data can be sent with serial parameters different from the user's selected configuration.
+- **Repair direction:** Persist the complete line coding across keyboard handoff and restore it before reacquiring. Test non-default configurations through both Send and Custom baud continuations.
+
+### 14. Time Card records January 1, 1970 when the clock read fails
+
+- **Affected code:** `Apps/timecard.c` in `today()`, `now_minutes()`, and `punch_today()`.
+- **Trigger / reproduction:** Make `system_api->local_datetime()` return false, then activate Clock in, Lunch start, Lunch end, or Clock out.
+- **Observed / logically demonstrated failure:** `today()` returns `19700101` on failure and `now_minutes()` returns `0`. `punch_today()` treats both as real values and can persist a punch for January 1, 1970 at 12:00 AM.
+- **Likely root cause:** Clock-read failure is represented by valid date/time values rather than propagated to the caller.
+- **Impact:** A transient clock failure can silently create a bogus historical punch and corrupt time-card history/totals.
+- **Repair direction:** Read one `t5_local_datetime_t` snapshot and refuse the punch if it fails. Derive both date and minutes from the successful snapshot, and test that failed clock reads create no record.
+
+### 15. App Store silently hides applications after row 64
+
+- **Affected code:** `Apps/app_store.c`: `MAX_ROWS`, `build_releases()`, and `build_inbox()`; online catalog capacity in `src/native/NativeAppHost.cpp`.
+- **Trigger / reproduction:** Load more than 64 valid application releases or place more than 64 valid app package directories in `/sd/Packages/Inbox`.
+- **Observed / logically demonstrated failure:** App Store has fixed 64-row storage and stops adding entries at that limit. The firmware catalog can expose up to 128 assets. There is no pagination or truncation indicator, so later valid applications are invisible.
+- **Likely root cause:** A fixed render buffer is also used as the complete catalog model.
+- **Impact:** Valid applications beyond the first 64 cannot be discovered, installed, updated, or managed through App Store.
+- **Repair direction:** Page or virtualize over the provider's full count and keep a catalog index per visible row. Add tests at 65 and 128 online entries and more than 64 inbox entries.
