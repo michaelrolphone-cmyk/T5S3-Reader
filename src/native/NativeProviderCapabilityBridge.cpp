@@ -40,7 +40,10 @@ uint32_t owner() {
 
 // The validated sidecar acts as a bounded development-time allowlist. This is
 // not signed app admission, or a replacement for the future trusted picker.
-bool declaredOptional(const char* capability, uint32_t version) {
+// Both mandatory and optional capability declarations authorize requesting the
+// provider interface; the difference between them is launch gating, not access
+// to a different provider API.
+bool declaredCapability(const char* capability, uint32_t version) {
     const char* path = native_app_current_path();
     if (!path || std::strncmp(path, "/sd/", 4) != 0 || !capability || !version ||
         !RuntimeDevices::validCapabilityName(capability)) return false;
@@ -54,15 +57,22 @@ bool declaredOptional(const char* capability, uint32_t version) {
     const String json = Storage.readFile(filename.c_str());
     if (!json.length() || json.length() > 2048) return false;
     JsonDocument doc;
-    if (deserializeJson(doc, json) || !doc["optional"].is<JsonArray>()) return false;
-    for (JsonVariantConst item : doc["optional"].as<JsonArrayConst>()) {
-        if (!item.is<JsonObjectConst>() || !item["capability"].is<const char*>() ||
-            !item["api"].is<const char*>()) continue;
-        const char* name = item["capability"].as<const char*>();
-        uint16_t minimum = 0;
-        if (std::strcmp(name, capability) == 0 &&
-            RuntimeDevices::parseMinimumApi(item["api"].as<const char*>(), &minimum) &&
-            version >= minimum) return true;
+    if (deserializeJson(doc, json)) return false;
+
+    const char* keys[] = {"requires", "optional"};
+    for (const char* key : keys) {
+        const JsonVariantConst value = doc[key];
+        if (value.isNull()) continue;
+        if (!value.is<JsonArrayConst>()) return false;
+        for (JsonVariantConst item : value.as<JsonArrayConst>()) {
+            if (!item.is<JsonObjectConst>() || !item["capability"].is<const char*>() ||
+                !item["api"].is<const char*>()) continue;
+            const char* name = item["capability"].as<const char*>();
+            uint16_t minimum = 0;
+            if (std::strcmp(name, capability) == 0 &&
+                RuntimeDevices::parseMinimumApi(item["api"].as<const char*>(), &minimum) &&
+                version >= minimum) return true;
+        }
     }
     return false;
 }
@@ -130,8 +140,8 @@ bool acquire(const char* capability, uint32_t version,
     errorOwner = invocation;
     error[0] = 0;
     if (!token || !interface) return fail("Invalid capability request");
-    if (!declaredOptional(capability, version))
-        return fail("App JSON missing/invalid optional capability declaration");
+    if (!declaredCapability(capability, version))
+        return fail("App JSON missing/invalid capability declaration");
     Slot* available = nullptr;
     for (auto& slot : active) {
         if (!slot.owner && !available) available = &slot;
