@@ -631,6 +631,35 @@
       "version": "1.1.0"
     },
     {
+      "asset": "risc_strike.elf",
+      "id": "risc_strike",
+      "kind": "app",
+      "manifest": {
+        "category": [
+          "Games",
+          "3D"
+        ],
+        "display_name": "Risc Strike",
+        "file_name": "risc_strike.elf",
+        "icon": "solid:f05b",
+        "min_firmware_version": "1.3.18",
+        "optional": [
+          {
+            "api": ">=1",
+            "capability": "usb.xinput.gamepad"
+          }
+        ],
+        "sha256": "0d51c30608fe70b4c028cd64961006c9b295fc9c859930e42c21c76716d32bd8",
+        "size_bytes": 18828,
+        "version": "1.0.0"
+      },
+      "sha256": "0d51c30608fe70b4c028cd64961006c9b295fc9c859930e42c21c76716d32bd8",
+      "size": 18828,
+      "tag": "app-risc_strike-v1.0.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-risc_strike-v1.0.0/risc_strike.elf",
+      "version": "1.0.0"
+    },
+    {
       "asset": "rom_manager.elf",
       "id": "rom_manager",
       "kind": "app",
