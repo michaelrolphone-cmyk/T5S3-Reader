@@ -8,9 +8,9 @@ namespace FontAwesomeIcons {
 // family from the standard /.fonts or /fonts SD roots and their glyph bitmaps
 // are drawn directly rather than registered as normal UI text fonts.
 // Missing fonts/glyphs draw an outlined placeholder and return false.
-bool draw(GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSize = 18, bool black = true);
+bool draw(const GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSize = 18, bool black = true);
 // Menu-only helper for app shortcuts. Uses the authored Font Awesome Regular
 // face for an outline-style icon and never falls back to Solid.
-bool drawRegular(GfxRenderer& renderer, int x, int y, const char* icon,
+bool drawRegular(const GfxRenderer& renderer, int x, int y, const char* icon,
                  uint8_t pointSize = 12, bool black = true);
 }

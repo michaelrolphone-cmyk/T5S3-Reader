@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 void app_main(void);
-static int ticks, scenario, launched, labels, writes;
+static int ticks, scenario, launched, labels, writes, highlight_rects;
 static uint32_t chosen;
 static char saved[4096];
 static size_t saved_size;
@@ -14,6 +14,7 @@ static void clear(void) {}
 static void text(int32_t x,int32_t y,const char *s) { (void)x;(void)y;(void)s; }
 static void rect(int32_t x,int32_t y,int32_t w,int32_t h,bool b) {
   (void)b; assert(x>=0 && y>=0 && x+w<=540 && y+h<=960);
+  if (w > 100 && y >= 80 && y < 200) highlight_rects++;
 }
 static void present(bool full) { (void)full; }
 static uint32_t now_ms(void) { return (uint32_t)ticks * 20u; }
@@ -40,7 +41,11 @@ static bool poll(t5_app_input_t *in,uint32_t wait) {
     if (ticks==2) in->buttons=T5_APP_BUTTON_CONFIRM;
   }
   if (scenario==2) in->buttons=T5_APP_BUTTON_CONFIRM;
-  if (scenario==4 && ticks==1) { in->tapped=true; in->touch_x=270; in->touch_y=940; }
+  if (scenario==4) {
+    if (ticks==1) { in->tapped=true; in->touch_x=270; in->touch_y=940; }
+    if (ticks==2) { in->tapped=true; in->touch_x=40; in->touch_y=110; }
+    if (ticks==3) { in->tapped=true; in->touch_x=270; in->touch_y=940; }
+  }
   return true;
 }
 static bool storage_exists(const char *path) {
@@ -74,7 +79,7 @@ static const t5_app_api_v1 api={.abi_version=1,.struct_size=sizeof(t5_app_api_v1
 const t5_app_api_v1 *t5_app_get_api(uint32_t v) { assert(v==1); return &api; }
 int main(void) {
   for(scenario=0;scenario<5;scenario++) {
-    ticks=launched=labels=writes=0; chosen=0; saved_size=0; app_main();
+    ticks=launched=labels=writes=highlight_rects=0; chosen=0; saved_size=0; app_main();
     if(scenario==0) assert(launched==1 && chosen==1);
     if(scenario==1) assert(launched==1 && chosen==15);
     if(scenario==2 || scenario==3 || scenario==4) assert(launched==0);
@@ -82,6 +87,7 @@ int main(void) {
       assert(writes==1);
       assert(saved_size==strlen("app0.elf\n"));
       assert(!memcmp(saved,"app0.elf\n",saved_size));
+      assert(highlight_rects >= 2);
     }
     assert(labels>0);
   }

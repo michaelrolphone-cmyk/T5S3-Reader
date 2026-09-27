@@ -12,16 +12,27 @@ assert "HalDisplay::BALANCED_REFRESH" in host
 assert "xPortGetCoreID() == 0 ? 1 : 0" in host
 assert "vTaskDelay(1);" in host
 
-# Package state flags stay ABI-compatible in t5_ui_list_row_t and are rendered
-# by the shared native UI bridge with the shipped Font Awesome faces.
-assert 'components/FontAwesomeIcons.h' in bridge
+# Package state flags stay ABI-compatible in t5_ui_list_row_t. The bridge
+# passes semantic Font Awesome icons into the active theme rather than shrinking
+# the list rectangle and painting icons afterward.
+base_theme = (ROOT / "src/components/themes/BaseTheme.cpp").read_text()
+lyra_theme = (ROOT / "src/components/themes/lyra/LyraThemeDrawB.cpp").read_text()
+rounded_theme = (ROOT / "src/components/themes/roundedraff/RoundedRaffTheme.cpp").read_text()
 assert 'T5_UI_LIST_ICON_DOWNLOAD' in bridge and '"solid:f019"' in bridge
 assert 'T5_UI_LIST_ICON_UPDATE' in bridge and '"solid:f021"' in bridge
-assert 'T5_UI_LIST_ICON_INSTALLED' in bridge and '"solid:f00c"' in bridge
-assert "FontAwesomeIcons::draw" in bridge
-assert "stateIconGutter" in bridge
-assert "const int iconX = metrics.contentSidePadding;" in bridge
-assert "(rowHeight - stateIconSize) / 2" in bridge
-assert "valueWidth" not in bridge
+assert 'T5_UI_LIST_ICON_INSTALLED' in bridge and '"regular:f058"' in bridge
+assert "stateIconGutter" not in bridge
+assert "const Rect content{0, listTop, pageWidth," in bridge
+assert "stateIconFn" in bridge and "TextRole::System, stateIconFn" in bridge
+assert "FontAwesomeIcons::draw" not in bridge
 
-print("Native UI e-paper refresh and left-gutter Font Awesome list-state rendering PASS")
+# Every theme owns the leading icon inside its existing full-width row
+# selection, so selected-row geometry cannot exclude the icon column.
+assert "rowFontAwesomeIcon" in base_theme
+assert "renderer.fillRect(rect.x" in base_theme
+assert "FontAwesomeIcons::draw" in base_theme
+assert "rowFontAwesomeIcon" in lyra_theme and "FontAwesomeIcons::draw" in lyra_theme
+assert "Lyra selection is light gray, so state icons remain black" in lyra_theme
+assert "rowFontAwesomeIcon" in rounded_theme and "FontAwesomeIcons::draw" in rounded_theme
+
+print("Native UI full-row selection and themed Font Awesome list-state rendering PASS")

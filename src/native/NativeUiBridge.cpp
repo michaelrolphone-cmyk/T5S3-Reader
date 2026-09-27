@@ -2,7 +2,6 @@
 #include <T5UiApi.h>
 
 #include <GfxRenderer.h>
-#include <HalDisplay.h>
 
 #include <algorithm>
 #include <functional>
@@ -12,7 +11,6 @@
 
 #include "MappedInputManager.h"
 #include "NativeAppHost.h"
-#include "components/FontAwesomeIcons.h"
 #include "activities/ActivityManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -35,7 +33,7 @@ const char* safe(const char* value) { return value ? value : ""; }
 
 const char* listStateIcon(uint8_t flags) {
   if (flags & T5_UI_LIST_ICON_UPDATE) return "solid:f021";
-  if (flags & T5_UI_LIST_ICON_INSTALLED) return "solid:f00c";
+  if (flags & T5_UI_LIST_ICON_INSTALLED) return "regular:f058";
   if (flags & T5_UI_LIST_ICON_DOWNLOAD) return "solid:f019";
   return nullptr;
 }
@@ -152,6 +150,8 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
   r->clearScreen();
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto layout = layoutFor(*r, chrome);
+  const Rect content{layout.safeLeft, layout.contentTop, layout.safeWidth(),
+                     std::max(0, layout.contentBottom - layout.contentTop)};
 
   bool hasSubtitle = false;
   bool hasValue = false;
@@ -164,35 +164,21 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
     hasStateIcon = hasStateIcon || ((rows[i].flags & T5_UI_LIST_ICON_MASK) != 0);
   }
 
-  constexpr int stateIconSize = 16;
-  constexpr int stateIconGap = 12;
-  const int stateIconGutter = hasStateIcon ? stateIconSize + stateIconGap : 0;
-  const Rect content{layout.safeLeft + stateIconGutter, layout.contentTop,
-                     std::max(1, layout.safeWidth() - stateIconGutter),
-                     std::max(0, layout.contentBottom - layout.contentTop)};
-
   std::function<std::string(int)> subtitleFn;
   std::function<std::string(int)> valueFn;
+  std::function<const char*(int)> stateIconFn;
   if (hasSubtitle) subtitleFn = [rows](int i) { return std::string(safe(rows[i].subtitle)); };
   if (hasValue) valueFn = [rows](int i) { return std::string(safe(rows[i].value)); };
+  if (hasStateIcon) stateIconFn = [rows](int i) { return listStateIcon(rows[i].flags); };
 
   GUI.drawList(*r, content, static_cast<int>(rowCount), selectedIndex,
                [rows](int i) { return std::string(safe(rows[i].title)); }, subtitleFn, nullptr, valueFn,
-               highlightValue);
+               highlightValue, TextRole::System, stateIconFn);
 
   const int rowHeight = hasSubtitle ? metrics.listWithSubtitleRowHeight : metrics.listRowHeight;
   const int pageItems = std::max(1, content.height / std::max(1, rowHeight));
   const int selected = rowCount ? std::clamp(selectedIndex, 0, static_cast<int32_t>(rowCount) - 1) : 0;
   const int pageStart = rowCount ? (selected / pageItems) * pageItems : 0;
-  const int pageEnd = std::min(static_cast<int>(rowCount), pageStart + pageItems);
-  for (int i = pageStart; i < pageEnd; ++i) {
-    const char* icon = listStateIcon(rows[i].flags);
-    if (!icon) continue;
-    const int iconX = metrics.contentSidePadding;
-    const int rowY = content.y + (i - pageStart) * rowHeight;
-    const int iconY = rowY + std::max(0, (rowHeight - stateIconSize) / 2);
-    FontAwesomeIcons::draw(*r, layout.safeLeft + iconX, iconY, icon, stateIconSize, i != selectedIndex);
-  }
 
   drawChrome(*r, *in, chrome);
   hitLayout.headerBottom = layout.headerBottom;
