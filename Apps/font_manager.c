@@ -21,6 +21,13 @@ static int32_t selected_index;
 static int32_t pending_delete = -1;
 static char status_text[128];
 
+static bool confirm_rising_edge(uint32_t buttons, bool *was_pressed) {
+    const bool pressed = (buttons & T5_APP_BUTTON_CONFIRM) != 0;
+    const bool rising = pressed && !*was_pressed;
+    *was_pressed = pressed;
+    return rising;
+}
+
 static const char *result_text(t5_font_result_t result) {
     switch (result) {
         case T5_FONT_OK: return "Done";
@@ -123,6 +130,7 @@ void app_main(void) {
     if (refresh != T5_FONT_OK) snprintf(status_text, sizeof(status_text), "%s", result_text(refresh));
     render();
 
+    bool confirm_was_pressed = false;
     for (;;) {
         t5_app_input_t input;
         if (!app->poll(&input, 50) || input.exit_requested || (input.buttons & T5_APP_BUTTON_BACK)) break;
@@ -147,6 +155,6 @@ void app_main(void) {
             }
             continue;
         }
-        if (input.buttons & T5_APP_BUTTON_CONFIRM) activate_selected();
+        if (confirm_rising_edge(input.buttons, &confirm_was_pressed)) activate_selected();
     }
 }
