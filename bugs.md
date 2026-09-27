@@ -114,3 +114,38 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+
+
+## 2026-09-27 scan — 13:21 MDT
+
+### 13. Recent Books migration retires the legacy file even when the JSON save fails
+
+- **Affected code:** `src/RecentBooksStore.cpp`, `RecentBooksStore::loadFromFile()`, specifically the legacy `recent.bin` migration path.
+- **Trigger / reproduction:** Start with a valid legacy `/.crosspoint/recent.bin` and no usable `recent.json`. Let `loadFromBinaryFile()` succeed, but force `saveToFile()` to fail (for example by exhausting writable SD space or injecting an SD write/open failure during the migration).
+- **Observed / logically demonstrated failure:** After a successful binary load, `loadFromFile()` calls `saveToFile()` but ignores its return value, then unconditionally renames `recent.bin` to `recent.bin.bak`, logs that migration succeeded, and returns `true`. If the JSON write failed but the rename succeeds, the only readable persistent recent-books store has been retired. The in-memory list survives only for the current boot; on the next boot there is no valid `recent.json` and no `recent.bin` at the migration path, so the recent list disappears.
+- **Likely root cause:** Unlike the state, settings, Wi-Fi, and KOReader migration paths, Recent Books does not make retirement of the legacy source conditional on successfully publishing the replacement file.
+- **Impact:** A transient storage failure during one-time migration can convert a recoverable legacy recent-book history into persistent loss of that history on the next restart, while falsely reporting that migration succeeded.
+- **Repair direction:** Require `saveToFile()` to succeed before renaming the legacy file. If publication fails, leave `recent.bin` in place and return/log failure so the next boot can retry. Check the rename result as well, and add a regression test that injects a JSON-save failure and verifies the legacy source remains available and migration is retried.
+
+### 14. HalStorage::writeFile deletes the last good file before the replacement is durable
+
+- **Affected code:** `lib/hal/HalStorage.cpp`, `HalStorage::writeFile(const char*, const String&)` and `openFileForWriteUnlocked()`; callers include `JsonSettingsIO::saveSettings()`, `saveState()`, `saveWifi()`, `saveKOReader()`, `saveRecentBooks()`, `saveOpds()`, and `saveBookmarks()`.
+- **Trigger / reproduction:** Begin with any valid JSON-backed store, then save an update while injecting an SD failure after the existing path has been removed: fail the subsequent open, produce a short write, lose power during the replacement write, or otherwise interrupt publication.
+- **Observed / logically demonstrated failure:** `writeFile()` explicitly removes an existing target before opening the new file. The writer then opens with `O_TRUNC`, writes directly to the canonical pathname, and only detects a short write after closing. There is no staged file, backup, or rollback. Therefore a save that returns `false` can already have destroyed the previously valid file or left a partial replacement at its canonical path.
+- **Likely root cause:** The common persistence primitive is implemented as destructive replace-in-place rather than a transactional same-directory stage-and-publish operation.
+- **Impact:** A single SD write/open error or power interruption can corrupt or erase settings, state, credentials, OPDS configuration, recent books, or bookmarks that were valid before the attempted save. Callers cannot safely recover merely by observing the `false` return because the old durable value is already gone.
+- **Repair direction:** Write to a unique same-directory temporary file, verify the complete byte count, sync and close it, then atomically publish it with a backup/rollback strategy that preserves the old target until the staged replacement is known good. Remove the temporary file on every failure path. Add fault-injection tests at open, partial-write, sync/close, and rename stages proving the original file survives unsuccessful saves.
+
+### 15. Bookmark filenames collide when directory separators and underscores map to the same name
+
+- **Affected code:** `src/util/BookmarkUtil.cpp`, `BookmarkUtil::getBookmarkPath(const std::string& bookPath)`; consumed by `src/activities/reader/EpubReaderBookmarksActivity.cpp`.
+- **Trigger / reproduction:** Put two EPUBs at paths such as `/Books/A/B.epub` and `/Books/A_B.epub`. Add bookmarks to one book, then open the bookmark UI for the other.
+- **Observed / logically demonstrated failure:** `getBookmarkPath()` removes the leading slash, replaces every remaining path separator with `_`, strips the extension, and appends `.json`. Both example book paths therefore resolve to the same bookmark file: `/.crosspoint/bookmarks/Books_A_B.json`. Bookmarks saved for either book overwrite/share the other book's storage and can then be loaded as if they belonged to the current EPUB.
+- **Likely root cause:** The bookmark-store key uses a lossy path sanitization instead of a collision-resistant or reversible encoding of the canonical book path.
+- **Impact:** Legitimate library layouts can cross-contaminate or overwrite bookmarks between unrelated books. A loaded bookmark can carry XPath/spine metadata from the wrong EPUB, producing incorrect navigation in addition to bookmark data loss.
+- **Repair direction:** Derive the bookmark filename from a collision-resistant digest of the canonical full book path (optionally retaining a readable basename prefix), or use a reversible escaping scheme that distinguishes separators from literal underscores. Provide migration/fallback for existing bookmark files and add collision tests for separators, underscores, and same basenames in different directories.
+
+## Duplicate check performed for this scan
+
+These findings were checked against the current `bugs.md`, the current open PR set (#243, #242, #241, #220, #194, and #96), and targeted all-state PR plus open/closed issue searches for Recent Books migration-save handling, transactional `HalStorage::writeFile` replacement, and bookmark-path collisions. No existing tracked bug, issue, or matching PR was found for these three defects.
