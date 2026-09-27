@@ -33,6 +33,7 @@ bool start_host_controller() {
         return false;
     }
     installed = true;
+    noClientsObserved = false;
     std::printf("USBCTRL stage=usb-host-installed\n");
     usb_host_client_config_t registration = {};
     registration.is_synchronous = false;
