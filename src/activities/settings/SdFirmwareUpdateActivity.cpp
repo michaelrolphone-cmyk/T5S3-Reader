@@ -23,6 +23,7 @@
 #include "native/FileAssociationRegistry.h"
 #include "native/InstalledAppPath.h"
 #include "native/NativeAppHost.h"
+#include "native/NativeSystemUiBridge.h"
 #include "network/FirmwareFlasher.h"
 
 namespace {
@@ -128,7 +129,9 @@ void SdFirmwareUpdateActivity::runFileBrowser() {
     return;
   }
 
+  nativeSystemUiSetHomeNavigationSuppressed(true);
   const esp_err_t result = runNativeApp(browserPath.c_str(), renderer, mappedInput);
+  nativeSystemUiSetHomeNavigationSuppressed(false);
   if (result != ESP_OK) {
     launchFailed = true;
     requestUpdate();
