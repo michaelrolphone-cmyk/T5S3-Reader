@@ -19,6 +19,7 @@ static uint32_t selected, count;
 static int columns, rows, page_size, cell_w, cell_h;
 static bool missing_icons;
 static bool edit_mode;
+static bool selection_visible;
 static bool home_pinned[MAX_HOME_APPS];
 
 static bool has_required_app_api(void) {
@@ -148,10 +149,76 @@ static void layout(void) {
     page_size = columns * rows;
 }
 
+static uint32_t page_count(void) {
+    if (!count || page_size <= 0) return 1;
+    return (count + (uint32_t)page_size - 1u) / (uint32_t)page_size;
+}
+
+static uint32_t current_page(void) {
+    if (!count || page_size <= 0) return 0;
+    return selected / (uint32_t)page_size;
+}
+
+static void draw_edit_button(void) {
+    const int width = api->screen_width();
+    const int button_w = 68;
+    const int button_h = 32;
+    const int border = 2;
+    const int radius = 9;
+    const int x = width - button_w - 16;
+    const int y = 16;
+    fill_rounded_rect(x, y, button_w, button_h, radius, true);
+    fill_rounded_rect(x + border, y + border, button_w - border * 2,
+                      button_h - border * 2, radius - border, false);
+    api->draw_label(x, y + 8, button_w, edit_mode ? "DONE" : "EDIT");
+}
+
+static void draw_page_dots(void) {
+    const uint32_t pages = page_count();
+    const uint32_t page = current_page();
+    const int spacing = 16;
+    const int total_w = (int)pages * spacing - 8;
+    const int left = (api->screen_width() - total_w) / 2;
+    const int center_y = api->screen_height() - 28;
+
+    for (uint32_t i = 0; i < pages; ++i) {
+        const int size = i == page ? 9 : 5;
+        const int center_x = left + (int)i * spacing + 4;
+        fill_rounded_rect(center_x - size / 2, center_y - size / 2,
+                          size, size, size / 2, true);
+    }
+}
+
+static bool edit_button_hit(int x, int y) {
+    const int button_w = 68;
+    const int button_h = 32;
+    const int left = api->screen_width() - button_w - 16;
+    return x >= left && x < left + button_w && y >= 16 && y < 16 + button_h;
+}
+
+static bool page_dots_hit(int x, int y) {
+    const uint32_t pages = page_count();
+    const int spacing = 16;
+    const int total_w = (int)pages * spacing - 8;
+    const int left = (api->screen_width() - total_w) / 2;
+    const int right = left + total_w;
+    const int center_y = api->screen_height() - 28;
+    return x >= left - 10 && x <= right + 10 &&
+           y >= center_y - 14 && y <= center_y + 14;
+}
+
+static void advance_page(void) {
+    const uint32_t pages = page_count();
+    const uint32_t next = (current_page() + 1u) % pages;
+    selected = next * (uint32_t)page_size;
+    if (count && selected >= count) selected = count - 1u;
+    selection_visible = false;
+}
+
 static void draw(const char *status) {
     api->clear();
-    api->draw_text(24, 24, edit_mode ? "Apps - Edit Home" : "Apps");
-    const uint32_t first = count ? (selected / page_size) * page_size : 0;
+    draw_edit_button();
+    const uint32_t first = count ? current_page() * (uint32_t)page_size : 0;
     missing_icons = false;
     if (!count) {
         api->draw_text(24, 120, "No installed apps found.");
@@ -192,18 +259,17 @@ static void draw(const char *status) {
             snprintf(required, sizeof(required), "Needs %s", app.min_firmware_version);
             api->draw_label(x + 6, y + 115, cell_w - 12, required);
         }
-        if (first + cell == selected) api->fill_rect(x + 12, y + cell_h - 8, cell_w - 24, 3, true);
+        if (selection_visible && first + cell == selected)
+            api->fill_rect(x + 12, y + cell_h - 8, cell_w - 24, 3, true);
     }
 
-    const int bottom = api->screen_height() - 88;
-    const int width = api->screen_width();
-    api->draw_label(8, bottom, width - 16,
-                    status ? status : missing_icons ? "Some Font Awesome icons unavailable" :
-                    edit_mode ? "Tap apps to add/remove from Home" :
-                    has_storage_api() ? "Tap app: Open   Hold Confirm: Edit" : "Tap app: Open");
-    api->draw_label(0, bottom + 40, width / 3, "< Previous");
-    api->draw_label(width / 3, bottom + 40, width / 3, edit_mode ? "Done" : "Edit");
-    api->draw_label((width * 2) / 3, bottom + 40, width - (width * 2) / 3, "Next >");
+    if (status) {
+        api->draw_label(8, api->screen_height() - 72, api->screen_width() - 16, status);
+    } else if (missing_icons) {
+        api->draw_label(8, api->screen_height() - 72, api->screen_width() - 16,
+                        "Some Font Awesome icons unavailable");
+    }
+    draw_page_dots();
     api->present(false);
 }
 
@@ -213,7 +279,8 @@ static bool set_edit_mode(bool enabled) {
         return false;
     }
     edit_mode = enabled;
-    draw(edit_mode ? "Select apps for the Home screen" : "Home screen updated");
+    selection_visible = false;
+    draw(0);
     return true;
 }
 
@@ -242,7 +309,7 @@ static bool toggle_home(void) {
         draw("Unable to save Home apps");
         return false;
     }
-    draw(home_pinned[selected] ? "Added to Home" : "Removed from Home");
+    draw(0);
     return true;
 }
 
@@ -269,6 +336,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     if (count > MAX_HOME_APPS) count = MAX_HOME_APPS;
     selected = 0;
     edit_mode = false;
+    selection_visible = false;
     load_home_pins();
     layout();
     draw(0);
@@ -285,10 +353,12 @@ __attribute__((visibility("default"))) void app_main(void) {
         uint32_t old = selected;
 
         if (count) {
+            const uint32_t before_navigation = selected;
             if (pressed & T5_APP_BUTTON_LEFT) selected = selected ? selected - 1 : count - 1;
             if (pressed & T5_APP_BUTTON_RIGHT) selected = (selected + 1) % count;
             if (pressed & T5_APP_BUTTON_UP) selected = selected >= (uint32_t)columns ? selected - columns : 0;
             if (pressed & T5_APP_BUTTON_DOWN) selected = selected + columns < count ? selected + columns : count - 1;
+            if (selected != before_navigation) selection_visible = true;
 
             if (pressed & T5_APP_BUTTON_CONFIRM) {
                 confirm_started = api->millis();
@@ -308,26 +378,24 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
         }
 
-        if (input.tapped && count) {
+        if (input.tapped) {
             const int x = input.touch_x, y = input.touch_y;
-            if (y >= api->screen_height() - 48) {
-                const int width = api->screen_width();
-                if (x < width / 3) {
-                    const uint32_t page = selected / page_size;
-                    const uint32_t pages = (count + page_size - 1) / page_size;
-                    selected = ((page + pages - 1) % pages) * page_size;
-                } else if (x < (width * 2) / 3) {
-                    toggle_edit_mode();
-                } else {
-                    const uint32_t page = selected / page_size;
-                    const uint32_t pages = (count + page_size - 1) / page_size;
-                    selected = ((page + 1) % pages) * page_size;
-                }
-            } else if (x >= 16 && x < 16 + columns * cell_w && y >= 80 && y < 80 + rows * cell_h) {
-                const uint32_t tapped = (selected / page_size) * page_size +
-                    ((y - 80) / cell_h) * columns + (x - 16) / cell_w;
+            if (edit_button_hit(x, y)) {
+                selection_visible = false;
+                toggle_edit_mode();
+                old = selected;
+            } else if (page_dots_hit(x, y)) {
+                advance_page();
+                draw(0);
+                old = selected;
+            } else if (count && x >= 16 && x < 16 + columns * cell_w &&
+                       y >= 80 && y < 80 + rows * cell_h) {
+                const uint32_t tapped = current_page() * (uint32_t)page_size +
+                    (uint32_t)((y - 80) / cell_h) * (uint32_t)columns +
+                    (uint32_t)((x - 16) / cell_w);
                 if (tapped < count) {
                     selected = tapped;
+                    selection_visible = false;
                     if (edit_mode) {
                         toggle_home();
                         old = selected;

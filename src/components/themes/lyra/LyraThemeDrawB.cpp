@@ -23,7 +23,8 @@ void LyraTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
                          const std::function<UIIcon(int index)>& rowIcon,
                          const std::function<std::string(int index)>& rowValue, bool highlightValue,
                          const TextRole textRole,
-                         const std::function<const char*(int index)>& rowFontAwesomeIcon) const {
+                         const std::function<const char*(int index)>& rowFontAwesomeIcon,
+                         int rowFontAwesomeIconSize) const {
   int rowHeight =
       (rowSubtitle != nullptr) ? LyraMetrics::values.listWithSubtitleRowHeight : LyraMetrics::values.listRowHeight;
   int pageItems = rect.height / rowHeight;
@@ -58,7 +59,7 @@ void LyraTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
     textX += iconSize + hPaddingInSelection;
     textWidth -= iconSize + hPaddingInSelection;
   }
-  constexpr int kStateIconSize = 16;
+  const int kStateIconSize = std::max(1, rowFontAwesomeIconSize);
   constexpr int kStateIconGap = 12;
   if (rowFontAwesomeIcon) {
     textX += kStateIconSize + kStateIconGap;

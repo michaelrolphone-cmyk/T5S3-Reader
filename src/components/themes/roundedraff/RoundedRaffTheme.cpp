@@ -319,7 +319,8 @@ void RoundedRaffTheme::drawList(const GfxRenderer& renderer, Rect rect, int item
                                 const std::function<UIIcon(int index)>& rowIcon,
                                 const std::function<std::string(int index)>& rowValue, bool highlightValue,
                                 const TextRole textRole,
-                                const std::function<const char*(int index)>& rowFontAwesomeIcon) const {
+                                const std::function<const char*(int index)>& rowFontAwesomeIcon,
+                                int rowFontAwesomeIconSize) const {
   (void)rowIcon;
   (void)highlightValue;
   const bool hasSubtitle = static_cast<bool>(rowSubtitle);
@@ -346,7 +347,7 @@ void RoundedRaffTheme::drawList(const GfxRenderer& renderer, Rect rect, int item
 
     constexpr int kMinTitleWidth = 40;
     constexpr int kMinValueGap = kInteractiveInsetX;
-    constexpr int kStateIconSize = 16;
+    const int kStateIconSize = std::max(1, rowFontAwesomeIconSize);
     constexpr int kStateIconGap = 12;
     const int stateIconInset = rowFontAwesomeIcon ? kStateIconSize + kStateIconGap : 0;
     int textAreaWidth = rowWidth - kInteractiveInsetX * 2 - stateIconInset;

@@ -111,11 +111,15 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
   bool hasValue = false;
   bool highlightValue = false;
   bool hasStateIcon = false;
+  bool compactStateIcons = false;
   for (uint32_t i = 0; i < rowCount; ++i) {
     hasSubtitle = hasSubtitle || (rows[i].subtitle && rows[i].subtitle[0]);
     hasValue = hasValue || (rows[i].value && rows[i].value[0]);
     highlightValue = highlightValue || ((rows[i].flags & T5_UI_LIST_HIGHLIGHT_VALUE) != 0);
-    hasStateIcon = hasStateIcon || ((rows[i].flags & T5_UI_LIST_ICON_MASK) != 0);
+    const bool rowHasStateIcon = (rows[i].flags & T5_UI_LIST_ICON_MASK) != 0;
+    hasStateIcon = hasStateIcon || rowHasStateIcon;
+    compactStateIcons = compactStateIcons ||
+        (rowHasStateIcon && (rows[i].flags & T5_UI_LIST_ICON_COMPACT) != 0);
   }
 
   const Rect content{0, listTop, pageWidth,
@@ -128,9 +132,10 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
   if (hasValue) valueFn = [rows](int i) { return std::string(safe(rows[i].value)); };
   if (hasStateIcon) stateIconFn = [rows](int i) { return listStateIcon(rows[i].flags); };
 
+  const int stateIconSize = compactStateIcons ? 12 : 16;
   GUI.drawList(*r, content, static_cast<int>(rowCount), selectedIndex,
                [rows](int i) { return std::string(safe(rows[i].title)); }, subtitleFn, nullptr, valueFn,
-               highlightValue, TextRole::System, stateIconFn);
+               highlightValue, TextRole::System, stateIconFn, stateIconSize);
 
   const int rowHeight = hasSubtitle ? metrics.listWithSubtitleRowHeight : metrics.listRowHeight;
   const int pageItems = std::max(1, content.height / std::max(1, rowHeight));

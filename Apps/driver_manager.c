@@ -343,6 +343,7 @@ static bool populate_release(const t5_driver_manager_api_v1 *api) {
             state_flags = T5_UI_LIST_ICON_INSTALLED;
         else if (action == INSTALL)
             state_flags = T5_UI_LIST_ICON_DOWNLOAD;
+        if (state_flags & T5_UI_LIST_ICON_MASK) state_flags |= T5_UI_LIST_ICON_COMPACT;
         rows[row_count] = (t5_ui_list_row_t){names[row_count], descriptions[row_count], versions[row_count],
                          state_flags};
         ++row_count;
@@ -393,6 +394,7 @@ static bool load_inbox(const t5_app_api_v1 *app, const t5_package_manager_api_v1
                 state_flags = T5_UI_LIST_ICON_DOWNLOAD;
             }
         }
+        if (state_flags & T5_UI_LIST_ICON_MASK) state_flags |= T5_UI_LIST_ICON_COMPACT;
         rows[row_count] = (t5_ui_list_row_t){names[row_count], descriptions[row_count], versions[row_count],
                          state_flags};
         ++row_count;

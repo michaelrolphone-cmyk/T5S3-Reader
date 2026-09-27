@@ -73,6 +73,7 @@ static bool version_available(const t5_app_api_v1 *app) {
 }
 static void row(uint32_t index, const char *title, const char *subtitle,
                 const char *value, uint8_t flags) {
+    if (flags & T5_UI_LIST_ICON_MASK) flags |= T5_UI_LIST_ICON_COMPACT;
     copy_text(titles[index], sizeof(titles[index]), title);
     copy_text(subtitles[index], sizeof(subtitles[index]), subtitle);
     copy_text(values[index], sizeof(values[index]), value);
