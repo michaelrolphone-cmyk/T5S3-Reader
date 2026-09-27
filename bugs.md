@@ -114,3 +114,37 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+
+## 2026-09-27 scan — 08:24 MDT
+
+### 13. Time Zone silently hides the last 48 America cities
+
+- **Affected code:** `Apps/time_zone.c`, `load_rows()`, `activate()`, and initial selected-city discovery; authoritative counts come from `src/native/NativeTimeZoneBridge.cpp` and `lib/hal/TimeZoneData.cpp`.
+- **Trigger / reproduction:** Open Time Zone, choose the America region, and try to select any city whose region-relative index is 96 or greater. The generated catalog currently contains 144 `America/*` entries.
+- **Observed / logically demonstrated failure:** The native bridge reports all 144 America cities, but the app defines `MAX_ROWS 96u` and clamps `row_count` to that value. The city list therefore exposes only indices 0–95; 48 valid America entries are unreachable. The initial selected-city scan is also limited by `i < MAX_ROWS`, so a currently configured city in the hidden tail is not located or highlighted. This conflicts with `TimeZoneCatalog::kMaxCitiesPerRegion == 160`.
+- **Likely root cause:** The UI's fixed 96-row storage limit predates or was not reconciled with the full generated IANA catalog and has no pagination/windowing.
+- **Impact:** Users cannot select 48 legitimate America time zones through the Time Zone app, and an already configured hidden-zone selection is misrepresented when the app opens.
+- **Repair direction:** Remove the silent clamp by paging/windowing the authoritative city count, or allocate to the catalog's declared maximum and preserve access to all entries. The selected-city lookup must scan the complete region. Add a regression test asserting that every `city_count(region)` index is reachable, especially America indices 95, 96, and 143.
+
+### 14. Button Remap leaves a new live mapping active when saving it fails
+
+- **Affected code:** `src/native/NativeButtonRemapBridge.cpp`, `applyMapping()` / `resetDefaults()`; `Apps/button_remap.c`; live consumers in `src/MappedInputManager.cpp`.
+- **Trigger / reproduction:** Complete a new front-button mapping (or reset defaults) while forcing `SETTINGS.saveToFile()` to fail, for example through an SD/settings persistence failure, then continue using the still-open remap app.
+- **Observed / logically demonstrated failure:** `applyMapping()` writes all four `SETTINGS.frontButton*` fields before calling `saveToFile()` and returns the save result without rollback. On failure, Button Remap displays "Could not save button mapping" and remains active, but `MappedInputManager` reads those live fields on every Back/Confirm/Left/Right query and label mapping. The controls have therefore already changed despite the failure message. The retry path is additionally inconsistent because `physical_from_input()` translates logical button bits using the pre-edit `original` mapping while those bits are now generated from the failed new live mapping.
+- **Likely root cause:** Persistence is treated as the final step of an in-place mutation rather than a transaction, and the app assumes a false return means the old mapping is still active.
+- **Impact:** A failed save can immediately scramble navigation and labels for the current session, make a retry capture the wrong physical button, and then revert again after reboot because the old mapping remained on disk.
+- **Repair direction:** Snapshot the four old mapping fields, apply the candidate, attempt persistence, and restore the snapshot on failure; alternatively persist a detached settings copy and publish the live mapping only after a successful commit. Add a forced-save-failure test that verifies both `SETTINGS` and `MappedInputManager` retain the old mapping and that a retry identifies the correct physical button.
+
+### 15. One transient LoRa reinitialization failure after a display refresh strands the radio off for the rest of the app session
+
+- **Affected code:** `src/native/NativeLoRaBridge.cpp`, `prepareDisplay()`, `finishDisplay()`, `initializeHardware()`; `Apps/lora.c`, `render_state()`.
+- **Trigger / reproduction:** On T5S3 Pro, run LoRa and cause the SX1262 reinitialization performed after a display refresh to fail once (for example a transient SPI/radio-start failure during `finish_display()`). Then allow later UI renders after the transient condition has cleared.
+- **Observed / logically demonstrated failure:** `prepareDisplay()` sets `pausedForDisplay = true` and shuts the radio down. `finishDisplay()` clears `pausedForDisplay` before calling `initializeHardware()`. If that reinitialization fails, `initializeHardware()` leaves `running = false`. On every later render, `prepareDisplay()` immediately returns true because `!running` and does not re-arm `pausedForDisplay`; `finishDisplay()` then sees `!pausedForDisplay` and returns without retrying initialization. The app ignores both display-bracketing return values, so there is no other recovery path before exit/relaunch.
+- **Likely root cause:** The "paused for display" recovery intent is cleared before hardware restoration succeeds, converting a recoverable transient failure into a terminal session state.
+- **Impact:** A single temporary SX1262 bring-up failure after an e-paper refresh can permanently disable receive/transmit until the user leaves and relaunches the LoRa app.
+- **Repair direction:** Keep the recovery-pending state set until `initializeHardware()` succeeds, or introduce an explicit retry/error state that later `finish_display()` calls can service. Have the app surface a restoration error instead of discarding the return value. Add a bridge regression test where the first post-display initialization fails and a later render successfully retries and restores `running`/receiver state.
+
+## Duplicate check performed for this scan
+
+These findings were checked against the current `bugs.md`, the repository's open-issue set (none returned), the current open PRs (#241 provider capability validation, #220 display abstraction, #194 global Home shortcuts, and #96 U1), and targeted all-state PR/issue searches for Time Zone truncation, button-remap save failures, `frontButtonBack` persistence, and LoRa display/reinitialization state. No existing tracked item describes these defects. They were also checked against prior bug-scan findings from this task so they do not repeat previously reported defects.
