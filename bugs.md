@@ -114,3 +114,31 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+
+
+## 2026-09-27 scan — 02:21 MDT
+
+### 13. Settings reports success when persistence fails
+- **Affected:** `src/native/NativeSettingsBridge.cpp::nativeSettingsActivate()`; `Apps/settings.c`.
+- **Trigger:** Change a direct toggle/enum/ranged setting while the settings file cannot be written.
+- **Failure:** The live `SETTINGS` field is changed, immediate effects such as backlight are applied, `SETTINGS.saveToFile()` is called but its result is ignored, and `T5_APP_SETTING_UPDATED` is always returned. The UI shows the new value although reboot/reload can restore the old value.
+- **Root cause / impact:** Mutation and persistence are not transactional, so live and durable configuration can diverge while the UI reports success.
+- **Repair:** Save transactionally: retain the old value, require save success before UPDATED, restore value/side effects on failure, and test an injected save failure.
+
+### 14. T5Storage read_file truncates files above 50,000 bytes
+- **Affected:** `src/native/NativePlatformBridge.cpp::readFile()`; `lib/hal/HalStorage.cpp::HalStorage::readFile()`.
+- **Trigger:** Read or size-query an existing file larger than 50,000 bytes; also test an existing file whose open/read subsequently fails.
+- **Failure:** `HalStorage::readFile()` stops at hard-coded `maxSize=50000` with no truncation signal. The native bridge reports that String length as the complete size and returns success. The HAL also represents read failure as an empty String, so the bridge can report a failed read as a valid zero-byte file.
+- **Root cause / impact:** A bounded convenience String reader backs an API that requires exact size/error semantics; apps can accept incomplete data as complete.
+- **Repair:** Implement with `HalFile`: obtain true size, read exactly when capacity permits, propagate open/short-read errors, and add >50 KB plus I/O-failure tests.
+
+### 15. T5Storage stream handles survive native-app teardown
+- **Affected:** `src/native/NativePlatformBridge.cpp` globals `streamFile`/`writeStreamFile`; `streamOpen()`/`writeStreamOpen()`; `src/native/NativeAppHost.cpp::runNativeApp()`.
+- **Trigger:** App A opens a T5Storage read or write stream and exits without close/commit/abort; App B then opens the same stream type.
+- **Failure:** The process-global `HalFile` remains open, so the next open is rejected. `runNativeApp()` has no storage-platform teardown; `nativeStreamsEnd()` cleans the separate T5Stream subsystem. An unfinished writer can leave its `.part` state active.
+- **Root cause / impact:** T5Storage stream globals have no per-app ownership/cleanup, so later apps can lose that stream slot until restart.
+- **Repair:** Bind handles to the active app/ExecutionContext and force close/abort on teardown (or add NativePlatform begin/end hooks). Add a two-app teardown regression test.
+
+## Duplicate check
+Checked current `bugs.md`, the empty open-issue set, open PRs #241/#220/#194/#96, and targeted all-state PR searches; no matching work was found.
