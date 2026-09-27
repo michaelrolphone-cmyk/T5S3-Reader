@@ -31,6 +31,7 @@ gfx_cpp = (root / "lib/GfxRenderer/GfxRenderer.cpp").read_text()
 gfx_h = (root / "lib/GfxRenderer/GfxRenderer.h").read_text()
 main_cpp = (root / "src/main.cpp").read_text()
 epd47_cpp = (root / "lib/hal/HalDisplayEPD47.cpp").read_text()
+hal_cpp = (root / "lib/hal/HalDisplay.cpp").read_text()
 
 assert "bool begin();" in gfx_h
 begin_body = gfx_cpp[gfx_cpp.index("bool GfxRenderer::begin()"):gfx_cpp.index("void GfxRenderer::insertFont")]
@@ -39,6 +40,21 @@ assert "display.isReady()" in begin_body
 assert "validateDisplaySurfaceInfo(candidateInfo)" in begin_body
 assert "candidateFrameBuffer" in begin_body
 assert "Commit only after all validation succeeds" in begin_body
+
+assert "bool preflightSurface() const;" in gfx_h
+assert "bool GfxRenderer::preflightSurface() const" in gfx_cpp
+setup_start = main_cpp.index("bool setupDisplayAndFonts()")
+setup_end = main_cpp.index("void ensureSdFontLoaded()", setup_start)
+setup_body = main_cpp[setup_start:setup_end]
+assert setup_body.index("renderer.preflightSurface()") < setup_body.index("display.begin(false)")
+assert setup_body.index("display.begin(false)") < setup_body.index("renderer.begin()")
+assert "panel backend was not touched" in setup_body
+
+assert "validateDisplaySurfaceInfo(SURFACE_INFO)" in hal
+assert "VISIBLE_WIDTH == BoardPins::LogicalWidth" in hal
+assert "DISPLAY_WIDTH == ((BoardPins::DisplayWidth + 15) / 16) * 16" in hal
+assert 'LOG_ERR("DSP", "Present rejected:' in hal_cpp
+assert 'LOG_ERR("DSP", "Present rejected:' in epd47_cpp
 
 assert "display.begin(false);" in main_cpp
 assert "if (!display.isReady())" in main_cpp
