@@ -26,6 +26,7 @@
 #include "native/NativeAppHost.h"
 #include "native/NativeNavigationInput.h"
 #include "native/NativeTouchInput.h"
+#include "runtime/network/PsramTlsAllocator.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "KOReaderCredentialStore.h"
 #include "PowerControl.h"
@@ -424,6 +425,7 @@ void setup() {
   if (psramFound()) {
     heap_caps_malloc_extmem_enable(1024);
   }
+  RuntimeNetwork::enablePsramTlsAllocations();
 
   HalSystem::begin();
   // Timer wakes never reach this point. A true value means the user explicitly
