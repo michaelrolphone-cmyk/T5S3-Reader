@@ -11,7 +11,7 @@ At scan time, `bugs.md` did not yet exist on `master`, the repository has GitHub
 
 ### 4. Font Family selections are not persisted across reboot
 
-- **Status:** Implemented on branch `fix/font-selection-persistence`; no PR. Firmware patch version `1.3.15`.
+- **Status:** Fixed on branch `fix/font-selection-persistence`; no PR. Firmware patch version `1.3.21`.
 
 - **Affected code:** `src/native/NativeFontBridge.cpp`, `selectChoice(uint32_t index)`.
 - **Trigger / reproduction:** Open the Font Family app, select a different built-in or SD-card font family, confirm that the new font takes effect, then reboot the device.
