@@ -426,9 +426,14 @@ bool HalDisplay::suspendForExternalOwner() {
 bool HalDisplay::resumeFromExternalOwner() {
   if (!externalOwner) return false;
   externalOwner = false;
-  begin();
+
+  // Never clear the physical e-paper panel just to reclaim ownership. If host
+  // reinitialization fails, retaining the app's last image is far more useful
+  // than turning the device into an unexplained blank screen. The first
+  // successful host presentation is forced clean/full below.
+  begin(false);
   if (!displayReady) {
-    LOG_ERR("DSP", "Could not restore display after ELF released hardware");
+    LOG_ERR("DSP", "Could not restore display after ELF released hardware; retained panel image preserved");
     return false;
   }
   requestNextRefresh(FULL_REFRESH);
