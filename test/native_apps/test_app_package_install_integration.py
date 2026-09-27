@@ -60,6 +60,8 @@ class LiveInstallContract(unittest.TestCase):
                          'RuntimeMemory::PsramBuffer planStorage(sizeof(OrdinaryPackagePlan))',
                          'parseOrdinaryManifest(descriptor.chars(), static_cast<size_t>(rebuiltCount), *plan)',
                          'Recovery::discardOwnedStage(',
+                         'Recovery::discardInvalidOwnedApplicationTarget(',
+                         'installed package is invalid and requires manual recovery',
                          'installOrdinaryFromSd(root.c_str(), policy,',
                          'installed.result != OrdinaryInstallResult::Installed'):
             self.assertIn(required, ONLINE)
@@ -72,6 +74,8 @@ class LiveInstallContract(unittest.TestCase):
         self.assertLess(ONLINE.index('verifyAppPair(elfPath.c_str()'),
                         ONLINE.index('discardOwnedStage(*plan)'))
         self.assertLess(ONLINE.index('discardOwnedStage(*plan)'),
+                        ONLINE.index('discardInvalidOwnedApplicationTarget('))
+        self.assertLess(ONLINE.index('discardInvalidOwnedApplicationTarget('),
                         ONLINE.index('installOrdinaryFromSd(root.c_str()'))
         self.assertIn('RuntimeMemory::PsramBuffer descriptor(4096)', ONLINE)
         self.assertIn('RuntimeMemory::PsramBuffer planStorage(sizeof(OrdinaryPackagePlan))', ONLINE)
@@ -126,6 +130,25 @@ class LiveInstallContract(unittest.TestCase):
         self.assertNotIn('discardMatchingStage(', ONLINE)
         self.assertNotIn('Recovered matching interrupted download', ONLINE)
         self.assertNotIn('interrupted package differs from this release', ONLINE)
+
+        # A corrupt canonical app target can be reclaimed only when its own
+        # retained canonical manifest proves exact manager ownership. Unknown
+        # files, active transaction generations and mapped packages remain
+        # protected.
+        for required in ('discardInvalidOwnedApplicationTarget(',
+                         'PackageReplacementLease lease(paths.target)',
+                         'Storage.exists(paths.stage)',
+                         'Storage.exists(paths.backup)',
+                         'Storage.exists(paths.removing)',
+                         'parseOrdinaryManifest(metadata.get()',
+                         'installed->identity.kind != Kind::Application',
+                         'std::strcmp(installed->identity.id, replacement.identity.id)',
+                         'count != installed->entryCount + 1u',
+                         'if (!seen[i]) return false',
+                         'Storage.remove(manifestPath.c_str())',
+                         'Storage.rmdir(paths.target)'):
+            self.assertIn(required, RECOVERY)
+        self.assertIn('if (index == installed->entryCount || seen[index])', RECOVERY)
 
     def test_app_catalog_metadata_is_psram_first_and_single_fetch(self):
         loader_start = HOST.index('bool loadIndependentAppIndex(')
