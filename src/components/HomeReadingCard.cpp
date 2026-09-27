@@ -4,6 +4,7 @@
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
+#include <Logging.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -16,6 +17,11 @@
 
 namespace {
 using ReadingCardStyle::Box;
+
+Box clippedBounds(const GfxRenderer& renderer, Rect rect) {
+  return ReadingCardStyle::clip({rect.x, rect.y, rect.width, rect.height},
+                                renderer.getScreenWidth(), renderer.getScreenHeight());
+}
 
 void drawMetadata(const GfxRenderer& renderer, const Box& area, const RecentBook* book) {
   if (area.width <= 0 || area.height <= 0) return;
@@ -45,7 +51,6 @@ void drawMetadata(const GfxRenderer& renderer, const Box& area, const RecentBook
   }
 
   const int captionSpace = showCaption ? labelHeight + gap : 0;
-  // In a shallow viewport, retain the title before the author.
   if (area.height - captionSpace < titleHeight + authorHeight + gap) author.clear();
   const int authorSpace = author.empty() ? 0 : authorHeight + gap;
   const int maxLines = std::clamp((area.height - captionSpace - authorSpace) / titleHeight, 0, 3);
@@ -71,6 +76,17 @@ void drawMetadata(const GfxRenderer& renderer, const Box& area, const RecentBook
     BaseTheme::drawTextForRole(renderer, UI_10_FONT_ID, TextRole::UserContent, area.x, y + gap, author.c_str(), false);
   }
 }
+
+void drawTonePlane(GfxRenderer& renderer, const ReadingCardStyle::Layout& layout, bool lsb) {
+  // All non-card pixels must start with zero component bits. clearScreen only
+  // clears RAM; neither this nor either copy issues a physical panel refresh.
+  renderer.clearScreen(0x00);
+  ReadingCardStyle::paint(layout.card, layout.radius, [&renderer, &layout, lsb](int x, int y, ReadingCardStyle::Tone tone) {
+    if (ReadingCardStyle::componentBit(tone, lsb)) {
+      renderer.drawPixel(layout.card.x + x, layout.card.y + y, false);  // Set plane bit to 1.
+    }
+  });
+}
 }  // namespace
 
 void HomeReadingCard::draw(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
@@ -83,28 +99,19 @@ void HomeReadingCard::draw(GfxRenderer& renderer, Rect rect, const std::vector<R
     return;
   }
 
-  // Work only inside the existing Home slot. No geometry, input, menu or panel
-  // state is changed, and off-screen/tiny slots cannot issue oversized draws.
-  const int screenWidth = renderer.getScreenWidth();
-  const int screenHeight = renderer.getScreenHeight();
-  if (screenWidth <= 0 || screenHeight <= 0 || rect.width <= 0 || rect.height <= 0) return;
-  const int left = std::clamp(rect.x, 0, screenWidth);
-  const int top = std::clamp(rect.y, 0, screenHeight);
-  const int right = static_cast<int>(std::clamp<int64_t>(static_cast<int64_t>(rect.x) + rect.width, 0, screenWidth));
-  const int bottom = static_cast<int>(std::clamp<int64_t>(static_cast<int64_t>(rect.y) + rect.height, 0, screenHeight));
-  if (right <= left || bottom <= top) return;
-  const Box bounds{left, top, right - left, bottom - top};
+  const Box bounds = clippedBounds(renderer, rect);
+  if (bounds.width <= 0 || bounds.height <= 0) return;
   auto layout = ReadingCardStyle::layout(bounds, metrics.contentSidePadding, metrics.homeCoverHeight, 0, 0);
   const RecentBook* book = recentBooks.empty() ? nullptr : &recentBooks.front();
 
   if (!(coverRendered && coverBufferStored && bufferRestored)) {
     const Box& card = layout.card;
-    ReadingCardStyle::paint(card, layout.radius, [&renderer, &card](int x, int y, int light) {
-      renderer.drawPixel(card.x + x, card.y + y, ReadingCardStyle::blackPixel(card.x + x, card.y + y, light));
+    ReadingCardStyle::paint(card, layout.radius, [&renderer, &card](int x, int y, ReadingCardStyle::Tone tone) {
+      // Both gray tones have black BASE pixels. present() supplies their actual
+      // component planes; drawing an ordinary dithered Color here is incorrect.
+      renderer.drawPixel(card.x + x, card.y + y, tone != ReadingCardStyle::White);
     });
 
-    // A failed open/parse always falls back to real title/author text. The art
-    // stays uninverted, aspect-fitted, and entirely inside the dark frame.
     if (book && !book->coverBmpPath.empty()) {
       const std::string path = UITheme::getCoverThumbPath(book->coverBmpPath, metrics.homeCoverHeight);
       FsFile file;
@@ -115,8 +122,7 @@ void HomeReadingCard::draw(GfxRenderer& renderer, Rect rect, const std::vector<R
                                              bitmap.getWidth(), bitmap.getHeight());
           const Box& cover = layout.cover;
           if (cover.width > 0 && cover.height > 0) {
-            // BMP drawing leaves white pixels untouched (including 1-bit
-            // covers). Supply their white paper before drawing onto graphite.
+            // Production BMP drawing leaves white pixels untouched.
             renderer.fillRect(cover.x, cover.y, cover.width, cover.height, false);
             renderer.drawBitmap(bitmap, cover.x, cover.y, cover.width, cover.height);
             renderer.drawRect(cover.x - 1, cover.y - 1, cover.width + 2, cover.height + 2, false);
@@ -126,20 +132,55 @@ void HomeReadingCard::draw(GfxRenderer& renderer, Rect rect, const std::vector<R
       }
     }
     drawMetadata(renderer, layout.text, book);
-
-    // Store the unfocused card, including metadata and the no-cover fallback.
-    // Cover generation invalidates coverRendered; failed cache allocation must
-    // repaint next time instead of treating missing pixels as a valid cache.
+    // This remains a BW base cache, not a cache of gray scratch planes. It
+    // includes metadata/fallback but never selection or the menu below Home.
     coverBufferStored = storeCoverBuffer && storeCoverBuffer();
     coverRendered = coverBufferStored;
   }
 
-  // Never invert the text or art on selection. Menu-resume themes keep their
-  // existing menu focus; direct-card themes add a separate, uncached keyline.
+  // A short white focus mark does not obliterate the asymmetric reflective rim.
+  // Menu-resume themes keep their menu focus. Cache restoration removes this.
   if (book && selectorIndex == 0 && !metrics.homeContinueReadingInMenu &&
-      layout.card.width > 16 && layout.card.height > 16) {
-    renderer.drawRoundedRect(layout.card.x + 5, layout.card.y + 5,
-                              layout.card.width - 10, layout.card.height - 10, 1,
-                              std::max(0, layout.radius - 5), false);
+      layout.card.width >= 64 && layout.card.height >= 32) {
+    renderer.fillRect(layout.card.x + layout.card.width / 2 - 12,
+                       layout.card.y + layout.card.height - 10, 24, 2, false);
   }
+}
+
+bool HomeReadingCard::present(GfxRenderer& renderer, Rect rect) {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const Box bounds = clippedBounds(renderer, rect);
+  if (metrics.homeRecentBooksCount != 1 || bounds.width <= 0 || bounds.height <= 0) {
+    renderer.displayBuffer();
+    return false;
+  }
+  const auto layout = ReadingCardStyle::layout(bounds, metrics.contentSidePadding, metrics.homeCoverHeight, 0, 0);
+  if (!renderer.storeBwBuffer()) {
+    LOG_ERR("HOME", "Reading card grayscale unavailable: BW snapshot allocation failed");
+    renderer.displayBuffer();
+    return false;
+  }
+  if (!renderer.captureGrayscaleBaseBuffer()) {
+    renderer.restoreBwBuffer();
+    LOG_ERR("HOME", "Reading card grayscale unavailable: base plane allocation failed");
+    renderer.displayBuffer();
+    return false;
+  }
+
+  drawTonePlane(renderer, layout, true);
+  renderer.copyGrayscaleLsbBuffers();
+  drawTonePlane(renderer, layout, false);
+  renderer.copyGrayscaleMsbBuffers();
+  // Restore the COMPLETE frame before either presentation path. The header,
+  // cover, text, focus and menu survive both success and failed gray allocation.
+  renderer.restoreBwBuffer();
+  if (!renderer.grayscaleBuffersReady()) {
+    LOG_ERR("HOME", "Reading card grayscale unavailable: component plane allocation failed");
+    renderer.displayBuffer();
+    return false;
+  }
+  // One physical presentation, using the existing four-gray compositor and
+  // gray-capable refresh (not FAST_REFRESH, which would erase the gray tones).
+  renderer.displayGrayBuffer(HalDisplay::HALF_REFRESH);
+  return true;
 }
