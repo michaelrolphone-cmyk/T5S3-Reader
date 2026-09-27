@@ -1585,6 +1585,54 @@
       "version": "0.1.1"
     },
     {
+      "asset": "usb-hid-text-input--driver.elf",
+      "id": "usb-hid-text-input",
+      "kind": "driver",
+      "manifest": {
+        "api": 1,
+        "capability": "input.text",
+        "files": [
+          {
+            "executable": false,
+            "name": ".package.json",
+            "sha256": "2c45b7b30f6a561a0b73d6ea5efaca2c9edbd4ac7daee1abb7169a85d51de1d6",
+            "size_bytes": 636
+          },
+          {
+            "executable": true,
+            "name": "driver.elf",
+            "sha256": "796cd1b754de33f3c12cd5e29a54036766d081b71a5f05ff2d66a37beeb3ef3d",
+            "size_bytes": 8692
+          },
+          {
+            "executable": false,
+            "name": "provider-abi.v1",
+            "sha256": "e7b64f42da084d97a5bf4a047efe24f4dca9425d4fd4513f8d83e5d1aec51ff3",
+            "size_bytes": 39
+          },
+          {
+            "executable": false,
+            "name": "privileged-imports.v1",
+            "sha256": "a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca",
+            "size_bytes": 14
+          }
+        ],
+        "id": "usb-hid-text-input",
+        "requires": [
+          {
+            "capability": "usb.hid.keyboard",
+            "min_api": 1
+          }
+        ],
+        "version": "0.1.0"
+      },
+      "sha256": "796cd1b754de33f3c12cd5e29a54036766d081b71a5f05ff2d66a37beeb3ef3d",
+      "size": 8692,
+      "tag": "driver-usb-hid-text-input-v0.1.0",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/driver-usb-hid-text-input-v0.1.0/usb-hid-text-input--driver.elf",
+      "version": "0.1.0"
+    },
+    {
       "asset": "usb-host-v2--driver.elf",
       "id": "usb-host-v2",
       "kind": "driver",
