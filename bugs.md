@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+### 73. Font catalog refresh leaves a usable partial catalog after rejecting the manifest
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260927-1723](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1723/bugs.md)
+
+- **Affected code:** `src/native/NativeFontBridge.cpp::refreshCatalog()`, `familyCount()`, and `installFamily()`; `Apps/font_manager.c::app_main()`, `load_rows()`, and `activate_selected()`.
+- **Trigger / reproduction:** Serve a font manifest whose first family is valid and whose later family contains an invalid family name, invalid `.cpfont` filename, or missing/invalid `crc32`. Open **Manage Fonts** and let the catalog refresh fail.
+- **Observed / logically demonstrated failure:** `refreshCatalog()` clears the process-global `families` vector, then appends each family as it is parsed. If a later entry fails validation, the function returns `T5_FONT_MANIFEST_ERROR` without clearing or rolling back the families already appended. Font Manager records the **Invalid font catalog** status but immediately calls `render()`; `load_rows()` still obtains the nonzero partial `family_count()`, and `activate_selected()` remains enabled for those rows. The user can therefore install/delete entries from a catalog the service itself rejected.
+- **Likely root cause:** Catalog parsing mutates the published global model incrementally instead of validating into temporary state and committing atomically.
+- **Impact:** A malformed or partially corrupted remote catalog can expose an arbitrary valid prefix as if it were authoritative, omit later families, and still allow package mutations despite the refresh reporting failure.
+- **Repair direction:** Parse and validate the complete manifest into temporary `baseUrl`/family state, compute installed/update flags there, and swap it into the live catalog only after every entry succeeds. On failure either preserve the prior known-good catalog or expose zero actionable rows with an explicit failure state. Add a regression fixture with one valid family followed by a malformed family and verify no partial catalog is actionable.
+
+### 74. A failed font update deletes the previously working installed family
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260927-1723](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1723/bugs.md)
+
+- **Affected code:** `src/native/NativeFontBridge.cpp::installFamily()`; `src/network/HttpDownloader.cpp::downloadToFile()`; `src/FontInstaller.cpp::ensureFamilyDir()`, `buildFontPath()`, and `deleteFamily()`.
+- **Trigger / reproduction:** Install a valid font family, publish an update for that family, then make any update file fail after installation starts (network interruption, short SD write, checksum mismatch, or validation failure). A multi-file family makes this especially easy by allowing an earlier file to succeed before a later one fails.
+- **Observed / logically demonstrated failure:** For an already installed family, `ensureFamilyDir()` deliberately reuses the live family directory and `downloadToFile()` uses the final live filename, removing an existing destination before writing its replacement. On any subsequent download/CRC/validation failure, `installFamily()` calls `installer().deleteFamily()`, which removes the family directory from both font roots. Thus an update failure does not merely roll back the attempted update: it destroys the previously valid installed version. If the family was active, `deleteFamily()` also clears the live selected-font setting.
+- **Likely root cause:** Update installation has no staging/commit boundary and uses the same destructive cleanup path for a fresh install and an update of an existing family.
+- **Impact:** A transient network or SD error while updating fonts can permanently remove a working font family and unexpectedly switch the reader away from its active font.
+- **Repair direction:** Download every update file into a transaction-specific staging directory, verify size/CRC/full font structure for the complete family, then atomically publish/swap the family while retaining the old directory until commit succeeds. On failure delete only staged artifacts; never delete the prior installed family. Add fault-injection tests for failure on the first and a later file of an existing family.
+
+### 75. Valid long font family names are accepted but fixed path buffers silently truncate their install paths
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260927-1723](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1723/bugs.md)
+
+- **Affected code:** `src/FontInstaller.cpp::isValidFamilyName()`, `ensureFamilyDir()`, and `buildFontPath()`; `src/native/NativeFontBridge.cpp::refreshCatalog()` and `installFamily()`; `lib/EpdFont/SdCardFontRegistry.cpp::parseFilename()` and discovery.
+- **Trigger / reproduction:** Put a syntactically valid long family name in the font catalog. For example, a 55-character alphanumeric family with a conventional same-name `<family>_14.cpfont` file passes `isValidFamilyName()` and `isValidCpfontFilename()`, but the full `/.fonts/<family>/<filename>` path is longer than the 128-byte buffer passed to `FontInstaller::buildFontPath()`.
+- **Observed / logically demonstrated failure:** Name validation imposes no length compatible with the later fixed path buffers. `buildFontPath()` uses `snprintf()` into `char path[128]` and its return value is ignored, so the destination is silently truncated. With the example above the final `.cpfont` suffix is cut off. The download, CRC, and magic-byte validation can all succeed against that truncated filename, so `installFamily()` returns success and sets `family.installed = true`. Registry discovery later rejects the file because its on-disk name no longer ends in `.cpfont`, leaving the supposedly installed family unavailable for selection. Longer names also reach separate 160-byte truncation points in family-directory/root lookup.
+- **Likely root cause:** Accepted catalog identifier lengths are not derived from the storage/path ABI, and truncation from `snprintf()` is never checked.
+- **Impact:** A catalog entry can report a successful font install while producing unreachable/misnamed files on SD; sufficiently long names can also make creation, lookup, and deletion operate on truncated path prefixes.
+- **Repair direction:** Define explicit maximum family/file/path lengths, reject manifest entries that cannot be represented losslessly, and make all path builders return failure when `snprintf()` would truncate. Prefer `std::string` path construction followed by a single validated storage-path length check. Add boundary tests immediately below/at/above the maximum and verify discovered filenames exactly match the manifest.
+
