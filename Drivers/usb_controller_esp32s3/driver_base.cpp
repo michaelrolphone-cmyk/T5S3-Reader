@@ -590,6 +590,7 @@ struct RolePort {
     }
     bool start() const {
         startupError.clear(); enumerationDiagnostic.clear();
+        noClientsObserved = false;
         if (!start_host_controller()) return false;
         running = true;
         return true;
