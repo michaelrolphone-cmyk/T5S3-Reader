@@ -60,7 +60,7 @@ void TxtReaderActivity::onExit() {
 
 void TxtReaderActivity::loop() {
   if (mappedInput.isPressed(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= ReaderUtils::GO_HOME_MS) {
-    activityManager.goToFileBrowser(txt ? txt->getPath() : "");
+    activityManager.goToInstalledApp("file_browser.elf", "File Browser");
     return;
   }
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) &&
