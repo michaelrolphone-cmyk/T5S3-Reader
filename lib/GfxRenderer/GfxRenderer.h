@@ -72,8 +72,10 @@ class GfxRenderer {
   ~GfxRenderer() { freeBwBufferChunks(); }
 
   // Setup
+  // Metadata-only validation: safe before the physical display backend starts.
+  bool preflightSurface() const;
   // Transactional: false leaves the previous renderer state untouched.
-  bool begin();  // must be called right after display.begin()
+  bool begin();  // call right after display.begin()
   bool isInitialized() const { return initialized; }
   void insertFont(int fontId, EpdFontFamily font);
   // Clears both the flash-font map and any SD-font registration for fontId.
