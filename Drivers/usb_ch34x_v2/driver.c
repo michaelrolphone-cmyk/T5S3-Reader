@@ -44,18 +44,64 @@ static bool release_session(ch_session *s) {
     *s = (ch_session){0};
     return true;
 }
+static const char *start_error;
+static bool last_error(char *destination, size_t capacity) {
+    if (!start_error || !destination || !capacity) return false;
+    size_t i = 0;
+    while (start_error[i] && i + 1 < capacity) {
+        destination[i] = start_error[i];
+        ++i;
+    }
+    destination[i] = 0;
+    return true;
+}
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
-    if (host || !deps || count != 1 || !same(deps[0].capability_id, "usb.host") ||
-        deps[0].api_version != RISC_USB_HOST_API_V1 || !deps[0].api) return false;
+    start_error = 0;
+    if (host) {
+        start_error = "start: provider already active";
+        return false;
+    }
+    if (!deps) {
+        start_error = "start: missing dependency table";
+        return false;
+    }
+    if (count != 1) {
+        start_error = "start: expected exactly one dependency";
+        return false;
+    }
+    if (!same(deps[0].capability_id, "usb.host")) {
+        start_error = "start: usb.host dependency missing";
+        return false;
+    }
+    if (deps[0].api_version != RISC_USB_HOST_API_V1) {
+        start_error = "start: usb.host API version mismatch";
+        return false;
+    }
+    if (!deps[0].api) {
+        start_error = "start: usb.host API unavailable";
+        return false;
+    }
     const risc_usb_host_api_v1 *api = (const risc_usb_host_api_v1 *)deps[0].api;
-    if (api->api_version != RISC_USB_HOST_API_V1 ||
-        api->struct_size < sizeof(risc_usb_host_discovery_v1) ||
-        !api->configuration || !api->claim || !api->release || !api->control ||
-        !api->bulk_read || !api->bulk_write) return false;
+    if (api->api_version != RISC_USB_HOST_API_V1) {
+        start_error = "start: usb.host descriptor version mismatch";
+        return false;
+    }
+    if (api->struct_size < sizeof(risc_usb_host_discovery_v1)) {
+        start_error = "start: usb.host discovery API too small";
+        return false;
+    }
+    if (!api->configuration || !api->claim || !api->release || !api->control ||
+        !api->bulk_read || !api->bulk_write) {
+        start_error = "start: usb.host base callbacks incomplete";
+        return false;
+    }
     const risc_usb_host_discovery_v1 *extension =
         (const risc_usb_host_discovery_v1 *)api;
     if (!extension->poll || !extension->devices ||
-        !extension->release_checked || !extension->control_claim) return false;
+        !extension->release_checked || !extension->control_claim) {
+        start_error = "start: usb.host discovery callbacks incomplete";
+        return false;
+    }
     host = api;
     discovery = extension;
     return true;
@@ -311,7 +357,7 @@ static const risc_serial_port_streams_v1 capability = {
 static const risc_driver_poll_v2 driver = {
     {{RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_poll_v2),
       "usb-ch34x-v2", "serial.port", RISC_USB_CDC_API_V1,
-      &capability.inventory.discovery.serial, start, stop, quiesce}, 0, bind_streams},
+      &capability.inventory.discovery.serial, start, stop, quiesce}, last_error, bind_streams},
     poll_streams
 };
 __attribute__((visibility("default")))

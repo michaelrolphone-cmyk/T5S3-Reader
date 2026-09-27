@@ -98,6 +98,11 @@ int main(int argc, char **argv) {
     const risc_driver_v2 *driver = get(RISC_PROVIDER_DRIVER_ABI_V2);
     assert(driver && strcmp(driver->driver_id, "usb-ch34x-v2") == 0);
     assert(strcmp(driver->capability_id, "serial.port") == 0);
+    const risc_driver_poll_v2 *poll_driver = (const risc_driver_poll_v2 *)driver;
+    assert(driver->struct_size == sizeof(risc_driver_poll_v2) &&
+           poll_driver->streams.last_error);
+    char diagnostic[96] = {0};
+    assert(!poll_driver->streams.last_error(diagnostic, sizeof(diagnostic)));
     const risc_usb_cdc_api_v1 *serial = (const risc_usb_cdc_api_v1 *)driver->capability;
     assert(serial && serial->api_version == 1 && serial->struct_size >= sizeof(*serial));
     const risc_usb_serial_class_discovery_v1 *probe =
@@ -107,10 +112,17 @@ int main(int argc, char **argv) {
         (const risc_usb_serial_class_inventory_v1 *)serial;
     assert(serial->struct_size >= sizeof(*inventory) && inventory->snapshot);
     assert(!driver->start(NULL, 0));
+    assert(poll_driver->streams.last_error(diagnostic, sizeof(diagnostic)) &&
+           strstr(diagnostic, "missing dependency table"));
+    char short_diagnostic[8] = {'X','X','X','X','X','X','X','X'};
+    assert(poll_driver->streams.last_error(short_diagnostic, sizeof(short_diagnostic)) &&
+           short_diagnostic[7] == 0);
     risc_usb_host_api_v1 legacy = {RISC_USB_HOST_API_V1, sizeof(legacy), NULL,
         configuration, claim, release_claim, control, read_data, write_data};
     risc_provider_dependency_v1 dep = {"usb.host", 1, &legacy};
     assert(!driver->start(&dep, 1)); /* No success signal for physical release. */
+    assert(poll_driver->streams.last_error(diagnostic, sizeof(diagnostic)) &&
+           strstr(diagnostic, "discovery API too small"));
     risc_usb_host_discovery_v1 host = {
         {RISC_USB_HOST_API_V1, sizeof(host), NULL,
          configuration, claim, release_claim, control, read_data, write_data},
@@ -118,9 +130,14 @@ int main(int argc, char **argv) {
     };
     dep.api = &host.host;
     assert(!driver->start(&dep, 1));
+    assert(poll_driver->streams.last_error(diagnostic, sizeof(diagnostic)) &&
+           strstr(diagnostic, "discovery callbacks incomplete"));
     host.poll = poll; host.devices = devices;
-    assert(driver->start(&dep, 1));
+    assert(driver->start(&dep, 1) &&
+           !poll_driver->streams.last_error(diagnostic, sizeof(diagnostic)));
     assert(!driver->start(&dep, 1) && driver->quiesce());
+    assert(poll_driver->streams.last_error(diagnostic, sizeof(diagnostic)) &&
+           strstr(diagnostic, "already active"));
     risc_serial_device_v1 observed[1] = {{0}};
     size_t observed_count = 1;
     assert(inventory->snapshot(observed, &observed_count) && observed_count == 1 &&
