@@ -202,7 +202,9 @@ static void draw_edit_button(void) {
     fill_rounded_rect(x, y, button_w, button_h, radius, true);
     fill_rounded_rect(x + border, y + border, button_w - border * 2,
                       button_h - border * 2, radius - border, false);
-    api->draw_label(x, y + 8, button_w, edit_mode ? "DONE" : "EDIT");
+    // UI_12 glyphs sit visually low in this compact control. Pull the text
+    // toward the optical center instead of aligning by the font's line box.
+    api->draw_label(x, y + 3, button_w, edit_mode ? "DONE" : "EDIT");
 }
 
 static void draw_page_dots(void) {
