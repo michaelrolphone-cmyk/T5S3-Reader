@@ -18,6 +18,7 @@ static const t5_storage_api_v1 *storage;
 static uint32_t selected, count;
 static int columns, rows, page_size, cell_w, cell_h;
 static bool missing_icons;
+static bool edit_mode;
 static bool home_pinned[MAX_HOME_APPS];
 
 static bool has_required_app_api(void) {
@@ -149,7 +150,7 @@ static void layout(void) {
 
 static void draw(const char *status) {
     api->clear();
-    api->draw_text(24, 24, "Apps");
+    api->draw_text(24, 24, edit_mode ? "Apps - Edit Home" : "Apps");
     const uint32_t first = count ? (selected / page_size) * page_size : 0;
     missing_icons = false;
     if (!count) {
@@ -167,6 +168,17 @@ static void draw(const char *status) {
         const int icon_cell = 18;
         const int bx = x + (cell_w - box) / 2;
         const int by = y + 8;
+        if (edit_mode && home_pinned[first + cell]) {
+            const int highlight_border = 3;
+            const int hx = x + 4;
+            const int hy = y + 2;
+            const int hw = cell_w - 8;
+            const int hh = cell_h - 12;
+            fill_rounded_rect(hx, hy, hw, hh, 14, true);
+            fill_rounded_rect(hx + highlight_border, hy + highlight_border,
+                              hw - highlight_border * 2, hh - highlight_border * 2,
+                              14 - highlight_border, false);
+        }
         fill_rounded_rect(bx, by, box, box, radius, true);
         fill_rounded_rect(bx + border, by + border, box - border * 2, box - border * 2,
                           radius - border, false);
@@ -187,12 +199,26 @@ static void draw(const char *status) {
     const int width = api->screen_width();
     api->draw_label(8, bottom, width - 16,
                     status ? status : missing_icons ? "Some Font Awesome icons unavailable" :
-                    has_storage_api() ? "Confirm: Open   Hold Confirm: Home" : "Confirm: Open");
+                    edit_mode ? "Tap apps to add/remove from Home" :
+                    has_storage_api() ? "Tap app: Open   Hold Confirm: Edit" : "Tap app: Open");
     api->draw_label(0, bottom + 40, width / 3, "< Previous");
-    api->draw_label(width / 3, bottom + 40, width / 3,
-                    count && selected < MAX_HOME_APPS && home_pinned[selected] ? "Remove Home" : "Add Home");
+    api->draw_label(width / 3, bottom + 40, width / 3, edit_mode ? "Done" : "Edit");
     api->draw_label((width * 2) / 3, bottom + 40, width - (width * 2) / 3, "Next >");
     api->present(false);
+}
+
+static bool set_edit_mode(bool enabled) {
+    if (enabled && !has_storage_api()) {
+        draw("Home editing unavailable on this firmware");
+        return false;
+    }
+    edit_mode = enabled;
+    draw(edit_mode ? "Select apps for the Home screen" : "Home screen updated");
+    return true;
+}
+
+static void toggle_edit_mode(void) {
+    (void)set_edit_mode(!edit_mode);
 }
 
 static bool toggle_home(void) {
@@ -242,6 +268,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     count = api->installed_apps_count();
     if (count > MAX_HOME_APPS) count = MAX_HOME_APPS;
     selected = 0;
+    edit_mode = false;
     load_home_pins();
     layout();
     draw(0);
@@ -269,10 +296,16 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if ((input.buttons & T5_APP_BUTTON_CONFIRM) && !confirm_hold_handled &&
                 api->millis() - confirm_started >= CONFIRM_HOLD_MS) {
-                toggle_home();
+                toggle_edit_mode();
                 confirm_hold_handled = true;
             }
-            if ((released & T5_APP_BUTTON_CONFIRM) && !confirm_hold_handled && launch()) return;
+            if ((released & T5_APP_BUTTON_CONFIRM) && !confirm_hold_handled) {
+                if (edit_mode) {
+                    toggle_home();
+                } else if (launch()) {
+                    return;
+                }
+            }
         }
 
         if (input.tapped && count) {
@@ -284,7 +317,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                     const uint32_t pages = (count + page_size - 1) / page_size;
                     selected = ((page + pages - 1) % pages) * page_size;
                 } else if (x < (width * 2) / 3) {
-                    toggle_home();
+                    toggle_edit_mode();
                 } else {
                     const uint32_t page = selected / page_size;
                     const uint32_t pages = (count + page_size - 1) / page_size;
@@ -294,10 +327,13 @@ __attribute__((visibility("default"))) void app_main(void) {
                 const uint32_t tapped = (selected / page_size) * page_size +
                     ((y - 80) / cell_h) * columns + (x - 16) / cell_w;
                 if (tapped < count) {
-                    if (tapped == selected) {
-                        if (launch()) return;
+                    selected = tapped;
+                    if (edit_mode) {
+                        toggle_home();
+                        old = selected;
                     } else {
-                        selected = tapped;
+                        if (launch()) return;
+                        old = selected;
                     }
                 }
             }
