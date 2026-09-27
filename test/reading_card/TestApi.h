@@ -160,5 +160,8 @@ struct UITheme {
 #define GUI UITheme::getInstance().getTheme()
 #define LOG_ERR(...) ((void)0)
 constexpr int UI_12_FONT_ID = 12, UI_10_FONT_ID = 10;
-constexpr int STR_CONTINUE_READING = 1, STR_NO_OPEN_BOOK = 2;
-inline const char* tr(int value) { return value == 1 ? "Continue reading" : "No open book"; }
+#include "I18n.h"
+inline I18n& I18n::getInstance() { static I18n instance; return instance; }
+inline const char* I18n::get(StrId id) const {
+  return id == StrId::STR_CONTINUE_READING ? "Continue reading" : "No open book";
+}

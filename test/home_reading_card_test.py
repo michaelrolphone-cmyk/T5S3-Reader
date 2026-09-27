@@ -24,6 +24,11 @@ class ReadingCardTests(unittest.TestCase):
             (work / "Board.h").write_text("#pragma once\nnamespace BoardPins { constexpr int LogicalWidth=540, LogicalHeight=960, DisplayWidth=960, DisplayHeight=540; }\n")
             (work / "EpdFontFamily.h").write_text("#pragma once\nstruct EpdGlyph {}; struct EpdFontData {}; struct EpdFontFamily { enum Style { REGULAR, BOLD }; };\n")
             (work / "Bitmap.h").write_text("#pragma once\nclass Bitmap {};\n")
+            # Compile byte-identical production headers in the isolated fixture.
+            # Quoted Bitmap.h includes otherwise select the source directory's
+            # real SD implementation before -I fixtures in a complete checkout.
+            for path in ("lib/GfxRenderer/GfxRenderer.h", "lib/hal/HalDisplay.h"):
+                (work / Path(path).name).write_bytes((ROOT / path).read_bytes())
             (work / "test.cpp").write_text(r"""
 #include <cassert>
 #include <cstring>
@@ -60,11 +65,17 @@ int main() {
     def test_geometry_and_complete_presentation(self):
         with tempfile.TemporaryDirectory(prefix="riscrte-reading-card-") as temp:
             work = Path(temp)
-            for name in ("Bitmap.h", "GfxRenderer.h", "HalStorage.h", "I18n.h", "RecentBooksStore.h",
+            for name in ("Bitmap.h", "GfxRenderer.h", "HalStorage.h", "RecentBooksStore.h",
                          "Logging.h", "fontIds.h", "components/UITheme.h", "components/themes/BaseTheme.h"):
                 path = work / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('#include "TestApi.h"\n')
+            # Keep the real tr(id) macro: it qualifies a token as StrId::id,
+            # unlike a function-shaped fake that would accept a ternary id.
+            (work / "I18n.h").write_bytes((ROOT / "lib/I18n/I18n.h").read_bytes())
+            (work / "I18nKeys.h").write_text(
+                "#pragma once\nenum class StrId { STR_CONTINUE_READING, STR_NO_OPEN_BOOK };\n"
+                "enum class Language { EN };\n")
             flags = [os.environ.get("CXX", "g++"), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
                      "-fsanitize=undefined", "-fno-sanitize-recover=all", "-I" + str(work),
                      "-I" + str(ROOT / "test/reading_card"), "-I" + str(ROOT / "src")]

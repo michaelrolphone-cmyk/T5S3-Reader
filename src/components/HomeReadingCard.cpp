@@ -30,7 +30,7 @@ void drawMetadata(const GfxRenderer& renderer, const Box& area, const RecentBook
   const int labelHeight = renderer.getLineHeight(UI_10_FONT_ID);
   if (titleHeight <= 0 || labelHeight <= 0) return;
 
-  const char* label = tr(book ? STR_CONTINUE_READING : STR_NO_OPEN_BOOK);
+  const char* label = book ? tr(STR_CONTINUE_READING) : tr(STR_NO_OPEN_BOOK);
   const std::string caption = renderer.truncatedText(UI_10_FONT_ID, label, area.width);
   const bool showCaption = !caption.empty() && renderer.getTextWidth(UI_10_FONT_ID, caption.c_str()) <= area.width &&
                            labelHeight <= area.height &&
