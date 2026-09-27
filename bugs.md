@@ -114,3 +114,37 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+## 2026-09-27 scan — 14:24 MDT
+
+### 13. Web file operations apply hidden-item policy only to the final path component
+
+- **Affected code:** `src/network/CrossPointWebServer.cpp`, especially `handleFileListData()`, `handleDownload()`, `handleDelete()`, `HIDDEN_ITEMS`, and `isProtectedItemName()`.
+- **Trigger / reproduction:** With the web file manager running, request a known ordinary filename located inside a directory that the browser intentionally hides, or request that hidden directory as the listing root.
+- **Observed / logically demonstrated failure:** File listing does not reject a hidden directory supplied as its root. Download and delete authorize only the final basename, so the hidden status of a parent directory is not considered. Files below hidden/system directories are therefore handled differently from those directories in the normal browser UI.
+- **Likely root cause:** The visibility/protection rule is applied to one basename rather than to the canonical path and all of its components.
+- **Impact:** State/cache files intended to be excluded from web file-management operations can still be exposed to those operations when their full path is known, and destructive operations can damage device state.
+- **Repair direction:** Centralize path authorization, canonicalize every user-supplied path, and reject any path containing a protected component before list/read/write/rename/move/delete operations. Apply the helper consistently to every web file-management endpoint and add nested-hidden-directory regression tests.
+
+### 14. Font upload reports success for truncated or short-written .cpfont files
+
+- **Affected code:** `src/network/CrossPointWebServer.cpp`, `handleFontUploadData()`; `src/FontInstaller.cpp`, `FontInstaller::validateCpfontFile()`; `lib/EpdFont/SdCardFont.cpp::load()`.
+- **Trigger / reproduction:** Upload a `.cpfont` that contains the expected eight-byte magic but is truncated before its complete header/TOC, or simulate an SD short write after those first bytes.
+- **Observed / logically demonstrated failure:** Buffered `file.write()` return values are ignored and the upload counts requested bytes instead of bytes actually persisted. End-of-upload validation checks only the first eight magic bytes. A truncated file can therefore be reported as installed successfully even though the normal font loader later rejects it because the full header/TOC/data are missing.
+- **Likely root cause:** Upload completeness and structural font validity are reduced to a magic-prefix check, and short writes do not clear the success state.
+- **Impact:** Font installation can falsely report success while leaving an unusable file on SD, including an unusable replacement inside an existing family.
+- **Repair direction:** Treat every short write as failure, track actual persisted length, validate the closed staged file using the full .cpfont structural rules, and only publish after complete validation. Add magic-only, truncated-header/TOC, and short-write tests.
+
+### 15. ZIP extraction does not verify per-entry CRC-32
+
+- **Affected code:** `lib/ZipFile/ZipFile.h`, `ZipFile::FileStatSlim`; `lib/ZipFile/ZipFile.cpp`, central-directory parsing, `readFileToMemory()`, and `readFileToStream()`; consumer `src/native/NativeArchiveBridge.cpp::extract()`.
+- **Trigger / reproduction:** Take a valid ZIP with a stored entry, alter one payload byte without changing the declared lengths, and extract the entry.
+- **Observed / logically demonstrated failure:** Central-directory parsing skips the CRC-32 field and the cached entry metadata does not retain it. Stored extraction checks only byte count; deflated extraction checks decompression completion and final size. Neither path verifies the archive CRC, so same-length damaged data can be returned as successful extraction.
+- **Likely root cause:** The lightweight ZIP metadata retained method, lengths, and offset but omitted the format's integrity field.
+- **Impact:** Damaged archives can silently produce corrupted ROMs or resources while the extraction layer reports success.
+- **Repair direction:** Retain CRC-32 in entry metadata, compute it incrementally over uncompressed output for both stored and deflated paths, reject mismatches before the archive bridge publishes its staged output, and add valid/corrupted archive tests.
+
+## Duplicate check performed for this scan
+
+These defects were checked against current `bugs.md`, current open issues/PRs, and targeted all-state searches for web hidden-path handling, font upload validation/short writes, and ZIP CRC verification. No matching existing bug, issue, or PR was found. The previously recorded ZIP issue concerns EOCD search range and is distinct from missing per-entry CRC verification.
+
