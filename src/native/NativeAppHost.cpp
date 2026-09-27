@@ -83,6 +83,15 @@ struct CatalogManifestAsset {
   std::string url;
 };
 
+struct ToneRectCommand {
+  int32_t x;
+  int32_t y;
+  int32_t w;
+  int32_t h;
+  int32_t radius;
+  uint8_t tone;
+};
+
 struct Session {
   GfxRenderer& renderer;
   MappedInputManager& input;
@@ -90,6 +99,7 @@ struct Session {
   HalFile directory;
   std::vector<CatalogAsset> catalog;
   std::vector<t5_app_manifest_t> installed;
+  std::vector<ToneRectCommand> toneRects;
   std::string launchPath;
   char catalogDownloadError[128]{};
   bool catalogNeedsRefresh = false;
@@ -106,17 +116,60 @@ bool firmwareActionPending = false;
 Session* current() { return session && !session->presenting && session->owner == xTaskGetCurrentTaskHandle() ? session : nullptr; }
 int32_t width() { auto* s = current(); return s ? s->renderer.getScreenWidth() : 0; }
 int32_t height() { auto* s = current(); return s ? s->renderer.getScreenHeight() : 0; }
-void clear() { if (auto* s = current()) s->renderer.clearScreen(); }
+void clear() {
+  if (auto* s = current()) {
+    s->toneRects.clear();
+    s->renderer.clearScreen();
+  }
+}
 void text(int32_t x, int32_t y, const char* value) {
   if (auto* s = current(); s && value) s->renderer.drawText(UI_12_FONT_ID, x, y, value);
 }
 void rect(int32_t x, int32_t y, int32_t w, int32_t h, bool black) {
   if (auto* s = current(); s && w > 0 && h > 0) s->renderer.fillRect(x, y, w, h, black);
 }
+void replayTonePlane(Session& s, bool lsbPlane) {
+  // Plane buffers use 1 bits to request a gray component over black base pixels.
+  s.renderer.clearScreen(0x00);
+  for (const auto& command : s.toneRects) {
+    const bool set = lsbPlane ? command.tone == T5_APP_TONE_DARK_GRAY
+                              : command.tone == T5_APP_TONE_LIGHT_GRAY;
+    s.renderer.fillRoundedRect(command.x, command.y, command.w, command.h,
+                               command.radius, set ? Color::White : Color::Black);
+  }
+}
+
+bool presentToneFrame(Session& s, HalDisplay::RefreshMode mode) {
+  if (s.toneRects.empty()) {
+    s.renderer.displayBuffer(mode);
+    return true;
+  }
+
+  // Preserve the application's normal BW frame while using the same framebuffer
+  // as bounded scratch space for the two grayscale planes.
+  if (!s.renderer.storeBwBuffer()) {
+    s.renderer.displayBuffer(mode);
+    return false;
+  }
+  if (!s.renderer.captureGrayscaleBaseBuffer()) {
+    s.renderer.restoreBwBuffer();
+    s.renderer.displayBuffer(mode);
+    return false;
+  }
+
+  replayTonePlane(s, true);
+  s.renderer.copyGrayscaleLsbBuffers();
+  replayTonePlane(s, false);
+  s.renderer.copyGrayscaleMsbBuffers();
+  s.renderer.displayGrayBuffer(mode);
+  s.renderer.restoreBwBuffer();
+  return true;
+}
+
 void present(bool full) {
   if (auto* s = current()) {
     esp_task_wdt_reset();
-    s->renderer.displayBuffer(full ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
+    (void)presentToneFrame(*s, full ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
     esp_task_wdt_reset();
   }
 }
@@ -1040,6 +1093,20 @@ bool requestLaunch(uint32_t index) {
 bool drawIcon(int32_t x, int32_t y, const char* icon, uint8_t size, bool black) {
   auto* s = current(); return s && FontAwesomeIcons::draw(s->renderer, x, y, icon, size, black);
 }
+void fillRoundedRectTone(int32_t x, int32_t y, int32_t w, int32_t h,
+                         int32_t radius, uint8_t tone) {
+  auto* s = current();
+  if (!s || w <= 0 || h <= 0 || s->toneRects.size() >= 256) return;
+  if (tone > T5_APP_TONE_BLACK) tone = T5_APP_TONE_BLACK;
+  radius = std::max(0, std::min(radius, std::min(w, h) / 2));
+
+  s->toneRects.push_back(ToneRectCommand{x, y, w, h, radius, tone});
+
+  // Gray pixels need a black bit in the base plane. White stays white; black
+  // and both gray levels use black base and are differentiated at presentation.
+  const Color base = tone == T5_APP_TONE_WHITE ? Color::White : Color::Black;
+  s->renderer.fillRoundedRect(x, y, w, h, radius, base);
+}
 void logMessage(const char* message) {
   if (!current() || !message) return;
   LOG_INF("APP", "%s", message);
@@ -1086,7 +1153,8 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            appCatalogDownloadWithProgress,
                            psramAlloc,
                            psramFree,
-                           logMessage};
+                           logMessage,
+                           fillRoundedRectTone};
 }  // namespace
 
 bool installRequiredNativeApp(const char* artifact, std::string& displayName,
