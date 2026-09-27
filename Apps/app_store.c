@@ -344,11 +344,16 @@ __attribute__((visibility("default"))) void app_main(void) {
             case T5_UI_EVENT_TAP: {
                 const int32_t hit = ui->hit_test(event.touch_x, event.touch_y);
                 if (hit == T5_UI_HIT_HEADER) {
-                    view = view == RELEASES ? SD_INBOX : RELEASES;
-                    if (view == SD_INBOX) (void)build_inbox(app, manager);
-                    else if (!refresh_releases(app, ui))
+                    if (view == RELEASES) {
+                        view = SD_INBOX;
+                        (void)build_inbox(app, manager);
+                        status[0] = '\0';
+                    } else if (refresh_releases(app, ui)) {
+                        view = RELEASES;
+                        status[0] = '\0';
+                    } else {
                         copy_text(status, sizeof(status), "Release refresh failed; SD packages available");
-                    else status[0] = '\0';
+                    }
                     selected = 0; redraw = true;
                 } else if (hit >= 0 && hit < (int32_t)row_count) {
                     if (selected == hit) {

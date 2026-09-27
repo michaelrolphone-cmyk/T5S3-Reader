@@ -473,7 +473,13 @@ static int16_t worked(const tc_day_t *day) {
     if (!day || day->punches[0] < 0 || day->punches[3] < day->punches[0]) return -1;
     int16_t total = (int16_t)(day->punches[3] - day->punches[0]);
     if (day->punches[1] >= 0 && day->punches[2] >= day->punches[1]) {
-        total = (int16_t)(total - (day->punches[2] - day->punches[1]));
+        const int16_t lunch_start =
+            day->punches[1] > day->punches[0] ? day->punches[1] : day->punches[0];
+        const int16_t lunch_end =
+            day->punches[2] < day->punches[3] ? day->punches[2] : day->punches[3];
+        if (lunch_end > lunch_start) {
+            total = (int16_t)(total - (lunch_end - lunch_start));
+        }
     }
     return total < 0 ? 0 : total;
 }
