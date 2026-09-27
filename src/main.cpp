@@ -314,13 +314,25 @@ void enterPowerOffKeepingScreen(const char* status) {
 // power-off. Consumed at the top of loop() so the battery-cut runs in the main-loop
 // context rather than inside an activity's call stack.
 bool g_shutdownRequested = false;
+bool g_displayBootFailed = false;
 void requestShutdown() { g_shutdownRequested = true; }
 
-void setupDisplayAndFonts() {
-  display.begin();
-  renderer.begin();
+bool setupDisplayAndFonts() {
+  // Preserve the physical e-paper image until the compatibility backend and
+  // runtime surface contract have both been validated. A metadata regression
+  // must not erase the only visible diagnostic surface before we can report it.
+  display.begin(false);
+  if (!display.isReady()) {
+    LOG_ERR("MAIN", "Display backend initialization failed; retained panel image left untouched");
+    return false;
+  }
+  if (!renderer.begin()) {
+    LOG_ERR("MAIN", "Renderer initialization failed; showing emergency display code 0xD1");
+    (void)display.showEmergencyFailurePattern(0xD1);
+    return false;
+  }
   activityManager.begin();
-  LOG_DBG("MAIN", "Display initialized");
+  LOG_DBG("MAIN", "Display initialized and renderer surface validated");
 
   // Initialize font decompressor for compressed reader fonts
   if (!fontDecompressor.init()) {
@@ -349,6 +361,7 @@ void setupDisplayAndFonts() {
 
   sdFontSystem.begin(renderer);
   LOG_DBG("MAIN", "Fonts setup");
+  return true;
 }
 
 void ensureSdFontLoaded() { sdFontSystem.ensureLoaded(renderer); }
@@ -430,7 +443,10 @@ void setup() {
   // We need 6 open files concurrently when parsing a new chapter
   if (!Storage.begin()) {
     LOG_ERR("MAIN", "SD card initialization failed");
-    setupDisplayAndFonts();
+    if (!setupDisplayAndFonts()) {
+      g_displayBootFailed = true;
+      return;
+    }
     activityManager.goToFullScreenMessage("SD card error", EpdFontFamily::BOLD);
     return;
   }
@@ -503,7 +519,10 @@ void setup() {
   // First serial output only here to avoid timing inconsistencies for power button press duration verification
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
 
-  setupDisplayAndFonts();
+  if (!setupDisplayAndFonts()) {
+    g_displayBootFailed = true;
+    return;
+  }
   logPlatformInputHealth();
   // Touch is an optional installed provider capability. Do not attempt to
   // activate it during setup: input.navigation gets the first provider-graph
@@ -562,6 +581,13 @@ void setup() {
 }
 
 void loop() {
+  if (g_displayBootFailed) {
+    // Do not touch ActivityManager/renderer after failed display bootstrap.
+    // Leave the retained image or emergency failure pattern stable for diagnosis.
+    delay(250);
+    return;
+  }
+
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();
   static unsigned long lastMemPrint = 0;

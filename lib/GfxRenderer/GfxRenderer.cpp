@@ -75,26 +75,46 @@ void GfxRenderer::ensureSdCardFontReady(int fontId, const std::vector<std::strin
   }
 }
 
-void GfxRenderer::begin() {
-  const DisplaySurfaceInfo info = display.getSurfaceInfo();
-  frameBuffer = display.getFrameBuffer();
-  if (!frameBuffer) {
-    LOG_ERR("GFX", "!! No framebuffer");
-    assert(false);
+bool GfxRenderer::begin() {
+  // Never destroy a previously working renderer state until the replacement
+  // surface has passed every check. This is especially important after an ELF
+  // display handoff/resume: bad metadata must not turn into a blank-screen loop.
+  if (!display.isReady()) {
+    LOG_ERR("GFX", "Display backend is not ready; preserving prior renderer state");
+    return false;
   }
-  if (info.pixelFormat != DisplayPixelFormat::Mono1 || info.width == 0 || info.height == 0 ||
-      info.visibleWidth == 0 || info.visibleHeight == 0 || info.strideBytes == 0 || info.bufferSize == 0) {
-    LOG_ERR("GFX", "Unsupported or invalid display surface");
-    assert(false);
+
+  const DisplaySurfaceInfo candidateInfo = display.getSurfaceInfo();
+  const DisplaySurfaceValidationError validation = validateDisplaySurfaceInfo(candidateInfo);
+  if (validation != DisplaySurfaceValidationError::None) {
+    LOG_ERR("GFX", "Rejected display surface metadata: %s", displaySurfaceValidationErrorName(validation));
+    return false;
   }
-  panelWidth = info.width;
-  panelHeight = info.height;
-  visibleWidth = info.visibleWidth;
-  visibleHeight = info.visibleHeight;
-  panelWidthBytes = info.strideBytes;
-  frameBufferSize = info.bufferSize;
-  safeInsets = info.safeInsets;
+  if (candidateInfo.pixelFormat != DisplayPixelFormat::Mono1) {
+    LOG_ERR("GFX", "Renderer does not yet support display pixel format %u; preserving prior state",
+            static_cast<unsigned>(candidateInfo.pixelFormat));
+    return false;
+  }
+
+  uint8_t* const candidateFrameBuffer = display.getFrameBuffer();
+  if (!candidateFrameBuffer) {
+    LOG_ERR("GFX", "Display backend reported ready without a framebuffer; preserving prior renderer state");
+    return false;
+  }
+
+  // Commit only after all validation succeeds.
+  freeBwBufferChunks();
+  frameBuffer = candidateFrameBuffer;
+  panelWidth = candidateInfo.width;
+  panelHeight = candidateInfo.height;
+  visibleWidth = candidateInfo.visibleWidth;
+  visibleHeight = candidateInfo.visibleHeight;
+  panelWidthBytes = candidateInfo.strideBytes;
+  frameBufferSize = candidateInfo.bufferSize;
+  safeInsets = candidateInfo.safeInsets;
   bwBufferChunks.assign((frameBufferSize + BW_BUFFER_CHUNK_SIZE - 1) / BW_BUFFER_CHUNK_SIZE, nullptr);
+  initialized = true;
+  return true;
 }
 
 void GfxRenderer::insertFont(const int fontId, EpdFontFamily font) {

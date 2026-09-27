@@ -104,10 +104,70 @@ class HalDisplay : public DisplaySurface {
 
   void displayGrayBuffer(RefreshMode mode = HALF_REFRESH);
 
+  bool isReady() const override { return displayReady && frameBuffer != nullptr; }
+
   DisplaySurfaceInfo getSurfaceInfo() const override {
     return DisplaySurfaceInfo{DISPLAY_WIDTH, DISPLAY_HEIGHT, VISIBLE_WIDTH, VISIBLE_HEIGHT,
                               DISPLAY_WIDTH_BYTES, BUFFER_SIZE, DisplayPixelFormat::Mono1,
                               DisplaySafeInsets{9, 3, 9, 3}};
+  }
+
+  // Last-resort boot diagnostic that deliberately bypasses GfxRenderer and
+  // runtime surface metadata. A large X plus eight code boxes gives a visible
+  // indication that panel I/O still works when renderer initialization fails.
+  bool showEmergencyFailurePattern(uint8_t code) {
+    if (!isReady() || !frameBuffer) return false;
+
+    memset(frameBuffer, 0xFF, BUFFER_SIZE);
+    auto setPixel = [this](uint16_t x, uint16_t y, bool black) {
+      if (x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT) return;
+      uint8_t& value = frameBuffer[static_cast<uint32_t>(y) * DISPLAY_WIDTH_BYTES + x / 8u];
+      const uint8_t mask = static_cast<uint8_t>(0x80u >> (x & 7u));
+      if (black) value &= static_cast<uint8_t>(~mask);
+      else value |= mask;
+    };
+    auto fillRect = [&](uint16_t x, uint16_t y, uint16_t w, uint16_t h, bool black) {
+      for (uint32_t yy = y; yy < static_cast<uint32_t>(y) + h && yy < DISPLAY_HEIGHT; ++yy) {
+        for (uint32_t xx = x; xx < static_cast<uint32_t>(x) + w && xx < DISPLAY_WIDTH; ++xx) {
+          setPixel(static_cast<uint16_t>(xx), static_cast<uint16_t>(yy), black);
+        }
+      }
+    };
+
+    const uint16_t border = DISPLAY_WIDTH >= 320 ? 10u : 3u;
+    fillRect(0, 0, DISPLAY_WIDTH, border, true);
+    fillRect(0, DISPLAY_HEIGHT - border, DISPLAY_WIDTH, border, true);
+    fillRect(0, 0, border, DISPLAY_HEIGHT, true);
+    fillRect(DISPLAY_WIDTH - border, 0, border, DISPLAY_HEIGHT, true);
+
+    const uint16_t xThickness = DISPLAY_WIDTH >= 320 ? 6u : 2u;
+    for (uint32_t y = border * 3u; y + border * 3u < DISPLAY_HEIGHT; ++y) {
+      const uint32_t usableY = y - border * 3u;
+      const uint32_t usableH = DISPLAY_HEIGHT - border * 6u;
+      const uint32_t usableW = DISPLAY_WIDTH - border * 6u;
+      const uint16_t x1 = static_cast<uint16_t>(border * 3u + (usableY * usableW) / usableH);
+      const uint16_t x2 = static_cast<uint16_t>(DISPLAY_WIDTH - 1u - x1);
+      fillRect(x1, static_cast<uint16_t>(y), xThickness, 1, true);
+      fillRect(x2, static_cast<uint16_t>(y), xThickness, 1, true);
+    }
+
+    const uint16_t blockW = DISPLAY_WIDTH / 20u;
+    const uint16_t blockH = DISPLAY_HEIGHT / 16u;
+    const uint16_t gap = blockW / 3u;
+    const uint16_t totalW = static_cast<uint16_t>(8u * blockW + 7u * gap);
+    const uint16_t startX = static_cast<uint16_t>((DISPLAY_WIDTH - totalW) / 2u);
+    const uint16_t startY = static_cast<uint16_t>(DISPLAY_HEIGHT - border * 2u - blockH);
+    for (uint8_t bit = 0; bit < 8; ++bit) {
+      const uint16_t x = static_cast<uint16_t>(startX + bit * (blockW + gap));
+      fillRect(x, startY, blockW, blockH, true);
+      if ((code & static_cast<uint8_t>(0x80u >> bit)) == 0 && blockW > 4 && blockH > 4) {
+        fillRect(static_cast<uint16_t>(x + 2u), static_cast<uint16_t>(startY + 2u),
+                 static_cast<uint16_t>(blockW - 4u), static_cast<uint16_t>(blockH - 4u), false);
+      }
+    }
+
+    displayBuffer(FULL_REFRESH);
+    return true;
   }
 
   // Runtime geometry passthrough

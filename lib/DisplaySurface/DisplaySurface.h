@@ -62,10 +62,80 @@ struct DisplaySurfaceInfo {
   DisplaySafeInsets safeInsets{};
 };
 
+enum class DisplaySurfaceValidationError : uint8_t {
+  None = 0,
+  UnsupportedPixelFormat,
+  InvalidGeometry,
+  InvalidStride,
+  InvalidBufferSize,
+  InvalidVisibleArea,
+  InvalidSafeInsets,
+};
+
+static constexpr uint32_t DISPLAY_SURFACE_MAX_DIMENSION = 4096u;
+static constexpr uint32_t DISPLAY_SURFACE_MAX_BUFFER_BYTES = 16u * 1024u * 1024u;
+
+inline uint8_t displayPixelFormatBitsPerPixel(const DisplayPixelFormat format) {
+  switch (format) {
+    case DisplayPixelFormat::Mono1: return 1;
+    case DisplayPixelFormat::Gray2: return 2;
+    case DisplayPixelFormat::Gray4: return 4;
+    case DisplayPixelFormat::Gray8: return 8;
+    case DisplayPixelFormat::Rgb565: return 16;
+  }
+  return 0;
+}
+
+inline const char* displaySurfaceValidationErrorName(const DisplaySurfaceValidationError error) {
+  switch (error) {
+    case DisplaySurfaceValidationError::None: return "none";
+    case DisplaySurfaceValidationError::UnsupportedPixelFormat: return "unsupported-pixel-format";
+    case DisplaySurfaceValidationError::InvalidGeometry: return "invalid-geometry";
+    case DisplaySurfaceValidationError::InvalidStride: return "invalid-stride";
+    case DisplaySurfaceValidationError::InvalidBufferSize: return "invalid-buffer-size";
+    case DisplaySurfaceValidationError::InvalidVisibleArea: return "invalid-visible-area";
+    case DisplaySurfaceValidationError::InvalidSafeInsets: return "invalid-safe-insets";
+  }
+  return "unknown";
+}
+
+inline DisplaySurfaceValidationError validateDisplaySurfaceInfo(const DisplaySurfaceInfo& info) {
+  const uint8_t bitsPerPixel = displayPixelFormatBitsPerPixel(info.pixelFormat);
+  if (bitsPerPixel == 0) return DisplaySurfaceValidationError::UnsupportedPixelFormat;
+
+  if (info.width == 0 || info.height == 0 || info.visibleWidth == 0 || info.visibleHeight == 0 ||
+      info.width > DISPLAY_SURFACE_MAX_DIMENSION || info.height > DISPLAY_SURFACE_MAX_DIMENSION ||
+      info.visibleWidth > DISPLAY_SURFACE_MAX_DIMENSION || info.visibleHeight > DISPLAY_SURFACE_MAX_DIMENSION) {
+    return DisplaySurfaceValidationError::InvalidGeometry;
+  }
+
+  const uint64_t minimumStride =
+      (static_cast<uint64_t>(info.width) * static_cast<uint64_t>(bitsPerPixel) + 7u) / 8u;
+  if (info.strideBytes < minimumStride) return DisplaySurfaceValidationError::InvalidStride;
+
+  const uint64_t requiredBytes = static_cast<uint64_t>(info.strideBytes) * info.height;
+  if (requiredBytes == 0 || requiredBytes > DISPLAY_SURFACE_MAX_BUFFER_BYTES ||
+      info.bufferSize < requiredBytes || info.bufferSize > DISPLAY_SURFACE_MAX_BUFFER_BYTES) {
+    return DisplaySurfaceValidationError::InvalidBufferSize;
+  }
+
+  const uint64_t visibleArea = static_cast<uint64_t>(info.visibleWidth) * info.visibleHeight;
+  const uint64_t physicalArea = static_cast<uint64_t>(info.width) * info.height;
+  if (visibleArea > physicalArea) return DisplaySurfaceValidationError::InvalidVisibleArea;
+
+  if (static_cast<uint32_t>(info.safeInsets.left) + info.safeInsets.right >= info.visibleWidth ||
+      static_cast<uint32_t>(info.safeInsets.top) + info.safeInsets.bottom >= info.visibleHeight) {
+    return DisplaySurfaceValidationError::InvalidSafeInsets;
+  }
+
+  return DisplaySurfaceValidationError::None;
+}
+
 class DisplaySurface {
  public:
   virtual ~DisplaySurface() = default;
 
+  virtual bool isReady() const = 0;
   virtual DisplaySurfaceInfo getSurfaceInfo() const = 0;
   virtual uint8_t* getFrameBuffer() const = 0;
 

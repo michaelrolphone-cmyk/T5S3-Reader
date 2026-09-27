@@ -36,6 +36,7 @@ class GfxRenderer {
   RenderMode renderMode;
   Orientation orientation;
   bool fadingFix;
+  bool initialized = false;
   uint8_t* frameBuffer = nullptr;
   uint16_t panelWidth = 0;
   uint16_t panelHeight = 0;
@@ -71,7 +72,9 @@ class GfxRenderer {
   ~GfxRenderer() { freeBwBufferChunks(); }
 
   // Setup
-  void begin();  // must be called right after display.begin()
+  // Transactional: false leaves the previous renderer state untouched.
+  bool begin();  // must be called right after display.begin()
+  bool isInitialized() const { return initialized; }
   void insertFont(int fontId, EpdFontFamily font);
   // Clears both the flash-font map and any SD-font registration for fontId.
   // Coupled to avoid dangling SdCardFont* in sdCardFonts_ when callers free

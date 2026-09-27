@@ -93,9 +93,10 @@ void HalDisplay::begin(const bool clearPanel) {
   }
 
   epd_init();
-  if (clearPanel) {
-    clearScreen(0xFF);
-  }
+  // clearPanel controls physical-image preservation. The logical framebuffer
+  // must always start deterministic; begin() itself never transfers it.
+  (void)clearPanel;
+  clearScreen(0xFF);
   displayReady = true;
   forceFullRefresh = true;
   forcedRefreshPending = false;
