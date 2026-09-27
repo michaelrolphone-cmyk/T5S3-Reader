@@ -75,7 +75,7 @@ enum class DisplaySurfaceValidationError : uint8_t {
 static constexpr uint32_t DISPLAY_SURFACE_MAX_DIMENSION = 4096u;
 static constexpr uint32_t DISPLAY_SURFACE_MAX_BUFFER_BYTES = 16u * 1024u * 1024u;
 
-inline uint8_t displayPixelFormatBitsPerPixel(const DisplayPixelFormat format) {
+constexpr uint8_t displayPixelFormatBitsPerPixel(const DisplayPixelFormat format) {
   switch (format) {
     case DisplayPixelFormat::Mono1: return 1;
     case DisplayPixelFormat::Gray2: return 2;
@@ -86,7 +86,7 @@ inline uint8_t displayPixelFormatBitsPerPixel(const DisplayPixelFormat format) {
   return 0;
 }
 
-inline const char* displaySurfaceValidationErrorName(const DisplaySurfaceValidationError error) {
+constexpr const char* displaySurfaceValidationErrorName(const DisplaySurfaceValidationError error) {
   switch (error) {
     case DisplaySurfaceValidationError::None: return "none";
     case DisplaySurfaceValidationError::UnsupportedPixelFormat: return "unsupported-pixel-format";
@@ -99,7 +99,7 @@ inline const char* displaySurfaceValidationErrorName(const DisplaySurfaceValidat
   return "unknown";
 }
 
-inline DisplaySurfaceValidationError validateDisplaySurfaceInfo(const DisplaySurfaceInfo& info) {
+constexpr DisplaySurfaceValidationError validateDisplaySurfaceInfo(const DisplaySurfaceInfo& info) {
   const uint8_t bitsPerPixel = displayPixelFormatBitsPerPixel(info.pixelFormat);
   if (bitsPerPixel == 0) return DisplaySurfaceValidationError::UnsupportedPixelFormat;
 
@@ -119,9 +119,11 @@ inline DisplaySurfaceValidationError validateDisplaySurfaceInfo(const DisplaySur
     return DisplaySurfaceValidationError::InvalidBufferSize;
   }
 
-  const uint64_t visibleArea = static_cast<uint64_t>(info.visibleWidth) * info.visibleHeight;
-  const uint64_t physicalArea = static_cast<uint64_t>(info.width) * info.height;
-  if (visibleArea > physicalArea) return DisplaySurfaceValidationError::InvalidVisibleArea;
+  // Check both legal axis mappings, not merely pixel area. Area-only validation
+  // can accept a rectangle wider than the panel in both orientations.
+  const bool nativeFits = info.visibleWidth <= info.width && info.visibleHeight <= info.height;
+  const bool rotatedFits = info.visibleWidth <= info.height && info.visibleHeight <= info.width;
+  if (!nativeFits && !rotatedFits) return DisplaySurfaceValidationError::InvalidVisibleArea;
 
   if (static_cast<uint32_t>(info.safeInsets.left) + info.safeInsets.right >= info.visibleWidth ||
       static_cast<uint32_t>(info.safeInsets.top) + info.safeInsets.bottom >= info.visibleHeight) {
