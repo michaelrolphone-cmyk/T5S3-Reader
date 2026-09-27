@@ -123,6 +123,22 @@ int main(int argc, char **argv) {
     assert(discovery->devices(host->context, devices, &n) && n == 1);
     uint64_t first = devices[0], claim_token = 0;
     assert(first && first != 51);
+
+    // Hotplug must not require unloading/restarting usb-host-v2. The physical
+    // controller gives a fresh identity after re-attach and the same host
+    // provider instance must retire the old logical token and publish a new one.
+    queue(2, 51);
+    assert(discovery->poll(host->context, 8, &processed) && processed == 1);
+    n = 8;
+    assert(discovery->devices(host->context, devices, &n) && n == 0);
+    queue(1, 52);
+    assert(discovery->poll(host->context, 8, &processed) && processed == 1);
+    n = 8;
+    assert(discovery->devices(host->context, devices, &n) && n == 1);
+    const uint64_t reattached = devices[0];
+    assert(reattached && reattached != first && reattached != 52);
+    first = reattached;
+
     uint8_t desc[64]; size_t length = sizeof(desc);
     uint16_t vid = 0, pid = 0;
     assert(host->configuration(host->context, first, desc, &length, &vid, &pid));
@@ -142,7 +158,7 @@ int main(int argc, char **argv) {
     assert(host->bulk_write(host->context, claim_token, 0x81, data, 2, 100) == -1);
     assert(extended->interrupt_read(host->context, claim_token, 0x81, data, 2, 10) == -1);
     assert(physical_claims == 1 && controls == 1 && bulk_reads == 1 && bulk_writes == 1);
-    queue(2, 51);
+    queue(2, 52);
     assert(discovery->poll(host->context, 8, &processed) && processed == 1);
     assert(host->bulk_read(host->context, claim_token, 0x81, data, 2, 100) == -1);
     length = sizeof(desc);
