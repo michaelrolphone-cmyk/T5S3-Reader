@@ -105,16 +105,16 @@
         "display_name": "Driver Manager",
         "file_name": "driver_manager.elf",
         "icon": "solid:f085",
-        "min_firmware_version": "1.2.23",
-        "sha256": "59226faf3474afa03d568630c755e1be4f6bd4d09c6a3f68011d4b78e1f7e12a",
-        "size_bytes": 18696,
-        "version": "1.0.4"
+        "min_firmware_version": "1.3.10",
+        "sha256": "dca24264818ef4b8f940c9fd20fe1e421111c639ee1c827d12f329e821fd1a07",
+        "size_bytes": 18768,
+        "version": "1.0.5"
       },
-      "sha256": "59226faf3474afa03d568630c755e1be4f6bd4d09c6a3f68011d4b78e1f7e12a",
-      "size": 18696,
-      "tag": "app-driver_manager-v1.0.4",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-driver_manager-v1.0.4/driver_manager.elf",
-      "version": "1.0.4"
+      "sha256": "dca24264818ef4b8f940c9fd20fe1e421111c639ee1c827d12f329e821fd1a07",
+      "size": 18768,
+      "tag": "app-driver_manager-v1.0.5",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-driver_manager-v1.0.5/driver_manager.elf",
+      "version": "1.0.5"
     },
     {
       "asset": "esp_rom_flasher.elf",
