@@ -114,3 +114,37 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+## 2026-09-27 scan — 03:25 MDT
+
+### 13. KOReader settings remain live after a failed persistence write
+
+- **Affected code:** `src/native/NativeKOReaderBridge.cpp`, its four setting mutation functions; user-visible behavior in `Apps/koreader_sync.c`.
+- **Trigger / reproduction:** Make the KOReader settings write fail, then change an account field, sync-server URL, or document-match method. The app reports **Could not save setting**. Continue using KOReader Sync in the same session, then reboot.
+- **Observed / logically demonstrated failure:** Each bridge setter mutates the process-global `KOREADER_STORE` first and only then calls `saveToFile()`. If persistence fails, the setter returns `false`, but the new value remains in the live store. Subsequent settings reads and authentication therefore use/display the unsaved value even though the UI reported failure; after reboot the older persisted value is restored.
+- **Likely root cause:** The setters use mutate-then-save semantics with no snapshot, rollback, or transactional staging.
+- **Impact:** Runtime configuration can diverge from persistent configuration after a failed write. Authentication can run with settings the user was explicitly told were not saved, and the apparent setting later reverts after restart.
+- **Repair direction:** Snapshot the affected store fields before mutation and restore them if `saveToFile()` fails, or persist a staged copy and only publish it into the live store after a successful write. Add fault-injection tests proving a failed save leaves both live and persisted values unchanged.
+
+### 14. Legacy language migration can retire the only recoverable setting before persistence succeeds
+
+- **Affected code:** `src/CrossPointSettings.cpp`, `CrossPointSettings::migrateLanguageBinaryFile()`.
+- **Trigger / reproduction:** Boot with legacy `/.crosspoint/language.bin` present. Either make the legacy file fail to open/read, or allow it to read successfully but make `settings.json` persistence fail.
+- **Observed / logically demonstrated failure:** The migration attempts to read the legacy value only inside `if (Storage.openFileForRead(...))`, but regardless of whether that read succeeds it then calls `Storage.rename(LANG_FILE_BIN, LANG_FILE_BAK)`, ignores that result, calls `saveToFile()`, ignores that result, logs **Migrated language.bin into settings.json**, and returns `true`. A transient read failure can therefore retire the source without importing its value; a destination-write failure can retire the source even though the imported value was never persisted.
+- **Likely root cause:** Source retirement and success reporting are unconditional instead of being committed only after a validated read and successful destination write.
+- **Impact:** A one-time migration can silently lose the user's language preference and suppress an automatic retry on the next boot.
+- **Repair direction:** Treat the migration transactionally: require a successful open, complete/validated legacy read, and successful `saveToFile()` before renaming the legacy file. If any step fails, leave `language.bin` intact and return `false`; also check the rename result. Add regression tests for open failure, truncated/invalid legacy data, destination-write failure, and successful migration.
+
+### 15. Firmware Flasher silently hides firmware images after the first 64
+
+- **Affected code:** `Apps/esp_rom_flasher.c`, `MAX_IMAGES`, the fixed image inventory arrays, and the root-directory scan in `app_main()`.
+- **Trigger / reproduction:** Place more than 64 qualifying ESP `.bin` or MSP430 TI-TXT `.txt` firmware images in `/sd`, then open Firmware Flasher.
+- **Observed / logically demonstrated failure:** The scan loop is `while (image_count < MAX_IMAGES && app->dir_next(&entry))`. Once the 64th qualifying image is collected, directory enumeration stops entirely. Later valid firmware files are never shown and cannot be selected, and the UI gives no truncation warning or continuation path.
+- **Likely root cause:** A fixed in-memory row buffer is also being used as the total directory-inventory limit.
+- **Impact:** Valid firmware images can become inaccessible solely because of directory ordering, which can make the flasher appear unable to see a file that is present on the SD card.
+- **Repair direction:** Separate inventory traversal from visible-page storage. Page or stream the directory with a cursor/offset, or use a bounded dynamic inventory with an explicit continuation/truncation state. Add tests with exactly 64 and more than 64 qualifying images and verify every image remains reachable.
+
+## Duplicate check performed for this scan
+
+These findings were checked against the current `bugs.md`, the repository's open issue set (none), and the current open PRs (#241, #220, #194, and #96). Targeted all-state PR searches found no existing work for KOReader failed-save rollback or legacy language migration. The Firmware Flasher limit was also checked against existing PR history; no PR documents this 64-image visibility failure.
+
