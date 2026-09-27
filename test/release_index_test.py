@@ -134,7 +134,7 @@ class ReleaseIndexTests(unittest.TestCase):
         start = host.index("bool loadIndependentAppIndex(")
         end = host.index("\nbool loadAuthoritativeAppCatalog(", start)
         loader = host[start:end]
-        self.assertIn("parseAppManifest(manifestJson, asset.manifest, &parsedVersion, true)", loader)
+        self.assertIn("parseAppManifest(asset.manifestJson, asset.manifest, &parsedVersion, true)", loader)
         self.assertNotIn("!asset.manifest.compatible", loader)
 
     def test_rejects_cross_release_asset_url(self):

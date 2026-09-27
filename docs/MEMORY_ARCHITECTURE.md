@@ -727,8 +727,7 @@ Current ESP32-S3 firmware installs an mbedTLS allocator at startup when PSRAM
 is available. Allocations of at least 4 KiB use PSRAM; smaller allocations use
 internal RAM so hardware crypto and control state retain
 internal-memory access. Large allocations fail without silently consuming
-internal RAM if PSRAM is exhausted. App catalog sidecar JSON is retained in
-PSRAM while the App Store is open. The bundled framework still has an internal
+internal RAM if PSRAM is exhausted. The bundled framework still has an internal
 memory mbedTLS default, so this runtime hook must be installed before network
 clients are created.
 
