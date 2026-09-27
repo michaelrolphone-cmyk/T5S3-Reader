@@ -30,6 +30,11 @@ else
 fi
 python3 "$repo_dir/test/native_apps/test_symbols.py"
 python3 "$repo_dir/test/native_apps/test_elf_cache_sync.py"
+cc -std=c11 -Wall -Wextra -Werror \
+  -I"$repo_dir/lib/elf_loader/include" \
+  "$repo_dir/test/native_apps/elf_section_alignment_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/test_elf_section_alignment.py"
 python3 "$repo_dir/test/native_apps/test_capability_manifest.py"
 python3 "$repo_dir/test/native_apps/network_cookie_session_source_test.py"
 python3 "$repo_dir/test/native_apps/home_shortcut_launch_contract_test.py"
