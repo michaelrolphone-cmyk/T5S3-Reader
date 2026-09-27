@@ -1,5 +1,6 @@
 #include <HalDisplay.h>
 #include "NativeTouchInput.h"
+#include "NativeVideoBridge.h"
 #include <T5HardwareTakeover.h>
 #include <esp_err.h>
 #include <esp_log.h>
@@ -9,6 +10,10 @@ namespace {
 constexpr char kTag[] = "ELF_TAKEOVER";
 bool s_display_borrowed = false;
 bool s_touch_borrowed = false;
+}
+
+extern "C" bool native_hardware_display_is_borrowed(void) {
+  return s_display_borrowed;
 }
 
 // These hooks belong to the firmware loader; they are not imported by ELFs.
@@ -47,8 +52,10 @@ extern "C" esp_err_t native_hardware_takeover_end(uint32_t requested) {
   if (requested == 0U) return ESP_OK;
   if ((requested & T5_HARDWARE_TAKEOVER_DISPLAY) != 0U) {
     if (!s_display_borrowed) return ESP_ERR_INVALID_STATE;
-    // app_main must already have terminated its scan task, DMA and callbacks.
-    // A return without relinquishing app-owned hardware is an app bug.
+    // The ELF should stop its fast-video service itself. Force-stop the
+    // firmware-owned GameBoy-derived bridge as an unload guard before restoring
+    // the normal display. External ELFs such as GameBoy simply see a no-op.
+    nativeVideoForceStop();
     s_display_borrowed = false;
     const bool displayRestored = display.resumeFromExternalOwner();
     if (!displayRestored)
