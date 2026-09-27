@@ -114,3 +114,37 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+
+## 2026-09-26 scan — 21:20 MDT
+
+### 13. Button Remap applies a failed mapping to the live input system even when persistence fails
+
+- **Affected code:** `src/native/NativeButtonRemapBridge.cpp`, `applyMapping(const t5_button_remap_mapping_t *mapping)` and `resetDefaults()`; `src/MappedInputManager.cpp`, `mapButton()`; `Apps/button_remap.c`, the failed-save retry path in `app_main()`.
+- **Trigger / reproduction:** Open **Remap Front Buttons**, complete a valid four-button mapping while forcing `SETTINGS.saveToFile()` to fail. The app reports **Could not save button mapping** and remains on the final mapping step. The same defect occurs when **Reset** fails to persist.
+- **Observed / logically demonstrated failure:** `applyMapping()` writes all four `SETTINGS.frontButton*` fields before calling `SETTINGS.saveToFile()`, then simply returns that save result. On failure, the live fields are never restored. `MappedInputManager::mapButton()` reads those live fields on every input query, so the device immediately begins using the mapping that the UI just reported as unsaved. The remap app's retry decoder still translates logical input through the pre-edit `original` mapping, so subsequent physical presses can be identified as the wrong hardware buttons. A reboot restores the old persisted mapping, producing another unexpected mapping change.
+- **Likely root cause:** The bridge treats settings mutation and persistence as separate operations without rollback, while the input mapper consumes the mutable settings object directly.
+- **Impact:** A storage failure can leave the current session using an uncommitted button layout, corrupt the retry workflow, and make controls behave differently before and after reboot despite the app reporting that the save failed.
+- **Repair direction:** Make `applyMapping()` transactional: save the previous four button fields, apply the candidate, call `saveToFile()`, and restore the previous fields before returning `false` if persistence fails. Apply the same behavior to reset-to-defaults through the shared path. Add a regression test that forces save failure and verifies both `SETTINGS` and mapped physical/logical button behavior remain unchanged.
+
+### 14. Button Remap advertises Reset and Cancel on front buttons but handles those actions only on the side buttons
+
+- **Affected code:** `Apps/button_remap.c`, `render()` and the main input loop; `src/native/NativeUiBridge.cpp`, `drawChrome()`; `src/MappedInputManager.cpp`, `mapLabels()` and `mapButton()`.
+- **Trigger / reproduction:** Open **Remap Front Buttons** and use the on-screen button hints. Press the front button labelled **Reset** or **Cancel**.
+- **Observed / logically demonstrated failure:** The app supplies `.previous_label = "Reset"` and `.next_label = "Cancel"`. `NativeUiBridge::drawChrome()` passes those labels to `MappedInputManager::mapLabels()`, which places them on the logical **Left** and **Right** front-button positions. But `button_remap.c` never handles `T5_APP_BUTTON_LEFT` or `T5_APP_BUTTON_RIGHT` as Reset/Cancel; it handles only `T5_APP_BUTTON_UP` as Reset and `T5_APP_BUTTON_DOWN` as Cancel. `MappedInputManager::mapButton()` maps Up/Down to the fixed side buttons. Therefore the controls the screen labels Reset/Cancel instead enter those physical front buttons as mapping choices, while the actual Reset/Cancel actions are on unlabeled side buttons.
+- **Likely root cause:** The chrome's previous/next labels were used as if they described side-button Up/Down actions, but the native UI chrome maps previous/next to the remappable front Left/Right buttons.
+- **Impact:** The remapping workflow gives false control instructions at exactly the point where button identity matters; users can accidentally assign a button when trying to cancel or reset, and the real escape/reset controls are undiscoverable.
+- **Repair direction:** Do not advertise Reset/Cancel through `previous_label`/`next_label` unless the corresponding logical Left/Right inputs actually perform those actions. Either handle Left/Right as Reset/Cancel and provide a separate raw-front-button capture mechanism, or render explicit side-button instructions and leave the front-button hints blank while capturing raw physical front-button presses. Add a test that verifies every rendered control hint invokes the action named by that hint.
+
+### 15. A malformed BMP width can overflow row-stride arithmetic and drive out-of-bounds pixel reads
+
+- **Affected code:** `src/native/NativeImageBridge.cpp`, `bmpInfo()`, `decodeBmp()`, and the BMP path in `renderFit()`; reachable through `Apps/image_viewer.c` for BMP files.
+- **Trigger / reproduction:** Open a crafted uncompressed BMP whose signed width is a very large positive value but whose file contains only a tiny pixel row. For example, a 32-bpp BMP can use width `0x20000001`, height 1, a normal pixel-data offset, and only a few bytes of pixel data.
+- **Observed / logically demonstrated failure:** `bmpInfo()` accepts any positive 32-bit width. `decodeBmp()` then computes `rowBytes` as `((info.width * bpp + 31u) / 32u) * 4u` using 32-bit unsigned arithmetic. With width `0x20000001` and 32 bpp, `info.width * bpp` wraps to `32`, so `rowBytes` becomes only 4 bytes and the file-size guard can pass for a tiny file. The subsequent loop still iterates to the original huge `info.width` and, for 32-bpp data, reads `row + sx * 4`, quickly running beyond the loaded file buffer. This can fault or watchdog-reset the device when the BMP is rendered.
+- **Likely root cause:** Image dimensions are accepted without a sane bound, and packed-row size is calculated in overflow-prone 32-bit arithmetic before the bounds check.
+- **Impact:** A malformed or corrupted BMP copied to the SD card can crash the Image Viewer/device instead of being rejected as invalid input.
+- **Repair direction:** Calculate bits-per-row and row stride in checked 64-bit arithmetic, reject dimensions/stride values that overflow `size_t` or exceed practical decoder limits, and prove `dataOffset + stride * height <= file.size` before entering the pixel loops. Add malformed-BMP regression fixtures covering width×bpp overflow, oversized dimensions, truncated rows, and valid boundary cases.
+
+## Duplicate check performed for this scan
+
+These defects were checked against the current `bugs.md`, the current open PR set (#220, #194, and #96), the empty current open-issue set, and targeted all-state searches for button-remap persistence, button-remap Reset/Cancel behavior, and BMP image overflows/crashes. No existing bug entry, issue, or PR documents these three defects. PR #21 introduced BMP viewing and PR #29 contains the known PNG decoder crash, but neither identifies the BMP row-stride overflow described above.
