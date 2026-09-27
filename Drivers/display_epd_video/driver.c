@@ -48,7 +48,13 @@ static bool acquire(void *context, uint32_t format, risc_display_surface_v1 *out
         started = true;
         if (scan.width != 960 || scan.height != 540 || scan.stride_bytes != 120 ||
             scan.pixel_format != T5_VIDEO_PIXEL_MONO_1BPP_MSB ||
-            !(scan.flags & T5_VIDEO_FLAG_ONE_IS_BLACK)) return false;
+            !(scan.flags & T5_VIDEO_FLAG_ONE_IS_BLACK)) {
+            video->stop();
+            started = false;
+            video = NULL;
+            scan = (t5_video_surface_v1){0};
+            return false;
+        }
     }
     if (!video->can_submit()) return false;
     size_t bytes = 0;
