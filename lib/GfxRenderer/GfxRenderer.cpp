@@ -75,6 +75,27 @@ void GfxRenderer::ensureSdCardFontReady(int fontId, const std::vector<std::strin
   }
 }
 
+bool GfxRenderer::preflightSurface() const {
+  const DisplaySurfaceInfo info = display.getSurfaceInfo();
+  const DisplaySurfaceValidationError validation = validateDisplaySurfaceInfo(info);
+  if (validation != DisplaySurfaceValidationError::None) {
+    LOG_ERR("GFX",
+            "Display preflight rejected: %s scan=%ux%u visible=%ux%u stride=%u bytes=%lu format=%u "
+            "safe=%u,%u,%u,%u",
+            displaySurfaceValidationErrorName(validation), info.width, info.height, info.visibleWidth,
+            info.visibleHeight, info.strideBytes, static_cast<unsigned long>(info.bufferSize),
+            static_cast<unsigned>(info.pixelFormat), info.safeInsets.top, info.safeInsets.right,
+            info.safeInsets.bottom, info.safeInsets.left);
+    return false;
+  }
+  if (info.pixelFormat != DisplayPixelFormat::Mono1) {
+    LOG_ERR("GFX", "Display preflight rejected: current rasterizer requires MONO1, format=%u",
+            static_cast<unsigned>(info.pixelFormat));
+    return false;
+  }
+  return true;
+}
+
 bool GfxRenderer::begin() {
   // Never destroy a previously working renderer state until the replacement
   // surface has passed every check. This is especially important after an ELF
