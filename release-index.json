@@ -12,16 +12,16 @@
         "display_name": "App Store",
         "file_name": "app_store.elf",
         "icon": "solid:f019",
-        "min_firmware_version": "1.2.17",
-        "sha256": "0c21340001c7ce37e84ec03e75e0cb50d771604f3d7919207140c15544986507",
-        "size_bytes": 11056,
-        "version": "1.0.4"
+        "min_firmware_version": "1.3.10",
+        "sha256": "ba36235cd8974b3da511b0f3f5a0fb11db35bf2245c7ade7425054a6c6901fb2",
+        "size_bytes": 11152,
+        "version": "1.0.5"
       },
-      "sha256": "0c21340001c7ce37e84ec03e75e0cb50d771604f3d7919207140c15544986507",
-      "size": 11056,
-      "tag": "app-app_store-v1.0.4",
-      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-app_store-v1.0.4/app_store.elf",
-      "version": "1.0.4"
+      "sha256": "ba36235cd8974b3da511b0f3f5a0fb11db35bf2245c7ade7425054a6c6901fb2",
+      "size": 11152,
+      "tag": "app-app_store-v1.0.5",
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-app_store-v1.0.5/app_store.elf",
+      "version": "1.0.5"
     },
     {
       "asset": "battery.elf",
