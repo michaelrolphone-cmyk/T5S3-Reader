@@ -107,23 +107,16 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
   const int pageWidth = r->getScreenWidth();
   const int pageHeight = r->getScreenHeight();
   const int listTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing + 8;
+  const Rect content{0, listTop, pageWidth, pageHeight - listTop - metrics.buttonHintsHeight - 8};
 
   bool hasSubtitle = false;
   bool hasValue = false;
   bool highlightValue = false;
-  bool hasStateIcon = false;
   for (uint32_t i = 0; i < rowCount; ++i) {
     hasSubtitle = hasSubtitle || (rows[i].subtitle && rows[i].subtitle[0]);
     hasValue = hasValue || (rows[i].value && rows[i].value[0]);
     highlightValue = highlightValue || ((rows[i].flags & T5_UI_LIST_HIGHLIGHT_VALUE) != 0);
-    hasStateIcon = hasStateIcon || ((rows[i].flags & T5_UI_LIST_ICON_MASK) != 0);
   }
-
-  constexpr int stateIconSize = 16;
-  constexpr int stateIconGap = 12;
-  const int stateIconGutter = hasStateIcon ? stateIconSize + stateIconGap : 0;
-  const Rect content{stateIconGutter, listTop, pageWidth - stateIconGutter,
-                     pageHeight - listTop - metrics.buttonHintsHeight - 8};
 
   std::function<std::string(int)> subtitleFn;
   std::function<std::string(int)> valueFn;
@@ -139,13 +132,16 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
   const int selected = rowCount ? std::clamp(selectedIndex, 0, static_cast<int32_t>(rowCount) - 1) : 0;
   const int pageStart = rowCount ? (selected / pageItems) * pageItems : 0;
   const int pageEnd = std::min(static_cast<int>(rowCount), pageStart + pageItems);
+  const int contentWidth = content.width - 5;
   for (int i = pageStart; i < pageEnd; ++i) {
     const char* icon = listStateIcon(rows[i].flags);
     if (!icon) continue;
-    const int iconX = metrics.contentSidePadding;
-    const int rowY = content.y + (i % pageItems) * rowHeight;
-    const int iconY = rowY + std::max(0, (rowHeight - stateIconSize) / 2);
-    FontAwesomeIcons::draw(*r, iconX, iconY, icon, stateIconSize, i != selectedIndex);
+    const int valueWidth = rows[i].value && rows[i].value[0]
+        ? BaseTheme::getTextWidthForRole(*r, UI_10_FONT_ID, TextRole::System, rows[i].value)
+        : 0;
+    const int iconX = content.x + contentWidth - metrics.contentSidePadding - valueWidth - 20;
+    const int iconY = content.y + (i % pageItems) * rowHeight - 1;
+    FontAwesomeIcons::draw(*r, iconX, iconY, icon, 16, i != selectedIndex);
   }
 
   drawChrome(*r, *in, chrome);
