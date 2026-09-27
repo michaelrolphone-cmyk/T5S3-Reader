@@ -11,6 +11,7 @@
 #include <cstring>
 
 #include "MappedInputManager.h"
+#include "NativeTouchInput.h"
 #include "fontIds.h"
 #include "runtime/resources/ExecutionContext.h"
 
@@ -92,7 +93,7 @@ bool nativeDeviceConsentPrompt(const RuntimeDevices::DeviceInfo& device,
   renderer.displayBuffer(HalDisplay::FULL_REFRESH);
 
   // A completed tap cannot approve until the firmware observes a fully idle
-  // touch frame AFTER this trusted prompt appears. HalGPIO::hadTouchActivity
+  // touch frame AFTER this trusted prompt appears. nativeTouchHadActivity
   // includes a held finger, a pending tap and the touch-home button. This
   // consumes app-originated touches without disabling on-screen approval.
   using Button = MappedInputManager::Button;
@@ -115,7 +116,7 @@ bool nativeDeviceConsentPrompt(const RuntimeDevices::DeviceInfo& device,
         mappedInputManager.isPressed(Button::Power) ||
             mappedInputManager.wasTouchHomeButtonPressed() ||
             mappedInputManager.isPressed(Button::Back),
-        !gpio.hadTouchActivity(), touchDeny, touchAllow);
+        !nativeTouchHadActivity(), touchDeny, touchAllow);
     if (decision == NativeConsentDecision::Deny) {
       ESP_LOGI(kTag, "permission prompt denied by on-screen Deny or cancel");
       return false;

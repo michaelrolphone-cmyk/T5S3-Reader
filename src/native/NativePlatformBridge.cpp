@@ -105,7 +105,11 @@ bool renameFile(const char* sourcePath, const char* destinationPath) {
 }
 
 HalFile streamFile;
+HalFile writeStreamFile;
+std::string writeStreamDestination;
+std::string writeStreamTemporary;
 constexpr t5_storage_stream_t kStreamHandle = 1u;
+constexpr t5_storage_stream_t kWriteStreamHandle = 2u;
 
 t5_storage_stream_t streamOpen(const char* path, size_t* sizeOut) {
   if (sizeOut) *sizeOut = 0;
@@ -134,6 +138,56 @@ void streamClose(t5_storage_stream_t stream) {
   if (stream == kStreamHandle && streamFile.isOpen()) streamFile.close();
 }
 
+void clearWriteStreamState() {
+  writeStreamDestination.clear();
+  writeStreamTemporary.clear();
+}
+
+t5_storage_stream_t writeStreamOpen(const char* path) {
+  if (!Storage.ready() || writeStreamFile.isOpen()) return T5_STORAGE_STREAM_INVALID;
+  std::string mapped;
+  if (!mapStoragePath(path, mapped) || mapped == "/" || Storage.exists(mapped.c_str()) ||
+      !ensureParentDirectory(mapped)) return T5_STORAGE_STREAM_INVALID;
+  writeStreamDestination = mapped;
+  writeStreamTemporary = mapped + ".part";
+  if (Storage.exists(writeStreamTemporary.c_str()) &&
+      !Storage.remove(writeStreamTemporary.c_str())) {
+    clearWriteStreamState();
+    return T5_STORAGE_STREAM_INVALID;
+  }
+  if (!Storage.openFileForWrite("NativeStorage", writeStreamTemporary.c_str(), writeStreamFile)) {
+    clearWriteStreamState();
+    return T5_STORAGE_STREAM_INVALID;
+  }
+  return kWriteStreamHandle;
+}
+
+size_t writeStreamWrite(t5_storage_stream_t stream, const void* buffer, size_t size) {
+  if (stream != kWriteStreamHandle || !writeStreamFile.isOpen() || (!buffer && size)) return 0;
+  return writeStreamFile.write(buffer, size);
+}
+
+bool writeStreamCommit(t5_storage_stream_t stream) {
+  if (stream != kWriteStreamHandle || !writeStreamFile.isOpen() ||
+      writeStreamDestination.empty() || writeStreamTemporary.empty()) return false;
+  writeStreamFile.flush();
+  const bool closed = writeStreamFile.close();
+  bool committed = closed && !Storage.exists(writeStreamDestination.c_str()) &&
+                   Storage.rename(writeStreamTemporary.c_str(), writeStreamDestination.c_str());
+  if (!committed && Storage.exists(writeStreamTemporary.c_str()))
+    Storage.remove(writeStreamTemporary.c_str());
+  clearWriteStreamState();
+  return committed;
+}
+
+void writeStreamAbort(t5_storage_stream_t stream) {
+  if (stream != kWriteStreamHandle) return;
+  if (writeStreamFile.isOpen()) writeStreamFile.close();
+  if (!writeStreamTemporary.empty() && Storage.exists(writeStreamTemporary.c_str()))
+    Storage.remove(writeStreamTemporary.c_str());
+  clearWriteStreamState();
+}
+
 bool localDateTime(t5_local_datetime_t* out) {
   if (!out) return false;
   const time_t now = time(nullptr);
@@ -154,7 +208,7 @@ bool localDateTime(t5_local_datetime_t* out) {
 const t5_storage_api_v1 kStorageApi = {
     T5_STORAGE_API_VERSION, sizeof(t5_storage_api_v1), storageExists, readFile,
     writeFileAtomic, removeFile, streamOpen, streamRead, streamSeek, streamClose,
-    renameFile,
+    renameFile, writeStreamOpen, writeStreamWrite, writeStreamCommit, writeStreamAbort,
 };
 const t5_system_api_v1 kSystemApi = {
     T5_SYSTEM_API_VERSION, sizeof(t5_system_api_v1), localDateTime,

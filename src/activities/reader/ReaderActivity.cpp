@@ -69,10 +69,8 @@ std::unique_ptr<Txt> ReaderActivity::loadTxt(const std::string& path) {
   return nullptr;
 }
 
-void ReaderActivity::goToLibrary(const std::string& fromBookPath) {
-  // If coming from a book, start in that book's folder; otherwise start from root
-  auto initialPath = fromBookPath.empty() ? "/" : FsHelpers::extractFolderPath(fromBookPath);
-  activityManager.goToFileBrowser(std::move(initialPath));
+void ReaderActivity::goToLibrary(const std::string&) {
+  activityManager.goToInstalledApp("file_browser.elf", "File Browser");
 }
 
 void ReaderActivity::onGoToEpubReader(std::unique_ptr<Epub> epub) {

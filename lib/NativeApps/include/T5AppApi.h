@@ -17,6 +17,10 @@ extern "C" {
 #define T5_APP_VERSION_MAX 32u
 #define T5_APP_SETTING_LABEL_MAX 128u
 #define T5_APP_SETTING_VALUE_MAX 128u
+#define T5_APP_TONE_WHITE 0u
+#define T5_APP_TONE_LIGHT_GRAY 1u
+#define T5_APP_TONE_DARK_GRAY 2u
+#define T5_APP_TONE_BLACK 3u
 
 typedef struct {
     uint32_t buttons;
@@ -158,6 +162,15 @@ typedef struct {
     // hardware-facing allocations. This never falls back to internal RAM.
     void *(*psram_alloc)(size_t size);
     void (*psram_free)(void *ptr);
+
+    // Append-only firmware logger. Emits one application-supplied message
+    // through the normal RiscRTE serial/logging path. Size-check before use.
+    void (*log_message)(const char *message);
+
+    // Append-only rounded grayscale/dither primitive. Tone uses T5_APP_TONE_*.
+    // This keeps e-paper shade policy and clipping in the firmware renderer.
+    void (*fill_rounded_rect_tone)(int32_t x, int32_t y, int32_t w, int32_t h,
+                                   int32_t radius, uint8_t tone);
 } t5_app_api_v1;
 
 // Native application entry point. Native ELFs are built with -fvisibility=hidden,

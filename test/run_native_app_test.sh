@@ -27,12 +27,28 @@ else
     "$repo_dir/lib/NativeApps/src/UnsignedDivisionCompat.c" \
     "$repo_dir/test/native_apps/unsigned_division_test.c" -o "$binary"
   "$binary"
+  cc -std=c11 -Wall -Wextra -Werror \
+    "$repo_dir/lib/NativeApps/src/SingleFloatDivisionCompat.c" \
+    "$repo_dir/test/native_apps/single_float_division_test.c" -o "$binary"
+  "$binary"
 fi
 python3 "$repo_dir/test/native_apps/test_symbols.py"
 python3 "$repo_dir/test/native_apps/test_elf_cache_sync.py"
 python3 "$repo_dir/test/native_apps/test_capability_manifest.py"
+python3 "$repo_dir/test/resources/installed_provider_app_requirement_source_test.py"
+python3 "$repo_dir/test/native_apps/network_cookie_session_source_test.py"
 python3 "$repo_dir/test/native_apps/home_shortcut_launch_contract_test.py"
+python3 "$repo_dir/test/native_apps/file_browser_retirement_contract_test.py"
+python3 "$repo_dir/test/native_apps/model_viewer_contract_test.py"
 python3 "$repo_dir/test/resources/driver_install_stack_progress_source_test.py"
+python3 "$repo_dir/test/native_apps/scheduled_bug_fix_behavior_test.py"
+python3 "$repo_dir/test/native_apps/app_store_release_transition_source_test.py"
+python3 "$repo_dir/test/native_apps/font_selection_persistence_source_test.py"
+python3 "$repo_dir/test/native_apps/font_update_crc_source_test.py"
+python3 "$repo_dir/test/native_apps/rom_manager_actions_touch_source_test.py"
+python3 "$repo_dir/test/native_apps/text_editor_discard_source_test.py"
+python3 "$repo_dir/test/native_apps/wifi_settings_cookie_source_test.py"
+python3 "$repo_dir/test/native_apps/font_manager_confirm_edge_source_test.py"
 bash "$repo_dir/test/run_serial_launch_contract.sh"
 cc -std=c11 -Wall -Wextra -Werror \
   "$repo_dir/test/native_apps/gnss_consent_contract_test.c" -o "$binary"
@@ -40,6 +56,14 @@ cc -std=c11 -Wall -Wextra -Werror \
 cc -std=c11 -Wall -Wextra -Werror \
   -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
   "$repo_dir/test/native_apps/usb_debug_test.c" -o "$binary"
+(cd "$repo_dir" && "$binary")
+cc -std=c11 -Wall -Wextra -Werror \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" -o "$binary"
+(cd "$repo_dir" && "$binary")
+cc -std=c11 -Wall -Wextra -Werror \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/rom_manager_vimm_parser_test.c" -o "$binary"
 (cd "$repo_dir" && "$binary")
 echo 'Native app launcher tests passed'
 

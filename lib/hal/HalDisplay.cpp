@@ -172,9 +172,9 @@ class T5S3BusEPD : public lgfx::Bus_EPD {
   bool panelOutputSuppressed_ = false;
 
   bool preparePowerPins() {
-    // Keep the full expander setup sequence on the bus atomically. The render
-    // task can power-cycle EPD rails while the main loop is polling RTC/touch.
-    Board::ScopedI2CLock busLock;
+    // Each PCA9535 helper serializes its own atomic read-modify-write. Do not
+    // hold the board-wide I2C mutex across this whole sequence: touch input
+    // shares the bus and must remain pollable while the render task works.
     bool ok = true;
     ok &= Board::setPca9535PinMode(PCA9535_IO10_EP_OE, OUTPUT);
     ok &= Board::setPca9535PinMode(PCA9535_IO11_EP_MODE, OUTPUT);
@@ -193,9 +193,9 @@ class T5S3BusEPD : public lgfx::Bus_EPD {
   }
 
   bool powerOnSequence() {
-    // Hold the I2C bus for the whole EPD power-on sequence so RTC/touch reads
-    // cannot interleave with the PCA9535/TPS65185 transactions.
-    Board::ScopedI2CLock busLock;
+    // Serialize each PCA9535/TPS65185 transaction, not the whole power
+    // sequence. The waits below deliberately yield between transactions so
+    // the owner loop can keep polling GT911 while the e-paper refresh lags.
     const auto& cfg = config();
 
     lgfx::gpio_hi(cfg.pin_spv);
@@ -247,7 +247,8 @@ class T5S3BusEPD : public lgfx::Bus_EPD {
   }
 
   void powerOffSequence() {
-    Board::ScopedI2CLock busLock;
+    // As on power-up, keep bus ownership transaction-scoped so input polling
+    // can interleave with panel shutdown instead of waiting for the redraw.
     const auto& cfg = config();
 
     Board::writePca9535Pin(PCA9535_IO10_EP_OE, false);

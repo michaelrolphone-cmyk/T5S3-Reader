@@ -6,6 +6,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.publish_updated_packages import discover_candidates  # noqa: E402
+from scripts.build_release_candidates import DRIVER_BUILDERS  # noqa: E402
+from scripts.build_installed_usb_stack import DRIVERS  # noqa: E402
 
 
 class DiscoverCandidatesTest(unittest.TestCase):
@@ -95,6 +97,37 @@ class DiscoverCandidatesTest(unittest.TestCase):
             {"product": "apps", "id": "app_store", "version": "1.0.3"},
             discover_candidates(self.root, index),
         )
+
+    def test_usb_mass_storage_is_planned_and_selectively_buildable(self):
+        storage = self.root / "Drivers" / "usb_mass_storage"
+        storage.mkdir()
+        (storage / "manifest.json").write_text(
+            json.dumps({"id": "usb-mass-storage", "version": "0.1.1"}))
+        self.assertIn(
+            {"product": "drivers", "id": "usb-mass-storage", "version": "0.1.1"},
+            discover_candidates(self.root, self.current_index()),
+        )
+        self.assertIn("usb-mass-storage", DRIVER_BUILDERS)
+        self.assertIn(("scripts/build_usb_mass_storage.py",), DRIVER_BUILDERS["usb-mass-storage"])
+
+    def test_usb_hid_text_input_is_planned_and_selectively_buildable(self):
+        text_input = self.root / "Drivers" / "usb_hid_text_input"
+        text_input.mkdir()
+        (text_input / "manifest.json").write_text(
+            json.dumps({"id": "usb-hid-text-input", "version": "0.1.0"}))
+        self.assertIn(
+            {"product": "drivers", "id": "usb-hid-text-input", "version": "0.1.0"},
+            discover_candidates(self.root, self.current_index()),
+        )
+        self.assertIn("usb-hid-text-input", DRIVER_BUILDERS)
+        self.assertIn(
+            ("scripts/build_usb_hid_text_input.py",),
+            DRIVER_BUILDERS["usb-hid-text-input"],
+        )
+
+    def test_release_builder_covers_every_packaged_driver(self):
+        packaged = {identity for identity, _source, _output, _elf in DRIVERS}
+        self.assertEqual(packaged, set(DRIVER_BUILDERS))
 
     def test_ignores_driver_manifests_outside_canonical_release_packages(self):
         legacy = self.root / "Drivers" / "gps_nmea"

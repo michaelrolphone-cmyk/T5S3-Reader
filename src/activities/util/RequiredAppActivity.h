@@ -11,7 +11,8 @@
 class RequiredAppActivity final : public Activity {
  public:
   RequiredAppActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                      std::string artifact, std::string displayName);
+                      std::string artifact, std::string displayName,
+                      bool forceCatalogInstall = false);
 
   void onEnter() override;
   void loop() override;
@@ -24,6 +25,7 @@ class RequiredAppActivity final : public Activity {
   std::string displayName;
   std::string status;
   bool installing = false;
+  bool forceCatalogInstall = false;
 
   void install();
   void cancel();

@@ -11,6 +11,11 @@ extern "C" {
 #define T5_UI_HIT_NONE (-1)
 #define T5_UI_HIT_HEADER (-2)
 #define T5_UI_LIST_HIGHLIGHT_VALUE (1u << 0)
+#define T5_UI_LIST_ICON_DOWNLOAD (1u << 1)
+#define T5_UI_LIST_ICON_UPDATE (1u << 2)
+#define T5_UI_LIST_ICON_INSTALLED (1u << 3)
+#define T5_UI_LIST_ICON_COMPACT (1u << 4)
+#define T5_UI_LIST_ICON_MASK (T5_UI_LIST_ICON_DOWNLOAD | T5_UI_LIST_ICON_UPDATE | T5_UI_LIST_ICON_INSTALLED)
 #define T5_UI_TABLE_ROW_FULL_WIDTH (1u << 0)
 
 typedef enum {

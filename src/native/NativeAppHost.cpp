@@ -1,4 +1,5 @@
 #include "NativeStreamBridge.h"
+#include "NativeNetworkBridge.h"
 #include "NativeAppHost.h"
 #include "components/StartupScreen.h"
 #include "NativeNavigationInput.h"
@@ -55,7 +56,6 @@ constexpr const char* kReleaseIndexUrl =
 constexpr const char* kGameBoyRepository = "michaelrolphone-cmyk/T5S3-GameBoy";
 constexpr const char* kAggregateAppCatalogName = "app-catalog.json";
 constexpr size_t kMaxCatalogAssets = 128;
-constexpr size_t kMaxCatalogBytes = 64 * 1024;
 constexpr size_t kMaxManifestBytes = 8 * 1024;
 constexpr size_t kMaxReleaseAssetObjectBytes = 8192;
 
@@ -82,6 +82,15 @@ struct CatalogManifestAsset {
   std::string url;
 };
 
+struct ToneRectCommand {
+  int32_t x;
+  int32_t y;
+  int32_t w;
+  int32_t h;
+  int32_t radius;
+  uint8_t tone;
+};
+
 struct Session {
   GfxRenderer& renderer;
   MappedInputManager& input;
@@ -89,6 +98,7 @@ struct Session {
   HalFile directory;
   std::vector<CatalogAsset> catalog;
   std::vector<t5_app_manifest_t> installed;
+  std::vector<ToneRectCommand> toneRects;
   std::string launchPath;
   char catalogDownloadError[128]{};
   bool catalogNeedsRefresh = false;
@@ -105,17 +115,60 @@ bool firmwareActionPending = false;
 Session* current() { return session && !session->presenting && session->owner == xTaskGetCurrentTaskHandle() ? session : nullptr; }
 int32_t width() { auto* s = current(); return s ? s->renderer.getScreenWidth() : 0; }
 int32_t height() { auto* s = current(); return s ? s->renderer.getScreenHeight() : 0; }
-void clear() { if (auto* s = current()) s->renderer.clearScreen(); }
+void clear() {
+  if (auto* s = current()) {
+    s->toneRects.clear();
+    s->renderer.clearScreen();
+  }
+}
 void text(int32_t x, int32_t y, const char* value) {
   if (auto* s = current(); s && value) s->renderer.drawText(UI_12_FONT_ID, x, y, value);
 }
 void rect(int32_t x, int32_t y, int32_t w, int32_t h, bool black) {
   if (auto* s = current(); s && w > 0 && h > 0) s->renderer.fillRect(x, y, w, h, black);
 }
+void replayTonePlane(Session& s, bool lsbPlane) {
+  // Plane buffers use 1 bits to request a gray component over black base pixels.
+  s.renderer.clearScreen(0x00);
+  for (const auto& command : s.toneRects) {
+    const bool set = lsbPlane ? command.tone == T5_APP_TONE_DARK_GRAY
+                              : command.tone == T5_APP_TONE_LIGHT_GRAY;
+    s.renderer.fillRoundedRect(command.x, command.y, command.w, command.h,
+                               command.radius, set ? Color::White : Color::Black);
+  }
+}
+
+bool presentToneFrame(Session& s, HalDisplay::RefreshMode mode) {
+  if (s.toneRects.empty()) {
+    s.renderer.displayBuffer(mode);
+    return true;
+  }
+
+  // Preserve the application's normal BW frame while using the same framebuffer
+  // as bounded scratch space for the two grayscale planes.
+  if (!s.renderer.storeBwBuffer()) {
+    s.renderer.displayBuffer(mode);
+    return false;
+  }
+  if (!s.renderer.captureGrayscaleBaseBuffer()) {
+    s.renderer.restoreBwBuffer();
+    s.renderer.displayBuffer(mode);
+    return false;
+  }
+
+  replayTonePlane(s, true);
+  s.renderer.copyGrayscaleLsbBuffers();
+  replayTonePlane(s, false);
+  s.renderer.copyGrayscaleMsbBuffers();
+  s.renderer.displayGrayBuffer(mode);
+  s.renderer.restoreBwBuffer();
+  return true;
+}
+
 void present(bool full) {
   if (auto* s = current()) {
     esp_task_wdt_reset();
-    s->renderer.displayBuffer(full ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
+    (void)presentToneFrame(*s, full ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
     esp_task_wdt_reset();
   }
 }
@@ -564,7 +617,7 @@ bool validThirdPartyReleaseTag(const char* tag) {
 }
 
 bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
-  RuntimeMemory::PsramTextStream json(kMaxCatalogBytes);
+  RuntimeMemory::PsramGrowingTextStream json;
   esp_task_wdt_reset();
   if (!json.good() || !HttpDownloader::fetchUrl(kReleaseIndexUrl, json) ||
       !json.good() || json.empty()) return false;
@@ -1039,6 +1092,24 @@ bool requestLaunch(uint32_t index) {
 bool drawIcon(int32_t x, int32_t y, const char* icon, uint8_t size, bool black) {
   auto* s = current(); return s && FontAwesomeIcons::draw(s->renderer, x, y, icon, size, black);
 }
+void fillRoundedRectTone(int32_t x, int32_t y, int32_t w, int32_t h,
+                         int32_t radius, uint8_t tone) {
+  auto* s = current();
+  if (!s || w <= 0 || h <= 0 || s->toneRects.size() >= 256) return;
+  if (tone > T5_APP_TONE_BLACK) tone = T5_APP_TONE_BLACK;
+  radius = std::max(0, std::min(radius, std::min(w, h) / 2));
+
+  s->toneRects.push_back(ToneRectCommand{x, y, w, h, radius, tone});
+
+  // Gray pixels need a black bit in the base plane. White stays white; black
+  // and both gray levels use black base and are differentiated at presentation.
+  const Color base = tone == T5_APP_TONE_WHITE ? Color::White : Color::Black;
+  s->renderer.fillRoundedRect(x, y, w, h, radius, base);
+}
+void logMessage(const char* message) {
+  if (!current() || !message) return;
+  LOG_INF("APP", "%s", message);
+}
 void drawLabel(int32_t x, int32_t y, int32_t w, const char* value) {
   auto* s = current();
   if (!s || !value || w <= 0) return;
@@ -1080,11 +1151,14 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            appCatalogDownloadLastError,
                            appCatalogDownloadWithProgress,
                            psramAlloc,
-                           psramFree};
+                           psramFree,
+                           logMessage,
+                           fillRoundedRectTone};
 }  // namespace
 
 bool installRequiredNativeApp(const char* artifact, std::string& displayName,
-                              std::string& failureDetail) {
+                              std::string& failureDetail,
+                              bool forceCatalogInstall) {
   displayName.clear();
   failureDetail.clear();
   if (!artifact || !t5_safe_elf_name(artifact) || !Storage.ready()) {
@@ -1094,7 +1168,8 @@ bool installRequiredNativeApp(const char* artifact, std::string& displayName,
 
   std::string installedPath;
   t5_app_manifest_t installedManifest{};
-  if (resolveInstalledAppPath(artifact, installedPath, &installedManifest)) {
+  if (!forceCatalogInstall &&
+      resolveInstalledAppPath(artifact, installedPath, &installedManifest)) {
     displayName = installedManifest.display_name;
     return true;
   }
@@ -1308,6 +1383,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   input.update();
   Session active{renderer, input, xTaskGetCurrentTaskHandle()};
   session = &active;
+  nativeNetworkBegin();
   nativeSettingsBegin(renderer, input);
   nativeSystemUiBegin();
   esp_task_wdt_reset();
@@ -1317,6 +1393,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   nativeStreamsBegin();
   const esp_err_t result = launch_elf_app(path);
   nativeStreamsEnd();
+  nativeNetworkEnd();
   if (!canonicalRoot.empty() && result == ESP_OK)
     (void)RuntimePackages::systemPackageUseGate().unpin(canonicalRoot.c_str());
   // Clean up even when an app returns without calling its GPS stop callback.
@@ -1360,7 +1437,6 @@ bool consumeNativeAppReturn() { const bool value = returned; returned = false; r
 
 bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool resume) {
   if (resume && homeRequested) return false;
-  const char* springboard = "/sd/Apps/springboard.elf";
   auto showError = [&](const char* message) {
     RenderLock lock;
     renderer.clearScreen();
@@ -1377,22 +1453,22 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
       if (input.wasTouchTapped(point, renderer) || input.wasAnyPressed() || input.wasTouchHomeButtonPressed()) break;
     }
   };
-  // Recovery must run while no ELF is mapped, before checking for springboard
-  // files: a power cut can leave only springboard.elf.bak at this point.
-  if (Storage.exists("/Apps")) {
-    if (!RuntimePackages::recoverAppInventory())
-      LOG_ERR("APPSTORE", "Some managed apps require manual recovery");
-    if (!RuntimePackages::recoverAppPair("springboard.elf")) {
-      showError("Springboard update cannot be safely recovered.");
+  // Recover canonical package transactions before resolving the launcher.
+  // resolveInstalledAppPath() prefers a verified /Apps/<id>/springboard.elf
+  // package and falls back to the legacy loose /Apps/springboard.elf pair.
+  if (Storage.exists("/Apps") && !RuntimePackages::recoverAppInventory())
+    LOG_ERR("APPSTORE", "Some managed apps require manual recovery");
+
+  for (;;) {
+    // Resolve on every return to the Springboard. The App Store can migrate a
+    // bootstrapped loose Springboard into its canonical package while this Apps
+    // session is active, so caching the original path would immediately go stale.
+    std::string springboard;
+    if (!resolveInstalledAppPath("springboard.elf", springboard)) {
+      showError("Install Springboard or copy springboard.elf and .json to /Apps.");
       return false;
     }
-  }
-  if (!Storage.exists("/Apps/springboard.elf") || !Storage.exists("/Apps/springboard.json")) {
-    showError("Copy springboard.elf and .json to /Apps.");
-    return false;
-  }
-  for (;;) {
-    const auto result = runNativeApp(springboard, renderer, input);
+    const auto result = runNativeApp(springboard.c_str(), renderer, input);
     if (result != ESP_OK) {
       showError(lastLaunchError.empty() ? "Apps launcher failed." : lastLaunchError.c_str());
       return false;

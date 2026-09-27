@@ -10,14 +10,6 @@
 
 namespace BoardEPD47 {
 namespace {
-constexpr uint16_t GT911_PRODUCT_ID_REG = 0x8140;
-constexpr uint16_t GT911_STATUS_REG = 0x814E;
-constexpr uint16_t GT911_POINT1_REG = 0x814F;
-constexpr uint8_t GT911_STATUS_READY = 0x80;
-constexpr uint8_t GT911_STATUS_HAVE_KEY = 0x10;
-constexpr uint8_t GT911_TOUCH_COUNT_MASK = 0x0F;
-constexpr uint8_t GT911_PRIMARY_ADDR = 0x5D;
-constexpr uint8_t GT911_BACKUP_ADDR = 0x14;
 
 constexpr BoardCapabilities kCapabilities = {
     .hasBacklight = false,
@@ -121,7 +113,13 @@ void disableGpsLora() {}
 void begin() {
   beginI2C();
   pinMode(EPD47_BUTTON, INPUT_PULLUP);
+  // EPD47 ties GT911 RESET high. Pulse INT high to wake the controller; all
+  // register I/O and READY acknowledgement are owned by input.touch.raw.
+  pinMode(EPD47_TOUCH_INT, OUTPUT);
+  digitalWrite(EPD47_TOUCH_INT, HIGH);
+  delay(5);
   pinMode(EPD47_TOUCH_INT, INPUT_PULLUP);
+  delay(50);
   pinMode(EPD47_BATTERY_ADC, INPUT);
   prepareSdBus();
 }
@@ -215,101 +213,5 @@ bool readBatteryAverageCurrentMa(int16_t* current) {
 
 bool isUsbConnected() { return static_cast<bool>(Serial); }
 
-bool GT911Touch::writeReg8(const uint16_t reg, const uint8_t value) {
-  ScopedI2CLock lock;
-  Wire.beginTransmission(address);
-  Wire.write(static_cast<uint8_t>(reg >> 8));
-  Wire.write(static_cast<uint8_t>(reg & 0xFF));
-  Wire.write(value);
-  return Wire.endTransmission() == 0;
-}
-
-bool GT911Touch::readReg(const uint16_t reg, uint8_t* data, const size_t len) {
-  if (data == nullptr || len == 0 || len > 255) {
-    return false;
-  }
-  ScopedI2CLock lock;
-  Wire.beginTransmission(address);
-  Wire.write(static_cast<uint8_t>(reg >> 8));
-  Wire.write(static_cast<uint8_t>(reg & 0xFF));
-  if (Wire.endTransmission(false) != 0) {
-    return false;
-  }
-  const uint8_t requested = static_cast<uint8_t>(len);
-  if (Wire.requestFrom(address, requested) != requested) {
-    while (Wire.available()) {
-      Wire.read();
-    }
-    return false;
-  }
-  for (size_t i = 0; i < len; ++i) {
-    data[i] = Wire.read();
-  }
-  return true;
-}
-
-bool GT911Touch::probeAddress(const uint8_t addr) {
-  address = addr;
-  uint8_t productId[4] = {};
-  available = readReg(GT911_PRODUCT_ID_REG, productId, sizeof(productId));
-  if (available) {
-    writeReg8(GT911_STATUS_REG, 0);
-  }
-  return available;
-}
-
-bool GT911Touch::begin() {
-  // EPD47 ties RESET high in hardware. Drive INT high briefly to wake a
-  // controller that may have been left asleep before probing both addresses.
-  pinMode(EPD47_TOUCH_INT, OUTPUT);
-  digitalWrite(EPD47_TOUCH_INT, HIGH);
-  delay(5);
-  pinMode(EPD47_TOUCH_INT, INPUT_PULLUP);
-  delay(50);
-
-  if (probeAddress(GT911_PRIMARY_ADDR) || probeAddress(GT911_BACKUP_ADDR)) {
-    return true;
-  }
-  address = GT911_PRIMARY_ADDR;
-  available = false;
-  return false;
-}
-
-bool GT911Touch::readEvent(TouchPoint* point, bool* homeButtonPressed, bool* contactActive) {
-  if (homeButtonPressed) *homeButtonPressed = false;
-  if (contactActive) *contactActive = false;
-  if (!available || point == nullptr || contactActive == nullptr) return false;
-
-  uint8_t status = 0;
-  if (!readReg(GT911_STATUS_REG, &status, 1) || (status & GT911_STATUS_READY) == 0)
-    return false;
-
-  if (homeButtonPressed)
-    *homeButtonPressed = (status & GT911_STATUS_HAVE_KEY) != 0;
-
-  if ((status & GT911_TOUCH_COUNT_MASK) == 0) {
-    writeReg8(GT911_STATUS_REG, 0);
-    return true;
-  }
-
-  uint8_t data[8] = {};
-  const bool ok = readReg(GT911_POINT1_REG, data, sizeof(data));
-  writeReg8(GT911_STATUS_REG, 0);
-  if (!ok) return false;
-
-  const uint16_t rawX = static_cast<uint16_t>(data[1]) | (static_cast<uint16_t>(data[2]) << 8);
-  const uint16_t rawY = static_cast<uint16_t>(data[3]) | (static_cast<uint16_t>(data[4]) << 8);
-
-  // Match LilyGo's GT911 setup: swap XY, then mirror the physical Y axis.
-  point->x = min<uint16_t>(rawY, EPD47_WIDTH - 1);
-  point->y = rawX < EPD47_HEIGHT ? EPD47_HEIGHT - 1 - rawX : 0;
-  *contactActive = true;
-  return true;
-}
-
-bool GT911Touch::readPoint(TouchPoint* point, bool* homeButtonPressed) {
-  bool active = false;
-  return readEvent(point, homeButtonPressed, &active) && active;
-}
 
 }  // namespace BoardEPD47

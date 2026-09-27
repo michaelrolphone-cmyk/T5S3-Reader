@@ -65,13 +65,22 @@ static bool ui_available(const t5_ui_api_v1 *ui) {
         sizeof(ui->previous_index) && ui->render_list && ui->hit_test &&
         ui->poll_event && ui->next_index && ui->previous_index;
 }
+static uint8_t package_row_flags(const t5_package_preview_t *info) {
+    uint8_t flags = 0;
+    if (!info->valid_installation) flags = T5_UI_LIST_HIGHLIGHT_VALUE;
+    else if (info->installed_version[0] && info->install_allowed)
+        flags = T5_UI_LIST_HIGHLIGHT_VALUE | T5_UI_LIST_ICON_UPDATE;
+    else if (info->installed_version[0]) flags = T5_UI_LIST_ICON_INSTALLED;
+    else if (info->install_allowed) flags = T5_UI_LIST_ICON_DOWNLOAD;
+    if (flags & T5_UI_LIST_ICON_MASK) flags |= T5_UI_LIST_ICON_COMPACT;
+    return flags;
+}
 static void row(uint32_t index, const char *title, const char *subtitle,
-                const char *value, bool highlighted) {
+                const char *value, uint8_t flags) {
     copy_text(titles[index], sizeof(titles[index]), title);
     copy_text(subtitles[index], sizeof(subtitles[index]), subtitle);
     copy_text(values[index], sizeof(values[index]), value);
-    rows[index] = (t5_ui_list_row_t){titles[index], subtitles[index], values[index],
-                                    highlighted ? T5_UI_LIST_HIGHLIGHT_VALUE : 0};
+    rows[index] = (t5_ui_list_row_t){titles[index], subtitles[index], values[index], flags};
 }
 static void describe_row(uint32_t index, const t5_package_preview_t *info,
                          const char *ready_text) {
@@ -85,7 +94,7 @@ static void describe_row(uint32_t index, const t5_package_preview_t *info,
         copy_text(detail, sizeof(detail), info->install_allowed ? ready_text :
                   "Dependency, version or stage blocked");
     }
-    row(index, info->id, detail, info->version, info->install_allowed != 0);
+    row(index, info->id, detail, info->version, package_row_flags(info));
 }
 static void build_releases(const t5_package_manager_api_v1 *manager) {
     row_count = 0;

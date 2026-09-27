@@ -328,11 +328,17 @@ The append-only UI helpers are:
 bool draw_icon(int32_t x, int32_t y, const char *icon,
                uint8_t point_size, bool black);
 void draw_label(int32_t x, int32_t y, int32_t width, const char *text);
+void fill_rounded_rect_tone(int32_t x, int32_t y, int32_t w, int32_t h,
+                            int32_t radius, uint8_t tone);
 ```
 
 `draw_label()` centers and truncates using the firmware UI font. `draw_icon()`
 parses the manifest icon codepoint and uses the firmware's shared Font Awesome
-renderer; see the Font Awesome section below.
+renderer. `fill_rounded_rect_tone()` is append-only and maps
+`T5_APP_TONE_WHITE`, `T5_APP_TONE_LIGHT_GRAY`, `T5_APP_TONE_DARK_GRAY`,
+and `T5_APP_TONE_BLACK` through the firmware renderer. Tone rectangles are
+composed into the display's real grayscale LSB/MSB planes at `present()` time,
+so apps do not hand-roll Bayer patterns or own grayscale buffers; see the Font Awesome section below.
 
 ### Settings bridge
 

@@ -22,6 +22,7 @@ DRIVER_BUILDERS = {
         ("scripts/probe_i2c_esp32s3_v2.py",),
         ("scripts/audit_i2c_esp32s3_elf.py", "--strict"),
     ],
+    "gt911-touch": [("scripts/build_gt911_touch.py",)],
     "t5s3-usb-power-profile": [("scripts/build_board_power_t5s3_v2.py", "--ids", "t5s3-usb-power-profile")],
     "board-power-t5s3-v2": [("scripts/build_board_power_t5s3_v2.py", "--ids", "board-power-t5s3-v2")],
     "usb-controller-esp32s3": [
@@ -29,6 +30,7 @@ DRIVER_BUILDERS = {
         ("scripts/audit_usb_controller_elf.py", "--strict"),
     ],
     "usb-host-v2": [("scripts/build_usb_host_v2.py",)],
+    "usb-mass-storage": [("scripts/build_usb_mass_storage.py",)],
     "usb-cdc-acm-v2": [("scripts/build_usb_cdc_v2.py",)],
     "usb-cp210x-v2": [("scripts/build_usb_cp210x_v2.py",)],
     "usb-ch34x-v2": [("scripts/build_usb_ch34x_v2.py",)],
@@ -38,6 +40,7 @@ DRIVER_BUILDERS = {
     "program-msp": [("scripts/build_program_msp.py",)],
     "usb-hid": [("scripts/build_usb_hid.py",)],
     "usb-hid-keyboard": [("scripts/build_usb_hid_keyboard.py",)],
+    "usb-hid-text-input": [("scripts/build_usb_hid_text_input.py",)],
     "usb-hid-gamepad": [("scripts/build_usb_hid_gamepad.py",)],
     "usb-xinput-gamepad": [("scripts/build_usb_xinput_gamepad.py",)],
     "usb-ui-navigation": [("scripts/build_usb_ui_navigation.py",)],

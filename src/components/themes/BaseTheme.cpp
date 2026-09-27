@@ -428,7 +428,9 @@ void BaseTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
                          const std::function<std::string(int index)>& rowSubtitle,
                          const std::function<UIIcon(int index)>& rowIcon,
                          const std::function<std::string(int index)>& rowValue, bool highlightValue,
-                         const TextRole textRole) const {
+                         const TextRole textRole,
+                         const std::function<const char*(int index)>& rowFontAwesomeIcon,
+                         int rowFontAwesomeIconSize) const {
   (void)rowIcon;
   (void)highlightValue;
   int rowHeight =
@@ -461,29 +463,43 @@ void BaseTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
     }
   }
 
-  // Draw selection
+  // Draw selection across the full list row. Leading icons are content within
+  // the row, not a separate gutter outside the selection.
   int contentWidth = rect.width - 5;
   if (selectedIndex >= 0) {
-    renderer.fillRect(0, rect.y + selectedIndex % pageItems * rowHeight - 2, rect.width, rowHeight);
+    renderer.fillRect(rect.x, rect.y + selectedIndex % pageItems * rowHeight - 2, rect.width, rowHeight);
   }
   // Draw all items
+  const int kStateIconSize = std::max(1, rowFontAwesomeIconSize);
+  constexpr int kStateIconGap = 12;
+  const int stateIconInset = rowFontAwesomeIcon ? kStateIconSize + kStateIconGap : 0;
   const auto pageStartIndex = selectedIndex / pageItems * pageItems;
   for (int i = pageStartIndex; i < itemCount && i < pageStartIndex + pageItems; i++) {
     const int itemY = rect.y + (i % pageItems) * rowHeight;
-    int textWidth = contentWidth - BaseMetrics::values.contentSidePadding * 2 - (rowValue != nullptr ? 60 : 0);
+    int textWidth = contentWidth - BaseMetrics::values.contentSidePadding * 2 -
+                    (rowValue != nullptr ? 60 : 0) - stateIconInset;
+    const int textX = rect.x + BaseMetrics::values.contentSidePadding + stateIconInset;
+
+    if (rowFontAwesomeIcon) {
+      const char* icon = rowFontAwesomeIcon(i);
+      if (icon && icon[0]) {
+        const int iconY = itemY + std::max(0, (rowHeight - kStateIconSize) / 2);
+        (void)FontAwesomeIcons::draw(renderer, rect.x + BaseMetrics::values.contentSidePadding,
+                                     iconY, icon, kStateIconSize, i != selectedIndex);
+      }
+    }
 
     // Draw name
     auto itemName = rowTitle(i);
     auto font = (rowSubtitle != nullptr) ? UI_12_FONT_ID : UI_10_FONT_ID;
     auto item = truncatedTextForRole(renderer, font, textRole, itemName.c_str(), textWidth);
-    drawTextForRole(renderer, font, textRole, rect.x + BaseMetrics::values.contentSidePadding, itemY, item.c_str(),
-                    i != selectedIndex);
+    drawTextForRole(renderer, font, textRole, textX, itemY, item.c_str(), i != selectedIndex);
 
     if (rowSubtitle != nullptr) {
       // Draw subtitle
       std::string subtitleText = rowSubtitle(i);
       auto subtitle = truncatedTextForRole(renderer, UI_10_FONT_ID, textRole, subtitleText.c_str(), textWidth);
-      drawTextForRole(renderer, UI_10_FONT_ID, textRole, rect.x + BaseMetrics::values.contentSidePadding, itemY + 30,
+      drawTextForRole(renderer, UI_10_FONT_ID, textRole, textX, itemY + 30,
                       subtitle.c_str(), i != selectedIndex);
     }
 
@@ -865,7 +881,7 @@ void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
         constexpr int kAppIconSize = 12;
         const int iconX = rect.x + BaseMetrics::values.contentSidePadding + 12;
         const int iconY = tileY + (BaseMetrics::values.menuRowHeight - kAppIconSize) / 2;
-        (void)FontAwesomeIcons::drawRegular(renderer, iconX, iconY, appIcon, kAppIconSize, !selected);
+        (void)FontAwesomeIcons::draw(renderer, iconX, iconY, appIcon, kAppIconSize, !selected);
       }
     }
 

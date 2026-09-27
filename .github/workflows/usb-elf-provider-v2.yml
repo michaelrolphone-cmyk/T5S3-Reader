@@ -9,9 +9,11 @@ on:
       - "Drivers/usb_ch34x_v2/**"
       - "Drivers/usb_serial_witness_v2/**"
       - "Drivers/usb_host_v2/**"
+      - "Drivers/usb_mass_storage/**"
       - "Drivers/usb_controller_esp32s3/**"
       - "Drivers/usb_hid/**"
       - "Drivers/usb_hid_keyboard/**"
+      - "Drivers/usb_hid_text_input/**"
       - "Drivers/usb_hid_gamepad/**"
       - "Drivers/usb_xinput_gamepad/**"
       - "Drivers/usb_ui_navigation/**"
@@ -19,16 +21,19 @@ on:
       - "Drivers/t5s3_usb_power_profile/**"
       - "Drivers/i2c_esp32s3_v2/**"
       - "Drivers/platform_clock_v1/**"
+      - "Drivers/gt911_touch/**"
       - "sdk/driver/RiscProviderV2.h"
       - "sdk/driver/RiscStreamProviderV1.h"
       - "sdk/driver/RiscSerialPortV1.h"
       - "sdk/driver/RiscUsbProviderV1.h"
       - "sdk/driver/RiscUsbControllerV1.h"
+      - "sdk/driver/RiscStorageVolumeV1.h"
       - "sdk/driver/RiscStlinkV1.h"
       - "sdk/driver/RiscMspFetV1.h"
       - "sdk/driver/RiscProgramMspV1.h"
       - "sdk/driver/RiscUsbInterruptV1.h"
       - "sdk/driver/RiscUsbHidV1.h"
+      - "sdk/driver/RiscTextInputV1.h"
       - "sdk/driver/RiscUsbGamepadDiagnosticsV1.h"
       - "sdk/driver/RiscUsbDiscoveryDiagnosticsV1.h"
       - "sdk/driver/RiscUsbVbusV1.h"
@@ -36,6 +41,7 @@ on:
       - "sdk/driver/RiscI2cBusV1.h"
       - "sdk/driver/RiscFirmwareI2cCompatV1.h"
       - "sdk/driver/RiscPlatformClockV1.h"
+      - "sdk/driver/RiscTouchV1.h"
       - "lib/elf_loader/**"
       - "lib/NativeApps/src/NativeAppLauncher.c"
       - "lib/NativeApps/include/T5SerialPortApi.h"
@@ -57,13 +63,16 @@ on:
       - "scripts/build_usb_ch34x_v2.py"
       - "scripts/build_usb_serial_witness_v2.py"
       - "scripts/build_usb_host_v2.py"
+      - "scripts/build_usb_mass_storage.py"
       - "scripts/build_usb_hid*.py"
       - "scripts/build_usb_xinput_gamepad.py"
       - "scripts/build_usb_ui_navigation.py"
       - "src/runtime/input/**"
       - "src/native/NativeNavigationInput*"
+      - "src/native/NativeTextInput*"
       - "scripts/build_board_power_t5s3_v2.py"
       - "scripts/build_platform_clock_v1.py"
+      - "scripts/build_gt911_touch.py"
       - "scripts/probe_usb_controller_esp32s3.py"
       - "scripts/instrument_usb_enumeration.py"
       - "scripts/probe_i2c_esp32s3_v2.py"
@@ -80,9 +89,12 @@ on:
       - "test/drivers/usb_host_v2*.c"
       - "test/drivers/usb_host_class_integration_test.c"
       - "test/drivers/usb_controller_bulk_drain_source_test.py"
+      - "test/drivers/usb_mass_storage_test.c"
       - "test/drivers/usb_hid*.c"
       - "test/drivers/usb_xinput_gamepad_test.c"
       - "test/drivers/usb_ui_navigation_test.c"
+      - "test/drivers/usb_hid_text_input_test.c"
+      - "test/drivers/native_text_input_test.cpp"
       - "test/drivers/navigation_focus_test.cpp"
       - "test/drivers/native_navigation_input_test.cpp"
       - "test/drivers/controller_startup_diagnostic_test.cpp"
@@ -91,6 +103,8 @@ on:
       - "test/drivers/board_power_t5s3_v2_test.c"
       - "test/drivers/i2c_esp32s3_v2_test.c"
       - "test/drivers/platform_clock_v1_test.c"
+      - "test/drivers/gt911_touch_test.c"
+      - "test/run_gt911_touch_test.sh"
       - "test/drivers/privileged_*"
       - "test/drivers/provider_package_inputs_v1_test.py"
       - "test/drivers/installed_usb_stack_package_test.py"
@@ -112,6 +126,7 @@ on:
       - "test/run_usb_msp_test.sh"
       - "test/run_program_msp_test.sh"
       - "test/run_usb_host_v2_test.sh"
+      - "test/run_usb_mass_storage_test.sh"
       - "test/run_usb_hid_test.sh"
       - "test/run_board_power_t5s3_v2_test.sh"
       - "test/run_i2c_esp32s3_v2_test.sh"
@@ -147,10 +162,12 @@ jobs:
           bash test/run_usb_msp_test.sh
           bash test/run_program_msp_test.sh
           bash test/run_usb_host_v2_test.sh
+          bash test/run_usb_mass_storage_test.sh
           bash test/run_usb_hid_test.sh
           bash test/run_board_power_t5s3_v2_test.sh
           bash test/run_i2c_esp32s3_v2_test.sh
           bash test/run_platform_clock_v1_test.sh
+          bash test/run_gt911_touch_test.sh
           bash test/run_vbus_provider_chain_v2_test.sh
       - name: Install PlatformIO and target toolchain
         run: |
@@ -179,10 +196,14 @@ jobs:
           bash test/run_native_app_test.sh dist/experimental/usb-serial-witness/driver.elf
           python scripts/build_usb_host_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-host-v2/driver.elf
+          python scripts/build_usb_mass_storage.py
+          bash test/run_native_app_test.sh dist/experimental/usb-mass-storage/driver.elf
           python scripts/build_usb_hid.py
           bash test/run_native_app_test.sh dist/experimental/usb-hid/driver.elf
           python scripts/build_usb_hid_keyboard.py
           bash test/run_native_app_test.sh dist/experimental/usb-hid-keyboard/driver.elf
+          python scripts/build_usb_hid_text_input.py
+          bash test/run_native_app_test.sh dist/experimental/usb-hid-text-input/driver.elf
           python scripts/build_usb_hid_gamepad.py
           bash test/run_native_app_test.sh dist/experimental/usb-hid-gamepad/driver.elf
           python scripts/build_usb_xinput_gamepad.py
@@ -195,6 +216,8 @@ jobs:
           python scripts/build_platform_clock_v1.py
           python scripts/audit_usb_controller_elf.py dist/experimental/platform-clock-v1/driver.elf --strict
           bash test/run_native_app_test.sh dist/experimental/platform-clock-v1/driver.elf
+          python scripts/build_gt911_touch.py
+          bash test/run_native_app_test.sh dist/experimental/gt911-touch/driver.elf
       - name: Validate board-private C ABI and exact import matcher against linked ELFs
         run: |
           cc -std=gnu11 -O2 -Wall -Wextra -Werror -DBOARD_T5S3_PRO \
@@ -237,6 +260,7 @@ jobs:
             dist/experimental/usb-*/
             dist/experimental/i2c-*/
             dist/experimental/platform-clock-v1/
+            dist/experimental/gt911-touch/
             dist/packages/
             dist/release-packages/
           if-no-files-found: warn

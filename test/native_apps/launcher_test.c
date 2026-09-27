@@ -36,6 +36,7 @@
 #include "T5UiApi.h"
 #include "T5UsbApi.h"
 #include "T5WebServerApi.h"
+#include "T5VideoApi.h"
 
 extern int test_capability_gate_allowed;
 extern int test_capability_bind_allowed;
@@ -295,4 +296,5 @@ const t5_time_zone_api_v1 *t5_time_zone_get_api(uint32_t version) { (void)versio
 const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_usb_api_v1 *t5_usb_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_web_server_api_v1 *t5_web_server_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_video_api_v1 *t5_video_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_stream_api_v1 *t5_stream_get_api(uint32_t version) { (void)version; return NULL; }

@@ -24,8 +24,9 @@
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
-#include "components/UITheme.h"
+#include "components/HomeReadingCard.h"
 #include "components/StartupScreen.h"
+#include "components/UITheme.h"
 #include "fontIds.h"
 
 namespace {
@@ -50,7 +51,7 @@ void recordUserContentText(FontCacheManager* fcm, const int systemFontId, const 
 }  // namespace
 
 int HomeActivity::getMenuItemCount() const {
-  int count = 4 + static_cast<int>(homeApps.size());  // File Browser, Recents, Apps, pinned apps, Settings
+  int count = 3 + static_cast<int>(homeApps.size());  // Recents, Apps, pinned apps, Settings
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
@@ -370,20 +371,17 @@ void HomeActivity::render(RenderLock&&) {
                  metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr,
                  nullptr, TextRole::UserContent, TextRole::System, headerClockLabel);
 
-  GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight},
-                          recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
-                          std::bind(&HomeActivity::storeCoverBuffer, this));
+  HomeReadingCard::draw(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight},
+                        recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,
+                        std::bind(&HomeActivity::storeCoverBuffer, this));
 
   std::vector<const char*> menuItems;
   std::vector<UIIcon> menuIcons;
   std::vector<const char*> menuAppIcons;
-  menuItems.reserve(4 + homeApps.size() + (hasOpdsServers ? 1 : 0) + (metrics.homeContinueReadingInMenu ? 1 : 0));
+  menuItems.reserve(3 + homeApps.size() + (hasOpdsServers ? 1 : 0) + (metrics.homeContinueReadingInMenu ? 1 : 0));
   menuIcons.reserve(menuItems.capacity());
   menuAppIcons.reserve(menuItems.capacity());
 
-  menuItems.push_back(tr(STR_BROWSE_FILES));
-  menuIcons.push_back(Folder);
-  menuAppIcons.push_back(nullptr);
   menuItems.push_back(tr(STR_MENU_RECENT_BOOKS));
   menuIcons.push_back(Recent);
   menuAppIcons.push_back(nullptr);
@@ -393,8 +391,8 @@ void HomeActivity::render(RenderLock&&) {
     menuAppIcons.push_back(nullptr);
   }
   menuItems.push_back(tr(STR_APPS));
-  menuIcons.push_back(Library);
-  menuAppIcons.push_back(nullptr);
+  menuIcons.push_back(Library);  // Fallback only if the Springboard Font Awesome icon cannot render.
+  menuAppIcons.push_back("solid:f00a");  // Keep Home's Apps row aligned with Apps/springboard.json.
   for (const auto& app : homeApps) {
     menuItems.push_back(app.display_name);
     menuIcons.push_back(Library);  // Fallback only when the manifest has no usable icon.
@@ -423,7 +421,7 @@ void HomeActivity::render(RenderLock&&) {
 
   const auto labels = mappedInput.mapLabels("", tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  renderer.displayBuffer();
+  HomeReadingCard::present(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight});
   if (!firstRenderDone) {
     firstRenderDone = true;
   }
@@ -434,7 +432,6 @@ void HomeActivity::onSelectBook(const std::string& path) { activityManager.goToR
 void HomeActivity::activateSelection(int index) {
   int idx = 0;
   int menuSelectedIndex = index - static_cast<int>(recentBooks.size());
-  const int fileBrowserIdx = idx++;
   const int recentsIdx = idx++;
   const int opdsLibraryIdx = hasOpdsServers ? idx++ : -1;
   const int appsIdx = idx++;
@@ -444,8 +441,6 @@ void HomeActivity::activateSelection(int index) {
 
   if (index < static_cast<int>(recentBooks.size())) {
     onSelectBook(recentBooks[index].path);
-  } else if (menuSelectedIndex == fileBrowserIdx) {
-    onFileBrowserOpen();
   } else if (menuSelectedIndex == recentsIdx) {
     onRecentsOpen();
   } else if (menuSelectedIndex == opdsLibraryIdx) {
@@ -469,7 +464,6 @@ void HomeActivity::onHomeAppOpen(size_t index) {
   pendingHomeAppArtifact = homeApps[index].file_name;
 }
 
-void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }
 
 void HomeActivity::onRecentsOpen() { activityManager.goToRecentBooks(); }
 

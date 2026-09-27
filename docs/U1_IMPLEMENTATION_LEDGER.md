@@ -2,6 +2,25 @@
 
 [PR #96](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/96) on `impl/u1-riscrte` is the **only** implementation PR/branch. `AGENTS.md`, [USB remediation](USB_CONTRACT_VIOLATION_REMEDIATION.md), [execution order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [claim-scoped USB control](U1_USB_CONTROL_SCOPE_IMPLEMENTATION.md) and [package identity](PACKAGE_IDENTITY_VERSION_POLICY.md) govern the work. Owner controls merge, tag, release, flash and hardware qualification. A committed test is not a PASS.
 
+## September 27: backmerge master `b2e2ece3` (1.3.21)
+
+Merged current master into `impl/u1-riscrte` at `32d6f104` so U1 is not
+orphaned from PSRAM catalogs, layered boot reveal, GT911 package extraction,
+HID text-input, mass-storage and scheduled bug fixes. Fifteen content conflicts
+were resolved without dropping U1 generic ZIP/catalog discovery or stream grants.
+
+Kept U1: generic `package-catalog.json` / `.rte.zip` exporters, Driver Manager
+as recovery-only over T5PackageManagerApi, App Store/Driver Manager ZIP inbox
+and grant-aware stream registry. Took master: extracted GT911 board methods,
+text-input generation reservation (`UINT32_MAX`), navigation retry-before-ready,
+mass-storage workflow path, firmware 1.3.21. Combined navigation quarantine
+assertions with the extra master retry acquisition. Package row icons from
+master now decorate U1 generic package previews.
+
+Existing IDs bumped above both parents: App Store 1.0.8, Driver Manager 1.0.7,
+usb-controller-esp32s3 0.1.19. This does not complete resident-shuttle removal,
+CDC identity migration or signing purge.
+
 ## September 24: repair CI package checks after integration
 
 At `98405e6`, both firmware targets, native applications, physical USB controller,

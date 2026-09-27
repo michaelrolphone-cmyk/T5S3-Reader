@@ -69,8 +69,14 @@ static void set_row(uint32_t i, const t5_package_preview_t *p, const char *detai
     snprintf(names[i], sizeof(names[i]), "%s", p->id);
     snprintf(descriptions[i], sizeof(descriptions[i]), "%s", detail);
     snprintf(versions[i], sizeof(versions[i]), "%s", p->version);
-    rows[i] = (t5_ui_list_row_t){names[i], descriptions[i], versions[i],
-                                p->install_allowed ? T5_UI_LIST_HIGHLIGHT_VALUE : 0};
+    uint8_t flags = 0;
+    if (!p->valid_installation) flags = T5_UI_LIST_HIGHLIGHT_VALUE;
+    else if (p->installed_version[0] && p->install_allowed)
+        flags = T5_UI_LIST_HIGHLIGHT_VALUE | T5_UI_LIST_ICON_UPDATE;
+    else if (p->installed_version[0]) flags = T5_UI_LIST_ICON_INSTALLED;
+    else if (p->install_allowed) flags = T5_UI_LIST_ICON_DOWNLOAD;
+    if (flags & T5_UI_LIST_ICON_MASK) flags |= T5_UI_LIST_ICON_COMPACT;
+    rows[i] = (t5_ui_list_row_t){names[i], descriptions[i], versions[i], flags};
 }
 static const char *package_state(const t5_package_preview_t *p, bool archived) {
     if (!p->valid_installation) return "Installed generation requires recovery";

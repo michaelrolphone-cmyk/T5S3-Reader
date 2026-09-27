@@ -25,6 +25,8 @@
 #include "DeskClockSleep.h"
 #include "native/NativeAppHost.h"
 #include "native/NativeNavigationInput.h"
+#include "native/NativeTouchInput.h"
+#include "runtime/packages/InstalledCapabilityResolver.h"
 #include "KOReaderCredentialStore.h"
 #include "PowerControl.h"
 #include "MappedInputManager.h"
@@ -202,6 +204,30 @@ bool shouldSuppressDeepSleepForDebug() {
 #endif
 }
 
+bool suspendInputProvidersForSleep() {
+  // Touch and navigation share lower provider dependencies. Release the touch
+  // lease first so navigation can prove the entire graph quiescent before the
+  // board tears down SD/I2C/power for sleep.
+  if (!nativeTouchSuspend()) {
+    LOG_ERR("INPUT", "Sleep refused: touch provider has not quiesced");
+    (void)nativeTouchResume();
+    return false;
+  }
+  if (!nativeNavigationSuspend()) {
+    LOG_ERR("INPUT", "Sleep refused: navigation/provider graph has not quiesced");
+    nativeNavigationResume();
+    (void)nativeTouchResume();
+    return false;
+  }
+  return true;
+}
+
+void resumeInputProvidersAfterSleep() {
+  // Bootstrap/navigation first; touch can then join the already healthy graph.
+  nativeNavigationResume();
+  (void)nativeTouchResume();
+}
+
 // Enter deep sleep mode
 void enterDeepSleep() {
   const bool deskClock = SETTINGS.sleepScreen == CrossPointSettings::DIGITAL_CLOCK;
@@ -212,11 +238,7 @@ void enterDeepSleep() {
   }
 
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
-  if (!nativeNavigationSuspend()) {
-    LOG_ERR("INPUT", "Sleep refused: navigation provider has not quiesced");
-    nativeNavigationResume();
-    return;
-  }
+  if (!suspendInputProvidersForSleep()) return;
   APP_STATE.lastSleepFromReader = APP_STATE.lastSleepFromReader || activityManager.isReaderActivityInStack();
   APP_STATE.saveToFile();
 
@@ -224,10 +246,10 @@ void enterDeepSleep() {
   Board::setBacklightLevel(0);
 
   if (deskClock) {
-    // SleepActivity has closed the reader and saved its position. Light sleep
-    // keeps the display/touch initialized and avoids a boot on every minute.
+    // SleepActivity has closed the reader and saved its position. The input
+    // provider graph stays quiesced while the retained clock owns sleep/wake.
     DeskClockSleep::run(renderer, gpio);
-    nativeNavigationResume();
+    resumeInputProvidersAfterSleep();
     Board::setBacklightLevel(SETTINGS.backlightLevel);
     renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
     if (SETTINGS.resumeReaderOnBoot && APP_STATE.lastSleepFromReader && !APP_STATE.openEpubPath.empty()) {
@@ -247,7 +269,7 @@ void enterDeepSleep() {
 
 void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
   HalPowerManager::Lock powerLock;
-  if (!nativeNavigationSuspend()) { nativeNavigationResume(); return; }
+  if (!suspendInputProvidersForSleep()) return;
   APP_STATE.lastSleepFromReader = APP_STATE.lastSleepFromReader || activityManager.isReaderActivityInStack();
   APP_STATE.saveToFile();
 
@@ -261,7 +283,7 @@ void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
 
 void enterPowerOffKeepingScreen(const char* status) {
   (void)status;  // Status line intentionally not shown; the sleep screen setting is used instead.
-  if (!nativeNavigationSuspend()) { nativeNavigationResume(); return; }
+  if (!suspendInputProvidersForSleep()) return;
   {
     HalPowerManager::Lock powerLock;
     APP_STATE.lastSleepFromReader = activityManager.isReaderActivityInStack();
@@ -348,6 +370,31 @@ bool shouldResumeReaderOnBoot() {
          !mappedInputManager.isPressed(MappedInputManager::Button::Back) && APP_STATE.readerActivityLoadCount == 0;
 }
 
+void logPlatformInputHealth() {
+  auto* snapshot = RuntimePackages::captureInstalledCapabilities();
+  if (!snapshot) {
+    LOG_ERR("INPUT", "Platform driver inventory unavailable; touch/controller capabilities cannot be verified");
+    return;
+  }
+  const uint32_t i2c = RuntimePackages::versionInInstalledSnapshot(snapshot, "i2c.bus");
+  const uint32_t clock = RuntimePackages::versionInInstalledSnapshot(snapshot, "platform.clock");
+  const uint32_t touch = RuntimePackages::versionInInstalledSnapshot(snapshot, "input.touch.raw");
+  const uint32_t navigation = RuntimePackages::versionInInstalledSnapshot(snapshot, "input.navigation");
+  RuntimePackages::releaseInstalledCapabilities(snapshot);
+  LOG_INF("INPUT", "Platform driver health: i2c.bus=%lu platform.clock=%lu touch=%lu navigation=%lu",
+          static_cast<unsigned long>(i2c), static_cast<unsigned long>(clock),
+          static_cast<unsigned long>(touch), static_cast<unsigned long>(navigation));
+  if (!i2c || !clock) {
+    LOG_ERR("INPUT",
+            "Foundational platform drivers incomplete: install i2c-esp32s3-v2 and platform-clock-v1; "
+            "touch and USB/controller providers may be unavailable");
+  } else {
+    if (!touch) LOG_ERR("INPUT", "Touch capability unavailable: install/repair gt911-touch");
+    if (SETTINGS.externalInputNavigation && !navigation)
+      LOG_ERR("INPUT", "Controller navigation capability unavailable: install/repair usb-ui-navigation dependency stack");
+  }
+}
+
 void setup() {
   t1 = millis();
 
@@ -378,7 +425,6 @@ void setup() {
 #endif
 
   LOG_INF("MAIN", "Hardware detect: %s", gpio.getDeviceName());
-  LOG_INF("MAIN", "Touch detect: %d", gpio.isTouchAvailable());
 
   // SD Card Initialization
   // We need 6 open files concurrently when parsing a new chapter
@@ -458,9 +504,13 @@ void setup() {
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
 
   setupDisplayAndFonts();
-  // Touch IRQ capture is intentionally armed only after boot-critical
-  // SD/settings/RTC/display initialization has completed.
-  gpio.startTouchCapture();
+  logPlatformInputHealth();
+  // Touch is an optional installed provider capability. Do not attempt to
+  // activate it during setup: input.navigation gets the first provider-graph
+  // opportunity from MappedInputManager::update(), so a missing touch package
+  // can never strand USB/controller navigation before Driver Manager is usable.
+  // nativeTouchTick() activates touch later in the normal input loop.
+  LOG_INF("MAIN", "Touch provider activation deferred to input loop");
   display.setFlipOutput(SETTINGS.flipUi != 0);
 
   // Present before any activity or mapped-input update can activate installed
@@ -557,7 +607,7 @@ void loop() {
   // Check for any user activity (button press or release) or active background work
   static unsigned long lastActivityTime = millis();
   if (mappedInputManager.wasAnyPressed() || mappedInputManager.wasAnyReleased() ||
-      nativeNavigationFrame().buttons || gpio.hadTouchActivity() || halTiltSensor.hadActivity() ||
+      nativeNavigationFrame().buttons || nativeTouchHadActivity() || halTiltSensor.hadActivity() ||
       activityManager.preventAutoSleep()
 #ifdef ENABLE_SERIAL_LOG
       || (Serial && SETTINGS.sleepScreen != CrossPointSettings::DIGITAL_CLOCK)

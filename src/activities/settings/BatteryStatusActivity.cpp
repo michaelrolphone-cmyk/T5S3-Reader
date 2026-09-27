@@ -4,6 +4,8 @@
 #include <I18n.h>
 
 #include "MappedInputManager.h"
+#include "activities/util/RequiredAppActivity.h"
+#include "native/InstalledAppPath.h"
 #include "native/NativeAppHost.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -18,11 +20,35 @@ void BatteryStatusActivity::onEnter() {
 void BatteryStatusActivity::loop() {
   if (!launchAttempted) {
     launchAttempted = true;
-    const esp_err_t result = runNativeApp("/sd/Apps/battery.elf", renderer, mappedInput);
+
+    std::string batteryPath;
+    if (!resolveInstalledAppPath("battery.elf", batteryPath)) {
+      startActivityForResult(
+          std::make_unique<RequiredAppActivity>(
+              renderer, mappedInput, "battery.elf", "Battery Status"),
+          [this](const ActivityResult& result) {
+            if (result.isCancelled) {
+              launchFailed = false;
+              finish();
+              return;
+            }
+
+            // The required-app activity only reports success after verifying
+            // the installed package. Re-run this exact workflow step so the
+            // newly installed Battery Status app opens immediately.
+            launchAttempted = false;
+            launchFailed = false;
+            requestUpdate();
+          });
+      return;
+    }
+
+    const esp_err_t result = runNativeApp(batteryPath.c_str(), renderer, mappedInput);
     if (result == ESP_OK) {
       finish();
       return;
     }
+
     launchFailed = true;
     requestUpdate();
     return;
@@ -53,8 +79,8 @@ void BatteryStatusActivity::render(RenderLock&&) {
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Battery Status");
   const int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing * 3;
   if (launchFailed) {
-    renderer.drawCenteredText(UI_10_FONT_ID, y, "battery.elf could not be launched");
-    renderer.drawCenteredText(SMALL_FONT_ID, y + 36, "Install Battery Status from the App Store or copy it to /Apps.");
+    renderer.drawCenteredText(UI_10_FONT_ID, y, "Battery Status could not be launched");
+    renderer.drawCenteredText(SMALL_FONT_ID, y + 36, "Back returns to Settings.");
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "OK", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else {

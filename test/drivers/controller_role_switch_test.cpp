@@ -56,14 +56,24 @@ int main() {
     port.status = RISC_USB_POWER_ABSENT;
     port.advance(role, 500); port.advance(role, 500);
     assert(port.starts == 2 && role.state() == State::Host);
-    // Failed physical cleanup never restarts the host or exposes serial.
+    // A failed idle cleanup retains ownership and retries cleanup without
+    // restarting the host or requiring a reboot. Once cleanup succeeds, normal
+    // source-off sensing can start a fresh host for a later attachment.
     port.parkOK = false;
     port.advance(role, 2000);
-    assert(role.state() == State::Failed && port.powered);
+    assert(role.state() == State::Cleanup && port.powered);
     auto starts = port.starts;
     auto parks = port.parks;
-    for (unsigned i = 0; i < 100; ++i) port.advance(role, 1000);
-    assert(port.starts == starts && port.parks == parks);
+    port.advance(role, 249);
+    assert(port.parks == parks && port.starts == starts);
+    port.advance(role, 1);
+    assert(port.parks == parks + 1 && port.starts == starts);
+    port.parkOK = true;
+    port.advance(role, 250);
+    assert(role.state() == State::Sense && !port.powered);
+    port.advance(role, 500);
+    port.advance(role, 500);
+    assert(role.state() == State::Host && port.starts == starts + 1 && port.powered);
 
     Port unknown;
     unknown.status = RISC_USB_POWER_UNKNOWN;

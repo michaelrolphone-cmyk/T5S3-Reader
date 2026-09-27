@@ -12,4 +12,54 @@ assert "HalDisplay::BALANCED_REFRESH" in host
 assert "xPortGetCoreID() == 0 ? 1 : 0" in host
 assert "vTaskDelay(1);" in host
 
-print("Native UI e-paper refresh: serviced on the opposite core with owner-task yield PASS")
+# Native rounded tone primitives use the display's real grayscale planes rather
+# than painting sparse BW stipple into app code.
+assert "struct ToneRectCommand" in host
+assert "s->toneRects.size() >= 256" in host
+assert "captureGrayscaleBaseBuffer()" in host
+assert "copyGrayscaleLsbBuffers()" in host
+assert "copyGrayscaleMsbBuffers()" in host
+assert "displayGrayBuffer(mode)" in host
+assert "replayTonePlane(s, true)" in host
+assert "replayTonePlane(s, false)" in host
+
+# Package state flags stay ABI-compatible in t5_ui_list_row_t. The bridge
+# passes semantic Font Awesome icons into the active theme rather than shrinking
+# the list rectangle and painting icons afterward.
+base_theme = (ROOT / "src/components/themes/BaseTheme.cpp").read_text()
+lyra_theme = (ROOT / "src/components/themes/lyra/LyraThemeDrawB.cpp").read_text()
+rounded_theme = (ROOT / "src/components/themes/roundedraff/RoundedRaffTheme.cpp").read_text()
+assert 'T5_UI_LIST_ICON_DOWNLOAD' in bridge and '"solid:f019"' in bridge
+assert 'T5_UI_LIST_ICON_UPDATE' in bridge and '"solid:f021"' in bridge
+assert 'T5_UI_LIST_ICON_INSTALLED' in bridge and '"regular:f058"' in bridge
+assert "T5_UI_LIST_ICON_COMPACT" in bridge
+assert "compactStateIcons" in bridge
+assert "const int stateIconSize = compactStateIcons ? 12 : 16;" in bridge
+assert "stateIconGutter" not in bridge
+assert "const Rect content{0, listTop, pageWidth," in bridge
+assert "stateIconFn" in bridge and "TextRole::System, stateIconFn, stateIconSize" in bridge
+assert "FontAwesomeIcons::draw" not in bridge
+
+# Every theme owns the leading icon inside its existing full-width row
+# selection, so selected-row geometry cannot exclude the icon column.
+assert "rowFontAwesomeIcon" in base_theme and "rowFontAwesomeIconSize" in base_theme
+assert "renderer.fillRect(rect.x" in base_theme
+assert "FontAwesomeIcons::draw" in base_theme
+assert "rowFontAwesomeIcon" in lyra_theme and "rowFontAwesomeIconSize" in lyra_theme
+assert "FontAwesomeIcons::draw" in lyra_theme
+assert "Lyra selection is light gray, so state icons remain black" in lyra_theme
+assert "rowFontAwesomeIcon" in rounded_theme and "rowFontAwesomeIconSize" in rounded_theme
+assert "FontAwesomeIcons::draw" in rounded_theme
+
+
+# App Store and Driver Manager explicitly opt into the same 12 px scale used by Home app icons.
+ui_api = (ROOT / "lib/NativeApps/include/T5UiApi.h").read_text()
+app_store = (ROOT / "Apps/app_store.c").read_text()
+driver_manager = (ROOT / "Apps/driver_manager.c").read_text()
+home_theme = (ROOT / "src/components/themes/BaseTheme.cpp").read_text()
+assert "#define T5_UI_LIST_ICON_COMPACT (1u << 4)" in ui_api
+assert "flags |= T5_UI_LIST_ICON_COMPACT" in app_store
+assert "state_flags |= T5_UI_LIST_ICON_COMPACT" in driver_manager
+assert "constexpr int kAppIconSize = 12;" in home_theme
+
+print("Native UI full-row selection and themed Font Awesome list-state rendering PASS")

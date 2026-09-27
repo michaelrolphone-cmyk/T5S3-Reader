@@ -31,6 +31,22 @@ int main() {
   assert(addRequirement(&required, "serial.port", ">=1"));
   assert(resolveRequirements(registry, required, &failing) == RequirementResult::Missing && failing == 0);
 
+  // A fully verified installed provider can satisfy version preflight before
+  // its lazy ELF has been activated/published into DeviceRegistry.
+  bool useInstalled = false;
+  DeviceHandle preflightSelected = 99;
+  assert(resolveRequirementWithInstalledProvider(
+             registry, required.entries[0], 1, &preflightSelected, &useInstalled) ==
+         RequirementResult::Ready);
+  assert(preflightSelected == 0 && useInstalled);
+  required.entries[0].minApi = 2;
+  useInstalled = false;
+  assert(resolveRequirementWithInstalledProvider(
+             registry, required.entries[0], 1, nullptr, &useInstalled) ==
+         RequirementResult::ApiTooOld);
+  assert(!useInstalled);
+  required.entries[0].minApi = 1;
+
   const char* gpsCaps[] = {"location.position"};
   const uint16_t gpsApi[] = {1};
   // Provider string intentionally differs from gps-nmea: API metadata must
@@ -42,6 +58,12 @@ int main() {
   assert(resolveRequirements(registry, required, &failing) == RequirementResult::Unavailable && failing == 0);
   assert(registry.setState(gpsDevice, State::Available));
   assert(resolveRequirements(registry, required, &failing) == RequirementResult::Missing && failing == 1);
+  useInstalled = true;
+  preflightSelected = 0;
+  assert(resolveRequirementWithInstalledProvider(
+             registry, required.entries[0], 0, &preflightSelected, &useInstalled) ==
+         RequirementResult::Ready);
+  assert(preflightSelected == gpsDevice && !useInstalled);
 
   const char* serialCaps[] = {"serial.port", "serial.host"};
   const uint16_t serialApi[] = {1, 0};

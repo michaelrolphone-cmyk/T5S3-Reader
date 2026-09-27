@@ -59,7 +59,7 @@ class ActivityManager {
 
   void goToFileTransfer();
   void goToSettings();
-  void goToFileBrowser(std::string path = {});
+  void goToInstalledApp(std::string artifact, std::string displayName);
   void goToRecentBooks();
   void goToBrowser();
   void goToReader(std::string path, HalDisplay::RefreshMode replaceRefreshMode = HalDisplay::HALF_REFRESH);

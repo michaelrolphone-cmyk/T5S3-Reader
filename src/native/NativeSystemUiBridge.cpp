@@ -41,6 +41,7 @@ struct WifiState {
 KeyboardState keyboardState;
 WifiState wifiState;
 NativeSystemUiNavigation navigation = NativeSystemUiNavigation::None;
+bool suppressHomeNavigation = false;
 
 bool validResumePath(const char* path) {
   return path && std::strncmp(path, "/sd/", 4) == 0 && path[4] != '\0';
@@ -247,6 +248,7 @@ bool fileTransferRequest() {
 }
 
 void navigateHome() {
+  if (suppressHomeNavigation) return;
   navigation = NativeSystemUiNavigation::Home;
   activityManager.goHome();
 }
@@ -277,4 +279,8 @@ NativeSystemUiNavigation nativeSystemUiTakeNavigation() {
 
 void nativeSystemUiMarkActivityPending() {
   if (navigation == NativeSystemUiNavigation::None) navigation = NativeSystemUiNavigation::Keyboard;
+}
+
+void nativeSystemUiSetHomeNavigationSuppressed(bool suppressed) {
+  suppressHomeNavigation = suppressed;
 }

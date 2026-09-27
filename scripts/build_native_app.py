@@ -25,32 +25,60 @@ if not cc:
 args.output.parent.mkdir(parents=True, exist_ok=True)
 
 # Keep ELF linkage restricted. Pulling in the stock libgcc archive resolved
-# __udivdi3 but produced an ELF rejected by esp_elf_validate_file(); it must
-# not be used as a blanket linker dependency for native applications.
+# compiler helpers but produced an ELF rejected by esp_elf_validate_file(); it
+# must not be used as a blanket linker dependency for native applications.
 flags = [cc, '-std=c11', '-Os', '-fPIC', '-mtext-section-literals', '-mlongcalls',
          '-fvisibility=hidden', '-nostdlib', '-nostartfiles', '-shared',
          '-I' + str(repo / 'lib/NativeApps/include'),
          '-I' + str(repo / 'sdk/driver'), '-Wl,--hash-style=sysv']
 readelf = cc.replace('gcc', 'readelf')
+strip = cc.replace('gcc', 'strip')
+
 
 def build(support=()):
     subprocess.run([*flags, str(args.source), *map(str, support), '-o', str(args.output)], check=True)
     return subprocess.check_output([readelf, '--dyn-syms', '--wide', str(args.output)], text=True)
 
-info = build()
-# Xtensa lowers unsigned 64-bit division to a compiler helper. Supply the
-# bounded, source-owned implementation only to an app that actually imports
-# it. It performs no division itself and does not expand the firmware ABI.
-if any(len(fields := line.split()) >= 8 and fields[4] == 'GLOBAL'
-       and fields[6] == 'UND' and fields[7] == '__udivdi3'
-       for line in info.splitlines()):
-    helper = repo / 'lib/NativeApps/src/UnsignedDivisionCompat.c'
-    info = build((helper,))
 
-if not any('GLOBAL' in line and 'FUNC' in line and 'UND' not in line and line.split()[-1] == 'app_main'
-           for line in info.splitlines() if line.strip()):
-    raise SystemExit('The app must export void app_main(void) with default visibility')
-validate_imports(info, firmware_exports(repo))
+def undefined_globals(info):
+    symbols = set()
+    for line in info.splitlines():
+        fields = line.split()
+        if len(fields) >= 8 and fields[4] == 'GLOBAL' and fields[6] == 'UND':
+            symbols.add(fields[7])
+    return symbols
+
+
+def validate_dynamic_abi(info):
+    if not any('GLOBAL' in line and 'FUNC' in line and 'UND' not in line and line.split()[-1] == 'app_main'
+               for line in info.splitlines() if line.strip()):
+        raise SystemExit('The app must export void app_main(void) with default visibility')
+    validate_imports(info, firmware_exports(repo))
+
+
+info = build()
+# Xtensa lowers operations that are not implemented directly by the core to
+# compiler helpers. Supply bounded source-owned implementations only to apps
+# that actually import them. These helpers do not expand the firmware ABI and
+# avoid the unsupported ELF constructs pulled in by the stock libgcc archive.
+support_by_symbol = {
+    '__udivdi3': repo / 'lib/NativeApps/src/UnsignedDivisionCompat.c',
+    '__divsf3': repo / 'lib/NativeApps/src/SingleFloatDivisionCompat.c',
+}
+undefined = undefined_globals(info)
+support = tuple(path for symbol, path in support_by_symbol.items() if symbol in undefined)
+if support:
+    info = build(support)
+
+validate_dynamic_abi(info)
+
+# Release ELFs need only their dynamic symbols and relocation targets. Keeping
+# the compiler's full local symbol/string tables wastes SD, catalog, download,
+# and loader-budget bytes without helping the runtime. Strip only symbols that
+# the linker marks unneeded, then revalidate the exact artifact we publish.
+subprocess.run([strip, '--strip-unneeded', str(args.output)], check=True)
+info = subprocess.check_output([readelf, '--dyn-syms', '--wide', str(args.output)], text=True)
+validate_dynamic_abi(info)
 print(info)
 if manifest:
     shutil.copyfile(manifest, args.output.with_suffix('.json'))
