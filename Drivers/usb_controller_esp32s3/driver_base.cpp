@@ -50,6 +50,7 @@ static StartupDiagnostic startupError;
 static usb_host_client_handle_t client;
 static usb_transfer_t *transfer;
 static bool inFlight, completed;
+static bool noClientsObserved;
 static Event queue[kEvents];
 static size_t queueHead, queueTail, queueCount;
 static Device devices[RISC_USB_HOST_MAX_DEVICES];
@@ -429,6 +430,33 @@ bool quiesce_host() {
         client = nullptr;
     }
     if (installed) {
+        /* IDF requires the last-client deregistration to be processed by the
+         * host-library event loop before device_free_all() is legal. Preserve
+         * the observation across cleanup retries because NO_CLIENTS is a
+         * one-shot event and the client handle has already been consumed. */
+        if (!noClientsObserved) {
+            const TickType_t begun = xTaskGetTickCount();
+            for (uint32_t i = 0; !noClientsObserved && i < kTeardownTicks; ++i) {
+                if (static_cast<TickType_t>(xTaskGetTickCount() - begun) >=
+                    pdMS_TO_TICKS(kTeardownTicks)) break;
+                uint32_t flags = 0;
+                const esp_err_t events = usb_host_lib_handle_events(1, &flags);
+                if (events != ESP_OK && events != ESP_ERR_TIMEOUT) {
+                    std::printf("USBCTRL cleanup-failed stage=no-clients-events rc=%d\n",
+                                static_cast<int>(events));
+                    return false;
+                }
+                if (flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS)
+                    noClientsObserved = true;
+                if (!noClientsObserved) vTaskDelay(1);
+            }
+            if (!noClientsObserved) {
+                std::printf("USBCTRL cleanup-failed stage=no-clients-timeout\n");
+                return false;
+            }
+            std::printf("USBCTRL stage=no-clients\n");
+        }
+
         esp_err_t rc = usb_host_device_free_all();
         if (rc != ESP_OK && rc != ESP_ERR_NOT_FINISHED) {
             std::printf("USBCTRL cleanup-failed stage=device-free-all rc=%d\n",
@@ -436,45 +464,26 @@ bool quiesce_host() {
             return false;
         }
         bool freed = rc == ESP_OK;
-        bool noClients = false;
-        const TickType_t freeingBegan = xTaskGetTickCount();
-        for (uint32_t i = 0;
-             (!freed || !noClients) && i < kTeardownTicks; ++i) {
-            if (static_cast<TickType_t>(xTaskGetTickCount() - freeingBegan) >=
-                pdMS_TO_TICKS(kTeardownTicks)) break;
-            uint32_t flags = 0;
-            rc = usb_host_lib_handle_events(1, &flags);
-            if (rc != ESP_OK && rc != ESP_ERR_TIMEOUT) {
-                std::printf("USBCTRL cleanup-failed stage=host-lib-events rc=%d\n",
-                            static_cast<int>(rc));
-                return false;
+        if (!freed) {
+            const TickType_t begun = xTaskGetTickCount();
+            for (uint32_t i = 0; !freed && i < kTeardownTicks; ++i) {
+                if (static_cast<TickType_t>(xTaskGetTickCount() - begun) >=
+                    pdMS_TO_TICKS(kTeardownTicks)) break;
+                uint32_t flags = 0;
+                rc = usb_host_lib_handle_events(1, &flags);
+                if (rc != ESP_OK && rc != ESP_ERR_TIMEOUT) {
+                    std::printf("USBCTRL cleanup-failed stage=device-free-events rc=%d\n",
+                                static_cast<int>(rc));
+                    return false;
+                }
+                if (flags & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE) freed = true;
+                if (!freed) vTaskDelay(1);
             }
-            if (flags & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE) freed = true;
-            if (flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS) noClients = true;
-            // Event delivery can lag deregistration by a scheduler turn.
-            // Cooperatively wait for both teardown conditions instead of
-            // racing usb_host_uninstall() with the last-client notification.
-            if (!freed || !noClients) vTaskDelay(1);
         }
         if (!freed) {
             std::printf("USBCTRL cleanup-failed stage=device-free-timeout\n");
             return false;
         }
-        if (!noClients) {
-            std::printf("USBCTRL cleanup-failed stage=no-clients-timeout\n");
-            return false;
-        }
-        /* Drain any event that became ready with the final observed teardown
-         * condition before uninstalling. A timeout means the queue is empty. */
-        uint32_t finalFlags = 0;
-        rc = usb_host_lib_handle_events(0, &finalFlags);
-        if (rc != ESP_OK && rc != ESP_ERR_TIMEOUT) {
-            std::printf("USBCTRL cleanup-failed stage=final-lib-events rc=%d\n",
-                        static_cast<int>(rc));
-            return false;
-        }
-        std::printf("USBCTRL stage=final-lib-events flags=%lu\n",
-                    static_cast<unsigned long>(finalFlags));
         rc = usb_host_uninstall();
         if (rc != ESP_OK) {
             std::printf("USBCTRL cleanup-failed stage=host-uninstall rc=%d\n",
@@ -482,6 +491,7 @@ bool quiesce_host() {
             return false;
         }
         installed = false;
+        noClientsObserved = false;
     }
     if (!release_host_phy()) return false;
     if (powerLease) {
