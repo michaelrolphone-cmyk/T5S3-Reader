@@ -183,6 +183,151 @@ inline bool discardOwnedInbox(const std::string& root,
   return Storage.rmdir(root.c_str());
 }
 
+// A failed/interrupted canonical application publication can leave
+// /Apps/<id> present but unverifiable. That state permanently blocks future
+// updates because ordinary transaction recovery correctly refuses an invalid
+// installed generation. Online application intake has a stronger recovery
+// opportunity: by this point the replacement ELF + sidecar have already been
+// downloaded and independently size/header/SHA-256 verified.
+//
+// Reclaim ONLY an invalid target that is still structurally provable as one
+// manager-owned canonical application generation: its retained .package.json
+// must parse, identify the exact same app/artifact, and enumerate every regular
+// file in the directory with no extras. Unknown/corrupt/unparseable directories,
+// active transactions, and mapped packages remain untouched.
+inline bool discardInvalidOwnedApplicationTarget(
+    const RuntimePackages::OrdinaryPackagePlan& replacement,
+    const RuntimePackages::PackageRuntimePolicy& policy,
+    uint32_t (*resolver)(const char*), bool* discarded = nullptr) {
+  using namespace RuntimePackages;
+  if (discarded) *discarded = false;
+  if (!resolver || replacement.identity.kind != Kind::Application ||
+      !safeId(replacement.identity.id) ||
+      !safePackageEntryName(replacement.identity.artifact))
+    return false;
+
+  OrdinaryTransactionPaths paths{};
+  if (!ordinaryTransactionPaths(Kind::Application, replacement.identity.id, paths))
+    return false;
+  if (!Storage.exists(paths.target)) return true;
+
+  Identity observed{};
+  if (inspectInstalledOrdinarySdDirectory(paths.target, policy, resolver, observed))
+    return true;
+
+  // Do not interfere with a transaction that still has recovery evidence.
+  if (Storage.exists(paths.stage) || Storage.exists(paths.backup) ||
+      Storage.exists(paths.removing))
+    return false;
+
+  PackageReplacementLease lease(paths.target);
+  if (!lease) return false;
+
+  // Recheck under the exclusive replacement lease in case another owner fixed
+  // or replaced the target while we were inspecting it.
+  observed = {};
+  if (inspectInstalledOrdinarySdDirectory(paths.target, policy, resolver, observed))
+    return true;
+
+  const std::string manifestPath =
+      std::string(paths.target) + "/" + kOrdinaryManifestName;
+  HalFile manifest = Storage.open(manifestPath.c_str(), O_RDONLY);
+  if (!manifest.isOpen() || manifest.isDirectory()) {
+    if (manifest.isOpen()) (void)manifest.close();
+    return false;
+  }
+  const uint64_t manifestBytes = manifest.fileSize64();
+  if (!manifestBytes || manifestBytes > 4096u) {
+    (void)manifest.close();
+    return false;
+  }
+  std::unique_ptr<char[]> metadata(
+      new (std::nothrow) char[static_cast<size_t>(manifestBytes) + 1u]{});
+  std::unique_ptr<OrdinaryPackagePlan> installed(
+      new (std::nothrow) OrdinaryPackagePlan{});
+  if (!metadata || !installed ||
+      manifest.read(reinterpret_cast<uint8_t*>(metadata.get()),
+                    static_cast<size_t>(manifestBytes)) !=
+          static_cast<int>(manifestBytes) ||
+      !manifest.close()) {
+    return false;
+  }
+  metadata[manifestBytes] = '\0';
+  if (!parseOrdinaryManifest(metadata.get(), static_cast<size_t>(manifestBytes),
+                             *installed) ||
+      installed->identity.kind != Kind::Application ||
+      std::strcmp(installed->identity.id, replacement.identity.id) != 0 ||
+      std::strcmp(installed->identity.artifact,
+                  replacement.identity.artifact) != 0)
+    return false;
+
+  HalFile directory = Storage.open(paths.target, O_RDONLY);
+  if (!directory.isOpen() || !directory.isDirectory()) {
+    if (directory.isOpen()) (void)directory.close();
+    return false;
+  }
+
+  bool seen[kMaxPackageEntries]{};
+  bool manifestSeen = false;
+  bool exact = true;
+  size_t count = 0;
+  while (exact) {
+    HalFile entry = directory.openNextFile();
+    if (!entry.isOpen()) break;
+    if (++count > installed->entryCount + 1u) {
+      (void)entry.close();
+      exact = false;
+      break;
+    }
+    char name[128]{};
+    const size_t n = entry.getName(name, sizeof(name));
+    const bool regular = n && n < sizeof(name) && !entry.isDirectory();
+    (void)entry.close();
+    if (!regular) {
+      exact = false;
+      break;
+    }
+    if (!std::strcmp(name, kOrdinaryManifestName)) {
+      if (manifestSeen) {
+        exact = false;
+        break;
+      }
+      manifestSeen = true;
+      continue;
+    }
+    size_t index = 0;
+    while (index < installed->entryCount &&
+           std::strcmp(installed->entries[index].name, name))
+      ++index;
+    if (index == installed->entryCount || seen[index]) {
+      exact = false;
+      break;
+    }
+    seen[index] = true;
+  }
+  const bool closed = directory.close();
+  if (!exact || !closed || !manifestSeen ||
+      count != installed->entryCount + 1u)
+    return false;
+  for (size_t i = 0; i < installed->entryCount; ++i)
+    if (!seen[i]) return false;
+
+  // Manifest-last deletion preserves enough ownership metadata for diagnosis
+  // until every declared payload file has actually been removed.
+  for (size_t i = 0; i < installed->entryCount; ++i) {
+    const std::string path =
+        std::string(paths.target) + "/" + installed->entries[i].name;
+    if (!Storage.remove(path.c_str())) return false;
+    ordinaryCooperativeYield(i + 1u, installed->entryCount + 1u);
+  }
+  if (!Storage.remove(manifestPath.c_str()) ||
+      !Storage.rmdir(paths.target))
+    return false;
+  if (discarded) *discarded = true;
+  return true;
+}
+
+
 // The canonical package stage is also scratch owned by the package manager.
 // Do not compare it to a previous attempt or try to resume it. If it contains
 // only files named by the current plan (plus .package.json), remove it and
