@@ -114,3 +114,38 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+
+
+## 2026-09-27 scan — 05:20 MDT
+
+### 13. Fast-video blocking flip can deadlock forever after a scan transmit failure
+
+- **Affected code:** `src/native/NativeVideoBridge.cpp`, `scan_task()`, `send_row()`, `epd_video_flip()`, and startup calls through `settle_level()`.
+- **Trigger / reproduction:** Start a fast-video consumer such as Model Viewer, then cause the raw EPD scan task to encounter an `esp_lcd_panel_io_tx_color()` failure after a caller has queued a blocking `epd_video_flip()` during the current scan but before the next scan begins. A transient I80/LCD DMA/bus failure is sufficient.
+- **Observed / logically demonstrated failure:** `epd_video_flip()` stores the calling task in `g_flip_waiter`, sets `g_flip_req`, and then waits with `ulTaskNotifyTake(..., portMAX_DELAY)`. The scan task only consumes that request and notifies the waiter at the beginning of a scan. If `send_row()` fails first, `scan_task()` sets `g_running = false` and exits directly. Its exit path never clears the queued request and never notifies `g_flip_waiter`. The caller therefore remains blocked forever and cannot reach `epd_video_shutdown()`, whose waiter-notification logic would otherwise release it.
+- **Likely root cause:** The scan-task fatal-error path bypasses the same waiter cancellation/notification protocol used by explicit shutdown.
+- **Impact:** A recoverable display-transport fault can become a permanent native-app/startup hang requiring an external reset; the raw display resources may also remain active because the blocked caller cannot execute normal teardown.
+- **Repair direction:** Centralize scan-task termination so every fatal exit atomically clears `g_flip_req`, captures and clears `g_flip_waiter`, marks the engine stopped, and notifies the waiter before deleting the task. Consider making blocking flips return success/failure or use a bounded wait so callers can propagate transport failure. Add a fault-injection test that fails `send_row()` with a queued waiter and proves the producer wakes and teardown completes.
+
+### 14. USB Debug redraws stale devices when the discovery snapshot fails
+
+- **Affected code:** `Apps/usb_debug.c`, `refresh_devices()` and the main event loop path that reacts to processed USB discovery events.
+- **Trigger / reproduction:** Let USB Debug successfully enumerate at least one device, then make `discovery_api->devices()` fail on a later refresh—for example because enumeration temporarily fails, the device set changes during snapshotting, or the provider reports that more than `USB_DEBUG_DEVICE_LIMIT` (8) tokens are required.
+- **Observed / logically demonstrated failure:** On a successful refresh, `device_count`, `devices[]`, and `rows[]` are populated. On a later `devices()` failure, `refresh_devices()` updates only `status_text` and returns `false`; it does not clear or replace the old snapshot. In the normal event-processing branch, the caller explicitly ignores that return value with `(void)refresh_devices()` and redraws. The screen can therefore continue showing and accepting selection of devices from the previous snapshot even though the current provider snapshot failed. Confirm/Inspect then uses stale device tokens.
+- **Likely root cause:** Device-list refresh is not transactional and the failure path leaves the previous successful snapshot marked as current, while one caller treats refresh failure as non-fatal.
+- **Impact:** Detached or no-longer-addressable USB devices can remain visible and selectable, producing misleading descriptor/control-transfer errors and potentially operating on an invalid or reused provider token instead of the currently attached set.
+- **Repair direction:** Build the next device snapshot in temporary storage and publish it only on complete success; on failure, explicitly clear `device_count`/rows or mark the existing snapshot unavailable and disable Inspect. The event loop must branch on the refresh result rather than redrawing stale state. Add tests for a success followed by snapshot failure and for the provider returning a required count above 8.
+
+### 15. Shared text wrapping drops the rest of a paragraph after an over-width first token
+
+- **Affected code:** `src/components/themes/BaseTheme.cpp`, `BaseTheme::wrappedTextForRole()`; visible callers include `src/native/NativeUiBridge.cpp::renderTextView()`.
+- **Trigger / reproduction:** Render a paragraph with `maxLines > 1` whose first whitespace-delimited token is wider than `maxWidth`, followed by additional words—for example a long URL/hash/path followed by ordinary explanatory text. The native `render_text_view` API is a direct reproduction surface.
+- **Observed / logically demonstrated failure:** When `currentLine` is empty and the first token exceeds `maxWidth`, `wrappedTextForRole()` appends a truncated form of that one token and immediately `return lines;`. Any remaining text in `remaining` is discarded even when many output lines are still available. `renderTextView()` then treats the shortened vector as the complete paragraph, so its reported `total_lines` also hides the lost text.
+- **Likely root cause:** The over-width-token branch uses an unconditional early return that is only appropriate when the caller has actually exhausted `maxLines`.
+- **Impact:** Logs, USB/serial diagnostics, URLs, hashes, file paths, book metadata, or other user content can silently lose all text following a long leading token, making diagnostic and document-like views incomplete without any truncation indicator.
+- **Repair direction:** After emitting/splitting an over-width token, continue processing `remaining` whenever `lines.size() < maxLines`; return only when the line budget is exhausted. Prefer character-safe splitting of oversized UTF-8 tokens rather than discarding their tail. Add regression tests for an oversized first token followed by normal words, an oversized token after a normal line, and `maxLines == 1`.
+
+## Duplicate check performed for this scan
+
+These defects were checked against the current `bugs.md`, the repository's current open issue set, all current open PRs (#241, #220, #194, and #96), and targeted open-PR searches for fast-video flip handling, USB Debug device snapshots, and `wrappedTextForRole`. PR #241 concerns installed-provider capability validation for Model Viewer and does not address the fast-video scan-task failure path. No existing tracked entry or open PR describes the three defects above.
