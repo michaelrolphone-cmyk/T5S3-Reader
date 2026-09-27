@@ -115,6 +115,35 @@ inline RequirementResult resolveRequirement(const Registry& registry,
   return RequirementResult::Unavailable;
 }
 
+// Mandatory app requirements may be backed either by an already-published
+// live DeviceRegistry entry or by a fully verified installed provider package
+// that has not yet been lazily activated. A compatible installed provider must
+// not be misreported as Missing merely because it has not been loaded yet.
+// selected == 0 with Ready means the installed-provider path must be activated
+// transactionally by the caller before mapping the application ELF.
+inline RequirementResult resolveRequirementWithInstalledProvider(
+    const Registry& registry, const AppCapabilityRequirement& requested,
+    uint32_t installedProviderApi, DeviceHandle* selected = nullptr,
+    bool* useInstalledProvider = nullptr) {
+  if (selected) *selected = 0;
+  if (useInstalledProvider) *useInstalledProvider = false;
+
+  DeviceHandle live = 0;
+  const RequirementResult liveResult = resolveRequirement(registry, requested, &live);
+  if (liveResult == RequirementResult::Ready) {
+    if (selected) *selected = live;
+    return RequirementResult::Ready;
+  }
+
+  if (installedProviderApi >= requested.minApi && requested.minApi != 0) {
+    if (useInstalledProvider) *useInstalledProvider = true;
+    return RequirementResult::Ready;
+  }
+  if (installedProviderApi != 0 && installedProviderApi < requested.minApi)
+    return RequirementResult::ApiTooOld;
+  return liveResult;
+}
+
 inline RequirementResult resolveRequirements(const Registry& registry,
                                               const AppCapabilityRequirements& requested,
                                               size_t* failingIndex = nullptr) {
