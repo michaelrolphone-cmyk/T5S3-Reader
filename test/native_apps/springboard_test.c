@@ -14,7 +14,7 @@ static void clear(void) {}
 static void text(int32_t x,int32_t y,const char *s) { (void)x;(void)y;(void)s; }
 static void rect(int32_t x,int32_t y,int32_t w,int32_t h,bool b) {
   (void)b; assert(x>=0 && y>=0 && x+w<=540 && y+h<=960);
-  if (w > 100 && h > 100) highlight_rects++;
+  if (w > 100 && y >= 80 && y < 200) highlight_rects++;
 }
 static void present(bool full) { (void)full; }
 static uint32_t now_ms(void) { return (uint32_t)ticks * 20u; }
