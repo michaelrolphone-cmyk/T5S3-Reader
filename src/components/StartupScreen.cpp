@@ -88,7 +88,7 @@ void boot(GfxRenderer& renderer) {
   // animation budget before the reveal animation even began.
   //
   drawBootFrame(renderer, 1);
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Quality);
 
   delay(1);
 
@@ -111,7 +111,7 @@ void boot(GfxRenderer& renderer) {
 
     drawBootFrame(renderer, rows);
 
-    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    renderer.displayBuffer(DisplayPresentMode::LowLatency);
 
     delay(1);
   }
@@ -197,7 +197,7 @@ void finishBoot(GfxRenderer& renderer) {
     //
     // Every fade stage is guaranteed to reach the panel.
     //
-    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    renderer.displayBuffer(DisplayPresentMode::LowLatency);
   }
 
   renderer.setRenderMode(mode);
@@ -207,7 +207,7 @@ void finishBoot(GfxRenderer& renderer) {
   // the final disappearance without wasting another FAST_REFRESH on a fully
   // blank splash frame.
   //
-  renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
+  renderer.requestNextRefresh(DisplayPresentMode::Quality);
 }
 
 }  // namespace StartupScreen
