@@ -15,9 +15,11 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from .build_release_candidates import DRIVER_BUILDERS
     from .build_release_record import build_record
     from .update_release_index import update_index, version_tuple
 except ImportError:
+    from build_release_candidates import DRIVER_BUILDERS
     from build_release_record import build_record
     from update_release_index import update_index, version_tuple
 
@@ -92,14 +94,10 @@ def discover_candidates(root: Path, index: dict[str, Any]) -> list[dict[str, str
         if latest is None or current > latest:
             candidates.append({"product": "apps", "id": identity, "version": version})
 
-    canonical_driver_ids = {
-        "platform-clock-v1", "i2c-esp32s3-v2", "gt911-touch", "board-power-t5s3-v2",
-        "usb-controller-esp32s3", "usb-host-v2", "usb-mass-storage", "usb-cdc-acm-v2",
-        "usb-cp210x-v2", "usb-ch34x-v2", "usb-ftdi", "usb-stlink",
-        "usb-msp", "program-msp", "usb-hid", "usb-hid-keyboard",
-        "usb-hid-gamepad", "usb-xinput-gamepad", "usb-ui-navigation",
-        "t5s3-usb-power-profile",
-    }
+    # The selective builder is the release authority. Deriving discovery from
+    # the same table prevents a new canonical package from being publishable in
+    # one stage but invisible to another.
+    canonical_driver_ids = set(DRIVER_BUILDERS)
     seen_drivers: set[str] = set()
     for path in (root / "Drivers").rglob("manifest.json"):
         try:
