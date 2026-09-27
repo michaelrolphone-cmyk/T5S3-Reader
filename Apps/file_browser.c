@@ -20,6 +20,8 @@
 #define COPY_CHUNK 4096u
 #define SESSION_PATH "/sd/System/State/Applications/file_browser/Session.txt"
 #define HANDOFF_COOKIE 0x4642524f57534552ULL
+#define RENAME_COOKIE 0x464252454e414d45ULL
+#define DOUBLE_TAP_MS 450u
 #define USB_ROOT "/USB Storage"
 #define USB_ENTRY "USB Storage"
 
@@ -46,10 +48,13 @@ static t5_ui_list_row_t picker_rows[PICKER_ENTRIES + 2u];
 static uint8_t copy_buffer[COPY_CHUNK];
 static uint32_t entry_count;
 static int32_t selected_index;
+static bool selection_active;
 static char base_path[PATH_CAP] = "/";
 static char status_text[STATUS_CAP];
 static char pending_delete_path[PATH_CAP];
 static bool pending_delete_usb;
+static uint32_t last_tap_ms;
+static int32_t last_tap_index = -1;
 
 static char lower_ascii(char ch) {
     return ch >= 'A' && ch <= 'Z' ? (char)(ch + ('a' - 'A')) : ch;
@@ -330,6 +335,7 @@ static void load_session(void) {
     if (line1[0] == '/') copy_text(base_path, sizeof(base_path), line1);
     copy_text(pending_delete_path, sizeof(pending_delete_path), line3);
     load_files(line2);
+    selection_active = line2[0] != 0 && entry_count > 0;
 }
 
 static void clear_session(void) {
@@ -370,6 +376,7 @@ static bool go_up(void) {
     if (!slash || slash == base_path) copy_text(base_path, sizeof(base_path), "/");
     else *slash = 0;
     load_files(child);
+    selection_active = entry_count > 0;
     return true;
 }
 
@@ -438,12 +445,14 @@ static bool picker_go_up(char *path) {
     return true;
 }
 
-static bool choose_destination(bool usb, char *out, size_t capacity) {
+static bool choose_destination(bool usb, const char *verb, char *out, size_t capacity) {
     char path[PATH_CAP] = "/";
     int32_t selected = 0;
     for (;;) {
         uint32_t count = 0;
-        picker_rows[count++] = (t5_ui_list_row_t){"Copy here", usb ? "USB Storage" : "SD Card", path, 0};
+        char action_here[24];
+        snprintf(action_here, sizeof(action_here), "%s here", verb ? verb : "Choose");
+        picker_rows[count++] = (t5_ui_list_row_t){action_here, usb ? "USB Storage" : "SD Card", path, 0};
         const bool has_parent = strcmp(path, "/") != 0;
         if (has_parent) picker_rows[count++] = (t5_ui_list_row_t){"..", "Parent folder", "", 0};
         const uint32_t directory_start = count;
@@ -454,8 +463,9 @@ static bool choose_destination(bool usb, char *out, size_t capacity) {
         }
         if (selected < 0 || selected >= (int32_t)count) selected = 0;
         t5_ui_chrome_t chrome = {
-            .title = usb ? "Copy to USB" : "Copy to SD",
-            .subtitle = "Choose destination folder", .status = path,
+            .title = usb ? "USB Storage" : "SD Card",
+            .subtitle = verb && !strcmp(verb, "Move") ? "Choose move destination" : "Choose copy destination",
+            .status = path,
             .back_label = "Cancel", .confirm_label = "Open",
             .previous_label = "Up", .next_label = "Down",
         };
@@ -577,7 +587,7 @@ static bool copy_selected(void) {
         return false;
     }
     char destination_directory[PATH_CAP];
-    if (!choose_destination(!source_usb, destination_directory, sizeof(destination_directory))) {
+    if (!choose_destination(!source_usb, "Copy", destination_directory, sizeof(destination_directory))) {
         if (!status_text[0]) copy_text(status_text, sizeof(status_text), "Copy cancelled");
         return false;
     }
@@ -594,7 +604,8 @@ static bool copy_selected(void) {
         char source_path[PATH_CAP];
         make_usb_path(entries[selected_index].name, source_path, sizeof(source_path));
         snprintf(status_text, sizeof(status_text), "Copying %.96s to SD...", entries[selected_index].name);
-        browser->render(base_path, status_text, ui_entries, entry_count, selected_index);
+        browser->render(base_path, status_text, ui_entries, entry_count,
+                        selection_active ? selected_index : -1);
         if (!copy_usb_to_sd(source_path, destination_vfs)) return false;
         snprintf(status_text, sizeof(status_text), "Copied %.96s to SD", entries[selected_index].name);
         return true;
@@ -607,7 +618,8 @@ static bool copy_selected(void) {
     char source_vfs[PATH_CAP + 4];
     make_vfs_path(entries[selected_index].name, source_vfs, sizeof(source_vfs));
     snprintf(status_text, sizeof(status_text), "Copying %.96s to USB...", entries[selected_index].name);
-    browser->render(base_path, status_text, ui_entries, entry_count, selected_index);
+    browser->render(base_path, status_text, ui_entries, entry_count,
+                        selection_active ? selected_index : -1);
     if (!copy_sd_to_usb(source_vfs, destination)) return false;
     snprintf(status_text, sizeof(status_text), "Copied %.96s to USB", entries[selected_index].name);
     return true;
@@ -667,6 +679,7 @@ static bool open_selected(void) {
             copy_text(base_path + used, sizeof(base_path) - used, entry->name);
         }
         selected_index = 0;
+        selection_active = false;
         status_text[0] = 0;
         load_files(NULL);
         return false;
@@ -702,10 +715,90 @@ static bool open_selected(void) {
     return open_with_handler(entry->name, &handlers[choice]);
 }
 
+static bool storage_rename_available(void) {
+    return storage->struct_size >= offsetof(t5_storage_api_v1, rename_file) +
+                                   sizeof(storage->rename_file) &&
+           storage->exists && storage->rename_file;
+}
+
+static bool valid_entry_name(const char *name) {
+    if (!name || !name[0] || !strcmp(name, ".") || !strcmp(name, "..")) return false;
+    for (const char *p = name; *p; ++p)
+        if (*p == '/' || *p == '\\' || (unsigned char)*p < 0x20u) return false;
+    return strlen(name) < T5_APP_DIRENT_NAME_MAX;
+}
+
+static bool path_same_or_child(const char *candidate, const char *parent) {
+    const size_t n = parent ? strlen(parent) : 0;
+    if (!candidate || !parent || !n || strncmp(candidate, parent, n) != 0) return false;
+    return candidate[n] == 0 || candidate[n] == '/';
+}
+
+static bool request_rename(void) {
+    if (!entry_count || selected_index < 0 || selected_index >= (int32_t)entry_count ||
+        using_usb() || entries[selected_index].usb_root || !storage_rename_available() ||
+        !system_ui->keyboard_request || !system_ui->keyboard_take_result) return false;
+    save_session();
+    if (system_ui->keyboard_request("Rename", entries[selected_index].name,
+                                    T5_APP_DIRENT_NAME_MAX - 1u,
+                                    T5_SYSTEM_KEYBOARD_TEXT, RENAME_COOKIE)) return true;
+    clear_session();
+    copy_text(status_text, sizeof(status_text), "Could not open rename keyboard");
+    return false;
+}
+
+static bool move_selected(void) {
+    if (!entry_count || selected_index < 0 || selected_index >= (int32_t)entry_count ||
+        using_usb() || entries[selected_index].usb_root || !storage_rename_available()) return false;
+    char destination_directory[PATH_CAP];
+    if (!choose_destination(false, "Move", destination_directory, sizeof(destination_directory))) {
+        if (!status_text[0]) copy_text(status_text, sizeof(status_text), "Move cancelled");
+        return false;
+    }
+
+    char source_relative[PATH_CAP];
+    char destination_relative[PATH_CAP];
+    make_storage_path(entries[selected_index].name, source_relative, sizeof(source_relative));
+    join_relative_path(destination_directory, entries[selected_index].name,
+                       destination_relative, sizeof(destination_relative));
+    if (!strcmp(source_relative, destination_relative)) {
+        copy_text(status_text, sizeof(status_text), "Already in this folder");
+        return false;
+    }
+    if (entries[selected_index].is_directory &&
+        path_same_or_child(destination_directory, source_relative)) {
+        copy_text(status_text, sizeof(status_text), "Cannot move a folder into itself");
+        return false;
+    }
+
+    char source_vfs[PATH_CAP + 4];
+    char destination_vfs[PATH_CAP + 4];
+    make_sd_vfs_dir(source_relative, source_vfs, sizeof(source_vfs));
+    make_sd_vfs_dir(destination_relative, destination_vfs, sizeof(destination_vfs));
+    if (storage->exists(destination_vfs)) {
+        copy_text(status_text, sizeof(status_text), "Destination already exists");
+        return false;
+    }
+    if (!storage->rename_file(source_vfs, destination_vfs)) {
+        copy_text(status_text, sizeof(status_text), "Move failed");
+        return false;
+    }
+    snprintf(status_text, sizeof(status_text), "Moved %.96s", entries[selected_index].name);
+    load_files(NULL);
+    if (entry_count && selected_index >= (int32_t)entry_count)
+        selected_index = (int32_t)entry_count - 1;
+    selection_active = false;
+    return true;
+}
+
 static bool request_delete(void) {
     if (!entry_count || selected_index < 0 || selected_index >= (int32_t)entry_count ||
-        entries[selected_index].is_directory) return false;
+        entries[selected_index].usb_root) return false;
     pending_delete_usb = using_usb();
+    if (pending_delete_usb && entries[selected_index].is_directory) {
+        copy_text(status_text, sizeof(status_text), "USB folder deletion is not supported");
+        return false;
+    }
     if (pending_delete_usb) make_usb_path(entries[selected_index].name, pending_delete_path, sizeof(pending_delete_path));
     else make_storage_path(entries[selected_index].name, pending_delete_path, sizeof(pending_delete_path));
     save_session();
@@ -714,31 +807,112 @@ static bool request_delete(void) {
     return false;
 }
 
+typedef enum {
+    FILE_ACTION_RENAME = 1,
+    FILE_ACTION_MOVE = 2,
+    FILE_ACTION_COPY = 3,
+    FILE_ACTION_DELETE = 4,
+} file_action_kind_t;
+
 static bool file_actions(void) {
-    if (!entry_count || selected_index < 0 || selected_index >= (int32_t)entry_count ||
-        entries[selected_index].is_directory) return false;
-    const bool source_usb = using_usb();
-    const bool can_copy = source_usb || refresh_usb();
-    if (!can_copy) return request_delete();
-    t5_ui_list_row_t rows[2] = {
-        {source_usb ? "Copy to SD" : "Copy to USB", "Choose a destination folder", "", 0},
-        {"Delete", "Remove this file", "", 0},
-    };
-    const int32_t action = run_menu(entries[selected_index].name, "File actions", rows, 2);
-    if (action == 0) {
-        char selected[T5_APP_DIRENT_NAME_MAX];
-        selected_name(selected, sizeof(selected));
-        (void)copy_selected();
-        load_files(selected);
+    if (!entry_count || selected_index < 0 || selected_index >= (int32_t)entry_count) return false;
+    if (entries[selected_index].usb_root) {
+        copy_text(status_text, sizeof(status_text), "USB Storage is a mounted volume");
         return false;
     }
-    if (action == 1) return request_delete();
-    return false;
+
+    const bool source_usb = using_usb();
+    const bool is_directory = entries[selected_index].is_directory;
+    t5_ui_list_row_t rows[4];
+    uint8_t kinds[4];
+    uint32_t count = 0;
+
+    if (!source_usb && storage_rename_available()) {
+        rows[count] = (t5_ui_list_row_t){"Rename", "Change the item name", "", 0};
+        kinds[count++] = FILE_ACTION_RENAME;
+        rows[count] = (t5_ui_list_row_t){"Move", "Choose another SD folder", "", 0};
+        kinds[count++] = FILE_ACTION_MOVE;
+    }
+    if (!is_directory && (source_usb || refresh_usb())) {
+        rows[count] = (t5_ui_list_row_t){
+            source_usb ? "Copy to SD" : "Copy to USB",
+            "Choose a destination folder", "", 0};
+        kinds[count++] = FILE_ACTION_COPY;
+    }
+    if (!source_usb || !is_directory) {
+        rows[count] = (t5_ui_list_row_t){
+            "Delete", is_directory ? "Remove this folder and its contents" : "Remove this file", "", 0};
+        kinds[count++] = FILE_ACTION_DELETE;
+    }
+
+    if (!count) {
+        copy_text(status_text, sizeof(status_text), "No actions are available for this item");
+        return false;
+    }
+
+    const int32_t action = run_menu(entries[selected_index].name, "Options", rows, count);
+    if (action < 0 || action >= (int32_t)count) return false;
+    switch (kinds[action]) {
+        case FILE_ACTION_RENAME:
+            return request_rename();
+        case FILE_ACTION_MOVE:
+            (void)move_selected();
+            return false;
+        case FILE_ACTION_COPY: {
+            char selected[T5_APP_DIRENT_NAME_MAX];
+            selected_name(selected, sizeof(selected));
+            (void)copy_selected();
+            load_files(selected);
+            return false;
+        }
+        case FILE_ACTION_DELETE:
+            return request_delete();
+        default:
+            return false;
+    }
 }
 
 static void consume_handoff_results(void) {
     bool confirmed = false;
     uint64_t cookie = 0;
+
+    char renamed[T5_APP_DIRENT_NAME_MAX] = {0};
+    bool rename_cancelled = false;
+    uint64_t rename_cookie = 0;
+    if (system_ui->keyboard_take_result &&
+        system_ui->keyboard_take_result(renamed, sizeof(renamed), &rename_cancelled, &rename_cookie)) {
+        if (rename_cookie == RENAME_COOKIE) {
+            char old_name[T5_APP_DIRENT_NAME_MAX] = {0};
+            selected_name(old_name, sizeof(old_name));
+            if (rename_cancelled) {
+                copy_text(status_text, sizeof(status_text), "Rename cancelled");
+            } else if (!valid_entry_name(renamed)) {
+                copy_text(status_text, sizeof(status_text), "Invalid name");
+            } else if (!old_name[0] || !strcmp(old_name, renamed)) {
+                status_text[0] = 0;
+            } else if (using_usb() || !storage_rename_available()) {
+                copy_text(status_text, sizeof(status_text), "Rename is not supported here");
+            } else {
+                char source_relative[PATH_CAP];
+                char destination_relative[PATH_CAP];
+                char source_vfs[PATH_CAP + 4];
+                char destination_vfs[PATH_CAP + 4];
+                make_storage_path(old_name, source_relative, sizeof(source_relative));
+                join_relative_path(base_path, renamed, destination_relative, sizeof(destination_relative));
+                make_sd_vfs_dir(source_relative, source_vfs, sizeof(source_vfs));
+                make_sd_vfs_dir(destination_relative, destination_vfs, sizeof(destination_vfs));
+                if (storage->exists(destination_vfs)) {
+                    copy_text(status_text, sizeof(status_text), "That name already exists");
+                } else if (!storage->rename_file(source_vfs, destination_vfs)) {
+                    copy_text(status_text, sizeof(status_text), "Rename failed");
+                } else {
+                    snprintf(status_text, sizeof(status_text), "Renamed to %.96s", renamed);
+                    load_files(renamed);
+                }
+            }
+            clear_session();
+        }
+    }
     if (browser->confirm_delete_take_result(&confirmed, &cookie)) {
         const int32_t old_index = selected_index;
         if (confirmed && pending_delete_path[0]) {
@@ -802,9 +976,9 @@ void app_main(void) {
     file_open = t5_file_open_get_api(T5_FILE_OPEN_API_VERSION);
     ui = t5_ui_get_api(T5_UI_API_VERSION);
     if (!app || !storage || !system_ui || !browser || !file_open || !ui ||
-        !app->dir_open || !app->dir_next || !app->dir_close ||
+        !app->dir_open || !app->dir_next || !app->dir_close || !app->millis ||
         !app->set_back_exits_app || !storage->read_file || !storage->write_file_atomic || !storage->remove_file ||
-        !system_ui->navigate_home || !browser->show_hidden_files || !browser->render || !browser->poll_event ||
+        !system_ui->navigate_home || !system_ui->keyboard_request || !system_ui->keyboard_take_result || !browser->show_hidden_files || !browser->render || !browser->poll_event ||
         !browser->page_items || !browser->confirm_delete_request || !browser->confirm_delete_take_result ||
         !browser->delete_document || !browser->open_document || !browser->launch_elf_request ||
         !browser->launch_elf_take_result || file_open->api_version != T5_FILE_OPEN_API_VERSION ||
@@ -820,13 +994,17 @@ void app_main(void) {
     usb_lease = T5_PROVIDER_CAPABILITY_LEASE_INVALID;
     entry_count = 0;
     selected_index = 0;
+    selection_active = false;
+    last_tap_ms = 0;
+    last_tap_index = -1;
     copy_text(base_path, sizeof(base_path), "/");
     acquire_usb();
 
     load_files(NULL);
     load_session();
     consume_handoff_results();
-    browser->render(base_path, status_text, ui_entries, entry_count, selected_index);
+    browser->render(base_path, status_text, ui_entries, entry_count,
+                        selection_active ? selected_index : -1);
 
     for (;;) {
         t5_file_browser_event_t event;
@@ -836,31 +1014,60 @@ void app_main(void) {
         bool redraw = false;
         switch (event.type) {
             case T5_FILE_BROWSER_EVENT_PREVIOUS:
-                selected_index = previous_index(selected_index, entry_count); redraw = true; break;
+                last_tap_index = -1;
+                selected_index = selection_active ? previous_index(selected_index, entry_count) : 0;
+                selection_active = entry_count > 0; redraw = true; break;
             case T5_FILE_BROWSER_EVENT_NEXT:
-                selected_index = next_index(selected_index, entry_count); redraw = true; break;
+                last_tap_index = -1;
+                selected_index = selection_active ? next_index(selected_index, entry_count) : 0;
+                selection_active = entry_count > 0; redraw = true; break;
             case T5_FILE_BROWSER_EVENT_PAGE_PREVIOUS:
-                selected_index = previous_page(selected_index, entry_count, browser->page_items()); redraw = true; break;
+                last_tap_index = -1;
+                selected_index = selection_active ? previous_page(selected_index, entry_count, browser->page_items()) : 0;
+                selection_active = entry_count > 0; redraw = true; break;
             case T5_FILE_BROWSER_EVENT_PAGE_NEXT:
-                selected_index = next_page(selected_index, entry_count, browser->page_items()); redraw = true; break;
+                last_tap_index = -1;
+                selected_index = selection_active ? next_page(selected_index, entry_count, browser->page_items()) : 0;
+                selection_active = entry_count > 0; redraw = true; break;
             case T5_FILE_BROWSER_EVENT_ROW:
                 if (event.row_index >= 0 && event.row_index < (int32_t)entry_count) {
+                    const uint32_t now = app->millis();
+                    const bool double_tap = event.row_index == last_tap_index &&
+                                            (uint32_t)(now - last_tap_ms) <= DOUBLE_TAP_MS;
                     selected_index = event.row_index;
-                    if (open_selected()) { app->set_back_exits_app(true); return; }
-                    redraw = true;
+                    selection_active = true;
+                    status_text[0] = 0;
+                    if (double_tap) {
+                        last_tap_index = -1;
+                        last_tap_ms = 0;
+                        if (open_selected()) { app->set_back_exits_app(true); return; }
+                        redraw = true;
+                    } else {
+                        last_tap_index = event.row_index;
+                        last_tap_ms = now;
+                    }
                 }
                 break;
             case T5_FILE_BROWSER_EVENT_OPEN:
+                last_tap_index = -1;
+                if (!selection_active) {
+                    selection_active = entry_count > 0;
+                    redraw = true;
+                    break;
+                }
                 if (open_selected()) { app->set_back_exits_app(true); return; }
                 redraw = true;
                 break;
             case T5_FILE_BROWSER_EVENT_DELETE:
+                last_tap_index = -1;
+                if (!selection_active) break;
                 if (file_actions()) { app->set_back_exits_app(true); return; }
                 redraw = true;
                 break;
             case T5_FILE_BROWSER_EVENT_ROOT:
                 copy_text(base_path, sizeof(base_path), "/");
                 selected_index = 0;
+                selection_active = false;
                 status_text[0] = 0;
                 load_files(NULL);
                 redraw = true;
@@ -881,7 +1088,14 @@ void app_main(void) {
             default:
                 break;
         }
-        if (redraw) browser->render(base_path, status_text, ui_entries, entry_count, selected_index);
+        if (!redraw && last_tap_index >= 0 &&
+            (uint32_t)(app->millis() - last_tap_ms) > DOUBLE_TAP_MS) {
+            last_tap_index = -1;
+            last_tap_ms = 0;
+            redraw = true;
+        }
+        if (redraw) browser->render(base_path, status_text, ui_entries, entry_count,
+                        selection_active ? selected_index : -1);
     }
     app->set_back_exits_app(true);
 }
