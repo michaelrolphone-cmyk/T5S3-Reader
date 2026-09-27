@@ -23,11 +23,13 @@ static bool selection_visible;
 static bool home_pinned[MAX_HOME_APPS];
 
 static bool has_required_app_api(void) {
-    const size_t required = offsetof(t5_app_api_v1, draw_label) + sizeof(api->draw_label);
+    const size_t required = offsetof(t5_app_api_v1, fill_rounded_rect_tone) +
+                            sizeof(api->fill_rounded_rect_tone);
     return api && api->struct_size >= required && api->screen_width && api->screen_height && api->clear &&
            api->draw_text && api->fill_rect && api->present && api->poll && api->millis &&
            api->installed_apps_refresh && api->installed_apps_count && api->installed_apps_get &&
-           api->request_app_launch && api->draw_icon && api->draw_label;
+           api->request_app_launch && api->draw_icon && api->draw_label &&
+           api->fill_rounded_rect_tone;
 }
 
 static bool has_storage_api(void) {
@@ -75,6 +77,36 @@ static void fill_rounded_rect(int x, int y, int width, int height, int radius, b
             inset = next;
         }
     }
+}
+
+static void tone_rounded_rect(int x, int y, int width, int height,
+                              int radius, uint8_t tone) {
+    api->fill_rounded_rect_tone(x, y, width, height, radius, tone);
+}
+
+static void draw_glossy_icon_tile(int x, int y, int size) {
+    const int outer_radius = 20;
+
+    // Raised outer frame: dark lip, pale metallic rim, dark bevel, then face.
+    tone_rounded_rect(x, y, size, size, outer_radius, T5_APP_TONE_BLACK);
+    tone_rounded_rect(x + 1, y + 1, size - 2, size - 2,
+                      outer_radius - 1, T5_APP_TONE_LIGHT_GRAY);
+    tone_rounded_rect(x + 3, y + 3, size - 6, size - 6,
+                      outer_radius - 3, T5_APP_TONE_WHITE);
+    tone_rounded_rect(x + 5, y + 5, size - 10, size - 10,
+                      outer_radius - 5, T5_APP_TONE_DARK_GRAY);
+    tone_rounded_rect(x + 8, y + 8, size - 16, size - 16,
+                      outer_radius - 8, T5_APP_TONE_BLACK);
+
+    // Gloss: a broad dark-gray reflection under a small light-gray/white crest.
+    // These are actual renderer gray tones rather than sparse hand-made pixels.
+    tone_rounded_rect(x + 11, y + 10, size - 22, 18, 9, T5_APP_TONE_DARK_GRAY);
+    tone_rounded_rect(x + 14, y + 10, size - 28, 9, 5, T5_APP_TONE_LIGHT_GRAY);
+    tone_rounded_rect(x + 20, y + 11, size / 3, 3, 2, T5_APP_TONE_WHITE);
+
+    // Lower bevel and side reflection make the tile read as a raised glossy frame.
+    tone_rounded_rect(x + 14, y + size - 12, size - 28, 4, 2, T5_APP_TONE_DARK_GRAY);
+    tone_rounded_rect(x + size - 12, y + 20, 4, size / 3, 2, T5_APP_TONE_DARK_GRAY);
 }
 
 static void load_home_pins(void) {
@@ -229,9 +261,7 @@ static void draw(const char *status) {
         if (!api->installed_apps_get(first + cell, &app)) continue;
         const int x = 16 + (cell % columns) * cell_w;
         const int y = 80 + (cell / columns) * cell_h;
-        const int box = 70;
-        const int border = 3;
-        const int radius = 12;
+        const int box = 82;
         const int icon_cell = 18;
         const int bx = x + (cell_w - box) / 2;
         const int by = y + 8;
@@ -246,14 +276,12 @@ static void draw(const char *status) {
                               hw - highlight_border * 2, hh - highlight_border * 2,
                               14 - highlight_border, false);
         }
-        fill_rounded_rect(bx, by, box, box, radius, true);
-        fill_rounded_rect(bx + border, by + border, box - border * 2, box - border * 2,
-                          radius - border, false);
+        draw_glossy_icon_tile(bx, by, box);
         if (!api->draw_icon(bx + (box - icon_cell) / 2, by + (box - icon_cell) / 2,
-                            app.icon, icon_cell, true)) {
+                            app.icon, icon_cell, false)) {
             missing_icons = true;
         }
-        api->draw_label(x + 6, y + 86, cell_w - 12, app.display_name);
+        api->draw_label(x + 6, y + 98, cell_w - 12, app.display_name);
         if (!app.compatible) {
             char required[48];
             snprintf(required, sizeof(required), "Needs %s", app.min_firmware_version);

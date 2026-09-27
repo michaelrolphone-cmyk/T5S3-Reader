@@ -12,6 +12,17 @@ assert "HalDisplay::BALANCED_REFRESH" in host
 assert "xPortGetCoreID() == 0 ? 1 : 0" in host
 assert "vTaskDelay(1);" in host
 
+# Native rounded tone primitives use the display's real grayscale planes rather
+# than painting sparse BW stipple into app code.
+assert "struct ToneRectCommand" in host
+assert "s->toneRects.size() >= 256" in host
+assert "captureGrayscaleBaseBuffer()" in host
+assert "copyGrayscaleLsbBuffers()" in host
+assert "copyGrayscaleMsbBuffers()" in host
+assert "displayGrayBuffer(mode)" in host
+assert "replayTonePlane(s, true)" in host
+assert "replayTonePlane(s, false)" in host
+
 # Package state flags stay ABI-compatible in t5_ui_list_row_t. The bridge
 # passes semantic Font Awesome icons into the active theme rather than shrinking
 # the list rectangle and painting icons afterward.

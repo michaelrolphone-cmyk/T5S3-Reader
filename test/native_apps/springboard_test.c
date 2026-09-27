@@ -6,6 +6,8 @@
 void app_main(void);
 static int ticks, scenario, launched, labels, writes, highlight_rects;
 static int selection_underlines, edit_button_rects, edit_labels, forbidden_labels, apps_titles, page_dot_rects;
+static int white_icon_calls;
+static int tone_white_calls, tone_light_calls, tone_dark_calls, tone_black_calls;
 static uint32_t chosen;
 static char saved[4096];
 static size_t saved_size;
@@ -17,7 +19,8 @@ static void text(int32_t x,int32_t y,const char *s) {
   if (s && !strcmp(s,"Apps")) apps_titles++;
 }
 static void rect(int32_t x,int32_t y,int32_t w,int32_t h,bool b) {
-  (void)b; assert(x>=0 && y>=0 && x+w<=540 && y+h<=960);
+  (void)b;
+  assert(x>=0 && y>=0 && x+w<=540 && y+h<=960);
   if (w > 100 && y >= 80 && y < 200) highlight_rects++;
   if (h == 3 && w > 100 && y >= 200) selection_underlines++;
   if (x >= 450 && y < 60 && w > 30) edit_button_rects++;
@@ -34,7 +37,17 @@ static bool get(uint32_t i,t5_app_manifest_t *m) {
 }
 static bool launch(uint32_t i) { launched++; chosen=i; return true; }
 static bool icon(int32_t x,int32_t y,const char *s,uint8_t size,bool black) {
-  (void)x;(void)y;(void)s;(void)size;(void)black; return true;
+  (void)x;(void)y;(void)s;(void)size;
+  if (!black) white_icon_calls++;
+  return true;
+}
+static void tone_rect(int32_t x,int32_t y,int32_t w,int32_t h,int32_t radius,uint8_t tone) {
+  assert(x>=0 && y>=0 && x+w<=540 && y+h<=960 && radius>=0);
+  if (tone == T5_APP_TONE_WHITE) tone_white_calls++;
+  else if (tone == T5_APP_TONE_LIGHT_GRAY) tone_light_calls++;
+  else if (tone == T5_APP_TONE_DARK_GRAY) tone_dark_calls++;
+  else if (tone == T5_APP_TONE_BLACK) tone_black_calls++;
+  else assert(0 && "invalid tone");
 }
 static void label(int32_t x,int32_t y,int32_t w,const char *s) {
   assert(x>=0 && x+w<=540 && y<960); labels++;
@@ -87,12 +100,15 @@ const t5_storage_api_v1 *t5_storage_get_api(uint32_t v) { assert(v==1); return &
 static const t5_app_api_v1 api={.abi_version=1,.struct_size=sizeof(t5_app_api_v1),
  .screen_width=width,.screen_height=height,.clear=clear,.draw_text=text,.fill_rect=rect,
  .present=present,.poll=poll,.millis=now_ms,.installed_apps_refresh=refresh,.installed_apps_count=count,
- .installed_apps_get=get,.request_app_launch=launch,.draw_icon=icon,.draw_label=label};
+ .installed_apps_get=get,.request_app_launch=launch,.draw_icon=icon,.draw_label=label,
+ .fill_rounded_rect_tone=tone_rect};
 const t5_app_api_v1 *t5_app_get_api(uint32_t v) { assert(v==1); return &api; }
 int main(void) {
   for(scenario=0;scenario<6;scenario++) {
     ticks=launched=labels=writes=highlight_rects=0;
     selection_underlines=edit_button_rects=edit_labels=forbidden_labels=apps_titles=page_dot_rects=0;
+    white_icon_calls=0;
+    tone_white_calls=tone_light_calls=tone_dark_calls=tone_black_calls=0;
     chosen=0; saved_size=0; app_main();
     if(scenario==0) assert(launched==1 && chosen==1);
     if(scenario==1) assert(launched==1 && chosen==15);
@@ -111,5 +127,12 @@ int main(void) {
     assert(edit_button_rects>0);
     assert(edit_labels>0);
     assert(page_dot_rects>0);
+    if (scenario != 3) {
+      assert(white_icon_calls>0);
+      assert(tone_white_calls>0);
+      assert(tone_light_calls>0);
+      assert(tone_dark_calls>0);
+      assert(tone_black_calls>0);
+    }
   }
 }
