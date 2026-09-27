@@ -139,7 +139,8 @@ class BaseTheme {
                         const std::function<std::string(int index)>& rowSubtitle = nullptr,
                         const std::function<UIIcon(int index)>& rowIcon = nullptr,
                         const std::function<std::string(int index)>& rowValue = nullptr,
-                        bool highlightValue = false, TextRole textRole = TextRole::System) const;
+                        bool highlightValue = false, TextRole textRole = TextRole::System,
+                        const std::function<const char*(int index)>& rowFontAwesomeIcon = nullptr) const;
   virtual void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
                           const char* subtitle = nullptr, TextRole titleRole = TextRole::System,
                           TextRole subtitleRole = TextRole::System, const char* leadingLabel = nullptr) const;
