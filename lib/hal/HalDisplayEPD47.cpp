@@ -158,9 +158,16 @@ void HalDisplay::drawImageTransparent(const uint8_t* imageData, const uint16_t x
 
 void HalDisplay::displayBuffer(RefreshMode mode, bool turnOffScreen) {
   (void)turnOffScreen;
+  static bool warnedUnavailable = false;
   if (!displayReady || !frameBuffer || !epdFrameBuffer) {
+    if (!warnedUnavailable) {
+      LOG_ERR("DSP", "Present rejected: ready=%d framebuffer=%p panelbuffer=%p", displayReady ? 1 : 0,
+              static_cast<void*>(frameBuffer), static_cast<void*>(epdFrameBuffer));
+      warnedUnavailable = true;
+    }
     return;
   }
+  warnedUnavailable = false;
 
   if (forcedRefreshPending && (mode == FAST_REFRESH || mode == BALANCED_REFRESH)) {
     mode = forcedRefreshMode;
@@ -299,9 +306,17 @@ void HalDisplay::cleanupGrayscaleBuffers(const uint8_t* bwBuffer) {
 }
 
 void HalDisplay::displayGrayBuffer(RefreshMode mode) {
-  if (!displayReady || !grayscaleLsbBuffer || !grayscaleMsbBuffer) {
+  static bool warnedGrayUnavailable = false;
+  if (!displayReady || !frameBuffer || !epdFrameBuffer || !grayscaleLsbBuffer || !grayscaleMsbBuffer) {
+    if (!warnedGrayUnavailable) {
+      LOG_ERR("DSP", "Gray present rejected: ready=%d framebuffer=%p panelbuffer=%p lsb=%p msb=%p",
+              displayReady ? 1 : 0, static_cast<void*>(frameBuffer), static_cast<void*>(epdFrameBuffer),
+              static_cast<void*>(grayscaleLsbBuffer), static_cast<void*>(grayscaleMsbBuffer));
+      warnedGrayUnavailable = true;
+    }
     return;
   }
+  warnedGrayUnavailable = false;
   if (!grayscaleBaseCaptured && !captureGrayscaleBaseBuffer(frameBuffer)) {
     return;
   }
