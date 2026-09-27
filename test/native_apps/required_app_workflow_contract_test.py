@@ -50,11 +50,14 @@ class RequiredAppWorkflowContract(unittest.TestCase):
         self.assertNotIn("bool connectSavedWifi()", HOST)
         self.assertIn("HttpDownloader::fetchUrl", HOST)
 
-    def test_app_store_and_required_flow_share_catalog_fallback(self):
+    def test_app_store_and_required_flow_share_authoritative_catalog(self):
         self.assertIn("bool loadAvailableAppCatalog(", HOST)
         self.assertIn("return loadAvailableAppCatalog(s->catalog);", HOST)
-        self.assertIn("loadAggregateCatalog(releaseAssets, catalog, catalogUrl)", HOST)
-        self.assertIn("loadCatalogManifests(releaseAssets, catalog)", HOST)
+        start = HOST.index("bool loadAvailableAppCatalog(")
+        end = HOST.index("\nbool appCatalogRefresh()", start)
+        loader = HOST[start:end]
+        self.assertIn("loadAuthoritativeAppCatalog(catalog)", loader)
+        self.assertNotIn("HttpDownloader::fetchUrl(kLatestReleaseApi", loader)
 
 
 if __name__ == "__main__":

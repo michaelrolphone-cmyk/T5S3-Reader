@@ -70,7 +70,7 @@ struct CatalogAsset {
   std::string name;
   std::string url;
   std::string manifestUrl;
-  std::string manifestJson;
+  RuntimeMemory::PsramOwnedText manifestJson;
   std::string version;
   uint64_t size = 0;
   t5_app_manifest_t manifest{};
@@ -541,7 +541,7 @@ bool loadAggregateCatalog(const std::vector<ReleaseCatalogAsset>& releaseAssets,
     resolved.url = asset->url;
     resolved.manifestUrl = asset->manifestUrl;
     resolved.size = asset->size;
-    resolved.manifestJson = std::move(json);
+    if (!resolved.manifestJson.assign(json)) return false;
     resolved.manifest = manifest;
     resolved.version = std::move(version);
     resolved.manifestValid = true;
@@ -692,10 +692,11 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
     asset.manifestUrl = expectedUrl.substr(0, expectedUrl.size() - asset.name.size()) +
         expectedId + ".json";
     if (NativeAppCatalogPolicy::isRetiredId(id)) continue;
-    serializeJson(entry["manifest"], asset.manifestJson);
+    std::string manifestJson;
+    serializeJson(entry["manifest"], manifestJson);
     std::string parsedVersion;
-    if (asset.manifestJson.empty() || asset.manifestJson.size() > kMaxManifestBytes ||
-        !parseAppManifest(asset.manifestJson, asset.manifest, &parsedVersion, true) ||
+    if (manifestJson.empty() || manifestJson.size() > kMaxManifestBytes ||
+        !parseAppManifest(manifestJson, asset.manifest, &parsedVersion, true) ||
         asset.manifest.file_name != asset.name ||
         parsedVersion != version) {
       if (gameBoyProvider) {
@@ -706,7 +707,7 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
     }
     RuntimeMemory::PsramJsonAllocator sidecarAllocator;
     JsonDocument sidecar(&sidecarAllocator);
-    if (deserializeJson(sidecar, asset.manifestJson) || !sidecar.is<JsonObjectConst>() ||
+    if (deserializeJson(sidecar, manifestJson) || !sidecar.is<JsonObjectConst>() ||
         !sidecar["sha256"].is<const char*>() || !sidecar["size_bytes"].is<uint64_t>() ||
         sidecar["size_bytes"].as<uint64_t>() != asset.size ||
         std::strcmp(sidecar["sha256"].as<const char*>(), digest)) {
@@ -716,6 +717,7 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
       }
       return false;
     }
+    if (!asset.manifestJson.assign(manifestJson)) return false;
     asset.version = version;
     asset.manifestValid = true;
     if (std::any_of(indexed.begin(), indexed.end(), [&](const CatalogAsset& existing) {
@@ -743,44 +745,12 @@ bool loadAvailableAppCatalog(std::vector<CatalogAsset>& catalog) {
             static_cast<unsigned>(catalog.size()));
     return true;
   }
-
-  catalog.clear();
-  std::string catalogUrl;
-  std::vector<ReleaseCatalogAsset> releaseAssets;
-  {
-    CatalogReleaseStream release(releaseAssets, catalogUrl);
-    esp_task_wdt_reset();
-    if (!HttpDownloader::fetchUrl(kLatestReleaseApi, release)) {
-      LOG_ERR("APPSTORE", "Failed to fetch latest GitHub release");
-      return false;
-    }
-    esp_task_wdt_reset();
-    if (!release.finish()) {
-      LOG_ERR("APPSTORE", "Latest release asset stream was incomplete or invalid");
-      return false;
-    }
-  }
-
-  delay(1);
-  LOG_INF("APPSTORE", "Found %u application ELF/JSON pairs in latest release",
-          static_cast<unsigned>(releaseAssets.size()));
-
-  if (!catalogUrl.empty()) {
-    if (loadAggregateCatalog(releaseAssets, catalog, catalogUrl)) {
-      LOG_INF("APPSTORE", "Loaded %u apps from aggregate release catalog",
-              static_cast<unsigned>(catalog.size()));
-      return true;
-    }
-    LOG_ERR("APPSTORE", "Aggregate catalog present but unavailable; refusing per-app TLS fan-out");
-    std::vector<CatalogAsset>().swap(catalog);
-    return false;
-  }
-
-  LOG_ERR("APPSTORE", "Release is missing %s; loading up to %u paired app manifests",
-          kAggregateAppCatalogName, static_cast<unsigned>(releaseAssets.size()));
-  const bool loaded = loadCatalogManifests(releaseAssets, catalog);
-  LOG_INF("APPSTORE", "Legacy fallback loaded %u apps", static_cast<unsigned>(catalog.size()));
-  return loaded;
+  // /releases/latest is an independently versioned app, driver, or firmware
+  // release. It is never a complete catalog. A failed index request must not
+  // replace the store with the one asset from whichever product shipped last.
+  LOG_ERR("APPSTORE", "Independent release index unavailable; retaining no partial catalog");
+  std::vector<CatalogAsset>().swap(catalog);
+  return false;
 }
 
 
@@ -940,7 +910,7 @@ bool appCatalogDownloadWithProgress(uint32_t index,
   std::string artifact = selected.name;
   std::string downloadUrl = selected.url;
   std::string manifestUrl = selected.manifestUrl;
-  std::string json = selected.manifestJson;
+  std::string json = selected.manifestJson.str();
   const uint64_t selectedSize = selected.size;
   const std::string catalogVersion = selected.version;
 
@@ -989,7 +959,7 @@ bool appCatalogDownloadWithProgress(uint32_t index,
   // its large contiguous handshake buffers. The selected fields above are now
   // independent copies and survive this reclamation.
   for (auto& asset : s->catalog) {
-    std::string().swap(asset.manifestJson);
+    asset.manifestJson.reset();
     std::string().swap(asset.manifestUrl);
     std::string().swap(asset.url);
   }
@@ -1200,7 +1170,7 @@ bool installRequiredNativeApp(const char* artifact, std::string& displayName,
   displayName = match->manifest.display_name;
   std::string downloadUrl = match->url;
   std::string manifestUrl = match->manifestUrl;
-  std::string json = match->manifestJson;
+  std::string json = match->manifestJson.str();
   const uint64_t selectedSize = match->size;
   const std::string catalogVersion = match->version;
   std::vector<CatalogAsset>().swap(catalog);

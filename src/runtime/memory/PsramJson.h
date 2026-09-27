@@ -5,10 +5,37 @@
 #include <esp_heap_caps.h>
 #include <cstdint>
 #include <cstring>
+#include <string>
+#include <utility>
 
 #include "runtime/memory/PsramBuffer.h"
 
 namespace RuntimeMemory {
+
+// Retained catalog sidecars must not put dozens of small std::string buffers
+// in internal RAM while the next TLS handshake is being set up.
+class PsramOwnedText {
+ public:
+  bool assign(const std::string& text) {
+    if (text.empty()) { buffer_.reset(); length_ = 0; return true; }
+    PsramBuffer replacement;
+    if (!replacement.allocate(text.size() + 1, false)) return false;
+    std::memcpy(replacement.data(), text.data(), text.size());
+    replacement.data()[text.size()] = 0;
+    buffer_ = std::move(replacement);
+    length_ = text.size();
+    return true;
+  }
+  void reset() { buffer_.reset(); length_ = 0; }
+  bool empty() const { return length_ == 0; }
+  size_t size() const { return length_; }
+  const char* chars() const { return buffer_.chars(); }
+  std::string str() const { return buffer_ ? std::string(chars(), length_) : std::string(); }
+
+ private:
+  PsramBuffer buffer_;
+  size_t length_ = 0;
+};
 
 // ArduinoJson allocator that never falls back to scarce internal RAM.
 // Catalog JSON is metadata scratch and must not compete with TLS/task/DMA memory.
