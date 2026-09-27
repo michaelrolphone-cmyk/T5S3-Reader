@@ -17,6 +17,7 @@
 #include "settings/OpdsServerListActivity.h"
 #include "settings/SettingsActivity.h"
 #include "util/FullScreenMessageActivity.h"
+#include "util/InstalledAppActivity.h"
 
 namespace {
 constexpr HalDisplay::RefreshMode kUiPageTransitionRefreshMode = HalDisplay::HALF_REFRESH;
@@ -222,6 +223,12 @@ void ActivityManager::goToFileTransfer() {
 
 void ActivityManager::goToSettings() {
   replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
+}
+
+void ActivityManager::goToInstalledApp(std::string artifact, std::string displayName) {
+  replaceActivity(std::make_unique<InstalledAppActivity>(
+      renderer, mappedInput, std::move(artifact), std::move(displayName)),
+      kUiPageTransitionRefreshMode);
 }
 
 void ActivityManager::goToRecentBooks() {
