@@ -32,8 +32,8 @@ class KeyboardEntryActivity : public Activity {
         text(std::move(initialText)),
         maxLength(maxLength),
         inputType(inputType) {
-    renderStateMutex = xSemaphoreCreateMutex();
-    assert(renderStateMutex != nullptr && "Failed to create keyboard render-state mutex");
+    stateMutex = xSemaphoreCreateMutex();
+    assert(stateMutex != nullptr && "Failed to create keyboard state mutex");
   }
 
   ~KeyboardEntryActivity() override;
@@ -65,8 +65,7 @@ class KeyboardEntryActivity : public Activity {
     bool hintVisible = false;
   };
 
-  SemaphoreHandle_t renderStateMutex = nullptr;
-  RenderState renderState;
+  SemaphoreHandle_t stateMutex = nullptr;
 
   ButtonNavigator buttonNavigator;
 
@@ -100,7 +99,6 @@ class KeyboardEntryActivity : public Activity {
   unsigned long textInputLastAttempt = 0;
 
   bool handleExternalTextInput(const risc_text_input_event_v1& event);
-  void publishRenderState();
   RenderState captureRenderState();
   void requestKeyboardUpdate();
   int measureInputHeightForTouch(int maxLineWidth, int lineHeight) const;
