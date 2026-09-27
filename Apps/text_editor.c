@@ -108,6 +108,26 @@ static bool save_current(void) {
     report("Saved via atomic file replacement.");
     return true;
 }
+static bool discard_changes(void) {
+    if (!path[0] || !storage->exists(path)) {
+        te_reset(&document);
+        path[0] = 0;
+        filename[0] = 0;
+        first_row = 0;
+        return true;
+    }
+
+    size_t size = 0, count = 0;
+    if (!storage->read_file(path, NULL, 0, &size) || size > TE_CAPACITY ||
+        !storage->read_file(path, scratch, TE_CAPACITY, &count) || count != size ||
+        !te_import(&document, scratch, count)) {
+        report("Discard FAILED. Edits remain in memory.");
+        return false;
+    }
+    first_row = 0;
+    return true;
+}
+
 static bool load_file(const char *name) {
     char target[160] = {0};
     size_t size = 0, count = 0;
@@ -233,7 +253,9 @@ static void key_press(uint8_t key, uint8_t modifiers) {
         if (key == 0x16) {
             if (save_current()) continue_after();
             else if (mode == SAVE_NAME) resume_after_save = true;
-        } else if (key == 0x07) { document.dirty = false; continue_after(); }
+        } else if (key == 0x07) {
+            if (discard_changes()) continue_after();
+        }
         return;
     }
     if (mode == NEW_NAME || mode == SAVE_NAME) {
