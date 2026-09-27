@@ -14,9 +14,14 @@ from pathlib import Path
 import shutil
 import sys
 
-from generate_provider_package_inputs_v1 import prepare as provider_inputs
-from generate_privileged_imports_v1 import extract_imports
-from verify_provider_relocation_map import audit_loader_map
+if __package__:
+    from .generate_provider_package_inputs_v1 import canonical_manifest, prepare as provider_inputs
+    from .generate_privileged_imports_v1 import extract_imports
+    from .verify_provider_relocation_map import audit_loader_map
+else:
+    from generate_provider_package_inputs_v1 import canonical_manifest, prepare as provider_inputs
+    from generate_privileged_imports_v1 import extract_imports
+    from verify_provider_relocation_map import audit_loader_map
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'dist/experimental'
@@ -59,7 +64,6 @@ def entry(path: Path, executable: bool) -> dict:
 
 
 def build(identities: set[str] | None = None) -> list[dict]:
-    from generate_provider_package_inputs_v1 import canonical_manifest
     valid_ids = {item[0] for item in DRIVERS}
     if identities is not None and (not identities or not identities <= valid_ids):
         raise ValueError(f"invalid requested driver IDs: {sorted(identities - valid_ids)}")
