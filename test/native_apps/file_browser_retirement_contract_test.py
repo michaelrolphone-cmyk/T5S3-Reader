@@ -14,6 +14,8 @@ FILE_OPEN = (ROOT / "src/native/NativeFileOpenBridge.cpp").read_text(encoding="u
 MANIFEST = json.loads((ROOT / "Apps/sd_firmware_update.json").read_text(encoding="utf-8"))
 READER = (ROOT / "src/activities/reader/EpubReaderActivity.cpp").read_text(encoding="utf-8")
 XTC_READER = (ROOT / "src/activities/reader/XtcReaderActivity.cpp").read_text(encoding="utf-8")
+TXT_READER = (ROOT / "src/activities/reader/TxtReaderActivity.cpp").read_text(encoding="utf-8")
+READER_ROUTER = (ROOT / "src/activities/reader/ReaderActivity.cpp").read_text(encoding="utf-8")
 INSTALLED_APP = (ROOT / "src/activities/util/InstalledAppActivity.cpp").read_text(encoding="utf-8")
 
 
@@ -33,6 +35,10 @@ class FileBrowserRetirementContract(unittest.TestCase):
         self.assertIn('goToInstalledApp("file_browser.elf", "File Browser")', READER)
         self.assertNotIn("goToFileBrowser", XTC_READER)
         self.assertIn('goToInstalledApp("file_browser.elf", "File Browser")', XTC_READER)
+        self.assertNotIn("goToFileBrowser", TXT_READER)
+        self.assertIn('goToInstalledApp("file_browser.elf", "File Browser")', TXT_READER)
+        self.assertNotIn("goToFileBrowser", READER_ROUTER)
+        self.assertIn('goToInstalledApp("file_browser.elf", "File Browser")', READER_ROUTER)
         self.assertIn("resolveInstalledAppPath(artifact.c_str()", INSTALLED_APP)
         self.assertIn("RequiredAppActivity", INSTALLED_APP)
         self.assertIn("runNativeApp(path.c_str()", INSTALLED_APP)
