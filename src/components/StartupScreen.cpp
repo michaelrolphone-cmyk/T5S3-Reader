@@ -161,13 +161,13 @@ void finishRendererBoot(GfxRenderer& renderer) {
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
 
 constexpr char kBootVideoTag[] = "boot_video";
-constexpr uint8_t kDropFrames = 24;
+constexpr uint8_t kLogoLayerCount = 4;
+constexpr uint8_t kRevealFramesPerLayer = 6;
 constexpr uint8_t kFadeFrames = 6;
 constexpr uint8_t kPulseFrames = 48;
-constexpr uint8_t kDropStartCoverage = 8;
-constexpr uint8_t kDropEndCoverage = 56;
+constexpr uint8_t kFullCoverage = 64;
 constexpr uint8_t kPulseMinCoverage = 24;
-constexpr uint8_t kPulseMaxCoverage = 60;
+constexpr uint8_t kPulseMaxCoverage = kFullCoverage;
 constexpr uint32_t kMinimumPulseMs = 600;
 constexpr uint32_t kSubmitTimeoutMs = 350;
 constexpr uint32_t kIdleTimeoutMs = 1800;
@@ -181,7 +181,7 @@ bool videoTakeoverActive = false;
 bool videoStarted = false;
 TaskHandle_t pulseTaskHandle = nullptr;
 volatile bool pulseStopRequested = false;
-volatile uint8_t lastPulseCoverage = kDropEndCoverage;
+volatile uint8_t lastPulseCoverage = kFullCoverage;
 uint32_t pulseStartedAtMs = 0;
 
 constexpr uint8_t kBayer8[8][8] = {
@@ -212,6 +212,13 @@ constexpr VideoRect kLogoRects[] = {
     {63, 38, 47, 16},
     {10, 62, 100, 16},
     {10, 86, 100, 24},
+};
+
+constexpr uint8_t kLogoLayerEnds[kLogoLayerCount] = {
+    5,
+    7,
+    8,
+    9,
 };
 
 bool elapsedAtLeast(uint32_t start, uint32_t duration) {
@@ -271,7 +278,7 @@ void setPhysicalPixel(uint8_t* buffer, size_t bufferSize, int logicalX,
 }
 
 bool ditherPixel(int x, int y, uint8_t coverage) {
-  return coverage >= 64U || kBayer8[y & 7][x & 7] < coverage;
+  return coverage >= kFullCoverage || kBayer8[y & 7][x & 7] < coverage;
 }
 
 bool insideRoundedRect(int px, int py, int width, int height, int radius) {
@@ -382,30 +389,53 @@ int textWidth(const char* text, int scale) {
                           static_cast<size_t>(scale));
 }
 
-void drawVideoLogo(uint8_t* buffer, size_t bufferSize, int frameY,
-                   uint8_t logoCoverage) {
-  const int logicalWidth = static_cast<int>(videoSurface.height);
-  const int frameX = (logicalWidth - kLogoSize) / 2;
-
-  for (const auto& rect : kLogoRects) {
-    drawDitheredRoundedRect(buffer, bufferSize, frameX + rect.x * 2,
-                            frameY + rect.y * 2, rect.width * 2,
-                            rect.height * 2, 4, logoCoverage);
+void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleLayers,
+                   uint8_t newestLayerCoverage,
+                   uint8_t establishedLayerCoverage) {
+  // Preserve the original choreography: the logo never moves. Its four block
+  // layers are revealed in place, one layer at a time.
+  if (visibleLayers == 0U) {
+    return;
+  }
+  if (visibleLayers > kLogoLayerCount) {
+    visibleLayers = kLogoLayerCount;
   }
 
-  constexpr char title[] = "RISCRTE";
-  constexpr char status[] = "STARTING...";
-  constexpr int titleScale = 4;
-  constexpr int statusScale = 2;
-  const uint8_t titleCoverage =
-      static_cast<uint8_t>(logoCoverage > 56U ? logoCoverage : 56U);
+  const int logicalWidth = static_cast<int>(videoSurface.height);
+  const int logicalHeight = static_cast<int>(videoSurface.width);
+  const int frameX = (logicalWidth - kLogoSize) / 2;
+  const int frameY = (logicalHeight - kFrameHeight) / 2;
 
-  drawDitheredText(buffer, bufferSize,
-                   (logicalWidth - textWidth(title, titleScale)) / 2,
-                   frameY + 244, title, titleScale, titleCoverage);
-  drawDitheredText(buffer, bufferSize,
-                   (logicalWidth - textWidth(status, statusScale)) / 2,
-                   frameY + 291, status, statusScale, 52U);
+  uint8_t rectStart = 0;
+  for (uint8_t layer = 0; layer < visibleLayers; ++layer) {
+    const uint8_t rectEnd = kLogoLayerEnds[layer];
+    const uint8_t coverage =
+        layer + 1U == visibleLayers ? newestLayerCoverage
+                                    : establishedLayerCoverage;
+
+    for (uint8_t rectIndex = rectStart; rectIndex < rectEnd; ++rectIndex) {
+      const auto& rect = kLogoRects[rectIndex];
+      drawDitheredRoundedRect(buffer, bufferSize, frameX + rect.x * 2,
+                              frameY + rect.y * 2, rect.width * 2,
+                              rect.height * 2, 4, coverage);
+    }
+    rectStart = rectEnd;
+  }
+
+  // The labels belong to the fourth layer and fade in with the final block.
+  if (visibleLayers == kLogoLayerCount) {
+    constexpr char title[] = "RISCRTE";
+    constexpr char status[] = "STARTING...";
+    constexpr int titleScale = 4;
+    constexpr int statusScale = 2;
+
+    drawDitheredText(buffer, bufferSize,
+                     (logicalWidth - textWidth(title, titleScale)) / 2,
+                     frameY + 244, title, titleScale, newestLayerCoverage);
+    drawDitheredText(buffer, bufferSize,
+                     (logicalWidth - textWidth(status, statusScale)) / 2,
+                     frameY + 291, status, statusScale, newestLayerCoverage);
+  }
 }
 
 bool waitUntilVideoCanSubmit(uint32_t timeoutMs) {
@@ -419,7 +449,8 @@ bool waitUntilVideoCanSubmit(uint32_t timeoutMs) {
   return videoApi != nullptr;
 }
 
-bool submitVideoFrame(int frameY, uint8_t coverage) {
+bool submitVideoFrame(uint8_t visibleLayers, uint8_t newestLayerCoverage,
+                      uint8_t establishedLayerCoverage) {
   if (!videoStarted || videoApi == nullptr ||
       !waitUntilVideoCanSubmit(kSubmitTimeoutMs)) {
     return false;
@@ -434,7 +465,8 @@ bool submitVideoFrame(int frameY, uint8_t coverage) {
   }
 
   std::memset(buffer, whiteByte(), bufferSize);
-  drawVideoLogo(buffer, bufferSize, frameY, coverage);
+  drawVideoLogo(buffer, bufferSize, visibleLayers, newestLayerCoverage,
+                establishedLayerCoverage);
   return videoApi->submit(0, 0);
 }
 
@@ -469,28 +501,33 @@ void releaseVideoOwner() {
   videoTakeoverActive = false;
 }
 
+uint8_t smoothCoverage(uint8_t frame, uint8_t frameCount,
+                       uint8_t startCoverage, uint8_t endCoverage) {
+  const uint32_t t =
+      static_cast<uint32_t>(frame) * 1024U / static_cast<uint32_t>(frameCount);
+  const uint32_t smooth =
+      static_cast<uint32_t>((static_cast<uint64_t>(t) * t *
+                             (3072U - 2U * t)) /
+                            (1024ULL * 1024ULL));
+  return static_cast<uint8_t>(
+      startCoverage +
+      (static_cast<uint32_t>(endCoverage - startCoverage) * smooth) / 1024U);
+}
+
 void pulseTask(void*) {
-  uint8_t phase = 0;
-  const int targetY =
-      (static_cast<int>(videoSurface.width) - kFrameHeight) / 2;
+  // Begin at full density so the first loading frame does not jump lighter
+  // immediately after the fourth layer completes.
+  uint8_t phase = static_cast<uint8_t>(kPulseFrames / 2U - 1U);
 
   while (!pulseStopRequested) {
     const uint8_t ramp = phase < (kPulseFrames / 2U)
                              ? phase
                              : static_cast<uint8_t>(kPulseFrames - 1U - phase);
-    const uint32_t t =
-        static_cast<uint32_t>(ramp) * 1024U / (kPulseFrames / 2U - 1U);
-    const uint32_t smooth =
-        static_cast<uint32_t>((static_cast<uint64_t>(t) * t *
-                               (3072U - 2U * t)) /
-                              (1024ULL * 1024ULL));
-    const uint8_t coverage = static_cast<uint8_t>(
-        kPulseMinCoverage +
-        (static_cast<uint32_t>(kPulseMaxCoverage - kPulseMinCoverage) *
-         smooth) /
-            1024U);
+    const uint8_t coverage =
+        smoothCoverage(ramp, static_cast<uint8_t>(kPulseFrames / 2U - 1U),
+                       kPulseMinCoverage, kPulseMaxCoverage);
 
-    if (submitVideoFrame(targetY, coverage)) {
+    if (submitVideoFrame(kLogoLayerCount, coverage, coverage)) {
       lastPulseCoverage = coverage;
       phase = static_cast<uint8_t>((phase + 1U) % kPulseFrames);
     } else {
@@ -504,7 +541,7 @@ void pulseTask(void*) {
 
 bool startPulseTask() {
   pulseStopRequested = false;
-  lastPulseCoverage = kDropEndCoverage;
+  lastPulseCoverage = kFullCoverage;
   pulseStartedAtMs = millis();
   const BaseType_t rc = xTaskCreatePinnedToCore(
       pulseTask, "boot_pulse", 4096, nullptr, 1, &pulseTaskHandle, 0);
@@ -530,29 +567,16 @@ void stopPulseTask() {
   }
 }
 
-bool renderDropIn() {
-  const int targetY =
-      (static_cast<int>(videoSurface.width) - kFrameHeight) / 2;
-  const int startY = -kFrameHeight;
-  const int travel = targetY - startY;
-
-  for (uint8_t frame = 0; frame < kDropFrames; ++frame) {
-    const uint32_t t =
-        static_cast<uint32_t>(frame) * 1024U / (kDropFrames - 1U);
-    const uint32_t inverse = 1024U - t;
-    const uint32_t eased =
-        1024U - (inverse * inverse * inverse) / (1024U * 1024U);
-    const int frameY = startY +
-                       static_cast<int>((static_cast<int64_t>(travel) * eased) /
-                                        1024);
-    const uint8_t coverage = static_cast<uint8_t>(
-        kDropStartCoverage +
-        (static_cast<uint32_t>(kDropEndCoverage - kDropStartCoverage) *
-         eased) /
-            1024U);
-
-    if (!submitVideoFrame(frameY, coverage)) {
-      return false;
+bool renderLayerReveal() {
+  // Four original logo layers, six grayscale frames each. Completed layers
+  // remain solid black while only the newly introduced layer fades in.
+  for (uint8_t layer = 1; layer <= kLogoLayerCount; ++layer) {
+    for (uint8_t frame = 1; frame <= kRevealFramesPerLayer; ++frame) {
+      const uint8_t coverage =
+          smoothCoverage(frame, kRevealFramesPerLayer, 0U, kFullCoverage);
+      if (!submitVideoFrame(layer, coverage, kFullCoverage)) {
+        return false;
+      }
     }
   }
 
@@ -592,8 +616,8 @@ bool bootWithVideo(GfxRenderer& renderer) {
     return false;
   }
 
-  if (!renderDropIn() || !startPulseTask()) {
-    ESP_LOGE(kBootVideoTag, "boot animation could not enter pulse state");
+  if (!renderLayerReveal() || !startPulseTask()) {
+    ESP_LOGE(kBootVideoTag, "boot layer reveal could not enter pulse state");
     stopPulseTask();
     releaseVideoOwner();
     return false;
@@ -610,15 +634,13 @@ void finishVideoBoot(GfxRenderer& renderer) {
 
   stopPulseTask();
 
-  const int targetY =
-      (static_cast<int>(videoSurface.width) - kFrameHeight) / 2;
   const uint8_t startCoverage = lastPulseCoverage;
   for (uint8_t frame = 1; frame <= kFadeFrames; ++frame) {
     const uint32_t remaining = kFadeFrames - frame;
     const uint8_t coverage = static_cast<uint8_t>(
         (static_cast<uint32_t>(startCoverage) * remaining * remaining) /
         (kFadeFrames * kFadeFrames));
-    if (!submitVideoFrame(targetY, coverage)) {
+    if (!submitVideoFrame(kLogoLayerCount, coverage, coverage)) {
       break;
     }
   }
