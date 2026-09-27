@@ -188,34 +188,27 @@ button history or retain an app buffer. A polling deadline never cancels DMA.
 
 ## Shutdown and failed startup
 
-Run the same ownership-aware cleanup after partial startup and normal shutdown.
-The implementation is `quiesce_with_interrupt()` in
+Run the same ownership-aware cleanup after partial startup and normal provider
+shutdown. The implementation is `quiesce_with_interrupt()` in
 [`driver.cpp`](../Drivers/usb_controller_esp32s3/driver.cpp), then `quiesce()`
 and its physical `quiesce_host()` helper in
-[`driver_base.cpp`](../Drivers/usb_controller_esp32s3/driver_base.cpp). Idle
-provider quiescence and failed-start cleanup use the same interrupt drain and
-physical helper. Normal empty-port hotplug does **not** invoke this full teardown
-path on source-blind T5S3 power hardware. If failed-start cleanup partially tears
-the host down and a later step fails, the controller enters a retained
-cleanup-pending state instead of dropping ownership. Subsequent owner polls retry
-only the idempotent teardown path; they do not pump a deregistered client or
-restart the host until cleanup is complete.
+[`driver_base.cpp`](../Drivers/usb_controller_esp32s3/driver_base.cpp).
+
+**Normal empty-port hotplug is not a shutdown condition.** On source-blind T5S3
+power hardware, an active Host state keeps its IDF host/client/PHY and VBUS
+source for the lifetime of the active `usb.host` provider. Full teardown is
+reserved for actual provider quiescence and failed startup recovery.
 
 1. End consumer subscriptions/admission and release class claims. Drain/flush
    outstanding interrupt and control/bulk transfers with bounded event pumping.
    Callback completion must return DMA ownership before buffers can be freed.
    Outstanding claims or uncertain drains prevent controller unload.
 2. Close device handles, free transfer storage and deregister the client,
-   clearing each owned handle only after that operation succeeds. Boundedly
-   service `usb_host_lib_handle_events()` until
-   `USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS` has actually been observed. This
-   must happen **before** `usb_host_device_free_all()`; IDF rejects device
-   cleanup while client deregistration is still pending. Preserve that
-   one-shot observation across cleanup retries.
-3. After `NO_CLIENTS`, request `usb_host_device_free_all()`. An immediate
-   `ESP_OK` means there were no devices left to free. If it returns
-   `ESP_ERR_NOT_FINISHED`, boundedly service library events until
-   `USB_HOST_LIB_EVENT_FLAGS_ALL_FREE` is observed.
+   clearing each owned handle only after that operation succeeds.
+3. Request `usb_host_device_free_all()` and boundedly service library events
+   until all devices are free. Perform the final
+   `usb_host_lib_handle_events(0, ...)` before uninstall, including when no
+   device ever attached and `device_free_all()` returned `ESP_OK`.
 4. Uninstall the host. Only then delete the explicitly owned PHY. Failed host
    uninstall or PHY deletion retains ownership and any controller-held VBUS lease.
 5. Release the controller's VBUS lease through the power provider. A failed
@@ -224,8 +217,7 @@ restart the host until cleanup is complete.
    monitor verifies source-off, restore the captured mux selection, including
    the automatic-selection case and a rejected startup. For actual provider
    shutdown, finish with the power provider's `quiesce()`; it must release its
-   lower bus claim before the dependency chain can unload. Idle role parking
-   retains that dependency and bus claim to continue observing input power.
+   lower bus claim before the dependency chain can unload.
 
 Power acquisition failure needs two distinct checks. The VBUS API requires a
 false return to expose no lease; its provider must internally retain an unsafe
@@ -237,8 +229,7 @@ restoring the mux alone is not proof that the whole dependency chain quiesced.
 Successful release means the board stopped sourcing; external VBUS may remain.
 
 Do not force-unmap a faulted provider, release dependencies under live callbacks,
-or repeatedly reset/power-cycle hardware to hide retained ownership. Retry
-cleanup only under the existing bounded lifecycle rules.
+or repeatedly reset/power-cycle hardware to hide retained ownership.
 
 ## Earlier approaches and why they did not solve startup
 
