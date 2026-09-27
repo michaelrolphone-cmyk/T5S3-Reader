@@ -9,6 +9,7 @@
 #include <esp_ota_ops.h>
 
 #include <algorithm>
+#include <cstring>
 #include <string_view>
 #include <utility>
 
@@ -278,14 +279,16 @@ void SdFirmwareUpdateActivity::loop() {
 
   if (state == State::PICKING) {
     const int count = static_cast<int>(pickerEntries.size());
-    buttonNavigator.onNextRelease([this, count] {
-      pickerIndex = static_cast<size_t>(ButtonNavigator::nextIndex(static_cast<int>(pickerIndex), count));
-      requestUpdate();
-    });
-    buttonNavigator.onPreviousRelease([this, count] {
-      pickerIndex = static_cast<size_t>(ButtonNavigator::previousIndex(static_cast<int>(pickerIndex), count));
-      requestUpdate();
-    });
+    if (count > 0) {
+      buttonNavigator.onNextRelease([this, count] {
+        pickerIndex = static_cast<size_t>(ButtonNavigator::nextIndex(static_cast<int>(pickerIndex), count));
+        requestUpdate();
+      });
+      buttonNavigator.onPreviousRelease([this, count] {
+        pickerIndex = static_cast<size_t>(ButtonNavigator::previousIndex(static_cast<int>(pickerIndex), count));
+        requestUpdate();
+      });
+    }
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
       openRecoveryEntry();
       return;
