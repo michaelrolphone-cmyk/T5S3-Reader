@@ -93,6 +93,11 @@ bool GfxRenderer::preflightSurface() const {
             static_cast<unsigned>(info.pixelFormat));
     return false;
   }
+  LOG_INF("GFX",
+          "Display preflight accepted: scan=%ux%u visible=%ux%u stride=%u bytes=%lu format=%u safe=%u,%u,%u,%u",
+          info.width, info.height, info.visibleWidth, info.visibleHeight, info.strideBytes,
+          static_cast<unsigned long>(info.bufferSize), static_cast<unsigned>(info.pixelFormat),
+          info.safeInsets.top, info.safeInsets.right, info.safeInsets.bottom, info.safeInsets.left);
   return true;
 }
 
@@ -778,6 +783,8 @@ void GfxRenderer::fillRoundedRect(const int x, const int y, const int width, con
 }
 
 void GfxRenderer::drawImage(const uint8_t bitmap[], const int x, const int y, const int width, const int height) const {
+  if (!initialized || !frameBuffer || !display.isReady() || !bitmap || width <= 0 || height <= 0) return;
+
   int rotatedX = 0;
   int rotatedY = 0;
   rotateCoordinates(orientation, x, y, &rotatedX, &rotatedY, panelWidth, panelHeight);
@@ -801,6 +808,7 @@ void GfxRenderer::drawImage(const uint8_t bitmap[], const int x, const int y, co
 }
 
 void GfxRenderer::drawIcon(const uint8_t bitmap[], const int x, const int y, const int width, const int height) const {
+  if (!initialized || !frameBuffer || !display.isReady() || !bitmap || width <= 0 || height <= 0) return;
   display.drawImageTransparent(bitmap, y, getScreenWidth() - width - x, height, width);
 }
 
@@ -1045,7 +1053,7 @@ void GfxRenderer::fillPolygon(const int* xPoints, const int* yPoints, int numPoi
 static unsigned long start_ms = 0;
 
 void GfxRenderer::clearScreen(const uint8_t color) const {
-  if (!initialized || !frameBuffer) return;
+  if (!initialized || !frameBuffer || !display.isReady()) return;
   start_ms = millis();
   display.clearScreen(color);
 }
@@ -1078,6 +1086,7 @@ void GfxRenderer::requestNextDisplayEffect(const DisplayEffect effect) const {
 }
 
 void GfxRenderer::requestNextPageTurnEffect(const bool isForwardTurn) const {
+  if (!initialized || !display.isReady()) return;
   display.requestNextDisplayEffect(isForwardTurn ? DisplayEffect::PageTurnForwardStandard
                                                  : DisplayEffect::PageTurnBackwardStandard);
 }
@@ -1378,13 +1387,23 @@ size_t GfxRenderer::getBufferSize() const { return frameBufferSize; }
 // unused
 // void GfxRenderer::grayscaleRevert() const { display.grayscaleRevert(); }
 
-void GfxRenderer::copyGrayscaleLsbBuffers() const { display.copyGrayscaleLsbBuffers(frameBuffer); }
+void GfxRenderer::copyGrayscaleLsbBuffers() const {
+  if (!initialized || !frameBuffer || !display.isReady()) return;
+  display.copyGrayscaleLsbBuffers(frameBuffer);
+}
 
-void GfxRenderer::copyGrayscaleMsbBuffers() const { display.copyGrayscaleMsbBuffers(frameBuffer); }
+void GfxRenderer::copyGrayscaleMsbBuffers() const {
+  if (!initialized || !frameBuffer || !display.isReady()) return;
+  display.copyGrayscaleMsbBuffers(frameBuffer);
+}
 
-bool GfxRenderer::captureGrayscaleBaseBuffer() const { return display.captureGrayscaleBaseBuffer(frameBuffer); }
+bool GfxRenderer::captureGrayscaleBaseBuffer() const {
+  if (!initialized || !frameBuffer || !display.isReady()) return false;
+  return display.captureGrayscaleBaseBuffer(frameBuffer);
+}
 
 void GfxRenderer::displayGrayBuffer(const DisplayPresentMode refreshMode) const {
+  if (!initialized || !frameBuffer || !display.isReady()) return;
   display.displayGrayBuffer(refreshMode);
 }
 
@@ -1404,6 +1423,8 @@ void GfxRenderer::freeBwBufferChunks() {
  * Returns true if buffer was stored successfully, false if allocation failed.
  */
 bool GfxRenderer::storeBwBuffer() {
+  if (!initialized || !frameBuffer || frameBufferSize == 0) return false;
+
   // Allocate and copy each chunk
   for (size_t i = 0; i < bwBufferChunks.size(); i++) {
     // Check if any chunks are already allocated
@@ -1437,6 +1458,11 @@ bool GfxRenderer::storeBwBuffer() {
  * Uses chunked restoration to match chunked storage.
  */
 void GfxRenderer::restoreBwBuffer() {
+  if (!initialized || !frameBuffer || frameBufferSize == 0 || !display.isReady()) {
+    freeBwBufferChunks();
+    return;
+  }
+
   // Check if all chunks are allocated
   bool missingChunks = false;
   for (const auto& bwBufferChunk : bwBufferChunks) {
@@ -1468,7 +1494,7 @@ void GfxRenderer::restoreBwBuffer() {
  * Use this when BW buffer was re-rendered instead of stored/restored.
  */
 void GfxRenderer::cleanupGrayscaleWithFrameBuffer() const {
-  if (frameBuffer) {
+  if (initialized && frameBuffer && display.isReady()) {
     display.cleanupGrayscaleBuffers(frameBuffer);
   }
 }

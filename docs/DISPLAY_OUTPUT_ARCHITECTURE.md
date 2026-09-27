@@ -3,7 +3,7 @@
 ## Status
 
 This document defines the display migration foundation implemented in firmware
-1.3.12. It follows the hardware ownership contract: the target physical display
+1.3.13. It follows the hardware ownership contract: the target physical display
 implementation is an independently installable provider ELF. The compatibility
 `HalDisplay` backend remains compiled into firmware only during the staged
 migration and is explicitly **CURRENT/LEGACY, NONCOMPLIANT** with the final
@@ -129,3 +129,14 @@ release invariants, not optional diagnostics:
 - CI has both executable metadata-validation tests and source-contract checks
   for these invariants. A refactor that removes the guards must intentionally
   update those tests rather than silently weakening display recovery.
+
+
+### Direct-render guard rule
+
+Any `GfxRenderer` method that bypasses `drawPixel()` and calls a
+`DisplaySurface` operation directly must fail closed until the renderer has
+successfully completed transactional initialization. This includes bitmap/icon
+blits, clears, present calls, page-turn requests and grayscale-plane operations.
+The preflight path is the inverse rule: it may inspect only
+`getSurfaceInfo()` and must never call readiness, framebuffer, drawing, power
+or presentation operations because it executes before panel initialization.

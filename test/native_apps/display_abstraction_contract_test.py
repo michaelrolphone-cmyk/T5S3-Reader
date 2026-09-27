@@ -79,3 +79,45 @@ assert "if (!initialized || !frameBuffer) return;" in gfx_cpp
 assert 'Refusing displayBuffer before a validated, ready display surface' in gfx_cpp
 assert "if (!initialized || !frameBuffer || !display.isReady())" in gfx_cpp
 print("display pre-init mutation guards: ok")
+
+
+# Metadata preflight runs before hardware init and therefore must remain
+# side-effect free: no readiness check, framebuffer access, clear, present, or
+# other backend operation is allowed in this function.
+preflight_start = gfx_cpp.index("bool GfxRenderer::preflightSurface() const")
+preflight_end = gfx_cpp.index("bool GfxRenderer::begin()", preflight_start)
+preflight_body = gfx_cpp[preflight_start:preflight_end]
+assert "display.getSurfaceInfo()" in preflight_body
+for forbidden in (
+    "display.isReady()",
+    "display.getFrameBuffer()",
+    "display.clearScreen(",
+    "display.displayBuffer(",
+    "display.drawImage(",
+    "display.requestNext",
+    "display.copyGrayscale",
+):
+    assert forbidden not in preflight_body, forbidden
+
+# Every direct DisplaySurface mutation/presentation path in GfxRenderer must
+# carry a validated-init gate. Per-pixel writes use initialized+framebuffer
+# because checking a virtual readiness method per pixel would destroy render
+# performance; bulk/backend calls must additionally check display.isReady().
+for function_name in (
+    "drawImage", "drawIcon", "clearScreen", "displayBuffer",
+    "copyGrayscaleLsbBuffers", "copyGrayscaleMsbBuffers",
+    "captureGrayscaleBaseBuffer", "displayGrayBuffer",
+    "cleanupGrayscaleWithFrameBuffer",
+):
+    marker = f"GfxRenderer::{function_name}"
+    start = gfx_cpp.index(marker)
+    next_fn = gfx_cpp.find("\nvoid GfxRenderer::", start + len(marker))
+    next_bool = gfx_cpp.find("\nbool GfxRenderer::", start + len(marker))
+    candidates = [p for p in (next_fn, next_bool) if p != -1]
+    end = min(candidates) if candidates else len(gfx_cpp)
+    body = gfx_cpp[start:end]
+    assert "initialized" in body, function_name
+
+assert "if (!initialized || !display.isReady()) return;" in gfx_cpp
+assert "Display preflight accepted:" in gfx_cpp
+print("display preflight side-effect and delegation guards: ok")

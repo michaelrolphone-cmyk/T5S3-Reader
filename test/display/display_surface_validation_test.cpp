@@ -50,6 +50,14 @@ int main() {
     assert(validateDisplaySurfaceInfo(info) == DisplaySurfaceValidationError::InvalidVisibleArea);
   }
   {
+    // A misleadingly small total area is still invalid when neither axis
+    // mapping can physically contain it.
+    auto info = validMono();
+    info.visibleWidth = 1000;
+    info.visibleHeight = 100;
+    assert(validateDisplaySurfaceInfo(info) == DisplaySurfaceValidationError::InvalidVisibleArea);
+  }
+  {
     auto info = validMono();
     info.safeInsets.left = 300;
     info.safeInsets.right = 240;
