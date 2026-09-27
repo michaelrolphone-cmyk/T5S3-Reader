@@ -10,43 +10,54 @@
 #include "fontIds.h"
 #include "native/NativeTextInput.h"
 
+namespace {
+class KeyboardStateLock {
+ public:
+  explicit KeyboardStateLock(SemaphoreHandle_t mutex) : mutex_(mutex) {
+    if (mutex_) xSemaphoreTake(mutex_, portMAX_DELAY);
+  }
+  ~KeyboardStateLock() {
+    if (mutex_) xSemaphoreGive(mutex_);
+  }
+
+  KeyboardStateLock(const KeyboardStateLock&) = delete;
+  KeyboardStateLock& operator=(const KeyboardStateLock&) = delete;
+
+ private:
+  SemaphoreHandle_t mutex_;
+};
+}  // namespace
+
 const char* const KeyboardEntryActivity::shiftString[2] = {"shift", "SHIFT"};
 
 KeyboardEntryActivity::~KeyboardEntryActivity() {
-  if (renderStateMutex) {
-    vSemaphoreDelete(renderStateMutex);
-    renderStateMutex = nullptr;
+  if (stateMutex) {
+    vSemaphoreDelete(stateMutex);
+    stateMutex = nullptr;
   }
 }
 
-void KeyboardEntryActivity::publishRenderState() {
-  if (!renderStateMutex) return;
-  xSemaphoreTake(renderStateMutex, portMAX_DELAY);
-  renderState.text = text;
-  renderState.cursorPos = cursorPos;
-  renderState.passwordVisible = passwordVisible;
-  renderState.selectedRow = selectedRow;
-  renderState.selectedCol = selectedCol;
-  renderState.shiftState = shiftState;
-  renderState.symMode = symMode;
-  renderState.cursorMode = cursorMode;
-  renderState.togglePos = togglePos;
-  renderState.urlMode = urlMode;
-  renderState.hintVisible = hintVisible;
-  xSemaphoreGive(renderStateMutex);
-}
-
 KeyboardEntryActivity::RenderState KeyboardEntryActivity::captureRenderState() {
+  KeyboardStateLock lock(stateMutex);
   RenderState snapshot;
-  if (!renderStateMutex) return snapshot;
-  xSemaphoreTake(renderStateMutex, portMAX_DELAY);
-  snapshot = renderState;
-  xSemaphoreGive(renderStateMutex);
+  snapshot.text = text;
+  snapshot.cursorPos = cursorPos;
+  snapshot.passwordVisible = passwordVisible;
+  snapshot.selectedRow = selectedRow;
+  snapshot.selectedCol = selectedCol;
+  snapshot.shiftState = shiftState;
+  snapshot.symMode = symMode;
+  snapshot.cursorMode = cursorMode;
+  snapshot.togglePos = togglePos;
+  snapshot.urlMode = urlMode;
+  snapshot.hintVisible = hintVisible;
   return snapshot;
 }
 
 void KeyboardEntryActivity::requestKeyboardUpdate() {
-  publishRenderState();
+  // Rendering is notified only; no O(text length) snapshot copy occurs on the
+  // input task. The render task takes one snapshot when it actually runs, so
+  // redraw requests naturally coalesce while typing continues.
   Activity::requestUpdate();
 }
 
@@ -300,6 +311,7 @@ bool KeyboardEntryActivity::handleExternalTextInput(
 }
 
 void KeyboardEntryActivity::loop() {
+  KeyboardStateLock stateLock(stateMutex);
   constexpr unsigned long TEXT_INPUT_RETRY_MS = 1000;
   const unsigned long now = millis();
   if (!nativeTextInputActive() &&
@@ -491,6 +503,7 @@ void KeyboardEntryActivity::loop() {
 }
 
 bool KeyboardEntryActivity::onTouchTap(int16_t x, int16_t y) {
+  KeyboardStateLock stateLock(stateMutex);
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
   const auto& metrics = UITheme::getInstance().getMetrics();
