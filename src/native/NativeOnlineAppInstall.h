@@ -179,6 +179,22 @@ inline bool installApplication(const char* artifact, const char* version,
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
   vTaskDelay(1);
 #endif
+
+  bool discardedInvalidTarget = false;
+  if (!Recovery::discardInvalidOwnedApplicationTarget(
+          *plan, policy, installedCapabilityVersion, &discardedInvalidTarget)) {
+    LOG_ERR("APPSTORE", "Invalid installed generation for %s is not safely reclaimable",
+            id.c_str());
+    return fail("installed package is invalid and requires manual recovery");
+  }
+  if (discardedInvalidTarget) {
+    LOG_INF("APPSTORE", "Reclaimed invalid manager-owned installed generation for %s",
+            id.c_str());
+  }
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+  vTaskDelay(1);
+#endif
+
   const auto installed = installOrdinaryFromSd(root.c_str(), policy,
                                                 installedCapabilityVersion);
   if (installed.result != OrdinaryInstallResult::Installed) {
