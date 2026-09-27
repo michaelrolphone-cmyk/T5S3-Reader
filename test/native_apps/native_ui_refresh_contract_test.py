@@ -19,9 +19,6 @@ assert 'T5_UI_LIST_ICON_DOWNLOAD' in bridge and '"solid:f019"' in bridge
 assert 'T5_UI_LIST_ICON_UPDATE' in bridge and '"solid:f021"' in bridge
 assert 'T5_UI_LIST_ICON_INSTALLED' in bridge and '"solid:f00c"' in bridge
 assert "FontAwesomeIcons::draw" in bridge
-assert "stateIconGutter" in bridge
-assert "const int iconX = metrics.contentSidePadding;" in bridge
-assert "(rowHeight - stateIconSize) / 2" in bridge
-assert "valueWidth" not in bridge
+assert "valueWidth" in bridge
 
-print("Native UI e-paper refresh and left-gutter Font Awesome list-state rendering PASS")
+print("Native UI e-paper refresh and Font Awesome list-state rendering PASS")
