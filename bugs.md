@@ -114,3 +114,37 @@ These defects were verified against the current `bugs.md`, the current open PR s
 - **Likely root cause:** The continuation cookie is collected but ignored, defeating the correlation mechanism provided by `T5SystemUiApi`.
 - **Impact:** Cross-workflow state can leak into Wi-Fi Settings, producing incorrect status and consuming another workflow's completion result.
 - **Repair direction:** Validate the returned cookie before accepting the result. If it does not match `WIFI_COOKIE`, discard/route it appropriately and issue a fresh `wifi_request(WIFI_COOKIE)` rather than rendering it as this app's result. Add tests for matching and mismatched cookies.
+
+
+## 2026-09-27 scan — 09:24 MDT
+
+### 13. Legacy Recent Books v2 migration loses record alignment and corrupts later entries
+
+- **Affected code:** `src/RecentBooksStore.cpp`, `RecentBooksStore::loadFromBinaryFile()`, specifically the `version == 2` migration branch.
+- **Trigger / reproduction:** Boot with a genuine version-2 `/.crosspoint/recent.bin` containing two or more recent-book records. A v2 record serializes `path`, `title`, `author`, and `progress` for every book. This is especially easy to demonstrate when the first path still resolves to a readable book whose metadata can be reconstructed.
+- **Observed / logically demonstrated failure:** The current v2 reader always consumes `path`, but consumes stored `title` and `author` only when live metadata lookup returns an empty title/author, and it never consumes the serialized `progress` field at all. Therefore the file cursor is left inside the first record. The next loop iteration interprets leftover title/author/progress bytes as the next path record, so later entries are corrupted, omitted, or migration fails.
+- **Likely root cause:** The migration code decides whether to read serialized fields based on reconstructed metadata instead of first consuming the complete historical on-disk record shape; the legacy v2 `progress` field was also dropped without advancing past it.
+- **Impact:** Upgrading from firmware that wrote v2 recent-book state can destroy the logical recent-books list during migration, with only the first entry potentially surviving correctly.
+- **Repair direction:** For v2, unconditionally deserialize the full historical record (`path`, `title`, `author`, `progress`) into temporaries before deciding which title/author values to keep. Validate every read and parse into temporary state before replacing `recentBooks`. Add a fixture containing at least two v2 entries, including one whose live metadata lookup succeeds, and verify both records remain aligned after migration.
+
+### 14. WebDAV overwrite paths delete the existing destination before the replacement is safely published
+
+- **Affected code:** `src/network/WebDAVHandler.cpp`: `WebDAVHandler::raw()` at `RAW_END` for PUT, plus overwrite handling in `handleMove()` and `handleCopy()`.
+- **Trigger / reproduction:** Overwrite an existing file through WebDAV, then force the replacement publication step to fail. Examples include an SD/filesystem failure when renaming a completed `.davtmp` during PUT, a failed source rename during MOVE, or destination-create/write failure during COPY.
+- **Observed / logically demonstrated failure:** PUT uploads to a temporary file, but when replacing an existing target it calls `Storage.remove(_putPath)` before attempting `tmp.rename(_putPath)`. MOVE and COPY similarly remove an existing destination before the source rename or replacement copy has succeeded. If the subsequent operation fails, the old destination has already been destroyed; PUT even contradicts its own comment that the temp file is intended to avoid destroying the original on failed upload.
+- **Likely root cause:** Overwrite is implemented as destructive delete-then-publish rather than a transactional replace with rollback.
+- **Impact:** A transient SD/filesystem error during an overwrite can turn a failed WebDAV operation into irreversible loss of the previously valid destination file.
+- **Repair direction:** Publish replacements transactionally. Rename the old destination to a bounded backup, publish the new file, then delete the backup only after success; restore the backup if publication fails. Use the same helper for PUT/MOVE/COPY so all overwrite paths have identical rollback semantics. Add fault-injection tests at each post-backup failure point proving the original file survives.
+
+### 15. ZIP reader rejects standards-compliant archives whose EOCD comment is longer than about 1 KB
+
+- **Affected code:** `lib/ZipFile/ZipFile.cpp`, `ZipFile::loadZipDetails()`.
+- **Trigger / reproduction:** Open a valid ZIP whose End of Central Directory record has a comment longer than 1002 bytes. ZIP permits an EOCD comment up to 65,535 bytes, so such an archive is standards-compliant.
+- **Observed / logically demonstrated failure:** `loadZipDetails()` scans only the final 1024 bytes of the file for the EOCD signature. The minimum EOCD record itself is 22 bytes, so once the comment exceeds 1002 bytes the EOCD signature lies outside that scan window and the function deterministically reports `EOCD signature not found in zip file`. Any feature using this ZIP reader then rejects the archive before central-directory parsing.
+- **Likely root cause:** The implementation assumes the EOCD must be within the last 1 KB rather than honoring the ZIP format's 16-bit comment-length allowance.
+- **Impact:** Valid ZIP-based content can fail to open or extract solely because it carries a legal archive comment; this can affect generic archive operations and any ZIP-backed content path using `ZipFile`.
+- **Repair direction:** Search at least `22 + 65535` bytes from EOF (bounded by file size), scan backward for EOCD, and validate the candidate's comment length and central-directory bounds before accepting it. Add tests at comment lengths 0, 1002, 1003, and 65535 bytes.
+
+## Duplicate check performed for this scan
+
+These defects were checked against the current `bugs.md`, the current open issue/PR set (none returned at scan time), and targeted all-state issue/PR searches for Recent Books v2 migration, WebDAV overwrite publication, and ZIP EOCD/comment handling. No existing tracked bug or matching PR was found for these three cases.
