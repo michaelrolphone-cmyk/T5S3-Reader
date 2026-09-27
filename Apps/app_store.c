@@ -21,6 +21,9 @@ static char values[MAX_ROWS][VALUE_SIZE];
 static char folders[MAX_ROWS][T5_PACKAGE_ID_MAX];
 static t5_package_preview_t packages[MAX_ROWS];
 static uint32_t release_indices[MAX_ROWS];
+static bool release_installed[MAX_ROWS];
+static bool release_current[MAX_ROWS];
+static bool release_compatible[MAX_ROWS];
 static uint32_t row_count;
 typedef struct {
     const t5_ui_api_v1 *ui;
@@ -110,6 +113,9 @@ static void build_releases(const t5_app_api_v1 *app) {
         row(row_count, has_manifest ? manifest.display_name : asset.name,
             subtitle, latest[0] ? latest : current ? "Current" :
             installed_now ? "Update" : "Install", state_flags);
+        release_installed[row_count] = installed_now;
+        release_current[row_count] = current;
+        release_compatible[row_count] = !has_manifest || manifest.compatible;
         release_indices[row_count++] = index;
     }
 }
@@ -192,17 +198,8 @@ static const char *action_label(const t5_app_api_v1 *app, int32_t selected) {
             package->installed_version[0] ? "Update" : "Install" :
             package->installed_version[0] ? "Actions" : "";
     }
-    t5_app_manifest_t manifest = {0};
-    const uint32_t index = release_indices[selected];
-    if (release_manifest(app, index, &manifest)) {
-        if (!manifest.compatible) return "";
-        char latest[T5_APP_VERSION_MAX] = {0}, installed[T5_APP_VERSION_MAX] = {0};
-        if (release_versions(app, index, &manifest, latest, installed)) {
-            if (!strcmp(latest, installed)) return "";
-            return "Update";
-        }
-    }
-    return "Install";
+    if (!release_compatible[selected] || release_current[selected]) return "";
+    return release_installed[selected] ? "Update" : "Install";
 }
 static void render(const t5_app_api_v1 *app, const t5_ui_api_v1 *ui,
                    int32_t selected, const char *status) {
@@ -266,13 +263,14 @@ static void activate_release(const t5_app_api_v1 *app, const t5_ui_api_v1 *ui,
     if (!app->app_catalog_get(index, &asset)) return;
     const bool known = release_manifest(app, index, &manifest);
     const char *name = known ? manifest.display_name : asset.name;
-    char latest[T5_APP_VERSION_MAX] = {0}, installed[T5_APP_VERSION_MAX] = {0};
-    const bool installed_now = known && release_versions(app, index, &manifest, latest, installed);
+    // The row snapshot was built once for this catalog. Redrawing and choosing
+    // an action must not repeat dozens of SD package inspections.
+    const bool installed_now = release_installed[selected];
     if (known && !manifest.compatible) {
         snprintf(status, capacity, "%.95s requires newer firmware", name);
         return;
     }
-    if (installed_now && !strcmp(latest, installed)) {
+    if (release_current[selected]) {
         snprintf(status, capacity, "%.95s already current", name);
         return;
     }

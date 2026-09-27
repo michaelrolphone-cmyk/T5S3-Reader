@@ -19,10 +19,12 @@ struct Mock {
   std::vector<uint8_t> body;
   std::vector<uint8_t> staged;
   size_t position = 0;
+  size_t maxReadChunk = SIZE_MAX;
   size_t failReadAt = SIZE_MAX;
   size_t failWriteAt = SIZE_MAX;
   uint32_t now = 0;
   unsigned slowWrites = 0;
+  unsigned yields = 0;
   unsigned sourceClose = 0, fileClose = 0, fileFinish = 0;
   bool stageExists = false, finishFails = false, cancelled = false, stall = false;
   int32_t httpOpenResult = T5_STREAM_OK;
@@ -71,7 +73,7 @@ struct Mock {
     if (mock.stall) return T5_STREAM_AGAIN;
     if (mock.position >= mock.failReadAt) return T5_STREAM_IO;
     if (mock.position == mock.body.size()) return T5_STREAM_EOF;
-    *count = static_cast<uint32_t>(std::min<size_t>({size, mock.body.size() - mock.position,
+    *count = static_cast<uint32_t>(std::min<size_t>({size, mock.maxReadChunk, mock.body.size() - mock.position,
                                                      mock.failReadAt - mock.position}));
     std::memcpy(data, mock.body.data() + mock.position, *count);
     mock.position += *count;
@@ -97,6 +99,7 @@ struct Mock {
   static uint32_t clock(void* ctx) { return static_cast<Mock*>(ctx)->now; }
   static void idle(void* ctx) {
     auto& mock = *static_cast<Mock*>(ctx);
+    ++mock.yields;
     mock.now += 10;
     mock.registry.pump();
   }
@@ -147,6 +150,15 @@ int main() {
     assert(fetch(&mock.api, "https://example.test/payload", mock.hooks(), collect, &output,
                  10000, &total) == Result::Ok);
     assert(total == mock.body.size() && output == mock.body);
+    assertReleased(mock);
+  }
+  {
+    Mock mock(10000);
+    mock.maxReadChunk = 1;
+    std::vector<uint8_t> output;
+    assert(fetch(&mock.api, "https://example.test/payload", mock.hooks(), collect, &output) == Result::Ok);
+    assert(output == mock.body);
+    assert(mock.yields >= 2 && mock.yields <= 4);
     assertReleased(mock);
   }
   {

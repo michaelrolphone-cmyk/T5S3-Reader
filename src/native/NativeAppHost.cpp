@@ -617,10 +617,12 @@ bool validThirdPartyReleaseTag(const char* tag) {
 }
 
 bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
+  const uint32_t started = millis();
   RuntimeMemory::PsramGrowingTextStream json;
   esp_task_wdt_reset();
   if (!json.good() || !HttpDownloader::fetchUrl(kReleaseIndexUrl, json) ||
       !json.good() || json.empty()) return false;
+  const uint32_t fetched = millis();
   delay(1);
   RuntimeMemory::PsramJsonAllocator allocator;
   JsonDocument document(&allocator);
@@ -725,6 +727,10 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
   }
   sortCatalog(indexed);
   catalog.swap(indexed);
+  LOG_INF("APPSTORE", "Catalog metadata: network=%lu ms parse=%lu ms bytes=%u apps=%u",
+          static_cast<unsigned long>(fetched - started),
+          static_cast<unsigned long>(millis() - fetched),
+          static_cast<unsigned>(json.size()), static_cast<unsigned>(catalog.size()));
   return true;
 }
 

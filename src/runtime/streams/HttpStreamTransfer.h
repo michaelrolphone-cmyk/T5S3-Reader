@@ -80,6 +80,8 @@ inline Result fetch(const t5_stream_api_v1* api, const char* url, const Hooks& h
   uint8_t bytes[T5_STREAM_CHUNK];
   uint64_t total = 0;
   uint32_t lastProgress = hooks.now_ms(hooks.context);
+  uint32_t lastYield = lastProgress;
+  uint32_t sinceYield = 0;
   for (;;) {
     if (interrupted(hooks)) return Result::Cancelled;
     uint32_t count = 0;
@@ -95,11 +97,20 @@ inline Result fetch(const t5_stream_api_v1* api, const char* url, const Hooks& h
       if (maxBytes && (total > maxBytes || count > maxBytes - total)) return Result::Transfer;
       if (!consume(consumer, bytes, count)) return Result::Transfer;
       total += count;
+      sinceYield += count;
       lastProgress = hooks.now_ms(hooks.context);
     } else if (timedOut(hooks, lastProgress)) {
       return Result::Timeout;
     }
-    cooperate(hooks);
+    // A provider may return only a few bytes per read. Sleeping after each
+    // successful read makes catalog latency proportional to the fragment count.
+    // Still yield promptly on empty reads and at both byte and time checkpoints.
+    if (!count || sinceYield >= 4096 ||
+        hooks.now_ms(hooks.context) - lastYield >= 20) {
+      cooperate(hooks);
+      sinceYield = 0;
+      lastYield = hooks.now_ms(hooks.context);
+    }
   }
 }
 
