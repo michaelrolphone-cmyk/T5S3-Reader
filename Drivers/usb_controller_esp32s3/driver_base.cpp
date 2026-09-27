@@ -436,31 +436,36 @@ bool quiesce_host() {
             return false;
         }
         bool freed = rc == ESP_OK;
+        bool noClients = false;
         const TickType_t freeingBegan = xTaskGetTickCount();
-        for (uint32_t i = 0; !freed && i < kTeardownTicks; ++i) {
+        for (uint32_t i = 0;
+             (!freed || !noClients) && i < kTeardownTicks; ++i) {
             if (static_cast<TickType_t>(xTaskGetTickCount() - freeingBegan) >=
                 pdMS_TO_TICKS(kTeardownTicks)) break;
             uint32_t flags = 0;
             rc = usb_host_lib_handle_events(1, &flags);
             if (rc != ESP_OK && rc != ESP_ERR_TIMEOUT) {
-                std::printf("USBCTRL cleanup-failed stage=device-free-events rc=%d\n",
+                std::printf("USBCTRL cleanup-failed stage=host-lib-events rc=%d\n",
                             static_cast<int>(rc));
                 return false;
             }
             if (flags & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE) freed = true;
-            // A ready event need not block. Yield even under an event flood.
-            if (!freed) vTaskDelay(1);
+            if (flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS) noClients = true;
+            // Event delivery can lag deregistration by a scheduler turn.
+            // Cooperatively wait for both teardown conditions instead of
+            // racing usb_host_uninstall() with the last-client notification.
+            if (!freed || !noClients) vTaskDelay(1);
         }
         if (!freed) {
             std::printf("USBCTRL cleanup-failed stage=device-free-timeout\n");
             return false;
         }
-        /* IDF v4.4.7: deregistering the last client enqueues NO_CLIENTS and
-         * wakes the library handler. device_free_all() returns ESP_OK when
-         * no device ever attached, bypassing the loop above. Uninstall then
-         * fails ESP_ERR_INVALID_STATE unless its pending flags are consumed.
-         * Pump once on BOTH paths, including a retry after partial teardown;
-         * timeout means the event queue was already empty. */
+        if (!noClients) {
+            std::printf("USBCTRL cleanup-failed stage=no-clients-timeout\n");
+            return false;
+        }
+        /* Drain any event that became ready with the final observed teardown
+         * condition before uninstalling. A timeout means the queue is empty. */
         uint32_t finalFlags = 0;
         rc = usb_host_lib_handle_events(0, &finalFlags);
         if (rc != ESP_OK && rc != ESP_ERR_TIMEOUT) {
