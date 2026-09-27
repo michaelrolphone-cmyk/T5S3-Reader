@@ -17,7 +17,7 @@ class HomeShortcutLaunchContract(unittest.TestCase):
         self.assertIn("std::string pendingHomeAppArtifact;", HEADER)
 
         open_start = SOURCE.index("void HomeActivity::onHomeAppOpen(size_t index)")
-        open_end = SOURCE.index("\nvoid HomeActivity::onFileBrowserOpen()", open_start)
+        open_end = SOURCE.index("\nvoid HomeActivity::onRecentsOpen()", open_start)
         open_block = SOURCE[open_start:open_end]
         self.assertIn(
             "pendingHomeAppArtifact = homeApps[index].file_name;",
