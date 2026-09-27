@@ -28,7 +28,7 @@ class ModelViewerContract(unittest.TestCase):
             {"capability": "input.touch.raw", "api": ">=1"},
             MANIFEST["requires"],
         )
-        self.assertIn("[riscrte]\nversion = 1.3.18", PLATFORMIO)
+        self.assertIn("[riscrte]\nversion = 1.3.19", PLATFORMIO)
 
     def test_viewer_requests_display_takeover_and_fast_video(self):
         self.assertIn("app_hardware_takeover", APP)
