@@ -346,7 +346,7 @@ void RoundedRaffTheme::drawList(const GfxRenderer& renderer, Rect rect, int item
 
     constexpr int kMinTitleWidth = 40;
     constexpr int kMinValueGap = kInteractiveInsetX;
-    constexpr int kStateIconSize = 16;
+    constexpr int kStateIconSize = 12;
     constexpr int kStateIconGap = 12;
     const int stateIconInset = rowFontAwesomeIcon ? kStateIconSize + kStateIconGap : 0;
     int textAreaWidth = rowWidth - kInteractiveInsetX * 2 - stateIconInset;
