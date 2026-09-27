@@ -36,44 +36,38 @@ int main() {
     port.status = RISC_USB_POWER_ABSENT;
     port.advance(role, 500); assert(!port.starts);
     port.advance(role, 500); assert(port.starts == 1 && port.powered);
-    // Attached/enumerating device, pending detach event or outstanding claim
-    // keeps the host intact. No power polling/probing during active gameplay.
+    // Attached/enumerating devices and an empty connector both keep the
+    // T5S3 host lifetime intact while usb.host is active. This preserves
+    // detach/re-attach on the same IDF host/client instance instead of using
+    // full host teardown as an idle power probe.
     port.occupied = true;
     const auto reads = port.reads;
     for (unsigned i = 0; i < 3600; ++i) port.advance(role, 1000);
     assert(!port.parks && port.starts == 1 && reads == port.reads);
     port.occupied = false;
-    port.advance(role, 1999); assert(!port.parks);
-    port.advance(role, 1); assert(port.parks == 1 && !port.powered);
-    // Source-off window discovers a PC which appeared while we supplied VBUS.
-    port.status = RISC_USB_POWER_EXTERNAL;
-    port.advance(role, 499); assert(port.reads == reads);
-    port.advance(role, 1); assert(port.reads == reads + 1);
-    for (unsigned i = 0; i < 120; ++i) port.advance(role, 500);
-    assert(port.starts == 1 && !port.powered);
-    // A receiver plugged after that PC is removed starts without reloading
-    // the provider or invalidating its consumer's API/grants.
-    port.status = RISC_USB_POWER_ABSENT;
-    port.advance(role, 500); port.advance(role, 500);
-    assert(port.starts == 2 && role.state() == State::Host);
-    // A failed idle cleanup retains ownership and retries cleanup without
-    // restarting the host or requiring a reboot. Once cleanup succeeds, normal
-    // source-off sensing can start a fresh host for a later attachment.
-    port.parkOK = false;
-    port.advance(role, 2000);
-    assert(role.state() == State::Cleanup && port.powered);
-    auto starts = port.starts;
-    auto parks = port.parks;
-    port.advance(role, 249);
-    assert(port.parks == parks && port.starts == starts);
-    port.advance(role, 1);
-    assert(port.parks == parks + 1 && port.starts == starts);
-    port.parkOK = true;
-    port.advance(role, 250);
-    assert(role.state() == State::Sense && !port.powered);
-    port.advance(role, 500);
-    port.advance(role, 500);
-    assert(role.state() == State::Host && port.starts == starts + 1 && port.powered);
+    for (unsigned i = 0; i < 3600; ++i) port.advance(role, 1000);
+    assert(role.state() == State::Host && port.powered);
+    assert(port.parks == 0 && port.starts == 1 && port.reads == reads);
+
+    // Failed-start cleanup is still ownership-aware and retryable. This path
+    // is separate from normal empty-host hotplug handling.
+    Port recovery;
+    recovery.startOK = false;
+    recovery.parkOK = false;
+    role.begin(recovery.clock);
+    recovery.advance(role, 500);
+    recovery.advance(role, 500);
+    assert(role.state() == State::Cleanup);
+    auto parks = recovery.parks;
+    recovery.advance(role, 249);
+    assert(recovery.parks == parks);
+    recovery.parkOK = true;
+    recovery.advance(role, 1);
+    assert(role.state() == State::Sense && !recovery.powered);
+    recovery.startOK = true;
+    recovery.advance(role, 500);
+    recovery.advance(role, 500);
+    assert(role.state() == State::Host && recovery.powered);
 
     Port unknown;
     unknown.status = RISC_USB_POWER_UNKNOWN;
