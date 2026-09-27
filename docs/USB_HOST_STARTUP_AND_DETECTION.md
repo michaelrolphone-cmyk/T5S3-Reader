@@ -48,15 +48,22 @@ The authoritative implementation is
 `start_host_controller()`, and
 [`PhyRoute.h`](../Drivers/usb_controller_esp32s3/PhyRoute.h).
 
-Controller **0.1.15** adds automatic role selection in
+Controller **0.1.15** added automatic role selection in
 [`RoleSwitch.h`](../Drivers/usb_controller_esp32s3/RoleSwitch.h). Provider
-`start()` initially parks the host and polls the power-monitor extension.
+`start()` initially keeps the source off and polls the power-monitor extension.
 External input keeps our source off and the boot Serial/JTAG route available;
 settling or unknown readings never authorize sourcing. Only qualified absent
-input permits the physical startup sequence below. Active attachment,
-enumeration or claims prevent idle source-off probes. See
+input permits the physical startup sequence below.
+
+For boards such as the T5S3 whose power provider cannot distinguish external
+VBUS while it is sourcing, **do not use full USB host teardown as a periodic
+empty-port probe**. Once Host mode starts, preserve the same IDF host/client/PHY
+lifetime until the `usb.host` provider is actually quiesced. That restores the
+owner-confirmed 0.1.14 detach/re-attach behavior. A board with an independent
+live VBUS/role detector may still yield an idle host on a positive
+`RISC_USB_POWER_EXTERNAL` observation. See
 [Firmware Input Navigation](FIRMWARE_INPUT_NAVIGATION.md) for role switching
-and UI/application handoff; handoff alone does not restart the physical host.
+and UI/application handoff.
 
 | Order | Operation | Required result before advancing |
 | --- | --- | --- |
@@ -186,12 +193,13 @@ The implementation is `quiesce_with_interrupt()` in
 [`driver.cpp`](../Drivers/usb_controller_esp32s3/driver.cpp), then `quiesce()`
 and its physical `quiesce_host()` helper in
 [`driver_base.cpp`](../Drivers/usb_controller_esp32s3/driver_base.cpp). Idle
-role parking uses the same interrupt drain and physical helper while retaining
-provider APIs and lower dependencies for continued power observation. If idle
-parking partially tears the host down and a later cleanup step fails, the
-controller enters a retained cleanup-pending state instead of a terminal role
-failure. Subsequent owner polls retry only the idempotent teardown path; they do
-not pump a deregistered client or restart the host until cleanup is complete.
+provider quiescence and failed-start cleanup use the same interrupt drain and
+physical helper. Normal empty-port hotplug does **not** invoke this full teardown
+path on source-blind T5S3 power hardware. If failed-start cleanup partially tears
+the host down and a later step fails, the controller enters a retained
+cleanup-pending state instead of dropping ownership. Subsequent owner polls retry
+only the idempotent teardown path; they do not pump a deregistered client or
+restart the host until cleanup is complete.
 
 1. End consumer subscriptions/admission and release class claims. Drain/flush
    outstanding interrupt and control/bulk transfers with bounded event pumping.
@@ -238,7 +246,8 @@ cleanup only under the existing bounded lifecycle rules.
 | --- | --- |
 | [PR #137](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/137): bounded XInput configuration/claim retries | Useful after host enumeration. Cannot fix a zero-device root port with no attach event. |
 | [PR #138](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/138), controller 0.1.13: explicit PHY and detector barrier | VBUS was still acquired before entering the host startup helper. Masking the local detector after receiver power-up left the ordering defect intact. Passing helper tests did not establish the order at the power-provider boundary. |
-| [PR #139](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/139), controller 0.1.14 | Put actual VBUS acquisition inside the tested sequence, after host preparation and before allowing detection. Owner confirmed auto-connect works. |
+| [PR #139](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/139), controller 0.1.14 | Put actual VBUS acquisition inside the tested sequence, after host preparation and before allowing detection. Owner confirmed auto-connect works. Preserve that host lifetime for detach/re-attach. |
+| [PR #141](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/141), controller 0.1.15 | Added periodic empty-host teardown so source-blind hardware could probe for external VBUS. Hardware later showed that destroying/recreating the complete IDF host/client/PHY lifetime broke normal hotplug: initial enumeration could work, then detach/re-attach failed and cleanup/provider faults appeared. Do not use full host teardown as an attachment polling mechanism. |
 | Legacy serial path already appeared to hand over USB correctly | Before controller 0.1.15, the serial bridge ended the boot console before acquiring providers, while direct HID/XInput acquisition did not traverse that helper. Current [NativeUsbBridge.cpp](../src/native/NativeUsbBridge.cpp) leaves the boot service initialized and the controller ELF owns PHY handback. Correctness belongs in that ELF for every acquisition path. |
 | Working standalone firmware implies the ELF path is equivalent | Compare boot USB role, physical power timing, event execution and scheduling as well as class decoding. The same decoder cannot compensate for a different controller startup sequence. |
 
