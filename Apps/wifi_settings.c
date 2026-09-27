@@ -52,7 +52,8 @@ void app_main(void) {
     bool connected = network->wifi_connected();
     bool cancelled = false;
     uint64_t cookie = 0;
-    if (!system_ui->wifi_take_result(&connected, &cancelled, &cookie)) {
+    if (!system_ui->wifi_take_result(&connected, &cancelled, &cookie) ||
+        cookie != WIFI_COOKIE) {
         (void)system_ui->wifi_request(WIFI_COOKIE);
         return;
     }
