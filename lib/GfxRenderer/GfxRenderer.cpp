@@ -284,6 +284,8 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
 // IMPORTANT: This function is in critical rendering path and is called for every pixel. Please keep it as simple and
 // efficient as possible.
 void GfxRenderer::drawPixel(const int x, const int y, const bool state) const {
+  if (!initialized || !frameBuffer) return;
+
   int phyX = 0;
   int phyY = 0;
 
@@ -1022,27 +1024,35 @@ void GfxRenderer::fillPolygon(const int* xPoints, const int* yPoints, int numPoi
 static unsigned long start_ms = 0;
 
 void GfxRenderer::clearScreen(const uint8_t color) const {
+  if (!initialized || !frameBuffer) return;
   start_ms = millis();
   display.clearScreen(color);
 }
 
 void GfxRenderer::invertScreen() const {
+  if (!initialized || !frameBuffer) return;
   for (uint32_t i = 0; i < frameBufferSize; i++) {
     frameBuffer[i] = ~frameBuffer[i];
   }
 }
 
 void GfxRenderer::displayBuffer(const DisplayPresentMode refreshMode) const {
+  if (!initialized || !frameBuffer || !display.isReady()) {
+    LOG_ERR("GFX", "Refusing displayBuffer before a validated, ready display surface");
+    return;
+  }
   auto elapsed = millis() - start_ms;
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
   display.displayBuffer(refreshMode);
 }
 
 void GfxRenderer::requestNextRefresh(const DisplayPresentMode refreshMode) const {
+  if (!initialized || !display.isReady()) return;
   display.requestNextRefresh(refreshMode);
 }
 
 void GfxRenderer::requestNextDisplayEffect(const DisplayEffect effect) const {
+  if (!initialized || !display.isReady()) return;
   display.requestNextDisplayEffect(effect);
 }
 

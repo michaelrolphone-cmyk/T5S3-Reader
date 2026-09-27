@@ -54,3 +54,12 @@ assert "(void)clearPanel;" in epd47_cpp
 assert "clearScreen(0xFF);" in epd47_cpp
 
 print("display blank-screen fail-safe contract: ok")
+
+
+# Public framebuffer/presentation entry points must fail closed before a
+# successful transactional begin(). This prevents an accidental early clear or
+# present from destroying the retained diagnostic image.
+assert "if (!initialized || !frameBuffer) return;" in gfx_cpp
+assert 'Refusing displayBuffer before a validated, ready display surface' in gfx_cpp
+assert "if (!initialized || !frameBuffer || !display.isReady())" in gfx_cpp
+print("display pre-init mutation guards: ok")
