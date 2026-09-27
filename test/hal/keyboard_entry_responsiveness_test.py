@@ -27,8 +27,10 @@ request = CPP.split("void KeyboardEntryActivity::requestKeyboardUpdate()", 1)[1]
     "void KeyboardEntryActivity::onEnter()", 1
 )[0]
 assert "Activity::requestUpdate();" in request
-assert "snapshot" not in request
-assert "text =" not in request
+assert "captureRenderState" not in request
+assert "RenderState" not in request
+assert "renderState." not in request
+assert "snapshot.text =" not in request
 
 loop = CPP.split("void KeyboardEntryActivity::loop()", 1)[1].split(
     "bool KeyboardEntryActivity::onTouchTap", 1
