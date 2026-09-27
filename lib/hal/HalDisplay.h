@@ -72,9 +72,23 @@ class HalDisplay : public DisplaySurface {
   static constexpr uint16_t DISPLAY_HEIGHT = BoardPins::DisplayHeight;
   static constexpr uint16_t DISPLAY_WIDTH_BYTES = DISPLAY_WIDTH / 8;
   static constexpr uint32_t BUFFER_SIZE = DISPLAY_WIDTH_BYTES * DISPLAY_HEIGHT;
+  static constexpr DisplaySafeInsets SAFE_INSETS{9, 3, 9, 3};
+  static constexpr DisplaySurfaceInfo SURFACE_INFO{DISPLAY_WIDTH, DISPLAY_HEIGHT, VISIBLE_WIDTH, VISIBLE_HEIGHT,
+                                                   DISPLAY_WIDTH_BYTES, BUFFER_SIZE, DisplayPixelFormat::Mono1,
+                                                   SAFE_INSETS};
+
+  // Intentionally duplicate the board-derived relationships as compile-time
+  // tripwires. A one-line geometry "cleanup" must break the build, not the screen.
+  static_assert(VISIBLE_WIDTH == BoardPins::LogicalWidth);
+  static_assert(VISIBLE_HEIGHT == BoardPins::LogicalHeight);
+  static_assert(DISPLAY_HEIGHT == BoardPins::DisplayHeight);
+  static_assert(DISPLAY_WIDTH == ((BoardPins::DisplayWidth + 15) / 16) * 16);
   static_assert((DISPLAY_WIDTH % 8u) == 0u, "MONO1 scan width must be byte aligned");
+  static_assert(DISPLAY_WIDTH_BYTES * 8u == DISPLAY_WIDTH, "display stride must exactly cover scan width");
   static_assert(BUFFER_SIZE == static_cast<uint32_t>(DISPLAY_WIDTH_BYTES) * DISPLAY_HEIGHT,
                 "display buffer geometry must remain internally consistent");
+  static_assert(validateDisplaySurfaceInfo(SURFACE_INFO) == DisplaySurfaceValidationError::None,
+                "HalDisplay surface metadata violates the generic display contract");
 
   // Frame buffer operations
   void clearScreen(uint8_t color = 0xFF) const;
@@ -116,11 +130,7 @@ class HalDisplay : public DisplaySurface {
 
   bool isReady() const override { return displayReady && frameBuffer != nullptr; }
 
-  DisplaySurfaceInfo getSurfaceInfo() const override {
-    return DisplaySurfaceInfo{DISPLAY_WIDTH, DISPLAY_HEIGHT, VISIBLE_WIDTH, VISIBLE_HEIGHT,
-                              DISPLAY_WIDTH_BYTES, BUFFER_SIZE, DisplayPixelFormat::Mono1,
-                              DisplaySafeInsets{9, 3, 9, 3}};
-  }
+  DisplaySurfaceInfo getSurfaceInfo() const override { return SURFACE_INFO; }
 
   // Last-resort boot diagnostic that deliberately bypasses GfxRenderer and
   // runtime surface metadata. A large X plus eight code boxes gives a visible
