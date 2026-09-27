@@ -140,3 +140,15 @@ blits, clears, present calls, page-turn requests and grayscale-plane operations.
 The preflight path is the inverse rule: it may inspect only
 `getSurfaceInfo()` and must never call readiness, framebuffer, drawing, power
 or presentation operations because it executes before panel initialization.
+
+
+### Retained-image boot boundary
+
+The normal RiscRTE display bootstrap intentionally enters the compatibility
+backend with `begin(false)`. CI treats that as a physical-output boundary:
+the T5S3 path must use `initPreservingPanel()`, and neither supported backend
+may clear, draw, push, or present the panel from that initialization path.
+EPD47 also resets its software `displayReady` flag before every re-init so a
+failed restart cannot inherit a stale ready state. Only after metadata preflight,
+backend readiness, and transactional renderer binding succeed may normal UI
+rendering replace the retained image.

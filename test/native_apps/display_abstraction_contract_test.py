@@ -121,3 +121,27 @@ for function_name in (
 assert "if (!initialized || !display.isReady()) return;" in gfx_cpp
 assert "Display preflight accepted:" in gfx_cpp
 print("display preflight side-effect and delegation guards: ok")
+
+
+# The retained-image boot path is a hard safety boundary. A future refactor
+# must not turn begin(false) into a physical clear/present before renderer
+# validation has completed.
+t5_begin_start = hal_cpp.index("void HalDisplay::begin(const bool clearPanel)")
+t5_begin_end = hal_cpp.index("void HalDisplay::clearScreen", t5_begin_start)
+t5_begin_body = hal_cpp[t5_begin_start:t5_begin_end]
+assert "clearPanel ? gfx->init() : gfx->initPreservingPanel()" in t5_begin_body
+assert "displayBuffer(" not in t5_begin_body
+assert "pushSprite(" not in t5_begin_body
+
+epd_begin_start = epd47_cpp.index("void HalDisplay::begin(const bool clearPanel)")
+epd_begin_end = epd47_cpp.index("void HalDisplay::clearScreen", epd_begin_start)
+epd_begin_body = epd47_cpp[epd_begin_start:epd_begin_end]
+assert "displayReady = false;" in epd_begin_body
+assert "epd_clear(" not in epd_begin_body
+assert "epd_clear_area" not in epd_begin_body
+assert "epd_draw_" not in epd_begin_body
+assert "displayBuffer(" not in epd_begin_body
+
+assert "display.begin(false);" in setup_body
+assert "display.begin();" not in setup_body
+print("display retained-image initialization contract: ok")

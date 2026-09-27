@@ -81,6 +81,10 @@ uint8_t* HalDisplay::allocatePlane() {
 }
 
 void HalDisplay::begin(const bool clearPanel) {
+  // Reinitialization is fail-closed: never carry a stale ready state across a
+  // failed allocation/backend setup.
+  displayReady = false;
+
   if (!frameBuffer) {
     frameBuffer = allocatePlane();
   }
