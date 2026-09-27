@@ -194,16 +194,16 @@ provider APIs and lower dependencies for continued power observation.
    Callback completion must return DMA ownership before buffers can be freed.
    Outstanding claims or uncertain drains prevent controller unload.
 2. Close device handles, free transfer storage and deregister the client,
-   clearing each owned handle only after that operation succeeds.
-3. Request `usb_host_device_free_all()` and boundedly service library events
-   until all devices are free **and the last-client
-   `USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS` notification has been observed**.
-   When `device_free_all()` returns `ESP_ERR_NOT_FINISHED`, also wait for
-   `USB_HOST_LIB_EVENT_FLAGS_ALL_FREE`. Do not race uninstall against a
-   zero-time poll: when no device ever attached, `device_free_all()` can return
-   `ESP_OK` before the last-client notification is ready. Perform one final
-   nonblocking `usb_host_lib_handle_events(0, ...)` drain after both required
-   teardown conditions are established.
+   clearing each owned handle only after that operation succeeds. Boundedly
+   service `usb_host_lib_handle_events()` until
+   `USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS` has actually been observed. This
+   must happen **before** `usb_host_device_free_all()`; IDF rejects device
+   cleanup while client deregistration is still pending. Preserve that
+   one-shot observation across cleanup retries.
+3. After `NO_CLIENTS`, request `usb_host_device_free_all()`. An immediate
+   `ESP_OK` means there were no devices left to free. If it returns
+   `ESP_ERR_NOT_FINISHED`, boundedly service library events until
+   `USB_HOST_LIB_EVENT_FLAGS_ALL_FREE` is observed.
 4. Uninstall the host. Only then delete the explicitly owned PHY. Failed host
    uninstall or PHY deletion retains ownership and any controller-held VBUS lease.
 5. Release the controller's VBUS lease through the power provider. A failed

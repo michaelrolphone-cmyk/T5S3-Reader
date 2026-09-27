@@ -86,26 +86,23 @@ class UsbTeardownRetry(unittest.TestCase):
             tuple(map(int, json.loads(MANIFEST.read_text(encoding="utf-8"))["version"].split("."))),
             (0, 1, 6))
 
-    def test_idle_host_waits_for_last_client_event_before_uninstall(self):
+    def test_idle_host_processes_no_clients_before_device_free(self):
         quiesce = self.controller.split("bool quiesce_host()", 1)[1].split(
             "void stop()", 1
         )[0]
-        self.assertLess(quiesce.index("usb_host_client_deregister(client)"),
-                        quiesce.index("usb_host_device_free_all()"))
-        self.assertIn("bool freed = rc == ESP_OK;", quiesce)
-        self.assertIn("bool noClients = false;", quiesce)
-        self.assertIn("(!freed || !noClients) && i < kTeardownTicks", quiesce)
-        self.assertIn("USB_HOST_LIB_EVENT_FLAGS_ALL_FREE", quiesce)
-        self.assertIn("USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS", quiesce)
+        deregister = quiesce.index("usb_host_client_deregister(client)")
+        no_clients_event = quiesce.index("USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS")
+        free_all = quiesce.index("usb_host_device_free_all()")
+        uninstall = quiesce.index("usb_host_uninstall()")
+        self.assertLess(deregister, no_clients_event)
+        self.assertLess(no_clients_event, free_all)
+        self.assertLess(free_all, uninstall)
+        self.assertIn("static bool noClientsObserved;", self.controller)
+        self.assertIn("if (!noClientsObserved)", quiesce)
         self.assertIn("USBCTRL cleanup-failed stage=no-clients-timeout", quiesce)
-        final = quiesce.split("if (!noClients) {", 1)[1]
-        self.assertIn("rc = usb_host_lib_handle_events(0, &finalFlags);", final)
-        self.assertIn("rc != ESP_OK && rc != ESP_ERR_TIMEOUT", final)
-        self.assertIn("USBCTRL cleanup-failed stage=final-lib-events", final)
-        self.assertLess(final.index("usb_host_lib_handle_events(0, &finalFlags)"),
-                        final.index("usb_host_uninstall()"))
-        self.assertLess(final.index("usb_host_uninstall()"),
-                        final.index("power->release_host("))
+        self.assertIn("USB_HOST_LIB_EVENT_FLAGS_ALL_FREE", quiesce)
+        self.assertIn("bool freed = rc == ESP_OK;", quiesce)
+        self.assertLess(uninstall, quiesce.index("power->release_host("))
 
 
 if __name__ == "__main__":
