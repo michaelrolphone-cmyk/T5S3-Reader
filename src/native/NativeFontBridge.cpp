@@ -169,6 +169,11 @@ bool choiceInfo(uint32_t index, t5_font_choice_info_t* out) {
 
 t5_font_result_t selectChoice(uint32_t index) {
   if (!active() || index >= choiceCount()) return T5_FONT_INVALID_INDEX;
+
+  const uint8_t previousFontFamily = SETTINGS.fontFamily;
+  char previousSdFontFamilyName[sizeof(SETTINGS.sdFontFamilyName)];
+  std::memcpy(previousSdFontFamilyName, SETTINGS.sdFontFamilyName, sizeof(previousSdFontFamilyName));
+
   if (index < CrossPointSettings::BUILTIN_FONT_COUNT) {
     SETTINGS.fontFamily = static_cast<uint8_t>(index);
     SETTINGS.sdFontFamilyName[0] = '\0';
@@ -179,6 +184,15 @@ t5_font_result_t selectChoice(uint32_t index) {
     std::strncpy(SETTINGS.sdFontFamilyName, fontFamilies[sdIndex].name.c_str(), sizeof(SETTINGS.sdFontFamilyName) - 1);
     SETTINGS.sdFontFamilyName[sizeof(SETTINGS.sdFontFamilyName) - 1] = '\0';
   }
+
+  if (!SETTINGS.saveToFile()) {
+    SETTINGS.fontFamily = previousFontFamily;
+    std::memcpy(SETTINGS.sdFontFamilyName, previousSdFontFamilyName, sizeof(SETTINGS.sdFontFamilyName));
+    ensureSdFontLoaded();
+    LOG_ERR("FONT", "Failed to persist font family selection");
+    return T5_FONT_STORAGE_ERROR;
+  }
+
   ensureSdFontLoaded();
   return T5_FONT_OK;
 }
