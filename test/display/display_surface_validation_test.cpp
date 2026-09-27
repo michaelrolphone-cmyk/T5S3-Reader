@@ -3,7 +3,7 @@
 #include <cassert>
 #include <cstdint>
 
-static DisplaySurfaceInfo validMono() {
+static constexpr DisplaySurfaceInfo validMono() {
   return DisplaySurfaceInfo{
       960, 540, 540, 960, 120, 64800, DisplayPixelFormat::Mono1,
       DisplaySafeInsets{9, 3, 9, 3}};
@@ -13,6 +13,7 @@ static_assert(static_cast<uint8_t>(DisplayPresentMode::Clean) == 0u);
 static_assert(static_cast<uint8_t>(DisplayPresentMode::Quality) == 1u);
 static_assert(static_cast<uint8_t>(DisplayPresentMode::Balanced) == 2u);
 static_assert(static_cast<uint8_t>(DisplayPresentMode::LowLatency) == 3u);
+static_assert(validateDisplaySurfaceInfo(validMono()) == DisplaySurfaceValidationError::None);
 
 int main() {
   {
@@ -38,6 +39,14 @@ int main() {
     auto info = validMono();
     info.visibleWidth = 960;
     info.visibleHeight = 960;
+    assert(validateDisplaySurfaceInfo(info) == DisplaySurfaceValidationError::InvalidVisibleArea);
+  }
+  {
+    // Area alone fits inside 960x540, but 1000px fits neither physical axis.
+    // This must be rejected before panel initialization.
+    auto info = validMono();
+    info.visibleWidth = 1000;
+    info.visibleHeight = 500;
     assert(validateDisplaySurfaceInfo(info) == DisplaySurfaceValidationError::InvalidVisibleArea);
   }
   {
