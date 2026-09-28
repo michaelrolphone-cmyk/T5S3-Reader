@@ -171,6 +171,10 @@ typedef struct {
     // This keeps e-paper shade policy and clipping in the firmware renderer.
     void (*fill_rounded_rect_tone)(int32_t x, int32_t y, int32_t w, int32_t h,
                                    int32_t radius, uint8_t tone);
+    // Snapshot the current firmware backlight setting (0=off, 10=max) at
+    // launch. Size-check before use; display-takeover apps can preserve the
+    // user's active light level instead of loading an unrelated app default.
+    uint8_t (*backlight_level)(void);
 } t5_app_api_v1;
 
 // Native application entry point. Native ELFs are built with -fvisibility=hidden,
