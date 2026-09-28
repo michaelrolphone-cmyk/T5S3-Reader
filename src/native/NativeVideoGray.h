@@ -21,7 +21,8 @@ constexpr uint8_t kNativeVideoGrayStartupLast = 0xfdU;
  * target on the last pulse: a new target continues from the pulses already sent.
  * This is the commanded level, not a measurement of physical panel response. */
 inline bool nativeVideoBuildGrayRow(const uint8_t *source, uint8_t *state,
-                                    uint8_t *drive, size_t source_bytes) {
+                                    uint8_t *drive, size_t source_bytes,
+                                    bool *target_changed = nullptr) {
   bool pending = false;
   for (size_t byte = 0; byte < source_bytes; ++byte) {
     const uint8_t pixels = source[byte];
@@ -29,6 +30,8 @@ inline bool nativeVideoBuildGrayRow(const uint8_t *source, uint8_t *state,
     for (uint8_t pixel = 0; pixel < 4; ++pixel) {
       const uint8_t target = static_cast<uint8_t>((pixels >> (6U - 2U * pixel)) & 3U);
       uint8_t &cell = state[byte * 4U + pixel];
+      if (target_changed && (cell >= kNativeVideoGrayStartupLast || ((cell >> 2U) & 3U) != target))
+        *target_changed = true;
       uint8_t current = cell & 3U;
       uint8_t pulse = 0;
       if (cell >= kNativeVideoGrayStartupLast) {
