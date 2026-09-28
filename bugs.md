@@ -743,3 +743,38 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+### 85. Shared GPS/LoRa rail can remain powered after a failed final release
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260927-2123](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-2123/bugs.md)
+
+- **Affected code:** `src/runtime/resources/RadioPower.cpp`, `RadioPower::acquire()`, `RadioPower::release()`, and `setRail()`; consumers include `src/runtime/drivers/GpsKernelIo.cpp` and `src/native/NativeLoRaBridge.cpp`.
+- **Trigger / reproduction:** Let GPS or LoRa be the final owner of the shared `PCA9535_IO00_LORA_GPS_EN` rail, then inject an I2C/PCA9535 failure while `RadioPower::release()` is disabling that rail. A related partial-enable case is a successful output-latch write followed by failure to configure the expander pin direction.
+- **Observed / logically demonstrated failure:** `release()` clears the final owner bit before calling `setRail(false)`, discards the return value, and returns `void`. If the physical disable fails, the software state becomes `owners == 0` even though the GPS/LoRa rail can still be energized, so neither caller nor the power manager retains a cleanup obligation or retry state. Conversely, a partially successful `setRail(true)` can energize the rail while `acquire()` returns failure without recording an owner.
+- **Likely root cause:** Software ownership is committed independently of the two-step PCA9535 hardware transition, and failed transitions are not represented as a retryable intermediate state.
+- **Impact:** GPS/LoRa hardware can remain powered after both services believe they are stopped, causing avoidable battery drain and leaving powered peripheral pins active. A failed enable can create the same software/hardware ownership mismatch.
+- **Repair direction:** Make the rail transition transactional and retryable. Do not clear the final owner until the disable is confirmed; retain a pending-cleanup state when an I2C operation fails, expose/propagate cleanup failure, and roll back partial enables before reporting failure. Add fault-injection tests for each PCA9535 operation in both first-acquire and final-release paths.
+
+### 86. Recursive directory deletion can construct the wrong child path when an SdFat name exceeds its 128-byte buffer
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260927-2123](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-2123/bugs.md)
+
+- **Affected code:** `lib/hal/HalStorage.cpp`, `removeDirUnlocked()`; the same unchecked fixed-name-buffer pattern also appears in `HalStorage::listFiles()`.
+- **Trigger / reproduction:** Create a directory containing a valid FAT long filename or UTF-8 filename whose encoded name does not fit in `char name[128]`, then delete the parent through any path that reaches `Storage.removeDir()`.
+- **Observed / logically demonstrated failure:** `removeDirUnlocked()` calls `file.getName(name, sizeof(name))` but ignores its success/length result and immediately appends `name` to the parent path. When SdFat cannot return the complete name, the stack buffer is not a verified child name; deletion can therefore address stale/truncated/undefined path text rather than the opened child. The operation may fail partway through, recurse into the wrong path, or—if the stale text resolves to another sibling—remove an unintended sibling while leaving the actual long-name entry behind.
+- **Likely root cause:** The recursive destructive path assumes every filesystem name fits a 127-byte C string and treats `getName()` as infallible.
+- **Impact:** Deleting a directory containing long names is not reliable and has a data-loss risk because path-based removal is performed from an unvalidated name buffer.
+- **Repair direction:** Check the `getName()` return value before constructing any path and use storage sized for the filesystem's supported UTF-8 long filename length (or operate on the opened child handle where possible). Fail closed without issuing a remove when a complete name cannot be obtained. Add recursive-delete tests with long ASCII and multibyte UTF-8 names, plus a sibling whose name would expose stale-buffer reuse.
+
+### 87. GPS module unload failure is untracked while its ELF handle and package pin are retained
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260927-2123](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-2123/bugs.md)
+
+- **Affected code:** `src/runtime/drivers/GpsDriverRuntime.cpp`, `GpsDriverRuntime::stop()`; `src/runtime/drivers/GpsDriverModule.cpp`, `GpsDriverModule::stop()` and `start()`; package lifetime through `RuntimePackages::systemPackageUseGate()`.
+- **Trigger / reproduction:** Start the `gps-nmea` provider, then inject a `dlclose()` failure (or package-use-gate unpin failure) when `GpsDriverRuntime::stop()` runs at app/provider teardown.
+- **Observed / logically demonstrated failure:** `GpsDriverModule::stop()` deliberately returns false while retaining a failed module's mapped handle and, for a failed `dlclose()`, its package pin. `GpsDriverRuntime::stop()` only logs that failure, then releases the UART/device lease, clears `owner`, `positionLease`, and `invocation`, and untracks the execution-context `GnssDriver` cleanup resource. The retained mapped/pinned module is therefore no longer represented by the runtime cleanup state. `GpsDriverModule::start()` explicitly refuses to load while `handle_` remains non-null, so a persistent close failure can wedge future GPS starts; the retained package pin can also block driver package replacement.
+- **Likely root cause:** The outer runtime treats module teardown as best-effort even though the module's failure contract intentionally retains resources that require a later cleanup retry.
+- **Impact:** A single unload failure can leave `gps-nmea` mapped/pinned after the owning invocation has been forgotten, preventing GPS reuse or driver update until reboot and defeating the package-lifetime safety mechanism's retry semantics.
+- **Repair direction:** Keep a retryable firmware-owned cleanup/quarantine record until `GpsDriverModule` reaches `Absent`; do not clear/untrack the last cleanup responsibility merely because physical UART/lease release succeeded. Retry close/unpin from a safe owner context, and add fault-injection tests for `dlclose` and package-unpin failures that prove later cleanup completes without requiring a new GPS session.
