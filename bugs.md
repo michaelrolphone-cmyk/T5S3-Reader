@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+### 82. Ask Manifold can submit the same non-idempotent chat request twice after an ambiguous network failure
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1520](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260928-1520)
+
+- **Affected code:** `Apps/llm_ask.c`, `complete_question()`; network call through `t5_network_api_v1::http_request()`.
+- **Trigger / reproduction:** Submit a question in Ask Manifold, allow the first HTTPS POST to reach the service, then interrupt the connection after the server has accepted/processed the request but before the response is received so the first `http_request()` returns `false`.
+- **Observed / logically demonstrated failure:** `complete_question()` immediately repeats the identical POST whenever the first `http_request()` returns `false`. The request has no idempotency key or other duplicate-suppression token. A transport failure is therefore ambiguous: the first POST may already have been processed even though the client did not receive its response. The unconditional retry can execute the same prompt a second time.
+- **Likely root cause:** Retry policy is based only on the local transport result and treats a state-changing/non-idempotent POST like an idempotent GET.
+- **Impact:** One user action can cause duplicate remote inference work, duplicate metered/API usage, or inconsistent conversation-side effects if the service later adds stateful behavior. The app can also display only the second response while the first request was still processed remotely.
+- **Repair direction:** Do not automatically retry an ambiguous POST unless the protocol supplies a stable idempotency/request key that the server honors. Otherwise surface the failure and let the user explicitly retry. Add a transport test where the first request is accepted server-side but the response is dropped and verify only one logical request is processed.
+
+### 83. Manage Fonts silently hides catalog families after row 64
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1520](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260928-1520)
+
+- **Affected code:** `Apps/font_manager.c`, `MAX_FAMILIES`, `load_rows()`, `activate_selected()`; `src/native/NativeFontBridge.cpp::familyCount()`.
+- **Trigger / reproduction:** Provide a valid font manifest containing more than 64 families, refresh **Manage Fonts**, then try to install, update, or remove a family whose catalog index is 64 or greater.
+- **Observed / logically demonstrated failure:** The native font service reports the full `families.size()`, with no 64-family catalog limit, but `load_rows()` clamps that count to `MAX_FAMILIES == 64`. No paging, continuation, search, or truncation warning exists. Families after the first 64 never receive a row and `activate_selected()` can never address them.
+- **Likely root cause:** The fixed render-array capacity is also being used as the total catalog-enumeration limit instead of as a bounded visible/page window.
+- **Impact:** Valid catalog entries can become impossible to install or update through Manage Fonts. This is distinct from bug #60, which truncates the separate **Font Family** selector for already-installed SD families; this defect truncates the install/update/delete catalog workflow itself.
+- **Repair direction:** Page or virtualize the full `family_count()` result while retaining the real catalog index for each visible row, or dynamically allocate the bounded row model in PSRAM. Show explicit truncation only if a hard service limit is unavoidable. Add tests with 65+ manifest families and actions on an entry beyond row 64.
+
+### 84. Setting a BMP as the sleep cover can publish a truncated image after a source read failure
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1520](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260928-1520)
+
+- **Affected code:** `src/activities/util/BmpViewerActivity.cpp`, `BmpViewerActivity::doSetSleepCover()`.
+- **Trigger / reproduction:** Open a valid BMP and choose **Set Sleep Cover**, then induce an SD read failure after some source bytes have been copied but before EOF.
+- **Observed / logically demonstrated failure:** The copy loop initializes `success = true` and changes it only when the destination `write()` is short. A source `read()` returning 0 or a negative value terminates the loop exactly like normal EOF, without comparing bytes copied to the source file size or checking a read-error state. The code then removes the previous `/sleep.bmp`, renames the incomplete `/sleep.bmp.tmp` into place, marks the custom sleep-screen setting active, and reports success.
+- **Likely root cause:** End-of-input and source I/O failure are conflated, and the staged copy is committed without proving that the expected source byte count was transferred.
+- **Impact:** A transient SD fault can replace a known-good sleep cover with a truncated/corrupt BMP while the UI reports success; subsequent sleep rendering can fail or show a damaged image.
+- **Repair direction:** Capture the source size before copying, accumulate transferred bytes, treat any premature zero/negative read as failure, and commit the temporary file only after exactly the expected byte count is copied and flushed. Preserve the old `/sleep.bmp` until the new staged file is fully verified, and add a fault-injected short-read regression test.
+
