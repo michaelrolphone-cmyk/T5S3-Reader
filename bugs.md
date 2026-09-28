@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 118. Native stream file API rejects valid SD paths at 256 bytes even though the storage API accepts longer paths
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-0924](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260928-0924)
+
+- **Affected code:** `src/native/NativeStreamBridge.cpp::filePath()` and `openFile()`; contrasted with `src/native/NativePlatformBridge.cpp::mapStoragePath()` / the `T5StorageApi` file operations and the public `lib/NativeApps/include/T5StreamApi.h` contract.
+- **Trigger / reproduction:** Create a regular file whose complete native path begins with `/sd/` and is 256–511 bytes long (for example several legal nested directory components plus a short filename). The File Browser/storage path machinery can represent such a path, but call `t5_stream_api_v1::open_file(path, T5_STREAM_FILE_READ, ...)` with that same path.
+- **Observed / logically demonstrated failure:** `filePath()` rejects every path for which `strnlen(path, 256) >= 256`, so `openFile()` returns `T5_STREAM_INVALID` before attempting to open the file. The stream ABI documents no 255-byte pathname limit, and the regular storage bridge maps the path into a `std::string` without this cap. Files can therefore be visible/readable through one native storage surface but impossible to open through the stream surface.
+- **Likely root cause:** The stream bridge uses a fixed 256-byte validation ceiling as an implementation shortcut instead of applying the same segment/path policy as the shared storage abstraction.
+- **Impact:** Stream-based consumers can fail on otherwise valid files selected or created through other firmware APIs, producing a cross-API pathname compatibility hole. Paths between 256 and 511 bytes are especially problematic because they remain representable by the existing File Browser buffers but are rejected by the stream bridge.
+- **Repair direction:** Replace the fixed `strnlen(..., 256)` gate with the shared storage path validator (or a documented filesystem-derived bound), keep per-segment traversal checks, and add parity tests proving the storage and stream APIs accept/reject the same valid path set, including 255-, 256-, and 511-byte paths.
+
+### 119. EPUB package IRIs with percent-encoded path characters are looked up as literal ZIP names
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-0924](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260928-0924)
+
+- **Affected code:** `lib/Epub/Epub/parsers/ContentOpfParser.cpp::startElement()`, `lib/FsHelpers/FsHelpers.cpp::normalisePath()`, and `lib/Epub/Epub.cpp::readItemContentsToBytes()`, `readItemContentsToStream()`, and `getItemSize()`.
+- **Trigger / reproduction:** Build a standards-valid EPUB with a container entry such as `OPS/HTML/file name.xhtml` and reference it from the OPF as `href="HTML/file%20name.xhtml"`. Open the book and navigate to that spine item.
+- **Observed / logically demonstrated failure:** The OPF parser concatenates the raw `href` and calls `normalisePath()`, which normalizes slash/dot components but performs no IRI/percent decoding. The resulting cached href remains `OPS/HTML/file%20name.xhtml`. The reader then passes that literal string to `ZipFile`, whose central-directory lookup compares entry names byte-for-byte, so it cannot find the actual `OPS/HTML/file name.xhtml` member. W3C EPUB Reading Systems examples explicitly map a container file named `HTML/file name.xhtml` to a URL/path reference containing `HTML/file%20name.xhtml`.
+- **Likely root cause:** EPUB references are treated as filesystem strings rather than parsed/resolved IRIs before mapping the URL path component back to an OCF container pathname.
+- **Impact:** Standards-compliant books that percent-encode spaces or other required URL characters can fail to load chapters, stylesheets, images, navigation documents, or covers even though the referenced ZIP members exist.
+- **Repair direction:** Resolve OPF/nav/content references as URLs/IRIs relative to their document base, percent-decode only the URL path when mapping to the OCF abstract container, preserve reserved-delimiter semantics, and reject invalid escapes instead of silently rewriting them. Add fixtures for `%20`, UTF-8 percent sequences, fragments, and literal percent characters.
+
+### 120. ZIP lookup skips standards-valid EPUB resources whose full container path is 256 bytes or longer
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-0924](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260928-0924)
+
+- **Affected code:** `lib/ZipFile/ZipFile.cpp::loadFileStatSlim()` and other central-directory lookup paths that use the fixed `char itemName[256]` buffer.
+- **Trigger / reproduction:** Create an EPUB whose resource has legal OCF path components but a full container path of at least 256 bytes—for example multiple subdirectories whose individual names are each below the OCF 255-byte file-name limit, with total path length still below the OCF 65,535-byte path limit. Reference that resource from the OPF and open it.
+- **Observed / logically demonstrated failure:** The ZIP central-directory `nameLen` is the length of the complete member name/path. `loadFileStatSlim()` reads and compares the name only when `nameLen < 256`; for `nameLen >= 256` it unconditionally skips the member. OCF permits individual file names up to 255 bytes while permitting complete path names up to 65,535 bytes, so a conforming EPUB can contain a resource this lookup can never find.
+- **Likely root cause:** A 256-byte scratch buffer intended to bound temporary memory was incorrectly promoted into a maximum ZIP member-path length.
+- **Impact:** Valid deeply nested EPUB resources become unreadable; affected chapters, images, CSS, navigation documents, or other items appear missing even though the archive itself is conforming and intact.
+- **Repair direction:** Compare central-directory names without imposing a 255-byte total-path cap—e.g. stream/hash bounded name bytes or allocate a bounded PSRAM scratch buffer using the validated `nameLen`. Enforce the actual OCF/file-system limits separately and add a fixture with a >255-byte full path composed of legal <=255-byte components.
