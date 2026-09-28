@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 88. A failed font update deletes the previously working installed family
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1726](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260928-1726)
+
+- **Affected code:** `src/native/NativeFontBridge.cpp`, `installFamily()`; `src/network/HttpDownloader.cpp`, `HttpDownloader::downloadToFile()`; `src/FontInstaller.cpp`, `FontInstaller::deleteFamily()`.
+- **Trigger / reproduction:** Install a catalog font family, then publish an update for that same family and force the update to fail after it starts—for example, interrupt the network on a later file in a multi-file family, return a corrupt file whose CRC does not match, or make validation/readback fail.
+- **Observed / logically demonstrated failure:** `installFamily()` downloads each update file directly to the family's live final pathname. The non-`.part` `downloadToFile()` path removes an existing destination before writing its replacement. If any download, CRC read, checksum, or cpfont validation later fails, `installFamily()` calls `deleteFamily()`, which removes the entire family directory. A failed update therefore destroys the previously valid installed version instead of leaving it usable; if it was the active SD font, deletion also clears the live font selection.
+- **Likely root cause:** Font updates have no staging generation or rollback boundary. The code mutates the installed generation file-by-file and treats cleanup of a failed new download as deletion of the whole installed family.
+- **Impact:** A transient network, SD, or catalog-content failure during an update can turn a working installed font into no installed font at all and can unexpectedly change the active reader/UI typography.
+- **Repair direction:** Download every file for an update into a separate transaction/staging directory, verify expected size, CRC, and full cpfont validity there, then atomically publish the complete family with backup/rollback semantics. On any pre-publish failure, remove only staging and leave the prior generation untouched. Add a regression with a two-file installed family where the second updated file fails and prove the original family and active selection remain intact.
+
+### 89. A malformed font catalog can remain partially actionable after refresh reports failure
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1726](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260928-1726)
+
+- **Affected code:** `src/native/NativeFontBridge.cpp`, `refreshCatalog()`, `familyCount()`, and `familyInfo()`; `Apps/font_manager.c`, startup refresh and `render()/activate_selected()`.
+- **Trigger / reproduction:** Serve a font manifest whose first family is valid but a later family is invalid—for example, give the second family an invalid family name, invalid cpfont filename, or missing/invalid CRC metadata—then open **Manage Fonts**.
+- **Observed / logically demonstrated failure:** `refreshCatalog()` clears the global `families` vector and appends each family as it parses it. When a later entry fails validation it immediately returns `T5_FONT_MANIFEST_ERROR` without clearing or rolling back the earlier appended entries. The app records “Invalid font catalog” but still calls `render()`; `load_rows()` obtains the nonzero partial `family_count`, displays those prefix entries, and `activate_selected()` still permits install/update/delete operations against them. A refresh that was rejected as invalid therefore leaves a partially parsed catalog live and actionable.
+- **Likely root cause:** Manifest validation and publication share the same global catalog vector instead of using a temporary candidate catalog that is committed only after complete validation.
+- **Impact:** Catalog validity is not atomic. A malformed or partially generated catalog can simultaneously be reported as rejected and still drive package mutations, while valid entries after the first malformed one disappear from the UI.
+- **Repair direction:** Parse and validate the complete manifest into a temporary vector (including all required family/file metadata and URL policy), compute installed/update state there, and swap it into `families` only on full success. On failure preserve the previous known-good catalog or expose no catalog. Add a regression with valid-invalid-valid families and verify a failed refresh publishes none of the candidate entries.
+
+### 90. OPDS settings API emits invalid JSON when the first serialized server is oversized
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1726](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260928-1726)
+
+- **Affected code:** `src/network/CrossPointWebServer.cpp`, `CrossPointWebServer::handleGetOpdsServers()` and `handlePostOpdsServer()`; `src/OpdsServerStore.cpp`, `addServer()` / `updateServer()`.
+- **Trigger / reproduction:** Store at least two OPDS servers with the first server's name/URL/username long enough that its JSON object serializes to 512 bytes or more, and keep the second server small enough to fit. This can be created through the POST API because those string fields are accepted into `std::string` without a corresponding 512-byte response-object limit. Then request `GET /api/opds`.
+- **Observed / logically demonstrated failure:** `handleGetOpdsServers()` serializes each server into a fixed 512-byte buffer and `continue`s when an object is too large. Comma emission, however, is based on the original loop index (`if (i > 0)`) rather than whether any prior object was actually emitted. If index 0 is skipped and index 1 fits, the response begins `[,` followed by the second object, which is invalid JSON. The web settings client can no longer parse the server list even though a valid later entry exists.
+- **Likely root cause:** The streaming JSON writer conflates source position with emitted-element position, and input storage allows records that exceed the response scratch buffer.
+- **Impact:** One long first OPDS configuration can break the entire OPDS-management API response for all servers, preventing normal browser-side listing/editing until the data is repaired by another path.
+- **Repair direction:** Track an explicit `emittedAny` flag (or stream each object without a fixed serialization cap) and insert commas only between successfully emitted objects. Also impose coherent validated field-size limits at write time or dynamically size the response serialization. Add a regression where element 0 is intentionally skipped/oversized and element 1 is valid, asserting parseable JSON with no leading comma.
