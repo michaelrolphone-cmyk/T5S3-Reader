@@ -9,6 +9,10 @@
 #define NATIVE_MONO_HOT __attribute__((noinline))
 #endif
 
+struct NativeVideoMonoTable;
+static unsigned native_video_mono_row(const NativeVideoMonoTable *table,
+    const uint8_t *source,uint8_t *state,uint8_t *drive,size_t bytes);
+
 // Two pixels: eight state bits + two target bits = 1024 possible transitions.
 // Built once before scanning; keep the 3KB instance in internal RAM.
 // Includes a 1KB canonical settled-state table for eight-pixel skip tests. Entries:
@@ -35,9 +39,16 @@ struct NativeVideoMonoTable {
   }
   // State holds four bytes per source byte and must be 4-byte aligned.
   // Heap allocations and the 480-byte state row stride satisfy this in video.
-  // Keep this bounded converter in IRAM: app/PSRAM traffic must not evict its
-  // instruction stream. The table instance itself is explicitly in DRAM.
-  NATIVE_MONO_HOT unsigned row(const uint8_t *source,uint8_t *state,uint8_t *drive,size_t bytes) const {
+  unsigned row(const uint8_t *source,uint8_t *state,uint8_t *drive,size_t bytes) const {
+    return native_video_mono_row(this,source,state,drive,bytes);
+  }
+};
+
+// A non-member with internal linkage avoids C++ inline/COMDAT literal sections.
+// Xtensa must place the converter's literal pool with its IRAM code, not in a
+// later flash .literal section (which makes l32r relocations invalid).
+static NATIVE_MONO_HOT unsigned native_video_mono_row(const NativeVideoMonoTable *table,
+    const uint8_t *source,uint8_t *state,uint8_t *drive,size_t bytes) {
     unsigned flags=0;
     state=static_cast<uint8_t *>(__builtin_assume_aligned(state,4));
     for(size_t i=0;i<bytes;++i) {
@@ -49,13 +60,13 @@ struct NativeVideoMonoTable {
       // No lookups or PSRAM writes for an unchanged, fully settled group.
       // Exact canonical state comparison also keeps malformed/startup states
       // on the ordinary transition path rather than incorrectly skipping them.
-      if(old==settled[pixels]) {
+      if(old==table->settled[pixels]) {
         drive[0]=drive[1]=0; state+=4; drive+=2; continue;
       }
-      unsigned a=entries[((old&255)<<2)|(pixels>>6)];
-      unsigned b=entries[(((old>>8)&255)<<2)|((pixels>>4)&3)];
-      unsigned c=entries[(((old>>16)&255)<<2)|((pixels>>2)&3)];
-      unsigned d=entries[((old>>24)<<2)|(pixels&3)];
+      unsigned a=table->entries[((old&255)<<2)|(pixels>>6)];
+      unsigned b=table->entries[(((old>>8)&255)<<2)|((pixels>>4)&3)];
+      unsigned c=table->entries[(((old>>16)&255)<<2)|((pixels>>2)&3)];
+      unsigned d=table->entries[((old>>24)<<2)|(pixels&3)];
       uint32_t next=(a&255)|((b&255)<<8)|((c&255)<<16)|(d<<24);
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
       next=__builtin_bswap32(next);
@@ -66,7 +77,6 @@ struct NativeVideoMonoTable {
       flags|=a|b|c|d;
     }
     return (flags>>12)&3;
-  }
-};
+}
 
 #undef NATIVE_MONO_HOT

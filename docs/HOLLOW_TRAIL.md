@@ -983,3 +983,21 @@ cumulative unreleased 1.0.14, above master and published 1.0.13.
 The vignette mask allocation is rounded up to 16 bytes so the reduced scene
 that follows it remains aligned after the corner radius was halved. This adds
 seven padding bytes for the 45px radius and preserves the word-load contract.
+
+## CI build corrections
+
+The strict C++ native-video test includes the C game engine. Resetting puzzle
+state with a C compound literal `{0}` triggered `-Wmissing-field-initializers`
+under that C++ build even though the native C app compiled. Reset now uses the
+same explicit `memset` form in both languages.
+
+The T5S3-Pro linker also rejected the in-class IRAM converter: its C++ inline
+COMDAT literal pool was emitted as `.literal.<method>` in flash, after the IRAM
+instruction using Xtensa `l32r`. A file-local, non-member IRAM implementation
+keeps its literals in `.iram1.0.literal` alongside the converter, with the member
+as a thin wrapper. Word access, transition tables and settled-group skips are
+unchanged. An isolated Xtensa compile/link reproduces the original dangerous
+relocation and links the corrected version with separate IRAM/flash addresses;
+it uses a minimal section-attribute header and linker script, not a full board
+link. The native C++ transition test still verifies all 1024 transitions and 40
+full scans. Firmware/app versions remain the cumulative unreleased 1.3.34/1.0.14.

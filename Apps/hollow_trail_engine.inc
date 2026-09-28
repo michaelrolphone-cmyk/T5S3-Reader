@@ -215,7 +215,8 @@ static bool ht_interact(void) {
 }
 static void ht_spawn(bool restart) {
     uint32_t evidence=ht.evidence;
-    ht_puzzle_state puzzle=restart?(ht_puzzle_state){0}:ht.puzzle;
+    ht_puzzle_state puzzle=ht.puzzle;
+    if(restart) memset(&puzzle,0,sizeof(puzzle));
     unsigned laps=ht.laps, deaths=ht.deaths, level=ht.level;
     int cp=restart?0:ht.checkpoint, story_x=restart?0:ht.story_x;
     memset(&ht,0,sizeof(ht)); ht.laps=laps; ht.deaths=deaths; ht.level=level;
