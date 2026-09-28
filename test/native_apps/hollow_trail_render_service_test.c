@@ -34,6 +34,10 @@ int main(void) {
     start=ht.x; ht_advance(0);
     for(uint32_t now=8;now<=640;now+=8) ht_advance(now);
     assert(ht.ticks==20 && ht.x-start==50*256);
+    /* Paused confirm selects display mode, without moving or resuming. */
+    paused=true; jump_down=true; mode_down=false;
+    start=ht.x; ht_advance(648);
+    assert(mode_down && paused && !jump_down && ht.x==start);
     free(expected); free(memory);
     puts("Hollow Trail: simulation advances during render; frame snapshot stays coherent PASS");
     return 0;

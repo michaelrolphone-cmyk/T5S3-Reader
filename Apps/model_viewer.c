@@ -4,6 +4,8 @@
 #include "T5ProviderCapabilityApi.h"
 #include "T5StorageApi.h"
 #include "T5VideoApi.h"
+#include "T5MathApi.h"
+static const t5_math_api_v1 *g_math;
 #include "RiscTouchV1.h"
 #include "model_viewer_shading.h"
 #include "model_viewer_controls.h"
@@ -826,22 +828,63 @@ static bool mv_render(bool interactive) {
                                     interactive?2:1,mv_render_service)) return false;
     /* Never use triangle-stride LOD on filled geometry: it opens mesh holes. */
     const uint32_t step = g_shaded ? 1u : mv_render_step(interactive);
-    for (uint32_t i = 0; i < g_model.triangle_count; i += step) {
-        if ((i&63u)==0u && !mv_render_service()) return false;
-        const mv_triangle_t *t = &g_model.triangles[i];
-        const mv_shade_vertex_t a=mv_camera_point(t->a,&rotation);
-        const mv_shade_vertex_t b=mv_camera_point(t->b,&rotation);
-        const mv_shade_vertex_t c=mv_camera_point(t->c,&rotation);
-        const mv_shade_vertex_t pa=mv_screen_point(a), pb=mv_screen_point(b), pc=mv_screen_point(c);
-        if (g_shaded) {
-            if (!mv_shade_triangle(&shade,buffer,mv_pixel,pa,pb,pc,mv_shade_density(a,b,c))) return false;
-        } else {
-            mv_line(buffer,(int)pa.x,(int)pa.y,(int)pb.x,(int)pb.y);
-            mv_line(buffer,(int)pb.x,(int)pb.y,(int)pc.x,(int)pc.y);
-            mv_line(buffer,(int)pc.x,(int)pc.y,(int)pa.x,(int)pa.y);
+    /* Eight triangles per bounded batch; pad the last batch to four vertices. */
+    const float matrix[16] __attribute__((aligned(16)))={
+        rotation.cy,rotation.sp*rotation.sy,-rotation.cp*rotation.sy,0,
+        0,rotation.cp,rotation.sp,0,
+        rotation.sy,-rotation.sp*rotation.cy,rotation.cp*rotation.cy,0, 0,0,0,1};
+    float points[24*4] __attribute__((aligned(16)));
+    float transformed[24*4] __attribute__((aligned(16)));
+    for (uint32_t first = 0; first < g_model.triangle_count;) {
+        if (!mv_render_service()) return false;
+        uint32_t batch=(g_model.triangle_count-first+step-1)/step;
+        if(batch>8) batch=8;
+        for(uint32_t j=0;j<batch;++j) {
+            const mv_triangle_t *t=&g_model.triangles[first+j*step];
+            const mv_vec3_t vertices[3]={t->a,t->b,t->c};
+            for(unsigned v=0;v<3;++v) {
+                float *p=points+(j*3+v)*4;
+                p[0]=(vertices[v].x-g_model.center.x)*g_model.normalize;
+                p[1]=(vertices[v].y-g_model.center.y)*g_model.normalize;
+                p[2]=(vertices[v].z-g_model.center.z)*g_model.normalize; p[3]=1;
+            }
         }
-    }
+        size_t count=(batch*3+3)&~3u;
+        memset(points+batch*12,0,(count-batch*3)*4*sizeof(float));
+        bool accelerated=g_math && g_math->mat4_f32(points,matrix,transformed,count);
+        float normals[8*4] __attribute__((aligned(16)));
+        float lights[8*4] __attribute__((aligned(16)));
+        float lengths[8],diffuse[8];
+        bool batch_lighting=false;
+        if(g_shaded && accelerated) {
+            for(uint32_t j=0;j<batch;++j) {
+                const float *p=transformed+j*12;
+                mv_shade_normal((mv_shade_vertex_t){p[0],p[1],p[2]},
+                    (mv_shade_vertex_t){p[4],p[5],p[6]},(mv_shade_vertex_t){p[8],p[9],p[10]},normals+j*4);
+                lights[j*4]=-0.45f; lights[j*4+1]=0.65f;
+                lights[j*4+2]=0.61237244f; lights[j*4+3]=0;
+            }
+            batch_lighting=g_math->dot4_f32(normals,normals,lengths,batch) &&
+                           g_math->dot4_f32(normals,lights,diffuse,batch);
+        }
+        for(uint32_t j=0;j<batch;++j) {
+            const mv_triangle_t *t=&g_model.triangles[first+j*step];
+            const float *p=transformed+j*12;
+            const mv_shade_vertex_t a=accelerated?(mv_shade_vertex_t){p[0],p[1],p[2]}:mv_camera_point(t->a,&rotation);
+            const mv_shade_vertex_t b=accelerated?(mv_shade_vertex_t){p[4],p[5],p[6]}:mv_camera_point(t->b,&rotation);
+            const mv_shade_vertex_t c=accelerated?(mv_shade_vertex_t){p[8],p[9],p[10]}:mv_camera_point(t->c,&rotation);
+            const mv_shade_vertex_t pa=mv_screen_point(a), pb=mv_screen_point(b), pc=mv_screen_point(c);
+            if (g_shaded) {
+                if (!mv_shade_triangle(&shade,buffer,mv_pixel,pa,pb,pc,(batch_lighting?mv_shade_normal_density(normals+j*4,lengths[j],diffuse[j]):mv_shade_density(a,b,c)))) return false;
+            } else {
+                mv_line(buffer,(int)pa.x,(int)pa.y,(int)pb.x,(int)pb.y);
+                mv_line(buffer,(int)pb.x,(int)pb.y,(int)pc.x,(int)pc.y);
+                mv_line(buffer,(int)pc.x,(int)pc.y,(int)pa.x,(int)pa.y);
+            }
+        }
 
+        first+=batch*step;
+    }
     snprintf(info,sizeof(info),"%lu TRI  %s",
              (unsigned long)g_model.triangle_count,
              interactive ? "FAST" : (step == 1u ? "FULL" : "REFINED"));
@@ -1051,6 +1094,9 @@ __attribute__((visibility("default"))) uint32_t app_hardware_takeover(void) {
 }
 
 __attribute__((visibility("default"))) void app_main(void) {
+    g_math=t5_math_get_api(T5_MATH_API_VERSION);
+    if(g_math && (g_math->api_version!=T5_MATH_API_VERSION ||
+       g_math->struct_size<sizeof(*g_math) || !g_math->mat4_f32 || !g_math->dot4_f32)) g_math=NULL;
     memset(&g_model,0,sizeof(g_model));
     memset(g_path,0,sizeof(g_path));
     g_shaded=false; g_depth=NULL; g_status[0]=0;

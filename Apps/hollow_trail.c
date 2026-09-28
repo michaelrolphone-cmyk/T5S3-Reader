@@ -9,7 +9,7 @@ static const t5_app_api_v1 *app;
 static const t5_provider_capability_api_v1 *caps;
 static const risc_usb_gamepad_api_v1 *pad;
 static t5_provider_capability_lease_t lease=T5_PROVIDER_CAPABILITY_LEASE_INVALID;
-static bool quitting, jump_down, pause_down, paused;
+static bool quitting, jump_down, pause_down, paused, mode_down;
 static uint32_t held, previous, last_poll;
 static uint32_t simulation_clock, simulation_accumulator, scene_revision;
 static bool simulation_started;
@@ -45,7 +45,7 @@ static void ht_advance(uint32_t now) {
     uint32_t elapsed=now-simulation_clock;
     simulation_clock=now;
     simulation_accumulator+=elapsed>128u?128u:elapsed;
-    if(paused) { simulation_accumulator=0; jump_down=false; return; }
+    if(paused) { mode_down|=jump_down; simulation_accumulator=0; jump_down=false; return; }
     for(unsigned steps=0;simulation_accumulator>=HT_STEP_MS && steps<8;++steps) {
         int direction=((held&HT_RIGHT)!=0)-((held&HT_LEFT)!=0);
         ht_game before=ht;
@@ -97,6 +97,14 @@ static void ht_render_service(void) {
      * really yields; queued input edges survive rendering and busy scans. */
     if(app->millis()-last_poll>=8u) ht_input(1u);
 }
+static bool ht_start_video(const t5_video_api_v1 *video,t5_video_surface_v1 *surface,bool mono) {
+    uint8_t format=mono?T5_VIDEO_PIXEL_MONO_1BPP_MSB:T5_VIDEO_PIXEL_GRAY_2BPP_MSB;
+    if(!video->start_format(surface,format)) return false;
+    if(surface->width!=960 || surface->height!=540 ||
+       surface->stride_bytes!=(mono?120:240) || surface->pixel_format!=format ||
+       !(surface->flags&T5_VIDEO_FLAG_ONE_IS_BLACK)) { video->stop(); return false; }
+    return true;
+}
 __attribute__((visibility("default"))) uint32_t app_hardware_takeover(void) {
     return T5_HARDWARE_TAKEOVER_DISPLAY;
 }
@@ -109,7 +117,7 @@ __attribute__((visibility("default"))) void app_main(void) {
        !HT_HAS(video,t5_video_api_v1,start_format) || !video->backbuffer ||
        !video->can_submit || !video->submit || !video->stop) return;
     uint8_t *memory=(uint8_t *)app->psram_alloc(HT_MEMORY+15u);
-    if(!memory) { ht_log("Hollow Trail: 1296000 bytes PSRAM unavailable"); return; }
+    if(!memory) { ht_log("Hollow Trail: 1298880 bytes PSRAM unavailable"); return; }
     bool started=false;
     t5_video_surface_v1 surface={0};
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(false);
@@ -117,25 +125,27 @@ __attribute__((visibility("default"))) void app_main(void) {
     if(ht_math && (ht_math->api_version!=T5_MATH_API_VERSION || ht_math->struct_size<sizeof(*ht_math) ||
                    !ht_math->add_s16 || !ht_math->sub_s16 || !ht_math->copy_bytes || !ht_math->fill_bytes)) ht_math=NULL;
     ht_acquire_pad(); ht_bind((uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u));
-    if(!video->start_format(&surface,T5_VIDEO_PIXEL_GRAY_2BPP_MSB)) {
-        ht_log("Hollow Trail: grayscale video start failed"); goto cleanup;
+    bool mono=true;
+    if(!ht_start_video(video,&surface,mono)) {
+        ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
     started=true;
-    if(surface.width!=960 || surface.height!=540 || surface.stride_bytes!=240 ||
-       surface.pixel_format!=T5_VIDEO_PIXEL_GRAY_2BPP_MSB ||
-       !(surface.flags&T5_VIDEO_FLAG_ONE_IS_BLACK)) {
-        ht_log("Hollow Trail: unsupported video surface"); goto cleanup;
-    }
     memset(&ht,0,sizeof(ht)); ht_spawn(true);
-    quitting=jump_down=pause_down=paused=false; held=previous=0;
+    quitting=jump_down=pause_down=paused=mode_down=false; held=previous=0;
     simulation_started=false; simulation_accumulator=0; scene_revision=1;
     ht_service=ht_render_service;
     uint32_t last_frame=app->millis()-67u, last_submit=app->millis();
     uint32_t drawn_revision=0, prepared_revision=0;
     bool prepared=false;
-    ht_log("Hollow Trail 1.0.3: 2bpp parallax renderer started");
+    ht_log("Hollow Trail 1.0.4: dithered 1bpp parallax renderer started");
     while(!quitting) {
         ht_input(4u); if(quitting) break;
+        if(mode_down) {
+            mode_down=false; video->stop(); started=false; mono=!mono;
+            if(!ht_start_video(video,&surface,mono)) { ht_log("Hollow Trail: mode switch failed"); break; }
+            started=true; prepared=false; ++scene_revision;
+            last_submit=app->millis(); last_frame=last_submit-67u;
+        }
         uint32_t now=app->millis();
         bool redraw=scene_revision!=drawn_revision;
         if(!redraw && !prepared) last_submit=now;
@@ -155,9 +165,11 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(23,56,"START / DOWN PAUSE   SELECT / BACK EXIT",1);
             }
             if(rendering_paused) {
-                ht_rect(ht_scene,112,86,256,55,0);
+                ht_rect(ht_scene,112,86,256,78,0);
                 ht_text(198,95,"PAUSED",2);
-                ht_text(127,121,"START / DOWN RESUME    SELECT / BACK EXIT",1);
+                ht_text(127,117,"START / DOWN RESUME    SELECT / BACK EXIT",1);
+                ht_text(127,133,mono?"DISPLAY: DOTS":"DISPLAY: GRAYSCALE",1);
+                ht_text(127,148,"A / CONFIRM CHANGE DISPLAY",1);
             }
             prepared=true;
         }
@@ -167,7 +179,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             if(!buffer || size<(size_t)surface.stride_bytes*surface.height) {
                 ht_log("Hollow Trail: video backbuffer unavailable"); break;
             }
-            ht_pack(buffer,surface.stride_bytes);
+            ht_pack_format(buffer,surface.stride_bytes,mono);
             if(quitting) break;
             if(video->submit(0,0)) {
                 last_submit=app->millis(); drawn_revision=prepared_revision; prepared=false;

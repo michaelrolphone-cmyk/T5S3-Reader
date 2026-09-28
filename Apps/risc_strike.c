@@ -32,6 +32,7 @@ static const risc_usb_gamepad_api_v1 *g_xinput_api;
 static t5_provider_capability_lease_t g_xinput_lease =
     T5_PROVIDER_CAPABILITY_LEASE_INVALID;
 static bool g_paused;
+static bool g_mono=true, g_mode_down;
 static uint32_t g_pause_started_ms;
 
 static bool fps_capability_api_has(size_t offset, size_t member_size) {
@@ -184,7 +185,9 @@ static void fps_draw_controller_title(uint8_t *buffer) {
     fps_line(buffer, 668, 371, 558, 330);
     fps_frame(buffer, 402, 248, 156, 82);
     fps_rect(buffer, 466, 266, 28, 64);
-    fps_text(buffer, 106, 408, "START  BEGIN", 2);
+    fps_text(buffer, 106, 382, g_mono ? "DISPLAY: DOTS" : "DISPLAY: GRAYSCALE", 1);
+    fps_text(buffer, 106, 395, "LEFT / RIGHT OR X  CHANGE DISPLAY", 1);
+    fps_text(buffer, 106, 418, "START  BEGIN", 2);
     fps_text(buffer, 388, 408, "D-PAD  MOVE / TURN", 2);
     fps_text(buffer, 106, 448, "LB  STRAFE", 2);
     fps_text(buffer, 388, 448, "RB  FIRE", 2);
@@ -222,7 +225,9 @@ static void fps_draw_pause_overlay(uint8_t *buffer) {
     fps_frame(buffer, x, y, width, height);
     fps_frame(buffer, x + 5, y + 5, width - 10, height - 10);
     fps_text(buffer, 387, y + 38, "PAUSED", 5);
-    fps_text(buffer, 376, y + 126, "START  RESUME", 2);
+    fps_text(buffer, 310, y + 96, g_mono ? "DISPLAY: DOTS" : "DISPLAY: GRAYSCALE", 1);
+    fps_text(buffer, 310, y + 112, "A / CONFIRM  CHANGE DISPLAY", 1);
+    fps_text(buffer, 376, y + 140, "START  RESUME", 2);
     fps_text(buffer, 388, y + 166, "SELECT  EXIT", 2);
 }
 
@@ -319,6 +324,9 @@ static bool fps_update_controller_input(
 
     if (select_pressed || fallback_exit) return false;
 
+    if (g_state == FPS_STATE_TITLE &&
+        ((down & (T5_APP_BUTTON_LEFT | T5_APP_BUTTON_RIGHT)) ||
+         (xinput && (controller_down & (1u<<3))))) g_mode_down=true;
     if (g_state == FPS_STATE_TITLE || g_state == FPS_STATE_WON ||
         g_state == FPS_STATE_LOST) {
         if (start_pressed || fallback_confirm) {
@@ -333,7 +341,10 @@ static bool fps_update_controller_input(
         fps_pause(!g_paused, now);
         return true;
     }
-    if (g_paused) return true;
+    if (g_paused) {
+        if ((xinput && (controller_down & (1u<<1))) || fallback_confirm) g_mode_down=true;
+        return true;
+    }
 
     const float forward =
         ((buttons & T5_APP_BUTTON_UP) ? 1.0f : 0.0f) -
@@ -367,6 +378,14 @@ static bool fps_update_controller_input(
     return true;
 }
 
+static bool fps_start_video(void) {
+    uint8_t format=g_mono?T5_VIDEO_PIXEL_MONO_1BPP_MSB:T5_VIDEO_PIXEL_GRAY_2BPP_MSB;
+    if(!g_video->start_format(&g_surface,format)) return false;
+    if(g_surface.width!=960 || g_surface.height!=540 ||
+       g_surface.stride_bytes!=(g_mono?120:240) || g_surface.pixel_format!=format ||
+       !(g_surface.flags&T5_VIDEO_FLAG_ONE_IS_BLACK)) { g_video->stop(); return false; }
+    return true;
+}
 __attribute__((visibility("default"))) uint32_t app_hardware_takeover(void) {
     return T5_HARDWARE_TAKEOVER_DISPLAY;
 }
@@ -390,37 +409,13 @@ __attribute__((visibility("default"))) void app_main(void) {
 
     bool video_started = false;
     memset(&g_surface, 0, sizeof(g_surface));
-    if (!g_video->start_format(&g_surface, T5_VIDEO_PIXEL_GRAY_2BPP_MSB)) goto cleanup;
+    g_mono=true; g_mode_down=false;
+    if (!fps_start_video()) { fps_log("Risc Strike: video start failed"); goto cleanup; }
     video_started = true;
 
-    if (g_surface.width != 960u || g_surface.height != 540u ||
-        g_surface.stride_bytes != 240u ||
-        g_surface.pixel_format != T5_VIDEO_PIXEL_GRAY_2BPP_MSB ||
-        (g_surface.flags & T5_VIDEO_FLAG_ONE_IS_BLACK) == 0u) {
-        fps_show_controller_video_error();
-        const uint32_t deadline = g_app->millis() + 2500u;
-        uint32_t previous_controller_buttons = 0u;
-        while (!fps_time_reached(g_app->millis(), deadline)) {
-            t5_app_input_t input = {0};
-            if (!g_app->poll(&input, 20u) || input.exit_requested) break;
-            fps_controller_state_t controller;
-            fps_poll_controller(&controller);
-            const uint32_t controller_down =
-                controller.buttons & ~previous_controller_buttons;
-            previous_controller_buttons =
-                controller.connected ? controller.buttons : 0u;
-            if ((controller_down & FPS_XINPUT_BUTTON_SELECT) != 0u ||
-                (!controller.connected &&
-                 (input.buttons & T5_APP_BUTTON_BACK) != 0u)) {
-                break;
-            }
-        }
-        goto cleanup;
-    }
-
     fps_log(g_xinput_api
-        ? "Risc Strike 1.0.1 started with XInput controls"
-        : "Risc Strike 1.0.1 started without XInput provider");
+        ? "Risc Strike 1.0.2 started with XInput controls"
+        : "Risc Strike 1.0.2 started without XInput provider");
     g_state = FPS_STATE_TITLE;
     g_prev_buttons = 0u;
     g_back_hold_start_ms = 0u;
@@ -462,6 +457,11 @@ __attribute__((visibility("default"))) void app_main(void) {
                                               &controller, controller_down,
                                               now, dt);
         if (!running) break;
+        if (g_mode_down) {
+            g_mode_down=false; g_video->stop(); video_started=false; g_mono=!g_mono;
+            if(!fps_start_video()) { fps_log("Risc Strike: mode switch failed"); break; }
+            video_started=true; g_last_frame_ms=g_app->millis();
+        }
         if (g_state == FPS_STATE_PLAYING && !g_paused)
             fps_update_enemies(dt, now);
         (void)fps_render_controller(now);

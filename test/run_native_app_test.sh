@@ -21,6 +21,10 @@ cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
   -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
   "$repo_dir/test/native_apps/hollow_trail_render_service_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/game_dither_test.c" -o "$binary"
+"$binary"
 c++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-unused-function \
   -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/test/native_apps/math_stubs" \
   "$repo_dir/test/native_apps/native_math_test.cpp" -o "$binary"
