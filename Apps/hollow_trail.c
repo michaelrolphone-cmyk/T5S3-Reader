@@ -185,10 +185,10 @@ __attribute__((visibility("default"))) void app_main(void) {
             ht_render_scene();
             /* Initial instructions dismiss automatically after walking. */
             if(rendering_game.x<230*256 && rendering_game.checkpoint==0) {
-                ht_rect(ht_scene,15,15,249,55,0);
-                ht_text(23,22,"HOLLOW TRAIL",2);
-                ht_text(23,43,"LEFT/RIGHT MOVE   A / CONFIRM JUMP",1);
-                ht_text(23,56,"START / DOWN PAUSE   SELECT / BACK EXIT",1);
+                ht_rect(ht_scene,38,38,249,55,0);
+                ht_text(46,45,"HOLLOW TRAIL",2);
+                ht_text(46,66,"LEFT/RIGHT MOVE   A / CONFIRM JUMP",1);
+                ht_text(46,79,"START / DOWN PAUSE   SELECT / BACK EXIT",1);
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,112,74,256,121,0);
