@@ -21,6 +21,16 @@ typedef struct {
     uint8_t flags;
 } t5_video_surface_v1;
 
+/* Last completed ~1s scan window. Durations are mean wall microseconds per
+ * scan, including preemption. prepare and residual DMA wait are parts of scan;
+ * DMA can also run concurrently with preparation. pace is separate target-rate
+ * sleep. active_rows counts converted rows, not physical rows transmitted. */
+typedef struct {
+    uint32_t samples, scan_us, prepare_us, dma_wait_us, pace_us, active_rows;
+    uint8_t scan_core, app_core;
+    uint16_t reserved;
+} t5_video_scan_stats_v1;
+
 typedef struct {
     uint32_t api_version;
     uint32_t struct_size;
@@ -50,6 +60,9 @@ typedef struct {
      * most-significant pixel first: 0 white, 1 light, 2 dark, 3 black.
      * The surface and all video calls retain the same lifetime/ownership. */
     bool (*start_format)(t5_video_surface_v1 *surface, uint8_t pixel_format);
+    /* Optional additive 1.3.32 entry. Check struct_size before access.
+     * Copies a coherent snapshot; false when stopped or no window is ready. */
+    bool (*scan_stats)(t5_video_scan_stats_v1 *out);
 } t5_video_api_v1;
 
 const t5_video_api_v1 *t5_video_get_api(uint32_t api_version);

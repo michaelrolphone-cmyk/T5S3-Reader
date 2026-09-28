@@ -627,3 +627,45 @@ wall time from completed rendering until packing can start, including driver
 backpressure and app-loop work; it is not a deliberate delay. Faster CPU stages
 can expose more of that wait without raising total frame rate proportionally.
 These measurements are not evidence of the panel's maximum possible scan rate.
+
+### Separate scan core and visible driver timings (firmware 1.3.32, app 1.0.11)
+
+Owner device comparison: DSP16 ON reached 7.4 FPS; scalar reached 8.8 FPS.
+The scalar compositor remains the default. The next bottleneck investigation
+moves the existing scan task to the opposite core from the video-start caller
+(on this dual-core board, scanner 0 / app 1). Previously both tasks were on
+core 1. Single-core builds retain their only core. No scan pulse counts,
+waveform, panel bus frequency, buffer admission or dither arithmetic changes.
+The shared video service change applies to all consumers, not just this app.
+
+The pause panel adds two rows, obtained through a size-checked, optional
+`T5VideoApi.scan_stats` callback. The firmware publishes a coherent snapshot
+under the existing short video lock, after accumulating roughly one second
+of complete scans. Displayed durations are rounded mean milliseconds per scan:
+
+| Field | Meaning |
+| --- | --- |
+| SCAN | Whole scan-loop work before target-rate pacing, including row submission and logging |
+| PREP | Time preparing all rows: pixel-state conversion, drive-byte packing and any idle cleanup |
+| DMA | Residual time waiting for the previous DMA transfer, including the final transfer |
+| PACE | Time in the existing 24 FPS pacing function after scan work |
+| ROWS | Mean active rows converted per scan; physical scanning still covers all 540 rows |
+| CORE | Scanner core / video-start caller core; expected `0/1` for Hollow Trail |
+
+PREP and DMA are portions of SCAN, not extra time to add to it. DMA overlaps
+row preparation; DMA here is only the wait that remains afterward. Differences
+between SCAN and those two portions include row-transfer submission, GPIO,
+locks, logging and instrumentation. All timings are wall time and include
+preemption. Per-row clock reads add a small, currently unmeasured overhead.
+PACE near zero means the scanner is not deliberately waiting for its FPS cap.
+The app FPS window and scan profile window are independent; compare sustained
+movement, then pause to capture the latest completed windows. Values remain
+visible on the static pause screen. Before a window is ready, the panel says
+SCAN TIMING NOT AVAILABLE.
+
+Firmware 1.3.31 -> 1.3.32 and Hollow Trail 1.0.10 -> 1.0.11; the app now requires
+1.3.32 so an update cannot silently omit the requested core split/timings.
+The callback is appended to the version-1 API, preserving older app layouts.
+Host accumulator checks cover means, fresh windows and a >32-bit clock.
+Hardware throughput and the effects of shared PSRAM/other core-0 tasks still
+require the owner's device measurements.
