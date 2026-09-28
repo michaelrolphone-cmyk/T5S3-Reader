@@ -194,7 +194,7 @@ creating an unbounded queue of stale frames.
    video repair fixed a demonstrated transition-state defect: accepting another
    frame while pulses remained, and tracking only a completed shade, could miss
    the erase needed after an interrupted transition. It now tracks intermediate
-   commanded levels and blocks admission while gray drive is pending. However,
+   commanded levels. Firmware 1.3.29 allows retargeting at scan boundaries. However,
    the owner subsequently reported reduced but persistent retained geometry in
    both games. The software-model tests do not establish that physical ghosting
    is fixed. See [NativeVideoGray.h](../src/native/NativeVideoGray.h) and the
@@ -239,27 +239,38 @@ buffer, while Hollow Trail clears its composite scene and repacks every output
 pixel. Both request full-height updates. This rules out an intentionally partial
 app redraw as the explanation; it does not rule out a lower-level delivery fault.
 
-Firmware 1.3.28 changes the shared fast-video gray engine from reversible
-shade-difference pulses to erase-before-redraw. A changed nonwhite pixel receives
-three white erase passes, then zero to three black passes for its new shade.
-Unchanged pixels are not driven; a known-white pixel needs only the draw phase.
-Startup marks the retained panel contents unknown so even an initial white frame
-gets an explicit erase. Admission remains blocked until all passes finish.
+Firmware 1.3.28 tried erase-before-redraw: three white passes before drawing
+changed nonwhite pixels, with frame admission blocked until settling. The owner
+rejected this on hardware: a clean final image, but roughly one-quarter the
+previous frame rate and bright white flashes during movement in both games.
+The supplied video also shows conspicuous white scenery outlines during motion.
 
-This addresses the assumption exposed by the examples: whitening a black
-character partway is not necessarily equivalent to drawing the background gray
-from white. All newly drawn gray values now approach their target from the same
-white baseline. The erase duration reuses the existing three-pass endpoint drive;
-it is not a newly calibrated panel waveform. The installed M5GFX grayscale LUTs
-are not copied because their timing differs from this raw scan engine.
+Firmware 1.3.29 removes that per-frame erase. Each pixel receives only a pulse
+toward its target, while unchanged pixels receive no pulse. Every intermediate
+commanded level is retained, so a new frame can retarget at the next scan
+boundary instead of waiting for the old target to finish. The pending flip still
+protects the double buffer; startup/idle waits still include outstanding pulses.
+Only unknown startup contents receive the explicit three-pass white reset.
 
-The regression test now covers all 16 shade transitions, unknown startup state,
-unchanged neighbors and interrupted sequences. An illustrative asymmetric model
-(black +2 units, white -3, saturating at endpoints) demonstrates the former
-black-to-light-gray error and checks recovery with the new sequence. It is not a
-measurement of this panel. Device validation must still establish whether three
-erase passes sufficiently remove retained images, whether shade fidelity is
-preserved, and the visibility/cost of the localized white erase phase.
+The gray DMA completion callback now lowers CKV before publishing completion.
+Previously CKV stayed high while the CPU prepared the next row, so PSRAM work,
+scene-dependent transition calculations and task scheduling could extend row
+selection. Ending it in the callback removes next-row preparation from that
+interval. Transfer submission and interrupt latency remain; this is not a
+hardware-timed or calibrated grayscale waveform. Monochrome timing is unchanged.
+
+Direct steps track commands, not measured optical shades. Black and white drive
+need not be physically reversible, and this change does not prove that retained
+silhouettes are eliminated. Hardware validation must establish gray fidelity,
+residual images and actual frame cadence with the shorter row-selection timing.
+The tests cover all 16 direct transitions, 16,384 interrupted target sequences,
+startup resets, stable neighbors and admission during outstanding pulses. They
+intentionally do not use an invented optical model as proof of panel behavior.
+
+The compared T5S3-GameBoy source produces gray-looking graphics using fixed
+black/white dithering (`src/gbemu.c`, `shade_to_white`), driving binary endpoints.
+That is a useful responsiveness reference but a different optical workload.
+These games retain native four-shade output and their existing visuals.
 
 See [NativeVideoGray.h](../src/native/NativeVideoGray.h) for the production
 sequence and [the transition tests](../test/native_apps/native_video_gray_test.cpp).
@@ -278,12 +289,13 @@ is not declared resolved until checked on the device.
 
 The original host timing is a development observation, not a portable benchmark
 with a published hardware/compiler baseline. Do not extrapolate it to the S3.
-The existing scan target is 24 scans/s. Through firmware 1.3.27, gray updates
-needed up to three scans. The 1.3.28 erase/redraw correction can need six scans
-(about 250ms at that target before other overhead) for changed nonwhite pixels. The app's 15fps cap is
-therefore not a promise of 15 fully settled grayscale frames each second.
-The CPU optimizations do not change scan timing. The later ghosting correction
-adds erase passes, so its visible frame cadence must be measured separately.
+The existing scan target is 24 scans/s. The rejected 1.3.28 path could need six
+scans (about 250ms before other overhead), blocking new frames throughout.
+Firmware 1.3.29 uses at most three direct steps for a fixed target and admits a
+new target at each scan boundary. This restores pipeline overlap rather than
+promising any measured frame rate: the app's 15fps cap is not a guarantee of 15
+fully settled grayscale frames per second. CPU optimizations, frame admission
+and physical settling must be measured separately.
 
 The next useful device comparison is scalar versus DSP with the same camera
 path and output hashes. Measure scene preparation, packing, time waiting for
