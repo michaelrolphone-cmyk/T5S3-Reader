@@ -926,7 +926,9 @@ bool epd_video_submit(uint16_t dirty_y, uint16_t dirty_height) {
 
   bool accepted = false;
   portENTER_CRITICAL(&g_buffer_lock);
-  if (!g_flip_req) {
+  if (nativeVideoCanQueueFrame(g_running, g_flip_req,
+                              g_pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB,
+                              g_drive_pending)) {
     g_pending_dirty_start = row_start;
     g_pending_dirty_end = row_end;
     g_flip_waiter = nullptr;
@@ -941,9 +943,12 @@ bool epd_video_submit(uint16_t dirty_y, uint16_t dirty_height) {
 bool epd_video_can_submit() {
   bool ready = false;
   portENTER_CRITICAL(&g_buffer_lock);
-  // The state buffer may still be completing an older pixel transition. That
-  // does not own the back buffer, so a new frame can still be queued safely.
-  ready = g_running && !g_flip_req;
+  // A free backbuffer does not mean the gray transition has completed. A
+  // replacement frame must not cancel the remaining pulses of the old image.
+  // Use the same admission rule here and inside submit's critical section.
+  ready = nativeVideoCanQueueFrame(g_running, g_flip_req,
+                                  g_pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB,
+                                  g_drive_pending);
   portEXIT_CRITICAL(&g_buffer_lock);
   return ready;
 }
@@ -1063,7 +1068,7 @@ bool video_start_format(t5_video_surface_v1 *surface, uint8_t pixel_format) {
     }
 
     // Establish a known physical panel state before interactive updates. The
-    // scan engine's transition state then tracks subsequent frames exactly.
+    // scan engine then tracks commanded pulses for subsequent frames.
     if (!settle_level(0x00) || !settle_level(0xFF) || !settle_level(0x00)) {
       epd_video_shutdown();
       return false;

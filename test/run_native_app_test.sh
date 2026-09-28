@@ -16,6 +16,10 @@ c++ -std=c++17 -Wall -Wextra -Werror \
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
   "$repo_dir/test/native_apps/hollow_trail_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_render_service_test.c" -o "$binary"
+"$binary"
 # The real firmware device ABI bridge must authorize by execution context and
 # never turn manifest compatibility or observation into a permission grant.
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
