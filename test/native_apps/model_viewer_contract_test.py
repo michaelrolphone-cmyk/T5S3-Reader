@@ -20,7 +20,7 @@ ASSOCIATIONS = (ROOT / "src/native/FileAssociationRegistry.cpp").read_text(encod
 
 class ModelViewerContract(unittest.TestCase):
     def test_manifest_and_release_contract(self):
-        self.assertEqual(MANIFEST["version"], "1.2.1")
+        self.assertEqual(MANIFEST["version"], "1.2.2")
         self.assertEqual(MANIFEST["min_firmware_version"], "1.3.18")
         self.assertEqual(MANIFEST["file_name"], "model_viewer.elf")
         self.assertEqual(MANIFEST["icon"], "solid:f1b2")
