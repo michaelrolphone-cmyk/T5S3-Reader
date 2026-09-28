@@ -119,11 +119,11 @@ static void ht_render_service(void) {
     if(app->millis()-last_poll>=8u) ht_input(1u);
     ht_abort=quitting;
 }
-static bool ht_start_video(const t5_video_api_v1 *video,t5_video_surface_v1 *surface,bool mono) {
-    uint8_t format=mono?T5_VIDEO_PIXEL_MONO_1BPP_MSB:T5_VIDEO_PIXEL_GRAY_2BPP_MSB;
+static bool ht_start_video(const t5_video_api_v1 *video,t5_video_surface_v1 *surface) {
+    uint8_t format=T5_VIDEO_PIXEL_MONO_1BPP_MSB;
     if(!video->start_format(surface,format)) return false;
     if(surface->width!=960 || surface->height!=540 ||
-       surface->stride_bytes!=(mono?120:240) || surface->pixel_format!=format ||
+       surface->stride_bytes!=120 || surface->pixel_format!=format ||
        !(surface->flags&T5_VIDEO_FLAG_ONE_IS_BLACK)) { video->stop(); return false; }
     return true;
 }
@@ -147,8 +147,8 @@ __attribute__((visibility("default"))) void app_main(void) {
     if(ht_math && (ht_math->api_version!=T5_MATH_API_VERSION || ht_math->struct_size<sizeof(*ht_math) ||
                    !ht_math->add_s16 || !ht_math->sub_s16 || !ht_math->copy_bytes || !ht_math->fill_bytes)) ht_math=NULL;
     ht_acquire_pad(); ht_bind((uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u));
-    bool mono=true;
-    if(!ht_start_video(video,&surface,mono)) {
+    ht_dsp_composite=false;
+    if(!ht_start_video(video,&surface)) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
     started=true;
@@ -163,7 +163,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     if(video->can_submit()) {
         size_t size=0; uint8_t *buffer=video->backbuffer(&size);
         if(buffer && size>=(size_t)surface.stride_bytes*surface.height) {
-            ht_pack_format(buffer,surface.stride_bytes,mono);
+            ht_pack_mono(buffer,surface.stride_bytes);
             (void)video->submit(0,0);
         }
     }
@@ -177,20 +177,27 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool prepared=false;
     uint32_t prepared_since=0,prepared_render_ms=0;
     bool prepared_profile=false;
+    bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.0.9: dithered 1bpp parallax renderer started");
+    ht_log("Hollow Trail 1.0.10: dithered 1bpp parallax renderer started");
     while(!quitting) {
         ht_input(4u); if(quitting) break;
         if(mode_down) {
-            mode_down=false; video->stop(); started=false; mono=!mono;
-            if(!ht_start_video(video,&surface,mono)) { ht_log("Hollow Trail: mode switch failed"); break; }
-            started=true; prepared=false; ++scene_revision;
+            mode_down=false;
+            ht_dsp_composite=ht_dsp_available() && !ht_dsp_composite;
+            prepared=false; ++scene_revision;
             last_submit=app->millis(); last_frame=last_submit-HT_FRAME_INTERVAL_MS;
             memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=last_submit;
             if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
         }
         uint32_t now=app->millis();
+        if(profile_was_paused && !paused) {
+            ht_perf.start=now;
+            ht_perf.scan_start=video->frame_counter?video->frame_counter():0;
+            ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=0;
+        }
+        profile_was_paused=paused;
         bool redraw=scene_revision!=drawn_revision;
         if(!redraw && !prepared) last_submit=now;
         /* Render into app-owned PSRAM while the panel finishes its previous
@@ -213,8 +220,8 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_rect(ht_scene,112,74,256,137,0);
                 ht_text(198,95,"PAUSED",2);
                 ht_text(127,117,"START / DOWN RESUME    SELECT / BACK EXIT",1);
-                ht_text(127,133,mono?"DISPLAY: DOTS":"DISPLAY: GRAYSCALE",1);
-                ht_text(127,148,"A / CONFIRM CHANGE DISPLAY",1);
+                ht_text(127,133,!ht_dsp_available()?"DSP16: UNAVAILABLE":ht_dsp_composite?"DSP16 COMPOSITOR: ON":"DSP16 COMPOSITOR: OFF",1);
+                ht_text(127,148,"A / CONFIRM TOGGLE DSP16",1);
                 char perf[48];
                 snprintf(perf,sizeof(perf),"FPS %lu.%lu   SCANS %lu.%lu",
                     (unsigned long)(ht_perf.fps10/10),(unsigned long)(ht_perf.fps10%10),
@@ -237,7 +244,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_log("Hollow Trail: video backbuffer unavailable"); break;
             }
             uint32_t pack_start=app->millis();
-            ht_pack_format(buffer,surface.stride_bytes,mono);
+            ht_pack_mono(buffer,surface.stride_bytes);
             uint32_t pack_ms=app->millis()-pack_start;
             if(quitting) break;
             if(video->submit(0,0)) {

@@ -485,6 +485,50 @@ static bool ht_cache_prefetch(int camera,int direction) {
 /* Evaluate lighting at one sample per 2x2 world pixels. Cached source art
  * retains its original detail and integer parallax offsets, including odd
  * offsets at strip boundaries. No physics or camera coordinates are scaled. */
+/* A/B experiment: only the cached per-frame compositor changes. Cache filters,
+ * output dithering and timing checkpoints stay the same. Defaults to scalar. */
+static bool ht_dsp_composite;
+static bool ht_dsp_available(void) {
+    return ht_math && ht_math->struct_size>=offsetof(t5_math_api_v1,mul_s16)+sizeof(ht_math->mul_s16) &&
+           (ht_math->features&T5_MATH_FEATURE_S3_DSP) && ht_math->mul_s16;
+}
+#define HT_DSP_BATCH (HT_TILE_W/2)
+/* Fixed, aligned app-owned scratch; no allocation or large task-stack frame.
+ * Each tile span has at most 128 samples. The bridge handles vector tails. */
+static int16_t ht_dsp_a[HT_DSP_BATCH] __attribute__((aligned(16)));
+static int16_t ht_dsp_b[HT_DSP_BATCH] __attribute__((aligned(16)));
+static int16_t ht_dsp_product[HT_DSP_BATCH] __attribute__((aligned(16)));
+static int16_t ht_dsp_radial[HT_DSP_BATCH] __attribute__((aligned(16)));
+static void ht_dsp_multiply(int count) {
+    if(ht_math->mul_s16(ht_dsp_a,ht_dsp_b,ht_dsp_product,(size_t)count)) return;
+    for(int i=0;i<count;++i) ht_dsp_product[i]=(int16_t)(ht_dsp_a[i]*ht_dsp_b[i]);
+}
+static void ht_composite_dsp_span(uint8_t *dst,const uint8_t *near,const uint8_t *wide,
+                                  int count,int distance,int delta,int fade) {
+    for(int i=0;i<count;++i) {
+        int radial=ht_clamp((distance-2500)/200,0,256);
+        ht_dsp_radial[i]=(int16_t)radial;
+        ht_dsp_a[i]=(int16_t)((int)wide[2*i]-near[2*i]);
+        ht_dsp_b[i]=(int16_t)(radial&127);
+        distance+=delta;delta+=8;
+    }
+    /* Signed products must fit s16. Split weights into low seven bits and
+     * a 0/128/256 correction, accumulated in 32 bits. Max DSP product 32385.
+     * This retains the scalar rounding, including negative blur differences. */
+    ht_dsp_multiply(count);
+    for(int i=0;i<count;++i) {
+        int radial=ht_dsp_radial[i];
+        int v=(near[2*i]*256+ht_dsp_product[i]+ht_dsp_a[i]*(radial&~127))>>8;
+        int factor=256-((radial*fade)>>8);
+        ht_dsp_a[i]=(int16_t)v; ht_dsp_b[i]=(int16_t)(factor&127);
+        ht_dsp_radial[i]=(int16_t)(factor&~127);
+    }
+    ht_dsp_multiply(count);
+    for(int i=0;i<count;++i) {
+        int v=(ht_dsp_product[i]+ht_dsp_a[i]*ht_dsp_radial[i])>>8;
+        dst[i]=(uint8_t)ht_max(dst[i],v);
+    }
+}
 static void ht_composite_cached(int depth,int offset,int focus_x,int focus_y) {
     const int fade=depth>=2?70:45;
     const int height=depth==3?45:HT_SCENE_H-HT_BORDER/2;
@@ -498,6 +542,11 @@ static void ht_composite_cached(int depth,int offset,int focus_x,int focus_y) {
             int count=ht_min(HT_SCENE_W-HT_BORDER/2-x,(HT_TILE_W-column+1)/2),slot=ht_cache_slot(key);
             const uint8_t *near=ht_cached_near[depth][slot]+(2*y)*HT_TILE_W+column;
             const uint8_t *wide=ht_cached_wide[depth][slot]+(2*y)*HT_TILE_W+column;
+            if(ht_dsp_composite && ht_dsp_available()) {
+                ht_composite_dsp_span(scene+x,near,wide,count,distance,delta,fade);
+                distance+=count*delta+4*count*(count-1); delta+=8*count;
+                x+=count; continue;
+            }
             for(int i=0;i<count;++i,++x) {
                 int v;
                 if(distance<=2500) v=near[2*i];

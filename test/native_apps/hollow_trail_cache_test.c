@@ -40,6 +40,18 @@ static void reference(void) {
     }
     ht_character(px,game.y/256,&game); ht_vignette();
 }
+static unsigned dsp_calls;
+static bool mock_mul(const int16_t *a,const int16_t *b,int16_t *out,size_t count) {
+    assert(!(((uintptr_t)a|(uintptr_t)b|(uintptr_t)out)&15u));
+    assert(count<=HT_DSP_BATCH); ++dsp_calls;
+    for(size_t i=0;i<count;++i) {
+        int product=a[i]*b[i]; assert(product>=-32768 && product<=32767);
+        out[i]=(int16_t)product;
+    }
+    return true;
+}
+static const t5_math_api_v1 dsp_mock={.api_version=T5_MATH_API_VERSION,
+    .struct_size=sizeof(t5_math_api_v1),.features=T5_MATH_FEATURE_S3_DSP,.mul_s16=mock_mul};
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY+32),*expected=malloc(HT_PIXELS);
     assert(memory && expected); memset(memory+HT_MEMORY,0x5a,32);
@@ -76,6 +88,9 @@ int main(void) {
             }
             assert(0);
         }
+        ht_math=&dsp_mock; ht_dsp_composite=true;
+        ht_render_scene(); assert(!memcmp(expected,ht_scene,HT_PIXELS));
+        assert(dsp_calls>0); ht_dsp_composite=false; ht_math=NULL;
         /* Partially prepare rightward work, then reverse; no stale strip use. */
         for(int i=0;i<8;++i) (void)ht_cache_prefetch(camera,1);
         for(int i=0;i<8;++i) (void)ht_cache_prefetch(camera,-1);
