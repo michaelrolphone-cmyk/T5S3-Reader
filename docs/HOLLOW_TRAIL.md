@@ -669,3 +669,49 @@ The callback is appended to the version-1 API, preserving older app layouts.
 Host accumulator checks cover means, fresh windows and a >32-bit clock.
 Hardware throughput and the effects of shared PSRAM/other core-0 tasks still
 require the owner's device measurements.
+
+### Scan lookup, bounded dirty rows and batched upscale (1.3.33 / 1.0.12)
+
+The monochrome scanner now builds a 1,024-entry, 2KB lookup in internal RAM
+before scanning. Its key is the old two-pixel state byte plus two target bits;
+its result contains the next state, four drive bits, target-change flag and
+unfinished-drive flag. Four lookups process one source byte (eight pixels),
+replacing the nested per-pixel branches and counter arithmetic. The table
+preserves all original state transitions and drive commands, including target
+reversals during the three-pass drive sequence. Grayscale uses its existing
+path. The finite idle reinforcement policy and 24 FPS scan target are unchanged.
+This speeds shared monochrome video consumers, not just Hollow Trail.
+
+Hollow Trail still packs the complete backbuffer, but after the first successful
+full-screen submission it marks only physical rows 36 through 501 dirty (466
+rows instead of 540). Bounds are derived from the rounded mask and include the
+preceding interpolation row. Loading and failed initial submissions cannot
+skip initialization. The driver's existing active-row state preserves unfinished
+border pulses when later submissions mark only the middle rows. This avoids
+74 rows of repeated conversion per new target; it does not skip physical panel
+scan lines or change the rounded border.
+
+The 240x135 to 480x270 upscaler now loads four source bytes at a time, uses the
+same exact byte-lane averaging as the packer, and interleaves samples into four
+aligned word stores for eight output pixels in each pair of rows. Both rounding
+stages and right/bottom edge clamping are preserved. No new app scratch buffer
+is required. Target compiler inspection confirms word loads/stores.
+
+Verification: all 1,024 mono state/target transitions and 40 full scan sequences
+match the previous arithmetic's state, drive bytes and flags; sanitizer checks
+pass. Existing independent per-output-pixel upscaling, full scene/cache, packing,
+input-service and route tests pass. All excluded rows are checked solid black
+across rendered route scenes. Firmware and app builds pass; source/sidecar app
+version is 1.0.12 and minimum firmware is 1.3.33 (firmware 1.3.32 -> 1.3.33).
+
+Production lookup host benchmark at `-Os` (400 scans per scenario/candidate,
+five trials): unchanged targets 1.786 -> 0.461ms, retargeting every scan
+4.333 -> 0.444ms, about 74% and 90% less conversion time. This excludes DMA,
+PSRAM timing and display output. The optional benchmark is reproducible with
+`native_video_mono_test --bench` after compiling the test source.
+The upscaler alone is slightly slower on this host: 0.05286 -> 0.05600ms
+(medians across seven alternating trials, 3,000 frames per trial, `-Os`).
+That is about 6% more host time, not a demonstrated speedup. Word-access benefits
+on the ESP32/PSRAM path need device measurement. Matching frame hash: 51f6b1f5.
+The new on-screen PREP/SCAN and RENDER counters distinguish the improvements;
+no device FPS or optical result is claimed from host tests.

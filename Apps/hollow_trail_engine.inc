@@ -17,6 +17,7 @@
 #define HT_MASK_RADIUS 90
 #define HT_MASK_PIXELS (HT_MASK_RADIUS*HT_MASK_RADIUS)
 static bool ht_framed;
+static uint16_t ht_dirty_top,ht_dirty_height;
 #define HT_PIXELS (HT_W * HT_H)
 #define HT_TILE_W 256
 #define HT_TILE_SLOTS 4
@@ -103,6 +104,13 @@ static void ht_mask_init(void) {
         while(x<HT_W/2 && ht_mask_alpha(x,y)<255) ++x;
         ht_clear_left[y]=(int16_t)x;
     }
+    /* The physical packer blends with y+1. Include that preceding row's
+     * interpolation halo; excluded rows are permanently solid black. */
+    int first=0,last=HT_H-1;
+    while(first<HT_H && ht_visible_left[first]==HT_W/2) ++first;
+    while(last>first && ht_visible_left[last]==HT_W/2) --last;
+    ht_dirty_top=(uint16_t)(2*ht_max(0,first-1));
+    ht_dirty_height=(uint16_t)(2*(last+1)-ht_dirty_top);
 }
 static void ht_bind(uint8_t *memory) {
     ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
@@ -567,17 +575,47 @@ static void ht_composite_cached(int depth,int offset,int focus_x,int focus_y) {
 /* Expand once to the existing overlay surface, then draw the character/UI.
  * Final packing supplies the second 2x interpolation and physical-pixel dots.
  * Two-stage bilinear interpolation intentionally softens the scenery only. */
+/* Four independent byte lanes in one 32-bit register. The xor mask prevents
+ * cross-byte carry while retaining floor((a+b)/2), including odd inputs. */
+static inline __attribute__((always_inline)) uint32_t ht_average4(uint32_t a,uint32_t b) {
+    return (a&b)+(((a^b)&0xfefefefeu)>>1);
+}
+static inline __attribute__((always_inline)) uint32_t ht_load4(const uint8_t *p) {
+    /* ht_bind receives aligned storage; row stride and block x are /4. */
+    p=(const uint8_t *)__builtin_assume_aligned(p,4);
+    uint32_t value; memcpy(&value,p,sizeof(value));
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    value=__builtin_bswap32(value);
+#endif
+    return value;
+}
+static inline __attribute__((always_inline)) void ht_store4(uint8_t *p,uint32_t value) {
+    p=(uint8_t *)__builtin_assume_aligned(p,4);
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    value=__builtin_bswap32(value);
+#endif
+    memcpy(p,&value,sizeof(value));
+}
+/* Interleave the low two original/interpolated byte lanes into four pixels. */
+static inline __attribute__((always_inline)) uint32_t ht_zip2(uint32_t a,uint32_t b) {
+    return (a&255u)|((b&255u)<<8)|((a&0xff00u)<<8)|((b&0xff00u)<<16);
+}
 static void ht_upscale_scene(void) {
     for(int y=0;y<HT_SCENE_H;++y) {
         const uint8_t *row=ht_low_scene+y*HT_SCENE_W;
         const uint8_t *next=ht_low_scene+ht_min(y+1,HT_SCENE_H-1)*HT_SCENE_W;
         uint8_t *top=ht_scene+2*y*HT_W,*bottom=top+HT_W;
-        for(int x=0;x<HT_SCENE_W;++x) {
-            int nx=ht_min(x+1,HT_SCENE_W-1);
-            int a=row[x],b=row[nx],c=next[x],d=next[nx];
-            top[2*x]=(uint8_t)a; top[2*x+1]=(uint8_t)((a+b)>>1);
-            bottom[2*x]=(uint8_t)((a+c)>>1);
-            bottom[2*x+1]=(uint8_t)((((a+b)>>1)+((c+d)>>1))>>1);
+        for(int x=0;x<HT_SCENE_W;x+=4) {
+            uint32_t a=ht_load4(row+x),c=ht_load4(next+x);
+            int nx=ht_min(x+4,HT_SCENE_W-1);
+            uint32_t b=(a>>8)|((uint32_t)row[nx]<<24);
+            uint32_t d=(c>>8)|((uint32_t)next[nx]<<24);
+            uint32_t h=ht_average4(a,b),v=ht_average4(a,c);
+            uint32_t diagonal=ht_average4(h,ht_average4(c,d));
+            ht_store4(top+2*x,ht_zip2(a,h));
+            ht_store4(top+2*x+4,ht_zip2(a>>16,h>>16));
+            ht_store4(bottom+2*x,ht_zip2(v,diagonal));
+            ht_store4(bottom+2*x+4,ht_zip2(v>>16,diagonal>>16));
         }
         if((y&15)==15) ht_checkpoint();
     }
@@ -666,20 +704,6 @@ static uint8_t ht_quantize(int value,int rank) {
 /* Mono is the common path. Assemble whole bytes in registers; never read
  * the PSRAM destination to OR a second nibble into it. Reuse adjacent source
  * samples and keep the format branch outside the physical-pixel loop. */
-/* Four independent byte lanes in one 32-bit register. The xor mask prevents
- * cross-byte carry while retaining floor((a+b)/2), including odd inputs. */
-static inline __attribute__((always_inline)) uint32_t ht_average4(uint32_t a,uint32_t b) {
-    return (a&b)+(((a^b)&0xfefefefeu)>>1);
-}
-static inline __attribute__((always_inline)) uint32_t ht_load4(const uint8_t *p) {
-    /* ht_bind receives aligned storage; row stride and block x are /4. */
-    p=(const uint8_t *)__builtin_assume_aligned(p,4);
-    uint32_t value; memcpy(&value,p,sizeof(value));
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    value=__builtin_bswap32(value);
-#endif
-    return value;
-}
 /* Gather lane sign bits into bits 7,5,3,1 without a lookup or byte loop. */
 static inline __attribute__((always_inline)) uint8_t ht_spread4(uint32_t bits) {
     return (uint8_t)(((bits>>7)*0x80200802u)>>24);

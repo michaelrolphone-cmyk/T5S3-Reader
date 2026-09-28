@@ -2,6 +2,7 @@
 #include "NativeVideoGray.h"
 #include "NativeVideoIdle.h"
 #include "NativeVideoProfile.h"
+#include "NativeVideoMono.h"
 
 #include <T5VideoApi.h>
 #include <Board.h>
@@ -128,8 +129,6 @@ constexpr size_t kDmaRowBytes = kPanelRowBytes + kLinePaddingBytes;
 constexpr size_t kActiveLeftPadBytes = t5s3_epd::kActiveX / 4U;
 constexpr size_t kActiveRowBytes = t5s3_epd::kActiveWidth / 4U;
 constexpr size_t kActiveRightPadBytes = kPanelRowBytes - kActiveLeftPadBytes - kActiveRowBytes;
-constexpr uint8_t kResetCounterMask[4] = {0xFC, 0xE0, 0x1C, 0x00};
-constexpr uint8_t kVideoDrivePasses = 3;
 constexpr uint8_t kTpsRegEnable = 0x01;
 constexpr uint8_t kTpsRegVcom = 0x03;
 constexpr uint8_t kTpsRegPowerGood = 0x0F;
@@ -192,6 +191,7 @@ volatile uint8_t g_front_index = 0;
 volatile uint32_t g_vsync_count = 0;
 volatile uint32_t g_submit_count = 0;
 t5_video_scan_stats_v1 g_scan_stats{};
+DRAM_ATTR NativeVideoMonoTable g_mono_table;
 uint8_t g_app_core=0, g_scan_core=0;
 uint16_t g_pending_dirty_start = 0;
 uint16_t g_pending_dirty_end = t5s3_epd::kActiveHeight - 1;
@@ -569,44 +569,12 @@ bool build_active_row(const uint8_t *frame, uint16_t row, uint8_t *dst, bool &ta
     g_row_active[row] = pending ? 1U : 0U;
     return pending;
   }
-  uint8_t *wrptr = dst + kActiveLeftPadBytes;
-  const uint8_t *rdptr = frame + (static_cast<size_t>(row) * g_source_row_bytes);
-  uint8_t *stptr = g_state_buffer + (static_cast<size_t>(row) * g_state_row_bytes);
-  bool needs_more_drive = false;
-
-  for (size_t src_byte = 0; src_byte < kSourceRowBytes; ++src_byte) {
-    uint8_t incoming_pixels = *rdptr++;
-    for (uint8_t out_byte = 0; out_byte < 2; ++out_byte) {
-      uint8_t packed_drive = 0;
-      for (uint8_t pair = 0; pair < 2; ++pair) {
-        uint8_t state = *stptr;
-        const uint8_t driving_dir = incoming_pixels >> 6;
-        const uint8_t pixel_diff = static_cast<uint8_t>((state ^ driving_dir) & 0x03U);
-
-        target_changed = target_changed || pixel_diff != 0U;
-        state &= kResetCounterMask[pixel_diff];
-        state |= driving_dir;
-
-        packed_drive <<= 4;
-        packed_drive |= (state & 0x80U) ? 0x0U : ((driving_dir & 0x02U) ? 0x4U : 0x8U);
-        packed_drive |= (state & 0x10U) ? 0x0U : ((driving_dir & 0x01U) ? 0x1U : 0x2U);
-
-        const uint8_t counter_increment = static_cast<uint8_t>(((~state) >> 2) & 0x24U);
-        state = static_cast<uint8_t>(state + counter_increment);
-        if (((state >> 5) & 0x07U) >= kVideoDrivePasses) {
-          state |= 0x80U;
-        }
-        if (((state >> 2) & 0x07U) >= kVideoDrivePasses) {
-          state |= 0x10U;
-        }
-        needs_more_drive = needs_more_drive || ((state & 0x90U) != 0x90U);
-        *stptr++ = state;
-
-        incoming_pixels <<= 2;
-      }
-      *wrptr++ = packed_drive;
-    }
-  }
+  const unsigned flags=g_mono_table.row(
+      frame+static_cast<size_t>(row)*g_source_row_bytes,
+      g_state_buffer+static_cast<size_t>(row)*g_state_row_bytes,
+      dst+kActiveLeftPadBytes,kSourceRowBytes);
+  target_changed=target_changed || (flags&1U);
+  const bool needs_more_drive=(flags&2U)!=0;
 
   g_row_active[row] = needs_more_drive ? 1U : 0U;
   return needs_more_drive;
@@ -917,6 +885,7 @@ bool epd_video_start() {
   g_pending_dirty_end = t5s3_epd::kActiveHeight - 1;
   portEXIT_CRITICAL(&g_buffer_lock);
 
+  if(g_pixel_format==T5_VIDEO_PIXEL_MONO_1BPP_MSB) g_mono_table.init();
   g_app_core=static_cast<uint8_t>(xPortGetCoreID());
 #if CONFIG_FREERTOS_UNICORE
   g_scan_core=g_app_core;
