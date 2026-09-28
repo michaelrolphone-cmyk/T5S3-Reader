@@ -743,3 +743,37 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 97. Firmware OTA does not enforce the SHA-256 declared by the release index
+
+- **Status:** Open.
+- **Sources:** automation/bug-scan-20260928-0123.
+- **Affected code:** `src/network/OtaUpdater.cpp`, `OtaUpdater::checkForUpdate()` and `OtaUpdater::installUpdate()`; `src/network/OtaUpdater.h`.
+- **Trigger / reproduction:** Provide a release-index firmware record whose version, tag, asset, and URL are valid and whose `sha256` field is 64 characters, but serve a different structurally valid ESP firmware image at that URL. Check for and install the update.
+- **Observed / logically demonstrated failure:** `checkForUpdate()` reads the SHA-256 string and checks only its length. The digest is not validated as hex, retained in updater state, or used by `installUpdate()`. Installation passes only the URL to `esp_https_ota`, so an image acceptable to the transport and ESP image validator can be installed even though it differs from the digest declared by the release index.
+- **Likely root cause:** The release metadata gained an integrity field without carrying the expected digest through the OTA state machine.
+- **Impact:** A malformed or internally inconsistent firmware release can install bytes different from the indexed artifact while the updater reports success.
+- **Repair direction:** Validate the digest, retain it with the selected update, hash the exact downloaded bytes, and refuse OTA finalization unless the computed SHA-256 matches. Clear digest state on every new/failed check and add a mismatched-hash regression test.
+
+### 98. TXT page-index cache survives same-size edits and can skip or repeat text
+
+- **Status:** Open.
+- **Sources:** automation/bug-scan-20260928-0123.
+- **Affected code:** `lib/Txt/Txt.cpp`, `Txt::Txt()` and `Txt::load()`; `src/activities/reader/TxtReaderActivity.cpp`, `loadPageIndexCache()`, `savePageIndexCache()`, and navigation through `pageOffsets`.
+- **Trigger / reproduction:** Open a TXT file so `index.bin` is built. Rewrite that same pathname with different line breaks or word lengths while preserving exactly the same byte length, then reopen it with the same font/layout settings.
+- **Observed / logically demonstrated failure:** The cache directory key is based only on the file path. Cache validation checks the file size and rendering settings but no content fingerprint or file generation. Same-size replacement content therefore reuses byte offsets computed from the old text. If a newly rendered page should consume more bytes than the old cached boundary, text is skipped at the next page; if it should consume fewer, text is repeated.
+- **Likely root cause:** File length is treated as sufficient identity for pagination content.
+- **Impact:** Editing or replacing a plain-text book in place can silently omit or duplicate text until the cache is rebuilt for some unrelated reason.
+- **Repair direction:** Bind the index to content identity using a stable digest or bounded fingerprint plus size, optionally modification metadata where reliable, and rebuild on mismatch. Add a same-length rewrite regression with changed wrapping/page boundaries.
+
+### 99. Non-byte-aligned XTCH heights can read beyond the grayscale page buffer
+
+- **Status:** Open.
+- **Sources:** automation/bug-scan-20260928-0123.
+- **Affected code:** `lib/Xtc/Xtc/XtcParser.cpp`, `XtcParser::loadPage()`; `src/activities/reader/XtcReaderActivity.cpp`, `renderPage()`; `lib/Xtc/Xtc.cpp`, `generateCoverBmp()`.
+- **Trigger / reproduction:** Open an XTCH/XTH page with a height not divisible by eight, for example 480x801, with otherwise accepted headers and enough bitmap bytes for the parser's current `ceil(width * height / 8) * 2` calculation.
+- **Observed / logically demonstrated failure:** The parser accepts arbitrary 16-bit dimensions and allocates each plane as `ceil(width * height / 8)`. Rendering addresses the column-major data with `colBytes = ceil(height / 8)` and `byteOffset = colIndex * colBytes + byteInCol`. For 480x801 the allocated plane is 48,060 bytes, but pixel x=0,y=800 addresses byte 48,479; the second-plane access is 419 bytes beyond the two-plane allocation. The page renderer and cover converter do not bounds-check that access.
+- **Likely root cause:** Whole-plane bit packing and per-column byte padding are mixed without enforcing an aligned height or a single consistent layout formula.
+- **Impact:** A malformed or non-canonical XTCH file can cause out-of-bounds heap reads, corrupted output, or a device reset during page/cover rendering.
+- **Repair direction:** Define and enforce one XTH packing contract in the parser. If columns are byte-padded, size each plane as `width * ceil(height / 8)`; if the format is tightly packed, use continuous bit addressing. Otherwise reject non-8-aligned heights. Share a checked offset helper and add 800/801-height plus truncated-data tests.
