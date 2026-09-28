@@ -140,7 +140,7 @@ __attribute__((visibility("default"))) void app_main(void) {
        !video->can_submit || !video->submit || !video->stop) return;
     uint8_t *memory=(uint8_t *)app->psram_alloc(HT_MEMORY+15u);
     if(!memory) { ht_log("Hollow Trail: scenery cache PSRAM unavailable"); return; }
-    bool started=false;
+    bool started=false,display_initialized=false;
     t5_video_surface_v1 surface={0};
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(false);
     ht_math=t5_math_get_api(T5_MATH_API_VERSION);
@@ -164,7 +164,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         size_t size=0; uint8_t *buffer=video->backbuffer(&size);
         if(buffer && size>=(size_t)surface.stride_bytes*surface.height) {
             ht_pack_mono(buffer,surface.stride_bytes);
-            (void)video->submit(0,0);
+            display_initialized=video->submit(0,0);
         }
     }
     unsigned warm_steps=0;
@@ -180,7 +180,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.0.11: dithered 1bpp parallax renderer started");
+    ht_log("Hollow Trail 1.0.12: dithered 1bpp parallax renderer started");
     while(!quitting) {
         ht_input(4u); if(quitting) break;
         if(mode_down) {
@@ -259,7 +259,9 @@ __attribute__((visibility("default"))) void app_main(void) {
             ht_pack_mono(buffer,surface.stride_bytes);
             uint32_t pack_ms=app->millis()-pack_start;
             if(quitting) break;
-            if(video->submit(0,0)) {
+            if(video->submit(display_initialized?ht_dirty_top:0,
+                             display_initialized?ht_dirty_height:0)) {
+                display_initialized=true;
                 last_submit=app->millis(); drawn_revision=prepared_revision; prepared=false;
                 if(prepared_profile) {
                     ht_perf.render_ms+=prepared_render_ms;

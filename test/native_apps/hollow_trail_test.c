@@ -101,7 +101,12 @@ int main(void) {
     for(unsigned i=0;i<sizeof(positions)/sizeof(positions[0]);++i) {
         ht_spawn(true); ht.x=positions[i]*256;
         ht.camera=ht_clamp(positions[i]-165,0,HT_GOAL-340)*256;
-        ht_render_scene(); ht_pack(frame,240);
+        ht_render_scene();
+        ht_pack_mono(frame,120);
+        assert(ht_dirty_top>0 && ht_dirty_height>0 && ht_dirty_top+ht_dirty_height<540);
+        for(unsigned y=0;y<540;++y) if(y<ht_dirty_top || y>=ht_dirty_top+ht_dirty_height)
+            for(int x=0;x<120;++x) assert(frame[y*120+x]==255);
+        ht_pack(frame,240);
         uint32_t first=checksum(frame,960u*540u/4u);
         ht_render_scene(); ht_pack(frame,240);
         assert(first==checksum(frame,960u*540u/4u));
