@@ -1,6 +1,7 @@
 #include "NativeStreamBridge.h"
 #include "NativeNetworkBridge.h"
 #include "NativeAppHost.h"
+#include "CrossPointSettings.h"
 #include "components/StartupScreen.h"
 #include "NativeNavigationInput.h"
 #include "NativeOnlineAppInstall.h"
@@ -1124,6 +1125,9 @@ void logMessage(const char* message) {
   if (!current() || !message) return;
   LOG_INF("APP", "%s", message);
 }
+uint8_t backlightLevel() {
+  return current() ? SETTINGS.backlightLevel : 0U;
+}
 void drawLabel(int32_t x, int32_t y, int32_t w, const char* value) {
   auto* s = current();
   if (!s || !value || w <= 0) return;
@@ -1167,7 +1171,8 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            psramAlloc,
                            psramFree,
                            logMessage,
-                           fillRoundedRectTone};
+                           fillRoundedRectTone,
+                           backlightLevel};
 }  // namespace
 
 bool installRequiredNativeApp(const char* artifact, std::string& displayName,

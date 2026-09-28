@@ -1,6 +1,8 @@
 #include <HalDisplay.h>
 #include "NativeTouchInput.h"
 #include "NativeVideoBridge.h"
+#include <Board.h>
+#include "CrossPointSettings.h"
 #include <T5HardwareTakeover.h>
 #include <esp_err.h>
 #include <esp_log.h>
@@ -43,6 +45,7 @@ extern "C" esp_err_t native_hardware_takeover_begin(uint32_t requested) {
       return ESP_ERR_INVALID_STATE;
     }
     s_display_borrowed = true;
+    Board::restoreBacklightLevel(SETTINGS.backlightLevel);
     ESP_LOGI(kTag, "Display ownership transferred; firmware touch subscription released");
   }
   return ESP_OK;
@@ -58,6 +61,9 @@ extern "C" esp_err_t native_hardware_takeover_end(uint32_t requested) {
     nativeVideoForceStop();
     s_display_borrowed = false;
     const bool displayRestored = display.resumeFromExternalOwner();
+    // A display owner can re-route the light GPIO to its own PWM channel or
+    // leave it low on exit. Reattach the firmware channel and its saved level.
+    Board::restoreBacklightLevel(SETTINGS.backlightLevel);
     if (!displayRestored)
       ESP_LOGE(kTag, "Failed to reinitialize the firmware display after ELF exit");
 

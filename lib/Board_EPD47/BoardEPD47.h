@@ -29,6 +29,7 @@ void begin();
 void beginI2C();
 void initBacklight();
 void setBacklightLevel(uint8_t level);
+void restoreBacklightLevel(uint8_t level);
 void prepareSdBus();
 void disableGpsLora();
 void deinitForSleep();
