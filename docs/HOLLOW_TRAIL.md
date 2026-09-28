@@ -223,6 +223,16 @@ improved but did not eliminate geometry ghosting in both Risc Strike and Hollow
 Trail. The exact installed build was not supplied with that report. Treat this
 as an unresolved hardware-visible defect, not an accepted rendering result.
 
+A supplied photo of the running game shows dark foreground trees still present,
+with pale, displaced outlines of previous branches and scenery spread across the
+lighter background. The physical image looks substantially more washed out than
+six captured host-renderer frames during the first 3.52 seconds of moving right;
+those frames have no retained silhouettes and their cached filters match fresh
+filters exactly. This comparison supports investigating the shared gray-drive
+path, but a photograph of one state cannot prove which electrical pulse or
+transition caused the residue. The photo was supplied before there was a
+confirmed on-device test of the firmware 1.3.28 correction.
+
 Source inspection shows that Risc Strike clears and rebuilds its full submitted
 buffer, while Hollow Trail clears its composite scene and repacks every output
 pixel. Both request full-height updates. This rules out an intentionally partial
