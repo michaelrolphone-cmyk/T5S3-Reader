@@ -743,3 +743,33 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+### 112. A transient LoRa receive re-arm failure permanently disables reception for the running session
+
+- **Status:** Open.
+- **Affected code:** `src/native/NativeLoRaBridge.cpp`, especially `startReceiver()`, `pollPacket()`, and the post-transmit receive restart in `sendPacket()`.
+- **Trigger / reproduction:** Start LoRa normally, then force a receive-path error (for example an invalid reported packet length or a one-shot `radio.readData()` failure) and make the immediately following `radio.startReceive()` call fail once. The same terminal state can be reached when a transmit succeeds but the one post-transmit `startReceiver()` attempt fails.
+- **Observed / logically demonstrated failure:** `startReceiver()` clears `receiverActive` when `radio.startReceive()` fails. Its callers in the receive-error and post-transmit paths discard that return value. Every later `pollPacket()` begins by returning immediately when `receiverActive` is false, so it never attempts to arm reception again. A transient single re-arm error therefore becomes permanent for that bridge session even after the radio is healthy again. In the transmit case, `sendPacket()` can report success while reception has silently been lost.
+- **Likely root cause:** Receive recovery is implemented as a one-shot edge action, while `receiverActive == false` is also used as a guard that prevents the polling path from performing recovery.
+- **Impact:** An otherwise healthy radio can stop receiving all subsequent packets until a higher-level stop/start or reboot, breaking long-running LoRa telemetry after one transient radio error.
+- **Repair direction:** Track a retryable `needsReceiveArm` state separately from “receiver is currently armed”; while the bridge is running, retry `startReceive()` from the poll/service path with bounded backoff. Do not silently report a fully restored transmit operation if RX re-arm failed. Add fault-injection tests for one failed re-arm after both a receive error and a successful transmit, followed by recovery on the next service cycle.
+
+### 113. Ask can submit the same non-idempotent LLM POST twice after an ambiguous transport failure
+
+- **Status:** Open.
+- **Affected code:** `Apps/llm_ask.c::complete_question()`; transport semantics in `src/native/NativeNetworkBridge.cpp::httpRequest()`.
+- **Trigger / reproduction:** Submit a question and let the HTTPS POST reach the LLM server, then fail the client transport while receiving the response (for example close the connection mid-response or time out after the request body has already been sent). `http_request()` returns false for transport/read failures even though the server may already have processed the POST.
+- **Observed / logically demonstrated failure:** `complete_question()` unconditionally performs the identical POST a second time whenever the first `http_request()` returns false. A false transport result is not proof that the request was never delivered; `NativeNetworkBridge` can return false after the POST has been transmitted and response handling fails. The server can therefore execute two completions for one user question, while the app records only whichever response is successfully received.
+- **Likely root cause:** The retry policy treats an ambiguous POST transport failure as if it were a pre-send failure. POST completion requests are not inherently idempotent and no request/idempotency key is supplied.
+- **Impact:** A single question can consume duplicate remote inference work and make server-side request history disagree with the one response shown and stored by the device.
+- **Repair direction:** Do not blindly retry an ambiguous POST. Either expose enough transport phase information to retry only failures proven to occur before request transmission, use a provider-supported idempotency/request key, or require an explicit user retry after an ambiguous failure. Add a test server that accepts the first POST and then drops the response connection, and assert that the client does not automatically submit a second request.
+
+### 114. Valid app manifests can declare more provider capabilities than the runtime lease bridge can acquire
+
+- **Status:** Open.
+- **Affected code:** `src/native/NativeProviderCapabilityBridge.cpp` (`kMaxActiveLeases = 4`, `active[]`, and `acquire()`); `src/native/AppManifest.cpp` capability-list validation; `src/runtime/capabilities/AppCapabilityRequirements.h` (`kMaxAppRequirements = 6`); `lib/NativeApps/include/T5ProviderCapabilityApi.h`.
+- **Trigger / reproduction:** Install a valid native app whose sidecar declares at least five distinct provider capabilities and have the app acquire those interfaces without releasing the earlier leases. Manifest validation permits up to six `requires` entries and six `optional` entries, with duplicates between the lists rejected, while the public provider-capability ABI documents no four-lease limit.
+- **Observed / logically demonstrated failure:** The first four acquisitions can occupy every slot in `active[4]`; the fifth call fails with `Capability lease table full` even though the capability was validly declared and an installed compatible provider may be available. Mandatory launch gating can therefore accept a manifest that the runtime interface-acquisition layer cannot actually service. Open PR #96 changes failed-release retention in this bridge but leaves the four-slot limit unchanged.
+- **Likely root cause:** The generic lease bridge has an independent hard-coded capacity that is smaller than the manifest capability model it is intended to expose.
+- **Impact:** As apps compose more installable input/display/USB/platform providers, otherwise-valid multi-capability apps can fail only at runtime and the failure depends on acquisition order rather than manifest validity or provider availability.
+- **Repair direction:** Use a per-invocation lease table sized to the validated capability contract (or dynamically allocate bounded entries), and make any true lease limit explicit and consistent with manifest validation. Add coverage that acquires at least five declared capabilities simultaneously, plus a maximum-contract case spanning the accepted required/optional declaration counts.
