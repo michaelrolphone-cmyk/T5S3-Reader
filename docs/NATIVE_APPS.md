@@ -495,7 +495,7 @@ Swipe left for the next app page or right for the previous page; both directions
 wrap at the ends, matching the page dots. Paging also works while editing Home
 pins. Vertical/diagonal gestures and drags shorter than 50 pixels do not page or
 activate an icon. A page change redraws once after the gesture completes.
-Springboard 1.2.3 requires firmware 1.3.27 for swipe delivery.
+Springboard 1.2.3 requires firmware 1.3.29 for swipe delivery.
 
 Native UI apps can size-check the append-only `T5AppApi.take_touch_swipe` member
 and call it after `poll()`. It consumes one completed gesture and returns its
@@ -634,3 +634,10 @@ direct firmware integration that is not yet represented by a native host API.
 
 The minimal ABI smoke-test example is kept in `examples/native_apps/hello.c`;
 it is built only for CI validation and is not a shipped or installable app.
+
+### Bounded CPU math acceleration
+
+Firmware 1.3.29 adds the versioned `T5MathApi.h` table for bounded 16-bit vector
+addition/subtraction and bulk memory operations. ESP32-S3 uses bundled ESP-DSP
+assembly behind alignment/tail guards; callers use the same portable contract.
+See [Native math API](NATIVE_MATH_API.md) for bounds, ownership and integration.

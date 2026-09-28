@@ -269,7 +269,8 @@ bool alloc_video_buffers() {
     ESP_LOGE(kTag, "failed to allocate state buffer");
     return false;
   }
-  memset(g_state_buffer, 0x00, g_state_buffer_bytes);
+  memset(g_state_buffer, g_pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB
+      ? kNativeVideoGrayUnknown : 0x00, g_state_buffer_bytes);
 
   for (uint8_t i = 0; i < 2; ++i) {
     g_dma_buf[i] = static_cast<uint8_t *>(
@@ -828,7 +829,8 @@ bool epd_video_power_on() {
 
   memset(g_buffers[0], 0xFF, g_backbuffer_bytes);
   memset(g_buffers[1], 0xFF, g_backbuffer_bytes);
-  memset(g_state_buffer, 0x00, g_state_buffer_bytes);
+  memset(g_state_buffer, g_pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB
+      ? kNativeVideoGrayUnknown : 0x00, g_state_buffer_bytes);
   memset(g_dma_buf[0], 0x00, kDmaRowBytes);
   memset(g_dma_buf[1], 0x00, kDmaRowBytes);
   memset(g_blank_row, 0x00, kDmaRowBytes);
@@ -1068,7 +1070,7 @@ bool video_start_format(t5_video_surface_v1 *surface, uint8_t pixel_format) {
     }
 
     // Establish a known physical panel state before interactive updates. The
-    // scan engine then tracks commanded pulses for subsequent frames.
+    // scan engine then erases changed gray pixels before drawing their target.
     if (!settle_level(0x00) || !settle_level(0xFF) || !settle_level(0x00)) {
       epd_video_shutdown();
       return false;

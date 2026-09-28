@@ -4,12 +4,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include "T5MathApi.h"
 #define HT_W 480
 #define HT_H 270
 #define HT_PIXELS (HT_W * HT_H)
-#define HT_MEMORY (HT_PIXELS * 9u)
+#define HT_MEMORY (HT_PIXELS * 10u)
 #define HT_GOAL 3200
-#define HT_STEP_MS 16u
+#define HT_STEP_MS 32u /* Half-speed motion; preserve jump paths and level reachability. */
 
 typedef struct { int left, right, top; } ht_platform;
 static const ht_platform ht_land[] = {
@@ -26,6 +27,8 @@ typedef struct {
     bool grounded;
 } ht_game;
 static ht_game ht;
+static const t5_math_api_v1 *ht_math;
+static int16_t *ht_filter;
 static uint8_t *ht_raw, *ht_near, *ht_wide, *ht_temp, *ht_scene;
 static uint8_t *ht_cached_near[3], *ht_cached_wide[3];
 static int ht_cache_key[3];
@@ -38,13 +41,22 @@ static int ht_clamp(int x,int lo,int hi) { return ht_min(hi,ht_max(lo,x)); }
 static int ht_abs(int x) { return x<0?-x:x; }
 static uint32_t ht_hash(uint32_t x) { x^=x>>16; x*=0x7feb352du; x^=x>>15; x*=0x846ca68bu; return x^(x>>16); }
 static void ht_checkpoint(void) { if(ht_service) ht_service(); }
+static void ht_clear_layer(uint8_t *dst) {
+    if(!ht_math) { memset(dst,0,HT_PIXELS); return; }
+    for(size_t at=0;at<HT_PIXELS;at+=T5_MATH_MAX_BYTES) {
+        size_t n=HT_PIXELS-at;
+        if(n>T5_MATH_MAX_BYTES) n=T5_MATH_MAX_BYTES;
+        (void)ht_math->fill_bytes(dst+at,0,n);
+        ht_checkpoint();
+    }
+}
 static void ht_bind(uint8_t *memory) {
     ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
-    ht_temp=memory+3*HT_PIXELS; ht_scene=memory+4*HT_PIXELS;
+    ht_temp=memory+8*HT_PIXELS; ht_filter=(int16_t *)ht_temp; ht_scene=memory+3*HT_PIXELS;
     ht_cached_near[0]=ht_near; ht_cached_wide[0]=ht_wide;
     for(int i=1;i<3;++i) {
-        ht_cached_near[i]=memory+(3+2*i)*HT_PIXELS;
-        ht_cached_wide[i]=memory+(4+2*i)*HT_PIXELS;
+        ht_cached_near[i]=memory+(2+2*i)*HT_PIXELS;
+        ht_cached_wide[i]=memory+(3+2*i)*HT_PIXELS;
     }
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
 }
@@ -61,7 +73,7 @@ static void ht_step(int direction,bool jump_pressed,bool jump_held) {
     if(jump_pressed) ht.jump_buffer=7;
     else if(ht.jump_buffer) --ht.jump_buffer;
     if(ht.grounded) ht.coyote=6; else if(ht.coyote) --ht.coyote;
-    int target=direction*640; /* 156 world pixels/sec */
+    int target=direction*640; /* 78.125 world pixels/sec at 32ms per step */
     if(ht.vx<target) ht.vx=ht_min(target,ht.vx+100);
     if(ht.vx>target) ht.vx=ht_max(target,ht.vx-100);
     if(direction) ht.facing=direction;
@@ -161,7 +173,7 @@ static void ht_blur_horizontal(const uint8_t *src,int radius,uint32_t reciprocal
         const uint8_t *row=src+y*HT_W; int sum=0;
         for(int k=-radius;k<=radius;++k) sum+=row[ht_clamp(x0+k,0,HT_W-1)];
         for(int x=x0;x<x1;++x) {
-            ht_temp[y*HT_W+x]=ht_average(sum,reciprocal);
+            ht_filter[y*HT_W+x]=ht_average(sum,reciprocal);
             sum+=row[ht_min(HT_W-1,x+radius+1)]-row[ht_max(0,x-radius)];
         }
         if((y&31)==31) ht_checkpoint();
@@ -169,27 +181,35 @@ static void ht_blur_horizontal(const uint8_t *src,int radius,uint32_t reciprocal
 }
 static void ht_blur_region(const uint8_t *src,uint8_t *dst,int radius,int x0,int x1) {
     if(!radius) {
-        for(int y=0;y<HT_H;++y) memcpy(dst+y*HT_W+x0,src+y*HT_W+x0,(size_t)(x1-x0));
+        for(int y=0;y<HT_H;++y) {
+            if(ht_math) (void)ht_math->copy_bytes(dst+y*HT_W+x0,src+y*HT_W+x0,(size_t)(x1-x0));
+            else memcpy(dst+y*HT_W+x0,src+y*HT_W+x0,(size_t)(x1-x0));
+        }
         return;
     }
     int n=radius*2+1;
     uint32_t reciprocal=(0x1000000u+(uint32_t)n-1u)/(uint32_t)n;
     ht_blur_horizontal(src,radius,reciprocal,x0,x1);
-    /* Keep vertical sums in 1920 bytes of stack and visit PSRAM by rows.
+    /* Keep vertical sums in 960 bytes of stack and visit PSRAM by rows.
      * Column-strided reads would evict cache lines on every sample. */
-    int sums[HT_W]={0};
+    int16_t sums[HT_W] __attribute__((aligned(16)))={0};
     for(int k=-radius;k<=radius;++k) {
-        const uint8_t *row=ht_temp+ht_clamp(k,0,HT_H-1)*HT_W;
+        const int16_t *row=ht_filter+ht_clamp(k,0,HT_H-1)*HT_W;
         for(int x=x0;x<x1;++x) sums[x]+=row[x];
     }
     for(int y=0;y<HT_H;++y) {
-        const uint8_t *add=ht_temp+ht_min(HT_H-1,y+radius+1)*HT_W;
-        const uint8_t *sub=ht_temp+ht_max(0,y-radius)*HT_W;
+        const int16_t *add=ht_filter+ht_min(HT_H-1,y+radius+1)*HT_W;
+        const int16_t *sub=ht_filter+ht_max(0,y-radius)*HT_W;
         uint8_t *row=dst+y*HT_W;
         for(int x=x0;x<x1;++x) {
             row[x]=ht_average(sums[x],reciprocal);
-            sums[x]+=add[x]-sub[x];
         }
+        if(ht_math) {
+            /* 0..4845 sums, 0..255 samples: even the temporary addition
+             * fits int16_t exactly. SIMD handles eight columns at a time. */
+            (void)ht_math->add_s16(sums+x0,add+x0,sums+x0,(size_t)(x1-x0));
+            (void)ht_math->sub_s16(sums+x0,sub+x0,sums+x0,(size_t)(x1-x0));
+        } else for(int x=x0;x<x1;++x) sums[x]=(int16_t)(sums[x]+add[x]-sub[x]);
         if((y&15)==15) ht_checkpoint();
     }
 }
@@ -356,11 +376,11 @@ static void ht_render_scene(void) {
      * so trees, focus and character all use one consistent game snapshot. */
     const ht_game game=ht;
     int camera=game.camera/256,px=game.x/256-camera,py=game.y/256-14;
-    memset(ht_scene,0,HT_PIXELS);
+    ht_clear_layer(ht_scene);
     for(int depth=0;depth<3;++depth) {
         int key=depth==0?camera*22/100:depth==1?camera*53/100:camera;
         if(!ht_cache_valid[depth] || ht_cache_key[depth]!=key) {
-            memset(ht_raw,0,HT_PIXELS);
+            ht_clear_layer(ht_raw);
             if(depth<2) ht_background(depth,camera); else ht_foreground(camera);
         }
         ht_checkpoint(); ht_prepare_layer(depth,key); ht_composite(depth,px,py);
