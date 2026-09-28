@@ -11,10 +11,10 @@
 #define HT_SCENE_W (HT_W/2)
 #define HT_SCENE_H (HT_H/2)
 #define HT_SCENE_PIXELS (HT_SCENE_W*HT_SCENE_H)
-/* Physical pixels are 2x logical: 36px black, fading through 76px. */
-#define HT_BORDER 18
-#define HT_FADE 38
-#define HT_MASK_RADIUS 90
+/* Physical pixels are 2x logical: 18px black, fading through 38px. */
+#define HT_BORDER 9
+#define HT_FADE 19
+#define HT_MASK_RADIUS 45
 #define HT_MASK_PIXELS (HT_MASK_RADIUS*HT_MASK_RADIUS)
 static bool ht_framed;
 static uint16_t ht_dirty_top,ht_dirty_height;
@@ -772,8 +772,8 @@ static bool ht_cache_visible(int camera) {
     if(ht_abort) return false;
     for(int depth=0;depth<HT_LAYERS;++depth) {
         int offset=ht_layer_offset(depth,camera);
-        int first=ht_floor_div(offset+HT_BORDER,HT_TILE_W);
-        int last=ht_floor_div(offset+HT_W-HT_BORDER-1,HT_TILE_W);
+        int first=ht_floor_div(offset+2*(HT_BORDER/2),HT_TILE_W);
+        int last=ht_floor_div(offset+HT_W-2*(HT_BORDER/2)-1,HT_TILE_W);
         for(int key=first;key<=last;++key) if(!ht_cache_ensure(depth,key)) return false;
     }
     return true;
@@ -782,17 +782,24 @@ static bool ht_cache_visible(int camera) {
  * per host loop: no heap allocation and no unbounded full-level warmup. */
 static bool ht_cache_prefetch(int camera,int direction) {
     if(ht_abort) return false;
-    int chosen_depth=-1,chosen_key=0;
-    for(int depth=0;depth<HT_LAYERS && chosen_depth<0;++depth) {
+    int chosen_depth=-1,chosen_key=0,nearest=1000000;
+    static const int speed[HT_LAYERS]={22,53,100,123};
+    for(int depth=0;depth<HT_LAYERS;++depth) {
         int offset=ht_layer_offset(depth,camera);
-        int first=ht_floor_div(offset+HT_BORDER,HT_TILE_W);
-        int last=ht_floor_div(offset+HT_W-HT_BORDER-1,HT_TILE_W);
+        int first=ht_floor_div(offset+2*(HT_BORDER/2),HT_TILE_W);
+        int last=ht_floor_div(offset+HT_W-2*(HT_BORDER/2)-1,HT_TILE_W);
         for(int key=first;key<=last;++key) if(!ht_cache_has(depth,key)) {
-            chosen_depth=depth; chosen_key=key; break;
+            chosen_depth=depth; chosen_key=key; nearest=-1; break;
         }
-        if(chosen_depth<0) {
-            int key=direction<0?first-1:last+1;
-            if(!ht_cache_has(depth,key)) { chosen_depth=depth; chosen_key=key; }
+        if(nearest<0) break;
+        int key=direction<0?first-1:last+1;
+        if(!ht_cache_has(depth,key)) {
+            int gap=direction<0?offset+2*(HT_BORDER/2)-first*HT_TILE_W:
+                (last+1)*HT_TILE_W-(offset+HT_W-2*(HT_BORDER/2)-1);
+            /* Prepare the strip needed soonest in camera-space, rather than
+             * always serving the slowest background layer first. */
+            int distance=gap*100/speed[depth];
+            if(distance<nearest) { nearest=distance; chosen_depth=depth; chosen_key=key; }
         }
     }
     if(chosen_depth<0) { ht_cache_job.active=false; return false; }
@@ -851,11 +858,14 @@ static void ht_composite_dsp_span(uint8_t *dst,const uint8_t *near,const uint8_t
 static void ht_composite_cached(int depth,int offset,int focus_x,int focus_y) {
     const int fade=depth>=2?70:45;
     const int height=depth==3?45:HT_SCENE_H-HT_BORDER/2;
-    int dy=HT_BORDER-focus_y,dy2=dy*dy;
+    /* The half-resolution grid begins at logical 8 for a 9px border.
+     * Lighting must use the sample coordinate, not the odd border value. */
+    const int start=2*(HT_BORDER/2);
+    int dy=start-focus_y,dy2=dy*dy;
     for(int y=HT_BORDER/2;y<height;++y) {
         uint8_t *scene=ht_low_scene+y*HT_SCENE_W;
-        int distance=(HT_BORDER-focus_x)*(HT_BORDER-focus_x)+dy2;
-        int delta=4+4*(HT_BORDER-focus_x);
+        int distance=(start-focus_x)*(start-focus_x)+dy2;
+        int delta=4+4*(start-focus_x);
         for(int x=HT_BORDER/2;x<HT_SCENE_W-HT_BORDER/2;) {
             int world=offset+2*x,key=ht_floor_div(world,HT_TILE_W),column=world-key*HT_TILE_W;
             int count=ht_min(HT_SCENE_W-HT_BORDER/2-x,(HT_TILE_W-column+1)/2),slot=ht_cache_slot(key);
@@ -1153,7 +1163,7 @@ static void ht_text(int x,int y,const char *text,int scale) {
 static void ht_pack(uint8_t *out,int stride) { ht_pack_format(out,stride,false); }
 
 /* Two steady white lines in the lower dark margin. These rows remain within
- * the existing 36..501 physical dirty range; no temporal/typewriter effect. */
+ * the computed physical dirty range; no temporal/typewriter effect. */
 static void ht_narration(const ht_game *game) {
     unsigned beat=ht_story_beat(game->story_x);
     ht_rect(ht_scene,57,232,366,19,255);

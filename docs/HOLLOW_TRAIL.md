@@ -863,3 +863,25 @@ coverage, and cache equivalence against independently rendered scenes in every
 setting. The Xtensa app build and six host sanitizer suites pass. These checks
 and inspected engine previews do not establish physical-panel FPS or legibility.
 The cumulative unreleased app version remains 1.0.14 (master/published 1.0.13).
+
+## Half-width vignette (1.0.14 follow-up)
+
+The solid straight-edge border is now 18 physical pixels (previously 36),
+with the fade reaching full scenery at 38 pixels (previously 76). The rounded
+corner radius is halved as well, from 180 to 90 physical pixels. The earlier
+border measurements above describe the original implementation.
+
+The newly exposed area is rendered and packed normally. Dirty rows are derived
+from the mask, now rows 18–519 inclusive (502 rows), rather than a hardcoded
+crop. Half-resolution lighting uses the actual even sample coordinate when the
+logical border is odd. Cache requests include those samples. Prefetch chooses
+the next strip by distance until visibility, adjusted for each layer's parallax
+speed, rather than always prioritizing the far background. The four-slice test
+still keeps up with 12px camera steps; the app's work/time budget is unchanged.
+
+Independent cache comparisons now render overlapping viewports to provide real
+blur halos at the newly visible edges. All ten settings, scalar/DSP equivalence,
+packing and narration dirty coverage pass the existing six sanitizer suites.
+The Xtensa app build passes. More scenery is now visible and scanned; device FPS
+with this wider view remains unmeasured. App version remains the cumulative
+unreleased 1.0.14, above master/published 1.0.13.

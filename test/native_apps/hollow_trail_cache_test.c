@@ -16,19 +16,23 @@ static void reference(void) {
     int camera=game.camera/256,px=game.x/256-camera,py=game.y/256-14;
     const int radius[]={3,1,0,0},spread[]={9,6,4,4};
     ht_clear_layer(ht_scene);
-    for(int depth=0;depth<HT_LAYERS;++depth) {
+    for(int depth=0;depth<HT_LAYERS;++depth) for(int half=0;half<2;++half) {
+        /* Two overlapping viewport renders provide independent horizontal
+         * blur halos now that the visible border is thinner than the filter. */
+        int shift=half?HT_W/4:-HT_W/4;
         ht_clear_layer(ht_raw);
-        int offset=ht_layer_offset(depth,camera);
+        int offset=ht_layer_offset(depth,camera)+shift;
         if(depth<2) ht_background(depth,offset);
         else if(depth==2) ht_foreground(offset);
         else ht_branches(offset);
         ht_blur_region(ht_raw,ht_near,radius[depth],0,HT_W);
         ht_blur_region(ht_near,ht_wide,spread[depth],0,HT_W);
         /* Independent full-resolution lighting reference, sampled afterward. */
-        for(int y=0;y<HT_H;++y) for(int x=0;x<HT_W;++x) {
+        for(int y=0;y<HT_H;++y) for(int x=half*HT_W/2;x<(half+1)*HT_W/2;++x) {
             int dx=x-px,dy=y-py,i=y*HT_W+x;
             int radial=ht_clamp((dx*dx+dy*dy-2500)/200,0,256);
-            int v=(ht_near[i]*(256-radial)+ht_wide[i]*radial)>>8;
+            int src=y*HT_W+x-shift;
+            int v=(ht_near[src]*(256-radial)+ht_wide[src]*radial)>>8;
             v=v*(256-((radial*(depth>=2?70:45))>>8))>>8;
             ht_scene[i]=(uint8_t)ht_max(ht_scene[i],v);
         }
