@@ -8,7 +8,7 @@
 #include <string.h>
 
 #define MV_PAD_BACK    (1u << 0)
-#define MV_PAD_CONFIRM (1u << 1)
+#define MV_PAD_FINE    (1u << 1)
 #define MV_PAD_LEFT    (1u << 2)
 #define MV_PAD_RIGHT   (1u << 3)
 #define MV_PAD_UP      (1u << 4)
@@ -19,13 +19,17 @@
 #define MV_PAD_DEVICE_LIMIT 4u
 #define MV_MOTION_RAMP_MS 120u
 #define MV_MOTION_MAX_FRAME_MS 48u
+#define MV_ROTATE_RADIANS_PER_SEC 1.95f
+#define MV_PAN_PIXELS_PER_SEC 360.0f
+#define MV_ZOOM_RATE_PER_SEC 2.25f
+#define MV_FINE_SPEED_SCALE 0.25f
 
 typedef struct {
     const risc_usb_gamepad_api_v1 *api;
     t5_provider_capability_lease_t lease;
     uint64_t device;
     uint32_t held;
-    bool armed, connected;
+    bool armed, connected, snapshot_valid;
 } mv_pad_source_t;
 
 typedef struct {
@@ -33,6 +37,7 @@ typedef struct {
     mv_pad_source_t sources[2]; /* HID, XInput */
     uint32_t held;
     unsigned selected;
+    bool mapped_camera_blocked;
 } mv_controller_t;
 
 typedef struct {
@@ -47,10 +52,11 @@ typedef struct {
 static uint32_t mv_pad_decode(const risc_usb_gamepad_state_v1 *pad, bool xinput) {
     if (!pad->connected) return 0u;
     uint32_t held = 0;
-    /* The installed XInput provider normalizes B/A to bits 0/1. HID uses
-     * descriptor Button 1/2 for Confirm/Back, as the UI navigation provider does. */
+    /* XInput normalizes B/A to bits 0/1. The tested HID SNES pad exposes
+     * A/B as Button 1/2. A is exclusively a held precision modifier here,
+     * not a camera-reset action (including when pressed before a direction). */
     if (pad->buttons & (xinput ? 1u : 2u)) held |= MV_PAD_BACK;
-    if (pad->buttons & (xinput ? 2u : 1u)) held |= MV_PAD_CONFIRM;
+    if (pad->buttons & (xinput ? 2u : 1u)) held |= MV_PAD_FINE;
     if (pad->buttons & (1u << 4)) held |= MV_PAD_LB;
     if (pad->buttons & (1u << 5)) held |= MV_PAD_RB;
     if (pad->hat <= 7u) {
@@ -108,6 +114,7 @@ static void mv_controller_open(mv_controller_t *controller,
 static void mv_pad_poll(mv_pad_source_t *source, bool xinput) {
     source->held = 0;
     source->connected = false;
+    source->snapshot_valid = false;
     const risc_usb_gamepad_api_v1 *api = source->api;
     if (!api) return;
     risc_usb_gamepad_state_v1 states[MV_PAD_DEVICE_LIMIT] = {{0}};
@@ -118,6 +125,7 @@ static void mv_pad_poll(mv_pad_source_t *source, bool xinput) {
         source->armed = false;
         return;
     }
+    source->snapshot_valid = true;
     const risc_usb_gamepad_state_v1 *chosen = NULL;
     for (size_t i = 0; i < count; ++i) {
         if (!states[i].connected || !states[i].device) continue;
@@ -162,17 +170,36 @@ static uint32_t mv_controller_poll(mv_controller_t *controller) {
     return controller->held;
 }
 
+/* The compatibility poll has no source ID: a mapped direction can be the
+ * same gamepad input with its bumper stripped off. Do not apply both paths.
+ * Raw ownership includes neutral/rearming/fault snapshots, not only a held
+ * direction. After unplug, drain to a neutral mapped snapshot before enabling
+ * keyboard/physical-camera fallback. Back/exit is deliberately never masked. */
+static uint32_t mv_controller_filter_mapped(mv_controller_t *controller,
+                                            uint32_t buttons, uint32_t camera_mask) {
+    bool raw_owns_camera = controller->held != 0u;
+    for (unsigned i = 0; i < 2u; ++i) {
+        const mv_pad_source_t *source = &controller->sources[i];
+        if (source->api && (source->connected || !source->snapshot_valid))
+            raw_owns_camera = true;
+    }
+    if (raw_owns_camera) controller->mapped_camera_blocked = true;
+    else if (!(buttons & camera_mask)) controller->mapped_camera_blocked = false;
+    return controller->mapped_camera_blocked ? buttons & ~camera_mask : buttons;
+}
+
 static uint32_t mv_motion_action(uint32_t held) {
     uint32_t action = held & MV_PAD_DIRECTIONS;
     if ((action & (MV_PAD_LEFT | MV_PAD_RIGHT)) == (MV_PAD_LEFT | MV_PAD_RIGHT))
         action &= ~(MV_PAD_LEFT | MV_PAD_RIGHT);
     if ((action & (MV_PAD_UP | MV_PAD_DOWN)) == (MV_PAD_UP | MV_PAD_DOWN))
         action &= ~(MV_PAD_UP | MV_PAD_DOWN);
-    if (held & MV_PAD_RB) return action ? action | MV_PAD_RB : 0u;
-    if (held & MV_PAD_LB) {
+    if (held & MV_PAD_RB) action = action ? action | MV_PAD_RB : 0u;
+    else if (held & MV_PAD_LB) {
         action &= MV_PAD_UP | MV_PAD_DOWN;
-        return action ? action | MV_PAD_LB : 0u;
+        if (action) action |= MV_PAD_LB;
     }
+    if (action && (held & MV_PAD_FINE)) action |= MV_PAD_FINE;
     return action;
 }
 
@@ -187,9 +214,14 @@ static bool mv_motion_step(mv_motion_t *motion, uint32_t held, uint32_t now,
     uint32_t elapsed = now - motion->last_ms;
     motion->last_ms = now;
     if (!motion->initialized || action != motion->action) {
+        /* Precision may be pressed/released mid-gesture. Preserve the start
+         * ramp on speed-only changes, but never carry old-speed pending time. */
+        if (!motion->initialized ||
+            (action & ~MV_PAD_FINE) != (motion->action & ~MV_PAD_FINE))
+            motion->ramp_ms = 0;
         motion->initialized = true;
         motion->action = action;
-        motion->ramp_ms = motion->pending_ms = 0;
+        motion->pending_ms = 0;
         return false;
     }
     if (!action) return false;
@@ -206,20 +238,21 @@ static bool mv_motion_step(mv_motion_t *motion, uint32_t held, uint32_t now,
     const float effective_ms = (float)(2u * motion->ramp_ms + ramp) * (float)ramp *
                               (0.5f / (float)MV_MOTION_RAMP_MS) + (float)(elapsed - ramp);
     motion->ramp_ms += ramp;
-    const float dt = effective_ms * 0.001f;
+    const float speed = (action & MV_PAD_FINE) ? MV_FINE_SPEED_SCALE : 1.0f;
+    const float dt = effective_ms * 0.001f * speed;
     const int dx = ((action & MV_PAD_RIGHT) != 0u) - ((action & MV_PAD_LEFT) != 0u);
     const int dy = ((action & MV_PAD_DOWN) != 0u) - ((action & MV_PAD_UP) != 0u);
     if (action & MV_PAD_RB) {
-        const float distance = 120.0f * dt * (dx && dy ? 0.70710678f : 1.0f);
+        const float distance = MV_PAN_PIXELS_PER_SEC * dt * (dx && dy ? 0.70710678f : 1.0f);
         delta->pan_x = (float)dx * distance;
         delta->pan_y = (float)dy * distance;
     } else if (action & MV_PAD_LB) {
-        const float z = -(float)dy * 0.75f * dt;
-        /* exp(z) for |z| <= .036, without a libm dependency. */
-        delta->zoom_factor = 1.0f + z + 0.5f*z*z + (1.0f/6.0f)*z*z*z;
+        const float z = -(float)dy * MV_ZOOM_RATE_PER_SEC * dt;
+        /* exp(z) for |z| <= .108, without a libm dependency. */
+        delta->zoom_factor = 1.0f + z + 0.5f*z*z + (1.0f/6.0f)*z*z*z + (1.0f/24.0f)*z*z*z*z;
     } else {
-        delta->yaw = (float)dx * 0.65f * dt;
-        delta->pitch = (float)dy * 0.65f * dt;
+        delta->yaw = (float)dx * MV_ROTATE_RADIANS_PER_SEC * dt;
+        delta->pitch = (float)dy * MV_ROTATE_RADIANS_PER_SEC * dt;
     }
     return dt > 0.0f;
 }

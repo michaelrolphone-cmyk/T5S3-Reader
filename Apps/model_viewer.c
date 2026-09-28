@@ -34,6 +34,7 @@
 #define MV_TAP_MAX_MS 260u
 #define MV_TAP_MOVE_PX 14
 #define MV_REFINE_DELAY_MS 150u
+#define MV_MAPPED_CAMERA_BUTTONS (T5_APP_BUTTON_CONFIRM | T5_APP_BUTTON_LEFT | T5_APP_BUTTON_RIGHT | T5_APP_BUTTON_UP | T5_APP_BUTTON_DOWN)
 #define MV_PI 3.14159265358979323846f
 #define MV_TWO_PI 6.28318530717958647692f
 
@@ -103,7 +104,6 @@ static bool g_render_input_pending;
 static uint32_t g_render_service_ms;
 static mv_controller_t g_controller;
 static mv_motion_t g_motion;
-static uint32_t g_previous_pad_buttons;
 static bool g_draw_pending;
 static bool g_render_interactive;
 
@@ -767,6 +767,7 @@ static bool mv_render_service(void) {
     mv_motion_delta_t ignored;
     (void)mv_motion_step(&g_motion,held,g_app->millis(),false,&ignored);
     if (held&MV_PAD_BACK) input.exit_requested=true;
+    input.buttons=mv_controller_filter_mapped(&g_controller,input.buttons,MV_MAPPED_CAMERA_BUTTONS);
     if (input.buttons || input.exit_requested) {
         g_render_input=input;
         g_render_input_pending=true;
@@ -846,8 +847,8 @@ static bool mv_render(bool interactive) {
              interactive ? "FAST" : (step == 1u ? "FULL" : "REFINED"));
     mv_text(buffer,14,894,g_status[0]?g_status:info,1);
     mv_text(buffer,14,910,"D-PAD ROTATE  LB+UP/DOWN ZOOM  RB+D-PAD PAN",1);
-    mv_text(buffer,14,926,"DRAG ROTATE  2F PAN+ZOOM",1);
-    mv_text(buffer,14,942,"DOUBLE TAP / CONFIRM RESET  BACK EXIT",1);
+    mv_text(buffer,14,926,"HOLD A: 1/4 SPEED  DRAG ROTATE  2F PAN+ZOOM",1);
+    mv_text(buffer,14,942,"DOUBLE TAP RESET  BACK EXIT",1);
 
     return g_video->submit(0, g_surface.height);
 }
@@ -1020,8 +1021,7 @@ static bool mv_handle_touch(const mv_contacts_t *prev,const mv_contacts_t *now,u
 static bool mv_buttons(const t5_app_input_t *input,uint32_t now) {
     const uint32_t held=g_controller.held;
     if(input->buttons&T5_APP_BUTTON_BACK || input->exit_requested || (held&MV_PAD_BACK)) return false;
-    const uint32_t pressed=held&~g_previous_pad_buttons;
-    g_previous_pad_buttons=held;
+    const uint32_t mapped=mv_controller_filter_mapped(&g_controller,input->buttons,MV_MAPPED_CAMERA_BUTTONS);
     mv_motion_delta_t delta;
     bool changed=mv_motion_step(&g_motion,held,now,g_video->can_submit(),&delta);
     if(changed) {
@@ -1031,13 +1031,13 @@ static bool mv_buttons(const t5_app_input_t *input,uint32_t now) {
         g_view.pan_x=mv_clampf(g_view.pan_x+delta.pan_x,-4096.0f,4096.0f);
         g_view.pan_y=mv_clampf(g_view.pan_y+delta.pan_y,-4096.0f,4096.0f);
     }
-    /* Physical buttons/keyboard remain a small-step fallback. Acquiring the
-     * raw gamepad capabilities suppresses their duplicate UI repeat stream. */
-    if(input->buttons&T5_APP_BUTTON_LEFT){g_view.yaw=mv_wrap_angle(g_view.yaw-0.012f);changed=true;}
-    if(input->buttons&T5_APP_BUTTON_RIGHT){g_view.yaw=mv_wrap_angle(g_view.yaw+0.012f);changed=true;}
-    if(input->buttons&T5_APP_BUTTON_UP){g_view.pitch=mv_wrap_angle(g_view.pitch-0.012f);changed=true;}
-    if(input->buttons&T5_APP_BUTTON_DOWN){g_view.pitch=mv_wrap_angle(g_view.pitch+0.012f);changed=true;}
-    if((input->buttons&T5_APP_BUTTON_CONFIRM) || (pressed&MV_PAD_CONFIRM)) {
+    /* Mapped input has no source/bumper information. It is a fallback only,
+     * never a second rotation/reset path alongside the raw gamepad. */
+    if(mapped&T5_APP_BUTTON_LEFT){g_view.yaw=mv_wrap_angle(g_view.yaw-0.012f);changed=true;}
+    if(mapped&T5_APP_BUTTON_RIGHT){g_view.yaw=mv_wrap_angle(g_view.yaw+0.012f);changed=true;}
+    if(mapped&T5_APP_BUTTON_UP){g_view.pitch=mv_wrap_angle(g_view.pitch-0.012f);changed=true;}
+    if(mapped&T5_APP_BUTTON_DOWN){g_view.pitch=mv_wrap_angle(g_view.pitch+0.012f);changed=true;}
+    if(mapped&T5_APP_BUTTON_CONFIRM) {
         mv_reset_view();
         memset(&g_motion,0,sizeof(g_motion));
         changed=true;
@@ -1059,7 +1059,6 @@ __attribute__((visibility("default"))) void app_main(void) {
     g_render_input_pending=false;
     memset(&g_controller,0,sizeof(g_controller));
     memset(&g_motion,0,sizeof(g_motion));
-    g_previous_pad_buttons=0;
     g_draw_pending=false;
     g_touch_lease=T5_PROVIDER_CAPABILITY_LEASE_INVALID;
 
