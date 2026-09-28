@@ -743,3 +743,31 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+### 103. Driver Manager rejects otherwise-valid release catalogs once they contain more than 64 drivers
+
+- **Status:** Open.
+- **Affected:** `src/native/NativeDriverManagerBridge.cpp`: `kMaxDriverAssets`, `loadCanonicalDriverCatalog()`, `loadAggregateDriverCatalog()`, `loadLegacyReleaseCatalog()`; `Apps/driver_manager.c`: `LIMIT`, `populate_release()`.
+- **Trigger / reproduction:** Publish an authoritative release-index or aggregate driver catalog containing 65 or more valid driver entries, then refresh Driver Manager.
+- **Failure:** Both authoritative catalog loaders reject the entire catalog when `entries.size() > kMaxDriverAssets` (64). The legacy discovery fallback separately stops collecting at the same fixed limit, and the UI also clamps to 64 rows. A valid 65th driver therefore cannot be represented through any catalog path; depending on which fallback is available, Driver Manager either reports the online catalog unavailable/empty or silently omits later drivers.
+- **Root cause / impact:** Driver inventory capacity is encoded as an arbitrary fixed catalog limit at both the firmware catalog layer and UI layer instead of being bounded by available memory. Growth of the release index can break driver discovery globally rather than degrading according to actual RAM/PSRAM availability.
+- **Repair direction:** Remove the fixed 64-entry acceptance rule from the authoritative loaders, keep catalog storage dynamically allocated (prefer PSRAM-backed JSON/vector storage where appropriate), and make the UI page/virtualize the returned catalog rather than truncating it. Keep only structural/size limits required for safe individual records. Add a regression with at least 65 valid drivers and verify the last entry can be listed and installed.
+
+### 104. The serviced-refresh worker permanently reserves 32 KiB for an intended 8 KiB task stack
+
+- **Status:** Open.
+- **Affected:** `src/native/NativeAppHost.cpp`: `refreshStack`, `presentServicedMode()`, `xTaskCreateStaticPinnedToCore(renderServicedFrame, ...)`.
+- **Trigger / reproduction:** Build the ESP32-S3 firmware and inspect the static `refreshStack` allocation or internal-RAM map. `StackType_t` is 32 bits on this target, while the array is declared as `StackType_t refreshStack[8192]`.
+- **Failure:** The source comment says the renderer worker reserves an 8 KiB stack, but the backing array consumes 8192 * 4 = 32768 bytes. ESP-IDF task-creation stack depths are specified in bytes, and the call passes `sizeof(refreshStack)`, so the task is actually provisioned with the full 32 KiB buffer rather than 8 KiB.
+- **Root cause / impact:** The desired byte count was used as a count of `StackType_t` elements. This permanently consumes about 24 KiB more internal DRAM than intended, reducing contiguous heap available to TLS, driver loading, USB, display, and other memory-sensitive firmware paths.
+- **Repair direction:** Size the static buffer in stack words from a byte constant (for example `kRefreshStackBytes / sizeof(StackType_t)`) and pass the byte count expected by ESP-IDF. Confirm the worker's real high-water mark on device before selecting the final stack size, and add a compile-time assertion that the buffer byte size equals the configured byte budget.
+
+### 105. The native image API still exposes the PNG decode path that the bundled Image Viewer explicitly avoids because it can crash
+
+- **Status:** Open.
+- **Affected:** `src/native/NativeImageBridge.cpp`: `renderFit()`, `pngDraw()`; `Apps/image_viewer.c`: PNG guard in `app_main()`.
+- **Trigger / reproduction:** From any native app other than the bundled Image Viewer, obtain `t5_image_api_v1` and call `render_fit()` on a real-world PNG that triggers the known PNGdec fault documented in `Apps/image_viewer.c`.
+- **Failure:** Image Viewer detects PNG and deliberately refuses to call `render_fit()`, displaying “PNG decoder error prevented” because the firmware path can fault inside PNGdec. The shared `t5_image_api_v1::render_fit` implementation nevertheless continues to enter that same PNGdec path for every other native app, so the safety workaround is not enforced at the API boundary and another consumer can still crash the firmware.
+- **Root cause / impact:** A known decoder defect is worked around in one application instead of being fixed or quarantined in the shared image bridge that owns the unsafe decoder. The API therefore advertises PNG rendering as available even though it is not safe for all valid inputs.
+- **Repair direction:** Fix and regression-test the PNGdec integration in `NativeImageBridge` (including the real-world files that originally faulted). Until that is safe, make the bridge reject PNG `render_fit()` calls consistently rather than relying on each consumer to know about the crash. Remove the app-local guard only after the shared decoder path is proven safe.
+
