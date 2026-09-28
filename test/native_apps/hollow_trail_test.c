@@ -20,7 +20,17 @@ int main(void) {
         bool jump=false;
         for(int i=0;i<HT_PLATFORMS-1;++i)
             if(ht.grounded && ht.x/256>=ht_land[i].right-8 && ht.x/256<=ht_land[i].right+4) jump=true;
-        ht_step(1,jump,true);
+        int direction=1;
+        if(ht.x/256>=2820 && ht.grounded && !ht.puzzle.solved) {
+            const ht_puzzle_definition *p=&ht_puzzles[ht.level];
+            int station=0;
+            if(p->kind==0) station=p->answer[ht.puzzle.progress];
+            else while(station<2 && ht.puzzle.value[station]==p->answer[station]) ++station;
+            int target=HT_PUZZLE_FIRST+station*HT_PUZZLE_SPACING;
+            direction=ht.x/256<target?1:-1;
+            if(ht_puzzle_near(&ht)==station) { assert(ht_interact()); direction=0; }
+        }
+        ht_step(direction,jump,true);
         visited|=1u<<ht.level;
     }
     assert(visited==(1u<<HT_LEVELS)-1 && ht.laps==1 && ht.deaths==0);
@@ -43,6 +53,47 @@ int main(void) {
         }
     }
     ht.level=0; ht_spawn(true);
+    /* Explicit authored solutions, not answers read out of game definitions. */
+    const unsigned solutions[HT_LEVELS][5]={
+        {2,0,1,9,9},{0,2,9,9,9},{0,1,1,1,2},
+        {1,9,9,9,9},{0,2,1,0,9},{0,0,0,1,2},
+        {1,2,9,9,9},{0,0,1,2,2},{1,0,2,1,9},{0,0,0,9,9}
+    };
+    for(unsigned level=0;level<HT_LEVELS;++level) {
+        ht.level=level; ht_spawn(true);
+        assert(!ht_interact()); /* Too far away. */
+        ht.x=HT_PUZZLE_FIRST*256; ht.grounded=false; assert(!ht_interact());
+        ht.x=HT_GOAL*256; ht.y=ht_land[9].top*256; ht.vy=0;
+        ht_step(1,false,false);
+        assert(ht.level==level && ht.x==HT_PUZZLE_GATE*256 && !ht.puzzle.solved);
+        for(unsigned k=0;k<5 && solutions[level][k]!=9;++k) {
+            ht.x=(HT_PUZZLE_FIRST+(int)solutions[level][k]*HT_PUZZLE_SPACING)*256;
+            ht.y=ht_land[9].top*256; ht.grounded=true; assert(ht_interact());
+        }
+        /* Three dial chapters need one final turn of the third drum. */
+        if(level==2 || level==5 || level==7) assert(ht_interact());
+        assert(ht.puzzle.solved);
+        unsigned builds=ht_cache_builds;
+        assert(!ht_interact() && ht_cache_builds==builds); /* Solved state latches. */
+        ht.checkpoint=9; ht_puzzle_state saved=ht.puzzle; ht_spawn(false);
+        assert(!memcmp(&saved,&ht.puzzle,sizeof(saved)) && ht.checkpoint==9);
+        ht.x=HT_GOAL*256; ht.y=ht_land[9].top*256; ht.vy=0; ht_step(1,false,false);
+        assert(ht.level==(level+1)%HT_LEVELS && !ht.puzzle.solved && ht.puzzle.progress==0);
+    }
+    ht.level=0; ht_spawn(true); ht.grounded=true;
+    ht.x=HT_PUZZLE_FIRST*256; assert(ht_interact());
+    assert(ht.puzzle.wrong && ht.puzzle.progress==0);
+    ht.x=(HT_PUZZLE_FIRST+2*HT_PUZZLE_SPACING)*256; assert(ht_interact());
+    assert(!ht.puzzle.wrong && ht.puzzle.progress==1);
+    ht.checkpoint=9; ht_spawn(false); assert(ht.puzzle.progress==1);
+    ht.level=0; ht_spawn(true);
+    for(unsigned level=0;level<HT_LEVELS;++level) {
+        assert(strlen(ht_puzzles[level].name)*6<=330);
+        for(int line=0;line<2;++line) {
+            assert(strlen(ht_puzzles[level].clue[line])*6<=366);
+            assert(strlen(ht_puzzles[level].reveal[line])*6<=366);
+        }
+    }
     /* Narration milestones, glyph bounds and dirty-row coverage. */
     assert(ht_story_beat(0)==0 && ht_story_beat(1099)==0);
     assert(ht_story_beat(1100)==1 && ht_story_beat(2599)==1 && ht_story_beat(2600)==2);

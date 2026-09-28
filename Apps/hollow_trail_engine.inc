@@ -64,6 +64,7 @@ static const ht_platform *ht_level_land(unsigned level) {
     return level>=3?ht_routes[level-3]:level==2?ht_oil:level==1?ht_city:ht_forest;
 }
 #include "hollow_trail_story.inc"
+#include "hollow_trail_puzzles.inc"
 typedef struct {
     int x, y, vx, vy; /* Q8, y is feet */
     int camera, checkpoint, coyote, jump_buffer, facing, stride;
@@ -71,6 +72,7 @@ typedef struct {
     unsigned level; /* Laps count complete ten-chapter journeys. */
     int story_x; /* Furthest progress in this chapter, retained on death. */
     bool grounded;
+    ht_puzzle_state puzzle;
 } ht_game;
 static ht_game ht;
 #define ht_land ht_level_land(ht.level)
@@ -155,10 +157,41 @@ static void ht_bind(uint8_t *memory) {
     ht_corner_mask=cache; ht_low_scene=cache+HT_MASK_PIXELS; ht_mask_init();
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
 }
+#define HT_PUZZLE_FIRST 2900
+#define HT_PUZZLE_SPACING 85
+#define HT_PUZZLE_GATE (HT_GOAL-26)
+static int ht_puzzle_near(const ht_game *game) {
+    if(!game->grounded) return -1;
+    for(int i=0;i<3;++i)
+        if(ht_abs(game->x/256-(HT_PUZZLE_FIRST+i*HT_PUZZLE_SPACING))<=22) return i;
+    return -1;
+}
+/* Edge-triggered by app input, also directly exercised by host gameplay tests. */
+static bool ht_interact(void) {
+    int station=ht_puzzle_near(&ht);
+    if(station<0 || ht.puzzle.solved) return false;
+    const ht_puzzle_definition *p=&ht_puzzles[ht.level];
+    if(p->kind==0) {
+        if(station==p->answer[ht.puzzle.progress]) {
+            ++ht.puzzle.progress; ht.puzzle.wrong=false;
+        } else {
+            /* A wrong note starts a fresh attempt; allow it to be note one. */
+            ht.puzzle.progress=station==p->answer[0]?1:0; ht.puzzle.wrong=true;
+        }
+        ht.puzzle.solved=ht.puzzle.progress==p->length;
+    } else {
+        ht.puzzle.value[station]=(ht.puzzle.value[station]+1)%(p->kind==1?2:4);
+        ht.puzzle.solved=true;
+        for(int i=0;i<3;++i) if(ht.puzzle.value[i]!=p->answer[i]) ht.puzzle.solved=false;
+    }
+    return true;
+}
 static void ht_spawn(bool restart) {
+    ht_puzzle_state puzzle=restart?(ht_puzzle_state){0}:ht.puzzle;
     unsigned laps=ht.laps, deaths=ht.deaths, level=ht.level;
     int cp=restart?0:ht.checkpoint, story_x=restart?0:ht.story_x;
     memset(&ht,0,sizeof(ht)); ht.laps=laps; ht.deaths=deaths; ht.level=level;
+    ht.puzzle=puzzle;
     ht.story_x=story_x; ht.checkpoint=cp; ht.x=(cp?ht_land[cp].left+35:95)*256;
     ht.y=ht_land[cp].top*256; ht.grounded=true; ht.facing=1;
     ht.camera=ht_clamp(ht.x/256-165,0,HT_GOAL-340)*256;
@@ -194,10 +227,15 @@ static void ht_step(int direction,bool jump_pressed,bool jump_held) {
             ht.vx=0;
         }
     }
+    /* The chapter exit stays closed even if jumped at from above. All three
+     * controls and the last checkpoint remain on its accessible side. */
+    if(!ht.puzzle.solved && ht.x>HT_PUZZLE_GATE*256) {
+        ht.x=HT_PUZZLE_GATE*256; ht.vx=0;
+    }
     ht.story_x=ht_max(ht.story_x,ht.x/256);
     if(ht.grounded) ht.stride+=ht_abs(ht.vx);
     if(ht.y>335*256) { ++ht.deaths; ht_spawn(false); return; }
-    if(ht.x>=HT_GOAL*256 && ht.grounded) {
+    if(ht.x>=HT_GOAL*256 && ht.grounded && ht.puzzle.solved) {
         if(++ht.level==HT_LEVELS) { ht.level=0; ++ht.laps; }
         ht_spawn(true); return;
     }
@@ -981,6 +1019,7 @@ static void ht_vignette(void) {
     }
     ht_framed=true;
 }
+static void ht_draw_puzzle(const ht_game *game);
 static void ht_render_scene(void) {
     /* Input checkpoints may advance live physics. Freeze the rendered frame
      * so trees, focus and character all use one consistent game snapshot. */
@@ -992,6 +1031,7 @@ static void ht_render_scene(void) {
     for(int depth=0;depth<HT_LAYERS;++depth)
         ht_composite_cached(depth,ht_layer_offset(depth,camera),px,py);
     ht_upscale_scene();
+    ht_draw_puzzle(&game);
     ht_character(px,game.y/256,&game);
     ht_vignette();
 }
@@ -1152,13 +1192,15 @@ static const uint8_t *ht_glyph(char ch) {
     return blank;
 }
 
-static void ht_text(int x,int y,const char *text,int scale) {
+static void ht_text_color(int x,int y,const char *text,int scale,int color) {
     for(;*text;++text,x+=6*scale) {
         const uint8_t *g=ht_glyph(*text);
         for(int a=0;a<5;++a) for(int b=0;b<7;++b)
-            if(g[a]&(1u<<b)) ht_rect(ht_scene,x+a*scale,y+b*scale,scale,scale,255);
+            if(g[a]&(1u<<b)) ht_rect(ht_scene,x+a*scale,y+b*scale,scale,scale,color);
     }
 }
+
+static void ht_text(int x,int y,const char *text,int scale) { ht_text_color(x,y,text,scale,255); }
 
 static void ht_pack(uint8_t *out,int stride) { ht_pack_format(out,stride,false); }
 
@@ -1169,6 +1211,8 @@ static void ht_narration(const ht_game *game) {
     ht_rect(ht_scene,57,232,366,19,255);
     for(int line=0;line<2;++line) {
         const char *text=ht_chapters[game->level].lines[beat][line];
+        if(game->x/256>=2780) text=game->puzzle.solved?
+            ht_puzzles[game->level].reveal[line]:ht_puzzles[game->level].clue[line];
         int x=(HT_W-(int)strlen(text)*6)/2, y=233+line*10;
         for(;*text;++text,x+=6) {
             const uint8_t *g=ht_glyph(*text);
@@ -1176,4 +1220,46 @@ static void ht_narration(const ht_game *game) {
                 if(g[a]&(1u<<b)) ht_rect(ht_scene,x+a,y+b,1,1,0);
         }
     }
+}
+
+/* Small sharp interactive overlays; scenery/blur caches never depend on them. */
+static void ht_draw_puzzle(const ht_game *game) {
+    int camera=game->camera/256,top=ht_level_land(game->level)[9].top;
+    const ht_puzzle_definition *p=&ht_puzzles[game->level];
+    for(int i=0;i<3;++i) {
+        int x=HT_PUZZLE_FIRST+i*HT_PUZZLE_SPACING-camera;
+        if(x< -30 || x>=HT_W+30) continue;
+        ht_rect(ht_scene,x-3,top-27,6,27,255);
+        if(p->kind==0) {
+            int height=24+i*7;
+            ht_rect(ht_scene,x-2,top-height-10,4,height+10,255);
+            ht_disk(ht_scene,x,top-height,8,255);
+            ht_rect(ht_scene,x-4,top-height-3,8,4,game->puzzle.solved?0:150);
+        } else {
+            ht_disk(ht_scene,x,top-30,10,255);
+            ht_disk(ht_scene,x,top-30,7,0);
+            char digit[2]={(char)('0'+game->puzzle.value[i]),0};
+            ht_text(x-2,top-33,digit,1);
+        }
+        if(ht_puzzle_near(game)==i) ht_rect(ht_scene,x-12,top+3,24,2,0);
+    }
+    int x=HT_GOAL-camera;
+    if(!game->puzzle.solved) {
+        for(int i=-10;i<=10;i+=5) ht_rect(ht_scene,x+i,top-46,2,46,255);
+        ht_rect(ht_scene,x-12,top-25,25,4,255);
+    } else {
+        ht_disk(ht_scene,x,top-61,5,255); ht_disk(ht_scene,x,top-61,3,0);
+    }
+}
+static void ht_puzzle_prompt(const ht_game *game) {
+    if(game->x/256<2780) return;
+    const ht_puzzle_definition *p=&ht_puzzles[game->level];
+    ht_rect(ht_scene,66,33,348,29,255);
+    ht_text_color(74,37,p->name,1,0);
+    if(game->puzzle.solved) ht_text_color(74,49,"PASSAGE OPEN - FOLLOW THE LIGHT",1,0);
+    else if(p->kind==0) {
+        char status[]="B / UP RING   NOTES 0/0";
+        status[20]=(char)('0'+game->puzzle.progress); status[22]=(char)('0'+p->length);
+        ht_text_color(74,49,game->puzzle.wrong?"WRONG NOTE - BEGIN AGAIN WITH THE CLUE":status,1,0);
+    } else ht_text_color(74,49,p->kind==1?"B / UP TOGGLE NEARBY SWITCH   0 OFF 1 ON":"B / UP TURN NEARBY DIAL   0 1 2 3",1,0);
 }

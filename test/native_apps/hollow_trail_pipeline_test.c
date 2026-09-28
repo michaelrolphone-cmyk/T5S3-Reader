@@ -54,7 +54,7 @@ static bool submit_frame(uint16_t y,uint16_t height) {
     ++submissions;
     if(transition && submissions==2) {
         ht.x=HT_GOAL*256; ht.y=ht_forest[9].top*256;
-        ht.vx=ht.vy=0; ht.grounded=true; ht_step(0,false,false);
+        ht.vx=ht.vy=0; ht.grounded=true; ht.puzzle.solved=true; ht_step(0,false,false);
         assert(ht.level==1 && ht.checkpoint==0);
     }
     if(transition && submissions==3) assert(ht_geometry_level==1 && city_loading_polls>0);

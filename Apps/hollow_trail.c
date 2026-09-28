@@ -37,6 +37,7 @@ static void ht_perf_finish(const t5_video_api_v1 *video,uint32_t now) {
 #define HT_LEFT 1u
 #define HT_RIGHT 2u
 #define HT_JUMP 4u
+#define HT_INTERACT 32u
 #define HT_PAUSE 8u
 #define HT_EXIT 16u
 #define HT_HAS(api,type,field) ((api) && (api)->struct_size >= offsetof(type,field)+sizeof((api)->field) && (api)->field)
@@ -95,6 +96,7 @@ static void ht_input(uint32_t wait) {
                 if(h==1 || h==2 || h==3 || states[i].x > 12000) buttons|=HT_RIGHT;
                 /* Provider's canonical mapping is B/A/Y/X: A is bit 1. */
                 if(states[i].buttons&(1u<<1)) buttons|=HT_JUMP;
+                if(states[i].buttons&1u) buttons|=HT_INTERACT;
                 if(states[i].buttons&(1u<<9)) buttons|=HT_PAUSE;
                 if(states[i].buttons&(1u<<8)) buttons|=HT_EXIT;
             }
@@ -103,7 +105,8 @@ static void ht_input(uint32_t wait) {
     if(!connected) {
         if(in.buttons&T5_APP_BUTTON_LEFT) buttons|=HT_LEFT;
         if(in.buttons&T5_APP_BUTTON_RIGHT) buttons|=HT_RIGHT;
-        if(in.buttons&(T5_APP_BUTTON_CONFIRM|T5_APP_BUTTON_UP)) buttons|=HT_JUMP;
+        if(in.buttons&T5_APP_BUTTON_CONFIRM) buttons|=HT_JUMP;
+        if(in.buttons&T5_APP_BUTTON_UP) buttons|=paused?HT_JUMP:HT_INTERACT;
         if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=HT_PAUSE;
         if(in.buttons&T5_APP_BUTTON_BACK) buttons|=HT_EXIT;
     }
@@ -112,6 +115,8 @@ static void ht_input(uint32_t wait) {
     ht_advance(now);
     uint32_t down=buttons&~previous;
     jump_down|=(down&HT_JUMP)!=0; pause_down|=(down&HT_PAUSE)!=0;
+    if((down&HT_INTERACT) && !paused && !loading && ht.level==ht_geometry_level && ht_interact())
+        ++scene_revision;
     quitting|=(buttons&HT_EXIT)!=0;
     previous=held=buttons; last_poll=now;
 }
@@ -250,7 +255,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(98,66,"LEFT/RIGHT MOVE   A / CONFIRM JUMP",1);
                 ht_text(98,79,"START / DOWN PAUSE   SELECT / BACK EXIT",1);
             }
-            if(!rendering_paused) ht_narration(&rendering_game);
+            if(!rendering_paused) { ht_narration(&rendering_game); ht_puzzle_prompt(&rendering_game); }
             if(rendering_paused) {
                 ht_rect(ht_scene,112,74,256,172,0);
                 ht_text(127,83,"HOLLOW TRAIL 1.0.14",1);

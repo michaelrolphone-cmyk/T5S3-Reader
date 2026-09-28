@@ -46,6 +46,7 @@ static void reference(void) {
         if(x&1) { top=(top+sampled[sy*HT_SCENE_W+nx])/2;bottom=(bottom+sampled[ny*HT_SCENE_W+nx])/2; }
         ht_scene[y*HT_W+x]=(uint8_t)((y&1)?(top+bottom)/2:top);
     }
+    ht_draw_puzzle(&game);
     ht_character(px,game.y/256,&game); ht_vignette();
 }
 static unsigned dsp_calls;
