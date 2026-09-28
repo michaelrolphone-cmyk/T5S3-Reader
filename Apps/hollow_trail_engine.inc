@@ -9,7 +9,7 @@
 #define HT_W 480
 #define HT_H 270
 #define HT_PIXELS (HT_W * HT_H)
-#define HT_MEMORY (HT_PIXELS * 10u + HT_W * 3u * sizeof(int16_t))
+#define HT_MEMORY (HT_PIXELS * 10u)
 #define HT_GOAL 3200
 #define HT_STEP_MS 32u /* Half-speed motion; preserve jump paths and level reachability. */
 
@@ -29,7 +29,7 @@ typedef struct {
 } ht_game;
 static ht_game ht;
 static const t5_math_api_v1 *ht_math;
-static int16_t *ht_filter, *ht_mul_near, *ht_mul_wide, *ht_mul_weight;
+static int16_t *ht_filter;
 static uint8_t *ht_raw, *ht_near, *ht_wide, *ht_temp, *ht_scene;
 static uint8_t *ht_cached_near[3], *ht_cached_wide[3];
 static int ht_cache_key[3];
@@ -54,8 +54,6 @@ static void ht_clear_layer(uint8_t *dst) {
 static void ht_bind(uint8_t *memory) {
     ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
     ht_temp=memory+8*HT_PIXELS; ht_filter=(int16_t *)ht_temp; ht_scene=memory+3*HT_PIXELS;
-    ht_mul_near=(int16_t *)(memory+10*HT_PIXELS);
-    ht_mul_wide=ht_mul_near+HT_W; ht_mul_weight=ht_mul_wide+HT_W;
     ht_cached_near[0]=ht_near; ht_cached_wide[0]=ht_wide;
     for(int i=1;i<3;++i) {
         ht_cached_near[i]=memory+(2+2*i)*HT_PIXELS;
@@ -260,31 +258,32 @@ static void ht_prepare_layer(int depth,int key) {
     ht_cache_key[depth]=key; ht_cache_valid[depth]=true;
 }
 static void ht_composite(int depth,int focus_x,int focus_y) {
-    /* Filter caches contain scenery only. Recompute character-centered radial
-     * mixing/fade every frame, including when its camera has not moved. */
+    /* One pass: blend, fade, and max composite without PSRAM scratch rows.
+     * Keep both original rounding points. All intermediates fit signed 32-bit
+     * for screen-relative focus coordinates supplied by ht_render_scene. */
+    const int fade=depth==2?70:45;
+    int dy=-focus_y,dy2=dy*dy;
     for(int y=0;y<HT_H;++y) {
-        int dy=y-focus_y;
-        bool accelerated=ht_math && ht_math->struct_size>=offsetof(t5_math_api_v1,mul_s16)+sizeof(ht_math->mul_s16) && ht_math->mul_s16;
-        if(accelerated) {
-            for(int x=0;x<HT_W;++x) {
-                int dx=x-focus_x,i=y*HT_W+x;
-                ht_mul_weight[x]=(int16_t)(ht_clamp((dx*dx+dy*dy-2500)/200,0,256)-128);
-                ht_mul_near[x]=ht_near[i]; ht_mul_wide[x]=ht_wide[i];
-            }
-            accelerated=ht_math->mul_s16(ht_mul_near,ht_mul_weight,ht_mul_near,HT_W) &&
-                        ht_math->mul_s16(ht_mul_wide,ht_mul_weight,ht_mul_wide,HT_W);
-        }
+        const uint8_t *near=ht_near+y*HT_W,*wide=ht_wide+y*HT_W;
+        uint8_t *scene=ht_scene+y*HT_W;
+        int distance=focus_x*focus_x+dy2;
+        int delta=1-2*focus_x;
         for(int x=0;x<HT_W;++x) {
-            int dx=x-focus_x, i=y*HT_W+x;
-            int radial=accelerated?ht_mul_weight[x]+128:ht_clamp((dx*dx+dy*dy-2500)/200,0,256);
-            /* Center weights around zero so both products fit signed 16 bits.
-             * Algebraically identical; rounding occurs only after addition. */
-            int v=accelerated?((ht_near[i]+ht_wide[i])*128+ht_mul_wide[x]-ht_mul_near[x])>>8:
-                (ht_near[i]*(256-radial)+ht_wide[i]*radial)>>8;
-            v=v*(256-radial*(depth==2?70:45)/256)>>8;
-            /* Premultiplied silhouette over the previous layer. */
-            ht_scene[i]=(uint8_t)ht_max(ht_scene[i],v);
+            int v;
+            if(distance<=2500) {
+                v=near[x]; /* Fully focused: no blur mix or fade. */
+            } else if(distance>=53700) {
+                v=wide[x]*(256-fade)>>8; /* Fully fogged outer region. */
+            } else {
+                const int radial=(distance-2500)/200;
+                /* a*(256-r)+b*r = a*256+(b-a)*r: one product for mixing. */
+                v=(near[x]*256+((int)wide[x]-near[x])*radial)>>8;
+                v=v*(256-((radial*fade)>>8))>>8;
+            }
+            scene[x]=(uint8_t)ht_max(scene[x],v);
+            distance+=delta; delta+=2; /* (dx+1)^2 from dx^2. */
         }
+        dy2+=2*dy+1; ++dy;
         if((y&31)==31) ht_checkpoint();
     }
 }
@@ -431,7 +430,34 @@ static uint8_t ht_quantize(int value,int rank) {
     unsigned units=fraction[value];
     return (uint8_t)((units>>6)+((unsigned)rank<(units&63u)));
 }
+/* Mono is the common path. Assemble whole bytes in registers; never read
+ * the PSRAM destination to OR a second nibble into it. Reuse adjacent source
+ * samples and keep the format branch outside the physical-pixel loop. */
+static void ht_pack_mono(uint8_t *out,int stride) {
+    for(int y=0;y<HT_H;++y) {
+        const uint8_t *row=ht_scene+y*HT_W;
+        const uint8_t *next=ht_scene+ht_min(y+1,HT_H-1)*HT_W;
+        uint8_t *top=out+2*y*stride,*bottom=top+stride;
+        const uint8_t *rt=epd_dither_rank[(2*y)&7],*rb=epd_dither_rank[(2*y+1)&7];
+        int a=row[0],c=next[0];
+        for(int x=0;x<HT_W;x+=4) {
+            uint8_t t=0,b=0;
+            #pragma GCC unroll 4
+            for(int k=0;k<4;++k) {
+                int nx=ht_min(x+k+1,HT_W-1);
+                int right=row[nx],below=next[nx];
+                int h=(a+right)>>1,v=(a+c)>>1,d=(h+((c+below)>>1))>>1;
+                t=(uint8_t)((t<<2)|((a>rt[k*2]*4+2)<<1)|(h>rt[k*2+1]*4+2));
+                b=(uint8_t)((b<<2)|((v>rb[k*2]*4+2)<<1)|(d>rb[k*2+1]*4+2));
+                a=right;c=below;
+            }
+            top[x/4]=t;bottom[x/4]=b;
+        }
+        if((y&15)==15) ht_checkpoint();
+    }
+}
 static void ht_pack_format(uint8_t *out,int stride,bool mono) {
+    if(mono) { ht_pack_mono(out,stride); return; }
     static const uint8_t rank[8][8]={
         {41,8,52,7,45,15,47,4},{18,35,27,60,28,55,19,57},
         {54,1,49,9,62,3,40,14},{16,56,21,53,20,38,25,43},
@@ -448,23 +474,11 @@ static void ht_pack_format(uint8_t *out,int stride,bool mono) {
         for(int x=0;x<HT_W;x+=2) {
             int nx=ht_min(HT_W-1,x+2),r=(x*2)&7;
             int a=row[x],b=(a+row[x+1])/2,c=row[x+1],d=(c+row[nx])/2;
-            if(mono) {
-                unsigned px=(unsigned)x*2u,py=(unsigned)y*2u;
-                uint8_t bits=(uint8_t)((epd_dither_black(a,px,py)<<3)|
-                    (epd_dither_black(b,px+1,py)<<2)|(epd_dither_black(c,px+2,py)<<1)|
-                    epd_dither_black(d,px+3,py));
-                if((x&2)==0) top[x/4]=(uint8_t)(bits<<4); else top[x/4]|=bits;
-            } else top[x/2]=(uint8_t)((ht_quantize(a,rt[r])<<6)|(ht_quantize(b,rt[r+1])<<4)|
+            top[x/2]=(uint8_t)((ht_quantize(a,rt[r])<<6)|(ht_quantize(b,rt[r+1])<<4)|
                               (ht_quantize(c,rt[r+2])<<2)|ht_quantize(d,rt[r+3]));
             a=(a+next[x])/2; b=(b+(next[x]+next[x+1])/2)/2;
             c=(c+next[x+1])/2; d=(d+(next[x+1]+next[nx])/2)/2;
-            if(mono) {
-                unsigned px=(unsigned)x*2u,py=(unsigned)y*2u+1u;
-                uint8_t bits=(uint8_t)((epd_dither_black(a,px,py)<<3)|
-                    (epd_dither_black(b,px+1,py)<<2)|(epd_dither_black(c,px+2,py)<<1)|
-                    epd_dither_black(d,px+3,py));
-                if((x&2)==0) bottom[x/4]=(uint8_t)(bits<<4); else bottom[x/4]|=bits;
-            } else bottom[x/2]=(uint8_t)((ht_quantize(a,rb[r])<<6)|(ht_quantize(b,rb[r+1])<<4)|
+            bottom[x/2]=(uint8_t)((ht_quantize(a,rb[r])<<6)|(ht_quantize(b,rb[r+1])<<4)|
                                  (ht_quantize(c,rb[r+2])<<2)|ht_quantize(d,rb[r+3]));
         }
         if((y&15)==15) ht_checkpoint();

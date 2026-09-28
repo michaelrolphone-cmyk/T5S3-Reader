@@ -97,7 +97,7 @@ float multiply-accumulate instructions are scalar, not four-lane float SIMD.
 
 ### Consumers
 
-Hollow Trail blends near/wide masks by centering the radial weight: `w = r-128`.
+Hollow Trail 1.0.4 blended near/wide masks by centering the radial weight: `w = r-128`.
 It computes `near*w` and `wide*w` in place with signed SIMD, then combines
 `((near+wide)*128 + wide*w - near*w) >> 8`. Products fit ±32,640. This is exactly
 the previous expression with one final rounding, not separate rounded products.
@@ -122,3 +122,8 @@ SDK constraints; they do not execute S3 instructions. Actual device speed gains
 are unmeasured, especially short four-component lighting dots and the extra
 PSRAM traffic of blend scratch. Compare complete frames including packing and
 API overhead, not kernel timings alone. No faster square-root claim is made.
+
+Hollow Trail 1.0.5 supersedes that two-multiply compositor with an exact fused
+app-side pass, removing the three temporary rows. It retains DSP blur add/sub
+and copy/fill. See HOLLOW_TRAIL.md for the equivalence checks and host timing.
+No new firmware API or fixed-point matrix path is introduced by that update.
