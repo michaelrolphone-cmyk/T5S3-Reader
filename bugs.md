@@ -743,3 +743,34 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 106. Time Card treats stores over 400 days as successfully loaded, then can erase the omitted history
+
+- **Status:** Open.
+- **Affected code:** `Apps/timecard.c`, `MAX_DAYS`, `load_store()`, `ensure_day()`, `set_punch()`, and `save_store()`.
+- **Trigger / reproduction:** Put more than 400 valid day objects in `/sd/.crosspoint/timecard.json` (or let the file naturally grow beyond that count), launch Time Card, then record or edit any punch.
+- **Observed / logically demonstrated failure:** `load_store()` stops its parse loop as soon as `day_count == MAX_DAYS`, but it does not treat the remaining unparsed day objects as an error and returns `true`. The live store therefore contains only the first 400 valid days. A later `set_punch()` calls `save_store()`, which rewrites the JSON from that truncated in-memory array and permanently drops every valid day after entry 400.
+- **Likely root cause:** The fixed-capacity in-memory limit is used as an implicit parser terminator instead of a validated storage constraint, and a capacity hit is reported as a successful complete load.
+- **Impact:** Long-running Time Card histories can be silently truncated and then irreversibly rewritten merely by making another punch, even though the source JSON was valid.
+- **Repair direction:** Detect capacity exhaustion before declaring the load successful. Prefer a bounded retention policy that is explicit and preserves the intended newest/oldest records, or migrate to dynamically sized storage. Never allow a partial load to become writable state without an explicit recovery decision. Add a regression with 401+ valid days proving the source file is not rewritten with records omitted.
+
+### 107. TXT BMP-cover caching reports success after short reads or writes and permanently accepts the partial cache
+
+- **Status:** Open.
+- **Affected code:** `lib/Txt/Txt.cpp`, `Txt::generateCoverBmp()` BMP-copy path and the existing-file fast path.
+- **Trigger / reproduction:** Place a valid BMP sidecar cover next to a TXT/Markdown book, then inject an SD read or cache-write failure after at least one chunk while `generateCoverBmp()` copies the cover into the TXT cache.
+- **Observed / logically demonstrated failure:** The BMP branch loops over `src.read()` and calls `dst.write()` but checks neither for a zero/short read nor a short/failed write. It then unconditionally logs success and returns `true`. The incomplete `cover.bmp` remains in the cache. On every later call, the first `Storage.exists(getCoverBmpPath())` check returns `true` without validating the cached bitmap, so the truncated file is treated as a permanently successful cover generation.
+- **Likely root cause:** The direct BMP-copy path lacks transactional publication and I/O result validation, while cache validity is defined only as path existence.
+- **Impact:** A transient SD fault can poison a book's cover cache across later launches, causing missing/corrupt artwork until the cache is manually removed or rebuilt by some unrelated action.
+- **Repair direction:** Copy to a temporary cache file, require every read/write to make full forward progress, close successfully, validate the completed BMP at least structurally, and atomically publish it only after success. Remove the temporary file on any failure. The existing-file fast path should reject obviously incomplete/invalid cached BMPs. Add injected short-read and short-write tests followed by a retry proving recovery occurs automatically.
+
+### 108. File Browser silently truncates deep paths and can apply destructive actions to a different pathname
+
+- **Status:** Open.
+- **Affected code:** `Apps/file_browser.c`, `PATH_CAP`, `copy_text()`, `join_relative_path()`, `make_storage_path()`, `make_sd_vfs_dir()`, `make_usb_path()`, navigation into child directories, and rename/move/delete/copy actions.
+- **Trigger / reproduction:** Create a valid nested SD path whose directory path plus selected entry name exceeds 511 bytes, navigate into it with File Browser, then invoke Rename, Move, Delete, or Copy. A deterministic high-risk case is one where the 511-byte truncated prefix is itself a valid existing path.
+- **Observed / logically demonstrated failure:** All path builders use `copy_text()`, which silently truncates when the destination buffer fills and provides no success/failure signal. `base_path` and pending action paths are fixed at `PATH_CAP == 512`. The app therefore cannot distinguish the intended full pathname from its clipped prefix. Destructive operations subsequently pass the truncated path to storage APIs; if that prefix names a real object, the action can target the wrong file or directory rather than merely failing.
+- **Likely root cause:** Fixed-size pathname buffers are combined with truncating string assembly instead of checked construction that fails when the complete path cannot be represented.
+- **Impact:** Deep but filesystem-valid directory trees can become inaccessible, and rename/move/delete/copy can operate on an unintended prefix path. This is especially severe for Delete and Move because the confirmation UI still describes the originally selected entry name.
+- **Repair direction:** Make every path-construction helper return success only when the complete path fits, propagate failure before any filesystem mutation, and keep the UI-selected identity separate from a bounded display string. Prefer the platform's canonical maximum path type/size rather than a private 512-byte limit. Add boundary tests at 510/511/512+ bytes and a regression where the truncated prefix exists, proving no mutation occurs.
