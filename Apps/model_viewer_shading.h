@@ -38,17 +38,23 @@ static float mv_shade_recip(float x) {
 /* Two-sided neutral material, lit from above/left of the camera. Derive the
  * normal from geometry, not optional/untrusted OBJ/STL normal records. Flipping
  * winding must not make a surface vanish or change its apparent material. */
-static uint8_t mv_shade_density(mv_shade_vertex_t a, mv_shade_vertex_t b,
-                                mv_shade_vertex_t c) {
+static bool mv_shade_normal(mv_shade_vertex_t a, mv_shade_vertex_t b,
+                            mv_shade_vertex_t c, float normal[4]) {
     const float ux = b.x-a.x, uy = b.y-a.y, uz = b.z-a.z;
     const float vx = c.x-a.x, vy = c.y-a.y, vz = c.z-a.z;
     float nx = uy*vz-uz*vy, ny = uz*vx-ux*vz, nz = ux*vy-uy*vx;
     const float largest = mv_shade_max(mv_shade_abs(nx),
                            mv_shade_max(mv_shade_abs(ny), mv_shade_abs(nz)));
-    if (!mv_shade_finite(largest) || largest < 1.0e-20f) return 9u;
+    if (!mv_shade_finite(largest) || largest < 1.0e-20f) {
+        memset(normal,0,4*sizeof(float)); return false;
+    }
     const float rescale = mv_shade_recip(largest);
     nx *= rescale; ny *= rescale; nz *= rescale;
-    const float length2 = nx*nx + ny*ny + nz*nz;
+    normal[0]=nx; normal[1]=ny; normal[2]=nz; normal[3]=0;
+    return true;
+}
+static uint8_t mv_shade_normal_density(const float normal[4], float length2, float light) {
+    if(length2<=0) return 9u;
     uint32_t bits;
     float inv_length;
     memcpy(&bits, &length2, sizeof(bits));
@@ -56,12 +62,18 @@ static uint8_t mv_shade_density(mv_shade_vertex_t a, mv_shade_vertex_t b,
     memcpy(&inv_length, &bits, sizeof(inv_length));
     inv_length *= 1.5f - 0.5f*length2*inv_length*inv_length;
     inv_length *= 1.5f - 0.5f*length2*inv_length*inv_length;
-    if (nz < 0.0f) inv_length = -inv_length;
+    if (normal[2] < 0.0f) inv_length = -inv_length;
     const float diffuse = mv_shade_max(0.0f, mv_shade_min(1.0f,
-                          (-0.45f*nx + 0.65f*ny + 0.61237244f*nz)*inv_length));
+                          light*inv_length));
     /* 2..14 black samples of 16: highlights remain visible against white,
      * while ambient light prevents shadowed faces from becoming solid black. */
     return (uint8_t)(14.0f - 12.0f*diffuse + 0.5f);
+}
+static uint8_t mv_shade_density(mv_shade_vertex_t a,mv_shade_vertex_t b,mv_shade_vertex_t c) {
+    float n[4];
+    if(!mv_shade_normal(a,b,c,n)) return 9u;
+    return mv_shade_normal_density(n,n[0]*n[0]+n[1]*n[1]+n[2]*n[2],
+                                   -0.45f*n[0]+0.65f*n[1]+0.61237244f*n[2]);
 }
 
 static bool mv_shade_black(int x, int y, uint8_t density) {
