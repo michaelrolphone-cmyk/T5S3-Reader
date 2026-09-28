@@ -715,3 +715,38 @@ That is about 6% more host time, not a demonstrated speedup. Word-access benefit
 on the ESP32/PSRAM path need device measurement. Matching frame hash: 51f6b1f5.
 The new on-screen PREP/SCAN and RENDER counters distinguish the improvements;
 no device FPS or optical result is claimed from host tests.
+
+### Overlap packing with display wait (Hollow Trail 1.0.13)
+
+The former pipeline rendered a scene, waited for `can_submit`, then packed it.
+This serialized packing behind the previous queued frame even though packing
+only needs app-owned scene data. The new path checks readiness after rendering:
+if the display is busy, it packs immediately into an optional 64,800-byte PSRAM
+staging buffer. Once the display releases its backbuffer, the app copies the
+finished bits and submits. If the display is already ready, it packs directly
+into the backbuffer, avoiding the extra copy. Allocation failure preserves the
+old direct path and logs that staging is unavailable. No firmware change/API or
+scan-rate increase is required; minimum firmware remains 1.3.33.
+
+There is still only one prepared app frame and one queued display frame. Staging
+remains immutable across waits and rejected submissions. Display-owned memory
+is acquired/written only after readiness. Copying uses fixed 1,920-byte chunks
+with existing input/yield checkpoints and exit handling. A ready prepared frame
+skips a redundant fixed input delay if input was serviced within 8ms; busy waits
+poll/yield with 1ms rather than 4ms. Cache prefetch checks display readiness before
+each slice and yields priority to a prepared frame as soon as possible.
+
+PACK measures packing in either destination. WAIT measures time remaining after
+the pixels are prepared until output transfer starts. The added COPY field
+(next to CACHE) reports staged-copy time separately, including its checkpoints;
+it is zero on the direct path. Compare FPS and RENDER+PACK+WAIT+COPY together:
+a smaller WAIT by itself is not proof of higher throughput. Extra memory traffic
+can offset the overlap benefit, and the 24 FPS driver target remains intact.
+
+An app-main test uses a delayed mock display, checks packing occurs while busy
+without any writes to its queued buffer, verifies submitted staged bytes, forces
+a rejected submission, and exercises staging-allocation failure and cleanup.
+ASan/UBSan and input-service tests pass. Physical display timings remain for
+device measurement; no FPS gain is asserted from this host test.
+The pause panel also identifies the app version to disambiguate device reports.
+Version: Hollow Trail 1.0.12 -> 1.0.13.
