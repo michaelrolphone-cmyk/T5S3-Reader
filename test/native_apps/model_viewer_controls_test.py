@@ -106,10 +106,12 @@ static void mapping_tests(void) {
     risc_usb_gamepad_state_v1 p={.connected=1,.hat=8,.x=-32768,.y=32767,.buttons=0x30};
     assert(mv_pad_decode(&p,false)==(MV_PAD_LEFT|MV_PAD_DOWN|MV_PAD_LB|MV_PAD_RB));
     p.x=p.y=16000;p.buttons=1;
-    assert(mv_pad_decode(&p,false)==MV_PAD_FINE);assert(mv_pad_decode(&p,true)==MV_PAD_BACK);
-    p.buttons=2;assert(mv_pad_decode(&p,false)==MV_PAD_BACK);assert(mv_pad_decode(&p,true)==MV_PAD_FINE);
+    assert(mv_pad_decode(&p,false)==MV_PAD_FINE);assert(mv_pad_decode(&p,true)==0);
+    p.buttons=2;assert(mv_pad_decode(&p,false)==0);assert(mv_pad_decode(&p,true)==MV_PAD_FINE);
+    p.buttons=4;assert(mv_pad_decode(&p,false)==MV_PAD_BACK);assert(mv_pad_decode(&p,true)==0);
+    p.buttons=8;assert(mv_pad_decode(&p,false)==0);assert(mv_pad_decode(&p,true)==MV_PAD_BACK);
     p.connected=0;assert(!mv_pad_decode(&p,false));
-    puts("mapping: hats, diagonals, SNES axis D-pad, shoulders, HID/XInput A/Back PASS");
+    puts("mapping: hats, diagonals, SNES axis D-pad, shoulders, HID/XInput A precision and X/Back PASS");
 }
 static void provider_tests(void) {
     mocks_reset();mv_controller_t c;
@@ -258,7 +260,7 @@ static void integration_tests(void) {
     assert(!mv_render_service() && g_draw_pending); /* interrupt full refinement */
     clock_ms=48;g_render_interactive=true;assert(mv_render_service());
     connect_pad(0,10,8,0);clock_ms=64;assert(mv_render_service() && !g_motion.action && !g_motion.pending_ms);
-    connect_pad(0,10,8,2);clock_ms=80;assert(!mv_render_service() && g_render_input_pending && g_render_input.exit_requested);
+    connect_pad(0,10,8,4);clock_ms=80;assert(!mv_render_service() && g_render_input_pending && g_render_input.exit_requested);
     mv_controller_close(&g_controller);
     puts("integration: dirty redraws while held, frame backpressure, zoom/pan bounds, A no reset, render servicing/exit PASS");
 }
@@ -423,7 +425,7 @@ class ControllerTests(unittest.TestCase):
 
     def test_render_and_manifest_integration(self):
         manifest = json.loads((ROOT / "Apps/model_viewer.json").read_text())
-        self.assertEqual(manifest["version"], "1.2.4")
+        self.assertGreaterEqual(tuple(map(int, manifest["version"].split("."))), (1, 2, 5))
         for capability in ["usb.hid.gamepad", "usb.xinput.gamepad"]:
             self.assertIn({"capability": capability, "api": ">=1"}, manifest["optional"])
         self.assertIn("g_draw_pending && mv_render(true)", APP)

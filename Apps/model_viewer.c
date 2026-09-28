@@ -946,7 +946,7 @@ static bool mv_render(bool interactive) {
     mv_text(buffer,14,894,g_status[0]?g_status:info,1);
     mv_text(buffer,14,910,"D-PAD ROTATE  LB+UP/DOWN ZOOM  RB+D-PAD PAN",1);
     mv_text(buffer,14,926,"HOLD A: 1/4 SPEED  DRAG ROTATE  2F PAN+ZOOM",1);
-    mv_text(buffer,14,942,"DOUBLE TAP RESET  BACK EXIT",1);
+    mv_text(buffer,14,942,"DOUBLE TAP RESET  X/BACK EXIT",1);
 
     return g_video->submit(0, g_surface.height);
 }
@@ -958,7 +958,7 @@ static void mv_message(const char *title, const char *detail) {
     memset(buffer,0x00,bytes);
     mv_text(buffer,28,220,title,2);
     mv_text(buffer,28,270,detail,1);
-    mv_text(buffer,28,920,"BACK EXIT",1);
+    mv_text(buffer,28,920,"X/BACK EXIT",1);
     while (!g_video->submit(0,g_surface.height)) {
         t5_app_input_t ignored={0};
         if (!g_app->poll(&ignored,5)) break;
