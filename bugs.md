@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,37 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 124. Recent Books removes entries from the live UI even when the change was not persisted
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1124](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260928-1124/bugs.md)
+- **Affected code:** `src/RecentBooksStore.cpp`, especially `RecentBooksStore::removeBook()`, `addBook()`, `updateBook()`, and `updatePath()`; `src/activities/home/RecentBooksActivity.cpp::removeSelectedRecentBook()`.
+- **Trigger / reproduction:** Populate Recent Books, then make `/.crosspoint/recent.json` unwritable or force its save to fail. Open Recent Books, long-press a row, confirm Delete, and then reload the store or reboot.
+- **Observed / logically demonstrated failure:** `removeBook()` erases the matching entry from `recentBooks`, calls `saveToFile()` without checking the return value, and returns `true` unconditionally after the erase. `removeSelectedRecentBook()` then ignores even that return value, removes the row from its local list, and redraws the UI as though the deletion succeeded. The durable JSON can still contain the entry, so it reappears after reload/reboot. `addBook()`, `updateBook()`, and `updatePath()` have the same mutate-then-ignore-save pattern and can likewise leave the live list ahead of durable state.
+- **Likely root cause:** Recent-book mutations are published to live state before persistence succeeds, and the API/callers do not propagate or act on persistence failure.
+- **Impact:** The UI can positively present a delete or metadata/path update that was never committed. Recent history can unexpectedly reappear or revert after reboot, and later operations run against state that differs from the on-disk source of truth.
+- **Repair direction:** Stage the candidate recent-book vector, persist it transactionally, and publish it only after a successful save. Make every mutator return a persistence result; in the activity, keep the row selected and surface an error when removal fails. Add fault-injection tests for add, update, path change, and delete proving both live and durable state remain unchanged on save failure.
+
+### 125. Installed-app path resolution fails globally when /Apps contains more than 512 directory entries
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1124](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260928-1124/bugs.md)
+- **Affected code:** `src/native/InstalledAppPath.cpp::resolveInstalledAppPath()`, especially `kMaxDirectoryEntries = 512`, the bounded `openNextFile()` loop, and the `if (!reachedEnd) return false` guard.
+- **Trigger / reproduction:** Install a valid canonical app under `/Apps/<id>/` whose artifact can be resolved by basename, then add enough unrelated valid files/directories under `/Apps` that the directory has at least 513 entries. Resolve the artifact with `resolveInstalledAppPath()`; the target can be placed among the first entries to show that finding it is not sufficient.
+- **Observed / logically demonstrated failure:** The resolver records a valid matching managed path while scanning, but `reachedEnd` is set only when `openNextFile()` reports end-of-directory. If 512 entries are consumed without reaching the end, the loop exits at the fixed bound and the function immediately returns `false` before publishing an already-found unique match or trying the legacy fallback. Consequently, merely exceeding the scan bound makes every lookup through this resolver fail, including targets that were verified early in the scan.
+- **Likely root cause:** A watchdog/resource guard is also being used as a correctness condition for the entire inventory; unrelated directory entries count against the limit, and a bounded scan has no resumable/indexed continuation.
+- **Impact:** A sufficiently large or cluttered `/Apps` directory can make otherwise valid installed applications unresolvable through basename-based launch/recovery paths. The failure is inventory-wide rather than limited to entries after the 512th position.
+- **Repair direction:** Resolve through the authoritative installed-package index, or page/resume directory enumeration until ambiguity can be decided without imposing a correctness-changing entry cap. If a hard resource ceiling is unavoidable, return an explicit resource/inventory error rather than treating a verified target as not found. Add tests at 512 and 513 entries with the target both before and after the boundary, plus an ambiguity case.
+
+### 126. Markdown fenced-code state can be closed by the wrong fence marker and corrupt parsing of the rest of the document
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1124](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260928-1124/bugs.md)
+- **Affected code:** `lib/Markdown/Markdown.cpp`, `isFence()` and `parseLine(std::string_view, bool&)`; corresponding public state shape in `lib/Markdown/Markdown.h`.
+- **Trigger / reproduction:** Parse Markdown containing a backtick fence with a tilde-fence-looking line inside it, for example an opening three-backtick fence, a code line, a line containing `~~~`, another code line, and then the closing three-backtick fence. The inverse case with a tilde opener and backticks inside behaves the same way.
+- **Observed / logically demonstrated failure:** `isFence()` returns true for any trimmed line whose first three characters are either backticks or tildes. `parseLine()` stores only a boolean `inFence` and toggles it on every such line, so it cannot remember which marker opened the block or how long the opening run was. A `~~~` line therefore closes a backtick block; the following code is parsed as normal Markdown, and the actual backtick closer toggles the parser back into code mode. Fence-like lines with trailing text can likewise toggle state even when they should remain code content rather than act as a closing delimiter.
+- **Likely root cause:** Fenced-code parsing models the state as an on/off flag instead of retaining the opening delimiter character and run length and validating a compatible closer.
+- **Impact:** Valid Markdown can render code as prose, suppress or invent later headings/chapter breaks, and leave the remainder of the document in the wrong parse mode.
+- **Repair direction:** Replace the boolean-only fence state with a small delimiter state containing marker type and opening run length. Open on a valid fence, and close only on the compatible marker with a sufficient run and valid closing-line suffix; otherwise emit the line as code content. Add regression cases for mixed backtick/tilde markers, longer opening runs, fence-like text inside code, trailing text, and end-of-file while a fence remains open.
