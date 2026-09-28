@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 76. Moving a finished EPUB to /Read leaves its bookmarks behind under the old path-derived filename
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260928-1321/bugs.md)
+
+- **Affected code:** `src/activities/reader/EpubReaderActivity.cpp`, `EpubReaderActivity::moveFinishedBookToReadFolder()`; `src/util/BookmarkUtil.cpp`, `BookmarkUtil::getBookmarkPath()`; bookmark loading in `EpubReaderActivity::loadCachedBookmarks()` and `EpubReaderBookmarksActivity::onEnter()`.
+- **Trigger / reproduction:** Enable **Move finished books to /Read**, add one or more bookmarks to an EPUB outside `/Read`, finish the book so `moveFinishedBookToReadFolder()` runs, then reopen the moved EPUB from `/Read` and open its bookmark list.
+- **Observed / logically demonstrated failure:** The move routine renames the EPUB, attempts to rename its EPUB cache directory, updates Recent Books, and updates `APP_STATE.openEpubPath`, but it never moves the bookmark JSON. Bookmark storage is derived from the full book pathname: for example, `/Books/Example.epub` maps to `/.crosspoint/bookmarks/Books_Example.json`, while the moved `/Read/Example.epub` maps to `/.crosspoint/bookmarks/Read_Example.json`. On the next open, the reader looks only at the new pathname-derived bookmark file, so the existing bookmarks disappear from the UI while the old JSON is orphaned.
+- **Likely root cause:** The finished-book relocation transaction updates the EPUB/cache/recents/open-path state but omits another path-keyed sidecar store.
+- **Impact:** Finishing a book can make all of that book's saved bookmarks inaccessible exactly when the automatic move feature succeeds. Adding new bookmarks after the move creates a second bookmark store, making later recovery/merging ambiguous.
+- **Repair direction:** Before or as part of the EPUB move transaction, derive both old and new bookmark paths and migrate the existing bookmark file with collision/error handling. Treat sidecar migration as part of a coherent relocation transaction, and add a regression that bookmarks a book, finishes/moves it, reopens it from `/Read`, and verifies the same bookmarks remain available.
+
+### 77. Recursive directory deletion truncates long child names and can delete a different sibling
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260928-1321/bugs.md)
+
+- **Affected code:** `lib/hal/HalStorage.cpp`, `removeDirUnlocked()`; callers include `HalStorage::removeDir()`, `src/native/NativeCacheBridge.cpp::clearReadingCache()`, and native File Browser directory deletion.
+- **Trigger / reproduction:** In a directory that will be removed recursively, create a child whose basename is at least 128 bytes long. For the destructive variant, also create a different child whose full basename is exactly the truncated prefix that fits in `char name[128]`, then request recursive deletion of the parent.
+- **Observed / logically demonstrated failure:** `removeDirUnlocked()` calls `file.getName(name, sizeof(name))` but ignores the returned length/truncation status, appends the possibly truncated buffer to the parent path, and then recursively removes that constructed pathname. Other repository code explicitly treats `getName()` lengths at or above the destination capacity as truncation, but this deletion path does not. A long child can therefore be skipped/left behind or, when the truncated prefix names another real sibling, the deletion can be directed at that different sibling.
+- **Likely root cause:** Recursive deletion assumes the fixed 128-byte basename buffer always contains the complete directory entry name.
+- **Impact:** A user-visible delete or cache cleanup can fail unpredictably on valid long filenames, and in a prefix-collision case can remove data other than the directory entry currently being enumerated.
+- **Repair direction:** Check the `getName()` result before constructing a path and never mutate storage from a truncated name. Use a dynamically sized/full-name retrieval path or reject the entire recursive delete safely when an entry cannot be represented. Add tests for 127-byte names, 128+ byte names, and a long-name/truncated-prefix sibling collision.
+
+### 78. A transient navigation-provider handoff failure leaves firmware navigation unusable without a normal retry
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260928-1321/bugs.md)
+
+- **Affected code:** `src/native/NativeNavigationInput.cpp`, especially `ready()`, `nativeNavigationTick()`, `nativeNavigationRetry()`, and `nativeNavigationResume()`; open PR #96 also touches cleanup in this file but does not change this activation state transition.
+- **Trigger / reproduction:** Make the installed `input.navigation` provider load successfully and expose a valid API, but cause either its initial `foreground()` call or its initial `reset()` call in `ready()` to fail once. Then allow subsequent provider calls to succeed and continue normal UI polling without a separate suspend/resume boundary.
+- **Observed / logically demonstrated failure:** `ready()` stores `api = candidate` before running the handoff and sets `usable = focus.apply(api) && api->reset(...)`. If either call returns false, `ready()` returns false but retains the API and lease. Every later `ready()` immediately returns true merely because `api` is non-null, while `nativeNavigationTick()` still sees `usable == false` and clears input instead of retrying the handoff. `nativeNavigationRetry()` also retries only when `api` is null. Thus a one-shot provider failure can suppress firmware navigation indefinitely during the current operating state even after the provider recovers.
+- **Likely root cause:** Provider acquisition state (`api != nullptr`) is conflated with successful foreground/reset readiness; the failed handoff is retained as though activation completed.
+- **Impact:** Keyboard/controller navigation can disappear after a transient provider error while the provider remains loaded, with no ordinary polling recovery path. Recovery depends on some later lifecycle event forcing `nativeNavigationBoundary()`/resume or a broader restart.
+- **Repair direction:** Publish `api`/lease as ready only after foreground and reset both succeed, or keep an explicit retryable handoff state that periodically reruns those operations with backoff. If cleanup is attempted after failure, preserve exact lease state on cleanup failure. Add a provider fixture whose first foreground/reset call fails and whose next succeeds, and verify normal navigation polling recovers without reboot.
