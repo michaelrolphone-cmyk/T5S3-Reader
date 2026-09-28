@@ -1,5 +1,6 @@
 #include "NativeVideoBridge.h"
 #include "NativeVideoGray.h"
+#include "NativeVideoIdle.h"
 
 #include <T5VideoApi.h>
 #include <Board.h>
@@ -554,12 +555,12 @@ bool send_row(uint8_t *data, bool first_row) {
 // Each state byte tracks two pixels: direction bits in the LSBs and independent
 // pulse counters in the upper nibbles. Three complete scans improve black
 // density; a frame remains pending until all three scans have completed.
-bool build_active_row(const uint8_t *frame, uint16_t row, uint8_t *dst) {
+bool build_active_row(const uint8_t *frame, uint16_t row, uint8_t *dst, bool &target_changed) {
   if (g_pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB) {
     const uint8_t *source = frame + static_cast<size_t>(row) * g_source_row_bytes;
     uint8_t *state = g_state_buffer + static_cast<size_t>(row) * g_state_row_bytes;
     uint8_t *drive = dst + kActiveLeftPadBytes;
-    const bool pending = nativeVideoBuildGrayRow(source, state, drive, kGrayRowBytes);
+    const bool pending = nativeVideoBuildGrayRow(source, state, drive, kGrayRowBytes, &target_changed);
     g_row_active[row] = pending ? 1U : 0U;
     return pending;
   }
@@ -577,6 +578,7 @@ bool build_active_row(const uint8_t *frame, uint16_t row, uint8_t *dst) {
         const uint8_t driving_dir = incoming_pixels >> 6;
         const uint8_t pixel_diff = static_cast<uint8_t>((state ^ driving_dir) & 0x03U);
 
+        target_changed = target_changed || pixel_diff != 0U;
         state &= kResetCounterMask[pixel_diff];
         state |= driving_dir;
 
@@ -610,7 +612,9 @@ uint8_t *prepare_scan_row(
     uint16_t scan_row,
     uint8_t dma_index,
     uint32_t &processed_rows,
-    uint32_t &continuing_rows) {
+    uint32_t &continuing_rows,
+    bool &target_changed,
+    int cleanup_phase) {
   if (scan_row < EPD_VIDEO_TOP_DUMMY_LINES) {
     return g_blank_row;
   }
@@ -620,15 +624,26 @@ uint8_t *prepare_scan_row(
     return g_blank_row;
   }
 
-  if (g_row_active[active_row] == 0U) {
-    return g_blank_row;
-  }
+  const bool active = g_row_active[active_row] != 0U;
+  const bool cleanup = !target_changed && nativeVideoIdleRowSelected(active_row, cleanup_phase);
+  if (!active && !cleanup) return g_blank_row;
 
-  ++processed_rows;
-  if (build_active_row(frame, active_row, g_dma_buf[dma_index])) {
-    ++continuing_rows;
+  uint8_t *row = g_dma_buf[dma_index];
+  if (active) {
+    ++processed_rows;
+    if (build_active_row(frame, active_row, row, target_changed)) ++continuing_rows;
+  } else {
+    memset(row + kActiveLeftPadBytes, 0, kActiveRowBytes);
   }
-  return g_dma_buf[dma_index];
+  if (cleanup && !target_changed) {
+    const size_t count = nativeVideoReinforceIdleRow(
+        frame + static_cast<size_t>(active_row) * g_source_row_bytes,
+        g_state_buffer + static_cast<size_t>(active_row) * g_state_row_bytes,
+        row + kActiveLeftPadBytes, t5s3_epd::kActiveWidth,
+        g_pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB, active_row, cleanup_phase);
+    if (!active && count == 0) return g_blank_row;
+  }
+  return row;
 }
 
 void sleep_to_target_frame(int64_t frame_start_us) {
@@ -669,6 +684,8 @@ void scan_task(void *unused) {
   uint64_t log_scan_us = 0;
   uint32_t log_frames = 0;
   uint32_t last_submit_count = 0;
+  NativeVideoIdleCleanup idle_cleanup;
+  idle_cleanup.reset(static_cast<uint32_t>(esp_timer_get_time() / 1000));
 
   while (g_running) {
     const int64_t frame_start_us = esp_timer_get_time();
@@ -705,11 +722,16 @@ void scan_task(void *unused) {
     const uint8_t *frame = g_buffers[front_index];
     uint32_t processed_rows = 0;
     uint32_t continuing_rows = 0;
+    bool target_changed = false;
+    // Content changes reset the quiet timer, not repeated identical submits.
+    // Normal row processing detects changes before optional reinforcement.
+    const int cleanup_phase = submitted_frames ?
+        idle_cleanup.phase(static_cast<uint32_t>(frame_start_us / 1000)) : -1;
 
     row_control_start();
 
     uint8_t dma_index = 0;
-    uint8_t *row_ptr = prepare_scan_row(frame, 0, dma_index, processed_rows, continuing_rows);
+    uint8_t *row_ptr = prepare_scan_row(frame, 0, dma_index, processed_rows, continuing_rows, target_changed, cleanup_phase);
     bool row_uses_dma = (row_ptr != g_blank_row);
     if (!send_row(row_ptr, true)) {
       g_running = false;
@@ -719,7 +741,7 @@ void scan_task(void *unused) {
     for (uint16_t scan_row = 1; scan_row < total_scan_rows; ++scan_row) {
       const uint8_t next_dma_index = row_uses_dma ? static_cast<uint8_t>(dma_index ^ 1U) : dma_index;
       uint8_t *next_row_ptr =
-          prepare_scan_row(frame, scan_row, next_dma_index, processed_rows, continuing_rows);
+          prepare_scan_row(frame, scan_row, next_dma_index, processed_rows, continuing_rows, target_changed, cleanup_phase);
       const bool next_row_uses_dma = (next_row_ptr != g_blank_row);
       if (!send_row(next_row_ptr, false)) {
         g_running = false;
@@ -745,6 +767,9 @@ void scan_task(void *unused) {
     g_drive_pending = (continuing_rows != 0U) || g_flip_req;
     portEXIT_CRITICAL(&g_buffer_lock);
 
+    // Cleanup is opportunistic: it neither extends g_drive_pending nor blocks
+    // a queued target. At most this already-running scan precedes a new flip.
+    idle_cleanup.finishScan(static_cast<uint32_t>(esp_timer_get_time() / 1000), target_changed, cleanup_phase);
     ++log_frames;
     log_scan_us += static_cast<uint64_t>(esp_timer_get_time() - frame_start_us);
 
@@ -1077,7 +1102,7 @@ bool video_start_format(t5_video_surface_v1 *surface, uint8_t pixel_format) {
     }
 
     // Establish a known physical panel state before interactive updates. The
-    // scan engine then erases changed gray pixels before drawing their target.
+    // scan engine then drives changed pixels directly toward their target.
     if (!settle_level(0x00) || !settle_level(0xFF) || !settle_level(0x00)) {
       epd_video_shutdown();
       return false;

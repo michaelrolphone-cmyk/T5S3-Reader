@@ -56,3 +56,13 @@ Host previews preserve the forest silhouettes and depth but show visible grain.
 Actual ghosting, optical brightness, gray-mode fidelity and frame rate require
 hardware observation. The GameBoy result is encouraging evidence, not proof
 that these larger moving scenes have identical panel behavior.
+
+## Shared idle cleanup
+
+Firmware 1.3.31 adds [bounded idle endpoint reinforcement](FAST_VIDEO_IDLE_CLEANUP.md)
+to the shared fast-video backend. After 500ms without changed pixel targets,
+small interleaved groups receive up to two extra endpoint pulses. There is no
+full-screen clear or automatic mode switch, and new frames retain priority.
+Dithered images are eligible throughout; native intermediate grays are left
+unchanged to avoid shifting their shade. Physical effectiveness requires device
+measurement.
