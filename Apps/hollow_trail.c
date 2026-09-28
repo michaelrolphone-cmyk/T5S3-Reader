@@ -4,11 +4,18 @@
 #include "T5HardwareTakeover.h"
 #include "T5ProviderCapabilityApi.h"
 #include "RiscUsbHidV1.h"
+#include "RiscReaderTypographyV1.h"
 #include "hollow_trail_engine.inc"
 
 static const t5_app_api_v1 *app;
 static const t5_provider_capability_api_v1 *caps;
-static const risc_usb_gamepad_api_v1 *pad;
+static const risc_usb_gamepad_api_v1 *pad,*hid_pad;
+static t5_provider_capability_lease_t hid_lease;
+static bool ht_pad_owned,ht_input_rearm;
+static int ht_pad_source=-1;
+static uint64_t ht_pad_device;
+static bool ht_pad_fault;
+static uint32_t ht_pad_fault_since;
 static t5_provider_capability_lease_t lease=T5_PROVIDER_CAPABILITY_LEASE_INVALID;
 static bool quitting, jump_down, pause_down, paused, mode_down;
 static uint32_t held, previous, last_poll;
@@ -41,12 +48,18 @@ static void ht_perf_finish(const t5_video_api_v1 *video,uint32_t now) {
 #define HT_INTERACT 32u
 #define HT_PAUSE 8u
 #define HT_EXIT 16u
+#define HT_ACCEPT 64u
+#define HT_JOURNAL 128u
+#define HT_BACK 256u /* Reading navigation only; never quits gameplay. */
 #define HT_HAS(api,type,field) ((api) && (api)->struct_size >= offsetof(type,field)+sizeof((api)->field) && (api)->field)
+#include "hollow_trail_journal.inc"
 static void ht_log(const char *message) {
     if(HT_HAS(app,t5_app_api_v1,log_message)) app->log_message(message);
 }
 static void ht_release_pad(void) {
     if(lease!=T5_PROVIDER_CAPABILITY_LEASE_INVALID && caps) (void)caps->release(lease);
+    if(hid_lease && caps) (void)caps->release(hid_lease);
+    hid_lease=0; hid_pad=NULL;
     lease=T5_PROVIDER_CAPABILITY_LEASE_INVALID; pad=NULL; caps=NULL;
 }
 static void ht_acquire_pad(void) {
@@ -54,11 +67,19 @@ static void ht_acquire_pad(void) {
     if(!caps || caps->api_version!=T5_PROVIDER_CAPABILITY_API_VERSION ||
        !HT_HAS(caps,t5_provider_capability_api_v1,acquire) ||
        !HT_HAS(caps,t5_provider_capability_api_v1,release)) { caps=NULL; return; }
-    const void *api=NULL;
-    if(!caps->acquire("usb.xinput.gamepad",RISC_USB_GAMEPAD_API_V1,&lease,&api)) return;
-    pad=(const risc_usb_gamepad_api_v1 *)api;
-    if(!pad || pad->api_version!=RISC_USB_GAMEPAD_API_V1 ||
-       !HT_HAS(pad,risc_usb_gamepad_api_v1,snapshot) || !pad->poll) ht_release_pad();
+    const char *names[]={"usb.xinput.gamepad","usb.hid.gamepad"};
+    for(unsigned i=0;i<2;++i) {
+        const void *api=NULL; t5_provider_capability_lease_t token=0;
+        if(!caps->acquire(names[i],RISC_USB_GAMEPAD_API_V1,&token,&api)) continue;
+        const risc_usb_gamepad_api_v1 *candidate=(const risc_usb_gamepad_api_v1 *)api;
+        if(!candidate || candidate->api_version!=1 ||
+           !HT_HAS(candidate,risc_usb_gamepad_api_v1,snapshot) || !candidate->poll) {
+            if(token) (void)caps->release(token);
+            continue;
+        }
+        if(i) { hid_pad=candidate; hid_lease=token; }
+        else { pad=candidate; lease=token; }
+    }
 }
 static void ht_advance(uint32_t now) {
     if(reading || loading || ht.level!=ht_geometry_level) { simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
@@ -84,51 +105,89 @@ static void ht_advance(uint32_t now) {
 static void ht_input(uint32_t wait) {
     t5_app_input_t in={0};
     if(!app->poll(&in,wait) || in.exit_requested) { quitting=true; return; }
-    uint32_t buttons=0; bool connected=false;
-    if(pad && pad->poll(pad->context,8u)) {
+    uint32_t buttons=0; bool connected=false,fault=false,raw_buttons=false;
+    int selected_source=-1; uint64_t selected_device=0;
+    const risc_usb_gamepad_api_v1 *providers[]={pad,hid_pad};
+    for(unsigned source=0;source<2 && !connected;++source) {
+        const risc_usb_gamepad_api_v1 *provider=providers[source];
+        if(!provider) continue;
         risc_usb_gamepad_state_v1 states[4]; size_t count=4;
         memset(states,0,sizeof(states));
-        if(pad->snapshot(pad->context,states,&count)) {
-            if(count>4) count=4;
-            for(size_t i=0;i<count;++i) if(states[i].connected) {
-                connected=true;
-                uint8_t h=states[i].hat;
-                if(h==5 || h==6 || h==7 || states[i].x < -12000) buttons|=HT_LEFT;
-                if(h==1 || h==2 || h==3 || states[i].x > 12000) buttons|=HT_RIGHT;
-                /* Provider's canonical mapping is B/A/Y/X: A is bit 1. */
-                if(states[i].buttons&(1u<<1)) buttons|=HT_JUMP;
-                if(states[i].buttons&1u) buttons|=HT_INTERACT;
-                if(states[i].buttons&(1u<<9)) buttons|=HT_PAUSE;
-                if(states[i].buttons&(1u<<8)) buttons|=HT_EXIT;
+        if(!provider->poll(provider->context,8u) ||
+           !provider->snapshot(provider->context,states,&count) || count>4) { fault=true; continue; }
+        for(size_t i=0;i<count;++i) if(states[i].connected) {
+            connected=true; selected_source=(int)source; selected_device=states[i].device;
+            const risc_usb_gamepad_state_v1 *state=&states[i];
+            raw_buttons=state->buttons!=0;
+            uint8_t h=state->hat;
+            if(h>=5 && h<=7) buttons|=HT_LEFT;
+            if(h>=1 && h<=3) buttons|=HT_RIGHT;
+            if(!source || h>=8) {
+                if(state->x < -16384) buttons|=HT_LEFT;
+                if(state->x > 16384) buttons|=HT_RIGHT;
             }
+            /* Same physical bindings as GameBoy's riscrte/usb_hid_elf_adapter.cpp:
+             * XInput B/A/Y/X=1/2/4/8, HID A/B/X/Y=1/2/4/8.
+             * HID Start/Select=0x80/0x40; XInput=0x200/0x100. */
+            if(state->buttons&(source?0x02u:0x01u)) buttons|=HT_JUMP;
+            if(state->buttons&(source?0x01u:0x02u)) buttons|=HT_INTERACT|HT_ACCEPT;
+            if(state->buttons&(source?0x04u:0x08u)) buttons|=HT_BACK;
+            if(state->buttons&(source?0x80u:0x200u)) buttons|=HT_JOURNAL;
+            if(state->buttons&(source?0x40u:0x100u)) buttons|=HT_PAUSE;
+            break; // One controller owns the frame; never merge receiver slots.
         }
     }
-    if(!connected) {
-        if(in.buttons&T5_APP_BUTTON_LEFT) buttons|=HT_LEFT;
-        if(in.buttons&T5_APP_BUTTON_RIGHT) buttons|=HT_RIGHT;
-        if(in.buttons&T5_APP_BUTTON_CONFIRM) buttons|=HT_JUMP;
-        if(in.buttons&T5_APP_BUTTON_UP) buttons|=paused?HT_JUMP:HT_INTERACT;
-        if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=HT_PAUSE;
-        if(in.buttons&T5_APP_BUTTON_BACK) buttons|=HT_EXIT;
+    if(!connected && fault && ht_pad_owned) {
+        /* A failed raw poll is not a disconnect. Do not reinterpret duplicate
+         * OS navigation as a new action or leave movement held through it. */
+        ht_input_rearm=true;
+        if(!ht_pad_fault) { ht_pad_fault=true; ht_pad_fault_since=app->millis(); }
+        if(app->millis()-ht_pad_fault_since>=250u) {
+            ht_pad_owned=false; ht_pad_source=-1; ht_pad_device=0;
+        } // Persistent failure yields to neutral-gated device input, never traps Back forever.
+    } else {
+        ht_pad_fault=false;
+        if(connected!=ht_pad_owned || (connected &&
+           (selected_source!=ht_pad_source || selected_device!=ht_pad_device))) ht_input_rearm=true;
+        ht_pad_source=selected_source; ht_pad_device=selected_device;
+        ht_pad_owned=connected;
+        if(!connected) {
+            if(in.buttons&T5_APP_BUTTON_LEFT) buttons|=HT_LEFT;
+            if(in.buttons&T5_APP_BUTTON_RIGHT) buttons|=HT_RIGHT;
+            if(in.buttons&T5_APP_BUTTON_UP) buttons|=HT_JUMP;
+            if(in.buttons&T5_APP_BUTTON_CONFIRM) buttons|=HT_INTERACT|HT_ACCEPT;
+            if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=HT_PAUSE;
+            if(in.buttons&T5_APP_BUTTON_BACK) buttons|=HT_EXIT;
+        }
+        /* Raw capability ownership suppresses duplicate OS pad navigation.
+         * Keep device Back available with a neutral pad, but never interpret
+         * a face-button report plus mapped Back as an app-exit action. */
+        if(connected && !raw_buttons && (in.buttons&T5_APP_BUTTON_BACK)) buttons|=HT_EXIT;
+        if(ht_input_rearm && !buttons) ht_input_rearm=false;
     }
+    if(ht_input_rearm) buttons=0; // Release before accepting a new source/recovered report.
     /* Run simulation at input checkpoints, including during rendering. */
     uint32_t now=app->millis();
     ht_advance(now);
     uint32_t down=buttons&~previous;
     if(reading) {
-        if(down&(HT_INTERACT|HT_JUMP|HT_EXIT|HT_PAUSE)) reading=false;
-        else if(down&HT_LEFT) journal_page=(journal_page+HT_LEVELS*3u-1)%(HT_LEVELS*3u);
-        else if(down&HT_RIGHT) journal_page=(journal_page+1)%(HT_LEVELS*3u);
+        if(down&HT_JOURNAL) { reading=false; ht_journal_deciding=ht_journal_confirm=false; }
+        else ht_journal_input(down);
         if(down) ++scene_revision;
         jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0;
         previous=held=buttons; last_poll=now; return;
     }
     jump_down|=(down&HT_JUMP)!=0; pause_down|=(down&HT_PAUSE)!=0;
-    if((down&HT_INTERACT) && !paused && !loading && ht.level==ht_geometry_level) {
-        int page=ht_inspect();
-        if(page>=0) { journal_page=(unsigned)page; reading=true; }
+    if(((down&HT_JOURNAL) || (paused && (down&HT_ACCEPT))) && !loading) {
+        ht_journal_index=true; ht_journal_selection=0; ht_journal_deciding=false; reading=true;
+        jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0; ++scene_revision;
+    }
+    if(!reading && (down&HT_INTERACT) && !paused && !loading && ht.level==ht_geometry_level) {
+        int page=ht_final_near(&ht)?-1:ht_inspect();
+        if(ht_final_near(&ht)) { ht_journal_tower(); reading=true; }
+        else if(page>=0) { ht_journal_open((unsigned)page); reading=true; }
         else if(ht_puzzle_near(&ht)>=0) (void)ht_interact();
-        else reading=true;
+
         if(reading) { jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0; }
         ++scene_revision;
     }
@@ -171,24 +230,27 @@ __attribute__((visibility("default"))) void app_main(void) {
        !video || video->api_version!=T5_VIDEO_API_VERSION ||
        !HT_HAS(video,t5_video_api_v1,start_format) || !video->backbuffer ||
        !video->can_submit || !video->submit || !video->stop) return;
-    uint8_t *memory=(uint8_t *)app->psram_alloc(HT_MEMORY+15u);
+    uint8_t *memory=(uint8_t *)app->psram_alloc(HT_MEMORY+HT_PACKED_BYTES+31u);
     if(!memory) { ht_log("Hollow Trail: scenery cache PSRAM unavailable"); return; }
     uint8_t *staging=(uint8_t *)app->psram_alloc(HT_PACKED_BYTES);
     if(!staging) ht_log("Hollow Trail: packed staging unavailable; using direct packing");
-    bool started=false,display_initialized=false;
+    bool started=false,display_initialized=false,display_reading=false;
+    ht_reader_bitmap=(uint8_t *)(((uintptr_t)memory+HT_MEMORY+31u)&~(uintptr_t)15u);
     t5_video_surface_v1 surface={0};
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(false);
     ht_math=t5_math_get_api(T5_MATH_API_VERSION);
     if(ht_math && (ht_math->api_version!=T5_MATH_API_VERSION || ht_math->struct_size<sizeof(*ht_math) ||
                    !ht_math->add_s16 || !ht_math->sub_s16 || !ht_math->copy_bytes || !ht_math->fill_bytes)) ht_math=NULL;
-    ht_acquire_pad(); ht_bind((uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u));
+    ht_pad_owned=ht_input_rearm=ht_pad_fault=false; ht_pad_source=-1; ht_pad_device=0;
+    ht_acquire_pad(); ht_acquire_reader(); ht_bind((uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u));
     ht_dsp_composite=false;
     if(!ht_start_video(video,&surface)) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
     started=true;
     memset(&ht,0,sizeof(ht)); ht_spawn(true);
-    reading=false; journal_page=0;
+    reading=false; journal_page=0; ht_journal_index=true; ht_journal_selection=0;
+    ht_journal_deciding=ht_journal_confirm=ht_journal_page_ready=false; ht_read_submitted_revision=0;
     quitting=jump_down=pause_down=paused=mode_down=false; held=previous=0;
     simulation_started=false; simulation_accumulator=0; scene_revision=1;
     ht_service=ht_render_service;
@@ -210,14 +272,14 @@ __attribute__((visibility("default"))) void app_main(void) {
     if(quitting) goto cleanup;
     uint32_t last_frame=app->millis()-HT_FRAME_INTERVAL_MS, last_submit=app->millis();
     uint32_t drawn_revision=0, prepared_revision=0;
-    bool prepared=false;
+    bool prepared=false,prepared_reader=false;
     uint32_t prepared_since=0,prepared_render_ms=0,prepared_pack_ms=0;
     bool prepared_staged=false;
     bool prepared_profile=false;
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.0.14: dithered 1bpp parallax renderer started");
+    ht_log("Hollow Trail 1.0.15: dithered 1bpp parallax renderer started");
     while(!quitting) {
         /* A ready frame gets priority over another fixed poll delay. Busy
          * waits still poll/yield every iteration, and ready paths poll by 8ms. */
@@ -262,29 +324,30 @@ __attribute__((visibility("default"))) void app_main(void) {
             prepared_revision=scene_revision;
             const ht_game rendering_game=ht;
             const bool rendering_paused=paused,rendering_reading=reading;
-            const unsigned rendering_page=journal_page;
+            prepared_reader=rendering_reading;
             prepared_profile=!rendering_paused && !rendering_reading;
+            if(rendering_reading) ht_journal_render();
+            else {
             ht_render_scene();
             /* Initial instructions dismiss automatically after walking. */
             if(rendering_game.x<230*256 && rendering_game.checkpoint==0) {
-                ht_rect(ht_scene,90,38,249,68,0);
+                ht_rect(ht_scene,72,38,336,68,0);
                 ht_text(98,45,ht_chapters[rendering_game.level].title,2);
-                ht_text(98,66,"LEFT/RIGHT MOVE   A / CONFIRM JUMP",1);
-                ht_text(98,79,"START / DOWN PAUSE   SELECT / BACK EXIT",1);
-                ht_text(98,92,"B / UP INSPECT OR OPEN JOURNAL",1);
+                ht_text(98,66,"LEFT/RIGHT MOVE   B / UP JUMP",1);
+                ht_text(98,79,"SELECT / DOWN PAUSE   HOME/BACK EXIT",1);
+                ht_text(98,92,"A / CONFIRM INSPECT   START JOURNAL",1);
             }
             if(!rendering_paused) {
                 ht_narration(&rendering_game);
-                if(rendering_reading) ht_draw_journal(&rendering_game,rendering_page);
-                else { ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game); }
+                ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game);
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,112,74,256,172,0);
-                ht_text(127,83,"HOLLOW TRAIL 1.0.14",1);
+                ht_text(127,83,"HOLLOW TRAIL 1.0.15",1);
                 ht_text(198,95,"PAUSED",2);
-                ht_text(127,117,"START / DOWN RESUME    SELECT / BACK EXIT",1);
+                ht_text(127,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
                 ht_text(127,133,!ht_dsp_available()?"DSP16: UNAVAILABLE":ht_dsp_composite?"DSP16 COMPOSITOR: ON":"DSP16 COMPOSITOR: OFF",1);
-                ht_text(127,148,"A / CONFIRM TOGGLE DSP16",1);
+                ht_text(127,148,"B / UP DSP16   A / CONFIRM JOURNAL",1);
                 char perf[64];
                 snprintf(perf,sizeof(perf),"FPS %lu.%lu   SCANS %lu.%lu",
                     (unsigned long)(ht_perf.fps10/10),(unsigned long)(ht_perf.fps10%10),
@@ -309,6 +372,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                     ht_text(127,225,perf,1);
                 } else ht_text(127,210,"SCAN TIMING NOT AVAILABLE",1);
             }
+            } /* game frame */
             prepared_since=app->millis();
             prepared_render_ms=prepared_since-now;
             prepared_pack_ms=0; prepared_staged=false;
@@ -317,7 +381,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         if(quitting) break;
         /* Overlap useful packing with the queued scan. Keep the no-copy path
          * when a backbuffer is already available; staging failure is harmless. */
-        if(prepared && staging && !prepared_staged && !video->can_submit()) {
+        if(prepared && !prepared_reader && staging && !prepared_staged && !video->can_submit()) {
             uint32_t pack_start=app->millis();
             ht_pack_mono(staging,surface.stride_bytes);
             prepared_since=app->millis();
@@ -331,12 +395,15 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_log("Hollow Trail: video backbuffer unavailable"); break;
             }
             uint32_t pack_start=app->millis();
-            if(prepared_staged) ht_copy_packed(buffer,staging);
+            if(prepared_reader) ht_copy_packed(buffer,ht_reader_bitmap);
+            else if(prepared_staged) ht_copy_packed(buffer,staging);
             else ht_pack_mono(buffer,surface.stride_bytes);
             uint32_t output_ms=app->millis()-pack_start;
             if(quitting) break;
-            if(video->submit(display_initialized?ht_dirty_top:0,
-                             display_initialized?ht_dirty_height:0)) {
+            bool cropped=display_initialized && !prepared_reader && !display_reading;
+            if(video->submit(cropped?ht_dirty_top:0,cropped?ht_dirty_height:0)) {
+                display_reading=prepared_reader;
+                if(prepared_reader) ht_read_submitted_revision=prepared_revision;
                 display_initialized=true;
                 last_submit=app->millis(); drawn_revision=prepared_revision; prepared=false;
                 if(prepared_profile) {
@@ -367,7 +434,7 @@ __attribute__((visibility("default"))) void app_main(void) {
 cleanup:
     ht_service=NULL; loading=false;
     if(started) video->stop();
-    ht_release_pad();
+    ht_release_reader(); ht_release_pad();
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(true);
     if(staging) app->psram_free(staging);
     app->psram_free(memory);

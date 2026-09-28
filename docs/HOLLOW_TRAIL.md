@@ -1,5 +1,46 @@
 # Hollow Trail 1.0.14
 
+## Current controls (1.0.15, supersedes historical mappings below)
+
+| Action | Controller | Device / generic navigation |
+| --- | --- | --- |
+| Move / turn journal page | D-pad Left/Right | Left/Right |
+| Jump | B | Up |
+| Inspect / use nearby mechanism | A | Confirm |
+| Journal | Start (toggles reading) | Down to pause, then Confirm |
+| Read / confirm decision | A | Confirm |
+| Back in reading | X | Back |
+| Close app from gameplay | Home / menu shortcut | Home / Back |
+| Pause / resume diagnostics | Select | Down |
+| Toggle DSP benchmark while paused | B | Up |
+
+A and X never close gameplay. A duplicate mapped Back accompanying a raw face
+button is suppressed. Device Back remains available with a neutral controller;
+the host Home/menu exit request remains active in every game screen.
+
+A away from an inspectable object or mechanism is inert. The journal never
+opens as an inspect fallback. Directional inputs cannot directly open it.
+Start has a dedicated edge-triggered journal action, separate from jumping,
+inspection and pause. Holding Back after closing reading does not exit the app.
+
+The input masks match T5S3-GameBoy's `riscrte/usb_hid_elf_adapter.cpp`:
+XInput A/B/X/Y/Start/Select = 0x02/0x01/0x08/0x04/0x200/0x100;
+HID = 0x01/0x02/0x04/0x08/0x80/0x40. The app declares and leases both optional
+`usb.xinput.gamepad` and `usb.hid.gamepad` capabilities; raw HID reports are not
+interpreted as normalized XInput. One connected pad supplies a frame, with
+XInput priority; multiple receiver slots are never ORed together. A raw poll
+failure suppresses mapped navigation while that pad owns input. A persistent
+failure yields back to neutral-gated device input after 250ms. Source changes
+and recovery require neutral input before accepting new actions. These rules
+prevent a fault from turning a held button into a new inspect/journal press.
+
+Regression tests drive production input with both raw layouts, duplicate OS
+navigation, all eight hats, unused face buttons, XInput trigger bits,
+Start/Select, empty-space inspection, reading/back, faults, recovery and a
+second receiver slot. The cumulative app version is still unreleased 1.0.15
+(master/published 1.0.14). No additional firmware version change is needed.
+
+
 A separate, original ten-chapter silhouette platformer for the fast EPD interface, using fixed monochrome dithering by default.
 No external assets, file access, or network are required. Version 1.0.2 uses
 the native math API introduced in firmware 1.3.27.
@@ -1001,3 +1042,96 @@ relocation and links the corrected version with separate IRAM/flash addresses;
 it uses a minimal section-attribute header and linker script, not a full board
 link. The native C++ transition test still verifies all 1024 transitions and 40
 full scans. Firmware/app versions remain the cumulative unreleased 1.3.34/1.0.14.
+
+## Reader journal (app 1.0.15 / firmware 1.3.35)
+
+The 30 objects now open full found documents (roughly 130–180 words each),
+with physical details, different witnesses and the traveller's reflections.
+The operational directions remain explicit inside each document. Ambiguity
+concerns the people, the older trail and their choices, not arbitrary puzzle
+wording. Thirty additional reflective passages recap the ten chapters, unlocking
+alongside the matching on-trail narration. Recaps never reveal uncollected clues.
+
+B / Up inspects a nearby object, operates nearby machinery, or opens the journal
+elsewhere. The journal index contains **collected evidence** followed by **story
+so far**. Left/Right selects a record; A/Confirm opens it. In a record,
+Left/Right turns pages; A, B, Up, Back or Start returns to the index. From the
+index B, Up, Back or Start closes reading. Navigation is edge-triggered; held
+Back does not exit the game after closing the journal. There is no page-turn
+animation. Both evidence and reached narration survive death, chapter changes
+and replay within the current session; quitting still clears progress.
+
+### Typography boundary
+
+The manifest declares the optional `reader.typography` API 1 software capability.
+The app acquires/releases it through `T5ProviderCapabilityApi`, alongside its
+independent gamepad lease. Firmware validates the declaration and execution
+owner; each callback checks its lease generation and owner, and loader cleanup
+invalidates outstanding leases. This is a built-in software provider for the
+resident reader, not an installed hardware provider or a new direct font import.
+The app never sees `CrossPointSettings`, a `GfxRenderer`, SD font objects or a
+physical display handle. The public ABI is `sdk/driver/RiscReaderTypographyV1.h`.
+
+The service selects `SETTINGS.getReaderFontId()` after preparing the selected SD
+family when applicable, so family **and size** follow the ebook configuration.
+Line compression follows the reader setting too. Text is measured with the same
+font used to draw it, including the renderer's kerning and ligature handling.
+It draws into an app-owned, native-resolution 960x540 monochrome bitmap. Font
+pixels never pass through the reduced-resolution scenery compositor or upsampler.
+The detached renderer shares font registrations but cannot alter the host's
+orientation, framebuffer or display mode. The capability does not refresh the
+panel. A missing/failing service displays an explicit typography-unavailable
+message and allows returning to the game; it does not silently replace the
+selected reading font with the game's tiny bitmap face.
+
+Pages use bounded UTF-8 byte offsets. The app remembers up to 64 page starts
+per opened record; reopening starts at page one. Content is immutable during a
+reading visit because physics is frozen. Input during display copying queues a
+later revision rather than changing the prepared bitmap. There is one additional
+64,800-byte PSRAM reading bitmap and a 4 KiB text buffer; nothing is allocated per
+frame or per page. Normal gameplay does no typography work.
+
+The service limits text to 16 KiB, title/footer to 128 bytes, target storage to
+256 KiB, and uses a 255-byte line buffer. It yields after each 240-byte font
+metric preparation chunk and each laid-out line, with a five-second deadline;
+bitmap polarity conversion yields every 32 rows. Existing font loading remains
+inside the reader subsystem. Invalid requests and failures return false and the
+caller must discard the target. The service does not hold an app buffer after
+returning. Entering a journal page and the first restored game frame submit all
+rows through the existing fast video driver; this is **not** a clear/rewrite
+cycle, and unchanged reading frames retain the driver's idle cleanup behavior.
+
+Validation: native Xtensa ELF build; production-app queue test verifies native
+bitmap copying, full-screen entry/restoration, lease release, delayed submission
+and fallback allocation; input tests cover page history, reading freeze and
+unlocked records. Host tests compile the production typography service with fake
+font/device dependencies to verify configured font/spacing, polarity, capacity,
+progress and timeout. Separate layout tests exercise proportional measurement,
+UTF-8 boundaries, paragraph breaks, long words and cancellation. These are not
+physical display or SD font performance measurements.
+
+Versions: Hollow Trail 1.0.14 -> 1.0.15; firmware 1.3.34 -> 1.3.35, both above
+master and the published release index checked for this change. The app requires
+firmware 1.3.35 for the new typography capability.
+
+## Contending accounts and the final decision (1.0.15 revision)
+
+[The implemented story and ending design](HOLLOW_TRAIL_STORY.md) supersedes the
+straightforward rescue/reunion synopsis above. All 30 documents, 30 narration
+beats, chapter recaps and puzzle unlock messages now sustain the sister's and
+keeper's conflicting accounts. Her coercion, manipulation and leadership remain
+plausible as the same observations acquire different explanations.
+
+The last tower now requires **Break the circuit** or **Complete the circuit**,
+with a separate confirmation. The choice changes the final evidence entry and
+adds its result to the journal's witnessed endings. The opposite ending is
+hidden until played. Read the result and press A/Confirm on its last page before
+walking through the exit to restart. B cancels or returns to the journal without
+silently completing the chapter. Both choices and the replay flow have host
+input tests; the existing full-route test exercises the new exit gate.
+
+A reader capability failure now shows a labelled compact fallback with complete
+text and pagination rather than leaving the final gate impossible to complete.
+Normal reading still uses configured typography through the same capability.
+The app remains the cumulative unreleased 1.0.15; this revision adds no firmware
+changes or extra frame buffers. Journal/ending history remains session-only.
