@@ -223,28 +223,47 @@ improved but did not eliminate geometry ghosting in both Risc Strike and Hollow
 Trail. The exact installed build was not supplied with that report. Treat this
 as an unresolved hardware-visible defect, not an accepted rendering result.
 
+A supplied photo of the running game shows dark foreground trees still present,
+with pale, displaced outlines of previous branches and scenery spread across the
+lighter background. The physical image looks substantially more washed out than
+six captured host-renderer frames during the first 3.52 seconds of moving right;
+those frames have no retained silhouettes and their cached filters match fresh
+filters exactly. This comparison supports investigating the shared gray-drive
+path, but a photograph of one state cannot prove which electrical pulse or
+transition caused the residue. The photo was supplied before there was a
+confirmed on-device test of the firmware 1.3.28 correction.
+
 Source inspection shows that Risc Strike clears and rebuilds its full submitted
 buffer, while Hollow Trail clears its composite scene and repacks every output
 pixel. Both request full-height updates. This rules out an intentionally partial
 app redraw as the explanation; it does not rule out a lower-level delivery fault.
 
-The fast-video gray engine currently represents physical response as a reversible
-four-level counter: one black pulse increments it, one white pulse decrements it,
-and an unchanged target gets no further drive. That is a commanded-state model,
-not a measurement of the panel. The installed M5GFX `Panel_EPD.cpp` instead has
-multi-step grayscale drawing and eraser tables; the raw video engine does not use
-those tables. History-dependent physical response is therefore a plausible
-remaining cause, not a confirmed diagnosis. Copying those tables blindly would
-also be unjustified because raw-video bus timing and scan cadence differ.
+Firmware 1.3.28 changes the shared fast-video gray engine from reversible
+shade-difference pulses to erase-before-redraw. A changed nonwhite pixel receives
+three white erase passes, then zero to three black passes for its new shade.
+Unchanged pixels are not driven; a known-white pixel needs only the draw phase.
+Startup marks the retained panel contents unknown so even an initial white frame
+gets an explicit erase. Admission remains blocked until all passes finish.
 
-The grayscale host test integrates emitted commands using the same one-level-per-
-pulse assumption. Its coverage is useful for interrupted-transition bookkeeping,
-but cannot prove optical gray accuracy or absence of accumulated ghosting.
-Further diagnosis should compare a captured submitted buffer with the panel,
-then exercise repeated old-to-new shade pairs at the actual video timing. Any
-waveform correction must be evaluated for gray fidelity, retained-image removal,
-flashing and frame cadence together. No additional waveform fix or physical
-validation is claimed by this documentation update.
+This addresses the assumption exposed by the examples: whitening a black
+character partway is not necessarily equivalent to drawing the background gray
+from white. All newly drawn gray values now approach their target from the same
+white baseline. The erase duration reuses the existing three-pass endpoint drive;
+it is not a newly calibrated panel waveform. The installed M5GFX grayscale LUTs
+are not copied because their timing differs from this raw scan engine.
+
+The regression test now covers all 16 shade transitions, unknown startup state,
+unchanged neighbors and interrupted sequences. An illustrative asymmetric model
+(black +2 units, white -3, saturating at endpoints) demonstrates the former
+black-to-light-gray error and checks recovery with the new sequence. It is not a
+measurement of this panel. Device validation must still establish whether three
+erase passes sufficiently remove retained images, whether shade fidelity is
+preserved, and the visibility/cost of the localized white erase phase.
+
+See [NativeVideoGray.h](../src/native/NativeVideoGray.h) for the production
+sequence and [the transition tests](../test/native_apps/native_video_gray_test.cpp).
+This is a corrective implementation candidate; the reported physical ghosting
+is not declared resolved until checked on the device.
 
 ## Evidence and remaining measurements
 
@@ -258,10 +277,12 @@ validation is claimed by this documentation update.
 
 The original host timing is a development observation, not a portable benchmark
 with a published hardware/compiler baseline. Do not extrapolate it to the S3.
-The existing scan target is 24 scans/s; a complete gray transition may take three
-scans (about 125ms at that target before other overhead). The app's 15fps cap is
+The existing scan target is 24 scans/s. Through firmware 1.3.27, gray updates
+needed up to three scans. The 1.3.28 erase/redraw correction can need six scans
+(about 250ms at that target before other overhead) for changed nonwhite pixels. The app's 15fps cap is
 therefore not a promise of 15 fully settled grayscale frames each second.
-Neither optimization update changes panel waveforms or scan timing.
+The CPU optimizations do not change scan timing. The later ghosting correction
+adds erase passes, so its visible frame cadence must be measured separately.
 
 The next useful device comparison is scalar versus DSP with the same camera
 path and output hashes. Measure scene preparation, packing, time waiting for
