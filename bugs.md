@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 121. KOReader binary document ID silently hashes partial input after SD read or seek failures
+
+- **Status:** Open.
+- **Sources:** current master source inspection on 2026-09-28.
+
+- **Affected code:** `lib/KOReaderSync/KOReaderDocumentId.cpp`, `KOReaderDocumentId::calculate()`; consumer `src/activities/reader/KOReaderSyncActivity.cpp`, `performSync()` and upload paths.
+- **Trigger / reproduction:** Configure KOReader matching to **Binary**, open a valid EPUB, then inject an SD seek failure or a short/failed read at any one of the sampled document-hash offsets while starting KOReader Sync.
+- **Observed / logically demonstrated failure:** `calculate()` deliberately samples up to 1024 bytes at each KOReader hash offset, but a failed `seekSet()` only logs and `continue`s, and any positive short `read()` is accepted without requiring `bytesRead == bytesToRead`. The function then finalizes and returns a normal-looking 32-character MD5 over whatever subset of bytes happened to be read. `KOReaderSyncActivity::performSync()` rejects only an empty hash, so this partial-data digest is used as the remote document key for both progress lookup and upload.
+- **Likely root cause:** The document-ID routine treats per-chunk I/O failures as optional skipped samples instead of treating them as failure of the deterministic identity calculation.
+- **Impact:** A transient SD fault can make the same book acquire a different KOReader document ID for that sync attempt. The reader can report no remote progress for an existing book and can upload progress under a spurious document key rather than the book's canonical KOReader key.
+- **Repair direction:** Fail closed if any required sample cannot seek or cannot return exactly the requested byte count; close the file and return an empty ID so the existing sync failure path is used. Add fault-injection tests for failed seek, zero-byte read, and positive short read at each sampled offset, plus a control proving the valid-file hash is stable.
+
+### 122. HalStorage stream copy reports success after a short output write or premature input read failure
+
+- **Status:** Open.
+- **Sources:** current master source inspection on 2026-09-28.
+
+- **Affected code:** `lib/hal/HalStorage.cpp`, `HalStorage::readFileToStream(const char*, Print&, size_t)`.
+- **Trigger / reproduction:** Call `readFileToStream()` on an existing file using a `Print` sink whose `write(buffer, n)` accepts fewer than `n` bytes, or inject an SD read failure that makes `f.read()` return zero/negative while unread data remains.
+- **Observed / logically demonstrated failure:** For every successful file read the function calls `out.write(...)` and discards the returned byte count. If the sink short-writes, data is silently lost. Likewise, when `f.available()` is true but `f.read()` returns `<= 0`, the loop merely breaks. After either condition the file is closed and the function unconditionally returns `true`. Callers therefore cannot distinguish a complete copy from truncated output.
+- **Likely root cause:** The helper treats opening the source as the success criterion and does not propagate either side of the stream-copy I/O contract.
+- **Impact:** Any caller using this common HAL helper to materialize or transform an SD file can accept incomplete output as complete, allowing silent corruption to be cached, uploaded, parsed, or published by the next layer.
+- **Repair direction:** Require every output write to equal the input chunk length, treat a read failure before verified EOF as failure, and propagate close/sync errors where the underlying API exposes them. Add tests with a short-writing `Print` implementation and an injected source read failure that verify the helper returns `false` and never reports a truncated transfer as successful.
+
+### 123. Status Bar bridge reports an unsaved setting mutation as successful when persistence fails
+
+- **Status:** Open.
+- **Sources:** current master source inspection on 2026-09-28.
+
+- **Affected code:** `src/native/NativeStatusBarBridge.cpp`, `itemActivate()`; consumer `Apps/status_bar_settings.c`, Confirm/tap activation paths.
+- **Trigger / reproduction:** Open **Customize Status Bar**, force the settings file write to fail, then toggle Chapter Page Count, Book Progress, Progress Bar, Thickness, Title, Battery, or Clock.
+- **Observed / logically demonstrated failure:** `itemActivate()` mutates the live `SETTINGS` field first, calls `SETTINGS.saveToFile()` without checking its result, and always returns `true`. The native app ignores that return value and immediately rerenders from the mutated live settings. The screen therefore shows the new value even though the durable settings remain unchanged; a reload or reboot restores the prior value. This is a separate status-bar API path from the direct Settings bridge persistence bug already tracked as #31.
+- **Likely root cause:** Status-bar mutation and persistence are not transactional, and both the bridge and its app consumer assume the save succeeded.
+- **Impact:** Users receive a false success indication and can lose status-bar customizations after reboot or settings reload. An SD fault can also leave live and durable UI configuration diverged for the remainder of the session.
+- **Repair direction:** Preserve the previous field value, require `saveToFile()` success before returning success, restore the field on failure, and make the app surface a save error instead of silently rerendering the optimistic value. Add an injected-write-failure test for each binary/three-state setting family.
