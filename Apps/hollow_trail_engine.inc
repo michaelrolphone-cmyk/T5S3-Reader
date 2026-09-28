@@ -1,4 +1,4 @@
-/* Hollow Trail — deterministic three-level platformer and PSRAM raster pipeline.
+/* Hollow Trail — deterministic ten-chapter platformer and PSRAM raster pipeline.
  * World/overlays are 480x270; scenery is 240x135; output is 960x540. No textures, random frame noise,
  * floating-point library, framebuffer reads, or per-frame allocation. */
 #include <stdint.h>
@@ -50,16 +50,30 @@ static const ht_platform ht_oil[] = {
     { 1913, 2140, 190 }, { 2208, 2435, 170 }, { 2503, 2730, 203 },
     { 2798, 3410, 200 }
 };
-#define HT_LEVELS 3
+#define HT_LEVELS 10
+static const ht_platform ht_routes[7][HT_PLATFORMS] = {
+    { { -160, 380, 222 }, { 448, 710, 204 }, { 784, 1044, 180 }, { 1104, 1326, 203 }, { 1398, 1580, 175 }, { 1652, 1849, 158 }, { 1909, 2136, 187 }, { 2208, 2435, 165 }, { 2507, 2734, 196 }, { 2798, 3410, 200 } },
+    { { -160, 380, 219 }, { 452, 714, 201 }, { 776, 1036, 177 }, { 1108, 1330, 209 }, { 1402, 1584, 181 }, { 1644, 1841, 155 }, { 1913, 2140, 184 }, { 2212, 2439, 162 }, { 2499, 2726, 202 }, { 2798, 3410, 197 } },
+    { { -160, 380, 216 }, { 444, 706, 198 }, { 780, 1040, 183 }, { 1112, 1334, 206 }, { 1394, 1576, 178 }, { 1648, 1845, 152 }, { 1917, 2144, 190 }, { 2204, 2431, 168 }, { 2503, 2730, 199 }, { 2798, 3410, 194 } },
+    { { -160, 380, 222 }, { 448, 710, 204 }, { 784, 1044, 180 }, { 1104, 1326, 203 }, { 1398, 1580, 175 }, { 1652, 1849, 158 }, { 1909, 2136, 187 }, { 2208, 2435, 165 }, { 2507, 2734, 196 }, { 2798, 3410, 200 } },
+    { { -160, 380, 219 }, { 452, 714, 201 }, { 776, 1036, 177 }, { 1108, 1330, 209 }, { 1402, 1584, 181 }, { 1644, 1841, 155 }, { 1913, 2140, 184 }, { 2212, 2439, 162 }, { 2499, 2726, 202 }, { 2798, 3410, 197 } },
+    { { -160, 380, 216 }, { 444, 706, 198 }, { 780, 1040, 183 }, { 1112, 1334, 206 }, { 1394, 1576, 178 }, { 1648, 1845, 152 }, { 1917, 2144, 190 }, { 2204, 2431, 168 }, { 2503, 2730, 199 }, { 2798, 3410, 194 } },
+    { { -160, 380, 222 }, { 448, 710, 204 }, { 784, 1044, 180 }, { 1104, 1326, 203 }, { 1398, 1580, 175 }, { 1652, 1849, 158 }, { 1909, 2136, 187 }, { 2208, 2435, 165 }, { 2507, 2734, 196 }, { 2798, 3410, 200 } }
+};
+static const ht_platform *ht_level_land(unsigned level) {
+    return level>=3?ht_routes[level-3]:level==2?ht_oil:level==1?ht_city:ht_forest;
+}
+#include "hollow_trail_story.inc"
 typedef struct {
     int x, y, vx, vy; /* Q8, y is feet */
     int camera, checkpoint, coyote, jump_buffer, facing, stride;
     unsigned ticks, laps, deaths;
-    unsigned level; /* Forest, skyscrapers, oil fields; laps count complete circuits. */
+    unsigned level; /* Laps count complete ten-chapter journeys. */
+    int story_x; /* Furthest progress in this chapter, retained on death. */
     bool grounded;
 } ht_game;
 static ht_game ht;
-#define ht_land (ht.level==2 ? ht_oil : ht.level==1 ? ht_city : ht_forest)
+#define ht_land ht_level_land(ht.level)
 /* Geometry belongs to a render snapshot, never live input/physics. */
 static unsigned ht_geometry_level;
 static const t5_math_api_v1 *ht_math;
@@ -143,9 +157,9 @@ static void ht_bind(uint8_t *memory) {
 }
 static void ht_spawn(bool restart) {
     unsigned laps=ht.laps, deaths=ht.deaths, level=ht.level;
-    int cp=restart?0:ht.checkpoint;
+    int cp=restart?0:ht.checkpoint, story_x=restart?0:ht.story_x;
     memset(&ht,0,sizeof(ht)); ht.laps=laps; ht.deaths=deaths; ht.level=level;
-    ht.checkpoint=cp; ht.x=(cp?ht_land[cp].left+35:95)*256;
+    ht.story_x=story_x; ht.checkpoint=cp; ht.x=(cp?ht_land[cp].left+35:95)*256;
     ht.y=ht_land[cp].top*256; ht.grounded=true; ht.facing=1;
     ht.camera=ht_clamp(ht.x/256-165,0,HT_GOAL-340)*256;
 }
@@ -180,6 +194,7 @@ static void ht_step(int direction,bool jump_pressed,bool jump_held) {
             ht.vx=0;
         }
     }
+    ht.story_x=ht_max(ht.story_x,ht.x/256);
     if(ht.grounded) ht.stride+=ht_abs(ht.vx);
     if(ht.y>335*256) { ++ht.deaths; ht_spawn(false); return; }
     if(ht.x>=HT_GOAL*256 && ht.grounded) {
@@ -448,7 +463,115 @@ static void ht_oil_foreground(int camera) {
     ht_rect(ht_raw,x-23,top-54,46,8,255);
     ht_triangle(ht_raw,x-25,top-54,x,top-69,x+25,top-54,255);
 }
+/* Chapter scenery is world-anchored and generated only into cached strips. */
+static void ht_chapter_background(int depth,int offset) {
+    int spacing=211, tone=depth?162:83,base=depth?253:233;
+    int first=ht_floor_div(offset-220,spacing),last=ht_floor_div(offset+HT_W+220,spacing);
+    for(int j=first;j<=last;++j) {
+        int x=j*spacing-offset;
+        uint32_t h=ht_hash((uint32_t)j+ht_geometry_level*731u);
+        int height=85+(int)(h%70),top=base-height;
+        switch(ht_geometry_level) {
+        case 3: /* Freight cars, signals and distant railway gantries. */
+            ht_rect(ht_raw,x-30,base-50,155,40,tone);
+            for(int k=0;k<6;++k) ht_rect(ht_raw,x-23+k*24,base-45,2,29,tone-22);
+            ht_disk(ht_raw,x,base-8,9,tone); ht_disk(ht_raw,x+91,base-8,9,tone);
+            ht_rect(ht_raw,x-44,base,220,4,tone);
+            ht_rect(ht_raw,x+145,top,5,height,tone);
+            ht_rect(ht_raw,x+138,top-7,19,29,tone);
+            ht_disk(ht_raw,x+147,top,3,tone-50);
+            if(!depth) { ht_rect(ht_raw,x-10,top-20,5,height+20,tone); ht_rect(ht_raw,x-10,top-20,165,5,tone); }
+            break;
+        case 4: /* Sunken ferry shelters, willows and reed beds. */
+            ht_tree(ht_raw,x,base,height,5,h,tone);
+            ht_rect(ht_raw,x+84,base-58,5,70,tone); ht_rect(ht_raw,x+148,base-58,5,70,tone);
+            ht_triangle(ht_raw,x+73,base-58,x+116,base-89,x+164,base-58,tone);
+            for(int k=0;k<9;++k) ht_limb(ht_raw,x+70+k*11,base+10,x+67+k*11,base-8-(k%3)*9,1,1,tone);
+            ht_rect(ht_raw,x-40,base+15,210,2,tone-35);
+            break;
+        case 5: /* Benched quarry walls and abandoned lifting cranes. */
+            for(int k=0;k<4;++k) ht_rect(ht_raw,x-20+k*19,top+k*25,160-k*12,HT_H,tone-18+k*4);
+            ht_rect(ht_raw,x+130,top-20,5,height+20,tone);
+            ht_limb(ht_raw,x+130,top-18,x+44,top+4,3,2,tone);
+            ht_rect(ht_raw,x+45,top+4,2,48,tone);
+            break;
+        case 6: /* Empty glasshouse ribs, climbing vines and seed beds. */
+            ht_rect(ht_raw,x-20,base-69,161,3,tone);
+            for(int k=0;k<5;++k) {
+                int bx=x-20+k*40;
+                ht_rect(ht_raw,bx,base-69,3,69,tone);
+                ht_limb(ht_raw,bx,base-68,x+60,base-119,2,2,tone);
+            }
+            ht_limb(ht_raw,x+60,base-119,x+141,base-68,3,3,tone);
+            ht_tree(ht_raw,x+164,base,height,4,h,tone);
+            ht_rect(ht_raw,x-20,base-4,166,4,tone);
+            break;
+        case 7: /* Dam buttresses, spillways and turbine pipework. */
+            ht_rect(ht_raw,x-15,top,185,HT_H-top,tone);
+            ht_rect(ht_raw,x-23,top,201,8,tone);
+            for(int k=0;k<4;++k) {
+                ht_rect(ht_raw,x+k*44,top+20,21,height,tone-48);
+                ht_rect(ht_raw,x+k*44+8,top+29,4,height,tone-20);
+            }
+            ht_rect(ht_raw,x-15,top-14,185,3,tone);
+            for(int k=0;k<7;++k) ht_rect(ht_raw,x-15+k*30,top-14,2,14,tone);
+            break;
+        case 8: /* Jagged mountain ridges and wind-stripped pines. */
+            ht_triangle(ht_raw,x-100,HT_H,x+20,top-30,x+177,HT_H,tone-15);
+            ht_triangle(ht_raw,x+20,top-30,x+4,top+8,x+60,top+28,tone-42);
+            if(depth) ht_tree(ht_raw,x+146,base,height,5,h,tone);
+            break;
+        default: /* Settlement lights under the radio mast. */
+            ht_rect(ht_raw,x-10,base-57,101,58,tone);
+            ht_triangle(ht_raw,x-24,base-57,x+37,base-100,x+108,base-57,tone);
+            ht_rect(ht_raw,x+63,base-96,10,44,tone);
+            for(int k=0;k<3;++k) ht_rect(ht_raw,x+k*29,base-39,12,19,0);
+            ht_derrick(x+153,base,height+35,tone);
+            ht_limb(ht_raw,x+128,top,x+178,top,2,2,tone);
+            break;
+        }
+        ht_checkpoint();
+    }
+}
+static void ht_chapter_foreground(int camera) {
+    const ht_platform *land=ht_level_land(ht_geometry_level);
+    for(int i=0;i<HT_PLATFORMS;++i) {
+        const ht_platform *p=&land[i];
+        int l=p->left-camera,r=p->right-camera,top=p->top;
+        if(r< -80 || l>HT_W+80) continue;
+        ht_rect(ht_raw,l,top,r-l,HT_H-top,255);
+        if(ht_geometry_level==4) { /* Broken boardwalks above dark water. */
+            for(int x=l+8;x<r-8;x+=24) ht_rect(ht_raw,x,top+5,3,HT_H-top,65);
+            ht_rect(ht_raw,l,top+8,r-l,5,255);
+            for(int k=0;k<4;++k) ht_limb(ht_raw,l+50+k*8,top,l+46+k*8,top-15-(k%2)*12,1,1,255);
+        } else if(ht_geometry_level==3 || ht_geometry_level==7) {
+            ht_rect(ht_raw,l,top+7,r-l,3,212);
+            for(int x=l+16;x<r-12;x+=42) ht_rect(ht_raw,x,top+18,16,26,227);
+        } else {
+            ht_triangle(ht_raw,l,top+5,l-7,top+34,l,top+61,255);
+            ht_triangle(ht_raw,r-1,top+15,r+7,top+45,r-1,top+70,255);
+            if(ht_geometry_level==6 || ht_geometry_level==8)
+                ht_tree(ht_raw,l+(r-l)*2/3,top,ht_geometry_level==6?87:123,5,(uint32_t)i+140u,255);
+            else if(ht_geometry_level==9) {
+                ht_rect(ht_raw,l+56,top-25,3,25,255);
+                ht_rect(ht_raw,l+52,top-32,11,10,255);
+                ht_rect(ht_raw,l+55,top-30,5,6,0);
+            }
+        }
+        ht_checkpoint();
+    }
+    int x=HT_GOAL-camera,top=land[HT_PLATFORMS-1].top;
+    ht_rect(ht_raw,x-19,top-49,7,49,255); ht_rect(ht_raw,x+12,top-49,7,49,255);
+    ht_rect(ht_raw,x-23,top-54,46,8,255);
+    if(ht_geometry_level==9) { /* A waiting silhouette beside the home doorway. */
+        ht_disk(ht_raw,x+37,top-25,4,255);
+        ht_rect(ht_raw,x+34,top-21,7,14,255);
+        ht_limb(ht_raw,x+36,top-8,x+33,top,2,1,255);
+        ht_limb(ht_raw,x+39,top-8,x+43,top,2,1,255);
+    }
+}
 static void ht_background(int depth,int offset) {
+    if(ht_geometry_level>=3) { ht_chapter_background(depth,offset); return; }
     if(ht_geometry_level==2) { ht_oil_background(depth,offset); return; }
     if(ht_geometry_level==1) { ht_city_background(depth,offset); return; }
     int tone=depth==0?85:170, base=depth==0?219:246;
@@ -497,6 +620,7 @@ static void ht_background(int depth,int offset) {
     }
 }
 static void ht_foreground(int camera) {
+    if(ht_geometry_level>=3) { ht_chapter_foreground(camera); return; }
     if(ht_geometry_level==2) { ht_oil_foreground(camera); return; }
     if(ht_geometry_level==1) { ht_city_foreground(camera); return; }
     for(int i=0;i<HT_PLATFORMS;++i) {
@@ -527,6 +651,21 @@ static void ht_foreground(int camera) {
 /* This plane has its own 1.23x translation and cached blur. Enumerate
  * periodic branches by world position so adjacent strips agree exactly. */
 static void ht_branches(int offset) {
+    if(ht_geometry_level>=3) {
+        int first=ht_floor_div(offset-200,811),last=ht_floor_div(offset+HT_W+200,811);
+        for(int j=first;j<=last;++j) {
+            int x=j*811-offset;
+            if(ht_geometry_level==4 || ht_geometry_level==6 || ht_geometry_level==8) {
+                ht_limb(ht_raw,x-75,-10,x+73,34,12,3,255);
+                ht_limb(ht_raw,x+15,17,x+64,72,4,0,255);
+            } else {
+                ht_rect(ht_raw,x-70,20,150,7,255);
+                ht_limb(ht_raw,x-58,22,x+19,65,4,3,255);
+                ht_rect(ht_raw,x+14,0,8,68,255);
+            }
+        }
+        return;
+    }
     if(ht_geometry_level==2) {
         int first=ht_floor_div(offset-200,830),last=ht_floor_div(offset+HT_W+200,830);
         for(int j=first;j<=last;++j) {
@@ -1012,3 +1151,19 @@ static void ht_text(int x,int y,const char *text,int scale) {
 }
 
 static void ht_pack(uint8_t *out,int stride) { ht_pack_format(out,stride,false); }
+
+/* Two steady white lines in the lower dark margin. These rows remain within
+ * the existing 36..501 physical dirty range; no temporal/typewriter effect. */
+static void ht_narration(const ht_game *game) {
+    unsigned beat=ht_story_beat(game->story_x);
+    ht_rect(ht_scene,57,232,366,19,255);
+    for(int line=0;line<2;++line) {
+        const char *text=ht_chapters[game->level].lines[beat][line];
+        int x=(HT_W-(int)strlen(text)*6)/2, y=233+line*10;
+        for(;*text;++text,x+=6) {
+            const uint8_t *g=ht_glyph(*text);
+            for(int a=0;a<5;++a) for(int b=0;b<7;++b)
+                if(g[a]&(1u<<b)) ht_rect(ht_scene,x+a,y+b,1,1,0);
+        }
+    }
+}

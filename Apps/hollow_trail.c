@@ -74,7 +74,7 @@ static void ht_advance(uint32_t now) {
         ht_step(direction,jump_down,(held&HT_JUMP)!=0);
         jump_down=false; simulation_accumulator-=HT_STEP_MS;
         if(before.x!=ht.x || before.y!=ht.y || before.camera!=ht.camera ||
-           before.stride!=ht.stride || before.facing!=ht.facing || before.laps!=ht.laps)
+           before.story_x!=ht.story_x || before.level!=ht.level || before.stride!=ht.stride || before.facing!=ht.facing || before.laps!=ht.laps)
             ++scene_revision;
         if(before.level!=ht.level) { simulation_accumulator=0; break; }
     }
@@ -246,10 +246,11 @@ __attribute__((visibility("default"))) void app_main(void) {
             /* Initial instructions dismiss automatically after walking. */
             if(rendering_game.x<230*256 && rendering_game.checkpoint==0) {
                 ht_rect(ht_scene,90,38,249,55,0);
-                ht_text(98,45,rendering_game.level==2?"3: OIL FIELDS":rendering_game.level==1?"2: SKYSCRAPERS":"1: DARK FOREST",2);
+                ht_text(98,45,ht_chapters[rendering_game.level].title,2);
                 ht_text(98,66,"LEFT/RIGHT MOVE   A / CONFIRM JUMP",1);
                 ht_text(98,79,"START / DOWN PAUSE   SELECT / BACK EXIT",1);
             }
+            if(!rendering_paused) ht_narration(&rendering_game);
             if(rendering_paused) {
                 ht_rect(ht_scene,112,74,256,172,0);
                 ht_text(127,83,"HOLLOW TRAIL 1.0.14",1);

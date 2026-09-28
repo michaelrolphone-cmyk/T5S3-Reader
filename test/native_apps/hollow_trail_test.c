@@ -15,20 +15,23 @@ int main(void) {
     assert(memory && frame); ht_bind(memory); ht_spawn(true);
     /* Walk the entire route using the same fixed-step physics and hold jump
      * from each takeoff. A route that silently respawns cannot pass. */
-    for(int tick=0;tick<6600 && !ht.laps;++tick) {
+    unsigned visited=1;
+    for(int tick=0;tick<HT_LEVELS*2200 && !ht.laps;++tick) {
         bool jump=false;
         for(int i=0;i<HT_PLATFORMS-1;++i)
             if(ht.grounded && ht.x/256>=ht_land[i].right-8 && ht.x/256<=ht_land[i].right+4) jump=true;
         ht_step(1,jump,true);
+        visited|=1u<<ht.level;
     }
-    assert(ht.laps==1 && ht.deaths==0);
+    assert(visited==(1u<<HT_LEVELS)-1 && ht.laps==1 && ht.deaths==0);
+    assert(ht.level==0 && ht.story_x==0);
     assert(ht.x==95*256 && ht.checkpoint==0);
     for(unsigned level=0;level<HT_LEVELS;++level) {
         ht.level=level;
         /* A failed jump returns to the latest checkpoint, not the start. */
-        ht.checkpoint=6; ht.x=2180*256; ht.y=330*256; ht.vy=2400;
+        ht.story_x=2700; ht.checkpoint=6; ht.x=2180*256; ht.y=330*256; ht.vy=2400;
         ht_step(0,false,false);
-        assert(ht.level==level && ht.checkpoint==6);
+        assert(ht.level==level && ht.checkpoint==6 && ht.story_x==2700);
         assert(ht.x==(ht_land[6].left+35)*256 && ht.grounded);
         /* Walk off without jumping: every pit must actually be lethal. */
         for(int i=0;i<HT_PLATFORMS-1;++i) {
@@ -38,6 +41,27 @@ int main(void) {
             for(int t=0;t<100 && ht.deaths==deaths;++t) ht_step(1,false,false);
             assert(ht.deaths==deaths+1);
         }
+    }
+    ht.level=0; ht_spawn(true);
+    /* Narration milestones, glyph bounds and dirty-row coverage. */
+    assert(ht_story_beat(0)==0 && ht_story_beat(1099)==0);
+    assert(ht_story_beat(1100)==1 && ht_story_beat(2599)==1 && ht_story_beat(2600)==2);
+    for(unsigned level=0;level<HT_LEVELS;++level) for(unsigned beat=0;beat<3;++beat) {
+        ht.level=level; ht.story_x=beat==2?2600:beat==1?1100:0;
+        assert(strlen(ht_chapters[level].title)*12<=249);
+        for(unsigned line=0;line<2;++line) {
+            const char *t=ht_chapters[level].lines[beat][line];
+            assert(*t && strlen(t)*6<=366);
+            for(;*t;++t) assert((*t>='A' && *t<='Z') || *t==' ' || *t=='.');
+        }
+        memset(ht_scene,255,HT_PIXELS); ht_narration(&ht);
+        unsigned letters=0;
+        for(int y=0;y<HT_H;++y) for(int x=0;x<HT_W;++x) if(!ht_scene[y*HT_W+x]) {
+            ++letters; assert(y>=233 && y<=249 && x>=57 && x<423);
+        }
+        assert(letters>0); ht_framed=true; ht_pack_mono(frame,120);
+        for(unsigned y=0;y<540;++y) if(y<ht_dirty_top || y>=ht_dirty_top+ht_dirty_height)
+            for(int x=0;x<120;++x) assert(frame[y*120+x]==255);
     }
     ht.level=0; ht_spawn(true);
     /* Render representative camera positions twice: deterministic, bounds
