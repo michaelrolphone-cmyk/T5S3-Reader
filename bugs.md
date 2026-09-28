@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,34 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 73. Hollow Trail disables all built-in controls whenever any XInput controller is connected
+
+- **Status:** Open.
+- **Affected code:** `Apps/hollow_trail.c`, `ht_input()` and the native-app Back ownership set in `app_main()`.
+- **Trigger / reproduction:** Launch Hollow Trail with an XInput receiver/controller connected so `snapshot()` returns at least one state with `connected != 0`. Leave the controller idle and press the device's built-in Left/Right/Confirm/Up/Down/Back controls.
+- **Observed / logically demonstrated failure:** `ht_input()` sets a single `connected` flag as soon as any gamepad is present and executes the built-in-button mapping only under `if (!connected)`. Therefore every built-in gameplay/navigation button is discarded while an XInput device is merely connected. Hollow Trail also calls `set_back_exits_app(false)`, so the physical Back button is not rescued by the host's normal native-app exit policy; the app can require the connected controller (or another global exit path) even though the device buttons are functional.
+- **Likely root cause:** Direct gamepad input was implemented as a mutually exclusive fallback selector instead of an additional input source. Presence of a gamepad is being confused with ownership of every physical control.
+- **Impact:** Plugging in or leaving a receiver attached disables on-device movement, jump, inspect, pause, and Back/exit controls. An idle, inaccessible, or partially working controller can make the game effectively controller-only and removes the device controls as a recovery path.
+- **Repair direction:** Merge built-in button state with direct XInput state rather than skipping it when a controller is connected. If navigation-bridge aliases need de-duplication, suppress only duplicated controller-derived aliases with source-aware logic, not physical buttons. Add a regression test with an idle connected XInput snapshot and verify each built-in control, especially Back, still works.
+
+### 74. Native HTTP session cookies work only on the insecure-HTTPS transport path
+
+- **Status:** Open.
+- **Affected code:** `src/native/NativeNetworkBridge.cpp`, `httpRequest()`, `performInsecureHttps()`, `nativeNetworkBegin()`, and `nativeNetworkEnd()`; session-cookie flags in `lib/NativeApps/include/T5NetworkApi.h`.
+- **Trigger / reproduction:** During one native-app session, make an HTTPS request with a non-empty `cert_pem` to an endpoint that returns `Set-Cookie`, then make a second request that requires that cookie. The same defect affects plain HTTP requests handled by the ESP HTTP client path.
+- **Observed / logically demonstrated failure:** The per-app `nativeCookieJar` is attached only inside `performInsecureHttps()` via `HTTPClient::setCookieJar()`. `httpRequest()` takes that path only for HTTPS when the caller supplies no certificate. Supplying a CA certificate sends the request through `esp_http_client`, where the bridge neither stores response cookies nor emits stored cookies on later requests, and it never sets the cookie availability/storage flags. Thus the native-app cookie session silently disappears when the caller uses certificate-verified HTTPS (or HTTP).
+- **Likely root cause:** The network bridge has two HTTP implementations, but cookie-session handling was added only to the Arduino `HTTPClient` compatibility path.
+- **Impact:** Multi-request authenticated services can succeed when TLS verification is disabled yet lose their login/session state when the app correctly supplies a CA certificate. This creates transport-dependent behavior in the same `http_request` API and can break logins, redirects, or authenticated follow-up requests.
+- **Repair direction:** Give both transport paths the same bounded cookie-session semantics: parse/store `Set-Cookie`, emit matching `Cookie` headers, apply the existing size/count bounds, and set the result flags consistently. Prefer one shared cookie layer above both clients. Add two-request regression tests for certificate-verified HTTPS, insecure HTTPS, and HTTP, including redirect/session cases.
+
+### 75. A 129-entry application catalog makes the catalog service fail instead of remaining usable
+
+- **Status:** Open.
+- **Affected code:** `src/native/AppCatalogIndex.cpp`, `kMaxCatalogEntries` and `fetchAppCatalogIndex()`; `src/native/NativeAppHost.cpp`, `kMaxCatalogAssets`, `loadIndependentAppIndex()`, `CatalogReleaseStream`, and `loadAvailableAppCatalog()`.
+- **Trigger / reproduction:** Publish an otherwise valid schema-1 release index or aggregate app catalog containing 129 application records, then refresh App Store.
+- **Observed / logically demonstrated failure:** Both catalog parsers hard-limit the service to 128 entries. `loadIndependentAppIndex()` returns false as soon as the authoritative index has more than `kMaxCatalogAssets`; `fetchAppCatalogIndex()` likewise rejects an aggregate catalog whose `apps` array exceeds `kMaxCatalogEntries`. When a release advertises an aggregate catalog and that load fails, `loadAvailableAppCatalog()` explicitly clears the catalog and refuses the per-app fallback. The result is an unavailable/empty catalog, not merely omission of entries after 128. This is distinct from the existing App Store 64-row UI bug: that bug hides later rows from a valid provider catalog, while this defect causes the provider catalog itself to fail once it grows past 128.
+- **Likely root cause:** A fixed early catalog-size bound was retained after catalog JSON and vectors moved to PSRAM-backed/bounded metadata handling, and overflow is treated as structural invalidity rather than a capacity condition.
+- **Impact:** Adding the 129th valid app can turn catalog growth into a full App Store outage, including the first 128 otherwise-valid apps. External providers synchronized into the authoritative index count toward the same failure threshold.
+- **Repair direction:** Replace the entry-count rejection with a byte/memory budget and PSRAM-backed dynamic indexing, or add explicit paging/chunking to the release index. If a hard device limit must remain, do not invalidate the entire catalog: expose a bounded usable prefix plus an explicit truncation/error state. Add tests for 128, 129, and larger authoritative/aggregate catalogs and verify the first entries remain available.
