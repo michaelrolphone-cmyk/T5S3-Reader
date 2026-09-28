@@ -424,7 +424,26 @@ static void fps_fire(uint32_t now) {
     }
 }
 
-/* Face tone depends only on its normal relative to the fixed light. */
+/* Material and lighting are separate. Wall textures can supply a different
+ * base tone later without changing the directional lighting calculation. */
+static uint8_t fps_wall_material_tone(int map_x, int map_y,
+                                      float wall_hit, bool side) {
+    (void)map_x;
+    (void)map_y;
+    (void)wall_hit;
+    (void)side;
+    return 2u;
+}
+
+static uint8_t fps_lit_tone(uint8_t material, int light) {
+    return (uint8_t)fps_max_i(0, fps_min_i(3, (int)material + light));
+}
+
+static int fps_wall_light(bool side, int step_x, int step_y) {
+    /* A fixed light from the northwest illuminates faces by normal. */
+    return side ? (step_y > 0 ? -1 : 0) : (step_x > 0 ? 0 : 1);
+}
+
 static void fps_draw_wall_column(uint8_t *buffer, int x, int y0, int y1,
                                  uint8_t tone) {
     y0 = fps_max_i(y0, FPS_VIEW_TOP);
@@ -487,11 +506,12 @@ static void fps_cast_walls(uint8_t *buffer) {
         const int y0 = FPS_HORIZON - line_height / 2;
         const int y1 = FPS_HORIZON + line_height / 2;
 
-        /* Fixed light from the northwest: the shade belongs to the face
-         * normal, so walking or turning cannot change that face's tone. */
-        const uint8_t tone = side
-            ? (step_y > 0 ? 1u : 2u)
-            : (step_x > 0 ? 2u : 3u);
+        const float wall_hit = side ? g_player_x + distance * ray_x
+                                    : g_player_y + distance * ray_y;
+        const uint8_t material = fps_wall_material_tone(map_x, map_y,
+                                                         wall_hit, side);
+        const uint8_t tone = fps_lit_tone(material,
+            fps_wall_light(side, step_x, step_y));
         fps_draw_wall_column(buffer, x, y0, y1, tone);
         g_depth[x] = distance;
         if (x + 1 < FPS_LOGICAL_W) {
@@ -601,10 +621,45 @@ static void fps_draw_enemies(uint8_t *buffer, uint32_t now) {
     }
 }
 
+static void fps_draw_ground(uint8_t *buffer) {
+    const float dir_x = fps_cos(g_player_angle);
+    const float dir_y = fps_sin(g_player_angle);
+    const float plane_x = -dir_y * FPS_FOV_PLANE;
+    const float plane_y = dir_x * FPS_FOV_PLANE;
+
+    for (int y = FPS_HORIZON + 1; y <= FPS_VIEW_BOTTOM; ++y) {
+        uint8_t *row = buffer + (size_t)y * g_surface.stride_bytes;
+        memset(row, 0x55, g_surface.stride_bytes); /* solid light-gray material */
+
+        const float distance = ((float)FPS_VIEW_H * 0.5f) /
+            (float)(y - FPS_HORIZON);
+        /* Far dots would occupy less than a pixel and cause noisy aliasing. */
+        if (distance > 5.0f) continue;
+        float world_x = g_player_x + distance * (dir_x - plane_x);
+        float world_y = g_player_y + distance * (dir_y - plane_y);
+        const float step_x = distance * (2.0f * plane_x) / (float)FPS_LOGICAL_W;
+        const float step_y = distance * (2.0f * plane_y) / (float)FPS_LOGICAL_W;
+        const uint8_t dot_tone = distance > 3.5f ? 2u : 3u;
+
+        for (int x = 0; x < FPS_LOGICAL_W; ++x) {
+            /* Four dots per map tile on each axis. Sample their centers in
+             * world coordinates so they remain fixed while the camera moves. */
+            const float ux = world_x * 4.0f;
+            const float uy = world_y * 4.0f;
+            const float fx = ux - (float)(int)ux;
+            const float fy = uy - (float)(int)uy;
+            const float dot_x = fx - 0.5f;
+            const float dot_y = fy - 0.5f;
+            if (dot_x * dot_x + dot_y * dot_y < 0.0256f)
+                fps_tone_pixel(buffer, x, y, dot_tone);
+            world_x += step_x;
+            world_y += step_y;
+        }
+    }
+}
+
 static void fps_draw_world(uint8_t *buffer, uint32_t now) {
-    /* Solid light gray floor; sprites and walls remain distinct. */
-    for (int x = 0; x < FPS_LOGICAL_W; ++x)
-        fps_tone_vspan(buffer, x, FPS_HORIZON + 1, FPS_VIEW_BOTTOM, 1u);
+    fps_draw_ground(buffer);
     fps_hline(buffer, 0, FPS_LOGICAL_W - 1, FPS_HORIZON);
 
     fps_cast_walls(buffer);
