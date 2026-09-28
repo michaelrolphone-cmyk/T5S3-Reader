@@ -179,7 +179,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool prepared_profile=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.0.8: dithered 1bpp parallax renderer started");
+    ht_log("Hollow Trail 1.0.9: dithered 1bpp parallax renderer started");
     while(!quitting) {
         ht_input(4u); if(quitting) break;
         if(mode_down) {

@@ -1,4 +1,4 @@
-# Hollow Trail 1.0.8
+# Hollow Trail 1.0.9
 
 A separate, original forest platformer for the fast EPD interface, using fixed monochrome dithering by default.
 No external assets, file access, or network are required. Version 1.0.2 uses
@@ -324,7 +324,8 @@ measurements remain outstanding; the additional SIMD gain is not yet quantified.
 
 ## Build and verification
 
-App identity: `hollow_trail`; half-resolution scenery update **1.0.7 → 1.0.8**.
+App identity: `hollow_trail`; packed monochrome update **1.0.8 → 1.0.9**.
+The half-resolution scenery update was 1.0.7 → 1.0.8.
 The scenery-cache update was 1.0.6 → 1.0.7.
 The fused compositor update was 1.0.4 → 1.0.5.
 See [native math operations](NATIVE_MATH_API.md) for signed multiplication
@@ -520,3 +521,54 @@ Lesson: lowering the per-frame lighting grid targets the remaining dominant
 loop without sacrificing input precision or UI readability. Upscaling must be
 explicitly budgeted, and source-cache, world, overlay and physical pixel units
 must remain distinct. Final dithering stays at display resolution.
+
+## 1.0.9: four-pixel integer packing
+
+The default monochrome packer processes four logical pixels in independent byte
+lanes of 32-bit registers. Two aligned source-word reads and two neighboring
+samples replace the per-pixel source-loading loop. The existing bilinear
+intermediates are computed with an exact byte-lane average:
+
+```c
+(a & b) + (((a ^ b) & 0xfefefefeu) >> 1)
+```
+
+Each lane retains floor((a+b)/2), with no carry into neighboring bytes. Horizontal,
+vertical and diagonal interpolation retain both original rounding steps.
+
+The fixed Bayer matrix's four quadrants have thresholds within distinct 64-value
+ranges. The packer converts `value > rank*4+2` into `value >= rank*4+3`, then
+compares four lanes together. Setting each source lane's high bit before
+subtracting a threshold below 128 prevents cross-byte borrowing. The original
+source high bit determines the result for values in the other half-range.
+Gathering the four comparison flags puts them directly into alternating output
+bits; a second set supplies the intervening bits. Both physical rows are written
+as complete bytes, preserving the existing screen-fixed dither pattern.
+
+This is ordinary bounded 32-bit integer code, with no new firmware API, DSP call,
+per-frame allocation, large lookup table, or working-PSRAM increase. The threshold
+table is 16 bytes. Helpers are explicitly inlined for the app's `-Os` build. The
+Xtensa assembly was checked: the source reads use aligned word loads and the
+pixel loop has no memcpy calls. The source alignment follows the existing aligned
+`ht_bind` storage, 480-byte row stride, and four-pixel block starts.
+
+Tests exhaust 65,536 input pairs for lane averaging with differing neighboring
+lanes, all byte values across lower/upper threshold halves, and full-frame
+packing against independent per-physical-pixel interpolation/dithering. The
+frames include rounded-border scenery and unframed random data, exercising
+right/bottom clamping. ASan/UBSan, gameplay/border packing checks, and the target
+app build pass. The native grayscale path retains its existing quantization.
+
+For 1,000 host packing runs of a rendered scrolling scene: **309.89 → 167.84 ms**,
+45.8% less CPU time, identical output hash `fca693da`. A seeded unframed comparison
+also retained hash `e1f582ab` (357.77 → 196.10 ms). These are packing-only host
+benchmarks, not measured ESP32 speedups or total-frame gains.
+
+The owner's 1.0.8 baseline is **8.4 FPS, 8.4 scans/s, RENDER 56ms, PACK 43ms,
+WAIT 10ms, CACHE 6ms**. Device measurements for 1.0.9 are pending. The new packing
+code does not move work onto the scan core or change the panel waveform.
+
+Lesson: structured thresholds allow exact parallel arithmetic within ordinary
+integer registers. Preserve interpolation rounding and screen phase, prove lane
+independence, and inspect the actual target compiler output; a faster host loop
+alone does not establish faster device execution.
