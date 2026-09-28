@@ -59,7 +59,7 @@ static void ht_acquire_pad(void) {
        !HT_HAS(pad,risc_usb_gamepad_api_v1,snapshot) || !pad->poll) ht_release_pad();
 }
 static void ht_advance(uint32_t now) {
-    if(loading) { simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
+    if(loading || ht.level!=ht_geometry_level) { simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
     if(!simulation_started) { simulation_clock=now; simulation_started=true; }
     if(pause_down) {
         paused=!paused; pause_down=false; simulation_accumulator=0; ++scene_revision;
@@ -76,6 +76,7 @@ static void ht_advance(uint32_t now) {
         if(before.x!=ht.x || before.y!=ht.y || before.camera!=ht.camera ||
            before.stride!=ht.stride || before.facing!=ht.facing || before.laps!=ht.laps)
             ++scene_revision;
+        if(before.level!=ht.level) { simulation_accumulator=0; break; }
     }
 }
 static void ht_input(uint32_t wait) {
@@ -195,13 +196,27 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.0.13: dithered 1bpp parallax renderer started");
+    ht_log("Hollow Trail 1.0.14: dithered 1bpp parallax renderer started");
     while(!quitting) {
         /* A ready frame gets priority over another fixed poll delay. Busy
          * waits still poll/yield every iteration, and ready paths poll by 8ms. */
         if(!prepared || !video->can_submit() || app->millis()-last_poll>=8u)
             ht_input(prepared?1u:4u);
         if(quitting) break;
+        if(ht.level!=ht_geometry_level) {
+            /* Discard an old-level prepared frame and freeze physics during
+             * bounded cache warmup. Keep the last picture on the panel. */
+            prepared=false; loading=true;
+            ht_select_level(ht.level);
+            unsigned steps=0;
+            while(!quitting && steps<HT_WARM_STEPS && ht_cache_prefetch(ht.camera/256,1)) ++steps;
+            loading=false; simulation_started=false; simulation_accumulator=0;
+            jump_down=pause_down=mode_down=false;
+            if(quitting) break;
+            if(steps==HT_WARM_STEPS) { ht_log("Hollow Trail: level warmup did not finish"); break; }
+            ++scene_revision;
+            last_submit=app->millis(); last_frame=last_submit-HT_FRAME_INTERVAL_MS;
+        }
         if(mode_down) {
             mode_down=false;
             ht_dsp_composite=ht_dsp_available() && !ht_dsp_composite;
@@ -231,13 +246,13 @@ __attribute__((visibility("default"))) void app_main(void) {
             /* Initial instructions dismiss automatically after walking. */
             if(rendering_game.x<230*256 && rendering_game.checkpoint==0) {
                 ht_rect(ht_scene,90,38,249,55,0);
-                ht_text(98,45,"HOLLOW TRAIL",2);
+                ht_text(98,45,rendering_game.level==2?"3: OIL FIELDS":rendering_game.level==1?"2: SKYSCRAPERS":"1: DARK FOREST",2);
                 ht_text(98,66,"LEFT/RIGHT MOVE   A / CONFIRM JUMP",1);
                 ht_text(98,79,"START / DOWN PAUSE   SELECT / BACK EXIT",1);
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,112,74,256,172,0);
-                ht_text(127,83,"HOLLOW TRAIL 1.0.13",1);
+                ht_text(127,83,"HOLLOW TRAIL 1.0.14",1);
                 ht_text(198,95,"PAUSED",2);
                 ht_text(127,117,"START / DOWN RESUME    SELECT / BACK EXIT",1);
                 ht_text(127,133,!ht_dsp_available()?"DSP16: UNAVAILABLE":ht_dsp_composite?"DSP16 COMPOSITOR: ON":"DSP16 COMPOSITOR: OFF",1);
@@ -308,7 +323,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         /* At most four cache slices and an 8ms elapsed budget per host loop.
          * A single slice may exceed 8ms; its raster checkpoints still yield.
          * Report this work separately rather than hiding it in lower RENDER. */
-        if(!quitting && !paused) {
+        if(!quitting && !paused && ht.level==ht_geometry_level) {
             uint32_t cache_start=app->millis();
             for(unsigned work=0;work<4 && !quitting;++work) {
                 if(prepared && video->can_submit()) break;

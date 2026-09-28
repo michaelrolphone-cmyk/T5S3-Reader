@@ -6,7 +6,11 @@
 #include "../../Apps/hollow_trail_engine.inc"
 
 static unsigned checkpoints;
-static void service(void) { ++checkpoints; }
+static bool change_level;
+static void service(void) {
+    ++checkpoints;
+    if(change_level) { change_level=false; ht.level=(ht.level+1)%HT_LEVELS; }
+}
 static void reference(void) {
     const ht_game game=ht;
     int camera=game.camera/256,px=game.x/256-camera,py=game.y/256-14;
@@ -77,25 +81,35 @@ int main(void) {
         for(int i=0;i<4;++i) if(!ht_cache_prefetch(camera,1)) break;
     }
     const int cameras[]={0,1,22,95,240,255,256,257,460,511,512,900,1711,2860,512,256,0};
-    for(unsigned n=0;n<sizeof(cameras)/sizeof(cameras[0]);++n) {
-        int camera=cameras[n]; ht.camera=camera*256; ht.x=(camera+165)*256;
-        /* Reference uses the work buffers, so cancel speculative work first. */
-        ht_cache_job.active=false; reference(); memcpy(expected,ht_scene,HT_PIXELS);
-        ht_render_scene();
-        if(memcmp(expected,ht_scene,HT_PIXELS)) {
-            for(int i=0;i<HT_PIXELS;++i) if(expected[i]!=ht_scene[i]) {
-                fprintf(stderr,"camera %d pixel %d,%d expected %d got %d\n",camera,i%HT_W,i/HT_W,expected[i],ht_scene[i]);break;
+    for(unsigned level=0;level<HT_LEVELS;++level) {
+        ht.level=level; ht_select_level(level);
+        for(unsigned n=0;n<sizeof(cameras)/sizeof(cameras[0]);++n) {
+            int camera=cameras[n]; ht.camera=camera*256; ht.x=(camera+165)*256;
+            /* Reference uses the work buffers, so cancel speculative work first. */
+            ht_cache_job.active=false; reference(); memcpy(expected,ht_scene,HT_PIXELS);
+            ht_render_scene();
+            if(memcmp(expected,ht_scene,HT_PIXELS)) {
+                for(int i=0;i<HT_PIXELS;++i) if(expected[i]!=ht_scene[i]) {
+                    fprintf(stderr,"camera %d pixel %d,%d expected %d got %d\n",camera,i%HT_W,i/HT_W,expected[i],ht_scene[i]);break;
+                }
+                assert(0);
             }
-            assert(0);
+            ht_math=&dsp_mock; ht_dsp_composite=true;
+            ht_render_scene(); assert(!memcmp(expected,ht_scene,HT_PIXELS));
+            assert(dsp_calls>0); ht_dsp_composite=false; ht_math=NULL;
+            /* Partially prepare rightward work, then reverse; no stale strip use. */
+            for(int i=0;i<8;++i) (void)ht_cache_prefetch(camera,1);
+            for(int i=0;i<8;++i) (void)ht_cache_prefetch(camera,-1);
+            ht_render_scene(); assert(!memcmp(expected,ht_scene,HT_PIXELS));
         }
-        ht_math=&dsp_mock; ht_dsp_composite=true;
-        ht_render_scene(); assert(!memcmp(expected,ht_scene,HT_PIXELS));
-        assert(dsp_calls>0); ht_dsp_composite=false; ht_math=NULL;
-        /* Partially prepare rightward work, then reverse; no stale strip use. */
-        for(int i=0;i<8;++i) (void)ht_cache_prefetch(camera,1);
-        for(int i=0;i<8;++i) (void)ht_cache_prefetch(camera,-1);
-        ht_render_scene(); assert(!memcmp(expected,ht_scene,HT_PIXELS));
     }
+    ht.level=0; ht_spawn(true); ht_select_level(0);
+    ht_render_scene(); memcpy(expected,ht_scene,HT_PIXELS);
+    memset(ht_cache_valid,0,sizeof(ht_cache_valid)); change_level=true;
+    ht_render_scene();
+    assert(ht.level==1 && ht_geometry_level==0 && !memcmp(expected,ht_scene,HT_PIXELS));
+    ht_render_scene();
+    assert(ht_geometry_level==1 && memcmp(expected,ht_scene,HT_PIXELS));
     for(int i=0;i<32;++i) assert(memory[HT_MEMORY+i]==0x5a);
     ht_abort=true; assert(!ht_cache_prefetch(2000,1)); assert(!ht_cache_visible(2000));
     free(expected);free(memory);

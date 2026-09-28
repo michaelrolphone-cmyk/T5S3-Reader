@@ -15,7 +15,7 @@ int main(void) {
     assert(memory && frame); ht_bind(memory); ht_spawn(true);
     /* Walk the entire route using the same fixed-step physics and hold jump
      * from each takeoff. A route that silently respawns cannot pass. */
-    for(int tick=0;tick<2200 && !ht.laps;++tick) {
+    for(int tick=0;tick<6600 && !ht.laps;++tick) {
         bool jump=false;
         for(int i=0;i<HT_PLATFORMS-1;++i)
             if(ht.grounded && ht.x/256>=ht_land[i].right-8 && ht.x/256<=ht_land[i].right+4) jump=true;
@@ -23,19 +23,23 @@ int main(void) {
     }
     assert(ht.laps==1 && ht.deaths==0);
     assert(ht.x==95*256 && ht.checkpoint==0);
-    /* A failed jump returns to the latest checkpoint, not the start. */
-    ht.checkpoint=6; ht.x=2180*256; ht.y=330*256; ht.vy=2400;
-    ht_step(0,false,false);
-    assert(ht.deaths==1 && ht.checkpoint==6);
-    assert(ht.x==(ht_land[6].left+35)*256 && ht.grounded);
-    /* Walk off without jumping: every pit must actually be lethal. */
-    for(int i=0;i<HT_PLATFORMS-1;++i) {
-        ht_spawn(true); ht.x=(ht_land[i].right-6)*256;
-        ht.y=ht_land[i].top*256; ht.vx=640;
-        unsigned deaths=ht.deaths;
-        for(int t=0;t<100 && ht.deaths==deaths;++t) ht_step(1,false,false);
-        assert(ht.deaths==deaths+1);
+    for(unsigned level=0;level<HT_LEVELS;++level) {
+        ht.level=level;
+        /* A failed jump returns to the latest checkpoint, not the start. */
+        ht.checkpoint=6; ht.x=2180*256; ht.y=330*256; ht.vy=2400;
+        ht_step(0,false,false);
+        assert(ht.level==level && ht.checkpoint==6);
+        assert(ht.x==(ht_land[6].left+35)*256 && ht.grounded);
+        /* Walk off without jumping: every pit must actually be lethal. */
+        for(int i=0;i<HT_PLATFORMS-1;++i) {
+            ht_spawn(true); ht.x=(ht_land[i].right-6)*256;
+            ht.y=ht_land[i].top*256; ht.vx=640;
+            unsigned deaths=ht.deaths;
+            for(int t=0;t<100 && ht.deaths==deaths;++t) ht_step(1,false,false);
+            assert(ht.deaths==deaths+1);
+        }
     }
+    ht.level=0; ht_spawn(true);
     /* Render representative camera positions twice: deterministic, bounds
      * checked under ASan/UBSan, all four native tones represented. */
     const int positions[]={95,330,950,1660,2310,3130};

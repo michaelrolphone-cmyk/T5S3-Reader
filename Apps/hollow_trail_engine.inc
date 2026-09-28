@@ -1,4 +1,4 @@
-/* Hollow Trail — deterministic one-level platformer and PSRAM raster pipeline.
+/* Hollow Trail — deterministic three-level platformer and PSRAM raster pipeline.
  * World/overlays are 480x270; scenery is 240x135; output is 960x540. No textures, random frame noise,
  * floating-point library, framebuffer reads, or per-frame allocation. */
 #include <stdint.h>
@@ -31,20 +31,37 @@ static uint16_t ht_dirty_top,ht_dirty_height;
 #define HT_STEP_MS 32u /* Half-speed motion; preserve jump paths and level reachability. */
 
 typedef struct { int left, right, top; } ht_platform;
-static const ht_platform ht_land[] = {
+static const ht_platform ht_forest[] = {
     { -160, 390, 222 }, { 462, 725, 207 }, { 804, 1050, 190 },
     { 1118, 1300, 216 }, { 1374, 1535, 192 }, { 1610, 1800, 173 },
     { 1865, 2130, 208 }, { 2210, 2415, 188 }, { 2490, 2710, 214 },
     { 2780, 3410, 200 }
 };
-#define HT_PLATFORMS ((int)(sizeof(ht_land)/sizeof(ht_land[0])))
+static const ht_platform ht_city[] = {
+    { -160, 365, 217 }, { 433, 690, 193 }, { 763, 1035, 164 },
+    { 1105, 1315, 190 }, { 1380, 1570, 163 }, { 1635, 1835, 138 },
+    { 1905, 2130, 173 }, { 2198, 2430, 150 }, { 2498, 2730, 179 },
+    { 2798, 3410, 155 }
+};
+#define HT_PLATFORMS 10
+static const ht_platform ht_oil[] = {
+    { -160, 380, 222 }, { 448, 710, 206 }, { 780, 1040, 184 },
+    { 1108, 1330, 209 }, { 1398, 1580, 183 }, { 1648, 1845, 159 },
+    { 1913, 2140, 190 }, { 2208, 2435, 170 }, { 2503, 2730, 203 },
+    { 2798, 3410, 200 }
+};
+#define HT_LEVELS 3
 typedef struct {
     int x, y, vx, vy; /* Q8, y is feet */
     int camera, checkpoint, coyote, jump_buffer, facing, stride;
     unsigned ticks, laps, deaths;
+    unsigned level; /* Forest, skyscrapers, oil fields; laps count complete circuits. */
     bool grounded;
 } ht_game;
 static ht_game ht;
+#define ht_land (ht.level==2 ? ht_oil : ht.level==1 ? ht_city : ht_forest)
+/* Geometry belongs to a render snapshot, never live input/physics. */
+static unsigned ht_geometry_level;
 static const t5_math_api_v1 *ht_math;
 static int16_t *ht_filter;
 static uint8_t *ht_raw, *ht_near, *ht_wide, *ht_temp, *ht_scene;
@@ -113,7 +130,7 @@ static void ht_mask_init(void) {
     ht_dirty_height=(uint16_t)(2*(last+1)-ht_dirty_top);
 }
 static void ht_bind(uint8_t *memory) {
-    ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
+    ht_geometry_level=0; ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
     ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
     ht_scene=memory+3*HT_PIXELS; ht_temp=memory+4*HT_PIXELS; ht_filter=(int16_t *)ht_temp;
     uint8_t *cache=memory+6*HT_PIXELS;
@@ -125,9 +142,9 @@ static void ht_bind(uint8_t *memory) {
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
 }
 static void ht_spawn(bool restart) {
-    unsigned laps=ht.laps, deaths=ht.deaths;
+    unsigned laps=ht.laps, deaths=ht.deaths, level=ht.level;
     int cp=restart?0:ht.checkpoint;
-    memset(&ht,0,sizeof(ht)); ht.laps=laps; ht.deaths=deaths;
+    memset(&ht,0,sizeof(ht)); ht.laps=laps; ht.deaths=deaths; ht.level=level;
     ht.checkpoint=cp; ht.x=(cp?ht_land[cp].left+35:95)*256;
     ht.y=ht_land[cp].top*256; ht.grounded=true; ht.facing=1;
     ht.camera=ht_clamp(ht.x/256-165,0,HT_GOAL-340)*256;
@@ -165,7 +182,10 @@ static void ht_step(int direction,bool jump_pressed,bool jump_held) {
     }
     if(ht.grounded) ht.stride+=ht_abs(ht.vx);
     if(ht.y>335*256) { ++ht.deaths; ht_spawn(false); return; }
-    if(ht.x>=HT_GOAL*256 && ht.grounded) { ++ht.laps; ht_spawn(true); return; }
+    if(ht.x>=HT_GOAL*256 && ht.grounded) {
+        if(++ht.level==HT_LEVELS) { ht.level=0; ++ht.laps; }
+        ht_spawn(true); return;
+    }
     int goal=ht_clamp(ht.x/256-165,0,HT_GOAL-340)*256;
     ht.camera+=(goal-ht.camera)/8;
 }
@@ -312,7 +332,125 @@ static void ht_composite(int depth,int focus_x,int focus_y) {
         if((y&31)==31) ht_checkpoint();
     }
 }
+/* Skyline details are generated only when a world strip enters the cache.
+ * World-anchored cells and culling margins keep overlapping strips identical. */
+static void ht_city_background(int depth,int offset) {
+    int spacing=depth==0?59:173, tone=depth==0?85:165;
+    int first=ht_floor_div(offset-130,spacing),last=ht_floor_div(offset+HT_W+130,spacing);
+    for(int j=first;j<=last;++j) {
+        uint32_t h=ht_hash((uint32_t)j+411u+(unsigned)depth*973u);
+        int x=j*spacing-offset, w=depth==0?spacing-9-(int)(h%13):80+(int)(h%37);
+        int top=(depth==0?48:53)+(int)((h>>8)%97);
+        ht_rect(ht_raw,x,top,w,HT_H-top,tone);
+        ht_rect(ht_raw,x+6,top-9,w-12,10,tone);
+        if(h&1u) {
+            ht_rect(ht_raw,x+w/2-2,top-30,3,23,tone);
+            ht_rect(ht_raw,x+w/2-9,top-14,18,3,tone);
+        }
+        /* Sparse windows stay subdued behind the fog. */
+        for(int y=top+12;y<HT_H;y+=17)
+            for(int col=7;col<w-5;col+=13)
+                if((ht_hash(h+(unsigned)(y*7+col))&3u)!=0)
+                    ht_rect(ht_raw,x+col,y,4,7,tone-28);
+        ht_checkpoint();
+    }
+}
+static void ht_city_foreground(int camera) {
+    for(int i=0;i<HT_PLATFORMS;++i) {
+        const ht_platform *p=&ht_city[i];
+        int l=p->left-camera,r=p->right-camera,top=p->top;
+        if(r< -20 || l>HT_W+20) continue;
+        ht_rect(ht_raw,l,top,r-l,HT_H-top,255);
+        ht_rect(ht_raw,l,top+5,r-l,3,205);
+        ht_rect(ht_raw,l+5,top+9,5,HT_H-top,224);
+        for(int wx=p->left+21;wx<p->right-13;wx+=24)
+            for(int y=top+19;y<HT_H;y+=23)
+                ht_rect(ht_raw,wx-camera,y,8,12,215);
+        /* Equipment stays decorative: none rises into the jump path. */
+        ht_rect(ht_raw,l+17,top+10,25,4,235);
+        ht_checkpoint();
+    }
+    /* Rooftop exit beacon: open doorway and antenna above the last roof. */
+    int x=HT_GOAL-camera,top=ht_city[HT_PLATFORMS-1].top;
+    ht_rect(ht_raw,x-19,top-49,7,49,255);
+    ht_rect(ht_raw,x+12,top-49,7,49,255);
+    ht_rect(ht_raw,x-23,top-54,46,8,255);
+    ht_rect(ht_raw,x-1,top-78,2,24,255);
+    ht_disk(ht_raw,x,top-80,3,180);
+}
+static void ht_cactus(int x,int base,int height,int tone) {
+    int w=ht_max(3,height/10);
+    ht_rect(ht_raw,x-w/2,base-height,w,height,tone);
+    ht_disk(ht_raw,x,base-height,w/2,tone);
+    ht_rect(ht_raw,x-height/3,base-height*3/5,height/3,w,tone);
+    ht_rect(ht_raw,x-height/3,base-height*4/5,w,height/5,tone);
+    ht_disk(ht_raw,x-height/3+w/2,base-height*4/5,w/2,tone);
+    ht_rect(ht_raw,x,base-height*2/5,height/3,w,tone);
+    ht_rect(ht_raw,x+height/3-w,base-height*2/3,w,height*4/15,tone);
+    ht_disk(ht_raw,x+height/3-w/2,base-height*2/3,w/2,tone);
+}
+/* Static machinery: construction/blur is cached, not animated per frame. */
+static void ht_derrick(int x,int base,int height,int tone) {
+    int top=base-height,w=height/4;
+    ht_limb(ht_raw,x-w,base,x-4,top,3,2,tone);
+    ht_limb(ht_raw,x+w,base,x+4,top,3,2,tone);
+    for(int k=1;k<=4;++k) {
+        int y=top+height*k/5,half=4+w*k/5;
+        ht_rect(ht_raw,x-half,y,half*2,3,tone);
+        ht_limb(ht_raw,x-half,y,x+ht_max(3,half-w/5),y-height/5,1,1,tone);
+    }
+    ht_rect(ht_raw,x-8,top-5,16,5,tone);
+}
+static void ht_oil_background(int depth,int offset) {
+    int tone=depth==0?80:158,base=depth==0?230:251;
+    int spacing=depth==0?211:337;
+    int first=ht_floor_div(offset-200,spacing),last=ht_floor_div(offset+HT_W+200,spacing);
+    for(int j=first;j<=last;++j) {
+        uint32_t h=ht_hash((uint32_t)j+902u);
+        int x=j*spacing-offset,top=base-30-(int)(h%31);
+        /* Broad flat-topped desert mesas. */
+        ht_triangle(ht_raw,x-80,base,x-20,top,x+80,base,tone-28);
+        ht_rect(ht_raw,x-20,top,75,HT_H-top,tone-28);
+        ht_triangle(ht_raw,x+55,top,x+145,base,x+55,base,tone-28);
+        if(depth==0 || (j&1)) ht_derrick(x+40,base,110+(int)(h%65),tone);
+        else {
+            /* Pumpjack pedestal, walking beam, horsehead and polished rod. */
+            ht_limb(ht_raw,x+20,base,x+37,base-57,5,3,tone);
+            ht_limb(ht_raw,x+54,base,x+37,base-57,5,3,tone);
+            ht_limb(ht_raw,x-19,base-70,x+87,base-49,5,6,tone);
+            ht_rect(ht_raw,x+79,base-52,13,22,tone);
+            ht_rect(ht_raw,x+87,base-30,2,30,tone);
+            ht_disk(ht_raw,x-4,base-18,13,tone);
+            ht_limb(ht_raw,x-4,base-18,x+2,base-65,2,2,tone);
+            ht_rect(ht_raw,x-23,base-4,122,5,tone);
+        }
+        if(depth==1) ht_cactus(x+146,base,45+(int)(h%25),tone);
+        ht_checkpoint();
+    }
+}
+static void ht_oil_foreground(int camera) {
+    for(int i=0;i<HT_PLATFORMS;++i) {
+        const ht_platform *p=&ht_oil[i];
+        int l=p->left-camera,r=p->right-camera;
+        if(r< -50 || l>HT_W+50) continue;
+        ht_rect(ht_raw,l,p->top,r-l,HT_H-p->top,255);
+        ht_triangle(ht_raw,l,p->top+8,l-8,p->top+38,l,p->top+65,255);
+        ht_triangle(ht_raw,r-1,p->top+14,r+6,p->top+43,r-1,p->top+70,255);
+        ht_cactus(l+(r-l)/2,p->top,65+(i%3)*19,255);
+        if(i%3==0) ht_cactus(l+65,p->top,39,255);
+        for(int wx=p->left+18;wx<p->right-15;wx+=41)
+            ht_rect(ht_raw,wx-camera,p->top+11,13,2,233);
+        ht_checkpoint();
+    }
+    int x=HT_GOAL-camera,top=ht_oil[HT_PLATFORMS-1].top;
+    ht_rect(ht_raw,x-19,top-49,7,49,255);
+    ht_rect(ht_raw,x+12,top-49,7,49,255);
+    ht_rect(ht_raw,x-23,top-54,46,8,255);
+    ht_triangle(ht_raw,x-25,top-54,x,top-69,x+25,top-54,255);
+}
 static void ht_background(int depth,int offset) {
+    if(ht_geometry_level==2) { ht_oil_background(depth,offset); return; }
+    if(ht_geometry_level==1) { ht_city_background(depth,offset); return; }
     int tone=depth==0?85:170, base=depth==0?219:246;
     /* Trace the same hill boundary, then fill contiguous rows. Drawing
      * one-pixel-wide vertical rectangles thrashed PSRAM/cache and called
@@ -359,8 +497,10 @@ static void ht_background(int depth,int offset) {
     }
 }
 static void ht_foreground(int camera) {
+    if(ht_geometry_level==2) { ht_oil_foreground(camera); return; }
+    if(ht_geometry_level==1) { ht_city_foreground(camera); return; }
     for(int i=0;i<HT_PLATFORMS;++i) {
-        const ht_platform *p=&ht_land[i];
+        const ht_platform *p=&ht_forest[i];
         int l=p->left-camera,r=p->right-camera;
         if(r< -256 || l>=HT_W+256) continue;
         ht_rect(ht_raw,l,p->top,r-l,HT_H-p->top,255);
@@ -387,6 +527,32 @@ static void ht_foreground(int camera) {
 /* This plane has its own 1.23x translation and cached blur. Enumerate
  * periodic branches by world position so adjacent strips agree exactly. */
 static void ht_branches(int offset) {
+    if(ht_geometry_level==2) {
+        int first=ht_floor_div(offset-200,830),last=ht_floor_div(offset+HT_W+200,830);
+        for(int j=first;j<=last;++j) {
+            int x=j*830-offset;
+            /* Overhead oil-field service gantries frame only the top plane. */
+            ht_rect(ht_raw,x,0,10,81,255);
+            ht_rect(ht_raw,x-54,25,118,7,255);
+            ht_limb(ht_raw,x-48,30,x+5,68,3,3,255);
+            ht_limb(ht_raw,x+58,30,x+5,68,3,3,255);
+        }
+        return;
+    }
+    if(ht_geometry_level==1) {
+        int first=ht_floor_div(offset-300,720),last=ht_floor_div(offset+HT_W+300,720);
+        for(int j=first;j<=last;++j) {
+            int x=j*720-offset;
+            /* Close overhead crane beams and hanging cables, confined to
+             * the same top 90 rows as the forest foreground plane. */
+            ht_rect(ht_raw,x-90,19,280,8,255);
+            ht_limb(ht_raw,x-70,20,x+20,53,4,3,255);
+            ht_rect(ht_raw,x+20,0,9,65,255);
+            ht_rect(ht_raw,x+170,24,2,49,255);
+            ht_limb(ht_raw,x+170,72,x+178,78,2,2,255);
+        }
+        return;
+    }
     int first=ht_floor_div(offset-300,910),last=ht_floor_div(offset+HT_W+300,910);
     for(int j=first;j<=last;++j) {
         int x=75+j*910-offset;
@@ -394,6 +560,12 @@ static void ht_branches(int offset) {
         ht_limb(ht_raw,x+55,15,x+140,83,5,0,255);
         ht_limb(ht_raw,x+7,0,x-34,67,7,0,255);
     }
+}
+static void ht_select_level(unsigned level) {
+    if(ht_geometry_level==level) return;
+    ht_geometry_level=level;
+    ht_cache_job.active=false;
+    memset(ht_cache_valid,0,sizeof(ht_cache_valid));
 }
 static int ht_layer_offset(int depth,int camera) {
     return depth==0?camera*22/100:depth==1?camera*53/100:depth==2?camera:camera*123/100;
@@ -664,6 +836,7 @@ static void ht_render_scene(void) {
     /* Input checkpoints may advance live physics. Freeze the rendered frame
      * so trees, focus and character all use one consistent game snapshot. */
     const ht_game game=ht;
+    ht_select_level(game.level);
     int camera=game.camera/256,px=game.x/256-camera,py=game.y/256-14;
     if(!ht_cache_visible(camera)) return;
     memset(ht_low_scene,0,HT_SCENE_PIXELS);
