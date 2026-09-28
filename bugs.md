@@ -743,3 +743,34 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 88. GT911 drops a ready touch report after a transient contact-data read failure
+
+- **Status:** Open.
+- **Affected code:** `Drivers/gt911_touch/driver.c`, especially `service_one()`, `read_reg()`, `write_reg8()`, and the handoff into `apply_state()`.
+- **Trigger / reproduction:** Have the GT911 report `GT911_READY_MASK` with one or more contacts, then fault the I2C transaction that reads `GT911_FIRST_POINT_REG` while allowing the following write of zero to `GT911_STATUS_REG` to succeed. This can be reproduced with an injected one-shot failure in `bus->transact()` for the contact-data read.
+- **Observed / logically demonstrated failure:** When the raw contact read fails, `service_one()` executes `(void)write_reg8(GT911_STATUS_REG, 0u)` and returns `false`. Clearing the status acknowledges and discards the controller's ready report even though its contents were never acquired or passed to `apply_state()`. A missed DOWN can disappear until another report happens; more seriously, if the previous published snapshot contained a contact and the discarded report was its changed/released state, subscribers and `snapshot()` can retain stale contact state with no event that repairs it.
+- **Likely root cause:** The error path acknowledges a report before the driver has a coherent replacement state. The normal path intentionally acknowledges before publication to avoid duplicate delivery, but the failed-read path has nothing valid to publish and therefore destroys the only retryable copy of the report.
+- **Impact:** A transient I2C error can become a lost tap, missed motion, or apparently stuck touch rather than a recoverable failed poll. UI consumers can remain out of sync with the physical panel until the GT911 produces another valid report.
+- **Repair direction:** Do not clear `GT911_STATUS_REG` when the contact-data read fails; leave the ready report pending so a later poll can retry it. For malformed reports that must be discarded, explicitly invalidate/reconcile published contact state and subscriber queues rather than silently retaining the old snapshot. Add a fault-injection test that fails the first contact-data read, succeeds the retry, and proves exactly one coherent transition is published.
+
+### 89. USB mass-storage file creation leaves orphaned FAT long-name entries after a directory write failure
+
+- **Status:** Open.
+- **Affected code:** `Drivers/usb_mass_storage/driver.c`, `create_file_entry()`, `write_directory_entry()`, `find_free_directory_slots()`, and the `volume_file_open_write()` creation path.
+- **Trigger / reproduction:** Copy a file to FAT USB storage using a name that requires multiple VFAT LFN entries, then inject a sector-write failure after one or more LFN directory entries have been written but before the remaining LFN entries or final short 8.3 entry are committed.
+- **Observed / logically demonstrated failure:** `create_file_entry()` writes each LFN entry directly to the live directory and immediately returns `false` on the first later write failure. It never marks the entries already written by this attempt as deleted. No file handle is returned, so `volume_file_close(..., commit=false)` cannot clean them up. Those persistent orphan LFN records are treated as occupied slots by future scans; repeated failed creates can consume directory capacity, and a stray LFN sequence can also be associated with a later short entry if its ordering/checksum happens to match.
+- **Likely root cause:** Multi-entry FAT namespace publication is incremental but has no rollback record for entries successfully written before the operation fails.
+- **Impact:** A transient USB/media write error can permanently pollute the directory even though File Browser reports that file creation failed. Repetition can make a directory appear full or produce misleading long-name metadata without corresponding files.
+- **Repair direction:** Track the starting slot and number of directory entries successfully published. If any later LFN or short-entry write fails, best-effort mark every entry written by that attempt deleted before returning failure; preserve/restore an end-of-directory marker when the allocation consumed one. Add fault-injection tests for failure at every entry boundary and verify that a subsequent directory scan contains no residue from the failed create.
+
+### 90. USB mass-storage accepts a BPB whose FAT is too small for its declared cluster count and can write into data sectors
+
+- **Status:** Open.
+- **Affected code:** `Drivers/usb_mass_storage/driver.c`, primarily `parse_bpb()`, with destructive consequences in `fat_get()`, `fat_set()`, `allocate_cluster()`, and `free_chain()`.
+- **Trigger / reproduction:** Present a FAT16 or FAT32 volume whose boot sector has otherwise valid geometry/signatures but declares a `fat_size` too small to contain one FAT entry for every cluster implied by total sectors and sectors-per-cluster. The current parser checks that reserved/FAT/root regions leave data sectors, but never checks FAT entry capacity against `cluster_count`.
+- **Observed / logically demonstrated failure:** The malformed volume can mount successfully. Later, `fat_get()` and `fat_set()` compute an offset from the cluster number and add it to `fat_start_lba` without verifying that the resulting sector remains inside `fat_sectors`. Accessing a sufficiently high cluster therefore reads beyond the FAT, and allocation/free operations can write FAT values into the following root-directory or data area.
+- **Likely root cause:** `parse_bpb()` validates overall layout size but omits the core invariant that each FAT copy must be large enough for at least `cluster_count + 2` FAT entries of the selected FAT width.
+- **Impact:** A damaged or crafted USB filesystem can turn an attempted copy/delete into on-media corruption outside the FAT itself, potentially damaging directory entries or user file data.
+- **Repair direction:** After determining FAT16 versus FAT32 and before publishing mounted geometry, verify that `fat_size * 512` can represent at least `cluster_count + 2` entries (2 bytes each for FAT16, 4 bytes each for FAT32) and that every FAT copy remains within the validated reserved FAT region. Reject the mount if the invariant fails. Add malformed-BPB tests where current layout checks pass but FAT capacity is one or more entries short.
