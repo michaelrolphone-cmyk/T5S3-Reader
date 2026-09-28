@@ -617,6 +617,32 @@ static uint8_t ht_quantize(int value,int rank) {
 /* Mono is the common path. Assemble whole bytes in registers; never read
  * the PSRAM destination to OR a second nibble into it. Reuse adjacent source
  * samples and keep the format branch outside the physical-pixel loop. */
+/* Four independent byte lanes in one 32-bit register. The xor mask prevents
+ * cross-byte carry while retaining floor((a+b)/2), including odd inputs. */
+static inline __attribute__((always_inline)) uint32_t ht_average4(uint32_t a,uint32_t b) {
+    return (a&b)+(((a^b)&0xfefefefeu)>>1);
+}
+static inline __attribute__((always_inline)) uint32_t ht_load4(const uint8_t *p) {
+    /* ht_bind receives aligned storage; row stride and block x are /4. */
+    p=(const uint8_t *)__builtin_assume_aligned(p,4);
+    uint32_t value; memcpy(&value,p,sizeof(value));
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    value=__builtin_bswap32(value);
+#endif
+    return value;
+}
+/* Gather lane sign bits into bits 7,5,3,1 without a lookup or byte loop. */
+static inline __attribute__((always_inline)) uint8_t ht_spread4(uint32_t bits) {
+    return (uint8_t)(((bits>>7)*0x80200802u)>>24);
+}
+/* Bayer's four threshold quadrants each span only 64 values. All subtraction
+ * lanes start >=128 and subtract <=127: borrowing cannot cross a byte. The
+ * source MSB selects the unconditional result outside that threshold half. */
+static inline __attribute__((always_inline)) uint8_t ht_dots4(uint32_t value,uint32_t threshold,bool upper) {
+    uint32_t delta=(value|0x80808080u)-threshold;
+    uint32_t bits=(upper?(delta&value):(delta|value))&0x80808080u;
+    return ht_spread4(bits);
+}
 static void ht_pack_mono(uint8_t *out,int stride) {
     for(int y=0;y<HT_H;++y) {
         if(ht_framed && ht_visible_left[y]==HT_W/2 && ht_visible_left[ht_min(y+1,HT_H-1)]==HT_W/2) {
@@ -633,20 +659,20 @@ static void ht_pack_mono(uint8_t *out,int stride) {
             memset(top,255,left/4); memset(bottom,255,left/4);
             memset(top+right_edge/4,255,left/4); memset(bottom+right_edge/4,255,left/4);
         }
-        const uint8_t *rt=epd_dither_rank[(2*y)&7],*rb=epd_dither_rank[(2*y+1)&7];
-        int a=row[left],c=next[left];
+        /* Even-column rank*4+3, little-endian lane order. +3 converts the
+         * original strict > rank*4+2 comparison to >=. Odd columns add 64
+         * after removing their threshold's high bit; bottom swaps halves. */
+        static const uint32_t thresholds[4]={0x3f0f3303u,0x1f2f1323u,0x37073b0bu,0x17271b2bu};
+        uint32_t even=thresholds[y&3],odd=even+0x40404040u;
         for(int x=left;x<right_edge;x+=4) {
-            uint8_t t=0,b=0;
-            #pragma GCC unroll 4
-            for(int k=0;k<4;++k) {
-                int nx=ht_min(x+k+1,HT_W-1);
-                int right=row[nx],below=next[nx];
-                int h=(a+right)>>1,v=(a+c)>>1,d=(h+((c+below)>>1))>>1;
-                t=(uint8_t)((t<<2)|((a>rt[k*2]*4+2)<<1)|(h>rt[k*2+1]*4+2));
-                b=(uint8_t)((b<<2)|((v>rb[k*2]*4+2)<<1)|(d>rb[k*2+1]*4+2));
-                a=right;c=below;
-            }
-            top[x/4]=t;bottom[x/4]=b;
+            uint32_t a=ht_load4(row+x),c=ht_load4(next+x);
+            int nx=ht_min(x+4,HT_W-1);
+            uint32_t right=(a>>8)|((uint32_t)row[nx]<<24);
+            uint32_t below=(c>>8)|((uint32_t)next[nx]<<24);
+            uint32_t h=ht_average4(a,right),v=ht_average4(a,c);
+            uint32_t d=ht_average4(h,ht_average4(c,below));
+            top[x/4]=(uint8_t)(ht_dots4(a,even,false)|(ht_dots4(h,odd,true)>>1));
+            bottom[x/4]=(uint8_t)(ht_dots4(v,even,true)|(ht_dots4(d,odd,false)>>1));
         }
         if((y&15)==15) ht_checkpoint();
     }
