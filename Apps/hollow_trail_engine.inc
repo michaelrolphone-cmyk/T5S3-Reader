@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "T5MathApi.h"
+#include "epd_dither.h"
 #define HT_W 480
 #define HT_H 270
 #define HT_PIXELS (HT_W * HT_H)
@@ -430,7 +431,7 @@ static uint8_t ht_quantize(int value,int rank) {
     unsigned units=fraction[value];
     return (uint8_t)((units>>6)+((unsigned)rank<(units&63u)));
 }
-static void ht_pack(uint8_t *out,int stride) {
+static void ht_pack_format(uint8_t *out,int stride,bool mono) {
     static const uint8_t rank[8][8]={
         {41,8,52,7,45,15,47,4},{18,35,27,60,28,55,19,57},
         {54,1,49,9,62,3,40,14},{16,56,21,53,20,38,25,43},
@@ -447,11 +448,23 @@ static void ht_pack(uint8_t *out,int stride) {
         for(int x=0;x<HT_W;x+=2) {
             int nx=ht_min(HT_W-1,x+2),r=(x*2)&7;
             int a=row[x],b=(a+row[x+1])/2,c=row[x+1],d=(c+row[nx])/2;
-            top[x/2]=(uint8_t)((ht_quantize(a,rt[r])<<6)|(ht_quantize(b,rt[r+1])<<4)|
+            if(mono) {
+                unsigned px=(unsigned)x*2u,py=(unsigned)y*2u;
+                uint8_t bits=(uint8_t)((epd_dither_black(a,px,py)<<3)|
+                    (epd_dither_black(b,px+1,py)<<2)|(epd_dither_black(c,px+2,py)<<1)|
+                    epd_dither_black(d,px+3,py));
+                if((x&2)==0) top[x/4]=(uint8_t)(bits<<4); else top[x/4]|=bits;
+            } else top[x/2]=(uint8_t)((ht_quantize(a,rt[r])<<6)|(ht_quantize(b,rt[r+1])<<4)|
                               (ht_quantize(c,rt[r+2])<<2)|ht_quantize(d,rt[r+3]));
             a=(a+next[x])/2; b=(b+(next[x]+next[x+1])/2)/2;
             c=(c+next[x+1])/2; d=(d+(next[x+1]+next[nx])/2)/2;
-            bottom[x/2]=(uint8_t)((ht_quantize(a,rb[r])<<6)|(ht_quantize(b,rb[r+1])<<4)|
+            if(mono) {
+                unsigned px=(unsigned)x*2u,py=(unsigned)y*2u+1u;
+                uint8_t bits=(uint8_t)((epd_dither_black(a,px,py)<<3)|
+                    (epd_dither_black(b,px+1,py)<<2)|(epd_dither_black(c,px+2,py)<<1)|
+                    epd_dither_black(d,px+3,py));
+                if((x&2)==0) bottom[x/4]=(uint8_t)(bits<<4); else bottom[x/4]|=bits;
+            } else bottom[x/2]=(uint8_t)((ht_quantize(a,rb[r])<<6)|(ht_quantize(b,rb[r+1])<<4)|
                                  (ht_quantize(c,rb[r+2])<<2)|ht_quantize(d,rb[r+3]));
         }
         if((y&15)==15) ht_checkpoint();
@@ -505,3 +518,5 @@ static void ht_text(int x,int y,const char *text,int scale) {
             if(g[a]&(1u<<b)) ht_rect(ht_scene,x+a*scale,y+b*scale,scale,scale,255);
     }
 }
+
+static void ht_pack(uint8_t *out,int stride) { ht_pack_format(out,stride,false); }
