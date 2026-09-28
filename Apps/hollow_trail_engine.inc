@@ -75,6 +75,7 @@ typedef struct {
     int story_x; /* Furthest progress in this chapter, retained on death. */
     bool grounded;
     ht_puzzle_state puzzle;
+    uint8_t story_seen[HT_LEVELS]; /* Reached narration beats; retained with evidence. */
     uint32_t evidence; /* Thirty discoveries, retained across chapters this run. */
 } ht_game;
 static ht_game ht;
@@ -215,12 +216,15 @@ static bool ht_interact(void) {
 }
 static void ht_spawn(bool restart) {
     uint32_t evidence=ht.evidence;
+    uint8_t seen[HT_LEVELS]; memcpy(seen,ht.story_seen,sizeof(seen));
     ht_puzzle_state puzzle=ht.puzzle;
     if(restart) memset(&puzzle,0,sizeof(puzzle));
     unsigned laps=ht.laps, deaths=ht.deaths, level=ht.level;
     int cp=restart?0:ht.checkpoint, story_x=restart?0:ht.story_x;
     memset(&ht,0,sizeof(ht)); ht.laps=laps; ht.deaths=deaths; ht.level=level;
     ht.evidence=evidence; ht.puzzle=puzzle;
+    memcpy(ht.story_seen,seen,sizeof(seen));
+    if(!ht.story_seen[level]) ht.story_seen[level]=1;
     ht.story_x=story_x; ht.checkpoint=cp; ht.x=(cp?ht_land[cp].left+35:95)*256;
     ht.y=ht_land[cp].top*256; ht.grounded=true; ht.facing=1;
     ht.camera=ht_clamp(ht.x/256-165,0,HT_GOAL-340)*256;
@@ -262,6 +266,8 @@ static void ht_step(int direction,bool jump_pressed,bool jump_held) {
         ht.x=HT_PUZZLE_GATE*256; ht.vx=0;
     }
     ht.story_x=ht_max(ht.story_x,ht.x/256);
+    unsigned beat=ht_story_beat(ht.story_x)+1;
+    if(ht.story_seen[ht.level]<beat) ht.story_seen[ht.level]=(uint8_t)beat;
     if(ht.grounded) ht.stride+=ht_abs(ht.vx);
     if(ht.y>335*256) { ++ht.deaths; ht_spawn(false); return; }
     if(ht.x>=HT_GOAL*256 && ht.grounded && ht.puzzle.solved) {

@@ -10,6 +10,13 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   "$repo_dir/test/native_apps/compat_registration_stub.c" \
   "$repo_dir/test/native_apps/launcher_test.c" -o "$binary"
 "$binary"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -I"$repo_dir/test/native_apps/reader_stubs" -I"$repo_dir/sdk/driver" -I"$repo_dir/lib/GfxRenderer" \
+  "$repo_dir/test/native_apps/reader_typography_test.cpp" -o "$binary"
+"$binary"
+c++ -std=c++17 -Wall -Wextra -Werror \
+  "$repo_dir/test/native_apps/reader_page_layout_test.cpp" -o "$binary"
+"$binary"
 c++ -std=c++17 -O2 -Wall -Wextra -Werror \
   "$repo_dir/test/native_apps/native_video_mono_test.cpp" -o "$binary"
 "$binary"

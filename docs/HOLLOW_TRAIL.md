@@ -1001,3 +1001,74 @@ relocation and links the corrected version with separate IRAM/flash addresses;
 it uses a minimal section-attribute header and linker script, not a full board
 link. The native C++ transition test still verifies all 1024 transitions and 40
 full scans. Firmware/app versions remain the cumulative unreleased 1.3.34/1.0.14.
+
+## Reader journal (app 1.0.15 / firmware 1.3.35)
+
+The 30 objects now open full found documents (roughly 130–180 words each),
+with physical details, different witnesses and the traveller's reflections.
+The operational directions remain explicit inside each document. Ambiguity
+concerns the people, the older trail and their choices, not arbitrary puzzle
+wording. Thirty additional reflective passages recap the ten chapters, unlocking
+alongside the matching on-trail narration. Recaps never reveal uncollected clues.
+
+B / Up inspects a nearby object, operates nearby machinery, or opens the journal
+elsewhere. The journal index contains **collected evidence** followed by **story
+so far**. Left/Right selects a record; A/Confirm opens it. In a record,
+Left/Right turns pages; A, B, Up, Back or Start returns to the index. From the
+index B, Up, Back or Start closes reading. Navigation is edge-triggered; held
+Back does not exit the game after closing the journal. There is no page-turn
+animation. Both evidence and reached narration survive death, chapter changes
+and replay within the current session; quitting still clears progress.
+
+### Typography boundary
+
+The manifest declares the optional `reader.typography` API 1 software capability.
+The app acquires/releases it through `T5ProviderCapabilityApi`, alongside its
+independent gamepad lease. Firmware validates the declaration and execution
+owner; each callback checks its lease generation and owner, and loader cleanup
+invalidates outstanding leases. This is a built-in software provider for the
+resident reader, not an installed hardware provider or a new direct font import.
+The app never sees `CrossPointSettings`, a `GfxRenderer`, SD font objects or a
+physical display handle. The public ABI is `sdk/driver/RiscReaderTypographyV1.h`.
+
+The service selects `SETTINGS.getReaderFontId()` after preparing the selected SD
+family when applicable, so family **and size** follow the ebook configuration.
+Line compression follows the reader setting too. Text is measured with the same
+font used to draw it, including the renderer's kerning and ligature handling.
+It draws into an app-owned, native-resolution 960x540 monochrome bitmap. Font
+pixels never pass through the reduced-resolution scenery compositor or upsampler.
+The detached renderer shares font registrations but cannot alter the host's
+orientation, framebuffer or display mode. The capability does not refresh the
+panel. A missing/failing service displays an explicit typography-unavailable
+message and allows returning to the game; it does not silently replace the
+selected reading font with the game's tiny bitmap face.
+
+Pages use bounded UTF-8 byte offsets. The app remembers up to 64 page starts
+per opened record; reopening starts at page one. Content is immutable during a
+reading visit because physics is frozen. Input during display copying queues a
+later revision rather than changing the prepared bitmap. There is one additional
+64,800-byte PSRAM reading bitmap and a 4 KiB text buffer; nothing is allocated per
+frame or per page. Normal gameplay does no typography work.
+
+The service limits text to 16 KiB, title/footer to 128 bytes, target storage to
+256 KiB, and uses a 255-byte line buffer. It yields after each 240-byte font
+metric preparation chunk and each laid-out line, with a five-second deadline;
+bitmap polarity conversion yields every 32 rows. Existing font loading remains
+inside the reader subsystem. Invalid requests and failures return false and the
+caller must discard the target. The service does not hold an app buffer after
+returning. Entering a journal page and the first restored game frame submit all
+rows through the existing fast video driver; this is **not** a clear/rewrite
+cycle, and unchanged reading frames retain the driver's idle cleanup behavior.
+
+Validation: native Xtensa ELF build; production-app queue test verifies native
+bitmap copying, full-screen entry/restoration, lease release, delayed submission
+and fallback allocation; input tests cover page history, reading freeze and
+unlocked records. Host tests compile the production typography service with fake
+font/device dependencies to verify configured font/spacing, polarity, capacity,
+progress and timeout. Separate layout tests exercise proportional measurement,
+UTF-8 boundaries, paragraph breaks, long words and cancellation. These are not
+physical display or SD font performance measurements.
+
+Versions: Hollow Trail 1.0.14 -> 1.0.15; firmware 1.3.34 -> 1.3.35, both above
+master and the published release index checked for this change. The app requires
+firmware 1.3.35 for the new typography capability.

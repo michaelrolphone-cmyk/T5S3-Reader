@@ -81,10 +81,12 @@ int main(void) {
     assert(reading && journal_page==0 && ht_evidence_found(&ht,0));
     int frozen=ht.x; unsigned frozen_ticks=ht.ticks;
     forced_buttons=T5_APP_BUTTON_RIGHT; ht_input(100);
-    assert(reading && journal_page==1 && !ht_evidence_found(&ht,1));
-    ht_input(100); assert(journal_page==1 && ht.x==frozen && ht.ticks==frozen_ticks);
+    assert(reading && journal_page==0 && ht_journal_leaf==0 && !ht_evidence_found(&ht,1));
+    ht_input(100); assert(journal_page==0 && ht.x==frozen && ht.ticks==frozen_ticks);
     forced_buttons=T5_APP_BUTTON_CONFIRM; ht_input(1);
-    assert(!reading && !jump_down && ht.vy==0);
+    assert(reading && ht_journal_index && !jump_down && ht.vy==0);
+    forced_buttons=T5_APP_BUTTON_BACK; ht_input(1);
+    assert(!reading && !quitting);
     forced_buttons=0; ht_input(1);
     ht.x=95*256; ht.y=ht_land[0].top*256;
     forced_buttons=T5_APP_BUTTON_UP; ht_input(1); assert(reading);
@@ -92,6 +94,19 @@ int main(void) {
     ht_input(1); assert(!quitting);
     forced_buttons=0; ht_input(1);
     forced_buttons=T5_APP_BUTTON_BACK; ht_input(1); assert(quitting);
+    /* Found documents and reached recaps only; preserve history on death and loop. */
+    ht.evidence=1u; memset(ht.story_seen,0,sizeof(ht.story_seen)); ht.story_seen[0]=2;
+    unsigned ids[40]; assert(ht_journal_list(ids)==2 && ids[0]==0 && ids[1]==30);
+    ht_spawn(false); assert(ht.story_seen[0]==2);
+    ht.level=1; ht_spawn(true); assert(ht.story_seen[0]==2 && ht.story_seen[1]==1);
+    ht_journal_open(0); ht_journal_next=200; ht_journal_length=600;
+    ht_journal_input(HT_RIGHT); assert(ht_journal_leaf==1 && ht_journal_offsets[1]==200);
+    ht_journal_input(HT_RIGHT); assert(ht_journal_leaf==1); // Await layout before another turn.
+    ht_journal_next=400; ht_journal_input(HT_RIGHT); assert(ht_journal_leaf==2);
+    ht_journal_input(HT_LEFT); assert(ht_journal_leaf==1 && ht_journal_next==0);
+    ht_journal_next=600; ht_journal_input(HT_RIGHT); assert(ht_journal_leaf==1); // End of entry.
+    ht_journal_input(HT_EXIT); assert(ht_journal_index);
+    for(unsigned i=0;i<30;++i) assert(strlen(ht_evidence_prose[i])>500 && strlen(ht_evidence_prose[i])<sizeof(ht_journal_body));
     free(expected); free(memory);
     puts("Hollow Trail: simulation advances during render; frame snapshot stays coherent PASS");
     return 0;

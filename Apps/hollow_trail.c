@@ -4,6 +4,7 @@
 #include "T5HardwareTakeover.h"
 #include "T5ProviderCapabilityApi.h"
 #include "RiscUsbHidV1.h"
+#include "RiscReaderTypographyV1.h"
 #include "hollow_trail_engine.inc"
 
 static const t5_app_api_v1 *app;
@@ -42,6 +43,7 @@ static void ht_perf_finish(const t5_video_api_v1 *video,uint32_t now) {
 #define HT_PAUSE 8u
 #define HT_EXIT 16u
 #define HT_HAS(api,type,field) ((api) && (api)->struct_size >= offsetof(type,field)+sizeof((api)->field) && (api)->field)
+#include "hollow_trail_journal.inc"
 static void ht_log(const char *message) {
     if(HT_HAS(app,t5_app_api_v1,log_message)) app->log_message(message);
 }
@@ -116,9 +118,7 @@ static void ht_input(uint32_t wait) {
     ht_advance(now);
     uint32_t down=buttons&~previous;
     if(reading) {
-        if(down&(HT_INTERACT|HT_JUMP|HT_EXIT|HT_PAUSE)) reading=false;
-        else if(down&HT_LEFT) journal_page=(journal_page+HT_LEVELS*3u-1)%(HT_LEVELS*3u);
-        else if(down&HT_RIGHT) journal_page=(journal_page+1)%(HT_LEVELS*3u);
+        ht_journal_input(down);
         if(down) ++scene_revision;
         jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0;
         previous=held=buttons; last_poll=now; return;
@@ -126,9 +126,9 @@ static void ht_input(uint32_t wait) {
     jump_down|=(down&HT_JUMP)!=0; pause_down|=(down&HT_PAUSE)!=0;
     if((down&HT_INTERACT) && !paused && !loading && ht.level==ht_geometry_level) {
         int page=ht_inspect();
-        if(page>=0) { journal_page=(unsigned)page; reading=true; }
+        if(page>=0) { ht_journal_open((unsigned)page); reading=true; }
         else if(ht_puzzle_near(&ht)>=0) (void)ht_interact();
-        else reading=true;
+        else { ht_journal_index=true; ht_journal_selection=0; reading=true; }
         if(reading) { jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0; }
         ++scene_revision;
     }
@@ -171,24 +171,25 @@ __attribute__((visibility("default"))) void app_main(void) {
        !video || video->api_version!=T5_VIDEO_API_VERSION ||
        !HT_HAS(video,t5_video_api_v1,start_format) || !video->backbuffer ||
        !video->can_submit || !video->submit || !video->stop) return;
-    uint8_t *memory=(uint8_t *)app->psram_alloc(HT_MEMORY+15u);
+    uint8_t *memory=(uint8_t *)app->psram_alloc(HT_MEMORY+HT_PACKED_BYTES+31u);
     if(!memory) { ht_log("Hollow Trail: scenery cache PSRAM unavailable"); return; }
     uint8_t *staging=(uint8_t *)app->psram_alloc(HT_PACKED_BYTES);
     if(!staging) ht_log("Hollow Trail: packed staging unavailable; using direct packing");
-    bool started=false,display_initialized=false;
+    bool started=false,display_initialized=false,display_reading=false;
+    ht_reader_bitmap=(uint8_t *)(((uintptr_t)memory+HT_MEMORY+31u)&~(uintptr_t)15u);
     t5_video_surface_v1 surface={0};
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(false);
     ht_math=t5_math_get_api(T5_MATH_API_VERSION);
     if(ht_math && (ht_math->api_version!=T5_MATH_API_VERSION || ht_math->struct_size<sizeof(*ht_math) ||
                    !ht_math->add_s16 || !ht_math->sub_s16 || !ht_math->copy_bytes || !ht_math->fill_bytes)) ht_math=NULL;
-    ht_acquire_pad(); ht_bind((uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u));
+    ht_acquire_pad(); ht_acquire_reader(); ht_bind((uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u));
     ht_dsp_composite=false;
     if(!ht_start_video(video,&surface)) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
     started=true;
     memset(&ht,0,sizeof(ht)); ht_spawn(true);
-    reading=false; journal_page=0;
+    reading=false; journal_page=0; ht_journal_index=true; ht_journal_selection=0;
     quitting=jump_down=pause_down=paused=mode_down=false; held=previous=0;
     simulation_started=false; simulation_accumulator=0; scene_revision=1;
     ht_service=ht_render_service;
@@ -210,14 +211,14 @@ __attribute__((visibility("default"))) void app_main(void) {
     if(quitting) goto cleanup;
     uint32_t last_frame=app->millis()-HT_FRAME_INTERVAL_MS, last_submit=app->millis();
     uint32_t drawn_revision=0, prepared_revision=0;
-    bool prepared=false;
+    bool prepared=false,prepared_reader=false;
     uint32_t prepared_since=0,prepared_render_ms=0,prepared_pack_ms=0;
     bool prepared_staged=false;
     bool prepared_profile=false;
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.0.14: dithered 1bpp parallax renderer started");
+    ht_log("Hollow Trail 1.0.15: dithered 1bpp parallax renderer started");
     while(!quitting) {
         /* A ready frame gets priority over another fixed poll delay. Busy
          * waits still poll/yield every iteration, and ready paths poll by 8ms. */
@@ -262,8 +263,10 @@ __attribute__((visibility("default"))) void app_main(void) {
             prepared_revision=scene_revision;
             const ht_game rendering_game=ht;
             const bool rendering_paused=paused,rendering_reading=reading;
-            const unsigned rendering_page=journal_page;
+            prepared_reader=rendering_reading;
             prepared_profile=!rendering_paused && !rendering_reading;
+            if(rendering_reading) ht_journal_render();
+            else {
             ht_render_scene();
             /* Initial instructions dismiss automatically after walking. */
             if(rendering_game.x<230*256 && rendering_game.checkpoint==0) {
@@ -275,12 +278,11 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(!rendering_paused) {
                 ht_narration(&rendering_game);
-                if(rendering_reading) ht_draw_journal(&rendering_game,rendering_page);
-                else { ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game); }
+                ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game);
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,112,74,256,172,0);
-                ht_text(127,83,"HOLLOW TRAIL 1.0.14",1);
+                ht_text(127,83,"HOLLOW TRAIL 1.0.15",1);
                 ht_text(198,95,"PAUSED",2);
                 ht_text(127,117,"START / DOWN RESUME    SELECT / BACK EXIT",1);
                 ht_text(127,133,!ht_dsp_available()?"DSP16: UNAVAILABLE":ht_dsp_composite?"DSP16 COMPOSITOR: ON":"DSP16 COMPOSITOR: OFF",1);
@@ -309,6 +311,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                     ht_text(127,225,perf,1);
                 } else ht_text(127,210,"SCAN TIMING NOT AVAILABLE",1);
             }
+            } /* game frame */
             prepared_since=app->millis();
             prepared_render_ms=prepared_since-now;
             prepared_pack_ms=0; prepared_staged=false;
@@ -317,7 +320,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         if(quitting) break;
         /* Overlap useful packing with the queued scan. Keep the no-copy path
          * when a backbuffer is already available; staging failure is harmless. */
-        if(prepared && staging && !prepared_staged && !video->can_submit()) {
+        if(prepared && !prepared_reader && staging && !prepared_staged && !video->can_submit()) {
             uint32_t pack_start=app->millis();
             ht_pack_mono(staging,surface.stride_bytes);
             prepared_since=app->millis();
@@ -331,12 +334,14 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_log("Hollow Trail: video backbuffer unavailable"); break;
             }
             uint32_t pack_start=app->millis();
-            if(prepared_staged) ht_copy_packed(buffer,staging);
+            if(prepared_reader) ht_copy_packed(buffer,ht_reader_bitmap);
+            else if(prepared_staged) ht_copy_packed(buffer,staging);
             else ht_pack_mono(buffer,surface.stride_bytes);
             uint32_t output_ms=app->millis()-pack_start;
             if(quitting) break;
-            if(video->submit(display_initialized?ht_dirty_top:0,
-                             display_initialized?ht_dirty_height:0)) {
+            bool cropped=display_initialized && !prepared_reader && !display_reading;
+            if(video->submit(cropped?ht_dirty_top:0,cropped?ht_dirty_height:0)) {
+                display_reading=prepared_reader;
                 display_initialized=true;
                 last_submit=app->millis(); drawn_revision=prepared_revision; prepared=false;
                 if(prepared_profile) {
@@ -367,7 +372,7 @@ __attribute__((visibility("default"))) void app_main(void) {
 cleanup:
     ht_service=NULL; loading=false;
     if(started) video->stop();
-    ht_release_pad();
+    ht_release_reader(); ht_release_pad();
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(true);
     if(staging) app->psram_free(staging);
     app->psram_free(memory);

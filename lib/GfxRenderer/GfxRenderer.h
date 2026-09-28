@@ -74,6 +74,14 @@ class GfxRenderer {
   static constexpr int VIEWABLE_MARGIN_BOTTOM = 9;
   static constexpr int VIEWABLE_MARGIN_LEFT = 3;
 
+  // A detached memory target shares only font registrations. It never calls
+  // HalDisplay or owns the caller's buffer; its save-buffer vector stays empty.
+  GfxRenderer(const GfxRenderer& fonts,uint8_t *target,uint16_t width,uint16_t height)
+      : display(fonts.display),renderMode(BW),orientation(LandscapeCounterClockwise),fadingFix(false),
+        frameBuffer(target),panelWidth(width),panelHeight(height),visibleWidth(width),visibleHeight(height),
+        panelWidthBytes(width/8),frameBufferSize(static_cast<uint32_t>(width/8)*height),
+        fontMap(fonts.fontMap),sdCardFonts_(fonts.sdCardFonts_) {}
+
   // Setup
   void begin();  // must be called right after display.begin()
   void insertFont(int fontId, EpdFontFamily font);
