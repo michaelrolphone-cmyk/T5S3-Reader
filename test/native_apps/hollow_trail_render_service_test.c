@@ -27,6 +27,12 @@ int main(void) {
     assert(fake_now>110 && ht.x>start+3*256 && !(held&HT_RIGHT));
     assert(!memcmp(expected,ht_scene,HT_PIXELS));
     assert(scene_revision>1);
+    /* Loading still polls input but cannot move the player or toggle pause. */
+    loading=true; held=HT_RIGHT; jump_down=pause_down=true;
+    start=ht.x; unsigned ticks=ht.ticks;
+    ht_advance(fake_now+1000);
+    assert(ht.x==start && ht.ticks==ticks && !jump_down && !pause_down);
+    loading=false;
     /* Real-time pacing: 640ms at full walking speed covers 50 logical pixels,
      * half the former distance. Exercise the production accumulator. */
     ht_service=NULL; ht_spawn(true); held=HT_RIGHT; ht.vx=640;
@@ -43,10 +49,10 @@ int main(void) {
     const t5_video_api_v1 counters={.struct_size=sizeof(counters),.frame_counter=fake_scans};
     memset(&ht_perf,0,sizeof(ht_perf));
     ht_perf.start=100;ht_perf.scan_start=10;ht_perf.frames=1;
-    ht_perf.render_ms=60;ht_perf.pack_ms=20;ht_perf.wait_ms=10;
+    ht_perf.render_ms=60;ht_perf.pack_ms=20;ht_perf.wait_ms=10; ht_perf.cache_ms=16;
     ht_perf_finish(&counters,1100);
     assert(ht_perf.fps10==20 && ht_perf.scan10==240);
-    assert(ht_perf.render_avg==30 && ht_perf.pack_avg==10 && ht_perf.wait_avg==5);
+    assert(ht_perf.render_avg==30 && ht_perf.pack_avg==10 && ht_perf.wait_avg==5 && ht_perf.cache_avg==8);
     assert(ht_perf.frames==0 && ht_perf.start==1100 && HT_FRAME_INTERVAL_MS==42);
     free(expected); free(memory);
     puts("Hollow Trail: simulation advances during render; frame snapshot stays coherent PASS");

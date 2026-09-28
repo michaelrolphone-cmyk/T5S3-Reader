@@ -67,9 +67,14 @@ int main(void) {
     /* Border and fade are symmetric and leave the central scene unchanged. */
     memset(ht_scene,100,HT_PIXELS); ht_vignette();
     for(int y=0;y<HT_H;++y) for(int x=0;x<HT_W;++x) {
-        int edge=ht_min(ht_min(x,HT_W-1-x),ht_min(y,HT_H-1-y));
-        int wanted=edge<=HT_BORDER?255:edge>=HT_FADE?100:
-            255-155*(edge-HT_BORDER)/(HT_FADE-HT_BORDER);
+        int ex=ht_min(x,HT_W-1-x),ey=ht_min(y,HT_H-1-y),edge=ht_min(ex,ey);
+        if(ex<HT_MASK_RADIUS && ey<HT_MASK_RADIUS) {
+            int dx=HT_MASK_RADIUS-ex,dy=HT_MASK_RADIUS-ey,d=dx*dx+dy*dy,r=0;
+            while((r+1)*(r+1)<=d) ++r;
+            edge=HT_MASK_RADIUS-r;
+        }
+        int alpha=ht_clamp(edge-HT_BORDER,0,HT_FADE-HT_BORDER)*255/(HT_FADE-HT_BORDER);
+        int wanted=255-(155*alpha+127)/255;
         assert(ht_scene[y*HT_W+x]==wanted);
     }
     /* Fast packing of hidden pixels equals the generic packer, in both modes. */

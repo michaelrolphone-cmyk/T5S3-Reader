@@ -11,9 +11,18 @@
 /* Physical pixels are 2x logical: 36px black, fading through 76px. */
 #define HT_BORDER 18
 #define HT_FADE 38
+#define HT_MASK_RADIUS 90
+#define HT_MASK_PIXELS (HT_MASK_RADIUS*HT_MASK_RADIUS)
 static bool ht_framed;
 #define HT_PIXELS (HT_W * HT_H)
-#define HT_MEMORY (HT_PIXELS * 10u)
+#define HT_TILE_W 256
+#define HT_TILE_SLOTS 4
+#define HT_LAYERS 4
+#define HT_TILE_PIXELS (HT_TILE_W * HT_H)
+#define HT_TILE_HALO ((HT_W-HT_TILE_W)/2)
+#define HT_CACHE_BAND 64
+#define HT_WARM_STEPS (HT_LAYERS*HT_TILE_SLOTS*(1+3*((HT_H+HT_CACHE_BAND-1)/HT_CACHE_BAND)))
+#define HT_MEMORY (HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS)
 #define HT_GOAL 3200
 #define HT_STEP_MS 32u /* Half-speed motion; preserve jump paths and level reachability. */
 
@@ -35,14 +44,20 @@ static ht_game ht;
 static const t5_math_api_v1 *ht_math;
 static int16_t *ht_filter;
 static uint8_t *ht_raw, *ht_near, *ht_wide, *ht_temp, *ht_scene;
-static uint8_t *ht_cached_near[3], *ht_cached_wide[3];
-static int ht_cache_key[3];
-static bool ht_cache_valid[3];
+static uint8_t *ht_cached_near[HT_LAYERS][HT_TILE_SLOTS], *ht_cached_wide[HT_LAYERS][HT_TILE_SLOTS];
+static int ht_cache_key[HT_LAYERS][HT_TILE_SLOTS];
+static bool ht_cache_valid[HT_LAYERS][HT_TILE_SLOTS];
+static struct { bool active; int depth,key,phase,row; } ht_cache_job;
+static bool ht_abort;
+static unsigned ht_cache_builds;
+static uint8_t *ht_corner_mask;
+static int16_t ht_visible_left[HT_H],ht_clear_left[HT_H];
 /* Host callback polls/yields at bounded raster checkpoints; no drawing. */
 static void (*ht_service)(void);
 static int ht_min(int a,int b) { return a<b?a:b; }
 static int ht_max(int a,int b) { return a>b?a:b; }
 static int ht_clamp(int x,int lo,int hi) { return ht_min(hi,ht_max(lo,x)); }
+static int ht_floor_div(int x,int n) { int q=x/n; return q-(x%n<0); }
 static int ht_abs(int x) { return x<0?-x:x; }
 static uint32_t ht_hash(uint32_t x) { x^=x>>16; x*=0x7feb352du; x^=x>>15; x*=0x846ca68bu; return x^(x>>16); }
 static void ht_checkpoint(void) { if(ht_service) ht_service(); }
@@ -55,15 +70,47 @@ static void ht_clear_layer(uint8_t *dst) {
         ht_checkpoint();
     }
 }
-static void ht_bind(uint8_t *memory) {
-    ht_framed=false;
-    ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
-    ht_temp=memory+8*HT_PIXELS; ht_filter=(int16_t *)ht_temp; ht_scene=memory+3*HT_PIXELS;
-    ht_cached_near[0]=ht_near; ht_cached_wide[0]=ht_wide;
-    for(int i=1;i<3;++i) {
-        ht_cached_near[i]=memory+(2+2*i)*HT_PIXELS;
-        ht_cached_wide[i]=memory+(3+2*i)*HT_PIXELS;
+/* Only used when binding memory, never in a frame's pixel loop. */
+static unsigned ht_isqrt(unsigned n) {
+    unsigned root=0,bit=1u<<30;
+    while(bit>n) bit>>=2;
+    while(bit) {
+        if(n>=root+bit) { n-=root+bit; root=(root>>1)+bit; }
+        else root>>=1;
+        bit>>=2;
     }
+    return root;
+}
+static int ht_mask_alpha(int x,int y) {
+    int ex=ht_min(x,HT_W-1-x),ey=ht_min(y,HT_H-1-y);
+    if(ex<HT_MASK_RADIUS && ey<HT_MASK_RADIUS) return ht_corner_mask[ey*HT_MASK_RADIUS+ex];
+    int edge=ht_min(ex,ey);
+    return ht_clamp(edge-HT_BORDER,0,HT_FADE-HT_BORDER)*255/(HT_FADE-HT_BORDER);
+}
+static void ht_mask_init(void) {
+    for(int y=0;y<HT_MASK_RADIUS;++y) for(int x=0;x<HT_MASK_RADIUS;++x) {
+        int dx=HT_MASK_RADIUS-x,dy=HT_MASK_RADIUS-y;
+        int edge=HT_MASK_RADIUS-(int)ht_isqrt((unsigned)(dx*dx+dy*dy));
+        ht_corner_mask[y*HT_MASK_RADIUS+x]=(uint8_t)(ht_clamp(edge-HT_BORDER,0,HT_FADE-HT_BORDER)*255/(HT_FADE-HT_BORDER));
+    }
+    for(int y=0;y<HT_H;++y) {
+        int x=0;
+        while(x<HT_W/2 && !ht_mask_alpha(x,y)) ++x;
+        ht_visible_left[y]=(int16_t)x;
+        while(x<HT_W/2 && ht_mask_alpha(x,y)<255) ++x;
+        ht_clear_left[y]=(int16_t)x;
+    }
+}
+static void ht_bind(uint8_t *memory) {
+    ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
+    ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
+    ht_scene=memory+3*HT_PIXELS; ht_temp=memory+4*HT_PIXELS; ht_filter=(int16_t *)ht_temp;
+    uint8_t *cache=memory+6*HT_PIXELS;
+    for(int d=0;d<HT_LAYERS;++d) for(int slot=0;slot<HT_TILE_SLOTS;++slot) {
+        ht_cached_near[d][slot]=cache; cache+=HT_TILE_PIXELS;
+        ht_cached_wide[d][slot]=cache; cache+=HT_TILE_PIXELS;
+    }
+    ht_corner_mask=cache; ht_mask_init();
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
 }
 static void ht_spawn(bool restart) {
@@ -223,55 +270,6 @@ static void ht_blur_rect(const uint8_t *src,uint8_t *dst,int radius,int x0,int x
 static void ht_blur_region(const uint8_t *src,uint8_t *dst,int radius,int x0,int x1) {
     ht_blur_rect(src,dst,radius,x0,x1,0,HT_H);
 }
-static void ht_shift_layer(uint8_t *buffer,int delta) {
-    int count=HT_W-ht_abs(delta);
-    for(int y=0;y<HT_H;++y) {
-        uint8_t *row=buffer+y*HT_W;
-        memmove(row+ht_max(-delta,0),row+ht_max(delta,0),(size_t)count);
-        if((y&31)==31) ht_checkpoint();
-    }
-}
-static void ht_blur_edges(const uint8_t *src,uint8_t *dst,int radius,int margin) {
-    if(margin*2>=HT_W) ht_blur_region(src,dst,radius,0,HT_W);
-    else {
-        ht_blur_region(src,dst,radius,0,margin);
-        ht_blur_region(src,dst,radius,HT_W-margin,HT_W);
-    }
-}
-static void ht_prepare_layer(int depth,int key) {
-    static const int radius[3]={3,1,0}, spread[3]={9,6,4};
-    ht_near=ht_cached_near[depth]; ht_wide=ht_cached_wide[depth];
-    int delta=key-ht_cache_key[depth];
-    if(ht_cache_valid[depth] && delta==0) return;
-    /* Parallax scenery is a pure integer translation. Reuse its exact
-     * filtered interior; recalculate exposed columns AND both old/new blur
-     * boundary footprints. This preserves viewport edge extension exactly.
-     * Foreground framing has another parallax speed, so never shift it. */
-    int spacing=depth==0?103:169;
-    bool same_geometry=(key-150)/spacing==(ht_cache_key[depth]-150)/spacing;
-    /* Match existing deterministic object culling, including a tower whose
-     * parent building just left the viewport margin. */
-    int period=depth==0?680:1040;
-    for(int j=0;j<6 && same_geometry;++j) {
-        int old_x=330+j*period-ht_cache_key[depth],new_x=330+j*period-key;
-        same_geometry=(old_x>=-100 && old_x<=HT_W+100)==(new_x>=-100 && new_x<=HT_W+100);
-    }
-    if(depth==2) {
-        /* Keep a four-sample convolution halo outside the visible rectangle.
-         * Foreground cannot reuse shifted caches: branches move independently. */
-        int halo=HT_BORDER-spread[2];
-        ht_blur_rect(ht_raw,ht_near,0,halo,HT_W-halo,halo,HT_H-halo);
-        ht_blur_rect(ht_near,ht_wide,spread[2],HT_BORDER,HT_W-HT_BORDER,HT_BORDER,HT_H-HT_BORDER);
-    } else if(depth<2 && ht_cache_valid[depth] && same_geometry && ht_abs(delta)<HT_W/3) {
-        ht_shift_layer(ht_near,delta); ht_shift_layer(ht_wide,delta);
-        ht_blur_edges(ht_raw,ht_near,radius[depth],ht_abs(delta)+radius[depth]);
-        ht_blur_edges(ht_near,ht_wide,spread[depth],ht_abs(delta)+radius[depth]+spread[depth]);
-    } else {
-        ht_blur_region(ht_raw,ht_near,radius[depth],0,HT_W);
-        ht_blur_region(ht_near,ht_wide,spread[depth],0,HT_W);
-    }
-    ht_cache_key[depth]=key; ht_cache_valid[depth]=true;
-}
 static void ht_composite(int depth,int focus_x,int focus_y) {
     /* One pass: blend, fade, and max composite without PSRAM scratch rows.
      * Keep both original rounding points. All intermediates fit signed 32-bit
@@ -281,9 +279,10 @@ static void ht_composite(int depth,int focus_x,int focus_y) {
     for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
         const uint8_t *near=ht_near+y*HT_W,*wide=ht_wide+y*HT_W;
         uint8_t *scene=ht_scene+y*HT_W;
-        int distance=(HT_BORDER-focus_x)*(HT_BORDER-focus_x)+dy2;
-        int delta=1+2*(HT_BORDER-focus_x);
-        for(int x=HT_BORDER;x<HT_W-HT_BORDER;++x) {
+        int left=ht_visible_left[y];
+        int distance=(left-focus_x)*(left-focus_x)+dy2;
+        int delta=1+2*(left-focus_x);
+        for(int x=left;x<HT_W-left;++x) {
             int v;
             if(distance<=2500) {
                 v=near[x]; /* Fully focused: no blur mix or fade. */
@@ -302,15 +301,14 @@ static void ht_composite(int depth,int focus_x,int focus_y) {
         if((y&31)==31) ht_checkpoint();
     }
 }
-static void ht_background(int depth,int camera) {
-    int parallax=depth==0?22:53, offset=camera*parallax/100;
+static void ht_background(int depth,int offset) {
     int tone=depth==0?85:170, base=depth==0?219:246;
     /* Trace the same hill boundary, then fill contiguous rows. Drawing
      * one-pixel-wide vertical rectangles thrashed PSRAM/cache and called
      * memset tens of thousands of times per frame. ht_temp is scratch here. */
     int lowest=HT_H;
     for(int x=0;x<HT_W;++x) {
-        int wx=x+offset, cell=wx/220, t=wx%220;
+        int wx=x+offset, cell=ht_floor_div(wx,220), t=wx-cell*220;
         int a=base-20-(int)(ht_hash((uint32_t)cell+70u+(unsigned)depth)%35);
         int b=base-20-(int)(ht_hash((uint32_t)cell+71u+(unsigned)depth)%35);
         int top=a+(b-a)*t/220-(t*(220-t))/1700;
@@ -323,17 +321,18 @@ static void ht_background(int depth,int camera) {
         if((y&31)==31) ht_checkpoint();
     }
     int spacing=depth==0?103:169;
-    int start=(offset-150)/spacing;
-    for(int j=start;j<start+7;++j) {
+    int start=ht_floor_div(offset-160,spacing),end=ht_floor_div(offset+HT_W+160,spacing);
+    for(int j=start;j<=end;++j) {
         uint32_t h=ht_hash((uint32_t)(j+80+depth*59));
         int x=j*spacing-offset+(int)(h%31),height=(depth==0?101:208)+(int)(h%90);
         ht_tree(ht_raw,x,base,height,depth==0?3:10,h,tone);
+        ht_checkpoint();
     }
     /* Abandoned pitched-roof mill and a distant watchtower. */
     int period=depth==0?680:1040;
     for(int j=0;j<6;++j) {
         int x=330+j*period-offset;
-        if(x< -100 || x>HT_W+100) continue;
+        if(x< -160 || x>HT_W+160) continue;
         int y=base-64;
         ht_rect(ht_raw,x,y,64,85,tone);
         ht_triangle(ht_raw,x-8,y,x+30,y-30,x+73,y,tone);
@@ -345,13 +344,14 @@ static void ht_background(int depth,int camera) {
             ht_triangle(ht_raw,x+80,y-45,x+95,y-64,x+111,y-45,tone);
             ht_rect(ht_raw,x+92,y-30,6,17,0);
         }
+        ht_checkpoint();
     }
 }
 static void ht_foreground(int camera) {
     for(int i=0;i<HT_PLATFORMS;++i) {
         const ht_platform *p=&ht_land[i];
         int l=p->left-camera,r=p->right-camera;
-        if(r<0 || l>=HT_W) continue;
+        if(r< -256 || l>=HT_W+256) continue;
         ht_rect(ht_raw,l,p->top,r-l,HT_H-p->top,255);
         /* Fine roots and grass leave the collision edge clearly legible. */
         for(int wx=p->left+8;wx<p->right-8;wx+=11) {
@@ -366,17 +366,150 @@ static void ht_foreground(int camera) {
         if(i!=9) ht_tree(ht_raw,tx-camera,p->top,225+(i%3)*20,12+(i%3)*3,(uint32_t)i+901,255);
         if(i==0) ht_tree(ht_raw,15-camera,p->top,270,22,146,255);
         if(i==9) ht_tree(ht_raw,2950-camera,p->top,265,18,766,255);
+        ht_checkpoint();
     }
-    /* Nearest framing branches move faster than the playable plane. */
-    int x=75-camera*123/100;
-    while(x< -240) x+=910;
-    ht_limb(ht_raw,x-110,-20,x+100,24,18,6,255);
-    ht_limb(ht_raw,x+55,15,x+140,83,5,0,255);
-    ht_limb(ht_raw,x+7,0,x-34,67,7,0,255);
     /* Goal: a ruined doorway with an open white passage. */
-    x=HT_GOAL-camera;
+    int x=HT_GOAL-camera;
     ht_rect(ht_raw,x-19,151,7,49,255); ht_rect(ht_raw,x+12,151,7,49,255);
     ht_rect(ht_raw,x-23,146,46,8,255);
+}
+/* This plane has its own 1.23x translation and cached blur. Enumerate
+ * periodic branches by world position so adjacent strips agree exactly. */
+static void ht_branches(int offset) {
+    int first=ht_floor_div(offset-300,910),last=ht_floor_div(offset+HT_W+300,910);
+    for(int j=first;j<=last;++j) {
+        int x=75+j*910-offset;
+        ht_limb(ht_raw,x-110,-20,x+100,24,18,6,255);
+        ht_limb(ht_raw,x+55,15,x+140,83,5,0,255);
+        ht_limb(ht_raw,x+7,0,x-34,67,7,0,255);
+    }
+}
+static int ht_layer_offset(int depth,int camera) {
+    return depth==0?camera*22/100:depth==1?camera*53/100:depth==2?camera:camera*123/100;
+}
+static int ht_cache_slot(int key) { return (int)((unsigned)key&(HT_TILE_SLOTS-1u)); }
+static bool ht_cache_has(int depth,int key) {
+    int slot=ht_cache_slot(key);
+    return ht_cache_valid[depth][slot] && ht_cache_key[depth][slot]==key;
+}
+static void ht_cache_begin(int depth,int key) {
+    ht_cache_job.active=true; ht_cache_job.depth=depth; ht_cache_job.key=key;
+    ht_cache_job.phase=0; ht_cache_job.row=0;
+}
+/* One geometry pass or at most 64 filter/copy rows per call, with the same
+ * elapsed-time input/yield checkpoints as rendering. Publish only complete
+ * strips; a direction reversal may discard an unfinished speculative job. */
+static void ht_cache_work(void) {
+    if(!ht_cache_job.active || ht_abort) return;
+    int depth=ht_cache_job.depth,key=ht_cache_job.key;
+    static const int radius[4]={3,1,0,0},spread[4]={9,6,4,4};
+    if(ht_cache_job.phase==0) {
+        ht_clear_layer(ht_raw);
+        int offset=key*HT_TILE_W-HT_TILE_HALO;
+        if(depth<2) ht_background(depth,offset);
+        else if(depth==2) ht_foreground(offset);
+        else ht_branches(offset);
+        ht_cache_job.phase=1;
+    } else {
+        int y0=ht_cache_job.row,y1=ht_min(HT_H,y0+HT_CACHE_BAND);
+        if(ht_cache_job.phase==1)
+            ht_blur_rect(ht_raw,ht_near,radius[depth],HT_TILE_HALO-spread[depth],
+                         HT_TILE_HALO+HT_TILE_W+spread[depth],y0,y1);
+        else if(ht_cache_job.phase==2)
+            ht_blur_rect(ht_near,ht_wide,spread[depth],HT_TILE_HALO,HT_TILE_HALO+HT_TILE_W,y0,y1);
+        else {
+            int slot=ht_cache_slot(key);
+            /* The scheduler never evicts a strip visible in its snapshot. */
+            ht_cache_valid[depth][slot]=false;
+            for(int y=y0;y<y1;++y) {
+                memcpy(ht_cached_near[depth][slot]+y*HT_TILE_W,ht_near+y*HT_W+HT_TILE_HALO,HT_TILE_W);
+                memcpy(ht_cached_wide[depth][slot]+y*HT_TILE_W,ht_wide+y*HT_W+HT_TILE_HALO,HT_TILE_W);
+                if((y&15)==15) ht_checkpoint();
+            }
+        }
+        ht_cache_job.row=y1;
+        if(y1==HT_H) {
+            ht_cache_job.row=0;
+            if(++ht_cache_job.phase==4) {
+                int slot=ht_cache_slot(key);
+                ht_cache_key[depth][slot]=key; ht_cache_valid[depth][slot]=true;
+                ht_cache_job.active=false; ++ht_cache_builds;
+            }
+        }
+    }
+    ht_checkpoint();
+}
+static bool ht_cache_ensure(int depth,int key) {
+    if(ht_cache_has(depth,key)) return true;
+    if(!ht_cache_job.active || ht_cache_job.depth!=depth || ht_cache_job.key!=key)
+        ht_cache_begin(depth,key);
+    while(!ht_cache_has(depth,key) && !ht_abort) ht_cache_work();
+    return !ht_abort;
+}
+static bool ht_cache_visible(int camera) {
+    if(ht_abort) return false;
+    for(int depth=0;depth<HT_LAYERS;++depth) {
+        int offset=ht_layer_offset(depth,camera);
+        int first=ht_floor_div(offset+HT_BORDER,HT_TILE_W);
+        int last=ht_floor_div(offset+HT_W-HT_BORDER-1,HT_TILE_W);
+        for(int key=first;key<=last;++key) if(!ht_cache_ensure(depth,key)) return false;
+    }
+    return true;
+}
+/* Warm visible strips first, then one lookahead strip per plane. Called once
+ * per host loop: no heap allocation and no unbounded full-level warmup. */
+static bool ht_cache_prefetch(int camera,int direction) {
+    if(ht_abort) return false;
+    int chosen_depth=-1,chosen_key=0;
+    for(int depth=0;depth<HT_LAYERS && chosen_depth<0;++depth) {
+        int offset=ht_layer_offset(depth,camera);
+        int first=ht_floor_div(offset+HT_BORDER,HT_TILE_W);
+        int last=ht_floor_div(offset+HT_W-HT_BORDER-1,HT_TILE_W);
+        for(int key=first;key<=last;++key) if(!ht_cache_has(depth,key)) {
+            chosen_depth=depth; chosen_key=key; break;
+        }
+        if(chosen_depth<0) {
+            int key=direction<0?first-1:last+1;
+            if(!ht_cache_has(depth,key)) { chosen_depth=depth; chosen_key=key; }
+        }
+    }
+    if(chosen_depth<0) { ht_cache_job.active=false; return false; }
+    if(!ht_cache_job.active || ht_cache_job.depth!=chosen_depth || ht_cache_job.key!=chosen_key)
+        ht_cache_begin(chosen_depth,chosen_key);
+    ht_cache_work();
+    return true;
+}
+static void ht_composite_cached(int depth,int offset,int focus_x,int focus_y) {
+    const int fade=depth>=2?70:45;
+    /* Framing branches and their four-pixel blur end before row 90. */
+    const int height=depth==3?90:HT_H-HT_BORDER;
+    int dy=HT_BORDER-focus_y,dy2=dy*dy;
+    for(int y=HT_BORDER;y<height;++y) {
+        uint8_t *scene=ht_scene+y*HT_W;
+        int left=ht_visible_left[y];
+        int distance=(left-focus_x)*(left-focus_x)+dy2;
+        int delta=1+2*(left-focus_x);
+        for(int x=left;x<HT_W-left;) {
+            int world=offset+x,key=ht_floor_div(world,HT_TILE_W),column=world-key*HT_TILE_W;
+            int count=ht_min(HT_W-left-x,HT_TILE_W-column),slot=ht_cache_slot(key);
+            const uint8_t *near=ht_cached_near[depth][slot]+y*HT_TILE_W+column;
+            const uint8_t *wide=ht_cached_wide[depth][slot]+y*HT_TILE_W+column;
+            for(int i=0;i<count;++i,++x) {
+                int v;
+                if(distance<=2500) v=near[i];
+                else if(distance>=53700) v=wide[i]*(256-fade)>>8;
+                else {
+                    int radial=(distance-2500)/200;
+                    v=(near[i]*256+((int)wide[i]-near[i])*radial)>>8;
+                    v=v*(256-((radial*fade)>>8))>>8;
+                }
+                scene[x]=(uint8_t)ht_max(scene[x],v);
+                distance+=delta; delta+=2;
+            }
+        }
+        dy2+=2*dy+1; ++dy;
+        if((y&31)==31) ht_checkpoint();
+    }
 }
 static void ht_character(int x,int feet,const ht_game *game) {
     /* Local mist separation keeps the player visible when a black trunk
@@ -406,15 +539,13 @@ static void ht_character(int x,int feet,const ht_game *game) {
 static void ht_vignette(void) {
     for(int y=0;y<HT_H;++y) {
         uint8_t *row=ht_scene+y*HT_W;
-        int ey=ht_min(y,HT_H-1-y);
-        if(ey<HT_BORDER) { memset(row,255,HT_W); continue; }
-        memset(row,255,HT_BORDER);
-        memset(row+HT_W-HT_BORDER,255,HT_BORDER);
-        for(int x=HT_BORDER;x<HT_W-HT_BORDER;++x) {
-            if(ey>=HT_FADE && x==HT_FADE) x=HT_W-HT_FADE;
-            int edge=ht_min(ey,ht_min(x,HT_W-1-x));
-            if(edge<HT_FADE)
-                row[x]=(uint8_t)(255-(255-row[x])*(edge-HT_BORDER)/(HT_FADE-HT_BORDER));
+        int left=ht_visible_left[y],clear=ht_clear_left[y];
+        memset(row,255,(size_t)left); memset(row+HT_W-left,255,(size_t)left);
+        /* Symmetric curved fade; the untouched central span costs no work. */
+        for(int x=left;x<clear;++x) {
+            int alpha=ht_mask_alpha(x,y),right=HT_W-1-x;
+            row[x]=(uint8_t)(255-((255-row[x])*alpha+127)/255);
+            row[right]=(uint8_t)(255-((255-row[right])*alpha+127)/255);
         }
         if((y&31)==31) ht_checkpoint();
     }
@@ -425,15 +556,10 @@ static void ht_render_scene(void) {
      * so trees, focus and character all use one consistent game snapshot. */
     const ht_game game=ht;
     int camera=game.camera/256,px=game.x/256-camera,py=game.y/256-14;
+    if(!ht_cache_visible(camera)) return;
     ht_clear_layer(ht_scene);
-    for(int depth=0;depth<3;++depth) {
-        int key=depth==0?camera*22/100:depth==1?camera*53/100:camera;
-        if(!ht_cache_valid[depth] || ht_cache_key[depth]!=key) {
-            ht_clear_layer(ht_raw);
-            if(depth<2) ht_background(depth,camera); else ht_foreground(camera);
-        }
-        ht_checkpoint(); ht_prepare_layer(depth,key); ht_composite(depth,px,py);
-    }
+    for(int depth=0;depth<HT_LAYERS;++depth)
+        ht_composite_cached(depth,ht_layer_offset(depth,camera),px,py);
     ht_character(px,game.y/256,&game);
     ht_vignette();
 }
@@ -470,12 +596,13 @@ static uint8_t ht_quantize(int value,int rank) {
  * samples and keep the format branch outside the physical-pixel loop. */
 static void ht_pack_mono(uint8_t *out,int stride) {
     for(int y=0;y<HT_H;++y) {
-        if(ht_framed && (y<16 || y>=HT_H-16)) {
+        if(ht_framed && ht_visible_left[y]==HT_W/2 && ht_visible_left[ht_min(y+1,HT_H-1)]==HT_W/2) {
             memset(out+2*y*stride,255,HT_W/4);
             memset(out+(2*y+1)*stride,255,HT_W/4);
             continue;
         }
-        int left=ht_framed?16:0,right_edge=HT_W-left;
+        int left=ht_framed?((ht_min(ht_visible_left[y],ht_visible_left[ht_min(y+1,HT_H-1)])-1)&~3):0;
+        int right_edge=HT_W-left;
         const uint8_t *row=ht_scene+y*HT_W;
         const uint8_t *next=ht_scene+ht_min(y+1,HT_H-1)*HT_W;
         uint8_t *top=out+2*y*stride,*bottom=top+stride;
@@ -512,12 +639,13 @@ static void ht_pack_format(uint8_t *out,int stride,bool mono) {
     /* Two logical samples produce four physical columns in both rows.
      * Reuse bilinear samples and remove per-pixel parity/edge branches. */
     for(int y=0;y<HT_H;++y) {
-        if(ht_framed && (y<16 || y>=HT_H-16)) {
+        if(ht_framed && ht_visible_left[y]==HT_W/2 && ht_visible_left[ht_min(y+1,HT_H-1)]==HT_W/2) {
             memset(out+2*y*stride,255,HT_W/2);
             memset(out+(2*y+1)*stride,255,HT_W/2);
             continue;
         }
-        int left=ht_framed?16:0,right_edge=HT_W-left;
+        int left=ht_framed?((ht_min(ht_visible_left[y],ht_visible_left[ht_min(y+1,HT_H-1)])-1)&~3):0;
+        int right_edge=HT_W-left;
         const uint8_t *row=ht_scene+y*HT_W;
         const uint8_t *next=ht_scene+ht_min(HT_H-1,y+1)*HT_W;
         uint8_t *top=out+y*2*stride,*bottom=top+stride;

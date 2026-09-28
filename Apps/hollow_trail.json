@@ -1,6 +1,6 @@
 {
   "min_firmware_version": "1.3.30",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "display_name": "Hollow Trail",
   "file_name": "hollow_trail.elf",
   "icon": "solid:f1bb",
