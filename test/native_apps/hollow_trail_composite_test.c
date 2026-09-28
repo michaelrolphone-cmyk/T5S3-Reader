@@ -7,7 +7,7 @@
 #include "../../Apps/hollow_trail_engine.inc"
 
 static void reference(int depth,int fx,int fy,uint8_t *dst) {
-    for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) for(int x=HT_BORDER;x<HT_W-HT_BORDER;++x) {
+    for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) for(int x=ht_visible_left[y];x<HT_W-ht_visible_left[y];++x) {
         int dx=x-fx,dy=y-fy,i=y*HT_W+x;
         int r=ht_clamp((dx*dx+dy*dy-2500)/200,0,256);
         int v=(ht_near[i]*(256-r)+ht_wide[i]*r)>>8;
