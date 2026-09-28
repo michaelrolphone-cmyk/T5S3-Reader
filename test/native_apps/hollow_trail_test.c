@@ -39,6 +39,26 @@ int main(void) {
     /* Render representative camera positions twice: deterministic, bounds
      * checked under ASan/UBSan, all four native tones represented. */
     const int positions[]={95,330,950,1660,2310,3130};
+    /* Exhaustive normalization/quantization checks retain original arithmetic. */
+    for(unsigned n=1;n<=19;++n) for(unsigned sum=0;sum<=255*n;++sum)
+        assert(ht_average((int)sum,(0x1000000u+n-1u)/n)==sum/n);
+    for(int value=0;value<256;++value) for(int rank=0;rank<64;++rank) {
+        int q=value/85,rem=value-q*85;
+        if(q<3 && rem*64>rank*85+42) ++q;
+        assert(ht_quantize(value,rank)==q);
+    }
+    /* Cached shifts must equal a full fresh convolution, including reversals,
+     * culling boundaries, both blur footprints, and large camera teleports. */
+    uint8_t *expected=malloc(HT_PIXELS); assert(expected);
+    for(int i=0;i<100;++i) {
+        int camera=i<40?i*7:i<80?(79-i)*7:(i*137)%2860;
+        ht.camera=camera*256; ht.x=(camera+165)*256;
+        ht.y=(170+i%40)*256;
+        ht_render_scene(); memcpy(expected,ht_scene,HT_PIXELS);
+        memset(ht_cache_valid,0,sizeof(ht_cache_valid)); ht_render_scene();
+        assert(!memcmp(expected,ht_scene,HT_PIXELS));
+    }
+    free(expected);
     clock_t start=clock();
     for(unsigned i=0;i<sizeof(positions)/sizeof(positions[0]);++i) {
         ht_spawn(true); ht.x=positions[i]*256;
