@@ -62,22 +62,22 @@ int main(void) {
     ht.level=0; ht_select_level(0); ht_spawn(true);
     ht.x=(HT_PUZZLE_FIRST+2*HT_PUZZLE_SPACING)*256;
     ht.y=ht_land[9].top*256; ht.grounded=true;
-    forced_buttons=T5_APP_BUTTON_UP; ht_input(1);
+    forced_buttons=T5_APP_BUTTON_CONFIRM; ht_input(1);
     assert(ht.puzzle.progress==1 && !jump_down && ht.vy==0);
     ht_input(1); assert(ht.puzzle.progress==1 && !ht.puzzle.wrong);
     forced_buttons=0; ht_input(1);
-    forced_buttons=T5_APP_BUTTON_UP; ht_input(1);
+    forced_buttons=T5_APP_BUTTON_CONFIRM; ht_input(1);
     assert(ht.puzzle.progress==1 && ht.puzzle.wrong);
     forced_buttons=0; ht_input(1); loading=true;
     ht.x=HT_PUZZLE_FIRST*256;
-    forced_buttons=T5_APP_BUTTON_UP; ht_input(1);
+    forced_buttons=T5_APP_BUTTON_CONFIRM; ht_input(1);
     assert(ht.puzzle.progress==1);
     loading=false;
     /* Inspect, browse and close through production input. Reading freezes
      * physics and closing with A cannot also jump or activate machinery. */
     forced_buttons=0; ht_input(1);
     ht.x=ht_evidence_x(0,0)*256; ht.y=ht_land[1].top*256; ht.grounded=true;
-    forced_buttons=T5_APP_BUTTON_UP; ht_input(1);
+    forced_buttons=T5_APP_BUTTON_CONFIRM; ht_input(1);
     assert(reading && journal_page==0 && ht_evidence_found(&ht,0));
     int frozen=ht.x; unsigned frozen_ticks=ht.ticks;
     forced_buttons=T5_APP_BUTTON_RIGHT; ht_input(100);
@@ -89,7 +89,9 @@ int main(void) {
     assert(!reading && !quitting);
     forced_buttons=0; ht_input(1);
     ht.x=95*256; ht.y=ht_land[0].top*256;
-    forced_buttons=T5_APP_BUTTON_UP; ht_input(1); assert(reading);
+    forced_buttons=T5_APP_BUTTON_DOWN; ht_input(1);
+    forced_buttons=0; ht_input(1);
+    forced_buttons=T5_APP_BUTTON_CONFIRM; ht_input(1); assert(reading);
     forced_buttons=T5_APP_BUTTON_BACK; ht_input(1); assert(!reading && !quitting);
     ht_input(1); assert(!quitting);
     forced_buttons=0; ht_input(1);

@@ -16,6 +16,10 @@
     {
       "capability": "reader.typography",
       "api": ">=1"
+    },
+    {
+      "capability": "usb.hid.gamepad",
+      "api": ">=1"
     }
   ]
 }

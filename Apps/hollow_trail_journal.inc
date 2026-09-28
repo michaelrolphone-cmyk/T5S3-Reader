@@ -56,25 +56,25 @@ static void ht_journal_choose(unsigned choice) {
 static void ht_journal_input(uint32_t down) {
     unsigned ids[HT_JOURNAL_RECORDS],count=ht_journal_list(ids);
     if(ht_journal_deciding) {
-        if(down&(HT_INTERACT|HT_EXIT|HT_PAUSE)) {
+        if(down&(HT_EXIT|HT_PAUSE)) {
             if(ht_journal_confirm) { ht_journal_choose(ht_journal_choice); }
             else { ht_journal_deciding=false; reading=false; }
         } else if(down&HT_LEFT) ht_journal_choose(0);
         else if(down&HT_RIGHT) ht_journal_choose(1);
-        else if((down&HT_JUMP) && ht_journal_page_ready && ht_read_submitted_revision==scene_revision) {
+        else if((down&HT_ACCEPT) && ht_journal_page_ready && ht_read_submitted_revision==scene_revision) {
             if(!ht_journal_confirm) { ht_journal_confirm=true; ht_journal_page_ready=false; }
             else if(ht_decide(ht_journal_choice+1)) ht_journal_open(HT_LEVELS*3-1);
         }
         return;
     }
     if(ht_journal_index) {
-        if(down&(HT_INTERACT|HT_EXIT|HT_PAUSE)) reading=false;
-        else if((down&HT_JUMP) && count) ht_journal_open(ids[ht_journal_selection%count]);
+        if(down&(HT_EXIT|HT_PAUSE)) reading=false;
+        else if((down&HT_ACCEPT) && count) ht_journal_open(ids[ht_journal_selection%count]);
         else if((down&HT_LEFT) && count) ht_journal_selection=(ht_journal_selection+count-1)%count;
         else if((down&HT_RIGHT) && count) ht_journal_selection=(ht_journal_selection+1)%count;
     } else {
-        if(down&(HT_INTERACT|HT_EXIT|HT_PAUSE|HT_JUMP)) {
-            if((down&HT_JUMP) && journal_page==HT_LEVELS*3-1 && ht.verdict &&
+        if(down&(HT_EXIT|HT_PAUSE|HT_ACCEPT)) {
+            if((down&HT_ACCEPT) && journal_page==HT_LEVELS*3-1 && ht.verdict &&
                ht_journal_page_ready && ht_journal_next==ht_journal_length &&
                ht_read_submitted_revision==scene_revision) {
                 ht.verdict_read=true; reading=false; return;
@@ -99,9 +99,9 @@ static void ht_journal_render(void) {
             ht_journal_choice?"COMPLETE THE CIRCUIT":"BREAK THE CIRCUIT",
             ht_journal_choice?"Trust her work. Power the live pen; seal the original away.":
                 "Interrupt her work. Release the original; shutter the live pen.",
-            ht_journal_confirm?"This choice lasts for this journey. A: commit. B: reconsider.":
-                "Neither face can prove her freedom. L/R: choose. A: review. B: leave and reread.");
-        snprintf(footer,sizeof(footer),ht_journal_confirm?"A commit | B reconsider":"L/R choose | A review | B leave");
+            ht_journal_confirm?"This choice lasts for this journey. A: commit. X: reconsider.":
+                "Neither face can prove her freedom. L/R: choose. A: review. X: leave and reread.");
+        snprintf(footer,sizeof(footer),ht_journal_confirm?"A commit | X reconsider":"L/R choose | A review | X leave");
     } else if(ht_journal_index) {
         unsigned ids[HT_JOURNAL_RECORDS],count=ht_journal_list(ids);
         if(count) ht_journal_selection%=count;
@@ -109,11 +109,11 @@ static void ht_journal_render(void) {
         snprintf(title,sizeof(title),"Hollow Trail - Journal");
         /* One selected record per index page stays readable at large fonts. */
         snprintf(ht_journal_body,sizeof(ht_journal_body),
-            "%s\n\n%s\n\nRecord %u of %u\n\nOnly discoveries and reached story passages appear here.\n\nLeft / Right: choose record\nA / Confirm: read\nB / Up / Back: return to trail",
+            "%s\n\n%s\n\nRecord %u of %u\n\nOnly discoveries and reached story passages appear here.\n\nLeft / Right: choose record\nA / Confirm: read\nX / Back: return to trail",
             count?(id<HT_LEVELS*3?"Collected evidence":id<HT_LEVELS*4?"Story so far":"Witnessed endings"):"No records yet",
             count?ht_journal_title(id):"Explore the trail to begin your journal.",
             count?ht_journal_selection+1:0,count);
-        snprintf(footer,sizeof(footer),"L/R choose | A read | B close");
+        snprintf(footer,sizeof(footer),"L/R choose | A read | X close");
     } else {
         snprintf(title,sizeof(title),"%s",ht_journal_title(journal_page));
         if(journal_page>=HT_LEVELS*4) {
@@ -134,7 +134,7 @@ static void ht_journal_render(void) {
             }
         }
         snprintf(footer,sizeof(footer),journal_page==HT_LEVELS*3-1 && ht.verdict && !ht.verdict_read?
-            "Page %u | L/R | A on last page: leave":"Page %u | L/R pages | B journal",ht_journal_leaf+1);
+            "Page %u | L/R | A on last page: leave":"Page %u | L/R pages | X journal",ht_journal_leaf+1);
     }
     ht_journal_length=strlen(ht_journal_body);
     risc_reader_page_request_v1 request={

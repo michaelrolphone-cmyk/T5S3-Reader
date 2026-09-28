@@ -44,16 +44,15 @@ last-minute code nor conclusive proof of a live author.
 ## Final tower interaction
 
 After the three-flash chapter puzzle, the glass cabinet appears at the exit.
-The player must be grounded near it and press B / device Up. Merely solving the
+The player must be grounded near it and press A / device Confirm. Merely solving the
 puzzle or jumping past the cabinet cannot finish the chapter.
 
 Left/Right selects **Break the circuit** or **Complete the circuit**. A/Confirm
-opens a separate confirmation screen; another fresh A/Confirm commits. B/Up,
-Back or Start first cancels confirmation, then leaves the decision so the player
+opens a separate confirmation screen; another fresh A/Confirm commits. X/Back or Select first cancels confirmation, then leaves the decision so the player
 can revisit the journal. Changing the selected action cancels confirmation.
 Commit requires the current confirmation revision to have been submitted to the
 display, preventing an old prepared screen from authorising a new selection.
-Held A cannot traverse both steps. There is no timed choice.
+Held A cannot traverse both steps. Start leaves reading without committing. There is no timed choice.
 
 | Choice | Physical result | Changed final testimony | Belief undermined |
 | --- | --- | --- | --- |
@@ -81,7 +80,7 @@ a later journey. The original 30 documents and up to ten reached recaps plus two
 endings fit a bounded 42-record index.
 
 Left/Right pages through the result in the configured reader font. On its final
-page, A/Confirm acknowledges it and returns to the trail. B can return to the
+page, A/Confirm acknowledges it and returns to the trail. X can return to the
 journal sooner, but does not unlock the exit. Reopening the cabinet returns to
 the result; it cannot change the committed action. Walking through the exit
 after acknowledgment starts the forest again. Death retains the committed

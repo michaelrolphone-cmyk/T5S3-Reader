@@ -1,5 +1,41 @@
 # Hollow Trail 1.0.14
 
+## Current controls (1.0.15, supersedes historical mappings below)
+
+| Action | Controller | Device / generic navigation |
+| --- | --- | --- |
+| Move / turn journal page | D-pad Left/Right | Left/Right |
+| Jump | B | Up |
+| Inspect / use nearby mechanism | A | Confirm |
+| Journal | Start (toggles reading) | Down to pause, then Confirm |
+| Read / confirm decision | A | Confirm |
+| Back in reading; exit from gameplay | X | Back |
+| Pause / resume diagnostics | Select | Down |
+| Toggle DSP benchmark while paused | B | Up |
+
+A away from an inspectable object or mechanism is inert. The journal never
+opens as an inspect fallback. Directional inputs cannot directly open it.
+Start has a dedicated edge-triggered journal action, separate from jumping,
+inspection and pause. Holding Back after closing reading does not exit the app.
+
+The input masks match T5S3-GameBoy's `riscrte/usb_hid_elf_adapter.cpp`:
+XInput A/B/X/Y/Start/Select = 0x02/0x01/0x08/0x04/0x200/0x100;
+HID = 0x01/0x02/0x04/0x08/0x80/0x40. The app declares and leases both optional
+`usb.xinput.gamepad` and `usb.hid.gamepad` capabilities; raw HID reports are not
+interpreted as normalized XInput. One connected pad supplies a frame, with
+XInput priority; multiple receiver slots are never ORed together. A raw poll
+failure suppresses mapped navigation while that pad owns input. A persistent
+failure yields back to neutral-gated device input after 250ms. Source changes
+and recovery require neutral input before accepting new actions. These rules
+prevent a fault from turning a held button into a new inspect/journal press.
+
+Regression tests drive production input with both raw layouts, duplicate OS
+navigation, all eight hats, unused face buttons, XInput trigger bits,
+Start/Select, empty-space inspection, reading/back, faults, recovery and a
+second receiver slot. The cumulative app version is still unreleased 1.0.15
+(master/published 1.0.14). No additional firmware version change is needed.
+
+
 A separate, original ten-chapter silhouette platformer for the fast EPD interface, using fixed monochrome dithering by default.
 No external assets, file access, or network are required. Version 1.0.2 uses
 the native math API introduced in firmware 1.3.27.

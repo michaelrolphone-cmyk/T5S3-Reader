@@ -1277,7 +1277,7 @@ static void ht_narration(const ht_game *game) {
         const char *text=ht_chapters[game->level].lines[beat][line];
         if(game->x/256>=2780) text=game->puzzle.solved?
             ht_puzzles[game->level].reveal[line]:
-                (line?"B / UP AWAY FROM CONTROLS OPENS YOUR JOURNAL.":
+                (line?"START JOURNAL OR PAUSE THEN A / CONFIRM.":
                       "THE ANSWER IS HIDDEN IN THE THINGS LEFT BEHIND.");
         if(game->level==HT_LEVELS-1 && game->verdict)
             text=line?"THE WAY IS OPEN WHEN I HAVE READ WHAT I CHANGED.":
@@ -1338,15 +1338,15 @@ static void ht_puzzle_prompt(const ht_game *game) {
     ht_rect(ht_scene,66,33,348,29,255);
     ht_text_color(74,37,p->name,1,0);
     if(game->puzzle.solved && game->level==HT_LEVELS-1) {
-        ht_text_color(74,49,!game->verdict?"B / UP AT THE GLASS: BREAK OR COMPLETE":
-            !game->verdict_read?"B / UP AT THE GLASS: READ THE CHANGED TESTIMONY":
+        ht_text_color(74,49,!game->verdict?"A / CONFIRM AT THE GLASS: BREAK OR COMPLETE":
+            !game->verdict_read?"A / CONFIRM AT THE GLASS: READ THE CHANGED TESTIMONY":
             "PASSAGE OPEN - WALK ON TO BEGIN ANOTHER JOURNEY",1,0);
     } else if(game->puzzle.solved) ht_text_color(74,49,"PASSAGE OPEN - FOLLOW THE LIGHT",1,0);
     else if(p->kind==0) {
-        char status[]="B / UP RING   NOTES 0/0";
-        status[20]=(char)('0'+game->puzzle.progress); status[22]=(char)('0'+p->length);
+        char status[]="A / CONFIRM RING   NOTES 0/0";
+        status[24]=(char)('0'+game->puzzle.progress); status[26]=(char)('0'+p->length);
         ht_text_color(74,49,game->puzzle.wrong?"WRONG NOTE - BEGIN AGAIN WITH THE CLUE":status,1,0);
-    } else ht_text_color(74,49,p->kind==1?"B / UP TOGGLE NEARBY SWITCH   0 OFF 1 ON":"B / UP TURN NEARBY DIAL   0 1 2 3",1,0);
+    } else ht_text_color(74,49,p->kind==1?"A / CONFIRM TOGGLE NEARBY SWITCH   0 OFF 1 ON":"A / CONFIRM TURN NEARBY DIAL   0 1 2 3",1,0);
 }
 
 /* Tiny scraps/containers embedded in scenery. No flashing markers or distant
@@ -1367,7 +1367,7 @@ static void ht_evidence_prompt(const ht_game *game) {
     if(item<0) return;
     ht_rect(ht_scene,66,33,348,29,255);
     ht_text_color(74,37,ht_evidence[game->level][item].title,1,0);
-    ht_text_color(74,49,"B / UP INSPECT - A CLUE MAY BE HIDDEN HERE",1,0);
+    ht_text_color(74,49,"A / CONFIRM INSPECT - A CLUE MAY BE HIDDEN HERE",1,0);
 }
 static void ht_draw_journal(const ht_game *game,unsigned page) {
     if(page>=HT_LEVELS*3u) return;
@@ -1384,7 +1384,7 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
     } else {
         ht_text_color(66,113,"NOT FOUND",1,0);
         ht_text_color(66,132,"LOOK FOR SMALL OBJECTS ALONG THE TRAIL.",1,0);
-        ht_text_color(66,145,"APPROACH ON FOOT AND PRESS B / UP TO INSPECT.",1,0);
+        ht_text_color(66,145,"APPROACH ON FOOT AND PRESS A / CONFIRM TO INSPECT.",1,0);
     }
-    ht_text_color(66,184,"LEFT / RIGHT PAGES   B / UP OR A CLOSE",1,0);
+    ht_text_color(66,184,"LEFT / RIGHT PAGES   A / CONFIRM OR A CLOSE",1,0);
 }

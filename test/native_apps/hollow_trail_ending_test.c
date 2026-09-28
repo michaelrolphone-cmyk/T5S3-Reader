@@ -34,7 +34,7 @@ static void tower(void) {
     assert(!ht_decide(0) && !ht_decide(3));
     ht.x=HT_GOAL*256; ht_step(1,false,false);
     assert(ht.level==HT_LEVELS-1 && ht.x==HT_PUZZLE_GATE*256);
-    press(T5_APP_BUTTON_UP); assert(reading && ht_journal_deciding && !ht.verdict);
+    press(T5_APP_BUTTON_CONFIRM); assert(reading && ht_journal_deciding && !ht.verdict);
 }
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY),*bitmap=malloc(HT_PACKED_BYTES);
@@ -49,7 +49,7 @@ int main(void) {
         press(T5_APP_BUTTON_BACK); assert(!ht_journal_confirm && reading && !ht.verdict);
         press(T5_APP_BUTTON_BACK); assert(!reading && !quitting && !ht.verdict);
         ht_input(1); assert(!quitting);
-        press(T5_APP_BUTTON_UP); assert(ht_journal_deciding);
+        press(T5_APP_BUTTON_CONFIRM); assert(ht_journal_deciding);
         if(choice==2) press(T5_APP_BUTTON_RIGHT);
         int frozen=ht.x; unsigned ticks=ht.ticks;
         present(); press(T5_APP_BUTTON_CONFIRM); assert(ht_journal_confirm && !ht.verdict);
@@ -68,7 +68,7 @@ int main(void) {
         press(T5_APP_BUTTON_CONFIRM); assert(ht_journal_index && !ht.verdict_read);
         press(T5_APP_BUTTON_BACK); assert(!reading);
         ht.x=HT_GOAL*256; ht_step(1,false,false); assert(ht.x==HT_PUZZLE_GATE*256 && !ht.laps);
-        press(T5_APP_BUTTON_UP); assert(reading && !ht_journal_deciding && journal_page==29);
+        press(T5_APP_BUTTON_CONFIRM); assert(reading && !ht_journal_deciding && journal_page==29);
         unsigned turns=0;
         do {
             present();
