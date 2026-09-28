@@ -177,28 +177,42 @@ struct ServicedFrame {
   HalDisplay::RefreshMode mode;
   std::atomic<bool> done{false};
 };
-void renderServicedFrame(void* opaque) {
-  auto* frame = static_cast<ServicedFrame*>(opaque);
-  frame->renderer->displayBuffer(frame->mode);
-  frame->done.store(true, std::memory_order_release);
-  // No frame/session access after publication; this firmware task never runs ELF code.
-  vTaskDelete(nullptr);
+// A redraw used to allocate and delete an 8 KiB task stack each time. Under
+// network/USB memory pressure, creation failed after the catalog had loaded.
+// Reserve the renderer worker once in internal RAM so a redraw has no heap or
+// task-stack allocation. This worker never runs ELF code or retains a frame.
+alignas(16) StackType_t refreshStack[8192]{};
+StaticTask_t refreshTaskStorage{};
+TaskHandle_t refreshTask = nullptr;
+std::atomic<ServicedFrame*> pendingRefresh{nullptr};
+void renderServicedFrame(void*) {
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    auto* frame = pendingRefresh.load(std::memory_order_acquire);
+    if (!frame) continue;
+    frame->renderer->displayBuffer(frame->mode);
+    pendingRefresh.store(nullptr, std::memory_order_release);
+    // Publish completion last; do not touch the caller's stack frame again.
+    frame->done.store(true, std::memory_order_release);
+  }
 }
 bool presentServicedMode(HalDisplay::RefreshMode mode,
                          void (*service)(void*), void* context) {
   auto* s = current();
   if (!s || !service) return false;
   ServicedFrame frame{&s->renderer, mode};
-  s->presenting = true;
   // Panel_EPD pixel transfer can keep the calling loop task running long
   // enough to starve IDLE0. Put the blocking renderer work on the other core
   // while this owner task yields and services input/watchdog state.
-  const BaseType_t refreshCore = xPortGetCoreID() == 0 ? 1 : 0;
-  if (xTaskCreatePinnedToCore(renderServicedFrame, "app-refresh", 8192, &frame,
-                            1, nullptr, refreshCore) != pdPASS) {
-    s->presenting = false;
-    return false;
+  if (!refreshTask) {
+    const BaseType_t refreshCore = xPortGetCoreID() == 0 ? 1 : 0;
+    refreshTask = xTaskCreateStaticPinnedToCore(renderServicedFrame, "app-refresh",
+        sizeof(refreshStack), nullptr, 1, refreshStack, &refreshTaskStorage, refreshCore);
+    if (!refreshTask) return false;
   }
+  s->presenting = true;
+  pendingRefresh.store(&frame, std::memory_order_release);
+  xTaskNotifyGive(refreshTask);
   // Like present(), join the physical refresh before allowing framebuffer reuse
   // or app unload. Yield every pass; collect input on its authorized owner task.
   while (!frame.done.load(std::memory_order_acquire)) {
