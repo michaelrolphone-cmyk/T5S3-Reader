@@ -623,3 +623,10 @@ direct firmware integration that is not yet represented by a native host API.
 
 The minimal ABI smoke-test example is kept in `examples/native_apps/hello.c`;
 it is built only for CI validation and is not a shipped or installable app.
+
+### Bounded CPU math acceleration
+
+Firmware 1.3.27 adds the versioned `T5MathApi.h` table for bounded 16-bit vector
+addition/subtraction and bulk memory operations. ESP32-S3 uses bundled ESP-DSP
+assembly behind alignment/tail guards; callers use the same portable contract.
+See [Native math API](NATIVE_MATH_API.md) for bounds, ownership and integration.
