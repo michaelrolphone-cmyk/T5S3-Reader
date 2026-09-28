@@ -89,6 +89,13 @@ static void ht_journal_input(uint32_t down) {
         }
     }
 }
+/* Capability success is not proof that any glyph reached the page. Reject
+ * all-white output (including older firmware's missing decompressor path).
+ * Fixed 64,800-byte bound; no allocation or device I/O. */
+static bool ht_reader_has_ink(void) {
+    for(size_t i=0;i<960u*540u/8u;++i) if(ht_reader_bitmap[i]) return true;
+    return false;
+}
 static void ht_journal_render(void) {
     char title[128],footer[128];
     ht_journal_body[0]=0;
@@ -144,7 +151,7 @@ static void ht_journal_render(void) {
         .offset=(ht_journal_index || ht_journal_deciding)?0:ht_journal_offsets[ht_journal_leaf]
     };
     risc_reader_page_result_v1 result={0};
-    if(ht_reader && ht_reader->page(ht_reader->context,&request,&result) &&
+    if(ht_reader && ht_reader->page(ht_reader->context,&request,&result) && ht_reader_has_ink() &&
        result.next_offset<=request.length &&
        (request.offset==request.length || result.next_offset>request.offset) &&
        (!ht_journal_deciding || result.next_offset==request.length)) {

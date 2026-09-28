@@ -13,10 +13,11 @@ const t5_app_api_v1 *t5_app_get_api(uint32_t v) {(void)v; return &fake_app;}
 const t5_video_api_v1 *t5_video_get_api(uint32_t v) {(void)v; return NULL;}
 const t5_math_api_v1 *t5_math_get_api(uint32_t v) {(void)v; return NULL;}
 const t5_provider_capability_api_v1 *t5_provider_capability_get_api(uint32_t v) {(void)v; return NULL;}
+static bool blank_page;
 static bool page(void *ctx,const risc_reader_page_request_v1*q,risc_reader_page_result_v1*r) {
     (void)ctx; assert(q->offset<=q->length);
     r->next_offset=q->offset+240; if(r->next_offset>q->length) r->next_offset=q->length;
-    memset(q->pixels,0,q->capacity); return true;
+    memset(q->pixels,0,q->capacity); if(!blank_page) q->pixels[4000]=0x80; return true;
 }
 static const risc_reader_typography_v1 reader={1,sizeof(reader),NULL,page};
 static void present(void) {
@@ -84,6 +85,13 @@ int main(void) {
         assert(ht.endings==(choice==1?1:3));
         ht.laps=0;
     }
+    /* A successful provider that emits only white must use the visible
+     * fallback, for both Start/index and inspected evidence. */
+    blank_page=true; ht_reader=&reader;
+    ht_journal_index=true; ht_journal_render(); assert(ht_reader_has_ink());
+    ht_journal_open(0); ht_journal_render();
+    assert(ht_reader_has_ink() && ht_journal_page_ready && ht_journal_next>0);
+    blank_page=false;
     /* Missing reader service still exposes all text and supports completion. */
     ht_reader=NULL; tower(); present(); press(T5_APP_BUTTON_CONFIRM);
     present(); press(T5_APP_BUTTON_CONFIRM); assert(ht.verdict==1);

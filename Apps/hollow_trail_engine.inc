@@ -486,15 +486,23 @@ static void ht_city_foreground(int camera) {
     ht_disk(ht_raw,x,top-80,3,180);
 }
 static void ht_cactus(int x,int base,int height,int tone) {
-    int w=ht_max(3,height/10);
+    /* The scenery is sampled every two logical pixels. Even limb widths,
+     * at least four pixels, keep the small cactus two samples thick at both
+     * camera parities instead of alternating between one and two samples. */
+    int w=(ht_max(4,height/10)+1)&~1;
+    int reach=height/3,left=x-reach,right=x+reach-w;
+    int left_top=base-height*4/5,left_join=base-height*3/5;
+    int right_top=base-height*2/3,right_join=base-height*2/5;
     ht_rect(ht_raw,x-w/2,base-height,w,height,tone);
     ht_disk(ht_raw,x,base-height,w/2,tone);
-    ht_rect(ht_raw,x-height/3,base-height*3/5,height/3,w,tone);
-    ht_rect(ht_raw,x-height/3,base-height*4/5,w,height/5,tone);
-    ht_disk(ht_raw,x-height/3+w/2,base-height*4/5,w/2,tone);
-    ht_rect(ht_raw,x,base-height*2/5,height/3,w,tone);
-    ht_rect(ht_raw,x+height/3-w,base-height*2/3,w,height*4/15,tone);
-    ht_disk(ht_raw,x+height/3-w/2,base-height*2/3,w/2,tone);
+    ht_rect(ht_raw,left,left_join,reach,w,tone);
+    ht_rect(ht_raw,left,left_top,w,left_join-left_top+w,tone);
+    ht_disk(ht_raw,left+w/2,left_top,w/2,tone);
+    ht_rect(ht_raw,x,right_join,reach,w,tone);
+    /* Derive the vertical end from the exact shared elbow, rather than
+     * independently rounded height fractions which could leave a gap. */
+    ht_rect(ht_raw,right,right_top,w,right_join-right_top+w,tone);
+    ht_disk(ht_raw,right+w/2,right_top,w/2,tone);
 }
 /* Static machinery: construction/blur is cached, not animated per frame. */
 static void ht_derrick(int x,int base,int height,int tone) {

@@ -185,6 +185,12 @@ typedef struct {
     // Call after poll() on the app owner task; size-check before use. Does not
     // change t5_app_input_t, so old ELFs keep their original poll-buffer ABI.
     bool (*take_touch_swipe)(t5_app_swipe_t *out);
+    // Append-only input update without the host's deliberate scheduling delay.
+    // Same owner-task, input, exit and watchdog semantics as poll(). Provider
+    // work still takes time: this is not a hard nonblocking I/O guarantee.
+    // Does NOT yield; callers must also use poll(..., >=1) every 20-50ms.
+    // Size-check and fall back to poll() on older firmware.
+    bool (*poll_nowait)(t5_app_input_t *input);
 } t5_app_api_v1;
 
 // Native application entry point. Native ELFs are built with -fvisibility=hidden,

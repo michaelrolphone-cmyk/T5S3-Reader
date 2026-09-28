@@ -62,10 +62,45 @@ static bool mock_mul(const int16_t *a,const int16_t *b,int16_t *out,size_t count
 }
 static const t5_math_api_v1 dsp_mock={.api_version=T5_MATH_API_VERSION,
     .struct_size=sizeof(t5_math_api_v1),.features=T5_MATH_FEATURE_S3_DSP,.mul_s16=mock_mul};
+/* Every cactus remains one silhouette before and after 2x sampling, at
+ * both camera parities. In particular the 39px cactus keeps a 2-sample stem. */
+static void cactus_shapes(void) {
+    static unsigned queue[HT_PIXELS];
+    static uint8_t seen[HT_PIXELS];
+    for(int height=39;height<=103;++height) {
+        memset(ht_raw,0,HT_PIXELS); ht_cactus(240,220,height,255);
+        for(int step=1;step<=2;++step) for(int ox=0;ox<step;++ox) for(int oy=0;oy<step;++oy) {
+            int width=HT_W/step,rows=HT_H/step;
+            unsigned total=0,first=0;
+            memset(seen,0,sizeof(seen));
+            for(int y=0;y<rows;++y) for(int x=0;x<width;++x)
+                if(ht_raw[(y*step+oy)*HT_W+x*step+ox]) {first=y*width+x; ++total;}
+            assert(total); unsigned head=0,tail=1;queue[0]=first;seen[first]=1;
+            while(head<tail) {
+                unsigned at=queue[head++]; int x=at%width,y=at/width;
+                const int dx[]={-1,1,0,0},dy[]={0,0,-1,1};
+                for(int k=0;k<4;++k) {
+                    int nx=x+dx[k],ny=y+dy[k];
+                    if(nx<0 || nx>=width || ny<0 || ny>=rows) continue;
+                    unsigned next=ny*width+nx;
+                    if(!seen[next] && ht_raw[(ny*step+oy)*HT_W+nx*step+ox]) {
+                        seen[next]=1; queue[tail++]=next;
+                    }
+                }
+            }
+            assert(tail==total);
+            if(height==39 && step==2) {
+                unsigned stem=0;
+                for(int x=0;x<width;++x) stem+=ht_raw[210*HT_W+x*2+ox]!=0;
+                assert(stem==2);
+            }
+        }
+    }
+}
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY+32),*expected=malloc(HT_PIXELS);
     assert(memory && expected); memset(memory+HT_MEMORY,0x5a,32);
-    ht_bind(memory);ht_spawn(true);ht_service=service;
+    ht_bind(memory); cactus_shapes(); ht_spawn(true);ht_service=service;
     int steps=0; while(ht_cache_prefetch(0,1)) assert(++steps<400);
     assert(ht_cache_builds==12 && checkpoints>0);
     unsigned builds=ht_cache_builds;

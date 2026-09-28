@@ -1,6 +1,6 @@
 # Hollow Trail 1.0.14
 
-## Current controls (1.0.15, supersedes historical mappings below)
+## Current controls (1.0.16, supersedes historical mappings below)
 
 | Action | Controller | Device / generic navigation |
 | --- | --- | --- |
@@ -23,9 +23,10 @@ opens as an inspect fallback. Directional inputs cannot directly open it.
 Start has a dedicated edge-triggered journal action, separate from jumping,
 inspection and pause. Holding Back after closing reading does not exit the app.
 
-The input masks match T5S3-GameBoy's `riscrte/usb_hid_elf_adapter.cpp`:
-XInput A/B/X/Y/Start/Select = 0x02/0x01/0x08/0x04/0x200/0x100;
-HID = 0x01/0x02/0x04/0x08/0x80/0x40. The app declares and leases both optional
+The owner found A/B reversed on the actual receiver in 1.0.15. Version 1.0.16
+corrects Hollow Trail's face-label bindings (without changing driver encoding):
+XInput A/B/X/Y/Start/Select = 0x01/0x02/0x08/0x04/0x200/0x100;
+HID = 0x02/0x01/0x04/0x08/0x80/0x40. The app declares and leases both optional
 `usb.xinput.gamepad` and `usb.hid.gamepad` capabilities; raw HID reports are not
 interpreted as normalized XInput. One connected pad supplies a frame, with
 XInput priority; multiple receiver slots are never ORed together. A raw poll
@@ -37,8 +38,9 @@ prevent a fault from turning a held button into a new inspect/journal press.
 Regression tests drive production input with both raw layouts, duplicate OS
 navigation, all eight hats, unused face buttons, XInput trigger bits,
 Start/Select, empty-space inspection, reading/back, faults, recovery and a
-second receiver slot. The cumulative app version is still unreleased 1.0.15
-(master/published 1.0.14). No additional firmware version change is needed.
+second receiver slot. The cumulative app version is unreleased 1.0.16
+(master/published 1.0.15). Firmware 1.3.36 contains the reader glyph fix and
+optional no-wait input service.
 
 
 A separate, original ten-chapter silhouette platformer for the fast EPD interface, using fixed monochrome dithering by default.
@@ -1135,3 +1137,59 @@ text and pagination rather than leaving the final gate impossible to complete.
 Normal reading still uses configured typography through the same capability.
 The app remains the cumulative unreleased 1.0.15; this revision adds no firmware
 changes or extra frame buffers. Journal/ending history remains session-only.
+
+
+## Input scheduling experiment (1.0.16 / firmware 1.3.36)
+
+Owner baseline on 1.0.14: approximately 12 FPS, RENDER 59ms, PACK 18ms,
+SCAN 23ms, PREP 10ms, DMA 8ms and PACE 19ms. Render/pack include input
+checkpoint time. PREP/DMA are scan components; display scanning overlaps app
+work, so those numbers must not all be added together.
+
+The host's original `poll`, including `poll(..., 0)`, deliberately delays before
+updating input. The controller `poll(..., 8)` argument is a report-count bound,
+not an 8ms delay. Firmware 1.3.36 adds optional `poll_nowait`, preserving the
+existing yielding call for every older app. Hollow Trail samples input at its
+existing raster checkpoints when 8ms have elapsed without that added sleep,
+and performs a real yielding poll at the first checkpoint after 32ms since its
+last yielding poll. Idle and display-wait loops still yield. The next frame's
+initial input poll also drops the old unconditional 4ms requested delay.
+
+The optional member is size/pointer guarded; 1.0.16 still runs on 1.3.35 using
+the original yielding input service. Install firmware 1.3.36 for the no-wait
+experiment. App minimum remains 1.3.35 because the fallback is functional.
+
+The pause screen adds INPUT, average milliseconds spent inside all input
+service calls per submitted gameplay frame (including provider work and
+scheduler delays). It overlaps RENDER/PACK/WAIT/CACHE/COPY accounting and is
+not an additional frame cost to sum. The startup log identifies no-wait versus
+legacy mode. Compare movement in the same chapter, controller and DSP setting;
+record FPS, RENDER, PACK, INPUT, CACHE, COPY and WAIT. No device speedup is
+claimed before measurement. The input scheduling experiment preserves rendering, packing, narrative,
+physics, display waveforms and the 24 FPS cap. The hardware-feedback fixes
+below additionally correct A/B actions and reader glyph resolution.
+
+
+### 1.0.15 hardware feedback included in 1.0.16
+
+Swap A/B actions to match the owner's receiver labels: A inspects/accepts,
+B jumps. X/Start/Select retain their masks and A cannot exit gameplay.
+
+The detached reader renderer copied font registrations but left its cache
+manager null. Compressed fonts therefore had valid metrics but no glyph
+bitmap decompressor: layout reported success and the resulting page was white.
+Detached targets now borrow glyph bitmap resolution from their live source
+renderer, without inheriting its scan-only recording mode or touching the
+physical display. The source must outlive the synchronous page target.
+Hollow Trail also rejects successful but entirely white typography pages and
+shows the readable compact fallback, including on firmware 1.3.35.
+
+
+The oil-field cactus arms now use shared elbow coordinates and overlap their
+horizontal branches. Previously independently rounded height fractions could
+leave the right arm disconnected (including the 39px cactus). Limb widths are
+now even and at least four logical pixels: the smallest stem retains two
+samples at either phase of the half-resolution scenery grid. This changes
+cached cactus geometry only, adding no per-frame filter or allocation. Tests
+check connected silhouettes at full and half resolution for heights 39–103,
+all sampling phases, and constant sampled small-stem thickness.
