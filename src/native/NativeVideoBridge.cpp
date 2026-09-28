@@ -1,4 +1,5 @@
 #include "NativeVideoBridge.h"
+#include "NativeVideoGray.h"
 
 #include <T5VideoApi.h>
 #include <Board.h>
@@ -114,6 +115,11 @@ constexpr size_t kBackbufferBytes =
     static_cast<size_t>(t5s3_epd::kActiveHeight) * kSourceRowBytes;
 constexpr size_t kStateBufferBytes =
     static_cast<size_t>(t5s3_epd::kActiveHeight) * kStateRowBytes;
+constexpr size_t kGrayRowBytes = t5s3_epd::kActiveWidth / 4U;
+constexpr size_t kGrayBufferBytes =
+    static_cast<size_t>(t5s3_epd::kActiveHeight) * kGrayRowBytes;
+constexpr size_t kGrayStateBytes =
+    static_cast<size_t>(t5s3_epd::kActiveHeight) * t5s3_epd::kActiveWidth;
 constexpr size_t kPanelRowBytes = t5s3_epd::kPanelWidth / 4U;
 constexpr size_t kLinePaddingBytes = 0;
 constexpr size_t kDmaRowBytes = kPanelRowBytes + kLinePaddingBytes;
@@ -169,6 +175,11 @@ uint8_t *g_buffers[2] = {nullptr, nullptr};
 uint8_t *g_state_buffer = nullptr;
 uint8_t *g_dma_buf[2] = {nullptr, nullptr};
 uint8_t *g_blank_row = nullptr;
+uint8_t g_pixel_format = T5_VIDEO_PIXEL_MONO_1BPP_MSB;
+size_t g_source_row_bytes = kSourceRowBytes;
+size_t g_backbuffer_bytes = kBackbufferBytes;
+size_t g_state_row_bytes = kStateRowBytes;
+size_t g_state_buffer_bytes = kStateBufferBytes;
 uint8_t g_row_active[t5s3_epd::kActiveHeight] = {0};
 
 volatile bool g_running = false;
@@ -245,20 +256,20 @@ bool alloc_video_buffers() {
       (kBackbufferBytes >= (48U * 1024U)) || (kStateBufferBytes >= (128U * 1024U));
 
   for (uint8_t i = 0; i < 2; ++i) {
-    g_buffers[i] = alloc_8bit_buffer(kBackbufferBytes, prefer_external_for_framebuffers);
+    g_buffers[i] = alloc_8bit_buffer(g_backbuffer_bytes, prefer_external_for_framebuffers);
     if (g_buffers[i] == nullptr) {
       ESP_LOGE(kTag, "failed to allocate framebuffer %u", i);
       return false;
     }
-    memset(g_buffers[i], 0xFF, kBackbufferBytes);
+    memset(g_buffers[i], 0xFF, g_backbuffer_bytes);
   }
 
-  g_state_buffer = alloc_8bit_buffer(kStateBufferBytes, true);
+  g_state_buffer = alloc_8bit_buffer(g_state_buffer_bytes, true);
   if (g_state_buffer == nullptr) {
     ESP_LOGE(kTag, "failed to allocate state buffer");
     return false;
   }
-  memset(g_state_buffer, 0x00, kStateBufferBytes);
+  memset(g_state_buffer, 0x00, g_state_buffer_bytes);
 
   for (uint8_t i = 0; i < 2; ++i) {
     g_dma_buf[i] = static_cast<uint8_t *>(
@@ -536,9 +547,17 @@ bool send_row(uint8_t *data, bool first_row) {
 // pulse counters in the upper nibbles. Three complete scans improve black
 // density; a frame remains pending until all three scans have completed.
 bool build_active_row(const uint8_t *frame, uint16_t row, uint8_t *dst) {
+  if (g_pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB) {
+    const uint8_t *source = frame + static_cast<size_t>(row) * g_source_row_bytes;
+    uint8_t *state = g_state_buffer + static_cast<size_t>(row) * g_state_row_bytes;
+    uint8_t *drive = dst + kActiveLeftPadBytes;
+    const bool pending = nativeVideoBuildGrayRow(source, state, drive, kGrayRowBytes);
+    g_row_active[row] = pending ? 1U : 0U;
+    return pending;
+  }
   uint8_t *wrptr = dst + kActiveLeftPadBytes;
-  const uint8_t *rdptr = frame + (static_cast<size_t>(row) * kSourceRowBytes);
-  uint8_t *stptr = g_state_buffer + (static_cast<size_t>(row) * kStateRowBytes);
+  const uint8_t *rdptr = frame + (static_cast<size_t>(row) * g_source_row_bytes);
+  uint8_t *stptr = g_state_buffer + (static_cast<size_t>(row) * g_state_row_bytes);
   bool needs_more_drive = false;
 
   for (size_t src_byte = 0; src_byte < kSourceRowBytes; ++src_byte) {
@@ -807,9 +826,9 @@ bool epd_video_power_on() {
     return false;
   }
 
-  memset(g_buffers[0], 0xFF, kBackbufferBytes);
-  memset(g_buffers[1], 0xFF, kBackbufferBytes);
-  memset(g_state_buffer, 0x00, kStateBufferBytes);
+  memset(g_buffers[0], 0xFF, g_backbuffer_bytes);
+  memset(g_buffers[1], 0xFF, g_backbuffer_bytes);
+  memset(g_state_buffer, 0x00, g_state_buffer_bytes);
   memset(g_dma_buf[0], 0x00, kDmaRowBytes);
   memset(g_dma_buf[1], 0x00, kDmaRowBytes);
   memset(g_blank_row, 0x00, kDmaRowBytes);
@@ -871,7 +890,7 @@ uint8_t *epd_video_get_backbuffer() {
 }
 
 size_t epd_video_get_backbuffer_size() {
-  return kBackbufferBytes;
+  return g_backbuffer_bytes;
 }
 
 void epd_video_flip(uint16_t dirty_y, uint16_t dirty_height) {
@@ -1014,12 +1033,24 @@ bool settle_level(uint8_t byte_value) {
   return true;
 }
 
-bool video_start(t5_video_surface_v1 *surface) {
+bool video_start_format(t5_video_surface_v1 *surface, uint8_t pixel_format) {
   if (!native_hardware_display_is_borrowed()) {
     ESP_LOGE("FAST_VIDEO", "start denied without display hardware takeover");
     return false;
   }
+  if (pixel_format != T5_VIDEO_PIXEL_MONO_1BPP_MSB &&
+      pixel_format != T5_VIDEO_PIXEL_GRAY_2BPP_MSB) return false;
+  if (s_video_started && g_pixel_format != pixel_format) return false;
   if (!s_video_started) {
+    g_pixel_format = pixel_format;
+    g_source_row_bytes = pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB
+        ? kGrayRowBytes : kSourceRowBytes;
+    g_backbuffer_bytes = pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB
+        ? kGrayBufferBytes : kBackbufferBytes;
+    g_state_row_bytes = pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB
+        ? t5s3_epd::kActiveWidth : kStateRowBytes;
+    g_state_buffer_bytes = pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB
+        ? kGrayStateBytes : kStateBufferBytes;
     Board::beginI2C();
     if (!s_video_expander.begin(Wire, t5s3_epd::kPca9535Address) ||
         !s_video_expander.configureProbeDefaults() ||
@@ -1044,11 +1075,15 @@ bool video_start(t5_video_surface_v1 *surface) {
   if (surface) {
     surface->width = t5s3_epd::kActiveWidth;
     surface->height = t5s3_epd::kActiveHeight;
-    surface->stride_bytes = static_cast<uint16_t>(t5s3_epd::kActiveWidth / 8U);
-    surface->pixel_format = T5_VIDEO_PIXEL_MONO_1BPP_MSB;
+    surface->stride_bytes = static_cast<uint16_t>(g_source_row_bytes);
+    surface->pixel_format = g_pixel_format;
     surface->flags = T5_VIDEO_FLAG_ONE_IS_BLACK;
   }
   return true;
+}
+
+bool video_start(t5_video_surface_v1 *surface) {
+  return video_start_format(surface, T5_VIDEO_PIXEL_MONO_1BPP_MSB);
 }
 
 uint8_t *video_backbuffer(size_t *size_out) {
@@ -1088,6 +1123,7 @@ const t5_video_api_v1 s_api = {
     video_pending,
     video_frame_counter,
     video_stop,
+    video_start_format,
 };
 }  // namespace
 

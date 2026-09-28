@@ -10,6 +10,7 @@ extern "C" {
 
 #define T5_VIDEO_API_VERSION 1u
 #define T5_VIDEO_PIXEL_MONO_1BPP_MSB 1u
+#define T5_VIDEO_PIXEL_GRAY_2BPP_MSB 2u
 #define T5_VIDEO_FLAG_ONE_IS_BLACK (1u << 0)
 
 typedef struct {
@@ -44,6 +45,11 @@ typedef struct {
      * returns. The host also force-stops this service before restoring its
      * normal display as a final unload guard. */
     void (*stop)(void);
+
+    /* Optional additive entry point. Values in a 2bpp surface are packed
+     * most-significant pixel first: 0 white, 1 light, 2 dark, 3 black.
+     * The surface and all video calls retain the same lifetime/ownership. */
+    bool (*start_format)(t5_video_surface_v1 *surface, uint8_t pixel_format);
 } t5_video_api_v1;
 
 const t5_video_api_v1 *t5_video_get_api(uint32_t api_version);
