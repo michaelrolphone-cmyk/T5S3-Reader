@@ -190,7 +190,7 @@ static bool removal_confirmed(const t5_ui_api_v1 *ui, const char *name) {
         ui->render_list(&chrome, choices, 2, selected);
     }
 }
-static const char *action_label(const t5_app_api_v1 *app, int32_t selected) {
+static const char *action_label(int32_t selected) {
     if (selected < 0 || selected >= (int32_t)row_count) return "";
     if (view == SD_INBOX) {
         const t5_package_preview_t *package = &packages[selected];
@@ -201,14 +201,14 @@ static const char *action_label(const t5_app_api_v1 *app, int32_t selected) {
     if (!release_compatible[selected] || release_current[selected]) return "";
     return release_installed[selected] ? "Update" : "Install";
 }
-static void render(const t5_app_api_v1 *app, const t5_ui_api_v1 *ui,
+static void render(const t5_ui_api_v1 *ui,
                    int32_t selected, const char *status) {
     const t5_ui_chrome_t chrome = {
         .title = "App Store",
         .subtitle = view == SD_INBOX ? "SD packages; tap header for releases" :
                     "Latest release; tap header for SD packages",
         .status = status,
-        .back_label = "Back", .confirm_label = action_label(app, selected),
+        .back_label = "Back", .confirm_label = action_label(selected),
         .previous_label = "Up", .next_label = "Down",
     };
     if (row_count) ui->render_list(&chrome, rows, row_count, selected);
@@ -275,7 +275,7 @@ static void activate_release(const t5_app_api_v1 *app, const t5_ui_api_v1 *ui,
         return;
     }
     snprintf(status, capacity, "%s %.95s...", installed_now ? "Updating" : "Installing", name);
-    render(app, ui, selected, status);
+    render(ui, selected, status);
     bool okay;
     if (app->struct_size >= offsetof(t5_app_api_v1, app_catalog_download_with_progress) +
                             sizeof(app->app_catalog_download_with_progress) &&
@@ -319,7 +319,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     }
     int32_t selected = 0;
     char status[STATUS_SIZE] = {0};
-    render(app, ui, selected, status);
+    render(ui, selected, status);
     for (;;) {
         t5_ui_event_t event = {0};
         if (!ui->poll_event(&event, 20)) break;
@@ -371,7 +371,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             default: break;
         }
         if (!row_count || selected < 0 || selected >= (int32_t)row_count) selected = 0;
-        if (redraw) render(app, ui, selected, status);
+        if (redraw) render(ui, selected, status);
     }
     app->set_back_exits_app(true);
 }
