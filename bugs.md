@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,34 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 112. Time Zone silently hides 48 currently shipped America zones
+
+- **Status:** Open.
+- **Affected code:** `Apps/time_zone.c`, `MAX_ROWS`, `load_rows()`, and `activate()`; `src/native/NativeTimeZoneBridge.cpp`, `cityCount()` / `cityInfo()`; `lib/hal/TimeZoneData.cpp`.
+- **Trigger / reproduction:** Open **Time Zone**, select the **America** region, and try to select a city whose catalog index in that region is 96 or greater. The current embedded catalog contains 144 America entries, so indices 96-143 are valid shipped zones that exercise the defect. Also configure one of those hidden zones first and then reopen the Time Zone app.
+- **Observed / logically demonstrated failure:** The native bridge reports the full region count from `TimeZoneCatalog`, but the app clamps every city list to `MAX_ROWS == 96`. America therefore exposes only its first 96 of 144 entries and makes the remaining 48 impossible to select. The selected-city lookup in `activate()` is capped by the same constant, so if the persisted zone is one of the hidden entries the app fails to find it and opens the region with row 0 selected instead of the actual current zone.
+- **Likely root cause:** A fixed UI backing-array limit is being used as the authoritative catalog boundary rather than only as a rendering/page capacity.
+- **Impact:** Valid time zones shipped in firmware are unreachable from Settings, and users already configured to one of those zones are shown an incorrect selection when revisiting the picker.
+- **Repair direction:** Page or virtualize the city list over the bridge's complete `city_count()`, keeping catalog indices distinct from visible-row indices. Preserve/select the current city across pages. Add a regression that enumerates America (currently 144 entries), selects an index above 95, and verifies it remains selected after reopening.
+
+### 113. Opening or rescanning Wi-Fi Networks tears down an already-working station connection
+
+- **Status:** Open.
+- **Affected code:** `src/activities/network/WifiSelectionActivity.cpp`, `onEnter()`, `startWifiScanAttempt()`, and `attemptConnection()`; `src/providers/network/Esp32NetworkProvider.cpp`, `startScan()` and `connect()`; native handoff through `src/native/NativeSystemUiBridge.cpp::NativeWifiActivity::onEnter()`.
+- **Trigger / reproduction:** Connect the device to Wi-Fi, then open **Wi-Fi Networks** from a native app and cancel without intentionally changing networks. Test both with a saved `lastConnectedSsid` and with no usable saved last-network credential. Rescanning the list is another deterministic trigger.
+- **Observed / logically demonstrated failure:** The selector never preserves or checks the pre-existing station connection. With a saved last network, `onEnter()` immediately calls `attemptConnection()`; provider `connect()` executes `WiFi.disconnect(false, true)` before beginning a new association. Without that auto-connect path, scanning calls `startScan()`, which explicitly switches Wi-Fi to `WIFI_OFF`, brings STA back up, and disconnects again before scanning. Thus merely entering/rescanning the picker interrupts a connection that was already healthy, even though `onExit()` explicitly says the picker should not disconnect Wi-Fi.
+- **Likely root cause:** The selection workflow assumes it owns station lifecycle and uses destructive STA reset/scan primitives without distinguishing a pre-existing shared connection from a connection it created.
+- **Impact:** Opening or cancelling the Wi-Fi selector can break networking that another workflow was already using, cause avoidable reconnect latency, and return a disconnected result to the requesting native app even though the user did not choose to disconnect.
+- **Repair direction:** Snapshot connection ownership/state on entry. If already connected, do not auto-reconnect to `lastConnectedSsid`; use a non-disruptive scan path where supported, or defer destructive station reset until the user explicitly chooses another network. On cancel, preserve/restore the pre-existing connection. Add tests proving open/cancel and rescan do not call the destructive disconnect path for an already-connected station.
+
+### 114. Wi-Fi save/forget reports can diverge from durable credentials after a write failure
+
+- **Status:** Open.
+- **Affected code:** `src/WifiCredentialStore.cpp`, `addCredential()`, `removeCredential()`, `setLastConnectedSsid()`, and `clearLastConnectedSsid()`; `src/activities/network/WifiSelectionActivity.cpp`, SAVE_PROMPT and FORGET_PROMPT handlers.
+- **Trigger / reproduction:** Make `/.crosspoint/wifi.json` unwritable (or inject `JsonSettingsIO::saveWifi()` failure), then choose **Yes** when asked to save a new/changed password, or choose **Forget network** for a saved network.
+- **Observed / logically demonstrated failure:** `addCredential()` changes the live password or pushes a new credential before calling `saveToFile()`; `removeCredential()` erases the live credential before persistence and can also clear/save the last-connected SSID as a separate mutation. None of these paths rolls live state back when persistence fails. The picker ignores the returned boolean from both add and remove, updates its UI state, and completes/continues as though the requested save or forget succeeded. The current session therefore uses mutated credentials while disk still contains the previous set; after reboot the supposedly saved password can disappear or a supposedly forgotten network can reappear.
+- **Likely root cause:** Credential-store mutations are applied before durable commit, while the UI discards the persistence result.
+- **Impact:** Users receive no indication that credential changes were not saved, runtime and on-disk credential state diverge, and subsequent reconnect behavior can change unexpectedly after reboot.
+- **Repair direction:** Make credential add/update/remove transactional: stage the candidate store, persist it atomically, and publish the live mutation only on success. Propagate failure through the selector, do not change `hasSavedPassword` or leave the save/forget flow on failure, and keep last-connected metadata in the same durable transaction. Add fault-injection tests for both updating an existing password and forgetting the active saved network.
