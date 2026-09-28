@@ -43,7 +43,7 @@ typedef struct { float yaw,pitch,zoom,pan_x,pan_y; } mv_view_t;
 static mv_view_t g_view;
 static mv_controller_t g_controller;
 static mv_motion_t g_motion;
-static uint32_t g_previous_pad_buttons,g_last_interaction_ms,g_render_service_ms;
+static uint32_t g_last_interaction_ms,g_render_service_ms;
 static bool g_need_refine,g_draw_pending,g_render_interactive,g_render_input_pending;
 static t5_app_input_t g_render_input;
 static bool ready=true;
@@ -106,10 +106,10 @@ static void mapping_tests(void) {
     risc_usb_gamepad_state_v1 p={.connected=1,.hat=8,.x=-32768,.y=32767,.buttons=0x30};
     assert(mv_pad_decode(&p,false)==(MV_PAD_LEFT|MV_PAD_DOWN|MV_PAD_LB|MV_PAD_RB));
     p.x=p.y=16000;p.buttons=1;
-    assert(mv_pad_decode(&p,false)==MV_PAD_CONFIRM);assert(mv_pad_decode(&p,true)==MV_PAD_BACK);
-    p.buttons=2;assert(mv_pad_decode(&p,false)==MV_PAD_BACK);assert(mv_pad_decode(&p,true)==MV_PAD_CONFIRM);
+    assert(mv_pad_decode(&p,false)==MV_PAD_FINE);assert(mv_pad_decode(&p,true)==MV_PAD_BACK);
+    p.buttons=2;assert(mv_pad_decode(&p,false)==MV_PAD_BACK);assert(mv_pad_decode(&p,true)==MV_PAD_FINE);
     p.connected=0;assert(!mv_pad_decode(&p,false));
-    puts("mapping: hats, diagonals, SNES axis D-pad, shoulders, HID/XInput Confirm/Back PASS");
+    puts("mapping: hats, diagonals, SNES axis D-pad, shoulders, HID/XInput A/Back PASS");
 }
 static void provider_tests(void) {
     mocks_reset();mv_controller_t c;
@@ -155,7 +155,7 @@ static float travel(unsigned interval) {
     for(unsigned ms=0;ms<1000;) {
         ms+=interval;if(ms>1000)ms=1000;
         assert(mv_motion_step(&m,MV_PAD_RIGHT,ms,true,&d));total+=d.yaw;
-        assert(d.yaw<=0.65f*.048f+1e-7f);
+        assert(d.yaw<=1.95f*.048f+1e-7f);
     }
     return total;
 }
@@ -171,11 +171,11 @@ static void motion_tests(void) {
     d=advance(MV_PAD_RB|MV_PAD_UP);assert(d.pan_y<0 && !d.pitch);
     d=advance(MV_PAD_RB|MV_PAD_DOWN);assert(d.pan_y>0 && !d.pitch);
     d=advance(MV_PAD_RB|MV_PAD_LB|MV_PAD_UP);assert(d.pan_y<0 && d.zoom_factor==1);
-    d=advance(MV_PAD_RB|MV_PAD_RIGHT|MV_PAD_DOWN);assert(fabsf(d.pan_x*d.pan_x+d.pan_y*d.pan_y-(.96f*.96f))<1e-5f);
+    d=advance(MV_PAD_RB|MV_PAD_RIGHT|MV_PAD_DOWN);assert(fabsf(d.pan_x*d.pan_x+d.pan_y*d.pan_y-(2.88f*2.88f))<1e-5f);
     assert(!mv_motion_action(MV_PAD_LB|MV_PAD_LEFT));assert(!mv_motion_action(MV_PAD_LEFT|MV_PAD_RIGHT));
     assert(!mv_motion_action(MV_PAD_UP|MV_PAD_DOWN));
     assert(fabsf(travel(8)-travel(16))<1e-5f);assert(fabsf(travel(8)-travel(40))<1e-5f);
-    assert(fabsf(travel(13)-.65f*.94f)<1e-5f);
+    assert(fabsf(travel(13)-1.95f*.94f)<1e-5f);
     mv_motion_t m={0};assert(!mv_motion_step(&m,0,0,true,&d));
     assert(!mv_motion_step(&m,MV_PAD_RIGHT,5000,true,&d));
     assert(mv_motion_step(&m,MV_PAD_RIGHT,5008,true,&d));assert(d.yaw<0.001f);
@@ -184,7 +184,7 @@ static void motion_tests(void) {
     assert(!mv_motion_step(&m,MV_PAD_RIGHT,10008,true,&d));
     for(unsigned t=10016;t<11000;t+=8) assert(!mv_motion_step(&m,MV_PAD_RIGHT,t,false,&d));
     assert(m.pending_ms==MV_MOTION_MAX_FRAME_MS);
-    assert(mv_motion_step(&m,MV_PAD_RIGHT,11000,true,&d));assert(d.yaw<=.65f*.048f);
+    assert(mv_motion_step(&m,MV_PAD_RIGHT,11000,true,&d));assert(d.yaw<=1.95f*.048f);
     assert(!mv_motion_step(&m,MV_PAD_RB|MV_PAD_UP,11008,true,&d));
     assert(mv_motion_step(&m,MV_PAD_RB|MV_PAD_UP,11016,true,&d) && !d.yaw && d.pan_y<0);
     assert(!mv_motion_step(&m,0,11024,false,&d) && !m.pending_ms);
@@ -194,12 +194,44 @@ static void motion_tests(void) {
     assert(mv_motion_step(&m,MV_PAD_UP,8,true,&d) && d.pitch<0 && d.pitch>-.02f);
     puts("motion: all requested chords, rate independence, start ramp, release, mode changes, bounded backlog, rollover PASS");
 }
+static void precision_tests(void) {
+    const uint32_t moves[]={MV_PAD_LEFT,MV_PAD_RIGHT,MV_PAD_UP,MV_PAD_DOWN,
+        MV_PAD_LB|MV_PAD_UP,MV_PAD_LB|MV_PAD_DOWN,
+        MV_PAD_RB|MV_PAD_LEFT,MV_PAD_RB|MV_PAD_RIGHT,MV_PAD_RB|MV_PAD_UP,MV_PAD_RB|MV_PAD_DOWN,
+        MV_PAD_RB|MV_PAD_RIGHT|MV_PAD_UP};
+    for(size_t i=0;i<sizeof(moves)/sizeof(moves[0]);++i) {
+        const mv_motion_delta_t normal=advance(moves[i]),fine=advance(moves[i]|MV_PAD_FINE);
+        assert(fabsf(fine.yaw-normal.yaw*.25f)<1e-7f);
+        assert(fabsf(fine.pitch-normal.pitch*.25f)<1e-7f);
+        assert(fabsf(fine.pan_x-normal.pan_x*.25f)<1e-7f);
+        assert(fabsf(fine.pan_y-normal.pan_y*.25f)<1e-7f);
+        assert(fabsf(logf(fine.zoom_factor)-logf(normal.zoom_factor)*.25f)<2e-7f);
+        mv_motion_t m={0};mv_motion_delta_t d;
+        assert(!mv_motion_step(&m,moves[i],0,true,&d));
+        for(unsigned ms=8;ms<=160;ms+=8) assert(mv_motion_step(&m,moves[i],ms,true,&d));
+        assert(!mv_motion_step(&m,moves[i],168,false,&d));
+        assert(!mv_motion_step(&m,moves[i]|MV_PAD_FINE,176,false,&d));
+        assert(m.ramp_ms==MV_MOTION_RAMP_MS && !m.pending_ms);
+        assert(mv_motion_step(&m,moves[i]|MV_PAD_FINE,184,true,&d));
+        assert(fabsf(d.yaw-fine.yaw)<1e-7f && fabsf(d.pan_y-fine.pan_y)<1e-7f);
+        assert(!mv_motion_step(&m,moves[i],192,true,&d));
+        assert(m.ramp_ms==MV_MOTION_RAMP_MS);
+        assert(mv_motion_step(&m,moves[i],200,true,&d));
+        assert(fabsf(d.yaw-normal.yaw)<1e-7f && fabsf(d.pan_y-normal.pan_y)<1e-7f);
+    }
+    assert(!mv_motion_action(MV_PAD_FINE));
+    /* Actual 8 ms updates are 3x the 1.2.0 steady-state rates, not merely labels. */
+    assert(fabsf(advance(MV_PAD_RIGHT).yaw - 3.0f*.65f*.008f)<1e-7f);
+    assert(fabsf(advance(MV_PAD_RB|MV_PAD_RIGHT).pan_x - 3.0f*120.0f*.008f)<1e-6f);
+    assert(fabsf(logf(advance(MV_PAD_LB|MV_PAD_UP).zoom_factor) - 3.0f*.75f*.008f)<2e-7f);
+    puts("precision: 3x normal rates, exact quarter rotation/pan and quarter log-zoom, live A changes PASS");
+}
 static void integration_tests(void) {
     t5_app_input_t none={0};mv_reset_view();g_motion=(mv_motion_t){0};
     g_controller.held=MV_PAD_RIGHT;ready=false;g_draw_pending=false;
     float yaw=g_view.yaw;assert(mv_buttons(&none,1000));assert(mv_buttons(&none,2000));
     assert(g_view.yaw==yaw && !g_draw_pending);
-    ready=true;assert(mv_buttons(&none,2008));assert(g_view.yaw>yaw && g_view.yaw-yaw<.032f && g_draw_pending);
+    ready=true;assert(mv_buttons(&none,2008));assert(g_view.yaw>yaw && g_view.yaw-yaw<.094f && g_draw_pending);
     g_controller.held=0;yaw=g_view.yaw;assert(mv_buttons(&none,2016));assert(mv_buttons(&none,2024));assert(g_view.yaw==yaw);
     g_controller.held=MV_PAD_LB|MV_PAD_UP;g_view.zoom=6.999f;
     for(unsigned t=3000;t<5000;t+=16) { assert(mv_buttons(&none,t)); }
@@ -210,8 +242,9 @@ static void integration_tests(void) {
     g_controller.held=MV_PAD_RB|MV_PAD_RIGHT;g_view.pan_x=4095.9f;
     for(unsigned t=7000;t<8000;t+=16) { assert(mv_buttons(&none,t)); }
     assert(g_view.pan_x==4096);
-    g_controller.held=MV_PAD_CONFIRM;assert(mv_buttons(&none,8016));assert(g_view.zoom==1 && g_view.pan_x==0);
-    g_view.pan_x=123;assert(mv_buttons(&none,8032));assert(g_view.pan_x==123); /* once per press */
+    const mv_view_t saved=g_view;
+    g_controller.held=MV_PAD_FINE;assert(mv_buttons(&none,8016));assert(!memcmp(&saved,&g_view,sizeof(saved)));
+    g_controller.held=0;assert(mv_buttons(&none,8032));assert(!memcmp(&saved,&g_view,sizeof(saved)));
     g_controller.held=MV_PAD_BACK;assert(!mv_buttons(&none,8048));
     mocks_reset();mv_controller_open(&g_controller,&caps);connect_pad(0,10,8,0);mv_controller_poll(&g_controller);
     connect_pad(0,10,2,0);g_render_service_ms=0;clock_ms=16;g_render_interactive=true;
@@ -222,9 +255,54 @@ static void integration_tests(void) {
     connect_pad(0,10,8,0);clock_ms=64;assert(mv_render_service() && !g_motion.action && !g_motion.pending_ms);
     connect_pad(0,10,8,2);clock_ms=80;assert(!mv_render_service() && g_render_input_pending && g_render_input.exit_requested);
     mv_controller_close(&g_controller);
-    puts("integration: dirty redraws while held, frame backpressure, zoom/pan bounds, edge reset, render servicing/exit PASS");
+    puts("integration: dirty redraws while held, frame backpressure, zoom/pan bounds, A no reset, render servicing/exit PASS");
 }
-int main(void) { mapping_tests();provider_tests();motion_tests();integration_tests();return 0; }
+static void arbitration_tests(void) {
+    /* Feed BOTH the real raw snapshot and its legacy direction projection.
+     * The old mv_buttons applies 0.012 rad rotation even in RB pan / LB zoom. */
+    const uint8_t hats[]={0,2,4,6};
+    const uint32_t directions[]={T5_APP_BUTTON_UP,T5_APP_BUTTON_RIGHT,T5_APP_BUTTON_DOWN,T5_APP_BUTTON_LEFT};
+    for(unsigned provider=0;provider<2;++provider) for(unsigned fine=0;fine<2;++fine) {
+        for(unsigned mode=0;mode<2;++mode) for(unsigned axis=0;axis<4;++axis) {
+            if(mode==1 && (axis==1 || axis==3)) continue;
+            mocks_reset();mv_controller_open(&g_controller,&caps);
+            connect_pad(provider,42,8,0);mv_controller_poll(&g_controller);
+            const uint32_t buttons=(mode?0x10u:0x20u)|(fine?(provider?2u:1u):0u);
+            connect_pad(provider,42,hats[axis],buttons);
+            mv_reset_view();g_motion=(mv_motion_t){0};g_render_input_pending=false;
+            g_view.yaw=.9f;g_view.pitch=.7f;g_view.zoom=2;g_view.pan_x=7;g_view.pan_y=9;
+            for(unsigned n=0;n<25;++n) {
+                mv_controller_poll(&g_controller);
+                input_state=(t5_app_input_t){.buttons=directions[axis]|(fine?T5_APP_BUTTON_CONFIRM:0u)};
+                assert(mv_buttons(&input_state,n*16u));
+                assert(g_view.yaw==.9f && g_view.pitch==.7f);
+                clock_ms=n*16u+8u;g_render_service_ms=clock_ms-16u;g_render_interactive=true;
+                assert(mv_render_service() && !g_render_input_pending);
+            }
+            if(mode) assert(g_view.zoom!=2 && g_view.pan_x==7 && g_view.pan_y==9);
+            else assert(g_view.zoom==2 && (g_view.pan_x!=7 || g_view.pan_y!=9));
+            /* Fault/rearm cannot hand raw input back to the rotation fallback. */
+            const mv_view_t before=g_view;
+            mock[provider].poll_ok=false;mv_controller_poll(&g_controller);
+            assert(mv_buttons(&input_state,500));assert(!memcmp(&before,&g_view,sizeof(before)));
+            mock[provider].poll_ok=true;mv_controller_poll(&g_controller);
+            assert(mv_buttons(&input_state,516));assert(!memcmp(&before,&g_view,sizeof(before)));
+            /* Unplug with projected state still down: drain it, do not rotate. */
+            mock[provider].count=0;mv_controller_poll(&g_controller);
+            assert(mv_buttons(&input_state,532));assert(!memcmp(&before,&g_view,sizeof(before)));
+            input_state=(t5_app_input_t){0};assert(mv_buttons(&input_state,548));
+            input_state.buttons=T5_APP_BUTTON_RIGHT;assert(mv_buttons(&input_state,564));
+            assert(g_view.yaw>before.yaw); /* Keyboard/physical fallback rearmed. */
+            input_state.buttons=T5_APP_BUTTON_CONFIRM;assert(mv_buttons(&input_state,580));
+            assert(g_view.zoom==1 && g_view.pan_x==0);
+            input_state.buttons=T5_APP_BUTTON_BACK;assert(!mv_buttons(&input_state,596));
+            mv_controller_close(&g_controller);
+        }
+    }
+    input_state=(t5_app_input_t){0};
+    puts("arbitration: HID/XInput pan/zoom plus duplicate directions/A, faults, unplug neutral handback, Back PASS");
+}
+int main(void) { mapping_tests();provider_tests();motion_tests();precision_tests();integration_tests();arbitration_tests();return 0; }
 '''
 
 
@@ -232,14 +310,15 @@ class ControllerTests(unittest.TestCase):
     def test_production_code(self):
         cc = shutil.which(os.environ.get("CC", "cc"))
         self.assertIsNotNone(cc, "A host C compiler is required")
-        source = HARNESS + "\n".join(function(n) for n in
+        camera_mask = re.search(r"^#define MV_MAPPED_CAMERA_BUTTONS .+$", APP, re.M).group(0)
+        source = HARNESS + camera_mask + "\n" + "\n".join(function(n) for n in
             ["mv_clampf", "mv_wrap_angle", "mv_reset_view", "mv_buttons", "mv_render_service"]) + TESTS
         with tempfile.TemporaryDirectory(prefix="model-viewer-controls-") as tmp:
             cfile, binary = Path(tmp) / "test.c", Path(tmp) / "test"
             cfile.write_text(source)
             command = [cc, "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
                        "-I" + str(ROOT / "Apps"), "-I" + str(ROOT / "sdk/driver"),
-                       "-I" + str(ROOT / "lib/NativeApps/include"), str(cfile), "-o", str(binary)]
+                       "-I" + str(ROOT / "lib/NativeApps/include"), str(cfile), "-lm", "-o", str(binary)]
             if os.environ.get("MV_SANITIZE") == "1":
                 command[2:2] = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
             subprocess.run(command, check=True)
@@ -247,7 +326,7 @@ class ControllerTests(unittest.TestCase):
 
     def test_render_and_manifest_integration(self):
         manifest = json.loads((ROOT / "Apps/model_viewer.json").read_text())
-        self.assertEqual(manifest["version"], "1.2.0")
+        self.assertEqual(manifest["version"], "1.2.1")
         for capability in ["usb.hid.gamepad", "usb.xinput.gamepad"]:
             self.assertIn({"capability": capability, "api": ">=1"}, manifest["optional"])
         self.assertIn("g_draw_pending && mv_render(true)", APP)
