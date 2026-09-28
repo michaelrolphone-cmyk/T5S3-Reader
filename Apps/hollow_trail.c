@@ -108,12 +108,15 @@ __attribute__((visibility("default"))) void app_main(void) {
        !video || video->api_version!=T5_VIDEO_API_VERSION ||
        !HT_HAS(video,t5_video_api_v1,start_format) || !video->backbuffer ||
        !video->can_submit || !video->submit || !video->stop) return;
-    uint8_t *memory=(uint8_t *)app->psram_alloc(HT_MEMORY);
-    if(!memory) { ht_log("Hollow Trail: 1166400 bytes PSRAM unavailable"); return; }
+    uint8_t *memory=(uint8_t *)app->psram_alloc(HT_MEMORY+15u);
+    if(!memory) { ht_log("Hollow Trail: 1296000 bytes PSRAM unavailable"); return; }
     bool started=false;
     t5_video_surface_v1 surface={0};
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(false);
-    ht_acquire_pad(); ht_bind(memory);
+    ht_math=t5_math_get_api(T5_MATH_API_VERSION);
+    if(ht_math && (ht_math->api_version!=T5_MATH_API_VERSION || ht_math->struct_size<sizeof(*ht_math) ||
+                   !ht_math->add_s16 || !ht_math->sub_s16 || !ht_math->copy_bytes || !ht_math->fill_bytes)) ht_math=NULL;
+    ht_acquire_pad(); ht_bind((uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u));
     if(!video->start_format(&surface,T5_VIDEO_PIXEL_GRAY_2BPP_MSB)) {
         ht_log("Hollow Trail: grayscale video start failed"); goto cleanup;
     }
@@ -130,7 +133,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     uint32_t last_frame=app->millis()-67u, last_submit=app->millis();
     uint32_t drawn_revision=0, prepared_revision=0;
     bool prepared=false;
-    ht_log("Hollow Trail 1.0.1: 2bpp parallax renderer started");
+    ht_log("Hollow Trail 1.0.2: 2bpp parallax renderer started");
     while(!quitting) {
         ht_input(4u); if(quitting) break;
         uint32_t now=app->millis();
