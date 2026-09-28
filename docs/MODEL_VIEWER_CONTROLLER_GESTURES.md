@@ -4,8 +4,8 @@ This app-only follow-up supersedes the controller-rate section of
 `MODEL_VIEWER_INPUT_AND_CATALOG_FRESHNESS.md`. Catalog/firmware behavior from
 that document is unchanged. Model Viewer advances from 1.2.1 to 1.2.2;
 minimum firmware for that controller-only update was 1.3.18.
-The combined DSP integration is Model Viewer 1.2.3 and requires firmware
-1.3.29; all controller changes documented here are preserved.
+The combined DSP integration is Model Viewer 1.2.4 and requires firmware
+1.3.30; all controller changes documented here are preserved.
 
 ## Rates and controls
 

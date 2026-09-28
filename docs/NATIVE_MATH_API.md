@@ -1,4 +1,4 @@
-# Native app math acceleration (firmware 1.3.29)
+# Native app math acceleration (firmware 1.3.30)
 
 `T5MathApi.h` exports `t5_math_get_api(1)`, a size/version-checked CPU-only table.
 It is a reusable runtime math primitive, not a display API or a peripheral
@@ -48,8 +48,8 @@ blur radii, radial mix/fade and final 2bpp quantization are unchanged. Bulk plan
 clears are chunked with cooperative checkpoints; the cached scroll operation
 still uses memmove because its ranges overlap.
 
-The getter was introduced in firmware 1.3.27. Hollow Trail 1.0.4 and
-Model Viewer 1.2.3 require firmware 1.3.29 for the appended operations. Native ELF import validation
+The getter was introduced in firmware 1.3.27. Hollow Trail 1.0.5 and
+Model Viewer 1.2.4 require firmware 1.3.30 for the appended operations. Native ELF import validation
 and launcher registration include the new symbol.
 
 ## Verification and limits
@@ -62,12 +62,12 @@ instructions. Firmware link/map inspection verifies the real bundled AES3
 routines are present in the device build. Hardware measurements are still needed
 to quantify the additional SIMD gain; host equivalence is not a device speed test.
 
-## Batched operations added in 1.3.29
+## Batched operations added in 1.3.30
 
 The v1 table grows by appending fields; its original field offsets and version
 remain unchanged. Existing binaries keep using the prefix. Newly compiled apps
 must check `struct_size` before reading an appended pointer, or require the new
-firmware. The two updated apps require 1.3.29 and keep scalar rendering paths.
+firmware. The two updated apps require 1.3.30 and keep scalar rendering paths.
 
 | Operation | Bound and semantics | Implementation |
 | --- | --- | --- |

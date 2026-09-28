@@ -42,7 +42,7 @@ The mono scan path uses its existing endpoint pulse/history behavior; this
 change does not claim one scan per settled image or a measured frame-rate gain.
 
 Native grayscale remains available for direct comparison using the shared gray
-transition changes in firmware 1.3.29. It is not selected automatically.
+transition changes in firmware 1.3.30. It is not selected automatically.
 
 ## Verification and limits
 
