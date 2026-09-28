@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 85. Driver Manager cannot expose more than 64 release, inbox, or recovery entries
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1623](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260928-1623)
+
+- **Affected code:** `Apps/driver_manager.c`: `LIMIT`, `RECOVERY_LIMIT`, `populate_release()`, `load_inbox()`, and `recovery_screen()`; `src/native/NativeDriverManagerBridge.cpp`: `kMaxDriverAssets`, `loadCanonicalDriverCatalog()`, legacy catalog loading, and recovery inventory. Open PR #96 rewrites Driver Manager but retains `LIMIT 64u` and does not remove this bound.
+- **Trigger / reproduction:** Publish or otherwise present more than 64 valid driver packages in the current release catalog, place more than 64 valid driver-package directories in `/sd/Packages/Inbox`, or retain more than 65 recoverable driver stages/downloads. Open Driver Manager and attempt to reach an entry beyond the corresponding limit.
+- **Observed / logically demonstrated failure:** The app clamps the online catalog to `LIMIT`, stops materializing inbox rows once `row_count >= LIMIT`, and clamps recovery rows to `RECOVERY_LIMIT`; there is no paging, cursor, or truncation notice. The firmware bridge also rejects a canonical driver index whose `drivers` array exceeds `kMaxDriverAssets == 64`, while legacy discovery stops adding entries at that limit. Therefore valid drivers beyond the fixed workspace are either hidden from the UI or can make the authoritative catalog path fail and fall back to an incomplete bounded view.
+- **Likely root cause:** Driver discovery and presentation share fixed-size workspaces that were treated as service limits instead of page sizes.
+- **Impact:** As the driver ecosystem grows, valid drivers can become impossible to install/update through Driver Manager; retained recovery work can also become unreachable, making package recovery dependent on directory/catalog ordering.
+- **Repair direction:** Make the bridge catalog/recovery model dynamic or PSRAM-backed and expose the complete count; page/virtualize Driver Manager rows over that model. If bounded parsing is still required, reject only an individual invalid entry rather than the whole canonical catalog and surface explicit overflow state. Add coverage with 65+ online drivers, 65+ inbox packages, and 66+ recovery items, including an actionable item beyond the first page.
+
+### 86. GPS continues displaying stale coordinates after a runtime read failure
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1623](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260928-1623)
+
+- **Affected code:** `Apps/gps.c::app_main()` and `render()`; failure contract in `src/runtime/drivers/GpsDriverRuntime.cpp::read()` and `src/native/NativeGpsBridge.cpp::readState()`.
+- **Trigger / reproduction:** Start GPS successfully, obtain a valid fix so `state` contains coordinates, then force a later provider/runtime read to fail (for example loss of the active driver/lease or a provider read failure) while leaving the GPS app open.
+- **Observed / logically demonstrated failure:** Both the initial read after `gps->start()` and every loop read call `gps->read(&state)` without checking its boolean result. `GpsDriverRuntime::read()` explicitly returns `false` on lost authorization/stream state or provider failure and stops the runtime; the provider-failure path does not guarantee that the caller's `state` has been replaced with a clean OFF snapshot. The app then continues to render the same `state` every three seconds. After a previously valid fix, the screen can therefore keep showing the old latitude/longitude, satellite count, and “Fix age” footer after the runtime has failed and stopped.
+- **Likely root cause:** The app treats `read()` as a void refresh operation even though the API uses its return value to distinguish a valid state snapshot from an I/O/runtime failure.
+- **Impact:** The GPS screen can present obsolete position data as the current coordinates precisely when the underlying GNSS provider has failed, which is materially misleading for a location utility.
+- **Repair direction:** Check every `gps->read()` result. On failure, clear the snapshot, set an explicit OFF/error state, render the failure immediately, and optionally offer/retry a controlled restart instead of continuing to display old data. Add a test that supplies one valid fix followed by a failed read and verifies the old coordinates disappear.
+
+### 87. Native installed-app discovery stops after 128 valid apps and makes later apps unreachable from Springboard
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1623](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260928-1623)
+
+- **Affected code:** `src/native/NativeAppHost.cpp::installedRefresh()`, `installedCount()`, and `installedGet()`; consumer `Apps/springboard.c::app_main()`. This is distinct from bug #15 (64-row available App Store catalog) and bug #62 (64-row Package Manager view): this limit truncates the firmware's installed **application** inventory itself.
+- **Trigger / reproduction:** Put at least 129 valid launchable applications under `/Apps` (canonical managed app directories and/or valid legacy ELF/JSON pairs), with the 129th valid app occurring after 128 other valid apps in directory enumeration, then refresh/open Springboard.
+- **Observed / logically demonstrated failure:** `installedRefresh()` enumerates only while `s->installed.size() < 128`. As soon as the 128th valid manifest is accepted it stops reading the directory entirely, sorts only that prefix, and returns success. `installedCount()` can therefore report at most 128 even though additional valid apps exist; Springboard also clamps its count to 128 and has no continuation or overflow indication. Which applications disappear depends on SD directory enumeration order, not display-name sort order.
+- **Likely root cause:** A memory-protection bound in the installed-app cache became an implicit inventory limit, and the API exposes neither paging nor overflow state.
+- **Impact:** Valid installed applications beyond the first 128 cannot be discovered, selected, pinned, or launched from Springboard despite being correctly installed on disk; unrelated install/remove operations can change which apps fall outside the prefix.
+- **Repair direction:** Enumerate the complete installed-app set into a dynamic/PSRAM-backed structure or expose paged installed-app enumeration with a stable identity/cursor. Remove Springboard's duplicate hard clamp or make it a page capacity rather than a total limit, and add a 129+ app test proving the final app remains addressable.
