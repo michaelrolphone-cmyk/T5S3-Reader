@@ -49,7 +49,7 @@ clears are chunked with cooperative checkpoints; the cached scroll operation
 still uses memmove because its ranges overlap.
 
 The getter was introduced in firmware 1.3.27. Hollow Trail 1.0.4 and
-Model Viewer 1.2.2 require firmware 1.3.29 for the appended operations. Native ELF import validation
+Model Viewer 1.2.3 require firmware 1.3.29 for the appended operations. Native ELF import validation
 and launcher registration include the new symbol.
 
 ## Verification and limits
