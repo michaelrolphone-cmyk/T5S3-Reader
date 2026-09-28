@@ -133,7 +133,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     uint32_t last_frame=app->millis()-67u, last_submit=app->millis();
     uint32_t drawn_revision=0, prepared_revision=0;
     bool prepared=false;
-    ht_log("Hollow Trail 1.0.2: 2bpp parallax renderer started");
+    ht_log("Hollow Trail 1.0.3: 2bpp parallax renderer started");
     while(!quitting) {
         ht_input(4u); if(quitting) break;
         uint32_t now=app->millis();

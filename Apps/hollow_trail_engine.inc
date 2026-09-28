@@ -10,7 +10,7 @@
 #define HT_PIXELS (HT_W * HT_H)
 #define HT_MEMORY (HT_PIXELS * 10u)
 #define HT_GOAL 3200
-#define HT_STEP_MS 16u
+#define HT_STEP_MS 32u /* Half-speed motion; preserve jump paths and level reachability. */
 
 typedef struct { int left, right, top; } ht_platform;
 static const ht_platform ht_land[] = {
@@ -73,7 +73,7 @@ static void ht_step(int direction,bool jump_pressed,bool jump_held) {
     if(jump_pressed) ht.jump_buffer=7;
     else if(ht.jump_buffer) --ht.jump_buffer;
     if(ht.grounded) ht.coyote=6; else if(ht.coyote) --ht.coyote;
-    int target=direction*640; /* 156 world pixels/sec */
+    int target=direction*640; /* 78.125 world pixels/sec at 32ms per step */
     if(ht.vx<target) ht.vx=ht_min(target,ht.vx+100);
     if(ht.vx>target) ht.vx=ht_max(target,ht.vx-100);
     if(direction) ht.facing=direction;
