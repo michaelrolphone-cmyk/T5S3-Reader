@@ -117,7 +117,7 @@ __attribute__((visibility("default"))) void app_main(void) {
        !HT_HAS(video,t5_video_api_v1,start_format) || !video->backbuffer ||
        !video->can_submit || !video->submit || !video->stop) return;
     uint8_t *memory=(uint8_t *)app->psram_alloc(HT_MEMORY+15u);
-    if(!memory) { ht_log("Hollow Trail: 1298880 bytes PSRAM unavailable"); return; }
+    if(!memory) { ht_log("Hollow Trail: 1296000 bytes PSRAM unavailable"); return; }
     bool started=false;
     t5_video_surface_v1 surface={0};
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(false);
@@ -137,7 +137,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     uint32_t last_frame=app->millis()-67u, last_submit=app->millis();
     uint32_t drawn_revision=0, prepared_revision=0;
     bool prepared=false;
-    ht_log("Hollow Trail 1.0.4: dithered 1bpp parallax renderer started");
+    ht_log("Hollow Trail 1.0.5: dithered 1bpp parallax renderer started");
     while(!quitting) {
         ht_input(4u); if(quitting) break;
         if(mode_down) {
