@@ -26,8 +26,8 @@ static void press(unsigned source,uint32_t mask) {
 }
 int main(void) {
     app=&fake_app; pad=&xapi; hid_pad=&hapi;
-    /* Masks copied from GameBoy's physical-button mapping, not derived from app code. */
-    const unsigned a[2]={2,1},b[2]={1,2},x[2]={8,4},y[2]={4,8},start[2]={512,128},select[2]={256,64};
+    /* Receiver face-label correction reported on hardware for 1.0.15. */
+    const unsigned a[2]={1,2},b[2]={2,1},x[2]={8,4},y[2]={4,8},start[2]={512,128},select[2]={256,64};
     for(unsigned source=0;source<2;++source) {
         memset(reports,0,sizeof(reports)); reports[source][0].connected=1;
         reports[source][0].device=source+1; reports[source][0].hat=8;
@@ -85,5 +85,5 @@ int main(void) {
     reports[0][0].connected=1; reports[0][0].device=99; reports[0][0].hat=8;
     ht_input(1); healthy=false; ht_input(1); now+=251; ht_input(1);
     mapped=0; ht_input(1); mapped=T5_APP_BUTTON_BACK; ht_input(1); assert(quitting);
-    puts("Hollow Trail controls: GameBoy HID/XInput masks, dedicated Start, A inspect, B jump, X back, arbitration and fault recovery PASS");
+    puts("Hollow Trail controls: receiver HID/XInput face labels, dedicated Start, A inspect, B jump, X back, arbitration and fault recovery PASS");
 }

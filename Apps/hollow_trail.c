@@ -135,11 +135,11 @@ static void ht_input_update(uint32_t wait) {
                 if(state->x < -16384) buttons|=HT_LEFT;
                 if(state->x > 16384) buttons|=HT_RIGHT;
             }
-            /* Same physical bindings as GameBoy's riscrte/usb_hid_elf_adapter.cpp:
-             * XInput B/A/Y/X=1/2/4/8, HID A/B/X/Y=1/2/4/8.
-             * HID Start/Select=0x80/0x40; XInput=0x200/0x100. */
-            if(state->buttons&(source?0x02u:0x01u)) buttons|=HT_JUMP;
-            if(state->buttons&(source?0x01u:0x02u)) buttons|=HT_INTERACT|HT_ACCEPT;
+            /* Receiver face labels confirmed by the owner's 1.0.15 test:
+             * A/B are the reverse of the earlier GameBoy adapter assumption.
+             * Keep the independently working X/Start/Select masks unchanged. */
+            if(state->buttons&(source?0x01u:0x02u)) buttons|=HT_JUMP;
+            if(state->buttons&(source?0x02u:0x01u)) buttons|=HT_INTERACT|HT_ACCEPT;
             if(state->buttons&(source?0x04u:0x08u)) buttons|=HT_BACK;
             if(state->buttons&(source?0x80u:0x200u)) buttons|=HT_JOURNAL;
             if(state->buttons&(source?0x40u:0x100u)) buttons|=HT_PAUSE;
