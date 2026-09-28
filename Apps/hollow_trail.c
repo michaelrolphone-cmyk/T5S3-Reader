@@ -13,7 +13,8 @@ static t5_provider_capability_lease_t lease=T5_PROVIDER_CAPABILITY_LEASE_INVALID
 static bool quitting, jump_down, pause_down, paused, mode_down;
 static uint32_t held, previous, last_poll;
 static uint32_t simulation_clock, simulation_accumulator, scene_revision;
-static bool simulation_started,loading;
+static bool simulation_started,loading,reading;
+static unsigned journal_page;
 #define HT_FRAME_INTERVAL_MS 42u /* At most 24 submissions/s; physics stays 32ms. */
 static struct {
     uint32_t start,scan_start,frames,render_ms,pack_ms,wait_ms,cache_ms,copy_ms;
@@ -60,7 +61,7 @@ static void ht_acquire_pad(void) {
        !HT_HAS(pad,risc_usb_gamepad_api_v1,snapshot) || !pad->poll) ht_release_pad();
 }
 static void ht_advance(uint32_t now) {
-    if(loading || ht.level!=ht_geometry_level) { simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
+    if(reading || loading || ht.level!=ht_geometry_level) { simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
     if(!simulation_started) { simulation_clock=now; simulation_started=true; }
     if(pause_down) {
         paused=!paused; pause_down=false; simulation_accumulator=0; ++scene_revision;
@@ -114,10 +115,24 @@ static void ht_input(uint32_t wait) {
     uint32_t now=app->millis();
     ht_advance(now);
     uint32_t down=buttons&~previous;
+    if(reading) {
+        if(down&(HT_INTERACT|HT_JUMP|HT_EXIT|HT_PAUSE)) reading=false;
+        else if(down&HT_LEFT) journal_page=(journal_page+HT_LEVELS*3u-1)%(HT_LEVELS*3u);
+        else if(down&HT_RIGHT) journal_page=(journal_page+1)%(HT_LEVELS*3u);
+        if(down) ++scene_revision;
+        jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0;
+        previous=held=buttons; last_poll=now; return;
+    }
     jump_down|=(down&HT_JUMP)!=0; pause_down|=(down&HT_PAUSE)!=0;
-    if((down&HT_INTERACT) && !paused && !loading && ht.level==ht_geometry_level && ht_interact())
+    if((down&HT_INTERACT) && !paused && !loading && ht.level==ht_geometry_level) {
+        int page=ht_inspect();
+        if(page>=0) { journal_page=(unsigned)page; reading=true; }
+        else if(ht_puzzle_near(&ht)>=0) (void)ht_interact();
+        else reading=true;
+        if(reading) { jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0; }
         ++scene_revision;
-    quitting|=(buttons&HT_EXIT)!=0;
+    }
+    quitting|=(down&HT_EXIT)!=0;
     previous=held=buttons; last_poll=now;
 }
 static void ht_render_service(void) {
@@ -173,6 +188,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     }
     started=true;
     memset(&ht,0,sizeof(ht)); ht_spawn(true);
+    reading=false; journal_page=0;
     quitting=jump_down=pause_down=paused=mode_down=false; held=previous=0;
     simulation_started=false; simulation_accumulator=0; scene_revision=1;
     ht_service=ht_render_service;
@@ -231,12 +247,12 @@ __attribute__((visibility("default"))) void app_main(void) {
             if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
         }
         uint32_t now=app->millis();
-        if(profile_was_paused && !paused) {
+        if(profile_was_paused && !paused && !reading) {
             ht_perf.start=now;
             ht_perf.scan_start=video->frame_counter?video->frame_counter():0;
             ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=0;
         }
-        profile_was_paused=paused;
+        profile_was_paused=paused || reading;
         bool redraw=scene_revision!=drawn_revision;
         if(!redraw && !prepared) last_submit=now;
         /* Render into app-owned PSRAM while the panel finishes its previous
@@ -245,17 +261,23 @@ __attribute__((visibility("default"))) void app_main(void) {
             last_frame=now; /* Start-to-start cadence, not an extra post-render wait. */
             prepared_revision=scene_revision;
             const ht_game rendering_game=ht;
-            const bool rendering_paused=paused;
-            prepared_profile=!rendering_paused;
+            const bool rendering_paused=paused,rendering_reading=reading;
+            const unsigned rendering_page=journal_page;
+            prepared_profile=!rendering_paused && !rendering_reading;
             ht_render_scene();
             /* Initial instructions dismiss automatically after walking. */
             if(rendering_game.x<230*256 && rendering_game.checkpoint==0) {
-                ht_rect(ht_scene,90,38,249,55,0);
+                ht_rect(ht_scene,90,38,249,68,0);
                 ht_text(98,45,ht_chapters[rendering_game.level].title,2);
                 ht_text(98,66,"LEFT/RIGHT MOVE   A / CONFIRM JUMP",1);
                 ht_text(98,79,"START / DOWN PAUSE   SELECT / BACK EXIT",1);
+                ht_text(98,92,"B / UP INSPECT OR OPEN JOURNAL",1);
             }
-            if(!rendering_paused) { ht_narration(&rendering_game); ht_puzzle_prompt(&rendering_game); }
+            if(!rendering_paused) {
+                ht_narration(&rendering_game);
+                if(rendering_reading) ht_draw_journal(&rendering_game,rendering_page);
+                else { ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game); }
+            }
             if(rendering_paused) {
                 ht_rect(ht_scene,112,74,256,172,0);
                 ht_text(127,83,"HOLLOW TRAIL 1.0.14",1);
@@ -329,7 +351,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         /* At most four cache slices and an 8ms elapsed budget per host loop.
          * A single slice may exceed 8ms; its raster checkpoints still yield.
          * Report this work separately rather than hiding it in lower RENDER. */
-        if(!quitting && !paused && ht.level==ht_geometry_level) {
+        if(!quitting && !paused && !reading && ht.level==ht_geometry_level) {
             uint32_t cache_start=app->millis();
             for(unsigned work=0;work<4 && !quitting;++work) {
                 if(prepared && video->can_submit()) break;

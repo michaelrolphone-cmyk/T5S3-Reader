@@ -15,7 +15,8 @@
 #define HT_BORDER 9
 #define HT_FADE 19
 #define HT_MASK_RADIUS 45
-#define HT_MASK_PIXELS (HT_MASK_RADIUS*HT_MASK_RADIUS)
+/* Keep the following low-resolution scene aligned for four-byte loads. */
+#define HT_MASK_PIXELS ((HT_MASK_RADIUS*HT_MASK_RADIUS+15)&~15)
 static bool ht_framed;
 static uint16_t ht_dirty_top,ht_dirty_height;
 #define HT_PIXELS (HT_W * HT_H)
@@ -65,6 +66,7 @@ static const ht_platform *ht_level_land(unsigned level) {
 }
 #include "hollow_trail_story.inc"
 #include "hollow_trail_puzzles.inc"
+#include "hollow_trail_evidence.inc"
 typedef struct {
     int x, y, vx, vy; /* Q8, y is feet */
     int camera, checkpoint, coyote, jump_buffer, facing, stride;
@@ -73,6 +75,7 @@ typedef struct {
     int story_x; /* Furthest progress in this chapter, retained on death. */
     bool grounded;
     ht_puzzle_state puzzle;
+    uint32_t evidence; /* Thirty discoveries, retained across chapters this run. */
 } ht_game;
 static ht_game ht;
 #define ht_land ht_level_land(ht.level)
@@ -157,6 +160,30 @@ static void ht_bind(uint8_t *memory) {
     ht_corner_mask=cache; ht_low_scene=cache+HT_MASK_PIXELS; ht_mask_init();
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
 }
+static int ht_evidence_platform(int item) { return 1+item*3; }
+static int ht_evidence_x(unsigned level,int item) {
+    const ht_platform *p=&ht_level_land(level)[ht_evidence_platform(item)];
+    return item==1?p->right-45:p->left+42;
+}
+static bool ht_evidence_found(const ht_game *game,unsigned page) {
+    return page<HT_LEVELS*3u && (game->evidence&(1u<<page))!=0;
+}
+static int ht_evidence_near(const ht_game *game) {
+    if(!game->grounded) return -1;
+    for(int item=0;item<3;++item) {
+        const ht_platform *p=&ht_level_land(game->level)[ht_evidence_platform(item)];
+        if(ht_abs(game->x/256-ht_evidence_x(game->level,item))<=22 &&
+           ht_abs(game->y/256-p->top)<=3) return item;
+    }
+    return -1;
+}
+static int ht_inspect(void) {
+    int item=ht_evidence_near(&ht);
+    if(item<0) return -1;
+    int page=(int)ht.level*3+item;
+    ht.evidence|=1u<<(unsigned)page;
+    return page;
+}
 #define HT_PUZZLE_FIRST 2900
 #define HT_PUZZLE_SPACING 85
 #define HT_PUZZLE_GATE (HT_GOAL-26)
@@ -187,11 +214,12 @@ static bool ht_interact(void) {
     return true;
 }
 static void ht_spawn(bool restart) {
+    uint32_t evidence=ht.evidence;
     ht_puzzle_state puzzle=restart?(ht_puzzle_state){0}:ht.puzzle;
     unsigned laps=ht.laps, deaths=ht.deaths, level=ht.level;
     int cp=restart?0:ht.checkpoint, story_x=restart?0:ht.story_x;
     memset(&ht,0,sizeof(ht)); ht.laps=laps; ht.deaths=deaths; ht.level=level;
-    ht.puzzle=puzzle;
+    ht.evidence=evidence; ht.puzzle=puzzle;
     ht.story_x=story_x; ht.checkpoint=cp; ht.x=(cp?ht_land[cp].left+35:95)*256;
     ht.y=ht_land[cp].top*256; ht.grounded=true; ht.facing=1;
     ht.camera=ht_clamp(ht.x/256-165,0,HT_GOAL-340)*256;
@@ -1020,6 +1048,7 @@ static void ht_vignette(void) {
     ht_framed=true;
 }
 static void ht_draw_puzzle(const ht_game *game);
+static void ht_draw_evidence(const ht_game *game);
 static void ht_render_scene(void) {
     /* Input checkpoints may advance live physics. Freeze the rendered frame
      * so trees, focus and character all use one consistent game snapshot. */
@@ -1031,6 +1060,7 @@ static void ht_render_scene(void) {
     for(int depth=0;depth<HT_LAYERS;++depth)
         ht_composite_cached(depth,ht_layer_offset(depth,camera),px,py);
     ht_upscale_scene();
+    ht_draw_evidence(&game);
     ht_draw_puzzle(&game);
     ht_character(px,game.y/256,&game);
     ht_vignette();
@@ -1212,7 +1242,9 @@ static void ht_narration(const ht_game *game) {
     for(int line=0;line<2;++line) {
         const char *text=ht_chapters[game->level].lines[beat][line];
         if(game->x/256>=2780) text=game->puzzle.solved?
-            ht_puzzles[game->level].reveal[line]:ht_puzzles[game->level].clue[line];
+            ht_puzzles[game->level].reveal[line]:
+                (line?"B / UP AWAY FROM CONTROLS OPENS YOUR JOURNAL.":
+                      "THE ANSWER IS HIDDEN IN THE THINGS LEFT BEHIND.");
         int x=(HT_W-(int)strlen(text)*6)/2, y=233+line*10;
         for(;*text;++text,x+=6) {
             const uint8_t *g=ht_glyph(*text);
@@ -1262,4 +1294,44 @@ static void ht_puzzle_prompt(const ht_game *game) {
         status[20]=(char)('0'+game->puzzle.progress); status[22]=(char)('0'+p->length);
         ht_text_color(74,49,game->puzzle.wrong?"WRONG NOTE - BEGIN AGAIN WITH THE CLUE":status,1,0);
     } else ht_text_color(74,49,p->kind==1?"B / UP TOGGLE NEARBY SWITCH   0 OFF 1 ON":"B / UP TURN NEARBY DIAL   0 1 2 3",1,0);
+}
+
+/* Tiny scraps/containers embedded in scenery. No flashing markers or distant
+ * arrows; nearby interaction reveals the title without exposing the contents. */
+static void ht_draw_evidence(const ht_game *game) {
+    for(int item=0;item<3;++item) {
+        int x=ht_evidence_x(game->level,item)-game->camera/256;
+        int y=ht_level_land(game->level)[ht_evidence_platform(item)].top;
+        if(x< -12 || x>=HT_W+12) continue;
+        ht_rect(ht_scene,x-6,y-10,12,10,255);
+        if(item==1) ht_rect(ht_scene,x-8,y-12,16,3,255);
+        else if(item==2) ht_limb(ht_scene,x-5,y-10,x+3,y-16,2,1,255);
+        ht_rect(ht_scene,x-3,y-7,6,2,ht_evidence_found(game,game->level*3u+(unsigned)item)?130:0);
+    }
+}
+static void ht_evidence_prompt(const ht_game *game) {
+    int item=ht_evidence_near(game);
+    if(item<0) return;
+    ht_rect(ht_scene,66,33,348,29,255);
+    ht_text_color(74,37,ht_evidence[game->level][item].title,1,0);
+    ht_text_color(74,49,"B / UP INSPECT - A CLUE MAY BE HIDDEN HERE",1,0);
+}
+static void ht_draw_journal(const ht_game *game,unsigned page) {
+    if(page>=HT_LEVELS*3u) return;
+    unsigned level=page/3,item=page%3;
+    ht_rect(ht_scene,50,62,380,144,255);
+    char heading[]="JOURNAL 00 / 30";
+    heading[8]=(char)('0'+(page+1)/10); heading[9]=(char)('0'+(page+1)%10);
+    ht_text_color(66,72,heading,1,0);
+    ht_text_color(66,86,ht_chapters[level].title,1,0);
+    if(ht_evidence_found(game,page)) {
+        const ht_evidence_record *record=&ht_evidence[level][item];
+        ht_text_color(66,103,record->title,1,0);
+        for(int line=0;line<4;++line) ht_text_color(66,119+line*13,record->lines[line],1,0);
+    } else {
+        ht_text_color(66,113,"NOT FOUND",1,0);
+        ht_text_color(66,132,"LOOK FOR SMALL OBJECTS ALONG THE TRAIL.",1,0);
+        ht_text_color(66,145,"APPROACH ON FOOT AND PRESS B / UP TO INSPECT.",1,0);
+    }
+    ht_text_color(66,184,"LEFT / RIGHT PAGES   B / UP OR A CLOSE",1,0);
 }

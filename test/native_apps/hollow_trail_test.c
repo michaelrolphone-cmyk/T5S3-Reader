@@ -13,6 +13,7 @@ static uint32_t checksum(const uint8_t *data,size_t size) {
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY), *frame=malloc(960u*540u/4u);
     assert(memory && frame); ht_bind(memory); ht_spawn(true);
+    assert(((uintptr_t)ht_low_scene&15u)==0);
     /* Walk the entire route using the same fixed-step physics and hold jump
      * from each takeoff. A route that silently respawns cannot pass. */
     unsigned visited=1;
@@ -94,6 +95,36 @@ int main(void) {
             assert(strlen(ht_puzzles[level].reveal[line])*6<=366);
         }
     }
+    /* Discovery requires proximity and grounded feet; records survive death
+     * and chapter changes without revealing missing entries. */
+    ht.evidence=0; memset(ht_scene,255,HT_PIXELS); ht_draw_journal(&ht,1);
+    memcpy(frame,ht_scene,HT_PIXELS);
+    ht.evidence=1; memset(ht_scene,255,HT_PIXELS); ht_draw_journal(&ht,1);
+    assert(!memcmp(frame,ht_scene,HT_PIXELS)); /* Another find cannot reveal this page. */
+    ht.evidence=2; memset(ht_scene,255,HT_PIXELS); ht_draw_journal(&ht,1);
+    assert(memcmp(frame,ht_scene,HT_PIXELS));
+    ht.evidence=0;
+    for(unsigned level=0;level<HT_LEVELS;++level) {
+        ht.level=level; ht_spawn(true); assert(ht_inspect()==-1);
+        for(int item=0;item<3;++item) {
+            unsigned page=level*3u+(unsigned)item;
+            assert(!ht_evidence_found(&ht,page));
+            ht.x=ht_evidence_x(level,item)*256;
+            ht.y=ht_land[ht_evidence_platform(item)].top*256;
+            ht.grounded=false; assert(ht_inspect()==-1);
+            ht.grounded=true; assert(ht_inspect()==(int)page);
+            assert(ht_evidence_found(&ht,page));
+            uint32_t found=ht.evidence;
+            assert(ht_inspect()==(int)page && ht.evidence==found);
+            const ht_evidence_record *r=&ht_evidence[level][item];
+            assert(strlen(r->title)*6<348);
+            for(int line=0;line<4;++line) assert(strlen(r->lines[line])*6<=348);
+            ht_spawn(false); assert(ht.evidence==found);
+        }
+    }
+    assert(ht.evidence==((1u<<30)-1));
+    ht_spawn(true); assert(ht.evidence==((1u<<30)-1));
+    ht.level=0; ht_spawn(true);
     /* Narration milestones, glyph bounds and dirty-row coverage. */
     assert(ht_story_beat(0)==0 && ht_story_beat(1099)==0);
     assert(ht_story_beat(1100)==1 && ht_story_beat(2599)==1 && ht_story_beat(2600)==2);

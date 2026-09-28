@@ -895,8 +895,9 @@ of a mechanism and press controller B or device/navigation Up. Interactions need
 a fresh press and grounded feet: holding the button or jumping past a control
 cannot activate it repeatedly. A/Confirm remains jump; Up retains its existing
 DSP-toggle alias while paused. The highlighted line below a control identifies
-which one is in reach. Clues replace the two narration lines when entering the
-last ledge, with a name and controls above the scene.
+which one is in reach. The last ledge reminds the player to consult discovered evidence, with a
+mechanism name and controls above the scene. Operational clues are now found
+throughout the chapter, as described below.
 
 Three puzzle rules are reused across ten authored scenarios: ordered signals,
 binary switches, and dials that cycle 0–3. Signals display accepted-note count;
@@ -937,3 +938,48 @@ as drawn. Input service requests a redraw even when the character is stationary.
 Tests traverse all chapters while operating the mechanisms, check independent
 explicit solutions, retries, gate enforcement, chapter resets and death
 retention. Production-input tests cover held-button suppression and loading.
+
+## Hidden evidence and journal (1.0.14 follow-up)
+
+Thirty authored evidence objects are distributed across the ten settings, three
+per chapter on ledges 2, 5 and 8. Small scraps, containers and glints belong to
+the scene; there are no distant arrows or flashing collectible markers. A title
+and inspect prompt appear only within 22 logical pixels while grounded at the
+object's elevation. Early and late objects sit near the beginning of their
+ledges; the middle object is toward the far end. They are reachable on the
+ordinary route, with no new jumps or mandatory inventory checks.
+
+Examples include scarf stitching, a mill register, a window sketch, a burnt
+fuse, fuel labels, railway tickets, ferry tokens, hoist notices, garden records,
+water gauges, a polished signal mirror and the last radio card. Each object has
+four short lines combining a practical clue with story evidence. Puzzle logic
+is divided between these objects instead of automatically printing the complete
+solution at the exit. The player may still solve a puzzle through inference or
+experimentation without collecting every note.
+
+Controller B / device Up inspects a nearby object and opens its journal entry.
+Near puzzle machinery it operates that mechanism instead. Anywhere else it
+opens the journal. Left/Right browses all thirty pages; undiscovered entries show
+only NOT FOUND and exploration instructions, never their titles or clues.
+B/Up, A/Confirm, or Back closes the journal. Back while reading does not also
+exit the app; a separate subsequent press exits normally. Start/Down also closes
+reading. Physics freezes while the journal is open, and close/navigation input
+cannot leak into jumping or puzzle operation. Paused diagnostics remain separate.
+
+A 30-bit discovery mask is part of the game snapshot. Finds survive deaths,
+chapter transitions and the replay loop **within the current app session**.
+Exiting the app clears them; SD save/resume is not implemented. Journal content
+and page are snapshotted before rendering so input checkpoints cannot mix pages
+or reveal new discoveries in an older frame. Small object overlays do not
+invalidate terrain/blur caches or allocate another framebuffer.
+
+Validation includes inspection distance/elevation/grounding, duplicate finds,
+all thirty records, death/chapter retention, masked undiscovered pages, text
+bounds, production-input journal opening/navigation/freezing/closing, held-key
+suppression and Back behavior. The existing full-route, cache, compositor,
+pipeline and dithering checks remain in place. Native app version remains the
+cumulative unreleased 1.0.14, above master and published 1.0.13.
+
+The vignette mask allocation is rounded up to 16 bytes so the reduced scene
+that follows it remains aligned after the corner radius was halved. This adds
+seven padding bytes for the 45px radius and preserves the word-load contract.
