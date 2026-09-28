@@ -199,6 +199,12 @@ bool dma_done_callback(
   (void)panel_io;
   (void)edata;
   (void)user_ctx;
+  // End gray row selection before the CPU finishes preparing the next row.
+  // Previously that variable preparation time extended CKV high, changing the
+  // drive dose with scene complexity. Mono retains its established timing.
+  if (g_pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB) {
+    gpio_set_level(kCkvGpio, 0);
+  }
   g_dma_done = true;
   return false;
 }
@@ -537,6 +543,7 @@ bool send_row(uint8_t *data, bool first_row) {
   gpio_set_level(kCkvGpio, 1);
   const esp_err_t err = esp_lcd_panel_io_tx_color(g_panel_io, -1, data, kDmaRowBytes);
   if (err != ESP_OK) {
+    gpio_set_level(kCkvGpio, 0);
     g_dma_done = true;
     ESP_LOGE(kTag, "row transmit failed: %s", esp_err_to_name(err));
     return false;
@@ -732,9 +739,9 @@ void scan_task(void *unused) {
     }
     wait_for_dma();
     portENTER_CRITICAL(&g_buffer_lock);
-    // A submit can arrive while this scan is in progress. Preserve the busy
-    // state when a flip is queued so the producer cannot submit again in the
-    // gap between accepting that flip and completing its first drive pass.
+    // A submit can arrive during this scan. Idle waits must include both
+    // queued frames and unfinished pulses, even though frame admission only
+    // waits for the queued flip to release the back buffer.
     g_drive_pending = (continuing_rows != 0U) || g_flip_req;
     portEXIT_CRITICAL(&g_buffer_lock);
 
@@ -945,8 +952,8 @@ bool epd_video_submit(uint16_t dirty_y, uint16_t dirty_height) {
 bool epd_video_can_submit() {
   bool ready = false;
   portENTER_CRITICAL(&g_buffer_lock);
-  // A free backbuffer does not mean the gray transition has completed. A
-  // replacement frame must not cancel the remaining pulses of the old image.
+  // A free backbuffer can accept a new target before gray settling finishes.
+  // Per-pixel state retains every pulse sent toward the previous target.
   // Use the same admission rule here and inside submit's critical section.
   ready = nativeVideoCanQueueFrame(g_running, g_flip_req,
                                   g_pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB,
