@@ -64,6 +64,16 @@ int main(void) {
     ht_blur_rect(ht_raw,ht_wide,4,HT_BORDER,HT_W-HT_BORDER,HT_BORDER,HT_H-HT_BORDER);
     for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y)
         assert(!memcmp(expected+y*HT_W+HT_BORDER,ht_wide+y*HT_W+HT_BORDER,HT_W-2*HT_BORDER));
+    /* Upscaling retains exact samples, clamps last rows/columns, and cannot
+     * overflow on white/black transitions. Reference is per output pixel. */
+    for(int i=0;i<HT_SCENE_PIXELS;++i) ht_low_scene[i]=(uint8_t)ht_hash((uint32_t)i);
+    ht_upscale_scene();
+    for(int y=0;y<HT_H;++y) for(int x=0;x<HT_W;++x) {
+        int sx=x/2,sy=y/2,nx=ht_min(sx+1,HT_SCENE_W-1),ny=ht_min(sy+1,HT_SCENE_H-1);
+        int a=ht_low_scene[sy*HT_SCENE_W+sx],b=ht_low_scene[ny*HT_SCENE_W+sx];
+        if(x%2) { a=(a+ht_low_scene[sy*HT_SCENE_W+nx])/2; b=(b+ht_low_scene[ny*HT_SCENE_W+nx])/2; }
+        assert(ht_scene[y*HT_W+x]==(y%2?(a+b)/2:a));
+    }
     /* Border and fade are symmetric and leave the central scene unchanged. */
     memset(ht_scene,100,HT_PIXELS); ht_vignette();
     for(int y=0;y<HT_H;++y) for(int x=0;x<HT_W;++x) {

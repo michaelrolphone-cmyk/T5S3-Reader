@@ -1,5 +1,5 @@
 /* Hollow Trail — deterministic one-level platformer and PSRAM raster pipeline.
- * Coordinates are 480x270, output 960x540. No textures, random frame noise,
+ * World/overlays are 480x270; scenery is 240x135; output is 960x540. No textures, random frame noise,
  * floating-point library, framebuffer reads, or per-frame allocation. */
 #include <stdint.h>
 #include <stdbool.h>
@@ -8,6 +8,9 @@
 #include "epd_dither.h"
 #define HT_W 480
 #define HT_H 270
+#define HT_SCENE_W (HT_W/2)
+#define HT_SCENE_H (HT_H/2)
+#define HT_SCENE_PIXELS (HT_SCENE_W*HT_SCENE_H)
 /* Physical pixels are 2x logical: 36px black, fading through 76px. */
 #define HT_BORDER 18
 #define HT_FADE 38
@@ -22,7 +25,7 @@ static bool ht_framed;
 #define HT_TILE_HALO ((HT_W-HT_TILE_W)/2)
 #define HT_CACHE_BAND 64
 #define HT_WARM_STEPS (HT_LAYERS*HT_TILE_SLOTS*(1+3*((HT_H+HT_CACHE_BAND-1)/HT_CACHE_BAND)))
-#define HT_MEMORY (HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS)
+#define HT_MEMORY (HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS)
 #define HT_GOAL 3200
 #define HT_STEP_MS 32u /* Half-speed motion; preserve jump paths and level reachability. */
 
@@ -50,7 +53,7 @@ static bool ht_cache_valid[HT_LAYERS][HT_TILE_SLOTS];
 static struct { bool active; int depth,key,phase,row; } ht_cache_job;
 static bool ht_abort;
 static unsigned ht_cache_builds;
-static uint8_t *ht_corner_mask;
+static uint8_t *ht_corner_mask, *ht_low_scene;
 static int16_t ht_visible_left[HT_H],ht_clear_left[HT_H];
 /* Host callback polls/yields at bounded raster checkpoints; no drawing. */
 static void (*ht_service)(void);
@@ -110,7 +113,7 @@ static void ht_bind(uint8_t *memory) {
         ht_cached_near[d][slot]=cache; cache+=HT_TILE_PIXELS;
         ht_cached_wide[d][slot]=cache; cache+=HT_TILE_PIXELS;
     }
-    ht_corner_mask=cache; ht_mask_init();
+    ht_corner_mask=cache; ht_low_scene=cache+HT_MASK_PIXELS; ht_mask_init();
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
 }
 static void ht_spawn(bool restart) {
@@ -479,36 +482,55 @@ static bool ht_cache_prefetch(int camera,int direction) {
     ht_cache_work();
     return true;
 }
+/* Evaluate lighting at one sample per 2x2 world pixels. Cached source art
+ * retains its original detail and integer parallax offsets, including odd
+ * offsets at strip boundaries. No physics or camera coordinates are scaled. */
 static void ht_composite_cached(int depth,int offset,int focus_x,int focus_y) {
     const int fade=depth>=2?70:45;
-    /* Framing branches and their four-pixel blur end before row 90. */
-    const int height=depth==3?90:HT_H-HT_BORDER;
+    const int height=depth==3?45:HT_SCENE_H-HT_BORDER/2;
     int dy=HT_BORDER-focus_y,dy2=dy*dy;
-    for(int y=HT_BORDER;y<height;++y) {
-        uint8_t *scene=ht_scene+y*HT_W;
-        int left=ht_visible_left[y];
-        int distance=(left-focus_x)*(left-focus_x)+dy2;
-        int delta=1+2*(left-focus_x);
-        for(int x=left;x<HT_W-left;) {
-            int world=offset+x,key=ht_floor_div(world,HT_TILE_W),column=world-key*HT_TILE_W;
-            int count=ht_min(HT_W-left-x,HT_TILE_W-column),slot=ht_cache_slot(key);
-            const uint8_t *near=ht_cached_near[depth][slot]+y*HT_TILE_W+column;
-            const uint8_t *wide=ht_cached_wide[depth][slot]+y*HT_TILE_W+column;
+    for(int y=HT_BORDER/2;y<height;++y) {
+        uint8_t *scene=ht_low_scene+y*HT_SCENE_W;
+        int distance=(HT_BORDER-focus_x)*(HT_BORDER-focus_x)+dy2;
+        int delta=4+4*(HT_BORDER-focus_x);
+        for(int x=HT_BORDER/2;x<HT_SCENE_W-HT_BORDER/2;) {
+            int world=offset+2*x,key=ht_floor_div(world,HT_TILE_W),column=world-key*HT_TILE_W;
+            int count=ht_min(HT_SCENE_W-HT_BORDER/2-x,(HT_TILE_W-column+1)/2),slot=ht_cache_slot(key);
+            const uint8_t *near=ht_cached_near[depth][slot]+(2*y)*HT_TILE_W+column;
+            const uint8_t *wide=ht_cached_wide[depth][slot]+(2*y)*HT_TILE_W+column;
             for(int i=0;i<count;++i,++x) {
                 int v;
-                if(distance<=2500) v=near[i];
-                else if(distance>=53700) v=wide[i]*(256-fade)>>8;
+                if(distance<=2500) v=near[2*i];
+                else if(distance>=53700) v=wide[2*i]*(256-fade)>>8;
                 else {
                     int radial=(distance-2500)/200;
-                    v=(near[i]*256+((int)wide[i]-near[i])*radial)>>8;
+                    v=(near[2*i]*256+((int)wide[2*i]-near[2*i])*radial)>>8;
                     v=v*(256-((radial*fade)>>8))>>8;
                 }
                 scene[x]=(uint8_t)ht_max(scene[x],v);
-                distance+=delta; delta+=2;
+                distance+=delta; delta+=8;
             }
         }
-        dy2+=2*dy+1; ++dy;
-        if((y&31)==31) ht_checkpoint();
+        dy2+=4*dy+4; dy+=2;
+        if((y&15)==15) ht_checkpoint();
+    }
+}
+/* Expand once to the existing overlay surface, then draw the character/UI.
+ * Final packing supplies the second 2x interpolation and physical-pixel dots.
+ * Two-stage bilinear interpolation intentionally softens the scenery only. */
+static void ht_upscale_scene(void) {
+    for(int y=0;y<HT_SCENE_H;++y) {
+        const uint8_t *row=ht_low_scene+y*HT_SCENE_W;
+        const uint8_t *next=ht_low_scene+ht_min(y+1,HT_SCENE_H-1)*HT_SCENE_W;
+        uint8_t *top=ht_scene+2*y*HT_W,*bottom=top+HT_W;
+        for(int x=0;x<HT_SCENE_W;++x) {
+            int nx=ht_min(x+1,HT_SCENE_W-1);
+            int a=row[x],b=row[nx],c=next[x],d=next[nx];
+            top[2*x]=(uint8_t)a; top[2*x+1]=(uint8_t)((a+b)>>1);
+            bottom[2*x]=(uint8_t)((a+c)>>1);
+            bottom[2*x+1]=(uint8_t)((((a+b)>>1)+((c+d)>>1))>>1);
+        }
+        if((y&15)==15) ht_checkpoint();
     }
 }
 static void ht_character(int x,int feet,const ht_game *game) {
@@ -557,9 +579,10 @@ static void ht_render_scene(void) {
     const ht_game game=ht;
     int camera=game.camera/256,px=game.x/256-camera,py=game.y/256-14;
     if(!ht_cache_visible(camera)) return;
-    ht_clear_layer(ht_scene);
+    memset(ht_low_scene,0,HT_SCENE_PIXELS);
     for(int depth=0;depth<HT_LAYERS;++depth)
         ht_composite_cached(depth,ht_layer_offset(depth,camera),px,py);
+    ht_upscale_scene();
     ht_character(px,game.y/256,&game);
     ht_vignette();
 }

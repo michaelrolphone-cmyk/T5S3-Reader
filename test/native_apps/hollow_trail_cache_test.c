@@ -1,5 +1,5 @@
 /* World-strip cache invariants: compare with full viewport geometry and filters,
- * not another cache implementation. Also cover bounded speculative work. */
+ * sampled onto the reduced scene grid, not another cache implementation. Also cover bounded speculative work. */
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,7 +20,23 @@ static void reference(void) {
         else ht_branches(offset);
         ht_blur_region(ht_raw,ht_near,radius[depth],0,HT_W);
         ht_blur_region(ht_near,ht_wide,spread[depth],0,HT_W);
-        ht_composite(depth<2?depth:2,px,py);
+        /* Independent full-resolution lighting reference, sampled afterward. */
+        for(int y=0;y<HT_H;++y) for(int x=0;x<HT_W;++x) {
+            int dx=x-px,dy=y-py,i=y*HT_W+x;
+            int radial=ht_clamp((dx*dx+dy*dy-2500)/200,0,256);
+            int v=(ht_near[i]*(256-radial)+ht_wide[i]*radial)>>8;
+            v=v*(256-((radial*(depth>=2?70:45))>>8))>>8;
+            ht_scene[i]=(uint8_t)ht_max(ht_scene[i],v);
+        }
+    }
+    uint8_t sampled[HT_SCENE_PIXELS];
+    for(int y=0;y<HT_SCENE_H;++y) for(int x=0;x<HT_SCENE_W;++x)
+        sampled[y*HT_SCENE_W+x]=ht_scene[(2*y)*HT_W+2*x];
+    for(int y=0;y<HT_H;++y) for(int x=0;x<HT_W;++x) {
+        int sx=x/2,sy=y/2,nx=ht_min(sx+1,HT_SCENE_W-1),ny=ht_min(sy+1,HT_SCENE_H-1);
+        int top=sampled[sy*HT_SCENE_W+sx],bottom=sampled[ny*HT_SCENE_W+sx];
+        if(x&1) { top=(top+sampled[sy*HT_SCENE_W+nx])/2;bottom=(bottom+sampled[ny*HT_SCENE_W+nx])/2; }
+        ht_scene[y*HT_W+x]=(uint8_t)((y&1)?(top+bottom)/2:top);
     }
     ht_character(px,game.y/256,&game); ht_vignette();
 }
@@ -68,5 +84,5 @@ int main(void) {
     for(int i=0;i<32;++i) assert(memory[HT_MEMORY+i]==0x5a);
     ht_abort=true; assert(!ht_cache_prefetch(2000,1)); assert(!ht_cache_visible(2000));
     free(expected);free(memory);
-    puts("Hollow Trail cache: warm reuse, full-render equivalence, tile boundaries, reversals, teleports, bounds and cancellation PASS");
+    puts("Hollow Trail cache: warm reuse, sampled full-render equivalence, tile boundaries, reversals, teleports, bounds and cancellation PASS");
 }
