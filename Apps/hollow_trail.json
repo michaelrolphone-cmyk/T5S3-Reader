@@ -1,9 +1,17 @@
 {
-  "min_firmware_version": "1.3.27",
-  "version": "1.0.3",
+  "min_firmware_version": "1.3.29",
+  "version": "1.0.4",
   "display_name": "Hollow Trail",
   "file_name": "hollow_trail.elf",
   "icon": "solid:f1bb",
-  "category": ["Games", "Platformer"],
-  "optional": [{"capability": "usb.xinput.gamepad", "api": ">=1"}]
+  "category": [
+    "Games",
+    "Platformer"
+  ],
+  "optional": [
+    {
+      "capability": "usb.xinput.gamepad",
+      "api": ">=1"
+    }
+  ]
 }
