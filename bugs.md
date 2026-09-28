@@ -743,3 +743,34 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 82. Failed display-takeover rollback can strand firmware touch capture
+
+- **Status:** Open.
+- **Affected code:** `src/native/NativeHardwareTakeover.cpp::native_hardware_takeover_begin()`; `nativeTouchSuspend()` / `nativeTouchResume()` ownership state.
+- **Trigger / reproduction:** Start a display-takeover ELF when touch is available; let `nativeTouchSuspend()` succeed, force `display.suspendForExternalOwner()` to fail, and also make the rollback `nativeTouchResume()` fail.
+- **Observed / logically demonstrated failure:** On display-suspend failure, the code calls `(void)nativeTouchResume()` but discards the result, then unconditionally sets `s_touch_borrowed = false` and returns `ESP_ERR_INVALID_STATE`. The takeover never starts, so `native_hardware_takeover_end()` will not perform the normal cleanup. If resume failed, firmware touch capture remains suspended while the only state recording that it needs restoration has been erased.
+- **Likely root cause:** Rollback is best-effort rather than transactional; ownership state is cleared before recovery is confirmed.
+- **Impact:** One compound takeover failure can leave touch input unavailable for the rest of the session/provider lifetime even though the ELF launch itself failed.
+- **Repair direction:** Keep `s_touch_borrowed` set until `nativeTouchResume()` succeeds; retain a recoverable cleanup state and retry restoration before another launch or normal UI use. Add fault-injection coverage for successful touch suspend + display suspend failure + first resume failure, proving a later retry restores touch.
+
+### 83. Battery management never retries a transient first initialization failure
+
+- **Status:** Open.
+- **Affected code:** `lib/Board_T5S3/BoardT5S3.cpp::beginBatteryManagement()`, `configureBq25896()`, `configureBq27220()`, and `shutdownBatteryPower()`; surfaced through `src/native/NativeBatteryBridge.cpp::readState()` and `Apps/battery.c`.
+- **Trigger / reproduction:** Make the first charger or fuel-gauge initialization fail because of a transient I2C/NACK/startup condition, then allow the device/bus to recover and refresh Battery Status or later request battery power shutdown.
+- **Observed / logically demonstrated failure:** `beginBatteryManagement()` sets `batteryInitAttempted = true` before either component initializes. Every later call returns only the cached `bq25896Ready || bq27220Ready` and never reruns either failed initializer. If both fail once, Battery Status stays unavailable despite recovery; if only one fails, that component's telemetry/functionality is missing permanently. If BQ25896 was the failed component, `shutdownBatteryPower()` cannot recover in that boot.
+- **Likely root cause:** A one-shot "attempted" latch is used as if it represented successful initialization, rather than tracking and retrying each independently recoverable component.
+- **Impact:** A brief boot-time I2C/device-readiness glitch can disable battery telemetry, charger state, or hard-power-off functionality until reboot.
+- **Repair direction:** Track readiness per component and retry only failed initializers after their existing failure cleanup, with bounded/backoff retry if desired. Do not suppress a later attempt solely because an earlier attempt ran. Add tests for first-failure/second-success and charger-success/gauge-failure (and inverse) recovery.
+
+### 84. Fast-video teardown can restore the firmware display while the scan task is still alive
+
+- **Status:** Open.
+- **Affected code:** `src/native/NativeVideoBridge.cpp::epd_video_shutdown()`, `video_stop()`, `wait_for_dma()`, and `scan_task()`; `src/native/NativeHardwareTakeover.cpp::native_hardware_takeover_end()`.
+- **Trigger / reproduction:** Start a display-takeover app, then make the raw EPD scan task fail to terminate after `g_running = false`—for example strand it in an outstanding DMA wait/callback path—so `g_scan_task` is still non-null after the 200 × 10 ms shutdown wait.
+- **Observed / logically demonstrated failure:** `epd_video_shutdown()` only logs "scan task did not stop before video teardown" and returns without releasing the panel IO/bus, buffers, or scan task. `video_stop()` has no status and nevertheless sets `s_video_started = false`. The takeover-end path then clears `s_display_borrowed` and calls `display.resumeFromExternalOwner()`. Firmware display ownership can therefore be restored while the raw scan task and its hardware resources are still active.
+- **Likely root cause:** Teardown failure is not represented in the API/state machine; a void shutdown timeout is treated as success by the caller.
+- **Impact:** Firmware and the orphaned scan engine can concurrently own panel GPIO/i80 resources, causing a wedged or corrupted display, resource conflicts, or a crash. Later video starts can also see stale bus/task state despite `s_video_started` being false.
+- **Repair direction:** Make shutdown return explicit success/failure and keep `s_video_started` plus hardware-takeover ownership asserted until task/DMA teardown is confirmed. Add a bounded forced-cancellation/reset path for wedged scan/DMA state before firmware display restoration. Fault-inject a non-terminating scan task/callback and verify firmware display resume is blocked until cleanup succeeds.
