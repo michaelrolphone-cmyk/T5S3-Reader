@@ -31,6 +31,7 @@ int main(void) {
             direction=ht.x/256<target?1:-1;
             if(ht_puzzle_near(&ht)==station) { assert(ht_interact()); direction=0; }
         }
+        if(ht_final_near(&ht) && !ht.verdict) { assert(ht_decide(1)); ht.verdict_read=true; }
         ht_step(direction,jump,true);
         visited|=1u<<ht.level;
     }
@@ -78,6 +79,10 @@ int main(void) {
         assert(!ht_interact() && ht_cache_builds==builds); /* Solved state latches. */
         ht.checkpoint=9; ht_puzzle_state saved=ht.puzzle; ht_spawn(false);
         assert(!memcmp(&saved,&ht.puzzle,sizeof(saved)) && ht.checkpoint==9);
+        if(level==HT_LEVELS-1) {
+            ht.x=HT_PUZZLE_GATE*256; ht.y=ht_land[9].top*256; ht.grounded=true;
+            assert(ht_decide(2)); ht.verdict_read=true;
+        }
         ht.x=HT_GOAL*256; ht.y=ht_land[9].top*256; ht.vy=0; ht_step(1,false,false);
         assert(ht.level==(level+1)%HT_LEVELS && !ht.puzzle.solved && ht.puzzle.progress==0);
     }
@@ -134,7 +139,7 @@ int main(void) {
         for(unsigned line=0;line<2;++line) {
             const char *t=ht_chapters[level].lines[beat][line];
             assert(*t && strlen(t)*6<=366);
-            for(;*t;++t) assert((*t>='A' && *t<='Z') || *t==' ' || *t=='.');
+            for(;*t;++t) assert((*t>='A' && *t<='Z') || *t==' ' || *t=='.' || *t=='?' || *t=='-');
         }
         memset(ht_scene,255,HT_PIXELS); ht_narration(&ht);
         unsigned letters=0;

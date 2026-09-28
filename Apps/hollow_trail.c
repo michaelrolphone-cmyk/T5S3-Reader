@@ -125,8 +125,9 @@ static void ht_input(uint32_t wait) {
     }
     jump_down|=(down&HT_JUMP)!=0; pause_down|=(down&HT_PAUSE)!=0;
     if((down&HT_INTERACT) && !paused && !loading && ht.level==ht_geometry_level) {
-        int page=ht_inspect();
-        if(page>=0) { ht_journal_open((unsigned)page); reading=true; }
+        int page=ht_final_near(&ht)?-1:ht_inspect();
+        if(ht_final_near(&ht)) { ht_journal_tower(); reading=true; }
+        else if(page>=0) { ht_journal_open((unsigned)page); reading=true; }
         else if(ht_puzzle_near(&ht)>=0) (void)ht_interact();
         else { ht_journal_index=true; ht_journal_selection=0; reading=true; }
         if(reading) { jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0; }
@@ -190,6 +191,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     started=true;
     memset(&ht,0,sizeof(ht)); ht_spawn(true);
     reading=false; journal_page=0; ht_journal_index=true; ht_journal_selection=0;
+    ht_journal_deciding=ht_journal_confirm=ht_journal_page_ready=false; ht_read_submitted_revision=0;
     quitting=jump_down=pause_down=paused=mode_down=false; held=previous=0;
     simulation_started=false; simulation_accumulator=0; scene_revision=1;
     ht_service=ht_render_service;
@@ -342,6 +344,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             bool cropped=display_initialized && !prepared_reader && !display_reading;
             if(video->submit(cropped?ht_dirty_top:0,cropped?ht_dirty_height:0)) {
                 display_reading=prepared_reader;
+                if(prepared_reader) ht_read_submitted_revision=prepared_revision;
                 display_initialized=true;
                 last_submit=app->millis(); drawn_revision=prepared_revision; prepared=false;
                 if(prepared_profile) {

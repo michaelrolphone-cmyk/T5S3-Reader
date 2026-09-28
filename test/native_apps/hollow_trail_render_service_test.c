@@ -96,7 +96,7 @@ int main(void) {
     forced_buttons=T5_APP_BUTTON_BACK; ht_input(1); assert(quitting);
     /* Found documents and reached recaps only; preserve history on death and loop. */
     ht.evidence=1u; memset(ht.story_seen,0,sizeof(ht.story_seen)); ht.story_seen[0]=2;
-    unsigned ids[40]; assert(ht_journal_list(ids)==2 && ids[0]==0 && ids[1]==30);
+    unsigned ids[HT_JOURNAL_RECORDS]; assert(ht_journal_list(ids)==2 && ids[0]==0 && ids[1]==30);
     ht_spawn(false); assert(ht.story_seen[0]==2);
     ht.level=1; ht_spawn(true); assert(ht.story_seen[0]==2 && ht.story_seen[1]==1);
     ht_journal_open(0); ht_journal_next=200; ht_journal_length=600;

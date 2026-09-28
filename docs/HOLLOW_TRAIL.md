@@ -1072,3 +1072,25 @@ physical display or SD font performance measurements.
 Versions: Hollow Trail 1.0.14 -> 1.0.15; firmware 1.3.34 -> 1.3.35, both above
 master and the published release index checked for this change. The app requires
 firmware 1.3.35 for the new typography capability.
+
+## Contending accounts and the final decision (1.0.15 revision)
+
+[The implemented story and ending design](HOLLOW_TRAIL_STORY.md) supersedes the
+straightforward rescue/reunion synopsis above. All 30 documents, 30 narration
+beats, chapter recaps and puzzle unlock messages now sustain the sister's and
+keeper's conflicting accounts. Her coercion, manipulation and leadership remain
+plausible as the same observations acquire different explanations.
+
+The last tower now requires **Break the circuit** or **Complete the circuit**,
+with a separate confirmation. The choice changes the final evidence entry and
+adds its result to the journal's witnessed endings. The opposite ending is
+hidden until played. Read the result and press A/Confirm on its last page before
+walking through the exit to restart. B cancels or returns to the journal without
+silently completing the chapter. Both choices and the replay flow have host
+input tests; the existing full-route test exercises the new exit gate.
+
+A reader capability failure now shows a labelled compact fallback with complete
+text and pagination rather than leaving the final gate impossible to complete.
+Normal reading still uses configured typography through the same capability.
+The app remains the cumulative unreleased 1.0.15; this revision adds no firmware
+changes or extra frame buffers. Journal/ending history remains session-only.

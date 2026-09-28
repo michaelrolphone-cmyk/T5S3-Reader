@@ -75,6 +75,8 @@ typedef struct {
     int story_x; /* Furthest progress in this chapter, retained on death. */
     bool grounded;
     ht_puzzle_state puzzle;
+    uint8_t verdict,last_verdict,endings; /* 0 undecided; 1 break; 2 complete; archive bitmask. */
+    bool verdict_read;
     uint8_t story_seen[HT_LEVELS]; /* Reached narration beats; retained with evidence. */
     uint32_t evidence; /* Thirty discoveries, retained across chapters this run. */
 } ht_game;
@@ -194,6 +196,20 @@ static int ht_puzzle_near(const ht_game *game) {
         if(ht_abs(game->x/256-(HT_PUZZLE_FIRST+i*HT_PUZZLE_SPACING))<=22) return i;
     return -1;
 }
+static bool ht_final_near(const ht_game *game) {
+    return game->level==HT_LEVELS-1 && game->puzzle.solved && game->grounded &&
+        game->x/256>=HT_PUZZLE_GATE-22 && game->y/256==ht_level_land(game->level)[9].top;
+}
+static bool ht_final_locked(const ht_game *game) {
+    return game->level==HT_LEVELS-1 && (!game->verdict || !game->verdict_read);
+}
+static bool ht_decide(unsigned choice) {
+    if(choice<1 || choice>2 || ht.verdict || !ht_final_near(&ht)) return false;
+    ht.verdict=ht.last_verdict=(uint8_t)choice;
+    ht.endings|=(uint8_t)(1u<<(choice-1)); ht.verdict_read=false;
+    ht.evidence|=1u<<(HT_LEVELS*3-1); // Last document physically changes at the cabinet.
+    return true;
+}
 /* Edge-triggered by app input, also directly exercised by host gameplay tests. */
 static bool ht_interact(void) {
     int station=ht_puzzle_near(&ht);
@@ -216,6 +232,8 @@ static bool ht_interact(void) {
 }
 static void ht_spawn(bool restart) {
     uint32_t evidence=ht.evidence;
+    uint8_t verdict=restart?0:ht.verdict,last_verdict=ht.last_verdict,endings=ht.endings;
+    bool verdict_read=!restart && ht.verdict_read;
     uint8_t seen[HT_LEVELS]; memcpy(seen,ht.story_seen,sizeof(seen));
     ht_puzzle_state puzzle=ht.puzzle;
     if(restart) memset(&puzzle,0,sizeof(puzzle));
@@ -223,6 +241,7 @@ static void ht_spawn(bool restart) {
     int cp=restart?0:ht.checkpoint, story_x=restart?0:ht.story_x;
     memset(&ht,0,sizeof(ht)); ht.laps=laps; ht.deaths=deaths; ht.level=level;
     ht.evidence=evidence; ht.puzzle=puzzle;
+    ht.verdict=verdict; ht.last_verdict=last_verdict; ht.endings=endings; ht.verdict_read=verdict_read;
     memcpy(ht.story_seen,seen,sizeof(seen));
     if(!ht.story_seen[level]) ht.story_seen[level]=1;
     ht.story_x=story_x; ht.checkpoint=cp; ht.x=(cp?ht_land[cp].left+35:95)*256;
@@ -262,7 +281,7 @@ static void ht_step(int direction,bool jump_pressed,bool jump_held) {
     }
     /* The chapter exit stays closed even if jumped at from above. All three
      * controls and the last checkpoint remain on its accessible side. */
-    if(!ht.puzzle.solved && ht.x>HT_PUZZLE_GATE*256) {
+    if((!ht.puzzle.solved || ht_final_locked(&ht)) && ht.x>HT_PUZZLE_GATE*256) {
         ht.x=HT_PUZZLE_GATE*256; ht.vx=0;
     }
     ht.story_x=ht_max(ht.story_x,ht.x/256);
@@ -270,7 +289,7 @@ static void ht_step(int direction,bool jump_pressed,bool jump_held) {
     if(ht.story_seen[ht.level]<beat) ht.story_seen[ht.level]=(uint8_t)beat;
     if(ht.grounded) ht.stride+=ht_abs(ht.vx);
     if(ht.y>335*256) { ++ht.deaths; ht_spawn(false); return; }
-    if(ht.x>=HT_GOAL*256 && ht.grounded && ht.puzzle.solved) {
+    if(ht.x>=HT_GOAL*256 && ht.grounded && ht.puzzle.solved && !ht_final_locked(&ht)) {
         if(++ht.level==HT_LEVELS) { ht.level=0; ++ht.laps; }
         ht_spawn(true); return;
     }
@@ -1218,6 +1237,10 @@ static const uint8_t *ht_glyph(char ch) {
     static const uint8_t slash[5] = {0x20,0x10,0x08,0x04,0x02};
     static const uint8_t colon[5] = {0x00,0x36,0x36,0x00,0x00};
     static const uint8_t plus[5] = {0x08,0x08,0x3e,0x08,0x08};
+    static const uint8_t question[5] = {0x02,0x01,0x51,0x09,0x06};
+    static const uint8_t comma[5] = {0x00,0x40,0x30,0x00,0x00};
+    static const uint8_t apostrophe[5] = {0x00,0x00,0x03,0x00,0x00};
+    static const uint8_t quote[5] = {0x00,0x03,0x00,0x03,0x00};
     if (ch >= 'a' && ch <= 'z') ch = (char)(ch - 32);
     if (ch >= 'A' && ch <= 'Z') return letters[ch - 'A'];
     if (ch >= '0' && ch <= '9') return digits[ch - '0'];
@@ -1226,6 +1249,10 @@ static const uint8_t *ht_glyph(char ch) {
     if (ch == '/') return slash;
     if (ch == ':') return colon;
     if (ch == '+') return plus;
+    if (ch == '?') return question;
+    if (ch == ',') return comma;
+    if (ch == '\'') return apostrophe;
+    if (ch == '"') return quote;
     return blank;
 }
 
@@ -1252,6 +1279,10 @@ static void ht_narration(const ht_game *game) {
             ht_puzzles[game->level].reveal[line]:
                 (line?"B / UP AWAY FROM CONTROLS OPENS YOUR JOURNAL.":
                       "THE ANSWER IS HIDDEN IN THE THINGS LEFT BEHIND.");
+        if(game->level==HT_LEVELS-1 && game->verdict)
+            text=line?"THE WAY IS OPEN WHEN I HAVE READ WHAT I CHANGED.":
+                (game->verdict==1?"I BROKE THE FEED. HER PLAN INCLUDED MY RESCUE.":
+                                  "I COMPLETED THE FEED. THE PEN WRITES AS HER.");
         int x=(HT_W-(int)strlen(text)*6)/2, y=233+line*10;
         for(;*text;++text,x+=6) {
             const uint8_t *g=ht_glyph(*text);
@@ -1283,7 +1314,18 @@ static void ht_draw_puzzle(const ht_game *game) {
         if(ht_puzzle_near(game)==i) ht_rect(ht_scene,x-12,top+3,24,2,0);
     }
     int x=HT_GOAL-camera;
-    if(!game->puzzle.solved) {
+    if(game->level==HT_LEVELS-1 && game->puzzle.solved) {
+        ht_rect(ht_scene,x-18,top-48,36,48,255);
+        ht_rect(ht_scene,x-15,top-45,30,37,0);
+        ht_rect(ht_scene,x-1,top-45,2,37,255);
+        ht_rect(ht_scene,x-12,top-38,8,19,game->verdict==2?255:140);
+        ht_limb(ht_scene,x+4,top-39,x+11,top-18,1,1,255);
+        if(game->verdict==1) ht_rect(ht_scene,x+2,top-45,13,37,255);
+        ht_disk(ht_scene,x,top-56,4,255);
+        if(game->verdict!=1) ht_disk(ht_scene,x,top-56,2,0);
+        return;
+    }
+    if(!game->puzzle.solved || ht_final_locked(game)) {
         for(int i=-10;i<=10;i+=5) ht_rect(ht_scene,x+i,top-46,2,46,255);
         ht_rect(ht_scene,x-12,top-25,25,4,255);
     } else {
@@ -1295,7 +1337,11 @@ static void ht_puzzle_prompt(const ht_game *game) {
     const ht_puzzle_definition *p=&ht_puzzles[game->level];
     ht_rect(ht_scene,66,33,348,29,255);
     ht_text_color(74,37,p->name,1,0);
-    if(game->puzzle.solved) ht_text_color(74,49,"PASSAGE OPEN - FOLLOW THE LIGHT",1,0);
+    if(game->puzzle.solved && game->level==HT_LEVELS-1) {
+        ht_text_color(74,49,!game->verdict?"B / UP AT THE GLASS: BREAK OR COMPLETE":
+            !game->verdict_read?"B / UP AT THE GLASS: READ THE CHANGED TESTIMONY":
+            "PASSAGE OPEN - WALK ON TO BEGIN ANOTHER JOURNEY",1,0);
+    } else if(game->puzzle.solved) ht_text_color(74,49,"PASSAGE OPEN - FOLLOW THE LIGHT",1,0);
     else if(p->kind==0) {
         char status[]="B / UP RING   NOTES 0/0";
         status[20]=(char)('0'+game->puzzle.progress); status[22]=(char)('0'+p->length);
