@@ -50,6 +50,7 @@ static void ht_perf_finish(const t5_video_api_v1 *video,uint32_t now) {
 #define HT_EXIT 16u
 #define HT_ACCEPT 64u
 #define HT_JOURNAL 128u
+#define HT_BACK 256u /* Reading navigation only; never quits gameplay. */
 #define HT_HAS(api,type,field) ((api) && (api)->struct_size >= offsetof(type,field)+sizeof((api)->field) && (api)->field)
 #include "hollow_trail_journal.inc"
 static void ht_log(const char *message) {
@@ -104,7 +105,7 @@ static void ht_advance(uint32_t now) {
 static void ht_input(uint32_t wait) {
     t5_app_input_t in={0};
     if(!app->poll(&in,wait) || in.exit_requested) { quitting=true; return; }
-    uint32_t buttons=0; bool connected=false,fault=false;
+    uint32_t buttons=0; bool connected=false,fault=false,raw_buttons=false;
     int selected_source=-1; uint64_t selected_device=0;
     const risc_usb_gamepad_api_v1 *providers[]={pad,hid_pad};
     for(unsigned source=0;source<2 && !connected;++source) {
@@ -117,6 +118,7 @@ static void ht_input(uint32_t wait) {
         for(size_t i=0;i<count;++i) if(states[i].connected) {
             connected=true; selected_source=(int)source; selected_device=states[i].device;
             const risc_usb_gamepad_state_v1 *state=&states[i];
+            raw_buttons=state->buttons!=0;
             uint8_t h=state->hat;
             if(h>=5 && h<=7) buttons|=HT_LEFT;
             if(h>=1 && h<=3) buttons|=HT_RIGHT;
@@ -129,7 +131,7 @@ static void ht_input(uint32_t wait) {
              * HID Start/Select=0x80/0x40; XInput=0x200/0x100. */
             if(state->buttons&(source?0x02u:0x01u)) buttons|=HT_JUMP;
             if(state->buttons&(source?0x01u:0x02u)) buttons|=HT_INTERACT|HT_ACCEPT;
-            if(state->buttons&(source?0x04u:0x08u)) buttons|=HT_EXIT;
+            if(state->buttons&(source?0x04u:0x08u)) buttons|=HT_BACK;
             if(state->buttons&(source?0x80u:0x200u)) buttons|=HT_JOURNAL;
             if(state->buttons&(source?0x40u:0x100u)) buttons|=HT_PAUSE;
             break; // One controller owns the frame; never merge receiver slots.
@@ -157,6 +159,10 @@ static void ht_input(uint32_t wait) {
             if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=HT_PAUSE;
             if(in.buttons&T5_APP_BUTTON_BACK) buttons|=HT_EXIT;
         }
+        /* Raw capability ownership suppresses duplicate OS pad navigation.
+         * Keep device Back available with a neutral pad, but never interpret
+         * a face-button report plus mapped Back as an app-exit action. */
+        if(connected && !raw_buttons && (in.buttons&T5_APP_BUTTON_BACK)) buttons|=HT_EXIT;
         if(ht_input_rearm && !buttons) ht_input_rearm=false;
     }
     if(ht_input_rearm) buttons=0; // Release before accepting a new source/recovered report.
@@ -328,7 +334,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_rect(ht_scene,72,38,336,68,0);
                 ht_text(98,45,ht_chapters[rendering_game.level].title,2);
                 ht_text(98,66,"LEFT/RIGHT MOVE   B / UP JUMP",1);
-                ht_text(98,79,"SELECT / DOWN PAUSE   X / BACK EXIT",1);
+                ht_text(98,79,"SELECT / DOWN PAUSE   HOME/BACK EXIT",1);
                 ht_text(98,92,"A / CONFIRM INSPECT   START JOURNAL",1);
             }
             if(!rendering_paused) {
@@ -339,7 +345,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_rect(ht_scene,112,74,256,172,0);
                 ht_text(127,83,"HOLLOW TRAIL 1.0.15",1);
                 ht_text(198,95,"PAUSED",2);
-                ht_text(127,117,"SELECT / DOWN RESUME   X / BACK EXIT",1);
+                ht_text(127,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
                 ht_text(127,133,!ht_dsp_available()?"DSP16: UNAVAILABLE":ht_dsp_composite?"DSP16 COMPOSITOR: ON":"DSP16 COMPOSITOR: OFF",1);
                 ht_text(127,148,"B / UP DSP16   A / CONFIRM JOURNAL",1);
                 char perf[64];

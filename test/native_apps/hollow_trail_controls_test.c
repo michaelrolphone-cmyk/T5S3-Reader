@@ -3,10 +3,10 @@
 #include <stdio.h>
 #include "../../Apps/hollow_trail.c"
 static uint32_t now,mapped;
-static bool healthy=true;
+static bool healthy=true,host_exit;
 static risc_usb_gamepad_state_v1 reports[2][2];
 static bool fake_poll(t5_app_input_t *out,uint32_t wait) {
-    now+=wait; memset(out,0,sizeof(*out)); out->buttons=mapped; return true;
+    now+=wait; memset(out,0,sizeof(*out)); out->buttons=mapped; out->exit_requested=host_exit; return true;
 }
 static uint32_t millis_now(void) {return now;}
 static const t5_app_api_v1 fake_app={.abi_version=1,.struct_size=sizeof(fake_app),.poll=fake_poll,.millis=millis_now};
@@ -41,7 +41,10 @@ int main(void) {
         reports[source][0].hat=8;
         press(source,b[source]); assert(jump_down && !reading && !(held&HT_INTERACT));
         jump_down=false;
-        press(source,a[source]); assert(!reading && !jump_down); // Inspect empty space is inert.
+        reports[source][0].buttons=0; ht_input(1);
+        mapped|=T5_APP_BUTTON_BACK; // Even duplicate mapped Back must not turn A into Exit.
+        reports[source][0].buttons=a[source]; ht_input(1); assert(!reading && !jump_down && !quitting);
+        mapped&=~T5_APP_BUTTON_BACK; // Inspect empty space is inert.
         ht.x=ht_evidence_x(0,0)*256; ht.y=ht_land[1].top*256; ht.vy=0; ht.grounded=true;
         press(source,a[source]); assert(reading && journal_page==0 && ht_evidence_found(&ht,0));
         press(source,x[source]); assert(ht_journal_index && !quitting);
@@ -62,7 +65,11 @@ int main(void) {
         reports[source][1]=reports[source][0]; reports[source][1].buttons=start[source];
         reports[source][0].buttons=0; ht_input(1); assert(!reading); // Never OR a second receiver slot.
         reports[source][1].connected=0;
-        press(source,x[source]); assert(quitting);
+        press(source,x[source]); assert(!quitting); // X only backs out of reading.
+        reports[source][0].buttons=0; mapped=0; ht_input(1);
+        mapped=T5_APP_BUTTON_BACK; ht_input(1); assert(quitting);
+        mapped=0; quitting=false; host_exit=true; ht_input(1); assert(quitting);
+        host_exit=false;
     }
     /* Generic arrow keys cannot open the journal or inspect. Down pauses;
      * Confirm from pause is the explicit no-controller route to the journal. */

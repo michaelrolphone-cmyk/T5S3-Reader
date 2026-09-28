@@ -9,9 +9,14 @@
 | Inspect / use nearby mechanism | A | Confirm |
 | Journal | Start (toggles reading) | Down to pause, then Confirm |
 | Read / confirm decision | A | Confirm |
-| Back in reading; exit from gameplay | X | Back |
+| Back in reading | X | Back |
+| Close app from gameplay | Home / menu shortcut | Home / Back |
 | Pause / resume diagnostics | Select | Down |
 | Toggle DSP benchmark while paused | B | Up |
+
+A and X never close gameplay. A duplicate mapped Back accompanying a raw face
+button is suppressed. Device Back remains available with a neutral controller;
+the host Home/menu exit request remains active in every game screen.
 
 A away from an inspectable object or mechanism is inert. The journal never
 opens as an inspect fallback. Directional inputs cannot directly open it.

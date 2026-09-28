@@ -56,7 +56,7 @@ static void ht_journal_choose(unsigned choice) {
 static void ht_journal_input(uint32_t down) {
     unsigned ids[HT_JOURNAL_RECORDS],count=ht_journal_list(ids);
     if(ht_journal_deciding) {
-        if(down&(HT_EXIT|HT_PAUSE)) {
+        if(down&(HT_BACK|HT_EXIT|HT_PAUSE)) {
             if(ht_journal_confirm) { ht_journal_choose(ht_journal_choice); }
             else { ht_journal_deciding=false; reading=false; }
         } else if(down&HT_LEFT) ht_journal_choose(0);
@@ -68,12 +68,12 @@ static void ht_journal_input(uint32_t down) {
         return;
     }
     if(ht_journal_index) {
-        if(down&(HT_EXIT|HT_PAUSE)) reading=false;
+        if(down&(HT_BACK|HT_EXIT|HT_PAUSE)) reading=false;
         else if((down&HT_ACCEPT) && count) ht_journal_open(ids[ht_journal_selection%count]);
         else if((down&HT_LEFT) && count) ht_journal_selection=(ht_journal_selection+count-1)%count;
         else if((down&HT_RIGHT) && count) ht_journal_selection=(ht_journal_selection+1)%count;
     } else {
-        if(down&(HT_EXIT|HT_PAUSE|HT_ACCEPT)) {
+        if(down&(HT_BACK|HT_EXIT|HT_PAUSE|HT_ACCEPT)) {
             if((down&HT_ACCEPT) && journal_page==HT_LEVELS*3-1 && ht.verdict &&
                ht_journal_page_ready && ht_journal_next==ht_journal_length &&
                ht_read_submitted_revision==scene_revision) {
