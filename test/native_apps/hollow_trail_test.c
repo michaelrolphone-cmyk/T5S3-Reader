@@ -58,6 +58,29 @@ int main(void) {
         memset(ht_cache_valid,0,sizeof(ht_cache_valid)); ht_render_scene();
         assert(!memcmp(expected,ht_scene,HT_PIXELS));
     }
+    /* Cropped foreground convolution must retain the full filter's pixels. */
+    for(int i=0;i<HT_PIXELS;++i) ht_raw[i]=(uint8_t)ht_hash((uint32_t)i);
+    ht_blur_region(ht_raw,expected,4,0,HT_W);
+    ht_blur_rect(ht_raw,ht_wide,4,HT_BORDER,HT_W-HT_BORDER,HT_BORDER,HT_H-HT_BORDER);
+    for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y)
+        assert(!memcmp(expected+y*HT_W+HT_BORDER,ht_wide+y*HT_W+HT_BORDER,HT_W-2*HT_BORDER));
+    /* Border and fade are symmetric and leave the central scene unchanged. */
+    memset(ht_scene,100,HT_PIXELS); ht_vignette();
+    for(int y=0;y<HT_H;++y) for(int x=0;x<HT_W;++x) {
+        int edge=ht_min(ht_min(x,HT_W-1-x),ht_min(y,HT_H-1-y));
+        int wanted=edge<=HT_BORDER?255:edge>=HT_FADE?100:
+            255-155*(edge-HT_BORDER)/(HT_FADE-HT_BORDER);
+        assert(ht_scene[y*HT_W+x]==wanted);
+    }
+    /* Fast packing of hidden pixels equals the generic packer, in both modes. */
+    uint8_t *generic=malloc(960u*540u/4u); assert(generic);
+    for(int mono=0;mono<2;++mono) {
+        int stride=mono?120:240;
+        ht_framed=true; ht_pack_format(frame,stride,mono);
+        ht_framed=false; ht_pack_format(generic,stride,mono);
+        assert(!memcmp(frame,generic,(size_t)stride*540u));
+    }
+    free(generic);
     free(expected);
     clock_t start=clock();
     for(unsigned i=0;i<sizeof(positions)/sizeof(positions[0]);++i) {

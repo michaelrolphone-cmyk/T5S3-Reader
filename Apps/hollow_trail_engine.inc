@@ -8,6 +8,10 @@
 #include "epd_dither.h"
 #define HT_W 480
 #define HT_H 270
+/* Physical pixels are 2x logical: 36px black, fading through 76px. */
+#define HT_BORDER 18
+#define HT_FADE 38
+static bool ht_framed;
 #define HT_PIXELS (HT_W * HT_H)
 #define HT_MEMORY (HT_PIXELS * 10u)
 #define HT_GOAL 3200
@@ -52,6 +56,7 @@ static void ht_clear_layer(uint8_t *dst) {
     }
 }
 static void ht_bind(uint8_t *memory) {
+    ht_framed=false;
     ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
     ht_temp=memory+8*HT_PIXELS; ht_filter=(int16_t *)ht_temp; ht_scene=memory+3*HT_PIXELS;
     ht_cached_near[0]=ht_near; ht_cached_wide[0]=ht_wide;
@@ -169,8 +174,8 @@ static void ht_tree(uint8_t *b,int x,int base,int height,int width,uint32_t seed
 static uint8_t ht_average(int sum,uint32_t reciprocal) {
     return (uint8_t)(((uint32_t)sum*reciprocal)>>24);
 }
-static void ht_blur_horizontal(const uint8_t *src,int radius,uint32_t reciprocal,int x0,int x1) {
-    for(int y=0;y<HT_H;++y) {
+static void ht_blur_horizontal(const uint8_t *src,int radius,uint32_t reciprocal,int x0,int x1,int y0,int y1) {
+    for(int y=y0;y<y1;++y) {
         const uint8_t *row=src+y*HT_W; int sum=0;
         for(int k=-radius;k<=radius;++k) sum+=row[ht_clamp(x0+k,0,HT_W-1)];
         for(int x=x0;x<x1;++x) {
@@ -180,9 +185,9 @@ static void ht_blur_horizontal(const uint8_t *src,int radius,uint32_t reciprocal
         if((y&31)==31) ht_checkpoint();
     }
 }
-static void ht_blur_region(const uint8_t *src,uint8_t *dst,int radius,int x0,int x1) {
+static void ht_blur_rect(const uint8_t *src,uint8_t *dst,int radius,int x0,int x1,int y0,int y1) {
     if(!radius) {
-        for(int y=0;y<HT_H;++y) {
+        for(int y=y0;y<y1;++y) {
             if(ht_math) (void)ht_math->copy_bytes(dst+y*HT_W+x0,src+y*HT_W+x0,(size_t)(x1-x0));
             else memcpy(dst+y*HT_W+x0,src+y*HT_W+x0,(size_t)(x1-x0));
         }
@@ -190,21 +195,22 @@ static void ht_blur_region(const uint8_t *src,uint8_t *dst,int radius,int x0,int
     }
     int n=radius*2+1;
     uint32_t reciprocal=(0x1000000u+(uint32_t)n-1u)/(uint32_t)n;
-    ht_blur_horizontal(src,radius,reciprocal,x0,x1);
+    ht_blur_horizontal(src,radius,reciprocal,x0,x1,ht_max(0,y0-radius),ht_min(HT_H,y1+radius));
     /* Keep vertical sums in 960 bytes of stack and visit PSRAM by rows.
      * Column-strided reads would evict cache lines on every sample. */
     int16_t sums[HT_W] __attribute__((aligned(16)))={0};
     for(int k=-radius;k<=radius;++k) {
-        const int16_t *row=ht_filter+ht_clamp(k,0,HT_H-1)*HT_W;
+        const int16_t *row=ht_filter+ht_clamp(y0+k,0,HT_H-1)*HT_W;
         for(int x=x0;x<x1;++x) sums[x]+=row[x];
     }
-    for(int y=0;y<HT_H;++y) {
+    for(int y=y0;y<y1;++y) {
         const int16_t *add=ht_filter+ht_min(HT_H-1,y+radius+1)*HT_W;
         const int16_t *sub=ht_filter+ht_max(0,y-radius)*HT_W;
         uint8_t *row=dst+y*HT_W;
         for(int x=x0;x<x1;++x) {
             row[x]=ht_average(sums[x],reciprocal);
         }
+        if(y+1==y1) break;
         if(ht_math) {
             /* 0..4845 sums, 0..255 samples: even the temporary addition
              * fits int16_t exactly. SIMD handles eight columns at a time. */
@@ -213,6 +219,9 @@ static void ht_blur_region(const uint8_t *src,uint8_t *dst,int radius,int x0,int
         } else for(int x=x0;x<x1;++x) sums[x]=(int16_t)(sums[x]+add[x]-sub[x]);
         if((y&15)==15) ht_checkpoint();
     }
+}
+static void ht_blur_region(const uint8_t *src,uint8_t *dst,int radius,int x0,int x1) {
+    ht_blur_rect(src,dst,radius,x0,x1,0,HT_H);
 }
 static void ht_shift_layer(uint8_t *buffer,int delta) {
     int count=HT_W-ht_abs(delta);
@@ -247,7 +256,13 @@ static void ht_prepare_layer(int depth,int key) {
         int old_x=330+j*period-ht_cache_key[depth],new_x=330+j*period-key;
         same_geometry=(old_x>=-100 && old_x<=HT_W+100)==(new_x>=-100 && new_x<=HT_W+100);
     }
-    if(depth<2 && ht_cache_valid[depth] && same_geometry && ht_abs(delta)<HT_W/3) {
+    if(depth==2) {
+        /* Keep a four-sample convolution halo outside the visible rectangle.
+         * Foreground cannot reuse shifted caches: branches move independently. */
+        int halo=HT_BORDER-spread[2];
+        ht_blur_rect(ht_raw,ht_near,0,halo,HT_W-halo,halo,HT_H-halo);
+        ht_blur_rect(ht_near,ht_wide,spread[2],HT_BORDER,HT_W-HT_BORDER,HT_BORDER,HT_H-HT_BORDER);
+    } else if(depth<2 && ht_cache_valid[depth] && same_geometry && ht_abs(delta)<HT_W/3) {
         ht_shift_layer(ht_near,delta); ht_shift_layer(ht_wide,delta);
         ht_blur_edges(ht_raw,ht_near,radius[depth],ht_abs(delta)+radius[depth]);
         ht_blur_edges(ht_near,ht_wide,spread[depth],ht_abs(delta)+radius[depth]+spread[depth]);
@@ -262,13 +277,13 @@ static void ht_composite(int depth,int focus_x,int focus_y) {
      * Keep both original rounding points. All intermediates fit signed 32-bit
      * for screen-relative focus coordinates supplied by ht_render_scene. */
     const int fade=depth==2?70:45;
-    int dy=-focus_y,dy2=dy*dy;
-    for(int y=0;y<HT_H;++y) {
+    int dy=HT_BORDER-focus_y,dy2=dy*dy;
+    for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
         const uint8_t *near=ht_near+y*HT_W,*wide=ht_wide+y*HT_W;
         uint8_t *scene=ht_scene+y*HT_W;
-        int distance=focus_x*focus_x+dy2;
-        int delta=1-2*focus_x;
-        for(int x=0;x<HT_W;++x) {
+        int distance=(HT_BORDER-focus_x)*(HT_BORDER-focus_x)+dy2;
+        int delta=1+2*(HT_BORDER-focus_x);
+        for(int x=HT_BORDER;x<HT_W-HT_BORDER;++x) {
             int v;
             if(distance<=2500) {
                 v=near[x]; /* Fully focused: no blur mix or fade. */
@@ -386,6 +401,25 @@ static void ht_character(int x,int feet,const ht_game *game) {
     ht_rect(ht_scene,x+(f>0?1:-4),feet-24,2,2,0);
     ht_rect(ht_scene,x+(f>0?4:-1),feet-24,1,2,0);
 }
+/* Darkness alpha is screen-fixed; it never changes the world or camera.
+ * Apply once after all layers, with no multiply in the unshaded center. */
+static void ht_vignette(void) {
+    for(int y=0;y<HT_H;++y) {
+        uint8_t *row=ht_scene+y*HT_W;
+        int ey=ht_min(y,HT_H-1-y);
+        if(ey<HT_BORDER) { memset(row,255,HT_W); continue; }
+        memset(row,255,HT_BORDER);
+        memset(row+HT_W-HT_BORDER,255,HT_BORDER);
+        for(int x=HT_BORDER;x<HT_W-HT_BORDER;++x) {
+            if(ey>=HT_FADE && x==HT_FADE) x=HT_W-HT_FADE;
+            int edge=ht_min(ey,ht_min(x,HT_W-1-x));
+            if(edge<HT_FADE)
+                row[x]=(uint8_t)(255-(255-row[x])*(edge-HT_BORDER)/(HT_FADE-HT_BORDER));
+        }
+        if((y&31)==31) ht_checkpoint();
+    }
+    ht_framed=true;
+}
 static void ht_render_scene(void) {
     /* Input checkpoints may advance live physics. Freeze the rendered frame
      * so trees, focus and character all use one consistent game snapshot. */
@@ -401,6 +435,7 @@ static void ht_render_scene(void) {
         ht_checkpoint(); ht_prepare_layer(depth,key); ht_composite(depth,px,py);
     }
     ht_character(px,game.y/256,&game);
+    ht_vignette();
 }
 /* Four physical gray levels. A fixed dispersed 8x8 threshold resolves only
  * fractional blur/fog values between them, with no temporal shimmer. Exact
@@ -435,12 +470,22 @@ static uint8_t ht_quantize(int value,int rank) {
  * samples and keep the format branch outside the physical-pixel loop. */
 static void ht_pack_mono(uint8_t *out,int stride) {
     for(int y=0;y<HT_H;++y) {
+        if(ht_framed && (y<16 || y>=HT_H-16)) {
+            memset(out+2*y*stride,255,HT_W/4);
+            memset(out+(2*y+1)*stride,255,HT_W/4);
+            continue;
+        }
+        int left=ht_framed?16:0,right_edge=HT_W-left;
         const uint8_t *row=ht_scene+y*HT_W;
         const uint8_t *next=ht_scene+ht_min(y+1,HT_H-1)*HT_W;
         uint8_t *top=out+2*y*stride,*bottom=top+stride;
+        if(left) {
+            memset(top,255,left/4); memset(bottom,255,left/4);
+            memset(top+right_edge/4,255,left/4); memset(bottom+right_edge/4,255,left/4);
+        }
         const uint8_t *rt=epd_dither_rank[(2*y)&7],*rb=epd_dither_rank[(2*y+1)&7];
-        int a=row[0],c=next[0];
-        for(int x=0;x<HT_W;x+=4) {
+        int a=row[left],c=next[left];
+        for(int x=left;x<right_edge;x+=4) {
             uint8_t t=0,b=0;
             #pragma GCC unroll 4
             for(int k=0;k<4;++k) {
@@ -467,11 +512,21 @@ static void ht_pack_format(uint8_t *out,int stride,bool mono) {
     /* Two logical samples produce four physical columns in both rows.
      * Reuse bilinear samples and remove per-pixel parity/edge branches. */
     for(int y=0;y<HT_H;++y) {
+        if(ht_framed && (y<16 || y>=HT_H-16)) {
+            memset(out+2*y*stride,255,HT_W/2);
+            memset(out+(2*y+1)*stride,255,HT_W/2);
+            continue;
+        }
+        int left=ht_framed?16:0,right_edge=HT_W-left;
         const uint8_t *row=ht_scene+y*HT_W;
         const uint8_t *next=ht_scene+ht_min(HT_H-1,y+1)*HT_W;
         uint8_t *top=out+y*2*stride,*bottom=top+stride;
+        if(left) {
+            memset(top,255,left/2); memset(bottom,255,left/2);
+            memset(top+right_edge/2,255,left/2); memset(bottom+right_edge/2,255,left/2);
+        }
         const uint8_t *rt=rank[(y*2)&7],*rb=rank[(y*2+1)&7];
-        for(int x=0;x<HT_W;x+=2) {
+        for(int x=left;x<right_edge;x+=2) {
             int nx=ht_min(HT_W-1,x+2),r=(x*2)&7;
             int a=row[x],b=(a+row[x+1])/2,c=row[x+1],d=(c+row[nx])/2;
             top[x/2]=(uint8_t)((ht_quantize(a,rt[r])<<6)|(ht_quantize(b,rt[r+1])<<4)|
