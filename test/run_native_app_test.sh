@@ -14,6 +14,10 @@ c++ -std=c++17 -Wall -Wextra -Werror \
   "$repo_dir/test/native_apps/native_video_gray_test.cpp" -o "$binary"
 "$binary"
 c++ -std=c++17 -Wall -Wextra -Werror \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/native_video_profile_test.cpp" -o "$binary"
+"$binary"
+c++ -std=c++17 -Wall -Wextra -Werror \
   "$repo_dir/test/native_apps/native_video_idle_test.cpp" -o "$binary"
 "$binary"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
