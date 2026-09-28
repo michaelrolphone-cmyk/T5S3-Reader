@@ -622,39 +622,25 @@ static void fps_draw_enemies(uint8_t *buffer, uint32_t now) {
 }
 
 static void fps_draw_ground(uint8_t *buffer) {
-    const float dir_x = fps_cos(g_player_angle);
-    const float dir_y = fps_sin(g_player_angle);
-    const float plane_x = -dir_y * FPS_FOV_PLANE;
-    const float plane_y = dir_x * FPS_FOV_PLANE;
-
+    /* The same fine dispersed dots used in the first wall-shading preview.
+     * They are fixed to display pixels so the 1-pixel pattern cannot crawl
+     * between video frames. Wall lighting remains independent of materials. */
+    static const uint8_t dots[8][8] = {
+        {41, 8,52, 7,45,15,47, 4},
+        {18,35,27,60,28,55,19,57},
+        {54, 1,49, 9,62, 3,40,14},
+        {16,56,21,53,20,38,25,43},
+        {59,12,42, 6,39,10,34, 5},
+        {24,33,17,46,31,50,29,61},
+        {36, 2,58,11,63, 0,51,13},
+        {26,44,30,37,22,32,23,48}
+    };
     for (int y = FPS_HORIZON + 1; y <= FPS_VIEW_BOTTOM; ++y) {
         uint8_t *row = buffer + (size_t)y * g_surface.stride_bytes;
-        memset(row, 0x55, g_surface.stride_bytes); /* solid light-gray material */
-
-        const float distance = ((float)FPS_VIEW_H * 0.5f) /
-            (float)(y - FPS_HORIZON);
-        /* Far dots would occupy less than a pixel and cause noisy aliasing. */
-        if (distance > 5.0f) continue;
-        float world_x = g_player_x + distance * (dir_x - plane_x);
-        float world_y = g_player_y + distance * (dir_y - plane_y);
-        const float step_x = distance * (2.0f * plane_x) / (float)FPS_LOGICAL_W;
-        const float step_y = distance * (2.0f * plane_y) / (float)FPS_LOGICAL_W;
-        const uint8_t dot_tone = distance > 3.5f ? 2u : 3u;
-
-        for (int x = 0; x < FPS_LOGICAL_W; ++x) {
-            /* Four dots per map tile on each axis. Sample their centers in
-             * world coordinates so they remain fixed while the camera moves. */
-            const float ux = world_x * 4.0f;
-            const float uy = world_y * 4.0f;
-            const float fx = ux - (float)(int)ux;
-            const float fy = uy - (float)(int)uy;
-            const float dot_x = fx - 0.5f;
-            const float dot_y = fy - 0.5f;
-            if (dot_x * dot_x + dot_y * dot_y < 0.0256f)
-                fps_tone_pixel(buffer, x, y, dot_tone);
-            world_x += step_x;
-            world_y += step_y;
-        }
+        memset(row, 0x55, g_surface.stride_bytes); /* light-gray ground */
+        for (int x = 0; x < FPS_LOGICAL_W; ++x)
+            if (dots[y & 7][x & 7] < 20u)
+                fps_tone_pixel(buffer, x, y, 3u);
     }
 }
 
