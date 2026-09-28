@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 79. 3D Model Viewer leaks the raw-touch provider lease when touch setup fails after acquisition
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1420](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260928-1420/bugs.md)
+
+- **Affected code:** `Apps/model_viewer.c`, especially `mv_touch_begin()`, `mv_touch_end()`, and the touch-setup failure path in `app_main()`.
+- **Trigger / reproduction:** Launch Model Viewer with an installed `input.touch.raw` provider whose capability acquisition succeeds and returns a lease/interface, but whose exposed ABI is invalid/incomplete or whose `subscribe()` call returns 0. Then leave the resulting **TOUCH UNAVAILABLE** screen.
+- **Observed / logically demonstrated failure:** `mv_touch_begin()` stores the acquired lease in `g_touch_lease` and the interface in `g_touch` before validating the ABI and before subscribing. On either later failure it simply returns `false`. The caller displays the error, stops video, frees the model, and returns without calling `mv_touch_end()`. The acquired provider lease therefore remains unreleased even though the app never became usable.
+- **Likely root cause:** Touch acquisition is multi-stage, but cleanup is only wired into the normal app shutdown path instead of every post-acquire failure path.
+- **Impact:** A bad or transiently failing touch provider can leave a capability lease alive after Model Viewer exits, retaining provider resources and potentially making later provider activation/update/uninstall fail or report busy until a broader runtime cleanup/reboot.
+- **Repair direction:** Make `mv_touch_begin()` transactional: on any failure after acquisition, unsubscribe if needed, release the lease, and clear all touch globals before returning `false`. Alternatively, have the caller always invoke a safe/idempotent `mv_touch_end()` on failed setup. Add fixtures for invalid ABI and subscribe failure and assert the acquired lease is released exactly once.
+
+### 80. 3D Model Viewer silently truncates long OBJ records and renders incomplete valid faces
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1420](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260928-1420/bugs.md)
+
+- **Affected code:** `Apps/model_viewer.c`, `MV_LINE_CAP`, `mv_reader_line()`, `mv_obj_face_tokens()`, and both passes of `mv_load_obj()`.
+- **Trigger / reproduction:** Open a syntactically valid OBJ containing a face record longer than 1023 bytes, for example one polygon with enough vertex/texture/normal index tokens that its single `f ...` line exceeds `MV_LINE_CAP - 1`.
+- **Observed / logically demonstrated failure:** `mv_reader_line()` stops copying once the fixed 1024-byte destination is full but continues consuming bytes until the newline and returns success without any truncation flag. Both OBJ passes therefore parse only the retained prefix. The first pass allocates for the truncated token count and the second triangulates the same prefix, so loading succeeds and the omitted portion of the valid polygon is silently discarded rather than causing a load error.
+- **Likely root cause:** The line reader conflates “complete line” and “prefix of an over-capacity line”; the OBJ loader has no way to distinguish them.
+- **Impact:** Large but valid OBJ polygons can be displayed with missing triangles/surfaces while the UI reports a successful model load, making geometry inspection unreliable.
+- **Repair direction:** Have `mv_reader_line()` report overflow separately and make OBJ/STL text parsing reject an overlong structural record, or use a growable/PSRAM-backed record buffer with an explicit practical bound. Add a regression with a >1023-byte face line and verify either the complete polygon is triangulated or the file is rejected explicitly, never partially accepted.
+
+### 81. WebDAV COPY can report success after a premature source read and publish a truncated destination
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1420](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260928-1420/bugs.md)
+
+- **Affected code:** `src/network/WebDAVHandler.cpp`, `WebDAVHandler::handleCopy()`, specifically the streaming copy loop and `copyOk` success decision.
+- **Trigger / reproduction:** Issue WebDAV `COPY` for a regular file and inject an SD/source read failure after at least one chunk has copied but before the source's declared size is exhausted.
+- **Observed / logically demonstrated failure:** The loop runs while `srcFile.available()`, calls `srcFile.read()`, and executes `break` when `bytesRead <= 0` without setting `copyOk = false` or checking the number of bytes copied against the original source size. After closing both files, `copyOk` is still true, so the server returns 201/204 and retains the shorter destination. Only short destination writes are treated as errors.
+- **Likely root cause:** Premature/failed source reads are treated as ordinary EOF, and successful completion is inferred from absence of an output-write error rather than verified byte-count completion.
+- **Impact:** A transient SD read fault can silently create or overwrite a WebDAV destination with truncated data while the client is told the COPY succeeded.
+- **Repair direction:** Snapshot the expected source size before copying, track bytes read/written, fail on any zero/negative read before the expected count is reached, and require the final copied count to equal the source size before publishing success. Prefer staging the destination so failure cannot expose a partial file. Add a fault-injection test that fails a mid-copy source read and verifies an error response and no truncated published destination.
