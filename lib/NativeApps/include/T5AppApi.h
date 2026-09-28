@@ -30,6 +30,12 @@ typedef struct {
     bool exit_requested; // Sticky after configured exit gestures.
 } t5_app_input_t;
 
+// Completed gesture in the same oriented screen coordinates as tap input.
+typedef struct {
+    int16_t start_x, start_y;
+    int16_t end_x, end_y;
+} t5_app_swipe_t;
+
 typedef struct {
     char name[T5_APP_DIRENT_NAME_MAX];
     uint64_t size;
@@ -175,6 +181,10 @@ typedef struct {
     // launch. Size-check before use; display-takeover apps can preserve the
     // user's active light level instead of loading an unrelated app default.
     uint8_t (*backlight_level)(void);
+    // Append-only: consumes one completed swipe, or returns false if none.
+    // Call after poll() on the app owner task; size-check before use. Does not
+    // change t5_app_input_t, so old ELFs keep their original poll-buffer ABI.
+    bool (*take_touch_swipe)(t5_app_swipe_t *out);
 } t5_app_api_v1;
 
 // Native application entry point. Native ELFs are built with -fvisibility=hidden,

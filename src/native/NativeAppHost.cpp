@@ -255,6 +255,15 @@ bool poll(t5_app_input_t* out, uint32_t waitMs) {
   out->exit_requested = s->exiting;
   return true;
 }
+bool takeTouchSwipe(t5_app_swipe_t* out) {
+  auto* s = current();
+  if (!s || !out || s->exiting) return false;
+  MappedInputManager::TouchPoint start{}, end{};
+  if (!s->input.getTouchSwipe(start, end, s->renderer)) return false;
+  *out = {static_cast<int16_t>(start.x), static_cast<int16_t>(start.y),
+          static_cast<int16_t>(end.x), static_cast<int16_t>(end.y)};
+  return true;
+}
 uint32_t clockMs() { return ::millis(); }
 void* psramAlloc(size_t size) {
   if (!current() || !size) return nullptr;
@@ -1172,7 +1181,8 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            psramFree,
                            logMessage,
                            fillRoundedRectTone,
-                           backlightLevel};
+                           backlightLevel,
+                           takeTouchSwipe};
 }  // namespace
 
 bool installRequiredNativeApp(const char* artifact, std::string& displayName,

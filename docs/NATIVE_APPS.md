@@ -491,6 +491,17 @@ selected app loads. When the selected app later returns, the firmware reloads th
 springboard and rescans `/Apps`. Power/Home leaves the Apps session; Back leaves
 the springboard according to its app logic.
 
+Swipe left for the next app page or right for the previous page; both directions
+wrap at the ends, matching the page dots. Paging also works while editing Home
+pins. Vertical/diagonal gestures and drags shorter than 50 pixels do not page or
+activate an icon. A page change redraws once after the gesture completes.
+Springboard 1.2.3 requires firmware 1.3.29 for swipe delivery.
+
+Native UI apps can size-check the append-only `T5AppApi.take_touch_swipe` member
+and call it after `poll()`. It consumes one completed gesture and returns its
+start/end positions in oriented screen coordinates as `t5_app_swipe_t`. The
+existing `t5_app_input_t` layout is unchanged for previously compiled ELFs.
+
 Copy `springboard.elf` and `springboard.json` from the same release to `/Apps`.
 For the normal springboard experience, copy every other app as a matching pair as
 well.
@@ -626,7 +637,7 @@ it is built only for CI validation and is not a shipped or installable app.
 
 ### Bounded CPU math acceleration
 
-Firmware 1.3.27 adds the versioned `T5MathApi.h` table for bounded 16-bit vector
+Firmware 1.3.29 adds the versioned `T5MathApi.h` table for bounded 16-bit vector
 addition/subtraction and bulk memory operations. ESP32-S3 uses bundled ESP-DSP
 assembly behind alignment/tail guards; callers use the same portable contract.
 See [Native math API](NATIVE_MATH_API.md) for bounds, ownership and integration.
