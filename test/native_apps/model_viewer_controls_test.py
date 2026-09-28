@@ -155,7 +155,7 @@ static float travel(unsigned interval) {
     for(unsigned ms=0;ms<1000;) {
         ms+=interval;if(ms>1000)ms=1000;
         assert(mv_motion_step(&m,MV_PAD_RIGHT,ms,true,&d));total+=d.yaw;
-        assert(d.yaw<=1.95f*.048f+1e-7f);
+        assert(d.yaw<=3.9f*.048f+1e-7f);
     }
     return total;
 }
@@ -171,25 +171,29 @@ static void motion_tests(void) {
     d=advance(MV_PAD_RB|MV_PAD_UP);assert(d.pan_y<0 && !d.pitch);
     d=advance(MV_PAD_RB|MV_PAD_DOWN);assert(d.pan_y>0 && !d.pitch);
     d=advance(MV_PAD_RB|MV_PAD_LB|MV_PAD_UP);assert(d.pan_y<0 && d.zoom_factor==1);
-    d=advance(MV_PAD_RB|MV_PAD_RIGHT|MV_PAD_DOWN);assert(fabsf(d.pan_x*d.pan_x+d.pan_y*d.pan_y-(2.88f*2.88f))<1e-5f);
+    d=advance(MV_PAD_RB|MV_PAD_RIGHT|MV_PAD_DOWN);assert(fabsf(hypotf(d.pan_x,d.pan_y)-23.04f)<5e-6f);
     assert(!mv_motion_action(MV_PAD_LB|MV_PAD_LEFT));assert(!mv_motion_action(MV_PAD_LEFT|MV_PAD_RIGHT));
     assert(!mv_motion_action(MV_PAD_UP|MV_PAD_DOWN));
     assert(fabsf(travel(8)-travel(16))<1e-5f);assert(fabsf(travel(8)-travel(40))<1e-5f);
-    assert(fabsf(travel(13)-1.95f*.94f)<1e-5f);
+    assert(fabsf(travel(13)-3.9f*.94f)<1e-5f);
     mv_motion_t m={0};assert(!mv_motion_step(&m,0,0,true,&d));
     assert(!mv_motion_step(&m,MV_PAD_RIGHT,5000,true,&d));
-    assert(mv_motion_step(&m,MV_PAD_RIGHT,5008,true,&d));assert(d.yaw<0.001f);
+    assert(mv_motion_step(&m,MV_PAD_RIGHT,5008,true,&d));assert(d.yaw<0.002f);
     assert(!mv_motion_step(&m,0,5016,true,&d) && d.yaw==0);
     assert(!mv_motion_step(&m,0,10000,true,&d));
     assert(!mv_motion_step(&m,MV_PAD_RIGHT,10008,true,&d));
     for(unsigned t=10016;t<11000;t+=8) assert(!mv_motion_step(&m,MV_PAD_RIGHT,t,false,&d));
     assert(m.pending_ms==MV_MOTION_MAX_FRAME_MS);
-    assert(mv_motion_step(&m,MV_PAD_RIGHT,11000,true,&d));assert(d.yaw<=1.95f*.048f);
+    assert(mv_motion_step(&m,MV_PAD_RIGHT,11000,true,&d));assert(d.yaw<=3.9f*.048f);
     assert(!mv_motion_step(&m,MV_PAD_RB|MV_PAD_UP,11008,true,&d));
     assert(mv_motion_step(&m,MV_PAD_RB|MV_PAD_UP,11016,true,&d) && !d.yaw && d.pan_y<0);
     assert(!mv_motion_step(&m,0,11024,false,&d) && !m.pending_ms);
     assert(!mv_motion_step(&m,MV_PAD_LEFT,11032,true,&d));
-    assert(mv_motion_step(&m,MV_PAD_LEFT,11040,true,&d) && d.yaw<0);
+    assert(!mv_motion_step(&m,MV_PAD_LEFT,11040,true,&d) && !d.yaw);
+    assert(!mv_motion_step(&m,0,11048,true,&d));
+    assert(!mv_motion_step(&m,0,11096,true,&d));
+    assert(!mv_motion_step(&m,MV_PAD_LEFT,11104,true,&d));
+    assert(mv_motion_step(&m,MV_PAD_LEFT,11112,true,&d) && d.yaw<0);
     m=(mv_motion_t){0};assert(!mv_motion_step(&m,MV_PAD_UP,UINT32_MAX-7u,true,&d));
     assert(mv_motion_step(&m,MV_PAD_UP,8,true,&d) && d.pitch<0 && d.pitch>-.02f);
     puts("motion: all requested chords, rate independence, start ramp, release, mode changes, bounded backlog, rollover PASS");
@@ -220,18 +224,18 @@ static void precision_tests(void) {
         assert(fabsf(d.yaw-normal.yaw)<1e-7f && fabsf(d.pan_y-normal.pan_y)<1e-7f);
     }
     assert(!mv_motion_action(MV_PAD_FINE));
-    /* Actual 8 ms updates are 3x the 1.2.0 steady-state rates, not merely labels. */
-    assert(fabsf(advance(MV_PAD_RIGHT).yaw - 3.0f*.65f*.008f)<1e-7f);
-    assert(fabsf(advance(MV_PAD_RB|MV_PAD_RIGHT).pan_x - 3.0f*120.0f*.008f)<1e-6f);
-    assert(fabsf(logf(advance(MV_PAD_LB|MV_PAD_UP).zoom_factor) - 3.0f*.75f*.008f)<2e-7f);
-    puts("precision: 3x normal rates, exact quarter rotation/pan and quarter log-zoom, live A changes PASS");
+    /* Actual 8 ms updates are 2x rotation and 8x pan/zoom versus 1.2.1, not merely labels. */
+    assert(fabsf(advance(MV_PAD_RIGHT).yaw - 2.0f*1.95f*.008f)<1e-7f);
+    assert(fabsf(advance(MV_PAD_RB|MV_PAD_RIGHT).pan_x - 8.0f*360.0f*.008f)<1e-6f);
+    assert(fabsf(logf(advance(MV_PAD_LB|MV_PAD_UP).zoom_factor) - 8.0f*2.25f*.008f)<2e-7f);
+    puts("precision: 2x rotation and 8x pan/zoom rates, exact quarter rotation/pan and quarter log-zoom, live A changes PASS");
 }
 static void integration_tests(void) {
     t5_app_input_t none={0};mv_reset_view();g_motion=(mv_motion_t){0};
     g_controller.held=MV_PAD_RIGHT;ready=false;g_draw_pending=false;
     float yaw=g_view.yaw;assert(mv_buttons(&none,1000));assert(mv_buttons(&none,2000));
     assert(g_view.yaw==yaw && !g_draw_pending);
-    ready=true;assert(mv_buttons(&none,2008));assert(g_view.yaw>yaw && g_view.yaw-yaw<.094f && g_draw_pending);
+    ready=true;assert(mv_buttons(&none,2008));assert(g_view.yaw>yaw && g_view.yaw-yaw<.188f && g_draw_pending);
     g_controller.held=0;yaw=g_view.yaw;assert(mv_buttons(&none,2016));assert(mv_buttons(&none,2024));assert(g_view.yaw==yaw);
     g_controller.held=MV_PAD_LB|MV_PAD_UP;g_view.zoom=6.999f;
     for(unsigned t=3000;t<5000;t+=16) { assert(mv_buttons(&none,t)); }
@@ -246,6 +250,7 @@ static void integration_tests(void) {
     g_controller.held=MV_PAD_FINE;assert(mv_buttons(&none,8016));assert(!memcmp(&saved,&g_view,sizeof(saved)));
     g_controller.held=0;assert(mv_buttons(&none,8032));assert(!memcmp(&saved,&g_view,sizeof(saved)));
     g_controller.held=MV_PAD_BACK;assert(!mv_buttons(&none,8048));
+    g_motion=(mv_motion_t){0};
     mocks_reset();mv_controller_open(&g_controller,&caps);connect_pad(0,10,8,0);mv_controller_poll(&g_controller);
     connect_pad(0,10,2,0);g_render_service_ms=0;clock_ms=16;g_render_interactive=true;
     assert(mv_render_service()); /* held rotation must not starve interactive frames */
@@ -302,7 +307,99 @@ static void arbitration_tests(void) {
     input_state=(t5_app_input_t){0};
     puts("arbitration: HID/XInput pan/zoom plus duplicate directions/A, faults, unplug neutral handback, Back PASS");
 }
-int main(void) { mapping_tests();provider_tests();motion_tests();precision_tests();integration_tests();arbitration_tests();return 0; }
+/* Exercise the unchanged app handler and its render checkpoint with the
+ * provider's current snapshot AND duplicate mapped input. The previous suite
+ * kept the bumper permanently set, so it never tested the release-order hole. */
+static void gesture_sample(unsigned provider, uint8_t hat, uint32_t buttons, uint32_t ms) {
+    connect_pad(provider,42,hat,buttons);
+    mv_controller_poll(&g_controller);
+    input_state=(t5_app_input_t){.buttons=MV_MAPPED_CAMERA_BUTTONS};
+    assert(mv_buttons(&input_state,ms));
+    clock_ms=ms+4u;g_render_service_ms=clock_ms-16u;g_render_interactive=true;
+    assert(mv_render_service() && !g_render_input_pending);
+}
+static void exclusive_gesture_tests(void) {
+    const uint8_t hats[]={0,2,4,6};
+    for(unsigned provider=0;provider<2;++provider) for(unsigned fine=0;fine<2;++fine)
+    for(unsigned mode=0;mode<2;++mode) for(unsigned axis=0;axis<4;++axis) {
+        if(mode && (axis==1 || axis==3)) continue;
+        mocks_reset();mv_controller_open(&g_controller,&caps);
+        connect_pad(provider,42,8,0);mv_controller_poll(&g_controller);
+        g_motion=(mv_motion_t){0};g_render_input_pending=false;ready=true;
+        mv_reset_view();g_view.yaw=.8f;g_view.pitch=.6f;
+        const uint32_t a=fine?(provider?2u:1u):0u;
+        const uint32_t bumper=mode?0x10u:0x20u;
+        gesture_sample(provider,8,bumper|a,1000); /* Bumper before direction. */
+        for(unsigned ms=1008;ms<=1160;ms+=8) gesture_sample(provider,hats[axis],bumper|a,ms);
+        assert(g_view.yaw==.8f && g_view.pitch==.6f);
+        assert(g_motion.ramp_ms==120u);
+        mv_view_t saved=g_view;
+        /* Bumper disappears while D-pad remains down, even changes direction.
+         * Neither raw rotation nor mapped rotation/reset may slip through. */
+        for(unsigned ms=1168;ms<=1328;ms+=8) {
+            gesture_sample(provider,ms<1248?hats[axis]:hats[(axis+2u)%4u],a,ms);
+            assert(!memcmp(&saved,&g_view,sizeof(saved)) && !g_motion.pending_ms);
+        }
+        assert(g_motion.ramp_ms==120u); /* No slow re-ramp on a lost modifier. */
+        g_view.zoom=1;g_view.pan_x=g_view.pan_y=0;
+        gesture_sample(provider,hats[axis],bumper|a,1336);
+        assert(g_view.yaw==.8f && g_view.pitch==.6f);
+        if(mode) assert(g_view.zoom!=1 && !g_view.pan_x && !g_view.pan_y);
+        else assert(g_view.zoom==1 && (g_view.pan_x || g_view.pan_y));
+        /* Releasing direction first but retaining the bumper keeps ownership. */
+        gesture_sample(provider,8,bumper|a,1344);
+        saved=g_view;
+        gesture_sample(provider,2,a,1352);
+        gesture_sample(provider,2,a,1360);
+        assert(!memcmp(&saved,&g_view,sizeof(saved)));
+        /* One brief fully-neutral report must not unlock rotation. */
+        gesture_sample(provider,8,a,1368);
+        gesture_sample(provider,2,a,1376);
+        gesture_sample(provider,2,a,1440);
+        assert(!memcmp(&saved,&g_view,sizeof(saved)));
+        /* A can stay held through the neutral rearm. */
+        gesture_sample(provider,8,a,1448);
+        gesture_sample(provider,8,a,1496);
+        gesture_sample(provider,2,a,1504);
+        gesture_sample(provider,2,a,1512);
+        assert(g_view.yaw>saved.yaw && g_view.pitch==saved.pitch);
+        /* Explicit mode change is allowed without neutral, never via rotate. */
+        gesture_sample(provider,0,0x10u|a,1520);
+        gesture_sample(provider,0,0x10u|a,1528);
+        const float yaw=g_view.yaw,pitch=g_view.pitch;
+        gesture_sample(provider,0,0x30u|a,1536); /* Both: RB wins. */
+        gesture_sample(provider,0,0x30u|a,1544);
+        assert(g_view.yaw==yaw && g_view.pitch==pitch && g_motion.bumper_mode==MV_PAD_RB);
+        input_state=(t5_app_input_t){.buttons=T5_APP_BUTTON_BACK};
+        assert(!mv_buttons(&input_state,1552));
+        mv_controller_close(&g_controller);
+    }
+    /* Time-based neutral rearming must also work across uint32_t rollover. */
+    mv_motion_t m={0};mv_motion_delta_t d;
+    assert(!mv_motion_step(&m,MV_PAD_RB,UINT32_MAX-64u,true,&d));
+    assert(!mv_motion_step(&m,0,UINT32_MAX-16u,true,&d));
+    assert(!mv_motion_step(&m,0,31u,true,&d));
+    assert(!mv_motion_step(&m,MV_PAD_RIGHT,39u,true,&d));
+    assert(mv_motion_step(&m,MV_PAD_RIGHT,47u,true,&d) && d.yaw>0);
+    input_state=(t5_app_input_t){0};
+    puts("gestures: missing bumpers, both release orders, neutral blips, resume, A, live mode changes and rollover PASS");
+}
+static void fast_zoom_accuracy_tests(void) {
+    /* The old degree-4 expression at z=-.864 is measurably asymmetric.
+     * Verify the entire new operating range, not just a single small frame. */
+    for(unsigned i=0;i<=2000;++i) {
+        const float z=-.864f+1.728f*(float)i/2000.0f;
+        const float actual=mv_zoom_factor(z);
+        assert(actual>0 && fabsf(actual/expf(z)-1.0f)<0.000002f);
+    }
+    for(unsigned ms=1;ms<=48;++ms) {
+        const float z=18.0f*(float)ms*.001f;
+        assert(fabsf(logf(mv_zoom_factor(z*.25f))-.25f*logf(mv_zoom_factor(z)))<0.000001f);
+        assert(fabsf(mv_zoom_factor(z)*mv_zoom_factor(-z)-1.0f)<0.000002f);
+    }
+    puts("zoom: accurate 8x rate across 1..48 ms frames, reciprocal zoom and quarter-speed logarithmic precision PASS");
+}
+int main(void) { mapping_tests();provider_tests();motion_tests();precision_tests();integration_tests();arbitration_tests();exclusive_gesture_tests();fast_zoom_accuracy_tests();return 0; }
 '''
 
 
@@ -326,7 +423,7 @@ class ControllerTests(unittest.TestCase):
 
     def test_render_and_manifest_integration(self):
         manifest = json.loads((ROOT / "Apps/model_viewer.json").read_text())
-        self.assertEqual(manifest["version"], "1.2.1")
+        self.assertEqual(manifest["version"], "1.2.2")
         for capability in ["usb.hid.gamepad", "usb.xinput.gamepad"]:
             self.assertIn({"capability": capability, "api": ">=1"}, manifest["optional"])
         self.assertIn("g_draw_pending && mv_render(true)", APP)

@@ -19,10 +19,11 @@
 #define MV_PAD_DEVICE_LIMIT 4u
 #define MV_MOTION_RAMP_MS 120u
 #define MV_MOTION_MAX_FRAME_MS 48u
-#define MV_ROTATE_RADIANS_PER_SEC 1.95f
-#define MV_PAN_PIXELS_PER_SEC 360.0f
-#define MV_ZOOM_RATE_PER_SEC 2.25f
+#define MV_ROTATE_RADIANS_PER_SEC 3.90f
+#define MV_PAN_PIXELS_PER_SEC 2880.0f
+#define MV_ZOOM_RATE_PER_SEC 18.0f
 #define MV_FINE_SPEED_SCALE 0.25f
+#define MV_MODE_NEUTRAL_MS 48u
 
 typedef struct {
     const risc_usb_gamepad_api_v1 *api;
@@ -43,6 +44,8 @@ typedef struct {
 typedef struct {
     uint32_t last_ms, action, ramp_ms, pending_ms;
     bool initialized;
+    uint32_t bumper_mode, neutral_since_ms;
+    bool neutral_pending;
 } mv_motion_t;
 
 typedef struct {
@@ -203,6 +206,43 @@ static uint32_t mv_motion_action(uint32_t held) {
     return action;
 }
 
+/* A pan/zoom gesture cannot silently become rotation because the bumper was
+ * released before the D-pad, or was absent in an intervening raw snapshot.
+ * Remember mode admission, NOT old movement: when the bumper is missing,
+ * movement pauses. Only an observed 48 ms neutral D-pad + bumpers rearms
+ * unmodified rotation. A does not prevent neutral rearming. Explicit LB/RB
+ * mode changes remain immediate and RB keeps priority when both are held. */
+static uint32_t mv_motion_gesture_action(mv_motion_t *motion, uint32_t held,
+                                         uint32_t now) {
+    const uint32_t bumper = (held & MV_PAD_RB) ? MV_PAD_RB : (held & MV_PAD_LB);
+    if (bumper) {
+        motion->bumper_mode = bumper;
+        motion->neutral_pending = false;
+    } else if (motion->bumper_mode) {
+        if (held & MV_PAD_DIRECTIONS) {
+            motion->neutral_pending = false;
+        } else if (!motion->neutral_pending) {
+            motion->neutral_pending = true;
+            motion->neutral_since_ms = now;
+        } else if ((uint32_t)(now - motion->neutral_since_ms) >= MV_MODE_NEUTRAL_MS) {
+            motion->bumper_mode = 0;
+            motion->neutral_pending = false;
+        }
+        return 0u;
+    }
+    return mv_motion_action(held);
+}
+
+/* exp(z) over the full new bound |z| <= .864, evaluated with Horner's
+ * method. The old short-range polynomial is inaccurate at 8x zoom speed.
+ * This ninth-order form also avoids repeated-squaring roundoff at fine speed
+ * and imports no libm/division routine into the native ELF. */
+static float mv_zoom_factor(float z) {
+    return 1.0f + z * (1.0f + z * (0.5f + z * ((1.0f/6.0f) +
+           z * ((1.0f/24.0f) + z * ((1.0f/120.0f) + z * ((1.0f/720.0f) +
+           z * ((1.0f/5040.0f) + z * ((1.0f/40320.0f) + z * (1.0f/362880.0f)))))))));
+}
+
 /* Observe on every poll, including render checkpoints. Only apply a delta when
  * a new frame can start. Fractional motion is retained in the camera; pending
  * time is bounded so a busy display/long mesh pass cannot produce a catch-up
@@ -210,9 +250,16 @@ static uint32_t mv_motion_action(uint32_t held) {
 static bool mv_motion_step(mv_motion_t *motion, uint32_t held, uint32_t now,
                             bool frame_ready, mv_motion_delta_t *delta) {
     *delta = (mv_motion_delta_t){.zoom_factor = 1.0f};
-    const uint32_t action = mv_motion_action(held);
+    const uint32_t action = mv_motion_gesture_action(motion, held, now);
     uint32_t elapsed = now - motion->last_ms;
     motion->last_ms = now;
+    if (!action && motion->bumper_mode && (held & MV_PAD_DIRECTIONS) &&
+        !(held & (MV_PAD_LB | MV_PAD_RB))) {
+        /* Pause without replay or a new start ramp if the same chord returns.
+         * Never integrate the time spent missing its modifier. */
+        motion->pending_ms = 0;
+        return false;
+    }
     if (!motion->initialized || action != motion->action) {
         /* Precision may be pressed/released mid-gesture. Preserve the start
          * ramp on speed-only changes, but never carry old-speed pending time. */
@@ -248,8 +295,7 @@ static bool mv_motion_step(mv_motion_t *motion, uint32_t held, uint32_t now,
         delta->pan_y = (float)dy * distance;
     } else if (action & MV_PAD_LB) {
         const float z = -(float)dy * MV_ZOOM_RATE_PER_SEC * dt;
-        /* exp(z) for |z| <= .108, without a libm dependency. */
-        delta->zoom_factor = 1.0f + z + 0.5f*z*z + (1.0f/6.0f)*z*z*z + (1.0f/24.0f)*z*z*z*z;
+        delta->zoom_factor = mv_zoom_factor(z);
     } else {
         delta->yaw = (float)dx * MV_ROTATE_RADIANS_PER_SEC * dt;
         delta->pitch = (float)dy * MV_ROTATE_RADIANS_PER_SEC * dt;
