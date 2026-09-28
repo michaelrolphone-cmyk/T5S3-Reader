@@ -26,6 +26,14 @@ int main(void) {
     assert(fake_now>110 && ht.x>start+3*256 && !(held&HT_RIGHT));
     assert(!memcmp(expected,ht_scene,HT_PIXELS));
     assert(scene_revision>1);
+    /* Real-time pacing: 640ms at full walking speed covers 50 logical pixels,
+     * half the former distance. Exercise the production accumulator. */
+    ht_service=NULL; ht_spawn(true); held=HT_RIGHT; ht.vx=640;
+    simulation_started=false; simulation_accumulator=0;
+    paused=pause_down=jump_down=false;
+    start=ht.x; ht_advance(0);
+    for(uint32_t now=8;now<=640;now+=8) ht_advance(now);
+    assert(ht.ticks==20 && ht.x-start==50*256);
     free(expected); free(memory);
     puts("Hollow Trail: simulation advances during render; frame snapshot stays coherent PASS");
     return 0;
