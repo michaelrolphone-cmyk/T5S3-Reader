@@ -27,10 +27,27 @@ static unsigned original(const uint8_t *src,uint8_t *state,uint8_t *out) {
  }
  return changed|(pending<<1);
 }
+// Previously shipped LUT implementation retained only as a benchmark baseline.
+static unsigned previous_lookup(const uint8_t *source,uint8_t *state,uint8_t *drive) {
+    const size_t bytes=120;
+    unsigned flags=0;
+    for(size_t i=0;i<bytes;++i) {
+      unsigned pixels=source[i];
+      unsigned a=table.entries[(state[0]<<2)|(pixels>>6)];
+      unsigned b=table.entries[(state[1]<<2)|((pixels>>4)&3)];
+      unsigned c=table.entries[(state[2]<<2)|((pixels>>2)&3)];
+      unsigned d=table.entries[(state[3]<<2)|(pixels&3)];
+      state[0]=a; state[1]=b; state[2]=c; state[3]=d; state+=4;
+      drive[0]=static_cast<uint8_t>(((a>>4)&0xf0)|((b>>8)&15));
+      drive[1]=static_cast<uint8_t>(((c>>4)&0xf0)|((d>>8)&15)); drive+=2;
+      flags|=a|b|c|d;
+    }
+    return (flags>>12)&3;
+}
 static unsigned lookup(const uint8_t *src,uint8_t *state,uint8_t *out) {
  return table.row(src,state,out,120);
 }
-static uint8_t src[8][64800],state[259200],other[259200],out[129600],expected[129600];
+alignas(4) static uint8_t src[8][64800],state[259200],other[259200],out[129600],expected[129600];
 static double now(){return double(clock())/CLOCKS_PER_SEC;}
 int main(int argc,char **) {
  table.init();
@@ -42,9 +59,25 @@ int main(int argc,char **) {
   unsigned a=original(input,state,out),b=lookup(input,other,expected);
   assert(a==b&&!memcmp(state,other,480)&&!memcmp(out,expected,240));
  }
+ // Mixed per-pair states, not just uniform state bytes; poison drive bytes.
+ for(int trial=0;trial<100;++trial) {
+  for(int i=0;i<480;++i) {rng=rng*1664525+1013904223;state[i]=rng>>24;}
+  memcpy(other,state,480);memset(out,0xa5,240);memset(expected,0x5a,240);
+  unsigned a=original(src[trial%8],state,out),b=lookup(src[trial%8],other,expected);
+  assert(a==b&&!memcmp(state,other,480)&&!memcmp(out,expected,240));
+ }
+ // Every source byte has a canonical settled word; skip must output no drive,
+ // keep state intact and set neither changed nor unfinished.
+ for(unsigned pixels=0;pixels<256;++pixels) {
+  alignas(4) uint32_t cell=table.settled[pixels];uint8_t source=(uint8_t)pixels;
+  uint8_t drive[4]={0xa5,0xa5,0xa5,0xa5};
+  assert(table.row(&source,(uint8_t *)&cell,drive,1)==0);
+  assert(cell==table.settled[pixels] && drive[0]==0 && drive[1]==0);
+  assert(drive[2]==0xa5 && drive[3]==0xa5);
+ }
  memset(state,0,sizeof(state));memset(other,0,sizeof(other));
  for(int f=0;f<40;++f)for(int y=0;y<540;++y){
-  int frame=(f/5)%8;
+  int frame=f<16?f%8:(f/5)%8;
   unsigned a=original(src[frame]+y*120,state+y*480,out+y*240);
   unsigned b=lookup(src[frame]+y*120,other+y*480,expected+y*240);
   assert(a==b);
@@ -55,13 +88,13 @@ int main(int argc,char **) {
  for(int moving=0;moving<2;++moving){
   double times[2][5];unsigned checksum=0;
   for(int trial=0;trial<5;++trial)for(int pass=0;pass<2;++pass){
-   int v=(trial+pass)%2;memset(state,0,sizeof(state));auto fn=v?lookup:original;
+   int v=(trial+pass)%2;memset(state,0,sizeof(state));auto fn=v?lookup:previous_lookup;
    double start=now();
    for(int f=0;f<80;++f)for(int y=0;y<540;++y)checksum+=fn(src[moving?f%8:0]+y*120,state+y*480,out+y*240);
    times[v][trial]=(now()-start)*1000/80;
   }
   for(auto &t:times)std::sort(t,t+5);
-  printf("%s: current %.3f ms; LUT %.3f ms; %.1f%% less; checksum %u\n",moving?"retarget every scan":"settle unchanged target",times[0][2],times[1][2],100*(1-times[1][2]/times[0][2]),checksum);
+  printf("%s: previous LUT %.3f ms; word/skip %.3f ms; %.1f%% less; checksum %u\n",moving?"retarget every scan":"settle unchanged target",times[0][2],times[1][2],100*(1-times[1][2]/times[0][2]),checksum);
  }
  puts("All 1024 transitions plus 40 full scan sequences match state, drive bytes and flags.");
 }

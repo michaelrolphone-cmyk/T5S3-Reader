@@ -159,6 +159,7 @@ constexpr uint8_t kPanelPowerMask =
     (1U << t5s3_epd::kPcaBitVcomCtrl) |
     (1U << t5s3_epd::kPcaBitTpsWakeup);
 
+static_assert(kStateRowBytes%4U==0, "mono state rows must preserve word alignment");
 static_assert((t5s3_epd::kActiveWidth % 8U) == 0U, "active width must be byte aligned");
 static_assert((t5s3_epd::kPanelWidth % 4U) == 0U, "panel width must be 2bpp packed");
 static_assert(

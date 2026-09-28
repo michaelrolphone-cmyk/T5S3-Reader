@@ -750,3 +750,46 @@ ASan/UBSan and input-service tests pass. Physical display timings remain for
 device measurement; no FPS gain is asserted from this host test.
 The pause panel also identifies the app version to disambiguate device reports.
 Version: Hollow Trail 1.0.12 -> 1.0.13.
+
+### Reduce scan preparation traffic (firmware 1.3.34)
+
+Owner timing was SCAN 115ms / PREP 108ms / DMA 1ms / PACE 0, with scanner/app
+cores 1/0. That places the measured cost in preparation, not residual DMA or
+target-rate sleep. Installed app/firmware versions were not supplied with that
+reading; ROWS 540 does not establish that the 466-row update was active.
+
+The shared mono converter now uses one aligned 32-bit state read and one write
+per eight pixels instead of four byte reads and four byte writes. The firmware's
+heap allocation and 480-byte row stride guarantee alignment; a compile-time
+stride assertion documents it. A new 256-entry settled-word table adds 1KB of
+internal RAM (3KB total lookup storage). If a state word exactly matches the
+canonical settled state for the eight target pixels, conversion emits zero
+drive and skips all transition lookups and state writeback. In-progress,
+changed, startup and noncanonical states still run the original lookup rules.
+Idle reinforcement remains a separate later pass and therefore still works.
+
+The bounded converter is explicitly non-inlined into an IRAM section, avoiding
+flash instruction-fetch contention while app and scanner access external RAM.
+The target compiler probe emits a 229-byte converter with word state accesses
+and no memcpy calls in the converter. This probe used the real Xtensa GCC and
+a minimal attribute-header stub; it does not substitute for a full firmware
+link. No app ABI, waveform command, pulse count, scan cap or frame admission
+change. No app version bump is required: existing monochrome video consumers
+benefit when firmware is upgraded from 1.3.33 to 1.3.34.
+
+Sanitizer regression checks cover every two-pixel state/target combination,
+100 mixed-state rows, all 256 settled words with poisoned output/canaries, and
+40 full scans including retargeting every scan and later settling. State, drive
+bytes and changed/pending flags match the original arithmetic. Optional
+`native_video_mono_test --bench` now compares against the shipped byte-access
+lookup, not only the much older branch-based converter.
+
+Host `-Os` comparison against that shipped lookup, five alternating trials of
+80 scans each: seeded unchanged targets 0.265 -> 0.069ms (74% less); seeded
+random targets changing every scan 0.266 -> 0.295ms (11% more). With eight actual
+Hollow Trail views at camera 1100..1170, stepping 10 logical pixels and using the
+production renderer/packer: unchanged target 0.260 -> 0.071ms (72.6% less),
+scrolling targets 0.278 -> 0.213ms (23.5% less). These exclude DMA and do not
+simulate ESP32 PSRAM or the benefit of IRAM. The shortcut helps coherent game
+images; it is not a universal win for random noise. Device PREP/SCAN/FPS and
+optical measurements remain necessary to establish the physical result.
