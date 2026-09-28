@@ -495,7 +495,7 @@ Swipe left for the next app page or right for the previous page; both directions
 wrap at the ends, matching the page dots. Paging also works while editing Home
 pins. Vertical/diagonal gestures and drags shorter than 50 pixels do not page or
 activate an icon. A page change redraws once after the gesture completes.
-Springboard 1.2.3 requires firmware 1.3.26 for swipe delivery.
+Springboard 1.2.3 requires firmware 1.3.27 for swipe delivery.
 
 Native UI apps can size-check the append-only `T5AppApi.take_touch_swipe` member
 and call it after `poll()`. It consumes one completed gesture and returns its
