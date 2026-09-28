@@ -1,6 +1,7 @@
 #include "T5AppApi.h"
 #include "T5HardwareTakeover.h"
 #include "T5VideoApi.h"
+#include "epd_dither.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -144,6 +145,13 @@ static void fps_log(const char *message) {
  * Packed 2-bit pixels encode white, light gray, dark gray and black. */
 static void fps_tone_pixel(uint8_t *buffer, int x, int y, uint8_t tone) {
     if (!buffer || x < 0 || y < 0 || x >= FPS_LOGICAL_W || y >= FPS_LOGICAL_H) return;
+    if (g_surface.pixel_format == T5_VIDEO_PIXEL_MONO_1BPP_MSB) {
+        size_t offset=(size_t)y*g_surface.stride_bytes+(unsigned)x/8u;
+        uint8_t mask=(uint8_t)(0x80u>>(x&7));
+        bool black=epd_dither_black((uint8_t)((tone&3u)*85u),(unsigned)x,(unsigned)y);
+        buffer[offset]=(uint8_t)((buffer[offset]&~mask)|(black?mask:0u));
+        return;
+    }
     const size_t offset = (size_t)y * g_surface.stride_bytes + (size_t)(x >> 2);
     const int shift = 6 - ((x & 3) * 2);
     buffer[offset] = (uint8_t)((buffer[offset] & ~(3u << shift)) |
@@ -159,6 +167,16 @@ static void fps_tone_vspan(uint8_t *buffer, int x, int y0, int y1, uint8_t tone)
     y0 = fps_max_i(y0, 0);
     y1 = fps_min_i(y1, FPS_LOGICAL_H - 1);
     if (y0 > y1) return;
+    if (g_surface.pixel_format == T5_VIDEO_PIXEL_MONO_1BPP_MSB) {
+        const uint8_t mask=(uint8_t)(0x80u>>(x&7));
+        uint8_t values[8];
+        for(unsigned y=0;y<8;++y)
+            values[y]=epd_dither_black((uint8_t)((tone&3u)*85u),(unsigned)x,y)?mask:0;
+        uint8_t *row=buffer+(size_t)y0*g_surface.stride_bytes+(x>>3);
+        for(int y=y0;y<=y1;++y,row+=g_surface.stride_bytes)
+            *row=(uint8_t)((*row&~mask)|values[y&7]);
+        return;
+    }
     const int shift = 6 - ((x & 3) * 2);
     const uint8_t mask = (uint8_t)(3u << shift);
     const uint8_t value = (uint8_t)((tone & 3u) << shift);
@@ -637,7 +655,12 @@ static void fps_draw_ground(uint8_t *buffer) {
     };
     for (int y = FPS_HORIZON + 1; y <= FPS_VIEW_BOTTOM; ++y) {
         uint8_t *row = buffer + (size_t)y * g_surface.stride_bytes;
-        memset(row, 0x55, g_surface.stride_bytes); /* light-gray ground */
+        if (g_surface.pixel_format == T5_VIDEO_PIXEL_MONO_1BPP_MSB) {
+            uint8_t bits=0;
+            for(unsigned x=0;x<8;++x)
+                bits=(uint8_t)((bits<<1)|epd_dither_black(85,x,(unsigned)y));
+            memset(row,bits,g_surface.stride_bytes);
+        } else memset(row, 0x55, g_surface.stride_bytes); /* light-gray ground */
         for (int x = 0; x < FPS_LOGICAL_W; ++x)
             if (dots[y & 7][x & 7] < 20u)
                 fps_tone_pixel(buffer, x, y, 3u);
