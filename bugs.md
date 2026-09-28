@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,39 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+### 115. Replacing an EPUB at the same path reuses the previous book's cache
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260928-0821`.
+
+- **Affected code:** `lib/Epub/Epub.h::Epub()`, `lib/Epub/Epub.cpp::load()`, and `lib/Epub/Epub/BookMetadataCache.cpp::load()`; dependent cached metadata, spine/TOC, CSS, sections, covers, and thumbnails live under the same pathname-derived cache directory.
+- **Trigger / reproduction:** Open an EPUB once so its cache is built, then replace that EPUB file in place with a different valid book using the same pathname and open it again without manually clearing the reader cache.
+- **Observed / logically demonstrated failure:** The `Epub` constructor derives `cachePath` only from `std::hash<std::string>{}(filepath)`. `load()` immediately trusts an existing version-compatible `book.bin`, and `BookMetadataCache::load()` contains no source-file size, timestamp, digest, ZIP identity, or other generation check. The replacement therefore inherits the old title/author, spine and TOC offsets, CSS/section state, and cover caches. Subsequent chapter lookups can address paths that existed only in the previous archive, so the UI can show stale metadata and navigation or fail to open content from the replacement.
+- **Likely root cause:** Cache identity is bound to the storage pathname rather than to the EPUB generation stored at that pathname.
+- **Impact:** Updating, re-downloading, or replacing a book without changing its filename can silently present data from a different book and leave reading/navigation broken until the cache is manually removed.
+- **Repair direction:** Persist a source identity with the cache and validate it before accepting `book.bin`—prefer a robust archive fingerprint, or at minimum a generation tuple that changes on replacement. On mismatch, invalidate the complete EPUB cache tree before rebuilding so metadata, spine/TOC, CSS, sections, covers, and thumbnails cannot mix generations. Add a regression that builds a cache for book A, replaces the same path with book B, and proves B is re-indexed.
+
+### 116. OPF author metadata is corrupted when Expat splits one creator's text across callbacks
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260928-0821`.
+
+- **Affected code:** `lib/Epub/Epub/parsers/ContentOpfParser.cpp::characterData()`, `startElement()`, and `endElement()` for `dc:creator`.
+- **Trigger / reproduction:** Parse a valid OPF containing one `<dc:creator>` whose character data is delivered in more than one Expat callback. A deterministic test can pad the XML so an ordinary creator name crosses a parser input-buffer boundary, then feed the document through the existing streaming parser.
+- **Observed / logically demonstrated failure:** While state is `IN_BOOK_AUTHOR`, every character-data callback executes `if (!author.empty()) author.append(", ");` before appending that callback's bytes. Character-data callbacks are stream fragments, not creator-element boundaries. If one creator arrives as `"Jane"` and `" Doe"`, the stored author becomes `"Jane,  Doe"`. Additional callback splits insert additional commas, even though the OPF contains only one creator. The corrupted value is then copied into `BookMetadata` and persisted in `book.bin`.
+- **Likely root cause:** The parser uses callback invocation count as a proxy for the number of `dc:creator` elements.
+- **Impact:** Valid EPUBs can display and permanently cache malformed author names depending on XML chunking, entity handling, or parser buffering, so the same metadata can vary with streaming boundaries.
+- **Repair direction:** Accumulate character data into a per-element `currentCreator` buffer and append it to the aggregate author string exactly once when `</dc:creator>` closes; add the separator only between completed creator elements. Add tests that feed the same OPF at different chunk sizes and verify identical single- and multi-author metadata.
+
+### 117. ContainerParser rejects a valid namespace-prefixed EPUB container.xml
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260928-0821`; EPUB OCF container schema: https://www.w3.org/TR/epub-33/#sec-container-metainf-container.xml
+
+- **Affected code:** `lib/Epub/Epub/parsers/ContainerParser.cpp::startElement()` and `endElement()`; caller `lib/Epub/Epub.cpp::findContentOpfFile()`.
+- **Trigger / reproduction:** Use a valid `META-INF/container.xml` that binds the OCF namespace to a prefix and writes the schema elements as `<ocf:container>`, `<ocf:rootfiles>`, and `<ocf:rootfile ...>` instead of using the same namespace as the default namespace.
+- **Observed / logically demonstrated failure:** `ContainerParser::setup()` creates Expat with `XML_ParserCreate(nullptr)` and does not enable namespace processing. The callbacks therefore receive the qualified lexical names, but the state machine accepts only exact strings `"container"`, `"rootfiles"`, and `"rootfile"`. A prefix-qualified document never leaves `START`, `fullPath` remains empty, and `findContentOpfFile()` rejects the EPUB even though the expanded element names are the required OCF container elements.
+- **Likely root cause:** The parser compares raw qualified names instead of namespace/local-name identities.
+- **Impact:** Standards-conforming EPUBs that choose an explicit prefix for the OCF namespace fail to open solely because of equivalent XML namespace syntax.
+- **Repair direction:** Create a namespace-aware Expat parser (for example with `XML_ParserCreateNS`) and compare the namespace URI plus local name, or safely strip only a recognized OCF prefix after validating the namespace binding. Add equivalent default-namespace and prefixed-container fixtures and require both to resolve the same OPF path.
