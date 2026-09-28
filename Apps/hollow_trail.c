@@ -180,7 +180,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.0.10: dithered 1bpp parallax renderer started");
+    ht_log("Hollow Trail 1.0.11: dithered 1bpp parallax renderer started");
     while(!quitting) {
         ht_input(4u); if(quitting) break;
         if(mode_down) {
@@ -217,7 +217,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(98,79,"START / DOWN PAUSE   SELECT / BACK EXIT",1);
             }
             if(rendering_paused) {
-                ht_rect(ht_scene,112,74,256,137,0);
+                ht_rect(ht_scene,112,74,256,172,0);
                 ht_text(198,95,"PAUSED",2);
                 ht_text(127,117,"START / DOWN RESUME    SELECT / BACK EXIT",1);
                 ht_text(127,133,!ht_dsp_available()?"DSP16: UNAVAILABLE":ht_dsp_composite?"DSP16 COMPOSITOR: ON":"DSP16 COMPOSITOR: OFF",1);
@@ -232,6 +232,18 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(127,179,perf,1);
                 snprintf(perf,sizeof(perf),"CACHE %lu MS",(unsigned long)ht_perf.cache_avg);
                 ht_text(127,195,perf,1);
+                t5_video_scan_stats_v1 scan={0};
+                if(HT_HAS(video,t5_video_api_v1,scan_stats) && video->scan_stats(&scan)) {
+                    snprintf(perf,sizeof(perf),"SCAN %lu PREP %lu DMA %lu MS",
+                        (unsigned long)((scan.scan_us+500)/1000),
+                        (unsigned long)((scan.prepare_us+500)/1000),
+                        (unsigned long)((scan.dma_wait_us+500)/1000));
+                    ht_text(127,210,perf,1);
+                    snprintf(perf,sizeof(perf),"PACE %lu ROWS %lu CORE %u/%u",
+                        (unsigned long)((scan.pace_us+500)/1000),
+                        (unsigned long)scan.active_rows,(unsigned)scan.scan_core,(unsigned)scan.app_core);
+                    ht_text(127,225,perf,1);
+                } else ht_text(127,210,"SCAN TIMING NOT AVAILABLE",1);
             }
             prepared_since=app->millis();
             prepared_render_ms=prepared_since-now;

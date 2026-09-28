@@ -1,6 +1,7 @@
 #include "NativeVideoBridge.h"
 #include "NativeVideoGray.h"
 #include "NativeVideoIdle.h"
+#include "NativeVideoProfile.h"
 
 #include <T5VideoApi.h>
 #include <Board.h>
@@ -190,6 +191,8 @@ volatile bool g_drive_pending = false;
 volatile uint8_t g_front_index = 0;
 volatile uint32_t g_vsync_count = 0;
 volatile uint32_t g_submit_count = 0;
+t5_video_scan_stats_v1 g_scan_stats{};
+uint8_t g_app_core=0, g_scan_core=0;
 uint16_t g_pending_dirty_start = 0;
 uint16_t g_pending_dirty_end = t5s3_epd::kActiveHeight - 1;
 
@@ -528,14 +531,16 @@ void row_control_step() {
   gpio_set_level(kLeGpio, 0);
 }
 
-void wait_for_dma() {
+void wait_for_dma(uint64_t *elapsed_us = nullptr) {
+  const int64_t start = elapsed_us ? esp_timer_get_time() : 0;
   while (!g_dma_done) {
     delayMicroseconds(1);
   }
+  if (elapsed_us) *elapsed_us += static_cast<uint64_t>(esp_timer_get_time()-start);
 }
 
-bool send_row(uint8_t *data, bool first_row) {
-  wait_for_dma();
+bool send_row(uint8_t *data, bool first_row, uint64_t &dma_wait_us) {
+  wait_for_dma(&dma_wait_us);
   if (!first_row) {
     row_control_step();
   }
@@ -684,6 +689,8 @@ void scan_task(void *unused) {
   uint64_t log_scan_us = 0;
   uint32_t log_frames = 0;
   uint32_t last_submit_count = 0;
+  NativeVideoProfile profile;
+  profile.reset(log_window_start);
   NativeVideoIdleCleanup idle_cleanup;
   idle_cleanup.reset(static_cast<uint32_t>(esp_timer_get_time() / 1000));
 
@@ -720,6 +727,7 @@ void scan_task(void *unused) {
     }
 
     const uint8_t *frame = g_buffers[front_index];
+    uint64_t prepare_us=0, dma_wait_us=0;
     uint32_t processed_rows = 0;
     uint32_t continuing_rows = 0;
     bool target_changed = false;
@@ -731,19 +739,23 @@ void scan_task(void *unused) {
     row_control_start();
 
     uint8_t dma_index = 0;
+    int64_t prepare_start=esp_timer_get_time();
     uint8_t *row_ptr = prepare_scan_row(frame, 0, dma_index, processed_rows, continuing_rows, target_changed, cleanup_phase);
+    prepare_us+=static_cast<uint64_t>(esp_timer_get_time()-prepare_start);
     bool row_uses_dma = (row_ptr != g_blank_row);
-    if (!send_row(row_ptr, true)) {
+    if (!send_row(row_ptr, true, dma_wait_us)) {
       g_running = false;
       break;
     }
 
     for (uint16_t scan_row = 1; scan_row < total_scan_rows; ++scan_row) {
       const uint8_t next_dma_index = row_uses_dma ? static_cast<uint8_t>(dma_index ^ 1U) : dma_index;
+      prepare_start=esp_timer_get_time();
       uint8_t *next_row_ptr =
           prepare_scan_row(frame, scan_row, next_dma_index, processed_rows, continuing_rows, target_changed, cleanup_phase);
+      prepare_us+=static_cast<uint64_t>(esp_timer_get_time()-prepare_start);
       const bool next_row_uses_dma = (next_row_ptr != g_blank_row);
-      if (!send_row(next_row_ptr, false)) {
+      if (!send_row(next_row_ptr, false, dma_wait_us)) {
         g_running = false;
         break;
       }
@@ -755,11 +767,11 @@ void scan_task(void *unused) {
       break;
     }
 
-    if (!send_row(g_blank_row, false)) {
+    if (!send_row(g_blank_row, false, dma_wait_us)) {
       g_running = false;
       break;
     }
-    wait_for_dma();
+    wait_for_dma(&dma_wait_us);
     portENTER_CRITICAL(&g_buffer_lock);
     // A submit can arrive during this scan. Idle waits must include both
     // queued frames and unfinished pulses, even though frame admission only
@@ -793,7 +805,18 @@ void scan_task(void *unused) {
       log_window_start = now;
     }
 
+    const int64_t pace_start=esp_timer_get_time();
+    const uint64_t scan_us=static_cast<uint64_t>(pace_start-frame_start_us);
     sleep_to_target_frame(frame_start_us);
+    const uint64_t finished=static_cast<uint64_t>(esp_timer_get_time());
+    t5_video_scan_stats_v1 snapshot{};
+    if(profile.record(finished,scan_us,prepare_us,dma_wait_us,
+                      finished-static_cast<uint64_t>(pace_start),processed_rows,snapshot)) {
+      snapshot.app_core=g_app_core; snapshot.scan_core=g_scan_core;
+      portENTER_CRITICAL(&g_buffer_lock);
+      g_scan_stats=snapshot;
+      portEXIT_CRITICAL(&g_buffer_lock);
+    }
   }
 
   g_scan_task = nullptr;
@@ -894,6 +917,15 @@ bool epd_video_start() {
   g_pending_dirty_end = t5s3_epd::kActiveHeight - 1;
   portEXIT_CRITICAL(&g_buffer_lock);
 
+  g_app_core=static_cast<uint8_t>(xPortGetCoreID());
+#if CONFIG_FREERTOS_UNICORE
+  g_scan_core=g_app_core;
+#else
+  g_scan_core=static_cast<uint8_t>(1U-g_app_core);
+#endif
+  portENTER_CRITICAL(&g_buffer_lock);
+  g_scan_stats={};
+  portEXIT_CRITICAL(&g_buffer_lock);
   g_dma_done = true;
   g_running = true;
   memset(g_row_active, 0x00, sizeof(g_row_active));
@@ -906,7 +938,7 @@ bool epd_video_start() {
       nullptr,
       3,
       &g_scan_task,
-      1);
+      g_scan_core);
   if (rc != pdPASS) {
     g_running = false;
     ESP_LOGE(kTag, "failed to create raw scan task");
@@ -1152,6 +1184,14 @@ void video_stop() {
   s_video_started = false;
 }
 
+bool video_scan_stats(t5_video_scan_stats_v1 *out) {
+  if(!out || !s_video_started) return false;
+  portENTER_CRITICAL(&g_buffer_lock);
+  *out=g_scan_stats;
+  portEXIT_CRITICAL(&g_buffer_lock);
+  return out->samples!=0;
+}
+
 const t5_video_api_v1 s_api = {
     T5_VIDEO_API_VERSION,
     sizeof(t5_video_api_v1),
@@ -1163,6 +1203,7 @@ const t5_video_api_v1 s_api = {
     video_frame_counter,
     video_stop,
     video_start_format,
+    video_scan_stats,
 };
 }  // namespace
 
