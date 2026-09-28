@@ -743,3 +743,34 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 109. A failed font-family update deletes the previously working installed family
+
+- **Status:** Open.
+- **Affected code:** `src/native/NativeFontBridge.cpp::installFamily()`; `src/FontInstaller.cpp::deleteFamily()`; the non-staged destination path in `src/network/HttpDownloader.cpp::downloadToFile()`.
+- **Trigger / reproduction:** Install a font family successfully, then publish an update for that same family and force any update failure after installation begins: disconnect the network during a file download, inject an SD write/read failure, return a CRC mismatch, or supply a downloaded file with invalid CPFONT magic.
+- **Observed / logically demonstrated failure:** `installFamily()` downloads each new file directly to the family's final installed path. On any download, CRC, storage-read, or CPFONT-validation failure it immediately calls `installer().deleteFamily(family.name.c_str())`. The downloader's non-staged overwrite path also removes an existing destination before writing the replacement. Therefore an update failure removes the old known-good family rather than leaving it installed; if it was the active family, `deleteFamily()` also clears the active-font setting in memory.
+- **Likely root cause:** Font updates are performed in place and failure cleanup treats an update exactly like a failed first-time install. There is no staged family transaction or rollback to the prior files.
+- **Impact:** A transient network/storage error or a bad catalog payload can uninstall a working font family and change the user's active-font state.
+- **Repair direction:** Download the complete candidate family into a transaction-specific staging directory, validate every file's declared size/CRC and CPFONT structure there, then atomically replace the installed family with rollback. Never delete or mutate the current installed family until the full candidate is verified. Add regression tests for first/middle/final-file download failure, CRC failure, and validation failure while an older family is installed.
+
+### 110. Font catalog refresh publishes empty or partial state from a structurally invalid catalog
+
+- **Status:** Open.
+- **Affected code:** `src/native/NativeFontBridge.cpp::refreshCatalog()`; `Apps/font_manager.c::load_rows()` / startup refresh handling.
+- **Trigger / reproduction:** Start with a valid populated font catalog, then return a manifest with the expected `version` but a missing/non-array `families` member, or return an array whose first entries are valid and a later family/file entry is invalid.
+- **Observed / logically demonstrated failure:** After JSON/version parsing, `refreshCatalog()` immediately assigns `baseUrl`, clears the live `families` vector, and iterates `doc["families"].as<JsonArray>()` without first requiring that `families` is an array. A missing/wrong-type array therefore returns `T5_FONT_OK` with an empty catalog. If validation fails on a later family/file, the function returns `T5_FONT_MANIFEST_ERROR` after earlier families have already been pushed, leaving a partial live catalog. Font Manager still calls `render()` after refresh errors, and `load_rows()` reads that partial vector.
+- **Likely root cause:** Catalog parsing mutates the published catalog incrementally instead of validating a complete candidate schema and committing it atomically.
+- **Impact:** A malformed or partially corrupt remote manifest can make valid font families disappear, expose only a prefix of the catalog, and leave the manager operating on state that the refresh itself reported as invalid.
+- **Repair direction:** Require the complete schema (`baseUrl`, `families` array, valid family/file records) before publication. Parse into temporary base-URL/vector state, validate the entire document, and swap it into the live catalog only on success; retain the previous catalog on any failure. Add malformed-schema and late-entry-failure tests that verify the old catalog remains unchanged.
+
+### 111. Rom Manager silently makes ROMs after the first 128 unmanageable
+
+- **Status:** Open.
+- **Affected code:** `Apps/rom_manager.c`: `MAX_ROMS`, `rom_names` / `rom_sizes`, `load_roms()`, and the `VIEW_ROMS` rename/delete action flow.
+- **Trigger / reproduction:** Put more than 128 valid `.gb` files in `/System/State/Applications/Rom Manager`, open Rom Manager, choose **My ROMs**, and try to locate/manage every file.
+- **Observed / logically demonstrated failure:** `load_roms()` enumerates only while `rom_count < MAX_ROMS` with `MAX_ROMS == 128`, then closes the directory without indicating truncation or continuing enumeration. The My ROMs UI and its Rename/Delete actions are driven exclusively by those cached arrays, so every valid ROM beyond the first 128 directory entries is absent and cannot be managed from the app. Directory iteration order also makes which ROMs disappear filesystem-dependent.
+- **Likely root cause:** A fixed-size presentation cache is used as an enumeration limit rather than as a page/window over the complete directory.
+- **Impact:** Larger ROM libraries become only partially manageable; users cannot discover, rename, or delete the omitted files through Rom Manager and receive no warning that the library was truncated.
+- **Repair direction:** Page/stream directory results or maintain a dynamically allocated/PSRAM-backed index, and distinguish end-of-directory from capacity exhaustion. Surface enumeration failure/truncation rather than silently treating it as a complete list. Add a regression with at least 129 ROMs and verify all entries remain reachable across pages/windows.
