@@ -743,3 +743,34 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+### 112. Fallback OTA release metadata can accept a truncated JSON document after the required fields were seen
+
+- **Status:** Open.
+- **Affected code:** `lib/JsonParser/StreamingJsonParser.cpp` / `.h`, `lib/JsonParser/ReleaseJsonParser.cpp` / `.h`, and the GitHub-release fallback in `src/network/OtaUpdater.cpp::checkForUpdate()`.
+- **Trigger / reproduction:** Make the independent firmware release-index request fail so `checkForUpdate()` falls back to the GitHub latest-release JSON endpoint. Feed a response whose `tag_name` and matching firmware asset object are complete but whose outer release object is truncated at EOF, for example a document ending immediately after the `assets` array's closing bracket and omitting the final top-level `}`.
+- **Observed / logically demonstrated failure:** `StreamingJsonParser` has no end-of-document/finalization check, and `ReleaseJsonParser` exposes only whether the tag and firmware fields were observed. Once the matching asset object closes, `foundFirmware()` is already true. `OtaUpdater::checkForUpdate()` tests only `foundTag()` and `foundFirmware()`, so the truncated, syntactically incomplete response is accepted as valid release metadata and can be offered for installation.
+- **Likely root cause:** The streaming parser validates tokens while bytes arrive but never proves that EOF occurred in a completed root value with balanced containers; the OTA fallback treats field discovery as equivalent to successful document parsing.
+- **Impact:** A dropped/corrupt fallback metadata response can publish an update candidate whose containing release document was never completely received or validated. The existing truncated-input tests check only that parsing does not crash, not that an incomplete document cannot be accepted by the OTA caller.
+- **Repair direction:** Add an explicit `finish()`/completion result to `StreamingJsonParser` that rejects unfinished tokens, parser errors, and unbalanced/incomplete containers; expose that status through `ReleaseJsonParser`; and require successful completion in `OtaUpdater::checkForUpdate()` before consuming discovered fields. Add a regression with a fully formed firmware asset followed by EOF before the root close.
+
+### 113. Serial provider release failure discards the only retryable lease state and permits removal of a still-live provider
+
+- **Status:** Open.
+- **Affected code:** `src/runtime/capabilities/SerialProviderRegistry.h`, `RuntimeSerial::Registry::release()`, `end()`, and `remove()`; existing coverage in `test/streams/serial_provider_registry_test.cpp`.
+- **Trigger / reproduction:** Register a serial provider whose `acquire()` succeeds but whose `release()` returns an error such as `T5_SERIAL_IO` on the first teardown attempt. Acquire a port and call `Registry::release(publicLease)`, then retry the release or remove the provider.
+- **Observed / logically demonstrated failure:** `Registry::release()` copies the provider/private lease, then clears `active_`, `publicLease_`, and `privateLease_` *before* invoking the provider's fallible `release()`. If that callback fails, the error is returned but all registry state needed to retry has already been destroyed. A second release reports `T5_SERIAL_CLOSED`, and `remove(id)` can now succeed because `active_` is null even though the provider may still own its underlying transport/session. This violates the registry's stated invariant that a provider may not be removed with an outstanding lease.
+- **Likely root cause:** Public-handle invalidation was made unconditional before provider teardown instead of committing the state transition only after teardown succeeds, or retaining a distinct cleanup-pending state.
+- **Impact:** A transient close failure can leak a serial transport/session until reboot and can allow the provider record (and potentially its backing module/context) to be removed while that resource is still live, making clean retry or recovery impossible.
+- **Repair direction:** Keep the provider and private lease reachable until `release()` succeeds, while preventing normal I/O during cleanup; alternatively retain an explicit cleanup-pending state that only permits teardown retries. `end()` must preserve/retry the same obligation. Extend `serial_provider_registry_test.cpp` with a provider that fails release once, verify removal remains blocked, and verify a later release can complete.
+
+### 114. Bookmark summary truncation can persist invalid UTF-8 for ordinary non-ASCII page text
+
+- **Status:** Open.
+- **Affected code:** `src/util/BookmarkUtil.cpp::sanitizeBookmarkSummary()`; caller `src/activities/reader/EpubReaderActivity.cpp::addBookmark()`.
+- **Trigger / reproduction:** Add a bookmark on a page whose extracted summary exceeds 72 bytes and has a multibyte UTF-8 character crossing byte 72, for example 71 ASCII bytes followed by `é`. Non-ASCII whitespace/text also exercises the preceding whitespace-collapse comparator.
+- **Observed / logically demonstrated failure:** `sanitizeBookmarkSummary()` truncates with `summary.resize(72)`, which is byte-based and can cut a UTF-8 code point in half. The example keeps only the first byte of the two-byte `é`, and that invalid byte sequence is then stored in the bookmark JSON and later rendered as the bookmark title. The `std::unique` whitespace comparator also passes plain `char` values directly to `std::isspace`; for negative signed-char UTF-8 bytes that call has undefined behavior.
+- **Likely root cause:** Bookmark summaries are treated as single-byte text even though reader content and the rest of the UI are UTF-8.
+- **Impact:** Normal books containing accented or non-Latin text can create corrupt bookmark summaries, causing replacement glyphs or parser/rendering problems when the saved bookmark is reopened; the ctype misuse also makes non-ASCII handling undefined on signed-char builds.
+- **Repair direction:** Collapse whitespace using unsigned-byte-safe classification (or code-point-aware Unicode whitespace handling) and truncate at a valid UTF-8 code-point boundary, preferably by character/display width rather than raw bytes. Add tests with 2-, 3-, and 4-byte characters crossing the limit and with non-ASCII text adjacent to whitespace.
+
