@@ -6,10 +6,11 @@
 #include "../../Apps/hollow_trail.c"
 static uint32_t fake_now,clock_increment;
 static bool schedule;
+static uint32_t forced_buttons;
 static uint32_t fake_millis(void) { fake_now+=clock_increment; return fake_now; }
 static bool fake_poll(t5_app_input_t *out,uint32_t wait) {
     fake_now+=wait;
-    *out=(t5_app_input_t){.buttons=schedule && fake_now>=20 && fake_now<110?T5_APP_BUTTON_RIGHT:0};
+    *out=(t5_app_input_t){.buttons=schedule && fake_now>=20 && fake_now<110?T5_APP_BUTTON_RIGHT:forced_buttons};
     return true;
 }
 static uint32_t fake_scans(void) { return 34; }
@@ -55,6 +56,42 @@ int main(void) {
     assert(ht_perf.render_avg==30 && ht_perf.pack_avg==10 && ht_perf.wait_avg==5 && ht_perf.cache_avg==8);
     assert(ht_perf.copy_avg==3 && ht_perf.copy_ms==0);
     assert(ht_perf.frames==0 && ht_perf.start==1100 && HT_FRAME_INTERVAL_MS==42);
+    /* Up interacts only on its rising edge; held inputs cannot solve a
+     * sequence automatically, and pause/loading do not operate machinery. */
+    schedule=false; ht_service=NULL; paused=loading=false; previous=held=0;
+    ht.level=0; ht_select_level(0); ht_spawn(true);
+    ht.x=(HT_PUZZLE_FIRST+2*HT_PUZZLE_SPACING)*256;
+    ht.y=ht_land[9].top*256; ht.grounded=true;
+    forced_buttons=T5_APP_BUTTON_UP; ht_input(1);
+    assert(ht.puzzle.progress==1 && !jump_down && ht.vy==0);
+    ht_input(1); assert(ht.puzzle.progress==1 && !ht.puzzle.wrong);
+    forced_buttons=0; ht_input(1);
+    forced_buttons=T5_APP_BUTTON_UP; ht_input(1);
+    assert(ht.puzzle.progress==1 && ht.puzzle.wrong);
+    forced_buttons=0; ht_input(1); loading=true;
+    ht.x=HT_PUZZLE_FIRST*256;
+    forced_buttons=T5_APP_BUTTON_UP; ht_input(1);
+    assert(ht.puzzle.progress==1);
+    loading=false;
+    /* Inspect, browse and close through production input. Reading freezes
+     * physics and closing with A cannot also jump or activate machinery. */
+    forced_buttons=0; ht_input(1);
+    ht.x=ht_evidence_x(0,0)*256; ht.y=ht_land[1].top*256; ht.grounded=true;
+    forced_buttons=T5_APP_BUTTON_UP; ht_input(1);
+    assert(reading && journal_page==0 && ht_evidence_found(&ht,0));
+    int frozen=ht.x; unsigned frozen_ticks=ht.ticks;
+    forced_buttons=T5_APP_BUTTON_RIGHT; ht_input(100);
+    assert(reading && journal_page==1 && !ht_evidence_found(&ht,1));
+    ht_input(100); assert(journal_page==1 && ht.x==frozen && ht.ticks==frozen_ticks);
+    forced_buttons=T5_APP_BUTTON_CONFIRM; ht_input(1);
+    assert(!reading && !jump_down && ht.vy==0);
+    forced_buttons=0; ht_input(1);
+    ht.x=95*256; ht.y=ht_land[0].top*256;
+    forced_buttons=T5_APP_BUTTON_UP; ht_input(1); assert(reading);
+    forced_buttons=T5_APP_BUTTON_BACK; ht_input(1); assert(!reading && !quitting);
+    ht_input(1); assert(!quitting);
+    forced_buttons=0; ht_input(1);
+    forced_buttons=T5_APP_BUTTON_BACK; ht_input(1); assert(quitting);
     free(expected); free(memory);
     puts("Hollow Trail: simulation advances during render; frame snapshot stays coherent PASS");
     return 0;

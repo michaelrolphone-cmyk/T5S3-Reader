@@ -13,7 +13,8 @@ static t5_provider_capability_lease_t lease=T5_PROVIDER_CAPABILITY_LEASE_INVALID
 static bool quitting, jump_down, pause_down, paused, mode_down;
 static uint32_t held, previous, last_poll;
 static uint32_t simulation_clock, simulation_accumulator, scene_revision;
-static bool simulation_started,loading;
+static bool simulation_started,loading,reading;
+static unsigned journal_page;
 #define HT_FRAME_INTERVAL_MS 42u /* At most 24 submissions/s; physics stays 32ms. */
 static struct {
     uint32_t start,scan_start,frames,render_ms,pack_ms,wait_ms,cache_ms,copy_ms;
@@ -37,6 +38,7 @@ static void ht_perf_finish(const t5_video_api_v1 *video,uint32_t now) {
 #define HT_LEFT 1u
 #define HT_RIGHT 2u
 #define HT_JUMP 4u
+#define HT_INTERACT 32u
 #define HT_PAUSE 8u
 #define HT_EXIT 16u
 #define HT_HAS(api,type,field) ((api) && (api)->struct_size >= offsetof(type,field)+sizeof((api)->field) && (api)->field)
@@ -59,7 +61,7 @@ static void ht_acquire_pad(void) {
        !HT_HAS(pad,risc_usb_gamepad_api_v1,snapshot) || !pad->poll) ht_release_pad();
 }
 static void ht_advance(uint32_t now) {
-    if(loading) { simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
+    if(reading || loading || ht.level!=ht_geometry_level) { simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
     if(!simulation_started) { simulation_clock=now; simulation_started=true; }
     if(pause_down) {
         paused=!paused; pause_down=false; simulation_accumulator=0; ++scene_revision;
@@ -74,8 +76,9 @@ static void ht_advance(uint32_t now) {
         ht_step(direction,jump_down,(held&HT_JUMP)!=0);
         jump_down=false; simulation_accumulator-=HT_STEP_MS;
         if(before.x!=ht.x || before.y!=ht.y || before.camera!=ht.camera ||
-           before.stride!=ht.stride || before.facing!=ht.facing || before.laps!=ht.laps)
+           before.story_x!=ht.story_x || before.level!=ht.level || before.stride!=ht.stride || before.facing!=ht.facing || before.laps!=ht.laps)
             ++scene_revision;
+        if(before.level!=ht.level) { simulation_accumulator=0; break; }
     }
 }
 static void ht_input(uint32_t wait) {
@@ -94,6 +97,7 @@ static void ht_input(uint32_t wait) {
                 if(h==1 || h==2 || h==3 || states[i].x > 12000) buttons|=HT_RIGHT;
                 /* Provider's canonical mapping is B/A/Y/X: A is bit 1. */
                 if(states[i].buttons&(1u<<1)) buttons|=HT_JUMP;
+                if(states[i].buttons&1u) buttons|=HT_INTERACT;
                 if(states[i].buttons&(1u<<9)) buttons|=HT_PAUSE;
                 if(states[i].buttons&(1u<<8)) buttons|=HT_EXIT;
             }
@@ -102,7 +106,8 @@ static void ht_input(uint32_t wait) {
     if(!connected) {
         if(in.buttons&T5_APP_BUTTON_LEFT) buttons|=HT_LEFT;
         if(in.buttons&T5_APP_BUTTON_RIGHT) buttons|=HT_RIGHT;
-        if(in.buttons&(T5_APP_BUTTON_CONFIRM|T5_APP_BUTTON_UP)) buttons|=HT_JUMP;
+        if(in.buttons&T5_APP_BUTTON_CONFIRM) buttons|=HT_JUMP;
+        if(in.buttons&T5_APP_BUTTON_UP) buttons|=paused?HT_JUMP:HT_INTERACT;
         if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=HT_PAUSE;
         if(in.buttons&T5_APP_BUTTON_BACK) buttons|=HT_EXIT;
     }
@@ -110,8 +115,24 @@ static void ht_input(uint32_t wait) {
     uint32_t now=app->millis();
     ht_advance(now);
     uint32_t down=buttons&~previous;
+    if(reading) {
+        if(down&(HT_INTERACT|HT_JUMP|HT_EXIT|HT_PAUSE)) reading=false;
+        else if(down&HT_LEFT) journal_page=(journal_page+HT_LEVELS*3u-1)%(HT_LEVELS*3u);
+        else if(down&HT_RIGHT) journal_page=(journal_page+1)%(HT_LEVELS*3u);
+        if(down) ++scene_revision;
+        jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0;
+        previous=held=buttons; last_poll=now; return;
+    }
     jump_down|=(down&HT_JUMP)!=0; pause_down|=(down&HT_PAUSE)!=0;
-    quitting|=(buttons&HT_EXIT)!=0;
+    if((down&HT_INTERACT) && !paused && !loading && ht.level==ht_geometry_level) {
+        int page=ht_inspect();
+        if(page>=0) { journal_page=(unsigned)page; reading=true; }
+        else if(ht_puzzle_near(&ht)>=0) (void)ht_interact();
+        else reading=true;
+        if(reading) { jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0; }
+        ++scene_revision;
+    }
+    quitting|=(down&HT_EXIT)!=0;
     previous=held=buttons; last_poll=now;
 }
 static void ht_render_service(void) {
@@ -167,6 +188,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     }
     started=true;
     memset(&ht,0,sizeof(ht)); ht_spawn(true);
+    reading=false; journal_page=0;
     quitting=jump_down=pause_down=paused=mode_down=false; held=previous=0;
     simulation_started=false; simulation_accumulator=0; scene_revision=1;
     ht_service=ht_render_service;
@@ -195,13 +217,27 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.0.13: dithered 1bpp parallax renderer started");
+    ht_log("Hollow Trail 1.0.14: dithered 1bpp parallax renderer started");
     while(!quitting) {
         /* A ready frame gets priority over another fixed poll delay. Busy
          * waits still poll/yield every iteration, and ready paths poll by 8ms. */
         if(!prepared || !video->can_submit() || app->millis()-last_poll>=8u)
             ht_input(prepared?1u:4u);
         if(quitting) break;
+        if(ht.level!=ht_geometry_level) {
+            /* Discard an old-level prepared frame and freeze physics during
+             * bounded cache warmup. Keep the last picture on the panel. */
+            prepared=false; loading=true;
+            ht_select_level(ht.level);
+            unsigned steps=0;
+            while(!quitting && steps<HT_WARM_STEPS && ht_cache_prefetch(ht.camera/256,1)) ++steps;
+            loading=false; simulation_started=false; simulation_accumulator=0;
+            jump_down=pause_down=mode_down=false;
+            if(quitting) break;
+            if(steps==HT_WARM_STEPS) { ht_log("Hollow Trail: level warmup did not finish"); break; }
+            ++scene_revision;
+            last_submit=app->millis(); last_frame=last_submit-HT_FRAME_INTERVAL_MS;
+        }
         if(mode_down) {
             mode_down=false;
             ht_dsp_composite=ht_dsp_available() && !ht_dsp_composite;
@@ -211,12 +247,12 @@ __attribute__((visibility("default"))) void app_main(void) {
             if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
         }
         uint32_t now=app->millis();
-        if(profile_was_paused && !paused) {
+        if(profile_was_paused && !paused && !reading) {
             ht_perf.start=now;
             ht_perf.scan_start=video->frame_counter?video->frame_counter():0;
             ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=0;
         }
-        profile_was_paused=paused;
+        profile_was_paused=paused || reading;
         bool redraw=scene_revision!=drawn_revision;
         if(!redraw && !prepared) last_submit=now;
         /* Render into app-owned PSRAM while the panel finishes its previous
@@ -225,19 +261,26 @@ __attribute__((visibility("default"))) void app_main(void) {
             last_frame=now; /* Start-to-start cadence, not an extra post-render wait. */
             prepared_revision=scene_revision;
             const ht_game rendering_game=ht;
-            const bool rendering_paused=paused;
-            prepared_profile=!rendering_paused;
+            const bool rendering_paused=paused,rendering_reading=reading;
+            const unsigned rendering_page=journal_page;
+            prepared_profile=!rendering_paused && !rendering_reading;
             ht_render_scene();
             /* Initial instructions dismiss automatically after walking. */
             if(rendering_game.x<230*256 && rendering_game.checkpoint==0) {
-                ht_rect(ht_scene,90,38,249,55,0);
-                ht_text(98,45,"HOLLOW TRAIL",2);
+                ht_rect(ht_scene,90,38,249,68,0);
+                ht_text(98,45,ht_chapters[rendering_game.level].title,2);
                 ht_text(98,66,"LEFT/RIGHT MOVE   A / CONFIRM JUMP",1);
                 ht_text(98,79,"START / DOWN PAUSE   SELECT / BACK EXIT",1);
+                ht_text(98,92,"B / UP INSPECT OR OPEN JOURNAL",1);
+            }
+            if(!rendering_paused) {
+                ht_narration(&rendering_game);
+                if(rendering_reading) ht_draw_journal(&rendering_game,rendering_page);
+                else { ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game); }
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,112,74,256,172,0);
-                ht_text(127,83,"HOLLOW TRAIL 1.0.13",1);
+                ht_text(127,83,"HOLLOW TRAIL 1.0.14",1);
                 ht_text(198,95,"PAUSED",2);
                 ht_text(127,117,"START / DOWN RESUME    SELECT / BACK EXIT",1);
                 ht_text(127,133,!ht_dsp_available()?"DSP16: UNAVAILABLE":ht_dsp_composite?"DSP16 COMPOSITOR: ON":"DSP16 COMPOSITOR: OFF",1);
@@ -308,7 +351,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         /* At most four cache slices and an 8ms elapsed budget per host loop.
          * A single slice may exceed 8ms; its raster checkpoints still yield.
          * Report this work separately rather than hiding it in lower RENDER. */
-        if(!quitting && !paused) {
+        if(!quitting && !paused && !reading && ht.level==ht_geometry_level) {
             uint32_t cache_start=app->millis();
             for(unsigned work=0;work<4 && !quitting;++work) {
                 if(prepared && video->can_submit()) break;
