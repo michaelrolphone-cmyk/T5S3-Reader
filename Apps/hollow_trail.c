@@ -1,4 +1,5 @@
 #include "T5AppApi.h"
+#include <stdio.h>
 #include "T5VideoApi.h"
 #include "T5HardwareTakeover.h"
 #include "T5ProviderCapabilityApi.h"
@@ -13,6 +14,24 @@ static bool quitting, jump_down, pause_down, paused, mode_down;
 static uint32_t held, previous, last_poll;
 static uint32_t simulation_clock, simulation_accumulator, scene_revision;
 static bool simulation_started;
+#define HT_FRAME_INTERVAL_MS 42u /* At most 24 submissions/s; physics stays 32ms. */
+static struct {
+    uint32_t start,scan_start,frames,render_ms,pack_ms,wait_ms;
+    uint32_t fps10,scan10,render_avg,pack_avg,wait_avg;
+} ht_perf;
+static void ht_perf_finish(const t5_video_api_v1 *video,uint32_t now) {
+    ++ht_perf.frames;
+    uint32_t elapsed=now-ht_perf.start;
+    if(elapsed<1000u) return;
+    uint32_t scans=video->struct_size>=offsetof(t5_video_api_v1,frame_counter)+sizeof(video->frame_counter) && video->frame_counter?video->frame_counter():0;
+    ht_perf.fps10=ht_perf.frames*10000u/elapsed;
+    ht_perf.scan10=(scans-ht_perf.scan_start)*10000u/elapsed;
+    ht_perf.render_avg=ht_perf.render_ms/ht_perf.frames;
+    ht_perf.pack_avg=ht_perf.pack_ms/ht_perf.frames;
+    ht_perf.wait_avg=ht_perf.wait_ms/ht_perf.frames;
+    ht_perf.start=now;ht_perf.scan_start=scans;
+    ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=0;
+}
 #define HT_LEFT 1u
 #define HT_RIGHT 2u
 #define HT_JUMP 4u
@@ -117,7 +136,7 @@ __attribute__((visibility("default"))) void app_main(void) {
        !HT_HAS(video,t5_video_api_v1,start_format) || !video->backbuffer ||
        !video->can_submit || !video->submit || !video->stop) return;
     uint8_t *memory=(uint8_t *)app->psram_alloc(HT_MEMORY+15u);
-    if(!memory) { ht_log("Hollow Trail: 1298880 bytes PSRAM unavailable"); return; }
+    if(!memory) { ht_log("Hollow Trail: 1296000 bytes PSRAM unavailable"); return; }
     bool started=false;
     t5_video_surface_v1 surface={0};
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(false);
@@ -134,28 +153,35 @@ __attribute__((visibility("default"))) void app_main(void) {
     quitting=jump_down=pause_down=paused=mode_down=false; held=previous=0;
     simulation_started=false; simulation_accumulator=0; scene_revision=1;
     ht_service=ht_render_service;
-    uint32_t last_frame=app->millis()-67u, last_submit=app->millis();
+    uint32_t last_frame=app->millis()-HT_FRAME_INTERVAL_MS, last_submit=app->millis();
     uint32_t drawn_revision=0, prepared_revision=0;
     bool prepared=false;
-    ht_log("Hollow Trail 1.0.4: dithered 1bpp parallax renderer started");
+    uint32_t prepared_since=0,prepared_render_ms=0;
+    bool prepared_profile=false;
+    memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
+    if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
+    ht_log("Hollow Trail 1.0.5: dithered 1bpp parallax renderer started");
     while(!quitting) {
         ht_input(4u); if(quitting) break;
         if(mode_down) {
             mode_down=false; video->stop(); started=false; mono=!mono;
             if(!ht_start_video(video,&surface,mono)) { ht_log("Hollow Trail: mode switch failed"); break; }
             started=true; prepared=false; ++scene_revision;
-            last_submit=app->millis(); last_frame=last_submit-67u;
+            last_submit=app->millis(); last_frame=last_submit-HT_FRAME_INTERVAL_MS;
+            memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=last_submit;
+            if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
         }
         uint32_t now=app->millis();
         bool redraw=scene_revision!=drawn_revision;
         if(!redraw && !prepared) last_submit=now;
         /* Render into app-owned PSRAM while the panel finishes its previous
          * scan. Only acquire/write the video backbuffer when it is ready. */
-        if(redraw && !prepared && now-last_frame>=67u) {
+        if(redraw && !prepared && now-last_frame>=HT_FRAME_INTERVAL_MS) {
             last_frame=now; /* Start-to-start cadence, not an extra post-render wait. */
             prepared_revision=scene_revision;
             const ht_game rendering_game=ht;
             const bool rendering_paused=paused;
+            prepared_profile=!rendering_paused;
             ht_render_scene();
             /* Initial instructions dismiss automatically after walking. */
             if(rendering_game.x<230*256 && rendering_game.checkpoint==0) {
@@ -165,12 +191,22 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(23,56,"START / DOWN PAUSE   SELECT / BACK EXIT",1);
             }
             if(rendering_paused) {
-                ht_rect(ht_scene,112,86,256,78,0);
+                ht_rect(ht_scene,112,74,256,121,0);
                 ht_text(198,95,"PAUSED",2);
                 ht_text(127,117,"START / DOWN RESUME    SELECT / BACK EXIT",1);
                 ht_text(127,133,mono?"DISPLAY: DOTS":"DISPLAY: GRAYSCALE",1);
                 ht_text(127,148,"A / CONFIRM CHANGE DISPLAY",1);
+                char perf[48];
+                snprintf(perf,sizeof(perf),"FPS %lu.%lu   SCANS %lu.%lu",
+                    (unsigned long)(ht_perf.fps10/10),(unsigned long)(ht_perf.fps10%10),
+                    (unsigned long)(ht_perf.scan10/10),(unsigned long)(ht_perf.scan10%10));
+                ht_text(127,164,perf,1);
+                snprintf(perf,sizeof(perf),"RENDER %lu PACK %lu WAIT %lu MS",
+                    (unsigned long)ht_perf.render_avg,(unsigned long)ht_perf.pack_avg,(unsigned long)ht_perf.wait_avg);
+                ht_text(127,179,perf,1);
             }
+            prepared_since=app->millis();
+            prepared_render_ms=prepared_since-now;
             prepared=true;
         }
         if(quitting) break;
@@ -179,10 +215,18 @@ __attribute__((visibility("default"))) void app_main(void) {
             if(!buffer || size<(size_t)surface.stride_bytes*surface.height) {
                 ht_log("Hollow Trail: video backbuffer unavailable"); break;
             }
+            uint32_t pack_start=app->millis();
             ht_pack_format(buffer,surface.stride_bytes,mono);
+            uint32_t pack_ms=app->millis()-pack_start;
             if(quitting) break;
             if(video->submit(0,0)) {
                 last_submit=app->millis(); drawn_revision=prepared_revision; prepared=false;
+                if(prepared_profile) {
+                    ht_perf.render_ms+=prepared_render_ms;
+                    ht_perf.pack_ms+=pack_ms;
+                    ht_perf.wait_ms+=pack_start-prepared_since;
+                    ht_perf_finish(video,last_submit);
+                }
             }
         }
         if((redraw || prepared) && app->millis()-last_submit>3000u) {
