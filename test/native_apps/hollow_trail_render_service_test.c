@@ -12,6 +12,7 @@ static bool fake_poll(t5_app_input_t *out,uint32_t wait) {
     *out=(t5_app_input_t){.buttons=schedule && fake_now>=20 && fake_now<110?T5_APP_BUTTON_RIGHT:0};
     return true;
 }
+static uint32_t fake_scans(void) { return 34; }
 static const t5_app_api_v1 mock_app={.abi_version=1,.struct_size=sizeof(mock_app),.poll=fake_poll,.millis=fake_millis};
 const t5_app_api_v1 *t5_app_get_api(uint32_t v) { (void)v; return &mock_app; }
 const t5_video_api_v1 *t5_video_get_api(uint32_t v) { (void)v; return NULL; }
@@ -38,6 +39,15 @@ int main(void) {
     paused=true; jump_down=true; mode_down=false;
     start=ht.x; ht_advance(648);
     assert(mode_down && paused && !jump_down && ht.x==start);
+    /* Submission and scan rates remain separate from stage durations. */
+    const t5_video_api_v1 counters={.struct_size=sizeof(counters),.frame_counter=fake_scans};
+    memset(&ht_perf,0,sizeof(ht_perf));
+    ht_perf.start=100;ht_perf.scan_start=10;ht_perf.frames=1;
+    ht_perf.render_ms=60;ht_perf.pack_ms=20;ht_perf.wait_ms=10;
+    ht_perf_finish(&counters,1100);
+    assert(ht_perf.fps10==20 && ht_perf.scan10==240);
+    assert(ht_perf.render_avg==30 && ht_perf.pack_avg==10 && ht_perf.wait_avg==5);
+    assert(ht_perf.frames==0 && ht_perf.start==1100 && HT_FRAME_INTERVAL_MS==42);
     free(expected); free(memory);
     puts("Hollow Trail: simulation advances during render; frame snapshot stays coherent PASS");
     return 0;

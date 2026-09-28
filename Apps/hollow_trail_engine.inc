@@ -430,7 +430,34 @@ static uint8_t ht_quantize(int value,int rank) {
     unsigned units=fraction[value];
     return (uint8_t)((units>>6)+((unsigned)rank<(units&63u)));
 }
+/* Mono is the common path. Assemble whole bytes in registers; never read
+ * the PSRAM destination to OR a second nibble into it. Reuse adjacent source
+ * samples and keep the format branch outside the physical-pixel loop. */
+static void ht_pack_mono(uint8_t *out,int stride) {
+    for(int y=0;y<HT_H;++y) {
+        const uint8_t *row=ht_scene+y*HT_W;
+        const uint8_t *next=ht_scene+ht_min(y+1,HT_H-1)*HT_W;
+        uint8_t *top=out+2*y*stride,*bottom=top+stride;
+        const uint8_t *rt=epd_dither_rank[(2*y)&7],*rb=epd_dither_rank[(2*y+1)&7];
+        int a=row[0],c=next[0];
+        for(int x=0;x<HT_W;x+=4) {
+            uint8_t t=0,b=0;
+            #pragma GCC unroll 4
+            for(int k=0;k<4;++k) {
+                int nx=ht_min(x+k+1,HT_W-1);
+                int right=row[nx],below=next[nx];
+                int h=(a+right)>>1,v=(a+c)>>1,d=(h+((c+below)>>1))>>1;
+                t=(uint8_t)((t<<2)|((a>rt[k*2]*4+2)<<1)|(h>rt[k*2+1]*4+2));
+                b=(uint8_t)((b<<2)|((v>rb[k*2]*4+2)<<1)|(d>rb[k*2+1]*4+2));
+                a=right;c=below;
+            }
+            top[x/4]=t;bottom[x/4]=b;
+        }
+        if((y&15)==15) ht_checkpoint();
+    }
+}
 static void ht_pack_format(uint8_t *out,int stride,bool mono) {
+    if(mono) { ht_pack_mono(out,stride); return; }
     static const uint8_t rank[8][8]={
         {41,8,52,7,45,15,47,4},{18,35,27,60,28,55,19,57},
         {54,1,49,9,62,3,40,14},{16,56,21,53,20,38,25,43},
@@ -447,23 +474,11 @@ static void ht_pack_format(uint8_t *out,int stride,bool mono) {
         for(int x=0;x<HT_W;x+=2) {
             int nx=ht_min(HT_W-1,x+2),r=(x*2)&7;
             int a=row[x],b=(a+row[x+1])/2,c=row[x+1],d=(c+row[nx])/2;
-            if(mono) {
-                unsigned px=(unsigned)x*2u,py=(unsigned)y*2u;
-                uint8_t bits=(uint8_t)((epd_dither_black(a,px,py)<<3)|
-                    (epd_dither_black(b,px+1,py)<<2)|(epd_dither_black(c,px+2,py)<<1)|
-                    epd_dither_black(d,px+3,py));
-                if((x&2)==0) top[x/4]=(uint8_t)(bits<<4); else top[x/4]|=bits;
-            } else top[x/2]=(uint8_t)((ht_quantize(a,rt[r])<<6)|(ht_quantize(b,rt[r+1])<<4)|
+            top[x/2]=(uint8_t)((ht_quantize(a,rt[r])<<6)|(ht_quantize(b,rt[r+1])<<4)|
                               (ht_quantize(c,rt[r+2])<<2)|ht_quantize(d,rt[r+3]));
             a=(a+next[x])/2; b=(b+(next[x]+next[x+1])/2)/2;
             c=(c+next[x+1])/2; d=(d+(next[x+1]+next[nx])/2)/2;
-            if(mono) {
-                unsigned px=(unsigned)x*2u,py=(unsigned)y*2u+1u;
-                uint8_t bits=(uint8_t)((epd_dither_black(a,px,py)<<3)|
-                    (epd_dither_black(b,px+1,py)<<2)|(epd_dither_black(c,px+2,py)<<1)|
-                    epd_dither_black(d,px+3,py));
-                if((x&2)==0) bottom[x/4]=(uint8_t)(bits<<4); else bottom[x/4]|=bits;
-            } else bottom[x/2]=(uint8_t)((ht_quantize(a,rb[r])<<6)|(ht_quantize(b,rb[r+1])<<4)|
+            bottom[x/2]=(uint8_t)((ht_quantize(a,rb[r])<<6)|(ht_quantize(b,rb[r+1])<<4)|
                                  (ht_quantize(c,rb[r+2])<<2)|ht_quantize(d,rb[r+3]));
         }
         if((y&15)==15) ht_checkpoint();

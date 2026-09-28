@@ -297,7 +297,7 @@ The existing scan target is 24 scans/s. The rejected 1.3.28 path could need six
 scans (about 250ms before other overhead), blocking new frames throughout.
 Firmware 1.3.29 uses at most three direct steps for a fixed target and admits a
 new target at each scan boundary. This restores pipeline overlap rather than
-promising any measured frame rate: the app's 15fps cap is not a guarantee of 15
+promising any measured frame rate: the app's approximately 24fps cap is not a guarantee of 15
 fully settled grayscale frames per second. CPU optimizations, frame admission
 and physical settling must be measured separately.
 
@@ -371,3 +371,30 @@ at the viewer's 7x zoom. A thin face also collapses during input quantization,
 independent of accumulator rounding. This probe does not execute the SDK kernel
 or establish its device speed. The Model Viewer's float/DSP path is retained;
 fixed-point transforms are not enabled as a visually equivalent optimization.
+
+## Frame delivery follow-up
+
+The submission interval is now 42 ms (about 24 FPS), matching the existing raw
+scan target instead of capping the app at 15 FPS. This changes rendering cadence
+only: simulation remains on the 32 ms step and the panel waveform is unchanged.
+Backpressure still prevents writing a queued front/back buffer.
+
+Default monochrome packing has a dedicated loop, reuses adjacent bilinear
+samples, assembles complete bytes in registers and writes each destination byte
+once. Its four logical samples per byte are explicitly unrolled. The gray path
+retains the existing quantizer. The full-frame reference check covers physical
+phase, bilinear rounding and bottom/right edge replication with ASan/UBSan.
+A 1,000-frame host `-O2` packing comparison measured 506.80 ms before and
+351.48 ms after (1.44x), with matching output hashes. Device gain is unmeasured.
+
+The pause panel now shows the last completed measurement window: submitted FPS,
+scan counter rate, and average render/pack/backbuffer-wait milliseconds per
+submitted gameplay frame. FPS measures accepted submissions, not optically
+settled images. Scans are separate because several drive passes may serve a
+single image. Timings include cooperative input servicing. Windows update after
+at least one second; a window spanning idle time can show a lower average.
+Manual display-mode changes reset counters. No serial connection is needed.
+
+The September 27 device clip confirms the owner's report that dithering improved
+visual defects, but cannot identify CPU versus display waiting. The fused
+compositor and delivery changes remain in the same unreleased 1.0.5 update.
