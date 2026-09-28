@@ -30,3 +30,5 @@ int main(void) {
     puts("Hollow Trail: simulation advances during render; frame snapshot stays coherent PASS");
     return 0;
 }
+
+const t5_math_api_v1 *t5_math_get_api(uint32_t v) { (void)v; return NULL; }
