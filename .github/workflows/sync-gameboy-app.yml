@@ -2,7 +2,14 @@ name: Sync GameBoy app into RiscRTE store
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    # GitHub may delay/drop scheduled jobs during start-of-hour load.
+    - cron: "3-58/5 * * * *"
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/sync-gameboy-app.yml'
+      - 'scripts/sync_gameboy_app.py'
+      - 'scripts/update_release_index.py'
   workflow_dispatch:
 
 permissions:
