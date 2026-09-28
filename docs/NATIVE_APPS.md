@@ -228,7 +228,13 @@ The stable prefix provides:
 
 `t5_app_input_t` supplies button bits, a tap flag, touch coordinates, and a
 sticky `exit_requested` flag. Apps should normally call `poll()` every 20-50 ms.
-The host clamps the polling delay to 1-50 ms.
+The host clamps the polling delay to 1-50 ms, including when passed zero.
+Firmware 1.3.36 appends optional `poll_nowait(input)`: size-check the member
+before calling it. It uses the same owner-task validation, input update, exit
+handling and watchdog feed, but adds no scheduling delay. Provider work still
+consumes time; it is not a hard nonblocking I/O guarantee. Callers must retain
+real yielding `poll(..., >=1)` calls every 20-50 ms, including in long raster
+loops, and fall back to `poll` on older hosts. Existing `poll` behavior is unchanged.
 
 By default Back, Power, and the touch Home gesture request exit. Power and Home
 remain unconditional exit/navigation gestures. Apps that need Back for internal

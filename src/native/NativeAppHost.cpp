@@ -232,11 +232,11 @@ bool presentServiced(bool full, void (*service)(void*), void* context) {
 void setBackExitsApp(bool enabled) {
   if (auto* s = current()) s->backExitsApp = enabled;
 }
-bool poll(t5_app_input_t* out, uint32_t waitMs) {
+bool pollInput(t5_app_input_t* out, uint32_t waitMs, bool wait) {
   auto* s = current();
   if (!s || !out) return false;
   esp_task_wdt_reset();
-  delay(std::max(1u, std::min(waitMs, 50u)));
+  if (wait) delay(std::max(1u, std::min(waitMs, 50u)));
   s->input.update();
   *out = {};
   using Button = MappedInputManager::Button;
@@ -254,6 +254,12 @@ bool poll(t5_app_input_t* out, uint32_t waitMs) {
   if (s->input.isPressed(Button::Power) || s->input.wasTouchHomeButtonPressed()) homeRequested = true;
   out->exit_requested = s->exiting;
   return true;
+}
+bool poll(t5_app_input_t* out, uint32_t waitMs) {
+  return pollInput(out, waitMs, true);
+}
+bool pollNowait(t5_app_input_t* out) {
+  return pollInput(out, 0, false);
 }
 bool takeTouchSwipe(t5_app_swipe_t* out) {
   auto* s = current();
@@ -1182,7 +1188,8 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            logMessage,
                            fillRoundedRectTone,
                            backlightLevel,
-                           takeTouchSwipe};
+                           takeTouchSwipe,
+                           pollNowait};
 }  // namespace
 
 bool installRequiredNativeApp(const char* artifact, std::string& displayName,

@@ -18,14 +18,16 @@ static bool ht_pad_fault;
 static uint32_t ht_pad_fault_since;
 static t5_provider_capability_lease_t lease=T5_PROVIDER_CAPABILITY_LEASE_INVALID;
 static bool quitting, jump_down, pause_down, paused, mode_down;
-static uint32_t held, previous, last_poll;
+static uint32_t held, previous, last_poll, last_yield;
 static uint32_t simulation_clock, simulation_accumulator, scene_revision;
 static bool simulation_started,loading,reading;
 static unsigned journal_page;
+#define HT_INPUT_INTERVAL_MS 8u
+#define HT_YIELD_INTERVAL_MS 32u
 #define HT_FRAME_INTERVAL_MS 42u /* At most 24 submissions/s; physics stays 32ms. */
 static struct {
-    uint32_t start,scan_start,frames,render_ms,pack_ms,wait_ms,cache_ms,copy_ms;
-    uint32_t fps10,scan10,render_avg,pack_avg,wait_avg,cache_avg,copy_avg;
+    uint32_t start,scan_start,frames,render_ms,pack_ms,wait_ms,cache_ms,copy_ms,input_ms;
+    uint32_t fps10,scan10,render_avg,pack_avg,wait_avg,cache_avg,copy_avg,input_avg;
 } ht_perf;
 static void ht_perf_finish(const t5_video_api_v1 *video,uint32_t now) {
     ++ht_perf.frames;
@@ -39,8 +41,9 @@ static void ht_perf_finish(const t5_video_api_v1 *video,uint32_t now) {
     ht_perf.wait_avg=ht_perf.wait_ms/ht_perf.frames;
     ht_perf.cache_avg=ht_perf.cache_ms/ht_perf.frames;
     ht_perf.copy_avg=ht_perf.copy_ms/ht_perf.frames;
+    ht_perf.input_avg=ht_perf.input_ms/ht_perf.frames;
     ht_perf.start=now;ht_perf.scan_start=scans;
-    ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=0;
+    ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=ht_perf.input_ms=0;
 }
 #define HT_LEFT 1u
 #define HT_RIGHT 2u
@@ -102,9 +105,15 @@ static void ht_advance(uint32_t now) {
         if(before.level!=ht.level) { simulation_accumulator=0; break; }
     }
 }
-static void ht_input(uint32_t wait) {
+static void ht_input_update(uint32_t wait) {
     t5_app_input_t in={0};
-    if(!app->poll(&in,wait) || in.exit_requested) { quitting=true; return; }
+    bool ok;
+    if(!wait && HT_HAS(app,t5_app_api_v1,poll_nowait)) ok=app->poll_nowait(&in);
+    else {
+        ok=app->poll(&in,wait?wait:1u);
+        last_yield=app->millis();
+    }
+    if(!ok || in.exit_requested) { quitting=true; return; }
     uint32_t buttons=0; bool connected=false,fault=false,raw_buttons=false;
     int selected_source=-1; uint64_t selected_device=0;
     const risc_usb_gamepad_api_v1 *providers[]={pad,hid_pad};
@@ -194,10 +203,19 @@ static void ht_input(uint32_t wait) {
     quitting|=(down&HT_EXIT)!=0;
     previous=held=buttons; last_poll=now;
 }
+/* Keep input cadence separate from real scheduler cooperation. An explicit
+ * wait still yields during idle/display waits; raster checkpoints only wait
+ * when the 32ms cooperation deadline is due. Older hosts retain safe polling. */
+static void ht_input(uint32_t wait) {
+    uint32_t start=app->millis();
+    if(!wait && start-last_yield>=HT_YIELD_INTERVAL_MS) wait=1u;
+    ht_input_update(wait);
+    ht_perf.input_ms+=app->millis()-start;
+}
 static void ht_render_service(void) {
-    /* Bounded row/column checkpoints plus an 8ms elapsed threshold. Poll(1)
-     * really yields; queued input edges survive rendering and busy scans. */
-    if(app->millis()-last_poll>=8u) ht_input(1u);
+    uint32_t now=app->millis();
+    if(now-last_poll>=HT_INPUT_INTERVAL_MS || now-last_yield>=HT_YIELD_INTERVAL_MS)
+        ht_input(0u);
     ht_abort=quitting;
 }
 #define HT_PACKED_BYTES (HT_W*HT_H/2u)
@@ -253,6 +271,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     ht_journal_deciding=ht_journal_confirm=ht_journal_page_ready=false; ht_read_submitted_revision=0;
     quitting=jump_down=pause_down=paused=mode_down=false; held=previous=0;
     simulation_started=false; simulation_accumulator=0; scene_revision=1;
+    last_poll=last_yield=app->millis();
     ht_service=ht_render_service;
     /* Freeze physics while the first view and lookahead strips are prepared.
      * Keep polling/yielding and honor exit throughout the bounded warmup. */
@@ -279,12 +298,20 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.0.15: dithered 1bpp parallax renderer started");
+    ht_log("Hollow Trail 1.0.16: dithered 1bpp parallax renderer started");
+    ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
+        "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
+        "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
     while(!quitting) {
-        /* A ready frame gets priority over another fixed poll delay. Busy
-         * waits still poll/yield every iteration, and ready paths poll by 8ms. */
-        if(!prepared || !video->can_submit() || app->millis()-last_poll>=8u)
-            ht_input(prepared?1u:4u);
+        /* Sleep only while idle, pacing, or waiting for the display. Ready
+         * work samples on the same cadence as raster checkpoints, without
+         * another unconditional delay or a tight input-polling spin. */
+        uint32_t input_now=app->millis();
+        bool input_wait=prepared?!video->can_submit():
+            (scene_revision==drawn_revision || input_now-last_frame<HT_FRAME_INTERVAL_MS);
+        if(input_wait || input_now-last_poll>=HT_INPUT_INTERVAL_MS ||
+           input_now-last_yield>=HT_YIELD_INTERVAL_MS)
+            ht_input(input_wait?1u:0u);
         if(quitting) break;
         if(ht.level!=ht_geometry_level) {
             /* Discard an old-level prepared frame and freeze physics during
@@ -312,7 +339,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         if(profile_was_paused && !paused && !reading) {
             ht_perf.start=now;
             ht_perf.scan_start=video->frame_counter?video->frame_counter():0;
-            ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=0;
+            ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=ht_perf.input_ms=0;
         }
         profile_was_paused=paused || reading;
         bool redraw=scene_revision!=drawn_revision;
@@ -343,7 +370,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,112,74,256,172,0);
-                ht_text(127,83,"HOLLOW TRAIL 1.0.15",1);
+                ht_text(127,83,"HOLLOW TRAIL 1.0.16",1);
                 ht_text(198,95,"PAUSED",2);
                 ht_text(127,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
                 ht_text(127,133,!ht_dsp_available()?"DSP16: UNAVAILABLE":ht_dsp_composite?"DSP16 COMPOSITOR: ON":"DSP16 COMPOSITOR: OFF",1);
@@ -356,8 +383,8 @@ __attribute__((visibility("default"))) void app_main(void) {
                 snprintf(perf,sizeof(perf),"RENDER %lu PACK %lu WAIT %lu MS",
                     (unsigned long)ht_perf.render_avg,(unsigned long)ht_perf.pack_avg,(unsigned long)ht_perf.wait_avg);
                 ht_text(127,179,perf,1);
-                snprintf(perf,sizeof(perf),"CACHE %lu COPY %lu MS",
-                    (unsigned long)ht_perf.cache_avg,(unsigned long)ht_perf.copy_avg);
+                snprintf(perf,sizeof(perf),"CACHE %lu COPY %lu INPUT %lu MS",
+                    (unsigned long)ht_perf.cache_avg,(unsigned long)ht_perf.copy_avg,(unsigned long)ht_perf.input_avg);
                 ht_text(127,195,perf,1);
                 t5_video_scan_stats_v1 scan={0};
                 if(HT_HAS(video,t5_video_api_v1,scan_stats) && video->scan_stats(&scan)) {

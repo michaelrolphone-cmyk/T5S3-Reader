@@ -1135,3 +1135,33 @@ text and pagination rather than leaving the final gate impossible to complete.
 Normal reading still uses configured typography through the same capability.
 The app remains the cumulative unreleased 1.0.15; this revision adds no firmware
 changes or extra frame buffers. Journal/ending history remains session-only.
+
+
+## Input scheduling experiment (1.0.16 / firmware 1.3.36)
+
+Owner baseline on 1.0.14: approximately 12 FPS, RENDER 59ms, PACK 18ms,
+SCAN 23ms, PREP 10ms, DMA 8ms and PACE 19ms. Render/pack include input
+checkpoint time. PREP/DMA are scan components; display scanning overlaps app
+work, so those numbers must not all be added together.
+
+The host's original `poll`, including `poll(..., 0)`, deliberately delays before
+updating input. The controller `poll(..., 8)` argument is a report-count bound,
+not an 8ms delay. Firmware 1.3.36 adds optional `poll_nowait`, preserving the
+existing yielding call for every older app. Hollow Trail samples input at its
+existing raster checkpoints when 8ms have elapsed without that added sleep,
+and performs a real yielding poll at the first checkpoint after 32ms since its
+last yielding poll. Idle and display-wait loops still yield. The next frame's
+initial input poll also drops the old unconditional 4ms requested delay.
+
+The optional member is size/pointer guarded; 1.0.16 still runs on 1.3.35 using
+the original yielding input service. Install firmware 1.3.36 for the no-wait
+experiment. App minimum remains 1.3.35 because the fallback is functional.
+
+The pause screen adds INPUT, average milliseconds spent inside all input
+service calls per submitted gameplay frame (including provider work and
+scheduler delays). It overlaps RENDER/PACK/WAIT/CACHE/COPY accounting and is
+not an additional frame cost to sum. The startup log identifies no-wait versus
+legacy mode. Compare movement in the same chapter, controller and DSP setting;
+record FPS, RENDER, PACK, INPUT, CACHE, COPY and WAIT. No device speedup is
+claimed before measurement. Rendering, packing, mappings, narrative, physics,
+display waveforms and the 24 FPS cap are unchanged by this experiment.

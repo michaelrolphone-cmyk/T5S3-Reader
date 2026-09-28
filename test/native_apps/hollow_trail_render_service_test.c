@@ -6,15 +6,23 @@
 #include "../../Apps/hollow_trail.c"
 static uint32_t fake_now,clock_increment;
 static bool schedule;
+static unsigned yielding_polls,nowait_polls;
+static bool request_exit;
 static uint32_t forced_buttons;
 static uint32_t fake_millis(void) { fake_now+=clock_increment; return fake_now; }
 static bool fake_poll(t5_app_input_t *out,uint32_t wait) {
+    ++yielding_polls;
     fake_now+=wait;
     *out=(t5_app_input_t){.buttons=schedule && fake_now>=20 && fake_now<110?T5_APP_BUTTON_RIGHT:forced_buttons};
     return true;
 }
+static bool fake_nowait(t5_app_input_t *out) {
+    ++nowait_polls;
+    *out=(t5_app_input_t){.buttons=forced_buttons,.exit_requested=request_exit};
+    return true;
+}
 static uint32_t fake_scans(void) { return 34; }
-static const t5_app_api_v1 mock_app={.abi_version=1,.struct_size=sizeof(mock_app),.poll=fake_poll,.millis=fake_millis};
+static t5_app_api_v1 mock_app={.abi_version=1,.struct_size=sizeof(mock_app),.poll=fake_poll,.millis=fake_millis};
 const t5_app_api_v1 *t5_app_get_api(uint32_t v) { (void)v; return &mock_app; }
 const t5_video_api_v1 *t5_video_get_api(uint32_t v) { (void)v; return NULL; }
 const t5_provider_capability_api_v1 *t5_provider_capability_get_api(uint32_t v) { (void)v; return NULL; }
@@ -28,6 +36,32 @@ int main(void) {
     assert(fake_now>110 && ht.x>start+3*256 && !(held&HT_RIGHT));
     assert(!memcmp(expected,ht_scene,HT_PIXELS));
     assert(scene_revision>1);
+    /* Input can be sampled every 8ms without a sleep each time, but real
+     * cooperation must still happen at 32ms, including across clock wrap. */
+    clock_increment=0; schedule=false; forced_buttons=0;
+    mock_app.poll_nowait=fake_nowait;
+    for(unsigned wrap=0;wrap<2;++wrap) {
+        uint32_t start_time=wrap?UINT32_MAX-20u:1000u;
+        last_poll=last_yield=start_time; yielding_polls=nowait_polls=0;
+        for(unsigned delta=8;delta<=32;delta+=8) {
+            fake_now=start_time+delta; ht_render_service();
+        }
+        assert(nowait_polls==3 && yielding_polls==1);
+        assert(last_yield==start_time+33u);
+    }
+    /* An old host must never expose/read the appended member. Also tolerate
+     * a full-sized table with a null optional function. Both paths yield. */
+    yielding_polls=nowait_polls=0; last_yield=last_poll=fake_now;
+    mock_app.struct_size=offsetof(t5_app_api_v1,poll_nowait);
+    fake_now+=8; ht_render_service();
+    assert(yielding_polls==1 && !nowait_polls);
+    mock_app.struct_size=sizeof(mock_app); mock_app.poll_nowait=NULL;
+    fake_now+=8; ht_render_service();
+    assert(yielding_polls==2 && !nowait_polls);
+    /* Home/exit remains live even on a no-wait raster checkpoint. */
+    mock_app.poll_nowait=fake_nowait; request_exit=true;
+    fake_now+=8; ht_render_service(); assert(quitting && ht_abort);
+    request_exit=quitting=ht_abort=false; mock_app.poll_nowait=NULL;
     /* Loading still polls input but cannot move the player or toggle pause. */
     loading=true; held=HT_RIGHT; jump_down=pause_down=true;
     start=ht.x; unsigned ticks=ht.ticks;
@@ -50,11 +84,12 @@ int main(void) {
     const t5_video_api_v1 counters={.struct_size=sizeof(counters),.frame_counter=fake_scans};
     memset(&ht_perf,0,sizeof(ht_perf));
     ht_perf.start=100;ht_perf.scan_start=10;ht_perf.frames=1;
-    ht_perf.render_ms=60;ht_perf.pack_ms=20;ht_perf.wait_ms=10; ht_perf.cache_ms=16; ht_perf.copy_ms=6;
+    ht_perf.render_ms=60;ht_perf.pack_ms=20;ht_perf.wait_ms=10; ht_perf.cache_ms=16; ht_perf.copy_ms=6; ht_perf.input_ms=14;
     ht_perf_finish(&counters,1100);
     assert(ht_perf.fps10==20 && ht_perf.scan10==240);
     assert(ht_perf.render_avg==30 && ht_perf.pack_avg==10 && ht_perf.wait_avg==5 && ht_perf.cache_avg==8);
     assert(ht_perf.copy_avg==3 && ht_perf.copy_ms==0);
+    assert(ht_perf.input_avg==7 && ht_perf.input_ms==0);
     assert(ht_perf.frames==0 && ht_perf.start==1100 && HT_FRAME_INTERVAL_MS==42);
     /* Up interacts only on its rising edge; held inputs cannot solve a
      * sequence automatically, and pause/loading do not operate machinery. */
