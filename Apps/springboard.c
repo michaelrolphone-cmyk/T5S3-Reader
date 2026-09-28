@@ -241,9 +241,9 @@ static bool page_dots_hit(int x, int y) {
            y >= center_y - 14 && y <= center_y + 14;
 }
 
-static void advance_page(void) {
+static void change_page(bool forward) {
     const uint32_t pages = page_count();
-    const uint32_t next = (current_page() + 1u) % pages;
+    const uint32_t next = (current_page() + (forward ? 1u : pages - 1u)) % pages;
     selected = next * (uint32_t)page_size;
     if (count && selected >= count) selected = count - 1u;
     selection_visible = false;
@@ -408,14 +408,32 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
         }
 
-        if (input.tapped) {
+        // Swipes and taps are separate completed gestures. Handle a swipe first
+        // so dragging across an icon cannot launch it or toggle a Home pin.
+        t5_app_swipe_t swipe;
+        const size_t swipe_api_size = offsetof(t5_app_api_v1, take_touch_swipe) +
+                                      sizeof(api->take_touch_swipe);
+        const bool swiped = api->struct_size >= swipe_api_size && api->take_touch_swipe &&
+                            api->take_touch_swipe(&swipe);
+        if (swiped) {
+            const int dx = (int)swipe.end_x - swipe.start_x;
+            const int dy = (int)swipe.end_y - swipe.start_y;
+            // Ignore vertical/ambiguous diagonal gestures and short drags.
+            if (abs(dx) >= 50 && abs(dx) > 2 * abs(dy) && page_count() > 1u) {
+                change_page(dx < 0);
+                draw(0);
+                old = selected;
+            }
+        }
+
+        if (input.tapped && !swiped) {
             const int x = input.touch_x, y = input.touch_y;
             if (edit_button_hit(x, y)) {
                 selection_visible = false;
                 toggle_edit_mode();
                 old = selected;
             } else if (page_dots_hit(x, y)) {
-                advance_page();
+                change_page(true);
                 draw(0);
                 old = selected;
             } else if (count && x >= 16 && x < 16 + columns * cell_w &&
