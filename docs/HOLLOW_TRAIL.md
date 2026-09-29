@@ -46,6 +46,54 @@ second receiver slot. The cumulative app version is unreleased 1.0.16
 optional no-wait input service.
 
 
+## 24 FPS performance work (same unreleased 1.1.1)
+
+The objective remains a complete render/pack frame inside the display's
+41.7ms budget. The weather/debug PR now includes production hot-path changes,
+not just an explanation of the previous device counters:
+
+- Draw the world directly into the sway source buffer. Remove the per-frame
+  129,600-byte copy (259,200 bytes of read/write traffic). Transform only the
+  visible interior; the vignette owns the discarded pixels. Prove the four
+  bilinear taps stay in bounds for every phase of the 2,048-step cycle.
+- Rewrite bilinear arithmetic using differences, preserving rounding exactly.
+  Remove per-pixel clamps and repeated edge checks inside that proven region.
+- Cache two exact radial-lighting maps, shared across scenery depths. Reuse
+  them for settled focus and one-pixel camera-follow alternation; rebuild on
+  other focus changes with cooperative checkpoints. This adds 129,600 bytes
+  of PSRAM, allocated once with the scene. The optional DSP path retains its
+  original arithmetic and does not build an unused map.
+- Pack four output bytes at a time using aligned word writes and source-word
+  lookahead. A 2KiB dither table handles constant neighborhoods without
+  interpolation. Unaligned output retains the byte-safe path. Pixel phase,
+  dithering thresholds and interpolation results are unchanged.
+- Compile only compositor, upscaler, affine sampler and mono packer for speed;
+  the app-wide size optimization and bounded polling/yield behavior remain.
+
+A reproducible harness is `test/native_apps/hollow_trail_benchmark.c`.
+For this change, compare with engine revision
+`2fd95b1372c6752f2f24e74db66eeddd30f8420a`, using the same app include files
+(the only production change in this follow-up is the engine):
+
+```sh
+git show 2fd95b1372c6752f2f24e74db66eeddd30f8420a:Apps/hollow_trail_engine.inc > /tmp/ht-baseline.inc
+cc -std=c11 -Os -IApps -Ilib/NativeApps/include -DHT_BENCH_ENGINE='"/tmp/ht-baseline.inc"' test/native_apps/hollow_trail_benchmark.c -o /tmp/ht-before
+cc -std=c11 -Os -IApps -Ilib/NativeApps/include test/native_apps/hollow_trail_benchmark.c -o /tmp/ht-after
+/tmp/ht-before --moving
+/tmp/ht-after --moving
+/tmp/ht-before --hashes > /tmp/ht-before.hash
+/tmp/ht-after --hashes > /tmp/ht-after.hash
+cmp /tmp/ht-before.hash /tmp/ht-after.hash
+```
+
+Host `-Os` measurements over 500 warmed frames across ten chapters:
+changing focus **1.106 → 0.762ms/frame** (31% less); fixed focus with animated
+sway **1.085 → 0.693ms/frame** (36% less). With `-O2`, the corresponding runs
+were 1.133 → 0.724ms and 1.084 → 0.713ms. Packed output hashes match on all
+170 chapter/phase cases. These are CPU comparisons, not ESP32/PSRAM/display
+measurements or a claim that 24 FPS has been achieved. The next device run
+must establish whether RENDER+PACK fits the actual budget.
+
 ## Debug level selection and weather (1.1.1)
 
 Hollow Trail **1.1.0 → 1.1.1**; firmware minimum stays **1.3.37**.

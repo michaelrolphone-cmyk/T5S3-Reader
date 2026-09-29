@@ -27,7 +27,7 @@ static uint16_t ht_dirty_top,ht_dirty_height;
 #define HT_TILE_HALO ((HT_W-HT_TILE_W)/2)
 #define HT_CACHE_BAND 64
 #define HT_WARM_STEPS (HT_LAYERS*HT_TILE_SLOTS*(1+3*((HT_H+HT_CACHE_BAND-1)/HT_CACHE_BAND)))
-#define HT_MEMORY (HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS)
+#define HT_MEMORY (HT_SCENE_PIXELS * 4u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS)
 #define HT_GOAL 3200
 #define HT_STEP_MS 32u /* Half-speed motion; preserve jump paths and level reachability. */
 
@@ -173,7 +173,31 @@ static void ht_mask_init(void) {
     ht_dirty_top=(uint16_t)(2*ht_max(0,first-1));
     ht_dirty_height=(uint16_t)(2*(last+1)-ht_dirty_top);
 }
+/* Two exact focus maps cover the one-pixel camera-follow alternation without
+ * recalculating radial division for every depth or settled frame. */
+static uint16_t *ht_focus_map[2];
+static int ht_focus_x[2],ht_focus_y[2];
+static bool ht_focus_valid[2];
+static unsigned ht_focus_recent;
+static const uint16_t *ht_focus_weights(int px,int py) {
+    for(unsigned i=0;i<2;++i) if(ht_focus_valid[i] && ht_focus_x[i]==px && ht_focus_y[i]==py) {
+        ht_focus_recent=i;return ht_focus_map[i];
+    }
+    unsigned slot=ht_focus_recent^1u;uint16_t *map=ht_focus_map[slot];
+    for(int y=0;y<HT_SCENE_H;++y) {
+        int dy=2*y-py,distance=px*px+dy*dy,delta=4-4*px;
+        for(int x=0;x<HT_SCENE_W;++x) {
+            map[y*HT_SCENE_W+x]=(uint16_t)ht_clamp((distance-2500)/200,0,256);
+            distance+=delta;delta+=8;
+        }
+        if((y&15)==15) ht_checkpoint();
+    }
+    ht_focus_x[slot]=px;ht_focus_y[slot]=py;ht_focus_valid[slot]=true;ht_focus_recent=slot;
+    return map;
+}
+static void ht_pack_tables_init(void);
 static void ht_bind(uint8_t *memory) {
+    ht_pack_tables_init();
     ht_geometry_level=0; ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
     ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
     ht_scene=memory+3*HT_PIXELS; ht_temp=memory+4*HT_PIXELS; ht_filter=(int16_t *)ht_temp;
@@ -183,6 +207,9 @@ static void ht_bind(uint8_t *memory) {
         ht_cached_wide[d][slot]=cache; cache+=HT_TILE_PIXELS;
     }
     ht_corner_mask=cache; ht_low_scene=cache+HT_MASK_PIXELS; ht_mask_init();
+    ht_focus_map[0]=(uint16_t *)(ht_low_scene+HT_SCENE_PIXELS);
+    ht_focus_map[1]=ht_focus_map[0]+HT_SCENE_PIXELS;
+    ht_focus_valid[0]=ht_focus_valid[1]=false;ht_focus_recent=0;
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
 }
 static int ht_evidence_platform(int item) { return 1+item*3; }
@@ -950,7 +977,9 @@ static void ht_composite_dsp_span(uint8_t *dst,const uint8_t *near,const uint8_t
         dst[i]=(uint8_t)ht_max(dst[i],v);
     }
 }
-static void ht_composite_cached(int depth,int offset,int focus_x,int focus_y) {
+static __attribute__((optimize("O3"))) void ht_composite_cached(int depth,int offset,int focus_x,int focus_y) {
+    const bool use_dsp=ht_dsp_composite && ht_dsp_available();
+    const uint16_t *weights=use_dsp?NULL:ht_focus_weights(focus_x,focus_y);
     const int fade=depth>=2?70:45;
     const int height=depth==3?45:HT_SCENE_H-HT_BORDER/2;
     /* The half-resolution grid begins at logical 8 for a 9px border.
@@ -959,29 +988,26 @@ static void ht_composite_cached(int depth,int offset,int focus_x,int focus_y) {
     int dy=start-focus_y,dy2=dy*dy;
     for(int y=HT_BORDER/2;y<height;++y) {
         uint8_t *scene=ht_low_scene+y*HT_SCENE_W;
-        int distance=(start-focus_x)*(start-focus_x)+dy2;
-        int delta=4+4*(start-focus_x);
         for(int x=HT_BORDER/2;x<HT_SCENE_W-HT_BORDER/2;) {
             int world=offset+2*x,key=ht_floor_div(world,HT_TILE_W),column=world-key*HT_TILE_W;
             int count=ht_min(HT_SCENE_W-HT_BORDER/2-x,(HT_TILE_W-column+1)/2),slot=ht_cache_slot(key);
             const uint8_t *near=ht_cached_near[depth][slot]+(2*y)*HT_TILE_W+column;
             const uint8_t *wide=ht_cached_wide[depth][slot]+(2*y)*HT_TILE_W+column;
-            if(ht_dsp_composite && ht_dsp_available()) {
+            if(use_dsp) {
+                int dx=2*x-focus_x,distance=dx*dx+dy2,delta=4+4*dx;
                 ht_composite_dsp_span(scene+x,near,wide,count,distance,delta,fade);
-                distance+=count*delta+4*count*(count-1); delta+=8*count;
                 x+=count; continue;
             }
             for(int i=0;i<count;++i,++x) {
                 int v;
-                if(distance<=2500) v=near[2*i];
-                else if(distance>=53700) v=wide[2*i]*(256-fade)>>8;
+                int radial=weights[y*HT_SCENE_W+x];
+                if(radial==0) v=near[2*i];
+                else if(radial==256) v=wide[2*i]*(256-fade)>>8;
                 else {
-                    int radial=(distance-2500)/200;
                     v=(near[2*i]*256+((int)wide[2*i]-near[2*i])*radial)>>8;
                     v=v*(256-((radial*fade)>>8))>>8;
                 }
                 scene[x]=(uint8_t)ht_max(scene[x],v);
-                distance+=delta; delta+=8;
             }
         }
         dy2+=4*dy+4; dy+=2;
@@ -1016,7 +1042,7 @@ static inline __attribute__((always_inline)) void ht_store4(uint8_t *p,uint32_t 
 static inline __attribute__((always_inline)) uint32_t ht_zip2(uint32_t a,uint32_t b) {
     return (a&255u)|((b&255u)<<8)|((a&0xff00u)<<8)|((b&0xff00u)<<16);
 }
-static void ht_upscale_scene(void) {
+static __attribute__((optimize("O3"))) void ht_upscale_scene(void) {
     for(int y=0;y<HT_SCENE_H;++y) {
         const uint8_t *row=ht_low_scene+y*HT_SCENE_W;
         const uint8_t *next=ht_low_scene+ht_min(y+1,HT_SCENE_H-1)*HT_SCENE_W;
@@ -1087,24 +1113,31 @@ static int ht_sway_wave(unsigned phase) {
     int triangle=t<256?t:t<768?512-t:t-1024;
     return triangle*(512-ht_abs(triangle))/256;
 }
-static void ht_sway_scene(unsigned phase) {
-    if(!phase) return;
-    int turn=ht_sway_wave(phase)/6; /* at most 0.6 degree */
-    int scale=4096-(ht_sway_wave(phase/2+768)+256)/10; /* 1..1.013x */
-    memcpy(ht_temp,ht_scene,HT_PIXELS);
-    for(int y=0;y<HT_H;++y) {
-        int u=(HT_W/2)*4096-(HT_W/2)*scale+(y-HT_H/2)*turn;
-        int v=(HT_H/2)*4096+(HT_W/2)*turn+(y-HT_H/2)*scale;
-        for(int x=0;x<HT_W;++x,u+=scale,v-=turn) {
-            int sx=ht_clamp(u,0,(HT_W-1)*4096),sy=ht_clamp(v,0,(HT_H-1)*4096);
-            int ix=sx>>12,iy=sy>>12,fx=(sx>>8)&15,fy=(sy>>8)&15;
-            const uint8_t *a=ht_temp+iy*HT_W,*b=ht_temp+ht_min(iy+1,HT_H-1)*HT_W;
-            int nx=ht_min(ix+1,HT_W-1);
-            int top=a[ix]*(16-fx)+a[nx]*fx,bottom=b[ix]*(16-fx)+b[nx]*fx;
-            ht_scene[y*HT_W+x]=(uint8_t)((top*(16-fy)+bottom*fy)>>8);
+/* Raster only the visible interior. At <=42/4096 rotation and inward
+ * scaling, the nine-pixel border guarantees all four source taps are valid.
+ * The vignette replaces everything outside this range immediately afterward. */
+static __attribute__((optimize("O3"))) void ht_sway_into(const uint8_t *source,unsigned phase) {
+    int turn=ht_sway_wave(phase)/6;
+    int scale=4096-(ht_sway_wave(phase/2+768)+256)/10;
+    for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
+        int left=ht_visible_left[y],right=HT_W-left;
+        int u=(HT_W/2)*4096+(left-HT_W/2)*scale+(y-HT_H/2)*turn;
+        int v=(HT_H/2)*4096-(left-HT_W/2)*turn+(y-HT_H/2)*scale;
+        uint8_t *dst=ht_scene+y*HT_W;
+        for(int x=left;x<right;++x,u+=scale,v-=turn) {
+            int ix=u>>12,iy=v>>12,fx=(u>>8)&15,fy=(v>>8)&15;
+            const uint8_t *a=source+iy*HT_W+ix,*b=a+HT_W;
+            int top=(a[0]<<4)+((int)a[1]-a[0])*fx;
+            int bottom=(b[0]<<4)+((int)b[1]-b[0])*fx;
+            dst[x]=(uint8_t)(((top<<4)+(bottom-top)*fy)>>8);
         }
         if((y&15)==15) ht_checkpoint();
     }
+}
+static void ht_sway_scene(unsigned phase) {
+    if(!phase) return;
+    memcpy(ht_temp,ht_scene,HT_PIXELS);
+    ht_sway_into(ht_temp,phase);
 }
 /* Fixed particle budget, no allocations, frame noise or full-screen pass.
  * Weather shares the frozen world snapshot and pauses with simulation. */
@@ -1142,13 +1175,18 @@ static void ht_render_scene(void) {
     memset(ht_low_scene,0,HT_SCENE_PIXELS);
     for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
         ht_composite_cached(depth,ht_layer_offset(depth,camera),px,py);
+    /* Render directly to the transform source: remove the former full-frame
+     * copy into scratch. Input servicing never reads this raster pointer. */
+    uint8_t *output=ht_scene;
+    if(game.sway_phase) ht_scene=ht_temp;
     ht_upscale_scene();
     ht_draw_traversal(&game);
     ht_draw_evidence(&game);
     ht_draw_puzzle(&game);
     ht_character(px,(game.y-game.camera_y)/256,&game);
     ht_weather(&game);
-    ht_sway_scene(game.sway_phase);
+    ht_scene=output;
+    if(game.sway_phase) ht_sway_into(ht_temp,game.sway_phase);
     ht_vignette();
 }
 /* Four physical gray levels. A fixed dispersed 8x8 threshold resolves only
@@ -1194,7 +1232,31 @@ static inline __attribute__((always_inline)) uint8_t ht_dots4(uint32_t value,uin
     uint32_t bits=(upper?(delta&value):(delta|value))&0x80808080u;
     return ht_spread4(bits);
 }
-static void ht_pack_mono(uint8_t *out,int stride) {
+/* A constant 2x2 source neighborhood needs only one precomputed dither pair.
+ * 2 KiB of app-owned tables; physical Bayer phase remains exactly unchanged. */
+static uint16_t ht_solid_dots[4][256];
+static void ht_pack_tables_init(void) {
+    static const uint32_t thresholds[4]={0x3f0f3303u,0x1f2f1323u,0x37073b0bu,0x17271b2bu};
+    for(unsigned row=0;row<4;++row) for(unsigned value=0;value<256;++value) {
+        uint32_t v=value*0x01010101u,e=thresholds[row],o=e+0x40404040u;
+        unsigned top=ht_dots4(v,e,false)|(ht_dots4(v,o,true)>>1);
+        unsigned bottom=ht_dots4(v,e,true)|(ht_dots4(v,o,false)>>1);
+        ht_solid_dots[row][value]=(uint16_t)(top|(bottom<<8));
+    }
+}
+static inline __attribute__((always_inline)) void ht_pack_lanes(uint32_t a,uint32_t c,
+        uint32_t ar,uint32_t cr,uint32_t even,uint32_t odd,const uint16_t *solid,uint8_t *top,uint8_t *bottom) {
+    if(a==c && ((a^(a>>8))&0x00ffffffu)==0 && ((ar^a)&255u)==0 && ((cr^a)&255u)==0) {
+        unsigned pair=solid[a&255u];*top=(uint8_t)pair;*bottom=(uint8_t)(pair>>8);return;
+    }
+    uint32_t h=ht_average4(a,(a>>8)|(ar<<24));
+    uint32_t v=ht_average4(a,c);
+    uint32_t d=ht_average4(h,ht_average4(c,(c>>8)|(cr<<24)));
+    *top=(uint8_t)(ht_dots4(a,even,false)|(ht_dots4(h,odd,true)>>1));
+    *bottom=(uint8_t)(ht_dots4(v,even,true)|(ht_dots4(d,odd,false)>>1));
+}
+static __attribute__((optimize("O3"))) void ht_pack_mono(uint8_t *out,int stride) {
+    bool word_output=(((uintptr_t)out|(unsigned)stride)&3u)==0;
     for(int y=0;y<HT_H;++y) {
         if(ht_framed && ht_visible_left[y]==HT_W/2 && ht_visible_left[ht_min(y+1,HT_H-1)]==HT_W/2) {
             memset(out+2*y*stride,255,HT_W/4);
@@ -1215,15 +1277,28 @@ static void ht_pack_mono(uint8_t *out,int stride) {
          * after removing their threshold's high bit; bottom swaps halves. */
         static const uint32_t thresholds[4]={0x3f0f3303u,0x1f2f1323u,0x37073b0bu,0x17271b2bu};
         uint32_t even=thresholds[y&3],odd=even+0x40404040u;
-        for(int x=left;x<right_edge;x+=4) {
-            uint32_t a=ht_load4(row+x),c=ht_load4(next+x);
+        int x=left;
+        /* Align the destination before 32-bit stores. Source rows and bitmap
+         * rows are aligned, but rounded-corner clipping can start mid-word. */
+        for(;x<right_edge && (x&15);x+=4) {
             int nx=ht_min(x+4,HT_W-1);
-            uint32_t right=(a>>8)|((uint32_t)row[nx]<<24);
-            uint32_t below=(c>>8)|((uint32_t)next[nx]<<24);
-            uint32_t h=ht_average4(a,right),v=ht_average4(a,c);
-            uint32_t d=ht_average4(h,ht_average4(c,below));
-            top[x/4]=(uint8_t)(ht_dots4(a,even,false)|(ht_dots4(h,odd,true)>>1));
-            bottom[x/4]=(uint8_t)(ht_dots4(v,even,true)|(ht_dots4(d,odd,false)>>1));
+            ht_pack_lanes(ht_load4(row+x),ht_load4(next+x),row[nx],next[nx],even,odd,ht_solid_dots[y&3],top+x/4,bottom+x/4);
+        }
+        for(;word_output && x+16<right_edge;x+=16) {
+            uint32_t a=ht_load4(row+x),c=ht_load4(next+x),packed_top=0,packed_bottom=0;
+            /* Four packed output bytes, one PSRAM store per physical row.
+             * Carry lookahead words instead of doing extra byte reads. */
+            for(unsigned lane=0;lane<4;++lane) {
+                uint32_t ar=ht_load4(row+x+4*(lane+1)),cr=ht_load4(next+x+4*(lane+1));
+                uint8_t t,b;ht_pack_lanes(a,c,ar,cr,even,odd,ht_solid_dots[y&3],&t,&b);
+                packed_top|=(uint32_t)t<<(lane*8);packed_bottom|=(uint32_t)b<<(lane*8);
+                a=ar;c=cr;
+            }
+            ht_store4(top+x/4,packed_top);ht_store4(bottom+x/4,packed_bottom);
+        }
+        for(;x<right_edge;x+=4) {
+            int nx=ht_min(x+4,HT_W-1);
+            ht_pack_lanes(ht_load4(row+x),ht_load4(next+x),row[nx],next[nx],even,odd,ht_solid_dots[y&3],top+x/4,bottom+x/4);
         }
         if((y&15)==15) ht_checkpoint();
     }
