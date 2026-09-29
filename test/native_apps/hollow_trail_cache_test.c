@@ -52,7 +52,6 @@ static void reference(void) {
     }
     ht_upscale_scene();
     ht_draw_traversal(&game);
-    ht_draw_evidence(&game);
     ht_draw_puzzle(&game);
     ht_character(px,(game.y-game.camera_y)/256,&game); ht_weather(&game); if(game.sway_phase || game.drop_zoom) {memcpy(ht_temp,ht_scene,HT_PIXELS);ht_camera_into(ht_temp,&game);} ht_vignette();
 }
