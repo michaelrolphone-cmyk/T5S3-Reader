@@ -65,6 +65,10 @@ materializes as two folded facets, expands and descends into its final plane,
 then closes its hinge into the original rounded rectangle within 200 ms.
 Staggered arrivals build the mark layer by layer. The background stays empty;
 there are no surrounding diamonds, particles, scan highlights or activity rail.
+Firmware 1.3.42 adds a brief wireframe-to-solid construction beat.
+Two thin beveled lower faces float beneath each arriving plate and converge
+as it settles, adding the sci-fi reference's separated-layer depth. These are
+solid geometric edges, with no dithered glow or permanent decoration.
 
 All motion uses bounded integer drawing directly into the existing backbuffer,
 with no new allocations, assets, SD access, trigonometry or blur passes. Worker

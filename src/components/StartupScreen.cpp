@@ -346,7 +346,7 @@ int textWidth(const char* text, int scale) {
 }
 
 // A folded plate opens around its central hinge. Row spans keep raster work
-// bounded by the final box area; no particles, textures or temporary buffers.
+// bounded by the box area plus two short depth edges; no temporary buffers.
 void drawAssemblingBlock(uint8_t* buffer, size_t size, int x, int y,
                          int width, int height, uint32_t age, uint8_t coverage) {
   constexpr uint32_t settleMs = 200;
@@ -363,9 +363,34 @@ void drawAssemblingBlock(uint8_t* buffer, size_t size, int x, int y,
   const int top = y + (height - plateHeight) / 2 - fold * 18 / 1000;
   const int tilt = fold * 12 / 1000;
   const int seam = fold > 160 ? 1 : 0;
+  // Exploded layers evoke a floating component being fabricated. Two crisp
+  // lower faces approach the main plate and fuse before it reaches rest.
+  // Their separation is geometric, avoiding noisy simulated glow on 1-bit EPD.
+  const int separation = (remaining * 6 + 199) / 200;
+  if (remaining > 35) {
+    for (int layer = 2; layer >= 1; --layer) {
+      const int inset = layer * 2;
+      const int edgeY = top + plateHeight + layer * separation;
+      const int edgeX = left - tilt + inset;
+      const int edgeWidth = plateWidth - inset * 2;
+      for (int column = 0; column < edgeWidth; ++column) {
+        // Beveled tips give each lower face a physical, tapered silhouette.
+        const int tip = column < 2 || column >= edgeWidth - 2 ? 1 : 0;
+        for (int row = tip; row < 2; ++row) {
+          if (ditherPixel(edgeX + column, edgeY + row, coverage))
+            setPhysicalPixel(buffer, size, edgeX + column, edgeY + row, true);
+        }
+      }
+    }
+  }
   for (int row = 0; row < plateHeight; ++row) {
     const int skew = tilt * (plateHeight - 1 - 2 * row) / plateHeight;
     for (int column = 0; column < plateWidth; ++column) {
+      // A brief wireframe construction beat becomes a solid face, like the
+      // reference's outlined layers acquiring their surface material.
+      if (age < 40 && row > 0 && row < plateHeight - 1 &&
+          column > 0 && column < plateWidth - 1 &&
+          column != plateWidth / 2 - 2 && column != plateWidth / 2 + 1) continue;
       // Two clean facets close around a white hinge, disappearing at rest.
       if (seam && column >= plateWidth / 2 - seam &&
           column < plateWidth / 2 + seam) continue;
