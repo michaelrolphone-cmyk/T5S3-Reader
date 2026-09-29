@@ -45,10 +45,10 @@ int main(void) {
         mapped|=T5_APP_BUTTON_BACK; // Even duplicate mapped Back must not turn A into Exit.
         reports[source][0].buttons=a[source]; ht_input(1); assert(!reading && !jump_down && !quitting);
         mapped&=~T5_APP_BUTTON_BACK; // Inspect empty space is inert.
-        ht.x=ht_landmark_x(0,0)*256;ht.y=ht_land[3].top*256;ht.grounded=true;
+        ht.x=ht_landmark_x(0,0)*256;ht.y=ht_surface_at(&ht,3,ht.x/256)*256;ht.grounded=true;
         press(source,a[source]);assert(ht.observation==1 && ht.observation_ticks==220 && !reading && !quitting);
         ht_spawn(true);
-        ht.x=ht_evidence_x(0,0)*256; ht.y=ht_platform_top(&ht,1)*256; ht.vy=0; ht.grounded=true;
+        ht.x=ht_evidence_x(0,0)*256; ht.y=ht_surface_at(&ht,0,ht.x/256)*256; ht.vy=0; ht.grounded=true;
         press(source,a[source]); assert(reading && journal_page==0 && ht_evidence_found(&ht,0));
         press(source,x[source]); assert(ht_journal_index && !quitting);
         press(source,x[source]); assert(!reading && !quitting);

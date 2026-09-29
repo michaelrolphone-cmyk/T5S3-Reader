@@ -25,7 +25,7 @@ static void ht_draw_optical_bench(const ht_game *g,int x,int y) {
         int nx=bx+dx[d],ny=by+dy[d];
         if(nx<0 || nx>6 || ny<0 || ny>5) break;
         ht_limb(ht_scene,x+bx*12,y+by*12,x+nx*12,y+ny*12,1,1,0);
-        bx=nx;by=ny;if(bx==5 && by==5) break;
+        bx=nx;by=ny;if((bx==5 && by==5) || (bx==6 && by==1)) break;
         for(int i=0;i<3;++i) if(bx==mx[i] && by==my[i]) {d=ht_ray_turn(d,g->puzzle.value[i]);break;}
         if(d<0) break;
     }
@@ -36,7 +36,9 @@ static void ht_draw_optical_bench(const ht_game *g,int x,int y) {
         if(v==3) ht_disk(ht_scene,px,py,3,50);
         ht_mechanism_number(px+6,py-3,i+1);
     }
-    ht_disk(ht_scene,x+60,y+60,4,ht_mirror_lit(&g->puzzle)?0:255);
+    ht_disk(ht_scene,x+60,y+60,4,ht_mirror_lit(&g->puzzle) && g->puzzle.stage?0:255);
+    ht_rect(ht_scene,x+68,y+7,8,9,g->puzzle.stage?0:230);
+    if(!g->puzzle.stage) for(int i=0;i<3;++i) ht_limb(ht_scene,x+51+i*5,y+51,x+55+i*5,y+63,1,1,130);
 }
 /* A different boundary for every chapter: mill loading door -> brick city,
  * rooftop service hatch -> oil pipes, tank bulkhead -> rails, signal gantry ->
@@ -146,8 +148,8 @@ static void ht_draw_mechanisms(const ht_game *g,int top) {
                 ht_limb(ht_scene,x+26,y-34,first-25,y-34,1,1,160);
                 ht_limb(ht_scene,first-25,y-34,first,y-15,1,1,160);
             }
-            static const int slot_x[3]={1,0,-1},slot_y[3]={0,1,0};
-            ht_limb(ht_scene,x+slot_x[i]*23,y+slot_y[i]*23,x+slot_x[i]*31,y+slot_y[i]*31,3,3,245);
+            ht_rect(ht_scene,x-8,y-29,16,7,200);
+            ht_rect(ht_scene,x-5,y-27,10,2,90);
         } else if(p->kind==HT_VESSELS || p->kind==HT_DISTRIBUTOR) {
             int capacity=p->kind==HT_VESSELS?(i==0?8:i==1?5:3):6;
             ht_rect(ht_scene,x-18,top-35-capacity*5,36,capacity*5+7,230);
@@ -167,8 +169,9 @@ static void ht_draw_mechanisms(const ht_game *g,int top) {
                 ht_rect(ht_scene,x+18,top-54,7,4,245);ht_rect(ht_scene,x+21,top-58,2,12,245);
             }
             if(p->kind==HT_DISTRIBUTOR) {
-                int demand=i==0?2:i==1?1:3;
-                ht_rect(ht_scene,x+19,top-32-demand*5,7,2,245);
+                int running=i==0?2:i==1?1:3,cold=i==2?0:3;
+                ht_disk(ht_scene,x+23,top-32-running*5,2,245);
+                ht_triangle(ht_scene,x+20,top-32-cold*5,x+27,top-32-cold*5,x+23,top-37-cold*5,245);
                 ht_text(x-15,top-91,i==0?"POWER":i==1?"HEAT":"RIDGE",1);
             }
         } else if(p->kind==HT_CIRCUIT) {
@@ -182,13 +185,13 @@ static void ht_draw_mechanisms(const ht_game *g,int top) {
             ht_mechanism_wheel(x,top-28,8,v[i]);
         } else if(p->kind==HT_BALANCE) {
             ht_mechanism_wheel(x,top-29,9,v[i]);
-            int torque=v[0]*3-v[2]*2;
+            int torque=ht_clamp(v[0]*3-v[2]*2,-8,8);
             int pan=i==0?top-52+torque*3:i==2?top-52-torque*2:top-36;
             ht_rect(ht_scene,x-15,pan,30,3,245);
             for(int k=0;k<v[i];++k) {ht_rect(ht_scene,x-12,pan-9-k*9,24,8,230);ht_rect(ht_scene,x-9,pan-8-k*9,18,1,100);}
         } else if(p->kind==HT_LOCK || p->kind==HT_POINTS) {
-            ht_mechanism_wheel(x,top-35,12,v[i]);
-            ht_text(x-15,top-59,p->kind==HT_LOCK?(i==0?"ENTRY":i==1?"EXIT":"FILL"):(i==0?"BRAKE":i==1?"SHUNT":"POINT"),1);
+            ht_mechanism_wheel(x,top-35,12,p->kind==HT_LOCK?((v[2]>>i)&1):g->puzzle.selected==i);
+            ht_text(x-15,top-59,p->kind==HT_LOCK?(i==0?"LOW":i==1?"LINK":"HIGH"):(i==0?"MAIN":i==1?"LOOP":"SPUR"),1);
         } else if(p->kind==HT_MIRRORS) {
             ht_mechanism_wheel(x,top-34,11,v[i]);
             ht_limb(ht_scene,x,top-47,first+82,top-98,1,1,140);
@@ -202,7 +205,7 @@ static void ht_draw_mechanisms(const ht_game *g,int top) {
         if(ht_puzzle_near(g)==i) ht_rect(ht_scene,x-12,top+3,24,2,0);
     }
     if(p->kind==HT_BALANCE) {
-        int pivot=first+102,y=top-100,tilt=v[0]*3-v[2]*2;
+        int pivot=first+102,y=top-108,tilt=ht_clamp(v[0]*3-v[2]*2,-8,8);
         ht_limb(ht_scene,pivot,top-43,pivot,y,3,2,245);
         ht_limb(ht_scene,pivot-102,y+tilt*3,pivot+68,y-tilt*2,3,3,240);
         ht_limb(ht_scene,pivot-102,y+tilt*3,first,top-52+tilt*3,1,1,150);
@@ -216,74 +219,60 @@ static void ht_draw_mechanisms(const ht_game *g,int top) {
         ht_draw_optical_bench(g,first+48,top-123);
     }
     else if(p->kind==HT_LOCK) {
-        int x=first+30,y=top-115;
-        ht_rect(ht_scene,x,y,110,39,220);ht_rect(ht_scene,x+3,y+3,104,33,30);
-        ht_rect(ht_scene,x+3,y+26-v[2]*9,104,10+v[2]*9,140);
-        ht_rect(ht_scene,x+8,y+4,v[0]?2:7,31,240);ht_rect(ht_scene,x+96,y+4,v[1]?2:7,31,240);
-        ht_limb(ht_scene,x-20,y+26,x+6,y+26,2,2,180);ht_limb(ht_scene,x+103,y+8,x+130,y+8,2,2,180);
-        int boat=y+22-v[2]*9;ht_limb(ht_scene,x+45,boat,x+70,boat,3,3,245);
+        int x=first+17,y=top-116;
+        ht_rect(ht_scene,x,y,137,41,220);ht_rect(ht_scene,x+3,y+3,131,35,30);
+        for(int chamber=0;chamber<2;++chamber) {
+            ht_rect(ht_scene,x+7+chamber*63,y+34-v[chamber]*6,56,4+v[chamber]*6,145);
+            for(int mark=0;mark<=4;++mark) ht_rect(ht_scene,x+4+chamber*63,y+34-mark*6,6,1,230);
+        }
+        for(int gate=0;gate<3;++gate) ht_rect(ht_scene,x+4+gate*63,y+3,(v[2]&(1<<gate))?2:6,35,245);
+        ht_limb(ht_scene,x-18,y+34,x+3,y+34,2,2,180);ht_limb(ht_scene,x+134,y+10,x+150,y+10,2,2,180);
+        int chamber=g->puzzle.stage,boat=y+31-v[chamber]*6;
+        ht_limb(ht_scene,x+23+chamber*63,boat,x+44+chamber*63,boat,3,3,245);
+        ht_mechanism_arrow(x+70,y+49,x+((chamber^g->puzzle.progress)?106:36));
     } else if(p->kind==HT_POINTS) {
-        int x=first+20,y=top-108;
-        ht_limb(ht_scene,x,y,x+132,y,2,2,200);ht_limb(ht_scene,x+56,y,x+132,y-23,2,2,180);
-        ht_limb(ht_scene,x+45,y,x+71,y-(v[2]?6:0),3,3,255);
-        int wagon=x+30+v[1]*62;ht_rect(ht_scene,wagon,y-22,27,15,230);
-        ht_disk(ht_scene,wagon+5,y-4,4,255);ht_disk(ht_scene,wagon+23,y-4,4,255);
-        ht_rect(ht_scene,wagon-5,y-14,4,14,v[0]?255:70);
+        int x=first+24,y=top-111;
+        static const int capacity[3]={3,2,1};
+        for(int road=0;road<3;++road) {
+            int rail=y+road*23;
+            ht_limb(ht_scene,x-13,rail,x+capacity[road]*29+3,rail,1,1,205);
+            /* Sidings are buffered at the left; their rightmost wagon is
+             * accessible from the common shunting lead. Main departs left. */
+            if(road) ht_rect(ht_scene,x-7,rail-8,3,9,245);
+            for(int slot=0;slot<capacity[road];++slot) ht_rect(ht_scene,x+slot*29+7,rail+3,12,2,180);
+            ht_limb(ht_scene,x+capacity[road]*29+3,rail,first+175,top-67,1,1,130);
+            for(int car=0;car<g->puzzle.count[road];++car) {
+                int wx=x+car*29,kind=g->puzzle.cars[road][car];
+                ht_rect(ht_scene,wx,rail-17,24,12,230);
+                ht_disk(ht_scene,wx+5,rail-3,3,255);ht_disk(ht_scene,wx+20,rail-3,3,255);
+                if(kind==1) {ht_rect(ht_scene,wx+4,rail-14,5,5,0);ht_rect(ht_scene,wx+14,rail-14,5,5,0);}
+                else if(kind==2) {ht_disk(ht_scene,wx+12,rail-11,5,60);ht_rect(ht_scene,wx+10,rail-19,5,3,245);}
+                else {ht_limb(ht_scene,wx+4,rail-15,wx+20,rail-7,1,1,0);ht_limb(ht_scene,wx+4,rail-7,wx+20,rail-15,1,1,0);}
+                if(g->puzzle.selected==road && car+1==g->puzzle.count[road]) ht_rect(ht_scene,wx-2,rail-21,28,2,245);
+            }
+        }
+        ht_mechanism_arrow(x-5,y-4,x-26);
     } else if(p->kind==HT_CIRCUIT) {
         ht_text(first-26,top-98,"FEED",1);ht_text(first+148,top-98,"RETURN",1);
         /* Endpoint shapes identify the reversal while the centre stays heat. */
         ht_disk(ht_scene,first-30,top-70,3,245);ht_rect(ht_scene,first-33,top-47,6,6,245);
         ht_rect(ht_scene,first+196,top-73,6,6,245);ht_disk(ht_scene,first+199,top-44,3,245);
     }
+    if(ht_puzzle_controls(g->level)==4) {
+        int lever=first+3*HT_PUZZLE_SPACING;
+        ht_rect(ht_scene,lever-7,top-30,14,30,230);
+        ht_limb(ht_scene,lever,top-24,lever+8,top-39,2,2,245);
+        ht_disk(ht_scene,lever+8,top-39,3,255);
+        ht_text(lever-12,top-52,p->kind==HT_LOCK?"PUMP":p->kind==HT_SIGNAL?"WIRE":"RUN",1);
+        if(ht_puzzle_near(g)==3) ht_rect(ht_scene,lever-12,top+3,24,2,0);
+        if(p->kind==HT_SIGNAL) {
+            ht_limb(ht_scene,first,top-85,lever,top-85,1,1,170);
+            ht_limb(ht_scene,lever,top-85,lever,top-39,1,1,170);
+            if(!g->puzzle.stage) ht_mechanism_arrow(first+45,top-85,first+5);
+            else ht_rect(ht_scene,lever-2,top-70,5,8,0);
+        }
+    }
+
 }
 /* Small in-world engineering traces beside the evidence; the notebook
  * describes their meaning but no longer supplies switch combinations. */
-static void ht_draw_mechanism_trace(const ht_game *g,int item,int x,int y) {
-    if(g->level==9) return;
-    int left=x-24,top=y-57;
-    ht_rect(ht_scene,left-3,top-3,54,36,210);ht_rect(ht_scene,left,top,48,30,35);
-    switch(g->level) {
-    case 0: { /* Cam and slot: the earlier mill pattern survives in the toy. */
-        ht_mechanism_wheel(x,top+15,9,item+1);
-        static const int dx[3]={1,0,-1},dy[3]={0,1,0};
-        ht_limb(ht_scene,x+dx[item]*12,top+15+dy[item]*12,x+dx[item]*17,top+15+dy[item]*17,2,2,245);break;
-    }
-    case 1:
-        for(int row=0;row<3;++row) ht_limb(ht_scene,left+4,top+5+row*10,left+43,top+25-row*10,1,1,row==1?110:230);
-        ht_disk(ht_scene,left+3,top+5,3,245);ht_disk(ht_scene,left+44,top+25,3,245);break;
-    case 2:
-        for(int i=0;i<3;++i) {int cap=i==0?8:i==1?5:3;ht_rect(ht_scene,left+4+i*15,top+26-cap*2,9,cap*2,220);ht_mechanism_number(left+6+i*15,top+2,cap);}
-        break;
-    case 3:
-        ht_limb(ht_scene,left+2,top+25,left+46,top+25,1,1,230);
-        ht_limb(ht_scene,left+22,top+25,left+46,top+12,1,1,230);
-        ht_rect(ht_scene,left+12,top+8,18,12,245);ht_rect(ht_scene,left+9,top+12,3,13,130);break;
-    case 4:
-        ht_limb(ht_scene,left+2,top+24,left+18,top+24,2,2,170);
-        ht_limb(ht_scene,left+28,top+5,left+46,top+5,2,2,170);
-        ht_rect(ht_scene,left+18,top+10,3,18,245);ht_rect(ht_scene,left+27,top+3,3,25,245);
-        ht_mechanism_arrow(left+6,top+15,left+13);break;
-    case 5:
-        ht_limb(ht_scene,left+25,top+10,left+25,top+26,2,2,230);
-        ht_limb(ht_scene,left+4,top+10,left+39,top+10,2,2,230);
-        for(int i=0;i<6;++i) ht_disk(ht_scene,left+5+i*7,top+3,2,245);
-        ht_mechanism_number(left+9,top+18,3);ht_mechanism_number(left+31,top+18,2);break;
-    case 6:
-        ht_limb(ht_scene,left+4,top+21,left+25,top+21,1,1,245);
-        ht_limb(ht_scene,left+25,top+21,left+25,top+3,1,1,245);
-        ht_limb(ht_scene,left+20,top+26,left+30,top+16,2,2,160);break;
-    case 7:
-        for(int i=0;i<3;++i) {int demand=i==0?2:i==1?1:3;
-            ht_rect(ht_scene,left+4+i*15,top+4,8,23,100);
-            for(int k=0;k<demand;++k) ht_rect(ht_scene,left+3+i*15,top+23-k*6,10,2,245);
-        }break;
-    case 8: {
-        static const int heights[4]={17,9,25,17};
-        for(int i=0;i<4;++i) {int px=left+5+i*12;
-            ht_rect(ht_scene,px,top+28-heights[i],3,heights[i],230);
-            ht_rect(ht_scene,px-2,top+30-heights[i],7,2,0);
-        }
-        ht_limb(ht_scene,left+2,top+13,left-3,top+20,2,1,220);break;
-    }
-    }
-}

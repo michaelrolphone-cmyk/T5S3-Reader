@@ -1,4 +1,88 @@
-# Hollow Trail 1.1.4
+# Hollow Trail 1.1.5
+
+## Discovery-driven mechanical deduction
+
+Hollow Trail **1.1.4 → 1.1.5**, from master after PR #284 merged. Minimum
+firmware remains **1.3.37**. See [the current puzzle design](HOLLOW_TRAIL_PUZZLES.md)
+for the evidence chains, deductions, operating rules and recovery guarantees.
+
+This replaces the shallow rail brake sequence with a three-wagon shunting
+problem, the single lock with a two-chamber finite-water problem, and independent
+hoist dials with a conserved stock of weights. Garden venting and dam priming
+introduce physical prerequisites that must be understood before the final
+configuration can work. The ridge requires diagnosing and isolating a returning
+echo. The city now distinguishes a correct endpoint route from a safe one.
+
+Operating facts are distributed across different finds. The mill's three socket
+rubbings reconstruct its plated-over frame; later documents contribute distinct
+capacity, direction, conservation and phase constraints. Remove the automatic
+answer-like narration and chapter recap hints. Feedback describes what the
+machine did; RUN tests the player's hypothesis instead of silently detecting
+an intermediate correct setting. Wrong experiments retain useful progress and
+remain recoverable. Existing camera, scene weather, animation and themed maps
+are retained.
+
+## Grounded terrain, scale and rope contact
+
+The ten chapters no longer render their middle sections as identical 18px
+floating shelves. A shared integer surface profile supplies drawing, feet,
+loose-body support, discovery interaction, landmarks, checkpoints and weather
+occlusion. Walking follows both sides of hills without requiring jumps or
+letting the character sink through a rising surface. Thick terrain/buildings
+have physical side walls; ladder approaches use matching visible recesses.
+Raised movable bridges remain solid and retain their mass/plate mechanisms.
+
+| Chapter | Walkable environment |
+| --- | --- |
+| Forest | Continuous rounded, rooted earth; a mill span and two purposeful ravines; enormous trunks and overhanging limbs |
+| City | Building bodies, rooftops, service connections and recessed ladder approaches |
+| Oil fields | Low eroded ground, service trenches and one supported catwalk |
+| Rail yard | Ballast and embankments, an abandoned locomotive and two carriages on a parallel track, a supported broken trestle and signal gantry |
+| Marsh | Low mud hummocks and reed banks around an actual ferry channel |
+| Quarry | Solid cut faces, uneven stone benches, hoist and ladder recesses |
+| Gardens | Overgrown beds and retained masonry terraces among greenhouse frames |
+| Dam | Masonry service routes beside a large reservoir wall and four cascading spill sheets |
+| High pass | Snow-edged rock slopes, cliff faces and exposed ravines |
+| Last light | Hillside buildings and substantial tower floors with visible walls |
+
+Remove all hovering clue boards. The first forest discovery now lies on the
+initial forest floor: cloth caught in bark. Other finds rest on or attach to
+scene objects. Collected prose retains every operating fact required by the
+new puzzles. Gameplay captions and nearby prompts use subdued gray; the
+apparatus prompt appears only within reach of a control. No distant objective
+flags or automatic solution hints are introduced.
+
+Authored wide-shot envelopes at selected clearings, towers, crossings and
+cliff/dam reveals ease the sharp world projection from 1x down to **11/16x**,
+with chapter-specific upward framing. A 480px view can expose about 698 world
+pixels at maximum width. Foreground terrain, character, props and landmarks
+share the projection; distant cached scenery remains a stable far plane.
+Normal 1–1.2x breathing, mood-driven rotation and the fall zoom envelope remain
+unchanged and compose with this framing. The vista envelope advances only with
+movement. Input, collision and rope positions always retain world bearings.
+There is no larger framebuffer or additional full-screen resampling pass.
+
+A/Confirm can catch any reachable rope segment. Grip distance is stored along
+the constrained rope, not snapped to its tail. Gravity projected along the
+local segment accelerates a bounded, gradual slide; pumping acts at the held
+segment. The player can release or jump before reaching the end, retaining the
+local swing/slide velocity. Existing rope length constraints and slow momentum
+build-up remain in effect.
+
+Development checks: the full native suite and final Xtensa ELF/import build
+passed. Focused ASan/UBSan checks cover all ten input-driven routes, thirty
+finds with zero deaths, puzzle-state recovery, slope/raster agreement, six rope
+grab heights and mid-rope jumps. Render snapshots, cache equivalence, controls,
+endings and pipeline ownership checks passed. Host previews were inspected
+across all chapters, including the wide dam view. Batched solid-terrain fills
+keep the sampled warm-cache host render time close to the preceding renderer;
+this does not establish on-device 24 FPS.
+
+Source manifest, ELF sidecar and aggregate catalog agree on **1.1.5**:
+**149544 bytes**, SHA-256 `92e059bf9fd1a0e22218b1d6ff0a01db20fe685c6c03e7c6f4813a7abec06081`. These are software checks, not hardware
+display/FPS qualification.
+
+# Earlier update: Hollow Trail 1.1.4
 
 ## Scene direction, mechanisms and physical performance
 
