@@ -50,8 +50,8 @@ int main(void) {
     uint8_t *mono=malloc(120u*540),*gray=malloc(240u*540),*memory=malloc(HT_MEMORY);
     assert(mono && gray && memory); ht_bind(memory); ht_spawn(true); ht_render_scene();
     /* This loop is the AI renderer's standard physical-scale/dither contract.
-     * AI+960 residual reconstruction has separate coverage in hollow_trail_test.c. */
-    ht_neural_960=false;
+     * AI+Dither has separate learned-pattern coverage in hollow_trail_test.c. */
+    ht_ai_dither=false;
     for(unsigned pattern=0;pattern<2;++pattern) {
         if(pattern) {
             ht_framed=false;
@@ -66,7 +66,7 @@ int main(void) {
             assert(((mono[y*120+x/8]>>(7-(x&7)))&1)==epd_dither_black(value,x,y));
         }
     }
-    ht_neural_960=true;
+    ht_ai_dither=true;
         /* Both raster paths must represent the same final lighting/material tone. */
     fps_reset_game();
     for(unsigned scene=0;scene<3;++scene) {
