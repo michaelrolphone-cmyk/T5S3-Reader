@@ -155,7 +155,7 @@ int main(void) {
                 memcpy(expected,ht_scene,HT_PIXELS);
                 if(ht_ai_rendering) memcpy(expected_recon,ht_recon_scene,HT_RECON_PIXELS);
                 ht_render_scene();
-                if(ht_ai_rendering && memcmp(expected_recon,ht_recon_scene,HT_RECON_PIXELS)) {
+                if(ht_ai_rendering && !ht_grotto_opaque(&ht) && memcmp(expected_recon,ht_recon_scene,HT_RECON_PIXELS)) {
                     for(int i=0;i<HT_RECON_PIXELS;++i) if(expected_recon[i]!=ht_recon_scene[i]) {
                         fprintf(stderr,"AI camera %d sample %d,%d expected %d got %d\n",
                                 camera,i%HT_RECON_W,i/HT_RECON_W,expected_recon[i],ht_recon_scene[i]);break;

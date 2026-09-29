@@ -29,6 +29,7 @@ static bool debug_select,debug_jump;
 static struct {
     uint32_t start,scan_start,frames,render_ms,pack_ms,wait_ms,cache_ms,copy_ms,input_ms;
     uint32_t fps10,scan10,render_avg,pack_avg,wait_avg,cache_avg,copy_avg,input_avg;
+    ht_render_timing stages,stage_avg;
 } ht_perf;
 static void ht_perf_finish(const t5_video_api_v1 *video,uint32_t now) {
     ++ht_perf.frames;
@@ -43,6 +44,10 @@ static void ht_perf_finish(const t5_video_api_v1 *video,uint32_t now) {
     ht_perf.cache_avg=ht_perf.cache_ms/ht_perf.frames;
     ht_perf.copy_avg=ht_perf.copy_ms/ht_perf.frames;
     ht_perf.input_avg=ht_perf.input_ms/ht_perf.frames;
+    ht_perf.stage_avg.background=ht_perf.stages.background/ht_perf.frames;
+    ht_perf.stage_avg.world=ht_perf.stages.world/ht_perf.frames;
+    ht_perf.stage_avg.post=ht_perf.stages.post/ht_perf.frames;
+    memset(&ht_perf.stages,0,sizeof(ht_perf.stages));
     ht_perf.start=now;ht_perf.scan_start=scans;
     ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=ht_perf.input_ms=0;
 }
@@ -294,7 +299,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                    !ht_math->add_s16 || !ht_math->sub_s16 || !ht_math->copy_bytes || !ht_math->fill_bytes)) ht_math=NULL;
     ht_pad_owned=ht_input_rearm=ht_pad_fault=false; debug_select=debug_jump=false; ht_pad_source=-1; ht_pad_device=0;
     ht_acquire_pad(); ht_acquire_reader(); ht_bind((uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u));
-    ht_ai_rendering=true;
+    ht_ai_rendering=true;ht_render_clock=app->millis;
     if(!ht_start_video(video,&surface)) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
@@ -328,10 +333,11 @@ __attribute__((visibility("default"))) void app_main(void) {
     uint32_t prepared_since=0,prepared_render_ms=0,prepared_pack_ms=0;
     bool prepared_staged=false;
     bool prepared_profile=false;
+    ht_render_timing prepared_timing={0};
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.1.9: AI/legacy A-B renderer started");
+    ht_log("Hollow Trail 1.1.10: AI/legacy A-B renderer started");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -377,6 +383,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             ht_perf.start=now;
             ht_perf.scan_start=video->frame_counter?video->frame_counter():0;
             ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=ht_perf.input_ms=0;
+            memset(&ht_perf.stages,0,sizeof(ht_perf.stages));
         }
         profile_was_paused=paused || reading;
         bool redraw=scene_revision!=drawn_revision;
@@ -393,6 +400,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             if(rendering_reading) ht_journal_render();
             else {
             ht_render_scene();
+            prepared_timing=ht_render_last;
             /* Initial instructions dismiss automatically after walking. */
             if(rendering_game.x<230*256 && rendering_game.checkpoint==0) {
                 ht_rect(ht_scene,72,38,336,81,0);
@@ -408,8 +416,8 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_traversal_prompt(&rendering_game); ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game);
             }
             if(rendering_paused) {
-                ht_rect(ht_scene,72,40,336,206,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.1",1);
+                ht_rect(ht_scene,72,40,336,216,0);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.10",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
@@ -430,18 +438,22 @@ __attribute__((visibility("default"))) void app_main(void) {
                 snprintf(perf,sizeof(perf),"CACHE %lu COPY %lu INPUT %lu MS",
                     (unsigned long)ht_perf.cache_avg,(unsigned long)ht_perf.copy_avg,(unsigned long)ht_perf.input_avg);
                 ht_text(88,195,perf,1);
+                snprintf(perf,sizeof(perf),"BG %lu WORLD %lu CAMERA/EDGE %lu MS",
+                    (unsigned long)ht_perf.stage_avg.background,(unsigned long)ht_perf.stage_avg.world,
+                    (unsigned long)ht_perf.stage_avg.post);
+                ht_text(88,210,perf,1);
                 t5_video_scan_stats_v1 scan={0};
                 if(HT_HAS(video,t5_video_api_v1,scan_stats) && video->scan_stats(&scan)) {
                     snprintf(perf,sizeof(perf),"SCAN %lu PREP %lu DMA %lu MS",
                         (unsigned long)((scan.scan_us+500)/1000),
                         (unsigned long)((scan.prepare_us+500)/1000),
                         (unsigned long)((scan.dma_wait_us+500)/1000));
-                    ht_text(88,210,perf,1);
+                    ht_text(88,225,perf,1);
                     snprintf(perf,sizeof(perf),"PACE %lu ROWS %lu CORE %u/%u",
                         (unsigned long)((scan.pace_us+500)/1000),
                         (unsigned long)scan.active_rows,(unsigned)scan.scan_core,(unsigned)scan.app_core);
-                    ht_text(88,225,perf,1);
-                } else ht_text(88,210,"SCAN TIMING NOT AVAILABLE",1);
+                    ht_text(88,240,perf,1);
+                } else ht_text(88,225,"SCAN TIMING NOT AVAILABLE",1);
             }
             } /* game frame */
             prepared_since=app->millis();
@@ -480,6 +492,9 @@ __attribute__((visibility("default"))) void app_main(void) {
                 display_initialized=true;
                 last_submit=app->millis(); drawn_revision=prepared_revision; prepared=false;
                 if(prepared_profile) {
+                    ht_perf.stages.background+=prepared_timing.background;
+                    ht_perf.stages.world+=prepared_timing.world;
+                    ht_perf.stages.post+=prepared_timing.post;
                     ht_perf.render_ms+=prepared_render_ms;
                     ht_perf.pack_ms+=prepared_pack_ms+(prepared_staged?0:output_ms);
                     ht_perf.copy_ms+=prepared_staged?output_ms:0;
@@ -505,7 +520,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
     }
 cleanup:
-    ht_service=NULL; loading=false;
+    ht_service=NULL;ht_render_clock=NULL; loading=false;
     if(started) video->stop();
     ht_release_reader(); ht_release_pad();
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(true);

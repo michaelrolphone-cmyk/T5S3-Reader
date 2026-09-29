@@ -53,9 +53,11 @@ static int ht_cave_face(int x,int layer) {
 /* Three overlapping cave masses enclose a luminous opening. Far and middle
  * walls have slower camera motion; the solid near roof remains the collision
  * curve. The water is a continuous plane behind the entire eroded shore. */
-static void ht_boat_grotto(const ht_game *g) {
+static __attribute__((optimize("O3"))) void ht_boat_grotto(const ht_game *g) {
     if(g->level!=4 || g->camera/256>900) return;
     int cx=g->camera/256,cy=g->camera_y/256;
+    int blend=ht_clamp((900-cx)*256/200,0,256);
+    if(!blend) return;
     static int16_t near_roof[HT_W];
     for(int sx=0;sx<HT_W;++sx) {
         int source=240+(sx-240)*256/ht_world_scale;
@@ -65,44 +67,59 @@ static void ht_boat_grotto(const ht_game *g) {
     }
     int water=ht_project_y(ht_mech(g)->boat_deck+10-cy);
     int glow=ht_project_x(535-cx*22/100),middle=ht_project_y(192-cy*22/100);
-    int blend=ht_clamp((900-cx)*256/200,0,256);
     int softness=ht_max(1,8*ht_world_scale/256);
-    uint16_t edge[24];
-    for(int d=0;d<=softness;++d) edge[d]=(uint16_t)(d*256/softness);
+    uint16_t edge[24],wall_edge[24];
+    for(int d=0;d<=softness;++d) {
+        edge[d]=(uint16_t)(d*256/softness);
+        wall_edge[d]=edge[d]/3;
+    }
     int boat=ht_project_x(g->traversal.boat_x/256-cx);
     for(int sy=0;sy<HT_H;++sy) {
         uint8_t *row=ht_scene+sy*HT_W;
+        int dy=sy-middle,dy2=dy*dy*2;
+        int far_ink=145-ht_clamp(sy-50,0,180)/2;
+        int mid_ink=222-ht_clamp(sy-80,0,160)/3;
+        int depth=sy-water;
+        int water_ink=110+depth/3,reflection_depth=80-ht_min(depth,80);
+        int shade_depth=ht_max(0,34-depth);
+        bool broken_shade=(depth/3)%3==1;
+        bool ripple_row=depth>4 && depth%11==0;
         for(int sx=0;sx<HT_W;++sx) {
-            int dx=sx-glow,dy=sy-middle;
-            int ink=ht_clamp(18+(dx*dx+dy*dy*2)/1300,18,125);
-            int far_distance=sy-ht_land_bottoms[sx];
-            int far=far_distance<=0?256:edge[ht_clamp(softness-far_distance,0,softness)]/3;
-            int mid_distance=sy-ht_land_tops[sx];
-            int mid=mid_distance<=0?256:edge[ht_clamp(softness-mid_distance,0,softness)]/3;
-            int far_ink=145-ht_clamp(sy-50,0,180)/2;
-            ink=ht_max(ink,ink+(far_ink-ink)*far/256);
-            int mid_ink=222-ht_clamp(sy-80,0,160)/3;
-            ink=ht_max(ink,ink+(mid_ink-ink)*mid/256);
-            if(sy>=water) {
-                int depth=sy-water;
-                /* The water is its own horizontal surface, not cave fog.
-                 * A dark plane, reflected hull and sparse ripples retain a
-                 * visible waterline even beneath the brightest opening. */
-                ink=ht_clamp(110+depth/3+ht_abs(dx)/12,110,170);
-                int reflection=ht_clamp((235-sx)*2,0,70);
-                ink=ht_min(210,ink+reflection*(80-ht_min(depth,80))/80);
-                int spread=ht_max(0,48-ht_abs(sx-boat));
-                int shade=spread*ht_max(0,34-depth)/17;
-                if((depth/3)%3==1) shade=shade*2/3;
-                ink=ht_min(225,ink+shade);
-                if(depth<=1) ink=ht_max(65,ink-32);
-                int ripple=(sx+cx/2+depth*7)%83;
-                if(depth>4 && depth%11==0 && ripple<17) ink=ht_max(70,ink-9);
-            }
-            int distance=sy-near_roof[sx];
+            int distance=sy-near_roof[sx],ink;
+            /* Opaque rock and water replace the lighting underneath. Reject
+             * that work before evaluating glow, far walls or middle walls. */
             if(distance<=0) ink=255;
-            else if(distance<softness) ink=ht_max(ink,150*edge[softness-distance]/256);
-            row[sx]=(uint8_t)((ink*blend+row[sx]*(256-blend))/256);
+            else {
+                int dx=sx-glow;
+                if(depth>=0) {
+                    ink=ht_clamp(water_ink+ht_abs(dx)/12,110,170);
+                    int reflection=ht_clamp((235-sx)*2,0,70);
+                    ink=ht_min(210,ink+reflection*reflection_depth/80);
+                    int spread=ht_max(0,48-ht_abs(sx-boat));
+                    int shade=spread*shade_depth/17;
+                    if(broken_shade) shade=shade*2/3;
+                    ink=ht_min(225,ink+shade);
+                    if(depth<=1) ink=ht_max(65,ink-32);
+                    if(ripple_row && (sx+cx/2+depth*7)%83<17) ink=ht_max(70,ink-9);
+                } else {
+                    ink=ht_clamp(18+(dx*dx+dy2)/1300,18,125);
+                    int far_distance=sy-ht_land_bottoms[sx];
+                    if(far_distance<=0) ink=ht_max(ink,far_ink);
+                    else if(far_distance<softness) {
+                        int far=wall_edge[softness-far_distance];
+                        ink=ht_max(ink,ink+(far_ink-ink)*far/256);
+                    }
+                    int mid_distance=sy-ht_land_tops[sx];
+                    if(mid_distance<=0) ink=ht_max(ink,mid_ink);
+                    else if(mid_distance<softness) {
+                        int mid=wall_edge[softness-mid_distance];
+                        ink=ht_max(ink,ink+(mid_ink-ink)*mid/256);
+                    }
+                }
+                if(distance<softness) ink=ht_max(ink,150*edge[softness-distance]/256);
+            }
+            /* Full opacity neither reads nor blends the discarded scene. */
+            row[sx]=(uint8_t)(blend==256?ink:(ink*blend+row[sx]*(256-blend))/256);
         }
         if((sy&15)==15) ht_checkpoint();
     }
