@@ -337,7 +337,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.1.10: AI/legacy A-B renderer started");
+    ht_log("Hollow Trail 1.1.11: neural 960x540 output A-B renderer started");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -375,8 +375,8 @@ __attribute__((visibility("default"))) void app_main(void) {
             memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=last_submit;
             if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
             ht_log(ht_ai_rendering?
-                "Hollow Trail renderer: AI 120x68 + neural reconstruction":
-                "Hollow Trail renderer: legacy 240x135");
+                "Hollow Trail renderer: AI composition + neural 960x540 output":
+                "Hollow Trail renderer: legacy composition + legacy 960x540 scale");
         }
         uint32_t now=app->millis();
         if(profile_was_paused && !paused && !reading) {
@@ -425,7 +425,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(88,84,chapter,1);
                 ht_text(88,99,debug_select?"L/R CHOOSE   A LOAD   X CANCEL":"L/R CHOOSE LEVEL   A JOURNAL",1);
                 ht_text(88,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
-                ht_text(88,133,ht_ai_rendering?"RENDERER: AI 120X68":"RENDERER: LEGACY 240X135",1);
+                ht_text(88,133,ht_ai_rendering?"RENDERER: AI + NEURAL 960":"RENDERER: LEGACY 960 SCALE",1);
                 ht_text(88,148,"B / UP SWITCH RENDERER   START JOURNAL",1);
                 char perf[64];
                 snprintf(perf,sizeof(perf),"FPS %lu.%lu   SCANS %lu.%lu",
