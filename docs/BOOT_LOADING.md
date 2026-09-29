@@ -60,18 +60,18 @@ flushed. This is a firmware-only fix; Springboard remains 1.3.0.
 
 ## Cinematic ident (firmware 1.3.41)
 
-The loading worker renders at 40 ms intervals. Firmware 1.3.42 presents the
-logo as an exploded isometric model that deploys from a compact core over
-320 ms: outlined plates acquire solid faces in
-left-to-right order while the entire model rotates face-on and its separated
-height planes contract. A lower rim gives each plate visible thickness.
-The transformation lands on the exact original logo geometry at 1100 ms.
-Labels stay anchored and fade in at the end. The background remains clear.
+The loading worker renders at 40 ms intervals. Firmware 1.3.42 blossoms the
+logo from a common bud. Each piece has its own staggered clock and cubic Bezier
+path: it rises, fans outward, unfurls its curved belly and broadens its tapered
+tips before settling into the original rounded block. Twelve filled ribbon
+strips per piece provide actual curved silhouettes rather than a rigid matrix
+transform or construction outlines. The final piece settles at 1080 ms.
+Labels remain stationary and fade at the end; the background stays clear.
 
-Clipped convex scanlines and four bounded edge walks render each plate with
-integer arithmetic into the existing backbuffer. No additional allocations,
-assets, SD reads, trigonometry or blur passes. Readiness cancellation, exit fade,
-touch boundary and worker/display ownership handoff remain unchanged. Startup
-never waits for the transformation to finish. Host tests cover buffer bounds,
-white fade endpoint, exact final geometry and both startup display paths.
-Device refresh quality and ghosting remain unmeasured.
+Fixed strip counts, clipped convex scanlines and bounded edge walks render
+with integer arithmetic into the existing backbuffer. No new allocations,
+assets, SD access, trigonometry or blur passes. Readiness cancellation, exit
+fade, touch boundary and worker/display ownership handoff remain unchanged.
+Startup never waits for the animation. Tests cover buffer bounds, zero-coverage
+output throughout the animation, exact final geometry and both startup display
+paths. Hardware refresh quality and ghosting remain unmeasured.

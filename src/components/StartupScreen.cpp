@@ -396,40 +396,52 @@ void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
   const int frameY = (logicalHeight - kFrameHeight) / 2;
 
 
-  // An exploded isometric model turns face-on as its layers deploy. The
-  // entire mark participates, rather than decorating stationary rectangles.
-  const int t=visualTimeMs>=1100u?1000:static_cast<int>(visualTimeMs)*1000/1100;
-  const int eased=t*t*(3000-2*t)/1000000;
-  const int turn=1000-eased;
-  const int opening=visualTimeMs>=320u?1000:static_cast<int>(visualTimeMs)*1000/320;
-  const int spread=160+840*(opening*opening*(3000-2*opening)/1000000)/1000;
-  for (int rectIndex=kLogoBlockCount-1;rectIndex>=0;--rectIndex) {
+  // Each petal follows its own curved stem and unfurls into a logo block.
+  // Staggered local clocks break the rigid whole-object rotation.
+  for (int rectIndex=0;rectIndex<kLogoBlockCount;++rectIndex) {
     const auto& rect=kLogoRects[rectIndex];
-    if(!turn) {
-      if(rectIndex<visibleBlocks)
-        drawDitheredRoundedRect(buffer,bufferSize,frameX+rect.x*2,
-                                frameY+rect.y*2,rect.width*2,rect.height*2,4,logoCoverage);
+    const uint32_t born=static_cast<uint32_t>(rectIndex)*45u;
+    if(visualTimeMs<=born) continue;
+    const uint32_t age=visualTimeMs-born;
+    if(age>=720u) {
+      drawDitheredRoundedRect(buffer,bufferSize,frameX+rect.x*2,
+                              frameY+rect.y*2,rect.width*2,rect.height*2,4,logoCoverage);
       continue;
     }
-    uint8_t layer=0;
-    while(rectIndex>=kLogoLayerEnds[layer]) ++layer;
-    BootPoint face[4],underside[4];
-    const int corners[4][2]={{0,0},{1,0},{1,1},{0,1}};
-    for(int corner=0;corner<4;++corner) {
-      const int x=rect.x*2+corners[corner][0]*(rect.width*2-1)-120;
-      const int y=rect.y*2+corners[corner][1]*(rect.height*2-1)-120;
-      // Initial diamond projection with separated height planes. Rotation
-      // and layer contraction share one smooth timeline and land exactly.
-      const int isoX=(x*760-y*640)/1000;
-      const int isoY=(x*380+y*320)/1000+(static_cast<int>(layer)*2-3)*19;
-      face[corner]={frameX+120+(x+(isoX-x)*turn/1000)*spread/1000,
-                    frameY+120+(y+(isoY-y)*turn/1000)*spread/1000};
-      underside[corner]={face[corner].x,face[corner].y+1+turn*7/1000};
+    const int t=static_cast<int>(age)*1000/720;
+    const int q=1000-t;
+    const int ease=t*t*(3000-2*t)/1000000;
+    const int side=(rectIndex%2)?1:-1;
+    const int targetX=rect.x*2+rect.width;
+    const int targetY=rect.y*2+rect.height;
+    // Cubic Bezier travel: rise out of a common bud, fan outward, then settle.
+    const int w0=q*q/1000*q/1000;
+    const int w1=3*q*q/1000*t/1000;
+    const int w2=3*q*t/1000*t/1000;
+    const int w3=1000-w0-w1-w2;
+    const int cx=frameX+(w0*120+w1*(120+(targetX-120)*3/2)+
+                        w2*(targetX+side*14)+w3*targetX)/1000;
+    const int cy=frameY+(w0*138+w1*(targetY-40)+w2*(targetY-10)+w3*targetY)/1000;
+    const int width=2+(rect.width*2-2)*ease/1000;
+    const int height=2+(rect.height*2-2)*ease/1000;
+    const int curl=side*width*28*q/200000;
+    const int lean=side*width*18*q/200000;
+    // Twelve filled strips form a soft curled ribbon. The belly opens first;
+    // its tapered tips broaden last, yielding the exact rectangular mark.
+    BootPoint previousTop{},previousBottom{};
+    for(int segment=0;segment<=12;++segment) {
+      const int u=segment*1000/12;
+      const int belly=4*u*(1000-u)/1000;
+      const int radius=height*(ease+(1000-ease)*belly/1000)/2000;
+      const int x=cx-width/2+width*u/1000;
+      const int y=cy+curl*belly/1000+lean*(u-500)/1000;
+      const BootPoint top{x,y-radius},bottom{x,y+radius};
+      if(segment) {
+        const BootPoint ribbon[4]={previousTop,top,bottom,previousBottom};
+        drawBootPlate(buffer,bufferSize,ribbon,logoCoverage,true);
+      }
+      previousTop=top;previousBottom=bottom;
     }
-    // The separated lower rim reads as thickness; construction outlines
-    // acquire solid surfaces in the original left-to-right order.
-    if(turn>160) drawBootPlate(buffer,bufferSize,underside,logoCoverage,false);
-    drawBootPlate(buffer,bufferSize,face,logoCoverage,rectIndex<visibleBlocks);
   }
 
   // Both labels stay at fixed coordinates and first appear after all blocks.

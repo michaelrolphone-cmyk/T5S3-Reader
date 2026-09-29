@@ -95,9 +95,9 @@ class BootAnimationContract(unittest.TestCase):
     def test_blocks_assemble_left_to_right_on_a_bounded_timeline(self):
         self.assertIn("(block-firstBlock)*kRevealLayerMs/blocksInLayer", SOURCE)
         self.assertIn("elapsed+40u", SOURCE)
-        self.assertIn("visualTimeMs>=1100u", SOURCE)
+        self.assertIn("age>=720u", SOURCE)
         self.assertIn("if (elapsed>=due) visible=block", SOURCE)
-        self.assertIn("drawBootPlate(buffer,bufferSize,face", SOURCE)
+        self.assertIn("drawBootPlate(buffer,bufferSize,ribbon", SOURCE)
         self.assertNotIn("drawBootAccents", SOURCE)
         self.assertIn("if (elapsed>=kRevealDeadlineMs) return false", SOURCE)
 
