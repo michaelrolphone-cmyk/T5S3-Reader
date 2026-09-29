@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 76. KOReader binary document hashing silently succeeds after sampled SD reads fail
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1126](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1126/bugs.md)
+
+- **Affected code:** `lib/KOReaderSync/KOReaderDocumentId.cpp`, `KOReaderDocumentId::calculate()`; consumed by `src/activities/reader/KOReaderSyncActivity.cpp`, `performSync()` and the binary document-match path.
+- **Trigger / reproduction:** Configure KOReader matching to use the binary/content method, open a book large enough to have more than one sampled offset, and inject an SD `seekSet()` failure or a zero/short `read()` at one sampled offset after the file itself opens successfully. The all-samples-fail case is even simpler to demonstrate by making every seek/read fail after open.
+- **Observed / logically demonstrated failure:** `calculate()` treats a failed seek as `continue`, accepts any positive short read, and also continues when a read returns zero. It always finalizes MD5 and returns the resulting non-empty digest. Therefore the sync layer cannot distinguish a complete KOReader document ID from a digest built from only some samples; if every sampled read fails it can even return the MD5 of an empty input. `performSync()` accepts that string and queries/uploads progress under the wrong document identifier.
+- **Likely root cause:** The sampler treats storage I/O failures as if the corresponding KOReader sample offset were legitimately outside the file. It tracks only bytes that happened to be read, with no expected-sample completeness check and no error state.
+- **Impact:** A transient SD fault can make an existing remote progress record appear missing, create a new progress record under a phantom document ID, or synchronize against an identifier that no conforming KOReader client will use for that book. The error is persistent at the service level even though the source EPUB itself may be intact.
+- **Repair direction:** Precompute the required in-range sample offsets and byte counts, require every seek and every requested read to complete exactly, and return an empty/error result on the first I/O failure. Only finalize/return the MD5 after all required samples succeed. Add fault-injection tests for failed seeks, zero reads, short reads, and the normal end-of-file-sized final sample.
+
+### 77. KOReader Sync accepts schema-invalid HTTP 200 progress bodies as valid remote positions
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1126](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1126/bugs.md)
+
+- **Affected code:** `lib/KOReaderSync/KOReaderSyncClient.cpp`, `KOReaderSyncClient::getProgress()`; `src/activities/reader/KOReaderSyncActivity.cpp`, `performSync()`; `lib/KOReaderSync/ProgressMapper.cpp`, `ProgressMapper::toCrossPoint()`.
+- **Trigger / reproduction:** Have the configured KOReader-compatible server return HTTP 200 with syntactically valid JSON that omits or mistypes required progress fields, for example `{}`, `{"progress":null}`, or a body without a numeric `percentage`.
+- **Observed / logically demonstrated failure:** `getProgress()` checks only that JSON parsing succeeds. It then reads `progress` with `.as<std::string>()` and `percentage` with `.as<float>()` without checking field presence or type, and returns `OK`. Missing values therefore become an empty XPath and 0%. `performSync()` marks the response as remote progress, maps it through `toCrossPoint()` (which resolves the zero/default values to a plausible position at the beginning of the book), renders it as a real remote checkpoint, and allows the user to apply it.
+- **Likely root cause:** Transport success and JSON syntax validity are treated as sufficient proof of the KOReader progress response schema. ArduinoJson's default conversions hide missing/wrong-type fields instead of surfacing them as protocol errors.
+- **Impact:** A proxy/server regression, truncated-but-still-valid JSON object, or incompatible KOReader endpoint can be presented as legitimate 0% remote progress. Applying it can unexpectedly jump the local reader to the start of the book instead of reporting a sync/protocol failure.
+- **Repair direction:** Validate the HTTP-200 body before publishing `outProgress`: require the protocol's mandatory fields with the expected types, require a finite numeric percentage in the valid range, and reject missing/invalid progress data with `JSON_ERROR` or a dedicated protocol error. Parse into a temporary object and assign `outProgress` only after complete validation. Add tests for empty objects, null/wrong-type fields, non-finite/out-of-range percentages, and a valid response.
+
+### 78. Reader progress checkpoints are destructively truncated and short writes are reported as successful
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1126](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1126/bugs.md)
+
+- **Affected code:** `src/activities/reader/EpubReaderActivity.cpp::saveProgress()`, `src/activities/reader/TxtReaderActivity.cpp::saveProgress()`, `src/activities/reader/XtcReaderActivity.cpp::saveProgress()`; `lib/hal/HalStorage.cpp::openFileForWriteUnlocked()`; corresponding reader progress-load paths.
+- **Trigger / reproduction:** Start with a valid `progress.bin`, turn a page so the reader saves a new checkpoint, and inject an SD short write, media error, or power interruption after `openFileForWrite()` succeeds but before all 4/6 progress bytes are durably written.
+- **Observed / logically demonstrated failure:** `openFileForWriteUnlocked()` opens the canonical checkpoint with `O_TRUNC`, destroying the previous valid checkpoint immediately. All three `saveProgress()` implementations ignore the return value from `f.write()`; EPUB even logs “Progress saved” unconditionally after the unchecked write. The loaders require an exact 4-byte TXT/XTC record or a 4/6-byte EPUB record, so a partial replacement is later ignored and the reader falls back to its default/first-page behavior. A failed save can therefore erase the last known-good resume position while being treated as success.
+- **Likely root cause:** Tiny resume records are written directly in place with no transactional staging, and the write/flush/close result is not part of the save contract.
+- **Impact:** A transient SD fault or power loss during an ordinary page render can lose reading position for EPUB, TXT/Markdown, and XTC books. Because progress is saved frequently, this exposes a durable user-state file to repeated destructive replacement.
+- **Repair direction:** Write the complete checkpoint to a same-directory temporary file, verify the exact byte count plus sync/close success, then atomically replace the canonical `progress.bin` while retaining the old checkpoint until publication succeeds. At minimum, make each save path check exact writes and report failure; add fault-injection tests proving the previous checkpoint survives open/write/sync failures and that partial files are never published.
