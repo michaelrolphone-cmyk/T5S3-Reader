@@ -26,6 +26,7 @@ static bool ht_ladder_enter(int vertical) {
     ht.vx=ht.vy=0;ht.grounded=false;ht.coyote=ht.jump_buffer=0;
     return true;
 }
+static int ht_boat_half(const ht_game *g) {return g->level==4?48:HT_BOAT_HALF;}
 static int ht_boat_top(const ht_game *g) {
     int phase=(int)(g->ticks&63u),wave=phase<32?phase:64-phase;
     return ht_mech(g)->boat_deck*256+(wave-32)*12;
@@ -85,7 +86,7 @@ static int ht_traversal_near(const ht_game *g) {
     if(m->crate_x && g->grounded && ht_abs(x-t->crate_x/256)<=HT_CRATE_HALF+9 &&
        ht_abs(y-t->crate_y/256)<=5) return HT_CRATE;
     if(ht_rope_catch(g)>=0) return HT_ROPE;
-    if(m->boat_right && ht_abs(x-t->boat_x/256)<=36 && ht_abs(g->y-ht_boat_top(g))<=16*256) return HT_BOAT;
+    if(m->boat_right && ht_abs(x-t->boat_x/256)<=ht_boat_half(g)+6 && ht_abs(g->y-ht_boat_top(g))<=16*256) return HT_BOAT;
     if(ht_ladder_near(g)>=0) return HT_LADDER;
     return HT_FREE;
 }
@@ -148,8 +149,14 @@ static void ht_body_step(int *x,int *y,int *vx,int *vy,int radius,int height,boo
         if(bottom>top*256+256 && head<wall_bottom*256) {
             int old_head=round?old_y-radius*256:old_y-height*256;
             if(*x>=l*256 && *x<r*256 && old_head>=ht_terrain_bottom(&ht,i,old_x/256)*256) {*x=old_x;*vx=0;}
-            if(old_x+radius*256<=l*256 && *vx>0) {*x=(l-radius)*256;*vx=0;}
-            else if(old_x-radius*256>=r*256 && *vx<0) {*x=(r+radius)*256;*vx=0;}
+            int wall_l=l,wall_r=r,old_l=l,old_r=r;
+            if(part==0 && head/256>top+8) {
+                ht_cliff_bounds(&ht,i,head/256,bottom/256,&wall_l,&wall_r);
+                int old_bottom=round?old_y+radius*256:old_y;
+                ht_cliff_bounds(&ht,i,old_head/256,old_bottom/256,&old_l,&old_r);
+            }
+            if(old_x+radius*256<=old_l*256 && *x+radius*256>wall_l*256) {*x=(wall_l-radius)*256;*vx=0;}
+            else if(old_x-radius*256>=old_r*256 && *x-radius*256<wall_r*256) {*x=(wall_r+radius)*256;*vx=0;}
         }
     }
 }
@@ -171,8 +178,8 @@ static void ht_props_step(int direction) {
     }
     if(m->boat_right) {
         t->boat_vx=ht_clamp(ht_drag(t->boat_vx,3)+(t->mode==HT_BOAT?direction*15:0),-320,320);
-        int left=ht_max(m->boat_left,m->water_left+HT_BOAT_HALF)*256;
-        int right=ht_min(m->boat_right,m->water_right-HT_BOAT_HALF)*256;
+        int left=ht_max(m->boat_left,m->water_left+ht_boat_half(&ht))*256;
+        int right=ht_min(m->boat_right,m->water_right-ht_boat_half(&ht))*256;
         t->boat_x=ht_clamp(t->boat_x+t->boat_vx,left,right);
         if(t->boat_x==left || t->boat_x==right) t->boat_vx=0;
     }
@@ -246,7 +253,18 @@ static void ht_land_collision(int i,int old_x,int old_y) {
             ht.x>=l*256 && ht.x<r*256 && ht_abs(old_y-old_top*256)<=256;
         if(on_slope) {ht.y=top*256;ht.vy=0;ht.grounded=true;}
         int bottom=ht_terrain_bottom(&ht,i,ht.x/256);
-        ht_collide(l,r,top,bottom,old_x,on_slope?top*256:old_y+(top-old_top)*256);
+        int wall_l=l,wall_r=r;
+        if(part==0 && ht.y/256-29>top+8)
+            ht_cliff_bounds(&ht,i,ht.y/256-29,ht.y/256,&wall_l,&wall_r);
+        ht_collide(wall_l,wall_r,top,bottom,old_x,on_slope?top*256:old_y+(top-old_top)*256);
+        /* Falling along an undercut can meet a projecting lower stratum even
+         * without horizontal motion. Keep the body outside that same outline. */
+        if(part==0 && ht.y/256-29>top+8 && ht.y/256<bottom) {
+            int old_l=l,old_r=r;
+            ht_cliff_bounds(&ht,i,old_y/256-29,old_y/256,&old_l,&old_r);
+            if(old_x+5*256<=old_l*256 && ht.x+5*256>wall_l*256) {ht.x=(wall_l-5)*256;ht.vx=0;}
+            if(old_x-5*256>=old_r*256 && ht.x-5*256<wall_r*256) {ht.x=(wall_r+5)*256;ht.vx=0;}
+        }
         /* The back of an undercut is solid too, not a visual-only wall. */
         if(ht.x>=l*256 && ht.x<r*256 && ht.y>top*256+256 && ht.y-29*256<bottom*256 &&
            old_y-29*256>=ht_terrain_bottom(&ht,i,old_x/256)*256) {ht.x=old_x;ht.vx=0;}
@@ -374,11 +392,15 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         }
         if(m->boat_right) {
             int top=ht_boat_top(&ht)/256;
-            if(old_support==3 && ht.vy>=0 && ht_abs(ht.x-t->boat_x)<29*256 && ht_abs(old_y-ht_boat_top(&ht))<3*256) {
+            if(old_support==3 && ht.vy>=0 && ht_abs(ht.x-t->boat_x)<(ht_boat_half(&ht)-1)*256 && ht_abs(old_y-ht_boat_top(&ht))<3*256) {
                 ht.y=top*256;ht.vy=0;ht.grounded=true;
-            } else ht_collide(t->boat_x/256-29,t->boat_x/256+29,top,top+10,old_x,old_y);
-            if(ht.grounded && ht.y==top*256 && ht_abs(ht.x-t->boat_x)<34*256) t->support=3;
+            } else ht_collide(t->boat_x/256-ht_boat_half(&ht)+1,t->boat_x/256+ht_boat_half(&ht)-1,top,top+10,old_x,old_y);
+            if(ht.grounded && ht.y==top*256 && ht_abs(ht.x-t->boat_x)<(ht_boat_half(&ht)+4)*256) t->support=3;
         }
+    }
+    if(ht.level==4 && ht.x/256<520) {
+        int ceiling=ht_grotto_ceiling(ht.x/256);
+        if(ht.y-29*256<ceiling*256) {ht.y=(ceiling+29)*256;ht.vy=ht_max(0,ht.vy);}
     }
     if(!jump_request) (void)ht_ladder_enter(vertical);
     ht_camera_step((direction || vertical || t->mode==HT_CLIMB) && (start_x!=ht.x || start_y!=ht.y));

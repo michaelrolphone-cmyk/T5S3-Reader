@@ -1,5 +1,6 @@
 #include "hollow_trail_geography_draw.inc"
 #include "hollow_trail_terrain_draw.inc"
+#include "hollow_trail_landscape_detail.inc"
 /* Dynamic solids are drawn at logical resolution, outside the blurred scenery
  * cache. One frozen ht_game supplies camera, object poses, collision and art. */
 static void ht_draw_traversal(const ht_game *g) {
@@ -7,19 +8,23 @@ static void ht_draw_traversal(const ht_game *g) {
     const ht_platform *land=ht_level_land(g->level);
     const ht_mechanics *m=ht_mech(g);
     ht_scene_geography(g);
+    ht_boat_grotto(g);
+    ht_landscape_detail(g);
     if(m->water_right) {
         int water=m->boat_deck+10-cy;
         ht_rect(ht_scene,m->water_left-cx,water,m->water_right-m->water_left,HT_H,110);
-        for(int band=0;band<4;++band)
-            ht_rect(ht_scene,m->water_left-cx,water+band*3,m->water_right-m->water_left,3,55+band*14);
+        for(int band=0;band<16;++band)
+            ht_rect(ht_scene,m->water_left-cx,water+band*3,m->water_right-m->water_left,3,35+band*5);
         for(int x=m->water_left+4;x<m->water_right;x+=27) {
             int wave=(int)((g->ticks/3+(unsigned)x)%7);
             ht_rect(ht_scene,x-cx,water+wave,14,1,35);
         }
         for(int shore=0;shore<2;++shore) {
             int x=(shore?m->water_right:m->water_left)-cx;
-            ht_rect(ht_scene,x-2,water-18,4,32,255);
-            ht_limb(ht_scene,x-9,water-15,x+9,water-15,1,1,255);
+            if(g->level!=4) {
+                ht_rect(ht_scene,x-2,water-18,4,32,255);
+                ht_limb(ht_scene,x-9,water-15,x+9,water-15,1,1,255);
+            }
             for(int reflection=0;reflection<3;++reflection)
                 ht_rect(ht_scene,x-3+reflection%2,water+3+reflection*4,5,2,160-reflection*20);
             if(g->level==4) for(int reed=0;reed<5;++reed) {
@@ -29,6 +34,23 @@ static void ht_draw_traversal(const ht_game *g) {
             }
         }
     }
+    /* Distinct natural silhouettes stay anchored to the new physical route. */
+    for(int i=0;i<HT_PLATFORMS;++i) {
+        if(i==m->bridge || (i!=0 && i!=2 && i!=5 && i!=8) || (g->level==4 && i==0)) continue;
+        const ht_platform *p=&land[i];
+        int world=i==0?15:p->left+(p->right-p->left)*2/3;
+        int x=world-cx,y=ht_surface_at(g,i,world)-cy;
+        if(x< -160-ht_view_margin() || x>HT_W+160+ht_view_margin()) continue;
+        if(g->level==2) ht_cactus_on(ht_scene,x,y,i==1?39:84,255);
+        else if(g->level==0 || g->level==4 || g->level==6 || g->level==8)
+            ht_grounded_tree(g,i,world,g->level==0?340+(i%3)*65:130+(i%3)*27,g->level==0?23+(i%3)*5:7,(unsigned)i+901);
+        else {
+            ht_rect(ht_scene,x,y-42,3,42,255);ht_rect(ht_scene,x-7,y-44,17,3,255);
+            ht_rect(ht_scene,x-4,y-39,11,13,170);
+        }
+    }
+    ht_story_landmarks(g);
+    ht_draw_evidence(g);
     for(int i=0;i<HT_PLATFORMS;++i) {
         const ht_platform *p=&land[i];
         for(int part=0;part<3;++part) {
@@ -57,22 +79,6 @@ static void ht_draw_traversal(const ht_game *g) {
         /* A closing pawl visibly locks the lowered span. */
         if(g->traversal.bridge_open==32) ht_rect(ht_scene,pulley-4,y-3,8,3,255);
     }
-    /* Distinct natural silhouettes stay anchored to the new physical route. */
-    for(int i=0;i<HT_PLATFORMS;++i) {
-        if(i==m->bridge || (i!=0 && i!=2 && i!=5 && i!=8)) continue;
-        const ht_platform *p=&land[i];
-        int world=i==0?15:p->left+(p->right-p->left)*2/3;
-        int x=world-cx,y=ht_surface_at(g,i,world)-cy;
-        if(x< -160-ht_view_margin() || x>HT_W+160+ht_view_margin()) continue;
-        if(g->level==2) ht_cactus_on(ht_scene,x,y,i==1?39:84,255);
-        else if(g->level==0 || g->level==4 || g->level==6 || g->level==8)
-            ht_grounded_tree(g,i,world,g->level==0?340+(i%3)*65:130+(i%3)*27,g->level==0?23+(i%3)*5:7,(unsigned)i+901);
-        else {
-            ht_rect(ht_scene,x,y-42,3,42,255);ht_rect(ht_scene,x-7,y-44,17,3,255);
-            ht_rect(ht_scene,x-4,y-39,11,13,170);
-        }
-    }
-    ht_story_landmarks(g);
     for(unsigned i=0;i<3;++i) {
         if(!m->ladders[i].x) continue;
         int top,bottom;ht_ladder_ends(g->level,i,&top,&bottom);
@@ -111,30 +117,65 @@ static void ht_draw_traversal(const ht_game *g) {
     }
     if(m->boat_right) {
         int x=g->traversal.boat_x/256-cx,y=ht_boat_top(g)/256-cy;
-        /* Raised gunwales, pointed bow, ribs, seats and a working oar. */
-        for(int dy=0;dy<15;++dy) ht_rect(ht_scene,x-29+dy/2,y+dy,58-dy,1,dy==0?255:dy<9?190:255);
-        ht_limb(ht_scene,x-29,y-4,x-21,y+8,1,1,255);
-        ht_limb(ht_scene,x+29,y-5,x+21,y+8,1,1,255);
-        ht_rect(ht_scene,x-23,y-1,46,2,255);
+        int half=ht_boat_half(g);
+        /* Low, long hull with raised ends and curved, narrowing planks. */
+        for(int dy=0;dy<15;++dy) {
+            int taper=dy*dy/24;
+            ht_rect(ht_scene,x-half+1+taper,y+dy,2*(half-1-taper),1,dy==0?255:dy<9?220:255);
+        }
+        ht_limb(ht_scene,x-half+1,y-4,x-half+9,y+8,1,1,255);
+        ht_limb(ht_scene,x+half-1,y-5,x+half-9,y+8,1,1,255);
+        ht_rect(ht_scene,x-half+7,y-1,2*half-14,2,255);
         for(int rib=-16;rib<=16;rib+=8) ht_rect(ht_scene,x+rib,y+3,1,7,235);
         ht_rect(ht_scene,x-13,y,5,3,70);ht_rect(ht_scene,x-4,y,8,3,70);ht_rect(ht_scene,x+10,y,5,3,70);
         int stroke=ht_boat_stroke(g);
         ht_limb(ht_scene,x+5+stroke/2,y-6,x+27+stroke,y+12,0,0,255);
         ht_limb(ht_scene,x+27+stroke,y+12,x+32+stroke,y+15,2,1,255);
-        ht_rect(ht_scene,x-20,y+15,40,1,50);
+        if(g->level==4) {
+            /* Furled skiff mast and slack standing rigging: the same moving
+             * ferry owns hull, mast, ropes, oar and the seated passenger. */
+            int mast=x-12,head=y-68;
+            ht_limb(ht_scene,mast,y,mast+2,head,1,0,255);
+            ht_limb(ht_scene,mast+1,head+9,x-17,y-18,0,0,235);
+            ht_limb(ht_scene,x-17,y-18,x-half+3,y-2,0,0,235);
+            ht_limb(ht_scene,mast+2,head+7,x+4,y-23,0,0,210);
+            ht_limb(ht_scene,x+4,y-23,x+half-5,y-2,0,0,210);
+            ht_limb(ht_scene,mast,y-36,mast+3,y-10,2,1,215);
+            /* Shore chain remains on the rock when the boat leaves. */
+            int bank=m->water_left-cx;
+            ht_disk(ht_scene,bank-3,y-10,3,200);
+            int gap=g->traversal.boat_x/256-half-m->water_left;
+            if(gap<=3) {
+                ht_limb(ht_scene,bank-1,y-9,bank+3,y-3,1,1,210);
+                ht_limb(ht_scene,bank+3,y-3,x-half+3,y-2,0,0,220);
+            }
+        }
+        /* Reflection dissolves in horizontal mist strips, never a black
+         * inverted copy competing with the small hull silhouette. */
+        for(int band=0;band<4;++band)
+            ht_rect(ht_scene,x-half+7+band*3,y+16+band*3,2*half-14-band*6,1,90-band*15);
         int speed=ht_abs(g->traversal.boat_vx)/64;
         for(int i=0;i<speed;++i) {
             int side=g->traversal.boat_vx>0?-1:1;
-            int at=x+side*(31+i*6),rip=(int)((g->ticks+i*3)%8);
+            int at=x+side*(half+1+i*6),rip=(int)((g->ticks+i*3)%8);
             ht_rect(ht_scene,at,y+13+rip/3,4+i,1,45);
         }
     }
     if(m->rope_length) {
         int ax=m->rope_anchor_x-cx,ay=m->rope_anchor_y-cy;
+        if(g->level==0) {
+            int trunk=m->rope_anchor_x-96;
+            ht_grounded_tree(g,4,trunk,295,16,1917);
+            ht_limb(ht_scene,trunk-cx,ay-28,ax-35,ay-19,9,6,255);
+            ht_limb(ht_scene,ax-35,ay-19,ax+16,ay-12,6,2,255);
+            ht_limb(ht_scene,ax-34,ay-18,ax-15,ay-42,3,0,255);
+            ht_leaf_cluster(ht_scene,ax+16,ay-14,17,2917,255);
+        } else {
         int foot=ay+108;
         ht_limb(ht_scene,ax-43,foot,ax-43,ay-14,3,2,255);
         ht_limb(ht_scene,ax-45,ay-12,ax+10,ay-12,3,2,255);
         ht_limb(ht_scene,ax-42,ay+15,ax-12,ay-12,1,1,255);
+        }
         ht_limb(ht_scene,ax,ay-12,ax,ay-3,0,0,255);
         ht_disk(ht_scene,ax,ay-3,4,255);ht_disk(ht_scene,ax,ay-3,2,0);
         for(int i=1;i<HT_ROPE_NODES;++i) {

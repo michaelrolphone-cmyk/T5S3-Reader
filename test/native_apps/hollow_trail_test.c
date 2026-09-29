@@ -109,6 +109,21 @@ static void camera_invariants(void) {
     ht.camera_mood=256;ht.rotation_phase=0;ht_camera_step(true);assert(ht.rotation_phase==1280);
     ht.level=0;ht_spawn(true);
 }
+/* Distant silhouettes must survive the sky floor and off-focus fog. This
+ * catches the regression where a low pale replacement erased the far plane. */
+static void visible_background_depth(void) {
+    for(unsigned level=0;level<2;++level) {
+        ht.level=level;ht_spawn(true);ht_select_level(level);
+        for(int camera=0;camera<=1400;camera+=700) {
+            ht_clear_layer(ht_raw);ht_background(0,ht_layer_offset(0,camera));
+            unsigned visible=0;
+            for(int y=20;y<130;++y) for(int x=20;x<HT_W-20;++x)
+                if(ht_raw[y*HT_W+x]*211/256>ht_sky_ink(&ht)+25) ++visible;
+            assert(visible>(level?4000u:700u));
+        }
+    }
+    ht.level=0;ht_spawn(true);ht_select_level(0);
+}
 static void landscape_contact_and_pull(void) {
     ht.level=0;ht_spawn(true);ht.camera=670*256;ht.camera_y=40*256;
     /* Root toes and trunk contact continuous soil on both slopes, including
@@ -121,6 +136,16 @@ static void landscape_contact_and_pull(void) {
             int px=ht_project_x(world+dx-670);
             int py=ht_project_y(ht_surface_at(&ht,2,world+dx)-40);
             assert(px>=0 && px<HT_W && py>=0 && py<HT_H);
+            assert(ht_scene[py*HT_W+px]==255);
+        }
+    }
+    /* Player separation follows projection and never erases sloping soil. */
+    ht.x=900*256;ht.y=ht_surface_at(&ht,2,900)*256;
+    for(int scale=176;scale<=256;scale+=40) {
+        ht_world_scale=scale;memset(ht_scene,255,HT_PIXELS);
+        ht_character(230,ht.y/256-40,&ht);
+        for(int wx=876;wx<=924;++wx) {
+            int px=ht_project_x(wx-670),py=ht_project_y(ht_surface_at(&ht,2,wx)-40)+2;
             assert(ht_scene[py*HT_W+px]==255);
         }
     }
@@ -148,6 +173,41 @@ static void landscape_contact_and_pull(void) {
         assert(ht_scene[hy*HT_W+hand] && pushed[hy*HT_W+hand]);
     }
     ht_spawn(true);
+}
+static void eroded_cliffs_and_grotto(void) {
+    ht.level=0;ht_spawn(true);ht.camera=1250*256;ht.camera_y=200*256;
+    int i=4,right=ht_land[i].right;
+    assert(ht_cliff_edge(&ht,i,1));
+    memset(ht_scene,0,HT_PIXELS);
+    ht_draw_land(&ht,i,0,ht_land[i].left,right,ht_land[i].top);
+    for(int y=260;y<360;y+=7) {
+        int edge=right-ht_cliff_inset(&ht,i,1,y);
+        assert(edge<right);
+        assert(ht_scene[(y-200)*HT_W+edge-1250-2]>=230);
+        assert(ht_scene[(y-200)*HT_W+edge-1250+2]==0);
+    }
+    /* Approach the eroded side below the lip; body contact must match the
+     * outermost rock across its full height, not the old rectangular edge. */
+    int left=ht_land[i].left,wall=right;
+    ht_cliff_bounds(&ht,i,291,320,&left,&wall);
+    ht.y=320*256;ht.x=(wall+2)*256;ht.vx=-640;ht.vy=0;ht.grounded=false;
+    ht_land_collision(i,(right+12)*256,ht.y);
+    assert(ht.x==(wall+5)*256 && !ht.vx && !ht.grounded);
+    int bx=1464*256,by=300*256,bvx=-128,bvy=0;
+    ht_body_step(&bx,&by,&bvx,&bvy,HT_BALL_RADIUS,0,true);
+    assert(bx==1464*256-128); /* No snap toward still-distant eroded rock. */
+    /* Jumping in the low entrance touches the visible grotto ceiling, then
+     * falls back to its unchanged floor. It never clips through the roof. */
+    ht.level=4;ht_spawn(true);
+    for(int tick=0;tick<50;++tick) {
+        ht_step_controls(0,0,tick==0,true);
+        assert(ht.y-29*256>=ht_grotto_ceiling(ht.x/256)*256);
+    }
+    assert(ht.grounded);
+    assert(ht_boat_half(&ht)==48);
+    assert(ht_mech(&ht)->boat_left-ht_boat_half(&ht)==ht_mech(&ht)->water_left);
+    assert(ht_mech(&ht)->boat_right+ht_boat_half(&ht)==ht_mech(&ht)->water_right);
+    ht.level=0;ht_spawn(true);
 }
 static void terrain_and_rope_invariants(void) {
     ht.level=0;ht_spawn(true);ht.x=710*256;ht.y=ht_surface_at(&ht,2,710)*256;
@@ -199,7 +259,7 @@ static void terrain_and_rope_invariants(void) {
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY), *frame=malloc(960u*540u/4u);
     assert(memory && frame); ht_bind(memory); ht_spawn(true);
-    mechanism_invariants();mechanism_recovery();camera_invariants();landscape_contact_and_pull();terrain_and_rope_invariants();
+    mechanism_invariants();mechanism_recovery();camera_invariants();visible_background_depth();landscape_contact_and_pull();eroded_cliffs_and_grotto();terrain_and_rope_invariants();
     assert(((uintptr_t)ht_low_scene&15u)==0);
     /* Prove clamp-free affine taps stay inside the source over a complete
      * rotation/zoom cycle. Linear coordinates attain extrema at row ends. */
@@ -304,11 +364,11 @@ int main(void) {
         for(int i=0;i<420;++i) {
             ht_step(1,false,false);
             assert(ht.x==ht.traversal.boat_x);
-            assert(ht.traversal.boat_x+HT_BOAT_HALF*256<=m->water_right*256);
+            assert(ht.traversal.boat_x+ht_boat_half(&ht)*256<=m->water_right*256);
         }
         assert(ht.traversal.boat_vx==0);
         for(int i=0;i<420;++i) ht_step(-1,false,false);
-        assert(ht.traversal.boat_x-HT_BOAT_HALF*256>=m->water_left*256 && !ht.traversal.boat_vx);
+        assert(ht.traversal.boat_x-ht_boat_half(&ht)*256>=m->water_left*256 && !ht.traversal.boat_vx);
     }
     /* Ladders require vertical intent, not A. Horizontal/neutral jumps pass
      * freely, midair contact catches in either direction, bottom Down is inert. */
