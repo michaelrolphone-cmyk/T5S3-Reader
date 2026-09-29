@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 187. Native app allocator cleanup timeout poisons all later native-app launches
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1626](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1626/bugs.md)
+
+- **Affected code:** `src/native/NativeAppMemory.cpp`, especially `native_app_memory_end()` and `native_app_memory_begin()`; `lib/NativeApps/src/NativeAppLauncher.c::launch_elf_app()` cleanup paths.
+- **Trigger / reproduction:** Run a native app that has another task using the app allocation ledger and make that task hold the allocator mutex longer than `native_app_memory_end()`'s roughly 100 ms lock timeout as `app_main()` returns. Equivalently, fault-inject the cleanup `xSemaphoreTake()` to fail once. Then launch any native app again.
+- **Observed / logically demonstrated failure:** On the timeout, `native_app_memory_end()` logs `Allocator busy during exit; retaining invocation` and returns without clearing the global `entries` pointer or ending the ledger. Its return type is `void`, so `launch_elf_app()` cannot detect the failed cleanup: it immediately sets `memory_active = false` and continues module teardown. On the next launch, `native_app_memory_begin()` sees `entries` still non-null and returns `false`, which the launcher reports as `ESP_ERR_NO_MEM`. Every later native-app launch therefore fails until reboot even if plenty of memory is actually free.
+- **Likely root cause:** Allocator teardown is fallible, but its API hides that failure and the ELF launcher unconditionally publishes the allocator as inactive.
+- **Impact:** One teardown-time mutex contention can strand the entire native-app subsystem for the remainder of the boot, while also retaining the previous invocation's tracked allocations. Continuing to unload after failed allocator quiescence also weakens the intended lifetime boundary for app-owned worker activity.
+- **Repair direction:** Make allocator teardown return an explicit result and do not clear `memory_active`, unload the ELF, or release the launch guard until the ledger is safely quiesced. Join/stop app-owned allocator users before teardown or fail closed by retaining the mapped generation and requiring a controlled restart. Add a regression that forces the first cleanup lock acquisition to time out and proves a subsequent app can launch without stale ledger state.
+
+### 188. A failed managed-app launch leaks its package-use pin and can permanently block update or uninstall
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1626](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1626/bugs.md)
+
+- **Affected code:** `src/native/NativeAppHost.cpp::runNativeApp()`; `lib/NativeApps/src/NativeAppLauncher.c::launch_elf_app()`; `src/runtime/packages/PackageUseGate.h`.
+- **Trigger / reproduction:** Launch a canonical managed app from `/Apps/<id>/<artifact>.elf` and make `launch_elf_app()` fail before a module needs to be retained—for example by making a required capability unavailable, making `native_app_memory_begin()` fail, or supplying an ELF that fails `dlopen()`. Then try to update or uninstall that package. Repeat the failed launch to show the pin count accumulating.
+- **Observed / logically demonstrated failure:** `runNativeApp()` pins the canonical package root before calling `launch_elf_app()`, but it calls `unpin()` only when the returned `esp_err_t` is exactly `ESP_OK`. Many non-OK exits occur before the ELF is mapped at all, or after it has been safely closed, yet those paths leave the pin in `PackageUseGate`. `beginReplacement()` refuses any package with outstanding pins, so a harmless launch failure can make later package replacement/uninstall fail for the rest of the boot; repeated failed launches increment the leaked pin count.
+- **Likely root cause:** The caller uses overall launch success as a proxy for module-lifetime disposition. A non-OK launch result is not equivalent to a failed `dlclose()` or an intentionally retained module.
+- **Impact:** A missing capability, malformed app, transient allocation failure, or similar launch error can prevent recovery by installing a fixed version of that same managed app until the device is rebooted.
+- **Repair direction:** Return an explicit mapped/unloaded/retained disposition from the ELF launcher, or wrap the pin in an RAII lease that releases on every path except a verified failed-unload/retained-module case. Add tests for pre-`dlopen` failure, post-`dlopen` successful cleanup with a non-OK app result, and true failed-unload retention.
+
+### 189. Clock sync can write UTC to the RTC without durably recording the UTC storage mode
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1626](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1626/bugs.md)
+
+- **Affected code:** `src/ClockSync.cpp::commitCurrentSystemTime()`; `lib/hal/HalClock.cpp::syncRtcFromSystemTime()`, `HalClock::configure()`, and `HalClock::syncSystemTimeFromRtc()`; settings persistence through `CrossPointSettings::saveToFile()`.
+- **Trigger / reproduction:** Start in a non-UTC timezone with persisted `rtcStoresUtc == 0` (legacy/local RTC mode). Acquire valid system time and allow `syncRtcFromSystemTime()` to successfully write UTC fields to the RTC, but fault-inject `SETTINGS.saveToFile()` to fail. Reboot before any later successful settings save.
+- **Observed / logically demonstrated failure:** `syncRtcFromSystemTime()` always writes the RTC from `gmtime_r()`, so after it succeeds the hardware clock contains UTC. `commitCurrentSystemTime()` only then changes `SETTINGS.rtcStoresUtc` to 1, updates the variant/reference metadata, and attempts to save. If that save fails, the code merely logs the error, configures the live clock for UTC anyway, and returns success. The durable settings still describe the RTC as local time. On the next boot, `HalClock::configure()` therefore starts in local-storage mode; when both UTC and local interpretations are plausible and the old reference cannot disambiguate them, `syncSystemTimeFromRtc()` keeps the persisted local mode and interprets the UTC fields as local wall time, shifting the recovered epoch by the timezone offset.
+- **Likely root cause:** The RTC representation migration and its persistent format metadata are committed as two independent operations, and persistence failure is not part of the clock-sync success predicate.
+- **Impact:** A settings-write failure immediately after an otherwise successful network clock sync can make the next boot recover a system time hours early or late, despite the RTC itself containing the correct UTC fields.
+- **Repair direction:** Treat RTC format and its durable mode metadata as one transaction. Do not report sync success until the UTC-mode metadata is durable; if metadata persistence fails after the hardware write, either restore the RTC to the previously declared representation or persist/recover an unambiguous migration marker before boot can consume it. Add a non-UTC regression with `rtcStoresUtc=0`, successful RTC write, failed settings save, and reboot-time recovery.
