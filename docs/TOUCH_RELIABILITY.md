@@ -37,8 +37,11 @@ The history separated fixes that actually depend on one another:
    use the same mutex. No relocatable atomics or hardware imports are added.
    Start/stop remain serialized by the loader, with live grants pinning the ELF.
 2. A failed coordinate read leaves READY untouched for the next poll. Malformed
-   reports that are discarded mark every subscriber GAP. Failed acknowledgement
-   does not publish a report. Subscription tokens remain monotonic across restart.
+   reports that are discarded mark every subscriber GAP. Publish validated state
+   before acknowledgement: a failed ACK may have cleared READY despite returning
+   an error. If it did not, the next read sees the same state and emits no duplicate
+   edges. Never blindly retry ACK against a possibly newer report. Subscription
+   tokens remain monotonic across restart.
 3. Poll services at most one report: three bus transfers at most, each with a
    20 ms budget, plus bounded provider admission. Firmware yields at least one
    scheduler tick between capture turns. UI redraws never become the sampler.

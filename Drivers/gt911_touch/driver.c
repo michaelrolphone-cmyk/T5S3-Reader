@@ -228,12 +228,15 @@ static bool service_one(bool *had_report) {
         }
     }
 
-    /* Ack before publishing. If acknowledgement fails, do not publish a report
-     * that the controller may present again on the next poll. */
-    if (!write_reg8(GT911_STATUS_REG, 0u)) return false;
+    /* A failed bus write has an ambiguous outcome: READY may already have
+     * cleared. Publish the validated report before ACK so such a failure
+     * cannot lose a DOWN/UP forever. If ACK did not reach the controller, the
+     * next poll reads the same state and apply_state emits no duplicate edges.
+     * Never retry ACK blindly: it could discard the next controller report. */
     uint64_t now = monotonic_ms();
     if (now == UINT64_MAX) now = snapshot_timestamp_ms;
-    return apply_state(next, count, next_buttons, now);
+    if (!apply_state(next, count, next_buttons, now)) return false;
+    return write_reg8(GT911_STATUS_REG, 0u);
 }
 
 static uint64_t subscribe_locked(void *context) {

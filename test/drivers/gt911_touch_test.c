@@ -17,6 +17,7 @@ static uint8_t claimed_address;
 static unsigned release_calls;
 static unsigned fail_point_reads;
 static unsigned fail_ack_writes;
+static bool failed_ack_reaches_controller;
 static pthread_mutex_t gate = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t condition = PTHREAD_COND_INITIALIZER;
 static bool pause_status, in_status, resume_status;
@@ -48,7 +49,11 @@ static bool transact(void *context, uint64_t claim,
     const uint16_t reg = (uint16_t)(((uint16_t)write_bytes[0] << 8u) |
                                     write_bytes[1]);
     if (write_length == 3u && !read_length && reg == 0x814eu) {
-        if (fail_ack_writes) { --fail_ack_writes; return false; }
+        if (fail_ack_writes) {
+            --fail_ack_writes;
+            if (failed_ack_reaches_controller) status_reg = write_bytes[2];
+            return false;
+        }
         status_reg = write_bytes[2];
         return true;
     }
@@ -214,11 +219,27 @@ int main(void) {
     report_release();
     fail_ack_writes = 1;
     assert(!api->poll(api->context, 1u));
-    assert(api->next(api->context, a, &event_a) == 0);
-    assert(api->poll(api->context, 1u));
     assert(take(api, a).kind == RISC_TOUCH_EVENT_UP);
     assert(take(api, b).kind == RISC_TOUCH_EVENT_UP);
+    assert(api->poll(api->context, 1u));
     assert(api->next(api->context, a, &event_a) == 0);
+    assert(api->next(api->context, b, &event_b) == 0);
+
+    // A failed ACK may actually clear READY. Both edges still arrive once.
+    failed_ack_reaches_controller = true;
+    report_one(3u, 100u, 200u); fail_ack_writes = 1;
+    assert(!api->poll(NULL, 1u) && status_reg == 0u);
+    assert(take(api, a).kind == RISC_TOUCH_EVENT_DOWN);
+    assert(take(api, b).kind == RISC_TOUCH_EVENT_DOWN);
+    assert(api->poll(NULL, 1u));
+    assert(api->next(NULL, a, &event_a) == 0);
+    report_release(); fail_ack_writes = 1;
+    assert(!api->poll(NULL, 1u) && status_reg == 0u);
+    assert(take(api, a).kind == RISC_TOUCH_EVENT_UP);
+    assert(take(api, b).kind == RISC_TOUCH_EVENT_UP);
+    assert(api->poll(NULL, 1u));
+    assert(api->next(NULL, a, &event_a) == 0);
+    failed_ack_reaches_controller = false;
 
     // Malformed reports are explicitly signalled as GAP to both consumers.
     report_one(3u, 100u, 200u);

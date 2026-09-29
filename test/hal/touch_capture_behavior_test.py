@@ -148,7 +148,7 @@ int main() {
       serviceProvider(); nowMs+=5; fake_ms=nowMs;
     }
     serviceProvider();
-    report_release(); fail_ack_writes=1;
+    report_release(); fail_ack_writes=1; failed_ack_reaches_controller=(tap%2)!=0;
     serviceProvider(); nowMs+=5; fake_ms=nowMs; serviceProvider();
     // Delay UI delivery across several complete taps, as during a refresh.
     if (tap%8==7 || tap==99) {
