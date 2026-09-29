@@ -66,7 +66,7 @@ static void ht_draw_traversal(const ht_game *g) {
         if(x< -160-ht_view_margin() || x>HT_W+160+ht_view_margin()) continue;
         if(g->level==2) ht_cactus_on(ht_scene,x,y,i==1?39:84,255);
         else if(g->level==0 || g->level==4 || g->level==6 || g->level==8)
-            ht_tree(ht_scene,x,y,g->level==0?340+(i%3)*65:130+(i%3)*27,g->level==0?23+(i%3)*5:7,(unsigned)i+901,255);
+            ht_grounded_tree(g,i,world,g->level==0?340+(i%3)*65:130+(i%3)*27,g->level==0?23+(i%3)*5:7,(unsigned)i+901);
         else {
             ht_rect(ht_scene,x,y-42,3,42,255);ht_rect(ht_scene,x-7,y-44,17,3,255);
             ht_rect(ht_scene,x-4,y-39,11,13,170);

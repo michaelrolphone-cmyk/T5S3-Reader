@@ -1,4 +1,35 @@
-# Hollow Trail 1.1.5
+# Hollow Trail 1.1.6
+
+## Continuous landscape contours and grounded animation
+
+Hollow Trail **1.1.5 → 1.1.6** follows merged PR #285; minimum firmware
+remains **1.3.37**. Natural ground now follows authored world-space contour
+points rather than a symmetric bump that resets at every collision parcel.
+Joined forest, sand, mud and planting beds share continuous slopes; quarry
+and pass profiles use angular rock contours. Roofs, working pads, bridges,
+rope takeoffs, water crossings and puzzle machinery retain their functional
+heights. Rendering, walking, loose bodies, evidence and weather still consume
+the same surface function.
+
+Foreground trees no longer use flat root endpoints. The trunk footprint and
+both buttress roots sample the local soil, filling the previously visible
+triangular air gaps on hillsides. Contacts use the same camera and vista
+projection as the ground. The close scenery compositor also no longer cuts
+its output at a fixed 90 logical pixels.
+
+Pulling a crate or boulder leans the torso away from the load, steps backward
+and extends the arms while keeping both hands on the load. Pushing keeps its
+forward lean and bent-arm brace. Signed load motion selects the moving pose;
+the last intended direction selects the pose at rest or when blocked.
+
+Regression coverage includes continuous parcel joins, isolated tree-to-soil
+contact on both slope directions at three vista scales, distinct mirrored
+push/pull silhouettes with unchanged hand contacts, and the existing ten-chapter
+input-driven route. Full native tests, focused ASan/UBSan gameplay checks and the official Xtensa
+ELF/import build passed. The source manifest, ELF sidecar and generated app
+catalog agree on 1.1.6. Hardware appearance and frame rate remain unverified.
+
+# Earlier update: Hollow Trail 1.1.5
 
 ## Discovery-driven mechanical deduction
 

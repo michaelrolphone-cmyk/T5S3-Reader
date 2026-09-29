@@ -63,9 +63,12 @@ static bool ht_character_instrument(int x,int feet,const ht_game *g) {
     if(t->mode==HT_ROLL || t->mode==HT_CRATE) {
         int object=t->mode==HT_ROLL?t->ball_x:t->crate_x;
         int side=object>=g->x?1:-1;
-        int velocity=ht_abs(t->mode==HT_ROLL?t->ball_vx:t->crate_vx);
+        int signed_velocity=t->mode==HT_ROLL?t->ball_vx:t->crate_vx;
+        int velocity=ht_abs(signed_velocity);
+        bool pulling=(velocity>24?signed_velocity:g->facing)*side<0;
+        int lean=pulling?-side:side;
         int effort=velocity<32?5:3; /* A stopped load gets a low, planted brace. */
-        int shoulder=x+side*effort,hip=x-side*2;
+        int shoulder=x+lean*(pulling?6:effort),hip=x-lean*2;
         int hand_x,hand_y;
         if(t->mode==HT_CRATE) {
             hand_x=object/256-g->camera/256-side*HT_CRATE_HALF;
@@ -79,13 +82,13 @@ static bool ht_character_instrument(int x,int feet,const ht_game *g) {
         int stride=velocity>24?(int)((g->stride/500)%12)-6:0;
         for(int leg=0;leg<2;++leg) {
             int step=leg?-stride:stride;
-            int foot=x-side*(leg?11:0)+step/2;
+            int foot=x-lean*(leg?11:0)+(pulling?-step:step)/2;
             ht_limb(ht_scene,hip,feet-8,foot+side*3,feet-5,2,2,255);
             ht_limb(ht_scene,foot+side*3,feet-5,foot,feet,1,1,255);
             ht_rect(ht_scene,foot-2,feet-1,5,2,255);
         }
         for(int arm=0;arm<2;++arm) {
-            int elbow=x+side*7,ey=feet-12+arm*3;
+            int elbow=pulling?(shoulder+hand_x)/2:x+side*7,ey=feet-(pulling?17:12)+arm*3;
             ht_limb(ht_scene,shoulder,feet-16+arm*2,elbow,ey,2,1,255);
             ht_limb(ht_scene,elbow,ey,hand_x,hand_y+arm*4,1,1,255);
             ht_disk(ht_scene,hand_x,hand_y+arm*4,1,255);

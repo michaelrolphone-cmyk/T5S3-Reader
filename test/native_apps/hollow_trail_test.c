@@ -109,6 +109,46 @@ static void camera_invariants(void) {
     ht.camera_mood=256;ht.rotation_phase=0;ht_camera_step(true);assert(ht.rotation_phase==1280);
     ht.level=0;ht_spawn(true);
 }
+static void landscape_contact_and_pull(void) {
+    ht.level=0;ht_spawn(true);ht.camera=670*256;ht.camera_y=40*256;
+    /* Root toes and trunk contact continuous soil on both slopes, including
+     * the widest vista. Inspect isolated tree pixels, not an already black floor. */
+    const int positions[]={760,900,1020};
+    for(int scale=176;scale<=256;scale+=40) for(unsigned i=0;i<3;++i) {
+        int world=positions[i];ht_world_scale=scale;
+        memset(ht_scene,0,HT_PIXELS);ht_grounded_tree(&ht,2,world,340,23,901);
+        for(int dx=-65;dx<=43;dx+=3) {
+            int px=ht_project_x(world+dx-670);
+            int py=ht_project_y(ht_surface_at(&ht,2,world+dx)-40);
+            assert(px>=0 && px<HT_W && py>=0 && py<HT_H);
+            assert(ht_scene[py*HT_W+px]==255);
+        }
+    }
+    ht_world_scale=256;
+    /* Parcel joins cannot reset a continuous hillside to the old flat datum. */
+    for(int i=2;i<9;++i) if(ht_land[i].right==ht_land[i+1].left) {
+        int edge=ht_land[i].right;
+        assert(ht_abs(ht_surface_at(&ht,i,edge-1)-ht_surface_at(&ht,i+1,edge))<=1);
+    }
+    uint8_t pushed[HT_PIXELS];
+    ht.camera=ht.camera_y=0;ht.x=200*256;ht.y=220*256;
+    for(int mode=HT_ROLL;mode<=HT_CRATE;++mode) for(int side=-1;side<=1;side+=2) {
+        ht.traversal.mode=mode;ht.traversal.ball_x=ht.traversal.crate_x=(200+side*21)*256;
+        ht.traversal.ball_y=204*256;ht.traversal.crate_y=220*256;
+        ht.traversal.ball_vx=ht.traversal.crate_vx=side*128;
+        memset(ht_scene,0,HT_PIXELS);assert(ht_character_instrument(200,220,&ht));
+        memcpy(pushed,ht_scene,HT_PIXELS);
+        ht.traversal.ball_vx=ht.traversal.crate_vx=-side*128;
+        memset(ht_scene,0,HT_PIXELS);assert(ht_character_instrument(200,220,&ht));
+        assert(memcmp(pushed,ht_scene,HT_PIXELS));
+        int hand=221; /* Object-facing hand remains on the same load contact. */
+        if(side<0) hand=179;
+        hand-=side*(mode==HT_ROLL?HT_BALL_RADIUS-2:HT_CRATE_HALF);
+        int hy=mode==HT_ROLL?200:202;
+        assert(ht_scene[hy*HT_W+hand] && pushed[hy*HT_W+hand]);
+    }
+    ht_spawn(true);
+}
 static void terrain_and_rope_invariants(void) {
     ht.level=0;ht_spawn(true);ht.x=710*256;ht.y=ht_surface_at(&ht,2,710)*256;
     int high=ht.y,low=ht.y;
@@ -159,7 +199,7 @@ static void terrain_and_rope_invariants(void) {
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY), *frame=malloc(960u*540u/4u);
     assert(memory && frame); ht_bind(memory); ht_spawn(true);
-    mechanism_invariants();mechanism_recovery();camera_invariants();terrain_and_rope_invariants();
+    mechanism_invariants();mechanism_recovery();camera_invariants();landscape_contact_and_pull();terrain_and_rope_invariants();
     assert(((uintptr_t)ht_low_scene&15u)==0);
     /* Prove clamp-free affine taps stay inside the source over a complete
      * rotation/zoom cycle. Linear coordinates attain extrema at row ends. */
