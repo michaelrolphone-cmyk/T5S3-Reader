@@ -1,7 +1,7 @@
 # Hollow Trail: two accounts, one history
 
-This is the implemented narrative and decision design for the cumulative,
-unreleased Hollow Trail 1.0.15 update in PR #276. It supersedes the earlier
+This is the implemented narrative and decision design, updated through Hollow
+Trail 1.1.4. The cabinet narrative originated in PR #276. It supersedes the earlier
 straightforward rescue/reunion synopsis. **Full spoilers below.**
 
 ## Narrative contract
@@ -19,7 +19,10 @@ Thirty documents use attributed passages from both people, arranged as sister,
 keeper and juxtaposed records within each chapter. All three contain operational
 clues. The same puzzle settings work under either interpretation; there is no
 hidden belief score, random truth selection or punishment for believing one
-person. Existing puzzle solutions, routes and collectible positions are unchanged.
+person. Version 1.1.4 replaces recipe-style operating instructions with physical
+mechanism clues and setting-specific routes; see HOLLOW_TRAIL.md for the
+current mechanism, camera-mood and discovery-triggered weather tables. The
+competing accounts and cabinet outcomes remain consistent.
 
 ## Evidence and reversals
 
