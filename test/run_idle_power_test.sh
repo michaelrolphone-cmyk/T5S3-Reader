@@ -15,6 +15,7 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/bq25896/include" \
   "$repo/test/hal/usb_input_power_test.c" -o "$build/input-test"
 python3 "$repo/test/hal/touch_interrupt_capture_test.py"
 python3 "$repo/test/hal/touch_capture_behavior_test.py"
+python3 "$repo/test/hal/native_app_focus_test.py"
 python3 "$repo/test/hal/i2c_deadline_test.py"
 python3 "$repo/test/hal/keyboard_entry_responsiveness_test.py"
 "$build/input-test"
