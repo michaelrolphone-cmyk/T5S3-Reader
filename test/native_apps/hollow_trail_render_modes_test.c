@@ -34,7 +34,8 @@ int main(void){
  ht_nn_cache_reset();assert(!ht_nn_cache_hits && !ht_nn_cache_lookups);
  uint32_t scene_hits=0,scene_queries=0;
  uint8_t *mem=malloc(HT_MEMORY),*want=malloc(HT_PIXELS);
- assert(mem&&want);ht_bind(mem);
+ uint8_t *fast=malloc(HT_FAST_ALLOC_BYTES);
+ assert(mem&&want&&fast);ht_bind(mem);ht_workspace_attach(fast);
  for(unsigned i=0;i<HT_TEST_COUNT;++i){
   ht_render_test=i;unsigned mask=ht_render_test_mask();
   if(i==HT_TEST_BASE)assert(mask==0);
@@ -100,11 +101,11 @@ int main(void){
   ht.vista=view?256:0;ht.sway_phase=128+view*317;ht.rotation_phase=(128+view*219)<<8;ht.camera_mood=256;ht_game game=ht;
   ht_render_scene();memcpy(want,ht_scene,HT_PIXELS);
   for(unsigned mode=1;mode<HT_TEST_COUNT;++mode){
-   ht_bind(mem);ht=game;ht_render_test=mode;ht_simd_stage_ready=HT_OPT_SIMD_ALL;
+   ht_bind(mem);ht_workspace_attach(fast);ht=game;ht_render_test=mode;ht_simd_stage_ready=HT_OPT_SIMD_ALL;
    ht_render_scene();assert(!memcmp(want,ht_scene,HT_PIXELS));
    if(mode==HT_TEST_NN_CACHE){scene_hits+=ht_nn_cache_hits;scene_queries+=ht_nn_cache_lookups;}
   }
  }
  printf("Neural cache scene workload: %u/%u exact hits (reuse count, not an S3 timing result)\n",scene_hits,scene_queries);
- free(want);free(mem);puts("Render tests: fourteen independent modes, exact math, all chapters and rolling 10-second FPS PASS");
+ ht_workspace_attach(NULL);free(fast);free(want);free(mem);puts("Render tests: seventeen independent modes, exact math, all chapters and rolling 10-second FPS PASS");
 }

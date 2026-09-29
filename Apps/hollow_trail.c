@@ -1,5 +1,10 @@
 #include "T5AppApi.h"
 #include <stdio.h>
+#include <stdlib.h>
+#if defined(__XTENSA__)
+/* Existing tracked allocator import; no peripheral/firmware API changes. */
+extern void *heap_caps_malloc(size_t,uint32_t);
+#endif
 #include "T5VideoApi.h"
 #include "T5HardwareTakeover.h"
 #include "T5ProviderCapabilityApi.h"
@@ -296,6 +301,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     if(!memory) { ht_log("Hollow Trail: scenery cache PSRAM unavailable"); return; }
     uint8_t *staging=(uint8_t *)app->psram_alloc(HT_PACKED_BYTES);
     if(!staging) ht_log("Hollow Trail: packed staging unavailable; using direct packing");
+    void *fast_memory=NULL;
     bool started=false,display_initialized=false,display_reading=false;
     ht_reader_bitmap=(uint8_t *)(((uintptr_t)memory+HT_MEMORY+31u)&~(uintptr_t)15u);
     t5_video_surface_v1 surface={0};
@@ -310,6 +316,10 @@ __attribute__((visibility("default"))) void app_main(void) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
     started=true;
+#if defined(__XTENSA__)
+    fast_memory=ht_workspace_open(heap_caps_malloc);
+#endif
+    ht_log(ht_fast?"Render SRAM: 4096 bytes available":"Render SRAM unavailable: internal tests use baseline");
     memset(&ht,0,sizeof(ht)); ht_spawn(true);
     reading=false; journal_page=0; ht_journal_index=true; ht_journal_selection=0;
     ht_journal_deciding=ht_journal_confirm=ht_journal_page_ready=false; ht_read_submitted_revision=0;
@@ -465,6 +475,8 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(88,133,test,1);
                 if(!ht_simd_ready) {
                     snprintf(test,sizeof(test),"PACK FALLBACK: %s",ht_simd_reason);ht_text(88,148,test,1);
+                } else if(ht_render_test_needs_ram() && !ht_fast) {
+                    ht_text(88,148,"BASE FALLBACK: INTERNAL RAM UNAVAILABLE",1);
                 } else if(!ht_render_test_available()) {
                     unsigned missing=ht_render_test_mask()&HT_OPT_SIMD_ALL&~ht_simd_stage_ready,stage=0;
                     while(stage<3 && !(missing&(1u<<stage)))++stage;
@@ -568,6 +580,7 @@ cleanup:
     if(started) video->stop();
     ht_release_reader(); ht_release_pad();
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(true);
+    ht_workspace_attach(NULL);free(fast_memory);
     if(staging) app->psram_free(staging);
     app->psram_free(memory);
 }

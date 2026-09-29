@@ -154,6 +154,8 @@ static int ht_abs(int x) { return x<0?-x:x; }
 static uint32_t ht_hash(uint32_t x) { x^=x>>16; x*=0x7feb352du; x^=x>>15; x*=0x846ca68bu; return x^(x>>16); }
 #include "hollow_trail_terrain.inc"
 static void ht_checkpoint(void) { if(ht_service) ht_service(); }
+#include "hollow_trail_neural_upscale.inc"
+#include "hollow_trail_workspace.inc"
 #include "hollow_trail_expanded_simd.inc"
 static void ht_clear_layer(uint8_t *dst) {
     if(!ht_math) { memset(dst,0,HT_PIXELS); return; }
@@ -243,6 +245,7 @@ static void ht_pack_tables_init(void);
 static void ht_simd_constants_init(uint8_t *memory);
 static void ht_nn_cache_reset(void);
 static void ht_bind(uint8_t *memory) {
+    ht_workspace_attach(NULL);
     ht_pack_tables_init();ht_nn_cache_reset();
     ht_simd_constants_init(memory+HT_MEMORY-HT_SIMD_TABLE_BYTES);
     ht_simd_reason=ht_expanded_reason="NOT TESTED";
@@ -576,6 +579,9 @@ static uint8_t ht_average(int sum,uint32_t reciprocal) {
 static void ht_blur_horizontal(const uint8_t *src,int radius,uint32_t reciprocal,int x0,int x1,int y0,int y1) {
     for(int y=y0;y<y1;++y) {
         const uint8_t *row=src+y*HT_W; int sum=0;
+        if(ht_render_test==HT_TEST_RAM_BLUR && ht_fast) {
+            memcpy(ht_fast->blur.source,row,HT_W);row=ht_fast->blur.source;
+        }
         for(int k=-radius;k<=radius;++k) sum+=row[ht_clamp(x0+k,0,HT_W-1)];
         int x=x0;
         if(ht_render_test==HT_TEST_BLUR_INTERIOR) {
@@ -623,6 +629,12 @@ static void ht_blur_rect(const uint8_t *src,uint8_t *dst,int radius,int x0,int x
         const int16_t *add=ht_filter+ht_min(HT_H-1,y+radius+1)*HT_W;
         const int16_t *sub=ht_filter+ht_max(0,y-radius)*HT_W;
         uint8_t *row=dst+y*HT_W;
+        bool internal=ht_render_test==HT_TEST_RAM_BLUR && ht_fast;
+        if(internal) {
+            memcpy(ht_fast->blur.add+x0,add+x0,(size_t)(x1-x0)*sizeof(*add));
+            memcpy(ht_fast->blur.sub+x0,sub+x0,(size_t)(x1-x0)*sizeof(*sub));
+            add=ht_fast->blur.add;sub=ht_fast->blur.sub;row=ht_fast->blur.out;
+        }
         if(fused) {
             /* Last output row must leave the running sums unchanged. */
             if(y+1==y1)add=sub;
@@ -649,6 +661,7 @@ static void ht_blur_rect(const uint8_t *src,uint8_t *dst,int radius,int x0,int x
                 } else for(int x=x0;x<x1;++x)sums[x]=(int16_t)(sums[x]+add[x]-sub[x]);
             }
         }
+        if(internal)memcpy(dst+y*HT_W+x0,row+x0,(size_t)(x1-x0));
         if((y&15)==15)ht_checkpoint();
     }
 }
@@ -1255,7 +1268,6 @@ static inline __attribute__((always_inline)) void ht_store4(uint8_t *p,uint32_t 
 static inline __attribute__((always_inline)) uint32_t ht_zip2(uint32_t a,uint32_t b) {
     return (a&255u)|((b&255u)<<8)|((a&0xff00u)<<8)|((b&0xff00u)<<16);
 }
-#include "hollow_trail_neural_upscale.inc"
 #include "hollow_trail_neural_cache.inc"
 #if HT_NN_EDGE_THRESHOLD != 80
 #error "Update expanded SIMD edge gate when changing model threshold"
@@ -1265,6 +1277,9 @@ static inline __attribute__((always_inline)) uint32_t ht_zip2(uint32_t a,uint32_
  * strong 2x2 transitions. Source anchors at even/even coordinates never move. */
 static __attribute__((optimize("O3"))) void ht_reconstruct_low_scene(void) {
     const bool memoize=ht_render_test==HT_TEST_NN_CACHE;
+    const bool internal=ht_render_test==HT_TEST_RAM_NEURAL && ht_fast;
+    int loaded[3]={-1,-1,-1};
+    if(internal)ht_nn_fast_init();
     for(int y=0;y<HT_RECON_H;++y) {
         const uint8_t *row=ht_recon_scene+y*HT_RECON_W;
         const uint8_t *next=ht_recon_scene+ht_min(y+1,HT_RECON_H-1)*HT_RECON_W;
@@ -1299,6 +1314,20 @@ static __attribute__((optimize("O3"))) void ht_reconstruct_low_scene(void) {
         const uint8_t *r1=ht_recon_scene+y*HT_RECON_W;
         const uint8_t *r2=ht_recon_scene+yp*HT_RECON_W;
         uint8_t *top=ht_low_scene+2*y*HT_SCENE_W,*bottom=top+HT_SCENE_W;
+        if(internal) {
+            const int indices[3]={ym,y,yp};
+            for(int i=0;i<3;++i) {
+                int index=indices[i],slot=index%3;
+                if(loaded[slot]!=index) {
+                    memcpy(ht_fast->neural.rows[slot],ht_recon_scene+index*HT_RECON_W,HT_RECON_W);
+                    loaded[slot]=index;
+                }
+            }
+            r0=ht_fast->neural.rows[ym%3];r1=ht_fast->neural.rows[y%3];r2=ht_fast->neural.rows[yp%3];
+            memcpy(ht_fast->neural.out[0],top,HT_SCENE_W);
+            memcpy(ht_fast->neural.out[1],bottom,HT_SCENE_W);
+            top=ht_fast->neural.out[0];bottom=ht_fast->neural.out[1];
+        }
         uint8_t edges[(HT_RECON_W+15)&~15] __attribute__((aligned(16)));
         int edge_end=0;
         if(ht_expanded_active(HT_OPT_RECON) && !(((uintptr_t)r1|(uintptr_t)r2)&7u)) {
@@ -1319,11 +1348,16 @@ static __attribute__((optimize("O3"))) void ht_reconstruct_low_scene(void) {
                 r0[xm],r0[x],r0[xp],r1[xm],r1[x],r1[xp],r2[xm],r2[x],r2[xp]
             };
             int16_t residual[HT_NN_OUTPUTS];
-            if(memoize)ht_nn_residual_cached(patch,residual);
+            if(internal)ht_nn_residual_fast(patch,residual);
+            else if(memoize)ht_nn_residual_cached(patch,residual);
             else ht_nn_residual(patch,residual);
             top[2*x+1]=(uint8_t)ht_clamp((int)top[2*x+1]+residual[0],0,255);
             bottom[2*x]=(uint8_t)ht_clamp((int)bottom[2*x]+residual[1],0,255);
             bottom[2*x+1]=(uint8_t)ht_clamp((int)bottom[2*x+1]+residual[2],0,255);
+        }
+        if(internal) {
+            memcpy(ht_low_scene+2*y*HT_SCENE_W,top,HT_SCENE_W);
+            memcpy(ht_low_scene+(2*y+1)*HT_SCENE_W,bottom,HT_SCENE_W);
         }
         if((y&7)==7) ht_checkpoint();
     }
@@ -1806,7 +1840,14 @@ static __attribute__((optimize("O3"))) void ht_pack_mono_learned(uint8_t *out,in
 }
 
 static __attribute__((optimize("O3"))) void ht_pack_mono_simd(uint8_t *out,int stride) {
-    bool word_output=(((uintptr_t)out|(unsigned)stride)&3u)==0;
+    bool internal=ht_render_test==HT_TEST_RAM_PACK && ht_fast;
+    int loaded[2]={-1,-1};
+    const uint8_t (*constants)[6][16]=ht_simd_constants;
+    if(internal) {
+        memcpy(ht_fast->pack.constants,ht_simd_constants,sizeof(ht_fast->pack.constants));
+        constants=ht_fast->pack.constants;
+    }
+    bool word_output=internal || (((uintptr_t)out|(unsigned)stride)&3u)==0;
     for(int y=0;y<HT_H;++y) {
         if(ht_framed && ht_visible_left[y]==HT_W/2 && ht_visible_left[ht_min(y+1,HT_H-1)]==HT_W/2) {
             memset(out+2*y*stride,255,HT_W/4);
@@ -1818,6 +1859,17 @@ static __attribute__((optimize("O3"))) void ht_pack_mono_simd(uint8_t *out,int s
         const uint8_t *row=ht_scene+y*HT_W;
         const uint8_t *next=ht_scene+ht_min(y+1,HT_H-1)*HT_W;
         uint8_t *top=out+2*y*stride,*bottom=top+stride;
+        if(internal) {
+            const int indices[2]={y,ht_min(y+1,HT_H-1)};
+            for(int i=0;i<2;++i) {
+                int index=indices[i],slot=index&1;
+                if(loaded[slot]!=index) {
+                    memcpy(ht_fast->pack.rows[slot],ht_scene+index*HT_W,HT_W);loaded[slot]=index;
+                }
+            }
+            row=ht_fast->pack.rows[y&1];next=ht_fast->pack.rows[indices[1]&1];
+            top=ht_fast->pack.out[0];bottom=ht_fast->pack.out[1];
+        }
         if(left) {
             memset(top,255,left/4); memset(bottom,255,left/4);
             memset(top+right_edge/4,255,left/4); memset(bottom+right_edge/4,255,left/4);
@@ -1838,15 +1890,18 @@ static __attribute__((optimize("O3"))) void ht_pack_mono_simd(uint8_t *out,int s
             unsigned blocks=(unsigned)(right_edge-x-1)/16u;
 #if HT_SIMD_S3_COMPILED
             if(ht_simd_ready)
-                ht_pack_simd_span_s3(row+x,next+x,top+x/4,bottom+x/4,&ht_simd_constants[y&3][0][0],blocks);
+                ht_pack_simd_span_s3(row+x,next+x,top+x/4,bottom+x/4,&constants[y&3][0][0],blocks);
             else
 #endif
-                ht_pack_simd_span_c(row+x,next+x,top+x/4,bottom+x/4,&ht_simd_constants[y&3][0][0],blocks);
+                ht_pack_simd_span_c(row+x,next+x,top+x/4,bottom+x/4,&constants[y&3][0][0],blocks);
             x+=(int)blocks*16;
         }
         for(;x<right_edge;x+=4) {
             int nx=ht_min(x+4,HT_W-1);
             ht_pack_lanes(ht_load4(row+x),ht_load4(next+x),row[nx],next[nx],even,odd,ht_solid_dots[y&3],top+x/4,bottom+x/4);
+        }
+        if(internal) {
+            memcpy(out+2*y*stride,top,HT_W/4);memcpy(out+(2*y+1)*stride,bottom,HT_W/4);
         }
         if((y&15)==15) ht_checkpoint();
     }
