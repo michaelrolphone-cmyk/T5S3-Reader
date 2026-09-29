@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,37 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 151. Time Zone can select and save a city from the same held Confirm press used to enter the city list
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260929-0223`.
+- **Affected code:** `Apps/time_zone.c`, especially `app_main()` and `activate()`; input semantics in `src/native/NativeAppHost.cpp::pollInput()`.
+- **Trigger / reproduction:** Open Time Zone on the region list, highlight any region, then press Confirm and hold it longer than one 50 ms polling interval.
+- **Observed / logically demonstrated failure:** `NativeAppHost::pollInput()` exports button levels with `isPressed()`. On the first poll with Confirm down, `activate()` changes from region mode to city mode and returns false. The next poll sees the same still-held Confirm in city mode and calls `zones->select_city(region, selected)`. One physical press can therefore both enter a region and commit the currently selected city, then exit the app.
+- **Likely root cause:** A level-triggered Confirm state is carried across a UI-mode transition without requiring release/re-arm.
+- **Impact:** Merely opening a region can accidentally change the device timezone and system-clock interpretation.
+- **Repair direction:** Re-arm Confirm after mode changes, or use edge-triggered UI events, so entering city mode consumes the press and a city cannot be committed until Confirm is released and pressed again. Add a regression holding Confirm across multiple polls.
+
+### 152. Ask can restore a conversation after exit when session-file deletion fails
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260929-0223`.
+- **Affected code:** `Apps/llm_ask.c`, `clear_session_file()`, Back/Exit handling in `app_main()`, and `load_session()`; deletion status comes from `src/native/NativePlatformBridge.cpp::removeFile()`.
+- **Trigger / reproduction:** Create an Ask conversation so `/.crosspoint/llm_ask.session` exists, force `remove_file` to fail while leaving Ask, then restore storage and relaunch Ask.
+- **Observed / logically demonstrated failure:** `clear_session_file()` discards the boolean result from `storage->remove_file(SESSION_PATH)`. Back and Exit then leave the app as though cleanup succeeded. The retained session still has valid magic/version, so the next `load_session()` accepts it and displays the previous conversation again.
+- **Likely root cause:** Durable session cleanup is treated as fire-and-forget even though the storage API reports deletion failure.
+- **Impact:** Conversation text intended to be discarded on exit can persist and unexpectedly reappear on a later launch.
+- **Repair direction:** Handle deletion failure explicitly and make persisted-session invalidation transactional. A failed remove must not leave a session that the next launch accepts as current. Add a fault-injection test for exit-time remove failure and relaunch.
+
+### 153. ST-LINK disconnect or close-time command failure permanently retains the USB claim/session
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260929-0223`.
+- **Affected code:** `Drivers/usb_stlink/driver.c`, `close_probe()`, `poll_probes()`, session bookkeeping, and `quiesce()`.
+- **Trigger / reproduction:** Open an ST-LINK SWD/SWIM session, unplug the probe or otherwise make `current_mode()` or `exit_mode()` fail, then close the session and attempt to quiesce/reload the provider or reconnect and reopen the probe.
+- **Observed / logically demonstrated failure:** `close_probe()` returns immediately when `current_mode()` or `exit_mode()` fails, before `host->host.release(..., s->claim)` and before clearing the `session_slot`. `poll_probes()` clears vanished probe/inspection state but not matching sessions. After disconnect, the protocol close cannot recover, the token remains nonzero indefinitely, and `quiesce()` keeps returning false.
+- **Likely root cause:** Graceful protocol-exit success is incorrectly required before releasing local USB-host ownership and retiring software session state.
+- **Impact:** A cable pull or transient ST-LINK failure can wedge `debug.vendor.stlink`, prevent clean driver unload/update, and block later sessions until restart.
+- **Repair direction:** Make protocol mode-exit best-effort during close, always attempt host-claim release and retire the local session slot, and also retire sessions whose device disappears during discovery. Preserve the protocol error separately. Add detach and injected close-failure tests proving `quiesce()` becomes true and a later session can open.
