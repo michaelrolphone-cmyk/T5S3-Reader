@@ -1153,7 +1153,9 @@ static inline __attribute__((always_inline)) uint32_t ht_zip2(uint32_t a,uint32_
     return (a&255u)|((b&255u)<<8)|((a&0xff00u)<<8)|((b&0xff00u)<<16);
 }
 #include "hollow_trail_neural_upscale.inc"
-_Static_assert(HT_NN_EDGE_THRESHOLD==80,"Update expanded SIMD edge gate when changing model threshold");
+#if HT_NN_EDGE_THRESHOLD != 80
+#error "Update expanded SIMD edge gate when changing model threshold"
+#endif
 /* Build the exact bilinear reconstruction first with the same packed four-lane
  * arithmetic used by the original renderer, then spend neural MACs only on
  * strong 2x2 transitions. Source anchors at even/even coordinates never move. */
