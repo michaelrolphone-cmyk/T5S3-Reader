@@ -189,7 +189,7 @@ static void ht_input_update(uint32_t wait) {
     uint32_t down=buttons&~previous;
     /* While paused, B or Up switches renderer immediately. Consume the press so
      * it cannot leak into jump/navigation when gameplay resumes. */
-    if(paused && !loading && (down&(HT_JUMP|HT_UP))) {
+    if(paused && !reading && !loading && (down&(HT_JUMP|HT_UP))) {
         mode_down=true;
         down&=~(HT_JUMP|HT_UP);
     }

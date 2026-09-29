@@ -85,6 +85,17 @@ int main(void) {
         unsigned unchanged=ht.level;
         press(source,x[source]);assert(!debug_select && paused && !quitting && ht.level==unchanged);
         press(source,a[source]);assert(reading); // Original paused journal action survives.
+        mode_down=false;ht_journal_selection=1;
+        reports[source][0].buttons=0;reports[source][0].hat=8;ht_input(1);
+        reports[source][0].hat=0;ht_input(1);
+        assert(ht_journal_selection==0 && !mode_down && reading);
+        reports[source][0].hat=8;ht_input(1);
+        reading=false;mode_down=false;
+        press(source,b[source]);assert(mode_down && !jump_down);
+        mode_down=false;ht_input(1);assert(!mode_down); // Held B toggles only once.
+        reports[source][0].buttons=0;ht_input(1);
+        reports[source][0].hat=0;ht_input(1);assert(mode_down);
+        mode_down=false;reports[source][0].hat=8;ht_input(1);
         reading=paused=false;
         healthy=false; mapped=T5_APP_BUTTON_CONFIRM|T5_APP_BUTTON_UP|T5_APP_BUTTON_DOWN;
         ht_input(1); assert(!reading && !jump_down && !pause_down);

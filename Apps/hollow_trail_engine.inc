@@ -36,7 +36,7 @@ static uint16_t ht_dirty_top,ht_dirty_height;
 #define HT_WARM_STEPS (HT_LAYERS*HT_TILE_SLOTS*(1+3*((HT_H+HT_CACHE_BAND-1)/HT_CACHE_BAND)))
 /* Keep two full legacy focus maps so the A/B test compares against the original
  * optimized 240x135 renderer rather than an artificially slowed reference. */
-#define HT_MEMORY (HT_SCENE_PIXELS * 4u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS)
+#define HT_MEMORY (HT_SCENE_PIXELS * 4u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS + HT_RECON_PIXELS)
 #define HT_GOAL 3200
 #define HT_STEP_MS 32u /* Half-speed motion; preserve jump paths and level reachability. */
 
@@ -221,9 +221,12 @@ static void ht_bind(uint8_t *memory) {
         ht_cached_near[d][slot]=cache; cache+=HT_TILE_PIXELS;
         ht_cached_wide[d][slot]=cache; cache+=HT_TILE_PIXELS;
     }
-    ht_corner_mask=cache; ht_low_scene=cache+HT_MASK_PIXELS; ht_recon_scene=ht_raw; ht_mask_init();
+    ht_corner_mask=cache; ht_low_scene=cache+HT_MASK_PIXELS; ht_mask_init();
     ht_focus_map[0]=(uint16_t *)(ht_low_scene+HT_SCENE_PIXELS);
     ht_focus_map[1]=ht_focus_map[0]+HT_SCENE_PIXELS;
+    /* Lookahead cache work can be suspended across visible frames. Its raw,
+     * near and wide buffers remain live until the strip is published. */
+    ht_recon_scene=(uint8_t *)(ht_focus_map[1]+HT_SCENE_PIXELS);
     ht_focus_valid[0]=ht_focus_valid[1]=false;ht_focus_step[0]=ht_focus_step[1]=0;ht_focus_recent=0;
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
 }

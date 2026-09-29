@@ -90,11 +90,38 @@ static void cactus_shapes(void) {
         }
     }
 }
+/* A visible frame must not overwrite an unfinished lookahead job. Rebuild
+ * the same strip without interleaving to obtain an independent cache result. */
+static void interleaved_prefetch(void) {
+    uint8_t *expected=malloc(2*HT_TILE_PIXELS);
+    assert(expected);
+    for(int depth=0;depth<HT_LAYERS;++depth) {
+        if(depth==2) continue;
+        for(int slices=1;slices<HT_WARM_STEPS/(HT_LAYERS*HT_TILE_SLOTS);++slices) {
+            ht.level=0;ht_spawn(true);ht_select_level(0);
+            ht_ai_rendering=true;ht_render_scene();
+            int key=2,slot=ht_cache_slot(key);
+            ht_cache_begin(depth,key);
+            for(int i=0;i<slices;++i) ht_cache_work();
+            assert(ht_cache_job.active);
+            ht_render_scene();
+            while(ht_cache_job.active) ht_cache_work();
+            memcpy(expected,ht_cached_near[depth][slot],HT_TILE_PIXELS);
+            memcpy(expected+HT_TILE_PIXELS,ht_cached_wide[depth][slot],HT_TILE_PIXELS);
+            ht_cache_begin(depth,key);
+            while(ht_cache_job.active) ht_cache_work();
+            assert(!memcmp(expected,ht_cached_near[depth][slot],HT_TILE_PIXELS));
+            assert(!memcmp(expected+HT_TILE_PIXELS,ht_cached_wide[depth][slot],HT_TILE_PIXELS));
+        }
+    }
+    free(expected);
+    memset(ht_cache_valid,0,sizeof(ht_cache_valid));ht_cache_builds=0;
+}
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY+32),*expected=malloc(HT_PIXELS);
     uint8_t *expected_recon=malloc(HT_RECON_PIXELS);
     assert(memory && expected && expected_recon); memset(memory+HT_MEMORY,0x5a,32);
-    ht_bind(memory); cactus_shapes(); ht_spawn(true);ht_service=service;
+    ht_bind(memory); interleaved_prefetch(); cactus_shapes(); ht_spawn(true);ht_service=service;
     int steps=0; while(ht_cache_prefetch(0,1)) assert(++steps<400);
     assert(ht_cache_builds==9 && checkpoints>0);
     unsigned builds=ht_cache_builds;
