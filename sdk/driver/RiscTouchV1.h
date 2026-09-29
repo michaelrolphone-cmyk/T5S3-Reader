@@ -59,8 +59,12 @@ typedef struct {
     uint64_t (*subscribe)(void *context);
     bool (*unsubscribe)(void *context, uint64_t subscription);
     /* Service up to max_reports controller reports. Calls are serialized by
-     * the provider executor; any consumer may drive polling and every active
-     * subscriber receives its own copied event stream. */
+     * the provider itself across the ENTIRE report and state update, not only
+     * individual bus transfers. Consumers may call from different tasks while
+     * holding a live provider grant. Every subscriber gets its own event stream.
+     * False can follow partial progress: drain next() even on poll failure.
+     * Transient I/O failures retain unread data; discarded reports must signal
+     * GAP. Lifecycle start/stop runs only on the grant-owning executor. */
     bool (*poll)(void *context, size_t max_reports);
     /* Returns 1 for one event, 0 when empty, -1 for stale handle or queue GAP,
      * and -2 for provider fault. On -1, discard derived state and snapshot(). */

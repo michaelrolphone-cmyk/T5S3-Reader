@@ -3,6 +3,8 @@
 #include "RiscPlatformClockV1.h"
 #include <stddef.h>
 #include <stdint.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #define GT911_PRIMARY_ADDRESS 0x5du
 #define GT911_FALLBACK_ADDRESS 0x14u
@@ -22,6 +24,17 @@ typedef struct {
     uint8_t count;
     bool gap;
 } touch_subscriber;
+
+/* Public API calls can originate from a capture task and an app. The bus
+ * mutex protects one transfer, not this complete status/read/ack/state cycle.
+ * Lifecycle start/stop remains serialized by the grant-owning loader. */
+static SemaphoreHandle_t state_lock;
+static bool lock_state(void) {
+    TickType_t ticks = pdMS_TO_TICKS(GT911_TIMEOUT_MS);
+    if (!ticks) ticks = 1;
+    return state_lock && xSemaphoreTake(state_lock, ticks) == pdTRUE;
+}
+static void unlock_state(void) { (void)xSemaphoreGive(state_lock); }
 
 static const risc_i2c_bus_api_v1 *bus;
 static const risc_platform_clock_api_v1 *clock_api;
@@ -166,6 +179,16 @@ static bool apply_state(const risc_touch_contact_v1 *next,
     return true;
 }
 
+/* Discarding an invalid hardware report is a real stream discontinuity.
+ * Tell every subscriber instead of allowing a later UP to fabricate a tap. */
+static void invalidate_subscribers(void) {
+    for (uint8_t i = 0; i < RISC_TOUCH_MAX_SUBSCRIBERS; ++i) {
+        if (!subscribers[i].token) continue;
+        subscribers[i].gap = true;
+        subscribers[i].head = subscribers[i].count = 0;
+    }
+}
+
 static bool service_one(bool *had_report) {
     if (had_report) *had_report = false;
     uint8_t status = 0;
@@ -177,6 +200,7 @@ static bool service_one(bool *had_report) {
     const uint32_t next_buttons =
         (status & GT911_HAVE_KEY_MASK) ? RISC_TOUCH_BUTTON_PRIMARY : 0u;
     if (count > RISC_TOUCH_MAX_CONTACTS) {
+        invalidate_subscribers();
         (void)write_reg8(GT911_STATUS_REG, 0u);
         return false;
     }
@@ -184,7 +208,8 @@ static bool service_one(bool *had_report) {
     uint8_t raw[RISC_TOUCH_MAX_CONTACTS * 8u] = {0};
     risc_touch_contact_v1 next[RISC_TOUCH_MAX_CONTACTS] = {0};
     if (count && !read_reg(GT911_FIRST_POINT_REG, raw, (size_t)count * 8u)) {
-        (void)write_reg8(GT911_STATUS_REG, 0u);
+        /* Leave READY latched: the unread report must survive bus contention.
+         * Retry on the next bounded poll; never acknowledge unread data. */
         return false;
     }
 
@@ -197,6 +222,7 @@ static bool service_one(bool *had_report) {
                                ((uint16_t)raw[at + 4u] << 8u));
         if (next[i].x >= surface_width || next[i].y >= surface_height ||
             find_contact(next, i, next[i].id) >= 0) {
+            invalidate_subscribers();
             (void)write_reg8(GT911_STATUS_REG, 0u);
             return false;
         }
@@ -210,7 +236,7 @@ static bool service_one(bool *had_report) {
     return apply_state(next, count, next_buttons, now);
 }
 
-static uint64_t subscribe(void *context) {
+static uint64_t subscribe_locked(void *context) {
     (void)context;
     if (!bus || !bus_claim || subscription_serial == UINT64_MAX) return 0;
     for (uint8_t i = 0; i < RISC_TOUCH_MAX_SUBSCRIBERS; ++i) {
@@ -223,7 +249,7 @@ static uint64_t subscribe(void *context) {
     return 0;
 }
 
-static bool unsubscribe(void *context, uint64_t token) {
+static bool unsubscribe_locked(void *context, uint64_t token) {
     (void)context;
     if (!token) return false;
     for (uint8_t i = 0; i < RISC_TOUCH_MAX_SUBSCRIBERS; ++i) {
@@ -235,19 +261,18 @@ static bool unsubscribe(void *context, uint64_t token) {
     return false;
 }
 
-static bool poll(void *context, size_t max_reports) {
+static bool poll_locked(void *context, size_t max_reports) {
     (void)context;
     if (!bus || !clock_api || !bus_claim || !max_reports || max_reports > 16u)
         return false;
-    for (size_t i = 0; i < max_reports; ++i) {
-        bool had_report = false;
-        if (!service_one(&had_report)) return false;
-        if (!had_report) break;
-    }
-    return true;
+    /* One complete report per call: at most three 20 ms bus operations.
+     * The API promises up to max_reports, not a mandatory full batch. Avoid
+     * monopolizing the provider/bus when a producer continuously asserts READY. */
+    bool had_report = false;
+    return service_one(&had_report);
 }
 
-static int32_t next_event(void *context, uint64_t token,
+static int32_t next_event_locked(void *context, uint64_t token,
                           risc_touch_event_v1 *out) {
     (void)context;
     if (!bus || !bus_claim || !token || !out) return -1;
@@ -270,7 +295,7 @@ static int32_t next_event(void *context, uint64_t token,
     return -1;
 }
 
-static bool snapshot(void *context, risc_touch_snapshot_v1 *out) {
+static bool snapshot_locked(void *context, risc_touch_snapshot_v1 *out) {
     (void)context;
     if (!bus || !bus_claim || !out) return false;
     *out = (risc_touch_snapshot_v1){0};
@@ -286,7 +311,7 @@ static bool snapshot(void *context, risc_touch_snapshot_v1 *out) {
 
 static bool start(const risc_provider_dependency_v1 *dependencies,
                   size_t dependency_count) {
-    if (bus || clock_api || bus_claim || !dependencies || dependency_count != 2u)
+    if (state_lock || bus || clock_api || bus_claim || !dependencies || dependency_count != 2u)
         return false;
 
     const risc_i2c_bus_api_v1 *candidate_bus = NULL;
@@ -310,6 +335,8 @@ static bool start(const risc_provider_dependency_v1 *dependencies,
         !candidate_clock->monotonic_ms)
         return false;
 
+    state_lock = xSemaphoreCreateMutex();
+    if (!state_lock) return false;
     bus = candidate_bus;
     clock_api = candidate_clock;
     if (monotonic_ms() == UINT64_MAX ||
@@ -317,11 +344,13 @@ static bool start(const risc_provider_dependency_v1 *dependencies,
         bus = NULL;
         clock_api = NULL;
         bus_claim = 0;
+        vSemaphoreDelete(state_lock);
+        state_lock = NULL;
         return false;
     }
 
     sequence = 0;
-    subscription_serial = 0;
+    /* Keep subscription generations monotonic across start/stop. */
     contact_count = 0;
     touch_buttons = 0;
     snapshot_timestamp_ms = monotonic_ms();
@@ -332,7 +361,7 @@ static bool start(const risc_provider_dependency_v1 *dependencies,
     return true;
 }
 
-static bool quiesce(void) {
+static bool quiesce_locked(void) {
     if (!bus && !clock_api && !bus_claim) return true;
     for (uint8_t i = 0; i < RISC_TOUCH_MAX_SUBSCRIBERS; ++i)
         if (subscribers[i].token) return false;
@@ -347,7 +376,49 @@ static bool quiesce(void) {
     return true;
 }
 
-static void stop(void) { (void)quiesce(); }
+static uint64_t subscribe(void *context) {
+    if (!lock_state()) return 0;
+    const uint64_t result = subscribe_locked(context);
+    unlock_state();
+    return result;
+}
+static bool unsubscribe(void *context, uint64_t token) {
+    if (!lock_state()) return false;
+    const bool result = unsubscribe_locked(context, token);
+    unlock_state();
+    return result;
+}
+static bool poll(void *context, size_t max_reports) {
+    if (!lock_state()) return false;
+    const bool result = poll_locked(context, max_reports);
+    unlock_state();
+    return result;
+}
+static int32_t next_event(void *context, uint64_t token, risc_touch_event_v1 *out) {
+    if (!lock_state()) return -2;
+    const int32_t result = next_event_locked(context, token, out);
+    unlock_state();
+    return result;
+}
+static bool snapshot(void *context, risc_touch_snapshot_v1 *out) {
+    if (!lock_state()) return false;
+    const bool result = snapshot_locked(context, out);
+    unlock_state();
+    return result;
+}
+static bool quiesce(void) {
+    if (!state_lock) return !bus && !clock_api && !bus_claim;
+    if (!lock_state()) return false;
+    const bool result = quiesce_locked();
+    unlock_state();
+    return result;
+}
+static void stop(void) {
+    if (!quiesce()) return;
+    /* The loader calls stop only after the last grant and API caller drained. */
+    if (state_lock) vSemaphoreDelete(state_lock);
+    state_lock = NULL;
+}
 
 static const risc_touch_api_v1 touch_api = {
     RISC_TOUCH_API_V1, sizeof(risc_touch_api_v1), NULL,

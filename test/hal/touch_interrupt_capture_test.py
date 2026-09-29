@@ -83,7 +83,8 @@ assert "candidateApi->snapshot" in TOUCH
 assert 'xTaskCreate(touchWorker, "touch-provider"' in TOUCH
 assert "kCaptureIntervalMs = 5" in TOUCH
 assert "serviceProvider();" in TOUCH
-assert "ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(kCaptureIntervalMs))" in TOUCH
+assert "ulTaskNotifyTake(pdTRUE," in TOUCH
+assert "pdMS_TO_TICKS(kCaptureIntervalMs) : 1" in TOUCH
 assert "if (result < 0)" in TOUCH
 assert "resync(false)" in TOUCH
 assert "gestureEligible = false;" in TOUCH
@@ -153,10 +154,10 @@ resync_body = TOUCH.split("bool resync(bool clearQueues)", 1)[1].split(
 assert "clearTransient(clearQueues)" in resync_body
 service_body = TOUCH.split("void serviceProvider()", 1)[1].split(
     "bool workerShouldRun()", 1)[0]
-assert "kPollFailureResyncThreshold" in TOUCH
-assert "consecutivePollFailures" in service_body
-assert "if (!api->poll" in service_body
-assert service_body.index("kPollFailureResyncThreshold") < service_body.index("resync(false)")
+assert "kPollFailureTimeoutMs" in TOUCH
+assert "bool pollOk = api->poll(api->context, 1u);" in service_body
+assert service_body.index("api->next") < service_body.index("if (pollOk)")
+assert "clearTransient(false)" in service_body
 assert "resync(false)" in service_body
 
 # Display takeover releases only the firmware consumer lease. This leaves no

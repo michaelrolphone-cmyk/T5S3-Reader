@@ -13,3 +13,5 @@ typedef uint32_t TickType_t;
 #ifndef portMAX_DELAY
 #define portMAX_DELAY UINT32_MAX
 #endif
+
+#define portTICK_PERIOD_MS 1u
