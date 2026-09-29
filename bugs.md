@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 172. TXT short reads are treated as complete chunks and uninitialized heap bytes are parsed as document text
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0923](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0923/bugs.md)
+
+- **Affected code:** `lib/Txt/Txt.cpp`, `Txt::readContent()`; `src/activities/reader/TxtReaderPaging.cpp`, especially `TxtReaderActivity::loadPageAtOffset()`, page-index construction, and normal page rendering.
+- **Trigger / reproduction:** Open a TXT or Markdown document large enough for an 8 KiB paging read, then make the SD/file read return a short positive result (for example, 100 bytes from an 8192-byte request) instead of zero. An injected/mock `FsFile::read()` short read is sufficient.
+- **Observed / logically demonstrated failure:** `Txt::readContent()` requests `length` bytes but returns only `bytesRead > 0`; it neither requires an exact read nor reports the actual byte count. `loadPageAtOffset()` allocates `chunkSize + 1` bytes with `malloc()`, calls `readContent()`, and on any true result terminates at `buffer[chunkSize]` and scans all `chunkSize` bytes. The unread tail is uninitialized heap data but is treated as document content while wrapping text, parsing Markdown, building page offsets, and rendering.
+- **Likely root cause:** The TXT helper exposes boolean success even though its caller requires exact-length semantics, while the paging layer assumes any positive read filled the whole requested buffer.
+- **Impact:** A transient SD short read can corrupt pagination and visible text; stale heap bytes can be displayed as if they belonged to the document, and bad page offsets can be cached.
+- **Repair direction:** Make `readContent()` require an exact read or return the actual byte count. Parse only bytes actually read, distinguish EOF from an I/O short read, and never consume an uninitialized tail. Add short-read tests at the first chunk, a later chunk, and Markdown/page boundaries.
+
+### 173. XTC metadata parsing ignores the header metadata offset and reads title/author from fixed addresses
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0923](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0923/bugs.md)
+
+- **Affected code:** `lib/Xtc/Xtc/XtcTypes.h`, `XtcHeader::metadataOffset`; `lib/Xtc/Xtc/XtcParser.cpp`, `XtcParser::open()`, `readTitle()`, and `readAuthor()`; downstream `Xtc::getTitle()/getAuthor()`, Recent Books, Home, and screenshot metadata.
+- **Trigger / reproduction:** Create an otherwise accepted XTC/XTCH with `hasMetadata = 1` and place its metadata block at a valid non-default location identified by `metadataOffset` (for example `0x100`), with a known title and author there. Keep bytes at `0x38` and `0xB8` different, then open the book.
+- **Observed / logically demonstrated failure:** The parsed header has `metadataOffset`, but `readTitle()` always seeks to literal `0x38` and `readAuthor()` always seeks to `0xB8`. `open()` never uses or bounds-checks `m_header.metadataOffset` for metadata. A container whose metadata is not immediately after the 56-byte header therefore gets unrelated bytes, empty strings, or truncated data reported as its title/author even though the header identifies the real block.
+- **Likely root cause:** The parser hard-coded the common contiguous layout instead of using the container's explicit metadata location.
+- **Impact:** Relocated/reordered XTC metadata yields incorrect book identity in the reader, Recent Books, Home, and screenshot naming even though page data can load normally.
+- **Repair direction:** Validate the advertised metadata region against file bounds, seek to `metadataOffset`, and read title/author relative to that block with exact read checks. Add tests for default placement, relocated metadata, and truncated/out-of-bounds metadata.
+
+### 174. XTC reader sizes every page from the first page, so later pages with different dimensions fail or render unwritten memory
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0923](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0923/bugs.md)
+
+- **Affected code:** `lib/Xtc/Xtc/XtcParser.cpp`, `readFirstPageInfo()`, `readPageTableEntry()`, and `loadPage()`; `lib/Xtc/Xtc/XtcParser.h`, `getWidth()/getHeight()`; `lib/Xtc/Xtc.cpp`, `getPageWidth()/getPageHeight()`; `src/activities/reader/XtcReaderActivity.cpp`, `renderPage()`.
+- **Trigger / reproduction:** Build an accepted XTC/XTCH whose first page is 480x800 and second page is 240x400, then navigate to page 2. Also test the inverse ordering with a smaller first page and a larger later page.
+- **Observed / logically demonstrated failure:** `readFirstPageInfo()` caches only page 0 dimensions, and the public width/height accessors return those dimensions for every page. `renderPage()` allocates and iterates its bitmap using those first-page values. But `loadPage()` reads the selected page's own XTG/XTH header and computes its actual bitmap size. For a later smaller page it writes only the smaller bitmap and returns success, after which rendering reads the unwritten remainder of the larger allocation. For a later larger page it rejects the first-page-sized buffer as too small and reports a page-load error.
+- **Likely root cause:** The rendering path assumes dimensions are container-wide even though page table entries and page headers carry per-page dimensions and `getPageInfo()` already exposes them.
+- **Impact:** Mixed-dimension XTC/XTCH books can render garbage/stale pixels on smaller pages or reject larger pages that were otherwise accepted by the parser.
+- **Repair direction:** Resolve and validate the selected page's dimensions before allocation, size the buffer from that page, verify page-table and embedded page-header dimensions/data size agree, and render only the current page bounds. If only one fixed size is supported, reject differing dimensions during open instead of failing later. Add smaller-after-larger, larger-after-smaller, and table/header mismatch tests.
