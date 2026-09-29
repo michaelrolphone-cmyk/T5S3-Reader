@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,39 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+### 154. File Browser can rename the wrong item when its handoff session fails to save
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0321/bugs.md)
+
+- **Affected code:** `Apps/file_browser.c`, especially `save_session()`, `request_rename()`, startup `load_session()`, and `consume_handoff_results()`.
+- **Trigger / reproduction:** Open File Browser in a non-root SD folder, select an item, choose **Rename**, and force `storage->write_file_atomic(SESSION_PATH, ...)` to fail while allowing `system_ui->keyboard_request(..., RENAME_COOKIE)` to succeed. Enter a different valid name in the keyboard and return to File Browser. Keep an unrelated item at the root so the resumed app has a selectable row there.
+- **Observed / logically demonstrated failure:** `save_session()` ignores the boolean result of `write_file_atomic()` and `request_rename()` proceeds with the keyboard handoff anyway. The app then exits. On restart it initializes `base_path` to `"/"`, loads that directory, and only afterwards attempts `load_session()`. With the new session absent (or with an older stale session still on disk), the rename continuation calls `selected_name()` against the wrong directory/selection. It then constructs `source_vfs` from that unrelated `old_name` and current `base_path` and can rename that item using the name intended for the original selection.
+- **Likely root cause:** The handoff depends on durable continuation state, but the session write is treated as best-effort and the returned keyboard result contains only a cookie, not the canonical source path needed to identify the original item.
+- **Impact:** A transient SD/settings write failure immediately before a rename can rename an unrelated file or directory after the keyboard returns. This is a data-integrity failure, not merely a lost UI selection.
+- **Repair direction:** Make `save_session()` return success and do not issue the keyboard handoff unless the continuation state is durably written. Persist the operation and canonical source path, then validate that exact source on resume before mutating it; never derive the rename source from whatever row happens to be selected after restart. Treat a stale/missing session as a cancelled rename. Add a fault-injection test for session-write failure from a nested folder and prove no root or stale-session item is renamed.
+
+### 155. EPUB author metadata inserts commas between chunks of a single creator name
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0321/bugs.md)
+
+- **Affected code:** `lib/Epub/Epub/parsers/ContentOpfParser.cpp`, `ContentOpfParser::characterData()` and the `dc:creator` start/end-element handling.
+- **Trigger / reproduction:** Parse an OPF containing one `<dc:creator>` whose text is delivered by Expat in more than one character-data callback. This can be forced by positioning the creator text across the parser's 1024-byte input-buffer boundary (or by XML constructs that cause Expat to split character data).
+- **Observed / logically demonstrated failure:** While `state == IN_BOOK_AUTHOR`, every `characterData()` callback checks whether the aggregate `author` string is non-empty and, if so, appends `", "` before appending the new chunk. SAX/Expat character-data callbacks are not element boundaries, so a single creator such as `Jane Doe` split into two callbacks is stored as something like `Jane,  Doe`. The resulting string is then copied into `bookMetadata.author` and cached.
+- **Likely root cause:** Callback chunking is being used as the signal for “next author”; separator insertion belongs at `dc:creator` element boundaries instead.
+- **Impact:** Valid EPUB metadata can display and persist corrupted author names, with output depending on XML/input-buffer chunking rather than document semantics.
+- **Repair direction:** Accumulate each creator element into a temporary `currentCreator` without inserting separators in `characterData()`. On `</dc:creator>`, append the completed creator to the aggregate author string and insert a separator only between distinct creator elements. Add tests for one creator split across multiple callbacks and for multiple creator elements, including a boundary at the 1024-byte parser chunk.
+
+### 156. Failed EPUB 3 nav extraction is reported as success and suppresses a valid NCX fallback
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0321/bugs.md)
+
+- **Affected code:** `lib/Epub/Epub.cpp`, `Epub::parseTocNavFile()`, `Epub::parseTocNcxFile()`, and the TOC selection logic in `Epub::load()`.
+- **Trigger / reproduction:** Use an EPUB whose OPF declares an EPUB 3 nav item that cannot be extracted from the ZIP (for example the declared nav entry is missing/corrupt) while also providing a valid compatibility NCX item.
+- **Observed / logically demonstrated failure:** Both TOC parsers call `readItemContentsToStream(...)` to create their temporary file but discard its boolean result. If the nav extraction fails before writing data, the temporary file can be empty. `parseTocNavFile()` then opens that zero-byte file, the parse loop executes zero times, and the function unconditionally logs success and returns `true`. In `Epub::load()`, that sets `tocParsed = true`, so the existing `if (!tocParsed && !tocNcxItem.empty())` fallback never tries the valid NCX. `parseTocNcxFile()` has the same false-success path for its own extraction failure.
+- **Likely root cause:** The ZIP-to-temporary-file copy is treated as fire-and-forget, and parser success is inferred from “no loop iteration reported an error” rather than from a successful extraction and completed parse.
+- **Impact:** A book can lose its table of contents even though it contains a valid fallback TOC; corrupt/missing TOC resources are also misreported as successfully parsed and can be cached as an empty TOC.
+- **Repair direction:** Check `readItemContentsToStream()` before reopening either temporary TOC file; on failure close/remove the temp file and return `false`. Reject zero-byte/incomplete parses and make parser completion explicit so `Epub::load()` reliably falls back from nav to NCX. Add regressions for missing nav + valid NCX, corrupt nav + valid NCX, and failed NCX extraction.
