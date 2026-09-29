@@ -345,39 +345,107 @@ int textWidth(const char* text, int scale) {
                           static_cast<size_t>(scale));
 }
 
-// A folded plate opens around its central hinge. Row spans keep raster work
-// bounded by the final box area; no particles, textures or temporary buffers.
-void drawAssemblingBlock(uint8_t* buffer, size_t size, int x, int y,
-                         int width, int height, uint32_t age, uint8_t coverage) {
-  constexpr uint32_t settleMs = 200;
-  if (age >= settleMs) {
-    drawDitheredRoundedRect(buffer, size, x, y, width, height, 4, coverage);
+// A travelling rounded stroke draws the contour, then thickens inward.
+// One bounded box-area pass keeps the traced surface and final fill seamless.
+void drawInkBlock(uint8_t* buffer, size_t size, int x, int y,
+                  int width, int height, uint32_t age, uint8_t coverage,
+                  bool reverse) {
+  if(!coverage) return;
+  if(age>=600u) {
+    drawDitheredRoundedRect(buffer,size,x,y,width,height,4,coverage);
     return;
   }
-  // Cubic ease-out: arrive quickly, then gently flatten into the logo plane.
-  const int remaining = static_cast<int>(settleMs - age);
-  const int fold = remaining * remaining * remaining / 8000; // 1000 -> 0
-  const int plateWidth = width * (1000 - fold / 2) / 1000;
-  const int plateHeight = height * (1000 - fold / 2) / 1000;
-  const int left = x + (width - plateWidth) / 2;
-  const int top = y + (height - plateHeight) / 2 - fold * 18 / 1000;
-  const int tilt = fold * 12 / 1000;
-  const int seam = fold > 160 ? 1 : 0;
-  for (int row = 0; row < plateHeight; ++row) {
-    const int skew = tilt * (plateHeight - 1 - 2 * row) / plateHeight;
-    for (int column = 0; column < plateWidth; ++column) {
-      // Two clean facets close around a white hinge, disappearing at rest.
-      if (seam && column >= plateWidth / 2 - seam &&
-          column < plateWidth / 2 + seam) continue;
-      if (ditherPixel(left + column + skew, top + row, coverage))
-        setPhysicalPixel(buffer, size, left + column + skew, top + row, true);
+  const int perimeter=2*(width+height-2);
+  const int traced=age>=340u?perimeter:static_cast<int>(age)*perimeter/340;
+  const int fillTime=age<=300u?0:static_cast<int>(age-300u)*1000/300;
+  const int fill=fillTime*fillTime*(3000-2*fillTime)/1000000;
+  const int thickness=2+(height/2)*fill/1000;
+  const int radius=8-4*fill/1000;
+  for(int py=0;py<height;++py) for(int px=0;px<width;++px) {
+    if(!insideRoundedRect(px,py,width,height,radius)) continue;
+    int depth=py,phase=px;
+    if(width-1-px<depth) {depth=width-1-px;phase=width-1+py;}
+    if(height-1-py<depth) {depth=height-1-py;phase=width+height-2+width-1-px;}
+    if(px<depth) {depth=px;phase=2*width+height-3+height-1-py;}
+    phase=(phase+perimeter-width/2)%perimeter;
+    if(reverse) phase=(perimeter-phase)%perimeter;
+    if(depth<thickness && phase<=traced && ditherPixel(x+px,y+py,coverage))
+      setPhysicalPixel(buffer,size,x+px,y+py,true);
+  }
+  if(age<340u) {
+    int phase=((reverse?perimeter-traced:traced)+width/2)%perimeter;
+    int hx=0,hy=0;
+    if(phase<width-1) hx=phase;
+    else if((phase-=width-1)<height-1) {hx=width-1;hy=phase;}
+    else if((phase-=height-1)<width-1) {hx=width-1-phase;hy=height-1;}
+    else {phase-=width-1;hy=height-1-phase;}
+    // A small ink bead leads the stroke, clipped to the rounded silhouette.
+    for(int dy=-3;dy<=3;++dy) for(int dx=-3;dx<=3;++dx) {
+      const int px=hx+dx,py=hy+dy;
+      if(dx*dx+dy*dy>9 || px<0 || py<0 || px>=width || py>=height ||
+         !insideRoundedRect(px,py,width,height,radius)) continue;
+      if(ditherPixel(x+px,y+py,coverage)) setPhysicalPixel(buffer,size,x+px,y+py,true);
     }
+  }
+}
+
+// RiscRTE wordmark rasterized from DejaVu Sans Bold, 36 px.
+// Font notice: docs/BOOT_WORDMARK_LICENSE.txt. Static flash data; no font/SD load.
+constexpr uint8_t kWordmarkWidths[7]={28,12,21,21,28,25,25};
+constexpr uint32_t kWordmarkRows[7][32]={
+  {0x0u,0x3fff8u,0xffff8u,0x3ffff8u,0x3ffff8u,0x7ffff8u,0x7f01f8u,0x7e01f8u,0x7e01f8u,0x7e01f8u,0x7e01f8u,0x3f01f8u,0x3ffff8u,0x1ffff8u,0x7fff8u,0xffff8u,0x1ffff8u,0x3fc1f8u,0x3f81f8u,0x7f01f8u,0x7e01f8u,0xfe01f8u,0xfe01f8u,0xfc01f8u,0x1fc01f8u,0x1f801f8u,0x3f801f8u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x0u,0x0u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0x0u,0x0u,0x0u,0x0u,0x0u,0x0u,0x1ffc0u,0x7fff0u,0x7fff8u,0x7fffcu,0x781fcu,0x400fcu,0xfcu,0x1fcu,0x3ffcu,0x1fff8u,0x7fff0u,0xfff80u,0xfe000u,0xfc000u,0xfc004u,0xfe03cu,0x7fffcu,0x7fffcu,0x3fffcu,0x7fe0u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0x0u,0x0u,0x0u,0x0u,0x0u,0x0u,0xfe00u,0x3ff80u,0x7ffe0u,0x7fff0u,0x7fff8u,0x707f8u,0x401fcu,0x1fcu,0xfcu,0xfcu,0xfcu,0xfcu,0x1fcu,0x401fcu,0x707f8u,0x7fff8u,0x7fff0u,0x7ffe0u,0x3ffc0u,0xfe00u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0x3fff8u,0xffff8u,0x3ffff8u,0x3ffff8u,0x7ffff8u,0x7f01f8u,0x7e01f8u,0x7e01f8u,0x7e01f8u,0x7e01f8u,0x3f01f8u,0x3ffff8u,0x1ffff8u,0x7fff8u,0xffff8u,0x1ffff8u,0x3fc1f8u,0x3f81f8u,0x7f01f8u,0x7e01f8u,0xfe01f8u,0xfe01f8u,0xfc01f8u,0x1fc01f8u,0x1f801f8u,0x3f801f8u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0xffffffu,0xffffffu,0xffffffu,0xffffffu,0xffffffu,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1ffff8u,0x1ffff8u,0x1ffff8u,0x1ffff8u,0x1ffff8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x0u,0x0u,0x0u,0x0u,0x0u}
+};
+
+void drawBootWordmark(uint8_t* buffer,size_t size,int centerX,int y,uint8_t coverage) {
+  int total=0;for(int i=0;i<7;++i) total+=kWordmarkWidths[i];
+  int x=centerX-total/2;
+  const uint32_t elapsed=visualTimeMs>1000u?visualTimeMs-1000u:0;
+  for(int letter=0;letter<7;++letter) {
+    const int width=kWordmarkWidths[letter];
+    const int age=static_cast<int>(elapsed)-letter*25;
+    if(age>0 && coverage) {
+      if(age<130) {
+        const int height=27*age/130;
+        drawDitheredRoundedRect(buffer,size,x+width/2-3,y+27-height,6,height,1,coverage);
+      } else {
+        const int unfold=age>=360?1000:(age-130)*1000/230;
+        const int eased=unfold*unfold*(3000-2*unfold)/1000000;
+        const int drawnWidth=6+(width-6)*eased/1000;
+        for(int py=0;py<32;++py) {
+          if(letter==1 && py<9) continue; // dot arrives independently below
+          for(int dx=0;dx<drawnWidth;++dx) {
+            const int sourceX=dx*width/drawnWidth;
+            const int px=x+(width-drawnWidth)/2+dx;
+            if((kWordmarkRows[letter][py]&(1u<<sourceX)) && ditherPixel(px,y+py,coverage))
+              setPhysicalPixel(buffer,size,px,y+py,true);
+          }
+        }
+      }
+      if(letter==1 && age>=170) {
+        const int fall=age>=340?1000:(age-170)*1000/170;
+        int offset=-20+20*fall*fall/1000000;
+        if(age>=340 && age<450) {
+          const int bounce=(age-340)*1000/110;
+          offset=-4*4*bounce*(1000-bounce)/1000000;
+        }
+        for(int py=0;py<9;++py) for(int px=0;px<width;++px)
+          if((kWordmarkRows[letter][py]&(1u<<px)) && ditherPixel(x+px,y+py+offset,coverage))
+            setPhysicalPixel(buffer,size,x+px,y+py+offset,true);
+      }
+    }
+    x+=width;
   }
 }
 
 void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
                    uint8_t logoCoverage, uint8_t textCoverage) {
-  // Fixed logo positions; each block assembles in left-to-right array order.
+  // Fixed final anchor; travelling ink strokes materialize the mark.
   if (visibleBlocks > kLogoBlockCount) visibleBlocks = kLogoBlockCount;
 
   const int logicalWidth = static_cast<int>(videoSurface.height);
@@ -386,27 +454,23 @@ void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
   const int frameY = (logicalHeight - kFrameHeight) / 2;
 
 
-  for (uint8_t rectIndex = 0; rectIndex < visibleBlocks; ++rectIndex) {
-    const auto& rect = kLogoRects[rectIndex];
-    uint8_t layer=0, first=0;
-    while (rectIndex>=kLogoLayerEnds[layer]) { first=kLogoLayerEnds[layer]; ++layer; }
-    const uint32_t born=layer*kRevealLayerMs+(rectIndex-first+1u)*kRevealLayerMs/(kLogoLayerEnds[layer]-first);
-    const uint32_t age=visualTimeMs>born ? visualTimeMs-born : 0;
-    drawAssemblingBlock(buffer, bufferSize, frameX + rect.x * 2,
-                         frameY + rect.y * 2, rect.width * 2,
-                         rect.height * 2, age, logoCoverage);
+  // Offset travelling strokes establish the contours, followed by an
+  // overlapping wave of material filling each shape from its rim inward.
+  for(int rectIndex=0;rectIndex<kLogoBlockCount;++rectIndex) {
+    const uint32_t born=static_cast<uint32_t>(rectIndex)*45u;
+    if(visualTimeMs<=born) continue;
+    const auto& rect=kLogoRects[rectIndex];
+    drawInkBlock(buffer,bufferSize,frameX+rect.x*2,frameY+rect.y*2,
+                 rect.width*2,rect.height*2,visualTimeMs-born,logoCoverage,
+                 (rectIndex&1)!=0);
   }
 
   // Both labels stay at fixed coordinates and first appear after all blocks.
   if (visibleBlocks == kLogoBlockCount && textCoverage != 0U) {
-    constexpr char title[] = "RISCRTE";
     constexpr char status[] = "STARTING...";
-    constexpr int titleScale = 4;
     constexpr int statusScale = 2;
 
-    drawDitheredText(buffer, bufferSize,
-                     (logicalWidth - textWidth(title, titleScale)) / 2,
-                     frameY + 244, title, titleScale, textCoverage);
+    drawBootWordmark(buffer,bufferSize,logicalWidth/2,frameY+244,logoCoverage);
     drawDitheredText(buffer, bufferSize,
                      (logicalWidth - textWidth(status, statusScale)) / 2,
                      frameY + 291, status, statusScale, textCoverage);
