@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,37 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 133. Time Card keeps failed punch edits live and can persist them on a later successful save
+
+- **Status:** Open.
+- **Sources:** current master `8f85ae659a2e48619be8d0e678ea38778c49d2ba`; no current open issue or PR covers this failed-save state mutation.
+- **Affected code:** `Apps/timecard.c`, especially `ensure_day()`, `set_punch()`, `punch_today()`, and `consume_keyboard()`.
+- **Trigger / reproduction:** Start with a valid Time Card store, then force `storage->write_file_atomic()` to fail for one clock punch or manual edit. Leave the app running, allow storage writes to recover, and make a later punch/edit that saves successfully. Also exercise the same failure while `day_count == MAX_DAYS` and the failed operation creates a new date.
+- **Observed / logically demonstrated failure:** `set_punch()` mutates the live `days[]` model before calling `save_store()` and does not restore that mutation when persistence fails. `punch_today()` reports **Could not save punch**, and the manual-edit path reports failure, but the changed punch remains in memory. A later successful `save_store()` serializes that previously failed change along with the new one. At the 400-day limit, `ensure_day()` can also evict the oldest in-memory day before the failed save, and that eviction can become durable on the next successful write.
+- **Likely root cause:** The Time Card write path uses mutate-then-persist semantics without a snapshot, staged model, or rollback on persistence failure.
+- **Impact:** A punch/edit that the UI explicitly reports as unsaved can later become durable without the user's knowledge. At capacity, a failed operation can also prime an older valid day for later deletion.
+- **Repair direction:** Make punch updates transactional. Stage the candidate day array/count (including any capacity eviction), persist the staged representation, and publish it to the live model only after the write succeeds; alternatively snapshot and restore every affected element/count on failure. Add fault-injection tests proving a failed existing-day edit, failed new-day insertion, and failed insertion at `MAX_DAYS` leave both live and durable history unchanged after subsequent successful saves.
+
+### 134. KOReader document matching toggles repeatedly from one held Confirm press
+
+- **Status:** Open.
+- **Sources:** current master `8f85ae659a2e48619be8d0e678ea38778c49d2ba`; no current open issue or PR covers KOReader input edge handling.
+- **Affected code:** `Apps/koreader_sync.c`, `activate_selected()` and the main `app_main()` input loop; the level-triggered button contract exported by `src/native/NativeAppHost.cpp::poll()`.
+- **Trigger / reproduction:** Open **KOReader Sync**, select **Document Matching**, then press and hold Confirm for longer than one 50 ms polling interval.
+- **Observed / logically demonstrated failure:** The app tests `input.buttons & T5_APP_BUTTON_CONFIRM` on every raw app poll and calls `activate_selected()` each time the bit remains asserted. For the Document Matching row, every call flips Filename/Binary and persists the new value. One physical hold can therefore toggle and write the setting several times, with the final mode determined by release timing rather than one deliberate activation.
+- **Likely root cause:** KOReader Sync treats the native app ABI's level-triggered button state as a one-shot event and does not gate Confirm on a rising edge or release.
+- **Impact:** A user can release Confirm with the opposite matching mode from the one they intended, while one press causes multiple unnecessary settings writes.
+- **Repair direction:** Consume edge-based UI events for this screen or track the previous button mask and activate only on the Confirm rising edge. Add a regression that keeps Confirm asserted across several polls and verifies exactly one match-method change and one persistence attempt.
+
+### 135. Rom Manager silently truncates Vimm browse/search results after 96 entries
+
+- **Status:** Open.
+- **Sources:** current master `8f85ae659a2e48619be8d0e678ea38778c49d2ba`; no current open issue or PR covers this Vimm result-window limit.
+- **Affected code:** `Apps/rom_manager.c`, `MAX_VIMM`, `fetch_vimm_url()`, `add_vimm_entry()`, `fetch_vimm()`, `search_vimm()`, and `open_vimm_page()`.
+- **Trigger / reproduction:** Load a Vimm browse, letter, or search response containing more than 96 valid navigation/game entries. On the top-level browse response, page/navigation links and games share the same 96-entry array, so enough navigation entries reduce the number of game rows that can be retained even further.
+- **Observed / logically demonstrated failure:** Both parsing loops in `fetch_vimm_url()` stop when `vimm_count == MAX_VIMM`. The function still returns success, exposes only the retained prefix, and provides no continuation cursor, next page, or truncation indication. Because navigation entries are added before game rows when `include_pages` is true, they consume the same fixed capacity and can make valid games disappear from the very response that successfully loaded them.
+- **Likely root cause:** A fixed render/result buffer is also being used as the complete remote catalog model, with no pagination state or overflow contract.
+- **Impact:** Valid Game Boy catalog titles beyond the retained prefix cannot be discovered or opened/installed through Rom Manager, and the visible result set can vary with unrelated navigation-link count.
+- **Repair direction:** Separate navigation from title storage and page/stream remote results instead of treating `MAX_VIMM` as the catalog size. Preserve a continuation/page cursor or virtualize rows over parsed results, and visibly report truncation if the remote source cannot be paged. Add tests with 96, 97, and substantially larger result sets, including a top-level response where navigation entries plus games exceed 96.
