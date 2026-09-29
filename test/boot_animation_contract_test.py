@@ -63,7 +63,7 @@ class BootAnimationContract(unittest.TestCase):
             [5, 7, 8, 9],
         )
 
-    def test_logo_geometry_is_centered_and_never_animated(self):
+    def test_logo_anchor_remains_centered(self):
         self.assertIn(
             "const int frameX = (logicalWidth - kLogoSize) / 2;", SOURCE
         )
@@ -77,7 +77,6 @@ class BootAnimationContract(unittest.TestCase):
             "kDropStartCoverage",
             "kDropEndCoverage",
             "startY = -kFrameHeight",
-            "const int travel",
         ):
             self.assertNotIn(forbidden, SOURCE)
 
@@ -93,29 +92,21 @@ class BootAnimationContract(unittest.TestCase):
         self.assertIn("textCoverage", args)
         self.assertNotRegex(args, r"\b(?:x|y|frameX|frameY|offset|position)\b")
 
-    def test_blocks_pop_in_left_to_right_with_equal_time_per_layer(self):
-        reveal = re.search(
-            r"bool\s+renderLayerReveal\s*\(\s*\)\s*\{(?P<body>.*?)\n\}",
-            SOURCE,
-            re.DOTALL,
-        )
-        self.assertIsNotNone(reveal)
-        body = reveal.group("body")
-        self.assertIn("for (uint8_t layer = 0; layer < kLogoLayerCount; ++layer)", body)
-        self.assertIn("const uint8_t blocksInLayer = lastBlock - firstBlock;", body)
-        self.assertIn("for (uint8_t block = firstBlock + 1; block <= lastBlock; ++block)", body)
-        self.assertIn("(block - firstBlock) * kRevealLayerMs / blocksInLayer", body)
-        self.assertIn("submitBeforeDeadline(block, 0U)", body)
-        self.assertIn("submitVideoFrame(visibleBlocks, kFullCoverage, textCoverage, timeout)", body)
-        self.assertLess(4 * 250 + 300, 2000)
+    def test_blocks_assemble_left_to_right_on_a_bounded_timeline(self):
+        self.assertIn("(block-firstBlock)*kRevealLayerMs/blocksInLayer", SOURCE)
+        self.assertIn("elapsed+40u", SOURCE)
+        self.assertIn("age >= settleMs", SOURCE)
+        self.assertIn("if (elapsed>=due) visible=block", SOURCE)
+        self.assertIn("drawAssemblingBlock(buffer, bufferSize", SOURCE)
+        self.assertNotIn("drawBootAccents", SOURCE)
+        self.assertIn("if (elapsed>=kRevealDeadlineMs) return false", SOURCE)
 
     def test_labels_fade_only_after_last_block_at_fixed_coordinates(self):
         self.assertIn("if (visibleBlocks == kLogoBlockCount && textCoverage != 0U)", SOURCE)
         reveal = SOURCE[SOURCE.index("bool renderLayerReveal()"):
                         SOURCE.index("bool bootWithVideo(")]
-        self.assertLess(reveal.index("firstBlock = lastBlock;"),
-                        reveal.index("for (uint8_t frame = 1; frame <= kTextFadeFrames; ++frame)"))
-        self.assertIn("submitBeforeDeadline(kLogoBlockCount, coverage)", reveal)
+        self.assertIn("textElapsed=elapsed>kLogoLayerCount*kRevealLayerMs", reveal)
+        self.assertIn("smoothCoverage(textFrame,kTextFadeFrames,0,kFullCoverage)", reveal)
         self.assertIn('constexpr char title[] = "RISCRTE";', SOURCE)
         self.assertIn('constexpr char status[] = "STARTING...";', SOURCE)
         self.assertIn("title, titleScale, textCoverage", SOURCE)
