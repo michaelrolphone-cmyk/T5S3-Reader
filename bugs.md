@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,37 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+### 136. TXT/Markdown paging treats short positive SD reads as complete chunks and parses unread heap bytes
+
+- **Status:** Open.
+- **Sources:** automation/bug-scan-20260928-2221.
+- **Affected code:** `lib/Txt/Txt.cpp`, `Txt::readContent()`; `src/activities/reader/TxtReaderPaging.cpp`, `TxtReaderActivity::loadPageAtOffset()` and `peekMarkdownLine()`.
+- **Trigger / reproduction:** Open a TXT or Markdown document, then make an SD read return a short positive count without satisfying the requested read length (for example, fault-inject a partial read, or truncate/replace the file after `Txt::load()` cached its original size). In `loadPageAtOffset()`, request an 8 KiB chunk where `FsFile::read()` returns between 1 and 8191 bytes.
+- **Observed / logically demonstrated failure:** `Txt::readContent()` returns `true` for any `bytesRead > 0` and does not return the actual byte count. Its callers allocate an uninitialized buffer sized for the full requested chunk and, after that boolean success, parse all `chunkSize` bytes. `loadPageAtOffset()` therefore treats unread heap bytes as document text and can advance `nextOffset` across bytes that were never read; page-index construction can then persist those bogus offsets. `peekMarkdownLine()` has the same assumption for its 256-byte buffer.
+- **Likely root cause:** The storage helper collapses “some bytes read” and “the requested range was read completely” into the same boolean result, while paging code assumes an exact-length read.
+- **Impact:** A transient or concurrent file-read short read can display garbage or stale heap contents as book text, skip real document bytes, corrupt the persisted page index, and make subsequent navigation inconsistent until the cache is rebuilt.
+- **Repair direction:** Return the actual count from `readContent()` or require `bytesRead == length` for this exact-range API. Callers must parse only initialized bytes and treat a short read before the cached EOF as an I/O/change error. Add fault-injection tests for 1-byte, mid-chunk, and EOF-adjacent short reads plus a file-size change after `Txt::load()`.
+
+### 137. XTC rendering uses the first page's dimensions for every page and can render uninitialized memory
+
+- **Status:** Open.
+- **Sources:** automation/bug-scan-20260928-2221.
+- **Affected code:** `lib/Xtc/Xtc/XtcParser.cpp`, `readFirstPageInfo()`, `readPageTableEntry()`, and `loadPage()`; `lib/Xtc/Xtc.cpp`, `getPageWidth()` / `getPageHeight()`; `src/activities/reader/XtcReaderActivity.cpp`, `renderPage()`.
+- **Trigger / reproduction:** Use an otherwise accepted multi-page XTC/XTCH whose first page is 480x800 and whose later page header is 400x800, with valid magic and 40,000 bytes of 1-bit bitmap data for that later page. Navigate to the later page. The inverse case, such as a 600x800 later page, demonstrates the corresponding false “buffer too small” failure.
+- **Observed / logically demonstrated failure:** `readFirstPageInfo()` stores only the first table entry's dimensions as the parser-wide defaults. Although every `PageTableEntry` carries its own width and height, `Xtc::getPageWidth()` / `getPageHeight()` expose only those first-page defaults, so `XtcReaderActivity::renderPage()` allocates and iterates a 480x800 buffer for every page. `XtcParser::loadPage()`, however, computes the bytes to read from the current page header. In the 400x800 case it reads 40,000 bytes successfully into a 48,000-byte allocation, then the renderer indexes all 48,000 bytes using the first-page 60-byte row stride, consuming 8,000 bytes that were never initialized by the page load. A larger later page instead fails because the first-page-sized allocation is too small.
+- **Likely root cause:** Per-page geometry exists in the format and parser but the public reader interface treats geometry as book-global, and no invariant check requires later table/header dimensions to equal the first page.
+- **Impact:** Dimension-varying or corrupted XTC files can show heap garbage/stale data on the display, render pages with the wrong stride, or reject later pages that contain otherwise readable bitmap data. This is separate from the previously reported non-byte-aligned XTCH plane-size bug because aligned heights and ordinary 1-bit XTC reproduce it.
+- **Repair direction:** Resolve and validate the current page's table/header geometry before allocation/rendering. Either expose per-page `PageInfo` to `XtcReaderActivity` and allocate/render from it, or explicitly reject files whose later geometry differs from the supported fixed geometry. Also verify table-entry dimensions/data size against the page header and initialize any buffer region not filled. Add 480→400, 480→600, and table/header-mismatch regression fixtures.
+
+### 138. OPDS XML parsing mistakes extension element names that merely begin with Atom names for real feed elements
+
+- **Status:** Open.
+- **Sources:** automation/bug-scan-20260928-2221.
+- **Affected code:** `lib/OpdsParser/OpdsParser.cpp`, `OpdsParser::startElement()` and `endElement()`.
+- **Trigger / reproduction:** Serve a valid Atom/OPDS entry containing a namespaced extension element such as `<ext:entry-extra>metadata</ext:entry-extra>` before the entry's acquisition `<link>`, or `<ext:title-extra>auxiliary</ext:title-extra>` inside an entry. Namespace declarations can bind `ext` to any extension namespace.
+- **Observed / logically demonstrated failure:** The parser recognizes qualified names with tests such as `strstr(name, ":entry") != nullptr`, and uses the same substring pattern for `:link`, `:title`, `:author`, `:name`, and `:id`. Therefore `ext:entry-extra` is treated exactly like Atom `entry`: `startElement()` resets `currentEntry`, and `endElement()` can leave `inEntry` false so the legitimate link/title that follows is ignored. Likewise an extension local name beginning with `title` can overwrite the actual title. These are valid distinct XML qualified names, not aliases for the Atom elements.
+- **Likely root cause:** Namespace tolerance was implemented as substring matching instead of comparing the exact local name after an optional namespace prefix.
+- **Impact:** OPDS feeds that use otherwise valid extension elements can silently lose books, navigation entries, titles, IDs, or links even though the XML parses successfully.
+- **Repair direction:** Compare exact local names: strip an optional QName prefix (or enable Expat namespace processing) and require equality with `entry`, `link`, `title`, `author`, `name`, or `id`. Preserve namespace distinctions where semantics require them. Add fixtures containing `ext:entry-extra`, `ext:title-extra`, and genuinely prefixed Atom elements to prove extensions no longer perturb parser state.
+
