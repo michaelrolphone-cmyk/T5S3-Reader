@@ -41,7 +41,10 @@ static void reference(void) {
      * compositor lattice, then feed that reference through the separately
      * covered reconstruction/upscale stages. Any cached-strip/parallax/focus
      * error therefore still appears as a final-frame mismatch. */
-    for(int y=0;y<HT_RECON_H;++y) for(int x=0;x<HT_RECON_W;++x)
+    const int border=HT_BORDER/4;
+    const int height=(HT_SCENE_H-HT_BORDER/2+1)/2;
+    memset(ht_recon_scene,ht_sky_ink(&game),HT_RECON_PIXELS);
+    for(int y=border;y<height;++y) for(int x=border;x<HT_RECON_W-border;++x)
         ht_recon_scene[y*HT_RECON_W+x]=ht_scene[(4*y)*HT_W+4*x];
     ht_reconstruct_low_scene();
     ht_upscale_scene();
