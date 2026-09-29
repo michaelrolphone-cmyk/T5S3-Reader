@@ -95,9 +95,9 @@ class BootAnimationContract(unittest.TestCase):
     def test_blocks_assemble_left_to_right_on_a_bounded_timeline(self):
         self.assertIn("(block-firstBlock)*kRevealLayerMs/blocksInLayer", SOURCE)
         self.assertIn("elapsed+40u", SOURCE)
-        self.assertIn("age>=600u", SOURCE)
+        self.assertIn("age>=360u", SOURCE)
         self.assertIn("if (elapsed>=due) visible=block", SOURCE)
-        self.assertIn("drawInkBlock(buffer,bufferSize", SOURCE)
+        self.assertIn("drawInkSweep(buffer,bufferSize", SOURCE)
         self.assertNotIn("drawBootAccents", SOURCE)
         self.assertIn("if (elapsed>=kRevealDeadlineMs) return false", SOURCE)
 
@@ -108,9 +108,9 @@ class BootAnimationContract(unittest.TestCase):
         self.assertIn("textElapsed=elapsed>kLogoLayerCount*kRevealLayerMs", reveal)
         self.assertIn("smoothCoverage(textFrame,kTextFadeFrames,0,kFullCoverage)", reveal)
         self.assertIn("drawBootWordmark(buffer,bufferSize", SOURCE)
-        self.assertIn('constexpr char status[] = "STARTING...";', SOURCE)
+        self.assertIn("visualTimeMs>=1510u", SOURCE)
         self.assertIn("frameY+244,logoCoverage", SOURCE)
-        self.assertIn("status, statusScale, textCoverage", SOURCE)
+        self.assertIn("ditherPixel(x,y,textCoverage)", SOURCE)
 
     def test_pulse_and_fade_keep_the_completed_logo_stationary(self):
         self.assertIn(

@@ -60,19 +60,24 @@ flushed. This is a firmware-only fix; Springboard remains 1.3.0.
 
 ## Cinematic ident (firmware 1.3.41)
 
-The loading worker renders at 40 ms intervals. Firmware 1.3.42 uses the
-owner's travelling-stroke reference: offset rounded ink traces establish the
-logo contours, led by small beads. Alternating directions give the traces
-independent movement. An overlapping second wave thickens the rims inward,
-materializing the solid mark. All blocks settle by 960 ms. After 1000 ms, the mixed-case RiscRTE
-wordmark grows from rising stems into bold letterforms, with staggered horizontal
-unfolding and a separately falling/bouncing i-dot. It finishes by 1510 ms when
-loading lasts long enough. Static glyph masks occupy under 1 KiB of flash and
-need no font loading. The small status label fades at its fixed anchor. No rotating model, ribbons or surrounding ornaments.
+The loading worker renders at 40 ms intervals. Firmware 1.3.43 opens with two
+large tapered Bezier ink ribbons sweeping across the panel and converging into
+the brand. Their tails disappear as a rolling wave of curved ink blocks grows,
+overshoots slightly and settles into the original logo by 1080 ms. The bold
+mixed-case RiscRTE wordmark rises and unfolds beneath it, with an independently
+falling i-dot, completing by 1510 ms if startup continues. Three small loading
+dots follow. Earlier wireframe, matrix rotation and contour-fill variants are
+replaced by this sequence.
 
-One bounded box-area pass plus a small clipped bead renders each active block
-using integer arithmetic and the existing backbuffer. No allocations, external assets,
-SD reads or trigonometry. Readiness cancellation, exit fade, touch boundary and
-worker/display ownership remain unchanged; boot never waits for the animation.
-Tests cover bounds, zero-coverage output throughout the timeline, exact final
-geometry and both startup display paths. Hardware appearance is unmeasured.
+Two fixed 32-strip ribbons, clipped convex scanlines, and bounded block-area
+passes use the existing backbuffer. Cubic paths use 64-bit intermediates for
+precision; there are no allocations, external assets, SD reads or trigonometry.
+Static wordmark masks use under 1 KiB of flash (license in
+BOOT_WORDMARK_LICENSE.txt). Only the actual five dot rows move with the i-dot;
+the stem stays attached to the wordmark. Readiness cancellation, exit-fade
+budget, touch boundary and worker/display ownership remain unchanged. Startup
+never waits for the animation to complete.
+
+Host tests cover bounds, zero-coverage output throughout the timeline, exact
+final logo geometry, concurrent startup, cancellation, teardown retry and both
+display paths. Hardware appearance, panel ghosting and timing remain unmeasured.
