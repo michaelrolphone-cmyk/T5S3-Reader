@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 178. Ask Manifold can erase a valid saved conversation after one transient session read failure
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1325-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1325-final/bugs.md)
+
+- **Affected code:** `Apps/llm_ask.c`, especially `load_session()`, `request_keyboard()`, and `app_main()`.
+- **Trigger / reproduction:** Start with a valid saved Ask Manifold conversation in the session file. Launch the app while injecting a one-time storage read failure for that file, then press Ask to open the keyboard.
+- **Observed / logically demonstrated failure:** `load_session()` treats any failed or short `read_file()` like invalid session data and immediately calls `reset_session()`. `app_main()` ignores the false return and continues. When the user presses Ask, `request_keyboard()` calls `save_session()` before requesting the keyboard, so the reset empty in-memory session is written over the previously valid durable conversation even though the only problem was a transient read failure.
+- **Likely root cause:** The loader conflates missing/corrupt data with transient I/O failure, and a later handoff save commits the fallback state without proving that the previous durable state was invalid.
+- **Impact:** A temporary SD read fault can permanently erase the user's saved conversation merely by pressing Ask after launch.
+- **Repair direction:** Distinguish not-found, corrupt, and I/O-failure outcomes. On I/O failure, keep the session unavailable/read-only and do not overwrite the existing file until it has been successfully loaded or the user explicitly chooses to reset it. Add a fault-injection test where the first read fails, the user requests the keyboard, and the original session remains byte-for-byte intact.
+
+### 179. A failed OPDS book re-download can destroy the existing local EPUB with the same generated filename
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1325-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1325-final/bugs.md)
+
+- **Affected code:** `src/activities/browser/OpdsBookBrowserActivity.cpp::downloadBook()`; `src/network/HttpDownloader.cpp::downloadToFile()`.
+- **Trigger / reproduction:** Start with an existing local book whose pathname matches the deterministic OPDS destination, such as `/Author - Title.epub`. Download the same catalog title again, allow the HTTP request to reach a 200 response, then interrupt the transfer or inject an SD/network failure before the body completes.
+- **Observed / logically demonstrated failure:** `downloadBook()` writes directly to the final sanitized `.epub` pathname. The compatibility path in `downloadToFile()` removes any existing destination before opening the replacement. If streaming, length validation, or a later write then fails, the downloader removes the partial destination and returns an error. The previously valid book has already been deleted, so a failed re-download leaves no copy at all.
+- **Likely root cause:** User content is downloaded using destructive overwrite semantics instead of staging a replacement and publishing it only after transfer validation succeeds.
+- **Impact:** A transient network disconnect, server truncation, SD write failure, or cancellation during an OPDS re-download can irreversibly delete an existing EPUB from the user's library.
+- **Repair direction:** Download to a unique same-directory staging file, validate the completed transfer and preferably basic EPUB/ZIP structure, then replace the destination transactionally while preserving or rolling back the old file on publication failure. Add a fault-injection test proving an existing EPUB survives failed re-downloads at each post-200 transfer stage.
+
+### 180. Web file uploads delete an existing file before the replacement upload is complete
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1325-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1325-final/bugs.md)
+
+- **Affected code:** `src/network/CrossPointWebServer.cpp`, `CrossPointWebServer::handleUpload()` for multipart HTTP uploads, and `CrossPointWebServer::onWebSocketEvent()` / `abortWsUpload()` for WebSocket uploads.
+- **Trigger / reproduction:** Through the built-in web file-transfer server, upload over an existing file and then abort the client, disconnect mid-transfer, fill the SD card, or inject a short write after the upload has started.
+- **Observed / logically demonstrated failure:** Both upload transports build the final destination pathname and immediately call `Storage.remove(filePath)` when it already exists. They then stream new bytes directly into that canonical path. On abort or short write the WebSocket path deletes the partial file; multipart upload reports failure after the old file was already removed and can leave only a partial replacement. These handlers never retain a rollback copy of the original.
+- **Likely root cause:** The web upload implementation uses delete-then-stream overwrite semantics rather than a staged replacement transaction.
+- **Impact:** A failed browser or WebSocket upload can destroy a previously valid book or other user file even though the replacement never completed successfully.
+- **Repair direction:** Stream uploads into a unique temporary file, require complete byte-count/write/close validation, and publish the new file transactionally only after success. Preserve the old destination until publication commits and restore it if replacement fails. Reuse a shared safe-replace helper where practical, and add aborted, short-write, disk-full, and disconnect regression tests for both upload transports.
