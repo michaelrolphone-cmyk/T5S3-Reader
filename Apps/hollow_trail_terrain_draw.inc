@@ -12,6 +12,26 @@ static void ht_draw_land(const ht_game *g,int i,int part,int l,int r,int flat) {
         ht_land_tops[at-begin]=(int16_t)top;ht_land_bottoms[at-begin]=(int16_t)bottom;
         common_top=ht_max(common_top,top);common_bottom=ht_min(common_bottom,bottom);
     }
+    bool cliff=part==0 && common_bottom==520 &&
+        ((ht_cliff_edge(g,i,-1) && l>=begin && l<end) ||
+         (ht_cliff_edge(g,i,1) && r>begin && r<=end));
+    if(cliff) {
+        int first=common_top;
+        for(int at=begin;at<end;++at) first=ht_min(first,ht_land_tops[at-begin]);
+        int margin=(HT_H*256/ht_world_scale-HT_H)/2+2;
+        bool left=ht_cliff_edge(g,i,-1),right=ht_cliff_edge(g,i,1);
+        for(int y=ht_max(first,cy-margin);y<ht_min(520,cy+HT_H+margin);++y) {
+            int low=ht_max(begin,l+(left?ht_cliff_inset(g,i,-1,y):0));
+            int high=ht_min(end,r-(right?ht_cliff_inset(g,i,1,y):0));
+            if(y>=common_top) ht_rect(ht_scene,low-cx,y-cy,high-low,1,255);
+            else for(int at=low;at<high;) {
+                while(at<high && y<ht_land_tops[at-begin]) ++at;
+                int start=at;
+                while(at<high && y>=ht_land_tops[at-begin]) ++at;
+                ht_rect(ht_scene,start-cx,y-cy,at-start,1,255);
+            }
+        }
+    } else {
     /* Fill the shared solid body with contiguous row writes, then only the
      * shallow curved fringe and any recessed wall. No per-column deep fill. */
     if(common_bottom>common_top) ht_rect(ht_scene,begin-cx,common_top-cy,end-begin,common_bottom-common_top,255);
@@ -21,6 +41,7 @@ static void ht_draw_land(const ht_game *g,int i,int part,int l,int r,int flat) {
         ht_rect(ht_scene,at-cx,top-cy,next-at,ht_min(common_top,bottom)-top,255);
         if(bottom>common_bottom) ht_rect(ht_scene,at-cx,ht_max(top,common_bottom)-cy,next-at,bottom-ht_max(top,common_bottom),255);
         at=next;
+    }
     }
     if(kind==HT_DECK) {
         int y=flat-cy,x=l-cx,w=r-l;
@@ -41,15 +62,19 @@ static void ht_draw_land(const ht_game *g,int i,int part,int l,int r,int flat) {
         return;
     }
     /* Unequal tufts and silt/ballast, never the same decorated shelf repeated. */
-    for(int at=ht_floor_div(begin-8,9)*9;at<end;at+=9) {
+    for(int at=ht_floor_div(begin-8,5)*5;at<end;at+=5) {
         if(at<l+3 || at>=r-3) continue;
         unsigned h=ht_hash((unsigned)at+g->level*137u);
         int top=part==2?flat:ht_surface_at(g,i,at),x=at-cx,y=top-cy;
         if(kind==HT_EARTH || kind==HT_MUD || kind==HT_GARDEN) {
-            int height=2+(int)(h%7);
-            ht_limb(ht_scene,x,y+1,x+(int)(h%7)-3,y-height,0,0,235);
-            if((h&3u)==0) ht_limb(ht_scene,x+2,y+1,x+5,y-height/2,0,0,255);
-            if(kind==HT_MUD && h%5==0) {
+            unsigned patch=ht_hash((unsigned)ht_floor_div(at,67)+g->level*83u);
+            int height=2+(int)(h%5)+(int)(patch%7);
+            for(int blade=0;blade<3;++blade) {
+                int root=x+blade-1,lean=(int)((h>>(blade*4))%9)-4;
+                ht_limb(ht_scene,root,y+2,root+lean,y-height+blade*2,0,0,235+blade*10);
+            }
+            if((h&15u)==0 && !(g->level==4 && at<700)) ht_fern(ht_scene,x,y+3,12+(int)(patch%13),240,h);
+            if(kind==HT_MUD && h%5==0 && at>=700) {
                 ht_limb(ht_scene,x,y,x-3,y-19,0,0,225);
                 ht_limb(ht_scene,x-3,y-19,x-3,y-24,1,1,205);
             }
@@ -59,8 +84,10 @@ static void ht_draw_land(const ht_game *g,int i,int part,int l,int r,int flat) {
         } else if(kind==HT_SNOW) ht_limb(ht_scene,x,y+1,x+7,y+2,1,0,135);
         if((h&3u)==1 && top+18<ht_terrain_bottom(g,i,at)) {
             if(kind==HT_EARTH || kind==HT_MUD) {
-                ht_limb(ht_scene,x,y+5,x+5,y+15,0,0,195);
-                ht_limb(ht_scene,x+5,y+15,x+3,y+22,0,0,215);
+                if((h&31u)==1) {
+                    ht_limb(ht_scene,x,y+7,x+7,y+11,0,0,224);
+                    ht_limb(ht_scene,x+7,y+11,x+12,y+9,0,0,235);
+                }
             } else if(kind==HT_ROCK || kind==HT_SNOW || kind==HT_SAND) {
                 ht_limb(ht_scene,x,y+12,x+12,y+20,0,0,215);
                 ht_limb(ht_scene,x+12,y+20,x+8,y+37,0,0,225);
@@ -85,26 +112,25 @@ static void ht_draw_land(const ht_game *g,int i,int part,int l,int r,int flat) {
     }
 }
 
-/* The trunk and each spreading root have independent soil contacts. A flat
- * root baseline leaves triangular air gaps on slopes, especially in vistas. */
+/* A buried trunk and curved buttress roots, tessellated against the soil.
+ * No rectangular pedestals or one-pixel vertical extension strips. */
 static void ht_grounded_tree(const ht_game *g,int i,int world,int height,int width,unsigned seed) {
     int cx=g->camera/256,cy=g->camera_y/256;
-    int base=ht_surface_at(g,i,world),x=world-cx;
-    ht_tree(ht_scene,x,base-cy,height,width,seed,255);
-    for(int dx=-width;dx<=width;++dx) {
-        int soil=ht_surface_at(g,i,world+dx);
-        ht_rect(ht_scene,x+dx,base-2-cy,1,ht_max(0,soil-base+7),255);
-    }
+    int base=ht_surface_at(g,i,world),buried=ht_buried_base(g,i,world,width);
+    ht_tree(ht_scene,world-cx,buried-cy,height+buried-base,width,seed,255);
     const ht_platform *p=&ht_level_land(g->level)[i];
     for(int side=-1;side<=1;side+=2) {
         int end=ht_clamp(world+side*width*(side<0?3:2),p->left+2,p->right-3);
-        int soil=ht_surface_at(g,i,end);
-        ht_limb(ht_scene,x,base-height/7-cy,end-cx,soil+4-cy,width/2,2,255);
-        int reach=ht_abs(end-world);
-        for(int step=0;step<=reach;++step) {
-            int wx=world+side*step,ground=ht_surface_at(g,i,wx);
-            int root=ht_min(ground-2,base-(height/7)*(reach-step)/ht_max(1,reach));
-            ht_rect(ht_scene,wx-cx,root-cy,1,ht_max(0,ground+5-root),255);
+        int reach=ht_abs(end-world),previous=world;
+        int oldtop=base-height/7,oldsoil=ht_surface_at(g,i,world)+3;
+        for(int step=4;step<reach+4;step+=4) {
+            int at=ht_min(step,reach),wx=world+side*at;
+            int soil=ht_surface_at(g,i,wx)+3;
+            int u=(reach-at)*256/ht_max(1,reach);
+            int top=ht_min(soil-6,base-(height/7)*u*u/65536);
+            ht_triangle(ht_scene,previous-cx,oldtop-cy,wx-cx,top-cy,previous-cx,oldsoil-cy,255);
+            ht_triangle(ht_scene,wx-cx,top-cy,wx-cx,soil-cy,previous-cx,oldsoil-cy,255);
+            previous=wx;oldtop=top;oldsoil=soil;
         }
     }
 }

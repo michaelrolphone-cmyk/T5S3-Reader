@@ -97,6 +97,10 @@ int main(int argc, char**) {
   queue(RISC_TOUCH_EVENT_UP); serviceProvider(); assert(nativeTouchGetTap(p));
   queue(RISC_TOUCH_EVENT_DOWN); serviceProvider();
   queue(RISC_TOUCH_EVENT_MOVE, 180, 200); serviceProvider();
+  NativeTouchPoint dragPoint{};
+  assert(nativeTouchGetContact(dragPoint) && dragPoint.x==180);
+  unsigned long dragHeld=0;
+  assert(!nativeTouchGetHold(dragPoint,dragHeld));
   queue(RISC_TOUCH_EVENT_UP, 180, 200); serviceProvider();
   assert(nativeTouchGetSwipe(p,end) && p.x==100 && end.x==180);
   assert(!nativeTouchGetTap(p));

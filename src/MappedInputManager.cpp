@@ -150,6 +150,13 @@ bool MappedInputManager::wasTouchTapped(TouchPoint& point, const GfxRenderer& re
   return true;
 }
 
+bool MappedInputManager::getTouchContact(TouchPoint& point, const GfxRenderer& renderer) const {
+  NativeTouchPoint raw;
+  if (!nativeTouchGetContact(raw)) return false;
+  point = orientTouchPoint(raw, renderer);
+  return true;
+}
+
 bool MappedInputManager::getTouchHold(TouchPoint& point, unsigned long& heldMs, const GfxRenderer& renderer) const {
   NativeTouchPoint raw;
   if (!nativeTouchGetHold(raw, heldMs)) return false;

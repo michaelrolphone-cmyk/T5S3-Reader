@@ -514,6 +514,14 @@ bool nativeTouchGetTap(NativeTouchPoint& point) {
   return true;
 }
 
+bool nativeTouchGetContact(NativeTouchPoint& point) {
+  portENTER_CRITICAL(&touchStateMux);
+  const bool active = touchActive && gestureEligible;
+  if (active) point = currentTouch;
+  portEXIT_CRITICAL(&touchStateMux);
+  return active;
+}
+
 bool nativeTouchGetHold(NativeTouchPoint& point, unsigned long& heldMs) {
   uint32_t started = 0;
   portENTER_CRITICAL(&touchStateMux);

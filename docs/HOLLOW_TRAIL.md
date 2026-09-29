@@ -1,4 +1,53 @@
-# Hollow Trail 1.1.6
+# Hollow Trail 1.1.7
+
+## Reference-led landscape and grotto ferry
+
+Hollow Trail **1.1.6 → 1.1.7**, from master after PR #287 merged. Minimum
+firmware remains **1.3.37**. The supplied forest and cave/boat reference images
+informed the composition, terrain silhouettes, foliage grouping and scale;
+the game renders its own procedural geometry and contains no copied image assets.
+
+Compared the original 1.0.0 forest and 1.0.14 city renderers. Restored the
+far forest hill/tree/mill layer and the tall far city skyline, which had been
+bypassed by the newer distant-landscape dispatch. Their independent 0.22/0.53
+parallax rates are preserved. Far silhouettes now retain contrast above the
+sky after fog; other chapter ridges also receive stronger tonal separation.
+The grotto deliberately keeps its pale open-water composition.
+
+Trees use buried trunks and tessellated curved roots, with no vertical fill
+pedestals. Static trees, landmarks and finds render before the soil, allowing
+the actual terrain to mask their buried bases. Wide rigid scenery samples its
+whole footprint; small chests and seedlings have their own soil contacts.
+Player separation mist follows vista projection and cannot bleach the soil.
+
+Exposed natural cliff faces now recede and project in unequal strata below
+an intact walking lip. The same profile supplies drawing and player/loose-body
+side contacts, including contact while falling past a projecting stratum.
+Machinery sockets, adjoining land and ladder recesses retain their geometry.
+Natural ground has clustered fine grasses, fern fronds, half-buried faceted
+rocks and shrubs behind the path. Tree foliage groups at branch ends, branch
+origins follow the actual bent trunk, and buttress roots curve into sampled
+soil. The forest ravine rope hangs from a large rooted tree limb.
+
+The marsh's first ferry crossing is composed as a rock grotto: a heavy dark
+roof, sparse uneven bank, pale opening, low wooden skiff, mast/furled cloth,
+slack rigging, shore ring/chain and faint strip reflections. Sunken shelters
+and willows begin beyond this opening. The roof uses the same authored curve
+for head collision and rasterization. A smooth distance ramp shades only the
+roof/fog region, reusing terrain-column scratch rather than allocating a blur
+surface. Open-water brightness eases into the normal marsh ambience inland.
+The ferry hull is 96 logical pixels wide; boarding, standing support and
+travel stops use its actual half-width. Other chapter boats keep their prior
+60-pixel width. All boat geometry follows the same moving boat snapshot.
+
+Validation: full native suite, focused ASan/UBSan gameplay checks and rendered
+scene/cache comparisons cover the changes. All ten chapters, all 30 finds and
+both endings remain covered. Added checks verify eroded cliff silhouette and
+side contact, loose bodies avoiding premature wall snapping, grotto ceiling
+contact and full hull containment at both banks. Hardware visual quality and
+FPS remain unmeasured.
+
+# Earlier update: Hollow Trail 1.1.6
 
 ## Continuous landscape contours and grounded animation
 

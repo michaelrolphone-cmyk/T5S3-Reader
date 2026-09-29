@@ -58,3 +58,73 @@ static int ht_terrain_bottom(const ht_game *g,int i,int x) {
     if(i+1<HT_PLATFORMS && land[i+1].top>land[i].top+40 && x>=land[i+1].left-8) return ht_surface_at(g,i,x)+20;
     return 520;
 }
+
+/* Exposed natural walls recede in strata below an intact walkable lip. Shared
+ * by raster and body collision; never carve machinery sockets or ladder bays. */
+static bool ht_cliff_edge(const ht_game *g,int i,int side) {
+    int kind=ht_terrain_kind(g->level,i);
+    if(kind!=HT_EARTH && kind!=HT_SAND && kind!=HT_MUD && kind!=HT_ROCK && kind!=HT_SNOW) return false;
+    if(i==ht_mechanics_by_level[g->level].pit_platform) return false;
+    const ht_platform *land=ht_level_land(g->level),*p=&land[i];
+    int edge=side<0?p->left:p->right;
+    if(ht_terrain_bottom(g,i,edge-side)!=520) return false;
+    for(int j=0;j<HT_PLATFORMS;++j) if(j!=i && ht_terrain_kind(g->level,j)!=HT_DECK &&
+        land[j].left<=edge && land[j].right>=edge) return false;
+    return true;
+}
+static int ht_cliff_inset(const ht_game *g,int i,int side,int y) {
+    static const int16_t depth[]={0,8,29,53,87,128,183,260,520};
+    static const int8_t profiles[3][9]={
+        {0,0,6,23,14,31,25,42,34}, /* undercut rooted earth */
+        {0,0,11,7,26,17,36,29,43}, /* fractured stone */
+        {0,0,5,13,20,16,29,38,45}  /* washed sand/silt */
+    };
+    const ht_platform *p=&ht_level_land(g->level)[i];
+    int edge=side<0?p->left:p->right-1;
+    int d=y-ht_surface_at(g,i,edge),kind=ht_terrain_kind(g->level,i);
+    if(d<=8) return 0;
+    const int8_t *profile=profiles[(kind==HT_ROCK || kind==HT_SNOW)?1:(kind==HT_SAND || kind==HT_MUD)?2:0];
+    for(int n=1;n<9;++n) if(d<=depth[n]) {
+        int a=profile[n-1],b=profile[n];
+        int v=a+(b-a)*(d-depth[n-1])/(depth[n]-depth[n-1]);
+        /* Opposite banks have unequal erosion, not mirrored cutouts. */
+        return ht_min((p->right-p->left)/4,v*(3+(i+(side>0))%3)/4);
+    }
+    return ht_min((p->right-p->left)/4,profile[8]);
+}
+static void ht_cliff_bounds(const ht_game *g,int i,int head,int feet,int *l,int *r) {
+    /* At most 34 rows for current player/loose bodies. Find the outermost
+     * rock intersecting the body's vertical extent, including stratum corners. */
+    int left=520,right=520;
+    for(int y=head;y<=feet;++y) {
+        left=ht_min(left,ht_cliff_inset(g,i,-1,y));
+        right=ht_min(right,ht_cliff_inset(g,i,1,y));
+    }
+    if(ht_cliff_edge(g,i,-1)) *l+=left;
+    if(ht_cliff_edge(g,i,1)) *r-=right;
+}
+
+/* Grotto underside is authored once for the roof silhouette and head contact. */
+static const int16_t ht_grotto_roof[][2]={
+    {-300,155},{-80,145},{90,138},{210,124},{300,96},
+    {390,44},{460,-35},{510,-145},{520,-280}
+};
+static int ht_grotto_ceiling(int x) {
+    for(unsigned n=1;n<sizeof(ht_grotto_roof)/sizeof(ht_grotto_roof[0]);++n)
+        if(x<=ht_grotto_roof[n][0]) {
+            int a=ht_grotto_roof[n-1][0],b=ht_grotto_roof[n][0];
+            int top=ht_grotto_roof[n-1][1],end=ht_grotto_roof[n][1];
+            return top+(end-top)*ht_clamp(x-a,0,b-a)/(b-a);
+        }
+    return -520;
+}
+
+/* Bury a rigid scenery footprint beneath its deepest soil contact. Drawing
+ * the actual land afterward masks the buried part, including sloping ground. */
+static int ht_buried_base(const ht_game *g,int i,int world,int radius) {
+    const ht_platform *p=&ht_level_land(g->level)[i];
+    int bottom=ht_surface_at(g,i,world);
+    for(int x=ht_max(p->left,world-radius);x<=ht_min(p->right-1,world+radius);++x)
+        bottom=ht_max(bottom,ht_surface_at(g,i,x));
+    return bottom+3;
+}

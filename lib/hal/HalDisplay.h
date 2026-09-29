@@ -45,8 +45,8 @@ class HalDisplay {
   void begin(bool clearPanel = true);
 
   // Exclusive native ELF display takeover. The host MUST hold RenderLock and
-  // stop other display users for the entire interval. No UI/display calls are
-  // allowed between successful suspend and resume. Logical framebuffers stay
+  // stop other display users for the entire interval. Physical refresh calls
+  // are forbidden until resume. Software-only drawing is allowed; framebuffers stay
   // allocated at the same addresses so the existing GfxRenderer remains valid.
   // Other boards fail closed until their backend implements a real handoff.
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)

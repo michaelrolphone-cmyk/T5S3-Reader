@@ -8,7 +8,8 @@ static void ht_distant_landscape(int offset) {
     for(int j=first;j<=last;++j) {
         uint32_t h=ht_hash((uint32_t)j+7301u+ht_geometry_level*197u);
         int x=j*period-offset,base=225+(int)(h%13),height=45+(int)((h>>8)%48),top=base-height;
-        int tone=65+(int)((h>>16)%15);
+        int tone=98+(int)((h>>16)%15);
+        if(ht_geometry_level==4) tone=75+(int)((h>>16)%15);
         switch(ht_geometry_level) {
         case 0: /* Long ridges and a dense, small canopy, not giant bare trunks. */
             ht_triangle(ht_raw,x-80,HT_H,x+100,top+12,x+period+80,HT_H,tone-17);
