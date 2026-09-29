@@ -2,12 +2,12 @@
 """Build the GT911 raw-touch provider as an independent provider-v2 ELF."""
 import hashlib
 import json
-import os
 from pathlib import Path
-import shutil
+import shlex
 import subprocess
 
-from native_app_symbols import firmware_exports, validate_imports
+from native_app_symbols import firmware_exports, privileged_os_cpu_exports, validate_imports
+from probe_usb_controller_esp32s3 import compile_target, tool
 from normalize_xtensa_relocations import normalize
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,19 +33,28 @@ def build(cc=None):
     if any(manifest.get(key) != value for key, value in required.items()):
         raise ValueError("Invalid GT911 touch provider manifest")
 
-    cc = cc or os.environ.get("NATIVE_DRIVER_CC") or shutil.which("xtensa-esp32s3-elf-gcc")
-    if not cc:
-        core = Path(os.environ.get("PLATFORMIO_CORE_DIR", Path.home() / ".platformio"))
-        cc = str(core / "packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc")
-
+    # Use the firmware's exact FreeRTOS configuration for generic mutex ABI.
+    subprocess.run(['pio', 'run', '-e', 't5s3-pro', '-t', 'compiledb'],
+                   cwd=ROOT, check=True)
+    entries = json.loads((ROOT / 'compile_commands.json').read_text())
+    matched = [entry for entry in entries if
+               Path(entry['file']).as_posix().endswith('src/native/NativeUsbBridge.cpp')]
+    if len(matched) != 1:
+        raise ValueError('Missing unique target compilation configuration')
+    entry = matched[0]
+    args = list(entry['arguments']) if 'arguments' in entry else shlex.split(entry['command'])
+    if cc:
+        raise ValueError('GT911 uses the compiler from the target compilation database')
+    cc = str(tool(Path(args[0]), 'gcc'))
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    elf = OUTPUT / "driver.elf"
+    obj = OUTPUT / 'driver.o'
+    compile_target(args, entry, SOURCE / 'driver.c', obj, c_compiler=True,
+                   extra=('-Wall', '-Wextra', '-Werror', '-mtext-section-literals', '-mlongcalls'))
+    elf = OUTPUT / 'driver.elf'
     subprocess.run([
-        cc, "-std=c11", "-Os", "-fPIC", "-mtext-section-literals", "-mlongcalls",
-        "-fvisibility=hidden", "-nostdlib", "-nostartfiles", "-shared",
-        "-I" + str(ROOT / "sdk/driver"),
-        "-Wl,--hash-style=sysv", "-Wl,--exclude-libs,ALL",
-        str(SOURCE / "driver.c"), "-lgcc", "-o", str(elf),
+        cc, '-shared', '-nostdlib', '-nostartfiles',
+        '-Wl,--hash-style=sysv', '-Wl,--exclude-libs,ALL',
+        str(obj), '-lgcc', '-o', str(elf),
     ], check=True)
     normalize(elf)
 
@@ -62,7 +71,9 @@ def build(cc=None):
     # GT911 register I/O flows only through the i2c.bus dependency.
     validate_imports(
         symbols,
-        {name for name in firmware_exports(ROOT) if not name.startswith("t5_")},
+        {name for name in firmware_exports(ROOT) if not name.startswith("t5_")} |
+        (privileged_os_cpu_exports(ROOT) & {
+            'xQueueCreateMutex', 'xQueueSemaphoreTake', 'xQueueGenericSend', 'vQueueDelete'}),
     )
 
     payload = elf.read_bytes()

@@ -86,7 +86,7 @@ class ModelViewerContract(unittest.TestCase):
         self.assertIn("bool (*submit)", VIDEO_API)
         self.assertIn("void (*stop)", VIDEO_API)
         self.assertIn("native_hardware_display_is_borrowed()", VIDEO)
-        self.assertIn("nativeVideoForceStop();", TAKEOVER)
+        self.assertIn("if (!nativeVideoForceStop())", TAKEOVER)
         self.assertIn("ESP_ELFSYM_EXPORT(t5_video_get_api)", LAUNCHER)
 
     def test_fast_video_reuses_gameboy_scan_architecture(self):

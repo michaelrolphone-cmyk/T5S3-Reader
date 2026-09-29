@@ -532,16 +532,25 @@ void row_control_step() {
   gpio_set_level(kLeGpio, 0);
 }
 
-void wait_for_dma(uint64_t *elapsed_us = nullptr) {
-  const int64_t start = elapsed_us ? esp_timer_get_time() : 0;
+bool wait_for_dma(uint64_t *elapsed_us = nullptr) {
+  const int64_t start = esp_timer_get_time();
+  int64_t yielded = start;
   while (!g_dma_done) {
-    delayMicroseconds(1);
+    const int64_t now = esp_timer_get_time();
+    if (now - start >= 100000) {
+      ESP_LOGE(kTag, "DMA completion timeout; retaining live resources");
+      g_running = false;
+      return false;
+    }
+    if (now - yielded >= 1000) { vTaskDelay(1); yielded = now; }
+    else delayMicroseconds(1);
   }
   if (elapsed_us) *elapsed_us += static_cast<uint64_t>(esp_timer_get_time()-start);
+  return true;
 }
 
 bool send_row(uint8_t *data, bool first_row, uint64_t &dma_wait_us) {
-  wait_for_dma(&dma_wait_us);
+  if (!wait_for_dma(&dma_wait_us)) return false;
   if (!first_row) {
     row_control_step();
   }
@@ -740,7 +749,7 @@ void scan_task(void *unused) {
       g_running = false;
       break;
     }
-    wait_for_dma(&dma_wait_us);
+    if (!wait_for_dma(&dma_wait_us)) break;
     portENTER_CRITICAL(&g_buffer_lock);
     // A submit can arrive during this scan. Idle waits must include both
     // queued frames and unfinished pulses, even though frame admission only
@@ -948,7 +957,13 @@ void epd_video_flip(uint16_t dirty_y, uint16_t dirty_height) {
   g_drive_pending = true;
   portEXIT_CRITICAL(&g_buffer_lock);
 
-  (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+  if (!ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(3000) + 1)) {
+    portENTER_CRITICAL(&g_buffer_lock);
+    if (g_flip_waiter == self) g_flip_waiter = nullptr;
+    portEXIT_CRITICAL(&g_buffer_lock);
+    g_running = false;
+    ESP_LOGE(kTag, "Video flip timeout");
+  }
 }
 
 bool epd_video_submit(uint16_t dirty_y, uint16_t dirty_height) {
@@ -1001,7 +1016,7 @@ uint32_t epd_video_get_vsync_count() {
   return g_vsync_count;
 }
 
-void epd_video_shutdown() {
+bool epd_video_shutdown() {
   g_running = false;
   g_drive_pending = false;
 
@@ -1021,10 +1036,10 @@ void epd_video_shutdown() {
   }
   if (g_scan_task != nullptr) {
     ESP_LOGE(kTag, "scan task did not stop before video teardown");
-    return;
+    return false;
   }
   vTaskDelay(1);
-  wait_for_dma();
+  if (!wait_for_dma()) return false;
   configure_idle_levels();
 
   if (g_expander != nullptr) {
@@ -1034,6 +1049,7 @@ void epd_video_shutdown() {
     const esp_err_t rc = esp_lcd_panel_io_del(g_panel_io);
     if (rc != ESP_OK) {
       ESP_LOGE(kTag, "panel IO release failed: %s", esp_err_to_name(rc));
+      return false;
     } else {
       g_panel_io = nullptr;
     }
@@ -1042,6 +1058,7 @@ void epd_video_shutdown() {
     const esp_err_t rc = esp_lcd_del_i80_bus(g_i80_bus);
     if (rc != ESP_OK) {
       ESP_LOGE(kTag, "i80 bus release failed: %s", esp_err_to_name(rc));
+      return false;
     } else {
       g_i80_bus = nullptr;
     }
@@ -1051,6 +1068,7 @@ void epd_video_shutdown() {
   g_dma_done = true;
   g_flip_req = false;
   g_drive_pending = false;
+  return true;
 }
 
 namespace {
@@ -1059,10 +1077,13 @@ bool s_video_started = false;
 
 extern "C" bool native_hardware_display_is_borrowed(void);
 
-void wait_video_idle() {
+bool wait_video_idle() {
+  const uint32_t begun = millis();
   while (epd_video_submit_pending()) {
+    if (!g_running || static_cast<uint32_t>(millis()-begun) >= 3000u) return false;
     vTaskDelay(1);
   }
+  return g_running;
 }
 
 bool settle_level(uint8_t byte_value) {
@@ -1070,8 +1091,7 @@ bool settle_level(uint8_t byte_value) {
   if (!buffer) return false;
   memset(buffer, byte_value, epd_video_get_backbuffer_size());
   epd_video_flip(0, t5s3_epd::kActiveHeight);
-  wait_video_idle();
-  return true;
+  return wait_video_idle();
 }
 
 bool video_start_format(t5_video_surface_v1 *surface, uint8_t pixel_format) {
@@ -1083,6 +1103,9 @@ bool video_start_format(t5_video_surface_v1 *surface, uint8_t pixel_format) {
       pixel_format != T5_VIDEO_PIXEL_GRAY_2BPP_MSB) return false;
   if (s_video_started && g_pixel_format != pixel_format) return false;
   if (!s_video_started) {
+    // A failed previous teardown retains live handles/buffers. Do not overwrite
+    // their format or initialize a second owner on top of them.
+    if (g_scan_task || g_panel_io || g_i80_bus || g_expander) return false;
     g_pixel_format = pixel_format;
     g_source_row_bytes = pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB
         ? kGrayRowBytes : kSourceRowBytes;
@@ -1150,8 +1173,7 @@ uint32_t video_frame_counter() {
 
 void video_stop() {
   if (!s_video_started && g_i80_bus == nullptr && g_panel_io == nullptr) return;
-  epd_video_shutdown();
-  s_video_started = false;
+  if (epd_video_shutdown()) s_video_started = false;
 }
 
 bool video_scan_stats(t5_video_scan_stats_v1 *out) {
@@ -1182,8 +1204,9 @@ extern "C" const t5_video_api_v1 *t5_video_get_api(uint32_t api_version) {
   return &s_api;
 }
 
-void nativeVideoForceStop() {
+bool nativeVideoForceStop() {
   video_stop();
+  return !s_video_started && !g_scan_task && !g_panel_io && !g_i80_bus;
 }
 
 #else
@@ -1192,6 +1215,6 @@ extern "C" const t5_video_api_v1 *t5_video_get_api(uint32_t) {
   return nullptr;
 }
 
-void nativeVideoForceStop() {}
+bool nativeVideoForceStop() { return true; }
 
 #endif

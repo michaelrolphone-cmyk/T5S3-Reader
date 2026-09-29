@@ -1,5 +1,6 @@
 #include <HalDisplay.h>
 #include "NativeTouchInput.h"
+#include "NativeAppMemory.h"
 #include "NativeVideoBridge.h"
 #include <Board.h>
 #include "CrossPointSettings.h"
@@ -58,7 +59,13 @@ extern "C" esp_err_t native_hardware_takeover_end(uint32_t requested) {
     // The ELF should stop its fast-video service itself. Force-stop the
     // firmware-owned GameBoy-derived bridge as an unload guard before restoring
     // the normal display. External ELFs such as GameBoy simply see a no-op.
-    nativeVideoForceStop();
+    if (!nativeVideoForceStop()) {
+      ESP_LOGE(kTag, "Video teardown incomplete; retaining display ownership");
+      return ESP_ERR_INVALID_STATE;
+    }
+    // App callbacks have returned and display DMA is stopped. Reclaim buffers
+    // before restoring the host display, which itself needs a large working set.
+    native_app_memory_end();
     s_display_borrowed = false;
     const bool displayRestored = display.resumeFromExternalOwner();
     // A display owner can re-route the light GPIO to its own PWM channel or

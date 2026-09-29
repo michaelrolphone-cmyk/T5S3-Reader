@@ -224,8 +224,13 @@ const char* firmwareMarker() { return "RISCRTE_BOARD_ID:t5s3-pro"; }
 const BoardCapabilities& capabilities() { return kCapabilities; }
 
 ScopedI2CLock::ScopedI2CLock() {
-  xSemaphoreTakeRecursive(ensureI2CMutex(), portMAX_DELAY);
-  locked_ = true;
+  locked_ = xSemaphoreTakeRecursive(ensureI2CMutex(), portMAX_DELAY) == pdTRUE;
+}
+
+ScopedI2CLock::ScopedI2CLock(uint32_t timeoutMs) {
+  TickType_t ticks = pdMS_TO_TICKS(timeoutMs);
+  if (timeoutMs && !ticks) ticks = 1;
+  locked_ = xSemaphoreTakeRecursive(ensureI2CMutex(), ticks) == pdTRUE;
 }
 
 ScopedI2CLock::~ScopedI2CLock() {

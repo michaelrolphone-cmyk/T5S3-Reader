@@ -1,3 +1,4 @@
+#include "NativeAppMemory.h"
 #include "NativeStreamBridge.h"
 #include "NativeNetworkBridge.h"
 #include "NativeAppHost.h"
@@ -273,11 +274,11 @@ bool takeTouchSwipe(t5_app_swipe_t* out) {
 uint32_t clockMs() { return ::millis(); }
 void* psramAlloc(size_t size) {
   if (!current() || !size) return nullptr;
-  return heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  return native_app_psram_alloc(size);
 }
 void psramFree(void* ptr) {
   if (!current() || !ptr) return;
-  heap_caps_free(ptr);
+  native_app_memory_free(ptr);
 }
 
 const char* storagePath(const char* path) {

@@ -15,6 +15,8 @@ const BoardCapabilities& capabilities();
 class ScopedI2CLock {
  public:
   ScopedI2CLock();
+  explicit ScopedI2CLock(uint32_t timeoutMs);
+  bool acquired() const { return locked_; }
   ~ScopedI2CLock();
 
   ScopedI2CLock(const ScopedI2CLock&) = delete;
