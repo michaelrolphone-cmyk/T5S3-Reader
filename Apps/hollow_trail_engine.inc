@@ -91,6 +91,7 @@ typedef struct {
     int x, y, vx, vy; /* Q8, y is feet */
     int camera, camera_y, checkpoint, coyote, jump_buffer, facing, stride;
     unsigned ticks, laps, deaths, sway_phase;
+    int weather_drift; /* Q8, bounded screen-period displacement. */
     unsigned level; /* Laps count complete ten-chapter journeys. */
     int story_x; /* Furthest progress in this chapter, retained on death. */
     bool grounded;
@@ -250,6 +251,14 @@ static bool ht_interact(void) {
         for(int i=0;i<3;++i) if(ht.puzzle.value[i]!=p->answer[i]) ht.puzzle.solved=false;
     }
     return true;
+}
+/* Gentle gusts: zero at spawn, then a smooth signed pulse, bounded to
+ * 0.15625 logical pixels per simulation tick (4.9 px/s). */
+static int ht_wind(const ht_game *g) {
+    unsigned phase=g->ticks&511u;
+    int triangle=phase<128?(int)phase:phase<384?256-(int)phase:(int)phase-512;
+    int gust=triangle*(256-ht_abs(triangle))*40/(128*128);
+    return g->ticks<96?gust*(int)g->ticks/96:gust;
 }
 static void ht_spawn(bool restart) {
     uint8_t ball_phase=restart?0:ht.traversal.ball_phase;
@@ -1097,6 +1106,29 @@ static void ht_sway_scene(unsigned phase) {
         if((y&15)==15) ht_checkpoint();
     }
 }
+/* Fixed particle budget, no allocations, frame noise or full-screen pass.
+ * Weather shares the frozen world snapshot and pauses with simulation. */
+static void ht_weather(const ht_game *g) {
+    int wind=ht_wind(g),drift=g->weather_drift/256;
+    for(unsigned i=0;i<48;++i) {
+        uint32_t seed=ht_hash(i+g->level*97u);
+        int x=(int)(seed%HT_W)+drift-g->camera/512;
+        x=((x%HT_W)+HT_W)%HT_W;
+        int y=(int)((seed/HT_W+(g->ticks%HT_H)*(i%2+3))%HT_H);
+        ht_limb(ht_scene,x,y,x+wind/12,y+3+(int)(i%3),0,0,110+(int)(i%2)*45);
+        if((i&15)==15) ht_checkpoint();
+    }
+    for(unsigned i=0;i<12;++i) {
+        uint32_t seed=ht_hash(i+1234u+g->level*37u);
+        int flutter=(int)((g->ticks+i*11)%32);flutter=flutter<16?flutter:32-flutter;
+        int x=(int)(seed%HT_W)+drift*4-g->camera/256+flutter/4;
+        x=((x%HT_W)+HT_W)%HT_W;
+        int y=(int)((seed/HT_W+(g->ticks/3)%HT_H)%HT_H)+flutter/5;
+        int lean=wind<0?-1:1;
+        ht_limb(ht_scene,x,y,x+lean*3,y+(flutter<8?1:-1),1,0,180+(int)(i%2)*55);
+    }
+    ht_checkpoint();
+}
 static void ht_draw_traversal(const ht_game *game);
 static void ht_draw_puzzle(const ht_game *game);
 static void ht_draw_evidence(const ht_game *game);
@@ -1115,6 +1147,7 @@ static void ht_render_scene(void) {
     ht_draw_evidence(&game);
     ht_draw_puzzle(&game);
     ht_character(px,(game.y-game.camera_y)/256,&game);
+    ht_weather(&game);
     ht_sway_scene(game.sway_phase);
     ht_vignette();
 }

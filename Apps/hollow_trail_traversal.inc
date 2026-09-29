@@ -59,13 +59,15 @@ static void ht_collide(int left,int right,int top,int bottom,int old_x,int old_y
     } else if(ht.vy<0 && old_y-head>=bottom && ht.y-head<bottom) {
         ht.y=bottom+head;ht.vy=0;
     } else if(ht.y>top+2*256 && ht.y-head<bottom) {
-        if(old_x+radius<=left && ht.vx>0) {ht.x=left-radius;ht.vx=0;}
-        else if(old_x-radius>=right && ht.vx<0) {ht.x=right+radius;ht.vx=0;}
+        if(old_x+radius<=left && ht.x>old_x) {ht.x=left-radius;ht.vx=0;}
+        else if(old_x-radius>=right && ht.x<old_x) {ht.x=right+radius;ht.vx=0;}
     }
 }
 static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool jump_held) {
     int start_x=ht.x,start_y=ht.y;
     ++ht.ticks;
+    int wind=ht_wind(&ht);
+    ht.weather_drift=(ht.weather_drift+wind)%(HT_W*256);
     ht_traversal *t=&ht.traversal;
     int ground=ht_land[0].top;
     if(t->drop_cooldown) --t->drop_cooldown;
@@ -133,7 +135,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         if(!jump_held && ht.vy < -780) ht.vy=-780;
         int old_x=ht.x,old_y=ht.y;
         ht.vy=ht_min(ht.vy+88,2400);
-        ht.x=ht_clamp(ht.x+ht.vx,6*256,(HT_GOAL+60)*256);ht.y+=ht.vy;ht.grounded=false;
+        ht.x=ht_clamp(ht.x+ht.vx+(t->mode==HT_FREE?wind:0),6*256,(HT_GOAL+60)*256);ht.y+=ht.vy;ht.grounded=false;
         if(t->mode==HT_ROLL || t->mode==HT_CRATE) {
             int *object=t->mode==HT_ROLL?&t->ball_x:&t->crate_x;
             int half=t->mode==HT_ROLL?48:20;

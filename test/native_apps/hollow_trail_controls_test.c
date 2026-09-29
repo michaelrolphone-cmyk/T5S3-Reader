@@ -57,6 +57,32 @@ int main(void) {
         if(!source) { press(source,64|128); assert(!reading && !paused); } // Triggers are not Start/Select.
         press(source,select[source]); reports[source][0].buttons=0; ht_input(1); assert(paused && !reading);
         paused=false; pause_down=false;
+        /* Pause level picker: all ten destinations, clean respawn, preserved
+         * discoveries, and no held-A action leaking into the new chapter. */
+        for(unsigned destination=0;destination<HT_LEVELS;++destination) {
+            ht_select_level(ht.level);reading=paused=false;pause_down=false;
+            press(source,select[source]);reports[source][0].buttons=0;ht_input(1);
+            assert(paused);
+            unsigned target=(ht.level+1)%HT_LEVELS;
+            reports[source][0].hat=2;ht_input(1);
+            assert(debug_select && debug_level==target && ht.level!=target);
+            ht_input(1);assert(debug_level==target); // Held direction advances once.
+            reports[source][0].hat=8;ht_input(1);
+            uint32_t found=ht.evidence;
+            press(source,a[source]);
+            assert(debug_jump && !paused && !reading && ht.level==target);
+            assert(ht.checkpoint==0 && ht.x==95*256 && !ht.puzzle.solved && ht.evidence==found);
+            assert(ht.traversal.mode==HT_FREE && ht.traversal.ball_phase==0);
+            ht_input(1);assert(!reading && ht.ticks==0);
+            debug_jump=false;ht_select_level(ht.level);reports[source][0].buttons=0;ht_input(1);
+        }
+        press(source,select[source]);reports[source][0].buttons=0;ht_input(1);
+        reports[source][0].hat=6;ht_input(1);assert(debug_select);
+        reports[source][0].hat=8;ht_input(1);
+        unsigned unchanged=ht.level;
+        press(source,x[source]);assert(!debug_select && paused && !quitting && ht.level==unchanged);
+        press(source,a[source]);assert(reading); // Original paused journal action survives.
+        reading=paused=false;
         healthy=false; mapped=T5_APP_BUTTON_CONFIRM|T5_APP_BUTTON_UP|T5_APP_BUTTON_DOWN;
         ht_input(1); assert(!reading && !jump_down && !pause_down);
         healthy=true; reports[source][0].buttons=start[source]; ht_input(1); assert(!reading);

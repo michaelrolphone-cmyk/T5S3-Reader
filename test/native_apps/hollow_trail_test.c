@@ -71,6 +71,17 @@ int main(void) {
     for(int k=0;k<30;++k) ht_step(0,false,false);
     assert(ht.sway_phase==phase);
     ht_spawn(true);
+    /* Gusts push idle feet in both directions, remain bounded, and cannot
+     * move a player hanging from a ledge. Weather drawing is deterministic. */
+    ht_spawn(true);ht.ticks=120;int still=ht.x;
+    ht_step(0,false,false);assert(ht.x>still && ht.x-still<=40 && ht.sway_phase==0);
+    ht_spawn(true);ht.ticks=380;still=ht.x;
+    ht_step(0,false,false);assert(ht.x<still && still-ht.x<=40 && ht.sway_phase==0);
+    for(unsigned tick=0;tick<1024;++tick) {ht.ticks=tick;assert(ht_abs(ht_wind(&ht))<=40);}
+    ht_game snapshot=ht;memset(ht_scene,0,HT_PIXELS);ht_weather(&snapshot);
+    memcpy(frame,ht_scene,HT_PIXELS);memset(ht_scene,0,HT_PIXELS);ht_weather(&snapshot);
+    assert(!memcmp(frame,ht_scene,HT_PIXELS) && !memcmp(&snapshot,&ht,sizeof(ht)));
+    ht_spawn(true);
     /* Explicit authored solutions, not answers read out of game definitions. */
     const unsigned solutions[HT_LEVELS][5]={
         {2,0,1,9,9},{0,2,9,9,9},{0,1,1,1,2},
