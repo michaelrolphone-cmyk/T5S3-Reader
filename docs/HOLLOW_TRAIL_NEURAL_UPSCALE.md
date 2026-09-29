@@ -20,6 +20,8 @@ Both runtime modes now use the AI 120x68 composition and trained reconstruction 
 
 ## Hardware A/B mode
 
+Hardware testing of the final neural 960x540 reconstruction showed a frame-rate regression. Therefore **AI** is the shipped default. **AI + 960** remains available only as a visual-quality comparison mode while its cost is investigated.
+
 The former DSP16/legacy renderer experiments are retired. Hollow Trail now uses the paused-game control for a focused AI comparison:
 
 - **AI**: quarter-resolution AI lighting composition and trained reconstruction, followed by the standard physical pack/dither stage.
