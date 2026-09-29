@@ -299,7 +299,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                    !ht_math->add_s16 || !ht_math->sub_s16 || !ht_math->copy_bytes || !ht_math->fill_bytes)) ht_math=NULL;
     ht_pad_owned=ht_input_rearm=ht_pad_fault=false; debug_select=debug_jump=false; ht_pad_source=-1; ht_pad_device=0;
     ht_acquire_pad(); ht_acquire_reader(); ht_bind((uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u));
-    ht_ai_rendering=true;ht_output_mode=HT_OUTPUT_AI;ht_render_clock=app->millis;
+    ht_ai_rendering=true;ht_output_mode=HT_OUTPUT_SIMD;ht_render_clock=app->millis;
     if(!ht_start_video(video,&surface)) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
@@ -315,6 +315,9 @@ __attribute__((visibility("default"))) void app_main(void) {
      * Keep polling/yielding and honor exit throughout the bounded warmup. */
     loading=true;
     ht_simd_ready=ht_simd_selftest();
+    ht_expanded_ready=ht_simd_ready && ht_expanded_selftest();
+    ht_log(ht_expanded_ready?"Hollow Trail expanded SIMD: device self-test passed":
+        "Hollow Trail expanded SIMD unavailable: packing baseline retained");
     ht_log(ht_simd_ready?"Hollow Trail fused SIMD: device self-test passed":
         "Hollow Trail fused SIMD unavailable: AI fallback");
     ht_clear_layer(ht_scene); ht_text(150,120,"PREPARING FOREST",2); ht_vignette();
@@ -340,7 +343,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.1.13: AI / fused SIMD comparison started");
+    ht_log("Hollow Trail 1.1.14: SIMD baseline / expanded comparison started");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -372,15 +375,15 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
         if(mode_down) {
             mode_down=false;
-            ht_output_mode=ht_output_mode==HT_OUTPUT_AI?HT_OUTPUT_SIMD:HT_OUTPUT_AI;
+            ht_expanded_mode=!ht_expanded_mode;
             prepared=false; ++scene_revision;
             last_submit=app->millis(); last_frame=last_submit-HT_FRAME_INTERVAL_MS;
             memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=last_submit;
             if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-            ht_log(ht_output_mode==HT_OUTPUT_SIMD?
-                (ht_simd_ready?"Hollow Trail renderer: AI + fused SIMD":
-                 "Hollow Trail SIMD unavailable/self-test failed: using AI"):
-                "Hollow Trail renderer: AI");
+            ht_log(!ht_simd_ready?"Hollow Trail SIMD unavailable: AI fallback":
+                ht_expanded_mode?(ht_expanded_ready?"Hollow Trail renderer: AI + expanded SIMD":
+                "Hollow Trail expanded SIMD unavailable: packing baseline"):
+                "Hollow Trail renderer: AI + SIMD packing baseline");
         }
         uint32_t now=app->millis();
         if(profile_was_paused && !paused && !reading) {
@@ -421,7 +424,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.13",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.14",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
@@ -429,9 +432,9 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(88,84,chapter,1);
                 ht_text(88,99,debug_select?"L/R CHOOSE   A LOAD   X CANCEL":"L/R CHOOSE LEVEL   A JOURNAL",1);
                 ht_text(88,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
-                ht_text(88,133,ht_output_mode==HT_OUTPUT_SIMD?
-                    (ht_simd_ready?"RENDERER: AI + SIMD":"SIMD UNAVAILABLE: AI"):
-                    "RENDERER: AI",1);
+                ht_text(88,133,!ht_simd_ready?"SIMD UNAVAILABLE: AI":
+                    ht_expanded_mode?(ht_expanded_ready?"AI + SIMD: EXPANDED":"EXPANDED UNAVAILABLE: BASE"):
+                    "AI + SIMD: BASELINE",1);
                 ht_text(88,148,"B / UP SWITCH RENDERER   START JOURNAL",1);
                 char perf[64];
                 snprintf(perf,sizeof(perf),"FPS %lu.%lu   SCANS %lu.%lu",
