@@ -56,7 +56,7 @@ static void ht_story_landmarks(const ht_game *g) {
     for(int scene=0;scene<2;++scene) {
         int platform=scene?6:3;
         int world=ht_landmark_x(g->level,scene);
-        int x=world-cx,y=ht_surface_at(g,platform,world)-cy;
+        int x=world-cx,y=ht_buried_base(g,platform,world,62)-cy;
         if(x< -110-ht_view_margin() || x>HT_W+110+ht_view_margin() || y< -25 || y>HT_H+120) continue;
         switch(g->level) {
         case 0: /* Cut trail post and cloth: two hands marked the same route. */
@@ -65,6 +65,7 @@ static void ht_story_landmarks(const ht_game *g) {
             ht_stitch(x-2,y-44,wind);
             ht_limb(ht_scene,x-5,y-25,x+4,y-31,0,0,45);
             ht_limb(ht_scene,x-5,y-20,x+4,y-26,0,0,45);
+            y=ht_buried_base(g,platform,world+26,10)-cy;
             ht_rect(ht_scene,x+17,y-15,18,15,175);
             ht_rect(ht_scene,x+20,y-13,12,10,55);
             ht_tally(x+21,y-12,scene?3:2);
@@ -131,7 +132,9 @@ static void ht_story_landmarks(const ht_game *g) {
             ht_limb(ht_scene,x+3,y-76,x+7,y-57,0,0,145);
             ht_rect(ht_scene,x+26,y-27,14,3,230);
             for(int k=0;k<5;++k) {
-                int sx=x-31+k*13;ht_rect(ht_scene,sx-4,y-5,9,5,195);
+                int sx=x-31+k*13;
+                y=ht_buried_base(g,platform,world-31+k*13,5)-cy;
+                ht_rect(ht_scene,sx-4,y-5,9,5,195);
                 ht_limb(ht_scene,sx,y-5,sx,y-17,0,0,210);
                 ht_limb(ht_scene,sx,y-11,sx-5,y-15,1,0,155);
                 ht_limb(ht_scene,sx,y-14,sx+4,y-19,1,0,155);

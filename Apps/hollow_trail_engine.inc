@@ -309,8 +309,10 @@ static int ht_lightning(const ht_game *g) {
     return (phase<2?255:(8-phase)*36)*ht_exposure(g)/256;
 }
 static int ht_sky_ink(const ht_game *g) {
-    static const uint8_t ambient[HT_LEVELS]={48,30,24,40,46,35,42,40,30,45};
-    int dark=ambient[g->level]+ht_climates[g->level].sky*ht_exposure(g)/256;
+    static const uint8_t ambient[HT_LEVELS]={18,18,24,24,46,24,24,24,20,24};
+    int light=ambient[g->level];
+    if(g->level==4) light=14+32*ht_clamp(g->x/256-700,0,300)/300;
+    int dark=light+ht_climates[g->level].sky*ht_exposure(g)/256;
     return dark*(255-ht_lightning(g))/255;
 }
 static int ht_wind(const ht_game *g) {
@@ -454,6 +456,7 @@ static void ht_disk(uint8_t *b,int x,int y,int r,int c) {
         ht_span(b,x-dx,x+dx,y+dy,c);
     }
 }
+#include "hollow_trail_foliage.inc"
 static void ht_tree(uint8_t *b,int x,int base,int height,int width,uint32_t seed,int c) {
     uint32_t h=ht_hash(seed);
     int lean=(int)(h%43)-21;
@@ -471,7 +474,7 @@ static void ht_tree(uint8_t *b,int x,int base,int height,int width,uint32_t seed
         int side=(h&1u)?1:-1;
         int rise=30+j*12+(int)((h>>8)%9);
         int at=base-height*rise/100;
-        int root=x+lean*rise/100+(rise<52?bend*rise/52:bend*(100-rise)/48);
+        int root=rise<52?x+(kx-x)*rise/52:kx+(tx-kx)*(rise-52)/48;
         int reach=height*(15+(int)((h>>12)%20))/100;
         int ex=root+side*reach,ey=at-height*(4+(int)((h>>16)%17))/100;
         int mx=root+(ex-root)*55/100,my=at+(ey-at)/3;
@@ -479,6 +482,15 @@ static void ht_tree(uint8_t *b,int x,int base,int height,int width,uint32_t seed
         ht_limb(b,mx,my,ex,ey,ht_max(1,width/4),0,c);
         ht_limb(b,mx,my,mx+side*reach/3,my-height/7,ht_max(1,width/5),0,c);
         if(j<3) ht_limb(b,ex-side*reach/5,ey+3,ex+side*reach/6,ey-height/9,1,0,c);
+        /* Foliage is grouped along branch ends, leaving air and a readable
+         * branching structure instead of identical circular crowns. */
+        if(ht_geometry_level==0 || ht_geometry_level==4 || ht_geometry_level==6) {
+            for(int clump=0;clump<3;++clump) {
+                int lx=ex-side*clump*reach/5,ly=ey+clump*3;
+                ht_leaf_cluster(b,lx,ly,ht_max(7,height/15),h+(unsigned)clump*41u,c);
+                if(j<2) ht_limb(b,lx,ly,lx-side*3,ly+height/14,0,0,c);
+            }
+        }
     }
 }
 /* Sliding box filter: fixed O(width*height), independent of blur radius.
@@ -571,7 +583,7 @@ static void ht_composite(int depth,int focus_x,int focus_y) {
 /* Skyline details are generated only when a world strip enters the cache.
  * World-anchored cells and culling margins keep overlapping strips identical. */
 static void ht_city_background(int depth,int offset) {
-    int spacing=depth==0?59:173, tone=depth==0?85:165;
+    int spacing=depth==0?59:173, tone=depth==0?105:165;
     int first=ht_floor_div(offset-130,spacing),last=ht_floor_div(offset+HT_W+130,spacing);
     for(int j=first;j<=last;++j) {
         uint32_t h=ht_hash((uint32_t)j+411u+(unsigned)depth*973u);
@@ -713,7 +725,11 @@ static void ht_chapter_background(int depth,int offset) {
             ht_disk(ht_raw,x+147,top,3,tone-50);
             if(!depth) { ht_rect(ht_raw,x-10,top-20,5,height+20,tone); ht_rect(ht_raw,x-10,top-20,165,5,tone); }
             break;
-        case 4: /* Sunken ferry shelters, willows and reed beds. */
+        case 4: /* Open grotto water gives way to sunken shelters and willows. */
+            if(j*spacing<620) {
+                ht_triangle(ht_raw,x-45,HT_H,x+60,base-13,x+230,HT_H,38);
+                break;
+            }
             ht_tree(ht_raw,x,base,height,5,h,tone);
             ht_rect(ht_raw,x+84,base-58,5,70,tone); ht_rect(ht_raw,x+148,base-58,5,70,tone);
             ht_triangle(ht_raw,x+73,base-58,x+116,base-89,x+164,base-58,tone);
@@ -803,11 +819,11 @@ static void ht_chapter_foreground(int camera) {
 }
 #include "hollow_trail_depth.inc"
 static void ht_background(int depth,int offset) {
-    if(depth==0) {ht_distant_landscape(offset);return;}
+    if(depth==0 && ht_geometry_level>=3) {ht_distant_landscape(offset);return;}
     if(ht_geometry_level>=3) { ht_chapter_background(depth,offset); return; }
     if(ht_geometry_level==2) { ht_oil_background(depth,offset); return; }
     if(ht_geometry_level==1) { ht_city_background(depth,offset); return; }
-    int tone=depth==0?85:170, base=depth==0?219:246;
+    int tone=depth==0?110:170, base=depth==0?205:246;
     /* Trace the same hill boundary, then fill contiguous rows. Drawing
      * one-pixel-wide vertical rectangles thrashed PSRAM/cache and called
      * memset tens of thousands of times per frame. ht_temp is scratch here. */
@@ -1127,12 +1143,18 @@ static __attribute__((optimize("O3"))) void ht_upscale_scene(void) {
     }
 }
 #include "hollow_trail_character_pose.inc"
+static int ht_weather_floor(const ht_game *g,int screen_x);
 static void ht_character(int x,int feet,const ht_game *game) {
     /* Local mist separation keeps the player visible when a black trunk
      * crosses behind them. Never wash out the landing surface underfoot. */
-    for(int y=ht_max(0,feet-43);y<ht_min(HT_H,feet);++y) {
-        for(int px=ht_max(0,x-25);px<=ht_min(HT_W-1,x+25);++px) {
-            int dx=px-x,dy=y-(feet-19),d=dx*dx+dy*dy;
+    int center=ht_project_x(x),base=ht_project_y(feet);
+    int radius=ht_max(1,25*ht_world_scale/256),middle=ht_project_y(feet-19);
+    for(int px=ht_max(0,center-radius);px<=ht_min(HT_W-1,center+radius);++px) {
+        int source=240+(px-240)*256/ht_world_scale;
+        int floor=ht_min(base,ht_project_y(ht_weather_floor(game,source))-1);
+        for(int y=ht_max(0,ht_project_y(feet-43));y<ht_min(HT_H,floor);++y) {
+            int dx=(px-center)*256/ht_world_scale,dy=(y-middle)*256/ht_world_scale;
+            int d=dx*dx+dy*dy;
             if(d<625) {
                 int ceiling=170+85*ht_clamp(d-100,0,525)/525;
                 int i=y*HT_W+px;
@@ -1313,7 +1335,6 @@ static void ht_render_scene(void) {
     }
     ht_world_scale=256-game.vista*5/16;
     ht_draw_traversal(&game);
-    ht_draw_evidence(&game);
     ht_draw_puzzle(&game);
     ht_character(px,(game.y-game.camera_y)/256,&game);
     ht_weather(&game);
@@ -1606,7 +1627,7 @@ static void ht_puzzle_prompt(const ht_game *game) {
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
         int x=ht_evidence_x(game->level,item)-game->camera/256;
-        int y=ht_surface_at(game,ht_evidence_platform(game->level,item),ht_evidence_x(game->level,item))-game->camera_y/256;
+        int y=ht_buried_base(game,ht_evidence_platform(game->level,item),ht_evidence_x(game->level,item),14)-game->camera_y/256;
         if(x< -12-ht_view_margin() || x>=HT_W+12+ht_view_margin()) continue;
         /* Finds are objects within the scene, never hovering clue diagrams. */
         int ink=ht_evidence_found(game,game->level*3u+(unsigned)item)?150:95;
