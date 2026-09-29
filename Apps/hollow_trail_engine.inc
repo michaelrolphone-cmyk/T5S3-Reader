@@ -212,12 +212,12 @@ static int ht_evidence_x(unsigned level,int item) {
 static bool ht_evidence_found(const ht_game *game,unsigned page) {
     return page<HT_LEVELS*3u && (game->evidence&(1u<<page))!=0;
 }
+static int ht_platform_top(const ht_game *g,int i);
 static int ht_evidence_near(const ht_game *game) {
     if(!game->grounded) return -1;
     for(int item=0;item<3;++item) {
-        const ht_platform *p=&ht_level_land(game->level)[ht_evidence_platform(item)];
         if(ht_abs(game->x/256-ht_evidence_x(game->level,item))<=22 &&
-           ht_abs(game->y/256-p->top)<=3) return item;
+           ht_abs(game->y/256-ht_platform_top(game,ht_evidence_platform(item)))<=3) return item;
     }
     return -1;
 }
@@ -718,7 +718,9 @@ static void ht_chapter_foreground(int camera) {
         ht_limb(ht_raw,x+39,top-8,x+43,top,2,1,255);
     }
 }
+#include "hollow_trail_depth.inc"
 static void ht_background(int depth,int offset) {
+    if(depth==0) {ht_distant_landscape(offset);return;}
     if(ht_geometry_level>=3) { ht_chapter_background(depth,offset); return; }
     if(ht_geometry_level==2) { ht_oil_background(depth,offset); return; }
     if(ht_geometry_level==1) { ht_city_background(depth,offset); return; }
@@ -798,56 +800,7 @@ static void ht_foreground(int camera) {
 }
 /* This plane has its own 1.23x translation and cached blur. Enumerate
  * periodic branches by world position so adjacent strips agree exactly. */
-static void ht_branches(int offset) {
-    if(ht_geometry_level>=3) {
-        int first=ht_floor_div(offset-200,811),last=ht_floor_div(offset+HT_W+200,811);
-        for(int j=first;j<=last;++j) {
-            int x=j*811-offset;
-            if(ht_geometry_level==4 || ht_geometry_level==6 || ht_geometry_level==8) {
-                ht_limb(ht_raw,x-75,-10,x+73,34,12,3,255);
-                ht_limb(ht_raw,x+15,17,x+64,72,4,0,255);
-            } else {
-                ht_rect(ht_raw,x-70,20,150,7,255);
-                ht_limb(ht_raw,x-58,22,x+19,65,4,3,255);
-                ht_rect(ht_raw,x+14,0,8,68,255);
-            }
-        }
-        return;
-    }
-    if(ht_geometry_level==2) {
-        int first=ht_floor_div(offset-200,830),last=ht_floor_div(offset+HT_W+200,830);
-        for(int j=first;j<=last;++j) {
-            int x=j*830-offset;
-            /* Overhead oil-field service gantries frame only the top plane. */
-            ht_rect(ht_raw,x,0,10,81,255);
-            ht_rect(ht_raw,x-54,25,118,7,255);
-            ht_limb(ht_raw,x-48,30,x+5,68,3,3,255);
-            ht_limb(ht_raw,x+58,30,x+5,68,3,3,255);
-        }
-        return;
-    }
-    if(ht_geometry_level==1) {
-        int first=ht_floor_div(offset-300,720),last=ht_floor_div(offset+HT_W+300,720);
-        for(int j=first;j<=last;++j) {
-            int x=j*720-offset;
-            /* Close overhead crane beams and hanging cables, confined to
-             * the same top 90 rows as the forest foreground plane. */
-            ht_rect(ht_raw,x-90,19,280,8,255);
-            ht_limb(ht_raw,x-70,20,x+20,53,4,3,255);
-            ht_rect(ht_raw,x+20,0,9,65,255);
-            ht_rect(ht_raw,x+170,24,2,49,255);
-            ht_limb(ht_raw,x+170,72,x+178,78,2,2,255);
-        }
-        return;
-    }
-    int first=ht_floor_div(offset-300,910),last=ht_floor_div(offset+HT_W+300,910);
-    for(int j=first;j<=last;++j) {
-        int x=75+j*910-offset;
-        ht_limb(ht_raw,x-110,-20,x+100,24,18,6,255);
-        ht_limb(ht_raw,x+55,15,x+140,83,5,0,255);
-        ht_limb(ht_raw,x+7,0,x-34,67,7,0,255);
-    }
-}
+static void ht_branches(int offset) {ht_close_framing(offset);}
 static void ht_select_level(unsigned level) {
     if(ht_geometry_level==level) return;
     ht_geometry_level=level;
@@ -1103,6 +1056,19 @@ static void ht_character(int x,int feet,const ht_game *game) {
             }
         }
     }
+    if(game->traversal.mode==HT_BOAT) {
+        /* Seated on the centre thwart: planted knees, no walking stride.
+         * Hands and the single shared oar use the same rowing stroke. */
+        int stroke=ht_boat_stroke(game),f=game->facing,lean=stroke/4;
+        ht_disk(ht_scene,x+lean,feet-16,5,255);
+        ht_limb(ht_scene,x+lean,feet-11,x-2,feet-1,3,2,255);
+        ht_limb(ht_scene,x-2,feet-1,x+f*7,feet-4,2,1,255);
+        ht_limb(ht_scene,x+f*7,feet-4,x+f*10,feet+3,1,1,255);
+        ht_limb(ht_scene,x+lean,feet-10,x+5+stroke/2,feet-6,1,1,255);
+        ht_limb(ht_scene,x-2+lean,feet-10,x+3+stroke/2,feet-6,1,1,255);
+        ht_rect(ht_scene,x+lean+(f>0?1:-3),feet-17,2,1,0);
+        return;
+    }
     int swing=game->grounded?((game->stride/700)%12-6):3;
     int f=game->facing;
     int effort=(game->traversal.mode==HT_ROLL || game->traversal.mode==HT_CRATE)?f*2:0;
@@ -1151,12 +1117,15 @@ static int ht_sway_wave(unsigned phase) {
     int triangle=t<256?t:t<768?512-t:t-1024;
     return triangle*(512-ht_abs(triangle))/256;
 }
-/* Raster only the visible interior. At <=128/4096 rotation and inward
+/* Raster only the visible interior. At <=344/4096 off-diagonal rotation and inward
  * scaling, the nine-pixel border guarantees all four source taps are valid.
  * The vignette replaces everything outside this range immediately afterward. */
 static __attribute__((optimize("O3"))) void ht_sway_into(const uint8_t *source,unsigned phase) {
-    int turn=ht_sway_wave(phase)/2;
-    int scale=4096-(ht_sway_wave(phase/2+768)+256)/3;
+    int turn=ht_sway_wave(phase)*43/32;
+    int breathe=4096-(ht_sway_wave(phase/2+768)+256)*4/3;
+    /* The two-times-angle crop covers the wide viewport's corners. The
+     * combined inverse matrix gives ~5.76 degrees and 1.00–1.20x zoom. */
+    int scale=ht_min(breathe,4096-2*ht_abs(turn));
     for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
         int left=ht_visible_left[y],right=HT_W-left;
         int u=(HT_W/2)*4096+(left-HT_W/2)*scale+(y-HT_H/2)*turn;
@@ -1186,7 +1155,7 @@ static int ht_weather_floor(const ht_game *g,int screen_x) {
     const ht_mechanics *m=ht_mech(g);
     if(m->water_right && x>=m->water_left && x<m->water_right)
         floor=ht_min(floor,m->boat_deck+10-g->camera_y/256);
-    for(int i=0;i<HT_PLATFORMS;++i) if(ht_solid_platform(g,i))
+    for(int i=0;i<HT_PLATFORMS;++i)
         for(int part=0;part<3;++part) {
             int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top)) break;
             if(x>=l && x<r) floor=ht_min(floor,top-g->camera_y/256);
@@ -1552,7 +1521,7 @@ static void ht_puzzle_prompt(const ht_game *game) {
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
         int x=ht_evidence_x(game->level,item)-game->camera/256;
-        int y=ht_level_land(game->level)[ht_evidence_platform(item)].top-game->camera_y/256;
+        int y=ht_platform_top(game,ht_evidence_platform(item))-game->camera_y/256;
         if(x< -12 || x>=HT_W+12) continue;
         ht_rect(ht_scene,x-6,y-10,12,10,255);
         if(item==1) ht_rect(ht_scene,x-8,y-12,16,3,255);

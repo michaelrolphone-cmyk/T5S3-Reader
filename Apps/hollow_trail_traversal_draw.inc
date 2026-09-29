@@ -32,7 +32,6 @@ static void ht_draw_traversal(const ht_game *g) {
             int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top)) break;
             int x=l-cx,y=top-cy,w=r-l;
             bool bank=i==0 || i==9;
-            if(i==m->bridge) y-=(32-g->traversal.bridge_open)*2;
             if(x>=HT_W || x+w<0 || y>=HT_H || (!bank && y+24<0)) continue;
             ht_rect(ht_scene,x,y,w,bank?HT_H-y:18,255);
             ht_rect(ht_scene,x,y+3,w,2,170);
@@ -43,8 +42,8 @@ static void ht_draw_traversal(const ht_game *g) {
             }
             ht_route_material(g,l,r,y+cy,i);
             if(i==m->bridge) {
-                ht_limb(ht_scene,x+5,y,x+5,p->top-95-cy,0,0,200);
-                ht_limb(ht_scene,x+w-5,y,x+w-5,p->top-95-cy,0,0,200);
+                ht_limb(ht_scene,x+5,y,x+5,p->top-32*HT_BRIDGE_STEP-32-cy,0,0,200);
+                ht_limb(ht_scene,x+w-5,y,x+w-5,p->top-32*HT_BRIDGE_STEP-32-cy,0,0,200);
             }
         }
     }
@@ -56,10 +55,10 @@ static void ht_draw_traversal(const ht_game *g) {
         const ht_platform *bridge=&land[m->bridge];
         int pulley=bridge->left-cx-6;
         ht_limb(ht_scene,x+21,y+4,pulley,y+4,0,0,130);
-        ht_limb(ht_scene,pulley,y+4,pulley,bridge->top-95-cy,0,0,150);
-        ht_disk(ht_scene,pulley,bridge->top-95-cy,5,210);
-        ht_disk(ht_scene,pulley,bridge->top-95-cy,2,35);
-        ht_limb(ht_scene,pulley,bridge->top-95-cy,bridge->left+5-cx,bridge->top-95-cy,0,0,200);
+        ht_limb(ht_scene,pulley,y+4,pulley,bridge->top-32*HT_BRIDGE_STEP-32-cy,0,0,150);
+        ht_disk(ht_scene,pulley,bridge->top-32*HT_BRIDGE_STEP-32-cy,5,210);
+        ht_disk(ht_scene,pulley,bridge->top-32*HT_BRIDGE_STEP-32-cy,2,35);
+        ht_limb(ht_scene,pulley,bridge->top-32*HT_BRIDGE_STEP-32-cy,bridge->left+5-cx,bridge->top-32*HT_BRIDGE_STEP-32-cy,0,0,200);
         /* A closing pawl visibly locks the lowered span. */
         if(g->traversal.bridge_open==32) ht_rect(ht_scene,pulley-4,y-3,8,3,255);
     }
@@ -67,7 +66,7 @@ static void ht_draw_traversal(const ht_game *g) {
     for(int i=0;i<HT_PLATFORMS;++i) {
         if(i!=0 && i!=1 && i!=4 && i!=8) continue;
         const ht_platform *p=&land[i];
-        int x=(i==0?15:p->left+64)-cx,y=p->top-cy;
+        int x=(i==0?15:p->left+64)-cx,y=ht_platform_top(g,i)-cy;
         if(x< -80 || x>HT_W+80) continue;
         if(g->level==2) ht_cactus_on(ht_scene,x,y,i==1?39:84,255);
         else if(g->level==0 || g->level==4 || g->level==6 || g->level==8)
@@ -122,9 +121,9 @@ static void ht_draw_traversal(const ht_game *g) {
         ht_limb(ht_scene,x+29,y-5,x+21,y+8,1,1,255);
         ht_rect(ht_scene,x-23,y-1,46,2,255);
         for(int rib=-16;rib<=16;rib+=8) ht_rect(ht_scene,x+rib,y+3,1,7,235);
-        ht_rect(ht_scene,x-13,y,5,3,70);ht_rect(ht_scene,x+10,y,5,3,70);
-        int stroke=ht_abs(g->traversal.boat_vx)>32?(int)((g->ticks/2)%16)-8:0;
-        ht_limb(ht_scene,x+5,y-6,x+27+stroke,y+12,0,0,255);
+        ht_rect(ht_scene,x-13,y,5,3,70);ht_rect(ht_scene,x-4,y,8,3,70);ht_rect(ht_scene,x+10,y,5,3,70);
+        int stroke=ht_boat_stroke(g);
+        ht_limb(ht_scene,x+5+stroke/2,y-6,x+27+stroke,y+12,0,0,255);
         ht_limb(ht_scene,x+27+stroke,y+12,x+32+stroke,y+15,2,1,255);
         ht_rect(ht_scene,x-20,y+15,40,1,50);
         int speed=ht_abs(g->traversal.boat_vx)/64;
