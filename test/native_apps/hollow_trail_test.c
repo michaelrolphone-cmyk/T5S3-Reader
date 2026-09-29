@@ -577,7 +577,7 @@ int main(void) {
         const uint8_t patch[HT_NN_INPUTS]={0,0,0,0,255,255,0,255,255};
         int16_t residual[HT_NN_OUTPUTS];
         ht_nn_residual(patch,residual);
-        assert(residual[0]==40 && residual[1]==64 && residual[2]==127);
+        assert(residual[0]==-48 && residual[1]==-13 && residual[2]==108);
     }
     /* Upscaling retains exact samples, clamps last rows/columns, and cannot
      * overflow on white/black transitions. Reference is per output pixel. */

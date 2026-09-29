@@ -4,9 +4,9 @@ Hollow Trail builds cached depth/fog/shadow layers at logical resolution. The le
 
 ## Model
 
-The deployed model is deliberately tiny: a 3x3 grayscale patch (9 inputs) feeds 24 ReLU hidden units, which predict three signed residuals for the interpolated pixels of a 2x2 destination block. The original source sample is an exact anchor and is never modified. A cheap central 2x2 range test runs first; patches below 40 gray levels use the exact bilinear reconstruction and skip the neural MACs. On the held-out set only 13.20% of source patches invoke the network.
+The deployed model is deliberately tiny: a 3x3 grayscale patch (9 inputs) feeds 5 ReLU hidden units, which predict three signed residuals for the interpolated pixels of a 2x2 destination block. The original source sample is an exact anchor and is never modified. A cheap central 2x2 range test runs first; patches below 80 gray levels use the exact bilinear reconstruction and skip the neural MACs. On the held-out set only 8.97% of source patches invoke the network.
 
-The exported inference path uses only integer multiply/add/shift operations and 288 bytes of trained weights plus 108 bytes of integer biases. It requires no TensorFlow Lite, ESP-NN, heap allocation, firmware API, or additional capability. The 120x68 composition surface aliases Hollow Trail's existing cache scratch after visible strips are complete, so the runtime path adds no PSRAM allocation.
+The exported inference path uses only integer multiply/add/shift operations and 60 bytes of trained weights plus 32 bytes of integer biases. On the held-out gate distribution this topology performs about 44,000 neural multiply-accumulates per reconstructed frame, roughly one-seventh of the earlier 24-hidden candidate. It requires no TensorFlow Lite, ESP-NN, heap allocation, firmware API, or additional capability. The 120x68 composition surface aliases Hollow Trail's existing cache scratch after visible strips are complete, so the runtime path adds no PSRAM allocation.
 
 ## What it accelerates
 
@@ -16,14 +16,14 @@ Before this change, each visible cached layer is blended into a 240x135 lighting
 
 `scripts/train_hollow_trail_neural_upscale.py` deterministically generates a procedural teacher set shaped around Hollow Trail's renderer: layered grayscale silhouettes, lines, fog gradients, offset soft shadows, and sharp occlusion edges. The high-resolution teacher is 96x64. Even-coordinate decimation becomes the 48x32 source, matching the runtime compositor lattice. The model learns the residual between bilinear expansion and the original teacher.
 
-Training uses seed `20260928`, generates 110,000 candidate training patches, trains on the 15,021 patches that cross the deployed edge gate, and evaluates on 28,000 held-out validation patches. The loss is Smooth L1 with extra weight on high-local-range patches. The final float model is quantized to the exact integer format used in `Apps/hollow_trail_neural_upscale.inc`.
+Training uses seed `20260928`, generates 110,000 candidate training patches, trains on the 10,368 patches that cross the deployed edge gate, and evaluates on 28,000 held-out validation patches. The loss is Smooth L1 with extra weight on high-local-range patches. The final float model is quantized to the exact integer format used in `Apps/hollow_trail_neural_upscale.inc`.
 
 Held-out validation for the committed model:
 
 | Upscaler | MAE (gray levels) | PSNR |
 | --- | ---: | ---: |
 | Bilinear teacher reconstruction | 3.6350 | 24.7789 dB |
-| Quantized neural residual, central-2x2 gated | 3.0415 | 25.2734 dB |
+| Quantized neural residual, central-2x2 gated | 3.3985 | 24.9796 dB |
 
 These figures measure the synthetic teacher set, not ESP32-S3 frame time and not a claim about perceptual preference on the panel. Hollow Trail's existing `RENDER` profiling remains the authoritative runtime measurement.
 
