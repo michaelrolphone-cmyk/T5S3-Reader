@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 190. XTH pages whose height is not byte-aligned make the 2-bit renderer read beyond its page buffer
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1721](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1721/bugs.md)
+
+- **Affected code:** `lib/Xtc/Xtc/XtcTypes.h`, the XTH packing contract; `lib/Xtc/Xtc/XtcParser.cpp`, `XtcParser::loadPage()` and `loadPageStreaming()`; `src/activities/reader/XtcReaderActivity.cpp`, `renderPage()`; and the same XTH indexing in `lib/Xtc/Xtc.cpp` cover/thumbnail generation.
+- **Trigger / reproduction:** Build an otherwise accepted XTCH/XTH page whose height is not divisible by 8, for example width 2 and height 9, and open/render it. No header validation currently requires XTH heights to be 8-pixel aligned.
+- **Observed / logically demonstrated failure:** The loader sizes each plane as `ceil(width * height / 8)`; for 2x9 that is 3 bytes per plane, so it allocates/reads 6 bytes total. The renderer interprets the same data as byte-aligned vertical columns using `colBytes = ceil(height / 8)`; for 2x9 that is 2 bytes per column, requiring 4 bytes per plane. At x=0/y=8 the computed `byteOffset` is 3. `plane1[3]` already aliases the first byte of plane 2, and `plane2[3]` reads byte 6, one byte past the six-byte allocation. Larger non-aligned heights produce the same mismatch at the tail of later columns.
+- **Likely root cause:** The size calculation treats all column bits as one tightly packed bitstream while the rendering/indexing logic pads every vertical column to a whole byte. Those two representations are equivalent only when height is a multiple of 8.
+- **Impact:** A malformed or merely non-8-aligned XTH page can render corrupted grayscale and drive out-of-bounds heap reads, potentially faulting the device. The same arithmetic is reused by cover/thumbnail generation.
+- **Repair direction:** Define one representation and enforce it everywhere. If XTH is byte-aligned per vertical column, size each plane as `width * ((height + 7) / 8)` with checked arithmetic and validate the declared page size against that exact value. If the format instead requires globally packed planes, rewrite pixel addressing to match that packing. Add 1/7/8/9-pixel-height fixtures and ASan coverage for the final column/row.
+
+### 191. XTC page loading ignores declared page/data bounds and can read through one page into the next
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1721](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1721/bugs.md)
+
+- **Affected code:** `lib/Xtc/Xtc/XtcParser.cpp`, especially `readPageTableEntry()`, `loadPage()`, and `loadPageStreaming()`; `lib/Xtc/Xtc/XtcTypes.h`, `PageTableEntry::dataSize` and `XtgPageHeader::dataSize/compression/colorMode`.
+- **Trigger / reproduction:** Create a two-page XTC/XTCH in which page 0 has a valid XTG/XTH magic and dimensions but declares a `PageTableEntry::dataSize` and/or embedded `XtgPageHeader::dataSize` smaller than the bitmap implied by those dimensions, with page 1 placed immediately afterward. Alternatively set `compression` nonzero while leaving enough following bytes in the file. Open page 0.
+- **Observed / logically demonstrated failure:** `readPageTableEntry()` copies the table offset/size without validating that the page region is in file bounds. After checking only the page magic, both load paths recompute `bitmapSize` from width/height and read that many bytes. They never compare the read against the table's `dataSize`, the page header's `dataSize`, or the declared page extent, and they do not reject unsupported `compression` or `colorMode`. If the file contains enough following bytes, the read succeeds by consuming bytes belonging to the next page or another section and returns success; compressed payload bytes are likewise treated as raw pixels.
+- **Likely root cause:** Page-table/header metadata is treated as advisory while the loader trusts only dimensions and the physical ability to read bytes from the file.
+- **Impact:** Corrupt or crafted XTC files can display cross-page/header data as pixels instead of being rejected, defeat per-page corruption isolation, and make malformed page boundaries appear valid. Streaming has the same defect.
+- **Repair direction:** Before reading payload data, use checked 64-bit arithmetic to prove `page.offset + sizeof(XtgPageHeader) + payload <= fileSize`; require supported `compression/colorMode`; require table dimensions and embedded dimensions to agree; and require table/header data-size fields to agree with the exact calculated payload size (or explicitly handle documented alternatives). Add fixtures with undersized/oversized table sizes, mismatched embedded sizes, nonzero compression, and adjacent pages.
+
+### 192. TXT/XTC BMP copy loops can make no forward progress forever after a zero-byte SD read
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1721](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1721/bugs.md)
+
+- **Affected code:** `lib/Txt/Txt.cpp`, `Txt::generateCoverBmp()` in the existing-BMP copy path; `lib/Xtc/Xtc.cpp`, `Xtc::generateThumbBmp()` in the no-scaling cover-copy path.
+- **Trigger / reproduction:** Use a TXT book with an external BMP cover, or an XTC whose cover is copied directly to the thumbnail, and inject an SD read that returns 0 before EOF while the source file position remains unchanged. A short/failed destination write is a second trigger for silent cache corruption.
+- **Observed / logically demonstrated failure:** Both copy paths use `while (src.available())` and then call `src.read(...)` followed by `dst.write(...)` without checking that the read advanced by at least one byte. A zero-byte read before EOF leaves the source position unchanged, so `available()` can remain nonzero and the loop repeats forever with zero-byte writes. Neither path checks destination write counts; TXT returns success after the loop, while XTC treats mere destination-path existence as success, so short writes can also leave a truncated cache accepted as valid.
+- **Likely root cause:** The loops use `available()` as both EOF and I/O-error detection and do not enforce forward progress or exact writes.
+- **Impact:** A transient SD read fault during cover/thumbnail generation can hang the reader task until watchdog/reset. SD-full or media-write faults can leave persistent truncated BMP caches that subsequent launches reuse because the cache file already exists.
+- **Repair direction:** Copy against a known remaining byte count; treat any zero/short read before expected EOF as failure; require every destination write to match the requested size and require successful close/finalization. Publish through a temporary file renamed only after a complete copy. Add fake-file tests for zero-progress read, short read, short write, and close failure.
