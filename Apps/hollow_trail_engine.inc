@@ -61,25 +61,15 @@ static const ht_platform ht_routes[7][HT_PLATFORMS] = {
     { { -160, 380, 216 }, { 444, 706, 198 }, { 780, 1040, 183 }, { 1112, 1334, 206 }, { 1394, 1576, 178 }, { 1648, 1845, 152 }, { 1917, 2144, 190 }, { 2204, 2431, 168 }, { 2503, 2730, 199 }, { 2798, 3410, 194 } },
     { { -160, 380, 222 }, { 448, 710, 204 }, { 784, 1044, 180 }, { 1104, 1326, 203 }, { 1398, 1580, 175 }, { 1652, 1849, 158 }, { 1909, 2136, 187 }, { 2208, 2435, 165 }, { 2507, 2734, 196 }, { 2798, 3410, 200 } }
 };
-/* Ten traversable terraces per chapter. Overlapping x spans at different
- * elevations are intentional: ascend, cross above, descend, then climb back. */
-static const ht_platform ht_terraces[HT_LEVELS][HT_PLATFORMS]={
-    { {-160,300,220}, {480,800,220}, {760,1050,100}, {880,1180,-40}, {1390,1635,-40}, {1580,1790,220}, {2110,2240,220}, {2070,2320,90}, {2410,2790,125}, {2780,3410,200} },
-    { {-160,300,218}, {480,800,218}, {760,1050,100}, {880,1180,-65}, {1390,1635,-65}, {1580,1790,218}, {2110,2240,218}, {2070,2320,70}, {2410,2790,105}, {2780,3410,200} },
-    { {-160,300,224}, {480,800,224}, {760,1050,110}, {880,1180,-30}, {1390,1635,-30}, {1580,1790,224}, {2110,2240,224}, {2070,2320,110}, {2410,2790,145}, {2780,3410,200} },
-    { {-160,300,220}, {480,800,220}, {760,1050,108}, {880,1180,-50}, {1390,1635,-50}, {1580,1790,220}, {2110,2240,220}, {2070,2320,80}, {2410,2790,115}, {2780,3410,200} },
-    { {-160,300,226}, {480,800,226}, {760,1050,112}, {880,1180,-20}, {1390,1635,-20}, {1580,1790,226}, {2110,2240,226}, {2070,2320,100}, {2410,2790,135}, {2780,3410,200} },
-    { {-160,300,222}, {480,800,222}, {760,1050,104}, {880,1180,-70}, {1390,1635,-70}, {1580,1790,222}, {2110,2240,222}, {2070,2320,60}, {2410,2790,95}, {2780,3410,200} },
-    { {-160,300,218}, {480,800,218}, {760,1050,100}, {880,1180,-35}, {1390,1635,-35}, {1580,1790,218}, {2110,2240,218}, {2070,2320,90}, {2410,2790,125}, {2780,3410,200} },
-    { {-160,300,224}, {480,800,224}, {760,1050,108}, {880,1180,-55}, {1390,1635,-55}, {1580,1790,224}, {2110,2240,224}, {2070,2320,80}, {2410,2790,115}, {2780,3410,200} },
-    { {-160,300,220}, {480,800,220}, {760,1050,100}, {880,1180,-80}, {1390,1635,-80}, {1580,1790,220}, {2110,2240,220}, {2070,2320,55}, {2410,2790,90}, {2780,3410,200} },
-    { {-160,300,220}, {480,800,220}, {760,1050,105}, {880,1180,-60}, {1390,1635,-60}, {1580,1790,220}, {2110,2240,220}, {2070,2320,85}, {2410,2790,120}, {2780,3410,200} },
-};
-static const ht_platform *ht_level_land(unsigned level) { return ht_terraces[level]; }
+#include "hollow_trail_maps.inc"
 /* Fixed-size chapter mechanics, included in every render snapshot. */
 enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB };
 typedef struct {
     int ball_x,ball_y,crate_x,boat_x,rope_x,rope_v,ride_offset;
+    int ball_vx,ball_vy,ball_roll,crate_y,crate_vx,crate_vy,boat_vx;
+    int rope_px[HT_ROPE_NODES],rope_py[HT_ROPE_NODES];
+    int rope_ox[HT_ROPE_NODES],rope_oy[HT_ROPE_NODES];
+    uint8_t support,bridge_open,fall_ticks;
     uint8_t mode,ladder,ball_phase,ledge,climb,drop_cooldown;
     int ledge_side;
     bool rope_awake;
@@ -288,7 +278,7 @@ static int ht_wind(const ht_game *g) {
     return g->ticks<96?gust*(int)g->ticks/96:gust;
 }
 static void ht_spawn(bool restart) {
-    uint8_t ball_phase=restart?0:ht.traversal.ball_phase;
+    uint8_t bridge_open=restart?0:ht.traversal.bridge_open;
     uint32_t evidence=ht.evidence;
     uint8_t verdict=restart?0:ht.verdict,last_verdict=ht.last_verdict,endings=ht.endings;
     bool verdict_read=!restart && ht.verdict_read;
@@ -306,12 +296,15 @@ static void ht_spawn(bool restart) {
     ht.y=ht_land[cp].top*256; ht.grounded=true; ht.facing=1;
     ht.camera=ht_clamp(ht.x/256-165,0,HT_GOAL-340)*256;
     ht.camera_y=ht_clamp(ht.y/256-180,-300,100)*256;
-    ht.traversal.ball_phase=ball_phase==2 || cp>=3?2:0;
-    ht.traversal.ball_x=(ht.traversal.ball_phase==2?390:245)*256;
-    ht.traversal.ball_y=(ht_land[0].top+(ht.traversal.ball_phase==2?48:-48))*256;
-    ht.traversal.crate_x=660*256;
-    ht.traversal.boat_x=(cp>=6?2160:1760)*256;
-    ht.traversal.rope_x=-140*256;
+    const ht_mechanics *m=&ht_mechanics_by_level[level];
+    ht.traversal.bridge_open=bridge_open;
+    ht.traversal.ball_x=m->ball_x*256;ht.traversal.ball_y=(m->ball_floor-HT_BALL_RADIUS)*256;
+    ht.traversal.crate_x=m->crate_x*256;ht.traversal.crate_y=m->crate_floor*256;
+    ht.traversal.boat_x=m->boat_left*256;
+    for(int i=0;i<HT_ROPE_NODES;++i) {
+        ht.traversal.rope_px[i]=ht.traversal.rope_ox[i]=m->rope_anchor_x*256;
+        ht.traversal.rope_py[i]=ht.traversal.rope_oy[i]=(m->rope_anchor_y+m->rope_length*i/(HT_ROPE_NODES-1))*256;
+    }
 }
 #include "hollow_trail_traversal.inc"
 static void ht_span(uint8_t *b,int x0,int x1,int y,int c) {
@@ -1084,6 +1077,14 @@ static void ht_character(int x,int feet,const ht_game *game) {
     if(game->traversal.mode==HT_LEDGE || game->traversal.mode==HT_CLIMB) {
         ht_limb(ht_scene,x,feet-17,x+f*6,feet-28,2,1,255);
         ht_limb(ht_scene,x-2,feet-17,x+f*4,feet-28,1,1,255);
+    } else if(game->traversal.mode==HT_ROPE) {
+        ht_limb(ht_scene,x-2,feet-17,x,feet-24,1,1,255);
+        ht_limb(ht_scene,x+2,feet-17,x,feet-24,1,1,255);
+    } else if(game->traversal.mode==HT_ROLL || game->traversal.mode==HT_CRATE) {
+        int object=game->traversal.mode==HT_ROLL?game->traversal.ball_x:game->traversal.crate_x;
+        int reach=object>=game->x?7:-7;
+        ht_limb(ht_scene,x,feet-17,x+reach,feet-15,1,1,255);
+        ht_limb(ht_scene,x,feet-14,x+reach,feet-13,1,1,255);
     } else ht_limb(ht_scene,x,feet-17,x+f*5,feet-9,1,1,255);
     ht_rect(ht_scene,x+(f>0?1:-4),feet-24,2,2,0);
     ht_rect(ht_scene,x+(f>0?4:-1),feet-24,1,2,0);

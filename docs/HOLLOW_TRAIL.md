@@ -1,12 +1,66 @@
-# Hollow Trail 1.1.1
+# Hollow Trail 1.1.2
 
-## Current controls (1.1.0, supersedes historical mappings below)
+## Physical props and distinct routes (1.1.2)
+
+Hollow Trail **1.1.1 → 1.1.2**, minimum firmware unchanged at **1.3.37**.
+
+The stone is now 32 logical pixels across beside a 29-pixel character, with
+facets, rotating fractures and a circular standing surface shared with its
+collider. Pushing accelerates it gradually; release preserves rolling momentum
+with low friction. The 24×26 crate has planks, side shading, braces and nails,
+accelerates under effort and stops quickly through higher friction. Both obey
+gravity, terrace contacts and side walls. Supported feet follow moving props.
+Stone sockets are cut from the same terrain segments used by drawing and
+collision. A weighted plate lowers and latches a suspended bridge over 32 ticks.
+
+Boats have tapered hulls, raised gunwales, seats, ribs and moving oars, with
+inertia, water drag and bounded bobbing. The deck stays at or above shore level
+for reliable disembarking. Ropes hang 84 pixels from visible supported anchors;
+seven Verlet nodes use gravity, inertia, directional pumping and six bounded
+constraint passes, rather than an authored endpoint arc. Catching preserves
+the hand position, player/deck collision remains active, and release carries
+endpoint velocity. A jump-off caps launch height to the normal jump envelope.
+
+Ladders require **A/Confirm** before Up/Down can climb; walking past them does
+not attach. A continuous downward free fall dies at the first 32ms physics
+tick beyond one second (1024ms). Ground, a caught ledge or an attached climb/
+rope ends that fall. Releasing jump still shortens the jump as before.
+
+| Chapter | Mechanical route |
+| --- | --- |
+| Forest | Weight bridge, crate-assisted ledge, canopy ladder, rope ravine |
+| City | Two-stage rooftop climb, crate weight bridge, return roof ladder |
+| Oil Field | Raised gantry, stone socket bridge, crate-assisted upper shelf |
+| Rail Yard | Switchback tower ladders, overhead rope crossing, final climb |
+| Village | Lake crossing first, then rooftops and descent through the village |
+| Salt Flats | Stone into a recessed socket, bridge, alternating high/low shelves |
+| Gardens | Move a crate to reach the first ledge, then two garden climbs |
+| Dam | Service ladders, reservoir boat, upper spillway rope gap |
+| High Pass | Immediate rope ravine, ridge ladder, movable crate ascent |
+| Last Light | Crate weight bridge, double ascent, descent to a final boat crossing |
+
+The ten maps have separately authored spans, elevations, overlap and prop
+placements. They no longer run every prop in the same order. Existing chapter
+story puzzles and evidence remain, and pause-menu selection reaches every map.
+
+Validation: an input-only journey completes all ten maps, all 30 evidence
+records and the ending without deaths. Focused checks cover circular feet,
+rolling inertia, crate friction, explicit ladder capture, rope length/floor
+constraints and the 992ms/1024ms death boundary. Host art previews were inspected. The full native-app suite, focused ASan/UBSan
+checks and the official Xtensa ELF/import build pass. The warm-cache moving-focus
+host benchmark measured 0.731ms render+pack; this is not an S3 frame-rate result.
+Physics has fixed object/node counts, no per-frame allocation and no new raster
+pass. The 24 FPS target and prior renderer optimizations remain; device timing
+and physical controller/display feel still require measurement.
+
+## Current controls (1.1.2, supersedes historical mappings below)
 
 | Action | Controller | Device / generic navigation |
 | --- | --- | --- |
 | Move / turn journal page | D-pad Left/Right | Left/Right |
-| Jump / leave rope or boat | B | Up away from ladders |
-| Climb ladder / pull up from ledge | Up/Down; Up or A at a ledge | Up/Down; Confirm at a ledge |
+| Jump / leave rope or boat | B | Up when not attached |
+| Grab ladder, then climb | A, then Up/Down | Confirm, then Up/Down |
+| Pull up from ledge | Up or A | Up or Confirm |
 | Drop from ledge | Down (B jumps away) | Down |
 | Grab / release object; row or pump swing | A, then Left/Right | Confirm, then Left/Right |
 | Inspect / use nearby mechanism | A | Confirm |
@@ -142,16 +196,10 @@ logical extents a second time. The input scheduling and face-button fixes
 from 1.0.16 remain intact. Historical implementation notes below describe
 earlier layouts and are superseded by this section.
 
-All ten chapters now have layered routes: roll a stone or drum into the first
-trench, push a crate under the high shelf, climb to an upper crossing, swing
-across a ravine, descend to a boat, row across the lake, then climb and double
-back for evidence before continuing east. Heights vary by chapter. Platforms,
-objects and collisions share world coordinates. Upper decks are thin solids;
-lower banks are solid cliffs. Boats carry the player, ropes swing and accept
-pumping input, and crates/rolling objects move only while grabbed. A releases
-an object; B leaves a ladder, rope or boat. Context prompts explain each action.
-Falls preserve evidence, story and puzzle progress and return to a checkpoint;
-failed traversal objects reset to reachable positions.
+The original 1.1.0 layout repeated the same mechanism sequence in every chapter.
+Version 1.1.2 replaces that layout and its scripted props; see the current
+route table above. Death preserves evidence, story, puzzle and opened bridge
+progress and resets movable props to their authored starting positions.
 
 An airborne approach within hand reach of a platform corner catches the edge.
 It holds until Up/A climbs over it, Down drops, or B jumps away. Climbing is a
