@@ -37,19 +37,14 @@ static void reference(void) {
             ht_scene[i]=(uint8_t)ht_max(ht_scene[i],v);
         }
     }
-    /* Feed the independent full-resolution reference through the same
-     * sampling lattice selected by the runtime A/B renderer. */
-    if(ht_ai_rendering) {
-        const int border=HT_BORDER/4;
-        const int height=(HT_SCENE_H-HT_BORDER/2+1)/2;
-        memset(ht_recon_scene,ht_sky_ink(&game),HT_RECON_PIXELS);
-        for(int y=border;y<height;++y) for(int x=border;x<HT_RECON_W-border;++x)
-            ht_recon_scene[y*HT_RECON_W+x]=ht_scene[(4*y)*HT_W+4*x];
-        ht_reconstruct_low_scene();
-    } else {
-        for(int y=0;y<HT_SCENE_H;++y) for(int x=0;x<HT_SCENE_W;++x)
-            ht_low_scene[y*HT_SCENE_W+x]=ht_scene[(2*y)*HT_W+2*x];
-    }
+    /* AI composition always samples the full-resolution reference on the
+     * 4-pixel lattice, then applies the trained 120x68 -> 240x135 reconstruction. */
+    const int border=HT_BORDER/4;
+    const int height=(HT_SCENE_H-HT_BORDER/2+1)/2;
+    memset(ht_recon_scene,ht_sky_ink(&game),HT_RECON_PIXELS);
+    for(int y=border;y<height;++y) for(int x=border;x<HT_RECON_W-border;++x)
+        ht_recon_scene[y*HT_RECON_W+x]=ht_scene[(4*y)*HT_W+4*x];
+    ht_reconstruct_low_scene();
     ht_upscale_scene();
     ht_draw_traversal(&game);
     ht_draw_puzzle(&game);
@@ -99,7 +94,7 @@ static void interleaved_prefetch(void) {
         if(depth==2) continue;
         for(int slices=1;slices<HT_WARM_STEPS/(HT_LAYERS*HT_TILE_SLOTS);++slices) {
             ht.level=0;ht_spawn(true);ht_select_level(0);
-            ht_ai_rendering=true;ht_render_scene();
+            ht_render_scene();
             int key=2,slot=ht_cache_slot(key);
             ht_cache_begin(depth,key);
             for(int i=0;i<slices;++i) ht_cache_work();
@@ -148,27 +143,24 @@ int main(void) {
         ht.level=level; ht_select_level(level);
         for(unsigned n=0;n<sizeof(cameras)/sizeof(cameras[0]);++n) {
             int camera=cameras[n]; ht.camera=camera*256; ht.x=(camera+165)*256;
-            for(int ai=0;ai<2;++ai) {
-                ht_ai_rendering=ai!=0;
-                /* Reference uses the work buffers, so cancel speculative work first. */
-                ht_cache_job.active=false; reference();
-                memcpy(expected,ht_scene,HT_PIXELS);
-                if(ht_ai_rendering) memcpy(expected_recon,ht_recon_scene,HT_RECON_PIXELS);
-                ht_render_scene();
-                if(ht_ai_rendering && !ht_grotto_opaque(&ht) && memcmp(expected_recon,ht_recon_scene,HT_RECON_PIXELS)) {
-                    for(int i=0;i<HT_RECON_PIXELS;++i) if(expected_recon[i]!=ht_recon_scene[i]) {
-                        fprintf(stderr,"AI camera %d sample %d,%d expected %d got %d\n",
-                                camera,i%HT_RECON_W,i/HT_RECON_W,expected_recon[i],ht_recon_scene[i]);break;
-                    }
-                    assert(0);
+            /* Reference uses the work buffers, so cancel speculative work first. */
+            ht_cache_job.active=false; reference();
+            memcpy(expected,ht_scene,HT_PIXELS);
+            memcpy(expected_recon,ht_recon_scene,HT_RECON_PIXELS);
+            ht_render_scene();
+            if(!ht_grotto_opaque(&ht) && memcmp(expected_recon,ht_recon_scene,HT_RECON_PIXELS)) {
+                for(int i=0;i<HT_RECON_PIXELS;++i) if(expected_recon[i]!=ht_recon_scene[i]) {
+                    fprintf(stderr,"AI camera %d sample %d,%d expected %d got %d\n",
+                            camera,i%HT_RECON_W,i/HT_RECON_W,expected_recon[i],ht_recon_scene[i]);break;
                 }
-                if(memcmp(expected,ht_scene,HT_PIXELS)) {
-                    for(int i=0;i<HT_PIXELS;++i) if(expected[i]!=ht_scene[i]) {
-                        fprintf(stderr,"%s camera %d pixel %d,%d expected %d got %d\n",
-                                ht_ai_rendering?"AI":"legacy",camera,i%HT_W,i/HT_W,expected[i],ht_scene[i]);break;
-                    }
-                    assert(0);
+                assert(0);
+            }
+            if(memcmp(expected,ht_scene,HT_PIXELS)) {
+                for(int i=0;i<HT_PIXELS;++i) if(expected[i]!=ht_scene[i]) {
+                    fprintf(stderr,"AI camera %d pixel %d,%d expected %d got %d\n",
+                            camera,i%HT_W,i/HT_W,expected[i],ht_scene[i]);break;
                 }
+                assert(0);
             }
             /* Partially prepare rightward work, then reverse; no stale strip use. */
             for(int i=0;i<8;++i) (void)ht_cache_prefetch(camera,1);
@@ -176,7 +168,6 @@ int main(void) {
             ht_render_scene(); assert(!memcmp(expected,ht_scene,HT_PIXELS));
         }
     }
-    ht_ai_rendering=true;
     ht.level=0; ht_spawn(true); ht_select_level(0);
     ht_render_scene(); memcpy(expected,ht_scene,HT_PIXELS);
     memset(ht_cache_valid,0,sizeof(ht_cache_valid)); change_level=true;
@@ -187,5 +178,5 @@ int main(void) {
     for(int i=0;i<32;++i) assert(memory[HT_MEMORY+i]==0x5a);
     ht_abort=true; assert(!ht_cache_prefetch(2000,1)); assert(!ht_cache_visible(2000));
     free(expected_recon);free(expected);free(memory);
-    puts("Hollow Trail cache: AI/legacy full-render equivalence, warm reuse, tile boundaries, reversals, teleports, bounds and cancellation PASS");
+    puts("Hollow Trail cache: AI full-render equivalence, warm reuse, tile boundaries, reversals, teleports, bounds and cancellation PASS");
 }
