@@ -96,7 +96,7 @@ static void ht_advance(uint32_t now) {
     uint32_t elapsed=now-simulation_clock;
     simulation_clock=now;
     simulation_accumulator+=elapsed>128u?128u:elapsed;
-    if(paused) { mode_down|=jump_down; simulation_accumulator=0; jump_down=false; return; }
+    if(paused) { simulation_accumulator=0; jump_down=false; return; }
     for(unsigned steps=0;simulation_accumulator>=HT_STEP_MS && steps<8;++steps) {
         int direction=((held&HT_RIGHT)!=0)-((held&HT_LEFT)!=0);
         ht_game before=ht;
@@ -187,6 +187,12 @@ static void ht_input_update(uint32_t wait) {
     uint32_t now=app->millis();
     ht_advance(now);
     uint32_t down=buttons&~previous;
+    /* While paused, B or Up switches renderer immediately. Consume the press so
+     * it cannot leak into jump/navigation when gameplay resumes. */
+    if(paused && !reading && !loading && (down&(HT_JUMP|HT_UP))) {
+        mode_down=true;
+        down&=~(HT_JUMP|HT_UP);
+    }
     if(reading) {
         if(down&HT_JOURNAL) { reading=false; ht_journal_deciding=ht_journal_confirm=false; }
         else ht_journal_input(down);
@@ -288,7 +294,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                    !ht_math->add_s16 || !ht_math->sub_s16 || !ht_math->copy_bytes || !ht_math->fill_bytes)) ht_math=NULL;
     ht_pad_owned=ht_input_rearm=ht_pad_fault=false; debug_select=debug_jump=false; ht_pad_source=-1; ht_pad_device=0;
     ht_acquire_pad(); ht_acquire_reader(); ht_bind((uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u));
-    ht_dsp_composite=false;
+    ht_ai_rendering=true;
     if(!ht_start_video(video,&surface)) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
@@ -325,7 +331,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.1.1: dithered 1bpp parallax renderer started");
+    ht_log("Hollow Trail 1.1.9: AI/legacy A-B renderer started");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -357,11 +363,14 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
         if(mode_down) {
             mode_down=false;
-            ht_dsp_composite=ht_dsp_available() && !ht_dsp_composite;
+            ht_ai_rendering=!ht_ai_rendering;
             prepared=false; ++scene_revision;
             last_submit=app->millis(); last_frame=last_submit-HT_FRAME_INTERVAL_MS;
             memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=last_submit;
             if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
+            ht_log(ht_ai_rendering?
+                "Hollow Trail renderer: AI 120x68 + neural reconstruction":
+                "Hollow Trail renderer: legacy 240x135");
         }
         uint32_t now=app->millis();
         if(profile_was_paused && !paused && !reading) {
@@ -408,8 +417,8 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(88,84,chapter,1);
                 ht_text(88,99,debug_select?"L/R CHOOSE   A LOAD   X CANCEL":"L/R CHOOSE LEVEL   A JOURNAL",1);
                 ht_text(88,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
-                ht_text(88,133,!ht_dsp_available()?"DSP16: UNAVAILABLE":ht_dsp_composite?"DSP16 COMPOSITOR: ON":"DSP16 COMPOSITOR: OFF",1);
-                ht_text(88,148,"B / UP DSP16   START JOURNAL",1);
+                ht_text(88,133,ht_ai_rendering?"RENDERER: AI 120X68":"RENDERER: LEGACY 240X135",1);
+                ht_text(88,148,"B / UP SWITCH RENDERER   START JOURNAL",1);
                 char perf[64];
                 snprintf(perf,sizeof(perf),"FPS %lu.%lu   SCANS %lu.%lu",
                     (unsigned long)(ht_perf.fps10/10),(unsigned long)(ht_perf.fps10%10),

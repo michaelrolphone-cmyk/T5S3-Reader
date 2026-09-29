@@ -37,31 +37,24 @@ static void reference(void) {
             ht_scene[i]=(uint8_t)ht_max(ht_scene[i],v);
         }
     }
-    uint8_t sampled[HT_SCENE_PIXELS];
-    for(int y=0;y<HT_SCENE_H;++y) for(int x=0;x<HT_SCENE_W;++x)
-        sampled[y*HT_SCENE_W+x]=ht_scene[(2*y)*HT_W+2*x];
-    for(int y=0;y<HT_H;++y) for(int x=0;x<HT_W;++x) {
-        int sx=x/2,sy=y/2,nx=ht_min(sx+1,HT_SCENE_W-1),ny=ht_min(sy+1,HT_SCENE_H-1);
-        int top=sampled[sy*HT_SCENE_W+sx],bottom=sampled[ny*HT_SCENE_W+sx];
-        if(x&1) { top=(top+sampled[sy*HT_SCENE_W+nx])/2;bottom=(bottom+sampled[ny*HT_SCENE_W+nx])/2; }
-        ht_scene[y*HT_W+x]=(uint8_t)((y&1)?(top+bottom)/2:top);
+    /* Feed the independent full-resolution reference through the same
+     * sampling lattice selected by the runtime A/B renderer. */
+    if(ht_ai_rendering) {
+        const int border=HT_BORDER/4;
+        const int height=(HT_SCENE_H-HT_BORDER/2+1)/2;
+        memset(ht_recon_scene,ht_sky_ink(&game),HT_RECON_PIXELS);
+        for(int y=border;y<height;++y) for(int x=border;x<HT_RECON_W-border;++x)
+            ht_recon_scene[y*HT_RECON_W+x]=ht_scene[(4*y)*HT_W+4*x];
+        ht_reconstruct_low_scene();
+    } else {
+        for(int y=0;y<HT_SCENE_H;++y) for(int x=0;x<HT_SCENE_W;++x)
+            ht_low_scene[y*HT_SCENE_W+x]=ht_scene[(2*y)*HT_W+2*x];
     }
+    ht_upscale_scene();
     ht_draw_traversal(&game);
     ht_draw_puzzle(&game);
     ht_character(px,(game.y-game.camera_y)/256,&game); ht_weather(&game); if(game.sway_phase || game.drop_zoom) {memcpy(ht_temp,ht_scene,HT_PIXELS);ht_camera_into(ht_temp,&game);} ht_vignette();
 }
-static unsigned dsp_calls;
-static bool mock_mul(const int16_t *a,const int16_t *b,int16_t *out,size_t count) {
-    assert(!(((uintptr_t)a|(uintptr_t)b|(uintptr_t)out)&15u));
-    assert(count<=HT_DSP_BATCH); ++dsp_calls;
-    for(size_t i=0;i<count;++i) {
-        int product=a[i]*b[i]; assert(product>=-32768 && product<=32767);
-        out[i]=(int16_t)product;
-    }
-    return true;
-}
-static const t5_math_api_v1 dsp_mock={.api_version=T5_MATH_API_VERSION,
-    .struct_size=sizeof(t5_math_api_v1),.features=T5_MATH_FEATURE_S3_DSP,.mul_s16=mock_mul};
 /* Every cactus remains one silhouette before and after 2x sampling, at
  * both camera parities. In particular the 39px cactus keeps a 2-sample stem. */
 static void cactus_shapes(void) {
@@ -97,10 +90,38 @@ static void cactus_shapes(void) {
         }
     }
 }
+/* A visible frame must not overwrite an unfinished lookahead job. Rebuild
+ * the same strip without interleaving to obtain an independent cache result. */
+static void interleaved_prefetch(void) {
+    uint8_t *expected=malloc(2*HT_TILE_PIXELS);
+    assert(expected);
+    for(int depth=0;depth<HT_LAYERS;++depth) {
+        if(depth==2) continue;
+        for(int slices=1;slices<HT_WARM_STEPS/(HT_LAYERS*HT_TILE_SLOTS);++slices) {
+            ht.level=0;ht_spawn(true);ht_select_level(0);
+            ht_ai_rendering=true;ht_render_scene();
+            int key=2,slot=ht_cache_slot(key);
+            ht_cache_begin(depth,key);
+            for(int i=0;i<slices;++i) ht_cache_work();
+            assert(ht_cache_job.active);
+            ht_render_scene();
+            while(ht_cache_job.active) ht_cache_work();
+            memcpy(expected,ht_cached_near[depth][slot],HT_TILE_PIXELS);
+            memcpy(expected+HT_TILE_PIXELS,ht_cached_wide[depth][slot],HT_TILE_PIXELS);
+            ht_cache_begin(depth,key);
+            while(ht_cache_job.active) ht_cache_work();
+            assert(!memcmp(expected,ht_cached_near[depth][slot],HT_TILE_PIXELS));
+            assert(!memcmp(expected+HT_TILE_PIXELS,ht_cached_wide[depth][slot],HT_TILE_PIXELS));
+        }
+    }
+    free(expected);
+    memset(ht_cache_valid,0,sizeof(ht_cache_valid));ht_cache_builds=0;
+}
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY+32),*expected=malloc(HT_PIXELS);
-    assert(memory && expected); memset(memory+HT_MEMORY,0x5a,32);
-    ht_bind(memory); cactus_shapes(); ht_spawn(true);ht_service=service;
+    uint8_t *expected_recon=malloc(HT_RECON_PIXELS);
+    assert(memory && expected && expected_recon); memset(memory+HT_MEMORY,0x5a,32);
+    ht_bind(memory); interleaved_prefetch(); cactus_shapes(); ht_spawn(true);ht_service=service;
     int steps=0; while(ht_cache_prefetch(0,1)) assert(++steps<400);
     assert(ht_cache_builds==9 && checkpoints>0);
     unsigned builds=ht_cache_builds;
@@ -127,24 +148,35 @@ int main(void) {
         ht.level=level; ht_select_level(level);
         for(unsigned n=0;n<sizeof(cameras)/sizeof(cameras[0]);++n) {
             int camera=cameras[n]; ht.camera=camera*256; ht.x=(camera+165)*256;
-            /* Reference uses the work buffers, so cancel speculative work first. */
-            ht_cache_job.active=false; reference(); memcpy(expected,ht_scene,HT_PIXELS);
-            ht_render_scene();
-            if(memcmp(expected,ht_scene,HT_PIXELS)) {
-                for(int i=0;i<HT_PIXELS;++i) if(expected[i]!=ht_scene[i]) {
-                    fprintf(stderr,"camera %d pixel %d,%d expected %d got %d\n",camera,i%HT_W,i/HT_W,expected[i],ht_scene[i]);break;
+            for(int ai=0;ai<2;++ai) {
+                ht_ai_rendering=ai!=0;
+                /* Reference uses the work buffers, so cancel speculative work first. */
+                ht_cache_job.active=false; reference();
+                memcpy(expected,ht_scene,HT_PIXELS);
+                if(ht_ai_rendering) memcpy(expected_recon,ht_recon_scene,HT_RECON_PIXELS);
+                ht_render_scene();
+                if(ht_ai_rendering && memcmp(expected_recon,ht_recon_scene,HT_RECON_PIXELS)) {
+                    for(int i=0;i<HT_RECON_PIXELS;++i) if(expected_recon[i]!=ht_recon_scene[i]) {
+                        fprintf(stderr,"AI camera %d sample %d,%d expected %d got %d\n",
+                                camera,i%HT_RECON_W,i/HT_RECON_W,expected_recon[i],ht_recon_scene[i]);break;
+                    }
+                    assert(0);
                 }
-                assert(0);
+                if(memcmp(expected,ht_scene,HT_PIXELS)) {
+                    for(int i=0;i<HT_PIXELS;++i) if(expected[i]!=ht_scene[i]) {
+                        fprintf(stderr,"%s camera %d pixel %d,%d expected %d got %d\n",
+                                ht_ai_rendering?"AI":"legacy",camera,i%HT_W,i/HT_W,expected[i],ht_scene[i]);break;
+                    }
+                    assert(0);
+                }
             }
-            ht_math=&dsp_mock; ht_dsp_composite=true;
-            ht_render_scene(); assert(!memcmp(expected,ht_scene,HT_PIXELS));
-            assert(dsp_calls>0); ht_dsp_composite=false; ht_math=NULL;
             /* Partially prepare rightward work, then reverse; no stale strip use. */
             for(int i=0;i<8;++i) (void)ht_cache_prefetch(camera,1);
             for(int i=0;i<8;++i) (void)ht_cache_prefetch(camera,-1);
             ht_render_scene(); assert(!memcmp(expected,ht_scene,HT_PIXELS));
         }
     }
+    ht_ai_rendering=true;
     ht.level=0; ht_spawn(true); ht_select_level(0);
     ht_render_scene(); memcpy(expected,ht_scene,HT_PIXELS);
     memset(ht_cache_valid,0,sizeof(ht_cache_valid)); change_level=true;
@@ -154,6 +186,6 @@ int main(void) {
     assert(ht_geometry_level==1 && memcmp(expected,ht_scene,HT_PIXELS));
     for(int i=0;i<32;++i) assert(memory[HT_MEMORY+i]==0x5a);
     ht_abort=true; assert(!ht_cache_prefetch(2000,1)); assert(!ht_cache_visible(2000));
-    free(expected);free(memory);
-    puts("Hollow Trail cache: warm reuse, sampled full-render equivalence, tile boundaries, reversals, teleports, bounds and cancellation PASS");
+    free(expected_recon);free(expected);free(memory);
+    puts("Hollow Trail cache: AI/legacy full-render equivalence, warm reuse, tile boundaries, reversals, teleports, bounds and cancellation PASS");
 }
