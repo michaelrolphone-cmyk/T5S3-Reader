@@ -65,6 +65,36 @@ int main(void){
   assert(!memcmp(want,ht_scene,HT_PIXELS));
  }
  ht_world_scale=256;
+ /* Random pixels, edge extension, one-pixel and full-width blur rectangles. */
+ for(unsigned i=0;i<HT_PIXELS;++i)ht_raw[i]=(uint8_t)ht_hash(i);
+ for(unsigned n=0;n<600;++n){
+  int radius=1+n%9,x0=ht_hash(n)%HT_W,x1=x0+1+ht_hash(n+731)%(HT_W-x0);
+  if(n%3==0)x0=0;
+  if(n%5==0)x1=HT_W;
+  if(n%7==0)x1=x0+1;
+  int y0=ht_hash(n+891)%HT_H,y1=ht_min(HT_H,y0+1+(int)(n%17));
+  uint32_t reciprocal=((1u<<24)+(2*radius+1)-1)/(2*radius+1);
+  memset(ht_filter,0xa5,HT_PIXELS);ht_render_test=HT_TEST_BASE;
+  ht_blur_horizontal(ht_raw,radius,reciprocal,x0,x1,y0,y1);memcpy(want,ht_filter,HT_PIXELS);
+  memset(ht_filter,0xa5,HT_PIXELS);ht_render_test=HT_TEST_BLUR_INTERIOR;
+  ht_blur_horizontal(ht_raw,radius,reciprocal,x0,x1,y0,y1);assert(!memcmp(want,ht_filter,HT_PIXELS));
+ }
+ /* Every byte alignment and tile transition, including negative world keys.
+  * Randomized cache pixels and initial scene also exercise max/occlusion. */
+ for(int d=0;d<HT_LAYERS;++d)for(int slot=0;slot<HT_TILE_SLOTS;++slot)
+  for(unsigned i=0;i<HT_TILE_PIXELS;++i){
+   ht_cached_near[d][slot][i]=(uint8_t)ht_hash(i+slot*731+d*71);
+   ht_cached_wide[d][slot][i]=(uint8_t)ht_hash(i+slot*193+d*839);
+  }
+ for(int offset=-1024;offset<=1024;++offset){
+  int depth=(offset+1024)%HT_LAYERS,fx=offset%HT_W,fy=offset%HT_H;
+  for(unsigned i=0;i<HT_RECON_PIXELS;++i)ht_recon_scene[i]=(uint8_t)ht_hash(i);
+  ht_render_test=HT_TEST_BASE;ht_composite_cached_ai(depth,offset,fx,fy);
+  memcpy(want,ht_recon_scene,HT_RECON_PIXELS);
+  for(unsigned i=0;i<HT_RECON_PIXELS;++i)ht_recon_scene[i]=(uint8_t)ht_hash(i);
+  ht_render_test=HT_TEST_TILE_PLAN;ht_composite_cached_ai(depth,offset,fx,fy);
+  assert(!memcmp(want,ht_recon_scene,HT_RECON_PIXELS));
+ }
  for(unsigned level=0;level<HT_LEVELS;++level)for(int view=0;view<3;++view){
   ht_bind(mem);ht.level=level;ht_spawn(true);ht.camera=view*733*256;ht.x=(view*733+190)*256;
   ht.vista=view?256:0;ht.sway_phase=128+view*317;ht.rotation_phase=(128+view*219)<<8;ht.camera_mood=256;ht_game game=ht;
@@ -76,5 +106,5 @@ int main(void){
   }
  }
  printf("Neural cache scene workload: %u/%u exact hits (reuse count, not an S3 timing result)\n",scene_hits,scene_queries);
- free(want);free(mem);puts("Render tests: twelve independent modes, exact math, all chapters and rolling 10-second FPS PASS");
+ free(want);free(mem);puts("Render tests: fourteen independent modes, exact math, all chapters and rolling 10-second FPS PASS");
 }

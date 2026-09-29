@@ -577,7 +577,21 @@ static void ht_blur_horizontal(const uint8_t *src,int radius,uint32_t reciprocal
     for(int y=y0;y<y1;++y) {
         const uint8_t *row=src+y*HT_W; int sum=0;
         for(int k=-radius;k<=radius;++k) sum+=row[ht_clamp(x0+k,0,HT_W-1)];
-        for(int x=x0;x<x1;++x) {
+        int x=x0;
+        if(ht_render_test==HT_TEST_BLUR_INTERIOR) {
+            /* Peel only the edge-extension region. Both direct indices in the
+             * interior are valid even for a full-width or one-pixel ROI. */
+            int left=ht_min(x1,radius),right=ht_min(x1,HT_W-radius-1);
+            for(;x<left;++x) {
+                ht_filter[y*HT_W+x]=ht_average(sum,reciprocal);
+                sum+=row[ht_min(HT_W-1,x+radius+1)]-row[ht_max(0,x-radius)];
+            }
+            for(;x<right;++x) {
+                ht_filter[y*HT_W+x]=ht_average(sum,reciprocal);
+                sum+=row[x+radius+1]-row[x-radius];
+            }
+        }
+        for(;x<x1;++x) {
             ht_filter[y*HT_W+x]=ht_average(sum,reciprocal);
             sum+=row[ht_min(HT_W-1,x+radius+1)]-row[ht_max(0,x-radius)];
         }
@@ -1108,9 +1122,47 @@ static bool ht_cache_prefetch(int camera,int direction) {
  * hardware experiment established that it reduces Hollow Trail frame rate. */
 static bool ht_ai_rendering=true;
 
+/* Tile geometry depends on horizontal offset, not y. At stride four, a
+ * width W covers at most ceil(4W/tile_width)+1 tiles, including partial ends.
+ * Stack-only plan; no cache pointers survive this compositor call. */
+static __attribute__((optimize("O3"))) void ht_composite_planned_ai(int depth,int offset,const uint16_t *weights,int fade) {
+    struct ht_span {int x,count,column,slot;} spans[(4*HT_RECON_W+HT_TILE_W-1)/HT_TILE_W+1];
+    const int border=HT_BORDER/4,height=(HT_SCENE_H-HT_BORDER/2+1)/2;
+    int used=0;
+    for(int x=border;x<HT_RECON_W-border;) {
+        int world=offset+4*x,key=ht_floor_div(world,HT_TILE_W),column=world-key*HT_TILE_W;
+        int count=ht_min(HT_RECON_W-border-x,(HT_TILE_W-column+3)/4);
+        spans[used++]=(struct ht_span){x,count,column,ht_cache_slot(key)};
+        x+=count;
+    }
+    for(int y=border;y<height;++y) {
+        uint8_t *scene=ht_recon_scene+y*HT_RECON_W;
+        const uint16_t *radials=weights+y*HT_RECON_W;
+        for(int span=0;span<used;++span) {
+            const struct ht_span *p=&spans[span];
+            const uint8_t *near=ht_cached_near[depth][p->slot]+4*y*HT_TILE_W+p->column;
+            const uint8_t *wide=ht_cached_wide[depth][p->slot]+4*y*HT_TILE_W+p->column;
+            for(int i=0;i<p->count;++i) {
+                int x=p->x+i,radial=radials[x],v;
+                if(radial==0) v=near[4*i];
+                else if(radial==256) v=wide[4*i]*(256-fade)>>8;
+                else {
+                    v=(near[4*i]*256+((int)wide[4*i]-near[4*i])*radial)>>8;
+                    v=v*(256-((radial*fade)>>8))>>8;
+                }
+                scene[x]=(uint8_t)ht_max(scene[x],v);
+            }
+        }
+        if((y&7)==7) ht_checkpoint();
+    }
+}
+
 static __attribute__((optimize("O3"))) void ht_composite_cached_ai(int depth,int offset,int focus_x,int focus_y) {
     const uint16_t *weights=ht_focus_weights(focus_x,focus_y,4,HT_RECON_W,HT_RECON_H);
     const int fade=depth>=2?70:45;
+    if(ht_render_test==HT_TEST_TILE_PLAN) {
+        ht_composite_planned_ai(depth,offset,weights,fade);return;
+    }
     uint16_t k[16] __attribute__((aligned(16)));
     bool fused=ht_expanded_active(HT_OPT_BLEND);
     if(fused)for(int i=0;i<8;++i){k[i]=(uint16_t)fade;k[i+8]=256;}

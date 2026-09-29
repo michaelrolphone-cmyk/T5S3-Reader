@@ -1,7 +1,7 @@
 # Hollow Trail independent render tests — 1.1.16
 
 The owner measured only about +0.2 FPS for the combined expansion. This build
-isolates its operations to expose individual gains or regressions, and adds six
+isolates its operations to expose individual gains or regressions, and adds eight
 shared-renderer experiments. All modes keep AI composition and the proven SIMD
 packer when its device self-test passes. No learned dither, neural 960 mode,
 scene-specific shortcut, effect removal or model-weight change is introduced.
@@ -12,18 +12,20 @@ except the explicitly named all-four comparison:
 
 | Test | Selected change |
 | --- | --- |
-| 1/12 Packing baseline | AI with the existing SIMD packer; all extra operations disabled. |
-| 2/12 SIMD upscale | Vector 240×135 → 480×270 interpolation only. |
-| 3/12 SIMD reconstruction | Vector 120×68 reconstruction interpolation and edge gate only; residual inference unchanged. |
-| 4/12 SIMD compositing | Vector focus/depth blending only. |
-| 5/12 SIMD blur / cache | Fused vector vertical blur output and running sums only. |
-| 6/12 Packed camera | Two horizontal interpolation rows in independent 16-bit lanes of one 32-bit word. Original vertical interpolation/rounding retained. |
-| 7/12 Packed vignette | Symmetric fade pixels multiplied in two 16-bit lanes, with exact division by 255 using shifts/adds. |
-| 8/12 Triangle stepping | Exact integer quotient/remainder edge stepping replaces two divisions per scanline in shared triangle rasterization. |
-| 9/12 All four SIMD | Previous expanded behavior: tests 2–5 together. The additional CPU experiments stay off. |
-| 10/12 Bounded focus math | Clamp distance first; compute the remaining /200 through an exact bounded 32-bit reciprocal. |
-| 11/12 Flat camera skip | Skip interpolation only when all four source samples are identical. |
-| 12/12 Neural patch cache | Reuse an existing model result only for an identical nine-byte input patch. |
+| 1/14 Packing baseline | AI with the existing SIMD packer; all extra operations disabled. |
+| 2/14 SIMD upscale | Vector 240×135 → 480×270 interpolation only. |
+| 3/14 SIMD reconstruction | Vector 120×68 reconstruction interpolation and edge gate only; residual inference unchanged. |
+| 4/14 SIMD compositing | Vector focus/depth blending only. |
+| 5/14 SIMD blur / cache | Fused vector vertical blur output and running sums only. |
+| 6/14 Packed camera | Two horizontal interpolation rows in independent 16-bit lanes of one 32-bit word. Original vertical interpolation/rounding retained. |
+| 7/14 Packed vignette | Symmetric fade pixels multiplied in two 16-bit lanes, with exact division by 255 using shifts/adds. |
+| 8/14 Triangle stepping | Exact integer quotient/remainder edge stepping replaces two divisions per scanline in shared triangle rasterization. |
+| 9/14 All four SIMD | Previous expanded behavior: tests 2–5 together. The additional CPU experiments stay off. |
+| 10/14 Bounded focus math | Clamp distance first; compute the remaining /200 through an exact bounded 32-bit reciprocal. |
+| 11/14 Flat camera skip | Skip interpolation only when all four source samples are identical. |
+| 12/14 Neural patch cache | Reuse an existing model result only for an identical nine-byte input patch. |
+| 13/14 Blur interior | Peel clamped edges from the horizontal running-sum loop; directly address interior samples. |
+| 14/14 Compositor tile plan | Calculate horizontal tile spans once per composition and reuse them for all rows. |
 
 Changing tests discards prepared output and clears timing statistics. Tests 2–5
 have separate startup self-tests/readiness bits; failure in one does not disable
@@ -115,6 +117,27 @@ ESP32-S3 timings. Larger cache allocation was not selected just to increase hits
 
 The extended sanitizer test compares 30,000 patches and immediate repeat hits
 against direct inference (including eviction/hash collisions), then compares
-complete fresh renders in all twelve modes across every chapter. Rolling FPS
+complete fresh renders in all fourteen modes across every chapter. Rolling FPS
 behavior and the baseline remain unchanged. Version stays 1.1.16 because this is
 an update to the same open, unreleased PR rather than a new release lineage.
+
+
+## Shared loop work removal
+
+Blur-interior mode retains exact edge extension and averaging, including narrow
+rectangles and the rightmost running-sum update. Only the interior eliminates
+per-pixel minimum/maximum calculations. Checkpoints stay at the original rows.
+This is separate from the SIMD vertical-blur experiment.
+
+Compositor-tile-plan mode computes tile keys, cache slots, columns and span lengths
+once per call, rather than repeating them on each of 64 rows. The bounded plan
+uses three 16-byte records on the stack at the current raster size; its capacity
+is derived from raster and tile widths. It retains scalar blend rounding, focus
+weights, max composition, clipping and row checkpoints. It stores no pointers or
+state between frames and handles negative tile keys and all sample alignments.
+
+Additional ASan/UBSan differential checks cover 600 horizontal-blur rectangles
+with radii 1–9, edges, one-pixel widths and full widths; plus 2,049 compositor
+offsets over randomized cache/scene pixels, all depth layers and varying focus.
+The full-scene comparison includes both new modes. These are independent timing
+candidates; neither has a measured hardware FPS gain yet.
