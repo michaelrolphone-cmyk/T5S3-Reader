@@ -1,4 +1,106 @@
-# Hollow Trail 1.1.2
+# Hollow Trail 1.1.3
+
+## Atmospheric direction and interaction polish (1.1.3)
+
+Hollow Trail **1.1.2 → 1.1.3**; minimum firmware remains **1.3.37**.
+
+The original visual transform was active but only ±0.6° with 1.3% zoom change.
+It now reaches roughly **±5.76°** and **1–1.20× zoom**, with a 6.55-second sway
+cycle and a 13.1-second breathing cycle while moving. Phase advances only when
+movement input actually moves the character (including a committed climb), and
+freezes at rest/reading/pause. World collision and control bearings are unchanged;
+text and UI remain upright. Q12 matrix coefficients use a 344/4096 maximum
+off-diagonal term; a rotation-dependent inward crop covers the viewport
+corners, combined with a 0–682/4096 breathing reduction. This adds only a
+few integer operations per frame, with no trigonometry or extra raster pass.
+All four bilinear taps remain in bounds over the
+complete phase cycle, so the existing clamp-free pass is retained.
+
+Weather is spatial story direction rather than a global overlay. Entering or
+leaving an exposed interval fades particle count and physical wind over 160
+world pixels. Returning to shelter removes them again. Ground and overhead
+platforms occlude particles using the physical terrain segments.
+
+| Chapter | Weather / atmospheric intent |
+| --- | --- |
+| Forest | Dry fog; a few leaves in the clearing from x850–1750 |
+| City | Light rain and wind across exposed roofs, x500–1200 |
+| Oil Fields | Grit across the machinery, x1250–2250; no rain |
+| Rail Yard | Still, silent air |
+| Drowned Marsh | Still water and reeds; no rain or wind |
+| White Quarry | Windblown chalk, x650–2100 |
+| Glass Gardens | Shelter and tended growth; no weather |
+| Broken Dam | Heavy rain and gusts, x500–2620; hardship at the crossing |
+| High Pass | Wind-driven sleet, x180–2650, easing before the exit |
+| Last Light | Stillness around the final decision |
+
+There are two inspectable environmental scenes per chapter. **A/Confirm** near
+one reveals a short close observation for about seven seconds without opening
+the journal. Evidence, props and puzzle actions keep priority. Stitched trail
+cloth, crossed-out arrows, a locked service door, fuel allowances, a cancelled
+ticket, paired ferry records, a repaired hoist grip, an inside garden latch,
+return pipes, guyed signal towers and a mechanical writing arm connect the
+physical route to the two competing accounts. Observations point to material
+details rather than deciding either witness's motive.
+
+The three-flash lamp motif repeats across the route. In the last chapter its
+pen arm shares the signal circuit; breaking the feed stops both, and examining
+it then describes the stopped mechanism. The final decision/evidence logic is
+unchanged. Foreground surfaces now use chapter materials: metal seams/rivets,
+rail sleepers, weathered dock planks/stilts, fractured stone and garden masonry.
+
+Interaction feedback follows real motion: the weight plate's cable leads to a
+pulley and latching bridge, boat wakes and oar strokes require actual velocity,
+crates scrape as they move, and a landing briefly compresses the upper body and
+kicks up a bounded contact plume while feet remain on their collider. Rendering
+uses a frozen game snapshot. No allocations or full-frame passes were added;
+particle and scene counts remain fixed and clipped to the visible route.
+
+Validation includes all ten input-only routes and clues, HID/XInput inspection
+without opening the journal, weather window/shelter/occlusion checks, full-cycle
+transform source bounds, immutable world coordinates, all observation text
+widths, deterministic rendering and ASan/UBSan. Host previews of all ten chapter
+landmarks were inspected. The full native suite and official Xtensa ELF/import build pass.
+Matched -Os moving-focus host samples measured 0.783ms for 1.1.2 and 0.828ms
+for the initial atmosphere pass. The final boat/depth/bridge/rope/camera
+follow-up measured 0.809ms (about 3% above the 1.1.2 sample, subject to normal
+host timing noise). Actual S3 frame rate and physical display feel are not established
+by these host checks; 24 FPS remains the target.
+
+### Follow-up interaction and depth corrections (same unreleased 1.1.3)
+
+- Up/Down engages a ladder on grounded or airborne overlap, including contact
+  reached during the current physics step. No vertical input means pass through.
+  Down at the foot and Up at the top do not capture; Down at the top descends.
+  Generic navigation selects ladder intent nearby instead of jump/pause. B has
+  a short recapture cooldown. A is not required.
+- Boarding seats the player at the centre thwart. The seated knees, torso and
+  hands share the oar's stroke; walking stride is not rendered while rowing.
+  Boat limits include the full 30px half-width, keeping the hull between actual
+  water boundaries. Three channel endpoints and disembarkation witnesses were
+  adjusted accordingly; a stopped boat cannot continue into either bank.
+- Far scenery now has its own chapter composition: forest canopy/ridges,
+  skyline clusters, mesas, railway cuttings, island banks, quarry escarpments,
+  conservatory domes, reservoir valley/aqueduct, snow ranges and a distant
+  settlement. Middle-distance structures remain separate, and close framing
+  uses chapter-specific limbs, fire escapes, pipes, gantries, willow fronds,
+  conveyors/chains, broken glazing, conduit, overhangs and insulated wires.
+  These are different geometry, scale, spacing, seeds and tones, retained in
+  the existing cached parallax planes (0.22×, 0.53× and 1.23× translation).
+- Weight bridges park 224px above their lowered position, beyond a normal
+  jump. Their visible top is their physical top at every lift position, with
+  solid landing/head/side collision. A standing passenger rides down with the
+  bridge. Evidence and decorations ride at the same actual height; reaching
+  a raised span by another route is valid. Lowering is not a permission flag.
+- Rope pumping force drops from 384 to 64 Q8 units, with bounded inertial
+  increments. Holding one direction gives a modest first swing (~32px in the
+  host witness); timing inputs with the return swing builds ~50px of reach.
+  B gives the normal jump impulse and retains horizontal swing velocity.
+  The route witness now pumps across successive swings before releasing.
+
+The all-chapter route, explicit hull/seat bounds, raised-bridge landing/riding,
+held-versus-timed rope pumping, directional ladder cases, cached/fresh scenery
+comparison and full camera-phase source bounds are exercised by native tests.
 
 ## Physical props and distinct routes (1.1.2)
 
@@ -19,10 +121,12 @@ for reliable disembarking. Ropes hang 84 pixels from visible supported anchors;
 seven Verlet nodes use gravity, inertia, directional pumping and six bounded
 constraint passes, rather than an authored endpoint arc. Catching preserves
 the hand position, player/deck collision remains active, and release carries
-endpoint velocity. A jump-off caps launch height to the normal jump envelope.
+endpoint velocity. A jump-off uses the normal jump impulse and retains horizontal swing momentum.
 
-Ladders require **A/Confirm** before Up/Down can climb; walking past them does
-not attach. A continuous downward free fall dies at the first 32ms physics
+Ladders engage with **Up/Down while overlapping**, including in midair.
+Walking or jumping through without vertical input does not attach. Down at the
+bottom and Up at the top leave the player free; Down at the top descends. B
+jumps off with a brief recapture cooldown. A is not needed. A continuous downward free fall dies at the first 32ms physics
 tick beyond one second (1024ms). Ground, a caught ledge or an attached climb/
 rope ends that fall. Releasing jump still shortens the jump as before.
 
@@ -45,7 +149,7 @@ story puzzles and evidence remain, and pause-menu selection reaches every map.
 
 Validation: an input-only journey completes all ten maps, all 30 evidence
 records and the ending without deaths. Focused checks cover circular feet,
-rolling inertia, crate friction, explicit ladder capture, rope length/floor
+rolling inertia, crate friction, directional ladder capture, rope length/floor
 constraints and the 992ms/1024ms death boundary. Host art previews were inspected. The full native-app suite, focused ASan/UBSan
 checks and the official Xtensa ELF/import build pass. The warm-cache moving-focus
 host benchmark measured 0.731ms render+pack; this is not an S3 frame-rate result.
@@ -59,7 +163,7 @@ and physical controller/display feel still require measurement.
 | --- | --- | --- |
 | Move / turn journal page | D-pad Left/Right | Left/Right |
 | Jump / leave rope or boat | B | Up when not attached |
-| Grab ladder, then climb | A, then Up/Down | Confirm, then Up/Down |
+| Engage / climb ladder | Up/Down while overlapping | Up/Down while overlapping |
 | Pull up from ledge | Up or A | Up or Confirm |
 | Drop from ledge | Down (B jumps away) | Down |
 | Grab / release object; row or pump swing | A, then Left/Right | Confirm, then Left/Right |
@@ -161,7 +265,8 @@ by selecting a chapter. Loading discards prepared old-scene frames, uses the
 existing cooperative cache warmup and requires neutral input before gameplay.
 Selecting the current chapter restarts it too.
 
-Weather draws at most 48 short rain streaks and 12 tumbling leaves, without a
+Historically, 1.1.1 drew 48 rain streaks and 12 leaves everywhere. This is
+superseded by the authored 1.1.3 weather windows above. That implementation used no
 new allocation or full-screen raster pass. Deterministic particles share the
 render snapshot; rain slants and leaves drift with a smooth reversing gust.
 Weather freezes in pause/journal. Wind ramps in on spawning and nudges free
@@ -206,8 +311,8 @@ It holds until Up/A climbs over it, Down drops, or B jumps away. Climbing is a
 16-tick pull-up; dropping has a short re-grab cooldown. Holding horizontal
 movement cannot automatically pull the player up.
 
-Movement advances a smooth visual camera phase: about ±0.6 degree of rocking
-and 1–1.013× breathing zoom. The phase freezes when movement input stops,
+The original 1.1.0 transform used ±0.6 degree of rocking and 1–1.013×
+breathing zoom; 1.1.3 increases its amplitude and cycle speed as described above. The phase freezes when movement input stops,
 including reading and pause. Bilinear fixed-point sampling transforms the
 world image and player together before the vignette; input axes and collision
 coordinates never rotate or scale. Journal, prompts and narration stay fixed.

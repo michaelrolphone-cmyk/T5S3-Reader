@@ -18,7 +18,8 @@ int main(void) {
     /* Prove clamp-free affine taps stay inside the source over a complete
      * rotation/zoom cycle. Linear coordinates attain extrema at row ends. */
     for(unsigned phase=0;phase<2048;++phase) {
-        int turn=ht_sway_wave(phase)/6,scale=4096-(ht_sway_wave(phase/2+768)+256)/10;
+        int turn=ht_sway_wave(phase)*43/32;
+        int scale=ht_min(4096-(ht_sway_wave(phase/2+768)+256)*4/3,4096-2*ht_abs(turn));
         for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) for(int edge=0;edge<2;++edge) {
             int x=edge?HT_W-ht_visible_left[y]-1:ht_visible_left[y];
             int u=(HT_W/2)*4096+(x-HT_W/2)*scale+(y-HT_H/2)*turn;
@@ -93,11 +94,64 @@ int main(void) {
     assert(ht_traversal_interact());
     for(int i=0;i<8;++i) ht_step(0,false,false);
     assert(ht.traversal.crate_vx==0);
-    /* Walking and vertical input cannot capture a ladder. A must grab it. */
+    /* Raised spans are real solids at their visible height, well above a
+     * normal jump, and carry a standing passenger while lowering. */
+    ht.level=0;ht_spawn(true);int bridge=ht_mech(&ht)->bridge;
+    int raised=ht_platform_top(&ht,bridge);
+    assert(ht_land[bridge].top-raised==224);
+    ht.x=520*256;ht.y=(raised-4)*256;ht.vy=600;ht.grounded=false;
+    for(int i=0;i<4;++i) ht_step(0,false,true);
+    assert(ht.grounded && ht.y==raised*256 && ht.traversal.support==4);
+    ht.traversal.ball_x=ht_mech(&ht)->plate_x*256;
+    for(int i=0;i<32;++i) {
+        ht_step(0,false,false);
+        assert(ht.grounded && ht.y==ht_platform_top(&ht,bridge)*256);
+    }
+    assert(ht.traversal.bridge_open==32 && ht.y==ht_land[bridge].top*256);
+    /* All boats stop with their entire hull inside the channel. The rower
+     * sits at its centre; disembarking and coasting never move a bank. */
+    for(unsigned level=0;level<HT_LEVELS;++level) if(ht_mechanics_by_level[level].boat_right) {
+        ht.level=level;ht_spawn(true);const ht_mechanics *m=ht_mech(&ht);
+        ht.x=(m->water_left-3)*256;ht.y=m->boat_deck*256;ht.grounded=true;
+        assert(ht_traversal_interact() && ht.traversal.mode==HT_BOAT);
+        assert(ht.x==ht.traversal.boat_x);
+        for(int i=0;i<420;++i) {
+            ht_step(1,false,false);
+            assert(ht.x==ht.traversal.boat_x);
+            assert(ht.traversal.boat_x+HT_BOAT_HALF*256<=m->water_right*256);
+        }
+        assert(ht.traversal.boat_vx==0);
+        for(int i=0;i<420;++i) ht_step(-1,false,false);
+        assert(ht.traversal.boat_x-HT_BOAT_HALF*256>=m->water_left*256 && !ht.traversal.boat_vx);
+    }
+    /* Ladders require vertical intent, not A. Horizontal/neutral jumps pass
+     * freely, midair contact catches in either direction, bottom Down is inert. */
     ht.level=1;ht_spawn(true);ht.x=400*256;
-    ht_step_controls(1,-1,false,false);assert(ht.traversal.mode==HT_FREE);
-    assert(ht_traversal_interact() && ht.traversal.mode==HT_LADDER);
-    int ladder_y=ht.y;ht_step_controls(0,-1,false,false);assert(ht.y<ladder_y);
+    ht_step_controls(1,0,false,false);assert(ht.traversal.mode==HT_FREE);
+    ht.x=400*256;ht_step_controls(0,1,false,false);
+    assert(ht.traversal.mode==HT_FREE && ht.grounded && ht.y==220*256);
+    ht_step_controls(0,-1,false,false);
+    assert(ht.traversal.mode==HT_LADDER && ht.y==218*256);
+    ht_step_controls(1,-1,true,true);
+    assert(ht.traversal.mode==HT_FREE && ht.vy<0);
+    ht_step_controls(1,-1,false,true);assert(ht.traversal.mode==HT_FREE);
+    for(int vertical=-1;vertical<=1;++vertical) {
+        ht_spawn(true);ht.x=387*256;ht.y=160*256;ht.grounded=false;ht.vx=640;ht.vy=-500;
+        ht_step_controls(1,vertical,false,true);
+        assert(ht.traversal.mode==(vertical?HT_LADDER:HT_FREE));
+        if(vertical) {
+            int before=ht.y;ht_step_controls(0,vertical,false,true);
+            assert(ht.y==before+vertical*512);
+        }
+    }
+    ht_spawn(true);ht.x=400*256;ht.y=238*256;ht.grounded=false;
+    ht_step_controls(0,-1,false,false);
+    assert(ht.traversal.mode==HT_LADDER && ht.y==236*256);
+    ht_step_controls(0,1,false,false);assert(ht.traversal.mode==HT_FREE && !ht.grounded);
+    ht_spawn(true);ht.x=400*256;ht.y=80*256;ht.grounded=true;
+    ht_step_controls(1,-1,false,false);assert(ht.traversal.mode==HT_FREE && ht.x>400*256);
+    ht.x=400*256;ht_step_controls(0,1,false,false);
+    assert(ht.traversal.mode==HT_LADDER && ht.y==82*256);
     /* Catch at the actual rope end, stay above the deck, then swing away.
      * Length constraints keep each rendered segment within two pixels. */
     ht.level=0;ht_spawn(true);ht.x=1454*256;ht.y=-60*256;
@@ -111,7 +165,18 @@ int main(void) {
             assert(dx*dx+dy*dy<=16*16);
         }
     }
-    assert(ht.x>1490*256);
+    assert(ht.x>1454*256 && ht.x<1485*256); /* First push cannot whip to the far side. */
+    int best=ht.x;
+    for(int i=0;i<155;++i) {ht_step_controls(1,0,false,true);best=ht_max(best,ht.x);}
+    assert(best<1491*256); /* Holding one direction cannot build a full crossing. */
+    ht_spawn(true);ht.x=1454*256;ht.y=-60*256;assert(ht_traversal_interact());
+    best=ht.x;
+    for(int i=0;i<180;++i) {
+        ht_step_controls(ht.traversal.rope_v>=0?1:-1,0,false,true);
+        best=ht_max(best,ht.x);
+        if(ht.x>1500*256 && ht.traversal.rope_v>0) break;
+    }
+    assert(best>1500*256); /* Timed return strokes build enough amplitude. */
     ht_step_controls(1,0,true,true);assert(ht.traversal.mode==HT_FREE && ht.vx>0 && ht.vy<0);
     ht.level=0;
     ht_spawn(true);unsigned phase=ht.sway_phase;
@@ -125,15 +190,50 @@ int main(void) {
     ht_spawn(true);
     /* Gusts push idle feet in both directions, remain bounded, and cannot
      * move a player hanging from a ledge. Weather drawing is deterministic. */
-    ht_spawn(true);ht.ticks=120;int still=ht.x;
+    ht.level=7;ht_spawn(true);ht.x=1100*256;ht.ticks=120;int still=ht.x;
     ht_step(0,false,false);assert(ht.x>still && ht.x-still<=40 && ht.sway_phase==0);
-    ht_spawn(true);ht.ticks=380;still=ht.x;
+    ht_spawn(true);ht.x=1100*256;ht.ticks=380;still=ht.x;
     ht_step(0,false,false);assert(ht.x<still && still-ht.x<=40 && ht.sway_phase==0);
     for(unsigned tick=0;tick<1024;++tick) {ht.ticks=tick;assert(ht_abs(ht_wind(&ht))<=40);}
     ht_game snapshot=ht;memset(ht_scene,0,HT_PIXELS);ht_weather(&snapshot);
     memcpy(frame,ht_scene,HT_PIXELS);memset(ht_scene,0,HT_PIXELS);ht_weather(&snapshot);
     assert(!memcmp(frame,ht_scene,HT_PIXELS) && !memcmp(&snapshot,&ht,sizeof(ht)));
-    ht_spawn(true);
+    /* Authored weather is absent in shelter and still chapters, including
+     * the final decision. Weather direction/intensity also follows exposure. */
+    for(unsigned level=0;level<HT_LEVELS;++level) {
+        ht.level=level;ht_spawn(true);ht.ticks=120;
+        const ht_climate *c=&ht_climates[level];
+        ht.x=(c->begin-1)*256;assert(!ht_exposure(&ht) && !ht_wind(&ht));
+        memset(ht_scene,37,HT_PIXELS);memset(frame,37,HT_PIXELS);ht_weather(&ht);
+        for(int i=0;i<HT_PIXELS;++i) assert(ht_scene[i]==37);
+        if(c->end) {
+            ht.x=(c->begin+80)*256;assert(ht_exposure(&ht)==128);
+            ht.x=((c->begin+c->end)/2)*256;assert(ht_exposure(&ht)==256);
+            assert(ht_wind(&ht)>0);
+            ht_weather(&ht);assert(checksum(ht_scene,HT_PIXELS)!=checksum(frame,HT_PIXELS));
+            ht.x=(c->end+1)*256;assert(!ht_exposure(&ht) && !ht_wind(&ht));
+        }
+        for(int scene=0;scene<2;++scene) {
+            ht.x=ht_landmark_x(level,scene)*256;ht.y=ht_land[scene?6:3].top*256;
+            ht.grounded=true;assert(ht_observe() && ht.observation==level*2+scene+1);
+            for(int line=0;line<2;++line) assert(strlen(ht_observations[level*2+scene][line])*6<=332);
+        }
+    }
+    /* A roof shelters the space below it; dry chapters add no particles. */
+    ht.level=1;ht_spawn(true);ht.camera=ht.camera_y=0;
+    assert(ht_weather_floor(&ht,640)==-60);
+    memset(ht_scene,37,HT_PIXELS);ht.x=800*256;ht_weather(&ht);
+    for(int y=80;y<HT_H;++y) assert(ht_scene[y*HT_W+400]==37);
+    /* Prove the stronger transform is visible and repeatable independently
+     * of world physics, and that its zoom has approximately a twenty-percent range. */
+    ht.level=0;ht_spawn(true);
+    for(int i=0;i<HT_PIXELS;++i) ht_temp[i]=(uint8_t)ht_hash((unsigned)i);
+    memcpy(frame,ht_temp,HT_PIXELS);ht_sway_into(ht_temp,256);
+    assert(memcmp(frame+HT_W*40,ht_scene+HT_W*40,HT_W*100));
+    int saved_x=ht.x,saved_y=ht.y;ht_sway_into(ht_temp,1024);
+    assert(ht.x==saved_x && ht.y==saved_y);
+    assert((ht_sway_wave(1024/2+768)+256)*4/3==682);
+    ht.level=0;ht_spawn(true);
     /* Explicit authored solutions, not answers read out of game definitions. */
     const unsigned solutions[HT_LEVELS][5]={
         {2,0,1,9,9},{0,2,9,9,9},{0,1,1,1,2},
@@ -194,7 +294,7 @@ int main(void) {
             unsigned page=level*3u+(unsigned)item;
             assert(!ht_evidence_found(&ht,page));
             ht.x=ht_evidence_x(level,item)*256;
-            ht.y=ht_land[ht_evidence_platform(item)].top*256;
+            ht.y=ht_platform_top(&ht,ht_evidence_platform(item))*256;
             ht.grounded=false; assert(ht_inspect()==-1);
             ht.grounded=true; assert(ht_inspect()==(int)page);
             assert(ht_evidence_found(&ht,page));
