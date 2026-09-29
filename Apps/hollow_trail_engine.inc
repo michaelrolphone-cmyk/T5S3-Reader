@@ -11,6 +11,9 @@
 #define HT_SCENE_W (HT_W/2)
 #define HT_SCENE_H (HT_H/2)
 #define HT_SCENE_PIXELS (HT_SCENE_W*HT_SCENE_H)
+#define HT_RECON_W (HT_SCENE_W/2)
+#define HT_RECON_H ((HT_SCENE_H+1)/2)
+#define HT_RECON_PIXELS (HT_RECON_W*HT_RECON_H)
 /* Physical pixels are 2x logical: 18px black, fading through 38px. */
 #define HT_BORDER 9
 #define HT_FADE 19
@@ -31,7 +34,7 @@ static uint16_t ht_dirty_top,ht_dirty_height;
 #define HT_TILE_HALO ((HT_W-HT_TILE_W)/2)
 #define HT_CACHE_BAND 64
 #define HT_WARM_STEPS (HT_LAYERS*HT_TILE_SLOTS*(1+3*((HT_H+HT_CACHE_BAND-1)/HT_CACHE_BAND)))
-#define HT_MEMORY (HT_SCENE_PIXELS * 4u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS)
+#define HT_MEMORY (HT_RECON_PIXELS * 4u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS)
 #define HT_GOAL 3200
 #define HT_STEP_MS 32u /* Half-speed motion; preserve jump paths and level reachability. */
 
@@ -118,7 +121,7 @@ static bool ht_cache_valid[HT_LAYERS][HT_TILE_SLOTS];
 static struct { bool active; int depth,key,phase,row; } ht_cache_job;
 static bool ht_abort;
 static unsigned ht_cache_builds;
-static uint8_t *ht_corner_mask, *ht_low_scene;
+static uint8_t *ht_corner_mask, *ht_low_scene, *ht_recon_scene;
 static int16_t ht_visible_left[HT_H],ht_clear_left[HT_H];
 /* Host callback polls/yields at bounded raster checkpoints; no drawing. */
 static void (*ht_service)(void);
@@ -188,11 +191,11 @@ static const uint16_t *ht_focus_weights(int px,int py) {
         ht_focus_recent=i;return ht_focus_map[i];
     }
     unsigned slot=ht_focus_recent^1u;uint16_t *map=ht_focus_map[slot];
-    for(int y=0;y<HT_SCENE_H;++y) {
-        int dy=2*y-py,distance=px*px+dy*dy,delta=4-4*px;
-        for(int x=0;x<HT_SCENE_W;++x) {
-            map[y*HT_SCENE_W+x]=(uint16_t)ht_clamp((distance-2500)/200,0,256);
-            distance+=delta;delta+=8;
+    for(int y=0;y<HT_RECON_H;++y) {
+        int dy=4*y-py,distance=px*px+dy*dy,delta=16-8*px;
+        for(int x=0;x<HT_RECON_W;++x) {
+            map[y*HT_RECON_W+x]=(uint16_t)ht_clamp((distance-2500)/200,0,256);
+            distance+=delta;delta+=32;
         }
         if((y&15)==15) ht_checkpoint();
     }
@@ -210,9 +213,9 @@ static void ht_bind(uint8_t *memory) {
         ht_cached_near[d][slot]=cache; cache+=HT_TILE_PIXELS;
         ht_cached_wide[d][slot]=cache; cache+=HT_TILE_PIXELS;
     }
-    ht_corner_mask=cache; ht_low_scene=cache+HT_MASK_PIXELS; ht_mask_init();
+    ht_corner_mask=cache; ht_low_scene=cache+HT_MASK_PIXELS; ht_recon_scene=ht_raw; ht_mask_init();
     ht_focus_map[0]=(uint16_t *)(ht_low_scene+HT_SCENE_PIXELS);
-    ht_focus_map[1]=ht_focus_map[0]+HT_SCENE_PIXELS;
+    ht_focus_map[1]=ht_focus_map[0]+HT_RECON_PIXELS;
     ht_focus_valid[0]=ht_focus_valid[1]=false;ht_focus_recent=0;
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
 }
@@ -1004,9 +1007,9 @@ static bool ht_dsp_available(void) {
     return ht_math && ht_math->struct_size>=offsetof(t5_math_api_v1,mul_s16)+sizeof(ht_math->mul_s16) &&
            (ht_math->features&T5_MATH_FEATURE_S3_DSP) && ht_math->mul_s16;
 }
-#define HT_DSP_BATCH (HT_TILE_W/2)
+#define HT_DSP_BATCH (HT_TILE_W/4)
 /* Fixed, aligned app-owned scratch; no allocation or large task-stack frame.
- * Each tile span has at most 128 samples. The bridge handles vector tails. */
+ * Each quarter-resolution tile span has at most 64 samples. */
 static int16_t ht_dsp_a[HT_DSP_BATCH] __attribute__((aligned(16)));
 static int16_t ht_dsp_b[HT_DSP_BATCH] __attribute__((aligned(16)));
 static int16_t ht_dsp_product[HT_DSP_BATCH] __attribute__((aligned(16)));
@@ -1020,9 +1023,9 @@ static void ht_composite_dsp_span(uint8_t *dst,const uint8_t *near,const uint8_t
     for(int i=0;i<count;++i) {
         int radial=ht_clamp((distance-2500)/200,0,256);
         ht_dsp_radial[i]=(int16_t)radial;
-        ht_dsp_a[i]=(int16_t)((int)wide[2*i]-near[2*i]);
+        ht_dsp_a[i]=(int16_t)((int)wide[4*i]-near[4*i]);
         ht_dsp_b[i]=(int16_t)(radial&127);
-        distance+=delta;delta+=8;
+        distance+=delta;delta+=32;
     }
     /* Signed products must fit s16. Split weights into low seven bits and
      * a 0/128/256 correction, accumulated in 32 bits. Max DSP product 32385.
@@ -1030,7 +1033,7 @@ static void ht_composite_dsp_span(uint8_t *dst,const uint8_t *near,const uint8_t
     ht_dsp_multiply(count);
     for(int i=0;i<count;++i) {
         int radial=ht_dsp_radial[i];
-        int v=(near[2*i]*256+ht_dsp_product[i]+ht_dsp_a[i]*(radial&~127))>>8;
+        int v=(near[4*i]*256+ht_dsp_product[i]+ht_dsp_a[i]*(radial&~127))>>8;
         int factor=256-((radial*fade)>>8);
         ht_dsp_a[i]=(int16_t)v; ht_dsp_b[i]=(int16_t)(factor&127);
         ht_dsp_radial[i]=(int16_t)(factor&~127);
@@ -1045,37 +1048,38 @@ static __attribute__((optimize("O3"))) void ht_composite_cached(int depth,int of
     const bool use_dsp=ht_dsp_composite && ht_dsp_available();
     const uint16_t *weights=use_dsp?NULL:ht_focus_weights(focus_x,focus_y);
     const int fade=depth>=2?70:45;
-    const int height=HT_SCENE_H-HT_BORDER/2;
-    /* The half-resolution grid begins at logical 8 for a 9px border.
-     * Lighting must use the sample coordinate, not the odd border value. */
-    const int start=2*(HT_BORDER/2);
+    const int border=HT_BORDER/4;
+    const int height=(HT_SCENE_H-HT_BORDER/2+1)/2;
+    /* Compose one sample per 4x4 logical pixels. Neural reconstruction restores
+     * the 240x135 scenery surface before the existing 2x raster expansion. */
+    const int start=4*border;
     int dy=start-focus_y,dy2=dy*dy;
-    for(int y=HT_BORDER/2;y<height;++y) {
-        uint8_t *scene=ht_low_scene+y*HT_SCENE_W;
-        for(int x=HT_BORDER/2;x<HT_SCENE_W-HT_BORDER/2;) {
-            int world=offset+2*x,key=ht_floor_div(world,HT_TILE_W),column=world-key*HT_TILE_W;
-            int count=ht_min(HT_SCENE_W-HT_BORDER/2-x,(HT_TILE_W-column+1)/2),slot=ht_cache_slot(key);
-            const uint8_t *near=ht_cached_near[depth][slot]+(2*y)*HT_TILE_W+column;
-            const uint8_t *wide=ht_cached_wide[depth][slot]+(2*y)*HT_TILE_W+column;
+    for(int y=border;y<height;++y) {
+        uint8_t *scene=ht_recon_scene+y*HT_RECON_W;
+        for(int x=border;x<HT_RECON_W-border;) {
+            int world=offset+4*x,key=ht_floor_div(world,HT_TILE_W),column=world-key*HT_TILE_W;
+            int count=ht_min(HT_RECON_W-border-x,(HT_TILE_W-column+3)/4),slot=ht_cache_slot(key);
+            const uint8_t *near=ht_cached_near[depth][slot]+(4*y)*HT_TILE_W+column;
+            const uint8_t *wide=ht_cached_wide[depth][slot]+(4*y)*HT_TILE_W+column;
             if(use_dsp) {
-                int dx=2*x-focus_x,distance=dx*dx+dy2,delta=4+4*dx;
+                int dx=4*x-focus_x,distance=dx*dx+dy2,delta=16+8*dx;
                 ht_composite_dsp_span(scene+x,near,wide,count,distance,delta,fade);
                 x+=count; continue;
             }
             for(int i=0;i<count;++i,++x) {
                 int v;
-                int radial=weights[y*HT_SCENE_W+x];
-                if(radial==0) v=near[2*i];
-                else if(radial==256) v=wide[2*i]*(256-fade)>>8;
+                int radial=weights[y*HT_RECON_W+x];
+                if(radial==0) v=near[4*i];
+                else if(radial==256) v=wide[4*i]*(256-fade)>>8;
                 else {
-                    v=(near[2*i]*256+((int)wide[2*i]-near[2*i])*radial)>>8;
+                    v=(near[4*i]*256+((int)wide[4*i]-near[4*i])*radial)>>8;
                     v=v*(256-((radial*fade)>>8))>>8;
                 }
                 scene[x]=(uint8_t)ht_max(scene[x],v);
             }
         }
-        dy2+=4*dy+4; dy+=2;
-        if((y&15)==15) ht_checkpoint();
+        dy2+=8*dy+16;dy+=4;
+        if((y&7)==7) ht_checkpoint();
     }
 }
 /* Expand once to the existing overlay surface, then draw the character/UI.
@@ -1105,6 +1109,57 @@ static inline __attribute__((always_inline)) void ht_store4(uint8_t *p,uint32_t 
 /* Interleave the low two original/interpolated byte lanes into four pixels. */
 static inline __attribute__((always_inline)) uint32_t ht_zip2(uint32_t a,uint32_t b) {
     return (a&255u)|((b&255u)<<8)|((a&0xff00u)<<8)|((b&0xff00u)<<16);
+}
+#include "hollow_trail_neural_upscale.inc"
+/* Build the exact bilinear reconstruction first with the same packed four-lane
+ * arithmetic used by the original renderer, then spend neural MACs only on
+ * strong 2x2 transitions. Source anchors at even/even coordinates never move. */
+static __attribute__((optimize("O3"))) void ht_reconstruct_low_scene(void) {
+    for(int y=0;y<HT_RECON_H;++y) {
+        const uint8_t *row=ht_recon_scene+y*HT_RECON_W;
+        const uint8_t *next=ht_recon_scene+ht_min(y+1,HT_RECON_H-1)*HT_RECON_W;
+        uint8_t *top=ht_low_scene+2*y*HT_SCENE_W;
+        uint8_t *bottom=2*y+1<HT_SCENE_H?top+HT_SCENE_W:NULL;
+        for(int x=0;x<HT_RECON_W;x+=4) {
+            uint32_t a=ht_load4(row+x),c=ht_load4(next+x);
+            int nx=ht_min(x+4,HT_RECON_W-1);
+            uint32_t b=(a>>8)|((uint32_t)row[nx]<<24);
+            uint32_t d=(c>>8)|((uint32_t)next[nx]<<24);
+            uint32_t h=ht_average4(a,b),v=ht_average4(a,c);
+            uint32_t diagonal=ht_average4(h,ht_average4(c,d));
+            ht_store4(top+2*x,ht_zip2(a,h));
+            ht_store4(top+2*x+4,ht_zip2(a>>16,h>>16));
+            if(bottom) {
+                ht_store4(bottom+2*x,ht_zip2(v,diagonal));
+                ht_store4(bottom+2*x+4,ht_zip2(v>>16,diagonal>>16));
+            }
+        }
+        if((y&15)==15) ht_checkpoint();
+    }
+    for(int y=0;y+1<HT_RECON_H;++y) {
+        int ym=y?y-1:0,yp=y+1;
+        const uint8_t *r0=ht_recon_scene+ym*HT_RECON_W;
+        const uint8_t *r1=ht_recon_scene+y*HT_RECON_W;
+        const uint8_t *r2=ht_recon_scene+yp*HT_RECON_W;
+        uint8_t *top=ht_low_scene+2*y*HT_SCENE_W,*bottom=top+HT_SCENE_W;
+        for(int x=0;x<HT_RECON_W;++x) {
+            int xp=ht_min(x+1,HT_RECON_W-1);
+            int a=r1[x],right=r1[xp],down=r2[x],down_right=r2[xp];
+            int lo=ht_min(ht_min(a,right),ht_min(down,down_right));
+            int hi=ht_max(ht_max(a,right),ht_max(down,down_right));
+            if(hi-lo<HT_NN_EDGE_THRESHOLD) continue;
+            int xm=x?x-1:0;
+            uint8_t patch[HT_NN_INPUTS]={
+                r0[xm],r0[x],r0[xp],r1[xm],r1[x],r1[xp],r2[xm],r2[x],r2[xp]
+            };
+            int16_t residual[HT_NN_OUTPUTS];
+            ht_nn_residual(patch,residual);
+            top[2*x+1]=(uint8_t)ht_clamp((int)top[2*x+1]+residual[0],0,255);
+            bottom[2*x]=(uint8_t)ht_clamp((int)bottom[2*x]+residual[1],0,255);
+            bottom[2*x+1]=(uint8_t)ht_clamp((int)bottom[2*x+1]+residual[2],0,255);
+        }
+        if((y&7)==7) ht_checkpoint();
+    }
 }
 static __attribute__((optimize("O3"))) void ht_upscale_scene(void) {
     for(int y=0;y<HT_SCENE_H;++y) {
@@ -1292,9 +1347,10 @@ static void ht_render_scene(void) {
     ht_select_level(game.level);
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
     if(!ht_cache_visible(camera)) return;
-    memset(ht_low_scene,ht_sky_ink(&game),HT_SCENE_PIXELS);
+    memset(ht_recon_scene,ht_sky_ink(&game),HT_RECON_PIXELS);
     for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
         ht_composite_cached(depth,ht_layer_offset(depth,camera),px,py);
+    ht_reconstruct_low_scene();
     /* Render directly to the transform source: remove the former full-frame
      * copy into scratch. Input servicing never reads this raster pointer. */
     uint8_t *output=ht_scene;

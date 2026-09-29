@@ -564,6 +564,21 @@ int main(void) {
     ht_blur_rect(ht_raw,ht_wide,4,HT_BORDER,HT_W-HT_BORDER,HT_BORDER,HT_H-HT_BORDER);
     for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y)
         assert(!memcmp(expected+y*HT_W+HT_BORDER,ht_wide+y*HT_W+HT_BORDER,HT_W-2*HT_BORDER));
+    /* Quarter-resolution reconstruction must preserve source anchors exactly,
+     * keep flat fills bit-identical, and keep integer inference deterministic. */
+    memset(ht_recon_scene,73,HT_RECON_PIXELS); ht_reconstruct_low_scene();
+    for(int i=0;i<HT_SCENE_PIXELS;++i) assert(ht_low_scene[i]==73);
+    for(int i=0;i<HT_RECON_PIXELS;++i) ht_recon_scene[i]=(uint8_t)ht_hash((uint32_t)i);
+    ht_reconstruct_low_scene(); memcpy(expected,ht_low_scene,HT_SCENE_PIXELS);
+    ht_reconstruct_low_scene(); assert(!memcmp(expected,ht_low_scene,HT_SCENE_PIXELS));
+    for(int y=0;y<HT_RECON_H;++y) for(int x=0;x<HT_RECON_W;++x)
+        assert(ht_low_scene[(2*y)*HT_SCENE_W+2*x]==ht_recon_scene[y*HT_RECON_W+x]);
+    {
+        const uint8_t patch[HT_NN_INPUTS]={0,0,0,0,255,255,0,255,255};
+        int16_t residual[HT_NN_OUTPUTS];
+        ht_nn_residual(patch,residual);
+        assert(residual[0]==40 && residual[1]==64 && residual[2]==127);
+    }
     /* Upscaling retains exact samples, clamps last rows/columns, and cannot
      * overflow on white/black transitions. Reference is per output pixel. */
     for(int i=0;i<HT_SCENE_PIXELS;++i) ht_low_scene[i]=(uint8_t)ht_hash((uint32_t)i);

@@ -325,7 +325,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.1.1: dithered 1bpp parallax renderer started");
+    ht_log("Hollow Trail 1.1.7: dithered 1bpp parallax renderer started");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
