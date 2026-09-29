@@ -8,6 +8,15 @@ The deployed model is deliberately tiny: a 3x3 grayscale patch (9 inputs) feeds 
 
 The exported inference path uses only integer multiply/add/shift operations and 60 bytes of trained weights plus 32 bytes of integer biases. On the held-out gate distribution this topology performs about 44,000 neural multiply-accumulates per reconstructed frame, roughly one-seventh of the earlier 24-hidden candidate. It requires no TensorFlow Lite, ESP-NN, heap allocation, firmware API, or additional capability. The 120x68 composition surface aliases Hollow Trail's existing cache scratch after visible strips are complete, so the runtime path adds no PSRAM allocation.
 
+## Hardware A/B mode
+
+The former DSP16 test toggle has been removed because hardware testing showed that path reduced frame rate. Hollow Trail now uses that same paused-game control for a real renderer comparison:
+
+- **AI 120X68**: quarter-resolution lighting composition plus the trained residual reconstruction.
+- **LEGACY 240X135**: the original scalar half-resolution composition path, including its original two-map focus-weight cache.
+
+Pause the game and press **B or Up** to switch. The performance counters reset on every switch, and the pause screen identifies the active renderer, so FPS and RENDER time can be compared under the same scene. The A/B build intentionally keeps the legacy focus-map memory resident so legacy timing is not penalized by a cheaper reference implementation.
+
 ## What it accelerates
 
 Before this change, each visible cached layer is blended into a 240x135 lighting surface every rendered frame. The new path samples those same cached near/wide blur layers onto 120x68 (about one quarter as many composition samples and cached-layer reads), then reconstructs 240x135 with the trained residual model. Cached near/wide strip construction itself is deliberately unchanged in this iteration; it occurs in the bounded look-ahead cache worker rather than the main frame compositor. Hollow Trail's existing `RENDER` and `CACHE` counters therefore distinguish the model's intended frame-time gain from cache-build cost on hardware.
