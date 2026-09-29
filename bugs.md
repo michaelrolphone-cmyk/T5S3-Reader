@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+### 166. Wi-Fi credential changes remain live when persistence fails and the UI proceeds as if they were saved
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0725](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0725/bugs.md)
+
+- **Affected code:** `src/WifiCredentialStore.cpp`, `WifiCredentialStore::addCredential()`, `removeCredential()`, `setLastConnectedSsid()`, `clearLastConnectedSsid()`, and `clearAll()`; `src/activities/network/WifiSelectionActivity.cpp`, save/forget/connected-state handling.
+- **Trigger / reproduction:** Connect to a Wi-Fi network and choose to save its password while forcing the settings SD write (`JsonSettingsIO::saveWifi()` / `Storage.writeFile()`) to fail. The same problem can be exercised while forgetting a saved network. Continue using the Wi-Fi UI, then either reboot or cause a later credential-store save to succeed.
+- **Observed / logically demonstrated failure:** `addCredential()` changes the existing credential or pushes a new one before calling `saveToFile()`. On failure it returns `false` but leaves that mutation in the live `credentials` vector. `WifiSelectionActivity` ignores the return value and completes the save workflow as though it succeeded. The remove path similarly erases the live credential before persistence and the UI updates its saved-password state regardless of the returned result. The void last-connected/clear helpers also discard save failures. After a failed write, runtime state therefore disagrees with disk: reboot can resurrect an allegedly forgotten network or lose an allegedly saved password, while a later successful save can unexpectedly make the earlier failed mutation durable.
+- **Likely root cause:** The credential store mutates its authoritative in-memory state before durable persistence and several callers discard the persistence result.
+- **Impact:** Wi-Fi credentials and preferred-network state can be silently lost, resurrected, or persisted later despite the user having been told the preceding operation completed.
+- **Repair direction:** Make credential mutations transactional: construct a candidate store, persist it, and publish it to live state only after the write succeeds (or explicitly roll back on failure). Return persistence status from the last-connected/clear helpers and have the Wi-Fi UI keep the prompt/error state visible when saving or forgetting fails. Add failure-injection tests for add/update/remove/preferred-network writes followed by reboot and by a later successful save.
+
+### 167. Firmware OTA accepts release-index size/SHA metadata but never verifies the downloaded image against either value
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0725](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0725/bugs.md)
+
+- **Affected code:** `src/network/OtaUpdater.cpp`, `OtaUpdater::checkForUpdate()` and `OtaUpdater::installUpdate()`; `src/network/OtaUpdater.h`.
+- **Trigger / reproduction:** Supply a structurally valid release-index firmware entry whose `url` points to the expected release asset name, but make the served firmware bytes differ from the index's `sha256` and/or `size` while still being an ESP image acceptable to `esp_https_ota`. Start Firmware Update.
+- **Observed / logically demonstrated failure:** `checkForUpdate()` requires a 64-character `sha256` field and reads `size`, but it never validates that the digest characters are hexadecimal, does not store the digest in `OtaUpdater`, and only casts `size` into `otaSize`/progress state. `installUpdate()` passes only the URL and TLS configuration to `esp_https_ota`; after transfer it checks the OTA library's completion result but never compares `processedSize` with `otaSize` and never computes or compares the release-index SHA-256. A different self-consistent ESP image at the expected URL can therefore be accepted even though it violates the release catalog's advertised integrity metadata.
+- **Likely root cause:** Release-index integrity fields are treated as catalog-shape metadata rather than as constraints on the actual OTA byte stream.
+- **Impact:** A stale, mismatched, or incorrectly published firmware asset can be installed despite the release index explicitly identifying a different byte length and SHA-256, weakening release consistency checks and making catalog corruption harder to detect before reboot.
+- **Repair direction:** Validate the digest as 64 hexadecimal characters, retain the expected digest and size in `OtaUpdater`, hash/count the actual OTA payload (or use an ESP-IDF verification hook that exposes the image digest), and refuse finalization/boot selection unless both expected values match. Add tests with valid ESP images that intentionally mismatch only size, only SHA-256, and both.
+
+### 168. Firmware-update fallback checks only the repository-wide latest release, so an app/driver release can hide the newest firmware
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0725](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0725/bugs.md)
+
+- **Affected code:** `src/network/OtaUpdater.cpp`, `latestReleaseUrl` and the legacy fallback in `OtaUpdater::checkForUpdate()`; `lib/JsonParser/ReleaseJsonParser.cpp`, firmware-asset selection.
+- **Trigger / reproduction:** Make `release-index.json` unavailable or unreadable so `checkForUpdate()` enters its fallback path. Publish an app-only or driver-only GitHub release after the most recent firmware release, which is valid in this repository's independently versioned release model, then run Firmware Update.
+- **Observed / logically demonstrated failure:** The fallback requests `/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest`, which returns one repository-wide release. `ReleaseJsonParser` then searches only that release for `firmware-<board>.bin`. If the newest release is an app/driver release, the parser reports no firmware asset and `checkForUpdate()` returns `NO_UPDATE`; it never searches older releases for the newest firmware tag. A valid newer firmware release can therefore exist and remain undiscoverable exactly when the release index is unavailable and the fallback is supposed to provide recovery.
+- **Likely root cause:** The fallback predates independent app/driver/firmware releases and assumes the repository's generic latest release is necessarily a firmware release.
+- **Impact:** Loss or corruption of the release index can make Firmware Update falsely report no firmware update merely because unrelated package activity is newer than the firmware release.
+- **Repair direction:** Make fallback firmware-specific: query a firmware release/tag pointer, enumerate recent releases until the first valid `firmware-v*` release containing the board asset is found, or maintain a dedicated immutable/latest-firmware endpoint. Do not treat an unrelated latest release as evidence that no firmware update exists. Add a regression fixture where an app release is newest but a firmware release immediately precedes it.
+
