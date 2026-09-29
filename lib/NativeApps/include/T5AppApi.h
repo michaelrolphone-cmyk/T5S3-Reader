@@ -36,6 +36,15 @@ typedef struct {
     int16_t end_x, end_y;
 } t5_app_swipe_t;
 
+// Copied UI frame in physical scan orientation; 2bpp, 0=white ... 3=black.
+// orientation: 0 portrait, 1 landscape clockwise, 2 inverted portrait,
+// 3 landscape counterclockwise. Includes the user's output flip setting.
+typedef struct {
+    uint16_t width, height, stride_bytes;
+    uint8_t orientation, reserved;
+} t5_app_frame_t;
+typedef struct { bool down; int16_t x, y; } t5_app_contact_t;
+
 typedef struct {
     char name[T5_APP_DIRENT_NAME_MAX];
     uint64_t size;
@@ -191,6 +200,13 @@ typedef struct {
     // Does NOT yield; callers must also use poll(..., >=1) every 20-50ms.
     // Size-check and fall back to poll() on older firmware.
     bool (*poll_nowait)(t5_app_input_t *input);
+    // 1.3.39: copy rasterized UI primitives without a hardware refresh. A null
+    // destination queries supported fast-video geometry. Size-check both entries.
+    // Owner task only; caller owns destination. Never exposes renderer memory.
+    bool (*copy_ui_frame)(uint8_t *destination, size_t capacity, t5_app_frame_t *frame);
+    // Non-consuming current contact, including movement, in oriented UI coords.
+    // Returns false if unavailable; down=false means no eligible contact.
+    bool (*touch_contact)(t5_app_contact_t *contact);
 } t5_app_api_v1;
 
 // Native application entry point. Native ELFs are built with -fvisibility=hidden,

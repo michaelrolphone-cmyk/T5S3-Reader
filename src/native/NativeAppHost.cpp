@@ -1,3 +1,4 @@
+#include "NativeUiFrame.h"
 #include "NativeAppMemory.h"
 #include "NativeStreamBridge.h"
 #include "NativeNetworkBridge.h"
@@ -164,6 +165,52 @@ bool presentToneFrame(Session& s, HalDisplay::RefreshMode mode) {
   s.renderer.copyGrayscaleMsbBuffers();
   s.renderer.displayGrayBuffer(mode);
   s.renderer.restoreBwBuffer();
+  return true;
+}
+
+bool copyUiFrame(uint8_t* destination, size_t capacity, t5_app_frame_t* frame) {
+#if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
+  auto* s = current();
+  if (!s || !frame) return false;
+  constexpr size_t width = HalDisplay::DISPLAY_WIDTH, height = HalDisplay::DISPLAY_HEIGHT;
+  *frame = {width, height, width/4,
+      static_cast<uint8_t>((static_cast<unsigned>(s->renderer.getOrientation()) + (SETTINGS.flipUi ? 2u : 0u)) % 4u), 0};
+  if (!destination) return true;
+  if (capacity < width*height/4) return false;
+  auto* base = s->renderer.getFrameBuffer();
+  if (!base) return false;
+  constexpr size_t planeBytes=width*height/8;
+  auto* scratch = s->toneRects.empty() ? nullptr : static_cast<uint8_t*>(
+      heap_caps_malloc(planeBytes*2,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT));
+  if (!s->toneRects.empty() && !scratch) return false;
+  const uint8_t* saved = base;
+  const uint8_t* lsb = nullptr;
+  const uint8_t* msb = nullptr;
+  if (scratch) {
+    memcpy(scratch,base,planeBytes); saved=scratch;
+    replayTonePlane(*s,true); memcpy(scratch+planeBytes,base,planeBytes); lsb=scratch+planeBytes;
+    replayTonePlane(*s,false); msb=base;
+  }
+  for (size_t y=0;y<height;++y) {
+    const size_t from=SETTINGS.flipUi ? height-1-y : y;
+    nativeUiPackRow(destination+y*width/4,saved+from*width/8,
+        lsb ? lsb+from*width/8 : nullptr, msb ? msb+from*width/8 : nullptr,width,SETTINGS.flipUi);
+    if ((y&31u)==31u) { esp_task_wdt_reset(); vTaskDelay(1); }
+  }
+  if (scratch) { memcpy(base,scratch,planeBytes); heap_caps_free(scratch); }
+  return true;
+#else
+  (void)destination; (void)capacity; (void)frame;
+  return false;
+#endif
+}
+bool touchContact(t5_app_contact_t* out) {
+  auto* s=current();
+  if (!s || !out) return false;
+  *out={};
+  MappedInputManager::TouchPoint point{};
+  out->down=s->input.getTouchContact(point,s->renderer);
+  if (out->down) { out->x=point.x; out->y=point.y; }
   return true;
 }
 
@@ -1190,7 +1237,9 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            fillRoundedRectTone,
                            backlightLevel,
                            takeTouchSwipe,
-                           pollNowait};
+                           pollNowait,
+                           copyUiFrame,
+                           touchContact};
 }  // namespace
 
 bool installRequiredNativeApp(const char* artifact, std::string& displayName,
