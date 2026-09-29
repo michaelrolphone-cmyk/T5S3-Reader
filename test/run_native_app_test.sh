@@ -54,6 +54,18 @@ c++ -std=c++17 -Wall -Wextra -Werror \
 "$binary"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
   -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_render_modes_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_workspace_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_camera_split_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
+  -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/hollow_trail_expanded_simd_test.c" -o "$binary"
 "$binary"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \

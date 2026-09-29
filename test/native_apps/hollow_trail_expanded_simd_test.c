@@ -6,7 +6,7 @@
 #include "../../Apps/hollow_trail_engine.inc"
 static unsigned checks;
 static void service(void){++checks;}
-static void mode(bool enabled){ht_expanded_mode=enabled;ht_expanded_ready=true;}
+static void mode(bool enabled){ht_render_test=enabled?HT_TEST_ALL_FOUR:HT_TEST_BASE;ht_simd_stage_ready=HT_OPT_SIMD_ALL;ht_expanded_ready=true;}
 static void pattern(uint8_t *dst,int count,unsigned seed){
  for(int i=0;i<count;++i)dst[i]=(uint8_t)(seed<2?seed*255:ht_hash((unsigned)i+seed*97));
 }
@@ -69,8 +69,8 @@ int main(void){
   assert(!memcmp(want,ht_scene,HT_PIXELS));
  }
  /* A rejected device self-test must not select any new arithmetic. */
- ht_expanded_ready=false;ht_expanded_mode=true;assert(!ht_expanded_active());
- ht_render_scene();memcpy(want,ht_scene,HT_PIXELS);ht_expanded_mode=false;ht_render_scene();
+ ht_expanded_ready=false;ht_simd_stage_ready=0;ht_render_test=HT_TEST_ALL_FOUR;assert(!ht_expanded_active(HT_OPT_SIMD_ALL));
+ ht_render_scene();memcpy(want,ht_scene,HT_PIXELS);ht_render_test=HT_TEST_BASE;ht_render_scene();
  assert(!memcmp(want,ht_scene,HT_PIXELS));assert(checks>0);
  free(actual);free(want);free(mem);
  puts("Expanded SIMD: arithmetic, row edges, cache seams, blur bands, fresh frames in all ten chapters and fallback PASS (host oracles; device self-test verifies opcodes)");

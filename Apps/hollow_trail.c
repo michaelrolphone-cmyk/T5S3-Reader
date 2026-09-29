@@ -1,5 +1,10 @@
 #include "T5AppApi.h"
 #include <stdio.h>
+#include <stdlib.h>
+#if defined(__XTENSA__)
+/* Existing tracked allocator import; no peripheral/firmware API changes. */
+extern void *heap_caps_malloc(size_t,uint32_t);
+#endif
 #include "T5VideoApi.h"
 #include "T5HardwareTakeover.h"
 #include "T5ProviderCapabilityApi.h"
@@ -26,6 +31,11 @@ static bool debug_select,debug_jump;
 #define HT_INPUT_INTERVAL_MS 8u
 #define HT_YIELD_INTERVAL_MS 32u
 #define HT_FRAME_INTERVAL_MS 42u /* At most 24 submissions/s; physics stays 32ms. */
+#include "hollow_trail_fps.inc"
+#if HT_FPS_SLOTS < ((HT_FPS_WINDOW_MS+HT_FRAME_INTERVAL_MS-1)/HT_FRAME_INTERVAL_MS+1)
+#error "Increase FPS history capacity when raising the frame-rate cap"
+#endif
+static ht_fps_window ht_fps;
 static struct {
     uint32_t start,scan_start,frames,render_ms,pack_ms,wait_ms,cache_ms,copy_ms,input_ms;
     uint32_t fps10,scan10,render_avg,pack_avg,wait_avg,cache_avg,copy_avg,input_avg;
@@ -33,10 +43,11 @@ static struct {
 } ht_perf;
 static void ht_perf_finish(const t5_video_api_v1 *video,uint32_t now) {
     ++ht_perf.frames;
+    ht_perf.fps10=ht_fps_push(&ht_fps,now);
     uint32_t elapsed=now-ht_perf.start;
     if(elapsed<1000u) return;
     uint32_t scans=video->struct_size>=offsetof(t5_video_api_v1,frame_counter)+sizeof(video->frame_counter) && video->frame_counter?video->frame_counter():0;
-    ht_perf.fps10=ht_perf.frames*10000u/elapsed;
+
     ht_perf.scan10=(scans-ht_perf.scan_start)*10000u/elapsed;
     ht_perf.render_avg=ht_perf.render_ms/ht_perf.frames;
     ht_perf.pack_avg=ht_perf.pack_ms/ht_perf.frames;
@@ -290,6 +301,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     if(!memory) { ht_log("Hollow Trail: scenery cache PSRAM unavailable"); return; }
     uint8_t *staging=(uint8_t *)app->psram_alloc(HT_PACKED_BYTES);
     if(!staging) ht_log("Hollow Trail: packed staging unavailable; using direct packing");
+    void *fast_memory=NULL;
     bool started=false,display_initialized=false,display_reading=false;
     ht_reader_bitmap=(uint8_t *)(((uintptr_t)memory+HT_MEMORY+31u)&~(uintptr_t)15u);
     t5_video_surface_v1 surface={0};
@@ -304,6 +316,10 @@ __attribute__((visibility("default"))) void app_main(void) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
     started=true;
+#if defined(__XTENSA__)
+    fast_memory=ht_workspace_open(heap_caps_malloc);
+#endif
+    ht_log(ht_fast?"Render SRAM: 4096 bytes available":"Render SRAM unavailable: internal tests use baseline");
     memset(&ht,0,sizeof(ht)); ht_spawn(true);
     reading=false; journal_page=0; ht_journal_index=true; ht_journal_selection=0;
     ht_journal_deciding=ht_journal_confirm=ht_journal_page_ready=false; ht_read_submitted_revision=0;
@@ -315,7 +331,17 @@ __attribute__((visibility("default"))) void app_main(void) {
      * Keep polling/yielding and honor exit throughout the bounded warmup. */
     loading=true;
     ht_simd_ready=ht_simd_selftest();
-    ht_expanded_ready=ht_simd_ready && ht_expanded_selftest();
+    ht_simd_stage_ready=0;
+    for(unsigned stage=0;stage<4;++stage) {
+        bool ready=ht_simd_ready && ht_expanded_selftest(1u<<stage);
+        ht_stage_reason[stage]=ht_simd_ready?ht_expanded_reason:ht_simd_reason;
+        if(ready)ht_simd_stage_ready|=1u<<stage;
+        char status[144];
+        snprintf(status,sizeof(status),"SIMD stage %u: %s pattern=%u phase=%u byte=%u expected=%u actual=%u",
+            stage+1,ht_stage_reason[stage],ht_simd_test_pattern,ht_simd_test_phase,ht_simd_test_byte,
+            ht_simd_test_expected,ht_simd_test_actual);ht_log(status);
+    }
+    ht_expanded_ready=ht_simd_stage_ready==HT_OPT_SIMD_ALL;
     ht_log(ht_expanded_ready?"Hollow Trail expanded SIMD: device self-test passed":
         "Hollow Trail expanded SIMD unavailable: packing baseline retained");
     ht_log(ht_simd_ready?"Hollow Trail fused SIMD: device self-test passed":
@@ -350,7 +376,8 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.1.15: SIMD baseline / expanded comparison started");
+    ht_fps_reset(&ht_fps,ht_perf.start);
+    ht_log("Hollow Trail 1.1.16: independent rendering tests; rolling 10-second FPS");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -382,18 +409,22 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
         if(mode_down) {
             mode_down=false;
-            ht_expanded_mode=!ht_expanded_mode;
+            ht_render_test_next();ht_nn_cache_reset();
+            /* A cached focus map is mathematically compatible, but rebuilding
+             * it lets the selected focus experiment actually execute. */
+            ht_focus_valid[0]=ht_focus_valid[1]=false;
             prepared=false; ++scene_revision;
             last_submit=app->millis(); last_frame=last_submit-HT_FRAME_INTERVAL_MS;
             memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=last_submit;
             if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-            ht_log(!ht_simd_ready?"Hollow Trail SIMD unavailable: AI fallback":
-                ht_expanded_mode?(ht_expanded_ready?"Hollow Trail renderer: AI + expanded SIMD":
-                "Hollow Trail expanded SIMD unavailable: packing baseline"):
-                "Hollow Trail renderer: AI + SIMD packing baseline");
+            ht_fps_reset(&ht_fps,last_submit);
+            char test[96];
+            snprintf(test,sizeof(test),"Render test %u/%u: %s%s",ht_render_test+1,HT_TEST_COUNT,ht_render_test_name(),
+                ht_render_test_available()?"":" (unavailable stages use baseline)");ht_log(test);
         }
         uint32_t now=app->millis();
         if(profile_was_paused && !paused && !reading) {
+            ht_fps_reset(&ht_fps,now);ht_perf.fps10=0;
             ht_perf.start=now;
             ht_perf.scan_start=video->frame_counter?video->frame_counter():0;
             ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=ht_perf.input_ms=0;
@@ -431,7 +462,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.15",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.16",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
@@ -439,18 +470,22 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(88,84,chapter,1);
                 ht_text(88,99,debug_select?"L/R CHOOSE   A LOAD   X CANCEL":"L/R CHOOSE LEVEL   A JOURNAL",1);
                 ht_text(88,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
-                ht_text(88,133,!ht_simd_ready?"SIMD UNAVAILABLE: AI":
-                    ht_expanded_mode?(ht_expanded_ready?"AI + SIMD: EXPANDED":"EXPANDED UNAVAILABLE: BASE"):
-                    "AI + SIMD: BASELINE",1);
-                if(!ht_simd_ready || !ht_expanded_ready) {
-                    char reason[64];
-                    snprintf(reason,sizeof(reason),"SIMD: %s P%u B%u",!ht_simd_ready?ht_simd_reason:ht_expanded_reason,
-                        ht_simd_test_pattern,ht_simd_test_byte);
-                    ht_text(88,148,reason,1);
-                } else ht_text(88,148,"B / UP SWITCH RENDERER   START JOURNAL",1);
+                char test[64];
+                snprintf(test,sizeof(test),"TEST %u/%u: %s",ht_render_test+1,HT_TEST_COUNT,ht_render_test_name());
+                ht_text(88,133,test,1);
+                if(!ht_simd_ready) {
+                    snprintf(test,sizeof(test),"PACK FALLBACK: %s",ht_simd_reason);ht_text(88,148,test,1);
+                } else if(ht_render_test_needs_ram() && !ht_fast) {
+                    ht_text(88,148,"BASE FALLBACK: INTERNAL RAM UNAVAILABLE",1);
+                } else if(!ht_render_test_available()) {
+                    unsigned missing=ht_render_test_mask()&HT_OPT_SIMD_ALL&~ht_simd_stage_ready,stage=0;
+                    while(stage<3 && !(missing&(1u<<stage)))++stage;
+                    snprintf(test,sizeof(test),"BASE FALLBACK: %s",ht_stage_reason[stage]);ht_text(88,148,test,1);
+                } else ht_text(88,148,"B / UP NEXT TEST   START JOURNAL",1);
                 char perf[64];
-                snprintf(perf,sizeof(perf),"FPS %lu.%lu   SCANS %lu.%lu",
+                snprintf(perf,sizeof(perf),"FPS10S %lu.%lu (%lu.%luS) SCANS %lu.%lu",
                     (unsigned long)(ht_perf.fps10/10),(unsigned long)(ht_perf.fps10%10),
+                    (unsigned long)(ht_fps.elapsed/1000),(unsigned long)(ht_fps.elapsed%1000/100),
                     (unsigned long)(ht_perf.scan10/10),(unsigned long)(ht_perf.scan10%10));
                 ht_text(88,164,perf,1);
                 snprintf(perf,sizeof(perf),"RENDER %lu PACK %lu WAIT %lu MS",
@@ -545,6 +580,7 @@ cleanup:
     if(started) video->stop();
     ht_release_reader(); ht_release_pad();
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(true);
+    ht_workspace_attach(NULL);free(fast_memory);
     if(staging) app->psram_free(staging);
     app->psram_free(memory);
 }
