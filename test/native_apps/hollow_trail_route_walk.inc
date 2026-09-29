@@ -1,9 +1,13 @@
 /* Input-only chapter witness: follow each authored platform connection and
  * operate its actual mass, plate, boat, ladder or rope. Never teleport bodies,
  * move fixtures, set puzzle/bridge flags or bypass normal simulation. */
-static unsigned walk_phase,walk_level=999,walk_mechanics,walk_task;
+/* Independent witness actions, not solutions read from production targets. */
+static const char *walk_solutions[HT_LEVELS]={
+    "112","0112","0121012","0120","0221","001222","0122","0000111","1021","000"
+};
+static unsigned walk_phase,walk_level=999,walk_mechanics,walk_task,walk_puzzle;
 static void walk_route_tick(void) {
-    if(walk_level!=ht.level) {walk_level=ht.level;walk_phase=0;walk_mechanics=walk_task=0;}
+    if(walk_level!=ht.level) {walk_level=ht.level;walk_phase=0;walk_mechanics=walk_task=walk_puzzle=0;}
     int x=ht.x/256,y=ht.y/256,dir=0,vertical=0;
     bool jump=false,mass_work=false;
     const ht_mechanics *m=ht_mech(&ht);ht_traversal *t=&ht.traversal;
@@ -54,18 +58,19 @@ static void walk_route_tick(void) {
                 int target=m->ladders[ladder].x;
                 if(t->mode==HT_LADDER) {vertical=-1;walk_mechanics|=4;}
                 else if(ht_abs(x-target)>8) dir=x<target?1:-1;
-                else {assert(ht_traversal_interact());assert(t->mode==HT_LADDER);vertical=-1;}
+                else vertical=-1;
             } else if(m->water_left==here->right && m->water_right==next->left) {
-                if(t->mode==HT_BOAT) {
-                    if(t->boat_x>=m->boat_right*256) {assert(ht_traversal_interact());dir=1;}
+                if(walk_task==4) dir=1;
+                else if(t->mode==HT_BOAT) {
+                    if(t->boat_x>=m->boat_right*256) {assert(ht_traversal_interact());dir=1;walk_task=4;}
                     else {dir=1;walk_mechanics|=16;}
-                } else if(x<m->boat_left-25) dir=1;
+                } else if(x<m->boat_left-35) dir=1;
                 else if(x<m->water_right) {assert(ht_traversal_interact());assert(t->mode==HT_BOAT);dir=1;}
                 else dir=1;
             } else if(next->left-here->right>110 && m->rope_anchor_x>here->left && m->rope_anchor_x<here->right) {
                 if(walk_task==3) dir=1;
                 else if(t->mode==HT_ROPE) {
-                    dir=1;walk_mechanics|=8;
+                    dir=t->rope_v>=0?1:-1;walk_mechanics|=8;
                     if(x>=m->rope_anchor_x+48 && t->rope_v>0) {jump=true;walk_task=3;}
                 } else if(x<m->rope_anchor_x-6) dir=1;
                 else if(ht_traversal_near(&ht)==HT_ROPE) assert(ht_traversal_interact());
@@ -79,12 +84,11 @@ static void walk_route_tick(void) {
     if(walk_phase==9) {
         dir=1;
         if(x>=2820 && ht.grounded && !ht.puzzle.solved) {
-            const ht_puzzle_definition *p=&ht_puzzles[ht.level];int station=0;
-            if(p->kind==0) station=p->answer[ht.puzzle.progress];
-            else while(station<2 && ht.puzzle.value[station]==p->answer[station]) ++station;
+            assert(walk_puzzle<strlen(walk_solutions[ht.level]));
+            int station=walk_solutions[ht.level][walk_puzzle]-'0';
             int target=HT_PUZZLE_FIRST+station*HT_PUZZLE_SPACING;
             dir=x<target?1:-1;
-            if(ht_puzzle_near(&ht)==station) {assert(ht_interact());dir=0;}
+            if(ht_puzzle_near(&ht)==station) {assert(ht_interact());++walk_puzzle;dir=0;}
         }
         if(ht_final_near(&ht) && !ht.verdict) {assert(ht_decide(1));ht.verdict_read=true;}
     }

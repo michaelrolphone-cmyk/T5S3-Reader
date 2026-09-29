@@ -2,4 +2,4 @@
 
 // Firmware-only unload guard for the GameBoy-derived raw EPD video service.
 // Safe to call when the service was never started.
-void nativeVideoForceStop();
+bool nativeVideoForceStop();

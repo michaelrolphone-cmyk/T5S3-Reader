@@ -341,11 +341,16 @@ class T5S3M5GfxDisplay : public lgfx::LGFX_Device {
     setPanel(&panel_);
   }
 
-  ~T5S3M5GfxDisplay() { bus_.release(); }
+  ~T5S3M5GfxDisplay() {
+    // Join the panel worker before its bus or backing object disappears.
+    if (!panel_.shutdown()) abort();
+    bus_.release();
+  }
 
   // Releasability is checked before the host transfers ownership. Normal
   // RiscRTE display initialization and rendering remain unchanged.
   bool releaseHardware() {
+    if (!panel_.shutdown()) return false;
     bus_.release();
     return bus_.released();
   }
