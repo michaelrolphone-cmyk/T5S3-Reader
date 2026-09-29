@@ -69,7 +69,7 @@ typedef struct {
     int ball_vx,ball_vy,ball_roll,crate_y,crate_vx,crate_vy,boat_vx;
     int rope_px[HT_ROPE_NODES],rope_py[HT_ROPE_NODES];
     int rope_ox[HT_ROPE_NODES],rope_oy[HT_ROPE_NODES];
-    uint8_t support,bridge_open,fall_ticks;
+    uint8_t support,bridge_open;
     uint8_t mode,ladder,ball_phase,ledge,climb,drop_cooldown;
     int ledge_side;
     bool rope_awake;
@@ -81,8 +81,14 @@ typedef struct {
     int x, y, vx, vy; /* Q8, y is feet */
     int camera, camera_y, checkpoint, coyote, jump_buffer, facing, stride;
     unsigned ticks, laps, deaths, sway_phase;
+    uint32_t rotation_phase; /* Q8: independently paced from breathing. */
+    uint16_t camera_mood,drop_zoom;
+    int airborne_origin;
     uint8_t observation,observation_ticks,landing_ticks,landing_strength;
     int landing_x,landing_y;
+    uint8_t scene_evidence; /* Finds in this chapter visit, separate from the archive. */
+    uint16_t weather_age; /* Cue time advances only with active simulation. */
+    uint16_t weather_amount; /* 0..256 narrative cue envelope. */
     int weather_drift; /* Q8, bounded screen-period displacement. */
     unsigned level; /* Laps count complete ten-chapter journeys. */
     int story_x; /* Furthest progress in this chapter, retained on death. */
@@ -226,13 +232,14 @@ static int ht_inspect(void) {
     if(item<0) return -1;
     int page=(int)ht.level*3+item;
     ht.evidence|=1u<<(unsigned)page;
+    ht.scene_evidence|=(uint8_t)(1u<<(unsigned)item);
     return page;
 }
 #define HT_PUZZLE_FIRST 2900
 #define HT_PUZZLE_SPACING 85
 #define HT_PUZZLE_GATE (HT_GOAL-26)
 static int ht_puzzle_near(const ht_game *game) {
-    if(!game->grounded) return -1;
+    if(!game->grounded || ht_abs(game->y/256-ht_level_land(game->level)[9].top)>3) return -1;
     for(int i=0;i<3;++i)
         if(ht_abs(game->x/256-(HT_PUZZLE_FIRST+i*HT_PUZZLE_SPACING))<=22) return i;
     return -1;
@@ -255,40 +262,49 @@ static bool ht_decide(unsigned choice) {
 static bool ht_interact(void) {
     int station=ht_puzzle_near(&ht);
     if(station<0 || ht.puzzle.solved) return false;
-    const ht_puzzle_definition *p=&ht_puzzles[ht.level];
-    if(p->kind==0) {
-        if(station==p->answer[ht.puzzle.progress]) {
-            ++ht.puzzle.progress; ht.puzzle.wrong=false;
-        } else {
-            /* A wrong note starts a fresh attempt; allow it to be note one. */
-            ht.puzzle.progress=station==p->answer[0]?1:0; ht.puzzle.wrong=true;
-        }
-        ht.puzzle.solved=ht.puzzle.progress==p->length;
-    } else {
-        ht.puzzle.value[station]=(ht.puzzle.value[station]+1)%(p->kind==1?2:4);
-        ht.puzzle.solved=true;
-        for(int i=0;i<3;++i) if(ht.puzzle.value[i]!=p->answer[i]) ht.puzzle.solved=false;
-    }
+    ht_puzzle_operate(&ht.puzzle,ht.level,station);
     return true;
 }
-/* Authored weather windows: exposure follows current world position, so
- * returning to shelter really removes rain and force. Edges fade over 160px. */
-typedef struct {int begin,end,rain,leaves,dust,sleet,wind;} ht_climate;
+/* Silent-film cues: a discovery opens an atmospheric scene; the next
+ * specified discovery resolves it. Location only supplies shelter inside it. */
+typedef struct {int begin,end,rain,leaves,dust,sleet,wind,after,until,sky,lightning;} ht_climate;
 static const ht_climate ht_climates[HT_LEVELS]={
-    {850,1750,0,8,0,0,18},       /* Forest clearing: disturbed leaves, dry fog. */
-    {500,1200,20,0,0,0,24},      /* Exposed roofs; quiet in the lower streets. */
-    {1250,2250,0,0,16,0,25},     /* Abandoned oil field: grit, no rain. */
-    {0,0,0,0,0,0,0},            /* Silent rail yard. */
-    {0,0,0,0,0,0,0},            /* Marsh: still water and reeds. */
-    {650,2100,0,0,24,0,32},      /* White quarry: airborne chalk. */
-    {0,0,0,0,0,0,0},            /* Sheltered glass gardens. */
-    {500,2620,48,0,0,0,40},     /* Dam: sustained exposed struggle. */
-    {180,2650,0,0,0,32,40},     /* High pass: freezing crosswind. */
-    {0,0,0,0,0,0,0},            /* Last light: deliberate stillness. */
+    {450,1480,0,8,0,0,18,0,1,18,0},    /* Thread -> register: guidance becomes admission. */
+    {1320,2160,24,0,0,0,24,1,2,38,0},  /* Burnt fuse -> watch log: the extinguished way. */
+    {620,1740,0,0,16,0,25,0,1,16,0},   /* Lantern tag -> stove plate: cost of the gift. */
+    {0,0,0,0,0,0,0,-1,-1,0,0},       /* Rail yard: silence after the cancelled train. */
+    {0,0,0,0,0,0,0,-1,-1,0,0},       /* Marsh: stillness makes waiting visible. */
+    {1490,2330,0,0,24,0,32,1,2,22,0},  /* Brake notice -> torn note: carrying their weight. */
+    {0,0,0,0,0,0,0,-1,-1,0,0},       /* Gardens: shelter/confinement, no weather cue. */
+    {1730,2580,48,0,0,0,40,1,2,68,1},  /* Garden pipe -> ridge circuit: dependence/control. */
+    {540,1730,0,0,0,32,40,0,1,42,0},   /* Scarf -> wind shelter: doubt during the ascent. */
+    {0,0,0,0,0,0,0,-1,-1,0,0},       /* Last light: stillness around the decision. */
 };
+static int ht_weather_target(const ht_game *g) {
+    const ht_climate *c=&ht_climates[g->level];
+    if(c->after<0) return 0;
+    return (g->scene_evidence&(1u<<c->after)) && !(g->scene_evidence&(1u<<c->until))?256:0;
+}
+static void ht_weather_step(void) {
+    int target=ht_weather_target(&ht);
+    if(target && ht.weather_age<65535) ++ht.weather_age;
+    if(ht.weather_amount<target) ht.weather_amount=(uint16_t)ht_min(target,ht.weather_amount+4);
+    else if(ht.weather_amount>target) ht.weather_amount=(uint16_t)ht_max(target,ht.weather_amount-8);
+}
 static int ht_exposure(const ht_game *g) {
     const ht_climate *c=&ht_climates[g->level];
-    return ht_clamp(ht_min(g->x/256-c->begin,c->end-g->x/256)*256/160,0,256);
+    int shelter=ht_clamp(ht_min(g->x/256-c->begin,c->end-g->x/256)*256/160,0,256);
+    return shelter*g->weather_amount/256;
+}
+static int ht_lightning(const ht_game *g) {
+    if(!ht_climates[g->level].lightning || !ht_weather_target(g) || g->weather_amount<192) return 0;
+    int age=g->weather_age,phase=age>=380?age-380:age-160;
+    if(phase<0 || phase>=8) return 0; /* Two authored pulses, never an endless storm loop. */
+    return (phase<2?255:(8-phase)*36)*ht_exposure(g)/256;
+}
+static int ht_sky_ink(const ht_game *g) {
+    int dark=ht_climates[g->level].sky*ht_exposure(g)/256;
+    return dark*(255-ht_lightning(g))/255;
 }
 static int ht_wind(const ht_game *g) {
     unsigned phase=g->ticks&511u;
@@ -296,6 +312,32 @@ static int ht_wind(const ht_game *g) {
     int gust=triangle*(256-ht_abs(triangle))*ht_climates[g->level].wind/(128*128);
     gust=gust*ht_exposure(g)/256;
     return g->ticks<96?gust*(int)g->ticks/96:gust;
+}
+/* Analog story tension: smooth authored spatial keys plus the active
+ * discovery's emotional emphasis. No random camera motion or new raster pass. */
+static int ht_mood_target(const ht_game *g) {
+    static const uint8_t tension[HT_LEVELS][5]={
+        {0,12,70,25,0},{0,30,115,40,0},{0,20,85,35,0},
+        {0,20,100,30,0},{0,10,45,15,0},{0,35,130,40,0},
+        {0,10,60,20,0},{0,35,208,120,0},{0,50,150,70,0},
+        {0,15,70,110,20}
+    };
+    int x=ht_clamp(g->x/256,0,3199),span=x/800,part=x%800;
+    int mood=tension[g->level][span]+((int)tension[g->level][span+1]-tension[g->level][span])*part/800;
+    if(ht_weather_target(g)) mood+=ht_exposure(g)/3;
+    return ht_clamp(mood,0,256);
+}
+static void ht_camera_step(bool moving) {
+    if(moving) {
+        int target=ht_mood_target(&ht),mood=ht.camera_mood;
+        ht.camera_mood=(uint16_t)(mood+ht_clamp(target-mood,-2,2));
+        ht.sway_phase+=5; /* Preserve the original breathing zoom exactly. */
+        ht.rotation_phase=(ht.rotation_phase+213u+1067u*ht.camera_mood/256u)&262143u;
+    }
+    bool falling=!ht.grounded && !ht.traversal.mode && ht.vy>384 && ht.y>ht.airborne_origin+40*256;
+    if(falling) ht.drop_zoom=(uint16_t)ht_min(256,ht.drop_zoom+16);
+    else if(ht.drop_zoom) ht.drop_zoom=(uint16_t)ht_max(0,ht.drop_zoom-4);
+    if(ht.grounded || ht.traversal.mode) ht.airborne_origin=ht.y;
 }
 static int ht_landmark_x(unsigned level,int scene) {
     const ht_platform *p=&ht_level_land(level)[scene?6:3];
@@ -314,21 +356,25 @@ static bool ht_observe(void) {
 }
 static void ht_spawn(bool restart) {
     uint8_t bridge_open=restart?0:ht.traversal.bridge_open;
+    uint8_t scene_evidence=restart?0:ht.scene_evidence;
+    uint16_t weather_amount=restart?0:ht.weather_amount;
+    uint16_t weather_age=restart?0:ht.weather_age;
     uint32_t evidence=ht.evidence;
     uint8_t verdict=restart?0:ht.verdict,last_verdict=ht.last_verdict,endings=ht.endings;
     bool verdict_read=!restart && ht.verdict_read;
     uint8_t seen[HT_LEVELS]; memcpy(seen,ht.story_seen,sizeof(seen));
     ht_puzzle_state puzzle=ht.puzzle;
-    if(restart) memset(&puzzle,0,sizeof(puzzle));
+    if(restart) ht_puzzle_reset(&puzzle,ht.level);
     unsigned laps=ht.laps, deaths=ht.deaths, level=ht.level;
     int cp=restart?0:ht.checkpoint, story_x=restart?0:ht.story_x;
     memset(&ht,0,sizeof(ht)); ht.laps=laps; ht.deaths=deaths; ht.level=level;
     ht.evidence=evidence; ht.puzzle=puzzle;
+    ht.scene_evidence=scene_evidence;ht.weather_amount=weather_amount;ht.weather_age=weather_age;
     ht.verdict=verdict; ht.last_verdict=last_verdict; ht.endings=endings; ht.verdict_read=verdict_read;
     memcpy(ht.story_seen,seen,sizeof(seen));
     if(!ht.story_seen[level]) ht.story_seen[level]=1;
     ht.story_x=story_x; ht.checkpoint=cp; ht.x=(cp?ht_land[cp].left+35:95)*256;
-    ht.y=ht_land[cp].top*256; ht.grounded=true; ht.facing=1;
+    ht.y=ht_land[cp].top*256; ht.airborne_origin=ht.y; ht.grounded=true; ht.facing=1;
     ht.camera=ht_clamp(ht.x/256-165,0,HT_GOAL-340)*256;
     ht.camera_y=ht_clamp(ht.y/256-180,-300,100)*256;
     const ht_mechanics *m=&ht_mechanics_by_level[level];
@@ -1043,6 +1089,7 @@ static __attribute__((optimize("O3"))) void ht_upscale_scene(void) {
         if((y&15)==15) ht_checkpoint();
     }
 }
+#include "hollow_trail_character_pose.inc"
 static void ht_character(int x,int feet,const ht_game *game) {
     /* Local mist separation keeps the player visible when a black trunk
      * crosses behind them. Never wash out the landing surface underfoot. */
@@ -1056,6 +1103,7 @@ static void ht_character(int x,int feet,const ht_game *game) {
             }
         }
     }
+    if(ht_character_instrument(x,feet,game)) return;
     if(game->traversal.mode==HT_BOAT) {
         /* Seated on the centre thwart: planted knees, no walking stride.
          * Hands and the single shared oar use the same rowing stroke. */
@@ -1120,12 +1168,16 @@ static int ht_sway_wave(unsigned phase) {
 /* Raster only the visible interior. At <=344/4096 off-diagonal rotation and inward
  * scaling, the nine-pixel border guarantees all four source taps are valid.
  * The vignette replaces everything outside this range immediately afterward. */
-static __attribute__((optimize("O3"))) void ht_sway_into(const uint8_t *source,unsigned phase) {
-    int turn=ht_sway_wave(phase)*43/32;
-    int breathe=4096-(ht_sway_wave(phase/2+768)+256)*4/3;
-    /* The two-times-angle crop covers the wide viewport's corners. The
-     * combined inverse matrix gives ~5.76 degrees and 1.00–1.20x zoom. */
-    int scale=ht_min(breathe,4096-2*ht_abs(turn));
+static void ht_camera_coefficients(const ht_game *g,int *turn,int *scale) {
+    int gain=43+(int)g->camera_mood*213/256;
+    *turn=ht_sway_wave(g->rotation_phase>>8)*43/32*gain/256;
+    int breathe=4096-(ht_sway_wave(g->sway_phase/2+768)+256)*4/3;
+    /* Widen toward the uncropped view during a true drop, then ease back
+     * into the unchanged breathing phase. Retain the corner-safe crop. */
+    breathe+=(4096-breathe)*g->drop_zoom/256;
+    *scale=ht_min(breathe,4096-2*ht_abs(*turn));
+}
+static __attribute__((optimize("O3"))) void ht_affine_into(const uint8_t *source,int turn,int scale) {
     for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
         int left=ht_visible_left[y],right=HT_W-left;
         int u=(HT_W/2)*4096+(left-HT_W/2)*scale+(y-HT_H/2)*turn;
@@ -1141,10 +1193,13 @@ static __attribute__((optimize("O3"))) void ht_sway_into(const uint8_t *source,u
         if((y&15)==15) ht_checkpoint();
     }
 }
-static void ht_sway_scene(unsigned phase) {
-    if(!phase) return;
-    memcpy(ht_temp,ht_scene,HT_PIXELS);
-    ht_sway_into(ht_temp,phase);
+static void ht_sway_into(const uint8_t *source,unsigned phase) {
+    int turn=ht_sway_wave(phase)*43/32;
+    int scale=ht_min(4096-(ht_sway_wave(phase/2+768)+256)*4/3,4096-2*ht_abs(turn));
+    ht_affine_into(source,turn,scale);
+}
+static void ht_camera_into(const uint8_t *source,const ht_game *g) {
+    int turn,scale;ht_camera_coefficients(g,&turn,&scale);ht_affine_into(source,turn,scale);
 }
 /* Fixed particle budget, no allocations, frame noise or full-screen pass.
  * Weather shares the frozen world snapshot and pauses with simulation. */
@@ -1200,21 +1255,32 @@ static void ht_render_scene(void) {
     ht_select_level(game.level);
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
     if(!ht_cache_visible(camera)) return;
-    memset(ht_low_scene,0,HT_SCENE_PIXELS);
+    memset(ht_low_scene,ht_sky_ink(&game),HT_SCENE_PIXELS);
     for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
         ht_composite_cached(depth,ht_layer_offset(depth,camera),px,py);
     /* Render directly to the transform source: remove the former full-frame
      * copy into scratch. Input servicing never reads this raster pointer. */
     uint8_t *output=ht_scene;
-    if(game.sway_phase) ht_scene=ht_temp;
+    if(game.sway_phase || game.drop_zoom) ht_scene=ht_temp;
     ht_upscale_scene();
+    /* Lightning lights the sky behind silhouettes, never the HUD or panel
+     * waveform. Sky darkening reuses the existing composite clear above. */
+    if(ht_lightning(&game)>80) {
+        int x=340-game.camera/2048,y=22;
+        for(int i=0;i<5;++i) {
+            int nx=x+(i%2?-11:5),ny=y+12+i*3;
+            int floor=ht_weather_floor(&game,x);
+            if(y<floor) ht_limb(ht_scene,x,y,nx,ht_min(ny,floor-1),1,0,0);
+            x=nx;y=ny;
+        }
+    }
     ht_draw_traversal(&game);
     ht_draw_evidence(&game);
     ht_draw_puzzle(&game);
     ht_character(px,(game.y-game.camera_y)/256,&game);
     ht_weather(&game);
     ht_scene=output;
-    if(game.sway_phase) ht_sway_into(ht_temp,game.sway_phase);
+    if(game.sway_phase || game.drop_zoom) ht_camera_into(ht_temp,&game);
     ht_vignette();
 }
 /* Four physical gray levels. A fixed dispersed 8x8 threshold resolves only
@@ -1444,8 +1510,7 @@ static void ht_narration(const ht_game *game) {
         const char *text=ht_chapters[game->level].lines[beat][line];
         if(game->x/256>=2780) text=game->puzzle.solved?
             ht_puzzles[game->level].reveal[line]:
-                (line?"START JOURNAL OR PAUSE THEN A / CONFIRM.":
-                      "THE ANSWER IS HIDDEN IN THE THINGS LEFT BEHIND.");
+                ht_puzzles[game->level].clue[line];
         if(game->level==HT_LEVELS-1 && game->verdict)
             text=line?"THE WAY IS OPEN WHEN I HAVE READ WHAT I CHANGED.":
                 (game->verdict==1?"I BROKE THE FEED. HER PLAN INCLUDED MY RESCUE.":
@@ -1459,27 +1524,10 @@ static void ht_narration(const ht_game *game) {
     }
 }
 
-/* Small sharp interactive overlays; scenery/blur caches never depend on them. */
+#include "hollow_trail_mechanism_draw.inc"
 static void ht_draw_puzzle(const ht_game *game) {
     int camera=game->camera/256,top=ht_level_land(game->level)[9].top-game->camera_y/256;
-    const ht_puzzle_definition *p=&ht_puzzles[game->level];
-    for(int i=0;i<3;++i) {
-        int x=HT_PUZZLE_FIRST+i*HT_PUZZLE_SPACING-camera;
-        if(x< -30 || x>=HT_W+30) continue;
-        ht_rect(ht_scene,x-3,top-27,6,27,255);
-        if(p->kind==0) {
-            int height=24+i*7;
-            ht_rect(ht_scene,x-2,top-height-10,4,height+10,255);
-            ht_disk(ht_scene,x,top-height,8,255);
-            ht_rect(ht_scene,x-4,top-height-3,8,4,game->puzzle.solved?0:150);
-        } else {
-            ht_disk(ht_scene,x,top-30,10,255);
-            ht_disk(ht_scene,x,top-30,7,0);
-            char digit[2]={(char)('0'+game->puzzle.value[i]),0};
-            ht_text(x-2,top-33,digit,1);
-        }
-        if(ht_puzzle_near(game)==i) ht_rect(ht_scene,x-12,top+3,24,2,0);
-    }
+    ht_draw_mechanisms(game,top);
     int x=HT_GOAL-camera;
     if(game->level==HT_LEVELS-1 && game->puzzle.solved) {
         ht_rect(ht_scene,x-18,top-48,36,48,255);
@@ -1492,12 +1540,7 @@ static void ht_draw_puzzle(const ht_game *game) {
         if(game->verdict!=1) ht_disk(ht_scene,x,top-56,2,0);
         return;
     }
-    if(!game->puzzle.solved || ht_final_locked(game)) {
-        for(int i=-10;i<=10;i+=5) ht_rect(ht_scene,x+i,top-46,2,46,255);
-        ht_rect(ht_scene,x-12,top-25,25,4,255);
-    } else {
-        ht_disk(ht_scene,x,top-61,5,255); ht_disk(ht_scene,x,top-61,3,0);
-    }
+    ht_draw_chapter_gate(game,top);
 }
 static void ht_puzzle_prompt(const ht_game *game) {
     if(game->x/256<2780) return;
@@ -1508,12 +1551,12 @@ static void ht_puzzle_prompt(const ht_game *game) {
         ht_text_color(74,49,!game->verdict?"A / CONFIRM AT THE GLASS: BREAK OR COMPLETE":
             !game->verdict_read?"A / CONFIRM AT THE GLASS: READ THE CHANGED TESTIMONY":
             "PASSAGE OPEN - WALK ON TO BEGIN ANOTHER JOURNEY",1,0);
-    } else if(game->puzzle.solved) ht_text_color(74,49,"PASSAGE OPEN - FOLLOW THE LIGHT",1,0);
-    else if(p->kind==0) {
+    } else if(game->puzzle.solved) ht_text_color(74,49,game->puzzle.opening<48?"THE PASSAGE IS OPENING":"PASSAGE OPEN - FOLLOW THE LIGHT",1,0);
+    else if(p->kind==HT_SIGNAL) {
         char status[]="A / CONFIRM RING   NOTES 0/0";
-        status[24]=(char)('0'+game->puzzle.progress); status[26]=(char)('0'+p->length);
+        status[25]=(char)('0'+game->puzzle.progress); status[27]=(char)('0'+p->length);
         ht_text_color(74,49,game->puzzle.wrong?"WRONG NOTE - BEGIN AGAIN WITH THE CLUE":status,1,0);
-    } else ht_text_color(74,49,p->kind==1?"A / CONFIRM TOGGLE NEARBY SWITCH   0 OFF 1 ON":"A / CONFIRM TURN NEARBY DIAL   0 1 2 3",1,0);
+    } else ht_text_color(74,49,game->puzzle.wrong?"BLOCKED - FOLLOW THE CONNECTIONS": "A / CONFIRM OPERATE - OBSERVE THE MECHANISM",1,0);
 }
 
 /* Tiny scraps/containers embedded in scenery. No flashing markers or distant
@@ -1523,6 +1566,7 @@ static void ht_draw_evidence(const ht_game *game) {
         int x=ht_evidence_x(game->level,item)-game->camera/256;
         int y=ht_platform_top(game,ht_evidence_platform(item))-game->camera_y/256;
         if(x< -12 || x>=HT_W+12) continue;
+        ht_draw_mechanism_trace(game,item,x,y);
         ht_rect(ht_scene,x-6,y-10,12,10,255);
         if(item==1) ht_rect(ht_scene,x-8,y-12,16,3,255);
         else if(item==2) ht_limb(ht_scene,x-5,y-10,x+3,y-16,2,1,255);

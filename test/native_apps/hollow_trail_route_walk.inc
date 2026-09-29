@@ -1,9 +1,13 @@
 /* Input-only chapter witness: follow each authored platform connection and
  * operate its actual mass, plate, boat, ladder or rope. Never teleport bodies,
  * move fixtures, set puzzle/bridge flags or bypass normal simulation. */
-static unsigned walk_phase,walk_level=999,walk_mechanics,walk_task;
+/* Independent witness actions, not solutions read from production targets. */
+static const char *walk_solutions[HT_LEVELS]={
+    "112","0112","0121012","0120","0221","001222","0122","0000111","1021","000"
+};
+static unsigned walk_phase,walk_level=999,walk_mechanics,walk_task,walk_puzzle;
 static void walk_route_tick(void) {
-    if(walk_level!=ht.level) {walk_level=ht.level;walk_phase=0;walk_mechanics=walk_task=0;}
+    if(walk_level!=ht.level) {walk_level=ht.level;walk_phase=0;walk_mechanics=walk_task=walk_puzzle=0;}
     int x=ht.x/256,y=ht.y/256,dir=0,vertical=0;
     bool jump=false,mass_work=false;
     const ht_mechanics *m=ht_mech(&ht);ht_traversal *t=&ht.traversal;
@@ -80,12 +84,11 @@ static void walk_route_tick(void) {
     if(walk_phase==9) {
         dir=1;
         if(x>=2820 && ht.grounded && !ht.puzzle.solved) {
-            const ht_puzzle_definition *p=&ht_puzzles[ht.level];int station=0;
-            if(p->kind==0) station=p->answer[ht.puzzle.progress];
-            else while(station<2 && ht.puzzle.value[station]==p->answer[station]) ++station;
+            assert(walk_puzzle<strlen(walk_solutions[ht.level]));
+            int station=walk_solutions[ht.level][walk_puzzle]-'0';
             int target=HT_PUZZLE_FIRST+station*HT_PUZZLE_SPACING;
             dir=x<target?1:-1;
-            if(ht_puzzle_near(&ht)==station) {assert(ht_interact());dir=0;}
+            if(ht_puzzle_near(&ht)==station) {assert(ht_interact());++walk_puzzle;dir=0;}
         }
         if(ht_final_near(&ht) && !ht.verdict) {assert(ht_decide(1));ht.verdict_read=true;}
     }
