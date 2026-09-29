@@ -1,34 +1,35 @@
 # Hollow Trail independent render tests — 1.1.16
 
 The owner measured only about +0.2 FPS for the combined expansion. This build
-isolates its operations to expose individual gains or regressions, and adds eleven
+isolates its operations to expose individual gains or regressions, and adds twelve
 shared-renderer experiments. All modes keep AI composition and the proven SIMD
 packer when its device self-test passes. No learned dither, neural 960 mode,
 scene-specific shortcut, effect removal or model-weight change is introduced.
 
 Pause and press **B/Up** to cycle. The pause screen shows the numbered experiment.
 Each test changes only the named operation relative to the packing baseline,
-except the explicitly named all-four comparison:
+except the explicitly named all-four comparison and the combined low-background-camera path:
 
 | Test | Selected change |
 | --- | --- |
-| 1/17 Packing baseline | AI with the existing SIMD packer; all extra operations disabled. |
-| 2/17 SIMD upscale | Vector 240×135 → 480×270 interpolation only. |
-| 3/17 SIMD reconstruction | Vector 120×68 reconstruction interpolation and edge gate only; residual inference unchanged. |
-| 4/17 SIMD compositing | Vector focus/depth blending only. |
-| 5/17 SIMD blur / cache | Fused vector vertical blur output and running sums only. |
-| 6/17 Packed camera | Two horizontal interpolation rows in independent 16-bit lanes of one 32-bit word. Original vertical interpolation/rounding retained. |
-| 7/17 Packed vignette | Symmetric fade pixels multiplied in two 16-bit lanes, with exact division by 255 using shifts/adds. |
-| 8/17 Triangle stepping | Exact integer quotient/remainder edge stepping replaces two divisions per scanline in shared triangle rasterization. |
-| 9/17 All four SIMD | Previous expanded behavior: tests 2–5 together. The additional CPU experiments stay off. |
-| 10/17 Bounded focus math | Clamp distance first; compute the remaining /200 through an exact bounded 32-bit reciprocal. |
-| 11/17 Flat camera skip | Skip interpolation only when all four source samples are identical. |
-| 12/17 Neural patch cache | Reuse an existing model result only for an identical nine-byte input patch. |
-| 13/17 Blur interior | Peel clamped edges from the horizontal running-sum loop; directly address interior samples. |
-| 14/17 Compositor tile plan | Calculate horizontal tile spans once per composition and reuse them for all rows. |
-| 15/17 Internal neural | Stage unchanged weights, hidden values, three rolling source rows and two output rows in internal SRAM. |
-| 16/17 Internal blur | Stage horizontal input and vertical add/subtract/output rows in internal SRAM; existing sums remain on the stack. |
-| 17/17 Internal packing | Stage packing constants, two rolling source rows and two packed output rows in internal SRAM. |
+| 1/18 Packing baseline | AI with the existing SIMD packer; all extra operations disabled. |
+| 2/18 SIMD upscale | Vector 240×135 → 480×270 interpolation only. |
+| 3/18 SIMD reconstruction | Vector 120×68 reconstruction interpolation and edge gate only; residual inference unchanged. |
+| 4/18 SIMD compositing | Vector focus/depth blending only. |
+| 5/18 SIMD blur / cache | Fused vector vertical blur output and running sums only. |
+| 6/18 Packed camera | Two horizontal interpolation rows in independent 16-bit lanes of one 32-bit word. Original vertical interpolation/rounding retained. |
+| 7/18 Packed vignette | Symmetric fade pixels multiplied in two 16-bit lanes, with exact division by 255 using shifts/adds. |
+| 8/18 Triangle stepping | Exact integer quotient/remainder edge stepping replaces two divisions per scanline in shared triangle rasterization. |
+| 9/18 All four SIMD | Previous expanded behavior: tests 2–5 together. The additional CPU experiments stay off. |
+| 10/18 Bounded focus math | Clamp distance first; compute the remaining /200 through an exact bounded 32-bit reciprocal. |
+| 11/18 Flat camera skip | Skip interpolation only when all four source samples are identical. |
+| 12/18 Neural patch cache | Reuse an existing model result only for an identical nine-byte input patch. |
+| 13/18 Blur interior | Peel clamped edges from the horizontal running-sum loop; directly address interior samples. |
+| 14/18 Compositor tile plan | Calculate horizontal tile spans once per composition and reuse them for all rows. |
+| 15/18 Internal neural | Stage unchanged weights, hidden values, three rolling source rows and two output rows in internal SRAM. |
+| 16/18 Internal blur | Stage horizontal input and vertical add/subtract/output rows in internal SRAM; existing sums remain on the stack. |
+| 17/18 Internal packing | Stage packing constants, two rolling source rows and two packed output rows in internal SRAM. |
+| 18/18 Low background camera | Transform background at 240×135; conservatively project full-resolution foreground spans, cull coarse hidden background work, and project verified constant fills as runs. Background filtering differs from baseline. |
 
 Changing tests discards prepared output and clears timing statistics. Tests 2–5
 have separate startup self-tests/readiness bits; failure in one does not disable
@@ -69,7 +70,7 @@ lanes including the rounding bias reach at most 65152, for which
 `(n+1+(n>>8))>>8` equals `n/255`. Triangle stepping accumulates a nonnegative
 remainder for each absolute slope and reapplies its sign; this preserves C's
 truncation toward zero, including clipped starts, flat edges and reversed slopes.
-All experiments operate in common renderer functions. They preserve the
+Modes 1–17 operate in common renderer functions and preserve the
 existing raster size, filters, model, geometry, camera trajectory and checkpoints.
 
 ## Validation
@@ -120,7 +121,7 @@ ESP32-S3 timings. Larger cache allocation was not selected just to increase hits
 
 The extended sanitizer test compares 30,000 patches and immediate repeat hits
 against direct inference (including eviction/hash collisions), then compares
-complete fresh renders in all seventeen modes across every chapter. Rolling FPS
+complete fresh renders in the seventeen exact modes across every chapter. Rolling FPS
 behavior and the baseline remain unchanged. Version stays 1.1.16 because this is
 an update to the same open, unreleased PR rather than a new release lineage.
 
@@ -188,3 +189,70 @@ and complete renders across all ten chapters with the workspace attached.
 Host allocation tests emulate the allocator contract; physical SRAM placement
 is enforced by the S3 allocator capability request. Device FPS gains remain
 unmeasured. App version remains 1.1.16 in this cumulative unreleased PR.
+
+
+## Low background camera, coarse occlusion and fill projection
+
+Mode 18 moves background camera interpolation to 240×135, then upscales the
+result. It is a combined rendering-path experiment, not a pixel-identical math
+replacement. The original full-resolution untransformed background is still
+upscaled once into the foreground source because mist/halos and soft foreground
+edges read it. Foreground writes are tracked as conservative source-row spans.
+Those spans are projected using the inverse camera matrix with a bilinear support
+halo and rounding guards. Only their destination spans require the original
+full-resolution sampling. Untouched regions use the transformed low background.
+The camera center remains (240,135), including the half-pixel low-resolution Y
+center; phase, scale, vista, physics and UI remain unchanged.
+
+Coarse background occlusion reuses platform pieces and their real terrain
+surface, bottom and cliff inset, matching the drawn geometry. It marks only
+complete 16×16 blocks inside guaranteed solid bodies. A one-block erosion keeps
+reconstruction and interpolation dependencies away from boundaries. The AI
+compositor skips hidden samples, and reconstruction skips their neural gates.
+This applies to all chapters using these terrain primitives; it does not assume
+that a collision rectangle alone is an opaque wall. Gaps, foliage, complex
+silhouettes and blended effects are not used as occluders. Shared scenery cache
+building/blur remains intact so future camera positions have complete tiles.
+
+Camera projection also culls low-resolution samples whose entire 3×3 upscaled
+consumer neighborhood will be replaced by foreground projection, and avoids
+upscaling groups wholly replaced on both output rows. Full projected coverage
+skips the low-camera pass and second upscale altogether, for any scene. The
+existing fully opaque grotto background rejection is retained; it now benefits
+from the same foreground fill projection as other scenes.
+
+For large foreground fills, the completed source image is classified into
+constant-color 16×16 blocks. Adjacent blocks of the same shade form wider runs.
+For each projected row, the renderer advances to where the four-tap footprint
+would leave that constant region and fills the safe run directly. Only boundary
+and nonuniform runs use bilinear interpolation. This is exact for black, white
+and gray; a thin line or window makes its block nonuniform. Classification uses
+actual final pixels, not optimistic collision coverage. Fine detail is preserved.
+Raster primitives report writes through `ht_camera_touch`; the direct mist and
+grotto row writers also report coverage. Any future direct raster writer in the
+foreground phase must report its touched span, while new scenes built from the
+shared primitives inherit tracking automatically.
+
+Fixed metadata totals approximately 4.7 KB (two source bounds and two destination
+bounds per row, coarse masks, flat block shades and run ends); there are no new
+frame allocations or bulk buffers. Cache-work scratch is never borrowed. Row
+checkpoints and frozen frame state are retained. Mode switching continues to
+clear FPS history, and the previous seventeen modes remain available.
+
+Validation includes 180 synthetic transforms with an independent per-pixel
+foreground oracle, full fills interrupted by single-pixel lines, culling versus
+unculled low sampling, and 120 terrain states drawn over opposite backgrounds
+to prove coarse opaque blocks. All ten chapters at three views retain the exact
+untransformed foreground source; opaque scenes and no-motion output match the
+old pipeline. Repeated output is deterministic. Before/after scene renders were
+visually inspected; exposed backgrounds can differ slightly in filtering and
+boundaries between the two sampling resolutions still need device motion review.
+
+A host render-only benchmark (10 chapters, three starts, 100 moving frames,
+two alternating-order repetitions: 6000 frames per mode) took 3234.445 ms for
+baseline and 3243.702 ms for mode 18 in one run: **1.003× baseline time**, roughly
+even, not a demonstrated performance gain. The early prototype was slower and
+was not promoted to the default. Device packing, display scans, input servicing
+and PSRAM behavior are excluded. Reproduce with the compile command in
+`test/native_apps/hollow_trail_camera_bench.c`. Device FPS remains unmeasured;
+compare mode 18 with mode 1 on matching routes using the full ten-second window.

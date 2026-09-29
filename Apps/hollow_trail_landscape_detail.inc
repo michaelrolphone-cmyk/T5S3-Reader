@@ -76,6 +76,7 @@ static __attribute__((optimize("O3"))) void ht_boat_grotto(const ht_game *g) {
     int boat=ht_project_x(g->traversal.boat_x/256-cx);
     for(int sy=0;sy<HT_H;++sy) {
         uint8_t *row=ht_scene+sy*HT_W;
+        ht_camera_touch(0,HT_W-1,sy);
         int dy=sy-middle,dy2=dy*dy*2;
         int far_ink=145-ht_clamp(sy-50,0,180)/2;
         int mid_ink=222-ht_clamp(sy-80,0,160)/3;

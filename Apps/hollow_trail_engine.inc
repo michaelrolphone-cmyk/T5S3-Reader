@@ -469,10 +469,27 @@ static void ht_spawn(bool restart) {
     }
 }
 #include "hollow_trail_traversal.inc"
+#include "hollow_trail_occlusion.inc"
+/* Foreground writes are tracked only for the low-background-camera experiment.
+ * Inclusive spans cover overwrites and read/modify/write effects alike. */
+static bool ht_camera_tracking;
+static int16_t ht_camera_source_left[HT_H],ht_camera_source_right[HT_H];
+static void ht_camera_touch(int x0,int x1,int y) {
+    if(!ht_camera_tracking || y<0 || y>=HT_H || x0>=HT_W || x1<0)return;
+    ht_camera_source_left[y]=(int16_t)ht_min(ht_camera_source_left[y],ht_max(0,x0));
+    ht_camera_source_right[y]=(int16_t)ht_max(ht_camera_source_right[y],ht_min(HT_W-1,x1));
+}
+static void ht_camera_track_begin(void) {
+    for(int y=0;y<HT_H;++y){ht_camera_source_left[y]=HT_W;ht_camera_source_right[y]=-1;}
+    ht_camera_tracking=true;
+}
 static void ht_span(uint8_t *b,int x0,int x1,int y,int c) {
     if(y<0 || y>=HT_H || x0>=HT_W || x1<0) return;
     x0=ht_max(x0,0); x1=ht_min(x1,HT_W-1);
-    if(x1>=x0) memset(b+y*HT_W+x0,c,(size_t)(x1-x0+1));
+    if(x1>=x0) {
+        if(b==ht_scene)ht_camera_touch(x0,x1,y);
+        memset(b+y*HT_W+x0,c,(size_t)(x1-x0+1));
+    }
 }
 static void ht_rect(uint8_t *b,int x,int y,int w,int h,int c) {
     if(w<=0 || h<=0) return;
@@ -1189,6 +1206,7 @@ static __attribute__((optimize("O3"))) void ht_composite_cached_ai(int depth,int
             const uint8_t *near=ht_cached_near[depth][slot]+(4*y)*HT_TILE_W+column;
             const uint8_t *wide=ht_cached_wide[depth][slot]+(4*y)*HT_TILE_W+column;
             for(int i=0;i<count;++i,++x) {
+                if(ht_background_hidden(4*x,4*y)){++ht_occlusion_composite_skips;continue;}
                 /* Guard aligned reads on both sides of each cache row. Source
                  * can have any byte offset; destination stores require /4.
                  * Weights use exact 8-byte loads; scene uses exact 4-byte loads. */
@@ -1335,6 +1353,7 @@ static __attribute__((optimize("O3"))) void ht_reconstruct_low_scene(void) {
             ht_edge_span(r1,r2,edges,blocks);edge_end=(int)blocks*16;
         }
         for(int x=0;x<HT_RECON_W;++x) {
+            if(ht_background_hidden(4*x,4*y)){++ht_occlusion_neural_skips;continue;}
             int xp=ht_min(x+1,HT_RECON_W-1);
             int a=r1[x],right=r1[xp],down=r2[x],down_right=r2[xp];
             if(x<edge_end) {if(!edges[x])continue;}
@@ -1405,7 +1424,7 @@ static void ht_character(int x,int feet,const ht_game *game) {
             if(d<625) {
                 int ceiling=170+85*ht_clamp(d-100,0,525)/525;
                 int i=y*HT_W+px;
-                if(ht_scene[i]>ceiling) ht_scene[i]=(uint8_t)ceiling;
+                if(ht_scene[i]>ceiling) {ht_camera_touch(px,px,y);ht_scene[i]=(uint8_t)ceiling;}
             }
         }
     }
@@ -1592,7 +1611,11 @@ static void ht_draw_evidence(const ht_game *game);
 static bool ht_grotto_opaque(const ht_game *g) {
     return g->level==4 && g->camera/256<=700;
 }
+#include "hollow_trail_camera_split.inc"
 static void ht_render_scene(void) {
+    ht_camera_tracking=false;ht_occlusion_active=false;
+    ht_occlusion_blocks=ht_occlusion_composite_skips=ht_occlusion_neural_skips=0;
+    ht_camera_low_samples=ht_camera_low_skipped=ht_camera_foreground_samples=ht_camera_fill_pixels=0;
     memset(&ht_render_last,0,sizeof(ht_render_last));
     uint32_t stage=ht_render_now();
     /* Input checkpoints may advance live physics. Freeze the rendered frame
@@ -1602,8 +1625,9 @@ static void ht_render_scene(void) {
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
     bool opaque=ht_grotto_opaque(&game);
     if(ht_abort) return;
+    if(ht_render_test==HT_TEST_LOW_CAMERA && !opaque)ht_occlusion_build(&game);
     if(!opaque) {
-        if(!ht_cache_visible(camera)) return;
+        if(!ht_cache_visible(camera)) {ht_occlusion_active=false;return;}
         if(ht_ai_rendering) {
             memset(ht_recon_scene,ht_sky_ink(&game),HT_RECON_PIXELS);
             for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
@@ -1620,6 +1644,8 @@ static void ht_render_scene(void) {
     uint8_t *output=ht_scene;
     if(game.sway_phase || game.drop_zoom) ht_scene=ht_temp;
     if(!opaque) ht_upscale_scene();
+    bool split=ht_render_test==HT_TEST_LOW_CAMERA && (game.sway_phase || game.drop_zoom);
+    if(split)ht_camera_track_begin();
     /* Lightning lights the sky behind silhouettes, never the HUD or panel
      * waveform. Sky darkening reuses the existing composite clear above. */
     if(!opaque && ht_lightning(&game)>80) {
@@ -1642,9 +1668,12 @@ static void ht_render_scene(void) {
     ht_render_last.world=post_start-world_start;
     ht_world_scale=256;
     ht_scene=output;
-    if(game.sway_phase || game.drop_zoom) ht_camera_into(ht_temp,&game);
+    ht_camera_tracking=false;
+    if(split)ht_camera_split_into(ht_temp,&game);
+    else if(game.sway_phase || game.drop_zoom) ht_camera_into(ht_temp,&game);
     ht_vignette();
     ht_render_last.post=ht_render_now()-post_start;
+    ht_occlusion_active=false;
 }
 /* Four physical gray levels. A fixed dispersed 8x8 threshold resolves only
  * fractional blur/fog values between them, with no temporal shimmer. Exact
