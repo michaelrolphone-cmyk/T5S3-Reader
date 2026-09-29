@@ -21,7 +21,8 @@ static bool quitting, jump_down, pause_down, paused, mode_down;
 static uint32_t held, previous, last_poll, last_yield;
 static uint32_t simulation_clock, simulation_accumulator, scene_revision;
 static bool simulation_started,loading,reading;
-static unsigned journal_page;
+static unsigned journal_page,debug_level;
+static bool debug_select,debug_jump;
 #define HT_INPUT_INTERVAL_MS 8u
 #define HT_YIELD_INTERVAL_MS 32u
 #define HT_FRAME_INTERVAL_MS 42u /* At most 24 submissions/s; physics stays 32ms. */
@@ -87,10 +88,10 @@ static void ht_acquire_pad(void) {
     }
 }
 static void ht_advance(uint32_t now) {
-    if(reading || loading || ht.level!=ht_geometry_level) { simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
+    if(reading || loading || debug_jump || ht.level!=ht_geometry_level) { simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
     if(!simulation_started) { simulation_clock=now; simulation_started=true; }
     if(pause_down) {
-        paused=!paused; pause_down=false; simulation_accumulator=0; ++scene_revision;
+        paused=!paused; debug_select=false; debug_level=ht.level; pause_down=false; simulation_accumulator=0; ++scene_revision;
     }
     uint32_t elapsed=now-simulation_clock;
     simulation_clock=now;
@@ -101,7 +102,7 @@ static void ht_advance(uint32_t now) {
         ht_game before=ht;
         ht_step_controls(direction,((held&HT_DOWN)!=0)-((held&HT_UP)!=0),jump_down,(held&HT_JUMP)!=0);
         jump_down=false; simulation_accumulator-=HT_STEP_MS;
-        if(before.x!=ht.x || before.y!=ht.y || before.camera!=ht.camera ||
+        if(before.ticks!=ht.ticks || before.x!=ht.x || before.y!=ht.y || before.camera!=ht.camera ||
            before.camera_y!=ht.camera_y || memcmp(&before.traversal,&ht.traversal,sizeof(ht.traversal)) ||
            before.story_x!=ht.story_x || before.level!=ht.level || before.stride!=ht.stride || before.facing!=ht.facing || before.laps!=ht.laps)
             ++scene_revision;
@@ -170,9 +171,9 @@ static void ht_input_update(uint32_t wait) {
         if(!connected) {
             if(in.buttons&T5_APP_BUTTON_LEFT) buttons|=HT_LEFT;
             if(in.buttons&T5_APP_BUTTON_RIGHT) buttons|=HT_RIGHT;
-            if(in.buttons&T5_APP_BUTTON_UP) buttons|=(reading || ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)?HT_UP:HT_JUMP;
+            if(in.buttons&T5_APP_BUTTON_UP) buttons|=(reading || (!paused && (ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)))?HT_UP:HT_JUMP;
             if(in.buttons&T5_APP_BUTTON_CONFIRM) buttons|=HT_INTERACT|HT_ACCEPT;
-            if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=(reading || ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)?HT_DOWN:HT_PAUSE;
+            if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=(reading || (!paused && (ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)))?HT_DOWN:HT_PAUSE;
             if(in.buttons&T5_APP_BUTTON_BACK) buttons|=HT_EXIT;
         }
         /* Raw capability ownership suppresses duplicate OS pad navigation.
@@ -192,6 +193,23 @@ static void ht_input_update(uint32_t wait) {
         if(down) ++scene_revision;
         jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0;
         previous=held=buttons; last_poll=now; return;
+    }
+    if(paused && !loading) {
+        if(down&(HT_LEFT|HT_RIGHT)) {
+            if(!debug_select) debug_level=ht.level;
+            debug_level=(debug_level+((down&HT_RIGHT)?1:HT_LEVELS-1))%HT_LEVELS;
+            debug_select=true;++scene_revision;
+        }
+        if(debug_select && (down&(HT_BACK|HT_EXIT))) {
+            debug_select=false;down&=~(HT_BACK|HT_EXIT);++scene_revision;
+        } else if(debug_select && (down&HT_ACCEPT)) {
+            ht.level=debug_level;ht_spawn(true);debug_jump=true;
+            paused=reading=debug_select=false;
+            jump_down=pause_down=mode_down=false;
+            simulation_started=false;simulation_accumulator=0;++scene_revision;
+            /* Loading consumes this press; require neutral before gameplay. */
+            ht_input_rearm=true;previous=buttons;held=0;last_poll=now;return;
+        }
     }
     jump_down|=(down&HT_JUMP)!=0; pause_down|=(down&HT_PAUSE)!=0;
     if(((down&HT_JOURNAL) || (paused && (down&HT_ACCEPT))) && !loading) {
@@ -267,7 +285,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     ht_math=t5_math_get_api(T5_MATH_API_VERSION);
     if(ht_math && (ht_math->api_version!=T5_MATH_API_VERSION || ht_math->struct_size<sizeof(*ht_math) ||
                    !ht_math->add_s16 || !ht_math->sub_s16 || !ht_math->copy_bytes || !ht_math->fill_bytes)) ht_math=NULL;
-    ht_pad_owned=ht_input_rearm=ht_pad_fault=false; ht_pad_source=-1; ht_pad_device=0;
+    ht_pad_owned=ht_input_rearm=ht_pad_fault=false; debug_select=debug_jump=false; ht_pad_source=-1; ht_pad_device=0;
     ht_acquire_pad(); ht_acquire_reader(); ht_bind((uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u));
     ht_dsp_composite=false;
     if(!ht_start_video(video,&surface)) {
@@ -306,7 +324,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.1.0: dithered 1bpp parallax renderer started");
+    ht_log("Hollow Trail 1.1.1: dithered 1bpp parallax renderer started");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -321,7 +339,8 @@ __attribute__((visibility("default"))) void app_main(void) {
            input_now-last_yield>=HT_YIELD_INTERVAL_MS)
             ht_input(input_wait?1u:0u);
         if(quitting) break;
-        if(ht.level!=ht_geometry_level) {
+        if(debug_jump || ht.level!=ht_geometry_level) {
+            debug_jump=false;
             /* Discard an old-level prepared frame and freeze physics during
              * bounded cache warmup. Keep the last picture on the panel. */
             prepared=false; loading=true;
@@ -378,35 +397,40 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_traversal_prompt(&rendering_game); ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game);
             }
             if(rendering_paused) {
-                ht_rect(ht_scene,112,74,256,172,0);
-                ht_text(127,83,"HOLLOW TRAIL 1.1.0",1);
-                ht_text(198,95,"PAUSED",2);
-                ht_text(127,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
-                ht_text(127,133,!ht_dsp_available()?"DSP16: UNAVAILABLE":ht_dsp_composite?"DSP16 COMPOSITOR: ON":"DSP16 COMPOSITOR: OFF",1);
-                ht_text(127,148,"B / UP DSP16   A / CONFIRM JOURNAL",1);
+                ht_rect(ht_scene,72,40,336,206,0);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.1",1);
+                ht_text(192,60,"PAUSED",2);
+                char chapter[64];
+                snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
+                    ht_chapters[debug_select?debug_level:ht.level].title);
+                ht_text(88,84,chapter,1);
+                ht_text(88,99,debug_select?"L/R CHOOSE   A LOAD   X CANCEL":"L/R CHOOSE LEVEL   A JOURNAL",1);
+                ht_text(88,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
+                ht_text(88,133,!ht_dsp_available()?"DSP16: UNAVAILABLE":ht_dsp_composite?"DSP16 COMPOSITOR: ON":"DSP16 COMPOSITOR: OFF",1);
+                ht_text(88,148,"B / UP DSP16   START JOURNAL",1);
                 char perf[64];
                 snprintf(perf,sizeof(perf),"FPS %lu.%lu   SCANS %lu.%lu",
                     (unsigned long)(ht_perf.fps10/10),(unsigned long)(ht_perf.fps10%10),
                     (unsigned long)(ht_perf.scan10/10),(unsigned long)(ht_perf.scan10%10));
-                ht_text(127,164,perf,1);
+                ht_text(88,164,perf,1);
                 snprintf(perf,sizeof(perf),"RENDER %lu PACK %lu WAIT %lu MS",
                     (unsigned long)ht_perf.render_avg,(unsigned long)ht_perf.pack_avg,(unsigned long)ht_perf.wait_avg);
-                ht_text(127,179,perf,1);
+                ht_text(88,179,perf,1);
                 snprintf(perf,sizeof(perf),"CACHE %lu COPY %lu INPUT %lu MS",
                     (unsigned long)ht_perf.cache_avg,(unsigned long)ht_perf.copy_avg,(unsigned long)ht_perf.input_avg);
-                ht_text(127,195,perf,1);
+                ht_text(88,195,perf,1);
                 t5_video_scan_stats_v1 scan={0};
                 if(HT_HAS(video,t5_video_api_v1,scan_stats) && video->scan_stats(&scan)) {
                     snprintf(perf,sizeof(perf),"SCAN %lu PREP %lu DMA %lu MS",
                         (unsigned long)((scan.scan_us+500)/1000),
                         (unsigned long)((scan.prepare_us+500)/1000),
                         (unsigned long)((scan.dma_wait_us+500)/1000));
-                    ht_text(127,210,perf,1);
+                    ht_text(88,210,perf,1);
                     snprintf(perf,sizeof(perf),"PACE %lu ROWS %lu CORE %u/%u",
                         (unsigned long)((scan.pace_us+500)/1000),
                         (unsigned long)scan.active_rows,(unsigned)scan.scan_core,(unsigned)scan.app_core);
-                    ht_text(127,225,perf,1);
-                } else ht_text(127,210,"SCAN TIMING NOT AVAILABLE",1);
+                    ht_text(88,225,perf,1);
+                } else ht_text(88,210,"SCAN TIMING NOT AVAILABLE",1);
             }
             } /* game frame */
             prepared_since=app->millis();
@@ -415,6 +439,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             prepared=true;
         }
         if(quitting) break;
+        if(debug_jump) {prepared=false;continue;}
         /* Overlap useful packing with the queued scan. Keep the no-copy path
          * when a backbuffer is already available; staging failure is harmless. */
         if(prepared && !prepared_reader && staging && !prepared_staged && !video->can_submit()) {
@@ -436,6 +461,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             else ht_pack_mono(buffer,surface.stride_bytes);
             uint32_t output_ms=app->millis()-pack_start;
             if(quitting) break;
+            if(debug_jump) {prepared=false;continue;}
             bool cropped=display_initialized && !prepared_reader && !display_reading;
             if(video->submit(cropped?ht_dirty_top:0,cropped?ht_dirty_height:0)) {
                 display_reading=prepared_reader;

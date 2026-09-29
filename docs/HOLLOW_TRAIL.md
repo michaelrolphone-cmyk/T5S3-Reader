@@ -1,4 +1,4 @@
-# Hollow Trail 1.1.0
+# Hollow Trail 1.1.1
 
 ## Current controls (1.1.0, supersedes historical mappings below)
 
@@ -45,6 +45,93 @@ second receiver slot. The cumulative app version is unreleased 1.0.16
 (master/published 1.0.15). Firmware 1.3.36 contains the reader glyph fix and
 optional no-wait input service.
 
+
+## 24 FPS performance work (same unreleased 1.1.1)
+
+The objective remains a complete render/pack frame inside the display's
+41.7ms budget. The weather/debug PR now includes production hot-path changes,
+not just an explanation of the previous device counters:
+
+- Draw the world directly into the sway source buffer. Remove the per-frame
+  129,600-byte copy (259,200 bytes of read/write traffic). Transform only the
+  visible interior; the vignette owns the discarded pixels. Prove the four
+  bilinear taps stay in bounds for every phase of the 2,048-step cycle.
+- Rewrite bilinear arithmetic using differences, preserving rounding exactly.
+  Remove per-pixel clamps and repeated edge checks inside that proven region.
+- Cache two exact radial-lighting maps, shared across scenery depths. Reuse
+  them for settled focus and one-pixel camera-follow alternation; rebuild on
+  other focus changes with cooperative checkpoints. This adds 129,600 bytes
+  of PSRAM, allocated once with the scene. The optional DSP path retains its
+  original arithmetic and does not build an unused map.
+- Pack four output bytes at a time using aligned word writes and source-word
+  lookahead. A 2KiB dither table handles constant neighborhoods without
+  interpolation. Unaligned output retains the byte-safe path. Pixel phase,
+  dithering thresholds and interpolation results are unchanged.
+- Compile only compositor, upscaler, affine sampler and mono packer for speed;
+  the app-wide size optimization and bounded polling/yield behavior remain.
+
+A reproducible harness is `test/native_apps/hollow_trail_benchmark.c`.
+For this change, compare with engine revision
+`2fd95b1372c6752f2f24e74db66eeddd30f8420a`, using the same app include files
+(the only production change in this follow-up is the engine):
+
+```sh
+git show 2fd95b1372c6752f2f24e74db66eeddd30f8420a:Apps/hollow_trail_engine.inc > /tmp/ht-baseline.inc
+cc -std=c11 -Os -IApps -Ilib/NativeApps/include -DHT_BENCH_ENGINE='"/tmp/ht-baseline.inc"' test/native_apps/hollow_trail_benchmark.c -o /tmp/ht-before
+cc -std=c11 -Os -IApps -Ilib/NativeApps/include test/native_apps/hollow_trail_benchmark.c -o /tmp/ht-after
+/tmp/ht-before --moving
+/tmp/ht-after --moving
+/tmp/ht-before --hashes > /tmp/ht-before.hash
+/tmp/ht-after --hashes > /tmp/ht-after.hash
+cmp /tmp/ht-before.hash /tmp/ht-after.hash
+```
+
+Host `-Os` measurements over 500 warmed frames across ten chapters:
+changing focus **1.106 → 0.762ms/frame** (31% less); fixed focus with animated
+sway **1.085 → 0.693ms/frame** (36% less). With `-O2`, the corresponding runs
+were 1.133 → 0.724ms and 1.084 → 0.713ms. Packed output hashes match on all
+170 chapter/phase cases. These are CPU comparisons, not ESP32/PSRAM/display
+measurements or a claim that 24 FPS has been achieved. The next device run
+must establish whether RENDER+PACK fits the actual budget.
+
+## Debug level selection and weather (1.1.1)
+
+Hollow Trail **1.1.0 → 1.1.1**; firmware minimum stays **1.3.37**.
+From pause, Left/Right browses all ten chapters, wrapping at either end.
+A/Confirm loads the selected chapter, X cancels selection (generic Back also
+cancels). Without an active level selection, A still opens the journal;
+Start always opens it. Select resumes and B still toggles the DSP experiment.
+The destination starts with fresh puzzles, objects and checkpoint, preserving
+collected evidence and witnessed endings. No later clues are granted merely
+by selecting a chapter. Loading discards prepared old-scene frames, uses the
+existing cooperative cache warmup and requires neutral input before gameplay.
+Selecting the current chapter restarts it too.
+
+Weather draws at most 48 short rain streaks and 12 tumbling leaves, without a
+new allocation or full-screen raster pass. Deterministic particles share the
+render snapshot; rain slants and leaves drift with a smooth reversing gust.
+Weather freezes in pause/journal. Wind ramps in on spawning and nudges free
+walking/falling by at most 40/256 logical pixels per 32ms tick (4.9 pixels/s,
+versus 78.1 pixels/s walking). Collision resolves the wind displacement, so
+idle gusts cannot push through a wall. Attached ladders, ropes, boats, ledges
+and grabbed objects remain stable. Gust-only drift does not advance visual
+camera sway. The existing 24-submission cap remains unchanged.
+
+Owner's 1.0.16 device measurement: **13.4 FPS**, 24 scans/s; RENDER 50ms,
+PACK 23ms, WAIT/CACHE/COPY 0ms, INPUT 9ms; SCAN 19ms, PREP 12ms,
+DMA 2ms, PACE 23ms, ROWS 481. Render + pack is 73ms (about 13.7 FPS),
+consistent with the measured submission rate. INPUT overlaps those stages;
+scan preparation, DMA and pacing are not additive app-frame costs. A 24 FPS
+producer needs about 41.7ms/frame, so roughly 31ms must still come out of the
+measured render/pack path. These readings predate 1.1.0 traversal/sway and this
+weather update; no new on-device speedup or particle cost is claimed.
+
+Validation covers all ten debug destinations, selection-edge/held-button
+behavior, cancellation, fresh-spawn state and discovery preservation. The
+input-only journey still completes all ten chapters and gathers every clue
+with gusts enabled. Positive/negative wind, displacement bounds, deterministic
+weather, render snapshot equivalence and existing controller/journal checks
+are covered by the native suite. Target ELF/sidecar/catalog use 1.1.1.
 
 ## Traversal, journal and visual camera (1.1.0 / firmware 1.3.37)
 

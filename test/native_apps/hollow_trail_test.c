@@ -15,6 +15,17 @@ int main(void) {
     uint8_t *memory=malloc(HT_MEMORY), *frame=malloc(960u*540u/4u);
     assert(memory && frame); ht_bind(memory); ht_spawn(true);
     assert(((uintptr_t)ht_low_scene&15u)==0);
+    /* Prove clamp-free affine taps stay inside the source over a complete
+     * rotation/zoom cycle. Linear coordinates attain extrema at row ends. */
+    for(unsigned phase=0;phase<2048;++phase) {
+        int turn=ht_sway_wave(phase)/6,scale=4096-(ht_sway_wave(phase/2+768)+256)/10;
+        for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) for(int edge=0;edge<2;++edge) {
+            int x=edge?HT_W-ht_visible_left[y]-1:ht_visible_left[y];
+            int u=(HT_W/2)*4096+(x-HT_W/2)*scale+(y-HT_H/2)*turn;
+            int v=(HT_H/2)*4096-(x-HT_W/2)*turn+(y-HT_H/2)*scale;
+            assert(u>=0 && (u>>12)+1<HT_W && v>=0 && (v>>12)+1<HT_H);
+        }
+    }
     /* Walk the entire route using the same fixed-step physics and hold jump
      * from each takeoff. A route that silently respawns cannot pass. */
     unsigned visited=1;
@@ -70,6 +81,17 @@ int main(void) {
     phase=ht.sway_phase;
     for(int k=0;k<30;++k) ht_step(0,false,false);
     assert(ht.sway_phase==phase);
+    ht_spawn(true);
+    /* Gusts push idle feet in both directions, remain bounded, and cannot
+     * move a player hanging from a ledge. Weather drawing is deterministic. */
+    ht_spawn(true);ht.ticks=120;int still=ht.x;
+    ht_step(0,false,false);assert(ht.x>still && ht.x-still<=40 && ht.sway_phase==0);
+    ht_spawn(true);ht.ticks=380;still=ht.x;
+    ht_step(0,false,false);assert(ht.x<still && still-ht.x<=40 && ht.sway_phase==0);
+    for(unsigned tick=0;tick<1024;++tick) {ht.ticks=tick;assert(ht_abs(ht_wind(&ht))<=40);}
+    ht_game snapshot=ht;memset(ht_scene,0,HT_PIXELS);ht_weather(&snapshot);
+    memcpy(frame,ht_scene,HT_PIXELS);memset(ht_scene,0,HT_PIXELS);ht_weather(&snapshot);
+    assert(!memcmp(frame,ht_scene,HT_PIXELS) && !memcmp(&snapshot,&ht,sizeof(ht)));
     ht_spawn(true);
     /* Explicit authored solutions, not answers read out of game definitions. */
     const unsigned solutions[HT_LEVELS][5]={
@@ -226,6 +248,8 @@ int main(void) {
         ht_framed=false; ht_pack_format(generic,stride,mono);
         assert(!memcmp(frame,generic,(size_t)stride*540u));
     }
+    ht_framed=false;ht_pack_mono(frame,120);ht_pack_mono(generic+1,120);
+    assert(!memcmp(frame,generic+1,64800)); // Unaligned output retains byte-safe fallback.
     free(generic);
     free(expected);
     clock_t start=clock();
