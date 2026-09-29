@@ -82,8 +82,10 @@ constraint passes, rather than an authored endpoint arc. Catching preserves
 the hand position, player/deck collision remains active, and release carries
 endpoint velocity. A jump-off caps launch height to the normal jump envelope.
 
-Ladders require **A/Confirm** before Up/Down can climb; walking past them does
-not attach. A continuous downward free fall dies at the first 32ms physics
+Ladders engage with **Up/Down while overlapping**, including in midair.
+Walking or jumping through without vertical input does not attach. Down at the
+bottom and Up at the top leave the player free; Down at the top descends. B
+jumps off with a brief recapture cooldown. A is not needed. A continuous downward free fall dies at the first 32ms physics
 tick beyond one second (1024ms). Ground, a caught ledge or an attached climb/
 rope ends that fall. Releasing jump still shortens the jump as before.
 
@@ -106,7 +108,7 @@ story puzzles and evidence remain, and pause-menu selection reaches every map.
 
 Validation: an input-only journey completes all ten maps, all 30 evidence
 records and the ending without deaths. Focused checks cover circular feet,
-rolling inertia, crate friction, explicit ladder capture, rope length/floor
+rolling inertia, crate friction, directional ladder capture, rope length/floor
 constraints and the 992ms/1024ms death boundary. Host art previews were inspected. The full native-app suite, focused ASan/UBSan
 checks and the official Xtensa ELF/import build pass. The warm-cache moving-focus
 host benchmark measured 0.731ms render+pack; this is not an S3 frame-rate result.
@@ -120,7 +122,7 @@ and physical controller/display feel still require measurement.
 | --- | --- | --- |
 | Move / turn journal page | D-pad Left/Right | Left/Right |
 | Jump / leave rope or boat | B | Up when not attached |
-| Grab ladder, then climb | A, then Up/Down | Confirm, then Up/Down |
+| Engage / climb ladder | Up/Down while overlapping | Up/Down while overlapping |
 | Pull up from ledge | Up or A | Up or Confirm |
 | Drop from ledge | Down (B jumps away) | Down |
 | Grab / release object; row or pump swing | A, then Left/Right | Confirm, then Left/Right |

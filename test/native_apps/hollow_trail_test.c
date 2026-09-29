@@ -93,11 +93,34 @@ int main(void) {
     assert(ht_traversal_interact());
     for(int i=0;i<8;++i) ht_step(0,false,false);
     assert(ht.traversal.crate_vx==0);
-    /* Walking and vertical input cannot capture a ladder. A must grab it. */
+    /* Ladders require vertical intent, not A. Horizontal/neutral jumps pass
+     * freely, midair contact catches in either direction, bottom Down is inert. */
     ht.level=1;ht_spawn(true);ht.x=400*256;
-    ht_step_controls(1,-1,false,false);assert(ht.traversal.mode==HT_FREE);
-    assert(ht_traversal_interact() && ht.traversal.mode==HT_LADDER);
-    int ladder_y=ht.y;ht_step_controls(0,-1,false,false);assert(ht.y<ladder_y);
+    ht_step_controls(1,0,false,false);assert(ht.traversal.mode==HT_FREE);
+    ht.x=400*256;ht_step_controls(0,1,false,false);
+    assert(ht.traversal.mode==HT_FREE && ht.grounded && ht.y==220*256);
+    ht_step_controls(0,-1,false,false);
+    assert(ht.traversal.mode==HT_LADDER && ht.y==218*256);
+    ht_step_controls(1,-1,true,true);
+    assert(ht.traversal.mode==HT_FREE && ht.vy<0);
+    ht_step_controls(1,-1,false,true);assert(ht.traversal.mode==HT_FREE);
+    for(int vertical=-1;vertical<=1;++vertical) {
+        ht_spawn(true);ht.x=387*256;ht.y=160*256;ht.grounded=false;ht.vx=640;ht.vy=-500;
+        ht_step_controls(1,vertical,false,true);
+        assert(ht.traversal.mode==(vertical?HT_LADDER:HT_FREE));
+        if(vertical) {
+            int before=ht.y;ht_step_controls(0,vertical,false,true);
+            assert(ht.y==before+vertical*512);
+        }
+    }
+    ht_spawn(true);ht.x=400*256;ht.y=238*256;ht.grounded=false;
+    ht_step_controls(0,-1,false,false);
+    assert(ht.traversal.mode==HT_LADDER && ht.y==236*256);
+    ht_step_controls(0,1,false,false);assert(ht.traversal.mode==HT_FREE && !ht.grounded);
+    ht_spawn(true);ht.x=400*256;ht.y=80*256;ht.grounded=true;
+    ht_step_controls(1,-1,false,false);assert(ht.traversal.mode==HT_FREE && ht.x>400*256);
+    ht.x=400*256;ht_step_controls(0,1,false,false);
+    assert(ht.traversal.mode==HT_LADDER && ht.y==82*256);
     /* Catch at the actual rope end, stay above the deck, then swing away.
      * Length constraints keep each rendered segment within two pixels. */
     ht.level=0;ht_spawn(true);ht.x=1454*256;ht.y=-60*256;

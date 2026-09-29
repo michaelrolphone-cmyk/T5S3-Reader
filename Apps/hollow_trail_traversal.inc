@@ -10,9 +10,21 @@ static int ht_ladder_near(const ht_game *g) {
     const ht_mechanics *m=ht_mech(g);
     for(unsigned i=0;i<3;++i) if(m->ladders[i].x) {
         int top,bottom;ht_ladder_ends(g->level,i,&top,&bottom);
-        if(ht_abs(g->x/256-m->ladders[i].x)<=12 && g->y/256>=top-3 && g->y/256<=bottom+3) return (int)i;
+        if(ht_abs(g->x/256-m->ladders[i].x)<=12 && g->y/256>=top-3 && g->y/256<=bottom+24) return (int)i;
     }
     return -1;
+}
+static bool ht_ladder_enter(int vertical) {
+    ht_traversal *t=&ht.traversal;
+    if(!vertical || t->mode || t->drop_cooldown) return false;
+    int ladder=ht_ladder_near(&ht);if(ladder<0) return false;
+    int top,bottom;ht_ladder_ends(ht.level,(unsigned)ladder,&top,&bottom);
+    /* Outward input at either end must not pin the player to the ladder. */
+    if((vertical<0 && ht.y<=top*256) || (vertical>0 && ht.y>=bottom*256)) return false;
+    t->mode=HT_LADDER;t->ladder=(uint8_t)ladder;t->fall_ticks=0;
+    ht.x=ht_ladder_x((unsigned)ladder)*256;
+    ht.vx=ht.vy=0;ht.grounded=false;ht.coyote=ht.jump_buffer=0;
+    return true;
 }
 static int ht_boat_top(const ht_game *g) {
     int phase=(int)(g->ticks&63u),wave=phase<32?phase:64-phase;
@@ -49,9 +61,8 @@ static bool ht_traversal_interact(void) {
         } else if(t->mode==HT_BOAT) ht.vx=t->boat_vx;
         t->mode=HT_FREE;return true;
     }
-    int near=ht_traversal_near(&ht);if(!near) return false;
+    int near=ht_traversal_near(&ht);if(!near || near==HT_LADDER) return false;
     t->mode=(uint8_t)near;t->fall_ticks=0;
-    if(near==HT_LADDER) t->ladder=(uint8_t)ht_ladder_near(&ht);
     if(near==HT_ROPE) {
         /* Keep the caught hand position: no teleport to an authored arc. */
         t->rope_px[6]=ht.x;t->rope_py[6]=ht.y-24*256;
@@ -170,6 +181,7 @@ static void ht_collide(int left,int right,int top,int bottom,int old_x,int old_y
     }
 }
 static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool jump_held) {
+    bool jump_request=jump_pressed;
     int start_x=ht.x,start_y=ht.y,fall_speed=ht.vy;
     bool was_grounded=ht.grounded;
     if(ht.observation_ticks) --ht.observation_ticks;
@@ -182,6 +194,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
     ht_props_step(direction);
     uint8_t old_support=t->support;t->support=0;
     if(t->drop_cooldown) --t->drop_cooldown;
+    if(!jump_request) (void)ht_ladder_enter(vertical);
     if(t->mode==HT_LEDGE && vertical<0) {t->mode=HT_CLIMB;t->climb=0;}
     if(t->mode==HT_LEDGE && (vertical>0 || jump_pressed)) {
         t->mode=HT_FREE;t->drop_cooldown=20;ht.vy=0;ht.coyote=ht.jump_buffer=0;
@@ -190,6 +203,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
     }
     if(jump_pressed && t->mode && t->mode!=HT_CLIMB) {
         int mode=t->mode;t->mode=HT_FREE;
+        if(mode==HT_LADDER) t->drop_cooldown=8;
         if(mode==HT_LADDER || mode==HT_ROPE || mode==HT_BOAT) {
             ht.vx=mode==HT_ROPE?ht_clamp(t->rope_px[6]-t->rope_ox[6],-1000,1000):direction*640;
             ht.vy=mode==HT_ROPE?ht_max(-1880,ht_min(0,t->rope_py[6]-t->rope_oy[6])-1200):-1880;ht.grounded=false;ht.coyote=0;jump_pressed=false;
@@ -206,10 +220,13 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
     } else if(t->mode==HT_LADDER) {
         int top,bottom;ht_ladder_ends(ht.level,t->ladder,&top,&bottom);
         ht.x=ht_ladder_x(t->ladder)*256;
-        ht.y=ht_clamp(ht.y+vertical*512,top*256,bottom*256);
+        ht.y=ht_clamp(ht.y+vertical*512,top*256,ht_max(ht.y,bottom*256));
         ht.vx=ht.vy=0;ht.grounded=false;
         if((ht.y==top*256 && vertical<0) || (ht.y==bottom*256 && vertical>0)) {
             t->mode=HT_FREE;ht.grounded=true;
+        } else if(vertical>0 && ht.y>bottom*256) {
+            /* A hand-only catch below the last rung can also drop free. */
+            t->mode=HT_FREE;ht.vy=88;
         }
     } else if(t->mode==HT_ROPE) {
         int old_x=ht.x,old_y=ht.y;
@@ -291,6 +308,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
             if(ht.grounded && ht.y==top*256 && ht_abs(ht.x-t->boat_x)<34*256) t->support=3;
         }
     }
+    if(!jump_request) (void)ht_ladder_enter(vertical);
     if((direction || vertical || t->mode==HT_CLIMB) && (start_x!=ht.x || start_y!=ht.y)) ht.sway_phase+=5;
     if(ht.grounded && !was_grounded && fall_speed>384 && !t->mode) {
         ht.landing_ticks=10;ht.landing_strength=(uint8_t)ht_clamp(fall_speed/256,2,8);

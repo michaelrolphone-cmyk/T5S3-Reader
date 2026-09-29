@@ -54,7 +54,7 @@ static void walk_route_tick(void) {
                 int target=m->ladders[ladder].x;
                 if(t->mode==HT_LADDER) {vertical=-1;walk_mechanics|=4;}
                 else if(ht_abs(x-target)>8) dir=x<target?1:-1;
-                else {assert(ht_traversal_interact());assert(t->mode==HT_LADDER);vertical=-1;}
+                else vertical=-1;
             } else if(m->water_left==here->right && m->water_right==next->left) {
                 if(t->mode==HT_BOAT) {
                     if(t->boat_x>=m->boat_right*256) {assert(ht_traversal_interact());dir=1;}

@@ -108,6 +108,15 @@ int main(void) {
     jump_down=false; mapped=0; ht_input(1);
     mapped=T5_APP_BUTTON_DOWN; ht_input(1); mapped=0; ht_input(1); assert(paused && !reading);
     mapped=T5_APP_BUTTON_CONFIRM; ht_input(1); assert(reading);
+    /* Generic Up/Down are ladder intent nearby, including bottom Down:
+     * neither accidental jump nor pause is synthesized at the ladder. */
+    reading=paused=quitting=false;pause_down=jump_down=false;mapped=0;
+    ht.level=1;ht_spawn(true);ht_geometry_level=1;ht.x=400*256;ht_input(1);
+    mapped=T5_APP_BUTTON_DOWN;ht_input(1);
+    assert((held&HT_DOWN) && !paused && !pause_down);
+    mapped=0;ht_input(1);mapped=T5_APP_BUTTON_UP;ht_input(1);
+    assert((held&HT_UP) && !jump_down && !reading);
+    mapped=0;ht_input(1);ht.level=0;ht_spawn(true);ht_geometry_level=0;
     /* A persistently failed provider hands back device input after a bounded
      * grace period, still requiring neutral before any mapped action. */
     reading=paused=quitting=false; mapped=0; ht_input(1);
