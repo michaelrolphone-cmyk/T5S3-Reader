@@ -119,11 +119,20 @@ static void ht_camera_classify_fills(const uint8_t *source) {
         ht_checkpoint();
     }
 }
-static void ht_camera_foreground_into(const uint8_t *source,int turn,int scale) {
+static void ht_camera_foreground_into(const uint8_t *source,int turn,int scale,bool fills) {
     for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
         int x=ht_camera_dest_left[y],right=ht_camera_dest_right[y];
         int u=(HT_W/2)*4096+(x-HT_W/2)*scale+(y-HT_H/2)*turn;
         int v=(HT_H/2)*4096-(x-HT_W/2)*turn+(y-HT_H/2)*scale;
+        if(!fills) {
+            for(;x<=right;++x,u+=scale,v-=turn) {
+                int fx=(u>>8)&15,fy=(v>>8)&15;
+                const uint8_t *a=source+(v>>12)*HT_W+(u>>12),*b=a+HT_W;
+                int top=a[0]*16+((int)a[1]-a[0])*fx,bottom=b[0]*16+((int)b[1]-b[0])*fx;
+                ht_scene[y*HT_W+x]=(uint8_t)((top*16+(bottom-top)*fy)>>8);
+                ++ht_camera_foreground_samples;
+            }
+        }
         while(x<=right) {
             int ix=u>>12,iy=v>>12,tx=ix/16,ty=iy/16;
             unsigned ink=ht_camera_flat[ty][tx];
@@ -161,14 +170,25 @@ static void ht_camera_split_into(const uint8_t *source,const ht_game *game) {
     ht_camera_low_samples=ht_camera_low_skipped=ht_camera_foreground_samples=ht_camera_fill_pixels=0;
     unsigned covered=ht_camera_project_spans(turn,scale),visible=0;
     for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y)visible+=(unsigned)(HT_W-2*ht_visible_left[y]);
-    ht_camera_classify_fills(source);
     if(covered==visible) {
         /* Generic full-coverage fallback: avoid an unused low transform and
          * second upscale when foreground drawing covers the whole view. */
-        ht_camera_foreground_into(source,turn,scale);return;
+        ht_camera_foreground_into(source,turn,scale,false);return;
     }
     ht_camera_low_into(ht_scene,turn,scale);
     memcpy(ht_low_scene,ht_scene,HT_SCENE_PIXELS);
     ht_upscale_visible_background();
-    ht_camera_foreground_into(source,turn,scale);
+    ht_camera_foreground_into(source,turn,scale,false);
+}
+
+/* Independent test: original full-resolution camera with fill acceleration,
+ * without low-background sampling, write tracking or terrain occlusion. */
+static void ht_camera_fills_into(const uint8_t *source,const ht_game *game) {
+    int turn,scale;ht_camera_coefficients(game,&turn,&scale);
+    ht_camera_fill_pixels=ht_camera_foreground_samples=0;
+    ht_camera_classify_fills(source);
+    for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
+        ht_camera_dest_left[y]=ht_visible_left[y];ht_camera_dest_right[y]=HT_W-ht_visible_left[y]-1;
+    }
+    ht_camera_foreground_into(source,turn,scale,true);
 }

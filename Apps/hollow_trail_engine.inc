@@ -1625,7 +1625,7 @@ static void ht_render_scene(void) {
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
     bool opaque=ht_grotto_opaque(&game);
     if(ht_abort) return;
-    if(ht_render_test==HT_TEST_LOW_CAMERA && !opaque)ht_occlusion_build(&game);
+    if(ht_render_test==HT_TEST_OCCLUSION && !opaque)ht_occlusion_build(&game);
     if(!opaque) {
         if(!ht_cache_visible(camera)) {ht_occlusion_active=false;return;}
         if(ht_ai_rendering) {
@@ -1670,7 +1670,10 @@ static void ht_render_scene(void) {
     ht_scene=output;
     ht_camera_tracking=false;
     if(split)ht_camera_split_into(ht_temp,&game);
-    else if(game.sway_phase || game.drop_zoom) ht_camera_into(ht_temp,&game);
+    else if(game.sway_phase || game.drop_zoom) {
+        if(ht_render_test==HT_TEST_FILL_CAMERA)ht_camera_fills_into(ht_temp,&game);
+        else ht_camera_into(ht_temp,&game);
+    }
     ht_vignette();
     ht_render_last.post=ht_render_now()-post_start;
     ht_occlusion_active=false;

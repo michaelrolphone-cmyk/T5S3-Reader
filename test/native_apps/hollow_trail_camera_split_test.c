@@ -34,6 +34,10 @@ int main(int argc,char **argv) {
         ht_game game={0};game.sway_phase=n*37;game.rotation_phase=(n*73)<<8;game.camera_mood=n%257;game.drop_zoom=n%257;
         int turn,scale;ht_camera_coefficients(&game,&turn,&scale);
         ht_camera_into(ht_temp,&game);memcpy(expected,ht_scene,HT_PIXELS);
+        ht_camera_fills_into(ht_temp,&game);
+        for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y)
+            for(int x=ht_visible_left[y];x<HT_W-ht_visible_left[y];++x)
+                assert(ht_scene[y*HT_W+x]==expected[y*HT_W+x]);
         unsigned before=checkpoints;ht_camera_split_into(ht_temp,&game);assert(checkpoints>before);
         assert(ht_camera_low_samples+ht_camera_low_skipped==0 || ht_camera_low_samples+ht_camera_low_skipped==HT_SCENE_PIXELS);
         for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y)for(int x=ht_visible_left[y];x<HT_W-ht_visible_left[y];++x) {
@@ -80,18 +84,28 @@ int main(int argc,char **argv) {
     for(unsigned level=0;level<HT_LEVELS;++level)for(int view=0;view<3;++view) {
         ht_bind(memory);ht.level=level;ht_spawn(true);ht.camera=view*733*256;ht.x=(view*733+190)*256;
         ht.vista=view?256:0;ht.sway_phase=128+view*317;ht.rotation_phase=(128+view*219)<<8;ht.camera_mood=256;
-        ht_game game=ht;ht_render_scene();memcpy(expected,ht_scene,HT_PIXELS);memcpy(source_expected,ht_temp,HT_PIXELS);
+        ht_game game=ht;ht_render_scene();memcpy(expected,ht_scene,HT_PIXELS);memcpy(source_expected,ht_temp,HT_PIXELS);memcpy(background,ht_scene,HT_PIXELS);
         if(argc>1 && view==1){char path[96];snprintf(path,sizeof(path),"/tmp/camera-%u-before.pgm",level);pgm(path,ht_scene);}
         ht_bind(memory);ht=game;ht_render_test=HT_TEST_LOW_CAMERA;ht_render_scene();
         assert(!ht_camera_tracking && !ht_occlusion_active && ht_world_scale==256);
         assert(!memcmp(source_expected,ht_temp,HT_PIXELS));
-        total_low+=ht_camera_low_samples;total_foreground+=ht_camera_foreground_samples;total_skip+=ht_camera_low_skipped;total_fill+=ht_camera_fill_pixels;
-        occ_blend+=ht_occlusion_composite_skips;occ_nn+=ht_occlusion_neural_skips;
+        total_low+=ht_camera_low_samples;total_foreground+=ht_camera_foreground_samples;total_skip+=ht_camera_low_skipped;
+        assert(!ht_camera_fill_pixels && !ht_occlusion_composite_skips && !ht_occlusion_neural_skips);
         if(!ht_camera_low_samples)++full;
         if(ht_grotto_opaque(&game))assert(!memcmp(expected,ht_scene,HT_PIXELS));
         if(argc>1 && view==1){char path[96];snprintf(path,sizeof(path),"/tmp/camera-%u-after.pgm",level);pgm(path,ht_scene);}
         memcpy(expected,ht_scene,HT_PIXELS);
         ht_bind(memory);ht=game;ht_render_test=HT_TEST_LOW_CAMERA;ht_render_scene();assert(!memcmp(expected,ht_scene,HT_PIXELS));
+        for(unsigned mode=HT_TEST_OCCLUSION;mode<=HT_TEST_FILL_CAMERA;++mode) {
+            ht_bind(memory);ht=game;ht_render_test=mode;ht_render_scene();
+            assert(!memcmp(background,ht_scene,HT_PIXELS));
+            assert(!ht_camera_low_samples && !ht_camera_low_skipped);
+            if(mode==HT_TEST_OCCLUSION) {
+                assert(!ht_camera_fill_pixels);occ_blend+=ht_occlusion_composite_skips;occ_nn+=ht_occlusion_neural_skips;
+            } else {
+                assert(!ht_occlusion_composite_skips && !ht_occlusion_neural_skips);total_fill+=ht_camera_fill_pixels;
+            }
+        }
         /* No camera motion must retain the old image exactly. */
         game.sway_phase=game.drop_zoom=0;
         ht_bind(memory);ht=game;ht_render_scene();memcpy(expected,ht_scene,HT_PIXELS);
