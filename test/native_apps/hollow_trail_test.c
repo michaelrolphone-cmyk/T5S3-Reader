@@ -216,6 +216,9 @@ static void eroded_cliffs_and_grotto(void) {
         }
     }
     assert(ht_scene[110*HT_W+130]>ht_scene[110*HT_W+420]+40);
+    /* Bright opening must end at readable water, not wash through it. */
+    assert(ht_scene[234*HT_W+440]>ht_scene[224*HT_W+440]+45);
+    assert(ht_scene[242*HT_W+278]>ht_scene[242*HT_W+410]+25);
     assert(ht_boat_half(&ht)==48);
     assert(ht_mech(&ht)->boat_left-ht_boat_half(&ht)==ht_mech(&ht)->water_left);
     assert(ht_mech(&ht)->boat_right+ht_boat_half(&ht)==ht_mech(&ht)->water_right);

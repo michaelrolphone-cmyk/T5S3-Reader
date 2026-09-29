@@ -69,6 +69,7 @@ static void ht_draw_land(const ht_game *g,int i,int part,int l,int r,int flat) {
         if(kind==HT_EARTH || kind==HT_MUD || kind==HT_GARDEN) {
             unsigned patch=ht_hash((unsigned)ht_floor_div(at,67)+g->level*83u);
             int height=2+(int)(h%5)+(int)(patch%7);
+            if(g->level==4 && at<700) height=1+(int)(h%3);
             for(int blade=0;blade<3;++blade) {
                 int root=x+blade-1,lean=(int)((h>>(blade*4))%9)-4;
                 ht_limb(ht_scene,root,y+2,root+lean,y-height+blade*2,0,0,235+blade*10);

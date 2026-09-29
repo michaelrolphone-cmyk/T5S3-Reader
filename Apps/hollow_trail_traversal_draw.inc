@@ -143,8 +143,10 @@ static void ht_draw_traversal(const ht_game *g) {
                 ht_limb(ht_scene,x+27+stroke,y+12,x+32+stroke,y+15,2,1,255);
             }
             int bank=m->water_left-cx;
-            if(g->traversal.boat_x/256-half-m->water_left<=3)
-                ht_limb(ht_scene,bank-3,y-7,x-half+2,y-1,1,1,235);
+            if(g->traversal.boat_x/256-half-m->water_left<=3) {
+                int ledge=ht_surface_at(g,0,m->water_left-4)-cy+8;
+                ht_limb(ht_scene,bank-4,ledge,x-half+2,y-4,1,1,235);
+            }
         } else {
             for(int dy=0;dy<15;++dy) {
                 int taper=dy*dy/24;

@@ -1149,7 +1149,7 @@ static void ht_character(int x,int feet,const ht_game *game) {
      * crosses behind them. Never wash out the landing surface underfoot. */
     int center=ht_project_x(x),base=ht_project_y(feet);
     int radius=ht_max(1,25*ht_world_scale/256),middle=ht_project_y(feet-19);
-    for(int px=ht_max(0,center-radius);px<=ht_min(HT_W-1,center+radius);++px) {
+    for(int px=ht_max(0,center-radius);!(game->level==4 && game->camera/256<700) && px<=ht_min(HT_W-1,center+radius);++px) {
         int source=240+(px-240)*256/ht_world_scale;
         int floor=ht_min(base,ht_project_y(ht_weather_floor(game,source))-1);
         for(int y=ht_max(0,ht_project_y(feet-43));y<ht_min(HT_H,floor);++y) {

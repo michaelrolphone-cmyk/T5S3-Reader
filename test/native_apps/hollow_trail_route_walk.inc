@@ -60,12 +60,15 @@ static void walk_route_tick(void) {
                 else if(ht_abs(x-target)>8) dir=x<target?1:-1;
                 else vertical=-1;
             } else if(m->water_left==here->right && m->water_right==next->left) {
-                if(walk_task==4) dir=1;
+                if(walk_task==4) {dir=1;if(t->support==3 && ht.grounded) jump=true;}
                 else if(t->mode==HT_BOAT) {
                     if(t->boat_x>=m->boat_right*256) {assert(ht_traversal_interact());dir=1;walk_task=4;}
                     else {dir=1;walk_mechanics|=16;}
                 } else if(x<m->boat_left-35) dir=1;
-                else if(x<m->water_right) {assert(ht_traversal_interact());assert(t->mode==HT_BOAT);dir=1;}
+                else if(x<m->water_right) {
+                    if(ht_traversal_near(&ht)==HT_BOAT) {assert(ht_traversal_interact());assert(t->mode==HT_BOAT);}
+                    dir=1;
+                }
                 else dir=1;
             } else if(next->left-here->right>110 && m->rope_anchor_x>here->left && m->rope_anchor_x<here->right) {
                 if(walk_task==3) dir=1;
