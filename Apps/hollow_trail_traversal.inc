@@ -170,7 +170,10 @@ static void ht_collide(int left,int right,int top,int bottom,int old_x,int old_y
     }
 }
 static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool jump_held) {
-    int start_x=ht.x,start_y=ht.y;
+    int start_x=ht.x,start_y=ht.y,fall_speed=ht.vy;
+    bool was_grounded=ht.grounded;
+    if(ht.observation_ticks) --ht.observation_ticks;
+    if(ht.landing_ticks) --ht.landing_ticks;
     ++ht.ticks;
     int wind=ht_wind(&ht);
     ht.weather_drift=(ht.weather_drift+wind)%(HT_W*256);
@@ -288,7 +291,11 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
             if(ht.grounded && ht.y==top*256 && ht_abs(ht.x-t->boat_x)<34*256) t->support=3;
         }
     }
-    if((direction || vertical || t->mode==HT_CLIMB) && (start_x!=ht.x || start_y!=ht.y)) ht.sway_phase+=3;
+    if((direction || vertical || t->mode==HT_CLIMB) && (start_x!=ht.x || start_y!=ht.y)) ht.sway_phase+=5;
+    if(ht.grounded && !was_grounded && fall_speed>384 && !t->mode) {
+        ht.landing_ticks=10;ht.landing_strength=(uint8_t)ht_clamp(fall_speed/256,2,8);
+        ht.landing_x=ht.x/256;ht.landing_y=ht.y/256;
+    }
     if(ht.grounded || t->mode) t->fall_ticks=0;
     if(direction) ht.facing=direction;
     if(ht.grounded) {

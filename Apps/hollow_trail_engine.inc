@@ -81,6 +81,8 @@ typedef struct {
     int x, y, vx, vy; /* Q8, y is feet */
     int camera, camera_y, checkpoint, coyote, jump_buffer, facing, stride;
     unsigned ticks, laps, deaths, sway_phase;
+    uint8_t observation,observation_ticks,landing_ticks,landing_strength;
+    int landing_x,landing_y;
     int weather_drift; /* Q8, bounded screen-period displacement. */
     unsigned level; /* Laps count complete ten-chapter journeys. */
     int story_x; /* Furthest progress in this chapter, retained on death. */
@@ -269,13 +271,46 @@ static bool ht_interact(void) {
     }
     return true;
 }
-/* Gentle gusts: zero at spawn, then a smooth signed pulse, bounded to
- * 0.15625 logical pixels per simulation tick (4.9 px/s). */
+/* Authored weather windows: exposure follows current world position, so
+ * returning to shelter really removes rain and force. Edges fade over 160px. */
+typedef struct {int begin,end,rain,leaves,dust,sleet,wind;} ht_climate;
+static const ht_climate ht_climates[HT_LEVELS]={
+    {850,1750,0,8,0,0,18},       /* Forest clearing: disturbed leaves, dry fog. */
+    {500,1200,20,0,0,0,24},      /* Exposed roofs; quiet in the lower streets. */
+    {1250,2250,0,0,16,0,25},     /* Abandoned oil field: grit, no rain. */
+    {0,0,0,0,0,0,0},            /* Silent rail yard. */
+    {0,0,0,0,0,0,0},            /* Marsh: still water and reeds. */
+    {650,2100,0,0,24,0,32},      /* White quarry: airborne chalk. */
+    {0,0,0,0,0,0,0},            /* Sheltered glass gardens. */
+    {500,2620,48,0,0,0,40},     /* Dam: sustained exposed struggle. */
+    {180,2650,0,0,0,32,40},     /* High pass: freezing crosswind. */
+    {0,0,0,0,0,0,0},            /* Last light: deliberate stillness. */
+};
+static int ht_exposure(const ht_game *g) {
+    const ht_climate *c=&ht_climates[g->level];
+    return ht_clamp(ht_min(g->x/256-c->begin,c->end-g->x/256)*256/160,0,256);
+}
 static int ht_wind(const ht_game *g) {
     unsigned phase=g->ticks&511u;
     int triangle=phase<128?(int)phase:phase<384?256-(int)phase:(int)phase-512;
-    int gust=triangle*(256-ht_abs(triangle))*40/(128*128);
+    int gust=triangle*(256-ht_abs(triangle))*ht_climates[g->level].wind/(128*128);
+    gust=gust*ht_exposure(g)/256;
     return g->ticks<96?gust*(int)g->ticks/96:gust;
+}
+static int ht_landmark_x(unsigned level,int scene) {
+    const ht_platform *p=&ht_level_land(level)[scene?6:3];
+    return p->left+(p->right-p->left)*2/3;
+}
+static int ht_observe_near(const ht_game *g) {
+    if(!g->grounded || g->traversal.mode) return -1;
+    for(int scene=0;scene<2;++scene)
+        if(ht_abs(g->x/256-ht_landmark_x(g->level,scene))<34 &&
+           ht_abs(g->y/256-ht_level_land(g->level)[scene?6:3].top)<3) return scene;
+    return -1;
+}
+static bool ht_observe(void) {
+    int scene=ht_observe_near(&ht);if(scene<0) return false;
+    ht.observation=(uint8_t)(ht.level*2+scene+1);ht.observation_ticks=220;return true;
 }
 static void ht_spawn(bool restart) {
     uint8_t bridge_open=restart?0:ht.traversal.bridge_open;
@@ -1070,8 +1105,10 @@ static void ht_character(int x,int feet,const ht_game *game) {
     }
     int swing=game->grounded?((game->stride/700)%12-6):3;
     int f=game->facing;
-    ht_disk(ht_scene,x,feet-23,5,255);
-    ht_limb(ht_scene,x,feet-18,x-f,feet-7,3,3,255);
+    int effort=(game->traversal.mode==HT_ROLL || game->traversal.mode==HT_CRATE)?f*2:0;
+    int crouch=game->landing_ticks>5?2:0;
+    ht_disk(ht_scene,x+effort,feet-23+crouch,5,255);
+    ht_limb(ht_scene,x+effort,feet-18+crouch,x-f,feet-7,3,3,255);
     ht_limb(ht_scene,x-f,feet-8,x+swing,feet,2,1,255);
     ht_limb(ht_scene,x-f,feet-8,x-swing,feet-1,2,1,255);
     if(game->traversal.mode==HT_LEDGE || game->traversal.mode==HT_CLIMB) {
@@ -1114,12 +1151,12 @@ static int ht_sway_wave(unsigned phase) {
     int triangle=t<256?t:t<768?512-t:t-1024;
     return triangle*(512-ht_abs(triangle))/256;
 }
-/* Raster only the visible interior. At <=42/4096 rotation and inward
+/* Raster only the visible interior. At <=128/4096 rotation and inward
  * scaling, the nine-pixel border guarantees all four source taps are valid.
  * The vignette replaces everything outside this range immediately afterward. */
 static __attribute__((optimize("O3"))) void ht_sway_into(const uint8_t *source,unsigned phase) {
-    int turn=ht_sway_wave(phase)/6;
-    int scale=4096-(ht_sway_wave(phase/2+768)+256)/10;
+    int turn=ht_sway_wave(phase)/2;
+    int scale=4096-(ht_sway_wave(phase/2+768)+256)/3;
     for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
         int left=ht_visible_left[y],right=HT_W-left;
         int u=(HT_W/2)*4096+(left-HT_W/2)*scale+(y-HT_H/2)*turn;
@@ -1142,24 +1179,45 @@ static void ht_sway_scene(unsigned phase) {
 }
 /* Fixed particle budget, no allocations, frame noise or full-screen pass.
  * Weather shares the frozen world snapshot and pauses with simulation. */
+/* Roofs and terrain occlude precipitation; it cannot streak through a
+ * platform or continue visibly underground. Use the same physical segments. */
+static int ht_weather_floor(const ht_game *g,int screen_x) {
+    int x=screen_x+g->camera/256,floor=HT_H;
+    const ht_mechanics *m=ht_mech(g);
+    if(m->water_right && x>=m->water_left && x<m->water_right)
+        floor=ht_min(floor,m->boat_deck+10-g->camera_y/256);
+    for(int i=0;i<HT_PLATFORMS;++i) if(ht_solid_platform(g,i))
+        for(int part=0;part<3;++part) {
+            int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top)) break;
+            if(x>=l && x<r) floor=ht_min(floor,top-g->camera_y/256);
+        }
+    return floor;
+}
 static void ht_weather(const ht_game *g) {
+    const ht_climate *c=&ht_climates[g->level];int exposure=ht_exposure(g);
+    if(!exposure || !(c->rain+c->leaves+c->dust+c->sleet)) return;
     int wind=ht_wind(g),drift=g->weather_drift/256;
-    for(unsigned i=0;i<48;++i) {
+    unsigned wet=(unsigned)((c->rain+c->sleet)*exposure/256);
+    for(unsigned i=0;i<wet;++i) {
         uint32_t seed=ht_hash(i+g->level*97u);
         int x=(int)(seed%HT_W)+drift-g->camera/512;
         x=((x%HT_W)+HT_W)%HT_W;
         int y=(int)((seed/HT_W+(g->ticks%HT_H)*(i%2+3))%HT_H);
-        ht_limb(ht_scene,x,y,x+wind/12,y+3+(int)(i%3),0,0,110+(int)(i%2)*45);
+        int floor=ht_weather_floor(g,x);
+        if(y<floor) ht_limb(ht_scene,x,y,x+wind/9,ht_min(floor-1,y+(c->sleet?2:4)+(int)(i%3)),0,0,c->sleet?180:125);
         if((i&15)==15) ht_checkpoint();
     }
-    for(unsigned i=0;i<12;++i) {
+    unsigned dry=(unsigned)((c->leaves+c->dust)*exposure/256);
+    for(unsigned i=0;i<dry;++i) {
         uint32_t seed=ht_hash(i+1234u+g->level*37u);
         int flutter=(int)((g->ticks+i*11)%32);flutter=flutter<16?flutter:32-flutter;
         int x=(int)(seed%HT_W)+drift*4-g->camera/256+flutter/4;
         x=((x%HT_W)+HT_W)%HT_W;
         int y=(int)((seed/HT_W+(g->ticks/3)%HT_H)%HT_H)+flutter/5;
+        if(y>=ht_weather_floor(g,x)-3) continue;
         int lean=wind<0?-1:1;
-        ht_limb(ht_scene,x,y,x+lean*3,y+(flutter<8?1:-1),1,0,180+(int)(i%2)*55);
+        if(c->leaves) ht_limb(ht_scene,x,y,x+lean*3,y+(flutter<8?1:-1),1,0,190);
+        else ht_rect(ht_scene,x,y,1+(int)(i%3),1,i%2?70:155);
     }
     ht_checkpoint();
 }
@@ -1529,4 +1587,5 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
     ht_text_color(66,184,"LEFT / RIGHT PAGES   A / CONFIRM OR A CLOSE",1,0);
 }
 
+#include "hollow_trail_atmosphere_draw.inc"
 #include "hollow_trail_traversal_draw.inc"

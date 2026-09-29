@@ -18,7 +18,7 @@ int main(void) {
     /* Prove clamp-free affine taps stay inside the source over a complete
      * rotation/zoom cycle. Linear coordinates attain extrema at row ends. */
     for(unsigned phase=0;phase<2048;++phase) {
-        int turn=ht_sway_wave(phase)/6,scale=4096-(ht_sway_wave(phase/2+768)+256)/10;
+        int turn=ht_sway_wave(phase)/2,scale=4096-(ht_sway_wave(phase/2+768)+256)/3;
         for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) for(int edge=0;edge<2;++edge) {
             int x=edge?HT_W-ht_visible_left[y]-1:ht_visible_left[y];
             int u=(HT_W/2)*4096+(x-HT_W/2)*scale+(y-HT_H/2)*turn;
@@ -125,15 +125,50 @@ int main(void) {
     ht_spawn(true);
     /* Gusts push idle feet in both directions, remain bounded, and cannot
      * move a player hanging from a ledge. Weather drawing is deterministic. */
-    ht_spawn(true);ht.ticks=120;int still=ht.x;
+    ht.level=7;ht_spawn(true);ht.x=1100*256;ht.ticks=120;int still=ht.x;
     ht_step(0,false,false);assert(ht.x>still && ht.x-still<=40 && ht.sway_phase==0);
-    ht_spawn(true);ht.ticks=380;still=ht.x;
+    ht_spawn(true);ht.x=1100*256;ht.ticks=380;still=ht.x;
     ht_step(0,false,false);assert(ht.x<still && still-ht.x<=40 && ht.sway_phase==0);
     for(unsigned tick=0;tick<1024;++tick) {ht.ticks=tick;assert(ht_abs(ht_wind(&ht))<=40);}
     ht_game snapshot=ht;memset(ht_scene,0,HT_PIXELS);ht_weather(&snapshot);
     memcpy(frame,ht_scene,HT_PIXELS);memset(ht_scene,0,HT_PIXELS);ht_weather(&snapshot);
     assert(!memcmp(frame,ht_scene,HT_PIXELS) && !memcmp(&snapshot,&ht,sizeof(ht)));
-    ht_spawn(true);
+    /* Authored weather is absent in shelter and still chapters, including
+     * the final decision. Weather direction/intensity also follows exposure. */
+    for(unsigned level=0;level<HT_LEVELS;++level) {
+        ht.level=level;ht_spawn(true);ht.ticks=120;
+        const ht_climate *c=&ht_climates[level];
+        ht.x=(c->begin-1)*256;assert(!ht_exposure(&ht) && !ht_wind(&ht));
+        memset(ht_scene,37,HT_PIXELS);memset(frame,37,HT_PIXELS);ht_weather(&ht);
+        for(int i=0;i<HT_PIXELS;++i) assert(ht_scene[i]==37);
+        if(c->end) {
+            ht.x=(c->begin+80)*256;assert(ht_exposure(&ht)==128);
+            ht.x=((c->begin+c->end)/2)*256;assert(ht_exposure(&ht)==256);
+            assert(ht_wind(&ht)>0);
+            ht_weather(&ht);assert(checksum(ht_scene,HT_PIXELS)!=checksum(frame,HT_PIXELS));
+            ht.x=(c->end+1)*256;assert(!ht_exposure(&ht) && !ht_wind(&ht));
+        }
+        for(int scene=0;scene<2;++scene) {
+            ht.x=ht_landmark_x(level,scene)*256;ht.y=ht_land[scene?6:3].top*256;
+            ht.grounded=true;assert(ht_observe() && ht.observation==level*2+scene+1);
+            for(int line=0;line<2;++line) assert(strlen(ht_observations[level*2+scene][line])*6<=332);
+        }
+    }
+    /* A roof shelters the space below it; dry chapters add no particles. */
+    ht.level=1;ht_spawn(true);ht.camera=ht.camera_y=0;
+    assert(ht_weather_floor(&ht,640)==-60);
+    memset(ht_scene,37,HT_PIXELS);ht.x=800*256;ht_weather(&ht);
+    for(int y=80;y<HT_H;++y) assert(ht_scene[y*HT_W+400]==37);
+    /* Prove the stronger transform is visible and repeatable independently
+     * of world physics, and that its zoom has at least a four-percent range. */
+    ht.level=0;ht_spawn(true);
+    for(int i=0;i<HT_PIXELS;++i) ht_temp[i]=(uint8_t)ht_hash((unsigned)i);
+    memcpy(frame,ht_temp,HT_PIXELS);ht_sway_into(ht_temp,256);
+    assert(memcmp(frame+HT_W*40,ht_scene+HT_W*40,HT_W*100));
+    int saved_x=ht.x,saved_y=ht.y;ht_sway_into(ht_temp,1024);
+    assert(ht.x==saved_x && ht.y==saved_y);
+    assert((ht_sway_wave(1024/2+768)+256)/3>=163);
+    ht.level=0;ht_spawn(true);
     /* Explicit authored solutions, not answers read out of game definitions. */
     const unsigned solutions[HT_LEVELS][5]={
         {2,0,1,9,9},{0,2,9,9,9},{0,1,1,1,2},

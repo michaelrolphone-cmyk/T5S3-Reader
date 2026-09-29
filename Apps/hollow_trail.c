@@ -222,6 +222,7 @@ static void ht_input_update(uint32_t wait) {
         else if(page>=0) { ht_journal_open((unsigned)page); reading=true; }
         else if(ht_traversal_interact()) { /* A grabs/releases a nearby traversal object. */ }
         else if(ht_puzzle_near(&ht)>=0) (void)ht_interact();
+        else (void)ht_observe();
 
         if(reading) { jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0; }
         ++scene_revision;
@@ -394,6 +395,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(!rendering_paused) {
                 ht_narration(&rendering_game);
+                ht_observation_prompt(&rendering_game);
                 ht_traversal_prompt(&rendering_game); ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game);
             }
             if(rendering_paused) {

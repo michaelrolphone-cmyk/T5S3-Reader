@@ -1,4 +1,65 @@
-# Hollow Trail 1.1.2
+# Hollow Trail 1.1.3
+
+## Atmospheric direction and interaction polish (1.1.3)
+
+Hollow Trail **1.1.2 → 1.1.3**; minimum firmware remains **1.3.37**.
+
+The original visual transform was active but only ±0.6° with 1.3% zoom change.
+It now reaches roughly **±1.8°** and **1–1.043× zoom**, with a 6.55-second sway
+cycle and a 13.1-second breathing cycle while moving. Phase advances only when
+movement input actually moves the character (including a committed climb), and
+freezes at rest/reading/pause. World collision and control bearings are unchanged;
+text and UI remain upright. All four bilinear taps remain in bounds over the
+complete phase cycle, so the existing clamp-free pass is retained.
+
+Weather is spatial story direction rather than a global overlay. Entering or
+leaving an exposed interval fades particle count and physical wind over 160
+world pixels. Returning to shelter removes them again. Ground and overhead
+platforms occlude particles using the physical terrain segments.
+
+| Chapter | Weather / atmospheric intent |
+| --- | --- |
+| Forest | Dry fog; a few leaves in the clearing from x850–1750 |
+| City | Light rain and wind across exposed roofs, x500–1200 |
+| Oil Fields | Grit across the machinery, x1250–2250; no rain |
+| Rail Yard | Still, silent air |
+| Drowned Marsh | Still water and reeds; no rain or wind |
+| White Quarry | Windblown chalk, x650–2100 |
+| Glass Gardens | Shelter and tended growth; no weather |
+| Broken Dam | Heavy rain and gusts, x500–2620; hardship at the crossing |
+| High Pass | Wind-driven sleet, x180–2650, easing before the exit |
+| Last Light | Stillness around the final decision |
+
+There are two inspectable environmental scenes per chapter. **A/Confirm** near
+one reveals a short close observation for about seven seconds without opening
+the journal. Evidence, props and puzzle actions keep priority. Stitched trail
+cloth, crossed-out arrows, a locked service door, fuel allowances, a cancelled
+ticket, paired ferry records, a repaired hoist grip, an inside garden latch,
+return pipes, guyed signal towers and a mechanical writing arm connect the
+physical route to the two competing accounts. Observations point to material
+details rather than deciding either witness's motive.
+
+The three-flash lamp motif repeats across the route. In the last chapter its
+pen arm shares the signal circuit; breaking the feed stops both, and examining
+it then describes the stopped mechanism. The final decision/evidence logic is
+unchanged. Foreground surfaces now use chapter materials: metal seams/rivets,
+rail sleepers, weathered dock planks/stilts, fractured stone and garden masonry.
+
+Interaction feedback follows real motion: the weight plate's cable leads to a
+pulley and latching bridge, boat wakes and oar strokes require actual velocity,
+crates scrape as they move, and a landing briefly compresses the upper body and
+kicks up a bounded contact plume while feet remain on their collider. Rendering
+uses a frozen game snapshot. No allocations or full-frame passes were added;
+particle and scene counts remain fixed and clipped to the visible route.
+
+Validation includes all ten input-only routes and clues, HID/XInput inspection
+without opening the journal, weather window/shelter/occlusion checks, full-cycle
+transform source bounds, immutable world coordinates, all observation text
+widths, deterministic rendering and ASan/UBSan. Host previews of all ten chapter
+landmarks were inspected. The full native suite and official Xtensa ELF/import build pass.
+Matched -Os moving-focus host samples measured 0.783ms for 1.1.2 and 0.828ms
+for this pass (about 6% more render+pack time, with normal host timing noise). Actual S3 frame rate and physical display feel are not established
+by these host checks; 24 FPS remains the target.
 
 ## Physical props and distinct routes (1.1.2)
 
@@ -161,7 +222,8 @@ by selecting a chapter. Loading discards prepared old-scene frames, uses the
 existing cooperative cache warmup and requires neutral input before gameplay.
 Selecting the current chapter restarts it too.
 
-Weather draws at most 48 short rain streaks and 12 tumbling leaves, without a
+Historically, 1.1.1 drew 48 rain streaks and 12 leaves everywhere. This is
+superseded by the authored 1.1.3 weather windows above. That implementation used no
 new allocation or full-screen raster pass. Deterministic particles share the
 render snapshot; rain slants and leaves drift with a smooth reversing gust.
 Weather freezes in pause/journal. Wind ramps in on spawning and nudges free
@@ -206,8 +268,8 @@ It holds until Up/A climbs over it, Down drops, or B jumps away. Climbing is a
 16-tick pull-up; dropping has a short re-grab cooldown. Holding horizontal
 movement cannot automatically pull the player up.
 
-Movement advances a smooth visual camera phase: about ±0.6 degree of rocking
-and 1–1.013× breathing zoom. The phase freezes when movement input stops,
+The original 1.1.0 transform used ±0.6 degree of rocking and 1–1.013×
+breathing zoom; 1.1.3 increases its amplitude and cycle speed as described above. The phase freezes when movement input stops,
 including reading and pause. Bilinear fixed-point sampling transforms the
 world image and player together before the vignette; input axes and collision
 coordinates never rotate or scale. Journal, prompts and narration stay fixed.
