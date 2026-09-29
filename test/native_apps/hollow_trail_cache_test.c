@@ -37,15 +37,14 @@ static void reference(void) {
             ht_scene[i]=(uint8_t)ht_max(ht_scene[i],v);
         }
     }
-    uint8_t sampled[HT_SCENE_PIXELS];
-    for(int y=0;y<HT_SCENE_H;++y) for(int x=0;x<HT_SCENE_W;++x)
-        sampled[y*HT_SCENE_W+x]=ht_scene[(2*y)*HT_W+2*x];
-    for(int y=0;y<HT_H;++y) for(int x=0;x<HT_W;++x) {
-        int sx=x/2,sy=y/2,nx=ht_min(sx+1,HT_SCENE_W-1),ny=ht_min(sy+1,HT_SCENE_H-1);
-        int top=sampled[sy*HT_SCENE_W+sx],bottom=sampled[ny*HT_SCENE_W+sx];
-        if(x&1) { top=(top+sampled[sy*HT_SCENE_W+nx])/2;bottom=(bottom+sampled[ny*HT_SCENE_W+nx])/2; }
-        ht_scene[y*HT_W+x]=(uint8_t)((y&1)?(top+bottom)/2:top);
-    }
+    /* Sample the independent full-resolution reference on the exact 4px
+     * compositor lattice, then feed that reference through the separately
+     * covered reconstruction/upscale stages. Any cached-strip/parallax/focus
+     * error therefore still appears as a final-frame mismatch. */
+    for(int y=0;y<HT_RECON_H;++y) for(int x=0;x<HT_RECON_W;++x)
+        ht_recon_scene[y*HT_RECON_W+x]=ht_scene[(4*y)*HT_W+4*x];
+    ht_reconstruct_low_scene();
+    ht_upscale_scene();
     ht_draw_traversal(&game);
     ht_draw_evidence(&game);
     ht_draw_puzzle(&game);
