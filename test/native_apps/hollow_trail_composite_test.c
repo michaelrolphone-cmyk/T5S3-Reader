@@ -36,19 +36,19 @@ static const t5_math_api_v1 dsp_mock={.api_version=T5_MATH_API_VERSION,
 static void dsp_spans(void) {
     uint8_t near[256],wide[256],dst[128],expected[128];
     ht_math=&dsp_mock; assert(ht_dsp_available());
-    const int counts[]={1,7,8,15,16,31,127,128};
+    const int counts[]={1,7,8,15,16,31,63,64};
     for(int failure=0;failure<2;++failure) {
         reject_dsp=failure;
         for(int r=0;r<=256;++r) for(unsigned c=0;c<sizeof(counts)/sizeof(counts[0]);++c) {
             int count=counts[c],fade=(r&1)?45:70;
             for(int i=0;i<256;++i) { near[i]=(uint8_t)(i*67+r);wide[i]=(uint8_t)(255-near[i]); }
             // Explicit extremes and negative interpolation products.
-            near[0]=255;wide[0]=0;near[2]=0;wide[2]=255;
+            near[0]=255;wide[0]=0;near[4]=0;wide[4]=255;
             int distance=2500+200*r,delta=(r&1)?-600:4;
-            for(int i=0,d=distance,step=delta;i<count;++i,d+=step,step+=8) {
+            for(int i=0,d=distance,step=delta;i<count;++i,d+=step,step+=32) {
                 dst[i]=(uint8_t)(i%113);
                 int radial=ht_clamp((d-2500)/200,0,256);
-                int v=(near[2*i]*(256-radial)+wide[2*i]*radial)>>8;
+                int v=(near[4*i]*(256-radial)+wide[4*i]*radial)>>8;
                 v=v*(256-((radial*fade)>>8))>>8;
                 expected[i]=(uint8_t)ht_max(dst[i],v);
             }
