@@ -1,4 +1,130 @@
-# Hollow Trail 1.1.3
+# Hollow Trail 1.1.4
+
+## Scene direction, mechanisms and physical performance
+
+Hollow Trail **1.1.3 → 1.1.4**, directly from master after PR #282 merged.
+Minimum firmware remains **1.3.37**. The sections below this update retain
+historical implementation notes; the rules here supersede older puzzle,
+weather, camera, map and fall-timer behavior.
+
+### Story scenes, not chapter-wide weather
+
+A discovery starts a cue; a specified later discovery ends it. Walking into
+an exposed area without that discovery does not create weather. Within an
+active scene, terrain supplies shelter and a 160px boundary fade. The cue
+itself builds over 2.048 seconds and clears over 1.024 seconds. Revisiting the
+first document after the closing discovery cannot restart it. Death retains
+scene progress; a fresh chapter/debug replay resets the scene while retaining
+the journal archive. Reading and pause freeze the simulation clock.
+
+| Chapter | Starts after | Ends after | Visual direction |
+| --- | --- | --- | --- |
+| Forest | Thread in the Bark | Mill Register | Leaves and a dimmer clearing: guidance becoming admission |
+| City | Burnt Fuse | Watch Log | Rain, darkened sky and wind after the extinguished way out |
+| Oil Fields | Lantern Tag | Stove Plate | Grit and muted light around the cost of the gift |
+| Rail Yard | — | — | Still air around the cancelled journey |
+| Marsh | — | — | Still water around the prolonged wait |
+| Quarry | Brake Notice | Torn Note | Windblown chalk and dimming around responsibility for the load |
+| Gardens | — | — | Sheltered stillness: safety and confinement |
+| Dam | Garden Pipe | Ridge Circuit | Dark sky, rain and gusts after the common supply revelation |
+| High Pass | Other Half of the Scarf | Wind Shelter | Sleet and reduced light around uncertain guidance |
+| Last Light | — | — | Stillness around the final decision |
+
+The dam cue has two brief lightning pulses, 5.12 and 12.16 seconds after the
+cue begins, only while it remains active and the player is exposed. Each lasts
+at most 256ms with decay. Sky illumination reuses the existing scene clear and
+max compositor, preserving foreground silhouettes and upright UI. There is no
+endless flashing loop, display waveform change or extra full-screen pass.
+
+### Camera mood and falls
+
+The existing **1–1.20× breathing zoom** and its 13.1-second movement cycle are
+retained. Rotation has its own Q8 phase. At minimum tension, its amplitude and
+speed are approximately one-sixth of 1.1.3: roughly **±0.8–0.96° over 39 seconds**.
+Authored continuous chapter curves plus active discovery cues can raise both
+to the former **±5.76° / 6.55-second** range, with eased transitions rather
+than abrupt intensity changes. The dam revelation can reach that upper bound.
+Normal camera phase advances only during actual player-directed movement.
+
+Dropping more than 40px below the last supported height widens toward the
+uncropped 1× view over about half a second; recovery eases back into the
+existing breathing phase over about two seconds. The corner-safe rotation
+crop remains the lower limit on zoom. Ordinary jumps do not trigger it.
+This drop envelope may finish while stationary; normal sway still freezes.
+
+**The one-second free-fall death timer is removed.** Falling beyond the map's
+bottom (world y > 500) causes respawn. Long legitimate descents survive. All
+camera effects are visual; coordinates, collision and input bearings are fixed.
+
+### Mechanisms that expose their rules
+
+Eight chapters replace recipe-style switches/dials with causal mechanisms.
+The final familiar signal remains a narrative recall before the cabinet choice.
+Evidence prose and compact entries no longer give obsolete switch recipes;
+physical traces beside finds, machine diagrams, and notebook observations
+explain operating rules. Errors do not destroy resources or permanently jam a
+mechanism. Completion latches, survives death, and visibly opens the boundary
+over 48 simulation steps before passage is allowed.
+
+| Chapter | Reasoning and feedback | Boundary into the next setting |
+| --- | --- | --- |
+| Forest | Clutched adjacent shafts turn together; align cams with worn slots | Timber mill loading door, city brickwork beyond |
+| City | Trace three feeds through pair-swapping contacts; reverse outer returns while retaining heat | Riveted service hatch, oil pipes beyond |
+| Oil Fields | Divide eight measures equally using 8/5/3 vessels; taps transfer until full or empty | Round tank bulkhead, railway beyond |
+| Rail Yard | Brake, shunt the wagon clear, change points, then dispatch | Lifting rail barrier and signals, marsh reeds beyond |
+| Marsh | Seal a lock, equalize pressure, open its upper gate | Two lock leaves and a cut-stone channel |
+| Quarry | Allocate six loads; balance 3:2 lever arms and leave weight on the brake | Hoist cage, conservatory glazing beyond |
+| Gardens | Trace a reflected beam through shutter/mirror/clear positions to the low receiver | Glass conservatory lattice, dam conduits beyond |
+| Dam | Redistribute a conserved six-unit supply without starving turbine, heat or ridge | Heavy sluice and masonry, exposed rock beyond |
+| High Pass | Read four shelter-post heights and translate them into chimes | Snow-covered shelter gate, tower lines beyond |
+| Last Light | Recall the established three-flash signal, then make the existing cabinet decision | Interlocked original/live-pen cabinet |
+
+Pipes return visibly to their source, contact-bank lines show their current
+routes, vessels display contents/capacity, a balance tilts with torque, and
+an optical bench uses the same bounded ray rules as its receiver. No per-frame
+allocation, unbounded search, or new full-screen rendering pass is introduced.
+
+### Routes and character contact
+
+| Setting | Route emphasis |
+| --- | --- |
+| Forest | Ground-level floor and pits, a weighted bridge and one vine crossing; no ladders or crate staircase |
+| City | Rooftops, ladders, service access and a crate-operated span |
+| Oil Fields | Ground-level machinery and a boulder-filled trench, one elevated service catwalk |
+| Rail Yard | Mostly track grade, one broken cutting/vine crossing and one signal-gantry climb |
+| Marsh | Water-level banks and boardwalks with a boat crossing; no ladders |
+| Quarry | Vertical working terraces and lifting infrastructure |
+| Gardens | Planting floors, a crate-assisted ledge and one upper maintenance walk |
+| Dam | Reservoir crossing followed by ascent through machinery |
+| High Pass | Cliffs, exposed climbing and a rope crossing |
+| Last Light | Service approach, water crossing and signal-tower ascent |
+
+Ladder poses alternate hands and feet relative to actual rung heights, freezing
+when climbing stops. Ledge poses retain contact with the lip, bend/extend elbows,
+then bring a knee and planted foot onto the platform. Pushing uses both hands
+against the actual crate face or boulder rim, a leaning torso and bent legs;
+foot motion follows load movement, and a blocked load produces a planted brace.
+The player silhouette remains connected throughout each pose.
+
+### Development checks
+
+The full native suite passed, including controls, both cabinet outcomes,
+render-time simulation, pipeline ownership and cached/reference rendering.
+The final source also passed focused ASan/UBSan and the official Xtensa ELF/
+import build. All ten input-driven chapter routes reach their mechanisms,
+collect all 30 documents and complete with no deaths. Additional checks cover
+conserved fuel/power, pressure/interlock rejection, optical reception, weather
+start/end/replay semantics, lightning pulses, baseline/peak camera coefficients,
+unchanged breathing range, drop recovery and map-bottom-only fall death.
+Host previews of mechanisms, gates, weather and contact poses were inspected.
+
+ELF/sidecar/catalog agree on 1.1.4, **139280 bytes**, SHA-256
+`61b9fdf54bce579d27d56d1266c6f9e854f759a6251d148d5627cba2e2edca87`.
+A warm-cache moving-focus host sample measured 0.736ms render+pack. This is a
+host development sample, not device FPS or a controlled comparison of the
+changed scenes. The 24 FPS target remains unverified on the S3/display.
+
+# Historical implementation notes (through 1.1.3)
 
 ## Atmospheric direction and interaction polish (1.1.3)
 

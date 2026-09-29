@@ -94,8 +94,8 @@ int main(void) {
     /* Up interacts only on its rising edge; held inputs cannot solve a
      * sequence automatically, and pause/loading do not operate machinery. */
     schedule=false; ht_service=NULL; paused=loading=false; previous=held=0;
-    ht.level=0; ht_select_level(0); ht_spawn(true);
-    ht.x=(HT_PUZZLE_FIRST+2*HT_PUZZLE_SPACING)*256;
+    ht.level=8; ht_select_level(8); ht_spawn(true);
+    ht.x=(HT_PUZZLE_FIRST+HT_PUZZLE_SPACING)*256;
     ht.y=ht_land[9].top*256; ht.grounded=true;
     forced_buttons=T5_APP_BUTTON_CONFIRM; ht_input(1);
     assert(ht.puzzle.progress==1 && !jump_down && ht.vy==0);
@@ -107,7 +107,7 @@ int main(void) {
     ht.x=HT_PUZZLE_FIRST*256;
     forced_buttons=T5_APP_BUTTON_CONFIRM; ht_input(1);
     assert(ht.puzzle.progress==1);
-    loading=false;
+    loading=false;ht.level=0;ht_select_level(0);ht_spawn(true);
     /* Inspect, browse and close through production input. Reading freezes
      * physics and closing with A cannot also jump or activate machinery. */
     forced_buttons=0; ht_input(1);

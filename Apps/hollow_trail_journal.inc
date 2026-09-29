@@ -184,6 +184,9 @@ static void ht_journal_render(void) {
                 if(n<0 || (size_t)n>=sizeof(ht_journal_body)-used) break;
                 used+=(size_t)n;
             }
+            if(chapter==ht.level && ht.story_x>=2780 && used<sizeof(ht_journal_body))
+                snprintf(ht_journal_body+used,sizeof(ht_journal_body)-used,
+                    "The mechanism\n\n%s\n%s",ht_puzzles[chapter].clue[0],ht_puzzles[chapter].clue[1]);
         }
         snprintf(footer,sizeof(footer),journal_page==HT_LEVELS*3-1 && ht.verdict && !ht.verdict_read?
             "Page %u | L/R | A on last page: leave":"Page %u | L/R pages | X journal",ht_journal_leaf+1);

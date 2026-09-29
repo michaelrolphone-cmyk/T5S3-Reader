@@ -33,7 +33,8 @@ static void tower(void) {
     ht.y=ht_land[9].top*256; ht.vx=ht.vy=0; ht.grounded=true;
     reading=paused=loading=quitting=false; previous=held=0; simulation_started=false;
     assert(!ht_decide(0) && !ht_decide(3));
-    ht.x=HT_GOAL*256; ht_step(1,false,false);
+    for(int tick=0;tick<48;++tick) ht_step(0,false,false);
+        ht.x=HT_GOAL*256; ht_step(1,false,false);
     assert(ht.level==HT_LEVELS-1 && ht.x==HT_PUZZLE_GATE*256);
     press(T5_APP_BUTTON_CONFIRM); assert(reading && ht_journal_deciding && !ht.verdict);
 }
@@ -68,6 +69,7 @@ int main(void) {
         /* A first-page close does not acknowledge unread ending pages. */
         press(T5_APP_BUTTON_CONFIRM); assert(ht_journal_index && !ht.verdict_read);
         press(T5_APP_BUTTON_BACK); assert(!reading);
+        for(int tick=0;tick<48;++tick) ht_step(0,false,false);
         ht.x=HT_GOAL*256; ht_step(1,false,false); assert(ht.x==HT_PUZZLE_GATE*256 && !ht.laps);
         press(T5_APP_BUTTON_CONFIRM); assert(reading && !ht_journal_deciding && journal_page==29);
         unsigned turns=0;
@@ -79,6 +81,7 @@ int main(void) {
         assert(turns>0);
         press(T5_APP_BUTTON_CONFIRM); assert(ht.verdict_read && !reading);
         ht_spawn(false); assert(ht.verdict==choice && ht.verdict_read);
+        for(int tick=0;tick<48;++tick) ht_step(0,false,false);
         ht.x=HT_GOAL*256; ht.y=ht_land[9].top*256; ht.grounded=true; ht.vy=0;
         ht_step(0,false,false);
         assert(ht.level==0 && !ht.verdict && !ht.verdict_read && ht.last_verdict==choice);

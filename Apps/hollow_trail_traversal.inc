@@ -21,7 +21,7 @@ static bool ht_ladder_enter(int vertical) {
     int top,bottom;ht_ladder_ends(ht.level,(unsigned)ladder,&top,&bottom);
     /* Outward input at either end must not pin the player to the ladder. */
     if((vertical<0 && ht.y<=top*256) || (vertical>0 && ht.y>=bottom*256)) return false;
-    t->mode=HT_LADDER;t->ladder=(uint8_t)ladder;t->fall_ticks=0;
+    t->mode=HT_LADDER;t->ladder=(uint8_t)ladder;
     ht.x=ht_ladder_x((unsigned)ladder)*256;
     ht.vx=ht.vy=0;ht.grounded=false;ht.coyote=ht.jump_buffer=0;
     return true;
@@ -69,7 +69,7 @@ static bool ht_traversal_interact(void) {
         t->mode=HT_FREE;return true;
     }
     int near=ht_traversal_near(&ht);if(!near || near==HT_LADDER) return false;
-    t->mode=(uint8_t)near;t->fall_ticks=0;
+    t->mode=(uint8_t)near;
     if(near==HT_ROPE) {
         /* Keep the caught hand position: no teleport to an authored arc. */
         t->rope_px[6]=ht.x;t->rope_py[6]=ht.y-24*256;
@@ -198,6 +198,8 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
     if(ht.observation_ticks) --ht.observation_ticks;
     if(ht.landing_ticks) --ht.landing_ticks;
     ++ht.ticks;
+    ht_weather_step();
+    if(ht.puzzle.solved && !ht_final_locked(&ht) && ht.puzzle.opening<48) ++ht.puzzle.opening;
     int wind=ht_wind(&ht);
     ht.weather_drift=(ht.weather_drift+wind)%(HT_W*256);
     ht_traversal *t=&ht.traversal;
@@ -270,9 +272,6 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
             ht.vx=t->mode==HT_ROLL?t->ball_vx:t->crate_vx;
             if(ht_abs(bottom-old_y)>6*256) t->mode=HT_FREE;
         }
-        if(!ht.grounded && ht.vy>0 && !t->mode) {
-            if(++t->fall_ticks*HT_STEP_MS>1000u) {++ht.deaths;ht_spawn(false);return;}
-        }
         for(int i=0;i<HT_PLATFORMS;++i) {
             const ht_platform *p=&ht_land[i];int platform_top=ht_platform_top(&ht,i);
             if(!t->mode && !t->drop_cooldown && !ht.grounded && direction &&
@@ -320,25 +319,24 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         }
     }
     if(!jump_request) (void)ht_ladder_enter(vertical);
-    if((direction || vertical || t->mode==HT_CLIMB) && (start_x!=ht.x || start_y!=ht.y)) ht.sway_phase+=5;
+    ht_camera_step((direction || vertical || t->mode==HT_CLIMB) && (start_x!=ht.x || start_y!=ht.y));
     if(ht.grounded && !was_grounded && fall_speed>384 && !t->mode) {
         ht.landing_ticks=10;ht.landing_strength=(uint8_t)ht_clamp(fall_speed/256,2,8);
         ht.landing_x=ht.x/256;ht.landing_y=ht.y/256;
     }
-    if(ht.grounded || t->mode) t->fall_ticks=0;
     if(direction) ht.facing=direction;
     if(ht.grounded) {
         ht.stride+=ht_abs(ht.vx);
         for(int i=3;i<=9;i+=3) if(ht.x/256>=ht_land[i].left && ht.x/256<ht_land[i].right && ht.y==ht_land[i].top*256) ht.checkpoint=i;
     }
-    if((!ht.puzzle.solved || ht_final_locked(&ht)) && ht.x>HT_PUZZLE_GATE*256) {ht.x=HT_PUZZLE_GATE*256;ht.vx=0;}
+    if((!ht.puzzle.solved || ht.puzzle.opening<48 || ht_final_locked(&ht)) && ht.x>HT_PUZZLE_GATE*256) {ht.x=HT_PUZZLE_GATE*256;ht.vx=0;}
     ht.story_x=ht_max(ht.story_x,ht.x/256);
     unsigned beat=ht_story_beat(ht.story_x)+1;
     if(ht.story_seen[ht.level]<beat) ht.story_seen[ht.level]=(uint8_t)beat;
-    if(ht.y>500*256 || (m->water_right && ht.x>m->water_left*256 && ht.x<m->water_right*256 && ht.y>(m->boat_deck+18)*256)) {
+    if(ht.y>500*256) {
         ++ht.deaths;ht_spawn(false);return;
     }
-    if(ht.x>=HT_GOAL*256 && ht.grounded && ht.puzzle.solved && !ht_final_locked(&ht)) {
+    if(ht.x>=HT_GOAL*256 && ht.grounded && ht.puzzle.solved && ht.puzzle.opening==48 && !ht_final_locked(&ht)) {
         if(++ht.level==HT_LEVELS) {ht.level=0;++ht.laps;} ht_spawn(true);return;
     }
     ht.camera+=(ht_clamp(ht.x/256-165,0,HT_GOAL-340)*256-ht.camera)/8;
