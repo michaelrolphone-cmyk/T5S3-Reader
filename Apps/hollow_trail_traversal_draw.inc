@@ -8,13 +8,14 @@ static void ht_draw_traversal(const ht_game *g) {
     const ht_platform *land=ht_level_land(g->level);
     const ht_mechanics *m=ht_mech(g);
     ht_scene_geography(g);
-    ht_boat_grotto(g);
     ht_landscape_detail(g);
     if(m->water_right) {
         int water=m->boat_deck+10-cy;
-        ht_rect(ht_scene,m->water_left-cx,water,m->water_right-m->water_left,HT_H,110);
+        int left=g->level==4?cx-ht_view_margin():m->water_left;
+        int right=g->level==4?cx+HT_W+ht_view_margin():m->water_right;
+        ht_rect(ht_scene,left-cx,water,right-left,HT_H,110);
         for(int band=0;band<16;++band)
-            ht_rect(ht_scene,m->water_left-cx,water+band*3,m->water_right-m->water_left,3,35+band*5);
+            ht_rect(ht_scene,left-cx,water+band*3,right-left,3,35+band*5);
         for(int x=m->water_left+4;x<m->water_right;x+=27) {
             int wave=(int)((g->ticks/3+(unsigned)x)%7);
             ht_rect(ht_scene,x-cx,water+wave,14,1,35);
@@ -34,6 +35,7 @@ static void ht_draw_traversal(const ht_game *g) {
             }
         }
     }
+    ht_boat_grotto(g);
     /* Distinct natural silhouettes stay anchored to the new physical route. */
     for(int i=0;i<HT_PLATFORMS;++i) {
         if(i==m->bridge || (i!=0 && i!=2 && i!=5 && i!=8) || (g->level==4 && i==0)) continue;
@@ -118,41 +120,49 @@ static void ht_draw_traversal(const ht_game *g) {
     if(m->boat_right) {
         int x=g->traversal.boat_x/256-cx,y=ht_boat_top(g)/256-cy;
         int half=ht_boat_half(g);
-        /* Low, long hull with raised ends and curved, narrowing planks. */
-        for(int dy=0;dy<15;++dy) {
-            int taper=dy*dy/24;
-            ht_rect(ht_scene,x-half+1+taper,y+dy,2*(half-1-taper),1,dy==0?255:dy<9?220:255);
-        }
-        ht_limb(ht_scene,x-half+1,y-4,x-half+9,y+8,1,1,255);
-        ht_limb(ht_scene,x+half-1,y-5,x+half-9,y+8,1,1,255);
-        ht_rect(ht_scene,x-half+7,y-1,2*half-14,2,255);
-        for(int rib=-16;rib<=16;rib+=8) ht_rect(ht_scene,x+rib,y+3,1,7,235);
-        ht_rect(ht_scene,x-13,y,5,3,70);ht_rect(ht_scene,x-4,y,8,3,70);ht_rect(ht_scene,x+10,y,5,3,70);
-        int stroke=ht_boat_stroke(g);
-        ht_limb(ht_scene,x+5+stroke/2,y-6,x+27+stroke,y+12,0,0,255);
-        ht_limb(ht_scene,x+27+stroke,y+12,x+32+stroke,y+15,2,1,255);
         if(g->level==4) {
-            /* Furled skiff mast and slack standing rigging: the same moving
-             * ferry owns hull, mast, ropes, oar and the seated passenger. */
-            int mast=x-12,head=y-68;
-            ht_limb(ht_scene,mast,y,mast+2,head,1,0,255);
-            ht_limb(ht_scene,mast+1,head+9,x-17,y-18,0,0,235);
-            ht_limb(ht_scene,x-17,y-18,x-half+3,y-2,0,0,235);
-            ht_limb(ht_scene,mast+2,head+7,x+4,y-23,0,0,210);
-            ht_limb(ht_scene,x+4,y-23,x+half-5,y-2,0,0,210);
-            ht_limb(ht_scene,mast,y-36,mast+3,y-10,2,1,215);
-            /* Shore chain remains on the rock when the boat leaves. */
-            int bank=m->water_left-cx;
-            ht_disk(ht_scene,bank-3,y-10,3,200);
-            int gap=g->traversal.boat_x/256-half-m->water_left;
-            if(gap<=3) {
-                ht_limb(ht_scene,bank-1,y-9,bank+3,y-3,1,1,210);
-                ht_limb(ht_scene,bank+3,y-3,x-half+3,y-2,0,0,220);
+            /* A single curved gunwale and a deep, solid wooden hull. Sparse
+             * broad shapes survive half-resolution e-paper sampling. */
+            for(int dy=0;dy<17;++dy) {
+                int taper=dy*dy/22;
+                ht_rect(ht_scene,x-half+taper,y+dy,2*(half-taper),1,dy<12?246:255);
             }
+            ht_limb(ht_scene,x-half,y-6,x-half+11,y+12,2,2,255);
+            ht_limb(ht_scene,x+half-1,y-5,x+half-9,y+12,2,2,255);
+            ht_limb(ht_scene,x-half+5,y-2,x-4,y+2,2,1,255);
+            ht_limb(ht_scene,x-4,y+2,x+half-3,y-2,1,2,255);
+            ht_limb(ht_scene,x-half+16,y+9,x+half-13,y+10,0,0,210);
+            int mast=x-8,head=y-70;
+            ht_limb(ht_scene,mast,y+1,mast+4,head,2,1,255);
+            /* One continuous forestay, hanging in a shallow curve. */
+            ht_limb(ht_scene,mast+3,head+12,mast-7,y-31,1,1,230);
+            ht_limb(ht_scene,mast-7,y-31,x-half+17,y-1,1,1,230);
+            if(g->traversal.mode==HT_BOAT) {
+                int stroke=ht_boat_stroke(g);
+                ht_limb(ht_scene,x+5+stroke/2,y-6,x+27+stroke,y+12,1,1,255);
+                ht_limb(ht_scene,x+27+stroke,y+12,x+32+stroke,y+15,2,1,255);
+            }
+            int bank=m->water_left-cx;
+            if(g->traversal.boat_x/256-half-m->water_left<=3) {
+                int ledge=ht_surface_at(g,0,m->water_left-4)-cy+8;
+                ht_limb(ht_scene,bank-4,ledge,x-half+2,y-4,1,1,235);
+            }
+        } else {
+            for(int dy=0;dy<15;++dy) {
+                int taper=dy*dy/24;
+                ht_rect(ht_scene,x-half+1+taper,y+dy,2*(half-1-taper),1,dy==0?255:dy<9?220:255);
+            }
+            ht_limb(ht_scene,x-half+1,y-4,x-half+9,y+8,1,1,255);
+            ht_limb(ht_scene,x+half-1,y-5,x+half-9,y+8,1,1,255);
+            ht_rect(ht_scene,x-half+7,y-1,2*half-14,2,255);
+            for(int rib=-16;rib<=16;rib+=8) ht_rect(ht_scene,x+rib,y+3,1,7,235);
+            int stroke=ht_boat_stroke(g);
+            ht_limb(ht_scene,x+5+stroke/2,y-6,x+27+stroke,y+12,0,0,255);
+            ht_limb(ht_scene,x+27+stroke,y+12,x+32+stroke,y+15,2,1,255);
         }
         /* Reflection dissolves in horizontal mist strips, never a black
          * inverted copy competing with the small hull silhouette. */
-        for(int band=0;band<4;++band)
+        for(int band=0;g->level!=4 && band<4;++band)
             ht_rect(ht_scene,x-half+7+band*3,y+16+band*3,2*half-14-band*6,1,90-band*15);
         int speed=ht_abs(g->traversal.boat_vx)/64;
         for(int i=0;i<speed;++i) {

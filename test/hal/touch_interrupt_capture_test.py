@@ -136,8 +136,7 @@ assert resume_helper.index("nativeNavigationResume()") < resume_helper.index("na
 assert "if (!suspendInputProvidersForSleep()) return;" in MAIN
 
 # Pending UI gesture delivery must not keep resetting the inactivity timer.
-activity = TOUCH.split("bool nativeTouchHadActivity()", 1)[1].split(
-    "bool nativeTouchGetTap", 1)[0]
+activity = TOUCH.split("bool nativeTouchHadActivity()", 1)[1].split("\n}", 1)[0]
 assert "touchActive || activityThisTick" in activity
 for sticky in ("tapCount", "swipeCount", "homeCount"):
     assert sticky not in activity

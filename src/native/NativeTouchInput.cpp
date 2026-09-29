@@ -46,6 +46,7 @@ NativeTouchPoint currentTouch{};
 uint32_t activitySerial = 0;
 uint32_t observedActivitySerial = 0;
 uint64_t consumedSequence = 0;
+uint32_t focusRequested = 0, focusApplied = 0;
 bool pollFailureActive = false;
 bool pollFailureExpired = false;
 uint32_t pollFailureStartMs = 0;
@@ -109,8 +110,7 @@ void pushSwipeLocked(const NativeTouchPoint& start, const NativeTouchPoint& end)
   ++swipeCount;
 }
 
-void applySnapshot(const risc_touch_snapshot_v1& snapshot, bool clearQueues) {
-  portENTER_CRITICAL(&touchStateMux);
+void applySnapshotLocked(const risc_touch_snapshot_v1& snapshot, bool clearQueues) {
   consumedSequence = snapshot.sequence;
   if (clearQueues) {
     tapHead = tapCount = 0;
@@ -135,6 +135,11 @@ void applySnapshot(const risc_touch_snapshot_v1& snapshot, bool clearQueues) {
     currentTouch = touchStart;
     touchStartMs = static_cast<uint32_t>(snapshot.timestamp_ms);
   }
+}
+
+void applySnapshot(const risc_touch_snapshot_v1& snapshot, bool clearQueues) {
+  portENTER_CRITICAL(&touchStateMux);
+  applySnapshotLocked(snapshot, clearQueues);
   portEXIT_CRITICAL(&touchStateMux);
 }
 
@@ -166,6 +171,13 @@ void process(const risc_touch_event_v1& event) {
     return;
   }
   consumedSequence = event.sequence;
+  // A focus transition invalidates both delivered gestures and raw events
+  // still waiting in the provider's subscriber queue. Only the capture task
+  // can establish the post-poll snapshot fence; no UI task touches its lease.
+  if (focusRequested != focusApplied) {
+    portEXIT_CRITICAL(&touchStateMux);
+    return;
+  }
   ++activitySerial;
   ++diagnostics.events;
 
@@ -242,6 +254,24 @@ void serviceProvider() {
   // failure delaying a report already published by this poll. A failed poll
   // may still have queued valid events: always drain them before recovery.
   bool pollOk = api->poll(api->context, 1u);
+  portENTER_CRITICAL(&touchStateMux);
+  const uint32_t requestedFocus = focusRequested;
+  const bool fenceNeeded = requestedFocus != focusApplied;
+  portEXIT_CRITICAL(&touchStateMux);
+  if (fenceNeeded) {
+    risc_touch_snapshot_v1 snapshot{};
+    // Failed physical poll cannot prove that an old held contact was sampled.
+    // Keep input fenced, retrying on later capture turns, without unloading.
+    if (pollOk && api->snapshot(api->context, &snapshot) &&
+        snapshot.contact_count <= RISC_TOUCH_MAX_CONTACTS) {
+      portENTER_CRITICAL(&touchStateMux);
+      if (focusRequested == requestedFocus) {
+        applySnapshotLocked(snapshot, true);
+        focusApplied = requestedFocus;
+      }
+      portEXIT_CRITICAL(&touchStateMux);
+    }
+  }
   for (unsigned i = 0; i < RISC_TOUCH_QUEUE_LENGTH; ++i) {
     risc_touch_event_v1 event{};
     const int32_t result = api->next(api->context, subscription, &event);
@@ -499,6 +529,16 @@ bool nativeTouchHadActivity() {
                       activitySerial != observedActivitySerial;
   portEXIT_CRITICAL(&touchStateMux);
   return active;
+}
+
+void nativeTouchDiscardGestures() {
+  portENTER_CRITICAL(&touchStateMux);
+  ++focusRequested;
+  tapHead = tapCount = 0;
+  swipeHead = swipeCount = 0;
+  homeCount = 0;
+  gestureEligible = false;  // A held contact must lift before it can become a tap.
+  portEXIT_CRITICAL(&touchStateMux);
 }
 
 bool nativeTouchGetTap(NativeTouchPoint& point) {

@@ -146,6 +146,7 @@ bool HomeActivity::needsRecentCovers(int coverHeight) const {
 void HomeActivity::loadRecentCovers(int coverHeight) {
   recentsLoading = true;
   bool showingLoading = false;
+  const bool bootLoading = StartupScreen::isLoading();
   Rect popupRect;
 
   int progress = 0;
@@ -156,33 +157,33 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
         if (FsHelpers::hasEpubExtension(book.path)) {
           Epub epub(book.path, "/.crosspoint");
           epub.load(false, true);
-          if (!showingLoading) {
+          if (!bootLoading && !showingLoading) {
             showingLoading = true;
             popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
           }
-          GUI.fillPopupProgress(renderer, popupRect, 10 + progress * (90 / recentBooks.size()));
+          if (!bootLoading) GUI.fillPopupProgress(renderer, popupRect, 10 + progress * (90 / recentBooks.size()));
           bool success = epub.generateThumbBmp(coverHeight);
           if (!success) {
             RECENT_BOOKS.updateBook(book.path, book.title, book.author, "");
             book.coverBmpPath = "";
           }
           coverRendered = false;
-          requestUpdate();
+          if (!bootLoading) requestUpdate();
         } else if (FsHelpers::hasXtcExtension(book.path)) {
           Xtc xtc(book.path, "/.crosspoint");
           if (xtc.load()) {
-            if (!showingLoading) {
+            if (!bootLoading && !showingLoading) {
               showingLoading = true;
               popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
             }
-            GUI.fillPopupProgress(renderer, popupRect, 10 + progress * (90 / recentBooks.size()));
+            if (!bootLoading) GUI.fillPopupProgress(renderer, popupRect, 10 + progress * (90 / recentBooks.size()));
             bool success = xtc.generateThumbBmp(coverHeight);
             if (!success) {
               RECENT_BOOKS.updateBook(book.path, book.title, book.author, "");
               book.coverBmpPath = "";
             }
             coverRendered = false;
-            requestUpdate();
+            if (!bootLoading) requestUpdate();
           }
         }
       }
@@ -208,6 +209,9 @@ void HomeActivity::onEnter() {
   loadRecentBooks(metrics.homeRecentBooksCount);
   loadHomeApps();
   recentsLoaded = !needsRecentCovers(metrics.homeCoverHeight);
+  // Build missing thumbnails while the independent loading screen is visible,
+  // rather than freezing navigation immediately after showing a usable Home.
+  if (StartupScreen::isLoading() && !recentsLoaded) loadRecentCovers(metrics.homeCoverHeight);
   requestUpdate();
 }
 
@@ -329,7 +333,6 @@ bool HomeActivity::onTouchTap(int16_t, int16_t y) {
 }
 
 void HomeActivity::render(RenderLock&&) {
-  StartupScreen::finishBoot(renderer);
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();

@@ -36,33 +36,74 @@ static void ht_landscape_detail(const ht_game *g) {
         }
     }
 }
-/* The marsh ferry begins in a sheltered rock grotto: massive roof at left,
- * eroded headland, bright open water at right. The roof and shore both share
- * their authored silhouette with collision geometry. */
-static void ht_boat_grotto(const ht_game *g) {
-    if(g->level!=4) return;
-    int cx=g->camera/256,cy=g->camera_y/256;
-    if(cx>800) return;
-    /* Shade only the roof and its narrow fog fringe in row order. A smooth
-     * distance ramp avoids stacked polygon bands and repeated opaque fills.
-     * Reuse the terrain column scratch; no extra framebuffer or blur pass. */
-    uint8_t haze[65];int fade=ht_max(1,64*ht_world_scale/256),last=0;
-    for(int d=0;d<=fade;++d) haze[d]=(uint8_t)(255*(fade-d)*(fade-d)/(fade*fade));
-    for(int sx=0;sx<HT_W;++sx) {
-        int wx=cx+240+(sx-240)*256/ht_world_scale;
-        int top=ht_project_y(ht_grotto_ceiling(wx)-cy);
-        ht_land_tops[sx]=(int16_t)top;last=ht_max(last,top+fade);
+/* Independently authored cave faces: shelves and near-vertical fractures,
+ * rather than scaled copies of the foreground roof. */
+static int ht_cave_face(int x,int layer) {
+    static const int16_t faces[2][14][2]={
+        {{-300,262},{100,245},{210,242},{250,229},{280,223},{306,187},{320,183},{336,158},{368,153},{398,125},{415,117},{436,90},{454,-60},{480,-280}},
+        {{-300,286},{130,279},{260,269},{330,263},{378,249},{406,224},{424,215},{438,188},{470,181},{486,128},{503,120},{520,89},{537,-100},{550,-280}}
+    };
+    for(int i=1;i<14;++i) if(x<=faces[layer][i][0]) {
+        int a=faces[layer][i-1][0],b=faces[layer][i][0];
+        int y=faces[layer][i-1][1],end=faces[layer][i][1];
+        return y+(end-y)*ht_clamp(x-a,0,b-a)/(b-a);
     }
-    for(int sy=0;sy<ht_min(HT_H,last);++sy) {
+    return -520;
+}
+/* Three overlapping cave masses enclose a luminous opening. Far and middle
+ * walls have slower camera motion; the solid near roof remains the collision
+ * curve. The water is a continuous plane behind the entire eroded shore. */
+static void ht_boat_grotto(const ht_game *g) {
+    if(g->level!=4 || g->camera/256>900) return;
+    int cx=g->camera/256,cy=g->camera_y/256;
+    static int16_t near_roof[HT_W];
+    for(int sx=0;sx<HT_W;++sx) {
+        int source=240+(sx-240)*256/ht_world_scale;
+        near_roof[sx]=ht_project_y(ht_grotto_ceiling(source+cx)-cy);
+        ht_land_tops[sx]=(int16_t)ht_project_y(ht_cave_face(source+cx*53/100,0)-cy*53/100);
+        ht_land_bottoms[sx]=(int16_t)ht_project_y(ht_cave_face(source+cx*22/100,1)-cy*22/100);
+    }
+    int water=ht_project_y(ht_mech(g)->boat_deck+10-cy);
+    int glow=ht_project_x(535-cx*22/100),middle=ht_project_y(192-cy*22/100);
+    int blend=ht_clamp((900-cx)*256/200,0,256);
+    int softness=ht_max(1,8*ht_world_scale/256);
+    uint16_t edge[24];
+    for(int d=0;d<=softness;++d) edge[d]=(uint16_t)(d*256/softness);
+    int boat=ht_project_x(g->traversal.boat_x/256-cx);
+    for(int sy=0;sy<HT_H;++sy) {
         uint8_t *row=ht_scene+sy*HT_W;
         for(int sx=0;sx<HT_W;++sx) {
-            int distance=sy-ht_land_tops[sx];
-            if(distance<=0) row[sx]=255;
-            else if(distance<fade && row[sx]<haze[distance]) row[sx]=haze[distance];
+            int dx=sx-glow,dy=sy-middle;
+            int ink=ht_clamp(18+(dx*dx+dy*dy*2)/1300,18,125);
+            int far_distance=sy-ht_land_bottoms[sx];
+            int far=far_distance<=0?256:edge[ht_clamp(softness-far_distance,0,softness)]/3;
+            int mid_distance=sy-ht_land_tops[sx];
+            int mid=mid_distance<=0?256:edge[ht_clamp(softness-mid_distance,0,softness)]/3;
+            int far_ink=145-ht_clamp(sy-50,0,180)/2;
+            ink=ht_max(ink,ink+(far_ink-ink)*far/256);
+            int mid_ink=222-ht_clamp(sy-80,0,160)/3;
+            ink=ht_max(ink,ink+(mid_ink-ink)*mid/256);
+            if(sy>=water) {
+                int depth=sy-water;
+                /* The water is its own horizontal surface, not cave fog.
+                 * A dark plane, reflected hull and sparse ripples retain a
+                 * visible waterline even beneath the brightest opening. */
+                ink=ht_clamp(110+depth/3+ht_abs(dx)/12,110,170);
+                int reflection=ht_clamp((235-sx)*2,0,70);
+                ink=ht_min(210,ink+reflection*(80-ht_min(depth,80))/80);
+                int spread=ht_max(0,48-ht_abs(sx-boat));
+                int shade=spread*ht_max(0,34-depth)/17;
+                if((depth/3)%3==1) shade=shade*2/3;
+                ink=ht_min(225,ink+shade);
+                if(depth<=1) ink=ht_max(65,ink-32);
+                int ripple=(sx+cx/2+depth*7)%83;
+                if(depth>4 && depth%11==0 && ripple<17) ink=ht_max(70,ink-9);
+            }
+            int distance=sy-near_roof[sx];
+            if(distance<=0) ink=255;
+            else if(distance<softness) ink=ht_max(ink,150*edge[softness-distance]/256);
+            row[sx]=(uint8_t)((ink*blend+row[sx]*(256-blend))/256);
         }
-        if((sy&31)==31) ht_checkpoint();
+        if((sy&15)==15) ht_checkpoint();
     }
-    /* Thin mineral seams break up the rock without turning it into a tile. */
-    ht_limb(ht_scene,-40-cx,18-cy,100-cx,-4-cy,0,0,229);
-    ht_limb(ht_scene,100-cx,-4-cy,197-cx,-41-cy,0,0,235);
 }

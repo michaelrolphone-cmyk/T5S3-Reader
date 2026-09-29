@@ -14,6 +14,10 @@ bool nativeTouchResume();
 bool nativeTouchSuspend();
 bool nativeTouchAvailable();
 bool nativeTouchHadActivity();
+// Start a new focus generation without dropping the provider. Clears delivered
+// gestures now; the capture task fences raw backlog with its next successful
+// poll/snapshot. Held contacts must lift before becoming eligible.
+void nativeTouchDiscardGestures();
 bool nativeTouchGetTap(NativeTouchPoint& point);
 bool nativeTouchGetContact(NativeTouchPoint& point);
 bool nativeTouchGetHold(NativeTouchPoint& point, unsigned long& heldMs);

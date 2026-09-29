@@ -106,8 +106,9 @@ static void ht_cliff_bounds(const ht_game *g,int i,int head,int feet,int *l,int 
 
 /* Grotto underside is authored once for the roof silhouette and head contact. */
 static const int16_t ht_grotto_roof[][2]={
-    {-300,155},{-80,145},{90,138},{210,124},{300,96},
-    {390,44},{460,-35},{510,-145},{520,-280}
+    {-300,175},{-80,166},{90,160},{170,154},{210,144},
+    {265,140},{300,124},{348,112},{366,91},{385,85},
+    {406,62},{435,55},{460,30},{475,-20},{490,-100},{520,-280}
 };
 static int ht_grotto_ceiling(int x) {
     for(unsigned n=1;n<sizeof(ht_grotto_roof)/sizeof(ht_grotto_roof[0]);++n)
