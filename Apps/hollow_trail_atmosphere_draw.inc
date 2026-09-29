@@ -51,14 +51,13 @@ static void ht_route_material(const ht_game *g,int l,int r,int top,int index) {
     }
 }
 static void ht_story_landmarks(const ht_game *g) {
-    const ht_platform *land=ht_level_land(g->level);
     int cx=g->camera/256,cy=g->camera_y/256,wind=ht_wind(g);
     /* Two authored scenes per chapter, keyed to its actual route supports. */
     for(int scene=0;scene<2;++scene) {
         int platform=scene?6:3;
         int world=ht_landmark_x(g->level,scene);
-        int x=world-cx,y=land[platform].top-cy;
-        if(x< -110 || x>HT_W+110 || y< -25 || y>HT_H+120) continue;
+        int x=world-cx,y=ht_surface_at(g,platform,world)-cy;
+        if(x< -110-ht_view_margin() || x>HT_W+110+ht_view_margin() || y< -25 || y>HT_H+120) continue;
         switch(g->level) {
         case 0: /* Cut trail post and cloth: two hands marked the same route. */
             ht_limb(ht_scene,x,y,x-3,y-51,4,3,220);

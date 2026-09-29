@@ -1,9 +1,12 @@
+#include "hollow_trail_geography_draw.inc"
+#include "hollow_trail_terrain_draw.inc"
 /* Dynamic solids are drawn at logical resolution, outside the blurred scenery
  * cache. One frozen ht_game supplies camera, object poses, collision and art. */
 static void ht_draw_traversal(const ht_game *g) {
     int cx=g->camera/256,cy=g->camera_y/256;
     const ht_platform *land=ht_level_land(g->level);
     const ht_mechanics *m=ht_mech(g);
+    ht_scene_geography(g);
     if(m->water_right) {
         int water=m->boat_deck+10-cy;
         ht_rect(ht_scene,m->water_left-cx,water,m->water_right-m->water_left,HT_H,110);
@@ -31,16 +34,8 @@ static void ht_draw_traversal(const ht_game *g) {
         for(int part=0;part<3;++part) {
             int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top)) break;
             int x=l-cx,y=top-cy,w=r-l;
-            bool bank=i==0 || i==9;
-            if(x>=HT_W || x+w<0 || y>=HT_H || (!bank && y+24<0)) continue;
-            ht_rect(ht_scene,x,y,w,bank?HT_H-y:18,255);
-            ht_rect(ht_scene,x,y+3,w,2,170);
-            for(int at=l+8;at<r;at+=24) {
-                if(g->level==0 || g->level==4 || g->level==8)
-                    ht_limb(ht_scene,at-cx,y+14,at+7-cx,y+22,2,0,255);
-                else ht_rect(ht_scene,at-cx,y+7,3,8,110);
-            }
-            ht_route_material(g,l,r,y+cy,i);
+            if(x>=HT_W+ht_view_margin() || x+w< -ht_view_margin()) continue;
+            ht_draw_land(g,i,part,l,r,top);
             if(i==m->bridge) {
                 ht_limb(ht_scene,x+5,y,x+5,p->top-32*HT_BRIDGE_STEP-32-cy,0,0,200);
                 ht_limb(ht_scene,x+w-5,y,x+w-5,p->top-32*HT_BRIDGE_STEP-32-cy,0,0,200);
@@ -64,13 +59,14 @@ static void ht_draw_traversal(const ht_game *g) {
     }
     /* Distinct natural silhouettes stay anchored to the new physical route. */
     for(int i=0;i<HT_PLATFORMS;++i) {
-        if(i!=0 && i!=1 && i!=4 && i!=8) continue;
+        if(i==m->bridge || (i!=0 && i!=2 && i!=5 && i!=8)) continue;
         const ht_platform *p=&land[i];
-        int x=(i==0?15:p->left+64)-cx,y=ht_platform_top(g,i)-cy;
-        if(x< -80 || x>HT_W+80) continue;
+        int world=i==0?15:p->left+(p->right-p->left)*2/3;
+        int x=world-cx,y=ht_surface_at(g,i,world)-cy;
+        if(x< -160-ht_view_margin() || x>HT_W+160+ht_view_margin()) continue;
         if(g->level==2) ht_cactus_on(ht_scene,x,y,i==1?39:84,255);
         else if(g->level==0 || g->level==4 || g->level==6 || g->level==8)
-            ht_tree(ht_scene,x,y,i==0?250:100,4,(unsigned)i+901,255);
+            ht_tree(ht_scene,x,y,g->level==0?340+(i%3)*65:130+(i%3)*27,g->level==0?23+(i%3)*5:7,(unsigned)i+901,255);
         else {
             ht_rect(ht_scene,x,y-42,3,42,255);ht_rect(ht_scene,x-7,y-44,17,3,255);
             ht_rect(ht_scene,x-4,y-39,11,13,170);

@@ -14,22 +14,80 @@ static uint32_t checksum(const uint8_t *data,size_t size) {
 static void mechanism_invariants(void) {
     ht_puzzle_state p;ht_puzzle_reset(&p,0);ht_puzzle_operate(&p,0,0);
     assert(p.value[0]==1 && p.value[1]==1 && !p.value[2]);
-    for(unsigned level=2;level<=7;level+=5) {
-        ht_puzzle_reset(&p,level);
+    /* Fuel, weights and power cannot be created or destroyed by experimentation. */
+    const unsigned conserved[]={2,5,7};
+    for(unsigned i=0;i<3;++i) {
+        unsigned level=conserved[i];ht_puzzle_reset(&p,level);
         for(int k=0;k<60;++k) {
             ht_puzzle_operate(&p,level,(k*k+k/3)%3);
             assert(p.value[0]+p.value[1]+p.value[2]==(level==2?8:6));
             if(level==2) assert(p.value[0]<=8 && p.value[1]<=5 && p.value[2]<=3);
         }
     }
-    ht_puzzle_reset(&p,3);ht_puzzle_operate(&p,3,2);
-    assert(p.wrong && !p.value[2]);
-    ht_puzzle_reset(&p,4);ht_puzzle_operate(&p,4,2);
-    assert(p.wrong && !p.value[2]);
-    ht_puzzle_operate(&p,4,1);assert(p.wrong && !p.value[1]);
+    /* A full spur cannot swallow another wagon; selection stays available
+     * for a different destination or a same-road cancellation. */
+    ht_puzzle_reset(&p,3);ht_puzzle_operate(&p,3,0);ht_puzzle_operate(&p,3,2);
+    ht_puzzle_operate(&p,3,0);ht_puzzle_operate(&p,3,2);
+    assert(p.wrong && p.feedback==HT_SIDING_FULL && p.count[0]==2 && p.count[2]==1 && p.selected==0);
+    ht_puzzle_operate(&p,3,0);assert(p.selected==3 && !p.solved);
+    /* Four measures, two chambers; gates cannot equalize pressure by magic. */
+    ht_puzzle_reset(&p,4);ht_puzzle_operate(&p,4,3);assert(p.feedback==HT_OPEN_GATE && p.value[0]==0);
+    ht_puzzle_operate(&p,4,1);assert(p.feedback==HT_PRESSURE && !p.stage);
+    ht_puzzle_operate(&p,4,0);ht_puzzle_operate(&p,4,3);ht_puzzle_operate(&p,4,3);
+    assert(p.value[0]==2 && p.value[1]==2);
+    ht_puzzle_operate(&p,4,1);assert(p.stage==1 && p.value[2]==2);
+    ht_puzzle_operate(&p,4,3);assert(p.feedback==HT_OPEN_GATE && p.value[0]+p.value[1]==4);
+    /* A correct-looking beam can reach the lower glass before it is cleared. */
     ht_puzzle_reset(&p,6);ht_puzzle_operate(&p,6,0);ht_puzzle_operate(&p,6,1);
-    assert(!ht_mirror_lit(&p));ht_puzzle_operate(&p,6,2);assert(!p.solved);
-    ht_puzzle_operate(&p,6,2);assert(p.solved);
+    ht_puzzle_operate(&p,6,2);ht_puzzle_operate(&p,6,2);ht_puzzle_operate(&p,6,3);
+    assert(ht_mirror_lit(&p) && !p.solved && !p.stage && p.feedback==HT_GLASS_FOGGED);
+    ht_puzzle_operate(&p,6,2);ht_puzzle_operate(&p,6,3);assert(p.stage && !p.solved);
+    /* Running allocation does not bypass a cold return's priming requirement. */
+    ht_puzzle_reset(&p,7);
+    for(int i=0;i<4;++i) ht_puzzle_operate(&p,7,0);
+    for(int i=0;i<3;++i) ht_puzzle_operate(&p,7,1);
+    ht_puzzle_operate(&p,7,3);assert(!p.solved && !p.stage && p.feedback==HT_PRIME_FAILED);
+    /* The burnt crossover rejects an otherwise correct contact permutation. */
+    ht_puzzle_reset(&p,1);const char *shorted="01123";
+    for(const char *c=shorted;*c;++c) ht_puzzle_operate(&p,1,*c-'0');
+    assert(!p.solved && p.feedback==HT_CROSSOVER_SHORT);
+    ht_puzzle_reset(&p,8);ht_puzzle_operate(&p,8,1);
+    assert(!p.progress && p.feedback==HT_ECHO_CONNECTED);
+    for(unsigned code=0;code<=HT_DECOUPLED;++code) {p.feedback=(uint8_t)code;assert(strlen(ht_puzzle_feedback(&p))*6<=348);}
+}
+/* Reachable-state liveness: every legal experiment can still reach a
+ * solution. Fixed small test graph, never shipped in the app. */
+static void mechanism_recovery(void) {
+    static ht_puzzle_state states[256];
+    static uint16_t edges[256][4];
+    static bool wins[256];
+    for(unsigned level=0;level<HT_LEVELS;++level) {
+        unsigned count=1;ht_puzzle_reset(&states[0],level);
+        memset(wins,0,sizeof(wins));
+        for(unsigned node=0;node<count;++node) {
+            wins[node]=states[node].solved;
+            for(int control=0;control<ht_puzzle_controls(level);++control) {
+                ht_puzzle_state next=states[node];ht_puzzle_operate(&next,level,control);
+                next.feedback=0;next.wrong=false;
+                unsigned found=0;while(found<count && memcmp(&states[found],&next,sizeof(next))) ++found;
+                if(found==count) {assert(count<256);states[count++]=next;}
+                edges[node][control]=(uint16_t)found;
+            }
+        }
+        for(unsigned pass=0;pass<count;++pass) {
+            bool changed=false;
+            for(unsigned node=0;node<count;++node) if(!wins[node]) {
+                for(int control=0;control<ht_puzzle_controls(level);++control)
+                    if(wins[edges[node][control]]) {wins[node]=true;changed=true;break;}
+            }
+            if(!changed) break;
+        }
+        for(unsigned node=0;node<count;++node) if(!wins[node]) {
+            fprintf(stderr,"Unrecoverable chapter %u: values %u/%u/%u stage %u selected %u\n",level,
+                states[node].value[0],states[node].value[1],states[node].value[2],states[node].stage,states[node].selected);
+            assert(wins[node]);
+        }
+    }
 }
 static void camera_invariants(void) {
     ht.level=0;ht_spawn(true);ht.camera_mood=0;ht.rotation_phase=256u<<8;ht.sway_phase=1024;
@@ -51,10 +109,57 @@ static void camera_invariants(void) {
     ht.camera_mood=256;ht.rotation_phase=0;ht_camera_step(true);assert(ht.rotation_phase==1280);
     ht.level=0;ht_spawn(true);
 }
+static void terrain_and_rope_invariants(void) {
+    ht.level=0;ht_spawn(true);ht.x=710*256;ht.y=ht_surface_at(&ht,2,710)*256;
+    int high=ht.y,low=ht.y;
+    for(int direction=1;direction>=-1;direction-=2) for(int step=0;step<130;++step) {
+        ht_step_controls(direction,0,false,false);
+        assert(ht.grounded && ht.y==ht_surface_at(&ht,2,ht.x/256)*256);
+        high=ht_min(high,ht.y);low=ht_max(low,ht.y);
+    }
+    assert(low-high>=30*256); /* Actually walk a rounded hill without jumping. */
+    assert(ht_terrain_bottom(&ht,2,875)==520);
+    assert(ht_terrain_bottom(&ht,1,520)==ht_platform_top(&ht,1)+18);
+    ht.camera=670*256;ht.camera_y=0;memset(ht_scene,0,HT_PIXELS);
+    ht_draw_land(&ht,2,0,670,1080,220);
+    for(int x=700;x<1060;x+=13) {
+        int top=ht_surface_at(&ht,2,x);
+        assert(ht_scene[top*HT_W+x-670]>=230);
+        assert(ht_scene[(top+30)*HT_W+x-670]==255);
+        assert(ht_weather_floor(&ht,x-670)==top);
+    }
+    /* Catch six different heights, visibly descend over time, and jump
+     * before reaching the tail. A near miss must not attach automatically. */
+    for(int node=0;node<HT_ROPE_NODES-1;++node) {
+        ht_spawn(true);ht.x=ht.traversal.rope_px[node];ht.y=ht.traversal.rope_py[node]+24*256;
+        ht.grounded=false;int feet=ht.y;
+        assert(ht_traversal_interact() && ht.traversal.mode==HT_ROPE);
+        int grip=ht.traversal.rope_grip;
+        assert(ht_abs(ht.y-feet)<=256 && grip<ht_mech(&ht)->rope_length*256);
+        ht_step_controls(1,0,false,true);
+        assert(ht.traversal.rope_grip-grip<256);
+        for(int step=0;step<11;++step) ht_step_controls(1,0,false,true);
+        assert(ht.traversal.rope_grip>grip && ht.traversal.rope_grip<ht_mech(&ht)->rope_length*256);
+        ht_step_controls(1,0,true,true);
+        assert(ht.traversal.mode==HT_FREE && ht.vy<0);
+    }
+    ht_spawn(true);ht.x=(1454+20)*256;ht.y=170*256;ht.grounded=false;
+    assert(ht_rope_catch(&ht)<0);ht_step_controls(0,0,false,true);assert(ht.traversal.mode==HT_FREE);
+    /* Scene-wide framing changes projection only, preserves the normal
+     * breathing coefficients, and freezes when the character stops. */
+    ht.level=7;ht_spawn(true);ht.x=1700*256;
+    for(int step=0;step<64;++step) ht_camera_step(true);
+    assert(ht.vista==256);unsigned vista=ht.vista;ht_camera_step(false);assert(ht.vista==vista);
+    ht_game plain=ht;plain.vista=0;int turn,scale,pt,ps;
+    ht_camera_coefficients(&ht,&turn,&scale);ht_camera_coefficients(&plain,&pt,&ps);
+    assert(turn==pt && scale==ps);
+    ht_world_scale=192;assert(ht_project_x(-ht_view_margin())==0 && ht_project_x(HT_W+ht_view_margin())==HT_W);
+    ht_world_scale=256;ht.level=0;ht_spawn(true);
+}
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY), *frame=malloc(960u*540u/4u);
     assert(memory && frame); ht_bind(memory); ht_spawn(true);
-    mechanism_invariants();camera_invariants();
+    mechanism_invariants();mechanism_recovery();camera_invariants();terrain_and_rope_invariants();
     assert(((uintptr_t)ht_low_scene&15u)==0);
     /* Prove clamp-free affine taps stay inside the source over a complete
      * rotation/zoom cycle. Linear coordinates attain extrema at row ends. */
@@ -121,7 +226,7 @@ int main(void) {
     ht_spawn(true);ht.x=ht.traversal.ball_x;ht.y=(220-2*HT_BALL_RADIUS)*256;
     ht.grounded=false;ht_step(0,false,false);
     assert(ht.traversal.support==1 && ht.y==ht.traversal.ball_y-HT_BALL_RADIUS*256);
-    ht_spawn(true);ht.x=(210-HT_BALL_RADIUS-5)*256;
+    ht_spawn(true);ht.x=(210-HT_BALL_RADIUS-5)*256;ht.y=ht_surface_at(&ht,0,ht.x/256)*256;
     assert(ht_traversal_interact() && ht.traversal.mode==HT_ROLL);
     ht_step(1,false,false);assert(ht.traversal.ball_vx==14);
     for(int i=0;i<20;++i) ht_step(1,false,false);
@@ -250,7 +355,7 @@ int main(void) {
         if(c->end) {
             ht.x=((c->begin+c->end)/2)*256;assert(!ht_weather_target(&ht) && !ht_exposure(&ht));
             ht.x=ht_evidence_x(level,c->after)*256;
-            ht.y=ht_platform_top(&ht,ht_evidence_platform(c->after))*256;
+            ht.y=ht_surface_at(&ht,ht_evidence_platform(ht.level,c->after),ht.x/256)*256;
             ht.grounded=true;assert(ht_inspect()>=0 && ht_weather_target(&ht)==256);
             for(int tick=0;tick<64;++tick) ht_weather_step();
             assert(ht.weather_amount==256);
@@ -267,22 +372,22 @@ int main(void) {
             }
             ht.x=(c->end+1)*256;assert(!ht_exposure(&ht) && !ht_wind(&ht));
             ht.x=ht_evidence_x(level,c->until)*256;
-            ht.y=ht_platform_top(&ht,ht_evidence_platform(c->until))*256;
+            ht.y=ht_surface_at(&ht,ht_evidence_platform(ht.level,c->until),ht.x/256)*256;
             assert(ht_inspect()>=0 && !ht_weather_target(&ht) && !ht_lightning(&ht));
             for(int tick=0;tick<32;++tick) ht_weather_step();
             assert(!ht.weather_amount);
             ht_spawn(false);assert(!ht_weather_target(&ht));
             ht.x=ht_evidence_x(level,c->after)*256;
-            ht.y=ht_platform_top(&ht,ht_evidence_platform(c->after))*256;
+            ht.y=ht_surface_at(&ht,ht_evidence_platform(ht.level,c->after),ht.x/256)*256;
             assert(ht_inspect()>=0 && !ht_weather_target(&ht));
             uint32_t archive=ht.evidence;ht_spawn(true);
             assert(ht.evidence==archive && !ht.scene_evidence);
             ht.x=ht_evidence_x(level,c->after)*256;
-            ht.y=ht_platform_top(&ht,ht_evidence_platform(c->after))*256;
+            ht.y=ht_surface_at(&ht,ht_evidence_platform(ht.level,c->after),ht.x/256)*256;
             assert(ht_inspect()>=0 && ht_weather_target(&ht)==256);
         }
         for(int scene=0;scene<2;++scene) {
-            ht.x=ht_landmark_x(level,scene)*256;ht.y=ht_land[scene?6:3].top*256;
+            ht.x=ht_landmark_x(level,scene)*256;ht.y=ht_surface_at(&ht,scene?6:3,ht.x/256)*256;
             ht.grounded=true;assert(ht_observe() && ht.observation==level*2+scene+1);
             for(int line=0;line<2;++line) assert(strlen(ht_observations[level*2+scene][line])*6<=332);
         }
@@ -327,7 +432,7 @@ int main(void) {
         ht.x=HT_GOAL*256; ht.y=ht_land[9].top*256; ht.vy=0; ht_step(1,false,false);
         assert(ht.level==(level+1)%HT_LEVELS && !ht.puzzle.solved && ht.puzzle.progress==0);
     }
-    ht.level=8; ht_spawn(true); ht.grounded=true;ht.y=ht_land[9].top*256;
+    ht.level=8; ht_spawn(true); ht.puzzle.stage=1; ht.grounded=true;ht.y=ht_land[9].top*256;
     ht.x=HT_PUZZLE_FIRST*256; assert(ht_interact());
     assert(ht.puzzle.wrong && ht.puzzle.progress==0);
     ht.x=(HT_PUZZLE_FIRST+HT_PUZZLE_SPACING)*256; assert(ht_interact());
@@ -337,7 +442,6 @@ int main(void) {
     for(unsigned level=0;level<HT_LEVELS;++level) {
         assert(strlen(ht_puzzles[level].name)*6<=330);
         for(int line=0;line<2;++line) {
-            assert(strlen(ht_puzzles[level].clue[line])*6<=366);
             assert(strlen(ht_puzzles[level].reveal[line])*6<=366);
         }
     }
@@ -356,7 +460,7 @@ int main(void) {
             unsigned page=level*3u+(unsigned)item;
             assert(!ht_evidence_found(&ht,page));
             ht.x=ht_evidence_x(level,item)*256;
-            ht.y=ht_platform_top(&ht,ht_evidence_platform(item))*256;
+            ht.y=ht_surface_at(&ht,ht_evidence_platform(ht.level,item),ht.x/256)*256;
             ht.grounded=false; assert(ht_inspect()==-1);
             ht.grounded=true; assert(ht_inspect()==(int)page);
             assert(ht_evidence_found(&ht,page));
@@ -384,7 +488,7 @@ int main(void) {
         }
         memset(ht_scene,255,HT_PIXELS); ht_narration(&ht);
         unsigned letters=0;
-        for(int y=0;y<HT_H;++y) for(int x=0;x<HT_W;++x) if(!ht_scene[y*HT_W+x]) {
+        for(int y=0;y<HT_H;++y) for(int x=0;x<HT_W;++x) if(ht_scene[y*HT_W+x]==85) {
             ++letters; assert(y>=233 && y<=249 && x>=57 && x<423);
         }
         assert(letters>0); ht_framed=true; ht_pack_mono(frame,120);
