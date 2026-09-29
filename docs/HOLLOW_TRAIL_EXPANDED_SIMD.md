@@ -88,3 +88,36 @@ AddressSanitizer and UndefinedBehaviorSanitizer remain enabled.
 The new stages have not been timed on the device. Compare warmed gameplay in both
 modes, and also movement into uncached terrain for the blur/cache change. Real FPS
 and stage timings determine whether the combined expansion should become default.
+
+## 1.1.15 availability repair
+
+The owner reported `SIMD UNAVAILABLE: AI` on 1.1.14. This means the packing
+availability check failed before expanded kernels were enabled. The original
+message did not distinguish a missing math API/feature from a test mismatch, so
+that device's exact failure cannot be established from the message alone.
+
+Inspection found a concrete alignment defect: both SIMD constant tables were
+`aligned(16)` objects in ELF `.rodata`. The S3 section loader in
+`lib/elf_loader/src/esp_elf.c` concatenates data sections into a block obtained by
+`esp_elf_malloc`; `esp_elf_adapter.c` uses ordinary `heap_caps_malloc`, without a
+16-byte alignment guarantee. Source/linker alignment therefore does not guarantee
+runtime alignment. S3 `EE.VLD.128` rounds addresses down to a 16-byte boundary, so a
+misplaced constant table causes wrong arithmetic and a self-test rejection. This
+can depend on heap/ELF layout, even when the kernel source is unchanged.
+
+Both tables (432 bytes total) now occupy the end of the explicitly aligned app
+PSRAM arena. `ht_bind` generates them once; the self-tests and production kernels
+use these same pointers. They follow the reconstruction raster without overlap,
+and remain alive until normal app memory cleanup. The version is **1.1.15**;
+minimum firmware is unchanged. This app fix does not change the firmware loader.
+
+The pause screen and app log now distinguish no math API, no S3 feature, table
+alignment failure, packing mismatch, and upscale/edge/blend/blur mismatches.
+The log includes pattern, phase, byte and expected/actual values. Every original
+self-test and fallback remains enforced; nothing forces a failing kernel on.
+
+Regression coverage checks all 16 possible raw allocation offsets, exact table
+values and arena guards, plus first-mismatch diagnostic capture. The full native
+suite and S3 build are rerun. Hardware confirmation remains necessary: the
+alignment defect is verified in code, but the reported device's previous generic
+message did not identify which check failed.

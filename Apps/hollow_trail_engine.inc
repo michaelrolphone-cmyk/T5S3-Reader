@@ -36,7 +36,8 @@ static uint16_t ht_dirty_top,ht_dirty_height;
 #define HT_WARM_STEPS (HT_LAYERS*HT_TILE_SLOTS*(1+3*((HT_H+HT_CACHE_BAND-1)/HT_CACHE_BAND)))
 /* Keep two full legacy focus maps so the A/B test compares against the original
  * optimized 240x135 renderer rather than an artificially slowed reference. */
-#define HT_MEMORY (HT_SCENE_PIXELS * 4u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS + HT_RECON_PIXELS)
+#define HT_SIMD_TABLE_BYTES (4u*6u*16u + 3u*16u)
+#define HT_MEMORY (HT_SIMD_TABLE_BYTES + HT_SCENE_PIXELS * 4u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS + HT_RECON_PIXELS)
 #define HT_GOAL 3200
 #define HT_STEP_MS 32u /* Half-speed motion; preserve jump paths and level reachability. */
 
@@ -116,6 +117,17 @@ static ht_game ht;
 static unsigned ht_geometry_level;
 static const t5_math_api_v1 *ht_math;
 static bool ht_simd_ready;
+static const char *ht_simd_reason="NOT TESTED",*ht_expanded_reason="NOT TESTED";
+static unsigned ht_simd_test_pattern,ht_simd_test_phase,ht_simd_test_byte;
+static unsigned ht_simd_test_expected,ht_simd_test_actual;
+static bool ht_simd_test_equal(const void *got,const void *want,unsigned size,unsigned pattern,unsigned phase) {
+    const uint8_t *a=(const uint8_t *)got,*b=(const uint8_t *)want;
+    for(unsigned i=0;i<size;++i)if(a[i]!=b[i]) {
+        ht_simd_test_pattern=pattern;ht_simd_test_phase=phase;ht_simd_test_byte=i;
+        ht_simd_test_expected=b[i];ht_simd_test_actual=a[i];return false;
+    }
+    return true;
+}
 static int16_t *ht_filter;
 static uint8_t *ht_raw, *ht_near, *ht_wide, *ht_temp, *ht_scene;
 static uint8_t *ht_cached_near[HT_LAYERS][HT_TILE_SLOTS], *ht_cached_wide[HT_LAYERS][HT_TILE_SLOTS];
@@ -219,8 +231,13 @@ static const uint16_t *ht_focus_weights(int px,int py,int step,int width,int hei
     return map;
 }
 static void ht_pack_tables_init(void);
+static void ht_simd_constants_init(uint8_t *memory);
 static void ht_bind(uint8_t *memory) {
     ht_pack_tables_init();
+    ht_simd_constants_init(memory+HT_MEMORY-HT_SIMD_TABLE_BYTES);
+    ht_simd_reason=ht_expanded_reason="NOT TESTED";
+    ht_simd_test_pattern=ht_simd_test_phase=ht_simd_test_byte=0;
+    ht_simd_test_expected=ht_simd_test_actual=0;
     ht_geometry_level=0; ht_expanded_mode=false; ht_expanded_ready=false; ht_simd_ready=false; ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
     ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
     ht_scene=memory+3*HT_PIXELS; ht_temp=memory+4*HT_PIXELS; ht_filter=(int16_t *)ht_temp;
