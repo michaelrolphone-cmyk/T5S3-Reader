@@ -15,6 +15,7 @@ bool nativeTouchSuspend();
 bool nativeTouchAvailable();
 bool nativeTouchHadActivity();
 bool nativeTouchGetTap(NativeTouchPoint& point);
+bool nativeTouchGetContact(NativeTouchPoint& point);
 bool nativeTouchGetHold(NativeTouchPoint& point, unsigned long& heldMs);
 bool nativeTouchGetSwipe(NativeTouchPoint& start, NativeTouchPoint& end);
 bool nativeTouchTakeHomePress();

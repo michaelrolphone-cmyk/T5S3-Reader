@@ -180,3 +180,6 @@ int main(void) {
     }
   }
 }
+
+#include "T5VideoApi.h"
+const t5_video_api_v1* t5_video_get_api(uint32_t version) { (void)version; return NULL; }

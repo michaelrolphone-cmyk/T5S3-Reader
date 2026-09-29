@@ -19,10 +19,14 @@ extern "C" {
  * The loader relinquishes only the requested resources, calls app_main, and
  * restores firmware ownership after app_main RETURNS, before dlclose. The ELF
  * must stop all hardware tasks, interrupts, callbacks and DMA before returning.
- * It must not call the firmware's normal display/UI API during takeover.
+ * Physical refresh/UI dialogs are forbidden during takeover. UI_VIDEO permits
+ * software drawing primitives and copy_ui_frame(), never present().
  */
 #define T5_HARDWARE_TAKEOVER_DISPLAY (1u << 0)
-#define T5_HARDWARE_TAKEOVER_SUPPORTED (T5_HARDWARE_TAKEOVER_DISPLAY)
+// UI video keeps firmware touch capture and software rasterization available.
+// It must be combined with DISPLAY; physical present/UI dialogs stay forbidden.
+#define T5_HARDWARE_TAKEOVER_UI_VIDEO (1u << 1)
+#define T5_HARDWARE_TAKEOVER_SUPPORTED (T5_HARDWARE_TAKEOVER_DISPLAY | T5_HARDWARE_TAKEOVER_UI_VIDEO)
 
 typedef uint32_t (*t5_hardware_takeover_request_fn)(void);
 

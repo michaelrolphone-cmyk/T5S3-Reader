@@ -3,6 +3,12 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
+cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/springboard_video_test.c" -o "$binary"
+"$binary"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$repo_dir/src" \
+  "$repo_dir/test/native_apps/springboard_composition_test.cpp" -o "$binary"
+"$binary"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/test/native_apps/manifest_test.cpp" -o "$binary"
 "$binary"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/src" \
