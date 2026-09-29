@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 157. Customize Status Bar cycles a setting repeatedly from one held Confirm press
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0427](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0427/bugs.md)
+
+- **Affected code:** `Apps/status_bar_settings.c`, `app_main()`; `src/native/NativeStatusBarBridge.cpp`, `itemActivate()`.
+- **Trigger / reproduction:** Open **Customize Status Bar**, select any row, then press and hold Confirm for more than one 50 ms input-poll interval. This is easiest to see on a three-state row such as Progress Bar, Progress Bar Thickness, Title, or Clock; a two-state row such as Battery can flip off and back on during one physical press.
+- **Observed / logically demonstrated failure:** `app_main()` tests the level-triggered `input.buttons & T5_APP_BUTTON_CONFIRM` on every 50 ms poll and calls `item_activate()` every time the button is still down. `NativeStatusBarBridge::itemActivate()` advances the selected setting modulo 2 or 3 and writes settings on every call. One physical press can therefore perform several logical activations, so the final value depends on release timing and the same press can cause multiple settings-file writes.
+- **Likely root cause:** This app consumes raw held-button state as an action event instead of detecting a rising edge or waiting for release before re-arming Confirm.
+- **Impact:** Status-bar configuration can skip past the value the user intended or appear unchanged after cycling all the way around, while also generating unnecessary repeated persistence writes.
+- **Repair direction:** Gate Confirm on a press edge (as `font_manager.c` already does), or use the edge-oriented UI event API. Re-arm only after release, and add a test that holds Confirm across several polls and asserts exactly one activation and one persistence attempt.
+
+### 158. A failed new OPDS-server save can remain live and later be persisted as a phantom duplicate
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0427](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0427/bugs.md)
+
+- **Affected code:** `src/OpdsServerStore.cpp`, `OpdsServerStore::addServer()` (the same mutate-before-save pattern also exists in `updateServer()` and `removeServer()`); `src/native/NativeOpdsBridge.cpp`, `addServer()`; `Apps/opds_settings.c`, `persist_edit()` and `apply_keyboard_result()`.
+- **Trigger / reproduction:** Choose **Add Server**, edit one field, and force the write of `/.crosspoint/opds.json` to fail. The app reports **Could not save server** and still considers the editor new. Then edit another field and allow that later save to succeed.
+- **Observed / logically demonstrated failure:** `OpdsServerStore::addServer()` pushes the candidate into the singleton `servers` vector before calling `saveToFile()`, and does not remove it when that save fails. Because the app's new-server keyboard continuation uses index code 0, the next invocation does not reload an existing server before calling `add()` again. A later successful edit can therefore append a second candidate and serialize both entries, including the first partial server whose save was reported as failed. The same store methods also leave failed update/remove mutations live until some later reload repairs them.
+- **Likely root cause:** OPDS mutations are applied to long-lived in-memory state before durable persistence succeeds, with no rollback or copy-on-write transaction.
+- **Impact:** A transient storage failure while adding a catalog can create an unexpected duplicate/partial OPDS server later, and failed edits/removals can temporarily diverge from durable configuration despite explicit failure feedback.
+- **Repair direction:** Make add/update/remove transactional: build a candidate server vector, serialize and durably replace `opds.json`, then publish the candidate to `servers` only after success (or restore the previous vector on failure). Add a regression that fails the first Add save, succeeds the next field save, and proves no phantom entry is retained or serialized.
+
+### 159. Time Card accepts malformed time text and silently converts stray letters into AM/PM
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0427](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0427/bugs.md)
+
+- **Affected code:** `Apps/timecard.c`, `parse_time()`, keyboard edit flow in `consume_keyboard()`.
+- **Trigger / reproduction:** Edit a punch through the text keyboard and enter malformed values such as `8 nonsense`, `1 apple`, or `12amPM`. Submit the edit.
+- **Observed / logically demonstrated failure:** After parsing the leading hour and optional minutes, `parse_time()` scans the entire remaining string and merely notes whether any character is `a/A` or `p/P`; every other trailing character is ignored. Thus `8 nonsense` is accepted as 08:00, `1 apple` sets both AM and PM flags and is saved as 13:00 because PM wins, and contradictory `12amPM` is accepted as noon. `consume_keyboard()` treats these results as valid and persists them as punch times.
+- **Likely root cause:** The parser searches for AM/PM marker characters instead of validating and consuming an exact time grammar through end-of-input.
+- **Impact:** Typographical or pasted junk can silently become a different valid punch time, corrupting worked-time totals without presenting an input error.
+- **Repair direction:** Parse a strict grammar such as `H`, `H:MM`, optionally followed by whitespace and exactly one case-insensitive `AM` or `PM`; reject contradictory markers and any non-whitespace trailing text. Add tests for valid 12/24-hour forms plus malformed suffixes, both-marker input, missing digits, and out-of-range values.
