@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 142. Main Settings reports successful changes after persistence fails and leaves the unsaved values live
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260928-2354`.
+
+- **Affected code:** `src/native/NativeSettingsBridge.cpp::nativeSettingsActivate()`; consumer `Apps/settings.c::activate_selected()`.
+- **Trigger / reproduction:** Open the main Settings app, select any directly mutable toggle/enum/value setting, and force `CrossPointSettings::saveToFile()` to fail (for example, inject an SD write failure or make the settings destination unwritable). Backlight is a particularly visible case because the bridge also applies it immediately to the hardware.
+- **Observed / logically demonstrated failure:** `nativeSettingsActivate()` mutates the live `SETTINGS` field first, applies the backlight side effect when applicable, then calls `SETTINGS.saveToFile()` without checking its boolean result and unconditionally returns `T5_APP_SETTING_UPDATED`. The app therefore redraws the new value as if it were durable even though the on-disk settings remain unchanged. The live session continues using the uncommitted value and a reboot can silently revert it.
+- **Likely root cause:** The generic settings bridge treats mutation, runtime side effects, and persistence as independent operations instead of one transaction, and discards the persistence result.
+- **Impact:** Storage failures can make the Settings UI lie about whether a change was saved and leave runtime behavior inconsistent with durable configuration. This is distinct from the previously reported Status Bar bridge persistence defect because this path is the generic main Settings bridge and covers its ordinary toggle/enum/value rows.
+- **Repair direction:** Snapshot the prior value, apply the candidate, require `saveToFile()` to succeed before reporting `UPDATED`, and on failure restore both the setting and any immediate hardware side effect such as backlight level. Add fault-injection tests for a toggle and backlight/value setting proving failed saves leave both RAM/hardware state and the persisted file unchanged.
+
+### 143. USB mass-storage detach during an open write leaves a zero-byte file and orphaned FAT clusters
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260928-2354`.
+
+- **Affected code:** `Drivers/usb_mass_storage/driver.c`: `volume_file_open_write()`, `volume_file_write()`, `volume_refresh()`, and `detach_volume()`.
+- **Trigger / reproduction:** Mount a writable FAT16/FAT32 USB drive, open a new destination through the storage-volume API, write enough data to allocate at least one cluster, but before `volume_file_close(..., true)` succeeds force `host->poll()` or device enumeration to fail (or disconnect/reconnect the device).
+- **Observed / logically demonstrated failure:** `volume_file_open_write()` creates the visible directory entry immediately with cluster/size still zero. Data writes allocate FAT clusters, but the directory entry is not updated with `first_cluster` and `size` until a successful committed close. `volume_refresh()` calls `detach_volume()` on host/enumeration failure; `detach_volume()` simply clears `file_state.active` and forgets the in-progress write. After reconnect, the directory can therefore contain a zero-byte destination while the already allocated cluster chain has no directory reference. A retry of the same filename is then rejected because the destination already exists.
+- **Likely root cause:** The write transaction has no recoverable/staged namespace state across volume detach: the namespace entry is published before commit, while all rollback information lives only in volatile `file_state`.
+- **Impact:** A transient USB-host fault or cable interruption during a write can leave persistent filesystem garbage: a misleading zero-byte file plus leaked FAT space, and normal retry cannot recreate the intended file without manual cleanup.
+- **Repair direction:** Make new-file publication transactional. Prefer a temporary/hidden entry whose cluster chain is finalized and then published at commit; otherwise persist enough recovery state to delete the incomplete entry/free its chain on reattach. Do not discard an active writable `file_state` without either successful rollback or a defined recovery marker. Add an injected host-poll failure test after at least one cluster write and verify reconnect leaves neither the destination nor allocated orphan clusters.
+
+### 144. Native Web Server starts a 200 response before SD streaming succeeds, then can try to send a second response after a short read
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260928-2354`.
+
+- **Affected code:** `src/native/NativeWebServerBridge.cpp::streamFile()` and `handleHttpRequest()`.
+- **Trigger / reproduction:** Serve a file from the Web Server app's document root and inject an SD read failure after the file is opened and its size is known but before all `total` bytes are read.
+- **Observed / logically demonstrated failure:** `streamFile()` sends HTTP 200 plus `Content-Length: total` before entering its read loop. If a later `file.read()` returns `<= 0`, the loop stops with `sent < total` and `streamFile()` returns `false`. `handleHttpRequest()` interprets that exactly like “file not found,” tries `path + "/index.html"`, and can finally call `send(404,...)` even though the response for this request has already begun as a 200 with a body and fixed length. The client can receive a truncated/hanging 200 or otherwise invalid response framing; the bridge also increments `files_served` before declaring the stream failed.
+- **Likely root cause:** A boolean return conflates “no file/response not started” with “response started but body streaming failed,” so the caller performs fallback routing after headers are committed.
+- **Impact:** A transient SD fault while serving HTML/JS/CSS or another asset can produce protocol-level corruption rather than a clean failure, making the captive portal appear randomly broken and giving misleading server statistics.
+- **Repair direction:** Return a tri-state/result that distinguishes not-found from response-started streaming failure. Once 200 headers are committed, never attempt another status/body for the same request; terminate the connection or otherwise fail the stream consistently, and count a file as served only after exactly `total` bytes were emitted. Add fault-injection coverage for a mid-body read failure and verify no fallback 404/second response is attempted.
