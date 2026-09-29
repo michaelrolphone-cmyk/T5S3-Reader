@@ -3,6 +3,21 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
+# Artifact callers run once per app/provider. Validate the actual ELF here;
+# the no-argument CI host job below runs the complete regression suite once.
+# Do not recompile/re-run every game's tests for each unrelated artifact.
+if [[ $# -gt 0 ]]; then
+  if [[ $# -ne 1 ]]; then
+    echo 'Usage: run_native_app_test.sh [ELF]' >&2
+    exit 2
+  fi
+  cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
+    -I"$repo_dir/lib/elf_loader/include" \
+    "$repo_dir/lib/elf_loader/src/esp_elf_validate.c" "$repo_dir/test/native_apps/validate_test.c" -o "$binary"
+  echo "Validating native ELF: $1"
+  timeout --kill-after=5s 60s "$binary" "$1"
+  exit 0
+fi
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/NativeApps/src/NativeAppLauncher.c" \
@@ -74,21 +89,14 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   "$repo_dir/src/native/NativeDeviceBridge.cpp" \
   "$repo_dir/test/resources/device_bridge_v2_test.cpp" -o "$binary"
 "$binary"
-if [[ $# -gt 0 ]]; then
-  cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
-    -I"$repo_dir/lib/elf_loader/include" \
-    "$repo_dir/lib/elf_loader/src/esp_elf_validate.c" "$repo_dir/test/native_apps/validate_test.c" -o "$binary"
-  "$binary" "$1"
-else
-  cc -std=c11 -Wall -Wextra -Werror \
-    "$repo_dir/lib/NativeApps/src/UnsignedDivisionCompat.c" \
-    "$repo_dir/test/native_apps/unsigned_division_test.c" -o "$binary"
-  "$binary"
-  cc -std=c11 -Wall -Wextra -Werror \
-    "$repo_dir/lib/NativeApps/src/SingleFloatDivisionCompat.c" \
-    "$repo_dir/test/native_apps/single_float_division_test.c" -o "$binary"
-  "$binary"
-fi
+cc -std=c11 -Wall -Wextra -Werror \
+  "$repo_dir/lib/NativeApps/src/UnsignedDivisionCompat.c" \
+  "$repo_dir/test/native_apps/unsigned_division_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -Wall -Wextra -Werror \
+  "$repo_dir/lib/NativeApps/src/SingleFloatDivisionCompat.c" \
+  "$repo_dir/test/native_apps/single_float_division_test.c" -o "$binary"
+"$binary"
 python3 "$repo_dir/test/native_apps/test_symbols.py"
 python3 "$repo_dir/test/native_apps/test_elf_cache_sync.py"
 python3 "$repo_dir/test/native_apps/test_capability_manifest.py"

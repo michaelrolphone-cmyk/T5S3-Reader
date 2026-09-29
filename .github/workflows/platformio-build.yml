@@ -42,6 +42,7 @@ jobs:
   build:
     name: Build RiscRTE ${{ matrix.environment }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -131,6 +132,7 @@ jobs:
   host-tests:
     name: RiscRTE host parser tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
@@ -167,6 +169,7 @@ jobs:
         run: bash test/run_runtime_network_test.sh
 
       - name: Run native app launcher tests
+        timeout-minutes: 10
         run: bash test/run_native_app_test.sh
 
       - name: Run app manifest and springboard tests
