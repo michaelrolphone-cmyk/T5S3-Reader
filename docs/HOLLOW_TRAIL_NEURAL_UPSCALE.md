@@ -10,22 +10,22 @@ The exported inference path uses only integer multiply/add/shift operations and 
 
 ## Final 960x540 neural output scale
 
-Hollow Trail still renders its logical gameplay surface at 480x270, while the physical e-paper panel is 960x540. Version 1.1.11 extends the trained 2x residual model to that final scale.
+Hollow Trail still renders its logical gameplay surface at 480x270, while the physical e-paper panel is 960x540. Version 1.1.12 extends the trained 2x residual model to that final scale.
 
 In AI mode, the mono packer now treats each 480x270 logical pixel as the known anchor of a 2x2 physical block. Bilinear values are computed for the other three physical samples, and the existing INT8 residual model corrects those values only where the local 2x2 range crosses the learned edge gate. Smooth spans keep the original packed bilinear fast path.
 
 The correction is fused directly into 1bpp dithering. There is no 960x540 grayscale framebuffer and no additional full-frame upscale pass. The display buffer remains the normal 120-byte x 540-row packed surface.
 
-Legacy mode retains the previous 480x270 -> 960x540 bilinear/dither packer, so the pause-menu A/B test compares the complete output pipeline rather than only the low-resolution compositor.
+Both runtime modes now use the AI 120x68 composition and trained reconstruction path. **AI** keeps the standard 480x270 -> 960x540 physical pack/dither step; **AI + 960** additionally applies the trained residual reconstruction at the final 2x scale. The retired legacy compositor is no longer selectable.
 
 ## Hardware A/B mode
 
-The former DSP16 test toggle has been removed because hardware testing showed that path reduced frame rate. Hollow Trail now uses that same paused-game control for a real renderer comparison:
+The former DSP16/legacy renderer experiments are retired. Hollow Trail now uses the paused-game control for a focused AI comparison:
 
-- **AI 120X68**: quarter-resolution lighting composition plus the trained residual reconstruction.
-- **LEGACY 240X135**: the original scalar half-resolution composition path, including its original two-map focus-weight cache.
+- **AI**: quarter-resolution AI lighting composition and trained reconstruction, followed by the standard physical pack/dither stage.
+- **AI + 960**: the same AI renderer plus trained residual reconstruction during the final 480x270 -> 960x540 pack.
 
-Pause the game and press **B or Up** to switch. The performance counters reset on every switch, and the pause screen identifies the active renderer, so FPS and RENDER time can be compared under the same scene. The A/B build intentionally keeps the legacy focus-map memory resident so legacy timing is not penalized by a cheaper reference implementation.
+Pause the game and press **B or Up** to switch. The performance counters reset on every switch, and the pause screen identifies the active renderer, so FPS and RENDER time can be compared under the same scene. Because the legacy compositor is gone, its full-size focus maps are gone too; the two AI focus maps now use the 120x68 lattice, reclaiming roughly 95 KiB of PSRAM.
 
 ## What it accelerates
 
