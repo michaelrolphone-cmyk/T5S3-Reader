@@ -8,6 +8,16 @@ The deployed model is deliberately tiny: a 3x3 grayscale patch (9 inputs) feeds 
 
 The exported inference path uses only integer multiply/add/shift operations and 60 bytes of trained weights plus 32 bytes of integer biases. On the held-out gate distribution this topology performs about 44,000 neural multiply-accumulates per reconstructed frame, roughly one-seventh of the earlier 24-hidden candidate. It requires no TensorFlow Lite, ESP-NN, heap allocation, firmware API, or additional capability. The 120x68 composition surface owns 8,160 bytes within the app's existing single PSRAM allocation. It must not alias cache scratch: a lookahead job can remain unfinished across visible frames, and its source buffers must survive until publication.
 
+## Final 960x540 neural output scale
+
+Hollow Trail still renders its logical gameplay surface at 480x270, while the physical e-paper panel is 960x540. Version 1.1.11 extends the trained 2x residual model to that final scale.
+
+In AI mode, the mono packer now treats each 480x270 logical pixel as the known anchor of a 2x2 physical block. Bilinear values are computed for the other three physical samples, and the existing INT8 residual model corrects those values only where the local 2x2 range crosses the learned edge gate. Smooth spans keep the original packed bilinear fast path.
+
+The correction is fused directly into 1bpp dithering. There is no 960x540 grayscale framebuffer and no additional full-frame upscale pass. The display buffer remains the normal 120-byte x 540-row packed surface.
+
+Legacy mode retains the previous 480x270 -> 960x540 bilinear/dither packer, so the pause-menu A/B test compares the complete output pipeline rather than only the low-resolution compositor.
+
 ## Hardware A/B mode
 
 The former DSP16 test toggle has been removed because hardware testing showed that path reduced frame rate. Hollow Trail now uses that same paused-game control for a real renderer comparison:
