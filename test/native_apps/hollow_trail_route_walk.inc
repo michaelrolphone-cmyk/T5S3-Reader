@@ -3,7 +3,7 @@
  * move fixtures, set puzzle/bridge flags or bypass normal simulation. */
 /* Independent witness actions, not solutions read from production targets. */
 static const char *walk_solutions[HT_LEVELS]={
-    "112","0112","0121012","0120","0221","001222","0122","0000111","1021","000"
+    "1123","001223","01210123","0201012010103","03311332","11111223","0122232223","000301113","31021","000"
 };
 static unsigned walk_phase,walk_level=999,walk_mechanics,walk_task,walk_puzzle;
 static void walk_route_tick(void) {
@@ -17,12 +17,12 @@ static void walk_route_tick(void) {
     const ht_platform *here=&ht_land[walk_phase];
     if(walk_phase<9) {
         const ht_platform *next=&ht_land[walk_phase+1];
-        if(ht.grounded && y==next->top && x>=next->left+5 && x<next->right) {
+        if(ht.grounded && y==ht_surface_at(&ht,(int)walk_phase+1,x) && x>=next->left+5 && x<next->right) {
             ++walk_phase;walk_task=0;here=&ht_land[walk_phase];
             next=walk_phase<9?&ht_land[walk_phase+1]:here;
         }
         /* Evidence on return shelves requires a deliberate westward detour. */
-        for(int item=0;item<3;++item) if((unsigned)ht_evidence_platform(item)==walk_phase &&
+        for(int item=0;item<3;++item) if((unsigned)ht_evidence_platform(ht.level,item)==walk_phase &&
            !ht_evidence_found(&ht,ht.level*3+(unsigned)item)) {
             int target=ht_evidence_x(ht.level,item);
             dir=x<target?1:-1;

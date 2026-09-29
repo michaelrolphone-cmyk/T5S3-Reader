@@ -18,6 +18,10 @@
 /* Keep the following low-resolution scene aligned for four-byte loads. */
 #define HT_MASK_PIXELS ((HT_MASK_RADIUS*HT_MASK_RADIUS+15)&~15)
 static bool ht_framed;
+static int ht_world_scale=256; /* Draw-only projection; UI and cache geometry stay unscaled. */
+static int ht_view_margin(void) {return (480*256/ht_world_scale-480)/2;}
+static int ht_project_x(int x) {return 240+(x-240)*ht_world_scale/256;}
+static int ht_project_y(int y) {return 135+(y-135)*ht_world_scale/256;}
 static uint16_t ht_dirty_top,ht_dirty_height;
 #define HT_PIXELS (HT_W * HT_H)
 #define HT_TILE_W 256
@@ -67,6 +71,7 @@ enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLI
 typedef struct {
     int ball_x,ball_y,crate_x,boat_x,rope_x,rope_v,ride_offset;
     int ball_vx,ball_vy,ball_roll,crate_y,crate_vx,crate_vy,boat_vx;
+    int rope_grip,rope_slide_v; /* Q8 distance along rope and tangential sliding speed */
     int rope_px[HT_ROPE_NODES],rope_py[HT_ROPE_NODES];
     int rope_ox[HT_ROPE_NODES],rope_oy[HT_ROPE_NODES];
     uint8_t support,bridge_open;
@@ -82,7 +87,7 @@ typedef struct {
     int camera, camera_y, checkpoint, coyote, jump_buffer, facing, stride;
     unsigned ticks, laps, deaths, sway_phase;
     uint32_t rotation_phase; /* Q8: independently paced from breathing. */
-    uint16_t camera_mood,drop_zoom;
+    uint16_t camera_mood,drop_zoom,vista; /* vista: 0..256 authored wide-shot envelope */
     int airborne_origin;
     uint8_t observation,observation_ticks,landing_ticks,landing_strength;
     int landing_x,landing_y;
@@ -123,6 +128,7 @@ static int ht_clamp(int x,int lo,int hi) { return ht_min(hi,ht_max(lo,x)); }
 static int ht_floor_div(int x,int n) { int q=x/n; return q-(x%n<0); }
 static int ht_abs(int x) { return x<0?-x:x; }
 static uint32_t ht_hash(uint32_t x) { x^=x>>16; x*=0x7feb352du; x^=x>>15; x*=0x846ca68bu; return x^(x>>16); }
+#include "hollow_trail_terrain.inc"
 static void ht_checkpoint(void) { if(ht_service) ht_service(); }
 static void ht_clear_layer(uint8_t *dst) {
     if(!ht_math) { memset(dst,0,HT_PIXELS); return; }
@@ -210,10 +216,10 @@ static void ht_bind(uint8_t *memory) {
     ht_focus_valid[0]=ht_focus_valid[1]=false;ht_focus_recent=0;
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
 }
-static int ht_evidence_platform(int item) { return 1+item*3; }
+static int ht_evidence_platform(unsigned level,int item) { return level==0 && item==0?0:1+item*3; }
 static int ht_evidence_x(unsigned level,int item) {
-    const ht_platform *p=&ht_level_land(level)[ht_evidence_platform(item)];
-    return item==1?p->right-45:p->left+42;
+    const ht_platform *p=&ht_level_land(level)[ht_evidence_platform(level,item)];
+    return level==0 && item==0?140:item==1?p->right-45:p->left+42;
 }
 static bool ht_evidence_found(const ht_game *game,unsigned page) {
     return page<HT_LEVELS*3u && (game->evidence&(1u<<page))!=0;
@@ -223,7 +229,7 @@ static int ht_evidence_near(const ht_game *game) {
     if(!game->grounded) return -1;
     for(int item=0;item<3;++item) {
         if(ht_abs(game->x/256-ht_evidence_x(game->level,item))<=22 &&
-           ht_abs(game->y/256-ht_platform_top(game,ht_evidence_platform(item)))<=3) return item;
+           ht_abs(game->y/256-ht_surface_at(game,ht_evidence_platform(game->level,item),game->x/256))<=3) return item;
     }
     return -1;
 }
@@ -240,7 +246,7 @@ static int ht_inspect(void) {
 #define HT_PUZZLE_GATE (HT_GOAL-26)
 static int ht_puzzle_near(const ht_game *game) {
     if(!game->grounded || ht_abs(game->y/256-ht_level_land(game->level)[9].top)>3) return -1;
-    for(int i=0;i<3;++i)
+    for(int i=0;i<ht_puzzle_controls(game->level);++i)
         if(ht_abs(game->x/256-(HT_PUZZLE_FIRST+i*HT_PUZZLE_SPACING))<=22) return i;
     return -1;
 }
@@ -303,7 +309,8 @@ static int ht_lightning(const ht_game *g) {
     return (phase<2?255:(8-phase)*36)*ht_exposure(g)/256;
 }
 static int ht_sky_ink(const ht_game *g) {
-    int dark=ht_climates[g->level].sky*ht_exposure(g)/256;
+    static const uint8_t ambient[HT_LEVELS]={48,30,24,40,46,35,42,40,30,45};
+    int dark=ambient[g->level]+ht_climates[g->level].sky*ht_exposure(g)/256;
     return dark*(255-ht_lightning(g))/255;
 }
 static int ht_wind(const ht_game *g) {
@@ -327,8 +334,26 @@ static int ht_mood_target(const ht_game *g) {
     if(ht_weather_target(g)) mood+=ht_exposure(g)/3;
     return ht_clamp(mood,0,256);
 }
+static int ht_vista_target(const ht_game *g) {
+    /* Quiet reveals: forest clearing, towers, distant rail cutting, reservoir,
+     * escarpment and the last ascent. No chapter-wide miniature character. */
+    static const int16_t scenes[HT_LEVELS][3]={
+        {1640,2030,256},{1780,2320,224},{0,0,0},{900,1240,128},
+        {350,680,128},{1320,1610,192},{0,0,0},{1240,2420,256},
+        {1130,1350,224},{1820,2410,192}
+    };
+    int x=g->x/256,a=scenes[g->level][0],b=scenes[g->level][1];
+    int edge=ht_clamp(ht_min(x-a,b-x),0,160);
+    return scenes[g->level][2]*edge/160;
+}
+static int ht_vista_lift(const ht_game *g) {
+    static const uint8_t lift[HT_LEVELS]={24,56,0,24,12,36,0,80,52,56};
+    return lift[g->level]*g->vista/256;
+}
 static void ht_camera_step(bool moving) {
     if(moving) {
+        int wide=ht_vista_target(&ht);
+        ht.vista=(uint16_t)(ht.vista+ht_clamp(wide-ht.vista,-4,4));
         int target=ht_mood_target(&ht),mood=ht.camera_mood;
         ht.camera_mood=(uint16_t)(mood+ht_clamp(target-mood,-2,2));
         ht.sway_phase+=5; /* Preserve the original breathing zoom exactly. */
@@ -347,7 +372,7 @@ static int ht_observe_near(const ht_game *g) {
     if(!g->grounded || g->traversal.mode) return -1;
     for(int scene=0;scene<2;++scene)
         if(ht_abs(g->x/256-ht_landmark_x(g->level,scene))<34 &&
-           ht_abs(g->y/256-ht_level_land(g->level)[scene?6:3].top)<3) return scene;
+           ht_abs(g->y/256-ht_surface_at(g,scene?6:3,g->x/256))<3) return scene;
     return -1;
 }
 static bool ht_observe(void) {
@@ -374,7 +399,7 @@ static void ht_spawn(bool restart) {
     memcpy(ht.story_seen,seen,sizeof(seen));
     if(!ht.story_seen[level]) ht.story_seen[level]=1;
     ht.story_x=story_x; ht.checkpoint=cp; ht.x=(cp?ht_land[cp].left+35:95)*256;
-    ht.y=ht_land[cp].top*256; ht.airborne_origin=ht.y; ht.grounded=true; ht.facing=1;
+    ht.y=ht_land_height(level,cp,ht.x/256)*256; ht.airborne_origin=ht.y; ht.grounded=true; ht.facing=1;
     ht.camera=ht_clamp(ht.x/256-165,0,HT_GOAL-340)*256;
     ht.camera_y=ht_clamp(ht.y/256-180,-300,100)*256;
     const ht_mechanics *m=&ht_mechanics_by_level[level];
@@ -382,6 +407,7 @@ static void ht_spawn(bool restart) {
     ht.traversal.ball_x=m->ball_x*256;ht.traversal.ball_y=(m->ball_floor-HT_BALL_RADIUS)*256;
     ht.traversal.crate_x=m->crate_x*256;ht.traversal.crate_y=m->crate_floor*256;
     ht.traversal.boat_x=m->boat_left*256;
+    ht.traversal.rope_grip=m->rope_length*256;
     for(int i=0;i<HT_ROPE_NODES;++i) {
         ht.traversal.rope_px[i]=ht.traversal.rope_ox[i]=m->rope_anchor_x*256;
         ht.traversal.rope_py[i]=ht.traversal.rope_oy[i]=(m->rope_anchor_y+m->rope_length*i/(HT_ROPE_NODES-1))*256;
@@ -394,9 +420,17 @@ static void ht_span(uint8_t *b,int x0,int x1,int y,int c) {
     if(x1>=x0) memset(b+y*HT_W+x0,c,(size_t)(x1-x0+1));
 }
 static void ht_rect(uint8_t *b,int x,int y,int w,int h,int c) {
+    if(w<=0 || h<=0) return;
+    if(b==ht_scene && ht_world_scale!=256) {
+        int right=ht_project_x(x+w),bottom=ht_project_y(y+h);
+        x=ht_project_x(x);y=ht_project_y(y);w=ht_max(1,right-x);h=ht_max(1,bottom-y);
+    }
     for(int row=ht_max(0,y);row<ht_min(HT_H,y+h);++row) ht_span(b,x,x+w-1,row,c);
 }
 static void ht_triangle(uint8_t *b,int ax,int ay,int bx,int by,int cx,int cy,int c) {
+    if(b==ht_scene && ht_world_scale!=256) {
+        ax=ht_project_x(ax);ay=ht_project_y(ay);bx=ht_project_x(bx);by=ht_project_y(by);cx=ht_project_x(cx);cy=ht_project_y(cy);
+    }
     if(ay>by){int t=ax;ax=bx;bx=t;t=ay;ay=by;by=t;}
     if(by>cy){int t=bx;bx=cx;cx=t;t=by;by=cy;cy=t;}
     if(ay>by){int t=ax;ax=bx;bx=t;t=ay;ay=by;by=t;}
@@ -414,6 +448,7 @@ static void ht_limb(uint8_t *b,int x,int y,int ex,int ey,int r,int tip,int c) {
     ht_triangle(b,x-nx,y-ny,ex-tx,ey-ty,ex+tx,ey+ty,c);
 }
 static void ht_disk(uint8_t *b,int x,int y,int r,int c) {
+    if(b==ht_scene && ht_world_scale!=256) {x=ht_project_x(x);y=ht_project_y(y);r=ht_max(1,r*ht_world_scale/256);}
     for(int dy=-r;dy<=r;++dy) {
         int dx=r; while(dx>0 && dx*dx+dy*dy>r*r) --dx;
         ht_span(b,x-dx,x+dx,y+dy,c);
@@ -1213,7 +1248,7 @@ static int ht_weather_floor(const ht_game *g,int screen_x) {
     for(int i=0;i<HT_PLATFORMS;++i)
         for(int part=0;part<3;++part) {
             int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top)) break;
-            if(x>=l && x<r) floor=ht_min(floor,top-g->camera_y/256);
+            if(x>=l && x<r) floor=ht_min(floor,(part==2?top:ht_surface_at(g,i,x))-g->camera_y/256);
         }
     return floor;
 }
@@ -1274,11 +1309,13 @@ static void ht_render_scene(void) {
             x=nx;y=ny;
         }
     }
+    ht_world_scale=256-game.vista*5/16;
     ht_draw_traversal(&game);
     ht_draw_evidence(&game);
     ht_draw_puzzle(&game);
     ht_character(px,(game.y-game.camera_y)/256,&game);
     ht_weather(&game);
+    ht_world_scale=256;
     ht_scene=output;
     if(game.sway_phase || game.drop_zoom) ht_camera_into(ht_temp,&game);
     ht_vignette();
@@ -1501,7 +1538,7 @@ static void ht_text(int x,int y,const char *text,int scale) { ht_text_color(x,y,
 
 static void ht_pack(uint8_t *out,int stride) { ht_pack_format(out,stride,false); }
 
-/* Two steady white lines in the lower dark margin. These rows remain within
+/* Two subdued gray lines in the lower dark margin. These rows remain within
  * the computed physical dirty range; no temporal/typewriter effect. */
 static void ht_narration(const ht_game *game) {
     unsigned beat=ht_story_beat(game->story_x);
@@ -1510,7 +1547,7 @@ static void ht_narration(const ht_game *game) {
         const char *text=ht_chapters[game->level].lines[beat][line];
         if(game->x/256>=2780) text=game->puzzle.solved?
             ht_puzzles[game->level].reveal[line]:
-                ht_puzzles[game->level].clue[line];
+                (line?"":ht_puzzle_feedback(&game->puzzle));
         if(game->level==HT_LEVELS-1 && game->verdict)
             text=line?"THE WAY IS OPEN WHEN I HAVE READ WHAT I CHANGED.":
                 (game->verdict==1?"I BROKE THE FEED. HER PLAN INCLUDED MY RESCUE.":
@@ -1519,7 +1556,7 @@ static void ht_narration(const ht_game *game) {
         for(;*text;++text,x+=6) {
             const uint8_t *g=ht_glyph(*text);
             for(int a=0;a<5;++a) for(int b=0;b<7;++b)
-                if(g[a]&(1u<<b)) ht_rect(ht_scene,x+a,y+b,1,1,0);
+                if(g[a]&(1u<<b)) ht_rect(ht_scene,x+a,y+b,1,1,85);
         }
     }
 }
@@ -1543,20 +1580,23 @@ static void ht_draw_puzzle(const ht_game *game) {
     ht_draw_chapter_gate(game,top);
 }
 static void ht_puzzle_prompt(const ht_game *game) {
-    if(game->x/256<2780) return;
+    if(ht_puzzle_near(game)<0) return;
     const ht_puzzle_definition *p=&ht_puzzles[game->level];
     ht_rect(ht_scene,66,33,348,29,255);
-    ht_text_color(74,37,p->name,1,0);
+    ht_text_color(74,37,p->name,1,85);
     if(game->puzzle.solved && game->level==HT_LEVELS-1) {
         ht_text_color(74,49,!game->verdict?"A / CONFIRM AT THE GLASS: BREAK OR COMPLETE":
             !game->verdict_read?"A / CONFIRM AT THE GLASS: READ THE CHANGED TESTIMONY":
-            "PASSAGE OPEN - WALK ON TO BEGIN ANOTHER JOURNEY",1,0);
-    } else if(game->puzzle.solved) ht_text_color(74,49,game->puzzle.opening<48?"THE PASSAGE IS OPENING":"PASSAGE OPEN - FOLLOW THE LIGHT",1,0);
-    else if(p->kind==HT_SIGNAL) {
+            "PASSAGE OPEN - WALK ON TO BEGIN ANOTHER JOURNEY",1,85);
+    } else if(game->puzzle.solved) ht_text_color(74,49,game->puzzle.opening<48?"THE PASSAGE IS OPENING":"PASSAGE OPEN - FOLLOW THE LIGHT",1,85);
+    else if(p->kind==HT_POINTS && ht_puzzle_near(game)<3) {
+        ht_text_color(74,49,game->puzzle.selected==3?"A COUPLE REAR WAGON - RUN TESTS DEPARTURE":
+            "A MOVE HERE - SAME ROAD RELEASES COUPLER",1,85);
+    } else if(p->kind==HT_SIGNAL) {
         char status[]="A / CONFIRM RING   NOTES 0/0";
         status[25]=(char)('0'+game->puzzle.progress); status[27]=(char)('0'+p->length);
-        ht_text_color(74,49,game->puzzle.wrong?"WRONG NOTE - BEGIN AGAIN WITH THE CLUE":status,1,0);
-    } else ht_text_color(74,49,game->puzzle.wrong?"BLOCKED - FOLLOW THE CONNECTIONS": "A / CONFIRM OPERATE - OBSERVE THE MECHANISM",1,0);
+        ht_text_color(74,49,game->puzzle.feedback?ht_puzzle_feedback(&game->puzzle):game->puzzle.wrong?"THE SEQUENCE BREAKS":status,1,85);
+    } else ht_text_color(74,49,"A / CONFIRM OPERATE THE NEARBY CONTROL",1,85);
 }
 
 /* Tiny scraps/containers embedded in scenery. No flashing markers or distant
@@ -1564,21 +1604,43 @@ static void ht_puzzle_prompt(const ht_game *game) {
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
         int x=ht_evidence_x(game->level,item)-game->camera/256;
-        int y=ht_platform_top(game,ht_evidence_platform(item))-game->camera_y/256;
-        if(x< -12 || x>=HT_W+12) continue;
-        ht_draw_mechanism_trace(game,item,x,y);
-        ht_rect(ht_scene,x-6,y-10,12,10,255);
-        if(item==1) ht_rect(ht_scene,x-8,y-12,16,3,255);
-        else if(item==2) ht_limb(ht_scene,x-5,y-10,x+3,y-16,2,1,255);
-        ht_rect(ht_scene,x-3,y-7,6,2,ht_evidence_found(game,game->level*3u+(unsigned)item)?130:0);
+        int y=ht_surface_at(game,ht_evidence_platform(game->level,item),ht_evidence_x(game->level,item))-game->camera_y/256;
+        if(x< -12-ht_view_margin() || x>=HT_W+12+ht_view_margin()) continue;
+        /* Finds are objects within the scene, never hovering clue diagrams. */
+        int ink=ht_evidence_found(game,game->level*3u+(unsigned)item)?150:95;
+        if(game->level==0 && item==0) {
+            ht_limb(ht_scene,x-6,y,x-9,y-48,7,4,255);
+            ht_limb(ht_scene,x-9,y-36,x+5,y-42,3,0,255);
+            ht_limb(ht_scene,x-10,y-24,x+1,y-20,1,0,ink);
+            ht_limb(ht_scene,x+1,y-20,x+4,y-13,1,0,ink);
+        } else if((game->level==0 && item==2) || (game->level==8 && item==0)) {
+            ht_limb(ht_scene,x-10,y,x-12,y-35,3,2,255);
+            ht_limb(ht_scene,x-12,y-34,x+4,y-31,2,1,255);
+            ht_limb(ht_scene,x+2,y-31,x+2,y-23,0,0,180);
+            ht_triangle(ht_scene,x-2,y-18,x+6,y-18,x+2,y-24,170);
+        } else if(game->level==2 || game->level==7) {
+            ht_rect(ht_scene,x-10,y-18,20,18,235);
+            ht_rect(ht_scene,x-7,y-15,14,10,140);
+            ht_rect(ht_scene,x-3,y-21,6,3,230);
+            ht_rect(ht_scene,x-5,y-10,7,2,ink);
+        } else if(game->level==4 && item==1) {
+            ht_limb(ht_scene,x-5,y,x-5,y-24,3,2,240);
+            for(int knot=0;knot<3;++knot) ht_limb(ht_scene,x-8,y-16+knot*4,x-1,y-14+knot*4,1,1,ink);
+        } else {
+            /* A weathered document lies on a stump, seat or equipment chest. */
+            ht_rect(ht_scene,x-12,y-10,24,10,235);
+            ht_limb(ht_scene,x-14,y-10,x+11,y-12,1,1,210);
+            ht_triangle(ht_scene,x-6,y-12,x+4,y-15,x+8,y-11,ink);
+            ht_limb(ht_scene,x-3,y-13,x+3,y-12,0,0,185);
+        }
     }
 }
 static void ht_evidence_prompt(const ht_game *game) {
     int item=ht_evidence_near(game);
     if(item<0) return;
     ht_rect(ht_scene,66,33,348,29,255);
-    ht_text_color(74,37,ht_evidence[game->level][item].title,1,0);
-    ht_text_color(74,49,"A / CONFIRM INSPECT - A CLUE MAY BE HIDDEN HERE",1,0);
+    ht_text_color(74,37,ht_evidence[game->level][item].title,1,85);
+    ht_text_color(74,49,"A / CONFIRM INSPECT",1,85);
 }
 static void ht_draw_journal(const ht_game *game,unsigned page) {
     if(page>=HT_LEVELS*3u) return;

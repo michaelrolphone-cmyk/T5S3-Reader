@@ -15,7 +15,7 @@ static void reference(void) {
     const ht_game game=ht;
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
     const int radius[]={3,1,0,0},spread[]={9,6,4,4};
-    ht_clear_layer(ht_scene);
+    memset(ht_scene,ht_sky_ink(&game),HT_PIXELS);
     for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2) for(int half=0;half<2;++half) {
         /* Two overlapping viewport renders provide independent horizontal
          * blur halos now that the visible border is thinner than the filter. */

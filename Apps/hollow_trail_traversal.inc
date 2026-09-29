@@ -3,8 +3,8 @@ static const ht_mechanics *ht_mech(const ht_game *g) {return &ht_mechanics_by_le
 static int ht_ladder_x(unsigned i) {return ht_mech(&ht)->ladders[i].x;}
 static void ht_ladder_ends(unsigned level,unsigned i,int *top,int *bottom) {
     const ht_mechanics *m=&ht_mechanics_by_level[level];
-    *top=ht_level_land(level)[m->ladders[i].upper].top;
-    *bottom=ht_level_land(level)[m->ladders[i].lower].top;
+    *top=ht_land_height(level,m->ladders[i].upper,m->ladders[i].x);
+    *bottom=ht_land_height(level,m->ladders[i].lower,m->ladders[i].x);
 }
 static int ht_ladder_near(const ht_game *g) {
     const ht_mechanics *m=ht_mech(g);
@@ -35,14 +35,46 @@ static int ht_boat_stroke(const ht_game *g) {
     int phase=(int)((g->ticks/2)%32),triangle=phase<16?phase:32-phase;
     return triangle-8;
 }
-static void ht_rope_point(const ht_game *g,int *x,int *feet) {
-    *x=g->traversal.rope_px[HT_ROPE_NODES-1]/256;
-    *feet=g->traversal.rope_py[HT_ROPE_NODES-1]/256+24;
+static int ht_rope_segment(const ht_game *g,int *fraction) {
+    int along=ht_clamp(g->traversal.rope_grip,0,ht_mech(g)->rope_length*256);
+    int coordinate=along*(HT_ROPE_NODES-1)/ht_max(1,ht_mech(g)->rope_length);
+    int node=ht_min(HT_ROPE_NODES-2,coordinate/256);
+    *fraction=coordinate-node*256;return node;
 }
-static int ht_platform_top(const ht_game *g,int i) {
-    int top=ht_level_land(g->level)[i].top;
-    if(i==ht_mech(g)->bridge) top-=(32-g->traversal.bridge_open)*HT_BRIDGE_STEP;
-    return top;
+static void ht_rope_grip_point(const ht_game *g,int *x,int *y,bool previous) {
+    int fraction,node=ht_rope_segment(g,&fraction);
+    const int *px=previous?g->traversal.rope_ox:g->traversal.rope_px;
+    const int *py=previous?g->traversal.rope_oy:g->traversal.rope_py;
+    *x=px[node]+(px[node+1]-px[node])*fraction/256;
+    *y=py[node]+(py[node+1]-py[node])*fraction/256;
+}
+static void ht_rope_velocity(const ht_game *g,int *vx,int *vy) {
+    int px,py,ox,oy,fraction,node=ht_rope_segment(g,&fraction);
+    ht_rope_grip_point(g,&px,&py,false);ht_rope_grip_point(g,&ox,&oy,true);
+    int dx=(g->traversal.rope_px[node+1]-g->traversal.rope_px[node])/256;
+    int dy=(g->traversal.rope_py[node+1]-g->traversal.rope_py[node])/256;
+    int length=ht_max(1,(int)ht_isqrt((unsigned)(dx*dx+dy*dy)));
+    *vx=px-ox+dx*g->traversal.rope_slide_v/length;
+    *vy=py-oy+dy*g->traversal.rope_slide_v/length;
+}
+static void ht_rope_point(const ht_game *g,int *x,int *feet) {
+    int px,py;ht_rope_grip_point(g,&px,&py,false);*x=px/256;*feet=py/256+24;
+}
+/* Nearest point on any segment within the character's reach. This is a
+ * geometric grab, not an automatic attachment or a tail-only trigger. */
+static int ht_rope_catch(const ht_game *g) {
+    if(!ht_mech(g)->rope_length) return -1;
+    int best=1400,grip=-1,hx=g->x/256,hy=g->y/256-24;
+    for(int i=0;i<HT_ROPE_NODES-1;++i) {
+        int ax=g->traversal.rope_px[i]/256,ay=g->traversal.rope_py[i]/256;
+        int dx=g->traversal.rope_px[i+1]/256-ax,dy=g->traversal.rope_py[i+1]/256-ay;
+        int length=dx*dx+dy*dy;
+        int f=length?ht_clamp(((hx-ax)*dx+(hy-ay)*dy)*256/length,0,256):0;
+        int rx=ax+dx*f/256,ry=ay+dy*f/256;
+        int distance=(hx-rx)*(hx-rx)+(hy-ry)*(hy-ry);
+        if(distance<best && ht_abs(hx-rx)<=12 && ry>=hy-12 && ry<=hy+24) {best=distance;grip=(i*256+f)*ht_mech(g)->rope_length/(HT_ROPE_NODES-1);}
+    }
+    return grip;
 }
 static int ht_traversal_near(const ht_game *g) {
     const ht_traversal *t=&g->traversal;const ht_mechanics *m=ht_mech(g);
@@ -52,8 +84,7 @@ static int ht_traversal_near(const ht_game *g) {
        ht_abs(y-(t->ball_y/256+HT_BALL_RADIUS))<=5) return HT_ROLL;
     if(m->crate_x && g->grounded && ht_abs(x-t->crate_x/256)<=HT_CRATE_HALF+9 &&
        ht_abs(y-t->crate_y/256)<=5) return HT_CRATE;
-    int rx,ry;ht_rope_point(g,&rx,&ry);
-    if(m->rope_length && ht_abs(x-rx)<=12 && ht_abs(y-ry)<=12) return HT_ROPE;
+    if(ht_rope_catch(g)>=0) return HT_ROPE;
     if(m->boat_right && ht_abs(x-t->boat_x/256)<=36 && ht_abs(g->y-ht_boat_top(g))<=16*256) return HT_BOAT;
     if(ht_ladder_near(g)>=0) return HT_LADDER;
     return HT_FREE;
@@ -64,17 +95,16 @@ static bool ht_traversal_interact(void) {
     if(t->mode==HT_CLIMB) return true;
     if(t->mode) {
         if(t->mode==HT_ROPE) {
-            ht.vx=t->rope_px[6]-t->rope_ox[6];ht.vy=t->rope_py[6]-t->rope_oy[6];
+            ht_rope_velocity(&ht,&ht.vx,&ht.vy);
         } else if(t->mode==HT_BOAT) ht.vx=t->boat_vx;
         t->mode=HT_FREE;return true;
     }
     int near=ht_traversal_near(&ht);if(!near || near==HT_LADDER) return false;
     t->mode=(uint8_t)near;
     if(near==HT_ROPE) {
-        /* Keep the caught hand position: no teleport to an authored arc. */
-        t->rope_px[6]=ht.x;t->rope_py[6]=ht.y-24*256;
-        t->rope_ox[6]=ht.x-ht.vx;t->rope_oy[6]=t->rope_py[6]-ht.vy;
-        t->rope_awake=true;
+        t->rope_grip=ht_rope_catch(&ht);t->rope_slide_v=0;
+        int px,py;ht_rope_grip_point(&ht,&px,&py,false);
+        ht.x=px;ht.y=py+24*256;t->rope_awake=true;ht.grounded=false;
     }
     if(near==HT_BOAT) {t->ride_offset=0;ht.x=t->boat_x;ht.y=ht_boat_top(&ht);}
     ht.vx=ht.vy=0;return true;
@@ -106,12 +136,18 @@ static void ht_body_step(int *x,int *y,int *vx,int *vy,int radius,int height,boo
     for(int i=0;i<HT_PLATFORMS;++i) for(int part=0;part<3;++part) {
         int l,r,top;if(!ht_platform_piece(&ht,i,part,&l,&r,&top)) break;
         int dx=ht_max(l-*x/256,ht_max(*x/256-r,0));
+        int old_top=part==2?top:ht_surface_at(&ht,i,ht_clamp(old_x/256,l,r));
+        if(part!=2) top=ht_surface_at(&ht,i,ht_clamp(*x/256,l,r));
         if(dx>radius) continue;
         int rest=(top-(round?(int)ht_isqrt((unsigned)(radius*radius-dx*dx)):0))*256;
-        if(*vy>=0 && old_y<=rest+256 && *y>=rest) {*y=rest;*vy=0;}
+        bool follows=*vy==88 && old_x>=l*256 && old_x<r*256 && *x>=l*256 && *x<r*256 &&
+            ht_abs(old_y-(old_top-(round?radius:0))*256)<=256;
+        if(*vy>=0 && ((old_y<=rest+(old_top-top)*256+256 && *y>=rest) || follows)) {*y=rest;*vy=0;}
         int bottom=round?*y+radius*256:*y,head=round?*y-radius*256:*y-height*256;
-        int wall_bottom=(i==0 || i==9)?500:top+18;
+        int wall_bottom=ht_terrain_bottom(&ht,i,*x/256);
         if(bottom>top*256+256 && head<wall_bottom*256) {
+            int old_head=round?old_y-radius*256:old_y-height*256;
+            if(*x>=l*256 && *x<r*256 && old_head>=ht_terrain_bottom(&ht,i,old_x/256)*256) {*x=old_x;*vx=0;}
             if(old_x+radius*256<=l*256 && *vx>0) {*x=(l-radius)*256;*vx=0;}
             else if(old_x-radius*256>=r*256 && *vx<0) {*x=(r+radius)*256;*vx=0;}
         }
@@ -151,9 +187,19 @@ static void ht_props_step(int direction) {
     /* Verlet inertia, gravity, hand pumping and six length-constraint passes.
      * Seven nodes / 36 segment solves is a fixed simulation budget. */
     if(m->rope_length) {
+        int fraction,node=ht_rope_segment(&ht,&fraction);
+        if(t->mode==HT_ROPE) {
+            int dx=(t->rope_px[node+1]-t->rope_px[node])/256;
+            int dy=(t->rope_py[node+1]-t->rope_py[node])/256;
+            int length=ht_max(1,(int)ht_isqrt((unsigned)(dx*dx+dy*dy)));
+            t->rope_slide_v=ht_clamp(ht_drag(t->rope_slide_v,2)+dy*18/length,-128,192);
+            t->rope_grip=ht_clamp(t->rope_grip+t->rope_slide_v,0,m->rope_length*256);
+            if(t->rope_grip==m->rope_length*256 || t->rope_grip==0) t->rope_slide_v=0;
+            node=ht_rope_segment(&ht,&fraction);
+        }
         for(int i=1;i<HT_ROPE_NODES;++i) {
             int x=t->rope_px[i],y=t->rope_py[i];
-            t->rope_px[i]+=ht_clamp(ht_drag(x-t->rope_ox[i],1),-720,720)+(i==6 && t->mode==HT_ROPE?direction*64:0);
+            t->rope_px[i]+=ht_clamp(ht_drag(x-t->rope_ox[i],1),-720,720)+(i==node+1 && t->mode==HT_ROPE?direction*64:0);
             t->rope_py[i]+=ht_clamp(ht_drag(y-t->rope_oy[i],1),-720,720)+88;
             t->rope_ox[i]=x;t->rope_oy[i]=y;
         }
@@ -191,6 +237,22 @@ static void ht_collide(int left,int right,int top,int bottom,int old_x,int old_y
         else if(old_x-radius>=right && ht.x<old_x) {ht.x=right+radius;ht.vx=0;}
     }
 }
+static void ht_land_collision(int i,int old_x,int old_y) {
+    for(int part=0;part<3;++part) {
+        int l,r,top;if(!ht_platform_piece(&ht,i,part,&l,&r,&top)) break;
+        int old_top=part==2?top:ht_surface_at(&ht,i,ht_clamp(old_x/256,l,r));
+        if(part!=2) top=ht_surface_at(&ht,i,ht_clamp(ht.x/256,l,r));
+        bool on_slope=ht.vy>=0 && ht.vy<=88 && old_x>=l*256 && old_x<r*256 &&
+            ht.x>=l*256 && ht.x<r*256 && ht_abs(old_y-old_top*256)<=256;
+        if(on_slope) {ht.y=top*256;ht.vy=0;ht.grounded=true;}
+        int bottom=ht_terrain_bottom(&ht,i,ht.x/256);
+        ht_collide(l,r,top,bottom,old_x,on_slope?top*256:old_y+(top-old_top)*256);
+        /* The back of an undercut is solid too, not a visual-only wall. */
+        if(ht.x>=l*256 && ht.x<r*256 && ht.y>top*256+256 && ht.y-29*256<bottom*256 &&
+           old_y-29*256>=ht_terrain_bottom(&ht,i,old_x/256)*256) {ht.x=old_x;ht.vx=0;}
+        if(i==ht_mech(&ht)->bridge && ht.x+5*256>l*256 && ht.x-5*256<r*256 && ht.grounded && ht.y==top*256) ht.traversal.support=4;
+    }
+}
 static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool jump_held) {
     bool jump_request=jump_pressed;
     int start_x=ht.x,start_y=ht.y,fall_speed=ht.vy;
@@ -218,8 +280,9 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         int mode=t->mode;t->mode=HT_FREE;
         if(mode==HT_LADDER) t->drop_cooldown=8;
         if(mode==HT_LADDER || mode==HT_ROPE || mode==HT_BOAT) {
-            ht.vx=mode==HT_ROPE?ht_clamp(t->rope_px[6]-t->rope_ox[6],-1000,1000):direction*640;
-            ht.vy=-1880;ht.grounded=false;ht.coyote=0;jump_pressed=false;
+            int rvx,rvy;ht_rope_velocity(&ht,&rvx,&rvy);
+            ht.vx=mode==HT_ROPE?ht_clamp(rvx,-1000,1000):direction*640;
+            ht.vy=-1880+(mode==HT_ROPE?ht_clamp(rvy,-384,384):0);ht.grounded=false;ht.coyote=0;jump_pressed=false;
         }
     }
     if(t->mode==HT_LEDGE || t->mode==HT_CLIMB) {
@@ -243,11 +306,14 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         }
     } else if(t->mode==HT_ROPE) {
         int old_x=ht.x,old_y=ht.y;
-        ht.x=t->rope_px[6];ht.y=t->rope_py[6]+24*256;
+        int px,py;ht_rope_grip_point(&ht,&px,&py,false);
+        ht.x=px;ht.y=py+24*256;
         ht.vx=ht.x-old_x;ht.vy=ht.y-old_y;ht.grounded=false;
         for(int i=0;i<HT_PLATFORMS;++i)
-            ht_collide(ht_land[i].left,ht_land[i].right,ht_platform_top(&ht,i),ht_platform_top(&ht,i)+18,old_x,old_y);
-        t->rope_px[6]=ht.x;t->rope_py[6]=ht.y-24*256;
+            ht_land_collision(i,old_x,old_y);
+        int fraction,node=ht_rope_segment(&ht,&fraction);
+        int correction_x=ht.x-px,correction_y=ht.y-24*256-py;
+        for(int j=ht_max(1,node);j<=node+1;++j) {t->rope_px[j]+=correction_x;t->rope_py[j]+=correction_y;}
     } else if(t->mode==HT_BOAT) {
         ht.x=t->boat_x;ht.y=ht_boat_top(&ht);
         ht.vx=t->boat_vx;ht.vy=0;ht.grounded=true;t->support=3;
@@ -283,11 +349,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
                 ht.y=(platform_top+27)*256;ht.vx=ht.vy=0;ht.coyote=ht.jump_buffer=0;
                 break;
             }
-            for(int part=0;part<3;++part) {
-                int l,r,top;if(!ht_platform_piece(&ht,i,part,&l,&r,&top)) break;
-                ht_collide(l,r,top,(i==0 || i==9)?500:top+18,old_x,old_y);
-                if(i==m->bridge && ht.grounded && ht.y==top*256) t->support=4;
-            }
+            ht_land_collision(i,old_x,old_y);
         }
         if(m->ball_x && t->mode!=HT_ROLL) {
             int dx=(ht.x-t->ball_x)/256;
@@ -327,7 +389,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
     if(direction) ht.facing=direction;
     if(ht.grounded) {
         ht.stride+=ht_abs(ht.vx);
-        for(int i=3;i<=9;i+=3) if(ht.x/256>=ht_land[i].left && ht.x/256<ht_land[i].right && ht.y==ht_land[i].top*256) ht.checkpoint=i;
+        for(int i=3;i<=9;i+=3) if(ht.x/256>=ht_land[i].left && ht.x/256<ht_land[i].right && ht.y==ht_surface_at(&ht,i,ht.x/256)*256) ht.checkpoint=i;
     }
     if((!ht.puzzle.solved || ht.puzzle.opening<48 || ht_final_locked(&ht)) && ht.x>HT_PUZZLE_GATE*256) {ht.x=HT_PUZZLE_GATE*256;ht.vx=0;}
     ht.story_x=ht_max(ht.story_x,ht.x/256);
@@ -340,7 +402,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         if(++ht.level==HT_LEVELS) {ht.level=0;++ht.laps;} ht_spawn(true);return;
     }
     ht.camera+=(ht_clamp(ht.x/256-165,0,HT_GOAL-340)*256-ht.camera)/8;
-    ht.camera_y+=(ht_clamp(ht.y/256-180,-300,100)*256-ht.camera_y)/8;
+    ht.camera_y+=(ht_clamp(ht.y/256-180-ht_vista_lift(&ht),-300,100)*256-ht.camera_y)/8;
 }
 /* Keep the simple horizontal input entry point for SDK examples and tests. */
 static void ht_step(int direction,bool jump_pressed,bool jump_held) { ht_step_controls(direction,0,jump_pressed,jump_held); }
