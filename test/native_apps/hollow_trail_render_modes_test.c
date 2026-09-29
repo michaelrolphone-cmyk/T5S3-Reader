@@ -19,7 +19,21 @@ static void fps_tests(void){
  assert(w.elapsed==10000 && w.count>=238 && w.count<=239);
 }
 int main(void){
- fps_tests();uint8_t *mem=malloc(HT_MEMORY),*want=malloc(HT_PIXELS);
+ fps_tests();
+ for(int distance=-10000;distance<=1000000;++distance)
+  assert(ht_focus_bounded(distance)==(unsigned)ht_clamp((distance-2500)/200,0,256));
+ ht_nn_cache_reset();assert(sizeof(ht_nn_cache)==4096);
+ for(unsigned n=0;n<30000;++n){
+  uint8_t patch[HT_NN_INPUTS];int16_t expected[HT_NN_OUTPUTS],actual[HT_NN_OUTPUTS];
+  for(unsigned i=0;i<HT_NN_INPUTS;++i)patch[i]=(uint8_t)ht_hash(n*13+i);
+  ht_nn_residual(patch,expected);
+  ht_nn_residual_cached(patch,actual);assert(!memcmp(expected,actual,sizeof(actual)));
+  uint32_t hits=ht_nn_cache_hits;
+  ht_nn_residual_cached(patch,actual);assert(!memcmp(expected,actual,sizeof(actual)) && ht_nn_cache_hits==hits+1);
+ }
+ ht_nn_cache_reset();assert(!ht_nn_cache_hits && !ht_nn_cache_lookups);
+ uint32_t scene_hits=0,scene_queries=0;
+ uint8_t *mem=malloc(HT_MEMORY),*want=malloc(HT_PIXELS);
  assert(mem&&want);ht_bind(mem);
  for(unsigned i=0;i<HT_TEST_COUNT;++i){
   ht_render_test=i;unsigned mask=ht_render_test_mask();
@@ -58,7 +72,9 @@ int main(void){
   for(unsigned mode=1;mode<HT_TEST_COUNT;++mode){
    ht_bind(mem);ht=game;ht_render_test=mode;ht_simd_stage_ready=HT_OPT_SIMD_ALL;
    ht_render_scene();assert(!memcmp(want,ht_scene,HT_PIXELS));
+   if(mode==HT_TEST_NN_CACHE){scene_hits+=ht_nn_cache_hits;scene_queries+=ht_nn_cache_lookups;}
   }
  }
- free(want);free(mem);puts("Render tests: nine independent modes, availability, exact camera/vignette/triangles, all chapters and rolling 10-second FPS PASS");
+ printf("Neural cache scene workload: %u/%u exact hits (reuse count, not an S3 timing result)\n",scene_hits,scene_queries);
+ free(want);free(mem);puts("Render tests: twelve independent modes, exact math, all chapters and rolling 10-second FPS PASS");
 }

@@ -211,6 +211,13 @@ static bool ht_focus_valid[2];
 static unsigned ht_focus_recent;
 /* The same two PSRAM maps serve both renderers. Grid pitch is part of the
  * cache key so toggling AI/legacy cannot reuse weights from the other lattice. */
+/* Clamped radial numerator is only 0..51199. Factoring 200=8*25
+ * permits an exact 32-bit reciprocal in that interval, no wide product. */
+static unsigned ht_focus_bounded(int distance) {
+    if(distance<=2500)return 0;
+    if(distance>=53700)return 256;
+    return (((unsigned)(distance-2500)>>3)*5243u)>>17;
+}
 static const uint16_t *ht_focus_weights(int px,int py,int step,int width,int height) {
     for(unsigned i=0;i<2;++i) if(ht_focus_valid[i] && ht_focus_x[i]==px &&
        ht_focus_y[i]==py && ht_focus_step[i]==step) {
@@ -218,10 +225,12 @@ static const uint16_t *ht_focus_weights(int px,int py,int step,int width,int hei
     }
     unsigned slot=ht_focus_recent^1u;uint16_t *map=ht_focus_map[slot];
     const int step2=step*step;
+    const bool bounded=ht_render_test==HT_TEST_FOCUS;
     for(int y=0;y<height;++y) {
         int dy=step*y-py,distance=px*px+dy*dy,delta=step2-2*step*px;
         for(int x=0;x<width;++x) {
-            map[y*width+x]=(uint16_t)ht_clamp((distance-2500)/200,0,256);
+            map[y*width+x]=(uint16_t)(bounded?ht_focus_bounded(distance):
+                (unsigned)ht_clamp((distance-2500)/200,0,256));
             distance+=delta;delta+=2*step2;
         }
         if((y&15)==15) ht_checkpoint();
@@ -232,8 +241,9 @@ static const uint16_t *ht_focus_weights(int px,int py,int step,int width,int hei
 }
 static void ht_pack_tables_init(void);
 static void ht_simd_constants_init(uint8_t *memory);
+static void ht_nn_cache_reset(void);
 static void ht_bind(uint8_t *memory) {
-    ht_pack_tables_init();
+    ht_pack_tables_init();ht_nn_cache_reset();
     ht_simd_constants_init(memory+HT_MEMORY-HT_SIMD_TABLE_BYTES);
     ht_simd_reason=ht_expanded_reason="NOT TESTED";
     for(unsigned i=0;i<4;++i)ht_stage_reason[i]="NOT TESTED";
@@ -1194,6 +1204,7 @@ static inline __attribute__((always_inline)) uint32_t ht_zip2(uint32_t a,uint32_
     return (a&255u)|((b&255u)<<8)|((a&0xff00u)<<8)|((b&0xff00u)<<16);
 }
 #include "hollow_trail_neural_upscale.inc"
+#include "hollow_trail_neural_cache.inc"
 #if HT_NN_EDGE_THRESHOLD != 80
 #error "Update expanded SIMD edge gate when changing model threshold"
 #endif
@@ -1201,6 +1212,7 @@ static inline __attribute__((always_inline)) uint32_t ht_zip2(uint32_t a,uint32_
  * arithmetic used by the original renderer, then spend neural MACs only on
  * strong 2x2 transitions. Source anchors at even/even coordinates never move. */
 static __attribute__((optimize("O3"))) void ht_reconstruct_low_scene(void) {
+    const bool memoize=ht_render_test==HT_TEST_NN_CACHE;
     for(int y=0;y<HT_RECON_H;++y) {
         const uint8_t *row=ht_recon_scene+y*HT_RECON_W;
         const uint8_t *next=ht_recon_scene+ht_min(y+1,HT_RECON_H-1)*HT_RECON_W;
@@ -1255,7 +1267,8 @@ static __attribute__((optimize("O3"))) void ht_reconstruct_low_scene(void) {
                 r0[xm],r0[x],r0[xp],r1[xm],r1[x],r1[xp],r2[xm],r2[x],r2[xp]
             };
             int16_t residual[HT_NN_OUTPUTS];
-            ht_nn_residual(patch,residual);
+            if(memoize)ht_nn_residual_cached(patch,residual);
+            else ht_nn_residual(patch,residual);
             top[2*x+1]=(uint8_t)ht_clamp((int)top[2*x+1]+residual[0],0,255);
             bottom[2*x]=(uint8_t)ht_clamp((int)bottom[2*x]+residual[1],0,255);
             bottom[2*x+1]=(uint8_t)ht_clamp((int)bottom[2*x+1]+residual[2],0,255);
@@ -1411,6 +1424,18 @@ static __attribute__((optimize("O3"))) void ht_affine_into(const uint8_t *source
             for(int x=left;x<right;++x,u+=scale,v-=turn) {
                 const uint8_t *a=source+(v>>12)*HT_W+(u>>12);
                 dst[x]=ht_camera_pixel_packed(a,a+HT_W,(unsigned)((u>>8)&15),(unsigned)((v>>8)&15));
+            }
+        } else if(ht_render_test==HT_TEST_FLAT_CAMERA) {
+            for(int x=left;x<right;++x,u+=scale,v-=turn) {
+                const uint8_t *a=source+(v>>12)*HT_W+(u>>12),*b=a+HT_W;
+                unsigned a0=a[0],a1=a[1],b0=b[0],b1=b[1];
+                if(!((a0^a1)|(a0^b0)|(a0^b1)))dst[x]=(uint8_t)a0;
+                else {
+                    int fx=(u>>8)&15,fy=(v>>8)&15;
+                    int top=(int)(a0<<4)+((int)a1-(int)a0)*fx;
+                    int bottom=(int)(b0<<4)+((int)b1-(int)b0)*fx;
+                    dst[x]=(uint8_t)(((top<<4)+(bottom-top)*fy)>>8);
+                }
             }
         } else for(int x=left;x<right;++x,u+=scale,v-=turn) {
             int ix=u>>12,iy=v>>12,fx=(u>>8)&15,fy=(v>>8)&15;

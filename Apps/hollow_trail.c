@@ -399,7 +399,10 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
         if(mode_down) {
             mode_down=false;
-            ht_render_test_next();
+            ht_render_test_next();ht_nn_cache_reset();
+            /* A cached focus map is mathematically compatible, but rebuilding
+             * it lets the selected focus experiment actually execute. */
+            ht_focus_valid[0]=ht_focus_valid[1]=false;
             prepared=false; ++scene_revision;
             last_submit=app->millis(); last_frame=last_submit-HT_FRAME_INTERVAL_MS;
             memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=last_submit;

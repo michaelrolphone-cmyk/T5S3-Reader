@@ -6,9 +6,9 @@
  * Host routines below are reference models, never hardware timing substitutes.
  */
 enum {HT_OPT_UPSCALE=1,HT_OPT_RECON=2,HT_OPT_BLEND=4,HT_OPT_BLUR=8,
-      HT_OPT_CAMERA=16,HT_OPT_VIGNETTE=32,HT_OPT_TRIANGLE=64,HT_OPT_SIMD_ALL=15};
+      HT_OPT_CAMERA=16,HT_OPT_VIGNETTE=32,HT_OPT_TRIANGLE=64,HT_OPT_FOCUS=128,HT_OPT_FLAT_CAMERA=256,HT_OPT_NN_CACHE=512,HT_OPT_SIMD_ALL=15};
 enum {HT_TEST_BASE,HT_TEST_UPSCALE,HT_TEST_RECON,HT_TEST_BLEND,HT_TEST_BLUR,
-      HT_TEST_CAMERA,HT_TEST_VIGNETTE,HT_TEST_TRIANGLE,HT_TEST_ALL_FOUR,HT_TEST_COUNT};
+      HT_TEST_CAMERA,HT_TEST_VIGNETTE,HT_TEST_TRIANGLE,HT_TEST_ALL_FOUR,HT_TEST_FOCUS,HT_TEST_FLAT_CAMERA,HT_TEST_NN_CACHE,HT_TEST_COUNT};
 static unsigned ht_render_test,ht_simd_stage_ready;
 static bool ht_expanded_ready;
 static const char *ht_stage_reason[4];
@@ -22,6 +22,9 @@ static unsigned ht_render_test_mask(void) {
     case HT_TEST_VIGNETTE:return HT_OPT_VIGNETTE;
     case HT_TEST_TRIANGLE:return HT_OPT_TRIANGLE;
     case HT_TEST_ALL_FOUR:return HT_OPT_SIMD_ALL;
+    case HT_TEST_FOCUS:return HT_OPT_FOCUS;
+    case HT_TEST_FLAT_CAMERA:return HT_OPT_FLAT_CAMERA;
+    case HT_TEST_NN_CACHE:return HT_OPT_NN_CACHE;
     default:return 0;
     }
 }
@@ -35,6 +38,9 @@ static const char *ht_render_test_name(void) {
     case HT_TEST_VIGNETTE:return "PACKED VIGNETTE";
     case HT_TEST_TRIANGLE:return "TRIANGLE STEPPING";
     case HT_TEST_ALL_FOUR:return "ALL FOUR SIMD";
+    case HT_TEST_FOCUS:return "BOUNDED FOCUS MATH";
+    case HT_TEST_FLAT_CAMERA:return "FLAT CAMERA SKIP";
+    case HT_TEST_NN_CACHE:return "NEURAL PATCH CACHE";
     default:return "PACKING BASELINE";
     }
 }
