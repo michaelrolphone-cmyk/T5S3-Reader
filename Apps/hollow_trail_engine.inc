@@ -142,6 +142,7 @@ static int ht_abs(int x) { return x<0?-x:x; }
 static uint32_t ht_hash(uint32_t x) { x^=x>>16; x*=0x7feb352du; x^=x>>15; x*=0x846ca68bu; return x^(x>>16); }
 #include "hollow_trail_terrain.inc"
 static void ht_checkpoint(void) { if(ht_service) ht_service(); }
+#include "hollow_trail_expanded_simd.inc"
 static void ht_clear_layer(uint8_t *dst) {
     if(!ht_math) { memset(dst,0,HT_PIXELS); return; }
     for(size_t at=0;at<HT_PIXELS;at+=T5_MATH_MAX_BYTES) {
@@ -220,7 +221,7 @@ static const uint16_t *ht_focus_weights(int px,int py,int step,int width,int hei
 static void ht_pack_tables_init(void);
 static void ht_bind(uint8_t *memory) {
     ht_pack_tables_init();
-    ht_geometry_level=0; ht_simd_ready=false; ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
+    ht_geometry_level=0; ht_expanded_mode=false; ht_expanded_ready=false; ht_simd_ready=false; ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
     ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
     ht_scene=memory+3*HT_PIXELS; ht_temp=memory+4*HT_PIXELS; ht_filter=(int16_t *)ht_temp;
     uint8_t *cache=memory+6*HT_PIXELS;
@@ -550,21 +551,40 @@ static void ht_blur_rect(const uint8_t *src,uint8_t *dst,int radius,int x0,int x
         const int16_t *row=ht_filter+ht_clamp(y0+k,0,HT_H-1)*HT_W;
         for(int x=x0;x<x1;++x) sums[x]+=row[x];
     }
+    bool fused=ht_expanded_active() && radius<=9;
+    uint16_t k[16] __attribute__((aligned(16)));
+    if(fused)for(int i=0;i<8;++i){k[i]=(uint16_t)((65536u+(unsigned)n-1)/(unsigned)n);k[8+i]=(uint16_t)n;}
     for(int y=y0;y<y1;++y) {
         const int16_t *add=ht_filter+ht_min(HT_H-1,y+radius+1)*HT_W;
         const int16_t *sub=ht_filter+ht_max(0,y-radius)*HT_W;
         uint8_t *row=dst+y*HT_W;
-        for(int x=x0;x<x1;++x) {
-            row[x]=ht_average(sums[x],reciprocal);
+        if(fused) {
+            /* Last output row must leave the running sums unchanged. */
+            if(y+1==y1)add=sub;
+            int x=x0;
+            for(;x<x1 && (x&7);++x) {
+                row[x]=ht_average(sums[x],reciprocal);
+                sums[x]=(int16_t)(sums[x]+add[x]-sub[x]);
+            }
+            unsigned blocks=(unsigned)(x1-x)/8;
+            if(blocks && !(((uintptr_t)(sums+x)|(uintptr_t)(add+x)|(uintptr_t)(sub+x))&15u)
+                      && !((uintptr_t)(row+x)&7u)) {
+                ht_blur_span(sums+x,add+x,sub+x,row+x,k,blocks);x+=(int)blocks*8;
+            }
+            for(;x<x1;++x) {
+                row[x]=ht_average(sums[x],reciprocal);
+                sums[x]=(int16_t)(sums[x]+add[x]-sub[x]);
+            }
+        } else {
+            for(int x=x0;x<x1;++x)row[x]=ht_average(sums[x],reciprocal);
+            if(y+1!=y1) {
+                if(ht_math) {
+                    (void)ht_math->add_s16(sums+x0,add+x0,sums+x0,(size_t)(x1-x0));
+                    (void)ht_math->sub_s16(sums+x0,sub+x0,sums+x0,(size_t)(x1-x0));
+                } else for(int x=x0;x<x1;++x)sums[x]=(int16_t)(sums[x]+add[x]-sub[x]);
+            }
         }
-        if(y+1==y1) break;
-        if(ht_math) {
-            /* 0..4845 sums, 0..255 samples: even the temporary addition
-             * fits int16_t exactly. SIMD handles eight columns at a time. */
-            (void)ht_math->add_s16(sums+x0,add+x0,sums+x0,(size_t)(x1-x0));
-            (void)ht_math->sub_s16(sums+x0,sub+x0,sums+x0,(size_t)(x1-x0));
-        } else for(int x=x0;x<x1;++x) sums[x]=(int16_t)(sums[x]+add[x]-sub[x]);
-        if((y&15)==15) ht_checkpoint();
+        if((y&15)==15)ht_checkpoint();
     }
 }
 static void ht_blur_region(const uint8_t *src,uint8_t *dst,int radius,int x0,int x1) {
@@ -1040,6 +1060,9 @@ static bool ht_ai_rendering=true;
 static __attribute__((optimize("O3"))) void ht_composite_cached_ai(int depth,int offset,int focus_x,int focus_y) {
     const uint16_t *weights=ht_focus_weights(focus_x,focus_y,4,HT_RECON_W,HT_RECON_H);
     const int fade=depth>=2?70:45;
+    uint16_t k[16] __attribute__((aligned(16)));
+    bool fused=ht_expanded_active();
+    if(fused)for(int i=0;i<8;++i){k[i]=(uint16_t)fade;k[i+8]=256;}
     const int border=HT_BORDER/4;
     const int height=(HT_SCENE_H-HT_BORDER/2+1)/2;
     for(int y=border;y<height;++y) {
@@ -1050,6 +1073,17 @@ static __attribute__((optimize("O3"))) void ht_composite_cached_ai(int depth,int
             const uint8_t *near=ht_cached_near[depth][slot]+(4*y)*HT_TILE_W+column;
             const uint8_t *wide=ht_cached_wide[depth][slot]+(4*y)*HT_TILE_W+column;
             for(int i=0;i<count;++i,++x) {
+                /* Guard aligned reads on both sides of each cache row. Source
+                 * can have any byte offset; destination stores require /4.
+                 * Weights use exact 8-byte loads; scene uses exact 4-byte loads. */
+                if(fused && !(x&3)) {
+                    int available=ht_min(count-i,(HT_TILE_W-column-4*i-15)/4);
+                    unsigned blocks=available>0?(unsigned)available/8:0;
+                    if(blocks) {
+                        ht_blend_span(near+4*i,wide+4*i,weights+y*HT_RECON_W+x,scene+x,k,blocks);
+                        int done=(int)blocks*8;i+=done-1;x+=done-1;continue;
+                    }
+                }
                 int radial=weights[y*HT_RECON_W+x],v;
                 if(radial==0) v=near[4*i];
                 else if(radial==256) v=wide[4*i]*(256-fade)>>8;
@@ -1119,6 +1153,7 @@ static inline __attribute__((always_inline)) uint32_t ht_zip2(uint32_t a,uint32_
     return (a&255u)|((b&255u)<<8)|((a&0xff00u)<<8)|((b&0xff00u)<<16);
 }
 #include "hollow_trail_neural_upscale.inc"
+_Static_assert(HT_NN_EDGE_THRESHOLD==80,"Update expanded SIMD edge gate when changing model threshold");
 /* Build the exact bilinear reconstruction first with the same packed four-lane
  * arithmetic used by the original renderer, then spend neural MACs only on
  * strong 2x2 transitions. Source anchors at even/even coordinates never move. */
@@ -1128,7 +1163,14 @@ static __attribute__((optimize("O3"))) void ht_reconstruct_low_scene(void) {
         const uint8_t *next=ht_recon_scene+ht_min(y+1,HT_RECON_H-1)*HT_RECON_W;
         uint8_t *top=ht_low_scene+2*y*HT_SCENE_W;
         uint8_t *bottom=2*y+1<HT_SCENE_H?top+HT_SCENE_W:NULL;
-        for(int x=0;x<HT_RECON_W;x+=4) {
+        int start=0;
+        if(ht_expanded_active() && bottom &&
+           !(((uintptr_t)row|(uintptr_t)next)&7u) &&
+           !(((uintptr_t)top|(uintptr_t)bottom)&15u)) {
+            unsigned blocks=(HT_RECON_W-1)/16;
+            ht_expand_span(row,next,top,bottom,blocks);start=(int)blocks*16;
+        }
+        for(int x=start;x<HT_RECON_W;x+=4) {
             uint32_t a=ht_load4(row+x),c=ht_load4(next+x);
             int nx=ht_min(x+4,HT_RECON_W-1);
             uint32_t b=(a>>8)|((uint32_t)row[nx]<<24);
@@ -1150,12 +1192,21 @@ static __attribute__((optimize("O3"))) void ht_reconstruct_low_scene(void) {
         const uint8_t *r1=ht_recon_scene+y*HT_RECON_W;
         const uint8_t *r2=ht_recon_scene+yp*HT_RECON_W;
         uint8_t *top=ht_low_scene+2*y*HT_SCENE_W,*bottom=top+HT_SCENE_W;
+        uint8_t edges[(HT_RECON_W+15)&~15] __attribute__((aligned(16)));
+        int edge_end=0;
+        if(ht_expanded_active() && !(((uintptr_t)r1|(uintptr_t)r2)&7u)) {
+            unsigned blocks=(HT_RECON_W-1)/16;
+            ht_edge_span(r1,r2,edges,blocks);edge_end=(int)blocks*16;
+        }
         for(int x=0;x<HT_RECON_W;++x) {
             int xp=ht_min(x+1,HT_RECON_W-1);
             int a=r1[x],right=r1[xp],down=r2[x],down_right=r2[xp];
-            int lo=ht_min(ht_min(a,right),ht_min(down,down_right));
-            int hi=ht_max(ht_max(a,right),ht_max(down,down_right));
-            if(hi-lo<HT_NN_EDGE_THRESHOLD) continue;
+            if(x<edge_end) {if(!edges[x])continue;}
+            else {
+                int lo=ht_min(ht_min(a,right),ht_min(down,down_right));
+                int hi=ht_max(ht_max(a,right),ht_max(down,down_right));
+                if(hi-lo<HT_NN_EDGE_THRESHOLD)continue;
+            }
             int xm=x?x-1:0;
             uint8_t patch[HT_NN_INPUTS]={
                 r0[xm],r0[x],r0[xp],r1[xm],r1[x],r1[xp],r2[xm],r2[x],r2[xp]
@@ -1174,7 +1225,14 @@ static __attribute__((optimize("O3"))) void ht_upscale_scene(void) {
         const uint8_t *row=ht_low_scene+y*HT_SCENE_W;
         const uint8_t *next=ht_low_scene+ht_min(y+1,HT_SCENE_H-1)*HT_SCENE_W;
         uint8_t *top=ht_scene+2*y*HT_W,*bottom=top+HT_W;
-        for(int x=0;x<HT_SCENE_W;x+=4) {
+        int start=0;
+        if(ht_expanded_active() && bottom &&
+           !(((uintptr_t)row|(uintptr_t)next)&7u) &&
+           !(((uintptr_t)top|(uintptr_t)bottom)&15u)) {
+            unsigned blocks=(HT_SCENE_W-1)/16;
+            ht_expand_span(row,next,top,bottom,blocks);start=(int)blocks*16;
+        }
+        for(int x=start;x<HT_SCENE_W;x+=4) {
             uint32_t a=ht_load4(row+x),c=ht_load4(next+x);
             int nx=ht_min(x+4,HT_SCENE_W-1);
             uint32_t b=(a>>8)|((uint32_t)row[nx]<<24);

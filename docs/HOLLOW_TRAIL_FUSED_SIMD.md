@@ -1,5 +1,8 @@
 # Hollow Trail fused SIMD comparison — 1.1.13
 
+Historical packing experiment. Version 1.1.14 retains this packer in both modes; see
+[expanded SIMD comparison](HOLLOW_TRAIL_EXPANDED_SIMD.md) for the current controls.
+
 The app now offers exactly **AI** (default) and **AI + SIMD**. Pause and press **B/Up** to alternate. Both use the established AI scene compositor and the same interpolation/ordered-dither output. The learned dither correction and the removed neural 960 upscale are not used by either selectable mode. The owner clarified that plain AI was generally faster than AI + Dither, despite occasional roughly 0.2 FPS gains in particular views.
 
 ## Kernel
