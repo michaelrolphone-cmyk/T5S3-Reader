@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 169. EPUB caches are keyed only by pathname, so replacing a book in place reuses metadata and navigation from the previous file
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0823](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0823/bugs.md)
+
+- **Affected code:** `lib/Epub/Epub.h`, the `Epub(std::string filepath, const std::string& cacheDir)` constructor; `lib/Epub/Epub.cpp::Epub::load()`; cache consumer `lib/Epub/Epub/BookMetadataCache.cpp::BookMetadataCache::load()`.
+- **Trigger / reproduction:** Open an EPUB at a path such as `/Books/book.epub` so its cache is built. Then replace the EPUB bytes at that same pathname with a different valid book and reopen it without manually clearing `/.crosspoint`.
+- **Observed / logically demonstrated failure:** The constructor derives `cachePath` solely from `std::hash(filepath)`. `Epub::load()` immediately accepts an existing `book.bin` whenever `BookMetadataCache::load()` recognizes its cache-format version; neither path records or compares the source EPUB's size, modification state, central-directory identity, or content digest. The replacement file therefore inherits the previous book's title/author, spine, TOC, progress, section cache, and cover/thumbnail cache. When the old spine hrefs are later resolved against the new ZIP, content loads can fail or navigate to unrelated entries even though the new EPUB itself is valid.
+- **Likely root cause:** Cache identity is bound to the storage pathname rather than to the source artifact generation at that pathname.
+- **Impact:** Updating, re-downloading, or replacing a book in place can show stale metadata and resume/navigation state from a different EPUB and can make the replacement appear corrupt until the user happens to clear its cache.
+- **Repair direction:** Persist a source fingerprint in the cache metadata and validate it before accepting any cache. At minimum bind the cache to stable source attributes plus a content fingerprint; preferably use a content-derived cache generation. On mismatch, invalidate `book.bin` and all dependent section/progress/cover/CSS artifacts before rebuilding. Add a regression test that builds a cache for EPUB A, overwrites the same pathname with EPUB B, and verifies B is re-indexed rather than loading A's cache.
+
+### 170. BookMetadataCache treats short SD writes and close failures as successful cache publication
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0823](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0823/bugs.md)
+
+- **Affected code:** `lib/Epub/Epub/BookMetadataCache.cpp`, especially `writeSpineEntry()`, `writeTocEntry()`, `endContentOpfPass()`, `endTocPass()`, and `buildBookBin()`; `lib/Serialization/Serialization.h`, the `FsFile` `writePod()` / `writeString()` helpers; caller `lib/Epub/Epub.cpp::Epub::load()`.
+- **Trigger / reproduction:** Force the SD card to short-write, become full, or fail a flush/close while an EPUB is being indexed and `spine.bin.tmp`, `toc.bin.tmp`, or final `book.bin` is being written.
+- **Observed / logically demonstrated failure:** The `FsFile` serialization helpers return `void` and discard every `file.write()` byte count. The cache builders consequently cannot detect a short header/string/LUT/entry write. The two pass-ending functions call `close()` and unconditionally return `true`, while `buildBookBin()` likewise closes all three files, logs `Successfully built book.bin`, and returns `true` without checking write or close status. A failed cache write can therefore be acknowledged as complete and leave a truncated canonical `book.bin` or incomplete temporary input for the final build. The subsequent reload may fail late or, when a plausible prefix exists, accept malformed cache state.
+- **Likely root cause:** The cache serialization layer has no error-propagating write contract, and cache publication writes directly to the canonical artifact without a verified stage.
+- **Impact:** Transient SD exhaustion or media errors during indexing can leave an EPUB with a persistent corrupt cache while the indexing path reports success through the write phase. Later opens can fail, show wrong metadata/navigation, or repeatedly consume the bad cache instead of cleanly rebuilding.
+- **Repair direction:** Make all `FsFile` serialization writes return success only on exact byte counts and propagate failures through spine/TOC creation and pass completion. Check flush/close results. Build the final cache into a new staged file, close and validate it completely, then publish it atomically; discard the stage on any error and preserve/rebuild from the last known-good cache. Add fault-injection tests for short writes in metadata, LUT, spine/TOC entries, and final close.
+
+### 171. RecentBooksStore reports successful mutations after persistence fails and suppresses retries
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0823](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0823/bugs.md)
+
+- **Affected code:** `src/RecentBooksStore.cpp`, `RecentBooksStore::addBook()`, `updateBook()`, `removeBook()`, and `updatePath()`; callers include `src/activities/home/RecentBooksActivity.cpp::removeSelectedRecentBook()` and `src/activities/reader/EpubReaderActivity.cpp::updateRecentsForEndOfBook()`.
+- **Trigger / reproduction:** Begin with a persisted recent-books list, force `JsonSettingsIO::saveRecentBooks()` / the underlying SD write to fail, then remove a recent item from the Recent Books UI or finish a book with automatic recent-book removal enabled. The same behavior applies to add/update/path changes.
+- **Observed / logically demonstrated failure:** Every mutation changes the authoritative in-memory `recentBooks` vector before calling `saveToFile()`. `addBook()`, `updateBook()`, and `updatePath()` discard the returned persistence result. `removeBook()` also discards it and returns `true` merely because the item existed and was erased from RAM. The Recent Books UI then erases its displayed row, and the EPUB reader assigns that unconditional `true` to `recentsEntryRemoved`, suppressing further removal attempts for the session. Runtime state therefore claims the change succeeded even though durable state did not; after reboot an old entry can reappear, and a later successful save can unexpectedly make an earlier failed live mutation durable.
+- **Likely root cause:** The store uses mutate-then-save semantics and its public mutation APIs do not make durable persistence part of their success contract.
+- **Impact:** Recent-book history can disappear or reappear inconsistently, automatic finished-book cleanup can stop retrying after a failed write, and users receive no indication that a requested mutation was not committed.
+- **Repair direction:** Apply mutations to a candidate copy, persist that candidate first, and publish it to the live vector only after the write succeeds, or explicitly roll back on failure. Return a status from every mutator and require callers to keep/retry the prior UI/state when persistence fails. Add fault-injection tests for add, update, remove, path-change, and the end-of-book auto-removal retry path.
