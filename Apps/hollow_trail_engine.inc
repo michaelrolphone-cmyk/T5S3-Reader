@@ -34,7 +34,9 @@ static uint16_t ht_dirty_top,ht_dirty_height;
 #define HT_TILE_HALO ((HT_W-HT_TILE_W)/2)
 #define HT_CACHE_BAND 64
 #define HT_WARM_STEPS (HT_LAYERS*HT_TILE_SLOTS*(1+3*((HT_H+HT_CACHE_BAND-1)/HT_CACHE_BAND)))
-#define HT_MEMORY (HT_RECON_PIXELS * 4u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS)
+/* Keep two full legacy focus maps so the A/B test compares against the original
+ * optimized 240x135 renderer rather than an artificially slowed reference. */
+#define HT_MEMORY (HT_SCENE_PIXELS * 4u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS)
 #define HT_GOAL 3200
 #define HT_STEP_MS 32u /* Half-speed motion; preserve jump paths and level reachability. */
 
@@ -184,22 +186,28 @@ static void ht_mask_init(void) {
  * recalculating radial division for every depth or settled frame. */
 static uint16_t *ht_focus_map[2];
 static int ht_focus_x[2],ht_focus_y[2];
+static uint8_t ht_focus_step[2];
 static bool ht_focus_valid[2];
 static unsigned ht_focus_recent;
-static const uint16_t *ht_focus_weights(int px,int py) {
-    for(unsigned i=0;i<2;++i) if(ht_focus_valid[i] && ht_focus_x[i]==px && ht_focus_y[i]==py) {
+/* The same two PSRAM maps serve both renderers. Grid pitch is part of the
+ * cache key so toggling AI/legacy cannot reuse weights from the other lattice. */
+static const uint16_t *ht_focus_weights(int px,int py,int step,int width,int height) {
+    for(unsigned i=0;i<2;++i) if(ht_focus_valid[i] && ht_focus_x[i]==px &&
+       ht_focus_y[i]==py && ht_focus_step[i]==step) {
         ht_focus_recent=i;return ht_focus_map[i];
     }
     unsigned slot=ht_focus_recent^1u;uint16_t *map=ht_focus_map[slot];
-    for(int y=0;y<HT_RECON_H;++y) {
-        int dy=4*y-py,distance=px*px+dy*dy,delta=16-8*px;
-        for(int x=0;x<HT_RECON_W;++x) {
-            map[y*HT_RECON_W+x]=(uint16_t)ht_clamp((distance-2500)/200,0,256);
-            distance+=delta;delta+=32;
+    const int step2=step*step;
+    for(int y=0;y<height;++y) {
+        int dy=step*y-py,distance=px*px+dy*dy,delta=step2-2*step*px;
+        for(int x=0;x<width;++x) {
+            map[y*width+x]=(uint16_t)ht_clamp((distance-2500)/200,0,256);
+            distance+=delta;delta+=2*step2;
         }
         if((y&15)==15) ht_checkpoint();
     }
-    ht_focus_x[slot]=px;ht_focus_y[slot]=py;ht_focus_valid[slot]=true;ht_focus_recent=slot;
+    ht_focus_x[slot]=px;ht_focus_y[slot]=py;ht_focus_step[slot]=(uint8_t)step;
+    ht_focus_valid[slot]=true;ht_focus_recent=slot;
     return map;
 }
 static void ht_pack_tables_init(void);
@@ -215,8 +223,8 @@ static void ht_bind(uint8_t *memory) {
     }
     ht_corner_mask=cache; ht_low_scene=cache+HT_MASK_PIXELS; ht_recon_scene=ht_raw; ht_mask_init();
     ht_focus_map[0]=(uint16_t *)(ht_low_scene+HT_SCENE_PIXELS);
-    ht_focus_map[1]=ht_focus_map[0]+HT_RECON_PIXELS;
-    ht_focus_valid[0]=ht_focus_valid[1]=false;ht_focus_recent=0;
+    ht_focus_map[1]=ht_focus_map[0]+HT_SCENE_PIXELS;
+    ht_focus_valid[0]=ht_focus_valid[1]=false;ht_focus_step[0]=ht_focus_step[1]=0;ht_focus_recent=0;
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
 }
 static int ht_evidence_platform(unsigned level,int item) { return level==0 && item==0?0:1+item*3; }
@@ -997,64 +1005,17 @@ static bool ht_cache_prefetch(int camera,int direction) {
     ht_cache_work();
     return true;
 }
-/* Evaluate per-frame lighting at one sample per 4x4 logical pixels. Cached
- * source art retains its original detail and integer parallax offsets; the
- * trained reconstruction restores the 240x135 scenery grid afterward. No
- * physics or camera coordinates are scaled. */
-/* A/B experiment: only the cached per-frame compositor changes. Cache filters,
- * output dithering and timing checkpoints stay the same. Defaults to scalar. */
-static bool ht_dsp_composite;
-static bool ht_dsp_available(void) {
-    return ht_math && ht_math->struct_size>=offsetof(t5_math_api_v1,mul_s16)+sizeof(ht_math->mul_s16) &&
-           (ht_math->features&T5_MATH_FEATURE_S3_DSP) && ht_math->mul_s16;
-}
-#define HT_DSP_BATCH (HT_TILE_W/4)
-/* Fixed, aligned app-owned scratch; no allocation or large task-stack frame.
- * Each quarter-resolution tile span has at most 64 samples. */
-static int16_t ht_dsp_a[HT_DSP_BATCH] __attribute__((aligned(16)));
-static int16_t ht_dsp_b[HT_DSP_BATCH] __attribute__((aligned(16)));
-static int16_t ht_dsp_product[HT_DSP_BATCH] __attribute__((aligned(16)));
-static int16_t ht_dsp_radial[HT_DSP_BATCH] __attribute__((aligned(16)));
-static void ht_dsp_multiply(int count) {
-    if(ht_math->mul_s16(ht_dsp_a,ht_dsp_b,ht_dsp_product,(size_t)count)) return;
-    for(int i=0;i<count;++i) ht_dsp_product[i]=(int16_t)(ht_dsp_a[i]*ht_dsp_b[i]);
-}
-static void ht_composite_dsp_span(uint8_t *dst,const uint8_t *near,const uint8_t *wide,
-                                  int count,int distance,int delta,int fade) {
-    for(int i=0;i<count;++i) {
-        int radial=ht_clamp((distance-2500)/200,0,256);
-        ht_dsp_radial[i]=(int16_t)radial;
-        ht_dsp_a[i]=(int16_t)((int)wide[4*i]-near[4*i]);
-        ht_dsp_b[i]=(int16_t)(radial&127);
-        distance+=delta;delta+=32;
-    }
-    /* Signed products must fit s16. Split weights into low seven bits and
-     * a 0/128/256 correction, accumulated in 32 bits. Max DSP product 32385.
-     * This retains the scalar rounding, including negative blur differences. */
-    ht_dsp_multiply(count);
-    for(int i=0;i<count;++i) {
-        int radial=ht_dsp_radial[i];
-        int v=(near[4*i]*256+ht_dsp_product[i]+ht_dsp_a[i]*(radial&~127))>>8;
-        int factor=256-((radial*fade)>>8);
-        ht_dsp_a[i]=(int16_t)v; ht_dsp_b[i]=(int16_t)(factor&127);
-        ht_dsp_radial[i]=(int16_t)(factor&~127);
-    }
-    ht_dsp_multiply(count);
-    for(int i=0;i<count;++i) {
-        int v=(ht_dsp_product[i]+ht_dsp_a[i]*ht_dsp_radial[i])>>8;
-        dst[i]=(uint8_t)ht_max(dst[i],v);
-    }
-}
-static __attribute__((optimize("O3"))) void ht_composite_cached(int depth,int offset,int focus_x,int focus_y) {
-    const bool use_dsp=ht_dsp_composite && ht_dsp_available();
-    const uint16_t *weights=use_dsp?NULL:ht_focus_weights(focus_x,focus_y);
+/* Runtime A/B renderer switch. Neural mode composes lighting at one sample
+ * per 4x4 logical pixels and reconstructs 240x135. Legacy mode is the original
+ * 2x2-sampled 240x135 scalar compositor. DSP16 is intentionally excluded: the
+ * hardware experiment established that it reduces Hollow Trail frame rate. */
+static bool ht_ai_rendering=true;
+
+static __attribute__((optimize("O3"))) void ht_composite_cached_ai(int depth,int offset,int focus_x,int focus_y) {
+    const uint16_t *weights=ht_focus_weights(focus_x,focus_y,4,HT_RECON_W,HT_RECON_H);
     const int fade=depth>=2?70:45;
     const int border=HT_BORDER/4;
     const int height=(HT_SCENE_H-HT_BORDER/2+1)/2;
-    /* Compose one sample per 4x4 logical pixels. Neural reconstruction restores
-     * the 240x135 scenery surface before the existing 2x raster expansion. */
-    const int start=4*border;
-    int dy=start-focus_y,dy2=dy*dy;
     for(int y=border;y<height;++y) {
         uint8_t *scene=ht_recon_scene+y*HT_RECON_W;
         for(int x=border;x<HT_RECON_W-border;) {
@@ -1062,14 +1023,8 @@ static __attribute__((optimize("O3"))) void ht_composite_cached(int depth,int of
             int count=ht_min(HT_RECON_W-border-x,(HT_TILE_W-column+3)/4),slot=ht_cache_slot(key);
             const uint8_t *near=ht_cached_near[depth][slot]+(4*y)*HT_TILE_W+column;
             const uint8_t *wide=ht_cached_wide[depth][slot]+(4*y)*HT_TILE_W+column;
-            if(use_dsp) {
-                int dx=4*x-focus_x,distance=dx*dx+dy2,delta=16+8*dx;
-                ht_composite_dsp_span(scene+x,near,wide,count,distance,delta,fade);
-                x+=count; continue;
-            }
             for(int i=0;i<count;++i,++x) {
-                int v;
-                int radial=weights[y*HT_RECON_W+x];
+                int radial=weights[y*HT_RECON_W+x],v;
                 if(radial==0) v=near[4*i];
                 else if(radial==256) v=wide[4*i]*(256-fade)>>8;
                 else {
@@ -1079,8 +1034,34 @@ static __attribute__((optimize("O3"))) void ht_composite_cached(int depth,int of
                 scene[x]=(uint8_t)ht_max(scene[x],v);
             }
         }
-        dy2+=8*dy+16;dy+=4;
         if((y&7)==7) ht_checkpoint();
+    }
+}
+
+static __attribute__((optimize("O3"))) void ht_composite_cached_legacy(int depth,int offset,int focus_x,int focus_y) {
+    const uint16_t *weights=ht_focus_weights(focus_x,focus_y,2,HT_SCENE_W,HT_SCENE_H);
+    const int fade=depth>=2?70:45;
+    const int border=HT_BORDER/2;
+    const int height=HT_SCENE_H-border;
+    for(int y=border;y<height;++y) {
+        uint8_t *scene=ht_low_scene+y*HT_SCENE_W;
+        for(int x=border;x<HT_SCENE_W-border;) {
+            int world=offset+2*x,key=ht_floor_div(world,HT_TILE_W),column=world-key*HT_TILE_W;
+            int count=ht_min(HT_SCENE_W-border-x,(HT_TILE_W-column+1)/2),slot=ht_cache_slot(key);
+            const uint8_t *near=ht_cached_near[depth][slot]+(2*y)*HT_TILE_W+column;
+            const uint8_t *wide=ht_cached_wide[depth][slot]+(2*y)*HT_TILE_W+column;
+            for(int i=0;i<count;++i,++x) {
+                int radial=weights[y*HT_SCENE_W+x],v;
+                if(radial==0) v=near[2*i];
+                else if(radial==256) v=wide[2*i]*(256-fade)>>8;
+                else {
+                    v=(near[2*i]*256+((int)wide[2*i]-near[2*i])*radial)>>8;
+                    v=v*(256-((radial*fade)>>8))>>8;
+                }
+                scene[x]=(uint8_t)ht_max(scene[x],v);
+            }
+        }
+        if((y&15)==15) ht_checkpoint();
     }
 }
 /* Expand once to the existing overlay surface, then draw the character/UI.
@@ -1348,10 +1329,16 @@ static void ht_render_scene(void) {
     ht_select_level(game.level);
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
     if(!ht_cache_visible(camera)) return;
-    memset(ht_recon_scene,ht_sky_ink(&game),HT_RECON_PIXELS);
-    for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
-        ht_composite_cached(depth,ht_layer_offset(depth,camera),px,py);
-    ht_reconstruct_low_scene();
+    if(ht_ai_rendering) {
+        memset(ht_recon_scene,ht_sky_ink(&game),HT_RECON_PIXELS);
+        for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
+            ht_composite_cached_ai(depth,ht_layer_offset(depth,camera),px,py);
+        ht_reconstruct_low_scene();
+    } else {
+        memset(ht_low_scene,ht_sky_ink(&game),HT_SCENE_PIXELS);
+        for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
+            ht_composite_cached_legacy(depth,ht_layer_offset(depth,camera),px,py);
+    }
     /* Render directly to the transform source: remove the former full-frame
      * copy into scratch. Input servicing never reads this raster pointer. */
     uint8_t *output=ht_scene;
