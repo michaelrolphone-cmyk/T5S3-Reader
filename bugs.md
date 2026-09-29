@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 181. Time Zone can commit a city or exit two navigation levels from one held button press
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1421](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1421/bugs.md)
+
+- **Affected code:** `Apps/time_zone.c`, `app_main()` and `activate()`; input semantics come from `src/native/NativeAppHost.cpp::pollInput()`.
+- **Trigger / reproduction:** Open **Time Zone**, highlight a region different from the currently configured one, then press and hold Confirm long enough to span two 50 ms app polls. A second reproduction is to enter a city's list and hold Back across two polls.
+- **Observed / logically demonstrated failure:** `NativeAppHost::pollInput()` publishes the current button level on every call through `MappedInputManager::isPressed()`. Time Zone has no edge/release gate. On the first held-Confirm poll, `activate()` switches from region mode to city mode, initializes the city selection (normally index 0 when entering a different region), renders, and returns. The next poll sees the same still-held Confirm bit and immediately calls `zones->select_city()`, committing that city and exiting the app. Likewise, a held Back first leaves city mode and then, on the next poll, exits the app from region mode. One physical press can therefore execute two distinct navigation actions.
+- **Likely root cause:** The app treats the level-triggered native-app button mask as one-shot UI events even though transitions between screens can occur while the same physical button remains asserted.
+- **Impact:** Merely holding Confirm while opening a region can unintentionally change the system timezone to the first city in that region, and holding Back can skip the intermediate region screen. This is separate from the existing Time Zone persistence-failure and 96-row truncation reports.
+- **Repair direction:** Add rising-edge/release rearming around button actions, matching the pattern already used by `Apps/settings.c`, or consume the edge-based UI event API instead of raw level bits. Reset/rearm deliberately across region/city transitions. Add regressions that keep Confirm and Back asserted for several polls and verify exactly one navigation/action occurs per physical press.
+
+### 182. Clear Reading Cache reports success after cache-directory open or enumeration I/O failures
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1421](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1421/bugs.md)
+
+- **Affected code:** `src/native/NativeCacheBridge.cpp::clearReadingCache()`; result presentation in `Apps/clear_cache.c::render_result()`.
+- **Trigger / reproduction:** With multiple `/.crosspoint/epub_*` or `xtc_*` cache directories present, fault the SD directory iterator after one matching directory has been returned and removed, so the next `root.openNextFile()` returns an invalid handle before true end-of-directory. A simpler trigger is to make opening an existing `/.crosspoint` directory fail transiently.
+- **Observed / logically demonstrated failure:** An invalid result from `openNextFile()` is used as the `for` loop terminator with no error check, so an I/O failure is indistinguishable from normal EOF. The function then closes the root and returns `true` with `failed_count == 0`; the app renders **Cache cleared** even though only a prefix of caches was visited. At initial open, `!root || !root.isDirectory()` is also treated as a successful “directory unavailable” result, so a transient open/read failure on an existing cache directory is shown as **Nothing to clear** rather than an error.
+- **Likely root cause:** Directory absence/EOF and storage I/O failure are collapsed into the same invalid-handle states, while `clearReadingCache()` treats those states as successful completion.
+- **Impact:** Cache cleanup can be only partially performed while the UI claims success, leaving stale or corrupt generated reading data behind. An SD fault can also be falsely presented as an empty cache.
+- **Repair direction:** Distinguish confirmed directory absence from open failure (for example, check existence first and treat an existing-but-unopenable directory as failure), and use an enumeration path that exposes I/O/error status separately from EOF. If enumeration fails after partial deletion, return failure or increment `failed_count` and report partial completion. Add fault-injection tests for initial open failure and mid-directory enumeration failure.
+
+### 183. ZIP extraction can publish a destination after the output file reports close failure
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1421](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1421/bugs.md)
+
+- **Affected code:** `src/native/NativeArchiveBridge.cpp::extract()`, especially output finalization after `ZipFile::readFileToStream()`; `lib/hal/HalStorage.h/.cpp::HalFile::close()`.
+- **Trigger / reproduction:** Extract a valid ZIP entry while fault-injecting the destination `HalFile::close()` to return `false` after all `write()` calls have accepted their bytes, while allowing the subsequent `Storage.rename(part, destination)` to succeed.
+- **Observed / logically demonstrated failure:** `extract()` computes `okay = zip.readFileToStream(...) && sink.good()` **before** finalizing the output. It then calls `output.flush(); output.close();` and discards the boolean result of `close()`. If `okay` was already true, it proceeds to rename the `.part` file to the canonical destination and returns success whenever the rename succeeds. `HalFile::close()` explicitly returns a boolean, so a reported close/sync failure is available but ignored. The staged file can therefore be published even though final output finalization failed.
+- **Likely root cause:** Successful byte-count/decompression checks are treated as the complete extraction transaction; the filesystem close/sync result is outside the commit predicate.
+- **Impact:** A storage fault at finalization can leave a truncated or non-durable extracted ROM/resource at the canonical path while callers are told extraction succeeded. This is independent of the existing ZIP CRC-32 report: even a valid archive and correctly produced bytes can fail while committing the output file.
+- **Repair direction:** Require a successful `output.close()` before any rename, remove the `.part` file and return failure on close error, and optionally reopen/verify final staged size against the expected inflated size before publication. Add a fault-injection regression where writes all succeed but close fails and prove no destination file is published.
