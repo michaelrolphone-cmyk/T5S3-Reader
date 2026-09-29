@@ -8,24 +8,20 @@ The deployed model is deliberately tiny: a 3x3 grayscale patch (9 inputs) feeds 
 
 The exported inference path uses only integer multiply/add/shift operations and 60 bytes of trained weights plus 32 bytes of integer biases. On the held-out gate distribution this topology performs about 44,000 neural multiply-accumulates per reconstructed frame, roughly one-seventh of the earlier 24-hidden candidate. It requires no TensorFlow Lite, ESP-NN, heap allocation, firmware API, or additional capability. The 120x68 composition surface owns 8,160 bytes within the app's existing single PSRAM allocation. It must not alias cache scratch: a lookahead job can remain unfinished across visible frames, and its source buffers must survive until publication.
 
-## Final 960x540 neural output scale
+## AI-trained physical dithering
 
-Hollow Trail still renders its logical gameplay surface at 480x270, while the physical e-paper panel is 960x540. Version 1.1.12 extends the trained 2x residual model to that final scale.
+The final neural 960x540 reconstruction was removed after hardware testing showed that it reduced frame rate. The fast **AI** renderer remains the baseline.
 
-In AI mode, the mono packer now treats each 480x270 logical pixel as the known anchor of a 2x2 physical block. Bilinear values are computed for the other three physical samples, and the existing INT8 residual model corrects those values only where the local 2x2 range crosses the learned edge gate. Smooth spans keep the original packed bilinear fast path.
+The new **AI + Dither** experiment targets the output stage instead. Its offline trainer distills the existing clean bilinear+Bayer 8x8 result into a 1 KiB deterministic halftone LUT. A 6-bit darkness bucket plus the logical pixel's 4x4 phase selects one learned 2x2 physical dot pattern. Runtime therefore uses one lookup and bit packing per 480x270 source pixel: no neural MACs, no error-diffusion state, no 960x540 grayscale buffer, and no extra full-frame pass.
 
-The correction is fused directly into 1bpp dithering. There is no 960x540 grayscale framebuffer and no additional full-frame upscale pass. The display buffer remains the normal 120-byte x 540-row packed surface.
-
-Both runtime modes now use the AI 120x68 composition and trained reconstruction path. **AI** keeps the standard 480x270 -> 960x540 physical pack/dither step; **AI + 960** additionally applies the trained residual reconstruction at the final 2x scale. The retired legacy compositor is no longer selectable.
+The current held-out synthetic validation reproduces 94.8492% of complete 2x2 teacher patterns and 98.6319% of individual teacher dots. This is a performance experiment; the physical panel remains the authority on whether the learned pattern is visually as clean as the existing dither.
 
 ## Hardware A/B mode
 
-Hardware testing of the final neural 960x540 reconstruction showed a frame-rate regression. Therefore **AI** is the shipped default. **AI + 960** remains available only as a visual-quality comparison mode while its cost is investigated.
+The former DSP16, legacy-renderer, and neural-960 experiments are retired. Hollow Trail now uses the paused-game control for a focused output-stage comparison:
 
-The former DSP16/legacy renderer experiments are retired. Hollow Trail now uses the paused-game control for a focused AI comparison:
-
-- **AI**: quarter-resolution AI lighting composition and trained reconstruction, followed by the standard physical pack/dither stage.
-- **AI + 960**: the same AI renderer plus trained residual reconstruction during the final 480x270 -> 960x540 pack.
+- **AI**: quarter-resolution AI lighting composition and trained reconstruction, followed by the existing clean physical dither.
+- **AI + Dither**: the same AI renderer, but the physical 960x540 dot pattern is produced by the learned halftone LUT.
 
 Pause the game and press **B or Up** to switch. The performance counters reset on every switch, and the pause screen identifies the active renderer, so FPS and RENDER time can be compared under the same scene. Because the legacy compositor is gone, its full-size focus maps are gone too; the two AI focus maps now use the 120x68 lattice, reclaiming roughly 95 KiB of PSRAM.
 
