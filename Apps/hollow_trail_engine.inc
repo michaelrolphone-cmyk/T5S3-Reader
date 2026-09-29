@@ -61,19 +61,40 @@ static const ht_platform ht_routes[7][HT_PLATFORMS] = {
     { { -160, 380, 216 }, { 444, 706, 198 }, { 780, 1040, 183 }, { 1112, 1334, 206 }, { 1394, 1576, 178 }, { 1648, 1845, 152 }, { 1917, 2144, 190 }, { 2204, 2431, 168 }, { 2503, 2730, 199 }, { 2798, 3410, 194 } },
     { { -160, 380, 222 }, { 448, 710, 204 }, { 784, 1044, 180 }, { 1104, 1326, 203 }, { 1398, 1580, 175 }, { 1652, 1849, 158 }, { 1909, 2136, 187 }, { 2208, 2435, 165 }, { 2507, 2734, 196 }, { 2798, 3410, 200 } }
 };
-static const ht_platform *ht_level_land(unsigned level) {
-    return level>=3?ht_routes[level-3]:level==2?ht_oil:level==1?ht_city:ht_forest;
-}
+/* Ten traversable terraces per chapter. Overlapping x spans at different
+ * elevations are intentional: ascend, cross above, descend, then climb back. */
+static const ht_platform ht_terraces[HT_LEVELS][HT_PLATFORMS]={
+    { {-160,300,220}, {480,800,220}, {760,1050,100}, {880,1180,-40}, {1390,1635,-40}, {1580,1790,220}, {2110,2240,220}, {2070,2320,90}, {2410,2790,125}, {2780,3410,200} },
+    { {-160,300,218}, {480,800,218}, {760,1050,100}, {880,1180,-65}, {1390,1635,-65}, {1580,1790,218}, {2110,2240,218}, {2070,2320,70}, {2410,2790,105}, {2780,3410,200} },
+    { {-160,300,224}, {480,800,224}, {760,1050,110}, {880,1180,-30}, {1390,1635,-30}, {1580,1790,224}, {2110,2240,224}, {2070,2320,110}, {2410,2790,145}, {2780,3410,200} },
+    { {-160,300,220}, {480,800,220}, {760,1050,108}, {880,1180,-50}, {1390,1635,-50}, {1580,1790,220}, {2110,2240,220}, {2070,2320,80}, {2410,2790,115}, {2780,3410,200} },
+    { {-160,300,226}, {480,800,226}, {760,1050,112}, {880,1180,-20}, {1390,1635,-20}, {1580,1790,226}, {2110,2240,226}, {2070,2320,100}, {2410,2790,135}, {2780,3410,200} },
+    { {-160,300,222}, {480,800,222}, {760,1050,104}, {880,1180,-70}, {1390,1635,-70}, {1580,1790,222}, {2110,2240,222}, {2070,2320,60}, {2410,2790,95}, {2780,3410,200} },
+    { {-160,300,218}, {480,800,218}, {760,1050,100}, {880,1180,-35}, {1390,1635,-35}, {1580,1790,218}, {2110,2240,218}, {2070,2320,90}, {2410,2790,125}, {2780,3410,200} },
+    { {-160,300,224}, {480,800,224}, {760,1050,108}, {880,1180,-55}, {1390,1635,-55}, {1580,1790,224}, {2110,2240,224}, {2070,2320,80}, {2410,2790,115}, {2780,3410,200} },
+    { {-160,300,220}, {480,800,220}, {760,1050,100}, {880,1180,-80}, {1390,1635,-80}, {1580,1790,220}, {2110,2240,220}, {2070,2320,55}, {2410,2790,90}, {2780,3410,200} },
+    { {-160,300,220}, {480,800,220}, {760,1050,105}, {880,1180,-60}, {1390,1635,-60}, {1580,1790,220}, {2110,2240,220}, {2070,2320,85}, {2410,2790,120}, {2780,3410,200} },
+};
+static const ht_platform *ht_level_land(unsigned level) { return ht_terraces[level]; }
+/* Fixed-size chapter mechanics, included in every render snapshot. */
+enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB };
+typedef struct {
+    int ball_x,ball_y,crate_x,boat_x,rope_x,rope_v,ride_offset;
+    uint8_t mode,ladder,ball_phase,ledge,climb,drop_cooldown;
+    int ledge_side;
+    bool rope_awake;
+} ht_traversal;
 #include "hollow_trail_story.inc"
 #include "hollow_trail_puzzles.inc"
 #include "hollow_trail_evidence.inc"
 typedef struct {
     int x, y, vx, vy; /* Q8, y is feet */
-    int camera, checkpoint, coyote, jump_buffer, facing, stride;
-    unsigned ticks, laps, deaths;
+    int camera, camera_y, checkpoint, coyote, jump_buffer, facing, stride;
+    unsigned ticks, laps, deaths, sway_phase;
     unsigned level; /* Laps count complete ten-chapter journeys. */
     int story_x; /* Furthest progress in this chapter, retained on death. */
     bool grounded;
+    ht_traversal traversal;
     ht_puzzle_state puzzle;
     uint8_t verdict,last_verdict,endings; /* 0 undecided; 1 break; 2 complete; archive bitmask. */
     bool verdict_read;
@@ -231,6 +252,7 @@ static bool ht_interact(void) {
     return true;
 }
 static void ht_spawn(bool restart) {
+    uint8_t ball_phase=restart?0:ht.traversal.ball_phase;
     uint32_t evidence=ht.evidence;
     uint8_t verdict=restart?0:ht.verdict,last_verdict=ht.last_verdict,endings=ht.endings;
     bool verdict_read=!restart && ht.verdict_read;
@@ -247,55 +269,15 @@ static void ht_spawn(bool restart) {
     ht.story_x=story_x; ht.checkpoint=cp; ht.x=(cp?ht_land[cp].left+35:95)*256;
     ht.y=ht_land[cp].top*256; ht.grounded=true; ht.facing=1;
     ht.camera=ht_clamp(ht.x/256-165,0,HT_GOAL-340)*256;
+    ht.camera_y=ht_clamp(ht.y/256-180,-300,100)*256;
+    ht.traversal.ball_phase=ball_phase==2 || cp>=3?2:0;
+    ht.traversal.ball_x=(ht.traversal.ball_phase==2?390:245)*256;
+    ht.traversal.ball_y=(ht_land[0].top+(ht.traversal.ball_phase==2?48:-48))*256;
+    ht.traversal.crate_x=660*256;
+    ht.traversal.boat_x=(cp>=6?2160:1760)*256;
+    ht.traversal.rope_x=-140*256;
 }
-static void ht_step(int direction,bool jump_pressed,bool jump_held) {
-    ++ht.ticks;
-    if(jump_pressed) ht.jump_buffer=7;
-    else if(ht.jump_buffer) --ht.jump_buffer;
-    if(ht.grounded) ht.coyote=6; else if(ht.coyote) --ht.coyote;
-    int target=direction*640; /* 78.125 world pixels/sec at 32ms per step */
-    if(ht.vx<target) ht.vx=ht_min(target,ht.vx+100);
-    if(ht.vx>target) ht.vx=ht_max(target,ht.vx-100);
-    if(direction) ht.facing=direction;
-    if(ht.jump_buffer && ht.coyote) {
-        ht.vy=-1880; ht.grounded=false; ht.coyote=0; ht.jump_buffer=0;
-    }
-    if(!jump_held && ht.vy < -780) ht.vy=-780;
-    int old_y=ht.y;
-    ht.vy=ht_min(ht.vy+88,2400);
-    ht.x=ht_clamp(ht.x+ht.vx,6*256,(HT_GOAL+60)*256);
-    ht.y+=ht.vy;
-    ht.grounded=false;
-    for(int i=0;i<HT_PLATFORMS;++i) {
-        const ht_platform *p=&ht_land[i];
-        if(ht.x+5*256<=p->left*256 || ht.x-5*256>=p->right*256) continue;
-        if(ht.vy>=0 && old_y<=p->top*256 && ht.y>=p->top*256) {
-            ht.y=p->top*256; ht.vy=0; ht.grounded=true;
-            if(i==3 || i==6 || i==9) ht.checkpoint=i;
-        } else if(ht.y>p->top*256+3*256 && old_y>p->top*256) {
-            /* Solid cliff sides; no walking/jumping through a ledge. */
-            if(ht.vx>0) ht.x=(p->left-5)*256;
-            if(ht.vx<0) ht.x=(p->right+5)*256;
-            ht.vx=0;
-        }
-    }
-    /* The chapter exit stays closed even if jumped at from above. All three
-     * controls and the last checkpoint remain on its accessible side. */
-    if((!ht.puzzle.solved || ht_final_locked(&ht)) && ht.x>HT_PUZZLE_GATE*256) {
-        ht.x=HT_PUZZLE_GATE*256; ht.vx=0;
-    }
-    ht.story_x=ht_max(ht.story_x,ht.x/256);
-    unsigned beat=ht_story_beat(ht.story_x)+1;
-    if(ht.story_seen[ht.level]<beat) ht.story_seen[ht.level]=(uint8_t)beat;
-    if(ht.grounded) ht.stride+=ht_abs(ht.vx);
-    if(ht.y>335*256) { ++ht.deaths; ht_spawn(false); return; }
-    if(ht.x>=HT_GOAL*256 && ht.grounded && ht.puzzle.solved && !ht_final_locked(&ht)) {
-        if(++ht.level==HT_LEVELS) { ht.level=0; ++ht.laps; }
-        ht_spawn(true); return;
-    }
-    int goal=ht_clamp(ht.x/256-165,0,HT_GOAL-340)*256;
-    ht.camera+=(goal-ht.camera)/8;
-}
+#include "hollow_trail_traversal.inc"
 static void ht_span(uint8_t *b,int x0,int x1,int y,int c) {
     if(y<0 || y>=HT_H || x0>=HT_W || x1<0) return;
     x0=ht_max(x0,0); x1=ht_min(x1,HT_W-1);
@@ -485,7 +467,7 @@ static void ht_city_foreground(int camera) {
     ht_rect(ht_raw,x-1,top-78,2,24,255);
     ht_disk(ht_raw,x,top-80,3,180);
 }
-static void ht_cactus(int x,int base,int height,int tone) {
+static void ht_cactus_on(uint8_t *target,int x,int base,int height,int tone) {
     /* The scenery is sampled every two logical pixels. Even limb widths,
      * at least four pixels, keep the small cactus two samples thick at both
      * camera parities instead of alternating between one and two samples. */
@@ -493,18 +475,20 @@ static void ht_cactus(int x,int base,int height,int tone) {
     int reach=height/3,left=x-reach,right=x+reach-w;
     int left_top=base-height*4/5,left_join=base-height*3/5;
     int right_top=base-height*2/3,right_join=base-height*2/5;
-    ht_rect(ht_raw,x-w/2,base-height,w,height,tone);
-    ht_disk(ht_raw,x,base-height,w/2,tone);
-    ht_rect(ht_raw,left,left_join,reach,w,tone);
-    ht_rect(ht_raw,left,left_top,w,left_join-left_top+w,tone);
-    ht_disk(ht_raw,left+w/2,left_top,w/2,tone);
-    ht_rect(ht_raw,x,right_join,reach,w,tone);
+    ht_rect(target,x-w/2,base-height,w,height,tone);
+    ht_disk(target,x,base-height,w/2,tone);
+    ht_rect(target,left,left_join,reach,w,tone);
+    ht_rect(target,left,left_top,w,left_join-left_top+w,tone);
+    ht_disk(target,left+w/2,left_top,w/2,tone);
+    ht_rect(target,x,right_join,reach,w,tone);
     /* Derive the vertical end from the exact shared elbow, rather than
      * independently rounded height fractions which could leave a gap. */
-    ht_rect(ht_raw,right,right_top,w,right_join-right_top+w,tone);
-    ht_disk(ht_raw,right+w/2,right_top,w/2,tone);
+    ht_rect(target,right,right_top,w,right_join-right_top+w,tone);
+    ht_disk(target,right+w/2,right_top,w/2,tone);
 }
 /* Static machinery: construction/blur is cached, not animated per frame. */
+static void ht_cactus(int x,int base,int height,int tone) {ht_cactus_on(ht_raw,x,base,height,tone);}
+
 static void ht_derrick(int x,int base,int height,int tone) {
     int top=base-height,w=height/4;
     ht_limb(ht_raw,x-w,base,x-4,top,3,2,tone);
@@ -871,6 +855,7 @@ static bool ht_cache_ensure(int depth,int key) {
 static bool ht_cache_visible(int camera) {
     if(ht_abort) return false;
     for(int depth=0;depth<HT_LAYERS;++depth) {
+        if(depth==2) continue; // Dynamic traversal now owns this plane.
         int offset=ht_layer_offset(depth,camera);
         int first=ht_floor_div(offset+2*(HT_BORDER/2),HT_TILE_W);
         int last=ht_floor_div(offset+HT_W-2*(HT_BORDER/2)-1,HT_TILE_W);
@@ -885,6 +870,7 @@ static bool ht_cache_prefetch(int camera,int direction) {
     int chosen_depth=-1,chosen_key=0,nearest=1000000;
     static const int speed[HT_LAYERS]={22,53,100,123};
     for(int depth=0;depth<HT_LAYERS;++depth) {
+        if(depth==2) continue; // Dynamic traversal now owns this plane.
         int offset=ht_layer_offset(depth,camera);
         int first=ht_floor_div(offset+2*(HT_BORDER/2),HT_TILE_W);
         int last=ht_floor_div(offset+HT_W-2*(HT_BORDER/2)-1,HT_TILE_W);
@@ -1060,7 +1046,10 @@ static void ht_character(int x,int feet,const ht_game *game) {
     ht_limb(ht_scene,x,feet-18,x-f,feet-7,3,3,255);
     ht_limb(ht_scene,x-f,feet-8,x+swing,feet,2,1,255);
     ht_limb(ht_scene,x-f,feet-8,x-swing,feet-1,2,1,255);
-    ht_limb(ht_scene,x,feet-17,x+f*5,feet-9,1,1,255);
+    if(game->traversal.mode==HT_LEDGE || game->traversal.mode==HT_CLIMB) {
+        ht_limb(ht_scene,x,feet-17,x+f*6,feet-28,2,1,255);
+        ht_limb(ht_scene,x-2,feet-17,x+f*4,feet-28,1,1,255);
+    } else ht_limb(ht_scene,x,feet-17,x+f*5,feet-9,1,1,255);
     ht_rect(ht_scene,x+(f>0?1:-4),feet-24,2,2,0);
     ht_rect(ht_scene,x+(f>0?4:-1),feet-24,1,2,0);
 }
@@ -1081,6 +1070,34 @@ static void ht_vignette(void) {
     }
     ht_framed=true;
 }
+/* Render-only affine camera. Fixed-point bilinear sampling avoids pixel hops;
+ * world coordinates, collision and input bearings are never transformed.
+ * Phase advances only with deliberate movement and freezes at rest. */
+static int ht_sway_wave(unsigned phase) {
+    int t=(int)(phase&1023u);
+    int triangle=t<256?t:t<768?512-t:t-1024;
+    return triangle*(512-ht_abs(triangle))/256;
+}
+static void ht_sway_scene(unsigned phase) {
+    if(!phase) return;
+    int turn=ht_sway_wave(phase)/6; /* at most 0.6 degree */
+    int scale=4096-(ht_sway_wave(phase/2+768)+256)/10; /* 1..1.013x */
+    memcpy(ht_temp,ht_scene,HT_PIXELS);
+    for(int y=0;y<HT_H;++y) {
+        int u=(HT_W/2)*4096-(HT_W/2)*scale+(y-HT_H/2)*turn;
+        int v=(HT_H/2)*4096+(HT_W/2)*turn+(y-HT_H/2)*scale;
+        for(int x=0;x<HT_W;++x,u+=scale,v-=turn) {
+            int sx=ht_clamp(u,0,(HT_W-1)*4096),sy=ht_clamp(v,0,(HT_H-1)*4096);
+            int ix=sx>>12,iy=sy>>12,fx=(sx>>8)&15,fy=(sy>>8)&15;
+            const uint8_t *a=ht_temp+iy*HT_W,*b=ht_temp+ht_min(iy+1,HT_H-1)*HT_W;
+            int nx=ht_min(ix+1,HT_W-1);
+            int top=a[ix]*(16-fx)+a[nx]*fx,bottom=b[ix]*(16-fx)+b[nx]*fx;
+            ht_scene[y*HT_W+x]=(uint8_t)((top*(16-fy)+bottom*fy)>>8);
+        }
+        if((y&15)==15) ht_checkpoint();
+    }
+}
+static void ht_draw_traversal(const ht_game *game);
 static void ht_draw_puzzle(const ht_game *game);
 static void ht_draw_evidence(const ht_game *game);
 static void ht_render_scene(void) {
@@ -1088,15 +1105,17 @@ static void ht_render_scene(void) {
      * so trees, focus and character all use one consistent game snapshot. */
     const ht_game game=ht;
     ht_select_level(game.level);
-    int camera=game.camera/256,px=game.x/256-camera,py=game.y/256-14;
+    int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
     if(!ht_cache_visible(camera)) return;
     memset(ht_low_scene,0,HT_SCENE_PIXELS);
-    for(int depth=0;depth<HT_LAYERS;++depth)
+    for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
         ht_composite_cached(depth,ht_layer_offset(depth,camera),px,py);
     ht_upscale_scene();
+    ht_draw_traversal(&game);
     ht_draw_evidence(&game);
     ht_draw_puzzle(&game);
-    ht_character(px,game.y/256,&game);
+    ht_character(px,(game.y-game.camera_y)/256,&game);
+    ht_sway_scene(game.sway_phase);
     ht_vignette();
 }
 /* Four physical gray levels. A fixed dispersed 8x8 threshold resolves only
@@ -1240,6 +1259,8 @@ static const uint8_t *ht_glyph(char ch) {
         {0x7f,0x20,0x18,0x20,0x7f},{0x63,0x14,0x08,0x14,0x63},
         {0x03,0x04,0x78,0x04,0x03},{0x61,0x51,0x49,0x45,0x43}
     };
+    static const uint8_t arrow[5] = {0x00,0x41,0x22,0x14,0x08};
+    static const uint8_t bar[5] = {0,0,0x7f,0,0};
     static const uint8_t dash[5] = {0x08,0x08,0x08,0x08,0x08};
     static const uint8_t dot[5] = {0x00,0x60,0x60,0x00,0x00};
     static const uint8_t slash[5] = {0x20,0x10,0x08,0x04,0x02};
@@ -1252,6 +1273,8 @@ static const uint8_t *ht_glyph(char ch) {
     if (ch >= 'a' && ch <= 'z') ch = (char)(ch - 32);
     if (ch >= 'A' && ch <= 'Z') return letters[ch - 'A'];
     if (ch >= '0' && ch <= '9') return digits[ch - '0'];
+    if (ch == '>') return arrow;
+    if (ch == '|') return bar;
     if (ch == '-') return dash;
     if (ch == '.') return dot;
     if (ch == '/') return slash;
@@ -1302,7 +1325,7 @@ static void ht_narration(const ht_game *game) {
 
 /* Small sharp interactive overlays; scenery/blur caches never depend on them. */
 static void ht_draw_puzzle(const ht_game *game) {
-    int camera=game->camera/256,top=ht_level_land(game->level)[9].top;
+    int camera=game->camera/256,top=ht_level_land(game->level)[9].top-game->camera_y/256;
     const ht_puzzle_definition *p=&ht_puzzles[game->level];
     for(int i=0;i<3;++i) {
         int x=HT_PUZZLE_FIRST+i*HT_PUZZLE_SPACING-camera;
@@ -1362,7 +1385,7 @@ static void ht_puzzle_prompt(const ht_game *game) {
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
         int x=ht_evidence_x(game->level,item)-game->camera/256;
-        int y=ht_level_land(game->level)[ht_evidence_platform(item)].top;
+        int y=ht_level_land(game->level)[ht_evidence_platform(item)].top-game->camera_y/256;
         if(x< -12 || x>=HT_W+12) continue;
         ht_rect(ht_scene,x-6,y-10,12,10,255);
         if(item==1) ht_rect(ht_scene,x-8,y-12,16,3,255);
@@ -1396,3 +1419,5 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
     }
     ht_text_color(66,184,"LEFT / RIGHT PAGES   A / CONFIRM OR A CLOSE",1,0);
 }
+
+#include "hollow_trail_traversal_draw.inc"

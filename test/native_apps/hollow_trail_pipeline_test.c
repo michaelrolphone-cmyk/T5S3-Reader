@@ -53,7 +53,9 @@ static bool submit_frame(uint16_t y,uint16_t height) {
     if(submissions==1 && stage) assert(!memcmp(display,stage,sizeof(display)));
     if(submissions==1 && reject_once) { reject_once=false; return false; }
     if(journal_run && submissions==2) {
-        for(size_t i=0;i<sizeof(display);++i) assert(display[i]==0xa5);
+        for(unsigned row=42;row<498;++row)
+            for(unsigned col=17;col<113;++col) assert(display[row*120+col]==0xa5);
+        assert(display[0]==255); // The notebook frame surrounds the typeset page.
     }
     if(journal_run && submissions==3) assert(display[0]!=0xa5);
     ++submissions;
@@ -79,7 +81,7 @@ const t5_app_api_v1 *t5_app_get_api(uint32_t v) { (void)v;return &mock_app; }
 const t5_video_api_v1 *t5_video_get_api(uint32_t v) { (void)v;return &mock_video; }
 const t5_math_api_v1 *t5_math_get_api(uint32_t v) { (void)v;return NULL; }
 static bool reader_page(void *context,const risc_reader_page_request_v1*q,risc_reader_page_result_v1*r) {
-    assert(context==(void*)1 && q->width==960 && q->height==540 && q->stride==120);
+    assert(context==(void*)1 && q->width==768 && q->height==456 && q->stride==96);
     assert(q->offset<q->length); memset(q->pixels,0xa5,q->capacity); r->next_offset=q->length; return true;
 }
 static const risc_reader_typography_v1 reader_api={1,sizeof(reader_api),(void*)1,reader_page};

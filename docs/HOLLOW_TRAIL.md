@@ -1,11 +1,14 @@
-# Hollow Trail 1.0.14
+# Hollow Trail 1.1.0
 
-## Current controls (1.0.16, supersedes historical mappings below)
+## Current controls (1.1.0, supersedes historical mappings below)
 
 | Action | Controller | Device / generic navigation |
 | --- | --- | --- |
 | Move / turn journal page | D-pad Left/Right | Left/Right |
-| Jump | B | Up |
+| Jump / leave rope or boat | B | Up away from ladders |
+| Climb ladder / pull up from ledge | Up/Down; Up or A at a ledge | Up/Down; Confirm at a ledge |
+| Drop from ledge | Down (B jumps away) | Down |
+| Grab / release object; row or pump swing | A, then Left/Right | Confirm, then Left/Right |
 | Inspect / use nearby mechanism | A | Confirm |
 | Journal | Start (toggles reading) | Down to pause, then Confirm |
 | Read / confirm decision | A | Confirm |
@@ -41,6 +44,59 @@ Start/Select, empty-space inspection, reading/back, faults, recovery and a
 second receiver slot. The cumulative app version is unreleased 1.0.16
 (master/published 1.0.15). Firmware 1.3.36 contains the reader glyph fix and
 optional no-wait input service.
+
+
+## Traversal, journal and visual camera (1.1.0 / firmware 1.3.37)
+
+This update changes Hollow Trail **1.0.16 → 1.1.0** and firmware
+**1.3.36 → 1.3.37**. The app requires 1.3.37 because detached typography
+must report the dimensions of its target bitmap rather than rotating those
+logical extents a second time. The input scheduling and face-button fixes
+from 1.0.16 remain intact. Historical implementation notes below describe
+earlier layouts and are superseded by this section.
+
+All ten chapters now have layered routes: roll a stone or drum into the first
+trench, push a crate under the high shelf, climb to an upper crossing, swing
+across a ravine, descend to a boat, row across the lake, then climb and double
+back for evidence before continuing east. Heights vary by chapter. Platforms,
+objects and collisions share world coordinates. Upper decks are thin solids;
+lower banks are solid cliffs. Boats carry the player, ropes swing and accept
+pumping input, and crates/rolling objects move only while grabbed. A releases
+an object; B leaves a ladder, rope or boat. Context prompts explain each action.
+Falls preserve evidence, story and puzzle progress and return to a checkpoint;
+failed traversal objects reset to reachable positions.
+
+An airborne approach within hand reach of a platform corner catches the edge.
+It holds until Up/A climbs over it, Down drops, or B jumps away. Climbing is a
+16-tick pull-up; dropping has a short re-grab cooldown. Holding horizontal
+movement cannot automatically pull the player up.
+
+Movement advances a smooth visual camera phase: about ±0.6 degree of rocking
+and 1–1.013× breathing zoom. The phase freezes when movement input stops,
+including reading and pause. Bilinear fixed-point sampling transforms the
+world image and player together before the vignette; input axes and collision
+coordinates never rotate or scale. Journal, prompts and narration stay fixed.
+The transform reuses existing scratch memory with cooperative checkpoints.
+The obsolete terrain-cache plane is no longer generated or composited.
+Hardware frame cost remains to be measured; this is not a 24 FPS claim.
+
+The journal uses a stitched, worn notebook frame, chapter stamp and ink sketch,
+with a clear 768×456 typeset area inside the landscape screen. Texture stays
+outside text. Its index shows four discovered titles and an explicit selection
+marker; arrows select, A reads, X returns. Body pages retain reader-selected
+fonts, forward/back pagination and the ending's displayed-page confirmation
+checks. If typography fails or returns no ink, the same frame contains a
+compact, paginated text fallback. Large-font index/decision pages also fall
+back if all choices cannot fit on one page.
+
+Verification: the input-only route witness uses all five mechanisms across
+ten chapters, collects all thirty evidence records, solves the authored
+puzzles and completes a journey without a death. Targeted checks cover both
+ledge approaches, deliberate climbing, drop cooldown, idle sway, independent
+cache/render equivalence, input ownership, journal pagination and blank-font
+fallback. The detached-renderer regression exercises its real constructor and
+logical dimensions as well as glyph resolution. `scripts/build_all_apps.py
+--id hollow_trail` builds and validates the target ELF and runs the native suite.
 
 
 A separate, original ten-chapter silhouette platformer for the fast EPD interface, using fixed monochrome dithering by default.

@@ -88,9 +88,9 @@ int main(void) {
     /* A successful provider that emits only white must use the visible
      * fallback, for both Start/index and inspected evidence. */
     blank_page=true; ht_reader=&reader;
-    ht_journal_index=true; ht_journal_render(); assert(ht_reader_has_ink());
+    ht_journal_index=true; ht_journal_render(); assert(ht_reader_has_ink(ht_reader_bitmap,960u*540u/8u));
     ht_journal_open(0); ht_journal_render();
-    assert(ht_reader_has_ink() && ht_journal_page_ready && ht_journal_next>0);
+    assert(ht_reader_has_ink(ht_reader_bitmap,960u*540u/8u) && ht_journal_page_ready && ht_journal_next>0);
     blank_page=false;
     /* Missing reader service still exposes all text and supports completion. */
     ht_reader=NULL; tower(); present(); press(T5_APP_BUTTON_CONFIRM);

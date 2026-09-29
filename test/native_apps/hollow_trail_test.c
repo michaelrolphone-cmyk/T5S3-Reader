@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include "../../Apps/hollow_trail_engine.inc"
+#include "hollow_trail_route_walk.inc"
 
 static uint32_t checksum(const uint8_t *data,size_t size) {
     uint32_t h=2166136261u;
@@ -18,24 +19,11 @@ int main(void) {
      * from each takeoff. A route that silently respawns cannot pass. */
     unsigned visited=1;
     for(int tick=0;tick<HT_LEVELS*2200 && !ht.laps;++tick) {
-        bool jump=false;
-        for(int i=0;i<HT_PLATFORMS-1;++i)
-            if(ht.grounded && ht.x/256>=ht_land[i].right-8 && ht.x/256<=ht_land[i].right+4) jump=true;
-        int direction=1;
-        if(ht.x/256>=2820 && ht.grounded && !ht.puzzle.solved) {
-            const ht_puzzle_definition *p=&ht_puzzles[ht.level];
-            int station=0;
-            if(p->kind==0) station=p->answer[ht.puzzle.progress];
-            else while(station<2 && ht.puzzle.value[station]==p->answer[station]) ++station;
-            int target=HT_PUZZLE_FIRST+station*HT_PUZZLE_SPACING;
-            direction=ht.x/256<target?1:-1;
-            if(ht_puzzle_near(&ht)==station) { assert(ht_interact()); direction=0; }
-        }
-        if(ht_final_near(&ht) && !ht.verdict) { assert(ht_decide(1)); ht.verdict_read=true; }
-        ht_step(direction,jump,true);
+        walk_route_tick();
         visited|=1u<<ht.level;
     }
     assert(visited==(1u<<HT_LEVELS)-1 && ht.laps==1 && ht.deaths==0);
+    assert(ht.evidence==((1u<<30)-1));
     assert(ht.level==0 && ht.story_x==0);
     assert(ht.x==95*256 && ht.checkpoint==0);
     for(unsigned level=0;level<HT_LEVELS;++level) {
@@ -45,16 +33,44 @@ int main(void) {
         ht_step(0,false,false);
         assert(ht.level==level && ht.checkpoint==6 && ht.story_x==2700);
         assert(ht.x==(ht_land[6].left+35)*256 && ht.grounded);
-        /* Walk off without jumping: every pit must actually be lethal. */
-        for(int i=0;i<HT_PLATFORMS-1;++i) {
-            ht_spawn(true); ht.x=(ht_land[i].right-6)*256;
-            ht.y=ht_land[i].top*256; ht.vx=640;
-            unsigned deaths=ht.deaths;
-            for(int t=0;t<100 && ht.deaths==deaths;++t) ht_step(1,false,false);
-            assert(ht.deaths==deaths+1);
-        }
+        /* Unfilled trench is fatal; upper terraces intentionally allow safe
+         * descents to lower paths, unlike the old sequence of flat pits. */
+        ht_spawn(true); ht.x=390*256; ht.y=ht_land[0].top*256;ht.grounded=false;
+        unsigned deaths=ht.deaths;
+        for(int t=0;t<100 && ht.deaths==deaths;++t) ht_step(0,false,false);
+        assert(ht.deaths==deaths+1);
     }
     ht.level=0; ht_spawn(true);
+    /* Corner contact catches both approaches, never auto-climbs, and a drop
+     * cannot immediately catch the same edge. Climbing ends on its solid. */
+    for(int side=-1;side<=1;side+=2) {
+        ht_spawn(true); const ht_platform *p=&ht_land[2];
+        int edge=side>0?p->left:p->right;
+        ht.x=(edge-side*8)*256;ht.y=(p->top+20)*256;
+        ht.grounded=false;ht.vx=side*640;ht.vy=100;
+        ht_step_controls(side,0,false,false);
+        assert(ht.traversal.mode==HT_LEDGE && !ht.grounded);
+        int hang_x=ht.x,hang_y=ht.y;
+        for(int k=0;k<25;++k) ht_step_controls(side,0,false,false);
+        assert(ht.x==hang_x && ht.y==hang_y && ht.traversal.mode==HT_LEDGE);
+        assert(ht_traversal_interact());
+        for(int k=0;k<16;++k) ht_step_controls(0,0,false,false);
+        assert(ht.traversal.mode==HT_FREE && ht.grounded && ht.y==p->top*256);
+        ht.x=(edge-side*8)*256;ht.y=(p->top+20)*256;
+        ht.grounded=false;ht.vx=side*640;ht.vy=100;
+        ht_step_controls(side,0,false,false);assert(ht.traversal.mode==HT_LEDGE);
+        ht_step_controls(0,1,false,false);
+        assert(ht.traversal.mode==HT_FREE && ht.traversal.drop_cooldown);
+    }
+    ht_spawn(true);unsigned phase=ht.sway_phase;
+    for(int k=0;k<30;++k) ht_step(0,false,false);
+    assert(ht.sway_phase==phase);
+    ht_step(1,false,false);assert(ht.sway_phase>phase);
+    for(int k=0;k<20;++k) ht_step(0,false,false);
+    phase=ht.sway_phase;
+    for(int k=0;k<30;++k) ht_step(0,false,false);
+    assert(ht.sway_phase==phase);
+    ht_spawn(true);
     /* Explicit authored solutions, not answers read out of game definitions. */
     const unsigned solutions[HT_LEVELS][5]={
         {2,0,1,9,9},{0,2,9,9,9},{0,1,1,1,2},
@@ -230,7 +246,7 @@ int main(void) {
             tones|=1u<<((frame[n]>>shift)&3);
         assert(tones==15);
     }
-    printf("Hollow Trail: complete route, loop, checkpoints, all pits, deterministic 2bpp frames PASS (%.1f ms/host frame)\n",
+    printf("Hollow Trail: complete route, loop, checkpoints, trench hazards, deterministic 2bpp frames PASS (%.1f ms/host frame)\n",
            (double)(clock()-start)*1000.0/CLOCKS_PER_SEC/12.0);
     free(frame); free(memory); return 0;
 }
