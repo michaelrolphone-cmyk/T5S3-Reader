@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 163. File-association rebuild treats an /Apps open failure as a successful empty scan and publishes a system-only registry
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0623](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0623/bugs.md)
+
+- **Affected code:** `src/native/FileAssociationRegistry.cpp::rebuild()`, `scanCanonicalApp()`, `persist()`, and the `ensure()` callers that trust a successful rebuild.
+- **Trigger / reproduction:** Install one or more applications that declare `supported_file_types`, verify their handlers appear, then force a transient SD/open failure specifically when `rebuild()` opens `/Apps` while storage otherwise remains writable. Trigger an association refresh.
+- **Observed / logically demonstrated failure:** `rebuild()` clears the live `handlers` vector and adds only the built-in Reader handlers before attempting `Storage.open("/Apps")`. If that open fails, the app scan is skipped; the function still sorts the system-only table, sets `loaded = true`, calls `persist()`, and returns `true`. If writes remain available, `FileAssociations.json` is replaced with that incomplete system-only registry. Even if persistence also fails, the incomplete in-memory table remains marked loaded. Installed app handlers therefore disappear after a refresh that the registry reports as successful.
+- **Likely root cause:** Directory absence/empty inventory and directory-open/enumeration failure share the same control path, and live state is mutated before a complete scan has succeeded.
+- **Impact:** Open-with support can disappear for every installed application after a transient SD directory-read failure and remain missing for the session; the generated on-disk registry can also be overwritten with the incomplete result.
+- **Repair direction:** Build handlers in temporary state. Treat a verified missing `/Apps` directory as a legitimate empty inventory, but require an existing directory to open, enumerate, and close successfully. Only publish and persist after the complete scan succeeds; otherwise preserve the prior registry. Add failure-injection tests for open, enumeration, and close failures.
+
+### 164. ZIP EOCD discovery can mistake an EOCD byte sequence inside a valid ZIP comment for the real record
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0623](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0623/bugs.md)
+
+- **Affected code:** `lib/ZipFile/ZipFile.cpp::ZipFile::loadZipDetails()`; downstream central-directory users such as `loadFileStatSlim()`, `findFirstBySuffix()`, and EPUB/archive consumers.
+- **Trigger / reproduction:** Create an otherwise valid ZIP whose comment is within the currently scanned final 1 KiB and contains the four literal EOCD signature bytes at a position with at least 22 bytes remaining before EOF. Open an entry through `ZipFile`.
+- **Observed / logically demonstrated failure:** `loadZipDetails()` scans backward for the first raw `0x06054b50` signature and immediately accepts it. It does not verify that the candidate's EOCD comment-length field makes the record end exactly at EOF, nor validate the central-directory range before setting `zipDetails.isSet`. Because ZIP comments are arbitrary bytes, an embedded EOCD-looking sequence later than the real EOCD is selected and comment bytes are interpreted as `totalEntries` and `centralDirOffset`. Subsequent entry lookup seeks to bogus offsets or reports a valid archive unreadable.
+- **Likely root cause:** EOCD discovery recognizes a byte pattern rather than validating the complete EOCD candidate structure and continuing the backward search when a candidate is invalid.
+- **Impact:** Standards-valid ZIP, EPUB, or ROM archives with particular legal comments fail deterministically or expose bogus archive metadata. This is distinct from the known greater-than-1-KiB comment scan-range limitation.
+- **Repair direction:** For each signature candidate, decode the full EOCD safely and require `candidate_offset + 22 + comment_length == file_size`, supported single-disk fields, and a bounded/consistent central-directory range. Reject a false candidate and continue scanning backward. Also require the final-window read to return the requested byte count. Add a regression ZIP whose comment contains a fake EOCD signature after the real one.
+
+### 165. GPS auto-baud remains permanently locked to a stale baud after the receiver changes speed
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0623](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0623/bugs.md)
+
+- **Affected code:** `Drivers/gps_nmea/driver.c::parse()`, `read_state()`, and `begin_baud()`.
+- **Trigger / reproduction:** Start the GPS provider with a receiver producing checksum-valid NMEA at either supported baud (9600 or 38400), allowing `parse()` to set `locked = true`. Without unloading the provider, reset or reconfigure the receiver so it resumes NMEA output at the other supported baud, then wait longer than the normal 1600 ms probe interval and continue polling GPS state.
+- **Observed / logically demonstrated failure:** Once a checksum-valid sentence is seen, `parse()` sets `locked = true` and `fix.receiver_detected = 1`. The only baud-switch condition in `read_state()` is guarded by `!locked`; there is no silence/error timeout that clears the lock. After a baud change, fix freshness expires, but the provider listens at the old baud forever and continues reporting the receiver as detected instead of resuming 9600/38400 probing. Recovery requires stopping and restarting the provider.
+- **Likely root cause:** Baud detection is modeled as a permanent boolean latch rather than a lease on recently observed valid NMEA traffic.
+- **Impact:** A GNSS module reset or runtime baud reconfiguration can strand GPS in a permanent detected-but-no-fix state even though the receiver is actively sending at the other baud the driver already supports.
+- **Repair direction:** Track the last checksum-valid supported NMEA sentence time for the selected baud. After a bounded silence or invalid-stream interval, clear the baud lock and receiver-detected state and resume alternating supported bauds. Add a test stream that acquires lock at one baud, goes silent, then resumes valid GGA/RMC at the other baud without restarting the driver.
