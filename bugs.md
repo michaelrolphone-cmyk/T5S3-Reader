@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+### 73. A transient settings read failure quarantines or deletes a valid settings.json
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1019](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1019/bugs.md)
+
+- **Affected code:** `src/CrossPointSettings.cpp`, `CrossPointSettings::loadFromFile()` and `quarantineSettingsJson()`; `lib/hal/HalStorage.cpp`, `HalStorage::readFile()` and `openFileForReadUnlocked()`.
+- **Trigger / reproduction:** Start with a valid `/.crosspoint/settings.json`. During boot, allow `Storage.exists(SETTINGS_FILE_JSON)` to succeed but inject a transient failure when the subsequent `sd.open(..., O_RDONLY)` runs, or inject a mid-read I/O failure that leaves an empty/malformed partial `String`.
+- **Observed / logically demonstrated failure:** `HalStorage::readFile()` represents an open failure as an empty string and does not expose a distinct I/O-error result. `CrossPointSettings::loadFromFile()` treats any empty or unparsable result from an existing path as corruption and immediately calls `quarantineSettingsJson()`. That routine renames the canonical file to a backup when possible; if the rename fails, it explicitly deletes the canonical file. A valid settings file can therefore be retired solely because one read attempt failed, after which boot proceeds from migration/default state instead of retrying the intact configuration.
+- **Likely root cause:** The settings loader conflates storage-read failure with validated content corruption, and destructive quarantine is performed without first proving that the bytes on disk are actually malformed.
+- **Impact:** A transient SD/open/read fault during boot can make persistent device configuration disappear from its canonical location and cause defaults or older migration state to take effect. If the quarantine rename also fails, the code attempts deletion of the only valid settings file.
+- **Repair direction:** Read settings through an API that distinguishes not-found, I/O failure, and complete byte content. Quarantine only after a complete successful read has been parsed and proven malformed. On open/read failure, leave the canonical file untouched and return/retry an explicit storage error. Add fault-injection tests for exists-then-open failure, short/mid-read failure, genuinely malformed JSON, and successful load.
+
+### 74. Failed EPUB deletion can erase the book's cache and reading progress while leaving the book itself intact
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1019](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1019/bugs.md)
+
+- **Affected code:** `src/native/NativeFileBrowserBridge.cpp`, `deleteDocument()`; `lib/Epub/Epub.cpp`, `Epub::clearCache()`; reader progress stored below `Epub::getCachePath()`, including `src/activities/reader/EpubReaderActivity.cpp`'s `progress.bin` load path.
+- **Trigger / reproduction:** Open an EPUB so it has a populated `/.crosspoint/epub_<hash>/` cache/progress directory. Delete that EPUB from File Browser while injecting a failure in the final `Storage.remove(path)` call after cache removal succeeds (for example a transient SD removal/write error).
+- **Observed / logically demonstrated failure:** For non-directory EPUBs, `deleteDocument()` calls `Epub(...).clearCache()` first and ignores its result, then calls `Storage.remove(path)`. If the file removal fails, the function returns `false` but the cache directory has already been recursively removed. The original EPUB remains on SD, yet its metadata/section/cover cache and reader progress have been destroyed. Reopening the still-present book therefore rebuilds cache state instead of resuming from the prior persisted progress.
+- **Likely root cause:** Destructive dependent cleanup is ordered before the authoritative object deletion and is not transactional or rollback-capable.
+- **Impact:** A delete operation that visibly reports failure can still cause irreversible loss of reading-state/cache data for a book that was not deleted. The operation's failure semantics are therefore unsafe: “failed” does not mean “no change.”
+- **Repair direction:** Remove or transactionally move the EPUB first, and clear its derived cache only after the source deletion is known to have succeeded. Prefer staging the cache for deferred cleanup if rollback is needed. Propagate cache-cleanup failure separately without sacrificing the book. Add a regression where final file removal fails and verify the EPUB and its progress/cache remain intact.
+
+### 75. Package Manager reports a successful installed-package refresh after directory scan failures and publishes a partial inventory
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1019](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-1019/bugs.md)
+
+- **Affected code:** `src/native/NativePackageManagerBridge.cpp`, `refreshInstalled()`, `clearInstalledCache()`, `installedCount()`, and `installedGet()`; consumer `Apps/package_manager.c::refresh()`.
+- **Trigger / reproduction:** Install managed packages in more than one root such as `/Apps` and `/Drivers`. Open Package Manager while injecting an SD open/read failure for one installed-package root, or make `openNextFile()` fail part-way through a populated root while other roots remain readable.
+- **Observed / logically demonstrated failure:** `refreshInstalled()` clears the previously valid global inventory before scanning. If a root cannot be opened or is not returned as a directory, the function silently `continue`s; if `openNextFile()` stops early, that condition is indistinguishable from end-of-directory. After scanning whatever remains, the bridge unconditionally returns `true`. `Apps/package_manager.c::refresh()` therefore accepts `installed_count()` as authoritative and renders the incomplete list with no storage-error status. Installed packages in the failed portion simply disappear from management until a later successful refresh.
+- **Likely root cause:** Enumeration errors are treated as normal absence/end-of-directory, and the live cache is cleared/published incrementally instead of building a temporary snapshot that is committed only after a complete scan.
+- **Impact:** Transient SD faults can make installed apps, drivers, services, or providers vanish from Package Manager even though they remain installed. The user cannot inspect/update/uninstall the hidden packages and can be misled about actual installed state. This is distinct from the existing 64-row UI-capacity bug: it occurs below the limit and is driven by scan failure rather than truncation.
+- **Repair direction:** Build the installed inventory in temporary storage, distinguish missing optional roots from I/O/open/enumeration failures, and publish it only after every existing root has been scanned successfully. Preserve the previous valid snapshot or expose an explicit refresh failure instead of returning success with partial data. Add tests for root-open failure and mid-enumeration failure with packages before and after the fault.
+
