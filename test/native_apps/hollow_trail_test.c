@@ -690,15 +690,15 @@ int main(void) {
 
     /* The physical panel is 960x540. AI mode fuses the trained 2x residual
      * reconstruction into mono packing; flat fields remain bit-identical to
-     * AI physical scaling, while a strong edge exercises the learned correction. */
+     * standard AI dithering, while structured tones exercise the learned halftone model. */
     memset(ht_scene,73,HT_PIXELS);
-    ht_neural_960=false;ht_pack_mono(frame,120);
-    ht_neural_960=true;ht_pack_mono(generic,120);
+    ht_ai_dither=false;ht_pack_mono(frame,120);
+    ht_ai_dither=true;ht_pack_mono(generic,120);
     assert(!memcmp(frame,generic,64800));
     for(int y=0;y<HT_H;++y) for(int x=0;x<HT_W;++x)
-        ht_scene[y*HT_W+x]=(uint8_t)(x<240?20:200);
-    ht_neural_960=false;ht_pack_mono(frame,120);
-    ht_neural_960=true;ht_pack_mono(generic,120);
+        ht_scene[y*HT_W+x]=(uint8_t)((x*5+y*3+(x^y))&255);
+    ht_ai_dither=false;ht_pack_mono(frame,120);
+    ht_ai_dither=true;ht_pack_mono(generic,120);
     assert(memcmp(frame,generic,64800));
     uint32_t neural_pack=checksum(generic,64800);
     ht_pack_mono(generic,120);
