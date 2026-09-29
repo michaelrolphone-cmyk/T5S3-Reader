@@ -99,7 +99,8 @@ static void cactus_shapes(void) {
 }
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY+32),*expected=malloc(HT_PIXELS);
-    assert(memory && expected); memset(memory+HT_MEMORY,0x5a,32);
+    uint8_t *expected_recon=malloc(HT_RECON_PIXELS);
+    assert(memory && expected && expected_recon); memset(memory+HT_MEMORY,0x5a,32);
     ht_bind(memory); cactus_shapes(); ht_spawn(true);ht_service=service;
     int steps=0; while(ht_cache_prefetch(0,1)) assert(++steps<400);
     assert(ht_cache_builds==9 && checkpoints>0);
@@ -128,8 +129,17 @@ int main(void) {
         for(unsigned n=0;n<sizeof(cameras)/sizeof(cameras[0]);++n) {
             int camera=cameras[n]; ht.camera=camera*256; ht.x=(camera+165)*256;
             /* Reference uses the work buffers, so cancel speculative work first. */
-            ht_cache_job.active=false; reference(); memcpy(expected,ht_scene,HT_PIXELS);
+            ht_cache_job.active=false; reference();
+            memcpy(expected,ht_scene,HT_PIXELS);
+            memcpy(expected_recon,ht_recon_scene,HT_RECON_PIXELS);
             ht_render_scene();
+            if(memcmp(expected_recon,ht_recon_scene,HT_RECON_PIXELS)) {
+                for(int i=0;i<HT_RECON_PIXELS;++i) if(expected_recon[i]!=ht_recon_scene[i]) {
+                    fprintf(stderr,"quarter camera %d sample %d,%d expected %d got %d\n",
+                            camera,i%HT_RECON_W,i/HT_RECON_W,expected_recon[i],ht_recon_scene[i]);break;
+                }
+                assert(0);
+            }
             if(memcmp(expected,ht_scene,HT_PIXELS)) {
                 for(int i=0;i<HT_PIXELS;++i) if(expected[i]!=ht_scene[i]) {
                     fprintf(stderr,"camera %d pixel %d,%d expected %d got %d\n",camera,i%HT_W,i/HT_W,expected[i],ht_scene[i]);break;
@@ -154,6 +164,6 @@ int main(void) {
     assert(ht_geometry_level==1 && memcmp(expected,ht_scene,HT_PIXELS));
     for(int i=0;i<32;++i) assert(memory[HT_MEMORY+i]==0x5a);
     ht_abort=true; assert(!ht_cache_prefetch(2000,1)); assert(!ht_cache_visible(2000));
-    free(expected);free(memory);
+    free(expected_recon);free(expected);free(memory);
     puts("Hollow Trail cache: warm reuse, sampled full-render equivalence, tile boundaries, reversals, teleports, bounds and cancellation PASS");
 }
