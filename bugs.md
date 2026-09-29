@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,37 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 130. EPUB page QR generation selects versions by alphanumeric capacity and rejects valid byte-mode page text
+
+- **Status:** Open.
+- **Sources:** automation/bug-scan-20260928-2026
+- **Affected code:** `src/util/QrUtils.cpp::drawQrCode()`; `src/activities/reader/EpubReaderActivity.cpp` Display QR action; `src/activities/reader/QrDisplayActivity.cpp::render()`.
+- **Trigger / reproduction:** Open an EPUB page whose extracted text contains byte-mode characters (ordinary lowercase prose is sufficient) and is 79–114 UTF-8 bytes, then choose Display QR. Equivalent failing ranges are 272–395, 859–1066, and 1733–2110 bytes.
+- **Observed / logically demonstrated failure:** `drawQrCode()` selects versions using 114→v4, 395→v10, 1066→v20, and 2110→v30, which are the QR library's alphanumeric ECC_LOW capacities. `qrcode_initText()` uses byte mode for lowercase/non-alphanumeric text; those versions hold only 78, 271, 858, and 1732 bytes respectively. Normal prose in the gap makes `qrcode_initText()` fail, so the activity renders no QR code even though a larger supported version could encode it.
+- **Likely root cause:** Version selection uses capacity thresholds for the wrong QR encoding mode and does not retry with a larger version after encoding failure.
+- **Impact:** Display QR deterministically fails for substantial ranges of valid EPUB page text, including ordinary lowercase prose.
+- **Repair direction:** Select capacity using the actual encoding mode or try progressively larger versions until encoding succeeds. Keep the version-40 cap and UTF-8-safe truncation. Test byte-mode boundaries 78/79, 271/272, 858/859, and 1732/1733 plus alphanumeric-only text.
+
+### 131. Web file-manager rename and move leave EPUB path-indexed state attached to the old filename
+
+- **Status:** Open.
+- **Sources:** automation/bug-scan-20260928-2026
+- **Affected code:** `src/network/CrossPointWebServer.cpp::handleRename()` and `handleMove()`; path-indexed state in `RecentBooksStore`, `CrossPointState::openEpubPath`, and bookmark storage through `src/util/BookmarkUtil.cpp`.
+- **Trigger / reproduction:** Read and bookmark an EPUB so Recent Books/progress and bookmarks exist. In File Transfer's web file manager, rename the EPUB or move it to another directory, then return to Recent Books and open the new path.
+- **Observed / logically demonstrated failure:** Both web handlers clear the old EPUB cache and rename the filesystem object, but neither migrates path-indexed reader metadata after success. Recent Books/open-book state still reference the old path and bookmark sidecar naming is derived from the book path, so the moved book appears to lose its bookmarks and stale entries remain.
+- **Likely root cause:** The web file manager treats an EPUB as an isolated file instead of invoking a shared transactional book-path migration operation.
+- **Impact:** Routine web rename/move can strand bookmarks, break Recent Books entries, and leave the retained open-book path stale while reporting success.
+- **Repair direction:** After a successful filesystem rename, transactionally migrate Recent Books, retained/open path, bookmarks, and other path-derived sidecars, with rollback/error handling. Centralize this behavior and test rename plus cross-directory move with bookmarks and recent-state present.
+
+### 132. Screenshot saving reports success even when the final SD close/commit fails
+
+- **Status:** Open.
+- **Sources:** automation/bug-scan-20260928-2026
+- **Affected code:** `src/util/ScreenshotUtil.cpp::saveFramebufferAsBmp()` and `ScreenshotUtil::takeScreenshot()`.
+- **Trigger / reproduction:** Take a screenshot while fault-injecting an SD/filesystem failure on the final BMP close/flush after all header and row writes returned their requested lengths.
+- **Observed / logically demonstrated failure:** The function checks header/row write lengths, then calls `file.close()` and discards its boolean result. A close-time commit failure therefore leaves `write_error` false and returns success; `takeScreenshot()` logs "Screenshot saved" and flashes the success border even though the file was not successfully committed and may be invalid.
+- **Likely root cause:** The write loop is treated as the durability boundary and close/flush is omitted from the success condition; the file is also written directly to its final pathname.
+- **Impact:** Storage faults can silently create corrupt/incomplete screenshots while the UI confirms success.
+- **Repair direction:** Require successful close/sync, remove failed output, and preferably stage to a sibling temporary file and atomically rename only after close plus expected-size verification. Add a close-failure test proving no success indication and no corrupt final file.
