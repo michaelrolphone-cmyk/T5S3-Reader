@@ -113,7 +113,7 @@ constexpr uint32_t kRevealDeadlineMs = 1800;
 constexpr uint8_t kFadeFrames = 6;
 constexpr uint8_t kPulseFrames = 48;
 constexpr uint8_t kFullCoverage = 64;
-constexpr uint8_t kPulseMinCoverage = 52;
+constexpr uint8_t kPulseMinCoverage = kFullCoverage;
 constexpr uint8_t kPulseMaxCoverage = kFullCoverage;
 constexpr uint32_t kReadyFadeBudgetMs = 150;
 constexpr uint32_t kSubmitTimeoutMs = 350;
@@ -345,52 +345,33 @@ int textWidth(const char* text, int scale) {
                           static_cast<size_t>(scale));
 }
 
-// Sparse vector accents: bounded integer work, no textures, allocations or SD.
-void accentLine(uint8_t* buffer, size_t size, int x0, int y0, int x1, int y1,
-                uint8_t coverage) {
-  const int dx = x1 > x0 ? x1-x0 : x0-x1;
-  const int dy = y1 > y0 ? y1-y0 : y0-y1;
-  const int steps = dx > dy ? dx : dy;
-  for (int i=0; i<=steps; ++i) {
-    const int x = x0 + (steps ? (x1-x0)*i/steps : 0);
-    const int y = y0 + (steps ? (y1-y0)*i/steps : 0);
-    if (ditherPixel(x,y,coverage)) setPhysicalPixel(buffer,size,x,y,true);
+// A folded plate opens around its central hinge. Row spans keep raster work
+// bounded by the final box area; no particles, textures or temporary buffers.
+void drawAssemblingBlock(uint8_t* buffer, size_t size, int x, int y,
+                         int width, int height, uint32_t age, uint8_t coverage) {
+  constexpr uint32_t settleMs = 200;
+  if (age >= settleMs) {
+    drawDitheredRoundedRect(buffer, size, x, y, width, height, 4, coverage);
+    return;
   }
-}
-
-void drawBootAccents(uint8_t* buffer, size_t size, int cx, int cy,
-                     uint8_t coverage) {
-  const uint8_t faint = coverage*2/5;
-  const int sweep = static_cast<int>(visualTimeMs % 1800u)*360/1800;
-  // Architectural depth: two offset diamond frames, open corners and tracers.
-  for (int layer=0; layer<2; ++layer) {
-    const int rx=174+layer*16, ry=122+layer*12;
-    const int y=cy+layer*12;
-    accentLine(buffer,size,cx-rx,y,cx,y-ry,faint);
-    accentLine(buffer,size,cx,y-ry,cx+rx,y,faint);
-    accentLine(buffer,size,cx+rx,y,cx,y+ry,faint);
-    accentLine(buffer,size,cx,y+ry,cx-rx,y,faint);
-  }
-  for (int side=-1; side<=1; side+=2) {
-    const int x=cx+side*204;
-    for (int edge=-1; edge<=1; edge+=2) {
-      const int y=cy+edge*170;
-      accentLine(buffer,size,x,y,x-side*28,y,coverage/2);
-      accentLine(buffer,size,x,y,x,y-edge*20,coverage/2);
+  // Cubic ease-out: arrive quickly, then gently flatten into the logo plane.
+  const int remaining = static_cast<int>(settleMs - age);
+  const int fold = remaining * remaining * remaining / 8000; // 1000 -> 0
+  const int plateWidth = width * (1000 - fold / 2) / 1000;
+  const int plateHeight = height * (1000 - fold / 2) / 1000;
+  const int left = x + (width - plateWidth) / 2;
+  const int top = y + (height - plateHeight) / 2 - fold * 18 / 1000;
+  const int tilt = fold * 12 / 1000;
+  const int seam = fold > 160 ? 1 : 0;
+  for (int row = 0; row < plateHeight; ++row) {
+    const int skew = tilt * (plateHeight - 1 - 2 * row) / plateHeight;
+    for (int column = 0; column < plateWidth; ++column) {
+      // Two clean facets close around a white hinge, disappearing at rest.
+      if (seam && column >= plateWidth / 2 - seam &&
+          column < plateWidth / 2 + seam) continue;
+      if (ditherPixel(left + column + skew, top + row, coverage))
+        setPhysicalPixel(buffer, size, left + column + skew, top + row, true);
     }
-    // Short travelling light packets instead of a full-screen flash.
-    const int y=cy-180+sweep;
-    accentLine(buffer,size,x,y,x,y+12,coverage);
-    accentLine(buffer,size,x-side*3,y-8,x-side*3,y+4,faint);
-  }
-  // Deterministic near/far particles drift inward around a quiet logo center.
-  for (int i=0; i<18; ++i) {
-    const int travel=(static_cast<int>(visualTimeMs/12)+i*37)%144;
-    const int side=(i&1)?1:-1;
-    const int x=cx+side*(216-travel/3);
-    const int y=cy-210+(i*97)%420;
-    const uint8_t ink=static_cast<uint8_t>((144-travel)*coverage/288);
-    accentLine(buffer,size,x,y,x+side*(2+i%4),y,ink);
   }
 }
 
@@ -404,7 +385,6 @@ void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
   const int frameX = (logicalWidth - kLogoSize) / 2;
   const int frameY = (logicalHeight - kFrameHeight) / 2;
 
-  drawBootAccents(buffer, bufferSize, logicalWidth/2, frameY+120, logoCoverage);
 
   for (uint8_t rectIndex = 0; rectIndex < visibleBlocks; ++rectIndex) {
     const auto& rect = kLogoRects[rectIndex];
@@ -412,34 +392,9 @@ void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
     while (rectIndex>=kLogoLayerEnds[layer]) { first=kLogoLayerEnds[layer]; ++layer; }
     const uint32_t born=layer*kRevealLayerMs+(rectIndex-first+1u)*kRevealLayerMs/(kLogoLayerEnds[layer]-first);
     const uint32_t age=visualTimeMs>born ? visualTimeMs-born : 0;
-    const int fullWidth=rect.width*2;
-    // An incoming streak compresses into a luminous outline, then the box
-    // fills horizontally and locks to its exact original geometry in 160 ms.
-    const int fillWidth=age>=160u ? fullWidth : 2+static_cast<int>(age)*(fullWidth-2)/160;
-    if (age<160u) {
-      const int trail=static_cast<int>(160u-age)/2;
-      const int x=frameX+rect.x*2, y=frameY+rect.y*2;
-      accentLine(buffer,bufferSize,x-trail,y+rect.height,x,y+rect.height,logoCoverage/2);
-      accentLine(buffer,bufferSize,x,y,x+fullWidth-1,y,logoCoverage/2);
-      accentLine(buffer,bufferSize,x+fullWidth-1,y,x+fullWidth-1,y+rect.height*2-1,logoCoverage/3);
-      accentLine(buffer,bufferSize,x,y+rect.height*2-1,x+fullWidth-1,y+rect.height*2-1,logoCoverage/3);
-    }
-    drawDitheredRoundedRect(buffer, bufferSize, frameX + rect.x * 2+3,
-                            frameY + rect.y * 2+4, fillWidth,
-                            rect.height * 2, fillWidth<8 ? 0 : 4, logoCoverage/5);
-    drawDitheredRoundedRect(buffer, bufferSize, frameX + rect.x * 2,
-                            frameY + rect.y * 2, fillWidth,
-                            rect.height * 2, fillWidth<8 ? 0 : 4, logoCoverage);
-    // A narrow specular scan crosses only solid logo interiors. Crisp white
-    // highlights over the black mark retain contrast on a reflective panel.
-    const int scan=static_cast<int>(visualTimeMs % 1600u)*320/1600-40;
-    for (int py=0; py<rect.height*2; ++py) {
-      for (int band=0; band<5; ++band) {
-        const int px=scan+(rect.y*2+py)/3+band-rect.x*2;
-        if (px>=0 && px<rect.width*2 && insideRoundedRect(px,py,rect.width*2,rect.height*2,4))
-          setPhysicalPixel(buffer,bufferSize,frameX+rect.x*2+px,frameY+rect.y*2+py,false);
-      }
-    }
+    drawAssemblingBlock(buffer, bufferSize, frameX + rect.x * 2,
+                         frameY + rect.y * 2, rect.width * 2,
+                         rect.height * 2, age, logoCoverage);
   }
 
   // Both labels stay at fixed coordinates and first appear after all blocks.
@@ -455,14 +410,7 @@ void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
     drawDitheredText(buffer, bufferSize,
                      (logicalWidth - textWidth(status, statusScale)) / 2,
                      frameY + 291, status, statusScale, textCoverage);
-    // Indeterminate segmented rail: signals activity, never fictitious progress.
-    const int active=static_cast<int>((visualTimeMs/90)%18u);
-    for (int segment=0; segment<18; ++segment) {
-      const int distance=(segment-active+18)%18;
-      const uint8_t tone=distance<3 ? textCoverage : textCoverage/5;
-      drawDitheredRoundedRect(buffer,bufferSize,logicalWidth/2-107+segment*12,
-                               frameY+336,8,3,0,tone);
-    }
+
   }
 }
 

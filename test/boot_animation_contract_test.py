@@ -63,7 +63,7 @@ class BootAnimationContract(unittest.TestCase):
             [5, 7, 8, 9],
         )
 
-    def test_logo_geometry_is_centered_and_never_animated(self):
+    def test_logo_anchor_remains_centered(self):
         self.assertIn(
             "const int frameX = (logicalWidth - kLogoSize) / 2;", SOURCE
         )
@@ -95,9 +95,10 @@ class BootAnimationContract(unittest.TestCase):
     def test_blocks_assemble_left_to_right_on_a_bounded_timeline(self):
         self.assertIn("(block-firstBlock)*kRevealLayerMs/blocksInLayer", SOURCE)
         self.assertIn("elapsed+40u", SOURCE)
-        self.assertIn("age>=160u ? fullWidth", SOURCE)
+        self.assertIn("age >= settleMs", SOURCE)
         self.assertIn("if (elapsed>=due) visible=block", SOURCE)
-        self.assertIn("drawBootAccents(buffer, bufferSize", SOURCE)
+        self.assertIn("drawAssemblingBlock(buffer, bufferSize", SOURCE)
+        self.assertNotIn("drawBootAccents", SOURCE)
         self.assertIn("if (elapsed>=kRevealDeadlineMs) return false", SOURCE)
 
     def test_labels_fade_only_after_last_block_at_fixed_coordinates(self):
