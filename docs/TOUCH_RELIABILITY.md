@@ -57,6 +57,8 @@ The history separated fixes that actually depend on one another:
    resnapshots immediately.
 6. Snapshot sequence is a replay boundary: events already represented by it are
    ignored, including events queued by another caller between GAP and snapshot.
+   Full subscription resets discard the previous sequence boundary, so a failed
+   initial snapshot after provider restart cannot suppress new events.
 7. Capture records copied counters only. The UI owner emits a bounded-rate
    `TOUCH` log summary after faults (at most once per five seconds): polls,
    failures, gaps, events, completed taps, tap-queue overflow, cancelled outages,

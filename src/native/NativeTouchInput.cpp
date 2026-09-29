@@ -78,7 +78,12 @@ void clearTransientLocked(bool clearQueues) {
 void clearTransient(bool clearQueues = true) {
   portENTER_CRITICAL(&touchStateMux);
   clearTransientLocked(clearQueues);
-  if (clearQueues) observedActivitySerial = activitySerial;
+  if (clearQueues) {
+    // Full reset starts a new subscription lifetime. Its provider may have
+    // restarted sequence numbering, and the initial snapshot can fail busy.
+    consumedSequence = 0;
+    observedActivitySerial = activitySerial;
+  }
   portEXIT_CRITICAL(&touchStateMux);
 }
 

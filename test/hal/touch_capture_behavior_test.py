@@ -32,7 +32,7 @@ fixture = r'''
 static std::deque<risc_touch_event_v1> events;
 static bool pollOk = true, gap = false, busyNext = false;
 static uint64_t serial;
-static bool snapshotRace;
+static bool snapshotRace, snapshotFails;
 static risc_touch_snapshot_v1 state{};
 static bool mockPoll(void*, size_t) { return pollOk; }
 static int32_t mockNext(void*, uint64_t, risc_touch_event_v1* out) {
@@ -42,6 +42,7 @@ static int32_t mockNext(void*, uint64_t, risc_touch_event_v1* out) {
   *out = events.front(); events.pop_front(); return 1;
 }
 static bool mockSnapshot(void*, risc_touch_snapshot_v1* out) {
+  if (snapshotFails) return false;
   if (snapshotRace) {
     snapshotRace=false;
     risc_touch_event_v1 e{};
@@ -112,6 +113,14 @@ int main(int argc, char**) {
   pollOk=false; serviceProvider(); nowMs=60; serviceProvider();
   pollOk=true; queue(RISC_TOUCH_EVENT_UP); serviceProvider();
   assert(nativeTouchGetTap(p));
+  // Activation after a provider restart must discard the old sequence floor,
+  // even if contention makes the initial snapshot unavailable.
+  assert(consumedSequence > 2);
+  clearTransient(); serial=0; state={}; snapshotFails=true;
+  assert(!resync(true)); snapshotFails=false;
+  queue(RISC_TOUCH_EVENT_DOWN); serviceProvider();
+  queue(RISC_TOUCH_EVENT_UP); serviceProvider();
+  assert(nativeTouchGetTap(p) && !nativeTouchGetTap(p));
   const auto stats = nativeTouchDiagnostics();
   assert(stats.pollFailures >= 6 && stats.gaps == 2 && stats.outages == 2);
   assert(stats.taps >= 4 && stats.events > stats.taps);
