@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,37 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 145. Release-manifest validation ignores its required-version flag and accepts unversioned app releases
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260929-0027`.
+- **Affected code:** `src/native/AppManifest.cpp::parseAppManifest()` and its `requireAppVersion` contract in `src/native/AppManifest.h`; callers include `src/native/NativeAppHost.cpp::loadAggregateCatalog()`, `loadCatalogManifests()`, `appCatalogDownloadWithProgress()`, and required-app installation.
+- **Trigger / reproduction:** Pass an otherwise valid application manifest that omits the `version` field to `parseAppManifest(..., appVersion, true)`. The fallback/aggregate release-catalog paths explicitly make this call with `requireAppVersion=true`.
+- **Observed / logically demonstrated failure:** The parser accepts a missing version whenever `versionNode.isNull()`, then explicitly discards the caller's requirement with `(void)requireAppVersion`. It therefore returns success even though the caller asked for a versioned release manifest. In fallback/aggregate catalog construction this can admit an unversioned release record with an empty parsed version and defer failure or inconsistent version handling to later update/install logic instead of rejecting the bad release metadata at its validation boundary.
+- **Likely root cause:** Runtime compatibility for old installed sidecars was implemented by making version optional globally rather than honoring the existing flag that distinguishes legacy sidecars from newly published release manifests.
+- **Impact:** The release validator does not enforce its advertised schema, so malformed/unversioned release metadata can be exposed as a valid catalog entry and can reach code that assumes a semantic version exists for update ordering and package publication.
+- **Repair direction:** When `requireAppVersion` is true, reject a null/missing `version` before returning success; preserve legacy acceptance only when the flag is false. Add parser tests proving `requireAppVersion=false` accepts a legacy missing-version sidecar while `true` rejects it, plus catalog tests that an unversioned release never becomes visible/installable.
+
+### 146. Image dimension validation can overflow its signed pixel-count multiplication and bypass the source-size guard
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260929-0027`.
+- **Affected code:** `lib/Epub/Epub/converters/ImageToFramebufferDecoder.cpp::validateImageDimensions()` and `ImageToFramebufferDecoder.h`; callers include `PngToFramebufferConverter::decodeToFramebuffer()` and `JpegToFramebufferConverter::decodeToFramebuffer()`.
+- **Trigger / reproduction:** Feed the image decoder a PNG/JPEG whose decoded dimensions are individually representable as `int` but whose product exceeds `INT_MAX`, for example dimensions near 65,535 by 65,535. Exercise the normal dimension-validation path before decode.
+- **Observed / logically demonstrated failure:** The intended 3,145,728-pixel limit is tested with `if (width * height > MAX_SOURCE_PIXELS)` using signed `int` arithmetic. Large dimensions overflow that multiplication before comparison (undefined behavior in C++, and on ordinary 32-bit target arithmetic can wrap negative or small), so an image vastly above the configured source-pixel ceiling can pass the guard. JPEG then continues into scaling/decoder setup without the intended total-area protection; PNG reaches later format-specific checks, but the shared resource-safety contract has already been bypassed.
+- **Likely root cause:** The guard multiplies untrusted dimensions in the same narrow signed type being protected instead of using checked/wider arithmetic.
+- **Impact:** Malformed or adversarial image metadata can bypass the explicit resource limit and drive downstream scaling, allocation, or decoder code with dimensions it was meant never to receive, risking excessive memory/CPU use, arithmetic faults, or decoder failure/reset.
+- **Repair direction:** Validate positive dimensions first and compare using checked arithmetic, for example `uint64_t(width) * uint64_t(height)` or `width > MAX_SOURCE_PIXELS / height`; also enforce any per-dimension decoder/output limits consistently. Add boundary tests at the exact pixel limit and overflow cases near `INT_MAX`/format dimension maxima.
+
+### 147. Clear Reading Cache reports a successful "nothing to clear" result when the cache directory cannot be opened
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260929-0027`.
+- **Affected code:** `src/native/NativeCacheBridge.cpp::clearReadingCache()`; presentation in `Apps/clear_cache.c::render_result()`.
+- **Trigger / reproduction:** Keep `/.crosspoint` and one or more `epub_*` or `xtc_*` cache directories on the SD card, then inject a storage/open failure for `Storage.open("/.crosspoint")` (for example a transient SD I/O fault) and run Clear Reading Cache.
+- **Observed / logically demonstrated failure:** `clearReadingCache()` treats both "directory does not exist" and "open failed / path is unusable" identically: it sets `directory_available = 0` and returns `true`. The app maps that successful result to "Nothing to clear" / "Reading cache directory was not found." Existing cache data therefore remains untouched while the user is explicitly told the operation completed as a benign no-op.
+- **Likely root cause:** Directory absence and directory-open/storage failure are collapsed into one success path; the bridge neither checks storage readiness nor verifies absence separately before declaring the directory unavailable.
+- **Impact:** SD faults during cache maintenance are masked, so users can believe problematic cache data was cleared when it was not, and a genuine storage failure is hidden instead of being surfaced for recovery.
+- **Repair direction:** Distinguish verified absence from I/O/type errors: check storage readiness/existence first, return failure when an existing cache root cannot be opened/read, and reserve `directory_available=0` for a confirmed absent root. Add tests for absent root, present-but-open-fails, wrong-type root, and successful cleanup.
