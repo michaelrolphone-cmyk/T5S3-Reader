@@ -76,7 +76,7 @@ int main(void) {
     start=ht.x; ht_advance(0);
     for(uint32_t now=8;now<=640;now+=8) ht_advance(now);
     assert(ht.ticks==20 && ht.x-start>=50*256 && ht.x-start<=51*256); // Gentle spawn gust.
-    /* Paused B/Up requests the AI/legacy renderer toggle without moving or
+    /* Paused B/Up requests the next independent render test without moving or
      * resuming. The rising edge is consumed by input, not by simulation. */
     paused=true; jump_down=false; mode_down=false; previous=held=0;
     start=ht.x; forced_buttons=T5_APP_BUTTON_UP;
@@ -87,6 +87,7 @@ int main(void) {
     const t5_video_api_v1 counters={.struct_size=sizeof(counters),.frame_counter=fake_scans};
     memset(&ht_perf,0,sizeof(ht_perf));
     ht_perf.start=100;ht_perf.scan_start=10;ht_perf.frames=1;
+    ht_fps_reset(&ht_fps,100);ht_fps_push(&ht_fps,600);
     ht_perf.render_ms=60;ht_perf.pack_ms=20;ht_perf.wait_ms=10; ht_perf.cache_ms=16; ht_perf.copy_ms=6; ht_perf.input_ms=14;
     ht_perf.stages=(ht_render_timing){20,30,10};
     ht_perf_finish(&counters,1100);
@@ -97,6 +98,8 @@ int main(void) {
     assert(ht_perf.copy_avg==3 && ht_perf.copy_ms==0);
     assert(ht_perf.input_avg==7 && ht_perf.input_ms==0);
     assert(ht_perf.frames==0 && ht_perf.start==1100 && HT_FRAME_INTERVAL_MS==42);
+    ht_perf_finish(&counters,2100);
+    assert(ht_perf.fps10==15 && ht_fps.count==3 && ht_fps.elapsed==2000); // Carries frames across reporting windows.
     /* Up interacts only on its rising edge; held inputs cannot solve a
      * sequence automatically, and pause/loading do not operate machinery. */
     schedule=false; ht_service=NULL; paused=loading=false; previous=held=0;

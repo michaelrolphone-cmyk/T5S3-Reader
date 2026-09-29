@@ -236,9 +236,10 @@ static void ht_bind(uint8_t *memory) {
     ht_pack_tables_init();
     ht_simd_constants_init(memory+HT_MEMORY-HT_SIMD_TABLE_BYTES);
     ht_simd_reason=ht_expanded_reason="NOT TESTED";
+    for(unsigned i=0;i<4;++i)ht_stage_reason[i]="NOT TESTED";
     ht_simd_test_pattern=ht_simd_test_phase=ht_simd_test_byte=0;
     ht_simd_test_expected=ht_simd_test_actual=0;
-    ht_geometry_level=0; ht_expanded_mode=false; ht_expanded_ready=false; ht_simd_ready=false; ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
+    ht_geometry_level=0; ht_render_test=HT_TEST_BASE; ht_simd_stage_ready=0; ht_expanded_ready=false; ht_simd_ready=false; ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
     ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
     ht_scene=memory+3*HT_PIXELS; ht_temp=memory+4*HT_PIXELS; ht_filter=(int16_t *)ht_temp;
     uint8_t *cache=memory+6*HT_PIXELS;
@@ -468,6 +469,17 @@ static void ht_rect(uint8_t *b,int x,int y,int w,int h,int c) {
     }
     for(int row=ht_max(0,y);row<ht_min(HT_H,y+h);++row) ht_span(b,x,x+w-1,row,c);
 }
+/* Exact C truncation for signed edge slopes without a divide per scanline.
+ * y >= origin_y, so the magnitude recurrence has a nonnegative remainder. */
+typedef struct {int x,sign,q,rem,step,inc,den;} ht_edge_step;
+static ht_edge_step ht_edge_begin(int x,int dx,int dy,int rows) {
+    ht_edge_step e;int mag=ht_abs(dx);e.x=x;e.sign=dx<0?-1:1;e.den=ht_max(1,dy);
+    e.q=mag*rows/e.den;e.rem=mag*rows%e.den;e.step=mag/e.den;e.inc=mag%e.den;return e;
+}
+static int ht_edge_take(ht_edge_step *e) {
+    int x=e->x+e->sign*e->q;e->q+=e->step;e->rem+=e->inc;
+    if(e->rem>=e->den){e->rem-=e->den;++e->q;}return x;
+}
 static void ht_triangle(uint8_t *b,int ax,int ay,int bx,int by,int cx,int cy,int c) {
     if(b==ht_scene && ht_world_scale!=256) {
         ax=ht_project_x(ax);ay=ht_project_y(ay);bx=ht_project_x(bx);by=ht_project_y(by);cx=ht_project_x(cx);cy=ht_project_y(cy);
@@ -475,6 +487,18 @@ static void ht_triangle(uint8_t *b,int ax,int ay,int bx,int by,int cx,int cy,int
     if(ay>by){int t=ax;ax=bx;bx=t;t=ay;ay=by;by=t;}
     if(by>cy){int t=bx;bx=cx;cx=t;t=by;by=cy;cy=t;}
     if(ay>by){int t=ax;ax=bx;bx=t;t=ay;ay=by;by=t;}
+    if(ht_render_test==HT_TEST_TRIANGLE) {
+        int first=ht_max(ay,0),last=ht_min(cy,HT_H-1);
+        if(first>last)return;
+        ht_edge_step long_edge=ht_edge_begin(ax,cx-ax,cy-ay,first-ay);
+        ht_edge_step upper=ht_edge_begin(ax,bx-ax,by-ay,ht_min(first,by)-ay);
+        ht_edge_step lower=ht_edge_begin(bx,cx-bx,cy-by,ht_max(first,by)-by);
+        for(int y=first;y<=last;++y) {
+            int a=ht_edge_take(&long_edge),d=ht_edge_take(y<by?&upper:&lower);
+            ht_span(b,ht_min(a,d),ht_max(a,d),y,c);
+        }
+        return;
+    }
     for(int y=ht_max(ay,0);y<=ht_min(cy,HT_H-1);++y) {
         int a=ax+(cx-ax)*(y-ay)/ht_max(1,cy-ay);
         int d=y<by?ax+(bx-ax)*(y-ay)/ht_max(1,by-ay):bx+(cx-bx)*(y-by)/ht_max(1,cy-by);
@@ -568,7 +592,7 @@ static void ht_blur_rect(const uint8_t *src,uint8_t *dst,int radius,int x0,int x
         const int16_t *row=ht_filter+ht_clamp(y0+k,0,HT_H-1)*HT_W;
         for(int x=x0;x<x1;++x) sums[x]+=row[x];
     }
-    bool fused=ht_expanded_active() && radius<=9;
+    bool fused=ht_expanded_active(HT_OPT_BLUR) && radius<=9;
     uint16_t k[16] __attribute__((aligned(16)));
     if(fused)for(int i=0;i<8;++i){k[i]=(uint16_t)((65536u+(unsigned)n-1)/(unsigned)n);k[8+i]=(uint16_t)n;}
     for(int y=y0;y<y1;++y) {
@@ -1078,7 +1102,7 @@ static __attribute__((optimize("O3"))) void ht_composite_cached_ai(int depth,int
     const uint16_t *weights=ht_focus_weights(focus_x,focus_y,4,HT_RECON_W,HT_RECON_H);
     const int fade=depth>=2?70:45;
     uint16_t k[16] __attribute__((aligned(16)));
-    bool fused=ht_expanded_active();
+    bool fused=ht_expanded_active(HT_OPT_BLEND);
     if(fused)for(int i=0;i<8;++i){k[i]=(uint16_t)fade;k[i+8]=256;}
     const int border=HT_BORDER/4;
     const int height=(HT_SCENE_H-HT_BORDER/2+1)/2;
@@ -1183,7 +1207,7 @@ static __attribute__((optimize("O3"))) void ht_reconstruct_low_scene(void) {
         uint8_t *top=ht_low_scene+2*y*HT_SCENE_W;
         uint8_t *bottom=2*y+1<HT_SCENE_H?top+HT_SCENE_W:NULL;
         int start=0;
-        if(ht_expanded_active() && bottom &&
+        if(ht_expanded_active(HT_OPT_RECON) && bottom &&
            !(((uintptr_t)row|(uintptr_t)next)&7u) &&
            !(((uintptr_t)top|(uintptr_t)bottom)&15u)) {
             unsigned blocks=(HT_RECON_W-1)/16;
@@ -1213,7 +1237,7 @@ static __attribute__((optimize("O3"))) void ht_reconstruct_low_scene(void) {
         uint8_t *top=ht_low_scene+2*y*HT_SCENE_W,*bottom=top+HT_SCENE_W;
         uint8_t edges[(HT_RECON_W+15)&~15] __attribute__((aligned(16)));
         int edge_end=0;
-        if(ht_expanded_active() && !(((uintptr_t)r1|(uintptr_t)r2)&7u)) {
+        if(ht_expanded_active(HT_OPT_RECON) && !(((uintptr_t)r1|(uintptr_t)r2)&7u)) {
             unsigned blocks=(HT_RECON_W-1)/16;
             ht_edge_span(r1,r2,edges,blocks);edge_end=(int)blocks*16;
         }
@@ -1245,7 +1269,7 @@ static __attribute__((optimize("O3"))) void ht_upscale_scene(void) {
         const uint8_t *next=ht_low_scene+ht_min(y+1,HT_SCENE_H-1)*HT_SCENE_W;
         uint8_t *top=ht_scene+2*y*HT_W,*bottom=top+HT_W;
         int start=0;
-        if(ht_expanded_active() && bottom &&
+        if(ht_expanded_active(HT_OPT_UPSCALE) && bottom &&
            !(((uintptr_t)row|(uintptr_t)next)&7u) &&
            !(((uintptr_t)top|(uintptr_t)bottom)&15u)) {
             unsigned blocks=(HT_SCENE_W-1)/16;
@@ -1325,6 +1349,7 @@ static void ht_character(int x,int feet,const ht_game *game) {
 }
 /* Darkness alpha is screen-fixed; it never changes the world or camera.
  * Apply once after all layers, with no multiply in the unshaded center. */
+static inline unsigned ht_div255(unsigned value) {return (value+1+(value>>8))>>8;}
 static void ht_vignette(void) {
     for(int y=0;y<HT_H;++y) {
         uint8_t *row=ht_scene+y*HT_W;
@@ -1333,8 +1358,15 @@ static void ht_vignette(void) {
         /* Symmetric curved fade; the untouched central span costs no work. */
         for(int x=left;x<clear;++x) {
             int alpha=ht_mask_alpha(x,y),right=HT_W-1-x;
+            if(ht_render_test==HT_TEST_VIGNETTE) {
+                uint32_t lanes=(uint32_t)(255-row[x])|((uint32_t)(255-row[right])<<16);
+                lanes=lanes*(unsigned)alpha+0x007f007fu;
+                row[x]=(uint8_t)(255-ht_div255(lanes&65535u));
+                row[right]=(uint8_t)(255-ht_div255(lanes>>16));
+            } else {
             row[x]=(uint8_t)(255-((255-row[x])*alpha+127)/255);
             row[right]=(uint8_t)(255-((255-row[right])*alpha+127)/255);
+            }
         }
         if((y&31)==31) ht_checkpoint();
     }
@@ -1360,13 +1392,27 @@ static void ht_camera_coefficients(const ht_game *g,int *turn,int *scale) {
     breathe+=(4096-breathe)*g->drop_zoom/256;
     *scale=ht_min(breathe,4096-2*ht_abs(*turn));
 }
+static inline uint8_t ht_camera_pixel_packed(const uint8_t *a,const uint8_t *b,unsigned fx,unsigned fy) {
+    /* Each 16-bit lane is <=4080, so multiplication/add cannot carry between
+     * rows. Preserve the original vertical rounding after the horizontal sum. */
+    uint32_t left=(uint32_t)a[0]|((uint32_t)b[0]<<16);
+    uint32_t right=(uint32_t)a[1]|((uint32_t)b[1]<<16);
+    uint32_t horizontal=left*(16-fx)+right*fx;
+    int top=(int)(horizontal&65535u),bottom=(int)(horizontal>>16);
+    return (uint8_t)(((top<<4)+(bottom-top)*(int)fy)>>8);
+}
 static __attribute__((optimize("O3"))) void ht_affine_into(const uint8_t *source,int turn,int scale) {
     for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
         int left=ht_visible_left[y],right=HT_W-left;
         int u=(HT_W/2)*4096+(left-HT_W/2)*scale+(y-HT_H/2)*turn;
         int v=(HT_H/2)*4096-(left-HT_W/2)*turn+(y-HT_H/2)*scale;
         uint8_t *dst=ht_scene+y*HT_W;
-        for(int x=left;x<right;++x,u+=scale,v-=turn) {
+        if(ht_render_test==HT_TEST_CAMERA) {
+            for(int x=left;x<right;++x,u+=scale,v-=turn) {
+                const uint8_t *a=source+(v>>12)*HT_W+(u>>12);
+                dst[x]=ht_camera_pixel_packed(a,a+HT_W,(unsigned)((u>>8)&15),(unsigned)((v>>8)&15));
+            }
+        } else for(int x=left;x<right;++x,u+=scale,v-=turn) {
             int ix=u>>12,iy=v>>12,fx=(u>>8)&15,fy=(v>>8)&15;
             const uint8_t *a=source+iy*HT_W+ix,*b=a+HT_W;
             int top=(a[0]<<4)+((int)a[1]-a[0])*fx;

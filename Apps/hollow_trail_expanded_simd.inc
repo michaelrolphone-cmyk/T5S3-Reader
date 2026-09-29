@@ -5,8 +5,47 @@
  * Every caller bounds a span to one row, handles tails and yields between rows.
  * Host routines below are reference models, never hardware timing substitutes.
  */
-static bool ht_expanded_mode,ht_expanded_ready;
-static bool ht_expanded_active(void) { return ht_expanded_mode && ht_expanded_ready; }
+enum {HT_OPT_UPSCALE=1,HT_OPT_RECON=2,HT_OPT_BLEND=4,HT_OPT_BLUR=8,
+      HT_OPT_CAMERA=16,HT_OPT_VIGNETTE=32,HT_OPT_TRIANGLE=64,HT_OPT_SIMD_ALL=15};
+enum {HT_TEST_BASE,HT_TEST_UPSCALE,HT_TEST_RECON,HT_TEST_BLEND,HT_TEST_BLUR,
+      HT_TEST_CAMERA,HT_TEST_VIGNETTE,HT_TEST_TRIANGLE,HT_TEST_ALL_FOUR,HT_TEST_COUNT};
+static unsigned ht_render_test,ht_simd_stage_ready;
+static bool ht_expanded_ready;
+static const char *ht_stage_reason[4];
+static unsigned ht_render_test_mask(void) {
+    switch(ht_render_test) {
+    case HT_TEST_UPSCALE:return HT_OPT_UPSCALE;
+    case HT_TEST_RECON:return HT_OPT_RECON;
+    case HT_TEST_BLEND:return HT_OPT_BLEND;
+    case HT_TEST_BLUR:return HT_OPT_BLUR;
+    case HT_TEST_CAMERA:return HT_OPT_CAMERA;
+    case HT_TEST_VIGNETTE:return HT_OPT_VIGNETTE;
+    case HT_TEST_TRIANGLE:return HT_OPT_TRIANGLE;
+    case HT_TEST_ALL_FOUR:return HT_OPT_SIMD_ALL;
+    default:return 0;
+    }
+}
+static const char *ht_render_test_name(void) {
+    switch(ht_render_test) {
+    case HT_TEST_UPSCALE:return "SIMD UPSCALE";
+    case HT_TEST_RECON:return "SIMD RECONSTRUCTION";
+    case HT_TEST_BLEND:return "SIMD COMPOSITING";
+    case HT_TEST_BLUR:return "SIMD BLUR / CACHE";
+    case HT_TEST_CAMERA:return "PACKED CAMERA";
+    case HT_TEST_VIGNETTE:return "PACKED VIGNETTE";
+    case HT_TEST_TRIANGLE:return "TRIANGLE STEPPING";
+    case HT_TEST_ALL_FOUR:return "ALL FOUR SIMD";
+    default:return "PACKING BASELINE";
+    }
+}
+static bool ht_expanded_active(unsigned bit) {
+    return (ht_render_test_mask() & ht_simd_stage_ready & bit)!=0;
+}
+static bool ht_render_test_available(void) {
+    unsigned need=ht_render_test_mask()&HT_OPT_SIMD_ALL;
+    return (ht_simd_stage_ready&need)==need;
+}
+static void ht_render_test_next(void) {ht_render_test=(ht_render_test+1)%HT_TEST_COUNT;}
 /* Runtime-aligned PSRAM, not ELF .rodata: section relocation can discard
  * linker alignment. Initialized once by ht_bind, shared by checks and draws. */
 static uint8_t (*ht_expand_constants)[16];
@@ -308,7 +347,7 @@ static void ht_blur_span(int16_t *s,const int16_t *a,const int16_t *b,uint8_t *d
 /* Tests actual leaves on the device before enabling any expanded operation.
  * Small fixed buffers, guarded writes, checkpoints every eight patterns.
  * Alignment variants include odd camera offsets and the 120-byte row stride. */
-static bool ht_expanded_selftest(void) {
+static bool ht_expanded_selftest(unsigned requested) {
 #if defined(__XTENSA__)
     ht_expanded_reason="NO MATH API";
     if(!ht_math)return false;
@@ -328,29 +367,36 @@ static bool ht_expanded_selftest(void) {
         }
         for(unsigned i=0;i<40;++i)r[i]=(uint16_t)(pattern<3?pattern*128:ht_hash(pattern+i)%257);
         unsigned blocks=1+(pattern&1),off=(pattern&2)*4;
-        memset(got,0xa5,sizeof(got));memcpy(want,got,sizeof(got));
-        ht_expand_span_c(a+off,b+8-off,want+16,want+80,blocks);
-        ht_expand_span(a+off,b+8-off,got+16,got+80,blocks);
-        ht_expanded_reason="UPSCALE TEST";
-        if(!ht_simd_test_equal(got,want,sizeof(got),pattern,0))return false;
-        memset(got,0xa5,sizeof(got));memcpy(want,got,sizeof(got));
-        ht_edge_span_c(a+off,b+8-off,want+16,blocks);
-        ht_edge_span(a+off,b+8-off,got+16,blocks);
-        ht_expanded_reason="EDGE TEST";
-        if(!ht_simd_test_equal(got,want,sizeof(got),pattern,0))return false;
-        for(int i=0;i<8;++i){k[i]=pattern&1?45:70;k[i+8]=256;}
-        for(unsigned i=0;i<sizeof(got);++i)got[i]=(uint8_t)ht_hash(i+pattern);
-        memcpy(want,got,sizeof(got));
-        off=pattern&15;
-        ht_blend_span_c(a+off,b+off,r+(pattern&4),want+16+(pattern&4),k,blocks);
-        ht_blend_span(a+off,b+off,r+(pattern&4),got+16+(pattern&4),k,blocks);
-        ht_expanded_reason="BLEND TEST";
-        if(!ht_simd_test_equal(got,want,sizeof(got),pattern,0))return false;
-        unsigned n=3+2*(pattern%9);
-        for(int i=0;i<8;++i){k[i]=(uint16_t)((65536u+n-1)/n);k[i+8]=(uint16_t)n;}
-        for(int i=0;i<32;++i) {
-            sub[i]=(int16_t)(ht_hash(i+pattern)%256);add[i]=(int16_t)(ht_hash(i+pattern+99)%256);
-            sums[i]=expected[i]=(int16_t)(sub[i]+ht_hash(i+pattern*7)%(255*(n-1)+1));
+        if(requested&(HT_OPT_UPSCALE|HT_OPT_RECON)) {
+            memset(got,0xa5,sizeof(got));memcpy(want,got,sizeof(got));
+            ht_expand_span_c(a+off,b+8-off,want+16,want+80,blocks);
+            ht_expand_span(a+off,b+8-off,got+16,got+80,blocks);
+            ht_expanded_reason="UPSCALE TEST";
+            if(!ht_simd_test_equal(got,want,sizeof(got),pattern,0))return false;
+        }
+        if(requested&HT_OPT_RECON) {
+            memset(got,0xa5,sizeof(got));memcpy(want,got,sizeof(got));
+            ht_edge_span_c(a+off,b+8-off,want+16,blocks);
+            ht_edge_span(a+off,b+8-off,got+16,blocks);
+            ht_expanded_reason="EDGE TEST";
+            if(!ht_simd_test_equal(got,want,sizeof(got),pattern,0))return false;
+        }
+        if(requested&HT_OPT_BLEND) {
+            for(int i=0;i<8;++i){k[i]=pattern&1?45:70;k[i+8]=256;}
+            for(unsigned i=0;i<sizeof(got);++i)got[i]=(uint8_t)ht_hash(i+pattern);
+            memcpy(want,got,sizeof(got));
+            off=pattern&15;
+            ht_blend_span_c(a+off,b+off,r+(pattern&4),want+16+(pattern&4),k,blocks);
+            ht_blend_span(a+off,b+off,r+(pattern&4),got+16+(pattern&4),k,blocks);
+            ht_expanded_reason="BLEND TEST";
+            if(!ht_simd_test_equal(got,want,sizeof(got),pattern,0))return false;
+        }
+        if(requested&HT_OPT_BLUR) {
+            unsigned n=3+2*(pattern%9);
+            for(int i=0;i<8;++i){k[i]=(uint16_t)((65536u+n-1)/n);k[i+8]=(uint16_t)n;}
+            for(int i=0;i<32;++i) {
+                sub[i]=(int16_t)(ht_hash(i+pattern)%256);add[i]=(int16_t)(ht_hash(i+pattern+99)%256);
+                sums[i]=expected[i]=(int16_t)(sub[i]+ht_hash(i+pattern*7)%(255*(n-1)+1));
         }
         memset(got,0xa5,sizeof(got));memcpy(want,got,sizeof(got));
         ht_blur_span_c(expected+8,add+8,sub+8,want+16,k,blocks);
@@ -358,10 +404,11 @@ static bool ht_expanded_selftest(void) {
         ht_expanded_reason="BLUR TEST";
         if(!ht_simd_test_equal(got,want,sizeof(got),pattern,0) ||
            !ht_simd_test_equal(sums,expected,sizeof(sums),pattern,1))return false;
+        }
         if((pattern&7)==7)ht_checkpoint();
     }
     ht_expanded_reason="READY";return true;
 #else
-    ht_expanded_reason="NOT S3 BUILD";return false;
+    (void)requested;ht_expanded_reason="NOT S3 BUILD";return false;
 #endif
 }

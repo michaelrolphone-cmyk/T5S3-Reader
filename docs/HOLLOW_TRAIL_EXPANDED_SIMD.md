@@ -1,5 +1,8 @@
 # Hollow Trail expanded SIMD — 1.1.14
 
+For current controls and rolling ten-second FPS, see
+[independent render tests (1.1.16)](HOLLOW_TRAIL_RENDER_TESTS.md).
+
 The owner measured a major PACK reduction and about +2 FPS with 1.1.13. This
 experiment keeps that successful packer in **both** selectable modes:
 
