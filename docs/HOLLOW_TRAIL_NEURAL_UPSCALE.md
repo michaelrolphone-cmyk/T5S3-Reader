@@ -8,11 +8,11 @@ The deployed model is deliberately tiny: a 3x3 grayscale patch (9 inputs) feeds 
 
 The exported inference path uses only integer multiply/add/shift operations and 60 bytes of trained weights plus 32 bytes of integer biases. On the held-out gate distribution this topology performs about 44,000 neural multiply-accumulates per reconstructed frame, roughly one-seventh of the earlier 24-hidden candidate. It requires no TensorFlow Lite, ESP-NN, heap allocation, firmware API, or additional capability. The 120x68 composition surface owns 8,160 bytes within the app's existing single PSRAM allocation. It must not alias cache scratch: a lookahead job can remain unfinished across visible frames, and its source buffers must survive until publication.
 
-## Output comparison in 1.1.12
+## Output comparison in 1.1.13
 
-The final neural 960x540 upscaler introduced in 1.1.11 has been removed following the owner's device FPS regression report. The trained background reconstruction above remains active in both selectable modes.
+The final neural 960x540 upscaler introduced in 1.1.11 was removed following the owner's device FPS regression report. The trained background reconstruction above remains active in both selectable modes.
 
-Pause and press **B or Up** to alternate between **AI** (the default, existing packed output) and **AI + Dither** (experimental learned dot patterns). Switching discards prepared output and resets profiling. It does not disable the AI scenery compositor. See [Learned dither experiment](HOLLOW_TRAIL_LEARNED_DITHER.md) for training, measurements and limitations.
+Pause and press **B or Up** to alternate between **AI** (the default) and **AI + SIMD** (fused S3 interpolation/ordered-dither packing). Both produce the same dots; neither selects the learned dither experiment. Switching discards prepared output and resets profiling. See [Fused SIMD comparison](HOLLOW_TRAIL_FUSED_SIMD.md) for the device self-test, fallback and validation limits. The earlier [learned dither experiment](HOLLOW_TRAIL_LEARNED_DITHER.md) remains documented separately.
 
 ## What it accelerates
 

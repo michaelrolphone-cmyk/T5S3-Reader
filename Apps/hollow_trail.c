@@ -314,6 +314,9 @@ __attribute__((visibility("default"))) void app_main(void) {
     /* Freeze physics while the first view and lookahead strips are prepared.
      * Keep polling/yielding and honor exit throughout the bounded warmup. */
     loading=true;
+    ht_simd_ready=ht_simd_selftest();
+    ht_log(ht_simd_ready?"Hollow Trail fused SIMD: device self-test passed":
+        "Hollow Trail fused SIMD unavailable: AI fallback");
     ht_clear_layer(ht_scene); ht_text(150,120,"PREPARING FOREST",2); ht_vignette();
     if(video->can_submit()) {
         size_t size=0; uint8_t *buffer=video->backbuffer(&size);
@@ -337,7 +340,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.1.12: AI / AI+Dither comparison started");
+    ht_log("Hollow Trail 1.1.13: AI / fused SIMD comparison started");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -369,15 +372,15 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
         if(mode_down) {
             mode_down=false;
-            ht_output_mode=(ht_output_mode+1)%HT_OUTPUT_COUNT;
+            ht_output_mode=ht_output_mode==HT_OUTPUT_AI?HT_OUTPUT_SIMD:HT_OUTPUT_AI;
             prepared=false; ++scene_revision;
             last_submit=app->millis(); last_frame=last_submit-HT_FRAME_INTERVAL_MS;
             memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=last_submit;
             if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-            static const char *const modes[HT_OUTPUT_COUNT]={
-                "Hollow Trail renderer: AI",
-                "Hollow Trail renderer: AI + learned dither (experimental)"};
-            ht_log(modes[ht_output_mode]);
+            ht_log(ht_output_mode==HT_OUTPUT_SIMD?
+                (ht_simd_ready?"Hollow Trail renderer: AI + fused SIMD":
+                 "Hollow Trail SIMD unavailable/self-test failed: using AI"):
+                "Hollow Trail renderer: AI");
         }
         uint32_t now=app->millis();
         if(profile_was_paused && !paused && !reading) {
@@ -418,7 +421,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.12",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.13",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
@@ -426,9 +429,9 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(88,84,chapter,1);
                 ht_text(88,99,debug_select?"L/R CHOOSE   A LOAD   X CANCEL":"L/R CHOOSE LEVEL   A JOURNAL",1);
                 ht_text(88,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
-                static const char *const modes[HT_OUTPUT_COUNT]={
-                    "RENDERER: AI", "RENDERER: AI + DITHER"};
-                ht_text(88,133,modes[ht_output_mode],1);
+                ht_text(88,133,ht_output_mode==HT_OUTPUT_SIMD?
+                    (ht_simd_ready?"RENDERER: AI + SIMD":"SIMD UNAVAILABLE: AI"):
+                    "RENDERER: AI",1);
                 ht_text(88,148,"B / UP SWITCH RENDERER   START JOURNAL",1);
                 char perf[64];
                 snprintf(perf,sizeof(perf),"FPS %lu.%lu   SCANS %lu.%lu",
