@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,37 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 148. ZIP trailing-NUL size arithmetic wraps for a maximum-size entry
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260929-0127`.
+- **Affected code:** `lib/ZipFile/ZipFile.cpp::readFileToMemory()`; callers include `lib/Epub/Epub.cpp::readItemContentsToBytes()`, which requests a trailing NUL for XML/HTML text.
+- **Trigger / reproduction:** Use ZIP metadata declaring an uncompressed entry size of `0xFFFFFFFF`, then read that entry with `trailingNullByte=true`.
+- **Observed / logically demonstrated failure:** `inflatedDataSize` is a `uint32_t`, so `inflatedDataSize + 1` wraps to zero before it is assigned to `dataSize`. The routine can therefore allocate zero bytes and then proceed using the original `0xFFFFFFFF` declared length for the stored read or inflate destination, followed by a terminator write at that declared index, instead of rejecting the impossible in-memory request.
+- **Likely root cause:** The extra-byte size calculation is performed in the archive field's 32-bit type without checked conversion to `size_t` or an overflow guard.
+- **Impact:** Corrupt or extreme ZIP/EPUB size metadata can turn an in-memory text read into invalid memory access rather than a clean size/allocation failure, risking heap damage or a reset.
+- **Repair direction:** Enforce a practical per-entry in-memory limit, check the declared size before converting it, and check addition before reserving the trailing byte. Add boundary tests for the configured maximum and `UINT32_MAX` with and without `trailingNullByte`.
+
+### 149. ZIP entries with valid names of 256 bytes or longer are silently unreachable
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260929-0127`.
+- **Affected code:** `lib/ZipFile/ZipFile.cpp::loadAllFileStatSlims()`, `loadFileStatSlim()`, and `findFirstBySuffix()`; the fixed `char itemName[256]` buffers used while scanning the central directory.
+- **Trigger / reproduction:** Create an otherwise valid ZIP/EPUB containing an entry whose ZIP filename field is 256 bytes or longer, reference that entry from the EPUB manifest, and open/read it through `ZipFile`.
+- **Observed / logically demonstrated failure:** ZIP stores the filename length in a 16-bit field, but all lookup scans only read a name when `nameLen < 256`. Longer names are explicitly skipped. They are never inserted into `fileStatSlimCache`, direct lookup can never compare them to the requested filename, and suffix discovery skips them as well. The archive can load successfully while the referenced entry is reported as missing.
+- **Likely root cause:** A 256-byte scratch buffer was turned into a hard archive filename limit instead of using bounded comparison/streaming or allocating according to a validated name length.
+- **Impact:** Valid ZIP-backed content can fail solely because an internal resource path exceeds 255 bytes. EPUB chapters, navigation files, stylesheets, images, or other resources with long internal paths become inaccessible even though they are present in the archive.
+- **Repair direction:** Decouple central-directory parsing from the fixed scratch size. Compare long names in bounded chunks or allocate a validated temporary buffer, and retain complete cache keys under an explicit resource policy. Add fixtures at 255, 256, and larger filename lengths and verify direct lookup plus suffix discovery.
+
+### 150. EPUB BMP conversion can report success after destination writes fail and retain a truncated cover cache
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260929-0127`.
+- **Affected code:** `lib/PngToBmpConverter/PngToBmpConverter.cpp` and `lib/JpegToBmpConverter/JpegToBmpConverter.cpp`, including BMP header/row writers; consumers `lib/Epub/Epub.cpp::generateCoverBmp()` and `generateThumbBmp()`.
+- **Trigger / reproduction:** Generate an EPUB JPG/PNG cover or thumbnail while forcing the destination `FsFile` to return a short or zero write after opening successfully, such as an SD write fault or full-volume condition.
+- **Observed / logically demonstrated failure:** Both converters call `Print::write()` for BMP headers, palettes, and pixel rows but never check the returned byte count and keep no output-error state. If source decoding succeeds, the converter returns `true` even when the BMP stream is incomplete. `Epub::generateCoverBmp()` and `generateThumbBmp()` trust that boolean, retain the partial file, and future calls return success immediately from `Storage.exists(...)` without validating the cached BMP.
+- **Likely root cause:** Conversion success reflects source decode completion only; destination I/O success is not part of the converter result, while the caller treats file existence as proof of a valid cache.
+- **Impact:** A transient SD write fault can leave a corrupt cover or thumbnail that is treated as successfully generated and is not automatically regenerated, producing missing or broken artwork until the cache is cleared.
+- **Repair direction:** Check every BMP output write for the exact expected byte count, propagate output failure through the converter, and return false on any short write. Generate into a staged file, require successful close plus basic BMP validation, then publish the final cache. Add fault-injection tests for header and pixel-row write failures.
