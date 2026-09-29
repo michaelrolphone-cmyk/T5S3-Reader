@@ -115,6 +115,7 @@ static ht_game ht;
 /* Geometry belongs to a render snapshot, never live input/physics. */
 static unsigned ht_geometry_level;
 static const t5_math_api_v1 *ht_math;
+static bool ht_simd_ready;
 static int16_t *ht_filter;
 static uint8_t *ht_raw, *ht_near, *ht_wide, *ht_temp, *ht_scene;
 static uint8_t *ht_cached_near[HT_LAYERS][HT_TILE_SLOTS], *ht_cached_wide[HT_LAYERS][HT_TILE_SLOTS];
@@ -219,7 +220,7 @@ static const uint16_t *ht_focus_weights(int px,int py,int step,int width,int hei
 static void ht_pack_tables_init(void);
 static void ht_bind(uint8_t *memory) {
     ht_pack_tables_init();
-    ht_geometry_level=0; ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
+    ht_geometry_level=0; ht_simd_ready=false; ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
     ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
     ht_scene=memory+3*HT_PIXELS; ht_temp=memory+4*HT_PIXELS; ht_filter=(int16_t *)ht_temp;
     uint8_t *cache=memory+6*HT_PIXELS;
@@ -1557,7 +1558,8 @@ static inline __attribute__((always_inline)) void ht_pack_lanes_learned(
         *bottom=(uint8_t)((*bottom&~(3u<<shift))|(((dots&2u)|((dots>>2)&1u))<<shift));
     }
 }
-enum { HT_OUTPUT_AI, HT_OUTPUT_LEARNED, HT_OUTPUT_COUNT };
+#include "hollow_trail_simd.inc"
+enum { HT_OUTPUT_AI, HT_OUTPUT_LEARNED, HT_OUTPUT_SIMD, HT_OUTPUT_COUNT };
 static unsigned ht_output_mode=HT_OUTPUT_AI;
 static __attribute__((optimize("O3"))) void ht_pack_mono_learned(uint8_t *out,int stride) {
     static const uint32_t thresholds[4]={0x3f0f3303u,0x1f2f1323u,0x37073b0bu,0x17271b2bu};
@@ -1603,8 +1605,56 @@ static __attribute__((optimize("O3"))) void ht_pack_mono_learned(uint8_t *out,in
     }
 }
 
+static __attribute__((optimize("O3"))) void ht_pack_mono_simd(uint8_t *out,int stride) {
+    bool word_output=(((uintptr_t)out|(unsigned)stride)&3u)==0;
+    for(int y=0;y<HT_H;++y) {
+        if(ht_framed && ht_visible_left[y]==HT_W/2 && ht_visible_left[ht_min(y+1,HT_H-1)]==HT_W/2) {
+            memset(out+2*y*stride,255,HT_W/4);
+            memset(out+(2*y+1)*stride,255,HT_W/4);
+            continue;
+        }
+        int left=ht_framed?((ht_min(ht_visible_left[y],ht_visible_left[ht_min(y+1,HT_H-1)])-1)&~3):0;
+        int right_edge=HT_W-left;
+        const uint8_t *row=ht_scene+y*HT_W;
+        const uint8_t *next=ht_scene+ht_min(y+1,HT_H-1)*HT_W;
+        uint8_t *top=out+2*y*stride,*bottom=top+stride;
+        if(left) {
+            memset(top,255,left/4); memset(bottom,255,left/4);
+            memset(top+right_edge/4,255,left/4); memset(bottom+right_edge/4,255,left/4);
+        }
+        /* Even-column rank*4+3, little-endian lane order. +3 converts the
+         * original strict > rank*4+2 comparison to >=. Odd columns add 64
+         * after removing their threshold's high bit; bottom swaps halves. */
+        static const uint32_t thresholds[4]={0x3f0f3303u,0x1f2f1323u,0x37073b0bu,0x17271b2bu};
+        uint32_t even=thresholds[y&3],odd=even+0x40404040u;
+        int x=left;
+        /* Align the destination before 32-bit stores. Source rows and bitmap
+         * rows are aligned, but rounded-corner clipping can start mid-word. */
+        for(;x<right_edge && (x&15);x+=4) {
+            int nx=ht_min(x+4,HT_W-1);
+            ht_pack_lanes(ht_load4(row+x),ht_load4(next+x),row[nx],next[nx],even,odd,ht_solid_dots[y&3],top+x/4,bottom+x/4);
+        }
+        if(word_output && !(((uintptr_t)row|(uintptr_t)next)&15u) && x+16<right_edge) {
+            unsigned blocks=(unsigned)(right_edge-x-1)/16u;
+#if HT_SIMD_S3_COMPILED
+            if(ht_simd_ready)
+                ht_pack_simd_span_s3(row+x,next+x,top+x/4,bottom+x/4,&ht_simd_constants[y&3][0][0],blocks);
+            else
+#endif
+                ht_pack_simd_span_c(row+x,next+x,top+x/4,bottom+x/4,&ht_simd_constants[y&3][0][0],blocks);
+            x+=(int)blocks*16;
+        }
+        for(;x<right_edge;x+=4) {
+            int nx=ht_min(x+4,HT_W-1);
+            ht_pack_lanes(ht_load4(row+x),ht_load4(next+x),row[nx],next[nx],even,odd,ht_solid_dots[y&3],top+x/4,bottom+x/4);
+        }
+        if((y&15)==15) ht_checkpoint();
+    }
+}
+
 static void ht_pack_mono(uint8_t *out,int stride) {
-    if(ht_ai_rendering && ht_output_mode==HT_OUTPUT_LEARNED) ht_pack_mono_learned(out,stride);
+    if(ht_ai_rendering && ht_output_mode==HT_OUTPUT_SIMD && ht_simd_ready) ht_pack_mono_simd(out,stride);
+    else if(ht_ai_rendering && ht_output_mode==HT_OUTPUT_LEARNED) ht_pack_mono_learned(out,stride);
     else ht_pack_mono_legacy(out,stride);
 }
 static void ht_pack_format(uint8_t *out,int stride,bool mono) {
