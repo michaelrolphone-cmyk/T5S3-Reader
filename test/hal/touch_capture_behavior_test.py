@@ -7,7 +7,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 source = (ROOT / 'src/native/NativeTouchInput.cpp').read_text()
 core = source[source.index('namespace {'):source.index('bool workerShouldRun()')]
-getters = source[source.index('bool nativeTouchGetTap('):]
+getters = source[source.index('void nativeTouchDiscardGestures('):]
 prefix = r'''
 #include <cassert>
 #include <cstdlib>
@@ -80,6 +80,21 @@ int main(int argc, char**) {
   pollOk=true; queue(RISC_TOUCH_EVENT_UP); serviceProvider();
   assert(nativeTouchGetTap(p) && p.x==100 && p.y==200);
   assert(!nativeTouchGetTap(p));
+  // Boot handoff drops completed/held loading-screen gestures, then accepts new taps.
+  queue(RISC_TOUCH_EVENT_DOWN); queue(RISC_TOUCH_EVENT_UP); serviceProvider();
+  queue(RISC_TOUCH_EVENT_DOWN); serviceProvider();
+  nativeTouchDiscardGestures();serviceProvider();assert(!nativeTouchGetTap(p));
+  queue(RISC_TOUCH_EVENT_UP);serviceProvider();assert(!nativeTouchGetTap(p));
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();assert(nativeTouchGetTap(p));
+  // An old tap still in the RAW provider queue must not become a new app tap.
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);
+  nativeTouchDiscardGestures();serviceProvider();assert(!nativeTouchGetTap(p));
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();assert(nativeTouchGetTap(p));
+  // Snapshot failure keeps focus closed; retry establishes a fence without replay.
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);
+  nativeTouchDiscardGestures();snapshotFails=true;serviceProvider();assert(!nativeTouchGetTap(p));
+  snapshotFails=false;serviceProvider();
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();assert(nativeTouchGetTap(p));
   // Provider lock contention on next() must not resnapshot a valid DOWN.
   queue(RISC_TOUCH_EVENT_DOWN); serviceProvider();
   busyNext=true; serviceProvider(); nowMs+=10; serviceProvider(); busyNext=false;
@@ -172,9 +187,18 @@ int main() {
   }
   assert(nativeTouchDiagnostics().taps==100);
   assert(nativeTouchDiagnostics().tapOverflows==0);
+  // Reproduce a menu tap still unread in the real GT911 provider at ELF entry.
+  report_one(3,100,200);assert(api->poll(nullptr,1));
+  report_release();assert(api->poll(nullptr,1));
+  nativeTouchDiscardGestures();serviceProvider();assert(!nativeTouchGetTap(p));
+  report_one(3,100,200);serviceProvider();report_release();serviceProvider();assert(nativeTouchGetTap(p));
+  // A held launch contact crossing focus must lift, then a fresh contact works.
+  report_one(3,100,200);serviceProvider();nativeTouchDiscardGestures();serviceProvider();
+  report_release();serviceProvider();assert(!nativeTouchGetTap(p));
+  report_one(3,100,200);serviceProvider();report_release();serviceProvider();assert(nativeTouchGetTap(p));
   assert(api->unsubscribe(nullptr,subscription));
   assert(driver->quiesce()); driver->stop();
-  puts("actual GT911 + consumer: 100 taps, retry faults, delayed UI delivery PASS");
+  puts("actual GT911 + consumer: 100 taps, retry faults, delayed delivery and app focus fences PASS");
 }
 '''
 with tempfile.TemporaryDirectory() as temp:

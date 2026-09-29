@@ -6,6 +6,7 @@
 #include "CrossPointSettings.h"
 #include "components/StartupScreen.h"
 #include "NativeNavigationInput.h"
+#include "NativeTouchInput.h"
 #include "NativeOnlineAppInstall.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
 #include "AppCatalogIndex.h"
@@ -106,6 +107,7 @@ struct Session {
   char catalogDownloadError[128]{};
   bool catalogNeedsRefresh = false;
   bool backExitsApp = true;
+  bool inputStarted = false;
   bool exiting = false;
   bool presenting = false;
 };
@@ -116,6 +118,11 @@ std::string lastLaunchError;
 bool homeRequested = false;
 bool firmwareActionPending = false;
 Session* current() { return session && !session->presenting && session->owner == xTaskGetCurrentTaskHandle() ? session : nullptr; }
+void beginAppInput(Session& s) {
+  if (s.inputStarted) return;
+  nativeTouchDiscardGestures();
+  s.inputStarted = true;
+}
 int32_t width() { auto* s = current(); return s ? s->renderer.getScreenWidth() : 0; }
 int32_t height() { auto* s = current(); return s ? s->renderer.getScreenHeight() : 0; }
 void clear() {
@@ -207,6 +214,7 @@ bool copyUiFrame(uint8_t* destination, size_t capacity, t5_app_frame_t* frame) {
 bool touchContact(t5_app_contact_t* out) {
   auto* s=current();
   if (!s || !out) return false;
+  beginAppInput(*s);
   *out={};
   MappedInputManager::TouchPoint point{};
   out->down=s->input.getTouchContact(point,s->renderer);
@@ -283,6 +291,7 @@ void setBackExitsApp(bool enabled) {
 bool pollInput(t5_app_input_t* out, uint32_t waitMs, bool wait) {
   auto* s = current();
   if (!s || !out) return false;
+  beginAppInput(*s);
   esp_task_wdt_reset();
   if (wait) delay(std::max(1u, std::min(waitMs, 50u)));
   s->input.update();
@@ -312,6 +321,7 @@ bool pollNowait(t5_app_input_t* out) {
 bool takeTouchSwipe(t5_app_swipe_t* out) {
   auto* s = current();
   if (!s || !out || s->exiting) return false;
+  beginAppInput(*s);
   MappedInputManager::TouchPoint start{}, end{};
   if (!s->input.getTouchSwipe(start, end, s->renderer)) return false;
   *out = {static_cast<int16_t>(start.x), static_cast<int16_t>(start.y),
@@ -1404,6 +1414,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     displayName = preview.display_name;
     icon = preview.icon;
   }
+  nativeTouchDiscardGestures();
   StartupScreen::app(renderer, displayName.c_str(), icon);
   // Keep the render lock through launch so an outstanding activity repaint
   // cannot overwrite this frame during package recovery or dependency loading.
@@ -1496,6 +1507,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   if (active.directory.isOpen()) active.directory.close();
   active.catalog.clear();
   session = nullptr;
+  nativeTouchDiscardGestures();
   nativeNavigationBoundary();
   nativeNavigationRetry(); // An installer may have added the navigation provider.
   nativeSettingsEnd();
@@ -1513,6 +1525,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     delay(10);
   } while (millis() - quiet < 350);
   input.clearInjectedButtonTap();
+  nativeTouchDiscardGestures();
   firmwareActionPending = nativeSettingsDispatchPendingAction(renderer, input, path);
   firmwareActionPending = firmwareActionPending || systemNavigation == NativeSystemUiNavigation::Keyboard;
   returned = true;
