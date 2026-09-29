@@ -88,9 +88,12 @@ int main(void) {
     memset(&ht_perf,0,sizeof(ht_perf));
     ht_perf.start=100;ht_perf.scan_start=10;ht_perf.frames=1;
     ht_perf.render_ms=60;ht_perf.pack_ms=20;ht_perf.wait_ms=10; ht_perf.cache_ms=16; ht_perf.copy_ms=6; ht_perf.input_ms=14;
+    ht_perf.stages=(ht_render_timing){20,30,10};
     ht_perf_finish(&counters,1100);
     assert(ht_perf.fps10==20 && ht_perf.scan10==240);
     assert(ht_perf.render_avg==30 && ht_perf.pack_avg==10 && ht_perf.wait_avg==5 && ht_perf.cache_avg==8);
+    assert(ht_perf.stage_avg.background==10 && ht_perf.stage_avg.world==15 && ht_perf.stage_avg.post==5);
+    assert(!ht_perf.stages.background && !ht_perf.stages.world && !ht_perf.stages.post);
     assert(ht_perf.copy_avg==3 && ht_perf.copy_ms==0);
     assert(ht_perf.input_avg==7 && ht_perf.input_ms==0);
     assert(ht_perf.frames==0 && ht_perf.start==1100 && HT_FRAME_INTERVAL_MS==42);

@@ -127,6 +127,12 @@ static uint8_t *ht_corner_mask, *ht_low_scene, *ht_recon_scene;
 static int16_t ht_visible_left[HT_H],ht_clear_left[HT_H];
 /* Host callback polls/yields at bounded raster checkpoints; no drawing. */
 static void (*ht_service)(void);
+/* Optional host clock: inclusive stage costs include cooperative input/yield
+ * time. No clock calls in the pixel loops and no firmware-specific imports. */
+typedef struct {uint32_t background,world,post;} ht_render_timing;
+static ht_render_timing ht_render_last;
+static uint32_t (*ht_render_clock)(void);
+static uint32_t ht_render_now(void) {return ht_render_clock?ht_render_clock():0;}
 static int ht_min(int a,int b) { return a<b?a:b; }
 static int ht_max(int a,int b) { return a>b?a:b; }
 static int ht_clamp(int x,int lo,int hi) { return ht_min(hi,ht_max(lo,x)); }
@@ -1347,31 +1353,41 @@ static void ht_weather(const ht_game *g) {
 static void ht_draw_traversal(const ht_game *game);
 static void ht_draw_puzzle(const ht_game *game);
 static void ht_draw_evidence(const ht_game *game);
+/* At full opacity the grotto supplies every background pixel itself. */
+static bool ht_grotto_opaque(const ht_game *g) {
+    return g->level==4 && g->camera/256<=700;
+}
 static void ht_render_scene(void) {
+    memset(&ht_render_last,0,sizeof(ht_render_last));
+    uint32_t stage=ht_render_now();
     /* Input checkpoints may advance live physics. Freeze the rendered frame
      * so trees, focus and character all use one consistent game snapshot. */
     const ht_game game=ht;
     ht_select_level(game.level);
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
-    if(!ht_cache_visible(camera)) return;
-    if(ht_ai_rendering) {
-        memset(ht_recon_scene,ht_sky_ink(&game),HT_RECON_PIXELS);
-        for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
-            ht_composite_cached_ai(depth,ht_layer_offset(depth,camera),px,py);
-        ht_reconstruct_low_scene();
-    } else {
-        memset(ht_low_scene,ht_sky_ink(&game),HT_SCENE_PIXELS);
-        for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
-            ht_composite_cached_legacy(depth,ht_layer_offset(depth,camera),px,py);
+    bool opaque=ht_grotto_opaque(&game);
+    if(ht_abort) return;
+    if(!opaque) {
+        if(!ht_cache_visible(camera)) return;
+        if(ht_ai_rendering) {
+            memset(ht_recon_scene,ht_sky_ink(&game),HT_RECON_PIXELS);
+            for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
+                ht_composite_cached_ai(depth,ht_layer_offset(depth,camera),px,py);
+            ht_reconstruct_low_scene();
+        } else {
+            memset(ht_low_scene,ht_sky_ink(&game),HT_SCENE_PIXELS);
+            for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
+                ht_composite_cached_legacy(depth,ht_layer_offset(depth,camera),px,py);
+        }
     }
     /* Render directly to the transform source: remove the former full-frame
      * copy into scratch. Input servicing never reads this raster pointer. */
     uint8_t *output=ht_scene;
     if(game.sway_phase || game.drop_zoom) ht_scene=ht_temp;
-    ht_upscale_scene();
+    if(!opaque) ht_upscale_scene();
     /* Lightning lights the sky behind silhouettes, never the HUD or panel
      * waveform. Sky darkening reuses the existing composite clear above. */
-    if(ht_lightning(&game)>80) {
+    if(!opaque && ht_lightning(&game)>80) {
         int x=340-game.camera/2048,y=22;
         for(int i=0;i<5;++i) {
             int nx=x+(i%2?-11:5),ny=y+12+i*3;
@@ -1380,15 +1396,20 @@ static void ht_render_scene(void) {
             x=nx;y=ny;
         }
     }
+    uint32_t world_start=ht_render_now();
+    ht_render_last.background=world_start-stage;
     ht_world_scale=256-game.vista*5/16;
     ht_draw_traversal(&game);
     ht_draw_puzzle(&game);
     ht_character(px,(game.y-game.camera_y)/256,&game);
     ht_weather(&game);
+    uint32_t post_start=ht_render_now();
+    ht_render_last.world=post_start-world_start;
     ht_world_scale=256;
     ht_scene=output;
     if(game.sway_phase || game.drop_zoom) ht_camera_into(ht_temp,&game);
     ht_vignette();
+    ht_render_last.post=ht_render_now()-post_start;
 }
 /* Four physical gray levels. A fixed dispersed 8x8 threshold resolves only
  * fractional blur/fog values between them, with no temporal shimmer. Exact

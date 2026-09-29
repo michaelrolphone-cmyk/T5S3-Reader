@@ -7,31 +7,33 @@ static void ht_draw_traversal(const ht_game *g) {
     int cx=g->camera/256,cy=g->camera_y/256;
     const ht_platform *land=ht_level_land(g->level);
     const ht_mechanics *m=ht_mech(g);
-    ht_scene_geography(g);
-    ht_landscape_detail(g);
-    if(m->water_right) {
-        int water=m->boat_deck+10-cy;
-        int left=g->level==4?cx-ht_view_margin():m->water_left;
-        int right=g->level==4?cx+HT_W+ht_view_margin():m->water_right;
-        ht_rect(ht_scene,left-cx,water,right-left,HT_H,110);
-        for(int band=0;band<16;++band)
-            ht_rect(ht_scene,left-cx,water+band*3,right-left,3,35+band*5);
-        for(int x=m->water_left+4;x<m->water_right;x+=27) {
-            int wave=(int)((g->ticks/3+(unsigned)x)%7);
-            ht_rect(ht_scene,x-cx,water+wave,14,1,35);
-        }
-        for(int shore=0;shore<2;++shore) {
-            int x=(shore?m->water_right:m->water_left)-cx;
-            if(g->level!=4) {
-                ht_rect(ht_scene,x-2,water-18,4,32,255);
-                ht_limb(ht_scene,x-9,water-15,x+9,water-15,1,1,255);
+    if(!ht_grotto_opaque(g)) {
+        ht_scene_geography(g);
+        ht_landscape_detail(g);
+        if(m->water_right) {
+            int water=m->boat_deck+10-cy;
+            int left=g->level==4?cx-ht_view_margin():m->water_left;
+            int right=g->level==4?cx+HT_W+ht_view_margin():m->water_right;
+            ht_rect(ht_scene,left-cx,water,right-left,HT_H,110);
+            for(int band=0;band<16;++band)
+                ht_rect(ht_scene,left-cx,water+band*3,right-left,3,35+band*5);
+            for(int x=m->water_left+4;x<m->water_right;x+=27) {
+                int wave=(int)((g->ticks/3+(unsigned)x)%7);
+                ht_rect(ht_scene,x-cx,water+wave,14,1,35);
             }
-            for(int reflection=0;reflection<3;++reflection)
-                ht_rect(ht_scene,x-3+reflection%2,water+3+reflection*4,5,2,160-reflection*20);
-            if(g->level==4) for(int reed=0;reed<5;++reed) {
-                int rx=x+(shore?-1:1)*(8+reed*4);
-                ht_limb(ht_scene,rx,water+3,rx-2,water-16-reed%3*5,0,0,190);
-                ht_limb(ht_scene,rx,water-3,rx+5,water-10,0,0,150);
+            for(int shore=0;shore<2;++shore) {
+                int x=(shore?m->water_right:m->water_left)-cx;
+                if(g->level!=4) {
+                    ht_rect(ht_scene,x-2,water-18,4,32,255);
+                    ht_limb(ht_scene,x-9,water-15,x+9,water-15,1,1,255);
+                }
+                for(int reflection=0;reflection<3;++reflection)
+                    ht_rect(ht_scene,x-3+reflection%2,water+3+reflection*4,5,2,160-reflection*20);
+                if(g->level==4) for(int reed=0;reed<5;++reed) {
+                    int rx=x+(shore?-1:1)*(8+reed*4);
+                    ht_limb(ht_scene,rx,water+3,rx-2,water-16-reed%3*5,0,0,190);
+                    ht_limb(ht_scene,rx,water-3,rx+5,water-10,0,0,150);
+                }
             }
         }
     }
