@@ -299,7 +299,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                    !ht_math->add_s16 || !ht_math->sub_s16 || !ht_math->copy_bytes || !ht_math->fill_bytes)) ht_math=NULL;
     ht_pad_owned=ht_input_rearm=ht_pad_fault=false; debug_select=debug_jump=false; ht_pad_source=-1; ht_pad_device=0;
     ht_acquire_pad(); ht_acquire_reader(); ht_bind((uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u));
-    ht_ai_rendering=true;ht_render_clock=app->millis;
+    ht_ai_rendering=true;ht_output_mode=HT_OUTPUT_AI;ht_render_clock=app->millis;
     if(!ht_start_video(video,&surface)) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
@@ -337,7 +337,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.1.11: neural 960x540 output A-B renderer started");
+    ht_log("Hollow Trail 1.1.12: AI / AI+Dither comparison started");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -369,14 +369,15 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
         if(mode_down) {
             mode_down=false;
-            ht_ai_rendering=!ht_ai_rendering;
+            ht_output_mode=(ht_output_mode+1)%HT_OUTPUT_COUNT;
             prepared=false; ++scene_revision;
             last_submit=app->millis(); last_frame=last_submit-HT_FRAME_INTERVAL_MS;
             memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=last_submit;
             if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-            ht_log(ht_ai_rendering?
-                "Hollow Trail renderer: AI composition + neural 960x540 output":
-                "Hollow Trail renderer: legacy composition + legacy 960x540 scale");
+            static const char *const modes[HT_OUTPUT_COUNT]={
+                "Hollow Trail renderer: AI",
+                "Hollow Trail renderer: AI + learned dither (experimental)"};
+            ht_log(modes[ht_output_mode]);
         }
         uint32_t now=app->millis();
         if(profile_was_paused && !paused && !reading) {
@@ -417,7 +418,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.10",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.12",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
@@ -425,7 +426,9 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(88,84,chapter,1);
                 ht_text(88,99,debug_select?"L/R CHOOSE   A LOAD   X CANCEL":"L/R CHOOSE LEVEL   A JOURNAL",1);
                 ht_text(88,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
-                ht_text(88,133,ht_ai_rendering?"RENDERER: AI + NEURAL 960":"RENDERER: LEGACY 960 SCALE",1);
+                static const char *const modes[HT_OUTPUT_COUNT]={
+                    "RENDERER: AI", "RENDERER: AI + DITHER"};
+                ht_text(88,133,modes[ht_output_mode],1);
                 ht_text(88,148,"B / UP SWITCH RENDERER   START JOURNAL",1);
                 char perf[64];
                 snprintf(perf,sizeof(perf),"FPS %lu.%lu   SCANS %lu.%lu",

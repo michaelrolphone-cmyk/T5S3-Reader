@@ -688,21 +688,19 @@ int main(void) {
     ht_framed=false;ht_pack_mono(frame,120);ht_pack_mono(generic+1,120);
     assert(!memcmp(frame,generic+1,64800)); // Unaligned output retains byte-safe fallback.
 
-    /* The physical panel is 960x540. AI mode fuses the trained 2x residual
-     * reconstruction into mono packing; flat fields remain bit-identical to
-     * legacy scaling, while a strong edge exercises the learned correction. */
-    memset(ht_scene,73,HT_PIXELS);
-    ht_ai_rendering=false;ht_pack_mono(frame,120);
-    ht_ai_rendering=true;ht_pack_mono(generic,120);
+    /* Both choices use AI composition; only the final packed output changes. */
+    memset(ht_scene,73,HT_PIXELS);ht_ai_rendering=true;
+    ht_output_mode=HT_OUTPUT_AI;ht_pack_mono(frame,120);
+    ht_output_mode=HT_OUTPUT_LEARNED;ht_pack_mono(generic,120);
     assert(!memcmp(frame,generic,64800));
     for(int y=0;y<HT_H;++y) for(int x=0;x<HT_W;++x)
         ht_scene[y*HT_W+x]=(uint8_t)(x<240?20:200);
-    ht_ai_rendering=false;ht_pack_mono(frame,120);
-    ht_ai_rendering=true;ht_pack_mono(generic,120);
+    ht_output_mode=HT_OUTPUT_AI;ht_pack_mono(frame,120);
+    ht_output_mode=HT_OUTPUT_LEARNED;ht_pack_mono(generic,120);
     assert(memcmp(frame,generic,64800));
-    uint32_t neural_pack=checksum(generic,64800);
-    ht_pack_mono(generic,120);
-    assert(neural_pack==checksum(generic,64800));
+    uint32_t learned_pack=checksum(generic,64800);
+    ht_pack_mono(generic,120);assert(learned_pack==checksum(generic,64800));
+    ht_output_mode=HT_OUTPUT_AI;
     free(generic);
     free(expected);
     clock_t start=clock();
