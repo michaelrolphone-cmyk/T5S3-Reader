@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,37 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 94. Risc Strike silently refuses firmware versions its manifest declares compatible
+
+- **Status:** Open.
+- **Sources:** current master `119ce7977d996b73134b1006cf1260abe62aff39`; no current open issue or PR covers this compatibility check.
+- **Affected code:** `Apps/risc_strike.c::app_main()`, `Apps/risc_strike.json`, and the append-only `t5_video_api_v1` definition in `lib/NativeApps/include/T5VideoApi.h`.
+- **Trigger / reproduction:** Build the current Risc Strike 1.0.2 against the current header, then launch it on firmware 1.3.24 through 1.3.31, which the app manifest explicitly permits. Those firmware versions expose video API v1 before the optional `scan_stats` tail member added in firmware 1.3.32, so their valid v1 struct is shorter than the current header's full struct.
+- **Observed / logically demonstrated failure:** `app_main()` rejects the provider when `g_video->struct_size < sizeof(*g_video)` and returns before starting video. Because `sizeof(*g_video)` includes the later optional `scan_stats` callback, an otherwise compatible v1 provider is treated as unusable even though Risc Strike never calls `scan_stats`. The installed app can therefore launch to nothing on firmware versions its own `min_firmware_version: 1.3.24` says are supported.
+- **Likely root cause:** The app validates the entire current append-only API layout instead of validating only the required prefix and callbacks it actually consumes.
+- **Impact:** Package compatibility metadata is false for a range of accepted firmware releases, and users can install an app that immediately refuses to run.
+- **Repair direction:** Replace the full-`sizeof` gate with a `struct_size` check through the last required member, then validate the required callbacks individually. If a post-1.3.24 feature is truly mandatory, raise the manifest minimum instead. Add an ABI-tail regression using a shortened but valid video-v1 provider.
+
+### 95. Risc Strike cannot fire or attack and renders stale hit effects after about 24.8 days of device uptime
+
+- **Status:** Open.
+- **Sources:** current master `119ce7977d996b73134b1006cf1260abe62aff39`; no current open issue or PR covers this timer behavior.
+- **Affected code:** `Apps/risc_strike_engine.inc`, especially `fps_time_reached()`, `fps_reset_game()`, `fps_fire()`, `fps_update_enemies()`, and the muzzle/damage/enemy-hit rendering checks.
+- **Trigger / reproduction:** Let the device millisecond clock reach `0x80000000` (2,147,483,648 ms, about 24.85 days of uptime), then start or reset Risc Strike. `fps_reset_game()` initializes `g_next_fire_ms`, `g_muzzle_until_ms`, `g_damage_until_ms`, and every enemy's attack/hit deadlines to zero.
+- **Observed / logically demonstrated failure:** `fps_time_reached(now, 0)` casts `now - 0` to signed 32-bit. For `now` in `0x80000000..0xffffffff`, that value is negative, so the zero sentinel is treated as a future deadline. `fps_fire()` refuses every shot, enemies fail their initial attack-ready test, and the rendering checks interpret zero-valued muzzle/damage/hit deadlines as still active. The state remains wrong until the 32-bit millisecond clock wraps near 49.7 days.
+- **Likely root cause:** A zero sentinel meaning "inactive/immediately ready" is mixed with the signed half-range wraparound comparison, whose validity assumes the compared deadline is a real nearby timestamp.
+- **Impact:** A long-running device can start Risc Strike in a materially broken game state: shooting and enemy attacks are disabled while transient hit/damage visuals appear continuously.
+- **Repair direction:** Represent inactive timers explicitly, or use separate helpers that treat an inactive deadline as ready for cooldown/attack checks and expired for visual-effect checks while preserving wrap-safe comparison for real deadlines. Add tests around `0x7fffffff`, `0x80000000`, `0xffffffff`, and wrap to zero.
+
+### 96. Hollow Trail can submit an old-chapter frame when a level transition happens inside a render checkpoint
+
+- **Status:** Open.
+- **Sources:** current master `119ce7977d996b73134b1006cf1260abe62aff39`; open PR #282 changes Hollow Trail but does not touch the prepared-frame/level-mismatch validation path.
+- **Affected code:** `Apps/hollow_trail.c::ht_input_update()`, `ht_advance()`, and `app_main()`; `Apps/hollow_trail_engine.inc::ht_render_scene()` and its cooperative `ht_checkpoint()` / `ht_render_service()` calls.
+- **Trigger / reproduction:** Reach a solved chapter goal while movement is held, with a redraw due and no already-prepared frame. Arrange for the next fixed simulation step to cross the goal during one of `ht_render_scene()`'s input checkpoints; production deliberately services input during raster work.
+- **Observed / logically demonstrated failure:** The renderer snapshots the old `ht_game` and continues drawing that chapter while a checkpoint can advance live physics, increment `ht.level`, call `ht_spawn(true)`, and increment `scene_revision`. After `ht_render_scene()` returns, `app_main()` still marks those old pixels `prepared=true`; it checks only quit/debug-jump before the normal submit path. If the video service can accept a frame, the old-chapter buffer is packed and submitted. The existing `ht.level != ht_geometry_level` branch that says it discards an old-level prepared frame runs only at the top of the next loop, after that stale frame may already have been scanned.
+- **Likely root cause:** Prepared-frame validity is fenced only before rendering and at the next host-loop iteration, not after cooperative render checkpoints that are allowed to mutate the live simulation and chapter.
+- **Impact:** Chapter transitions can visibly flash or ghost a full stale frame from the previous level on the e-paper display, defeating the loading/old-frame discard logic.
+- **Repair direction:** Capture a render generation/level epoch before raster work and revalidate it after rendering, after packing, and immediately before submit; discard the prepared buffer whenever the live level or generation changed. Add a host regression that forces a goal-crossing simulation step from a render checkpoint and asserts no old-level submit occurs.
