@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 139. Hollow Trail's aligned journal framebuffer writes past its PSRAM allocation
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260928-2327`.
+
+- **Affected code:** `Apps/hollow_trail.c::app_main()` and `HT_PACKED_BYTES`; `Apps/hollow_trail_engine.inc::HT_MEMORY`; full-frame journal writers in `Apps/hollow_trail_journal.inc::ht_journal_frame()` and `ht_journal_render()`.
+- **Trigger / reproduction:** Launch Hollow Trail and open/render the in-game journal. For a deterministic bounds test, substitute a guarded allocation for `app->psram_alloc(HT_MEMORY + HT_PACKED_BYTES + 31u)`, exercise allocator-valid base alignments, and render a journal page.
+- **Observed / logically demonstrated failure:** The app allocates `HT_MEMORY + HT_PACKED_BYTES + 31` bytes, aligns the engine workspace from `memory`, but independently computes `ht_reader_bitmap = align16(memory + HT_MEMORY + 31)`. With current constants, `HT_MEMORY == 3,161,632` and `HT_PACKED_BYTES == 64,800`, both multiples of 16. The second alignment can therefore move the 64,800-byte journal bitmap beyond the allocation; with a 16-byte-aligned block the final byte is one byte out of bounds, and other ordinary heap alignments can overrun farther. `ht_journal_frame()` and its fallback path call `ht_pack_mono(ht_reader_bitmap, 120)`, which writes the complete packed frame.
+- **Likely root cause:** Alignment slack was budgeted as one trailing `+31` region, but the reader bitmap is aligned from `memory + HT_MEMORY + 31` instead of being derived from the already-aligned workspace end or reserving enough additional slack.
+- **Impact:** Opening journal/story pages can corrupt adjacent PSRAM allocation contents or allocator metadata, causing delayed rendering corruption, crashes, or unrelated failures.
+- **Repair direction:** Derive one aligned workspace base first and place the packed journal buffer immediately after its bounded `HT_MEMORY` region, or explicitly calculate and allocate the worst-case padding for every aligned subregion. Add a guard-byte test over all relevant base-address residues. Open PR #295 changes Hollow Trail rendering but does not modify this allocation or the `HT_MEMORY`/`HT_PACKED_BYTES` placement.
+
+### 140. Web file-manager WebSocket overwrites destroy the previous file before the upload succeeds
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260928-2327`.
+
+- **Affected code:** `src/network/CrossPointWebServer.cpp::onWebSocketEvent()` for `START:` and `WStype_BIN`, plus `abortWsUpload()`.
+- **Trigger / reproduction:** Through the web file manager's WebSocket upload protocol, start an upload whose destination already exists, then disconnect the owning client or force a short SD write before all declared bytes arrive.
+- **Observed / logically demonstrated failure:** The `START:` handler calls `Storage.remove(filePath)` as soon as it sees an existing destination and then opens that same final path for incoming bytes. On disconnect, overflow, or short write, `abortWsUpload()` closes and deletes the partial path. The operation therefore leaves neither the previous valid file nor the incomplete replacement. This is separate from bug #48, which covers the WebDAV PUT/MOVE/COPY implementation; this WebSocket file-manager path has its own destructive write flow.
+- **Likely root cause:** The fast upload protocol writes directly to the published destination and implements overwrite as delete-first rather than as a staged transactional replacement.
+- **Impact:** A dropped browser connection, SD write error, or other mid-upload failure while replacing an existing file causes irreversible loss of the previously valid destination.
+- **Repair direction:** Stream into a unique sibling temporary file, require the exact declared byte count and a successful close/sync, then transactionally replace the destination with rollback of the old file if publication fails. Only clear EPUB cache/state after publication succeeds. Add disconnect and injected short-write regressions proving an existing destination survives every failed replacement.
+
+### 141. Web Settings silently omits the Font Family control when its JSON exceeds the fixed buffer
+
+- **Status:** Open.
+- **Sources:** `automation/bug-scan-20260928-2327`.
+
+- **Affected code:** `src/network/CrossPointWebServer.cpp::handleGetSettings()`; `src/SettingsList.h::buildFontFamilySetting()`; `lib/EpdFont/SdCardFontRegistry.h::MAX_SD_FAMILIES`.
+- **Trigger / reproduction:** Install enough SD font families that the JSON object for the dynamic `fontFamily` enum exceeds the fixed 512-byte per-setting buffer, then open the web Settings page or request its settings API. The registry supports up to 128 SD families, and the API includes every family name plus the two built-ins in one `options` array.
+- **Observed / logically demonstrated failure:** `handleGetSettings()` serializes each complete setting into `char output[512]`; when `serializeJson()` reaches/exceeds that capacity, the code logs `Skipping oversized setting JSON` and continues without emitting that setting. The dynamic Font Family entry grows with the installed registry and can therefore disappear entirely from the response even though the fonts remain installed.
+- **Likely root cause:** A variable-size enum is forced through a fixed per-setting serialization buffer, and overflow is handled by dropping the setting rather than streaming or growing the representation.
+- **Impact:** As the font library grows, the web settings UI loses the Font Family control and cannot display or change the active family. This is distinct from bug #60, which concerns the on-device Font Family selector's own choice limit.
+- **Repair direction:** Stream the setting JSON directly or use bounded PSRAM-backed/growable serialization sized from `measureJson()`; never silently omit a valid setting because its options are numerous. Add a regression with enough short and long family names to cross 512 bytes and verify the response remains valid JSON containing the complete `fontFamily` setting.
