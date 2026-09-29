@@ -1584,6 +1584,7 @@ static inline __attribute__((always_inline)) void ht_pack_lanes_neural(
 
 static __attribute__((optimize("O3"))) void ht_pack_mono_neural(uint8_t *out,int stride) {
     static const uint32_t thresholds[4]={0x3f0f3303u,0x1f2f1323u,0x37073b0bu,0x17271b2bu};
+    bool word_output=(((uintptr_t)out|(unsigned)stride)&3u)==0;
     for(int y=0;y<HT_H;++y) {
         if(ht_framed && ht_visible_left[y]==HT_W/2 &&
            ht_visible_left[ht_min(y+1,HT_H-1)]==HT_W/2) {
@@ -1603,7 +1604,23 @@ static __attribute__((optimize("O3"))) void ht_pack_mono_neural(uint8_t *out,int
             memset(top+right_edge/4,255,left/4);memset(bottom+right_edge/4,255,left/4);
         }
         uint32_t even=thresholds[y&3],odd=even+0x40404040u;
-        for(int x=left;x<right_edge;x+=4)
+        int x=left;
+        for(;x<right_edge && (x&15);x+=4)
+            ht_pack_lanes_neural(prev,row,next,x,even,odd,ht_solid_dots[y&3],
+                                 top+x/4,bottom+x/4);
+        for(;word_output && x+16<right_edge;x+=16) {
+            uint32_t packed_top=0,packed_bottom=0;
+            for(unsigned lane=0;lane<4;++lane) {
+                uint8_t t,b;
+                ht_pack_lanes_neural(prev,row,next,x+4*(int)lane,even,odd,
+                                     ht_solid_dots[y&3],&t,&b);
+                packed_top|=(uint32_t)t<<(lane*8);
+                packed_bottom|=(uint32_t)b<<(lane*8);
+            }
+            ht_store4(top+x/4,packed_top);
+            ht_store4(bottom+x/4,packed_bottom);
+        }
+        for(;x<right_edge;x+=4)
             ht_pack_lanes_neural(prev,row,next,x,even,odd,ht_solid_dots[y&3],
                                  top+x/4,bottom+x/4);
         if((y&7)==7) ht_checkpoint();
