@@ -87,6 +87,18 @@ int main(){
                            rect.width*2,rect.height*2,4,64);
  }
  assert(memcmp(pixels,guarded+1,sizeof(pixels))==0);
+ // The final wordmark must exactly match all glyph masks, including the i
+ // stem rows that previously travelled incorrectly with the falling dot.
+ memset(pixels,0,sizeof(pixels));memset(guarded+1,0,sizeof(pixels));
+ visualTimeMs=1800;drawBootWordmark(pixels,sizeof(pixels),270,564,64);
+ int wordX=190;
+ for(int letter=0;letter<7;++letter){
+   for(int y=0;y<32;++y)for(int x=0;x<kWordmarkWidths[letter];++x)
+     if(kWordmarkRows[letter][y]&(1u<<x))
+       setPhysicalPixel(guarded+1,sizeof(pixels),wordX+x,564+y,true);
+   wordX+=kWordmarkWidths[letter];
+ }
+ assert(memcmp(pixels,guarded+1,sizeof(pixels))==0);
  auto began=millis();boot(renderer);
  assert(millis()-began<200); // reveal is not on the startup caller
  unsigned loadingSteps=0;

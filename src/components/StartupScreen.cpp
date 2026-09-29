@@ -345,46 +345,94 @@ int textWidth(const char* text, int scale) {
                           static_cast<size_t>(scale));
 }
 
-// A travelling rounded stroke draws the contour, then thickens inward.
-// One bounded box-area pass keeps the traced surface and final fill seamless.
-void drawInkBlock(uint8_t* buffer, size_t size, int x, int y,
-                  int width, int height, uint32_t age, uint8_t coverage,
-                  bool reverse) {
+struct InkPoint { int x; int y; };
+
+// Fixed-size convex strip rasterizer. All work is clipped to the panel; the
+// ribbons use 32 strips each and never allocate a path or framebuffer.
+void inkQuad(uint8_t* buffer,size_t size,const InkPoint* p,uint8_t coverage) {
   if(!coverage) return;
-  if(age>=600u) {
+  int top=p[0].y,bottom=top;
+  for(int i=1;i<4;++i) {if(p[i].y<top) top=p[i].y;if(p[i].y>bottom) bottom=p[i].y;}
+  if(top<0) top=0;
+  if(bottom>=static_cast<int>(videoSurface.width)) bottom=videoSurface.width-1;
+  for(int y=top;y<=bottom;++y) {
+    int left=32767,right=-32768;
+    for(int i=0;i<4;++i) {
+      InkPoint a=p[i],b=p[(i+1)%4];
+      if(a.y>b.y) {const InkPoint swap=a;a=b;b=swap;}
+      if(a.y==b.y || y<a.y || y>=b.y) continue;
+      const int x=a.x+(b.x-a.x)*(y-a.y)/(b.y-a.y);
+      if(x<left) left=x;
+      if(x>right) right=x;
+    }
+    if(left<0) left=0;
+    if(right>=static_cast<int>(videoSurface.height)) right=videoSurface.height-1;
+    for(int x=left;x<=right;++x)
+      if(ditherPixel(x,y,coverage)) setPhysicalPixel(buffer,size,x,y,true);
+  }
+}
+
+InkPoint inkCurve(int t,int side,int cx,int cy) {
+  const int64_t q=1000-t;
+  const int64_t a=q*q*q,b=3*q*q*t,c=3*q*t*t;
+  return {cx+side*static_cast<int>((-330*a+340*b-190*c)/1000000000),
+          cy+side*static_cast<int>((-190*a-260*b+190*c)/1000000000)};
+}
+
+void drawInkSweep(uint8_t* buffer,size_t size,int cx,int cy,uint32_t time,uint8_t coverage) {
+  if(time>=780u || !coverage) return;
+  for(int side=-1;side<=1;side+=2) {
+    const int local=static_cast<int>(time)-(side==1?70:0);
+    if(local<0) continue;
+    const int head=local*1500/710;
+    const int tail=head-500;
+    InkPoint previousA{},previousB{};
+    bool previous=false;
+    for(int segment=0;segment<=32;++segment) {
+      const int along=segment*1000/32;
+      const int t=tail+500*along/1000;
+      if(t<0 || t>1000) {previous=false;continue;}
+      const InkPoint center=inkCurve(t,side,cx,cy);
+      const int64_t q=1000-t;
+      const int dx=side*static_cast<int>((670*q*q-1060*q*t+190LL*t*t)/1000000);
+      const int dy=side*static_cast<int>((-70*q*q+900*q*t-190LL*t*t)/1000000);
+      const int ax=dx<0?-dx:dx,ay=dy<0?-dy:dy;
+      const int norm=(ax>ay?ax+ay/2:ay+ax/2)+1;
+      // Tapered brush body: a broad belly, fine tail and pointed leading edge.
+      const int belly=4*along*(1000-along)/1000;
+      const int endTaper=t>875?(1000-t)*8:1000;
+      const int width=belly*(3+49*(1000-t)*(1000-t)/1000000)/1000*endTaper/1000;
+      const InkPoint a{center.x-dy*width/norm,center.y+dx*width/norm};
+      const InkPoint b{center.x+dy*width/norm,center.y-dx*width/norm};
+      if(previous) {const InkPoint quad[4]={previousA,a,b,previousB};inkQuad(buffer,size,quad,coverage);}
+      previousA=a;previousB=b;previous=true;
+    }
+  }
+}
+
+void drawFormingBlock(uint8_t* buffer,size_t size,int x,int y,int width,int height,
+                      uint32_t age,int side,uint8_t coverage) {
+  if(!coverage) return;
+  if(age>=360u) {
     drawDitheredRoundedRect(buffer,size,x,y,width,height,4,coverage);
     return;
   }
-  const int perimeter=2*(width+height-2);
-  const int traced=age>=340u?perimeter:static_cast<int>(age)*perimeter/340;
-  const int fillTime=age<=300u?0:static_cast<int>(age-300u)*1000/300;
-  const int fill=fillTime*fillTime*(3000-2*fillTime)/1000000;
-  const int thickness=2+(height/2)*fill/1000;
-  const int radius=8-4*fill/1000;
-  for(int py=0;py<height;++py) for(int px=0;px<width;++px) {
-    if(!insideRoundedRect(px,py,width,height,radius)) continue;
-    int depth=py,phase=px;
-    if(width-1-px<depth) {depth=width-1-px;phase=width-1+py;}
-    if(height-1-py<depth) {depth=height-1-py;phase=width+height-2+width-1-px;}
-    if(px<depth) {depth=px;phase=2*width+height-3+height-1-py;}
-    phase=(phase+perimeter-width/2)%perimeter;
-    if(reverse) phase=(perimeter-phase)%perimeter;
-    if(depth<thickness && phase<=traced && ditherPixel(x+px,y+py,coverage))
-      setPhysicalPixel(buffer,size,x+px,y+py,true);
-  }
-  if(age<340u) {
-    int phase=((reverse?perimeter-traced:traced)+width/2)%perimeter;
-    int hx=0,hy=0;
-    if(phase<width-1) hx=phase;
-    else if((phase-=width-1)<height-1) {hx=width-1;hy=phase;}
-    else if((phase-=height-1)<width-1) {hx=width-1-phase;hy=height-1;}
-    else {phase-=width-1;hy=height-1-phase;}
-    // A small ink bead leads the stroke, clipped to the rounded silhouette.
-    for(int dy=-3;dy<=3;++dy) for(int dx=-3;dx<=3;++dx) {
-      const int px=hx+dx,py=hy+dy;
-      if(dx*dx+dy*dy>9 || px<0 || py<0 || px>=width || py>=height ||
-         !insideRoundedRect(px,py,width,height,radius)) continue;
-      if(ditherPixel(x+px,y+py,coverage)) setPhysicalPixel(buffer,size,x+px,y+py,true);
+  const int t=static_cast<int>(age)*1000/360,q=t-1000;
+  // A restrained ease-out-back gives the ink weight and a soft pressure release.
+  const int ease=1000+static_cast<int>((2400LL*q*q*q/1000+1400LL*q*q)/1000000);
+  const int growth=ease<0?0:ease;
+  const int w=2+(width-2)*growth/1000,h=2+(height-2)*growth/1000;
+  const int cx=x+width/2+side*30*(1000-ease)/1000;
+  const int cy=y+height/2+45*(1000-ease)/1000;
+  const int bend=side*w*22*(1000-t)/200000;
+  const int radius=4+(h/2-4)*(1000-t)/1000;
+  for(int px=0;px<w;++px) {
+    const int u=px*1000/(w>1?w-1:1);
+    const int curl=bend*4*u*(1000-u)/1000000;
+    for(int py=0;py<h;++py) {
+      if(!insideRoundedRect(px,py,w,h,radius)) continue;
+      const int sx=cx-w/2+px,sy=cy-h/2+py+curl;
+      if(ditherPixel(sx,sy,coverage)) setPhysicalPixel(buffer,size,sx,sy,true);
     }
   }
 }
@@ -418,7 +466,7 @@ void drawBootWordmark(uint8_t* buffer,size_t size,int centerX,int y,uint8_t cove
         const int eased=unfold*unfold*(3000-2*unfold)/1000000;
         const int drawnWidth=6+(width-6)*eased/1000;
         for(int py=0;py<32;++py) {
-          if(letter==1 && py<9) continue; // dot arrives independently below
+          if(letter==1 && py<5) continue; // dot arrives independently below
           for(int dx=0;dx<drawnWidth;++dx) {
             const int sourceX=dx*width/drawnWidth;
             const int px=x+(width-drawnWidth)/2+dx;
@@ -434,7 +482,7 @@ void drawBootWordmark(uint8_t* buffer,size_t size,int centerX,int y,uint8_t cove
           const int bounce=(age-340)*1000/110;
           offset=-4*4*bounce*(1000-bounce)/1000000;
         }
-        for(int py=0;py<9;++py) for(int px=0;px<width;++px)
+        for(int py=0;py<5;++py) for(int px=0;px<width;++px)
           if((kWordmarkRows[letter][py]&(1u<<px)) && ditherPixel(x+px,y+py+offset,coverage))
             setPhysicalPixel(buffer,size,x+px,y+py+offset,true);
       }
@@ -445,7 +493,7 @@ void drawBootWordmark(uint8_t* buffer,size_t size,int centerX,int y,uint8_t cove
 
 void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
                    uint8_t logoCoverage, uint8_t textCoverage) {
-  // Fixed final anchor; travelling ink strokes materialize the mark.
+  // Large opening gesture resolves into the stationary brand mark.
   if (visibleBlocks > kLogoBlockCount) visibleBlocks = kLogoBlockCount;
 
   const int logicalWidth = static_cast<int>(videoSurface.height);
@@ -454,26 +502,30 @@ void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
   const int frameY = (logicalHeight - kFrameHeight) / 2;
 
 
-  // Offset travelling strokes establish the contours, followed by an
-  // overlapping wave of material filling each shape from its rim inward.
+  drawInkSweep(buffer,bufferSize,logicalWidth/2,frameY+116,visualTimeMs,logoCoverage);
+  // The wave follows the arriving ink and leaves the original logo behind.
   for(int rectIndex=0;rectIndex<kLogoBlockCount;++rectIndex) {
-    const uint32_t born=static_cast<uint32_t>(rectIndex)*45u;
+    const uint32_t born=400u+static_cast<uint32_t>(rectIndex)*40u;
     if(visualTimeMs<=born) continue;
     const auto& rect=kLogoRects[rectIndex];
-    drawInkBlock(buffer,bufferSize,frameX+rect.x*2,frameY+rect.y*2,
-                 rect.width*2,rect.height*2,visualTimeMs-born,logoCoverage,
-                 (rectIndex&1)!=0);
+    drawFormingBlock(buffer,bufferSize,frameX+rect.x*2,frameY+rect.y*2,
+                     rect.width*2,rect.height*2,visualTimeMs-born,
+                     (rectIndex&1)?1:-1,logoCoverage);
   }
 
   // Both labels stay at fixed coordinates and first appear after all blocks.
   if (visibleBlocks == kLogoBlockCount && textCoverage != 0U) {
-    constexpr char status[] = "STARTING...";
-    constexpr int statusScale = 2;
-
     drawBootWordmark(buffer,bufferSize,logicalWidth/2,frameY+244,logoCoverage);
-    drawDitheredText(buffer, bufferSize,
-                     (logicalWidth - textWidth(status, statusScale)) / 2,
-                     frameY + 291, status, statusScale, textCoverage);
+    // A quiet three-dot loading beat begins after the wordmark settles.
+    if(visualTimeMs>=1510u) for(int dot=0;dot<3;++dot) {
+      const int phase=static_cast<int>((visualTimeMs/180u)%3u);
+      const int radius=dot==phase?3:2;
+      for(int py=-radius;py<=radius;++py) for(int px=-radius;px<=radius;++px) {
+        if(px*px+py*py>radius*radius) continue;
+        const int x=logicalWidth/2+(dot-1)*13+px,y=frameY+297+py;
+        if(ditherPixel(x,y,textCoverage)) setPhysicalPixel(buffer,bufferSize,x,y,true);
+      }
+    }
 
   }
 }
