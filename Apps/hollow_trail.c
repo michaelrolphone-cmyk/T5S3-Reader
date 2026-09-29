@@ -320,6 +320,13 @@ __attribute__((visibility("default"))) void app_main(void) {
         "Hollow Trail expanded SIMD unavailable: packing baseline retained");
     ht_log(ht_simd_ready?"Hollow Trail fused SIMD: device self-test passed":
         "Hollow Trail fused SIMD unavailable: AI fallback");
+    {
+        char diagnostic[160];
+        snprintf(diagnostic,sizeof(diagnostic),"SIMD pack=%s expanded=%s features=%lx pattern=%u phase=%u byte=%u expected=%u actual=%u",
+            ht_simd_reason,ht_expanded_reason,(unsigned long)(ht_math?ht_math->features:0),
+            ht_simd_test_pattern,ht_simd_test_phase,ht_simd_test_byte,ht_simd_test_expected,ht_simd_test_actual);
+        ht_log(diagnostic);
+    }
     ht_clear_layer(ht_scene); ht_text(150,120,"PREPARING FOREST",2); ht_vignette();
     if(video->can_submit()) {
         size_t size=0; uint8_t *buffer=video->backbuffer(&size);
@@ -343,7 +350,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.1.14: SIMD baseline / expanded comparison started");
+    ht_log("Hollow Trail 1.1.15: SIMD baseline / expanded comparison started");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -424,7 +431,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.14",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.15",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
@@ -435,7 +442,12 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(88,133,!ht_simd_ready?"SIMD UNAVAILABLE: AI":
                     ht_expanded_mode?(ht_expanded_ready?"AI + SIMD: EXPANDED":"EXPANDED UNAVAILABLE: BASE"):
                     "AI + SIMD: BASELINE",1);
-                ht_text(88,148,"B / UP SWITCH RENDERER   START JOURNAL",1);
+                if(!ht_simd_ready || !ht_expanded_ready) {
+                    char reason[64];
+                    snprintf(reason,sizeof(reason),"SIMD: %s P%u B%u",!ht_simd_ready?ht_simd_reason:ht_expanded_reason,
+                        ht_simd_test_pattern,ht_simd_test_byte);
+                    ht_text(88,148,reason,1);
+                } else ht_text(88,148,"B / UP SWITCH RENDERER   START JOURNAL",1);
                 char perf[64];
                 snprintf(perf,sizeof(perf),"FPS %lu.%lu   SCANS %lu.%lu",
                     (unsigned long)(ht_perf.fps10/10),(unsigned long)(ht_perf.fps10%10),

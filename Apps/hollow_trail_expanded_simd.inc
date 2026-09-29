@@ -7,11 +7,9 @@
  */
 static bool ht_expanded_mode,ht_expanded_ready;
 static bool ht_expanded_active(void) { return ht_expanded_mode && ht_expanded_ready; }
-static const uint8_t ht_expand_constants[3][16] __attribute__((aligned(16)))={
- {128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128},
- {127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127},
- {79,79,79,79,79,79,79,79,79,79,79,79,79,79,79,79}
-};
+/* Runtime-aligned PSRAM, not ELF .rodata: section relocation can discard
+ * linker alignment. Initialized once by ht_bind, shared by checks and draws. */
+static uint8_t (*ht_expand_constants)[16];
 #if defined(__XTENSA__)
 extern void ht_expand_span_s3(const uint8_t *,const uint8_t *,uint8_t *,uint8_t *,const uint8_t *,unsigned);
 extern void ht_edge_span_s3(const uint8_t *,const uint8_t *,uint8_t *,const uint8_t *,unsigned);
@@ -312,7 +310,12 @@ static void ht_blur_span(int16_t *s,const int16_t *a,const int16_t *b,uint8_t *d
  * Alignment variants include odd camera offsets and the 120-byte row stride. */
 static bool ht_expanded_selftest(void) {
 #if defined(__XTENSA__)
-    if(!ht_math || !(ht_math->features&T5_MATH_FEATURE_S3_DSP))return false;
+    ht_expanded_reason="NO MATH API";
+    if(!ht_math)return false;
+    ht_expanded_reason="NO S3 FEATURE";
+    if(!(ht_math->features&T5_MATH_FEATURE_S3_DSP))return false;
+    ht_expanded_reason="TABLE ALIGN";
+    if(!ht_expand_constants || ((uintptr_t)ht_expand_constants&15u))return false;
     uint8_t a[128] __attribute__((aligned(16))),b[128] __attribute__((aligned(16)));
     uint8_t got[160] __attribute__((aligned(16))),want[160] __attribute__((aligned(16)));
     uint16_t r[40] __attribute__((aligned(16))),k[16] __attribute__((aligned(16)));
@@ -328,18 +331,21 @@ static bool ht_expanded_selftest(void) {
         memset(got,0xa5,sizeof(got));memcpy(want,got,sizeof(got));
         ht_expand_span_c(a+off,b+8-off,want+16,want+80,blocks);
         ht_expand_span(a+off,b+8-off,got+16,got+80,blocks);
-        if(memcmp(got,want,sizeof(got)))return false;
+        ht_expanded_reason="UPSCALE TEST";
+        if(!ht_simd_test_equal(got,want,sizeof(got),pattern,0))return false;
         memset(got,0xa5,sizeof(got));memcpy(want,got,sizeof(got));
         ht_edge_span_c(a+off,b+8-off,want+16,blocks);
         ht_edge_span(a+off,b+8-off,got+16,blocks);
-        if(memcmp(got,want,sizeof(got)))return false;
+        ht_expanded_reason="EDGE TEST";
+        if(!ht_simd_test_equal(got,want,sizeof(got),pattern,0))return false;
         for(int i=0;i<8;++i){k[i]=pattern&1?45:70;k[i+8]=256;}
         for(unsigned i=0;i<sizeof(got);++i)got[i]=(uint8_t)ht_hash(i+pattern);
         memcpy(want,got,sizeof(got));
         off=pattern&15;
         ht_blend_span_c(a+off,b+off,r+(pattern&4),want+16+(pattern&4),k,blocks);
         ht_blend_span(a+off,b+off,r+(pattern&4),got+16+(pattern&4),k,blocks);
-        if(memcmp(got,want,sizeof(got)))return false;
+        ht_expanded_reason="BLEND TEST";
+        if(!ht_simd_test_equal(got,want,sizeof(got),pattern,0))return false;
         unsigned n=3+2*(pattern%9);
         for(int i=0;i<8;++i){k[i]=(uint16_t)((65536u+n-1)/n);k[i+8]=(uint16_t)n;}
         for(int i=0;i<32;++i) {
@@ -349,11 +355,13 @@ static bool ht_expanded_selftest(void) {
         memset(got,0xa5,sizeof(got));memcpy(want,got,sizeof(got));
         ht_blur_span_c(expected+8,add+8,sub+8,want+16,k,blocks);
         ht_blur_span(sums+8,add+8,sub+8,got+16,k,blocks);
-        if(memcmp(got,want,sizeof(got)) || memcmp(sums,expected,sizeof(sums)))return false;
+        ht_expanded_reason="BLUR TEST";
+        if(!ht_simd_test_equal(got,want,sizeof(got),pattern,0) ||
+           !ht_simd_test_equal(sums,expected,sizeof(sums),pattern,1))return false;
         if((pattern&7)==7)ht_checkpoint();
     }
-    return true;
+    ht_expanded_reason="READY";return true;
 #else
-    return false;
+    ht_expanded_reason="NOT S3 BUILD";return false;
 #endif
 }

@@ -6,12 +6,25 @@
  * reserved for the windowed ABI. QR registers are PIE scratch registers.
  * Runtime enable requires the platform's S3 feature flag and a device self-test.
  */
-static const uint8_t ht_simd_constants[4][6][16] __attribute__((aligned(16)))={
- {{128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128},{127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127},{130,178,142,190,130,178,142,190,130,178,142,190,130,178,142,190},{66,114,78,126,66,114,78,126,66,114,78,126,66,114,78,126},{2,50,14,62,2,50,14,62,2,50,14,62,2,50,14,62},{194,242,206,254,194,242,206,254,194,242,206,254,194,242,206,254}},
- {{128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128},{127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127},{162,146,174,158,162,146,174,158,162,146,174,158,162,146,174,158},{98,82,110,94,98,82,110,94,98,82,110,94,98,82,110,94},{34,18,46,30,34,18,46,30,34,18,46,30,34,18,46,30},{226,210,238,222,226,210,238,222,226,210,238,222,226,210,238,222}},
- {{128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128},{127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127},{138,186,134,182,138,186,134,182,138,186,134,182,138,186,134,182},{74,122,70,118,74,122,70,118,74,122,70,118,74,122,70,118},{10,58,6,54,10,58,6,54,10,58,6,54,10,58,6,54},{202,250,198,246,202,250,198,246,202,250,198,246,202,250,198,246}},
- {{128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128},{127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127},{170,154,166,150,170,154,166,150,170,154,166,150,170,154,166,150},{106,90,102,86,106,90,102,86,106,90,102,86,106,90,102,86},{42,26,38,22,42,26,38,22,42,26,38,22,42,26,38,22},{234,218,230,214,234,218,230,214,234,218,230,214,234,218,230,214}},
-};
+/* Runtime storage follows the renderer arenas. `aligned(16)` on an ELF
+ * constant is insufficient: the section loader packs data after a heap block
+ * whose base is not guaranteed to preserve the linker's 16-byte alignment. */
+static uint8_t (*ht_simd_constants)[6][16];
+static void ht_simd_constants_init(uint8_t *memory) {
+    ht_simd_constants=(uint8_t (*)[6][16])memory;
+    ht_expand_constants=(uint8_t (*)[16])(memory+4*6*16);
+    const uint8_t threshold[4][4]={{3,51,15,63},{35,19,47,31},{11,59,7,55},{43,27,39,23}};
+    const unsigned offset[4]={0,192,128,64};
+    for(unsigned phase=0;phase<4;++phase)for(unsigned lane=0;lane<16;++lane) {
+        ht_simd_constants[phase][0][lane]=128;
+        ht_simd_constants[phase][1][lane]=127;
+        for(unsigned plane=0;plane<4;++plane)
+            ht_simd_constants[phase][plane+2][lane]=(uint8_t)((threshold[phase][lane&3]+offset[plane]-1)^128u);
+    }
+    for(unsigned lane=0;lane<16;++lane) {
+        ht_expand_constants[0][lane]=128;ht_expand_constants[1][lane]=127;ht_expand_constants[2][lane]=79;
+    }
+}
 /* The build uses the S3 compiler. Other architectures retain the portable
  * model. The platform feature check prevents executing PIE on another Xtensa. */
 #if defined(__XTENSA__)
@@ -228,7 +241,13 @@ static void ht_pack_simd_span_c(const uint8_t *row,const uint8_t *next,
  * 64 patches x 4 phases; tests both single blocks and a two-block loop. */
 static bool ht_simd_selftest(void) {
 #if HT_SIMD_S3_COMPILED
-    if(!ht_math || !(ht_math->features&T5_MATH_FEATURE_S3_DSP)) return false;
+    ht_simd_reason="NO MATH API";
+    if(!ht_math)return false;
+    ht_simd_reason="NO S3 FEATURE";
+    if(!(ht_math->features&T5_MATH_FEATURE_S3_DSP))return false;
+    ht_simd_reason="TABLE ALIGN";
+    if(!ht_simd_constants || ((uintptr_t)ht_simd_constants&15u))return false;
+    ht_simd_reason="PACK TEST";
     uint8_t a[48] __attribute__((aligned(16))),b[48] __attribute__((aligned(16)));
     uint8_t got[32] __attribute__((aligned(16))),expected[32] __attribute__((aligned(16)));
     for(unsigned pattern=0;pattern<64;++pattern) {
@@ -242,12 +261,12 @@ static bool ht_simd_selftest(void) {
             unsigned blocks=1+(pattern&1);
             ht_pack_simd_span_c(a,b,expected+4,expected+20,k,blocks);
             ht_pack_simd_span_s3(a,b,got+4,got+20,k,blocks);
-            if(memcmp(got,expected,sizeof(got)))return false;
+            if(!ht_simd_test_equal(got,expected,sizeof(got),pattern,phase))return false;
         }
         if((pattern&7)==7)ht_checkpoint();
     }
-    return true;
+    ht_simd_reason="READY";return true;
 #else
-    return false;
+    ht_simd_reason="NOT S3 BUILD";return false;
 #endif
 }

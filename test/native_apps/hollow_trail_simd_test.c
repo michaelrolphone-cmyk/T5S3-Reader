@@ -6,7 +6,38 @@
 #include "../../Apps/hollow_trail_engine.inc"
 static unsigned checkpoints;
 static void service(void){++checkpoints;}
+static void runtime_tables(void){
+ /* App aligns its arena even when a heap allocation or relocated ELF section
+  * lands at a different byte offset. Tables must remain in that arena. */
+ uint8_t *raw=malloc(HT_MEMORY+64);assert(raw);
+ const unsigned threshold[4][4]={{3,51,15,63},{35,19,47,31},{11,59,7,55},{43,27,39,23}};
+ const unsigned offsets[4]={0,192,128,64};
+ for(unsigned offset=0;offset<16;++offset){
+  memset(raw,0xa5,HT_MEMORY+64);
+  uint8_t *base=(uint8_t *)(((uintptr_t)(raw+offset)+15u)&~(uintptr_t)15u);
+  ht_bind(base);
+  assert(!((uintptr_t)ht_simd_constants&15u) && !((uintptr_t)ht_expand_constants&15u));
+  assert((uint8_t *)ht_simd_constants==ht_recon_scene+HT_RECON_PIXELS);
+  assert((uint8_t *)ht_expand_constants+48==base+HT_MEMORY);
+  for(unsigned phase=0;phase<4;++phase)for(unsigned lane=0;lane<16;++lane){
+   assert(ht_simd_constants[phase][0][lane]==128 && ht_simd_constants[phase][1][lane]==127);
+   for(unsigned plane=0;plane<4;++plane)
+    assert(ht_simd_constants[phase][plane+2][lane]==((threshold[phase][lane&3]+offsets[plane]-1)^128u));
+  }
+  for(unsigned lane=0;lane<16;++lane)
+   assert(ht_expand_constants[0][lane]==128 && ht_expand_constants[1][lane]==127 && ht_expand_constants[2][lane]==79);
+  for(uint8_t *p=raw;p<base;++p)assert(*p==0xa5);
+  for(uint8_t *p=base+HT_MEMORY;p<raw+HT_MEMORY+64;++p)assert(*p==0xa5);
+ }
+ uint8_t got[3]={1,7,3},want[3]={1,2,3};
+ assert(!ht_simd_test_equal(got,want,3,17,2));
+ assert(ht_simd_test_pattern==17 && ht_simd_test_phase==2 && ht_simd_test_byte==1);
+ assert(ht_simd_test_expected==2 && ht_simd_test_actual==7);
+ assert(ht_simd_test_equal(want,want,3,0,0));
+ free(raw);
+}
 int main(void){
+ runtime_tables();
  for(unsigned a=0;a<256;++a)for(unsigned b=0;b<256;++b)
   assert((ht_simd_mean((uint8_t)(a^128),(uint8_t)(b^128))^128)==(a+b)/2);
  uint8_t *mem=malloc(HT_MEMORY),*reference=malloc(125*540),*guard=malloc(125*540+32);
