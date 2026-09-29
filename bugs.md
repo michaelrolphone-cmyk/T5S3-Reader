@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 175. Failed legacy-state retirement can later roll current state back to stale binary data
+
+- **Status:** Open.
+- **Sources:** 2026-09-29 source review against master `747fbc7373dea6792ad4bfe7eb2fcf04e3e0d1c6`.
+
+- **Affected code:** `src/CrossPointState.cpp`, especially `CrossPointState::loadFromFile()`; state persistence through `src/JsonSettingsIO.cpp::saveState()` / `loadState()`.
+- **Trigger / reproduction:** Start with a valid legacy `/.crosspoint/state.bin` and no JSON state. Let binary loading and the subsequent `state.json` save succeed, but force `Storage.rename("/.crosspoint/state.bin", "/.crosspoint/state.bin.bak")` to fail. Continue using the device so `state.json` advances beyond the legacy state. On a later boot or reload, make the existing `state.json` read return empty/unreadable.
+- **Observed / logically demonstrated failure:** `loadFromFile()` ignores the return value of the legacy-file rename, logs that migration succeeded, and returns `true`. The stale `state.bin` therefore remains a live fallback. If the current JSON later cannot be read, the loader falls through to that old binary file, loads its older `openEpubPath`, sleep-history fields, reader load count, and `lastSleepFromReader`, then can successfully call `saveToFile()` and overwrite the JSON state with those stale values.
+- **Likely root cause:** Migration success is decided after publishing the replacement JSON but before verifying retirement of the legacy fallback source. The loader also treats an existing-but-unreadable JSON state the same as an absent JSON state and therefore permits fallback to any leftover legacy file.
+- **Impact:** A transient SD failure during migration followed by a later JSON read failure can convert a recoverable I/O problem into persistent state rollback, losing newer reader/session and sleep-selection state.
+- **Repair direction:** Treat legacy retirement as part of the migration transaction: check the rename result, handle an existing backup safely, and do not report migration complete while the legacy source remains eligible for fallback. Distinguish "JSON absent" from "JSON exists but could not be read/parsed" so a stale legacy file is not automatically preferred after migration. Add a fault-injection test for rename failure followed by a later JSON read failure and prove newer state is never overwritten by the old binary snapshot.
+
+### 176. Malformed palette PNG metadata can divide by zero while generating EPUB covers
+
+- **Status:** Open.
+- **Sources:** 2026-09-29 source review against master `747fbc7373dea6792ad4bfe7eb2fcf04e3e0d1c6`.
+
+- **Affected code:** `lib/PngToBmpConverter/PngToBmpConverter.cpp`, `pngFileToBmpStreamInternal()` and `convertScanlineToGray()`; reached by `lib/Epub/Epub.cpp::generateCoverBmp()` and `generateThumbBmp()`.
+- **Trigger / reproduction:** Supply an EPUB cover PNG whose IHDR uses indexed/palette color type 3 with an invalid bit depth of 16, plus enough PLTE/IDAT data for the custom decoder to reach scanline conversion. The parser accepts the color type/bit-depth pair and computes a raw row rather than rejecting the invalid IHDR.
+- **Observed / logically demonstrated failure:** The IHDR path validates compression, filter, interlace, dimensions, and color type, but never validates the legal bit depths for each PNG color type. For palette images, `convertScanlineToGray()` computes `ppb = 8 / ctx.bitDepth`. With bit depth 16, `ppb` becomes zero and the next expression evaluates `x % ppb`, producing an integer divide-by-zero exception instead of rejecting the malformed image. Other illegal bit-depth/color-type combinations are likewise allowed into code that assumes PNG-spec-valid values.
+- **Likely root cause:** The custom cover decoder validates individual IHDR fields but omits the PNG specification's color-type/bit-depth compatibility matrix before using bit depth in divisor and packing arithmetic.
+- **Impact:** A malformed or corrupted PNG cover can reset/crash the device while a cover or home-screen thumbnail is generated, potentially repeating whenever the book is opened and the cache is regenerated.
+- **Repair direction:** Validate the complete IHDR tuple before allocating or decoding: grayscale only 1/2/4/8/16 bits, truecolor only 8/16, indexed only 1/2/4/8, and grayscale-alpha/RGBA only 8/16. Reject zero and every unsupported depth before any division/shift arithmetic; also require a valid palette for indexed images. Add malformed fixtures for palette-16, palette-0, and other illegal combinations and verify clean failure with no exception.
+
+### 177. JPEG/PNG cover conversion reports success after short output writes and leaves persistent truncated BMP caches
+
+- **Status:** Open.
+- **Sources:** 2026-09-29 source review against master `747fbc7373dea6792ad4bfe7eb2fcf04e3e0d1c6`.
+
+- **Affected code:** `lib/PngToBmpConverter/PngToBmpConverter.cpp` BMP header/row writes; `lib/JpegToBmpConverter/JpegToBmpConverter.cpp` header helpers, `writeOutputRow()`, and `flushScaledRow()`; callers `lib/Epub/Epub.cpp::generateCoverBmp()` and `generateThumbBmp()`.
+- **Trigger / reproduction:** Generate an EPUB JPEG or PNG cover/thumbnail while forcing the destination `FsFile` to short-write or fail after opening, for example because the SD card becomes full or develops a write error after several BMP rows.
+- **Observed / logically demonstrated failure:** Both converters discard the return value from their `Print::write()` calls for BMP headers and pixel rows. The PNG converter's `success` flag changes only on input/decode failure, while the JPEG converter's `ctx.error` is never set by destination-write failure. Consequently a truncated BMP can still make the converter return `true`. `Epub::generateCoverBmp()` / `generateThumbBmp()` then close the file and retain it as a successful cache artifact; future generation calls return early merely because the BMP path exists.
+- **Likely root cause:** Conversion success tracks source decoding but not destination durability/completeness, and the cache publication path uses existence rather than verified completed output as its success marker.
+- **Impact:** An SD short write can leave a corrupt cover or thumbnail that is treated as permanently valid, causing missing/garbled covers or later BMP read failures until the cache is manually removed.
+- **Repair direction:** Route every BMP header and row through an exact-write helper that propagates short writes into the converter result, and verify close/sync where available. Generate into a same-directory temporary file and publish the final cache path only after the full expected BMP byte count is written successfully; remove the partial file on any failure. Add fault-injection tests that short-write the header, an early row, and the final row for both JPEG and PNG paths and verify no canonical BMP cache remains.
