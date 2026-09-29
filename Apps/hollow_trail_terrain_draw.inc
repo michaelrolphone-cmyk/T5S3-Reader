@@ -84,3 +84,27 @@ static void ht_draw_land(const ht_game *g,int i,int part,int l,int r,int flat) {
         }
     }
 }
+
+/* The trunk and each spreading root have independent soil contacts. A flat
+ * root baseline leaves triangular air gaps on slopes, especially in vistas. */
+static void ht_grounded_tree(const ht_game *g,int i,int world,int height,int width,unsigned seed) {
+    int cx=g->camera/256,cy=g->camera_y/256;
+    int base=ht_surface_at(g,i,world),x=world-cx;
+    ht_tree(ht_scene,x,base-cy,height,width,seed,255);
+    for(int dx=-width;dx<=width;++dx) {
+        int soil=ht_surface_at(g,i,world+dx);
+        ht_rect(ht_scene,x+dx,base-2-cy,1,ht_max(0,soil-base+7),255);
+    }
+    const ht_platform *p=&ht_level_land(g->level)[i];
+    for(int side=-1;side<=1;side+=2) {
+        int end=ht_clamp(world+side*width*(side<0?3:2),p->left+2,p->right-3);
+        int soil=ht_surface_at(g,i,end);
+        ht_limb(ht_scene,x,base-height/7-cy,end-cx,soil+4-cy,width/2,2,255);
+        int reach=ht_abs(end-world);
+        for(int step=0;step<=reach;++step) {
+            int wx=world+side*step,ground=ht_surface_at(g,i,wx);
+            int root=ht_min(ground-2,base-(height/7)*(reach-step)/ht_max(1,reach));
+            ht_rect(ht_scene,wx-cx,root-cy,1,ht_max(0,ground+5-root),255);
+        }
+    }
+}

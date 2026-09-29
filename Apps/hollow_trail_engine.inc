@@ -462,8 +462,10 @@ static void ht_tree(uint8_t *b,int x,int base,int height,int width,uint32_t seed
     int tx=x+lean,ty=base-height;
     ht_limb(b,x,base,kx,ky,width,ht_max(2,width*2/3),c);
     ht_limb(b,kx,ky,tx,ty,ht_max(2,width*2/3),1,c);
-    ht_limb(b,x-width*3,base+4,x,base-height/6,1,width/2,c);
-    ht_limb(b,x+width*2,base+5,x,base-height/7,1,width/2,c);
+    if(b!=ht_scene) {
+        ht_limb(b,x-width*3,base+4,x,base-height/6,1,width/2,c);
+        ht_limb(b,x+width*2,base+5,x,base-height/7,1,width/2,c);
+    } /* World trees receive terrain-sampled roots in ht_grounded_tree. */
     for(int j=0;j<5;++j) {
         h=ht_hash(seed+(uint32_t)j*137u);
         int side=(h&1u)?1:-1;
@@ -1043,7 +1045,7 @@ static __attribute__((optimize("O3"))) void ht_composite_cached(int depth,int of
     const bool use_dsp=ht_dsp_composite && ht_dsp_available();
     const uint16_t *weights=use_dsp?NULL:ht_focus_weights(focus_x,focus_y);
     const int fade=depth>=2?70:45;
-    const int height=depth==3?45:HT_SCENE_H-HT_BORDER/2;
+    const int height=HT_SCENE_H-HT_BORDER/2;
     /* The half-resolution grid begins at logical 8 for a 9px border.
      * Lighting must use the sample coordinate, not the odd border value. */
     const int start=2*(HT_BORDER/2);
