@@ -70,8 +70,8 @@ static void ht_journal_input(uint32_t down) {
     if(ht_journal_index) {
         if(down&(HT_BACK|HT_EXIT|HT_PAUSE)) reading=false;
         else if((down&HT_ACCEPT) && count) ht_journal_open(ids[ht_journal_selection%count]);
-        else if((down&HT_LEFT) && count) ht_journal_selection=(ht_journal_selection+count-1)%count;
-        else if((down&HT_RIGHT) && count) ht_journal_selection=(ht_journal_selection+1)%count;
+        else if((down&(HT_LEFT|HT_UP)) && count) ht_journal_selection=(ht_journal_selection+count-1)%count;
+        else if((down&(HT_RIGHT|HT_DOWN)) && count) ht_journal_selection=(ht_journal_selection+1)%count;
     } else {
         if(down&(HT_BACK|HT_EXIT|HT_PAUSE|HT_ACCEPT)) {
             if((down&HT_ACCEPT) && journal_page==HT_LEVELS*3-1 && ht.verdict &&
@@ -92,9 +92,51 @@ static void ht_journal_input(uint32_t down) {
 /* Capability success is not proof that any glyph reached the page. Reject
  * all-white output (including older firmware's missing decompressor path).
  * Fixed 64,800-byte bound; no allocation or device I/O. */
-static bool ht_reader_has_ink(void) {
-    for(size_t i=0;i<960u*540u/8u;++i) if(ht_reader_bitmap[i]) return true;
+static bool ht_reader_has_ink(const uint8_t *pixels,size_t size) {
+    for(size_t i=0;i<size;++i) if(pixels[i]) return true;
     return false;
+}
+/* A physical notebook carried through the same ink-dark world. Texture stays
+ * outside the typeset rectangle so no mark can obscure a clue or a choice. */
+static void ht_journal_frame(void) {
+    memset(ht_scene,255,HT_PIXELS);
+    for(int y=8;y<HT_H-8;++y) for(int x=14;x<HT_W-14;++x) {
+        unsigned grain=ht_hash((unsigned)(x+HT_W*y));
+        ht_scene[y*HT_W+x]=(uint8_t)(grain%7?215:120);
+    }
+    ht_rect(ht_scene,24,18,432,236,255); /* cover and cast shadow */
+    ht_rect(ht_scene,27,19,427,232,0);
+    for(int y=21;y<250;++y) {
+        int tooth=(int)(ht_hash((unsigned)y)%3);
+        ht_rect(ht_scene,27,y,tooth+1,1,170);
+        ht_rect(ht_scene,451-tooth,y,tooth+2,1,170);
+    }
+    /* A chapter stamp and hand-drawn trail sketch form a visual page rail. */
+    ht_rect(ht_scene,63,30,1,207,170);
+    char stamp[8];snprintf(stamp,sizeof(stamp),"%02u",ht.level+1);
+    ht_text(32,35,stamp,2);ht_text(31,55,"TRAIL",1);
+    ht_limb(ht_scene,47,217,40,118,2,1,255);
+    for(int i=0;i<5;++i) {
+        int y=205-i*17;
+        ht_limb(ht_scene,44,y,31,y-21,1,0,255);
+        ht_limb(ht_scene,43,y-8,56,y-30,1,0,255);
+    }
+    ht_disk(ht_scene,44,94,12,255);ht_disk(ht_scene,44,94,10,0);
+    ht_limb(ht_scene,44,85,44,103,1,1,255);
+    ht_limb(ht_scene,36,94,52,94,1,1,255);
+    ht_text(32,226,"NOTES",1);
+    /* Binding stitches, torn corners and an ink branch remain screen-fixed. */
+    for(int y=31;y<240;y+=17) {
+        ht_disk(ht_scene,24,y,3,0);ht_limb(ht_scene,22,y,31,y+1,1,1,170);
+    }
+    for(int i=0;i<8;++i) {
+        int y=245-i*19;
+        ht_limb(ht_scene,466,y,458,y-32,1,1,0);
+        ht_limb(ht_scene,463,y-10,474,y-20,1,1,0);
+    }
+    ht_text_color(35,9,"HOLLOW TRAIL / FIELD ARCHIVE",1,0);
+    ht_text_color(35,258,"FOUND WORDS. UNRELIABLE MEMORIES.",1,0);
+    ht_framed=false;ht_pack_mono(ht_reader_bitmap,120);
 }
 static void ht_journal_render(void) {
     char title[128],footer[128];
@@ -112,15 +154,18 @@ static void ht_journal_render(void) {
     } else if(ht_journal_index) {
         unsigned ids[HT_JOURNAL_RECORDS],count=ht_journal_list(ids);
         if(count) ht_journal_selection%=count;
-        unsigned id=count?ids[ht_journal_selection]:0;
-        snprintf(title,sizeof(title),"Hollow Trail - Journal");
-        /* One selected record per index page stays readable at large fonts. */
-        snprintf(ht_journal_body,sizeof(ht_journal_body),
-            "%s\n\n%s\n\nRecord %u of %u\n\nOnly discoveries and reached story passages appear here.\n\nLeft / Right: choose record\nA / Confirm: read\nX / Back: return to trail",
-            count?(id<HT_LEVELS*3?"Collected evidence":id<HT_LEVELS*4?"Story so far":"Witnessed endings"):"No records yet",
-            count?ht_journal_title(id):"Explore the trail to begin your journal.",
-            count?ht_journal_selection+1:0,count);
-        snprintf(footer,sizeof(footer),"L/R choose | A read | X close");
+        snprintf(title,sizeof(title),"FIELD NOTES / %u DISCOVERIES",count);
+        size_t used=0;
+        unsigned first=(ht_journal_selection/4)*4;
+        for(unsigned i=first;i<count && i<first+4;++i) {
+            int n=snprintf(ht_journal_body+used,sizeof(ht_journal_body)-used,"%s %02u  %s\n\n",
+                i==ht_journal_selection?">":" ",i+1,ht_journal_title(ids[i]));
+            if(n<0 || (size_t)n>=sizeof(ht_journal_body)-used) break;
+            used+=(size_t)n;
+        }
+        if(!count) snprintf(ht_journal_body,sizeof(ht_journal_body),
+            "The trail has left no traces here yet.\n\nApproach a found object and press A to collect its story.");
+        snprintf(footer,sizeof(footer),"%u/%u | Arrows select | A read | X trail",count?ht_journal_selection+1:0,count);
     } else {
         snprintf(title,sizeof(title),"%s",ht_journal_title(journal_page));
         if(journal_page>=HT_LEVELS*4) {
@@ -144,40 +189,42 @@ static void ht_journal_render(void) {
             "Page %u | L/R | A on last page: leave":"Page %u | L/R pages | X journal",ht_journal_leaf+1);
     }
     ht_journal_length=strlen(ht_journal_body);
+    ht_journal_frame();
     risc_reader_page_request_v1 request={
-        .pixels=ht_reader_bitmap,.capacity=960u*540u/8u,
-        .width=960,.height=540,.stride=120,.title=title,.footer=footer,
+        .pixels=ht_temp,.capacity=768u*456u/8u,
+        .width=768,.height=456,.stride=96,.title=title,.footer=footer,
         .text=ht_journal_body,.length=ht_journal_length,
         .offset=(ht_journal_index || ht_journal_deciding)?0:ht_journal_offsets[ht_journal_leaf]
     };
     risc_reader_page_result_v1 result={0};
-    if(ht_reader && ht_reader->page(ht_reader->context,&request,&result) && ht_reader_has_ink() &&
+    if(ht_reader && ht_reader->page(ht_reader->context,&request,&result) && ht_reader_has_ink(request.pixels,request.capacity) &&
        result.next_offset<=request.length &&
        (request.offset==request.length || result.next_offset>request.offset) &&
-       (!ht_journal_deciding || result.next_offset==request.length)) {
+       (!(ht_journal_deciding || ht_journal_index) || result.next_offset==request.length)) {
+        for(unsigned y=0;y<request.height;++y)
+            memcpy(ht_reader_bitmap+(y+42)*120+17,request.pixels+y*request.stride,request.stride);
         ht_journal_next=result.next_offset;
         ht_journal_page_ready=true;
     } else {
         ht_journal_next=0;
         /* Marked compact fallback keeps the ending readable after a reader
          * service failure. Only ASCII authored text uses this emergency path. */
-        memset(ht_scene,0,HT_PIXELS);
-        ht_text(60,36,"READER PAGE UNAVAILABLE - COMPACT VIEW",1);
-        char heading[61]; snprintf(heading,sizeof(heading),"%.60s",title);
-        ht_text(60,52,heading,1);
+        ht_text(84,36,"FIELD NOTES / COMPACT LETTERING",1);
+        char heading[59]; snprintf(heading,sizeof(heading),"%.58s",title);
+        ht_text(84,52,heading,1);
         size_t at=request.offset;
         for(unsigned row=0;row<16 && at<request.length;++row) {
-            char line[61]; size_t used=0,last_space=0;
-            while(used<60 && at+used<request.length && request.text[at+used]!='\n') {
+            char line[59]; size_t used=0,last_space=0;
+            while(used<58 && at+used<request.length && request.text[at+used]!='\n') {
                 line[used]=request.text[at+used]; if(line[used]==' ') last_space=used+1; ++used;
             }
-            if(used==60 && at+used<request.length && request.text[at+used]!='\n' && last_space) used=last_space;
+            if(used==58 && at+used<request.length && request.text[at+used]!='\n' && last_space) used=last_space;
             memcpy(line,request.text+at,used); line[used]=0;
-            ht_text(60,70+(int)row*9,line,1); at+=used;
+            ht_text(84,70+(int)row*9,line,1); at+=used;
             if(at<request.length && request.text[at]=='\n') ++at;
         }
-        char help[61]; snprintf(help,sizeof(help),"%.60s",footer); ht_text(60,225,help,1);
-        ht_pack_mono(ht_reader_bitmap,120);
+        char help[59]; snprintf(help,sizeof(help),"%.58s",footer); ht_text(84,225,help,1);
+        ht_framed=false; ht_pack_mono(ht_reader_bitmap,120);
         ht_journal_next=at; ht_journal_page_ready=true;
     }
 }

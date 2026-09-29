@@ -17,6 +17,9 @@ resolve = source[begin:end]
 begin = source.index('void GfxRenderer::freeBwBufferChunks()')
 end = source.index('/**', begin)
 cleanup = source[begin:end]
+begin = source.index("int GfxRenderer::getScreenWidth() const")
+end = source.index("int GfxRenderer::getSpaceWidth(", begin)
+cleanup += source[begin:end]
 with tempfile.TemporaryDirectory() as temporary:
     root = pathlib.Path(temporary)
     (root / 'HalDisplay.h').write_text('''#pragma once
@@ -61,6 +64,7 @@ int main() {
  host.setFontCacheManager(&cache);
  uint8_t target[64800]={};
  GfxRenderer page(host,target,960,540);
+ assert(page.getScreenWidth()==960 && page.getScreenHeight()==540);
  assert(page.getFontCacheManager()==nullptr); // Never inherit scan-only mode.
  EpdGlyph glyph{};
  EpdFontGroup group{};

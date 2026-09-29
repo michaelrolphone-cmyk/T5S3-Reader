@@ -53,6 +53,8 @@ static void ht_perf_finish(const t5_video_api_v1 *video,uint32_t now) {
 #define HT_EXIT 16u
 #define HT_ACCEPT 64u
 #define HT_JOURNAL 128u
+#define HT_UP 512u
+#define HT_DOWN 1024u
 #define HT_BACK 256u /* Reading navigation only; never quits gameplay. */
 #define HT_HAS(api,type,field) ((api) && (api)->struct_size >= offsetof(type,field)+sizeof((api)->field) && (api)->field)
 #include "hollow_trail_journal.inc"
@@ -97,9 +99,10 @@ static void ht_advance(uint32_t now) {
     for(unsigned steps=0;simulation_accumulator>=HT_STEP_MS && steps<8;++steps) {
         int direction=((held&HT_RIGHT)!=0)-((held&HT_LEFT)!=0);
         ht_game before=ht;
-        ht_step(direction,jump_down,(held&HT_JUMP)!=0);
+        ht_step_controls(direction,((held&HT_DOWN)!=0)-((held&HT_UP)!=0),jump_down,(held&HT_JUMP)!=0);
         jump_down=false; simulation_accumulator-=HT_STEP_MS;
         if(before.x!=ht.x || before.y!=ht.y || before.camera!=ht.camera ||
+           before.camera_y!=ht.camera_y || memcmp(&before.traversal,&ht.traversal,sizeof(ht.traversal)) ||
            before.story_x!=ht.story_x || before.level!=ht.level || before.stride!=ht.stride || before.facing!=ht.facing || before.laps!=ht.laps)
             ++scene_revision;
         if(before.level!=ht.level) { simulation_accumulator=0; break; }
@@ -131,9 +134,13 @@ static void ht_input_update(uint32_t wait) {
             uint8_t h=state->hat;
             if(h>=5 && h<=7) buttons|=HT_LEFT;
             if(h>=1 && h<=3) buttons|=HT_RIGHT;
+            if(h==7 || h==0 || h==1) buttons|=HT_UP;
+            if(h>=3 && h<=5) buttons|=HT_DOWN;
             if(!source || h>=8) {
                 if(state->x < -16384) buttons|=HT_LEFT;
                 if(state->x > 16384) buttons|=HT_RIGHT;
+                if(state->y < -16384) buttons|=HT_UP;
+                if(state->y > 16384) buttons|=HT_DOWN;
             }
             /* Receiver face labels confirmed by the owner's 1.0.15 test:
              * A/B are the reverse of the earlier GameBoy adapter assumption.
@@ -163,9 +170,9 @@ static void ht_input_update(uint32_t wait) {
         if(!connected) {
             if(in.buttons&T5_APP_BUTTON_LEFT) buttons|=HT_LEFT;
             if(in.buttons&T5_APP_BUTTON_RIGHT) buttons|=HT_RIGHT;
-            if(in.buttons&T5_APP_BUTTON_UP) buttons|=HT_JUMP;
+            if(in.buttons&T5_APP_BUTTON_UP) buttons|=(reading || ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)?HT_UP:HT_JUMP;
             if(in.buttons&T5_APP_BUTTON_CONFIRM) buttons|=HT_INTERACT|HT_ACCEPT;
-            if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=HT_PAUSE;
+            if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=(reading || ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)?HT_DOWN:HT_PAUSE;
             if(in.buttons&T5_APP_BUTTON_BACK) buttons|=HT_EXIT;
         }
         /* Raw capability ownership suppresses duplicate OS pad navigation.
@@ -195,6 +202,7 @@ static void ht_input_update(uint32_t wait) {
         int page=ht_final_near(&ht)?-1:ht_inspect();
         if(ht_final_near(&ht)) { ht_journal_tower(); reading=true; }
         else if(page>=0) { ht_journal_open((unsigned)page); reading=true; }
+        else if(ht_traversal_interact()) { /* A grabs/releases a nearby traversal object. */ }
         else if(ht_puzzle_near(&ht)>=0) (void)ht_interact();
 
         if(reading) { jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0; }
@@ -298,7 +306,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     bool profile_was_paused=false;
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-    ht_log("Hollow Trail 1.0.16: dithered 1bpp parallax renderer started");
+    ht_log("Hollow Trail 1.1.0: dithered 1bpp parallax renderer started");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -358,19 +366,20 @@ __attribute__((visibility("default"))) void app_main(void) {
             ht_render_scene();
             /* Initial instructions dismiss automatically after walking. */
             if(rendering_game.x<230*256 && rendering_game.checkpoint==0) {
-                ht_rect(ht_scene,72,38,336,68,0);
+                ht_rect(ht_scene,72,38,336,81,0);
                 ht_text(98,45,ht_chapters[rendering_game.level].title,2);
                 ht_text(98,66,"LEFT/RIGHT MOVE   B / UP JUMP",1);
                 ht_text(98,79,"SELECT / DOWN PAUSE   HOME/BACK EXIT",1);
-                ht_text(98,92,"A / CONFIRM INSPECT   START JOURNAL",1);
+                ht_text(98,92,"A GRAB / INSPECT   UP/DOWN CLIMB",1);
+                ht_text(98,105,"START JOURNAL   X BACK WHILE READING",1);
             }
             if(!rendering_paused) {
                 ht_narration(&rendering_game);
-                ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game);
+                ht_traversal_prompt(&rendering_game); ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game);
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,112,74,256,172,0);
-                ht_text(127,83,"HOLLOW TRAIL 1.0.16",1);
+                ht_text(127,83,"HOLLOW TRAIL 1.1.0",1);
                 ht_text(198,95,"PAUSED",2);
                 ht_text(127,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
                 ht_text(127,133,!ht_dsp_available()?"DSP16: UNAVAILABLE":ht_dsp_composite?"DSP16 COMPOSITOR: ON":"DSP16 COMPOSITOR: OFF",1);

@@ -13,10 +13,10 @@ static void service(void) {
 }
 static void reference(void) {
     const ht_game game=ht;
-    int camera=game.camera/256,px=game.x/256-camera,py=game.y/256-14;
+    int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
     const int radius[]={3,1,0,0},spread[]={9,6,4,4};
     ht_clear_layer(ht_scene);
-    for(int depth=0;depth<HT_LAYERS;++depth) for(int half=0;half<2;++half) {
+    for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2) for(int half=0;half<2;++half) {
         /* Two overlapping viewport renders provide independent horizontal
          * blur halos now that the visible border is thinner than the filter. */
         int shift=half?HT_W/4:-HT_W/4;
@@ -46,9 +46,10 @@ static void reference(void) {
         if(x&1) { top=(top+sampled[sy*HT_SCENE_W+nx])/2;bottom=(bottom+sampled[ny*HT_SCENE_W+nx])/2; }
         ht_scene[y*HT_W+x]=(uint8_t)((y&1)?(top+bottom)/2:top);
     }
+    ht_draw_traversal(&game);
     ht_draw_evidence(&game);
     ht_draw_puzzle(&game);
-    ht_character(px,game.y/256,&game); ht_vignette();
+    ht_character(px,(game.y-game.camera_y)/256,&game); ht_sway_scene(game.sway_phase); ht_vignette();
 }
 static unsigned dsp_calls;
 static bool mock_mul(const int16_t *a,const int16_t *b,int16_t *out,size_t count) {
@@ -102,7 +103,7 @@ int main(void) {
     assert(memory && expected); memset(memory+HT_MEMORY,0x5a,32);
     ht_bind(memory); cactus_shapes(); ht_spawn(true);ht_service=service;
     int steps=0; while(ht_cache_prefetch(0,1)) assert(++steps<400);
-    assert(ht_cache_builds==12 && checkpoints>0);
+    assert(ht_cache_builds==9 && checkpoints>0);
     unsigned builds=ht_cache_builds;
     /* Moving within warmed strips must not regenerate ANY geometry or blur. */
     for(int camera=0;camera<120;camera+=3) {
@@ -113,6 +114,7 @@ int main(void) {
      * (roughly walking at the measured 6.6 FPS); all visible data is ready. */
     for(int camera=0;camera<2400;camera+=12) {
         for(int depth=0;depth<HT_LAYERS;++depth) {
+            if(depth==2) continue;
             int offset=ht_layer_offset(depth,camera);
             int first=ht_floor_div(offset+HT_BORDER,HT_TILE_W);
             int last=ht_floor_div(offset+HT_W-HT_BORDER-1,HT_TILE_W);
