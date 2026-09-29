@@ -997,9 +997,10 @@ static bool ht_cache_prefetch(int camera,int direction) {
     ht_cache_work();
     return true;
 }
-/* Evaluate lighting at one sample per 2x2 world pixels. Cached source art
- * retains its original detail and integer parallax offsets, including odd
- * offsets at strip boundaries. No physics or camera coordinates are scaled. */
+/* Evaluate per-frame lighting at one sample per 4x4 logical pixels. Cached
+ * source art retains its original detail and integer parallax offsets; the
+ * trained reconstruction restores the 240x135 scenery grid afterward. No
+ * physics or camera coordinates are scaled. */
 /* A/B experiment: only the cached per-frame compositor changes. Cache filters,
  * output dithering and timing checkpoints stay the same. Defaults to scalar. */
 static bool ht_dsp_composite;
