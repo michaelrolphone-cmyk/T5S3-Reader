@@ -3,22 +3,46 @@
 static void ht_draw_traversal(const ht_game *g) {
     int cx=g->camera/256,cy=g->camera_y/256;
     const ht_platform *land=ht_level_land(g->level);
-    int ground=land[0].top;
-    /* The lake is an actual hazard; its banks and boat use the same y datum. */
-    ht_rect(ht_scene,1790-cx,ground+13-cy,320,HT_H,110);
-    for(int x=1800;x<2110;x+=30) ht_rect(ht_scene,x-cx,ground+16-cy,16,2,30);
-    for(int i=0;i<HT_PLATFORMS;++i) {
-        const ht_platform *p=&land[i];int x=p->left-cx,y=p->top-cy,w=p->right-p->left;
-        bool bank=i==0 || i==1 || i==5 || i==6 || i==9;
-        if(x>=HT_W || x+w<0 || y>=HT_H || (!bank && y+24<0)) continue;
-        ht_rect(ht_scene,x,y,w,bank?HT_H-y:18,255);
-        ht_rect(ht_scene,x,y+3,w,2,170);
-        /* World-anchored surface details identify industrial versus natural decks. */
-        for(int at=p->left+8;at<p->right;at+=24) {
-            if(g->level==0 || g->level==4 || g->level==8)
-                ht_limb(ht_scene,at-cx,y+14,at+7-cx,y+22,2,0,255);
-            else ht_rect(ht_scene,at-cx,y+7,3,8,110);
+    const ht_mechanics *m=ht_mech(g);
+    if(m->water_right) {
+        int water=m->boat_deck+10-cy;
+        ht_rect(ht_scene,m->water_left-cx,water,m->water_right-m->water_left,HT_H,110);
+        for(int x=m->water_left+4;x<m->water_right;x+=27) {
+            int wave=(int)((g->ticks/3+(unsigned)x)%7);
+            ht_rect(ht_scene,x-cx,water+wave,14,1,35);
         }
+        for(int shore=0;shore<2;++shore) {
+            int x=(shore?m->water_right:m->water_left)-cx;
+            ht_rect(ht_scene,x-2,water-18,4,32,255);
+            ht_limb(ht_scene,x-9,water-15,x+9,water-15,1,1,255);
+        }
+    }
+    for(int i=0;i<HT_PLATFORMS;++i) {
+        const ht_platform *p=&land[i];
+        for(int part=0;part<3;++part) {
+            int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top)) break;
+            int x=l-cx,y=top-cy,w=r-l;
+            bool bank=i==0 || i==9;
+            if(i==m->bridge) y-=(32-g->traversal.bridge_open)*2;
+            if(x>=HT_W || x+w<0 || y>=HT_H || (!bank && y+24<0)) continue;
+            ht_rect(ht_scene,x,y,w,bank?HT_H-y:18,255);
+            ht_rect(ht_scene,x,y+3,w,2,170);
+            for(int at=l+8;at<r;at+=24) {
+                if(g->level==0 || g->level==4 || g->level==8)
+                    ht_limb(ht_scene,at-cx,y+14,at+7-cx,y+22,2,0,255);
+                else ht_rect(ht_scene,at-cx,y+7,3,8,110);
+            }
+            if(i==m->bridge) {
+                ht_limb(ht_scene,x+5,y,x+5,p->top-95-cy,0,0,200);
+                ht_limb(ht_scene,x+w-5,y,x+w-5,p->top-95-cy,0,0,200);
+            }
+        }
+    }
+    if(m->plate_kind) {
+        int x=m->plate_x-cx,y=m->plate_y-cy;
+        ht_rect(ht_scene,x-21,y-1,42,3,255);
+        ht_rect(ht_scene,x-17,y-(ht_plate_weighted(g)?1:3),34,2,100);
+        ht_disk(ht_scene,x-19,y,2,255);ht_disk(ht_scene,x+19,y,2,255);
     }
     /* Distinct natural silhouettes stay anchored to the new physical route. */
     for(int i=0;i<HT_PLATFORMS;++i) {
@@ -35,39 +59,71 @@ static void ht_draw_traversal(const ht_game *g) {
         }
     }
     for(unsigned i=0;i<3;++i) {
+        if(!m->ladders[i].x) continue;
         int top,bottom;ht_ladder_ends(g->level,i,&top,&bottom);
-        int x=ht_ladder_x(i)-cx;
+        int x=m->ladders[i].x-cx;
         if(x< -12 || x>HT_W+12) continue;
         ht_rect(ht_scene,x-9,top-cy,3,bottom-top,255);
         ht_rect(ht_scene,x+6,top-cy,3,bottom-top,255);
         for(int y=top+6;y<bottom;y+=10) ht_rect(ht_scene,x-7,y-cy,14,3,255);
     }
-    int bx=g->traversal.ball_x/256-cx,by=g->traversal.ball_y/256-cy;
-    if(bx>=-50 && bx<=HT_W+50 && by>=-50 && by<=HT_H+50) {
-        ht_disk(ht_scene,bx,by,48,255);
-        ht_disk(ht_scene,bx,by,40,190);
-        if(g->level==0 || g->level==5 || g->level==8) {
-            ht_limb(ht_scene,bx-24,by-17,bx+7,by+23,3,1,255);
-            ht_limb(ht_scene,bx+7,by+23,bx+25,by+8,1,1,255);
-        } else {
-            ht_rect(ht_scene,bx-32,by-20,64,4,255);
-            ht_rect(ht_scene,bx-32,by+16,64,4,255);
+    if(m->ball_x) {
+        int bx=g->traversal.ball_x/256-cx,by=g->traversal.ball_y/256-cy;
+        if(bx>=-18 && bx<=HT_W+18 && by>=-18 && by<=HT_H+18) {
+            ht_disk(ht_scene,bx,by,HT_BALL_RADIUS,255);
+            ht_disk(ht_scene,bx-1,by-1,HT_BALL_RADIUS-2,165);
+            ht_triangle(ht_scene,bx-11,by-8,bx+1,by-13,bx-3,by+2,80);
+            ht_triangle(ht_scene,bx+10,by-8,bx+12,by+9,bx-1,by+13,225);
+            /* Fractures rotate by travelled arc length: no sliding texture. */
+            static const int16_t sine[32]={0,50,98,142,181,213,237,251,256,251,237,213,181,142,98,50,0,-50,-98,-142,-181,-213,-237,-251,-256,-251,-237,-213,-181,-142,-98,-50};
+            unsigned angle=(unsigned)(g->traversal.ball_roll/(HT_BALL_RADIUS*50))&31u;
+            int sn=sine[angle],cs=sine[(angle+8)&31u];
+            int ax=(-9*cs+5*sn)/256,ay=(-9*sn-5*cs)/256;
+            int bx2=(7*cs+2*sn)/256,by2=(7*sn-2*cs)/256;
+            ht_limb(ht_scene,bx+ax,by+ay,bx+2,by+2,0,0,255);
+            ht_limb(ht_scene,bx+2,by+2,bx+bx2,by+by2,0,0,255);
+            ht_disk(ht_scene,bx+(4*cs-8*sn)/256,by+(4*sn+8*cs)/256,2,210);
         }
     }
-    int x=g->traversal.crate_x/256-cx,y=ground-64-cy;
-    ht_rect(ht_scene,x-20,y,40,64,255);ht_rect(ht_scene,x-16,y+4,32,56,90);
-    ht_limb(ht_scene,x-16,y+4,x+16,y+60,2,2,255);
-    ht_limb(ht_scene,x+16,y+4,x-16,y+60,2,2,255);
-    x=g->traversal.boat_x/256-cx;y=ground-cy;
-    ht_rect(ht_scene,x-44,y,88,5,255);
-    ht_triangle(ht_scene,x-44,y+4,x+44,y+4,x+29,y+19,255);
-    ht_triangle(ht_scene,x-44,y+4,x+29,y+19,x-28,y+19,255);
-    ht_rect(ht_scene,x-26,y+7,51,3,170);
-    int rx,ry;ht_rope_point(g,&rx,&ry);
-    int ax=1285-cx,ay=land[3].top-155-cy;
-    ht_limb(ht_scene,ax-24,ay-6,ax+24,ay-6,4,4,255);
-    ht_limb(ht_scene,ax,ay,rx-cx,ry-20-cy,2,2,255);
-    ht_disk(ht_scene,rx-cx,ry-20-cy,4,255);
+    if(m->crate_x) {
+        int x=g->traversal.crate_x/256-cx,y=g->traversal.crate_y/256-HT_CRATE_HEIGHT-cy;
+        ht_rect(ht_scene,x-12,y,24,26,255);ht_rect(ht_scene,x-10,y+2,19,22,150);
+        for(int dy=7;dy<24;dy+=6) ht_rect(ht_scene,x-10,y+dy,19,1,235);
+        ht_rect(ht_scene,x+7,y+2,3,22,210);
+        ht_limb(ht_scene,x-9,y+22,x+6,y+3,2,2,255);
+        ht_limb(ht_scene,x-7,y+22,x+8,y+3,0,0,75);
+        for(int dx=-8;dx<=8;dx+=16) {ht_rect(ht_scene,x+dx,y+3,1,1,0);ht_rect(ht_scene,x+dx,y+22,1,1,0);}
+    }
+    if(m->boat_right) {
+        int x=g->traversal.boat_x/256-cx,y=ht_boat_top(g)/256-cy;
+        /* Raised gunwales, pointed bow, ribs, seats and a working oar. */
+        for(int dy=0;dy<15;++dy) ht_rect(ht_scene,x-29+dy/2,y+dy,58-dy,1,dy==0?255:dy<9?190:255);
+        ht_limb(ht_scene,x-29,y-4,x-21,y+8,1,1,255);
+        ht_limb(ht_scene,x+29,y-5,x+21,y+8,1,1,255);
+        ht_rect(ht_scene,x-23,y-1,46,2,255);
+        for(int rib=-16;rib<=16;rib+=8) ht_rect(ht_scene,x+rib,y+3,1,7,235);
+        ht_rect(ht_scene,x-13,y,5,3,70);ht_rect(ht_scene,x+10,y,5,3,70);
+        int stroke=g->traversal.mode==HT_BOAT?(int)((g->ticks/2)%16)-8:0;
+        ht_limb(ht_scene,x+5,y-6,x+27+stroke,y+12,0,0,255);
+        ht_limb(ht_scene,x+27+stroke,y+12,x+32+stroke,y+15,2,1,255);
+        ht_rect(ht_scene,x-20,y+15,40,1,50);
+    }
+    if(m->rope_length) {
+        int ax=m->rope_anchor_x-cx,ay=m->rope_anchor_y-cy;
+        int foot=ay+108;
+        ht_limb(ht_scene,ax-43,foot,ax-43,ay-14,3,2,255);
+        ht_limb(ht_scene,ax-45,ay-12,ax+10,ay-12,3,2,255);
+        ht_limb(ht_scene,ax-42,ay+15,ax-12,ay-12,1,1,255);
+        ht_limb(ht_scene,ax,ay-12,ax,ay-3,0,0,255);
+        ht_disk(ht_scene,ax,ay-3,4,255);ht_disk(ht_scene,ax,ay-3,2,0);
+        for(int i=1;i<HT_ROPE_NODES;++i) {
+            int x0=g->traversal.rope_px[i-1]/256-cx,y0=g->traversal.rope_py[i-1]/256-cy;
+            int x1=g->traversal.rope_px[i]/256-cx,y1=g->traversal.rope_py[i]/256-cy;
+            ht_limb(ht_scene,x0,y0,x1,y1,0,0,255);
+            if(i==6) ht_disk(ht_scene,x1,y1,1,255);
+        }
+    }
+    int x,y;
     /* Exit architecture follows its actual terrace when the camera climbs. */
     x=HT_GOAL-cx;y=land[9].top-cy;
     ht_rect(ht_scene,x-20,y-52,6,52,255);ht_rect(ht_scene,x+14,y-52,6,52,255);
@@ -78,9 +134,9 @@ static void ht_traversal_prompt(const ht_game *g) {
     switch(ht_traversal_near(g)) {
     case HT_LEDGE: text="UP / A CLIMB - DOWN DROP - B JUMP AWAY";break;
     case HT_CLIMB: text="CLIMBING";break;
-    case HT_ROLL: text=g->traversal.mode?"LEFT / RIGHT ROLL - A RELEASE":"A GRAB THE STONE / DRUM - FILL THE GAP";break;
-    case HT_CRATE: text=g->traversal.mode?"LEFT / RIGHT PUSH - A RELEASE - B JUMP":"A GRAB CRATE - PUSH BELOW THE HIGH LEDGE";break;
-    case HT_LADDER: text="UP / DOWN CLIMB - B JUMP OFF";break;
+    case HT_ROLL: text=g->traversal.mode?"LEFT / RIGHT ROLL - A RELEASE":"A GRIP STONE - ROLL ONTO THE WEIGHT PLATE";break;
+    case HT_CRATE: text=g->traversal.mode?"LEFT / RIGHT PUSH - A RELEASE - B JUMP":"A GRIP CRATE - PUSH OR PULL WITH L/R";break;
+    case HT_LADDER: text=g->traversal.mode?"UP / DOWN CLIMB - B JUMP OFF":"A GRAB LADDER - THEN UP / DOWN";break;
     case HT_ROPE: text=g->traversal.mode?"LEFT / RIGHT PUMP - B LEAP - A LET GO":"A GRAB ROPE - SWING ACROSS THE RAVINE";break;
     case HT_BOAT: text=g->traversal.mode?"LEFT / RIGHT ROW - A RELEASE - B JUMP":"A BOARD BOAT - ROW ACROSS THE LAKE";break;
     default: break;

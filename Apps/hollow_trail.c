@@ -171,9 +171,9 @@ static void ht_input_update(uint32_t wait) {
         if(!connected) {
             if(in.buttons&T5_APP_BUTTON_LEFT) buttons|=HT_LEFT;
             if(in.buttons&T5_APP_BUTTON_RIGHT) buttons|=HT_RIGHT;
-            if(in.buttons&T5_APP_BUTTON_UP) buttons|=(reading || (!paused && (ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)))?HT_UP:HT_JUMP;
+            if(in.buttons&T5_APP_BUTTON_UP) buttons|=(reading || (!paused && (ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)))?HT_UP:HT_JUMP;
             if(in.buttons&T5_APP_BUTTON_CONFIRM) buttons|=HT_INTERACT|HT_ACCEPT;
-            if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=(reading || (!paused && (ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)))?HT_DOWN:HT_PAUSE;
+            if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=(reading || (!paused && (ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)))?HT_DOWN:HT_PAUSE;
             if(in.buttons&T5_APP_BUTTON_BACK) buttons|=HT_EXIT;
         }
         /* Raw capability ownership suppresses duplicate OS pad navigation.

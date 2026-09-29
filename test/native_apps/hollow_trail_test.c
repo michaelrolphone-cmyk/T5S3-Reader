@@ -29,8 +29,10 @@ int main(void) {
     /* Walk the entire route using the same fixed-step physics and hold jump
      * from each takeoff. A route that silently respawns cannot pass. */
     unsigned visited=1;
+    const unsigned required_mechanics[HT_LEVELS]={15,6,7,12,20,5,6,28,14,22};
     for(int tick=0;tick<HT_LEVELS*2200 && !ht.laps;++tick) {
         walk_route_tick();
+        if(ht.level!=walk_level) assert(walk_mechanics==required_mechanics[walk_level]);
         visited|=1u<<ht.level;
     }
     assert(visited==(1u<<HT_LEVELS)-1 && ht.laps==1 && ht.deaths==0);
@@ -40,16 +42,16 @@ int main(void) {
     for(unsigned level=0;level<HT_LEVELS;++level) {
         ht.level=level;
         /* A failed jump returns to the latest checkpoint, not the start. */
-        ht.story_x=2700; ht.checkpoint=6; ht.x=2180*256; ht.y=330*256; ht.vy=2400;
+        ht.story_x=2700; ht.checkpoint=6; ht.x=2180*256; ht.y=501*256; ht.vy=2400;
         ht_step(0,false,false);
         assert(ht.level==level && ht.checkpoint==6 && ht.story_x==2700);
         assert(ht.x==(ht_land[6].left+35)*256 && ht.grounded);
-        /* Unfilled trench is fatal; upper terraces intentionally allow safe
-         * descents to lower paths, unlike the old sequence of flat pits. */
-        ht_spawn(true); ht.x=390*256; ht.y=ht_land[0].top*256;ht.grounded=false;
+        /* A continuous fall survives 992 ms, then dies on the 1024 ms tick. */
+        ht_spawn(true);ht.x=100*256;ht.y=-500*256;ht.vy=0;ht.grounded=false;
         unsigned deaths=ht.deaths;
-        for(int t=0;t<100 && ht.deaths==deaths;++t) ht_step(0,false,false);
-        assert(ht.deaths==deaths+1);
+        for(int t=0;t<31;++t) ht_step(0,false,false);
+        assert(ht.deaths==deaths && ht.traversal.fall_ticks==31);
+        ht_step(0,false,false);assert(ht.deaths==deaths+1);
     }
     ht.level=0; ht_spawn(true);
     /* Corner contact catches both approaches, never auto-climbs, and a drop
@@ -73,6 +75,45 @@ int main(void) {
         ht_step_controls(0,1,false,false);
         assert(ht.traversal.mode==HT_FREE && ht.traversal.drop_cooldown);
     }
+    /* Radius-aligned feet, gradual mass acceleration and rolling inertia. */
+    ht_spawn(true);ht.x=ht.traversal.ball_x;ht.y=(220-2*HT_BALL_RADIUS)*256;
+    ht.grounded=false;ht_step(0,false,false);
+    assert(ht.traversal.support==1 && ht.y==ht.traversal.ball_y-HT_BALL_RADIUS*256);
+    ht_spawn(true);ht.x=(210-HT_BALL_RADIUS-5)*256;
+    assert(ht_traversal_interact() && ht.traversal.mode==HT_ROLL);
+    ht_step(1,false,false);assert(ht.traversal.ball_vx==14);
+    for(int i=0;i<20;++i) ht_step(1,false,false);
+    int ball_x=ht.traversal.ball_x,rotation=ht.traversal.ball_roll;
+    assert(ht_traversal_interact());ht_step(0,false,false);
+    assert(ht.traversal.ball_x>ball_x && ht.traversal.ball_roll>rotation);
+    ht_spawn(true);ht.x=(850-HT_CRATE_HALF-5)*256;ht.y=185*256;
+    assert(ht_traversal_interact() && ht.traversal.mode==HT_CRATE);
+    for(int i=0;i<24;++i) ht_step(1,false,false);
+    assert(ht.traversal.crate_vx==192);
+    assert(ht_traversal_interact());
+    for(int i=0;i<8;++i) ht_step(0,false,false);
+    assert(ht.traversal.crate_vx==0);
+    /* Walking and vertical input cannot capture a ladder. A must grab it. */
+    ht.level=1;ht_spawn(true);ht.x=400*256;
+    ht_step_controls(1,-1,false,false);assert(ht.traversal.mode==HT_FREE);
+    assert(ht_traversal_interact() && ht.traversal.mode==HT_LADDER);
+    int ladder_y=ht.y;ht_step_controls(0,-1,false,false);assert(ht.y<ladder_y);
+    /* Catch at the actual rope end, stay above the deck, then swing away.
+     * Length constraints keep each rendered segment within two pixels. */
+    ht.level=0;ht_spawn(true);ht.x=1454*256;ht.y=-60*256;
+    assert(ht_traversal_interact() && ht.traversal.mode==HT_ROPE);
+    for(int i=0;i<25;++i) {
+        ht_step_controls(1,0,false,true);
+        assert(ht.x>1460*256 || ht.y<=-60*256);
+        for(int j=1;j<HT_ROPE_NODES;++j) {
+            int dx=(ht.traversal.rope_px[j]-ht.traversal.rope_px[j-1])/256;
+            int dy=(ht.traversal.rope_py[j]-ht.traversal.rope_py[j-1])/256;
+            assert(dx*dx+dy*dy<=16*16);
+        }
+    }
+    assert(ht.x>1490*256);
+    ht_step_controls(1,0,true,true);assert(ht.traversal.mode==HT_FREE && ht.vx>0 && ht.vy<0);
+    ht.level=0;
     ht_spawn(true);unsigned phase=ht.sway_phase;
     for(int k=0;k<30;++k) ht_step(0,false,false);
     assert(ht.sway_phase==phase);
