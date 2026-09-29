@@ -34,9 +34,10 @@ static uint16_t ht_dirty_top,ht_dirty_height;
 #define HT_TILE_HALO ((HT_W-HT_TILE_W)/2)
 #define HT_CACHE_BAND 64
 #define HT_WARM_STEPS (HT_LAYERS*HT_TILE_SLOTS*(1+3*((HT_H+HT_CACHE_BAND-1)/HT_CACHE_BAND)))
-/* Keep two full legacy focus maps so the A/B test compares against the original
- * optimized 240x135 renderer rather than an artificially slowed reference. */
-#define HT_MEMORY (HT_SCENE_PIXELS * 4u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS + HT_RECON_PIXELS)
+/* Two AI focus maps at the 120x68 composition lattice, plus the 120x68
+ * reconstruction source. Removing the retired 240x135 legacy maps saves
+ * roughly 95 KiB of PSRAM. */
+#define HT_MEMORY (HT_RECON_PIXELS * 5u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS)
 #define HT_GOAL 3200
 #define HT_STEP_MS 32u /* Half-speed motion; preserve jump paths and level reachability. */
 
@@ -192,27 +193,25 @@ static void ht_mask_init(void) {
  * recalculating radial division for every depth or settled frame. */
 static uint16_t *ht_focus_map[2];
 static int ht_focus_x[2],ht_focus_y[2];
-static uint8_t ht_focus_step[2];
 static bool ht_focus_valid[2];
 static unsigned ht_focus_recent;
-/* The same two PSRAM maps serve both renderers. Grid pitch is part of the
- * cache key so toggling AI/legacy cannot reuse weights from the other lattice. */
-static const uint16_t *ht_focus_weights(int px,int py,int step,int width,int height) {
-    for(unsigned i=0;i<2;++i) if(ht_focus_valid[i] && ht_focus_x[i]==px &&
-       ht_focus_y[i]==py && ht_focus_step[i]==step) {
+/* AI composition always runs on the 120x68 lattice. Two cached maps cover
+ * the one-pixel camera-follow alternation without rebuilding radial weights. */
+static const uint16_t *ht_focus_weights(int px,int py) {
+    for(unsigned i=0;i<2;++i) if(ht_focus_valid[i] &&
+       ht_focus_x[i]==px && ht_focus_y[i]==py) {
         ht_focus_recent=i;return ht_focus_map[i];
     }
     unsigned slot=ht_focus_recent^1u;uint16_t *map=ht_focus_map[slot];
-    const int step2=step*step;
-    for(int y=0;y<height;++y) {
-        int dy=step*y-py,distance=px*px+dy*dy,delta=step2-2*step*px;
-        for(int x=0;x<width;++x) {
-            map[y*width+x]=(uint16_t)ht_clamp((distance-2500)/200,0,256);
-            distance+=delta;delta+=2*step2;
+    for(int y=0;y<HT_RECON_H;++y) {
+        int dy=4*y-py,distance=px*px+dy*dy,delta=16-8*px;
+        for(int x=0;x<HT_RECON_W;++x) {
+            map[y*HT_RECON_W+x]=(uint16_t)ht_clamp((distance-2500)/200,0,256);
+            distance+=delta;delta+=32;
         }
         if((y&15)==15) ht_checkpoint();
     }
-    ht_focus_x[slot]=px;ht_focus_y[slot]=py;ht_focus_step[slot]=(uint8_t)step;
+    ht_focus_x[slot]=px;ht_focus_y[slot]=py;
     ht_focus_valid[slot]=true;ht_focus_recent=slot;
     return map;
 }
@@ -229,11 +228,11 @@ static void ht_bind(uint8_t *memory) {
     }
     ht_corner_mask=cache; ht_low_scene=cache+HT_MASK_PIXELS; ht_mask_init();
     ht_focus_map[0]=(uint16_t *)(ht_low_scene+HT_SCENE_PIXELS);
-    ht_focus_map[1]=ht_focus_map[0]+HT_SCENE_PIXELS;
+    ht_focus_map[1]=ht_focus_map[0]+HT_RECON_PIXELS;
     /* Lookahead cache work can be suspended across visible frames. Its raw,
      * near and wide buffers remain live until the strip is published. */
-    ht_recon_scene=(uint8_t *)(ht_focus_map[1]+HT_SCENE_PIXELS);
-    ht_focus_valid[0]=ht_focus_valid[1]=false;ht_focus_step[0]=ht_focus_step[1]=0;ht_focus_recent=0;
+    ht_recon_scene=(uint8_t *)(ht_focus_map[1]+HT_RECON_PIXELS);
+    ht_focus_valid[0]=ht_focus_valid[1]=false;ht_focus_recent=0;
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
 }
 static int ht_evidence_platform(unsigned level,int item) { return level==0 && item==0?0:1+item*3; }
@@ -1030,14 +1029,12 @@ static bool ht_cache_prefetch(int camera,int direction) {
     ht_cache_work();
     return true;
 }
-/* Runtime A/B renderer switch. Neural mode composes lighting at one sample
- * per 4x4 logical pixels and reconstructs 240x135. Legacy mode is the original
- * 2x2-sampled 240x135 scalar compositor. DSP16 is intentionally excluded: the
- * hardware experiment established that it reduces Hollow Trail frame rate. */
-static bool ht_ai_rendering=true;
+/* Both runtime modes use AI composition. The only A/B variable is whether
+ * the final 480x270 -> 960x540 physical reconstruction also uses the model. */
+static bool ht_neural_960=true;
 
 static __attribute__((optimize("O3"))) void ht_composite_cached_ai(int depth,int offset,int focus_x,int focus_y) {
-    const uint16_t *weights=ht_focus_weights(focus_x,focus_y,4,HT_RECON_W,HT_RECON_H);
+    const uint16_t *weights=ht_focus_weights(focus_x,focus_y);
     const int fade=depth>=2?70:45;
     const int border=HT_BORDER/4;
     const int height=(HT_SCENE_H-HT_BORDER/2+1)/2;
@@ -1063,32 +1060,6 @@ static __attribute__((optimize("O3"))) void ht_composite_cached_ai(int depth,int
     }
 }
 
-static __attribute__((optimize("O3"))) void ht_composite_cached_legacy(int depth,int offset,int focus_x,int focus_y) {
-    const uint16_t *weights=ht_focus_weights(focus_x,focus_y,2,HT_SCENE_W,HT_SCENE_H);
-    const int fade=depth>=2?70:45;
-    const int border=HT_BORDER/2;
-    const int height=HT_SCENE_H-border;
-    for(int y=border;y<height;++y) {
-        uint8_t *scene=ht_low_scene+y*HT_SCENE_W;
-        for(int x=border;x<HT_SCENE_W-border;) {
-            int world=offset+2*x,key=ht_floor_div(world,HT_TILE_W),column=world-key*HT_TILE_W;
-            int count=ht_min(HT_SCENE_W-border-x,(HT_TILE_W-column+1)/2),slot=ht_cache_slot(key);
-            const uint8_t *near=ht_cached_near[depth][slot]+(2*y)*HT_TILE_W+column;
-            const uint8_t *wide=ht_cached_wide[depth][slot]+(2*y)*HT_TILE_W+column;
-            for(int i=0;i<count;++i,++x) {
-                int radial=weights[y*HT_SCENE_W+x],v;
-                if(radial==0) v=near[2*i];
-                else if(radial==256) v=wide[2*i]*(256-fade)>>8;
-                else {
-                    v=(near[2*i]*256+((int)wide[2*i]-near[2*i])*radial)>>8;
-                    v=v*(256-((radial*fade)>>8))>>8;
-                }
-                scene[x]=(uint8_t)ht_max(scene[x],v);
-            }
-        }
-        if((y&15)==15) ht_checkpoint();
-    }
-}
 /* Expand once to the existing overlay surface, then draw the character/UI.
  * Final packing supplies the second 2x interpolation and physical-pixel dots.
  * Two-stage bilinear interpolation intentionally softens the scenery only. */
@@ -1369,16 +1340,10 @@ static void ht_render_scene(void) {
     if(ht_abort) return;
     if(!opaque) {
         if(!ht_cache_visible(camera)) return;
-        if(ht_ai_rendering) {
-            memset(ht_recon_scene,ht_sky_ink(&game),HT_RECON_PIXELS);
-            for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
-                ht_composite_cached_ai(depth,ht_layer_offset(depth,camera),px,py);
-            ht_reconstruct_low_scene();
-        } else {
-            memset(ht_low_scene,ht_sky_ink(&game),HT_SCENE_PIXELS);
-            for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
-                ht_composite_cached_legacy(depth,ht_layer_offset(depth,camera),px,py);
-        }
+        memset(ht_recon_scene,ht_sky_ink(&game),HT_RECON_PIXELS);
+        for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
+            ht_composite_cached_ai(depth,ht_layer_offset(depth,camera),px,py);
+        ht_reconstruct_low_scene();
     }
     /* Render directly to the transform source: remove the former full-frame
      * copy into scratch. Input servicing never reads this raster pointer. */
@@ -1477,7 +1442,7 @@ static inline __attribute__((always_inline)) void ht_pack_lanes(uint32_t a,uint3
     *top=(uint8_t)(ht_dots4(a,even,false)|(ht_dots4(h,odd,true)>>1));
     *bottom=(uint8_t)(ht_dots4(v,even,true)|(ht_dots4(d,odd,false)>>1));
 }
-static __attribute__((optimize("O3"))) void ht_pack_mono_legacy(uint8_t *out,int stride) {
+static __attribute__((optimize("O3"))) void ht_pack_mono_ai(uint8_t *out,int stride) {
     bool word_output=(((uintptr_t)out|(unsigned)stride)&3u)==0;
     for(int y=0;y<HT_H;++y) {
         if(ht_framed && ht_visible_left[y]==HT_W/2 && ht_visible_left[ht_min(y+1,HT_H-1)]==HT_W/2) {
@@ -1628,8 +1593,8 @@ static __attribute__((optimize("O3"))) void ht_pack_mono_neural(uint8_t *out,int
 }
 
 static void ht_pack_mono(uint8_t *out,int stride) {
-    if(ht_ai_rendering) ht_pack_mono_neural(out,stride);
-    else ht_pack_mono_legacy(out,stride);
+    if(ht_neural_960) ht_pack_mono_neural(out,stride);
+    else ht_pack_mono_ai(out,stride);
 }
 static void ht_pack_format(uint8_t *out,int stride,bool mono) {
     if(mono) { ht_pack_mono(out,stride); return; }
