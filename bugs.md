@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 91. Rom Manager silently hides Game Boy ROMs after the first 128
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1825](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260928-1825/bugs.md)
+
+- **Affected code:** `Apps/rom_manager.c`, `MAX_ROMS`, the fixed `rom_names[]` / `rom_sizes[]` inventories, and `load_roms()`.
+- **Trigger / reproduction:** Put at least 129 valid `.gb` files in `/sd/System/State/Applications/Rom Manager`, then open Rom Manager's installed-ROM list. Arrange a known ROM late enough in directory order that it is encountered after 128 qualifying ROMs.
+- **Observed / logically demonstrated failure:** `load_roms()` enumerates with `while (rom_count < MAX_ROMS && app->dir_next(&e))`. Once the 128th qualifying ROM is stored, enumeration stops completely. Later ROMs are never counted, displayed, renamed, or deleted, and the UI exposes no truncation notice or continuation mechanism.
+- **Likely root cause:** The fixed in-memory row cache is also being used as the total directory traversal limit instead of only as a page/window of the inventory.
+- **Impact:** Valid ROMs already present on the SD card can become unreachable from Rom Manager solely because of directory ordering. Importing additional ROMs can also make older/later entries appear to vanish from management even though the files remain on disk.
+- **Repair direction:** Separate traversal from presentation. Page or stream the directory, or maintain a bounded visible window with a continuation cursor while continuing enumeration. Add regression coverage with 128, 129, and more than 128 qualifying ROMs and prove every entry remains reachable.
+
+### 92. Native archive extraction can publish a destination even when the output file fails to close
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1825](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260928-1825/bugs.md)
+
+- **Affected code:** `src/native/NativeArchiveBridge.cpp::extract()` and `BoundedOutput`; `HalFile::close()` in `lib/hal/HalStorage.h`.
+- **Trigger / reproduction:** Extract a valid ZIP entry while injecting an SD/filesystem failure that occurs after all expected bytes have been accepted by `HalFile::write()` but causes the final `HalFile::close()` to return `false`.
+- **Observed / logically demonstrated failure:** The extraction path requires `ZipFile::readFileToStream()` and `sink.good()` to succeed, calls `output.flush()`, then calls `output.close()` but discards the boolean close result. If the earlier byte-count checks passed, it proceeds to rename the `.part` file to the final destination. The bridge can therefore return success and publish an extraction whose final filesystem close/commit failed.
+- **Likely root cause:** Write-count validation is treated as sufficient completion even though the storage abstraction explicitly exposes close-time failure.
+- **Impact:** ROMs or other package resources extracted through the native archive API can be reported as successfully installed while the destination is incomplete or not durably committed. The staged `.part` design does not protect the final path if publication occurs after a failed close.
+- **Repair direction:** Require a successful `close()` before renaming the staged file; if close fails, remove or quarantine the `.part` file and return failure. Add fault-injection coverage where writes reach the expected size but close fails, and verify that no final destination is published.
+
+### 93. GNSS Stream Diagnostic reports the receiver unavailable when device inventory exceeds 12 entries
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260928-1825](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260928-1825/bugs.md)
+
+- **Affected code:** `Apps/gnss_stream_diagnostic.c::find_receiver()`; the all-or-nothing `inventory()` contract in `lib/NativeApps/include/T5DeviceApi.h` and `src/native/NativeDeviceBridge.cpp::inventory()`.
+- **Trigger / reproduction:** Make more than 12 devices visible in the device registry while a valid `gps-nmea` UART device with `location.position` is available, then launch GNSS Stream Diagnostic.
+- **Observed / logically demonstrated failure:** `find_receiver()` allocates exactly 12 `t5_device_info_t` records and calls `inventory(entries, 12, &count)`. The ABI explicitly defines inventory as all-or-nothing: when capacity is below the registry count it returns `T5_DEVICE_LIMIT` and reports the required count. The app treats every result other than `T5_DEVICE_OK` as no receiver and returns handle 0, so a 13th unrelated device makes the UI report `GNSS driver unavailable` even when the GNSS device is healthy.
+- **Likely root cause:** The diagnostic assumes a fixed maximum inventory instead of handling the API's documented capacity-negotiation result.
+- **Impact:** As more USB, internal, BLE, or other providers register devices, the GNSS diagnostic can become unusable for reasons unrelated to GPS. This can misdiagnose a working receiver/provider as missing and prevents the consent/stream test from running.
+- **Repair direction:** Retry using the required count returned with `T5_DEVICE_LIMIT`, using bounded dynamic or PSRAM storage, or provide a filtered provider query. Add a regression with 13 or more devices and place the GNSS device at multiple registry positions to prove discovery remains reliable.
