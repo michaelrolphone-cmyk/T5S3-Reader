@@ -36,33 +36,51 @@ static void ht_landscape_detail(const ht_game *g) {
         }
     }
 }
-/* The marsh ferry begins in a sheltered rock grotto: massive roof at left,
- * eroded headland, bright open water at right. The roof and shore both share
- * their authored silhouette with collision geometry. */
+/* Three overlapping cave masses enclose a luminous opening. Far and middle
+ * walls have slower camera motion; the solid near roof remains the collision
+ * curve. The water is a continuous plane behind the entire eroded shore. */
 static void ht_boat_grotto(const ht_game *g) {
-    if(g->level!=4) return;
+    if(g->level!=4 || g->camera/256>900) return;
     int cx=g->camera/256,cy=g->camera_y/256;
-    if(cx>800) return;
-    /* Shade only the roof and its narrow fog fringe in row order. A smooth
-     * distance ramp avoids stacked polygon bands and repeated opaque fills.
-     * Reuse the terrain column scratch; no extra framebuffer or blur pass. */
-    uint8_t haze[65];int fade=ht_max(1,64*ht_world_scale/256),last=0;
-    for(int d=0;d<=fade;++d) haze[d]=(uint8_t)(255*(fade-d)*(fade-d)/(fade*fade));
+    static int16_t near_roof[HT_W];
     for(int sx=0;sx<HT_W;++sx) {
-        int wx=cx+240+(sx-240)*256/ht_world_scale;
-        int top=ht_project_y(ht_grotto_ceiling(wx)-cy);
-        ht_land_tops[sx]=(int16_t)top;last=ht_max(last,top+fade);
+        int source=240+(sx-240)*256/ht_world_scale;
+        near_roof[sx]=ht_project_y(ht_grotto_ceiling(source+cx)-cy);
+        ht_land_tops[sx]=(int16_t)ht_project_y(ht_grotto_ceiling(source+cx*53/100-35)+48-cy*53/100);
+        ht_land_bottoms[sx]=(int16_t)ht_project_y(ht_grotto_ceiling(source+cx*22/100-100)+67-cy*22/100);
     }
-    for(int sy=0;sy<ht_min(HT_H,last);++sy) {
+    int water=ht_project_y(ht_mech(g)->boat_deck+10-cy);
+    int glow=ht_project_x(535-cx*22/100),middle=ht_project_y(192-cy*22/100);
+    int blend=ht_clamp((900-cx)*256/200,0,256);
+    int softness=ht_max(1,22*ht_world_scale/256);
+    uint16_t edge[24];
+    for(int d=0;d<=softness;++d) edge[d]=(uint16_t)(d*256/softness);
+    int boat=ht_project_x(g->traversal.boat_x/256-cx);
+    for(int sy=0;sy<HT_H;++sy) {
         uint8_t *row=ht_scene+sy*HT_W;
         for(int sx=0;sx<HT_W;++sx) {
-            int distance=sy-ht_land_tops[sx];
-            if(distance<=0) row[sx]=255;
-            else if(distance<fade && row[sx]<haze[distance]) row[sx]=haze[distance];
+            int dx=sx-glow,dy=sy-middle;
+            int ink=ht_clamp(25+(dx*dx+dy*dy*2)/1800,25,112);
+            int far=edge[ht_clamp(ht_land_bottoms[sx]-sy+softness,0,softness)];
+            int mid=edge[ht_clamp(ht_land_tops[sx]-sy+softness,0,softness)];
+            ink=ht_max(ink,ink+(108-ink)*far/256);
+            ink=ht_max(ink,ink+(182-ink)*mid/256);
+            if(sy>=water) {
+                int depth=sy-water;
+                /* Broad reflected cave shadows melt into horizontal mist. */
+                int water_ink=ht_clamp(42+depth*2/3+ht_abs(dx)/7,42,150);
+                int reflection=ht_clamp((235-sx)*2,0,95);
+                water_ink=ht_min(205,water_ink+reflection*(80-ht_min(depth,80))/80);
+                int shade=ht_max(0,56-ht_abs(sx-boat))*2*ht_max(0,28-depth)/28;
+                water_ink=ht_min(210,water_ink+shade);
+                int mix=ht_min(256,depth*256/24);
+                ink=(ink*(256-mix)+water_ink*mix)/256;
+            }
+            int distance=sy-near_roof[sx];
+            if(distance<=0) ink=255;
+            else if(distance<softness) ink=ht_max(ink,255*edge[softness-distance]/256);
+            row[sx]=(uint8_t)((ink*blend+row[sx]*(256-blend))/256);
         }
-        if((sy&31)==31) ht_checkpoint();
+        if((sy&15)==15) ht_checkpoint();
     }
-    /* Thin mineral seams break up the rock without turning it into a tile. */
-    ht_limb(ht_scene,-40-cx,18-cy,100-cx,-4-cy,0,0,229);
-    ht_limb(ht_scene,100-cx,-4-cy,197-cx,-41-cy,0,0,235);
 }

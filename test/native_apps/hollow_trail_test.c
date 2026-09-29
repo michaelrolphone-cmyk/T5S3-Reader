@@ -204,6 +204,18 @@ static void eroded_cliffs_and_grotto(void) {
         assert(ht.y-29*256>=ht_grotto_ceiling(ht.x/256)*256);
     }
     assert(ht.grounded);
+    /* Visual water extends under the eroded bank, across both physics bounds.
+     * The collision channel must not become a rectangular paint clip. */
+    ht.camera=120*256;ht.camera_y=40*256;ht_world_scale=256;
+    memset(ht_scene,0,HT_PIXELS);ht_boat_grotto(&ht);
+    for(int edge=350;edge<=680;edge+=330) {
+        int px=edge-120,py=240;
+        if(px>1 && px<HT_W-1) {
+            assert(ht_scene[py*HT_W+px-1]>20);
+            assert(ht_abs(ht_scene[py*HT_W+px-1]-ht_scene[py*HT_W+px+1])<8);
+        }
+    }
+    assert(ht_scene[110*HT_W+130]>ht_scene[110*HT_W+420]+40);
     assert(ht_boat_half(&ht)==48);
     assert(ht_mech(&ht)->boat_left-ht_boat_half(&ht)==ht_mech(&ht)->water_left);
     assert(ht_mech(&ht)->boat_right+ht_boat_half(&ht)==ht_mech(&ht)->water_right);

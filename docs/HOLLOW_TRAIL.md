@@ -1,3 +1,22 @@
+# Hollow Trail 1.1.8
+
+Reworks the first ferry composition after visual review of 1.1.7 against the
+boat reference. Water now paints continuously behind the entire marsh bank;
+the physical channel bounds no longer clip the water at an eroded cliff edge.
+Three cave masses overlap at different parallax rates around a lit opening.
+Soft silhouette transitions, a gradual water/mist blend and a broad reflected
+boat shadow replace the blank backdrop and sharp reflection stripes.
+The skiff is a solid curved hull with a tapered mast and one continuous stay.
+Removed decorative rigging, exposed ribs and the idle oar; rowing still follows
+the seated player's stroke. Collision, boarding and hull width are unchanged.
+The extra cave profile uses 960 bytes of static scratch, no new framebuffer,
+and the bounded raster pass checkpoints every 16 rows.
+
+Version: **1.1.7 -> 1.1.8**, minimum firmware unchanged at 1.3.37. Focused
+ASan/UBSan route tests, water continuity/depth checks, cache/full-render
+comparisons and the Xtensa app build pass. Shore and mid-crossing host renders
+were inspected. Hardware appearance and FPS remain unmeasured.
+
 # Hollow Trail 1.1.7
 
 ## Reference-led landscape and grotto ferry
