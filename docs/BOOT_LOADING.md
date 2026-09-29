@@ -60,18 +60,19 @@ flushed. This is a firmware-only fix; Springboard remains 1.3.0.
 
 ## Cinematic ident (firmware 1.3.41)
 
-The loading worker renders at 40 ms intervals. Firmware 1.3.42 blossoms the
-logo from a common bud. Each piece has its own staggered clock and cubic Bezier
-path: it rises, fans outward, unfurls its curved belly and broadens its tapered
-tips before settling into the original rounded block. Twelve filled ribbon
-strips per piece provide actual curved silhouettes rather than a rigid matrix
-transform or construction outlines. The final piece settles at 1080 ms.
-Labels remain stationary and fade at the end; the background stays clear.
+The loading worker renders at 40 ms intervals. Firmware 1.3.42 uses the
+owner's travelling-stroke reference: offset rounded ink traces establish the
+logo contours, led by small beads. Alternating directions give the traces
+independent movement. An overlapping second wave thickens the rims inward,
+materializing the solid mark. All blocks settle by 960 ms. After 1000 ms, the mixed-case RiscRTE
+wordmark grows from rising stems into bold letterforms, with staggered horizontal
+unfolding and a separately falling/bouncing i-dot. It finishes by 1510 ms when
+loading lasts long enough. Static glyph masks occupy under 1 KiB of flash and
+need no font loading. The small status label fades at its fixed anchor. No rotating model, ribbons or surrounding ornaments.
 
-Fixed strip counts, clipped convex scanlines and bounded edge walks render
-with integer arithmetic into the existing backbuffer. No new allocations,
-assets, SD access, trigonometry or blur passes. Readiness cancellation, exit
-fade, touch boundary and worker/display ownership handoff remain unchanged.
-Startup never waits for the animation. Tests cover buffer bounds, zero-coverage
-output throughout the animation, exact final geometry and both startup display
-paths. Hardware refresh quality and ghosting remain unmeasured.
+One bounded box-area pass plus a small clipped bead renders each active block
+using integer arithmetic and the existing backbuffer. No allocations, external assets,
+SD reads or trigonometry. Readiness cancellation, exit fade, touch boundary and
+worker/display ownership remain unchanged; boot never waits for the animation.
+Tests cover bounds, zero-coverage output throughout the timeline, exact final
+geometry and both startup display paths. Hardware appearance is unmeasured.

@@ -345,49 +345,107 @@ int textWidth(const char* text, int scale) {
                           static_cast<size_t>(scale));
 }
 
-struct BootPoint { int x; int y; };
+// A travelling rounded stroke draws the contour, then thickens inward.
+// One bounded box-area pass keeps the traced surface and final fill seamless.
+void drawInkBlock(uint8_t* buffer, size_t size, int x, int y,
+                  int width, int height, uint32_t age, uint8_t coverage,
+                  bool reverse) {
+  if(!coverage) return;
+  if(age>=600u) {
+    drawDitheredRoundedRect(buffer,size,x,y,width,height,4,coverage);
+    return;
+  }
+  const int perimeter=2*(width+height-2);
+  const int traced=age>=340u?perimeter:static_cast<int>(age)*perimeter/340;
+  const int fillTime=age<=300u?0:static_cast<int>(age-300u)*1000/300;
+  const int fill=fillTime*fillTime*(3000-2*fillTime)/1000000;
+  const int thickness=2+(height/2)*fill/1000;
+  const int radius=8-4*fill/1000;
+  for(int py=0;py<height;++py) for(int px=0;px<width;++px) {
+    if(!insideRoundedRect(px,py,width,height,radius)) continue;
+    int depth=py,phase=px;
+    if(width-1-px<depth) {depth=width-1-px;phase=width-1+py;}
+    if(height-1-py<depth) {depth=height-1-py;phase=width+height-2+width-1-px;}
+    if(px<depth) {depth=px;phase=2*width+height-3+height-1-py;}
+    phase=(phase+perimeter-width/2)%perimeter;
+    if(reverse) phase=(perimeter-phase)%perimeter;
+    if(depth<thickness && phase<=traced && ditherPixel(x+px,y+py,coverage))
+      setPhysicalPixel(buffer,size,x+px,y+py,true);
+  }
+  if(age<340u) {
+    int phase=((reverse?perimeter-traced:traced)+width/2)%perimeter;
+    int hx=0,hy=0;
+    if(phase<width-1) hx=phase;
+    else if((phase-=width-1)<height-1) {hx=width-1;hy=phase;}
+    else if((phase-=height-1)<width-1) {hx=width-1-phase;hy=height-1;}
+    else {phase-=width-1;hy=height-1-phase;}
+    // A small ink bead leads the stroke, clipped to the rounded silhouette.
+    for(int dy=-3;dy<=3;++dy) for(int dx=-3;dx<=3;++dx) {
+      const int px=hx+dx,py=hy+dy;
+      if(dx*dx+dy*dy>9 || px<0 || py<0 || px>=width || py>=height ||
+         !insideRoundedRect(px,py,width,height,radius)) continue;
+      if(ditherPixel(x+px,y+py,coverage)) setPhysicalPixel(buffer,size,x+px,y+py,true);
+    }
+  }
+}
 
-// Convex plate rasterizer: four edges and clipped scanlines, no allocations.
-void drawBootPlate(uint8_t* buffer, size_t size, const BootPoint* points,
-                   uint8_t coverage, bool solid) {
-  if (!coverage) return;
-  int minY=points[0].y, maxY=minY;
-  for (int i=1;i<4;++i) {
-    if(points[i].y<minY) minY=points[i].y;
-    if(points[i].y>maxY) maxY=points[i].y;
-  }
-  if(minY<0) minY=0;
-  if(maxY>=static_cast<int>(videoSurface.width)) maxY=videoSurface.width-1;
-  if(solid) for(int y=minY;y<=maxY;++y) {
-    int left=32767,right=-32768;
-    for(int i=0;i<4;++i) {
-      BootPoint a=points[i],b=points[(i+1)%4];
-      if(a.y>b.y) { const BootPoint t=a;a=b;b=t; }
-      if(a.y==b.y || y<a.y || y>=b.y) continue;
-      const int x=a.x+(b.x-a.x)*(y-a.y)/(b.y-a.y);
-      if(x<left) left=x;
-      if(x>right) right=x;
+// RiscRTE wordmark rasterized from DejaVu Sans Bold, 36 px.
+// Font notice: docs/BOOT_WORDMARK_LICENSE.txt. Static flash data; no font/SD load.
+constexpr uint8_t kWordmarkWidths[7]={28,12,21,21,28,25,25};
+constexpr uint32_t kWordmarkRows[7][32]={
+  {0x0u,0x3fff8u,0xffff8u,0x3ffff8u,0x3ffff8u,0x7ffff8u,0x7f01f8u,0x7e01f8u,0x7e01f8u,0x7e01f8u,0x7e01f8u,0x3f01f8u,0x3ffff8u,0x1ffff8u,0x7fff8u,0xffff8u,0x1ffff8u,0x3fc1f8u,0x3f81f8u,0x7f01f8u,0x7e01f8u,0xfe01f8u,0xfe01f8u,0xfc01f8u,0x1fc01f8u,0x1f801f8u,0x3f801f8u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x0u,0x0u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0x0u,0x0u,0x0u,0x0u,0x0u,0x0u,0x1ffc0u,0x7fff0u,0x7fff8u,0x7fffcu,0x781fcu,0x400fcu,0xfcu,0x1fcu,0x3ffcu,0x1fff8u,0x7fff0u,0xfff80u,0xfe000u,0xfc000u,0xfc004u,0xfe03cu,0x7fffcu,0x7fffcu,0x3fffcu,0x7fe0u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0x0u,0x0u,0x0u,0x0u,0x0u,0x0u,0xfe00u,0x3ff80u,0x7ffe0u,0x7fff0u,0x7fff8u,0x707f8u,0x401fcu,0x1fcu,0xfcu,0xfcu,0xfcu,0xfcu,0x1fcu,0x401fcu,0x707f8u,0x7fff8u,0x7fff0u,0x7ffe0u,0x3ffc0u,0xfe00u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0x3fff8u,0xffff8u,0x3ffff8u,0x3ffff8u,0x7ffff8u,0x7f01f8u,0x7e01f8u,0x7e01f8u,0x7e01f8u,0x7e01f8u,0x3f01f8u,0x3ffff8u,0x1ffff8u,0x7fff8u,0xffff8u,0x1ffff8u,0x3fc1f8u,0x3f81f8u,0x7f01f8u,0x7e01f8u,0xfe01f8u,0xfe01f8u,0xfc01f8u,0x1fc01f8u,0x1f801f8u,0x3f801f8u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0xffffffu,0xffffffu,0xffffffu,0xffffffu,0xffffffu,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1ffff8u,0x1ffff8u,0x1ffff8u,0x1ffff8u,0x1ffff8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x0u,0x0u,0x0u,0x0u,0x0u}
+};
+
+void drawBootWordmark(uint8_t* buffer,size_t size,int centerX,int y,uint8_t coverage) {
+  int total=0;for(int i=0;i<7;++i) total+=kWordmarkWidths[i];
+  int x=centerX-total/2;
+  const uint32_t elapsed=visualTimeMs>1000u?visualTimeMs-1000u:0;
+  for(int letter=0;letter<7;++letter) {
+    const int width=kWordmarkWidths[letter];
+    const int age=static_cast<int>(elapsed)-letter*25;
+    if(age>0 && coverage) {
+      if(age<130) {
+        const int height=27*age/130;
+        drawDitheredRoundedRect(buffer,size,x+width/2-3,y+27-height,6,height,1,coverage);
+      } else {
+        const int unfold=age>=360?1000:(age-130)*1000/230;
+        const int eased=unfold*unfold*(3000-2*unfold)/1000000;
+        const int drawnWidth=6+(width-6)*eased/1000;
+        for(int py=0;py<32;++py) {
+          if(letter==1 && py<9) continue; // dot arrives independently below
+          for(int dx=0;dx<drawnWidth;++dx) {
+            const int sourceX=dx*width/drawnWidth;
+            const int px=x+(width-drawnWidth)/2+dx;
+            if((kWordmarkRows[letter][py]&(1u<<sourceX)) && ditherPixel(px,y+py,coverage))
+              setPhysicalPixel(buffer,size,px,y+py,true);
+          }
+        }
+      }
+      if(letter==1 && age>=170) {
+        const int fall=age>=340?1000:(age-170)*1000/170;
+        int offset=-20+20*fall*fall/1000000;
+        if(age>=340 && age<450) {
+          const int bounce=(age-340)*1000/110;
+          offset=-4*4*bounce*(1000-bounce)/1000000;
+        }
+        for(int py=0;py<9;++py) for(int px=0;px<width;++px)
+          if((kWordmarkRows[letter][py]&(1u<<px)) && ditherPixel(x+px,y+py+offset,coverage))
+            setPhysicalPixel(buffer,size,x+px,y+py+offset,true);
+      }
     }
-    if(left<0) left=0;
-    if(right>=static_cast<int>(videoSurface.height)) right=videoSurface.height-1;
-    for(int x=left;x<=right;++x)
-      if(ditherPixel(x,y,coverage)) setPhysicalPixel(buffer,size,x,y,true);
-  }
-  for(int i=0;i<4;++i) {
-    const BootPoint a=points[i],b=points[(i+1)%4];
-    const int dx=b.x-a.x,dy=b.y-a.y;
-    const int ax=dx<0?-dx:dx,ay=dy<0?-dy:dy;
-    const int steps=ax>ay?ax:ay;
-    for(int j=0;j<=steps;++j) {
-      const int x=a.x+(steps?dx*j/steps:0),y=a.y+(steps?dy*j/steps:0);
-      if(ditherPixel(x,y,coverage)) setPhysicalPixel(buffer,size,x,y,true);
-    }
+    x+=width;
   }
 }
 
 void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
                    uint8_t logoCoverage, uint8_t textCoverage) {
-  // Fixed final anchor; projected plates assemble into the original mark.
+  // Fixed final anchor; travelling ink strokes materialize the mark.
   if (visibleBlocks > kLogoBlockCount) visibleBlocks = kLogoBlockCount;
 
   const int logicalWidth = static_cast<int>(videoSurface.height);
@@ -396,64 +454,23 @@ void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
   const int frameY = (logicalHeight - kFrameHeight) / 2;
 
 
-  // Each petal follows its own curved stem and unfurls into a logo block.
-  // Staggered local clocks break the rigid whole-object rotation.
-  for (int rectIndex=0;rectIndex<kLogoBlockCount;++rectIndex) {
-    const auto& rect=kLogoRects[rectIndex];
+  // Offset travelling strokes establish the contours, followed by an
+  // overlapping wave of material filling each shape from its rim inward.
+  for(int rectIndex=0;rectIndex<kLogoBlockCount;++rectIndex) {
     const uint32_t born=static_cast<uint32_t>(rectIndex)*45u;
     if(visualTimeMs<=born) continue;
-    const uint32_t age=visualTimeMs-born;
-    if(age>=720u) {
-      drawDitheredRoundedRect(buffer,bufferSize,frameX+rect.x*2,
-                              frameY+rect.y*2,rect.width*2,rect.height*2,4,logoCoverage);
-      continue;
-    }
-    const int t=static_cast<int>(age)*1000/720;
-    const int q=1000-t;
-    const int ease=t*t*(3000-2*t)/1000000;
-    const int side=(rectIndex%2)?1:-1;
-    const int targetX=rect.x*2+rect.width;
-    const int targetY=rect.y*2+rect.height;
-    // Cubic Bezier travel: rise out of a common bud, fan outward, then settle.
-    const int w0=q*q/1000*q/1000;
-    const int w1=3*q*q/1000*t/1000;
-    const int w2=3*q*t/1000*t/1000;
-    const int w3=1000-w0-w1-w2;
-    const int cx=frameX+(w0*120+w1*(120+(targetX-120)*3/2)+
-                        w2*(targetX+side*14)+w3*targetX)/1000;
-    const int cy=frameY+(w0*138+w1*(targetY-40)+w2*(targetY-10)+w3*targetY)/1000;
-    const int width=2+(rect.width*2-2)*ease/1000;
-    const int height=2+(rect.height*2-2)*ease/1000;
-    const int curl=side*width*28*q/200000;
-    const int lean=side*width*18*q/200000;
-    // Twelve filled strips form a soft curled ribbon. The belly opens first;
-    // its tapered tips broaden last, yielding the exact rectangular mark.
-    BootPoint previousTop{},previousBottom{};
-    for(int segment=0;segment<=12;++segment) {
-      const int u=segment*1000/12;
-      const int belly=4*u*(1000-u)/1000;
-      const int radius=height*(ease+(1000-ease)*belly/1000)/2000;
-      const int x=cx-width/2+width*u/1000;
-      const int y=cy+curl*belly/1000+lean*(u-500)/1000;
-      const BootPoint top{x,y-radius},bottom{x,y+radius};
-      if(segment) {
-        const BootPoint ribbon[4]={previousTop,top,bottom,previousBottom};
-        drawBootPlate(buffer,bufferSize,ribbon,logoCoverage,true);
-      }
-      previousTop=top;previousBottom=bottom;
-    }
+    const auto& rect=kLogoRects[rectIndex];
+    drawInkBlock(buffer,bufferSize,frameX+rect.x*2,frameY+rect.y*2,
+                 rect.width*2,rect.height*2,visualTimeMs-born,logoCoverage,
+                 (rectIndex&1)!=0);
   }
 
   // Both labels stay at fixed coordinates and first appear after all blocks.
   if (visibleBlocks == kLogoBlockCount && textCoverage != 0U) {
-    constexpr char title[] = "RISCRTE";
     constexpr char status[] = "STARTING...";
-    constexpr int titleScale = 4;
     constexpr int statusScale = 2;
 
-    drawDitheredText(buffer, bufferSize,
-                     (logicalWidth - textWidth(title, titleScale)) / 2,
-                     frameY + 244, title, titleScale, textCoverage);
+    drawBootWordmark(buffer,bufferSize,logicalWidth/2,frameY+244,logoCoverage);
     drawDitheredText(buffer, bufferSize,
                      (logicalWidth - textWidth(status, statusScale)) / 2,
                      frameY + 291, status, statusScale, textCoverage);
