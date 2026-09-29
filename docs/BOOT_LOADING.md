@@ -57,3 +57,21 @@ Tests cover firmware-queued and raw-provider-queued old taps, held contacts,
 snapshot failure/recovery, and the real GT911 driver/consumer together. A native
 host test executes the first-poll code and verifies subsequent fresh taps are not
 flushed. This is a firmware-only fix; Springboard remains 1.3.0.
+
+## Cinematic ident (firmware 1.3.41)
+
+The loading worker now renders the reveal at 40 ms intervals: incoming streaks,
+outlined boxes filling left to right, subtle offset shadows, layered diamond
+traces, moving edge lights and sparse particles. A narrow white highlight scans
+only the logo interiors. The completed logo stays high contrast while a small
+segmented activity rail and restrained density pulse continue during real work.
+The rail is indeterminate and does not imply a percentage of startup completion.
+
+The logo remains in its original centered position. All accents use bounded
+integer vector drawing directly into the existing video backbuffer, with no new
+allocations, assets, SD access, trigonometry or blur passes. Pulse work yields at
+least 35 ms per frame. The existing readiness cancellation, 150 ms exit-fade
+budget, touch boundary and resource-ownership handshake remain intact. Device
+refresh quality and ghosting have not been measured. Host tests cover the full
+visual cycle's buffer bounds and fully white fade endpoint as well as startup
+lifecycle behavior.

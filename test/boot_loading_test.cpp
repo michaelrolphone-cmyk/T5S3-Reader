@@ -66,6 +66,16 @@ int main(){
  GfxRenderer renderer;
 #if defined(BOARD_T5S3_PRO)
  using namespace StartupScreen;
+ // Render all animation phases into a guarded buffer, including complete fade.
+ videoSurface={960,540,120,T5_VIDEO_PIXEL_MONO_1BPP_MSB,T5_VIDEO_FLAG_ONE_IS_BLACK};
+ uint8_t guarded[sizeof(pixels)+2];guarded[0]=0xa5;guarded[sizeof(guarded)-1]=0x5a;
+ for(unsigned t=0;t<3600;t+=40){
+   visualTimeMs=t;memset(guarded+1,0,sizeof(pixels));
+   drawVideoLogo(guarded+1,sizeof(pixels),9,64,64);
+   assert(guarded[0]==0xa5 && guarded[sizeof(guarded)-1]==0x5a);
+ }
+ memset(guarded+1,0,sizeof(pixels));drawVideoLogo(guarded+1,sizeof(pixels),9,0,0);
+ for(unsigned i=1;i<=sizeof(pixels);++i)assert(guarded[i]==0);
  auto began=millis();boot(renderer);
  assert(millis()-began<200); // reveal is not on the startup caller
  unsigned loadingSteps=0;

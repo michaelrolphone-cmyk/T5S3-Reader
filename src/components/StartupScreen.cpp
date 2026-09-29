@@ -113,7 +113,7 @@ constexpr uint32_t kRevealDeadlineMs = 1800;
 constexpr uint8_t kFadeFrames = 6;
 constexpr uint8_t kPulseFrames = 48;
 constexpr uint8_t kFullCoverage = 64;
-constexpr uint8_t kPulseMinCoverage = 24;
+constexpr uint8_t kPulseMinCoverage = 52;
 constexpr uint8_t kPulseMaxCoverage = kFullCoverage;
 constexpr uint32_t kReadyFadeBudgetMs = 150;
 constexpr uint32_t kSubmitTimeoutMs = 350;
@@ -133,6 +133,8 @@ std::atomic<bool> pulseExited{true};
 uint8_t lastVisibleBlocks = 0;
 uint8_t lastPulseCoverage = kFullCoverage;
 uint8_t lastTextCoverage = 0;
+uint32_t visualStartedAtMs = 0;
+uint32_t visualTimeMs = 0;
 
 constexpr uint8_t kBayer8[8][8] = {
     {0, 48, 12, 60, 3, 51, 15, 63},
@@ -343,9 +345,58 @@ int textWidth(const char* text, int scale) {
                           static_cast<size_t>(scale));
 }
 
+// Sparse vector accents: bounded integer work, no textures, allocations or SD.
+void accentLine(uint8_t* buffer, size_t size, int x0, int y0, int x1, int y1,
+                uint8_t coverage) {
+  const int dx = x1 > x0 ? x1-x0 : x0-x1;
+  const int dy = y1 > y0 ? y1-y0 : y0-y1;
+  const int steps = dx > dy ? dx : dy;
+  for (int i=0; i<=steps; ++i) {
+    const int x = x0 + (steps ? (x1-x0)*i/steps : 0);
+    const int y = y0 + (steps ? (y1-y0)*i/steps : 0);
+    if (ditherPixel(x,y,coverage)) setPhysicalPixel(buffer,size,x,y,true);
+  }
+}
+
+void drawBootAccents(uint8_t* buffer, size_t size, int cx, int cy,
+                     uint8_t coverage) {
+  const uint8_t faint = coverage*2/5;
+  const int sweep = static_cast<int>(visualTimeMs % 1800u)*360/1800;
+  // Architectural depth: two offset diamond frames, open corners and tracers.
+  for (int layer=0; layer<2; ++layer) {
+    const int rx=174+layer*16, ry=122+layer*12;
+    const int y=cy+layer*12;
+    accentLine(buffer,size,cx-rx,y,cx,y-ry,faint);
+    accentLine(buffer,size,cx,y-ry,cx+rx,y,faint);
+    accentLine(buffer,size,cx+rx,y,cx,y+ry,faint);
+    accentLine(buffer,size,cx,y+ry,cx-rx,y,faint);
+  }
+  for (int side=-1; side<=1; side+=2) {
+    const int x=cx+side*204;
+    for (int edge=-1; edge<=1; edge+=2) {
+      const int y=cy+edge*170;
+      accentLine(buffer,size,x,y,x-side*28,y,coverage/2);
+      accentLine(buffer,size,x,y,x,y-edge*20,coverage/2);
+    }
+    // Short travelling light packets instead of a full-screen flash.
+    const int y=cy-180+sweep;
+    accentLine(buffer,size,x,y,x,y+12,coverage);
+    accentLine(buffer,size,x-side*3,y-8,x-side*3,y+4,faint);
+  }
+  // Deterministic near/far particles drift inward around a quiet logo center.
+  for (int i=0; i<18; ++i) {
+    const int travel=(static_cast<int>(visualTimeMs/12)+i*37)%144;
+    const int side=(i&1)?1:-1;
+    const int x=cx+side*(216-travel/3);
+    const int y=cy-210+(i*97)%420;
+    const uint8_t ink=static_cast<uint8_t>((144-travel)*coverage/288);
+    accentLine(buffer,size,x,y,x+side*(2+i%4),y,ink);
+  }
+}
+
 void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
                    uint8_t logoCoverage, uint8_t textCoverage) {
-  // Fixed artwork: each block appears whole, in left-to-right array order.
+  // Fixed logo positions; each block assembles in left-to-right array order.
   if (visibleBlocks > kLogoBlockCount) visibleBlocks = kLogoBlockCount;
 
   const int logicalWidth = static_cast<int>(videoSurface.height);
@@ -353,11 +404,42 @@ void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
   const int frameX = (logicalWidth - kLogoSize) / 2;
   const int frameY = (logicalHeight - kFrameHeight) / 2;
 
+  drawBootAccents(buffer, bufferSize, logicalWidth/2, frameY+120, logoCoverage);
+
   for (uint8_t rectIndex = 0; rectIndex < visibleBlocks; ++rectIndex) {
     const auto& rect = kLogoRects[rectIndex];
+    uint8_t layer=0, first=0;
+    while (rectIndex>=kLogoLayerEnds[layer]) { first=kLogoLayerEnds[layer]; ++layer; }
+    const uint32_t born=layer*kRevealLayerMs+(rectIndex-first+1u)*kRevealLayerMs/(kLogoLayerEnds[layer]-first);
+    const uint32_t age=visualTimeMs>born ? visualTimeMs-born : 0;
+    const int fullWidth=rect.width*2;
+    // An incoming streak compresses into a luminous outline, then the box
+    // fills horizontally and locks to its exact original geometry in 160 ms.
+    const int fillWidth=age>=160u ? fullWidth : 2+static_cast<int>(age)*(fullWidth-2)/160;
+    if (age<160u) {
+      const int trail=static_cast<int>(160u-age)/2;
+      const int x=frameX+rect.x*2, y=frameY+rect.y*2;
+      accentLine(buffer,bufferSize,x-trail,y+rect.height,x,y+rect.height,logoCoverage/2);
+      accentLine(buffer,bufferSize,x,y,x+fullWidth-1,y,logoCoverage/2);
+      accentLine(buffer,bufferSize,x+fullWidth-1,y,x+fullWidth-1,y+rect.height*2-1,logoCoverage/3);
+      accentLine(buffer,bufferSize,x,y+rect.height*2-1,x+fullWidth-1,y+rect.height*2-1,logoCoverage/3);
+    }
+    drawDitheredRoundedRect(buffer, bufferSize, frameX + rect.x * 2+3,
+                            frameY + rect.y * 2+4, fillWidth,
+                            rect.height * 2, fillWidth<8 ? 0 : 4, logoCoverage/5);
     drawDitheredRoundedRect(buffer, bufferSize, frameX + rect.x * 2,
-                            frameY + rect.y * 2, rect.width * 2,
-                            rect.height * 2, 4, logoCoverage);
+                            frameY + rect.y * 2, fillWidth,
+                            rect.height * 2, fillWidth<8 ? 0 : 4, logoCoverage);
+    // A narrow specular scan crosses only solid logo interiors. Crisp white
+    // highlights over the black mark retain contrast on a reflective panel.
+    const int scan=static_cast<int>(visualTimeMs % 1600u)*320/1600-40;
+    for (int py=0; py<rect.height*2; ++py) {
+      for (int band=0; band<5; ++band) {
+        const int px=scan+(rect.y*2+py)/3+band-rect.x*2;
+        if (px>=0 && px<rect.width*2 && insideRoundedRect(px,py,rect.width*2,rect.height*2,4))
+          setPhysicalPixel(buffer,bufferSize,frameX+rect.x*2+px,frameY+rect.y*2+py,false);
+      }
+    }
   }
 
   // Both labels stay at fixed coordinates and first appear after all blocks.
@@ -373,6 +455,14 @@ void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
     drawDitheredText(buffer, bufferSize,
                      (logicalWidth - textWidth(status, statusScale)) / 2,
                      frameY + 291, status, statusScale, textCoverage);
+    // Indeterminate segmented rail: signals activity, never fictitious progress.
+    const int active=static_cast<int>((visualTimeMs/90)%18u);
+    for (int segment=0; segment<18; ++segment) {
+      const int distance=(segment-active+18)%18;
+      const uint8_t tone=distance<3 ? textCoverage : textCoverage/5;
+      drawDitheredRoundedRect(buffer,bufferSize,logicalWidth/2-107+segment*12,
+                               frameY+336,8,3,0,tone);
+    }
   }
 }
 
@@ -405,6 +495,7 @@ bool submitVideoFrame(uint8_t visibleBlocks, uint8_t logoCoverage,
     return false;
   }
 
+  if (cancellable) visualTimeMs=static_cast<uint32_t>(millis()-visualStartedAtMs);
   std::memset(buffer, whiteByte(), bufferSize);
   drawVideoLogo(buffer, bufferSize, visibleBlocks, logoCoverage, textCoverage);
   return videoApi->submit(0, 0);
@@ -470,7 +561,7 @@ void pulseTask(void*) {
       lastTextCoverage = kFullCoverage;
       phase = static_cast<uint8_t>((phase + 1U) % kPulseFrames);
     }
-    delay(1);  // Yield even if the driver immediately accepts a frame.
+    delay(35);  // Cap cosmetic work so real startup keeps the CPU.
   }
   pulseExited.store(true, std::memory_order_release);
   vTaskDelete(nullptr);  // No video/shared-state access after publishing exit.
@@ -479,6 +570,8 @@ void pulseTask(void*) {
 bool startPulseTask() {
   pulseStopRequested.store(false, std::memory_order_relaxed);
   pulseExited.store(false, std::memory_order_relaxed);
+  visualStartedAtMs = millis();
+  visualTimeMs = 0;
   lastVisibleBlocks = 0;
   lastPulseCoverage = kFullCoverage;
   lastTextCoverage = 0;
@@ -512,45 +605,35 @@ bool waitForRevealTime(uint32_t start, uint32_t due) {
 }
 
 bool renderLayerReveal() {
-  // Each row gets the same 250 ms. Five top blocks pop every 50 ms, the next
-  // two every 125 ms, and each of the two wide blocks uses a whole row interval.
-  const uint32_t start = millis();
-  const auto submitBeforeDeadline = [start](uint8_t visibleBlocks,
-                                            uint8_t textCoverage) {
-    const uint32_t elapsed = static_cast<uint32_t>(millis() - start);
-    if (elapsed >= kRevealDeadlineMs) return false;
-    const uint32_t left = kRevealDeadlineMs - elapsed;
-    const uint32_t timeout = left < kSubmitTimeoutMs ? left : kSubmitTimeoutMs;
-    if (pulseStopRequested.load(std::memory_order_relaxed) ||
-        !submitVideoFrame(visibleBlocks, kFullCoverage, textCoverage, timeout)) return false;
-    lastVisibleBlocks = visibleBlocks;
-    lastPulseCoverage = kFullCoverage;
-    lastTextCoverage = textCoverage;
-    return true;
-  };
-  uint8_t firstBlock = 0;
-  for (uint8_t layer = 0; layer < kLogoLayerCount; ++layer) {
-    const uint8_t lastBlock = kLogoLayerEnds[layer];
-    const uint8_t blocksInLayer = lastBlock - firstBlock;
-    for (uint8_t block = firstBlock + 1; block <= lastBlock; ++block) {
-      const uint32_t due = layer * kRevealLayerMs +
-          static_cast<uint32_t>(block - firstBlock) * kRevealLayerMs / blocksInLayer;
-      if (!waitForRevealTime(start, due)) return false;
-      if (!submitBeforeDeadline(block, 0U)) return false;
+  // Preserve the left-to-right block build; animate the light field between
+  // block arrivals rather than pausing the image at each discrete layer.
+  const uint32_t start=millis();
+  constexpr uint32_t duration=kLogoLayerCount*kRevealLayerMs+kTextFadeMs;
+  uint32_t elapsed=0;
+  do {
+    if (pulseStopRequested.load(std::memory_order_relaxed)) return false;
+    elapsed=static_cast<uint32_t>(millis()-start);
+    if (elapsed>=kRevealDeadlineMs) return false;
+    uint8_t visible=0, firstBlock=0;
+    for (uint8_t layer=0; layer<kLogoLayerCount; ++layer) {
+      const uint8_t lastBlock=kLogoLayerEnds[layer];
+      const uint8_t blocksInLayer=lastBlock-firstBlock;
+      for (uint8_t block=firstBlock+1; block<=lastBlock; ++block) {
+        const uint32_t due=layer*kRevealLayerMs+(block-firstBlock)*kRevealLayerMs/blocksInLayer;
+        if (elapsed>=due) visible=block;
+      }
+      firstBlock=lastBlock;
     }
-    firstBlock = lastBlock;
-  }
-
-  // The completed graphic remains solid while only the stationary labels fade.
-  for (uint8_t frame = 1; frame <= kTextFadeFrames; ++frame) {
-    const uint32_t due = kLogoLayerCount * kRevealLayerMs +
-        static_cast<uint32_t>(frame) * kTextFadeMs / kTextFadeFrames;
-    if (!waitForRevealTime(start, due)) return false;
-    const uint8_t coverage =
-        smoothCoverage(frame, kTextFadeFrames, 0U, kFullCoverage);
-    if (!submitBeforeDeadline(kLogoBlockCount, coverage)) return false;
-  }
-
+    const uint32_t textElapsed=elapsed>kLogoLayerCount*kRevealLayerMs ? elapsed-kLogoLayerCount*kRevealLayerMs : 0;
+    const uint8_t textFrame=static_cast<uint8_t>(textElapsed>=kTextFadeMs ? kTextFadeFrames : textElapsed*kTextFadeFrames/kTextFadeMs);
+    const uint8_t textCoverage=smoothCoverage(textFrame,kTextFadeFrames,0,kFullCoverage);
+    const uint32_t left=kRevealDeadlineMs-elapsed;
+    if (!submitVideoFrame(visible,kFullCoverage,textCoverage,left<kSubmitTimeoutMs?left:kSubmitTimeoutMs)) return false;
+    lastVisibleBlocks=visible;
+    lastPulseCoverage=kFullCoverage;
+    lastTextCoverage=textCoverage;
+    if (elapsed<duration && !waitForRevealTime(start,elapsed+40u)) return false;
+  } while (elapsed<duration);
   return true;
 }
 
