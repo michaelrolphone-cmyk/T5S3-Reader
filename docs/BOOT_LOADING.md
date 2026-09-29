@@ -60,20 +60,18 @@ flushed. This is a firmware-only fix; Springboard remains 1.3.0.
 
 ## Cinematic ident (firmware 1.3.41)
 
-The loading worker renders the reveal at 40 ms intervals. Each logo box
-materializes as two folded facets, expands and descends into its final plane,
-then closes its hinge into the original rounded rectangle within 200 ms.
-Staggered arrivals build the mark layer by layer. The background stays empty;
-there are no surrounding diamonds, particles, scan highlights or activity rail.
-Firmware 1.3.42 adds a brief wireframe-to-solid construction beat.
-Two thin beveled lower faces float beneath each arriving plate and converge
-as it settles, adding the sci-fi reference's separated-layer depth. These are
-solid geometric edges, with no dithered glow or permanent decoration.
+The loading worker renders at 40 ms intervals. Firmware 1.3.42 presents the
+logo as an exploded isometric model that deploys from a compact core over
+320 ms: outlined plates acquire solid faces in
+left-to-right order while the entire model rotates face-on and its separated
+height planes contract. A lower rim gives each plate visible thickness.
+The transformation lands on the exact original logo geometry at 1100 ms.
+Labels stay anchored and fade in at the end. The background remains clear.
 
-All motion uses bounded integer drawing directly into the existing backbuffer,
-with no new allocations, assets, SD access, trigonometry or blur passes. Worker
-frames yield at least 35 ms. The existing readiness cancellation, 150 ms exit
-fade, touch boundary and resource ownership handshake remain intact. Startup
-never waits for the animation to finish. Device refresh quality and ghosting
-have not been measured. Host tests cover buffer bounds, the fully white fade
-endpoint and startup lifecycle behavior.
+Clipped convex scanlines and four bounded edge walks render each plate with
+integer arithmetic into the existing backbuffer. No additional allocations,
+assets, SD reads, trigonometry or blur passes. Readiness cancellation, exit fade,
+touch boundary and worker/display ownership handoff remain unchanged. Startup
+never waits for the transformation to finish. Host tests cover buffer bounds,
+white fade endpoint, exact final geometry and both startup display paths.
+Device refresh quality and ghosting remain unmeasured.

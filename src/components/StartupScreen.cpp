@@ -345,64 +345,49 @@ int textWidth(const char* text, int scale) {
                           static_cast<size_t>(scale));
 }
 
-// A folded plate opens around its central hinge. Row spans keep raster work
-// bounded by the box area plus two short depth edges; no temporary buffers.
-void drawAssemblingBlock(uint8_t* buffer, size_t size, int x, int y,
-                         int width, int height, uint32_t age, uint8_t coverage) {
-  constexpr uint32_t settleMs = 200;
-  if (age >= settleMs) {
-    drawDitheredRoundedRect(buffer, size, x, y, width, height, 4, coverage);
-    return;
+struct BootPoint { int x; int y; };
+
+// Convex plate rasterizer: four edges and clipped scanlines, no allocations.
+void drawBootPlate(uint8_t* buffer, size_t size, const BootPoint* points,
+                   uint8_t coverage, bool solid) {
+  if (!coverage) return;
+  int minY=points[0].y, maxY=minY;
+  for (int i=1;i<4;++i) {
+    if(points[i].y<minY) minY=points[i].y;
+    if(points[i].y>maxY) maxY=points[i].y;
   }
-  // Cubic ease-out: arrive quickly, then gently flatten into the logo plane.
-  const int remaining = static_cast<int>(settleMs - age);
-  const int fold = remaining * remaining * remaining / 8000; // 1000 -> 0
-  const int plateWidth = width * (1000 - fold / 2) / 1000;
-  const int plateHeight = height * (1000 - fold / 2) / 1000;
-  const int left = x + (width - plateWidth) / 2;
-  const int top = y + (height - plateHeight) / 2 - fold * 18 / 1000;
-  const int tilt = fold * 12 / 1000;
-  const int seam = fold > 160 ? 1 : 0;
-  // Exploded layers evoke a floating component being fabricated. Two crisp
-  // lower faces approach the main plate and fuse before it reaches rest.
-  // Their separation is geometric, avoiding noisy simulated glow on 1-bit EPD.
-  const int separation = (remaining * 6 + 199) / 200;
-  if (remaining > 35) {
-    for (int layer = 2; layer >= 1; --layer) {
-      const int inset = layer * 2;
-      const int edgeY = top + plateHeight + layer * separation;
-      const int edgeX = left - tilt + inset;
-      const int edgeWidth = plateWidth - inset * 2;
-      for (int column = 0; column < edgeWidth; ++column) {
-        // Beveled tips give each lower face a physical, tapered silhouette.
-        const int tip = column < 2 || column >= edgeWidth - 2 ? 1 : 0;
-        for (int row = tip; row < 2; ++row) {
-          if (ditherPixel(edgeX + column, edgeY + row, coverage))
-            setPhysicalPixel(buffer, size, edgeX + column, edgeY + row, true);
-        }
-      }
+  if(minY<0) minY=0;
+  if(maxY>=static_cast<int>(videoSurface.width)) maxY=videoSurface.width-1;
+  if(solid) for(int y=minY;y<=maxY;++y) {
+    int left=32767,right=-32768;
+    for(int i=0;i<4;++i) {
+      BootPoint a=points[i],b=points[(i+1)%4];
+      if(a.y>b.y) { const BootPoint t=a;a=b;b=t; }
+      if(a.y==b.y || y<a.y || y>=b.y) continue;
+      const int x=a.x+(b.x-a.x)*(y-a.y)/(b.y-a.y);
+      if(x<left) left=x;
+      if(x>right) right=x;
     }
+    if(left<0) left=0;
+    if(right>=static_cast<int>(videoSurface.height)) right=videoSurface.height-1;
+    for(int x=left;x<=right;++x)
+      if(ditherPixel(x,y,coverage)) setPhysicalPixel(buffer,size,x,y,true);
   }
-  for (int row = 0; row < plateHeight; ++row) {
-    const int skew = tilt * (plateHeight - 1 - 2 * row) / plateHeight;
-    for (int column = 0; column < plateWidth; ++column) {
-      // A brief wireframe construction beat becomes a solid face, like the
-      // reference's outlined layers acquiring their surface material.
-      if (age < 40 && row > 0 && row < plateHeight - 1 &&
-          column > 0 && column < plateWidth - 1 &&
-          column != plateWidth / 2 - 2 && column != plateWidth / 2 + 1) continue;
-      // Two clean facets close around a white hinge, disappearing at rest.
-      if (seam && column >= plateWidth / 2 - seam &&
-          column < plateWidth / 2 + seam) continue;
-      if (ditherPixel(left + column + skew, top + row, coverage))
-        setPhysicalPixel(buffer, size, left + column + skew, top + row, true);
+  for(int i=0;i<4;++i) {
+    const BootPoint a=points[i],b=points[(i+1)%4];
+    const int dx=b.x-a.x,dy=b.y-a.y;
+    const int ax=dx<0?-dx:dx,ay=dy<0?-dy:dy;
+    const int steps=ax>ay?ax:ay;
+    for(int j=0;j<=steps;++j) {
+      const int x=a.x+(steps?dx*j/steps:0),y=a.y+(steps?dy*j/steps:0);
+      if(ditherPixel(x,y,coverage)) setPhysicalPixel(buffer,size,x,y,true);
     }
   }
 }
 
 void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
                    uint8_t logoCoverage, uint8_t textCoverage) {
-  // Fixed logo positions; each block assembles in left-to-right array order.
+  // Fixed final anchor; projected plates assemble into the original mark.
   if (visibleBlocks > kLogoBlockCount) visibleBlocks = kLogoBlockCount;
 
   const int logicalWidth = static_cast<int>(videoSurface.height);
@@ -411,15 +396,40 @@ void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
   const int frameY = (logicalHeight - kFrameHeight) / 2;
 
 
-  for (uint8_t rectIndex = 0; rectIndex < visibleBlocks; ++rectIndex) {
-    const auto& rect = kLogoRects[rectIndex];
-    uint8_t layer=0, first=0;
-    while (rectIndex>=kLogoLayerEnds[layer]) { first=kLogoLayerEnds[layer]; ++layer; }
-    const uint32_t born=layer*kRevealLayerMs+(rectIndex-first+1u)*kRevealLayerMs/(kLogoLayerEnds[layer]-first);
-    const uint32_t age=visualTimeMs>born ? visualTimeMs-born : 0;
-    drawAssemblingBlock(buffer, bufferSize, frameX + rect.x * 2,
-                         frameY + rect.y * 2, rect.width * 2,
-                         rect.height * 2, age, logoCoverage);
+  // An exploded isometric model turns face-on as its layers deploy. The
+  // entire mark participates, rather than decorating stationary rectangles.
+  const int t=visualTimeMs>=1100u?1000:static_cast<int>(visualTimeMs)*1000/1100;
+  const int eased=t*t*(3000-2*t)/1000000;
+  const int turn=1000-eased;
+  const int opening=visualTimeMs>=320u?1000:static_cast<int>(visualTimeMs)*1000/320;
+  const int spread=160+840*(opening*opening*(3000-2*opening)/1000000)/1000;
+  for (int rectIndex=kLogoBlockCount-1;rectIndex>=0;--rectIndex) {
+    const auto& rect=kLogoRects[rectIndex];
+    if(!turn) {
+      if(rectIndex<visibleBlocks)
+        drawDitheredRoundedRect(buffer,bufferSize,frameX+rect.x*2,
+                                frameY+rect.y*2,rect.width*2,rect.height*2,4,logoCoverage);
+      continue;
+    }
+    uint8_t layer=0;
+    while(rectIndex>=kLogoLayerEnds[layer]) ++layer;
+    BootPoint face[4],underside[4];
+    const int corners[4][2]={{0,0},{1,0},{1,1},{0,1}};
+    for(int corner=0;corner<4;++corner) {
+      const int x=rect.x*2+corners[corner][0]*(rect.width*2-1)-120;
+      const int y=rect.y*2+corners[corner][1]*(rect.height*2-1)-120;
+      // Initial diamond projection with separated height planes. Rotation
+      // and layer contraction share one smooth timeline and land exactly.
+      const int isoX=(x*760-y*640)/1000;
+      const int isoY=(x*380+y*320)/1000+(static_cast<int>(layer)*2-3)*19;
+      face[corner]={frameX+120+(x+(isoX-x)*turn/1000)*spread/1000,
+                    frameY+120+(y+(isoY-y)*turn/1000)*spread/1000};
+      underside[corner]={face[corner].x,face[corner].y+1+turn*7/1000};
+    }
+    // The separated lower rim reads as thickness; construction outlines
+    // acquire solid surfaces in the original left-to-right order.
+    if(turn>160) drawBootPlate(buffer,bufferSize,underside,logoCoverage,false);
+    drawBootPlate(buffer,bufferSize,face,logoCoverage,rectIndex<visibleBlocks);
   }
 
   // Both labels stay at fixed coordinates and first appear after all blocks.

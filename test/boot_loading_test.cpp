@@ -73,14 +73,16 @@ int main(){
    visualTimeMs=t;memset(guarded+1,0,sizeof(pixels));
    drawVideoLogo(guarded+1,sizeof(pixels),9,64,64);
    assert(guarded[0]==0xa5 && guarded[sizeof(guarded)-1]==0x5a);
+   memset(guarded+1,0,sizeof(pixels));
+   drawVideoLogo(guarded+1,sizeof(pixels),static_cast<uint8_t>((t/40)%10),0,0);
+   for(unsigned i=1;i<=sizeof(pixels);++i)assert(guarded[i]==0);
  }
  memset(guarded+1,0,sizeof(pixels));drawVideoLogo(guarded+1,sizeof(pixels),9,0,0);
  for(unsigned i=1;i<=sizeof(pixels);++i)assert(guarded[i]==0);
  // Every settled plate must exactly reproduce the original logo silhouette.
  memset(pixels,0,sizeof(pixels));memset(guarded+1,0,sizeof(pixels));
+ visualTimeMs=1200;drawVideoLogo(pixels,sizeof(pixels),9,64,0);
  for(const auto& rect:kLogoRects){
-   drawAssemblingBlock(pixels,sizeof(pixels),150+rect.x*2,320+rect.y*2,
-                       rect.width*2,rect.height*2,200,64);
    drawDitheredRoundedRect(guarded+1,sizeof(pixels),150+rect.x*2,320+rect.y*2,
                            rect.width*2,rect.height*2,4,64);
  }
