@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 160. Font Manager update failure deletes the previously working installed family
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0526](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0526/bugs.md)
+
+- **Affected code:** `src/native/NativeFontBridge.cpp`, `installFamily()`; `src/FontInstaller.cpp`, `ensureFamilyDir()`, `buildFontPath()`, and `deleteFamily()`; compatibility download path in `src/network/HttpDownloader.cpp::downloadToFile()`.
+- **Trigger / reproduction:** Install a valid SD font family, then make a later catalog version mark that same family as having an update. Start the update and force any failure after it begins writing the replacement, such as a network interruption, SD write/read failure, CRC mismatch, or invalid downloaded `.cpfont`.
+- **Observed / logically demonstrated failure:** Updates are written directly into the already-installed family's live directory because both `ensureFamilyDir()` and `buildFontPath()` deliberately reuse the existing root. On every download, checksum, storage, or validation failure, `installFamily()` calls `deleteFamily(family.name)`, which removes the entire family from both font roots. The previously valid installed version is therefore destroyed as cleanup for a failed update; if it was the active SD font, `deleteFamily()` also clears the live font selection.
+- **Likely root cause:** Font updates have no staging/rollback transaction. The old installation and the candidate update share one directory, and failure cleanup treats that shared directory as disposable.
+- **Impact:** A transient network/storage fault or bad update asset can turn an unsuccessful font update into loss of a previously working installed family and its active selection.
+- **Repair direction:** Download every candidate file into a separate transaction-specific staging directory, verify size/CRC/full cpfont structure there, then atomically swap the staged family into place while retaining the old directory for rollback until publication succeeds. On failure, delete only staging. Add failure-injection coverage for each file in a multi-file update and verify the old family remains byte-for-byte usable.
+
+### 161. Rejected font catalogs remain partially live and actionable in Font Manager
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0526](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0526/bugs.md)
+
+- **Affected code:** `src/native/NativeFontBridge.cpp::refreshCatalog()`, `familyCount()`, and `familyInfo()`; caller `Apps/font_manager.c`, `render()` / `load_rows()` / `activate_selected()`.
+- **Trigger / reproduction:** First load any valid font catalog. Then refresh from a catalog whose version is accepted and whose first family entries are valid, but whose later family contains an invalid family name or invalid cpfont filename. Open or remain in Manage Fonts after `refresh_catalog()` returns `T5_FONT_MANIFEST_ERROR`.
+- **Observed / logically demonstrated failure:** `refreshCatalog()` assigns the new `baseUrl`, clears the global `families` vector, and pushes each valid family as it parses. When a later entry fails validation it returns immediately without restoring the previous catalog or clearing the partial replacement. `font_manager.c` records the error text but still calls `render()`; `load_rows()` then obtains `family_count()` from that partially populated rejected catalog, and those rows remain selectable for install/update/delete operations.
+- **Likely root cause:** Catalog parsing mutates published global state incrementally instead of validating into temporary state and committing only after the entire document passes.
+- **Impact:** The UI can expose and act on a catalog that the loader explicitly rejected, while simultaneously discarding the prior known-good catalog. Which families remain available depends on the position of the malformed entry.
+- **Repair direction:** Parse `baseUrl` and all families/files into temporary objects, validate the complete manifest and all required fields, and swap them into live state only on success. On failure, either preserve the previous valid catalog or expose no new rows. Add valid-catalog to malformed-refresh tests with the malformed family at multiple positions and prove no partial catalog becomes actionable.
+
+### 162. A font family with no files is accepted and reported as installed successfully
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-0526](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-0526/bugs.md)
+
+- **Affected code:** `src/native/NativeFontBridge.cpp::refreshCatalog()` and `installFamily()`; `src/FontInstaller.cpp::ensureFamilyDir()`; presentation in `Apps/font_manager.c`.
+- **Trigger / reproduction:** Serve a version-valid font manifest containing a family with a valid family name but an absent or empty `files` array, refresh Manage Fonts, and select that family for installation.
+- **Observed / logically demonstrated failure:** `refreshCatalog()` never requires a family to contain at least one file, so the empty family is accepted. `installFamily()` creates the family directory, executes a zero-iteration file loop, refreshes the registry, then unconditionally sets `family.installed = true` and returns `T5_FONT_OK`. Font Manager reports success/Installed even though no `.cpfont` file was installed and the registry has no usable family content to load.
+- **Likely root cause:** Manifest validation checks each file only if one exists, and installation success is inferred from loop completion rather than a non-empty validated package plus post-install registry recognition.
+- **Impact:** A malformed catalog can produce a phantom successful installation, leave empty font directories on SD, and present an unusable family as installed until later state is refreshed.
+- **Repair direction:** Require `files` to be a present non-empty array during catalog validation, reject zero-file families before they enter live state, and verify the installed family is actually discoverable after registry refresh before reporting success. Remove any staged empty directory on failure and add empty/missing-files regression cases.
