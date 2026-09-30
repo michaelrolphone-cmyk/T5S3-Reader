@@ -73,7 +73,7 @@ int main(void){
   ht_game g={0};g.sway_phase=n*17;g.rotation_phase=n*73*256;
   g.camera_mood=n%3==0?256:n%257;g.drop_zoom=n%4==0?256:n%257;
   int turn,scale;ht_camera_coefficients(&g,&turn,&scale);
-  memset(ht_scene,0x5a,HT_PIXELS);ht_camera_into(ht_temp,&g);
+  memset(ht_scene,0x5a,HT_PIXELS);ht_camera_into(ht_temp,&g,HT_CAMERA_BASELINE);
   for(int y=0;y<HT_H;++y)for(int x=0;x<HT_W;++x){
    if(y<HT_BORDER||y>=HT_H-HT_BORDER||x<ht_visible_left[y]||x>=HT_W-ht_visible_left[y]){
     assert(ht_scene[y*HT_W+x]==0x5a);continue;
@@ -85,6 +85,34 @@ int main(void){
    assert(ht_scene[y*HT_W+x]==ht_temp[sy*HT_W+sx]);
   }
  }
+ /* Zoom-only must exactly match a zero-rotation affine reference; pure
+  * rotation must stay in bounds without secretly retaining a zoom crop. */
+ for(unsigned n=0;n<96;++n){
+  ht_game g={0};g.sway_phase=n*17;g.rotation_phase=n*73*256;
+  g.camera_mood=256;g.drop_zoom=n%257;
+  int scale=4096-(ht_sway_wave(g.sway_phase/2+768)+256)*4/3;
+  scale+=(4096-scale)*g.drop_zoom/256;
+  memset(ht_scene,0x5a,HT_PIXELS);ht_affine_into(ht_temp,0,scale);
+  memcpy(ht_raw,ht_scene,HT_PIXELS);
+  memset(ht_scene,0x5a,HT_PIXELS);ht_camera_into(ht_temp,&g,HT_CAMERA_NO_ROTATION);
+  assert(!memcmp(ht_raw,ht_scene,HT_PIXELS));
+  int turn,unused;ht_camera_coefficients(&g,&turn,&unused);
+  ht_camera_into(ht_temp,&g,HT_CAMERA_NO_ZOOM);
+  for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y)
+   for(int x=ht_visible_left[y];x<HT_W-ht_visible_left[y];++x){
+    int sx=ht_clamp((x*4096+(y-HT_H/2)*turn+2048)>>12,0,HT_W-1);
+    int sy=ht_clamp((y*4096-(x-HT_W/2)*turn+2048)>>12,0,HT_H-1);
+    assert(ht_scene[y*HT_W+x]==ht_temp[sy*HT_W+sx]);
+   }
+ }
+ /* Both-off ignores camera animation and vista while keeping live state. */
+ ht_camera_mode=HT_CAMERA_OFF;ht.level=0;ht_spawn(true);
+ ht.sway_phase=128;ht.rotation_phase=512*256;ht.vista=256;ht_render_scene();
+ memcpy(ht_raw,ht_scene,HT_PIXELS);
+ assert(ht.vista==256);
+ ht.sway_phase=0;ht.rotation_phase=0;ht.vista=0;ht_render_scene();
+ assert(!memcmp(ht_raw,ht_scene,HT_PIXELS));
+ ht_camera_mode=HT_CAMERA_BASELINE;
  /* Independent clamped horizontal-blur oracle: boundaries, narrow ranges,
   * and random source pixels preserve the original running-sum arithmetic. */
  for(unsigned i=0;i<HT_PIXELS;++i)ht_raw[i]=(uint8_t)ht_hash(i);
