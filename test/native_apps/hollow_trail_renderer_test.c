@@ -54,7 +54,7 @@ static void native_resolution_tests(uint8_t *mem,uint8_t *bits){
  }
  /* Exercise the complete native mode through the normal render/camera path
   * and require deterministic physical output for a frozen game snapshot. */
- ht_bind(mem);ht_camera_mode=HT_CAMERA_NATIVE;ht.level=0;ht_spawn(true);
+ ht_bind(mem);ht_bind_native(mem);ht_camera_mode=HT_CAMERA_NATIVE;ht.level=0;ht_spawn(true);
  ht.camera=733*256;ht.x=(733+190)*256;ht.vista=256;ht.sway_phase=445;
  ht.rotation_phase=347u<<8;ht.camera_mood=256;
  ht_render_scene();assert(ht_native_active && ht_scene==ht_native_a);
