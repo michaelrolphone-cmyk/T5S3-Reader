@@ -277,6 +277,12 @@ static void ht_cutscene_fill(int ink) {
         if((y&15)==15)ht_checkpoint();
     }
 }
+static void ht_cutscene_profile_actor(int x,int feet,int pose,int phase,int facing) {
+    ht_game actor=ht;
+    actor.facing=facing;actor.grounded=true;actor.traversal.mode=HT_FREE;actor.traversal.support=1;
+    actor.vx=pose==HT_CUT_POSE_WALK?320:0;actor.stride=phase*128;
+    ht_person_pose p=ht_person_pose_at(x,feet,&actor);ht_person_draw(&p);
+}
 static void ht_cutscene_caption(unsigned caption) {
     static const char *const lines[][2]={
         {"THE FIRST LIGHT APPEARED WHERE THERE","OUGHT TO HAVE BEEN A HILL."},
@@ -381,6 +387,7 @@ static void ht_cutscene_draw_grass_forward(const ht_cutscene_state *s,const ht_c
     ht_cutscene_render_objects(&camera);
 }
 static void ht_cutscene_draw_departure_forward(const ht_cutscene_state *s,const ht_cutscene_cue *cue) {
+    (void)cue;
     ht_cutscene_camera camera=ht_cutscene_camera_at(s);
     int actor_x=ht_cutscene_actor_x(s);
     ht_world_scale=256;ht_cutscene_fill(7);
@@ -424,7 +431,7 @@ static void ht_cutscene_draw_orchard_profile(const ht_cutscene_state *s,const ht
             ht_limb(ht_scene,x,217,x+30,207-(i%3)*4,3,1,175);
         }
     }
-    ht_cutscene_draw_actor(actor,213,cue->pose,(int)s->tick,1);
+    ht_cutscene_profile_actor(actor,213,cue->pose,(int)s->tick,1);
     if(actor_world>690) {
         int x=760-camera;ht_limb(ht_scene,x,270,x-12,-10,18,13,252);
         ht_limb(ht_scene,x-8,150,x-90,103,7,3,248);
