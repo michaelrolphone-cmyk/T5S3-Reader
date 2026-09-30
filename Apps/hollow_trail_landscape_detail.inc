@@ -86,7 +86,7 @@ static int ht_cave_face(int x,int layer) {
 /* Three overlapping cave masses enclose a luminous opening. Far and middle
  * walls have slower camera motion; the solid near roof remains the collision
  * curve. The water is a continuous plane behind the entire eroded shore. */
-static __attribute__((optimize("O3"))) void ht_boat_grotto(const ht_game *g) {
+static __attribute__((optimize("O3"))) void ht_boat_grotto_low(const ht_game *g) {
     if(g->level!=4 || g->camera/256>900) return;
     int cx=g->camera/256,cy=g->camera_y/256;
     int blend=ht_clamp((900-cx)*256/200,0,256);
@@ -156,4 +156,17 @@ static __attribute__((optimize("O3"))) void ht_boat_grotto(const ht_game *g) {
         }
         if((sy&15)==15) ht_checkpoint();
     }
+}
+
+static void ht_boat_grotto(const ht_game *g) {
+    if(g->level!=4 || g->camera/256>900)return;
+    int blend=ht_clamp((900-g->camera/256)*256/200,0,256);
+    if(!blend)return;
+    if(!ht_native_active){ht_boat_grotto_low(g);return;}
+    uint8_t *native=ht_scene;
+    ht_reduce_scene_native(native,ht_scene_low);
+    ht_scene=ht_scene_low;ht_native_active=false;
+    ht_boat_grotto_low(g);
+    ht_scene=native;ht_native_active=true;
+    ht_expand_scene_native(ht_scene_low,native);
 }
