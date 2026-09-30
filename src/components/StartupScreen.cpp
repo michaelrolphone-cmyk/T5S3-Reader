@@ -2,6 +2,7 @@
 #include "native/NativeTouchInput.h"
 
 #include <Arduino.h>
+#include <HalDisplay.h>
 #include <cstring>
 #include <atomic>
 
