@@ -35,17 +35,17 @@ static void walk_route_tick(void) {
             for(int i=0;i<3;++i) if(m->ladders[i].x && m->ladders[i].lower==(int)walk_phase &&
                  m->ladders[i].upper==(int)walk_phase+1) ladder=i;
             bool gate=(int)walk_phase+1==m->bridge && t->bridge_open<32;
-            bool crate_step=ladder<0 && next->top<here->top-110;
+            bool crate_step=ladder<0 && next->top<here->top-70;
             if(ht.level==0 && gate) {
                 if(x<350)dir=1;
                 else if(!t->forest_log_falling) {assert(ht_traversal_interact());walk_mechanics|=32;}
             } else if(ht.level==0 && walk_phase==0) {
-                dir=1;if(ht.grounded && x>=340)jump=true;
+                dir=1;if(ht.grounded && x>=360)jump=true;
             } else if(gate || crate_step) {
                 mass_work=true;
                 int kind=gate?m->plate_kind:2;
                 int object=(kind==1?t->ball_x:t->crate_x)/256;
-                int target=gate?m->plate_x:next->left-48;
+                int target=gate?m->plate_x:next->left-28;
                 int reach=kind==1?HT_BALL_RADIUS+7:HT_CRATE_HALF+7;
                 if(walk_task==0 && object<target-2) {
                     if(t->mode==HT_FREE && (x>=object || (y<(kind==1?t->ball_y/256+HT_BALL_RADIUS:t->crate_y/256)-5 && x>object-reach-10))) {dir=-1;jump=ht.grounded;}
@@ -75,17 +75,17 @@ static void walk_route_tick(void) {
                     dir=1;
                 }
                 else dir=1;
-            } else if(next->left-here->right>110 && m->rope_anchor_x>here->left && m->rope_anchor_x<here->right) {
+            } else if(next->left-here->right>60 && m->rope_anchor_x>here->left && m->rope_anchor_x<here->right) {
                 if(walk_task==3) dir=1;
                 else if(t->mode==HT_ROPE) {
                     dir=t->rope_v>=0?1:-1;walk_mechanics|=8;
-                    if(x>=m->rope_anchor_x+48 && t->rope_v>0) {jump=true;walk_task=3;}
+                    if(x>=m->rope_anchor_x+24 && t->rope_v>600) {jump=true;walk_task=3;}
                 } else if(x<m->rope_anchor_x-6) dir=1;
                 else if(ht_traversal_near(&ht)==HT_ROPE) assert(ht_traversal_interact());
             } else {
                 dir=1;
-                int takeoff=next->top<here->top?ht_min(here->right-6,next->left-35):here->right-6;
-                if(ht.grounded && (next->left-here->right>40 || (next->left>here->right && next->top<=here->top) || next->top<here->top) && x>=takeoff) jump=true;
+                int takeoff=next->top<here->top?ht_min(here->right-6,next->left-15):here->right-6;
+                if(ht.grounded && (next->left-here->right>12 || (next->left>here->right && next->top<=here->top) || next->top<here->top) && x>=takeoff) jump=true;
             }
         }
     }

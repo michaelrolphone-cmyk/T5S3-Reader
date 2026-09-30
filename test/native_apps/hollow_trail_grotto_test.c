@@ -86,8 +86,8 @@ int main(void) {
             }
     /* Original full-frame captures include traversal, water, hull, character,
      * camera transform and vignette. They detect over-aggressive occlusion. */
-    /* Captured from the device-tested 1.1.21 nearest-camera mode. */
-    const uint32_t golden[]={0xa305082c,0xaea6ef2a,0xb5f9edf7,0x695ba909,0xc74e4177,0x55922b8b,0xeed821b7,0x22372284,0x75a5f2ec,0x256bcddb,};
+    /* 1.1.26 walking pose; the 300 independent grotto rasters above remain exact. */
+    const uint32_t golden[]={0x7db2d696,0x35b0760b,0xefd71e48,0x29c2a794,0xd16ff6be,0x6ad390e1,0x7961e636,0xedc137c2,0xdf677af9,0xd21902dd,};
     for(unsigned n=0;n<sizeof(cameras)/sizeof(cameras[0]);++n) {
         ht.level=4;ht_spawn(true);ht.camera=cameras[n]*256;ht.camera_y=40*256;
         ht.x=(cameras[n]+190)*256;ht.vista=n%2?256:0;

@@ -41,7 +41,7 @@ static uint16_t ht_dirty_top,ht_dirty_height;
 #define HT_SIMD_TABLE_BYTES (4u*6u*16u + 3u*16u)
 #define HT_MEMORY (HT_SIMD_TABLE_BYTES + HT_RECON_PIXELS * 4u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS + HT_RECON_PIXELS)
 #define HT_GOAL 3200
-#define HT_STEP_MS 32u /* Half-speed motion; preserve jump paths and level reachability. */
+#define HT_STEP_MS 32u /* Fixed physics clock; scene direction varies world speed. */
 
 typedef struct { int left, right, top; } ht_platform;
 static const ht_platform ht_forest[] = {
@@ -84,7 +84,7 @@ typedef struct {
     int rope_ox[HT_ROPE_NODES],rope_oy[HT_ROPE_NODES];
     uint8_t support,bridge_open,forest_log_phase;
     bool forest_log_falling;
-    uint8_t mode,ladder,ball_phase,ledge,climb,drop_cooldown;
+    uint8_t mode,ladder,ball_phase,ledge,climb,climb_phase,drop_cooldown;
     int ledge_side;
     uint8_t tree,branch_drop;
     int8_t tree_side;
@@ -98,6 +98,7 @@ typedef struct {
     int camera, camera_y, checkpoint, coyote, jump_buffer, facing, stride;
     unsigned ticks, laps, deaths, sway_phase;
     uint32_t rotation_phase; /* Q8: independently paced from breathing. */
+    uint16_t pace,intimacy; /* Q8 walk speed and authored camera proximity. */
     uint16_t camera_mood,drop_zoom,vista; /* vista: 0..256 authored wide-shot envelope */
     int airborne_origin;
     uint8_t observation,observation_ticks,landing_ticks,landing_strength;
@@ -406,8 +407,11 @@ static int ht_vista_lift(const ht_game *g) {
     static const uint8_t lift[HT_LEVELS]={24,56,0,24,12,36,0,80,52,56};
     return lift[g->level]*g->vista/256;
 }
+#include "hollow_trail_direction.inc"
 static void ht_camera_step(bool moving) {
-    if(moving) {
+    if(moving || ht.observation_ticks) {
+        int close=ht_intimacy_target(&ht);
+        ht.intimacy=(uint16_t)(ht.intimacy+ht_clamp(close-ht.intimacy,-2,2));
         int wide=ht_vista_target(&ht);
         ht.vista=(uint16_t)(ht.vista+ht_clamp(wide-ht.vista,-4,4));
         int target=ht_mood_target(&ht),mood=ht.camera_mood;
@@ -456,7 +460,8 @@ static void ht_spawn(bool restart) {
     if(!ht.story_seen[level]) ht.story_seen[level]=1;
     ht.story_x=story_x; ht.checkpoint=cp; ht.x=(cp?ht_land[cp].left+35:95)*256;
     ht.y=ht_land_height(level,cp,ht.x/256)*256; ht.airborne_origin=ht.y; ht.grounded=true; ht.facing=1;
-    ht.camera=ht_clamp(ht.x/256-165,0,HT_GOAL-340)*256;
+    ht.pace=(uint16_t)ht_pace_target(&ht);ht.intimacy=(uint16_t)ht_intimacy_target(&ht);
+    ht.camera=ht_clamp(ht.x/256-200,-120,HT_GOAL-260)*256;
     ht.camera_y=ht_clamp(ht.y/256-180,-300,100)*256;
     const ht_mechanics *m=&ht_mechanics_by_level[level];
     ht.traversal.bridge_open=bridge_open;
@@ -1315,6 +1320,7 @@ static void ht_character(int x,int feet,const ht_game *game) {
         ht_rect(ht_scene,x+lean+(f>0?1:-3),feet-17,2,1,0);
         return;
     }
+    if(game->traversal.mode==HT_FREE) {ht_character_walk(x,feet,game);return;}
     int swing=game->grounded?((game->stride/700)%12-6):3;
     int f=game->facing;
     int effort=(game->traversal.mode==HT_ROLL || game->traversal.mode==HT_CRATE)?f*2:0;
@@ -1478,6 +1484,7 @@ static void ht_weather(const ht_game *g) {
     ht_checkpoint();
 }
 static void ht_draw_traversal(const ht_game *game);
+static void ht_forest_foreground(const ht_game *game);
 static void ht_draw_puzzle(const ht_game *game);
 static void ht_draw_evidence(const ht_game *game);
 /* At full opacity the grotto supplies every background pixel itself. */
@@ -1492,7 +1499,7 @@ static void ht_render_scene(void) {
      * so trees, focus and character all use one consistent game snapshot. */
     ht_game game=ht;
     const unsigned camera_mode=ht_camera_mode;
-    if(camera_mode==HT_CAMERA_NO_ZOOM || camera_mode==HT_CAMERA_OFF) game.vista=0;
+    if(camera_mode==HT_CAMERA_NO_ZOOM || camera_mode==HT_CAMERA_OFF) game.vista=game.intimacy=0;
     const bool camera_pass=camera_mode!=HT_CAMERA_OFF && (game.sway_phase || game.drop_zoom);
     ht_select_level(game.level);
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
@@ -1524,11 +1531,12 @@ static void ht_render_scene(void) {
     }
     uint32_t world_start=ht_render_now();
     ht_render_last.background=world_start-stage;
-    ht_world_scale=256-game.vista*5/16;
+    ht_world_scale=ht_scene_scale(&game);
     ht_draw_traversal(&game);
     ht_draw_puzzle(&game);
     ht_character(px,(game.y-game.camera_y)/256,&game);
     ht_weather(&game);
+    ht_forest_foreground(&game);
     uint32_t post_start=ht_render_now();
     ht_render_last.world=post_start-world_start;
     ht_world_scale=256;
