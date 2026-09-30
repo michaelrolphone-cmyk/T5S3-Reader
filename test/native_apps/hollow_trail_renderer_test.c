@@ -1,4 +1,4 @@
-/* Reviewed 1.1.30 articulated character silhouette. */
+/* Reviewed 1.1.31 native-resolution A/B renderer. */
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +21,49 @@ static void fps_tests(void){
 }
 
 static unsigned hash(const uint8_t *p,int n){unsigned h=2166136261u;while(n--)h=(h^*p++)*16777619u;return h;}
+static void native_resolution_tests(uint8_t *mem,uint8_t *bits){
+ static const uint8_t rank[8][8]={
+  {41,8,52,7,45,15,47,4},{18,35,27,60,28,55,19,57},
+  {54,1,49,9,62,3,40,14},{16,56,21,53,20,38,25,43},
+  {59,12,42,6,39,10,34,5},{24,33,17,46,31,50,29,61},
+  {36,2,58,11,63,0,51,13},{26,44,30,37,22,32,23,48}
+ };
+ ht_bind(mem);
+ assert(ht_native_a+HT_NATIVE_PIXELS==ht_native_b);
+ assert(ht_native_b+HT_NATIVE_PIXELS<=mem+HT_MEMORY-HT_SIMD_TABLE_BYTES);
+ /* A diagonal procedural primitive must use physical subpixels instead of
+  * becoming four identical panel pixels per 480x270 logical sample. */
+ memset(ht_native_a,0,HT_NATIVE_PIXELS);
+ ht_scene=ht_native_a;ht_native_active=true;ht_framed=false;
+ ht_triangle(ht_scene,21,19,83,57,34,111,255);
+ bool mixed=false;
+ for(int y=0;y<HT_H && !mixed;++y)for(int x=0;x<HT_W && !mixed;++x){
+  int at=2*y*HT_NATIVE_W+2*x;
+  uint8_t a=ht_native_a[at],b=ht_native_a[at+1],c=ht_native_a[at+HT_NATIVE_W],d=ht_native_a[at+HT_NATIVE_W+1];
+  mixed=(a!=b)||(a!=c)||(a!=d);
+ }
+ assert(mixed);
+ /* Native packing is one grayscale sample per physical dot. */
+ for(unsigned i=0;i<HT_NATIVE_PIXELS;++i)ht_native_a[i]=(uint8_t)hash((const uint8_t *)&i,sizeof(i));
+ ht_pack_mono(bits,HT_NATIVE_W/8);
+ for(int y=0;y<HT_NATIVE_H;++y)for(int byte=0;byte<HT_NATIVE_W/8;++byte){
+  uint8_t want=0;int x=byte*8;
+  for(int k=0;k<8;++k)if(ht_native_a[y*HT_NATIVE_W+x+k]>(int)rank[y&7][(x+k)&7]*4+2)want|=(uint8_t)(0x80u>>k);
+  assert(bits[y*(HT_NATIVE_W/8)+byte]==want);
+ }
+ /* Exercise the complete native mode through the normal render/camera path
+  * and require deterministic physical output for a frozen game snapshot. */
+ ht_bind(mem);ht_camera_mode=HT_CAMERA_NATIVE;ht.level=0;ht_spawn(true);
+ ht.camera=733*256;ht.x=(733+190)*256;ht.vista=256;ht.sway_phase=445;
+ ht.rotation_phase=347u<<8;ht.camera_mood=256;
+ ht_render_scene();assert(ht_native_active && ht_scene==ht_native_a);
+ ht_pack_mono(bits,HT_NATIVE_W/8);unsigned first=hash(bits,HT_NATIVE_PIXELS/8);
+ ht_render_scene();ht_pack_mono(bits,HT_NATIVE_W/8);
+ assert(first==hash(bits,HT_NATIVE_PIXELS/8));
+ ht_camera_mode=HT_CAMERA_BASELINE;ht_render_scene();
+ assert(!ht_native_active && ht_scene==ht_scene_low);
+}
+
 static const unsigned golden[][2]={
 {2360543007,3475717195},
 {1495675126,1625345009},
@@ -65,6 +108,7 @@ int main(void){
    assert(hash(ht_scene,HT_PIXELS)==golden[level*3+view][0]);
    assert(hash(bits,HT_PIXELS/2)==golden[level*3+view][1]);
   }
+ native_resolution_tests(mem,bits);
  /* Independent rounded-coordinate oracle for nearest camera sampling.
   * Cover both rotation directions, mood and drop zoom, and clipped borders. */
  for(unsigned i=0;i<HT_PIXELS;++i)ht_temp[i]=(uint8_t)ht_hash(i);
@@ -129,5 +173,5 @@ int main(void){
    assert(ht_filter[y*HT_W+x]==ht_average(sum,reciprocal));
   }
  }
- free(bits);free(mem);puts("Production renderer: mode24+13+nearest golden frames/packing, all readiness masks, blur boundaries and FPS window PASS");
+ free(bits);free(mem);puts("Production renderer: baseline goldens plus native 960x540 raster/packing, camera, blur and FPS contracts PASS");
 }
