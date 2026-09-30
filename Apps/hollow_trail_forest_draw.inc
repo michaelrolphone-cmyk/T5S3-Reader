@@ -10,7 +10,7 @@ static int ht_composed_ridge(const ht_composition *c,int x,int plane) {
     if(plane!=2)u=u*u/340*(1020-2*u)/340;
     return c->ridge[n]+(c->ridge[n+1]-c->ridge[n])*u/340+plane*34;
 }
-static void ht_forest_backdrop(const ht_game *g) {
+static void ht_forest_backdrop_low(const ht_game *g) {
     if(g->level!=0)return;
     const ht_composition *c=&ht_forest_composition;
     int cx=g->camera/256,cy=g->camera_y/256;
@@ -88,6 +88,15 @@ static void ht_forest_backdrop(const ht_game *g) {
         ht_composed_frame_level=0;ht_forest_frame_valid=true;
     }
 
+}
+static void ht_forest_backdrop(const ht_game *g) {
+    if(g->level!=0)return;
+    if(!ht_native_active){ht_forest_backdrop_low(g);return;}
+    uint8_t *native=ht_scene;
+    ht_scene=ht_scene_low;ht_native_active=false;
+    ht_forest_backdrop_low(g);
+    ht_scene=native;ht_native_active=true;
+    ht_expand_scene_native(ht_scene_low,native);
 }
 /* One dead snag at the washed-out bank. Its root hinge stays in the soil;
  * the crown accelerates through a circular fall and comes to rest on the far
