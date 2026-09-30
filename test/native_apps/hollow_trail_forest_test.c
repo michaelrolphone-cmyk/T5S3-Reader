@@ -8,6 +8,25 @@ int main(void) {
     ht_bind(memory);ht.level=0;ht_spawn(true);
     int l,r,top;
     assert(!ht_mech(&ht)->plate_kind && !ht_platform_piece(&ht,1,0,&l,&r,&top));
+    /* Walk and jump into the standing snag: neither can pass through it. */
+    ht.x=340*256;ht.y=220*256;ht.grounded=true;
+    for(int n=0;n<120;++n)ht_step_controls(1,0,false,false);
+    assert(ht.x>350*256 && ht.x<362*256 && ht.grounded && !ht.vx);
+    assert(ht_forest_log_near(&ht));
+    for(int n=0;n<80;++n) {
+        ht_step_controls(1,0,n==0,n==0);
+        assert(ht.x<374*256 && !ht.traversal.forest_log_falling);
+    }
+    /* Fast approaches from either side, including above jump height. */
+    for(int y=-50;y<=220;y+=30)for(int side=-1;side<=1;side+=2) {
+        int old=(374+side*80)*256;
+        ht.y=y*256;ht.x=(374-side*80)*256;ht.vx=-side*1600;
+        ht_forest_log_collision(old);
+        assert(side<0?ht.x<374*256:ht.x>374*256);assert(!ht.vx);
+    }
+    ht.level=1;ht.x=380*256;ht.y=220*256;ht_forest_log_collision(340*256);
+    assert(ht.x==380*256); /* No invisible snag in other chapters. */
+    ht.level=0;ht_spawn(true);
     ht.x=366*256;ht.y=230*256;ht.vy=100;ht.grounded=false;
     ht_step_controls(1,0,false,false);assert(ht.traversal.mode!=HT_LEDGE);
     ht_spawn(true);

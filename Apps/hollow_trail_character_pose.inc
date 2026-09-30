@@ -112,27 +112,39 @@ static bool ht_character_instrument(int x,int feet,const ht_game *g) {
 
 /* A short, planted walking gait follows actual distance travelled. An idle
  * character settles both feet; the camera can move without making them run. */
+/* Blend from the authored brisk walk into a jog using actual body speed.
+ * Distance drives cadence; idle, airborne and instrument poses never run. */
+static int ht_character_run_blend(const ht_game *g) {
+    return g->grounded && g->traversal.mode==HT_FREE?ht_clamp((ht_abs(g->vx)-304)*8,0,256):0;
+}
 static void ht_character_walk(int x,int feet,const ht_game *g) {
     bool walking=g->grounded && ht_abs(g->vx)>20;
     int phase=(g->stride/256)%32;
     int stride=walking?((phase<16?phase:32-phase)-8)/2:0;
+    int run=ht_character_run_blend(g);
     int f=g->facing,settle=g->landing_ticks>5?2:0;
+    int lean=f*3*run/256;
+    stride+=stride*run/256;
     int bob=walking && (phase%16)<4?1:0;
-    int hip=feet-10+settle,shoulder=feet-20+settle+bob;
-    ht_disk(ht_scene,x+f,shoulder-5,4,255);
-    ht_limb(ht_scene,x,shoulder,x-f,hip,3,3,255);
+    int flight=ht_max(0,3-ht_abs(phase%16-8))*run/256;
+    int hip=feet-10+settle-flight,shoulder=feet-20+settle+bob-flight;
+    int shoulder_x=x+lean;
+    ht_disk(ht_scene,shoulder_x+f,shoulder-5,4,255);
+    ht_limb(ht_scene,shoulder_x,shoulder,x-f,hip,3,3,255);
     for(int leg=0;leg<2;++leg) {
         int step=leg?-stride:stride;
         int foot=x+(leg?3:-3)+step;
         int lift=walking && ((phase<16)==(leg==0))?ht_max(0,3-ht_abs(phase%16-8)/3):0;
+        lift+=flight;
+        if(walking && ((phase<16)==(leg==0)))lift+=ht_max(0,8-ht_abs(phase%16-8))*run/256;
         if(!g->grounded) {foot=x+(leg?-4:5);lift=leg?4:1;}
-        int knee=(x+foot)/2+f*2;
+        int knee=(x+foot)/2+f*2+f*lift*run/512;
         ht_limb(ht_scene,x-f,hip,knee,feet-5-lift,2,2,255);
         ht_limb(ht_scene,knee,feet-5-lift,foot,feet-lift,1,1,255);
         ht_rect(ht_scene,foot-1,feet-lift-1,4,2,255);
-        int hand=x+(leg?-1:1)*stride+f*2;
-        ht_limb(ht_scene,x,shoulder+1,x+(hand-x)/2-f,feet-14+settle,1,1,255);
-        ht_limb(ht_scene,x+(hand-x)/2-f,feet-14+settle,hand,feet-10+settle,1,1,255);
+        int hand=x+(leg?-1:1)*stride+f*2+f*3*run/256;
+        ht_limb(ht_scene,shoulder_x,shoulder+1,x+(hand-x)/2-f,feet-14+settle,1,1,255);
+        ht_limb(ht_scene,x+(hand-x)/2-f,feet-14+settle,hand,feet-10+settle-7*run/256-flight,1,1,255);
     }
-    ht_rect(ht_scene,x+(f>0?3:-2),shoulder-6,1,1,0);
+    ht_rect(ht_scene,shoulder_x+(f>0?3:-2),shoulder-6,1,1,0);
 }

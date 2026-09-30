@@ -50,6 +50,14 @@ static int ht_forest_log_angle(const ht_game *g) {
     return 124+effort*effort*96/(HT_FOREST_PUSH_STEPS*HT_FOREST_PUSH_STEPS);
 }
 static const int8_t ht_forest_log_curve[5]={0,-4,-7,-3,0};
+/* Shared trunk sections keep blocking volume aligned with the rendered lean. */
+static void ht_forest_log_node(int dx,int dy,int i,int *x,int *y,int *radius,int *bottom) {
+    int q=ht_min(3,i/8),u=i-q*8;
+    int bend=ht_forest_log_curve[q]+(ht_forest_log_curve[q+1]-ht_forest_log_curve[q])*u/8;
+    *x=374+dx*i/32-dy*bend/312;*y=220+dy*i/32+dx*bend/312;
+    *radius=12-i/8;*bottom=*radius+(i?(int)(ht_hash((unsigned)i+571)%3):0);
+}
+
 static int ht_platform_top(const ht_game *g,int i) {
     int top=ht_level_land(g->level)[i].top;
     if(g->level==0 && i==1)return 208;

@@ -104,10 +104,8 @@ static void ht_forest_log_draw(const ht_game *g) {
      * plates break the lower contour into 32 sections, rotating with the log. */
     int px=x,py=y,pr=12,pbottom=12;
     for(int i=1;i<=32;++i) {
-        int q=ht_min(3,i/8),u=i-q*8;
-        int bend=ht_forest_log_curve[q]+(ht_forest_log_curve[q+1]-ht_forest_log_curve[q])*u/8;
-        int nx=x+dx*i/32-dy*bend/312,ny=y+dy*i/32+dx*bend/312;
-        int radius=12-i/8,bottom=radius+(int)(ht_hash((unsigned)i+571)%3);
+        int nx,ny,radius,bottom;
+        ht_forest_log_node(dx,dy,i,&nx,&ny,&radius,&bottom);nx-=cx;ny-=cy;
         int ptx=px+dy*pr/312,pty=py-dx*pr/312;
         int pbx=px-dy*pbottom/312,pby=py+dx*pbottom/312;
         int ntx=nx+dy*radius/312,nty=ny-dx*radius/312;

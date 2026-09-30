@@ -370,6 +370,30 @@ static void ht_reconcile_ground(int old_x,int old_y) {
         if(!corrected)break;
     }
 }
+/* The snag is solid on both sides until it becomes the landed crossing.
+ * Bounded short sections rotate with the visible trunk, including its lean
+ * under effort. Swept horizontal bounds also stop a fast airborne approach. */
+static void ht_forest_log_collision(int old_x) {
+    if(ht.level!=0 || ht.traversal.forest_log_phase==32)return;
+    int angle=ht_forest_log_angle(&ht);
+    int dx=312*ht_forest_log_sine(angle)/256,dy=-312*ht_forest_log_sine(4096-angle)/256;
+    int px,py,pr,pb;ht_forest_log_node(dx,dy,0,&px,&py,&pr,&pb);
+    int left=100000,right=-100000;
+    for(int i=1;i<=32;++i) {
+        int nx,ny,nr,nb;ht_forest_log_node(dx,dy,i,&nx,&ny,&nr,&nb);
+        int l=ht_min(px+dy*pr/312,nx+dy*nr/312);
+        int r=ht_max(px-dy*pb/312,nx-dy*nb/312);
+        int top=ht_min(py-dx*pr/312,ny-dx*nr/312);
+        int bottom=ht_max(py+dx*pb/312,ny+dx*nb/312);
+        if(ht.y>top*256 && ht.y-29*256<bottom*256) {left=ht_min(left,l);right=ht_max(right,r);}
+        px=nx;py=ny;pr=nr;pb=nb;
+    }
+    if(left>right)return;
+    left=(left-5)*256;right=(right+5)*256;
+    if(ht_max(old_x,ht.x)>left && ht_min(old_x,ht.x)<right) {
+        ht.x=old_x<=(left+right)/2?left:right;ht.vx=0;
+    }
+}
 static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool jump_held) {
     bool jump_request=jump_pressed;
     int start_x=ht.x,start_y=ht.y,fall_speed=ht.vy;
@@ -558,6 +582,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         if(ht.y-29*256<ceiling*256) {ht.y=(ceiling+29)*256;ht.vy=ht_max(0,ht.vy);}
     }
     if(!jump_request) (void)ht_ladder_enter(vertical);
+    ht_forest_log_collision(start_x);
     ht_reconcile_ground(start_x,start_y);
     ht_camera_step((direction || vertical || t->mode==HT_CLIMB) && (start_x!=ht.x || start_y!=ht.y));
     if(ht.grounded && !was_grounded && fall_speed>384 && !t->mode) {

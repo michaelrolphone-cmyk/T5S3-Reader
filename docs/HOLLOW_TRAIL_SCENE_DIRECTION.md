@@ -242,3 +242,23 @@ route pushes and waits for the actual fall. Ground, tree, framing, controls,
 renderer, complete-route and C++ math checks pass. Pushing/follow-through poses
 were visually inspected. S3 app build and ELF structural validation pass; the
 source, sidecar and catalog remain 1.1.29 for this cumulative unmerged PR.
+
+### Solid snag and speed-matched gait (same unreleased 1.1.29)
+
+The standing/falling snag now blocks the player's body from either side. Its
+32 short collision sections use the same bend, taper, bark outline and angle
+as the drawing. Swept horizontal contact stops airborne/high-speed approaches;
+collision is applied after attachments/props, before ground recovery. The
+landed tree retains its existing crossing surface. Walking into the trunk leaves
+the player within push interaction range, without triggering the fall.
+
+Free grounded movement blends from walking into a running gait over actual Q8
+speeds 304–336. Running uses a longer stride, forward torso lean, higher knee
+recovery, brief flight and bent-arm swing. Cadence follows distance; speed cues
+remain unchanged. Idle, jumping, climbing, pushing and rowing retain their own
+poses. Slow/brisk/run contact sheets were inspected.
+
+Walking/jumping into the snag, both-sided fast approaches at multiple heights,
+other-chapter isolation, sustained pushing and landed crossing pass. Ground
+integrity (25,296 poses), 78 branch contacts, scene pace/gait selection, complete
+ten-chapter route, forest ASan+UBSan and C++ integration checks pass.
