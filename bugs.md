@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,39 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+### 79. reader.typography reads beyond the caller-declared text buffer and rejects valid length-bounded input
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260930-0022](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260930-0022/bugs.md)
+
+- **Affected code:** `src/native/NativeReaderTypography.cpp::nativeReaderPage()`; ABI contract in `sdk/driver/RiscReaderTypographyV1.h`; bounded UTF-8/layout helpers in `lib/GfxRenderer/ReaderPageLayout.h`.
+- **Trigger / reproduction:** Call the installed `reader.typography` capability with a valid UTF-8 body stored in an exactly `length`-byte buffer that has no trailing NUL byte. This is valid under `risc_reader_page_request_v1`, which supplies `text` and its explicit byte `length` separately. A guard-page or heap-boundary allocation makes the over-read deterministic; otherwise place any nonzero byte immediately after the declared range.
+- **Observed / logically demonstrated failure:** Before invoking the already length-bounded UTF-8 validator and page layout, `nativeReaderPage()` evaluates `strnlen(q->text, q->length + 1) != q->length`. That call probes byte `q->text[q->length]` when the declared body contains no embedded NUL. A valid non-NUL-terminated body is therefore accepted or rejected based on memory outside the ABI-declared range, and an exactly bounded buffer at an inaccessible boundary can fault on the one-byte over-read. The later body handling does not need this terminator: font preparation copies bounded chunks into local NUL-terminated buffers, and `readerPageLayout()` takes the explicit `length`.
+- **Likely root cause:** A C-string validation check was added to an interface whose body is explicitly length-delimited. The check conflates “no embedded NUL inside the declared body” with “a NUL must exist one byte beyond it.”
+- **Impact:** Third-party reader clients that correctly provide a length-bounded byte span can fail nondeterministically or crash the host depending on adjacent memory, violating the capability ABI and making otherwise valid text impossible to render safely.
+- **Repair direction:** Remove the `strnlen(..., length + 1)` requirement for `q->text`. Rely on `readerUtf8Valid(q->text, q->length)`, which already rejects embedded NULs while staying inside the supplied range, and keep all downstream body processing length-bounded. Add host tests using a non-NUL-terminated exact-length buffer, a guard byte after the range, an embedded NUL, and a guard-page/end-of-allocation case.
+
+### 80. Screenshot save can report success after the BMP file fails to close or finalize
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260930-0022](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260930-0022/bugs.md)
+
+- **Affected code:** `src/util/ScreenshotUtil.cpp::saveFramebufferAsBmp()`; `lib/hal/HalStorage.h` / `lib/hal/HalStorage.cpp::HalFile::close()`.
+- **Trigger / reproduction:** Take a screenshot while the SD/FAT layer accepts every header/row `write()` but reports a failure when the file is finalized by `close()`—for example via a fault-injected close/final-sync failure or media failure after the last data write.
+- **Observed / logically demonstrated failure:** The screenshot writer checks every explicit `write()` count, but then calls `file.close();` and discards its boolean result. `HalFile::close()` explicitly returns the underlying filesystem close status. If close fails with `write_error == false`, `saveFramebufferAsBmp()` returns `true`; `takeScreenshot()` logs “Screenshot saved” and the possibly incomplete/corrupt BMP is left in `/screenshots`.
+- **Likely root cause:** The explicit-close path was added so the file is closed before possible removal, but the close operation was treated as cleanup rather than the final durability step of the write transaction.
+- **Impact:** A storage finalization failure is presented to the user as a successful screenshot and can leave a corrupt file occupying the expected screenshot name, obscuring the only indication that capture persistence failed.
+- **Repair direction:** Capture and require the result of `file.close()`; on either a short write or close failure, remove the incomplete destination and return false. Prefer writing to a temporary sibling and renaming only after a successful close so a future overwrite path cannot publish a partially finalized file. Add a fault-injection test where all writes succeed and close returns false.
+
+### 81. Multipart web uploads destroy an existing file before the replacement transfer is known to succeed
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260930-0022](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260930-0022/bugs.md)
+
+- **Affected code:** `src/network/CrossPointWebServer.cpp::handleUpload(UploadState&)` and `handleUploadPost()`. This is the ordinary `/upload` multipart endpoint, distinct from report #48's `WebDAVHandler.cpp` PUT/MOVE/COPY paths.
+- **Trigger / reproduction:** Through the built-in web file manager, upload a file whose destination already exists, then abort the HTTP upload after `UPLOAD_FILE_START`, disconnect the client mid-transfer, force an SD write/flush failure, or make creation of the new destination fail immediately after the old file is removed.
+- **Observed / logically demonstrated failure:** At `UPLOAD_FILE_START`, `handleUpload()` checks `Storage.exists(filePath)` and immediately calls `Storage.remove(filePath)` before opening or receiving the replacement. Subsequent failures close/remove only the new partial file. The old valid destination is already gone, so a failed overwrite becomes irreversible data loss. Unlike the WebDAV path documented in #48, this multipart handler does not even stage to a temporary file.
+- **Likely root cause:** The legacy upload path implements overwrite as destructive delete-then-create instead of a replacement transaction, and it was not converted to the staged publication pattern used by newer storage flows.
+- **Impact:** A dropped Wi-Fi connection, browser cancellation, full card, or transient SD fault during a normal web overwrite can delete the user's previously valid book/document even though the upload reports failure.
+- **Repair direction:** Stream the upload to a bounded temporary sibling, require all buffered writes and `close()` to succeed, then transactionally replace the destination with backup/rollback semantics. Leave the original untouched on every pre-publication failure. Share the transactional replacement helper with WebDAV where practical, and add abort/write/open/close/rename fault-injection tests proving the old destination survives.
