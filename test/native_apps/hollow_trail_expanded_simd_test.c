@@ -6,7 +6,7 @@
 #include "../../Apps/hollow_trail_engine.inc"
 static unsigned checks;
 static void service(void){++checks;}
-static void mode(bool enabled){ht_render_test=enabled?HT_TEST_ALL_FOUR:HT_TEST_BASE;ht_simd_stage_ready=HT_OPT_SIMD_ALL;ht_expanded_ready=true;}
+static void mode(bool enabled){ht_render_test=enabled?HT_TEST_ALL_FOUR:HT_TEST_BASE;ht_simd_stage_ready=enabled?HT_OPT_SIMD_ALL:0;ht_expanded_ready=enabled;}
 static void pattern(uint8_t *dst,int count,unsigned seed){
  for(int i=0;i<count;++i)dst[i]=(uint8_t)(seed<2?seed*255:ht_hash((unsigned)i+seed*97));
 }

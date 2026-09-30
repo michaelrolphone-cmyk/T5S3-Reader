@@ -252,7 +252,7 @@ static void ht_bind(uint8_t *memory) {
     for(unsigned i=0;i<4;++i)ht_stage_reason[i]="NOT TESTED";
     ht_simd_test_pattern=ht_simd_test_phase=ht_simd_test_byte=0;
     ht_simd_test_expected=ht_simd_test_actual=0;
-    ht_geometry_level=0; ht_render_test=HT_TEST_BASE; ht_simd_stage_ready=0; ht_expanded_ready=false; ht_simd_ready=false; ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
+    ht_geometry_level=0; ht_render_test=HT_TEST_MOTION_ALL; ht_simd_stage_ready=0; ht_expanded_ready=false; ht_simd_ready=false; ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
     ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
     ht_scene=memory+3*HT_PIXELS; ht_temp=memory+4*HT_PIXELS; ht_filter=(int16_t *)ht_temp;
     uint8_t *cache=memory+6*HT_PIXELS;
