@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,34 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 211. Wi-Fi Settings cannot choose another network while the saved last network remains reachable
+
+- **Status:** Open.
+- **Affected code:** `Apps/wifi_settings.c`, the **Choose another network** action; `src/native/NativeSystemUiBridge.cpp`, `wifiRequest()` / `NativeWifiActivity::onEnter()`; `src/activities/network/WifiSelectionActivity.h` and `.cpp`, the default `autoConnect` constructor argument and `onEnter()` / `checkConnectionStatus()`.
+- **Trigger / reproduction:** Save valid credentials for network A and leave A reachable as the last-connected network. Open **Wi-Fi Networks**, choose **Choose another network**, while a different network B is also available.
+- **Observed / logically demonstrated failure:** The app calls `system_ui->wifi_request()`. `NativeWifiActivity` constructs `WifiSelectionActivity` without overriding its default `autoConnect = true`. On entry, the selector finds the saved last SSID, calls `attemptConnection()`, and returns before starting a scan. While `AUTO_CONNECTING`, the loop only checks connection status. When A reconnects successfully with the saved password, `checkConnectionStatus()` immediately calls `onComplete(true)`, so the selector closes without ever displaying the network list or accepting a choice of B. Repeating **Choose another network** repeats the same reconnection to A.
+- **Likely root cause:** The same auto-connect-by-default selector is reused for an explicit network-selection workflow. The System UI request has no mode that tells the selector that the user's intent is to browse/switch rather than reconnect the preferred network.
+- **Impact:** As long as the preferred saved network remains reachable, the advertised Wi-Fi management action cannot switch the device to another network. The user must first make A fail or remove its saved state through another path.
+- **Repair direction:** Make the explicit **Choose another network** handoff construct `WifiSelectionActivity(..., false)`, or add an explicit request mode/flag distinguishing reconnect from browse/select. Preserve auto-connect only for workflows that want it. Add a regression with reachable saved A plus visible B proving the action renders the list and can select B.
+
+### 212. A timed-out native-app allocator cleanup permanently blocks later native app launches
+
+- **Status:** Open.
+- **Affected code:** `src/native/NativeAppMemory.cpp`, `native_app_memory_end()` and `native_app_memory_begin()`; `lib/NativeApps/src/NativeAppLauncher.c`, the `memory_active` teardown path in `launch_elf_app()`.
+- **Trigger / reproduction:** Launch any native ELF, then make the native-app allocation mutex remain unavailable for the approximately 100-tick timeout when the ELF returns (a deterministic host/fault-injection test can hold the allocator mutex across teardown). After that launch completes, try to launch any native ELF again.
+- **Observed / logically demonstrated failure:** `native_app_memory_end()` logs **Allocator busy during exit; retaining invocation** and returns without calling `ledger.end()` or freeing the global `entries` table. Its return type is `void`, so the launcher cannot learn that cleanup failed: it unconditionally sets its local `memory_active = false`, continues module teardown, and clears the global app-running guard. On the next launch, `native_app_memory_begin()` obtains the mutex but sees `entries` still non-null and returns `false`; the launcher maps that to `ESP_ERR_NO_MEM`. Because no later path owns that retained ledger strongly enough to retry cleanup, subsequent native app launches remain blocked until reboot.
+- **Likely root cause:** The allocator cleanup path describes a retained invocation internally, but its API cannot report that state to the launcher. The launcher therefore commits teardown as though memory cleanup succeeded.
+- **Impact:** A single transient teardown-contention event can disable every native application for the rest of the boot, while also retaining the previous invocation's allocation ledger/PSRAM.
+- **Repair direction:** Make `native_app_memory_end()` return success/failure and have the launcher keep the invocation/module guarded until cleanup succeeds, or provide a safe mandatory cleanup/retry path before clearing the running flag. Never set `memory_active` false after a failed cleanup. Add a fault-injection regression that forces the teardown lock timeout and verifies either cleanup is retried successfully or further launches fail closed without abandoning ownership, then recover without reboot.
+
+### 213. Clear Reading Cache reports success when directory enumeration stops on an SD error
+
+- **Status:** Open.
+- **Affected code:** `src/native/NativeCacheBridge.cpp`, `clearReadingCache()`; user-visible caller `Apps/clear_cache.c`.
+- **Trigger / reproduction:** Put multiple `epub_*` and/or `xtc_*` cache directories under `/.crosspoint`, then inject a transient SD/directory-read failure from `root.openNextFile()` after at least one entry has been enumerated but before the directory is exhausted. Run **Clear Reading Cache**.
+- **Observed / logically demonstrated failure:** The loop condition treats a non-open `HalFile` from `openNextFile()` as normal end-of-directory. There is no completion/error check after the loop, so the bridge closes the root and returns `true` with `failed_count == 0` even though later cache directories were never examined. The app therefore follows its success path and can display that the cache was cleared while stale reader caches remain on disk.
+- **Likely root cause:** Directory EOF and enumeration I/O failure are collapsed into the same false iterator state, and the cache-clear operation has no post-scan verification before reporting success.
+- **Impact:** A transient SD fault can leave corrupt/stale EPUB or XTC caches in place while telling the user cleanup succeeded, defeating a recovery/troubleshooting action intended to force cache regeneration.
+- **Repair direction:** Use an enumeration primitive/status that distinguishes EOF from I/O failure, or verify after the scan that no targeted cache directories remain before returning success. Surface incomplete enumeration through the API/`failed_count` and UI. Add a fault-injected mid-directory failure test proving a partial scan cannot be reported as a successful clear.
