@@ -40,11 +40,14 @@ int main(){
  std::vector<uint8_t> source(kMapBytes/2);
  std::vector<uint16_t> state(kMapBytes,0x8888);
  uint8_t dma0[kWidth/4+8],dma1[kWidth/4+8];
- for(bool partial:{false,true}){
+ // Region geometry, including single-row/column-pair updates and odd heights.
+ const unsigned regions[][4]={{0,0,kWidth,kHeight},{2,127,82,23},
+   {14,20,126,127},{958,0,2,540},{0,539,960,1},{40,100,2,1}};
+ for(const auto& region:regions){
    for(unsigned i=0;i<source.size();++i)source[i]=(i&1)?0xaf:0x05;
    auto original=source;std::fill(state.begin(),state.end(),0x8888);
    Hooks hooks;Bus bus;bus.liveSource=source.data(); // concurrent next request
-   unsigned x=partial?2:0,y=partial?127:0,w=partial?82:kWidth,h=partial?23:kHeight;
+   unsigned x=region[0],y=region[1],w=region[2],h=region[3];
    assert(M5WispRefresh::run(&bus,hooks,source.data(),state.data(),dma0,dma1,sizeof(dma0),x,y,w,h,42));
    assert(!hooks.allocations && bus.scan==kScans+3);
    assert(hooks.time>=(kScans+3)*42 && hooks.time<1100);
@@ -54,6 +57,28 @@ int main(){
      assert(bus.draw[i]==(inside?M5WispRefresh::shadePulses(original[i/2],px):0));
      assert(state[i]==(inside?(0x8000|(42<<8)|original[i/2]):0x8888));
    }
+ }
+ // Translation invariance proves the pattern belongs to the requested region,
+ // not a clipped full-panel field. Sentinel checks include all four boundaries.
+ for(const auto& shape: {std::pair<unsigned,unsigned>{82,23},{126,127},{2,540},{960,1}}){
+   const unsigned w=shape.first,h=shape.second;
+   const unsigned ox=w<900?8:0,oy=h<500?9:0;
+   std::vector<uint8_t> local(kMapBytes,255),moved(kMapBytes,255);
+   const unsigned grid=h>=64?kGrid:1;
+   for(unsigned row=0;row<h;row+=grid){
+     M5WispRefresh::buildRegionBand(local.data(),0,0,w,h,row);
+     M5WispRefresh::buildRegionBand(moved.data(),ox,oy,w,h,row);
+   }
+   unsigned arrivals[8]={};
+   for(unsigned py=0;py<kHeight;++py)for(unsigned px=0;px<kWidth;++px){
+     const auto value=moved[py*kWidth+px];
+     if(px>=ox&&px<ox+w&&py>=oy&&py<oy+h){
+       assert(value<=kLastArrival);++arrivals[value];
+       assert(value==local[(py-oy)*kWidth+px-ox]);
+     }else assert(value==255);
+   }
+   unsigned distinct=0;for(auto count:arrivals)distinct+=count!=0;
+   assert(distinct>=6); // even thin strips retain spatial motion
  }
  Hooks fail;fail.fail=true;Bus a;
  assert(!M5WispRefresh::run(&a,fail,source.data(),state.data(),dma0,dma1,sizeof(dma0),0,0,kWidth,kHeight,42));

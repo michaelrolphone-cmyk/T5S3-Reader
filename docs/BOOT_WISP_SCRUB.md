@@ -55,7 +55,15 @@ allocation, geometry, power or deadline failure uses the original waveform
 fallback. The scrub is ~0.67s; three tone scans add ~0.13s, plus preparation/power
 time. This is a target, not a measured hardware latency.
 
-Firmware version: 1.3.45 → 1.3.46. No independently distributed package changes.
+Partial quality/text updates compose a complete curl in rectangle-local coordinates.
+Long, narrow rectangles transition to flowing ribbons; small regions use finer
+sampling. Moving the same rectangle preserves its animation. Only arrival order
+changes: the current 42ms scan cadence, 16 cleaning scans, three black/six white
+pulses per pixel, and three target-tone scans are unchanged. Every edge pixel
+receives the complete dose, with no drive outside the rectangle. Full-screen
+clears retain their existing pattern.
+
+Firmware version: 1.3.46 → 1.3.47. No independently distributed package changes.
 
 ## Preview and validation
 
