@@ -28,10 +28,10 @@ static void native_resolution_tests(uint8_t *mem,uint8_t *bits){
   {59,12,42,6,39,10,34,5},{24,33,17,46,31,50,29,61},
   {36,2,58,11,63,0,51,13},{26,44,30,37,22,32,23,48}
  };
- ht_bind(mem);
+ ht_bind(mem);ht_bind_native(mem);
  assert(ht_native_a+HT_NATIVE_PIXELS==ht_native_b);
- assert(ht_native_a==(uint8_t *)ht_simd_constants+HT_SIMD_TABLE_BYTES);
- assert(ht_native_b+HT_NATIVE_PIXELS==mem+HT_MEMORY);
+ assert(ht_native_a==mem+HT_MEMORY);
+ assert(ht_native_b+HT_NATIVE_PIXELS==mem+HT_MEMORY+HT_NATIVE_MEMORY);
  /* A diagonal procedural primitive must use physical subpixels instead of
   * becoming four identical panel pixels per 480x270 logical sample. */
  memset(ht_native_a,0,HT_NATIVE_PIXELS);
@@ -99,7 +99,7 @@ static const unsigned golden[][2]={
 };
 int main(void){
  fps_tests();
- uint8_t *mem=malloc(HT_MEMORY),*bits=malloc(HT_PIXELS/2);assert(mem&&bits);
+ uint8_t *mem=malloc(HT_MEMORY+HT_NATIVE_MEMORY),*bits=malloc(HT_PIXELS/2);assert(mem&&bits);
  for(unsigned ready=0;ready<=HT_OPT_SIMD_ALL;++ready)
   for(unsigned level=0;level<HT_LEVELS;++level)for(int view=0;view<3;++view){
    ht_bind(mem);ht.level=level;ht_spawn(true);ht.camera=view*733*256;ht.x=(view*733+190)*256;
