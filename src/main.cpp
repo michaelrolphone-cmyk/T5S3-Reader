@@ -317,8 +317,8 @@ void enterPowerOffKeepingScreen(const char* status) {
 bool g_shutdownRequested = false;
 void requestShutdown() { g_shutdownRequested = true; }
 
-void setupDisplayAndFonts() {
-  display.begin();
+void setupDisplayAndFonts(bool clearPanel = true) {
+  display.begin(clearPanel);
   renderer.begin();
   activityManager.begin();
   LOG_DBG("MAIN", "Display initialized");
@@ -502,12 +502,17 @@ void setup() {
   // First serial output only here to avoid timing inconsistencies for power button press duration verification
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
 
+  const bool animateBoot = !recoveryFirmwareMode && !HalSystem::isRebootFromPanic() && !deskClockUserWake;
+#if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
+  setupDisplayAndFonts(!animateBoot);  // Spatial scrub owns the first physical clear.
+#else
   setupDisplayAndFonts();
+#endif
   display.setFlipOutput(SETTINGS.flipUi != 0);
 
   // Start the independent animation before SD font discovery, state loading,
   // provider admission and Home/reader preparation. Recovery bypasses it.
-  if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic() && !deskClockUserWake) {
+  if (animateBoot) {
     RenderLock lock;
     StartupScreen::boot(renderer);
   }

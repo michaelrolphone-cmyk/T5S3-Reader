@@ -39,9 +39,9 @@ class HalDisplay {
     EFFECT_READER_TURN_BACKWARD_FAST
   };
 
-  // Initialize the display hardware and driver. Ordinary boots clear the
-  // panel during M5GFX initialization; deep-sleep clock timer wakes can retain
-  // the physical e-paper image and skip that startup clear.
+  // Initialize the display hardware and driver. Cold-boot video scrub and
+  // retained clock wakes pass false to preserve the physical image until their
+  // own bounded update. Recovery and ordinary callers keep the full clear.
   void begin(bool clearPanel = true);
 
   // Exclusive native ELF display takeover. The host MUST hold RenderLock and

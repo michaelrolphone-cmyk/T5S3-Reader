@@ -13,6 +13,7 @@ uint32_t millis() { return std::chrono::duration_cast<std::chrono::milliseconds>
 void delay(unsigned n) { std::this_thread::sleep_for(std::chrono::milliseconds(n)); }
 namespace Color { enum { Black }; }
 namespace EpdFontFamily { enum { BOLD }; }
+[[maybe_unused]] static struct { void suppressInitialFullRefresh(){} } display;
 namespace HalDisplay { enum RefreshMode { HALF_REFRESH, FAST_REFRESH, FULL_REFRESH }; }
 constexpr int UI_12_FONT_ID=0, SMALL_FONT_ID=1;
 struct GfxRenderer {
@@ -49,6 +50,7 @@ static bool startVideo(t5_video_surface_v1* s){
  stopped=false;lastSubmit=0;
  *s={960,540,120,T5_VIDEO_PIXEL_MONO_1BPP_MSB,T5_VIDEO_FLAG_ONE_IS_BLACK};return true;
 }
+bool nativeVideoStartBootScrub(t5_video_surface_v1* s){return startVideo(s);}
 static uint8_t* back(size_t* n){assert(!stopped);*n=sizeof(pixels);return pixels;}
 static bool capacity(){assert(!stopped);return canSubmit && millis()-lastSubmit>=10;}
 static bool submit(uint16_t,uint16_t){assert(!stopped);lastSubmit=millis();return true;}
@@ -126,7 +128,7 @@ int main(){
  failEnd=false;assert(finishBoot(renderer));deferWorker=false;
  // No worker available: safe single-frame renderer fallback, no cosmetic wait.
  failCreate=true;int before=renderer.presents;boot(renderer);
- assert(bootBackend==BootBackend::Renderer && renderer.presents==before+2);
+ assert(bootBackend==BootBackend::Renderer && renderer.presents==before+1);
  before=renderer.presents;assert(finishBoot(renderer));assert(renderer.presents==before);
 #else
  StartupScreen::boot(renderer);assert(renderer.presents==1);
