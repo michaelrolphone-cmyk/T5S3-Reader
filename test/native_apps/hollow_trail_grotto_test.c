@@ -86,8 +86,8 @@ int main(void) {
             }
     /* Original full-frame captures include traversal, water, hull, character,
      * camera transform and vignette. They detect over-aggressive occlusion. */
-    const uint32_t golden[]={0x3157e7ad,0x3f484627,0x443d2672,0xb9786306,0xf011874a,
-        0xfbabdc66,0xa206cbe7,0xaa28a67f,0xdf9df267,0x20dbb33f};
+    /* Captured from the device-tested 1.1.21 nearest-camera mode. */
+    const uint32_t golden[]={0xa305082c,0xaea6ef2a,0xb5f9edf7,0x695ba909,0xc74e4177,0x55922b8b,0xeed821b7,0x22372284,0x75a5f2ec,0x256bcddb,};
     for(unsigned n=0;n<sizeof(cameras)/sizeof(cameras[0]);++n) {
         ht.level=4;ht_spawn(true);ht.camera=cameras[n]*256;ht.camera_y=40*256;
         ht.x=(cameras[n]+190)*256;ht.vista=n%2?256:0;
@@ -102,5 +102,5 @@ int main(void) {
     }
     for(int i=0;i<32;++i) assert(memory[HT_MEMORY+i]==0x5a);
     free(expected);free(memory);
-    puts("Hollow Trail grotto: 300 exact reference views, 10 original frames, opacity/exit boundaries and checkpoints PASS");
+    puts("Hollow Trail grotto: 300 exact reference views, 10 nearest-camera frames, opacity/exit boundaries and checkpoints PASS");
 }

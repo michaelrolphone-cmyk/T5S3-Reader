@@ -1,4 +1,4 @@
-/* Golden frames captured from 1.1.19 mode 24 + mode 13 before cleanup. */
+/* Golden frames captured from the device-tested 1.1.21 nearest-camera mode. */
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,35 +23,35 @@ static void fps_tests(void){
 static unsigned hash(const uint8_t *p,int n){unsigned h=2166136261u;while(n--)h=(h^*p++)*16777619u;return h;}
 static const unsigned golden[][2]={
 {2732453282,437489224},
-{3260895424,3051058036},
-{4178722851,170864257},
+{1781673798,3122318616},
+{2282613748,2463770329},
 {1206504672,426343886},
-{3212196771,1483222129},
-{3811253152,1703987057},
+{682691727,1565290177},
+{2572221211,4267103357},
 {4041132480,2400766959},
-{904422213,2245926133},
-{1539769896,953887075},
+{587258285,9943633},
+{2586757509,3333758860},
 {457027355,1816846650},
-{1894273545,1514651272},
-{1383794233,2999192548},
+{1966292873,4146631744},
+{2539700118,1390069209},
 {573902002,2490546487},
-{4057979974,2047409066},
-{2610287337,52893428},
+{3064061895,3391950038},
+{2016817927,2302120057},
 {1801411052,3950480477},
-{3913139421,1369944594},
-{737427685,2835885594},
+{3921345165,2007190506},
+{3859415399,70798080},
 {2717882469,2323644206},
-{2059172262,2938124473},
-{2196817201,3289471923},
+{3499433723,792856704},
+{1737739056,2168347357},
 {2238371299,2993415012},
-{309439037,3966249920},
-{3497430071,3218515412},
+{3344137295,259530570},
+{2882779981,2519302173},
 {2576064911,3369189100},
-{268429169,2194444544},
-{770949756,1608480135},
+{4152371199,1509609613},
+{3134402464,1514944594},
 {1896499223,1053304696},
-{3191972242,2970895352},
-{1522090091,2657649712},
+{2053250862,892301618},
+{891720619,2224482618},
 };
 int main(void){
  fps_tests();
@@ -65,6 +65,25 @@ int main(void){
    assert(hash(ht_scene,HT_PIXELS)==golden[level*3+view][0]);
    assert(hash(bits,HT_PIXELS/2)==golden[level*3+view][1]);
   }
+ /* Independent rounded-coordinate oracle for nearest camera sampling.
+  * Cover both rotation directions, mood and drop zoom, and clipped borders. */
+ for(unsigned i=0;i<HT_PIXELS;++i)ht_temp[i]=(uint8_t)ht_hash(i);
+ for(unsigned n=0;n<96;++n){
+  ht_game g={0};g.sway_phase=n*17;g.rotation_phase=n*73*256;
+  g.camera_mood=n%3==0?256:n%257;g.drop_zoom=n%4==0?256:n%257;
+  int turn,scale;ht_camera_coefficients(&g,&turn,&scale);
+  memset(ht_scene,0x5a,HT_PIXELS);ht_camera_into(ht_temp,&g);
+  for(int y=0;y<HT_H;++y)for(int x=0;x<HT_W;++x){
+   if(y<HT_BORDER||y>=HT_H-HT_BORDER||x<ht_visible_left[y]||x>=HT_W-ht_visible_left[y]){
+    assert(ht_scene[y*HT_W+x]==0x5a);continue;
+   }
+   int u=(HT_W/2)*4096+(x-HT_W/2)*scale+(y-HT_H/2)*turn;
+   int v=(HT_H/2)*4096-(x-HT_W/2)*turn+(y-HT_H/2)*scale;
+   int sx=(u+2048)>>12,sy=(v+2048)>>12;
+   assert(sx>=0&&sx<HT_W&&sy>=0&&sy<HT_H);
+   assert(ht_scene[y*HT_W+x]==ht_temp[sy*HT_W+sx]);
+  }
+ }
  /* Independent clamped horizontal-blur oracle: boundaries, narrow ranges,
   * and random source pixels preserve the original running-sum arithmetic. */
  for(unsigned i=0;i<HT_PIXELS;++i)ht_raw[i]=(uint8_t)ht_hash(i);
@@ -82,5 +101,5 @@ int main(void){
    assert(ht_filter[y*HT_W+x]==ht_average(sum,reciprocal));
   }
  }
- free(bits);free(mem);puts("Production renderer: mode24+13 golden frames/packing, all readiness masks, blur boundaries and FPS window PASS");
+ free(bits);free(mem);puts("Production renderer: mode24+13+nearest golden frames/packing, all readiness masks, blur boundaries and FPS window PASS");
 }
