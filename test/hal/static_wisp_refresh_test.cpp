@@ -16,6 +16,7 @@ struct Hooks {
 struct Bus {
   std::vector<uint8_t> black,white,draw;
   unsigned row=0,scan=0;
+  std::vector<uint8_t> arrivals;
   bool powered=false;
   uint8_t* liveSource=nullptr;
   Bus():black(kMapBytes),white(kMapBytes),draw(kMapBytes){}
@@ -29,7 +30,8 @@ struct Bus {
     for(unsigned x=0;x<kWidth;++x){
       const unsigned command=(data[x/4]>>(6-2*(x%4)))&3;assert(command!=3);
       unsigned i=row*kWidth+x;
-      if(scan<kScans){black[i]+=command==1;white[i]+=command==2;}
+      const unsigned cleanEnd=arrivals.empty()?kScans:arrivals[i]+kBlackScans+kWhiteScans;
+      if(scan<cleanEnd){black[i]+=command==1;white[i]+=command==2;}
       else {assert(command!=2);draw[i]+=command==1;}
     }
     if(liveSource && scan==0 && row==0)memset(liveSource,255,kMapBytes/2);
@@ -48,6 +50,11 @@ int main(){
    auto original=source;std::fill(state.begin(),state.end(),0x8888);
    Hooks hooks;Bus bus;bus.liveSource=source.data(); // concurrent next request
    unsigned x=region[0],y=region[1],w=region[2],h=region[3];
+   if(w!=kWidth || h!=kHeight){
+     bus.arrivals.resize(kMapBytes);
+     for(unsigned row=0;row<h;row+=h>=64?kGrid:1)
+       M5WispRefresh::buildRegionBand(bus.arrivals.data(),x,y,w,h,row);
+   }
    assert(M5WispRefresh::run(&bus,hooks,source.data(),state.data(),dma0,dma1,sizeof(dma0),x,y,w,h,42));
    assert(!hooks.allocations && bus.scan==kScans+3);
    assert(hooks.time>=(kScans+3)*42 && hooks.time<1100);
@@ -80,6 +87,30 @@ int main(){
    unsigned distinct=0;for(auto count:arrivals)distinct+=count!=0;
    assert(distinct>=6); // even thin strips retain spatial motion
  }
+ // Every phase retains its original contiguous pulse timing, but tone follows
+ // the local wave immediately, including before the global scrub has ended.
+ for(unsigned arrival=0;arrival<=kLastArrival;++arrival)for(unsigned tone=0;tone<=3;++tone){
+   for(unsigned scan=0;scan<kScans+M5WispRefresh::kDrawScans;++scan){
+     const unsigned age=scan-arrival;
+     const unsigned expected=scan<arrival?0:age<3?1:age<9?2:age<9+tone?1:0;
+     assert(M5WispRefresh::rippleCommand(arrival,scan,tone)==expected);
+   }
+ }
+ // Boundary phases must be dispersed, not a solid simultaneously driven rim.
+ unsigned rimArrivals[8]={};
+ for(unsigned x=0;x<240;++x){
+   const auto value=M5WispRefresh::regionField(x,0,240,130);
+   ++rimArrivals[M5WispRefresh::rippleArrival(value,x,0,240,130)];
+ }
+ unsigned rimDistinct=0;for(auto count:rimArrivals)rimDistinct+=count!=0;
+ assert(rimDistinct>=4);
+ // Smooth field radiates outwards, including in one-dimensional strips.
+ for(unsigned x=50;x<=100;++x){
+   assert(M5WispRefresh::regionField(x,50,101,101)>=
+          M5WispRefresh::regionField(x-1,50,101,101) || x==50);
+ }
+ assert(M5WispRefresh::regionField(50,50,101,101)==0);
+ assert(M5WispRefresh::regionField(100,100,101,101)==kLastArrival*256);
  Hooks fail;fail.fail=true;Bus a;
  assert(!M5WispRefresh::run(&a,fail,source.data(),state.data(),dma0,dma1,sizeof(dma0),0,0,kWidth,kHeight,42));
  assert(!a.powered&&!fail.allocations);

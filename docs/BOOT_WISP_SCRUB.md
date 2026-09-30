@@ -55,13 +55,18 @@ allocation, geometry, power or deadline failure uses the original waveform
 fallback. The scrub is ~0.67s; three tone scans add ~0.13s, plus preparation/power
 time. This is a target, not a measured hardware latency.
 
-Partial quality/text updates compose a complete curl in rectangle-local coordinates.
-Long, narrow rectangles transition to flowing ribbons; small regions use finer
-sampling. Moving the same rectangle preserves its animation. Only arrival order
-changes: the current 42ms scan cadence, 16 cleaning scans, three black/six white
-pulses per pixel, and three target-tone scans are unchanged. Every edge pixel
-receives the complete dose, with no drive outside the rectangle. Full-screen
-clears retain their existing pattern.
+Partial quality/text updates use a center-out elliptical ripple fitted to the
+rectangle. A single row or two-pixel column becomes a one-dimensional outward
+wave. Spatial rounding feathers the moving front over one scan. A narrow rim
+(up to 12 pixels) scatters arrival across the existing seven-scan window to
+replace the hard cutoff with a stippled shimmer. Every
+pixel keeps the original contiguous three black/six white cleaning pulses at
+42ms cadence. Target tones are restored immediately behind each pixel's wave,
+rather than waiting for a uniform white rectangle before redrawing. The total
+19 scans and drive intensity are unchanged. Outside pixels remain undriven;
+a strict rectangular update cannot make its boundary physically invisible on
+arbitrary surrounding content, but it no longer cuts a repeating wisp field.
+Full-screen clearing retains its existing pattern and target timing.
 
 Firmware version: 1.3.46 → 1.3.47. No independently distributed package changes.
 
@@ -91,3 +96,7 @@ update drive coverage, equal cleaning doses, all four output tones, target
 snapshot isolation, state commit, padding, cancellation and allocation fallback.
 The original one-second boot effect was confirmed visually by the owner. The
 faster overlap and static-driver gray reproduction still need device observation.
+
+`python3 scripts/preview_partial_ripple.py /tmp/partial-ripple.gif` renders the
+production partial commands on a retained page, with a large and narrow update.
+Its pulse-to-gray accumulation is illustrative, not measured pigment behavior.

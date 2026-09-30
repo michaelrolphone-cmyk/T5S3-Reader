@@ -90,8 +90,14 @@ static void ht_draw_land(const ht_game *g,int i,int part,int l,int r,int flat) {
                     ht_limb(ht_scene,x+7,y+11,x+12,y+9,0,0,235);
                 }
             } else if(kind==HT_ROCK || kind==HT_SNOW || kind==HT_SAND) {
-                ht_limb(ht_scene,x,y+12,x+12,y+20,0,0,215);
-                ht_limb(ht_scene,x+12,y+20,x+8,y+37,0,0,225);
+                if(g->level==4) {
+                    ht_limb(ht_scene,x,y+12,x+12,y+20,0,0,215);
+                    ht_limb(ht_scene,x+12,y+20,x+8,y+37,0,0,225);
+                } else if((h&31u)==1) {
+                    /* Sparse faults, rather than a repeated chevron texture. */
+                    ht_limb(ht_scene,x,y+17,x+13,y+23,0,0,220);
+                    ht_limb(ht_scene,x+13,y+23,x+26,y+21,0,0,235);
+                }
             }
         }
     }

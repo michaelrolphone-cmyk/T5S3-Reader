@@ -9,25 +9,48 @@ using namespace NativeVideoBootScrub;
 constexpr unsigned kScanMs = 42;  // Same ~24Hz pulse spacing as fast video.
 constexpr unsigned kDrawScans = 3;
 
-// Compose a whole curl in the rectangle's own coordinates. Narrow regions
-// gradually become flowing ribbons, rather than a severely stretched vortex.
-// Only arrival order changes: command(), cadence and endpoint dose are shared.
+// A center-out elliptical wave, fitted to the requested rectangle. Arrival
+// increases along each ray; unlike a repeating field, no curl is cut mid-cycle.
+// Two-pixel/one-row strips collapse to a one-dimensional outward wave.
 inline uint16_t regionField(unsigned x, unsigned y, unsigned width, unsigned height) {
-  const float nx = width > 1 ? 2.0f*x/(width-1)-1.0f : 0.0f;
+  const float nx = width > 2 ? 2.0f*x/(width-1)-1.0f : 0.0f;
   const float ny = height > 1 ? 2.0f*y/(height-1)-1.0f : 0.0f;
-  const float u = width >= height ? nx : ny;
-  const float v = width >= height ? ny : nx;
-  const float aspect = width >= height ? float(width)/height : float(height)/width;
-  const float dx = u + 0.16f*std::sin(3.0f*v);
-  const float dy = v - 0.16f*std::sin(2.0f*u);
-  const float radius = std::sqrt(dx*dx+dy*dy);
-  const float angle = std::atan2(dy,dx);
-  const float curl = std::sin(2.0f*angle + 4.5f*radius + 0.5f*std::sin(3.0f*u));
-  const float waves = aspect < 4.0f ? aspect : 4.0f;
-  const float ribbon = std::sin(waves*3.0f*u + 2.1f*v + 1.4f*std::sin(3.0f*v+2.0f*u));
-  const float blend = aspect > 3.0f ? 1.0f : (aspect-1.0f)/2.0f;
-  const float t = 0.5f + 0.49f*((1.0f-blend)*curl+blend*ribbon);
-  return static_cast<uint16_t>(t*(kLastArrival*256.0f));
+  const float axes = (width>2 && height>1) ? 2.0f : 1.0f;
+  const float radius = std::sqrt((nx*nx+ny*ny)/axes);
+  return static_cast<uint16_t>(radius*(kLastArrival*256.0f));
+}
+
+// Spatial rounding softens the moving front; perimeter phase scattering
+// softens its cutoff without reducing strength or skipping cleaning pulses.
+inline unsigned rippleArrival(unsigned value, unsigned x, unsigned y, unsigned width, unsigned height) {
+  constexpr uint8_t thresholds[4][4] = {
+    {0,8,2,10},{12,4,14,6},{3,11,1,9},{15,7,13,5}
+  };
+  unsigned edgeX=x<width-1-x?x:width-1-x;
+  unsigned edgeY=y<height-1-y?y:height-1-y;
+  if (width<=2) edgeX=height;
+  if (height<=1) edgeY=width;
+  const unsigned edge=edgeX<edgeY?edgeX:edgeY;
+  const unsigned shortSide=width<=2?height:height<=1?width:width<height?width:height;
+  const unsigned feather=shortSide>=72?12:shortSide/6+1;
+  // Spread the perimeter over the full arrival window. A narrow stippled
+  // shimmer replaces a simultaneously driven, sharply cut rectangular rim.
+  // Interior motion remains radial; every perimeter pixel still gets B3/W6.
+  const unsigned phase=thresholds[y&3U][x&3U];
+  if (edge<feather) {
+    const unsigned scattered=phase*kLastArrival*256U/15U;
+    value=(value*edge+scattered*(feather-edge))/feather;
+  }
+  const unsigned arrival=(value+phase*16U)/256U;
+  return arrival>kLastArrival ? kLastArrival : arrival;
+}
+
+// Restore each pixel immediately behind its wave, instead of leaving a white
+// rectangle waiting for a simultaneous redraw. Preserve contiguous B3/W6.
+inline unsigned rippleCommand(unsigned arrival, unsigned scan, unsigned tonePulses) {
+  const unsigned cleanEnd=arrival+kBlackScans+kWhiteScans;
+  if (scan<cleanEnd) return command(arrival,scan);
+  return scan-cleanEnd<tonePulses ? 1U : 0U;
 }
 
 inline void buildRegionBand(uint8_t* map, unsigned x, unsigned y,
@@ -52,7 +75,7 @@ inline void buildRegionBand(uint8_t* map, unsigned x, unsigned y,
       const unsigned l=top[gx]*(spanY-sy)+bottom[gx]*sy;
       const unsigned r=top[gx+1]*(spanY-sy)+bottom[gx+1]*sy;
       const unsigned value=(l*(divisorX-sx)+r*sx)/(divisorX*spanY);
-      map[(y+row+sy)*kWidth+x+px]=static_cast<uint8_t>((value+128)/256);
+      map[(y+row+sy)*kWidth+x+px]=static_cast<uint8_t>(rippleArrival(value,px,row+sy,width,height));
     }
   }
 }
@@ -105,7 +128,9 @@ bool run(Bus* bus, Hooks& hooks, const uint8_t* source, uint16_t* state,
       if (row>=y && row<y+height) {
         for (unsigned px=x; px<x+width; ++px) {
           unsigned drive;
-          if (scan<kScans) drive=command(memory[row*kWidth+px],scan);
+          if (!full) drive=rippleCommand(memory[row*kWidth+px],scan,
+              shadePulses(target[(row*kWidth+px)/2],px));
+          else if (scan<kScans) drive=command(memory[row*kWidth+px],scan);
           else drive=(scan-kScans < shadePulses(target[(row*kWidth+px)/2],px))?1U:0U;
           dma[px/4] |= static_cast<uint8_t>(drive << (6U-2U*(px&3U)));
         }

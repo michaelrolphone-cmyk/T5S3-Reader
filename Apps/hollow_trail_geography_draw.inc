@@ -76,17 +76,5 @@ static void ht_scene_geography(const ht_game *g) {
             }
             ht_rect(ht_scene,x+6,crest+8,w-12,3,45);
         }
-    } else if(g->level==1) {
-        /* A pair of immense near towers gives the rooftop ascent its scale. */
-        for(int tower=0;tower<2;++tower) {
-            int x=1710+tower*520-cx,y=-430-cy;
-            if(x+190< -margin || x>HT_W+margin) continue;
-            ht_rect(ht_scene,x,y,190,940,145);
-            ht_rect(ht_scene,x-6,y,202,9,195);
-            for(int row=0;row<16;++row) for(int col=0;col<5;++col) {
-                ht_rect(ht_scene,x+14+col*34,y+20+row*44,18,28,100);
-                ht_rect(ht_scene,x+21+col*34,y+20+row*44,2,28,140);
-            }
-        }
     }
 }
