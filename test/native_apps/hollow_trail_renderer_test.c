@@ -30,7 +30,8 @@ static void native_resolution_tests(uint8_t *mem,uint8_t *bits){
  };
  ht_bind(mem);
  assert(ht_native_a+HT_NATIVE_PIXELS==ht_native_b);
- assert(ht_native_b+HT_NATIVE_PIXELS<=mem+HT_MEMORY-HT_SIMD_TABLE_BYTES);
+ assert(ht_native_a==(uint8_t *)ht_simd_constants+HT_SIMD_TABLE_BYTES);
+ assert(ht_native_b+HT_NATIVE_PIXELS==mem+HT_MEMORY);
  /* A diagonal procedural primitive must use physical subpixels instead of
   * becoming four identical panel pixels per 480x270 logical sample. */
  memset(ht_native_a,0,HT_NATIVE_PIXELS);
