@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 199. Model Viewer silently truncates long OBJ face lines and loads incomplete geometry
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-2102](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-2102/bugs.md)
+
+- **Affected code:** `Apps/model_viewer.c`, especially `MV_LINE_CAP`, `mv_reader_line()`, `mv_load_obj()`, `mv_obj_face_tokens()`, and `mv_obj_index()`.
+- **Trigger / reproduction:** Open a syntactically valid OBJ containing a face line longer than 1023 characters, for example hundreds of vertices followed by one large polygon such as `f 1 2 3 ... 400`. A 400-index face is easily long enough to exceed `MV_LINE_CAP == 1024`.
+- **Observed / logically demonstrated failure:** `mv_reader_line()` keeps consuming the physical input line after its destination buffer is full but silently discards every character beyond the first 1023. Both OBJ passes therefore see the same truncated prefix: the counting pass allocates triangles for only that prefix and the construction pass emits only those triangles. The loader can return success and render a model with the tail of the polygon missing instead of rejecting the truncated record.
+- **Likely root cause:** The fixed-size line reader treats a silently truncated buffer as a complete logical OBJ record and provides no overflow indication to its callers.
+- **Impact:** Valid OBJ files with large n-gons can load without an error while displaying incomplete or corrupt geometry, making the corruption difficult to distinguish from a bad source model.
+- **Repair direction:** Make `mv_reader_line()` report overflow and reject overlong logical records explicitly, or parse face tokens incrementally across stream chunks so line length is not a correctness limit. Add fixtures around the 1023/1024-byte boundary and a large valid n-gon, verifying either complete triangulation or a deterministic unsupported-record error.
+
+### 200. Rom Manager can successfully import a direct .gb under an extensionless truncated filename and then hide it
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-2102](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-2102/bugs.md)
+
+- **Affected code:** `Apps/rom_manager.c`, especially `NAME_CAP`, `safe_name()`, `ensure_gb_suffix()`, `import_url()`, `make_path()`, and `load_roms()`.
+- **Trigger / reproduction:** Import a direct HTTPS Game Boy URL whose basename is longer than the 127-character `NAME_CAP - 1` payload, for example a URL ending in 130 `a` characters followed by `.gb`.
+- **Observed / logically demonstrated failure:** `import_url()` first accepts the full URL because it ends in `.gb`. `safe_name()` then truncates the basename to 127 characters, which can remove the extension. `ensure_gb_suffix()` silently returns when there is no room to append three more characters. The subsequent rename can succeed, and the app reports the ROM as imported, but `load_roms()` later lists only filenames ending in `.gb`; the imported file is therefore invisible and unmanageable in Rom Manager.
+- **Likely root cause:** Filename truncation does not reserve space for the mandatory extension, and suffix restoration has a void/no-error failure path that is not validated before publication.
+- **Impact:** A nominally successful import can consume storage while disappearing from the app's ROM list, forcing manual file cleanup and preventing launch/rename/delete through Rom Manager.
+- **Repair direction:** Derive the output filename from the URL path, reserve `.gb` plus the terminator before truncating the stem, and fail the import if a valid final name cannot be produced. Revalidate that the final name ends in `.gb` before renaming the temporary download. Add boundary tests for basenames just below, at, and above `NAME_CAP`.
+
+### 201. Rom Manager rejects valid .gb and .zip HTTPS URLs that carry query strings or fragments
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-2102](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-2102/bugs.md)
+
+- **Affected code:** `Apps/rom_manager.c`, especially `import_url()`, `ends_ci()`, and the URL-to-filename handling in `safe_name()`.
+- **Trigger / reproduction:** Try a valid direct ROM or archive URL such as `https://example.test/game.gb?token=abc`, `https://example.test/game.zip?download=1`, or a supported path followed by a fragment.
+- **Observed / logically demonstrated failure:** `import_url()` decides the file type by applying `ends_ci()` to the entire serialized URL. Once a query string or fragment follows `.gb` or `.zip`, neither suffix check matches, so the function returns `URL must end in .zip or .gb` before opening the HTTP stream. This conflicts with `safe_name()`, which already stops filename extraction at `?` and `#`, showing that query/fragment-bearing URLs are otherwise anticipated.
+- **Likely root cause:** Supported-type validation is performed on the full URL string rather than on the URL path's final segment.
+- **Impact:** Signed, authenticated, cache-busted, and CDN download URLs that identify valid ROM assets in their path cannot be imported even though they are ordinary valid HTTPS URLs.
+- **Repair direction:** Parse the URL or isolate the last path component before `?`/`#` for extension validation while preserving the original complete URL for the network request. Add tests for `.gb?token=...`, `.zip#fragment`, mixed-case extensions, and a negative case where `.gb` appears only in a query value.
