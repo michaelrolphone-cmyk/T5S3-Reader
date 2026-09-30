@@ -1,5 +1,5 @@
-/* Restored pre-overhaul nearest-camera frames. Only the three forest captures
- * include the reviewed 1.1.23 cached light treatment. Other chapters unchanged. */
+/* Reviewed forest depth/crossing frames; the other 27 chapter captures
+ * preserve the restored scenery and nearest-camera renderer. */
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,9 +23,9 @@ static void fps_tests(void){
 
 static unsigned hash(const uint8_t *p,int n){unsigned h=2166136261u;while(n--)h=(h^*p++)*16777619u;return h;}
 static const unsigned golden[][2]={
-{2958735,461856611},
-{2547517311,2002722509},
-{456811227,3022854017},
+{3282416970,1961819723},
+{1881086879,95639244},
+{1247327868,597011144},
 {1206504672,426343886},
 {682691727,1565290177},
 {2572221211,4267103357},

@@ -116,8 +116,13 @@ static int ht_traversal_near(const ht_game *g) {
     if(ht_ladder_near(g)>=0) return HT_LADDER;
     return HT_FREE;
 }
+static bool ht_forest_log_near(const ht_game *g) {
+    return g->level==0 && !g->traversal.forest_log_phase && !g->traversal.forest_log_falling &&
+        g->grounded && g->x/256>=342 && g->x/256<=378 && ht_abs(g->y/256-220)<=10;
+}
 static bool ht_traversal_interact(void) {
     ht_traversal *t=&ht.traversal;
+    if(!t->mode && ht_forest_log_near(&ht)) {t->forest_log_falling=true;return true;}
     if(t->mode==HT_TREE)return false; /* A remains inspection, never tree capture/release. */
     if(t->mode==HT_LEDGE) {t->mode=HT_CLIMB;t->climb=0;return true;}
     if(t->mode==HT_CLIMB) return true;
@@ -152,6 +157,7 @@ static bool ht_plate_weighted(const ht_game *g) {
 static int ht_platform_piece(const ht_game *g,int i,int part,int *left,int *right,int *top) {
     const ht_platform *p=&ht_level_land(g->level)[i];const ht_mechanics *m=ht_mech(g);
     *left=p->left;*right=p->right;*top=ht_platform_top(g,i);
+    if(g->level==0 && i==1)return part==0 && g->traversal.forest_log_phase==32;
     if(i!=m->pit_platform) return part==0;
     if(part==0) *right=m->pit_x-(HT_BALL_RADIUS+8);
     else if(part==1) *left=m->pit_x+(HT_BALL_RADIUS+8);
@@ -213,11 +219,15 @@ static void ht_props_step(int direction) {
     if(t->support==1) ht.x+=t->ball_x-ball_old;
     if(t->support==2) ht.x+=t->crate_x-crate_old;
     if(t->support==3) ht.x+=t->boat_x-boat_old;
-    if(t->bridge_open<32) {
+    if(ht.level==0 && t->forest_log_falling && t->forest_log_phase<32) {
+        ++t->forest_log_phase;
+        if(t->forest_log_phase==32) {t->bridge_open=32;t->forest_log_falling=false;}
+    }
+    if(ht.level!=0 && t->bridge_open<32) {
         if(ht_plate_weighted(&ht)) ++t->bridge_open;
         else if(t->bridge_open) --t->bridge_open;
     }
-    if(t->support==4) ht.y+=(t->bridge_open-bridge_old)*HT_BRIDGE_STEP*256;
+    if(ht.level!=0 && t->support==4) ht.y+=(t->bridge_open-bridge_old)*HT_BRIDGE_STEP*256;
     /* Verlet inertia, gravity, hand pumping and six length-constraint passes.
      * Seven nodes / 36 segment solves is a fixed simulation budget. */
     if(m->rope_length) {
@@ -411,6 +421,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
             if(ht_abs(bottom-old_y)>6*256) t->mode=HT_FREE;
         }
         for(int i=0;i<HT_PLATFORMS;++i) {
+            if(ht.level==0 && i==1 && t->forest_log_phase<32)continue;
             const ht_platform *p=&ht_land[i];int platform_top=ht_platform_top(&ht,i);
             if(!t->mode && !t->drop_cooldown && !ht.grounded && direction &&
                ht.y>=(platform_top+12)*256 && ht.y<=(platform_top+32)*256 &&

@@ -1,12 +1,14 @@
 #include "hollow_trail_geography_draw.inc"
 #include "hollow_trail_terrain_draw.inc"
 #include "hollow_trail_landscape_detail.inc"
+#include "hollow_trail_forest_draw.inc"
 /* Dynamic solids are drawn at logical resolution, outside the blurred scenery
  * cache. One frozen ht_game supplies camera, object poses, collision and art. */
 static void ht_draw_traversal(const ht_game *g) {
     int cx=g->camera/256,cy=g->camera_y/256;
     const ht_platform *land=ht_level_land(g->level);
     const ht_mechanics *m=ht_mech(g);
+    if(g->level==0)ht_forest_backdrop(g);
     if(!ht_grotto_opaque(g)) {
         ht_scene_geography(g);
         ht_landscape_detail(g);
@@ -61,6 +63,7 @@ static void ht_draw_traversal(const ht_game *g) {
             int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top)) break;
             int x=l-cx,y=top-cy,w=r-l;
             if(x>=HT_W+ht_view_margin() || x+w< -ht_view_margin()) continue;
+            if(g->level==0 && i==1)continue; /* actual fallen trunk is drawn below */
             ht_draw_land(g,i,part,l,r,top);
             if(i==m->bridge) {
                 ht_limb(ht_scene,x+5,y,x+5,p->top-32*HT_BRIDGE_STEP-32-cy,0,0,200);
@@ -68,6 +71,7 @@ static void ht_draw_traversal(const ht_game *g) {
             }
         }
     }
+    if(g->level==0)ht_forest_log_draw(g);
     if(m->plate_kind) {
         int x=m->plate_x-cx,y=m->plate_y-cy;
         ht_rect(ht_scene,x-21,y-1,42,3,255);
@@ -206,6 +210,7 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_rect(ht_scene,x-22,y-56,44,6,255);
 }
 static void ht_traversal_prompt(const ht_game *g) {
+    if(g->level==0)return; /* The forest teaches through visible physical consequences. */
     const char *text=NULL;
     switch(ht_traversal_near(g)) {
     case HT_LEDGE: text="UP / A CLIMB - DOWN DROP - B JUMP AWAY";break;
