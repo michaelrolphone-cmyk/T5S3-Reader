@@ -1,8 +1,8 @@
 # Bug Log
 
-Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b3a7`, through the 05:18 MDT scan. This is the canonical report inventory. Existing IDs 5 and 13–72 are preserved; new distinct reports receive IDs 73–207. Scan-local numbers are not canonical IDs. Entries preserve source-review reproduction evidence and repair directions; they are reported open, not claims of fresh hardware reproduction or a complete revalidation of every intervening feature change.
+Consolidated on 2026-09-30 against master `5ec0695add0d1ea82c1278026af84f7f47bd3719`, through the 13:53 MDT scan. This is the canonical report inventory. Existing IDs 5 and 13–72 are preserved; new distinct reports receive IDs 73–210. Scan-local numbers are not canonical IDs. Entries preserve source-review reproduction evidence and repair directions; they are reported open, not claims of fresh hardware reproduction or a complete revalidation of every intervening feature change.
 
-**196 distinct active reports: 61 carried forward and 135 newly consolidated.** The eight previous scheduled fixes (IDs 4, 6–12) are already on master: PR #244 was incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including its final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. They are not pending fixes. Earlier fixes #205, #209 and #212 remain excluded.
+**199 distinct active reports: 61 carried forward and 138 newly consolidated.** The eight previous scheduled fixes (IDs 4, 6–12) are already on master: PR #244 was incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including its final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. They are not pending fixes. Earlier fixes #205, #209 and #212 remain excluded.
 
 ## Coverage and recovery
 
@@ -2438,3 +2438,34 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Resolve the link path against the current spine item's directory, normalize dot segments, remove only the fragment for lookup, and perform an exact canonical-path match. If a basename compatibility fallback is retained, allow it only when the basename is unique. Add fixtures for duplicate basenames, sibling links, and `../` references.
 
 - **Consolidation sources:** [automation/bug-scan-20260930-0518](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/82533918d81fda11ae9c6b19d95b071a98f19361/bugs.md); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Diff](https://docs.google.com/spreadsheets/d/1geT64642Lsjo_EaRZhNxF9516LV2BRVIp4stNAnOkjg/edit?usp=drivesdk); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Instructions](https://docs.google.com/spreadsheets/d/1xB4JDjKoHfw-mCY9pUQL1VP2tWxilaT0WRwdCPryrO8/edit?usp=drivesdk)
+
+
+### 208. CrossPoint state loading accepts schema-invalid JSON as a successful empty state
+
+- **Status:** Open.
+- **Affected code:** `src/JsonSettingsIO.cpp::loadState()`; `src/CrossPointState.cpp::loadFromFile()`; state persistence through `JsonSettingsIO::saveState()`.
+- **Trigger / reproduction:** Put a non-empty, syntactically valid but schema-invalid `/.crosspoint/state.json` on the SD card, for example `{}`, `[]`, or an object missing the normal state fields. A legacy `/.crosspoint/state.bin` may still contain recoverable state.
+- **Observed / logically demonstrated failure:** `loadState()` checks only whether `deserializeJson()` succeeds. It never requires a JSON object or validates the expected field types/presence, then assigns defaults for absent values, clears `recentSleepImages`, and returns `true`. Because `CrossPointState::loadFromFile()` immediately returns that result for any non-empty JSON file, a schema-invalid JSON document is treated as authoritative success and the binary fallback is never attempted. The live `openEpubPath`, sleep-image history, reader-load guard, and `lastSleepFromReader` are consequently reset; the next successful state save can persist those defaults over the malformed JSON.
+- **Likely root cause:** State deserialization has parse-syntax validation but no document/schema validation, while the caller interprets `true` as “usable state loaded” and suppresses recovery.
+- **Impact:** A syntactically valid but structurally wrong state file can silently discard recoverable reader/sleep state and defeat the existing binary migration fallback instead of entering an explicit recovery path.
+- **Repair direction:** Require an object root and validate a minimum coherent state schema before mutating `CrossPointState`. Parse into a temporary state object, reject wrong field types/impossible ring metadata, and commit only after validation succeeds. On schema failure let `loadFromFile()` continue to an available legacy/recovery source rather than reporting success. Add regressions for `{}`, `[]`, wrong-typed fields, and a valid legacy fallback.
+
+### 209. SD firmware validation accepts ESP images whose segment count exceeds the bootloader limit
+
+- **Status:** Open.
+- **Affected code:** `src/network/FirmwareFlasher.cpp::validateImageFile()` and `flashFromSdPath()`.
+- **Trigger / reproduction:** Provide an ESP application image with the correct 0xE9 magic, `segment_count = 17`, seventeen structurally in-bounds segment records, a matching image checksum, matching optional appended SHA-256, the expected board marker, and a total size that fits the OTA partition.
+- **Observed / logically demonstrated failure:** `validateImageFile()` copies header byte 1 into `segCount` and iterates all declared segments, but never enforces ESP-IDF's `ESP_IMAGE_MAX_SEGMENTS` limit of 16. A self-consistent 17-segment image can therefore pass every check in this validator and return `OK`. `flashFromSdPath()` then writes it to the next OTA partition and can select that partition even though the ESP bootloader's image validator rejects a header whose segment count exceeds 16.
+- **Likely root cause:** The custom SD validator reproduces checksum/hash/bounds checks from the ESP image format but omits the bootloader's segment-count invariant.
+- **Impact:** Firmware Flasher can label an image valid, erase/program the OTA slot, and switch boot selection to an image the bootloader will not accept. The update then fails only at reboot/rollback time instead of being rejected safely before flash mutation.
+- **Repair direction:** Reject `segCount > ESP_IMAGE_MAX_SEGMENTS` before iterating segments (using the ESP-IDF constant/header rather than a duplicate magic number where practical), and keep the validator aligned with bootloader header validation. Add boundary fixtures proving 16 segments can pass and 17 is rejected before any erase/write.
+
+### 210. A stale RTC variant hint overrides successful hardware probing and can select the wrong register map
+
+- **Status:** Open.
+- **Affected code:** `lib/hal/HalClock.cpp::begin()`, `configure()`, `timeStartRegister()`, `syncSystemTimeFromRtc()`, and `syncRtcFromSystemTime()`; startup configuration in `src/main.cpp`; persisted `CrossPointSettings::rtcVariantHint`.
+- **Trigger / reproduction:** Boot hardware containing a PCF8563 with settings carrying `rtcVariantHint = 1` (PCF85063), for example after cloning/moving an SD settings file from a board with the other RTC variant or after the persisted hint becomes stale. The reverse mismatch is analogous.
+- **Observed / logically demonstrated failure:** `begin()` probes both layouts and can correctly select PCF8563, but `configure()` then unconditionally replaces `variant_` with any nonzero persisted hint whenever an RTC is merely `available_`; it does not verify that the hinted layout probed successfully. Subsequent reads therefore start at register 0x04 instead of the PCF8563 time base 0x02. A clock write using the wrong PCF85063 layout writes seven bytes beginning at 0x04, which on PCF8563 covers Hours through Years and then Minute_alarm/Hour_alarm rather than Seconds through Years, so a stale hint can both misread time and overwrite unrelated alarm registers.
+- **Likely root cause:** The persisted hint is treated as authoritative identity rather than as a tie-breaker/cache constrained by the hardware probes performed moments earlier.
+- **Impact:** Reusing settings across RTC variants, replacing hardware, or retaining a stale hint can make boot-time clock recovery fail or produce nonsensical time and can corrupt RTC alarm state during synchronization.
+- **Repair direction:** Retain the successful-probe set from `begin()` and honor a persisted hint only if that layout was positively detected; if exactly one layout probes, it must win. Use the hint only to disambiguate genuinely ambiguous probe results, and avoid write-based “verification” against a layout that did not probe. Add PCF85063/PCF8563 register-map fakes with deliberately contradictory hints and assert no wrong-layout write occurs.
