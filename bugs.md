@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,37 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 76. HTTPS downloads disable server certificate verification
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-2326](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-2326/bugs.md)
+- **Affected code:** `src/network/HttpDownloader.cpp::fetchUrl()`, `HttpDownloader::downloadToFile()`, and native HTTP streaming through `src/native/NativeStreamBridge.cpp::httpWorker()`.
+- **Trigger / reproduction:** Use any HTTPS metadata or binary download that reaches the compatibility/worker `HTTPClient` path, then present a TLS endpoint whose certificate is expired, self-signed, for the wrong hostname, or issued by an untrusted CA. The native `open_http` worker reaches this same path because it runs on the dedicated HTTP task; `t5_app_get_api()` is owner-task scoped, so `invocationStreams()` returns null there.
+- **Observed / logically demonstrated failure:** Both HTTPS branches allocate `NetworkClientSecure` and immediately call `setInsecure()`. The connection therefore skips peer-certificate and hostname authentication and can accept a server that is not the requested HTTPS origin.
+- **Likely root cause:** TLS was configured for transport encryption only, without a trust anchor or certificate-bundle verification policy.
+- **Impact:** A network attacker able to intercept traffic can impersonate catalog, manifest, OPDS, font, or other HTTPS endpoints and alter metadata/content before higher-level checks. Flows without their own content signature/digest are directly exposed, and HTTPS no longer supplies server authenticity.
+- **Repair direction:** Remove `setInsecure()`; configure the project trust roots / certificate bundle for all HTTPS clients, retain hostname verification, and make certificate failures terminal. Add tests using trusted, self-signed, expired, and hostname-mismatched endpoints, including the native `open_http` worker path.
+
+### 77. OTA parses release-index SHA-256 but never verifies the downloaded firmware against it
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-2326](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-2326/bugs.md)
+- **Affected code:** `src/network/OtaUpdater.cpp::OtaUpdater::checkForUpdate()` and `OtaUpdater::installUpdate()`.
+- **Trigger / reproduction:** Serve a structurally valid release-index firmware record whose `sha256` is a 64-character value and whose expected tag/asset/URL/size fields pass identity checks, but make the URL return a different otherwise-valid ESP firmware image.
+- **Observed / logically demonstrated failure:** `checkForUpdate()` reads `firmware["sha256"]`, validates only `strlen(digest) == 64`, and then discards the value. `installUpdate()` passes only `otaUrl` to `esp_https_ota`; it never stores, computes, or compares the catalog digest, nor does it compare the final received byte count to `otaSize`. A different valid application image can therefore be accepted even though it does not match the release-index integrity record.
+- **Likely root cause:** The release-index integrity fields were added to metadata validation but were not threaded into the OTA data path.
+- **Impact:** The firmware updater does not enforce the authoritative release-index artifact identity it advertises. A stale/misrouted asset, release-publishing error, or compromised download path can install a valid ESP image different from the indexed firmware.
+- **Repair direction:** Persist the expected SHA-256 and size from the accepted index entry; hash the exact OTA bytes while streaming (or verify the written OTA partition before boot selection), require exact expected length and digest before `esp_https_ota_finish()` is treated as success, and clear expected-integrity state on every failed/new check. Add mismatch fixtures for both size and digest.
+
+### 78. Compatibility HTTP downloads report success even when the destination file fails to close
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-2326](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-2326/bugs.md)
+- **Affected code:** `src/network/HttpDownloader.cpp::HttpDownloader::downloadToFile()`, compatibility `HTTPClient` / `FileWriteStream` path.
+- **Trigger / reproduction:** Complete an HTTP body with all writes returning the requested byte counts, then inject an SD/filesystem finalization failure so `FsFile::close()` returns false (for example media removal or a flush/commit failure at close).
+- **Observed / logically demonstrated failure:** After `http.writeToStream(&fileStream)`, the function calls `file.close();` and discards its boolean result. If the streamed byte count matches Content-Length and `FileWriteStream::ok()` remains true, the function returns `HttpDownloader::OK` despite the failed finalization. The native staged stream path explicitly requires successful `finish()`, so the two transports have inconsistent durability semantics.
+- **Likely root cause:** Transfer/write success is treated as equivalent to durable file publication; close-time filesystem errors are not part of the compatibility path's success predicate.
+- **Impact:** Callers can validate, rename, index, or otherwise publish a file whose final filesystem commit failed, producing truncated/corrupt downloads while the UI reports success. This applies even when no previous destination existed, so it is distinct from overwrite-before-download loss.
+- **Repair direction:** Treat `file.close() == false` as `FILE_ERROR`, remove only the file owned by the failed transfer, and for durable/staged callers reopen and verify expected length before publication. Add fault-injection coverage for close failure after a full-length write.
