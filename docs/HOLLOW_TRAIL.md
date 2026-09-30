@@ -1,3 +1,16 @@
+# Hollow Trail 1.1.26 — walking with the character
+
+Scene-directed walking pace, a lower fixed jump arc, slower climbing and
+closer framing replace the running-jump rhythm. The forest alternates between
+1.5x intimate views and broad vistas; two sparse near trunks establish an
+observer moving beside the path. The character and environment scale together.
+Shorter gaps and adjusted steps keep every chapter traversable at walking pace.
+Existing living-tree placement and deliberate Up entry remain.
+
+See [scene direction](HOLLOW_TRAIL_SCENE_DIRECTION.md) for authoring values,
+movement behavior, route adjustments and validation. App **1.1.25 -> 1.1.26**;
+minimum firmware remains **1.3.37**.
+
 # Hollow Trail 1.1.25 — first forest revision
 
 Level 1 restores the depth, monumental scale and directional light of PR #309

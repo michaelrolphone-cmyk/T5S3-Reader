@@ -128,3 +128,19 @@ static void ht_forest_log_draw(const ht_game *g) {
         ht_limb(ht_scene,ex-12,ey+8,ex+11,ey+7,2,0,235);
     }
 }
+/* Two close trunks belong to the observer's bank. Sparse, broad occlusion
+ * establishes a walking viewpoint without adding any traversal objects. */
+static void ht_forest_foreground(const ht_game *g) {
+    if(g->level!=0)return;
+    static const int anchors[2]={1100,2800};
+    int offset=g->camera/256*5/4,cy=g->camera_y/256*5/4;
+    for(int i=0;i<2;++i) {
+        int x=anchors[i]-offset,y=365-cy;
+        if(x< -100-ht_view_margin() || x>HT_W+100+ht_view_margin())continue;
+        ht_limb(ht_scene,x,y,x-22,y-290,25,18,244);
+        ht_limb(ht_scene,x-22,y-290,x-8,y-640,18,9,244);
+        ht_limb(ht_scene,x-30,y-255,x-102,y-329,11,2,244);
+        ht_limb(ht_scene,x+15,y-13,x+67,y+17,12,1,244);
+        ht_limb(ht_scene,x-18,y-270,x-8,y-350,1,0,180);
+    }
+}

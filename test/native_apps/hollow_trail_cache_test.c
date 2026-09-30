@@ -48,9 +48,10 @@ static void reference(void) {
         ht_reconstruct_low_scene();
     }
     ht_upscale_scene();
+    ht_world_scale=ht_scene_scale(&game);
     ht_draw_traversal(&game);
     ht_draw_puzzle(&game);
-    ht_character(px,(game.y-game.camera_y)/256,&game); ht_weather(&game); if(game.sway_phase || game.drop_zoom) {memcpy(ht_temp,ht_scene,HT_PIXELS);ht_camera_into(ht_temp,&game,HT_CAMERA_BASELINE);} ht_vignette();
+    ht_character(px,(game.y-game.camera_y)/256,&game); ht_weather(&game); ht_forest_foreground(&game); ht_world_scale=256; if(game.sway_phase || game.drop_zoom) {memcpy(ht_temp,ht_scene,HT_PIXELS);ht_camera_into(ht_temp,&game,HT_CAMERA_BASELINE);} ht_vignette();
 }
 /* Every cactus remains one silhouette before and after 2x sampling, at
  * both camera parities. In particular the 39px cactus keeps a 2-sample stem. */

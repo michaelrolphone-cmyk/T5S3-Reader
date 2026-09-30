@@ -19,6 +19,17 @@ static ht_tree_branch ht_tree_branch_shape(int x,int base,int height,int width,u
     return (ht_tree_branch){root,at,root+(ex-root)*55/100,at+(ey-at)/3,ex,ey,
         ht_max(1,width*(8-j)/13),ht_max(1,width/4),side};
 }
+/* Bank adjustments never re-space the established living trees. */
+static int ht_planted_tree_x(unsigned level,int i) {
+    static const int16_t roots[HT_LEVELS][4]={
+        {15,943,1893,2690},{0},{0},{0},{15,1173,2033,2743},
+        {0},{15,963,1903,2706},{0},{15,966,1843,2730},{0}
+    };
+    int slot=i==0?0:i==2?1:i==5?2:3;
+    if(roots[level][slot])return roots[level][slot];
+    const ht_platform *p=&ht_level_land(level)[i];
+    return i==0?15:p->left+(p->right-p->left)*2/3;
+}
 static bool ht_existing_tree_geometry(const ht_game *g,int i,ht_climb_tree *out) {
     int world,height,width,parcel=i;unsigned seed=(unsigned)i+901u;
     if(i==HT_PLATFORMS && g->level==0) {
@@ -27,8 +38,7 @@ static bool ht_existing_tree_geometry(const ht_game *g,int i,ht_climb_tree *out)
         if(i>=HT_PLATFORMS || i==ht_mechanics_by_level[g->level].bridge ||
            (i!=0 && i!=2 && i!=5 && i!=8) || (g->level==4 && i==0) ||
            (g->level!=0 && g->level!=4 && g->level!=6 && g->level!=8)) return false;
-        const ht_platform *p=&ht_level_land(g->level)[i];
-        world=i==0?15:p->left+(p->right-p->left)*2/3;
+        world=ht_planted_tree_x(g->level,i);
         height=g->level==0?340+(i%3)*65:130+(i%3)*27;
         width=g->level==0?23+(i%3)*5:7;
     }
