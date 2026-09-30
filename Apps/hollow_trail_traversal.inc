@@ -118,11 +118,13 @@ static int ht_traversal_near(const ht_game *g) {
 }
 static bool ht_forest_log_near(const ht_game *g) {
     return g->level==0 && !g->traversal.forest_log_phase && !g->traversal.forest_log_falling &&
-        g->grounded && g->x/256>=342 && g->x/256<=378 && ht_abs(g->y/256-220)<=10;
+        g->grounded && g->x/256>=342 && g->x/256<=366 && ht_abs(g->y/256-220)<=10;
 }
 static bool ht_traversal_interact(void) {
     ht_traversal *t=&ht.traversal;
-    if(!t->mode && ht_forest_log_near(&ht)) {t->forest_log_falling=true;return true;}
+    if(!t->mode && ht_forest_log_near(&ht)) {
+        t->mode=HT_PUSH;t->forest_push=0;ht.vx=ht.vy=0;return true;
+    }
     if(t->mode==HT_TREE)return false; /* A remains inspection, never tree capture/release. */
     if(t->mode==HT_LEDGE) {t->mode=HT_CLIMB;t->climb=t->climb_phase=0;return true;}
     if(t->mode==HT_CLIMB) return true;
@@ -220,7 +222,11 @@ static void ht_props_step(int direction) {
     if(t->support==2) ht.x+=t->crate_x-crate_old;
     if(t->support==3) ht.x+=t->boat_x-boat_old;
     if(ht.level==0 && t->forest_log_falling && t->forest_log_phase<32) {
-        ++t->forest_log_phase;
+        /* Gravity torque grows with lean; integrate angular speed rather
+         * than advancing a fixed animation phase. */
+        t->forest_log_speed+=(uint16_t)(1+ht_forest_log_sine(t->forest_log_angle)*22/256);
+        t->forest_log_angle=(uint16_t)ht_min(4096,t->forest_log_angle+t->forest_log_speed);
+        t->forest_log_phase=(uint8_t)(t->forest_log_angle==4096?32:ht_min(31,t->forest_log_angle*32/4096));
         if(t->forest_log_phase==32) {t->bridge_open=32;t->forest_log_falling=false;}
     }
     if(ht.level!=0 && t->bridge_open<32) {
@@ -382,6 +388,8 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
     const ht_mechanics *m=ht_mech(&ht);
     ht_props_step(direction);
     uint8_t old_support=t->support;t->support=0;
+    if(t->forest_push_release)--t->forest_push_release;
+    if(t->mode!=HT_PUSH && t->forest_push)t->forest_push=(uint8_t)ht_max(0,t->forest_push-3);
     if(t->drop_cooldown) --t->drop_cooldown;
     if(t->branch_drop)--t->branch_drop;
     if(old_support==5 && vertical>0) {
@@ -405,7 +413,21 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
             ht.vy=-HT_JUMP_SPEED+(mode==HT_ROPE?ht_clamp(rvy,-384,384):0);ht.grounded=false;ht.coyote=0;jump_pressed=false;
         }
     }
-    if(t->mode==HT_TREE) {
+    if(t->mode==HT_PUSH) {
+        if(!ht_forest_log_near(&ht) || direction<0) {t->mode=HT_FREE;ht.vx=direction*ht_walk_speed(&ht);}
+        else {
+            int old=ht.x;
+            ht.x+=ht_clamp(350*256-ht.x,-ht_walk_speed(&ht),ht_walk_speed(&ht));
+            ht.vx=ht.vy=0;ht.facing=1;ht.grounded=true;ht.stride+=ht_abs(ht.x-old);
+            if(direction>0 && ht.x==350*256) {
+                if(++t->forest_push==HT_FOREST_PUSH_STEPS) {
+                    t->forest_log_angle=(uint16_t)ht_forest_log_angle(&ht);
+                    t->forest_log_speed=0;t->forest_log_falling=true;
+                    t->forest_push_release=8;t->mode=HT_FREE;
+                }
+            } else t->forest_push=(uint8_t)ht_max(0,t->forest_push-3);
+        }
+    } else if(t->mode==HT_TREE) {
         ht_climb_tree tree;bool valid=ht_existing_tree(&ht,t->tree,&tree);
         if(!valid) {t->mode=HT_FREE;ht.vy=88;}
         else {

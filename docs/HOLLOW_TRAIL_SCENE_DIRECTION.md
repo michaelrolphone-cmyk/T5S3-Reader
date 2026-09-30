@@ -217,3 +217,28 @@ boat chapter renderer references and all ten grotto frame hashes remain exact;
 the other chapter references intentionally reflect higher framing/new ropes.
 S3 ELF structural validation and source/sidecar/catalog version/hash agreement
 pass. On-device appearance and performance have not been measured.
+
+
+### Sustained effort and gravity-driven toppling (same unreleased 1.1.29)
+
+A engages the standing snag; pushing toward it is now required for 48 fixed
+steps (1.536 seconds). The character moves into a braced stance, plants the rear
+foot, bends the knees and presses both hands against the bark. Effort shifts the
+shoulders forward with a restrained breathing/strain cycle. A small increasing
+lean shows the root resistance before release. Idle input loses effort; backing
+away, releasing the grip or jumping cancels the action. No new prompt/meter.
+
+Once the roots give way, the character withdraws the hands in a brief follow-
+through. The trunk integrates angular speed with torque increasing with the
+sine of its lean. It starts nearly still and accelerates until the far-bank
+contact; it becomes walkable only after landing. Partial effort/falls reset on
+respawn, while an already landed crossing persists. The resting and landed
+geometry remains unchanged, including existing renderer references.
+
+The forest regression now checks idle input, interrupted effort, the full push
+threshold, backing away, jumping away, monotonic angle/increasing angular speed,
+no early footing and respawn behavior under ASan+UBSan. The input-only complete
+route pushes and waits for the actual fall. Ground, tree, framing, controls,
+renderer, complete-route and C++ math checks pass. Pushing/follow-through poses
+were visually inspected. S3 app build and ELF structural validation pass; the
+source, sidecar and catalog remain 1.1.29 for this cumulative unmerged PR.

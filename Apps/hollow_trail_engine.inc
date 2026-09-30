@@ -75,7 +75,7 @@ static const ht_platform ht_routes[7][HT_PLATFORMS] = {
 };
 #include "hollow_trail_maps.inc"
 /* Fixed-size chapter mechanics, included in every render snapshot. */
-enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE };
+enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE, HT_PUSH };
 typedef struct {
     int ball_x,ball_y,crate_x,boat_x,rope_x,rope_v,ride_offset;
     int ball_vx,ball_vy,ball_roll,crate_y,crate_vx,crate_vy,boat_vx;
@@ -85,6 +85,8 @@ typedef struct {
     int rope_ox[HT_ROPE_NODES],rope_oy[HT_ROPE_NODES];
     uint8_t support,bridge_open,forest_log_phase;
     bool forest_log_falling;
+    uint8_t forest_push,forest_push_release;
+    uint16_t forest_log_angle,forest_log_speed;
     uint8_t mode,ladder,ball_phase,ledge,climb,climb_phase,drop_cooldown;
     int ledge_side;
     uint8_t tree,branch_drop;
@@ -1323,6 +1325,27 @@ static void ht_character(int x,int feet,const ht_game *game) {
         ht_limb(ht_scene,x+lean,feet-10,x+5+stroke/2,feet-6,1,1,255);
         ht_limb(ht_scene,x-2+lean,feet-10,x+3+stroke/2,feet-6,1,1,255);
         ht_rect(ht_scene,x+lean+(f>0?1:-3),feet-17,2,1,0);
+        return;
+    }
+    if(game->traversal.mode==HT_PUSH || game->traversal.forest_push_release) {
+        /* Both hands stay against the bark while the knees compress and the
+         * rear foot braces. After release, arms withdraw and the torso rises. */
+        int load=game->traversal.forest_push,release=game->traversal.forest_push_release;
+        int pulse=load?((int)(game->ticks%20)<10?(int)(game->ticks%20):20-(int)(game->ticks%20)):0;
+        int lean=2+load/16,crouch=1+pulse/5;
+        int reach=14;
+        if(release){lean=release/2;crouch=release/4;reach=6+release;}
+        ht_disk(ht_scene,x+lean,feet-23+crouch,5,255);
+        ht_limb(ht_scene,x+lean-1,feet-18+crouch,x-3,feet-9,3,3,255);
+        ht_limb(ht_scene,x-3,feet-9,x-7,feet-5,2,2,255);
+        ht_limb(ht_scene,x-7,feet-5,x-11,feet,2,1,255);
+        ht_limb(ht_scene,x-3,feet-9,x+3,feet-5,2,2,255);
+        ht_limb(ht_scene,x+3,feet-5,x+5,feet,2,1,255);
+        ht_limb(ht_scene,x+lean,feet-17+crouch,x+8,feet-14+crouch,2,1,255);
+        ht_limb(ht_scene,x+8,feet-14+crouch,x+reach,feet-19,1,1,255);
+        ht_limb(ht_scene,x+lean-2,feet-16+crouch,x+7,feet-12+crouch,1,1,255);
+        ht_limb(ht_scene,x+7,feet-12+crouch,x+reach,feet-15,1,1,255);
+        ht_rect(ht_scene,x+lean+1,feet-24+crouch,2,1,0);
         return;
     }
     if(game->traversal.mode==HT_FREE) {ht_character_walk(x,feet,game);return;}

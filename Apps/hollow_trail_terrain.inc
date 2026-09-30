@@ -37,6 +37,18 @@ static int ht_land_height(unsigned level,int i,int x) {
     return top;
 }
 /* The fallen snag keeps the same shallow bend in art and footing. */
+#define HT_FOREST_PUSH_STEPS 48 /* 1.536 seconds of continuous loaded effort. */
+static int ht_forest_log_sine(int angle) {
+    static const int16_t sine[17]={0,25,50,74,98,121,142,162,181,198,213,226,237,245,251,255,256};
+    int node=ht_min(15,angle/256),u=angle-node*256;
+    return sine[node]+((sine[node+1]-sine[node])*u+128)/256;
+}
+static int ht_forest_log_angle(const ht_game *g) {
+    if(g->traversal.forest_log_phase==32)return 4096;
+    if(g->traversal.forest_log_falling)return g->traversal.forest_log_angle;
+    int effort=g->traversal.forest_push;
+    return 124+effort*effort*96/(HT_FOREST_PUSH_STEPS*HT_FOREST_PUSH_STEPS);
+}
 static const int8_t ht_forest_log_curve[5]={0,-4,-7,-3,0};
 static int ht_platform_top(const ht_game *g,int i) {
     int top=ht_level_land(g->level)[i].top;

@@ -16,13 +16,29 @@ int main(void) {
     ht.grounded=true;
     for(int n=0;n<40;++n)ht_step_controls(0,0,false,false);
     assert(!ht.traversal.forest_log_phase); /* No proximity trigger. */
-    assert(ht_traversal_interact() && ht.traversal.mode==HT_FREE);
-    for(int n=0;n<31;++n) {
-        ht_step_controls(0,0,false,false);
-        assert(!ht_platform_piece(&ht,1,0,&l,&r,&top));
+    assert(ht_traversal_interact() && ht.traversal.mode==HT_PUSH);
+    for(int n=0;n<30;++n)ht_step_controls(0,0,false,false);
+    assert(!ht.traversal.forest_push && !ht.traversal.forest_log_falling);
+    for(int n=0;n<24;++n)ht_step_controls(1,0,false,false);
+    assert(ht.traversal.forest_push==24 && !ht.traversal.forest_log_falling);
+    assert(ht_forest_log_angle(&ht)>124);
+    for(int n=0;n<10;++n)ht_step_controls(0,0,false,false);
+    assert(!ht.traversal.forest_push && ht_forest_log_angle(&ht)==124);
+    for(int n=0;n<HT_FOREST_PUSH_STEPS-1;++n) {
+        ht_step_controls(1,0,false,false);
+        assert(!ht.traversal.forest_log_falling && !ht_platform_piece(&ht,1,0,&l,&r,&top));
     }
-    ht_step_controls(0,0,false,false);
-    assert(ht.traversal.forest_log_phase==32 && !ht.traversal.forest_log_falling);
+    ht_step_controls(1,0,false,false);
+    assert(ht.traversal.mode==HT_FREE && ht.traversal.forest_log_falling && ht.traversal.forest_push_release);
+    int last_angle=ht_forest_log_angle(&ht),last_speed=0,frames=0;
+    while(ht.traversal.forest_log_falling && frames<120) {
+        assert(!ht_platform_piece(&ht,1,0,&l,&r,&top));
+        ht_step_controls(0,0,false,false);++frames;
+        assert(ht_forest_log_angle(&ht)>last_angle);
+        assert(ht.traversal.forest_log_speed>last_speed);
+        last_angle=ht_forest_log_angle(&ht);last_speed=ht.traversal.forest_log_speed;
+    }
+    assert(frames>32 && frames<90 && ht.traversal.forest_log_phase==32);
     assert(ht_platform_piece(&ht,1,0,&l,&r,&top) && l==374 && r==686);
     ht.x=520*256;ht.y=(ht_surface_at(&ht,1,520)-2)*256;ht.vy=600;ht.grounded=false;
     for(int n=0;n<5;++n)ht_step_controls(0,0,false,false);
@@ -30,7 +46,15 @@ int main(void) {
     ht_spawn(false);assert(ht.traversal.forest_log_phase==32);
     ht_spawn(true);assert(!ht.traversal.forest_log_phase);
     ht.x=350*256;ht.y=220*256;assert(ht_traversal_interact());
-    ht_step_controls(0,0,false,false);ht_spawn(false);
+    for(int n=0;n<20;++n)ht_step_controls(1,0,false,false);
+    assert(ht.traversal.forest_push==20);
+    ht_step_controls(-1,0,false,false);assert(ht.traversal.mode==HT_FREE && !ht.traversal.forest_log_falling);
+    ht_spawn(false);
+    ht.x=350*256;ht.y=220*256;assert(ht_traversal_interact());
+    for(int n=0;n<12;++n)ht_step_controls(1,0,false,false);
+    ht_step_controls(0,0,true,true);
+    assert(ht.traversal.mode==HT_FREE && ht.vy<0 && !ht.traversal.forest_log_falling);
+    ht_spawn(false);
     assert(!ht.traversal.forest_log_phase && !ht.traversal.forest_log_falling);
     /* Move the original stone into the hollow with input, release it, and
      * land on its physical top. Nothing moves the banks or opens the log. */
