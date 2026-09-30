@@ -76,12 +76,11 @@ int main(void) {
     start=ht.x; ht_advance(0);
     for(uint32_t now=8;now<=640;now+=8) ht_advance(now);
     assert(ht.ticks==20 && ht.x-start>=50*256 && ht.x-start<=51*256); // Gentle spawn gust.
-    /* Paused B/Up requests the next independent render test without moving or
-     * resuming. The rising edge is consumed by input, not by simulation. */
-    paused=true; jump_down=false; mode_down=false; previous=held=0;
+    /* Paused B/Up is inert; presses cannot queue movement or a jump. */
+    paused=true; jump_down=false; previous=held=0;
     start=ht.x; forced_buttons=T5_APP_BUTTON_UP;
     ht_input(1);
-    assert(mode_down && paused && !jump_down && ht.x==start);
+    assert(paused && !jump_down && ht.x==start);
     forced_buttons=0; ht_input(1);
     /* Submission and scan rates remain separate from stage durations. */
     const t5_video_api_v1 counters={.struct_size=sizeof(counters),.frame_counter=fake_scans};

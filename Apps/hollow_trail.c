@@ -1,10 +1,6 @@
 #include "T5AppApi.h"
 #include <stdio.h>
 #include <stdlib.h>
-#if defined(__XTENSA__)
-/* Existing tracked allocator import; no peripheral/firmware API changes. */
-extern void *heap_caps_malloc(size_t,uint32_t);
-#endif
 #include "T5VideoApi.h"
 #include "T5HardwareTakeover.h"
 #include "T5ProviderCapabilityApi.h"
@@ -22,7 +18,7 @@ static uint64_t ht_pad_device;
 static bool ht_pad_fault;
 static uint32_t ht_pad_fault_since;
 static t5_provider_capability_lease_t lease=T5_PROVIDER_CAPABILITY_LEASE_INVALID;
-static bool quitting, jump_down, pause_down, paused, mode_down;
+static bool quitting, jump_down, pause_down, paused;
 static uint32_t held, previous, last_poll, last_yield;
 static uint32_t simulation_clock, simulation_accumulator, scene_revision;
 static bool simulation_started,loading,reading;
@@ -203,12 +199,6 @@ static void ht_input_update(uint32_t wait) {
     uint32_t now=app->millis();
     ht_advance(now);
     uint32_t down=buttons&~previous;
-    /* While paused, B or Up switches renderer immediately. Consume the press so
-     * it cannot leak into jump/navigation when gameplay resumes. */
-    if(paused && !reading && !loading && (down&(HT_JUMP|HT_UP))) {
-        mode_down=true;
-        down&=~(HT_JUMP|HT_UP);
-    }
     if(reading) {
         if(down&HT_JOURNAL) { reading=false; ht_journal_deciding=ht_journal_confirm=false; }
         else ht_journal_input(down);
@@ -217,6 +207,7 @@ static void ht_input_update(uint32_t wait) {
         previous=held=buttons; last_poll=now; return;
     }
     if(paused && !loading) {
+        down&=~(HT_JUMP|HT_UP); // Paused presses must not queue a jump on resume.
         if(down&(HT_LEFT|HT_RIGHT)) {
             if(!debug_select) debug_level=ht.level;
             debug_level=(debug_level+((down&HT_RIGHT)?1:HT_LEVELS-1))%HT_LEVELS;
@@ -227,7 +218,7 @@ static void ht_input_update(uint32_t wait) {
         } else if(debug_select && (down&HT_ACCEPT)) {
             ht.level=debug_level;ht_spawn(true);debug_jump=true;
             paused=reading=debug_select=false;
-            jump_down=pause_down=mode_down=false;
+            jump_down=pause_down=false;
             simulation_started=false;simulation_accumulator=0;++scene_revision;
             /* Loading consumes this press; require neutral before gameplay. */
             ht_input_rearm=true;previous=buttons;held=0;last_poll=now;return;
@@ -301,7 +292,6 @@ __attribute__((visibility("default"))) void app_main(void) {
     if(!memory) { ht_log("Hollow Trail: scenery cache PSRAM unavailable"); return; }
     uint8_t *staging=(uint8_t *)app->psram_alloc(HT_PACKED_BYTES);
     if(!staging) ht_log("Hollow Trail: packed staging unavailable; using direct packing");
-    void *fast_memory=NULL;
     bool started=false,display_initialized=false,display_reading=false;
     ht_reader_bitmap=(uint8_t *)(((uintptr_t)memory+HT_MEMORY+31u)&~(uintptr_t)15u);
     t5_video_surface_v1 surface={0};
@@ -311,19 +301,15 @@ __attribute__((visibility("default"))) void app_main(void) {
                    !ht_math->add_s16 || !ht_math->sub_s16 || !ht_math->copy_bytes || !ht_math->fill_bytes)) ht_math=NULL;
     ht_pad_owned=ht_input_rearm=ht_pad_fault=false; debug_select=debug_jump=false; ht_pad_source=-1; ht_pad_device=0;
     ht_acquire_pad(); ht_acquire_reader(); ht_bind((uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u));
-    ht_ai_rendering=true;ht_output_mode=HT_OUTPUT_SIMD;ht_render_clock=app->millis;
+    ht_render_clock=app->millis;
     if(!ht_start_video(video,&surface)) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
     started=true;
-#if defined(__XTENSA__)
-    fast_memory=ht_workspace_open(heap_caps_malloc);
-#endif
-    ht_log(ht_fast?"Render SRAM: 4096 bytes available":"Render SRAM unavailable: internal tests use baseline");
     memset(&ht,0,sizeof(ht)); ht_spawn(true);
     reading=false; journal_page=0; ht_journal_index=true; ht_journal_selection=0;
     ht_journal_deciding=ht_journal_confirm=ht_journal_page_ready=false; ht_read_submitted_revision=0;
-    quitting=jump_down=pause_down=paused=mode_down=false; held=previous=0;
+    quitting=jump_down=pause_down=paused=false; held=previous=0;
     simulation_started=false; simulation_accumulator=0; scene_revision=1;
     last_poll=last_yield=app->millis();
     ht_service=ht_render_service;
@@ -343,7 +329,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     }
     ht_expanded_ready=ht_simd_stage_ready==HT_OPT_SIMD_ALL;
     ht_log(ht_expanded_ready?"Hollow Trail expanded SIMD: device self-test passed":
-        "Hollow Trail expanded SIMD unavailable: packing baseline retained");
+        "Hollow Trail: unavailable SIMD stages use scalar fallback");
     ht_log(ht_simd_ready?"Hollow Trail fused SIMD: device self-test passed":
         "Hollow Trail fused SIMD unavailable: AI fallback");
     {
@@ -364,7 +350,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     unsigned warm_steps=0;
     while(!quitting && warm_steps<HT_WARM_STEPS && ht_cache_prefetch(0,1)) ++warm_steps;
     if(warm_steps==HT_WARM_STEPS) { ht_log("Hollow Trail: cache warmup did not finish"); goto cleanup; }
-    loading=false; jump_down=pause_down=mode_down=false;
+    loading=false; jump_down=pause_down=false;
     if(quitting) goto cleanup;
     uint32_t last_frame=app->millis()-HT_FRAME_INTERVAL_MS, last_submit=app->millis();
     uint32_t drawn_revision=0, prepared_revision=0;
@@ -401,27 +387,13 @@ __attribute__((visibility("default"))) void app_main(void) {
             unsigned steps=0;
             while(!quitting && steps<HT_WARM_STEPS && ht_cache_prefetch(ht.camera/256,1)) ++steps;
             loading=false; simulation_started=false; simulation_accumulator=0;
-            jump_down=pause_down=mode_down=false;
+            jump_down=pause_down=false;
             if(quitting) break;
             if(steps==HT_WARM_STEPS) { ht_log("Hollow Trail: level warmup did not finish"); break; }
             ++scene_revision;
             last_submit=app->millis(); last_frame=last_submit-HT_FRAME_INTERVAL_MS;
         }
-        if(mode_down) {
-            mode_down=false;
-            ht_render_test_next();ht_nn_cache_reset();
-            /* A cached focus map is mathematically compatible, but rebuilding
-             * it lets the selected focus experiment actually execute. */
-            ht_focus_valid[0]=ht_focus_valid[1]=false;
-            prepared=false; ++scene_revision;
-            last_submit=app->millis(); last_frame=last_submit-HT_FRAME_INTERVAL_MS;
-            memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=last_submit;
-            if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
-            ht_fps_reset(&ht_fps,last_submit);
-            char test[96];
-            snprintf(test,sizeof(test),"Render test %u/%u: %s%s",ht_render_test+1,HT_TEST_COUNT,ht_render_test_name(),
-                ht_render_test_available()?"":" (unavailable stages use baseline)");ht_log(test);
-        }
+
         uint32_t now=app->millis();
         if(profile_was_paused && !paused && !reading) {
             ht_fps_reset(&ht_fps,now);ht_perf.fps10=0;
@@ -471,17 +443,14 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(88,99,debug_select?"L/R CHOOSE   A LOAD   X CANCEL":"L/R CHOOSE LEVEL   A JOURNAL",1);
                 ht_text(88,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
                 char test[64];
-                snprintf(test,sizeof(test),"TEST %u/%u: %s",ht_render_test+1,HT_TEST_COUNT,ht_render_test_name());
-                ht_text(88,133,test,1);
+                ht_text(88,133,"AI + SIMD RENDERER",1);
                 if(!ht_simd_ready) {
                     snprintf(test,sizeof(test),"PACK FALLBACK: %s",ht_simd_reason);ht_text(88,148,test,1);
-                } else if(ht_render_test_needs_ram() && !ht_fast) {
-                    ht_text(88,148,"RAM STAGES FALLBACK: NO INTERNAL RAM",1);
-                } else if(!ht_render_test_available()) {
-                    unsigned missing=ht_render_test_mask()&HT_OPT_SIMD_ALL&~ht_simd_stage_ready,stage=0;
+                } else if(!ht_expanded_ready) {
+                    unsigned missing=HT_OPT_SIMD_ALL&~ht_simd_stage_ready,stage=0;
                     while(stage<3 && !(missing&(1u<<stage)))++stage;
                     snprintf(test,sizeof(test),"STAGE FALLBACK: %s",ht_stage_reason[stage]);ht_text(88,148,test,1);
-                } else ht_text(88,148,"B / UP NEXT TEST   START JOURNAL",1);
+                } else ht_text(88,148,"START JOURNAL",1);
                 char perf[64];
                 snprintf(perf,sizeof(perf),"FPS10S %lu.%lu (%lu.%luS) SCANS %lu.%lu",
                     (unsigned long)(ht_perf.fps10/10),(unsigned long)(ht_perf.fps10%10),
@@ -580,7 +549,6 @@ cleanup:
     if(started) video->stop();
     ht_release_reader(); ht_release_pad();
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(true);
-    ht_workspace_attach(NULL);free(fast_memory);
     if(staging) app->psram_free(staging);
     app->psram_free(memory);
 }

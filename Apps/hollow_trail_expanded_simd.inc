@@ -5,91 +5,13 @@
  * Every caller bounds a span to one row, handles tails and yields between rows.
  * Host routines below are reference models, never hardware timing substitutes.
  */
-enum {HT_OPT_UPSCALE=1,HT_OPT_RECON=2,HT_OPT_BLEND=4,HT_OPT_BLUR=8,
-      HT_OPT_CAMERA=16,HT_OPT_VIGNETTE=32,HT_OPT_TRIANGLE=64,HT_OPT_FOCUS=128,HT_OPT_FLAT_CAMERA=256,HT_OPT_NN_CACHE=512,HT_OPT_BLUR_INTERIOR=1024,HT_OPT_TILE_PLAN=2048,HT_OPT_RAM_NEURAL=4096,HT_OPT_RAM_BLUR=8192,HT_OPT_RAM_PACK=16384,HT_OPT_LOW_CAMERA=32768,HT_OPT_OCCLUSION=65536,HT_OPT_FILL_CAMERA=131072,HT_OPT_ALL=(1u<<18)-1,HT_OPT_SIMD_ALL=15,
-      HT_OPT_BASELINE=HT_OPT_SIMD_ALL|HT_OPT_VIGNETTE|HT_OPT_TILE_PLAN};
-enum {HT_TEST_BASE,HT_TEST_UPSCALE,HT_TEST_RECON,HT_TEST_BLEND,HT_TEST_BLUR,
-      HT_TEST_CAMERA,HT_TEST_VIGNETTE,HT_TEST_TRIANGLE,HT_TEST_ALL_FOUR,HT_TEST_FOCUS,HT_TEST_FLAT_CAMERA,HT_TEST_NN_CACHE,HT_TEST_BLUR_INTERIOR,HT_TEST_TILE_PLAN,HT_TEST_RAM_NEURAL,HT_TEST_RAM_BLUR,HT_TEST_RAM_PACK,HT_TEST_LOW_CAMERA,HT_TEST_OCCLUSION,HT_TEST_FILL_CAMERA,
-      HT_TEST_STATIONARY,HT_TEST_STATIONARY_ALL,HT_TEST_MOTION,HT_TEST_MOTION_ALL,HT_TEST_EVERYTHING,HT_TEST_COUNT};
-static unsigned ht_render_test,ht_simd_stage_ready;
+enum {HT_OPT_UPSCALE=1,HT_OPT_RECON=2,HT_OPT_BLEND=4,HT_OPT_BLUR=8,HT_OPT_SIMD_ALL=15};
+static unsigned ht_simd_stage_ready;
 static bool ht_expanded_ready;
 static const char *ht_stage_reason[4];
-static unsigned ht_render_test_extra_mask(void) {
-    switch(ht_render_test) {
-    case HT_TEST_UPSCALE:return HT_OPT_UPSCALE;
-    case HT_TEST_RECON:return HT_OPT_RECON;
-    case HT_TEST_BLEND:return HT_OPT_BLEND;
-    case HT_TEST_BLUR:return HT_OPT_BLUR;
-    case HT_TEST_CAMERA:return HT_OPT_CAMERA;
-    case HT_TEST_VIGNETTE:return HT_OPT_VIGNETTE;
-    case HT_TEST_TRIANGLE:return HT_OPT_TRIANGLE;
-    case HT_TEST_ALL_FOUR:return HT_OPT_SIMD_ALL;
-    case HT_TEST_FOCUS:return HT_OPT_FOCUS;
-    case HT_TEST_FLAT_CAMERA:return HT_OPT_FLAT_CAMERA;
-    case HT_TEST_NN_CACHE:return HT_OPT_NN_CACHE;
-    case HT_TEST_BLUR_INTERIOR:return HT_OPT_BLUR_INTERIOR;
-    case HT_TEST_TILE_PLAN:return HT_OPT_TILE_PLAN;
-    case HT_TEST_RAM_NEURAL:return HT_OPT_RAM_NEURAL;
-    case HT_TEST_RAM_BLUR:return HT_OPT_RAM_BLUR;
-    case HT_TEST_RAM_PACK:return HT_OPT_RAM_PACK;
-    case HT_TEST_LOW_CAMERA:return HT_OPT_LOW_CAMERA;
-    case HT_TEST_OCCLUSION:return HT_OPT_OCCLUSION;
-    case HT_TEST_FILL_CAMERA:return HT_OPT_FILL_CAMERA;
-    /* Mode 9 includes 2 and 4: union the bits, never run a stage twice. */
-    case HT_TEST_STATIONARY:return HT_OPT_UPSCALE|HT_OPT_BLEND;
-    case HT_TEST_STATIONARY_ALL:return HT_OPT_SIMD_ALL;
-    case HT_TEST_MOTION:return HT_OPT_UPSCALE|HT_OPT_BLEND|HT_OPT_VIGNETTE|HT_OPT_TILE_PLAN;
-    case HT_TEST_MOTION_ALL:return HT_OPT_SIMD_ALL|HT_OPT_VIGNETTE|HT_OPT_TILE_PLAN;
-    case HT_TEST_EVERYTHING:return HT_OPT_ALL;
-    default:return 0;
-    }
-}
-/* Every experiment is additive to the device-proven mode 24 winner. */
-static unsigned ht_render_test_mask(void) {
-    return HT_OPT_BASELINE|ht_render_test_extra_mask();
-}
-static const char *ht_render_test_name(void) {
-    if(!(ht_render_test_extra_mask()&~HT_OPT_BASELINE))return "MODE 24 BASELINE";
-    switch(ht_render_test) {
-    case HT_TEST_UPSCALE:return "SIMD UPSCALE";
-    case HT_TEST_RECON:return "SIMD RECONSTRUCTION";
-    case HT_TEST_BLEND:return "SIMD COMPOSITING";
-    case HT_TEST_BLUR:return "SIMD BLUR / CACHE";
-    case HT_TEST_CAMERA:return "BASE + PACKED CAMERA";
-    case HT_TEST_VIGNETTE:return "PACKED VIGNETTE";
-    case HT_TEST_TRIANGLE:return "BASE + TRIANGLE STEPPING";
-    case HT_TEST_ALL_FOUR:return "ALL FOUR SIMD";
-    case HT_TEST_FOCUS:return "BASE + BOUNDED FOCUS MATH";
-    case HT_TEST_FLAT_CAMERA:return "BASE + FLAT CAMERA SKIP";
-    case HT_TEST_NN_CACHE:return "BASE + NEURAL PATCH CACHE";
-    case HT_TEST_BLUR_INTERIOR:return "BASE + BLUR INTERIOR";
-    case HT_TEST_TILE_PLAN:return "COMPOSITOR TILE PLAN";
-    case HT_TEST_RAM_NEURAL:return "BASE + INTERNAL NEURAL";
-    case HT_TEST_RAM_BLUR:return "BASE + INTERNAL BLUR";
-    case HT_TEST_RAM_PACK:return "BASE + INTERNAL PACKING";
-    case HT_TEST_LOW_CAMERA:return "BASE + LOW BACKGROUND CAMERA";
-    case HT_TEST_OCCLUSION:return "BASE + COARSE OCCLUSION";
-    case HT_TEST_FILL_CAMERA:return "BASE + SOLID FILL CAMERA";
-    case HT_TEST_STATIONARY:return "STATIONARY - MODE 9";
-    case HT_TEST_STATIONARY_ALL:return "STATIONARY + MODE 9";
-    case HT_TEST_MOTION:return "MOTION - MODE 9";
-    case HT_TEST_MOTION_ALL:return "MOTION + MODE 9";
-    case HT_TEST_EVERYTHING:return "ALL COMBINED";
-    default:return "MODE 24 BASELINE";
-    }
-}
 static bool ht_expanded_active(unsigned bit) {
-    return (ht_render_test_mask() & ht_simd_stage_ready & bit)!=0;
+    return (ht_simd_stage_ready & bit)!=0;
 }
-static bool ht_render_test_needs_ram(void) {
-    return (ht_render_test_mask()&(HT_OPT_RAM_NEURAL|HT_OPT_RAM_BLUR|HT_OPT_RAM_PACK))!=0;
-}
-static bool ht_render_test_available(void) {
-    if(ht_render_test_needs_ram() && !ht_fast)return false;
-    unsigned need=ht_render_test_mask()&HT_OPT_SIMD_ALL;
-    return (ht_simd_stage_ready&need)==need;
-}
-static void ht_render_test_next(void) {ht_render_test=(ht_render_test+1)%HT_TEST_COUNT;}
 /* Runtime-aligned PSRAM, not ELF .rodata: section relocation can discard
  * linker alignment. Initialized once by ht_bind, shared by checks and draws. */
 static uint8_t (*ht_expand_constants)[16];

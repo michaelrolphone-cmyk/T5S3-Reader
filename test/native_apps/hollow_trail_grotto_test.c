@@ -93,10 +93,10 @@ int main(void) {
         ht.x=(cameras[n]+190)*256;ht.vista=n%2?256:0;
         ht.sway_phase=512;ht.rotation_phase=256u<<8;
         ht.traversal.boat_x=(398+n*20)*256;ht.ticks=33+n*16;
-        ht_ai_rendering=true;ht_render_scene();assert(frame_hash()==golden[n]);
+        ht_render_scene();assert(frame_hash()==golden[n]);
         if(cameras[n]<=700) {
             unsigned builds=ht_cache_builds;
-            ht_ai_rendering=false;ht_render_scene();assert(frame_hash()==golden[n]);
+            ht_render_scene();assert(frame_hash()==golden[n]);
             assert(builds==ht_cache_builds); // No hidden cache work in the opaque frame.
         }
     }
