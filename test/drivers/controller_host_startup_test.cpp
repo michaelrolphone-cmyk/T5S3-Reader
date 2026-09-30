@@ -40,6 +40,7 @@ static bool disconnected, delayed, present, attach_edge;
 static bool host_role, partial_power_failure, zero_power_lease;
 static uint64_t powerLease;
 static unsigned power_calls;
+static bool external_callback_called;
 static unsigned tick_ms = 1;
 struct RtcRegisters {
     struct { bool sw_hw_usb_phy_sel, sw_usb_phy_sel; } usb_conf;
@@ -182,6 +183,14 @@ int main() {
         assert(release_host_phy() && delete_calls == 2);
         release_power_after_phy();
     }
+    // External power callback occupies the SAME ordered acquisition boundary.
+    reset(true,0);
+    assert(start_host_controller([](void *ctx,uint32_t ma,uint64_t *lease){
+        external_callback_called=true;
+        return power->acquire_host(ctx,ma,lease);
+    }));
+    assert(attach_edge && power_calls==1 && external_callback_called);
+    teardown_host();assert(release_host_phy());release_power_after_phy();
     reset(false, 0);
     assert(start_host_controller() && !attach_edge && !disconnected);
     teardown_host();

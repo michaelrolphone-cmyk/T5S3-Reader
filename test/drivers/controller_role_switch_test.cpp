@@ -6,12 +6,17 @@ struct Port {
     uint32_t clock = 0;
     int32_t status = RISC_USB_POWER_ABSENT;
     bool occupied = false, parkOK = true, startOK = true, powered = false;
-    bool probeRequired = true;
+    bool probeRequired = true, externalSupport=false, validExternal=true;
+    unsigned externalStarts=0, disconnects=0;
     unsigned starts = 0, parks = 0, reads = 0, reports = 0;
     uint32_t now() const { return clock; }
     bool busy() const { return occupied; }
     bool idle_probe_required() const { return probeRequired; }
-    int32_t input() { ++reads; assert(!powered || !probeRequired); return status; }
+    int32_t input() { ++reads; assert(!powered || !probeRequired || externalSupport); return status; }
+    bool external_supported() const {return externalSupport;}
+    bool external_valid() const {return validExternal;}
+    bool disconnect_power_loss() {++disconnects;return true;}
+    bool start_external() {++externalStarts;powered=true;return startOK;}
     bool park() { ++parks; if (parkOK) powered = false; return parkOK; }
     bool start() { ++starts; assert(!powered); powered = true; return startOK; }
     void report(const char *) { ++reports; }
@@ -74,6 +79,46 @@ int main() {
     port.advance(role, 500);
     port.advance(role, 500);
     assert(role.state() == State::Host && port.starts == starts + 1 && port.powered);
+
+    Port qi;qi.externalSupport=true;qi.status=RISC_USB_POWER_EXTERNAL;
+    role.begin(qi.clock);qi.advance(role,500);
+    assert(qi.externalStarts==1 && !qi.starts && role.state()==State::Host);
+    qi.occupied=true;
+    for(unsigned i=0;i<20;++i)qi.advance(role,500);
+    assert(!qi.parks && !qi.disconnects);
+    qi.validExternal=false;qi.advance(role,500);
+    assert(qi.disconnects && !qi.parks); // claims keep owner alive while draining
+    qi.occupied=false;qi.advance(role,500);
+    assert(qi.parks==1 && role.state()==State::Sense);
+    qi.status=RISC_USB_POWER_ABSENT;
+    qi.advance(role,500);qi.advance(role,500);
+    assert(qi.starts==1); // source acquisition only after Qi is gone
+    qi.status=RISC_USB_POWER_SOURCE;qi.occupied=true;qi.advance(role,500);
+    assert(role.state()==State::Host);
+    qi.status=RISC_USB_POWER_EXTERNAL;qi.advance(role,500);
+    qi.occupied=false;qi.advance(role,500);qi.validExternal=true;
+    qi.advance(role,500);
+    assert(qi.externalStarts==2 && role.state()==State::Host);
+
+    // A persistently unstable external source gets a finite attempt budget.
+    Port unstable;unstable.externalSupport=true;unstable.status=RISC_USB_POWER_EXTERNAL;
+    unstable.validExternal=false;role.begin(0);
+    for(unsigned i=0;i<40;++i)unstable.advance(role,500);
+    assert(unstable.externalStarts==3 && !unstable.starts && role.state()==State::Sense);
+
+    Port pc;pc.externalSupport=true;pc.status=RISC_USB_POWER_EXTERNAL;
+    role.begin(pc.clock);pc.advance(role,500);
+    pc.advance(role,2000);assert(pc.parks==1 && role.state()==State::Sense);
+    for(unsigned i=0;i<120;++i)pc.advance(role,500);
+    assert(pc.externalStarts==1 && !pc.starts); // serial stays restored
+
+    Port badExternal;badExternal.externalSupport=true;badExternal.status=RISC_USB_POWER_EXTERNAL;
+    badExternal.startOK=false;badExternal.parkOK=false;
+    role.begin(0);badExternal.advance(role,500);
+    assert(role.state()==State::Cleanup && badExternal.powered);
+    badExternal.parkOK=true;badExternal.advance(role,250);
+    for(unsigned i=0;i<10;++i)badExternal.advance(role,500);
+    assert(badExternal.externalStarts==1 && role.state()==State::Sense);
 
     Port unknown;
     unknown.status = RISC_USB_POWER_UNKNOWN;
