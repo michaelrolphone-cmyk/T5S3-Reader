@@ -1,4 +1,4 @@
-/* ESP32-S3 PIE experiment: 16 logical pixels -> 32 physical dots in two
+/* ESP32-S3 PIE packer: 16 logical pixels -> 32 physical dots in two
  * rows. Exact floor averages and the existing ordered thresholds. Pure CPU
  * arithmetic; no firmware imports, peripheral access, allocation or DMA.
  * S3 instructions follow ESP32-S3 TRM v1.8 sections 1.8.53/76/84/88/191.

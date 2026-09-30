@@ -1,3 +1,5 @@
+> Historical experiment, retired in 1.1.20. Its model, trainer, tests and benchmark were removed. Commands below describe the historical implementation; see [production renderer](HOLLOW_TRAIL_RENDER_TESTS.md) for current behavior.
+
 # Hollow Trail learned dither experiment — 1.1.12
 
 The app provides exactly **AI** and **AI + Dither**, selected with B/Up while paused. AI is the default. Both use the existing trained scene compositor. The per-pixel final neural 960x540 upscale path from #295 is removed, following the owner's device slowdown report. The panel still receives 960x540 output.

@@ -1,6 +1,6 @@
 /* Rolling completed-frame FPS. At the app's >=42 ms frame-start interval,
  * at most 239 frames enter a 10-second window; 256 slots include boundary slack.
- * Reset on experiment changes/resume so paused time and other modes never mix. */
+ * Reset on resume so pause and journal time never enter the gameplay window. */
 #define HT_FPS_WINDOW_MS 10000u
 #define HT_FPS_SLOTS 256u
 typedef struct {

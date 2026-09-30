@@ -66,7 +66,7 @@ int main(void){
   ht_pack_mono_legacy(reference,120);ht_pack_mono_simd(guard,120);
   assert(!memcmp(reference,guard,64800));
  }
- ht_output_mode=HT_OUTPUT_SIMD;ht_simd_ready=false;
+ ht_simd_ready=false;
  ht_pack_mono(reference,120);ht_pack_mono_legacy(guard,120);assert(!memcmp(reference,guard,64800));
  assert(checkpoints>0);free(guard);free(reference);free(mem);
  puts("SIMD portable model: all byte averages, phases, boundaries, guards, fallback and all chapters PASS; S3 execution requires device self-test");
