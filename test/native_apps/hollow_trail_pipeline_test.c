@@ -5,7 +5,7 @@
 #include "../../Apps/hollow_trail.c"
 static uint32_t now_ms,release_at;
 static unsigned allocations,frees,submissions,backbuffer_calls;
-static bool armed,overlapped,reject_once,failed_alloc,transition;
+static bool armed,overlapped,reject_once,failed_alloc,failed_background,transition;
 static unsigned city_loading_polls,reader_releases;
 static bool journal_run;
 static uint8_t *stage;
@@ -32,7 +32,7 @@ static bool poll_input(t5_app_input_t *out,uint32_t wait) {
 }
 static void *allocate(size_t size) {
     ++allocations;
-    if(allocations==2 && failed_alloc) return NULL;
+    if((allocations==2 && failed_alloc) || (allocations==3 && failed_background)) return NULL;
     uint8_t *p=malloc(size);assert(p);memset(p,0x5a,size);
     if(allocations==2) { assert(size==HT_PACKED_BYTES);stage=p; }
     return p;
@@ -94,15 +94,17 @@ static bool capability_release(t5_provider_capability_lease_t token) { assert(to
 static const t5_provider_capability_api_v1 capability_api={1,sizeof(capability_api),capability_acquire,capability_release,NULL};
 const t5_provider_capability_api_v1 *t5_provider_capability_get_api(uint32_t v) { (void)v;return journal_run?&capability_api:NULL; }
 int main(void) {
-    for(unsigned scenario=0;scenario<4;++scenario) {
+    for(unsigned scenario=0;scenario<5;++scenario) {
         now_ms=release_at=0;allocations=frees=submissions=backbuffer_calls=0;
-        armed=overlapped=false;reject_once=true;failed_alloc=scenario==1;stage=NULL;
+        armed=overlapped=false;reject_once=true;failed_alloc=scenario==1;failed_background=scenario==4;stage=NULL;
         transition=scenario==2;city_loading_polls=0; journal_run=scenario==3; reader_releases=0;
         app_main();
         assert(submissions==(journal_run?4u:3u) && backbuffer_calls==(journal_run?5u:4u));
         assert(reader_releases==(journal_run?1u:0u));
-        assert(frees==(failed_alloc?1u:2u));
+        assert(allocations==3);
+        assert(frees==3u-(unsigned)failed_alloc-(unsigned)failed_background);
+        assert(ht_retained_background==NULL);
         assert(overlapped==!failed_alloc);
     }
-    puts("Hollow Trail pipeline: pack while busy, buffer ownership, retry, direct fallback and cleanup PASS");
+    puts("Hollow Trail pipeline: pack while busy, buffer ownership, retry, direct/background fallback and cleanup PASS");
 }

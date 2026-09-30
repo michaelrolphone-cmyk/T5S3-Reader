@@ -1,35 +1,54 @@
-# Hollow Trail production renderer — 1.1.20
+# Hollow Trail frame strategy tests — 1.1.21
 
-The renderer now permanently uses the device-tested mode 24 combination plus
-mode 13: SIMD upscale, reconstruction, compositing and vertical blur; packed
-vignette; compositor tile planning; and horizontal blur interior filtering.
-AI scene reconstruction and the successful SIMD output packer remain enabled.
+The baseline remains the device-tested mode 24 + 13 production renderer.
+Pause → **B/Up** cycles five tests. Each selection starts from the same baseline;
+only the ALL THREE mode combines the additions. Mode changes discard pending
+frames, invalidate retained scenery and reset ten-second FPS/stage statistics.
+Pause/journal resume also starts with a fresh background and motion history.
 
-The mode selector and unused experiment code are removed. Pause retains level
-selection, journal access, resume/exit, stage timings and rolling ten-second FPS.
-B/Up no longer switches rendering and cannot queue a jump while paused. Resume
-and journal transitions continue to reset the FPS window.
+| Mode | Change |
+| --- | --- |
+| 1 BASELINE | Existing AI/SIMD renderer, full scenery and bilinear camera every frame. |
+| 2 ALTERNATE BACKGROUND | Alternate fresh and retained scenery frames; all interactive terrain, evidence, player, moving objects and weather still draw each frame. |
+| 3 NEAREST CAMERA | Use rounded nearest source pixels for camera rotation/zoom instead of four-tap interpolation. |
+| 4 MOTION LOW + CHARACTER DETAIL | During player/camera movement, sample the final scene at 2×2 logical-pixel blocks outside a 144×112 full-detail source region centered on the character. Restore full sampling when motion stops. |
+| 5 ALL THREE | Background alternation plus nearest sampling plus motion-dependent peripheral resolution. |
 
-Removed: low-background camera, coarse occlusion, solid-fill camera projection,
-packed/flat camera alternatives, triangle stepping, bounded focus experiment,
-neural patch cache, learned output dithering, legacy non-AI scene composition,
-and the optional internal-SRAM experiment workspace. Two focus maps are now sized
-for the retained 120×68 reconstruction grid rather than the legacy 240×135 grid.
-The standard full-resolution camera and the existing border are unchanged.
+The motion test reduces the final camera sampling grid from 480×270 to 240×135
+in the periphery, then fills each 2×2 block. It does **not** lower geometry
+construction resolution. The protected region follows the character through
+vista scaling and the affine camera; UI is drawn afterward at full resolution.
+Nearest sampling in mode 5 also applies to full-detail character-region samples,
+but those pixels are still evaluated individually. This is deliberately a
+visual-quality/performance tradeoff, not a claim of pixel-equivalent output.
 
-Retained safety: runtime-aligned SIMD constants, four independent kernel startup
-checks, original output-packer self-test, per-stage scalar fallbacks, bounded
-render checkpoints and cleanup. These fallbacks are production paths, not
-selectable experiments. No firmware update is required; app 1.1.19 → 1.1.20.
+Background retention includes layered scenery reconstruction/upscale, geography,
+landscape detail, water/grotto art, background silhouettes and story landmarks.
+It excludes evidence, terrain/interactive solids, puzzles, character, weather and
+UI. Retained scenery is held at its previous screen position for one frame;
+parallax/scenery animations can visibly step or lag. There is no costly image
+reprojection. Lookahead cache work is skipped on retained-background frames.
 
-Validation uses frozen frame and packed-output hashes captured from 1.1.19 mode
-24 + 13 before cleanup, across all ten chapters and three views. Every SIMD
-readiness mask must reproduce those hashes. An independent clamped-sample oracle
-checks horizontal blur boundaries, narrow regions and random input. Existing
-SIMD arithmetic, cache, grotto, gameplay, input and cooperative-service tests
-remain. FPS tests cover rolling updates, resets and timer wraparound.
+The optional 129,600-byte PSRAM raster is allocated once after display startup
+and freed on exit. Allocation failure uses fresh backgrounds with a visible
+pause-screen diagnostic; the other tests still work. Level changes, respawns,
+large discontinuities, mode changes and grotto-opacity transitions invalidate
+retention. Frame parity advances on completed render calls, not simulation ticks;
+failed display submission retries the same prepared frame.
 
-Build: `python3 scripts/build_all_apps.py --id hollow_trail`.
-Native tests: `bash test/run_native_app_test.sh`.
-Host checks cannot establish ESP32-S3 FPS; the chosen combination comes from
-owner hardware measurements.
+Production SIMD self-tests and scalar fallbacks remain intact. No firmware update
+is required; app **1.1.20 → 1.1.21**. The default remains BASELINE.
+
+Validation:
+- Existing baseline scene/packing hashes across ten chapters and all SIMD
+  readiness masks remain unchanged after separating scenery from interactive drawing.
+- New tests cover fresh/reused alternation, an independent cheap-frame oracle,
+  current actors, level/death/teleport invalidation, missing-memory fallback,
+  stationary restoration, combined-mode composition, nearest pixel coordinates,
+  border guards and full-detail character-region preservation.
+- Native controls, gameplay, cache, journal, pipeline and cooperative-service
+  checks remain in `bash test/run_native_app_test.sh`.
+- Build with `python3 scripts/build_all_apps.py --id hollow_trail`.
+
+These are experiments for device comparison; host correctness checks do not
+establish device FPS or whether a visual tradeoff is acceptable.

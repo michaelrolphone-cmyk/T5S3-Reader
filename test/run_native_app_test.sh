@@ -54,6 +54,10 @@ c++ -std=c++17 -Wall -Wextra -Werror \
 "$binary"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
   -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_frame_strategy_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
+  -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/hollow_trail_renderer_test.c" -o "$binary"
 "$binary"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \

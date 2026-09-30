@@ -3,7 +3,7 @@
 #include "hollow_trail_landscape_detail.inc"
 /* Dynamic solids are drawn at logical resolution, outside the blurred scenery
  * cache. One frozen ht_game supplies camera, object poses, collision and art. */
-static void ht_draw_traversal(const ht_game *g) {
+static void ht_draw_scenery(const ht_game *g) {
     int cx=g->camera/256,cy=g->camera_y/256;
     const ht_platform *land=ht_level_land(g->level);
     const ht_mechanics *m=ht_mech(g);
@@ -54,6 +54,12 @@ static void ht_draw_traversal(const ht_game *g) {
         }
     }
     ht_story_landmarks(g);
+}
+/* All interactive solids, evidence and actors still update every frame. */
+static void ht_draw_traversal(const ht_game *g) {
+    int cx=g->camera/256,cy=g->camera_y/256;
+    const ht_platform *land=ht_level_land(g->level);
+    const ht_mechanics *m=ht_mech(g);
     ht_draw_evidence(g);
     for(int i=0;i<HT_PLATFORMS;++i) {
         const ht_platform *p=&land[i];
