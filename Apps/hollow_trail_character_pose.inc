@@ -7,6 +7,17 @@ static int ht_ladder_contact(int world_feet,int top,int offset,int side) {
 }
 static bool ht_character_instrument(int x,int feet,const ht_game *g) {
     const ht_traversal *t=&g->traversal;int cy=g->camera_y/256;
+    if(t->mode==HT_TREE) {
+        int side=-t->tree_side,phase=(g->stride/512)%12;
+        ht_disk(ht_scene,x,feet-25,5,255);
+        ht_limb(ht_scene,x,feet-20,x-side*2,feet-9,3,3,255);
+        for(int arm=0;arm<2;++arm) {
+            int lift=arm?phase:12-phase;
+            ht_limb(ht_scene,x,feet-19,x+side*6,feet-24-lift/2,2,1,255);
+            ht_limb(ht_scene,x-side*2,feet-9,x+side*6,feet-2-lift/2,2,1,255);
+        }
+        ht_rect(ht_scene,x+side,feet-25,2,1,30);return true;
+    }
     if(t->mode==HT_LADDER) {
         int top,bottom;ht_ladder_ends(g->level,t->ladder,&top,&bottom);
         int world=g->y/256,lean=(world/5)%4-2;

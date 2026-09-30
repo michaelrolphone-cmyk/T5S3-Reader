@@ -32,6 +32,7 @@ int main(void) {
         memset(reports,0,sizeof(reports)); reports[source][0].connected=1;
         reports[source][0].device=source+1; reports[source][0].hat=8;
         memset(&ht,0,sizeof(ht)); ht_spawn(true); ht_geometry_level=0;
+        ht.x=260*256; // Empty space, away from the new tree grip at the spawn.
         reading=paused=quitting=loading=jump_down=pause_down=false;
         previous=held=0; ht_pad_owned=ht_input_rearm=false; ht_pad_source=-1; simulation_started=false;
         mapped=T5_APP_BUTTON_UP|T5_APP_BUTTON_DOWN|T5_APP_BUTTON_CONFIRM;
@@ -113,12 +114,21 @@ int main(void) {
     }
     /* Generic arrow keys cannot open the journal or inspect. Down pauses;
      * Confirm from pause is the explicit no-controller route to the journal. */
+    ht.level=0;ht_spawn(true);ht.x=260*256;
     memset(reports,0,sizeof(reports)); mapped=0; quitting=reading=paused=false;
     jump_down=pause_down=false; ht_input(1);
     mapped=T5_APP_BUTTON_UP; ht_input(1); assert(jump_down && !reading);
     jump_down=false; mapped=0; ht_input(1);
     mapped=T5_APP_BUTTON_DOWN; ht_input(1); mapped=0; ht_input(1); assert(paused && !reading);
     mapped=T5_APP_BUTTON_CONFIRM; ht_input(1); assert(reading);
+    /* At a living-tree edge and on branches, arrows are climb/drop intent. */
+    reading=paused=quitting=false;pause_down=jump_down=false;mapped=0;
+    ht.level=0;ht_spawn(true);ht.x=(ht_forest_trees[0].x+ht_forest_trees[0].radius+6)*256;
+    ht_input(1);mapped=T5_APP_BUTTON_UP;ht_input(1);
+    assert((held&HT_UP) && !jump_down && !paused);
+    mapped=0;ht_input(1);ht.traversal.support=5;
+    mapped=T5_APP_BUTTON_DOWN;ht_input(1);
+    assert((held&HT_DOWN) && !pause_down && !paused);
     /* Generic Up/Down are ladder intent nearby, including bottom Down:
      * neither accidental jump nor pause is synthesized at the ladder. */
     reading=paused=quitting=false;pause_down=jump_down=false;mapped=0;

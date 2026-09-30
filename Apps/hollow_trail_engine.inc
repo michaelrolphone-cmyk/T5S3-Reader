@@ -72,7 +72,7 @@ static const ht_platform ht_routes[7][HT_PLATFORMS] = {
 };
 #include "hollow_trail_maps.inc"
 /* Fixed-size chapter mechanics, included in every render snapshot. */
-enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB };
+enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE };
 typedef struct {
     int ball_x,ball_y,crate_x,boat_x,rope_x,rope_v,ride_offset;
     int ball_vx,ball_vy,ball_roll,crate_y,crate_vx,crate_vy,boat_vx;
@@ -82,6 +82,7 @@ typedef struct {
     uint8_t support,bridge_open;
     uint8_t mode,ladder,ball_phase,ledge,climb,drop_cooldown;
     int ledge_side;
+    uint8_t tree,branch_drop; int8_t tree_side;
     bool rope_awake;
 } ht_traversal;
 #include "hollow_trail_story.inc"
@@ -152,6 +153,7 @@ static int ht_floor_div(int x,int n) { int q=x/n; return q-(x%n<0); }
 static int ht_abs(int x) { return x<0?-x:x; }
 static uint32_t ht_hash(uint32_t x) { x^=x>>16; x*=0x7feb352du; x^=x>>15; x*=0x846ca68bu; return x^(x>>16); }
 #include "hollow_trail_terrain.inc"
+#include "hollow_trail_trees.inc"
 static void ht_checkpoint(void) { if(ht_service) ht_service(); }
 #include "hollow_trail_neural_upscale.inc"
 
@@ -1400,6 +1402,11 @@ static int ht_weather_floor(const ht_game *g,int screen_x) {
             int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top)) break;
             if(x>=l && x<r) floor=ht_min(floor,(part==2?top:ht_surface_at(g,i,x))-g->camera_y/256);
         }
+    int tree_count;const ht_living_tree *trees=ht_trees(g,&tree_count);
+    for(int i=0;i<tree_count;++i)for(int b=0;b<HT_TREE_BRANCHES;++b) {
+        int l,r;ht_branch_bounds(&trees[i],b,&l,&r);
+        if(x>=l && x<r)floor=ht_min(floor,ht_branch_top(g,&trees[i],b,x)-g->camera_y/256);
+    }
     return floor;
 }
 static void ht_weather(const ht_game *g) {
