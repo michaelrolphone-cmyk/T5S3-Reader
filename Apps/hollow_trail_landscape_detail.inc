@@ -19,9 +19,26 @@ static void ht_landscape_detail(const ht_game *g) {
             int height=12+(int)((h>>8)%20),width=18+(int)((h>>16)%28);
             if(h%3==0 || kind==HT_ROCK || kind==HT_SNOW || kind==HT_SAND) {
                 /* Asymmetric angular boulders half buried in the far bank. */
-                ht_triangle(ht_scene,x-width,base,x-width/2,base-height,x+width/3,base-height+3,195);
-                ht_triangle(ht_scene,x-width,base,x+width/3,base-height+3,x+width,base,195);
-                ht_triangle(ht_scene,x+width/3,base-height+3,x+width+3,base-height/3,x+width,base,220);
+                if(g->level==0) {
+                    /* Twelve-point weathered outline on the existing rocks;
+                     * long shoulders, rounded corners, a partly buried base. */
+                    static const int8_t outline[12][2]={
+                        {-100,0},{-94,-31},{-77,-68},{-52,-93},
+                        {-22,-100},{8,-96},{34,-85},{57,-70},
+                        {79,-47},{96,-21},{100,0},{0,7}
+                    };
+                    for(int v=0;v<12;++v) {
+                        int next=(v+1)%12;
+                        ht_triangle(ht_scene,x,base-height/3,
+                            x+outline[v][0]*width/100,base+outline[v][1]*height/100,
+                            x+outline[next][0]*width/100,base+outline[next][1]*height/100,
+                            v>=6 && v<=9?205:195);
+                    }
+                } else {
+                    ht_triangle(ht_scene,x-width,base,x-width/2,base-height,x+width/3,base-height+3,195);
+                    ht_triangle(ht_scene,x-width,base,x+width/3,base-height+3,x+width,base,195);
+                    ht_triangle(ht_scene,x+width/3,base-height+3,x+width+3,base-height/3,x+width,base,220);
+                }
                 ht_limb(ht_scene,x-width/2,base-height,x-width/4,base-height+8,0,0,120);
                 if(kind==HT_SNOW) ht_limb(ht_scene,x-width/2,base-height,x+width/3,base-height+3,1,0,100);
             } else if(kind==HT_EARTH || kind==HT_MUD || kind==HT_GARDEN) {

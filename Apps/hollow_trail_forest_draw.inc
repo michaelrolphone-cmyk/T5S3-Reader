@@ -128,19 +128,54 @@ static void ht_forest_log_draw(const ht_game *g) {
         ht_limb(ht_scene,ex-12,ey+8,ex+11,ey+7,2,0,235);
     }
 }
-/* Two close trunks belong to the observer's bank. Sparse, broad occlusion
- * establishes a walking viewpoint without adding any traversal objects. */
+/* Paired contour vertices form non-overlapping strips. More vertices follow
+ * broad organic bends rather than adding noise or extra scenery. Each strip
+ * uses the clipped triangle rasterizer; no heap, full-frame scratch or change
+ * to the distant cached planes. Coordinates stay in world units until draw. */
+typedef struct {int16_t ax,ay,bx,by;} ht_foreground_section;
+static void ht_foreground_contour(int x,int y,const ht_foreground_section *v,int count,int tone) {
+    for(int n=1;n<count;++n) {
+        const ht_foreground_section *a=&v[n-1],*b=&v[n];
+        ht_triangle(ht_scene,x+a->ax,y+a->ay,x+a->bx,y+a->by,x+b->ax,y+b->ay,tone);
+        ht_triangle(ht_scene,x+a->bx,y+a->by,x+b->bx,y+b->by,x+b->ax,y+b->ay,tone);
+        if((n&7)==0)ht_checkpoint();
+    }
+}
+/* The same two close trunks belong to the observer's bank. Forty contour
+ * vertices replace the two straight trunk tapers. Root collars and the one
+ * existing broken branch have their own curved, asymmetric outlines. */
 static void ht_forest_foreground(const ht_game *g) {
     if(g->level!=0)return;
     static const int anchors[2]={1100,2800};
+    static const ht_foreground_section trunk[]={
+        {-42,18,43,18},{-34,5,32,5},{-27,-12,25,-12},
+        {-25,-32,22,-32},{-25,-60,19,-60},{-27,-95,17,-95},
+        {-31,-132,14,-132},{-35,-170,10,-170},{-38,-208,5,-208},
+        {-41,-240,1,-240},{-43,-264,-3,-264},{-41,-290,-5,-290},
+        {-36,-322,-3,-322},{-31,-358,0,-358},{-29,-397,2,-397},
+        {-30,-441,0,-441},{-29,-488,-2,-488},{-26,-538,-3,-538},
+        {-21,-589,-1,-589},{-17,-640,1,-640}
+    };
+    static const ht_foreground_section branch[]={
+        {-22,-236,-20,-277},{-42,-263,-36,-287},
+        {-54,-281,-46,-297},{-65,-295,-58,-306},
+        {-77,-307,-71,-316},{-89,-317,-85,-323},
+        {-98,-324,-95,-329},{-104,-328,-101,-331}
+    };
+    static const ht_foreground_section root[]={
+        {10,-31,8,14},{24,-17,24,17},{32,-8,34,19},
+        {41,-1,44,21},{53,7,56,23},{66,13,70,24},
+        {78,19,80,24},{88,24,88,25}
+    };
     int offset=g->camera/256*5/4,cy=g->camera_y/256*5/4;
     for(int i=0;i<2;++i) {
         int x=anchors[i]-offset,y=365-cy;
-        if(x< -100-ht_view_margin() || x>HT_W+100+ht_view_margin())continue;
-        ht_limb(ht_scene,x,y,x-22,y-290,25,18,244);
-        ht_limb(ht_scene,x-22,y-290,x-8,y-640,18,9,244);
-        ht_limb(ht_scene,x-30,y-255,x-102,y-329,11,2,244);
-        ht_limb(ht_scene,x+15,y-13,x+67,y+17,12,1,244);
-        ht_limb(ht_scene,x-18,y-270,x-8,y-350,1,0,180);
+        if(x< -105-ht_view_margin() || x>HT_W+105+ht_view_margin())continue;
+        ht_foreground_contour(x,y,branch,sizeof(branch)/sizeof(branch[0]),244);
+        ht_foreground_contour(x,y,root,sizeof(root)/sizeof(root[0]),244);
+        ht_foreground_contour(x,y,trunk,sizeof(trunk)/sizeof(trunk[0]),244);
+        /* A restrained seam follows the bend instead of a straight slash. */
+        ht_limb(ht_scene,x-28,y-265,x-23,y-292,1,1,180);
+        ht_limb(ht_scene,x-23,y-292,x-16,y-322,1,0,180);
     }
 }

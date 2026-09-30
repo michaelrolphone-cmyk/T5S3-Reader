@@ -1,3 +1,13 @@
+# Hollow Trail 1.1.27 — organic foreground contours
+
+Level 1's two existing near-camera trunks now use 40-vertex outlines, with
+16-vertex contours for their existing branch and root flare. Existing bank
+rocks use twelve-point weathered outlines. Detail follows bends, shoulders
+and root collars without increasing object counts or changing collision,
+climbing, movement, scenery placement, parallax or composed background planes.
+The renderer tessellates bounded static contours through clipped triangles;
+no new textures, frame buffers or allocations. App **1.1.26 -> 1.1.27**.
+
 # Hollow Trail 1.1.26 — walking with the character
 
 Scene-directed walking pace, a lower fixed jump arc, slower climbing and

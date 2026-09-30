@@ -1,4 +1,4 @@
-/* Reviewed 1.1.26 scene framing and walking poses across all chapters. */
+/* Reviewed 1.1.27 forest contours; other chapters retain 1.1.26 frames. */
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,9 +22,9 @@ static void fps_tests(void){
 
 static unsigned hash(const uint8_t *p,int n){unsigned h=2166136261u;while(n--)h=(h^*p++)*16777619u;return h;}
 static const unsigned golden[][2]={
-{1036278998,317292364},
-{729291059,4142175091},
-{2991832272,303442108},
+{595969569,1175170171},
+{1042300205,2113162041},
+{3783044501,3930852045},
 {4283903627,2434139396},
 {2044356738,2612852514},
 {2749854339,2142593654},
