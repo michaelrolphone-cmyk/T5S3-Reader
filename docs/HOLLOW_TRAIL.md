@@ -1,3 +1,11 @@
+# Hollow Trail 1.1.31 — timeline-driven intro cutscene
+
+Hollow Trail **1.1.30 -> 1.1.31** adds a reusable fixed-step cutscene layer above normal gameplay. A cutscene owns a bounded authored timeline of scene, actor pose, actor travel, camera travel, framing scale and caption cues. It renders through the same Hollow Trail raster primitives and articulated character renderer as gameplay; there is no pre-rendered video, second framebuffer, floating-point animation clock or per-frame allocation. Live movement, jump, interaction, pause and journal input are suppressed while a cutscene owns the actor, while the normal app exit remains available. The timeline advances on the same 32 ms fixed step as gameplay, so a delayed display scan cannot change cinematic choreography.
+
+The first launch now plays an approximately 27-second introduction: the kitchen window and three flashes, the tall-grass signal memory including the warning variant, the return to the empty kitchen, the pre-dawn departure and a continuous orchard walk in which domestic boundaries fall away and the road becomes roots. The cutscene drives the protagonist with authored wash/look/crouch/pack/walk poses, camera pullback and deterministic local light pulses. It then hands off to the existing level-1 forest spawn at x=95 with a neutral-input gate, so a held controller button cannot leak through the cinematic into a jump, interaction or pause. The intro plays only on app launch; completing the ten-chapter loop does not replay it.
+
+A native cutscene regression validates timeline boundaries, flash timing, distinct rendered kitchen/grass/orchard states, monotonic autonomous walking, finite completion and the exact forest handoff. The full native runner includes this test.
+
 # Hollow Trail 1.1.27 — foreground contours and rooftop composition
 
 Level 1's two existing near-camera trunks now use 40-vertex outlines, with

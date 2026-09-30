@@ -4,6 +4,12 @@ This document converts the novella's visual sequence into **44 reusable playable
 
 The direction is intended to preserve the story's environmental arc: **domestic stillness → organic forest → vertical city → exposed industrial country → quiet water → monumental quarry and dam → emptied high country → dense settlement → absolute stillness at the final door.**
 
+## Intro cutscene and gameplay handoff
+
+Before the first player-controlled forest step, the engine plays a timeline-driven introduction using the same renderer and articulated character used during gameplay. It is not video. The timeline controls the protagonist, scene choice, camera travel, framing and local signal exposure on the normal fixed simulation clock.
+
+The authored sequence is: **washing at the kitchen window -> three flashes -> tall-grass signal memory -> warning variant -> return to the empty kitchen -> pre-dawn packing and departure -> orchard/ditch/boundary walk -> road becoming roots**. The final cutscene composition already contains the first large forest trunks and root-soft road, then control transfers to the normal chapter-one forest spawn. All movement inputs are neutral-gated across that boundary.
+
 ## Effect scale
 
 | Control | 0 | 1 | 2 | 3 | 4 | 5 |
