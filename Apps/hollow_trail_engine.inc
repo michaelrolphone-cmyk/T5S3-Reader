@@ -82,7 +82,8 @@ typedef struct {
     uint8_t support,bridge_open;
     uint8_t mode,ladder,ball_phase,ledge,climb,drop_cooldown;
     int ledge_side;
-    uint8_t tree,branch_drop; int8_t tree_side;
+    uint8_t tree,branch_drop;
+    int8_t tree_side;
     bool rope_awake;
 } ht_traversal;
 #include "hollow_trail_story.inc"
@@ -517,14 +518,10 @@ static void ht_tree(uint8_t *b,int x,int base,int height,int width,uint32_t seed
         ht_limb(b,x+width*2,base+5,x,base-height/7,1,width/2,c);
     } /* World trees receive terrain-sampled roots in ht_grounded_tree. */
     for(int j=0;j<5;++j) {
+        ht_tree_branch branch=ht_tree_branch_shape(x,base,height,width,seed,j);
         h=ht_hash(seed+(uint32_t)j*137u);
-        int side=(h&1u)?1:-1;
-        int rise=30+j*12+(int)((h>>8)%9);
-        int at=base-height*rise/100;
-        int root=rise<52?x+(kx-x)*rise/52:kx+(tx-kx)*(rise-52)/48;
-        int reach=height*(15+(int)((h>>12)%20))/100;
-        int ex=root+side*reach,ey=at-height*(4+(int)((h>>16)%17))/100;
-        int mx=root+(ex-root)*55/100,my=at+(ey-at)/3;
+        int side=branch.side,root=branch.x,at=branch.y;
+        int ex=branch.ex,ey=branch.ey,mx=branch.mx,my=branch.my,reach=ht_abs(ex-root);
         ht_limb(b,root,at,mx,my,ht_max(1,width*(8-j)/13),ht_max(1,width/4),c);
         ht_limb(b,mx,my,ex,ey,ht_max(1,width/4),0,c);
         ht_limb(b,mx,my,mx+side*reach/3,my-height/7,ht_max(1,width/5),0,c);
@@ -900,12 +897,13 @@ static void ht_chapter_foreground(int camera) {
     }
 }
 #include "hollow_trail_depth.inc"
+#include "hollow_trail_forest_light.inc"
 static void ht_background(int depth,int offset) {
     if(depth==0 && ht_geometry_level>=3) {ht_distant_landscape(offset);return;}
     if(ht_geometry_level>=3) { ht_chapter_background(depth,offset); return; }
     if(ht_geometry_level==2) { ht_oil_background(depth,offset); return; }
     if(ht_geometry_level==1) { ht_city_background(depth,offset); return; }
-    int tone=depth==0?110:170, base=depth==0?205:246;
+    int tone=depth==0?100:180, base=depth==0?205:246;
     /* Trace the same hill boundary, then fill contiguous rows. Drawing
      * one-pixel-wide vertical rectangles thrashed PSRAM/cache and called
      * memset tens of thousands of times per frame. ht_temp is scratch here. */
@@ -949,6 +947,7 @@ static void ht_background(int depth,int offset) {
         }
         ht_checkpoint();
     }
+    ht_forest_light(depth,offset);
 }
 static void ht_foreground(int camera) {
     if(ht_geometry_level>=3) { ht_chapter_foreground(camera); return; }
@@ -1402,11 +1401,6 @@ static int ht_weather_floor(const ht_game *g,int screen_x) {
             int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top)) break;
             if(x>=l && x<r) floor=ht_min(floor,(part==2?top:ht_surface_at(g,i,x))-g->camera_y/256);
         }
-    int tree_count;const ht_living_tree *trees=ht_trees(g,&tree_count);
-    for(int i=0;i<tree_count;++i)for(int b=0;b<HT_TREE_BRANCHES;++b) {
-        int l,r;ht_branch_bounds(&trees[i],b,&l,&r);
-        if(x>=l && x<r)floor=ht_min(floor,ht_branch_top(g,&trees[i],b,x)-g->camera_y/256);
-    }
     return floor;
 }
 static void ht_weather(const ht_game *g) {

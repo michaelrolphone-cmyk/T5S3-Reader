@@ -14,8 +14,6 @@ static void walk_route_tick(void) {
     int evidence=ht_evidence_near(&ht);if(evidence>=0) assert(ht_inspect()>=0);
     if(t->mode==HT_LEDGE) {ht_step_controls(0,-1,false,true);return;}
     if(t->mode==HT_CLIMB) {ht_step_controls(0,0,false,true);return;}
-    /* Optional canopy exploration must not strand the ground-route witness. */
-    if(t->support==5) {ht_step_controls(0,1,false,false);return;}
     const ht_platform *here=&ht_land[walk_phase];
     if(walk_phase<9) {
         const ht_platform *next=&ht_land[walk_phase+1];
