@@ -294,3 +294,33 @@ idle stability, jump phase changes and exact oar contact. Renderer full-frame
 references are updated for the intentional character changes; the independent
 300-view grotto geometry and cache pixel-equivalence comparisons remain intact.
 S3 build/ELF validation and source/sidecar/catalog version/hash agreement pass.
+
+### Dam waterfall and foreground detail (same unreleased 1.1.30)
+
+The reservoir wall uses a separate 88% horizontal parallax plane, anchored near
+the boat basin, between the distant valley and the 125% observer foreground.
+Buttresses have shaded side faces, wet edges, concrete courses and restrained
+fractures; the crest carries a continuous parapet/railing. Spillways have dark
+recesses and projecting lips rather than bright rectangles painted on the wall.
+
+Each waterfall has 32 irregular edge sections, a luminous central sheet,
+translucent-looking side veils, six folded ribbons and time-advected packets.
+Packet position is quadratic in age, so streaks accelerate and stretch through
+the fall. The broad central discharge meets the boat basin at its water level;
+outer chutes continue into the lower gorge behind the banks. Three feathered
+mist volumes per visible discharge blend with the wall/water, followed by broken
+expanding ripples. All draw before nearer terrain, boat and character. No
+random per-frame noise, allocations or additional frame buffers are used;
+visible bounds cull individual chutes and clip the two-pixel mist work.
+
+The two existing foreground sites retain their spacing. Fractured abutments
+use forty contour sections with small edge seams; return pipes have highlights,
+anchored brackets, bolted collars and a small tuft of bent grass at a damp seam.
+This adds depth/detail without changing terrain, traversal or scene pace.
+
+Approach, boat basin, far-bank and close foreground views were rendered and
+visually inspected. Only dam full-frame renderer references change; all other
+chapters, including the grotto boat scene, retain their reference hashes.
+S3 app build and structural validation pass; source/sidecar/catalog agree on
+1.1.30 and SHA-256 `84c9ebd3e3197eaef1e5667ca2d3635a4bb1364bbbf6041c15a56716b9989cb8`.
+Device appearance and FPS have not been measured.

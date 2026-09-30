@@ -1,3 +1,4 @@
+#include "hollow_trail_dam_draw.inc"
 /* Chapter-scale geography behind the walkable foreground. Rail vehicles sit on
  * a parallel track; the reservoir wall stands behind its service stairs. These
  * are scenery, not invisible obstacles on the player's route. */
@@ -52,29 +53,5 @@ static void ht_scene_geography(const ht_game *g) {
             ht_limb(ht_scene,at+10,y+90,at+68,y+17,2,2,195);
             ht_limb(ht_scene,at+10,y+165,at+68,y+90,2,2,195);
         }
-    } else if(g->level==7) {
-        int left=1030-cx,right=2490-cx,crest=-145-cy;
-        if(right< -margin || left>HT_W+margin) return;
-        ht_rect(ht_scene,left,crest,right-left,680,155);
-        ht_rect(ht_scene,left-8,crest-10,right-left+16,12,195);
-        for(int pier=0;pier<8;++pier) {
-            int x=1060+pier*191-cx;
-            ht_triangle(ht_scene,x,crest,x+28,crest,x+91,520-cy,185);
-            ht_rect(ht_scene,x,crest,18,650,185);
-        }
-        /* Spill sheets start at the crest and disappear into basin mist. No
-         * random flash/noise: a bounded slow pattern describes falling water. */
-        for(int fall=0;fall<4;++fall) {
-            int wx=1190+fall*352,x=wx-cx,w=fall==1?104:68;
-            if(x+w< -margin || x>HT_W+margin) continue;
-            ht_rect(ht_scene,x,crest+7,w,650,95);
-            ht_rect(ht_scene,x+5,crest+8,w-10,650,70);
-            for(int stream=0;stream<7;++stream) {
-                int sx=x+8+stream*(w-16)/7;
-                int start=crest+12+(int)((g->ticks*2+(unsigned)stream*31)%97);
-                for(int row=0;row<6;++row) ht_rect(ht_scene,sx,start+row*97,2+stream%3,48+stream%4*8,110);
-            }
-            ht_rect(ht_scene,x+6,crest+8,w-12,3,45);
-        }
-    }
+    } else if(g->level==7) ht_dam_wall(g);
 }

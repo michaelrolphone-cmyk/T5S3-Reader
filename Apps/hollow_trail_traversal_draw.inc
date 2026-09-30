@@ -56,6 +56,7 @@ static void ht_draw_traversal(const ht_game *g) {
             }
         }
     }
+    ht_dam_spray(g);
     ht_boat_grotto(g);
     /* Distinct natural silhouettes stay anchored to the new physical route. */
     for(int i=0;i<HT_PLATFORMS;++i) {

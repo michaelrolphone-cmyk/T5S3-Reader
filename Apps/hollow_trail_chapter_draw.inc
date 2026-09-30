@@ -214,6 +214,7 @@ static void ht_authored_backdrop(const ht_game *g) {
 /* Two close masses per chapter. Their contours and scale match materials;
  * all are on the observer's side, separate from the player's physical route. */
 static void ht_authored_foreground(const ht_game *g) {
+    if(g->level==7){ht_dam_foreground(g);return;}
     if(!ht_authored_chapter(g->level))return;
     int cx=g->camera/256*5/4,cy=g->camera_y/256*5/4,margin=ht_view_margin();
     static const int sites[2]={1100,2980};
