@@ -144,7 +144,7 @@ static bool ht_cache_valid[HT_LAYERS][HT_TILE_SLOTS];
 #if 2*HT_TILE_PIXELS < HT_PIXELS
 #error Forest backdrop exceeds the reserved cache pair
 #endif
-/* Forest/city share the unused depth-2 cache pair; chapter is part of the key. */
+/* Composed chapters share the unused depth-2 cache pair; chapter is part of the key. */
 static bool ht_forest_frame_valid;
 static unsigned ht_composed_frame_level;
 static int ht_forest_frame_x,ht_forest_frame_y,ht_forest_frame_scale;
@@ -397,8 +397,8 @@ static int ht_vista_target(const ht_game *g) {
     /* Quiet reveals: forest clearing, towers, distant rail cutting, reservoir,
      * escarpment and the last ascent. No chapter-wide miniature character. */
     static const int16_t scenes[HT_LEVELS][3]={
-        {1640,2030,256},{1780,2320,224},{0,0,0},{900,1240,128},
-        {350,680,128},{1320,1610,192},{0,0,0},{1240,2420,256},
+        {1640,2030,256},{1780,2320,224},{950,1470,160},{900,1240,128},
+        {350,680,128},{1320,1610,192},{1230,1750,160},{1240,2420,256},
         {1130,1350,224},{1820,2410,192}
     };
     int x=g->x/256,a=scenes[g->level][0],b=scenes[g->level][1];
@@ -1488,6 +1488,7 @@ static void ht_weather(const ht_game *g) {
 static void ht_draw_traversal(const ht_game *game);
 static void ht_forest_foreground(const ht_game *game);
 static void ht_city_observer_foreground(const ht_game *game);
+static void ht_authored_foreground(const ht_game *game);
 static void ht_draw_puzzle(const ht_game *game);
 static void ht_draw_evidence(const ht_game *game);
 /* At full opacity the grotto supplies every background pixel itself. */
@@ -1506,7 +1507,7 @@ static void ht_render_scene(void) {
     const bool camera_pass=camera_mode!=HT_CAMERA_OFF && (game.sway_phase || game.drop_zoom);
     ht_select_level(game.level);
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
-    bool opaque=game.level<=1 || ht_grotto_opaque(&game);
+    bool opaque=game.level!=4 || ht_grotto_opaque(&game);
     if(ht_abort) return;
     if(!opaque) {
         if(!ht_cache_visible(camera)) {return;}
@@ -1541,6 +1542,7 @@ static void ht_render_scene(void) {
     ht_weather(&game);
     ht_forest_foreground(&game);
     ht_city_observer_foreground(&game);
+    ht_authored_foreground(&game);
     uint32_t post_start=ht_render_now();
     ht_render_last.world=post_start-world_start;
     ht_world_scale=256;

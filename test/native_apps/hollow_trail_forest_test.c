@@ -67,6 +67,20 @@ int main(void) {
         ht_game city=ht;ht.level=n%2?0:2;ht_spawn(true);ht_render_scene();
         ht=city;ht_render_scene();assert(!memcmp(frame,ht_scene,HT_PIXELS));
     }
+    /* Each new chapter fully overwrites poisoned scratch and invalidates the
+     * shared frame when camera, scale or chapter changes. */
+    const unsigned chapters[]={2,3,5,6,7,8,9};
+    for(unsigned c=0;c<sizeof(chapters)/sizeof(chapters[0]);++c)for(int n=0;n<4;++n) {
+        ht.level=chapters[c];ht_spawn(true);ht.camera=n*731*256;
+        ht.camera_y=-n*57*256;ht.intimacy=n%2?256:0;ht.vista=n%3*112;
+        ht_render_scene();memcpy(frame,ht_scene,HT_PIXELS);unsigned builds=ht_cache_builds;
+        memset(ht_scene,0x5a,HT_PIXELS);ht_render_scene();
+        assert(!memcmp(frame,ht_scene,HT_PIXELS) && builds==ht_cache_builds);
+        ht_forest_frame_valid=false;memset(ht_scene,0xa5,HT_PIXELS);ht_render_scene();
+        assert(!memcmp(frame,ht_scene,HT_PIXELS));
+        ht_game scene=ht;ht.level=4;ht_spawn(true);ht.camera=950*256;ht_render_scene();
+        ht=scene;ht_render_scene();assert(!memcmp(frame,ht_scene,HT_PIXELS));
+    }
     free(frame);free(memory);
-    puts("Hollow Trail forest: natural crossing, physical stone, respawn and forest/city backdrop reuse PASS");
+    puts("Hollow Trail forest: natural crossing, physical stone, respawn and all composed chapter cache transitions PASS");
 }

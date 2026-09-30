@@ -1,4 +1,31 @@
-# Hollow Trail scene direction — 1.1.26
+# Hollow Trail scene direction — 1.1.27
+
+All land chapters now begin from 1.5x intimate framing; the boat chapter keeps
+its previous framing and movement. Existing vista envelopes remain, with new
+wide passages in the oil fields (X 950–1470) and glass gardens (X 1230–1750).
+The underlying fixed-step physics, jump arc and deliberate climb entry remain
+as specified in the 1.1.26 record below. Load-triggered landscape movement is
+removed; stones can fill physical hollows and crates remain movable solids.
+
+| Chapter | Distant / middle / near camera travel | Composition |
+| --- | --- | --- |
+| 3: Oil fields | 15 / 33 / 56% | Eroded ridges, fixed pumps, storage tanks |
+| 4: Railyard | 17 / 36 / 60% | Earth cuttings, sheds, existing grounded train |
+| 6: Quarry | 14 / 32 / 57% | Stratified rock faces, sparse lifting cranes |
+| 7: Glass gardens | 16 / 35 / 59% | Curved glasshouse ribs and planted banks |
+| 8: Dam | 13 / 31 / 54% | Reservoir valley behind the existing dam and spillways |
+| 9: High pass | 12 / 29 / 53% | Angular alpine ridges, snow facets, bolted climbing lines |
+| 10: Tower | 15 / 34 / 58% | Hillside settlement beneath one radio mast |
+
+Each composition has a fixed world-space light opening and two sparse thematic
+observer masses at 125% camera travel. Shared cached frame storage is keyed by
+chapter, horizontal/vertical camera position and projection scale. Background
+rasterization, landmark counts and contour tessellation are bounded and service
+input checkpoints. The original boat pipeline is unchanged. The nine level
+1/2/boat scene and packed-frame reference pairs remain unchanged by this
+seven-chapter extension. Device FPS is not inferred from host checks.
+
+## 1.1.26 implementation record
 
 Walking pace is now an authored scene parameter alongside mood, vista and
 weather. Close passages should feel like accompanying someone on foot; a

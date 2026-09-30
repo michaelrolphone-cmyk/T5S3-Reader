@@ -4,6 +4,7 @@
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -12,6 +13,9 @@ SOURCE = (ROOT / "src/components/StartupScreen.cpp").read_text(encoding="utf-8")
 
 
 class BootAnimationContract(unittest.TestCase):
+    def test_shared_video_startup(self):
+        subprocess.run([sys.executable, str(ROOT / "test/hal/video_start_scrub_test.py")], check=True)
+
     def test_spatial_scrub_endpoint_coverage(self):
         # Real drive packing and every pixel/arrival, not a separate mock waveform.
         with tempfile.TemporaryDirectory(prefix="boot-scrub-") as temp:

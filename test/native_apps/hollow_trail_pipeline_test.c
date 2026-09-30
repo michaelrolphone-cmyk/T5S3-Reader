@@ -106,7 +106,7 @@ int main(void) {
     for(unsigned scenario=0;scenario<5;++scenario) {
         now_ms=release_at=0;allocations=frees=submissions=backbuffer_calls=0;
         armed=overlapped=false;reject_once=true;failed_alloc=scenario==1;stage=NULL;
-        transition=scenario==2 || scenario==4;transition_level=scenario==4?2:1;transition_loading_polls=0; journal_run=scenario==3; reader_releases=0;
+        transition=scenario==2 || scenario==4;transition_level=scenario==4?4:1;transition_loading_polls=0; journal_run=scenario==3; reader_releases=0;
         app_main();
         assert(submissions==(journal_run?4u:3u) && backbuffer_calls==(journal_run?5u:4u));
         assert(reader_releases==(journal_run?1u:0u));

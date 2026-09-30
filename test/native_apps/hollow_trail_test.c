@@ -291,7 +291,7 @@ int main(void) {
     /* Walk the entire route using the same fixed-step physics and hold jump
      * from each takeoff. A route that silently respawns cannot pass. */
     unsigned visited=1;
-    const unsigned required_mechanics[HT_LEVELS]={40,4,5,12,16,5,6,28,14,22};
+    const unsigned required_mechanics[HT_LEVELS]={40,4,5,12,16,5,6,28,14,20};
     for(int tick=0;tick<HT_LEVELS*4500 && !ht.laps;++tick) {
         walk_route_tick();
         if(ht.level!=walk_level) assert(walk_mechanics==required_mechanics[walk_level]);
@@ -355,21 +355,18 @@ int main(void) {
     assert(ht_traversal_interact());
     for(int i=0;i<8;++i) ht_step(0,false,false);
     assert(ht.traversal.crate_vx==0);
-    /* Raised spans are real solids at their visible height, well above a
-     * normal jump, and carry a standing passenger while lowering. */
-    ht.level=2;ht_spawn(true);int bridge=ht_mech(&ht)->bridge;
-    int raised=ht_platform_top(&ht,bridge);
-    assert(ht_land[bridge].top-raised==224);
-    ht.x=1820*256;ht.y=(raised-4)*256;ht.vy=600;ht.grounded=false;
-    for(int i=0;i<4;++i) ht_step(0,false,true);
-    assert(ht.grounded && ht.y==raised*256 && ht.traversal.support==4);
-    ht.traversal.ball_x=ht_mech(&ht)->plate_x*256;
-    ht.traversal.ball_y=(ht_mech(&ht)->plate_y-HT_BALL_RADIUS)*256;
-    for(int i=0;i<32;++i) {
-        ht_step(0,false,false);
-        assert(ht.grounded && ht.y==ht_platform_top(&ht,bridge)*256);
+    /* Loose weights cannot lower whole landscapes. These former span sites
+     * are fixed terrain, with physical stones/crates still simulated. */
+    const unsigned fixed_levels[]={2,5,9};const int fixed_sites[]={5,1,2};
+    for(int n=0;n<3;++n) {
+        ht.level=fixed_levels[n];ht_spawn(true);
+        assert(!ht_mech(&ht)->plate_kind && ht_mech(&ht)->bridge==-1);
+        int site=fixed_sites[n],x=(ht_land[site].left+ht_land[site].right)/2;
+        int top=ht_surface_at(&ht,site,x);
+        ht.x=x*256;ht.y=top*256;ht.grounded=true;
+        for(int tick=0;tick<40;++tick)ht_step(0,false,false);
+        assert(ht_surface_at(&ht,site,x)==top && !ht.traversal.bridge_open);
     }
-    assert(ht.traversal.bridge_open==32 && ht.y==ht_land[bridge].top*256);
     /* All boats stop with their entire hull inside the channel. The rower
      * sits at its centre; disembarking and coasting never move a bank. */
     for(unsigned level=0;level<HT_LEVELS;++level) if(ht_mechanics_by_level[level].boat_right) {

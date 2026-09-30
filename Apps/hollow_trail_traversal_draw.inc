@@ -3,6 +3,7 @@
 #include "hollow_trail_landscape_detail.inc"
 #include "hollow_trail_forest_draw.inc"
 #include "hollow_trail_city_draw.inc"
+#include "hollow_trail_chapter_draw.inc"
 /* Dynamic solids are drawn at logical resolution, outside the blurred scenery
  * cache. One frozen ht_game supplies camera, object poses, collision and art. */
 static void ht_draw_traversal(const ht_game *g) {
@@ -11,6 +12,7 @@ static void ht_draw_traversal(const ht_game *g) {
     const ht_mechanics *m=ht_mech(g);
     if(g->level==0)ht_forest_backdrop(g);
     if(g->level==1)ht_city_backdrop(g);
+    ht_authored_backdrop(g);
     if(!ht_grotto_opaque(g)) {
         ht_scene_geography(g);
         ht_landscape_detail(g);
@@ -51,10 +53,7 @@ static void ht_draw_traversal(const ht_game *g) {
         if(g->level==2) ht_cactus_on(ht_scene,x,y,i==1?39:84,255);
         else if(g->level==0 || g->level==4 || g->level==6 || g->level==8)
             ht_grounded_tree(g,i,world,g->level==0?340+(i%3)*65:130+(i%3)*27,g->level==0?23+(i%3)*5:7,(unsigned)i+901);
-        else {
-            ht_rect(ht_scene,x,y-42,3,42,255);ht_rect(ht_scene,x-7,y-44,17,3,255);
-            ht_rect(ht_scene,x-4,y-39,11,13,170);
-        }
+
     }
     ht_story_landmarks(g);
     ht_draw_evidence(g);
@@ -93,7 +92,9 @@ static void ht_draw_traversal(const ht_game *g) {
         if(!m->ladders[i].x) continue;
         int top,bottom;ht_ladder_ends(g->level,i,&top,&bottom);
         int x=m->ladders[i].x-cx;
-        if(x< -12 || x>HT_W+12) continue;
+        int ladder_margin=ht_authored_chapter(g->level)?ht_view_margin():0;
+        if(x< -12-ladder_margin || x>HT_W+12+ladder_margin) continue;
+        if(g->level==8) {ht_alpine_line(x,top-cy,bottom-cy);continue;}
         ht_rect(ht_scene,x-9,top-cy,3,bottom-top,255);
         ht_rect(ht_scene,x+6,top-cy,3,bottom-top,255);
         for(int y=top+6;y<bottom;y+=10) ht_rect(ht_scene,x-7,y-cy,14,3,255);

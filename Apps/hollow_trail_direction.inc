@@ -6,10 +6,10 @@
 static int ht_pace_target(const ht_game *g) {
     static const uint16_t walk[HT_LEVELS][5]={
         {272,288,352,304,272}, {272,288,336,288,272},
-        {288,320,352,320,288}, {288,320,368,304,272},
-        {272,288,304,288,272}, {288,304,352,304,272},
-        {272,288,320,288,272}, {288,320,384,336,272},
-        {288,320,352,304,272}, {272,288,320,288,256}
+        {272,288,320,288,272}, {272,288,336,288,272},
+        {272,288,304,288,272}, {272,288,320,288,272},
+        {272,288,304,288,272}, {272,304,352,304,272},
+        {256,272,304,272,256}, {272,288,304,272,256}
     };
     int x=ht_clamp(g->x/256,0,3199),span=x/800,u=x%800;
     int speed=walk[g->level][span]+((int)walk[g->level][span+1]-walk[g->level][span])*u/800;
@@ -18,7 +18,7 @@ static int ht_pace_target(const ht_game *g) {
     return ht_clamp(speed,256,384);
 }
 static int ht_intimacy_target(const ht_game *g) {
-    int close=g->level<=1?256:g->level==4?0:144;
+    int close=g->level==4?0:256;
     if(g->observation_ticks)close=ht_min(256,close+80);
     return close*(256-ht_vista_target(g))/256;
 }
