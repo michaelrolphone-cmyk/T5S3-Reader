@@ -292,7 +292,7 @@ int main(void) {
      * from each takeoff. A route that silently respawns cannot pass. */
     unsigned visited=1;
     const unsigned required_mechanics[HT_LEVELS]={40,6,5,12,16,5,6,28,14,22};
-    for(int tick=0;tick<HT_LEVELS*2200 && !ht.laps;++tick) {
+    for(int tick=0;tick<HT_LEVELS*4500 && !ht.laps;++tick) {
         walk_route_tick();
         if(ht.level!=walk_level) assert(walk_mechanics==required_mechanics[walk_level]);
         visited|=1u<<ht.level;
@@ -329,7 +329,7 @@ int main(void) {
         for(int k=0;k<25;++k) ht_step_controls(side,0,false,false);
         assert(ht.x==hang_x && ht.y==hang_y && ht.traversal.mode==HT_LEDGE);
         assert(ht_traversal_interact());
-        for(int k=0;k<16;++k) ht_step_controls(0,0,false,false);
+        for(int k=0;k<32;++k) ht_step_controls(0,0,false,false);
         assert(ht.traversal.mode==HT_FREE && ht.grounded && ht.y==p->top*256);
         ht.x=(edge-side*8)*256;ht.y=(p->top+20)*256;
         ht.grounded=false;ht.vx=side*640;ht.vy=100;
@@ -393,7 +393,7 @@ int main(void) {
     ht.x=400*256;ht_step_controls(0,1,false,false);
     assert(ht.traversal.mode==HT_FREE && ht.grounded && ht.y==220*256);
     ht_step_controls(0,-1,false,false);
-    assert(ht.traversal.mode==HT_LADDER && ht.y==218*256);
+    assert(ht.traversal.mode==HT_LADDER && ht.y==220*256-ht_climb_speed(&ht));
     ht_step_controls(1,-1,true,true);
     assert(ht.traversal.mode==HT_FREE && ht.vy<0);
     ht_step_controls(1,-1,false,true);assert(ht.traversal.mode==HT_FREE);
@@ -403,17 +403,17 @@ int main(void) {
         assert(ht.traversal.mode==(vertical?HT_LADDER:HT_FREE));
         if(vertical) {
             int before=ht.y;ht_step_controls(0,vertical,false,true);
-            assert(ht.y==before+vertical*512);
+            assert(ht.y==before+vertical*ht_climb_speed(&ht));
         }
     }
     ht_spawn(true);ht.x=400*256;ht.y=238*256;ht.grounded=false;
     ht_step_controls(0,-1,false,false);
-    assert(ht.traversal.mode==HT_LADDER && ht.y==236*256);
+    assert(ht.traversal.mode==HT_LADDER && ht.y==238*256-ht_climb_speed(&ht));
     ht_step_controls(0,1,false,false);assert(ht.traversal.mode==HT_FREE && !ht.grounded);
     ht_spawn(true);ht.x=400*256;ht.y=80*256;ht.grounded=true;
     ht_step_controls(1,-1,false,false);assert(ht.traversal.mode==HT_FREE && ht.x>400*256);
     ht.x=400*256;ht_step_controls(0,1,false,false);
-    assert(ht.traversal.mode==HT_LADDER && ht.y==82*256);
+    assert(ht.traversal.mode==HT_LADDER && ht.y==80*256+ht_climb_speed(&ht));
     /* Catch at the actual rope end, stay above the deck, then swing away.
      * Length constraints keep each rendered segment within two pixels. */
     ht.level=0;ht_spawn(true);ht.x=1454*256;ht.y=220*256;

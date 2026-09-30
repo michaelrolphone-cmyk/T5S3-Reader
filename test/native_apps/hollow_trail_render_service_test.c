@@ -38,7 +38,7 @@ int main(void) {
         ht_service=ht_render_service;ht_render_scene();
         assert(!memcmp(expected,ht_scene,HT_PIXELS));
     }
-    assert(fake_now>110 && ht.x>start+3*256 && !(held&HT_RIGHT));
+    assert(fake_now>110 && ht.x>start && ht.ticks>=2 && !(held&HT_RIGHT));
     assert(scene_revision>1);
     /* Input can be sampled every 8ms without a sleep each time, but real
      * cooperation must still happen at 32ms, including across clock wrap. */
@@ -72,14 +72,14 @@ int main(void) {
     ht_advance(fake_now+1000);
     assert(ht.x==start && ht.ticks==ticks && !jump_down && !pause_down);
     loading=false;
-    /* Real-time pacing: 640ms at full walking speed covers 50 logical pixels,
-     * half the former distance. Exercise the production accumulator. */
-    ht_service=NULL; ht_spawn(true); held=HT_RIGHT; ht.vx=640;
+    /* Real-time pacing: 640ms covers about 22 world pixels at the opening
+     * walking pace. Exercise the production accumulator without slowing input. */
+    ht_service=NULL; ht_spawn(true); held=HT_RIGHT; ht.vx=ht_walk_speed(&ht);
     simulation_started=false; simulation_accumulator=0;
     paused=pause_down=jump_down=false;
     start=ht.x; ht_advance(0);
     for(uint32_t now=8;now<=640;now+=8) ht_advance(now);
-    assert(ht.ticks==20 && ht.x-start>=50*256 && ht.x-start<=51*256); // Gentle spawn gust.
+    assert(ht.ticks==20 && ht.x-start>=20*256 && ht.x-start<=24*256); // Gentle spawn gust.
     /* Paused B/Up is inert; presses cannot queue movement or a jump. */
     paused=true; jump_down=false; previous=held=0;
     start=ht.x; forced_buttons=T5_APP_BUTTON_UP;

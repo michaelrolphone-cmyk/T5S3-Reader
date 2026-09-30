@@ -43,8 +43,7 @@ static void ht_draw_traversal(const ht_game *g) {
     /* Distinct natural silhouettes stay anchored to the new physical route. */
     for(int i=0;i<HT_PLATFORMS;++i) {
         if(i==m->bridge || (i!=0 && i!=2 && i!=5 && i!=8) || (g->level==4 && i==0)) continue;
-        const ht_platform *p=&land[i];
-        int world=i==0?15:p->left+(p->right-p->left)*2/3;
+        int world=ht_planted_tree_x(g->level,i);
         int x=world-cx,y=ht_surface_at(g,i,world)-cy;
         if(x< -160-ht_view_margin() || x>HT_W+160+ht_view_margin()) continue;
         if(g->level==2) ht_cactus_on(ht_scene,x,y,i==1?39:84,255);

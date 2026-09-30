@@ -15,7 +15,9 @@ The selection lasts for the app session; startup always selects baseline.
 Baseline still uses the exact original coefficients and raster path. Comparisons
 retain simulation state, camera translation, scenery, AI composition, dithering
 and display settings. Vista's vertical camera tracking also remains unchanged;
-only its draw-time size scaling is disabled by the no-zoom modes.
+only its draw-time size scaling is disabled by the no-zoom modes. From 1.1.26,
+those modes also disable the new intimacy projection. Scene-directed walking
+pace remains active and independent of the graphics selector.
 
 Originally zoom and rotation shared `ht_affine_into`: each output pixel advanced
 both source coordinates, rounded both and calculated a source-row offset. Zoom

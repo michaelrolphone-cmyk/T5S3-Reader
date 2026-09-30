@@ -31,7 +31,7 @@ int main(void) {
                 for(int n=0;n<5;++n)ht_step_controls(side,0,n==0,true);
                 assert(ht.traversal.mode!=HT_TREE);
                 approach(i,side);ht_step_controls(0,-1,false,false);
-                for(int n=0;n<260;++n)ht_step_controls(0,-1,false,false);
+                for(int n=0;n<700;++n)ht_step_controls(0,-1,false,false);
                 assert(ht.traversal.mode==HT_TREE && ht.y==(tree.base-tree.height+20)*256);
                 old=ht.y;ht_step_controls(side,0,true,true);
                 assert(ht.traversal.mode==HT_FREE && ht.y<old && ht.vx*side>0);
@@ -51,7 +51,7 @@ int main(void) {
                 // Climb up the real trunk, then step onto this branch at its root.
                 approach(i,limb.side);assert(ht_tree_enter(0,-1,false));
                 bool stepped=false;
-                for(int n=0;n<260 && !stepped;++n) {
+                for(int n=0;n<700 && !stepped;++n) {
                     int px=ht_tree_edge(&tree,ht.y/256,limb.side),at;
                     if(ht_tree_footing(&tree,b,px,&at) && ht_abs(ht.y/256-at)<=2) {
                         ht_step_controls(limb.side,0,false,false);
