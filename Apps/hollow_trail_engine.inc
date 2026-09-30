@@ -1567,7 +1567,7 @@ static void ht_render_scene(void) {
     uint32_t stage=ht_render_now();
     ht_game game=ht;
     const bool native_mode=ht_camera_mode==HT_CAMERA_NATIVE;
-    const unsigned camera_mode=native_mode?HT_CAMERA_BASELINE:ht_camera_mode;
+    const unsigned camera_mode=native_mode?(unsigned)HT_CAMERA_BASELINE:ht_camera_mode;
     ht_native_active=native_mode;
     ht_scene=native_mode?ht_native_a:ht_scene_low;
     if(camera_mode==HT_CAMERA_NO_ZOOM || camera_mode==HT_CAMERA_OFF)game.vista=game.intimacy=0;
