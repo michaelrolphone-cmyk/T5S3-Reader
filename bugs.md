@@ -1,8 +1,8 @@
 # Bug Log
 
-Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b3a7`, through the 05:18 MDT scan. This is the canonical report inventory. Existing IDs 5 and 13–72 are preserved; new distinct reports receive IDs 73–207. Scan-local numbers are not canonical IDs. Entries preserve source-review reproduction evidence and repair directions; they are reported open, not claims of fresh hardware reproduction or a complete revalidation of every intervening feature change.
+Consolidated on 2026-09-30 against master `1ebf01386643c8504cc68061dcd0a6185ca42a9c`, through the 08:50 MDT scan. This is the canonical report inventory. Existing IDs 5 and 13–72 are preserved; new distinct reports receive IDs 73–210. Scan-local numbers are not canonical IDs. Entries preserve source-review reproduction evidence and repair directions; they are reported open, not claims of fresh hardware reproduction or a complete revalidation of every intervening feature change.
 
-**196 distinct active reports: 61 carried forward and 135 newly consolidated.** The eight previous scheduled fixes (IDs 4, 6–12) are already on master: PR #244 was incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including its final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. They are not pending fixes. Earlier fixes #205, #209 and #212 remain excluded.
+**199 distinct active reports: 61 carried forward and 138 newly consolidated.** The eight previous scheduled fixes (IDs 4, 6–12) are already on master: PR #244 was incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including its final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. They are not pending fixes. Earlier fixes #205, #209 and #212 remain excluded.
 
 ## Coverage and recovery
 
@@ -2438,3 +2438,34 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Resolve the link path against the current spine item's directory, normalize dot segments, remove only the fragment for lookup, and perform an exact canonical-path match. If a basename compatibility fallback is retained, allow it only when the basename is unique. Add fixtures for duplicate basenames, sibling links, and `../` references.
 
 - **Consolidation sources:** [automation/bug-scan-20260930-0518](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/82533918d81fda11ae9c6b19d95b071a98f19361/bugs.md); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Diff](https://docs.google.com/spreadsheets/d/1geT64642Lsjo_EaRZhNxF9516LV2BRVIp4stNAnOkjg/edit?usp=drivesdk); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Instructions](https://docs.google.com/spreadsheets/d/1xB4JDjKoHfw-mCY9pUQL1VP2tWxilaT0WRwdCPryrO8/edit?usp=drivesdk)
+
+
+### 208. Web File Transfer leaves Wi-Fi power saving disabled after the server stops
+
+- **Status:** Open.
+- **Affected code:** `src/network/CrossPointWebServer.cpp`, `CrossPointWebServer::begin()` and `CrossPointWebServer::stop()`.
+- **Trigger / reproduction:** Begin with Wi-Fi using its normal/default power-save mode, start the built-in File Transfer web server, then stop or leave the server while keeping the station connection alive. The same leaked policy occurs if `begin()` reaches `WiFi.setSleep(false)` and then fails before the server is fully started.
+- **Observed / logically demonstrated failure:** `begin()` unconditionally calls `WiFi.setSleep(false)` to improve web-server responsiveness. `stop()` tears down HTTP, WebSocket, and UDP resources but never restores the previous Wi-Fi sleep/power-save state. No previous policy is saved. Therefore merely using File Transfer can leave Wi-Fi in no-sleep mode for the rest of the connected session, and an initialization failure after the policy change has the same effect.
+- **Likely root cause:** The web server treats a process-global Wi-Fi power policy as local setup state and has no symmetric cleanup/RAII restoration.
+- **Impact:** After File Transfer is closed or fails to start, the device can continue drawing materially more Wi-Fi power than before, reducing battery life and changing network behavior outside the feature that requested the policy change.
+- **Repair direction:** Capture the prior ESP32 Wi-Fi power-save/sleep mode before changing it and restore that exact mode on every failed-start and normal-stop path. Keep the override scoped to the active server lifetime, preferably with a cleanup guard, and add a lifecycle regression proving start/stop and injected begin failures leave the original power-save mode unchanged.
+
+### 209. Browser clock sync reports failure after already changing the live system clock
+
+- **Status:** Open.
+- **Affected code:** `src/network/CrossPointWebServer.cpp::handleClockSync()`; `src/ClockSync.cpp::commitCurrentSystemTime()`; RTC write path `HalClock::syncRtcFromSystemTime()`.
+- **Trigger / reproduction:** POST a valid `epochMs` to `/api/clock/sync` and allow `settimeofday()` to succeed, then force the RTC write in `ClockSync::commitCurrentSystemTime("Browser")` to fail.
+- **Observed / logically demonstrated failure:** The handler first commits the requested epoch to the process clock with `settimeofday()`. It then calls `commitCurrentSystemTime()`. If RTC write-back fails, that function returns `false` and the HTTP handler sends `500 {"ok":false,"error":"RTC commit failed"}`, but there is no rollback of the already changed system clock. The caller therefore receives a failed synchronization result while the running device has nevertheless adopted the submitted time. This is separate from report #69's retry-throttle defect: even with retry bookkeeping fixed, the web API's live clock mutation remains non-transactional.
+- **Likely root cause:** The operation is split into an irreversible live-clock mutation followed by a fallible persistence step, while the API exposes only all-or-nothing success/failure.
+- **Impact:** An RTC/storage fault can leave the device operating on a new time that the web client was told failed to synchronize; on reboot the RTC may restore a different time. Time-based logs, schedules, timestamps, and user-visible clock state can diverge from the reported operation result.
+- **Repair direction:** Make browser clock synchronization a coherent transaction or explicitly model partial success. For all-or-nothing semantics, capture the previous system epoch before `settimeofday()` and restore it if RTC commit fails, while ensuring retry/sync bookkeeping is also rolled back. Prefer a single ClockSync entry point that owns both live-clock and RTC commit semantics. Add a fault-injected RTC-write regression that asserts a failed request leaves the prior system time intact.
+
+### 210. Cover-image crop mode scales to fill but never crops to the requested target rectangle
+
+- **Status:** Open.
+- **Affected code:** `lib/JpegToBmpConverter/JpegToBmpConverter.cpp::jpegFileToBmpStreamInternal()`; `lib/PngToBmpConverter/PngToBmpConverter.cpp::pngFileToBmpStreamInternal()`; callers in `lib/Epub/Epub.cpp::generateCoverBmp()` and `generateThumbBmp()`.
+- **Trigger / reproduction:** Convert a JPEG or PNG whose aspect ratio differs from the requested target with `crop=true`. For example, convert a 1600×900 landscape cover to a 540×960 portrait target, or generate its 240×400 home-screen thumbnail.
+- **Observed / logically demonstrated failure:** In crop mode both converters correctly choose the larger scale factor so the source covers the target, but then set `outWidth = sourceWidth * scale` and `outHeight = sourceHeight * scale` and write the entire scaled image. There is no crop rectangle, X/Y source offset, or target-sized output stage. The 1600×900→540×960 example therefore emits roughly 1706×960 rather than 540×960; the 240×400 thumbnail path emits roughly 711×400 rather than 240×400. The one-bit thumbnail helpers always request crop mode, so this occurs in an ordinary EPUB thumbnail path.
+- **Likely root cause:** Scale-to-fill and crop-to-target were conflated; the first half of cover-cropping was implemented without the second clipping step.
+- **Impact:** "Cropped" cover caches can be several times wider/taller than their advertised target, wasting SD space and conversion work and forcing downstream drawing to clip an oversized bitmap. Depending on the renderer's placement, the visible region can also be biased toward an edge rather than a centered crop.
+- **Repair direction:** After computing the scale-to-fill factor, define a target-sized crop window (normally centered), map that window to source/scaled coordinates, and emit exactly `targetWidth × targetHeight` pixels in crop mode. Keep fit mode unchanged. Add aspect-ratio fixtures for landscape→portrait and portrait→landscape JPEG/PNG covers and assert both BMP header dimensions and crop framing.
