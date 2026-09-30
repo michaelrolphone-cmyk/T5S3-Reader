@@ -1,5 +1,6 @@
 #include "StartupScreen.h"
 #include "native/NativeTouchInput.h"
+#include "native/NativeVideoBridge.h"
 
 #include <Arduino.h>
 #include <cstring>
@@ -576,7 +577,10 @@ void waitForVideoIdle(uint32_t timeoutMs) {
 }
 
 bool releaseVideoOwner() {
-  if (videoStarted && videoApi != nullptr) videoApi->stop();
+  if (videoStarted && videoApi != nullptr) {
+    videoApi->stop();
+    videoStarted = false;  // A failed ownership restore must not reuse stopped video.
+  }
   if (videoTakeoverActive) {
     const esp_err_t rc = native_hardware_takeover_end(
         T5_HARDWARE_TAKEOVER_DISPLAY | T5_HARDWARE_TAKEOVER_UI_VIDEO);
@@ -702,12 +706,7 @@ bool renderLayerReveal() {
 }
 
 bool bootWithVideo(GfxRenderer& renderer) {
-  const auto mode = renderer.getRenderMode();
-  renderer.setRenderMode(GfxRenderer::BW);
-  renderer.clearScreen();
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-  renderer.setRenderMode(mode);
-
+  (void)renderer;  // Keep the retained panel image until the spatial scrub.
   const esp_err_t takeoverRc =
       native_hardware_takeover_begin(T5_HARDWARE_TAKEOVER_DISPLAY | T5_HARDWARE_TAKEOVER_UI_VIDEO);
   if (takeoverRc != ESP_OK) {
@@ -719,7 +718,7 @@ bool bootWithVideo(GfxRenderer& renderer) {
   bootBackend = BootBackend::Video;
 
   videoApi = t5_video_get_api(T5_VIDEO_API_VERSION);
-  if (!validateVideoApi(videoApi) || !videoApi->start(&videoSurface)) {
+  if (!validateVideoApi(videoApi) || !nativeVideoStartBootScrub(&videoSurface)) {
     ESP_LOGE(kBootVideoTag, "EPD video service did not start");
     return !releaseVideoOwner();
   }
@@ -757,9 +756,16 @@ bool finishVideoBoot(GfxRenderer& renderer) {
       if (!submitVideoFrame(lastVisibleBlocks, coverage, textCoverage, kReadyFadeBudgetMs - elapsed, false)) break;
     }
   }
-  if (videoStarted) waitForVideoIdle(kIdleTimeoutMs);
+  // Always finish on known white, even when readiness interrupts the reveal.
+  // Preserve that state across M5GFX re-init; otherwise handoff flashes again.
+  bool whiteSettled = false;
+  if (videoStarted && submitVideoFrame(0, 0, 0, kSubmitTimeoutMs, false)) {
+    waitForVideoIdle(kIdleTimeoutMs);
+    whiteSettled = !videoApi->pending();
+  }
   if (!releaseVideoOwner()) return false;
-  renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
+  if (whiteSettled) display.suppressInitialFullRefresh();
+  renderer.requestNextRefresh(whiteSettled ? HalDisplay::FAST_REFRESH : HalDisplay::FULL_REFRESH);
   return true;
 }
 

@@ -431,7 +431,9 @@ bool HalDisplay::suspendForExternalOwner() {
 bool HalDisplay::resumeFromExternalOwner() {
   if (!externalOwner) return false;
   externalOwner = false;
-  begin();
+  // Retain the outgoing image during init; the requested next refresh performs
+  // cleanup once. Boot can substitute FAST after settling its final white frame.
+  begin(false);
   if (!displayReady) {
     LOG_ERR("DSP", "Could not restore display after ELF released hardware");
     return false;

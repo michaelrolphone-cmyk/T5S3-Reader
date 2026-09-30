@@ -12,6 +12,14 @@ SOURCE = (ROOT / "src/components/StartupScreen.cpp").read_text(encoding="utf-8")
 
 
 class BootAnimationContract(unittest.TestCase):
+    def test_spatial_scrub_endpoint_coverage(self):
+        # Real drive packing and every pixel/arrival, not a separate mock waveform.
+        with tempfile.TemporaryDirectory(prefix="boot-scrub-") as temp:
+            binary = Path(temp) / "preview"
+            subprocess.run(["c++", "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
+                            str(ROOT / "scripts/preview_boot_scrub.cpp"), "-o", str(binary)], check=True)
+            subprocess.run([str(binary), temp], check=True, timeout=10)
+
     def test_real_startup_loading_lifecycle(self):
         # Compile production logic, substituting only platform headers/calls.
         with tempfile.TemporaryDirectory(prefix="boot-loading-") as temp:
