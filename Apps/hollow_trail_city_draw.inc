@@ -41,7 +41,7 @@ static void ht_city_mass_draw(const ht_city_mass *b,int cx,int cy,int plane) {
     }
     ht_checkpoint();
 }
-static void ht_city_backdrop(const ht_game *g) {
+static void ht_city_backdrop_low(const ht_game *g) {
     if(g->level!=1)return;
     int cx=g->camera/256,cy=g->camera_y/256;
     uint8_t *cached=ht_cached_near[2][0];
@@ -88,6 +88,15 @@ static void ht_city_backdrop(const ht_game *g) {
         ht_composed_frame_level=1;ht_forest_frame_valid=true;
         ht_forest_frame_x=cx;ht_forest_frame_y=cy;ht_forest_frame_scale=ht_world_scale;
     }
+}
+static void ht_city_backdrop(const ht_game *g) {
+    if(g->level!=1)return;
+    if(!ht_native_active){ht_city_backdrop_low(g);return;}
+    uint8_t *native=ht_scene;
+    ht_scene=ht_scene_low;ht_native_active=false;
+    ht_city_backdrop_low(g);
+    ht_scene=native;ht_native_active=true;
+    ht_expand_scene_native(ht_scene_low,native);
 }
 /* Roof furniture sits beyond the walkable front edge. Fire escapes are
  * attached to the actual ladder recesses; none masquerades as a jump target. */
