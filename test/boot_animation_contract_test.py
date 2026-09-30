@@ -13,6 +13,9 @@ SOURCE = (ROOT / "src/components/StartupScreen.cpp").read_text(encoding="utf-8")
 
 
 class BootAnimationContract(unittest.TestCase):
+    def test_static_driver_wisp_refresh(self):
+        subprocess.run([sys.executable, str(ROOT / "test/hal/static_wisp_refresh_test.py")], check=True)
+
     def test_shared_video_startup(self):
         subprocess.run([sys.executable, str(ROOT / "test/hal/video_start_scrub_test.py")], check=True)
 

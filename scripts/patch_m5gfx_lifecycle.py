@@ -93,6 +93,45 @@ def patch_sources(header, source):
     return header, source
 
 
+
+WISP_MARKER = '// RiscRTE: static spatial refresh v1'
+
+
+def patch_wisp_source(source):
+    if WISP_MARKER in source:
+        return source
+    source = replace_once(source, '#include "lgfx/v1/misc/pixelcopy.hpp"',
+                          '#include "lgfx/v1/misc/pixelcopy.hpp"\n#include "M5WispRefresh.h"\n#include <esp_timer.h>\n#include <esp_log.h>')
+    source = replace_once(source, '          bool flg_fast = ( new_data.mode == epd_mode_t::epd_fastest)', '''          // RiscRTE: static spatial refresh v1
+          bool spatial_done = false;
+          if ((new_data.mode == epd_mode_t::epd_quality || new_data.mode == epd_mode_t::epd_text) &&
+              panel_w == NativeVideoBootScrub::kWidth && memory_w == panel_w &&
+              mh == NativeVideoBootScrub::kHeight && magni_h == 1) {
+            struct WispHooks {
+              std::atomic<bool>& stop;
+              uint8_t* alloc(size_t bytes) {
+                return static_cast<uint8_t*>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+              }
+              void free(uint8_t* p) { heap_caps_free(p); }
+              uint32_t now() { return static_cast<uint32_t>(esp_timer_get_time()/1000); }
+              void pause() { vTaskDelay(1); }
+              bool stopped() { return stop.load(std::memory_order_acquire); }
+            } hooks{me->_stop_requested};
+            const uint32_t wisp_start = hooks.now();
+            spatial_done = M5WispRefresh::run(bus, hooks, me->_buf, me->_step_framebuf,
+                me->_dma_bufs[0], me->_dma_bufs[1], write_len,
+                new_data.x, new_data.y, new_data.w, new_data.h, me->_lut_offset_table[new_data.mode]);
+            if (spatial_done) ESP_LOGI("EPD_WISP", "static scrub + gray draw: %lu ms", static_cast<unsigned long>(hooks.now()-wisp_start));
+            else if (!hooks.stopped()) ESP_LOGW("EPD_WISP", "spatial refresh unavailable; original waveform fallback");
+            if (hooks.stopped()) break;
+          }
+          if (!spatial_done) {
+          bool flg_fast = ( new_data.mode == epd_mode_t::epd_fastest)''')
+    source = replace_once(source, '          } while (--h);\n\n          if (lgfx::micros() - usec >= 2048)',
+                          '          } while (--h);\n          }  // Original fast path or safe waveform fallback.\n\n          if (lgfx::micros() - usec >= 2048)')
+    return source
+
+
 def patch_environment(env):
     if env.subst('$BOARD') != 't5s3-pro':
         return
@@ -101,6 +140,13 @@ def patch_environment(env):
     if not h.is_file() or not c.is_file():
         raise RuntimeError('Pinned M5GFX unavailable for required EPD lifecycle patch: ' + str(root))
     header, source = patch_sources(h.read_text(), c.read_text())
+    source = patch_wisp_source(source)
+    project = Path(env.subst('$PROJECT_DIR'))
+    for companion in (project/'lib/hal/M5WispRefresh.h', project/'src/native/NativeVideoBootScrub.h'):
+        destination = root/companion.name
+        content = companion.read_text()
+        if not destination.exists() or destination.read_text() != content:
+            destination.write_text(content)
     if header != h.read_text(): h.write_text(header)
     if source != c.read_text(): c.write_text(source)
 

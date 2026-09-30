@@ -9,7 +9,7 @@
 // endpoint treatment, staggered along curling contours instead of global fills.
 namespace NativeVideoBootScrub {
 constexpr unsigned kWidth = 960, kHeight = 540;
-constexpr unsigned kScans = 24, kLastArrival = 15;
+constexpr unsigned kScans = 16, kLastArrival = 7;
 constexpr unsigned kBlackScans = 3, kWhiteScans = 6;
 constexpr unsigned kGrid = 4, kGridWidth = kWidth / kGrid + 1;
 constexpr size_t kMapBytes = kWidth * kHeight;

@@ -37,7 +37,7 @@ static int Wire=0;
 namespace Board {void beginI2C(){}}
 bool native_hardware_display_is_borrowed(){return borrowed;}
 unsigned millis(){return now;}
-void vTaskDelay(int){++now;if(g_running&&!stall&&g_boot_scrub_step>=0&&g_boot_scrub_step<24)++g_boot_scrub_step;}
+void vTaskDelay(int){++now;if(g_running&&!stall&&g_boot_scrub_step>=0&&g_boot_scrub_step<static_cast<int>(NativeVideoBootScrub::kScans))++g_boot_scrub_step;}
 void* heap_caps_malloc(size_t n,int){return failAlloc?nullptr:malloc(n);}
 void free_buffer(uint8_t*& p){free(p);p=nullptr;}
 bool epd_video_init(Pca9535Min& e){

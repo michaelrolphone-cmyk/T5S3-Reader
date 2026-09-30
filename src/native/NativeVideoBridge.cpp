@@ -1160,19 +1160,19 @@ bool video_start_format(t5_video_surface_v1 *surface, uint8_t pixel_format) {
         ESP_LOGE(kTag, "video scrub scan failed or exceeded deadline");
         epd_video_shutdown(); return false;
       }
-      // The last white pulses have drained through DMA. While step==24 all
+      // The last white pulses have drained through DMA. While the terminal step is latched all
       // scans retain the panel, so seed the normal engine with settled white.
       memset(g_buffers[0], 0, g_backbuffer_bytes);
       memset(g_buffers[1], 0, g_backbuffer_bytes);
       memset(g_state_buffer, g_pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB
           ? 0x00 : 0xfc, g_state_buffer_bytes);
-      // Step 24 never dereferences the map, and step 23 has drained. Release
+      // The terminal step never dereferences the map; the final drive has drained. Release
       // its 506 KiB before clients begin rendering or allocating their scene buffers.
       free_buffer(g_boot_scrub_map);
       portENTER_CRITICAL(&g_buffer_lock);
       g_boot_scrub_step = -1;
       portEXIT_CRITICAL(&g_buffer_lock);
-      ESP_LOGI(kTag, "video wisp scrub complete: %lu ms, 24 scans", static_cast<unsigned long>(millis()-scrub_start));
+      ESP_LOGI(kTag, "video wisp scrub complete: %lu ms, %u scans", static_cast<unsigned long>(millis()-scrub_start), NativeVideoBootScrub::kScans);
     }
     s_video_started = true;
     ESP_LOGI("FAST_VIDEO", "raw EPD video ready: 960x540 @ %d fps scan target", TARGET_FPS);
