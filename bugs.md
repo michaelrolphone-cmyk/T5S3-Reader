@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+### 73. Display QR chooses QR versions using alphanumeric capacities, so ordinary page text in several size ranges renders no code
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-2226](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-2226/bugs.md)
+
+- **Affected code:** `src/util/QrUtils.cpp::QrUtils::drawQrCode()`; user-visible caller `src/activities/reader/QrDisplayActivity.cpp::render()`, launched from `EpubReaderActivity::onReaderMenuConfirm(DISPLAY_QR)`.
+- **Trigger / reproduction:** Open an EPUB page, choose **Display QR**, and use page text whose UTF-8 payload is 79-114 bytes and contains any byte-mode-only character such as a lowercase ASCII letter. A deterministic fixture is 100 lowercase `a` bytes. The same failure bands recur at larger sizes because the selected versions remain undersized for byte mode.
+- **Observed / logically demonstrated failure:** `drawQrCode()` selects version 4 for every payload up to 114 bytes. The pinned `ricmoo/QRCode@0.0.1` dependency documents version 4 / ECC_LOW capacity as 114 alphanumeric characters but only 78 byte-mode characters. Lowercase text forces byte mode, so `qrcode_initText()` returns an error for the 100-byte fixture. The function only logs the error and draws no modules, leaving the Display QR screen without a QR code even though a larger QR version could encode the payload. The thresholds 395, 1066, and 2110 similarly track capacities larger than the corresponding byte-mode capacities.
+- **Likely root cause:** The version-selection thresholds mix alphanumeric-mode capacities with a generic UTF-8/page-text API. Only the final 2953-byte limit is explicitly treated as byte-mode capacity.
+- **Impact:** Common prose lengths can produce a blank QR display based solely on payload length/content, making the reader's page-to-QR feature unreliable for otherwise encodable text.
+- **Repair direction:** Select the smallest version using byte-mode capacity for arbitrary UTF-8 input, or retry progressively larger versions until `qrcode_initText()` succeeds. Truncate only after version 40 cannot encode the payload. Add boundary tests for lowercase/UTF-8 byte-mode payloads at 78/79, 114/115, and the higher version transition bands.
+
+### 74. EPUB XML parsers compare literal namespace prefixes, rejecting valid books that use equivalent alternate prefixes
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-2226](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-2226/bugs.md)
+
+- **Affected code:** `lib/Epub/Epub/parsers/ContainerParser.cpp`, `ContentOpfParser.cpp`, `TocNavParser.cpp`, and `TocNcxParser.cpp`; failure is surfaced by `lib/Epub/Epub.cpp::findContentOpfFile()` / `parseContentOpf()`.
+- **Trigger / reproduction:** Create an otherwise valid EPUB whose `META-INF/container.xml` binds the standard container namespace to a prefix, for example `<ocf:container xmlns:ocf="urn:oasis:names:tc:opendocument:xmlns:container"><ocf:rootfiles><ocf:rootfile .../></ocf:rootfiles></ocf:container>`. XML namespace prefixes are aliases, so this is namespace-equivalent to the usual default-namespace form. Open the EPUB.
+- **Observed / logically demonstrated failure:** The parsers are created with `XML_ParserCreate(nullptr)`, so Expat reports qualified names including the source prefix. `ContainerParser` accepts only the literal names `container`, `rootfiles`, and `rootfile`; it therefore never sets `fullPath`, and `Epub::findContentOpfFile()` rejects the book. The same QName coupling appears later: `ContentOpfParser` recognizes only no prefix or the hard-coded `opf:` prefix and requires exactly `dc:` for Dublin Core fields, `TocNavParser` requires literal element names and `epub:type`, and `TocNcxParser` requires unprefixed names. A harmless standards-compliant prefix change can thus reject a book or silently lose metadata/TOC data.
+- **Likely root cause:** XML elements and attributes are matched by serialized QName text instead of namespace URI plus local name.
+- **Impact:** Standards-valid EPUBs can fail to open or lose title/author/language/chapter navigation depending only on the publisher's namespace-prefix choices.
+- **Repair direction:** Parse with namespace processing (for example `XML_ParserCreateNS`) and compare namespace URI/local-name pairs, or normalize QNames consistently while validating the expected namespace. Add fixtures using default namespaces and arbitrary non-`opf`/`dc`/`epub` prefixes for container, OPF metadata/manifest/spine, EPUB 3 nav, and NCX.
+
+### 75. Markdown fenced-code state ignores the opening delimiter type and length, so shorter or different fences prematurely end code blocks
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-2226](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260929-2226/bugs.md)
+
+- **Affected code:** `lib/Markdown/Markdown.cpp::isFence()` and `Markdown::parseLine()`, with state defined by the single `bool& inFence` API in `lib/Markdown/Markdown.h`; consumed by `src/activities/reader/TxtReaderPaging.cpp`.
+- **Trigger / reproduction:** Open a Markdown file with a four-backtick fenced block, put a three-backtick line inside it, then a line beginning `# literal heading`, and later the proper four-backtick closer. A mixed-marker case (opening backticks with an interior `~~~`) fails for the same reason.
+- **Observed / logically demonstrated failure:** `isFence()` returns true for any trimmed line beginning with three backticks or three tildes, and `parseLine()` blindly toggles one Boolean. It does not remember whether the opener used backticks or tildes or how long its delimiter run was. The shorter three-backtick line therefore closes a four-backtick block even though it is literal code under fenced-code rules. The following `# literal heading` is parsed as a real H1/chapter break, and the eventual correct four-backtick closer toggles the parser back into code mode, which can cause the remainder of the document to be rendered as code.
+- **Likely root cause:** Fence state is represented only as open/closed rather than retaining the opener's marker character and run length.
+- **Impact:** Valid Markdown containing nested-looking fence text is mis-rendered, can create bogus chapter breaks, and can leave pagination/rendering in the wrong mode for the rest of the document.
+- **Repair direction:** Replace the Boolean fence state with a small state object containing marker type and opening run length. Accept a closer only when it uses the same marker and has at least the opening length; preserve the state across page chunks. Add tests for 3/4/5-character fences, mixed backtick/tilde lines inside code, and headings inside fenced blocks.
+
