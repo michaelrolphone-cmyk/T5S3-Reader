@@ -1,8 +1,8 @@
 # Bug Log
 
-Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b3a7`, through the 05:18 MDT scan. This is the canonical report inventory. Existing IDs 5 and 13–72 are preserved; new distinct reports receive IDs 73–207. Scan-local numbers are not canonical IDs. Entries preserve source-review reproduction evidence and repair directions; they are reported open, not claims of fresh hardware reproduction or a complete revalidation of every intervening feature change.
+Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b3a7`, through the 05:18 MDT scan. This is the canonical report inventory. Existing IDs 5 and 13–72 are preserved; new distinct reports receive IDs 73–210. Scan-local numbers are not canonical IDs. Entries preserve source-review reproduction evidence and repair directions; they are reported open, not claims of fresh hardware reproduction or a complete revalidation of every intervening feature change.
 
-**196 distinct active reports: 61 carried forward and 135 newly consolidated.** The eight previous scheduled fixes (IDs 4, 6–12) are already on master: PR #244 was incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including its final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. They are not pending fixes. Earlier fixes #205, #209 and #212 remain excluded.
+**199 distinct active reports: 61 carried forward and 138 newly consolidated.** The eight previous scheduled fixes (IDs 4, 6–12) are already on master: PR #244 was incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including its final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. They are not pending fixes. Earlier fixes #205, #209 and #212 remain excluded.
 
 ## Coverage and recovery
 
@@ -2438,3 +2438,34 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Resolve the link path against the current spine item's directory, normalize dot segments, remove only the fragment for lookup, and perform an exact canonical-path match. If a basename compatibility fallback is retained, allow it only when the basename is unique. Add fixtures for duplicate basenames, sibling links, and `../` references.
 
 - **Consolidation sources:** [automation/bug-scan-20260930-0518](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/82533918d81fda11ae9c6b19d95b071a98f19361/bugs.md); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Diff](https://docs.google.com/spreadsheets/d/1geT64642Lsjo_EaRZhNxF9516LV2BRVIp4stNAnOkjg/edit?usp=drivesdk); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Instructions](https://docs.google.com/spreadsheets/d/1xB4JDjKoHfw-mCY9pUQL1VP2tWxilaT0WRwdCPryrO8/edit?usp=drivesdk)
+
+
+### 208. Calibre Wireless shuts down a Wi-Fi connection that existed before the activity opened
+
+- **Status:** Open.
+- **Affected code:** `src/activities/network/CalibreConnectActivity.cpp`, especially `CalibreConnectActivity::onEnter()` and `onExit()`; shared network ownership through `runtime/network/NetworkService.cpp`.
+- **Trigger / reproduction:** Establish a working station connection before opening **File Transfer → Connect to Calibre**. Enter Calibre Wireless, confirm that it reuses the existing SSID/IP without opening the Wi-Fi selector, then back out of the Calibre activity.
+- **Observed / logically demonstrated failure:** `onEnter()` detects `RuntimeNetwork::connected()` and reuses that existing connection by reading its address/SSID and starting the web server; it does not acquire or create the connection in this path. `onExit()`, however, always calls `RuntimeNetwork::shutdown()` after stopping the web server and mDNS. Exiting Calibre therefore disconnects a network session that the activity did not create or own.
+- **Likely root cause:** Network cleanup is unconditional and no ownership/lease state records whether Calibre established the station connection or merely borrowed a pre-existing shared connection.
+- **Impact:** Opening and closing Calibre Wireless can unexpectedly tear down connectivity established for another workflow, forcing later apps/services to reconnect and interrupting shared network use.
+- **Repair direction:** Track whether this activity actually acquired/started the connection and shut it down only in that case, or move network lifetime to a reference-counted/leased NetworkService. Keep web-server/mDNS cleanup local to Calibre. Add regressions for both pre-connected entry (connection survives exit) and Calibre-owned connection (connection is released on exit).
+
+### 209. Malformed XTC chapter metadata can reserve memory proportional to the remainder of the file and exhaust the ESP32 heap
+
+- **Status:** Open.
+- **Affected code:** `lib/Xtc/Xtc/XtcParser.cpp`, `XtcParser::readChapters()`, especially the `maxOffset` fallback, `chapterCount = available / 96`, and `m_chapters.reserve(chapterCount)`.
+- **Trigger / reproduction:** Use an otherwise openable XTC/XTCH with `hasChapters = 1`, a chapter offset inside the file, and header ordering where neither `pageTableOffset` nor `dataOffset` is greater than `chapterOffset`. Make the file tens of megabytes so substantial data remains after the chapter offset, then request the chapter list.
+- **Observed / logically demonstrated failure:** When neither later structural offset bounds the chapter region, `readChapters()` leaves `maxOffset` equal to the full file size. It interprets every remaining 96 bytes as a potential chapter and computes `chapterCount` from that span, then calls `m_chapters.reserve(chapterCount)` before reading even one record or encountering the empty-record terminator. A 64 MiB remainder implies roughly 699,000 `ChapterInfo` reservations, far beyond ESP32-S3 RAM, even if the file contains only a few chapters or malformed metadata.
+- **Likely root cause:** The parser derives allocation size from untrusted file extent instead of a validated chapter-table boundary/count and performs a bulk reserve before incrementally validating records.
+- **Impact:** A corrupt or malformed XTC can cause a huge heap/PSRAM allocation attempt, allocation failure/abort, severe memory pressure, or reset merely by opening its chapter navigation.
+- **Repair direction:** Validate chapter-region ordering against page-table/data offsets, impose a practical chapter-count ceiling (and at minimum cap by page count), and parse incrementally without reserving from raw file size. Treat inconsistent boundaries as corrupted metadata. Add a large-file fixture with overlapping/out-of-order offsets and verify chapter loading fails cleanly without a large allocation.
+
+### 210. Indexed BMPs with V4/V5 DIB headers read color-space header bytes as palette entries
+
+- **Status:** Open.
+- **Affected code:** `lib/GfxRenderer/Bitmap.cpp`, `Bitmap::parseHeaders()`; user-visible consumers include `BmpViewerActivity` and custom/sleep-screen BMP rendering.
+- **Trigger / reproduction:** Open a standards-valid 1/2/4/8-bpp BMP that uses a DIB header larger than the 40-byte `BITMAPINFOHEADER`, such as `BITMAPV4HEADER` (108 bytes) or `BITMAPV5HEADER` (124 bytes), with a normal color table located after the complete DIB header.
+- **Observed / logically demonstrated failure:** `parseHeaders()` accepts every `biSize >= 40`, parses only the first 40 bytes, and then immediately begins reading `colorsUsed` palette entries from the current position. It never skips the extra `biSize - 40` bytes before the color table. For V4/V5 indexed images, channel masks/color-space/endpoints/gamma fields are therefore consumed as BGR palette records. The later seek to `bfOffBits` finds the pixel array correctly, but `paletteLum[]` is already populated from the wrong bytes, so valid images render with incorrect grayscale/colors.
+- **Likely root cause:** The decoder treats all DIB headers as exactly 40 bytes after merely checking that they are at least 40 bytes, rather than using `biSize` to locate the palette.
+- **Impact:** Standards-compliant indexed BMPs produced with modern Windows V4/V5 headers can display badly or become effectively unreadable even though the parser reports `Ok`. The same valid asset can fail visually in Image Viewer or as a sleep/custom image without any explicit error.
+- **Repair direction:** After parsing the common 40-byte fields, skip/parse the remaining DIB bytes according to `biSize` before reading the color table; validate that the computed palette region fits before `bfOffBits`. Add 1/4/8-bpp V4/V5 fixtures with known palettes and verify luminance output matches equivalent 40-byte-header BMPs.
