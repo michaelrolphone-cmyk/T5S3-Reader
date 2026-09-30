@@ -1383,7 +1383,7 @@ static void ht_character(int x,int feet,const ht_game *game) {
     ht_character_walk(x,feet,game);
 }
 
-/* Darkness alpha is screen-fixed;/* Darkness alpha is screen-fixed; it never changes the world or camera.
+/* Darkness alpha is screen-fixed; it never changes the world or camera.
  * Apply once after all layers, with no multiply in the unshaded center. */
 static inline unsigned ht_div255(unsigned value) {return (value+1+(value>>8))>>8;}
 static void ht_vignette(void) {
@@ -1403,7 +1403,7 @@ static void ht_vignette(void) {
     }
     ht_framed=true;
 }
-/* Render-only affine camera./* Render-only affine camera. Nearest-neighbor sampling is the device-tested baseline;
+/* Render-only affine camera. Nearest-neighbor sampling is the device-tested baseline;
  * world coordinates, collision and input bearings are never transformed.
  * Phase advances only with deliberate movement and freezes at rest. */
 static int ht_sway_wave(unsigned phase) {
@@ -1468,7 +1468,7 @@ static __attribute__((optimize("O3"))) void ht_affine_into(const uint8_t *source
         if((y&15)==15)ht_checkpoint();
     }
 }
-static void ht_sway_into(const uint8_t *source,unsigned phase) {static void ht_sway_into(const uint8_t *source,unsigned phase) {
+static void ht_sway_into(const uint8_t *source,unsigned phase) {
     int turn=ht_sway_wave(phase)*43/32;
     int scale=ht_min(4096-(ht_sway_wave(phase/2+768)+256)*4/3,4096-2*ht_abs(turn));
     ht_affine_into(source,turn,scale);
@@ -1488,7 +1488,7 @@ static __attribute__((optimize("O3"))) void ht_zoom_into(const uint8_t *source,i
         if((y&15)==15)ht_checkpoint();
     }
 }
-/* With zoom genuinely disabled/* With zoom genuinely disabled there is no safety crop. Clamp uncovered
+/* With zoom genuinely disabled there is no safety crop. Clamp uncovered
  * corners to the source edge instead of reading outside the raster. */
 static __attribute__((optimize("O3"))) void ht_rotation_into(const uint8_t *source,int turn) {
     int width=ht_scene_width(),height=ht_scene_height();
@@ -1503,7 +1503,7 @@ static __attribute__((optimize("O3"))) void ht_rotation_into(const uint8_t *sour
         if((y&15)==15)ht_checkpoint();
     }
 }
-static void ht_camera_into(const uint8_t *source,const ht_game *g,unsigned mode) {static void ht_camera_into(const uint8_t *source,const ht_game *g,unsigned mode) {
+static void ht_camera_into(const uint8_t *source,const ht_game *g,unsigned mode) {
     int turn,scale;ht_camera_coefficients(g,&turn,&scale);
     if(mode==HT_CAMERA_NO_ROTATION) {
         scale=4096-(ht_sway_wave(g->sway_phase/2+768)+256)*4/3;
@@ -1627,7 +1627,7 @@ static void ht_render_scene(void) {
     ht_vignette();
     ht_render_last.post=ht_render_now()-post_start;
 }
-/* Four physical gray levels./* Four physical gray levels. A fixed dispersed 8x8 threshold resolves only
+/* Four physical gray levels. A fixed dispersed 8x8 threshold resolves only
  * fractional blur/fog values between them, with no temporal shimmer. Exact
  * white/light/dark/black fills remain solid. Work at physical pixel pitch so
  * the blur does not turn into coarse blocks when upscaled. */
