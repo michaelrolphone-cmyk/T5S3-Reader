@@ -43,7 +43,7 @@ static void ht_tree_collision(int old_x,int old_y,unsigned old_support) {
         ht_climb_tree tree;if(!ht_existing_tree(&ht,i,&tree) || ht_abs(ht.x/256-tree.x)>tree.height/2)continue;
         for(int b=0;b<6;++b) {
             int top,old_top;
-            if(!ht_tree_footing(&tree,b,ht.x/256,&top) || !ht_tree_footing(&tree,b,old_x/256,&old_top))continue;
+            if(!ht_tree_footing(&ht,&tree,b,ht.x/256,&top) || !ht_tree_footing(&ht,&tree,b,old_x/256,&old_top))continue;
             bool follows=old_support==5 && ht.vy<=HT_GRAVITY && ht_abs(old_y-old_top*256)<=256;
             if((old_y<=old_top*256+256 && ht.y>=top*256) || follows) {
                 if(ht.grounded && ht.y<top*256)continue;
@@ -231,6 +231,20 @@ static void ht_props_step(int direction) {
     /* Verlet inertia, gravity, hand pumping and six length-constraint passes.
      * Seven nodes / 36 segment solves is a fixed simulation budget. */
     if(m->rope_length) {
+        /* The loaded support is a damped spring. A wooden limb yields more
+         * than a steel crossbar; unloading lets it settle without flicker. */
+        t->rope_ox[0]=t->rope_px[0];t->rope_oy[0]=t->rope_py[0];
+        int limit=ht.level==0?5:2,tx=0,ty=0;
+        if(t->mode==HT_ROPE) {
+            tx=ht_clamp((ht.x-m->rope_anchor_x*256)/24,-limit*128,limit*128);
+            ty=ht_min(limit*256,256+ht_abs(t->rope_v)/2);
+        }
+        t->rope_bend_vx=ht_clamp(t->rope_bend_vx+(tx-t->rope_bend_x)/12-t->rope_bend_vx/4,-96,96);
+        t->rope_bend_vy=ht_clamp(t->rope_bend_vy+(ty-t->rope_bend_y)/12-t->rope_bend_vy/4,-96,96);
+        t->rope_bend_x=ht_clamp(t->rope_bend_x+t->rope_bend_vx,-limit*128,limit*128);
+        t->rope_bend_y=ht_clamp(t->rope_bend_y+t->rope_bend_vy,0,limit*256);
+        if(!tx && ht_abs(t->rope_bend_x)<12 && ht_abs(t->rope_bend_vx)<12)t->rope_bend_x=t->rope_bend_vx=0;
+        if(!ty && ht_abs(t->rope_bend_y)<12 && ht_abs(t->rope_bend_vy)<12)t->rope_bend_y=t->rope_bend_vy=0;
         int fraction,node=ht_rope_segment(&ht,&fraction);
         if(t->mode==HT_ROPE) {
             int dx=(t->rope_px[node+1]-t->rope_px[node])/256;
@@ -249,7 +263,7 @@ static void ht_props_step(int direction) {
         }
         int length=m->rope_length*256/(HT_ROPE_NODES-1);
         for(int pass=0;pass<6;++pass) {
-            t->rope_px[0]=m->rope_anchor_x*256;t->rope_py[0]=m->rope_anchor_y*256;
+            t->rope_px[0]=m->rope_anchor_x*256+t->rope_bend_x;t->rope_py[0]=m->rope_anchor_y*256+t->rope_bend_y;
             for(int i=1;i<HT_ROPE_NODES;++i) {
                 int dx=t->rope_px[i]-t->rope_px[i-1],dy=t->rope_py[i]-t->rope_py[i-1];
                 int sx=dx,sy=dy;
@@ -404,7 +418,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
                  * limb, otherwise fall naturally: no magnetic recapture. */
                 t->mode=HT_FREE;t->drop_cooldown=12;ht.vx=direction*ht_walk_speed(&ht)/2;
                 for(int b=0;b<6;++b) {
-                    int top;if(ht_tree_footing(&tree,b,ht.x/256,&top) && ht_abs(ht.y/256-top)<=5) {
+                    int top;if(ht_tree_footing(&ht,&tree,b,ht.x/256,&top) && ht_abs(ht.y/256-top)<=5) {
                         ht.y=top*256;ht.grounded=true;t->support=5;break;
                     }
                 }

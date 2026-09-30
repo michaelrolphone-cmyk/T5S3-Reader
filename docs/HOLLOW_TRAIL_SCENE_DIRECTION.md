@@ -181,3 +181,39 @@ direction checks used ASan+UBSan (leak scanning disabled in the sandbox). The
 complete ten-chapter route, all 30 evidence items and loop pass without deaths.
 S3 ELF structural validation passes; source, sidecar and catalog agree on
 1.1.28 and SHA-256 `13195385c5a6b16fc4391e78de5b2e073046418055125d30c23e7d1ff72a39c6`.
+
+
+## Caption clearance and rope attachment — 1.1.29
+
+Hollow Trail **1.1.28 -> 1.1.29**; minimum firmware stays **1.3.37**.
+The frozen render camera now reserves room above the narrative band (y=232):
+feet plus supporting terrain, or the entire boat hull and reflection, stay at
+or above y=211 before the text is drawn. The constraint accounts for scene
+scale and the camera's rotation/breathing transform, including every A/B mode.
+It adjusts the world camera rather than moving the character relative to the
+terrain or hiding the text. Fixed-step movement speeds and jump pacing remain.
+
+Approaching a rope eases out the close camera cue. While attached, wider
+framing includes the support as well as the hands/feet; breathing widens and
+then eases back after release. The baseline close scale remains elsewhere.
+Dam and grotto boat views, unloaded rope and loaded swinging-rope scenes were
+rendered with the actual narrative overlay and visually inspected.
+
+Ropes have a continuous dark body and diagonal strand highlights anchored to
+length, so the weave moves with the rope. Two wraps, a hitch and a short frayed
+tail replace the black/white anchor disk. A bounded damped spring moves the
+physical attachment toward the player's load and arc; wood can yield up to five
+world pixels, metal supports up to two. The branch/crossbar follows the pin,
+the forest limb's footing shares its bent geometry, and unloading settles back
+to rest. Previous pin coordinates track actual motion for rope-release velocity.
+There are no additional scenery objects, frame buffers or per-frame allocations.
+
+Verification: 1,360 camera-clearance cases across chapters, camera modes,
+rotations and scales; loaded support bounds, continuous pin motion, unloaded
+return and branch-footing agreement (ASan+UBSan). The ground regressions
+(25,296 poses), 78 branch contacts, forest cache transitions, scene-direction
+physics, complete ten-chapter route and C++ math integration pass. The three
+boat chapter renderer references and all ten grotto frame hashes remain exact;
+the other chapter references intentionally reflect higher framing/new ropes.
+S3 ELF structural validation and source/sidecar/catalog version/hash agreement
+pass. On-device appearance and performance have not been measured.
