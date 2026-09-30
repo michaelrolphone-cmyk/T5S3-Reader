@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b3a7`, through the 05:18 MDT scan. This is the canonical report inventory. Existing IDs 5 and 13–72 are preserved; new distinct reports receive IDs 73–207. Scan-local numbers are not canonical IDs. Entries preserve source-review reproduction evidence and repair directions; they are reported open, not claims of fresh hardware reproduction or a complete revalidation of every intervening feature change.
 
-**196 distinct active reports: 61 carried forward and 135 newly consolidated.** The eight previous scheduled fixes (IDs 4, 6–12) are already on master: PR #244 was incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including its final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. They are not pending fixes. Earlier fixes #205, #209 and #212 remain excluded.
+**199 distinct active reports: 61 carried forward and 138 newly consolidated.** The eight previous scheduled fixes (IDs 4, 6–12) are already on master: PR #244 was incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including its final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. They are not pending fixes. Earlier fixes #205, #209 and #212 remain excluded.
 
 ## Coverage and recovery
 
@@ -2438,3 +2438,37 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Resolve the link path against the current spine item's directory, normalize dot segments, remove only the fragment for lookup, and perform an exact canonical-path match. If a basename compatibility fallback is retained, allow it only when the basename is unique. Add fixtures for duplicate basenames, sibling links, and `../` references.
 
 - **Consolidation sources:** [automation/bug-scan-20260930-0518](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/82533918d81fda11ae9c6b19d95b071a98f19361/bugs.md); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Diff](https://docs.google.com/spreadsheets/d/1geT64642Lsjo_EaRZhNxF9516LV2BRVIp4stNAnOkjg/edit?usp=drivesdk); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Instructions](https://docs.google.com/spreadsheets/d/1xB4JDjKoHfw-mCY9pUQL1VP2tWxilaT0WRwdCPryrO8/edit?usp=drivesdk)
+
+
+### 208. Signed-package exact-directory verification can authenticate a directory whose foreign extra entry was hidden by an enumeration failure
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260930-1520](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260930-1520/bugs.md)
+- **Affected code:** `src/runtime/packages/PackageDeviceDirectory.cpp`, `exactDirectoryEntries()` and its use by `verifySignedDeviceDirectory()`; the exact-inventory trust contract passed into `verifySignedPackageDirectory()`.
+- **Trigger / reproduction:** Start with an otherwise valid signed managed-package directory containing every archive-declared payload plus `.risc-auth`, and add one foreign extra file. Fault-inject the directory iterator so `openNextFile()` returns all signed payloads and `.risc-auth`, then returns an invalid handle because of an SD/enumeration I/O error before the extra file is revealed.
+- **Observed / logically demonstrated failure:** `exactDirectoryEntries()` treats every non-open result from `openNextFile()` as normal end-of-directory. In the fault sequence above, `observed` is exactly `archive.entryCount + 1`, every declared entry is marked seen, and `provenanceSeen` is true. The final checks therefore return `true` even though an unapproved file remains in the directory. `verifySignedDeviceDirectory()` supplies this predicate as the verifier's exact-inventory gate, so an otherwise valid signature can reach `AuthenticatedDirectory` without ever proving that directory enumeration completed.
+- **Likely root cause:** The storage directory API's invalid entry result is being used as a clean EOF sentinel even though this security decision requires distinguishing verified exhaustion from an I/O/enumeration failure.
+- **Impact:** A managed package generation can be labeled authenticated while bytes not covered by its signed inventory coexist in the trusted package directory. Any later path-based consumer or future feature that discovers files independently can encounter content the package verifier explicitly intended to exclude.
+- **Repair direction:** Make exact-inventory verification fail closed unless directory exhaustion is positively established. Use or add an enumeration API that reports clean EOF separately from I/O failure, propagate close/iteration errors, and only compare the observed set after a verified complete scan. Add fault-injection tests where iteration fails immediately before a foreign extra entry and before a required signed entry; neither directory may authenticate.
+
+### 209. EPUB Footnotes overcounts visible rows and can move selection below the screen before scrolling
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260930-1520](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260930-1520/bugs.md)
+- **Affected code:** `src/activities/reader/EpubReaderFootnotesActivity.cpp`, especially `render()` and `onTouchTap()` and their independent `visibleCount` calculations.
+- **Trigger / reproduction:** Open an EPUB with more footnote links than fit on one Footnotes screen, then navigate downward into the last rows of the first page. On a 540-pixel-high landscape viewport, continue through roughly the 14th/15th item; the same defect occurs in other orientations according to their logical screen height.
+- **Observed / logically demonstrated failure:** Rows are actually drawn starting at `60 + contentY` with a 36-pixel line height, but both render and touch code compute `visibleCount = (screenHeight - contentY) / 36`, omitting the 60-pixel title/list offset. At 540 pixels this claims 15 visible rows even though row 14 starts at y=564 and row 13 starts at y=528. The scroll condition therefore leaves `scrollOffset` unchanged while the selected row has already moved partly or entirely off-screen. The touch hit-test uses the same inflated count, so its accepted row range is also larger than the actual list viewport.
+- **Likely root cause:** Viewport capacity is calculated from the full content height rather than from the list's real top coordinate (and any reserved bottom UI), while drawing and hit-testing use a separate `listTop`.
+- **Impact:** Footnote selection can disappear below the panel before the list scrolls, making keyboard/controller navigation appear stuck or select an unseen target. Touch row validation can also describe positions outside the rendered list area.
+- **Repair direction:** Define one shared list viewport with `listTop` and bottom bound, derive `visibleCount = max(1, (listBottom - listTop) / lineHeight)`, and use it for rendering, scroll adjustment, and hit-testing. Add orientation tests with one more item than the real visible capacity and verify every selected row remains fully visible as scrolling begins.
+
+### 210. EPUB image pixel-cache names collide for different source formats that share a stem
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260930-1520](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260930-1520/bugs.md)
+- **Affected code:** `lib/Epub/Epub/blocks/ImageBlock.cpp`, `getCachePath()`, `renderFromCache()`, and `ImageBlock::render()`.
+- **Trigger / reproduction:** Build an EPUB containing two different images in the same extracted directory, for example `diagram.jpg` and `diagram.png`, with equal (or within the allowed one-pixel tolerance) rendered dimensions. Display the JPEG first so its cache is created, then display the PNG.
+- **Observed / logically demonstrated failure:** `getCachePath()` replaces the final source extension with `.pxc`, so both sources map to the identical cache path `diagram.pxc`. `renderFromCache()` validates only the cached width/height against the expected dimensions; it stores no source path, format, size, timestamp, or content fingerprint. When the second image has matching dimensions, its render accepts and displays the first image's pixel cache without decoding the second source at all. If dimensions differ, the two images instead overwrite/thrash the same cache on alternating renders.
+- **Likely root cause:** The cache key discards a distinguishing part of the source identity, and the cache header has no source-generation identity capable of detecting the collision.
+- **Impact:** Valid EPUBs can display the wrong illustration whenever same-stem images of different formats coexist, while appearing to have loaded successfully. Dimension-mismatched collisions also cause repeated unnecessary decode/cache rewrites.
+- **Repair direction:** Derive the pixel-cache filename from the complete canonical image path including extension (preferably a collision-resistant digest), and/or store and validate a source identity in the cache header. Preserve format/path distinction even when output dimensions match. Add a fixture with same-directory `diagram.jpg` and `diagram.png` at identical dimensions and verify each renders its own pixels across repeated page visits.
