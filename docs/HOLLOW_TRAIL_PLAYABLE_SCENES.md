@@ -567,6 +567,490 @@ The ending removes the visual grammar that has guided the player through the res
 
 ---
 
+## Detailed visual specification
+
+These are **art and composition requirements** for the playable sets above. They are intentionally more specific than the effect presets. They describe what should actually be visible on screen: the dominant silhouette, foreground obstruction, playable surface, middle-distance structure, far depth, lighting logic, evidence placement, and the image that should carry the transition into the next set.
+
+### Shared visual language
+
+- **Foreground / observer plane:** sparse, very dark, large forms close to the camera. Use these as occasional occluders rather than decorative borders. A foreground object should look as if the unseen observer could reach out and touch it.
+- **Playable plane:** sharpest edges and highest material detail. The protagonist, contact surfaces, ropes, ladders, rails, boats, mechanisms, and evidence must read immediately against this plane.
+- **Middle planes:** two or three distinct silhouette families with progressively lighter tone and reduced detail. Never collapse them into one fog-gray strip.
+- **Far plane:** pale but still shaped. Hills, towers, ridges, or large engineering works should retain a recognizable contour even when atmospheric depth is strong.
+- **Sky / fog / open water:** reserve the lightest values for empty distance, reflected light, and openings. White should describe space, not wash out the world.
+- **Edges:** near silhouettes are crisp. Diffusion belongs just outside distant silhouettes or in spray/fog, not across the object itself. The visual target is **sharp forms inside diffuse atmosphere**.
+- **Terrain:** no generic floating platform language. Every traversable surface must belong to a plausible hill, bank, roof, embankment, quarry bench, greenhouse terrace, dam gallery, or constructed floor.
+- **Scale:** when the narrative says the world is larger than the protagonist, show it literally. Make trees, buildings, cranes, waterfalls, and rock cuts dominate the frame rather than merely shrinking the character.
+- **Narrative clearance:** preserve a clean readable band for prose without placing the protagonist, rope contacts, boat hull, critical terrain lip, evidence object, or primary landmark behind it.
+- **Object history:** wear, water marks, rust, soot, rubbed paint, broken glazing, stretched cloth, footprints, polished handholds, and repairs should make every inhabited structure look used rather than procedurally placed.
+
+### 1. Kitchen Window — exact visual target
+
+- **Composition:** frame the kitchen as a shallow box. The sink/window occupies the visual center; the protagonist stands close enough that her reflection overlaps the missing landscape outside. The room should feel ordinary and slightly cramped, not Gothic.
+- **Foreground:** dark edge of the counter, basin rim, one hanging cloth, and the protagonist's arm/shoulder. Avoid foreground clutter.
+- **Playable / middle plane:** wet cup beside the sink, the shelf with the sister's chipped cup, the table and chair, and the stove area. The sister's slippers should be visible only when the player turns away from the window or begins packing.
+- **Exterior:** garden wall first, then rake and bucket, then the nearest apple branches. Beyond that, almost nothing: the fog should physically erase the hills rather than render a generic gray background.
+- **Lighting:** flat cold evening light through the glass; interior objects are darker than the fog. The three flashes momentarily create a tiny hard highlight on wet glass and the cup rim.
+- **Surface detail:** condensation streaks, greasy wiped crescent on the pane, cold water shine, chipped ceramic edge, soap film.
+- **Transition image:** as the player leaves, the final view back should show the kitchen reduced to a small rectangle of flat light with the chair pushed under the table.
+
+### 2. Tall-Grass Memory — exact visual target
+
+- **Composition:** grass should tower over both children, creating walls and a ceiling of seed heads. The secret room is not a cleared arena; it is a body-sized depression where stems bend outward and close again behind movement.
+- **Foreground:** several black or charcoal grass blades cross the lens at different heights, sometimes hiding a face or hand for a fraction of the scene.
+- **Playable plane:** flattened green stems, bare soil patches, beetle/seed-pod scale details, sister seated or crouched opposite the narrator.
+- **Middle plane:** dense vertical stems with occasional gaps revealing brighter field beyond. The pocket mirror should be small enough that the flash feels startling rather than like a lamp.
+- **Far plane:** only a suggestion of the house/upstairs window through the grass when the wrong signal is remembered.
+- **Lighting:** brightest and most organic light in the opening chapter. Use soft broken patches through moving seed heads rather than a uniform glow.
+- **Motion:** grass bends in coherent gusts with local lag; loose strands at the sister's temples move less than the upper grass.
+- **Transition image:** the remembered dark upstairs window should align visually with the present-day kitchen window before returning to the fog.
+
+### 3. Pre-dawn Departure / Orchard — exact visual target
+
+- **Composition:** start inside the doorway looking outward, then progressively put the house behind the protagonist. Domestic geometry should physically shrink with each short segment of travel.
+- **Foreground:** door frame and latch for the first seconds; the caught thread between coat and iron must be readable at close range.
+- **Route:** garden path → wall opening → orchard edge → ditch under alders → root-soft road. Keep it continuous rather than teleporting between biomes.
+- **Middle plane:** apple trunks, low stone boundaries, wet ditch, hedge gaps, boundary stones.
+- **Far plane:** one pale chimney above the orchard should remain visible longer than expected, then disappear behind a bank.
+- **Lighting:** nearly colorless dawn. Wet edges catch the light, but there should be no romantic sunrise.
+- **Material cues:** dark damp soil, leaf litter stuck to stone, rough coat cloth, bare winter/late-season branch structure.
+- **Transition image:** the last piece of architecture disappears and the road surface becomes roots; that visual substitution is the actual entrance into the forest.
+
+### 4. Deep Forest / Marked Tree — exact visual target
+
+- **Composition:** use enormous trunks as vertical architecture. The player should rarely see a complete tree; crowns disappear above the frame and into fog.
+- **Foreground:** two or three near trunks with deep bark folds can wipe across 25–35% of the image. One should briefly hide the path and reveal it rearranged.
+- **Playable plane:** continuous rooted earth with wet leaf skin, exposed pale roots, russet bracken, mossy boulders, shallow black water in hollows.
+- **Middle planes:** gray trunks at different spacings, then a long hill swell that appears and disappears with fog.
+- **Marked tree:** hooked branch with the wool caught on it; the cloth is folded into a cut in bark. The older grown-over wedge, date, and socket mark must be spatially connected, not presented as disconnected UI clues.
+- **Lighting:** mostly diffuse overhead white with occasional brighter openings where a missing limb or crown lets sky through.
+- **Motion:** intermittent drops, a localized gust bringing silver-backed leaves down from deeper canopy.
+- **Transition image:** after the player looks back, the entrance path should be genuinely hard to identify between black trunks.
+
+### 5. Fallen-Tree Hollow — exact visual target
+
+- **Composition:** the obstacle is a natural depression, not a platform puzzle. One bank should be higher and loose enough that climbing it directly looks implausible.
+- **Foreground:** damp root fans and a partial trunk edge close to the observer; keep them irregular rather than framing the screen symmetrically.
+- **Playable plane:** brown water at the bottom, churned leaf mold on approach, exposed roots, the dead leaning tree whose sawn/partly severed root mass still grips the bank.
+- **Tree detail:** cracked bark plates, rotten red-brown cubes under the outer bark, old saw damage, splintering roots. The trunk must look heavy enough that the struggle is credible.
+- **Background:** forest depth continues beyond the hollow so this does not feel like a self-contained puzzle room.
+- **Animation image:** before release, almost nothing moves except the protagonist and slight root flex. Once a root gives, the whole trunk should rotate slowly, then accelerate and drag smaller branches through the pale opening.
+- **Landing:** debris settles after impact—small twigs, soil, leaves—while the large form becomes a believable bridge.
+- **Transition image:** the fallen trunk points the eye toward the low mill hollow beyond.
+
+### 6. Mill Hollow — exact visual target
+
+- **Exterior composition:** put the mill low between hills so the player descends into it. A leaf-covered pool occupies one side; the leaning building grows out of fern/ivy rather than sitting on a clean pad.
+- **Foreground:** wet fern fronds, dark bank edge, or a branch that temporarily crosses the lower frame.
+- **Mill silhouette:** sagging roof, one gutter with saplings, timber boards black at the foot and lighter under the eaves, half-hidden stationary wheel.
+- **Water:** thin spill threads around boards should resemble cracks in glass. The pool reflects roof and leaves but is repeatedly broken by silt trickles.
+- **Interior:** a broken-shutter entry into a mostly empty room. The sloping desk, register, and broken window grid are the composition. The first bright scrape in dust from moving the desk must be obvious.
+- **Lighting:** one strong rectangular window beam with the rest of the interior falling into calm mid-gray/black.
+- **Evidence staging:** the register should lie where the light catches only part of the ink until the player moves the desk.
+- **Transition image:** leaving the mill, the uphill path brightens and the forest thins toward an exposed ravine.
+
+### 7. Ravine → Clearing → Gate → City Reveal — exact visual target
+
+- **Ravine:** living branch overhead, rope tied around it with visible twists and knot wraps. The branch must bend under body weight; below, water/sky is so distant it is hard to read which.
+- **Clearing:** remove most near vertical trunks in one step. Present layered hills behind hills, each lighter and slower than the last. The path becomes a single dark stitch across open pale ground.
+- **Bell:** small wooden bell on a branch at the clearing edge; keep it humble and domestic against the huge view.
+- **Gate:** three substantial wooden/iron shafts embedded in an old frame. Grease, hand wear, and mechanical coupling should make the puzzle feel built for repeated use.
+- **City reveal:** the gate must not open onto a generic skyline. Upper floors emerge from fog while gullies still contain trees; fences and drains mingle with roots. Near tower faces are almost black, distant ones nearly white.
+- **Scale:** hold long enough to show that the city continues the same hills rather than replacing them.
+- **Transition image:** the last forest branches remain in the foreground while the first roof surfaces take over the route.
+
+### 8. Service Terrace / First Rooftops — exact visual target
+
+- **Composition:** the city begins above and below the player simultaneously. Lower stories vanish into fog, leaving roofs as islands with no visible streets connecting them.
+- **Foreground:** soot-dark masonry corner, broken balustrade, drainpipe, or parapet edge close enough to obscure a third of the view.
+- **Route:** abandoned service terrace with standing water, lowered ladder, rubbed door bolt, narrow roof passages.
+- **Middle planes:** chimney cages, aerials, water tanks, exposed wall remnants, cables crossing gaps and disappearing into fog.
+- **Far plane:** towers at three or more depths, with tops harder than bases. Do not draw a single skyline silhouette.
+- **Material cues:** soot, cracked render, rust streaks, wet grit, patched flashing, old hand-polished stone.
+- **Lighting:** broad overcast sky; the fog below should be brighter than rooftops so drops feel genuinely deep.
+- **Transition image:** climbing the first ladder should erase the forest road completely.
+
+### 9. Schoolroom / Rooftop Route — exact visual target
+
+- **Schoolroom:** rows of undersized desks, dark leak blooms in the ceiling, a map held flat by four bricks, cups of dead stems, half-erased blackboard. The room should feel abandoned abruptly rather than ruined theatrically.
+- **Window composition:** every important roof on the sister's route should be visible from this one room at different depth levels.
+- **Route map:** physically folded, broken along the repeated route line; charcoal path should correspond to landmarks visible through the window.
+- **Exterior continuation:** roof grit, broken nests, shallow tank reflections, exposed wallpaper on a vanished neighboring room, coping worn by hands.
+- **Scale:** inside, protagonist is large and boxed by child-sized furniture; outside, she becomes small against gaps and tower walls.
+- **Lighting:** soft rain light through broad windows. The map gets the brightest flat plane in the room.
+- **Transition image:** the first high gap should line up visually with the route mark just traced on the map.
+
+### 10. High Crossings / Rain Tank — exact visual target
+
+- **Composition:** rooftops become narrower and more exposed. Keep the player close to a wall while open courts drop away on the opposite side.
+- **Foreground:** rain-slick parapet or tank support legs crossing the frame; no decorative rails where the novella describes exposure.
+- **Water tank refuge:** the iron belly should dominate the upper frame, with hollow rain impacts implied by visible vibration/rivulets. Its ladder ends at a secured hatch.
+- **Opposite signal:** place the flashing window across a narrow court so the destination looks close while the actual route climbs and snakes away.
+- **Street reveal:** when fog opens, show one overturned cart, shuttered shops, and pale sheet material moving in water far below. It should disappear before the player can fully study it.
+- **Rain:** use diagonal sheets near camera, vertical streaks farther away, and bright beads on rails. Do not reduce building edge sharpness.
+- **Transition image:** the player arrives at the flashing window only to see a mechanically empty room beyond the glass.
+
+### 11. Signal Room / Western Relay — exact visual target
+
+- **Signal room:** almost bare. Chair centered toward the window, wall-mounted lamp, toothed wheel, metal tongue, hook with no coat. Empty floor area is important.
+- **Mechanism:** the flash source must be visibly autonomous once inspected—wheel teeth, pivot, oil bead, tongue lifting and falling.
+- **Evidence:** watch log lies within reach of the empty chair; duplicated signature blots should be inspectable without floating overlays.
+- **Lighting:** each flash briefly whitens chair, floor, and the protagonist's handprint on outer glass. Between flashes the room falls back to gray.
+- **Relay exterior:** after leaving, reveal westward roofs stepping down into warehouses, fenced yards, sidings, and flatter country.
+- **Relay cabinet:** scorched crossover, blackened wire path, three contact banks. When solved, a row of lower windows should illuminate in perspective.
+- **Transition image:** those newly lit windows lead the eye out of the vertical city toward the flat pump country.
+
+### 12. Pumpjack Plain — exact visual target
+
+- **Composition:** radically widen the horizon after the city. Pumpjacks occupy different distances and orientations but remain completely stopped.
+- **Foreground:** one close service lamp, low grass, or pipe riser; avoid tall occluders so exposure becomes the dominant feeling.
+- **Playable plane:** compacted service road with puddled tire ruts and sparse grass invading concrete pads.
+- **Middle planes:** pumpjacks with lowered horseheads, counterweights frozen at different arcs, small sheds with faintly burning lamps.
+- **Far plane:** low weathered ridges and storage tanks; the city survives only as pale thin uprights on the eastern rim.
+- **Materials:** peeling paint, bright polished slots where rods once moved, rust scales, cold iron, wind-flattened grass.
+- **Lighting:** high flat daylight with hard small metal highlights. Service lamps barely stain the ground yellow/white.
+- **Transition image:** route lines and pipes begin converging toward the tank basin.
+
+### 13. Tank Basin / Service Cut — exact visual target
+
+- **Composition:** tanks should feel enormous because the route passes close to their curved walls. Use the curvature to hide and reveal the next yard.
+- **Foreground:** tank wall, pipe elbow, or fence mesh may perform slow wipes across the scene.
+- **Ground:** terraced basin with eroded channels, oily puddles, washed culverts, buried pipe humps, older foundations trapped inside newer fences.
+- **Tank detail:** vertical rust tears, seam bands, ladder shadows, pooled water at the concrete ring, thin iridescent-looking dither pattern in puddles without implying color.
+- **Service cut:** earth rises above the protagonist's head; exposed roots hang from clay/stone layers and pump heads alone break the skyline.
+- **Culvert obstacle:** round stone lodged in the broken channel, scraped bank foothold, visible slight shift under weight.
+- **Weather:** grit should travel along the curve of a tank before escaping across the yard.
+- **Transition image:** the service cut funnels directly toward the small dark stove shed.
+
+### 14. Stove Shed — exact visual target
+
+- **Composition:** narrow rectangle with the stove slightly off-center. The room should feel arranged by people who expected another cold night.
+- **Walls:** soot silhouettes where coats used to hang; one bench polished smooth at the edge; a few bolt/rivet lines, no decorative clutter.
+- **Wood pile:** sorted by thickness with shaved kindling on top. This precise order should be one of the most visually legible details.
+- **Stove:** cold iron, openable door, pipe entering wall, cloth-wrapped wire binding at the loose section.
+- **Micro-details:** hard gray ash crust, one charred piece holding its shape, curled potato skin, shallow dish of rainwater whose rings react to knocks.
+- **Floor:** iron-joist boards and the recessed hatch catch under the bench; it should look physically inaccessible rather than game-locked.
+- **Lighting:** doorway crack and one wall gap; most edges are black-on-midgray.
+- **Transition image:** leaving the door open produces a bright vertical slit behind the player as the route returns outdoors.
+
+### 15. Distribution Station / Eighth Line — exact visual target
+
+- **Composition:** low open station rather than another interior room. Awning, tied empty cans, service wall, three measuring vessels, and the rail embankment beyond should all fit in one readable composition.
+- **Evidence:** two lists rolled inside the last can; when opened, the blank eighth line and the already-entered initial should be physically side by side.
+- **Vessels:** clearly different capacities—8, 5, and 3—through height/diameter, not just labels. Pipes/taps should make transfer paths obvious.
+- **Foreground:** low wall or can row, never enough to hide the puzzle.
+- **Background:** pump field recedes behind; first rail embankment cuts cleanly across the horizon.
+- **Lighting:** late light increasingly makes service lamps meaningful.
+- **Solve image:** when four measures balance in the two larger vessels, lamp brightness steadies progressively down the line.
+- **Transition image:** the player leaves before the lamps can become dominant; the railway takes over the horizon.
+
+### 16. Carriage Night → Rail Yard Dawn — exact visual target
+
+- **Night carriage:** wheel-less passenger body on timber blocks beside the track. Broken window entry, wet stain on one bench, fallen ceiling lining exposing ribs like an inverted hull, split hanging strap.
+- **Foreground:** seat back and window frame form a quiet enclosure; boots under the bench point into the aisle.
+- **Outside at night:** signal gantry divides the sky, but no lights or motion imply a train.
+- **Dawn reveal:** clear air removes fog-based depth and replaces it with long linear perspective: three cuttings, goods shed, lifted siding traced by birches, intact locomotive on a parallel track.
+- **Landslide:** far cutting buried by a huge mixed mass of rock, soil, roots, and whole trees; rails visibly enter and do not emerge.
+- **Locomotive:** complete enough to feel wrong in its stillness—connecting rods, couplings, forward lamp, plant growing onto the cab step.
+- **Transition image:** the station building becomes the next dark mass beside the otherwise open rail geometry.
+
+### 17. Station / HOME Ticket — exact visual target
+
+- **Composition:** benches face a window/door opening onto the blocked tracks. Keep the waiting-room geometry plain and functional.
+- **Focal object:** ticket marked HOME pinned to a noticeboard at eye level; its punched hole and fold should read on close inspection.
+- **Evidence cluster:** cancellation book on a desk/shelf below, weather warning above or beside it so the player can visually compare all three dates.
+- **Background:** through openings, the landslide remains present as a white scrape and angled trees; never let the room isolate the story from the physical cause.
+- **Benches:** enough visible length for seven people plus an obvious extra small space, without literal ghost silhouettes.
+- **Lighting:** clear morning side light, long static shadow lines, no fog.
+- **Transition image:** exiting west frames the broken trestle and dangling service rope.
+
+### 18. Broken Trestle / Signal Cabin — exact visual target
+
+- **Trestle:** supported section ends abruptly in open air. Sleepers overhead while the protagonist traverses lower bracing; wet bolts and repeated steel triangles create the visual rhythm.
+- **Depth:** broken timbers and ditch below, intact rails above, service rope on the far gantry. Keep the gap visibly open throughout traversal.
+- **Cloth:** small wool strip wound around a splintered brace, integrated into the crossing route rather than centered like a collectible.
+- **Signal cabin:** narrow elevated room with windows down all three routes. Lever bank forms the main foreground silhouette.
+- **Details:** polished lever handles, numbered brass ovals, corrected route map, child’s five-legged dog wrapped around one handle.
+- **Lighting:** dry, pale daylight; cabin interior slightly darker so exterior track lines remain readable through glass.
+- **Transition image:** from the cabin, the player should first see the three wagons blocking the western service road.
+
+### 19. Shunting Yard → Marsh Transition — exact visual target
+
+- **Rail puzzle:** three unmistakably different bodies—tank wagon, short passenger body, heavy brake truck with large rusted handwheel. Sidings and loop geometry must be visible enough to plan movement spatially.
+- **Ground:** real ballast/embankment, weeds between sleepers, buffers anchored into earth. No floating rail segments.
+- **Mass:** wagons should visually compress springs/couplers or rock slightly when stopped, reinforcing weight.
+- **Background:** locomotive and signal cabin remain behind at first; then sheds thin out.
+- **Transition:** ballast gradually mixes with grass, then reeds. Rail drainage becomes open water. Telegraph/gantry verticals give way to willow/dead-trunk verticals.
+- **Water:** first still pools should reflect the evening sky before the player reaches the actual ferry.
+- **Final image:** rails disappear under vegetation while the channel curve becomes the new directional line.
+
+### 20. Ferry Bank / First Boat Crossing — exact visual target
+
+- **Opening composition:** view through dense reeds to the far-bank boat. Canvas shoulder-shape and pale oar should genuinely read as a seated human for a moment.
+- **Near bank:** mud lip, mooring post, rope entering black water. Pulling the rope draws the boat through its own reflection.
+- **Boat:** broad enough for several people and baggage; pale wet seating arcs, repaired plank, cup under middle seat, canvas over stern.
+- **Water:** very dark close to the hull with pale sky reflections farther out. Each oar stroke briefly creates a smooth oval before reflection closes.
+- **Foreground:** reeds cross both player and reflected boat; some nearer stems nearly black, farther ones gray.
+- **Far bank:** low root overhang with hanging fringe and the roofless shelter behind it.
+- **Motion:** hull settles slowly under weight. Camera motion follows water and hull only.
+- **Transition image:** bow touches the far bank almost silently, with the roofless walls framing the next scene.
+
+### 21. Raised Marsh Path — exact visual target
+
+- **Composition:** narrow raised bank through an environment with no single reliable edge. Water, sedge, mud, and reflected sky should continuously swap visual roles.
+- **Foreground:** willow trunks/branches and reed clusters make intermittent observer occlusion.
+- **Playable surface:** compacted path with roots where firm, soft cut-throughs where water has eaten it away.
+- **Left side:** old reeds thatch a ditch; **right side:** sedge transitions to mud, shallow transparent water, then dark channel.
+- **Middle plane:** rafts of twigs at willow feet, weathered fence posts, small islands, dead trunks doubled by reflection.
+- **Far plane:** pale escarpment/quarry only distinguishable once a dark seam is visible across it.
+- **Lighting:** passing cloud should visibly convert clear shallows into mirror without altering geometry.
+- **Transition image:** the awning and waiting bench appear as the first deliberately constructed human rest point in the marsh.
+
+### 22. Waiting Awning — exact visual target
+
+- **Composition:** long bench under a simple cloth/wood awning, one chair sunk slightly into ground, water channel beyond. The space should feel made for people to recover, not like a checkpoint kiosk.
+- **Evidence of bodies:** walking-stick groove worn round at one end; three sets of shoe scuffs, smallest ending halfway down; sackcloth cushion.
+- **Rope/post:** thick rope knot resting against post, oval wear mark from repeated load, cut end patiently whipped with thread.
+- **Bell:** five water marks on bank board, bell rope beside them, extra low loop for a child.
+- **Background:** quiet channel, reeds, a few distant birds; no dramatic landmark.
+- **Lighting:** overcast, low contrast, but edges remain sharp.
+- **Bell reaction:** one ripple/bird/reed response should travel away from the player and die without return.
+- **Transition image:** upper lock masonry appears beyond the flat marsh as the first strong geometric structure ahead.
+
+### 23. Lock Chambers — exact visual target
+
+- **Composition:** two adjacent rectangular chambers with clearly different levels and a ferry cradle between them. The player should understand vertical water movement from the picture alone.
+- **Walls:** three historical water bands—powdery upper stone, black wet band, green threads below. Ladder crosses all three.
+- **Mechanism:** old blue-painted pump with surviving paint only in protected corners; middle gate thick enough to look heavy.
+- **Boat/cradle:** small, workmanlike, visibly floating rather than resting on a hidden platform.
+- **Background:** flat marsh stays low beyond walls; distant quarry remains a pale mass.
+- **Motion:** as levels equalize, reflections rise/fall against fixed masonry lines. When equal, violence disappears and water becomes nearly still.
+- **Arrival image:** upper wall sinks relative to the player until grass tips and raised path appear above it.
+- **Transition image:** from the upper landing, hold a backward vista over every marsh set already crossed before turning toward quarry.
+
+### 24. Upper Marsh / Quarry Reveal — exact visual target
+
+- **Backward view:** roofless shelter, awning, tiny bank strip, lock chambers, and the channel should all be visible at once but reduced by distance.
+- **Foreground:** drying mud on the player/path edge and a few high grasses; avoid dense reeds now that elevation has increased.
+- **Forward view:** quarry first reads almost like bright cloud because its stone is pale. A dark seam and terrace shadow finally disclose it as missing hillside.
+- **Composition:** the route should climb gradually so the quarry occupies more vertical screen space without a hard reveal cut.
+- **Atmosphere:** clearer than marsh; less reflection, more dry air and exposed mineral surfaces.
+- **Scale:** by the end, remaining trees on the quarry rim should look absurdly small relative to the cut.
+- **Transition image:** the first white spoil fan enters the playable foreground.
+
+### 25. Quarry Floor — exact visual target
+
+- **Composition:** one side of a hill is simply absent. Use stepped white terraces across most of the background, each with a thin black undershadow.
+- **Foreground:** angular chips, powder, discarded chisel, one larger weathered stone. Keep enough open ground that the protagonist remains readable.
+- **Middle plane:** spoil fans, standing water along a bench tilt, seepage line turning pale stone dark, diagonal ramp climbing the cut.
+- **Far/high plane:** crane on upper works with cable dropping across multiple terraces; a few original ridge trees cling above exposed roots.
+- **Material detail:** drill holes, wedge marks, fractured beds, tiny snail shell, chips sorted by wind.
+- **Stone obstacle:** barrel-sized rock in a pre-cut groove should visibly belong to the terrain and become a plausible step only after dropping into the hollow.
+- **Dust:** broad sheet movement follows gusts and ledges.
+- **Transition image:** ladder recesses and small bootprints draw the eye upward.
+
+### 26. Ladder / Ledge Ascent — exact visual target
+
+- **Composition:** repeated changes between close stone face and sudden high views. Do not show the entire climb at once.
+- **Playable wall:** irregular white/gray cut rock with iron rungs set at inconvenient tall-person intervals.
+- **Human traces:** three small bootprints in old lime among adult tracks; cloth strip tied at child shoulder height as a makeshift edge boundary.
+- **Foreground:** occasional rock shoulder crosses the observer plane; no arbitrary black vignette.
+- **Background vistas:** marsh becomes silver strip; oil tanks become dull coins; railway is only a line. The player should recognize distance through transformed scale.
+- **Lighting:** cloud changes should reveal stone grain without flattening terrace shadows.
+- **Wind:** powder lifts from specific shelves before larger gusts arrive.
+- **Transition image:** upper works, hoist frame, and hanging cage become the first moving-capable machinery since the railway.
+
+### 27. Hoist / Shaft Descent — exact visual target
+
+- **Upper works:** cage over black shaft, pulley frame, two unequal balance arms, brake drum, six identical iron weights. Nothing should be decorative.
+- **Handle:** split wood bound with the sister's scarf; this should be the warmest-textured object in an otherwise mineral/metal composition.
+- **Evidence:** torn note trapped under loose cage floorboard, visible only after entering/looking down.
+- **Shaft:** tight vertical slice of damp stone. Nearby wall moves past the player; dark seams, fine roots, water tracks, and one tiny fern provide scale.
+- **Cage:** rough replacement floorboard, open gaps to darkness, brake cord beside frame. Slight tilt is physical, not a camera effect.
+- **Lighting:** bright quarry square above shrinks steadily; lower gallery is a dim horizontal opening.
+- **Transition image:** on exit, the quarry becomes a bright doorway behind while green ferns and broken glazing appear ahead.
+
+### 28. Lower Gallery / Glasshouse Reveal — exact visual target
+
+- **Opening:** begin with damp narrow gallery, chisel marks, thread of water on floor reflecting the distant quarry entrance.
+- **Color-value shift:** introduce darker vegetation and warmer mid-grays gradually, not an instant scene palette change.
+- **First glasshouse forms:** curved iron ribs step down sheltered terraces; many panes missing, remaining panes catching pale sky in small angular reflections.
+- **Foreground:** ferns and thorny growth push into the corridor before the player fully enters the gardens.
+- **Middle plane:** broken greenhouse frames overlap one another, creating repeating arches that replace quarry terraces as the depth motif.
+- **Atmosphere:** a faint suggestion of warm air/condensation near the first doorway.
+- **Transition image:** the player parts thorns and finds visibly living beds inside.
+
+### 29. Living Glasshouse Beds — exact visual target
+
+- **Composition:** three planted rows stepping with hillside beneath curved ribs. This is abundant but maintained life inside ruin, not jungle.
+- **Foreground:** a few broad leaves and rib members cross the observer plane; keep the player visible through gaps.
+- **Beds:** warm dark soil, shallow watering channels, strings over seedlings, cut-back ivy, broken pot sheltering a new shoot.
+- **Work area:** watering can on bricks, basin with mineral mound from repeated drips, cups, low pipe sweating where warm return enters cooler air.
+- **Structural detail:** surviving panes, empty glazing clips, limewashed brick green at the foot, gutter damage, felt-wrapped pipe joints.
+- **Micro-motion:** one drop at a time, leaf rebound after touch, condensation growth/sliding, slight warm-air leaf turn.
+- **Lighting:** low sunlight threads through broken panes in narrow bars; soil beneath benches remains black.
+- **Transition image:** seven sleeping places appear between beds, shifting the scene from horticulture to habitation.
+
+### 30. Sleeping House / Interior Lock — exact visual target
+
+- **Composition:** seven straw pallets raised just off warm soil; sacking curtain creates an imperfect private room at one side.
+- **Human objects:** basin, stiff towel, comb missing teeth, one crooked weighted curtain corner. These must feel used and specific.
+- **Door:** heavy iron lock box on the inside, missing key, wedge currently holding the door open. The floor shows a broad repeated scrape through dirt.
+- **Lighting:** door opening provides a bright vertical band across nearest leaves and pallet. As it closes, that band physically narrows and plant highlights disappear.
+- **Temperature cue:** visible condensation/pipe sweat and the contrast between warm interior plant movement and cold exterior stillness.
+- **Evidence:** keeper inventory on workbench rather than floating near the lock.
+- **Transition image:** after the player restores the wedge, the view settles on rows of seedlings and their count slates.
+
+### 31. Glasshouse Night → Morning Evidence — exact visual target
+
+- **Night composition:** protagonist lying low among straw; broken greenhouse ribs silhouette against one patch of sky. No large landscape view.
+- **Motion:** pipe water murmurs through tiny irregular surface cues; cooling glass makes isolated droplet shifts; one leaf turns in warm rising air.
+- **Lighting:** almost all illumination comes from residual sky through broken roof. Keep the sleeping area dark enough that small reflective glass edges matter.
+- **Morning:** long pale bars cut across beds; lower panes are opaque with condensation.
+- **Evidence cluster:** two count sheets at the clear pane; jointed-arm maintenance tag in drawer; child's lantern drawing beside the older printed card.
+- **Drawing detail:** child version includes uneven figure spacing, rubbed/redrawn person, extra fingers, smallest figure leaning against the woman. Printed card is unnaturally regular.
+- **Beat:** identical correction marks should align physically when held to light.
+- **Transition image:** the child's lantern rays guide the eye toward the mirror mechanism at the rear partition.
+
+### 32. Mirror Partition / Exit — exact visual target
+
+- **Composition:** glass partition blocks the route, lower receiver beaded with moisture, upper shutter/vent above head height.
+- **Mirrors:** tarnished around edges, mounted on practical brackets, visibly redirecting one coherent beam rather than magical light.
+- **Beam:** use sharp bright core with dithered dust/moisture halo. A falling drop crossing it should flash as a tiny event.
+- **Condensation:** clearing begins near airflow and spreads irregularly, revealing the route beyond in fragments before becoming readable.
+- **Plants:** first row bends slightly as cold air enters; the environmental response confirms the vent changed something.
+- **Background beyond glass:** transition from curved ribs/foliage to harder service pavement and colder open terrain.
+- **Transition image:** as the lower latch opens, the first distant dam structures should remain partly obscured so sound/scale arrives before full sight.
+
+### 33. Dam Reveal / Turbine Shed — exact visual target
+
+- **Approach:** before the dam appears, puddles and railings should visibly tremble; spray beads exist where there is no rain.
+- **Reveal composition:** wall spans nearly the entire valley width. Four broad spill sheets descend from near the crown. Reservoir is only a pale strip above; basin and valley continue below.
+- **Scale references:** ladders and galleries should be tiny but sharp; far mountains stack behind with one snow notch. This prevents the dam from reading as a flat backdrop.
+- **Water:** each spill sheet has a hard top edge, thick corded middle texture, and diffuse spray only at its foot.
+- **Foreground:** pitted parapet pebble/rail and occasional wet masonry edge.
+- **Turbine shed:** vibrating interior, lamp over gauge with mica replacement, scratched duplicate needle lines, diagram showing feed splitting to lamps and recorder.
+- **Lighting:** white water is not pure blank white; preserve internal ridges so movement reads on e-paper.
+- **Transition image:** service route leaves the shed and begins climbing along rock beside the reservoir.
+
+### 34. Service Ledges — exact visual target
+
+- **Composition:** alternate between tight rock-and-masonry corridors and sudden reservoir exposures. Buttresses should repeatedly erase half the dam and then reveal it.
+- **Playable route:** wet stone ledges, small masonry bridges, ladders bolted into walls, overhangs that visibly shelter sections from rain/spray.
+- **Organic detail:** mineral teeth under ledges, ferns in seams, tiny round leaves, one shrub rooted sideways above the path.
+- **Depth:** reservoir surface far below, opposite wall/landing small enough to create anxiety about the coming boat.
+- **Foreground:** near buttress or rock overhang may occlude the player momentarily, but contact edges remain readable.
+- **Lighting:** moving spray veil changes contrast only over distant water; rock near the player stays crisp.
+- **Transition image:** descending steps reveal the narrow maintenance boat chained at the lower landing.
+
+### 35. Reservoir Crossing — exact visual target
+
+- **Boat:** narrow dam-worker craft with dark repair plank, split gunwale bound in cloth-covered wire, single pair of heavy oars, shallow center.
+- **Opening scale:** once away from the wall, tiny doorways and ladders shrink visibly above the player; the wall seems to rise because perspective changes.
+- **Water:** large slow ridges from spill turbulence pass under the boat after a delay. The surface should carry both broad reflections and local dark gust patches.
+- **Spillway:** nearest sheet resolves into thick translucent-looking grayscale cords before exploding into spray. A leaf/bark fragment vanishing into it sells force.
+- **Far landing:** partially hidden by buttress, appears/disappears behind wave motion. Keep it small but precise.
+- **Gust event:** darken/roughen one patch of water, yaw the hull, let one wave fold over the gunwale, move the bag physically against the ankle.
+- **No shake:** the dam remains massive/stable while the tiny boat misbehaves.
+- **Transition image:** chained boat continues rising/falling beneath the far steps while the player climbs away.
+
+### 36. Far Valve / Storm Galleries — exact visual target
+
+- **Valve landing:** scraped fingers, wet clothing, notebook spread under shelter, broad cold pipe entering the next chamber. The route label should be physically obscured by lime until cleaned.
+- **Valve chamber:** large wheel with sister note tied to it, maintenance box holding keeper account/request. Make the two documents share the same physical surface when compared.
+- **Storm build:** first bright seam in cloud, then sharply revealed distant gullies, then thunder/rain. Do not gray out the world uniformly.
+- **Gallery climb:** ladders with small water pools at welds, open wall faces where spray blows upward, sheltered overhang sections with calmer surfaces.
+- **Rope span:** doubled knot around iron eye; worn pale fibers where hands pass.
+- **Lightning beat:** single frame/update of hard geometry and protagonist shadow on the wall. No repeated strobe.
+- **Transition image:** metal recorder cabinet appears in a relatively dry recess after the storm's visual maximum.
+
+### 37. Recorder Gallery / Distributor / Pass Exit — exact visual target
+
+- **Recorder recess:** dry rubber-sealed cabinet amid wet galleries. Manual pages should look almost new because they are protected.
+- **Diagram:** jointed writing arm, master plate, selector, two interlocked faces. Keep it legible as an engineering drawing integrated into the world.
+- **Distributor:** pipe network and gauge become the dominant geometry. Cold return should visibly carry condensation; as it primes, that wet line retreats down the pipe.
+- **Mechanical response:** deep fill event implied through pipe vibration and one relay beginning to click behind wall.
+- **Lighting:** after storm, air is colder/clearer. Reservoir and opposite landing can be seen farther than before.
+- **Exit:** gallery gives way to climbing path. The dam falls away behind while the first mast is a tiny dark pin against a narrow pale sky opening.
+- **Transition image:** the mast becomes the sole vertical landmark as industrial masonry ends.
+
+### 38. Maintenance Shelter / Snow Ascent — exact visual target
+
+- **Shelter interior:** wall-fixed bunk, washbasin with thin ice, sparse hooks/shelf. Damp clothing should be darker than everything else; stockings on hands are visually awkward and human.
+- **Outside:** new snow lies selectively—grass still pierces thin cover, hollows look suspiciously smooth, overturned stones show dark undersides.
+- **Vegetation gradient:** normal trees → shortened wind-cut clumps → crouched shrubs below boot height. Let this change occur over travel distance.
+- **Ravine line:** one hanging crossing line over a narrow dark cut; keep it functional rather than spectacular.
+- **Rock:** silver weathered faces with fresh snow only on upward surfaces.
+- **Sky:** occupies progressively more of the frame as the climb continues.
+- **Backward view:** dam is eventually hidden under cloud while its sound persists.
+- **Transition image:** larger scarf fragment tied beneath a guy wire marks the next authored stop.
+
+### 39. Scarf Post Panorama / Sleet Shelter — exact visual target
+
+- **Scarf post:** weathered shelter post, old guy wire, large scarf fragment with frayed outer edge but tight weave where protected. Tracing sits beneath metal cap.
+- **Panorama:** one of the game's widest coherent views. Show descending water system: high streams/ridges → dam cloud → gardens/quarry area → marsh flats → distant industrial/city uprights where possible.
+- **Foreground:** exposed ledge and protagonist knee/hand on rock during gust; no decorative vegetation.
+- **Weather contraction:** sleet first as discrete grains, then diagonal density that successively erases far, middle, then near planes until only next post and local rock remain.
+- **Shelter:** rock-shoulder lee, slab roof, black gaps where stones shifted, narrow shelf with papers weighted by flat stone, old lamp burn on floor.
+- **Lighting:** after sleet stops, roof seams admit pale uncertain light.
+- **Transition image:** higher ridge reappears, then three flashes puncture the newly opened gray distance.
+
+### 40. False Signal / Isolator / Chime Crossing / Summit — exact visual target
+
+- **Initial run:** signal mast/ridge remains visually fixed ahead while near rocks and posts accelerate past, making urgency readable without extreme camera effects.
+- **Warning post:** wet rotating tin with sister's scratched warning on one face and return-circuit drawing on the other. It must visibly catch the distant flash at the same interval.
+- **Cable:** traceable line along path with fresh repair bindings, leading to an ice-stiff isolator housing.
+- **Isolator:** small silver contact gap becomes the entire focus after disconnection. The world should stay still long enough for absence of the next flash to become visible.
+- **Chime stand:** four covered chimes/rods matching post heights; mechanical crossing latch releases at distance.
+- **Crossing:** sleet-broken footprints on boards, dark lamp glass behind, no figure-shaped staging near the mast.
+- **Summit:** quiet, sparse, cloud bands over country; one tiny brightness appears and disappears without being emphasized as a person.
+- **Transition image:** first roofs of the hillside settlement appear below a single mast on the far side.
+
+### 41. Settlement Streets / Mast Terrace — exact visual target
+
+- **Composition:** roofs and doors sit at different vertical levels because the settlement is built into the hillside. A roof edge may be nearly level with another house's doorway.
+- **Route:** steps turning between retaining walls, arches, cisterns, roof-water gutters, narrow alleys that repeatedly conceal the next street.
+- **Foreground:** rough whitewashed wall corners, dark arches, wash lines, low parapets. Use real occlusion rather than fog.
+- **Human traces:** freshly turned small plot beside dead vine, swept doorway beside leaf-drifted one, bowl weighted upside down, boot scraper with small mud heap, clothespins left on line.
+- **Windows:** some lit/condensed, but reflections and channels through moisture prevent certainty about occupancy.
+- **Tower:** darker, evenly cut stone above rough houses; mast and guy wires always provide orientation.
+- **Mast terrace:** three lamps and cable returns visibly enter houses, including the first house the player knocked on.
+- **Transition image:** tower door opens onto the worn hollow-centered stair.
+
+### 42. Tower Traversal — exact visual target
+
+- **Lower stair:** cable clipped along one wall, damp plaster shapes on the other, step centers physically worn lower by feet.
+- **Hook landing:** seven hooks in a row and an eighth added at a different height, white chips/pale wall square below. Bench beneath them should allow a quiet pause.
+- **Channel gallery:** narrow dark water separating two tower portions; service boat simple and small. The player's steadier handling is the visual point.
+- **Older tower:** thicker walls, shoulder-width windows, repeated movement through narrow bright strips and dark stone.
+- **Evidence:** radio card under brass clip by final stair; service record beneath it. Keep both physically mundane.
+- **Scale:** after huge outdoor chapters, everything here is human-sized and close enough to touch.
+- **Transition image:** the top room opens with almost no spectacle—just table, glass, paper, and brass arm.
+
+### 43. Cabinet Choice / Original / Far Stair — exact visual target
+
+- **Room:** modest rectangular chamber. One broad settlement window, no chairs, heavy bolted table, worn mat with two foot hollows. The lack of theatrical machinery is essential.
+- **Cabinet:** laminated glass case, pen suspended just above paper, two brass joints, ink bead at nib, rear shutter exposing only the edge of sealed master plate.
+- **Controls:** black and white handles share one slotted plate. Their mechanical interlock should be visible enough to understand that one face closes the other.
+- **Glass history:** fingerprints low down, wiped patch at face height, reflections of protagonist/window moving across the pen and page.
+- **Evidence floor:** all journey papers physically fan across boards—register, radio card, rations, ferry sheets, quarry notes, garden counts, drawings, dog. Leave walking gaps increasingly scarce.
+- **Black-handle result:** settlement lamps go dark in groups; protagonist reflection vanishes from glass; master shutter slams and original lifts. Pantry lamp then produces a small warm-white island against otherwise dark room.
+- **Original:** day-one seal crossing paper and metal, construction lines under ink, backward correction visibly part of the same old sheet.
+- **Transition image:** released passage beyond cabinet is darker than the room and leads downward away from all visible signal wiring.
+
+### 44. Unwired Street / Children's Shoes / Final Door — exact visual target
+
+- **Yard:** narrow paving stones with grass between them, water barrel under broken spout, chair upside down to keep seat dry, blank wall toward tower. The scene should look almost aggressively ordinary.
+- **Passage:** low opening into a street the player could not see from above. Put pantry lamp on ground briefly so its shadow makes the chair appear to move; then reveal the illusion plainly.
+- **Street:** settled old paving with wandering gutter, low houses, one tree visible at a parapet gap, roofs hiding most of the tower behind.
+- **Critical absence:** no signal wires cross this street. No lamps blink in patterns. No authored beacon points toward the objective.
+- **Shoes:** two small shoes at one dark doorstep, laces loosened to the lowest eyelets, mud in seams, uppers wiped clean, damp rag beside the second shoe's recent print.
+- **Door:** peeling paint at latch, loose knot in wood pressed back from inside, no note, symbol, socket, light, or clue marker.
+- **Lighting:** pantry lamp illuminates shoes, coat hem, worn latch, and only the lowest part of the door. Above that, the door disappears naturally into darkness.
+- **Final composition:** after the unpatterned knock, keep protagonist's loose hand near the wood and the two upright shoes inside the lamp pool. Do not pan upward, reveal a silhouette, pulse the exposure, or imply an answer. The only visible motion may be the small water drop into the barrel or the lamp flame settling.
+
+---
+
 ## Global pacing curve
 
 Most ordinary travel should sit at roughly **0.72–0.85× natural walking speed**. The game should not feel like a speed-run between narrative objects.
