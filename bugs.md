@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 208. Driver Manager destroys the last good catalog before a refresh succeeds
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260930-0324](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260930-0324)
+
+- **Affected code:** `src/native/NativeDriverManagerBridge.cpp`, `catalogRefresh()`, with the canonical/aggregate/legacy catalog loaders.
+- **Trigger / reproduction:** Successfully load a Driver Manager catalog, then trigger another catalog refresh while saved Wi-Fi is temporarily unavailable, the release index is unreachable/malformed, or all catalog fallbacks fail.
+- **Observed / logically demonstrated failure:** `catalogRefresh()` calls `catalog.clear()` before `connectSavedWifi()`. If connection fails it returns `false` with the previously valid live catalog already erased. If canonical discovery fails, the function explicitly swaps the catalog with an empty vector before aggregate discovery and again before legacy discovery. The legacy loader also appends directly to the global vector, so a failed fallback can leave a partial catalog even though refresh reports failure.
+- **Likely root cause:** Refresh mutates the process-global catalog while the replacement is still being acquired and validated instead of staging the candidate catalog transactionally.
+- **Impact:** A transient network/catalog fault can turn a working Driver Manager session into **no drivers available** (or a partial legacy list) until a later refresh succeeds, discarding useful last-known-good discovery state even though the API reported that the refresh failed.
+- **Repair direction:** Have every discovery path build a temporary vector and only swap it into `catalog` after the selected refresh path succeeds completely. On failure preserve the prior catalog unchanged. Add regressions for connect failure, malformed canonical/aggregate responses, and a legacy scan that accepts some candidates before a later rejection.
+
+### 209. Package Manager publishes a partial installed-package inventory after directory scan failures
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260930-0324](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260930-0324)
+
+- **Affected code:** `src/native/NativePackageManagerBridge.cpp`, `refreshInstalled()` / `clearInstalledCache()`; user-visible consumption in `Apps/package_manager.c::refresh()`.
+- **Trigger / reproduction:** Start with valid managed packages under `/Apps`, `/Drivers`, `/Services`, or `/Providers`, then inject a transient SD fault so one root cannot be opened or `openNextFile()` fails partway through enumeration.
+- **Observed / logically demonstrated failure:** `refreshInstalled()` clears the live installed-package cache before scanning. A root that cannot be opened is silently skipped with `continue`, and any invalid result from `openNextFile()` is treated as normal end-of-directory. Directory/entry close results are also ignored. The function then returns `true` and exposes whatever prefix happened to be collected through `installedCount()` / `installedGet()`. The Package Manager UI trusts that success and renders the incomplete inventory.
+- **Likely root cause:** The inventory is rebuilt destructively in global state and the enumeration API's error/EOF cases are collapsed into successful completion.
+- **Impact:** Transient SD errors can make installed packages disappear from Package Manager or produce a false **No managed packages installed** view even though their package generations remain on disk. Visibility also becomes dependent on where the fault occurs in root/enumeration order.
+- **Repair direction:** Build into a temporary inventory/count, require every root scan and close to complete successfully, and atomically publish only after the full enumeration succeeds. Preserve the previous cache on failure and expose an explicit refresh error to the UI. Add fault-injected tests for root-open failure and mid-directory iteration failure after several valid entries.
+
+### 210. File Browser leaks an open USB file handle when a source file is larger than `size_t`
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260930-0324](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260930-0324)
+
+- **Affected code:** `Apps/file_browser.c`, `copy_usb_to_sd()`; USB storage ABI `file_open_read` / `file_close`.
+- **Trigger / reproduction:** Expose a USB storage file whose reported 64-bit size exceeds `SIZE_MAX` and copy it from USB to SD. This is especially relevant on ESP32-S3 where `size_t` is 32-bit while the volume API deliberately reports file size through `uint64_t`.
+- **Observed / logically demonstrated failure:** `copy_usb_to_sd()` first calls `file_open_read(..., &source_size)`. It then executes `if (!input || source_size > SIZE_MAX) return false;`. When the open succeeds but the size is too large, the function returns without calling `usb_volume->file_close()` on the non-null `input` handle. Other exits after a successful open do perform the close.
+- **Likely root cause:** The oversize guard is placed after resource acquisition but before the function's cleanup path.
+- **Impact:** Each attempted copy of an oversized USB file can leak a mass-storage file handle/provider resource. Repeated attempts can exhaust handles, retain volume state, or cause later USB file operations to fail until the app/provider is restarted.
+- **Repair direction:** Close every successfully acquired input handle on all exits, preferably through one cleanup path/RAII-style wrapper. Either reject >`SIZE_MAX` sources only after guaranteed cleanup or implement a 64-bit remaining-byte copy loop where the storage sink permits it. Add a mock-volume regression returning a valid handle plus `source_size > SIZE_MAX` and assert exactly one matching close occurs.
