@@ -40,6 +40,10 @@ int main(void){
   ht_render_test=i;unsigned mask=ht_render_test_mask();
   if(i==HT_TEST_BASE)assert(mask==0);
   else if(i==HT_TEST_ALL_FOUR)assert(mask==HT_OPT_SIMD_ALL);
+  else if(i==HT_TEST_STATIONARY)assert(mask==(HT_OPT_UPSCALE|HT_OPT_BLEND));
+  else if(i==HT_TEST_STATIONARY_ALL)assert(mask==HT_OPT_SIMD_ALL);
+  else if(i==HT_TEST_MOTION)assert(mask==(HT_OPT_UPSCALE|HT_OPT_BLEND|HT_OPT_VIGNETTE|HT_OPT_TILE_PLAN));
+  else if(i==HT_TEST_MOTION_ALL)assert(mask==(HT_OPT_SIMD_ALL|HT_OPT_VIGNETTE|HT_OPT_TILE_PLAN));
   else assert(mask && !(mask&(mask-1)));
   for(unsigned ready=0;ready<16;++ready){
    ht_simd_stage_ready=ready;
@@ -92,9 +96,14 @@ int main(void){
   for(unsigned i=0;i<HT_RECON_PIXELS;++i)ht_recon_scene[i]=(uint8_t)ht_hash(i);
   ht_render_test=HT_TEST_BASE;ht_composite_cached_ai(depth,offset,fx,fy);
   memcpy(want,ht_recon_scene,HT_RECON_PIXELS);
-  for(unsigned i=0;i<HT_RECON_PIXELS;++i)ht_recon_scene[i]=(uint8_t)ht_hash(i);
-  ht_render_test=HT_TEST_TILE_PLAN;ht_composite_cached_ai(depth,offset,fx,fy);
-  assert(!memcmp(want,ht_recon_scene,HT_RECON_PIXELS));
+  const unsigned planned_modes[]={HT_TEST_TILE_PLAN,HT_TEST_MOTION,HT_TEST_MOTION_ALL};
+  for(unsigned m=0;m<sizeof(planned_modes)/sizeof(planned_modes[0]);++m)
+   for(unsigned ready=0;ready<=HT_OPT_BLEND;ready+=HT_OPT_BLEND){
+    for(unsigned i=0;i<HT_RECON_PIXELS;++i)ht_recon_scene[i]=(uint8_t)ht_hash(i);
+    ht_simd_stage_ready=ready;ht_render_test=planned_modes[m];
+    ht_composite_cached_ai(depth,offset,fx,fy);
+    assert(!memcmp(want,ht_recon_scene,HT_RECON_PIXELS));
+   }
  }
  for(unsigned level=0;level<HT_LEVELS;++level)for(int view=0;view<3;++view){
   ht_bind(mem);ht.level=level;ht_spawn(true);ht.camera=view*733*256;ht.x=(view*733+190)*256;
@@ -108,5 +117,5 @@ int main(void){
   }
  }
  printf("Neural cache scene workload: %u/%u exact hits (reuse count, not an S3 timing result)\n",scene_hits,scene_queries);
- ht_workspace_attach(NULL);free(fast);free(want);free(mem);puts("Render tests: twenty modes (nineteen exact), exact math, all chapters and rolling 10-second FPS PASS");
+ ht_workspace_attach(NULL);free(fast);free(want);free(mem);puts("Render tests: 24 modes (23 exact), exact math, all chapters and rolling 10-second FPS PASS");
 }

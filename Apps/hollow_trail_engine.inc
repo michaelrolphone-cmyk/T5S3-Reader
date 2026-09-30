@@ -1158,6 +1158,9 @@ static bool ht_ai_rendering=true;
 static __attribute__((optimize("O3"))) void ht_composite_planned_ai(int depth,int offset,const uint16_t *weights,int fade) {
     struct ht_span {int x,count,column,slot;} spans[(4*HT_RECON_W+HT_TILE_W-1)/HT_TILE_W+1];
     const int border=HT_BORDER/4,height=(HT_SCENE_H-HT_BORDER/2+1)/2;
+    uint16_t k[16] __attribute__((aligned(16)));
+    bool fused=ht_expanded_active(HT_OPT_BLEND);
+    if(fused)for(int i=0;i<8;++i){k[i]=(uint16_t)fade;k[i+8]=256;}
     int used=0;
     for(int x=border;x<HT_RECON_W-border;) {
         int world=offset+4*x,key=ht_floor_div(world,HT_TILE_W),column=world-key*HT_TILE_W;
@@ -1173,7 +1176,18 @@ static __attribute__((optimize("O3"))) void ht_composite_planned_ai(int depth,in
             const uint8_t *near=ht_cached_near[depth][p->slot]+4*y*HT_TILE_W+p->column;
             const uint8_t *wide=ht_cached_wide[depth][p->slot]+4*y*HT_TILE_W+p->column;
             for(int i=0;i<p->count;++i) {
-                int x=p->x+i,radial=radials[x],v;
+                int x=p->x+i;
+                /* Same aligned destination and cache-row read bounds as the
+                 * unplanned SIMD compositor; scalar prefix/tail stay exact. */
+                if(fused && !(x&3)) {
+                    int available=ht_min(p->count-i,(HT_TILE_W-p->column-4*i-15)/4);
+                    unsigned blocks=available>0?(unsigned)available/8:0;
+                    if(blocks) {
+                        ht_blend_span(near+4*i,wide+4*i,radials+x,scene+x,k,blocks);
+                        i+=(int)blocks*8-1;continue;
+                    }
+                }
+                int radial=radials[x],v;
                 if(radial==0) v=near[4*i];
                 else if(radial==256) v=wide[4*i]*(256-fade)>>8;
                 else {
@@ -1190,7 +1204,7 @@ static __attribute__((optimize("O3"))) void ht_composite_planned_ai(int depth,in
 static __attribute__((optimize("O3"))) void ht_composite_cached_ai(int depth,int offset,int focus_x,int focus_y) {
     const uint16_t *weights=ht_focus_weights(focus_x,focus_y,4,HT_RECON_W,HT_RECON_H);
     const int fade=depth>=2?70:45;
-    if(ht_render_test==HT_TEST_TILE_PLAN) {
+    if(ht_render_test_mask()&HT_OPT_TILE_PLAN) {
         ht_composite_planned_ai(depth,offset,weights,fade);return;
     }
     uint16_t k[16] __attribute__((aligned(16)));
@@ -1469,6 +1483,7 @@ static void ht_character(int x,int feet,const ht_game *game) {
  * Apply once after all layers, with no multiply in the unshaded center. */
 static inline unsigned ht_div255(unsigned value) {return (value+1+(value>>8))>>8;}
 static void ht_vignette(void) {
+    const bool packed=(ht_render_test_mask()&HT_OPT_VIGNETTE)!=0;
     for(int y=0;y<HT_H;++y) {
         uint8_t *row=ht_scene+y*HT_W;
         int left=ht_visible_left[y],clear=ht_clear_left[y];
@@ -1476,7 +1491,7 @@ static void ht_vignette(void) {
         /* Symmetric curved fade; the untouched central span costs no work. */
         for(int x=left;x<clear;++x) {
             int alpha=ht_mask_alpha(x,y),right=HT_W-1-x;
-            if(ht_render_test==HT_TEST_VIGNETTE) {
+            if(packed) {
                 uint32_t lanes=(uint32_t)(255-row[x])|((uint32_t)(255-row[right])<<16);
                 lanes=lanes*(unsigned)alpha+0x007f007fu;
                 row[x]=(uint8_t)(255-ht_div255(lanes&65535u));
