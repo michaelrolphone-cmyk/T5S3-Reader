@@ -102,3 +102,10 @@ wrong-chip rejection and existing electrical fault/rollback cases.
 chip and clock ELFs with a mock I2C ELF and checks dependency lifetime and
 missing providers. Alternate-profile simulation is not hardware validation
 of any additional board.
+
+## External host power extension
+
+Power driver 0.1.6 and T5S3 profile 0.1.1 add an optional size-checked profile
+flag for direct external VBUS host operation. See [Qi USB host](QI_USB_HOST.md)
+for voltage admission, preserved charging, controller 0.1.19, lifecycle,
+serial handback and device-validation limits. Legacy profiles do not opt in.
