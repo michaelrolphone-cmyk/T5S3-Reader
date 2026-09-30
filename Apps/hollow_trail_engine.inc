@@ -524,7 +524,9 @@ static void ht_disk(uint8_t *b,int x,int y,int r,int c) {
     }
 }
 #include "hollow_trail_foliage.inc"
+#include "hollow_trail_organic_draw.inc"
 static void ht_tree(uint8_t *b,int x,int base,int height,int width,uint32_t seed,int c) {
+    if(ht_geometry_level==0) {ht_organic_tree(b,x,base,height,width,seed,c,true);return;}
     uint32_t h=ht_hash(seed);
     int lean=(int)(h%43)-21;
     int bend=(int)((h>>8)%19)-9;
@@ -1898,12 +1900,13 @@ static void ht_draw_evidence(const ht_game *game) {
         /* Finds are objects within the scene, never hovering clue diagrams. */
         int ink=ht_evidence_found(game,game->level*3u+(unsigned)item)?150:95;
         if(game->level==0 && item==0) {
-            ht_limb(ht_scene,x-6,y,x-9,y-48,7,4,255);
+            ht_organic_snag(ht_scene,x-6,y,46,7,813u,255);
             ht_limb(ht_scene,x-9,y-36,x+5,y-42,3,0,255);
             ht_limb(ht_scene,x-10,y-24,x+1,y-20,1,0,ink);
             ht_limb(ht_scene,x+1,y-20,x+4,y-13,1,0,ink);
         } else if((game->level==0 && item==2) || (game->level==8 && item==0)) {
-            ht_limb(ht_scene,x-10,y,x-12,y-35,3,2,255);
+            if(game->level==0)ht_organic_snag(ht_scene,x-10,y,33,3,871u,255);
+            else ht_limb(ht_scene,x-10,y,x-12,y-35,3,2,255);
             ht_limb(ht_scene,x-12,y-34,x+4,y-31,2,1,255);
             ht_limb(ht_scene,x+2,y-31,x+2,y-23,0,0,180);
             ht_triangle(ht_scene,x-2,y-18,x+6,y-18,x+2,y-24,170);
@@ -1917,7 +1920,8 @@ static void ht_draw_evidence(const ht_game *game) {
             for(int knot=0;knot<3;++knot) ht_limb(ht_scene,x-8,y-16+knot*4,x-1,y-14+knot*4,1,1,ink);
         } else {
             /* A weathered document lies on a stump, seat or equipment chest. */
-            ht_rect(ht_scene,x-12,y-10,24,10,235);
+            if(game->level==0)ht_organic_snag(ht_scene,x,y,10,11,927u,235);
+            else ht_rect(ht_scene,x-12,y-10,24,10,235);
             ht_limb(ht_scene,x-14,y-10,x+11,y-12,1,1,210);
             ht_triangle(ht_scene,x-6,y-12,x+4,y-15,x+8,y-11,ink);
             ht_limb(ht_scene,x-3,y-13,x+3,y-12,0,0,185);

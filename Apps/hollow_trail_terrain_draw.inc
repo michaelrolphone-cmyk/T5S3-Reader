@@ -135,8 +135,11 @@ static void ht_grounded_tree(const ht_game *g,int i,int world,int height,int wid
             int soil=ht_surface_at(g,i,wx)+3;
             int u=(reach-at)*256/ht_max(1,reach);
             int top=ht_min(soil-6,base-(height/7)*u*u/65536);
+            if(g->level==0 && at<reach-8)top-=ht_max(0,3-ht_abs(at-reach/2)/3);
             ht_triangle(ht_scene,previous-cx,oldtop-cy,wx-cx,top-cy,previous-cx,oldsoil-cy,255);
             ht_triangle(ht_scene,wx-cx,top-cy,wx-cx,soil-cy,previous-cx,oldsoil-cy,255);
+            if(g->level==0 && top+9<soil && oldtop+9<oldsoil && at>width/2)
+                ht_limb(ht_scene,previous-cx,oldtop+4-cy,wx-cx,top+4-cy,0,0,220);
             previous=wx;oldtop=top;oldsoil=soil;
         }
     }

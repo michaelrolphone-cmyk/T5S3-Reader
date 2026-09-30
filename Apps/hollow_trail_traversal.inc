@@ -308,6 +308,48 @@ static void ht_land_collision(int i,int old_x,int old_y) {
         if(i==ht_mech(&ht)->bridge && ht.x+5*256>l*256 && ht.x-5*256<r*256 && ht.grounded && ht.y==top*256) ht.traversal.support=4;
     }
 }
+/* Resolve the final pose, after every attachment and prop correction. Crossing
+ * tests alone cannot recover when a tree/stone has placed feet below a slope.
+ * Four bounded passes cover overlapping terraces; real recesses and the active
+ * ladder's upper passage remain open. Never project through an overhead deck. */
+static void ht_reconcile_ground(int old_x,int old_y) {
+    ht_traversal *t=&ht.traversal;
+    for(int pass=0;pass<4;++pass) {
+        bool corrected=false;
+        for(int i=0;i<HT_PLATFORMS;++i)for(int part=0;part<3;++part) {
+            int l,r,top;if(!ht_platform_piece(&ht,i,part,&l,&r,&top))break;
+            if(ht.x+5*256<=l*256 || ht.x-5*256>=r*256)continue;
+            /* A ladder's authored opening permits passage through its upper
+             * terrace only while attached. Its lower ground is always solid. */
+            if(t->mode==HT_LADDER && i==ht_mech(&ht)->ladders[t->ladder].upper)continue;
+            if(part!=2)top=ht_surface_at(&ht,i,ht_clamp(ht.x/256,l,r));
+            int bottom=ht_terrain_bottom(&ht,i,ht.x/256);
+            if(ht.y<=top*256 || ht.y-29*256>=bottom*256)continue;
+            int wall_l=l,wall_r=r;
+            if(part==0 && ht.y/256-29>top+8)
+                ht_cliff_bounds(&ht,i,ht.y/256-29,ht.y/256,&wall_l,&wall_r);
+            if(ht.x+5*256<=wall_l*256 || ht.x-5*256>=wall_r*256)continue;
+            int up=ht.y-top*256,down=(bottom+29)*256-ht.y;
+            int left=ht.x-(wall_l-5)*256,right=(wall_r+5)*256-ht.x;
+            int old_top=part==2?top:ht_surface_at(&ht,i,ht_clamp(old_x/256,l,r));
+            bool above=old_y<=old_top*256+256;
+            bool below=old_y-29*256>=ht_terrain_bottom(&ht,i,old_x/256)*256;
+            bool over=ht.x>=l*256 && ht.x<r*256;
+            if(!below && ((above || up<=2*256 || (over && up<29*256)) || (up<=down && up<=left && up<=right))) {
+                bool descending=ht.y>=old_y;
+                ht.y=top*256;ht.vy=0;ht.grounded=true;t->support=0;
+                if(i==ht_mech(&ht)->bridge)t->support=4;
+                if(t->mode==HT_TREE && descending) {t->mode=HT_FREE;t->drop_cooldown=12;}
+            } else if(below || (down<=left && down<=right && down<up)) {
+                ht.y=(bottom+29)*256;ht.vy=ht_max(0,ht.vy);ht.grounded=false;t->support=0;
+            } else {
+                ht.x=(left<=right?wall_l-5:wall_r+5)*256;ht.vx=0;
+            }
+            corrected=true;
+        }
+        if(!corrected)break;
+    }
+}
 static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool jump_held) {
     bool jump_request=jump_pressed;
     int start_x=ht.x,start_y=ht.y,fall_speed=ht.vy;
@@ -372,10 +414,13 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         }
     } else if(t->mode==HT_LEDGE || t->mode==HT_CLIMB) {
         const ht_platform *p=&ht_land[t->ledge];
-        int edge=t->ledge_side>0?p->left:p->right,top=ht_platform_top(&ht,t->ledge);
+        int edge=t->ledge_side>0?p->left:p->right;
         if(t->mode==HT_CLIMB && t->climb<16) {++t->climb_phase;t->climb=t->climb_phase/2;}
-        ht.x=(edge-t->ledge_side*6)*256+t->ledge_side*18*256*t->climb/16;
-        ht.y=(top+27)*256-27*256*t->climb/16;
+        /* Lift clear of the lip before moving onto it; the old diagonal
+         * interpolation intentionally passed through the solid corner. */
+        ht.x=(edge-t->ledge_side*6)*256+t->ledge_side*18*256*ht_max(0,(int)t->climb-12)/4;
+        int top=ht_surface_at(&ht,t->ledge,ht_clamp(ht.x/256,p->left,p->right-1));
+        ht.y=(top+27)*256-27*256*ht_min(12,t->climb)/12;
         ht.vx=ht.vy=0;ht.grounded=false;
         if(t->climb==16) {t->mode=HT_FREE;ht.grounded=true;}
     } else if(t->mode==HT_LADDER) {
@@ -429,7 +474,8 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         }
         for(int i=0;i<HT_PLATFORMS;++i) {
             if(ht.level==0 && i==1 && t->forest_log_phase<32)continue;
-            const ht_platform *p=&ht_land[i];int platform_top=ht_platform_top(&ht,i);
+            const ht_platform *p=&ht_land[i];
+            int platform_top=ht_surface_at(&ht,i,direction>0?p->left:p->right-1);
             if(!t->mode && !t->drop_cooldown && !ht.grounded && direction &&
                ht.y>=(platform_top+12)*256 && ht.y<=(platform_top+32)*256 &&
                ht_abs(ht.x/256-(direction>0?p->left:p->right))<=9 &&
@@ -476,6 +522,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         if(ht.y-29*256<ceiling*256) {ht.y=(ceiling+29)*256;ht.vy=ht_max(0,ht.vy);}
     }
     if(!jump_request) (void)ht_ladder_enter(vertical);
+    ht_reconcile_ground(start_x,start_y);
     ht_camera_step((direction || vertical || t->mode==HT_CLIMB) && (start_x!=ht.x || start_y!=ht.y));
     if(ht.grounded && !was_grounded && fall_speed>384 && !t->mode) {
         ht.landing_ticks=10;ht.landing_strength=(uint8_t)ht_clamp(fall_speed/256,2,8);

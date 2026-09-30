@@ -103,3 +103,81 @@ frame expectations, rerunning the affected checks and completing the remaining
 suite. The S3 app build and structural validation pass; source, manifest,
 sidecar and catalog agree on 1.1.26. On-device feel and FPS still need
 owner evaluation; host execution does not establish either.
+
+
+## Level 1 reference-guided silhouettes — 1.1.28
+
+Hollow Trail **1.1.27 -> 1.1.28**, minimum firmware remains **1.3.37**.
+The original five living trees and two observer-bank trunks retain their spacing.
+No extra climbable branches, terrain platforms, capture gestures or help overlays.
+The boat and chapters 2–10 keep their existing renderer references.
+
+Photographs inspected for anatomy (geometry is generalized, not image tracing):
+- [Ancient Whiligh oak, Country Life](https://www.countrylife.co.uk/nature/when-is-it-ok-to-fell-a-centuries-old-oak-tree): flared roots, uneven girth, burls, swollen branch junctions and subordinate twisting forks.
+- [Weathered basalt, James St. John, Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Spheroidally-weathered_basalt_boulder_(Tertiary;_Escalante_Petrified_Forest_State_Park,_Utah,_USA)_6.jpg): broad weathered shoulders, small chips and discontinuous fracture planes.
+- [Forest floor photograph, Ricoh](https://www.ricoh.es/servicios/servicio-compensacion-huella-carbono/): arching fern fronds with paired tapering pinnae and lengthwise grain in fallen wood.
+
+Living/near trunks now use 64 paired sections (130 contour vertices), localized
+burls, broken growth-following furrows and knot rings. The five substantial limbs
+use 24 curved sections each; trunk hand positions and branch footing interpolate
+those same vertices. Fine forklets remain non-colliding scenery. Distant trees
+retain softer tones without foreground bark detail, and their movement follows
+the ridge supporting them.
+
+Existing rocks have 28-point weathered outlines; the movable stone has a 24-point
+rounded contour close to its physical radius. Leaves use pointed oval outlines;
+ferns have arched segmented fronds and paired pinnae. Root flares have knuckles
+and restrained seams. The fallen snag uses 32 sections with bark plates, grain
+and scars, retaining its existing bend, rotation and contact profile. Evidence
+stumps have irregular sides and splintered tops. Detail is added to existing
+objects, without increasing the number of trees, rocks or ground-detail patches.
+
+Bounds checks discard invisible crowns, leaves and branch/twig geometry before
+raster work. No heap allocation or full-frame buffer was added. Host moving-camera
+CPU render cost measured about 0.50 ms versus 0.40 ms at the merge base; settled
+frames about 0.31 ms versus 0.24 ms (800 frames each, same compiler and host).
+These are CPU comparisons, not device FPS or display timing.
+
+Verification: original-tree input/contact checks, natural forest interactions,
+chapter cache transitions, cache/full-render equivalence, complete route,
+scene-direction physics and C++ math/renderer integration pass. Five close/wide
+forest views and an isolated canopy were inspected. Only the three forest golden
+frame pairs change; other 27 references remain byte-identical. S3 app structural
+validation and source/sidecar/catalog version/hash agreement are checked before
+publication. No hardware FPS measurement or release qualification is claimed.
+
+
+### Ground-contact corrections in the same update
+
+Reproduced both reported penetrations against the pre-fix traversal code:
+walking beside the stone after rolling it into the forest hollow embedded the
+feet at x=313 (feet 248, soil 247); descending the left side of a tree embedded
+the feet at x=-16 (feet 196.578, soil 196). Regression tests abort on the first
+occupied soil row rather than waiting for a death/respawn to hide the error.
+
+A final bounded terrain reconciliation now runs after attachment motion, prop
+sideways corrections and ladder entry. It resolves against the same surface,
+underside, socket pieces and eroded wall bounds as drawing/normal collision.
+Trees stop on actual soil, not their buried drawing base. Higher terrain takes
+precedence over an occluded branch. Ledge climbing raises the feet clear before
+moving over the edge and uses the actual surface height. The active ladder's
+upper passage remains traversable; the lower bank is solid. Real ravines and
+undercuts remain open, and overhead decks do not pull a character onto the roof.
+
+The dedicated ground test covers the rolled-in stone from both sides, walking,
+jumping and retreating; descent from both sides of all 16 existing trees;
+walk/jump transitions across every chapter's terrain; an occluded branch; and
+an actual empty ravine. It is wired into the native-app CI suite. Existing tree
+checks now start on soil rather than buried drawing bases and test 78 exposed
+limb contacts; the one limb inside a higher bank is covered by the ground test.
+Legacy ladder tests that deliberately started inside the lower bank now require
+recovery onto that bank. The ledge fixture uses exposed cliffs instead of a
+parcel seam within continuous ground.
+
+Final local verification: ground integrity **25,296 poses**, 78 exposed branch
+contacts, forest mechanics/cache transitions, controls, scene-direction tests,
+renderer references and C++ math integration pass; ground/tree/forest/control/
+direction checks used ASan+UBSan (leak scanning disabled in the sandbox). The
+complete ten-chapter route, all 30 evidence items and loop pass without deaths.
+S3 ELF structural validation passes; source, sidecar and catalog agree on
+1.1.28 and SHA-256 `13195385c5a6b16fc4391e78de5b2e073046418055125d30c23e7d1ff72a39c6`.

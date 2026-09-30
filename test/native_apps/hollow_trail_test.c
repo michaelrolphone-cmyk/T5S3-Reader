@@ -317,11 +317,12 @@ int main(void) {
     }
     ht.level=0; ht_spawn(true);
     /* Corner contact catches both approaches, never auto-climbs, and a drop
-     * cannot immediately catch the same edge. Climbing ends on its solid. */
+     * cannot immediately catch the same edge. Climbing ends on its solid. Use the exposed island banks,
+     * not parcel seams inside a continuous hillside. */
     for(int side=-1;side<=1;side+=2) {
-        ht_spawn(true); const ht_platform *p=&ht_land[2];
+        ht_spawn(true); const ht_platform *p=&ht_land[5];
         int edge=side>0?p->left:p->right;
-        ht.x=(edge-side*8)*256;ht.y=(p->top+20)*256;
+        ht.x=(edge-side*8)*256;ht.y=(ht_surface_at(&ht,5,side>0?p->left:p->right-1)+20)*256;
         ht.grounded=false;ht.vx=side*640;ht.vy=100;
         ht_step_controls(side,0,false,false);
         assert(ht.traversal.mode==HT_LEDGE && !ht.grounded);
@@ -330,8 +331,8 @@ int main(void) {
         assert(ht.x==hang_x && ht.y==hang_y && ht.traversal.mode==HT_LEDGE);
         assert(ht_traversal_interact());
         for(int k=0;k<32;++k) ht_step_controls(0,0,false,false);
-        assert(ht.traversal.mode==HT_FREE && ht.grounded && ht.y==p->top*256);
-        ht.x=(edge-side*8)*256;ht.y=(p->top+20)*256;
+        assert(ht.traversal.mode==HT_FREE && ht.grounded && ht.y==ht_surface_at(&ht,5,ht.x/256)*256);
+        ht.x=(edge-side*8)*256;ht.y=(ht_surface_at(&ht,5,side>0?p->left:p->right-1)+20)*256;
         ht.grounded=false;ht.vx=side*640;ht.vy=100;
         ht_step_controls(side,0,false,false);assert(ht.traversal.mode==HT_LEDGE);
         ht_step_controls(0,1,false,false);
@@ -405,8 +406,10 @@ int main(void) {
     }
     ht_spawn(true);ht.x=400*256;ht.y=238*256;ht.grounded=false;
     ht_step_controls(0,-1,false,false);
-    assert(ht.traversal.mode==HT_LADDER && ht.y==238*256-ht_climb_speed(&ht));
-    ht_step_controls(0,1,false,false);assert(ht.traversal.mode==HT_FREE && !ht.grounded);
+    /* An invalid hand-only catch buried under the lower bank is recovered
+     * to its soil; descending cannot put it back inside the ground. */
+    assert(ht.traversal.mode==HT_LADDER && ht.y==220*256 && ht.grounded);
+    ht_step_controls(0,1,false,false);assert(ht.traversal.mode==HT_FREE && ht.grounded && ht.y==220*256);
     ht_spawn(true);ht.x=400*256;ht.y=80*256;ht.grounded=true;
     ht_step_controls(1,-1,false,false);assert(ht.traversal.mode==HT_FREE && ht.x>400*256);
     ht.x=400*256;ht_step_controls(0,1,false,false);
@@ -449,9 +452,9 @@ int main(void) {
     ht_spawn(true);
     /* Gusts push idle feet in both directions, remain bounded, and cannot
      * move a player hanging from a ledge. Weather drawing is deterministic. */
-    ht.level=7;ht_spawn(true);ht.x=2100*256;ht.scene_evidence=2;ht.weather_amount=256;ht.ticks=120;int still=ht.x;
+    ht.level=7;ht_spawn(true);ht.x=2100*256;ht.y=ht_surface_at(&ht,6,2100)*256;ht.scene_evidence=2;ht.weather_amount=256;ht.ticks=120;int still=ht.x;
     ht_step(0,false,false);assert(ht.x>still && ht.x-still<=40 && ht.sway_phase==0);
-    ht_spawn(true);ht.x=2100*256;ht.scene_evidence=2;ht.weather_amount=256;ht.ticks=380;still=ht.x;
+    ht_spawn(true);ht.x=2100*256;ht.y=ht_surface_at(&ht,6,2100)*256;ht.scene_evidence=2;ht.weather_amount=256;ht.ticks=380;still=ht.x;
     ht_step(0,false,false);assert(ht.x<still && still-ht.x<=40 && ht.sway_phase==0);
     for(unsigned tick=0;tick<1024;++tick) {ht.ticks=tick;assert(ht_abs(ht_wind(&ht))<=40);}
     ht_game snapshot=ht;memset(ht_scene,0,HT_PIXELS);ht_weather(&snapshot);

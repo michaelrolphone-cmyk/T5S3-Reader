@@ -1,4 +1,4 @@
-/* Reviewed 1.1.27 composed environments; boat reference frames preserved. */
+/* Reviewed 1.1.28 forest silhouettes; all other chapter frames preserved. */
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,9 +22,9 @@ static void fps_tests(void){
 
 static unsigned hash(const uint8_t *p,int n){unsigned h=2166136261u;while(n--)h=(h^*p++)*16777619u;return h;}
 static const unsigned golden[][2]={
-{595969569,1175170171},
-{1042300205,2113162041},
-{3783044501,3930852045},
+{3795934812,1204888003},
+{1123103406,19412053},
+{1221775212,3031398941},
 {1570424042,657502888},
 {1936136814,757844008},
 {3703642848,1861742927},
