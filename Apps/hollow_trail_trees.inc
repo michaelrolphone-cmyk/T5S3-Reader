@@ -59,8 +59,51 @@ static bool ht_existing_tree(const ht_game *g,int i,ht_climb_tree *out) {
     if(i<0 || i>HT_PLATFORMS || !(valid&(1u<<i)))return false;
     *out=trees[i];return true;
 }
+/* Sixty-four paired sections describe a continuous asymmetric trunk. Slow
+ * growth bends, bark ridges and two local burls have different spatial scales.
+ * The renderer and hand contacts interpolate these exact same vertices. */
+static void ht_organic_trunk_node(const ht_climb_tree *t,int node,int *center,int *left,int *right) {
+    static const int8_t bends[17]={0,-1,-3,-2,0,3,5,4,1,-2,-4,-1,2,4,2,0,-1};
+    static const uint8_t girth[17]={138,115,103,98,100,94,89,85,77,73,65,58,47,39,28,16,4};
+    int q=ht_min(15,node/4),u=node-q*4;
+    unsigned h=ht_hash(t->seed),b=ht_hash(t->seed+(unsigned)node*71u);
+    int lean=(int)(h%43)-21;
+    *center=t->x+lean*node/64+(bends[q]*(4-u)+bends[q+1]*u)*t->width/64;
+    int radius=ht_max(1,t->width*(girth[q]*(4-u)+girth[q+1]*u)/400);
+    int bark=ht_max(1,t->width/16),fade=64-node;
+    int burl1=ht_max(0,5-ht_abs(node-(19+(int)(h%8))));
+    int burl2=ht_max(0,4-ht_abs(node-(40+(int)((h>>6)%7))));
+    *left=radius+((int)(b%3)-1)*bark*fade/64+burl1*t->width/17;
+    *right=radius+((int)((b>>8)%3)-1)*bark*fade/64+burl2*t->width/15;
+    *left=ht_max(1,*left);*right=ht_max(1,*right);
+}
+static int ht_organic_trunk_edge(const ht_climb_tree *t,int d,int side) {
+    int node=ht_min(63,d*64/ht_max(1,t->height));
+    while(node<63 && t->height*(node+1)/64<d)++node;
+    int y0=t->height*node/64,y1=t->height*(node+1)/64;
+    int c0,l0,r0,c1,l1,r1;
+    ht_organic_trunk_node(t,node,&c0,&l0,&r0);
+    ht_organic_trunk_node(t,node+1,&c1,&l1,&r1);
+    int a=c0+(side<0?-l0:r0),b=c1+(side<0?-l1:r1);
+    return a+(b-a)*(d-y0)/ht_max(1,y1-y0);
+}
+/* Curved substantial limbs share their upper silhouette with branch footing. */
+static void ht_organic_branch_node(const ht_tree_branch *b,int node,int *x,int *y,int *radius) {
+    static const int8_t bend[13]={0,1,3,2,-1,-3,-1,2,3,1,-2,-1,0};
+    int q=ht_min(11,node/2),u=node-q*2;
+    int reach=ht_abs(b->ex-b->x),at=reach*node/24,mid=ht_abs(b->mx-b->x);
+    *x=b->x+b->side*at;
+    if(at<=mid) {*y=b->y+(b->my-b->y)*at/ht_max(1,mid);*radius=b->r+(b->mr-b->r)*at/ht_max(1,mid);}
+    else {*y=b->my+(b->ey-b->my)*(at-mid)/ht_max(1,reach-mid);*radius=b->mr-b->mr*(at-mid)/ht_max(1,reach-mid);}
+    *y+=(bend[q]*(2-u)+bend[q+1]*u)*ht_max(1,b->r/6)/2;
+    *radius+=ht_max(0,3-ht_abs(node-7))*b->r/12;
+}
 /* Follow the tapered, bent trunk where the character's hands meet it. */
 static int ht_tree_edge(const ht_climb_tree *tree,int feet,int side) {
+    if(tree->height>=260) {
+        int d=ht_clamp(tree->base-(feet-20),0,tree->height);
+        return ht_organic_trunk_edge(tree,d,side)+side*5;
+    }
     unsigned h=ht_hash(tree->seed);
     int lean=(int)(h%43)-21,bend=(int)((h>>8)%19)-9;
     int kx=tree->x+lean/3+bend,tx=tree->x+lean;
@@ -86,6 +129,15 @@ static bool ht_tree_footing(const ht_climb_tree *tree,int branch,int x,int *top)
     ht_tree_branch b=ht_tree_branch_shape(tree->x,tree->base,tree->height,tree->width,tree->seed,branch);
     int dx=(x-b.x)*b.side,mid=(b.mx-b.x)*b.side,reach=(b.ex-b.x)*b.side;
     if(dx<0 || dx>reach*3/4)return false;
+    if(tree->height>=260 && branch!=5) {
+        int node=ht_min(23,dx*24/ht_max(1,reach));
+        while(node<23 && reach*(node+1)/24<dx)++node;
+        int x0,y0,r0,x1,y1,r1;
+        ht_organic_branch_node(&b,node,&x0,&y0,&r0);
+        ht_organic_branch_node(&b,node+1,&x1,&y1,&r1);
+        int a=(x0-b.x)*b.side,z=(x1-b.x)*b.side;
+        *top=y0-r0+((y1-r1)-(y0-r0))*(dx-a)/ht_max(1,z-a);return true;
+    }
     int y,r;
     if(dx<=mid) {y=b.y+(b.my-b.y)*dx/ht_max(1,mid);r=b.r+(b.mr-b.r)*dx/ht_max(1,mid);}
     else {y=b.my+(b.ey-b.my)*(dx-mid)/ht_max(1,reach-mid);r=b.mr+((branch==5?2:0)-b.mr)*(dx-mid)/ht_max(1,reach-mid);}

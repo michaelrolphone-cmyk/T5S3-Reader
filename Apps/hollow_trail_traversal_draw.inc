@@ -102,10 +102,25 @@ static void ht_draw_traversal(const ht_game *g) {
     if(m->ball_x) {
         int bx=g->traversal.ball_x/256-cx,by=g->traversal.ball_y/256-cy;
         if(bx>=-18 && bx<=HT_W+18 && by>=-18 && by<=HT_H+18) {
+            if(g->level==0) {
+                /* Rounded weathering is still the physical circular stone;
+                 * shallow contour chips and broad facets replace the wheel rim. */
+                static const int8_t rim[24][2]={{16,0},{15,4},{14,8},{11,11},{8,14},{4,15},
+                    {0,16},{-4,15},{-8,13},{-11,11},{-14,8},{-15,4},
+                    {-16,0},{-15,-4},{-14,-8},{-11,-11},{-8,-14},{-4,-15},
+                    {0,-16},{4,-15},{8,-14},{11,-11},{14,-8},{15,-4}};
+                for(int v=0;v<24;++v) {
+                    int n=(v+1)%24;
+                    ht_triangle(ht_scene,bx-2,by-3,bx+rim[v][0],by+rim[v][1],
+                        bx+rim[n][0],by+rim[n][1],v<8?219:(v<15?180:148));
+                }
+                ht_limb(ht_scene,bx-10,by-7,bx-6,by-12,0,0,110);
+            } else {
             ht_disk(ht_scene,bx,by,HT_BALL_RADIUS,255);
             ht_disk(ht_scene,bx-1,by-1,HT_BALL_RADIUS-2,165);
             ht_triangle(ht_scene,bx-11,by-8,bx+1,by-13,bx-3,by+2,80);
             ht_triangle(ht_scene,bx+10,by-8,bx+12,by+9,bx-1,by+13,225);
+            }
             /* Fractures rotate by travelled arc length: no sliding texture. */
             static const int16_t sine[32]={0,50,98,142,181,213,237,251,256,251,237,213,181,142,98,50,0,-50,-98,-142,-181,-213,-237,-251,-256,-251,-237,-213,-181,-142,-98,-50};
             unsigned angle=(unsigned)(g->traversal.ball_roll/(HT_BALL_RADIUS*50))&31u;

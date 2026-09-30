@@ -55,14 +55,14 @@ static void ht_forest_backdrop(const ht_game *g) {
     /* Sparse, monumental mid-distance silhouettes rooted into their own hills. */
     {
         for(int p=0;p<2;++p) {
-            int parallax=30+p*25,spacing=225-p*42;
+            int parallax=37+p*19,spacing=225-p*42;
             int offset=cx*parallax/100;
             int begin=ht_floor_div(offset-ht_view_margin()-180,spacing);
             int end=ht_floor_div(offset+HT_W+ht_view_margin()+180,spacing);
             for(int n=begin;n<=end;++n) {
                 unsigned seed=ht_hash((unsigned)n+91u+p*719u);
                 int wx=n*spacing+(int)(seed%63),base=ht_composed_ridge(c,wx,p+1);
-                ht_tree(ht_scene,wx-offset,base-cy*parallax/100,270+(int)(seed%180),11+p*5,seed,95+p*57);
+                ht_tree(ht_scene,wx-offset,base+3-cy*parallax/100,270+(int)(seed%180),11+p*5,seed,95+p*57);
             }
             ht_checkpoint();
         }
@@ -105,15 +105,29 @@ static void ht_forest_log_draw(const ht_game *g) {
     int dx=312*sn/256,dy=-312*cs/256;
     int x=374-cx,y=220-cy,ex=x+dx,ey=y+dy;
     if(ex<-ht_view_margin()-40 || x>HT_W+ht_view_margin()+40)return;
-    int px=x,py=y;
-    for(int i=1;i<=4;++i) {
-        int bend=ht_forest_log_curve[i];
-        int nx=x+dx*i/4-dy*bend/312,ny=y+dy*i/4+dx*bend/312;
-        ht_limb(ht_scene,px,py,nx,ny,13-i,12-i,250);
-        /* Broken bark seams, offset from the bent upper edge. */
-        int sx=px+(nx-px)/5,sy=py+(ny-py)/5;
-        ht_limb(ht_scene,sx+dy/60,sy-dx/60,nx+dy/60,ny-dx/60,0,0,155);
-        px=nx;py=ny;
+    /* The walkable upper edge keeps the established bend and taper. Bark
+     * plates break the lower contour into 32 sections, rotating with the log. */
+    int px=x,py=y,pr=12,pbottom=12;
+    for(int i=1;i<=32;++i) {
+        int q=ht_min(3,i/8),u=i-q*8;
+        int bend=ht_forest_log_curve[q]+(ht_forest_log_curve[q+1]-ht_forest_log_curve[q])*u/8;
+        int nx=x+dx*i/32-dy*bend/312,ny=y+dy*i/32+dx*bend/312;
+        int radius=12-i/8,bottom=radius+(int)(ht_hash((unsigned)i+571)%3);
+        int ptx=px+dy*pr/312,pty=py-dx*pr/312;
+        int pbx=px-dy*pbottom/312,pby=py+dx*pbottom/312;
+        int ntx=nx+dy*radius/312,nty=ny-dx*radius/312;
+        int nbx=nx-dy*bottom/312,nby=ny+dx*bottom/312;
+        ht_triangle(ht_scene,ptx,pty,pbx,pby,ntx,nty,250);
+        ht_triangle(ht_scene,pbx,pby,nbx,nby,ntx,nty,250);
+        for(int seam=-1;seam<=1;++seam)if((i+seam*3)%9!=0) {
+            ht_limb(ht_scene,px-dy*seam/78,py+dx*seam/78,
+                nx-dy*seam/78,ny+dx*seam/78,0,0,185+seam*14);
+        }
+        if(i==11 || i==23) {
+            ht_limb(ht_scene,nx-dx/80,ny-dy/80,nx-dy/100,ny+dx/100,0,0,160);
+            ht_limb(ht_scene,nx-dy/100,ny+dx/100,nx+dx/80,ny+dy/80,0,0,160);
+        }
+        px=nx;py=ny;pr=radius;pbottom=bottom;
     }
     /* Sparse broken limb stubs turn with the trunk. None become a ladder. */
     for(int i=1;i<4;++i) {
@@ -141,21 +155,12 @@ static void ht_foreground_contour(int x,int y,const ht_foreground_section *v,int
         if((n&7)==0)ht_checkpoint();
     }
 }
-/* The same two close trunks belong to the observer's bank. Forty contour
- * vertices replace the two straight trunk tapers. Root collars and the one
- * existing broken branch have their own curved, asymmetric outlines. */
+/* The same two close trunks belong to the observer's bank. Their 130-vertex
+ * contours, bark furrows and knots use the living-tree anatomy; the existing
+ * broken branch and root collar retain their separate asymmetric outlines. */
 static void ht_forest_foreground(const ht_game *g) {
     if(g->level!=0)return;
     static const int anchors[2]={1100,2800};
-    static const ht_foreground_section trunk[]={
-        {-42,18,43,18},{-34,5,32,5},{-27,-12,25,-12},
-        {-25,-32,22,-32},{-25,-60,19,-60},{-27,-95,17,-95},
-        {-31,-132,14,-132},{-35,-170,10,-170},{-38,-208,5,-208},
-        {-41,-240,1,-240},{-43,-264,-3,-264},{-41,-290,-5,-290},
-        {-36,-322,-3,-322},{-31,-358,0,-358},{-29,-397,2,-397},
-        {-30,-441,0,-441},{-29,-488,-2,-488},{-26,-538,-3,-538},
-        {-21,-589,-1,-589},{-17,-640,1,-640}
-    };
     static const ht_foreground_section branch[]={
         {-22,-236,-20,-277},{-42,-263,-36,-287},
         {-54,-281,-46,-297},{-65,-295,-58,-306},
@@ -173,7 +178,7 @@ static void ht_forest_foreground(const ht_game *g) {
         if(x< -105-ht_view_margin() || x>HT_W+105+ht_view_margin())continue;
         ht_foreground_contour(x,y,branch,sizeof(branch)/sizeof(branch[0]),244);
         ht_foreground_contour(x,y,root,sizeof(root)/sizeof(root[0]),244);
-        ht_foreground_contour(x,y,trunk,sizeof(trunk)/sizeof(trunk[0]),244);
+        ht_organic_tree(ht_scene,x-10,y,700,30,3217u+(unsigned)i*43u,244,false);
         /* A restrained seam follows the bend instead of a straight slash. */
         ht_limb(ht_scene,x-28,y-265,x-23,y-292,1,1,180);
         ht_limb(ht_scene,x-23,y-292,x-16,y-322,1,0,180);

@@ -54,6 +54,10 @@ c++ -std=c++17 -Wall -Wextra -Werror \
 "$binary"
 cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
   -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_ground_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/hollow_trail_trees_test.c" -o "$binary"
 "$binary"
 cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \

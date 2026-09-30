@@ -21,7 +21,27 @@ static void ht_landscape_detail(const ht_game *g) {
             int height=12+(int)((h>>8)%20),width=18+(int)((h>>16)%28);
             if(h%3==0 || kind==HT_ROCK || kind==HT_SNOW || kind==HT_SAND) {
                 /* Asymmetric angular boulders half buried in the far bank. */
-                if(g->level!=4 && g->level!=1) {
+                if(g->level==0) {
+                    /* Weathered shoulders, shallow chips and a buried toe.
+                     * The long planes survive at distance; chips resolve close. */
+                    static const int8_t edge[28][2]={
+                        {-100,0},{-99,-12},{-95,-21},{-94,-34},{-86,-41},{-83,-52},
+                        {-71,-62},{-67,-73},{-55,-81},{-47,-88},{-32,-90},{-23,-97},
+                        {-10,-100},{2,-99},{13,-94},{26,-92},{34,-84},{45,-82},
+                        {54,-71},{65,-66},{70,-55},{78,-49},{83,-37},{91,-31},
+                        {94,-19},{99,-11},{100,0},{0,7}
+                    };
+                    int flip=(h&64u)?-1:1;
+                    for(int v=0;v<28;++v) {
+                        int n=(v+1)%28;
+                        ht_triangle(ht_scene,x,base-height/3,
+                            x+flip*edge[v][0]*width/100,base+edge[v][1]*height/100,
+                            x+flip*edge[n][0]*width/100,base+edge[n][1]*height/100,
+                            v>=16 && v<=24?207:195);
+                    }
+                    ht_limb(ht_scene,x-width/4,base-height*4/5,x-width/8,base-height/2,0,0,154);
+                    ht_limb(ht_scene,x-width/8,base-height/2,x+width/7,base-height*2/5,0,0,158);
+                } else if(g->level!=4 && g->level!=1) {
                     /* Twelve-point weathered outline on the existing rocks;
                      * long shoulders, rounded corners, a partly buried base. */
                     static const int8_t outline[12][2]={
@@ -41,7 +61,7 @@ static void ht_landscape_detail(const ht_game *g) {
                     ht_triangle(ht_scene,x-width,base,x+width/3,base-height+3,x+width,base,195);
                     ht_triangle(ht_scene,x+width/3,base-height+3,x+width+3,base-height/3,x+width,base,220);
                 }
-                ht_limb(ht_scene,x-width/2,base-height,x-width/4,base-height+8,0,0,120);
+                if(g->level!=0)ht_limb(ht_scene,x-width/2,base-height,x-width/4,base-height+8,0,0,120);
                 if(kind==HT_SNOW) ht_limb(ht_scene,x-width/2,base-height,x+width/3,base-height+3,1,0,100);
             } else if(kind==HT_EARTH || kind==HT_MUD || kind==HT_GARDEN) {
                 int stem=base-height;

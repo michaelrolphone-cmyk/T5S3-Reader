@@ -4,7 +4,12 @@
 #include "../../Apps/hollow_trail_engine.inc"
 static void approach(int id,int side) {
     ht_spawn(true);ht_climb_tree tree;assert(ht_existing_tree(&ht,id,&tree));
-    ht.y=(tree.base-3)*256;ht.x=ht_tree_edge(&tree,ht.y/256,side)*256;
+    ht.y=(tree.base-3)*256;
+    /* Drawing bases are buried; approach from actual soil, never inside it. */
+    for(int n=0;n<4;++n) {
+        ht.x=ht_tree_edge(&tree,ht.y/256,side)*256;
+        ht.y=ht_min(ht.y,ht_surface_at(&ht,id==HT_PLATFORMS?4:id,ht.x/256)*256);
+    }
     ht.grounded=true;ht.vx=ht.vy=0;
 }
 int main(void) {
@@ -42,6 +47,15 @@ int main(void) {
             for(int b=0;b<(tree.seed==1917?6:5);++b) {
                 ht_tree_branch limb=ht_tree_branch_shape(tree.x,tree.base,tree.height,tree.width,tree.seed,b);
                 int x=limb.mx,top;if(x<7 || x>HT_GOAL-7)continue;assert(ht_tree_footing(&tree,b,x,&top));
+                /* A limb behind a higher bank is occluded by solid terrain;
+                 * it must not provide a way to stand inside that bank. */
+                bool buried=false;
+                for(int land=0;land<HT_PLATFORMS;++land)for(int part=0;part<3;++part) {
+                    int l,r,soil;if(!ht_platform_piece(&ht,land,part,&l,&r,&soil))break;
+                    if(part!=2)soil=ht_surface_at(&ht,land,x);
+                    if(x>=l && x<r && top>soil && top-29<ht_terrain_bottom(&ht,land,x))buried=true;
+                }
+                if(buried)continue;
                 approach(i,limb.side);ht.x=x*256;ht.y=(top-2)*256;ht.vy=900;ht.grounded=false;
                 ht_step_controls(0,0,false,false);assert(ht.grounded && ht.traversal.support==5);
                 ht_step_controls(limb.side,0,false,false);assert(ht.grounded && ht.traversal.support==5);
