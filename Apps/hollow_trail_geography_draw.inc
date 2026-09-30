@@ -20,6 +20,10 @@ static void ht_scene_geography(const ht_game *g) {
                 int at=x+20+wheel*33;
                 ht_disk(ht_scene,at,y-3,10,225);ht_disk(ht_scene,at,y-3,6,100);
                 ht_limb(ht_scene,at-5,y-3,at+5,y-3,1,1,170);
+                static const int8_t spoke[8][2]={{8,0},{6,6},{0,8},{-6,6},{-8,0},{-6,-6},{0,-8},{6,-6}};
+                for(int ray=0;ray<8;++ray)ht_limb(ht_scene,at,y-3,at+spoke[ray][0],y-3+spoke[ray][1],0,0,193);
+                ht_disk(ht_scene,at,y-3,2,225);
+
             }
             ht_rect(ht_scene,x+5,y-17,139,10,205);
             if(car==0) {
@@ -32,6 +36,18 @@ static void ht_scene_geography(const ht_game *g) {
                 ht_rect(ht_scene,x+28,y-76,19,5,225);
                 ht_limb(ht_scene,x+18,y-5,x+111,y-5,2,2,130);
                 ht_disk(ht_scene,x+10,y-43,5,210);
+                /* Boiler bands, steam dome, handrail and layered running gear
+                 * follow the broad side-on locomotive reference. */
+                for(int band=0;band<4;++band)ht_limb(ht_scene,x+28+band*21,y-49,x+28+band*21,y-20,1,1,180);
+                ht_disk(ht_scene,x+67,y-54,7,181);ht_rect(ht_scene,x+60,y-54,14,7,181);
+                ht_limb(ht_scene,x+24,y-41,x+96,y-41,0,0,113);
+                ht_limb(ht_scene,x+20,y-7,x+114,y-7,1,1,221);
+                ht_limb(ht_scene,x+35,y-15,x+85,y-5,1,1,206);
+                ht_rect(ht_scene,x+1,y-21,18,10,214);
+                for(int bar=0;bar<5;++bar)ht_limb(ht_scene,x+7+bar*3,y-20,x-12+bar*7,y+1,0,0,220);
+                ht_limb(ht_scene,x+102,y-19,x+141,y-19,1,1,207);
+                ht_rect(ht_scene,x+133,y-16,13,3,202);ht_rect(ht_scene,x+136,y-10,13,3,202);
+
             } else {
                 ht_rect(ht_scene,x+4,y-66,144,48,160);
                 ht_limb(ht_scene,x+1,y-67,x+151,y-67,3,3,210);
@@ -41,6 +57,13 @@ static void ht_scene_geography(const ht_game *g) {
                 }
                 ht_rect(ht_scene,x+69,y-35,16,18,125);
                 ht_limb(ht_scene,x+5,y-23,x+146,y-23,0,0,195);
+                for(int panel=0;panel<7;++panel) {
+                    int at=x+9+panel*20;
+                    ht_limb(ht_scene,at,y-36,at,y-24,0,0,183);
+                    ht_disk(ht_scene,at,y-20,1,207);
+                }
+                ht_limb(ht_scene,x+5,y-63,x+145,y-63,0,0,128);
+
             }
             ht_rect(ht_scene,x+145,y-15,20,3,210);
         }

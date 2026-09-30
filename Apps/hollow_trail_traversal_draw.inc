@@ -1,3 +1,4 @@
+#include "hollow_trail_material_detail.inc"
 #include "hollow_trail_geography_draw.inc"
 #include "hollow_trail_terrain_draw.inc"
 #include "hollow_trail_landscape_detail.inc"
@@ -64,7 +65,7 @@ static void ht_draw_traversal(const ht_game *g) {
         int world=ht_planted_tree_x(g->level,i);
         int x=world-cx,y=ht_surface_at(g,i,world)-cy;
         if(x< -160-ht_view_margin() || x>HT_W+160+ht_view_margin()) continue;
-        if(g->level==2) ht_cactus_on(ht_scene,x,y,i==1?39:84,255);
+        if(g->level==2) ht_detail_cactus(x,y,i==1?39:84,(unsigned)i+901);
         else if(g->level==0 || g->level==4 || g->level==6 || g->level==8)
             ht_grounded_tree(g,i,world,g->level==0?340+(i%3)*65:130+(i%3)*27,g->level==0?23+(i%3)*5:7,(unsigned)i+901);
 

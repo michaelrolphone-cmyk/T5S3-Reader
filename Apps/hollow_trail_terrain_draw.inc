@@ -125,6 +125,7 @@ static void ht_grounded_tree(const ht_game *g,int i,int world,int height,int wid
     int cx=g->camera/256,cy=g->camera_y/256;
     int base=ht_surface_at(g,i,world),buried=ht_buried_base(g,i,world,width);
     ht_tree(ht_scene,world-cx,buried-cy,height+buried-base,width,seed,255);
+    ht_detail_tree_bark(g,world-cx,buried-cy,height+buried-base,width,seed);
     const ht_platform *p=&ht_level_land(g->level)[i];
     for(int side=-1;side<=1;side+=2) {
         int end=ht_clamp(world+side*width*(side<0?3:2),p->left+2,p->right-3);

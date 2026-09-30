@@ -324,3 +324,51 @@ chapters, including the grotto boat scene, retain their reference hashes.
 S3 app build and structural validation pass; source/sidecar/catalog agree on
 1.1.30 and SHA-256 `84c9ebd3e3197eaef1e5667ca2d3635a4bb1364bbbf6041c15a56716b9989cb8`.
 Device appearance and FPS have not been measured.
+
+### Photo-guided detail in the remaining six chapters (unreleased 1.1.30)
+
+Scope: oil fields (2), railway (3), quarry (5), glasshouse (6), mountains (8)
+and settlement (9), using zero-based chapter numbers. Forest, city, grotto boat
+and dam raster references remain unchanged. Existing object sites, counts,
+terrain, movement and physical branch axes remain in place.
+
+Reference photographs reviewed for general form, not copied into game assets:
+- NPS mature saguaro: rounded stem, unequal upright arms, curved elbows and ribs:
+  https://home.nps.gov/sagu/learn/nature/saguaro.htm
+- Library of Congress pumpjack, Carol Highsmith: horsehead, walking beam,
+  bearing, pitman and counterweight:
+  https://www.loc.gov/pictures/item/2020743415/
+- Library of Congress side-view steam locomotive: boiler bands, domes,
+  running gear, spoked wheels and handrail:
+  https://www.loc.gov/item/2022647579/
+- USGS Thunder Hole granite, Alex Demas: stepped fracture planes, chipped
+  shoulders and connected joints:
+  https://www.usgs.gov/media/images/granite-outcropping-thunder-hole
+- Library of Congress White House conservatory: closely spaced glazing ribs,
+  long pane divisions and layered broad leaves:
+  https://www.loc.gov/pictures/item/96512664/
+- NPS Great Basin bristlecone: irregular trunk, exposed grain, sparse twigs
+  and needle clusters:
+  https://home.nps.gov/grba/planyourvisit/identifying-bristlecone-pines.htm
+- Library of Congress Goldfield street: overhanging eaves, recessed sash
+  windows, porch edges and weatherboard facades:
+  https://www.loc.gov/pictures/item/95508788/
+
+Implementation: 36-vertex ground stones with joined fracture planes and snow
+caps; 48-section close rock contours; 24-section rounded cactus stems with
+12-section curved unequal arms and ribs; 40-section bark/knots on existing
+alpine/glasshouse trunks, keeping branch footing geometry; 12-section leaves
+and 40-section glazing arches. Pumpjacks gain crank/pitman/bearing details;
+quarry cranes gain lattice and hooks; trains gain eight-spoke wheels, valve
+rods, boiler bands, steam domes, handrails and carriage panels. Settlement
+houses gain eaves, siding, divided sash windows, sills, porches and chimney
+caps. Foreground pipe flanges, telegraph insulators and glasshouse rivets/glass
+edges receive sparse detail. Material shapes remain bounded and world anchored;
+no runtime photographs, textures, allocations or new frame buffers.
+
+Eighteen actual scene views (three per chapter) were inspected alongside the
+reference photographs. A follow-up corrected the cactus elbows/tips from
+branch-like diagonals to the rounded upright saguaro form. Renderer references
+change only in these six chapters. Full route, existing collision/contact
+checks and cache equivalence pass; S3 build and ELF structural validation pass.
+Device appearance/FPS are not claimed.

@@ -42,20 +42,7 @@ static void ht_landscape_detail(const ht_game *g) {
                     ht_limb(ht_scene,x-width/4,base-height*4/5,x-width/8,base-height/2,0,0,154);
                     ht_limb(ht_scene,x-width/8,base-height/2,x+width/7,base-height*2/5,0,0,158);
                 } else if(g->level!=4 && g->level!=1) {
-                    /* Twelve-point weathered outline on the existing rocks;
-                     * long shoulders, rounded corners, a partly buried base. */
-                    static const int8_t outline[12][2]={
-                        {-100,0},{-94,-31},{-77,-68},{-52,-93},
-                        {-22,-100},{8,-96},{34,-85},{57,-70},
-                        {79,-47},{96,-21},{100,0},{0,7}
-                    };
-                    for(int v=0;v<12;++v) {
-                        int next=(v+1)%12;
-                        ht_triangle(ht_scene,x,base-height/3,
-                            x+outline[v][0]*width/100,base+outline[v][1]*height/100,
-                            x+outline[next][0]*width/100,base+outline[next][1]*height/100,
-                            v>=6 && v<=9?205:195);
-                    }
+                    ht_detail_rock(x,base,width,height,h,kind);
                 } else {
                     ht_triangle(ht_scene,x-width,base,x-width/2,base-height,x+width/3,base-height+3,195);
                     ht_triangle(ht_scene,x-width,base,x+width/3,base-height+3,x+width,base,195);
@@ -64,6 +51,13 @@ static void ht_landscape_detail(const ht_game *g) {
                 if(g->level!=0)ht_limb(ht_scene,x-width/2,base-height,x-width/4,base-height+8,0,0,120);
                 if(kind==HT_SNOW) ht_limb(ht_scene,x-width/2,base-height,x+width/3,base-height+3,1,0,100);
             } else if(kind==HT_EARTH || kind==HT_MUD || kind==HT_GARDEN) {
+                if(g->level==6) {
+                    for(int leaf=0;leaf<4;++leaf) {
+                        int side=leaf%2?1:-1;
+                        ht_detail_leaf(x,base,x+side*(12+leaf*5),base-height-6+leaf*4,3,190+leaf*7);
+                    }
+                    continue;
+                }
                 int stem=base-height;
                 ht_limb(ht_scene,x,base,x-4,stem,1,1,185);
                 for(int k=0;k<3;++k) {
