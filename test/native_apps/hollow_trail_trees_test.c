@@ -2,42 +2,66 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "../../Apps/hollow_trail_engine.inc"
+static void approach(int id,int side) {
+    ht_spawn(true);ht_climb_tree tree;assert(ht_existing_tree(&ht,id,&tree));
+    ht.y=(tree.base-3)*256;ht.x=ht_tree_edge(&tree,ht.y/256,side)*256;
+    ht.grounded=true;ht.vx=ht.vy=0;
+}
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY);assert(memory);ht_bind(memory);
-    unsigned branches=0;
+    unsigned counts[HT_LEVELS]={5,0,0,0,3,0,4,0,4,0};unsigned visited=0;
     for(unsigned level=0;level<HT_LEVELS;++level) {
-        ht.level=level;ht_spawn(true);int count;const ht_living_tree *trees=ht_trees(&ht,&count);
-        for(int i=0;i<count;++i)for(int b=0;b<HT_TREE_BRANCHES;++b) {
-            ht_spawn(true);const ht_living_tree *tree=&trees[i];int side=ht_branch_side(b);
-            ht.x=(tree->x+side*(tree->radius+6))*256;ht.y=ht_tree_base(&ht,tree)*256;
-            ht.grounded=true;assert(ht_tree_near(&ht)==i);assert(ht_traversal_interact());assert(ht.traversal.mode==HT_TREE);
-            int target=ht_branch_top(&ht,tree,b,ht.x/256);
-            for(int step=0;step<250 && ht.y>(target+2)*256;++step)ht_step_controls(0,-1,false,false);
-            assert(ht_abs(ht.y-target*256)<=3*256);
-            ht_step_controls(side,0,false,false);assert(ht.grounded && ht.traversal.mode==HT_FREE && ht.traversal.support==5);
-            for(int step=0;step<8;++step)ht_step_controls(side,0,false,false);
-            assert(ht.grounded && ht.traversal.support==5);
-            assert(ht.y==ht_branch_top(&ht,tree,b,ht.x/256)*256);
-            int before=ht.y;ht_step_controls(0,1,false,false);
-            assert(!ht.grounded && ht.y>before && ht.traversal.mode==HT_FREE);
-            /* Descending onto the same limb catches; ascending passes through. */
-            ht.traversal.drop_cooldown=ht.traversal.branch_drop=0;int x=tree->x+side*(tree->radius+20);
-            int top=ht_branch_top(&ht,tree,b,x);ht.x=x*256;ht.y=(top-2)*256;ht.vy=900;
-            ht_step_controls(0,0,false,false);assert(ht.grounded && ht.y==top*256);
-            ht.y=(top+5)*256;ht.vy=-1000;ht.grounded=false;
-            ht_step_controls(0,0,false,true);assert(!ht.grounded && ht.vy<0);
-            ++branches;
+        ht.level=level;ht_spawn(true);unsigned count=0;
+        for(int i=0;i<=HT_PLATFORMS;++i) {
+            ht_climb_tree tree;if(!ht_existing_tree(&ht,i,&tree))continue;++count;
+            for(int side=-1;side<=1;side+=2) {
+                approach(i,side);assert(ht_tree_near(&ht)==i);
+                assert(!ht_tree_enter(1,-1,false)); // diagonal traversal never captures
+                assert(!ht_tree_enter(0,1,false)); // down never captures
+                assert(!ht_tree_enter(0,-1,true)); // held jump never captures
+                (void)ht_traversal_interact();assert(ht.traversal.mode!=HT_TREE);
+                approach(i,side);
+                ht_step_controls(0,-1,false,false);assert(ht.traversal.mode==HT_TREE);
+                int old=ht.y;ht_step_controls(0,-1,false,false);assert(ht.y<old);
+                assert(!ht_traversal_interact());assert(ht.traversal.mode==HT_TREE);
+                ht_step_controls(0,1,false,false);assert(ht.y>=old);
+                ht_step_controls(side,0,false,false);assert(ht.traversal.mode==HT_FREE);
+                // A sideways jump past a trunk must remain airborne and free.
+                approach(i,side);ht.grounded=false;ht.y-=60*256;ht.vy=-700;ht.vx=side*640;
+                for(int n=0;n<5;++n)ht_step_controls(side,0,n==0,true);
+                assert(ht.traversal.mode!=HT_TREE);
+                approach(i,side);ht_step_controls(0,-1,false,false);
+                for(int n=0;n<260;++n)ht_step_controls(0,-1,false,false);
+                assert(ht.traversal.mode==HT_TREE && ht.y==(tree.base-tree.height+20)*256);
+                old=ht.y;ht_step_controls(side,0,true,true);
+                assert(ht.traversal.mode==HT_FREE && ht.y<old && ht.vx*side>0);
+                assert(!ht_tree_enter(0,-1,false)); // release cooldown
+            }
+            // Every substantial original limb supports landing/walking/drop;
+            // ascending through its underside cannot attach to it or the trunk.
+            for(int b=0;b<(tree.seed==1917?6:5);++b) {
+                ht_tree_branch limb=ht_tree_branch_shape(tree.x,tree.base,tree.height,tree.width,tree.seed,b);
+                int x=limb.mx,top;if(x<7 || x>HT_GOAL-7)continue;assert(ht_tree_footing(&tree,b,x,&top));
+                approach(i,limb.side);ht.x=x*256;ht.y=(top-2)*256;ht.vy=900;ht.grounded=false;
+                ht_step_controls(0,0,false,false);assert(ht.grounded && ht.traversal.support==5);
+                ht_step_controls(limb.side,0,false,false);assert(ht.grounded && ht.traversal.support==5);
+                ht_step_controls(0,1,false,false);assert(!ht.grounded && ht.traversal.branch_drop);
+                ht.traversal.branch_drop=0;ht.x=x*256;ht.y=(top+5)*256;ht.vy=-1000;
+                ht_step_controls(0,0,false,true);assert(!ht.grounded && ht.vy<0 && ht.traversal.mode==HT_FREE);
+                // Climb up the real trunk, then step onto this branch at its root.
+                approach(i,limb.side);assert(ht_tree_enter(0,-1,false));
+                bool stepped=false;
+                for(int n=0;n<260 && !stepped;++n) {
+                    int px=ht_tree_edge(&tree,ht.y/256,limb.side),at;
+                    if(ht_tree_footing(&tree,b,px,&at) && ht_abs(ht.y/256-at)<=2) {
+                        ht_step_controls(limb.side,0,false,false);
+                        assert(ht.grounded && ht.traversal.support==5 && ht.traversal.mode==HT_FREE);stepped=true;
+                    } else ht_step_controls(0,-1,false,false);
+                }
+                assert(stepped);++visited;
+            }
         }
-        if(count) {
-            ht_spawn(true);int base=ht_tree_base(&ht,&trees[0]);ht.x=(trees[0].x-trees[0].radius-6)*256;ht.y=base*256;
-            ht_step_controls(0,-1,false,false);assert(ht.traversal.mode==HT_TREE);
-            for(int n=0;n<280;++n)ht_step_controls(0,-1,false,false);
-            assert(ht.y==(base-trees[0].height+35)*256);
-            int y=ht.y;ht_step_controls(0,0,true,true);
-            assert(ht.traversal.mode==HT_FREE && ht.y<y && ht.vx<0);
-            assert(!ht_tree_enter()); // No immediate regrab after jumping.
-        } else assert(ht_tree_near(&ht)==-1);
+        assert(count==counts[level]);
     }
-    assert(branches==65);free(memory);
-    puts("Living trees: 65 shared branch surfaces, grip, ascent, step-out, slope walking, drop-through, landing and jump release PASS");
+    free(memory);printf("Original trees: %u limb contacts; Up intent, no sideways/A capture, climb, step-out, jump and drop PASS\n",visited);
 }

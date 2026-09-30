@@ -26,26 +26,29 @@ static bool ht_ladder_enter(int vertical) {
     ht.vx=ht.vy=0;ht.grounded=false;ht.coyote=ht.jump_buffer=0;
     return true;
 }
-static bool ht_tree_enter(void) {
+/* Up is deliberate climbing intent. Sideways jumps and A never attach. */
+static bool ht_tree_enter(int direction,int vertical,bool jumping) {
     ht_traversal *t=&ht.traversal;
-    if(t->mode || t->drop_cooldown)return false;
+    if(vertical>=0 || direction || jumping || t->mode || t->drop_cooldown)return false;
     int i=ht_tree_near(&ht);if(i<0)return false;
-    int count;const ht_living_tree *tree=&ht_trees(&ht,&count)[i];
-    t->tree=(uint8_t)i;t->tree_side=ht.x/256<tree->x?-1:1;t->mode=HT_TREE;
-    ht.x=(tree->x+t->tree_side*(tree->radius+6))*256;
+    ht_climb_tree tree;if(!ht_existing_tree(&ht,i,&tree))return false;
+    int left=ht_tree_edge(&tree,ht.y/256,-1),right=ht_tree_edge(&tree,ht.y/256,1);
+    t->tree=(uint8_t)i;t->tree_side=ht_abs(ht.x/256-left)<ht_abs(ht.x/256-right)?-1:1;
+    t->mode=HT_TREE;ht.x=(t->tree_side<0?left:right)*256;
     ht.vx=ht.vy=0;ht.grounded=false;ht.coyote=ht.jump_buffer=0;return true;
 }
-static void ht_tree_collision(int old_x,int old_y) {
-    int count;const ht_living_tree *trees=ht_trees(&ht,&count);
-    if(ht.vy<0 || ht.traversal.branch_drop)return;
-    for(int i=0;i<count;++i)for(int b=0;b<HT_TREE_BRANCHES;++b) {
-        int l,r;ht_branch_bounds(&trees[i],b,&l,&r);
-        if(ht.x/256<l || ht.x/256>=r)continue;
-        int top=ht_branch_top(&ht,&trees[i],b,ht.x/256);
-        int old_top=ht_branch_top(&ht,&trees[i],b,old_x/256);
-        bool follows=ht.vy<=88 && old_x/256>=l && old_x/256<r && ht_abs(old_y-old_top*256)<=256;
-        if((old_y<=old_top*256+256 && ht.y>=top*256) || follows) {
-            ht.y=top*256;ht.vy=0;ht.grounded=true;ht.traversal.support=5;
+static void ht_tree_collision(int old_x,int old_y,unsigned old_support) {
+    if(ht.traversal.branch_drop || ht.vy<0)return;
+    for(int i=0;i<=HT_PLATFORMS;++i) {
+        ht_climb_tree tree;if(!ht_existing_tree(&ht,i,&tree) || ht_abs(ht.x/256-tree.x)>tree.height/2)continue;
+        for(int b=0;b<6;++b) {
+            int top,old_top;
+            if(!ht_tree_footing(&tree,b,ht.x/256,&top) || !ht_tree_footing(&tree,b,old_x/256,&old_top))continue;
+            bool follows=old_support==5 && ht.vy<=88 && ht_abs(old_y-old_top*256)<=256;
+            if((old_y<=old_top*256+256 && ht.y>=top*256) || follows) {
+                if(ht.grounded && ht.y<top*256)continue;
+                ht.y=top*256;ht.vy=0;ht.grounded=true;ht.traversal.support=5;
+            }
         }
     }
 }
@@ -111,23 +114,20 @@ static int ht_traversal_near(const ht_game *g) {
     if(ht_rope_catch(g)>=0) return HT_ROPE;
     if(m->boat_right && ht_abs(x-t->boat_x/256)<=ht_boat_half(g)+6 && ht_abs(g->y-ht_boat_top(g))<=16*256) return HT_BOAT;
     if(ht_ladder_near(g)>=0) return HT_LADDER;
-    if(ht_tree_near(g)>=0) return HT_TREE;
     return HT_FREE;
 }
 static bool ht_traversal_interact(void) {
     ht_traversal *t=&ht.traversal;
+    if(t->mode==HT_TREE)return false; /* A remains inspection, never tree capture/release. */
     if(t->mode==HT_LEDGE) {t->mode=HT_CLIMB;t->climb=0;return true;}
     if(t->mode==HT_CLIMB) return true;
     if(t->mode) {
         if(t->mode==HT_ROPE) {
             ht_rope_velocity(&ht,&ht.vx,&ht.vy);
         } else if(t->mode==HT_BOAT) ht.vx=t->boat_vx;
-        if(t->mode==HT_TREE)t->drop_cooldown=12;
         t->mode=HT_FREE;return true;
     }
-    int near=ht_traversal_near(&ht);
-    if(near==HT_TREE)return ht_tree_enter();
-    if(!near || near==HT_LADDER) return false;
+    int near=ht_traversal_near(&ht);if(!near || near==HT_LADDER) return false;
     t->mode=(uint8_t)near;
     if(near==HT_ROPE) {
         t->rope_grip=ht_rope_catch(&ht);t->rope_slide_v=0;
@@ -315,10 +315,12 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
     uint8_t old_support=t->support;t->support=0;
     if(t->drop_cooldown) --t->drop_cooldown;
     if(t->branch_drop)--t->branch_drop;
-    if(old_support==5 && vertical>0 && !jump_request) {
-        t->drop_cooldown=t->branch_drop=20;ht.y+=2*256;ht.vy=256;ht.grounded=false;ht.coyote=0;
+    if(old_support==5 && vertical>0) {
+        t->branch_drop=16;t->drop_cooldown=16;ht.grounded=false;ht.coyote=ht.jump_buffer=0;ht.y+=2*256;
     }
-    if(!jump_request && vertical && !ht_ladder_enter(vertical)) (void)ht_tree_enter();
+    if(!jump_request) {
+        if(!ht_ladder_enter(vertical)) (void)ht_tree_enter(direction,vertical,jump_held);
+    }
     if(t->mode==HT_LEDGE && vertical<0) {t->mode=HT_CLIMB;t->climb=0;}
     if(t->mode==HT_LEDGE && (vertical>0 || jump_pressed)) {
         t->mode=HT_FREE;t->drop_cooldown=20;ht.vy=0;ht.coyote=ht.jump_buffer=0;
@@ -335,20 +337,26 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         }
     }
     if(t->mode==HT_TREE) {
-        int count;const ht_living_tree *tree=&ht_trees(&ht,&count)[t->tree];
-        int base=ht_tree_base(&ht,tree),old=ht.y;
-        ht.x=(tree->x+t->tree_side*(tree->radius+6))*256;
-        ht.y=ht_clamp(ht.y+vertical*512,(base-tree->height+35)*256,base*256);
-        ht.vx=ht.vy=0;ht.grounded=false;ht.stride+=ht_abs(ht.y-old);
-        /* Press outwards at a limb to step onto its actual sloping surface. */
-        for(int b=0;b<HT_TREE_BRANCHES;++b)if(direction==t->tree_side && ht_branch_side(b)==t->tree_side) {
-            int top=ht_branch_top(&ht,tree,b,ht.x/256);
-            if(ht_abs(ht.y-top*256)<=5*256) {
-                ht.y=top*256;ht.x+=direction*8*256;ht.grounded=true;
-                t->mode=HT_FREE;t->support=5;t->drop_cooldown=12;break;
+        ht_climb_tree tree;bool valid=ht_existing_tree(&ht,t->tree,&tree);
+        if(!valid) {t->mode=HT_FREE;ht.vy=88;}
+        else {
+            int old=ht.y;
+            ht.y=ht_clamp(ht.y+vertical*512,(tree.base-tree.height+20)*256,tree.base*256);
+            ht.x=ht_tree_edge(&tree,ht.y/256,t->tree_side)*256;
+            ht.vx=ht.vy=0;ht.grounded=false;ht.stride+=ht_abs(ht.y-old);
+            if(direction) {
+                /* Leaving the trunk always works. Step onto a nearby real
+                 * limb, otherwise fall naturally: no magnetic recapture. */
+                t->mode=HT_FREE;t->drop_cooldown=12;ht.vx=direction*320;
+                for(int b=0;b<6;++b) {
+                    int top;if(ht_tree_footing(&tree,b,ht.x/256,&top) && ht_abs(ht.y/256-top)<=5) {
+                        ht.y=top*256;ht.grounded=true;t->support=5;break;
+                    }
+                }
+            } else if(vertical>0 && ht.y>= (tree.base-3)*256) {
+                t->mode=HT_FREE;t->drop_cooldown=12;ht.vy=88;
             }
         }
-        if(ht.y==base*256 && vertical>0){t->mode=HT_FREE;ht.grounded=true;t->drop_cooldown=12;}
     } else if(t->mode==HT_LEDGE || t->mode==HT_CLIMB) {
         const ht_platform *p=&ht_land[t->ledge];
         int edge=t->ledge_side>0?p->left:p->right,top=ht_platform_top(&ht,t->ledge);
@@ -415,7 +423,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
             }
             ht_land_collision(i,old_x,old_y);
         }
-        if(!t->mode)ht_tree_collision(old_x,old_y);
+        if(!t->mode)ht_tree_collision(old_x,old_y,old_support);
         if(m->ball_x && t->mode!=HT_ROLL) {
             int dx=(ht.x-t->ball_x)/256;
             if(ht_abs(dx)<HT_BALL_RADIUS) {

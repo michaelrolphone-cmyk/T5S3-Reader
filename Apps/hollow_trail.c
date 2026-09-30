@@ -183,9 +183,9 @@ static void ht_input_update(uint32_t wait) {
         if(!connected) {
             if(in.buttons&T5_APP_BUTTON_LEFT) buttons|=HT_LEFT;
             if(in.buttons&T5_APP_BUTTON_RIGHT) buttons|=HT_RIGHT;
-            if(in.buttons&T5_APP_BUTTON_UP) buttons|=(reading || (!paused && (ht.traversal.support==5 || ht_tree_near(&ht)>=0 || ht.traversal.mode==HT_TREE || ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)))?HT_UP:HT_JUMP;
+            if(in.buttons&T5_APP_BUTTON_UP) buttons|=(reading || (!paused && (ht_tree_near(&ht)>=0 || ht.traversal.mode==HT_TREE || ht.traversal.support==5 || ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)))?HT_UP:HT_JUMP;
             if(in.buttons&T5_APP_BUTTON_CONFIRM) buttons|=HT_INTERACT|HT_ACCEPT;
-            if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=(reading || (!paused && (ht.traversal.support==5 || ht_tree_near(&ht)>=0 || ht.traversal.mode==HT_TREE || ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)))?HT_DOWN:HT_PAUSE;
+            if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=(reading || (!paused && (ht_tree_near(&ht)>=0 || ht.traversal.mode==HT_TREE || ht.traversal.support==5 || ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)))?HT_DOWN:HT_PAUSE;
             if(in.buttons&T5_APP_BUTTON_BACK) buttons|=HT_EXIT;
         }
         /* Raw capability ownership suppresses duplicate OS pad navigation.
@@ -363,7 +363,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
     ht_fps_reset(&ht_fps,ht_perf.start);
-    ht_log("Hollow Trail 1.1.22: nearest camera baseline; rolling 10-second FPS");
+    ht_log("Hollow Trail 1.1.23: nearest camera baseline; rolling 10-second FPS");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -434,7 +434,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.22",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.23",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,

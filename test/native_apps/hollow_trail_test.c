@@ -241,12 +241,7 @@ static void terrain_and_rope_invariants(void) {
         int top=ht_surface_at(&ht,2,x);
         assert(ht_scene[top*HT_W+x-670]>=230);
         assert(ht_scene[(top+30)*HT_W+x-670]==255);
-        int shelter=top,count;const ht_living_tree *trees=ht_trees(&ht,&count);
-        for(int tree=0;tree<count;++tree)for(int b=0;b<HT_TREE_BRANCHES;++b) {
-            int l,r;ht_branch_bounds(&trees[tree],b,&l,&r);
-            if(x>=l && x<r)shelter=ht_min(shelter,ht_branch_top(&ht,&trees[tree],b,x));
-        }
-        assert(ht_weather_floor(&ht,x-670)==shelter);
+        assert(ht_weather_floor(&ht,x-670)==top);
     }
     /* Catch six different heights, visibly descend over time, and jump
      * before reaching the tail. A near miss must not attach automatically. */
