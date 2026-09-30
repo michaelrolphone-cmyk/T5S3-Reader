@@ -6,9 +6,9 @@ The direction is intended to preserve the story's environmental arc: **domestic 
 
 ## Intro cutscene and gameplay handoff
 
-Before the first player-controlled forest step, the engine plays a timeline-driven introduction using the same renderer and articulated character used during gameplay. It is not video. The timeline controls the protagonist, scene choice, camera travel, framing and local signal exposure on the normal fixed simulation clock.
+Before the first player-controlled forest step, the engine plays a timeline-driven introduction using the game renderer rather than video. The cutscene system now has two camera grammars. **Profile** uses the normal side-scroller X/Z composition. **Forward-X** looks down the route's X axis: X is depth, Y is screen-left/right and Z is vertical. Forward-X objects receive integer perspective scaling, distance fog/ink falloff and far-to-near occlusion, allowing characters and scenery to exist in front of or behind one another instead of being flattened into the side view.
 
-The authored sequence is: **washing at the kitchen window -> three flashes -> tall-grass signal memory -> warning variant -> return to the empty kitchen -> pre-dawn packing and departure -> orchard/ditch/boundary walk -> road becoming roots**. The final cutscene composition already contains the first large forest trunks and root-soft road, then control transfers to the normal chapter-one forest spawn. All movement inputs are neutral-gated across that boundary.
+The authored sequence is: **Forward-X kitchen at the sink -> three distant flashes beyond the fogged window -> Forward-X tall-grass memory with the sister deeper in the grass -> warning variant with the distant upstairs window -> return to the empty kitchen -> packing -> Forward-X departure through the doorway with the protagonist walking away into receding orchard rows -> deliberate cut to profile orchard -> road becoming roots**. Front, back and three-quarter cutscene poses let the same character be staged facing the observer, facing away, or turning through the scene. The final profile cue converges on the live forest camera position and 1.5x intimacy scale before control transfers to the normal chapter-one spawn. All movement inputs remain neutral-gated across that boundary.
 
 ## Effect scale
 
