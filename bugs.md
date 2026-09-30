@@ -1,8 +1,8 @@
 # Bug Log
 
-Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b3a7`, through the 05:18 MDT scan. This is the canonical report inventory. Existing IDs 5 and 13–72 are preserved; new distinct reports receive IDs 73–207. Scan-local numbers are not canonical IDs. Entries preserve source-review reproduction evidence and repair directions; they are reported open, not claims of fresh hardware reproduction or a complete revalidation of every intervening feature change.
+Consolidated on 2026-09-30 against master `1ebf01386643c8504cc68061dcd0a6185ca42a9c`, through the 07:47 MDT scan. This is the canonical report inventory. Existing IDs 5 and 13–72 are preserved; new distinct reports receive IDs 73–210. Scan-local numbers are not canonical IDs. Entries preserve source-review reproduction evidence and repair directions; they are reported open, not claims of fresh hardware reproduction or a complete revalidation of every intervening feature change.
 
-**196 distinct active reports: 61 carried forward and 135 newly consolidated.** The eight previous scheduled fixes (IDs 4, 6–12) are already on master: PR #244 was incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including its final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. They are not pending fixes. Earlier fixes #205, #209 and #212 remain excluded.
+**199 distinct active reports: 61 carried forward and 138 newly consolidated.** The eight previous scheduled fixes (IDs 4, 6–12) are already on master: PR #244 was incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including its final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. They are not pending fixes. Earlier fixes #205, #209 and #212 remain excluded.
 
 ## Coverage and recovery
 
@@ -2438,3 +2438,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Resolve the link path against the current spine item's directory, normalize dot segments, remove only the fragment for lookup, and perform an exact canonical-path match. If a basename compatibility fallback is retained, allow it only when the basename is unique. Add fixtures for duplicate basenames, sibling links, and `../` references.
 
 - **Consolidation sources:** [automation/bug-scan-20260930-0518](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/82533918d81fda11ae9c6b19d95b071a98f19361/bugs.md); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Diff](https://docs.google.com/spreadsheets/d/1geT64642Lsjo_EaRZhNxF9516LV2BRVIp4stNAnOkjg/edit?usp=drivesdk); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Instructions](https://docs.google.com/spreadsheets/d/1xB4JDjKoHfw-mCY9pUQL1VP2tWxilaT0WRwdCPryrO8/edit?usp=drivesdk)
+
+
+### 208. KOReader nested paragraph XPaths are mistaken for chapter-global paragraph numbers
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260930-0747](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260930-0747/bugs.md)
+
+- **Affected code:** `lib/KOReaderSync/ProgressMapper.cpp`, especially `parseIndex()`, `ProgressMapper::toCrossPoint()`, and `ParagraphStreamer`; related structural XPath handling in `lib/KOReaderSync/ChapterXPathResolver.cpp`.
+- **Trigger / reproduction:** Use an EPUB chapter whose paragraphs are split across multiple containers, for example `<body><div><p>A</p><p>B</p></div><div><p>C</p></div></body>`, then import KOReader progress whose XPath points at C as `.../div[2]/p[1]/text().1`.
+- **Observed / logically demonstrated failure:** `toCrossPoint()` extracts only the final `/p[n]` index and treats that sibling index as a chapter-global paragraph number. For the example XPath it extracts `p[1]`. `ParagraphStreamer` then counts `<p>` elements globally from the start of the chapter and resolves paragraph 1 to A, not C. The resulting CrossPoint position can therefore jump to a different paragraph even though the KOReader XPath is structurally valid.
+- **Likely root cause:** The reverse mapper discards the ancestor path that gives `p[n]` its scope. KOReader paragraph indices are sibling indices within their containing element, while `ParagraphStreamer` interprets the number as a flat chapter-wide ordinal.
+- **Impact:** KOReader Sync can restore or import reading progress to the wrong text in ordinary XHTML that uses multiple `div`, `section`, or other paragraph-containing blocks. The error is deterministic and can be large in chapters with repeated nested structures.
+- **Repair direction:** Resolve the complete KOReader XPath structurally against the chapter, using the same element-path semantics as `ChapterXPathResolver` or an equivalent walker, then map the resolved text node to CrossPoint progress. Do not use the last `p[n]` as a global ordinal. Add nested-container fixtures where the same `p[1]` occurs under several ancestors.
+
+### 209. Firmware keyboard cursor and deletion operations split UTF-8 code points
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260930-0747](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260930-0747/bugs.md)
+
+- **Affected code:** `src/activities/util/KeyboardEntryActivity.cpp`, especially `onEnter()`, `handleKeyPress()`, and `handleExternalTextInput()`; native entry path `src/native/NativeSystemUiBridge.cpp::keyboardRequest()`.
+- **Trigger / reproduction:** From a native app, call the System UI keyboard with UTF-8 initial text such as `"café"` or an emoji, then press Left/Right, Backspace, or Delete around the non-ASCII character and accept the result.
+- **Observed / logically demonstrated failure:** `cursorPos` is initialized to `text.length()` and treated as a raw byte index. Left/Right change it by one byte and Backspace/Delete erase exactly one byte. Deleting at the end of `"café"`, for example, removes only one byte of the two-byte `é`, leaving malformed UTF-8; moving the cursor can also place it inside a multibyte sequence before insertion or rendering.
+- **Likely root cause:** The keyboard stores the cursor as a byte offset but implements character navigation and deletion as single-byte operations, even though its `std::string` input/output paths can contain UTF-8.
+- **Impact:** Editing existing non-ASCII names, URLs, passwords, or other text can corrupt the returned string and can make cursor rendering/measurement operate on invalid UTF-8. The failure affects any caller that supplies UTF-8 initial text.
+- **Repair direction:** Keep the cursor as a UTF-8 boundary-safe byte offset or code-point index. Left/Right must move to the previous/next code-point boundary and Backspace/Delete must erase a complete code point. Ensure insertion/rendering never observes a cursor inside a continuation sequence. Add 2-, 3-, and 4-byte UTF-8 navigation/deletion tests.
+
+### 210. A too-small native keyboard result buffer silently truncates and consumes the only result
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260930-0747](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260930-0747/bugs.md)
+
+- **Affected code:** `src/native/NativeSystemUiBridge.cpp::keyboardTakeResult()`; public contract in `lib/NativeApps/include/T5SystemUiApi.h`.
+- **Trigger / reproduction:** Request a firmware keyboard result longer than the buffer later supplied to `keyboard_take_result()`, for example enter 20 bytes and retrieve into `char text[8]`.
+- **Observed / logically demonstrated failure:** The bridge copies only `capacity - 1` bytes, appends NUL, still returns `true`, and immediately clears `keyboardState`. The caller receives a successful-but-truncated string and cannot retry with a larger buffer because the only pending result has already been consumed. If truncation lands inside a multibyte UTF-8 sequence, the returned string can also be malformed.
+- **Likely root cause:** `capacity` is treated as permission to truncate rather than as a destination-size precondition, while the ABI says the result is consumed after a successful call and provides no truncation/required-size signal.
+- **Impact:** Native applications can silently persist incomplete user input such as URLs, credentials, names, or arbitrary text while believing retrieval succeeded. Unlimited keyboard requests (`max_length == 0`) make the mismatch especially easy for callers to trigger.
+- **Repair direction:** Never report success while dropping result bytes. Preserve the pending result when the destination is too small and expose an unambiguous insufficient-capacity/required-size path, preferably in a versioned API while keeping v1 behavior safe. At minimum require a full fit including NUL before copying/consuming. Add exact-fit, one-byte-short, zero-capacity, long-input, and UTF-8-boundary tests.
