@@ -12,7 +12,10 @@ static void service(void) {
     if(change_level) { change_level=false; ht.level=(ht.level+1)%HT_LEVELS; }
 }
 static void reference(void) {
-    const ht_game game=ht;
+    ht_game game=ht;
+    /* Match the production viewport before comparing cached strips with the
+     * independent full-geometry/blur reference. Framing is not a cache effect. */
+    ht_frame_camera(&game,HT_CAMERA_BASELINE);
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
     const int radius[]={3,1,0,0},spread[]={9,6,4,4};
     memset(ht_scene,ht_sky_ink(&game),HT_PIXELS);

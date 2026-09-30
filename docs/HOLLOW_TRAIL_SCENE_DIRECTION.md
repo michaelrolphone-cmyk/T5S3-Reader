@@ -181,3 +181,194 @@ direction checks used ASan+UBSan (leak scanning disabled in the sandbox). The
 complete ten-chapter route, all 30 evidence items and loop pass without deaths.
 S3 ELF structural validation passes; source, sidecar and catalog agree on
 1.1.28 and SHA-256 `13195385c5a6b16fc4391e78de5b2e073046418055125d30c23e7d1ff72a39c6`.
+
+
+## Caption clearance and rope attachment — 1.1.29
+
+Hollow Trail **1.1.28 -> 1.1.29**; minimum firmware stays **1.3.37**.
+The frozen render camera now reserves room above the narrative band (y=232):
+feet plus supporting terrain, or the entire boat hull and reflection, stay at
+or above y=211 before the text is drawn. The constraint accounts for scene
+scale and the camera's rotation/breathing transform, including every A/B mode.
+It adjusts the world camera rather than moving the character relative to the
+terrain or hiding the text. Fixed-step movement speeds and jump pacing remain.
+
+Approaching a rope eases out the close camera cue. While attached, wider
+framing includes the support as well as the hands/feet; breathing widens and
+then eases back after release. The baseline close scale remains elsewhere.
+Dam and grotto boat views, unloaded rope and loaded swinging-rope scenes were
+rendered with the actual narrative overlay and visually inspected.
+
+Ropes have a continuous dark body and diagonal strand highlights anchored to
+length, so the weave moves with the rope. Two wraps, a hitch and a short frayed
+tail replace the black/white anchor disk. A bounded damped spring moves the
+physical attachment toward the player's load and arc; wood can yield up to five
+world pixels, metal supports up to two. The branch/crossbar follows the pin,
+the forest limb's footing shares its bent geometry, and unloading settles back
+to rest. Previous pin coordinates track actual motion for rope-release velocity.
+There are no additional scenery objects, frame buffers or per-frame allocations.
+
+Verification: 1,360 camera-clearance cases across chapters, camera modes,
+rotations and scales; loaded support bounds, continuous pin motion, unloaded
+return and branch-footing agreement (ASan+UBSan). The ground regressions
+(25,296 poses), 78 branch contacts, forest cache transitions, scene-direction
+physics, complete ten-chapter route and C++ math integration pass. The three
+boat chapter renderer references and all ten grotto frame hashes remain exact;
+the other chapter references intentionally reflect higher framing/new ropes.
+S3 ELF structural validation and source/sidecar/catalog version/hash agreement
+pass. On-device appearance and performance have not been measured.
+
+
+### Sustained effort and gravity-driven toppling (same unreleased 1.1.29)
+
+A engages the standing snag; pushing toward it is now required for 48 fixed
+steps (1.536 seconds). The character moves into a braced stance, plants the rear
+foot, bends the knees and presses both hands against the bark. Effort shifts the
+shoulders forward with a restrained breathing/strain cycle. A small increasing
+lean shows the root resistance before release. Idle input loses effort; backing
+away, releasing the grip or jumping cancels the action. No new prompt/meter.
+
+Once the roots give way, the character withdraws the hands in a brief follow-
+through. The trunk integrates angular speed with torque increasing with the
+sine of its lean. It starts nearly still and accelerates until the far-bank
+contact; it becomes walkable only after landing. Partial effort/falls reset on
+respawn, while an already landed crossing persists. The resting and landed
+geometry remains unchanged, including existing renderer references.
+
+The forest regression now checks idle input, interrupted effort, the full push
+threshold, backing away, jumping away, monotonic angle/increasing angular speed,
+no early footing and respawn behavior under ASan+UBSan. The input-only complete
+route pushes and waits for the actual fall. Ground, tree, framing, controls,
+renderer, complete-route and C++ math checks pass. Pushing/follow-through poses
+were visually inspected. S3 app build and ELF structural validation pass; the
+source, sidecar and catalog remain 1.1.29 for this cumulative unmerged PR.
+
+### Solid snag and speed-matched gait (same unreleased 1.1.29)
+
+The standing/falling snag now blocks the player's body from either side. Its
+32 short collision sections use the same bend, taper, bark outline and angle
+as the drawing. Swept horizontal contact stops airborne/high-speed approaches;
+collision is applied after attachments/props, before ground recovery. The
+landed tree retains its existing crossing surface. Walking into the trunk leaves
+the player within push interaction range, without triggering the fall.
+
+Free grounded movement blends from walking into a running gait over actual Q8
+speeds 304–336. Running uses a longer stride, forward torso lean, higher knee
+recovery, brief flight and bent-arm swing. Cadence follows distance; speed cues
+remain unchanged. Idle, jumping, climbing, pushing and rowing retain their own
+poses. Slow/brisk/run contact sheets were inspected.
+
+Walking/jumping into the snag, both-sided fast approaches at multiple heights,
+other-chapter isolation, sustained pushing and landed crossing pass. Ground
+integrity (25,296 poses), 78 branch contacts, scene pace/gait selection, complete
+ten-chapter route, forest ASan+UBSan and C++ integration checks pass.
+
+## Articulated character — 1.1.30
+
+Hollow Trail **1.1.29 -> 1.1.30**, minimum firmware **1.3.37**. Branched
+from master after PR #320 merged. All activities now share a proportioned
+silhouette: profiled crown/brow/nose/chin, neck, shaped jacket with a waist and
+hem, longer legs, ankle/heel/toe contours and subdued close-view clothing seams.
+The oversized head disks and white eye cutouts are removed. Rear limbs are
+slightly quieter than the near limbs so overlapping poses remain readable.
+
+A common pose builder places hips, shoulders and contacts; integer two-bone
+joint construction supplies knees/elbows. Walking uses a planted stance that
+cancels world displacement and an elevated recovery arc. Running blends knee
+lift, torso lean, arm carriage and brief flight with actual speed. Foot heights
+follow nearby soil slopes. Ascent tucks the legs and lifts the arms; descent
+extends them for landing, whose compression follows the existing impact state.
+No physics speeds, collision sizes, terrain, camera direction or controls change.
+
+Climbing contacts follow trunk contour or ladder rungs. Ledge hands use the
+actual lip height. Rope hands follow the simulated grip with trailing feet;
+rowing palms retain the shared oar stroke. Stone/crate and tree pushing retain
+their physical contact points, brace and effort/release states. Fixed small
+pose structs, bounded contact queries and integer math add no allocations,
+textures or frame buffers.
+
+Walk/run/jump contact sheets and actual forest walking, running, tree pushing,
+climbing and seated boat scenes were visually inspected. A focused character
+regression covers walking leg lengths, planted stance in both directions,
+idle stability, jump phase changes and exact oar contact. Renderer full-frame
+references are updated for the intentional character changes; the independent
+300-view grotto geometry and cache pixel-equivalence comparisons remain intact.
+S3 build/ELF validation and source/sidecar/catalog version/hash agreement pass.
+
+### Dam waterfall and foreground detail (same unreleased 1.1.30)
+
+The reservoir wall uses a separate 88% horizontal parallax plane, anchored near
+the boat basin, between the distant valley and the 125% observer foreground.
+Buttresses have shaded side faces, wet edges, concrete courses and restrained
+fractures; the crest carries a continuous parapet/railing. Spillways have dark
+recesses and projecting lips rather than bright rectangles painted on the wall.
+
+Each waterfall has 32 irregular edge sections, a luminous central sheet,
+translucent-looking side veils, six folded ribbons and time-advected packets.
+Packet position is quadratic in age, so streaks accelerate and stretch through
+the fall. The broad central discharge meets the boat basin at its water level;
+outer chutes continue into the lower gorge behind the banks. Three feathered
+mist volumes per visible discharge blend with the wall/water, followed by broken
+expanding ripples. All draw before nearer terrain, boat and character. No
+random per-frame noise, allocations or additional frame buffers are used;
+visible bounds cull individual chutes and clip the two-pixel mist work.
+
+The two existing foreground sites retain their spacing. Fractured abutments
+use forty contour sections with small edge seams; return pipes have highlights,
+anchored brackets, bolted collars and a small tuft of bent grass at a damp seam.
+This adds depth/detail without changing terrain, traversal or scene pace.
+
+Approach, boat basin, far-bank and close foreground views were rendered and
+visually inspected. Only dam full-frame renderer references change; all other
+chapters, including the grotto boat scene, retain their reference hashes.
+S3 app build and structural validation pass; source/sidecar/catalog agree on
+1.1.30 and SHA-256 `84c9ebd3e3197eaef1e5667ca2d3635a4bb1364bbbf6041c15a56716b9989cb8`.
+Device appearance and FPS have not been measured.
+
+### Photo-guided detail in the remaining six chapters (unreleased 1.1.30)
+
+Scope: oil fields (2), railway (3), quarry (5), glasshouse (6), mountains (8)
+and settlement (9), using zero-based chapter numbers. Forest, city, grotto boat
+and dam raster references remain unchanged. Existing object sites, counts,
+terrain, movement and physical branch axes remain in place.
+
+Reference photographs reviewed for general form, not copied into game assets:
+- NPS mature saguaro: rounded stem, unequal upright arms, curved elbows and ribs:
+  https://home.nps.gov/sagu/learn/nature/saguaro.htm
+- Library of Congress pumpjack, Carol Highsmith: horsehead, walking beam,
+  bearing, pitman and counterweight:
+  https://www.loc.gov/pictures/item/2020743415/
+- Library of Congress side-view steam locomotive: boiler bands, domes,
+  running gear, spoked wheels and handrail:
+  https://www.loc.gov/item/2022647579/
+- USGS Thunder Hole granite, Alex Demas: stepped fracture planes, chipped
+  shoulders and connected joints:
+  https://www.usgs.gov/media/images/granite-outcropping-thunder-hole
+- Library of Congress White House conservatory: closely spaced glazing ribs,
+  long pane divisions and layered broad leaves:
+  https://www.loc.gov/pictures/item/96512664/
+- NPS Great Basin bristlecone: irregular trunk, exposed grain, sparse twigs
+  and needle clusters:
+  https://home.nps.gov/grba/planyourvisit/identifying-bristlecone-pines.htm
+- Library of Congress Goldfield street: overhanging eaves, recessed sash
+  windows, porch edges and weatherboard facades:
+  https://www.loc.gov/pictures/item/95508788/
+
+Implementation: 36-vertex ground stones with joined fracture planes and snow
+caps; 48-section close rock contours; 24-section rounded cactus stems with
+12-section curved unequal arms and ribs; 40-section bark/knots on existing
+alpine/glasshouse trunks, keeping branch footing geometry; 12-section leaves
+and 40-section glazing arches. Pumpjacks gain crank/pitman/bearing details;
+quarry cranes gain lattice and hooks; trains gain eight-spoke wheels, valve
+rods, boiler bands, steam domes, handrails and carriage panels. Settlement
+houses gain eaves, siding, divided sash windows, sills, porches and chimney
+caps. Foreground pipe flanges, telegraph insulators and glasshouse rivets/glass
+edges receive sparse detail. Material shapes remain bounded and world anchored;
+no runtime photographs, textures, allocations or new frame buffers.
+
+Eighteen actual scene views (three per chapter) were inspected alongside the
+reference photographs. A follow-up corrected the cactus elbows/tips from
+branch-like diagonals to the rounded upright saguaro form. Renderer references
+change only in these six chapters. Full route, existing collision/contact
+checks and cache equivalence pass; S3 build and ELF structural validation pass.
+Device appearance/FPS are not claimed.

@@ -20,6 +20,11 @@ static int ht_pace_target(const ht_game *g) {
 static int ht_intimacy_target(const ht_game *g) {
     int close=g->level==4?0:256;
     if(g->observation_ticks)close=ht_min(256,close+80);
+    const ht_mechanics *m=&ht_mechanics_by_level[g->level];
+    if(m->rope_length) {
+        int approach=ht_clamp(ht_abs(g->x/256-m->rope_anchor_x)-50,0,160);
+        close=close*approach/160; /* Ease out before reaching the hanging rope. */
+    }
     return close*(256-ht_vista_target(g))/256;
 }
 static int ht_scene_scale(const ht_game *g) {

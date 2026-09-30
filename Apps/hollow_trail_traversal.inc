@@ -43,7 +43,7 @@ static void ht_tree_collision(int old_x,int old_y,unsigned old_support) {
         ht_climb_tree tree;if(!ht_existing_tree(&ht,i,&tree) || ht_abs(ht.x/256-tree.x)>tree.height/2)continue;
         for(int b=0;b<6;++b) {
             int top,old_top;
-            if(!ht_tree_footing(&tree,b,ht.x/256,&top) || !ht_tree_footing(&tree,b,old_x/256,&old_top))continue;
+            if(!ht_tree_footing(&ht,&tree,b,ht.x/256,&top) || !ht_tree_footing(&ht,&tree,b,old_x/256,&old_top))continue;
             bool follows=old_support==5 && ht.vy<=HT_GRAVITY && ht_abs(old_y-old_top*256)<=256;
             if((old_y<=old_top*256+256 && ht.y>=top*256) || follows) {
                 if(ht.grounded && ht.y<top*256)continue;
@@ -118,11 +118,13 @@ static int ht_traversal_near(const ht_game *g) {
 }
 static bool ht_forest_log_near(const ht_game *g) {
     return g->level==0 && !g->traversal.forest_log_phase && !g->traversal.forest_log_falling &&
-        g->grounded && g->x/256>=342 && g->x/256<=378 && ht_abs(g->y/256-220)<=10;
+        g->grounded && g->x/256>=342 && g->x/256<=366 && ht_abs(g->y/256-220)<=10;
 }
 static bool ht_traversal_interact(void) {
     ht_traversal *t=&ht.traversal;
-    if(!t->mode && ht_forest_log_near(&ht)) {t->forest_log_falling=true;return true;}
+    if(!t->mode && ht_forest_log_near(&ht)) {
+        t->mode=HT_PUSH;t->forest_push=0;ht.vx=ht.vy=0;return true;
+    }
     if(t->mode==HT_TREE)return false; /* A remains inspection, never tree capture/release. */
     if(t->mode==HT_LEDGE) {t->mode=HT_CLIMB;t->climb=t->climb_phase=0;return true;}
     if(t->mode==HT_CLIMB) return true;
@@ -220,7 +222,11 @@ static void ht_props_step(int direction) {
     if(t->support==2) ht.x+=t->crate_x-crate_old;
     if(t->support==3) ht.x+=t->boat_x-boat_old;
     if(ht.level==0 && t->forest_log_falling && t->forest_log_phase<32) {
-        ++t->forest_log_phase;
+        /* Gravity torque grows with lean; integrate angular speed rather
+         * than advancing a fixed animation phase. */
+        t->forest_log_speed+=(uint16_t)(1+ht_forest_log_sine(t->forest_log_angle)*22/256);
+        t->forest_log_angle=(uint16_t)ht_min(4096,t->forest_log_angle+t->forest_log_speed);
+        t->forest_log_phase=(uint8_t)(t->forest_log_angle==4096?32:ht_min(31,t->forest_log_angle*32/4096));
         if(t->forest_log_phase==32) {t->bridge_open=32;t->forest_log_falling=false;}
     }
     if(ht.level!=0 && t->bridge_open<32) {
@@ -231,6 +237,20 @@ static void ht_props_step(int direction) {
     /* Verlet inertia, gravity, hand pumping and six length-constraint passes.
      * Seven nodes / 36 segment solves is a fixed simulation budget. */
     if(m->rope_length) {
+        /* The loaded support is a damped spring. A wooden limb yields more
+         * than a steel crossbar; unloading lets it settle without flicker. */
+        t->rope_ox[0]=t->rope_px[0];t->rope_oy[0]=t->rope_py[0];
+        int limit=ht.level==0?5:2,tx=0,ty=0;
+        if(t->mode==HT_ROPE) {
+            tx=ht_clamp((ht.x-m->rope_anchor_x*256)/24,-limit*128,limit*128);
+            ty=ht_min(limit*256,256+ht_abs(t->rope_v)/2);
+        }
+        t->rope_bend_vx=ht_clamp(t->rope_bend_vx+(tx-t->rope_bend_x)/12-t->rope_bend_vx/4,-96,96);
+        t->rope_bend_vy=ht_clamp(t->rope_bend_vy+(ty-t->rope_bend_y)/12-t->rope_bend_vy/4,-96,96);
+        t->rope_bend_x=ht_clamp(t->rope_bend_x+t->rope_bend_vx,-limit*128,limit*128);
+        t->rope_bend_y=ht_clamp(t->rope_bend_y+t->rope_bend_vy,0,limit*256);
+        if(!tx && ht_abs(t->rope_bend_x)<12 && ht_abs(t->rope_bend_vx)<12)t->rope_bend_x=t->rope_bend_vx=0;
+        if(!ty && ht_abs(t->rope_bend_y)<12 && ht_abs(t->rope_bend_vy)<12)t->rope_bend_y=t->rope_bend_vy=0;
         int fraction,node=ht_rope_segment(&ht,&fraction);
         if(t->mode==HT_ROPE) {
             int dx=(t->rope_px[node+1]-t->rope_px[node])/256;
@@ -249,7 +269,7 @@ static void ht_props_step(int direction) {
         }
         int length=m->rope_length*256/(HT_ROPE_NODES-1);
         for(int pass=0;pass<6;++pass) {
-            t->rope_px[0]=m->rope_anchor_x*256;t->rope_py[0]=m->rope_anchor_y*256;
+            t->rope_px[0]=m->rope_anchor_x*256+t->rope_bend_x;t->rope_py[0]=m->rope_anchor_y*256+t->rope_bend_y;
             for(int i=1;i<HT_ROPE_NODES;++i) {
                 int dx=t->rope_px[i]-t->rope_px[i-1],dy=t->rope_py[i]-t->rope_py[i-1];
                 int sx=dx,sy=dy;
@@ -350,6 +370,30 @@ static void ht_reconcile_ground(int old_x,int old_y) {
         if(!corrected)break;
     }
 }
+/* The snag is solid on both sides until it becomes the landed crossing.
+ * Bounded short sections rotate with the visible trunk, including its lean
+ * under effort. Swept horizontal bounds also stop a fast airborne approach. */
+static void ht_forest_log_collision(int old_x) {
+    if(ht.level!=0 || ht.traversal.forest_log_phase==32)return;
+    int angle=ht_forest_log_angle(&ht);
+    int dx=312*ht_forest_log_sine(angle)/256,dy=-312*ht_forest_log_sine(4096-angle)/256;
+    int px,py,pr,pb;ht_forest_log_node(dx,dy,0,&px,&py,&pr,&pb);
+    int left=100000,right=-100000;
+    for(int i=1;i<=32;++i) {
+        int nx,ny,nr,nb;ht_forest_log_node(dx,dy,i,&nx,&ny,&nr,&nb);
+        int l=ht_min(px+dy*pr/312,nx+dy*nr/312);
+        int r=ht_max(px-dy*pb/312,nx-dy*nb/312);
+        int top=ht_min(py-dx*pr/312,ny-dx*nr/312);
+        int bottom=ht_max(py+dx*pb/312,ny+dx*nb/312);
+        if(ht.y>top*256 && ht.y-29*256<bottom*256) {left=ht_min(left,l);right=ht_max(right,r);}
+        px=nx;py=ny;pr=nr;pb=nb;
+    }
+    if(left>right)return;
+    left=(left-5)*256;right=(right+5)*256;
+    if(ht_max(old_x,ht.x)>left && ht_min(old_x,ht.x)<right) {
+        ht.x=old_x<=(left+right)/2?left:right;ht.vx=0;
+    }
+}
 static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool jump_held) {
     bool jump_request=jump_pressed;
     int start_x=ht.x,start_y=ht.y,fall_speed=ht.vy;
@@ -368,6 +412,8 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
     const ht_mechanics *m=ht_mech(&ht);
     ht_props_step(direction);
     uint8_t old_support=t->support;t->support=0;
+    if(t->forest_push_release)--t->forest_push_release;
+    if(t->mode!=HT_PUSH && t->forest_push)t->forest_push=(uint8_t)ht_max(0,t->forest_push-3);
     if(t->drop_cooldown) --t->drop_cooldown;
     if(t->branch_drop)--t->branch_drop;
     if(old_support==5 && vertical>0) {
@@ -391,7 +437,21 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
             ht.vy=-HT_JUMP_SPEED+(mode==HT_ROPE?ht_clamp(rvy,-384,384):0);ht.grounded=false;ht.coyote=0;jump_pressed=false;
         }
     }
-    if(t->mode==HT_TREE) {
+    if(t->mode==HT_PUSH) {
+        if(!ht_forest_log_near(&ht) || direction<0) {t->mode=HT_FREE;ht.vx=direction*ht_walk_speed(&ht);}
+        else {
+            int old=ht.x;
+            ht.x+=ht_clamp(350*256-ht.x,-ht_walk_speed(&ht),ht_walk_speed(&ht));
+            ht.vx=ht.vy=0;ht.facing=1;ht.grounded=true;ht.stride+=ht_abs(ht.x-old);
+            if(direction>0 && ht.x==350*256) {
+                if(++t->forest_push==HT_FOREST_PUSH_STEPS) {
+                    t->forest_log_angle=(uint16_t)ht_forest_log_angle(&ht);
+                    t->forest_log_speed=0;t->forest_log_falling=true;
+                    t->forest_push_release=8;t->mode=HT_FREE;
+                }
+            } else t->forest_push=(uint8_t)ht_max(0,t->forest_push-3);
+        }
+    } else if(t->mode==HT_TREE) {
         ht_climb_tree tree;bool valid=ht_existing_tree(&ht,t->tree,&tree);
         if(!valid) {t->mode=HT_FREE;ht.vy=88;}
         else {
@@ -404,7 +464,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
                  * limb, otherwise fall naturally: no magnetic recapture. */
                 t->mode=HT_FREE;t->drop_cooldown=12;ht.vx=direction*ht_walk_speed(&ht)/2;
                 for(int b=0;b<6;++b) {
-                    int top;if(ht_tree_footing(&tree,b,ht.x/256,&top) && ht_abs(ht.y/256-top)<=5) {
+                    int top;if(ht_tree_footing(&ht,&tree,b,ht.x/256,&top) && ht_abs(ht.y/256-top)<=5) {
                         ht.y=top*256;ht.grounded=true;t->support=5;break;
                     }
                 }
@@ -522,6 +582,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         if(ht.y-29*256<ceiling*256) {ht.y=(ceiling+29)*256;ht.vy=ht_max(0,ht.vy);}
     }
     if(!jump_request) (void)ht_ladder_enter(vertical);
+    ht_forest_log_collision(start_x);
     ht_reconcile_ground(start_x,start_y);
     ht_camera_step((direction || vertical || t->mode==HT_CLIMB) && (start_x!=ht.x || start_y!=ht.y));
     if(ht.grounded && !was_grounded && fall_speed>384 && !t->mode) {

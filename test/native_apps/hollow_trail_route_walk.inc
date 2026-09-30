@@ -39,7 +39,10 @@ static void walk_route_tick(void) {
             bool fill_pit=m->ball_x && m->pit_platform==(int)walk_phase;
             if(ht.level==0 && gate) {
                 if(x<350)dir=1;
-                else if(!t->forest_log_falling) {assert(ht_traversal_interact());walk_mechanics|=32;}
+                else if(!t->forest_log_falling) {
+                    if(t->mode!=HT_PUSH){assert(ht_traversal_interact());walk_mechanics|=32;}
+                    dir=1;
+                }
             } else if(ht.level==0 && walk_phase==0) {
                 dir=1;if(ht.grounded && x>=360)jump=true;
             } else if(gate || crate_step || fill_pit) {

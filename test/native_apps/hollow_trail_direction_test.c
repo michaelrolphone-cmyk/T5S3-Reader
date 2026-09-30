@@ -8,6 +8,14 @@ int main(void) {
         ht.level=level;ht.x=x*256;ht.observation_ticks=0;
         assert(ht_pace_target(&ht)>=256 && ht_pace_target(&ht)<=384);
     }
+    ht.level=0;ht_spawn(true);ht.grounded=true;ht.traversal.mode=HT_FREE;
+    ht.vx=288;assert(!ht_character_run_blend(&ht));
+    ht.vx=320;assert(ht_character_run_blend(&ht)>0 && ht_character_run_blend(&ht)<256);
+    ht.vx=352;assert(ht_character_run_blend(&ht)==256);
+    ht.vx=-352;assert(ht_character_run_blend(&ht)==256);
+    ht.grounded=false;assert(!ht_character_run_blend(&ht));
+    ht.grounded=true;ht.traversal.mode=HT_ROLL;assert(!ht_character_run_blend(&ht));
+    ht.traversal.mode=HT_FREE;ht.vx=0;assert(!ht_character_run_blend(&ht));
     ht.level=0;ht_spawn(true);int close=ht.pace,start=ht.x;
     for(int n=0;n<32;++n)ht_step_controls(1,0,false,false);
     assert(ht.x-start>=30*256 && ht.x-start<=36*256); /* ~1 sec of ordinary walking. */

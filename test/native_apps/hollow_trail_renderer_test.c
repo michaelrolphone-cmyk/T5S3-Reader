@@ -1,4 +1,4 @@
-/* Reviewed 1.1.28 forest silhouettes; all other chapter frames preserved. */
+/* Reviewed 1.1.31 native-resolution A/B renderer. */
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,41 +21,85 @@ static void fps_tests(void){
 }
 
 static unsigned hash(const uint8_t *p,int n){unsigned h=2166136261u;while(n--)h=(h^*p++)*16777619u;return h;}
+static void native_resolution_tests(uint8_t *mem,uint8_t *bits){
+ static const uint8_t rank[8][8]={
+  {41,8,52,7,45,15,47,4},{18,35,27,60,28,55,19,57},
+  {54,1,49,9,62,3,40,14},{16,56,21,53,20,38,25,43},
+  {59,12,42,6,39,10,34,5},{24,33,17,46,31,50,29,61},
+  {36,2,58,11,63,0,51,13},{26,44,30,37,22,32,23,48}
+ };
+ ht_bind(mem);ht_bind_native(mem);
+ assert(ht_native_a+HT_NATIVE_PIXELS==ht_native_b);
+ assert(ht_native_a==mem+HT_MEMORY);
+ assert(ht_native_b+HT_NATIVE_PIXELS==mem+HT_MEMORY+HT_NATIVE_MEMORY);
+ /* A diagonal procedural primitive must use physical subpixels instead of
+  * becoming four identical panel pixels per 480x270 logical sample. */
+ memset(ht_native_a,0,HT_NATIVE_PIXELS);
+ ht_scene=ht_native_a;ht_native_active=true;ht_framed=false;
+ ht_triangle(ht_scene,21,19,83,57,34,111,255);
+ bool mixed=false;
+ for(int y=0;y<HT_H && !mixed;++y)for(int x=0;x<HT_W && !mixed;++x){
+  int at=2*y*HT_NATIVE_W+2*x;
+  uint8_t a=ht_native_a[at],b=ht_native_a[at+1],c=ht_native_a[at+HT_NATIVE_W],d=ht_native_a[at+HT_NATIVE_W+1];
+  mixed=(a!=b)||(a!=c)||(a!=d);
+ }
+ assert(mixed);
+ /* Native packing is one grayscale sample per physical dot. */
+ for(unsigned i=0;i<HT_NATIVE_PIXELS;++i)ht_native_a[i]=(uint8_t)hash((const uint8_t *)&i,sizeof(i));
+ ht_pack_mono(bits,HT_NATIVE_W/8);
+ for(int y=0;y<HT_NATIVE_H;++y)for(int byte=0;byte<HT_NATIVE_W/8;++byte){
+  uint8_t want=0;int x=byte*8;
+  for(int k=0;k<8;++k)if(ht_native_a[y*HT_NATIVE_W+x+k]>(int)rank[y&7][(x+k)&7]*4+2)want|=(uint8_t)(0x80u>>k);
+  assert(bits[y*(HT_NATIVE_W/8)+byte]==want);
+ }
+ /* Exercise the complete native mode through the normal render/camera path
+  * and require deterministic physical output for a frozen game snapshot. */
+ ht_bind(mem);ht_bind_native(mem);ht_camera_mode=HT_CAMERA_NATIVE;ht.level=0;ht_spawn(true);
+ ht.camera=733*256;ht.x=(733+190)*256;ht.vista=256;ht.sway_phase=445;
+ ht.rotation_phase=347u<<8;ht.camera_mood=256;
+ ht_render_scene();assert(ht_native_active && ht_scene==ht_native_a);
+ ht_pack_mono(bits,HT_NATIVE_W/8);unsigned first=hash(bits,HT_NATIVE_PIXELS/8);
+ ht_render_scene();ht_pack_mono(bits,HT_NATIVE_W/8);
+ assert(first==hash(bits,HT_NATIVE_PIXELS/8));
+ ht_camera_mode=HT_CAMERA_BASELINE;ht_render_scene();
+ assert(!ht_native_active && ht_scene==ht_scene_low);
+}
+
 static const unsigned golden[][2]={
-{3795934812,1204888003},
-{1123103406,19412053},
-{1221775212,3031398941},
-{1570424042,657502888},
-{1936136814,757844008},
-{3703642848,1861742927},
-{1358601658,1738553109},
-{218338826,2139045796},
-{3559036336,1828829924},
-{1526264570,2916224508},
-{50812817,869454280},
-{1694628764,2099303677},
-{3647268360,2542820895},
-{1707451438,2746327992},
-{1562890383,2224953901},
-{1281806489,2817458480},
-{2453098164,3696682228},
-{612342376,4025397689},
-{2949439776,1215866672},
-{2647407861,3535422713},
-{1103579447,2148750897},
-{598744976,2808428524},
-{3460245810,2843697006},
-{1016655331,1336626653},
-{1930199748,2940598149},
-{3231058475,3828023599},
-{171209343,2007813065},
-{2807208299,54681479},
-{1375681934,3720744302},
-{524039370,2102775001},
+{2360543007,3475717195},
+{1495675126,1625345009},
+{2831815599,162065936},
+{2605582394,2687180476},
+{2732088604,839803533},
+{1584621681,644133032},
+{4117894193,2324489790},
+{1863941504,1514272394},
+{2204911086,4228726518},
+{582227583,1868809320},
+{2717753540,3090542688},
+{964370050,4253744583},
+{917024580,3038475468},
+{3474462071,171166433},
+{3002487258,4232295773},
+{3195120497,1780800341},
+{1477351146,501319504},
+{763693562,1711941138},
+{2793196644,3099533486},
+{4132090450,3488569399},
+{2402901769,1756056000},
+{827783275,353382582},
+{3747272453,2052152225},
+{972977160,37785087},
+{2284954042,537261356},
+{1805041436,3386618820},
+{1456183895,3836738019},
+{3393378306,301689537},
+{297423422,3292122172},
+{2844184376,1258202743},
 };
 int main(void){
  fps_tests();
- uint8_t *mem=malloc(HT_MEMORY),*bits=malloc(HT_PIXELS/2);assert(mem&&bits);
+ uint8_t *mem=malloc(HT_MEMORY+HT_NATIVE_MEMORY),*bits=malloc(HT_PIXELS/2);assert(mem&&bits);
  for(unsigned ready=0;ready<=HT_OPT_SIMD_ALL;++ready)
   for(unsigned level=0;level<HT_LEVELS;++level)for(int view=0;view<3;++view){
    ht_bind(mem);ht.level=level;ht_spawn(true);ht.camera=view*733*256;ht.x=(view*733+190)*256;
@@ -65,6 +109,7 @@ int main(void){
    assert(hash(ht_scene,HT_PIXELS)==golden[level*3+view][0]);
    assert(hash(bits,HT_PIXELS/2)==golden[level*3+view][1]);
   }
+ native_resolution_tests(mem,bits);
  /* Independent rounded-coordinate oracle for nearest camera sampling.
   * Cover both rotation directions, mood and drop zoom, and clipped borders. */
  for(unsigned i=0;i<HT_PIXELS;++i)ht_temp[i]=(uint8_t)ht_hash(i);
@@ -129,5 +174,5 @@ int main(void){
    assert(ht_filter[y*HT_W+x]==ht_average(sum,reciprocal));
   }
  }
- free(bits);free(mem);puts("Production renderer: mode24+13+nearest golden frames/packing, all readiness masks, blur boundaries and FPS window PASS");
+ free(bits);free(mem);puts("Production renderer: baseline goldens plus native 960x540 raster/packing, camera, blur and FPS contracts PASS");
 }

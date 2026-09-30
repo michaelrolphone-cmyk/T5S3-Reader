@@ -2404,7 +2404,7 @@ Repair direction: Size the choice model for the supported registry count plus bu
 
 ### 205. File Browser leaks an open USB file handle when a source file is larger than `size_t`
 
-- **Status:** Fixed on branch `fix/file-browser-oversize-usb-handle`; PR pending. File Browser `1.3.1`. Oversized USB reads now close the successfully opened input handle before returning failure.
+- **Status:** Open.
 
 - **Affected code:** `Apps/file_browser.c`, `copy_usb_to_sd()`; USB storage ABI `file_open_read` / `file_close`.
 - **Trigger / reproduction:** Expose a USB storage file whose reported 64-bit size exceeds `SIZE_MAX` and copy it from USB to SD. This is especially relevant on ESP32-S3 where `size_t` is 32-bit while the volume API deliberately reports file size through `uint64_t`.
