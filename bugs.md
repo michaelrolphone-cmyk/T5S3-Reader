@@ -1,8 +1,8 @@
 # Bug Log
 
-Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b3a7`, through the 05:18 MDT scan. This is the canonical report inventory. Existing IDs 5 and 13–72 are preserved; new distinct reports receive IDs 73–207. Scan-local numbers are not canonical IDs. Entries preserve source-review reproduction evidence and repair directions; they are reported open, not claims of fresh hardware reproduction or a complete revalidation of every intervening feature change.
+Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b3a7`, through the 05:18 MDT scan. This is the canonical report inventory. Existing IDs 5 and 13–72 are preserved; new distinct reports receive IDs 73–210. Scan-local numbers are not canonical IDs. Entries preserve source-review reproduction evidence and repair directions; they are reported open, not claims of fresh hardware reproduction or a complete revalidation of every intervening feature change.
 
-**196 distinct active reports: 61 carried forward and 135 newly consolidated.** The eight previous scheduled fixes (IDs 4, 6–12) are already on master: PR #244 was incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including its final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. They are not pending fixes. Earlier fixes #205, #209 and #212 remain excluded.
+**199 distinct active reports: 61 carried forward and 138 newly consolidated.** The eight previous scheduled fixes (IDs 4, 6–12) are already on master: PR #244 was incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including its final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. They are not pending fixes. Earlier fixes #205, #209 and #212 remain excluded.
 
 ## Coverage and recovery
 
@@ -2438,3 +2438,34 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Resolve the link path against the current spine item's directory, normalize dot segments, remove only the fragment for lookup, and perform an exact canonical-path match. If a basename compatibility fallback is retained, allow it only when the basename is unique. Add fixtures for duplicate basenames, sibling links, and `../` references.
 
 - **Consolidation sources:** [automation/bug-scan-20260930-0518](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/82533918d81fda11ae9c6b19d95b071a98f19361/bugs.md); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Diff](https://docs.google.com/spreadsheets/d/1geT64642Lsjo_EaRZhNxF9516LV2BRVIp4stNAnOkjg/edit?usp=drivesdk); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Instructions](https://docs.google.com/spreadsheets/d/1xB4JDjKoHfw-mCY9pUQL1VP2tWxilaT0WRwdCPryrO8/edit?usp=drivesdk)
+
+
+### 208. Confirmation dialogs treat any tap in the right half of the screen as approval
+
+- **Status:** Open.
+- **Affected code:** `src/activities/util/ConfirmationActivity.cpp::onTouchTap()`; destructive callers include `src/activities/settings/SdFirmwareUpdateActivity.cpp::promptConfirmation()` and `src/activities/GlobalMenuActivity.cpp::triggerShutdown()`.
+- **Trigger / reproduction:** Open a firmware-update confirmation or shutdown confirmation, then tap ordinary body/title content anywhere in the right half of the display rather than the rendered Confirm button hint.
+- **Observed / logically demonstrated failure:** `ConfirmationActivity::onTouchTap()` ignores the Y coordinate and all actual button bounds. It sets `isCancelled = x < screenWidth / 2`, so every touch in the entire right half becomes an affirmative result and immediately closes the dialog. The ActivityManager only intercepts taps that actually hit a button-hint bound; arbitrary body taps still reach this method. In the firmware-update flow that affirmative result proceeds directly to `performUpdate()`; in the global menu it proceeds to `requestShutdown()`.
+- **Likely root cause:** The confirmation screen implements touch as a full-screen left/right split instead of hit-testing the controls it displays.
+- **Impact:** An incidental tap on non-interactive content can authorize destructive or disruptive actions, including starting a firmware flash or shutting down the device.
+- **Repair direction:** Resolve touch only against the mapped Back/Cancel and Confirm button-hint rectangles (or explicit dialog buttons), ignore all other taps, and add tests proving body/header taps cannot complete a confirmation in any orientation.
+
+### 209. EPUB container parsing selects the last supported rootfile instead of the preferred first rendition
+
+- **Status:** Open.
+- **Affected code:** `lib/Epub/Epub/parsers/ContainerParser.cpp::startElement()`; consumed by `lib/Epub/Epub.cpp::findContentOpfFile()`.
+- **Trigger / reproduction:** Build a valid EPUB `META-INF/container.xml` containing two `rootfile` elements with `media-type="application/oebps-package+xml"`, placing the preferred/default package first and a second supported package afterward. Give the two OPFs visibly different titles/content and open the EPUB.
+- **Observed / logically demonstrated failure:** Every matching `rootfile` executes `self->fullPath = path`. The second match therefore overwrites the first, and `findContentOpfFile()` unconditionally opens the final stored path. A multi-rendition container consequently selects the last matching package rather than preserving the first supported rootfile in document order; if that later package is damaged or intentionally secondary, a usable preferred rendition can be ignored.
+- **Likely root cause:** `fullPath` is treated as a replaceable accumulator rather than a once-selected preferred package.
+- **Impact:** Standards-valid multi-rendition EPUBs can open the wrong language/layout/rendition or fail even though their preferred first package is valid.
+- **Repair direction:** Preserve the first supported rootfile unless an explicit rendition-selection policy chooses otherwise. Add a container fixture with two supported rootfiles and assert that the preferred first one is selected deterministically.
+
+### 210. Natural filename sorting invokes ctype with negative UTF-8 bytes
+
+- **Status:** Open.
+- **Affected code:** `lib/FsHelpers/FsHelpers.cpp::sortFileList()`; direct firmware caller includes recovery-mode `src/activities/settings/SdFirmwareUpdateActivity.cpp::loadRecoveryEntries()`.
+- **Trigger / reproduction:** Put ordinary non-ASCII UTF-8 filenames such as `éclair.bin` and `über.bin` in a directory that is passed through `FsHelpers::sortFileList()` (for example the recovery firmware picker), on the ESP32 build where plain `char` is signed.
+- **Observed / logically demonstrated failure:** The case-insensitive branch calls `tolower(*s1)` and `tolower(*s2)` directly. UTF-8 bytes above 0x7F become negative when read through signed `char`; the C/C++ ctype contract only permits EOF or values representable as `unsigned char`. Passing those negative values is undefined behavior. The same helper correctly uses unsigned casts in `checkFileExtension()`, showing the sorter lacks the required conversion. Unicode filenames can therefore trigger implementation-dependent table indexing/mis-sorting and potentially invalid memory access while a directory is being sorted.
+- **Likely root cause:** The natural-sort comparator assumes filename bytes are non-negative ASCII before calling ctype.
+- **Impact:** Normal international filenames make a core sorting helper undefined on the target compiler and can destabilize any firmware list that uses it.
+- **Repair direction:** Cast every ctype operand through `unsigned char` before `tolower`/`isdigit`; preferably keep ASCII case folding explicitly byte-safe and leave multibyte UTF-8 bytes unchanged unless a real Unicode collation layer is added. Add sorting tests with 2-, 3-, and 4-byte UTF-8 names under signed-char builds.
