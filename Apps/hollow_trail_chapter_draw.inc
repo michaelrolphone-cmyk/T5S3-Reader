@@ -264,14 +264,56 @@ static void ht_authored_backdrop_low(const ht_game *g) {
         ht_forest_frame_y=cy;ht_forest_frame_scale=ht_world_scale;
     }
 }
+static void ht_authored_backdrop_native(const ht_game *g) {
+    const ht_chapter_composition *c=&ht_chapter_compositions[g->level];
+    int cx=g->camera/256,cy=g->camera_y/256;
+    static int16_t tops[3][HT_NATIVE_W];
+    static int32_t light_distance[HT_NATIVE_W];
+    int lx=ht_project_x(c->light_x-cx*c->rates[0]/100)*HT_NATIVE_SCALE;
+    int ly=ht_project_y(c->light_y-cy*c->rates[0]/100)*HT_NATIVE_SCALE;
+    for(int sx=0;sx<HT_NATIVE_W;++sx) {
+        int x=sx/HT_NATIVE_SCALE;
+        int wx=240+(x-240)*256/ht_world_scale;
+        for(int p=0;p<3;++p)tops[p][sx]=(int16_t)(ht_project_y(
+            ht_chapter_ridge(g->level,p,wx+cx*c->rates[p]/100)-cy*c->rates[p]/100)*HT_NATIVE_SCALE);
+        int dx=(sx-lx)/HT_NATIVE_SCALE;light_distance[sx]=dx*dx;
+    }
+    for(int sy=0;sy<HT_NATIVE_H;++sy) {
+        uint8_t *row=ht_scene+sy*HT_NATIVE_W;
+        int dy=(sy-ly)/HT_NATIVE_SCALE;
+        for(int sx=0;sx<HT_NATIVE_W;++sx) {
+            int glow=ht_min(52,(light_distance[sx]+dy*dy/2)/5500);
+            int ink=18+glow;
+            for(int p=2;p>=0;--p)if(sy>=tops[p][sx]) {
+                int depth=(sy-tops[p][sx])/HT_NATIVE_SCALE;
+                ink=72+p*43+glow/3+ht_min(17,depth/9);
+                if(g->level==5 && depth>16 && depth%39<2)ink-=14;
+                break;
+            }
+            row[sx]=(uint8_t)ink;
+        }
+        if((sy&31)==31)ht_checkpoint();
+    }
+    ht_authored_landmarks(g);
+    int first=HT_NATIVE_H;
+    for(int sx=0;sx<HT_NATIVE_W;++sx)first=ht_min(first,tops[2][sx]);
+    for(int sy=ht_max(0,first);sy<HT_NATIVE_H;++sy) {
+        uint8_t *row=ht_scene+sy*HT_NATIVE_W;
+        int dy=(sy-ly)/HT_NATIVE_SCALE;
+        for(int sx=0;sx<HT_NATIVE_W;++sx)if(sy>=tops[2][sx]) {
+            int depth=(sy-tops[2][sx])/HT_NATIVE_SCALE;
+            int glow=ht_min(52,(light_distance[sx]+dy*dy/2)/5500);
+            int ink=158+glow/3+ht_min(17,depth/9);
+            if(g->level==5 && depth>16 && depth%39<2)ink-=14;
+            row[sx]=(uint8_t)ink;
+        }
+        if((sy&31)==31)ht_checkpoint();
+    }
+}
 static void ht_authored_backdrop(const ht_game *g) {
     if(!ht_authored_chapter(g->level))return;
-    if(!ht_native_active){ht_authored_backdrop_low(g);return;}
-    uint8_t *native=ht_scene;
-    ht_scene=ht_scene_low;ht_native_active=false;
+    if(ht_native_active){ht_authored_backdrop_native(g);return;}
     ht_authored_backdrop_low(g);
-    ht_scene=native;ht_native_active=true;
-    ht_expand_scene_native(ht_scene_low,native);
 }
 /* Two close masses per chapter. Their contours and scale match materials;
  * all are on the observer's side, separate from the player's physical route. */
