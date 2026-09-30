@@ -144,7 +144,9 @@ static bool ht_cache_valid[HT_LAYERS][HT_TILE_SLOTS];
 #if 2*HT_TILE_PIXELS < HT_PIXELS
 #error Forest backdrop exceeds the reserved cache pair
 #endif
+/* Forest/city share the unused depth-2 cache pair; chapter is part of the key. */
 static bool ht_forest_frame_valid;
+static unsigned ht_composed_frame_level;
 static int ht_forest_frame_x,ht_forest_frame_y,ht_forest_frame_scale;
 static struct { bool active; int depth,key,phase,row; } ht_cache_job;
 static bool ht_abort;
@@ -1485,6 +1487,7 @@ static void ht_weather(const ht_game *g) {
 }
 static void ht_draw_traversal(const ht_game *game);
 static void ht_forest_foreground(const ht_game *game);
+static void ht_city_observer_foreground(const ht_game *game);
 static void ht_draw_puzzle(const ht_game *game);
 static void ht_draw_evidence(const ht_game *game);
 /* At full opacity the grotto supplies every background pixel itself. */
@@ -1503,7 +1506,7 @@ static void ht_render_scene(void) {
     const bool camera_pass=camera_mode!=HT_CAMERA_OFF && (game.sway_phase || game.drop_zoom);
     ht_select_level(game.level);
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
-    bool opaque=game.level==0 || ht_grotto_opaque(&game);
+    bool opaque=game.level<=1 || ht_grotto_opaque(&game);
     if(ht_abort) return;
     if(!opaque) {
         if(!ht_cache_visible(camera)) {return;}
@@ -1537,6 +1540,7 @@ static void ht_render_scene(void) {
     ht_character(px,(game.y-game.camera_y)/256,&game);
     ht_weather(&game);
     ht_forest_foreground(&game);
+    ht_city_observer_foreground(&game);
     uint32_t post_start=ht_render_now();
     ht_render_last.world=post_start-world_start;
     ht_world_scale=256;

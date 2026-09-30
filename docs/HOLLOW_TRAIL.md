@@ -1,4 +1,4 @@
-# Hollow Trail 1.1.27 — organic foreground contours
+# Hollow Trail 1.1.27 — foreground contours and rooftop composition
 
 Level 1's two existing near-camera trunks now use 40-vertex outlines, with
 16-vertex contours for their existing branch and root flare. Existing bank
@@ -7,6 +7,21 @@ and root collars without increasing object counts or changing collision,
 climbing, movement, scenery placement, parallax or composed background planes.
 The renderer tessellates bounded static contours through clipped triangles;
 no new textures, frame buffers or allocations. App **1.1.26 -> 1.1.27**.
+
+Level 2 now has three authored skyline planes (16/34/58 percent parallax),
+light-facing facades, low street mist, lit service doors and attached fire
+escapes. Roof coping and drainpipes anchor the route in continuous buildings.
+Two sparse near-camera masonry corners frame the observer's path. Close views
+use 1.5x scale; the existing tower vista opens to a wider view. Walking pace
+keys are 272/288/336/288/272 Q8 units per fixed tick. The crate remains a physical
+object; its pressure plate and lowering gantry are removed in favor of a fixed
+roof crossing. Fire-escape ladders, evidence and the chapter puzzle remain.
+
+Forest and city reuse the same reserved depth-2 cache storage with a chapter
+key. City skips the obsolete blurred skyline cache and its speculative work.
+No additional frame buffers or per-frame allocations. This remains the same
+unmerged 1.1.27 update. Renderer captures, cache transitions, input-only route
+and S3 build are checked; device FPS and subjective feel are not yet measured.
 
 # Hollow Trail 1.1.26 — walking with the character
 

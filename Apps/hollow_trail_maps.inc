@@ -39,7 +39,7 @@ static const ht_mechanics ht_mechanics_by_level[HT_LEVELS]={
       .ball_x=0,.ball_floor=0,.crate_x=1220,.crate_floor=100,
       .rope_anchor_x=0,.rope_anchor_y=0,.rope_length=0,.boat_left=0,
       .boat_right=0,.boat_deck=0,.water_left=0,.water_right=0,
-      .plate_x=1380,.plate_y=100,.plate_kind=2,.bridge=5,
+      .plate_x=0,.plate_y=0,.plate_kind=0,.bridge=-1,
       .pit_platform=-1,.pit_x=0,.pit_floor=0,
     },
     { .ladders={{1080,2,3},{0,0,0},{0,0,0}},

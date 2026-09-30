@@ -55,6 +55,18 @@ int main(void) {
         ht_game forest=ht;ht.level=1;ht_spawn(true);ht_render_scene();
         ht=forest;ht_render_scene();assert(!memcmp(frame,ht_scene,HT_PIXELS));
     }
+    /* City shares the composed buffer: both directions of chapter changes,
+     * camera moves and close/wide scales must match a forced fresh render. */
+    for(int n=0;n<12;++n) {
+        ht.level=1;ht_spawn(true);assert(!ht_mech(&ht)->plate_kind && ht_mech(&ht)->bridge==-1);
+        ht.camera=n*239*256;ht.camera_y=(n%4*-80)*256;ht.vista=n%3*112;
+        ht.intimacy=n%2?256:0;ht_render_scene();memcpy(frame,ht_scene,HT_PIXELS);
+        unsigned builds=ht_cache_builds;
+        ht_render_scene();assert(!memcmp(frame,ht_scene,HT_PIXELS) && builds==ht_cache_builds);
+        ht_forest_frame_valid=false;ht_render_scene();assert(!memcmp(frame,ht_scene,HT_PIXELS));
+        ht_game city=ht;ht.level=n%2?0:2;ht_spawn(true);ht_render_scene();
+        ht=city;ht_render_scene();assert(!memcmp(frame,ht_scene,HT_PIXELS));
+    }
     free(frame);free(memory);
-    puts("Hollow Trail forest: natural crossing, physical stone, respawn and backdrop reuse PASS");
+    puts("Hollow Trail forest: natural crossing, physical stone, respawn and forest/city backdrop reuse PASS");
 }

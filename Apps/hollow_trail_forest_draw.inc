@@ -15,7 +15,7 @@ static void ht_forest_backdrop(const ht_game *g) {
     const ht_composition *c=&ht_forest_composition;
     int cx=g->camera/256,cy=g->camera_y/256;
     uint8_t *cached=ht_cached_near[2][0];
-    if(ht_forest_frame_valid && ht_forest_frame_x==cx && ht_forest_frame_y==cy &&
+    if(ht_forest_frame_valid && ht_composed_frame_level==0 && ht_forest_frame_x==cx && ht_forest_frame_y==cy &&
        ht_forest_frame_scale==ht_world_scale) {
         memcpy(ht_scene,cached,HT_PIXELS);return;
     }
@@ -85,7 +85,7 @@ static void ht_forest_backdrop(const ht_game *g) {
     if(!ht_abort) {
         memcpy(cached,ht_scene,HT_PIXELS);
         ht_forest_frame_x=cx;ht_forest_frame_y=cy;ht_forest_frame_scale=ht_world_scale;
-        ht_forest_frame_valid=true;
+        ht_composed_frame_level=0;ht_forest_frame_valid=true;
     }
 
 }

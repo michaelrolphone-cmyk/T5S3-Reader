@@ -1,4 +1,4 @@
-/* Reviewed 1.1.27 forest contours; other chapters retain 1.1.26 frames. */
+/* Reviewed 1.1.27 forest contours and composed rooftop frames. */
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,9 +25,9 @@ static const unsigned golden[][2]={
 {595969569,1175170171},
 {1042300205,2113162041},
 {3783044501,3930852045},
-{4283903627,2434139396},
-{2044356738,2612852514},
-{2749854339,2142593654},
+{1570424042,657502888},
+{1936136814,757844008},
+{3703642848,1861742927},
 {131341484,3115425298},
 {182170719,3695287231},
 {2477559708,2510010885},

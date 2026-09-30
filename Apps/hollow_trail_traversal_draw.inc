@@ -2,6 +2,7 @@
 #include "hollow_trail_terrain_draw.inc"
 #include "hollow_trail_landscape_detail.inc"
 #include "hollow_trail_forest_draw.inc"
+#include "hollow_trail_city_draw.inc"
 /* Dynamic solids are drawn at logical resolution, outside the blurred scenery
  * cache. One frozen ht_game supplies camera, object poses, collision and art. */
 static void ht_draw_traversal(const ht_game *g) {
@@ -9,6 +10,7 @@ static void ht_draw_traversal(const ht_game *g) {
     const ht_platform *land=ht_level_land(g->level);
     const ht_mechanics *m=ht_mech(g);
     if(g->level==0)ht_forest_backdrop(g);
+    if(g->level==1)ht_city_backdrop(g);
     if(!ht_grotto_opaque(g)) {
         ht_scene_geography(g);
         ht_landscape_detail(g);
@@ -42,7 +44,7 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_boat_grotto(g);
     /* Distinct natural silhouettes stay anchored to the new physical route. */
     for(int i=0;i<HT_PLATFORMS;++i) {
-        if(i==m->bridge || (i!=0 && i!=2 && i!=5 && i!=8) || (g->level==4 && i==0)) continue;
+        if(g->level==1 || i==m->bridge || (i!=0 && i!=2 && i!=5 && i!=8) || (g->level==4 && i==0)) continue;
         int world=ht_planted_tree_x(g->level,i);
         int x=world-cx,y=ht_surface_at(g,i,world)-cy;
         if(x< -160-ht_view_margin() || x>HT_W+160+ht_view_margin()) continue;
@@ -71,6 +73,7 @@ static void ht_draw_traversal(const ht_game *g) {
         }
     }
     if(g->level==0)ht_forest_log_draw(g);
+    ht_city_roof_detail(g);
     if(m->plate_kind) {
         int x=m->plate_x-cx,y=m->plate_y-cy;
         ht_rect(ht_scene,x-21,y-1,42,3,255);
