@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 73. One transient battery-management initialization failure permanently disables that component until reboot
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260929-2120)
+
+- **Affected code:** `lib/Board_T5S3/BoardT5S3.cpp`, `BoardT5S3::beginBatteryManagement()`, `configureBq25896()`, and `configureBq27220()`; callers include `src/native/NativeBatteryBridge.cpp::readState()` and `BoardT5S3::shutdownBatteryPower()`.
+- **Trigger / reproduction:** Cause the first battery-management initialization attempt after boot to encounter one transient I2C/device error. This can affect both devices or only one of the BQ25896 charger and BQ27220 gauge. Then clear the bus/device fault and request battery telemetry again without rebooting.
+- **Observed / logically demonstrated failure:** `beginBatteryManagement()` sets the process-global `batteryInitAttempted = true` before running either initializer. Every later call returns only the cached `bq25896Ready || bq27220Ready` state and never retries a component that failed. If both initializers fail once, all later reads remain unavailable; if only one fails, that component remains unavailable for the entire boot even after the hardware recovers. A failed charger initialization also leaves `shutdownBatteryPower()` unable to use the charger until reboot.
+- **Likely root cause:** The implementation treats “initialization was attempted” as a terminal state instead of tracking per-device readiness/retryability.
+- **Impact:** A momentary I2C collision, startup timing issue, or device-read failure can permanently degrade battery telemetry and power-management behavior for the current boot, forcing a reboot to recover from an otherwise transient hardware error.
+- **Repair direction:** Track charger and gauge initialization independently and retry only the components that are not ready, with bounded backoff/rate limiting so normal telemetry polling does not hammer a missing device. Ensure each failed attempt fully cleans up its partial handle/state before retry. Add a fault-injection test where the first initialize call fails and a later call succeeds without rebooting.
+
+### 74. Failed Wi-Fi credential reloads are ignored, so automatic networking can reconnect with stale in-memory credentials
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260929-2120)
+
+- **Affected code:** `src/WifiCredentialStore.cpp::loadFromFile()`; `src/runtime/network/SavedNetworkConnection.cpp::ensureSavedConnection()`; `src/native/NativeOtaBridge.cpp::ensureOtaNetworkReady()`; `src/JsonSettingsIO.cpp::loadWifi()`.
+- **Trigger / reproduction:** First load a valid `/.crosspoint/wifi.json` so `WIFI_STORE` contains credentials. During the same boot, remove, truncate, corrupt, or make that file temporarily unreadable, then invoke an automatic-network consumer such as the native HTTP bridge or Firmware Update while Wi-Fi is disconnected.
+- **Observed / logically demonstrated failure:** A missing/empty/malformed JSON load returns `false` without replacing the previously populated global credential store. Both automatic-network helpers call `WIFI_STORE.loadFromFile()` but discard its return value, then immediately select `lastConnectedSsid` or the first credential from the still-populated store and attempt to connect. Therefore credentials that are no longer present in, or could not be verified from, durable storage remain actionable for the rest of the process.
+- **Likely root cause:** Credential reload uses retain-on-failure semantics, while the reconnect callers incorrectly treat a reload attempt as if it had succeeded.
+- **Impact:** Automatic networking can use stale SSIDs/passwords after credential storage has been removed or become unreadable, producing surprising reconnections and making deletion or storage failure ineffective until reboot. It also obscures the real storage error behind a later connection failure.
+- **Repair direction:** Make reconnect paths require a successful credential snapshot before using it, or make `loadFromFile()` load transactionally into temporary state and explicitly invalidate the live snapshot when the durable source is absent. Preserve old state only for callers that intentionally request retain-on-transient-I/O behavior, and never silently authorize a connection from an unverified stale snapshot. Add tests for malformed, empty, missing, and transiently unreadable `wifi.json`.
+
+### 75. KOReader HTTP responses can grow an unbounded reallocating internal-heap buffer
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260929-2120)
+
+- **Affected code:** `lib/KOReaderSync/KOReaderSyncClient.cpp`, the `ResponseBuffer` type, `httpEventHandler()`, `authenticate()`, and `getProgress()`.
+- **Trigger / reproduction:** Configure KOReader Sync to use a custom/misbehaving server that returns a very large HTTP response body for `/users/auth` or `/syncs/progress/<document>` (for example several megabytes instead of the expected sub-kilobyte JSON), then perform authentication or progress sync.
+- **Observed / logically demonstrated failure:** Every received data event calls `ResponseBuffer::ensure(buf->len + data_len + 1)`, which `realloc()`s the ordinary heap to the exact accumulated body size with no maximum response length. The client therefore keeps growing and repeatedly copying the response until heap pressure causes allocation failure. The event handler merely logs the failure and returns `ESP_OK`, allowing the transfer to continue while the already allocated prefix remains resident. The code comment that KOReader payloads are “tiny JSON (<1KB)” is not enforced anywhere.
+- **Likely root cause:** The transport assumes a trusted small server response and has neither a protocol body-size limit nor a streaming/bounded parser.
+- **Impact:** A malformed, compromised, or simply misconfigured custom sync endpoint can exhaust/fragment scarce ESP32 heap during an ordinary sync operation and destabilize unrelated TLS/UI work. Even after allocation failure the transfer continues consuming network/CPU resources rather than aborting promptly.
+- **Repair direction:** Enforce a small explicit maximum response size appropriate to the KOReader schema, reject excessive `Content-Length` when available, stop the HTTP transfer as soon as the bound would be exceeded, and make allocation failure propagate as a hard request error. Prefer one bounded PSRAM-backed buffer or a streaming JSON parser instead of exact-size repeated reallocations. Add tests for a normal response, exactly-at-limit response, over-limit chunked response, and allocator failure.
