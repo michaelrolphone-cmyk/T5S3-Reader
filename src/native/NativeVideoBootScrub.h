@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-// Boot-only spatial waveform, shared with the host preview. Commands are raw
+// Video-start spatial waveform, shared with the host preview. Commands are raw
 // EPD drives: 0 = retain, 1 = black, 2 = white. Every pixel gets the same finite
 // endpoint treatment, staggered along curling contours instead of global fills.
 namespace NativeVideoBootScrub {

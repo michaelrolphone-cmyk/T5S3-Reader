@@ -176,7 +176,7 @@ portMUX_TYPE g_buffer_lock = portMUX_INITIALIZER_UNLOCKED;
 
 uint8_t *g_buffers[2] = {nullptr, nullptr};
 uint8_t *g_state_buffer = nullptr;
-// Private cold-boot path; ordinary ELF video initialization keeps its reset.
+// Shared startup waveform for both mono and grayscale video clients.
 uint8_t *g_boot_scrub_map = nullptr;
 int g_boot_scrub_step = -1;  // Protected by g_buffer_lock; scan snapshots once/frame.
 uint8_t *g_dma_buf[2] = {nullptr, nullptr};
@@ -1096,31 +1096,14 @@ bool s_video_started = false;
 
 extern "C" bool native_hardware_display_is_borrowed(void);
 
-bool wait_video_idle() {
-  const uint32_t begun = millis();
-  while (epd_video_submit_pending()) {
-    if (!g_running || static_cast<uint32_t>(millis()-begun) >= 3000u) return false;
-    vTaskDelay(1);
-  }
-  return g_running;
-}
-
-bool settle_level(uint8_t byte_value) {
-  uint8_t *buffer = epd_video_get_backbuffer();
-  if (!buffer) return false;
-  memset(buffer, byte_value, epd_video_get_backbuffer_size());
-  epd_video_flip(0, t5s3_epd::kActiveHeight);
-  return wait_video_idle();
-}
-
-bool video_start_format_impl(t5_video_surface_v1 *surface, uint8_t pixel_format, bool boot_scrub) {
+bool video_start_format(t5_video_surface_v1 *surface, uint8_t pixel_format) {
   if (!native_hardware_display_is_borrowed()) {
     ESP_LOGE("FAST_VIDEO", "start denied without display hardware takeover");
     return false;
   }
   if (pixel_format != T5_VIDEO_PIXEL_MONO_1BPP_MSB &&
       pixel_format != T5_VIDEO_PIXEL_GRAY_2BPP_MSB) return false;
-  if (s_video_started && (boot_scrub || g_pixel_format != pixel_format)) return false;
+  if (s_video_started && g_pixel_format != pixel_format) return false;
   if (!s_video_started) {
     // A failed previous teardown retains live handles/buffers. Do not overwrite
     // their format or initialize a second owner on top of them.
@@ -1144,7 +1127,7 @@ bool video_start_format_impl(t5_video_surface_v1 *surface, uint8_t pixel_format,
       return false;
     }
 
-    if (boot_scrub) {
+    {
       g_boot_scrub_map = static_cast<uint8_t*>(heap_caps_malloc(
           NativeVideoBootScrub::kMapBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
       if (!g_boot_scrub_map) { epd_video_shutdown(); return false; }
@@ -1152,7 +1135,7 @@ bool video_start_format_impl(t5_video_surface_v1 *surface, uint8_t pixel_format,
       uint32_t checkpoint = map_start;
       for (unsigned y = 0; y < NativeVideoBootScrub::kHeight; y += NativeVideoBootScrub::kGrid) {
         if (static_cast<uint32_t>(millis() - map_start) >= 1500U) {
-          ESP_LOGE(kTag, "boot scrub preparation timed out");
+          ESP_LOGE(kTag, "video scrub preparation timed out");
           epd_video_shutdown(); return false;
         }
         NativeVideoBootScrub::buildBand(g_boot_scrub_map, y);
@@ -1163,7 +1146,7 @@ bool video_start_format_impl(t5_video_surface_v1 *surface, uint8_t pixel_format,
       g_boot_scrub_step = 0;  // No scan task yet.
     }
     if (!epd_video_start()) { epd_video_shutdown(); return false; }
-    if (boot_scrub) {
+    {
       const uint32_t scrub_start = millis();
       bool complete = false;
       do {
@@ -1174,23 +1157,22 @@ bool video_start_format_impl(t5_video_surface_v1 *surface, uint8_t pixel_format,
         vTaskDelay(1);
       } while (g_running && static_cast<uint32_t>(millis() - scrub_start) < 1800U);
       if (!complete) {
-        ESP_LOGE(kTag, "boot scrub scan failed or exceeded deadline");
+        ESP_LOGE(kTag, "video scrub scan failed or exceeded deadline");
         epd_video_shutdown(); return false;
       }
       // The last white pulses have drained through DMA. While step==24 all
       // scans retain the panel, so seed the normal engine with settled white.
       memset(g_buffers[0], 0, g_backbuffer_bytes);
       memset(g_buffers[1], 0, g_backbuffer_bytes);
-      memset(g_state_buffer, 0xfc, g_state_buffer_bytes);
+      memset(g_state_buffer, g_pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB
+          ? 0x00 : 0xfc, g_state_buffer_bytes);
       // Step 24 never dereferences the map, and step 23 has drained. Release
-      // its 506 KiB before fonts/providers begin their own boot allocations.
+      // its 506 KiB before clients begin rendering or allocating their scene buffers.
       free_buffer(g_boot_scrub_map);
       portENTER_CRITICAL(&g_buffer_lock);
       g_boot_scrub_step = -1;
       portEXIT_CRITICAL(&g_buffer_lock);
-      ESP_LOGI(kTag, "boot wisp scrub complete: %lu ms, 24 scans", static_cast<unsigned long>(millis()-scrub_start));
-    } else if (!settle_level(0x00) || !settle_level(0xFF) || !settle_level(0x00)) {
-      epd_video_shutdown(); return false;
+      ESP_LOGI(kTag, "video wisp scrub complete: %lu ms, 24 scans", static_cast<unsigned long>(millis()-scrub_start));
     }
     s_video_started = true;
     ESP_LOGI("FAST_VIDEO", "raw EPD video ready: 960x540 @ %d fps scan target", TARGET_FPS);
@@ -1204,10 +1186,6 @@ bool video_start_format_impl(t5_video_surface_v1 *surface, uint8_t pixel_format,
     surface->flags = T5_VIDEO_FLAG_ONE_IS_BLACK;
   }
   return true;
-}
-
-bool video_start_format(t5_video_surface_v1 *surface, uint8_t pixel_format) {
-  return video_start_format_impl(surface, pixel_format, false);
 }
 
 bool video_start(t5_video_surface_v1 *surface) {
@@ -1268,10 +1246,6 @@ extern "C" const t5_video_api_v1 *t5_video_get_api(uint32_t api_version) {
   return &s_api;
 }
 
-bool nativeVideoStartBootScrub(t5_video_surface_v1* surface) {
-  return video_start_format_impl(surface, T5_VIDEO_PIXEL_MONO_1BPP_MSB, true);
-}
-
 bool nativeVideoForceStop() {
   video_stop();
   return !s_video_started && !g_scan_task && !g_panel_io && !g_i80_bus;
@@ -1282,8 +1256,6 @@ bool nativeVideoForceStop() {
 extern "C" const t5_video_api_v1 *t5_video_get_api(uint32_t) {
   return nullptr;
 }
-
-bool nativeVideoStartBootScrub(t5_video_surface_v1*) { return false; }
 
 bool nativeVideoForceStop() { return true; }
 
