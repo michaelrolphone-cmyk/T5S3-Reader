@@ -1,0 +1,78 @@
+# Architecture proposals
+
+The three proposals below are recommendations, not approved implementation. Evidence identifiers refer to [the source register](evidence.md). Existing mechanisms are preserved unless a concrete counterexample justifies replacement.
+
+## P1 Display completion and physical provider lifetime
+
+**Problem and evidence.** PR #220 adds a useful semantic display interface, runtime geometry and app client, but its provider reports a presentation complete when the backend scan counter changes. That counter advances at scan start, before row transfer completion. Its quiesce calls a void backend stop and returns success even though backend shutdown can fail and retain resources [E5]. These are contract gaps in the unmerged adapter, not evidence of a current crash.
+
+**Recommendation.** Specify and preserve three distinct guarantees: writable buffer ownership, completion of submitted presentation work, and physical quiescence permitting provider unload. Propagate truthful completion through the existing seam, then use that contract to extract physical display behavior into the provider. Preserve the working renderer and boot/takeover safeguards.
+
+**Alternatives and critique.**
+- Keep the current adapter as an explicitly transitional app-facing seam. This minimizes change; retain the host force-stop guard and do not expand consumers relying on its completion token. It does not establish the provider-level guarantee needed for later extraction.
+- Incrementally correct lifetime/completion and extract the physical provider: preferred.
+- Replace the rendering system with a universal color compositor or immediate rewrite: reject for now. No inspected evidence justifies that scope ahead of lifetime correctness.
+
+**Contracts and ownership.**
+- A writable frame is owned by one caller/provider generation until successful submit or explicit release. Failed submit leaves ownership with the caller. Successful submit transfers it; a new successful acquire is required before reuse.
+- A submission token distinguishes queued, active, complete, superseded and failed. Define complete against finished physical presentation work, not merely scan admission; separately document any optical-settling meaning. Buffer reusability is not the same event.
+- Provider owns scan/task/IRQ/DMA, panel transfer and power policy. Core owns generic grants, dependencies and invocation accounting. Hardware UI restoration requires independently verified physical teardown.
+- Keep two frame buffers and at most one queued flip for this backend. Bound token history; reject unsupported options. Use elapsed deadlines for bounded waits, not an assumed duration per sleep iteration.
+
+**Lifecycle and failure.** Stop admission, revoke frame handles, drain or cancel work, join physical activity, then acknowledge quiescence. Timeout, failed stop or failed format switch must retain mappings, dependencies and buffers in a diagnosable state. Do not certify quiescence merely because software frame/grant counts are zero.
+
+**Counterevidence that changes the scope.** Current app wrappers discard the presentation token. The host's existing `nativeVideoForceStop` refuses unsafe display restoration, and scan callbacks currently live in firmware rather than the adapter ELF. Consequently, this is not a demonstrated current use-after-free. The same backend is present in master; the new adapter interprets its semantics. Green exact-head CI does not settle the issue because the provider test stub makes stop succeed and advances completion signals together [E5, E7].
+
+**Compatibility and resource budget.** Preserve `display.output@1` and package identity where the contract can be clarified compatibly; negotiate/version any actual incompatible token behavior. At 960×540 the inspected pixel/state arrays imply 388,800 bytes for MONO1 or 777,600 for GRAY2, plus a 518,400-byte startup scrub map. Known pixel/state peaks are therefore 907,200 and 1,296,000 bytes, excluding task/driver/ELF/host allocations. Additional explicit DMA row buffers are 720 bytes and scan task stack is 8,192 bytes [E5]. These are source-derived allocations, not measured heap peaks. Reserve large-buffer PSRAM capacity before takeover and preserve internal DMA/control reserves; do not assume a failed PSRAM allocation can safely spill into internal RAM.
+
+**Migration risk and proposed verification.** First exercise the existing adapter with independently delayed scan start, transfer completion and stop acknowledgement. Then move transfer, waveform/power and DMA lifecycle into the same provider while keeping the public client stable. The inspected panel uses i80, so do not force a fictitious SPI migration; shared power/expander chips must preserve single ownership above their bus capability. Finally route firmware UI through the provider, preserve boot/recovery preflight, and remove the display-specific firmware import exception. This plan is a recommendation, not authorization to change PR #220.
+
+Proposed focused cases: scan counter advances while work remains; teardown/format-switch failure; failed submit; stale frame/token after a new generation; exit holding a frame; provider loss; allocation failure. Assert no successful complete, unload or host restoration before the corresponding real condition.
+
+**Measurable outcomes.** Zero false-complete results in those injected schedules; failed quiescence retains all required mappings/pins; old-generation operations are rejected; missing production provider fails closed; physical provider replacement no longer requires a display-specific runtime import exception. Hardware waveform/electrical acceptance remains separate.
+
+## P2 Capability compatibility and independent release contracts
+
+**Problem and evidence.** Apps declare `>=N`; installed capability resolution selects a highest satisfiable API; the installed graph translates that selection into exact API bindings. The provider root has a size-tagged ABI with append-only optional lifecycle members. These are real mechanisms, not a missing resolver. What needs an explicit release-level promise is whether every future higher capability API remains callable by older clients, and how independent repositories preserve that promise [E1, E2, E6].
+
+A concrete U1 seam makes this more than hypothetical: master CDC 0.1.0 and U1 CDC 0.1.7 both advertise `serial.port` API 1, while the U1 consumer requires the appended provider-owned endpoint interface and returns UNSUPPORTED when absent. Preserving a function-table prefix can retain binary safety without guaranteeing that a newly mandatory behavior exists. The release contract must state that requirement and provide an actionable compatible update/refusal path [E6].
+
+**Recommendation.** Define capability API numbers as a documented compatibility family with a mandatory compatible prefix/behavior contract, or explicitly negotiate a supported interface family before exposing a table. Prefer the smallest convention compatible with shipped consumers. Document an incompatible change as a new explicitly selected family/major interface rather than silently assuming `>=1` can safely consume every future layout. Keep package version, capability API, root driver ABI, CPU ABI and firmware minimum separate.
+
+For each independently built package, record immutable SDK source revision, runtime compatibility floor and exact artifact identity/digest; a source directory copy alone is not release independence. Use a small representative binary compatibility witness per affected contract, not all possible version combinations or a new broad qualification gate.
+
+**Alternatives and critique.**
+- Keep current mechanisms and write down the monotonic compatibility promise: preferred if all existing interfaces already obey it.
+- Introduce explicit supported-family negotiation only where an actual incompatible evolution requires it.
+- Replace resolution with a general SemVer/SAT solver: rejected for now. The bridge already handles minimum-to-exact selection, and more solver machinery would not define binary compatibility.
+
+**Contracts and ownership.** Capability/SDK maintainers own layout, sizes, feature detection, error meanings and lifetime documentation. Package maintainers own declared requirements and immutable build inputs. Runtime owns validation, deterministic ambiguity rejection and generation-qualified grants. Providers own physical operations and must enforce independently granted rights; dependency binding never grants hardware permission. Interface tables and borrowed dependency pointers live only while their provider/dependency pins remain valid.
+
+**Lifecycle and failure.** Resolve and bind transactionally before application mapping; unsupported family, ambiguous selection, missing dependency, allocation failure or start refusal must return a bounded diagnostic without a partially launched consumer. Preserve mapped code and pins after failed physical quiescence. Do not trade these guarantees for faster release migration.
+
+**Compatibility and resource budget.** Preserve legacy undeclared app behavior until explicitly migrated. Retain bounded admission: the inspected graph has 16 module and 32 grant slots; app requirements have six mandatory entries; installed discovery scans at most 64 entries per root and limits snapshot recursion to eight. New compatibility metadata must not silently increase these budgets. Older binaries must ignore appended fields by size and never read unavailable members.
+
+**Migration and verification.** First document actual families and audit one display, one serial and one non-USB consumer against the SDK they build from. Keep Reader authoritative for migration repositories that are still bootstrap copies. Then propose a narrow compatibility witness: old binary/new compatible provider, new optional-feature client/old provider, incompatible family refusal, missing metadata, ambiguous providers and stale-generation denial. Any implementation belongs to a separately authorized change.
+
+**Measurable outcomes.** Every released migrated package identifies a reproducible SDK revision; every changed capability contract has one explicit backward-compatibility or rejection result; no compatible provider requires a hardware-specific core selector; failed preflight maps zero app ELFs. These are proposed success criteria, not measured results.
+
+## P3 Acquisition-wide resident memory admission
+
+**Problem and evidence.** Application allocations have a 4096-entry ownership ledger with byte/peak accounting and teardown reclamation. That ledger explicitly excludes provider/firmware allocations. Provider registration retains an owned ELF snapshot; activation temporarily copies candidate bytes again before relocation; both snapshot allocators can fall back from PSRAM to ordinary byte-addressable heap. Per-image length validation and graph cardinality limits exist, but they are not an aggregate peak-memory reservation [E3, E4]. This is a risk hypothesis, not a demonstrated out-of-memory failure.
+
+**Recommendation.** Extend the architectural accounting model to an acquisition transaction: caller image, retained graph snapshot, temporary relocation input, mapped code/data, provider buffers/tasks and shared runtime reserves. Record actual overlapping lifetimes before deciding which copy can safely be removed. Reserve budgets before activation and reject a new request while preserving already-active providers and a minimum recovery/control reserve.
+
+**Alternatives and critique.**
+- Keep allocator-failure handling and existing per-image bounds: reasonable while measured peaks have adequate margin.
+- Introduce a bounded reservation/accounting layer using existing execution-context ownership: preferred only when measurements show meaningful pressure or unpredictable admission.
+- Implement the broad storage-VM roadmap first: deferred. It does not page resident ELF stacks/data, DMA memory or provider code, and cannot replace safe snapshot ownership.
+
+**Contracts and ownership.** The runtime accounts for generic memory classes, not device-specific behavior. An acquisition owns temporary allocations; a graph node owns retained candidate bytes; a provider owns physical-session buffers; the app ledger owns only intercepted app allocations. Shared resources need one charge owner plus dependent pins, not duplicated quota charges. DMA/internal requirements must be explicit; PSRAM exhaustion must not silently consume a protected control reserve.
+
+**Lifecycle and failure.** Reserve before loading a dependency closure; release reservations on rollback and successful teardown. A quarantined provider continues to consume its real budget until physical quiescence succeeds. Refuse optional/new work before reclaiming still-borrowed buffers. Failed realloc retains original ownership, as existing tests already require.
+
+**Compatibility and resource budget.** Do not change allocator ABI or impose arbitrary per-app limits on shipped workloads. Measure internal free/largest block, PSRAM free/largest block, retained candidate bytes, temporary copies and mapped image bytes at acquire/start/stop boundaries. Budget by maximum simultaneously live allocations, not sum of file sizes or a claimed universal byte threshold. The existing 8 MiB per-ELF bound is validation, not a promise that an 8 MiB load will fit.
+
+**Migration and verification.** First profile one representative display-plus-app and one chained provider acquisition, including a failed-start/quiesce path. Compare against the existing app allocation and provider ownership fixtures. If a budget is needed, define a board/port-owned reserve and bounded rejection policy before proposing code. Copy reduction is permissible only after exact-byte validation and source-buffer mutation tests remain satisfied.
+
+**Measurable outcomes.** Peak by memory class is attributable to an owner for those two workflows; repeated open/close returns non-quarantined allocations to baseline; exhaustion leaves prior capabilities usable; quarantine bytes are visible rather than mislabeled as leaks. Keep this at rank three unless measurements justify promotion.
