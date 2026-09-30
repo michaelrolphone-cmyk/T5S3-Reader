@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,34 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 214. File-association rebuild persists a partial registry after an Apps directory scan failure
+
+- **Status:** Open.
+- **Affected code:** `src/native/FileAssociationRegistry.cpp`, especially `NativeFileAssociations::rebuild()`; consumers include `src/native/NativeFileOpenBridge.cpp` and File Browser Open-with resolution.
+- **Trigger / reproduction:** Start with multiple valid application handlers under `/Apps` and an existing complete file-association registry. Force `Storage.open("/Apps", O_RDONLY)` to fail, or force `openNextFile()` to stop with an SD/enumeration error after only a prefix of the directory has been returned, then invoke an association refresh.
+- **Observed / logically demonstrated failure:** `rebuild()` immediately clears the live `handlers` vector and `loaded` flag, adds only the built-in reader, and then treats a failed/invalid directory entry exactly like end-of-directory. It subsequently sorts that incomplete set, sets `loaded = true`, persists it to `/System/Registry/FileAssociations.json`, and returns success. Valid handlers that were not reached by the failed scan therefore disappear from both the live registry and the persisted derived index.
+- **Likely root cause:** The rebuild is destructive and non-transactional, and the directory API result is used as EOF without proving enumeration completed successfully.
+- **Impact:** A transient SD or directory-enumeration fault can make installed applications disappear from Open-with handling, select the wrong remaining handler, and preserve the incomplete association set until another successful rebuild.
+- **Repair direction:** Build a candidate registry in temporary storage, distinguish verified enumeration completion from an I/O failure, and atomically replace/persist the live registry only after the complete scan succeeds. Preserve the previous registry on failure. Add fault-injection coverage for failure before the first app and midway through a multi-app scan.
+
+### 215. EPUB relative internal links can jump to the wrong chapter when basenames are duplicated
+
+- **Status:** Open.
+- **Affected code:** `lib/Epub/Epub.cpp::resolveHrefToSpineIndex()`; caller `src/activities/reader/EpubReaderActivity.cpp::navigateToHref()`.
+- **Trigger / reproduction:** Create a valid EPUB containing both `OPS/part1/note.xhtml` and `OPS/part2/note.xhtml`. From `OPS/part2/chapter.xhtml`, follow a relative link such as `note.xhtml#detail` intended for the sibling `OPS/part2/note.xhtml`.
+- **Observed / logically demonstrated failure:** The resolver strips the fragment and first compares the unresolved string `note.xhtml` directly against full spine hrefs. When that fails, it falls back to comparing only basenames and returns the first spine entry named `note.xhtml`. If `part1/note.xhtml` appears first, the reader navigates to the wrong document even though the link is valid and unambiguous relative to its source chapter.
+- **Likely root cause:** Relative hrefs are not resolved against the current document's containing directory before spine lookup; basename-only matching is used as an ambiguity-blind fallback.
+- **Impact:** Footnotes, cross-references, and ordinary internal links in valid EPUBs with repeated filenames across directories can navigate to unrelated content.
+- **Repair direction:** Resolve the link path against the current spine item's directory, normalize dot segments, remove only the fragment for lookup, and perform an exact canonical-path match. If a basename compatibility fallback is retained, allow it only when the basename is unique. Add fixtures for duplicate basenames, sibling links, and `../` references.
+
+### 216. OPF author metadata inserts commas at XML callback and stream-chunk boundaries
+
+- **Status:** Open.
+- **Affected code:** `lib/Epub/Epub/parsers/ContentOpfParser.cpp`, `ContentOpfParser::characterData()` and the `dc:creator` start/end handling.
+- **Trigger / reproduction:** Open an EPUB whose `<dc:creator>` text is delivered by Expat in more than one character-data callback, for example a creator containing an entity such as `Jane &amp; John`, or a creator whose text crosses the parser's 1024-byte feed boundary.
+- **Observed / logically demonstrated failure:** While in `IN_BOOK_AUTHOR`, every `characterData()` callback prepends `", "` whenever `author` is already non-empty. XML parsers are allowed to split one element's character data across callbacks, so separators are inserted inside a single creator rather than only between distinct creator elements. The stored/displayed author can gain commas at arbitrary parser boundaries instead of preserving the creator text.
+- **Likely root cause:** Multi-author joining is implemented at the character-data callback level instead of at `dc:creator` element boundaries.
+- **Impact:** Valid EPUB metadata is corrupted in the reader, cache, and recent-book surfaces; the result depends on parser chunking rather than document semantics.
+- **Repair direction:** Accumulate one creator in a dedicated temporary string across all character-data callbacks, append it to the final author field only when that `dc:creator` closes, and insert the multi-author separator at that point. Add tests for entity-split text, a creator crossing the 1024-byte input boundary, and multiple separate creator elements.
