@@ -10,7 +10,7 @@ static int ht_composed_ridge(const ht_composition *c,int x,int plane) {
     if(plane!=2)u=u*u/340*(1020-2*u)/340;
     return c->ridge[n]+(c->ridge[n+1]-c->ridge[n])*u/340+plane*34;
 }
-static void ht_forest_backdrop(const ht_game *g) {
+static void ht_forest_backdrop_low(const ht_game *g) {
     if(g->level!=0)return;
     const ht_composition *c=&ht_forest_composition;
     int cx=g->camera/256,cy=g->camera_y/256;
@@ -88,6 +88,65 @@ static void ht_forest_backdrop(const ht_game *g) {
         ht_composed_frame_level=0;ht_forest_frame_valid=true;
     }
 
+}
+static void ht_forest_backdrop_native(const ht_game *g) {
+    const ht_composition *c=&ht_forest_composition;
+    int cx=g->camera/256,cy=g->camera_y/256;
+    int lx=ht_project_x(c->light_x-cx*26/100)*HT_NATIVE_SCALE;
+    int ly=ht_project_y(c->light_y-cy*26/100)*HT_NATIVE_SCALE;
+    static int16_t ridges[3][HT_NATIVE_W];
+    for(int p=0;p<3;++p)for(int sx=0;sx<HT_NATIVE_W;++sx) {
+        int x=sx/HT_NATIVE_SCALE,parallax=18+p*19;
+        int wx=240+(x-240)*256/ht_world_scale+cx*parallax/100;
+        ridges[p][sx]=(int16_t)(ht_project_y(ht_composed_ridge(c,wx,p)-cy*parallax/100)*HT_NATIVE_SCALE);
+    }
+    int opening=286*ht_world_scale/256*HT_NATIVE_SCALE;
+    for(int sy=0;sy<HT_NATIVE_H;++sy) {
+        int dy=(sy-ly)/HT_NATIVE_SCALE,dy2=dy*dy/2;
+        uint8_t *row=ht_scene+sy*HT_NATIVE_W;
+        for(int sx=0;sx<HT_NATIVE_W;++sx) {
+            int dx=ht_min(ht_abs(sx-lx),ht_min(ht_abs(sx-lx-opening),ht_abs(sx-lx-2*opening)))/HT_NATIVE_SCALE;
+            int radial=ht_min(180,(dx*dx+dy2)/750);
+            int ink=ht_clamp(22+radial,10,155);
+            for(int p=2;p>=0;--p)if(sy>=ridges[p][sx]) {
+                int depth=(sy-ridges[p][sx])/HT_NATIVE_SCALE;
+                ink=ht_max(ink,58+p*43+ht_min(32,depth/5));break;
+            }
+            row[sx]=(uint8_t)ink;
+        }
+        if((sy&31)==31)ht_checkpoint();
+    }
+    /* Geometry now reaches the physical raster directly: its sloped edges and
+     * branch contours can occupy odd panel pixels instead of 2x2 blocks. */
+    for(int p=0;p<2;++p) {
+        int parallax=37+p*19,spacing=225-p*42,offset=cx*parallax/100;
+        int begin=ht_floor_div(offset-ht_view_margin()-180,spacing);
+        int end=ht_floor_div(offset+HT_W+ht_view_margin()+180,spacing);
+        for(int n=begin;n<=end;++n) {
+            unsigned seed=ht_hash((unsigned)n+91u+p*719u);
+            int wx=n*spacing+(int)(seed%63),base=ht_composed_ridge(c,wx,p+1);
+            ht_tree(ht_scene,wx-offset,base+3-cy*parallax/100,270+(int)(seed%180),11+p*5,seed,95+p*57);
+        }
+        ht_checkpoint();
+    }
+    for(int sy=0;sy<HT_NATIVE_H;++sy) {
+        int beam=lx+(sy-ly)/3,fade=ht_clamp(sy/HT_NATIVE_SCALE+40,0,160);
+        uint8_t *row=ht_scene+sy*HT_NATIVE_W;
+        for(int shaft=0;shaft<2;++shaft) {
+            int center=beam+shaft*89*HT_NATIVE_SCALE;
+            int left=ht_max(0,center-29*HT_NATIVE_SCALE),right=ht_min(HT_NATIVE_W,center+30*HT_NATIVE_SCALE);
+            for(int sx=left;sx<right;++sx)if(row[sx]<195) {
+                int strength=(30*HT_NATIVE_SCALE-ht_abs(sx-center))*fade/(160*HT_NATIVE_SCALE);
+                row[sx]=(uint8_t)ht_max(6,row[sx]-strength);
+            }
+        }
+        if((sy&31)==31)ht_checkpoint();
+    }
+}
+static void ht_forest_backdrop(const ht_game *g) {
+    if(g->level!=0)return;
+    if(ht_native_active){ht_forest_backdrop_native(g);return;}
+    ht_forest_backdrop_low(g);
 }
 /* One dead snag at the washed-out bank. Its root hinge stays in the soil;
  * the crown accelerates through a circular fall and comes to rest on the far

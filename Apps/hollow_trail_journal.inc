@@ -139,6 +139,10 @@ static void ht_journal_frame(void) {
     ht_framed=false;ht_pack_mono(ht_reader_bitmap,120);
 }
 static void ht_journal_render(void) {
+    /* Journal composition has its own 480x270 frame plus a physical packed
+     * typography layer. Never inherit the native gameplay surface pointer. */
+    ht_native_active=false;
+    ht_scene=ht_scene_low;
     char title[128],footer[128];
     ht_journal_body[0]=0;
     ht_journal_page_ready=false;

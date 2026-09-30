@@ -1,6 +1,8 @@
 /* Hollow Trail — deterministic ten-chapter platformer and PSRAM raster pipeline.
- * World/overlays are 480x270; scenery is 240x135; output is 960x540. No textures, random frame noise,
- * floating-point library, framebuffer reads, or per-frame allocation. */
+ * Baseline world/overlays are 480x270 with lower-resolution cached scenery;
+ * the native A/B path rasterizes procedural geometry at the panel's 960x540
+ * resolution. No textures, random frame noise, floating-point library,
+ * framebuffer reads, or per-frame allocation. */
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
@@ -8,6 +10,10 @@
 #include "epd_dither.h"
 #define HT_W 480
 #define HT_H 270
+#define HT_NATIVE_SCALE 2
+#define HT_NATIVE_W (HT_W*HT_NATIVE_SCALE)
+#define HT_NATIVE_H (HT_H*HT_NATIVE_SCALE)
+#define HT_NATIVE_PIXELS (HT_NATIVE_W*HT_NATIVE_H)
 #define HT_SCENE_W (HT_W/2)
 #define HT_SCENE_H (HT_H/2)
 #define HT_SCENE_PIXELS (HT_SCENE_W*HT_SCENE_H)
@@ -20,10 +26,10 @@
 #define HT_MASK_RADIUS 45
 /* Keep the following low-resolution scene aligned for four-byte loads. */
 #define HT_MASK_PIXELS ((HT_MASK_RADIUS*HT_MASK_RADIUS+15)&~15)
-enum { HT_CAMERA_BASELINE, HT_CAMERA_NO_ROTATION, HT_CAMERA_NO_ZOOM, HT_CAMERA_OFF, HT_CAMERA_MODES };
+enum { HT_CAMERA_BASELINE, HT_CAMERA_NO_ROTATION, HT_CAMERA_NO_ZOOM, HT_CAMERA_OFF, HT_CAMERA_NATIVE, HT_CAMERA_MODES };
 static unsigned ht_camera_mode;
-static const char *const ht_camera_labels[]={"BASELINE", "ROTATION OFF", "ZOOM OFF", "BOTH OFF"};
-static bool ht_framed;
+static const char *const ht_camera_labels[]={"BASELINE", "ROTATION OFF", "ZOOM OFF", "BOTH OFF", "NATIVE 960X540"};
+static bool ht_framed,ht_native_active;
 static int ht_world_scale=256; /* Draw-only projection; UI and cache geometry stay unscaled. */
 static int ht_view_margin(void) {return (480*256/ht_world_scale-480)/2;}
 static int ht_project_x(int x) {return 240+(x-240)*ht_world_scale/256;}
@@ -40,6 +46,7 @@ static uint16_t ht_dirty_top,ht_dirty_height;
 /* Two focus maps cover alternating camera positions at the AI sampling grid. */
 #define HT_SIMD_TABLE_BYTES (4u*6u*16u + 3u*16u)
 #define HT_MEMORY (HT_SIMD_TABLE_BYTES + HT_RECON_PIXELS * 4u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS + HT_RECON_PIXELS)
+#define HT_NATIVE_MEMORY (HT_NATIVE_PIXELS * 2u)
 #define HT_GOAL 3200
 #define HT_STEP_MS 32u /* Fixed physics clock; scene direction varies world speed. */
 
@@ -138,7 +145,7 @@ static bool ht_simd_test_equal(const void *got,const void *want,unsigned size,un
     return true;
 }
 static int16_t *ht_filter;
-static uint8_t *ht_raw, *ht_near, *ht_wide, *ht_temp, *ht_scene;
+static uint8_t *ht_raw, *ht_near, *ht_wide, *ht_temp, *ht_scene, *ht_scene_low, *ht_native_a, *ht_native_b;
 static uint8_t *ht_cached_near[HT_LAYERS][HT_TILE_SLOTS], *ht_cached_wide[HT_LAYERS][HT_TILE_SLOTS];
 static int ht_cache_key[HT_LAYERS][HT_TILE_SLOTS];
 static bool ht_cache_valid[HT_LAYERS][HT_TILE_SLOTS];
@@ -156,6 +163,7 @@ static bool ht_abort;
 static unsigned ht_cache_builds;
 static uint8_t *ht_corner_mask, *ht_low_scene, *ht_recon_scene;
 static int16_t ht_visible_left[HT_H],ht_clear_left[HT_H];
+static int16_t ht_native_visible_left[HT_NATIVE_H],ht_native_clear_left[HT_NATIVE_H];
 /* Host callback polls/yields at bounded raster checkpoints; no drawing. */
 static void (*ht_service)(void);
 /* Optional host clock: inclusive stage costs include cooperative input/yield
@@ -202,6 +210,21 @@ static int ht_mask_alpha(int x,int y) {
     int edge=ht_min(ex,ey);
     return ht_clamp(edge-HT_BORDER,0,HT_FADE-HT_BORDER)*255/(HT_FADE-HT_BORDER);
 }
+static int ht_native_mask_alpha(int x,int y) {
+    const int radius=HT_MASK_RADIUS*HT_NATIVE_SCALE;
+    const int border=HT_BORDER*HT_NATIVE_SCALE,fade=HT_FADE*HT_NATIVE_SCALE;
+    int ex=ht_min(x,HT_NATIVE_W-1-x),ey=ht_min(y,HT_NATIVE_H-1-y),edge;
+    if(ex<radius && ey<radius) {
+        int dx=radius-ex,dy=radius-ey;
+        edge=radius-(int)ht_isqrt((unsigned)(dx*dx+dy*dy));
+    } else edge=ht_min(ex,ey);
+    return ht_clamp(edge-border,0,fade-border)*255/(fade-border);
+}
+static int ht_scene_width(void) {return ht_native_active?HT_NATIVE_W:HT_W;}
+static int ht_scene_height(void) {return ht_native_active?HT_NATIVE_H:HT_H;}
+static int ht_scene_visible_left(int y) {return ht_native_active?ht_native_visible_left[y]:ht_visible_left[y];}
+static int ht_scene_clear_left(int y) {return ht_native_active?ht_native_clear_left[y]:ht_clear_left[y];}
+static int ht_scene_mask_alpha(int x,int y) {return ht_native_active?ht_native_mask_alpha(x,y):ht_mask_alpha(x,y);}
 static void ht_mask_init(void) {
     for(int y=0;y<HT_MASK_RADIUS;++y) for(int x=0;x<HT_MASK_RADIUS;++x) {
         int dx=HT_MASK_RADIUS-x,dy=HT_MASK_RADIUS-y;
@@ -215,13 +238,20 @@ static void ht_mask_init(void) {
         while(x<HT_W/2 && ht_mask_alpha(x,y)<255) ++x;
         ht_clear_left[y]=(int16_t)x;
     }
-    /* The physical packer blends with y+1. Include that preceding row's
-     * interpolation halo; excluded rows are permanently solid black. */
-    int first=0,last=HT_H-1;
-    while(first<HT_H && ht_visible_left[first]==HT_W/2) ++first;
-    while(last>first && ht_visible_left[last]==HT_W/2) --last;
-    ht_dirty_top=(uint16_t)(2*ht_max(0,first-1));
-    ht_dirty_height=(uint16_t)(2*(last+1)-ht_dirty_top);
+    for(int y=0;y<HT_NATIVE_H;++y) {
+        int x=0;
+        while(x<HT_NATIVE_W/2 && !ht_native_mask_alpha(x,y)) ++x;
+        ht_native_visible_left[y]=(int16_t)x;
+        while(x<HT_NATIVE_W/2 && ht_native_mask_alpha(x,y)<255) ++x;
+        ht_native_clear_left[y]=(int16_t)x;
+    }
+    /* Dirty rows are already physical in the native table. Keep one row of
+     * halo so native and baseline submissions cover the same rounded edge. */
+    int first=0,last=HT_NATIVE_H-1;
+    while(first<HT_NATIVE_H && ht_native_visible_left[first]==HT_NATIVE_W/2) ++first;
+    while(last>first && ht_native_visible_left[last]==HT_NATIVE_W/2) --last;
+    ht_dirty_top=(uint16_t)ht_max(0,first-1);
+    ht_dirty_height=(uint16_t)(last+1-ht_dirty_top);
 }
 /* Two exact focus maps cover the one-pixel camera-follow alternation without
  * recalculating radial division for every depth or settled frame. */
@@ -259,9 +289,9 @@ static void ht_bind(uint8_t *memory) {
     for(unsigned i=0;i<4;++i)ht_stage_reason[i]="NOT TESTED";
     ht_simd_test_pattern=ht_simd_test_phase=ht_simd_test_byte=0;
     ht_simd_test_expected=ht_simd_test_actual=0;
-    ht_geometry_level=0; ht_simd_stage_ready=0; ht_expanded_ready=false; ht_simd_ready=false; ht_framed=false; ht_forest_frame_valid=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
+    ht_geometry_level=0; ht_simd_stage_ready=0; ht_expanded_ready=false; ht_simd_ready=false; ht_framed=false; ht_native_active=false; ht_forest_frame_valid=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
     ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
-    ht_scene=memory+3*HT_PIXELS; ht_temp=memory+4*HT_PIXELS; ht_filter=(int16_t *)ht_temp;
+    ht_scene_low=memory+3*HT_PIXELS; ht_scene=ht_scene_low; ht_temp=memory+4*HT_PIXELS; ht_filter=(int16_t *)ht_temp;
     uint8_t *cache=memory+6*HT_PIXELS;
     for(int d=0;d<HT_LAYERS;++d) for(int slot=0;slot<HT_TILE_SLOTS;++slot) {
         ht_cached_near[d][slot]=cache; cache+=HT_TILE_PIXELS;
@@ -273,8 +303,15 @@ static void ht_bind(uint8_t *memory) {
     /* Lookahead cache work can be suspended across visible frames. Its raw,
      * near and wide buffers remain live until the strip is published. */
     ht_recon_scene=(uint8_t *)(ht_focus_map[1]+HT_RECON_PIXELS);
+    ht_native_a=ht_native_b=NULL;
     ht_focus_valid[0]=ht_focus_valid[1]=false;ht_focus_step[0]=ht_focus_step[1]=0;ht_focus_recent=0;
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
+}
+/* Optional extension owned by Hollow Trail's app allocation. Keeping it
+ * outside HT_MEMORY preserves the existing cache/SIMD arena ABI and tests. */
+static void ht_bind_native(uint8_t *memory) {
+    ht_native_a=memory+HT_MEMORY;
+    ht_native_b=ht_native_a+HT_NATIVE_PIXELS;
 }
 static int ht_evidence_platform(unsigned level,int item) { return level==0 && item==0?0:1+item*3; }
 static int ht_evidence_x(unsigned level,int item) {
@@ -483,12 +520,11 @@ static void ht_spawn(bool restart) {
 #include "hollow_trail_traversal.inc"
 
 static void ht_span(uint8_t *b,int x0,int x1,int y,int c) {
-    if(y<0 || y>=HT_H || x0>=HT_W || x1<0) return;
-    x0=ht_max(x0,0); x1=ht_min(x1,HT_W-1);
-    if(x1>=x0) {
-
-        memset(b+y*HT_W+x0,c,(size_t)(x1-x0+1));
-    }
+    int width=(b==ht_scene && ht_native_active)?HT_NATIVE_W:HT_W;
+    int height=(b==ht_scene && ht_native_active)?HT_NATIVE_H:HT_H;
+    if(y<0 || y>=height || x0>=width || x1<0) return;
+    x0=ht_max(x0,0); x1=ht_min(x1,width-1);
+    if(x1>=x0) memset(b+y*width+x0,c,(size_t)(x1-x0+1));
 }
 static void ht_rect(uint8_t *b,int x,int y,int w,int h,int c) {
     if(w<=0 || h<=0) return;
@@ -496,17 +532,24 @@ static void ht_rect(uint8_t *b,int x,int y,int w,int h,int c) {
         int right=ht_project_x(x+w),bottom=ht_project_y(y+h);
         x=ht_project_x(x);y=ht_project_y(y);w=ht_max(1,right-x);h=ht_max(1,bottom-y);
     }
-    for(int row=ht_max(0,y);row<ht_min(HT_H,y+h);++row) ht_span(b,x,x+w-1,row,c);
+    if(b==ht_scene && ht_native_active) {
+        x*=HT_NATIVE_SCALE;y*=HT_NATIVE_SCALE;w*=HT_NATIVE_SCALE;h*=HT_NATIVE_SCALE;
+    }
+    int height=(b==ht_scene && ht_native_active)?HT_NATIVE_H:HT_H;
+    for(int row=ht_max(0,y);row<ht_min(height,y+h);++row) ht_span(b,x,x+w-1,row,c);
 }
 static void ht_triangle(uint8_t *b,int ax,int ay,int bx,int by,int cx,int cy,int c) {
     if(b==ht_scene && ht_world_scale!=256) {
         ax=ht_project_x(ax);ay=ht_project_y(ay);bx=ht_project_x(bx);by=ht_project_y(by);cx=ht_project_x(cx);cy=ht_project_y(cy);
     }
+    if(b==ht_scene && ht_native_active) {
+        ax*=HT_NATIVE_SCALE;ay*=HT_NATIVE_SCALE;bx*=HT_NATIVE_SCALE;by*=HT_NATIVE_SCALE;cx*=HT_NATIVE_SCALE;cy*=HT_NATIVE_SCALE;
+    }
     if(ay>by){int t=ax;ax=bx;bx=t;t=ay;ay=by;by=t;}
     if(by>cy){int t=bx;bx=cx;cx=t;t=by;by=cy;cy=t;}
     if(ay>by){int t=ax;ax=bx;bx=t;t=ay;ay=by;by=t;}
-
-    for(int y=ht_max(ay,0);y<=ht_min(cy,HT_H-1);++y) {
+    int height=(b==ht_scene && ht_native_active)?HT_NATIVE_H:HT_H;
+    for(int y=ht_max(ay,0);y<=ht_min(cy,height-1);++y) {
         int a=ax+(cx-ax)*(y-ay)/ht_max(1,cy-ay);
         int d=y<by?ax+(bx-ax)*(y-ay)/ht_max(1,by-ay):bx+(cx-bx)*(y-by)/ht_max(1,cy-by);
         ht_span(b,ht_min(a,d),ht_max(a,d),y,c);
@@ -521,6 +564,7 @@ static void ht_limb(uint8_t *b,int x,int y,int ex,int ey,int r,int tip,int c) {
 }
 static void ht_disk(uint8_t *b,int x,int y,int r,int c) {
     if(b==ht_scene && ht_world_scale!=256) {x=ht_project_x(x);y=ht_project_y(y);r=ht_max(1,r*ht_world_scale/256);}
+    if(b==ht_scene && ht_native_active) {x*=HT_NATIVE_SCALE;y*=HT_NATIVE_SCALE;r=ht_max(1,r*HT_NATIVE_SCALE);}
     for(int dy=-r;dy<=r;++dy) {
         int dx=r; while(dx>0 && dx*dx+dy*dy>r*r) --dx;
         ht_span(b,x-dx,x+dx,y+dy,c);
@@ -1293,23 +1337,41 @@ static __attribute__((optimize("O3"))) void ht_upscale_scene(void) {
         if((y&15)==15) ht_checkpoint();
     }
 }
+/* Native mode allocates two physical-resolution grayscale surfaces. Low
+ * frequency cached backdrops cross this bridge; vector/procedural geometry
+ * that follows is rasterized directly at 960x540. */
+static __attribute__((optimize("O3"))) void ht_expand_scene_native(const uint8_t *src,uint8_t *dst) {
+    for(int y=0;y<HT_H;++y) {
+        const uint8_t *row=src+y*HT_W,*next=src+ht_min(y+1,HT_H-1)*HT_W;
+        uint8_t *top=dst+2*y*HT_NATIVE_W,*bottom=top+HT_NATIVE_W;
+        for(int x=0;x<HT_W;++x) {
+            int nx=ht_min(x+1,HT_W-1),a=row[x],b=row[nx],c=next[x],d=next[nx];
+            top[2*x]=(uint8_t)a;top[2*x+1]=(uint8_t)((a+b+1)>>1);
+            bottom[2*x]=(uint8_t)((a+c+1)>>1);
+            bottom[2*x+1]=(uint8_t)((a+b+c+d+2)>>2);
+        }
+        if((y&15)==15)ht_checkpoint();
+    }
+}
 #include "hollow_trail_character_pose.inc"
 static int ht_weather_floor(const ht_game *g,int screen_x);
 static void ht_character(int x,int feet,const ht_game *game) {
     /* Local mist separation keeps the player visible when a black trunk
      * crosses behind them. Never wash out the landing surface underfoot. */
-    int center=ht_project_x(x),base=ht_project_y(feet);
-    int radius=ht_max(1,25*ht_world_scale/256),middle=ht_project_y(feet-19);
-    for(int px=ht_max(0,center-radius);!(game->level==4 && game->camera/256<700) && px<=ht_min(HT_W-1,center+radius);++px) {
-        int source=240+(px-240)*256/ht_world_scale;
-        int floor=ht_min(base,ht_project_y(ht_weather_floor(game,source))-1);
-        for(int y=ht_max(0,ht_project_y(feet-43));y<ht_min(HT_H,floor);++y) {
-            int dx=(px-center)*256/ht_world_scale,dy=(y-middle)*256/ht_world_scale;
+    int raster=ht_native_active?HT_NATIVE_SCALE:1,width=ht_scene_width(),height=ht_scene_height();
+    int center=ht_project_x(x)*raster,base=ht_project_y(feet)*raster;
+    int radius=ht_max(1,25*ht_world_scale/256)*raster,middle=ht_project_y(feet-19)*raster;
+    for(int px=ht_max(0,center-radius);!(game->level==4 && game->camera/256<700) && px<=ht_min(width-1,center+radius);++px) {
+        int logical_px=px/raster;
+        int source=240+(logical_px-240)*256/ht_world_scale;
+        int floor=ht_min(base,ht_project_y(ht_weather_floor(game,source))*raster-raster);
+        for(int y=ht_max(0,ht_project_y(feet-43)*raster);y<ht_min(height,floor);++y) {
+            int dx=(px-center)*256/(ht_world_scale*raster),dy=(y-middle)*256/(ht_world_scale*raster);
             int d=dx*dx+dy*dy;
             if(d<625) {
                 int ceiling=170+85*ht_clamp(d-100,0,525)/525;
-                int i=y*HT_W+px;
-                if(ht_scene[i]>ceiling) {ht_scene[i]=(uint8_t)ceiling;}
+                int i=y*width+px;
+                if(ht_scene[i]>ceiling) ht_scene[i]=(uint8_t)ceiling;
             }
         }
     }
@@ -1320,20 +1382,19 @@ static void ht_character(int x,int feet,const ht_game *game) {
  * Apply once after all layers, with no multiply in the unshaded center. */
 static inline unsigned ht_div255(unsigned value) {return (value+1+(value>>8))>>8;}
 static void ht_vignette(void) {
-    for(int y=0;y<HT_H;++y) {
-        uint8_t *row=ht_scene+y*HT_W;
-        int left=ht_visible_left[y],clear=ht_clear_left[y];
-        memset(row,255,(size_t)left); memset(row+HT_W-left,255,(size_t)left);
-        /* Symmetric curved fade; the untouched central span costs no work. */
+    int width=ht_scene_width(),height=ht_scene_height();
+    for(int y=0;y<height;++y) {
+        uint8_t *row=ht_scene+y*width;
+        int left=ht_scene_visible_left(y),clear=ht_scene_clear_left(y);
+        memset(row,255,(size_t)left);memset(row+width-left,255,(size_t)left);
         for(int x=left;x<clear;++x) {
-            int alpha=ht_mask_alpha(x,y),right=HT_W-1-x;
+            int alpha=ht_scene_mask_alpha(x,y),right=width-1-x;
             uint32_t lanes=(uint32_t)(255-row[x])|((uint32_t)(255-row[right])<<16);
             lanes=lanes*(unsigned)alpha+0x007f007fu;
             row[x]=(uint8_t)(255-ht_div255(lanes&65535u));
             row[right]=(uint8_t)(255-ht_div255(lanes>>16));
-
         }
-        if((y&31)==31) ht_checkpoint();
+        if((y&31)==31)ht_checkpoint();
     }
     ht_framed=true;
 }
@@ -1388,16 +1449,18 @@ static void ht_frame_camera(ht_game *g,unsigned mode) {
 }
 
 static __attribute__((optimize("O3"))) void ht_affine_into(const uint8_t *source,int turn,int scale) {
-    for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
-        int left=ht_visible_left[y],right=HT_W-left;
-        int u=(HT_W/2)*4096+(left-HT_W/2)*scale+(y-HT_H/2)*turn;
-        int v=(HT_H/2)*4096-(left-HT_W/2)*turn+(y-HT_H/2)*scale;
-        uint8_t *dst=ht_scene+y*HT_W;
+    int width=ht_scene_width(),height=ht_scene_height();
+    int border=ht_native_active?HT_BORDER*HT_NATIVE_SCALE:HT_BORDER;
+    for(int y=border;y<height-border;++y) {
+        int left=ht_scene_visible_left(y),right=width-left;
+        int u=(width/2)*4096+(left-width/2)*scale+(y-height/2)*turn;
+        int v=(height/2)*4096-(left-width/2)*turn+(y-height/2)*scale;
+        uint8_t *dst=ht_scene+y*width;
         for(int x=left;x<right;++x,u+=scale,v-=turn) {
             int ix=(u+2048)>>12,iy=(v+2048)>>12;
-            dst[x]=source[iy*HT_W+ix];
+            dst[x]=source[iy*width+ix];
         }
-        if((y&15)==15) ht_checkpoint();
+        if((y&15)==15)ht_checkpoint();
     }
 }
 static void ht_sway_into(const uint8_t *source,unsigned phase) {
@@ -1408,27 +1471,31 @@ static void ht_sway_into(const uint8_t *source,unsigned phase) {
 /* Axis-aligned zoom: one source row per output row, no per-pixel Y
  * projection or source-row multiplication. Keep baseline's rounding. */
 static __attribute__((optimize("O3"))) void ht_zoom_into(const uint8_t *source,int scale) {
-    for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
-        int sy=((HT_H/2)*4096+(y-HT_H/2)*scale+2048)>>12;
-        const uint8_t *src=source+sy*HT_W;
-        uint8_t *dst=ht_scene+y*HT_W;
-        int left=ht_visible_left[y],right=HT_W-left;
-        int u=(HT_W/2)*4096+(left-HT_W/2)*scale;
-        for(int x=left;x<right;++x,u+=scale) dst[x]=src[(u+2048)>>12];
-        if((y&15)==15) ht_checkpoint();
+    int width=ht_scene_width(),height=ht_scene_height();
+    int border=ht_native_active?HT_BORDER*HT_NATIVE_SCALE:HT_BORDER;
+    for(int y=border;y<height-border;++y) {
+        int sy=((height/2)*4096+(y-height/2)*scale+2048)>>12;
+        const uint8_t *src=source+sy*width;
+        uint8_t *dst=ht_scene+y*width;
+        int left=ht_scene_visible_left(y),right=width-left;
+        int u=(width/2)*4096+(left-width/2)*scale;
+        for(int x=left;x<right;++x,u+=scale)dst[x]=src[(u+2048)>>12];
+        if((y&15)==15)ht_checkpoint();
     }
 }
 /* With zoom genuinely disabled there is no safety crop. Clamp uncovered
  * corners to the source edge instead of reading outside the raster. */
 static __attribute__((optimize("O3"))) void ht_rotation_into(const uint8_t *source,int turn) {
-    for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
-        int left=ht_visible_left[y],right=HT_W-left;
-        int u=left*4096+(y-HT_H/2)*turn;
-        int v=y*4096-(left-HT_W/2)*turn;
+    int width=ht_scene_width(),height=ht_scene_height();
+    int border=ht_native_active?HT_BORDER*HT_NATIVE_SCALE:HT_BORDER;
+    for(int y=border;y<height-border;++y) {
+        int left=ht_scene_visible_left(y),right=width-left;
+        int u=left*4096+(y-height/2)*turn;
+        int v=y*4096-(left-width/2)*turn;
         for(int x=left;x<right;++x,u+=4096,v-=turn)
-            ht_scene[y*HT_W+x]=source[ht_clamp((v+2048)>>12,0,HT_H-1)*HT_W+
-                ht_clamp((u+2048)>>12,0,HT_W-1)];
-        if((y&15)==15) ht_checkpoint();
+            ht_scene[y*width+x]=source[ht_clamp((v+2048)>>12,0,height-1)*width+
+                ht_clamp((u+2048)>>12,0,width-1)];
+        if((y&15)==15)ht_checkpoint();
     }
 }
 static void ht_camera_into(const uint8_t *source,const ht_game *g,unsigned mode) {
@@ -1498,38 +1565,42 @@ static bool ht_grotto_opaque(const ht_game *g) {
 static void ht_render_scene(void) {
     memset(&ht_render_last,0,sizeof(ht_render_last));
     uint32_t stage=ht_render_now();
-    /* Input checkpoints may advance live physics. Freeze the rendered frame
-     * so trees, focus and character all use one consistent game snapshot. */
     ht_game game=ht;
-    const unsigned camera_mode=ht_camera_mode;
-    if(camera_mode==HT_CAMERA_NO_ZOOM || camera_mode==HT_CAMERA_OFF) game.vista=game.intimacy=0;
+    const bool native_mode=ht_camera_mode==HT_CAMERA_NATIVE;
+    const unsigned camera_mode=native_mode?(unsigned)HT_CAMERA_BASELINE:ht_camera_mode;
+    ht_native_active=native_mode;
+    ht_scene=native_mode?ht_native_a:ht_scene_low;
+    if(camera_mode==HT_CAMERA_NO_ZOOM || camera_mode==HT_CAMERA_OFF)game.vista=game.intimacy=0;
     ht_frame_camera(&game,camera_mode);
     const bool camera_pass=camera_mode!=HT_CAMERA_OFF && (game.sway_phase || game.drop_zoom);
     ht_select_level(game.level);
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
     bool opaque=game.level!=4 || ht_grotto_opaque(&game);
-    if(ht_abort) return;
+    if(ht_abort)return;
     if(!opaque) {
-        if(!ht_cache_visible(camera)) {return;}
+        if(!ht_cache_visible(camera))return;
         memset(ht_recon_scene,ht_sky_ink(&game),HT_RECON_PIXELS);
-        for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
+        for(int depth=0;depth<HT_LAYERS;++depth)if(depth!=2)
             ht_composite_cached_ai(depth,ht_layer_offset(depth,camera),px,py);
         ht_reconstruct_low_scene();
-
     }
-    /* Render directly to the transform source: remove the former full-frame
-     * copy into scratch. Input servicing never reads this raster pointer. */
     uint8_t *output=ht_scene;
-    if(camera_pass) ht_scene=ht_temp;
-    if(!opaque) ht_upscale_scene();
-    /* Lightning lights the sky behind silhouettes, never the HUD or panel
-     * waveform. Sky darkening reuses the existing composite clear above. */
+    if(camera_pass)ht_scene=native_mode?ht_native_b:ht_temp;
+    if(!opaque) {
+        if(native_mode) {
+            uint8_t *native_target=ht_scene;
+            ht_scene=ht_scene_low;ht_native_active=false;
+            ht_upscale_scene();
+            ht_scene=native_target;ht_native_active=true;
+            ht_expand_scene_native(ht_scene_low,native_target);
+        } else ht_upscale_scene();
+    }
     if(!opaque && ht_lightning(&game)>80) {
         int x=340-game.camera/2048,y=22;
         for(int i=0;i<5;++i) {
             int nx=x+(i%2?-11:5),ny=y+12+i*3;
             int floor=ht_weather_floor(&game,x);
-            if(y<floor) ht_limb(ht_scene,x,y,nx,ht_min(ny,floor-1),1,0,0);
+            if(y<floor)ht_limb(ht_scene,x,y,nx,ht_min(ny,floor-1),1,0,0);
             x=nx;y=ny;
         }
     }
@@ -1547,7 +1618,7 @@ static void ht_render_scene(void) {
     ht_render_last.world=post_start-world_start;
     ht_world_scale=256;
     ht_scene=output;
-    if(camera_pass) ht_camera_into(ht_temp,&game,camera_mode);
+    if(camera_pass)ht_camera_into(native_mode?ht_native_b:ht_temp,&game,camera_mode);
     ht_vignette();
     ht_render_last.post=ht_render_now()-post_start;
 }
@@ -1616,6 +1687,26 @@ static inline __attribute__((always_inline)) void ht_pack_lanes(uint32_t a,uint3
     uint32_t d=ht_average4(h,ht_average4(c,(c>>8)|(cr<<24)));
     *top=(uint8_t)(ht_dots4(a,even,false)|(ht_dots4(h,odd,true)>>1));
     *bottom=(uint8_t)(ht_dots4(v,even,true)|(ht_dots4(d,odd,false)>>1));
+}
+static __attribute__((optimize("O3"))) void ht_pack_mono_native(uint8_t *out,int stride) {
+    static const uint8_t rank[8][8]={
+        {41,8,52,7,45,15,47,4},{18,35,27,60,28,55,19,57},
+        {54,1,49,9,62,3,40,14},{16,56,21,53,20,38,25,43},
+        {59,12,42,6,39,10,34,5},{24,33,17,46,31,50,29,61},
+        {36,2,58,11,63,0,51,13},{26,44,30,37,22,32,23,48}
+    };
+    for(int y=0;y<HT_NATIVE_H;++y) {
+        const uint8_t *row=ht_scene+y*HT_NATIVE_W;
+        uint8_t *dst=out+y*stride;
+        const uint8_t *r=rank[y&7];
+        for(int byte=0;byte<HT_NATIVE_W/8;++byte) {
+            int x=byte*8;uint8_t bits=0;
+            for(int k=0;k<8;++k)
+                if(row[x+k]>(int)r[(x+k)&7]*4+2)bits|=(uint8_t)(0x80u>>k);
+            dst[byte]=bits;
+        }
+        if((y&15)==15)ht_checkpoint();
+    }
 }
 static __attribute__((optimize("O3"))) void ht_pack_mono_legacy(uint8_t *out,int stride) {
     bool word_output=(((uintptr_t)out|(unsigned)stride)&3u)==0;
@@ -1720,6 +1811,7 @@ static __attribute__((optimize("O3"))) void ht_pack_mono_simd(uint8_t *out,int s
 }
 
 static void ht_pack_mono(uint8_t *out,int stride) {
+    if(ht_native_active) {ht_pack_mono_native(out,stride);return;}
     if(ht_simd_ready) ht_pack_mono_simd(out,stride);
     else ht_pack_mono_legacy(out,stride);
 }
