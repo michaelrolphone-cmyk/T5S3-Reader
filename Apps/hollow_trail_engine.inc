@@ -45,7 +45,8 @@ static uint16_t ht_dirty_top,ht_dirty_height;
 #define HT_WARM_STEPS (HT_LAYERS*HT_TILE_SLOTS*(1+3*((HT_H+HT_CACHE_BAND-1)/HT_CACHE_BAND)))
 /* Two focus maps cover alternating camera positions at the AI sampling grid. */
 #define HT_SIMD_TABLE_BYTES (4u*6u*16u + 3u*16u)
-#define HT_MEMORY (HT_SIMD_TABLE_BYTES + HT_RECON_PIXELS * 4u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS + HT_RECON_PIXELS + HT_NATIVE_PIXELS * 2u)
+#define HT_MEMORY (HT_SIMD_TABLE_BYTES + HT_RECON_PIXELS * 4u + HT_PIXELS * 6u + HT_LAYERS * HT_TILE_SLOTS * HT_TILE_PIXELS * 2u + HT_MASK_PIXELS + HT_SCENE_PIXELS + HT_RECON_PIXELS)
+#define HT_NATIVE_MEMORY (HT_NATIVE_PIXELS * 2u)
 #define HT_GOAL 3200
 #define HT_STEP_MS 32u /* Fixed physics clock; scene direction varies world speed. */
 
@@ -283,7 +284,7 @@ static void ht_simd_constants_init(uint8_t *memory);
 
 static void ht_bind(uint8_t *memory) {
     ht_pack_tables_init();
-    ht_simd_constants_init(memory+HT_MEMORY-2u*HT_NATIVE_PIXELS-HT_SIMD_TABLE_BYTES);
+    ht_simd_constants_init(memory+HT_MEMORY-HT_SIMD_TABLE_BYTES);
     ht_simd_reason=ht_expanded_reason="NOT TESTED";
     for(unsigned i=0;i<4;++i)ht_stage_reason[i]="NOT TESTED";
     ht_simd_test_pattern=ht_simd_test_phase=ht_simd_test_byte=0;
@@ -302,13 +303,15 @@ static void ht_bind(uint8_t *memory) {
     /* Lookahead cache work can be suspended across visible frames. Its raw,
      * near and wide buffers remain live until the strip is published. */
     ht_recon_scene=(uint8_t *)(ht_focus_map[1]+HT_RECON_PIXELS);
-    /* Preserve the established cache/reconstruction/SIMD table layout.
-     * Native surfaces are appended after it so existing SIMD ABI/self-tests
-     * and alignment contracts remain byte-for-byte unchanged. */
-    ht_native_a=memory+HT_MEMORY-2u*HT_NATIVE_PIXELS;
-    ht_native_b=ht_native_a+HT_NATIVE_PIXELS;
+    ht_native_a=ht_native_b=NULL;
     ht_focus_valid[0]=ht_focus_valid[1]=false;ht_focus_step[0]=ht_focus_step[1]=0;ht_focus_recent=0;
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
+}
+/* Optional extension owned by Hollow Trail's app allocation. Keeping it
+ * outside HT_MEMORY preserves the existing cache/SIMD arena ABI and tests. */
+static void ht_bind_native(uint8_t *memory) {
+    ht_native_a=memory+HT_MEMORY;
+    ht_native_b=ht_native_a+HT_NATIVE_PIXELS;
 }
 static int ht_evidence_platform(unsigned level,int item) { return level==0 && item==0?0:1+item*3; }
 static int ht_evidence_x(unsigned level,int item) {
