@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 193. File-association rebuild can publish a partial handler table after an SD directory-scan failure
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1823](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260929-1823)
+
+- **Affected code:** `src/native/FileAssociationRegistry.cpp`, `NativeFileAssociations::rebuild()`, `scanCanonicalApp()`, and persistence through `persist()`.
+- **Trigger / reproduction:** Install at least one application that declares a file association, then invoke `NativeFileAssociations::rebuild()` while fault-injecting an SD error so `Storage.open("/Apps")` fails or `HalFile::openNextFile()` returns an invalid handle before the directory has actually been exhausted.
+- **Observed / logically demonstrated failure:** `rebuild()` clears the live `handlers` vector before scanning. A failed `/Apps` open is treated the same as an empty application directory, and any invalid `openNextFile()` result is treated as normal end-of-directory. The function then sorts the incomplete table, sets `loaded = true`, and persists it. A transient enumeration failure can therefore replace a previously complete association table and `FileAssociations.json` with only the built-in reader handlers or an arbitrary prefix of installed-app handlers while still returning success.
+- **Likely root cause:** Directory enumeration has no success/failure transaction boundary; EOF and I/O failure collapse into the same sentinel, and the old in-memory/generated snapshot is destroyed before a complete replacement has been established.
+- **Impact:** Installed applications can temporarily disappear from Open With/file-type routing, and because the partial snapshot is marked loaded and persisted, the failure survives subsequent lookups instead of being retried immediately.
+- **Repair direction:** Build associations in a temporary vector, distinguish confirmed directory absence/EOF from enumeration failure (or verify enumeration completion through a storage API that can report errors), and publish/persist only after a complete successful scan. On failure retain the previous good snapshot and leave the registry retryable. Add fault-injection tests for root-open failure and mid-directory failure.
+
+### 194. BQ27220 provisioning failure can leave the fuel gauge unsealed in CFGUPDATE mode
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1823](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260929-1823)
+
+- **Affected code:** `lib/bq27220/src/bq27220.cpp`, `BQ27220::init()` and `BQ27220::dateMemoryCheck()`; caller `lib/Board_T5S3/BoardT5S3.cpp::configureBq27220()`.
+- **Trigger / reproduction:** Force any data-memory `parameterCheck(..., update=true)` operation to fail after `dateMemoryCheck()` has successfully issued `ENTER_CFG_UPDATE`, for example by fault-injecting one I2C write/read failure during gauge profile provisioning.
+- **Observed / logically demonstrated failure:** `dateMemoryCheck()` sets `result = false` when a parameter operation fails, but `EXIT_CFG_UPDATE_REINIT` is executed only under `if (update && result)`. The function therefore returns false without attempting to leave CFGUPDATE. `init()`, which previously unsealed the gauge, then breaks out before `sealAccess()`. `configureBq27220()` responds by calling `bq27220.end()`, which removes the host-side I2C device handle but sends no recovery command to the physical gauge.
+- **Likely root cause:** Hardware-state cleanup is conditional on the provisioning body succeeding instead of being guaranteed once configuration mode/unsealed access has been entered.
+- **Impact:** A single transient I2C fault during provisioning can leave the BQ27220 in a special configuration state and unsealed after firmware abandons the device for the boot. Normal gauging/telemetry may remain unavailable or unreliable until a later reset/reinitialization, and the intended sealed state is not restored.
+- **Repair direction:** Treat CFGUPDATE entry and unseal as scoped hardware transactions. On every exit after entry, attempt a deterministic exit/reinitialize (or reset fallback) and reseal before releasing the device; report cleanup failure separately. Add fault injection at each profile-write step and verify CFGUPDATE clears and the gauge is sealed afterward.
+
+### 195. A truncated EPUB section cache is accepted as valid and later feeds uninitialized offsets into page deserialization
+
+- **Status:** Open.
+- **Sources:** [automation/bug-scan-20260929-1823](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-scan-20260929-1823)
+
+- **Affected code:** `lib/Epub/Epub/Section.cpp`, `Section::loadSectionFile()` and `Section::loadPageFromSectionFile()`; `lib/Serialization/Serialization.h::readPod(FsFile&, ...)`; downstream `lib/Epub/Epub/Page.cpp::Page::deserialize()`.
+- **Trigger / reproduction:** Start from a valid section cache `.../sections/<spine>.bin` with at least one page and truncate it to the first 20 bytes: the complete version/render-parameter fields plus `pageCount`, but omit the three 32-bit LUT/anchor/paragraph offsets and all page data. Reopen the same book with matching render settings and navigate to that section.
+- **Observed / logically demonstrated failure:** `loadSectionFile()` reads only through `pageCount`; it neither requires the full 32-byte section header nor validates the three stored offsets before returning success. The generic `serialization::readPod(FsFile&, T&)` discards the read byte count. `loadPageFromSectionFile()` then seeks to byte 20, attempts to read the missing `lutOffset` into an uninitialized local, seeks using that indeterminate value, repeats the unchecked read for `pagePos`, and finally calls `Page::deserialize()` on an arbitrary location. The cache is therefore classified as valid before its required navigation structures are proven present.
+- **Likely root cause:** Section-cache validation checks configuration compatibility but not structural completeness, while the serialization helpers expose no read failure to callers.
+- **Impact:** A short write, power loss, or SD corruption of a derived section cache can turn the next page load into arbitrary seeks, bogus allocation/deserialization input, crashes, or corrupted rendering instead of simply rebuilding the cache.
+- **Repair direction:** Require an exact complete header read, validate `pageCount` and every offset/range against file size, make all section/Page deserialization reads checked, and invalidate/rebuild the cache on the first structural or I/O error. Publish newly generated section files atomically only after all writes and close succeed. Add truncation tests at every header/LUT boundary.
