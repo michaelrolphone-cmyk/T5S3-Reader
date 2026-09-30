@@ -262,3 +262,35 @@ Walking/jumping into the snag, both-sided fast approaches at multiple heights,
 other-chapter isolation, sustained pushing and landed crossing pass. Ground
 integrity (25,296 poses), 78 branch contacts, scene pace/gait selection, complete
 ten-chapter route, forest ASan+UBSan and C++ integration checks pass.
+
+## Articulated character — 1.1.30
+
+Hollow Trail **1.1.29 -> 1.1.30**, minimum firmware **1.3.37**. Branched
+from master after PR #320 merged. All activities now share a proportioned
+silhouette: profiled crown/brow/nose/chin, neck, shaped jacket with a waist and
+hem, longer legs, ankle/heel/toe contours and subdued close-view clothing seams.
+The oversized head disks and white eye cutouts are removed. Rear limbs are
+slightly quieter than the near limbs so overlapping poses remain readable.
+
+A common pose builder places hips, shoulders and contacts; integer two-bone
+joint construction supplies knees/elbows. Walking uses a planted stance that
+cancels world displacement and an elevated recovery arc. Running blends knee
+lift, torso lean, arm carriage and brief flight with actual speed. Foot heights
+follow nearby soil slopes. Ascent tucks the legs and lifts the arms; descent
+extends them for landing, whose compression follows the existing impact state.
+No physics speeds, collision sizes, terrain, camera direction or controls change.
+
+Climbing contacts follow trunk contour or ladder rungs. Ledge hands use the
+actual lip height. Rope hands follow the simulated grip with trailing feet;
+rowing palms retain the shared oar stroke. Stone/crate and tree pushing retain
+their physical contact points, brace and effort/release states. Fixed small
+pose structs, bounded contact queries and integer math add no allocations,
+textures or frame buffers.
+
+Walk/run/jump contact sheets and actual forest walking, running, tree pushing,
+climbing and seated boat scenes were visually inspected. A focused character
+regression covers walking leg lengths, planted stance in both directions,
+idle stability, jump phase changes and exact oar contact. Renderer full-frame
+references are updated for the intentional character changes; the independent
+300-view grotto geometry and cache pixel-equivalence comparisons remain intact.
+S3 build/ELF validation and source/sidecar/catalog version/hash agreement pass.
