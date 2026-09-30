@@ -158,15 +158,78 @@ static __attribute__((optimize("O3"))) void ht_boat_grotto_low(const ht_game *g)
     }
 }
 
+static __attribute__((optimize("O3"))) void ht_boat_grotto_native(const ht_game *g) {
+    int cx=g->camera/256,cy=g->camera_y/256;
+    int blend=ht_clamp((900-cx)*256/200,0,256);
+    static int16_t near_roof[HT_NATIVE_W],mid_roof[HT_NATIVE_W],far_roof[HT_NATIVE_W];
+    for(int sx=0;sx<HT_NATIVE_W;++sx) {
+        int x=sx/HT_NATIVE_SCALE;
+        int source=240+(x-240)*256/ht_world_scale;
+        near_roof[sx]=(int16_t)(ht_project_y(ht_grotto_ceiling(source+cx)-cy)*HT_NATIVE_SCALE);
+        mid_roof[sx]=(int16_t)(ht_project_y(ht_cave_face(source+cx*53/100,0)-cy*53/100)*HT_NATIVE_SCALE);
+        far_roof[sx]=(int16_t)(ht_project_y(ht_cave_face(source+cx*22/100,1)-cy*22/100)*HT_NATIVE_SCALE);
+    }
+    int water=ht_project_y(ht_mech(g)->boat_deck+10-cy)*HT_NATIVE_SCALE;
+    int glow=ht_project_x(535-cx*22/100)*HT_NATIVE_SCALE;
+    int middle=ht_project_y(192-cy*22/100)*HT_NATIVE_SCALE;
+    int softness=ht_max(1,8*ht_world_scale/256)*HT_NATIVE_SCALE;
+    uint16_t edge[64],wall_edge[64];
+    softness=ht_min(softness,63);
+    for(int d=0;d<=softness;++d) {
+        edge[d]=(uint16_t)(d*256/softness);wall_edge[d]=edge[d]/3;
+    }
+    int boat=ht_project_x(g->traversal.boat_x/256-cx)*HT_NATIVE_SCALE;
+    for(int sy=0;sy<HT_NATIVE_H;++sy) {
+        uint8_t *row=ht_scene+sy*HT_NATIVE_W;
+        int ly=sy/HT_NATIVE_SCALE,dy=(sy-middle)/HT_NATIVE_SCALE,dy2=dy*dy*2;
+        int far_ink=145-ht_clamp(ly-50,0,180)/2;
+        int mid_ink=222-ht_clamp(ly-80,0,160)/3;
+        int depth=(sy-water)/HT_NATIVE_SCALE;
+        int water_ink=110+depth/3,reflection_depth=80-ht_min(depth,80);
+        int shade_depth=ht_max(0,34-depth);
+        bool broken_shade=(depth/3)%3==1;
+        bool ripple_row=depth>4 && depth%11==0;
+        for(int sx=0;sx<HT_NATIVE_W;++sx) {
+            int distance=sy-near_roof[sx],ink;
+            if(distance<=0)ink=255;
+            else {
+                int x=sx/HT_NATIVE_SCALE,dx=(sx-glow)/HT_NATIVE_SCALE;
+                if(depth>=0) {
+                    ink=ht_clamp(water_ink+ht_abs(dx)/12,110,170);
+                    int reflection=ht_clamp((235-x)*2,0,70);
+                    ink=ht_min(210,ink+reflection*reflection_depth/80);
+                    int spread=ht_max(0,48-ht_abs(sx-boat)/HT_NATIVE_SCALE);
+                    int shade=spread*shade_depth/17;
+                    if(broken_shade)shade=shade*2/3;
+                    ink=ht_min(225,ink+shade);
+                    if(depth<=1)ink=ht_max(65,ink-32);
+                    if(ripple_row && (x+cx/2+depth*7)%83<17)ink=ht_max(70,ink-9);
+                } else {
+                    ink=ht_clamp(18+(dx*dx+dy2)/1300,18,125);
+                    int far_distance=sy-far_roof[sx];
+                    if(far_distance<=0)ink=ht_max(ink,far_ink);
+                    else if(far_distance<softness) {
+                        int far=wall_edge[softness-far_distance];
+                        ink=ht_max(ink,ink+(far_ink-ink)*far/256);
+                    }
+                    int mid_distance=sy-mid_roof[sx];
+                    if(mid_distance<=0)ink=ht_max(ink,mid_ink);
+                    else if(mid_distance<softness) {
+                        int mid=wall_edge[softness-mid_distance];
+                        ink=ht_max(ink,ink+(mid_ink-ink)*mid/256);
+                    }
+                }
+                if(distance<softness)ink=ht_max(ink,150*edge[softness-distance]/256);
+            }
+            row[sx]=(uint8_t)(blend==256?ink:(ink*blend+row[sx]*(256-blend))/256);
+        }
+        if((sy&31)==31)ht_checkpoint();
+    }
+}
 static void ht_boat_grotto(const ht_game *g) {
     if(g->level!=4 || g->camera/256>900)return;
     int blend=ht_clamp((900-g->camera/256)*256/200,0,256);
     if(!blend)return;
-    if(!ht_native_active){ht_boat_grotto_low(g);return;}
-    uint8_t *native=ht_scene;
-    ht_reduce_scene_native(native,ht_scene_low);
-    ht_scene=ht_scene_low;ht_native_active=false;
+    if(ht_native_active){ht_boat_grotto_native(g);return;}
     ht_boat_grotto_low(g);
-    ht_scene=native;ht_native_active=true;
-    ht_expand_scene_native(ht_scene_low,native);
 }
