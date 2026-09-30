@@ -283,7 +283,7 @@ static void ht_simd_constants_init(uint8_t *memory);
 
 static void ht_bind(uint8_t *memory) {
     ht_pack_tables_init();
-    ht_simd_constants_init(memory+HT_MEMORY-HT_SIMD_TABLE_BYTES);
+    ht_simd_constants_init(memory+HT_MEMORY-2u*HT_NATIVE_PIXELS-HT_SIMD_TABLE_BYTES);
     ht_simd_reason=ht_expanded_reason="NOT TESTED";
     for(unsigned i=0;i<4;++i)ht_stage_reason[i]="NOT TESTED";
     ht_simd_test_pattern=ht_simd_test_phase=ht_simd_test_byte=0;
@@ -302,7 +302,10 @@ static void ht_bind(uint8_t *memory) {
     /* Lookahead cache work can be suspended across visible frames. Its raw,
      * near and wide buffers remain live until the strip is published. */
     ht_recon_scene=(uint8_t *)(ht_focus_map[1]+HT_RECON_PIXELS);
-    ht_native_a=memory+HT_MEMORY-HT_SIMD_TABLE_BYTES-2u*HT_NATIVE_PIXELS;
+    /* Preserve the established cache/reconstruction/SIMD table layout.
+     * Native surfaces are appended after it so existing SIMD ABI/self-tests
+     * and alignment contracts remain byte-for-byte unchanged. */
+    ht_native_a=memory+HT_MEMORY-2u*HT_NATIVE_PIXELS;
     ht_native_b=ht_native_a+HT_NATIVE_PIXELS;
     ht_focus_valid[0]=ht_focus_valid[1]=false;ht_focus_step[0]=ht_focus_step[1]=0;ht_focus_recent=0;
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
