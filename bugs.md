@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 205. Malformed indexed PNG bit depths can crash EPUB cover conversion with division by zero
+
+- **Status:** Open.
+- **Sources:** 2026-09-30 02:47 MDT scheduled source scan on branch `automation/bug-scan-20260930-0247`.
+
+- **Affected code:** `lib/PngToBmpConverter/PngToBmpConverter.cpp`, IHDR parsing in `PngToBmpConverter::pngFileToBmpStreamInternal()` and the `PNG_COLOR_PALETTE` branch of `convertScanlineToGray()`; callers in `lib/Epub/Epub.cpp` that generate cover and thumbnail BMPs.
+- **Trigger / reproduction:** Supply an EPUB cover PNG with IHDR color type 3 (indexed/palette) and an invalid bit depth such as 16, with dimensions inside the converter's existing width/height limits and enough PLTE/IDAT structure to reach scanline conversion.
+- **Observed / logically demonstrated failure:** The converter validates compression, filter, interlace, and dimensions but never validates the PNG specification's legal bit-depth/color-type combinations. For a palette image with `bitDepth == 16`, `convertScanlineToGray()` computes `ppb = 8 / ctx.bitDepth`, producing zero, and then evaluates `x % ppb`. That is integer division/modulo by zero instead of a clean decode failure.
+- **Likely root cause:** IHDR fields are consumed independently, so format-specific invariants are not checked before row-size and pixel-unpacking arithmetic assumes a legal bit depth.
+- **Impact:** A malformed or corrupted EPUB cover can crash the cover/thumbnail conversion path rather than being rejected, turning document content into a device/app denial of service during metadata/cover generation.
+- **Repair direction:** Validate the exact legal PNG combinations before any derived arithmetic: grayscale 1/2/4/8/16, RGB 8/16, palette 1/2/4/8, grayscale+alpha 8/16, and RGBA 8/16. Reject every other pair before allocation/decompression and add malformed-IHDR tests, especially palette+16, proving a clean false return.
+
+### 206. EPUB PNG cover conversion ignores alpha and renders transparent pixels as visible ink
+
+- **Status:** Open.
+- **Sources:** 2026-09-30 02:47 MDT scheduled source scan on branch `automation/bug-scan-20260930-0247`.
+
+- **Affected code:** `lib/PngToBmpConverter/PngToBmpConverter.cpp`, `convertScanlineToGray()` and PNG chunk scanning in `pngFileToBmpStreamInternal()`; cover/thumbnail generation in `lib/Epub/Epub.cpp`.
+- **Trigger / reproduction:** Use a valid EPUB cover PNG containing RGBA or grayscale+alpha pixels with alpha 0, for example a transparent black background around opaque artwork, then let the EPUB metadata path generate its cached cover/thumbnail BMP.
+- **Observed / logically demonstrated failure:** The grayscale+alpha branch copies only the grayscale sample and discards alpha. The RGBA branch computes luminance from RGB and likewise discards alpha. The chunk scanner also skips transparency metadata rather than compositing it. Thus a fully transparent black pixel becomes black ink in the generated BMP instead of the white page/background; transparent edges and backgrounds can become dark blocks or halos. The separate framebuffer PNG path already composites alpha, so the two PNG render paths disagree on the same valid image.
+- **Likely root cause:** The BMP conversion path was written as an RGB/luma conversion and never incorporated alpha compositing semantics.
+- **Impact:** Standards-compliant transparent PNG covers can produce visibly corrupted cached covers and thumbnails, including large black regions that were transparent in the source.
+- **Repair direction:** Composite alpha against the intended white e-paper background before dithering/luma output for RGBA and grayscale+alpha, and honor applicable `tRNS` transparency for palette/grayscale/RGB images. Add fixtures with fully transparent black, half-transparent colored edges, and indexed `tRNS`, and compare cover/thumbnail output with the framebuffer decoder's white-background semantics.
+
+### 207. KOReader binary document hashing treats failed or short SD reads as a valid document ID
+
+- **Status:** Open.
+- **Sources:** 2026-09-30 02:47 MDT scheduled source scan on branch `automation/bug-scan-20260930-0247`.
+
+- **Affected code:** `lib/KOReaderSync/KOReaderDocumentId.cpp`, `KOReaderDocumentId::calculate()`; caller `src/activities/reader/KOReaderSyncActivity.cpp::performSync()` and upload paths.
+- **Trigger / reproduction:** Select KOReader's Binary document-matching mode for a readable EPUB, then inject an SD `seekSet()` failure or a zero/short `read()` at any sampled offset that is inside the file.
+- **Observed / logically demonstrated failure:** `calculate()` logs a seek failure and simply `continue`s. Reads are accepted whenever `bytesRead > 0`, even when fewer than the requested `bytesToRead` bytes were returned. The function then finalizes and returns a non-empty MD5 of whatever subset happened to be read. `KOReaderSyncActivity` treats any non-empty hash as valid and queries or can upload progress under that incorrect document ID.
+- **Likely root cause:** The sampling loop treats storage I/O failures as optional missing samples instead of failures of the identity calculation.
+- **Impact:** A transient SD read/seek fault can make sync falsely report that no remote progress exists and can create a second, bogus server-side progress record if the user uploads, while the real document's progress remains under its correct hash.
+- **Repair direction:** Require every in-range sample seek to succeed and every sample read to return exactly `bytesToRead`; abort with an empty/error result on any mismatch and optionally retry transient I/O before failing. Add fault-injection tests for failed seeks, zero-byte reads, short reads, and a successful final partial-size sample near EOF.
