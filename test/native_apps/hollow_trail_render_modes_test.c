@@ -44,6 +44,7 @@ int main(void){
   else if(i==HT_TEST_STATIONARY_ALL)assert(mask==HT_OPT_SIMD_ALL);
   else if(i==HT_TEST_MOTION)assert(mask==(HT_OPT_UPSCALE|HT_OPT_BLEND|HT_OPT_VIGNETTE|HT_OPT_TILE_PLAN));
   else if(i==HT_TEST_MOTION_ALL)assert(mask==(HT_OPT_SIMD_ALL|HT_OPT_VIGNETTE|HT_OPT_TILE_PLAN));
+  else if(i==HT_TEST_EVERYTHING)assert(mask==HT_OPT_ALL);
   else assert(mask && !(mask&(mask-1)));
   for(unsigned ready=0;ready<16;++ready){
    ht_simd_stage_ready=ready;
@@ -110,12 +111,39 @@ int main(void){
   ht.vista=view?256:0;ht.sway_phase=128+view*317;ht.rotation_phase=(128+view*219)<<8;ht.camera_mood=256;ht_game game=ht;
   ht_render_scene();memcpy(want,ht_scene,HT_PIXELS);
   for(unsigned mode=1;mode<HT_TEST_COUNT;++mode){
-   if(mode==HT_TEST_LOW_CAMERA)continue;
+   if(mode==HT_TEST_LOW_CAMERA || mode==HT_TEST_EVERYTHING)continue;
    ht_bind(mem);ht_workspace_attach(fast);ht=game;ht_render_test=mode;ht_simd_stage_ready=HT_OPT_SIMD_ALL;
    ht_render_scene();assert(!memcmp(want,ht_scene,HT_PIXELS));
    if(mode==HT_TEST_NN_CACHE){scene_hits+=ht_nn_cache_hits;scene_queries+=ht_nn_cache_lookups;}
   }
  }
+ /* All-combined inherits low-camera filtering, so compare with mode 18,
+  * including no-motion, cold caches and unavailable SIMD/internal SRAM. */
+ unsigned all_fills=0,all_occluded=0,all_queries=0;
+ uint8_t *packed_ref=malloc(HT_PIXELS/2),*packed_all=malloc(HT_PIXELS/2);assert(packed_ref && packed_all);
+ for(unsigned level=0;level<HT_LEVELS;++level)for(int view=0;view<3;++view){
+  ht_bind(mem);ht.level=level;ht_spawn(true);ht.camera=view*733*256;ht.x=(view*733+190)*256;
+  ht.vista=view?256:0;ht.sway_phase=view?128+view*317:0;
+  ht.rotation_phase=(128+view*219)<<8;ht.camera_mood=256;ht_game game=ht;
+  ht_render_test=HT_TEST_LOW_CAMERA;ht_render_scene();memcpy(want,ht_scene,HT_PIXELS);
+  for(unsigned fallback=0;fallback<3;++fallback){
+   ht_bind(mem);ht_workspace_attach(fallback==2?NULL:fast);ht=game;
+   ht_render_test=HT_TEST_EVERYTHING;ht_simd_stage_ready=fallback?0:HT_OPT_SIMD_ALL;
+   ht_nn_cache_reset();ht_render_scene();
+   if(memcmp(want,ht_scene,HT_PIXELS)){fprintf(stderr,"All mismatch level=%u view=%d fallback=%u\n",level,view,fallback);abort();}
+   all_fills+=ht_camera_fill_pixels;all_occluded+=ht_occlusion_composite_skips;
+   all_queries+=ht_nn_cache_lookups;
+   /* Pack after blur/neural work, then render again after the shared
+    * workspace has been overwritten by packing rows and constants. */
+   ht_render_test=HT_TEST_BASE;ht_pack_mono_simd(packed_ref,HT_W/4);
+   ht_render_test=HT_TEST_EVERYTHING;ht_pack_mono_simd(packed_all,HT_W/4);
+   assert(!memcmp(packed_ref,packed_all,HT_PIXELS/2));
+   ht_render_scene();assert(!memcmp(want,ht_scene,HT_PIXELS));
+  }
+ }
+ free(packed_ref);free(packed_all);
+ assert(all_fills && all_occluded && all_queries);
+ printf("All combined: low-camera equivalence, cold/warm caches, fills=%u occluded=%u neural lookups=%u, stage/RAM fallback PASS\n",all_fills,all_occluded,all_queries);
  printf("Neural cache scene workload: %u/%u exact hits (reuse count, not an S3 timing result)\n",scene_hits,scene_queries);
- ht_workspace_attach(NULL);free(fast);free(want);free(mem);puts("Render tests: 24 modes (23 exact), exact math, all chapters and rolling 10-second FPS PASS");
+ ht_workspace_attach(NULL);free(fast);free(want);free(mem);puts("Render tests: 25 modes (23 baseline-exact; low camera combinations checked separately), exact math, all chapters and rolling 10-second FPS PASS");
 }

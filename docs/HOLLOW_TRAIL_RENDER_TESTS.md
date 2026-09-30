@@ -1,4 +1,4 @@
-# Hollow Trail independent render tests — 1.1.17
+# Hollow Trail independent render tests — 1.1.18
 
 The owner measured only about +0.2 FPS for the combined expansion. This build
 isolates its operations to expose individual gains or regressions, and adds
@@ -12,30 +12,42 @@ except the explicitly named combined comparisons:
 
 | Test | Selected change |
 | --- | --- |
-| 1/24 Packing baseline | AI with the existing SIMD packer; all extra operations disabled. |
-| 2/24 SIMD upscale | Vector 240×135 → 480×270 interpolation only. |
-| 3/24 SIMD reconstruction | Vector 120×68 reconstruction interpolation and edge gate only; residual inference unchanged. |
-| 4/24 SIMD compositing | Vector focus/depth blending only. |
-| 5/24 SIMD blur / cache | Fused vector vertical blur output and running sums only. |
-| 6/24 Packed camera | Two horizontal interpolation rows in independent 16-bit lanes of one 32-bit word. Original vertical interpolation/rounding retained. |
-| 7/24 Packed vignette | Symmetric fade pixels multiplied in two 16-bit lanes, with exact division by 255 using shifts/adds. |
-| 8/24 Triangle stepping | Exact integer quotient/remainder edge stepping replaces two divisions per scanline in shared triangle rasterization. |
-| 9/24 All four SIMD | Previous expanded behavior: tests 2–5 together. The additional CPU experiments stay off. |
-| 10/24 Bounded focus math | Clamp distance first; compute the remaining /240 through an exact bounded 32-bit reciprocal. |
-| 11/24 Flat camera skip | Skip interpolation only when all four source samples are identical. |
-| 12/24 Neural patch cache | Reuse an existing model result only for an identical nine-byte input patch. |
-| 13/24 Blur interior | Peel clamped edges from the horizontal running-sum loop; directly address interior samples. |
-| 14/24 Compositor tile plan | Calculate horizontal tile spans once per composition and reuse them for all rows. |
-| 15/24 Internal neural | Stage unchanged weights, hidden values, three rolling source rows and two output rows in internal SRAM. |
-| 16/24 Internal blur | Stage horizontal input and vertical add/subtract/output rows in internal SRAM; existing sums remain on the stack. |
-| 17/24 Internal packing | Stage packing constants, two rolling source rows and two packed output rows in internal SRAM. |
-| 18/24 Low background camera | Transform background at 240×135, with full-resolution foreground projection. Background filtering differs from baseline. Coarse terrain occlusion and fill projection are off. |
-| 19/24 Coarse occlusion | Skip background composition and neural work safely hidden by large opaque terrain interiors. Original full-resolution camera retained. |
-| 20/24 Solid fill camera | Replace full-resolution camera interpolation inside verified constant-color regions with direct fill runs. Original background pipeline retained. |
-| 21/24 Stationary - mode 9 | Modes 2 + 4: SIMD upscale and compositing. |
-| 22/24 Stationary + mode 9 | Modes 2 + 4 + 9: all four SIMD stages, identical to mode 9. |
-| 23/24 Motion - mode 9 | Modes 2 + 4 + 7 + 14: upscale, compositing, packed vignette and tile planning. |
-| 24/24 Motion + mode 9 | Modes 2 + 4 + 7 + 9 + 14: all four SIMD stages, packed vignette and tile planning. |
+| 1/25 Packing baseline | AI with the existing SIMD packer; all extra operations disabled. |
+| 2/25 SIMD upscale | Vector 240×135 → 480×270 interpolation only. |
+| 3/25 SIMD reconstruction | Vector 120×68 reconstruction interpolation and edge gate only; residual inference unchanged. |
+| 4/25 SIMD compositing | Vector focus/depth blending only. |
+| 5/25 SIMD blur / cache | Fused vector vertical blur output and running sums only. |
+| 6/25 Packed camera | Two horizontal interpolation rows in independent 16-bit lanes of one 32-bit word. Original vertical interpolation/rounding retained. |
+| 7/25 Packed vignette | Symmetric fade pixels multiplied in two 16-bit lanes, with exact division by 255 using shifts/adds. |
+| 8/25 Triangle stepping | Exact integer quotient/remainder edge stepping replaces two divisions per scanline in shared triangle rasterization. |
+| 9/25 All four SIMD | Previous expanded behavior: tests 2–5 together. The additional CPU experiments stay off. |
+| 10/25 Bounded focus math | Clamp distance first; compute the remaining /250 through an exact bounded 32-bit reciprocal. |
+| 11/25 Flat camera skip | Skip interpolation only when all four source samples are identical. |
+| 12/25 Neural patch cache | Reuse an existing model result only for an identical nine-byte input patch. |
+| 13/25 Blur interior | Peel clamped edges from the horizontal running-sum loop; directly address interior samples. |
+| 14/25 Compositor tile plan | Calculate horizontal tile spans once per composition and reuse them for all rows. |
+| 15/25 Internal neural | Stage unchanged weights, hidden values, three rolling source rows and two output rows in internal SRAM. |
+| 16/25 Internal blur | Stage horizontal input and vertical add/subtract/output rows in internal SRAM; existing sums remain on the stack. |
+| 17/25 Internal packing | Stage packing constants, two rolling source rows and two packed output rows in internal SRAM. |
+| 18/25 Low background camera | Transform background at 240×135, with full-resolution foreground projection. Background filtering differs from baseline. Coarse terrain occlusion and fill projection are off. |
+| 19/25 Coarse occlusion | Skip background composition and neural work safely hidden by large opaque terrain interiors. Original full-resolution camera retained. |
+| 20/25 Solid fill camera | Replace full-resolution camera interpolation inside verified constant-color regions with direct fill runs. Original background pipeline retained. |
+| 21/25 Stationary - mode 9 | Modes 2 + 4: SIMD upscale and compositing. |
+| 22/25 Stationary + mode 9 | Modes 2 + 4 + 9: all four SIMD stages, identical to mode 9. |
+| 23/25 Motion - mode 9 | Modes 2 + 4 + 7 + 14: upscale, compositing, packed vignette and tile planning. |
+| 24/25 Motion + mode 9 | Modes 2 + 4 + 7 + 9 + 14: all four SIMD stages, packed vignette and tile planning. |
+| 25/25 All combined | Every optimization flag from modes 2–20, including low background camera, occlusion, fill projection and all three internal workspaces. |
+
+Mode 25 composes flat-sample rejection with packed interpolation for low and
+foreground camera sampling, and projects solid fills inside the split camera's
+foreground spans. Tile planning and SIMD blending respect coarse occlusion.
+Neural cache misses use internal weights when available. Blur, neural and packing
+reuse the same 4 KB workspace sequentially, reinitializing their own data.
+No new memory allocation or firmware API is introduced. The mode inherits mode
+18's background filtering change; compare its image against mode 18, not exact
+baseline pixels. Failed SIMD stages or unavailable internal memory fall back
+individually. Mode 1 remains the default; pause → B/Up cycles all 25 modes and
+resets the ten-second FPS window. App **1.1.17 → 1.1.18**.
 
 The owner reports stationary gains in 2, 4 and 9, and moving gains in 2, 4, 7,
 9 and 14. These four combinations are new hardware comparisons, not measured

@@ -51,6 +51,13 @@ int main(int argc,char **argv) {
         /* Verify skipped low samples cannot affect any final unoverlaid pixel:
          * recompute low camera without culling and compare the final image. */
         memcpy(expected,ht_scene,HT_PIXELS);
+        memcpy(ht_low_scene,low,HT_SCENE_PIXELS);
+        ht_render_test=HT_TEST_EVERYTHING;ht_simd_stage_ready=HT_OPT_SIMD_ALL;
+        ht_camera_split_into(ht_temp,&game);
+        for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y)
+            for(int x=ht_visible_left[y];x<HT_W-ht_visible_left[y];++x)
+                assert(ht_scene[y*HT_W+x]==expected[y*HT_W+x]);
+        ht_render_test=HT_TEST_BASE;ht_simd_stage_ready=0;
         int16_t left[HT_H],right[HT_H];memcpy(left,ht_camera_dest_left,sizeof(left));memcpy(right,ht_camera_dest_right,sizeof(right));
         if(ht_camera_low_samples+ht_camera_low_skipped) {
             memcpy(ht_low_scene,low,HT_SCENE_PIXELS);

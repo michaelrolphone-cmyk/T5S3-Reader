@@ -476,11 +476,11 @@ __attribute__((visibility("default"))) void app_main(void) {
                 if(!ht_simd_ready) {
                     snprintf(test,sizeof(test),"PACK FALLBACK: %s",ht_simd_reason);ht_text(88,148,test,1);
                 } else if(ht_render_test_needs_ram() && !ht_fast) {
-                    ht_text(88,148,"BASE FALLBACK: INTERNAL RAM UNAVAILABLE",1);
+                    ht_text(88,148,"RAM STAGES FALLBACK: NO INTERNAL RAM",1);
                 } else if(!ht_render_test_available()) {
                     unsigned missing=ht_render_test_mask()&HT_OPT_SIMD_ALL&~ht_simd_stage_ready,stage=0;
                     while(stage<3 && !(missing&(1u<<stage)))++stage;
-                    snprintf(test,sizeof(test),"BASE FALLBACK: %s",ht_stage_reason[stage]);ht_text(88,148,test,1);
+                    snprintf(test,sizeof(test),"STAGE FALLBACK: %s",ht_stage_reason[stage]);ht_text(88,148,test,1);
                 } else ht_text(88,148,"B / UP NEXT TEST   START JOURNAL",1);
                 char perf[64];
                 snprintf(perf,sizeof(perf),"FPS10S %lu.%lu (%lu.%luS) SCANS %lu.%lu",

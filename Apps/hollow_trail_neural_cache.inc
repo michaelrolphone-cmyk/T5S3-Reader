@@ -18,11 +18,16 @@ static unsigned ht_nn_cache_slot(const uint8_t *p) {
     uint32_t key=(a^((b<<13)|(b>>19))^p[8])*0x9e3779b9u;
     return key>>(32-HT_NN_CACHE_BITS);
 }
-static void ht_nn_residual_cached(const uint8_t *patch,int16_t *out) {
+static void ht_nn_residual_cached_with_workspace(const uint8_t *patch,int16_t *out,bool internal) {
     ht_nn_cache_entry *e=&ht_nn_cache[ht_nn_cache_slot(patch)];++ht_nn_cache_lookups;
     if(e->valid && !memcmp(e->patch,patch,HT_NN_INPUTS)) {
         memcpy(out,e->residual,sizeof(e->residual));++ht_nn_cache_hits;return;
     }
-    ht_nn_residual(patch,out);
+    if(internal)ht_nn_residual_fast(patch,out);
+    else ht_nn_residual(patch,out);
     memcpy(e->patch,patch,HT_NN_INPUTS);memcpy(e->residual,out,sizeof(e->residual));e->valid=1;
+}
+
+static void ht_nn_residual_cached(const uint8_t *patch,int16_t *out) {
+    ht_nn_residual_cached_with_workspace(patch,out,false);
 }

@@ -46,6 +46,7 @@ static unsigned ht_camera_project_spans(int turn,int scale) {
     return pixels;
 }
 static void ht_camera_low_into(uint8_t *dest,int turn,int scale) {
+    const unsigned options=ht_render_test_mask();
     for(int y=0;y<HT_SCENE_H;++y) {
         int u=(HT_W/2)*4096-(HT_W/2)*scale+(2*y-HT_H/2)*turn;
         int v=(HT_H/2)*4096+(HT_W/2)*turn+(2*y-HT_H/2)*scale;
@@ -66,9 +67,7 @@ static void ht_camera_low_into(uint8_t *dest,int turn,int scale) {
             const uint8_t *a=ht_low_scene+iy*HT_SCENE_W;
             const uint8_t *b=ht_low_scene+ht_min(iy+1,HT_SCENE_H-1)*HT_SCENE_W;
             int nx=ht_min(ix+1,HT_SCENE_W-1);
-            int top=a[ix]*16+((int)a[nx]-a[ix])*fx;
-            int bottom=b[ix]*16+((int)b[nx]-b[ix])*fx;
-            dest[y*HT_SCENE_W+x]=(uint8_t)((top*16+(bottom-top)*fy)>>8);
+            dest[y*HT_SCENE_W+x]=ht_camera_sample(a[ix],a[nx],b[ix],b[nx],fx,fy,options);
             ++ht_camera_low_samples;
         }
         if((y&7)==7)ht_checkpoint();
@@ -84,6 +83,11 @@ static void ht_upscale_visible_background(void) {
         int left=ht_max(ht_camera_dest_left[2*y],ht_camera_dest_left[2*y+1]);
         int right=ht_min(ht_camera_dest_right[2*y],ht_camera_dest_right[2*y+1]);
         for(int x=0;x<HT_SCENE_W;x+=4) {
+            if(ht_expanded_active(HT_OPT_UPSCALE) && !(x&15) && x+16<HT_SCENE_W) {
+                if(!(2*x>=left && 2*x+31<=right))
+                    ht_expand_span(row+x,next+x,top+2*x,bottom+2*x,1);
+                x+=12;continue;
+            }
             if(2*x>=left && 2*x+7<=right)continue;
             uint32_t a=ht_load4(row+x),c=ht_load4(next+x);
             int nx=ht_min(x+4,HT_SCENE_W-1);
@@ -120,6 +124,7 @@ static void ht_camera_classify_fills(const uint8_t *source) {
     }
 }
 static void ht_camera_foreground_into(const uint8_t *source,int turn,int scale,bool fills) {
+    const unsigned options=ht_render_test_mask();
     for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
         int x=ht_camera_dest_left[y],right=ht_camera_dest_right[y];
         int u=(HT_W/2)*4096+(x-HT_W/2)*scale+(y-HT_H/2)*turn;
@@ -128,8 +133,7 @@ static void ht_camera_foreground_into(const uint8_t *source,int turn,int scale,b
             for(;x<=right;++x,u+=scale,v-=turn) {
                 int fx=(u>>8)&15,fy=(v>>8)&15;
                 const uint8_t *a=source+(v>>12)*HT_W+(u>>12),*b=a+HT_W;
-                int top=a[0]*16+((int)a[1]-a[0])*fx,bottom=b[0]*16+((int)b[1]-b[0])*fx;
-                ht_scene[y*HT_W+x]=(uint8_t)((top*16+(bottom-top)*fy)>>8);
+                ht_scene[y*HT_W+x]=ht_camera_sample(a[0],a[1],b[0],b[1],fx,fy,options);
                 ++ht_camera_foreground_samples;
             }
         }
@@ -157,9 +161,7 @@ static void ht_camera_foreground_into(const uint8_t *source,int turn,int scale,b
             for(;x<end;++x,u+=scale,v-=turn) {
                 int fx=(u>>8)&15,fy=(v>>8)&15;
                 const uint8_t *a=source+(v>>12)*HT_W+(u>>12),*b=a+HT_W;
-                int top=a[0]*16+((int)a[1]-a[0])*fx;
-                int bottom=b[0]*16+((int)b[1]-b[0])*fx;
-                ht_scene[y*HT_W+x]=(uint8_t)((top*16+(bottom-top)*fy)>>8);
+                ht_scene[y*HT_W+x]=ht_camera_sample(a[0],a[1],b[0],b[1],fx,fy,options);
             }
         }
         if((y&15)==15)ht_checkpoint();
@@ -170,15 +172,17 @@ static void ht_camera_split_into(const uint8_t *source,const ht_game *game) {
     ht_camera_low_samples=ht_camera_low_skipped=ht_camera_foreground_samples=ht_camera_fill_pixels=0;
     unsigned covered=ht_camera_project_spans(turn,scale),visible=0;
     for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y)visible+=(unsigned)(HT_W-2*ht_visible_left[y]);
+    bool fills=(ht_render_test_mask()&HT_OPT_FILL_CAMERA)!=0;
+    if(fills)ht_camera_classify_fills(source);
     if(covered==visible) {
         /* Generic full-coverage fallback: avoid an unused low transform and
          * second upscale when foreground drawing covers the whole view. */
-        ht_camera_foreground_into(source,turn,scale,false);return;
+        ht_camera_foreground_into(source,turn,scale,fills);return;
     }
     ht_camera_low_into(ht_scene,turn,scale);
     memcpy(ht_low_scene,ht_scene,HT_SCENE_PIXELS);
     ht_upscale_visible_background();
-    ht_camera_foreground_into(source,turn,scale,false);
+    ht_camera_foreground_into(source,turn,scale,fills);
 }
 
 /* Independent test: original full-resolution camera with fill acceleration,
