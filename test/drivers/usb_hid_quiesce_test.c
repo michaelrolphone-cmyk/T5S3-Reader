@@ -16,7 +16,8 @@ int main(int argc, char **argv) {
     risc_provider_dependency_v1 hid_dependency = {"usb.hid", 1,
                                                   generic->capability};
     assert(keyboard->start(&hid_dependency, 1));
-    assert(gamepad->start(&hid_dependency, 1));
+    risc_provider_dependency_v1 pad_deps[] = {hid_dependency, {"platform.clock", 1, &fake_clock}};
+    assert(gamepad->start(pad_deps, 2));
     const risc_usb_keyboard_api_v1 *keys = keyboard->capability;
     const risc_usb_gamepad_api_v1 *pads = gamepad->capability;
     uint64_t key_subscription = keys->subscribe(keys->context, 0);
