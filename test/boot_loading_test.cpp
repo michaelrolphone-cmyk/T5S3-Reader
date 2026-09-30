@@ -50,7 +50,6 @@ static bool startVideo(t5_video_surface_v1* s){
  stopped=false;lastSubmit=0;
  *s={960,540,120,T5_VIDEO_PIXEL_MONO_1BPP_MSB,T5_VIDEO_FLAG_ONE_IS_BLACK};return true;
 }
-bool nativeVideoStartBootScrub(t5_video_surface_v1* s){return startVideo(s);}
 static uint8_t* back(size_t* n){assert(!stopped);*n=sizeof(pixels);return pixels;}
 static bool capacity(){assert(!stopped);return canSubmit && millis()-lastSubmit>=10;}
 static bool submit(uint16_t,uint16_t){assert(!stopped);lastSubmit=millis();return true;}

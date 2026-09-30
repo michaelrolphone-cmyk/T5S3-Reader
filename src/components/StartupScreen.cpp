@@ -1,6 +1,5 @@
 #include "StartupScreen.h"
 #include "native/NativeTouchInput.h"
-#include "native/NativeVideoBridge.h"
 
 #include <Arduino.h>
 #include <cstring>
@@ -718,7 +717,7 @@ bool bootWithVideo(GfxRenderer& renderer) {
   bootBackend = BootBackend::Video;
 
   videoApi = t5_video_get_api(T5_VIDEO_API_VERSION);
-  if (!validateVideoApi(videoApi) || !nativeVideoStartBootScrub(&videoSurface)) {
+  if (!validateVideoApi(videoApi) || !videoApi->start(&videoSurface)) {
     ESP_LOGE(kBootVideoTag, "EPD video service did not start");
     return !releaseVideoOwner();
   }
