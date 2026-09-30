@@ -1,20 +1,21 @@
 # Bug repair progress
 
-Snapshot: 2026-09-30 23:54 UTC. Coordinator-reported runtime/PR evidence below; the ledger reconciliation itself made no implementation changes.
+Snapshot: 2026-09-30 23:58 UTC. Coordinator-reported runtime/PR evidence below; the ledger reconciliation itself made no implementation changes.
 
-## Active run and claim
+## Initial run result and next claim
 
 - Run: initial pipeline restoration
-- Owner/single ledger writer: `restore_bug_pipeline`
-- State: active; finishing verification for canonical #205 and publishing the reconciled ledger
+- Last coordinator: `restore_bug_pipeline`; active ledger owner: none
+- State: completed; initial restoration and exact-head verification finished. No active run or implementation claim remains
 - Baseline master: `2b45ab662c0ffe3650ce0f841083ea47886022c9`
+- Coordination PR: [#327](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/327), draft and unmerged
 - Coordination branch: [`automation/bug-ledger`](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/automation/bug-ledger)
-- Claimed bug: **205**, File Browser oversized USB source handle leak
+- Outstanding integration item: **205**, File Browser oversized USB source handle leak; draft PR counts as one outstanding code batch
 - Repair branch: [`fix/file-browser-oversize-usb-handle`](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/fix/file-browser-oversize-usb-handle)
 - Draft PR: [#326](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/326)
 - Verified remote head: `5ec33bbe60928ec73f8d5f9fdc28023aa3a56c79`
 - Integration status: **Awaiting merge**, still outstanding on master. The recovered branch previously had no matching PR; its earlier implementation is not a prior merge.
-- Next scheduled invocation: 2026-10-01 00:50 UTC. It has not run at this snapshot. It must inspect this active claim and not duplicate #205 or start a competing ledger writer.
+- Next scheduled invocation: 2026-10-01 00:50 UTC. It has not run at this snapshot. It must read this record, recheck PR #326 and current master, and claim the next bounded work before editing; do not duplicate #205. Only one code batch is outstanding from this pipeline.
 
 ## #205 verification and next action
 
@@ -22,10 +23,11 @@ Snapshot: 2026-09-30 23:54 UTC. Coordinator-reported runtime/PR evidence below; 
 - Runtime/source regressions, six retirement tests, six capability tests, and full C syntax check passed. The original faulty mutation fails the expected runtime assertion.
 - ASan/UBSan runtime checks passed with `ASAN_OPTIONS=detect_leaks=0`; LeakSanitizer is unavailable under container ptrace. Leak detection is not claimed.
 - File Browser version: **1.3.0 → 1.3.1**.
-- Xtensa app build: attempted, blocked because the compiler is absent.
+- Local Xtensa app build: attempted, blocked because the compiler is absent. CI subsequently built and validated all released apps/manifests and native ELFs on both supported firmware boards.
 - Native aggregate suite: `ASAN_OPTIONS=detect_leaks=0 bash test/run_native_app_test.sh` passed, exit 0.
-- Exact-head CI: run `36793336681` is in progress on `5ec33bbe60928ec73f8d5f9fdc28023aa3a56c79`; all three jobs were running at this snapshot. This is not a CI pass yet.
-- Next action: inspect exact-head CI, repair authorized recoverable failures, then update this record with exact results and remaining limitations. Keep #205 awaiting merge until merge is independently verified.
+- Exact-head CI: [run 36793336681](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36793336681) completed successfully on `5ec33bbe60928ec73f8d5f9fdc28023aa3a56c79`: host parser tests, t5s3-pro build, and lilygo-epd47-s3 build all passed, including native ELF and all-app/manifest validation.
+- Next action: retain #205 awaiting merge; check its PR for subsequent changes before selecting new work. Revalidate candidate #16/#17 as the next related batch if no overlap and capacity permits. No second code batch was started in this restoration. No hardware qualification, merge, release or deployment occurred.
+- Current-run GitHub connector branch/blob/tree/commit/ref and draft-PR writes all succeeded. Plain git push could not authenticate in this cloud shell; connector publication and subsequent remote fetch/hash verification succeeded. This does not prove a future scheduled execution has write access; each run must verify its actual result.
 
 ## Reconciliation result
 
