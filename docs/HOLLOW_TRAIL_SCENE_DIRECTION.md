@@ -181,3 +181,84 @@ direction checks used ASan+UBSan (leak scanning disabled in the sandbox). The
 complete ten-chapter route, all 30 evidence items and loop pass without deaths.
 S3 ELF structural validation passes; source, sidecar and catalog agree on
 1.1.28 and SHA-256 `13195385c5a6b16fc4391e78de5b2e073046418055125d30c23e7d1ff72a39c6`.
+
+
+## Caption clearance and rope attachment — 1.1.29
+
+Hollow Trail **1.1.28 -> 1.1.29**; minimum firmware stays **1.3.37**.
+The frozen render camera now reserves room above the narrative band (y=232):
+feet plus supporting terrain, or the entire boat hull and reflection, stay at
+or above y=211 before the text is drawn. The constraint accounts for scene
+scale and the camera's rotation/breathing transform, including every A/B mode.
+It adjusts the world camera rather than moving the character relative to the
+terrain or hiding the text. Fixed-step movement speeds and jump pacing remain.
+
+Approaching a rope eases out the close camera cue. While attached, wider
+framing includes the support as well as the hands/feet; breathing widens and
+then eases back after release. The baseline close scale remains elsewhere.
+Dam and grotto boat views, unloaded rope and loaded swinging-rope scenes were
+rendered with the actual narrative overlay and visually inspected.
+
+Ropes have a continuous dark body and diagonal strand highlights anchored to
+length, so the weave moves with the rope. Two wraps, a hitch and a short frayed
+tail replace the black/white anchor disk. A bounded damped spring moves the
+physical attachment toward the player's load and arc; wood can yield up to five
+world pixels, metal supports up to two. The branch/crossbar follows the pin,
+the forest limb's footing shares its bent geometry, and unloading settles back
+to rest. Previous pin coordinates track actual motion for rope-release velocity.
+There are no additional scenery objects, frame buffers or per-frame allocations.
+
+Verification: 1,360 camera-clearance cases across chapters, camera modes,
+rotations and scales; loaded support bounds, continuous pin motion, unloaded
+return and branch-footing agreement (ASan+UBSan). The ground regressions
+(25,296 poses), 78 branch contacts, forest cache transitions, scene-direction
+physics, complete ten-chapter route and C++ math integration pass. The three
+boat chapter renderer references and all ten grotto frame hashes remain exact;
+the other chapter references intentionally reflect higher framing/new ropes.
+S3 ELF structural validation and source/sidecar/catalog version/hash agreement
+pass. On-device appearance and performance have not been measured.
+
+
+### Sustained effort and gravity-driven toppling (same unreleased 1.1.29)
+
+A engages the standing snag; pushing toward it is now required for 48 fixed
+steps (1.536 seconds). The character moves into a braced stance, plants the rear
+foot, bends the knees and presses both hands against the bark. Effort shifts the
+shoulders forward with a restrained breathing/strain cycle. A small increasing
+lean shows the root resistance before release. Idle input loses effort; backing
+away, releasing the grip or jumping cancels the action. No new prompt/meter.
+
+Once the roots give way, the character withdraws the hands in a brief follow-
+through. The trunk integrates angular speed with torque increasing with the
+sine of its lean. It starts nearly still and accelerates until the far-bank
+contact; it becomes walkable only after landing. Partial effort/falls reset on
+respawn, while an already landed crossing persists. The resting and landed
+geometry remains unchanged, including existing renderer references.
+
+The forest regression now checks idle input, interrupted effort, the full push
+threshold, backing away, jumping away, monotonic angle/increasing angular speed,
+no early footing and respawn behavior under ASan+UBSan. The input-only complete
+route pushes and waits for the actual fall. Ground, tree, framing, controls,
+renderer, complete-route and C++ math checks pass. Pushing/follow-through poses
+were visually inspected. S3 app build and ELF structural validation pass; the
+source, sidecar and catalog remain 1.1.29 for this cumulative unmerged PR.
+
+### Solid snag and speed-matched gait (same unreleased 1.1.29)
+
+The standing/falling snag now blocks the player's body from either side. Its
+32 short collision sections use the same bend, taper, bark outline and angle
+as the drawing. Swept horizontal contact stops airborne/high-speed approaches;
+collision is applied after attachments/props, before ground recovery. The
+landed tree retains its existing crossing surface. Walking into the trunk leaves
+the player within push interaction range, without triggering the fall.
+
+Free grounded movement blends from walking into a running gait over actual Q8
+speeds 304–336. Running uses a longer stride, forward torso lean, higher knee
+recovery, brief flight and bent-arm swing. Cadence follows distance; speed cues
+remain unchanged. Idle, jumping, climbing, pushing and rowing retain their own
+poses. Slow/brisk/run contact sheets were inspected.
+
+Walking/jumping into the snag, both-sided fast approaches at multiple heights,
+other-chapter isolation, sustained pushing and landed crossing pass. Ground
+integrity (25,296 poses), 78 branch contacts, scene pace/gait selection, complete
+ten-chapter route, forest ASan+UBSan and C++ integration checks pass.

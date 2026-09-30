@@ -46,7 +46,7 @@ int main(void) {
             // ascending through its underside cannot attach to it or the trunk.
             for(int b=0;b<(tree.seed==1917?6:5);++b) {
                 ht_tree_branch limb=ht_tree_branch_shape(tree.x,tree.base,tree.height,tree.width,tree.seed,b);
-                int x=limb.mx,top;if(x<7 || x>HT_GOAL-7)continue;assert(ht_tree_footing(&tree,b,x,&top));
+                int x=limb.mx,top;if(x<7 || x>HT_GOAL-7)continue;assert(ht_tree_footing(&ht,&tree,b,x,&top));
                 /* A limb behind a higher bank is occluded by solid terrain;
                  * it must not provide a way to stand inside that bank. */
                 bool buried=false;
@@ -67,7 +67,7 @@ int main(void) {
                 bool stepped=false;
                 for(int n=0;n<700 && !stepped;++n) {
                     int px=ht_tree_edge(&tree,ht.y/256,limb.side),at;
-                    if(ht_tree_footing(&tree,b,px,&at) && ht_abs(ht.y/256-at)<=2) {
+                    if(ht_tree_footing(&ht,&tree,b,px,&at) && ht_abs(ht.y/256-at)<=2) {
                         ht_step_controls(limb.side,0,false,false);
                         assert(ht.grounded && ht.traversal.support==5 && ht.traversal.mode==HT_FREE);stepped=true;
                     } else ht_step_controls(0,-1,false,false);

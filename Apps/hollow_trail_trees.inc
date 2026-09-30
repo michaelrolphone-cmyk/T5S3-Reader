@@ -19,6 +19,13 @@ static ht_tree_branch ht_tree_branch_shape(int x,int base,int height,int width,u
     return (ht_tree_branch){root,at,root+(ex-root)*55/100,at+(ey-at)/3,ex,ey,
         ht_max(1,width*(8-j)/13),ht_max(1,width/4),side};
 }
+/* The supporting limb and its foothold follow the same loaded attachment. */
+static ht_tree_branch ht_rope_branch(const ht_game *g,int trunk) {
+    ht_tree_branch b=ht_tree_branch_shape(trunk,0,0,0,1917,5);
+    int dx=g->traversal.rope_bend_x/256,dy=g->traversal.rope_bend_y/256;
+    b.mx+=dx/2;b.my+=dy/2;b.ex+=dx;b.ey+=dy;
+    return b;
+}
 /* Bank adjustments never re-space the established living trees. */
 static int ht_planted_tree_x(unsigned level,int i) {
     static const int16_t roots[HT_LEVELS][4]={
@@ -124,9 +131,10 @@ static int ht_tree_near(const ht_game *g) {
 }
 /* Footing is on the upper edge of the same two tapered limb polygons.
  * Fine twigs and the thin outer tip are scenery, not a platform network. */
-static bool ht_tree_footing(const ht_climb_tree *tree,int branch,int x,int *top) {
+static bool ht_tree_footing(const ht_game *g,const ht_climb_tree *tree,int branch,int x,int *top) {
     if(branch==5 && tree->seed!=1917)return false;
     ht_tree_branch b=ht_tree_branch_shape(tree->x,tree->base,tree->height,tree->width,tree->seed,branch);
+    if(branch==5 && tree->seed==1917)b=ht_rope_branch(g,tree->x);
     int dx=(x-b.x)*b.side,mid=(b.mx-b.x)*b.side,reach=(b.ex-b.x)*b.side;
     if(dx<0 || dx>reach*3/4)return false;
     if(tree->height>=260 && branch!=5) {

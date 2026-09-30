@@ -4,6 +4,19 @@
 #include "hollow_trail_forest_draw.inc"
 #include "hollow_trail_city_draw.inc"
 #include "hollow_trail_chapter_draw.inc"
+/* Continuous dark rope with alternating diagonal fibre ridges. The pattern
+ * belongs to arc length, so it turns with the rope rather than screen time. */
+static void ht_twisted_rope(int x,int y,int ex,int ey,int *along) {
+    int dx=ex-x,dy=ey-y,len=ht_max(1,(int)ht_isqrt((unsigned)(dx*dx+dy*dy)));
+    ht_limb(ht_scene,x,y,ex,ey,1,1,250);
+    int nx=-dy*256/len,ny=dx*256/len;
+    for(int d=0;d<len;++d)if((d+*along)%4==0) {
+        int px=x+dx*d/len,py=y+dy*d/len;
+        ht_limb(ht_scene,px-nx/256,py-ny/256,
+            px+nx/256+dx*2/len,py+ny/256+dy*2/len,0,0,145);
+    }
+    *along+=len;
+}
 /* Dynamic solids are drawn at logical resolution, outside the blurred scenery
  * cache. One frozen ht_game supplies camera, object poses, collision and art. */
 static void ht_draw_traversal(const ht_game *g) {
@@ -196,27 +209,39 @@ static void ht_draw_traversal(const ht_game *g) {
         }
     }
     if(m->rope_length) {
-        int ax=m->rope_anchor_x-cx,ay=m->rope_anchor_y-cy;
+        int rest_x=m->rope_anchor_x-cx,rest_y=m->rope_anchor_y-cy;
+        int ax=g->traversal.rope_px[0]/256-cx,ay=g->traversal.rope_py[0]/256-cy;
         if(g->level==0) {
             int trunk=m->rope_anchor_x-96;
             ht_grounded_tree(g,4,trunk,295,16,1917);
-            ht_tree_branch limb=ht_tree_branch_shape(trunk,0,0,0,1917,5);
+            ht_tree_branch limb=ht_rope_branch(g,trunk);
             ht_limb(ht_scene,limb.x-cx,limb.y-cy,limb.mx-cx,limb.my-cy,9,6,255);
             ht_limb(ht_scene,limb.mx-cx,limb.my-cy,limb.ex-cx,limb.ey-cy,6,2,255);
             ht_limb(ht_scene,ax-34,ay-18,ax-15,ay-42,3,0,255);
             ht_leaf_cluster(ht_scene,ax+16,ay-14,17,2917,255);
         } else {
-        int foot=ay+108;
-        ht_limb(ht_scene,ax-43,foot,ax-43,ay-14,3,2,255);
-        ht_limb(ht_scene,ax-45,ay-12,ax+10,ay-12,3,2,255);
-        ht_limb(ht_scene,ax-42,ay+15,ax-12,ay-12,1,1,255);
+        int foot=rest_y+108;
+        ht_limb(ht_scene,rest_x-43,foot,rest_x-43,rest_y-14,3,2,255);
+        ht_limb(ht_scene,rest_x-45,rest_y-12,ax+10,ay-12,3,2,255);
+        ht_limb(ht_scene,rest_x-42,rest_y+15,rest_x-12,rest_y-12,1,1,255);
         }
-        ht_limb(ht_scene,ax,ay-12,ax,ay-3,0,0,255);
-        ht_disk(ht_scene,ax,ay-3,4,255);ht_disk(ht_scene,ax,ay-3,2,0);
+        /* Two wraps over the support, a compact hitch and a frayed free tail.
+         * No white hole or floating anchor marker. */
+        for(int wrap=0;wrap<2;++wrap) {
+            int wx=ax-3+wrap*4;
+            ht_limb(ht_scene,wx,ay-18,wx+2,ay-9,1,1,135);
+            ht_limb(ht_scene,wx+2,ay-9,ax,ay-3,1,1,240);
+        }
+        ht_limb(ht_scene,ax-2,ay-5,ax+2,ay-1,2,1,245);
+        ht_limb(ht_scene,ax,ay-5,ax-1,ay,0,0,140);
+        ht_limb(ht_scene,ax,ay-1,ax,ay+2,1,1,250);
+        ht_limb(ht_scene,ax+2,ay-3,ax+6,ay+5,1,0,235);
+        ht_limb(ht_scene,ax+6,ay+5,ax+8,ay+7,0,0,210);
+        int along=0;
         for(int i=1;i<HT_ROPE_NODES;++i) {
             int x0=g->traversal.rope_px[i-1]/256-cx,y0=g->traversal.rope_py[i-1]/256-cy;
             int x1=g->traversal.rope_px[i]/256-cx,y1=g->traversal.rope_py[i]/256-cy;
-            ht_limb(ht_scene,x0,y0,x1,y1,0,0,255);
+            ht_twisted_rope(x0,y0,x1,y1,&along);
             if(i==6) ht_disk(ht_scene,x1,y1,1,255);
         }
     }

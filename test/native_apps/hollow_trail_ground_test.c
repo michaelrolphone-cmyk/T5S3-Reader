@@ -82,7 +82,7 @@ static void terrain_transitions(void) {
     /* A low branch that overlaps a higher bank must yield to the ground. */
     ht.level=6;ht_spawn(true);ht_climb_tree tree;assert(ht_existing_tree(&ht,5,&tree));
     ht_tree_branch limb=ht_tree_branch_shape(tree.x,tree.base,tree.height,tree.width,tree.seed,2);
-    int top;assert(ht_tree_footing(&tree,2,limb.mx,&top));
+    int top;assert(ht_tree_footing(&ht,&tree,2,limb.mx,&top));
     ht.x=limb.mx*256;ht.y=(top-2)*256;ht.vy=900;ht.grounded=false;
     for(int n=0;n<40;++n)step(1,0,false);
     /* An open ravine remains empty; recovery is not an invisible floor. */

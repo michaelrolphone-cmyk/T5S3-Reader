@@ -75,15 +75,18 @@ static const ht_platform ht_routes[7][HT_PLATFORMS] = {
 };
 #include "hollow_trail_maps.inc"
 /* Fixed-size chapter mechanics, included in every render snapshot. */
-enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE };
+enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE, HT_PUSH };
 typedef struct {
     int ball_x,ball_y,crate_x,boat_x,rope_x,rope_v,ride_offset;
     int ball_vx,ball_vy,ball_roll,crate_y,crate_vx,crate_vy,boat_vx;
+    int rope_bend_x,rope_bend_y,rope_bend_vx,rope_bend_vy; /* Q8 support flex */
     int rope_grip,rope_slide_v; /* Q8 distance along rope and tangential sliding speed */
     int rope_px[HT_ROPE_NODES],rope_py[HT_ROPE_NODES];
     int rope_ox[HT_ROPE_NODES],rope_oy[HT_ROPE_NODES];
     uint8_t support,bridge_open,forest_log_phase;
     bool forest_log_falling;
+    uint8_t forest_push,forest_push_release;
+    uint16_t forest_log_angle,forest_log_speed;
     uint8_t mode,ladder,ball_phase,ledge,climb,climb_phase,drop_cooldown;
     int ledge_side;
     uint8_t tree,branch_drop;
@@ -422,7 +425,7 @@ static void ht_camera_step(bool moving) {
         ht.rotation_phase=(ht.rotation_phase+213u+1067u*ht.camera_mood/256u)&262143u;
     }
     bool falling=!ht.grounded && !ht.traversal.mode && ht.vy>384 && ht.y>ht.airborne_origin+40*256;
-    if(falling) ht.drop_zoom=(uint16_t)ht_min(256,ht.drop_zoom+16);
+    if(falling || ht.traversal.mode==HT_ROPE) ht.drop_zoom=(uint16_t)ht_min(256,ht.drop_zoom+16);
     else if(ht.drop_zoom) ht.drop_zoom=(uint16_t)ht_max(0,ht.drop_zoom-4);
     if(ht.grounded || ht.traversal.mode) ht.airborne_origin=ht.y;
 }
@@ -1324,6 +1327,27 @@ static void ht_character(int x,int feet,const ht_game *game) {
         ht_rect(ht_scene,x+lean+(f>0?1:-3),feet-17,2,1,0);
         return;
     }
+    if(game->traversal.mode==HT_PUSH || game->traversal.forest_push_release) {
+        /* Both hands stay against the bark while the knees compress and the
+         * rear foot braces. After release, arms withdraw and the torso rises. */
+        int load=game->traversal.forest_push,release=game->traversal.forest_push_release;
+        int pulse=load?((int)(game->ticks%20)<10?(int)(game->ticks%20):20-(int)(game->ticks%20)):0;
+        int lean=2+load/16,crouch=1+pulse/5;
+        int reach=14;
+        if(release){lean=release/2;crouch=release/4;reach=6+release;}
+        ht_disk(ht_scene,x+lean,feet-23+crouch,5,255);
+        ht_limb(ht_scene,x+lean-1,feet-18+crouch,x-3,feet-9,3,3,255);
+        ht_limb(ht_scene,x-3,feet-9,x-7,feet-5,2,2,255);
+        ht_limb(ht_scene,x-7,feet-5,x-11,feet,2,1,255);
+        ht_limb(ht_scene,x-3,feet-9,x+3,feet-5,2,2,255);
+        ht_limb(ht_scene,x+3,feet-5,x+5,feet,2,1,255);
+        ht_limb(ht_scene,x+lean,feet-17+crouch,x+8,feet-14+crouch,2,1,255);
+        ht_limb(ht_scene,x+8,feet-14+crouch,x+reach,feet-19,1,1,255);
+        ht_limb(ht_scene,x+lean-2,feet-16+crouch,x+7,feet-12+crouch,1,1,255);
+        ht_limb(ht_scene,x+7,feet-12+crouch,x+reach,feet-15,1,1,255);
+        ht_rect(ht_scene,x+lean+1,feet-24+crouch,2,1,0);
+        return;
+    }
     if(game->traversal.mode==HT_FREE) {ht_character_walk(x,feet,game);return;}
     int swing=game->grounded?((game->stride/700)%12-6):3;
     int f=game->facing;
@@ -1388,6 +1412,35 @@ static void ht_camera_coefficients(const ht_game *g,int *turn,int *scale) {
      * into the unchanged breathing phase. Retain the corner-safe crop. */
     breathe+=(4096-breathe)*g->drop_zoom/256;
     *scale=ht_min(breathe,4096-2*ht_abs(*turn));
+}
+
+/* Keep feet, supporting terrain and the complete boat above the caption.
+ * Work on the frozen render camera, including both projection stages. No
+ * physics, pace, zoom choice or narrative text is changed by this constraint. */
+static void ht_frame_camera(ht_game *g,unsigned mode) {
+    /* Swinging needs room for both the hands and the attachment above them.
+     * Use the existing wide framing while attached, retaining vista scale. */
+    if(g->traversal.mode==HT_ROPE) {g->intimacy=0;g->drop_zoom=256;}
+    int turn=0,scale=4096;
+    if(mode!=HT_CAMERA_OFF && (g->sway_phase || g->drop_zoom)) {
+        ht_camera_coefficients(g,&turn,&scale);
+        if(mode==HT_CAMERA_NO_ROTATION) {
+            turn=0;scale=4096-(ht_sway_wave(g->sway_phase/2+768)+256)*4/3;
+            scale+=(4096-scale)*g->drop_zoom/256;
+        } else if(mode==HT_CAMERA_NO_ZOOM)scale=4096;
+    }
+    /* Q8 coefficients keep the inverse projection inside 32-bit arithmetic. */
+    int a=scale/16,b=turn/16,denom=a*a+b*b,world=ht_scene_scale(g);
+    int half=(g->traversal.mode==HT_BOAT || g->traversal.support==3)?ht_boat_half(g)+16:24;
+    int bottom=g->y/256+(g->traversal.mode==HT_ROPE?12:26);
+    if(g->traversal.mode==HT_BOAT || g->traversal.support==3)bottom=ht_boat_top(g)/256+29;
+    int sx=(g->x/256-g->camera/256-240)*world/256;
+    int sy=(bottom-g->camera_y/256-135)*world/256;
+    int lowest=135+256*(sy*a+sx*b+half*world/256*ht_abs(b))/ht_max(1,denom);
+    if(lowest>211) {
+        int shift=((lowest-211)*denom+world*a-1)/ht_max(1,world*a);
+        g->camera_y+=shift*256;
+    }
 }
 
 static __attribute__((optimize("O3"))) void ht_affine_into(const uint8_t *source,int turn,int scale) {
@@ -1506,6 +1559,7 @@ static void ht_render_scene(void) {
     ht_game game=ht;
     const unsigned camera_mode=ht_camera_mode;
     if(camera_mode==HT_CAMERA_NO_ZOOM || camera_mode==HT_CAMERA_OFF) game.vista=game.intimacy=0;
+    ht_frame_camera(&game,camera_mode);
     const bool camera_pass=camera_mode!=HT_CAMERA_OFF && (game.sway_phase || game.drop_zoom);
     ht_select_level(game.level);
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;

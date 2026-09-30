@@ -95,13 +95,8 @@ static void ht_forest_backdrop(const ht_game *g) {
 static void ht_forest_log_draw(const ht_game *g) {
     int cx=g->camera/256,cy=g->camera_y/256;
     int phase=g->traversal.forest_log_phase;
-    static const int16_t sine[17]={0,25,50,74,98,121,142,162,181,198,213,226,237,245,251,255,256};
-    /* Accelerate the angle, not the horizontal tip: a continuous arc through
-     * the final frames instead of snapping the crown down onto the bank. */
-    int angle=124+phase*phase*(4096-124)/1024;
-    int node=ht_min(15,angle/256),u=angle-node*256;
-    int sn=sine[node]+(sine[node+1]-sine[node])*u/256;
-    int cs=sine[16-node]+(sine[15-node]-sine[16-node])*u/256;
+    int angle=ht_forest_log_angle(g);
+    int sn=ht_forest_log_sine(angle),cs=ht_forest_log_sine(4096-angle);
     int dx=312*sn/256,dy=-312*cs/256;
     int x=374-cx,y=220-cy,ex=x+dx,ey=y+dy;
     if(ex<-ht_view_margin()-40 || x>HT_W+ht_view_margin()+40)return;
@@ -109,10 +104,8 @@ static void ht_forest_log_draw(const ht_game *g) {
      * plates break the lower contour into 32 sections, rotating with the log. */
     int px=x,py=y,pr=12,pbottom=12;
     for(int i=1;i<=32;++i) {
-        int q=ht_min(3,i/8),u=i-q*8;
-        int bend=ht_forest_log_curve[q]+(ht_forest_log_curve[q+1]-ht_forest_log_curve[q])*u/8;
-        int nx=x+dx*i/32-dy*bend/312,ny=y+dy*i/32+dx*bend/312;
-        int radius=12-i/8,bottom=radius+(int)(ht_hash((unsigned)i+571)%3);
+        int nx,ny,radius,bottom;
+        ht_forest_log_node(dx,dy,i,&nx,&ny,&radius,&bottom);nx-=cx;ny-=cy;
         int ptx=px+dy*pr/312,pty=py-dx*pr/312;
         int pbx=px-dy*pbottom/312,pby=py+dx*pbottom/312;
         int ntx=nx+dy*radius/312,nty=ny-dx*radius/312;
