@@ -89,14 +89,43 @@ static void ht_city_backdrop_low(const ht_game *g) {
         ht_forest_frame_x=cx;ht_forest_frame_y=cy;ht_forest_frame_scale=ht_world_scale;
     }
 }
+static void ht_city_backdrop_native(const ht_game *g) {
+    int cx=g->camera/256,cy=g->camera_y/256;
+    int light=ht_project_x(390-cx*16/100)*HT_NATIVE_SCALE;
+    int height=ht_project_y(-110-cy*16/100)*HT_NATIVE_SCALE;
+    for(int sy=0;sy<HT_NATIVE_H;++sy) {
+        int dy=(sy-height)/HT_NATIVE_SCALE;
+        uint8_t *row=ht_scene+sy*HT_NATIVE_W;
+        for(int sx=0;sx<HT_NATIVE_W;++sx) {
+            int dx=(sx-light)/HT_NATIVE_SCALE;
+            row[sx]=(uint8_t)ht_clamp(16+(dx*dx+dy*dy/3)/6200,16,70);
+        }
+        if((sy&31)==31)ht_checkpoint();
+    }
+    static const ht_city_mass city[3][9]={
+        {{-230,145,24,0},{-50,120,-52,1},{103,88,45,0},{225,162,-102,1},
+         {431,116,-18,2},{580,165,-145,1},{795,116,16,0},{951,157,-72,0},{1140,180,-121,1}},
+        {{-260,160,-85,2},{-28,147,53,0},{200,136,-163,1},{413,190,-40,0},
+         {680,151,-225,1},{915,195,-94,2},{1170,125,-183,0},{1370,201,-72,1},{1650,174,-200,0}},
+        {{-330,185,-28,0},{-32,160,170,2},{330,158,105,1},{654,182,120,0},
+         {967,170,70,2},{1355,196,-100,1},{1740,165,-165,0},{2070,213,27,2},{2430,180,-70,1}}
+    };
+    for(int plane=0;plane<3;++plane) {
+        for(unsigned n=0;n<9;++n)ht_city_mass_draw(&city[plane][n],cx,cy,plane);
+        int horizon=ht_project_y(225-cy*(16+plane*21)/100)*HT_NATIVE_SCALE;
+        for(int sy=ht_max(0,horizon);sy<HT_NATIVE_H;++sy) {
+            int weight=ht_min(120,sy-horizon),fog=49+plane*18;
+            uint8_t *row=ht_scene+sy*HT_NATIVE_W;
+            for(int sx=0;sx<HT_NATIVE_W;++sx)
+                row[sx]=(uint8_t)((row[sx]*(256-weight)+fog*weight)/256);
+            if((sy&31)==31)ht_checkpoint();
+        }
+    }
+}
 static void ht_city_backdrop(const ht_game *g) {
     if(g->level!=1)return;
-    if(!ht_native_active){ht_city_backdrop_low(g);return;}
-    uint8_t *native=ht_scene;
-    ht_scene=ht_scene_low;ht_native_active=false;
+    if(ht_native_active){ht_city_backdrop_native(g);return;}
     ht_city_backdrop_low(g);
-    ht_scene=native;ht_native_active=true;
-    ht_expand_scene_native(ht_scene_low,native);
 }
 /* Roof furniture sits beyond the walkable front edge. Fire escapes are
  * attached to the actual ladder recesses; none masquerades as a jump target. */
