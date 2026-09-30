@@ -353,7 +353,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
     }
     unsigned warm_steps=0;
-    while(!quitting && ht.level!=0 && warm_steps<HT_WARM_STEPS && ht_cache_prefetch(0,1)) ++warm_steps;
+    while(!quitting && ht.level==4 && warm_steps<HT_WARM_STEPS && ht_cache_prefetch(0,1)) ++warm_steps;
     if(warm_steps==HT_WARM_STEPS) { ht_log("Hollow Trail: cache warmup did not finish"); goto cleanup; }
     loading=false; jump_down=pause_down=false;
     if(quitting) goto cleanup;
@@ -368,7 +368,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
     ht_fps_reset(&ht_fps,ht_perf.start);
-    ht_log("Hollow Trail 1.1.26: nearest camera baseline; rolling 10-second FPS");
+    ht_log("Hollow Trail 1.1.27: nearest camera baseline; rolling 10-second FPS");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -390,7 +390,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             prepared=false; loading=true;
             ht_select_level(ht.level);
             unsigned steps=0;
-            while(!quitting && ht.level!=0 && steps<HT_WARM_STEPS && ht_cache_prefetch(ht.camera/256,1)) ++steps;
+            while(!quitting && ht.level==4 && steps<HT_WARM_STEPS && ht_cache_prefetch(ht.camera/256,1)) ++steps;
             loading=false; simulation_started=false; simulation_accumulator=0;
             jump_down=pause_down=false;
             if(quitting) break;
@@ -439,7 +439,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.26",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.27",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
@@ -537,7 +537,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         /* At most four cache slices and an 8ms elapsed budget per host loop.
          * A single slice may exceed 8ms; its raster checkpoints still yield.
          * Report this work separately rather than hiding it in lower RENDER. */
-        if(!quitting && !paused && !reading && ht.level!=0 && ht.level==ht_geometry_level) {
+        if(!quitting && !paused && !reading && ht.level==4 && ht.level==ht_geometry_level) {
             uint32_t cache_start=app->millis();
             for(unsigned work=0;work<4 && !quitting;++work) {
                 if(prepared && video->can_submit()) break;

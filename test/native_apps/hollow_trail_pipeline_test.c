@@ -6,8 +6,9 @@
 static uint32_t now_ms,release_at;
 static unsigned allocations,frees,submissions,backbuffer_calls;
 static bool armed,overlapped,reject_once,failed_alloc,transition;
-static unsigned city_loading_polls,reader_releases;
+static unsigned transition_loading_polls,reader_releases;
 static bool journal_run;
+static unsigned transition_level;
 static uint8_t *stage;
 static uint8_t display[HT_PACKED_BYTES];
 static uint32_t clock_ms(void) { return ++now_ms; }
@@ -20,7 +21,7 @@ static bool ready(void) {
 }
 static bool poll_input(t5_app_input_t *out,uint32_t wait) {
     now_ms+=wait;
-    if(loading && ht.level==1) { ++city_loading_polls; assert(ht.x==95*256); }
+    if(loading && ht.level==transition_level) { ++transition_loading_polls; assert(ht.x==95*256); }
     assert(now_ms<20000);
     *out=(t5_app_input_t){.buttons=T5_APP_BUTTON_RIGHT,.exit_requested=submissions>=(journal_run?4u:3u)};
     if(stage && armed && now_ms<release_at && stage[0]!=0x5a) {
@@ -63,11 +64,19 @@ static bool submit_frame(uint16_t y,uint16_t height) {
     if(journal_run && submissions==3) { reading=false; ++scene_revision; }
 
     if(transition && submissions==2) {
+        ht.level=transition_level-1;
         ht.x=HT_GOAL*256; ht.y=ht_land[9].top*256;
         ht.vx=ht.vy=0; ht.grounded=true; ht.puzzle.solved=true; ht.puzzle.opening=48; ht_step(0,false,false);
-        assert(ht.level==1 && ht.checkpoint==0);
+        assert(ht.level==transition_level && ht.checkpoint==0);
     }
-    if(transition && submissions==3) assert(ht_geometry_level==1 && city_loading_polls>0);
+    if(transition && submissions==3) {
+        assert(ht_geometry_level==transition_level);
+        if(transition_level==1) {
+            /* Opaque composed city needs no obsolete skyline warmup. */
+            assert(!transition_loading_polls && !ht_cache_builds);
+            assert(ht_forest_frame_valid && ht_composed_frame_level==1);
+        } else assert(transition_loading_polls>0); /* Other chapters still freeze during warmup. */
+    }
     return true;
 }
 static uint32_t scans(void) { return now_ms/42; }
@@ -94,10 +103,10 @@ static bool capability_release(t5_provider_capability_lease_t token) { assert(to
 static const t5_provider_capability_api_v1 capability_api={1,sizeof(capability_api),capability_acquire,capability_release,NULL};
 const t5_provider_capability_api_v1 *t5_provider_capability_get_api(uint32_t v) { (void)v;return journal_run?&capability_api:NULL; }
 int main(void) {
-    for(unsigned scenario=0;scenario<4;++scenario) {
+    for(unsigned scenario=0;scenario<5;++scenario) {
         now_ms=release_at=0;allocations=frees=submissions=backbuffer_calls=0;
         armed=overlapped=false;reject_once=true;failed_alloc=scenario==1;stage=NULL;
-        transition=scenario==2;city_loading_polls=0; journal_run=scenario==3; reader_releases=0;
+        transition=scenario==2 || scenario==4;transition_level=scenario==4?4:1;transition_loading_polls=0; journal_run=scenario==3; reader_releases=0;
         app_main();
         assert(submissions==(journal_run?4u:3u) && backbuffer_calls==(journal_run?5u:4u));
         assert(reader_releases==(journal_run?1u:0u));

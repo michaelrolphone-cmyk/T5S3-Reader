@@ -36,22 +36,26 @@ static void walk_route_tick(void) {
                  m->ladders[i].upper==(int)walk_phase+1) ladder=i;
             bool gate=(int)walk_phase+1==m->bridge && t->bridge_open<32;
             bool crate_step=ladder<0 && next->top<here->top-70;
+            bool fill_pit=m->ball_x && m->pit_platform==(int)walk_phase;
             if(ht.level==0 && gate) {
                 if(x<350)dir=1;
                 else if(!t->forest_log_falling) {assert(ht_traversal_interact());walk_mechanics|=32;}
             } else if(ht.level==0 && walk_phase==0) {
                 dir=1;if(ht.grounded && x>=360)jump=true;
-            } else if(gate || crate_step) {
+            } else if(gate || crate_step || fill_pit) {
                 mass_work=true;
-                int kind=gate?m->plate_kind:2;
+                int kind=fill_pit?1:gate?m->plate_kind:2;
                 int object=(kind==1?t->ball_x:t->crate_x)/256;
-                int target=gate?m->plate_x:next->left-28;
+                int target=fill_pit?m->pit_x:gate?m->plate_x:next->left-28;
                 int reach=kind==1?HT_BALL_RADIUS+7:HT_CRATE_HALF+7;
                 if(walk_task==0 && object<target-2) {
                     if(t->mode==HT_FREE && (x>=object || (y<(kind==1?t->ball_y/256+HT_BALL_RADIUS:t->crate_y/256)-5 && x>object-reach-10))) {dir=-1;jump=ht.grounded;}
                     else if(t->mode==HT_FREE && x<object-reach) dir=1;
                     else if(t->mode==HT_FREE && ht.grounded) {assert(ht_traversal_interact());assert(t->mode==(kind==1?HT_ROLL:HT_CRATE));}
                     if(t->mode==HT_ROLL || t->mode==HT_CRATE) {dir=1;walk_mechanics|=kind==1?1:2;}
+                } else if(fill_pit) {
+                    if(t->mode)assert(ht_traversal_interact());
+                    dir=1;jump=ht.grounded;
                 } else if(gate) {
                     if(t->mode) assert(ht_traversal_interact());
                 } else {
