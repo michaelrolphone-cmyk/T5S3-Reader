@@ -26,6 +26,29 @@ static bool ht_ladder_enter(int vertical) {
     ht.vx=ht.vy=0;ht.grounded=false;ht.coyote=ht.jump_buffer=0;
     return true;
 }
+static bool ht_tree_enter(void) {
+    ht_traversal *t=&ht.traversal;
+    if(t->mode || t->drop_cooldown)return false;
+    int i=ht_tree_near(&ht);if(i<0)return false;
+    int count;const ht_living_tree *tree=&ht_trees(&ht,&count)[i];
+    t->tree=(uint8_t)i;t->tree_side=ht.x/256<tree->x?-1:1;t->mode=HT_TREE;
+    ht.x=(tree->x+t->tree_side*(tree->radius+6))*256;
+    ht.vx=ht.vy=0;ht.grounded=false;ht.coyote=ht.jump_buffer=0;return true;
+}
+static void ht_tree_collision(int old_x,int old_y) {
+    int count;const ht_living_tree *trees=ht_trees(&ht,&count);
+    if(ht.vy<0 || ht.traversal.branch_drop)return;
+    for(int i=0;i<count;++i)for(int b=0;b<HT_TREE_BRANCHES;++b) {
+        int l,r;ht_branch_bounds(&trees[i],b,&l,&r);
+        if(ht.x/256<l || ht.x/256>=r)continue;
+        int top=ht_branch_top(&ht,&trees[i],b,ht.x/256);
+        int old_top=ht_branch_top(&ht,&trees[i],b,old_x/256);
+        bool follows=ht.vy<=88 && old_x/256>=l && old_x/256<r && ht_abs(old_y-old_top*256)<=256;
+        if((old_y<=old_top*256+256 && ht.y>=top*256) || follows) {
+            ht.y=top*256;ht.vy=0;ht.grounded=true;ht.traversal.support=5;
+        }
+    }
+}
 static int ht_boat_half(const ht_game *g) {return g->level==4?48:HT_BOAT_HALF;}
 static int ht_boat_top(const ht_game *g) {
     int phase=(int)(g->ticks&63u),wave=phase<32?phase:64-phase;
@@ -88,6 +111,7 @@ static int ht_traversal_near(const ht_game *g) {
     if(ht_rope_catch(g)>=0) return HT_ROPE;
     if(m->boat_right && ht_abs(x-t->boat_x/256)<=ht_boat_half(g)+6 && ht_abs(g->y-ht_boat_top(g))<=16*256) return HT_BOAT;
     if(ht_ladder_near(g)>=0) return HT_LADDER;
+    if(ht_tree_near(g)>=0) return HT_TREE;
     return HT_FREE;
 }
 static bool ht_traversal_interact(void) {
@@ -98,9 +122,12 @@ static bool ht_traversal_interact(void) {
         if(t->mode==HT_ROPE) {
             ht_rope_velocity(&ht,&ht.vx,&ht.vy);
         } else if(t->mode==HT_BOAT) ht.vx=t->boat_vx;
+        if(t->mode==HT_TREE)t->drop_cooldown=12;
         t->mode=HT_FREE;return true;
     }
-    int near=ht_traversal_near(&ht);if(!near || near==HT_LADDER) return false;
+    int near=ht_traversal_near(&ht);
+    if(near==HT_TREE)return ht_tree_enter();
+    if(!near || near==HT_LADDER) return false;
     t->mode=(uint8_t)near;
     if(near==HT_ROPE) {
         t->rope_grip=ht_rope_catch(&ht);t->rope_slide_v=0;
@@ -287,7 +314,11 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
     ht_props_step(direction);
     uint8_t old_support=t->support;t->support=0;
     if(t->drop_cooldown) --t->drop_cooldown;
-    if(!jump_request) (void)ht_ladder_enter(vertical);
+    if(t->branch_drop)--t->branch_drop;
+    if(old_support==5 && vertical>0 && !jump_request) {
+        t->drop_cooldown=t->branch_drop=20;ht.y+=2*256;ht.vy=256;ht.grounded=false;ht.coyote=0;
+    }
+    if(!jump_request && vertical && !ht_ladder_enter(vertical)) (void)ht_tree_enter();
     if(t->mode==HT_LEDGE && vertical<0) {t->mode=HT_CLIMB;t->climb=0;}
     if(t->mode==HT_LEDGE && (vertical>0 || jump_pressed)) {
         t->mode=HT_FREE;t->drop_cooldown=20;ht.vy=0;ht.coyote=ht.jump_buffer=0;
@@ -296,14 +327,29 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
     }
     if(jump_pressed && t->mode && t->mode!=HT_CLIMB) {
         int mode=t->mode;t->mode=HT_FREE;
-        if(mode==HT_LADDER) t->drop_cooldown=8;
-        if(mode==HT_LADDER || mode==HT_ROPE || mode==HT_BOAT) {
+        if(mode==HT_LADDER || mode==HT_TREE) t->drop_cooldown=12;
+        if(mode==HT_LADDER || mode==HT_TREE || mode==HT_ROPE || mode==HT_BOAT) {
             int rvx,rvy;ht_rope_velocity(&ht,&rvx,&rvy);
-            ht.vx=mode==HT_ROPE?ht_clamp(rvx,-1000,1000):direction*640;
+            ht.vx=mode==HT_ROPE?ht_clamp(rvx,-1000,1000):(mode==HT_TREE && !direction?t->tree_side:direction)*640;
             ht.vy=-1880+(mode==HT_ROPE?ht_clamp(rvy,-384,384):0);ht.grounded=false;ht.coyote=0;jump_pressed=false;
         }
     }
-    if(t->mode==HT_LEDGE || t->mode==HT_CLIMB) {
+    if(t->mode==HT_TREE) {
+        int count;const ht_living_tree *tree=&ht_trees(&ht,&count)[t->tree];
+        int base=ht_tree_base(&ht,tree),old=ht.y;
+        ht.x=(tree->x+t->tree_side*(tree->radius+6))*256;
+        ht.y=ht_clamp(ht.y+vertical*512,(base-tree->height+35)*256,base*256);
+        ht.vx=ht.vy=0;ht.grounded=false;ht.stride+=ht_abs(ht.y-old);
+        /* Press outwards at a limb to step onto its actual sloping surface. */
+        for(int b=0;b<HT_TREE_BRANCHES;++b)if(direction==t->tree_side && ht_branch_side(b)==t->tree_side) {
+            int top=ht_branch_top(&ht,tree,b,ht.x/256);
+            if(ht_abs(ht.y-top*256)<=5*256) {
+                ht.y=top*256;ht.x+=direction*8*256;ht.grounded=true;
+                t->mode=HT_FREE;t->support=5;t->drop_cooldown=12;break;
+            }
+        }
+        if(ht.y==base*256 && vertical>0){t->mode=HT_FREE;ht.grounded=true;t->drop_cooldown=12;}
+    } else if(t->mode==HT_LEDGE || t->mode==HT_CLIMB) {
         const ht_platform *p=&ht_land[t->ledge];
         int edge=t->ledge_side>0?p->left:p->right,top=ht_platform_top(&ht,t->ledge);
         if(t->mode==HT_CLIMB && t->climb<16) ++t->climb;
@@ -369,6 +415,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
             }
             ht_land_collision(i,old_x,old_y);
         }
+        if(!t->mode)ht_tree_collision(old_x,old_y);
         if(m->ball_x && t->mode!=HT_ROLL) {
             int dx=(ht.x-t->ball_x)/256;
             if(ht_abs(dx)<HT_BALL_RADIUS) {

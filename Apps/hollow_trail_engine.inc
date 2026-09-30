@@ -72,7 +72,7 @@ static const ht_platform ht_routes[7][HT_PLATFORMS] = {
 };
 #include "hollow_trail_maps.inc"
 /* Fixed-size chapter mechanics, included in every render snapshot. */
-enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB };
+enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE };
 typedef struct {
     int ball_x,ball_y,crate_x,boat_x,rope_x,rope_v,ride_offset;
     int ball_vx,ball_vy,ball_roll,crate_y,crate_vx,crate_vy,boat_vx;
@@ -82,6 +82,7 @@ typedef struct {
     uint8_t support,bridge_open;
     uint8_t mode,ladder,ball_phase,ledge,climb,drop_cooldown;
     int ledge_side;
+    uint8_t tree,branch_drop; int8_t tree_side;
     bool rope_awake;
 } ht_traversal;
 #include "hollow_trail_story.inc"
@@ -152,11 +153,11 @@ static int ht_floor_div(int x,int n) { int q=x/n; return q-(x%n<0); }
 static int ht_abs(int x) { return x<0?-x:x; }
 static uint32_t ht_hash(uint32_t x) { x^=x>>16; x*=0x7feb352du; x^=x>>15; x*=0x846ca68bu; return x^(x>>16); }
 #include "hollow_trail_terrain.inc"
+#include "hollow_trail_trees.inc"
 static void ht_checkpoint(void) { if(ht_service) ht_service(); }
 #include "hollow_trail_neural_upscale.inc"
 
 #include "hollow_trail_expanded_simd.inc"
-#include "hollow_trail_frame_policy.inc"
 static void ht_clear_layer(uint8_t *dst) {
     if(!ht_math) { memset(dst,0,HT_PIXELS); return; }
     for(size_t at=0;at<HT_PIXELS;at+=T5_MATH_MAX_BYTES) {
@@ -234,7 +235,6 @@ static void ht_pack_tables_init(void);
 static void ht_simd_constants_init(uint8_t *memory);
 
 static void ht_bind(uint8_t *memory) {
-    ht_retained_background=NULL;ht_frame_select(HT_FRAME_BASE);
     ht_pack_tables_init();
     ht_simd_constants_init(memory+HT_MEMORY-HT_SIMD_TABLE_BYTES);
     ht_simd_reason=ht_expanded_reason="NOT TESTED";
@@ -424,7 +424,6 @@ static bool ht_observe(void) {
     ht.observation=(uint8_t)(ht.level*2+scene+1);ht.observation_ticks=220;return true;
 }
 static void ht_spawn(bool restart) {
-    ht_frame_invalidate();
     uint8_t bridge_open=restart?0:ht.traversal.bridge_open;
     uint8_t scene_evidence=restart?0:ht.scene_evidence;
     uint16_t weather_amount=restart?0:ht.weather_amount;
@@ -1347,7 +1346,7 @@ static void ht_vignette(void) {
     }
     ht_framed=true;
 }
-/* Render-only affine camera. Fixed-point bilinear sampling avoids pixel hops;
+/* Render-only affine camera. Nearest-neighbor sampling is the device-tested baseline;
  * world coordinates, collision and input bearings are never transformed.
  * Phase advances only with deliberate movement and freezes at rest. */
 static int ht_sway_wave(unsigned phase) {
@@ -1356,7 +1355,7 @@ static int ht_sway_wave(unsigned phase) {
     return triangle*(512-ht_abs(triangle))/256;
 }
 /* Raster only the visible interior. At <=344/4096 off-diagonal rotation and inward
- * scaling, the nine-pixel border guarantees all four source taps are valid.
+ * scaling, the nine-pixel border keeps the rounded source sample in bounds.
  * The vignette replaces everything outside this range immediately afterward. */
 static void ht_camera_coefficients(const ht_game *g,int *turn,int *scale) {
     int gain=43+(int)g->camera_mood*213/256;
@@ -1375,11 +1374,8 @@ static __attribute__((optimize("O3"))) void ht_affine_into(const uint8_t *source
         int v=(HT_H/2)*4096-(left-HT_W/2)*turn+(y-HT_H/2)*scale;
         uint8_t *dst=ht_scene+y*HT_W;
         for(int x=left;x<right;++x,u+=scale,v-=turn) {
-            int ix=u>>12,iy=v>>12,fx=(u>>8)&15,fy=(v>>8)&15;
-            const uint8_t *a=source+iy*HT_W+ix,*b=a+HT_W;
-            int top=(a[0]<<4)+((int)a[1]-a[0])*fx;
-            int bottom=(b[0]<<4)+((int)b[1]-b[0])*fx;
-            dst[x]=(uint8_t)(((top<<4)+(bottom-top)*fy)>>8);
+            int ix=(u+2048)>>12,iy=(v+2048)>>12;
+            dst[x]=source[iy*HT_W+ix];
         }
         if((y&15)==15) ht_checkpoint();
     }
@@ -1392,7 +1388,6 @@ static void ht_sway_into(const uint8_t *source,unsigned phase) {
 static void ht_camera_into(const uint8_t *source,const ht_game *g) {
     int turn,scale;ht_camera_coefficients(g,&turn,&scale);ht_affine_into(source,turn,scale);
 }
-#include "hollow_trail_camera_strategy.inc"
 /* Fixed particle budget, no allocations, frame noise or full-screen pass.
  * Weather shares the frozen world snapshot and pauses with simulation. */
 /* Roofs and terrain occlude precipitation; it cannot streak through a
@@ -1407,6 +1402,11 @@ static int ht_weather_floor(const ht_game *g,int screen_x) {
             int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top)) break;
             if(x>=l && x<r) floor=ht_min(floor,(part==2?top:ht_surface_at(g,i,x))-g->camera_y/256);
         }
+    int tree_count;const ht_living_tree *trees=ht_trees(g,&tree_count);
+    for(int i=0;i<tree_count;++i)for(int b=0;b<HT_TREE_BRANCHES;++b) {
+        int l,r;ht_branch_bounds(&trees[i],b,&l,&r);
+        if(x>=l && x<r)floor=ht_min(floor,ht_branch_top(g,&trees[i],b,x)-g->camera_y/256);
+    }
     return floor;
 }
 static void ht_weather(const ht_game *g) {
@@ -1437,7 +1437,6 @@ static void ht_weather(const ht_game *g) {
     }
     ht_checkpoint();
 }
-static void ht_draw_scenery(const ht_game *game);
 static void ht_draw_traversal(const ht_game *game);
 static void ht_draw_puzzle(const ht_game *game);
 static void ht_draw_evidence(const ht_game *game);
@@ -1449,64 +1448,51 @@ static bool ht_grotto_opaque(const ht_game *g) {
 static void ht_render_scene(void) {
     memset(&ht_render_last,0,sizeof(ht_render_last));
     uint32_t stage=ht_render_now();
-    const ht_game game=ht; // Freeze physics while cooperative checkpoints poll input.
+    /* Input checkpoints may advance live physics. Freeze the rendered frame
+     * so trees, focus and character all use one consistent game snapshot. */
+    const ht_game game=ht;
     ht_select_level(game.level);
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
     bool opaque=ht_grotto_opaque(&game);
-    unsigned flags=ht_frame_flags();
-    bool moving=ht_frame_moving(&game);
-    ht_frame_low_active=(flags&HT_FRAME_FOVEATED_BIT) && moving;
-    bool alternate=(flags&HT_FRAME_ALT_BIT) && ht_retained_background;
-    ht_frame_reused=alternate && ht_background_can_reuse(&game);
-    if(ht_abort)return;
-    if(!ht_frame_reused && !opaque) {
-        if(!ht_cache_visible(camera))return;
+    if(ht_abort) return;
+    if(!opaque) {
+        if(!ht_cache_visible(camera)) {return;}
         memset(ht_recon_scene,ht_sky_ink(&game),HT_RECON_PIXELS);
         for(int depth=0;depth<HT_LAYERS;++depth) if(depth!=2)
             ht_composite_cached_ai(depth,ht_layer_offset(depth,camera),px,py);
         ht_reconstruct_low_scene();
+
     }
-    bool camera_active=game.sway_phase || game.drop_zoom;
+    /* Render directly to the transform source: remove the former full-frame
+     * copy into scratch. Input servicing never reads this raster pointer. */
     uint8_t *output=ht_scene;
-    if(camera_active || ht_frame_low_active)ht_scene=ht_temp;
-    ht_world_scale=256-game.vista*5/16;
-    if(ht_frame_reused) {
-        ht_background_copy(ht_scene,ht_retained_background);
-        ht_background_due=true;++ht_background_reuses;
-    } else {
-        if(!opaque)ht_upscale_scene();
-        if(!opaque && ht_lightning(&game)>80) {
-            int x=340-game.camera/2048,y=22;
-            /* Lightning was originally drawn before vista-scaled scenery. */
-            int saved_scale=ht_world_scale;ht_world_scale=256;
-            for(int i=0;i<5;++i) {
-                int nx=x+(i%2?-11:5),ny=y+12+i*3,floor=ht_weather_floor(&game,x);
-                if(y<floor)ht_limb(ht_scene,x,y,nx,ht_min(ny,floor-1),1,0,0);
-                x=nx;y=ny;
-            }
-            ht_world_scale=saved_scale;
-        }
-        ht_draw_scenery(&game);++ht_background_builds;
-        if(alternate && !ht_abort) {
-            ht_background_copy(ht_retained_background,ht_scene);
-            ht_background_game=game;ht_background_valid=!ht_abort;ht_background_due=false;
+    if(game.sway_phase || game.drop_zoom) ht_scene=ht_temp;
+    if(!opaque) ht_upscale_scene();
+    /* Lightning lights the sky behind silhouettes, never the HUD or panel
+     * waveform. Sky darkening reuses the existing composite clear above. */
+    if(!opaque && ht_lightning(&game)>80) {
+        int x=340-game.camera/2048,y=22;
+        for(int i=0;i<5;++i) {
+            int nx=x+(i%2?-11:5),ny=y+12+i*3;
+            int floor=ht_weather_floor(&game,x);
+            if(y<floor) ht_limb(ht_scene,x,y,nx,ht_min(ny,floor-1),1,0,0);
+            x=nx;y=ny;
         }
     }
-    uint32_t world_start=ht_render_now();ht_render_last.background=world_start-stage;
+    uint32_t world_start=ht_render_now();
+    ht_render_last.background=world_start-stage;
+    ht_world_scale=256-game.vista*5/16;
     ht_draw_traversal(&game);
     ht_draw_puzzle(&game);
     ht_character(px,(game.y-game.camera_y)/256,&game);
     ht_weather(&game);
-    int character_x=ht_project_x(px),character_y=ht_project_y((game.y-game.camera_y)/256-18);
-    uint32_t post_start=ht_render_now();ht_render_last.world=post_start-world_start;
-    ht_world_scale=256;ht_scene=output;
-    ht_camera_full_samples=ht_camera_coarse_blocks=0;
-    if(camera_active || ht_frame_low_active) {
-        if((flags&HT_FRAME_NEAREST_BIT) || ht_frame_low_active)
-            ht_camera_strategy_into(ht_temp,&game,character_x,character_y,ht_frame_low_active,(flags&HT_FRAME_NEAREST_BIT)!=0);
-        else ht_camera_into(ht_temp,&game);
-    }
-    ht_vignette();ht_render_last.post=ht_render_now()-post_start;
+    uint32_t post_start=ht_render_now();
+    ht_render_last.world=post_start-world_start;
+    ht_world_scale=256;
+    ht_scene=output;
+    if(game.sway_phase || game.drop_zoom) ht_camera_into(ht_temp,&game);
+    ht_vignette();
+    ht_render_last.post=ht_render_now()-post_start;
 }
 /* Four physical gray levels. A fixed dispersed 8x8 threshold resolves only
  * fractional blur/fog values between them, with no temporal shimmer. Exact

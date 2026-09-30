@@ -18,7 +18,7 @@ static uint64_t ht_pad_device;
 static bool ht_pad_fault;
 static uint32_t ht_pad_fault_since;
 static t5_provider_capability_lease_t lease=T5_PROVIDER_CAPABILITY_LEASE_INVALID;
-static bool quitting, jump_down, pause_down, paused, mode_down;
+static bool quitting, jump_down, pause_down, paused;
 static uint32_t held, previous, last_poll, last_yield;
 static uint32_t simulation_clock, simulation_accumulator, scene_revision;
 static bool simulation_started,loading,reading;
@@ -183,9 +183,9 @@ static void ht_input_update(uint32_t wait) {
         if(!connected) {
             if(in.buttons&T5_APP_BUTTON_LEFT) buttons|=HT_LEFT;
             if(in.buttons&T5_APP_BUTTON_RIGHT) buttons|=HT_RIGHT;
-            if(in.buttons&T5_APP_BUTTON_UP) buttons|=(reading || (!paused && (ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)))?HT_UP:HT_JUMP;
+            if(in.buttons&T5_APP_BUTTON_UP) buttons|=(reading || (!paused && (ht.traversal.support==5 || ht_tree_near(&ht)>=0 || ht.traversal.mode==HT_TREE || ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)))?HT_UP:HT_JUMP;
             if(in.buttons&T5_APP_BUTTON_CONFIRM) buttons|=HT_INTERACT|HT_ACCEPT;
-            if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=(reading || (!paused && (ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)))?HT_DOWN:HT_PAUSE;
+            if(in.buttons&T5_APP_BUTTON_DOWN) buttons|=(reading || (!paused && (ht.traversal.support==5 || ht_tree_near(&ht)>=0 || ht.traversal.mode==HT_TREE || ht_ladder_near(&ht)>=0 || ht.traversal.mode==HT_LADDER || ht.traversal.mode==HT_LEDGE)))?HT_DOWN:HT_PAUSE;
             if(in.buttons&T5_APP_BUTTON_BACK) buttons|=HT_EXIT;
         }
         /* Raw capability ownership suppresses duplicate OS pad navigation.
@@ -207,8 +207,7 @@ static void ht_input_update(uint32_t wait) {
         previous=held=buttons; last_poll=now; return;
     }
     if(paused && !loading) {
-        if(down&(HT_JUMP|HT_UP))mode_down=true;
-        down&=~(HT_JUMP|HT_UP); // Consume test selection before gameplay resumes.
+        down&=~(HT_JUMP|HT_UP); // Paused presses must not queue a jump on resume.
         if(down&(HT_LEFT|HT_RIGHT)) {
             if(!debug_select) debug_level=ht.level;
             debug_level=(debug_level+((down&HT_RIGHT)?1:HT_LEVELS-1))%HT_LEVELS;
@@ -293,7 +292,6 @@ __attribute__((visibility("default"))) void app_main(void) {
     if(!memory) { ht_log("Hollow Trail: scenery cache PSRAM unavailable"); return; }
     uint8_t *staging=(uint8_t *)app->psram_alloc(HT_PACKED_BYTES);
     if(!staging) ht_log("Hollow Trail: packed staging unavailable; using direct packing");
-    uint8_t *background_memory=NULL;
     bool started=false,display_initialized=false,display_reading=false;
     ht_reader_bitmap=(uint8_t *)(((uintptr_t)memory+HT_MEMORY+31u)&~(uintptr_t)15u);
     t5_video_surface_v1 surface={0};
@@ -308,13 +306,10 @@ __attribute__((visibility("default"))) void app_main(void) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
     started=true;
-    background_memory=(uint8_t *)app->psram_alloc(HT_PIXELS);
-    ht_retained_background=background_memory;
-    if(!background_memory)ht_log("Background retention unavailable: alternate modes use fresh backgrounds");
     memset(&ht,0,sizeof(ht)); ht_spawn(true);
     reading=false; journal_page=0; ht_journal_index=true; ht_journal_selection=0;
     ht_journal_deciding=ht_journal_confirm=ht_journal_page_ready=false; ht_read_submitted_revision=0;
-    quitting=jump_down=pause_down=paused=mode_down=false; held=previous=0;
+    quitting=jump_down=pause_down=paused=false; held=previous=0;
     simulation_started=false; simulation_accumulator=0; scene_revision=1;
     last_poll=last_yield=app->millis();
     ht_service=ht_render_service;
@@ -368,7 +363,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
     ht_fps_reset(&ht_fps,ht_perf.start);
-    ht_log("Hollow Trail 1.1.21: frame strategy tests; rolling 10-second FPS");
+    ht_log("Hollow Trail 1.1.22: nearest camera baseline; rolling 10-second FPS");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -399,18 +394,8 @@ __attribute__((visibility("default"))) void app_main(void) {
             last_submit=app->millis(); last_frame=last_submit-HT_FRAME_INTERVAL_MS;
         }
 
-        if(mode_down) {
-            mode_down=false;ht_frame_select(ht_frame_mode+1);
-            prepared=false;++scene_revision;
-            uint32_t changed=app->millis();last_submit=changed;last_frame=changed-HT_FRAME_INTERVAL_MS;
-            memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=changed;
-            if(video->frame_counter)ht_perf.scan_start=video->frame_counter();
-            ht_fps_reset(&ht_fps,changed);
-            ht_log(ht_frame_name());
-        }
         uint32_t now=app->millis();
         if(profile_was_paused && !paused && !reading) {
-            ht_frame_invalidate();
             ht_fps_reset(&ht_fps,now);ht_perf.fps10=0;
             ht_perf.start=now;
             ht_perf.scan_start=video->frame_counter?video->frame_counter():0;
@@ -449,7 +434,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.21",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.22",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
@@ -458,17 +443,14 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(88,99,debug_select?"L/R CHOOSE   A LOAD   X CANCEL":"L/R CHOOSE LEVEL   A JOURNAL",1);
                 ht_text(88,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
                 char test[64];
-                snprintf(test,sizeof(test),"TEST %u/%u: %s",ht_frame_mode+1,HT_FRAME_COUNT,ht_frame_name());
-                ht_text(88,133,test,1);
+                ht_text(88,133,"AI + SIMD + NEAREST CAMERA",1);
                 if(!ht_simd_ready) {
                     snprintf(test,sizeof(test),"PACK FALLBACK: %s",ht_simd_reason);ht_text(88,148,test,1);
-                } else if((ht_frame_flags()&HT_FRAME_ALT_BIT) && !ht_retained_background) {
-                    ht_text(88,148,"NO BG MEMORY: FRESH EACH FRAME",1);
                 } else if(!ht_expanded_ready) {
                     unsigned missing=HT_OPT_SIMD_ALL&~ht_simd_stage_ready,stage=0;
                     while(stage<3 && !(missing&(1u<<stage)))++stage;
                     snprintf(test,sizeof(test),"STAGE FALLBACK: %s",ht_stage_reason[stage]);ht_text(88,148,test,1);
-                } else ht_text(88,148,"B / UP NEXT TEST   START JOURNAL",1);
+                } else ht_text(88,148,"START JOURNAL",1);
                 char perf[64];
                 snprintf(perf,sizeof(perf),"FPS10S %lu.%lu (%lu.%luS) SCANS %lu.%lu",
                     (unsigned long)(ht_perf.fps10/10),(unsigned long)(ht_perf.fps10%10),
@@ -549,7 +531,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         /* At most four cache slices and an 8ms elapsed budget per host loop.
          * A single slice may exceed 8ms; its raster checkpoints still yield.
          * Report this work separately rather than hiding it in lower RENDER. */
-        if(!quitting && !paused && !reading && !ht_frame_reused && ht.level==ht_geometry_level) {
+        if(!quitting && !paused && !reading && ht.level==ht_geometry_level) {
             uint32_t cache_start=app->millis();
             for(unsigned work=0;work<4 && !quitting;++work) {
                 if(prepared && video->can_submit()) break;
@@ -567,8 +549,6 @@ cleanup:
     if(started) video->stop();
     ht_release_reader(); ht_release_pad();
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(true);
-    ht_retained_background=NULL;
-    if(background_memory)app->psram_free(background_memory);
     if(staging) app->psram_free(staging);
     app->psram_free(memory);
 }

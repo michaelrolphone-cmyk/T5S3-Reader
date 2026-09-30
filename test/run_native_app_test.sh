@@ -52,9 +52,9 @@ c++ -std=c++17 -Wall -Wextra -Werror \
 c++ -std=c++17 -Wall -Wextra -Werror \
   "$repo_dir/test/native_apps/native_video_idle_test.cpp" -o "$binary"
 "$binary"
-cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
   -I"$repo_dir/lib/NativeApps/include" \
-  "$repo_dir/test/native_apps/hollow_trail_frame_strategy_test.c" -o "$binary"
+  "$repo_dir/test/native_apps/hollow_trail_trees_test.c" -o "$binary"
 "$binary"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
   -I"$repo_dir/lib/NativeApps/include" \

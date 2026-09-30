@@ -1,12 +1,14 @@
 #include "hollow_trail_geography_draw.inc"
 #include "hollow_trail_terrain_draw.inc"
 #include "hollow_trail_landscape_detail.inc"
+#include "hollow_trail_composed_draw.inc"
 /* Dynamic solids are drawn at logical resolution, outside the blurred scenery
  * cache. One frozen ht_game supplies camera, object poses, collision and art. */
-static void ht_draw_scenery(const ht_game *g) {
+static void ht_draw_traversal(const ht_game *g) {
     int cx=g->camera/256,cy=g->camera_y/256;
     const ht_platform *land=ht_level_land(g->level);
     const ht_mechanics *m=ht_mech(g);
+    ht_composed_backdrop(g);
     if(!ht_grotto_opaque(g)) {
         ht_scene_geography(g);
         ht_landscape_detail(g);
@@ -38,8 +40,10 @@ static void ht_draw_scenery(const ht_game *g) {
         }
     }
     ht_boat_grotto(g);
+    ht_living_trees_draw(g);
     /* Distinct natural silhouettes stay anchored to the new physical route. */
     for(int i=0;i<HT_PLATFORMS;++i) {
+        if(g->level==0 || g->level==4 || g->level==6 || g->level==8)continue;
         if(i==m->bridge || (i!=0 && i!=2 && i!=5 && i!=8) || (g->level==4 && i==0)) continue;
         const ht_platform *p=&land[i];
         int world=i==0?15:p->left+(p->right-p->left)*2/3;
@@ -54,12 +58,6 @@ static void ht_draw_scenery(const ht_game *g) {
         }
     }
     ht_story_landmarks(g);
-}
-/* All interactive solids, evidence and actors still update every frame. */
-static void ht_draw_traversal(const ht_game *g) {
-    int cx=g->camera/256,cy=g->camera_y/256;
-    const ht_platform *land=ht_level_land(g->level);
-    const ht_mechanics *m=ht_mech(g);
     ht_draw_evidence(g);
     for(int i=0;i<HT_PLATFORMS;++i) {
         const ht_platform *p=&land[i];
@@ -203,6 +201,7 @@ static void ht_draw_traversal(const ht_game *g) {
             if(i==6) ht_disk(ht_scene,x1,y1,1,255);
         }
     }
+    ht_composed_contacts(g);
     ht_contact_detail(g);
     int x,y;
     /* Exit architecture follows its actual terrace when the camera climbs. */
@@ -211,8 +210,9 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_rect(ht_scene,x-22,y-56,44,6,255);
 }
 static void ht_traversal_prompt(const ht_game *g) {
-    const char *text=NULL;
+    const char *text=g->traversal.support==5?"BRANCH - DOWN DROP THROUGH - B JUMP":NULL;
     switch(ht_traversal_near(g)) {
+    case HT_TREE: text=g->traversal.mode?"UP/DOWN CLIMB - OUT ONTO BRANCH - B LEAP":"A GRIP TREE EDGE - UP / DOWN CLIMB";break;
     case HT_LEDGE: text="UP / A CLIMB - DOWN DROP - B JUMP AWAY";break;
     case HT_CLIMB: text="CLIMBING";break;
     case HT_ROLL: text=g->traversal.mode?"LEFT / RIGHT ROLL - A RELEASE":"A GRIP STONE - ROLL ONTO THE WEIGHT PLATE";break;
