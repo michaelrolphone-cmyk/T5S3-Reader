@@ -227,7 +227,7 @@ static const uint16_t *ht_focus_weights(int px,int py,int step,int width,int hei
     }
     unsigned slot=ht_focus_recent^1u;uint16_t *map=ht_focus_map[slot];
     const int step2=step*step;
-    const bool bounded=ht_render_test==HT_TEST_FOCUS;
+    const bool bounded=(ht_render_test_mask()&HT_OPT_FOCUS);
     for(int y=0;y<height;++y) {
         int dy=step*y-py,distance=px*px+dy*dy,delta=step2-2*step*px;
         for(int x=0;x<width;++x) {
@@ -517,7 +517,7 @@ static void ht_triangle(uint8_t *b,int ax,int ay,int bx,int by,int cx,int cy,int
     if(ay>by){int t=ax;ax=bx;bx=t;t=ay;ay=by;by=t;}
     if(by>cy){int t=bx;bx=cx;cx=t;t=by;by=cy;cy=t;}
     if(ay>by){int t=ax;ax=bx;bx=t;t=ay;ay=by;by=t;}
-    if(ht_render_test==HT_TEST_TRIANGLE) {
+    if((ht_render_test_mask()&HT_OPT_TRIANGLE)) {
         int first=ht_max(ay,0),last=ht_min(cy,HT_H-1);
         if(first>last)return;
         ht_edge_step long_edge=ht_edge_begin(ax,cx-ax,cy-ay,first-ay);
@@ -596,12 +596,12 @@ static uint8_t ht_average(int sum,uint32_t reciprocal) {
 static void ht_blur_horizontal(const uint8_t *src,int radius,uint32_t reciprocal,int x0,int x1,int y0,int y1) {
     for(int y=y0;y<y1;++y) {
         const uint8_t *row=src+y*HT_W; int sum=0;
-        if(ht_render_test==HT_TEST_RAM_BLUR && ht_fast) {
+        if((ht_render_test_mask()&HT_OPT_RAM_BLUR) && ht_fast) {
             memcpy(ht_fast->blur.source,row,HT_W);row=ht_fast->blur.source;
         }
         for(int k=-radius;k<=radius;++k) sum+=row[ht_clamp(x0+k,0,HT_W-1)];
         int x=x0;
-        if(ht_render_test==HT_TEST_BLUR_INTERIOR) {
+        if((ht_render_test_mask()&HT_OPT_BLUR_INTERIOR)) {
             /* Peel only the edge-extension region. Both direct indices in the
              * interior are valid even for a full-width or one-pixel ROI. */
             int left=ht_min(x1,radius),right=ht_min(x1,HT_W-radius-1);
@@ -646,7 +646,7 @@ static void ht_blur_rect(const uint8_t *src,uint8_t *dst,int radius,int x0,int x
         const int16_t *add=ht_filter+ht_min(HT_H-1,y+radius+1)*HT_W;
         const int16_t *sub=ht_filter+ht_max(0,y-radius)*HT_W;
         uint8_t *row=dst+y*HT_W;
-        bool internal=ht_render_test==HT_TEST_RAM_BLUR && ht_fast;
+        bool internal=(ht_render_test_mask()&HT_OPT_RAM_BLUR) && ht_fast;
         if(internal) {
             memcpy(ht_fast->blur.add+x0,add+x0,(size_t)(x1-x0)*sizeof(*add));
             memcpy(ht_fast->blur.sub+x0,sub+x0,(size_t)(x1-x0)*sizeof(*sub));
@@ -1177,10 +1177,13 @@ static __attribute__((optimize("O3"))) void ht_composite_planned_ai(int depth,in
             const uint8_t *wide=ht_cached_wide[depth][p->slot]+4*y*HT_TILE_W+p->column;
             for(int i=0;i<p->count;++i) {
                 int x=p->x+i;
+                if(ht_background_hidden(4*x,4*y)){++ht_occlusion_composite_skips;continue;}
                 /* Same aligned destination and cache-row read bounds as the
                  * unplanned SIMD compositor; scalar prefix/tail stay exact. */
                 if(fused && !(x&3)) {
                     int available=ht_min(p->count-i,(HT_TILE_W-p->column-4*i-15)/4);
+                    if(ht_occlusion_active)for(int j=0;j<available;++j)
+                        if(ht_background_hidden(4*(x+j),4*y)){available=j;break;}
                     unsigned blocks=available>0?(unsigned)available/8:0;
                     if(blocks) {
                         ht_blend_span(near+4*i,wide+4*i,radials+x,scene+x,k,blocks);
@@ -1226,6 +1229,8 @@ static __attribute__((optimize("O3"))) void ht_composite_cached_ai(int depth,int
                  * Weights use exact 8-byte loads; scene uses exact 4-byte loads. */
                 if(fused && !(x&3)) {
                     int available=ht_min(count-i,(HT_TILE_W-column-4*i-15)/4);
+                    if(ht_occlusion_active)for(int j=0;j<available;++j)
+                        if(ht_background_hidden(4*(x+j),4*y)){available=j;break;}
                     unsigned blocks=available>0?(unsigned)available/8:0;
                     if(blocks) {
                         ht_blend_span(near+4*i,wide+4*i,weights+y*HT_RECON_W+x,scene+x,k,blocks);
@@ -1308,8 +1313,8 @@ static inline __attribute__((always_inline)) uint32_t ht_zip2(uint32_t a,uint32_
  * arithmetic used by the original renderer, then spend neural MACs only on
  * strong 2x2 transitions. Source anchors at even/even coordinates never move. */
 static __attribute__((optimize("O3"))) void ht_reconstruct_low_scene(void) {
-    const bool memoize=ht_render_test==HT_TEST_NN_CACHE;
-    const bool internal=ht_render_test==HT_TEST_RAM_NEURAL && ht_fast;
+    const bool memoize=(ht_render_test_mask()&HT_OPT_NN_CACHE);
+    const bool internal=(ht_render_test_mask()&HT_OPT_RAM_NEURAL) && ht_fast;
     int loaded[3]={-1,-1,-1};
     if(internal)ht_nn_fast_init();
     for(int y=0;y<HT_RECON_H;++y) {
@@ -1381,8 +1386,8 @@ static __attribute__((optimize("O3"))) void ht_reconstruct_low_scene(void) {
                 r0[xm],r0[x],r0[xp],r1[xm],r1[x],r1[xp],r2[xm],r2[x],r2[xp]
             };
             int16_t residual[HT_NN_OUTPUTS];
-            if(internal)ht_nn_residual_fast(patch,residual);
-            else if(memoize)ht_nn_residual_cached(patch,residual);
+            if(memoize)ht_nn_residual_cached_with_workspace(patch,residual,internal);
+            else if(internal)ht_nn_residual_fast(patch,residual);
             else ht_nn_residual(patch,residual);
             top[2*x+1]=(uint8_t)ht_clamp((int)top[2*x+1]+residual[0],0,255);
             bottom[2*x]=(uint8_t)ht_clamp((int)bottom[2*x]+residual[1],0,255);
@@ -1534,6 +1539,19 @@ static inline uint8_t ht_camera_pixel_packed(const uint8_t *a,const uint8_t *b,u
     int top=(int)(horizontal&65535u),bottom=(int)(horizontal>>16);
     return (uint8_t)(((top<<4)+(bottom-top)*(int)fy)>>8);
 }
+static inline uint8_t ht_camera_sample(unsigned a,unsigned b,unsigned c,unsigned d,
+                                       unsigned fx,unsigned fy,unsigned options) {
+    if((options&HT_OPT_FLAT_CAMERA) && !((a^b)|(a^c)|(a^d)))return (uint8_t)a;
+    int top,bottom;
+    if(options&HT_OPT_CAMERA) {
+        uint32_t h=(a|(c<<16))*(16-fx)+(b|(d<<16))*fx;
+        top=(int)(h&65535u);bottom=(int)(h>>16);
+    } else {
+        top=(int)a*16+((int)b-(int)a)*(int)fx;
+        bottom=(int)c*16+((int)d-(int)c)*(int)fx;
+    }
+    return (uint8_t)((top*16+(bottom-top)*(int)fy)>>8);
+}
 static __attribute__((optimize("O3"))) void ht_affine_into(const uint8_t *source,int turn,int scale) {
     for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
         int left=ht_visible_left[y],right=HT_W-left;
@@ -1640,7 +1658,7 @@ static void ht_render_scene(void) {
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
     bool opaque=ht_grotto_opaque(&game);
     if(ht_abort) return;
-    if(ht_render_test==HT_TEST_OCCLUSION && !opaque)ht_occlusion_build(&game);
+    if((ht_render_test_mask()&HT_OPT_OCCLUSION) && !opaque)ht_occlusion_build(&game);
     if(!opaque) {
         if(!ht_cache_visible(camera)) {ht_occlusion_active=false;return;}
         if(ht_ai_rendering) {
@@ -1659,7 +1677,7 @@ static void ht_render_scene(void) {
     uint8_t *output=ht_scene;
     if(game.sway_phase || game.drop_zoom) ht_scene=ht_temp;
     if(!opaque) ht_upscale_scene();
-    bool split=ht_render_test==HT_TEST_LOW_CAMERA && (game.sway_phase || game.drop_zoom);
+    bool split=(ht_render_test_mask()&HT_OPT_LOW_CAMERA) && (game.sway_phase || game.drop_zoom);
     if(split)ht_camera_track_begin();
     /* Lightning lights the sky behind silhouettes, never the HUD or panel
      * waveform. Sky darkening reuses the existing composite clear above. */
@@ -1686,7 +1704,7 @@ static void ht_render_scene(void) {
     ht_camera_tracking=false;
     if(split)ht_camera_split_into(ht_temp,&game);
     else if(game.sway_phase || game.drop_zoom) {
-        if(ht_render_test==HT_TEST_FILL_CAMERA)ht_camera_fills_into(ht_temp,&game);
+        if((ht_render_test_mask()&HT_OPT_FILL_CAMERA))ht_camera_fills_into(ht_temp,&game);
         else ht_camera_into(ht_temp,&game);
     }
     ht_vignette();
@@ -1887,7 +1905,7 @@ static __attribute__((optimize("O3"))) void ht_pack_mono_learned(uint8_t *out,in
 }
 
 static __attribute__((optimize("O3"))) void ht_pack_mono_simd(uint8_t *out,int stride) {
-    bool internal=ht_render_test==HT_TEST_RAM_PACK && ht_fast;
+    bool internal=(ht_render_test_mask()&HT_OPT_RAM_PACK) && ht_fast;
     int loaded[2]={-1,-1};
     const uint8_t (*constants)[6][16]=ht_simd_constants;
     if(internal) {

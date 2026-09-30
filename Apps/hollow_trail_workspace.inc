@@ -1,4 +1,4 @@
-/* A single optional allocation, reused synchronously by independent modes.
+/* A single optional allocation, reused synchronously by sequential rendering stages.
  * Bulk rasters stay in PSRAM. The app's tracked heap_caps_malloc import uses
  * the ESP-IDF compatibility ABI: MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT.
  * No fallback allocation: a failed request leaves the baseline available. */
