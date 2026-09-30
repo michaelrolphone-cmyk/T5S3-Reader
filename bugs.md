@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,34 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 202. Directory creation silently deletes a regular file that blocks the requested parent path
+
+- **Status:** Open.
+- **Affected code:** `lib/hal/HalStorage.cpp`, especially `ensureParentDirUnlocked()`, `HalStorage::ensureDirectoryExists()`, and callers such as `openFileForWriteUnlocked()` / `HalStorage::writeFile()`.
+- **Trigger / reproduction:** Create a valid ordinary SD file at a pathname later expected to be a directory, for example create regular file `/Scratch`, then call `Storage.writeFile("/Scratch/item.txt", ...)` or `Storage.ensureDirectoryExists("/Scratch")`.
+- **Observed / logically demonstrated failure:** When the helper sees that the parent/path exists but is not a directory, it logs that condition and calls `sd.remove(...)` on the existing object before attempting `sd.mkdir(...)`. The pre-existing regular file is therefore destroyed even though the requested nested write/ensure operation should simply fail with a path-type conflict. The deletion happens before the caller has demonstrated that directory creation or the later write can succeed.
+- **Likely root cause:** The generic storage helper treats every non-directory path collision as disposable recovery debris instead of user-owned data.
+- **Impact:** A routine write or directory-ensure operation can irreversibly delete an unrelated valid file solely because its name collides with an expected directory. This is especially dangerous for top-level application/system directory names exposed on removable SD storage.
+- **Repair direction:** Fail closed when an existing parent/path is not a directory; never delete it from a generic ensure/write helper. If a particular migration owns and may replace a blocking file, make that an explicit caller-level transaction. Add regression tests proving an existing regular file remains byte-for-byte intact and the nested write/ensure call returns failure.
+
+### 203. ZIP extraction can publish a staged file after SD close/finalization fails
+
+- **Status:** Open.
+- **Affected code:** `src/native/NativeArchiveBridge.cpp`, `extract()`; `lib/hal/HalStorage.h/.cpp`, where `HalFile::close()` returns a boolean finalization result.
+- **Trigger / reproduction:** Extract a valid ZIP entry while injecting an SD/FAT failure after all expected payload bytes have been accepted but during `HalFile::close()` of the destination `.part` file.
+- **Observed / logically demonstrated failure:** `extract()` computes `okay` from ZIP streaming and the exact byte count, then calls `output.flush(); output.close();` while discarding the close result. If close reports failure, `okay` remains true, the code renames the staged `.part` file to the final destination, and returns success. A file whose directory/FAT metadata or final buffered data was not durably finalized can therefore be published as a successful extraction.
+- **Likely root cause:** Transaction success is decided before the staged file's close/finalization result is incorporated into the commit condition.
+- **Impact:** ROMs or other extracted resources can be truncated/corrupt yet be installed at their final pathname and reported as successfully extracted, turning a recoverable SD error into persistent bad application data.
+- **Repair direction:** Require successful finalization before publication: capture and check `close()` (and use a checkable sync primitive if available), remove the staging file on any finalization failure, and rename only after the closed stage is known good. Add a fault-injection test where all writes succeed but close fails and verify no final destination is created.
+
+### 204. A boundary-length malformed LLM JSON Unicode escape can read past the response buffer
+
+- **Status:** Open.
+- **Affected code:** `Apps/llm_ask.c`, `parse_hex4()` and `decode_json_string()`; response filling in `src/native/NativeNetworkBridge.cpp::appendResponse()`.
+- **Trigger / reproduction:** Return an HTTP 2xx LLM response whose body fits within the app's 8192-byte response buffer without being marked truncated, includes the expected choices/content fields, and terminates the content string with an incomplete Unicode escape close enough to the physical end of the buffer that fewer than four characters remain after its introducer.
+- **Observed / logically demonstrated failure:** `decode_json_string()` calls `parse_hex4()` immediately after seeing a Unicode escape introducer. `parse_hex4()` unconditionally indexes four bytes `s[0]` through `s[3]` and has no remaining-length/buffer-end check. `appendResponse()` guarantees only one NUL terminator at `response[body_length]`. For a body ending near index 8191, the four-byte probe can therefore step beyond the static `response_json[8192]` object. The malformed JSON is supposed to produce a clean parse error, but instead invokes undefined out-of-bounds reads first.
+- **Likely root cause:** The JSON decoder treats a NUL-terminated pointer as if four hexadecimal characters are always readable after a Unicode escape introducer.
+- **Impact:** A malformed or buggy remote LLM response can cause memory-safety violations, including faults or data-dependent parsing from adjacent memory, rather than a deterministic Bad JSON error.
+- **Repair direction:** Make decoding end-bounded: pass an explicit end pointer/remaining length into `decode_json_string()` and `parse_hex4()`, require four in-bounds hexadecimal digits before reading them, and validate surrogate pairs with the same bounds. Add boundary tests for incomplete Unicode escapes at the physical response-buffer limit and verify graceful rejection under memory-safety instrumentation.
