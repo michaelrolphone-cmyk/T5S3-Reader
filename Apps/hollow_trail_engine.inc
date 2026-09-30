@@ -20,6 +20,9 @@
 #define HT_MASK_RADIUS 45
 /* Keep the following low-resolution scene aligned for four-byte loads. */
 #define HT_MASK_PIXELS ((HT_MASK_RADIUS*HT_MASK_RADIUS+15)&~15)
+enum { HT_CAMERA_BASELINE, HT_CAMERA_NO_ROTATION, HT_CAMERA_NO_ZOOM, HT_CAMERA_OFF, HT_CAMERA_MODES };
+static unsigned ht_camera_mode;
+static const char *const ht_camera_labels[]={"BASELINE", "ROTATION OFF", "ZOOM OFF", "BOTH OFF"};
 static bool ht_framed;
 static int ht_world_scale=256; /* Draw-only projection; UI and cache geometry stay unscaled. */
 static int ht_view_margin(void) {return (480*256/ht_world_scale-480)/2;}
@@ -1384,8 +1387,40 @@ static void ht_sway_into(const uint8_t *source,unsigned phase) {
     int scale=ht_min(4096-(ht_sway_wave(phase/2+768)+256)*4/3,4096-2*ht_abs(turn));
     ht_affine_into(source,turn,scale);
 }
-static void ht_camera_into(const uint8_t *source,const ht_game *g) {
-    int turn,scale;ht_camera_coefficients(g,&turn,&scale);ht_affine_into(source,turn,scale);
+/* Axis-aligned zoom: one source row per output row, no per-pixel Y
+ * projection or source-row multiplication. Keep baseline's rounding. */
+static __attribute__((optimize("O3"))) void ht_zoom_into(const uint8_t *source,int scale) {
+    for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
+        int sy=((HT_H/2)*4096+(y-HT_H/2)*scale+2048)>>12;
+        const uint8_t *src=source+sy*HT_W;
+        uint8_t *dst=ht_scene+y*HT_W;
+        int left=ht_visible_left[y],right=HT_W-left;
+        int u=(HT_W/2)*4096+(left-HT_W/2)*scale;
+        for(int x=left;x<right;++x,u+=scale) dst[x]=src[(u+2048)>>12];
+        if((y&15)==15) ht_checkpoint();
+    }
+}
+/* With zoom genuinely disabled there is no safety crop. Clamp uncovered
+ * corners to the source edge instead of reading outside the raster. */
+static __attribute__((optimize("O3"))) void ht_rotation_into(const uint8_t *source,int turn) {
+    for(int y=HT_BORDER;y<HT_H-HT_BORDER;++y) {
+        int left=ht_visible_left[y],right=HT_W-left;
+        int u=left*4096+(y-HT_H/2)*turn;
+        int v=y*4096-(left-HT_W/2)*turn;
+        for(int x=left;x<right;++x,u+=4096,v-=turn)
+            ht_scene[y*HT_W+x]=source[ht_clamp((v+2048)>>12,0,HT_H-1)*HT_W+
+                ht_clamp((u+2048)>>12,0,HT_W-1)];
+        if((y&15)==15) ht_checkpoint();
+    }
+}
+static void ht_camera_into(const uint8_t *source,const ht_game *g,unsigned mode) {
+    int turn,scale;ht_camera_coefficients(g,&turn,&scale);
+    if(mode==HT_CAMERA_NO_ROTATION) {
+        scale=4096-(ht_sway_wave(g->sway_phase/2+768)+256)*4/3;
+        scale+=(4096-scale)*g->drop_zoom/256;
+        ht_zoom_into(source,scale);
+    } else if(mode==HT_CAMERA_NO_ZOOM) ht_rotation_into(source,turn);
+    else ht_affine_into(source,turn,scale);
 }
 /* Fixed particle budget, no allocations, frame noise or full-screen pass.
  * Weather shares the frozen world snapshot and pauses with simulation. */
@@ -1444,7 +1479,10 @@ static void ht_render_scene(void) {
     uint32_t stage=ht_render_now();
     /* Input checkpoints may advance live physics. Freeze the rendered frame
      * so trees, focus and character all use one consistent game snapshot. */
-    const ht_game game=ht;
+    ht_game game=ht;
+    const unsigned camera_mode=ht_camera_mode;
+    if(camera_mode==HT_CAMERA_NO_ZOOM || camera_mode==HT_CAMERA_OFF) game.vista=0;
+    const bool camera_pass=camera_mode!=HT_CAMERA_OFF && (game.sway_phase || game.drop_zoom);
     ht_select_level(game.level);
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
     bool opaque=ht_grotto_opaque(&game);
@@ -1460,7 +1498,7 @@ static void ht_render_scene(void) {
     /* Render directly to the transform source: remove the former full-frame
      * copy into scratch. Input servicing never reads this raster pointer. */
     uint8_t *output=ht_scene;
-    if(game.sway_phase || game.drop_zoom) ht_scene=ht_temp;
+    if(camera_pass) ht_scene=ht_temp;
     if(!opaque) ht_upscale_scene();
     /* Lightning lights the sky behind silhouettes, never the HUD or panel
      * waveform. Sky darkening reuses the existing composite clear above. */
@@ -1484,7 +1522,7 @@ static void ht_render_scene(void) {
     ht_render_last.world=post_start-world_start;
     ht_world_scale=256;
     ht_scene=output;
-    if(game.sway_phase || game.drop_zoom) ht_camera_into(ht_temp,&game);
+    if(camera_pass) ht_camera_into(ht_temp,&game,camera_mode);
     ht_vignette();
     ht_render_last.post=ht_render_now()-post_start;
 }

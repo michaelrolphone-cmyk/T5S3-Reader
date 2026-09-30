@@ -33,6 +33,8 @@ int main(void) {
         reports[source][0].device=source+1; reports[source][0].hat=8;
         memset(&ht,0,sizeof(ht)); ht_spawn(true); ht_geometry_level=0;
         reading=paused=quitting=loading=jump_down=pause_down=false;
+        ht_camera_mode=HT_CAMERA_BASELINE;
+
         previous=held=0; ht_pad_owned=ht_input_rearm=false; ht_pad_source=-1; simulation_started=false;
         mapped=T5_APP_BUTTON_UP|T5_APP_BUTTON_DOWN|T5_APP_BUTTON_CONFIRM;
         ht_input(1); // Neutral raw state suppresses duplicate mapped actions.
@@ -59,6 +61,11 @@ int main(void) {
         press(source,y[source]); assert(!reading && !paused && !jump_down);
         if(!source) { press(source,64|128); assert(!reading && !paused); } // Triggers are not Start/Select.
         press(source,select[source]); reports[source][0].buttons=0; ht_input(1); assert(paused && !reading);
+        for(unsigned mode=1;mode<=HT_CAMERA_MODES;++mode) {
+            press(source,b[source]);
+            assert(paused && !jump_down && ht_camera_mode==mode%HT_CAMERA_MODES);
+            ht_input(1);assert(ht_camera_mode==mode%HT_CAMERA_MODES);
+        }
         paused=false; pause_down=false;
         /* Pause level picker: all ten destinations, clean respawn, preserved
          * discoveries, and no held-A action leaking into the new chapter. */
@@ -92,7 +99,7 @@ int main(void) {
         reports[source][0].hat=8;ht_input(1);
         reading=false;
         press(source,b[source]);assert(paused && !jump_down);
-        ht_input(1);assert(paused && !jump_down); // Held B stays inert while paused.
+        ht_input(1);assert(paused && !jump_down); // Held B never repeats the mode change.
         reports[source][0].buttons=0;ht_input(1);
         reports[source][0].hat=0;ht_input(1);assert(paused && !jump_down);
         reports[source][0].hat=8;ht_input(1);

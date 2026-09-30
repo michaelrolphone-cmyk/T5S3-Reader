@@ -207,6 +207,10 @@ static void ht_input_update(uint32_t wait) {
         previous=held=buttons; last_poll=now; return;
     }
     if(paused && !loading) {
+        if(down&(HT_JUMP|HT_UP)) {
+            ht_camera_mode=(ht_camera_mode+1)%HT_CAMERA_MODES;
+            ++scene_revision;
+        }
         down&=~(HT_JUMP|HT_UP); // Paused presses must not queue a jump on resume.
         if(down&(HT_LEFT|HT_RIGHT)) {
             if(!debug_select) debug_level=ht.level;
@@ -309,6 +313,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     memset(&ht,0,sizeof(ht)); ht_spawn(true);
     reading=false; journal_page=0; ht_journal_index=true; ht_journal_selection=0;
     ht_journal_deciding=ht_journal_confirm=ht_journal_page_ready=false; ht_read_submitted_revision=0;
+    ht_camera_mode=HT_CAMERA_BASELINE;
     quitting=jump_down=pause_down=paused=false; held=previous=0;
     simulation_started=false; simulation_accumulator=0; scene_revision=1;
     last_poll=last_yield=app->millis();
@@ -363,7 +368,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
     ht_fps_reset(&ht_fps,ht_perf.start);
-    ht_log("Hollow Trail 1.1.23: nearest camera baseline; rolling 10-second FPS");
+    ht_log("Hollow Trail 1.1.24: nearest camera baseline; rolling 10-second FPS");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -434,7 +439,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.23",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.24",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
@@ -443,7 +448,8 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_text(88,99,debug_select?"L/R CHOOSE   A LOAD   X CANCEL":"L/R CHOOSE LEVEL   A JOURNAL",1);
                 ht_text(88,117,"SELECT / DOWN RESUME   HOME/BACK EXIT",1);
                 char test[64];
-                ht_text(88,133,"AI + SIMD + NEAREST CAMERA",1);
+                snprintf(test,sizeof(test),"B/UP GRAPHICS: %s",ht_camera_labels[ht_camera_mode]);
+                ht_text(88,133,test,1);
                 if(!ht_simd_ready) {
                     snprintf(test,sizeof(test),"PACK FALLBACK: %s",ht_simd_reason);ht_text(88,148,test,1);
                 } else if(!ht_expanded_ready) {
