@@ -313,19 +313,20 @@ __attribute__((visibility("default"))) void app_main(void) {
        !video || video->api_version!=T5_VIDEO_API_VERSION ||
        !HT_HAS(video,t5_video_api_v1,start_format) || !video->backbuffer ||
        !video->can_submit || !video->submit || !video->stop) return;
-    uint8_t *memory=(uint8_t *)app->psram_alloc(HT_MEMORY+HT_PACKED_BYTES+31u);
-    if(!memory) { ht_log("Hollow Trail: scenery cache PSRAM unavailable"); return; }
+    uint8_t *memory=(uint8_t *)app->psram_alloc(HT_MEMORY+HT_NATIVE_MEMORY+HT_PACKED_BYTES+31u);
+    if(!memory) { ht_log("Hollow Trail: scenery/native-raster PSRAM unavailable"); return; }
+    uint8_t *arena=(uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u);
     uint8_t *staging=(uint8_t *)app->psram_alloc(HT_PACKED_BYTES);
     if(!staging) ht_log("Hollow Trail: packed staging unavailable; using direct packing");
     bool started=false,display_initialized=false,display_reading=false;
-    ht_reader_bitmap=(uint8_t *)(((uintptr_t)memory+HT_MEMORY+31u)&~(uintptr_t)15u);
+    ht_reader_bitmap=arena+HT_MEMORY+HT_NATIVE_MEMORY;
     t5_video_surface_v1 surface={0};
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(false);
     ht_math=t5_math_get_api(T5_MATH_API_VERSION);
     if(ht_math && (ht_math->api_version!=T5_MATH_API_VERSION || ht_math->struct_size<sizeof(*ht_math) ||
                    !ht_math->add_s16 || !ht_math->sub_s16 || !ht_math->copy_bytes || !ht_math->fill_bytes)) ht_math=NULL;
     ht_pad_owned=ht_input_rearm=ht_pad_fault=false; debug_select=debug_jump=false; ht_pad_source=-1; ht_pad_device=0;
-    ht_acquire_pad(); ht_acquire_reader(); ht_bind((uint8_t *)(((uintptr_t)memory+15u)&~(uintptr_t)15u));
+    ht_acquire_pad(); ht_acquire_reader(); ht_bind(arena); ht_bind_native(arena);
     ht_render_clock=app->millis;
     if(!ht_start_video(video,&surface)) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
@@ -389,7 +390,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
     ht_fps_reset(&ht_fps,ht_perf.start);
-    ht_log("Hollow Trail 1.1.32: nearest camera baseline; rolling 10-second FPS");
+    ht_log("Hollow Trail 1.1.32: native 960x540 A/B + Forward-X cutscenes; rolling 10-second FPS");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
