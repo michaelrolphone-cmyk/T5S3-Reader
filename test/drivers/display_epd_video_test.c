@@ -8,12 +8,18 @@ static unsigned starts, stops, submits;
 static bool pending;
 static bool incompatible;
 static uint32_t frames;
-static uint8_t pixels[64800];
+static uint8_t pixels[129600];
 static bool start_video(t5_video_surface_v1 *out) {
     ++starts;
     *out = (t5_video_surface_v1){960, 540, 120, T5_VIDEO_PIXEL_MONO_1BPP_MSB,
                                   T5_VIDEO_FLAG_ONE_IS_BLACK};
     if (incompatible) out->width = 1;
+    return true;
+}
+static bool start_format(t5_video_surface_v1 *out, uint8_t format) {
+    if (!start_video(out)) return false;
+    out->pixel_format = format;
+    out->stride_bytes = format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB ? 240 : 120;
     return true;
 }
 static uint8_t *buffer(size_t *bytes) { *bytes = sizeof(pixels); return pixels; }
@@ -28,8 +34,10 @@ static bool is_pending(void) { return pending; }
 static uint32_t frame_counter(void) { return frames; }
 static void stop_video(void) { ++stops; pending = false; }
 static const t5_video_api_v1 video_api = {
-    T5_VIDEO_API_VERSION, sizeof(t5_video_api_v1), start_video, buffer,
-    can_submit, submit_video, is_pending, frame_counter, stop_video
+    .api_version = T5_VIDEO_API_VERSION, .struct_size = sizeof(t5_video_api_v1),
+    .start = start_video, .backbuffer = buffer, .can_submit = can_submit,
+    .submit = submit_video, .pending = is_pending, .frame_counter = frame_counter,
+    .stop = stop_video, .start_format = start_format
 };
 const t5_video_api_v1 *t5_video_get_api(uint32_t version) {
     return version == T5_VIDEO_API_VERSION ? &video_api : NULL;
@@ -60,4 +68,16 @@ int main(void) {
     incompatible = true;
     assert(!output->acquire(NULL, RISC_DISPLAY_FORMAT_MONO1, &frame));
     assert(stops == 2 && driver->quiesce());
+    incompatible = false;
+    assert(driver->start(NULL, 0));
+    assert(output->acquire(NULL, RISC_DISPLAY_FORMAT_MONO1, &frame));
+    assert(!output->acquire(NULL, RISC_DISPLAY_FORMAT_GRAY2, &frame));
+    output->release(NULL, frame.frame);
+    assert(output->acquire(NULL, RISC_DISPLAY_FORMAT_GRAY2, &frame));
+    assert(frame.pixel_format == RISC_DISPLAY_FORMAT_GRAY2 && frame.stride_bytes == 240);
+    output->release(NULL, frame.frame);
+    assert(output->acquire(NULL, RISC_DISPLAY_FORMAT_MONO1, &frame));
+    assert(frame.pixel_format == RISC_DISPLAY_FORMAT_MONO1 && frame.stride_bytes == 120);
+    output->release(NULL, frame.frame);
+    assert(driver->quiesce());
 }

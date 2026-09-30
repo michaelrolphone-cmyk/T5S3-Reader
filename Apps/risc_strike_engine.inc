@@ -1,6 +1,7 @@
 #include "T5AppApi.h"
 #include "T5HardwareTakeover.h"
 #include "display_output_client.h"
+#include "epd_dither.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -8,10 +9,10 @@
 #include <stdio.h>
 #include <string.h>
 
-#define FPS_LOGICAL_W 540
-#define FPS_LOGICAL_H 960
-#define FPS_VIEW_TOP 74
-#define FPS_VIEW_BOTTOM 798
+#define FPS_LOGICAL_W 960
+#define FPS_LOGICAL_H 540
+#define FPS_VIEW_TOP 52
+#define FPS_VIEW_BOTTOM 460
 #define FPS_VIEW_H (FPS_VIEW_BOTTOM - FPS_VIEW_TOP)
 #define FPS_HORIZON (FPS_VIEW_TOP + FPS_VIEW_H / 2)
 #define FPS_TARGET_FRAME_MS 33u
@@ -140,62 +141,56 @@ static void fps_log(const char *message) {
     }
 }
 
-/* The video surface is physical landscape 960x540. The game uses the same
- * portrait mapping as the model viewer and GameBoy:
- * logical (x,y) -> panel (y, 539-x). */
-static void fps_pixel(uint8_t *buffer, int x, int y, bool black) {
+/* The video surface and game are both physical landscape 960x540.
+ * Packed 2-bit pixels encode white, light gray, dark gray and black. */
+static void fps_tone_pixel(uint8_t *buffer, int x, int y, uint8_t tone) {
     if (!buffer || x < 0 || y < 0 || x >= FPS_LOGICAL_W || y >= FPS_LOGICAL_H) return;
-    const int panel_x = y;
-    const int panel_y = (FPS_LOGICAL_W - 1) - x;
-    const size_t offset =
-        (size_t)panel_y * g_surface.stride_bytes + (size_t)(panel_x >> 3);
-    const uint8_t mask = (uint8_t)(0x80u >> (panel_x & 7));
-    if (black) buffer[offset] |= mask;
-    else buffer[offset] &= (uint8_t)~mask;
+    if (g_surface.pixel_format == DISPLAY_CLIENT_MONO1) {
+        size_t offset=(size_t)y*g_surface.stride_bytes+(unsigned)x/8u;
+        uint8_t mask=(uint8_t)(0x80u>>(x&7));
+        bool black=epd_dither_black((uint8_t)((tone&3u)*85u),(unsigned)x,(unsigned)y);
+        buffer[offset]=(uint8_t)((buffer[offset]&~mask)|(black?mask:0u));
+        return;
+    }
+    const size_t offset = (size_t)y * g_surface.stride_bytes + (size_t)(x >> 2);
+    const int shift = 6 - ((x & 3) * 2);
+    buffer[offset] = (uint8_t)((buffer[offset] & ~(3u << shift)) |
+                               ((tone & 3u) << shift));
+}
+
+static void fps_pixel(uint8_t *buffer, int x, int y, bool black) {
+    fps_tone_pixel(buffer, x, y, black ? 3u : 0u);
+}
+
+static void fps_tone_vspan(uint8_t *buffer, int x, int y0, int y1, uint8_t tone) {
+    if (!buffer || x < 0 || x >= FPS_LOGICAL_W || y1 < 0 || y0 >= FPS_LOGICAL_H) return;
+    y0 = fps_max_i(y0, 0);
+    y1 = fps_min_i(y1, FPS_LOGICAL_H - 1);
+    if (y0 > y1) return;
+    if (g_surface.pixel_format == DISPLAY_CLIENT_MONO1) {
+        const uint8_t mask=(uint8_t)(0x80u>>(x&7));
+        uint8_t values[8];
+        for(unsigned y=0;y<8;++y)
+            values[y]=epd_dither_black((uint8_t)((tone&3u)*85u),(unsigned)x,y)?mask:0;
+        uint8_t *row=buffer+(size_t)y0*g_surface.stride_bytes+(x>>3);
+        for(int y=y0;y<=y1;++y,row+=g_surface.stride_bytes)
+            *row=(uint8_t)((*row&~mask)|values[y&7]);
+        return;
+    }
+    const int shift = 6 - ((x & 3) * 2);
+    const uint8_t mask = (uint8_t)(3u << shift);
+    const uint8_t value = (uint8_t)((tone & 3u) << shift);
+    uint8_t *row = buffer + (size_t)y0 * g_surface.stride_bytes + (x >> 2);
+    for (int y = y0; y <= y1; ++y, row += g_surface.stride_bytes)
+        *row = (uint8_t)((*row & ~mask) | value);
 }
 
 static void fps_vspan(uint8_t *buffer, int x, int y0, int y1) {
-    if (x < 0 || x >= FPS_LOGICAL_W || y1 < 0 || y0 >= FPS_LOGICAL_H) return;
-    y0 = fps_max_i(y0, 0);
-    y1 = fps_min_i(y1, FPS_LOGICAL_H - 1);
-    if (y0 > y1) return;
-
-    uint8_t *row = buffer +
-        (size_t)((FPS_LOGICAL_W - 1) - x) * g_surface.stride_bytes;
-    const int first_byte = y0 >> 3;
-    const int last_byte = y1 >> 3;
-    const uint8_t first_mask = (uint8_t)(0xffu >> (y0 & 7));
-    const uint8_t last_mask = (uint8_t)(0xffu << (7 - (y1 & 7)));
-
-    if (first_byte == last_byte) {
-        row[first_byte] |= (uint8_t)(first_mask & last_mask);
-        return;
-    }
-    row[first_byte] |= first_mask;
-    for (int byte = first_byte + 1; byte < last_byte; ++byte) row[byte] = 0xffu;
-    row[last_byte] |= last_mask;
+    fps_tone_vspan(buffer, x, y0, y1, 3u);
 }
 
 static void fps_clear_vspan(uint8_t *buffer, int x, int y0, int y1) {
-    if (x < 0 || x >= FPS_LOGICAL_W || y1 < 0 || y0 >= FPS_LOGICAL_H) return;
-    y0 = fps_max_i(y0, 0);
-    y1 = fps_min_i(y1, FPS_LOGICAL_H - 1);
-    if (y0 > y1) return;
-
-    uint8_t *row = buffer +
-        (size_t)((FPS_LOGICAL_W - 1) - x) * g_surface.stride_bytes;
-    const int first_byte = y0 >> 3;
-    const int last_byte = y1 >> 3;
-    const uint8_t first_mask = (uint8_t)(0xffu >> (y0 & 7));
-    const uint8_t last_mask = (uint8_t)(0xffu << (7 - (y1 & 7)));
-
-    if (first_byte == last_byte) {
-        row[first_byte] &= (uint8_t)~(first_mask & last_mask);
-        return;
-    }
-    row[first_byte] &= (uint8_t)~first_mask;
-    for (int byte = first_byte + 1; byte < last_byte; ++byte) row[byte] = 0x00u;
-    row[last_byte] &= (uint8_t)~last_mask;
+    fps_tone_vspan(buffer, x, y0, y1, 0u);
 }
 
 static void fps_view_vspan(uint8_t *buffer, int x, int y0, int y1) {
@@ -447,34 +442,31 @@ static void fps_fire(uint32_t now) {
     }
 }
 
+/* Material and lighting are separate. Wall textures can supply a different
+ * base tone later without changing the directional lighting calculation. */
+static uint8_t fps_wall_material_tone(int map_x, int map_y,
+                                      float wall_hit, bool side) {
+    (void)map_x;
+    (void)map_y;
+    (void)wall_hit;
+    (void)side;
+    return 2u;
+}
+
+static uint8_t fps_lit_tone(uint8_t material, int light) {
+    return (uint8_t)fps_max_i(0, fps_min_i(3, (int)material + light));
+}
+
+static int fps_wall_light(bool side, int step_x, int step_y) {
+    /* A fixed light from the northwest illuminates faces by normal. */
+    return side ? (step_y > 0 ? -1 : 0) : (step_x > 0 ? 0 : 1);
+}
+
 static void fps_draw_wall_column(uint8_t *buffer, int x, int y0, int y1,
-                                 float distance, int texture, bool side) {
+                                 uint8_t tone) {
     y0 = fps_max_i(y0, FPS_VIEW_TOP);
     y1 = fps_min_i(y1, FPS_VIEW_BOTTOM);
-    if (y0 > y1) return;
-    fps_clear_vspan(buffer, x, y0, y1);
-
-    if (distance < 1.35f) {
-        for (int y = y0; y <= y1; ++y) {
-            const bool mortar = ((y + texture * 3) & 31) < 2;
-            const bool seam = texture == 0;
-            if (!mortar && !seam) fps_pixel(buffer, x, y, true);
-        }
-    } else if (distance < 3.4f) {
-        for (int y = y0; y <= y1; ++y) {
-            const bool black = ((((y >> 3) + (texture >> 1) + (side ? 1 : 0)) & 1) == 0);
-            if (black) fps_pixel(buffer, x, y, true);
-        }
-    } else if (distance < 6.5f) {
-        for (int y = y0; y <= y1; y += 3) {
-            if ((((y >> 3) + texture + (side ? 1 : 0)) & 1) == 0)
-                fps_pixel(buffer, x, y, true);
-        }
-        fps_pixel(buffer, x, y0, true);
-        fps_pixel(buffer, x, y1, true);
-    } else {
-        for (int y = y0; y <= y1; y += 6) fps_pixel(buffer, x, y, true);
-    }
+    if (y0 <= y1) fps_tone_vspan(buffer, x, y0, y1, tone);
 }
 
 static void fps_cast_walls(uint8_t *buffer) {
@@ -532,18 +524,16 @@ static void fps_cast_walls(uint8_t *buffer) {
         const int y0 = FPS_HORIZON - line_height / 2;
         const int y1 = FPS_HORIZON + line_height / 2;
 
-        const float wall_hit = side
-            ? g_player_x + distance * ray_x
-            : g_player_y + distance * ray_y;
-        const int wall_cell = (int)wall_hit;
-        int texture = (int)((wall_hit - (float)wall_cell) * 8.0f);
-        if (texture < 0) texture = -texture;
-        texture &= 7;
-
-        fps_draw_wall_column(buffer, x, y0, y1, distance, texture, side);
+        const float wall_hit = side ? g_player_x + distance * ray_x
+                                    : g_player_y + distance * ray_y;
+        const uint8_t material = fps_wall_material_tone(map_x, map_y,
+                                                         wall_hit, side);
+        const uint8_t tone = fps_lit_tone(material,
+            fps_wall_light(side, step_x, step_y));
+        fps_draw_wall_column(buffer, x, y0, y1, tone);
         g_depth[x] = distance;
         if (x + 1 < FPS_LOGICAL_W) {
-            fps_draw_wall_column(buffer, x + 1, y0, y1, distance, texture, side);
+            fps_draw_wall_column(buffer, x + 1, y0, y1, tone);
             g_depth[x + 1] = distance;
         }
     }
@@ -649,20 +639,42 @@ static void fps_draw_enemies(uint8_t *buffer, uint32_t now) {
     }
 }
 
+static void fps_draw_ground(uint8_t *buffer) {
+    /* The same fine dispersed dots used in the first wall-shading preview.
+     * They are fixed to display pixels so the 1-pixel pattern cannot crawl
+     * between video frames. Wall lighting remains independent of materials. */
+    static const uint8_t dots[8][8] = {
+        {41, 8,52, 7,45,15,47, 4},
+        {18,35,27,60,28,55,19,57},
+        {54, 1,49, 9,62, 3,40,14},
+        {16,56,21,53,20,38,25,43},
+        {59,12,42, 6,39,10,34, 5},
+        {24,33,17,46,31,50,29,61},
+        {36, 2,58,11,63, 0,51,13},
+        {26,44,30,37,22,32,23,48}
+    };
+    for (int y = FPS_HORIZON + 1; y <= FPS_VIEW_BOTTOM; ++y) {
+        uint8_t *row = buffer + (size_t)y * g_surface.stride_bytes;
+        if (g_surface.pixel_format == DISPLAY_CLIENT_MONO1) {
+            uint8_t bits=0;
+            for(unsigned x=0;x<8;++x)
+                bits=(uint8_t)((bits<<1)|epd_dither_black(85,x,(unsigned)y));
+            memset(row,bits,g_surface.stride_bytes);
+        } else memset(row, 0x55, g_surface.stride_bytes); /* light-gray ground */
+        for (int x = 0; x < FPS_LOGICAL_W; ++x)
+            if (dots[y & 7][x & 7] < 20u)
+                fps_tone_pixel(buffer, x, y, 3u);
+    }
+}
+
 static void fps_draw_world(uint8_t *buffer, uint32_t now) {
-    /* Minimal perspective grid keeps the 1-bit floor readable without
-     * obscuring enemies or adding a second framebuffer. */
+    fps_draw_ground(buffer);
     fps_hline(buffer, 0, FPS_LOGICAL_W - 1, FPS_HORIZON);
-    static const int floor_rows[] = {FPS_HORIZON + 42, FPS_HORIZON + 96,
-                                     FPS_HORIZON + 166, FPS_HORIZON + 252,
-                                     FPS_VIEW_BOTTOM};
-    for (unsigned i = 0; i < sizeof(floor_rows) / sizeof(floor_rows[0]); ++i)
-        fps_hline(buffer, 0, FPS_LOGICAL_W - 1, floor_rows[i]);
-    for (int x = 0; x <= FPS_LOGICAL_W; x += 90)
-        fps_line(buffer, FPS_LOGICAL_W / 2, FPS_HORIZON, x, FPS_VIEW_BOTTOM);
 
     fps_cast_walls(buffer);
     fps_draw_enemies(buffer, now);
+    fps_text(buffer, 22, 14, "RISC STRIKE", 2);
+    fps_hline(buffer, 0, FPS_LOGICAL_W - 1, FPS_VIEW_TOP - 1);
 
     const int cx = FPS_LOGICAL_W / 2;
     const int cy = FPS_HORIZON;
@@ -671,77 +683,71 @@ static void fps_draw_world(uint8_t *buffer, uint32_t now) {
     fps_vspan(buffer, cx, cy - 14, cy - 4);
     fps_vspan(buffer, cx, cy + 4, cy + 14);
 
-    /* Blocky first-person weapon silhouette. */
-    fps_rect(buffer, cx - 18, FPS_VIEW_BOTTOM - 58, 36, 58);
-    fps_rect(buffer, cx - 8, FPS_VIEW_BOTTOM - 94, 16, 40);
-    fps_rect(buffer, cx - 4, FPS_VIEW_BOTTOM - 108, 8, 16);
+    /* Small stepped silhouette stays below the aiming reticle. */
+    fps_rect(buffer, cx - 30, FPS_VIEW_BOTTOM - 32, 60, 32);
+    fps_rect(buffer, cx - 14, FPS_VIEW_BOTTOM - 58, 28, 30);
+    fps_rect(buffer, cx - 5, FPS_VIEW_BOTTOM - 72, 10, 18);
     if (!fps_time_reached(now, g_muzzle_until_ms)) {
-        fps_line(buffer, cx, FPS_VIEW_BOTTOM - 112, cx - 20, FPS_VIEW_BOTTOM - 140);
-        fps_line(buffer, cx, FPS_VIEW_BOTTOM - 112, cx + 20, FPS_VIEW_BOTTOM - 140);
-        fps_line(buffer, cx - 20, FPS_VIEW_BOTTOM - 140, cx, FPS_VIEW_BOTTOM - 132);
-        fps_line(buffer, cx + 20, FPS_VIEW_BOTTOM - 140, cx, FPS_VIEW_BOTTOM - 132);
+        fps_line(buffer, cx, FPS_VIEW_BOTTOM - 78, cx - 20, FPS_VIEW_BOTTOM - 105);
+        fps_line(buffer, cx, FPS_VIEW_BOTTOM - 78, cx + 20, FPS_VIEW_BOTTOM - 105);
+        fps_hline(buffer, cx - 20, cx + 20, FPS_VIEW_BOTTOM - 105);
     }
 }
 
 static void fps_draw_hud(uint8_t *buffer, uint32_t now) {
     char line[72];
-    fps_frame(buffer, 8, 814, FPS_LOGICAL_W - 16, 136);
-    fps_text(buffer, 20, 826, "RISC STRIKE", 2);
+    fps_frame(buffer, 8, 468, FPS_LOGICAL_W - 16, 64);
+    fps_text(buffer, 22, 480, "RISC STRIKE", 2);
     snprintf(line, sizeof(line), "HEALTH %d", g_health);
-    fps_text(buffer, 20, 860, line, 2);
+    fps_text(buffer, 290, 480, line, 2);
     snprintf(line, sizeof(line), "TARGETS %d  SCORE %lu",
              fps_alive_count(), (unsigned long)g_score);
-    fps_text(buffer, 20, 894, line, 2);
-    fps_text(buffer, 20, 928, "A FIRE  B+L/R STRAFE  HOLD B EXIT", 1);
-
-    if (!fps_time_reached(now, g_damage_until_ms)) {
+    fps_text(buffer, 548, 480, line, 2);
+    fps_hline(buffer, 18, 940, 508);
+    fps_text(buffer, 22, 515, "A FIRE     B + D-PAD STRAFE     HOLD B EXIT", 1);
+    if (!fps_time_reached(now, g_damage_until_ms))
         fps_frame(buffer, 2, FPS_VIEW_TOP + 2, FPS_LOGICAL_W - 4,
                   FPS_VIEW_BOTTOM - FPS_VIEW_TOP - 4);
-        fps_frame(buffer, 6, FPS_VIEW_TOP + 6, FPS_LOGICAL_W - 12,
-                  FPS_VIEW_BOTTOM - FPS_VIEW_TOP - 12);
-    }
-
     if (g_back_holding) {
         const uint32_t held = now - g_back_hold_start_ms;
         const int width = (int)fps_min_i((int)(held * 180u / FPS_EXIT_HOLD_MS), 180);
-        fps_frame(buffer, 348, 924, 180, 16);
-        if (width > 2) fps_rect(buffer, 350, 926, width - 2, 12);
+        fps_frame(buffer, 756, 512, 180, 14);
+        if (width > 2) fps_rect(buffer, 758, 514, width - 2, 10);
     }
 }
 
 static void fps_draw_title(uint8_t *buffer) {
-    fps_frame(buffer, 20, 86, FPS_LOGICAL_W - 40, 788);
-    fps_text(buffer, 72, 142, "RISC STRIKE", 5);
-    fps_text(buffer, 126, 226, "3D FIRST PERSON SHOOTER", 2);
-
-    /* Stylized corridor preview. */
-    fps_frame(buffer, 86, 306, 368, 304);
-    fps_line(buffer, 86, 306, 220, 410);
-    fps_line(buffer, 454, 306, 320, 410);
-    fps_line(buffer, 86, 610, 220, 506);
-    fps_line(buffer, 454, 610, 320, 506);
-    fps_frame(buffer, 220, 410, 100, 96);
-    fps_rect(buffer, 252, 432, 36, 74);
-    fps_hline(buffer, 80, 460, 458);
-    fps_vspan(buffer, 270, 438, 478);
-    fps_hline(buffer, 250, 290, 458);
-
-    fps_text(buffer, 144, 660, "A  START / FIRE", 2);
-    fps_text(buffer, 96, 704, "D-PAD  MOVE / TURN", 2);
-    fps_text(buffer, 66, 748, "B + LEFT/RIGHT  STRAFE", 2);
-    fps_text(buffer, 120, 792, "HOLD B  EXIT", 2);
-    fps_text(buffer, 174, 842, "VERSION 1.0.0", 1);
+    fps_frame(buffer, 20, 20, 920, 500);
+    fps_frame(buffer, 26, 26, 908, 488);
+    fps_text(buffer, 265, 64, "RISC STRIKE", 6);
+    fps_hline(buffer, 90, 870, 128);
+    fps_text(buffer, 291, 148, "3D FIRST PERSON SHOOTER", 2);
+    fps_frame(buffer, 292, 206, 376, 166);
+    fps_line(buffer, 292, 206, 402, 248);
+    fps_line(buffer, 668, 206, 558, 248);
+    fps_line(buffer, 292, 371, 402, 330);
+    fps_line(buffer, 668, 371, 558, 330);
+    fps_frame(buffer, 402, 248, 156, 82);
+    fps_rect(buffer, 466, 266, 28, 64);
+    fps_text(buffer, 112, 414, "A  START / FIRE", 2);
+    fps_text(buffer, 390, 414, "D-PAD  MOVE / TURN", 2);
+    fps_text(buffer, 112, 460, "B + LEFT/RIGHT  STRAFE", 2);
+    fps_text(buffer, 580, 460, "HOLD B  EXIT", 2);
+    fps_text(buffer, 817, 485, "V1.0.1", 1);
 }
 
 static void fps_draw_end(uint8_t *buffer, bool won) {
-    fps_frame(buffer, 24, 130, FPS_LOGICAL_W - 48, 650);
-    fps_text(buffer, won ? 102 : 132, 220, won ? "LEVEL CLEAR" : "GAME OVER", 5);
+    fps_frame(buffer, 40, 36, FPS_LOGICAL_W - 80, 468);
+    fps_frame(buffer, 46, 42, FPS_LOGICAL_W - 92, 456);
+    fps_text(buffer, won ? 283 : 330, 102,
+             won ? "LEVEL CLEAR" : "GAME OVER", 5);
     char line[48];
     snprintf(line, sizeof(line), "SCORE %lu", (unsigned long)g_score);
-    fps_text(buffer, 156, 346, line, 3);
-    fps_text(buffer, 128, 500, "A  PLAY AGAIN", 3);
-    fps_text(buffer, 158, 568, "B  EXIT", 3);
-    fps_text(buffer, 92, 706, won ? "ALL TARGETS ELIMINATED" : "THE TARGETS GOT YOU", 2);
+    fps_text(buffer, 370, 210, line, 3);
+    fps_text(buffer, 330, 300, "A  PLAY AGAIN", 3);
+    fps_text(buffer, 388, 360, "B  EXIT", 2);
+    fps_text(buffer, 280, 440,
+             won ? "ALL TARGETS ELIMINATED" : "THE TARGETS GOT YOU", 2);
 }
 
 static bool fps_render(uint32_t now) {
@@ -818,17 +824,17 @@ static bool fps_update_input(uint32_t buttons, uint32_t down,
 
 static void fps_show_video_error(void) {
     if (g_surface.width != 960u || g_surface.height != 540u ||
-        g_surface.stride_bytes < 120u ||
-        g_surface.pixel_format != DISPLAY_CLIENT_MONO1) {
+        g_surface.stride_bytes < 240u ||
+        g_surface.pixel_format != DISPLAY_CLIENT_GRAY2) {
         return;
     }
     size_t bytes = 0;
     uint8_t *buffer = g_video->backbuffer(&bytes);
     if (!buffer || bytes < (size_t)g_surface.stride_bytes * g_surface.height) return;
     memset(buffer, 0x00, bytes);
-    fps_text(buffer, 50, 350, "RISC STRIKE", 4);
-    fps_text(buffer, 54, 430, "UNSUPPORTED VIDEO SURFACE", 2);
-    fps_text(buffer, 114, 500, "B  EXIT", 2);
+    fps_text(buffer, 280, 150, "RISC STRIKE", 4);
+    fps_text(buffer, 245, 260, "UNSUPPORTED VIDEO SURFACE", 2);
+    fps_text(buffer, 390, 340, "B  EXIT", 2);
     if (g_video->can_submit()) (void)g_video->submit(0, g_surface.height);
 }
 
@@ -853,14 +859,15 @@ __attribute__((visibility("default"))) void app_main(void) {
     if (can_configure_back) g_app->set_back_exits_app(false);
 
     memset(&g_surface, 0, sizeof(g_surface));
-    if (!g_video->start(&g_surface)) {
+    if (!g_video->start_format ||
+        !g_video->start_format(&g_surface, DISPLAY_CLIENT_GRAY2)) {
         if (can_configure_back) g_app->set_back_exits_app(true);
         return;
     }
 
     if (g_surface.width != 960u || g_surface.height != 540u ||
-        g_surface.stride_bytes != 120u ||
-        g_surface.pixel_format != DISPLAY_CLIENT_MONO1 ||
+        g_surface.stride_bytes != 240u ||
+        g_surface.pixel_format != DISPLAY_CLIENT_GRAY2 ||
         (g_surface.flags & DISPLAY_CLIENT_ONE_IS_BLACK) == 0u) {
         fps_show_video_error();
         const uint32_t deadline = g_app->millis() + 2500u;
@@ -874,7 +881,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         return;
     }
 
-    fps_log("Risc Strike 1.0.0 started");
+    fps_log("Risc Strike 1.0.1 started");
     g_state = FPS_STATE_TITLE;
     g_prev_buttons = 0u;
     g_back_hold_start_ms = 0u;

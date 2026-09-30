@@ -19,10 +19,14 @@ extern "C" bool risc_fw_i2c_transact_v1(
       !timeout_ms || timeout_ms > RISC_FW_I2C_COMPAT_V1_MAX_TIMEOUT_MS)
     return false;
 
-  BoardT5S3::ScopedI2CLock lock;
+  const uint32_t begun = millis();
+  BoardT5S3::ScopedI2CLock lock(timeout_ms);
+  if (!lock.acquired()) return false;
+  const uint32_t waited = static_cast<uint32_t>(millis() - begun);
+  if (waited >= timeout_ms) return false;
   // Firmware's beginI2C() initializes Wire once at boot. An installable ELF
   // must never call Wire.begin(), reconfigure pins or install another driver.
-  Wire.setTimeOut(timeout_ms);
+  Wire.setTimeOut(timeout_ms - waited);
   bool ok = true;
   if (write_length) {
     Wire.beginTransmission(address);

@@ -2,11 +2,19 @@
 
 ## Status
 
-Firmware 1.3.23 retains `HalDisplay` for its own UI. Installable apps bind an
+Firmware 1.3.47 retains `HalDisplay` for its own UI. Installable apps bind an
 independently installable `display.output` provider. The first T5S3 provider,
-`display-epd-video@0.1.1`, owns the app-facing display contract and temporarily
+`display-epd-video@0.1.2`, owns the app-facing display contract and temporarily
 uses the firmware video scan service as its private physical backend. The host
 UI compatibility backend is still compiled into firmware during migration.
+
+## Master integration (September 30, 2026)
+
+Backmerged master `1ebf0138`. Preserves asynchronous boot/loading and wisp
+transitions, controller and math changes, inherited video backlight, and the
+off-screen font renderer. Detached text targets initialize their own validated
+MONO1 geometry. Firmware advances 1.3.46 → 1.3.47; Model Viewer 1.2.4 →
+1.2.5; Risc Strike 1.0.2 → 1.0.3; display provider 0.1.1 → 0.1.2.
 
 ## Layering
 
@@ -33,8 +41,10 @@ geometry, safe insets, physical dimensions when known, supported pixel formats,
 rotation support, damage alignment, presentation capabilities and timing hints.
 
 Supported initial format identifiers are MONO1, GRAY2, GRAY4, GRAY8 and RGB565.
-The current Model Viewer, Risc Strike and GameBoy renderers require the
-T5S3's 960×540 MONO1 surface. An incompatible driver fails their display
+Model Viewer and GameBoy require the T5S3's 960×540 MONO1 surface.
+Risc Strike negotiates MONO1 for dots or GRAY2 for grayscale, preserving its
+Start-button display toggle. The provider joins the previous scan before
+changing format; consumers use the actual acquired stride and buffer size. An incompatible driver fails their display
 initialization without writing to the panel.
 
 Presentation uses intent rather than panel terminology:
@@ -97,10 +107,10 @@ The next display-specific milestones are deliberately outside this slice:
 
 ## T5S3 hardware smoke test
 
-Use a firmware build from this PR at version 1.3.23. Install the complete
-`display-epd-video@0.1.1` driver package, including `driver.elf`,
+Use a firmware build from this PR at version 1.3.47. Install the complete
+`display-epd-video@0.1.2` driver package, including `driver.elf`,
 `provider-abi.v1`, `privileged-imports.v1` and `.package.json`, before opening
-any of the migrated apps. Install Model Viewer 1.2.1, Risc Strike 1.0.1 and
+any of the migrated apps. Install Model Viewer 1.2.5, Risc Strike 1.0.3 and
 GameBoy 1.3.9 from their respective PR artifacts, with their matching JSON
 manifests. The GameBoy artifact is produced by its companion PR #25.
 

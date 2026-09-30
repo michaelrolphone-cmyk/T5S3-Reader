@@ -24,7 +24,8 @@ static bool get_info(void *context, risc_display_info_v1 *out) {
     out->struct_size = sizeof(*out);
     out->width = 960;
     out->height = 540;
-    out->supported_formats = RISC_DISPLAY_FORMAT_BIT(RISC_DISPLAY_FORMAT_MONO1);
+    out->supported_formats = RISC_DISPLAY_FORMAT_BIT(RISC_DISPLAY_FORMAT_MONO1) |
+                             RISC_DISPLAY_FORMAT_BIT(RISC_DISPLAY_FORMAT_GRAY2);
     out->preferred_format = RISC_DISPLAY_FORMAT_MONO1;
     out->supported_rotations = RISC_DISPLAY_ROTATION_0;
     out->flags = RISC_DISPLAY_INFO_PARTIAL_DAMAGE | RISC_DISPLAY_INFO_ASYNC_PRESENT;
@@ -38,16 +39,24 @@ static bool get_info(void *context, risc_display_info_v1 *out) {
 
 static bool acquire(void *context, uint32_t format, risc_display_surface_v1 *out) {
     (void)context;
-    if (!active || !out || format != RISC_DISPLAY_FORMAT_MONO1 || held) return false;
+    if (!active || !out || held ||
+        (format != RISC_DISPLAY_FORMAT_MONO1 && format != RISC_DISPLAY_FORMAT_GRAY2)) return false;
+    const uint8_t scan_format = format == RISC_DISPLAY_FORMAT_GRAY2
+        ? T5_VIDEO_PIXEL_GRAY_2BPP_MSB : T5_VIDEO_PIXEL_MONO_1BPP_MSB;
+    if (started && scan.pixel_format != scan_format) {
+        // stop joins the outgoing scan/DMA before changing format or buffers.
+        video->stop();
+        started = false;
+    }
     if (!started) {
         video = t5_video_get_api(T5_VIDEO_API_VERSION);
         if (!video || video->api_version != T5_VIDEO_API_VERSION ||
             video->struct_size < sizeof(*video) || !video->start || !video->stop ||
             !video->backbuffer || !video->can_submit || !video->submit ||
-            !video->pending || !video->frame_counter || !video->start(&scan)) return false;
+            !video->pending || !video->frame_counter || !video->start_format || !video->start_format(&scan, scan_format)) return false;
         started = true;
-        if (scan.width != 960 || scan.height != 540 || scan.stride_bytes != 120 ||
-            scan.pixel_format != T5_VIDEO_PIXEL_MONO_1BPP_MSB ||
+        if (scan.width != 960 || scan.height != 540 || scan.stride_bytes != (format == RISC_DISPLAY_FORMAT_GRAY2 ? 240u : 120u) ||
+            scan.pixel_format != scan_format ||
             !(scan.flags & T5_VIDEO_FLAG_ONE_IS_BLACK)) {
             video->stop();
             started = false;
@@ -64,7 +73,7 @@ static bool acquire(void *context, uint32_t format, risc_display_surface_v1 *out
     held = true;
     *out = (risc_display_surface_v1){frame_serial, pixels, scan.width, scan.height,
                                       scan.stride_bytes, (uint32_t)bytes,
-                                      RISC_DISPLAY_FORMAT_MONO1};
+                                      format};
     return true;
 }
 

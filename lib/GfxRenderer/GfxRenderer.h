@@ -57,6 +57,9 @@ class GfxRenderer {
   // recording to the (non-const) FontCacheManager. Same pragmatic compromise
   // as before, concentrated in a single pointer instead of four fields.
   mutable FontCacheManager* fontCacheManager_ = nullptr;
+  // A synchronous detached page borrows bitmap resolution from its source.
+  // Do not borrow scan/recording mode, which would suppress actual drawing.
+  const GfxRenderer* glyphSource_ = nullptr;
 
   void renderChar(const EpdFontFamily& fontFamily, uint32_t cp, int* x, int* y, bool pixelState,
                   EpdFontFamily::Style style) const;
@@ -70,6 +73,18 @@ class GfxRenderer {
   explicit GfxRenderer(DisplaySurface& displaySurface)
       : display(displaySurface), renderMode(BW), orientation(Portrait), fadingFix(false) {}
   ~GfxRenderer() { freeBwBufferChunks(); }
+
+
+  // A detached target shares font registrations and glyph resolution. It never calls
+  // the display backend or owns the caller's buffer; its save-buffer vector stays empty.
+  // The source renderer/font resources must outlive this synchronous target.
+  GfxRenderer(const GfxRenderer& fonts,uint8_t *target,uint16_t width,uint16_t height)
+      : display(fonts.display),renderMode(BW),orientation(LandscapeCounterClockwise),fadingFix(false),
+        initialized(target && width && height && width % 8 == 0 &&
+                    width <= DISPLAY_SURFACE_MAX_DIMENSION && height <= DISPLAY_SURFACE_MAX_DIMENSION),
+        frameBuffer(target),panelWidth(width),panelHeight(height),visibleWidth(width),visibleHeight(height),
+        panelWidthBytes(width/8),frameBufferSize(static_cast<uint32_t>(width/8)*height),
+        fontMap(fonts.fontMap),sdCardFonts_(fonts.sdCardFonts_),glyphSource_(&fonts) {}
 
   // Setup
   // Metadata-only validation: safe before the physical display backend starts.

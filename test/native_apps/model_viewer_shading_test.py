@@ -40,6 +40,10 @@ HARNESS = r'''
 #define T5_FILE_OPEN_PATH_MAX 512
 #define T5_APP_BUTTON_BACK 1u
 #define T5_APP_BUTTON_RIGHT 8u
+#define T5_APP_BUTTON_CONFIRM 2u
+#define T5_APP_BUTTON_LEFT 4u
+#define T5_APP_BUTTON_UP 16u
+#define T5_APP_BUTTON_DOWN 32u
 typedef int t5_storage_stream_t;
 typedef struct { uint32_t buttons; bool tapped; int16_t touch_x,touch_y; bool exit_requested; } t5_app_input_t;
 static struct { uint32_t stride_bytes; } g_surface={120};

@@ -101,6 +101,7 @@ void beginI2C() {
 void initBacklight() {}
 
 void setBacklightLevel(uint8_t level) { (void)level; }
+void restoreBacklightLevel(uint8_t level) { (void)level; }
 
 void prepareSdBus() {
   pinMode(EPD47_SD_CS, OUTPUT);

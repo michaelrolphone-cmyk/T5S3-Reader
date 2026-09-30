@@ -224,8 +224,13 @@ const char* firmwareMarker() { return "RISCRTE_BOARD_ID:t5s3-pro"; }
 const BoardCapabilities& capabilities() { return kCapabilities; }
 
 ScopedI2CLock::ScopedI2CLock() {
-  xSemaphoreTakeRecursive(ensureI2CMutex(), portMAX_DELAY);
-  locked_ = true;
+  locked_ = xSemaphoreTakeRecursive(ensureI2CMutex(), portMAX_DELAY) == pdTRUE;
+}
+
+ScopedI2CLock::ScopedI2CLock(uint32_t timeoutMs) {
+  TickType_t ticks = pdMS_TO_TICKS(timeoutMs);
+  if (timeoutMs && !ticks) ticks = 1;
+  locked_ = xSemaphoreTakeRecursive(ensureI2CMutex(), ticks) == pdTRUE;
 }
 
 ScopedI2CLock::~ScopedI2CLock() {
@@ -257,6 +262,14 @@ void setBacklightLevel(uint8_t level) {
   if (!backlightInitialized) {
     initBacklight();
   }
+  ledcWrite(kBacklightPwmChannel, backlightDutyForLevel(level));
+}
+
+void restoreBacklightLevel(uint8_t level) {
+  // The guest may have attached the same GPIO to another LEDC channel.
+  ledcSetup(kBacklightPwmChannel, kBacklightPwmFrequencyHz, kBacklightPwmResolutionBits);
+  ledcAttachPin(T5S3_BL_EN, kBacklightPwmChannel);
+  backlightInitialized = true;
   ledcWrite(kBacklightPwmChannel, backlightDutyForLevel(level));
 }
 

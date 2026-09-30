@@ -38,7 +38,7 @@ EXPECTED = {
     'usb-hid': ('usb.hid', ['usb.host']),
     'usb-hid-keyboard': ('usb.hid.keyboard', ['usb.hid']),
     'usb-hid-text-input': ('input.text', ['usb.hid.keyboard']),
-    'usb-hid-gamepad': ('usb.hid.gamepad', ['usb.hid']),
+    'usb-hid-gamepad': ('usb.hid.gamepad', ['usb.hid', 'platform.clock']),
     'usb-xinput-gamepad': ('usb.xinput.gamepad', ['usb.host', 'platform.clock']),
     'usb-ui-navigation': ('input.navigation',
                           ['input.text', 'usb.hid.gamepad', 'usb.xinput.gamepad']),

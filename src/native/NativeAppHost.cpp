@@ -1,8 +1,12 @@
+#include "NativeUiFrame.h"
+#include "NativeAppMemory.h"
 #include "NativeStreamBridge.h"
 #include "NativeNetworkBridge.h"
 #include "NativeAppHost.h"
+#include "CrossPointSettings.h"
 #include "components/StartupScreen.h"
 #include "NativeNavigationInput.h"
+#include "NativeTouchInput.h"
 #include "NativeOnlineAppInstall.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
 #include "AppCatalogIndex.h"
@@ -104,6 +108,7 @@ struct Session {
   char catalogDownloadError[128]{};
   bool catalogNeedsRefresh = false;
   bool backExitsApp = true;
+  bool inputStarted = false;
   bool exiting = false;
   bool presenting = false;
 };
@@ -114,6 +119,11 @@ std::string lastLaunchError;
 bool homeRequested = false;
 bool firmwareActionPending = false;
 Session* current() { return session && !session->presenting && session->owner == xTaskGetCurrentTaskHandle() ? session : nullptr; }
+void beginAppInput(Session& s) {
+  if (s.inputStarted) return;
+  nativeTouchDiscardGestures();
+  s.inputStarted = true;
+}
 int32_t width() { auto* s = current(); return s ? s->renderer.getScreenWidth() : 0; }
 int32_t height() { auto* s = current(); return s ? s->renderer.getScreenHeight() : 0; }
 void clear() {
@@ -166,6 +176,53 @@ bool presentToneFrame(Session& s, DisplayPresentMode mode) {
   return true;
 }
 
+bool copyUiFrame(uint8_t* destination, size_t capacity, t5_app_frame_t* frame) {
+#if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
+  auto* s = current();
+  if (!s || !frame) return false;
+  constexpr size_t width = HalDisplay::DISPLAY_WIDTH, height = HalDisplay::DISPLAY_HEIGHT;
+  *frame = {width, height, width/4,
+      static_cast<uint8_t>((static_cast<unsigned>(s->renderer.getOrientation()) + (SETTINGS.flipUi ? 2u : 0u)) % 4u), 0};
+  if (!destination) return true;
+  if (capacity < width*height/4) return false;
+  auto* base = s->renderer.getFrameBuffer();
+  if (!base) return false;
+  constexpr size_t planeBytes=width*height/8;
+  auto* scratch = s->toneRects.empty() ? nullptr : static_cast<uint8_t*>(
+      heap_caps_malloc(planeBytes*2,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT));
+  if (!s->toneRects.empty() && !scratch) return false;
+  const uint8_t* saved = base;
+  const uint8_t* lsb = nullptr;
+  const uint8_t* msb = nullptr;
+  if (scratch) {
+    memcpy(scratch,base,planeBytes); saved=scratch;
+    replayTonePlane(*s,true); memcpy(scratch+planeBytes,base,planeBytes); lsb=scratch+planeBytes;
+    replayTonePlane(*s,false); msb=base;
+  }
+  for (size_t y=0;y<height;++y) {
+    const size_t from=SETTINGS.flipUi ? height-1-y : y;
+    nativeUiPackRow(destination+y*width/4,saved+from*width/8,
+        lsb ? lsb+from*width/8 : nullptr, msb ? msb+from*width/8 : nullptr,width,SETTINGS.flipUi);
+    if ((y&31u)==31u) { esp_task_wdt_reset(); vTaskDelay(1); }
+  }
+  if (scratch) { memcpy(base,scratch,planeBytes); heap_caps_free(scratch); }
+  return true;
+#else
+  (void)destination; (void)capacity; (void)frame;
+  return false;
+#endif
+}
+bool touchContact(t5_app_contact_t* out) {
+  auto* s=current();
+  if (!s || !out) return false;
+  beginAppInput(*s);
+  *out={};
+  MappedInputManager::TouchPoint point{};
+  out->down=s->input.getTouchContact(point,s->renderer);
+  if (out->down) { out->x=point.x; out->y=point.y; }
+  return true;
+}
+
 void present(bool full) {
   if (auto* s = current()) {
     esp_task_wdt_reset();
@@ -178,28 +235,42 @@ struct ServicedFrame {
   DisplayPresentMode mode;
   std::atomic<bool> done{false};
 };
-void renderServicedFrame(void* opaque) {
-  auto* frame = static_cast<ServicedFrame*>(opaque);
-  frame->renderer->displayBuffer(frame->mode);
-  frame->done.store(true, std::memory_order_release);
-  // No frame/session access after publication; this firmware task never runs ELF code.
-  vTaskDelete(nullptr);
+// A redraw used to allocate and delete an 8 KiB task stack each time. Under
+// network/USB memory pressure, creation failed after the catalog had loaded.
+// Reserve the renderer worker once in internal RAM so a redraw has no heap or
+// task-stack allocation. This worker never runs ELF code or retains a frame.
+alignas(16) StackType_t refreshStack[8192]{};
+StaticTask_t refreshTaskStorage{};
+TaskHandle_t refreshTask = nullptr;
+std::atomic<ServicedFrame*> pendingRefresh{nullptr};
+void renderServicedFrame(void*) {
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    auto* frame = pendingRefresh.load(std::memory_order_acquire);
+    if (!frame) continue;
+    frame->renderer->displayBuffer(frame->mode);
+    pendingRefresh.store(nullptr, std::memory_order_release);
+    // Publish completion last; do not touch the caller's stack frame again.
+    frame->done.store(true, std::memory_order_release);
+  }
 }
 bool presentServicedMode(DisplayPresentMode mode,
                          void (*service)(void*), void* context) {
   auto* s = current();
   if (!s || !service) return false;
   ServicedFrame frame{&s->renderer, mode};
-  s->presenting = true;
   // Panel_EPD pixel transfer can keep the calling loop task running long
   // enough to starve IDLE0. Put the blocking renderer work on the other core
   // while this owner task yields and services input/watchdog state.
-  const BaseType_t refreshCore = xPortGetCoreID() == 0 ? 1 : 0;
-  if (xTaskCreatePinnedToCore(renderServicedFrame, "app-refresh", 8192, &frame,
-                            1, nullptr, refreshCore) != pdPASS) {
-    s->presenting = false;
-    return false;
+  if (!refreshTask) {
+    const BaseType_t refreshCore = xPortGetCoreID() == 0 ? 1 : 0;
+    refreshTask = xTaskCreateStaticPinnedToCore(renderServicedFrame, "app-refresh",
+        sizeof(refreshStack), nullptr, 1, refreshStack, &refreshTaskStorage, refreshCore);
+    if (!refreshTask) return false;
   }
+  s->presenting = true;
+  pendingRefresh.store(&frame, std::memory_order_release);
+  xTaskNotifyGive(refreshTask);
   // Like present(), join the physical refresh before allowing framebuffer reuse
   // or app unload. Yield every pass; collect input on its authorized owner task.
   while (!frame.done.load(std::memory_order_acquire)) {
@@ -218,11 +289,12 @@ bool presentServiced(bool full, void (*service)(void*), void* context) {
 void setBackExitsApp(bool enabled) {
   if (auto* s = current()) s->backExitsApp = enabled;
 }
-bool poll(t5_app_input_t* out, uint32_t waitMs) {
+bool pollInput(t5_app_input_t* out, uint32_t waitMs, bool wait) {
   auto* s = current();
   if (!s || !out) return false;
+  beginAppInput(*s);
   esp_task_wdt_reset();
-  delay(std::max(1u, std::min(waitMs, 50u)));
+  if (wait) delay(std::max(1u, std::min(waitMs, 50u)));
   s->input.update();
   *out = {};
   using Button = MappedInputManager::Button;
@@ -241,14 +313,30 @@ bool poll(t5_app_input_t* out, uint32_t waitMs) {
   out->exit_requested = s->exiting;
   return true;
 }
+bool poll(t5_app_input_t* out, uint32_t waitMs) {
+  return pollInput(out, waitMs, true);
+}
+bool pollNowait(t5_app_input_t* out) {
+  return pollInput(out, 0, false);
+}
+bool takeTouchSwipe(t5_app_swipe_t* out) {
+  auto* s = current();
+  if (!s || !out || s->exiting) return false;
+  beginAppInput(*s);
+  MappedInputManager::TouchPoint start{}, end{};
+  if (!s->input.getTouchSwipe(start, end, s->renderer)) return false;
+  *out = {static_cast<int16_t>(start.x), static_cast<int16_t>(start.y),
+          static_cast<int16_t>(end.x), static_cast<int16_t>(end.y)};
+  return true;
+}
 uint32_t clockMs() { return ::millis(); }
 void* psramAlloc(size_t size) {
   if (!current() || !size) return nullptr;
-  return heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  return native_app_psram_alloc(size);
 }
 void psramFree(void* ptr) {
   if (!current() || !ptr) return;
-  heap_caps_free(ptr);
+  native_app_memory_free(ptr);
 }
 
 const char* storagePath(const char* path) {
@@ -1111,6 +1199,9 @@ void logMessage(const char* message) {
   if (!current() || !message) return;
   LOG_INF("APP", "%s", message);
 }
+uint8_t backlightLevel() {
+  return current() ? SETTINGS.backlightLevel : 0U;
+}
 void drawLabel(int32_t x, int32_t y, int32_t w, const char* value) {
   auto* s = current();
   if (!s || !value || w <= 0) return;
@@ -1154,7 +1245,12 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            psramAlloc,
                            psramFree,
                            logMessage,
-                           fillRoundedRectTone};
+                           fillRoundedRectTone,
+                           backlightLevel,
+                           takeTouchSwipe,
+                           pollNowait,
+                           copyUiFrame,
+                           touchContact};
 }  // namespace
 
 bool installRequiredNativeApp(const char* artifact, std::string& displayName,
@@ -1319,6 +1415,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     displayName = preview.display_name;
     icon = preview.icon;
   }
+  nativeTouchDiscardGestures();
   StartupScreen::app(renderer, displayName.c_str(), icon);
   // Keep the render lock through launch so an outstanding activity repaint
   // cannot overwrite this frame during package recovery or dependency loading.
@@ -1411,6 +1508,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   if (active.directory.isOpen()) active.directory.close();
   active.catalog.clear();
   session = nullptr;
+  nativeTouchDiscardGestures();
   nativeNavigationBoundary();
   nativeNavigationRetry(); // An installer may have added the navigation provider.
   nativeSettingsEnd();
@@ -1428,6 +1526,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     delay(10);
   } while (millis() - quiet < 350);
   input.clearInjectedButtonTap();
+  nativeTouchDiscardGestures();
   firmwareActionPending = nativeSettingsDispatchPendingAction(renderer, input, path);
   firmwareActionPending = firmwareActionPending || systemNavigation == NativeSystemUiNavigation::Keyboard;
   returned = true;

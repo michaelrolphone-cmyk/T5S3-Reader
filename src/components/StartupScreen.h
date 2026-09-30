@@ -5,14 +5,19 @@
 #include "FontAwesomeIcons.h"
 #include "fontIds.h"
 
-// Caller owns RenderLock. These frames are presented synchronously, before
-// entering work that can block the activity render task.
+// Caller owns RenderLock. boot() initializes the display, then animates on a
+// worker while the owner continues startup; the worker never uses the renderer.
 namespace StartupScreen {
 // boot() arms one fade for whichever normal startup destination renders first.
 // armBootFade() is idempotent and retained for Home's explicit handoff.
 void boot(GfxRenderer& renderer);
 void armBootFade();
-void finishBoot(GfxRenderer& renderer);
+// Input must not activate a destination before the loading-screen handoff.
+bool isLoading();
+// Call with RenderLock after the destination has presented its first frame.
+void destinationReady();
+// Called before the first destination render. False retains ownership for retry.
+bool finishBoot(GfxRenderer& renderer);
 
 inline void app(GfxRenderer& renderer, const char* name, const char* icon) {
   const auto mode = renderer.getRenderMode();

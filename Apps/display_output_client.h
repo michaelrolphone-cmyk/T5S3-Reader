@@ -5,7 +5,8 @@
 #include "RiscDisplayOutputV1.h"
 #include "T5ProviderCapabilityApi.h"
 
-#define DISPLAY_CLIENT_MONO1 1u
+#define DISPLAY_CLIENT_MONO1 RISC_DISPLAY_FORMAT_MONO1
+#define DISPLAY_CLIENT_GRAY2 RISC_DISPLAY_FORMAT_GRAY2
 #define DISPLAY_CLIENT_ONE_IS_BLACK 1u
 
 typedef struct {
@@ -22,12 +23,14 @@ typedef struct {
     bool (*can_submit)(void);
     bool (*submit)(uint16_t dirty_y, uint16_t dirty_height);
     void (*stop)(void);
+    bool (*start_format)(display_client_surface *surface, uint8_t format);
 } display_client_api;
 
 static const t5_provider_capability_api_v1 *display_host;
 static const risc_display_output_api_v1 *display_output;
 static t5_provider_capability_lease_t display_lease;
 static risc_display_surface_v1 display_frame;
+static uint32_t display_format;
 
 static void display_client_stop(void) {
     if (display_output && display_frame.frame)
@@ -39,8 +42,9 @@ static void display_client_stop(void) {
     display_host = NULL;
 }
 
-static bool display_client_start(display_client_surface *surface) {
-    if (!surface || display_lease) return false;
+static bool display_client_start_format(display_client_surface *surface, uint8_t format) {
+    if (!surface || display_lease ||
+        (format != DISPLAY_CLIENT_MONO1 && format != DISPLAY_CLIENT_GRAY2)) return false;
     display_host = t5_provider_capability_get_api(T5_PROVIDER_CAPABILITY_API_VERSION);
     const void *interface = NULL;
     if (!display_host || display_host->api_version != T5_PROVIDER_CAPABILITY_API_VERSION ||
@@ -61,20 +65,35 @@ static bool display_client_start(display_client_surface *surface) {
         !display_output->present_status ||
         !display_output->get_info(display_output->context, &info) ||
         info.api_version != RISC_DISPLAY_OUTPUT_API_V1 ||
-        !(info.supported_formats & RISC_DISPLAY_FORMAT_BIT(RISC_DISPLAY_FORMAT_MONO1))) {
+        !(info.supported_formats & RISC_DISPLAY_FORMAT_BIT(format))) {
         display_client_stop();
         return false;
     }
-    *surface = (display_client_surface){info.width, info.height,
-        (info.width + 7u) / 8u, DISPLAY_CLIENT_MONO1, DISPLAY_CLIENT_ONE_IS_BLACK};
+    // Negotiate a real surface now: do not fabricate a packed stride from info.
+    if (!display_output->acquire(display_output->context, format, &display_frame) ||
+        !display_frame.frame || !display_frame.pixels ||
+        display_frame.pixel_format != format || !display_frame.width || !display_frame.height ||
+        display_frame.width > 4096u || display_frame.height > 4096u ||
+        display_frame.stride_bytes < (display_frame.width * (format == DISPLAY_CLIENT_GRAY2 ? 2u : 1u) + 7u) / 8u ||
+        display_frame.stride_bytes > display_frame.size_bytes / display_frame.height) {
+        display_client_stop();
+        return false;
+    }
+    display_format = format;
+    *surface = (display_client_surface){display_frame.width, display_frame.height,
+        display_frame.stride_bytes, format, DISPLAY_CLIENT_ONE_IS_BLACK};
     return true;
+}
+
+static bool display_client_start(display_client_surface *surface) {
+    return display_client_start_format(surface, DISPLAY_CLIENT_MONO1);
 }
 
 static uint8_t *display_client_backbuffer(size_t *size_out) {
     if (size_out) *size_out = 0;
     if (!display_output) return NULL;
     if (!display_frame.frame &&
-        !display_output->acquire(display_output->context, RISC_DISPLAY_FORMAT_MONO1,
+        !display_output->acquire(display_output->context, display_format,
                                  &display_frame)) return NULL;
     if (!display_frame.frame || !display_frame.pixels) return NULL;
     if (size_out) *size_out = display_frame.size_bytes;
@@ -102,7 +121,7 @@ static bool display_client_submit(uint16_t dirty_y, uint16_t dirty_height) {
 static const display_client_api *display_client_get_api(void) {
     static const display_client_api api = {
         display_client_start, display_client_backbuffer, display_client_can_submit,
-        display_client_submit, display_client_stop
+        display_client_submit, display_client_stop, display_client_start_format
     };
     return &api;
 }

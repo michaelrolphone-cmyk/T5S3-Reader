@@ -4,7 +4,7 @@
  *
  * Consumers bind "display.output". The "display.primary" alias is reserved
  * for a future resolver. Physical provider ELFs publish "display.output".
- * MONO1 pixels are MSB first, with one denoting black. The generic runtime does not implement panel transfers,
+ * MONO1 and GRAY2 pixels are MSB first, with the maximum value denoting black. The generic runtime does not implement panel transfers,
  * waveforms, buses, DMA, backlight, refresh policy or display power sequencing.
  */
 #include <stdbool.h>

@@ -64,6 +64,9 @@ extern double __floatunsidf(unsigned int i);
 extern double __divdf3(double a, double b);
 
 static const char *TAG = "ELF_SYMBOL";
+// Ordinary app relocations receive invocation-owned allocators. Privileged
+// provider relocations retain libc/OS allocators for their independent lifetime.
+extern uintptr_t native_app_memory_symbol(const char *name);
 
 /** @brief Libc public functions symbols look-up table */
 
@@ -234,6 +237,10 @@ uintptr_t elf_find_sym_default(const char *sym_name)
         if (privileged) return privileged;
     }
 
+    if (!privileged_scope) {
+        uintptr_t app_memory = native_app_memory_symbol(sym_name);
+        if (app_memory) return app_memory;
+    }
     esp_elf_symbol_table_t *syms;
 
 #ifdef CONFIG_ELF_LOADER_LIBC_SYMBOLS

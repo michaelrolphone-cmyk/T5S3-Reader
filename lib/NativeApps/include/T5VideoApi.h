@@ -10,6 +10,7 @@ extern "C" {
 
 #define T5_VIDEO_API_VERSION 1u
 #define T5_VIDEO_PIXEL_MONO_1BPP_MSB 1u
+#define T5_VIDEO_PIXEL_GRAY_2BPP_MSB 2u
 #define T5_VIDEO_FLAG_ONE_IS_BLACK (1u << 0)
 
 typedef struct {
@@ -20,12 +21,26 @@ typedef struct {
     uint8_t flags;
 } t5_video_surface_v1;
 
+/* Last completed ~1s scan window. Durations are mean wall microseconds per
+ * scan, including preemption. prepare and residual DMA wait are parts of scan;
+ * DMA can also run concurrently with preparation. pace is separate target-rate
+ * sleep. active_rows counts converted rows, not physical rows transmitted. */
+typedef struct {
+    uint32_t samples, scan_us, prepare_us, dma_wait_us, pace_us, active_rows;
+    uint8_t scan_core, app_core;
+    uint16_t reserved;
+} t5_video_scan_stats_v1;
+
 typedef struct {
     uint32_t api_version;
     uint32_t struct_size;
 
     /* Start the fast hardware-takeover scan engine. The calling ELF must
      * export app_hardware_takeover() with T5_HARDWARE_TAKEOVER_DISPLAY.
+     * A newly started service clears unknown retained contents with the shared
+     * ~0.67s spatial wisp scrub (mono and grayscale). Repeating start on an already
+     * running, same-format service does not replay it. Startup can fail on
+     * allocation, power, scan, or deadline errors; callers must handle false.
      * On success, surface describes the physical scan-oriented framebuffer. */
     bool (*start)(t5_video_surface_v1 *surface);
 
@@ -44,6 +59,14 @@ typedef struct {
      * returns. The host also force-stops this service before restoring its
      * normal display as a final unload guard. */
     void (*stop)(void);
+
+    /* Optional additive entry point. Values in a 2bpp surface are packed
+     * most-significant pixel first: 0 white, 1 light, 2 dark, 3 black.
+     * The surface and all video calls retain the same lifetime/ownership. */
+    bool (*start_format)(t5_video_surface_v1 *surface, uint8_t pixel_format);
+    /* Optional additive 1.3.32 entry. Check struct_size before access.
+     * Copies a coherent snapshot; false when stopped or no window is ready. */
+    bool (*scan_stats)(t5_video_scan_stats_v1 *out);
 } t5_video_api_v1;
 
 const t5_video_api_v1 *t5_video_get_api(uint32_t api_version);

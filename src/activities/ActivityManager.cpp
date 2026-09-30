@@ -41,7 +41,15 @@ void ActivityManager::renderTaskLoop() {
     RenderLock lock;
     if (currentActivity) {
       HalPowerManager::Lock powerLock;
+      // Readiness is the destination's first render after startup/onEnter.
+      // Keep the loading worker alive throughout Home or reader preparation.
+      if (currentActivity->name != "Boot" && !StartupScreen::finishBoot(renderer)) {
+        xTaskNotify(renderTaskHandle, 1, eIncrement);
+        delay(1);
+        continue;
+      }
       currentActivity->render(std::move(lock));
+      if (currentActivity->name != "Boot") StartupScreen::destinationReady();
     }
     TaskHandle_t waiter = nullptr;
     taskENTER_CRITICAL(&waitingTaskMux);
@@ -59,7 +67,7 @@ void ActivityManager::loop() {
   // service immediately before this loop. Do not repeat provider/device work
   // before dispatching captured input.
   bool injectedTouchButtonTap = false;
-  if (currentActivity) {
+  if (currentActivity && !StartupScreen::isLoading()) {
     bool activityHandled = false;
     const bool globalMenuAllowed = currentActivity->supportsGlobalMenu();
 
@@ -246,12 +254,6 @@ void ActivityManager::goToBrowser() {
 }
 
 void ActivityManager::goToReader(std::string path, const DisplayPresentMode replaceRefreshMode) {
-  // A resume-reader boot has no Home render to finish the one-shot splash.
-  // Release the raw EPD video owner before constructing or entering Reader.
-  if (!currentActivity) {
-    RenderLock lock;
-    StartupScreen::finishBoot(renderer);
-  }
   replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path), replaceRefreshMode),
                   replaceRefreshMode);
 }

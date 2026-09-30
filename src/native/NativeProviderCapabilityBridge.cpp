@@ -2,6 +2,7 @@
 #include <T5AppApi.h>
 #include <NativeAppLauncher.h>
 #include "AppManifest.h"
+#include "NativeReaderTypography.h"
 #include "NativeNavigationInput.h"
 #include "runtime/drivers/InstalledProviderGraph.h"
 #include "runtime/resources/ExecutionContext.h"
@@ -20,6 +21,8 @@ struct Slot {
     Lease provider{};
     uint32_t owner = 0;
     uint32_t generation = 0;
+    bool typography=false;
+    risc_reader_typography_v1 reader{};
 };
 constexpr size_t kMaxActiveLeases = 4;
 Slot active[kMaxActiveLeases]{};
@@ -36,6 +39,17 @@ uint32_t owner() {
     return context && context->id() && context->running(context->id()) &&
                    t5_app_get_api(T5_APP_ABI_VERSION) && native_app_current_path()
                ? context->id() : 0;
+}
+
+// A built-in software provider, leased with the same declaration/owner checks
+// as installed providers. It only rasterizes into caller-owned memory.
+bool readerPage(void *context,const risc_reader_page_request_v1 *q,risc_reader_page_result_v1 *out) {
+    const uint32_t token=static_cast<uint32_t>(reinterpret_cast<uintptr_t>(context));
+    const uint32_t invocation=owner();
+    for(const auto &slot:active)
+        if(invocation && slot.owner==invocation && slot.generation==token && slot.typography)
+            return nativeReaderPage(q,out);
+    return false;
 }
 
 // The validated sidecar acts as a bounded development-time allowlist. This is
@@ -147,6 +161,14 @@ bool acquire(const char* capability, uint32_t version,
         if (!slot.owner && !available) available = &slot;
     }
     if (!available) return fail("Capability lease table full");
+    if(std::strcmp(capability,"reader.typography")==0) {
+        if(version!=RISC_READER_TYPOGRAPHY_V1) return fail("Unsupported typography API");
+        generation=generation>=UINT32_MAX-1u?1u:generation+1u;
+        available->owner=invocation; available->generation=generation; available->typography=true;
+        available->reader={RISC_READER_TYPOGRAPHY_V1,sizeof(risc_reader_typography_v1),
+            reinterpret_cast<void *>(static_cast<uintptr_t>(generation)),readerPage};
+        *token=generation; *interface=&available->reader; return true;
+    }
     char id[64]{};
     if (!findProvider(capability, version, id)) return false;
     Lease grant{};
@@ -174,8 +196,10 @@ bool release(t5_provider_capability_lease_t token) {
     if (!token || !invocation) return false;
     for (auto& slot : active) {
         if (slot.owner != invocation || slot.generation != token) continue;
+        const bool typography=slot.typography;
         Lease grant = slot.provider;
         slot = {};
+        if(typography) return true;
         // A failed quiesce may consume the grant and quarantine an ELF. Never
         // hand out a stale interface or retry a consumed generation.
         const bool released = RuntimeInstalledProviders::release(&grant);
@@ -206,9 +230,11 @@ t5_provider_capability_get_api(uint32_t version) {
 extern "C" void native_app_provider_capabilities_release(void) {
     for (auto& slot : active) {
         if (!slot.owner) continue;
+        const bool typography=slot.typography;
         Lease grant = slot.provider;
         const uint32_t token = slot.generation;
         slot = {};
+        if(typography) continue;
         (void)RuntimeInstalledProviders::release(&grant);
         nativeNavigationRelease(token);
     }

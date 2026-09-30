@@ -4,9 +4,12 @@
 #include "T5ProviderCapabilityApi.h"
 #include "T5StorageApi.h"
 #include "display_output_client.h"
+#include "T5MathApi.h"
+static const t5_math_api_v1 *g_math;
 #include "RiscTouchV1.h"
 #include "model_viewer_shading.h"
 #include "model_viewer_controls.h"
+#include "model_viewer_preview.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -34,6 +37,7 @@
 #define MV_TAP_MAX_MS 260u
 #define MV_TAP_MOVE_PX 14
 #define MV_REFINE_DELAY_MS 150u
+#define MV_MAPPED_CAMERA_BUTTONS (T5_APP_BUTTON_CONFIRM | T5_APP_BUTTON_LEFT | T5_APP_BUTTON_RIGHT | T5_APP_BUTTON_UP | T5_APP_BUTTON_DOWN)
 #define MV_PI 3.14159265358979323846f
 #define MV_TWO_PI 6.28318530717958647692f
 
@@ -103,7 +107,6 @@ static bool g_render_input_pending;
 static uint32_t g_render_service_ms;
 static mv_controller_t g_controller;
 static mv_motion_t g_motion;
-static uint32_t g_previous_pad_buttons;
 static bool g_draw_pending;
 static bool g_render_interactive;
 
@@ -767,6 +770,7 @@ static bool mv_render_service(void) {
     mv_motion_delta_t ignored;
     (void)mv_motion_step(&g_motion,held,g_app->millis(),false,&ignored);
     if (held&MV_PAD_BACK) input.exit_requested=true;
+    input.buttons=mv_controller_filter_mapped(&g_controller,input.buttons,MV_MAPPED_CAMERA_BUTTONS);
     if (input.buttons || input.exit_requested) {
         g_render_input=input;
         g_render_input_pending=true;
@@ -801,6 +805,100 @@ static uint32_t mv_render_step(bool interactive) {
            (g_model.triangle_count + budget - 1u) / budget;
 }
 
+static mv_preview_t g_preview;
+_Static_assert(MV_PREVIEW_SIDE * MV_PREVIEW_SIDE <= MV_DEPTH_COUNT,
+               "Preview depth must fit the existing PSRAM scratch buffer");
+
+static void mv_preview_release(void) {
+    mv_free(g_preview.ink);
+    memset(&g_preview,0,sizeof(g_preview));
+}
+
+static bool mv_render_mesh(uint8_t *buffer, bool interactive, bool atlas) {
+    const mv_rotation_t rotation={mv_cos(g_view.yaw),mv_sin(g_view.yaw),
+                                  mv_cos(g_view.pitch),mv_sin(g_view.pitch)};
+    mv_shade_surface_t shade={0};
+    g_render_service_ms=g_app->millis();
+    if (g_shaded) {
+        if (atlas) {
+            if (!mv_shade_begin(&shade,g_depth,MV_DEPTH_COUNT,0,0,
+                                MV_PREVIEW_SIDE,MV_PREVIEW_SIDE,1,mv_render_service)) return false;
+        } else if (!mv_shade_begin(&shade,g_depth,MV_DEPTH_COUNT,4,MV_VIEW_TOP,
+                                    MV_LOGICAL_W-8,MV_VIEW_BOTTOM-MV_VIEW_TOP+1,
+                                    interactive?2:1,mv_render_service)) return false;
+    }
+    /* Never use triangle-stride LOD on filled geometry: it opens mesh holes. */
+    const uint32_t step = g_shaded ? 1u : mv_render_step(interactive);
+    /* Eight triangles per bounded batch; pad the last batch to four vertices. */
+    const float matrix[16] __attribute__((aligned(16)))={
+        rotation.cy,rotation.sp*rotation.sy,-rotation.cp*rotation.sy,0,
+        0,rotation.cp,rotation.sp,0,
+        rotation.sy,-rotation.sp*rotation.cy,rotation.cp*rotation.cy,0, 0,0,0,1};
+    float points[24*4] __attribute__((aligned(16)));
+    float transformed[24*4] __attribute__((aligned(16)));
+    for (uint32_t first = 0; first < g_model.triangle_count;) {
+        if (!mv_render_service()) return false;
+        uint32_t batch=(g_model.triangle_count-first+step-1)/step;
+        if(batch>8) batch=8;
+        for(uint32_t j=0;j<batch;++j) {
+            const mv_triangle_t *t=&g_model.triangles[first+j*step];
+            const mv_vec3_t vertices[3]={t->a,t->b,t->c};
+            for(unsigned v=0;v<3;++v) {
+                float *p=points+(j*3+v)*4;
+                p[0]=(vertices[v].x-g_model.center.x)*g_model.normalize;
+                p[1]=(vertices[v].y-g_model.center.y)*g_model.normalize;
+                p[2]=(vertices[v].z-g_model.center.z)*g_model.normalize; p[3]=1;
+            }
+        }
+        size_t count=(batch*3+3)&~3u;
+        memset(points+batch*12,0,(count-batch*3)*4*sizeof(float));
+        bool accelerated=g_math && g_math->mat4_f32(points,matrix,transformed,count);
+        float normals[8*4] __attribute__((aligned(16)));
+        float lights[8*4] __attribute__((aligned(16)));
+        float lengths[8],diffuse[8];
+        bool batch_lighting=false;
+        if(g_shaded && accelerated) {
+            for(uint32_t j=0;j<batch;++j) {
+                const float *p=transformed+j*12;
+                mv_shade_normal((mv_shade_vertex_t){p[0],p[1],p[2]},
+                    (mv_shade_vertex_t){p[4],p[5],p[6]},(mv_shade_vertex_t){p[8],p[9],p[10]},normals+j*4);
+                lights[j*4]=-0.45f; lights[j*4+1]=0.65f;
+                lights[j*4+2]=0.61237244f; lights[j*4+3]=0;
+            }
+            batch_lighting=g_math->dot4_f32(normals,normals,lengths,batch) &&
+                           g_math->dot4_f32(normals,lights,diffuse,batch);
+        }
+        for(uint32_t j=0;j<batch;++j) {
+            const mv_triangle_t *t=&g_model.triangles[first+j*step];
+            const float *p=transformed+j*12;
+            const mv_shade_vertex_t a=accelerated?(mv_shade_vertex_t){p[0],p[1],p[2]}:mv_camera_point(t->a,&rotation);
+            const mv_shade_vertex_t b=accelerated?(mv_shade_vertex_t){p[4],p[5],p[6]}:mv_camera_point(t->b,&rotation);
+            const mv_shade_vertex_t c=accelerated?(mv_shade_vertex_t){p[8],p[9],p[10]}:mv_camera_point(t->c,&rotation);
+            const mv_shade_vertex_t pa=atlas?mv_preview_project(a):mv_screen_point(a);
+            const mv_shade_vertex_t pb=atlas?mv_preview_project(b):mv_screen_point(b);
+            const mv_shade_vertex_t pc=atlas?mv_preview_project(c):mv_screen_point(c);
+            if (g_shaded) {
+                const uint8_t density=batch_lighting?
+                    mv_shade_normal_density(normals+j*4,lengths[j],diffuse[j]):mv_shade_density(a,b,c);
+                if (atlas) {
+                    if (!mv_preview_triangle(&shade,buffer,pa,pb,pc,density)) return false;
+                } else if (!mv_shade_triangle(&shade,buffer,mv_pixel,pa,pb,pc,density)) return false;
+            } else if (atlas) {
+                mv_preview_line(buffer,pa,pb);
+                mv_preview_line(buffer,pb,pc);
+                mv_preview_line(buffer,pc,pa);
+            } else {
+                mv_line(buffer,(int)pa.x,(int)pa.y,(int)pb.x,(int)pb.y);
+                mv_line(buffer,(int)pb.x,(int)pb.y,(int)pc.x,(int)pc.y);
+                mv_line(buffer,(int)pc.x,(int)pc.y,(int)pa.x,(int)pa.y);
+            }
+        }
+
+        first+=batch*step;
+    }
+    return true;
+}
+
 static bool mv_render(bool interactive) {
     if (!g_video->can_submit()) return false;
     size_t bytes = 0;
@@ -812,42 +910,43 @@ static bool mv_render(bool interactive) {
     char info[96];
     mv_text(buffer, 14, 12, "3D MODEL VIEWER", 2);
     char filename[(MV_LOGICAL_W-28)/6+1];
-    snprintf(filename,sizeof(filename),"%s",mv_basename(g_path));
+    snprintf(filename,sizeof(filename),"%.*s",(int)sizeof(filename)-1,mv_basename(g_path));
     mv_text(buffer,14,64,filename,1);
     mv_shade_button_draw(buffer);
 
-    const mv_rotation_t rotation={mv_cos(g_view.yaw),mv_sin(g_view.yaw),
-                                  mv_cos(g_view.pitch),mv_sin(g_view.pitch)};
-    mv_shade_surface_t shade={0};
+    /* Pan/zoom is an affine change in this orthographic viewer. Rasterize the
+     * whole model once per orientation/material, then resample in bounded time
+     * per frame. Never scale an already-dithered or screen-cropped image. */
+    bool preview=interactive && (mv_motion_action(g_controller.held)&(MV_PAD_LB|MV_PAD_RB)) &&
+                 g_use_psram && !g_preview.unavailable;
     g_render_service_ms=g_app->millis();
-    if (g_shaded && !mv_shade_begin(&shade,g_depth,MV_DEPTH_COUNT,4,MV_VIEW_TOP,
-                                    MV_LOGICAL_W-8,MV_VIEW_BOTTOM-MV_VIEW_TOP+1,
-                                    interactive?2:1,mv_render_service)) return false;
-    /* Never use triangle-stride LOD on filled geometry: it opens mesh holes. */
-    const uint32_t step = g_shaded ? 1u : mv_render_step(interactive);
-    for (uint32_t i = 0; i < g_model.triangle_count; i += step) {
-        if ((i&63u)==0u && !mv_render_service()) return false;
-        const mv_triangle_t *t = &g_model.triangles[i];
-        const mv_shade_vertex_t a=mv_camera_point(t->a,&rotation);
-        const mv_shade_vertex_t b=mv_camera_point(t->b,&rotation);
-        const mv_shade_vertex_t c=mv_camera_point(t->c,&rotation);
-        const mv_shade_vertex_t pa=mv_screen_point(a), pb=mv_screen_point(b), pc=mv_screen_point(c);
-        if (g_shaded) {
-            if (!mv_shade_triangle(&shade,buffer,mv_pixel,pa,pb,pc,mv_shade_density(a,b,c))) return false;
-        } else {
-            mv_line(buffer,(int)pa.x,(int)pa.y,(int)pb.x,(int)pb.y);
-            mv_line(buffer,(int)pb.x,(int)pb.y,(int)pc.x,(int)pc.y);
-            mv_line(buffer,(int)pc.x,(int)pc.y,(int)pa.x,(int)pa.y);
+    if (preview && !g_preview.ink) {
+        g_preview.ink=(uint8_t *)mv_alloc(MV_PREVIEW_BYTES);
+        if (!g_preview.ink) {
+            g_preview.unavailable=true; /* No per-frame allocation retry storm. */
+            preview=false;             /* Exact mesh rendering remains usable. */
         }
     }
-
+    if (preview) {
+        if (!mv_preview_matches(&g_preview,g_view.yaw,g_view.pitch,g_shaded)) {
+            if (!mv_preview_clear(&g_preview,mv_render_service) ||
+                !mv_render_mesh(g_preview.ink,true,true) ||
+                !mv_preview_finish(&g_preview,g_view.yaw,g_view.pitch,g_shaded,
+                                    mv_render_service)) return false;
+        }
+        if (!mv_preview_draw(&g_preview,buffer,mv_pixel,4,MV_VIEW_TOP,
+                              MV_LOGICAL_W-8,MV_VIEW_BOTTOM-MV_VIEW_TOP+1,
+                              270.0f+g_view.pan_x,468.0f+g_view.pan_y,390.0f*g_view.zoom,
+                              mv_render_service)) return false;
+    } else if (!mv_render_mesh(buffer,interactive,false)) return false;
+    const uint32_t step = g_shaded ? 1u : mv_render_step(interactive);
     snprintf(info,sizeof(info),"%lu TRI  %s",
              (unsigned long)g_model.triangle_count,
              interactive ? "FAST" : (step == 1u ? "FULL" : "REFINED"));
     mv_text(buffer,14,894,g_status[0]?g_status:info,1);
     mv_text(buffer,14,910,"D-PAD ROTATE  LB+UP/DOWN ZOOM  RB+D-PAD PAN",1);
-    mv_text(buffer,14,926,"DRAG ROTATE  2F PAN+ZOOM",1);
-    mv_text(buffer,14,942,"DOUBLE TAP / CONFIRM RESET  BACK EXIT",1);
+    mv_text(buffer,14,926,"HOLD A: 1/4 SPEED  DRAG ROTATE  2F PAN+ZOOM",1);
+    mv_text(buffer,14,942,"DOUBLE TAP RESET  BACK EXIT",1);
 
     return g_video->submit(0, g_surface.height);
 }
@@ -1020,8 +1119,7 @@ static bool mv_handle_touch(const mv_contacts_t *prev,const mv_contacts_t *now,u
 static bool mv_buttons(const t5_app_input_t *input,uint32_t now) {
     const uint32_t held=g_controller.held;
     if(input->buttons&T5_APP_BUTTON_BACK || input->exit_requested || (held&MV_PAD_BACK)) return false;
-    const uint32_t pressed=held&~g_previous_pad_buttons;
-    g_previous_pad_buttons=held;
+    const uint32_t mapped=mv_controller_filter_mapped(&g_controller,input->buttons,MV_MAPPED_CAMERA_BUTTONS);
     mv_motion_delta_t delta;
     bool changed=mv_motion_step(&g_motion,held,now,g_video->can_submit(),&delta);
     if(changed) {
@@ -1031,13 +1129,13 @@ static bool mv_buttons(const t5_app_input_t *input,uint32_t now) {
         g_view.pan_x=mv_clampf(g_view.pan_x+delta.pan_x,-4096.0f,4096.0f);
         g_view.pan_y=mv_clampf(g_view.pan_y+delta.pan_y,-4096.0f,4096.0f);
     }
-    /* Physical buttons/keyboard remain a small-step fallback. Acquiring the
-     * raw gamepad capabilities suppresses their duplicate UI repeat stream. */
-    if(input->buttons&T5_APP_BUTTON_LEFT){g_view.yaw=mv_wrap_angle(g_view.yaw-0.012f);changed=true;}
-    if(input->buttons&T5_APP_BUTTON_RIGHT){g_view.yaw=mv_wrap_angle(g_view.yaw+0.012f);changed=true;}
-    if(input->buttons&T5_APP_BUTTON_UP){g_view.pitch=mv_wrap_angle(g_view.pitch-0.012f);changed=true;}
-    if(input->buttons&T5_APP_BUTTON_DOWN){g_view.pitch=mv_wrap_angle(g_view.pitch+0.012f);changed=true;}
-    if((input->buttons&T5_APP_BUTTON_CONFIRM) || (pressed&MV_PAD_CONFIRM)) {
+    /* Mapped input has no source/bumper information. It is a fallback only,
+     * never a second rotation/reset path alongside the raw gamepad. */
+    if(mapped&T5_APP_BUTTON_LEFT){g_view.yaw=mv_wrap_angle(g_view.yaw-0.012f);changed=true;}
+    if(mapped&T5_APP_BUTTON_RIGHT){g_view.yaw=mv_wrap_angle(g_view.yaw+0.012f);changed=true;}
+    if(mapped&T5_APP_BUTTON_UP){g_view.pitch=mv_wrap_angle(g_view.pitch-0.012f);changed=true;}
+    if(mapped&T5_APP_BUTTON_DOWN){g_view.pitch=mv_wrap_angle(g_view.pitch+0.012f);changed=true;}
+    if(mapped&T5_APP_BUTTON_CONFIRM) {
         mv_reset_view();
         memset(&g_motion,0,sizeof(g_motion));
         changed=true;
@@ -1051,6 +1149,10 @@ __attribute__((visibility("default"))) uint32_t app_hardware_takeover(void) {
 }
 
 __attribute__((visibility("default"))) void app_main(void) {
+    g_math=t5_math_get_api(T5_MATH_API_VERSION);
+    if(g_math && (g_math->api_version!=T5_MATH_API_VERSION ||
+       g_math->struct_size<sizeof(*g_math) || !g_math->mat4_f32 || !g_math->dot4_f32)) g_math=NULL;
+    memset(&g_preview,0,sizeof(g_preview));
     memset(&g_model,0,sizeof(g_model));
     memset(g_path,0,sizeof(g_path));
     g_shaded=false; g_depth=NULL; g_status[0]=0;
@@ -1059,7 +1161,6 @@ __attribute__((visibility("default"))) void app_main(void) {
     g_render_input_pending=false;
     memset(&g_controller,0,sizeof(g_controller));
     memset(&g_motion,0,sizeof(g_motion));
-    g_previous_pad_buttons=0;
     g_draw_pending=false;
     g_touch_lease=T5_PROVIDER_CAPABILITY_LEASE_INVALID;
 
@@ -1158,6 +1259,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     }
 
     mv_controller_close(&g_controller);
+    mv_preview_release();
     mv_shade_release();
     mv_touch_end();
     g_video->stop();

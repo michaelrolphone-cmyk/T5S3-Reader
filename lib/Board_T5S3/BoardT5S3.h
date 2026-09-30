@@ -15,6 +15,8 @@ const BoardCapabilities& capabilities();
 class ScopedI2CLock {
  public:
   ScopedI2CLock();
+  explicit ScopedI2CLock(uint32_t timeoutMs);
+  bool acquired() const { return locked_; }
   ~ScopedI2CLock();
 
   ScopedI2CLock(const ScopedI2CLock&) = delete;
@@ -28,6 +30,7 @@ void begin();
 void beginI2C();
 void initBacklight();
 void setBacklightLevel(uint8_t level);
+void restoreBacklightLevel(uint8_t level);
 void prepareSdBus();
 void disableGpsLora();
 void deinitForSleep();
