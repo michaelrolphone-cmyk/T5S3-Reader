@@ -1347,17 +1347,6 @@ static __attribute__((optimize("O3"))) void ht_expand_scene_native(const uint8_t
         if((y&15)==15)ht_checkpoint();
     }
 }
-static __attribute__((optimize("O3"))) void ht_reduce_scene_native(const uint8_t *src,uint8_t *dst) {
-    for(int y=0;y<HT_H;++y) {
-        const uint8_t *top=src+2*y*HT_NATIVE_W,*bottom=top+HT_NATIVE_W;
-        uint8_t *row=dst+y*HT_W;
-        for(int x=0;x<HT_W;++x) {
-            int at=2*x;
-            row[x]=(uint8_t)((top[at]+top[at+1]+bottom[at]+bottom[at+1]+2)>>2);
-        }
-        if((y&15)==15)ht_checkpoint();
-    }
-}
 #include "hollow_trail_character_pose.inc"
 static int ht_weather_floor(const ht_game *g,int screen_x);
 static void ht_character(int x,int feet,const ht_game *game) {
