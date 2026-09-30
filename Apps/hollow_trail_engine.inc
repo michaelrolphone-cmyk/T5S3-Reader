@@ -564,7 +564,7 @@ static void ht_disk(uint8_t *b,int x,int y,int r,int c) {
         ht_span(b,x-dx,x+dx,y+dy,c);
     }
 }
-#include "hollow_trail_foliage.inc"#include "hollow_trail_foliage.inc"
+#include "hollow_trail_foliage.inc"
 #include "hollow_trail_organic_draw.inc"
 static void ht_tree(uint8_t *b,int x,int base,int height,int width,uint32_t seed,int c) {
     if(ht_geometry_level==0) {ht_organic_tree(b,x,base,height,width,seed,c,true);return;}
