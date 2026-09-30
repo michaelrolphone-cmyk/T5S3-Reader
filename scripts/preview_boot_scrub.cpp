@@ -1,4 +1,4 @@
-// Host preview + endpoint invariant check for the production boot waveform.
+// Host preview + endpoint invariant check for the production display waveform.
 // c++ -std=c++17 -O2 scripts/preview_boot_scrub.cpp -o /tmp/preview-boot-scrub
 // /tmp/preview-boot-scrub OUTPUT_DIRECTORY
 #include "../src/native/NativeVideoBootScrub.h"

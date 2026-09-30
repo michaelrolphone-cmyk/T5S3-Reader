@@ -38,7 +38,7 @@ typedef struct {
     /* Start the fast hardware-takeover scan engine. The calling ELF must
      * export app_hardware_takeover() with T5_HARDWARE_TAKEOVER_DISPLAY.
      * A newly started service clears unknown retained contents with the shared
-     * ~1s spatial wisp scrub (mono and grayscale). Repeating start on an already
+     * ~0.67s spatial wisp scrub (mono and grayscale). Repeating start on an already
      * running, same-format service does not replay it. Startup can fail on
      * allocation, power, scan, or deadline errors; callers must handle false.
      * On success, surface describes the physical scan-oriented framebuffer. */
