@@ -262,3 +262,113 @@ Walking/jumping into the snag, both-sided fast approaches at multiple heights,
 other-chapter isolation, sustained pushing and landed crossing pass. Ground
 integrity (25,296 poses), 78 branch contacts, scene pace/gait selection, complete
 ten-chapter route, forest ASan+UBSan and C++ integration checks pass.
+
+## Articulated character — 1.1.30
+
+Hollow Trail **1.1.29 -> 1.1.30**, minimum firmware **1.3.37**. Branched
+from master after PR #320 merged. All activities now share a proportioned
+silhouette: profiled crown/brow/nose/chin, neck, shaped jacket with a waist and
+hem, longer legs, ankle/heel/toe contours and subdued close-view clothing seams.
+The oversized head disks and white eye cutouts are removed. Rear limbs are
+slightly quieter than the near limbs so overlapping poses remain readable.
+
+A common pose builder places hips, shoulders and contacts; integer two-bone
+joint construction supplies knees/elbows. Walking uses a planted stance that
+cancels world displacement and an elevated recovery arc. Running blends knee
+lift, torso lean, arm carriage and brief flight with actual speed. Foot heights
+follow nearby soil slopes. Ascent tucks the legs and lifts the arms; descent
+extends them for landing, whose compression follows the existing impact state.
+No physics speeds, collision sizes, terrain, camera direction or controls change.
+
+Climbing contacts follow trunk contour or ladder rungs. Ledge hands use the
+actual lip height. Rope hands follow the simulated grip with trailing feet;
+rowing palms retain the shared oar stroke. Stone/crate and tree pushing retain
+their physical contact points, brace and effort/release states. Fixed small
+pose structs, bounded contact queries and integer math add no allocations,
+textures or frame buffers.
+
+Walk/run/jump contact sheets and actual forest walking, running, tree pushing,
+climbing and seated boat scenes were visually inspected. A focused character
+regression covers walking leg lengths, planted stance in both directions,
+idle stability, jump phase changes and exact oar contact. Renderer full-frame
+references are updated for the intentional character changes; the independent
+300-view grotto geometry and cache pixel-equivalence comparisons remain intact.
+S3 build/ELF validation and source/sidecar/catalog version/hash agreement pass.
+
+### Dam waterfall and foreground detail (same unreleased 1.1.30)
+
+The reservoir wall uses a separate 88% horizontal parallax plane, anchored near
+the boat basin, between the distant valley and the 125% observer foreground.
+Buttresses have shaded side faces, wet edges, concrete courses and restrained
+fractures; the crest carries a continuous parapet/railing. Spillways have dark
+recesses and projecting lips rather than bright rectangles painted on the wall.
+
+Each waterfall has 32 irregular edge sections, a luminous central sheet,
+translucent-looking side veils, six folded ribbons and time-advected packets.
+Packet position is quadratic in age, so streaks accelerate and stretch through
+the fall. The broad central discharge meets the boat basin at its water level;
+outer chutes continue into the lower gorge behind the banks. Three feathered
+mist volumes per visible discharge blend with the wall/water, followed by broken
+expanding ripples. All draw before nearer terrain, boat and character. No
+random per-frame noise, allocations or additional frame buffers are used;
+visible bounds cull individual chutes and clip the two-pixel mist work.
+
+The two existing foreground sites retain their spacing. Fractured abutments
+use forty contour sections with small edge seams; return pipes have highlights,
+anchored brackets, bolted collars and a small tuft of bent grass at a damp seam.
+This adds depth/detail without changing terrain, traversal or scene pace.
+
+Approach, boat basin, far-bank and close foreground views were rendered and
+visually inspected. Only dam full-frame renderer references change; all other
+chapters, including the grotto boat scene, retain their reference hashes.
+S3 app build and structural validation pass; source/sidecar/catalog agree on
+1.1.30 and SHA-256 `84c9ebd3e3197eaef1e5667ca2d3635a4bb1364bbbf6041c15a56716b9989cb8`.
+Device appearance and FPS have not been measured.
+
+### Photo-guided detail in the remaining six chapters (unreleased 1.1.30)
+
+Scope: oil fields (2), railway (3), quarry (5), glasshouse (6), mountains (8)
+and settlement (9), using zero-based chapter numbers. Forest, city, grotto boat
+and dam raster references remain unchanged. Existing object sites, counts,
+terrain, movement and physical branch axes remain in place.
+
+Reference photographs reviewed for general form, not copied into game assets:
+- NPS mature saguaro: rounded stem, unequal upright arms, curved elbows and ribs:
+  https://home.nps.gov/sagu/learn/nature/saguaro.htm
+- Library of Congress pumpjack, Carol Highsmith: horsehead, walking beam,
+  bearing, pitman and counterweight:
+  https://www.loc.gov/pictures/item/2020743415/
+- Library of Congress side-view steam locomotive: boiler bands, domes,
+  running gear, spoked wheels and handrail:
+  https://www.loc.gov/item/2022647579/
+- USGS Thunder Hole granite, Alex Demas: stepped fracture planes, chipped
+  shoulders and connected joints:
+  https://www.usgs.gov/media/images/granite-outcropping-thunder-hole
+- Library of Congress White House conservatory: closely spaced glazing ribs,
+  long pane divisions and layered broad leaves:
+  https://www.loc.gov/pictures/item/96512664/
+- NPS Great Basin bristlecone: irregular trunk, exposed grain, sparse twigs
+  and needle clusters:
+  https://home.nps.gov/grba/planyourvisit/identifying-bristlecone-pines.htm
+- Library of Congress Goldfield street: overhanging eaves, recessed sash
+  windows, porch edges and weatherboard facades:
+  https://www.loc.gov/pictures/item/95508788/
+
+Implementation: 36-vertex ground stones with joined fracture planes and snow
+caps; 48-section close rock contours; 24-section rounded cactus stems with
+12-section curved unequal arms and ribs; 40-section bark/knots on existing
+alpine/glasshouse trunks, keeping branch footing geometry; 12-section leaves
+and 40-section glazing arches. Pumpjacks gain crank/pitman/bearing details;
+quarry cranes gain lattice and hooks; trains gain eight-spoke wheels, valve
+rods, boiler bands, steam domes, handrails and carriage panels. Settlement
+houses gain eaves, siding, divided sash windows, sills, porches and chimney
+caps. Foreground pipe flanges, telegraph insulators and glasshouse rivets/glass
+edges receive sparse detail. Material shapes remain bounded and world anchored;
+no runtime photographs, textures, allocations or new frame buffers.
+
+Eighteen actual scene views (three per chapter) were inspected alongside the
+reference photographs. A follow-up corrected the cactus elbows/tips from
+branch-like diagonals to the rounded upright saguaro form. Renderer references
+change only in these six chapters. Full route, existing collision/contact
+checks and cache equivalence pass; S3 build and ELF structural validation pass.
+Device appearance/FPS are not claimed.

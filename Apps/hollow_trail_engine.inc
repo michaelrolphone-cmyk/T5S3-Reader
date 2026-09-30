@@ -1313,65 +1313,9 @@ static void ht_character(int x,int feet,const ht_game *game) {
             }
         }
     }
-    if(ht_character_instrument(x,feet,game)) return;
-    if(game->traversal.mode==HT_BOAT) {
-        /* Seated on the centre thwart: planted knees, no walking stride.
-         * Hands and the single shared oar use the same rowing stroke. */
-        int stroke=ht_boat_stroke(game),f=game->facing,lean=stroke/4;
-        ht_disk(ht_scene,x+lean,feet-16,5,255);
-        ht_limb(ht_scene,x+lean,feet-11,x-2,feet-1,3,2,255);
-        ht_limb(ht_scene,x-2,feet-1,x+f*7,feet-4,2,1,255);
-        ht_limb(ht_scene,x+f*7,feet-4,x+f*10,feet+3,1,1,255);
-        ht_limb(ht_scene,x+lean,feet-10,x+5+stroke/2,feet-6,1,1,255);
-        ht_limb(ht_scene,x-2+lean,feet-10,x+3+stroke/2,feet-6,1,1,255);
-        ht_rect(ht_scene,x+lean+(f>0?1:-3),feet-17,2,1,0);
-        return;
-    }
-    if(game->traversal.mode==HT_PUSH || game->traversal.forest_push_release) {
-        /* Both hands stay against the bark while the knees compress and the
-         * rear foot braces. After release, arms withdraw and the torso rises. */
-        int load=game->traversal.forest_push,release=game->traversal.forest_push_release;
-        int pulse=load?((int)(game->ticks%20)<10?(int)(game->ticks%20):20-(int)(game->ticks%20)):0;
-        int lean=2+load/16,crouch=1+pulse/5;
-        int reach=14;
-        if(release){lean=release/2;crouch=release/4;reach=6+release;}
-        ht_disk(ht_scene,x+lean,feet-23+crouch,5,255);
-        ht_limb(ht_scene,x+lean-1,feet-18+crouch,x-3,feet-9,3,3,255);
-        ht_limb(ht_scene,x-3,feet-9,x-7,feet-5,2,2,255);
-        ht_limb(ht_scene,x-7,feet-5,x-11,feet,2,1,255);
-        ht_limb(ht_scene,x-3,feet-9,x+3,feet-5,2,2,255);
-        ht_limb(ht_scene,x+3,feet-5,x+5,feet,2,1,255);
-        ht_limb(ht_scene,x+lean,feet-17+crouch,x+8,feet-14+crouch,2,1,255);
-        ht_limb(ht_scene,x+8,feet-14+crouch,x+reach,feet-19,1,1,255);
-        ht_limb(ht_scene,x+lean-2,feet-16+crouch,x+7,feet-12+crouch,1,1,255);
-        ht_limb(ht_scene,x+7,feet-12+crouch,x+reach,feet-15,1,1,255);
-        ht_rect(ht_scene,x+lean+1,feet-24+crouch,2,1,0);
-        return;
-    }
-    if(game->traversal.mode==HT_FREE) {ht_character_walk(x,feet,game);return;}
-    int swing=game->grounded?((game->stride/700)%12-6):3;
-    int f=game->facing;
-    int effort=(game->traversal.mode==HT_ROLL || game->traversal.mode==HT_CRATE)?f*2:0;
-    int crouch=game->landing_ticks>5?2:0;
-    ht_disk(ht_scene,x+effort,feet-23+crouch,5,255);
-    ht_limb(ht_scene,x+effort,feet-18+crouch,x-f,feet-7,3,3,255);
-    ht_limb(ht_scene,x-f,feet-8,x+swing,feet,2,1,255);
-    ht_limb(ht_scene,x-f,feet-8,x-swing,feet-1,2,1,255);
-    if(game->traversal.mode==HT_LEDGE || game->traversal.mode==HT_CLIMB) {
-        ht_limb(ht_scene,x,feet-17,x+f*6,feet-28,2,1,255);
-        ht_limb(ht_scene,x-2,feet-17,x+f*4,feet-28,1,1,255);
-    } else if(game->traversal.mode==HT_ROPE) {
-        ht_limb(ht_scene,x-2,feet-17,x,feet-24,1,1,255);
-        ht_limb(ht_scene,x+2,feet-17,x,feet-24,1,1,255);
-    } else if(game->traversal.mode==HT_ROLL || game->traversal.mode==HT_CRATE) {
-        int object=game->traversal.mode==HT_ROLL?game->traversal.ball_x:game->traversal.crate_x;
-        int reach=object>=game->x?7:-7;
-        ht_limb(ht_scene,x,feet-17,x+reach,feet-15,1,1,255);
-        ht_limb(ht_scene,x,feet-14,x+reach,feet-13,1,1,255);
-    } else ht_limb(ht_scene,x,feet-17,x+f*5,feet-9,1,1,255);
-    ht_rect(ht_scene,x+(f>0?1:-4),feet-24,2,2,0);
-    ht_rect(ht_scene,x+(f>0?4:-1),feet-24,1,2,0);
+    ht_character_walk(x,feet,game);
 }
+
 /* Darkness alpha is screen-fixed; it never changes the world or camera.
  * Apply once after all layers, with no multiply in the unshaded center. */
 static inline unsigned ht_div255(unsigned value) {return (value+1+(value>>8))>>8;}
