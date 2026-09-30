@@ -25,7 +25,9 @@ int main(void) {
     }
     fail=false;void *owned=ht_workspace_open(allocate);assert(owned && ht_fast && allocations==2);
     for(unsigned mode=HT_TEST_RAM_NEURAL;mode<=HT_TEST_RAM_PACK;++mode) {
-        ht_render_test=mode;assert(ht_render_test_available());
+        ht_render_test=mode;
+        ht_simd_stage_ready=0;assert(!ht_render_test_available());
+        ht_simd_stage_ready=HT_OPT_SIMD_ALL;assert(ht_render_test_available());
     }
     ht_nn_fast_init();
     for(unsigned n=0;n<30000;++n) {

@@ -36,8 +36,10 @@ int main(void){
  uint8_t *mem=malloc(HT_MEMORY),*want=malloc(HT_PIXELS);
  uint8_t *fast=malloc(HT_FAST_ALLOC_BYTES);
  assert(mem&&want&&fast);ht_bind(mem);ht_workspace_attach(fast);
+ assert(ht_render_test==HT_TEST_MOTION_ALL);
+ assert(ht_render_test_mask()==(HT_OPT_SIMD_ALL|HT_OPT_VIGNETTE|HT_OPT_TILE_PLAN));
  for(unsigned i=0;i<HT_TEST_COUNT;++i){
-  ht_render_test=i;unsigned mask=ht_render_test_mask();
+  ht_render_test=i;unsigned mask=ht_render_test_extra_mask();
   if(i==HT_TEST_BASE)assert(mask==0);
   else if(i==HT_TEST_ALL_FOUR)assert(mask==HT_OPT_SIMD_ALL);
   else if(i==HT_TEST_STATIONARY)assert(mask==(HT_OPT_UPSCALE|HT_OPT_BLEND));
@@ -46,6 +48,9 @@ int main(void){
   else if(i==HT_TEST_MOTION_ALL)assert(mask==(HT_OPT_SIMD_ALL|HT_OPT_VIGNETTE|HT_OPT_TILE_PLAN));
   else if(i==HT_TEST_EVERYTHING)assert(mask==HT_OPT_ALL);
   else assert(mask && !(mask&(mask-1)));
+  assert(ht_render_test_mask()==(mask|HT_OPT_BASELINE));
+  mask=ht_render_test_mask();
+  assert((mask&HT_OPT_BASELINE)==HT_OPT_BASELINE);
   for(unsigned ready=0;ready<16;++ready){
    ht_simd_stage_ready=ready;
    assert(ht_render_test_available()==((mask&15u&ready)==(mask&15u)));
