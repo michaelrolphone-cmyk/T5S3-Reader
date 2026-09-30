@@ -205,7 +205,7 @@ static void ht_authored_landmarks(const ht_game *g) {
         }
     }
 }
-static void ht_authored_backdrop(const ht_game *g) {
+static void ht_authored_backdrop_low(const ht_game *g) {
     if(!ht_authored_chapter(g->level))return;
     const ht_chapter_composition *c=&ht_chapter_compositions[g->level];
     int cx=g->camera/256,cy=g->camera_y/256;
@@ -263,6 +263,15 @@ static void ht_authored_backdrop(const ht_game *g) {
         ht_composed_frame_level=g->level;ht_forest_frame_x=cx;
         ht_forest_frame_y=cy;ht_forest_frame_scale=ht_world_scale;
     }
+}
+static void ht_authored_backdrop(const ht_game *g) {
+    if(!ht_authored_chapter(g->level))return;
+    if(!ht_native_active){ht_authored_backdrop_low(g);return;}
+    uint8_t *native=ht_scene;
+    ht_scene=ht_scene_low;ht_native_active=false;
+    ht_authored_backdrop_low(g);
+    ht_scene=native;ht_native_active=true;
+    ht_expand_scene_native(ht_scene_low,native);
 }
 /* Two close masses per chapter. Their contours and scale match materials;
  * all are on the observer's side, separate from the player's physical route. */
