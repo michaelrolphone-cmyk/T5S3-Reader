@@ -547,7 +547,12 @@ static bool copy_usb_to_sd(const char *source, const char *destination_vfs) {
     if (!storage_write_stream_available() || !refresh_usb()) return false;
     uint64_t source_size = 0;
     risc_storage_file_t input = usb_volume->file_open_read(usb_volume->context, source, &source_size);
-    if (!input || source_size > SIZE_MAX) return false;
+    if (!input) return false;
+    if (source_size > SIZE_MAX) {
+        (void)usb_volume->file_close(usb_volume->context, input, true);
+        copy_text(status_text, sizeof(status_text), "USB file is too large to copy");
+        return false;
+    }
     t5_storage_stream_t output = storage->write_stream_open(destination_vfs);
     if (!output) {
         (void)usb_volume->file_close(usb_volume->context, input, true);
