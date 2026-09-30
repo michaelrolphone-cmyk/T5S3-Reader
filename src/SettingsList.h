@@ -155,6 +155,15 @@ inline std::vector<SettingInfo> getSettingsList(
 
     v.emplace_back(
         SettingInfo::Enum(
+            StrId::STR_CLOCK_FACE,
+            &CrossPointSettings::clockFace,
+            {StrId::STR_CLOCK_SEGMENTS, StrId::STR_CLOCK_SANS, StrId::STR_CLOCK_SERIF,
+             StrId::STR_CLOCK_MINIMAL, StrId::STR_CLOCK_RAILWAY, StrId::STR_CLOCK_DECO},
+            "clockFace",
+            StrId::STR_CAT_DISPLAY));
+
+    v.emplace_back(
+        SettingInfo::Enum(
             StrId::STR_POWER_OFF_SCREEN,
             &CrossPointSettings::powerOffScreen,
             {
