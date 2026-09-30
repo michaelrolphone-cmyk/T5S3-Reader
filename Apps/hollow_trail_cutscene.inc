@@ -30,7 +30,7 @@ static const ht_cutscene_cue ht_intro_cues[]={
     {280,375,HT_CUT_GRASS,  HT_CUT_POSE_LOOK,  3,208,208,  0,  0,256,260},
     {375,460,HT_CUT_KITCHEN,HT_CUT_POSE_IDLE,  4,238,238,  0,  0,274,260},
     {460,570,HT_CUT_KITCHEN,HT_CUT_POSE_PACK,  5,238,330,  0,  0,260,244},
-    {570,760,HT_CUT_ORCHARD,HT_CUT_POSE_WALK,  0,130,590,  0,330,244,234},
+    {570,760,HT_CUT_ORCHARD,HT_CUT_POSE_WALK,255,130,590,  0,330,244,234},
     {760,840,HT_CUT_ORCHARD,HT_CUT_POSE_WALK,  6,590,720,330,460,234,230},
 };
 #define HT_INTRO_TICKS 840u
@@ -142,6 +142,12 @@ static ht_person_pose ht_cutscene_actor_pose(int x,int feet,int pose,int phase,i
 static void ht_cutscene_draw_actor(int x,int feet,int pose,int phase,int facing) {
     ht_person_pose p=ht_cutscene_actor_pose(x,feet,pose,phase,facing);ht_person_draw(&p);
 }
+static void ht_cutscene_fill(int ink) {
+    for(int y=0;y<HT_H;++y) {
+        ht_span(ht_scene,0,HT_W-1,y,ink);
+        if((y&15)==15)ht_checkpoint();
+    }
+}
 static void ht_cutscene_caption(unsigned caption) {
     static const char *const lines[][2]={
         {"THE FIRST LIGHT APPEARED WHERE THERE","OUGHT TO HAVE BEEN A HILL."},
@@ -161,7 +167,7 @@ static void ht_cutscene_caption(unsigned caption) {
 }
 static void ht_cutscene_draw_kitchen(const ht_cutscene_state *s,const ht_cutscene_cue *cue,int camera) {
     (void)camera;int dawn=cue->caption>=5,flash=ht_cutscene_intro_flash(s);
-    memset(ht_scene,dawn?8:18,HT_PIXELS);
+    ht_cutscene_fill(dawn?8:18);
     /* Window and the fog-erased country. */
     ht_rect(ht_scene,286,31,157,124,0);
     ht_rect(ht_scene,283,28,4,130,205);ht_rect(ht_scene,443,28,4,130,205);
@@ -200,7 +206,7 @@ static void ht_cutscene_grass_stem(int x,int base,int height,int lean,int ink) {
     ht_limb(ht_scene,x+lean,base-height,x+lean+4,base-height-5,1,0,ink);
 }
 static void ht_cutscene_draw_grass(const ht_cutscene_state *s,const ht_cutscene_cue *cue,int camera) {
-    (void)camera;memset(ht_scene,6,HT_PIXELS);
+    (void)camera;ht_cutscene_fill(6);
     ht_rect(ht_scene,0,205,HT_W,65,42);
     int phase=(int)s->tick/4;
     for(int layer=0;layer<3;++layer) {
@@ -231,7 +237,7 @@ static void ht_cutscene_draw_grass(const ht_cutscene_state *s,const ht_cutscene_
     }
 }
 static void ht_cutscene_draw_orchard(const ht_cutscene_state *s,const ht_cutscene_cue *cue,int camera) {
-    memset(ht_scene,7,HT_PIXELS);
+    ht_cutscene_fill(7);
     int actor_world=ht_cutscene_actor_x(s),actor=actor_world-camera;
     /* Low wet land and ditch. The maintained road gradually becomes roots. */
     ht_rect(ht_scene,0,213,HT_W,57,54);
