@@ -2,7 +2,7 @@
 
 Consolidated on 2026-09-27 from scheduled scan/fix branches and their Google Drive handoffs, against master `6d876ae443d873d06068ae866fa4eda403b95f90`. This is the canonical bug list. IDs are stable; repeated scan-local numbers 13–15 have been replaced with unique IDs. Entries retain the original reproduction evidence and repair direction; these are source-based reports, not claims of hardware reproduction.
 
-**61 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
+**64 unresolved distinct reports after merging this branch.** Eight scheduled fixes are included in [PR #244](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/244) and removed from the active list here; they remain open on master until merge. Their original reports and source branches remain in the parent version of this file and in the PR description. Fixes already merged through PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205) (battery temperature), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209) (Wi-Fi redraw), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) (Rom Manager scrolling) are excluded from the active list.
 
 ## Coverage and recovery
 
@@ -743,3 +743,40 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
+
+
+### 196. Font catalog refresh publishes a rejected manifest prefix and discards the last good catalog
+
+- **Status:** Open.
+- **Sources:** 2026-09-29 scheduled source inspection.
+
+- **Affected code:** `src/native/NativeFontBridge.cpp`, `refreshCatalog()`, the global `baseUrl` / `families` catalog state; consumer `Apps/font_manager.c`, `app_main()`, `render()`, and `load_rows()`.
+- **Trigger / reproduction:** Serve a font manifest with the expected top-level version and at least one fully valid family followed by a later invalid family or file entry, such as an invalid family name, invalid `.cpfont` filename, or non-`uint32_t` CRC. Open **Manage Fonts** and refresh the catalog.
+- **Observed / logically demonstrated failure:** After the JSON/top-level checks pass, `refreshCatalog()` immediately assigns the new `baseUrl`, clears the live `families` vector, and then validates/pushes families one at a time. If a later entry fails validation, the function returns `T5_FONT_MANIFEST_ERROR` with the already-pushed prefix still installed as the live catalog. `font_manager.c` displays the error but then calls `render()`, whose `load_rows()` reads that partial vector; those rows remain selectable and installable even though the manifest as a whole was rejected. Any previously valid catalog snapshot has already been discarded.
+- **Likely root cause:** Catalog parsing and catalog publication are interleaved; there is no temporary fully validated snapshot that is committed atomically only after the entire manifest succeeds.
+- **Impact:** One malformed release entry can hide otherwise valid catalog entries and expose a prefix of a rejected catalog as actionable state. A user can install from a manifest that the bridge itself reported invalid, and a transient/bad catalog publication destroys the last known-good in-memory catalog until a later successful refresh.
+- **Repair direction:** Parse and validate the complete manifest into local `candidateBaseUrl` and `candidateFamilies` objects, including every family/file contract, without modifying live state. Only swap both globals after full success; on any failure preserve the previous catalog unchanged. Add a regression manifest with a valid first family and malformed later family and assert that no rejected prefix becomes visible or installable.
+
+### 197. A failed font update deletes the previously installed working family
+
+- **Status:** Open.
+- **Sources:** 2026-09-29 scheduled source inspection.
+
+- **Affected code:** `src/native/NativeFontBridge.cpp`, `installFamily()`; `src/FontInstaller.cpp`, `ensureFamilyDir()`, `buildFontPath()`, and `deleteFamily()`; download path through `HttpDownloader::downloadToFile()`.
+- **Trigger / reproduction:** Install a valid SD font family, then publish a newer catalog entry for that same family so `hasUpdate` is true. Start the update and force any failure after installation begins: network interruption, SD write failure, CRC mismatch, or cpfont validation failure.
+- **Observed / logically demonstrated failure:** Updates reuse the existing family directory and download each candidate file directly to its final installed pathname. On *any* download/hash/validation failure, `installFamily()` calls `installer().deleteFamily(family.name.c_str())`, recursively deleting the entire family. That cleanup is appropriate for a failed first-time install but destroys the previously valid generation during an update. If the family was active, `deleteFamily()` also clears the live SD-font selection. There is no staged candidate generation or rollback to the old files.
+- **Likely root cause:** Fresh installs and upgrades share the same destructive failure cleanup, while upgrade bytes are written into the live generation instead of a transaction-specific stage.
+- **Impact:** A temporary network/storage error or bad release asset can turn a failed font update into permanent loss of a font that worked before the update started; the user may also be forced back to a built-in font.
+- **Repair direction:** Download every file for an update into a unique sibling/staging family directory, validate declared size/CRC and full cpfont structure there, then transactionally swap the complete family only after all files pass. On failure remove only the candidate stage and leave the previous family and active selection untouched. Add failure injection after the first updated file and prove the old family remains byte-for-byte usable.
+
+### 198. A GPS driver unload failure is swallowed, leaving a retained ELF that guarantees the next start fails
+
+- **Status:** Open.
+- **Sources:** 2026-09-29 scheduled source inspection.
+
+- **Affected code:** `src/runtime/drivers/GpsDriverModule.cpp`, `GpsDriverModule::stop()` and `start()`; `src/runtime/drivers/GpsDriverRuntime.cpp`, `GpsDriverRuntime::stop()`, `available()`, and `start()`; package pinning through `RuntimePackages::PackageUseGate`.
+- **Trigger / reproduction:** Start the GPS driver successfully, then make `dlclose(handle_)` fail once during GPS teardown. Clear the transient unload fault and immediately launch/start GPS again.
+- **Observed / logically demonstrated failure:** `GpsDriverModule::stop()` deliberately retains `handle_` and the package-use pin when `dlclose()` fails and returns `false`. `GpsDriverRuntime::stop()` only logs that failure, then releases the kernel claim/device lease, clears `owner` / `positionLease` / `invocation`, and untracks the execution resource as though teardown completed. On the next launch, `available()` can advertise the package as available because there is no runtime owner. `start()` acquires a fresh lease and kernel claim, but `GpsDriverModule::start()` immediately returns `false` whenever retained `handle_` is non-null. The failure path then calls `stop()`, which is the first opportunity to retry the old `dlclose`; even if that retry succeeds, this GPS launch has already failed and the device is marked Failed. A persistent close failure also retains the package pin indefinitely and blocks replacement.
+- **Likely root cause:** The runtime discards ownership/recovery state and ignores the module teardown result even though the module explicitly preserves a mapped-handle/pin recovery condition; availability checks package validity but not whether the prior module is still mapped.
+- **Impact:** One transient ELF unload fault causes at least the next GPS start to fail after needless resource acquisition, and repeated unload faults can strand GPS and keep the `gps-nmea` package pinned against update/removal until recovery happens.
+- **Repair direction:** Make failed module teardown an explicit runtime recovery state. Before advertising availability or acquiring a new GPS lease, retry/complete cleanup of any retained handle and refuse normal start until it succeeds. Propagate teardown failure through lifecycle status, keep package/device state consistent with the retained mapping, and add a test where the first `dlclose` fails and the next cleanup succeeds without sacrificing an entire subsequent GPS launch.
