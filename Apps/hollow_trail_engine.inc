@@ -82,7 +82,8 @@ typedef struct {
     int rope_grip,rope_slide_v; /* Q8 distance along rope and tangential sliding speed */
     int rope_px[HT_ROPE_NODES],rope_py[HT_ROPE_NODES];
     int rope_ox[HT_ROPE_NODES],rope_oy[HT_ROPE_NODES];
-    uint8_t support,bridge_open;
+    uint8_t support,bridge_open,forest_log_phase;
+    bool forest_log_falling;
     uint8_t mode,ladder,ball_phase,ledge,climb,drop_cooldown;
     int ledge_side;
     uint8_t tree,branch_drop;
@@ -137,6 +138,13 @@ static uint8_t *ht_raw, *ht_near, *ht_wide, *ht_temp, *ht_scene;
 static uint8_t *ht_cached_near[HT_LAYERS][HT_TILE_SLOTS], *ht_cached_wide[HT_LAYERS][HT_TILE_SLOTS];
 static int ht_cache_key[HT_LAYERS][HT_TILE_SLOTS];
 static bool ht_cache_valid[HT_LAYERS][HT_TILE_SLOTS];
+/* Depth 2 is owned by dynamic terrain, leaving its first near/wide pair free
+ * for one complete forest backdrop (no allocation or memory-budget growth). */
+#if 2*HT_TILE_PIXELS < HT_PIXELS
+#error Forest backdrop exceeds the reserved cache pair
+#endif
+static bool ht_forest_frame_valid;
+static int ht_forest_frame_x,ht_forest_frame_y,ht_forest_frame_scale;
 static struct { bool active; int depth,key,phase,row; } ht_cache_job;
 static bool ht_abort;
 static unsigned ht_cache_builds;
@@ -245,7 +253,7 @@ static void ht_bind(uint8_t *memory) {
     for(unsigned i=0;i<4;++i)ht_stage_reason[i]="NOT TESTED";
     ht_simd_test_pattern=ht_simd_test_phase=ht_simd_test_byte=0;
     ht_simd_test_expected=ht_simd_test_actual=0;
-    ht_geometry_level=0; ht_simd_stage_ready=0; ht_expanded_ready=false; ht_simd_ready=false; ht_framed=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
+    ht_geometry_level=0; ht_simd_stage_ready=0; ht_expanded_ready=false; ht_simd_ready=false; ht_framed=false; ht_forest_frame_valid=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
     ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
     ht_scene=memory+3*HT_PIXELS; ht_temp=memory+4*HT_PIXELS; ht_filter=(int16_t *)ht_temp;
     uint8_t *cache=memory+6*HT_PIXELS;
@@ -452,6 +460,7 @@ static void ht_spawn(bool restart) {
     ht.camera_y=ht_clamp(ht.y/256-180,-300,100)*256;
     const ht_mechanics *m=&ht_mechanics_by_level[level];
     ht.traversal.bridge_open=bridge_open;
+    ht.traversal.forest_log_phase=level==0 && bridge_open==32?32:0;
     ht.traversal.ball_x=m->ball_x*256;ht.traversal.ball_y=(m->ball_floor-HT_BALL_RADIUS)*256;
     ht.traversal.crate_x=m->crate_x*256;ht.traversal.crate_y=m->crate_floor*256;
     ht.traversal.boat_x=m->boat_left*256;
@@ -987,6 +996,7 @@ static void ht_branches(int offset) {ht_close_framing(offset);}
 static void ht_select_level(unsigned level) {
     if(ht_geometry_level==level) return;
     ht_geometry_level=level;
+    ht_forest_frame_valid=false;
     ht_cache_job.active=false;
     memset(ht_cache_valid,0,sizeof(ht_cache_valid));
 }
@@ -999,6 +1009,7 @@ static bool ht_cache_has(int depth,int key) {
     return ht_cache_valid[depth][slot] && ht_cache_key[depth][slot]==key;
 }
 static void ht_cache_begin(int depth,int key) {
+    if(depth==2)ht_forest_frame_valid=false;
     ht_cache_job.active=true; ht_cache_job.depth=depth; ht_cache_job.key=key;
     ht_cache_job.phase=0; ht_cache_job.row=0;
 }
@@ -1485,7 +1496,7 @@ static void ht_render_scene(void) {
     const bool camera_pass=camera_mode!=HT_CAMERA_OFF && (game.sway_phase || game.drop_zoom);
     ht_select_level(game.level);
     int camera=game.camera/256,px=game.x/256-camera,py=(game.y-game.camera_y)/256-14;
-    bool opaque=ht_grotto_opaque(&game);
+    bool opaque=game.level==0 || ht_grotto_opaque(&game);
     if(ht_abort) return;
     if(!opaque) {
         if(!ht_cache_visible(camera)) {return;}

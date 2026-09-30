@@ -29,12 +29,16 @@ const t5_provider_capability_api_v1 *t5_provider_capability_get_api(uint32_t v) 
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY),*expected=malloc(HT_PIXELS);
     assert(memory && expected); ht_bind(memory); ht_spawn(true); app=&mock_app;
-    ht_render_scene(); memcpy(expected,ht_scene,HT_PIXELS);
-    memset(ht_cache_valid,0,sizeof(ht_cache_valid));
-    int start=ht.x; clock_increment=2; schedule=true; ht_service=ht_render_service;
-    ht_render_scene();
+    int start=ht.x; clock_increment=2; schedule=true;
+    /* A warm forest frame legitimately finishes before the scheduled input
+     * release. Check each frozen frame while servicing the whole interval. */
+    for(int frame=0;frame<16 && fake_now<=110;++frame) {
+        ht_service=NULL;ht_render_scene();memcpy(expected,ht_scene,HT_PIXELS);
+        if(!frame) {memset(ht_cache_valid,0,sizeof(ht_cache_valid));ht_forest_frame_valid=false;}
+        ht_service=ht_render_service;ht_render_scene();
+        assert(!memcmp(expected,ht_scene,HT_PIXELS));
+    }
     assert(fake_now>110 && ht.x>start+3*256 && !(held&HT_RIGHT));
-    assert(!memcmp(expected,ht_scene,HT_PIXELS));
     assert(scene_revision>1);
     /* Input can be sampled every 8ms without a sleep each time, but real
      * cooperation must still happen at 32ms, including across clock wrap. */

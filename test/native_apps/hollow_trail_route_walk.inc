@@ -36,7 +36,12 @@ static void walk_route_tick(void) {
                  m->ladders[i].upper==(int)walk_phase+1) ladder=i;
             bool gate=(int)walk_phase+1==m->bridge && t->bridge_open<32;
             bool crate_step=ladder<0 && next->top<here->top-110;
-            if(gate || crate_step) {
+            if(ht.level==0 && gate) {
+                if(x<350)dir=1;
+                else if(!t->forest_log_falling) {assert(ht_traversal_interact());walk_mechanics|=32;}
+            } else if(ht.level==0 && walk_phase==0) {
+                dir=1;if(ht.grounded && x>=340)jump=true;
+            } else if(gate || crate_step) {
                 mass_work=true;
                 int kind=gate?m->plate_kind:2;
                 int object=(kind==1?t->ball_x:t->crate_x)/256;

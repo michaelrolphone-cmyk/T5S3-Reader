@@ -1,3 +1,41 @@
+# Hollow Trail 1.1.25 — first forest revision
+
+Level 1 restores the depth, monumental scale and directional light of PR #309
+without restoring its added climbable-tree placements or its living-tree
+renderer. Three continuous distant ridges move at 18/37/56 percent of camera
+travel; two sparse background tree planes move at 30/55 percent. Pale openings
+and narrow shafts separate those planes from the original foreground trees.
+Distant tones use the existing 2x scenery sampling scale; trees, terrain and
+actors keep full logical resolution. The original climbable-tree population
+and Up-only entry from PR #310 remain. PR #311's camera comparison controls
+are preserved.
+
+The opening rock/pressure-plate/gantry assembly is removed. One dead snag at
+the eroded bank can be pushed with the existing interaction button. It rotates
+about its roots, accelerates through the fall and rests across the ravine.
+Only the settled trunk is a solid crossing; its future location cannot catch
+a falling player. A completed crossing survives a death, while restarting the
+chapter resets it. An interrupted fall resets safely on respawn. There are
+no forest traversal instruction overlays or automatic proximity activation.
+
+The original loose stone now moves through a rounded depression in the ground.
+Its own body can fill the hollow and provide footing, independently of the
+trunk. No rock position moves any forest terrain. The remainder of the forest
+retains its continuous rounded contour and existing rope crossing. Industrial
+mechanisms in other chapters are outside this level-1 change.
+
+The forest skips background strips that its opaque depth composition replaces,
+including app warmup and speculative cache work. An unchanged camera/altitude/
+vista reuses the background in the unused terrain cache plane; no framebuffer
+allocation or increase to `HT_MEMORY`. All changing-frame raster loops retain
+bounded cooperative checkpoints. Cache invalidation covers rebinding memory,
+chapter changes, projection changes and scratch-plane use.
+
+Version: **1.1.24 -> 1.1.25**; minimum firmware remains **1.3.37**.
+Implementation checks and host timing are recorded in
+[render performance](HOLLOW_TRAIL_RENDER_PERFORMANCE.md). Device FPS and
+on-device visual acceptance are not claimed.
+
 # Hollow Trail 1.1.8
 
 Reworks the first ferry composition after visual review of 1.1.7 against the

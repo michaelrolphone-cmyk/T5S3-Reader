@@ -234,7 +234,7 @@ static void terrain_and_rope_invariants(void) {
     }
     assert(low-high>=30*256); /* Actually walk a rounded hill without jumping. */
     assert(ht_terrain_bottom(&ht,2,875)==520);
-    assert(ht_terrain_bottom(&ht,1,520)==ht_platform_top(&ht,1)+18);
+    assert(ht_terrain_bottom(&ht,1,520)==ht_surface_at(&ht,1,520)+18);
     ht.camera=670*256;ht.camera_y=0;memset(ht_scene,0,HT_PIXELS);
     ht_draw_land(&ht,2,0,670,1080,220);
     for(int x=700;x<1060;x+=13) {
@@ -291,7 +291,7 @@ int main(void) {
     /* Walk the entire route using the same fixed-step physics and hold jump
      * from each takeoff. A route that silently respawns cannot pass. */
     unsigned visited=1;
-    const unsigned required_mechanics[HT_LEVELS]={9,6,5,12,16,5,6,28,14,22};
+    const unsigned required_mechanics[HT_LEVELS]={40,6,5,12,16,5,6,28,14,22};
     for(int tick=0;tick<HT_LEVELS*2200 && !ht.laps;++tick) {
         walk_route_tick();
         if(ht.level!=walk_level) assert(walk_mechanics==required_mechanics[walk_level]);
@@ -357,13 +357,14 @@ int main(void) {
     assert(ht.traversal.crate_vx==0);
     /* Raised spans are real solids at their visible height, well above a
      * normal jump, and carry a standing passenger while lowering. */
-    ht.level=0;ht_spawn(true);int bridge=ht_mech(&ht)->bridge;
+    ht.level=2;ht_spawn(true);int bridge=ht_mech(&ht)->bridge;
     int raised=ht_platform_top(&ht,bridge);
     assert(ht_land[bridge].top-raised==224);
-    ht.x=520*256;ht.y=(raised-4)*256;ht.vy=600;ht.grounded=false;
+    ht.x=1820*256;ht.y=(raised-4)*256;ht.vy=600;ht.grounded=false;
     for(int i=0;i<4;++i) ht_step(0,false,true);
     assert(ht.grounded && ht.y==raised*256 && ht.traversal.support==4);
     ht.traversal.ball_x=ht_mech(&ht)->plate_x*256;
+    ht.traversal.ball_y=(ht_mech(&ht)->plate_y-HT_BALL_RADIUS)*256;
     for(int i=0;i<32;++i) {
         ht_step(0,false,false);
         assert(ht.grounded && ht.y==ht_platform_top(&ht,bridge)*256);

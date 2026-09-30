@@ -11,7 +11,7 @@ typedef struct {int16_t x,offset;} ht_contour;
  * parcels share a contour; only authored cliffs/channels break the landmass.
  * Zero-height work pads preserve load/plate, rope and gate contacts. */
 static const ht_contour ht_contours[HT_LEVELS][32]={
-    {{-160,-18},{15,-25},{100,-8},{210,0},{380,0},{670,0},{710,-5},{835,-52},{960,-45},{1080,-28},{1180,-16},{1310,-39},{1400,-12},{1460,0},{1600,0},{1730,-35},{1870,-48},{1980,-16},{2040,0},{2090,0},{2220,-21},{2380,-39},{2530,-18},{2670,-31},{2780,0},{3410,0}},
+    {{-160,-18},{15,-25},{100,-8},{210,0},{258,0},{288,29},{307,29},{340,0},{380,0},{670,0},{710,-5},{835,-52},{960,-45},{1080,-28},{1180,-16},{1310,-39},{1400,-12},{1460,0},{1600,0},{1730,-35},{1870,-48},{1980,-16},{2040,0},{2090,0},{2220,-21},{2380,-39},{2530,-18},{2670,-31},{2780,0},{3410,0}},
     {{-160,0},{3410,0}},
     {{-160,-9},{20,-17},{190,-6},{350,-21},{520,0},{580,0},{720,-16},{880,-9},{1020,0},{1485,0},{1980,0},{2140,-24},{2320,-13},{2480,-30},{2670,-12},{2780,0},{3410,0}},
     {{-160,0},{180,-5},{410,-3},{620,0},{890,0},{950,0},{1240,0},{1500,0},{1640,0},{1800,-7},{1990,-3},{2200,-9},{2410,0},{3410,0}},
@@ -36,12 +36,20 @@ static int ht_land_height(unsigned level,int i,int x) {
     }
     return top;
 }
+/* The fallen snag keeps the same shallow bend in art and footing. */
+static const int8_t ht_forest_log_curve[5]={0,-4,-7,-3,0};
 static int ht_platform_top(const ht_game *g,int i) {
     int top=ht_level_land(g->level)[i].top;
+    if(g->level==0 && i==1)return 208;
     if(i==ht_mechanics_by_level[g->level].bridge) top-=(32-g->traversal.bridge_open)*HT_BRIDGE_STEP;
     return top;
 }
 static int ht_surface_at(const ht_game *g,int i,int x) {
+    if(g->level==0 && i==1) {
+        int at=ht_clamp(x-374,0,312),node=ht_min(3,at/78),u=at-node*78;
+        int bend=ht_forest_log_curve[node]+(ht_forest_log_curve[node+1]-ht_forest_log_curve[node])*u/78;
+        return 220+bend-12+node+u/78;
+    }
     return ht_land_height(g->level,i,x)+ht_platform_top(g,i)-ht_level_land(g->level)[i].top;
 }
 /* A ladder approach beneath an overlapping upper route is a real recess in
