@@ -1,3 +1,10 @@
+## Active Wi-Fi credential persistence repair claim
+
+- Owner: isolated Mac workspace task-3; active implementation/ledger owner **this run**. Claimed canonical reports **75, 98, and 149** by actual `WifiCredentialStore` / `JsonSettingsIO::loadWifi` behavior and trigger, not numbers alone. Baseline master: `fa517fea3a882505f10bb432c0c08864b73516c8`; repair branch `fix/wifi-credential-persistence`; draft PR to follow after validation. Existing ledger PR332 remains the sole coordination PR.
+- Current ownership check: latest `automation/bug-ledger` head `08b273fb619f5cdfcfba69c94a868a7e02c0e221` states no active owner; current open code PRs include independently owned CAM #344 only as a code batch, below the two-batch limit. No current Wi-Fi repair branch/PR exists; the preserved `fix/wifi-settings-result-cookie` branch is a different already-merged defect.
+- Reproduction basis: `HalStorage::writeFile` removes the old destination before opening/writing and returns false on short write; Wi-Fi mutations publish to the singleton before that call. JSON parse/schema failure can leave stale values or be accepted as an empty store, and selector/bootstrap callers ignore load failure before consulting credentials.
+- Phase: claimed; next inspect exact workflows and implement transactional persistence/load validation plus in-memory fault-injected regression. No hardware/device operation or real credential access.
+
 # Bug repair progress
 
 Snapshot: 2026-10-01, after Text Editor PR342 merge closure. The completion record below supersedes historical held/open statuses and batch counts; older evidence and applicability history are retained.
