@@ -5,6 +5,7 @@ No controller abort/reset is added. A failed owner is retained until reboot.
 """
 from pathlib import Path
 import hashlib
+import json
 import re
 MARK = '// RiscRTE SD/SPI retained-fault port v1'
 PATCHED = {'hal': 'f62552189e54e2b412bd98c186ae9b37b87216a14321ef54c866de3b141f3e9b', 'spi': '98e19cea2fa17fb283157d3e3e49e66db543c6e6fa13f693b54bacca7c4edc4c', 'sd': '427725199401ad3a6254d6b993d9db371d1141627a3490c7a81c985fde29bd64', 'vfs': 'cba3ea1a987b9ae0f6efe42d9adc031484fb3147093262e93560fc43108bc2ba'}
@@ -91,9 +92,21 @@ def patch(text, kind):
 def patch_environment(env):
     framework=Path(env.PioPlatform().get_package_dir('framework-arduinoespressif32'))
     files={'hal':framework/'cores/esp32/esp32-hal-spi.c', 'spi':framework/'libraries/SPI/src/SPI.cpp', 'sd':framework/'libraries/SD/src/sd_diskio.cpp', 'vfs':framework/'libraries/FS/src/vfs_api.cpp'}
-    for kind,path in files.items():
-        updated=patch(path.read_text(),kind)
-        if updated!=path.read_text(): path.write_text(updated)
+    # Validate the entire input set before changing any cached dependency file.
+    originals = {kind: path.read_text() for kind, path in files.items()}
+    try:
+        updates = {kind: patch(originals[kind], kind) for kind in files}
+    except RuntimeError:
+        # A compact failure artifact lets the actual packaged SDK be inspected
+        # without weakening the source pin or guessing what a vendor changed.
+        if any(len(text.encode()) > 200000 for text in originals.values()):
+            raise RuntimeError('SDK source drift exceeds diagnostic bound')
+        report = Path(env.subst('$PROJECT_DIR'))/'dist/u1-sdk-source-drift.json'
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(json.dumps({'schema': 1, 'files': originals}, indent=2)+'\n')
+        raise
+    for kind, path in files.items():
+        if updates[kind] != originals[kind]: path.write_text(updates[kind])
     for name in ('SdSpiFault.h', 'RuntimeFaultRetention.h'):
         source=Path(env.subst('$PROJECT_DIR'))/'lib/hal'/name
         (framework/'cores/esp32'/name).write_text(source.read_text())

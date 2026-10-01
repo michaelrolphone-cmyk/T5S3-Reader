@@ -91,6 +91,14 @@ jobs:
       - name: Build RiscRTE firmware
         run: pio run -e ${{ matrix.environment }}
 
+      - name: Preserve bounded SDK source-drift diagnostic on build failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: u1-sdk-source-drift-${{ matrix.board_id }}
+          path: dist/u1-sdk-source-drift.json
+          if-no-files-found: ignore
+
       - name: Verify the actual pinned SD SPI port fault patch
         run: python3 test/hal/sd_spi_patch_test.py "$HOME/.platformio/packages/framework-arduinoespressif32"
 
