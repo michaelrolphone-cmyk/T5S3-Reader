@@ -60,6 +60,13 @@ static bool submit_frame(uint16_t y,uint16_t height) {
     }
     if(journal_run && submissions==3) assert(display[0]!=0xa5);
     ++submissions;
+    /* This fixture tests delayed-display ownership and live chapter changes.
+     * The intro timeline has dedicated coverage; leave it after the startup
+     * title frame so the historical submission counts remain about gameplay. */
+    if(submissions==1 && ht_cutscene.active) {
+        ht_cutscene.tick=HT_INTRO_TICKS;ht_cutscene.active=false;ht_cutscene.finished=true;
+        ht_cutscene_apply_handoff(&ht_cutscene);ht_input_rearm=false;++scene_revision;
+    }
     if(journal_run && submissions==2) { reading=true; ht_journal_open(30); ++scene_revision; }
     if(journal_run && submissions==3) { reading=false; ++scene_revision; }
 

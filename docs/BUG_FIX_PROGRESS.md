@@ -1,8 +1,19 @@
 # Bug repair progress
 
-Snapshot: 2026-09-30 23:58 UTC. Coordinator-reported runtime/PR evidence below; the ledger reconciliation itself made no implementation changes.
+Snapshot: 2026-10-01 00:52 UTC. Coordinator-reported runtime/PR evidence below; the ledger reconciliation itself made no implementation changes.
 
-## Initial run result and next claim
+## Active hourly run
+
+- Run: 2026-10-01 00:50 UTC; coordinator and active ledger owner: `fix_button_remap_batch`
+- State: claimed, before implementation; canonical bugs **16 and 17**
+- Baseline master: `be82695ea0ecb14525c0de1ddc78cd0c77e4614b`
+- Repair branch: `fix/button-remap-16-17`; draft PR not yet created
+- Revalidation: the bridge still leaves all four live settings mutated after a failed save; reset uses that same path. The app still advertises Reset/Cancel on front Left/Right while dispatching side Up/Down. Runtime reproductions are next, before the fix.
+- Open PR paths #331, #277, #220, #194 and #96 checked: no changes to the native remap bridge or app. #220 changes the legacy firmware activity and shared platform version only; this batch will not edit that activity or its UI API.
+- Capacity: #326 merged at 00:02:16 UTC; no outstanding code batch from this pipeline before this claim. This is one two-bug batch.
+- Next: implement rollback and accurate side-button instructions, regression/fault tests and affected component version bumps; publish one draft PR and check exact-head CI.
+
+## Previous restoration (historical snapshot)
 
 - Run: initial pipeline restoration
 - Last coordinator: `restore_bug_pipeline`; active ledger owner: none
@@ -17,7 +28,13 @@ Snapshot: 2026-09-30 23:58 UTC. Coordinator-reported runtime/PR evidence below; 
 - Integration status: **Awaiting merge**, still outstanding on master. The recovered branch previously had no matching PR; its earlier implementation is not a prior merge.
 - Next scheduled invocation: 2026-10-01 00:50 UTC. It has not run at this snapshot. It must read this record, recheck PR #326 and current master, and claim the next bounded work before editing; do not duplicate #205. Only one code batch is outstanding from this pipeline.
 
-## #205 verification and next action
+## Current master resolution checks
+
+PR #326 merged as `f4952a31bd0f9ae5c8051b80b088e16426308b88` at 2026-10-01 00:02:16 UTC. PR #327 merged as `2a55d0a05316a3fe5478011ada8285fcb24c1885` at 00:04:41 UTC. Both are on the current baseline. #205 is **Fixed on master**; its compiled USB-handle fault regression passed again. #91's merge `36be2ee496468feb3779616e69f61e3a671c192b` is also an ancestor, and its GT911 fault regression passed again. Sanitizers used `ASAN_OPTIONS=detect_leaks=0`; no hardware verification is claimed. Historical statements below describe the earlier snapshot, not current integration state. The closed PRs are not edited; a new coordination PR will target current master.
+
+Current inventory: 237 retained reports, 235 outstanding (233 need revalidation and 16/17 are claimed), with 91 and 205 resolved.
+
+## #205 previous verification
 
 - The coordinator revalidated the defect on master, recovered the existing repair, backmerged current master cleanly, and published the draft above.
 - Runtime/source regressions, six retirement tests, six capability tests, and full C syntax check passed. The original faulty mutation fails the expected runtime assertion.

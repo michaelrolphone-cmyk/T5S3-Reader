@@ -2,7 +2,8 @@
 
 Reconciled on 2026-09-30 UTC against master [`2b45ab662c0ffe3650ce0f841083ea47886022c9`](https://github.com/michaelrolphone-cmyk/T5S3-Reader/commit/2b45ab662c0ffe3650ce0f841083ea47886022c9), including the 14 later scan branches from 06:50 through 17:22 MDT on 2026-09-30. This is the canonical report inventory. Scan-local IDs are aliases, never canonical identity.
 
-**237 distinct retained reports: 236 outstanding (235 need current-master revalidation and #205 awaits merge); #91 is verified fixed on master.** The 196 inherited master reports (IDs 5 and 13–207) have not been comprehensively revalidated. Only #91 and #205 were specifically rechecked in this restoration: #91 is resolved, #205 has a tested draft fix that is not on master, and the other 194 remain candidates. The 42 later scan reports add 41 distinct candidates (IDs 208–248), after collapsing one exact duplicate. Neither the historical word “Open” nor a closed-unmerged PR establishes current source status.
+**237 distinct retained reports: 235 outstanding (233 need current-master revalidation and #16/#17 are claimed); #91 and #205 are verified fixed on master.** Current check: 2026-10-01 on master `be82695ea0ecb14525c0de1ddc78cd0c77e4614b`. The 196 inherited reports and 41 later distinct reports retain their original provenance below. Historical observations are not new reproductions.
+
 
 ## Status and provenance rules
 
@@ -11,7 +12,7 @@ Reconciled on 2026-09-30 UTC against master [`2b45ab662c0ffe3650ce0f841083ea4788
 - Only an actual merged source change plus verification can be recorded as fixed on master. An unmerged fix stays an outstanding integration item, including when its PR is closed.
 - The eight older fixes (IDs 4, 6–12) were already incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including PR #244 and final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. Their merge is an ancestor of this baseline; do not requeue them. Earlier fix PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) remain outside this active inventory. Those are PR numbers, not current canonical bug IDs.
 - Original source/Drive links are retained. Later reports use immutable source commits. No new Drive recovery was attempted in this pass. Signed-package findings do not authorize reviving signing; current platform scope and production reachability must be checked before any repair.
-- The repair workflow and claim/progress record are described in [BUG_FIX_WORKFLOW.md](docs/BUG_FIX_WORKFLOW.md) and [BUG_FIX_PROGRESS.md](docs/BUG_FIX_PROGRESS.md). The initial repair run completed: #205 has a published draft fix, with the native aggregate suite and all three exact-head CI jobs passed. The active claim is released; #205 remains awaiting merge. This is not a claim that the scheduled run has fired.
+- The repair workflow and claim/progress record are described in [BUG_FIX_WORKFLOW.md](docs/BUG_FIX_WORKFLOW.md) and [BUG_FIX_PROGRESS.md](docs/BUG_FIX_PROGRESS.md). The first hourly run began 2026-10-01 00:50 UTC. #205 merged in PR #326 and its runtime regression passed again; #91 remains verified fixed. The active owner `fix_button_remap_batch` has claimed #16/#17; see the progress record.
 
 ## Later scan reconciliation
 
@@ -94,7 +95,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Page or virtualize over the provider's full count and keep a catalog index per visible row. Add tests at 65 and 128 online entries and more than 64 inbox entries.
 ### 16. Button Remap applies a failed mapping to the live input system even when persistence fails
 
-- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Status:** Confirmed by source inspection and claimed by `fix_button_remap_batch` at 2026-10-01 00:52 UTC on `be82695ea0ecb14525c0de1ddc78cd0c77e4614b`; runtime fault regression pending, branch `fix/button-remap-16-17`.
 - **Sources:** [automation/bug-scan-20260926-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2120/bugs.md); [automation/bug-scan-20260927-0824](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0824/bugs.md)
 
 - **Affected code:** `src/native/NativeButtonRemapBridge.cpp`, `applyMapping(const t5_button_remap_mapping_t *mapping)` and `resetDefaults()`; `src/MappedInputManager.cpp`, `mapButton()`; `Apps/button_remap.c`, the failed-save retry path in `app_main()`.
@@ -105,7 +106,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Make `applyMapping()` transactional: save the previous four button fields, apply the candidate, call `saveToFile()`, and restore the previous fields before returning `false` if persistence fails. Apply the same behavior to reset-to-defaults through the shared path. Add a regression test that forces save failure and verifies both `SETTINGS` and mapped physical/logical button behavior remain unchanged.
 ### 17. Button Remap advertises Reset and Cancel on front buttons but handles those actions only on the side buttons
 
-- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Status:** Confirmed by source inspection and claimed by `fix_button_remap_batch` at 2026-10-01 00:52 UTC on `be82695ea0ecb14525c0de1ddc78cd0c77e4614b`; runtime fault regression pending, branch `fix/button-remap-16-17`.
 - **Sources:** [automation/bug-scan-20260926-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2120/bugs.md)
 
 - **Affected code:** `Apps/button_remap.c`, `render()` and the main input loop; `src/native/NativeUiBridge.cpp`, `drawChrome()`; `src/MappedInputManager.cpp`, `mapLabels()` and `mapButton()`.
@@ -2234,7 +2235,7 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Consolidation sources:** [automation/bug-scan-20260930-0324](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/61f98d60fa4eda874405b00c72b9a576e4ca9924/bugs.md); [Drive: 2026-09-30 0324 MDT - automation_bug-scan-20260930-0324 - Diff](https://docs.google.com/spreadsheets/d/1353mBOSb02ehViW2gfxo_G4Bsw-FXIdsTVKBs4qvn7g/edit?usp=drivesdk); [Drive: 2026-09-30 0324 MDT - automation_bug-scan-20260930-0324 - Instructions](https://docs.google.com/spreadsheets/d/1rMBCmHgaBRqtd-LRVm6Fvx8mkcjYuqjssDPGuXNM0yk/edit?usp=drivesdk)
 ### 205. File Browser leaks an open USB file handle when a source file is larger than `size_t`
 
-- **Status:** Awaiting merge. Revalidated against master; draft [PR #326](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/326) proposes the fix. Master remains unfixed until the change merges.
+- **Status:** Fixed on master. PR #326 merged as `f4952a31bd0f9ae5c8051b80b088e16426308b88` at 2026-10-01 00:02:16 UTC; merge ancestry and compiled runtime regression reverified on `be82695ea0ecb14525c0de1ddc78cd0c77e4614b` at 00:52 UTC.
 - **Completed claim:** `restore_bug_pipeline`, initial restoration run completed and released; [repair branch](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/fix/file-browser-oversize-usb-handle), verified remote head `5ec33bbe60928ec73f8d5f9fdc28023aa3a56c79`.
 - **Verification reported by the coordinator, 2026-09-30 UTC:** Runtime/source regressions, six retirement tests, six capability tests, and full C syntax check passed. The runtime regression also fails on the original faulty mutation at the expected assertion. ASan/UBSan runtime tests passed with leak detection disabled because this container uses ptrace. File Browser version increases from 1.3.0 to 1.3.1. Xtensa app build was attempted but is blocked by the missing compiler; `ASAN_OPTIONS=detect_leaks=0 bash test/run_native_app_test.sh` passed (exit 0). Exact-head [CI run 36793336681](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36793336681) completed successfully: host parser tests and both firmware-board builds passed, including native ELF and all-app/manifest validation. The missing local toolchain did not block CI verification. No hardware qualification or merge is claimed.
 

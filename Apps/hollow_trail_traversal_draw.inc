@@ -59,6 +59,10 @@ static void ht_draw_traversal(const ht_game *g) {
     }
     ht_dam_spray(g);
     ht_boat_grotto(g);
+    /* Background/grotto retain the original full 960x540 native path.
+     * From here forward, native A/B uses 960x270 detail: full horizontal
+     * resolution with one computed row duplicated to each physical row pair. */
+    if(ht_native_active)ht_native_foreground_half_y=true;
     /* Distinct natural silhouettes stay anchored to the new physical route. */
     for(int i=0;i<HT_PLATFORMS;++i) {
         if(g->level==1 || i==m->bridge || (i!=0 && i!=2 && i!=5 && i!=8) || (g->level==4 && i==0)) continue;

@@ -7,6 +7,7 @@
 #include "RiscUsbHidV1.h"
 #include "RiscReaderTypographyV1.h"
 #include "hollow_trail_engine.inc"
+#include "hollow_trail_cutscene.inc"
 
 static const t5_app_api_v1 *app;
 static const t5_provider_capability_api_v1 *caps;
@@ -100,17 +101,34 @@ static void ht_acquire_pad(void) {
     }
 }
 static void ht_advance(uint32_t now) {
-    if(reading || loading || debug_jump || ht.level!=ht_geometry_level) { simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
+    if(reading || loading || debug_jump || ht.level!=ht_geometry_level) { ht_motion_emphasis=false; simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
     if(!simulation_started) { simulation_clock=now; simulation_started=true; }
+    if(ht_cutscene.active) {
+        uint32_t elapsed=now-simulation_clock;
+        simulation_clock=now;
+        simulation_accumulator+=elapsed>128u?128u:elapsed;
+        for(unsigned steps=0;simulation_accumulator>=HT_STEP_MS && steps<8;++steps) {
+            bool finished=ht_cutscene_step(&ht_cutscene);
+            simulation_accumulator-=HT_STEP_MS;++scene_revision;
+            if(finished) {
+                ht_cutscene_apply_handoff(&ht_cutscene);
+                held=previous=0;jump_down=pause_down=false;ht_input_rearm=true;
+                simulation_accumulator=0;break;
+            }
+        }
+        ht_motion_emphasis=false;
+        return;
+    }
     if(pause_down) {
         paused=!paused; debug_select=false; debug_level=ht.level; pause_down=false; simulation_accumulator=0; ++scene_revision;
     }
     uint32_t elapsed=now-simulation_clock;
     simulation_clock=now;
     simulation_accumulator+=elapsed>128u?128u:elapsed;
-    if(paused) { simulation_accumulator=0; jump_down=false; return; }
+    if(paused) { simulation_accumulator=0; jump_down=false; ht_motion_emphasis=false; return; }
     for(unsigned steps=0;simulation_accumulator>=HT_STEP_MS && steps<8;++steps) {
         int direction=((held&HT_RIGHT)!=0)-((held&HT_LEFT)!=0);
+        ht_motion_emphasis=(held&HT_BACK)!=0;
         ht_game before=ht;
         ht_step_controls(direction,((held&HT_DOWN)!=0)-((held&HT_UP)!=0),jump_down,(held&HT_JUMP)!=0);
         jump_down=false; simulation_accumulator-=HT_STEP_MS;
@@ -198,6 +216,11 @@ static void ht_input_update(uint32_t wait) {
     /* Run simulation at input checkpoints, including during rendering. */
     uint32_t now=app->millis();
     ht_advance(now);
+    if(ht_input_rearm) buttons=0; /* A cutscene handoff also requires neutral. */
+    if(ht_cutscene.active) {
+        quitting|=(buttons&HT_EXIT)!=0;
+        previous=held=0;jump_down=pause_down=false;last_poll=now;return;
+    }
     uint32_t down=buttons&~previous;
     if(reading) {
         if(down&HT_JOURNAL) { reading=false; ht_journal_deciding=ht_journal_confirm=false; }
@@ -311,7 +334,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
     started=true;
-    memset(&ht,0,sizeof(ht)); ht_spawn(true);
+    memset(&ht,0,sizeof(ht)); ht_spawn(true); ht_cutscene_begin(HT_CUTSCENE_INTRO);
     reading=false; journal_page=0; ht_journal_index=true; ht_journal_selection=0;
     ht_journal_deciding=ht_journal_confirm=ht_journal_page_ready=false; ht_read_submitted_revision=0;
     ht_camera_mode=HT_CAMERA_BASELINE;
@@ -345,7 +368,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             ht_simd_test_pattern,ht_simd_test_phase,ht_simd_test_byte,ht_simd_test_expected,ht_simd_test_actual);
         ht_log(diagnostic);
     }
-    ht_clear_layer(ht_scene); ht_text(150,120,"PREPARING FOREST",2); ht_vignette();
+    ht_clear_layer(ht_scene); ht_text(168,120,"HOLLOW TRAIL",2); ht_vignette();
     if(video->can_submit()) {
         size_t size=0; uint8_t *buffer=video->backbuffer(&size);
         if(buffer && size>=(size_t)surface.stride_bytes*surface.height) {
@@ -369,7 +392,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
     ht_fps_reset(&ht_fps,ht_perf.start);
-    ht_log("Hollow Trail 1.1.31: native 960x540 A/B mode; rolling 10-second FPS");
+    ht_log("Hollow Trail 1.1.32: native 960x540 A/B + Forward-X cutscenes; rolling 10-second FPS");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -422,6 +445,9 @@ __attribute__((visibility("default"))) void app_main(void) {
             prepared_profile=!rendering_paused && !rendering_reading;
             if(rendering_reading) ht_journal_render();
             else {
+            ht_cutscene_state cutscene_frame=ht_cutscene;
+            if(cutscene_frame.active) ht_cutscene_render(&cutscene_frame);
+            else {
             ht_render_scene();
             prepared_timing=ht_render_last;
             /* Initial instructions dismiss automatically after walking. */
@@ -440,7 +466,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.31",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.32",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
@@ -487,7 +513,8 @@ __attribute__((visibility("default"))) void app_main(void) {
                     ht_text(88,240,perf,1);
                 } else ht_text(88,225,"SCAN TIMING NOT AVAILABLE",1);
             }
-            } /* game frame */
+            } /* live game frame */
+            } /* game/cutscene frame */
             prepared_since=app->millis();
             prepared_render_ms=prepared_since-now;
             prepared_pack_ms=0; prepared_staged=false;
