@@ -10,6 +10,7 @@
 #include "hardware_frame.h"
 #include "T5StreamApi.h"
 #include "vendor/ov3660.h"
+#include "vendor/ov3660_regs.h"
 #include "soc/soc.h"
 #include "soc/system_reg.h"
 #include "soc/gpio_struct.h"
@@ -169,6 +170,11 @@ bool cam_hw_start(const risc_camera_esp32s3_profile_v1 *p) {
     ov3660_init(&sensor);
     if(sensor.reset(&sensor) || sensor.set_pixformat(&sensor,PIXFORMAT_JPEG) ||
        sensor.set_framesize(&sensor,FRAMESIZE_SVGA) || sensor.set_quality(&sensor,12) || fault)return false;
+    /* Verify the sensor's JPEG output controls after all settings have run.
+     * A successful SCCB write alone does not prove the final output mode. */
+    int jpeg=SCCB_Read16(pins.address,TIMING_TC_REG21);
+    int output=SCCB_Read16(pins.address,0x471c);
+    if((jpeg&0x20)==0 || output!=0x50 || fault)return false;
     return true;
 }
 bool cam_hw_stop_capture(void) {
@@ -205,7 +211,9 @@ bool cam_hw_begin(unsigned quality) {
 int32_t cam_hw_poll(const uint8_t **bytes,uint32_t *length) {
     *bytes=NULL;*length=0;unsigned ch=pins.dma_channel;
     uint32_t sampled=PADS.in;
-    sampled_changes|=(sampled^sampled_gpio)&((1u<<pins.vsync)|(1u<<pins.href)|(1u<<pins.pclk));
+    uint32_t signals=(1u<<pins.vsync)|(1u<<pins.href)|(1u<<pins.pclk);
+    for(unsigned i=0;i<8;i++)signals|=1u<<pins.data[i];
+    sampled_changes|=(sampled^sampled_gpio)&signals;
     sampled_gpio=sampled;
     if(waiting){
         if(!CAM.lc_dma_int_raw.cam_vsync_int_raw)return T5_STREAM_AGAIN;
@@ -217,7 +225,9 @@ int32_t cam_hw_poll(const uint8_t **bytes,uint32_t *length) {
         DMA.channel[ch].in.link.addr=((uintptr_t)desc)&0xfffff;
         __asm__ volatile("memw" ::: "memory");
         DMA.channel[ch].in.link.start=1;
-        CAM.cam_ctrl.cam_stop_en=1;CAM.cam_ctrl.cam_update=1;CAM.cam_ctrl1.cam_start=1;
+        /* Vendor reference keeps sampling through DMA backpressure; the
+         * finite link and explicit stop still bound memory and ownership. */
+        CAM.cam_ctrl.cam_stop_en=0;CAM.cam_ctrl.cam_update=1;CAM.cam_ctrl1.cam_start=1;
         /* Same resynchronization as ll_cam_do_vsync; ccount edges provide
          * >=10us without a new delay/ISR import. Polled start can be late,
          * so discard a partial prefix and require an entire SOI..EOI JPEG. */
@@ -291,9 +301,12 @@ const char *cam_hw_wait_reason(void) {
 
 const char *cam_hw_fault_reason(void){
     static char detail[64];
-    unsigned ch=pins.dma_channel;
-    uint32_t node=harvested<NODES?desc[harvested].length:0;
-    cam_hw_format_detail(detail,poll_fault,CAM.cam_ctrl1.val,
-        DMA.channel[ch].in.int_raw.val,available,(harvested<<16)|(node&0xffff),sampled_changes);
+    uint32_t first=0,second=0;
+    if(available>=8){
+        for(unsigned i=0;i<4;i++)first=(first<<8)|buffer[i];
+        for(unsigned i=4;i<8;i++)second=(second<<8)|buffer[i];
+    }
+    cam_hw_format_detail(detail,poll_fault,first,second,jpeg.nonzero,
+        sampled_changes,DMA.channel[pins.dma_channel].in.int_raw.val);
     return detail;
 }

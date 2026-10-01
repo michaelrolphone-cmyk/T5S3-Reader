@@ -58,7 +58,7 @@ int main(void){
  frame[1023]=0xff;frame[1024]=0xd9;
  cam_jpeg_scan_step(&parser,frame,512);assert(parser.scan==512 && !parser.found);
  cam_jpeg_scan_step(&parser,frame,1024);assert(parser.scan==1024 && parser.found && !parser.done);
- cam_jpeg_scan_step(&parser,frame,2048);assert(parser.done && parser.soi==511 && parser.length==514);
+ cam_jpeg_scan_step(&parser,frame,2048);assert(parser.done && parser.soi==511 && parser.length==514 && parser.nonzero==7);
  parser=(cam_jpeg_scan){0};memset(frame,0,sizeof(frame));
  for(unsigned i=0;i<4;i++)cam_jpeg_scan_step(&parser,frame,sizeof(frame));
  assert(parser.scan==sizeof(frame) && !parser.done);
