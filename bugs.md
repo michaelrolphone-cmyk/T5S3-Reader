@@ -51,7 +51,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 
 ### 5. Time Card can overwrite valid history after a store-load failure
 
-- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Status:** Confirmed on current master fa517fea3a882505f10bb432c0c08864b73516c8; claimed for the held-Confirm source path. Repair is in progress on fix/status-bar-confirm-edge.
 - **Sources:** pre-consolidation [master](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6d876ae443d873d06068ae866fa4eda403b95f90/bugs.md)
 
 - **Affected code:** `Apps/timecard.c`, `load_store()`, `consume_keyboard()`, `app_main()`, and write paths through `set_punch()` / `save_store()`.
