@@ -24,9 +24,13 @@ static void ht_draw_traversal(const ht_game *g) {
     int cx=g->camera/256,cy=g->camera_y/256;
     const ht_platform *land=ht_level_land(g->level);
     const ht_mechanics *m=ht_mech(g);
-    if(g->level==0)ht_forest_backdrop(g);
-    if(g->level==1)ht_city_backdrop(g);
-    ht_authored_backdrop(g);
+    /* Native hybrid mode seeds these distant planes from the logical
+     * half-resolution surface before entering this foreground pass. */
+    if(!ht_native_background_prepared) {
+        if(g->level==0)ht_forest_backdrop(g);
+        if(g->level==1)ht_city_backdrop(g);
+        ht_authored_backdrop(g);
+    }
     if(!ht_grotto_opaque(g)) {
         ht_scene_geography(g);
         ht_landscape_detail(g);
