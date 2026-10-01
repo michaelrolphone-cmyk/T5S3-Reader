@@ -58,9 +58,37 @@ or fix the separate legacy app uniqueness resolver issue.
 - Existing ordinary/release/legacy compatibility suites remain required; exact
   new-head firmware CI is reported separately and no device claim is made
 
-This closes the declared-tree transport/install/recovery portion only. Scoped,
-generation-pinned installed resource access, resource-only package semantics,
-archive service, CDC migration and verification receipts remain open. No new
+The declared-tree transport/install/recovery checkpoint is **e377948b**.
+Its PlatformIO/host **36809347714** and USB/ELF **36809347775** workflows passed. These results do not certify subsequent scoped-access code.
+
+## Installed application resource streams
+
+The additive `T5PackageResourceApi` v1 opens only a non-executable resource name
+in the current loader-admitted canonical app identity. No caller supplies a
+package ID, root or write mode. `NativeAppHost` binds the identity after taking
+its existing mapping pin; legacy loose apps have no such authority. The original
+stream v1/v2 ABI layouts are unchanged. The new loader export returns ordinary
+owner/generation-checked byte streams, with read/seek/pipe behavior and automatic
+invocation cleanup. File I/O and destruction remain outside the stream mutex.
+
+Each resource stream takes an additional package-use pin through retirement.
+The bounded ordinary manifest is re-parsed and compared to the admitted kind,
+ID, version and executable; only declared non-executable entries of exact size
+open. Context replacement during storage access denies publication and retires
+the candidate. Failed underlying close conservatively retains the generation
+pin rather than permitting unsafe replacement. This can require restart before
+replacement after an I/O error; it is not a claim of recoverable SD termination.
+
+This prevents manager-driven ELF/resource generation mixing. It does not detect
+same-size out-of-band SD modification or replace verification receipts/media
+invalidation. No full content hashing is added to a normal resource open.
+Actual stream-bridge tests exercise traversal, undeclared/executable refusal,
+wrong version/length, read-only rights, pin lifetime, context change during open,
+cleanup and uncertain-close retention with storage lock assertions.
+
+Application access is connected; installed provider/driver/service context
+resource bindings, resource-only package semantics, archive service, CDC
+migration and verification receipts remain open. No new
 package payload, version, live catalog, release or deployment is introduced.
 
 **Implementation In Progress**

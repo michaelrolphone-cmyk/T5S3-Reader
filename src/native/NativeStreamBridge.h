@@ -48,3 +48,8 @@ uint32_t nativeProviderStreamConsumer();
 // item/time budgets and yields. These functions are not SDK exports.
 void nativeProviderSetOwnerPoll(void (*poll)());
 void nativeProviderOwnerTick();
+
+namespace RuntimePackages { struct Identity; }
+// Trusted loader binding for the current admitted, already pinned app generation.
+// Never an ELF export. Empty/legacy roots receive no resource authority.
+bool nativeStreamsBindPackageResources(const RuntimePackages::Identity& identity);

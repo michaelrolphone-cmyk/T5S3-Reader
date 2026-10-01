@@ -74,6 +74,8 @@ t5_stream_result_t nativeStreamCloseOwned(t5_stream_t stream) {
 void nativeStreamsBegin() {
   if (!invocation.begin()) return;
   owner = invocation.id();
+  resourceRoot[0] = 0;
+  resourceIdentity = {};
   active = true;
   if (!invocation.track(RuntimeResources::ExecutionContext::Resource::Streams, releaseStreams)) {
     invocation.end();
@@ -90,6 +92,21 @@ void nativeStreamsBegin() {
 void nativeStreamsEnd() {
   invocation.end();
   active = false;
+}
+bool nativeStreamsBindPackageResources(const RuntimePackages::Identity& identity) {
+  using namespace RuntimePackages;
+  if (!active || !invocation.running(owner) || resourceRoot[0] ||
+      identity.kind != Kind::Application || identity.legacyVersion ||
+      !safeId(identity.id) || !safeVersion(identity.version) || !safeArtifact(identity.artifact)) return false;
+  const std::string root = std::string("/Apps/") + identity.id;
+  if (!systemPackageUseGate().pinned(root.c_str())) return false;
+  resourceIdentity = identity;
+  std::strcpy(resourceRoot, root.c_str());
+  return true;
+}
+extern "C" const t5_package_resource_api_v1* t5_package_resource_get_api(uint32_t version) {
+  return version == T5_PACKAGE_RESOURCE_API_VERSION && authorized() &&
+      resourceRoot[0] && initialize() ? &resourceApi : nullptr;
 }
 extern "C" const t5_stream_api_v1* t5_stream_get_api(uint32_t version) {
   if (!authorized() || !initialize()) return nullptr;

@@ -13,6 +13,27 @@ and auditing the remaining whole-U1 acceptance gates. Other continuations must
 not write this branch until this claim is explicitly released. No live release,
 index, tag, master update or flash. CI is feedback, not an idle-work gate.
 
+## October 1: scoped installed application resource access
+
+**e377948b** publishes the inherited declared-tree implementation and explicit
+claim transfer. Its PlatformIO/host **36809347714** and USB/ELF **36809347775**
+workflows passed; later code is not covered by those runs.
+The full ordinary package sanitizer aggregate,21 record and19 index tests passed.
+
+The next connected slice adds a read-only installed-resource API backed by the
+existing byte-stream registry. The trusted app loader binds its verified identity;
+resource handles pin the package generation, reject undeclared/executable paths,
+revalidate context after SD access and retire outside the stream lock. Existing
+stream ABI layouts remain unchanged. No app payload/version changes are needed
+for an additive runtime API; no app was converted or republished here.
+
+Focused production-bridge tests passed for rights, pinned replacement refusal,
+metadata/length mismatch, stale invocation and uncertain close; the full stream
+aggregate passed with ASan/UBSan (LeakSanitizer disabled for executor limits). Provider/driver/service resource bindings remain open.
+See U1_NESTED_RESOURCE_IMPLEMENTATION.md for exact guarantees and limitations.
+
+**Implementation In Progress**
+
 ## October 1: declared nested resource transport/install/recovery
 
 Verified predecessor **cf1ac054** passed PlatformIO/host **36808116432** and

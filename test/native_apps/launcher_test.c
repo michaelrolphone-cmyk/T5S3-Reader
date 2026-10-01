@@ -1,4 +1,5 @@
 #include "T5StreamApi.h"
+#include "T5PackageResourceApi.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -306,6 +307,7 @@ const t5_usb_api_v1 *t5_usb_get_api(uint32_t version) { (void)version; return NU
 const t5_web_server_api_v1 *t5_web_server_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_video_api_v1 *t5_video_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_stream_api_v1 *t5_stream_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_package_resource_api_v1 *t5_package_resource_get_api(uint32_t version) { (void)version; return NULL; }
 
 const t5_math_api_v1 *t5_math_get_api(uint32_t version) { (void)version; return NULL; }
 

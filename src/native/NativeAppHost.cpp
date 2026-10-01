@@ -1443,6 +1443,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   const size_t nestedSlash = elf.compare(0, 6, "/Apps/") == 0 ?
       elf.find('/', 6) : std::string::npos;
   std::string canonicalRoot;
+  RuntimePackages::Identity canonicalIdentity{};
   if (nestedSlash != std::string::npos) {
     const std::string id = elf.substr(6, nestedSlash - 6);
     RuntimePackages::Identity identity{};
@@ -1452,6 +1453,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
       return ESP_ERR_NOT_SUPPORTED;
     }
     canonicalRoot = elf.substr(0, nestedSlash);
+    canonicalIdentity = identity;
   }
   // Managed /Apps updates recover before any sidecar/ELF can be loaded.
   if (elf.compare(0, 6, "/Apps/") == 0 &&
@@ -1507,10 +1509,12 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   // the ELF has returned and dlclose has succeeded. Failed unloads retain the
   // pin; replacement and uninstall must not race executable memory.
   nativeStreamsBegin();
-  const esp_err_t result = launch_elf_app(path);
+  const bool resourcesReady = canonicalRoot.empty() ||
+      nativeStreamsBindPackageResources(canonicalIdentity);
+  const esp_err_t result = resourcesReady ? launch_elf_app(path) : ESP_ERR_INVALID_STATE;
   nativeStreamsEnd();
   nativeNetworkEnd();
-  if (!canonicalRoot.empty() && result == ESP_OK)
+  if (!canonicalRoot.empty() && (result == ESP_OK || !resourcesReady))
     (void)RuntimePackages::systemPackageUseGate().unpin(canonicalRoot.c_str());
   // Clean up even when an app returns without calling its GPS stop callback.
   GpsDriverRuntime::stop();
