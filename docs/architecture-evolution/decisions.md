@@ -25,3 +25,17 @@ The owner's ESP32/downloadable-driver clarification is context for these recomme
 ## Revision discipline
 
 For each later change record date, affected proposal, new immutable evidence, what was contradicted, and whether the ranking or recommendation changed. Keep superseded ideas here with short rationale, not as active TODOs. Remove questions once answered. A new active idea must displace a weaker one or explain why it belongs in the three-to-five-item set.
+
+## 2026-10-01 Reassess after reading the full roadmap
+
+**This revision supersedes the initial ranking.** The earlier review put local completion/ABI/memory issues ahead of the product architecture and did not sufficiently use the U1–U4 specifications. All four and their sequencing, stream, shared-owner, bus, headless and provisioning contracts have now been read in full.
+
+- Promote **boot/recovery dependency closure and exclusive handoff** as R1. Current source still mounts SD and initializes board/display/UI in a coupled order; the roadmap already requires a different U3 driverless boot. The useful analysis is how to close that graph with real bootstrap media and recovery, not inventing headless operation as a new idea.
+- Promote **product application ownership and CrossPoint compatibility** as R2. Settings/file-transfer ELFs can call compiled product behavior; the reader is compiled. Separate behavior parity, portable app ownership and CPU/binary compatibility. Use upstream 1.6.5 only as an explicit comparison until the owner selects a target.
+- Reframe display completion and memory findings under **high-throughput data-path preservation** as R3. Expressive e-paper is a parallel product goal, not merely a portability demo; retain efficient buffering and measure the actual scene/input/power tradeoff.
+- Demote standalone **SDK provenance/independent release** advice: U2 already requires it. The prior sources still expose useful implementation/compatibility evidence, but do not establish a novel top-level direction.
+- Keep the previous rejected transaction/lifecycle rewrites rejected. The full roadmap further supports one manager, one stream foundation and one owner per physical chip/rail rather than parallel engines.
+- Preserve the four-way constraint: e-paper expression, core reduction without losing UX, CrossPoint parity, and daily device/tool/clock/game usefulness. Core bytes and abstraction elegance alone are not success.
+- Do not turn the minimum-core aspiration into an immediate UI-ELF gate: U3 explicitly keeps UI compiled but optional; U4 does not require its extraction. Later product packaging needs a scoped decision, not an invented extra milestone.
+
+**Final reconciliation:** active U1 head `8d8f2472` contains later sequencing/U3/USB-remediation text requiring the Wi-Fi hardware/provider boundary; it overrides the older master exclusion. The earlier `74c7bdfd` contract/CI findings remain historical. R1–R3 are analysis questions, not priority weights: U1 should close with reuse and bounded scope, without subordinating expressive e-paper, minimal core, CrossPoint parity or daily usefulness to endless foundation work.

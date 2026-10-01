@@ -1,38 +1,34 @@
 # RiscRTE architecture evolution
 
-Last reviewed: 2026-10-01 UTC. Status: **recommendations for discussion, not approved implementation**.
+Reviewed 2026-10-01 UTC. **Analysis and recommendations only; no implementation approval.**
 
-RiscRTE already has useful generic provider, lifetime and package foundations. The highest-leverage next work is making the contracts between independently evolving modules precise and verifiable, rather than replacing those foundations or adding more framework subsystems.
+## Project goals and basis
 
-## Stated context and unknowns
+The owner is pursuing three parallel near-term threads: expressive fast e-paper; the smallest RiscRTE firmware that can assemble the existing experience from drivers/apps; and original CrossPoint feature parity so its application can deploy on this firmware. **Daily usefulness pervades all three:** the hardware is already a mobile device, desk clock, serial/USB/programming toolbox, engineering workbench and toy.
 
-The owner's clarification on 2026-10-01 describes one important part of the platform vision: foundational ESP32 firmware with downloadable drivers exposing capabilities, so applications depend on the capabilities they need rather than board identity. Current emphasis is display-driven configurations, especially e-paper, with monochromatic reflective LCD and an ESP32 AMOLED smartwatch planned next. This does not make the entire platform display-specific.
+Capability-based portability across ESP32 hardware, with future monochromatic reflective LCD and an ESP32 AMOLED smartwatch, is an important part of this vision, not its entirety. A longer-term consumer ecosystem is an aspiration, not permission to add marketplace, onboarding or signing scope. Exact future hardware, memory/input/refresh requirements, CrossPoint target revision and app build contract remain unselected. One source/contract architecture need not mean one firmware or ELF binary across CPU/ABI ports.
 
-Three near-term threads remain parallel:
-- Push e-paper as an expressive medium, including fast rendering
-- Minimize RiscRTE core code while assembling the existing user experience from drivers and apps; moving ownership must preserve valuable functions
-- Reach feature parity with the original CrossPoint product through apps and drivers so its app can deploy on this firmware
+The owner's **U1–U4 specifications are the foundation**, including their stream-first order, real ELF hardware ownership, shared chip/rail rules, optional compiled GUI in U3 and one-image proof in U4. They were read in full at master `3300229d0a232b4e6047a7c93b2f518c033c3cfa`, then reconciled with the later active-U1 sequencing/U3/USB-remediation amendments at `8d8f2472fa91b6e5797daa9f03f997ae097b48fa`, including explicit Wi-Fi provider-boundary work. A spec is intended design, not evidence it is implemented. Separate package-repository preparation does not itself advance milestone acceptance.
 
-Evaluate recommendations against all three. A portable baseline must leave room for optional high-performance e-paper paths; a smaller core is not success if current UX disappears; CrossPoint compatibility is broader than today's T5S3 board. The target CrossPoint revision, app integration/build assumptions and feature-parity checklist remain unspecified, so parity is not claimed.
+## Re-ranked architectural questions
 
-This is a portability goal, not proof that every ESP32 variant can use one identical firmware or application binary. CPU/ABI ports and bootstrap requirements may differ, as the platform specification already allows. The specific future chips, panels, geometry, color modes, refresh behavior, inputs, RAM/PSRAM and power budgets are not yet established here; no dates or hardware support claims follow from the clarification.
+1. **Prove the boot/recovery dependency closure and exclusive handoff.** How does a driverless device obtain its first approved package bytes, recover, and relinquish bootstrap hardware to real providers? Current SD/display/board startup coupling shows why this is more consequential than another abstraction layer.
+2. **Define the product application boundary and CrossPoint compatibility target.** Several app packages still delegate substantial UX to compiled firmware, and the reader remains compiled. Preserve behavior while identifying the coherent reader/product code and reusable services that could truly leave core.
+3. **Preserve the high-throughput data path under generic ownership.** Keep fast e-paper's owned buffers, overlapping work and optional specialized behavior. Move policy/resolution out of the hot loop; verify copies, latency, input, memory, quiescence and daily tool availability across the boundary.
 
-## Ranked recommendations
+R1–R3 number analysis questions, **not weights for the owner's parallel goals or a competing milestone order**. U1 gets no greater goal priority; disciplined closure should reuse working paths, prove remaining contract deficits and prevent further drift or wasted expansion. SDK provenance, independent publishing and shared physical ownership were already specified in U2/U3; the review must not market them as new architecture. The earlier completion/ABI/memory findings are retained as supporting evidence, with their limitations, rather than automatically remaining the top agenda.
 
-1. **Make display behavior portable as well as its lifetime guarantees truthful.** Use negotiated geometry, formats and supported presentation behavior rather than e-paper or board assumptions; keep buffer reuse, presentation completion and physical quiescence distinct. Preserve the useful PR #220 surface work, then remove dependence on firmware-owned physical display behavior without losing its safeguards. High confidence in the current contract gap; future LCD/AMOLED behavior remains to be specified and verified.
-2. **Define one compatibility contract for capabilities and independently released SDK consumers.** Keep the existing resolver and lifetime graph. Specify what a higher capability API promises, how incompatible interfaces are represented, and which immutable SDK/runtime versions each independent package supports. High confidence in the release-boundary need; a resolver mismatch bug is not established.
-3. **Budget peak resident memory across a whole capability acquisition.** Existing app allocation reclamation is valuable but does not account for provider images, relocation copies and shared display resources as one budget. Start with measured ownership and admission limits; defer a new storage-VM implementation. Medium confidence in priority until peak measurements exist.
+## Read the set
 
-The detailed alternatives, ownership, failure behavior, compatibility and measurable outcomes are in [proposals](proposals.md). [Evidence](evidence.md) separates inspected source facts from hypotheses and records exact revisions. [Decisions](decisions.md) records why ideas were narrowed or rejected. [Research queue](research-queue.md) contains the few next questions that could change this ranking.
+- [Foundation and alternatives](foundation.md): minimum boot/runtime responsibilities, current coupling, recovery choices, product boundary and performance constraints
+- [Recommendations](proposals.md): alternatives, ownership/lifecycle, budgets, staged evidence and falsification conditions
+- [CrossPoint comparison](crosspoint-parity.md): pinned upstream release comparison, source-backed gap candidates and app-vs-behavior compatibility
+- [Evidence register](evidence.md): immutable source revisions, facts versus inference, roadmap authority and test limits
+- [Revision decisions](decisions.md): re-ranking and retired ideas, including why another package-manager/lifecycle rewrite is not supported
+- [Research queue](research-queue.md): the few unresolved facts that could change the recommendations
 
-## Scope and authority
+## Scope and verification
 
-This document set is a research layer under [the platform specification](../RISCRTE_PLATFORM_SPEC.md), [hardware boundary](../HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md) and applicable child contracts. It does not supersede them, assign implementation milestones, add qualification gates, or authorize code, configuration, build, manifest, version, merge, release or device changes.
+This research remains below [the platform specification](../RISCRTE_PLATFORM_SPEC.md) and its authoritative child contracts. It does not authorize runtime, build, configuration, manifest or version edits, change milestone gates, merge, release, flash or claim hardware success. U3 keeps GUI compiled but optional; full product/UI extraction needs separately scoped work.
 
-Baseline: Reader master `2b45ab662c0ffe3650ce0f841083ea47886022c9`. PR #220 and U1 PR #96 are analyzed separately as unmerged work; their existence is not evidence that master implements them. Migration repositories are checked at the revisions listed in evidence.
-
-## How this set stays focused
-
-Keep three to five active proposals. A revision must add relevant evidence, materially improve a contract, or change a recommendation; unchanged observations do not justify filler commits. Seek counterexamples before strengthening a claim. Replace or retire weaker ideas rather than accumulating a roadmap. Keep exact code/CI observations separate from proposed acceptance criteria and from physical qualification.
-
-No implementation tests or hardware experiments were run for this documentation change. Existing source tests and exact-head CI records were inspected; their scope and limits are recorded rather than converted into new test claims.
+The initial baseline and CI observations remain timestamped in evidence. The deeper comparison uses Reader `3300229d`, open display PR #220 `e0031d06`, historical U1 contract findings at `74c7bdfd` (active PR #96 rechecked at `8d8f2472`; current runtime work was not fully re-audited), and pinned CrossPoint release 1.6.5 for comparison only. No new runtime tests or hardware experiments were run. Preserve three to five active ideas and retire weak ones; do not accumulate every possible roadmap feature.
