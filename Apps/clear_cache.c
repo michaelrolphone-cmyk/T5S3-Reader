@@ -86,7 +86,7 @@ void app_main(void) {
     app = t5_app_get_api(T5_APP_ABI_VERSION);
     cache = t5_cache_get_api(T5_CACHE_API_VERSION);
     ui = t5_ui_get_api(T5_UI_API_VERSION);
-    if (!app || !cache || !ui || !app->poll || !cache->clear_reading_cache || !ui->render_list || !ui->hit_test)
+    if (!app || !cache || !ui || !app->poll || !cache->clear_reading_cache || !ui->render_list || !ui->poll_event)
         return;
 
     screen = SCREEN_WARNING;
@@ -94,22 +94,17 @@ void app_main(void) {
     render_warning();
 
     for (;;) {
-        t5_app_input_t input;
-        if (!app->poll(&input, 50) || input.exit_requested) break;
+        t5_ui_event_t event;
+        if (!ui->poll_event(&event, 50) || event.type == T5_UI_EVENT_EXIT) break;
 
+        if (event.type == T5_UI_EVENT_BACK) break;
         if (screen == SCREEN_WARNING) {
-            if (input.buttons & T5_APP_BUTTON_BACK) break;
-            if (input.buttons & T5_APP_BUTTON_CONFIRM) {
-                clear_now();
-                continue;
-            }
-            if (input.tapped) {
-                const int32_t hit = ui->hit_test(input.touch_x, input.touch_y);
-                if (hit >= 0) clear_now();
-            }
+            // Only the mapped action control can authorize deletion. A list
+            // row hit is explanatory content, not a confirmation button.
+            if (event.type == T5_UI_EVENT_CONFIRM) clear_now();
             continue;
         }
 
-        if ((input.buttons & (T5_APP_BUTTON_BACK | T5_APP_BUTTON_CONFIRM)) || input.tapped) break;
+        if (event.type == T5_UI_EVENT_CONFIRM || event.type == T5_UI_EVENT_TAP) break;
     }
 }
