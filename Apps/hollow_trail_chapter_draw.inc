@@ -61,20 +61,49 @@ static void ht_authored_pump(int x,int y,int tone) {
     ht_disk(ht_scene,x-44,y-15,14,tone);
     ht_limb(ht_scene,x-44,y-15,x-39,y-80,2,2,tone);
     ht_rect(ht_scene,x-65,y-3,143,6,tone);
+    /* Counterweight, crank, pitman and bearing remain behind the horsehead. */
+    ht_limb(ht_scene,x-44,y-15,x-26,y-29,3,3,tone+12);
+    ht_disk(ht_scene,x-26,y-29,5,tone+8);
+    ht_limb(ht_scene,x-26,y-29,x-35,y-79,2,2,tone-13);
+    ht_disk(ht_scene,x-5,y-67,5,tone+17);
+    ht_disk(ht_scene,x-5,y-67,2,tone-32);
+    ht_limb(ht_scene,x-25,y-8,x+16,y-43,1,1,tone);
+    ht_limb(ht_scene,x+18,y-8,x-19,y-43,1,1,tone);
+    ht_limb(ht_scene,x-55,y-82,x+57,y-64,0,0,tone-30);
+    for(int rung=0;rung<7;++rung) {
+        int at=y-9-rung*8;
+        ht_limb(ht_scene,x-9,at,x-2,at,0,0,tone-26);
+    }
+    ht_rect(ht_scene,x+62,y-10,13,8,tone+14);
+
 }
 static void ht_authored_glasshouse(int x,int y,int w,int h,int tone) {
     /* Continuous curved glazing ribs, with panes missing near the crown. */
     int previous_x=x,previous_y=y-24;
-    for(int k=1;k<=16;++k) {
-        int u=k*16,nx=x+w*k/16,ny=y-24-h*4*u*(256-u)/65536;
+    for(int k=1;k<=40;++k) {
+        int u=k*256/40,nx=x+w*k/40,ny=y-24-h*4*u*(256-u)/65536;
         ht_limb(ht_scene,previous_x,previous_y,nx,ny,1,1,tone);
-        if(k%2==0)ht_limb(ht_scene,nx,ny,nx,y,1,1,tone);
+        /* Thin mullions divide curved glazing into panes; occasional missing
+         * panes expose the iron skeleton rather than a solid triangle roof. */
+        if(k%2==0) {
+            ht_limb(ht_scene,nx,ny,nx,y,0,0,tone);
+            if(k%10!=0)ht_limb(ht_scene,nx-3,ny+9,nx-3,y-5,0,0,tone-40);
+        }
+        for(int course=1;course<=3;++course) {
+            int ay=previous_y+(y-previous_y)*course/4,by=ny+(y-ny)*course/4;
+            ht_limb(ht_scene,previous_x,ay,nx,by,0,0,tone-8);
+        }
         previous_x=nx;previous_y=ny;
     }
     ht_limb(ht_scene,x,y-24,x+w,y-24,1,1,tone);
     ht_rect(ht_scene,x,y-3,w,7,tone);
-    ht_limb(ht_scene,x+w/3,y-7,x+w/3-9,y-h/2,2,0,tone-12);
-    ht_leaf_cluster(ht_scene,x+w/3-9,y-h/2,12,871u,tone-12);
+    ht_rect(ht_scene,x+w/2-9,y-35,18,35,tone+8);
+    ht_limb(ht_scene,x+w/2,y-34,x+w/2,y,0,0,tone-30);
+    for(int leaf=0;leaf<5;++leaf) {
+        int root=x+w/3,side=leaf%2?1:-1;
+        ht_detail_leaf(root,y-4,root+side*(17+leaf*5),y-42-leaf*7,4,tone+9);
+    }
+
 }
 static void ht_authored_landmarks(const ht_game *g) {
     unsigned level=g->level;
@@ -115,6 +144,15 @@ static void ht_authored_landmarks(const ht_game *g) {
                 ht_limb(ht_scene,x-43,y-131,x+113,y-112,3,2,tone);
                 ht_limb(ht_scene,x-14,y-151,x+113,y-112,1,1,tone);
                 ht_limb(ht_scene,x+104,y-113,x+104,y-48,0,0,tone);
+                for(int brace=0;brace<5;++brace) {
+                    int at=x-35+brace*28,by=y-130+brace*4;
+                    ht_limb(ht_scene,at,by,at+25,by+12,0,0,tone-15);
+                    ht_limb(ht_scene,at+25,by+12,at+28,by+4,0,0,tone-15);
+                }
+                ht_disk(ht_scene,x+104,y-48,5,tone);
+                ht_disk(ht_scene,x+105,y-49,3,tone-55);
+                ht_limb(ht_scene,x-15,y-30,x+12,y-70,1,1,tone);
+
             }
         } else if(level==6)ht_authored_glasshouse(x-80,y,240,105+i%2*35,tone);
         else if(level==7) {
@@ -131,6 +169,21 @@ static void ht_authored_landmarks(const ht_game *g) {
             ht_triangle(ht_scene,x-43,y-37,x+12,y-69,x+72,y-37,tone);
             ht_rect(ht_scene,x+40,y-65,8,29,tone);
             for(int win=0;win<3;++win)ht_rect(ht_scene,x-21+win*26,y-26,9,14,48);
+            ht_limb(ht_scene,x-43,y-37,x+12,y-69,2,1,tone+16);
+            ht_limb(ht_scene,x+12,y-69,x+72,y-37,1,2,tone+11);
+            for(int row=0;row<6;++row)ht_limb(ht_scene,x-30,y-4-row*5,x+59,y-4-row*5,0,0,tone-12);
+            for(int win=0;win<3;++win) {
+                int at=x-21+win*26;
+                ht_rect(ht_scene,at-2,y-28,13,2,tone+14);
+                ht_limb(ht_scene,at+4,y-26,at+4,y-12,0,0,tone);
+                ht_limb(ht_scene,at,y-19,at+9,y-19,0,0,tone);
+                ht_rect(ht_scene,at-2,y-11,13,2,tone+10);
+            }
+            ht_limb(ht_scene,x-38,y-9,x+66,y-9,2,2,tone+14);
+            ht_limb(ht_scene,x-34,y-8,x-34,y+2,1,1,tone+20);
+            ht_limb(ht_scene,x+61,y-8,x+61,y+2,1,1,tone+20);
+            ht_rect(ht_scene,x+38,y-67,12,3,tone+18);
+
         }
         ht_checkpoint();
     }
@@ -152,7 +205,7 @@ static void ht_authored_landmarks(const ht_game *g) {
         }
     }
 }
-static void ht_authored_backdrop(const ht_game *g) {
+static void ht_authored_backdrop_low(const ht_game *g) {
     if(!ht_authored_chapter(g->level))return;
     const ht_chapter_composition *c=&ht_chapter_compositions[g->level];
     int cx=g->camera/256,cy=g->camera_y/256;
@@ -211,29 +264,80 @@ static void ht_authored_backdrop(const ht_game *g) {
         ht_forest_frame_y=cy;ht_forest_frame_scale=ht_world_scale;
     }
 }
+static void ht_authored_backdrop_native(const ht_game *g) {
+    const ht_chapter_composition *c=&ht_chapter_compositions[g->level];
+    int cx=g->camera/256,cy=g->camera_y/256;
+    static int16_t tops[3][HT_NATIVE_W];
+    static int32_t light_distance[HT_NATIVE_W];
+    int lx=ht_project_x(c->light_x-cx*c->rates[0]/100)*HT_NATIVE_SCALE;
+    int ly=ht_project_y(c->light_y-cy*c->rates[0]/100)*HT_NATIVE_SCALE;
+    for(int sx=0;sx<HT_NATIVE_W;++sx) {
+        int x=sx/HT_NATIVE_SCALE;
+        int wx=240+(x-240)*256/ht_world_scale;
+        for(int p=0;p<3;++p)tops[p][sx]=(int16_t)(ht_project_y(
+            ht_chapter_ridge(g->level,p,wx+cx*c->rates[p]/100)-cy*c->rates[p]/100)*HT_NATIVE_SCALE);
+        int dx=(sx-lx)/HT_NATIVE_SCALE;light_distance[sx]=dx*dx;
+    }
+    for(int sy=0;sy<HT_NATIVE_H;++sy) {
+        uint8_t *row=ht_scene+sy*HT_NATIVE_W;
+        int dy=(sy-ly)/HT_NATIVE_SCALE;
+        for(int sx=0;sx<HT_NATIVE_W;++sx) {
+            int glow=ht_min(52,(light_distance[sx]+dy*dy/2)/5500);
+            int ink=18+glow;
+            for(int p=2;p>=0;--p)if(sy>=tops[p][sx]) {
+                int depth=(sy-tops[p][sx])/HT_NATIVE_SCALE;
+                ink=72+p*43+glow/3+ht_min(17,depth/9);
+                if(g->level==5 && depth>16 && depth%39<2)ink-=14;
+                break;
+            }
+            row[sx]=(uint8_t)ink;
+        }
+        if((sy&31)==31)ht_checkpoint();
+    }
+    ht_authored_landmarks(g);
+    int first=HT_NATIVE_H;
+    for(int sx=0;sx<HT_NATIVE_W;++sx)first=ht_min(first,tops[2][sx]);
+    for(int sy=ht_max(0,first);sy<HT_NATIVE_H;++sy) {
+        uint8_t *row=ht_scene+sy*HT_NATIVE_W;
+        int dy=(sy-ly)/HT_NATIVE_SCALE;
+        for(int sx=0;sx<HT_NATIVE_W;++sx)if(sy>=tops[2][sx]) {
+            int depth=(sy-tops[2][sx])/HT_NATIVE_SCALE;
+            int glow=ht_min(52,(light_distance[sx]+dy*dy/2)/5500);
+            int ink=158+glow/3+ht_min(17,depth/9);
+            if(g->level==5 && depth>16 && depth%39<2)ink-=14;
+            row[sx]=(uint8_t)ink;
+        }
+        if((sy&31)==31)ht_checkpoint();
+    }
+}
+static void ht_authored_backdrop(const ht_game *g) {
+    if(!ht_authored_chapter(g->level))return;
+    if(ht_native_active){ht_authored_backdrop_native(g);return;}
+    ht_authored_backdrop_low(g);
+}
 /* Two close masses per chapter. Their contours and scale match materials;
  * all are on the observer's side, separate from the player's physical route. */
 static void ht_authored_foreground(const ht_game *g) {
+    if(g->level==7){ht_dam_foreground(g);return;}
     if(!ht_authored_chapter(g->level))return;
     int cx=g->camera/256*5/4,cy=g->camera_y/256*5/4,margin=ht_view_margin();
     static const int sites[2]={1100,2980};
-    static const ht_foreground_section stone[]={
-        {-39,-460,15,-460},{-35,-370,31,-370},{-44,-304,38,-304},
-        {-31,-250,35,-250},{-29,-209,18,-209},{-17,-172,27,-172},
-        {-25,-128,32,-128},{-34,-78,44,-78},{-39,-24,40,-24},
-        {-47,20,49,20},{-58,65,57,65},{-60,520,59,520}
-    };
     for(int n=0;n<2;++n) {
         int x=sites[n]-cx,y=230-cy;
         if(x< -130-margin || x>HT_W+130+margin)continue;
         if(g->level==5 || g->level==8) {
-            ht_foreground_contour(x,y,stone,sizeof(stone)/sizeof(stone[0]),248);
+            ht_detail_close_rock(x,y,g->level==8);
             ht_limb(ht_scene,x+21,y-292,x+6,y-239,1,0,g->level==8?150:213);
             ht_limb(ht_scene,x+6,y-239,x+16,y-206,0,0,210);
         } else if(g->level==6) {
             ht_limb(ht_scene,x,y+180,x-9,y-410,5,4,248);
             ht_limb(ht_scene,x-9,y-410,x+118,y-332,4,3,248);
             ht_triangle(ht_scene,x+9,y-397,x+72,y-358,x+21,y-333,182);
+            for(int rivet=0;rivet<8;++rivet)ht_disk(ht_scene,x-3,y-350+rivet*44,1,181);
+            ht_limb(ht_scene,x+9,y-397,x+21,y-333,0,0,118);
+            ht_limb(ht_scene,x+21,y-333,x+72,y-358,0,0,137);
+            for(int leaf=0;leaf<4;++leaf)ht_detail_leaf(x-9,y-155+leaf*17,x+25+leaf*6,y-175+leaf*15,5,244);
+
             ht_limb(ht_scene,x-5,y-174,x-19,y-119,2,1,240);
             for(int k=0;k<3;++k)ht_leaf_cluster(ht_scene,x-16,y-163+k*18,13,912u+k*17,244);
         } else if(g->level==2 || g->level==7) {
@@ -242,12 +346,25 @@ static void ht_authored_foreground(const ht_game *g) {
             ht_disk(ht_scene,x,y-325,13,247);
             for(int k=0;k<3;++k)ht_rect(ht_scene,x-18,y-245+k*141,36,8,250);
             ht_limb(ht_scene,x+7,y-300,x+7,y+200,1,1,196);
+            for(int flange=0;flange<3;++flange)for(int bolt=-1;bolt<=1;bolt+=2)
+                ht_disk(ht_scene,x+bolt*13,y-241+flange*141,2,169);
+            for(int seam=0;seam<6;++seam)ht_limb(ht_scene,x-5,y-292+seam*68,x-7,y-279+seam*68,0,0,216);
+
         } else {
             ht_rect(ht_scene,x-13,y-500,26,790,247);
             ht_rect(ht_scene,x-20,y-178,40,8,249);
             ht_limb(ht_scene,x,y-232,x+75,y-232,4,3,247);
             ht_limb(ht_scene,x+75,y-232,x+134,y-219,0,0,218);
             ht_rect(ht_scene,x-19,y-310,38,55,249);
+            ht_limb(ht_scene,x-7,y-450,x-4,y+240,0,0,211);
+            for(int knot=0;knot<5;++knot) {
+                ht_disk(ht_scene,x+2,y-270+knot*100,3,206);ht_disk(ht_scene,x+2,y-270+knot*100,1,245);
+            }
+            for(int insulator=0;insulator<3;++insulator) {
+                int at=x+18+insulator*24;
+                ht_rect(ht_scene,at-4,y-243,8,4,233);ht_limb(ht_scene,at,y-243,at,y-233,1,1,245);
+            }
+
             if(g->level==3)ht_disk(ht_scene,x,y-292,7,165);
         }
         ht_checkpoint();

@@ -54,6 +54,10 @@ c++ -std=c++17 -Wall -Wextra -Werror \
 "$binary"
 cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
   -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_character_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/hollow_trail_framing_test.c" -o "$binary"
 "$binary"
 cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
@@ -71,6 +75,10 @@ cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address
 cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/hollow_trail_direction_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_cutscene_test.c" -o "$binary"
 "$binary"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
   -I"$repo_dir/lib/NativeApps/include" \
@@ -146,6 +154,8 @@ python3 "$repo_dir/test/resources/installed_provider_app_requirement_source_test
 python3 "$repo_dir/test/native_apps/network_cookie_session_source_test.py"
 python3 "$repo_dir/test/native_apps/home_shortcut_launch_contract_test.py"
 python3 "$repo_dir/test/native_apps/file_browser_retirement_contract_test.py"
+python3 "$repo_dir/test/native_apps/file_browser_oversize_usb_handle_source_test.py"
+python3 "$repo_dir/test/native_apps/file_browser_oversize_usb_handle_runtime_test.py"
 python3 "$repo_dir/test/native_apps/model_viewer_contract_test.py"
 MV_SANITIZE=1 python3 "$repo_dir/test/native_apps/model_viewer_shading_test.py"
 MV_SANITIZE=1 python3 "$repo_dir/test/native_apps/model_viewer_controls_test.py"
@@ -155,6 +165,7 @@ python3 "$repo_dir/test/resources/driver_install_stack_progress_source_test.py"
 python3 "$repo_dir/test/native_apps/scheduled_bug_fix_behavior_test.py"
 python3 "$repo_dir/test/native_apps/app_store_release_transition_source_test.py"
 python3 "$repo_dir/test/native_apps/font_selection_persistence_source_test.py"
+python3 "$repo_dir/test/native_apps/button_remap_runtime_test.py"
 python3 "$repo_dir/test/native_apps/font_update_crc_source_test.py"
 python3 "$repo_dir/test/native_apps/rom_manager_actions_touch_source_test.py"
 python3 "$repo_dir/test/native_apps/text_editor_discard_source_test.py"
@@ -176,6 +187,7 @@ cc -std=c11 -Wall -Wextra -Werror \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/rom_manager_vimm_parser_test.c" -o "$binary"
 (cd "$repo_dir" && "$binary")
+python3 "$repo_dir/test/native_apps/confirmation_input_test.py"
 echo 'Native app launcher tests passed'
 
 bash "$repo_dir/test/run_panic_capture_test.sh"

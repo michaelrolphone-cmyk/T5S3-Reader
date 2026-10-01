@@ -2,19 +2,31 @@
 
 ## Status
 
-Firmware 1.3.47 retains `HalDisplay` for its own UI. Installable apps bind an
+Firmware 1.3.49 retains `HalDisplay` for its own UI. Installable apps bind an
 independently installable `display.output` provider. The first T5S3 provider,
 `display-epd-video@0.1.2`, owns the app-facing display contract and temporarily
 uses the firmware video scan service as its private physical backend. The host
 UI compatibility backend is still compiled into firmware during migration.
 
-## Master integration (September 30, 2026)
+## Master integration (October 1, 2026)
 
-Backmerged master `1ebf0138`. Preserves asynchronous boot/loading and wisp
-transitions, controller and math changes, inherited video backlight, and the
-off-screen font renderer. Detached text targets initialize their own validated
-MONO1 geometry. Firmware advances 1.3.46 → 1.3.47; Model Viewer 1.2.4 →
-1.2.5; Risc Strike 1.0.2 → 1.0.3; display provider 0.1.1 → 0.1.2.
+Backmerged master `1e0188c1`, including PRs #277, #333, #334, #336 and #337.
+Preserves X/Back navigation, asynchronous boot/loading and wisp transitions,
+controller/math changes, the video narration strip, inherited video backlight,
+and the detached font renderer. Firmware advances published 1.3.48 → 1.3.49;
+Model Viewer published 1.2.5 → 1.2.7 (1.2.6 is reserved by the separate U1 ZIP
+branch); Risc Strike 1.0.2 → 1.0.3; display provider 0.1.1 → 0.1.2.
+
+The migrated apps require firmware 1.3.49 and `display.output@1`. The firmware
+floor identifies the first release with this branch's provider authorization and
+restricted `t5_video_get_api` import binding, as well as the display integration;
+published 1.3.47/1.3.48 do not contain that binding. The provider and its complete
+metadata must also be installed: a firmware number alone does not supply the
+capability. The video ABI and buffer lifetime contract are unchanged.
+
+Companion GameBoy #25 remains version 1.3.13; unrelated save-confirmation #29
+reserves 1.3.12. Publish #29 first, or reconcile its version above any released
+1.3.13 before publishing it later. Neither PR is merged or released here.
 
 ## Layering
 
@@ -91,6 +103,23 @@ The shared native UI renderer derives header, content, status and table/list
 bounds from the runtime viewport instead of fixed 540x960-era offsets. App-owned
 custom layouts should use the viewport query rather than fixed pixel origins.
 
+## Current completion and portability limits
+
+The compatibility provider reports COMPLETE when its private video backend has
+accepted/flipped a frame, rather than certifying the physical panel has settled.
+The backend retains its scan buffers; consumers reacquire only through provider
+backpressure and never free the submitted storage. This integration preserves
+that ownership contract and the existing video ABI; no physical completion or
+new-panel qualification is claimed. Presentation intent/queue options are not
+implemented by this first provider beyond its existing policy.
+
+The next minimal portability witness is a small capability-only test app that
+queries geometry/format, fills an acquired surface using its actual stride, and
+submits bounded damage on a second verified panel. Existing viewer/GameBoy
+960×540 requirements and Risc Strike's same-size MONO1/GRAY2 requirements remain
+explicit; the compatibility renderer is MONO1-only. A new RGB565 panel requires
+its own provider and a format-aware witness, not relaxed legacy geometry guards.
+
 ## Migration continuation
 
 The next display-specific milestones are deliberately outside this slice:
@@ -107,11 +136,11 @@ The next display-specific milestones are deliberately outside this slice:
 
 ## T5S3 hardware smoke test
 
-Use a firmware build from this PR at version 1.3.47. Install the complete
+Use a firmware build from this PR at version 1.3.49. Install the complete
 `display-epd-video@0.1.2` driver package, including `driver.elf`,
 `provider-abi.v1`, `privileged-imports.v1` and `.package.json`, before opening
-any of the migrated apps. Install Model Viewer 1.2.5, Risc Strike 1.0.3 and
-GameBoy 1.3.9 from their respective PR artifacts, with their matching JSON
+any of the migrated apps. Install Model Viewer 1.2.7, Risc Strike 1.0.3 and
+GameBoy 1.3.13 from their respective PR artifacts, with their matching JSON
 manifests. The GameBoy artifact is produced by its companion PR #25.
 
 1. Confirm the Reader home UI starts and returns normally with the display

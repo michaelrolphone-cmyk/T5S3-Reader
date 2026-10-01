@@ -4,10 +4,10 @@
 #include <stdlib.h>
 #include "../../Apps/hollow_trail.c"
 static uint32_t now_ms,release_at;
-static unsigned allocations,frees,submissions,backbuffer_calls;
+static unsigned allocations,frees,submissions,backbuffer_calls,strip_requests;
 static bool armed,overlapped,reject_once,failed_alloc,transition;
 static unsigned transition_loading_polls,reader_releases;
-static bool journal_run;
+static bool journal_run,old_video;
 static unsigned transition_level;
 static uint8_t *stage;
 static uint8_t display[HT_PACKED_BYTES];
@@ -60,6 +60,13 @@ static bool submit_frame(uint16_t y,uint16_t height) {
     }
     if(journal_run && submissions==3) assert(display[0]!=0xa5);
     ++submissions;
+    /* This fixture tests delayed-display ownership and live chapter changes.
+     * The intro timeline has dedicated coverage; leave it after the startup
+     * title frame so the historical submission counts remain about gameplay. */
+    if(submissions==1 && ht_cutscene.active) {
+        ht_cutscene.tick=HT_INTRO_TICKS;ht_cutscene.active=false;ht_cutscene.finished=true;
+        ht_cutscene_apply_handoff(&ht_cutscene);ht_input_rearm=false;++scene_revision;
+    }
     if(journal_run && submissions==2) { reading=true; ht_journal_open(30); ++scene_revision; }
     if(journal_run && submissions==3) { reading=false; ++scene_revision; }
 
@@ -79,15 +86,24 @@ static bool submit_frame(uint16_t y,uint16_t height) {
     }
     return true;
 }
+static bool reinforce(uint16_t y,uint16_t height,uint8_t passes) {
+    assert(y==460 && height==46 && (passes==0 || passes==2));
+    ++strip_requests;return true;
+}
 static uint32_t scans(void) { return now_ms/42; }
 static void stop(void) {}
 static const t5_app_api_v1 mock_app={.abi_version=T5_APP_ABI_VERSION,.struct_size=sizeof(mock_app),
     .poll=poll_input,.millis=clock_ms,.psram_alloc=allocate,.psram_free=release};
 static const t5_video_api_v1 mock_video={.api_version=T5_VIDEO_API_VERSION,.struct_size=sizeof(mock_video),
     .start_format=start_video,.backbuffer=buffer,.can_submit=ready,.submit=submit_frame,
-    .stop=stop,.frame_counter=scans};
+    .stop=stop,.frame_counter=scans,.reinforce_black=reinforce};
 const t5_app_api_v1 *t5_app_get_api(uint32_t v) { (void)v;return &mock_app; }
-const t5_video_api_v1 *t5_video_get_api(uint32_t v) { (void)v;return &mock_video; }
+const t5_video_api_v1 *t5_video_get_api(uint32_t v) {
+    (void)v;static t5_video_api_v1 legacy;
+    if(!old_video)return &mock_video;
+    legacy=mock_video;legacy.struct_size=offsetof(t5_video_api_v1,reinforce_black);
+    legacy.reinforce_black=NULL;return &legacy;
+}
 const t5_math_api_v1 *t5_math_get_api(uint32_t v) { (void)v;return NULL; }
 static bool reader_page(void *context,const risc_reader_page_request_v1*q,risc_reader_page_result_v1*r) {
     assert(context==(void*)1 && q->width==768 && q->height==456 && q->stride==96);
@@ -103,12 +119,13 @@ static bool capability_release(t5_provider_capability_lease_t token) { assert(to
 static const t5_provider_capability_api_v1 capability_api={1,sizeof(capability_api),capability_acquire,capability_release,NULL};
 const t5_provider_capability_api_v1 *t5_provider_capability_get_api(uint32_t v) { (void)v;return journal_run?&capability_api:NULL; }
 int main(void) {
-    for(unsigned scenario=0;scenario<5;++scenario) {
-        now_ms=release_at=0;allocations=frees=submissions=backbuffer_calls=0;
+    for(unsigned scenario=0;scenario<6;++scenario) {
+        old_video=scenario==5;strip_requests=0;now_ms=release_at=0;allocations=frees=submissions=backbuffer_calls=0;
         armed=overlapped=false;reject_once=true;failed_alloc=scenario==1;stage=NULL;
         transition=scenario==2 || scenario==4;transition_level=scenario==4?4:1;transition_loading_polls=0; journal_run=scenario==3; reader_releases=0;
         app_main();
         assert(submissions==(journal_run?4u:3u) && backbuffer_calls==(journal_run?5u:4u));
+        assert(old_video?strip_requests==0:(strip_requests>=1 && strip_requests<=submissions-1));
         assert(reader_releases==(journal_run?1u:0u));
         assert(frees==(failed_alloc?1u:2u));
         assert(overlapped==!failed_alloc);

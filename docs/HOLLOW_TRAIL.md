@@ -1,3 +1,53 @@
+# Hollow Trail 1.1.36 — novella domestic beats and mill arrival
+
+The opening now stages the novella's specific domestic objects, overnight chair
+wait, packing and caught coat thread. The grass memory uses an enclosed flattened
+room with depth-lagged wind. The existing slow profile departure remains.
+Chapter I gains a grounded mill/register setting and a one-shot in-engine arrival
+tableau that returns to the unchanged game state. This is a focused increment,
+not whole-novella completion. A same-PR continuation adds a player-earned city
+arrival tableau, rooted skyline beyond the forest gate and the first service
+terrace's puddle, worn door arrows and roof details. See [actual frames and the 44-set remaining map](HOLLOW_TRAIL_NOVELLA_ALIGNMENT.md).
+
+# Hollow Trail 1.1.35 — slower cinematic, solid tableaus, continuous departure
+
+Hollow Trail **1.1.34 -> 1.1.35** responds to on-device review of the Forward-X introduction. The intro is deliberately slowed from roughly thirty seconds to about sixty-one seconds. The six text-bearing opening beats each hold for at least 4.8 seconds, with the two tall-grass memories lasting more than seven seconds each and a long uncaptioned profile walk after the house. Signal flashes are spaced farther apart so the player can read the prose, look back into the scene, and then notice the light rather than processing all three at once.
+
+Forward-X scenery is no longer staged primarily from thin rectangles and limbs. The tableau renderer now has filled perspective boxes and quadrilateral faces for furniture and architecture. Kitchen counter, basin, shelves, table, chair, window frame and bag have visible depth planes; condensation, floor seams and wall wear sit over those masses. Forward trees use filled tapering trunks, root flares, growth-following bark seams, multi-segment branches and irregular overlapping crowns. Forward characters use heavier limbs, a filled coat silhouette with shoulder/waist/hem shape, hair mass, braid/face details and a subdued clothing seam. The tall-grass memory adds a visibly flattened nest of stems and seed-head detail rather than reading as a wireframe field.
+
+Continuity changes after packing: the camera now cuts directly to the side-scroller profile at the exterior of the house. The house, roof, chimney, window, wall and a real dark doorway are present, the door leaf opens, and the protagonist visibly walks out of it before continuing through the garden, orchard, ditch and root-soft road. There is no longer a Forward-X walk that starts partway outside.
+
+The reported forest pop-in came from a cinematic actor-position threshold that created the deeper trunks only after the protagonist passed x=560. That threshold is removed. Orchard and forest-approach trees are permanently world anchored and culled only with generous geometry-aware off-screen extents; roots and observer trunks are also drawn before they can enter the display. A native regression checks that forest ink is already present ahead of the character while she is still before x=560.
+
+This update is layered on the 1.1.34 Y-motion emphasis and 960×270 foreground-detail work from current master; those gameplay and graphics A/B changes are retained unchanged.
+
+# Hollow Trail 1.1.34 — Y motion emphasis and 960×270 foreground detail
+
+During live gameplay, holding the same **Y / journal-back** control used to back out of journal views adds a transient **10% motion emphasis**. The authored scene pace stored in the game state is not changed: ground locomotion, climbing, tree exits, jump takeoff momentum and directional acceleration are boosted only while Y is held. Rolling/crate effort, rowing and rope pumping receive the same bounded emphasis so physical actions respond consistently.
+
+Gravity, jump height, puzzle timing, the tree-push struggle duration, weather, camera timing and the fixed simulation clock are unchanged. Releasing Y returns immediately toward the scene-directed pace. In the journal, pause screen and debug level picker, the button retains its existing back/navigation behavior and never accelerates gameplay.
+
+
+The graphics A/B follow-up also replaces the full-native foreground experiment with **960×270** foreground detail. The original full-native 960×540 background/grotto code is restored unchanged. Foreground geometry keeps native horizontal resolution but computes only 270 Y rows, duplicating each row to the two physical output rows before the existing 960×540 camera/vignette/packer path. This is roughly 2× baseline foreground raster sampling instead of 4×, using only power-of-two scaling.
+
+# Hollow Trail 1.1.32 — Forward-X cutscene tableaus
+
+Hollow Trail **1.1.31 -> 1.1.32** extends the timeline cutscene layer with a cutscene-only three-axis tableau renderer. Gameplay remains a side scroller. A Forward-X cutscene camera looks down world X: world Y projects across the display, world Z projects vertically, and positive X becomes depth. Integer perspective scaling, depth-to-fog ink falloff and a bounded 96-object far-to-near render queue let foreground grass, room furniture, actors, trees, window frames and distant signal lights occlude one another naturally without a 3D framebuffer, floating point, heap work or changes to gameplay collision.
+
+Cutscene actors now have front, back, left-three-quarter and right-three-quarter views in addition to the existing profile gameplay silhouette. Forward actors reuse the game's limb/torso visual language but project joints in Y/Z and may move toward or away from the observer along X, so apparent size changes with actual scene depth rather than a screen-space zoom.
+
+The intro is re-authored around this renderer. The kitchen is viewed forward toward the fogged window from behind/near the protagonist; the garden wall, apple trees and three flashes occupy progressively deeper X planes behind the window frame. The tall-grass memory is an over-the-shoulder Forward-X tableau with the narrator close to the observer, the sister farther into the flattened room, grass at many depths crossing both figures, and the dark upstairs window much farther away. The departure begins looking through the doorway as the protagonist walks away from the observer through receding orchard rows, then deliberately cuts to the normal profile grammar for the final orchard/root passage. The last profile cue eases to the live forest's 1.5x framing so the handoff no longer changes scale abruptly.
+
+Native regression coverage now checks perspective shrinkage, convergence toward screen center, depth fog, distinct front/back/three-quarter actor renders, Forward-X kitchen/grass/departure frames, the profile transition and exact forest framing at handoff.
+
+# Hollow Trail 1.1.31 — timeline-driven intro cutscene
+
+Hollow Trail **1.1.30 -> 1.1.31** adds a reusable fixed-step cutscene layer above normal gameplay. A cutscene owns a bounded authored timeline of scene, actor pose, actor travel, camera travel, framing scale and caption cues. It renders through the same Hollow Trail raster primitives and articulated character renderer as gameplay; there is no pre-rendered video, second framebuffer, floating-point animation clock or per-frame allocation. Live movement, jump, interaction, pause and journal input are suppressed while a cutscene owns the actor, while the normal app exit remains available. The timeline advances on the same 32 ms fixed step as gameplay, so a delayed display scan cannot change cinematic choreography.
+
+The first launch now plays an approximately 27-second introduction: the kitchen window and three flashes, the tall-grass signal memory including the warning variant, the return to the empty kitchen, the pre-dawn departure and a continuous orchard walk in which domestic boundaries fall away and the road becomes roots. The cutscene drives the protagonist with authored wash/look/crouch/pack/walk poses, camera pullback and deterministic local light pulses. It then hands off to the existing level-1 forest spawn at x=95 with a neutral-input gate, so a held controller button cannot leak through the cinematic into a jump, interaction or pause. The intro plays only on app launch; completing the ten-chapter loop does not replay it.
+
+A native cutscene regression validates timeline boundaries, flash timing, distinct rendered kitchen/grass/orchard states, monotonic autonomous walking, finite completion and the exact forest handoff. The full native runner includes this test.
+
 # Hollow Trail 1.1.27 — foreground contours and rooftop composition
 
 Level 1's two existing near-camera trunks now use 40-vertex outlines, with

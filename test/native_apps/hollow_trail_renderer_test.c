@@ -1,4 +1,4 @@
-/* Reviewed 1.1.29 caption-safe framing and twisted ropes. */
+/* Reviewed 1.1.31 native-resolution A/B renderer. */
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,41 +21,102 @@ static void fps_tests(void){
 }
 
 static unsigned hash(const uint8_t *p,int n){unsigned h=2166136261u;while(n--)h=(h^*p++)*16777619u;return h;}
+static void native_resolution_tests(uint8_t *mem,uint8_t *bits){
+ static const uint8_t rank[8][8]={
+  {41,8,52,7,45,15,47,4},{18,35,27,60,28,55,19,57},
+  {54,1,49,9,62,3,40,14},{16,56,21,53,20,38,25,43},
+  {59,12,42,6,39,10,34,5},{24,33,17,46,31,50,29,61},
+  {36,2,58,11,63,0,51,13},{26,44,30,37,22,32,23,48}
+ };
+ ht_bind(mem);ht_bind_native(mem);
+ assert(ht_native_a+HT_NATIVE_PIXELS==ht_native_b);
+ assert(ht_native_a==mem+HT_MEMORY);
+ assert(ht_native_b+HT_NATIVE_PIXELS==mem+HT_MEMORY+HT_NATIVE_MEMORY);
+ /* A diagonal procedural primitive must use physical subpixels instead of
+  * becoming four identical panel pixels per 480x270 logical sample. */
+ memset(ht_native_a,0,HT_NATIVE_PIXELS);
+ ht_scene=ht_native_a;ht_native_active=true;ht_framed=false;
+ ht_triangle(ht_scene,21,19,83,57,34,111,255);
+ bool mixed=false;
+ for(int y=0;y<HT_H && !mixed;++y)for(int x=0;x<HT_W && !mixed;++x){
+  int at=2*y*HT_NATIVE_W+2*x;
+  uint8_t a=ht_native_a[at],b=ht_native_a[at+1],c=ht_native_a[at+HT_NATIVE_W],d=ht_native_a[at+HT_NATIVE_W+1];
+  mixed=(a!=b)||(a!=c)||(a!=d);
+ }
+ assert(mixed);
+ /* The halfway foreground keeps native X but computes only 270 Y rows.
+  * Every foreground scanline must be copied to its physical row partner,
+  * while horizontal edges can still land on odd panel columns. */
+ memset(ht_native_a,0,HT_NATIVE_PIXELS);
+ ht_scene=ht_native_a;ht_native_active=true;ht_native_foreground_half_y=true;
+ ht_triangle(ht_scene,21,19,83,57,34,111,255);
+ bool odd_x=false;
+ for(int y=0;y<HT_H;++y) {
+  assert(!memcmp(ht_native_a+(2*y)*HT_NATIVE_W,
+                 ht_native_a+(2*y+1)*HT_NATIVE_W,HT_NATIVE_W));
+  for(int x=0;x<HT_W-1 && !odd_x;++x) {
+   int at=2*y*HT_NATIVE_W+2*x;
+   odd_x=ht_native_a[at]!=ht_native_a[at+1];
+  }
+ }
+ assert(odd_x);
+ ht_native_foreground_half_y=false;
+ /* Native packing is one grayscale sample per physical dot. */
+ for(unsigned i=0;i<HT_NATIVE_PIXELS;++i)ht_native_a[i]=(uint8_t)hash((const uint8_t *)&i,sizeof(i));
+ ht_pack_mono(bits,HT_NATIVE_W/8);
+ for(int y=0;y<HT_NATIVE_H;++y)for(int byte=0;byte<HT_NATIVE_W/8;++byte){
+  uint8_t want=0;int x=byte*8;
+  for(int k=0;k<8;++k)if(ht_native_a[y*HT_NATIVE_W+x+k]>(int)rank[y&7][(x+k)&7]*4+2)want|=(uint8_t)(0x80u>>k);
+  assert(bits[y*(HT_NATIVE_W/8)+byte]==want);
+ }
+ /* Exercise the complete native mode through the normal render/camera path
+  * and require deterministic physical output for a frozen game snapshot. */
+ ht_bind(mem);ht_bind_native(mem);ht_camera_mode=HT_CAMERA_NATIVE;ht.level=0;ht_spawn(true);
+ ht.camera=733*256;ht.x=(733+190)*256;ht.vista=256;ht.sway_phase=445;
+ ht.rotation_phase=347u<<8;ht.camera_mood=256;
+ ht_render_scene();assert(ht_native_active && !ht_native_foreground_half_y && ht_scene==ht_native_a);
+ ht_pack_mono(bits,HT_NATIVE_W/8);unsigned first=hash(bits,HT_NATIVE_PIXELS/8);
+ ht_render_scene();ht_pack_mono(bits,HT_NATIVE_W/8);
+ assert(first==hash(bits,HT_NATIVE_PIXELS/8));
+ ht_camera_mode=HT_CAMERA_BASELINE;ht_render_scene();
+ assert(!ht_native_active && ht_scene==ht_scene_low);
+}
+
 static const unsigned golden[][2]={
-{1114300357,4163241529},
-{1495675126,1625345009},
-{4087553349,2843367180},
-{3193171045,3106512550},
-{3530908809,2754538373},
-{3832203510,1686073540},
-{3533123580,3502676522},
-{1437460910,2606931754},
-{2426241971,1560748055},
-{1467035513,2602536763},
-{582944751,633937940},
-{2447298204,684930421},
-{3647268360,2542820895},
-{1707451438,2746327992},
-{1562890383,2224953901},
-{3756353380,4223490059},
-{4036696758,2923048692},
-{1699061354,1802871194},
-{4031021978,980126087},
-{661889238,4068211443},
-{1689943480,1575920623},
-{2527927768,4102179212},
-{3543834278,3287949578},
-{2455076385,2199401180},
-{133137366,1216297678},
-{1896963608,1374769014},
-{3353977824,1735232115},
-{2292846735,406761700},
-{1722744925,3462294833},
-{4232851682,3889954504},
+{3278493158,1700520901},
+{2678342540,1864369833},
+{2685907447,1969813067},
+{816840540,30581379},
+{3011208540,878481330},
+{1203433882,3648215422},
+{2620597804,2036500297},
+{1863941504,1514272394},
+{3526977312,1382378916},
+{3941134244,787870510},
+{2717753540,3090542688},
+{128270345,3663626548},
+{2033607303,4272025260},
+{737287855,150225469},
+{382873992,4081963825},
+{1684780377,2737385310},
+{1477351146,501319504},
+{3095071177,861699871},
+{3515373870,2854332469},
+{719806906,1462119617},
+{1326196981,2258384156},
+{1143499482,207677384},
+{3747272453,2052152225},
+{512589384,2061789897},
+{413184930,1205470550},
+{1805041436,3386618820},
+{3469364471,1119496009},
+{390102338,3405591667},
+{297423422,3292122172},
+{3021503600,3314516329},
 };
 int main(void){
  fps_tests();
- uint8_t *mem=malloc(HT_MEMORY),*bits=malloc(HT_PIXELS/2);assert(mem&&bits);
+ uint8_t *mem=malloc(HT_MEMORY+HT_NATIVE_MEMORY),*bits=malloc(HT_PIXELS/2);assert(mem&&bits);
  for(unsigned ready=0;ready<=HT_OPT_SIMD_ALL;++ready)
   for(unsigned level=0;level<HT_LEVELS;++level)for(int view=0;view<3;++view){
    ht_bind(mem);ht.level=level;ht_spawn(true);ht.camera=view*733*256;ht.x=(view*733+190)*256;
@@ -65,6 +126,7 @@ int main(void){
    assert(hash(ht_scene,HT_PIXELS)==golden[level*3+view][0]);
    assert(hash(bits,HT_PIXELS/2)==golden[level*3+view][1]);
   }
+ native_resolution_tests(mem,bits);
  /* Independent rounded-coordinate oracle for nearest camera sampling.
   * Cover both rotation directions, mood and drop zoom, and clipped borders. */
  for(unsigned i=0;i<HT_PIXELS;++i)ht_temp[i]=(uint8_t)ht_hash(i);
@@ -129,5 +191,5 @@ int main(void){
    assert(ht_filter[y*HT_W+x]==ht_average(sum,reciprocal));
   }
  }
- free(bits);free(mem);puts("Production renderer: mode24+13+nearest golden frames/packing, all readiness masks, blur boundaries and FPS window PASS");
+ free(bits);free(mem);puts("Production renderer: baseline goldens plus full-native backgrounds, 960x270 foreground detail, packing, camera, blur and FPS contracts PASS");
 }

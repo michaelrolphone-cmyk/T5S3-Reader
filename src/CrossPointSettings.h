@@ -197,6 +197,7 @@ class CrossPointSettings {
   // When 1, hide all clocks everywhere (reader status bar + home/system header)
   uint8_t hideClock = 0;
   uint8_t timeFormat = TIME_12H;
+  uint8_t clockFace = 0;  // DeskClockFaces::Segments; stable persisted face IDs.
   // Text rendering settings
   uint8_t extraParagraphSpacing = 1;
   uint8_t textAntiAliasing = 1;

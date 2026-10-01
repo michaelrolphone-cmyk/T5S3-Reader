@@ -37,12 +37,12 @@ static void render(void) {
     }
     const t5_ui_chrome_t chrome = {
         .title = "Remap Front Buttons",
-        .subtitle = "Press a front button for the selected role",
+        .subtitle = "Side Up: Reset | Side Down: Cancel",
         .status = status,
         .back_label = "",
         .confirm_label = "",
-        .previous_label = "Reset",
-        .next_label = "Cancel",
+        .previous_label = "",
+        .next_label = "",
     };
     ui->render_list(&chrome, rows, T5_BUTTON_REMAP_ROLE_COUNT, current_step);
 }
@@ -72,7 +72,7 @@ void app_main(void) {
 
     app->set_back_exits_app(false);
     memset(&pending, UNASSIGNED, sizeof(pending));
-    status[0] = 0;
+    snprintf(status, sizeof(status), "Press a front button for the selected role");
     current_step = 0;
     render();
 

@@ -30,5 +30,11 @@ static int ht_intimacy_target(const ht_game *g) {
 static int ht_scene_scale(const ht_game *g) {
     return 256+g->intimacy/2-g->vista*5/16;
 }
+static bool ht_motion_emphasis;
+/* Y/journal-back is a transient performance modifier during gameplay only.
+ * Keep authored pace in g->pace unchanged; multiply the physical action output
+ * so releasing Y returns cleanly to the scene-directed speed. */
 static int ht_walk_speed(const ht_game *g) {return g->pace?g->pace:ht_pace_target(g);}
-static int ht_climb_speed(const ht_game *g) {return ht_walk_speed(g)*3/4;}
+static int ht_emphasis_amount(int value) {return ht_motion_emphasis?(value*110+50)/100:value;}
+static int ht_motion_speed(const ht_game *g) {return ht_emphasis_amount(ht_walk_speed(g));}
+static int ht_climb_speed(const ht_game *g) {return ht_motion_speed(g)*3/4;}

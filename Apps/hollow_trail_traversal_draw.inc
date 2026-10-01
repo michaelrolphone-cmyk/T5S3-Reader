@@ -1,3 +1,4 @@
+#include "hollow_trail_material_detail.inc"
 #include "hollow_trail_geography_draw.inc"
 #include "hollow_trail_terrain_draw.inc"
 #include "hollow_trail_landscape_detail.inc"
@@ -24,6 +25,7 @@ static void ht_draw_traversal(const ht_game *g) {
     const ht_platform *land=ht_level_land(g->level);
     const ht_mechanics *m=ht_mech(g);
     if(g->level==0)ht_forest_backdrop(g);
+    ht_forest_city_horizon(g);
     if(g->level==1)ht_city_backdrop(g);
     ht_authored_backdrop(g);
     if(!ht_grotto_opaque(g)) {
@@ -56,18 +58,24 @@ static void ht_draw_traversal(const ht_game *g) {
             }
         }
     }
+    ht_dam_spray(g);
     ht_boat_grotto(g);
+    /* Background/grotto retain the original full 960x540 native path.
+     * From here forward, native A/B uses 960x270 detail: full horizontal
+     * resolution with one computed row duplicated to each physical row pair. */
+    if(ht_native_active)ht_native_foreground_half_y=true;
     /* Distinct natural silhouettes stay anchored to the new physical route. */
     for(int i=0;i<HT_PLATFORMS;++i) {
         if(g->level==1 || i==m->bridge || (i!=0 && i!=2 && i!=5 && i!=8) || (g->level==4 && i==0)) continue;
         int world=ht_planted_tree_x(g->level,i);
         int x=world-cx,y=ht_surface_at(g,i,world)-cy;
         if(x< -160-ht_view_margin() || x>HT_W+160+ht_view_margin()) continue;
-        if(g->level==2) ht_cactus_on(ht_scene,x,y,i==1?39:84,255);
+        if(g->level==2) ht_detail_cactus(x,y,i==1?39:84,(unsigned)i+901);
         else if(g->level==0 || g->level==4 || g->level==6 || g->level==8)
             ht_grounded_tree(g,i,world,g->level==0?340+(i%3)*65:130+(i%3)*27,g->level==0?23+(i%3)*5:7,(unsigned)i+901);
 
     }
+    ht_forest_mill(g);
     ht_story_landmarks(g);
     ht_draw_evidence(g);
     for(int i=0;i<HT_PLATFORMS;++i) {
@@ -86,6 +94,7 @@ static void ht_draw_traversal(const ht_game *g) {
     }
     if(g->level==0)ht_forest_log_draw(g);
     ht_city_roof_detail(g);
+    ht_city_service_arrival(g);
     if(m->plate_kind) {
         int x=m->plate_x-cx,y=m->plate_y-cy;
         ht_rect(ht_scene,x-21,y-1,42,3,255);
@@ -115,25 +124,21 @@ static void ht_draw_traversal(const ht_game *g) {
     if(m->ball_x) {
         int bx=g->traversal.ball_x/256-cx,by=g->traversal.ball_y/256-cy;
         if(bx>=-18 && bx<=HT_W+18 && by>=-18 && by<=HT_H+18) {
-            if(g->level==0) {
-                /* Rounded weathering is still the physical circular stone;
-                 * shallow contour chips and broad facets replace the wheel rim. */
-                static const int8_t rim[24][2]={{16,0},{15,4},{14,8},{11,11},{8,14},{4,15},
-                    {0,16},{-4,15},{-8,13},{-11,11},{-14,8},{-15,4},
-                    {-16,0},{-15,-4},{-14,-8},{-11,-11},{-8,-14},{-4,-15},
-                    {0,-16},{4,-15},{8,-14},{11,-11},{14,-8},{15,-4}};
-                for(int v=0;v<24;++v) {
-                    int n=(v+1)%24;
-                    ht_triangle(ht_scene,bx-2,by-3,bx+rim[v][0],by+rim[v][1],
-                        bx+rim[n][0],by+rim[n][1],v<8?219:(v<15?180:148));
-                }
-                ht_limb(ht_scene,bx-10,by-7,bx-6,by-12,0,0,110);
-            } else {
-            ht_disk(ht_scene,bx,by,HT_BALL_RADIUS,255);
-            ht_disk(ht_scene,bx-1,by-1,HT_BALL_RADIUS-2,165);
-            ht_triangle(ht_scene,bx-11,by-8,bx+1,by-13,bx-3,by+2,80);
-            ht_triangle(ht_scene,bx+10,by-8,bx+12,by+9,bx-1,by+13,225);
+            /* A chipped mineral mass, not a wheel. Keep the same stable
+             * circular contact envelope so existing roll/step physics agree.
+             * Bright upper facet and dark rim survive either dark soil or fog. */
+            static const int8_t rim[12][2]={{16,0},{13,7},{10,12},{1,16},
+                {-7,13},{-14,7},{-16,-1},{-12,-10},{-5,-15},{3,-16},{12,-10},{15,-4}};
+            ht_limb(ht_scene,bx-14,by+16,bx+17,by+16,1,0,240);
+            for(int v=0;v<12;++v) {
+                int n=(v+1)%12;
+                ht_triangle(ht_scene,bx-3,by-3,bx+rim[v][0],by+rim[v][1],
+                    bx+rim[n][0],by+rim[n][1],v<5?224:(v<8?166:62));
+                ht_limb(ht_scene,bx+rim[v][0],by+rim[v][1],
+                    bx+rim[n][0],by+rim[n][1],0,0,v>=7?24:255);
             }
+            ht_triangle(ht_scene,bx-11,by-9,bx+2,by-14,bx-3,by-3,26);
+            ht_triangle(ht_scene,bx-3,by-3,bx+12,by-8,bx+8,by+9,120);
             /* Fractures rotate by travelled arc length: no sliding texture. */
             static const int16_t sine[32]={0,50,98,142,181,213,237,251,256,251,237,213,181,142,98,50,0,-50,-98,-142,-181,-213,-237,-251,-256,-251,-237,-213,-181,-142,-98,-50};
             unsigned angle=(unsigned)(g->traversal.ball_roll/(HT_BALL_RADIUS*50))&31u;

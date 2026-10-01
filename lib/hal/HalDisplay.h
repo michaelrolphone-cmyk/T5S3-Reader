@@ -104,13 +104,13 @@ class HalDisplay : public DisplaySurface {
                 "legacy e-paper safe insets changed unexpectedly");
 
   // Frame buffer operations
-  void clearScreen(uint8_t color = 0xFF) const;
+  void clearScreen(uint8_t color = 0xFF) const override;
   void drawImage(const uint8_t* imageData, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
-                 bool fromProgmem = false) const;
+                 bool fromProgmem = false) const override;
   void drawImageTransparent(const uint8_t* imageData, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
-                            bool fromProgmem = false) const;
+                            bool fromProgmem = false) const override;
 
-  void displayBuffer(RefreshMode mode = FAST_REFRESH, bool turnOffScreen = false);
+  void displayBuffer(RefreshMode mode = FAST_REFRESH, bool turnOffScreen = false) override;
   // Compare the current logical framebuffer with a reconstructed previous frame
   // and drive only the bounding rectangle that changed. This is intended for
   // deep-sleep clients such as the desk clock, where panel contents survive but
@@ -120,8 +120,8 @@ class HalDisplay : public DisplaySurface {
 
   // When enabled, the physical panel output is mirrored 180° (whole UI upside down).
   void setFlipOutput(bool enabled);
-  void requestNextRefresh(RefreshMode mode = HALF_REFRESH);
-  void requestNextDisplayEffect(DisplayEffect effect = EFFECT_NONE);
+  void requestNextRefresh(RefreshMode mode = HALF_REFRESH) override;
+  void requestNextDisplayEffect(DisplayEffect effect = EFFECT_NONE) override;
   void suppressInitialFullRefresh();
 
   // Power management
@@ -131,20 +131,20 @@ class HalDisplay : public DisplaySurface {
   void setIdlePowerSaving(bool enabled);
 
   // Access to frame buffer
-  uint8_t* getFrameBuffer() const;
+  uint8_t* getFrameBuffer() const override;
 
   void copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* msbBuffer);
-  void copyGrayscaleLsbBuffers(const uint8_t* lsbBuffer);
-  void copyGrayscaleMsbBuffers(const uint8_t* msbBuffer);
-  bool captureGrayscaleBaseBuffer(const uint8_t* bwBuffer);
-  void cleanupGrayscaleBuffers(const uint8_t* bwBuffer);
+  void copyGrayscaleLsbBuffers(const uint8_t* lsbBuffer) override;
+  void copyGrayscaleMsbBuffers(const uint8_t* msbBuffer) override;
+  bool captureGrayscaleBaseBuffer(const uint8_t* bwBuffer) override;
+  void cleanupGrayscaleBuffers(const uint8_t* bwBuffer) override;
   // After capture and both copies: detect allocation failure before choosing
   // gray presentation. This query neither mutates buffers nor touches hardware.
   bool grayscaleBuffersReady() const override {
     return grayscaleBaseCaptured && grayscaleBaseBuffer && grayscaleLsbBuffer && grayscaleMsbBuffer;
   }
 
-  void displayGrayBuffer(RefreshMode mode = HALF_REFRESH);
+  void displayGrayBuffer(RefreshMode mode = HALF_REFRESH) override;
 
   bool isReady() const override { return displayReady && frameBuffer != nullptr; }
 

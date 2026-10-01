@@ -154,5 +154,50 @@ int main(void) {
     reports[0][0].connected=1; reports[0][0].device=99; reports[0][0].hat=8;
     ht_input(1); healthy=false; ht_input(1); now+=251; ht_input(1);
     mapped=0; ht_input(1); mapped=T5_APP_BUTTON_BACK; ht_input(1); assert(quitting);
+    /* Real app scheduler: natural arrival begins the mill track once, locks
+     * gameplay, then rearms neutral input without resetting progress. */
+    reading=paused=quitting=loading=debug_jump=false;healthy=true;
+    held=HT_RIGHT;previous=0;jump_down=pause_down=false;
+    memset(&ht,0,sizeof(ht));ht.level=0;ht_spawn(true);ht_geometry_level=0;
+    ht.x=1069*256;ht.y=ht_surface_at(&ht,2,1069)*256;ht.grounded=true;
+    ht.traversal.forest_log_phase=32;ht.traversal.bridge_open=32;
+    ht_cutscene.active=false;ht_cutscene_seen=0;simulation_started=false;
+    ht_advance(now);
+    for(int i=0;i<8 && !ht_cutscene.active;++i)ht_advance(now+=32);
+    assert(ht_cutscene.active && ht_cutscene.id==HT_CUTSCENE_MILL);
+    ht_game frozen=ht;
+    for(int i=0;i<339;++i) {ht_advance(now+=32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+    ht_advance(now+=32);
+    assert(!ht_cutscene.active && ht_input_rearm && held==0 && previous==0);
+    assert(!memcmp(&ht,&frozen,sizeof(ht)));
+    /* Real chapter transition launches the city track only after the gate
+     * is solved/open. Geometry loading may pause timing; it cannot erase the track. */
+    ht.level=0;ht_spawn(true);ht_geometry_level=0;ht_cutscene.active=false;
+    ht.x=(HT_GOAL-1)*256;ht.y=ht_surface_at(&ht,9,HT_GOAL-1)*256;
+    ht.puzzle.solved=true;ht.puzzle.opening=48;
+    ht_input_rearm=false;held=HT_RIGHT;simulation_started=false;
+    ht_advance(now);
+    for(int i=0;i<8 && !ht_cutscene.active;++i)ht_advance(now+=32);
+    assert(ht.level==1 && ht_cutscene.active && ht_cutscene.id==HT_CUTSCENE_CITY);
+    frozen=ht;uint16_t tick=ht_cutscene.tick;
+    ht_advance(now+=32);assert(ht_cutscene.tick==tick); /* geometry not ready */
+    ht_geometry_level=1;simulation_started=false;ht_advance(now);
+    for(int i=0;i<430;++i) {ht_advance(now+=32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+    assert(!ht_cutscene.active && ht_input_rearm && held==0 && previous==0);
+    /* Held controller input cannot leak out of natural intro completion. */
+    memset(reports,0,sizeof(reports));healthy=true;mapped=0;host_exit=false;
+    reading=paused=quitting=loading=debug_jump=false;ht.level=0;ht_select_level(0);ht_spawn(true);
+    ht_cutscene_begin(HT_CUTSCENE_INTRO);ht_cutscene.tick=HT_INTRO_TICKS-1;
+    ht_geometry_level=0;simulation_started=false;ht_advance(now);
+    held=HT_RIGHT|HT_JUMP;ht_advance(now+=32);
+    assert(ht.x==95*256 && ht_input_rearm && !held && !jump_down);
+    mapped=T5_APP_BUTTON_RIGHT|T5_APP_BUTTON_UP;ht_input(1);
+    assert(!held && !jump_down && ht.x==95*256);
+    mapped=0;ht_input(1);assert(!ht_input_rearm);
+    mapped=T5_APP_BUTTON_RIGHT;ht_input(1);assert(held&HT_RIGHT);
+    /* Exiting during the last segment remains immediate and does not apply
+     * a second handoff or consume input as a gameplay action. */
+    ht_cutscene_begin(HT_CUTSCENE_INTRO);ht_cutscene.tick=2140;
+    host_exit=true;ht_input(1);assert(quitting && ht_cutscene.active);
     puts("Hollow Trail controls: receiver HID/XInput face labels, dedicated Start, A inspect, B jump, X back, arbitration and fault recovery PASS");
 }
