@@ -236,3 +236,96 @@ static void ht_forest_foreground(const ht_game *g) {
         ht_limb(ht_scene,x-23,y-292,x-16,y-322,1,0,180);
     }
 }
+
+/* Chapter I's register belongs to a mill in the existing low hollow, not a
+ * document on an unrelated stump. The open/broken downhill wall exposes the
+ * desk while the player retains the established continuous ground route. */
+static void ht_forest_mill(const ht_game *g) {
+    if(g->level!=0)return;
+    int cx=g->camera/256,cy=g->camera_y/256,x=1095-cx,base=218-cy;
+    if(x+208< -ht_view_margin() || x-70>HT_W+ht_view_margin())return;
+    /* Stream-side stone footing and a leaf-choked pool behind the route. */
+    ht_triangle(ht_scene,x-55,base+2,x+171,base+2,x+140,base-17,74);
+    ht_triangle(ht_scene,x-55,base+2,x+140,base-17,x-34,base-10,74);
+    for(int i=0;i<15;++i) {
+        int xx=x-40+(i*29)%166,yy=base-3-(i%3)*3;
+        ht_limb(ht_scene,xx,yy,xx+9,yy,0,0,132+(i%3)*14);
+    }
+    /* Uphill stone wall, leaning timber front and a visibly sagging roof. */
+    ht_triangle(ht_scene,x+117,base-92,x+173,base-68,x+168,base,193);
+    ht_triangle(ht_scene,x+117,base-92,x+168,base,x+109,base,193);
+    for(int row=0;row<6;++row)for(int col=0;col<3;++col) {
+        int xx=x+119+col*17+(row&1)*3,yy=base-8-row*11;
+        ht_limb(ht_scene,xx,yy,xx+12,yy-1,0,0,163);
+    }
+    ht_rect(ht_scene,x,base-86,122,86,170);
+    for(int plank=0;plank<11;++plank) {
+        int xx=x+plank*11;ht_limb(ht_scene,xx,base-84,xx+2,base-3,0,0,203);
+        ht_limb(ht_scene,xx+3,base-48,xx+4,base-9,0,0,189);
+    }
+    ht_triangle(ht_scene,x-11,base-87,x+55,base-119,x+118,base-102,210);
+    ht_triangle(ht_scene,x-11,base-87,x+118,base-102,x+182,base-75,210);
+    /* Uneven courses sag over the wheel; missing ends expose the dark roof
+     * beneath. Large planes remain legible, wear never becomes frame noise. */
+    for(int row=0;row<4;++row)for(int tile=0;tile<7;++tile) {
+        int xx=x+7+row*9+tile*18,yy=base-92-row*4+tile*2;
+        if((tile+row*2)%9==5)continue;
+        ht_limb(ht_scene,xx,yy,xx+14+(tile%3),yy+1,0,0,170);
+        ht_limb(ht_scene,xx+14,yy+1,xx+14,yy+4,0,0,186);
+    }
+    int px=x-9,py=base-85;
+    for(int i=1;i<=8;++i) {
+        int nx=x-9+191*i/8,ny=base-85+10*i/8+5*i*(8-i)/16;
+        ht_limb(ht_scene,px,py,nx,ny,2,2,244);px=nx;py=ny;
+    }
+    /* Water-blackened board feet and two splits follow real plank seams. */
+    for(int i=0;i<10;++i) {
+        int xx=x+3+i*11,height=11+(i*7)%19;
+        ht_limb(ht_scene,xx,base-2,xx+1,base-height,2,0,224);
+    }
+    ht_limb(ht_scene,x+22,base-48,x+25,base-31,0,0,230);
+    ht_limb(ht_scene,x+25,base-31,x+23,base-21,0,0,230);
+    /* Three saplings in the gutter are roots in debris, not decorative trees. */
+    for(int i=0;i<3;++i) {
+        int xx=x+70+i*20,yy=base-83+i*2;
+        ht_limb(ht_scene,xx,yy,xx-3,yy-18-i*4,1,0,153);
+        ht_limb(ht_scene,xx-2,yy-11,xx+7,yy-19,1,0,148);
+        ht_limb(ht_scene,xx-2,yy-10,xx-10,yy-17,1,0,148);
+    }
+    /* Still wheel: asymmetric waterline and spokes. No frame-based rotation. */
+    int wx=x-18,wy=base-24;
+    ht_disk(ht_scene,wx,wy,29,232);ht_disk(ht_scene,wx,wy,24,83);
+    static const int8_t spokes[8][2]={{24,0},{17,17},{0,24},{-17,17},{-24,0},{-17,-17},{0,-24},{17,-17}};
+    for(int i=0;i<8;++i)ht_limb(ht_scene,wx,wy,wx+spokes[i][0],wy+spokes[i][1],2,1,208);
+    ht_disk(ht_scene,wx,wy,5,244);
+    for(int i=0;i<7;++i)ht_limb(ht_scene,wx-25+i*8,base-7,wx-22+i*8,base-5,2,1,151);
+    for(int i=0;i<4;++i)ht_limb(ht_scene,wx-23+i*12,base-1,wx-22+i*12,base+7,0,0,39);
+    /* Broken shutter / missing wall make a quiet legible interior. */
+    ht_rect(ht_scene,x+47,base-72,66,64,225);
+    ht_triangle(ht_scene,x+52,base-72,x+91,base-72,x+111,base-8,103);
+    ht_triangle(ht_scene,x+52,base-72,x+111,base-8,x+66,base-8,103);
+    ht_limb(ht_scene,x+66,base-72,x+80,base-8,1,1,161);
+    ht_limb(ht_scene,x+53,base-51,x+97,base-51,1,1,158);
+    ht_triangle(ht_scene,x+42,base-65,x+29,base-56,x+29,base-17,202);
+    ht_triangle(ht_scene,x+42,base-65,x+29,base-17,x+42,base-29,202);
+    for(int i=0;i<3;++i)ht_limb(ht_scene,x+32,base-50+i*10,x+42,base-56+i*10,0,0,164);
+    /* Desk scrape and sparse fern/ivy contact, never a new collision object. */
+    ht_limb(ht_scene,x+69,base-7,x+89,base-9,1,0,43);
+    for(int i=0;i<5;++i) {
+        int xx=x+138+i*7,yy=base-i*10;
+        ht_limb(ht_scene,xx,yy,xx-8,yy-12,1,0,136);
+        ht_disk(ht_scene,xx-7,yy-9,3,123);
+        if(i)ht_limb(ht_scene,xx-7,yy-9,xx-14,yy+2,1,0,138);
+    }
+    /* Fern fronds root at the damp uphill wall, with tapering paired pinnae. */
+    for(int frond=0;frond<4;++frond) {
+        int root=x+155+frond*7,side=frond&1?1:-1;
+        for(int k=0;k<5;++k) {
+            int xx=root+side*k*3,yy=base-3-k*5+k*k/3,w=6-k;
+            ht_limb(ht_scene,xx,yy,xx+side*3,yy-4,0,0,149);
+            ht_limb(ht_scene,xx,yy,xx-w,yy-4,1,0,137);
+            ht_limb(ht_scene,xx,yy,xx+w,yy-3,1,0,137);
+        }
+    }
+    ht_checkpoint();
+}
