@@ -585,6 +585,14 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
     if(!jump_request) (void)ht_ladder_enter(vertical);
     ht_forest_log_collision(start_x);
     ht_reconcile_ground(start_x,start_y);
+    t->push_hint=0;
+    if(t->mode==HT_FREE && ht.grounded && direction && !ht.vx) {
+        int near=ht_traversal_near(&ht);
+        int object=near==HT_ROLL?t->ball_x:near==HT_CRATE?t->crate_x:ht.x;
+        if((near==HT_ROLL || near==HT_CRATE) && (object-ht.x)*direction>0)
+            t->push_hint=(uint8_t)near;
+        else if(direction>0 && ht_forest_log_near(&ht))t->push_hint=HT_PUSH;
+    }
     ht_camera_step((direction || vertical || t->mode==HT_CLIMB) && (start_x!=ht.x || start_y!=ht.y));
     if(ht.grounded && !was_grounded && fall_speed>384 && !t->mode) {
         ht.landing_ticks=10;ht.landing_strength=(uint8_t)ht_clamp(fall_speed/256,2,8);

@@ -124,6 +124,27 @@ int main(void) {
         assert(ht_abs(ht_cut_grass_wind(tick+1,11)-ht_cut_grass_wind(tick,11))<=1);
     /* The register is in the authored mill hollow before the rope, not on a stump. */
     assert(ht_evidence_platform(0,1)==3 && ht_evidence_x(0,1)==1180);
+    /* Final intro raster equals the live scene: no scene/camera/pose cut at
+     * handoff, in both outputs. Repeated rendering never mutates live state. */
+    for(unsigned mode=0;mode<2;++mode) {
+        ht_camera_mode=mode?HT_CAMERA_NATIVE:HT_CAMERA_BASELINE;
+        ht.level=0;ht_select_level(0);ht_spawn(true);ht_cutscene_begin(HT_CUTSCENE_INTRO);
+        ht_cutscene.tick=HT_INTRO_TICKS;ht_game saved=ht;
+        ht_cutscene_render(&ht_cutscene);assert(!memcmp(&saved,&ht,sizeof(ht)));
+        unsigned raster=mode?2:1,width=HT_W*raster;
+        for(unsigned y=230*raster;y<233*raster;++y)assert(ht_scene[y*width+240*raster]==255);
+        for(unsigned y=250*raster;y<253*raster;++y)assert(ht_scene[y*width+240*raster]==255);
+        size_t bytes=mode?HT_NATIVE_PIXELS:HT_PIXELS;
+        uint8_t *last=malloc(bytes);assert(last);memcpy(last,ht_scene,bytes);
+        ht_cutscene_apply_handoff(&ht_cutscene);ht_render_scene();ht_narration(&ht);ht_vignette();
+        assert(!memcmp(last,ht_scene,bytes));
+        ht_render_scene_from(&ht,false);ht_narration(&ht);ht_vignette();
+        unsigned actor_pixels=0;
+        for(size_t i=0;i<bytes;++i)if(last[i]>220 && ht_scene[i]<180)++actor_pixels;
+        assert(actor_pixels>30); /* Equality of two empty backgrounds is insufficient. */
+        free(last);
+        assert(ht.x==95*256 && ht.level==0 && ht.grounded && ht.vx==0);
+    }
     /* Exercise complete intro in both output rasters with bounded allocation. */
     for(unsigned mode=0;mode<2;++mode) {
         ht_camera_mode=mode?HT_CAMERA_NATIVE:HT_CAMERA_BASELINE;

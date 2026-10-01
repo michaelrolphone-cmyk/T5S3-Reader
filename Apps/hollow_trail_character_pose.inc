@@ -47,13 +47,29 @@ static ht_person_pose ht_person_pose_at(int x,int feet,const ht_game *g) {
         p.knee[i]=-f;p.elbow[i]=f;
     }
     const ht_traversal *t=&g->traversal;
+    if(t->mode==HT_FREE && t->push_hint && g->grounded) {
+        /* Render the real contact pose, then halve every displacement from
+         * relaxed stance. A copy keeps this visual hint out of game physics. */
+        ht_game contact=*g;contact.traversal.mode=t->push_hint;
+        contact.traversal.push_hint=0;
+        contact.traversal.forest_push=HT_FOREST_PUSH_STEPS/2;
+        ht_person_pose effort=ht_person_pose_at(x,feet,&contact);
+        p.hip.x+=(effort.hip.x-p.hip.x)/2;p.hip.y+=(effort.hip.y-p.hip.y)/2;
+        p.shoulder.x+=(effort.shoulder.x-p.shoulder.x)/2;p.shoulder.y+=(effort.shoulder.y-p.shoulder.y)/2;
+        for(int i=0;i<2;++i) {
+            p.hand[i].x+=(effort.hand[i].x-p.hand[i].x)/2;p.hand[i].y+=(effort.hand[i].y-p.hand[i].y)/2;
+            p.foot[i].x+=(effort.foot[i].x-p.foot[i].x)/2;p.foot[i].y+=(effort.foot[i].y-p.foot[i].y)/2;
+            p.knee[i]=effort.knee[i];p.elbow[i]=effort.elbow[i];
+        }
+        p.facing=effort.facing;return p;
+    }
     if(t->mode==HT_FREE && !t->forest_push_release) {
         int run=ht_character_run_blend(g),phase=(g->stride/256)%32;
         bool moving=g->grounded && ht_abs(g->vx)>20;
         int compression=g->landing_ticks?ht_min(3,(int)g->landing_ticks*g->landing_strength/20):0;
         int flight=moving?ht_max(0,2-ht_abs(phase%16-8))*run/256:0;
         p.hip.y+=compression-flight;p.shoulder.y+=compression-flight;
-        p.shoulder.x+=f*(1+3*run/256);
+        p.shoulder.x+=f*(2*run/256);
         for(int i=0;i<2;++i) {
             int q=(phase+i*16)%32;
             /* Stance foot travels backward exactly with world displacement.
@@ -171,21 +187,16 @@ static void ht_person_draw(const ht_person_pose *p) {
     int sx=p->shoulder.x,sy=p->shoulder.y,hx=p->hip.x,hy=p->hip.y,f=p->facing;
     ht_person_leg(p->hip,p->foot[0],p->knee[0],f,235);
     ht_person_arm(p->shoulder,p->hand[0],p->elbow[0],235);
-    /* Shaped jacket: shoulder, chest, waist and slightly uneven hem. */
-    const int ox[8]={-3,1,3,2,3,0,-3,-2};
-    int vx[8],vy[8];
-    const int oy[8]={0,-1,1,4,8,9,8,4};
-    for(int i=0;i<8;++i) {
-        int u=ht_clamp(oy[i],0,8);vx[i]=sx+(hx-sx)*u/8+f*ox[i];vy[i]=sy+(hy-sy)*u/8;
-        if(i==5)++vy[i];
-    }
-    for(int i=1;i<7;++i)ht_triangle(ht_scene,vx[0],vy[0],vx[i],vy[i],vx[i+1],vy[i+1],255);
-    ht_limb(ht_scene,sx,sy,sx+f,sy-3,1,1,255);
-    /* Small profiled head: crown, brow, nose, chin and nape, no glowing eyes. */
-    const int head_x[11]={-2,-1,1,2,2,3,2,1,-1,-2,-2};
-    const int head_y[11]={-5,-7,-7,-6,-5,-4,-4,-2,-2,-3,-5};
-    for(int i=1;i<10;++i)ht_triangle(ht_scene,sx+f*head_x[0],sy+head_y[0],
-        sx+f*head_x[i],sy+head_y[i],sx+f*head_x[i+1],sy+head_y[i+1],255);
+    /* Ordinary coat over a upright torso, with a soft shoulder/hem rather
+     * than pointed lapels. The novella supplies a coat and a carried bag. */
+    ht_limb(ht_scene,sx,sy+1,hx,hy-1,3,3,255);
+    ht_limb(ht_scene,hx-2,hy,hx+2,hy,1,1,255);
+    ht_limb(ht_scene,sx,sy-1,sx,sy-3,1,1,255);
+    /* Rounded crown/nape and a restrained profile. No hat-like point,
+     * jutting beak or glowing face details at this small physical scale. */
+    ht_disk(ht_scene,sx,sy-5,3,255);
+    ht_limb(ht_scene,sx+f*2,sy-5,sx+f*3,sy-4,0,0,255);
+    ht_limb(ht_scene,sx,sy-3,sx+f,sy-2,1,1,255);
     ht_person_leg(p->hip,p->foot[1],p->knee[1],f,255);
     ht_person_arm(p->shoulder,p->hand[1],p->elbow[1],255);
     /* A few subdued clothing seams survive close framing without stippling. */
