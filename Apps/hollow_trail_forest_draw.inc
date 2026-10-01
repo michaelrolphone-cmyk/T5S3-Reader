@@ -265,8 +265,26 @@ static void ht_forest_mill(const ht_game *g) {
     }
     ht_triangle(ht_scene,x-11,base-87,x+55,base-119,x+118,base-102,210);
     ht_triangle(ht_scene,x-11,base-87,x+118,base-102,x+182,base-75,210);
-    for(int row=0;row<4;++row)ht_limb(ht_scene,x+12+row*8,base-93-row*4,x+139-row*8,base-83-row*4,0,0,174);
-    ht_limb(ht_scene,x-9,base-85,x+182,base-75,2,2,244);
+    /* Uneven courses sag over the wheel; missing ends expose the dark roof
+     * beneath. Large planes remain legible, wear never becomes frame noise. */
+    for(int row=0;row<4;++row)for(int tile=0;tile<7;++tile) {
+        int xx=x+7+row*9+tile*18,yy=base-92-row*4+tile*2;
+        if((tile+row*2)%9==5)continue;
+        ht_limb(ht_scene,xx,yy,xx+14+(tile%3),yy+1,0,0,170);
+        ht_limb(ht_scene,xx+14,yy+1,xx+14,yy+4,0,0,186);
+    }
+    int px=x-9,py=base-85;
+    for(int i=1;i<=8;++i) {
+        int nx=x-9+191*i/8,ny=base-85+10*i/8+5*i*(8-i)/16;
+        ht_limb(ht_scene,px,py,nx,ny,2,2,244);px=nx;py=ny;
+    }
+    /* Water-blackened board feet and two splits follow real plank seams. */
+    for(int i=0;i<10;++i) {
+        int xx=x+3+i*11,height=11+(i*7)%19;
+        ht_limb(ht_scene,xx,base-2,xx+1,base-height,2,0,224);
+    }
+    ht_limb(ht_scene,x+22,base-48,x+25,base-31,0,0,230);
+    ht_limb(ht_scene,x+25,base-31,x+23,base-21,0,0,230);
     /* Three saplings in the gutter are roots in debris, not decorative trees. */
     for(int i=0;i<3;++i) {
         int xx=x+70+i*20,yy=base-83+i*2;
@@ -297,6 +315,17 @@ static void ht_forest_mill(const ht_game *g) {
         int xx=x+138+i*7,yy=base-i*10;
         ht_limb(ht_scene,xx,yy,xx-8,yy-12,1,0,136);
         ht_disk(ht_scene,xx-7,yy-9,3,123);
+        if(i)ht_limb(ht_scene,xx-7,yy-9,xx-14,yy+2,1,0,138);
+    }
+    /* Fern fronds root at the damp uphill wall, with tapering paired pinnae. */
+    for(int frond=0;frond<4;++frond) {
+        int root=x+155+frond*7,side=frond&1?1:-1;
+        for(int k=0;k<5;++k) {
+            int xx=root+side*k*3,yy=base-3-k*5+k*k/3,w=6-k;
+            ht_limb(ht_scene,xx,yy,xx+side*3,yy-4,0,0,149);
+            ht_limb(ht_scene,xx,yy,xx-w,yy-4,1,0,137);
+            ht_limb(ht_scene,xx,yy,xx+w,yy-3,1,0,137);
+        }
     }
     ht_checkpoint();
 }

@@ -32,7 +32,9 @@ Pillow); individual grayscale and mono PNGs go to `dist/story-previews/`.
   sloping desk at X=1,180 on terrain parcel 3. No new invisible platforms
 - Natural grounded arrival near X=1,070 triggers a 10.88-second mill tableau:
   a quiet pullback reveals the still wheel, sagging roof, gutter saplings,
-  wet footing/pool, broken shutter/window beam and desk, then restores framing
+  wet footing/pool, broken shutter/window beam and desk, then restores framing. A bounded follow-up adds sagging
+  eave sections, missing tile ends, water-darkened split board feet and rooted
+  fern/ivy detail to the same mill, without changing contact surfaces
 - This second in-engine cutscene never grants evidence, solves a puzzle or
   respawns the player. It preserves the complete gameplay state and runs once
   per app session; neutral input is required afterward. Debug jumps do not
