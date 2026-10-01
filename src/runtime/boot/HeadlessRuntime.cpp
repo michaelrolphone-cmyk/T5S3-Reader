@@ -82,7 +82,7 @@ class Adapter {
   Result bind(size_t index) {
     const auto& request = requests[index];
     const bool acquired = Providers::acquire(request.id, request.capability, request.version, &leases[index]);
-    LOG_INF("BOOT", "bind id=%s granted=%u error=%.120s", request.id, acquired, Providers::lastError());
+    LOG_INF("BOOT", "bind id=%s granted=%u error=%.120s", request.id, acquired, acquired ? "none" : Providers::lastError());
     return acquired ? Result::Ready : Result::Fault;
   }
   void poll() { nativeProviderOwnerTick(); }
@@ -113,6 +113,7 @@ const char* stateName(State s) {
 }
 void setup() {
   Serial.begin(115200);
+  Serial.println(); // Separate any partial SDK diagnostic from structured boot logs.
   LOG_INF("BOOT", "profile=cam-offline u1=480bf345 gui=disabled nvs=disabled provisioning=absent");
   uint8_t mac[6]{}; esp_efuse_mac_get_default(mac);
   LOG_INF("BOOT", "mac=%02x:%02x:%02x:%02x:%02x:%02x app=0x%x flash=%u psram=%u",
@@ -129,7 +130,7 @@ void loop() {
   }
   if (millis()-lastLog >= 5000) {
     lastLog = millis();
-    LOG_INF("BOOT", "heartbeat state=%s heap=%u psram=%u handles=%u grants=%u",
+    LOG_INF("BOOT", "heartbeat state=%s heap=%u psram=%u handles=%u has_grants=%u",
       stateName(state), ESP.getFreeHeap(), ESP.getFreePsram(),
       BootstrapHalStorage::openHandleCount(), Providers::hasLiveGrants());
   }

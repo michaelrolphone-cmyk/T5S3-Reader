@@ -72,3 +72,38 @@ ownership, mutation generations, failed close and failed metadata I/O. Hardware
 proof requires the locked, MAC/current-image-guarded external runner and preserved
 full erase-range backups. CI's focused contract job uses exact U1 API headers;
 it is not a substitute for the integrated firmware build or physical evidence.
+
+## Observed physical checkpoint (2026-10-01)
+
+The single planned physical batch used hardware commit `a640d3ca`, integrated
+with pinned U1/master as `0be8530a`. Firmware was 477216 bytes, SHA-256
+`597f88dcf4a3fb2aaff20fb24bea457e3089ba8bf3b6d667166ec4e2f7aa2da5`,
+at app0 `0x10000`. Exact prior-image guard, full 561152-byte backup, flash
+readback, partition/OTA preservation and NVS preservation during writing passed.
+Both ordinary recoveries returned InstalledVerified, actual installed clock and
+ZIP acquired through the normal graph, and both boot cycles reached Running.
+The intervening normal shutdown/remount released all grants and file handles.
+All eight installed files matched their pre-existing hashes in both cycles;
+clock advanced 20 ms and ZIP/production stream/resource/revocation checks passed.
+The final 31 heartbeats held heap 306924, PSRAM 8046391 and zero file handles with
+live service grants. This is bounded operation evidence, not a long-run leak or
+full T5/U3/U4 qualification claim. No camera, display or radio ran in this batch.
+
+The original host runner recorded failure because an adjacent dependency's
+`Logging.h` won include resolution and emitted `DIAG_RUNTIME` instead of
+`RUNTIME`; the first boot label also followed a partial SDK log line. Preserve
+that original result. `test/hardware/cam/verify_capture.py` validates the saved
+raw capture with either prefix, and separate analysis establishes the above
+physical results without opening a port or flashing again. Six malformed
+capture variants were rejected. The follow-up gives local port headers priority,
+separates the initial boot line and removes stale last-error text from successful
+grant diagnostics. These logging/build corrections are software-built, not
+reflashed. The T5 choreography test now explicitly examines its graphical branch.
+
+Local immutable evidence: `lab-evidence/cam-runtime-artifacts-1` (physical build,
+source archive and actual dependency logger), `lab-evidence/cam-runtime-flash-1`
+(raw capture, original runner failure, separate qualification analysis and all
+backups). Original-camera cumulative recovery hash remains
+`92a4400ab9f81b6f5741f27595f0731503a2c51bf11722f947fe06457a3c7bd0`.
+Current pre-write camera-image recovery range hash is
+`c710e66ef0e42d27f0ae8411288d24844110f3f3286e2d10306f8b8737f40bcb`.

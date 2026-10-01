@@ -10,6 +10,9 @@ json_include = os.environ.get("RISCRTE_ARDUINOJSON_INCLUDE")
 if not json_include or not (Path(json_include) / "ArduinoJson.h").is_file():
     raise RuntimeError("Set RISCRTE_ARDUINOJSON_INCLUDE to an installed ArduinoJson 7 include directory")
 env.Append(CPPPATH=[json_include])
+# Local port headers must win even if the installed dependency directory also
+# contains a header named Logging.h. ArduinoJson is the only dependency here.
+env.Prepend(CPPPATH=[str(root / "ports/cam")])
 env.BuildSources("$BUILD_DIR/cam-port", "$PROJECT_DIR/ports/cam", src_filter="+<*.cpp>")
 env.BuildSources("$BUILD_DIR/sd-vfs", "$PROJECT_DIR/lib/NativeApps/src", src_filter="+<SdVfs.cpp>")
 env.BuildSources("$BUILD_DIR/packages", "$PROJECT_DIR/src/runtime/packages", src_filter="+<*.cpp>")
