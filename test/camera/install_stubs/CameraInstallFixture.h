@@ -39,7 +39,7 @@ struct OrdinaryTransactionPaths{char backup[128],removing[128];};
 inline bool ordinaryTransactionPaths(Kind,const char*id,OrdinaryTransactionPaths&p){snprintf(p.backup,sizeof(p.backup),"/Drivers/.%s.pkg-backup",id);snprintf(p.removing,sizeof(p.removing),"/Drivers/.%s.pkg-removing",id);return true;}
 inline uint32_t installedCapabilityVersion(const char*){return 1;}
 inline bool makeIdentity(Kind,const char*,const char*version,const char*,bool,Identity*out){strcpy(out->version,version);return true;}
-inline bool verifyManagedOrdinarySdDirectory(const char*,Kind,const char* id,const PackageRuntimePolicy&,uint32_t(*)(const char*),Identity& observed){++verifications;strcpy(observed.version,!strcmp(id,"cam-ov3660-profile")?"0.1.0":"0.1.8");return validPayload;}
+inline bool verifyManagedOrdinarySdDirectory(const char*,Kind,const char* id,const PackageRuntimePolicy&,uint32_t(*)(const char*),Identity& observed){++verifications;strcpy(observed.version,!strcmp(id,"cam-ov3660-profile")?"0.1.0":"0.1.9");return validPayload;}
 enum class OrdinaryInstallResult{Installed,PublicationRejected};
 struct Outcome{OrdinaryInstallResult result;};
 inline Outcome installOrdinaryFromSdZip(const char*,const PackageRuntimePolicy&,uint32_t(*)(const char*),const Identity*){++installs;return {installGood?OrdinaryInstallResult::Installed:OrdinaryInstallResult::PublicationRejected};}

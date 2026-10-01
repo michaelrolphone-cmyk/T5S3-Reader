@@ -15,3 +15,13 @@ static inline void cam_jpeg_scan_step(cam_jpeg_scan *s,const uint8_t *bytes,uint
         else if(s->found && p>s->soi+2 && bytes[p-1]==0xff && bytes[p]==0xd9){s->length=p+1-s->soi;s->done=true;return;}
     }
 }
+
+/* ESP32-S3 CAM_CTRL1 contains write-only RESET/AFIFO_RESET flags. Compose
+ * complete writes from a known value; never read-modify-write those flags. */
+static inline uint32_t cam_control_word(bool start,bool reset,bool afifo,uint32_t bytes){
+    uint32_t value=(1u<<23)|(bytes-1u);
+    if(start)value|=1u<<29;
+    if(reset)value|=1u<<30;
+    if(afifo)value|=1u<<31;
+    return value;
+}

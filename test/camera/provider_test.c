@@ -52,6 +52,10 @@ static void reset(void){
 static uint64_t begin(void){uint64_t j=0;uint32_t h=0;assert(api->capture(NULL,&request,&j,&h)==0 && j && h==41);return j;}
 static risc_camera_status_v1 status(uint64_t j){risc_camera_status_v1 s={.struct_size=sizeof(s)};assert(api->status(NULL,j,&s)==0);return s;}
 int main(void){
+ assert(cam_control_word(false,false,false,1024)==0x008003ff);
+ assert(cam_control_word(true,false,false,1024)==0x208003ff);
+ assert(cam_control_word(false,true,false,1024)==0x408003ff);
+ assert(cam_control_word(false,false,true,1024)==0x808003ff);
  uint8_t frame[2048]={0};cam_jpeg_scan parser={0};
  frame[2]=0xff;frame[3]=0xd9; // premature EOI must be ignored
  frame[511]=0xff;frame[512]=0xd8;frame[513]=0xff;

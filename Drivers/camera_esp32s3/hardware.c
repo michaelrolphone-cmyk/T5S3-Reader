@@ -143,7 +143,7 @@ bool cam_hw_start(const risc_camera_esp32s3_profile_v1 *p) {
     /* Match native reference: byte-count EOF commits full DMA descriptors.
      * VSYNC is not a reliable frame EOF for the finite polled receiver. */
     CAM.cam_ctrl.cam_vs_eof_en=0;
-    CAM.cam_ctrl1.cam_rec_data_bytelen=NODE_BYTES-1;CAM.cam_ctrl1.cam_vsync_filter_en=1;
+    CAM.cam_ctrl1.val=cam_control_word(false,false,false,NODE_BYTES);
     CAM.lc_dma_int_ena.val=0;CAM.lc_dma_int_clr.val=~0u;
     for(unsigned i=0;i<8;i++)input(pins.data[i],CAM_DATA_IN0_IDX+i);
     input(pins.pclk,CAM_PCLK_IDX);input(pins.vsync,CAM_V_SYNC_IDX);input(pins.href,CAM_H_ENABLE_IDX);
@@ -180,7 +180,7 @@ bool cam_hw_start(const risc_camera_esp32s3_profile_v1 *p) {
 bool cam_hw_stop_capture(void) {
     waiting=false;
     if(!dma_owned){active=false;return true;}
-    CAM.cam_ctrl1.cam_start=0;
+    CAM.cam_ctrl1.val=cam_control_word(false,false,false,NODE_BYTES);
     unsigned ch=pins.dma_channel;DMA.channel[ch].in.link.stop=1;
     /* No wait inside the provider's 2ms poll budget. A pending stop is retried
      * on later owner ticks; all buffers and claims remain pinned meanwhile. */
@@ -206,7 +206,9 @@ bool cam_hw_begin(unsigned quality) {
     /* Allow VSYNC observation while DMA is disabled. The next observed boundary
      * starts a finite capture; polling latency may truncate a frame, in which
      * case strict SOI/EOI validation fails instead of publishing junk. */
-    CAM.cam_ctrl.cam_update=1;CAM.cam_ctrl1.cam_start=1;waiting=true;return true;
+    CAM.cam_ctrl.cam_update=1;
+    CAM.cam_ctrl1.val=cam_control_word(true,false,false,NODE_BYTES);
+    waiting=true;return true;
 }
 int32_t cam_hw_poll(const uint8_t **bytes,uint32_t *length) {
     *bytes=NULL;*length=0;unsigned ch=pins.dma_channel;
@@ -217,20 +219,23 @@ int32_t cam_hw_poll(const uint8_t **bytes,uint32_t *length) {
     sampled_gpio=sampled;
     if(waiting){
         if(!CAM.lc_dma_int_raw.cam_vsync_int_raw)return T5_STREAM_AGAIN;
-        CAM.cam_ctrl1.cam_start=0;CAM.lc_dma_int_clr.val=~0u;
-        CAM.cam_ctrl1.cam_reset=1;CAM.cam_ctrl1.cam_reset=0;
-        CAM.cam_ctrl1.cam_afifo_reset=1;CAM.cam_ctrl1.cam_afifo_reset=0;
+        CAM.cam_ctrl1.val=cam_control_word(false,false,false,NODE_BYTES);
+        CAM.lc_dma_int_clr.val=~0u;
+        CAM.cam_ctrl1.val=cam_control_word(false,true,false,NODE_BYTES);
+        CAM.cam_ctrl1.val=cam_control_word(false,false,false,NODE_BYTES);
+        CAM.cam_ctrl1.val=cam_control_word(false,false,true,NODE_BYTES);
+        CAM.cam_ctrl1.val=cam_control_word(false,false,false,NODE_BYTES);
         DMA.channel[ch].in.conf0.in_rst=1;DMA.channel[ch].in.conf0.in_rst=0;
-        /* cam_reset clears the receive-byte count. Restore it here, exactly
-         * where ll_cam_start does, or each descriptor EOF fires after 1 byte. */
-        CAM.cam_ctrl1.cam_rec_data_bytelen=NODE_BYTES-1;
+        /* Preserve the 1023-byte receive count after the reset pulses. */
+        CAM.cam_ctrl1.val=cam_control_word(false,false,false,NODE_BYTES);
         DMA.channel[ch].in.int_clr.val=~0u;
         DMA.channel[ch].in.link.addr=((uintptr_t)desc)&0xfffff;
         __asm__ volatile("memw" ::: "memory");
         DMA.channel[ch].in.link.start=1;
         /* Vendor reference keeps sampling through DMA backpressure; the
          * finite link and explicit stop still bound memory and ownership. */
-        CAM.cam_ctrl.cam_stop_en=0;CAM.cam_ctrl.cam_update=1;CAM.cam_ctrl1.cam_start=1;
+        CAM.cam_ctrl.cam_stop_en=0;CAM.cam_ctrl.cam_update=1;
+        CAM.cam_ctrl1.val=cam_control_word(true,false,false,NODE_BYTES);
         /* Same resynchronization as ll_cam_do_vsync; ccount edges provide
          * >=10us without a new delay/ISR import. Polled start can be late,
          * so discard a partial prefix and require an entire SOI..EOI JPEG. */
@@ -281,7 +286,7 @@ bool cam_hw_shutdown(void) {
     if(!parked)return false; // retain mapping, buffers and claims on uncertainty
     if(touched){
         if(dma_owned){DMA.channel[pins.dma_channel].in.link.addr=0;DMA.channel[pins.dma_channel].in.int_clr.val=~0u;dma_owned=false;}
-        CAM.cam_ctrl1.cam_start=0;CAM.cam_ctrl.cam_clk_sel=0;CAM.cam_ctrl.cam_update=1;
+        CAM.cam_ctrl1.val=0;CAM.cam_ctrl.cam_clk_sel=0;CAM.cam_ctrl.cam_update=1;
         esp_rom_gpio_connect_out_signal(pins.xclk,SIG_GPIO_OUT_IDX,false,false);
         PADS.out_w1tc=1u<<pins.xclk;PADS.enable_w1ts=1u<<pins.xclk;
         drive(pins.sda,true);drive(pins.scl,true);
@@ -304,12 +309,11 @@ const char *cam_hw_wait_reason(void) {
 
 const char *cam_hw_fault_reason(void){
     static char detail[64];
-    uint32_t first=0,second=0;
+    uint32_t first=0;
     if(available>=8){
         for(unsigned i=0;i<4;i++)first=(first<<8)|buffer[i];
-        for(unsigned i=4;i<8;i++)second=(second<<8)|buffer[i];
     }
-    cam_hw_format_detail(detail,poll_fault,first,second,jpeg.nonzero,
+    cam_hw_format_detail(detail,poll_fault,CAM.cam_ctrl1.val,first,jpeg.nonzero,
         sampled_changes,DMA.channel[pins.dma_channel].in.int_raw.val);
     return detail;
 }

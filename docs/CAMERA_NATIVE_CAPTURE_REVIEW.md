@@ -2,7 +2,7 @@
 
 Reference: Espressif esp32-camera v2.0.4, e689c3b082985ee7b90198be32d330ce51ac5367,
 `target/esp32s3/ll_cam.c` and `driver/cam_hal.c`. This comparison precedes the
-complete 0.1.8 candidate hardware run; it is not a hardware success claim.
+complete 0.1.9 candidate hardware run; it is not a hardware success claim.
 
 | Transition | Reference | Installed finite polled receiver |
 |---|---|---|
