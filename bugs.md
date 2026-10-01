@@ -2,7 +2,7 @@
 
 Reconciled on 2026-09-30 UTC against master [`2b45ab662c0ffe3650ce0f841083ea47886022c9`](https://github.com/michaelrolphone-cmyk/T5S3-Reader/commit/2b45ab662c0ffe3650ce0f841083ea47886022c9), including the 14 later scan branches from 06:50 through 17:22 MDT on 2026-09-30. This is the canonical report inventory. Scan-local IDs are aliases, never canonical identity.
 
-**237 distinct retained reports: 235 outstanding (233 need current-master revalidation and #16/#17 are claimed); #91 and #205 are verified fixed on master.** Current check: 2026-10-01 on master `be82695ea0ecb14525c0de1ddc78cd0c77e4614b`. The 196 inherited reports and 41 later distinct reports retain their original provenance below. Historical observations are not new reproductions.
+**237 distinct retained reports: 235 outstanding (233 need current-master revalidation and #16/#17 await merge); #91 and #205 are verified fixed on master.** Current check: 2026-10-01 on master `be82695ea0ecb14525c0de1ddc78cd0c77e4614b`. The 196 inherited reports and 41 later distinct reports retain their original provenance below. Historical observations are not new reproductions.
 
 
 ## Status and provenance rules
@@ -95,7 +95,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Page or virtualize over the provider's full count and keep a catalog index per visible row. Add tests at 65 and 128 online entries and more than 64 inbox entries.
 ### 16. Button Remap applies a failed mapping to the live input system even when persistence fails
 
-- **Status:** Confirmed by source inspection and claimed by `fix_button_remap_batch` at 2026-10-01 00:52 UTC on `be82695ea0ecb14525c0de1ddc78cd0c77e4614b`; runtime fault regression pending, branch `fix/button-remap-16-17`.
+- **Status:** Awaiting merge in [draft PR #333](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/333), verified remote head `3619048c6b178ddf6d767842b797d6fb1d7a87d4`; baseline `be82695ea0ecb14525c0de1ddc78cd0c77e4614b`. Real app/bridge fault regression fails on baseline and passes with the fix; integrated native suite passes. Exact-head CI pending. Active owner `fix_button_remap_batch` retains the run until CI is terminal.
 - **Sources:** [automation/bug-scan-20260926-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2120/bugs.md); [automation/bug-scan-20260927-0824](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0824/bugs.md)
 
 - **Affected code:** `src/native/NativeButtonRemapBridge.cpp`, `applyMapping(const t5_button_remap_mapping_t *mapping)` and `resetDefaults()`; `src/MappedInputManager.cpp`, `mapButton()`; `Apps/button_remap.c`, the failed-save retry path in `app_main()`.
@@ -106,7 +106,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Make `applyMapping()` transactional: save the previous four button fields, apply the candidate, call `saveToFile()`, and restore the previous fields before returning `false` if persistence fails. Apply the same behavior to reset-to-defaults through the shared path. Add a regression test that forces save failure and verifies both `SETTINGS` and mapped physical/logical button behavior remain unchanged.
 ### 17. Button Remap advertises Reset and Cancel on front buttons but handles those actions only on the side buttons
 
-- **Status:** Confirmed by source inspection and claimed by `fix_button_remap_batch` at 2026-10-01 00:52 UTC on `be82695ea0ecb14525c0de1ddc78cd0c77e4614b`; runtime fault regression pending, branch `fix/button-remap-16-17`.
+- **Status:** Awaiting merge in [draft PR #333](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/333), verified remote head `3619048c6b178ddf6d767842b797d6fb1d7a87d4`; baseline `be82695ea0ecb14525c0de1ddc78cd0c77e4614b`. Real app/bridge fault regression fails on baseline and passes with the fix; integrated native suite passes. Exact-head CI pending. Active owner `fix_button_remap_batch` retains the run until CI is terminal.
 - **Sources:** [automation/bug-scan-20260926-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2120/bugs.md)
 
 - **Affected code:** `Apps/button_remap.c`, `render()` and the main input loop; `src/native/NativeUiBridge.cpp`, `drawChrome()`; `src/MappedInputManager.cpp`, `mapLabels()` and `mapButton()`.
