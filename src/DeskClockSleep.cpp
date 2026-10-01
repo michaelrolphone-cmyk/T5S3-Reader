@@ -24,6 +24,7 @@
 #include "activities/RenderLock.h"
 #include "fontIds.h"
 #include "util/DeskClockTime.h"
+#include "util/DeskClockFaces.h"
 
 // These objects exist before setup(), so a timer wake can paint without
 // mounting the SD card or starting the activity manager/render task.
@@ -32,7 +33,7 @@ extern EpdFontFamily ui12FontFamily;
 extern EpdFontFamily smallFontFamily;
 
 namespace {
-constexpr uint32_t kClockMagic = 0x434C4B32;  // CLK2; discard stale retained clock state.
+constexpr uint32_t kClockMagic = 0x434C4B33;  // CLK3; discard stale retained clock state.
 constexpr uint32_t kClockUiWakeMagic = 0x57414B45;  // WAKE; survive the explicit restart below.
 constexpr uint16_t kFullRefreshMinutes = 30;
 
@@ -42,6 +43,7 @@ struct ClockRetention {
   int64_t displayedMinuteEpoch;
   uint16_t refreshCount;
   uint8_t timeFormat;
+  uint8_t face;
   uint8_t language;
   uint8_t flipUi;
   uint8_t rtcStoresUtc;
@@ -52,47 +54,19 @@ RTC_DATA_ATTR ClockRetention clockState = {};
 RTC_DATA_ATTR uint32_t clockUiWakeMagic = 0;
 bool userWakePending = false;
 
-void drawDigit(GfxRenderer& gfx, int digit, int x, int y, int unit) {
-  static constexpr uint8_t masks[] = {0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f};
-  const uint8_t mask = digit < 0 ? 0x40 : masks[digit];
-  const int width = 6 * unit;
-  const int height = 10 * unit;
-  const int gap = std::max(2, unit / 8);
-  if (mask & 0x01) gfx.fillRect(x + unit, y, width - 2 * unit, unit - gap);
-  if (mask & 0x02) gfx.fillRect(x + width - unit, y + unit, unit - gap, height / 2 - unit - gap);
-  if (mask & 0x04) gfx.fillRect(x + width - unit, y + height / 2 + gap, unit - gap, height / 2 - unit - gap);
-  if (mask & 0x08) gfx.fillRect(x + unit, y + height - unit, width - 2 * unit, unit - gap);
-  if (mask & 0x10) gfx.fillRect(x, y + height / 2 + gap, unit - gap, height / 2 - unit - gap);
-  if (mask & 0x20) gfx.fillRect(x, y + unit, unit - gap, height / 2 - unit - gap);
-  if (mask & 0x40) gfx.fillRect(x + unit, y + height / 2 - unit / 2, width - 2 * unit, unit - gap);
-}
-
 void renderClockFrame(GfxRenderer& gfx, time_t now) {
   tm local = {};
   const bool valid = halClock.isSystemTimeValid() && localtime_r(&now, &local) != nullptr;
   const bool use12Hour = clockState.timeFormat == CrossPointSettings::TIME_12H;
-  const unsigned hour = ClockFormat::displayHour(local.tm_hour, use12Hour);
-  const int width = gfx.getScreenWidth();
   const int height = gfx.getScreenHeight();
-  const int unit = std::max(4, std::min((width - 96) / 29, (height - 200) / 10));
-  const int left = (width - 29 * unit) / 2;
-  const int top = (height - 10 * unit) / 2;
   gfx.clearScreen();
-  const int digits[] = {valid ? static_cast<int>(hour / 10) : -1, valid ? static_cast<int>(hour % 10) : -1,
-                        valid ? local.tm_min / 10 : -1, valid ? local.tm_min % 10 : -1};
-  const int positions[] = {0, 7, 16, 23};
-  for (int i = 0; i < 4; ++i) {
-    if (i == 0 && valid && use12Hour && hour < 10) continue;
-    drawDigit(gfx, digits[i], left + positions[i] * unit, top, unit);
-  }
-  gfx.fillRect(left + 14 * unit, top + 3 * unit, unit, unit);
-  gfx.fillRect(left + 14 * unit, top + 6 * unit, unit, unit);
+  DeskClockFaces::draw(gfx, clockState.face, local.tm_hour, local.tm_min, use12Hour, valid);
 
   char date[32] = {};
   if (valid) strftime(date, sizeof(date), "%Y-%m-%d", &local);
-  gfx.drawCenteredText(UI_12_FONT_ID, top - 48, valid ? date : tr(STR_CLOCK_SET_TIME));
+  gfx.drawCenteredText(UI_12_FONT_ID, 32, valid ? date : tr(STR_CLOCK_SET_TIME));
   if (valid && use12Hour) {
-    gfx.drawCenteredText(UI_12_FONT_ID, top + 10 * unit + 12, ClockFormat::period(local.tm_hour));
+    gfx.drawCenteredText(UI_12_FONT_ID, height - 78, ClockFormat::period(local.tm_hour));
   }
   gfx.drawCenteredText(SMALL_FONT_ID, height - 44, tr(STR_CLOCK_WAKE_BUTTON));
 }
@@ -220,6 +194,7 @@ void DeskClockSleep::run(GfxRenderer& gfx, HalGPIO& input) {
   clockState.magic = kClockMagic;
   clockState.rtcReferenceEpoch = SETTINGS.rtcReferenceEpoch;
   clockState.timeFormat = SETTINGS.timeFormat;
+  clockState.face = DeskClockFaces::sanitize(SETTINGS.clockFace);
   clockState.language = SETTINGS.language;
   clockState.flipUi = SETTINGS.flipUi;
   clockState.rtcStoresUtc = SETTINGS.rtcStoresUtc;

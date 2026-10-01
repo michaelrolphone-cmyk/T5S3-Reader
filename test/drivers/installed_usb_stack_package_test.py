@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 from generate_privileged_imports_v1 import extract_imports, encode_imports
 from verify_provider_relocation_map import audit_loader_map
 from provider_discovery_test import ProviderDiscoveryTest
+from build_installed_usb_stack import dependency_order, source_candidates
 PACKAGES = ROOT / 'dist/packages'
 CATALOG = PACKAGES / 'package-catalog.json'
 BRIDGE = 'risc_fw_i2c_transact_v1'
@@ -41,7 +42,7 @@ BASELINE = {
     'usb-hid': ('usb.hid', ['usb.host']),
     'usb-hid-keyboard': ('usb.hid.keyboard', ['usb.hid']),
     'usb-hid-text-input': ('input.text', ['usb.hid.keyboard']),
-    'usb-hid-gamepad': ('usb.hid.gamepad', ['usb.hid']),
+    'usb-hid-gamepad': ('usb.hid.gamepad', ['usb.hid', 'platform.clock']),
     'usb-xinput-gamepad': ('usb.xinput.gamepad', ['usb.host', 'platform.clock']),
     'usb-ui-navigation': ('input.navigation',
                           ['input.text', 'usb.hid.gamepad', 'usb.xinput.gamepad']),
@@ -90,12 +91,22 @@ def run(identities=None):
     assert selected and selected <= set(sources), selected
     catalog = json.loads(CATALOG.read_text(encoding='utf-8'))
     assert catalog['schema'] == 1 and catalog['release']
-    assert len(catalog['packages']) == len(sources) <= 64
+    assert len(catalog['packages']) == len(selected) <= 64
+    # Validate the full source dependency graph even for a selective release.
+    # Unselected dependency payloads may be in earlier independent releases;
+    # they are neither built here nor claimed to be artifact-verified here.
+    dependency_order(source_candidates())
     available = {}
+    if identities is not None:
+        for identity, source in sources.items():
+            if identity not in selected:
+                provided = source['provides'][0]
+                capability, api = provided['capability'], provided['api']
+                available[capability] = max(available.get(capability, 0), api)
     observed_ids = set()
     for record in catalog['packages']:
         identity = record['id']
-        assert identity in sources and identity not in observed_ids, identity
+        assert identity in selected and identity not in observed_ids, identity
         observed_ids.add(identity)
         source = sources[identity]
         folder = PACKAGES / identity
@@ -169,7 +180,7 @@ def run(identities=None):
             assert not any(name.startswith(('i2c_', 'gpio_', 'periph_module_'))
                            for name in imports), imports
         available[cap] = max(available.get(cap, 0), api)
-    assert observed_ids == set(sources)
+    assert observed_ids == selected
     print(f'{len(observed_ids)} manifest-discovered ELF packages: ZIP/catalog CRC/SHA, '
           'imports, MMIO and dependencies PASS')
 

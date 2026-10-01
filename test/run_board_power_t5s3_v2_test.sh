@@ -18,3 +18,6 @@ for test_case in board_power_t5s3_v2 board_power_snapshot board_power_charge_pro
   fi
 done
 python3 "$repo/test/resources/board_power_cutover_source_test.py"
+python3 "$repo/test/hal/board_power_poll_test.py"
+
+bash "$repo/test/run_board_power_port_test.sh"

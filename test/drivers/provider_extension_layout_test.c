@@ -16,5 +16,9 @@ _Static_assert(offsetof(risc_usb_host_discovery_v1, release_checked) >=
 _Static_assert(offsetof(risc_usb_vbus_charger_api_v1, input_status) ==
                offsetof(risc_usb_vbus_monitor_api_v1, input_status), "power monitor offset");
 _Static_assert(offsetof(risc_usb_vbus_charger_api_v1, read_charger) >=
-               sizeof(risc_usb_vbus_monitor_api_v1), "charger suffix overlap");
+               sizeof(risc_usb_vbus_external_api_v1), "charger suffix overlap");
+_Static_assert(offsetof(risc_usb_vbus_charger_api_v1, acquire_external_host) ==
+               offsetof(risc_usb_vbus_external_api_v1, acquire_external_host), "external host offset");
+_Static_assert(offsetof(risc_usb_vbus_charger_api_v1, external_host_valid) ==
+               offsetof(risc_usb_vbus_external_api_v1, external_host_valid), "external validation offset");
 int main(void) { return 0; }

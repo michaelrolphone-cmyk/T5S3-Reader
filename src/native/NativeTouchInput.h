@@ -14,7 +14,20 @@ bool nativeTouchResume();
 bool nativeTouchSuspend();
 bool nativeTouchAvailable();
 bool nativeTouchHadActivity();
+// Start a new focus generation without dropping the provider. Clears delivered
+// gestures now; the capture task fences raw backlog with its next successful
+// poll/snapshot. Held contacts must lift before becoming eligible.
+void nativeTouchDiscardGestures();
 bool nativeTouchGetTap(NativeTouchPoint& point);
+bool nativeTouchGetContact(NativeTouchPoint& point);
 bool nativeTouchGetHold(NativeTouchPoint& point, unsigned long& heldMs);
 bool nativeTouchGetSwipe(NativeTouchPoint& start, NativeTouchPoint& end);
 bool nativeTouchTakeHomePress();
+
+// Copied counters for diagnostics; no provider pointers escape the consumer.
+struct NativeTouchDiagnostics {
+  uint32_t polls = 0, pollFailures = 0, gaps = 0, events = 0;
+  uint32_t taps = 0, tapOverflows = 0, outages = 0;
+  uint32_t maxServiceMs = 0, maxCaptureGapMs = 0;
+};
+NativeTouchDiagnostics nativeTouchDiagnostics();

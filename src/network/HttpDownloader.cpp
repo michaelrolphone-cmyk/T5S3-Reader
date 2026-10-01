@@ -1,4 +1,5 @@
 #include "HttpDownloader.h"
+#include "ReleaseCatalogRequest.h"
 
 #include <Arduino.h>
 #include <HTTPClient.h>
@@ -6,6 +7,7 @@
 #include <T5StreamApi.h>
 #include <esp_task_wdt.h>
 #include <esp_heap_caps.h>
+#include <esp_system.h>
 #if __has_include(<NetworkClient.h>)
 #include <NetworkClient.h>
 #include <NetworkClientSecure.h>
@@ -152,11 +154,20 @@ bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const 
   }
   HTTPClient http;
 
-  LOG_DBG("HTTP", "Fetching: %s", url.c_str());
+  const bool freshCatalog = username.empty() && password.empty() &&
+                            ReleaseCatalogRequest::isMutableCatalog(url);
+  const std::string requestUrl = freshCatalog
+      ? ReleaseCatalogRequest::freshUrl(url, esp_random(), esp_random()) : url;
+  LOG_DBG("HTTP", "Fetching: %s", requestUrl.c_str());
 
-  http.begin(*client, url.c_str());
+  http.begin(*client, requestUrl.c_str());
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.addHeader("User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
+  if (freshCatalog) {
+    ReleaseCatalogRequest::requestRevalidation(http);
+    const char* headers[] = {"Age", "ETag", "X-Cache", "Cache-Control"};
+    http.collectHeaders(headers, sizeof(headers) / sizeof(headers[0]));
+  }
 
   if (!username.empty() && !password.empty()) {
     std::string credentials = username + ":" + password;
@@ -165,6 +176,11 @@ bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const 
   }
 
   const int httpCode = http.GET();
+  if (freshCatalog) {
+    LOG_INF("HTTP", "Catalog freshness: status=%d Age=%.20s X-Cache=%.40s ETag=%.80s Cache-Control=%.80s",
+            httpCode, http.header("Age").c_str(), http.header("X-Cache").c_str(),
+            http.header("ETag").c_str(), http.header("Cache-Control").c_str());
+  }
   if (httpCode != HTTP_CODE_OK) {
     LOG_ERR("HTTP", "Fetch failed: %d", httpCode);
     logHttpMemory("metadata TLS/GET failure");

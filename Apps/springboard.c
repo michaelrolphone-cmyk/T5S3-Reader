@@ -1,5 +1,7 @@
 #include "T5AppApi.h"
 #include "T5StorageApi.h"
+#include "T5VideoApi.h"
+#include "T5HardwareTakeover.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -241,15 +243,15 @@ static bool page_dots_hit(int x, int y) {
            y >= center_y - 14 && y <= center_y + 14;
 }
 
-static void advance_page(void) {
+static void change_page(bool forward) {
     const uint32_t pages = page_count();
-    const uint32_t next = (current_page() + 1u) % pages;
+    const uint32_t next = (current_page() + (forward ? 1u : pages - 1u)) % pages;
     selected = next * (uint32_t)page_size;
     if (count && selected >= count) selected = count - 1u;
     selection_visible = false;
 }
 
-static void draw(const char *status) {
+static void raster_page(const char *status) {
     api->clear();
     draw_edit_button();
     const uint32_t first = count ? current_page() * (uint32_t)page_size : 0;
@@ -300,7 +302,12 @@ static void draw(const char *status) {
                         "Some Font Awesome icons unavailable");
     }
     draw_page_dots();
-    api->present(false);
+}
+
+#include "springboard_video.inc"
+static void draw(const char* status) {
+    if(sv_enabled) {sv_refresh(status);sv_present();}
+    else {raster_page(status);api->present(false);}
 }
 
 static bool set_edit_mode(bool enabled) {
@@ -357,6 +364,14 @@ static bool launch(void) {
     return false;
 }
 
+__attribute__((visibility("default"))) uint32_t app_hardware_takeover(void) {
+    const t5_app_api_v1* host=t5_app_get_api(T5_APP_ABI_VERSION);
+    t5_app_frame_t frame={0};
+    return host && host->struct_size>=offsetof(t5_app_api_v1,touch_contact)+sizeof(host->touch_contact) &&
+        host->copy_ui_frame && host->touch_contact && host->copy_ui_frame(NULL,0,&frame)
+        ? T5_HARDWARE_TAKEOVER_DISPLAY|T5_HARDWARE_TAKEOVER_UI_VIDEO : 0;
+}
+
 __attribute__((visibility("default"))) void app_main(void) {
     api = t5_app_get_api(T5_APP_ABI_VERSION);
     storage = t5_storage_get_api(T5_STORAGE_API_VERSION);
@@ -369,6 +384,9 @@ __attribute__((visibility("default"))) void app_main(void) {
     selection_visible = false;
     load_home_pins();
     layout();
+    sv_fatal=false;sv_video=NULL;
+    (void)sv_open();
+    if(sv_fatal) goto cleanup;
     draw(0);
 
     t5_app_input_t input;
@@ -376,8 +394,14 @@ __attribute__((visibility("default"))) void app_main(void) {
     uint32_t confirm_started = 0;
     bool confirm_hold_handled = false;
 
-    while (api->poll(&input, 20)) {
-        if (input.exit_requested) return;
+    while (api->poll(&input, sv_enabled ? 5 : 20)) {
+        if (input.exit_requested || sv_fatal) break;
+        t5_app_swipe_t swipe={0};
+        const size_t swipe_api_size=offsetof(t5_app_api_v1,take_touch_swipe)+sizeof(api->take_touch_swipe);
+        const bool swiped=api->struct_size>=swipe_api_size && api->take_touch_swipe && api->take_touch_swipe(&swipe);
+        const bool gesture_consumed=sv_input(&input,swiped,&swipe);
+        sv_present();
+        if(gesture_consumed) {previous_buttons=input.buttons;continue;}
         const uint32_t pressed = input.buttons & ~previous_buttons;
         const uint32_t released = previous_buttons & ~input.buttons;
         uint32_t old = selected;
@@ -403,19 +427,32 @@ __attribute__((visibility("default"))) void app_main(void) {
                 if (edit_mode) {
                     toggle_home();
                 } else if (launch()) {
-                    return;
+                    goto cleanup;
                 }
             }
         }
 
-        if (input.tapped) {
+        // Swipes and taps are separate completed gestures. Handle a swipe first
+        // so dragging across an icon cannot launch it or toggle a Home pin.
+        if (swiped && !sv_enabled) {
+            const int dx = (int)swipe.end_x - swipe.start_x;
+            const int dy = (int)swipe.end_y - swipe.start_y;
+            // Ignore vertical/ambiguous diagonal gestures and short drags.
+            if (abs(dx) >= 50 && abs(dx) > 2 * abs(dy) && page_count() > 1u) {
+                change_page(dx < 0);
+                draw(0);
+                old = selected;
+            }
+        }
+
+        if (input.tapped && !swiped) {
             const int x = input.touch_x, y = input.touch_y;
             if (edit_button_hit(x, y)) {
                 selection_visible = false;
                 toggle_edit_mode();
                 old = selected;
             } else if (page_dots_hit(x, y)) {
-                advance_page();
+                change_page(true);
                 draw(0);
                 old = selected;
             } else if (count && x >= 16 && x < 16 + columns * cell_w &&
@@ -430,7 +467,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                         toggle_home();
                         old = selected;
                     } else {
-                        if (launch()) return;
+                        if (launch()) goto cleanup;
                         old = selected;
                     }
                 }
@@ -440,4 +477,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         previous_buttons = input.buttons;
         if (selected != old) draw(0);
     }
+cleanup:
+    if(sv_fatal && api->log_message) api->log_message("Springboard video unavailable/stalled; returning to Home");
+    sv_close();
 }

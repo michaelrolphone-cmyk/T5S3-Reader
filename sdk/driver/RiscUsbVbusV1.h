@@ -51,10 +51,23 @@ typedef struct {
     int32_t (*input_status)(void *context);
     uint32_t flags;
 } risc_usb_vbus_monitor_api_v1;
+/* Optional extension: host data operation on independently supplied VBUS.
+ * This never authorizes sourcing into external power. Provider validates the
+ * board route, voltage and source-off state; release_host releases either kind
+ * of lease. Older consumers/providers retain their original source-only ABI. */
+#define RISC_USB_POWER_EXTERNAL_HOST_SUPPORTED 2u
+typedef struct {
+    risc_usb_vbus_monitor_api_v1 monitor;
+    bool (*acquire_external_host)(void *context, uint32_t max_milliamps, uint64_t *lease);
+    bool (*external_host_valid)(void *context, uint64_t lease);
+} risc_usb_vbus_external_api_v1;
 
-/* An append-only extension of the SAME physical BQ25896 owner, not another
+/* An extension of the published monitor/external-host prefix of the SAME
+ * physical BQ25896 owner, not another
  * provider that can claim address 0x6B. Consumers check base.struct_size
- * before using extension members. Register values are copied as raw snapshots:
+ * before using extension members. Pre-merge unpublished U1 charger layouts
+ * are incompatible: rebuild those consumers with board-power 0.1.9 or newer.
+ * Register values are copied as raw snapshots:
  * ADC conversions may be stale, and REG0C is deliberately not read because
  * that read clears latched fault history needed by VBUS fault handling. */
 typedef struct {
@@ -69,12 +82,17 @@ typedef struct {
     uint8_t battery_adc;         /* REG0E */
     uint8_t system_adc;          /* REG0F */
     uint8_t vbus_adc;            /* REG11 */
+    /* Provider-classified input: never confuse our OTG output with a charger. */
+    bool external_power;
 } risc_bq25896_charger_snapshot_v1;
 
 typedef struct {
     risc_usb_vbus_api_v1 base;  /* Published monitor prefix must remain intact. */
     int32_t (*input_status)(void *context);
     uint32_t flags;
+    /* Preserve the already published external-host extension prefix. */
+    bool (*acquire_external_host)(void *context, uint32_t max_milliamps, uint64_t *lease);
+    bool (*external_host_valid)(void *context, uint64_t lease);
     bool (*read_charger)(void *context, risc_bq25896_charger_snapshot_v1 *out);
     /* Board-qualified 1000mA input/512mA charge/4208mV profile, applied by
      * the single chip owner through its existing I2C claim. Reject during OTG

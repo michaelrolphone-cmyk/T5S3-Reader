@@ -3,4 +3,4 @@
 from build_usb_hid_common import build
 
 if __name__ == '__main__':
-    build('usb_hid_gamepad', 'usb-hid-gamepad', 'usb.hid', 'usb.hid.gamepad')
+    build('usb_hid_gamepad', 'usb-hid-gamepad', ('usb.hid', 'platform.clock'), 'usb.hid.gamepad')

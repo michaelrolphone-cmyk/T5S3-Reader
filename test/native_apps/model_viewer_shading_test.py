@@ -36,9 +36,14 @@ HARNESS = r'''
 #include <stdlib.h>
 #include <string.h>
 #include "model_viewer_shading.h"
+#include "model_viewer_controls.h"
 #define T5_FILE_OPEN_PATH_MAX 512
 #define T5_APP_BUTTON_BACK 1u
 #define T5_APP_BUTTON_RIGHT 8u
+#define T5_APP_BUTTON_CONFIRM 2u
+#define T5_APP_BUTTON_LEFT 4u
+#define T5_APP_BUTTON_UP 16u
+#define T5_APP_BUTTON_DOWN 32u
 typedef int t5_storage_stream_t;
 typedef struct { uint32_t buttons; bool tapped; int16_t touch_x,touch_y; bool exit_requested; } t5_app_input_t;
 static struct { uint32_t stride_bytes; } g_surface={120};
@@ -249,7 +254,9 @@ class ShadingTests(unittest.TestCase):
             source=Path(tmp)/'test.c'; binary=Path(tmp)/'test'
             source.write_text(translation_unit(),encoding='utf-8')
             cmd=[cc,'-std=gnu11','-O2','-Wall','-Wextra','-Werror','-Wno-unused-function',
-                 '-Wno-unused-variable','-I',str(ROOT/'Apps'),str(source),'-o',str(binary)]
+                 '-Wno-unused-variable','-I',str(ROOT/'Apps'),
+                 '-I',str(ROOT/'sdk/driver'),'-I',str(ROOT/'lib/NativeApps/include'),
+                 str(source),'-o',str(binary)]
             if os.environ.get('MV_SANITIZE')=='1':
                 cmd[2:2]=['-fsanitize=address,undefined','-fno-omit-frame-pointer']
             subprocess.run(cmd,check=True)

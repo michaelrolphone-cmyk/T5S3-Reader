@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
@@ -20,9 +21,13 @@ class ProviderDiscoveryTest(unittest.TestCase):
         root = Path(self.temp.name)
         self.drivers = root / 'Drivers'
         self.artifacts = root / 'dist' / 'experimental'
+        self.packages = root / 'dist' / 'packages'
         self.drivers.mkdir()
         self.artifacts.mkdir(parents=True)
         old_drivers, old_artifacts = builder.DRIVER_SOURCES, builder.SOURCE
+        old_packages = builder.DESTINATION
+        builder.DESTINATION = self.packages
+        self.addCleanup(setattr, builder, 'DESTINATION', old_packages)
         builder.DRIVER_SOURCES, builder.SOURCE = self.drivers, self.artifacts
         self.addCleanup(setattr, builder, 'DRIVER_SOURCES', old_drivers)
         self.addCleanup(setattr, builder, 'SOURCE', old_artifacts)
@@ -99,6 +104,62 @@ class ProviderDiscoveryTest(unittest.TestCase):
         order = builder.dependency_order(builder.discovered())
         self.assertLess([x['id'] for x in order].index('host-new'),
                         [x['id'] for x in order].index('serial'))
+
+    def build_fixture_packages(self, identities=None):
+        # Exercise selection, real manifests and real ZIP/catalog output. ELF
+        # relocation/import verification has separate actual-artifact tests.
+        def inputs(_elf, manifest, target):
+            capability, api = builder.canonical_manifest(manifest)
+            (target / 'provider-abi.v1').write_text(
+                f'os-cpu-abi=1\nprovides={capability}\napi={api}\n')
+            (target / 'privileged-imports.v1').write_text('\n')
+        mapping = {'unmapped_relocations': [], 'unmapped_relative_values': [],
+                   'unmapped_executable_sections': [], 'absolute_peripheral_relocations': []}
+        with patch.object(builder, 'audit_loader_map', return_value=mapping), \
+                patch.object(builder, 'extract_imports', return_value=[]), \
+                patch.object(builder, 'provider_inputs', side_effect=inputs), \
+                patch.object(builder.subprocess, 'run',
+                             side_effect=AssertionError('unselected provider was built')):
+            return builder.build(identities)
+
+    def test_selected_build_skips_other_artifacts_and_keeps_dependency_metadata(self):
+        self.provider('dependency', 'required-provider', 'test.clock', artifact=False)
+        self.provider('selected', 'selected-provider', 'test.sensor', ['test.clock'])
+        self.provider('unrelated', 'unrelated-provider', 'other.device', artifact=False)
+        with patch.object(builder, 'linked_or_build', wraps=builder.linked_or_build) as link:
+            catalog = self.build_fixture_packages({'selected-provider'})
+        self.assertEqual([call.args[0] for call in link.call_args_list], ['selected-provider'])
+        self.assertEqual([row['id'] for row in catalog], ['selected-provider'])
+        self.assertEqual({path.name for path in self.packages.iterdir()}, {
+            'selected-provider', 'package-catalog.json', catalog[0]['archive']})
+        manifest = json.loads((self.packages / 'selected-provider/.package.json').read_text())
+        self.assertEqual(manifest['requires'], [{'capability': 'test.clock', 'min_api': 1}])
+        self.assertEqual(json.loads((self.packages / 'package-catalog.json').read_text())['packages'],
+                         catalog)
+
+    def test_default_build_still_exports_every_provider_in_dependency_order(self):
+        self.provider('consumer', 'consumer', 'test.sensor', ['test.clock'])
+        self.provider('clock', 'clock', 'test.clock')
+        with patch.object(builder, 'linked_or_build', wraps=builder.linked_or_build) as link:
+            catalog = self.build_fixture_packages()
+        self.assertEqual([row['id'] for row in catalog], ['clock', 'consumer'])
+        self.assertEqual([call.args[0] for call in link.call_args_list], ['clock', 'consumer'])
+        self.assertEqual({path.name for path in self.packages.iterdir() if path.is_dir()},
+                         {'clock', 'consumer'})
+
+    def test_invalid_selection_and_source_graph_fail_before_any_build(self):
+        self.provider('selected', 'selected', 'test.sensor', artifact=False)
+        with patch.object(builder, 'linked_or_build') as link:
+            for identities in (set(), {'missing'}):
+                with self.subTest(identities=identities), self.assertRaises(ValueError):
+                    builder.build(identities)
+            link.assert_not_called()
+        self.provider('broken', 'broken', 'other.sensor', ['missing.capability'], artifact=False)
+        with patch.object(builder, 'linked_or_build') as link:
+            with self.assertRaises(ValueError):
+                builder.build({'selected'})
+            link.assert_not_called()
+        self.assertFalse(self.packages.exists())
 
 
 if __name__ == '__main__':

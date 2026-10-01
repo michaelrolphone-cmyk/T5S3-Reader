@@ -18,10 +18,16 @@ import shutil
 import subprocess
 import sys
 
-from generate_provider_package_inputs_v1 import canonical_manifest, prepare as provider_inputs
-from generate_privileged_imports_v1 import extract_imports
-from pack_rte_zip import catalog_row, pack_directory
-from verify_provider_relocation_map import audit_loader_map
+if __package__:
+    from .generate_provider_package_inputs_v1 import canonical_manifest, prepare as provider_inputs
+    from .generate_privileged_imports_v1 import extract_imports
+    from .pack_rte_zip import catalog_row, pack_directory
+    from .verify_provider_relocation_map import audit_loader_map
+else:
+    from generate_provider_package_inputs_v1 import canonical_manifest, prepare as provider_inputs
+    from generate_privileged_imports_v1 import extract_imports
+    from pack_rte_zip import catalog_row, pack_directory
+    from verify_provider_relocation_map import audit_loader_map
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'dist/experimental'
@@ -88,12 +94,16 @@ def linked_or_build(identity: str, source_directory: Path) -> Path:
         return linked_elf(identity)
 
 
-def discovered() -> list[dict]:
-    """Select real ABI-v2 manifests and reject missing/ambiguous build outputs."""
+def source_candidates() -> list[dict]:
+    """Validate the source graph before any artifact access or build side effects."""
     candidates = []
     identities = set()
     for path in sorted(DRIVER_SOURCES.glob('*/manifest.json')):
+        if path.is_symlink() or path.parent.is_symlink() or path.stat().st_size > 4096:
+            raise ValueError(f'unsafe or oversized provider manifest: {path}')
         metadata = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(metadata, dict):
+            raise ValueError(f'invalid provider manifest: {path}')
         if metadata.get('type') != 'driver' or metadata.get('driver_abi') != 2:
             continue
         # Enforce the bound before invoking any newly discovered build script.
@@ -109,11 +119,10 @@ def discovered() -> list[dict]:
         identities.add(identity)
         requirements = metadata['requires']
         candidates.append({'id': identity, 'source': path, 'metadata': metadata,
-                           'elf': linked_or_build(identity, path.parent),
                            'capability': capability, 'api': api, 'version': version,
                            'requires': [required['capability'] for required in requirements]})
     if not candidates:
-        raise ValueError('no linked ABI-v2 provider manifests found')
+        raise ValueError('no ABI-v2 provider source manifests found')
     return candidates
 
 
@@ -151,11 +160,26 @@ def dependency_order(candidates: list[dict]) -> list[dict]:
     return ordered
 
 
-def build(identities: set[str] | None = None) -> list[dict]:
-    candidates = dependency_order(discovered())
+def discovered(identities: set[str] | None = None) -> list[dict]:
+    """Link only selected packages; all dependency metadata remains validated.
+
+    Dependencies may already be installed from independent package releases.
+    Selecting one package must not rebuild or republish those dependencies.
+    The default still links and bundles the complete source graph.
+    """
+    candidates = dependency_order(source_candidates())
     valid_ids = {candidate['id'] for candidate in candidates}
     if identities is not None and (not identities or not identities <= valid_ids):
         raise ValueError(f"invalid requested driver IDs: {sorted(identities - valid_ids)}")
+    selected = [candidate for candidate in candidates
+                if identities is None or candidate['id'] in identities]
+    for candidate in selected:
+        candidate['elf'] = linked_or_build(candidate['id'], candidate['source'].parent)
+    return selected
+
+
+def build(identities: set[str] | None = None) -> list[dict]:
+    candidates = discovered(identities)
     DESTINATION.mkdir(parents=True, exist_ok=True)
     catalog = []
     for candidate in candidates:

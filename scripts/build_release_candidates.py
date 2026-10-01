@@ -7,44 +7,69 @@ import configparser
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
+if __package__:
+    from .generate_provider_package_inputs_v1 import canonical_manifest
+    from .update_release_index import version_tuple
+else:
+    from generate_provider_package_inputs_v1 import canonical_manifest
+    from update_release_index import version_tuple
+
 ROOT = Path(__file__).resolve().parents[1]
 FIRMWARE_OUTPUTS = ("firmware.bin", "firmware-merged.bin", "firmware.elf")
 
-DRIVER_BUILDERS = {
-    "platform-clock-v1": [("scripts/build_platform_clock_v1.py",)],
-    "i2c-esp32s3-v2": [
+# These two source directories still have physical link/audit probes instead
+# of a conventional build_<source>.py entry point. This is a build recipe,
+# never the set of allowed package IDs; identities come only from manifests.
+_BOOTSTRAP_BUILD_RECIPES = {
+    "i2c_esp32s3_v2": [
         ("scripts/probe_i2c_esp32s3_v2.py",),
         ("scripts/audit_i2c_esp32s3_elf.py", "--strict"),
     ],
-    "gt911-touch": [("scripts/build_gt911_touch.py",)],
-    "t5s3-usb-power-profile": [("scripts/build_board_power_t5s3_v2.py", "--ids", "t5s3-usb-power-profile")],
-    "board-power-t5s3-v2": [("scripts/build_board_power_t5s3_v2.py", "--ids", "board-power-t5s3-v2")],
-    "usb-controller-esp32s3": [
+    "usb_controller_esp32s3": [
         ("scripts/probe_usb_controller_esp32s3.py", "--link-experiment"),
         ("scripts/audit_usb_controller_elf.py", "--strict"),
     ],
-    "usb-host-v2": [("scripts/build_usb_host_v2.py",)],
-    "usb-mass-storage": [("scripts/build_usb_mass_storage.py",)],
-    "usb-cdc-acm-v2": [("scripts/build_usb_cdc_v2.py",)],
-    "usb-cp210x-v2": [("scripts/build_usb_cp210x_v2.py",)],
-    "usb-ch34x-v2": [("scripts/build_usb_ch34x_v2.py",)],
-    "usb-ftdi": [("scripts/build_usb_ftdi.py",)],
-    "usb-stlink": [("scripts/build_usb_stlink.py",)],
-    "usb-msp": [("scripts/build_usb_msp.py",)],
-    "program-msp": [("scripts/build_program_msp.py",)],
-    "usb-hid": [("scripts/build_usb_hid.py",)],
-    "usb-hid-keyboard": [("scripts/build_usb_hid_keyboard.py",)],
-    "usb-hid-text-input": [("scripts/build_usb_hid_text_input.py",)],
-    "usb-hid-gamepad": [("scripts/build_usb_hid_gamepad.py",)],
-    "usb-xinput-gamepad": [("scripts/build_usb_xinput_gamepad.py",)],
-    "usb-ui-navigation": [("scripts/build_usb_ui_navigation.py",)],
 }
+MAX_DRIVER_PACKAGES = 64
+
+
+def discover_driver_builders(root: Path) -> dict[str, list[tuple[str, ...]]]:
+    """Read bounded source metadata without compiling or requiring ELF output."""
+    builders: dict[str, list[tuple[str, ...]]] = {}
+    for manifest_path in sorted((root / "Drivers").glob("*/manifest.json")):
+        source = manifest_path.parent
+        if (source.is_symlink() or manifest_path.is_symlink() or
+                not re.fullmatch(r"[a-z0-9_]+", source.name)):
+            raise ValueError(f"unsafe provider build source: {source}")
+        if manifest_path.stat().st_size > 4096:
+            raise ValueError(f"provider manifest is oversized: {manifest_path}")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict):
+            raise ValueError(f"invalid provider manifest: {manifest_path}")
+        if manifest.get("type") != "driver" or manifest.get("driver_abi") != 2:
+            continue  # Historical ABI-1 inputs are not current release packages.
+        canonical_manifest(manifest_path)
+        identity = manifest["id"]
+        version_tuple(manifest.get("version"))
+        if identity in builders:
+            raise ValueError(f"duplicate canonical driver manifest ID {identity}")
+        if len(builders) >= MAX_DRIVER_PACKAGES:
+            raise ValueError("provider count exceeds firmware package catalog bound")
+        conventional = f"scripts/build_{source.name}.py"
+        commands = _BOOTSTRAP_BUILD_RECIPES.get(source.name, [(conventional,)])
+        for command in commands:
+            script = root / command[0]
+            if not script.is_file() or script.is_symlink():
+                raise ValueError(f"{identity}: missing or unsafe provider builder {command[0]}")
+        builders[identity] = commands
+    return builders
 
 
 def run(command: list[str]) -> None:
@@ -87,11 +112,16 @@ def build_apps(candidates: list[dict[str, str]]) -> None:
 
 def build_drivers(candidates: list[dict[str, str]]) -> None:
     identities = sorted(candidate["id"] for candidate in candidates)
+    builders = discover_driver_builders(ROOT)
+    if len(identities) != len(set(identities)):
+        raise ValueError("release plan contains duplicate driver IDs")
+    missing = set(identities) - builders.keys()
+    if missing:
+        raise ValueError(f"no source builder for requested driver IDs: {sorted(missing)}")
+    if not identities:
+        return
     for identity in identities:
-        commands = DRIVER_BUILDERS.get(identity)
-        if commands is None:
-            raise ValueError(f"no selective build is configured for canonical driver {identity}")
-        for command in commands:
+        for command in builders[identity]:
             run([sys.executable, *command])
     run([sys.executable, "scripts/build_installed_usb_stack.py", "--ids", *identities])
     run([sys.executable, "test/drivers/installed_usb_stack_package_test.py", "--ids", *identities])

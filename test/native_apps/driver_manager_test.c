@@ -70,6 +70,29 @@ static void make_preview(t5_package_preview_t *p, const char *id) {
     snprintf(p->id, sizeof(p->id), "%s", id);
     strcpy(p->version, "1.0.5");
 }
+static void test_package_state_icons(void) {
+    static const struct {
+        bool valid, installed, install_allowed;
+        uint8_t expected;
+    } cases[] = {
+        {true, false, true, T5_UI_LIST_ICON_DOWNLOAD | T5_UI_LIST_ICON_COMPACT},
+        {true, true, true, T5_UI_LIST_HIGHLIGHT_VALUE | T5_UI_LIST_ICON_UPDATE |
+                           T5_UI_LIST_ICON_COMPACT},
+        {true, true, false, T5_UI_LIST_ICON_INSTALLED | T5_UI_LIST_ICON_COMPACT},
+        {true, false, false, 0},
+        {false, true, true, T5_UI_LIST_HIGHLIGHT_VALUE},
+        {false, false, false, T5_UI_LIST_HIGHLIGHT_VALUE},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        t5_package_preview_t preview;
+        make_preview(&preview, "gps-nmea");
+        preview.valid_installation = cases[i].valid;
+        preview.install_allowed = cases[i].install_allowed;
+        if (cases[i].installed) strcpy(preview.installed_version, "1.0.4");
+        set_row(0, &preview, "Package state");
+        assert(rows[0].flags == cases[i].expected);
+    }
+}
 static bool online_refresh(void) { ++online_refreshes; return true; }
 static uint32_t online_count(void) { return 2; }
 static bool online_get(uint32_t index, t5_package_catalog_row_t *row) {
@@ -169,6 +192,7 @@ const t5_ui_api_v1 *t5_ui_get_api(uint32_t v) {
     assert(v == T5_UI_API_VERSION); return &ui_api;
 }
 int main(void) {
+    test_package_state_icons();
     assert(app_ready(&app_api) && ui_ready(&ui_api) && manager_ready(&package_api));
     assert(recovery_ready(&driver_api));
     assert(refresh_online(&package_api, &ui_api));

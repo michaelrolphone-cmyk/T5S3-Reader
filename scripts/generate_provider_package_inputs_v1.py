@@ -14,11 +14,6 @@ from pathlib import Path
 import re
 import sys
 
-if __package__:
-    from .generate_privileged_imports_v1 import extract_imports, encode_imports
-else:
-    from generate_privileged_imports_v1 import extract_imports, encode_imports
-
 CAPABILITY = re.compile(r'[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\Z', re.ASCII)
 PACKAGE_ID = re.compile(r'[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?\Z', re.ASCII)
 MAX_API = 0xffffffff
@@ -74,6 +69,11 @@ def canonical_manifest(path: Path) -> tuple[str, int]:
 
 
 def prepare(elf: Path, manifest: Path, destination: Path) -> tuple[Path, Path]:
+    # Manifest-only release planning does not need the ELF build toolchain.
+    if __package__:
+        from .generate_privileged_imports_v1 import extract_imports, encode_imports
+    else:
+        from generate_privileged_imports_v1 import extract_imports, encode_imports
     capability, api = canonical_manifest(manifest)
     names = extract_imports(elf)  # Both .dynsym and .symtab; zero is legitimate.
     profile = f'os-cpu-abi=1\nprovides={capability}\napi={api}\n'.encode('ascii')

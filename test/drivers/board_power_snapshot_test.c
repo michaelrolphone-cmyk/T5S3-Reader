@@ -107,6 +107,25 @@ int main(void) {
     assert(snapshot.vbus_adc == 0x80u);
     assert(fault_reads == 0 && write_count == 0 && read_count == 13u);
 
+    assert(snapshot.external_power);
+    /* Provider owns the UI classification too. Both directions of source
+     * settling must not appear as cable edges; no extra I/O or fault reads. */
+    const uint8_t input_cases[][4] = {
+        {0x30u, 0x04u, 0x80u, 0u}, /* Boost on before status catches up. */
+        {0x10u, 0xe4u, 0x80u, 0u}, /* Boost off before status clears. */
+        {0x10u, 0x00u, 0x00u, 0u},
+        {0x10u, 0x20u, 0x00u, 1u},
+        {0x10u, 0x04u, 0x00u, 1u},
+        {0x10u, 0x00u, 0x80u, 1u}
+    };
+    for (size_t i = 0; i < sizeof(input_cases) / sizeof(input_cases[0]); ++i) {
+        registers[0x03] = input_cases[i][0];
+        registers[0x0b] = input_cases[i][1];
+        registers[0x11] = input_cases[i][2];
+        assert(owner->read_charger(owner->base.context, &snapshot));
+        assert(snapshot.external_power == (input_cases[i][3] != 0));
+        assert(fault_reads == 0 && write_count == 0);
+    }
     failing_register = 0x06u;
     risc_bq25896_charger_snapshot_v1 sentinel = snapshot;
     assert(!owner->read_charger(owner->base.context, &snapshot));

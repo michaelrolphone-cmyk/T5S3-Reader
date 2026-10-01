@@ -1,14 +1,94 @@
 # U1 implementation ledger
 
-## Active continuation — October 1, 2026, 00:05 UTC
+## October 1: master integration, sole power owner and selective package builds
 
-Claim: active U1 implementation on the sole `impl/u1-riscrte` / PR #96.
-This run is integrating master `2a55d0a0`, preserving power ABI and failed-grant
-lifetime semantics, repairing the two verified CI failures, and restoring the
-installed BQ25896-owner board integration found regressed in the prior head.
-Hourly continuations must not write concurrently while this claim is active;
-resume after this entry is replaced by a checkpoint with completed/remaining work.
-No merge to master, release, tag or flash is authorized by this continuation.
+Continuation checkpoint on the sole `impl/u1-riscrte` / PR #96. Integrated
+master **`3c2fb008`** (including its preceding `2a55d0a0`) into U1. This is
+not a merge into master. No release, tag, firmware publication or flash.
+The implementation claim is released at this checkpoint; subsequent work must
+first inspect the PR's exact-head CI and confirm no active writer before editing.
+
+### Completed code
+
+- Preserved master's external-VBUS host callbacks, Hollow Trail/native-app,
+  touch/I2C deadlines, UI, release and other merged work. Combined the published
+  power monitor/external-host ABI prefix with U1's charger suffix; compile-time
+  assertions cover every retained callback offset. Typography leases retain
+  their software-only cleanup, while installed capability cleanup retains an
+  exact failed grant and navigation ownership until checked release succeeds.
+- Restored the installed BQ25896 owner as the board's charger, telemetry and
+  shutdown path. An older backmerge had reintroduced a competing resident BQ
+  implementation despite the existing cutover guard. Current GT911 electrical
+  bootstrap, PCA synchronization and backlight restoration remain intact.
+- The provider classifies incoming power without mistaking OTG transitions for
+  a charger. The board keeps the prior observation on a failed provider read,
+  polls at most once per second and retries failed startup configuration at
+  most once per 30 seconds. Clock-wrap and failure throttling are exercised
+  against the actual polling function body.
+- The board bridge preserves failed admission/release grants for one exact
+  cleanup retry per subsequent operation. Failed cleanup prevents new mapping
+  or stale-interface use. Accepted or uncertain BATFET shutdown stays pinned
+  without retry, because the boolean shutdown API cannot prove safe recovery.
+- Fixed both verified previous-head CI defects: Driver Manager icon regression
+  now checks actual download/update/installed/blocked behavior instead of a
+  local variable name; MSC's optional-extension fixture uses designated
+  initialization so newly appended callbacks remain null under `-Werror`.
+- Selective release planning discovers validated source manifests/builders,
+  including newer packages, rather than a fixed package allowlist. The package
+  builder validates metadata before side effects and actually filters `--ids`
+  before linking/staging/exporting. Default all-package behavior remains.
+  Metadata-only planning no longer imports the optional ELF parser eagerly.
+  Driver asset selection uses the exact manifest ID/version/architecture ZIP,
+  refusing stale versions, symlinks and neighboring/obsolete loose assets.
+
+### Versions and compatibility
+
+- `board-power-t5s3-v2`: **0.1.8 -> 0.1.9** (master was 0.1.6).
+- `usb-controller-esp32s3`: **0.1.19 -> 0.1.20**. Master already published
+  `driver-usb-controller-esp32s3-v0.1.19`; U1's checked teardown/snapshot changes
+  cannot reuse that released version with different bytes.
+- App Store remains **1.0.8** and Driver Manager remains **1.0.7**.
+- The published master monitor/external-host prefix remains compatible.
+  **Old unpublished U1 charger consumers are not binary-compatible with the
+  repaired suffix: rebuild firmware and board-power 0.1.9 together.** New
+  firmware rejects undersized older providers. No universal append-only claim.
+
+### Observed development checks
+
+Host driver/package, stream, springboard, native-app, idle-power and USB
+host/CDC/CP210x/CH34x/FTDI/STLink/MSP/programmer/MSC/HID aggregates passed.
+I2C, GT911, platform-clock, privileged-import/snapshot and VBUS-chain checks
+passed. The final board aggregate passed charger, snapshot, shutdown, cutover,
+poll-throttling and nine actual-source grant-recovery scenarios. ABI layout
+assertions and `git diff --check` passed. Release regression: **16 tests**;
+manifest discovery/selective packaging: **9 tests**, including real selected-only
+ZIP/catalog output and preserved default-all behavior.
+
+ASan/UBSan ran with leak detection disabled because LeakSanitizer cannot run
+under local ptrace. These are host/emulated checks, not physical hardware.
+Matching-head GitHub firmware/Xtensa results remain pending at publication;
+read the PR checks/result update rather than treating historical green builds
+as evidence for this tree. No local target firmware build was claimed.
+
+### Next substantial implementation
+
+First finish the remaining release-record/index migration: discovery and
+selective build are repaired, but `build_release_record.py` still consumes
+retired `usb-provider-catalog.json` / loose ELF inputs and the index expects
+legacy driver assets. The new ZIP asset selector alone is **not end-to-end
+publication readiness**. Migrate those record/index contracts with compatibility
+checks; no release action is authorized or performed by this checkpoint.
+
+Then schema-2 nested ordinary-package resources: preserve schema-1 compatibility,
+add canonical bounded relative paths and ancestor-collision rejection, share
+bounded SD inventory/parent creation/selective cleanup across stage/ZIP/lifecycle,
+and extend the deterministic packer without weakening rollback or deleting
+unknown data. Scoped resource access, generation-bound verification receipts,
+complete generic runtime/USB compatibility removal, canonical CDC migration
+and signing-only purge remain unfinished U1 work. CDC and signing changes were
+not implemented in this checkpoint.
+
+**Implementation In Progress**
 
 ## September 27: witness acquire maps endpoint exhaustion to UNSUPPORTED
 
