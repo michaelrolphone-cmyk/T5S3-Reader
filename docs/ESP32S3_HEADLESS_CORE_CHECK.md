@@ -23,3 +23,24 @@ The generated partition table/bootloader are build artifacts, not automatically 
 ## Remaining integration
 
 There is no mounted module store, package inventory/recovery, ELF admission/loading, installed-provider dispatch, provisioning manifest or camera capture in this image. Logs explicitly say packages unavailable and provisioning unimplemented. The ordinary manager/provider scheduler under active U1 ownership must be integrated from an accepted source revision rather than duplicated here. The original dedicated CAM has the owner-authorized SD card and may be used for the later provisioning proof; the no-SD diagnostic target does not justify inventing a new flash filesystem. Its verified SDMMC route still needs an isolated bootstrap/module-store adapter and a safe handoff to any installed storage provider. Camera capture remains an installed hardware-owning ELF task; a compiled `esp_camera` bridge would not meet the runtime contract. This checkpoint is actual hardware execution of existing RiscRTE core primitives, not a claim of end-to-end RiscRTE portability or milestone completion.
+
+## Repeatable Mac lab tools
+
+`scripts/esp32_lab.py inventory` passively reports the complete macOS USB device tree and serial interfaces. It never opens a port. A USB product/port name is not a board identity. The tool requires an explicit port for `identify` (ROM query and reset); use that only after the physical device and reset scope are authorized. New relay hardware must remain passive until the owner verifies load isolation and the operation is scoped.
+
+`capture-core` rechecks an exact MAC and captures 22 seconds of only `RTE_CORE_*` logs after reset. `flash-core` additionally requires the observed USB location, expected image SHA-256 and expected source revision. It is deliberately restricted to the verified 16 MB CAM/CH34x interface and single factory-app layout. It rejects overlapping partitions, oversized erase ranges, changed serial inventory, wrong chip/MAC and changed image bytes. It reuses the MAC-checked open session, freezes the image in a new evidence directory, writes only the app, compares full readback and the unchanged partition table, and checks running revision/MAC/core result/idle. There is a 180-second process deadline, one connection attempt and no automatic retries. Existing evidence directories are never reused. No NVS contents are read or saved.
+
+Example on the presently verified development CAM (re-run inventory first; port/location observations may change):
+
+```sh
+python -B scripts/esp32_lab.py inventory
+python -B scripts/esp32_lab.py capture-core \
+  --port /dev/cu.usbserial-110 --location 1-1 \
+  --mac 28:84:85:4b:a1:1c --revision 94dd82766eca2b0f9da3433a89e64f150cc0a756 \
+  --esptool-dir "$HOME/.platformio/packages/tool-esptoolpy" \
+  --out /tmp/riscrte-capture-NEW
+```
+
+`scripts/build_headless_core.py --core-dir <task-local-pio-state> --out <new-artifact-directory>` builds from a clean source revision using explicitly isolated PlatformIO state, captures build output, and freezes ELF/bin plus a hash/configuration manifest outside mutable `.pio` output. Use `--pio` for the installed PlatformIO executable when necessary. Existing task-local package links reuse installed tools; the helper does not create credentials, alter global settings or run a software update command. A build failure is recorded rather than interpreted as a device failure.
+
+`python3 -B test/lab/test_esp32_lab.py` checks the critical wrong-chip/MAC, partition-overlap, erase-rounding and unexpected-OTA-layout guards without opening devices. Inventory and filtered capture were also exercised on the connected Mac. Initial firmware commit 94dd827 passed both normal T5S3/EPD47 builds and host parser/driver/stream suites in GitHub Actions run 36813349813; these results do not establish a later commit's status.
