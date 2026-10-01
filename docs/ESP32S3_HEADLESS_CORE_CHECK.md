@@ -26,6 +26,12 @@ There is no mounted module store, package inventory/recovery, ELF admission/load
 
 ## Repeatable Mac lab tools
 
+### Relay board: standing quiet-operation restriction
+
+The owner prohibits relay actuation on the Waveshare relay board until explicitly changing this instruction, during both day and night. Never pulse, toggle, cycle, or run relay demo/self-test routines, even with external loads disconnected. Do not test its buzzer or other unnecessary noisy outputs. This supersedes earlier general hardware-testing authorization.
+
+Opening a serial port, resetting, booting or flashing may execute existing startup behavior. Do not perform those actions on this board unless the exact path is already proven quiet; unknown firmware is not evidence of quiet startup. Passive USB inventory and host-only inspection/build/tests are permitted. Keep the relay target separate from CAM and Heltec identities and never apply their firmware to it. Future runtime acceptance must use a verified silent non-relay capability; relay switching is not an acceptance test. Preserve these restrictions in every target profile and worker handoff, including after cable/board swaps.
+
 `scripts/esp32_lab.py inventory` passively reports the complete macOS USB device tree and serial interfaces. It never opens a port. A USB product/port name is not a board identity. The tool requires an explicit port for `identify` (ROM query and reset); use that only after the physical device and reset scope are authorized. New relay hardware must remain passive until the owner verifies load isolation and the operation is scoped.
 
 `capture-core` rechecks an exact MAC and captures 22 seconds of only `RTE_CORE_*` logs after reset. `flash-core` additionally requires the observed USB location, expected image SHA-256 and expected source revision. It is deliberately restricted to the verified 16 MB CAM/CH34x interface and single factory-app layout. It rejects overlapping partitions, oversized erase ranges, changed serial inventory, wrong chip/MAC and changed image bytes. It reuses the MAC-checked open session, freezes the image in a new evidence directory, writes only the app, compares full readback and the unchanged partition table, and checks running revision/MAC/core result/idle. There is a 180-second process deadline, one connection attempt and no automatic retries. Existing evidence directories are never reused. No NVS contents are read or saved.
