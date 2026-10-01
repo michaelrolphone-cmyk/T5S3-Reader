@@ -154,5 +154,21 @@ int main(void) {
     reports[0][0].connected=1; reports[0][0].device=99; reports[0][0].hat=8;
     ht_input(1); healthy=false; ht_input(1); now+=251; ht_input(1);
     mapped=0; ht_input(1); mapped=T5_APP_BUTTON_BACK; ht_input(1); assert(quitting);
+    /* Real app scheduler: natural arrival begins the mill track once, locks
+     * gameplay, then rearms neutral input without resetting progress. */
+    reading=paused=quitting=loading=debug_jump=false;healthy=true;
+    held=HT_RIGHT;previous=0;jump_down=pause_down=false;
+    memset(&ht,0,sizeof(ht));ht.level=0;ht_spawn(true);ht_geometry_level=0;
+    ht.x=1069*256;ht.y=ht_surface_at(&ht,2,1069)*256;ht.grounded=true;
+    ht.traversal.forest_log_phase=32;ht.traversal.bridge_open=32;
+    ht_cutscene.active=false;ht_cutscene_seen=0;simulation_started=false;
+    ht_advance(now);
+    for(int i=0;i<8 && !ht_cutscene.active;++i)ht_advance(now+=32);
+    assert(ht_cutscene.active && ht_cutscene.id==HT_CUTSCENE_MILL);
+    ht_game frozen=ht;
+    for(int i=0;i<339;++i) {ht_advance(now+=32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+    ht_advance(now+=32);
+    assert(!ht_cutscene.active && ht_input_rearm && held==0 && previous==0);
+    assert(!memcmp(&ht,&frozen,sizeof(ht)));
     puts("Hollow Trail controls: receiver HID/XInput face labels, dedicated Start, A inspect, B jump, X back, arbitration and fault recovery PASS");
 }

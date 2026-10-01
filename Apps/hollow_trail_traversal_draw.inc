@@ -74,6 +74,7 @@ static void ht_draw_traversal(const ht_game *g) {
             ht_grounded_tree(g,i,world,g->level==0?340+(i%3)*65:130+(i%3)*27,g->level==0?23+(i%3)*5:7,(unsigned)i+901);
 
     }
+    ht_forest_mill(g);
     ht_story_landmarks(g);
     ht_draw_evidence(g);
     for(int i=0;i<HT_PLATFORMS;++i) {

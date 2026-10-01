@@ -313,10 +313,10 @@ static void ht_bind_native(uint8_t *memory) {
     ht_native_a=memory+HT_MEMORY;
     ht_native_b=ht_native_a+HT_NATIVE_PIXELS;
 }
-static int ht_evidence_platform(unsigned level,int item) { return level==0 && item==0?0:1+item*3; }
+static int ht_evidence_platform(unsigned level,int item) { return level==0?(item==0?0:item==1?3:7):1+item*3; }
 static int ht_evidence_x(unsigned level,int item) {
     const ht_platform *p=&ht_level_land(level)[ht_evidence_platform(level,item)];
-    return level==0 && item==0?140:item==1?p->right-45:p->left+42;
+    return level==0?(item==0?140:item==1?1180:p->left+42):item==1?p->right-45:p->left+42;
 }
 static bool ht_evidence_found(const ht_game *game,unsigned page) {
     return page<HT_LEVELS*3u && (game->evidence&(1u<<page))!=0;
@@ -2039,6 +2039,13 @@ static void ht_draw_evidence(const ht_game *game) {
             ht_limb(ht_scene,x-9,y-36,x+5,y-42,3,0,255);
             ht_limb(ht_scene,x-10,y-24,x+1,y-20,1,0,ink);
             ht_limb(ht_scene,x+1,y-20,x+4,y-13,1,0,ink);
+        } else if(game->level==0 && item==1) {
+            /* Register remains on the mill desk, spatially joined to its beam. */
+            ht_limb(ht_scene,x-15,y-21,x+15,y-25,2,2,210);
+            ht_limb(ht_scene,x-13,y-20,x-12,y,2,1,235);
+            ht_limb(ht_scene,x+12,y-23,x+11,y,2,1,235);
+            ht_triangle(ht_scene,x-9,y-24,x+8,y-27,x+10,y-23,46);
+            ht_limb(ht_scene,x-5,y-24,x+5,y-25,0,0,ink);
         } else if((game->level==0 && item==2) || (game->level==8 && item==0)) {
             if(game->level==0)ht_organic_snag(ht_scene,x-10,y,33,3,871u,255);
             else ht_limb(ht_scene,x-10,y,x-12,y-35,3,2,255);

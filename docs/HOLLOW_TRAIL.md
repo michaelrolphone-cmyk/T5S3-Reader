@@ -1,3 +1,12 @@
+# Hollow Trail 1.1.36 — novella domestic beats and mill arrival
+
+The opening now stages the novella's specific domestic objects, overnight chair
+wait, packing and caught coat thread. The grass memory uses an enclosed flattened
+room with depth-lagged wind. The existing slow profile departure remains.
+Chapter I gains a grounded mill/register setting and a one-shot in-engine arrival
+tableau that returns to the unchanged game state. This is a focused increment,
+not whole-novella completion. See [actual frames and the 44-set remaining map](HOLLOW_TRAIL_NOVELLA_ALIGNMENT.md).
+
 # Hollow Trail 1.1.35 — slower cinematic, solid tableaus, continuous departure
 
 Hollow Trail **1.1.34 -> 1.1.35** responds to on-device review of the Forward-X introduction. The intro is deliberately slowed from roughly thirty seconds to about sixty-one seconds. The six text-bearing opening beats each hold for at least 4.8 seconds, with the two tall-grass memories lasting more than seven seconds each and a long uncaptioned profile walk after the house. Signal flashes are spaced farther apart so the player can read the prose, look back into the scene, and then notice the light rather than processing all three at once.

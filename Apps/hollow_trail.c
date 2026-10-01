@@ -136,6 +136,11 @@ static void ht_advance(uint32_t now) {
            before.camera_y!=ht.camera_y || memcmp(&before.traversal,&ht.traversal,sizeof(ht.traversal)) ||
            before.story_x!=ht.story_x || before.level!=ht.level || before.stride!=ht.stride || before.facing!=ht.facing || before.laps!=ht.laps)
             ++scene_revision;
+        if(ht_cutscene_mill_arrival(&before,&ht)) {
+            ht_cutscene_begin(HT_CUTSCENE_MILL);
+            held=previous=0;jump_down=pause_down=false;
+            simulation_accumulator=0;++scene_revision;break;
+        }
         if(before.level!=ht.level) { simulation_accumulator=0; break; }
     }
 }
@@ -334,7 +339,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
     started=true;
-    memset(&ht,0,sizeof(ht)); ht_spawn(true); ht_cutscene_begin(HT_CUTSCENE_INTRO);
+    memset(&ht,0,sizeof(ht)); ht_spawn(true); ht_cutscene_seen=0; ht_cutscene_begin(HT_CUTSCENE_INTRO);
     reading=false; journal_page=0; ht_journal_index=true; ht_journal_selection=0;
     ht_journal_deciding=ht_journal_confirm=ht_journal_page_ready=false; ht_read_submitted_revision=0;
     ht_camera_mode=HT_CAMERA_BASELINE;
@@ -466,7 +471,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.35",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.36",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,

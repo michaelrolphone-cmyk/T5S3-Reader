@@ -3,12 +3,12 @@
  * language, but a fixed 32 ms cue track owns camera, actor pose, depth and
  * scene progression. Forward-X tableaus look down world X: screen X is world Y,
  * screen Y is world Z and world X controls perspective, fog and occlusion. */
-enum { HT_CUTSCENE_NONE, HT_CUTSCENE_INTRO };
-enum { HT_CUT_KITCHEN, HT_CUT_GRASS, HT_CUT_DEPARTURE, HT_CUT_ORCHARD };
+enum { HT_CUTSCENE_NONE, HT_CUTSCENE_INTRO, HT_CUTSCENE_MILL };
+enum { HT_CUT_KITCHEN, HT_CUT_GRASS, HT_CUT_DEPARTURE, HT_CUT_ORCHARD, HT_CUT_MILL };
 enum { HT_CUT_VIEW_PROFILE, HT_CUT_VIEW_FORWARD_X };
 enum { HT_CUT_FACE_FRONT, HT_CUT_FACE_BACK, HT_CUT_FACE_LEFT_3Q, HT_CUT_FACE_RIGHT_3Q };
 enum { HT_CUT_POSE_IDLE, HT_CUT_POSE_WASH, HT_CUT_POSE_LOOK, HT_CUT_POSE_CROUCH,
-       HT_CUT_POSE_PACK, HT_CUT_POSE_WALK };
+       HT_CUT_POSE_PACK, HT_CUT_POSE_WALK, HT_CUT_POSE_SIT, HT_CUT_POSE_THREAD };
 typedef struct { int x,y,z; } ht_cut_vec3;
 typedef struct {
     uint16_t start,end;
@@ -42,18 +42,33 @@ static const ht_cutscene_cue ht_intro_cues[]={
     { 340, 570,HT_CUT_GRASS,  HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_CROUCH,HT_CUT_FACE_BACK,    2, 82, 82,-58,-58,0,  0,  0,0,48,256,256},
     { 570, 800,HT_CUT_GRASS,  HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_LOOK,  HT_CUT_FACE_BACK,    3, 82, 82,-58,-58,0,  0,  0,0,48,256,266},
     { 800, 980,HT_CUT_KITCHEN,HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_IDLE,  HT_CUT_FACE_BACK,    4,130,130,  0,  0,0,  0,  0,0,72,284,270},
-    { 980,1130,HT_CUT_KITCHEN,HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_PACK,  HT_CUT_FACE_RIGHT_3Q,5,128,150,  0, 10,0,  0,  0,0,72,270,270},
+    { 980,1170,HT_CUT_KITCHEN,HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_SIT,   HT_CUT_FACE_RIGHT_3Q,7,128,128, 0,0,0, 0,0,0,72,270,270},
+    {1170,1350,HT_CUT_KITCHEN,HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_PACK,  HT_CUT_FACE_RIGHT_3Q,5,128,150,  0, 10,0,  0,  0,0,72,270,270},
+    {1350,1510,HT_CUT_ORCHARD,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_THREAD,HT_CUT_FACE_LEFT_3Q,8,118,118,0,0,0,-40,-40,0,0,270,270},
     /* Continuity cut: profile view begins at the house, not halfway down the road. */
-    {1130,1310,HT_CUT_ORCHARD,HT_CUT_VIEW_PROFILE,  HT_CUT_POSE_WALK,  HT_CUT_FACE_RIGHT_3Q,5,118,190,  0,  0,0,-40,  0,0, 0,270,270},
-    {1310,1640,HT_CUT_ORCHARD,HT_CUT_VIEW_PROFILE,  HT_CUT_POSE_WALK,  HT_CUT_FACE_RIGHT_3Q,255,190,540, 0,  0,0,  0,300,0, 0,270,286},
-    {1640,1900,HT_CUT_ORCHARD,HT_CUT_VIEW_PROFILE,  HT_CUT_POSE_WALK,  HT_CUT_FACE_RIGHT_3Q,6,540,760,  0,  0,0,300,560,0, 0,286,384},
+    {1510,1690,HT_CUT_ORCHARD,HT_CUT_VIEW_PROFILE,  HT_CUT_POSE_WALK,  HT_CUT_FACE_RIGHT_3Q,5,118,190,  0,  0,0,-40,  0,0, 0,270,270},
+    {1690,2020,HT_CUT_ORCHARD,HT_CUT_VIEW_PROFILE,  HT_CUT_POSE_WALK,  HT_CUT_FACE_RIGHT_3Q,255,190,540, 0,  0,0,  0,300,0, 0,270,286},
+    {2020,2280,HT_CUT_ORCHARD,HT_CUT_VIEW_PROFILE,  HT_CUT_POSE_WALK,  HT_CUT_FACE_RIGHT_3Q,6,540,760,  0,  0,0,300,560,0, 0,286,384},
 };
-#define HT_INTRO_TICKS 1900u
+#define HT_INTRO_TICKS 2280u
+static const ht_cutscene_cue ht_mill_cues[]={
+    {0,100,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,9,0,0,0,0,0,0,24,0,0,384,272},
+    {100,240,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,10,0,0,0,0,0,24,24,0,0,272,272},
+    {240,340,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,255,0,0,0,0,0,24,0,0,0,272,384},
+};
 static const ht_cutscene_timeline ht_cutscene_tracks[]={
     {NULL,0,0,0},
-    {ht_intro_cues,(uint8_t)(sizeof(ht_intro_cues)/sizeof(ht_intro_cues[0])),0,HT_INTRO_TICKS}
+    {ht_intro_cues,(uint8_t)(sizeof(ht_intro_cues)/sizeof(ht_intro_cues[0])),0,HT_INTRO_TICKS},
+    {ht_mill_cues,3,0,340}
 };
 static ht_cutscene_state ht_cutscene;
+static ht_game ht_cutscene_anchor;
+static uint8_t ht_cutscene_seen; /* Session-local: a return across the mill cannot replay it. */
+static bool ht_cutscene_mill_arrival(const ht_game *before,const ht_game *after) {
+    return !(ht_cutscene_seen&1u) && before->level==0 && after->level==0 &&
+        after->x>before->x && after->x>=1070*256 && after->x<1150*256 && after->grounded &&
+        after->traversal.mode==HT_FREE;
+}
 
 static const ht_cutscene_timeline *ht_cutscene_track(const ht_cutscene_state *s) {
     return s->id<sizeof(ht_cutscene_tracks)/sizeof(ht_cutscene_tracks[0])?
@@ -100,6 +115,8 @@ static void ht_cutscene_begin(unsigned id) {
     memset(&ht_cutscene,0,sizeof(ht_cutscene));
     if(id>=sizeof(ht_cutscene_tracks)/sizeof(ht_cutscene_tracks[0]) || !ht_cutscene_tracks[id].cue_count)return;
     ht_cutscene.id=(uint8_t)id;ht_cutscene.active=true;
+    ht_cutscene_anchor=ht;
+    if(id==HT_CUTSCENE_MILL)ht_cutscene_seen|=1u;
 }
 static bool ht_cutscene_step(ht_cutscene_state *s) {
     if(!s->active)return false;
@@ -108,8 +125,10 @@ static bool ht_cutscene_step(ht_cutscene_state *s) {
     s->tick=track->duration;s->active=false;s->finished=true;return true;
 }
 static void ht_cutscene_apply_handoff(const ht_cutscene_state *s) {
-    const ht_cutscene_timeline *track=ht_cutscene_track(s);
-    ht.level=track->handoff_level;ht_spawn(true);
+    if(s->id==HT_CUTSCENE_INTRO) {
+        const ht_cutscene_timeline *track=ht_cutscene_track(s);
+        ht.level=track->handoff_level;ht_spawn(true);
+    } /* A location tableau returns to its untouched game state, never respawns. */
 }
 
 /* Forward-X projection. Positive X is farther from the observer. */
@@ -221,7 +240,15 @@ static void ht_cutscene_forward_tree(const ht_cutscene_camera *camera,const ht_c
 }
 
 static void ht_cutscene_forward_actor(const ht_cutscene_camera *camera,const ht_cut_object *o) {
-    int phase=o->a&31,height=o->pose==HT_CUT_POSE_CROUCH?31:44;
+    /* Human scale: the old 44-unit figure was shorter than the sink. Preserve
+     * its world-space foot, but render the articulated body at domestic scale. */
+    ht_cutscene_projection foot=ht_cutscene_project_forward(camera,o->p);
+    ht_cutscene_camera human=*camera;
+    human.framing=(uint16_t)(camera->framing*12/5);
+    int scale=(camera->focal*256/(camera->focal+foot.depth))*human.framing/256;
+    human.y=o->p.y-(foot.x-240)*256/ht_max(1,scale);
+    human.z=o->p.z;human.horizon=foot.y;camera=&human;
+    int phase=o->a&31,height=o->pose==HT_CUT_POSE_CROUCH?38:44;
     ht_cut_vec3 hip={o->p.x,o->p.y,o->p.z+17},shoulder={o->p.x,o->p.y,o->p.z+31};
     ht_cut_vec3 head={o->p.x,o->p.y,o->p.z+height};
     int quarter=o->face==HT_CUT_FACE_LEFT_3Q?-1:o->face==HT_CUT_FACE_RIGHT_3Q?1:0;
@@ -246,7 +273,14 @@ static void ht_cutscene_forward_actor(const ht_cutscene_camera *camera,const ht_
     } else if(o->pose==HT_CUT_POSE_WALK) { hand0.y+=step/2;hand1.y-=step/2; }
 
     /* Weightier limbs and a filled coat body eliminate the stick/wireframe read. */
-    ht_cutscene_forward_limb(camera,hip,foot0,3,224); ht_cutscene_forward_limb(camera,hip,foot1,3,248);
+    if(o->pose==HT_CUT_POSE_CROUCH) {
+        ht_cut_vec3 knee0={hip.x,hip.y-8,hip.z-3},knee1={hip.x,hip.y+8,hip.z-3};
+        foot0.y=hip.y-4;foot1.y=hip.y+4;
+        ht_cutscene_forward_limb(camera,hip,knee0,3,224);ht_cutscene_forward_limb(camera,knee0,foot0,2,224);
+        ht_cutscene_forward_limb(camera,hip,knee1,3,248);ht_cutscene_forward_limb(camera,knee1,foot1,2,248);
+    } else {
+        ht_cutscene_forward_limb(camera,hip,foot0,3,224);ht_cutscene_forward_limb(camera,hip,foot1,3,248);
+    }
     ht_cutscene_forward_limb(camera,shoulder,hand0,3,224); ht_cutscene_forward_limb(camera,shoulder,hand1,3,248);
     ht_cutscene_projection hs=ht_cutscene_project_forward(camera,shoulder),hp=ht_cutscene_project_forward(camera,hip);
     int tone=ht_cutscene_depth_tone(camera,hs.depth,248);
@@ -316,7 +350,7 @@ static int ht_cutscene_intro_flash(const ht_cutscene_state *s) {
 }
 static void ht_cutscene_fill(int ink) {
     for(int y=0;y<HT_H;++y) {
-        ht_span(ht_scene,0,HT_W-1,y,ink);
+        ht_rect(ht_scene,0,y,HT_W,1,ink);
         if((y&15)==15)ht_checkpoint();
     }
 }
@@ -335,6 +369,10 @@ static void ht_cutscene_caption(unsigned caption) {
         {"SHE HAD BEEN GONE","ELEVEN DAYS."},
         {"BEFORE DAWN","I TOOK THE ROAD."},
         {"THE ROAD LOOSENED","INTO ROOTS."},
+        {"I SPENT THE NIGHT DRESSED IN A CHAIR.","THE CUP REMAINED CLOUDY WITH SOAP."},
+        {"MY COAT CAUGHT ON THE LATCH.","I FREED THE THREAD."},
+        {"THE MILL STOOD IN A DIP BETWEEN HILLS.","ITS WHEEL WAS STILL BENEATH THE LEAVES."},
+        {"A BROKEN SHUTTER. A SLOPING DESK.","SEVEN NAMES IN THE WINDOW LIGHT."},
     };
     if(caption>=sizeof(lines)/sizeof(lines[0]))return;
     ht_rect(ht_scene,57,232,366,19,255);
@@ -368,96 +406,7 @@ static void ht_cutscene_queue_flash(int x,int y,int z,int radius,int ink) {
     ht_cutscene_object_push(o);
 }
 
-static void ht_cutscene_draw_kitchen_forward(const ht_cutscene_state *s,const ht_cutscene_cue *cue) {
-    ht_cutscene_camera camera=ht_cutscene_camera_at(s);
-    int dawn=cue->caption>=5,flash=ht_cutscene_intro_flash(s);
-    ht_world_scale=256;ht_cutscene_fill(dawn?12:20);
-    /* Near room shell: broad filled surfaces first, detail and depth objects over them. */
-    ht_rect(ht_scene,0,166,HT_W,104,44);
-    ht_rect(ht_scene,0,22,104,145,78);ht_rect(ht_scene,376,22,104,145,78);
-    ht_rect(ht_scene,104,22,272,15,72);ht_rect(ht_scene,104,157,272,12,86);
-    ht_rect(ht_scene,108,37,264,120,6); /* fogged opening */
-    /* Floorboard seams and wall wear provide texture without noisy stipple. */
-    for(int x=20;x<HT_W;x+=58)ht_limb(ht_scene,x,169,x-35,270,0,0,63);
-    ht_limb(ht_scene,33,82,98,79,0,0,61);ht_limb(ht_scene,390,91,455,95,0,0,61);
-
-    ht_cutscene_objects_reset();
-    /* Exterior exists beyond the glass in real depth. */
-    ht_cutscene_queue_box(520,0,0,24,310,26,80);
-    ht_cutscene_queue_tree(610,-84,0,130,10,711,108);
-    ht_cutscene_queue_tree(665,68,0,143,11,733,98);
-    ht_cutscene_queue_tree(735,4,0,122,9,757,78);
-    if(flash)ht_cutscene_queue_flash(900,35,92,10,ht_clamp(110+flash*145/256,0,255));
-
-    /* Substantial wood window frame; sill has depth and pane bars cast darker seams. */
-    ht_cutscene_queue_box(325,-130,52,18,13,154,205);
-    ht_cutscene_queue_box(325, 130,52,18,13,154,205);
-    ht_cutscene_queue_box(325,0,52,16,10,154,178);
-    ht_cutscene_queue_box(318,0,50,26,268,12,218);
-    ht_cutscene_queue_box(323,0,186,18,268,10,201);
-
-    /* Counter, basin, table and shelf are actual filled volumes now. */
-    ht_cutscene_queue_box(205,-8,0,54,244,42,194);
-    ht_cutscene_queue_box(182,-72,40,26,54,10,88);
-    ht_cutscene_queue_box(174,-118,124,20,108,9,157);
-    ht_cutscene_queue_box(175,-101,126,14,14,18,224); /* sister cup */
-    ht_cutscene_queue_box(175,-67,126,14,14,18,218);
-    ht_cutscene_queue_box(86,-116,0,54,112,29,170);
-    ht_cutscene_queue_box(69,116,0,40,43,46,128);
-    ht_cutscene_queue_box(53,73,0,21,30,7,95);
-    ht_cutscene_queue_box(53,105,0,21,30,7,95);
-    /* Faucet and towel/handle details break up the block forms. */
-    ht_cutscene_queue_rect(182,-72,54,6,28,190);
-    ht_cutscene_queue_rect(180,-62,76,28,5,190);
-    ht_cutscene_queue_rect(202,100,34,34,20,118);
-
-    ht_cutscene_queue_actor(ht_cutscene_actor_x(s),ht_cutscene_actor_y(s),0,cue->pose,cue->face,(int)s->tick);
-    if(cue->pose==HT_CUT_POSE_PACK)ht_cutscene_queue_box(111,18,0,22,28,27,208);
-    ht_cutscene_render_objects(&camera);
-
-    /* Condensation and the wiped viewing crescent live on the near side of the glass. */
-    for(int i=0;i<7;++i) {
-        int x=145+i*31,y=55+(i%3)*23;
-        ht_limb(ht_scene,x,y,x-4,y+34,0,0,128+(i%2)*22);
-    }
-    ht_limb(ht_scene,278,54,252,77,1,0,188);ht_limb(ht_scene,252,77,279,103,1,0,188);
-}
-
-static void ht_cutscene_draw_grass_forward(const ht_cutscene_state *s,const ht_cutscene_cue *cue) {
-    ht_cutscene_camera camera=ht_cutscene_camera_at(s);
-    int phase=(int)s->tick/5,flash=ht_cutscene_intro_flash(s);
-    ht_world_scale=256;ht_cutscene_fill(7);
-    ht_rect(ht_scene,0,188,HT_W,82,52);
-    /* Irregular flattened floor: layered bent stems rather than a clean platform. */
-    for(int x=38;x<450;x+=31) {
-        int y=201+(x/31%3)*3;ht_limb(ht_scene,x,y,x+24,y-5,1,0,92+(x%5)*9);
-    }
-    ht_cutscene_objects_reset();
-    if(cue->caption==3) {
-        ht_cutscene_queue_box(980,92,0,80,155,100,68);
-        ht_cutscene_queue_box(935,92,70,18,48,49,204);
-    }
-    for(int layer=0;layer<5;++layer)for(int i=0;i<15;++i) {
-        int depth=130+layer*130+(i%4)*24,lateral=((i*71+layer*39)%360)-180;
-        int height=108+(i%5)*14+layer*4,lean=((phase+i*7+layer*11)%19)-9;
-        ht_cutscene_queue_stem(depth,lateral,0,height,lean,90+layer*18);
-    }
-    ht_cutscene_queue_actor(ht_cutscene_actor_x(s),ht_cutscene_actor_y(s),0,cue->pose,cue->face,(int)s->tick);
-    int sister_face=cue->caption==3?HT_CUT_FACE_RIGHT_3Q:HT_CUT_FACE_FRONT;
-    ht_cutscene_queue_actor(310,38,0,HT_CUT_POSE_CROUCH,sister_face,(int)s->tick+13);
-    if(flash)ht_cutscene_queue_flash(306,23,36,5,ht_clamp(115+flash*140/256,0,255));
-    for(int i=0;i<10;++i) {
-        int depth=42+(i%4)*14,lateral=((i*93+27)%430)-215;
-        ht_cutscene_queue_stem(depth,lateral,0,158+(i%3)*18,((phase+i*5)%17)-8,238);
-    }
-    ht_cutscene_render_objects(&camera);
-    /* Seed heads and paired leaves give the grass botanical weight after depth sorting. */
-    for(int i=0;i<18;++i) {
-        int x=16+(i*47)%455,y=55+(i*29)%108;
-        ht_limb(ht_scene,x,y,x+5,y-9,1,0,202+(i%3)*14);
-        ht_disk(ht_scene,x+5,y-10,2+(i&1),218+(i%2)*18);
-    }
-}
+#include "hollow_trail_domestic_draw.inc"
 
 static void ht_cutscene_draw_departure_forward(const ht_cutscene_state *s,const ht_cutscene_cue *cue) {
     (void)cue;
@@ -529,8 +478,22 @@ static void ht_cutscene_draw_orchard_profile(const ht_cutscene_state *s,const ht
         ht_limb(ht_scene,x+3,216,x-17,210+(i%2)*4,2,0,142);
     }
 
+    /* Novella departure: a taut coat thread is freed before the first step.
+     * The close hold is an action, not a caption over an already walking actor. */
+    if(cue->pose==HT_CUT_POSE_THREAD) {
+        int local=(int)s->tick-cue->start;
+        int reach=ht_clamp(local<90?local:160-local,0,60)/6;
+        ht_limb(ht_scene,actor-1,197,door+17,184,0,0,local<100?190:24);
+        ht_limb(ht_scene,actor,198,actor+reach,191,1,1,235);
+        ht_disk(ht_scene,door+17,184,2,171);
+        /* Lit kitchen beyond: chair tucked beneath the table, crossed slippers. */
+        ht_limb(ht_scene,door-17,205,door-7,205,1,1,90);
+        ht_limb(ht_scene,door-15,199,door-15,212,1,1,90);
+    }
     /* Actor draws after terrain but before the closest observer trunk. */
     ht_cutscene_profile_actor(actor,213,cue->pose,(int)s->tick,1);
+    ht_limb(ht_scene,actor-4,198,actor+5,205,1,1,150);
+    ht_rect(ht_scene,actor+3,204,6,7,202); /* packed shoulder bag */
     int observer_x=760-camera;
     if(observer_x>-150 && observer_x<HT_W+150) {
         ht_limb(ht_scene,observer_x,270,observer_x-12,-10,18,13,252);
@@ -539,15 +502,33 @@ static void ht_cutscene_draw_orchard_profile(const ht_cutscene_state *s,const ht
     ht_world_scale=256;
 }
 
+static void ht_cutscene_draw_mill(const ht_cutscene_state *s) {
+    ht_game view=ht_cutscene_anchor;
+    view.camera+=ht_cutscene_camera_x(s)*256;
+    view.intimacy=(uint16_t)ht_clamp((ht_cutscene_scale(s)-256)*2,0,256);
+    view.vista=0;view.sway_phase=0;view.rotation_phase=0;view.vx=0;
+    ht_world_scale=ht_scene_scale(&view);
+    ht_draw_traversal(&view);
+    ht_character(view.x/256-view.camera/256,(view.y-view.camera_y)/256,&view);
+    ht_forest_foreground(&view);
+    ht_world_scale=256;ht_native_foreground_half_y=false;
+}
 static void ht_cutscene_render(const ht_cutscene_state *s) {
     const ht_cutscene_cue *cue=ht_cutscene_cue_at(s);if(!cue)return;
-    if(cue->view==HT_CUT_VIEW_FORWARD_X) {
+    /* Match the selected output raster; later tableaus can start after native
+     * gameplay. Never leave a native-size buffer paired with low-size clearing. */
+    ht_native_active=ht_camera_mode==HT_CAMERA_NATIVE && ht_native_a;
+    ht_native_foreground_half_y=false;
+    ht_scene=ht_native_active?ht_native_a:ht_scene_low;
+    if(s->id==HT_CUTSCENE_MILL)ht_cutscene_draw_mill(s);
+    else if(cue->pose==HT_CUT_POSE_THREAD)ht_cutscene_draw_latch(s,cue);
+    else if(cue->view==HT_CUT_VIEW_FORWARD_X) {
         if(cue->scene==HT_CUT_KITCHEN)ht_cutscene_draw_kitchen_forward(s,cue);
         else if(cue->scene==HT_CUT_GRASS)ht_cutscene_draw_grass_forward(s,cue);
         else ht_cutscene_draw_departure_forward(s,cue);
     } else ht_cutscene_draw_orchard_profile(s,cue);
     ht_world_scale=256;
-    if(s->tick<55) {
+    if(s->id==HT_CUTSCENE_INTRO && s->tick<55) {
         const char *title="HOLLOW TRAIL";ht_text_color((HT_W-(int)strlen(title)*12)/2,25,title,2,255);
     }
     ht_cutscene_caption(cue->caption);
