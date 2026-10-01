@@ -13,6 +13,20 @@ and auditing the remaining whole-U1 acceptance gates. Other continuations must
 not write this branch until this claim is explicitly released. No live release,
 index, tag, master update or flash. CI is feedback, not an idle-work gate.
 
+## October 1: second current-master reconciliation
+
+Owner master advanced to **1e0188c1** while archive admission repair
+**a4c2c573** was being published (local **2045f568**, identical tree
+**de0af2d547b624aaaad3bbcf80815221161dcdbe**). This backmerge retains the
+merged headless checkpoint and X-button navigation work. It does not advance
+U1 into CAM qualification or implement new board ports. Model Viewer ZIP
+identity advances **1.2.5 -> 1.2.6** above the incoming loose 1.2.5 release;
+source behavior and navigation driver 0.1.2 are inherited unchanged.
+The two test conflicts preserve the incoming behavior assertions and a numeric
+minimum 1.2.5 rather than pinning an obsolete distribution version. Model Viewer
+contract/controls and all six lab guard tests pass. The full HID aggregate also passes; final-head
+target workflows remain pending. Firmware version reconciliation remains open.
+
 ## October 1: archive loader admission integration
 
 Master backmerge **68e3b8d4** matches local-tested **bd73bda5**, tree

@@ -1,5 +1,11 @@
 # U1 app ZIP distribution closure
 
+## Subsequent October 1 master reconciliation
+
+Master **1e0188c1** adds Model Viewer X-button handling at loose version1.2.5.
+Retain those actual source changes and advance its U1 ZIP identity to **1.2.6**.
+The merged navigation driver retains its own master version and behavior.
+
 ## October 1 master reconciliation
 
 Master `f79f72911ccb1dbd0666117370f54e040b5fc8e4` incorporates Hollow

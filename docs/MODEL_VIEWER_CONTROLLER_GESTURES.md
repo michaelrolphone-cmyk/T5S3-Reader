@@ -14,7 +14,9 @@ pan is eight times faster (360 -> 2880 logical pixels/second), and proportional
 zoom is eight times faster (2.25 -> 18.0 per second in log scale). Hold A for
 one quarter of the selected rate. The D-pad rotates; LB+Up/Down zooms;
 RB+D-pad pans. Diagonal pan is normalized and RB wins when both bumpers are held.
-Touch, canvas double-tap reset and Back are unchanged. A alone does not reset.
+X exits the viewer in HID and XInput modes. A remains the precision modifier
+and neither A nor B exits. Touch, canvas double-tap reset and semantic Back
+(physical Back / keyboard Escape) are unchanged. A alone does not reset.
 
 The existing 120 ms start ramp, 48 ms pending-time cap and camera bounds remain.
 These are camera rates, not a renderer FPS increase. Slow mesh rendering may

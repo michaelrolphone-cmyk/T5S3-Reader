@@ -6,7 +6,8 @@ Authority: `NEXT_HARDWARE_TEST_MILESTONE.md`,
 specifications. This is a source-backed implementation inventory, not a new
 milestone, a release request or a claim of owner hardware qualification.
 
-Baseline: sole PR #96, `impl/u1-riscrte`, current master **f79f7291** integrated; native-app and archive host checks passed.
+Baseline: sole PR #96, `impl/u1-riscrte`, current master **1e0188c1** integrated; merged Model Viewer and lab host checks passed.
+Full native-app/archive checks also passed at the preceding f79f7291 backmerge.
 Archive service published **d437e4cc**, target verification pending.
 The stream checkpoint **844a6d08**, signing purge **36fad636**, app ZIP closure
 **cf1ac054**, and nested-resource checkpoint **e377948b** each passed exact-head
