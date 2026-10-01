@@ -24,6 +24,7 @@
 #include "CrossPointState.h"
 #include "DeskClockSleep.h"
 #include "native/NativeAppHost.h"
+#include "native/NativeStreamBridge.h"
 #include "native/NativeNavigationInput.h"
 #include "native/NativeTouchInput.h"
 #include "runtime/network/PsramTlsAllocator.h"
@@ -574,6 +575,9 @@ void loop() {
   static unsigned long lastMemPrint = 0;
 
   mappedInputManager.update();
+  // Generic installed-provider progress is independent of GUI/device polling.
+  // Foreground synchronous apps use the same owner-task hook in stream calls.
+  nativeProviderOwnerTick();
   // External power/connection changes allow a new bounded admission attempt.
   // No provider inventory scans on every frame after a failed/missing provider.
   if (gpio.wasUsbStateChanged()) nativeNavigationRetry();

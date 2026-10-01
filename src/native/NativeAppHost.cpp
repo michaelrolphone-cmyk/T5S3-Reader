@@ -295,6 +295,7 @@ bool pollInput(t5_app_input_t* out, uint32_t waitMs, bool wait) {
   esp_task_wdt_reset();
   if (wait) delay(std::max(1u, std::min(waitMs, 50u)));
   s->input.update();
+  nativeProviderOwnerTick();
   *out = {};
   using Button = MappedInputManager::Button;
   const Button buttons[] = {Button::Back, Button::Confirm, Button::Left, Button::Right, Button::Up, Button::Down};

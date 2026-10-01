@@ -801,10 +801,8 @@ void nativeUsbDirectStreamRelease() {
 #endif
 void nativeDeviceDiscoveryTick() {
   synchronizeSerialDevices();
-#if RISCRTE_INSTALLED_SERIAL_PATH
-  // Publish confirmed detach/revocation before servicing queued provider work.
-  RuntimeInstalledProviders::poll();
-#endif
+  // Discovery only. Generic provider progress is owned by the runtime/stream
+  // owner loop, including applications that never request device or UI input.
 }
 
 bool nativeSerialProviderInventoryStopChecked() {

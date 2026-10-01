@@ -393,6 +393,7 @@ bool prepare() {
     if (graph) return true;
     if (!Storage.ready()) return false;
     graph = new (std::nothrow) RuntimeProviders::GraphV2(nativeProviderStreamHost());
+    if (graph) nativeProviderSetOwnerPoll(poll);
     return graph != nullptr;
 }
 

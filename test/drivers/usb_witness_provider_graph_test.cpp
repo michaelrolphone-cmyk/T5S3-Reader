@@ -25,7 +25,10 @@ extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t) { return &app; }
 bool HttpDownloader::fetchUrl(const std::string&, Stream&, const std::string&, const std::string&) { return false; }
 RuntimeProviders::GraphV2* installedGraph = nullptr;
 namespace RuntimeInstalledProviders {
-bool prepare() { return installedGraph != nullptr; }
+bool prepare() {
+  if (installedGraph) nativeProviderSetOwnerPoll(poll);
+  return installedGraph != nullptr;
+}
 void poll() { installedGraph->poll([]() { return fakeTime; }, []() { ++fakeTime; }); }
 bool nextProvider(const char* capability, uint32_t version, size_t* cursor, char* id, size_t capacity) {
   while (*cursor < installedGraph->moduleCount()) {
@@ -58,6 +61,7 @@ unsigned waits = 0;
 void stopTurn() { if (++waits == 2) throw StopTurn{}; }
 void turn() {
   nativeDeviceDiscoveryTick();
+  nativeProviderOwnerTick(); // Same generic owner-loop hook, not discovery side effect.
   waits = 0; testTaskWaitHook = stopTurn;
   try { testStreamTask(nullptr); } catch (const StopTurn&) {}
   testTaskWaitHook = nullptr;

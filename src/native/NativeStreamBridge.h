@@ -41,3 +41,10 @@ namespace RuntimeProviders { struct StreamHostV1; }
 const RuntimeProviders::StreamHostV1* nativeProviderStreamHost();
 // Returns zero outside an authenticated foreground invocation. Not an ELF import.
 uint32_t nativeProviderStreamConsumer();
+
+// Firmware-only progress hook. Registration and invocation are serialized on
+// the runtime owner task, never on the pipe scheduler/provider worker threads.
+// Callback is the generic graph dispatcher, not an ELF pointer; it owns finite
+// item/time budgets and yields. These functions are not SDK exports.
+void nativeProviderSetOwnerPoll(void (*poll)());
+void nativeProviderOwnerTick();

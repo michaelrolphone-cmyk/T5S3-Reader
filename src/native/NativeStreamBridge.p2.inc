@@ -184,6 +184,7 @@ int32_t drainPairTx() {
 int32_t readStream(t5_stream_t h, void* d, uint32_t n, uint32_t* out) {
   if (out) *out = 0;
   if (!authorized()) return T5_STREAM_DENIED;
+  nativeProviderOwnerTick();
   if (h && (h == pairRx || h == pairTx)) {
     const auto transport = pairTransport(h);
     if (transport < 0) return transport;
@@ -210,6 +211,7 @@ int32_t readStream(t5_stream_t h, void* d, uint32_t n, uint32_t* out) {
 int32_t writeStream(t5_stream_t h, const void* d, uint32_t n, uint32_t* out) {
   if (out) *out = 0;
   if (!authorized()) return T5_STREAM_DENIED;
+  nativeProviderOwnerTick();
   if (h && (h == pairRx || h == pairTx)) {
     const auto transport = pairTransport(h);
     if (transport < 0) return transport;
@@ -296,7 +298,13 @@ int32_t connect(t5_stream_t s, t5_stream_t d, uint32_t policy, t5_pipe_t* out) {
 int32_t pause(t5_pipe_t h, uint32_t paused) { SESSION_CALL(registry.pause(owner, h, paused != 0)); }
 int32_t cancel(t5_pipe_t h) { SESSION_CALL(registry.cancel(owner, h)); }
 int32_t closePipe(t5_pipe_t h) { SESSION_CALL(registry.closePipe(owner, h)); }
-int32_t pipeInfo(t5_pipe_t h, t5_pipe_info_t* out) { SESSION_CALL(registry.pipeInfo(owner, h, out)); }
+int32_t pipeInfo(t5_pipe_t h, t5_pipe_info_t* out) {
+  if (!authorized()) return T5_STREAM_DENIED;
+  nativeProviderOwnerTick();
+  Lock lock;
+  const auto result = registry.pipeInfo(owner, h, out);
+  wake(); return result;
+}
 #undef SESSION_CALL
 
 int32_t openRecordBuffer(const char* schema, uint32_t maxRecord, uint32_t capacityRecords,
@@ -310,6 +318,7 @@ int32_t openRecordBuffer(const char* schema, uint32_t maxRecord, uint32_t capaci
 int32_t readRecord(t5_stream_t h, void* data, uint32_t capacity, uint32_t* size) {
   if (size) *size = 0;
   if (!authorized()) return T5_STREAM_DENIED;
+  nativeProviderOwnerTick();
   Lock lock;
   const auto guard = guardGnssStream(h);
   if (guard != T5_STREAM_OK) return guard;
@@ -318,6 +327,7 @@ int32_t readRecord(t5_stream_t h, void* data, uint32_t capacity, uint32_t* size)
 }
 int32_t writeRecord(t5_stream_t h, const void* data, uint32_t size) {
   if (!authorized()) return T5_STREAM_DENIED;
+  nativeProviderOwnerTick();
   Lock lock;
   const auto guard = guardGnssStream(h);
   if (guard != T5_STREAM_OK) return guard;

@@ -8,7 +8,16 @@
 #include "runtime/drivers/ProviderGraphV2.h"
 #include "../drivers/provider_stream_fixture.h"
 #include <freertos/task.h>
+#include <freertos/semphr.h>
 namespace {
+RuntimeProviders::GraphV2* ownerGraph = nullptr;
+unsigned ownerCalls = 0;
+void ownerProgress() {
+  assert(testStreamMutexDepth == 0); // No provider code under the stream lock.
+  ++ownerCalls;
+  nativeProviderOwnerTick(); // Reentrant progress is ignored, not recursive.
+  ownerGraph->poll([]() { return fakeTime; }, []() { ++fakeTime; });
+}
 struct EndSchedulerTurn {};
 unsigned schedulerWaits = 0;
 void waitOnce() { if (++schedulerWaits == 2) throw EndSchedulerTurn{}; }
@@ -125,5 +134,53 @@ int main(int argc, char** argv) {
   assert(failed.addVerified(bad));
   for (unsigned i = 0; i < 20; ++i) assert(!failed.acquire("fixture.streams", 1).slot);
   assert(failed.shutdown()); // No leaked queue/context slots after failed start.
+  // A real ELF produces bytes/records and drains a sink with no input/device
+  // discovery calls. The owner tick and ordinary stream operations suffice.
+  GraphV2 autonomous(nativeProviderStreamHost());
+  assert(autonomous.addVerified(spec));
+  auto live = autonomous.acquire("fixture.streams", 1); assert(live.slot);
+  const auto* producer = static_cast<const provider_stream_fixture_api*>(autonomous.interfaceFor(live));
+  producer->automatic(true);
+  ownerGraph = &autonomous;
+  nativeProviderSetOwnerPoll(ownerProgress);
+  nativeProviderOwnerTick(); // Owner loop also works without a foreground app.
+  assert(ownerCalls == 1 && producer->polls() == 1);
+  nativeStreamsBegin(); api = t5_stream_get_api(1);
+  recordsApi = riscrte_stream_get_api_v2();
+  const auto owner = nativeProviderStreamConsumer();
+  assert(autonomous.grantStream(live, owner, producer->source(), T5_STREAM_READ));
+  assert(autonomous.grantStream(live, owner, producer->records(), T5_STREAM_READ));
+  assert(autonomous.grantStream(live, owner, producer->sink(), T5_STREAM_WRITE));
+  assert(autonomous.grantStream(live, owner, producer->record_sink(), T5_STREAM_WRITE));
+  uint32_t before = producer->polls();
+  assert(api->read(producer->source(), bytes, sizeof(bytes), &n) == 0 && n && bytes[0] == 'P');
+  assert(producer->polls() == before + 1);
+  assert(recordsApi->record_read(producer->records(), bytes, sizeof(bytes), &n) == 0 && n == 1 && bytes[0] == 'R');
+  assert(api->write(producer->sink(), "abc", 3, &n) == 0 && n == 3);
+  nativeProviderOwnerTick();
+  assert(producer->consumed() == 3);
+  assert(recordsApi->record_write(producer->record_sink(), "S", 1) == 0);
+  nativeProviderOwnerTick();
+  assert(producer->records_consumed() == 1);
+  t5_stream_t destination = 0;
+  assert(api->open_buffer(8, &destination) == 0);
+  assert(api->pipe_connect(producer->source(), destination, 0, &pipe) == 0);
+  before = producer->polls();
+  pipeState.struct_size = sizeof(pipeState);
+  assert(api->pipe_info(pipe, &pipeState) == 0 && producer->polls() == before + 1);
+  pumpTurn();
+  assert(api->read(destination, bytes, sizeof(bytes), &n) == 0 && n && bytes[0] == 'P');
+  assert(api->pipe_close(pipe) == 0);
+  before = producer->polls();
+  nativeStreamsEnd();
+  assert(api->read(producer->source(), bytes, sizeof(bytes), &n) == T5_STREAM_DENIED);
+  assert(producer->polls() == before); // Denied caller cannot schedule work.
+  producer->block_quiesce(true);
+  assert(!autonomous.release(live));
+  nativeProviderOwnerTick();
+  assert(producer->polls() == before); // Quarantine remains unscheduled.
+  producer->block_quiesce(false);
+  nativeProviderSetOwnerPoll(nullptr); ownerGraph = nullptr;
+  assert(autonomous.release(live) && autonomous.shutdown());
   puts("Loaded provider stream contexts, isolation, records and quiescence passed");
 }

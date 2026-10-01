@@ -17,6 +17,18 @@
 #include <string>
 
 namespace {
+void (*providerOwnerPoll)() = nullptr;
+bool providerOwnerPolling = false;
+}
+void nativeProviderSetOwnerPoll(void (*poll)()) { providerOwnerPoll = poll; }
+void nativeProviderOwnerTick() {
+  if (!providerOwnerPoll || providerOwnerPolling) return;
+  providerOwnerPolling = true;
+  providerOwnerPoll();
+  providerOwnerPolling = false;
+}
+
+namespace {
 RuntimeStreams::Registry registry;
 RuntimeStreams::LiveGnssSession gnss(RuntimeDevices::systemRegistry(), registry);
 RuntimeDevices::GnssStreamAuthority gnssGrants(RuntimeDevices::systemCapabilityAccess(),

@@ -9,6 +9,43 @@ and auditing the remaining whole-U1 acceptance gates. Other continuations must
 not write this branch until this claim is explicitly released. No live release,
 index, tag, master update or flash. CI is feedback, not an idle-work gate.
 
+## October 1: close generic installed-provider progress dependency
+
+Built on verified **8d8f2472**: PlatformIO/host run **36801871668** and USB/ELF
+run **36801871590** both passed, including both firmware/native-app boards.
+The claim remains active; this is implementation convergence, not an owner
+handoff. See [whole-U1 acceptance matrix](U1_ACCEPTANCE_MATRIX.md) for source-
+backed completed, incomplete and verification-pending requirements.
+
+The existing byte/record registry, loaded-ELF attachment, exact context/grants,
+quiescence and unlocked direct/piped I/O were already implemented and tested.
+The actual gap was generic graph progress being invoked only by serial/device
+discovery, indirectly depending on GUI input or device API calls.
+
+- Register the existing bounded graph dispatcher as a firmware-only owner-loop
+  callback. Main-loop work and authenticated byte/record/pipe-progress calls
+  invoke it outside the stream mutex; UI polling uses the same hook to preserve
+  prior pacing. Device discovery no longer owns generic provider dispatch.
+- Reentry is refused. No concurrent graph task, new stream registry, retained
+  ELF callback, changed public ABI or replacement serial transport was added.
+  Existing dispatcher rotation, four-callback/10-ms turn budget, 2-ms provider
+  budgets, yields and failed/quarantined-module exclusion remain in force.
+- Extended the actual loaded non-USB ELF fixture: producer byte/record queues
+  and both sink types progress without any UI/device discovery call, including
+  before a foreground app. Unauthorized calls cannot schedule work; revoke/
+  uncertain quiescence still suppresses polling and retains mapping safely.
+- Full local stream suite, loaded-provider context suite, USB-host suite,
+  provider graph suite and the actual four-class installed-provider/pipe stack
+  passed. The latter exercises witness/CDC/CP210x/CH34x, bounded physical I/O,
+  backpressure and checked failed close. ASan/UBSan used; no hardware claim.
+  No app/driver payload version changed. New exact-head CI is pending publication.
+
+Next: target link/reachability and remaining compatibility/PHY evidence, then
+close the named U1 package/resource/receipt/signing gaps without duplicating
+working foundations or advancing other milestones.
+
+**Implementation In Progress**
+
 ## October 1: per-package immutable online sources and version-safe coexistence
 
 The ordinary online manager now consumes the validated independent index and
