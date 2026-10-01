@@ -1,6 +1,7 @@
 #include "PackageOrdinarySdAdapter.h"
 #include "PackageOrdinaryManagedInstall.h"
 #include "PackageSequentialSdReader.h"
+#include "PackageOrdinarySdTree.h"
 #include "runtime/drivers/DriverPackage.h"
 
 #include <HalStorage.h>
@@ -92,63 +93,15 @@ bool readManifest(const char* directory, const char* name,
 // A partial OWNED stage may lack some declared files. For all other paths a
 // missing manifest plus nonempty directory is ambiguous and never purged.
 bool inventory(const char* root, const OrdinaryPackagePlan& plan, bool full) {
-  if (!root || plan.entryCount > kMaxPackageEntries) return false;
-  HalFile dir = Storage.open(root, O_RDONLY);
-  if (!dir.isOpen() || !dir.isDirectory()) {
-    if (dir.isOpen()) (void)dir.close();
-    return false;
-  }
-  bool seen[kMaxPackageEntries]{}, manifest = false, valid = true;
-  size_t count = 0;
-  while (valid) {
-    HalFile entry = dir.openNextFile();
-    if (!entry.isOpen()) break;
-    char name[128]{};
-    const size_t n = entry.getName(name, sizeof(name));
-    if (!n || n >= sizeof(name) || entry.isDirectory()) valid = false;
-    else if (std::strcmp(name, kOrdinaryManifestName) == 0) {
-      if (manifest) valid = false;
-      manifest = true;
-    } else {
-      bool found = false;
-      for (size_t i = 0; i < plan.entryCount; ++i) {
-        if (std::strcmp(name, plan.entries[i].name)) continue;
-        if (seen[i]) valid = false;
-        seen[i] = found = true;
-        break;
-      }
-      if (!found) valid = false;
-    }
-    (void)entry.close();
-    if (++count > plan.entryCount + 1) valid = false;
-#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
-    vTaskDelay(1);
-#endif
-  }
-  const bool closed = dir.close();
-  if (!closed || !valid) return false;
-  if (!full) return true;
-  if (!manifest || count != plan.entryCount + 1) return false;
-  for (size_t i = 0; i < plan.entryCount; ++i) if (!seen[i]) return false;
-  return true;
+  if (!root) return false;
+  OrdinarySdTreeOps ops(root);
+  return ordinaryTreeInventory(plan, ops, full);
 }
 bool purgeKnown(const char* root, const OrdinaryPackagePlan& plan,
                 bool ownedPartial) {
-  if (!inventory(root, plan, false)) return false;
-  const std::string manifest = std::string(root) + "/" + kOrdinaryManifestName;
-  const bool exists = Storage.exists(manifest.c_str());
-  if (!exists && !ownedPartial && plan.entryCount) return false;
-  // Deleting only explicitly declared files allows cleanup of a partially
-  // written, exclusively owned stage without ever traversing user entries.
-  for (size_t i = 0; i < plan.entryCount; ++i) {
-    const std::string filename = std::string(root) + "/" + plan.entries[i].name;
-    if (Storage.exists(filename.c_str()) && !Storage.remove(filename.c_str())) return false;
-#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
-    vTaskDelay(1);
-#endif
-  }
-  if (exists && !Storage.remove(manifest.c_str())) return false;
-  return Storage.rmdir(root);
+  if (!root) return false;
+  OrdinarySdTreeOps ops(root);
+  return purgeOrdinaryTree(plan, ops, ownedPartial);
 }
 
 // Legacy first-party driver generations are compatible with canonical
@@ -286,6 +239,8 @@ class SdStage {
   }
   bool beginEntry(const char* name, uint64_t) {
     if (!owns_ || writer_.isOpen()) return false;
+    OrdinarySdTreeOps directories(root_.c_str());
+    if (!directories.createParents(name)) return false;
     const std::string path = root_ + "/" + name;
     writer_ = Storage.open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL);
     return writer_.isOpen() && !writer_.isDirectory();

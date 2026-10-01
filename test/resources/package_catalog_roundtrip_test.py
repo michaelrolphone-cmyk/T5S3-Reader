@@ -41,7 +41,20 @@ def main():
         record = case.record()
         index = fixture.update_index({'schema': 1, 'firmware': None, 'apps': [], 'drivers': []},
                                      'drivers', record)
-        fixture.stage_app(case.root)
+        staged = fixture.stage_app(case.root)
+        resource = staged['stage'] / 'assets/text/help.txt'
+        resource.parent.mkdir(parents=True)
+        resource.write_bytes(b'nested resource round trip')
+        staged['manifest']['schema'] = 2
+        staged['manifest']['entries'].append({'name': 'assets/text/help.txt',
+            'size_bytes': resource.stat().st_size,
+            'sha256': fixture.hashlib.sha256(resource.read_bytes()).hexdigest(), 'executable': False})
+        (staged['stage'] / '.package.json').write_text(json.dumps(staged['manifest'], separators=(',', ':')))
+        archive = fixture.pack_directory(staged['stage'])
+        (staged['output'] / staged['name']).write_bytes(archive)
+        (staged['output'] / 'package-catalog.json').write_text(json.dumps({'schema': 1,
+            'release': 'unpublished-build',
+            'packages': [fixture.catalog_row(staged['stage'], staged['name'], archive)]}))
         app = fixture.build_record('apps', 'clock', '1.2.3', case.root)
         index = fixture.update_index(index, 'apps', app)
         with tempfile.TemporaryDirectory(prefix='package-catalog-roundtrip-') as temp:

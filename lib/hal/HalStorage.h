@@ -92,6 +92,8 @@ class HalFile : public Print {
   void rewindDirectory();
   bool close();
   HalFile openNextFile();
+  // SdFat directory read errors must not be mistaken for clean enumeration end.
+  uint8_t getError() const;
   bool isOpen() const;
   operator bool() const;
 };

@@ -121,6 +121,24 @@ class ProductReleaseTests(unittest.TestCase):
     def record(self):
         return build_record('drivers', 'test-driver', '2.0.1', self.root)
 
+    def test_schema_two_nested_app_record_round_trip(self):
+        app = stage_app(self.root)
+        path = app['stage'] / 'assets/text/help.txt'
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b'package-owned nested help')
+        manifest = app['manifest']
+        manifest['schema'] = 2
+        manifest['entries'].append({'name': 'assets/text/help.txt', 'size_bytes': path.stat().st_size,
+            'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'executable': False})
+        (app['stage'] / '.package.json').write_text(json.dumps(manifest, separators=(',', ':')))
+        archive = pack_directory(app['stage'])
+        (app['output'] / app['name']).write_bytes(archive)
+        (app['output'] / 'package-catalog.json').write_text(json.dumps({'schema': 1,
+            'release': 'unpublished-build', 'packages': [catalog_row(app['stage'], app['name'], archive)]}))
+        record = build_record('apps', 'clock', '1.2.3', self.root)
+        self.assertEqual(record['manifest'], manifest)
+        self.assertEqual(validate_record('apps', record), dict(record, kind='app'))
+
     def test_driver_record_hashes_whole_zip_and_round_trips_index(self):
         record = self.record()
         self.assertEqual(record['format'], 'rte.zip')

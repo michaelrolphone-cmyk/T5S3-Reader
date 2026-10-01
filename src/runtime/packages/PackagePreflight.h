@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PackageIdentity.h"
+#include "PackageResourcePath.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -132,11 +133,14 @@ PreflightResult preflightPackage(const PackageEnvelopeView& package,
   size_t executableCount = 0;
   for (size_t i = 0; i < package.entryCount; ++i) {
     const PackageEntry& entry = package.entries[i];
-    if (!safePackageEntryName(entry.name) || !validSha256Hex(entry.sha256) ||
+    if (!(entry.executable ? safePackageEntryName(entry.name) :
+          safePackageResourcePath(entry.name)) || !validSha256Hex(entry.sha256) ||
         !entry.sizeBytes || entry.sizeBytes > runtime.maxEntryBytes)
       return PreflightResult::InvalidEntry;
     for (size_t j = 0; j < i; ++j)
-      if (std::strcmp(package.entries[j].name, entry.name) == 0)
+      if (std::strcmp(package.entries[j].name, entry.name) == 0 ||
+          packagePathIsParent(package.entries[j].name, entry.name) ||
+          packagePathIsParent(entry.name, package.entries[j].name))
         return PreflightResult::DuplicateEntry;
     const size_t length = std::strlen(entry.name);
     const bool elfSuffix = length >= 4 && std::strcmp(entry.name + length - 4, ".elf") == 0;

@@ -1,13 +1,46 @@
 # U1 implementation ledger
 
-## Active continuation claim — October 1, renewed 02:45 UTC
+## Active continuation claim — October 1, transferred 03:09 UTC
 
-Owner: current U1 implementation worker on PR #96 / `impl/u1-riscrte`.
+Owner: resource-closure continuation on PR #96 / `impl/u1-riscrte`.
+The coordinating owner verified that the prior implementation worker was
+interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
+28-file staged resource slice in the app-bundle worktree is preserved for review;
+its parent is **cf1ac054**. This is an explicit transfer, not claim expiry.
 Continuation starts from verified green `4b5c1816`, integrates observed master
 `a5e2db59`, and keeps sole ownership while publishing/verifying this checkpoint
 and auditing the remaining whole-U1 acceptance gates. Other continuations must
 not write this branch until this claim is explicitly released. No live release,
 index, tag, master update or flash. CI is feedback, not an idle-work gate.
+
+## October 1: declared nested resource transport/install/recovery
+
+Verified predecessor **cf1ac054** passed PlatformIO/host **36808116432** and
+USB/ELF **36808116419**, including both firmware targets and all38 actual app
+ZIP exports/record validations. The preceding015ae5d4 built those successfully
+but exposed a stale Risc Strike test expecting loose assets; cf1ac054 fixes the
+assertion and validates the ZIP contents, index insertion and retry instead.
+
+The next coherent resource slice extends the existing ordinary engine with
+schema2 nested resources while retaining schema1 flat inputs and root executable
+identity. Shared declared-tree inventory serves stage/install/verify/uninstall;
+unknown data is preserved, implicit parents are bounded, cleanup is deepest-first
+and metadata-last. The host packer/export/record/index and runtime catalog use
+the same path semantics. [Implementation evidence](U1_NESTED_RESOURCE_IMPLEMENTATION.md)
+records exact bounds, fault coverage and the remaining lower-I/O limitation.
+
+Local tests cover all four kinds, nested round trips, corruption/path attacks,
+partial stage cleanup, deletion interruption/restart, unknown files/directories
+and actual SD-operation read/close/create faults. Existing manifest/release/index
+checks remain compatible. New target CI is pending; cf1ac054 does not certify
+these new changes. No app/driver payload/version changed in this engine slice.
+
+Scoped generation-pinned resource access is the dependent next closure; resource-
+only packages and archive service remain open too. CDC migration, verification
+receipts and final bounded-I/O/link evidence remain in the matrix. The single-
+writer claim stays active; no interim owner hardware test is requested.
+
+**Implementation In Progress**
 
 ## October 1: independent app ZIP distribution closure
 

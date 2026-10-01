@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pack one schema-1 ordinary package into a bounded stored .rte.zip.
+"""Pack one schema-1/2 ordinary package into a bounded stored .rte.zip.
 
 Archive files and sizes MUST fit the firmware bootstrap decoder before release.
 ZIP CRC is transport only; ordinary .package.json SHA-256 is file integrity,
@@ -15,6 +15,11 @@ import re
 import struct
 import sys
 import zlib
+
+if __package__:
+    from .package_resource_paths import safe_resource_path, parent_paths, path_conflicts
+else:
+    from package_resource_paths import safe_resource_path, parent_paths, path_conflicts
 
 MAX_ENTRIES = 17  # kMaxPackageEntries + one .package.json
 MAX_NAME_BYTES = 127
@@ -42,14 +47,14 @@ def put_central(name: bytes, payload: bytes, crc: int, offset: int) -> bytes:
 
 def pack_directory(source: Path) -> bytes:
     manifest_path = source / '.package.json'
-    if not source.is_dir() or manifest_path.is_symlink() or not manifest_path.is_file():
+    if source.is_symlink() or not source.is_dir() or manifest_path.is_symlink() or not manifest_path.is_file():
         raise ValueError('ordinary package manifest missing or is a symlink')
     raw_manifest = manifest_path.read_bytes()
     if not 2 <= len(raw_manifest) <= MAX_MANIFEST_BYTES:
         raise ValueError('manifest exceeds device parser bound')
     manifest = json.loads(raw_manifest)
-    if manifest.get('schema') != 1:
-        raise ValueError('ordinary schema 1 required')
+    if type(manifest.get('schema')) is not int or manifest['schema'] not in (1, 2):
+        raise ValueError('ordinary schema 1 or 2 required')
     entries = manifest['entries']
     if not isinstance(entries, list) or not 1 <= len(entries) < MAX_ENTRIES:
         raise ValueError('declared inventory exceeds firmware ZIP entry limit')
@@ -61,9 +66,15 @@ def pack_directory(source: Path) -> bytes:
             raise ValueError('invalid entry descriptor')
         name = item.get('name')
         if (not isinstance(name, str) or len(name) > MAX_NAME_BYTES or
-                not SAFE_NAME.fullmatch(name) or name in ('.', '..') or
-                name.casefold() in {old.casefold() for old in declared}):
-            raise ValueError(f'unsafe, duplicate or nested schema-1 entry: {name!r}')
+                not safe_resource_path(name) or
+                (manifest['schema'] == 1 and '/' in name) or
+                (item.get('executable') and '/' in name) or
+                path_conflicts(name, declared)):
+            raise ValueError(f'unsafe, duplicate or conflicting ordinary entry: {name!r}')
+        for parent in parent_paths(name):
+            directory = source / parent
+            if directory.is_symlink() or not directory.is_dir():
+                raise ValueError('resource parent is not a real package directory')
         path = source / name
         if path.is_symlink() or not path.is_file():
             raise ValueError(f'missing or nonregular entry: {name}')
@@ -79,8 +90,27 @@ def pack_directory(source: Path) -> bytes:
             raise ValueError(f'sha256 mismatch: {name}')
         files.append((name, payload))
         declared.add(name)
-    if {entry.name for entry in source.iterdir()} != declared:
-        raise ValueError('source contains undeclared or missing package entries')
+    directories = set().union(*(parent_paths(name) for name in declared))
+    # Walk only declared parents, refusing unknown directories before entering
+    # them. Inventory work is bounded by 16 files and at most 112 parents.
+    seen = set()
+    for relative in sorted({''} | directories):
+        count = 0
+        for entry in (source / relative).iterdir():
+            count += 1
+            if count > MAX_ENTRIES + len(directories):
+                raise ValueError('source inventory exceeds its declared tree bound')
+            name = (relative + '/' if relative else '') + entry.name
+            if entry.is_symlink() or name in seen:
+                raise ValueError('source contains a link or duplicate entry')
+            if name in directories:
+                if not entry.is_dir():
+                    raise ValueError('resource parent is not a directory')
+            elif name not in declared or not entry.is_file():
+                raise ValueError('source contains undeclared package entries')
+            seen.add(name)
+    if seen != declared | directories:
+        raise ValueError('source is missing declared package entries')
     locals_ = bytearray()
     centrals = bytearray()
     offset = 0

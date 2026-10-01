@@ -35,6 +35,7 @@ struct OrdinaryRequirement {
   uint32_t minApi = 0;
 };
 struct OrdinaryPackagePlan {
+  uint32_t schemaVersion = 1;
   Identity identity{};
   char architecture[32]{};
   uint32_t minRuntimeApi = 0;
@@ -87,7 +88,8 @@ inline bool ordinaryDigestEquals(const uint8_t actual[32], const char expected[6
 template <typename Resolver>
 PreflightResult preflightOrdinaryPackage(const OrdinaryPackagePlan& plan,
     const PackageRuntimePolicy& limits, Resolver resolver) {
-  if (plan.entryCount > kMaxPackageEntries ||
+  if ((plan.schemaVersion != 1 && plan.schemaVersion != 2) ||
+      plan.entryCount > kMaxPackageEntries ||
       plan.requirementCount > kMaxPackageRequirements ||
       !plan.architecture[0]) return PreflightResult::InvalidEntryList;
   PackageEntry entries[kMaxPackageEntries]{};
@@ -97,6 +99,7 @@ PreflightResult preflightOrdinaryPackage(const OrdinaryPackagePlan& plan,
     if (!std::memchr(src.name, 0, sizeof(src.name)) ||
         !std::memchr(src.sha256, 0, sizeof(src.sha256)) ||
         !std::strcmp(src.name, kOrdinaryManifestName) ||
+        (plan.schemaVersion == 1 && std::strchr(src.name, '/')) ||
         (src.executable && src.sizeBytes < 52))
       return PreflightResult::InvalidEntry;
     entries[i] = {src.name, src.sizeBytes, src.sha256, src.executable};

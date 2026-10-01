@@ -480,5 +480,6 @@ HalFile HalFile::openNextFile() {
   assert(impl != nullptr);
   return HalFile(std::make_unique<Impl>(impl->file.openNextFile()));
 }
+uint8_t HalFile::getError() const { HAL_FILE_WRAPPED_CALL(getError, ); }
 bool HalFile::isOpen() const { return impl != nullptr && impl->file.isOpen(); }
 HalFile::operator bool() const { return isOpen(); }

@@ -7,8 +7,9 @@
 #include <new>
 
 namespace RuntimePackages {
-// A bounded, ASCII-only ordinary manifest v1 is retained as .package.json.
-// Mandatory fields: schema=1, kind, id, version, artifact, architecture,
+// Bounded ASCII ordinary manifests remain .package.json. Schema 1 keeps flat
+// resources; schema 2 permits bounded declared resource trees. ELF entry points
+// remain canonical root basenames. Mandatory fields: schema=1|2, kind, id, version, artifact, architecture,
 // min_runtime_api, entries[{name,size_bytes,sha256,executable}],
 // requires[{capability,min_api}]. Empty requires is legal. Unknown fields,
 // aliases, escapes, duplicate keys, implicit coercions and unbounded sizes
@@ -185,7 +186,7 @@ inline bool parseOrdinaryManifest(const char* json, size_t length,
     char key[32]{};
     if (!r.key(key, sizeof(key))) { valid = false; break; }
     if (!std::strcmp(key, "schema")) {
-      valid = !(seen & 1u) && r.integer(schema) && schema == 1u;
+      valid = !(seen & 1u) && r.integer(schema) && (schema == 1u || schema == 2u);
       seen |= 1u;
     } else if (!std::strcmp(key, "kind")) {
       valid = !(seen & 2u) && r.text(kind, sizeof(kind)); seen |= 2u;
@@ -209,8 +210,9 @@ inline bool parseOrdinaryManifest(const char* json, size_t length,
     if (!r.next('}', more)) { valid = false; break; }
     if (!more) break;
   }
-  if (!valid || !r.end() || seen != 511u || schema != 1u ||
+  if (!valid || !r.end() || seen != 511u || (schema != 1u && schema != 2u) ||
       !OrdinaryManifestDetail::canonicalVersion(version)) { clearOrdinaryManifestPlan(plan); return false; }
+  plan.schemaVersion = static_cast<uint32_t>(schema);
   Kind parsed{};
   if (!std::strcmp(kind, "application")) parsed = Kind::Application;
   else if (!std::strcmp(kind, "driver")) parsed = Kind::Driver;

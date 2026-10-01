@@ -246,7 +246,7 @@ class ReleaseIndexTests(unittest.TestCase):
 
     def test_bundle_manifest_checks_identity_schema_and_runtime_bounds(self):
         invalid = (
-            {"schema": True}, {"schema": 2}, {"kind": "provider"}, {"id": "other"},
+            {"schema": True}, {"schema": 3}, {"kind": "provider"}, {"id": "other"},
             {"version": "0.4.0"}, {"architecture": "riscv32"},
             {"artifact": "../driver.elf"}, {"artifact": "DRIVER.elf"},
             {"min_runtime_api": True}, {"min_runtime_api": 0},

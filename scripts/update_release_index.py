@@ -47,6 +47,12 @@ def version_tuple(value: str) -> tuple[int, int, int]:
     return tuple(int(part) for part in match.groups())
 
 
+if __package__:
+    from .package_resource_paths import safe_resource_path, path_conflicts
+else:
+    from package_resource_paths import safe_resource_path, path_conflicts
+
+
 def validate_bundle_manifest(manifest: Any, identity: str, version: str,
                              architecture: str, kind: str = "driver") -> dict[str, Any]:
     """Validate the exact ordinary driver descriptor, without granting trust.
@@ -57,8 +63,8 @@ def validate_bundle_manifest(manifest: Any, identity: str, version: str,
     """
     if not isinstance(manifest, dict) or set(manifest) != BUNDLE_MANIFEST_KEYS:
         raise ValueError("bundle manifest requires exactly the ordinary schema-1 fields")
-    if type(manifest["schema"]) is not int or manifest["schema"] != 1:
-        raise ValueError("bundle manifest requires ordinary schema 1")
+    if type(manifest["schema"]) is not int or manifest["schema"] not in (1, 2):
+        raise ValueError("bundle manifest requires ordinary schema 1 or 2")
     if (kind not in ("driver", "application") or manifest["kind"] != kind or manifest["id"] != identity or
             manifest["version"] != version or manifest["architecture"] != architecture):
         raise ValueError("bundle manifest kind, identity, version and architecture must match the record")
@@ -89,8 +95,9 @@ def validate_bundle_manifest(manifest: Any, identity: str, version: str,
             raise ValueError("bundle inventory requires exact ordinary entry fields")
         name = item["name"]
         if (not isinstance(name, str) or not 0 < len(name) < 128 or
-                not BUNDLE_NAME_RE.fullmatch(name) or ".." in name or
-                name.casefold() in inventory):
+                not safe_resource_path(name) or
+                (manifest["schema"] == 1 and "/" in name) or
+                path_conflicts(name, inventory)):
             raise ValueError("bundle inventory has an unsafe or duplicate entry name")
         if (type(item["size_bytes"]) is not int or
                 not 0 < item["size_bytes"] <= BUNDLE_MAX_ENTRY_BYTES):

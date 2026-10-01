@@ -82,7 +82,7 @@ def export(identities: set[str] | None = None, output: Path | None = None) -> No
         kind, identity, version, architecture, artifact = (
             manifest.get('kind'), manifest.get('id'), manifest.get('version'),
             manifest.get('architecture'), manifest.get('artifact'))
-        if (manifest.get('schema') != 1 or
+        if (type(manifest.get('schema')) is not int or manifest['schema'] not in (1, 2) or
                 not runtime_identity(kind, identity, version, architecture, artifact) or
                 directory.name != identity):
             raise ValueError(f'invalid package identity or schema: {directory}')
@@ -92,18 +92,8 @@ def export(identities: set[str] | None = None, output: Path | None = None) -> No
         seen.add(key)
         selected.add(identity)
         observed_kinds.add(kind)
-        declared = {'.package.json'}
-        for item in manifest.get('entries', ()):
-            name = item.get('name') if isinstance(item, dict) else None
-            if not isinstance(name, str) or not ENTRY.fullmatch(name) or name in declared:
-                raise ValueError(f'unsafe or duplicate schema-1 entry: {identity}/{name}')
-            declared.add(name)
-            path = directory / name
-            if not path.is_file() or path.is_symlink():
-                raise ValueError(f'missing or nonregular entry: {identity}/{name}')
-        actual = {item.name for item in directory.iterdir()}
-        if actual != declared:
-            raise ValueError(f'undeclared or missing package files: {identity}: {actual ^ declared}')
+        # The shared packer validates declared leaves, implicit parent
+        # directories, links and exact bounded inventory for both schemas.
         name = f'{kind}-{identity}-{version}-{architecture}.rte.zip'
         if len(name) >= 160:
             raise ValueError(f'archive name exceeds device catalog bound: {name}')

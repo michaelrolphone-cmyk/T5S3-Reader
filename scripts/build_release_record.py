@@ -16,11 +16,13 @@ if __package__:
     from .generate_provider_package_inputs_v1 import canonical_manifest
     from .update_release_index import validate_bundle_manifest
     from .app_manifest import validate_manifest, package_requirements
+    from .package_resource_paths import safe_resource_path
 else:
     from pack_rte_zip import pack_directory, MAX_ENTRY_BYTES, MAX_TOTAL_BYTES, MAX_ARCHIVE_BYTES
     from generate_provider_package_inputs_v1 import canonical_manifest
     from update_release_index import validate_bundle_manifest
     from app_manifest import validate_manifest, package_requirements
+    from package_resource_paths import safe_resource_path
 
 REPOSITORY = "michaelrolphone-cmyk/T5S3-Reader"
 VERSION_RE = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
@@ -127,8 +129,7 @@ def package_bundle(kind: str, identity: str, version: str, root: Path) -> tuple[
             for info in infos:
                 entry_name = info.filename
                 if (entry_name in names or info.is_dir() or
-                        (entry_name != '.package.json' and not re.fullmatch(
-                            r'[a-z0-9](?:[a-z0-9._-]{0,125}[a-z0-9])?', entry_name)) or
+                        (entry_name != '.package.json' and not safe_resource_path(entry_name)) or
                         '..' in entry_name or info.flag_bits or info.compress_type != zipfile.ZIP_STORED or
                         info.compress_size != info.file_size or info.external_attr or
                         info.internal_attr or info.extra or info.comment or
@@ -159,7 +160,9 @@ def package_bundle(kind: str, identity: str, version: str, root: Path) -> tuple[
                         expected = f'os-cpu-abi=1\nprovides={capability}\napi={api}\n'.encode('ascii')
                         if payload != expected:
                             raise ValueError('bundled provider ABI differs from source manifest')
-                    (snapshot / entry['name']).write_bytes(payload)
+                    destination = snapshot / entry['name']
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    destination.write_bytes(payload)
                 if kind == 'application':
                     sidecar = bounded_json(snapshot, snapshot / f'{identity}.json', 2048)
                     expected_sidecar = dict(source)
