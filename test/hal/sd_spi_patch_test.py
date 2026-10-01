@@ -4,10 +4,14 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import json
+import hashlib
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
-from patch_sd_spi_fault import patch, MARK
-if len(sys.argv)==2:
+from patch_sd_spi_fault import patch, original_source, patch_environment, MARK
+overlay = None
+if len(sys.argv) in (2,3):
+    if len(sys.argv)==3: overlay=Path(sys.argv[2])
     framework=Path(sys.argv[1])
     paths={'hal':framework/'cores/esp32/esp32-hal-spi.c', 'spi':framework/'libraries/SPI/src/SPI.cpp', 'sd':framework/'libraries/SD/src/sd_diskio.cpp', 'vfs':framework/'libraries/FS/src/vfs_api.cpp'}
 else:
@@ -16,6 +20,7 @@ else:
 texts={}
 for kind,path in paths.items():
     source=path.read_text(); result=patch(source,kind); assert patch(result,kind)==result
+    assert original_source(result,kind)==original_source(source,kind)
     if MARK not in source:
         try: patch(source.replace('Copyright','ChangedCopyright',1),kind)
         except RuntimeError: pass
@@ -83,3 +88,52 @@ int main() {
                     '-I'+str(ROOT/'lib/hal'),str(tmp/'close.cpp'),'-o',str(tmp/'close')],check=True)
     subprocess.run([str(tmp/'close')],check=True,timeout=10)
 print('Actual raw VFS close: fault precedes free/stdio teardown; ordinary close preserved PASS')
+
+if overlay:
+    selected=json.loads((overlay/'build-selection.json').read_text())['compiled_units']
+    assert set(selected)=={path.name for path in paths.values()}
+    for kind,path in paths.items():
+        assert MARK not in path.read_text(), 'Shared SDK is still patched: '+str(path)
+        data=(overlay/path.name).read_bytes()
+        assert data.decode()==texts[kind] and hashlib.sha256(data).hexdigest()==selected[path.name]
+    for name in ('SdSpiFault.h','RuntimeFaultRetention.h'):
+        assert not (framework/'cores/esp32'/name).exists(), 'Private header leaked into shared SDK'
+    print('Build selected all four isolated units; shared SDK sources/headers are clean PASS')
+
+# Simulate the actual pre-script environment for both a fresh SDK and the exact
+# older U1-patched cache. No unverified package or unrelated file is removed.
+class Node:
+    def __init__(self,path): self.path=path
+    def srcnode(self): return self
+    def get_abspath(self): return str(self.path)
+    def get_path(self): return str(self.path)+'.variant'
+class Env:
+    def __init__(self,root,sdk): self.root,self.sdk,self.callback=root,sdk,None
+    def PioPlatform(self): return self
+    def get_package_dir(self,name): return str(self.sdk)
+    def subst(self,name): return str({'$PROJECT_DIR':ROOT,'$BUILD_DIR':self.root/'build'}[name])
+    def AddBuildMiddleware(self,callback): self.callback=callback
+    def Clone(self): return self
+    def Prepend(self,**kwargs): pass
+    def Object(self,**kwargs): return kwargs
+with tempfile.TemporaryDirectory() as tmp:
+    tmp=Path(tmp); sdk=tmp/'sdk'
+    relative={'hal':'cores/esp32/esp32-hal-spi.c','spi':'libraries/SPI/src/SPI.cpp',
+              'sd':'libraries/SD/src/sd_diskio.cpp','vfs':'libraries/FS/src/vfs_api.cpp'}
+    for old_cache in (False,True):
+        for kind,rel in relative.items():
+            p=sdk/rel;p.parent.mkdir(parents=True,exist_ok=True)
+            p.write_text(texts[kind] if old_cache else original_source(texts[kind],kind))
+        if old_cache:
+            for name in ('SdSpiFault.h','RuntimeFaultRetention.h'):
+                (sdk/'cores/esp32'/name).write_text((ROOT/'lib/hal'/name).read_text())
+        env=Env(tmp,sdk); patch_environment(env)
+        for kind,rel in relative.items():
+            p=sdk/rel
+            assert p.read_text()==original_source(texts[kind],kind)
+            obj=env.callback(env,Node(p))
+            assert Path(obj['source']).is_relative_to(tmp/'build')
+            assert Path(obj['target']).is_relative_to(tmp/'build')
+            assert Path(obj['source']).read_text()==texts[kind]
+        other=Node(sdk/'unrelated.cpp'); assert env.callback(env,other) is other
+    print('PRE middleware: isolated sources, unrelated nodes unchanged, exact older cache restored PASS')

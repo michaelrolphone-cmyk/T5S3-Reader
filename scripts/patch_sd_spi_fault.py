@@ -89,27 +89,87 @@ def patch(text, kind):
         if n!=27: raise RuntimeError('SD disk entrypoint count changed: '+str(n))
     return text
 
+def original_source(text, kind):
+    if MARK not in text:
+        baseline(text, kind)
+        return text
+    patch(text, kind)  # Accept only our exact known output before reverting it.
+    text=text.replace(MARK+'\n#include "SdSpiFault.h"\n#include "RuntimeFaultRetention.h"\n', '', 1)
+    if kind == 'hal':
+        text=text.replace('#include "esp32-hal.h"\n#if CONFIG_DISABLE_HAL_LOCKS\n#error RiscRTE retained SPI fault policy requires the existing HAL mutexes\n#endif', '#include "esp32-hal.h"')
+        text=text.replace('#define SPI_MUTEX_LOCK() do { if (spi->num == FSPI) risc_sd_spi_wait_lock(spi->lock); else { do {} while (xSemaphoreTake(spi->lock, portMAX_DELAY) != pdPASS); } } while (0)', '#define SPI_MUTEX_LOCK()    do {} while (xSemaphoreTake(spi->lock, portMAX_DELAY) != pdPASS)')
+        text=text.replace('#define SPI_MUTEX_UNLOCK() do { if (spi->num == FSPI) risc_sd_spi_guard(); xSemaphoreGive(spi->lock); } while (0)', '#define SPI_MUTEX_UNLOCK()  xSemaphoreGive(spi->lock)')
+        text=text.replace('\n    if (spi && spi->num == FSPI) risc_sd_spi_guard();', '')
+        text=text.replace('    if (spi->num == FSPI) SPI_MUTEX_LOCK();\n\n', '')
+        text=text.replace('    if (spi->num != FSPI) SPI_MUTEX_LOCK();\n    spiInitBus(spi);', '    SPI_MUTEX_LOCK();\n    spiInitBus(spi);')
+        for flag in ('usr', 'update'):
+            replacement='while'+(' ' if flag == 'update' else '')+'(spi->dev->cmd.'+flag+');'
+            text=text.replace('do { const uint32_t began = xTaskGetTickCount(); while (spi->dev->cmd.'+flag+') { if (spi->num == FSPI) risc_sd_spi_busy(began); } } while (0);', replacement)
+        text=text.replace(' if (spi->num == FSPI) risc_sd_spi_guard();', '')
+    elif kind == 'spi':
+        text=text.replace('\n    SdSpiOperation riscOperation(_spi_num == FSPI);', '')
+        text=text.replace('#define SPI_PARAM_LOCK() do { if (_spi_num == FSPI) { risc_sd_spi_begin_operation(); risc_sd_spi_wait_lock(paramLock); } else { do {} while (xSemaphoreTake(paramLock, portMAX_DELAY) != pdPASS); } } while (0)', '#define SPI_PARAM_LOCK()    do {} while (xSemaphoreTake(paramLock, portMAX_DELAY) != pdPASS)')
+        text=text.replace('#define SPI_PARAM_UNLOCK() do { if (_spi_num == FSPI) risc_sd_spi_end_operation(); xSemaphoreGive(paramLock); } while (0)', '#define SPI_PARAM_UNLOCK()  xSemaphoreGive(paramLock)')
+    elif kind == 'vfs':
+        text=text.replace('\n    risc_runtime_retention_guard();', '')
+    else:
+        text=text.replace('\n    SdSpiOperation riscOperation;', '')
+    baseline(text, kind)  # Never restore an approximate or guessed baseline.
+    return text
+
+
 def patch_environment(env):
     framework=Path(env.PioPlatform().get_package_dir('framework-arduinoespressif32'))
     files={'hal':framework/'cores/esp32/esp32-hal-spi.c', 'spi':framework/'libraries/SPI/src/SPI.cpp', 'sd':framework/'libraries/SD/src/sd_diskio.cpp', 'vfs':framework/'libraries/FS/src/vfs_api.cpp'}
-    # Validate the entire input set before changing any cached dependency file.
-    originals = {kind: path.read_text() for kind, path in files.items()}
+    originals={kind: path.read_text() for kind,path in files.items()}
     try:
-        updates = {kind: patch(originals[kind], kind) for kind in files}
+        clean={kind: original_source(text,kind) for kind,text in originals.items()}
+        updates={kind: patch(clean[kind],kind) for kind in files}
     except RuntimeError:
-        # A compact failure artifact lets the actual packaged SDK be inspected
-        # without weakening the source pin or guessing what a vendor changed.
         if any(len(text.encode()) > 200000 for text in originals.values()):
             raise RuntimeError('SDK source drift exceeds diagnostic bound')
-        report = Path(env.subst('$PROJECT_DIR'))/'dist/u1-sdk-source-drift.json'
+        report=Path(env.subst('$PROJECT_DIR'))/'dist/u1-sdk-source-drift.json'
         report.parent.mkdir(parents=True, exist_ok=True)
-        report.write_text(json.dumps({'schema': 1, 'files': originals}, indent=2)+'\n')
+        report.write_text(json.dumps({'schema':1,'files':originals},indent=2)+'\n')
         raise
-    for kind, path in files.items():
-        if updates[kind] != originals[kind]: path.write_text(updates[kind])
-    for name in ('SdSpiFault.h', 'RuntimeFaultRetention.h'):
-        source=Path(env.subst('$PROJECT_DIR'))/'lib/hal'/name
-        (framework/'cores/esp32'/name).write_text(source.read_text())
+    project=Path(env.subst('$PROJECT_DIR'))
+    overlay=Path(env.subst('$BUILD_DIR'))/'u1-sdk-sources'
+    overlay.mkdir(parents=True, exist_ok=True)
+    companions={name:(project/'lib/hal'/name).read_text()
+                for name in ('SdSpiFault.h','RuntimeFaultRetention.h')}
+    for name,content in companions.items():
+        old=framework/'cores/esp32'/name
+        if old.exists() and old.read_text()!=content:
+            raise RuntimeError('Unexpected shared SDK companion drift: '+name)
+    for name,content in companions.items():
+        (overlay/name).write_text(content)
+        old=framework/'cores/esp32'/name
+        if old.exists(): old.unlink()  # Only our exact verified private companion.
+    replacements={}
+    report={'schema':1,'original_git_blobs':EXPECTED,'compiled_units':{}}
+    report_path=overlay/'build-selection.json'
+    report_path.write_text(json.dumps(report,indent=2)+'\n')
+    for kind,path in files.items():
+        # Migration only: clean our previously published, hash-verified patch
+        # out of a restored global SDK cache. Normal builds never edit it.
+        if originals[kind]!=clean[kind]: path.write_text(clean[kind])
+        replacement=overlay/path.name
+        replacement.write_text(updates[kind])
+        replacements[str(path.resolve())]=replacement
+
+    def substitute(build_env,node):
+        original=Path(node.srcnode().get_abspath())
+        replacement=replacements.get(str(original.resolve()))
+        if replacement is None: return node
+        isolated=build_env.Clone()
+        isolated.Prepend(CPPPATH=[str(overlay),str(original.parent)])
+        report['compiled_units'][original.name]=hashlib.sha256(replacement.read_bytes()).hexdigest()
+        report_path.write_text(json.dumps(report,indent=2)+'\n')
+        return isolated.Object(target=str(overlay/'objects'/(original.name+'.o')),source=str(replacement))
+
+    # PRE registration is required: framework/library source nodes are already
+    # constructed by the time PlatformIO executes post scripts.
+    env.AddBuildMiddleware(substitute)
 
 if 'Import' in globals():
     Import('env')

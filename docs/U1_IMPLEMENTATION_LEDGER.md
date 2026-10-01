@@ -30,6 +30,19 @@ b78955ac passed twice through installed clock/archive, production stream registr
 rights, cleanup and stable heap. That is a development witness, not full U1/T5S3
 physical qualification; no duplicate CAM diagnosis is assigned here.
 
+## October 1: isolate the patched SDK compilation units
+
+Both workflows36874641414 /36874641445 passed8cc11cad (treeb9f8ddbe,
+tested locald39c466a; compiled checkout667fb543). Downloaded target reports show
+actual fault/park, task-deletion and GPIO-wrapper references on both boards;
+38 app ZIPs passed. Before handoff, build-custody checking found that setup had
+modified the shared SDK package. The same chunk now corrects that integration:
+PRE middleware builds isolated source/header/object copies and hash-restores
+only its own exact older cached modifications. Normal shared SDK input is never
+rewritten; no whole cache/toolchain deletion or Mac mutation occurs. Existing
+runtime code is unchanged. Clean/previously patched-cache host fixtures pass;
+exact-head target validation of this build-isolation correction is pending.
+
 ## October 1: preserve the packaged Arduino SPI synchronization fix
 
 Published782e0883 (tree1359b8d7, tested local267fc429) connected the policy;

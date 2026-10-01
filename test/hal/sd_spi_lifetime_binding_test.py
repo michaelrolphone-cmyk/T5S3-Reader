@@ -21,5 +21,5 @@ for p in ('lib/Board_T5S3/BoardT5S3.cpp','lib/Board_EPD47/BoardEPD47.cpp'):
 flags=source('platformio.ini')
 for name in ('vTaskDelete','pinMode','digitalWrite','gpio_set_level','gpio_config'):
  assert '--wrap='+name in flags
-assert 'post:scripts/patch_sd_spi_fault.py' in flags and '-DRISCRTE_SD_SPI_FAULT_PORT=1' in flags
+assert 'pre:scripts/patch_sd_spi_fault.py' in flags and '-DRISCRTE_SD_SPI_FAULT_PORT=1' in flags
 print('Production retention bindings: task deletion, module/context disposal, board pin/sleep and raw compatibility wrappers PASS')

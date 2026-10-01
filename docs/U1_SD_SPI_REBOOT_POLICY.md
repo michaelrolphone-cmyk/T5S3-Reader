@@ -66,9 +66,13 @@ controller abort, pin/rail reset or forced task deletion clears this state.
 ## Source and version custody
 
 `scripts/patch_sd_spi_fault.py` verifies exact upstream Git blobs and exact
-already-patched contents. Drift fails the build. PlatformIO applies the patch
-before dependency compilation and enables the lifetime wrappers on both current
-board profiles. The relevant framework sources are Arduino2.0.17:
+already-patched contents. Drift fails the build. PlatformIO PRE middleware compiles four patched source copies and two private
+headers solely inside that environment's build directory. Shared SDK sources
+remain at their verified original hashes. A one-time compatibility path reverses
+only this U1 patch's exact hash-verified older output if restored from cache; it
+never deletes a whole SDK, toolchain or cache. The build validates all four
+selected units and absence of private headers from the shared SDK. Lifetime
+wrappers are enabled on both current board profiles. The relevant framework sources are Arduino2.0.17:
 
 - `cores/esp32/esp32-hal-spi.c`:c635b836e8e77412f3fa5e7bf7196a477eb86d99
   (PlatformIO3.20017.241212+sha.dcc1105b packaged backport)
@@ -94,6 +98,19 @@ was downloaded and verified. The other three files match their original pins.
 The correction preserves that hardware fix and bounds all41 waits rather than
 removing it or accepting arbitrary source drift. All files validate before any
 cached dependency file is modified.
+
+### SDK cache isolation correction
+
+The policy runtime passed both workflows at8cc11cad, but its original post-build
+setup modified the shared PlatformIO framework package. That could contaminate
+later local builds using that package. PRE middleware now selects per-build
+copies instead. Host tests cover clean inputs, exact older-patch restoration,
+unrelated source passthrough and source/object paths confined to the build tree.
+No Mac SDK/configuration/toolchain was accessed by this cloud worker. The older
+PR CI cache key is Linux-platformio-197500d0027cafa15431eaa41e9f15ab044ffabd0b588b4c661e37658fbf0d59;
+its existence is recorded in the EPD job's cache-save log. This correction cleans
+only the known patch when that package is restored; no cache entry deletion is
+claimed. The new target run must verify original shared sources after build.
 
 ## Development evidence and remaining physical gates
 

@@ -100,7 +100,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Verify the actual pinned SD SPI port fault patch
-        run: python3 test/hal/sd_spi_patch_test.py "$HOME/.platformio/packages/framework-arduinoespressif32"
+        run: python3 test/hal/sd_spi_patch_test.py "$HOME/.platformio/packages/framework-arduinoespressif32" ".pio/build/${{ matrix.environment }}/u1-sdk-sources"
 
       - name: Verify actual runtime sidecar parser and owned app admission
         run: bash test/run_app_manifest_test.sh ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src"
