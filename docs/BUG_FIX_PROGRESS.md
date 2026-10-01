@@ -1,10 +1,10 @@
 # Bug repair progress
 
-Snapshot: 2026-10-01 01:48 UTC. This record supersedes the pre-merge restoration snapshot.
+Snapshot: 2026-10-01 01:55 UTC. This record supersedes the pre-merge restoration snapshot.
 
 ## Active hourly run — native confirmation safety
 
-- Owner: `fix_reachable_confirmation_bug`; phase: source revalidation complete, host reproduction/implementation next; claimed 2026-10-01 01:48 UTC
+- Owner: `fix_reachable_confirmation_bug`; phase: draft published, local verification complete; exact-head CI running; claimed 2026-10-01 01:48 UTC
 - Canonical claim: **249 only**, two related app confirmation fixes; branch `fix/native-confirmation-249` from master `3300229d0a232b4e6047a7c93b2f518c033c3cfa`
 - Ledger parent captured: `fc72ad0dba3d207e44c83d0ee76738a9a017377d`; draft #332 still open. No prior active owner
 - Open #96/#194/#220/#277/#333 checked: no edits to `Apps/ota_update.c`, `Apps/clear_cache.c` or their manifests. Aggregate test runner may require additive integration reconciliation
@@ -13,7 +13,11 @@ Snapshot: 2026-10-01 01:48 UTC. This record supersedes the pre-merge restoration
 - Published index `e495c5e1` and current master both have clear_cache 1.0.0 and ota_update 1.0.0; planned app-only bump to 1.0.1 each. Existing UI event ABI suffices; no firmware bump
 - Reconciled scan `66bc650056964dcba8e5164d6d76f6c45cdb81ab` by affected function/trigger/failure: 249 native confirmation differs from 246; 250 terminal FLASH_END loss differs from earlier flashing reports; 251 skipped-role/incomplete validation differs from 16 persistence rollback and 17 labels. IDs 249–251 preserve scan provenance; 250/251 remain unclaimed/unvalidated
 - Current inventory: **240 canonical reports, 238 outstanding** (249 claimed; 16/17 on hold; 235 need revalidation); 91/205 fixed on master. Next unused ID **252**. Historical counts below describe the earlier snapshot
-- Next: actual app plus real UI event-function host regressions, baseline failure/fix pass, focused target app builds/native aggregate, draft PR and exact-head CI; no live deletion, install, flash, merge or release
+- Draft [#334](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/334); exact remote head `f5a876549a6bf3a216a37afbe374d4998ed155c1` verified by fetch/content comparison; active claim commit `2697c3faa5432b41d30fde2302a1872be49ac610`
+- PASS: 2,788 ASan/UBSan cases linking actual C apps and verbatim production event/hit-test/rotation functions; baseline body-row case fails independently for each original app. All 24 mappings/four orientations, non-control taps, explicit touch/physical Confirm, held buttons, cancellation, exit/poll failure, service failure/reopen and missing event API covered. Rendering/input hardware/destructive services are fixtures
+- PASS: full native aggregate, C syntax, shell syntax, whitespace. LeakSanitizer disabled for ptrace. Both local target app builds attempted and blocked by absent Xtensa compiler
+- Exact-head CI [36803281830](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36803281830) running; retain active claim until terminal. Both app manifests bumped to 1.0.1, unchanged minimum firmware
+- Next: finish exact-head host/two-board/app CI and release claim with terminal result. No live deletion, install, flash, merge or release
 
 ## Board applicability correction — review request withdrawn
 
