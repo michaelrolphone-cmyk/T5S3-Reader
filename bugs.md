@@ -1,10 +1,44 @@
 # Bug Log
 
-Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b3a7`, through the 05:18 MDT scan. This is the canonical report inventory. Existing IDs 5 and 13–72 are preserved; new distinct reports receive IDs 73–207. Scan-local numbers are not canonical IDs. Entries preserve source-review reproduction evidence and repair directions; they are reported open, not claims of fresh hardware reproduction or a complete revalidation of every intervening feature change.
+Reconciled on 2026-09-30 UTC against master [`2b45ab662c0ffe3650ce0f841083ea47886022c9`](https://github.com/michaelrolphone-cmyk/T5S3-Reader/commit/2b45ab662c0ffe3650ce0f841083ea47886022c9), including the 14 later scan branches from 06:50 through 17:22 MDT on 2026-09-30. This is the canonical report inventory. Scan-local IDs are aliases, never canonical identity.
 
-**196 distinct active reports: 61 carried forward and 135 newly consolidated.** The eight previous scheduled fixes (IDs 4, 6–12) are already on master: PR #244 was incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including its final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. They are not pending fixes. Earlier fixes #205, #209 and #212 remain excluded.
+**237 distinct retained reports: 236 outstanding (235 need current-master revalidation and #205 awaits merge); #91 is verified fixed on master.** The 196 inherited master reports (IDs 5 and 13–207) have not been comprehensively revalidated. Only #91 and #205 were specifically rechecked in this restoration: #91 is resolved, #205 has a tested draft fix that is not on master, and the other 194 remain candidates. The 42 later scan reports add 41 distinct candidates (IDs 208–248), after collapsing one exact duplicate. Neither the historical word “Open” nor a closed-unmerged PR establishes current source status.
 
-## Coverage and recovery
+## Status and provenance rules
+
+- `Needs revalidation` means a preserved report requires inspection/reproduction against the current target before implementation. Its original observations and repair direction are evidence from the linked scan, not a new reproduction claim.
+- Keep a stable canonical ID when a report moves to claimed, in progress, fixed in an unmerged PR, fixed on master, duplicate, or not reproducible. Record evidence and the checked commit. Never silently remove a report because its source PR was closed.
+- Only an actual merged source change plus verification can be recorded as fixed on master. An unmerged fix stays an outstanding integration item, including when its PR is closed.
+- The eight older fixes (IDs 4, 6–12) were already incorporated into [merged PR #246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246), including PR #244 and final build-test repair `c0b3391184a2a47b034e2a2250f9dc704d2fb3c5`. Their merge is an ancestor of this baseline; do not requeue them. Earlier fix PRs [#205](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/205), [#209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/209), and [#212](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/212) remain outside this active inventory. Those are PR numbers, not current canonical bug IDs.
+- Original source/Drive links are retained. Later reports use immutable source commits. No new Drive recovery was attempted in this pass. Signed-package findings do not authorize reviving signing; current platform scope and production reachability must be checked before any repair.
+- The repair workflow and claim/progress record are described in [BUG_FIX_WORKFLOW.md](docs/BUG_FIX_WORKFLOW.md) and [BUG_FIX_PROGRESS.md](docs/BUG_FIX_PROGRESS.md). The initial repair run completed: #205 has a published draft fix, with the native aggregate suite and all three exact-head CI jobs passed. The active claim is released; #205 remains awaiting merge. This is not a claim that the scheduled run has fired.
+
+## Later scan reconciliation
+
+Every one of the 14 later branch diffs changes only `bugs.md`. Each contains three findings numbered 208–210 relative to its own master base. The mapping below preserves all 42 source identities while assigning 41 distinct canonical IDs. In particular, 16:24 and 17:22 contain six different findings: they map to 243–245 and 246–248 respectively.
+
+| Scan time (MDT) | Scan-local → canonical IDs | Immutable source |
+| --- | --- | --- |
+| 0650 | 208 → 208, 209 → 209, 210 → 210 | [36883abf](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/36883abff353f4dcca38f3f41aa83763a7a94cac/bugs.md) |
+| 0747 | 208 → 211, 209 → 212, 210 → 213 | [90452f55](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/90452f55e747d4702576842dc9a599cb189a97f7/bugs.md) |
+| 0822 | 208 → 214, 209 → 215, 210 → 216 | [c2aaf32f](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/c2aaf32f406e5138088d5143e0ca5a6e581f3e7f/bugs.md) |
+| 0850 | 208 → 217, 209 → 218, 210 → 219 | [517a989a](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/517a989aa3a1c72aeb2895a7de72b4b8009a79d5/bugs.md) |
+| 0921 | 208 → 220, 209 → 221, 210 → 222 | [15e1c0e1](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/15e1c0e11560eb5f9156a93b096725f0205305f5/bugs.md) |
+| 1018 | 208 → 223, 209 → 224, 210 → 225 | [0cf93da4](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/0cf93da4fe6e5b326a3e97eb311c41cfd842194b/bugs.md) |
+| 1123 | 208 → 226, 209 → 227, 210 → 228 | [068d9146](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/068d91461f6ed21c0eac4851eda8b2e3bc5415d2/bugs.md) |
+| 1218 | 208 → 229, 209 → 230, 210 → 231 | [68435250](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/68435250c3c0f0b02ba83533bd510db94630393b/bugs.md) |
+| 1326 | 208 → 232, 209 → 233, 210 → 234 | [ca33f38d](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ca33f38d08dc2a2cfe6203725a9a55443512e3d3/bugs.md) |
+| 1353 | 208 → 235, 209 → 236, 210 → 237 | [0b53f336](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/0b53f3365438f9d5bb7c2371e6872b1d342d819c/bugs.md) |
+| 1423 | 208 → 238, 209 → 239, 210 → 240 | [8448fb28](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/8448fb28c4173d410c3f609f722c399a81cc07a4/bugs.md) |
+| 1520 | 208 → 215 (duplicate), 209 → 241, 210 → 242 | [f8b56224](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/f8b56224203ffb83b2ee445efe0226fca534918a/bugs.md) |
+| 1624 | 208 → 243, 209 → 244, 210 → 245 | [ae005ba7](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ae005ba74bef9f7936f45787b1d3f67e89004439/bugs.md) |
+| 1722 | 208 → 246, 209 → 247, 210 → 248 | [d581a637](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/d581a637894b45df2d45e649dd7a12f25e779692/bugs.md) |
+
+The 08:22 scan-local #209 and 15:20 scan-local #208 both describe `PackageDeviceDirectory.cpp::exactDirectoryEntries()` failing open after all required entries but before a foreign trailing entry. Both are retained under canonical #215. Similar failures in different functions remain separate: Driver Manager vs App Store catalog refresh (#204/#226), Package Manager vs Springboard inventory (#182/#227), and shared wrapping vs native text-view line capacity (#42/#228).
+
+## Historical coverage through the 05:18 MDT consolidation
+
+The following is the earlier consolidation's recorded coverage, preserved as historical provenance. Its automation/run statements describe that earlier snapshot, not a newly verified current setup.
 
 - This pass inspected 73 scan branches after the previous 2026-09-27 15:24 MDT cutoff and read 132 new Drive handoffs. Every changed scan branch changes only `bugs.md`; no scheduled code fixes remain to consolidate. The fix-next-bug automation is disabled and its last recorded run was 2026-09-27.
 - Collapsed repeated font transaction/catalog failures, PNG validation, KOReader hashing, Wi-Fi persistence, storage publication, directory scanning, parsing, and provider-cleanup reports. Distinct functions or failure modes remain separate where they require different repairs. Immutable source links and Drive handoffs preserve the scan-local IDs and complete evidence.
@@ -12,11 +46,11 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - Excluded the Sep 29 13:25 branch's incidental encoding damage to pre-existing reports; used its intact final report content. Original branches and Drive files are retained as provenance.
 - The previous pass covered 28 scan branches and 92 handoffs, including recovered uncommitted findings from Sep 26 17:30/18:23/19:21 and Sep 27 06:24/10:22/12:21. Its canonical IDs and existing source links remain intact. Empty Sep 26 14:21/15:21/17:24 runs did not contribute fabricated findings.
 
-## Active reports
+## Outstanding reports
 
 ### 5. Time Card can overwrite valid history after a store-load failure
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** pre-consolidation [master](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6d876ae443d873d06068ae866fa4eda403b95f90/bugs.md)
 
 - **Affected code:** `Apps/timecard.c`, `load_store()`, `consume_keyboard()`, `app_main()`, and write paths through `set_punch()` / `save_store()`.
@@ -25,10 +59,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** Store loading is destructive and non-transactional, while callers treat a failed load as if a valid empty database had been loaded.
 - **Impact:** A transient SD read failure or malformed file can turn into permanent loss of previously valid time-card history as soon as the user saves another punch.
 - **Repair direction:** Parse into a temporary day array/count and commit it to the live state only after the entire store validates. Propagate load failure into a read-only/recovery state and block `save_store()` until a valid store has been loaded or the user explicitly chooses a recovery/reset action. Add tests for read failure, malformed JSON after several valid records, and subsequent punch attempts proving the original store is never replaced.
-
 ### 13. Serial Monitor loses active line coding across keyboard handoff
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260926-2025](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2025/bugs.md)
 
 - **Affected code:** `Apps/serial_monitor_implementation.inc` in `app_main()`, Send, Custom baud, `acquire_serial_session()`, and keyboard result handling; `src/native/NativeSystemUiBridge.cpp` in `NativeKeyboardActivity::loop()`.
@@ -37,10 +70,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The complete `t5_serial_config_t` is local state and is not preserved across the keyboard continuation.
 - **Impact:** Data can be sent with serial parameters different from the user's selected configuration.
 - **Repair direction:** Persist the complete line coding across keyboard handoff and restore it before reacquiring. Test non-default configurations through both Send and Custom baud continuations.
-
 ### 14. Time Card records January 1, 1970 when the clock read fails
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260926-2025](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2025/bugs.md)
 
 - **Affected code:** `Apps/timecard.c` in `today()`, `now_minutes()`, and `punch_today()`.
@@ -49,10 +81,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** Clock-read failure is represented by valid date/time values rather than propagated to the caller.
 - **Impact:** A transient clock failure can silently create a bogus historical punch and corrupt time-card history/totals.
 - **Repair direction:** Read one `t5_local_datetime_t` snapshot and refuse the punch if it fails. Derive both date and minutes from the successful snapshot, and test that failed clock reads create no record.
-
 ### 15. App Store silently hides applications after row 64
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260926-2025](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2025/bugs.md); [automation/bug-scan-20260927-0725](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0725/bugs.md)
 
 - **Affected code:** `Apps/app_store.c`: `MAX_ROWS`, `build_releases()`, and `build_inbox()`; online catalog capacity in `src/native/NativeAppHost.cpp`.
@@ -61,10 +92,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** A fixed render buffer is also used as the complete catalog model.
 - **Impact:** Valid applications beyond the first 64 cannot be discovered, installed, updated, or managed through App Store.
 - **Repair direction:** Page or virtualize over the provider's full count and keep a catalog index per visible row. Add tests at 65 and 128 online entries and more than 64 inbox entries.
-
 ### 16. Button Remap applies a failed mapping to the live input system even when persistence fails
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260926-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2120/bugs.md); [automation/bug-scan-20260927-0824](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0824/bugs.md)
 
 - **Affected code:** `src/native/NativeButtonRemapBridge.cpp`, `applyMapping(const t5_button_remap_mapping_t *mapping)` and `resetDefaults()`; `src/MappedInputManager.cpp`, `mapButton()`; `Apps/button_remap.c`, the failed-save retry path in `app_main()`.
@@ -73,10 +103,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The bridge treats settings mutation and persistence as separate operations without rollback, while the input mapper consumes the mutable settings object directly.
 - **Impact:** A storage failure can leave the current session using an uncommitted button layout, corrupt the retry workflow, and make controls behave differently before and after reboot despite the app reporting that the save failed.
 - **Repair direction:** Make `applyMapping()` transactional: save the previous four button fields, apply the candidate, call `saveToFile()`, and restore the previous fields before returning `false` if persistence fails. Apply the same behavior to reset-to-defaults through the shared path. Add a regression test that forces save failure and verifies both `SETTINGS` and mapped physical/logical button behavior remain unchanged.
-
 ### 17. Button Remap advertises Reset and Cancel on front buttons but handles those actions only on the side buttons
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260926-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2120/bugs.md)
 
 - **Affected code:** `Apps/button_remap.c`, `render()` and the main input loop; `src/native/NativeUiBridge.cpp`, `drawChrome()`; `src/MappedInputManager.cpp`, `mapLabels()` and `mapButton()`.
@@ -85,10 +114,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The chrome's previous/next labels were used as if they described side-button Up/Down actions, but the native UI chrome maps previous/next to the remappable front Left/Right buttons.
 - **Impact:** The remapping workflow gives false control instructions at exactly the point where button identity matters; users can accidentally assign a button when trying to cancel or reset, and the real escape/reset controls are undiscoverable.
 - **Repair direction:** Do not advertise Reset/Cancel through `previous_label`/`next_label` unless the corresponding logical Left/Right inputs actually perform those actions. Either handle Left/Right as Reset/Cancel and provide a separate raw-front-button capture mechanism, or render explicit side-button instructions and leave the front-button hints blank while capturing raw physical front-button presses. Add a test that verifies every rendered control hint invokes the action named by that hint.
-
 ### 18. A malformed BMP width can overflow row-stride arithmetic and drive out-of-bounds pixel reads
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260926-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2120/bugs.md)
 
 - **Affected code:** `src/native/NativeImageBridge.cpp`, `bmpInfo()`, `decodeBmp()`, and the BMP path in `renderFit()`; reachable through `Apps/image_viewer.c` for BMP files.
@@ -97,10 +125,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** Image dimensions are accepted without a sane bound, and packed-row size is calculated in overflow-prone 32-bit arithmetic before the bounds check.
 - **Impact:** A malformed or corrupted BMP copied to the SD card can crash the Image Viewer/device instead of being rejected as invalid input.
 - **Repair direction:** Calculate bits-per-row and row stride in checked 64-bit arithmetic, reject dimensions/stride values that overflow `size_t` or exceed practical decoder limits, and prove `dataOffset + stride * height <= file.size` before entering the pixel loops. Add malformed-BMP regression fixtures covering width×bpp overflow, oversized dimensions, truncated rows, and valid boundary cases.
-
 ### 19. Status Bar settings can cycle repeatedly from one held Confirm press
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260926-2221](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2221/bugs.md)
 
 - **Affected code:** `Apps/status_bar_settings.c`, `app_main()`; `src/native/NativeAppHost.cpp`, `poll()`; `src/native/NativeStatusBarBridge.cpp`, `itemActivate()`.
@@ -111,10 +138,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Repair direction:** Track the previous button mask and act only on the Confirm rising edge, as Springboard already does, or move this app to the edge-based UI event API. Add a regression test that holds Confirm asserted across several polls and verifies exactly one activation/save occurs.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0427](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/dc6897e74b7c37d55d43e6b711951cb7cc8d25e3/bugs.md); [Drive: 2026-09-29 0427 - automation-bug-scan-20260929-0427 - Instructions](https://docs.google.com/spreadsheets/d/1t59zkOqhm-R5DDAkGzYzXZV7OYMycN2a7VESAjxX4LE/edit?usp=drivesdk); [Drive: 2026-09-29 0427 - automation-bug-scan-20260929-0427 - Diff](https://docs.google.com/spreadsheets/d/1UGD9EGzpw3_BHk-0Timu5HoPY_Hvdkn-5pbCv3jVUF8/edit?usp=drivesdk)
-
 ### 20. Text Editor's Open picker silently hides documents after fixed scan limits
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260926-2221](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2221/bugs.md)
 
 - **Affected code:** `Apps/text_editor.c`, `list_files()`, `FILE_LIMIT`, and the `files` picker array.
@@ -123,10 +149,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The initial bounded picker implementation uses fixed in-memory arrays and a separate hard cap on directory entries examined, but does not expose pagination or resume state.
 - **Impact:** Larger Documents directories become partially inaccessible from Text Editor, and unrelated/non-text entries can cause valid documents to disappear even before the 64-document capacity is reached.
 - **Repair direction:** Stream/paginate directory entries and retain a directory cursor or page offset instead of materializing a single bounded list. At minimum continue scanning past unsupported entries and clearly expose truncation with a Next page. Add tests for 65+ valid documents and for a valid document positioned after 128 mixed directory entries.
-
 ### 21. OPDS Add Server persists an incomplete server before a required URL exists
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260926-2221](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2221/bugs.md)
 
 - **Affected code:** `Apps/opds_settings.c`, `apply_keyboard_result()` and `persist_edit()`; `src/native/NativeOpdsBridge.cpp`, `addServer()`; `src/OpdsServerStore.cpp`, `addServer()`.
@@ -135,10 +160,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The edit workflow conflates per-field persistence with creation of the server object, and the storage/API layer has no required-field validation.
 - **Impact:** Normal field-entry order can create broken OPDS catalog entries that cannot be contacted and remain in the configured server list until manually repaired or deleted.
 - **Repair direction:** Keep a new server as an in-memory draft until required fields validate and the user explicitly saves/finishes it, or at minimum reject `addServer()` while the URL is empty/invalid. Preserve per-field autosave only after the initial valid record has been created. Add tests for Name-first, placeholder-only URL, Back-before-URL, and a valid URL-first creation flow.
-
 ### 22. File Browser root destination picker overruns its directory-name backing array
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260926-2324-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2324-findings/bugs.md); [automation/bug-scan-20260927-1124](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1124/bugs.md)
 
 - **Affected code:** `Apps/file_browser.c`, `PICKER_ENTRIES`, `picker_names[]`, `picker_rows[]`, `list_picker_directories()`, and `choose_destination()`.
@@ -147,10 +171,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The enumeration bound is based on the larger row array instead of the smaller name backing array, while the number of fixed rows differs between root and non-root picker views.
 - **Impact:** Opening the destination chooser on a valid root containing 97 or more folders invokes undefined behavior and can overwrite unrelated app state. Directories beyond the fixed window are also unavailable as destinations.
 - **Repair direction:** Bound directory enumeration by `count - offset < PICKER_ENTRIES`, or make the row/name capacities explicitly consistent. Prefer pagination so every destination remains reachable. Add guarded or sanitizer-backed tests for 96, 97, and more than 98 root directories, plus a non-root picker containing the `..` row.
-
 ### 23. File Browser silently hides registered Open-with handlers after the first eight
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260926-2324-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2324-findings/bugs.md)
 
 - **Affected code:** `Apps/file_browser.c`, `MAX_OPEN_HANDLERS` and `choose_handler()`; `src/native/NativeFileOpenBridge.cpp`, `handlerCount()` and `handlerGet()`; `src/native/FileAssociationRegistry.h` and `src/native/FileAssociationRegistry.cpp`.
@@ -159,10 +182,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The fixed local stack arrays in the chooser are treated as the complete data model instead of one page over the registry's larger bounded result set.
 - **Impact:** A valid installed application can advertise support for a file type but remain unreachable from the system's normal file-opening workflow. Because the registry is sorted, adding another handler can also push a previously reachable app past the cutoff.
 - **Repair direction:** Page or otherwise enumerate the full `handler_count()`, fetching visible entries with `handler_get()`. If a deliberate UI maximum remains, report it instead of silently dropping handlers. Add a regression with at least ten handlers for one extension and verify handlers beyond index 7 can be selected and launch the intended app.
-
 ### 24. Provider capability discovery ignores package directories after entry 64 and can miss ambiguity
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260926-2324-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2324-findings/bugs.md)
 
 - **Affected code:** `src/native/NativeProviderCapabilityBridge.cpp`, `findProvider()`.
@@ -171,10 +193,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** A scan-work limit was applied to filesystem position even though this resolver needs no growing result collection; it can keep memory bounded while walking the directory to exhaustion.
 - **Impact:** Capability resolution becomes dependent on filesystem enumeration order and package count. Installing unrelated packages can make a valid capability disappear, and an ambiguous provider set can be accepted when it should be rejected.
 - **Repair direction:** Enumerate each provider root to exhaustion while retaining only the current match and an ambiguity flag, or implement explicit resumable paging that still covers every entry. Add tests with a matching provider at position 65 or later and with two matches straddling the old cutoff. The current U1 branch requires the same repair because its `findProvider()` retains the identical 64-entry loop.
-
 ### 25. SD Firmware Update validates an empty path after a File Browser handoff
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0023](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0023/bugs.md); [automation/bug-scan-20260927-1124](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1124/bugs.md)
 
 - **Affected code:** `src/native/NativeSdFirmwareBridge.cpp`, `resolveSelectedPath()` and `validateSelected()`; handoff source in `src/native/NativeFileOpenBridge.cpp::activeSourceStoragePath()`; `Apps/sd_firmware_update.json`.
@@ -183,10 +204,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The bridge was migrated from an explicit firmware-owned selected-path state to the File Browser active-source fallback, but the final validator call retained the old `selectedPath` member instead of using the resolved local path.
 - **Impact:** The newly migrated normal Settings/File Browser firmware-update path cannot validate a legitimate `.bin` selected through the association handoff, blocking firmware updates outside recovery mode.
 - **Repair direction:** Pass `path.c_str()` to `firmware_flash::validateImageFile()` and use the resolved path consistently throughout validation/install. Add an integration test that supplies the image only through `NativeFileOpenBridge::activeSourceStoragePath()` and verifies validation reaches the real file; the existing native-app test mocks `validate()` and does not exercise this bridge path.
-
 ### 26. Language selection reports success even when the settings file was not saved
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0023](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0023/bugs.md)
 
 - **Affected code:** `src/native/NativeLanguageBridge.cpp`, `selectLanguage(uint8_t languageId)`; caller `Apps/language_settings.c::select_current()`.
@@ -195,10 +215,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The native language bridge treats an in-memory mutation as the success condition instead of the persistence result.
 - **Impact:** The Language app can falsely acknowledge a preference change and leave runtime state inconsistent with durable settings.
 - **Repair direction:** Preserve the previous language, attempt persistence, and return success only after `saveToFile()` succeeds. On failure, restore both `SETTINGS.language` and the active `I18N` language before returning `false`. Add a regression test with a failing settings writer proving the API returns failure and leaves the previous language active.
-
 ### 27. A failed Time Zone save still changes the live timezone and system clock
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0023](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0023/bugs.md)
 
 - **Affected code:** `src/native/NativeTimeZoneBridge.cpp`, `selectCity(uint32_t region, uint32_t city)`; caller `Apps/time_zone.c::activate()`.
@@ -207,10 +226,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** Persistence is treated as the final step of a multi-part state change without a transaction or rollback path.
 - **Impact:** A storage failure can leave displayed/system time and in-memory settings disagreeing with durable configuration, including a timezone change the UI did not successfully commit.
 - **Repair direction:** Snapshot the old timezone and RTC-related settings before applying the candidate. If persistence fails, restore the old fields and reconfigure/resynchronize `halClock` to the previous zone. Prefer a staged settings transaction so durable state and live clock configuration move together. Add a failure-injection test covering both the returned error and restoration of the old timezone.
-
 ### 28. 3D Model Viewer can remain stuck on the loading frame when its first model render loses the video-submit race
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0125](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0125/bugs.md)
 
 - **Affected code:** `Apps/model_viewer.c`, `mv_message()`, `mv_render()`, and `app_main()`; `src/native/NativeVideoBridge.cpp`, `epd_video_can_submit()` / `epd_video_submit()`.
@@ -219,10 +237,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The first model frame is treated as fire-and-forget even though the video API is intentionally nonblocking and can reject a submit while a previous flip is queued.
 - **Impact:** Valid small models can appear to hang on **LOADING MODEL**, misleading the user into thinking parsing or the app has frozen; only later interaction may cause a render.
 - **Repair direction:** Treat a failed initial `mv_render(false)` as pending work: leave/set `g_need_refine = true` and retry when `can_submit()` becomes available, or use `pending()` / frame-counter synchronization before the first model render. Never clear the refine/retry flag until a render actually submits successfully. Add a test/fake video API that rejects the first post-loading submit and verify the viewer retries without user input.
-
 ### 29. Web Server can emit multiple HTTP responses after a mid-file SD read failure
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0125](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0125/bugs.md)
 
 - **Affected code:** `src/native/NativeWebServerBridge.cpp`, `streamFile(String path)` and `handleHttpRequest()`.
@@ -233,10 +250,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Repair direction:** Distinguish **not opened/not found** from **response started then failed**, for example with a tri-state result. Once headers or body transmission starts, never attempt another route or send a second status for that request; terminate the client connection on a short read and log the transfer failure. Add a fault-injected short-read test that proves no fallback 404 or second response is emitted after a 200 begins.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2354](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/adbef888b66176c0dd8e859e91629a93c1ceda23/bugs.md); [Drive: 2026-09-28 2354 automation-bug-scan-20260928-2354 diff](https://docs.google.com/document/d/1Q0TY6FxGuO5mz5-eim6LjlhC5BL6u24Ibi5DKNFyUUs/edit?usp=drivesdk); [Drive: 2026-09-28 2354 automation-bug-scan-20260928-2354 instructions](https://docs.google.com/document/d/1tPJ5PE9mW3TkqebBAGNIijAyJCz0rCccHTRJ2e4Tr50/edit?usp=drivesdk)
-
 ### 30. USB Debug log filenames collide for distinct same-model devices that expose no serial number
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0125](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0125/bugs.md)
 
 - **Affected code:** `Apps/usb_debug.c`, `make_identifier()` and `save_report()`.
@@ -245,10 +261,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The human-readable VID/PID fallback is being used as a unique per-device persistence key even though VID/PID identifies a product model, not a device instance.
 - **Impact:** USB-debug evidence can be lost or attributed to the wrong physical device precisely in multi-device or hub debugging, where separate reports are most important.
 - **Repair direction:** Keep the VID/PID/serial prefix for readability but append a stable per-session disambiguator when serial is absent, such as the generation-qualified host token or a deterministic ordinal derived from the current device snapshot. Ensure repeated saves for one selected device use the same name while two distinct active tokens cannot collide. Add a regression test with two no-serial devices sharing VID/PID.
-
 ### 31. Settings reports success when persistence fails
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0221](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0221/bugs.md)
 
 - **Affected:** `src/native/NativeSettingsBridge.cpp::nativeSettingsActivate()`; `Apps/settings.c`.
@@ -258,10 +273,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Repair:** Save transactionally: retain the old value, require save success before UPDATED, restore value/side effects on failure, and test an injected save failure.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2354](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/adbef888b66176c0dd8e859e91629a93c1ceda23/bugs.md); [Drive: 2026-09-28 2354 automation-bug-scan-20260928-2354 diff](https://docs.google.com/document/d/1Q0TY6FxGuO5mz5-eim6LjlhC5BL6u24Ibi5DKNFyUUs/edit?usp=drivesdk); [Drive: 2026-09-28 2354 automation-bug-scan-20260928-2354 instructions](https://docs.google.com/document/d/1tPJ5PE9mW3TkqebBAGNIijAyJCz0rCccHTRJ2e4Tr50/edit?usp=drivesdk)
-
 ### 32. Native storage `read_file` silently truncates files above 50,000 bytes and reports the truncated size as complete
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0221](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0221/bugs.md); [automation/bug-scan-20260927-1524](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1524/bugs.md)
 
 - **Affected code:** `src/native/NativePlatformBridge.cpp`, `readFile(const char *path, void *buffer, size_t capacity, size_t *outSize)`; `lib/hal/HalStorage.cpp`, `HalStorage::readFile(const char *path)`; the `T5StorageApi` contract in `lib/NativeApps/include/T5StorageApi.h`.
@@ -270,10 +284,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** A bounded text-oriented firmware helper was reused to implement the generic native storage ABI without preserving the file's actual size or surfacing the helper's truncation limit.
 - **Impact:** Native and third-party ELF apps can silently parse or persist incomplete data while believing the read succeeded. The size-probe form of the API is also unreliable for larger files, so a caller cannot even allocate the correct buffer before reading.
 - **Repair direction:** Implement the bridge on `HalFile` instead of `HalStorage::readFile()`: open the file, obtain the real `fileSize64()`, report that value for size-only probes, fail cleanly when it exceeds `SIZE_MAX` or the supplied capacity, and otherwise loop until exactly that many bytes are read or an I/O error occurs. Add regression coverage with a file above 50,000 bytes for both size-only and full-buffer reads.
-
 ### 33. T5Storage stream handles survive native-app teardown
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0221](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0221/bugs.md)
 
 - **Affected:** `src/native/NativePlatformBridge.cpp` globals `streamFile`/`writeStreamFile`; `streamOpen()`/`writeStreamOpen()`; `src/native/NativeAppHost.cpp::runNativeApp()`.
@@ -281,10 +294,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Failure:** The process-global `HalFile` remains open, so the next open is rejected. `runNativeApp()` has no storage-platform teardown; `nativeStreamsEnd()` cleans the separate T5Stream subsystem. An unfinished writer can leave its `.part` state active.
 - **Root cause / impact:** T5Storage stream globals have no per-app ownership/cleanup, so later apps can lose that stream slot until restart.
 - **Repair:** Bind handles to the active app/ExecutionContext and force close/abort on teardown (or add NativePlatform begin/end hooks). Add a two-app teardown regression test.
-
 ### 34. KOReader settings remain live after a failed persistence write
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0325](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0325/bugs.md)
 
 - **Affected code:** `src/native/NativeKOReaderBridge.cpp`, its four setting mutation functions; user-visible behavior in `Apps/koreader_sync.c`.
@@ -293,10 +305,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The setters use mutate-then-save semantics with no snapshot, rollback, or transactional staging.
 - **Impact:** Runtime configuration can diverge from persistent configuration after a failed write. Authentication can run with settings the user was explicitly told were not saved, and the apparent setting later reverts after restart.
 - **Repair direction:** Snapshot the affected store fields before mutation and restore them if `saveToFile()` fails, or persist a staged copy and only publish it into the live store after a successful write. Add fault-injection tests proving a failed save leaves both live and persisted values unchanged.
-
 ### 35. Legacy language migration can retire the only recoverable setting before persistence succeeds
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0325](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0325/bugs.md)
 
 - **Affected code:** `src/CrossPointSettings.cpp`, `CrossPointSettings::migrateLanguageBinaryFile()`.
@@ -305,10 +316,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** Source retirement and success reporting are unconditional instead of being committed only after a validated read and successful destination write.
 - **Impact:** A one-time migration can silently lose the user's language preference and suppress an automatic retry on the next boot.
 - **Repair direction:** Treat the migration transactionally: require a successful open, complete/validated legacy read, and successful `saveToFile()` before renaming the legacy file. If any step fails, leave `language.bin` intact and return `false`; also check the rename result. Add regression tests for open failure, truncated/invalid legacy data, destination-write failure, and successful migration.
-
 ### 36. Firmware Flasher silently hides firmware images after the first 64
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0325](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0325/bugs.md)
 
 - **Affected code:** `Apps/esp_rom_flasher.c`, `MAX_IMAGES`, the fixed image inventory arrays, and the root-directory scan in `app_main()`.
@@ -317,10 +327,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** A fixed in-memory row buffer is also being used as the total directory-inventory limit.
 - **Impact:** Valid firmware images can become inaccessible solely because of directory ordering, which can make the flasher appear unable to see a file that is present on the SD card.
 - **Repair direction:** Separate inventory traversal from visible-page storage. Page or stream the directory with a cursor/offset, or use a bounded dynamic inventory with an explicit continuation/truncation state. Add tests with exactly 64 and more than 64 qualifying images and verify every image remains reachable.
-
 ### 37. Mahjong hard-codes a 960×540 landscape UI onto the default portrait native-app surface
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0424](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0424/bugs.md)
 
 - **Affected code:** `Apps/mahjong.c`, especially the fixed geometry constants, `render_game()`, `hand_tile_at()`, and the NEW-button hit test in `app_main()`; runtime geometry comes from `src/native/NativeAppHost.cpp::width()/height()` and `GfxRenderer::getScreenWidth()/getScreenHeight()`.
@@ -329,10 +338,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The demo was written against the panel's physical landscape dimensions instead of the runtime logical dimensions exposed by `T5AppApi`, and its manifest does not declare or establish a landscape-only presentation mode.
 - **Impact:** A normal portrait launch produces a clipped, partially unplayable game: the user cannot reach NEW and can be unable to discard tiles that sort into the hidden portion of the 14-tile hand.
 - **Repair direction:** Make Mahjong derive all layout and hit rectangles from `screen_width()/screen_height()` and provide a portrait layout, or introduce an explicit supported orientation handoff and transform input consistently. Add a regression check that every interactive rectangle and every hand slot lies within the runtime viewport for the normal launch orientation.
-
 ### 38. Image Viewer rejects valid indexed BMPs that use a reduced color table
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0424](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0424/bugs.md)
 
 - **Affected code:** `src/native/NativeImageBridge.cpp`, `decodeBmp()` and the BMP path through `bmpInfo()` / `renderFit()`.
@@ -341,10 +349,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The indexed-BMP decoder assumes every 1/4/8-bpp BI_RGB file stores the full maximum palette instead of honoring the DIB header's color-table count.
 - **Impact:** Standards-compliant indexed BMPs produced with compact palettes cannot be displayed even though their metadata probes successfully, creating a probe/render inconsistency and unnecessary image incompatibility.
 - **Repair direction:** For DIB headers that include `biClrUsed`, use that value when nonzero and otherwise fall back to `1 << bpp`; reject counts above the format maximum, validate the actual palette bytes against `bfOffBits`, and reject any pixel index outside the declared palette. Add fixtures for reduced and full 4/8-bpp palettes.
-
 ### 39. Legacy binary string deserialization trusts corrupt length fields and can exhaust memory during boot migration
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0424](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0424/bugs.md); [automation/bug-scan-20260927-1524](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1524/bugs.md)
 
 - **Affected code:** `lib/Serialization/Serialization.h::readString(FsFile&, std::string&)` and `readPod(FsFile&, T&)`; callers include `src/RecentBooksStore.cpp::loadFromBinaryFile()` and `src/WifiCredentialStore.cpp::loadFromBinaryFile()`.
@@ -354,10 +361,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Impact:** Ordinary SD corruption or a malformed legacy state file can cause heap exhaustion/abort and potentially a repeatable boot failure instead of a recoverable migration error; shorter malformed reads can also populate corrupted in-memory store data.
 - **Repair direction:** Make binary reads return success/failure, require exact byte counts, bound every string length before allocation using per-field limits and/or remaining file size, and make each migration abort without renaming or rewriting the legacy source on any failed read. Add regression files with truncated length words, truncated payloads, and oversized lengths and verify clean failure without allocation spikes.
 - **Additional affected consumer:** `lib/KOReaderSync/KOReaderCredentialStore.cpp::loadFromBinaryFile()` uses the same unchecked helpers for `/.crosspoint/koreader.bin`. A valid version byte followed by an oversized username length or truncated payload can exhaust memory or be accepted as credentials. Bound credential fields, validate the match-method enum, and commit temporary values/retire the source only after complete validation and a successful JSON save.
-
 ### 40. Fast-video blocking flip can deadlock forever after a scan transmit failure
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0520](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0520/bugs.md)
 
 - **Affected code:** `src/native/NativeVideoBridge.cpp`, `scan_task()`, `send_row()`, `epd_video_flip()`, and startup calls through `settle_level()`.
@@ -366,10 +372,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The scan-task fatal-error path bypasses the same waiter cancellation/notification protocol used by explicit shutdown.
 - **Impact:** A recoverable display-transport fault can become a permanent native-app/startup hang requiring an external reset; the raw display resources may also remain active because the blocked caller cannot execute normal teardown.
 - **Repair direction:** Centralize scan-task termination so every fatal exit atomically clears `g_flip_req`, captures and clears `g_flip_waiter`, marks the engine stopped, and notifies the waiter before deleting the task. Consider making blocking flips return success/failure or use a bounded wait so callers can propagate transport failure. Add a fault-injection test that fails `send_row()` with a queued waiter and proves the producer wakes and teardown completes.
-
 ### 41. USB Debug redraws stale devices when the discovery snapshot fails
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0520](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0520/bugs.md)
 
 - **Affected code:** `Apps/usb_debug.c`, `refresh_devices()` and the main event loop path that reacts to processed USB discovery events.
@@ -378,10 +383,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** Device-list refresh is not transactional and the failure path leaves the previous successful snapshot marked as current, while one caller treats refresh failure as non-fatal.
 - **Impact:** Detached or no-longer-addressable USB devices can remain visible and selectable, producing misleading descriptor/control-transfer errors and potentially operating on an invalid or reused provider token instead of the currently attached set.
 - **Repair direction:** Build the next device snapshot in temporary storage and publish it only on complete success; on failure, explicitly clear `device_count`/rows or mark the existing snapshot unavailable and disable Inspect. The event loop must branch on the refresh result rather than redrawing stale state. Add tests for a success followed by snapshot failure and for the provider returning a required count above 8.
-
 ### 42. Shared text wrapping drops the rest of a paragraph after an over-width first token
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0520](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0520/bugs.md)
 
 - **Affected code:** `src/components/themes/BaseTheme.cpp`, `BaseTheme::wrappedTextForRole()`; visible callers include `src/native/NativeUiBridge.cpp::renderTextView()`.
@@ -390,10 +394,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The over-width-token branch uses an unconditional early return that is only appropriate when the caller has actually exhausted `maxLines`.
 - **Impact:** Logs, USB/serial diagnostics, URLs, hashes, file paths, book metadata, or other user content can silently lose all text following a long leading token, making diagnostic and document-like views incomplete without any truncation indicator.
 - **Repair direction:** After emitting/splitting an over-width token, continue processing `remaining` whenever `lines.size() < maxLines`; return only when the line budget is exhausted. Prefer character-safe splitting of oversized UTF-8 tokens rather than discarding their tail. Add regression tests for an oversized first token followed by normal words, an oversized token after a normal line, and `maxLines == 1`.
-
 ### 43. An unconsumed System UI result blocks later keyboard and Wi-Fi requests
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0725](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0725/bugs.md)
 
 - **Affected code:** `src/native/NativeSystemUiBridge.cpp`: `keyboardState`, `wifiState`, `hasUnreadResult()`, `keyboardRequest()`, `wifiRequest()`, the two wrapper activity `loop()` methods, and `nativeSystemUiBegin()`.
@@ -402,10 +405,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** Pending continuation results are global and are not bound to the requesting native-app invocation or cleaned up when that resumed invocation ends.
 - **Impact:** An early-return or error path in one app can make keyboard entry and Wi-Fi selection unavailable to other apps until the stale result is consumed or the device restarts.
 - **Repair direction:** Bind each pending result to a request/session generation, allow only the resumed owner to consume it, and clear an unread result when that resumed invocation ends or a different app begins. Add a cross-app lifecycle regression.
-
 ### 44. OPDS load failures expose stale servers from the previous successful load
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0725](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0725/bugs.md)
 
 - **Affected code:** `src/OpdsServerStore.cpp::loadFromFile()`, `src/JsonSettingsIO.cpp::loadOpds()`, and `src/native/NativeOpdsBridge.cpp::countServers()` / `readServer()`.
@@ -414,10 +416,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** Reload failure leaves an old in-memory snapshot marked implicitly usable, and the bridge does not propagate load failure.
 - **Impact:** After storage corruption or removal, the UI can continue presenting and using obsolete OPDS endpoints and account data that are no longer backed by valid persistent state.
 - **Repair direction:** Parse into temporary state and publish it only after a successful complete load, or invalidate the live cache on failure. Make native count/read calls honor load failure. Add a regression that loads valid data, injects malformed/empty/read-failed storage, and verifies no old server is returned.
-
 ### 45. Time Zone silently hides the last 48 America cities
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0824](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0824/bugs.md)
 
 - **Affected code:** `Apps/time_zone.c`, `load_rows()`, `activate()`, and initial selected-city discovery; authoritative counts come from `src/native/NativeTimeZoneBridge.cpp` and `lib/hal/TimeZoneData.cpp`.
@@ -428,10 +429,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Repair direction:** Remove the silent clamp by paging/windowing the authoritative city count, or allocate to the catalog's declared maximum and preserve access to all entries. The selected-city lookup must scan the complete region. Add a regression test asserting that every `city_count(region)` index is reachable, especially America indices 95, 96, and 143.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0738](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ae95ab57b54b4745074a22227bad25c5341ba4b2/bugs.md); [Drive: 2026-09-28 07-38 MDT - automation-bug-scan-20260928-0738 - Instructions](https://docs.google.com/spreadsheets/d/1X2Pqr2AHuLtG36KzrvkQEZ5LRxKnGR9yO4riBi6bm1c/edit?usp=drivesdk); [Drive: 2026-09-28 07-38 MDT - automation-bug-scan-20260928-0738 - Diff](https://docs.google.com/spreadsheets/d/17ntuX4WGxnYrfhLIbPor3h_0wbt-EkjvMrvPg-9TLWA/edit?usp=drivesdk)
-
 ### 46. One transient LoRa reinitialization failure after a display refresh strands the radio off for the rest of the app session
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0824](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0824/bugs.md); [2026-09-26 1921 MDT - automation-bug-scan-20260926-1921 - intended bugs.md diff](https://docs.google.com/document/d/11rg9j1Z7Jy8pNKrR3Tut8BWdTcZAvbgRYWr5MhcOzlo/edit?usp=drivesdk)
 
 - **Affected code:** `src/native/NativeLoRaBridge.cpp`, `prepareDisplay()`, `finishDisplay()`, `initializeHardware()`; `Apps/lora.c`, `render_state()`.
@@ -441,10 +441,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Impact:** A single temporary SX1262 bring-up failure after an e-paper refresh can permanently disable receive/transmit until the user leaves and relaunches the LoRa app.
 - **Repair direction:** Keep the recovery-pending state set until `initializeHardware()` succeeds, or introduce an explicit retry/error state that later `finish_display()` calls can service. Have the app surface a restoration error instead of discarding the return value. Add a bridge regression test where the first post-display initialization fails and a later render successfully retries and restores `running`/receiver state.
 - **Additional symptom from the earlier handoff:** `Apps/lora.c::render_state()` renders the Ready state before attempting radio restoration and ignores its failure, so the displayed status can remain Ready after the radio has stopped.
-
 ### 47. Legacy Recent Books v2 migration loses record alignment and corrupts later entries
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0924](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0924/bugs.md)
 
 - **Affected code:** `src/RecentBooksStore.cpp`, `RecentBooksStore::loadFromBinaryFile()`, specifically the `version == 2` migration branch.
@@ -453,10 +452,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The migration code decides whether to read serialized fields based on reconstructed metadata instead of first consuming the complete historical on-disk record shape; the legacy v2 `progress` field was also dropped without advancing past it.
 - **Impact:** Upgrading from firmware that wrote v2 recent-book state can destroy the logical recent-books list during migration, with only the first entry potentially surviving correctly.
 - **Repair direction:** For v2, unconditionally deserialize the full historical record (`path`, `title`, `author`, `progress`) into temporaries before deciding which title/author values to keep. Validate every read and parse into temporary state before replacing `recentBooks`. Add a fixture containing at least two v2 entries, including one whose live metadata lookup succeeds, and verify both records remain aligned after migration.
-
 ### 48. WebDAV overwrite paths delete the existing destination before the replacement is safely published
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0924](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0924/bugs.md)
 
 - **Affected code:** `src/network/WebDAVHandler.cpp`: `WebDAVHandler::raw()` at `RAW_END` for PUT, plus overwrite handling in `handleMove()` and `handleCopy()`.
@@ -465,10 +463,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** Overwrite is implemented as destructive delete-then-publish rather than a transactional replace with rollback.
 - **Impact:** A transient SD/filesystem error during an overwrite can turn a failed WebDAV operation into irreversible loss of the previously valid destination file.
 - **Repair direction:** Publish replacements transactionally. Rename the old destination to a bounded backup, publish the new file, then delete the backup only after success; restore the backup if publication fails. Use the same helper for PUT/MOVE/COPY so all overwrite paths have identical rollback semantics. Add fault-injection tests at each post-backup failure point proving the original file survives.
-
 ### 49. ZIP reader rejects standards-compliant archives whose EOCD comment is longer than about 1 KB
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-0924](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0924/bugs.md)
 
 - **Affected code:** `lib/ZipFile/ZipFile.cpp`, `ZipFile::loadZipDetails()`.
@@ -477,10 +474,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The implementation assumes the EOCD must be within the last 1 KB rather than honoring the ZIP format's 16-bit comment-length allowance.
 - **Impact:** Valid ZIP-based content can fail to open or extract solely because it carries a legal archive comment; this can affect generic archive operations and any ZIP-backed content path using `ZipFile`.
 - **Repair direction:** Search at least `22 + 65535` bytes from EOF (bounded by file size), scan backward for EOCD, and validate the candidate's comment length and central-directory bounds before accepting it. Add tests at comment lengths 0, 1002, 1003, and 65535 bytes.
-
 ### 50. MSP programmer can leak its transport/session forever when close-time target release fails
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-1124](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1124/bugs.md)
 
 - **Affected code:** `Drivers/program_msp/driver.c`, `close_session()`, `sync_target()`, `release_target()`, and `quiesce()`.
@@ -489,10 +485,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** Target reset/release and host transport cleanup are coupled into one all-or-nothing success path; cleanup is skipped precisely on the error paths where it is most necessary.
 - **Impact:** A cable pull or target communication failure during close can wedge `program.msp` until reboot/reload, retaining provider resources and preventing clean shutdown or later sessions.
 - **Repair direction:** Make target synchronization/release best-effort during close, but always attempt `msp->close()` and retire the local session slot. Preserve/report the first close error separately. Add failure-injection tests for `sync_target()`, `release_target()`, and transport close to prove `quiesce()` eventually succeeds and no session token remains live.
-
 ### 51. Recent Books migration retires the legacy file even when the JSON save fails
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-1321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1321/bugs.md)
 
 - **Affected code:** `src/RecentBooksStore.cpp`, `RecentBooksStore::loadFromFile()`, specifically the legacy `recent.bin` migration path.
@@ -501,10 +496,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** Unlike the state, settings, Wi-Fi, and KOReader migration paths, Recent Books does not make retirement of the legacy source conditional on successfully publishing the replacement file.
 - **Impact:** A transient storage failure during one-time migration can convert a recoverable legacy recent-book history into persistent loss of that history on the next restart, while falsely reporting that migration succeeded.
 - **Repair direction:** Require `saveToFile()` to succeed before renaming the legacy file. If publication fails, leave `recent.bin` in place and return/log failure so the next boot can retry. Check the rename result as well, and add a regression test that injects a JSON-save failure and verifies the legacy source remains available and migration is retried.
-
 ### 52. HalStorage::writeFile deletes the last good file before the replacement is durable
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-1321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1321/bugs.md)
 
 - **Affected code:** `lib/hal/HalStorage.cpp`, `HalStorage::writeFile(const char*, const String&)` and `openFileForWriteUnlocked()`; callers include `JsonSettingsIO::saveSettings()`, `saveState()`, `saveWifi()`, `saveKOReader()`, `saveRecentBooks()`, `saveOpds()`, and `saveBookmarks()`.
@@ -513,10 +507,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The common persistence primitive is implemented as destructive replace-in-place rather than a transactional same-directory stage-and-publish operation.
 - **Impact:** A single SD write/open error or power interruption can corrupt or erase settings, state, credentials, OPDS configuration, recent books, or bookmarks that were valid before the attempted save. Callers cannot safely recover merely by observing the `false` return because the old durable value is already gone.
 - **Repair direction:** Write to a unique same-directory temporary file, verify the complete byte count, sync and close it, then atomically publish it with a backup/rollback strategy that preserves the old target until the staged replacement is known good. Remove the temporary file on every failure path. Add fault-injection tests at open, partial-write, sync/close, and rename stages proving the original file survives unsuccessful saves.
-
 ### 53. Bookmark filenames collide when directory separators and underscores map to the same name
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-1321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1321/bugs.md)
 
 - **Affected code:** `src/util/BookmarkUtil.cpp`, `BookmarkUtil::getBookmarkPath(const std::string& bookPath)`; consumed by `src/activities/reader/EpubReaderBookmarksActivity.cpp`.
@@ -525,10 +518,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The bookmark-store key uses a lossy path sanitization instead of a collision-resistant or reversible encoding of the canonical book path.
 - **Impact:** Legitimate library layouts can cross-contaminate or overwrite bookmarks between unrelated books. A loaded bookmark can carry XPath/spine metadata from the wrong EPUB, producing incorrect navigation in addition to bookmark data loss.
 - **Repair direction:** Derive the bookmark filename from a collision-resistant digest of the canonical full book path (optionally retaining a readable basename prefix), or use a reversible escaping scheme that distinguishes separators from literal underscores. Provide migration/fallback for existing bookmark files and add collision tests for separators, underscores, and same basenames in different directories.
-
 ### 54. Web file operations apply hidden-item policy only to the final path component
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-1424-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1424-findings/bugs.md)
 
 - **Affected code:** `src/network/CrossPointWebServer.cpp`, especially `handleFileListData()`, `handleDownload()`, `handleDelete()`, `HIDDEN_ITEMS`, and `isProtectedItemName()`.
@@ -537,10 +529,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The visibility/protection rule is applied to one basename rather than to the canonical path and all of its components.
 - **Impact:** State/cache files intended to be excluded from web file-management operations can still be exposed to those operations when their full path is known, and destructive operations can damage device state.
 - **Repair direction:** Centralize path authorization, canonicalize every user-supplied path, and reject any path containing a protected component before list/read/write/rename/move/delete operations. Apply the helper consistently to every web file-management endpoint and add nested-hidden-directory regression tests.
-
 ### 55. Font upload reports success for truncated or short-written .cpfont files
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-1424-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1424-findings/bugs.md)
 
 - **Affected code:** `src/network/CrossPointWebServer.cpp`, `handleFontUploadData()`; `src/FontInstaller.cpp`, `FontInstaller::validateCpfontFile()`; `lib/EpdFont/SdCardFont.cpp::load()`.
@@ -549,10 +540,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** Upload completeness and structural font validity are reduced to a magic-prefix check, and short writes do not clear the success state.
 - **Impact:** Font installation can falsely report success while leaving an unusable file on SD, including an unusable replacement inside an existing family.
 - **Repair direction:** Treat every short write as failure, track actual persisted length, validate the closed staged file using the full .cpfont structural rules, and only publish after complete validation. Add magic-only, truncated-header/TOC, and short-write tests.
-
 ### 56. ZIP extraction does not verify per-entry CRC-32
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-1424-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1424-findings/bugs.md)
 
 - **Affected code:** `lib/ZipFile/ZipFile.h`, `ZipFile::FileStatSlim`; `lib/ZipFile/ZipFile.cpp`, central-directory parsing, `readFileToMemory()`, and `readFileToStream()`; consumer `src/native/NativeArchiveBridge.cpp::extract()`.
@@ -561,10 +551,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** The lightweight ZIP metadata retained method, lengths, and offset but omitted the format's integrity field.
 - **Impact:** Damaged archives can silently produce corrupted ROMs or resources while the extraction layer reports success.
 - **Repair direction:** Retain CRC-32 in entry metadata, compute it incrementally over uncompressed output for both stored and deflated paths, reject mismatches before the archive bridge publishes its staged output, and add valid/corrupted archive tests.
-
 ### 57. Native atomic writes can delete unrelated sibling files ending in `.bak` or `.part`
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260927-1524](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1524/bugs.md)
 
 - **Affected code:** `src/native/NativePlatformBridge.cpp`, `writeFileAtomic()`, `writeStreamOpen()`, `writeStreamCommit()`, and `writeStreamAbort()`.
@@ -573,10 +562,9 @@ Consolidated on 2026-09-30 against master `491e06131a8e9dc39c7b7dbb9e4b3e7fc128b
 - **Likely root cause:** Recovery state is inferred only from predictable sibling filenames rather than from transaction ownership metadata or an isolated staging namespace.
 - **Impact:** Saving one document can permanently delete a different valid user file. The same collision exists for streamed writes, so apps using the newer transaction API can cause the loss without ever touching the sibling explicitly.
 - **Repair direction:** Keep staging/backup objects in a firmware-owned transaction directory or use collision-resistant internal names plus a validated transaction journal. Recovery should remove or restore only files proven to belong to an interrupted transaction; never treat arbitrary user-visible `.bak` or `.part` siblings as disposable. Add tests with pre-existing suffix-collision files and verify they remain byte-for-byte intact through success, failure, abort, and recovery.
-
 ### 58. OPDS failed saves are not transactional
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-26 1730 MDT - automation-bug-scan-20260926-1730 - intended bugs.md diff](https://docs.google.com/document/d/1IDPXJJHEy-jfbQkZn4JN1M90w-GguwxKdvS7j-c2ynI/edit?usp=drivesdk)
 
 Affected code: src/OpdsServerStore.cpp (addServer(), updateServer(), removeServer(), saveToFile()), src/JsonSettingsIO.cpp::saveOpds(), lib/hal/HalStorage.cpp::writeFile(), and src/native/NativeOpdsBridge.cpp::countServers()/readServer().
@@ -587,10 +575,9 @@ Impact: A failed edit can both lose the previous persisted server list and leave
 Repair direction: Persist a candidate list through a synced temporary file plus atomic rename, commit the live vector only after success, roll back on failure, and propagate reload failure. Add injected open/short-write regression tests.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0427](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/dc6897e74b7c37d55d43e6b711951cb7cc8d25e3/bugs.md); [Drive: 2026-09-29 0427 - automation-bug-scan-20260929-0427 - Instructions](https://docs.google.com/spreadsheets/d/1t59zkOqhm-R5DDAkGzYzXZV7OYMycN2a7VESAjxX4LE/edit?usp=drivesdk); [Drive: 2026-09-29 0427 - automation-bug-scan-20260929-0427 - Diff](https://docs.google.com/spreadsheets/d/1UGD9EGzpw3_BHk-0Timu5HoPY_Hvdkn-5pbCv3jVUF8/edit?usp=drivesdk)
-
 ### 59. File Browser silently truncates directories at 256 entries
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-26 1730 MDT - automation-bug-scan-20260926-1730 - intended bugs.md diff](https://docs.google.com/document/d/1IDPXJJHEy-jfbQkZn4JN1M90w-GguwxKdvS7j-c2ynI/edit?usp=drivesdk); [2026-09-27 12-21 MDT - automation-bug-scan-20260927-1221 - intended bugs.md diff](https://docs.google.com/spreadsheets/d/17BY2jMeFoI2yFrSMEQc9FuTKEK3QlwSZoJfKFKzs_f0/edit?usp=drivesdk)
 
 Affected code: Apps/file_browser.c, MAX_ENTRIES, load_sd_files(), load_usb_files(), and SD-root USB entry insertion.
@@ -599,10 +586,9 @@ Observed / logically demonstrated failure: Both loaders stop when entry_count ==
 Likely root cause: A fixed RAM array size doubles as the total enumeration limit instead of only the rendered/page window.
 Impact: Large folders are only partially accessible, and USB storage can disappear from File Browser despite being mounted.
 Repair direction: Use bounded page/window storage with offset/cursor-backed rescans, keep synthetic roots independent of file-entry capacity, and show an explicit limit indication if a hard cap remains. Add tests with 257+ entries and 256 SD-root entries plus mounted USB.
-
 ### 60. Font Family hides installed families after the first 62 SD-card choices
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-26 1730 MDT - automation-bug-scan-20260926-1730 - intended bugs.md diff](https://docs.google.com/document/d/1IDPXJJHEy-jfbQkZn4JN1M90w-GguwxKdvS7j-c2ynI/edit?usp=drivesdk)
 
 Affected code: Apps/font_selection.c, MAX_CHOICES and load_choices(); src/native/NativeFontBridge.cpp::choiceCount(); lib/EpdFont/SdCardFontRegistry.h, MAX_SD_FAMILIES.
@@ -611,10 +597,9 @@ Observed / logically demonstrated failure: NativeFontBridge::choiceCount() repor
 Likely root cause: The UI fixed choice-array capacity is smaller than the supported registry capacity and there is no paging/windowing layer.
 Impact: Installed fonts can be impossible to select or see, and the highlighted row can misrepresent the actual setting.
 Repair direction: Size the choice model for the supported registry count plus built-ins or page/virtualize the list without truncating the service count. Preserve selected-family lookup across the full catalog. Add regression coverage with 63+ SD families and with the active family beyond the first 62.
-
 ### 61. Springboard loses canonical package identity when package ID differs from ELF basename
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-26 1823 MDT - automation-bug-scan-20260926-1823 - intended bugs.md diff](https://docs.google.com/document/d/1rHExVwvDfo17_559sJVPZweL6bsbxa4MYGGoJgVwe_A/edit?usp=drivesdk)
 
 - Affected code: src/native/NativeAppHost.cpp, installedRefresh() and requestLaunch(); compare src/native/InstalledAppPath.cpp::resolveInstalledAppPath().
@@ -623,10 +608,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - Root cause: the installed-app cache discards the verified canonical package ID/path and later reconstructs identity from the artifact basename even though package ID and artifact basename are not required to match.
 - Impact: a valid app can appear in Springboard but fail to launch; basename collisions can resolve the selected row to a different canonical package.
 - Repair: store the verified package ID/exact launch path with each installed manifest and have requestLaunch() use that stored identity. Keep legacy flat-file entries explicitly tagged. Add tests for ID != artifact and duplicate artifact basenames.
-
 ### 62. Package Manager exposes only 64 rows even though the firmware inventory supports 128 installed packages
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-26 1823 MDT - automation-bug-scan-20260926-1823 - intended bugs.md diff](https://docs.google.com/document/d/1rHExVwvDfo17_559sJVPZweL6bsbxa4MYGGoJgVwe_A/edit?usp=drivesdk); [2026-09-27 06-24 MDT - automation_bug-scan-20260927-0624 - Diff](https://docs.google.com/spreadsheets/d/1P6vUhvLdn-V4g8YjZEoDVYbpd6JtgH2N64eEO5RxnSY/edit?usp=drivesdk)
 
 - Affected code: Apps/package_manager.c, MAX_ITEMS and refresh(); src/native/NativePackageManagerBridge.cpp, kMaxInstalledPackages, refreshInstalled(), and installedCount().
@@ -635,10 +619,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - Root cause: installed inventory and inbox are merged into a single fixed 64-entry UI buffer whose capacity is lower than the backend installed-package contract.
 - Impact: packages beyond row 64 cannot be inspected, updated, or uninstalled in Package Manager; a full installed list can hide the entire inbox, and fixed root ordering can systematically hide later package kinds.
 - Repair: paginate or virtualize the complete installed inventory and keep inbox access independent. At minimum expose truncation explicitly. Add tests for 65 and 128 installed packages plus a full installed page with an inbox-only package.
-
 ### 63. Time Card accepts malformed manual times and silently stores a different time
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-26 1823 MDT - automation-bug-scan-20260926-1823 - intended bugs.md diff](https://docs.google.com/document/d/1rHExVwvDfo17_559sJVPZweL6bsbxa4MYGGoJgVwe_A/edit?usp=drivesdk)
 
 - Affected code: Apps/timecard.c parse_time(), with persistence through consume_keyboard() and set_punch().
@@ -649,10 +632,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - Repair: accept only documented complete formats, trim whitespace, validate minute digits, allow at most one meridiem suffix, and require complete input consumption. Add rejection tests for extra digits, trailing junk, and mixed AM/PM.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0427](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/dc6897e74b7c37d55d43e6b711951cb7cc8d25e3/bugs.md); [Drive: 2026-09-29 0427 - automation-bug-scan-20260929-0427 - Instructions](https://docs.google.com/spreadsheets/d/1t59zkOqhm-R5DDAkGzYzXZV7OYMycN2a7VESAjxX4LE/edit?usp=drivesdk); [Drive: 2026-09-29 0427 - automation-bug-scan-20260929-0427 - Diff](https://docs.google.com/spreadsheets/d/1UGD9EGzpw3_BHk-0Timu5HoPY_Hvdkn-5pbCv3jVUF8/edit?usp=drivesdk)
-
 ### 64. OPDS parser cleanup dereferences a null parser after malformed XML
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-27 10-22 MDT - automation-bug-scan-20260927-1022 - intended bugs.md diff](https://docs.google.com/spreadsheets/d/1RJR4t4F0OWFhUKHAPQJAJdPi7t7XIVy0MOur3t1_lmY/edit?usp=drivesdk)
 
 - **Affected code:** `lib/OpdsParser/OpdsParser.cpp`, `OpdsParser::write()` and `OpdsParser::flush()`; `lib/OpdsParser/OpdsStream.cpp`, `OpdsParserStream::~OpdsParserStream()`; caller `src/activities/browser/OpdsBookBrowserActivity.cpp::fetchFeed()`.
@@ -661,10 +643,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Likely root cause:** `flush()` assumes the Expat object is still alive even though the error path already destroys it.
 - **Impact:** A malformed or truncated OPDS response can terminate the browsing flow instead of producing a recoverable parse error.
 - **Repair direction:** Make `flush()` return immediately when `errorOccured` is already set or `parser == nullptr`; only finalize a live parser. Add a regression test that feeds malformed XML, destroys `OpdsParserStream`, and verifies a graceful error result.
-
 ### 65. EPUB `./` path segments are retained and break ZIP entry lookup
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-27 10-22 MDT - automation-bug-scan-20260927-1022 - intended bugs.md diff](https://docs.google.com/spreadsheets/d/1RJR4t4F0OWFhUKHAPQJAJdPi7t7XIVy0MOur3t1_lmY/edit?usp=drivesdk)
 
 - **Affected code:** `lib/FsHelpers/FsHelpers.cpp::normalisePath()`; consumers include `lib/Epub/Epub/parsers/ContentOpfParser.cpp` and `lib/Epub/Epub.cpp::readItemContentsToBytes()`, `readItemContentsToStream()`, and `getItemSize()`.
@@ -673,10 +654,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Likely root cause:** Current-directory segments are omitted from the normalizer's special cases.
 - **Impact:** EPUBs that use explicit `./` relative references can fail to load chapters, navigation documents, CSS, covers, or other manifest resources that are present in the archive.
 - **Repair direction:** Ignore `.` components during normalization while preserving the existing `..` handling. Add unit cases for `OPS/./chapter.xhtml`, `./chapter.xhtml`, repeated slashes, `a/b/../c`, and trailing `.`, plus an EPUB fixture using `./` manifest references.
-
 ### 66. EPUB guide `start` fallback condition is inverted
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-27 10-22 MDT - automation-bug-scan-20260927-1022 - intended bugs.md diff](https://docs.google.com/spreadsheets/d/1RJR4t4F0OWFhUKHAPQJAJdPi7t7XIVy0MOur3t1_lmY/edit?usp=drivesdk)
 
 - **Affected code:** `lib/Epub/Epub/parsers/ContentOpfParser.cpp`, guide `<reference>` handling in `startElement()`.
@@ -685,10 +665,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Likely root cause:** The emptiness test for the `start` fallback is inverted.
 - **Impact:** Some EPUB 2 books open at the wrong initial content location, and guide ordering can change which declared start target wins.
 - **Repair direction:** Keep `text` authoritative and accept `start` only while no target has been selected, e.g. `type == "text" || (type == "start" && self->textReferenceHref.empty())`. Add tests for start-only, text-only, start-before-text, and text-before-start guides.
-
 ### 67. OPDS relative links are resolved as children of the feed filename
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-27 06-24 MDT - automation_bug-scan-20260927-0624 - Diff](https://docs.google.com/spreadsheets/d/1P6vUhvLdn-V4g8YjZEoDVYbpd6JtgH2N64eEO5RxnSY/edit?usp=drivesdk)
 
 - **Affected:** src/util/UrlUtils.cpp: UrlUtils::buildUrl(); src/activities/browser/OpdsBookBrowserActivity.cpp: navigateToEntry(), downloadBook()
@@ -696,10 +675,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Failure:** buildUrl() appends '/' plus the relative path when the base lacks a trailing slash, producing https://example.test/opds/root.xml/books.xml instead of https://example.test/opds/books.xml.
 - **Root cause / impact:** The helper treats every non-slash-terminated base as a directory instead of resolving against the base document's containing directory. Valid OPDS navigation and downloads can fail.
 - **Repair:** Implement normal RFC-style relative-reference resolution, including containing-directory behavior, root-relative references, dot segments, query/fragment handling, and absolute URLs. Add focused URL-resolution tests.
-
 ### 68. Failed OTA startup can leave Wi-Fi power saving disabled
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-27 06-24 MDT - automation_bug-scan-20260927-0624 - Diff](https://docs.google.com/spreadsheets/d/1P6vUhvLdn-V4g8YjZEoDVYbpd6JtgH2N64eEO5RxnSY/edit?usp=drivesdk)
 
 - **Affected:** src/network/OtaUpdater.cpp: OtaUpdater::installUpdate()
@@ -707,10 +685,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Failure:** installUpdate() sets WIFI_PS_NONE before esp_https_ota_begin(). The begin-error return happens before the later WIFI_PS_MIN_MODEM call, so Wi-Fi remains in no-power-save mode after the failed attempt.
 - **Root cause / impact:** Power-policy cleanup is only after the perform loop, so the early begin failure bypasses it. A failed update can materially increase battery drain for the rest of the session.
 - **Repair:** Capture the previous Wi-Fi power-save mode and restore that exact mode on every exit path using a scope guard/RAII cleanup. Add a fault-injection regression for begin failure.
-
 ### 69. Clock synchronization can suppress retry after a hardware-clock write failure.
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-27 12-21 MDT - automation-bug-scan-20260927-1221 - intended bugs.md diff](https://docs.google.com/spreadsheets/d/17BY2jMeFoI2yFrSMEQc9FuTKEK3QlwSZoJfKFKzs_f0/edit?usp=drivesdk)
 
 - Affected: src/ClockSync.cpp, commitCurrentSystemTime(), shouldSync().
@@ -719,10 +696,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - Cause: retry-throttle state is published before the full clock commit succeeds.
 - Impact: persisted time can remain stale while automatic retry is suppressed for up to 12 hours.
 - Repair: publish recent-sync state only after write-back succeeds, or track acquisition and persistence independently.
-
 ### 70. Automatic network reconnect does not fall back after the preferred stored network fails.
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-27 12-21 MDT - automation-bug-scan-20260927-1221 - intended bugs.md diff](https://docs.google.com/spreadsheets/d/17BY2jMeFoI2yFrSMEQc9FuTKEK3QlwSZoJfKFKzs_f0/edit?usp=drivesdk)
 
 - Affected: src/runtime/network/SavedNetworkConnection.cpp, ensureSavedConnection(); src/native/NativeOtaBridge.cpp, ensureOtaNetworkReady().
@@ -731,10 +707,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - Cause: network selection is a one-time choice instead of an ordered fallback sequence.
 - Impact: automatic networking and firmware update can fail even though another stored network is reachable.
 - Repair: try an ordered de-duplicated list of stored networks within one total timeout and reuse that shared policy from the update bridge.
-
 ### 71. KOReader authentication disconnects a Wi-Fi connection that was already active
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-26 1921 MDT - automation-bug-scan-20260926-1921 - intended bugs.md diff](https://docs.google.com/document/d/11rg9j1Z7Jy8pNKrR3Tut8BWdTcZAvbgRYWr5MhcOzlo/edit?usp=drivesdk)
 
 - **Affected code:** `src/native/NativeKOReaderBridge.cpp::endAuthSession()`; authentication cleanup in `Apps/koreader_sync.c`.
@@ -743,10 +718,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** Cleanup does not track ownership of the pre-existing shared network connection.
 - **Impact:** Authentication disrupts connectivity established by another workflow.
 - **Repair direction:** Preserve pre-existing connectivity; release only a connection owned by the authentication session. Test both preconnected and authentication-owned sessions.
-
 ### 72. Firmware Update displays the normal no-update result as an update-check failure
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [2026-09-26 1921 MDT - automation-bug-scan-20260926-1921 - intended bugs.md diff](https://docs.google.com/document/d/11rg9j1Z7Jy8pNKrR3Tut8BWdTcZAvbgRYWr5MhcOzlo/edit?usp=drivesdk)
 
 - **Affected code:** `Apps/ota_update.c::app_main()` and `src/native/NativeOtaBridge.cpp::mapResult()`.
@@ -755,10 +729,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Root cause:** The explicit no-update outcome is not included in the successful/no-change state handling.
 - **Impact:** Users see an update-check error for a normal no-update outcome.
 - **Repair direction:** Route `T5_OTA_NO_UPDATE` to the Up to date state and keep genuine transport/metadata failures distinct. Test OK/newer, OK/current, NO_UPDATE, and error results.
-
 ### 73. Malformed indexed PNG bit depth can divide by zero during EPUB cover conversion
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/PngToBmpConverter/PngToBmpConverter.cpp`, `PngToBmpConverter::pngFileToBmpStreamInternal()` and `convertScanlineToGray()`; reachable through `lib/Epub/Epub.cpp::generateCoverBmp()` and `generateThumbBmp()`.
 - **Trigger / reproduction:** Put a PNG cover in an EPUB with a syntactically readable IHDR that declares indexed color (`colorType == 3`) with an illegal bit depth greater than 8, for example 16, and provide enough PLTE/IDAT data for the converter to decode the first scanline. Open the book or let Home generate its cover thumbnail.
@@ -768,10 +741,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Reject invalid IHDR combinations before calculating row layout: grayscale 1/2/4/8/16, truecolor 8/16, indexed 1/2/4/8, grayscale+alpha 8/16, and RGBA 8/16. For indexed images also require a valid PLTE before decoding. Add malformed indexed-PNG fixtures at bit depths 16 and other unsupported values and verify conversion returns `false` without entering pixel unpacking.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-1624](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/db62793d1f95a7a9fc1046f14dc517f4d2d0ebb0/bugs.md); [automation/bug-scan-20260929-1227](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6e24332a2bf14ad272bb4b8d7944e5e9a9cd1e1c/bugs.md); [automation/bug-scan-20260930-0247-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/65f8b5d9fb1195953a68ccec63882f5533f5a07f/bugs.md); [Drive: 2026-09-27 16-24 MDT - automation-bug-scan-20260927-1624 - Diff](https://docs.google.com/spreadsheets/d/1MJXMqUjsh2w_A9g6xCho9apGyQELbox0583ao0NCPVE/edit?usp=drivesdk); [Drive: 2026-09-27 16-24 MDT - automation-bug-scan-20260927-1624 - Instructions](https://docs.google.com/spreadsheets/d/1Z8JO7Ihn4rBSo7o8DoqTWoDVtXQRGaVYIsifuACn_Z0/edit?usp=drivesdk); [Drive: 2026-09-30 02-47 MDT - automation-bug-scan-20260930-0247-final - Diff](https://docs.google.com/spreadsheets/d/1oeF8rknOMfAoXC_W8xChkdJbdheYV1kaZNt4k9dyrsM/edit?usp=drivesdk); [Drive: 2026-09-29 1227 MDT - automation-bug-scan-20260929-1227 - Instructions](https://docs.google.com/document/d/1W1g8tZYLjNvZt4NIm61ESqN6j60PCManQaqLmS_7yj0/edit?usp=drivesdk); [Drive: 2026-09-29 1227 MDT - automation-bug-scan-20260929-1227 - Diff](https://docs.google.com/document/d/1fZ8vZ0C1ZjmKnHULiYYQSDc1Cg7AqNSix4w-kpxSVwY/edit?usp=drivesdk); [Drive: 2026-09-30 02-47 MDT - automation-bug-scan-20260930-0247-final - Instructions](https://docs.google.com/spreadsheets/d/1ASSpLAik3zeGb_FhhyutJXUKiqxVgAixSFrSd6DZq5E/edit?usp=drivesdk)
-
 ### 74. KOReader binary document hashing silently succeeds after partial SD reads
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/KOReaderSync/KOReaderDocumentId.cpp`, `KOReaderDocumentId::calculate()`; caller `src/activities/reader/KOReaderSyncActivity.cpp::performSync()`.
 - **Trigger / reproduction:** Select KOReader's binary document-match method, then inject an SD seek failure at one sampled offset or make a sampled `file.read()` return fewer bytes than the requested `bytesToRead` while hashing an otherwise readable EPUB.
@@ -781,10 +753,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Treat any required seek failure or short read as a hash failure and return an empty result so the UI reports `STR_HASH_FAILED`. Require `bytesRead == bytesToRead` for each in-range sample and add failure-injection tests for seek failure, zero-byte read, and positive short read proving no digest is emitted.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-1624](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/db62793d1f95a7a9fc1046f14dc517f4d2d0ebb0/bugs.md); [automation/bug-scan-20260928-1020](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a6c2e0dcd3345f9dd7946e444b7b8263e921d201/bugs.md); [automation/bug-scan-20260929-1126](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b99d1c80c4201e399366f9d7d7bf685655a79655/bugs.md); [automation/bug-scan-20260930-0247-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/65f8b5d9fb1195953a68ccec63882f5533f5a07f/bugs.md); [Drive: 2026-09-28 10-20 MDT - automation-bug-scan-20260928-1020 - Instructions](https://docs.google.com/spreadsheets/d/1mLlBAkKzZu2O97mGoH_rs1TACJzlhD7wx1Xs5oY6EIY/edit?usp=drivesdk); [Drive: 2026-09-27 16-24 MDT - automation-bug-scan-20260927-1624 - Diff](https://docs.google.com/spreadsheets/d/1MJXMqUjsh2w_A9g6xCho9apGyQELbox0583ao0NCPVE/edit?usp=drivesdk); [Drive: 2026-09-27 16-24 MDT - automation-bug-scan-20260927-1624 - Instructions](https://docs.google.com/spreadsheets/d/1Z8JO7Ihn4rBSo7o8DoqTWoDVtXQRGaVYIsifuACn_Z0/edit?usp=drivesdk); [Drive: 2026-09-30 02-47 MDT - automation-bug-scan-20260930-0247-final - Diff](https://docs.google.com/spreadsheets/d/1oeF8rknOMfAoXC_W8xChkdJbdheYV1kaZNt4k9dyrsM/edit?usp=drivesdk); [Drive: 2026-09-29 1126 MDT - automation-bug-scan-20260929-1126 - Instructions](https://docs.google.com/document/d/10MhueVepOY43NRSwVh6FkJecKy6xzQreFVj9GEyzah0/edit?usp=drivesdk); [Drive: 2026-09-29 1126 MDT - automation-bug-scan-20260929-1126 - Diff](https://docs.google.com/spreadsheets/d/1tileMLV2UkvBPsJcKLms1yet2ggp9mwPW2CYX4BcQgo/edit?usp=drivesdk); [Drive: 2026-09-28 10-20 MDT - automation-bug-scan-20260928-1020 - Diff](https://docs.google.com/spreadsheets/d/1JXPswBeGnJhUCpvWcsZ020laGpgrq7qhh5Woc7M95MY/edit?usp=drivesdk); [Drive: 2026-09-30 02-47 MDT - automation-bug-scan-20260930-0247-final - Instructions](https://docs.google.com/spreadsheets/d/1ASSpLAik3zeGb_FhhyutJXUKiqxVgAixSFrSd6DZq5E/edit?usp=drivesdk)
-
 ### 75. Wi-Fi credential changes remain live when persistence fails and the UI proceeds as if they were saved
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/WifiCredentialStore.cpp`, `WifiCredentialStore::addCredential()`, `removeCredential()`, `setLastConnectedSsid()`, `clearLastConnectedSsid()`, and `clearAll()`; `src/activities/network/WifiSelectionActivity.cpp`, save/forget/connected-state handling.
 - **Trigger / reproduction:** Connect to a Wi-Fi network and choose to save its password while forcing the settings SD write (`JsonSettingsIO::saveWifi()` / `Storage.writeFile()`) to fail. The same problem can be exercised while forgetting a saved network. Continue using the Wi-Fi UI, then either reboot or cause a later credential-store save to succeed.
@@ -794,10 +765,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make credential mutations transactional: construct a candidate store, persist it, and publish it to live state only after the write succeeds (or explicitly roll back on failure). Return persistence status from the last-connected/clear helpers and have the Wi-Fi UI keep the prompt/error state visible when saving or forgetting fails. Add failure-injection tests for add/update/remove/preferred-network writes followed by reboot and by a later successful save.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-1624](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/db62793d1f95a7a9fc1046f14dc517f4d2d0ebb0/bugs.md); [automation/bug-scan-20260928-0738](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ae95ab57b54b4745074a22227bad25c5341ba4b2/bugs.md); [automation/bug-scan-20260929-0725](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/7c3008d0876ab9bb0a728aca781b63fbfa9613f3/bugs.md); [Drive: 2026-09-27 16-24 MDT - automation-bug-scan-20260927-1624 - Diff](https://docs.google.com/spreadsheets/d/1MJXMqUjsh2w_A9g6xCho9apGyQELbox0583ao0NCPVE/edit?usp=drivesdk); [Drive: 2026-09-27 16-24 MDT - automation-bug-scan-20260927-1624 - Instructions](https://docs.google.com/spreadsheets/d/1Z8JO7Ihn4rBSo7o8DoqTWoDVtXQRGaVYIsifuACn_Z0/edit?usp=drivesdk); [Drive: 2026-09-29 0725 MDT - automation-bug-scan-20260929-0725 - instructions](https://docs.google.com/spreadsheets/d/1-4jDQiaUOBHv4-fTEqOZCIfyr8g9jYm1HMFC0fqAc_o/edit?usp=drivesdk); [Drive: 2026-09-28 07-38 MDT - automation-bug-scan-20260928-0738 - Instructions](https://docs.google.com/spreadsheets/d/1X2Pqr2AHuLtG36KzrvkQEZ5LRxKnGR9yO4riBi6bm1c/edit?usp=drivesdk); [Drive: 2026-09-28 07-38 MDT - automation-bug-scan-20260928-0738 - Diff](https://docs.google.com/spreadsheets/d/17ntuX4WGxnYrfhLIbPor3h_0wbt-EkjvMrvPg-9TLWA/edit?usp=drivesdk); [Drive: 2026-09-29 0725 MDT - automation-bug-scan-20260929-0725 - diff](https://docs.google.com/spreadsheets/d/1AJPUdv9PVLhPLWMG1wuU6fzACHMVp59JWvFPEDsjuQ0/edit?usp=drivesdk)
-
 ### 76. Font catalog refresh leaves a usable partial catalog after rejecting the manifest
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/native/NativeFontBridge.cpp::refreshCatalog()`, `familyCount()`, and `installFamily()`; `Apps/font_manager.c::app_main()`, `load_rows()`, and `activate_selected()`.
 - **Trigger / reproduction:** Serve a font manifest whose first family is valid and whose later family contains an invalid family name, invalid `.cpfont` filename, or missing/invalid `crc32`. Open **Manage Fonts** and let the catalog refresh fail.
@@ -807,10 +777,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Parse and validate the complete manifest into temporary `baseUrl`/family state, compute installed/update flags there, and swap it into the live catalog only after every entry succeeds. On failure either preserve the prior known-good catalog or expose zero actionable rows with an explicit failure state. Add a regression fixture with one valid family followed by a malformed family and verify no partial catalog is actionable.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-1723](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/39b791f3c4ed81d20c18406fdab65181fadca952/bugs.md); [automation/bug-scan-20260928-0518](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a90cbab88e37ceee8eb4b37eceba4d93553fb2de/bugs.md); [automation/bug-scan-20260928-1726](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/1e13b691f3ce2fc0e6c3a2b27decde7a2cbb8e7b/bugs.md); [automation/bug-scan-20260929-0526](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ac10238dae4c53d985ef85309e535a23d7a98ff2/bugs.md); [automation/bug-scan-20260929-1917](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/3d4a529bc8f25364bbb487051cb8ef7c6c24c631/bugs.md); [Drive: 2026-09-27 17-23 MDT - automation-bug-scan-20260927-1723 - bugs.md diff](https://docs.google.com/spreadsheets/d/15nNwLnZgjZGSTTA2G_rH0Tfgz5nKQTc9MGOA3k9X-Zc/edit?usp=drivesdk); [Drive: 2026-09-28 05-18 MDT - automation-bug-scan-20260928-0518 - Instructions](https://docs.google.com/spreadsheets/d/1rCpCc1hG4ZhCTsjPSfGWl7UOdP6JOEQ2NfbOUGOL_1I/edit?usp=drivesdk); [Drive: 2026-09-28 05-18 MDT - automation-bug-scan-20260928-0518 - Diff](https://docs.google.com/spreadsheets/d/1WspiF_LH3fLG2UlbuLAFMUSAU-RD62l1EDg2_ZatVFU/edit?usp=drivesdk); [Drive: 2026-09-28 1726 MDT - automation-bug-scan-20260928-1726 - bugs.md diff](https://docs.google.com/spreadsheets/d/1kgrLWNI3FpH5CbvPkMidNJ1Rb8612YIc4wvcHUZTXAc/edit?usp=drivesdk); [Drive: 2026-09-29 0526 MDT - automation-bug-scan-20260929-0526 - Instructions](https://docs.google.com/document/d/1NDxyuhCjLL4X1lD0EejpL9Li6MgzBx8jZGDDc9BCkdk/edit?usp=drivesdk); [Drive: 2026-09-29 1917 MDT - automation-bug-scan-20260929-1917 - Instructions](https://docs.google.com/spreadsheets/d/1O5wp-eV76bDf7b1XTmWuqiwBkyZE41wo7vMZVGk59W8/edit?usp=drivesdk); [Drive: 2026-09-28 1726 MDT - automation-bug-scan-20260928-1726 - integration instructions](https://docs.google.com/spreadsheets/d/1L-AdwyFrRDz-RP_vMgrXG6VZH6JZ3DgdTcFwOdiQGSo/edit?usp=drivesdk); [Drive: 2026-09-28 1726 MDT - automation-bug-scan-20260928-1726 - integration instructions](https://docs.google.com/spreadsheets/d/102h_psLvf3PZUscY-JDkaum55n835woMdUanF829eTg/edit?usp=drivesdk); [Drive: 2026-09-29 0526 MDT - automation-bug-scan-20260929-0526 - Diff](https://docs.google.com/document/d/1crJqKG5skmKN8kGFAIAvJW_JYqZ2rpuPX2hec556r4U/edit?usp=drivesdk); [Drive: 2026-09-29 1917 MDT - automation-bug-scan-20260929-1917 - Diff](https://docs.google.com/spreadsheets/d/1v-2RxOKDnAfNG_X7UDymHq7idhxuopp2JE7PqASHHhc/edit?usp=drivesdk); [Drive: 2026-09-27 17-23 MDT - automation-bug-scan-20260927-1723 - integration instructions](https://docs.google.com/spreadsheets/d/1HIkqZ_HTDuK3KYas2pVz8jy0AUkqpcz4OpiipM8Cm9E/edit?usp=drivesdk)
-
 ### 77. A failed font update deletes the previously working installed family
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/native/NativeFontBridge.cpp::installFamily()`; `src/network/HttpDownloader.cpp::downloadToFile()`; `src/FontInstaller.cpp::ensureFamilyDir()`, `buildFontPath()`, and `deleteFamily()`.
 - **Trigger / reproduction:** Install a valid font family, publish an update for that family, then make any update file fail after installation starts (network interruption, short SD write, checksum mismatch, or validation failure). A multi-file family makes this especially easy by allowing an earlier file to succeed before a later one fails.
@@ -820,10 +789,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Download every update file into a transaction-specific staging directory, verify size/CRC/full font structure for the complete family, then atomically publish/swap the family while retaining the old directory until commit succeeds. On failure delete only staged artifacts; never delete the prior installed family. Add fault-injection tests for failure on the first and a later file of an existing family.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-1723](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/39b791f3c4ed81d20c18406fdab65181fadca952/bugs.md); [automation/bug-scan-20260928-0518](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a90cbab88e37ceee8eb4b37eceba4d93553fb2de/bugs.md); [automation/bug-scan-20260928-1726](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/1e13b691f3ce2fc0e6c3a2b27decde7a2cbb8e7b/bugs.md); [automation/bug-scan-20260929-0526](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ac10238dae4c53d985ef85309e535a23d7a98ff2/bugs.md); [automation/bug-scan-20260929-1917](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/3d4a529bc8f25364bbb487051cb8ef7c6c24c631/bugs.md); [Drive: 2026-09-27 17-23 MDT - automation-bug-scan-20260927-1723 - bugs.md diff](https://docs.google.com/spreadsheets/d/15nNwLnZgjZGSTTA2G_rH0Tfgz5nKQTc9MGOA3k9X-Zc/edit?usp=drivesdk); [Drive: 2026-09-28 05-18 MDT - automation-bug-scan-20260928-0518 - Instructions](https://docs.google.com/spreadsheets/d/1rCpCc1hG4ZhCTsjPSfGWl7UOdP6JOEQ2NfbOUGOL_1I/edit?usp=drivesdk); [Drive: 2026-09-28 05-18 MDT - automation-bug-scan-20260928-0518 - Diff](https://docs.google.com/spreadsheets/d/1WspiF_LH3fLG2UlbuLAFMUSAU-RD62l1EDg2_ZatVFU/edit?usp=drivesdk); [Drive: 2026-09-28 1726 MDT - automation-bug-scan-20260928-1726 - bugs.md diff](https://docs.google.com/spreadsheets/d/1kgrLWNI3FpH5CbvPkMidNJ1Rb8612YIc4wvcHUZTXAc/edit?usp=drivesdk); [Drive: 2026-09-29 0526 MDT - automation-bug-scan-20260929-0526 - Instructions](https://docs.google.com/document/d/1NDxyuhCjLL4X1lD0EejpL9Li6MgzBx8jZGDDc9BCkdk/edit?usp=drivesdk); [Drive: 2026-09-29 1917 MDT - automation-bug-scan-20260929-1917 - Instructions](https://docs.google.com/spreadsheets/d/1O5wp-eV76bDf7b1XTmWuqiwBkyZE41wo7vMZVGk59W8/edit?usp=drivesdk); [Drive: 2026-09-28 1726 MDT - automation-bug-scan-20260928-1726 - integration instructions](https://docs.google.com/spreadsheets/d/1L-AdwyFrRDz-RP_vMgrXG6VZH6JZ3DgdTcFwOdiQGSo/edit?usp=drivesdk); [Drive: 2026-09-28 1726 MDT - automation-bug-scan-20260928-1726 - integration instructions](https://docs.google.com/spreadsheets/d/102h_psLvf3PZUscY-JDkaum55n835woMdUanF829eTg/edit?usp=drivesdk); [Drive: 2026-09-29 0526 MDT - automation-bug-scan-20260929-0526 - Diff](https://docs.google.com/document/d/1crJqKG5skmKN8kGFAIAvJW_JYqZ2rpuPX2hec556r4U/edit?usp=drivesdk); [Drive: 2026-09-29 1917 MDT - automation-bug-scan-20260929-1917 - Diff](https://docs.google.com/spreadsheets/d/1v-2RxOKDnAfNG_X7UDymHq7idhxuopp2JE7PqASHHhc/edit?usp=drivesdk); [Drive: 2026-09-27 17-23 MDT - automation-bug-scan-20260927-1723 - integration instructions](https://docs.google.com/spreadsheets/d/1HIkqZ_HTDuK3KYas2pVz8jy0AUkqpcz4OpiipM8Cm9E/edit?usp=drivesdk)
-
 ### 78. Valid long font family names are accepted but fixed path buffers silently truncate their install paths
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/FontInstaller.cpp::isValidFamilyName()`, `ensureFamilyDir()`, and `buildFontPath()`; `src/native/NativeFontBridge.cpp::refreshCatalog()` and `installFamily()`; `lib/EpdFont/SdCardFontRegistry.cpp::parseFilename()` and discovery.
 - **Trigger / reproduction:** Put a syntactically valid long family name in the font catalog. For example, a 55-character alphanumeric family with a conventional same-name `<family>_14.cpfont` file passes `isValidFamilyName()` and `isValidCpfontFilename()`, but the full `/.fonts/<family>/<filename>` path is longer than the 128-byte buffer passed to `FontInstaller::buildFontPath()`.
@@ -833,10 +801,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Define explicit maximum family/file/path lengths, reject manifest entries that cannot be represented losslessly, and make all path builders return failure when `snprintf()` would truncate. Prefer `std::string` path construction followed by a single validated storage-path length check. Add boundary tests immediately below/at/above the maximum and verify discovered filenames exactly match the manifest.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-1723](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/39b791f3c4ed81d20c18406fdab65181fadca952/bugs.md); [Drive: 2026-09-27 17-23 MDT - automation-bug-scan-20260927-1723 - bugs.md diff](https://docs.google.com/spreadsheets/d/15nNwLnZgjZGSTTA2G_rH0Tfgz5nKQTc9MGOA3k9X-Zc/edit?usp=drivesdk); [Drive: 2026-09-27 17-23 MDT - automation-bug-scan-20260927-1723 - integration instructions](https://docs.google.com/spreadsheets/d/1HIkqZ_HTDuK3KYas2pVz8jy0AUkqpcz4OpiipM8Cm9E/edit?usp=drivesdk)
-
 ### 79. File Browser path mutations bypass reader metadata and strand recents/bookmarks
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/file_browser.c`, `move_selected()` and the rename/delete paths in `consume_handoff_results()`; `src/native/NativePlatformBridge.cpp`, `renameFile()`; `src/native/NativeFileBrowserBridge.cpp`, `deleteDocument()`; metadata consumers in `src/RecentBooksStore.cpp` and `src/util/BookmarkUtil.cpp`.
 - **Trigger / reproduction:** Open an EPUB so it appears in Recents and add at least one bookmark. In File Browser, rename it or move it to another SD folder. Return Home and try the Recent Books entry, then open the renamed/moved EPUB and inspect its bookmarks. Deleting a recently read EPUB demonstrates the stale-recents half of the same problem.
 - **Observed / logically demonstrated failure:** File Browser implements rename and move as a bare `storage->rename_file(source, destination)`, whose firmware bridge is only `Storage.rename()`. It never calls the existing `RECENT_BOOKS.updatePath()` metadata migration used by `EpubReaderActivity::moveFinishedBookToReadFolder()`. Consequently a Recent Books record continues to reference the old pathname after a successful File Browser rename/move. Bookmark storage is also keyed from the EPUB pathname by `BookmarkUtil::getBookmarkPath()`, so the book at its new pathname looks for a different bookmark JSON file and its existing bookmarks appear lost while the old sidecar is orphaned. File Browser deletion clears the EPUB render cache but similarly does not remove the stale Recent Books record or bookmark sidecar.
@@ -845,10 +812,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Route document rename/move/delete through a metadata-aware operation that commits the filesystem change together with Recent Books path migration/removal, bookmark-sidecar migration/removal, cache migration/cleanup, and current-open state updates as applicable. Reuse the existing `RecentBooksStore::updatePath()` behavior and add rollback/error handling so a metadata failure cannot silently leave a half-migrated book. Add regression coverage for renamed, moved, and deleted EPUBs with both recents and bookmarks.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-1824](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/f18e5db9f21ba83e5d84c843b21ae9d6a519ad09/bugs.md); [Drive: 2026-09-27 18-24 MDT - automation-bug-scan-20260927-1824 - bugs.md diff](https://docs.google.com/spreadsheets/d/1oyjQXAi7QcRSrYPxqzxnC2zp9RtZnCBaDtMJRJNrEhU/edit?usp=drivesdk); [Drive: 2026-09-27 18-24 MDT - automation-bug-scan-20260927-1824 - integration instructions](https://docs.google.com/spreadsheets/d/1-mCapM3VmXXnX3n1ZU5Pj3vE0qq48e9grECoYtUTjm0/edit?usp=drivesdk)
-
 ### 80. Legacy plaintext credential conversion reports success when the obfuscated rewrite fails
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/WifiCredentialStore.cpp::loadFromFile()`, `src/OpdsServerStore.cpp::loadFromFile()`, `lib/KOReaderSync/KOReaderCredentialStore.cpp::loadFromFile()`, and the `resave` contract in `src/JsonSettingsIO.cpp`.
 - **Trigger / reproduction:** Start with a valid legacy JSON credential file containing the supported plaintext password field rather than the current obfuscated representation. Make the SD destination unwritable/full or inject a save failure while the store loads.
 - **Observed / logically demonstrated failure:** Each JSON loader can return success with `resave=true` after accepting a legacy plaintext password. All three stores then call `saveToFile()` to rewrite the file using the current obfuscated field, but they ignore that return value and return the successful load result. Wi-Fi and OPDS log that they are resaving; KOReader likewise treats the load as complete. If the rewrite fails, the application proceeds normally while the plaintext credential remains on disk and the same migration must be attempted again next boot.
@@ -857,10 +823,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Treat a requested credential-format rewrite as a checked migration: only report migration success after the replacement is durably written, log failure distinctly, and either propagate a degraded/error result or retain an explicit retry-required state without discarding the loaded credentials. Use the atomic settings writer for the replacement and add injected-save-failure tests for Wi-Fi, OPDS, and KOReader legacy plaintext JSON.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-1824](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/f18e5db9f21ba83e5d84c843b21ae9d6a519ad09/bugs.md); [Drive: 2026-09-27 18-24 MDT - automation-bug-scan-20260927-1824 - bugs.md diff](https://docs.google.com/spreadsheets/d/1oyjQXAi7QcRSrYPxqzxnC2zp9RtZnCBaDtMJRJNrEhU/edit?usp=drivesdk); [Drive: 2026-09-27 18-24 MDT - automation-bug-scan-20260927-1824 - integration instructions](https://docs.google.com/spreadsheets/d/1-mCapM3VmXXnX3n1ZU5Pj3vE0qq48e9grECoYtUTjm0/edit?usp=drivesdk)
-
 ### 81. Bookmark add/delete UI commits RAM state and success feedback even when persistence fails
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/activities/reader/EpubReaderActivity.cpp::addBookmark()` and `src/activities/reader/EpubReaderBookmarksActivity.cpp::deleteSelectedBookmark()`; persistence through `JsonSettingsIO::saveBookmarks()`.
 - **Trigger / reproduction:** Open an EPUB, then induce an SD open/write failure while toggling a bookmark in the reader or deleting one from the Bookmarks activity.
 - **Observed / logically demonstrated failure:** `addBookmark()` first mutates `cachedBookmarks` (insert or erase), sets the added/removed state used by the success popup, and only afterward calls `saveBookmarks()`; on failure it merely logs an error. `deleteSelectedBookmark()` similarly erases the bookmark from its live vector before saving, logs a failure without restoring it, then continues updating the selector and can even close the list as though the deletion succeeded. The user therefore sees the bookmark added/removed for the remainder of the session despite persistence having failed; after reload/reboot the prior on-disk state reappears (or, combined with a lower-level write failure, may be missing entirely).
@@ -869,10 +834,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Apply edits to a candidate bookmark vector, persist it successfully, and only then publish the candidate to live state and show the success popup/list transition. On failure keep the prior vector and show an explicit error. Add fault-injection tests for both add/toggle and delete paths proving live state and UI remain unchanged when persistence fails.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-1824](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/f18e5db9f21ba83e5d84c843b21ae9d6a519ad09/bugs.md); [Drive: 2026-09-27 18-24 MDT - automation-bug-scan-20260927-1824 - bugs.md diff](https://docs.google.com/spreadsheets/d/1oyjQXAi7QcRSrYPxqzxnC2zp9RtZnCBaDtMJRJNrEhU/edit?usp=drivesdk); [Drive: 2026-09-27 18-24 MDT - automation-bug-scan-20260927-1824 - integration instructions](https://docs.google.com/spreadsheets/d/1-mCapM3VmXXnX3n1ZU5Pj3vE0qq48e9grECoYtUTjm0/edit?usp=drivesdk)
-
 ### 82. GT911 probe discards an I2C claim when cleanup fails
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Drivers/gt911_touch/driver.c`, `probe()`, `start()`, and `quiesce()`; the `i2c.bus@1` `release_device()` contract in `sdk/driver/RiscI2cBusV1.h`.
 - **Trigger / reproduction:** Inject a GT911 probe failure after `claim_device()` succeeds—for example make the product/configuration read fail—then make `release_device()` return `false`. The same path is reachable when width/height validation or the status-register clear fails and claim release also fails.
 - **Observed / logically demonstrated failure:** Both probe-failure branches call `release_device()` and explicitly discard its return value, then unconditionally set `bus_claim = 0`. The public I2C contract says release returns true only after all operations for the claim have drained, so a false return means the driver has not established that the claim is gone. Nevertheless the token is forgotten. `probe()` may then try the fallback GT911 address, and if startup ultimately fails `start()` clears the bus pointers with no claim token left for `quiesce()` to retry. The still-live claim is therefore orphaned.
@@ -881,10 +845,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Never zero `bus_claim` unless `release_device()` succeeds. If probe cleanup fails, stop probing other addresses, preserve the bus API and claim token, enter a cleanup/fault state, and let `quiesce()` retry the release before unload. Add fault-injection tests for read/config-clear failure plus release failure and prove the claim remains tracked until a later successful release.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-1920](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/e0e57d1eb8c828d53468bff5916446d6ed7bd5d9/bugs.md); [Drive: 2026-09-27 19-20 MDT - automation-bug-scan-20260927-1920 - bugs.md diff](https://docs.google.com/spreadsheets/d/1Wj8E6gslpqIHpqTb-6cYinGRnzxsXlF1zdJEZOfu7JQ/edit?usp=drivesdk); [Drive: Copy of 2026-09-27 19-20 MDT - automation-bug-scan-20260927-1920 - integration instructions](https://docs.google.com/spreadsheets/d/1FW-pRVcHnhBnhj8ZlHiiAQauz9GsfAsv8Uv5jPIZEsY/edit?usp=drivesdk)
-
 ### 83. Ask Manifold's JSON string decoder can read past the response terminator on a short Unicode escape
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/llm_ask.c`, `decode_json_string()` and `parse_hex4()`, on responses returned by `t5_network_api_v1::http_request()`.
 - **Trigger / reproduction:** Return a non-truncated HTTP 2xx response whose selected `"content"` JSON string ends with an incomplete Unicode escape such as `"\\u"`, `"\\u1"`, or `"\\u12"` immediately before the response terminator. A malformed/truncated upstream JSON body that still fits the response buffer is sufficient.
 - **Observed / logically demonstrated failure:** The network API guarantees a NUL-terminated response, but after seeing `\\u` the decoder calls `parse_hex4(quoted + i, ...)` without first proving four bytes remain before that NUL. `parse_hex4()` blindly indexes `s[0]` through `s[3]`. For an incomplete escape near the end of `response_json`, those reads continue past the logical response and can cross the 8192-byte array boundary. Because this parser handles network-provided bytes, malformed JSON can therefore drive an out-of-bounds read instead of simply producing the existing “Bad JSON from LLM7” error.
@@ -893,10 +856,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Before every `\\uXXXX` decode, verify four non-NUL input bytes are available; do the same before looking ahead for a surrogate pair. Prefer passing an explicit response/string bound into the decoder rather than relying on sentinel reads. Reject incomplete escapes and lone/invalid surrogate sequences cleanly. Add parser tests for `\\u`, `\\u1`, `\\u12`, `\\u123`, escapes at the final buffer bytes, and valid surrogate pairs under ASan/UBSan.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-1920](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/e0e57d1eb8c828d53468bff5916446d6ed7bd5d9/bugs.md); [automation/bug-scan-20260930-0123](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/be3316ade6780966fd46791ae58d962ccbe0f03f/bugs.md); [Drive: 2026-09-27 19-20 MDT - automation-bug-scan-20260927-1920 - bugs.md diff](https://docs.google.com/spreadsheets/d/1Wj8E6gslpqIHpqTb-6cYinGRnzxsXlF1zdJEZOfu7JQ/edit?usp=drivesdk); [Drive: 2026-09-30 01-23 MDT - automation-bug-scan-20260930-0123 - Diff](https://docs.google.com/spreadsheets/d/1_WjxM50XfWlSay0EYe7KKqo0UsDms-ZGMu0yJ7YdWmQ/edit?usp=drivesdk); [Drive: Copy of 2026-09-27 19-20 MDT - automation-bug-scan-20260927-1920 - integration instructions](https://docs.google.com/spreadsheets/d/1FW-pRVcHnhBnhj8ZlHiiAQauz9GsfAsv8Uv5jPIZEsY/edit?usp=drivesdk); [Drive: 2026-09-30 01-23 MDT - automation-bug-scan-20260930-0123 - Instructions](https://docs.google.com/spreadsheets/d/1T-xVFt2LWX3ycdaLCcMfdzuq3AVXOovKHKSKdlD0LGg/edit?usp=drivesdk)
-
 ### 84. Risc Strike can miss XInput button presses because it drains reports only into a frame-rate snapshot
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/risc_strike.c`, `fps_poll_controller()` and the main frame loop; `sdk/driver/RiscUsbHidV1.h`; `Drivers/usb_xinput_gamepad/driver.c::poll()` / `snapshot()`.
 - **Trigger / reproduction:** Use the XInput provider and generate a press-and-release of RB, Start, or Select while both USB reports are queued before Risc Strike reaches its next controller sample. This is easy to provoke when a frame/render stalls long enough for both reports to arrive.
 - **Observed / logically demonstrated failure:** The game polls generic input continuously, but it calls `fps_poll_controller()` only after the 33 ms frame deadline. That helper calls `g_xinput_api->poll(..., 8)`, which can drain several queued USB reports, and then reads only `snapshot()`. The gamepad ABI explicitly states that snapshot exposes current state and retains no historical button sequence; the XInput driver likewise documents “current state replaces earlier input.” If a down report and its later up report are both consumed by that one poll, the final snapshot is released. `controller_down = current & ~previous` is therefore zero and the discrete action is lost completely.
@@ -905,10 +867,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Do not drain multiple XInput reports and then infer discrete edges solely from the final snapshot. Poll the provider on every short app-loop iteration and carry observed rising edges forward to the next simulation frame, or add/use an input API that preserves button transitions for action consumers while keeping movement state snapshot-based. Add a regression test where one provider poll consumes RB-down then RB-up before a render and verify exactly one fire action is delivered.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-1920](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/e0e57d1eb8c828d53468bff5916446d6ed7bd5d9/bugs.md); [Drive: 2026-09-27 19-20 MDT - automation-bug-scan-20260927-1920 - bugs.md diff](https://docs.google.com/spreadsheets/d/1Wj8E6gslpqIHpqTb-6cYinGRnzxsXlF1zdJEZOfu7JQ/edit?usp=drivesdk); [Drive: Copy of 2026-09-27 19-20 MDT - automation-bug-scan-20260927-1920 - integration instructions](https://docs.google.com/spreadsheets/d/1FW-pRVcHnhBnhj8ZlHiiAQauz9GsfAsv8Uv5jPIZEsY/edit?usp=drivesdk)
-
 ### 85. Failed display-takeover rollback can strand firmware touch capture
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/NativeHardwareTakeover.cpp::native_hardware_takeover_begin()`; `nativeTouchSuspend()` / `nativeTouchResume()` ownership state.
 - **Trigger / reproduction:** Start a display-takeover ELF when touch is available; let `nativeTouchSuspend()` succeed, force `display.suspendForExternalOwner()` to fail, and also make the rollback `nativeTouchResume()` fail.
 - **Observed / logically demonstrated failure:** On display-suspend failure, the code calls `(void)nativeTouchResume()` but discards the result, then unconditionally sets `s_touch_borrowed = false` and returns `ESP_ERR_INVALID_STATE`. The takeover never starts, so `native_hardware_takeover_end()` will not perform the normal cleanup. If resume failed, firmware touch capture remains suspended while the only state recording that it needs restoration has been erased.
@@ -917,10 +878,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Keep `s_touch_borrowed` set until `nativeTouchResume()` succeeds; retain a recoverable cleanup state and retry restoration before another launch or normal UI use. Add fault-injection coverage for successful touch suspend + display suspend failure + first resume failure, proving a later retry restores touch.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-2023](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/f7526a47d7d7457a76c24a54deae74b0fa8a844d/bugs.md); [Drive: 2026-09-27 20-23 MDT - automation-bug-scan-20260927-2023 - bugs.md diff](https://docs.google.com/spreadsheets/d/1pwBfN36zDI606vgnTlULMgciqheyddh1IPJL9qv8Urw/edit?usp=drivesdk); [Drive: 2026-09-27 20-23 MDT - automation-bug-scan-20260927-2023 - integration instructions](https://docs.google.com/spreadsheets/d/1m3OYCemYDfIjDsdrlFjIgLfI6tXGGdGfzEmXfxIqTdk/edit?usp=drivesdk)
-
 ### 86. Battery management never retries a transient first initialization failure
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/Board_T5S3/BoardT5S3.cpp::beginBatteryManagement()`, `configureBq25896()`, `configureBq27220()`, and `shutdownBatteryPower()`; surfaced through `src/native/NativeBatteryBridge.cpp::readState()` and `Apps/battery.c`.
 - **Trigger / reproduction:** Make the first charger or fuel-gauge initialization fail because of a transient I2C/NACK/startup condition, then allow the device/bus to recover and refresh Battery Status or later request battery power shutdown.
 - **Observed / logically demonstrated failure:** `beginBatteryManagement()` sets `batteryInitAttempted = true` before either component initializes. Every later call returns only the cached `bq25896Ready || bq27220Ready` and never reruns either failed initializer. If both fail once, Battery Status stays unavailable despite recovery; if only one fails, that component's telemetry/functionality is missing permanently. If BQ25896 was the failed component, `shutdownBatteryPower()` cannot recover in that boot.
@@ -929,10 +889,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Track readiness per component and retry only failed initializers after their existing failure cleanup, with bounded/backoff retry if desired. Do not suppress a later attempt solely because an earlier attempt ran. Add tests for first-failure/second-success and charger-success/gauge-failure (and inverse) recovery.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-2023](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/f7526a47d7d7457a76c24a54deae74b0fa8a844d/bugs.md); [automation/bug-scan-20260929-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/82bef6c8270ad0ed072369ee19b07022dc82e181/bugs.md); [Drive: 2026-09-27 20-23 MDT - automation-bug-scan-20260927-2023 - bugs.md diff](https://docs.google.com/spreadsheets/d/1pwBfN36zDI606vgnTlULMgciqheyddh1IPJL9qv8Urw/edit?usp=drivesdk); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Instructions](https://docs.google.com/spreadsheets/d/1uI1Z04FNBkqdLQxhgZuCSZXUFQbOTUOFJ7dzYn39FoE/edit?usp=drivesdk); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Instructions](https://docs.google.com/document/d/1xv-O64ISDIO8zYQ7r6A9vc7x-RMMWrApoVqtPFzcB1U/edit?usp=drivesdk); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Diff](https://docs.google.com/spreadsheets/d/1v0enkcChAVBR3-RFLlrRcIS8MhmEQyj1AV0LlBx-aj4/edit?usp=drivesdk); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Diff](https://docs.google.com/spreadsheets/d/1Dq6s7qm3fIlKrMX_AVJaMlTG3V-Vfhf-Onk_qRqtUog/edit?usp=drivesdk); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Diff](https://docs.google.com/document/d/1Igvgxgg6gX8_I8-QVjW_Ve2n06-Dp58Adt6XIthpikI/edit?usp=drivesdk); [Drive: 2026-09-27 20-23 MDT - automation-bug-scan-20260927-2023 - integration instructions](https://docs.google.com/spreadsheets/d/1m3OYCemYDfIjDsdrlFjIgLfI6tXGGdGfzEmXfxIqTdk/edit?usp=drivesdk)
-
 ### 87. Fast-video teardown can restore the firmware display while the scan task is still alive
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/NativeVideoBridge.cpp::epd_video_shutdown()`, `video_stop()`, `wait_for_dma()`, and `scan_task()`; `src/native/NativeHardwareTakeover.cpp::native_hardware_takeover_end()`.
 - **Trigger / reproduction:** Start a display-takeover app, then make the raw EPD scan task fail to terminate after `g_running = false`—for example strand it in an outstanding DMA wait/callback path—so `g_scan_task` is still non-null after the 200 × 10 ms shutdown wait.
 - **Observed / logically demonstrated failure:** `epd_video_shutdown()` only logs "scan task did not stop before video teardown" and returns without releasing the panel IO/bus, buffers, or scan task. `video_stop()` has no status and nevertheless sets `s_video_started = false`. The takeover-end path then clears `s_display_borrowed` and calls `display.resumeFromExternalOwner()`. Firmware display ownership can therefore be restored while the raw scan task and its hardware resources are still active.
@@ -941,10 +900,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make shutdown return explicit success/failure and keep `s_video_started` plus hardware-takeover ownership asserted until task/DMA teardown is confirmed. Add a bounded forced-cancellation/reset path for wedged scan/DMA state before firmware display restoration. Fault-inject a non-terminating scan task/callback and verify firmware display resume is blocked until cleanup succeeds.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-2023](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/f7526a47d7d7457a76c24a54deae74b0fa8a844d/bugs.md); [Drive: 2026-09-27 20-23 MDT - automation-bug-scan-20260927-2023 - bugs.md diff](https://docs.google.com/spreadsheets/d/1pwBfN36zDI606vgnTlULMgciqheyddh1IPJL9qv8Urw/edit?usp=drivesdk); [Drive: 2026-09-27 20-23 MDT - automation-bug-scan-20260927-2023 - integration instructions](https://docs.google.com/spreadsheets/d/1m3OYCemYDfIjDsdrlFjIgLfI6tXGGdGfzEmXfxIqTdk/edit?usp=drivesdk)
-
 ### 88. Shared GPS/LoRa rail can remain powered after a failed final release
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/runtime/resources/RadioPower.cpp`, `RadioPower::acquire()`, `RadioPower::release()`, and `setRail()`; consumers include `src/runtime/drivers/GpsKernelIo.cpp` and `src/native/NativeLoRaBridge.cpp`.
 - **Trigger / reproduction:** Let GPS or LoRa be the final owner of the shared `PCA9535_IO00_LORA_GPS_EN` rail, then inject an I2C/PCA9535 failure while `RadioPower::release()` is disabling that rail. A related partial-enable case is a successful output-latch write followed by failure to configure the expander pin direction.
@@ -954,10 +912,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make the rail transition transactional and retryable. Do not clear the final owner until the disable is confirmed; retain a pending-cleanup state when an I2C operation fails, expose/propagate cleanup failure, and roll back partial enables before reporting failure. Add fault-injection tests for each PCA9535 operation in both first-acquire and final-release paths.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-2123](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a737a5b12df4cbf60e166f382a9c4a7a5385b398/bugs.md); [automation/bug-scan-20260928-1321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b5bb23216aff4f9d1565fe127c00e99f3c8e268b/bugs.md); [Drive: 2026-09-28 1321 MDT - automation-bug-scan-20260928-1321 - Instructions](https://docs.google.com/spreadsheets/d/1SD5vp5rxtrL_Mp80xBG_6bKaAVb5R0WaeVM6gS3-Tzs/edit?usp=drivesdk); [Drive: 2026-09-28 1321 MDT - automation-bug-scan-20260928-1321 - Diff](https://docs.google.com/spreadsheets/d/1C7xQuBintsL2WCAzJohJICs00HGoUDs5ir8iAm0eTCg/edit?usp=drivesdk); [Drive: 2026-09-27 21-23 MDT - automation-bug-scan-20260927-2123 - bugs.md diff](https://docs.google.com/spreadsheets/d/1Mfd_met-jgMqbD_jeBmk9rbcukEbm5fFNqsS9Q_WJwM/edit?usp=drivesdk); [Drive: 2026-09-27 21-23 MDT - automation-bug-scan-20260927-2123 - integration instructions](https://docs.google.com/spreadsheets/d/1IcyJZWNPoXlj00LOuW6tjjHpYpe4AuC9Jps4Mvjc32g/edit?usp=drivesdk)
-
 ### 89. Recursive directory deletion can construct the wrong child path when an SdFat name exceeds its 128-byte buffer
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/hal/HalStorage.cpp`, `removeDirUnlocked()`; the same unchecked fixed-name-buffer pattern also appears in `HalStorage::listFiles()`.
 - **Trigger / reproduction:** Create a directory containing a valid FAT long filename or UTF-8 filename whose encoded name does not fit in `char name[128]`, then delete the parent through any path that reaches `Storage.removeDir()`.
@@ -967,10 +924,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Check the `getName()` return value before constructing any path and use storage sized for the filesystem's supported UTF-8 long filename length (or operate on the opened child handle where possible). Fail closed without issuing a remove when a complete name cannot be obtained. Add recursive-delete tests with long ASCII and multibyte UTF-8 names, plus a sibling whose name would expose stale-buffer reuse.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-2123](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a737a5b12df4cbf60e166f382a9c4a7a5385b398/bugs.md); [automation/bug-scan-20260929-1917](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/3d4a529bc8f25364bbb487051cb8ef7c6c24c631/bugs.md); [Drive: 2026-09-27 21-23 MDT - automation-bug-scan-20260927-2123 - bugs.md diff](https://docs.google.com/spreadsheets/d/1Mfd_met-jgMqbD_jeBmk9rbcukEbm5fFNqsS9Q_WJwM/edit?usp=drivesdk); [Drive: 2026-09-29 1917 MDT - automation-bug-scan-20260929-1917 - Instructions](https://docs.google.com/spreadsheets/d/1O5wp-eV76bDf7b1XTmWuqiwBkyZE41wo7vMZVGk59W8/edit?usp=drivesdk); [Drive: 2026-09-29 1917 MDT - automation-bug-scan-20260929-1917 - Diff](https://docs.google.com/spreadsheets/d/1v-2RxOKDnAfNG_X7UDymHq7idhxuopp2JE7PqASHHhc/edit?usp=drivesdk); [Drive: 2026-09-27 21-23 MDT - automation-bug-scan-20260927-2123 - integration instructions](https://docs.google.com/spreadsheets/d/1IcyJZWNPoXlj00LOuW6tjjHpYpe4AuC9Jps4Mvjc32g/edit?usp=drivesdk)
-
 ### 90. GPS module unload failure is untracked while its ELF handle and package pin are retained
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/runtime/drivers/GpsDriverRuntime.cpp`, `GpsDriverRuntime::stop()`; `src/runtime/drivers/GpsDriverModule.cpp`, `GpsDriverModule::stop()` and `start()`; package lifetime through `RuntimePackages::systemPackageUseGate()`.
 - **Trigger / reproduction:** Start the `gps-nmea` provider, then inject a `dlclose()` failure (or package-use-gate unpin failure) when `GpsDriverRuntime::stop()` runs at app/provider teardown.
@@ -980,22 +936,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Keep a retryable firmware-owned cleanup/quarantine record until `GpsDriverModule` reaches `Absent`; do not clear/untrack the last cleanup responsibility merely because physical UART/lease release succeeded. Retry close/unpin from a safe owner context, and add fault-injection tests for `dlclose` and package-unpin failures that prove later cleanup completes without requiring a new GPS session.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-2123](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a737a5b12df4cbf60e166f382a9c4a7a5385b398/bugs.md); [Drive: 2026-09-27 21-23 MDT - automation-bug-scan-20260927-2123 - bugs.md diff](https://docs.google.com/spreadsheets/d/1Mfd_met-jgMqbD_jeBmk9rbcukEbm5fFNqsS9Q_WJwM/edit?usp=drivesdk); [Drive: 2026-09-27 21-23 MDT - automation-bug-scan-20260927-2123 - integration instructions](https://docs.google.com/spreadsheets/d/1IcyJZWNPoXlj00LOuW6tjjHpYpe4AuC9Jps4Mvjc32g/edit?usp=drivesdk)
-
-### 91. GT911 drops a ready touch report after a transient contact-data read failure
-
-- **Status:** Open.
-- **Affected code:** `Drivers/gt911_touch/driver.c`, especially `service_one()`, `read_reg()`, `write_reg8()`, and the handoff into `apply_state()`.
-- **Trigger / reproduction:** Have the GT911 report `GT911_READY_MASK` with one or more contacts, then fault the I2C transaction that reads `GT911_FIRST_POINT_REG` while allowing the following write of zero to `GT911_STATUS_REG` to succeed. This can be reproduced with an injected one-shot failure in `bus->transact()` for the contact-data read.
-- **Observed / logically demonstrated failure:** When the raw contact read fails, `service_one()` executes `(void)write_reg8(GT911_STATUS_REG, 0u)` and returns `false`. Clearing the status acknowledges and discards the controller's ready report even though its contents were never acquired or passed to `apply_state()`. A missed DOWN can disappear until another report happens; more seriously, if the previous published snapshot contained a contact and the discarded report was its changed/released state, subscribers and `snapshot()` can retain stale contact state with no event that repairs it.
-- **Likely root cause:** The error path acknowledges a report before the driver has a coherent replacement state. The normal path intentionally acknowledges before publication to avoid duplicate delivery, but the failed-read path has nothing valid to publish and therefore destroys the only retryable copy of the report.
-- **Impact:** A transient I2C error can become a lost tap, missed motion, or apparently stuck touch rather than a recoverable failed poll. UI consumers can remain out of sync with the physical panel until the GT911 produces another valid report.
-- **Repair direction:** Do not clear `GT911_STATUS_REG` when the contact-data read fails; leave the ready report pending so a later poll can retry it. For malformed reports that must be discarded, explicitly invalidate/reconcile published contact state and subscriber queues rather than silently retaining the old snapshot. Add a fault-injection test that fails the first contact-data read, succeeds the retry, and proves exactly one coherent transition is published.
-
-- **Consolidation sources:** [automation/bug-scan-20260927-2219](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/9660dd8d0666b426983297016ead4505192f218d/bugs.md); [Drive: 2026-09-27 22-19 MDT - automation-bug-scan-20260927-2219 - bugs.md diff](https://docs.google.com/document/d/1Wc7kIceAGc40Fe2AsE_kUn2qH-_Qeo0f2PmKF0JnlCw/edit?usp=drivesdk); [Drive: 2026-09-27 22-19 MDT - automation-bug-scan-20260927-2219 - integration instructions](https://docs.google.com/document/d/1V2MnDTGfJQQ0NgxgrN3NEn3zX-ta4QCM7qWP9tzy9BU/edit?usp=drivesdk)
-
 ### 92. USB mass-storage file creation leaves orphaned FAT long-name entries after a directory write failure
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Drivers/usb_mass_storage/driver.c`, `create_file_entry()`, `write_directory_entry()`, `find_free_directory_slots()`, and the `volume_file_open_write()` creation path.
 - **Trigger / reproduction:** Copy a file to FAT USB storage using a name that requires multiple VFAT LFN entries, then inject a sector-write failure after one or more LFN directory entries have been written but before the remaining LFN entries or final short 8.3 entry are committed.
 - **Observed / logically demonstrated failure:** `create_file_entry()` writes each LFN entry directly to the live directory and immediately returns `false` on the first later write failure. It never marks the entries already written by this attempt as deleted. No file handle is returned, so `volume_file_close(..., commit=false)` cannot clean them up. Those persistent orphan LFN records are treated as occupied slots by future scans; repeated failed creates can consume directory capacity, and a stray LFN sequence can also be associated with a later short entry if its ordering/checksum happens to match.
@@ -1004,10 +947,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Track the starting slot and number of directory entries successfully published. If any later LFN or short-entry write fails, best-effort mark every entry written by that attempt deleted before returning failure; preserve/restore an end-of-directory marker when the allocation consumed one. Add fault-injection tests for failure at every entry boundary and verify that a subsequent directory scan contains no residue from the failed create.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-2219](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/9660dd8d0666b426983297016ead4505192f218d/bugs.md); [Drive: 2026-09-27 22-19 MDT - automation-bug-scan-20260927-2219 - bugs.md diff](https://docs.google.com/document/d/1Wc7kIceAGc40Fe2AsE_kUn2qH-_Qeo0f2PmKF0JnlCw/edit?usp=drivesdk); [Drive: 2026-09-27 22-19 MDT - automation-bug-scan-20260927-2219 - integration instructions](https://docs.google.com/document/d/1V2MnDTGfJQQ0NgxgrN3NEn3zX-ta4QCM7qWP9tzy9BU/edit?usp=drivesdk)
-
 ### 93. USB mass-storage accepts a BPB whose FAT is too small for its declared cluster count and can write into data sectors
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Drivers/usb_mass_storage/driver.c`, primarily `parse_bpb()`, with destructive consequences in `fat_get()`, `fat_set()`, `allocate_cluster()`, and `free_chain()`.
 - **Trigger / reproduction:** Present a FAT16 or FAT32 volume whose boot sector has otherwise valid geometry/signatures but declares a `fat_size` too small to contain one FAT entry for every cluster implied by total sectors and sectors-per-cluster. The current parser checks that reserved/FAT/root regions leave data sectors, but never checks FAT entry capacity against `cluster_count`.
 - **Observed / logically demonstrated failure:** The malformed volume can mount successfully. Later, `fat_get()` and `fat_set()` compute an offset from the cluster number and add it to `fat_start_lba` without verifying that the resulting sector remains inside `fat_sectors`. Accessing a sufficiently high cluster therefore reads beyond the FAT, and allocation/free operations can write FAT values into the following root-directory or data area.
@@ -1016,10 +958,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** After determining FAT16 versus FAT32 and before publishing mounted geometry, verify that `fat_size * 512` can represent at least `cluster_count + 2` entries (2 bytes each for FAT16, 4 bytes each for FAT32) and that every FAT copy remains within the validated reserved FAT region. Reject the mount if the invariant fails. Add malformed-BPB tests where current layout checks pass but FAT capacity is one or more entries short.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-2219](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/9660dd8d0666b426983297016ead4505192f218d/bugs.md); [Drive: 2026-09-27 22-19 MDT - automation-bug-scan-20260927-2219 - bugs.md diff](https://docs.google.com/document/d/1Wc7kIceAGc40Fe2AsE_kUn2qH-_Qeo0f2PmKF0JnlCw/edit?usp=drivesdk); [Drive: 2026-09-27 22-19 MDT - automation-bug-scan-20260927-2219 - integration instructions](https://docs.google.com/document/d/1V2MnDTGfJQQ0NgxgrN3NEn3zX-ta4QCM7qWP9tzy9BU/edit?usp=drivesdk)
-
 ### 94. Navigation activation failure can permanently disable firmware navigation after a transient handoff error
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/NativeNavigationInput.cpp`, especially `ready()`, `nativeNavigationTick()`, `nativeNavigationRetry()`, and `nativeNavigationBoundary()`; `src/runtime/input/NavigationFocus.h::NavigationFocus::apply()`.
 - **Trigger / reproduction:** Install a valid `input.navigation` provider and let `RuntimeInstalledProviders::acquireCapability()` succeed, then inject a one-shot failure from either the provider's `foreground()` call reached through `focus.apply(api)` or its first `reset()` call during `ready()`. Allow later foreground/reset calls to succeed and continue ticking firmware navigation normally.
 - **Observed / logically demonstrated failure:** `ready()` stores `api = candidate` before running `focus.apply(api) && api->reset(...)`. When either handoff operation fails, it leaves both the API pointer and provider lease installed while setting `usable = false`. Every later `ready()` immediately returns true because `api` is non-null, while `nativeNavigationTick()` rejects the frame because `usable` is still false. `nativeNavigationRetry()` also refuses to reset its retry state whenever `api` is non-null. A transient activation failure therefore has no normal retry path and navigation remains unavailable until a separate suspend/reconfigure/reboot path tears the provider down.
@@ -1028,10 +969,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Keep the acquired lease/API local until `focus.apply()` and `reset()` both succeed, or explicitly roll back/retain a retryable cleanup state on failure and clear the global API so the existing bounded activation retry can run. Add failure-injection tests where `foreground()` and `reset()` fail once and then succeed, proving navigation recovers without reboot and no grant is leaked.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-2329](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/d47f3c6d9e5e9d4befae8161565f10f2bf7ac9f2/bugs.md); [automation/bug-scan-20260928-1321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b5bb23216aff4f9d1565fe127c00e99f3c8e268b/bugs.md); [Drive: 2026-09-28 1321 MDT - automation-bug-scan-20260928-1321 - Instructions](https://docs.google.com/spreadsheets/d/1SD5vp5rxtrL_Mp80xBG_6bKaAVb5R0WaeVM6gS3-Tzs/edit?usp=drivesdk); [Drive: 2026-09-28 1321 MDT - automation-bug-scan-20260928-1321 - Diff](https://docs.google.com/spreadsheets/d/1C7xQuBintsL2WCAzJohJICs00HGoUDs5ir8iAm0eTCg/edit?usp=drivesdk); [Drive: 2026-09-27 23-29 MDT - automation-bug-scan-20260927-2329 - Diff](https://docs.google.com/spreadsheets/d/1UiMQv6PT5i3C5JSql-H4o-mdjzVsqIubpQjmOxFeo1k/edit?usp=drivesdk); [Drive: 2026-09-27 23-29 MDT - automation-bug-scan-20260927-2329 - Instructions](https://docs.google.com/spreadsheets/d/1nMF7-NCdTvVw6nFSxY5Nf9OsjEyDbH7gwpxWc0h8CPI/edit?usp=drivesdk)
-
 ### 95. File-association rebuild persists a partial registry after an Apps directory scan failure
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/FileAssociationRegistry.cpp`, especially `NativeFileAssociations::rebuild()`; consumers include `src/native/NativeFileOpenBridge.cpp` and File Browser Open-with resolution.
 - **Trigger / reproduction:** Start with multiple valid application handlers under `/Apps` and an existing complete file-association registry. Force `Storage.open("/Apps", O_RDONLY)` to fail, or force `openNextFile()` to stop with an SD/enumeration error after only a prefix of the directory has been returned, then invoke an association refresh.
 - **Observed / logically demonstrated failure:** `rebuild()` immediately clears the live `handlers` vector and `loaded` flag, adds only the built-in reader, and then treats a failed/invalid directory entry exactly like end-of-directory. It subsequently sorts that incomplete set, sets `loaded = true`, persists it to `/System/Registry/FileAssociations.json`, and returns success. Valid handlers that were not reached by the failed scan therefore disappear from both the live registry and the persisted derived index.
@@ -1040,10 +980,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Build a candidate registry in temporary storage, distinguish verified enumeration completion from an I/O failure, and atomically replace/persist the live registry only after the complete scan succeeds. Preserve the previous registry on failure. Add fault-injection coverage for failure before the first app and midway through a multi-app scan.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-2329](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/d47f3c6d9e5e9d4befae8161565f10f2bf7ac9f2/bugs.md); [automation/bug-scan-20260929-0623-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a0eeba8b922c599a6b21700ab44037089cb37b92/bugs.md); [automation/bug-scan-20260929-0623-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b1463ab6ef1fc1a6345ea660e56ae484b98b07b9/bugs.md); [automation/bug-scan-20260929-1823](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/66efc35761d7ed6bc0cf53c7b151ba6533e03035/bugs.md); [automation/bug-scan-20260930-0518](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/82533918d81fda11ae9c6b19d95b071a98f19361/bugs.md); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Diff](https://docs.google.com/spreadsheets/d/1geT64642Lsjo_EaRZhNxF9516LV2BRVIp4stNAnOkjg/edit?usp=drivesdk); [Drive: 2026-09-29 0623 MDT - automation-bug-scan-20260929-0623-final - Instructions](https://docs.google.com/spreadsheets/d/1_in6hCljLxqiyI5MrjIzkrraPXJuEllimsyAhbStfjQ/edit?usp=drivesdk); [Drive: 2026-09-29 0623 MDT - automation-bug-scan-20260929-0623-findings - Instructions](https://docs.google.com/document/d/1MFdtmLQczvKYtfqT4o_4BxJt-W0lax5qxpBBYoeyBcQ/edit?usp=drivesdk); [Drive: 2026-09-27 23-29 MDT - automation-bug-scan-20260927-2329 - Diff](https://docs.google.com/spreadsheets/d/1UiMQv6PT5i3C5JSql-H4o-mdjzVsqIubpQjmOxFeo1k/edit?usp=drivesdk); [Drive: 2026-09-29 1823 MDT - automation_bug-scan-20260929-1823 - Instructions](https://docs.google.com/spreadsheets/d/14Xk8HtTwY5BtOEJKKftF1HZCL0C3nEKCpxpxHUg2cmI/edit?usp=drivesdk); [Drive: 2026-09-29 0623 MDT - automation-bug-scan-20260929-0623-findings - Diff](https://docs.google.com/document/d/1tx4_PKHXrJvCuZyT8yr6fDOBHKQ1W_l_5VsZu7TB7xw/edit?usp=drivesdk); [Drive: 2026-09-29 1823 MDT - automation_bug-scan-20260929-1823 - Diff](https://docs.google.com/spreadsheets/d/1TPhDZw8-Vhfak_h1pT0hJdvu40fJKaskrXyf1AbUnas/edit?usp=drivesdk); [Drive: 2026-09-27 23-29 MDT - automation-bug-scan-20260927-2329 - Instructions](https://docs.google.com/spreadsheets/d/1nMF7-NCdTvVw6nFSxY5Nf9OsjEyDbH7gwpxWc0h8CPI/edit?usp=drivesdk); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Instructions](https://docs.google.com/spreadsheets/d/1xB4JDjKoHfw-mCY9pUQL1VP2tWxilaT0WRwdCPryrO8/edit?usp=drivesdk)
-
 ### 96. Invalid text-input provider cleanup can orphan a provider generation after release failure
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/NativeTextInput.cpp::nativeTextInputBegin()`; provider lifetime machinery in `src/runtime/drivers/InstalledProviderGraph.cpp::release()` and `src/runtime/drivers/ProviderGraphV2.cpp::release()`.
 - **Trigger / reproduction:** Make `RuntimeInstalledProviders::acquireCapability("input.text", ...)` return a provider generation whose interface fails `NativeTextInput::valid()` (for example a mismatched API version/struct or missing required entry point), then inject a teardown/quiesce failure so `RuntimeInstalledProviders::release(&acquired)` returns false.
 - **Observed / logically demonstrated failure:** The invalid-interface branch calls `(void)RuntimeInstalledProviders::release(&acquired)` and unconditionally returns. The release wrapper clears its `Lease` only on success; on failure the exact generation remains represented by the local `acquired` value. Because that value then goes out of scope and the global `lease`, `api`, and `navigationClaimed` state were never populated, `nativeTextInputEnd()` believes there is nothing to clean up and a later `nativeTextInputBegin()` may start a fresh acquisition instead of completing teardown of the failed generation. The open U1 provider-graph work makes failed releases explicitly retryable, but this caller still discards the retry token.
@@ -1052,10 +991,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** On validation failure, check the release result. If teardown fails, retain the lease in explicit quarantined/cleanup-pending state and refuse new acquisition until retry/shutdown resolves it; do not publish the invalid interface to consumers. Add a regression that combines invalid ABI validation with one failed release and proves a later cleanup retry removes the retained generation before reacquisition.
 
 - **Consolidation sources:** [automation/bug-scan-20260927-2329](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/d47f3c6d9e5e9d4befae8161565f10f2bf7ac9f2/bugs.md); [Drive: 2026-09-27 23-29 MDT - automation-bug-scan-20260927-2329 - Diff](https://docs.google.com/spreadsheets/d/1UiMQv6PT5i3C5JSql-H4o-mdjzVsqIubpQjmOxFeo1k/edit?usp=drivesdk); [Drive: 2026-09-27 23-29 MDT - automation-bug-scan-20260927-2329 - Instructions](https://docs.google.com/spreadsheets/d/1nMF7-NCdTvVw6nFSxY5Nf9OsjEyDbH7gwpxWc0h8CPI/edit?usp=drivesdk)
-
 ### 97. Creating a child path can silently delete an existing regular-file parent
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/hal/HalStorage.cpp`, `ensureParentDirUnlocked()`, `HalStorage::ensureDirectoryExists()`, `openFileForWriteUnlocked()`; reachable through `src/native/NativePlatformBridge.cpp::ensureParentDirectory()`, `writeFileAtomic()`, and `writeStreamOpen()`.
 - **Trigger / reproduction:** Put a regular file at `/foo`, then ask a native app to write `/sd/foo/bar.txt` with `write_file_atomic()` or `write_stream_open()`. The same behavior is reachable from firmware callers that use `HalStorage::writeFile()` for a child of an existing regular file.
 - **Observed / logically demonstrated failure:** Parent-directory preparation treats an existing non-directory as something to repair. `ensureParentDirUnlocked()` logs that the parent is not a directory and calls `sd.remove(parent)`; `HalStorage::ensureDirectoryExists()` does the same before `sd.mkdir()`. The attempted child write can therefore delete the unrelated, previously valid `/foo` file instead of failing because its parent component is not a directory. If directory creation or the later write then fails, the caller sees only a failed write after the original parent file has already been destroyed.
@@ -1064,10 +1002,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Treat every existing non-directory ancestor as a hard error. Never remove it during parent preparation. Separate explicit replacement semantics from directory creation, propagate the failure through write/open callers, and add regression tests proving `/foo` survives attempts to create `/foo/bar` through both the direct HalStorage and native streamed/atomic write paths.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0027](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b457dd4b96eeb99bb4cef91c1889fc1ea51fbe50/bugs.md); [automation/bug-scan-20260930-0123](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/be3316ade6780966fd46791ae58d962ccbe0f03f/bugs.md); [Drive: 2026-09-30 01-23 MDT - automation-bug-scan-20260930-0123 - Diff](https://docs.google.com/spreadsheets/d/1_WjxM50XfWlSay0EYe7KKqo0UsDms-ZGMu0yJ7YdWmQ/edit?usp=drivesdk); [Drive: 2026-09-28 00-27 MDT - automation-bug-scan-20260928-0027 - Diff](https://docs.google.com/spreadsheets/d/1dWXVMnMM6va08ID6aExLdecRQBJgyNlRj43AIuOhnyA/edit?usp=drivesdk); [Drive: 2026-09-28 00-27 MDT - automation-bug-scan-20260928-0027 - Instructions](https://docs.google.com/spreadsheets/d/1jLAYo0iauVMdYY9yucY0DZswx2mqCc82H4-2L5RpHO0/edit?usp=drivesdk); [Drive: 2026-09-30 01-23 MDT - automation-bug-scan-20260930-0123 - Instructions](https://docs.google.com/spreadsheets/d/1T-xVFt2LWX3ycdaLCcMfdzuq3AVXOovKHKSKdlD0LGg/edit?usp=drivesdk)
-
 ### 98. Syntactically valid but schema-invalid Wi-Fi JSON is accepted as a successful empty credential store
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/JsonSettingsIO.cpp::loadWifi()`; `src/WifiCredentialStore.cpp::loadFromFile()`.
 - **Trigger / reproduction:** Start with one or more credentials already loaded, or leave a valid legacy `/.crosspoint/wifi.bin`, then place syntactically valid JSON such as `{}`, `{"credentials":"not-an-array"}`, or a credentials array containing objects without an `ssid` at `/.crosspoint/wifi.json`. Call `WIFI_STORE.loadFromFile()` or boot through a path that loads the store.
 - **Observed / logically demonstrated failure:** `deserializeJson()` succeeds, after which `loadWifi()` immediately replaces `lastConnectedSsid`, clears `store.credentials`, converts `credentials` with `as<JsonArray>()`, and returns `true` without requiring that the array or required credential fields exist. `{}` is therefore reported as a successful load of zero networks, and malformed credential objects can be appended with an empty SSID. Because `WifiCredentialStore::loadFromFile()` returns that success immediately when `wifi.json` exists, the legacy migration path is not attempted either.
@@ -1076,10 +1013,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Parse into temporary state, require `credentials` to be an array when present/required, validate non-empty bounded SSIDs and field types, reject malformed entries/store structure, and publish the temporary state only after full validation. On invalid JSON/schema leave the current live store unchanged and follow an explicit recovery/migration policy. Add fixtures for `{}`, wrong-type arrays, missing/empty SSIDs, mixed valid/invalid entries, and a valid legacy file alongside rejected JSON.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0027](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b457dd4b96eeb99bb4cef91c1889fc1ea51fbe50/bugs.md); [Drive: 2026-09-28 00-27 MDT - automation-bug-scan-20260928-0027 - Diff](https://docs.google.com/spreadsheets/d/1dWXVMnMM6va08ID6aExLdecRQBJgyNlRj43AIuOhnyA/edit?usp=drivesdk); [Drive: 2026-09-28 00-27 MDT - automation-bug-scan-20260928-0027 - Instructions](https://docs.google.com/spreadsheets/d/1jLAYo0iauVMdYY9yucY0DZswx2mqCc82H4-2L5RpHO0/edit?usp=drivesdk)
-
 ### 99. Native directory enumeration silently truncates long names and File Browser can act on the wrong path
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/NativeAppHost.cpp::dirNext()`; `lib/NativeApps/include/T5AppApi.h` (`T5_APP_DIRENT_NAME_MAX == 128`); consumers include `Apps/file_browser.c::load_sd_files()`, navigation/open/copy/move/rename/delete path construction.
 - **Trigger / reproduction:** On the SD card create a file or directory whose FAT long filename is at least 128 bytes, then browse the containing directory with the native File Browser. For a deterministic alias case, also create a valid shorter entry whose complete name equals the first 127 bytes returned for the long entry.
 - **Observed / logically demonstrated failure:** `dirNext()` calls `entry.getName(out->name, sizeof(out->name))` but discards the returned length/status and then forcibly NUL-terminates the 128-byte ABI buffer. Other repository code using `getName()` explicitly rejects `length >= sizeof(name)`, demonstrating that truncation is detectable, but the native directory ABI reports the truncated entry as successful. File Browser stores that clipped name as the selected identity and later reconstructs filesystem paths from it. The long item can therefore fail to open or, when the clipped prefix is also a real entry, an action selected on the displayed long entry can resolve to that different shorter path.
@@ -1088,10 +1024,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Never publish a clipped name as an object identity. Check `getName()`'s return value, reject/flag oversized entries, and preferably extend directory enumeration with a versioned larger/dynamic name or opaque entry handle so valid FAT LFNs remain addressable. Until then, File Browser should surface an explicit unsupported-name row that cannot perform mutations. Add tests for 127-byte boundary names, 128+ byte names, and a long-name/short-prefix collision proving destructive operations cannot target the wrong entry.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0027](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b457dd4b96eeb99bb4cef91c1889fc1ea51fbe50/bugs.md); [Drive: 2026-09-28 00-27 MDT - automation-bug-scan-20260928-0027 - Diff](https://docs.google.com/spreadsheets/d/1dWXVMnMM6va08ID6aExLdecRQBJgyNlRj43AIuOhnyA/edit?usp=drivesdk); [Drive: 2026-09-28 00-27 MDT - automation-bug-scan-20260928-0027 - Instructions](https://docs.google.com/spreadsheets/d/1jLAYo0iauVMdYY9yucY0DZswx2mqCc82H4-2L5RpHO0/edit?usp=drivesdk)
-
 ### 100. Firmware OTA accepts release-index size/SHA metadata but never verifies the downloaded image against either value
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/network/OtaUpdater.cpp`, `OtaUpdater::checkForUpdate()` and `OtaUpdater::installUpdate()`; `src/network/OtaUpdater.h`.
 - **Trigger / reproduction:** Supply a structurally valid release-index firmware entry whose `url` points to the expected release asset name, but make the served firmware bytes differ from the index's `sha256` and/or `size` while still being an ESP image acceptable to `esp_https_ota`. Start Firmware Update.
@@ -1101,10 +1036,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Validate the digest as 64 hexadecimal characters, retain the expected digest and size in `OtaUpdater`, hash/count the actual OTA payload (or use an ESP-IDF verification hook that exposes the image digest), and refuse finalization/boot selection unless both expected values match. Add tests with valid ESP images that intentionally mismatch only size, only SHA-256, and both.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0123](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/fca75d27f607bae8b6dffa27f64a3115c62b90b8/bugs.md); [automation/bug-scan-20260929-0725](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/7c3008d0876ab9bb0a728aca781b63fbfa9613f3/bugs.md); [automation/bug-scan-20260929-2326](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/95f741bc0a49f92b0cec24836821ba216f48eb5a/bugs.md); [Drive: 2026-09-29 2326 MDT - automation-bug-scan-20260929-2326 - Diff](https://docs.google.com/spreadsheets/d/1AYPw1N2ZOYgHFucbaezdGbIxQMX-0HhylovtsgBIhJc/edit?usp=drivesdk); [Drive: 2026-09-29 0725 MDT - automation-bug-scan-20260929-0725 - instructions](https://docs.google.com/spreadsheets/d/1-4jDQiaUOBHv4-fTEqOZCIfyr8g9jYm1HMFC0fqAc_o/edit?usp=drivesdk); [Drive: 2026-09-28 01-23 MDT - automation-bug-scan-20260928-0123 - Integration Instructions](https://docs.google.com/spreadsheets/d/1EuCL6zffo2jnVhnXVFebqEfDJt-11KbcCYYAT9hwdAc/edit?usp=drivesdk); [Drive: 2026-09-28 01-23 MDT - automation-bug-scan-20260928-0123 - bugs.md diff](https://docs.google.com/spreadsheets/d/1bpAXqZIqxOc7zruLPSLZTZ8vPH6tN1V1RNwBjTUF0B0/edit?usp=drivesdk); [Drive: 2026-09-29 0725 MDT - automation-bug-scan-20260929-0725 - diff](https://docs.google.com/spreadsheets/d/1AJPUdv9PVLhPLWMG1wuU6fzACHMVp59JWvFPEDsjuQ0/edit?usp=drivesdk); [Drive: 2026-09-29 2326 MDT - automation-bug-scan-20260929-2326 - Instructions](https://docs.google.com/spreadsheets/d/1DqYP7D3EugBNzyKRCNek4bVnZX3yy0vbmJllB1R6DBE/edit?usp=drivesdk)
-
 ### 101. TXT page-index cache survives same-size edits and can skip or repeat text
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/Txt/Txt.cpp`, `Txt::Txt()` and `Txt::load()`; `src/activities/reader/TxtReaderActivity.cpp`, `loadPageIndexCache()`, `savePageIndexCache()`, and navigation through `pageOffsets`.
 - **Trigger / reproduction:** Open a TXT file so `index.bin` is built. Rewrite that same pathname with different line breaks or word lengths while preserving exactly the same byte length, then reopen it with the same font/layout settings.
 - **Observed / logically demonstrated failure:** The cache directory key is based only on the file path. Cache validation checks the file size and rendering settings but no content fingerprint or file generation. Same-size replacement content therefore reuses byte offsets computed from the old text. If a newly rendered page should consume more bytes than the old cached boundary, text is skipped at the next page; if it should consume fewer, text is repeated.
@@ -1113,10 +1047,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Bind the index to content identity using a stable digest or bounded fingerprint plus size, optionally modification metadata where reliable, and rebuild on mismatch. Add a same-length rewrite regression with changed wrapping/page boundaries.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0123](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/fca75d27f607bae8b6dffa27f64a3115c62b90b8/bugs.md); [Drive: 2026-09-28 01-23 MDT - automation-bug-scan-20260928-0123 - Integration Instructions](https://docs.google.com/spreadsheets/d/1EuCL6zffo2jnVhnXVFebqEfDJt-11KbcCYYAT9hwdAc/edit?usp=drivesdk); [Drive: 2026-09-28 01-23 MDT - automation-bug-scan-20260928-0123 - bugs.md diff](https://docs.google.com/spreadsheets/d/1bpAXqZIqxOc7zruLPSLZTZ8vPH6tN1V1RNwBjTUF0B0/edit?usp=drivesdk)
-
 ### 102. Non-byte-aligned XTCH heights can read beyond the grayscale page buffer
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/Xtc/Xtc/XtcParser.cpp`, `XtcParser::loadPage()`; `src/activities/reader/XtcReaderActivity.cpp`, `renderPage()`; `lib/Xtc/Xtc.cpp`, `generateCoverBmp()`.
 - **Trigger / reproduction:** Open an XTCH/XTH page with a height not divisible by eight, for example 480x801, with otherwise accepted headers and enough bitmap bytes for the parser's current `ceil(width * height / 8) * 2` calculation.
 - **Observed / logically demonstrated failure:** The parser accepts arbitrary 16-bit dimensions and allocates each plane as `ceil(width * height / 8)`. Rendering addresses the column-major data with `colBytes = ceil(height / 8)` and `byteOffset = colIndex * colBytes + byteInCol`. For 480x801 the allocated plane is 48,060 bytes, but pixel x=0,y=800 addresses byte 48,479; the second-plane access is 419 bytes beyond the two-plane allocation. The page renderer and cover converter do not bounds-check that access.
@@ -1125,10 +1058,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Define and enforce one XTH packing contract in the parser. If columns are byte-padded, size each plane as `width * ceil(height / 8)`; if the format is tightly packed, use continuous bit addressing. Otherwise reject non-8-aligned heights. Share a checked offset helper and add 800/801-height plus truncated-data tests.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0123](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/fca75d27f607bae8b6dffa27f64a3115c62b90b8/bugs.md); [automation/bug-scan-20260929-1721](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/990fb155e4153f52af78d43ee4a6020fc21d2b9f/bugs.md); [Drive: 2026-09-28 01-23 MDT - automation-bug-scan-20260928-0123 - Integration Instructions](https://docs.google.com/spreadsheets/d/1EuCL6zffo2jnVhnXVFebqEfDJt-11KbcCYYAT9hwdAc/edit?usp=drivesdk); [Drive: 2026-09-28 01-23 MDT - automation-bug-scan-20260928-0123 - bugs.md diff](https://docs.google.com/spreadsheets/d/1bpAXqZIqxOc7zruLPSLZTZ8vPH6tN1V1RNwBjTUF0B0/edit?usp=drivesdk); [Drive: 2026-09-29_1721_MDT_no-PR_automation-bug-scan-20260929-1721_instructions](https://docs.google.com/spreadsheets/d/1B6jsqIdvTzuAJtVj_QpirPvKMi93crRUKinwVqmHxAs/edit?usp=drivesdk); [Drive: 2026-09-29_1721_MDT_no-PR_automation-bug-scan-20260929-1721_diff](https://docs.google.com/spreadsheets/d/1T0ewi9rDs-IC-vdvoFAHlkma1VR2j07_dIVGykhjkjE/edit?usp=drivesdk)
-
 ### 103. Partial mandatory-capability binding can retain an installed-provider lease with no reachable cleanup path
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/NativeCapabilityGate.cpp::native_app_capabilities_bind()`, `releaseInstalledBindings()`, `native_app_capabilities_release()`, and the `installedBindings` state.
 - **Trigger / reproduction:** Launch an app whose manifest has at least two mandatory capabilities resolved through installed providers. Arrange for the first provider acquisition to succeed, the second mandatory provider acquisition to fail, and the rollback release of the first provider lease to fail once. This can be reproduced with a provider teardown fault injected into `RuntimeInstalledProviders::release()` after a successful first acquisition.
 - **Observed / logically demonstrated failure:** `native_app_capabilities_bind()` sets `installedBindings.owner` and stores each acquired lease as it proceeds. If a later acquisition fails, it calls `releaseInstalledBindings(invocation)`; that helper deliberately retains any lease whose release failed. However, the dependency cleanup callback is registered with `ExecutionContext::track(Resource::Dependencies,...)` only after all requirements have been acquired and the live binding table has successfully bound. The failed bind therefore leaves a retained `installedBindings.owner`/lease without a tracked teardown callback. The normal explicit release path is also unreachable: `native_app_capabilities_release()` returns early unless `bindings.owner() == context->id()`, but `bindings` was never published on this failure path. A later bind then sees the previous installed binding still active and refuses to proceed.
@@ -1137,10 +1069,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Register rollback cleanup before the first installed-provider side effect, or make `native_app_capabilities_release()` independently recognize and retry `installedBindings.owner` even when `bindings.owner()` is unset. Preserve the failed-cleanup state until release actually succeeds, and add a fault-injection test covering first acquisition success + later acquisition failure + first rollback release failure followed by a successful teardown retry.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0222](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/8291438cdc96d5aa8efc2b053ebf80b1723183ec/bugs.md); [Drive: 2026-09-28 02-22 MDT automation-bug-scan-20260928-0222 Instructions](https://docs.google.com/spreadsheets/d/1h_jKtLcEGDvljyqawgqykKgLTy_r-mBKQry0vZOQo6I/edit?usp=drivesdk); [Drive: 2026-09-28 02-22 MDT automation-bug-scan-20260928-0222 Diff](https://docs.google.com/spreadsheets/d/1bgLz5vfhCQB_4pFDWO9PXwq1QRF-dtA8SJ4LONYnQck/edit?usp=drivesdk); [Drive: 2026-09-28 02-22 MDT automation-bug-scan-20260928-0222 Diff](https://docs.google.com/spreadsheets/d/1-L0v6uFPWVW5o5Z1pBdtxzxlBVJu7UTwCf9NOpBSeEM/edit?usp=drivesdk)
-
 ### 104. Display-takeover teardown makes a failed firmware display restore non-retryable
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/NativeHardwareTakeover.cpp::native_hardware_takeover_end()`, specifically the `s_display_borrowed` state transition around `display.resumeFromExternalOwner()`.
 - **Trigger / reproduction:** Run an ELF that requests `T5_HARDWARE_TAKEOVER_DISPLAY`, then on app exit force `display.resumeFromExternalOwner()` to fail once (for example with a panel/bus reinitialization fault) while the takeover flag is set.
 - **Observed / logically demonstrated failure:** The teardown first calls `nativeVideoForceStop()`, then sets `s_display_borrowed = false`, and only afterward attempts `display.resumeFromExternalOwner()`. If that restore returns false, `native_hardware_takeover_end()` returns `ESP_FAIL`, but the ownership flag already says the display is no longer borrowed. Retrying the same teardown immediately returns `ESP_ERR_INVALID_STATE` because `s_display_borrowed` is false, so the failed display restoration cannot be retried through the ownership protocol. The firmware can therefore continue with its display state marked returned even though reinitialization failed. Open PR #220 modifies the refresh mode after successful restoration but leaves this pre-restore flag clear unchanged.
@@ -1149,10 +1080,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Keep `s_display_borrowed` (or an explicit restore-pending state) set until `resumeFromExternalOwner()` succeeds, make teardown idempotent/retryable after a failed restore, and only publish firmware ownership after successful panel recovery. Add a test that fails the first resume attempt, verifies ownership remains pending, and succeeds on a second teardown call.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0222](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/8291438cdc96d5aa8efc2b053ebf80b1723183ec/bugs.md); [Drive: 2026-09-28 02-22 MDT automation-bug-scan-20260928-0222 Instructions](https://docs.google.com/spreadsheets/d/1h_jKtLcEGDvljyqawgqykKgLTy_r-mBKQry0vZOQo6I/edit?usp=drivesdk); [Drive: 2026-09-28 02-22 MDT automation-bug-scan-20260928-0222 Diff](https://docs.google.com/spreadsheets/d/1bgLz5vfhCQB_4pFDWO9PXwq1QRF-dtA8SJ4LONYnQck/edit?usp=drivesdk); [Drive: 2026-09-28 02-22 MDT automation-bug-scan-20260928-0222 Diff](https://docs.google.com/spreadsheets/d/1-L0v6uFPWVW5o5Z1pBdtxzxlBVJu7UTwCf9NOpBSeEM/edit?usp=drivesdk)
-
 ### 105. A stale File Browser rename handoff can rename the wrong first directory entry
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/file_browser.c::find_entry()`, `load_files()`, `load_session()`, `request_rename()`, and `consume_handoff_results()`.
 - **Trigger / reproduction:** Select a non-first SD entry and choose **Rename**, which saves the selected name before opening the system keyboard. While the keyboard handoff is active, remove or rename that source entry through another filesystem actor (for example the web file service or another host-side operation), then submit a new name and let File Browser resume.
 - **Observed / logically demonstrated failure:** `find_entry()` returns index 0 both when the requested saved name is genuinely the first entry and when the name is not found at all. During resume, `load_session()` calls `load_files(saved_name)`; if the original source disappeared, that ambiguous return value selects `entries[0]` and still sets `selection_active = true`. When the pending keyboard result is consumed, `selected_name(old_name,...)` takes the newly selected first entry as the rename source, and the subsequent `storage->rename_file(source_vfs,destination_vfs)` can rename that unrelated object to the user's requested name.
@@ -1161,10 +1091,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make `find_entry()` return an explicit negative/not-found result, clear selection when a preserved name is absent, and store/revalidate the exact original source path as part of the rename handoff before applying the keyboard result. Add a regression test where the selected source disappears between `request_rename()` and `consume_handoff_results()` and verify that no other entry is renamed.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0222](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/8291438cdc96d5aa8efc2b053ebf80b1723183ec/bugs.md); [Drive: 2026-09-28 02-22 MDT automation-bug-scan-20260928-0222 Instructions](https://docs.google.com/spreadsheets/d/1h_jKtLcEGDvljyqawgqykKgLTy_r-mBKQry0vZOQo6I/edit?usp=drivesdk); [Drive: 2026-09-28 02-22 MDT automation-bug-scan-20260928-0222 Diff](https://docs.google.com/spreadsheets/d/1bgLz5vfhCQB_4pFDWO9PXwq1QRF-dtA8SJ4LONYnQck/edit?usp=drivesdk); [Drive: 2026-09-28 02-22 MDT automation-bug-scan-20260928-0222 Diff](https://docs.google.com/spreadsheets/d/1-L0v6uFPWVW5o5Z1pBdtxzxlBVJu7UTwCf9NOpBSeEM/edit?usp=drivesdk)
-
 ### 106. Driver Manager cannot expose more than 64 release, inbox, or recovery entries
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `Apps/driver_manager.c`: `LIMIT`, `RECOVERY_LIMIT`, `populate_release()`, `load_inbox()`, and `recovery_screen()`; `src/native/NativeDriverManagerBridge.cpp`: `kMaxDriverAssets`, `loadCanonicalDriverCatalog()`, legacy catalog loading, and recovery inventory. Open PR #96 rewrites Driver Manager but retains `LIMIT 64u` and does not remove this bound.
 - **Trigger / reproduction:** Publish or otherwise present more than 64 valid driver packages in the current release catalog, place more than 64 valid driver-package directories in `/sd/Packages/Inbox`, or retain more than 65 recoverable driver stages/downloads. Open Driver Manager and attempt to reach an entry beyond the corresponding limit.
@@ -1174,10 +1103,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make the bridge catalog/recovery model dynamic or PSRAM-backed and expose the complete count; page/virtualize Driver Manager rows over that model. If bounded parsing is still required, reject only an individual invalid entry rather than the whole canonical catalog and surface explicit overflow state. Add coverage with 65+ online drivers, 65+ inbox packages, and 66+ recovery items, including an actionable item beyond the first page.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0327](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/5dc17fa9909c50a6cea69d852f0664b099d5df4d/bugs.md); [automation/bug-scan-20260928-1623](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/0b0cd92cfb5cafc7d4b5baa897442b2acb9b1030/bugs.md); [Drive: 2026-09-28 16-23 MDT - automation_bug-scan-20260928-1623 - Instructions](https://docs.google.com/spreadsheets/d/1j8Lm6ObGsHFSC50yu0IP8iFt5c14EkbJsHcCGh9edpI/edit?usp=drivesdk); [Drive: 2026-09-28 0327 MDT - automation_bug-scan-20260928-0327 - Instructions](https://docs.google.com/spreadsheets/d/1mlsbKN6llrbvLhsLOTizXaIvqWo6bFdTsuk0PlUEQ14/edit?usp=drivesdk); [Drive: 2026-09-28 0327 MDT - automation_bug-scan-20260928-0327 - Diff](https://docs.google.com/spreadsheets/d/1pBADylIFdjuKM_vqjiZxLWFskc-qxQxjA_IF93xv3rw/edit?usp=drivesdk); [Drive: 2026-09-28 16-23 MDT - automation_bug-scan-20260928-1623 - Diff](https://docs.google.com/spreadsheets/d/1j_TEfpX-sHjsgfaRCxGHsuRPpo8pn12zPHTNYv1jGkw/edit?usp=drivesdk)
-
 ### 107. The serviced-refresh worker permanently reserves 32 KiB for an intended 8 KiB task stack
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected:** `src/native/NativeAppHost.cpp`: `refreshStack`, `presentServicedMode()`, `xTaskCreateStaticPinnedToCore(renderServicedFrame, ...)`.
 - **Trigger / reproduction:** Build the ESP32-S3 firmware and inspect the static `refreshStack` allocation or internal-RAM map. `StackType_t` is 32 bits on this target, while the array is declared as `StackType_t refreshStack[8192]`.
 - **Failure:** The source comment says the renderer worker reserves an 8 KiB stack, but the backing array consumes 8192 * 4 = 32768 bytes. ESP-IDF task-creation stack depths are specified in bytes, and the call passes `sizeof(refreshStack)`, so the task is actually provisioned with the full 32 KiB buffer rather than 8 KiB.
@@ -1185,10 +1113,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Size the static buffer in stack words from a byte constant (for example `kRefreshStackBytes / sizeof(StackType_t)`) and pass the byte count expected by ESP-IDF. Confirm the worker's real high-water mark on device before selecting the final stack size, and add a compile-time assertion that the buffer byte size equals the configured byte budget.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0327](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/5dc17fa9909c50a6cea69d852f0664b099d5df4d/bugs.md); [Drive: 2026-09-28 0327 MDT - automation_bug-scan-20260928-0327 - Instructions](https://docs.google.com/spreadsheets/d/1mlsbKN6llrbvLhsLOTizXaIvqWo6bFdTsuk0PlUEQ14/edit?usp=drivesdk); [Drive: 2026-09-28 0327 MDT - automation_bug-scan-20260928-0327 - Diff](https://docs.google.com/spreadsheets/d/1pBADylIFdjuKM_vqjiZxLWFskc-qxQxjA_IF93xv3rw/edit?usp=drivesdk)
-
 ### 108. The native image API still exposes the PNG decode path that the bundled Image Viewer explicitly avoids because it can crash
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected:** `src/native/NativeImageBridge.cpp`: `renderFit()`, `pngDraw()`; `Apps/image_viewer.c`: PNG guard in `app_main()`.
 - **Trigger / reproduction:** From any native app other than the bundled Image Viewer, obtain `t5_image_api_v1` and call `render_fit()` on a real-world PNG that triggers the known PNGdec fault documented in `Apps/image_viewer.c`.
 - **Failure:** Image Viewer detects PNG and deliberately refuses to call `render_fit()`, displaying “PNG decoder error prevented” because the firmware path can fault inside PNGdec. The shared `t5_image_api_v1::render_fit` implementation nevertheless continues to enter that same PNGdec path for every other native app, so the safety workaround is not enforced at the API boundary and another consumer can still crash the firmware.
@@ -1196,10 +1123,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Fix and regression-test the PNGdec integration in `NativeImageBridge` (including the real-world files that originally faulted). Until that is safe, make the bridge reject PNG `render_fit()` calls consistently rather than relying on each consumer to know about the crash. Remove the app-local guard only after the shared decoder path is proven safe.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0327](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/5dc17fa9909c50a6cea69d852f0664b099d5df4d/bugs.md); [Drive: 2026-09-28 0327 MDT - automation_bug-scan-20260928-0327 - Instructions](https://docs.google.com/spreadsheets/d/1mlsbKN6llrbvLhsLOTizXaIvqWo6bFdTsuk0PlUEQ14/edit?usp=drivesdk); [Drive: 2026-09-28 0327 MDT - automation_bug-scan-20260928-0327 - Diff](https://docs.google.com/spreadsheets/d/1pBADylIFdjuKM_vqjiZxLWFskc-qxQxjA_IF93xv3rw/edit?usp=drivesdk)
-
 ### 109. Time Card treats stores over 400 days as successfully loaded, then can erase the omitted history
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/timecard.c`, `MAX_DAYS`, `load_store()`, `ensure_day()`, `set_punch()`, and `save_store()`.
 - **Trigger / reproduction:** Put more than 400 valid day objects in `/sd/.crosspoint/timecard.json` (or let the file naturally grow beyond that count), launch Time Card, then record or edit any punch.
 - **Observed / logically demonstrated failure:** `load_store()` stops its parse loop as soon as `day_count == MAX_DAYS`, but it does not treat the remaining unparsed day objects as an error and returns `true`. The live store therefore contains only the first 400 valid days. A later `set_punch()` calls `save_store()`, which rewrites the JSON from that truncated in-memory array and permanently drops every valid day after entry 400.
@@ -1208,10 +1134,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Detect capacity exhaustion before declaring the load successful. Prefer a bounded retention policy that is explicit and preserves the intended newest/oldest records, or migrate to dynamically sized storage. Never allow a partial load to become writable state without an explicit recovery decision. Add a regression with 401+ valid days proving the source file is not rewritten with records omitted.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0426](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/079fd38ed3a26fbdb2d4031a8712d346071bbaf9/bugs.md); [Drive: 2026-09-28 04-26 MDT - automation-bug-scan-20260928-0426 - integration instructions](https://docs.google.com/spreadsheets/d/1va_Vt6BhUcAVkXQjsmGdO91OcaUxcKmC5Mlk_ekDtTs/edit?usp=drivesdk); [Drive: 2026-09-28 04-26 MDT - automation-bug-scan-20260928-0426 - bugs.md diff](https://docs.google.com/spreadsheets/d/1eE-l3V29VpfE1vM_mDFQEH_ih3r8DQFbvuG4YCk-Uw0/edit?usp=drivesdk)
-
 ### 110. TXT BMP-cover caching reports success after short reads or writes and permanently accepts the partial cache
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/Txt/Txt.cpp`, `Txt::generateCoverBmp()` BMP-copy path and the existing-file fast path.
 - **Trigger / reproduction:** Place a valid BMP sidecar cover next to a TXT/Markdown book, then inject an SD read or cache-write failure after at least one chunk while `generateCoverBmp()` copies the cover into the TXT cache.
 - **Observed / logically demonstrated failure:** The BMP branch loops over `src.read()` and calls `dst.write()` but checks neither for a zero/short read nor a short/failed write. It then unconditionally logs success and returns `true`. The incomplete `cover.bmp` remains in the cache. On every later call, the first `Storage.exists(getCoverBmpPath())` check returns `true` without validating the cached bitmap, so the truncated file is treated as a permanently successful cover generation.
@@ -1220,10 +1145,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Copy to a temporary cache file, require every read/write to make full forward progress, close successfully, validate the completed BMP at least structurally, and atomically publish it only after success. Remove the temporary file on any failure. The existing-file fast path should reject obviously incomplete/invalid cached BMPs. Add injected short-read and short-write tests followed by a retry proving recovery occurs automatically.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0426](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/079fd38ed3a26fbdb2d4031a8712d346071bbaf9/bugs.md); [Drive: 2026-09-28 04-26 MDT - automation-bug-scan-20260928-0426 - integration instructions](https://docs.google.com/spreadsheets/d/1va_Vt6BhUcAVkXQjsmGdO91OcaUxcKmC5Mlk_ekDtTs/edit?usp=drivesdk); [Drive: 2026-09-28 04-26 MDT - automation-bug-scan-20260928-0426 - bugs.md diff](https://docs.google.com/spreadsheets/d/1eE-l3V29VpfE1vM_mDFQEH_ih3r8DQFbvuG4YCk-Uw0/edit?usp=drivesdk)
-
 ### 111. File Browser silently truncates deep paths and can apply destructive actions to a different pathname
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/file_browser.c`, `PATH_CAP`, `copy_text()`, `join_relative_path()`, `make_storage_path()`, `make_sd_vfs_dir()`, `make_usb_path()`, navigation into child directories, and rename/move/delete/copy actions.
 - **Trigger / reproduction:** Create a valid nested SD path whose directory path plus selected entry name exceeds 511 bytes, navigate into it with File Browser, then invoke Rename, Move, Delete, or Copy. A deterministic high-risk case is one where the 511-byte truncated prefix is itself a valid existing path.
 - **Observed / logically demonstrated failure:** All path builders use `copy_text()`, which silently truncates when the destination buffer fills and provides no success/failure signal. `base_path` and pending action paths are fixed at `PATH_CAP == 512`. The app therefore cannot distinguish the intended full pathname from its clipped prefix. Destructive operations subsequently pass the truncated path to storage APIs; if that prefix names a real object, the action can target the wrong file or directory rather than merely failing.
@@ -1232,10 +1156,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make every path-construction helper return success only when the complete path fits, propagate failure before any filesystem mutation, and keep the UI-selected identity separate from a bounded display string. Prefer the platform's canonical maximum path type/size rather than a private 512-byte limit. Add boundary tests at 510/511/512+ bytes and a regression where the truncated prefix exists, proving no mutation occurs.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0426](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/079fd38ed3a26fbdb2d4031a8712d346071bbaf9/bugs.md); [Drive: 2026-09-28 04-26 MDT - automation-bug-scan-20260928-0426 - integration instructions](https://docs.google.com/spreadsheets/d/1va_Vt6BhUcAVkXQjsmGdO91OcaUxcKmC5Mlk_ekDtTs/edit?usp=drivesdk); [Drive: 2026-09-28 04-26 MDT - automation-bug-scan-20260928-0426 - bugs.md diff](https://docs.google.com/spreadsheets/d/1eE-l3V29VpfE1vM_mDFQEH_ih3r8DQFbvuG4YCk-Uw0/edit?usp=drivesdk)
-
 ### 112. Rom Manager silently makes ROMs after the first 128 unmanageable
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/rom_manager.c`: `MAX_ROMS`, `rom_names` / `rom_sizes`, `load_roms()`, and the `VIEW_ROMS` rename/delete action flow.
 - **Trigger / reproduction:** Put more than 128 valid `.gb` files in `/System/State/Applications/Rom Manager`, open Rom Manager, choose **My ROMs**, and try to locate/manage every file.
 - **Observed / logically demonstrated failure:** `load_roms()` enumerates only while `rom_count < MAX_ROMS` with `MAX_ROMS == 128`, then closes the directory without indicating truncation or continuing enumeration. The My ROMs UI and its Rename/Delete actions are driven exclusively by those cached arrays, so every valid ROM beyond the first 128 directory entries is absent and cannot be managed from the app. Directory iteration order also makes which ROMs disappear filesystem-dependent.
@@ -1244,10 +1167,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Page/stream directory results or maintain a dynamically allocated/PSRAM-backed index, and distinguish end-of-directory from capacity exhaustion. Surface enumeration failure/truncation rather than silently treating it as a complete list. Add a regression with at least 129 ROMs and verify all entries remain reachable across pages/windows.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0518](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a90cbab88e37ceee8eb4b37eceba4d93553fb2de/bugs.md); [automation/bug-scan-20260928-1825](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/d704fa1cea722332c6d82f0aa2d3f9680ac8ae87/bugs.md); [Drive: 2026-09-28 05-18 MDT - automation-bug-scan-20260928-0518 - Instructions](https://docs.google.com/spreadsheets/d/1rCpCc1hG4ZhCTsjPSfGWl7UOdP6JOEQ2NfbOUGOL_1I/edit?usp=drivesdk); [Drive: 2026-09-28 05-18 MDT - automation-bug-scan-20260928-0518 - Diff](https://docs.google.com/spreadsheets/d/1WspiF_LH3fLG2UlbuLAFMUSAU-RD62l1EDg2_ZatVFU/edit?usp=drivesdk); [Drive: 2026-09-28 1825 - automation-bug-scan-20260928-1825 - bugs.diff](https://docs.google.com/document/d/13Ixd0HQYso07yZjpKF_kGSw0XRsQVXTqpSpQPaI3JE8/edit?usp=drivesdk); [Drive: 2026-09-28 1825 - automation-bug-scan-20260928-1825 - integration instructions](https://docs.google.com/document/d/1KM1MaWJm_OiNONX7BqGauWCR3EJYlmu9TB6Xi1bzpuc/edit?usp=drivesdk)
-
 ### 113. Fallback OTA release metadata can accept a truncated JSON document after the required fields were seen
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/JsonParser/StreamingJsonParser.cpp` / `.h`, `lib/JsonParser/ReleaseJsonParser.cpp` / `.h`, and the GitHub-release fallback in `src/network/OtaUpdater.cpp::checkForUpdate()`.
 - **Trigger / reproduction:** Make the independent firmware release-index request fail so `checkForUpdate()` falls back to the GitHub latest-release JSON endpoint. Feed a response whose `tag_name` and matching firmware asset object are complete but whose outer release object is truncated at EOF, for example a document ending immediately after the `assets` array's closing bracket and omitting the final top-level `}`.
 - **Observed / logically demonstrated failure:** `StreamingJsonParser` has no end-of-document/finalization check, and `ReleaseJsonParser` exposes only whether the tag and firmware fields were observed. Once the matching asset object closes, `foundFirmware()` is already true. `OtaUpdater::checkForUpdate()` tests only `foundTag()` and `foundFirmware()`, so the truncated, syntactically incomplete response is accepted as valid release metadata and can be offered for installation.
@@ -1256,10 +1178,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Add an explicit `finish()`/completion result to `StreamingJsonParser` that rejects unfinished tokens, parser errors, and unbalanced/incomplete containers; expose that status through `ReleaseJsonParser`; and require successful completion in `OtaUpdater::checkForUpdate()` before consuming discovered fields. Add a regression with a fully formed firmware asset followed by EOF before the root close.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0632](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/3b7ba1d3ab884ce95f02f835e265d030ef4b7724/bugs.md); [Drive: 2026-09-28 06-32 MDT - automation_bug-scan-20260928-0632 - Instructions](https://docs.google.com/spreadsheets/d/1fbEaBPIpMH09Xciai_xlzuhH1dKzdc42tHYzqkvUWRY/edit?usp=drivesdk); [Drive: 2026-09-28 06-32 MDT - automation_bug-scan-20260928-0632 - Diff](https://docs.google.com/spreadsheets/d/1_0FeXHnYjexRF4z3B_lzH1R5EsiOeivS4kjm5hjWsvE/edit?usp=drivesdk)
-
 ### 114. Serial provider release failure discards the only retryable lease state and permits removal of a still-live provider
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/runtime/capabilities/SerialProviderRegistry.h`, `RuntimeSerial::Registry::release()`, `end()`, and `remove()`; existing coverage in `test/streams/serial_provider_registry_test.cpp`.
 - **Trigger / reproduction:** Register a serial provider whose `acquire()` succeeds but whose `release()` returns an error such as `T5_SERIAL_IO` on the first teardown attempt. Acquire a port and call `Registry::release(publicLease)`, then retry the release or remove the provider.
 - **Observed / logically demonstrated failure:** `Registry::release()` copies the provider/private lease, then clears `active_`, `publicLease_`, and `privateLease_` *before* invoking the provider's fallible `release()`. If that callback fails, the error is returned but all registry state needed to retry has already been destroyed. A second release reports `T5_SERIAL_CLOSED`, and `remove(id)` can now succeed because `active_` is null even though the provider may still own its underlying transport/session. This violates the registry's stated invariant that a provider may not be removed with an outstanding lease.
@@ -1268,10 +1189,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Keep the provider and private lease reachable until `release()` succeeds, while preventing normal I/O during cleanup; alternatively retain an explicit cleanup-pending state that only permits teardown retries. `end()` must preserve/retry the same obligation. Extend `serial_provider_registry_test.cpp` with a provider that fails release once, verify removal remains blocked, and verify a later release can complete.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0632](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/3b7ba1d3ab884ce95f02f835e265d030ef4b7724/bugs.md); [Drive: 2026-09-28 06-32 MDT - automation_bug-scan-20260928-0632 - Instructions](https://docs.google.com/spreadsheets/d/1fbEaBPIpMH09Xciai_xlzuhH1dKzdc42tHYzqkvUWRY/edit?usp=drivesdk); [Drive: 2026-09-28 06-32 MDT - automation_bug-scan-20260928-0632 - Diff](https://docs.google.com/spreadsheets/d/1_0FeXHnYjexRF4z3B_lzH1R5EsiOeivS4kjm5hjWsvE/edit?usp=drivesdk)
-
 ### 115. Bookmark summary truncation can persist invalid UTF-8 for ordinary non-ASCII page text
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/util/BookmarkUtil.cpp::sanitizeBookmarkSummary()`; caller `src/activities/reader/EpubReaderActivity.cpp::addBookmark()`.
 - **Trigger / reproduction:** Add a bookmark on a page whose extracted summary exceeds 72 bytes and has a multibyte UTF-8 character crossing byte 72, for example 71 ASCII bytes followed by `é`. Non-ASCII whitespace/text also exercises the preceding whitespace-collapse comparator.
 - **Observed / logically demonstrated failure:** `sanitizeBookmarkSummary()` truncates with `summary.resize(72)`, which is byte-based and can cut a UTF-8 code point in half. The example keeps only the first byte of the two-byte `é`, and that invalid byte sequence is then stored in the bookmark JSON and later rendered as the bookmark title. The `std::unique` whitespace comparator also passes plain `char` values directly to `std::isspace`; for negative signed-char UTF-8 bytes that call has undefined behavior.
@@ -1280,10 +1200,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Collapse whitespace using unsigned-byte-safe classification (or code-point-aware Unicode whitespace handling) and truncate at a valid UTF-8 code-point boundary, preferably by character/display width rather than raw bytes. Add tests with 2-, 3-, and 4-byte characters crossing the limit and with non-ASCII text adjacent to whitespace.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0632](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/3b7ba1d3ab884ce95f02f835e265d030ef4b7724/bugs.md); [Drive: 2026-09-28 06-32 MDT - automation_bug-scan-20260928-0632 - Instructions](https://docs.google.com/spreadsheets/d/1fbEaBPIpMH09Xciai_xlzuhH1dKzdc42tHYzqkvUWRY/edit?usp=drivesdk); [Drive: 2026-09-28 06-32 MDT - automation_bug-scan-20260928-0632 - Diff](https://docs.google.com/spreadsheets/d/1_0FeXHnYjexRF4z3B_lzH1R5EsiOeivS4kjm5hjWsvE/edit?usp=drivesdk)
-
 ### 116. A transient LoRa receive re-arm failure permanently disables reception for the running session
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/NativeLoRaBridge.cpp`, especially `startReceiver()`, `pollPacket()`, and the post-transmit receive restart in `sendPacket()`.
 - **Trigger / reproduction:** Start LoRa normally, then force a receive-path error (for example an invalid reported packet length or a one-shot `radio.readData()` failure) and make the immediately following `radio.startReceive()` call fail once. The same terminal state can be reached when a transmit succeeds but the one post-transmit `startReceiver()` attempt fails.
 - **Observed / logically demonstrated failure:** `startReceiver()` clears `receiverActive` when `radio.startReceive()` fails. Its callers in the receive-error and post-transmit paths discard that return value. Every later `pollPacket()` begins by returning immediately when `receiverActive` is false, so it never attempts to arm reception again. A transient single re-arm error therefore becomes permanent for that bridge session even after the radio is healthy again. In the transmit case, `sendPacket()` can report success while reception has silently been lost.
@@ -1292,10 +1211,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Track a retryable `needsReceiveArm` state separately from “receiver is currently armed”; while the bridge is running, retry `startReceive()` from the poll/service path with bounded backoff. Do not silently report a fully restored transmit operation if RX re-arm failed. Add fault-injection tests for one failed re-arm after both a receive error and a successful transmit, followed by recovery on the next service cycle.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0704](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/5429ff14b8803c208a0b7c580567600de8349ddb/bugs.md)
-
 ### 117. Ask can submit the same non-idempotent LLM POST twice after an ambiguous transport failure
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/llm_ask.c::complete_question()`; transport semantics in `src/native/NativeNetworkBridge.cpp::httpRequest()`.
 - **Trigger / reproduction:** Submit a question and let the HTTPS POST reach the LLM server, then fail the client transport while receiving the response (for example close the connection mid-response or time out after the request body has already been sent). `http_request()` returns false for transport/read failures even though the server may already have processed the POST.
 - **Observed / logically demonstrated failure:** `complete_question()` unconditionally performs the identical POST a second time whenever the first `http_request()` returns false. A false transport result is not proof that the request was never delivered; `NativeNetworkBridge` can return false after the POST has been transmitted and response handling fails. The server can therefore execute two completions for one user question, while the app records only whichever response is successfully received.
@@ -1304,10 +1222,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Do not blindly retry an ambiguous POST. Either expose enough transport phase information to retry only failures proven to occur before request transmission, use a provider-supported idempotency/request key, or require an explicit user retry after an ambiguous failure. Add a test server that accepts the first POST and then drops the response connection, and assert that the client does not automatically submit a second request.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0704](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/5429ff14b8803c208a0b7c580567600de8349ddb/bugs.md); [automation/bug-scan-20260928-1520](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/2d13c5df568d1a5cb37e4c0aa785e7c6feb861c4/bugs.md); [Drive: 2026-09-28 15-20 MDT - automation-bug-scan-20260928-1520 - Instructions](https://docs.google.com/spreadsheets/d/1wYRFUPOyFqzGet9bQ8tRNpDaAQDcRRdr8DI3vts2vMk/edit?usp=drivesdk); [Drive: 2026-09-28 15-20 MDT - automation-bug-scan-20260928-1520 - Diff](https://docs.google.com/spreadsheets/d/17mygQzs_2CezszJBGTo2MCfbpOCUlNDblXwdtoHkOZE/edit?usp=drivesdk)
-
 ### 118. Valid app manifests can declare more provider capabilities than the runtime lease bridge can acquire
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/NativeProviderCapabilityBridge.cpp` (`kMaxActiveLeases = 4`, `active[]`, and `acquire()`); `src/native/AppManifest.cpp` capability-list validation; `src/runtime/capabilities/AppCapabilityRequirements.h` (`kMaxAppRequirements = 6`); `lib/NativeApps/include/T5ProviderCapabilityApi.h`.
 - **Trigger / reproduction:** Install a valid native app whose sidecar declares at least five distinct provider capabilities and have the app acquire those interfaces without releasing the earlier leases. Manifest validation permits up to six `requires` entries and six `optional` entries, with duplicates between the lists rejected, while the public provider-capability ABI documents no four-lease limit.
 - **Observed / logically demonstrated failure:** The first four acquisitions can occupy every slot in `active[4]`; the fifth call fails with `Capability lease table full` even though the capability was validly declared and an installed compatible provider may be available. Mandatory launch gating can therefore accept a manifest that the runtime interface-acquisition layer cannot actually service. Open PR #96 changes failed-release retention in this bridge but leaves the four-slot limit unchanged.
@@ -1316,10 +1233,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Use a per-invocation lease table sized to the validated capability contract (or dynamically allocate bounded entries), and make any true lease limit explicit and consistent with manifest validation. Add coverage that acquires at least five declared capabilities simultaneously, plus a maximum-contract case spanning the accepted required/optional declaration counts.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0704](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/5429ff14b8803c208a0b7c580567600de8349ddb/bugs.md)
-
 ### 119. Opening or rescanning Wi-Fi Networks tears down an already-working station connection
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/activities/network/WifiSelectionActivity.cpp`, `onEnter()`, `startWifiScanAttempt()`, and `attemptConnection()`; `src/providers/network/Esp32NetworkProvider.cpp`, `startScan()` and `connect()`; native handoff through `src/native/NativeSystemUiBridge.cpp::NativeWifiActivity::onEnter()`.
 - **Trigger / reproduction:** Connect the device to Wi-Fi, then open **Wi-Fi Networks** from a native app and cancel without intentionally changing networks. Test both with a saved `lastConnectedSsid` and with no usable saved last-network credential. Rescanning the list is another deterministic trigger.
 - **Observed / logically demonstrated failure:** The selector never preserves or checks the pre-existing station connection. With a saved last network, `onEnter()` immediately calls `attemptConnection()`; provider `connect()` executes `WiFi.disconnect(false, true)` before beginning a new association. Without that auto-connect path, scanning calls `startScan()`, which explicitly switches Wi-Fi to `WIFI_OFF`, brings STA back up, and disconnects again before scanning. Thus merely entering/rescanning the picker interrupts a connection that was already healthy, even though `onExit()` explicitly says the picker should not disconnect Wi-Fi.
@@ -1328,10 +1244,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Snapshot connection ownership/state on entry. If already connected, do not auto-reconnect to `lastConnectedSsid`; use a non-disruptive scan path where supported, or defer destructive station reset until the user explicitly chooses another network. On cancel, preserve/restore the pre-existing connection. Add tests proving open/cancel and rescan do not call the destructive disconnect path for an already-connected station.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0738](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ae95ab57b54b4745074a22227bad25c5341ba4b2/bugs.md); [Drive: 2026-09-28 07-38 MDT - automation-bug-scan-20260928-0738 - Instructions](https://docs.google.com/spreadsheets/d/1X2Pqr2AHuLtG36KzrvkQEZ5LRxKnGR9yO4riBi6bm1c/edit?usp=drivesdk); [Drive: 2026-09-28 07-38 MDT - automation-bug-scan-20260928-0738 - Diff](https://docs.google.com/spreadsheets/d/17ntuX4WGxnYrfhLIbPor3h_0wbt-EkjvMrvPg-9TLWA/edit?usp=drivesdk)
-
 ### 120. Replacing an EPUB at the same path reuses the previous book's cache
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/Epub/Epub.h::Epub()`, `lib/Epub/Epub.cpp::load()`, and `lib/Epub/Epub/BookMetadataCache.cpp::load()`; dependent cached metadata, spine/TOC, CSS, sections, covers, and thumbnails live under the same pathname-derived cache directory.
 - **Trigger / reproduction:** Open an EPUB once so its cache is built, then replace that EPUB file in place with a different valid book using the same pathname and open it again without manually clearing the reader cache.
@@ -1341,10 +1256,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Persist a source identity with the cache and validate it before accepting `book.bin`—prefer a robust archive fingerprint, or at minimum a generation tuple that changes on replacement. On mismatch, invalidate the complete EPUB cache tree before rebuilding so metadata, spine/TOC, CSS, sections, covers, and thumbnails cannot mix generations. Add a regression that builds a cache for book A, replaces the same path with book B, and proves B is re-indexed.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0821](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/85dbb5c23d56650e8a8e8885fd12f6d008063217/bugs.md); [automation/bug-scan-20260929-0823](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6a1c2dd84e3e922a799f9c29176cf2706bafc209/bugs.md); [Drive: 2026-09-29 0823 MDT - automation-bug-scan-20260929-0823 - Instructions](https://docs.google.com/spreadsheets/d/1mGhMQ7hk2vMFB7TIHJQ8JXV-Prl3VV31Pt4vDfr17GA/edit?usp=drivesdk); [Drive: 2026-09-28 08-21 MDT - automation-bug-scan-20260928-0821 - integration instructions](https://docs.google.com/spreadsheets/d/1NIrCpsuEiQg9BhUpEAmU9NfC3y6hxSWLpGNa0aktYWU/edit?usp=drivesdk); [Drive: 2026-09-28 08-21 MDT - automation-bug-scan-20260928-0821 - bugs.md diff](https://docs.google.com/spreadsheets/d/1wfojDTXWDof70_0IlYFDZJH0vAGH_xqQUhiqsXH1TnQ/edit?usp=drivesdk); [Drive: 2026-09-29 0823 MDT - automation-bug-scan-20260929-0823 - Diff](https://docs.google.com/spreadsheets/d/1vJqjCYlDdK_38-EdVcug_G3EVGKhGAIet-6GhueGFhg/edit?usp=drivesdk)
-
 ### 121. OPF author metadata is corrupted when Expat splits one creator's text across callbacks
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/Epub/Epub/parsers/ContentOpfParser.cpp::characterData()`, `startElement()`, and `endElement()` for `dc:creator`.
 - **Trigger / reproduction:** Parse a valid OPF containing one `<dc:creator>` whose character data is delivered in more than one Expat callback. A deterministic test can pad the XML so an ordinary creator name crosses a parser input-buffer boundary, then feed the document through the existing streaming parser.
@@ -1354,10 +1268,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Accumulate character data into a per-element `currentCreator` buffer and append it to the aggregate author string exactly once when `</dc:creator>` closes; add the separator only between completed creator elements. Add tests that feed the same OPF at different chunk sizes and verify identical single- and multi-author metadata.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0821](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/85dbb5c23d56650e8a8e8885fd12f6d008063217/bugs.md); [automation/bug-scan-20260929-0321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/1119b86c20c4a8024ef0f0b1e3ed416ce0b0e8ea/bugs.md); [automation/bug-scan-20260930-0518](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/82533918d81fda11ae9c6b19d95b071a98f19361/bugs.md); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Diff](https://docs.google.com/spreadsheets/d/1geT64642Lsjo_EaRZhNxF9516LV2BRVIp4stNAnOkjg/edit?usp=drivesdk); [Drive: 2026-09-28 08-21 MDT - automation-bug-scan-20260928-0821 - integration instructions](https://docs.google.com/spreadsheets/d/1NIrCpsuEiQg9BhUpEAmU9NfC3y6hxSWLpGNa0aktYWU/edit?usp=drivesdk); [Drive: 2026-09-28 08-21 MDT - automation-bug-scan-20260928-0821 - bugs.md diff](https://docs.google.com/spreadsheets/d/1wfojDTXWDof70_0IlYFDZJH0vAGH_xqQUhiqsXH1TnQ/edit?usp=drivesdk); [Drive: 2026-09-29 0321 MDT - automation-bug-scan-20260929-0321 - Instructions](https://docs.google.com/spreadsheets/d/1olIEa0GA1zbdPFGAPQbYGSKvj7INIdabz3rmzWNM4x0/edit?usp=drivesdk); [Drive: 2026-09-29 0321 MDT - automation-bug-scan-20260929-0321 - Diff](https://docs.google.com/spreadsheets/d/1UP3gJ6ntPpZsnttw6gXKoPoWZ5guN8F2pWhAClKpZxA/edit?usp=drivesdk); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Instructions](https://docs.google.com/spreadsheets/d/1xB4JDjKoHfw-mCY9pUQL1VP2tWxilaT0WRwdCPryrO8/edit?usp=drivesdk)
-
 ### 122. EPUB XML parsers compare literal namespace prefixes, rejecting valid books that use equivalent alternate prefixes
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/Epub/Epub/parsers/ContainerParser.cpp`, `ContentOpfParser.cpp`, `TocNavParser.cpp`, and `TocNcxParser.cpp`; failure is surfaced by `lib/Epub/Epub.cpp::findContentOpfFile()` / `parseContentOpf()`.
 - **Trigger / reproduction:** Create an otherwise valid EPUB whose `META-INF/container.xml` binds the standard container namespace to a prefix, for example `<ocf:container xmlns:ocf="urn:oasis:names:tc:opendocument:xmlns:container"><ocf:rootfiles><ocf:rootfile .../></ocf:rootfiles></ocf:container>`. XML namespace prefixes are aliases, so this is namespace-equivalent to the usual default-namespace form. Open the EPUB.
@@ -1367,10 +1280,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Parse with namespace processing (for example `XML_ParserCreateNS`) and compare namespace URI/local-name pairs, or normalize QNames consistently while validating the expected namespace. Add fixtures using default namespaces and arbitrary non-`opf`/`dc`/`epub` prefixes for container, OPF metadata/manifest/spine, EPUB 3 nav, and NCX.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0821](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/85dbb5c23d56650e8a8e8885fd12f6d008063217/bugs.md); [automation/bug-scan-20260929-2226](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/13108f6ab843969240b686a9aa624cfb63470260/bugs.md); [Drive: 2026-09-28 08-21 MDT - automation-bug-scan-20260928-0821 - integration instructions](https://docs.google.com/spreadsheets/d/1NIrCpsuEiQg9BhUpEAmU9NfC3y6hxSWLpGNa0aktYWU/edit?usp=drivesdk); [Drive: 2026-09-28 08-21 MDT - automation-bug-scan-20260928-0821 - bugs.md diff](https://docs.google.com/spreadsheets/d/1wfojDTXWDof70_0IlYFDZJH0vAGH_xqQUhiqsXH1TnQ/edit?usp=drivesdk); [Drive: 2026-09-29 2226 MDT - automation-bug-scan-20260929-2226 - 13108f6 - bugs.md diff](https://docs.google.com/spreadsheets/d/1XIr2_53lXbldoungfg66A_4OCh1SPVNtyG4xYoOIZaY/edit?usp=drivesdk); [Drive: 2026-09-29 2226 MDT - automation-bug-scan-20260929-2226 - 13108f6 - integration instructions](https://docs.google.com/spreadsheets/d/1GX7YqdYIr7lUAV1r91jtVHJFe7M79rteWrEQngf2J68/edit?usp=drivesdk)
-
 ### 123. Native stream file API rejects valid SD paths at 256 bytes even though the storage API accepts longer paths
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/native/NativeStreamBridge.cpp::filePath()` and `openFile()`; contrasted with `src/native/NativePlatformBridge.cpp::mapStoragePath()` / the `T5StorageApi` file operations and the public `lib/NativeApps/include/T5StreamApi.h` contract.
 - **Trigger / reproduction:** Create a regular file whose complete native path begins with `/sd/` and is 256–511 bytes long (for example several legal nested directory components plus a short filename). The File Browser/storage path machinery can represent such a path, but call `t5_stream_api_v1::open_file(path, T5_STREAM_FILE_READ, ...)` with that same path.
@@ -1380,10 +1292,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Replace the fixed `strnlen(..., 256)` gate with the shared storage path validator (or a documented filesystem-derived bound), keep per-segment traversal checks, and add parity tests proving the storage and stream APIs accept/reject the same valid path set, including 255-, 256-, and 511-byte paths.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0924](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ac217fcd00c86f7d807fd8864e4f81f4e34f1a06/bugs.md); [Drive: 2026-09-28 09-24 MDT - automation-bug-scan-20260928-0924 - Instructions](https://docs.google.com/spreadsheets/d/1JTPf4QDgUlX7EQD3OCY7xsLobTcUnEE8rJyXxV3LELk/edit?usp=drivesdk); [Drive: 2026-09-28 09-24 MDT - automation-bug-scan-20260928-0924 - Diff](https://docs.google.com/spreadsheets/d/1dHScILciy8BhoVGpZN3WGEA3ykn5XegoGAmXcn1E4nI/edit?usp=drivesdk)
-
 ### 124. EPUB package IRIs with percent-encoded path characters are looked up as literal ZIP names
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/Epub/Epub/parsers/ContentOpfParser.cpp::startElement()`, `lib/FsHelpers/FsHelpers.cpp::normalisePath()`, and `lib/Epub/Epub.cpp::readItemContentsToBytes()`, `readItemContentsToStream()`, and `getItemSize()`.
 - **Trigger / reproduction:** Build a standards-valid EPUB with a container entry such as `OPS/HTML/file name.xhtml` and reference it from the OPF as `href="HTML/file%20name.xhtml"`. Open the book and navigate to that spine item.
@@ -1393,10 +1304,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Resolve OPF/nav/content references as URLs/IRIs relative to their document base, percent-decode only the URL path when mapping to the OCF abstract container, preserve reserved-delimiter semantics, and reject invalid escapes instead of silently rewriting them. Add fixtures for `%20`, UTF-8 percent sequences, fragments, and literal percent characters.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0924](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ac217fcd00c86f7d807fd8864e4f81f4e34f1a06/bugs.md); [Drive: 2026-09-28 09-24 MDT - automation-bug-scan-20260928-0924 - Instructions](https://docs.google.com/spreadsheets/d/1JTPf4QDgUlX7EQD3OCY7xsLobTcUnEE8rJyXxV3LELk/edit?usp=drivesdk); [Drive: 2026-09-28 09-24 MDT - automation-bug-scan-20260928-0924 - Diff](https://docs.google.com/spreadsheets/d/1dHScILciy8BhoVGpZN3WGEA3ykn5XegoGAmXcn1E4nI/edit?usp=drivesdk)
-
 ### 125. ZIP entries with valid names of 256 bytes or longer are silently unreachable
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/ZipFile/ZipFile.cpp::loadAllFileStatSlims()`, `loadFileStatSlim()`, and `findFirstBySuffix()`; the fixed `char itemName[256]` buffers used while scanning the central directory.
 - **Trigger / reproduction:** Create an otherwise valid ZIP/EPUB containing an entry whose ZIP filename field is 256 bytes or longer, reference that entry from the EPUB manifest, and open/read it through `ZipFile`.
 - **Observed / logically demonstrated failure:** ZIP stores the filename length in a 16-bit field, but all lookup scans only read a name when `nameLen < 256`. Longer names are explicitly skipped. They are never inserted into `fileStatSlimCache`, direct lookup can never compare them to the requested filename, and suffix discovery skips them as well. The archive can load successfully while the referenced entry is reported as missing.
@@ -1405,10 +1315,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Decouple central-directory parsing from the fixed scratch size. Compare long names in bounded chunks or allocate a validated temporary buffer, and retain complete cache keys under an explicit resource policy. Add fixtures at 255, 256, and larger filename lengths and verify direct lookup plus suffix discovery.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-0924](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ac217fcd00c86f7d807fd8864e4f81f4e34f1a06/bugs.md); [automation/bug-scan-20260929-0127-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b126c4282b721ea72cd5972a2779992bfaf6441c/bugs.md); [Drive: 2026-09-28 09-24 MDT - automation-bug-scan-20260928-0924 - Instructions](https://docs.google.com/spreadsheets/d/1JTPf4QDgUlX7EQD3OCY7xsLobTcUnEE8rJyXxV3LELk/edit?usp=drivesdk); [Drive: 2026-09-28 09-24 MDT - automation-bug-scan-20260928-0924 - Diff](https://docs.google.com/spreadsheets/d/1dHScILciy8BhoVGpZN3WGEA3ykn5XegoGAmXcn1E4nI/edit?usp=drivesdk); [Drive: 2026-09-29 0127 MDT - automation-bug-scan-20260929-0127-findings - Instructions](https://docs.google.com/spreadsheets/d/1ad4bmYdzefozwBelKNdUD846o6B6SZ6_W2j2E23XvHw/edit?usp=drivesdk); [Drive: 2026-09-29 0127 MDT - automation-bug-scan-20260929-0127-findings - Diff](https://docs.google.com/spreadsheets/d/1Bl2Lj6n40DNLK8lCt8zLIjps7eeAa74hQyQ376hxUh8/edit?usp=drivesdk)
-
 ### 126. HalStorage stream copy reports success after a short output write or premature input read failure
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/hal/HalStorage.cpp`, `HalStorage::readFileToStream(const char*, Print&, size_t)`.
 - **Trigger / reproduction:** Call `readFileToStream()` on an existing file using a `Print` sink whose `write(buffer, n)` accepts fewer than `n` bytes, or inject an SD read failure that makes `f.read()` return zero/negative while unread data remains.
@@ -1418,10 +1327,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Require every output write to equal the input chunk length, treat a read failure before verified EOF as failure, and propagate close/sync errors where the underlying API exposes them. Add tests with a short-writing `Print` implementation and an injected source read failure that verify the helper returns `false` and never reports a truncated transfer as successful.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1020](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a6c2e0dcd3345f9dd7946e444b7b8263e921d201/bugs.md); [Drive: 2026-09-28 10-20 MDT - automation-bug-scan-20260928-1020 - Instructions](https://docs.google.com/spreadsheets/d/1mLlBAkKzZu2O97mGoH_rs1TACJzlhD7wx1Xs5oY6EIY/edit?usp=drivesdk); [Drive: 2026-09-28 10-20 MDT - automation-bug-scan-20260928-1020 - Diff](https://docs.google.com/spreadsheets/d/1JXPswBeGnJhUCpvWcsZ020laGpgrq7qhh5Woc7M95MY/edit?usp=drivesdk)
-
 ### 127. Status Bar bridge reports an unsaved setting mutation as successful when persistence fails
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/native/NativeStatusBarBridge.cpp`, `itemActivate()`; consumer `Apps/status_bar_settings.c`, Confirm/tap activation paths.
 - **Trigger / reproduction:** Open **Customize Status Bar**, force the settings file write to fail, then toggle Chapter Page Count, Book Progress, Progress Bar, Thickness, Title, Battery, or Clock.
@@ -1431,10 +1339,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Preserve the previous field value, require `saveToFile()` success before returning success, restore the field on failure, and make the app surface a save error instead of silently rerendering the optimistic value. Add an injected-write-failure test for each binary/three-state setting family.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1020](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a6c2e0dcd3345f9dd7946e444b7b8263e921d201/bugs.md); [Drive: 2026-09-28 10-20 MDT - automation-bug-scan-20260928-1020 - Instructions](https://docs.google.com/spreadsheets/d/1mLlBAkKzZu2O97mGoH_rs1TACJzlhD7wx1Xs5oY6EIY/edit?usp=drivesdk); [Drive: 2026-09-28 10-20 MDT - automation-bug-scan-20260928-1020 - Diff](https://docs.google.com/spreadsheets/d/1JXPswBeGnJhUCpvWcsZ020laGpgrq7qhh5Woc7M95MY/edit?usp=drivesdk)
-
 ### 128. Recent Books removes entries from the live UI even when the change was not persisted
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/RecentBooksStore.cpp`, especially `RecentBooksStore::removeBook()`, `addBook()`, `updateBook()`, and `updatePath()`; `src/activities/home/RecentBooksActivity.cpp::removeSelectedRecentBook()`.
 - **Trigger / reproduction:** Populate Recent Books, then make `/.crosspoint/recent.json` unwritable or force its save to fail. Open Recent Books, long-press a row, confirm Delete, and then reload the store or reboot.
 - **Observed / logically demonstrated failure:** `removeBook()` erases the matching entry from `recentBooks`, calls `saveToFile()` without checking the return value, and returns `true` unconditionally after the erase. `removeSelectedRecentBook()` then ignores even that return value, removes the row from its local list, and redraws the UI as though the deletion succeeded. The durable JSON can still contain the entry, so it reappears after reload/reboot. `addBook()`, `updateBook()`, and `updatePath()` have the same mutate-then-ignore-save pattern and can likewise leave the live list ahead of durable state.
@@ -1443,10 +1350,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Stage the candidate recent-book vector, persist it transactionally, and publish it only after a successful save. Make every mutator return a persistence result; in the activity, keep the row selected and surface an error when removal fails. Add fault-injection tests for add, update, path change, and delete proving both live and durable state remain unchanged on save failure.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1124](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/13718ced12a20f881425e7b86e84cb725f5cbb24/bugs.md); [automation/bug-scan-20260929-0823](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6a1c2dd84e3e922a799f9c29176cf2706bafc209/bugs.md); [Drive: 2026-09-28 11-24 MDT - automation_bug-scan-20260928-1124 - Instructions](https://docs.google.com/spreadsheets/d/1bc0LhJFvghzQD4lG5fIguO2E8IzypnacKMLODbx0MMc/edit?usp=drivesdk); [Drive: 2026-09-29 0823 MDT - automation-bug-scan-20260929-0823 - Instructions](https://docs.google.com/spreadsheets/d/1mGhMQ7hk2vMFB7TIHJQ8JXV-Prl3VV31Pt4vDfr17GA/edit?usp=drivesdk); [Drive: 2026-09-28 11-24 MDT - automation_bug-scan-20260928-1124 - Diff](https://docs.google.com/spreadsheets/d/1ZCPXhFC9yJ3WXqiZnDWY98oJoW-e8pEbTKNj9K06yOY/edit?usp=drivesdk); [Drive: 2026-09-28 11-24 MDT - automation_bug-scan-20260928-1124 - Diff](https://docs.google.com/spreadsheets/d/1RhtnthMmMFylAcDRBVDXA0Ysb68RWhSBuZ5nXiEQ6K8/edit?usp=drivesdk); [Drive: 2026-09-29 0823 MDT - automation-bug-scan-20260929-0823 - Diff](https://docs.google.com/spreadsheets/d/1vJqjCYlDdK_38-EdVcug_G3EVGKhGAIet-6GhueGFhg/edit?usp=drivesdk)
-
 ### 129. Installed-app path resolution fails globally when /Apps contains more than 512 directory entries
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/InstalledAppPath.cpp::resolveInstalledAppPath()`, especially `kMaxDirectoryEntries = 512`, the bounded `openNextFile()` loop, and the `if (!reachedEnd) return false` guard.
 - **Trigger / reproduction:** Install a valid canonical app under `/Apps/<id>/` whose artifact can be resolved by basename, then add enough unrelated valid files/directories under `/Apps` that the directory has at least 513 entries. Resolve the artifact with `resolveInstalledAppPath()`; the target can be placed among the first entries to show that finding it is not sufficient.
 - **Observed / logically demonstrated failure:** The resolver records a valid matching managed path while scanning, but `reachedEnd` is set only when `openNextFile()` reports end-of-directory. If 512 entries are consumed without reaching the end, the loop exits at the fixed bound and the function immediately returns `false` before publishing an already-found unique match or trying the legacy fallback. Consequently, merely exceeding the scan bound makes every lookup through this resolver fail, including targets that were verified early in the scan.
@@ -1455,10 +1361,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Resolve through the authoritative installed-package index, or page/resume directory enumeration until ambiguity can be decided without imposing a correctness-changing entry cap. If a hard resource ceiling is unavoidable, return an explicit resource/inventory error rather than treating a verified target as not found. Add tests at 512 and 513 entries with the target both before and after the boundary, plus an ambiguity case.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1124](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/13718ced12a20f881425e7b86e84cb725f5cbb24/bugs.md); [Drive: 2026-09-28 11-24 MDT - automation_bug-scan-20260928-1124 - Instructions](https://docs.google.com/spreadsheets/d/1bc0LhJFvghzQD4lG5fIguO2E8IzypnacKMLODbx0MMc/edit?usp=drivesdk); [Drive: 2026-09-28 11-24 MDT - automation_bug-scan-20260928-1124 - Diff](https://docs.google.com/spreadsheets/d/1ZCPXhFC9yJ3WXqiZnDWY98oJoW-e8pEbTKNj9K06yOY/edit?usp=drivesdk); [Drive: 2026-09-28 11-24 MDT - automation_bug-scan-20260928-1124 - Diff](https://docs.google.com/spreadsheets/d/1RhtnthMmMFylAcDRBVDXA0Ysb68RWhSBuZ5nXiEQ6K8/edit?usp=drivesdk)
-
 ### 130. Markdown fenced-code state can be closed by the wrong fence marker and corrupt parsing of the rest of the document
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/Markdown/Markdown.cpp`, `isFence()` and `parseLine(std::string_view, bool&)`; corresponding public state shape in `lib/Markdown/Markdown.h`.
 - **Trigger / reproduction:** Parse Markdown containing a backtick fence with a tilde-fence-looking line inside it, for example an opening three-backtick fence, a code line, a line containing `~~~`, another code line, and then the closing three-backtick fence. The inverse case with a tilde opener and backticks inside behaves the same way.
 - **Observed / logically demonstrated failure:** `isFence()` returns true for any trimmed line whose first three characters are either backticks or tildes. `parseLine()` stores only a boolean `inFence` and toggles it on every such line, so it cannot remember which marker opened the block or how long the opening run was. A `~~~` line therefore closes a backtick block; the following code is parsed as normal Markdown, and the actual backtick closer toggles the parser back into code mode. Fence-like lines with trailing text can likewise toggle state even when they should remain code content rather than act as a closing delimiter.
@@ -1467,10 +1372,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Replace the boolean-only fence state with a small delimiter state containing marker type and opening run length. Open on a valid fence, and close only on the compatible marker with a sufficient run and valid closing-line suffix; otherwise emit the line as code content. Add regression cases for mixed backtick/tilde markers, longer opening runs, fence-like text inside code, trailing text, and end-of-file while a fence remains open.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1124](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/13718ced12a20f881425e7b86e84cb725f5cbb24/bugs.md); [automation/bug-scan-20260929-2226](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/13108f6ab843969240b686a9aa624cfb63470260/bugs.md); [Drive: 2026-09-28 11-24 MDT - automation_bug-scan-20260928-1124 - Instructions](https://docs.google.com/spreadsheets/d/1bc0LhJFvghzQD4lG5fIguO2E8IzypnacKMLODbx0MMc/edit?usp=drivesdk); [Drive: 2026-09-28 11-24 MDT - automation_bug-scan-20260928-1124 - Diff](https://docs.google.com/spreadsheets/d/1ZCPXhFC9yJ3WXqiZnDWY98oJoW-e8pEbTKNj9K06yOY/edit?usp=drivesdk); [Drive: 2026-09-28 11-24 MDT - automation_bug-scan-20260928-1124 - Diff](https://docs.google.com/spreadsheets/d/1RhtnthMmMFylAcDRBVDXA0Ysb68RWhSBuZ5nXiEQ6K8/edit?usp=drivesdk); [Drive: 2026-09-29 2226 MDT - automation-bug-scan-20260929-2226 - 13108f6 - bugs.md diff](https://docs.google.com/spreadsheets/d/1XIr2_53lXbldoungfg66A_4OCh1SPVNtyG4xYoOIZaY/edit?usp=drivesdk); [Drive: 2026-09-29 2226 MDT - automation-bug-scan-20260929-2226 - 13108f6 - integration instructions](https://docs.google.com/spreadsheets/d/1GX7YqdYIr7lUAV1r91jtVHJFe7M79rteWrEQngf2J68/edit?usp=drivesdk)
-
 ### 131. Hollow Trail disables all built-in controls whenever any XInput controller is connected
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/hollow_trail.c`, `ht_input()` and the native-app Back ownership set in `app_main()`.
 - **Trigger / reproduction:** Launch Hollow Trail with an XInput receiver/controller connected so `snapshot()` returns at least one state with `connected != 0`. Leave the controller idle and press the device's built-in Left/Right/Confirm/Up/Down/Back controls.
 - **Observed / logically demonstrated failure:** `ht_input()` sets a single `connected` flag as soon as any gamepad is present and executes the built-in-button mapping only under `if (!connected)`. Therefore every built-in gameplay/navigation button is discarded while an XInput device is merely connected. Hollow Trail also calls `set_back_exits_app(false)`, so the physical Back button is not rescued by the host's normal native-app exit policy; the app can require the connected controller (or another global exit path) even though the device buttons are functional.
@@ -1479,10 +1383,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Merge built-in button state with direct XInput state rather than skipping it when a controller is connected. If navigation-bridge aliases need de-duplication, suppress only duplicated controller-derived aliases with source-aware logic, not physical buttons. Add a regression test with an idle connected XInput snapshot and verify each built-in control, especially Back, still works.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1222](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ea0d1ba79429d443834aa7f780669451b3ee7a75/bugs.md); [Drive: 2026-09-28 1222 MDT - automation-bug-scan-20260928-1222 - Instructions](https://docs.google.com/spreadsheets/d/11dzIWrzE51sVytvkiPaYovT0kl7HSp4XiIjfX-PNStE/edit?usp=drivesdk); [Drive: 2026-09-28 1222 MDT - automation-bug-scan-20260928-1222 - Diff](https://docs.google.com/spreadsheets/d/1zgjOdDRQ5oaXqBc4goLw4znfVL7TJMq4obDZFF5dLVo/edit?usp=drivesdk)
-
 ### 132. Native HTTP session cookies work only on the insecure-HTTPS transport path
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/NativeNetworkBridge.cpp`, `httpRequest()`, `performInsecureHttps()`, `nativeNetworkBegin()`, and `nativeNetworkEnd()`; session-cookie flags in `lib/NativeApps/include/T5NetworkApi.h`.
 - **Trigger / reproduction:** During one native-app session, make an HTTPS request with a non-empty `cert_pem` to an endpoint that returns `Set-Cookie`, then make a second request that requires that cookie. The same defect affects plain HTTP requests handled by the ESP HTTP client path.
 - **Observed / logically demonstrated failure:** The per-app `nativeCookieJar` is attached only inside `performInsecureHttps()` via `HTTPClient::setCookieJar()`. `httpRequest()` takes that path only for HTTPS when the caller supplies no certificate. Supplying a CA certificate sends the request through `esp_http_client`, where the bridge neither stores response cookies nor emits stored cookies on later requests, and it never sets the cookie availability/storage flags. Thus the native-app cookie session silently disappears when the caller uses certificate-verified HTTPS (or HTTP).
@@ -1491,10 +1394,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Give both transport paths the same bounded cookie-session semantics: parse/store `Set-Cookie`, emit matching `Cookie` headers, apply the existing size/count bounds, and set the result flags consistently. Prefer one shared cookie layer above both clients. Add two-request regression tests for certificate-verified HTTPS, insecure HTTPS, and HTTP, including redirect/session cases.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1222](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ea0d1ba79429d443834aa7f780669451b3ee7a75/bugs.md); [Drive: 2026-09-28 1222 MDT - automation-bug-scan-20260928-1222 - Instructions](https://docs.google.com/spreadsheets/d/11dzIWrzE51sVytvkiPaYovT0kl7HSp4XiIjfX-PNStE/edit?usp=drivesdk); [Drive: 2026-09-28 1222 MDT - automation-bug-scan-20260928-1222 - Diff](https://docs.google.com/spreadsheets/d/1zgjOdDRQ5oaXqBc4goLw4znfVL7TJMq4obDZFF5dLVo/edit?usp=drivesdk)
-
 ### 133. A 129-entry application catalog makes the catalog service fail instead of remaining usable
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/AppCatalogIndex.cpp`, `kMaxCatalogEntries` and `fetchAppCatalogIndex()`; `src/native/NativeAppHost.cpp`, `kMaxCatalogAssets`, `loadIndependentAppIndex()`, `CatalogReleaseStream`, and `loadAvailableAppCatalog()`.
 - **Trigger / reproduction:** Publish an otherwise valid schema-1 release index or aggregate app catalog containing 129 application records, then refresh App Store.
 - **Observed / logically demonstrated failure:** Both catalog parsers hard-limit the service to 128 entries. `loadIndependentAppIndex()` returns false as soon as the authoritative index has more than `kMaxCatalogAssets`; `fetchAppCatalogIndex()` likewise rejects an aggregate catalog whose `apps` array exceeds `kMaxCatalogEntries`. When a release advertises an aggregate catalog and that load fails, `loadAvailableAppCatalog()` explicitly clears the catalog and refuses the per-app fallback. The result is an unavailable/empty catalog, not merely omission of entries after 128. This is distinct from the existing App Store 64-row UI bug: that bug hides later rows from a valid provider catalog, while this defect causes the provider catalog itself to fail once it grows past 128.
@@ -1503,10 +1405,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Replace the entry-count rejection with a byte/memory budget and PSRAM-backed dynamic indexing, or add explicit paging/chunking to the release index. If a hard device limit must remain, do not invalidate the entire catalog: expose a bounded usable prefix plus an explicit truncation/error state. Add tests for 128, 129, and larger authoritative/aggregate catalogs and verify the first entries remain available.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1222](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ea0d1ba79429d443834aa7f780669451b3ee7a75/bugs.md); [Drive: 2026-09-28 1222 MDT - automation-bug-scan-20260928-1222 - Instructions](https://docs.google.com/spreadsheets/d/11dzIWrzE51sVytvkiPaYovT0kl7HSp4XiIjfX-PNStE/edit?usp=drivesdk); [Drive: 2026-09-28 1222 MDT - automation-bug-scan-20260928-1222 - Diff](https://docs.google.com/spreadsheets/d/1zgjOdDRQ5oaXqBc4goLw4znfVL7TJMq4obDZFF5dLVo/edit?usp=drivesdk)
-
 ### 134. Moving a finished EPUB to /Read leaves its bookmarks behind under the old path-derived filename
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/activities/reader/EpubReaderActivity.cpp`, `EpubReaderActivity::moveFinishedBookToReadFolder()`; `src/util/BookmarkUtil.cpp`, `BookmarkUtil::getBookmarkPath()`; bookmark loading in `EpubReaderActivity::loadCachedBookmarks()` and `EpubReaderBookmarksActivity::onEnter()`.
 - **Trigger / reproduction:** Enable **Move finished books to /Read**, add one or more bookmarks to an EPUB outside `/Read`, finish the book so `moveFinishedBookToReadFolder()` runs, then reopen the moved EPUB from `/Read` and open its bookmark list.
@@ -1516,10 +1417,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Before or as part of the EPUB move transaction, derive both old and new bookmark paths and migrate the existing bookmark file with collision/error handling. Treat sidecar migration as part of a coherent relocation transaction, and add a regression that bookmarks a book, finishes/moves it, reopens it from `/Read`, and verifies the same bookmarks remain available.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b5bb23216aff4f9d1565fe127c00e99f3c8e268b/bugs.md); [Drive: 2026-09-28 1321 MDT - automation-bug-scan-20260928-1321 - Instructions](https://docs.google.com/spreadsheets/d/1SD5vp5rxtrL_Mp80xBG_6bKaAVb5R0WaeVM6gS3-Tzs/edit?usp=drivesdk); [Drive: 2026-09-28 1321 MDT - automation-bug-scan-20260928-1321 - Diff](https://docs.google.com/spreadsheets/d/1C7xQuBintsL2WCAzJohJICs00HGoUDs5ir8iAm0eTCg/edit?usp=drivesdk)
-
 ### 135. 3D Model Viewer leaks the raw-touch provider lease when touch setup fails after acquisition
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `Apps/model_viewer.c`, especially `mv_touch_begin()`, `mv_touch_end()`, and the touch-setup failure path in `app_main()`.
 - **Trigger / reproduction:** Launch Model Viewer with an installed `input.touch.raw` provider whose capability acquisition succeeds and returns a lease/interface, but whose exposed ABI is invalid/incomplete or whose `subscribe()` call returns 0. Then leave the resulting **TOUCH UNAVAILABLE** screen.
@@ -1529,10 +1429,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make `mv_touch_begin()` transactional: on any failure after acquisition, unsubscribe if needed, release the lease, and clear all touch globals before returning `false`. Alternatively, have the caller always invoke a safe/idempotent `mv_touch_end()` on failed setup. Add fixtures for invalid ABI and subscribe failure and assert the acquired lease is released exactly once.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1420](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ef39eb348e91adede6760ac5ba69e3c4b3e322ee/bugs.md); [Drive: 2026-09-28 14-20 MDT - automation_bug-scan-20260928-1420 - Instructions](https://docs.google.com/spreadsheets/d/1t3MMT4kWW4s0JxkgB3xHJx8Eh4EmjODAYb8jnaEvG0Q/edit?usp=drivesdk); [Drive: 2026-09-28 14-20 MDT - automation_bug-scan-20260928-1420 - Diff](https://docs.google.com/spreadsheets/d/1hQX8mL5jHM8im48M3RT_JSD2hN71FrC9UHXEa5qx8j0/edit?usp=drivesdk)
-
 ### 136. 3D Model Viewer silently truncates long OBJ records and renders incomplete valid faces
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `Apps/model_viewer.c`, `MV_LINE_CAP`, `mv_reader_line()`, `mv_obj_face_tokens()`, and both passes of `mv_load_obj()`.
 - **Trigger / reproduction:** Open a syntactically valid OBJ containing a face record longer than 1023 bytes, for example one polygon with enough vertex/texture/normal index tokens that its single `f ...` line exceeds `MV_LINE_CAP - 1`.
@@ -1542,10 +1441,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Have `mv_reader_line()` report overflow separately and make OBJ/STL text parsing reject an overlong structural record, or use a growable/PSRAM-backed record buffer with an explicit practical bound. Add a regression with a >1023-byte face line and verify either the complete polygon is triangulated or the file is rejected explicitly, never partially accepted.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1420](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ef39eb348e91adede6760ac5ba69e3c4b3e322ee/bugs.md); [automation/bug-scan-20260929-2102](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/728e209d547481d1060b7841b4e22c5eb837ff8c/bugs.md); [Drive: 2026-09-28 14-20 MDT - automation_bug-scan-20260928-1420 - Instructions](https://docs.google.com/spreadsheets/d/1t3MMT4kWW4s0JxkgB3xHJx8Eh4EmjODAYb8jnaEvG0Q/edit?usp=drivesdk); [Drive: 2026-09-28 14-20 MDT - automation_bug-scan-20260928-1420 - Diff](https://docs.google.com/spreadsheets/d/1hQX8mL5jHM8im48M3RT_JSD2hN71FrC9UHXEa5qx8j0/edit?usp=drivesdk); [Drive: 2026-09-29 21-02 MDT - automation-bug-scan-20260929-2102 - Instructions](https://docs.google.com/spreadsheets/d/10o78oxZAN0DYrcpzIBXxrHkgQLsr9hocvSpV1IfPSEY/edit?usp=drivesdk); [Drive: 2026-09-29 21-02 MDT - automation-bug-scan-20260929-2102 - Diff](https://docs.google.com/spreadsheets/d/1llLFetNI6nEmi67v1zvyKkLU9xAapNH61elrKCuOF8s/edit?usp=drivesdk)
-
 ### 137. WebDAV COPY can report success after a premature source read and publish a truncated destination
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/network/WebDAVHandler.cpp`, `WebDAVHandler::handleCopy()`, specifically the streaming copy loop and `copyOk` success decision.
 - **Trigger / reproduction:** Issue WebDAV `COPY` for a regular file and inject an SD/source read failure after at least one chunk has copied but before the source's declared size is exhausted.
@@ -1555,10 +1453,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Snapshot the expected source size before copying, track bytes read/written, fail on any zero/negative read before the expected count is reached, and require the final copied count to equal the source size before publishing success. Prefer staging the destination so failure cannot expose a partial file. Add a fault-injection test that fails a mid-copy source read and verifies an error response and no truncated published destination.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1420](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ef39eb348e91adede6760ac5ba69e3c4b3e322ee/bugs.md); [Drive: 2026-09-28 14-20 MDT - automation_bug-scan-20260928-1420 - Instructions](https://docs.google.com/spreadsheets/d/1t3MMT4kWW4s0JxkgB3xHJx8Eh4EmjODAYb8jnaEvG0Q/edit?usp=drivesdk); [Drive: 2026-09-28 14-20 MDT - automation_bug-scan-20260928-1420 - Diff](https://docs.google.com/spreadsheets/d/1hQX8mL5jHM8im48M3RT_JSD2hN71FrC9UHXEa5qx8j0/edit?usp=drivesdk)
-
 ### 138. Manage Fonts silently hides catalog families after row 64
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `Apps/font_manager.c`, `MAX_FAMILIES`, `load_rows()`, `activate_selected()`; `src/native/NativeFontBridge.cpp::familyCount()`.
 - **Trigger / reproduction:** Provide a valid font manifest containing more than 64 families, refresh **Manage Fonts**, then try to install, update, or remove a family whose catalog index is 64 or greater.
@@ -1568,10 +1465,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Page or virtualize the full `family_count()` result while retaining the real catalog index for each visible row, or dynamically allocate the bounded row model in PSRAM. Show explicit truncation only if a hard service limit is unavoidable. Add tests with 65+ manifest families and actions on an entry beyond row 64.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1520](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/2d13c5df568d1a5cb37e4c0aa785e7c6feb861c4/bugs.md); [Drive: 2026-09-28 15-20 MDT - automation-bug-scan-20260928-1520 - Instructions](https://docs.google.com/spreadsheets/d/1wYRFUPOyFqzGet9bQ8tRNpDaAQDcRRdr8DI3vts2vMk/edit?usp=drivesdk); [Drive: 2026-09-28 15-20 MDT - automation-bug-scan-20260928-1520 - Diff](https://docs.google.com/spreadsheets/d/17mygQzs_2CezszJBGTo2MCfbpOCUlNDblXwdtoHkOZE/edit?usp=drivesdk)
-
 ### 139. Setting a BMP as the sleep cover can publish a truncated image after a source read failure
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/activities/util/BmpViewerActivity.cpp`, `BmpViewerActivity::doSetSleepCover()`.
 - **Trigger / reproduction:** Open a valid BMP and choose **Set Sleep Cover**, then induce an SD read failure after some source bytes have been copied but before EOF.
@@ -1581,10 +1477,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Capture the source size before copying, accumulate transferred bytes, treat any premature zero/negative read as failure, and commit the temporary file only after exactly the expected byte count is copied and flushed. Preserve the old `/sleep.bmp` until the new staged file is fully verified, and add a fault-injected short-read regression test.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1520](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/2d13c5df568d1a5cb37e4c0aa785e7c6feb861c4/bugs.md); [Drive: 2026-09-28 15-20 MDT - automation-bug-scan-20260928-1520 - Instructions](https://docs.google.com/spreadsheets/d/1wYRFUPOyFqzGet9bQ8tRNpDaAQDcRRdr8DI3vts2vMk/edit?usp=drivesdk); [Drive: 2026-09-28 15-20 MDT - automation-bug-scan-20260928-1520 - Diff](https://docs.google.com/spreadsheets/d/17mygQzs_2CezszJBGTo2MCfbpOCUlNDblXwdtoHkOZE/edit?usp=drivesdk)
-
 ### 140. GPS continues displaying stale coordinates after a runtime read failure
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `Apps/gps.c::app_main()` and `render()`; failure contract in `src/runtime/drivers/GpsDriverRuntime.cpp::read()` and `src/native/NativeGpsBridge.cpp::readState()`.
 - **Trigger / reproduction:** Start GPS successfully, obtain a valid fix so `state` contains coordinates, then force a later provider/runtime read to fail (for example loss of the active driver/lease or a provider read failure) while leaving the GPS app open.
@@ -1594,10 +1489,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Check every `gps->read()` result. On failure, clear the snapshot, set an explicit OFF/error state, render the failure immediately, and optionally offer/retry a controlled restart instead of continuing to display old data. Add a test that supplies one valid fix followed by a failed read and verifies the old coordinates disappear.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1623](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/0b0cd92cfb5cafc7d4b5baa897442b2acb9b1030/bugs.md); [Drive: 2026-09-28 16-23 MDT - automation_bug-scan-20260928-1623 - Instructions](https://docs.google.com/spreadsheets/d/1j8Lm6ObGsHFSC50yu0IP8iFt5c14EkbJsHcCGh9edpI/edit?usp=drivesdk); [Drive: 2026-09-28 16-23 MDT - automation_bug-scan-20260928-1623 - Diff](https://docs.google.com/spreadsheets/d/1j_TEfpX-sHjsgfaRCxGHsuRPpo8pn12zPHTNYv1jGkw/edit?usp=drivesdk)
-
 ### 141. Native installed-app discovery stops after 128 valid apps and makes later apps unreachable from Springboard
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/native/NativeAppHost.cpp::installedRefresh()`, `installedCount()`, and `installedGet()`; consumer `Apps/springboard.c::app_main()`. This is distinct from bug #15 (64-row available App Store catalog) and bug #62 (64-row Package Manager view): this limit truncates the firmware's installed **application** inventory itself.
 - **Trigger / reproduction:** Put at least 129 valid launchable applications under `/Apps` (canonical managed app directories and/or valid legacy ELF/JSON pairs), with the 129th valid app occurring after 128 other valid apps in directory enumeration, then refresh/open Springboard.
@@ -1607,10 +1501,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Enumerate the complete installed-app set into a dynamic/PSRAM-backed structure or expose paged installed-app enumeration with a stable identity/cursor. Remove Springboard's duplicate hard clamp or make it a page capacity rather than a total limit, and add a 129+ app test proving the final app remains addressable.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1623](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/0b0cd92cfb5cafc7d4b5baa897442b2acb9b1030/bugs.md); [Drive: 2026-09-28 16-23 MDT - automation_bug-scan-20260928-1623 - Instructions](https://docs.google.com/spreadsheets/d/1j8Lm6ObGsHFSC50yu0IP8iFt5c14EkbJsHcCGh9edpI/edit?usp=drivesdk); [Drive: 2026-09-28 16-23 MDT - automation_bug-scan-20260928-1623 - Diff](https://docs.google.com/spreadsheets/d/1j_TEfpX-sHjsgfaRCxGHsuRPpo8pn12zPHTNYv1jGkw/edit?usp=drivesdk)
-
 ### 142. OPDS settings API emits invalid JSON when the first serialized server is oversized
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/network/CrossPointWebServer.cpp`, `CrossPointWebServer::handleGetOpdsServers()` and `handlePostOpdsServer()`; `src/OpdsServerStore.cpp`, `addServer()` / `updateServer()`.
 - **Trigger / reproduction:** Store at least two OPDS servers with the first server's name/URL/username long enough that its JSON object serializes to 512 bytes or more, and keep the second server small enough to fit. This can be created through the POST API because those string fields are accepted into `std::string` without a corresponding 512-byte response-object limit. Then request `GET /api/opds`.
@@ -1620,10 +1513,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Track an explicit `emittedAny` flag (or stream each object without a fixed serialization cap) and insert commas only between successfully emitted objects. Also impose coherent validated field-size limits at write time or dynamically size the response serialization. Add a regression where element 0 is intentionally skipped/oversized and element 1 is valid, asserting parseable JSON with no leading comma.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1726](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/1e13b691f3ce2fc0e6c3a2b27decde7a2cbb8e7b/bugs.md); [Drive: 2026-09-28 1726 MDT - automation-bug-scan-20260928-1726 - bugs.md diff](https://docs.google.com/spreadsheets/d/1kgrLWNI3FpH5CbvPkMidNJ1Rb8612YIc4wvcHUZTXAc/edit?usp=drivesdk); [Drive: 2026-09-28 1726 MDT - automation-bug-scan-20260928-1726 - integration instructions](https://docs.google.com/spreadsheets/d/1L-AdwyFrRDz-RP_vMgrXG6VZH6JZ3DgdTcFwOdiQGSo/edit?usp=drivesdk); [Drive: 2026-09-28 1726 MDT - automation-bug-scan-20260928-1726 - integration instructions](https://docs.google.com/spreadsheets/d/102h_psLvf3PZUscY-JDkaum55n835woMdUanF829eTg/edit?usp=drivesdk)
-
 ### 143. Native archive extraction can publish a destination even when the output file fails to close
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/native/NativeArchiveBridge.cpp::extract()` and `BoundedOutput`; `HalFile::close()` in `lib/hal/HalStorage.h`.
 - **Trigger / reproduction:** Extract a valid ZIP entry while injecting an SD/filesystem failure that occurs after all expected bytes have been accepted by `HalFile::write()` but causes the final `HalFile::close()` to return `false`.
@@ -1633,10 +1525,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Require a successful `close()` before renaming the staged file; if close fails, remove or quarantine the `.part` file and return failure. Add fault-injection coverage where writes reach the expected size but close fails, and verify that no final destination is published.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1825](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/d704fa1cea722332c6d82f0aa2d3f9680ac8ae87/bugs.md); [automation/bug-scan-20260929-1421](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/e629428d0573b0b6e3bbf952e77f16495bc60fa7/bugs.md); [automation/bug-scan-20260930-0123](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/be3316ade6780966fd46791ae58d962ccbe0f03f/bugs.md); [Drive: 2026-09-30 01-23 MDT - automation-bug-scan-20260930-0123 - Diff](https://docs.google.com/spreadsheets/d/1_WjxM50XfWlSay0EYe7KKqo0UsDms-ZGMu0yJ7YdWmQ/edit?usp=drivesdk); [Drive: 2026-09-29 1421 MDT - automation-bug-scan-20260929-1421 - Instructions](https://docs.google.com/spreadsheets/d/1PxZ2lsUdx2DcGC4s3qaF4cBQ8agSIvjTCrsJu4LDEws/edit?usp=drivesdk); [Drive: 2026-09-29 1421 MDT - automation-bug-scan-20260929-1421 - Diff](https://docs.google.com/spreadsheets/d/1xPKDnEDkwHqADDFeUzABbYFT6iT-RFeG66EhMkpBByE/edit?usp=drivesdk); [Drive: 2026-09-28 1825 - automation-bug-scan-20260928-1825 - bugs.diff](https://docs.google.com/document/d/13Ixd0HQYso07yZjpKF_kGSw0XRsQVXTqpSpQPaI3JE8/edit?usp=drivesdk); [Drive: 2026-09-28 1825 - automation-bug-scan-20260928-1825 - integration instructions](https://docs.google.com/document/d/1KM1MaWJm_OiNONX7BqGauWCR3EJYlmu9TB6Xi1bzpuc/edit?usp=drivesdk); [Drive: 2026-09-30 01-23 MDT - automation-bug-scan-20260930-0123 - Instructions](https://docs.google.com/spreadsheets/d/1T-xVFt2LWX3ycdaLCcMfdzuq3AVXOovKHKSKdlD0LGg/edit?usp=drivesdk)
-
 ### 144. GNSS Stream Diagnostic reports the receiver unavailable when device inventory exceeds 12 entries
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `Apps/gnss_stream_diagnostic.c::find_receiver()`; the all-or-nothing `inventory()` contract in `lib/NativeApps/include/T5DeviceApi.h` and `src/native/NativeDeviceBridge.cpp::inventory()`.
 - **Trigger / reproduction:** Make more than 12 devices visible in the device registry while a valid `gps-nmea` UART device with `location.position` is available, then launch GNSS Stream Diagnostic.
@@ -1646,10 +1537,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Retry using the required count returned with `T5_DEVICE_LIMIT`, using bounded dynamic or PSRAM storage, or provide a filtered provider query. Add a regression with 13 or more devices and place the GNSS device at multiple registry positions to prove discovery remains reliable.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1825](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/d704fa1cea722332c6d82f0aa2d3f9680ac8ae87/bugs.md); [Drive: 2026-09-28 1825 - automation-bug-scan-20260928-1825 - bugs.diff](https://docs.google.com/document/d/13Ixd0HQYso07yZjpKF_kGSw0XRsQVXTqpSpQPaI3JE8/edit?usp=drivesdk); [Drive: 2026-09-28 1825 - automation-bug-scan-20260928-1825 - integration instructions](https://docs.google.com/document/d/1KM1MaWJm_OiNONX7BqGauWCR3EJYlmu9TB6Xi1bzpuc/edit?usp=drivesdk)
-
 ### 145. Risc Strike silently refuses firmware versions its manifest declares compatible
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/risc_strike.c::app_main()`, `Apps/risc_strike.json`, and the append-only `t5_video_api_v1` definition in `lib/NativeApps/include/T5VideoApi.h`.
 - **Trigger / reproduction:** Build the current Risc Strike 1.0.2 against the current header, then launch it on firmware 1.3.24 through 1.3.31, which the app manifest explicitly permits. Those firmware versions expose video API v1 before the optional `scan_stats` tail member added in firmware 1.3.32, so their valid v1 struct is shorter than the current header's full struct.
 - **Observed / logically demonstrated failure:** `app_main()` rejects the provider when `g_video->struct_size < sizeof(*g_video)` and returns before starting video. Because `sizeof(*g_video)` includes the later optional `scan_stats` callback, an otherwise compatible v1 provider is treated as unusable even though Risc Strike never calls `scan_stats`. The installed app can therefore launch to nothing on firmware versions its own `min_firmware_version: 1.3.24` says are supported.
@@ -1658,10 +1548,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Replace the full-`sizeof` gate with a `struct_size` check through the last required member, then validate the required callbacks individually. If a post-1.3.24 feature is truly mandatory, raise the manifest minimum instead. Add an ABI-tail regression using a shortened but valid video-v1 provider.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1926](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/149c4714cf3d6f46d17a6c4691960420368b9fd2/bugs.md)
-
 ### 146. Risc Strike cannot fire or attack and renders stale hit effects after about 24.8 days of device uptime
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/risc_strike_engine.inc`, especially `fps_time_reached()`, `fps_reset_game()`, `fps_fire()`, `fps_update_enemies()`, and the muzzle/damage/enemy-hit rendering checks.
 - **Trigger / reproduction:** Let the device millisecond clock reach `0x80000000` (2,147,483,648 ms, about 24.85 days of uptime), then start or reset Risc Strike. `fps_reset_game()` initializes `g_next_fire_ms`, `g_muzzle_until_ms`, `g_damage_until_ms`, and every enemy's attack/hit deadlines to zero.
 - **Observed / logically demonstrated failure:** `fps_time_reached(now, 0)` casts `now - 0` to signed 32-bit. For `now` in `0x80000000..0xffffffff`, that value is negative, so the zero sentinel is treated as a future deadline. `fps_fire()` refuses every shot, enemies fail their initial attack-ready test, and the rendering checks interpret zero-valued muzzle/damage/hit deadlines as still active. The state remains wrong until the 32-bit millisecond clock wraps near 49.7 days.
@@ -1670,10 +1559,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Represent inactive timers explicitly, or use separate helpers that treat an inactive deadline as ready for cooldown/attack checks and expired for visual-effect checks while preserving wrap-safe comparison for real deadlines. Add tests around `0x7fffffff`, `0x80000000`, `0xffffffff`, and wrap to zero.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1926](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/149c4714cf3d6f46d17a6c4691960420368b9fd2/bugs.md)
-
 ### 147. Hollow Trail can submit an old-chapter frame when a level transition happens inside a render checkpoint
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/hollow_trail.c::ht_input_update()`, `ht_advance()`, and `app_main()`; `Apps/hollow_trail_engine.inc::ht_render_scene()` and its cooperative `ht_checkpoint()` / `ht_render_service()` calls.
 - **Trigger / reproduction:** Reach a solved chapter goal while movement is held, with a redraw due and no already-prepared frame. Arrange for the next fixed simulation step to cross the goal during one of `ht_render_scene()`'s input checkpoints; production deliberately services input during raster work.
 - **Observed / logically demonstrated failure:** The renderer snapshots the old `ht_game` and continues drawing that chapter while a checkpoint can advance live physics, increment `ht.level`, call `ht_spawn(true)`, and increment `scene_revision`. After `ht_render_scene()` returns, `app_main()` still marks those old pixels `prepared=true`; it checks only quit/debug-jump before the normal submit path. If the video service can accept a frame, the old-chapter buffer is packed and submitted. The existing `ht.level != ht_geometry_level` branch that says it discards an old-level prepared frame runs only at the top of the next loop, after that stale frame may already have been scanned.
@@ -1682,10 +1570,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Capture a render generation/level epoch before raster work and revalidate it after rendering, after packing, and immediately before submit; discard the prepared buffer whenever the live level or generation changed. Add a host regression that forces a goal-crossing simulation step from a render checkpoint and asserts no old-level submit occurs.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1926](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/149c4714cf3d6f46d17a6c4691960420368b9fd2/bugs.md)
-
 ### 148. File-association rebuild silently truncates the registry after 128 handlers and skips later applications
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/FileAssociationRegistry.h::kMaxHandlers`; `src/native/FileAssociationRegistry.cpp::addHandler()`, `scanCanonicalApp()`, and `rebuild()`; app-manifest file-type parsing in `src/native/AppManifest.h`.
 - **Trigger / reproduction:** Install enough valid applications with declared `file_types` to exceed 128 total associations. The registry adds five system-reader handlers first, and each application manifest may declare up to 12 file types, so eleven 12-type applications are sufficient to overflow the table. Put another valid file-handling application later in `/Apps`, rebuild associations, then ask File Browser/file-open APIs for a type handled only by the later application.
 - **Observed / logically demonstrated failure:** `addHandler()` returns `false` once `handlers.size() >= kMaxHandlers`, but `rebuild()` treats that capacity as a normal stopping condition: its top-level `/Apps` scan runs only while `handlers.size() < kMaxHandlers`. Once the 128th handler is accepted, remaining applications are never scanned. If the limit is reached partway through one manifest, earlier file types from that app can be retained while later types are silently dropped. The truncated vector is then sorted, marked `loaded = true`, persisted, and `rebuild()` returns success. This is distinct from bug #23, which is the File Browser UI exposing only eight already-registered handlers for one file; here the missing handlers never enter the registry at all.
@@ -1694,10 +1581,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make the registry dynamically sized/PSRAM-backed or build it in bounded pages without stopping the application scan. If a hard policy limit remains, detect overflow explicitly, refuse to publish/persist a partial registry, and surface a diagnostic. Add coverage with more than 128 associations, including an app whose 12 types straddle the boundary and a later app that owns a unique extension.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1954](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/463d4a88b152837d01dd5dc0b7bf5f57cd4a8a2b/bugs.md); [Drive: 2026-09-28 1954 MDT - automation-bug-scan-20260928-1954 - Diff](https://docs.google.com/document/d/1gVvYNEFq8c5h6nsM-zqqxCxgLAnZ9hDKUCHxjKf-jqw/edit?usp=drivesdk); [Drive: 2026-09-28 1954 MDT - automation-bug-scan-20260928-1954 - Instructions](https://docs.google.com/document/d/1BUHCnlpsqv8OMCTVvEuJbEbNvNhaP8C-xhhCYnt_ngI/edit?usp=drivesdk)
-
 ### 149. Wi-Fi load failures leave stale credentials live and automatic networking can reuse them
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/WifiCredentialStore.cpp::loadFromFile()`; `src/JsonSettingsIO.cpp::loadWifi()`; callers that ignore the load result, including `src/activities/network/WifiSelectionActivity.cpp::onEnter()`, `src/runtime/network/SavedNetworkConnection.cpp::ensureSavedConnection()`, and `src/native/NativeOtaBridge.cpp::ensureOtaNetworkReady()`.
 - **Trigger / reproduction:** During one firmware session, first load a valid `/.crosspoint/wifi.json` so the singleton contains a last-connected SSID and credentials. Then replace/truncate that file with non-empty malformed JSON (or inject an SD read that produces malformed JSON) and invoke Wi-Fi selection, an automatic saved-network connection, or firmware-update network bootstrap.
 - **Observed / logically demonstrated failure:** `JsonSettingsIO::loadWifi()` returns `false` immediately when `deserializeJson()` fails, before clearing or replacing `store.lastConnectedSsid` and `store.credentials`. `WifiCredentialStore::loadFromFile()` propagates that failure, but the listed callers discard the return value and immediately consult the singleton. They can therefore select and submit the credentials from the previous successful load even though the current durable credential file is unreadable. The Wi-Fi selector can also label those stale entries as saved networks. This is separate from the earlier schema-validation finding: the demonstrated state here is a parse/read failure retaining an older live credential set, not a syntactically valid file being accepted as an empty store.
@@ -1706,10 +1592,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Parse into temporary credential/last-SSID state and publish it only after complete validation; on load failure, callers that need persisted credentials must not initiate a new connection from previously cached values. Preserve an already-established network separately from credential loading. Add regressions for valid-load → malformed-file → selector/auto-connect and for cold boot with malformed JSON.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1954](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/463d4a88b152837d01dd5dc0b7bf5f57cd4a8a2b/bugs.md); [automation/bug-scan-20260929-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/82bef6c8270ad0ed072369ee19b07022dc82e181/bugs.md); [Drive: 2026-09-28 1954 MDT - automation-bug-scan-20260928-1954 - Diff](https://docs.google.com/document/d/1gVvYNEFq8c5h6nsM-zqqxCxgLAnZ9hDKUCHxjKf-jqw/edit?usp=drivesdk); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Instructions](https://docs.google.com/spreadsheets/d/1uI1Z04FNBkqdLQxhgZuCSZXUFQbOTUOFJ7dzYn39FoE/edit?usp=drivesdk); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Instructions](https://docs.google.com/document/d/1xv-O64ISDIO8zYQ7r6A9vc7x-RMMWrApoVqtPFzcB1U/edit?usp=drivesdk); [Drive: 2026-09-28 1954 MDT - automation-bug-scan-20260928-1954 - Instructions](https://docs.google.com/document/d/1BUHCnlpsqv8OMCTVvEuJbEbNvNhaP8C-xhhCYnt_ngI/edit?usp=drivesdk); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Diff](https://docs.google.com/spreadsheets/d/1v0enkcChAVBR3-RFLlrRcIS8MhmEQyj1AV0LlBx-aj4/edit?usp=drivesdk); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Diff](https://docs.google.com/spreadsheets/d/1Dq6s7qm3fIlKrMX_AVJaMlTG3V-Vfhf-Onk_qRqtUog/edit?usp=drivesdk); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Diff](https://docs.google.com/document/d/1Igvgxgg6gX8_I8-QVjW_Ve2n06-Dp58Adt6XIthpikI/edit?usp=drivesdk)
-
 ### 150. EPUB manifest property matching treats prefixed properties beginning with "nav" as the navigation document
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/Epub/Epub/parsers/ContentOpfParser.cpp::startElement()`, manifest `item` handling for the `properties` attribute (and the analogous `cover-image` check).
 - **Trigger / reproduction:** Create a valid EPUB 3 package that declares an extension prefix such as `navx:` and lists an ordinary XHTML manifest item before the real navigation item with `properties="scripted navx:aux"`. Give a later item the actual reserved property `properties="nav"`, then open the book and its table of contents.
 - **Observed / logically demonstrated failure:** The parser recognizes navigation with `properties == "nav" || properties.find("nav ") == 0 || properties.find(" nav") != npos`. The final substring test accepts any whitespace-delimited property whose text merely starts with `nav`, including the valid prefixed property `navx:aux`. That first false match populates `tocNavPath`; because later detection runs only while `tocNavPath.empty()`, the real `nav` item is ignored. TOC parsing is then directed at the unrelated XHTML resource. The `cover-image` path uses the same prefix-substring pattern and can misclassify a similarly named extension property.
@@ -1718,10 +1603,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Tokenize `properties` on XML whitespace and compare complete tokens exactly to `nav` and `cover-image`; do not treat prefixed extension properties as reserved terms. Add fixtures for exact `nav`, multiple properties in different positions, `navx:aux`, exact `cover-image`, and similarly prefixed non-reserved properties.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-1954](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/463d4a88b152837d01dd5dc0b7bf5f57cd4a8a2b/bugs.md); [Drive: 2026-09-28 1954 MDT - automation-bug-scan-20260928-1954 - Diff](https://docs.google.com/document/d/1gVvYNEFq8c5h6nsM-zqqxCxgLAnZ9hDKUCHxjKf-jqw/edit?usp=drivesdk); [Drive: 2026-09-28 1954 MDT - automation-bug-scan-20260928-1954 - Instructions](https://docs.google.com/document/d/1BUHCnlpsqv8OMCTVvEuJbEbNvNhaP8C-xhhCYnt_ngI/edit?usp=drivesdk)
-
 ### 151. EPUB page QR generation selects versions by alphanumeric capacity and rejects valid byte-mode page text
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/util/QrUtils.cpp::drawQrCode()`; `src/activities/reader/EpubReaderActivity.cpp` Display QR action; `src/activities/reader/QrDisplayActivity.cpp::render()`.
 - **Trigger / reproduction:** Open an EPUB page whose extracted text contains byte-mode characters (ordinary lowercase prose is sufficient) and is 79–114 UTF-8 bytes, then choose Display QR. Equivalent failing ranges are 272–395, 859–1066, and 1733–2110 bytes.
 - **Observed / logically demonstrated failure:** `drawQrCode()` selects versions using 114→v4, 395→v10, 1066→v20, and 2110→v30, which are the QR library's alphanumeric ECC_LOW capacities. `qrcode_initText()` uses byte mode for lowercase/non-alphanumeric text; those versions hold only 78, 271, 858, and 1732 bytes respectively. Normal prose in the gap makes `qrcode_initText()` fail, so the activity renders no QR code even though a larger supported version could encode it.
@@ -1730,10 +1614,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Select capacity using the actual encoding mode or try progressively larger versions until encoding succeeds. Keep the version-40 cap and UTF-8-safe truncation. Test byte-mode boundaries 78/79, 271/272, 858/859, and 1732/1733 plus alphanumeric-only text.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2026](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/fa556b486d37cd6260a5e0f5e49b500af7b6bb4e/bugs.md); [automation/bug-scan-20260929-2226](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/13108f6ab843969240b686a9aa624cfb63470260/bugs.md); [Drive: 2026-09-28 2026 - automation-bug-scan-20260928-2026 - Diff](https://docs.google.com/spreadsheets/d/136xrqFzGI3G_pT1iH4w8DrZ_dZPG38a4OAtRKaR5Eyc/edit?usp=drivesdk); [Drive: 2026-09-28 2026 - bug-scan-20260928-2026 - Instructions](https://docs.google.com/spreadsheets/d/1CZ2WLDkqQC3yCB2EmFcrOaOJtEkdUlRhqPACOCb1Pnw/edit?usp=drivesdk); [Drive: 2026-09-29 2226 MDT - automation-bug-scan-20260929-2226 - 13108f6 - bugs.md diff](https://docs.google.com/spreadsheets/d/1XIr2_53lXbldoungfg66A_4OCh1SPVNtyG4xYoOIZaY/edit?usp=drivesdk); [Drive: 2026-09-29 2226 MDT - automation-bug-scan-20260929-2226 - 13108f6 - integration instructions](https://docs.google.com/spreadsheets/d/1GX7YqdYIr7lUAV1r91jtVHJFe7M79rteWrEQngf2J68/edit?usp=drivesdk)
-
 ### 152. Web file-manager rename and move leave EPUB path-indexed state attached to the old filename
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/network/CrossPointWebServer.cpp::handleRename()` and `handleMove()`; path-indexed state in `RecentBooksStore`, `CrossPointState::openEpubPath`, and bookmark storage through `src/util/BookmarkUtil.cpp`.
 - **Trigger / reproduction:** Read and bookmark an EPUB so Recent Books/progress and bookmarks exist. In File Transfer's web file manager, rename the EPUB or move it to another directory, then return to Recent Books and open the new path.
 - **Observed / logically demonstrated failure:** Both web handlers clear the old EPUB cache and rename the filesystem object, but neither migrates path-indexed reader metadata after success. Recent Books/open-book state still reference the old path and bookmark sidecar naming is derived from the book path, so the moved book appears to lose its bookmarks and stale entries remain.
@@ -1742,10 +1625,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** After a successful filesystem rename, transactionally migrate Recent Books, retained/open path, bookmarks, and other path-derived sidecars, with rollback/error handling. Centralize this behavior and test rename plus cross-directory move with bookmarks and recent-state present.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2026](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/fa556b486d37cd6260a5e0f5e49b500af7b6bb4e/bugs.md); [Drive: 2026-09-28 2026 - automation-bug-scan-20260928-2026 - Diff](https://docs.google.com/spreadsheets/d/136xrqFzGI3G_pT1iH4w8DrZ_dZPG38a4OAtRKaR5Eyc/edit?usp=drivesdk); [Drive: 2026-09-28 2026 - bug-scan-20260928-2026 - Instructions](https://docs.google.com/spreadsheets/d/1CZ2WLDkqQC3yCB2EmFcrOaOJtEkdUlRhqPACOCb1Pnw/edit?usp=drivesdk)
-
 ### 153. Screenshot saving reports success even when the final SD close/commit fails
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/util/ScreenshotUtil.cpp::saveFramebufferAsBmp()` and `ScreenshotUtil::takeScreenshot()`.
 - **Trigger / reproduction:** Take a screenshot while fault-injecting an SD/filesystem failure on the final BMP close/flush after all header and row writes returned their requested lengths.
 - **Observed / logically demonstrated failure:** The function checks header/row write lengths, then calls `file.close()` and discards its boolean result. A close-time commit failure therefore leaves `write_error` false and returns success; `takeScreenshot()` logs "Screenshot saved" and flashes the success border even though the file was not successfully committed and may be invalid.
@@ -1754,10 +1636,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Require successful close/sync, remove failed output, and preferably stage to a sibling temporary file and atomically rename only after close plus expected-size verification. Add a close-failure test proving no success indication and no corrupt final file.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2026](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/fa556b486d37cd6260a5e0f5e49b500af7b6bb4e/bugs.md); [automation/bug-scan-20260930-0022](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/2b932092e31b6d6b85bd45c7ada99cb728994e26/bugs.md); [Drive: 2026-09-30 0022 MDT - automation-bug-scan-20260930-0022 - Diff](https://docs.google.com/spreadsheets/d/1VGiMSPAY900zqoow0Q_kZG_D-96pFkos_O65zZAw_mo/edit?usp=drivesdk); [Drive: 2026-09-28 2026 - automation-bug-scan-20260928-2026 - Diff](https://docs.google.com/spreadsheets/d/136xrqFzGI3G_pT1iH4w8DrZ_dZPG38a4OAtRKaR5Eyc/edit?usp=drivesdk); [Drive: 2026-09-28 2026 - bug-scan-20260928-2026 - Instructions](https://docs.google.com/spreadsheets/d/1CZ2WLDkqQC3yCB2EmFcrOaOJtEkdUlRhqPACOCb1Pnw/edit?usp=drivesdk); [Drive: 2026-09-30 0022 MDT - automation-bug-scan-20260930-0022 - Instructions](https://docs.google.com/spreadsheets/d/1hniZfzD9J_jLioHAEqaS74cAsknU2Ri9qm5BXSs-J9Y/edit?usp=drivesdk)
-
 ### 154. Time Card keeps failed punch edits live and can persist them on a later successful save
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/timecard.c`, especially `ensure_day()`, `set_punch()`, `punch_today()`, and `consume_keyboard()`.
 - **Trigger / reproduction:** Start with a valid Time Card store, then force `storage->write_file_atomic()` to fail for one clock punch or manual edit. Leave the app running, allow storage writes to recover, and make a later punch/edit that saves successfully. Also exercise the same failure while `day_count == MAX_DAYS` and the failed operation creates a new date.
 - **Observed / logically demonstrated failure:** `set_punch()` mutates the live `days[]` model before calling `save_store()` and does not restore that mutation when persistence fails. `punch_today()` reports **Could not save punch**, and the manual-edit path reports failure, but the changed punch remains in memory. A later successful `save_store()` serializes that previously failed change along with the new one. At the 400-day limit, `ensure_day()` can also evict the oldest in-memory day before the failed save, and that eviction can become durable on the next successful write.
@@ -1766,10 +1647,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make punch updates transactional. Stage the candidate day array/count (including any capacity eviction), persist the staged representation, and publish it to the live model only after the write succeeds; alternatively snapshot and restore every affected element/count on failure. Add fault-injection tests proving a failed existing-day edit, failed new-day insertion, and failed insertion at `MAX_DAYS` leave both live and durable history unchanged after subsequent successful saves.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2119](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/56735b0d346c8773e8fadfe71a2472a7af84a7a9/bugs.md); [Drive: 2026-09-28 2119 - automation_bug-scan-20260928-2119 - Diff](https://docs.google.com/spreadsheets/d/175TW_3ERYf9Jt3bf75XoP4ztFpnvjNwOXaLbGBnBqn8/edit?usp=drivesdk); [Drive: 2026-09-28 2119 - automation_bug-scan-20260928-2119 - Instructions](https://docs.google.com/spreadsheets/d/1jF_5dBTG4kFTfagdowLbReigaZpKvRBVhT9sWytFJhY/edit?usp=drivesdk)
-
 ### 155. KOReader document matching toggles repeatedly from one held Confirm press
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/koreader_sync.c`, `activate_selected()` and the main `app_main()` input loop; the level-triggered button contract exported by `src/native/NativeAppHost.cpp::poll()`.
 - **Trigger / reproduction:** Open **KOReader Sync**, select **Document Matching**, then press and hold Confirm for longer than one 50 ms polling interval.
 - **Observed / logically demonstrated failure:** The app tests `input.buttons & T5_APP_BUTTON_CONFIRM` on every raw app poll and calls `activate_selected()` each time the bit remains asserted. For the Document Matching row, every call flips Filename/Binary and persists the new value. One physical hold can therefore toggle and write the setting several times, with the final mode determined by release timing rather than one deliberate activation.
@@ -1778,10 +1658,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Consume edge-based UI events for this screen or track the previous button mask and activate only on the Confirm rising edge. Add a regression that keeps Confirm asserted across several polls and verifies exactly one match-method change and one persistence attempt.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2119](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/56735b0d346c8773e8fadfe71a2472a7af84a7a9/bugs.md); [Drive: 2026-09-28 2119 - automation_bug-scan-20260928-2119 - Diff](https://docs.google.com/spreadsheets/d/175TW_3ERYf9Jt3bf75XoP4ztFpnvjNwOXaLbGBnBqn8/edit?usp=drivesdk); [Drive: 2026-09-28 2119 - automation_bug-scan-20260928-2119 - Instructions](https://docs.google.com/spreadsheets/d/1jF_5dBTG4kFTfagdowLbReigaZpKvRBVhT9sWytFJhY/edit?usp=drivesdk)
-
 ### 156. Rom Manager silently truncates Vimm browse/search results after 96 entries
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/rom_manager.c`, `MAX_VIMM`, `fetch_vimm_url()`, `add_vimm_entry()`, `fetch_vimm()`, `search_vimm()`, and `open_vimm_page()`.
 - **Trigger / reproduction:** Load a Vimm browse, letter, or search response containing more than 96 valid navigation/game entries. On the top-level browse response, page/navigation links and games share the same 96-entry array, so enough navigation entries reduce the number of game rows that can be retained even further.
 - **Observed / logically demonstrated failure:** Both parsing loops in `fetch_vimm_url()` stop when `vimm_count == MAX_VIMM`. The function still returns success, exposes only the retained prefix, and provides no continuation cursor, next page, or truncation indication. Because navigation entries are added before game rows when `include_pages` is true, they consume the same fixed capacity and can make valid games disappear from the very response that successfully loaded them.
@@ -1790,10 +1669,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Separate navigation from title storage and page/stream remote results instead of treating `MAX_VIMM` as the catalog size. Preserve a continuation/page cursor or virtualize rows over parsed results, and visibly report truncation if the remote source cannot be paged. Add tests with 96, 97, and substantially larger result sets, including a top-level response where navigation entries plus games exceed 96.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2119](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/56735b0d346c8773e8fadfe71a2472a7af84a7a9/bugs.md); [Drive: 2026-09-28 2119 - automation_bug-scan-20260928-2119 - Diff](https://docs.google.com/spreadsheets/d/175TW_3ERYf9Jt3bf75XoP4ztFpnvjNwOXaLbGBnBqn8/edit?usp=drivesdk); [Drive: 2026-09-28 2119 - automation_bug-scan-20260928-2119 - Instructions](https://docs.google.com/spreadsheets/d/1jF_5dBTG4kFTfagdowLbReigaZpKvRBVhT9sWytFJhY/edit?usp=drivesdk)
-
 ### 157. TXT/Markdown paging treats short positive SD reads as complete chunks and parses unread heap bytes
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/Txt/Txt.cpp`, `Txt::readContent()`; `src/activities/reader/TxtReaderPaging.cpp`, `TxtReaderActivity::loadPageAtOffset()` and `peekMarkdownLine()`.
 - **Trigger / reproduction:** Open a TXT or Markdown document, then make an SD read return a short positive count without satisfying the requested read length (for example, fault-inject a partial read, or truncate/replace the file after `Txt::load()` cached its original size). In `loadPageAtOffset()`, request an 8 KiB chunk where `FsFile::read()` returns between 1 and 8191 bytes.
 - **Observed / logically demonstrated failure:** `Txt::readContent()` returns `true` for any `bytesRead > 0` and does not return the actual byte count. Its callers allocate an uninitialized buffer sized for the full requested chunk and, after that boolean success, parse all `chunkSize` bytes. `loadPageAtOffset()` therefore treats unread heap bytes as document text and can advance `nextOffset` across bytes that were never read; page-index construction can then persist those bogus offsets. `peekMarkdownLine()` has the same assumption for its 256-byte buffer.
@@ -1802,10 +1680,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Return the actual count from `readContent()` or require `bytesRead == length` for this exact-range API. Callers must parse only initialized bytes and treat a short read before the cached EOF as an I/O/change error. Add fault-injection tests for 1-byte, mid-chunk, and EOF-adjacent short reads plus a file-size change after `Txt::load()`.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2221](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6885f8bc3523e0f88382ec0b973d7fe3fc756b29/bugs.md); [automation/bug-scan-20260929-0923](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/61e0308885e3d82d10013b44c0cc25885984bb8c/bugs.md); [Drive: 2026-09-29 09-23 MDT - automation-bug-scan-20260929-0923 - Instructions](https://docs.google.com/document/d/16-a2i6BOru1O8pdLvMa6KMQ7DHpzVTz_T5ZLxhspYIw/edit?usp=drivesdk); [Drive: 2026-09-28 2221 - automation-bug-scan-20260928-2221 - Diff](https://docs.google.com/document/d/1WAu1zlTwHP02PAL8dRZCc43rWsZRMTtkqiKkih4QDDs/edit?usp=drivesdk); [Drive: 2026-09-28 2221 - automation-bug-scan-20260928-2221 - Instructions](https://docs.google.com/document/d/1sbRBPO6bTUEqImKAaQtAV3GrwfhQqg6demvhIOnReJc/edit?usp=drivesdk); [Drive: 2026-09-29 09-23 MDT - automation-bug-scan-20260929-0923 - Diff](https://docs.google.com/document/d/1blE03USfMDKdOZCAsm-rzhy6EvDcdVGIFZ6T6cmGxjU/edit?usp=drivesdk)
-
 ### 158. XTC rendering uses the first page's dimensions for every page and can render uninitialized memory
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/Xtc/Xtc/XtcParser.cpp`, `readFirstPageInfo()`, `readPageTableEntry()`, and `loadPage()`; `lib/Xtc/Xtc.cpp`, `getPageWidth()` / `getPageHeight()`; `src/activities/reader/XtcReaderActivity.cpp`, `renderPage()`.
 - **Trigger / reproduction:** Use an otherwise accepted multi-page XTC/XTCH whose first page is 480x800 and whose later page header is 400x800, with valid magic and 40,000 bytes of 1-bit bitmap data for that later page. Navigate to the later page. The inverse case, such as a 600x800 later page, demonstrates the corresponding false “buffer too small” failure.
 - **Observed / logically demonstrated failure:** `readFirstPageInfo()` stores only the first table entry's dimensions as the parser-wide defaults. Although every `PageTableEntry` carries its own width and height, `Xtc::getPageWidth()` / `getPageHeight()` expose only those first-page defaults, so `XtcReaderActivity::renderPage()` allocates and iterates a 480x800 buffer for every page. `XtcParser::loadPage()`, however, computes the bytes to read from the current page header. In the 400x800 case it reads 40,000 bytes successfully into a 48,000-byte allocation, then the renderer indexes all 48,000 bytes using the first-page 60-byte row stride, consuming 8,000 bytes that were never initialized by the page load. A larger later page instead fails because the first-page-sized allocation is too small.
@@ -1814,10 +1691,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Resolve and validate the current page's table/header geometry before allocation/rendering. Either expose per-page `PageInfo` to `XtcReaderActivity` and allocate/render from it, or explicitly reject files whose later geometry differs from the supported fixed geometry. Also verify table-entry dimensions/data size against the page header and initialize any buffer region not filled. Add 480→400, 480→600, and table/header-mismatch regression fixtures.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2221](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6885f8bc3523e0f88382ec0b973d7fe3fc756b29/bugs.md); [automation/bug-scan-20260929-0923](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/61e0308885e3d82d10013b44c0cc25885984bb8c/bugs.md); [Drive: 2026-09-29 09-23 MDT - automation-bug-scan-20260929-0923 - Instructions](https://docs.google.com/document/d/16-a2i6BOru1O8pdLvMa6KMQ7DHpzVTz_T5ZLxhspYIw/edit?usp=drivesdk); [Drive: 2026-09-28 2221 - automation-bug-scan-20260928-2221 - Diff](https://docs.google.com/document/d/1WAu1zlTwHP02PAL8dRZCc43rWsZRMTtkqiKkih4QDDs/edit?usp=drivesdk); [Drive: 2026-09-28 2221 - automation-bug-scan-20260928-2221 - Instructions](https://docs.google.com/document/d/1sbRBPO6bTUEqImKAaQtAV3GrwfhQqg6demvhIOnReJc/edit?usp=drivesdk); [Drive: 2026-09-29 09-23 MDT - automation-bug-scan-20260929-0923 - Diff](https://docs.google.com/document/d/1blE03USfMDKdOZCAsm-rzhy6EvDcdVGIFZ6T6cmGxjU/edit?usp=drivesdk)
-
 ### 159. OPDS XML parsing mistakes extension element names that merely begin with Atom names for real feed elements
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/OpdsParser/OpdsParser.cpp`, `OpdsParser::startElement()` and `endElement()`.
 - **Trigger / reproduction:** Serve a valid Atom/OPDS entry containing a namespaced extension element such as `<ext:entry-extra>metadata</ext:entry-extra>` before the entry's acquisition `<link>`, or `<ext:title-extra>auxiliary</ext:title-extra>` inside an entry. Namespace declarations can bind `ext` to any extension namespace.
 - **Observed / logically demonstrated failure:** The parser recognizes qualified names with tests such as `strstr(name, ":entry") != nullptr`, and uses the same substring pattern for `:link`, `:title`, `:author`, `:name`, and `:id`. Therefore `ext:entry-extra` is treated exactly like Atom `entry`: `startElement()` resets `currentEntry`, and `endElement()` can leave `inEntry` false so the legitimate link/title that follows is ignored. Likewise an extension local name beginning with `title` can overwrite the actual title. These are valid distinct XML qualified names, not aliases for the Atom elements.
@@ -1826,10 +1702,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Compare exact local names: strip an optional QName prefix (or enable Expat namespace processing) and require equality with `entry`, `link`, `title`, `author`, `name`, or `id`. Preserve namespace distinctions where semantics require them. Add fixtures containing `ext:entry-extra`, `ext:title-extra`, and genuinely prefixed Atom elements to prove extensions no longer perturb parser state.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2221](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6885f8bc3523e0f88382ec0b973d7fe3fc756b29/bugs.md); [Drive: 2026-09-28 2221 - automation-bug-scan-20260928-2221 - Diff](https://docs.google.com/document/d/1WAu1zlTwHP02PAL8dRZCc43rWsZRMTtkqiKkih4QDDs/edit?usp=drivesdk); [Drive: 2026-09-28 2221 - automation-bug-scan-20260928-2221 - Instructions](https://docs.google.com/document/d/1sbRBPO6bTUEqImKAaQtAV3GrwfhQqg6demvhIOnReJc/edit?usp=drivesdk)
-
 ### 160. Hollow Trail's aligned journal framebuffer writes past its PSRAM allocation
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `Apps/hollow_trail.c::app_main()` and `HT_PACKED_BYTES`; `Apps/hollow_trail_engine.inc::HT_MEMORY`; full-frame journal writers in `Apps/hollow_trail_journal.inc::ht_journal_frame()` and `ht_journal_render()`.
 - **Trigger / reproduction:** Launch Hollow Trail and open/render the in-game journal. For a deterministic bounds test, substitute a guarded allocation for `app->psram_alloc(HT_MEMORY + HT_PACKED_BYTES + 31u)`, exercise allocator-valid base alignments, and render a journal page.
@@ -1839,10 +1714,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Derive one aligned workspace base first and place the packed journal buffer immediately after its bounded `HT_MEMORY` region, or explicitly calculate and allocate the worst-case padding for every aligned subregion. Add a guard-byte test over all relevant base-address residues. Open PR #295 changes Hollow Trail rendering but does not modify this allocation or the `HT_MEMORY`/`HT_PACKED_BYTES` placement.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2327](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/599139f74e27c778eacc465b89a277091e7f1069/bugs.md)
-
 ### 161. Web file uploads delete an existing file before the replacement upload is complete
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/network/CrossPointWebServer.cpp`, `CrossPointWebServer::handleUpload()` for multipart HTTP uploads, and `CrossPointWebServer::onWebSocketEvent()` / `abortWsUpload()` for WebSocket uploads.
 - **Trigger / reproduction:** Through the built-in web file-transfer server, upload over an existing file and then abort the client, disconnect mid-transfer, fill the SD card, or inject a short write after the upload has started.
@@ -1852,10 +1726,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Stream uploads into a unique temporary file, require complete byte-count/write/close validation, and publish the new file transactionally only after success. Preserve the old destination until publication commits and restore it if replacement fails. Reuse a shared safe-replace helper where practical, and add aborted, short-write, disk-full, and disconnect regression tests for both upload transports.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2327](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/599139f74e27c778eacc465b89a277091e7f1069/bugs.md); [automation/bug-scan-20260929-1325-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a2a96bbe6fd61e31339ebf6cd83080c9375ff533/bugs.md); [automation/bug-scan-20260929-1325](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/339a210c68dcca5efda472896943769c30581343/bugs.md); [automation/bug-scan-20260930-0022](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/2b932092e31b6d6b85bd45c7ada99cb728994e26/bugs.md); [Drive: 2026-09-30 0022 MDT - automation-bug-scan-20260930-0022 - Diff](https://docs.google.com/spreadsheets/d/1VGiMSPAY900zqoow0Q_kZG_D-96pFkos_O65zZAw_mo/edit?usp=drivesdk); [Drive: 2026-09-29 1325 automation-bug-scan-20260929-1325-final Instructions](https://docs.google.com/spreadsheets/d/1YbJE6YPRZsBGC54dWnNamiLrLVwPHwvdp9kURLmtrQg/edit?usp=drivesdk); [Drive: 2026-09-29 1325 automation-bug-scan-20260929-1325-final Diff](https://docs.google.com/spreadsheets/d/12U7ZUH2XA16WgTIMC70fphq9fk2KesQeSGNgcP3NVE0/edit?usp=drivesdk); [Drive: 2026-09-30 0022 MDT - automation-bug-scan-20260930-0022 - Instructions](https://docs.google.com/spreadsheets/d/1hniZfzD9J_jLioHAEqaS74cAsknU2Ri9qm5BXSs-J9Y/edit?usp=drivesdk)
-
 ### 162. Web Settings silently omits the Font Family control when its JSON exceeds the fixed buffer
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/network/CrossPointWebServer.cpp::handleGetSettings()`; `src/SettingsList.h::buildFontFamilySetting()`; `lib/EpdFont/SdCardFontRegistry.h::MAX_SD_FAMILIES`.
 - **Trigger / reproduction:** Install enough SD font families that the JSON object for the dynamic `fontFamily` enum exceeds the fixed 512-byte per-setting buffer, then open the web Settings page or request its settings API. The registry supports up to 128 SD families, and the API includes every family name plus the two built-ins in one `options` array.
@@ -1865,10 +1738,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Stream the setting JSON directly or use bounded PSRAM-backed/growable serialization sized from `measureJson()`; never silently omit a valid setting because its options are numerous. Add a regression with enough short and long family names to cross 512 bytes and verify the response remains valid JSON containing the complete `fontFamily` setting.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2327](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/599139f74e27c778eacc465b89a277091e7f1069/bugs.md)
-
 ### 163. USB mass-storage detach during an open write leaves a zero-byte file and orphaned FAT clusters
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `Drivers/usb_mass_storage/driver.c`: `volume_file_open_write()`, `volume_file_write()`, `volume_refresh()`, and `detach_volume()`.
 - **Trigger / reproduction:** Mount a writable FAT16/FAT32 USB drive, open a new destination through the storage-volume API, write enough data to allocate at least one cluster, but before `volume_file_close(..., true)` succeeds force `host->poll()` or device enumeration to fail (or disconnect/reconnect the device).
@@ -1878,10 +1750,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make new-file publication transactional. Prefer a temporary/hidden entry whose cluster chain is finalized and then published at commit; otherwise persist enough recovery state to delete the incomplete entry/free its chain on reattach. Do not discard an active writable `file_state` without either successful rollback or a defined recovery marker. Add an injected host-poll failure test after at least one cluster write and verify reconnect leaves neither the destination nor allocated orphan clusters.
 
 - **Consolidation sources:** [automation/bug-scan-20260928-2354](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/adbef888b66176c0dd8e859e91629a93c1ceda23/bugs.md); [Drive: 2026-09-28 2354 automation-bug-scan-20260928-2354 diff](https://docs.google.com/document/d/1Q0TY6FxGuO5mz5-eim6LjlhC5BL6u24Ibi5DKNFyUUs/edit?usp=drivesdk); [Drive: 2026-09-28 2354 automation-bug-scan-20260928-2354 instructions](https://docs.google.com/document/d/1tPJ5PE9mW3TkqebBAGNIijAyJCz0rCccHTRJ2e4Tr50/edit?usp=drivesdk)
-
 ### 164. Release-manifest validation ignores its required-version flag and accepts unversioned app releases
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/native/AppManifest.cpp::parseAppManifest()` and its `requireAppVersion` contract in `src/native/AppManifest.h`; callers include `src/native/NativeAppHost.cpp::loadAggregateCatalog()`, `loadCatalogManifests()`, `appCatalogDownloadWithProgress()`, and required-app installation.
 - **Trigger / reproduction:** Pass an otherwise valid application manifest that omits the `version` field to `parseAppManifest(..., appVersion, true)`. The fallback/aggregate release-catalog paths explicitly make this call with `requireAppVersion=true`.
 - **Observed / logically demonstrated failure:** The parser accepts a missing version whenever `versionNode.isNull()`, then explicitly discards the caller's requirement with `(void)requireAppVersion`. It therefore returns success even though the caller asked for a versioned release manifest. In fallback/aggregate catalog construction this can admit an unversioned release record with an empty parsed version and defer failure or inconsistent version handling to later update/install logic instead of rejecting the bad release metadata at its validation boundary.
@@ -1890,10 +1761,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** When `requireAppVersion` is true, reject a null/missing `version` before returning success; preserve legacy acceptance only when the flag is false. Add parser tests proving `requireAppVersion=false` accepts a legacy missing-version sidecar while `true` rejects it, plus catalog tests that an unversioned release never becomes visible/installable.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0027](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/1eb74f2f53befe4d3d3f366aab29e9c532ec5c1d/bugs.md); [Drive: 2026-09-29 0027 automation_bug-scan-20260929-0027 Instructions](https://docs.google.com/spreadsheets/d/1G5bshzTr7OOfLnKoqSLlCpfSwRYnS4ArEihTuix04hU/edit?usp=drivesdk); [Drive: 2026-09-29 0027 automation_bug-scan-20260929-0027 Diff](https://docs.google.com/spreadsheets/d/1QYZyfloUsYxmVpadMen1yitn8eelChTNer8hEGVmvfU/edit?usp=drivesdk)
-
 ### 165. Oversized PNG dimensions can overflow the EPUB framebuffer decoder's safety arithmetic
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/Epub/Epub/converters/ImageToFramebufferDecoder.cpp::validateImageDimensions()`; `lib/Epub/Epub/converters/PngToFramebufferConverter.cpp::requiredPngInternalBufferBytes()` and `decodeToFramebuffer()`.
 - **Trigger / reproduction:** Open an EPUB containing a crafted PNG whose IHDR advertises very large positive dimensions that overflow 32-bit signed arithmetic. A deterministic arithmetic case is width `1073741825` and height `4`: both values are legal positive 31-bit PNG dimensions, but the product and the PNG row-buffer calculation exceed `INT_MAX`. The dimension-query path also narrows dimensions to `int16_t`, so this width appears as `1` to layout while the decoder later sees the original width.
 - **Observed / logically demonstrated failure:** `validateImageDimensions()` evaluates `width * height` as signed `int` before comparing it with `MAX_SOURCE_PIXELS`; that multiplication overflows instead of reliably rejecting the image. The PNG-specific buffer guard independently performs `srcWidth * bytesPerPixel` and `(pitch + 1) * 2` as signed `int`, so the same oversized width can overflow `requiredInternal` to a small/negative value and bypass the `PNG_MAX_BUFFERED_PIXELS` check that exists specifically to prevent PNGdec from overrunning its internal scanline storage.
@@ -1902,10 +1772,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Reject non-positive dimensions and impose explicit per-axis maxima before any multiplication. Perform products and row-byte calculations in checked `uint64_t`/`size_t` arithmetic, reject overflow before narrowing, and validate dimension queries before storing them in `ImageDimensions`. Add regression PNG headers around `INT_MAX`, the pixel-count boundary, and widths that overflow the internal-row calculation.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0027](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/1eb74f2f53befe4d3d3f366aab29e9c532ec5c1d/bugs.md); [automation/bug-scan-20260929-1521](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/3b5ee347c5f261f42ffb47c4e42fa8d6938d0b1c/bugs.md); [Drive: 2026-09-29 1521 MDT - automation-bug-scan-20260929-1521 - Diff](https://docs.google.com/spreadsheets/d/1cTBgkQqcH5XClkBpjrNyYB1r77lq226fvwpP8SzDBVo/edit?usp=drivesdk); [Drive: 2026-09-29 1521 MDT - automation-bug-scan-20260929-1521 - Diff](https://docs.google.com/document/d/1n7GGQT0HAu48H5Kslu1if8a5qKqt15oE2-9WHM0l_sA/edit?usp=drivesdk); [Drive: 2026-09-29 0027 automation_bug-scan-20260929-0027 Instructions](https://docs.google.com/spreadsheets/d/1G5bshzTr7OOfLnKoqSLlCpfSwRYnS4ArEihTuix04hU/edit?usp=drivesdk); [Drive: 2026-09-29 0027 automation_bug-scan-20260929-0027 Diff](https://docs.google.com/spreadsheets/d/1QYZyfloUsYxmVpadMen1yitn8eelChTNer8hEGVmvfU/edit?usp=drivesdk); [Drive: 2026-09-29 1521 MDT - automation-bug-scan-20260929-1521 - Instructions](https://docs.google.com/spreadsheets/d/1Ip2qZ7MWIuO0ktAYH7PbAvU1eU84E53kkBOAr1iYdcs/edit?usp=drivesdk)
-
 ### 166. Clear Reading Cache reports success after cache-directory open or enumeration I/O failures
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/native/NativeCacheBridge.cpp::clearReadingCache()`; result presentation in `Apps/clear_cache.c::render_result()`.
 - **Trigger / reproduction:** With multiple `/.crosspoint/epub_*` or `xtc_*` cache directories present, fault the SD directory iterator after one matching directory has been returned and removed, so the next `root.openNextFile()` returns an invalid handle before true end-of-directory. A simpler trigger is to make opening an existing `/.crosspoint` directory fail transiently.
@@ -1915,10 +1784,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Distinguish confirmed directory absence from open failure (for example, check existence first and treat an existing-but-unopenable directory as failure), and use an enumeration path that exposes I/O/error status separately from EOF. If enumeration fails after partial deletion, return failure or increment `failed_count` and report partial completion. Add fault-injection tests for initial open failure and mid-directory enumeration failure.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0027](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/1eb74f2f53befe4d3d3f366aab29e9c532ec5c1d/bugs.md); [automation/bug-scan-20260929-1421](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/e629428d0573b0b6e3bbf952e77f16495bc60fa7/bugs.md); [automation/bug-scan-20260930-0419](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/8f3a068b9f2d6105e008255713ee5086691a134a/bugs.md); [Drive: 2026-09-30 0419 MDT - automation_bug-scan-20260930-0419 - Diff](https://docs.google.com/spreadsheets/d/1o6Bfq-I4ygMn_Ai6dZFXLxodBuN4p08HsGPgkuWaXGo/edit?usp=drivesdk); [Drive: 2026-09-29 1421 MDT - automation-bug-scan-20260929-1421 - Instructions](https://docs.google.com/spreadsheets/d/1PxZ2lsUdx2DcGC4s3qaF4cBQ8agSIvjTCrsJu4LDEws/edit?usp=drivesdk); [Drive: 2026-09-29 1421 MDT - automation-bug-scan-20260929-1421 - Diff](https://docs.google.com/spreadsheets/d/1xPKDnEDkwHqADDFeUzABbYFT6iT-RFeG66EhMkpBByE/edit?usp=drivesdk); [Drive: 2026-09-29 0027 automation_bug-scan-20260929-0027 Instructions](https://docs.google.com/spreadsheets/d/1G5bshzTr7OOfLnKoqSLlCpfSwRYnS4ArEihTuix04hU/edit?usp=drivesdk); [Drive: 2026-09-29 0027 automation_bug-scan-20260929-0027 Diff](https://docs.google.com/spreadsheets/d/1QYZyfloUsYxmVpadMen1yitn8eelChTNer8hEGVmvfU/edit?usp=drivesdk); [Drive: 2026-09-30 0419 MDT - automation_bug-scan-20260930-0419 - Instructions](https://docs.google.com/spreadsheets/d/1PyHqC8xFRzQs02Mt1-ory7jR4LOiSeqVqJ1dFvpgQzg/edit?usp=drivesdk)
-
 ### 167. ZIP trailing-NUL size arithmetic wraps for a maximum-size entry
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/ZipFile/ZipFile.cpp::readFileToMemory()`; callers include `lib/Epub/Epub.cpp::readItemContentsToBytes()`, which requests a trailing NUL for XML/HTML text.
 - **Trigger / reproduction:** Use ZIP metadata declaring an uncompressed entry size of `0xFFFFFFFF`, then read that entry with `trailingNullByte=true`.
 - **Observed / logically demonstrated failure:** `inflatedDataSize` is a `uint32_t`, so `inflatedDataSize + 1` wraps to zero before it is assigned to `dataSize`. The routine can therefore allocate zero bytes and then proceed using the original `0xFFFFFFFF` declared length for the stored read or inflate destination, followed by a terminator write at that declared index, instead of rejecting the impossible in-memory request.
@@ -1927,10 +1795,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Enforce a practical per-entry in-memory limit, check the declared size before converting it, and check addition before reserving the trailing byte. Add boundary tests for the configured maximum and `UINT32_MAX` with and without `trailingNullByte`.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0127-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b126c4282b721ea72cd5972a2779992bfaf6441c/bugs.md); [Drive: 2026-09-29 0127 MDT - automation-bug-scan-20260929-0127-findings - Instructions](https://docs.google.com/spreadsheets/d/1ad4bmYdzefozwBelKNdUD846o6B6SZ6_W2j2E23XvHw/edit?usp=drivesdk); [Drive: 2026-09-29 0127 MDT - automation-bug-scan-20260929-0127-findings - Diff](https://docs.google.com/spreadsheets/d/1Bl2Lj6n40DNLK8lCt8zLIjps7eeAa74hQyQ376hxUh8/edit?usp=drivesdk)
-
 ### 168. EPUB BMP conversion can report success after destination writes fail and retain a truncated cover cache
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/PngToBmpConverter/PngToBmpConverter.cpp` and `lib/JpegToBmpConverter/JpegToBmpConverter.cpp`, including BMP header/row writers; consumers `lib/Epub/Epub.cpp::generateCoverBmp()` and `generateThumbBmp()`.
 - **Trigger / reproduction:** Generate an EPUB JPG/PNG cover or thumbnail while forcing the destination `FsFile` to return a short or zero write after opening successfully, such as an SD write fault or full-volume condition.
 - **Observed / logically demonstrated failure:** Both converters call `Print::write()` for BMP headers, palettes, and pixel rows but never check the returned byte count and keep no output-error state. If source decoding succeeds, the converter returns `true` even when the BMP stream is incomplete. `Epub::generateCoverBmp()` and `generateThumbBmp()` trust that boolean, retain the partial file, and future calls return success immediately from `Storage.exists(...)` without validating the cached BMP.
@@ -1939,10 +1806,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Check every BMP output write for the exact expected byte count, propagate output failure through the converter, and return false on any short write. Generate into a staged file, require successful close plus basic BMP validation, then publish the final cache. Add fault-injection tests for header and pixel-row write failures.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0127-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b126c4282b721ea72cd5972a2779992bfaf6441c/bugs.md); [automation/bug-scan-20260929-1227](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6e24332a2bf14ad272bb4b8d7944e5e9a9cd1e1c/bugs.md); [Drive: 2026-09-29 1227 MDT - automation-bug-scan-20260929-1227 - Instructions](https://docs.google.com/document/d/1W1g8tZYLjNvZt4NIm61ESqN6j60PCManQaqLmS_7yj0/edit?usp=drivesdk); [Drive: 2026-09-29 1227 MDT - automation-bug-scan-20260929-1227 - Diff](https://docs.google.com/document/d/1fZ8vZ0C1ZjmKnHULiYYQSDc1Cg7AqNSix4w-kpxSVwY/edit?usp=drivesdk); [Drive: 2026-09-29 0127 MDT - automation-bug-scan-20260929-0127-findings - Instructions](https://docs.google.com/spreadsheets/d/1ad4bmYdzefozwBelKNdUD846o6B6SZ6_W2j2E23XvHw/edit?usp=drivesdk); [Drive: 2026-09-29 0127 MDT - automation-bug-scan-20260929-0127-findings - Diff](https://docs.google.com/spreadsheets/d/1Bl2Lj6n40DNLK8lCt8zLIjps7eeAa74hQyQ376hxUh8/edit?usp=drivesdk)
-
 ### 169. Time Zone can commit a city or exit two navigation levels from one held button press
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `Apps/time_zone.c`, `app_main()` and `activate()`; input semantics come from `src/native/NativeAppHost.cpp::pollInput()`.
 - **Trigger / reproduction:** Open **Time Zone**, highlight a region different from the currently configured one, then press and hold Confirm long enough to span two 50 ms app polls. A second reproduction is to enter a city's list and hold Back across two polls.
@@ -1952,10 +1818,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Add rising-edge/release rearming around button actions, matching the pattern already used by `Apps/settings.c`, or consume the edge-based UI event API instead of raw level bits. Reset/rearm deliberately across region/city transitions. Add regressions that keep Confirm and Back asserted for several polls and verify exactly one navigation/action occurs per physical press.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0223](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/aafc7d5defd59b404ce8bbd45ad3e1581b56d805/bugs.md); [automation/bug-scan-20260929-1421](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/e629428d0573b0b6e3bbf952e77f16495bc60fa7/bugs.md); [Drive: 2026-09-29 1421 MDT - automation-bug-scan-20260929-1421 - Instructions](https://docs.google.com/spreadsheets/d/1PxZ2lsUdx2DcGC4s3qaF4cBQ8agSIvjTCrsJu4LDEws/edit?usp=drivesdk); [Drive: 2026-09-29 1421 MDT - automation-bug-scan-20260929-1421 - Diff](https://docs.google.com/spreadsheets/d/1xPKDnEDkwHqADDFeUzABbYFT6iT-RFeG66EhMkpBByE/edit?usp=drivesdk); [Drive: 2026-09-29 0223 MDT - automation-bug-scan-20260929-0223 - Instructions](https://docs.google.com/document/d/1ZfhQ2F_rfoibch3SfcN1XB35w_uSd6-FOmSZ0S8War4/edit?usp=drivesdk); [Drive: 2026-09-29 0223 MDT - automation-bug-scan-20260929-0223 - Diff](https://docs.google.com/document/d/1Ta7Gf8gV44oQ1S9273fWJRyZ7odf_TIJ7ddOEzSeP0U/edit?usp=drivesdk)
-
 ### 170. Ask can restore a conversation after exit when session-file deletion fails
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/llm_ask.c`, `clear_session_file()`, Back/Exit handling in `app_main()`, and `load_session()`; deletion status comes from `src/native/NativePlatformBridge.cpp::removeFile()`.
 - **Trigger / reproduction:** Create an Ask conversation so `/.crosspoint/llm_ask.session` exists, force `remove_file` to fail while leaving Ask, then restore storage and relaunch Ask.
 - **Observed / logically demonstrated failure:** `clear_session_file()` discards the boolean result from `storage->remove_file(SESSION_PATH)`. Back and Exit then leave the app as though cleanup succeeded. The retained session still has valid magic/version, so the next `load_session()` accepts it and displays the previous conversation again.
@@ -1964,10 +1829,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Handle deletion failure explicitly and make persisted-session invalidation transactional. A failed remove must not leave a session that the next launch accepts as current. Add a fault-injection test for exit-time remove failure and relaunch.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0223](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/aafc7d5defd59b404ce8bbd45ad3e1581b56d805/bugs.md); [Drive: 2026-09-29 0223 MDT - automation-bug-scan-20260929-0223 - Instructions](https://docs.google.com/document/d/1ZfhQ2F_rfoibch3SfcN1XB35w_uSd6-FOmSZ0S8War4/edit?usp=drivesdk); [Drive: 2026-09-29 0223 MDT - automation-bug-scan-20260929-0223 - Diff](https://docs.google.com/document/d/1Ta7Gf8gV44oQ1S9273fWJRyZ7odf_TIJ7ddOEzSeP0U/edit?usp=drivesdk)
-
 ### 171. ST-LINK disconnect or close-time command failure permanently retains the USB claim/session
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Drivers/usb_stlink/driver.c`, `close_probe()`, `poll_probes()`, session bookkeeping, and `quiesce()`.
 - **Trigger / reproduction:** Open an ST-LINK SWD/SWIM session, unplug the probe or otherwise make `current_mode()` or `exit_mode()` fail, then close the session and attempt to quiesce/reload the provider or reconnect and reopen the probe.
 - **Observed / logically demonstrated failure:** `close_probe()` returns immediately when `current_mode()` or `exit_mode()` fails, before `host->host.release(..., s->claim)` and before clearing the `session_slot`. `poll_probes()` clears vanished probe/inspection state but not matching sessions. After disconnect, the protocol close cannot recover, the token remains nonzero indefinitely, and `quiesce()` keeps returning false.
@@ -1976,10 +1840,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make protocol mode-exit best-effort during close, always attempt host-claim release and retire the local session slot, and also retire sessions whose device disappears during discovery. Preserve the protocol error separately. Add detach and injected close-failure tests proving `quiesce()` becomes true and a later session can open.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0223](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/aafc7d5defd59b404ce8bbd45ad3e1581b56d805/bugs.md); [Drive: 2026-09-29 0223 MDT - automation-bug-scan-20260929-0223 - Instructions](https://docs.google.com/document/d/1ZfhQ2F_rfoibch3SfcN1XB35w_uSd6-FOmSZ0S8War4/edit?usp=drivesdk); [Drive: 2026-09-29 0223 MDT - automation-bug-scan-20260929-0223 - Diff](https://docs.google.com/document/d/1Ta7Gf8gV44oQ1S9273fWJRyZ7odf_TIJ7ddOEzSeP0U/edit?usp=drivesdk)
-
 ### 172. File Browser can rename the wrong item when its handoff session fails to save
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `Apps/file_browser.c`, especially `save_session()`, `request_rename()`, startup `load_session()`, and `consume_handoff_results()`.
 - **Trigger / reproduction:** Open File Browser in a non-root SD folder, select an item, choose **Rename**, and force `storage->write_file_atomic(SESSION_PATH, ...)` to fail while allowing `system_ui->keyboard_request(..., RENAME_COOKIE)` to succeed. Enter a different valid name in the keyboard and return to File Browser. Keep an unrelated item at the root so the resumed app has a selectable row there.
@@ -1989,10 +1852,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make `save_session()` return success and do not issue the keyboard handoff unless the continuation state is durably written. Persist the operation and canonical source path, then validate that exact source on resume before mutating it; never derive the rename source from whatever row happens to be selected after restart. Treat a stale/missing session as a cancelled rename. Add a fault-injection test for session-write failure from a nested folder and prove no root or stale-session item is renamed.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/1119b86c20c4a8024ef0f0b1e3ed416ce0b0e8ea/bugs.md); [Drive: 2026-09-29 0321 MDT - automation-bug-scan-20260929-0321 - Instructions](https://docs.google.com/spreadsheets/d/1olIEa0GA1zbdPFGAPQbYGSKvj7INIdabz3rmzWNM4x0/edit?usp=drivesdk); [Drive: 2026-09-29 0321 MDT - automation-bug-scan-20260929-0321 - Diff](https://docs.google.com/spreadsheets/d/1UP3gJ6ntPpZsnttw6gXKoPoWZ5guN8F2pWhAClKpZxA/edit?usp=drivesdk)
-
 ### 173. Failed EPUB 3 nav extraction is reported as success and suppresses a valid NCX fallback
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/Epub/Epub.cpp`, `Epub::parseTocNavFile()`, `Epub::parseTocNcxFile()`, and the TOC selection logic in `Epub::load()`.
 - **Trigger / reproduction:** Use an EPUB whose OPF declares an EPUB 3 nav item that cannot be extracted from the ZIP (for example the declared nav entry is missing/corrupt) while also providing a valid compatibility NCX item.
@@ -2002,10 +1864,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Check `readItemContentsToStream()` before reopening either temporary TOC file; on failure close/remove the temp file and return `false`. Reject zero-byte/incomplete parses and make parser completion explicit so `Epub::load()` reliably falls back from nav to NCX. Add regressions for missing nav + valid NCX, corrupt nav + valid NCX, and failed NCX extraction.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0321](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/1119b86c20c4a8024ef0f0b1e3ed416ce0b0e8ea/bugs.md); [Drive: 2026-09-29 0321 MDT - automation-bug-scan-20260929-0321 - Instructions](https://docs.google.com/spreadsheets/d/1olIEa0GA1zbdPFGAPQbYGSKvj7INIdabz3rmzWNM4x0/edit?usp=drivesdk); [Drive: 2026-09-29 0321 MDT - automation-bug-scan-20260929-0321 - Diff](https://docs.google.com/spreadsheets/d/1UP3gJ6ntPpZsnttw6gXKoPoWZ5guN8F2pWhAClKpZxA/edit?usp=drivesdk)
-
 ### 174. A font family with no files is accepted and reported as installed successfully
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/native/NativeFontBridge.cpp::refreshCatalog()` and `installFamily()`; `src/FontInstaller.cpp::ensureFamilyDir()`; presentation in `Apps/font_manager.c`.
 - **Trigger / reproduction:** Serve a version-valid font manifest containing a family with a valid family name but an absent or empty `files` array, refresh Manage Fonts, and select that family for installation.
@@ -2015,10 +1876,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Require `files` to be a present non-empty array during catalog validation, reject zero-file families before they enter live state, and verify the installed family is actually discoverable after registry refresh before reporting success. Remove any staged empty directory on failure and add empty/missing-files regression cases.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0526](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ac10238dae4c53d985ef85309e535a23d7a98ff2/bugs.md); [Drive: 2026-09-29 0526 MDT - automation-bug-scan-20260929-0526 - Instructions](https://docs.google.com/document/d/1NDxyuhCjLL4X1lD0EejpL9Li6MgzBx8jZGDDc9BCkdk/edit?usp=drivesdk); [Drive: 2026-09-29 0526 MDT - automation-bug-scan-20260929-0526 - Diff](https://docs.google.com/document/d/1crJqKG5skmKN8kGFAIAvJW_JYqZ2rpuPX2hec556r4U/edit?usp=drivesdk)
-
 ### 175. ZIP EOCD discovery can mistake an EOCD byte sequence inside a valid ZIP comment for the real record
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/ZipFile/ZipFile.cpp::ZipFile::loadZipDetails()`; downstream central-directory users such as `loadFileStatSlim()`, `findFirstBySuffix()`, and EPUB/archive consumers.
 - **Trigger / reproduction:** Create an otherwise valid ZIP whose comment is within the currently scanned final 1 KiB and contains the four literal EOCD signature bytes at a position with at least 22 bytes remaining before EOF. Open an entry through `ZipFile`.
@@ -2028,10 +1888,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** For each signature candidate, decode the full EOCD safely and require `candidate_offset + 22 + comment_length == file_size`, supported single-disk fields, and a bounded/consistent central-directory range. Reject a false candidate and continue scanning backward. Also require the final-window read to return the requested byte count. Add a regression ZIP whose comment contains a fake EOCD signature after the real one.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0623-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a0eeba8b922c599a6b21700ab44037089cb37b92/bugs.md); [automation/bug-scan-20260929-0623-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b1463ab6ef1fc1a6345ea660e56ae484b98b07b9/bugs.md); [Drive: 2026-09-29 0623 MDT - automation-bug-scan-20260929-0623-final - Instructions](https://docs.google.com/spreadsheets/d/1_in6hCljLxqiyI5MrjIzkrraPXJuEllimsyAhbStfjQ/edit?usp=drivesdk); [Drive: 2026-09-29 0623 MDT - automation-bug-scan-20260929-0623-findings - Instructions](https://docs.google.com/document/d/1MFdtmLQczvKYtfqT4o_4BxJt-W0lax5qxpBBYoeyBcQ/edit?usp=drivesdk); [Drive: 2026-09-29 0623 MDT - automation-bug-scan-20260929-0623-findings - Diff](https://docs.google.com/document/d/1tx4_PKHXrJvCuZyT8yr6fDOBHKQ1W_l_5VsZu7TB7xw/edit?usp=drivesdk)
-
 ### 176. GPS auto-baud remains permanently locked to a stale baud after the receiver changes speed
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `Drivers/gps_nmea/driver.c::parse()`, `read_state()`, and `begin_baud()`.
 - **Trigger / reproduction:** Start the GPS provider with a receiver producing checksum-valid NMEA at either supported baud (9600 or 38400), allowing `parse()` to set `locked = true`. Without unloading the provider, reset or reconfigure the receiver so it resumes NMEA output at the other supported baud, then wait longer than the normal 1600 ms probe interval and continue polling GPS state.
@@ -2041,10 +1900,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Track the last checksum-valid supported NMEA sentence time for the selected baud. After a bounded silence or invalid-stream interval, clear the baud lock and receiver-detected state and resume alternating supported bauds. Add a test stream that acquires lock at one baud, goes silent, then resumes valid GGA/RMC at the other baud without restarting the driver.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0623-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a0eeba8b922c599a6b21700ab44037089cb37b92/bugs.md); [automation/bug-scan-20260929-0623-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b1463ab6ef1fc1a6345ea660e56ae484b98b07b9/bugs.md); [Drive: 2026-09-29 0623 MDT - automation-bug-scan-20260929-0623-final - Instructions](https://docs.google.com/spreadsheets/d/1_in6hCljLxqiyI5MrjIzkrraPXJuEllimsyAhbStfjQ/edit?usp=drivesdk); [Drive: 2026-09-29 0623 MDT - automation-bug-scan-20260929-0623-findings - Instructions](https://docs.google.com/document/d/1MFdtmLQczvKYtfqT4o_4BxJt-W0lax5qxpBBYoeyBcQ/edit?usp=drivesdk); [Drive: 2026-09-29 0623 MDT - automation-bug-scan-20260929-0623-findings - Diff](https://docs.google.com/document/d/1tx4_PKHXrJvCuZyT8yr6fDOBHKQ1W_l_5VsZu7TB7xw/edit?usp=drivesdk)
-
 ### 177. Firmware-update fallback checks only the repository-wide latest release, so an app/driver release can hide the newest firmware
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/network/OtaUpdater.cpp`, `latestReleaseUrl` and the legacy fallback in `OtaUpdater::checkForUpdate()`; `lib/JsonParser/ReleaseJsonParser.cpp`, firmware-asset selection.
 - **Trigger / reproduction:** Make `release-index.json` unavailable or unreadable so `checkForUpdate()` enters its fallback path. Publish an app-only or driver-only GitHub release after the most recent firmware release, which is valid in this repository's independently versioned release model, then run Firmware Update.
@@ -2054,10 +1912,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make fallback firmware-specific: query a firmware release/tag pointer, enumerate recent releases until the first valid `firmware-v*` release containing the board asset is found, or maintain a dedicated immutable/latest-firmware endpoint. Do not treat an unrelated latest release as evidence that no firmware update exists. Add a regression fixture where an app release is newest but a firmware release immediately precedes it.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0725](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/7c3008d0876ab9bb0a728aca781b63fbfa9613f3/bugs.md); [Drive: 2026-09-29 0725 MDT - automation-bug-scan-20260929-0725 - instructions](https://docs.google.com/spreadsheets/d/1-4jDQiaUOBHv4-fTEqOZCIfyr8g9jYm1HMFC0fqAc_o/edit?usp=drivesdk); [Drive: 2026-09-29 0725 MDT - automation-bug-scan-20260929-0725 - diff](https://docs.google.com/spreadsheets/d/1AJPUdv9PVLhPLWMG1wuU6fzACHMVp59JWvFPEDsjuQ0/edit?usp=drivesdk)
-
 ### 178. BookMetadataCache treats short SD writes and close failures as successful cache publication
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/Epub/Epub/BookMetadataCache.cpp`, especially `writeSpineEntry()`, `writeTocEntry()`, `endContentOpfPass()`, `endTocPass()`, and `buildBookBin()`; `lib/Serialization/Serialization.h`, the `FsFile` `writePod()` / `writeString()` helpers; caller `lib/Epub/Epub.cpp::Epub::load()`.
 - **Trigger / reproduction:** Force the SD card to short-write, become full, or fail a flush/close while an EPUB is being indexed and `spine.bin.tmp`, `toc.bin.tmp`, or final `book.bin` is being written.
@@ -2067,10 +1924,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make all `FsFile` serialization writes return success only on exact byte counts and propagate failures through spine/TOC creation and pass completion. Check flush/close results. Build the final cache into a new staged file, close and validate it completely, then publish it atomically; discard the stage on any error and preserve/rebuild from the last known-good cache. Add fault-injection tests for short writes in metadata, LUT, spine/TOC entries, and final close.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0823](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6a1c2dd84e3e922a799f9c29176cf2706bafc209/bugs.md); [Drive: 2026-09-29 0823 MDT - automation-bug-scan-20260929-0823 - Instructions](https://docs.google.com/spreadsheets/d/1mGhMQ7hk2vMFB7TIHJQ8JXV-Prl3VV31Pt4vDfr17GA/edit?usp=drivesdk); [Drive: 2026-09-29 0823 MDT - automation-bug-scan-20260929-0823 - Diff](https://docs.google.com/spreadsheets/d/1vJqjCYlDdK_38-EdVcug_G3EVGKhGAIet-6GhueGFhg/edit?usp=drivesdk)
-
 ### 179. XTC metadata parsing ignores the header metadata offset and reads title/author from fixed addresses
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/Xtc/Xtc/XtcTypes.h`, `XtcHeader::metadataOffset`; `lib/Xtc/Xtc/XtcParser.cpp`, `XtcParser::open()`, `readTitle()`, and `readAuthor()`; downstream `Xtc::getTitle()/getAuthor()`, Recent Books, Home, and screenshot metadata.
 - **Trigger / reproduction:** Create an otherwise accepted XTC/XTCH with `hasMetadata = 1` and place its metadata block at a valid non-default location identified by `metadataOffset` (for example `0x100`), with a known title and author there. Keep bytes at `0x38` and `0xB8` different, then open the book.
@@ -2080,10 +1936,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Validate the advertised metadata region against file bounds, seek to `metadataOffset`, and read title/author relative to that block with exact read checks. Add tests for default placement, relocated metadata, and truncated/out-of-bounds metadata.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-0923](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/61e0308885e3d82d10013b44c0cc25885984bb8c/bugs.md); [Drive: 2026-09-29 09-23 MDT - automation-bug-scan-20260929-0923 - Instructions](https://docs.google.com/document/d/16-a2i6BOru1O8pdLvMa6KMQ7DHpzVTz_T5ZLxhspYIw/edit?usp=drivesdk); [Drive: 2026-09-29 09-23 MDT - automation-bug-scan-20260929-0923 - Diff](https://docs.google.com/document/d/1blE03USfMDKdOZCAsm-rzhy6EvDcdVGIFZ6T6cmGxjU/edit?usp=drivesdk)
-
 ### 180. A transient settings read failure quarantines or deletes a valid settings.json
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/CrossPointSettings.cpp`, `CrossPointSettings::loadFromFile()` and `quarantineSettingsJson()`; `lib/hal/HalStorage.cpp`, `HalStorage::readFile()` and `openFileForReadUnlocked()`.
 - **Trigger / reproduction:** Start with a valid `/.crosspoint/settings.json`. During boot, allow `Storage.exists(SETTINGS_FILE_JSON)` to succeed but inject a transient failure when the subsequent `sd.open(..., O_RDONLY)` runs, or inject a mid-read I/O failure that leaves an empty/malformed partial `String`.
@@ -2093,10 +1948,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Read settings through an API that distinguishes not-found, I/O failure, and complete byte content. Quarantine only after a complete successful read has been parsed and proven malformed. On open/read failure, leave the canonical file untouched and return/retry an explicit storage error. Add fault-injection tests for exists-then-open failure, short/mid-read failure, genuinely malformed JSON, and successful load.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1019](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b9f31ac542f22a2125728b5afb03c429dc25901f/bugs.md); [Drive: 2026-09-29 10-19 MDT - automation-bug-scan-20260929-1019 - Instructions](https://docs.google.com/document/d/1R_ERc5NpUpiGYHoP5R_C2m2AAc-67yRdVgPE7N1qNtg/edit?usp=drivesdk); [Drive: 2026-09-29 10-19 MDT - automation-bug-scan-20260929-1019 - Diff](https://docs.google.com/document/d/1B9xor6sVkT6qu844DAU2HMPmrL0KxwPN2e_m5AUH6zA/edit?usp=drivesdk)
-
 ### 181. Failed EPUB deletion can erase the book's cache and reading progress while leaving the book itself intact
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/native/NativeFileBrowserBridge.cpp`, `deleteDocument()`; `lib/Epub/Epub.cpp`, `Epub::clearCache()`; reader progress stored below `Epub::getCachePath()`, including `src/activities/reader/EpubReaderActivity.cpp`'s `progress.bin` load path.
 - **Trigger / reproduction:** Open an EPUB so it has a populated `/.crosspoint/epub_<hash>/` cache/progress directory. Delete that EPUB from File Browser while injecting a failure in the final `Storage.remove(path)` call after cache removal succeeds (for example a transient SD removal/write error).
@@ -2106,10 +1960,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Remove or transactionally move the EPUB first, and clear its derived cache only after the source deletion is known to have succeeded. Prefer staging the cache for deferred cleanup if rollback is needed. Propagate cache-cleanup failure separately without sacrificing the book. Add a regression where final file removal fails and verify the EPUB and its progress/cache remain intact.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1019](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b9f31ac542f22a2125728b5afb03c429dc25901f/bugs.md); [Drive: 2026-09-29 10-19 MDT - automation-bug-scan-20260929-1019 - Instructions](https://docs.google.com/document/d/1R_ERc5NpUpiGYHoP5R_C2m2AAc-67yRdVgPE7N1qNtg/edit?usp=drivesdk); [Drive: 2026-09-29 10-19 MDT - automation-bug-scan-20260929-1019 - Diff](https://docs.google.com/document/d/1B9xor6sVkT6qu844DAU2HMPmrL0KxwPN2e_m5AUH6zA/edit?usp=drivesdk)
-
 ### 182. Package Manager reports a successful installed-package refresh after directory scan failures and publishes a partial inventory
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/native/NativePackageManagerBridge.cpp`, `refreshInstalled()`, `clearInstalledCache()`, `installedCount()`, and `installedGet()`; consumer `Apps/package_manager.c::refresh()`.
 - **Trigger / reproduction:** Install managed packages in more than one root such as `/Apps` and `/Drivers`. Open Package Manager while injecting an SD open/read failure for one installed-package root, or make `openNextFile()` fail part-way through a populated root while other roots remain readable.
@@ -2119,10 +1972,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Build the installed inventory in temporary storage, distinguish missing optional roots from I/O/open/enumeration failures, and publish it only after every existing root has been scanned successfully. Preserve the previous valid snapshot or expose an explicit refresh failure instead of returning success with partial data. Add tests for root-open failure and mid-enumeration failure with packages before and after the fault.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1019](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b9f31ac542f22a2125728b5afb03c429dc25901f/bugs.md); [automation/bug-scan-20260930-0324](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/61f98d60fa4eda874405b00c72b9a576e4ca9924/bugs.md); [Drive: 2026-09-30 0324 MDT - automation_bug-scan-20260930-0324 - Diff](https://docs.google.com/spreadsheets/d/1353mBOSb02ehViW2gfxo_G4Bsw-FXIdsTVKBs4qvn7g/edit?usp=drivesdk); [Drive: 2026-09-29 10-19 MDT - automation-bug-scan-20260929-1019 - Instructions](https://docs.google.com/document/d/1R_ERc5NpUpiGYHoP5R_C2m2AAc-67yRdVgPE7N1qNtg/edit?usp=drivesdk); [Drive: 2026-09-29 10-19 MDT - automation-bug-scan-20260929-1019 - Diff](https://docs.google.com/document/d/1B9xor6sVkT6qu844DAU2HMPmrL0KxwPN2e_m5AUH6zA/edit?usp=drivesdk); [Drive: 2026-09-30 0324 MDT - automation_bug-scan-20260930-0324 - Instructions](https://docs.google.com/spreadsheets/d/1rMBCmHgaBRqtd-LRVm6Fvx8mkcjYuqjssDPGuXNM0yk/edit?usp=drivesdk)
-
 ### 183. KOReader Sync accepts schema-invalid HTTP 200 progress bodies as valid remote positions
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/KOReaderSync/KOReaderSyncClient.cpp`, `KOReaderSyncClient::getProgress()`; `src/activities/reader/KOReaderSyncActivity.cpp`, `performSync()`; `lib/KOReaderSync/ProgressMapper.cpp`, `ProgressMapper::toCrossPoint()`.
 - **Trigger / reproduction:** Have the configured KOReader-compatible server return HTTP 200 with syntactically valid JSON that omits or mistypes required progress fields, for example `{}`, `{"progress":null}`, or a body without a numeric `percentage`.
@@ -2132,10 +1984,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Validate the HTTP-200 body before publishing `outProgress`: require the protocol's mandatory fields with the expected types, require a finite numeric percentage in the valid range, and reject missing/invalid progress data with `JSON_ERROR` or a dedicated protocol error. Parse into a temporary object and assign `outProgress` only after complete validation. Add tests for empty objects, null/wrong-type fields, non-finite/out-of-range percentages, and a valid response.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1126](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b99d1c80c4201e399366f9d7d7bf685655a79655/bugs.md); [Drive: 2026-09-29 1126 MDT - automation-bug-scan-20260929-1126 - Instructions](https://docs.google.com/document/d/10MhueVepOY43NRSwVh6FkJecKy6xzQreFVj9GEyzah0/edit?usp=drivesdk); [Drive: 2026-09-29 1126 MDT - automation-bug-scan-20260929-1126 - Diff](https://docs.google.com/spreadsheets/d/1tileMLV2UkvBPsJcKLms1yet2ggp9mwPW2CYX4BcQgo/edit?usp=drivesdk)
-
 ### 184. Reader progress checkpoints are destructively truncated and short writes are reported as successful
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/activities/reader/EpubReaderActivity.cpp::saveProgress()`, `src/activities/reader/TxtReaderActivity.cpp::saveProgress()`, `src/activities/reader/XtcReaderActivity.cpp::saveProgress()`; `lib/hal/HalStorage.cpp::openFileForWriteUnlocked()`; corresponding reader progress-load paths.
 - **Trigger / reproduction:** Start with a valid `progress.bin`, turn a page so the reader saves a new checkpoint, and inject an SD short write, media error, or power interruption after `openFileForWrite()` succeeds but before all 4/6 progress bytes are durably written.
@@ -2145,10 +1996,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Write the complete checkpoint to a same-directory temporary file, verify the exact byte count plus sync/close success, then atomically replace the canonical `progress.bin` while retaining the old checkpoint until publication succeeds. At minimum, make each save path check exact writes and report failure; add fault-injection tests proving the previous checkpoint survives open/write/sync failures and that partial files are never published.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1126](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b99d1c80c4201e399366f9d7d7bf685655a79655/bugs.md); [Drive: 2026-09-29 1126 MDT - automation-bug-scan-20260929-1126 - Instructions](https://docs.google.com/document/d/10MhueVepOY43NRSwVh6FkJecKy6xzQreFVj9GEyzah0/edit?usp=drivesdk); [Drive: 2026-09-29 1126 MDT - automation-bug-scan-20260929-1126 - Diff](https://docs.google.com/spreadsheets/d/1tileMLV2UkvBPsJcKLms1yet2ggp9mwPW2CYX4BcQgo/edit?usp=drivesdk)
-
 ### 185. Failed legacy-state retirement can later roll current state back to stale binary data
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/CrossPointState.cpp`, especially `CrossPointState::loadFromFile()`; state persistence through `src/JsonSettingsIO.cpp::saveState()` / `loadState()`.
 - **Trigger / reproduction:** Start with a valid legacy `/.crosspoint/state.bin` and no JSON state. Let binary loading and the subsequent `state.json` save succeed, but force `Storage.rename("/.crosspoint/state.bin", "/.crosspoint/state.bin.bak")` to fail. Continue using the device so `state.json` advances beyond the legacy state. On a later boot or reload, make the existing `state.json` read return empty/unreadable.
@@ -2158,10 +2008,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Treat legacy retirement as part of the migration transaction: check the rename result, handle an existing backup safely, and do not report migration complete while the legacy source remains eligible for fallback. Distinguish "JSON absent" from "JSON exists but could not be read/parsed" so a stale legacy file is not automatically preferred after migration. Add a fault-injection test for rename failure followed by a later JSON read failure and prove newer state is never overwritten by the old binary snapshot.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1227](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6e24332a2bf14ad272bb4b8d7944e5e9a9cd1e1c/bugs.md); [Drive: 2026-09-29 1227 MDT - automation-bug-scan-20260929-1227 - Instructions](https://docs.google.com/document/d/1W1g8tZYLjNvZt4NIm61ESqN6j60PCManQaqLmS_7yj0/edit?usp=drivesdk); [Drive: 2026-09-29 1227 MDT - automation-bug-scan-20260929-1227 - Diff](https://docs.google.com/document/d/1fZ8vZ0C1ZjmKnHULiYYQSDc1Cg7AqNSix4w-kpxSVwY/edit?usp=drivesdk)
-
 ### 186. Ask Manifold can erase a valid saved conversation after one transient session read failure
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `Apps/llm_ask.c`, especially `load_session()`, `request_keyboard()`, and `app_main()`.
 - **Trigger / reproduction:** Start with a valid saved Ask Manifold conversation in the session file. Launch the app while injecting a one-time storage read failure for that file, then press Ask to open the keyboard.
@@ -2171,10 +2020,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Distinguish not-found, corrupt, and I/O-failure outcomes. On I/O failure, keep the session unavailable/read-only and do not overwrite the existing file until it has been successfully loaded or the user explicitly chooses to reset it. Add a fault-injection test where the first read fails, the user requests the keyboard, and the original session remains byte-for-byte intact.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1325-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a2a96bbe6fd61e31339ebf6cd83080c9375ff533/bugs.md); [automation/bug-scan-20260929-1325](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/339a210c68dcca5efda472896943769c30581343/bugs.md); [Drive: 2026-09-29 1325 automation-bug-scan-20260929-1325-final Instructions](https://docs.google.com/spreadsheets/d/1YbJE6YPRZsBGC54dWnNamiLrLVwPHwvdp9kURLmtrQg/edit?usp=drivesdk); [Drive: 2026-09-29 1325 automation-bug-scan-20260929-1325-final Diff](https://docs.google.com/spreadsheets/d/12U7ZUH2XA16WgTIMC70fphq9fk2KesQeSGNgcP3NVE0/edit?usp=drivesdk)
-
 ### 187. A failed OPDS book re-download can destroy the existing local EPUB with the same generated filename
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/activities/browser/OpdsBookBrowserActivity.cpp::downloadBook()`; `src/network/HttpDownloader.cpp::downloadToFile()`.
 - **Trigger / reproduction:** Start with an existing local book whose pathname matches the deterministic OPDS destination, such as `/Author - Title.epub`. Download the same catalog title again, allow the HTTP request to reach a 200 response, then interrupt the transfer or inject an SD/network failure before the body completes.
@@ -2184,10 +2032,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Download to a unique same-directory staging file, validate the completed transfer and preferably basic EPUB/ZIP structure, then replace the destination transactionally while preserving or rolling back the old file on publication failure. Add a fault-injection test proving an existing EPUB survives failed re-downloads at each post-200 transfer stage.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1325-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a2a96bbe6fd61e31339ebf6cd83080c9375ff533/bugs.md); [automation/bug-scan-20260929-1325](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/339a210c68dcca5efda472896943769c30581343/bugs.md); [Drive: 2026-09-29 1325 automation-bug-scan-20260929-1325-final Instructions](https://docs.google.com/spreadsheets/d/1YbJE6YPRZsBGC54dWnNamiLrLVwPHwvdp9kURLmtrQg/edit?usp=drivesdk); [Drive: 2026-09-29 1325 automation-bug-scan-20260929-1325-final Diff](https://docs.google.com/spreadsheets/d/12U7ZUH2XA16WgTIMC70fphq9fk2KesQeSGNgcP3NVE0/edit?usp=drivesdk)
-
 ### 188. A transient SD font-directory scan failure can unload the active font and clear its selection in RAM
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/EpdFont/SdCardFontRegistry.cpp::discover()`, `scanRoot()`, and `scanDirectory()`; `src/SdCardFontSystem.cpp::begin()` and `ensureLoaded()`.
 - **Trigger / reproduction:** Select an SD-card font family, then force a transient SD open/enumeration failure while the registry is rediscovered (for example after `markRegistryDirty()` following a font upload/delete, or during boot). Fail opening the root/family directory or make `openNextFile()` stop early even though the family still exists on the card.
 - **Observed / logically demonstrated failure:** `discover()` clears `families_` before scanning. The scan helpers return `void` and treat both directory-open failure and an invalid `openNextFile()` as ordinary absence/end-of-directory, so the caller cannot distinguish a complete scan from an I/O failure. `ensureLoaded()` consumes that partial/empty snapshot, fails to find the still-installed active family, unloads it, and sets `SETTINGS.sdFontFamilyName[0] = '\0'`. Because the dirty flag was already cleared, the selection does not automatically recover when the SD card becomes readable again; a later unrelated settings save can also make the cleared selection durable.
@@ -2196,10 +2043,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Build discovery into a temporary registry, distinguish confirmed EOF/not-found from I/O/enumeration failure, and swap it into `families_` only after a complete successful scan. On scan failure retain the last known-good registry and active selection and leave the dirty flag set for retry. Add fault-injected root-open and mid-enumeration tests.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1521](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/3b5ee347c5f261f42ffb47c4e42fa8d6938d0b1c/bugs.md); [Drive: 2026-09-29 1521 MDT - automation-bug-scan-20260929-1521 - Diff](https://docs.google.com/spreadsheets/d/1cTBgkQqcH5XClkBpjrNyYB1r77lq226fvwpP8SzDBVo/edit?usp=drivesdk); [Drive: 2026-09-29 1521 MDT - automation-bug-scan-20260929-1521 - Diff](https://docs.google.com/document/d/1n7GGQT0HAu48H5Kslu1if8a5qKqt15oE2-9WHM0l_sA/edit?usp=drivesdk); [Drive: 2026-09-29 1521 MDT - automation-bug-scan-20260929-1521 - Instructions](https://docs.google.com/spreadsheets/d/1Ip2qZ7MWIuO0ktAYH7PbAvU1eU84E53kkBOAr1iYdcs/edit?usp=drivesdk)
-
 ### 189. Malformed cpfont glyph lengths can make text rendering read beyond the loaded bitmap buffer
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/EpdFont/SdCardFont.cpp::load()` and `prewarmStyle()`; `lib/EpdFont/EpdFontData.h::EpdGlyph`; `lib/GfxRenderer/GfxRenderer.cpp::renderCharImpl()`.
 - **Trigger / reproduction:** Install or place a structurally loadable `.cpfont` whose interval table points to a glyph record with valid-looking metadata but a `dataLength` smaller than the bitmap implied by `width`, `height`, and the file's 1-bit/2-bit mode—for example a 255×255 1-bit glyph declaring `dataLength = 1`. Render text containing that codepoint.
 - **Observed / logically demonstrated failure:** The font loader validates top-level counts and interval layout but does not cross-check each `EpdGlyph::dataLength` against its dimensions or prove `dataOffset + dataLength` lies inside the bitmap section. `prewarmStyle()` therefore allocates/copies only the declared `dataLength` bytes and publishes the glyph. `renderCharImpl()` ignores `dataLength` and iterates `width * height` pixels, indexing `bitmap[pixelPosition >> 3]` for 1-bit fonts or `>> 2` for 2-bit fonts. The example allocates one bitmap byte but the renderer can read thousands of bytes beyond it.
@@ -2208,10 +2054,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Validate every glyph record before it can enter a mini/persistent/overflow cache: compute the exact required bitmap bytes from dimensions and bit depth using checked arithmetic, require the declared length to match the format contract, and bounds-check every bitmap range against the actual file size/section. Reject the whole font on any inconsistency and add malformed-glyph fixtures for short length, oversized offset, and range overflow.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1521](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/3b5ee347c5f261f42ffb47c4e42fa8d6938d0b1c/bugs.md); [Drive: 2026-09-29 1521 MDT - automation-bug-scan-20260929-1521 - Diff](https://docs.google.com/spreadsheets/d/1cTBgkQqcH5XClkBpjrNyYB1r77lq226fvwpP8SzDBVo/edit?usp=drivesdk); [Drive: 2026-09-29 1521 MDT - automation-bug-scan-20260929-1521 - Diff](https://docs.google.com/document/d/1n7GGQT0HAu48H5Kslu1if8a5qKqt15oE2-9WHM0l_sA/edit?usp=drivesdk); [Drive: 2026-09-29 1521 MDT - automation-bug-scan-20260929-1521 - Instructions](https://docs.google.com/spreadsheets/d/1Ip2qZ7MWIuO0ktAYH7PbAvU1eU84E53kkBOAr1iYdcs/edit?usp=drivesdk)
-
 ### 190. Native app allocator cleanup timeout poisons all later native-app launches
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/native/NativeAppMemory.cpp`, especially `native_app_memory_end()` and `native_app_memory_begin()`; `lib/NativeApps/src/NativeAppLauncher.c::launch_elf_app()` cleanup paths.
 - **Trigger / reproduction:** Run a native app that has another task using the app allocation ledger and make that task hold the allocator mutex longer than `native_app_memory_end()`'s roughly 100 ms lock timeout as `app_main()` returns. Equivalently, fault-inject the cleanup `xSemaphoreTake()` to fail once. Then launch any native app again.
@@ -2221,10 +2066,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make allocator teardown return an explicit result and do not clear `memory_active`, unload the ELF, or release the launch guard until the ledger is safely quiesced. Join/stop app-owned allocator users before teardown or fail closed by retaining the mapped generation and requiring a controlled restart. Add a regression that forces the first cleanup lock acquisition to time out and proves a subsequent app can launch without stale ledger state.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1626-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/54284a443204671d3171ee3a284a3188050b7cc8/bugs.md); [automation/bug-scan-20260930-0419](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/8f3a068b9f2d6105e008255713ee5086691a134a/bugs.md); [Drive: 2026-09-30 0419 MDT - automation_bug-scan-20260930-0419 - Diff](https://docs.google.com/spreadsheets/d/1o6Bfq-I4ygMn_Ai6dZFXLxodBuN4p08HsGPgkuWaXGo/edit?usp=drivesdk); [Drive: 2026-09-29 16-26 MDT - automation-bug-scan-20260929-1626-final - bugs.md diff](https://docs.google.com/document/d/1uX1u-8YzcZ4g9PDQj0dsg8rzuAq8E3DsfrNMKoc6Rv8/edit?usp=drivesdk); [Drive: 2026-09-29 16-26 MDT - automation-bug-scan-20260929-1626-final - integration instructions](https://docs.google.com/document/d/10A9u-snYf3GwuAYWrTAZF89FS4-wDHPcXGhIMMG2XZg/edit?usp=drivesdk); [Drive: 2026-09-30 0419 MDT - automation_bug-scan-20260930-0419 - Instructions](https://docs.google.com/spreadsheets/d/1PyHqC8xFRzQs02Mt1-ory7jR4LOiSeqVqJ1dFvpgQzg/edit?usp=drivesdk)
-
 ### 191. A failed managed-app launch leaks its package-use pin and can permanently block update or uninstall
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/native/NativeAppHost.cpp::runNativeApp()`; `lib/NativeApps/src/NativeAppLauncher.c::launch_elf_app()`; `src/runtime/packages/PackageUseGate.h`.
 - **Trigger / reproduction:** Launch a canonical managed app from `/Apps/<id>/<artifact>.elf` and make `launch_elf_app()` fail before a module needs to be retained—for example by making a required capability unavailable, making `native_app_memory_begin()` fail, or supplying an ELF that fails `dlopen()`. Then try to update or uninstall that package. Repeat the failed launch to show the pin count accumulating.
@@ -2234,10 +2078,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Return an explicit mapped/unloaded/retained disposition from the ELF launcher, or wrap the pin in an RAII lease that releases on every path except a verified failed-unload/retained-module case. Add tests for pre-`dlopen` failure, post-`dlopen` successful cleanup with a non-OK app result, and true failed-unload retention.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1626-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/54284a443204671d3171ee3a284a3188050b7cc8/bugs.md); [Drive: 2026-09-29 16-26 MDT - automation-bug-scan-20260929-1626-final - bugs.md diff](https://docs.google.com/document/d/1uX1u-8YzcZ4g9PDQj0dsg8rzuAq8E3DsfrNMKoc6Rv8/edit?usp=drivesdk); [Drive: 2026-09-29 16-26 MDT - automation-bug-scan-20260929-1626-final - integration instructions](https://docs.google.com/document/d/10A9u-snYf3GwuAYWrTAZF89FS4-wDHPcXGhIMMG2XZg/edit?usp=drivesdk)
-
 ### 192. Clock sync can write UTC to the RTC without durably recording the UTC storage mode
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/ClockSync.cpp::commitCurrentSystemTime()`; `lib/hal/HalClock.cpp::syncRtcFromSystemTime()`, `HalClock::configure()`, and `HalClock::syncSystemTimeFromRtc()`; settings persistence through `CrossPointSettings::saveToFile()`.
 - **Trigger / reproduction:** Start in a non-UTC timezone with persisted `rtcStoresUtc == 0` (legacy/local RTC mode). Acquire valid system time and allow `syncRtcFromSystemTime()` to successfully write UTC fields to the RTC, but fault-inject `SETTINGS.saveToFile()` to fail. Reboot before any later successful settings save.
@@ -2247,10 +2090,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Treat RTC format and its durable mode metadata as one transaction. Do not report sync success until the UTC-mode metadata is durable; if metadata persistence fails after the hardware write, either restore the RTC to the previously declared representation or persist/recover an unambiguous migration marker before boot can consume it. Add a non-UTC regression with `rtcStoresUtc=0`, successful RTC write, failed settings save, and reboot-time recovery.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1626-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/54284a443204671d3171ee3a284a3188050b7cc8/bugs.md); [Drive: 2026-09-29 16-26 MDT - automation-bug-scan-20260929-1626-final - bugs.md diff](https://docs.google.com/document/d/1uX1u-8YzcZ4g9PDQj0dsg8rzuAq8E3DsfrNMKoc6Rv8/edit?usp=drivesdk); [Drive: 2026-09-29 16-26 MDT - automation-bug-scan-20260929-1626-final - integration instructions](https://docs.google.com/document/d/10A9u-snYf3GwuAYWrTAZF89FS4-wDHPcXGhIMMG2XZg/edit?usp=drivesdk)
-
 ### 193. XTC page loading ignores declared page/data bounds and can read through one page into the next
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/Xtc/Xtc/XtcParser.cpp`, especially `readPageTableEntry()`, `loadPage()`, and `loadPageStreaming()`; `lib/Xtc/Xtc/XtcTypes.h`, `PageTableEntry::dataSize` and `XtgPageHeader::dataSize/compression/colorMode`.
 - **Trigger / reproduction:** Create a two-page XTC/XTCH in which page 0 has a valid XTG/XTH magic and dimensions but declares a `PageTableEntry::dataSize` and/or embedded `XtgPageHeader::dataSize` smaller than the bitmap implied by those dimensions, with page 1 placed immediately afterward. Alternatively set `compression` nonzero while leaving enough following bytes in the file. Open page 0.
@@ -2260,10 +2102,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Before reading payload data, use checked 64-bit arithmetic to prove `page.offset + sizeof(XtgPageHeader) + payload <= fileSize`; require supported `compression/colorMode`; require table dimensions and embedded dimensions to agree; and require table/header data-size fields to agree with the exact calculated payload size (or explicitly handle documented alternatives). Add fixtures with undersized/oversized table sizes, mismatched embedded sizes, nonzero compression, and adjacent pages.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1721](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/990fb155e4153f52af78d43ee4a6020fc21d2b9f/bugs.md); [Drive: 2026-09-29_1721_MDT_no-PR_automation-bug-scan-20260929-1721_instructions](https://docs.google.com/spreadsheets/d/1B6jsqIdvTzuAJtVj_QpirPvKMi93crRUKinwVqmHxAs/edit?usp=drivesdk); [Drive: 2026-09-29_1721_MDT_no-PR_automation-bug-scan-20260929-1721_diff](https://docs.google.com/spreadsheets/d/1T0ewi9rDs-IC-vdvoFAHlkma1VR2j07_dIVGykhjkjE/edit?usp=drivesdk)
-
 ### 194. TXT/XTC BMP copy loops can make no forward progress forever after a zero-byte SD read
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/Txt/Txt.cpp`, `Txt::generateCoverBmp()` in the existing-BMP copy path; `lib/Xtc/Xtc.cpp`, `Xtc::generateThumbBmp()` in the no-scaling cover-copy path.
 - **Trigger / reproduction:** Use a TXT book with an external BMP cover, or an XTC whose cover is copied directly to the thumbnail, and inject an SD read that returns 0 before EOF while the source file position remains unchanged. A short/failed destination write is a second trigger for silent cache corruption.
@@ -2273,10 +2114,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Copy against a known remaining byte count; treat any zero/short read before expected EOF as failure; require every destination write to match the requested size and require successful close/finalization. Publish through a temporary file renamed only after a complete copy. Add fake-file tests for zero-progress read, short read, short write, and close failure.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1721](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/990fb155e4153f52af78d43ee4a6020fc21d2b9f/bugs.md); [Drive: 2026-09-29_1721_MDT_no-PR_automation-bug-scan-20260929-1721_instructions](https://docs.google.com/spreadsheets/d/1B6jsqIdvTzuAJtVj_QpirPvKMi93crRUKinwVqmHxAs/edit?usp=drivesdk); [Drive: 2026-09-29_1721_MDT_no-PR_automation-bug-scan-20260929-1721_diff](https://docs.google.com/spreadsheets/d/1T0ewi9rDs-IC-vdvoFAHlkma1VR2j07_dIVGykhjkjE/edit?usp=drivesdk)
-
 ### 195. BQ27220 provisioning failure can leave the fuel gauge unsealed in CFGUPDATE mode
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/bq27220/src/bq27220.cpp`, `BQ27220::init()` and `BQ27220::dateMemoryCheck()`; caller `lib/Board_T5S3/BoardT5S3.cpp::configureBq27220()`.
 - **Trigger / reproduction:** Force any data-memory `parameterCheck(..., update=true)` operation to fail after `dateMemoryCheck()` has successfully issued `ENTER_CFG_UPDATE`, for example by fault-injecting one I2C write/read failure during gauge profile provisioning.
@@ -2286,10 +2126,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Treat CFGUPDATE entry and unseal as scoped hardware transactions. On every exit after entry, attempt a deterministic exit/reinitialize (or reset fallback) and reseal before releasing the device; report cleanup failure separately. Add fault injection at each profile-write step and verify CFGUPDATE clears and the gauge is sealed afterward.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1823](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/66efc35761d7ed6bc0cf53c7b151ba6533e03035/bugs.md); [Drive: 2026-09-29 1823 MDT - automation_bug-scan-20260929-1823 - Instructions](https://docs.google.com/spreadsheets/d/14Xk8HtTwY5BtOEJKKftF1HZCL0C3nEKCpxpxHUg2cmI/edit?usp=drivesdk); [Drive: 2026-09-29 1823 MDT - automation_bug-scan-20260929-1823 - Diff](https://docs.google.com/spreadsheets/d/1TPhDZw8-Vhfak_h1pT0hJdvu40fJKaskrXyf1AbUnas/edit?usp=drivesdk)
-
 ### 196. A truncated EPUB section cache is accepted as valid and later feeds uninitialized offsets into page deserialization
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/Epub/Epub/Section.cpp`, `Section::loadSectionFile()` and `Section::loadPageFromSectionFile()`; `lib/Serialization/Serialization.h::readPod(FsFile&, ...)`; downstream `lib/Epub/Epub/Page.cpp::Page::deserialize()`.
 - **Trigger / reproduction:** Start from a valid section cache `.../sections/<spine>.bin` with at least one page and truncate it to the first 20 bytes: the complete version/render-parameter fields plus `pageCount`, but omit the three 32-bit LUT/anchor/paragraph offsets and all page data. Reopen the same book with matching render settings and navigate to that section.
@@ -2299,10 +2138,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Require an exact complete header read, validate `pageCount` and every offset/range against file size, make all section/Page deserialization reads checked, and invalidate/rebuild the cache on the first structural or I/O error. Publish newly generated section files atomically only after all writes and close succeed. Add truncation tests at every header/LUT boundary.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-1823](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/66efc35761d7ed6bc0cf53c7b151ba6533e03035/bugs.md); [Drive: 2026-09-29 1823 MDT - automation_bug-scan-20260929-1823 - Instructions](https://docs.google.com/spreadsheets/d/14Xk8HtTwY5BtOEJKKftF1HZCL0C3nEKCpxpxHUg2cmI/edit?usp=drivesdk); [Drive: 2026-09-29 1823 MDT - automation_bug-scan-20260929-1823 - Diff](https://docs.google.com/spreadsheets/d/1TPhDZw8-Vhfak_h1pT0hJdvu40fJKaskrXyf1AbUnas/edit?usp=drivesdk)
-
 ### 197. Rom Manager can successfully import a direct .gb under an extensionless truncated filename and then hide it
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `Apps/rom_manager.c`, especially `NAME_CAP`, `safe_name()`, `ensure_gb_suffix()`, `import_url()`, `make_path()`, and `load_roms()`.
 - **Trigger / reproduction:** Import a direct HTTPS Game Boy URL whose basename is longer than the 127-character `NAME_CAP - 1` payload, for example a URL ending in 130 `a` characters followed by `.gb`.
@@ -2312,10 +2150,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Derive the output filename from the URL path, reserve `.gb` plus the terminator before truncating the stem, and fail the import if a valid final name cannot be produced. Revalidate that the final name ends in `.gb` before renaming the temporary download. Add boundary tests for basenames just below, at, and above `NAME_CAP`.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-2102](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/728e209d547481d1060b7841b4e22c5eb837ff8c/bugs.md); [Drive: 2026-09-29 21-02 MDT - automation-bug-scan-20260929-2102 - Instructions](https://docs.google.com/spreadsheets/d/10o78oxZAN0DYrcpzIBXxrHkgQLsr9hocvSpV1IfPSEY/edit?usp=drivesdk); [Drive: 2026-09-29 21-02 MDT - automation-bug-scan-20260929-2102 - Diff](https://docs.google.com/spreadsheets/d/1llLFetNI6nEmi67v1zvyKkLU9xAapNH61elrKCuOF8s/edit?usp=drivesdk)
-
 ### 198. Rom Manager rejects valid .gb and .zip HTTPS URLs that carry query strings or fragments
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `Apps/rom_manager.c`, especially `import_url()`, `ends_ci()`, and the URL-to-filename handling in `safe_name()`.
 - **Trigger / reproduction:** Try a valid direct ROM or archive URL such as `https://example.test/game.gb?token=abc`, `https://example.test/game.zip?download=1`, or a supported path followed by a fragment.
@@ -2325,10 +2162,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Parse the URL or isolate the last path component before `?`/`#` for extension validation while preserving the original complete URL for the network request. Add tests for `.gb?token=...`, `.zip#fragment`, mixed-case extensions, and a negative case where `.gb` appears only in a query value.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-2102](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/728e209d547481d1060b7841b4e22c5eb837ff8c/bugs.md); [Drive: 2026-09-29 21-02 MDT - automation-bug-scan-20260929-2102 - Instructions](https://docs.google.com/spreadsheets/d/10o78oxZAN0DYrcpzIBXxrHkgQLsr9hocvSpV1IfPSEY/edit?usp=drivesdk); [Drive: 2026-09-29 21-02 MDT - automation-bug-scan-20260929-2102 - Diff](https://docs.google.com/spreadsheets/d/1llLFetNI6nEmi67v1zvyKkLU9xAapNH61elrKCuOF8s/edit?usp=drivesdk)
-
 ### 199. KOReader HTTP responses can grow an unbounded reallocating internal-heap buffer
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/KOReaderSync/KOReaderSyncClient.cpp`, the `ResponseBuffer` type, `httpEventHandler()`, `authenticate()`, and `getProgress()`.
 - **Trigger / reproduction:** Configure KOReader Sync to use a custom/misbehaving server that returns a very large HTTP response body for `/users/auth` or `/syncs/progress/<document>` (for example several megabytes instead of the expected sub-kilobyte JSON), then perform authentication or progress sync.
@@ -2338,10 +2174,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Enforce a small explicit maximum response size appropriate to the KOReader schema, reject excessive `Content-Length` when available, stop the HTTP transfer as soon as the bound would be exceeded, and make allocation failure propagate as a hard request error. Prefer one bounded PSRAM-backed buffer or a streaming JSON parser instead of exact-size repeated reallocations. Add tests for a normal response, exactly-at-limit response, over-limit chunked response, and allocator failure.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/82bef6c8270ad0ed072369ee19b07022dc82e181/bugs.md); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Instructions](https://docs.google.com/spreadsheets/d/1uI1Z04FNBkqdLQxhgZuCSZXUFQbOTUOFJ7dzYn39FoE/edit?usp=drivesdk); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Instructions](https://docs.google.com/document/d/1xv-O64ISDIO8zYQ7r6A9vc7x-RMMWrApoVqtPFzcB1U/edit?usp=drivesdk); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Diff](https://docs.google.com/spreadsheets/d/1v0enkcChAVBR3-RFLlrRcIS8MhmEQyj1AV0LlBx-aj4/edit?usp=drivesdk); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Diff](https://docs.google.com/spreadsheets/d/1Dq6s7qm3fIlKrMX_AVJaMlTG3V-Vfhf-Onk_qRqtUog/edit?usp=drivesdk); [Drive: 2026-09-29 2120 MDT - automation-bug-scan-20260929-2120 - Diff](https://docs.google.com/document/d/1Igvgxgg6gX8_I8-QVjW_Ve2n06-Dp58Adt6XIthpikI/edit?usp=drivesdk)
-
 ### 200. HTTPS downloads disable server certificate verification
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/network/HttpDownloader.cpp::fetchUrl()`, `HttpDownloader::downloadToFile()`, and native HTTP streaming through `src/native/NativeStreamBridge.cpp::httpWorker()`.
 - **Trigger / reproduction:** Use any HTTPS metadata or binary download that reaches the compatibility/worker `HTTPClient` path, then present a TLS endpoint whose certificate is expired, self-signed, for the wrong hostname, or issued by an untrusted CA. The native `open_http` worker reaches this same path because it runs on the dedicated HTTP task; `t5_app_get_api()` is owner-task scoped, so `invocationStreams()` returns null there.
 - **Observed / logically demonstrated failure:** Both HTTPS branches allocate `NetworkClientSecure` and immediately call `setInsecure()`. The connection therefore skips peer-certificate and hostname authentication and can accept a server that is not the requested HTTPS origin.
@@ -2350,10 +2185,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Remove `setInsecure()`; configure the project trust roots / certificate bundle for all HTTPS clients, retain hostname verification, and make certificate failures terminal. Add tests using trusted, self-signed, expired, and hostname-mismatched endpoints, including the native `open_http` worker path.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-2326](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/95f741bc0a49f92b0cec24836821ba216f48eb5a/bugs.md); [Drive: 2026-09-29 2326 MDT - automation-bug-scan-20260929-2326 - Diff](https://docs.google.com/spreadsheets/d/1AYPw1N2ZOYgHFucbaezdGbIxQMX-0HhylovtsgBIhJc/edit?usp=drivesdk); [Drive: 2026-09-29 2326 MDT - automation-bug-scan-20260929-2326 - Instructions](https://docs.google.com/spreadsheets/d/1DqYP7D3EugBNzyKRCNek4bVnZX3yy0vbmJllB1R6DBE/edit?usp=drivesdk)
-
 ### 201. Compatibility HTTP downloads report success even when the destination file fails to close
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `src/network/HttpDownloader.cpp::HttpDownloader::downloadToFile()`, compatibility `HTTPClient` / `FileWriteStream` path.
 - **Trigger / reproduction:** Complete an HTTP body with all writes returning the requested byte counts, then inject an SD/filesystem finalization failure so `FsFile::close()` returns false (for example media removal or a flush/commit failure at close).
 - **Observed / logically demonstrated failure:** After `http.writeToStream(&fileStream)`, the function calls `file.close();` and discards its boolean result. If the streamed byte count matches Content-Length and `FileWriteStream::ok()` remains true, the function returns `HttpDownloader::OK` despite the failed finalization. The native staged stream path explicitly requires successful `finish()`, so the two transports have inconsistent durability semantics.
@@ -2362,10 +2196,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Treat `file.close() == false` as `FILE_ERROR`, remove only the file owned by the failed transfer, and for durable/staged callers reopen and verify expected length before publication. Add fault-injection coverage for close failure after a full-length write.
 
 - **Consolidation sources:** [automation/bug-scan-20260929-2326](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/95f741bc0a49f92b0cec24836821ba216f48eb5a/bugs.md); [Drive: 2026-09-29 2326 MDT - automation-bug-scan-20260929-2326 - Diff](https://docs.google.com/spreadsheets/d/1AYPw1N2ZOYgHFucbaezdGbIxQMX-0HhylovtsgBIhJc/edit?usp=drivesdk); [Drive: 2026-09-29 2326 MDT - automation-bug-scan-20260929-2326 - Instructions](https://docs.google.com/spreadsheets/d/1DqYP7D3EugBNzyKRCNek4bVnZX3yy0vbmJllB1R6DBE/edit?usp=drivesdk)
-
 ### 202. reader.typography reads beyond the caller-declared text buffer and rejects valid length-bounded input
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/native/NativeReaderTypography.cpp::nativeReaderPage()`; ABI contract in `sdk/driver/RiscReaderTypographyV1.h`; bounded UTF-8/layout helpers in `lib/GfxRenderer/ReaderPageLayout.h`.
 - **Trigger / reproduction:** Call the installed `reader.typography` capability with a valid UTF-8 body stored in an exactly `length`-byte buffer that has no trailing NUL byte. This is valid under `risc_reader_page_request_v1`, which supplies `text` and its explicit byte `length` separately. A guard-page or heap-boundary allocation makes the over-read deterministic; otherwise place any nonzero byte immediately after the declared range.
@@ -2375,10 +2208,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Remove the `strnlen(..., length + 1)` requirement for `q->text`. Rely on `readerUtf8Valid(q->text, q->length)`, which already rejects embedded NULs while staying inside the supplied range, and keep all downstream body processing length-bounded. Add host tests using a non-NUL-terminated exact-length buffer, a guard byte after the range, an embedded NUL, and a guard-page/end-of-allocation case.
 
 - **Consolidation sources:** [automation/bug-scan-20260930-0022](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/2b932092e31b6d6b85bd45c7ada99cb728994e26/bugs.md); [Drive: 2026-09-30 0022 MDT - automation-bug-scan-20260930-0022 - Diff](https://docs.google.com/spreadsheets/d/1VGiMSPAY900zqoow0Q_kZG_D-96pFkos_O65zZAw_mo/edit?usp=drivesdk); [Drive: 2026-09-30 0022 MDT - automation-bug-scan-20260930-0022 - Instructions](https://docs.google.com/spreadsheets/d/1hniZfzD9J_jLioHAEqaS74cAsknU2Ri9qm5BXSs-J9Y/edit?usp=drivesdk)
-
 ### 203. EPUB PNG cover conversion ignores alpha and renders transparent pixels as visible ink
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `lib/PngToBmpConverter/PngToBmpConverter.cpp`, `convertScanlineToGray()` and PNG chunk scanning in `pngFileToBmpStreamInternal()`; cover/thumbnail generation in `lib/Epub/Epub.cpp`.
 - **Trigger / reproduction:** Use a valid EPUB cover PNG containing RGBA or grayscale+alpha pixels with alpha 0, for example a transparent black background around opaque artwork, then let the EPUB metadata path generate its cached cover/thumbnail BMP.
@@ -2388,10 +2220,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Composite alpha against the intended white e-paper background before dithering/luma output for RGBA and grayscale+alpha, and honor applicable `tRNS` transparency for palette/grayscale/RGB images. Add fixtures with fully transparent black, half-transparent colored edges, and indexed `tRNS`, and compare cover/thumbnail output with the framebuffer decoder's white-background semantics.
 
 - **Consolidation sources:** [automation/bug-scan-20260930-0247-final](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/65f8b5d9fb1195953a68ccec63882f5533f5a07f/bugs.md); [Drive: 2026-09-30 02-47 MDT - automation-bug-scan-20260930-0247-final - Diff](https://docs.google.com/spreadsheets/d/1oeF8rknOMfAoXC_W8xChkdJbdheYV1kaZNt4k9dyrsM/edit?usp=drivesdk); [Drive: 2026-09-30 02-47 MDT - automation-bug-scan-20260930-0247-final - Instructions](https://docs.google.com/spreadsheets/d/1ASSpLAik3zeGb_FhhyutJXUKiqxVgAixSFrSd6DZq5E/edit?usp=drivesdk)
-
 ### 204. Driver Manager destroys the last good catalog before a refresh succeeds
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 
 - **Affected code:** `src/native/NativeDriverManagerBridge.cpp`, `catalogRefresh()`, with the canonical/aggregate/legacy catalog loaders.
 - **Trigger / reproduction:** Successfully load a Driver Manager catalog, then trigger another catalog refresh while saved Wi-Fi is temporarily unavailable, the release index is unreachable/malformed, or all catalog fallbacks fail.
@@ -2401,10 +2232,11 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Have every discovery path build a temporary vector and only swap it into `catalog` after the selected refresh path succeeds completely. On failure preserve the prior catalog unchanged. Add regressions for connect failure, malformed canonical/aggregate responses, and a legacy scan that accepts some candidates before a later rejection.
 
 - **Consolidation sources:** [automation/bug-scan-20260930-0324](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/61f98d60fa4eda874405b00c72b9a576e4ca9924/bugs.md); [Drive: 2026-09-30 0324 MDT - automation_bug-scan-20260930-0324 - Diff](https://docs.google.com/spreadsheets/d/1353mBOSb02ehViW2gfxo_G4Bsw-FXIdsTVKBs4qvn7g/edit?usp=drivesdk); [Drive: 2026-09-30 0324 MDT - automation_bug-scan-20260930-0324 - Instructions](https://docs.google.com/spreadsheets/d/1rMBCmHgaBRqtd-LRVm6Fvx8mkcjYuqjssDPGuXNM0yk/edit?usp=drivesdk)
-
 ### 205. File Browser leaks an open USB file handle when a source file is larger than `size_t`
 
-- **Status:** Open.
+- **Status:** Awaiting merge. Revalidated against master; draft [PR #326](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/326) proposes the fix. Master remains unfixed until the change merges.
+- **Completed claim:** `restore_bug_pipeline`, initial restoration run completed and released; [repair branch](https://github.com/michaelrolphone-cmyk/T5S3-Reader/tree/fix/file-browser-oversize-usb-handle), verified remote head `5ec33bbe60928ec73f8d5f9fdc28023aa3a56c79`.
+- **Verification reported by the coordinator, 2026-09-30 UTC:** Runtime/source regressions, six retirement tests, six capability tests, and full C syntax check passed. The runtime regression also fails on the original faulty mutation at the expected assertion. ASan/UBSan runtime tests passed with leak detection disabled because this container uses ptrace. File Browser version increases from 1.3.0 to 1.3.1. Xtensa app build was attempted but is blocked by the missing compiler; `ASAN_OPTIONS=detect_leaks=0 bash test/run_native_app_test.sh` passed (exit 0). Exact-head [CI run 36793336681](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36793336681) completed successfully: host parser tests and both firmware-board builds passed, including native ELF and all-app/manifest validation. The missing local toolchain did not block CI verification. No hardware qualification or merge is claimed.
 
 - **Affected code:** `Apps/file_browser.c`, `copy_usb_to_sd()`; USB storage ABI `file_open_read` / `file_close`.
 - **Trigger / reproduction:** Expose a USB storage file whose reported 64-bit size exceeds `SIZE_MAX` and copy it from USB to SD. This is especially relevant on ESP32-S3 where `size_t` is 32-bit while the volume API deliberately reports file size through `uint64_t`.
@@ -2414,10 +2246,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Close every successfully acquired input handle on all exits, preferably through one cleanup path/RAII-style wrapper. Either reject >`SIZE_MAX` sources only after guaranteed cleanup or implement a 64-bit remaining-byte copy loop where the storage sink permits it. Add a mock-volume regression returning a valid handle plus `source_size > SIZE_MAX` and assert exactly one matching close occurs.
 
 - **Consolidation sources:** [automation/bug-scan-20260930-0324](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/61f98d60fa4eda874405b00c72b9a576e4ca9924/bugs.md); [Drive: 2026-09-30 0324 MDT - automation_bug-scan-20260930-0324 - Diff](https://docs.google.com/spreadsheets/d/1353mBOSb02ehViW2gfxo_G4Bsw-FXIdsTVKBs4qvn7g/edit?usp=drivesdk); [Drive: 2026-09-30 0324 MDT - automation_bug-scan-20260930-0324 - Instructions](https://docs.google.com/spreadsheets/d/1rMBCmHgaBRqtd-LRVm6Fvx8mkcjYuqjssDPGuXNM0yk/edit?usp=drivesdk)
-
 ### 206. Wi-Fi Settings cannot choose another network while the saved last network remains reachable
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `Apps/wifi_settings.c`, the **Choose another network** action; `src/native/NativeSystemUiBridge.cpp`, `wifiRequest()` / `NativeWifiActivity::onEnter()`; `src/activities/network/WifiSelectionActivity.h` and `.cpp`, the default `autoConnect` constructor argument and `onEnter()` / `checkConnectionStatus()`.
 - **Trigger / reproduction:** Save valid credentials for network A and leave A reachable as the last-connected network. Open **Wi-Fi Networks**, choose **Choose another network**, while a different network B is also available.
 - **Observed / logically demonstrated failure:** The app calls `system_ui->wifi_request()`. `NativeWifiActivity` constructs `WifiSelectionActivity` without overriding its default `autoConnect = true`. On entry, the selector finds the saved last SSID, calls `attemptConnection()`, and returns before starting a scan. While `AUTO_CONNECTING`, the loop only checks connection status. When A reconnects successfully with the saved password, `checkConnectionStatus()` immediately calls `onComplete(true)`, so the selector closes without ever displaying the network list or accepting a choice of B. Repeating **Choose another network** repeats the same reconnection to A.
@@ -2426,10 +2257,9 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Make the explicit **Choose another network** handoff construct `WifiSelectionActivity(..., false)`, or add an explicit request mode/flag distinguishing reconnect from browse/select. Preserve auto-connect only for workflows that want it. Add a regression with reachable saved A plus visible B proving the action renders the list and can select B.
 
 - **Consolidation sources:** [automation/bug-scan-20260930-0419](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/8f3a068b9f2d6105e008255713ee5086691a134a/bugs.md); [Drive: 2026-09-30 0419 MDT - automation_bug-scan-20260930-0419 - Diff](https://docs.google.com/spreadsheets/d/1o6Bfq-I4ygMn_Ai6dZFXLxodBuN4p08HsGPgkuWaXGo/edit?usp=drivesdk); [Drive: 2026-09-30 0419 MDT - automation_bug-scan-20260930-0419 - Instructions](https://docs.google.com/spreadsheets/d/1PyHqC8xFRzQs02Mt1-ory7jR4LOiSeqVqJ1dFvpgQzg/edit?usp=drivesdk)
-
 ### 207. EPUB relative internal links can jump to the wrong chapter when basenames are duplicated
 
-- **Status:** Open.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Affected code:** `lib/Epub/Epub.cpp::resolveHrefToSpineIndex()`; caller `src/activities/reader/EpubReaderActivity.cpp::navigateToHref()`.
 - **Trigger / reproduction:** Create a valid EPUB containing both `OPS/part1/note.xhtml` and `OPS/part2/note.xhtml`. From `OPS/part2/chapter.xhtml`, follow a relative link such as `note.xhtml#detail` intended for the sibling `OPS/part2/note.xhtml`.
 - **Observed / logically demonstrated failure:** The resolver strips the fragment and first compares the unresolved string `note.xhtml` directly against full spine hrefs. When that fails, it falls back to comparing only basenames and returns the first spine entry named `note.xhtml`. If `part1/note.xhtml` appears first, the reader navigates to the wrong document even though the link is valid and unambiguous relative to its source chapter.
@@ -2438,3 +2268,439 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Resolve the link path against the current spine item's directory, normalize dot segments, remove only the fragment for lookup, and perform an exact canonical-path match. If a basename compatibility fallback is retained, allow it only when the basename is unique. Add fixtures for duplicate basenames, sibling links, and `../` references.
 
 - **Consolidation sources:** [automation/bug-scan-20260930-0518](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/82533918d81fda11ae9c6b19d95b071a98f19361/bugs.md); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Diff](https://docs.google.com/spreadsheets/d/1geT64642Lsjo_EaRZhNxF9516LV2BRVIp4stNAnOkjg/edit?usp=drivesdk); [Drive: 2026-09-30 0518 MDT - automation-bug-scan-20260930-0518 - Instructions](https://docs.google.com/spreadsheets/d/1xB4JDjKoHfw-mCY9pUQL1VP2tWxilaT0WRwdCPryrO8/edit?usp=drivesdk)
+### 208. The BMP renderer accepts BI_BITFIELDS images but ignores their channel masks
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0650, scan-local #208](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/36883abff353f4dcca38f3f41aa83763a7a94cac/bugs.md); source commit `36883abff353f4dcca38f3f41aa83763a7a94cac`.
+- **Affected code:** `lib/GfxRenderer/Bitmap.cpp::parseHeaders()` and `Bitmap::readNextRow()`; user-visible consumer `src/activities/util/BmpViewerActivity.cpp::onEnter()` and any other caller of `GfxRenderer::drawBitmap()`.
+- **Trigger / reproduction:** Open a valid 32-bpp BMP using `BI_BITFIELDS` (`biCompression == 3`) with channel masks that are not the renderer's hard-coded BGRA byte order. For example, with a 40-byte BITMAPINFOHEADER use red `0x000000FF`, green `0x0000FF00`, blue `0x00FF0000`, then store a red pixel as word `0x000000FF`.
+- **Observed / logically demonstrated failure:** `parseHeaders()` explicitly accepts `BI_BITFIELDS` for 32-bpp data but never reads or stores the red/green/blue masks. `readNextRow()` always computes luminance as though every 32-bpp pixel were fixed BGRA bytes (`p[2]` red, `p[1]` green, `p[0]` blue). In the example above the standards-valid red pixel is interpreted as blue and quantized to the wrong e-paper gray level. Extended DIB headers and ordinary post-BITMAPINFOHEADER mask tables cannot change that behavior because their masks are ignored.
+- **Likely root cause:** Compression-mode validation was added without implementing the pixel-layout semantics implied by `BI_BITFIELDS`.
+- **Impact:** Valid 32-bpp bitfield BMPs can be displayed with materially wrong luminance/contrast even though the parser reports them supported. Files produced by software that uses explicit RGB masks therefore render incorrectly rather than being decoded according to their header.
+- **Repair direction:** Parse the channel masks from the correct location for the declared DIB header, validate the masks, and extract/scale each channel before luminance conversion. If arbitrary masks are intentionally unsupported, reject non-default `BI_BITFIELDS` layouts instead of accepting them. Add fixtures for the default BGRA layout and at least one swapped/non-byte-standard mask layout.
+### 209. EPUB PNG cover conversion never verifies PNG chunk CRCs or the zlib checksum/end state
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0650, scan-local #209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/36883abff353f4dcca38f3f41aa83763a7a94cac/bugs.md); source commit `36883abff353f4dcca38f3f41aa83763a7a94cac`.
+- **Affected code:** `lib/PngToBmpConverter/PngToBmpConverter.cpp`, especially `pngFileToBmpStreamInternal()`, `findNextIdatChunk()`, `pngIdatReadCallback()`, and the scanline loop; `lib/InflateReader/InflateReader.cpp::skipZlibHeader()`; consumers `lib/Epub/Epub.cpp::generateCoverBmp()` and `generateThumbBmp()`.
+- **Trigger / reproduction:** Start with a valid non-interlaced PNG cover whose zlib stream uses a stored/uncompressed DEFLATE block. Flip a literal pixel-data byte inside IDAT without updating either the IDAT chunk CRC-32 or the zlib Adler-32 trailer, while leaving the DEFLATE block structure and expected number of scanlines intact. Put the image in an EPUB and generate its cover or thumbnail.
+- **Observed / logically demonstrated failure:** The converter explicitly seeks past the IHDR, PLTE, and IDAT CRC fields without checking them. It consumes only the two-byte zlib header, decodes exactly the declared number of scanlines, and returns success as soon as those rows were produced; it never requires the inflater to reach a clean terminal state and never reads or validates the zlib Adler-32 trailer. A same-length corruption that still forms decodable DEFLATE output is therefore accepted and converted, and the resulting wrong pixels can be retained in the derived cover/thumbnail cache.
+- **Likely root cause:** The custom low-memory PNG path implements enough chunk navigation and raw DEFLATE streaming to obtain rows, but omits both integrity layers that distinguish a complete valid PNG/zlib stream from merely decodable bytes.
+- **Impact:** Corrupted or incompletely transferred PNG cover data can silently become trusted cached artwork instead of being rejected and regenerated/re-downloaded. The converter can report success even when PNG's own integrity checks prove the input has changed.
+- **Repair direction:** Validate CRC-32 for every consumed critical chunk, validate the zlib header and Adler-32 trailer, and require a clean inflater end exactly after the expected image data with no missing or extra decoded bytes before success. On any integrity failure, abort conversion and discard the staged cache. Add a fixture that flips a byte in a stored-DEFLATE IDAT while preserving structural decodability.
+### 210. A transient SD read failure while parsing EPUB CSS is cached as a successful partial stylesheet
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0650, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/36883abff353f4dcca38f3f41aa83763a7a94cac/bugs.md); source commit `36883abff353f4dcca38f3f41aa83763a7a94cac`.
+- **Affected code:** `lib/Epub/Epub/css/CssParser.cpp::loadFromStream()`; `lib/Epub/Epub.cpp::parseCssFiles()`; persistent `css_rules.cache`.
+- **Trigger / reproduction:** Open an EPUB whose stylesheet contains several rules, let extraction to the temporary `.tmp.css` file succeed, then inject an SD read failure while `CssParser::loadFromStream()` is partway through that temporary file.
+- **Observed / logically demonstrated failure:** `loadFromStream()` loops while `source.available()`, but any `read()` result `<= 0` simply breaks the loop and the function unconditionally returns `true`. It never verifies that the file position reached the expected end or distinguishes an I/O error from EOF. `Epub::parseCssFiles()` ignores the parser return value anyway, removes the temporary source, then calls `saveToCache()` for the rules accumulated so far. The next load sees `css_rules.cache` and skips reparsing, so rules after the read fault remain missing across sessions until the cache is invalidated.
+- **Likely root cause:** CSS parsing treats stream exhaustion and stream failure as the same condition, while the caller publishes parser state transactionally neither per stylesheet nor for the complete stylesheet set.
+- **Impact:** A one-time SD read fault can persistently change book layout and appearance: later margins, text styles, image sizing, or `display:none` rules can disappear even though the EPUB itself is intact.
+- **Repair direction:** Parse against the known temporary-file size (or another explicit EOF/error signal), require forward progress and exact completion, and return failure on any premature/zero read. Have `parseCssFiles()` honor that result and publish `css_rules.cache` only after all intended stylesheets were read completely; otherwise discard the candidate cache and retry on a later load. Add a fault-injection test that fails a read after an early valid rule and verifies no partial cache is accepted.
+### 211. KOReader nested paragraph XPaths are mistaken for chapter-global paragraph numbers
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0747, scan-local #208](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/90452f55e747d4702576842dc9a599cb189a97f7/bugs.md); source commit `90452f55e747d4702576842dc9a599cb189a97f7`.
+
+- **Affected code:** `lib/KOReaderSync/ProgressMapper.cpp`, especially `parseIndex()`, `ProgressMapper::toCrossPoint()`, and `ParagraphStreamer`; related structural XPath handling in `lib/KOReaderSync/ChapterXPathResolver.cpp`.
+- **Trigger / reproduction:** Use an EPUB chapter whose paragraphs are split across multiple containers, for example `<body><div><p>A</p><p>B</p></div><div><p>C</p></div></body>`, then import KOReader progress whose XPath points at C as `.../div[2]/p[1]/text().1`.
+- **Observed / logically demonstrated failure:** `toCrossPoint()` extracts only the final `/p[n]` index and treats that sibling index as a chapter-global paragraph number. For the example XPath it extracts `p[1]`. `ParagraphStreamer` then counts `<p>` elements globally from the start of the chapter and resolves paragraph 1 to A, not C. The resulting CrossPoint position can therefore jump to a different paragraph even though the KOReader XPath is structurally valid.
+- **Likely root cause:** The reverse mapper discards the ancestor path that gives `p[n]` its scope. KOReader paragraph indices are sibling indices within their containing element, while `ParagraphStreamer` interprets the number as a flat chapter-wide ordinal.
+- **Impact:** KOReader Sync can restore or import reading progress to the wrong text in ordinary XHTML that uses multiple `div`, `section`, or other paragraph-containing blocks. The error is deterministic and can be large in chapters with repeated nested structures.
+- **Repair direction:** Resolve the complete KOReader XPath structurally against the chapter, using the same element-path semantics as `ChapterXPathResolver` or an equivalent walker, then map the resolved text node to CrossPoint progress. Do not use the last `p[n]` as a global ordinal. Add nested-container fixtures where the same `p[1]` occurs under several ancestors.
+### 212. Firmware keyboard cursor and deletion operations split UTF-8 code points
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0747, scan-local #209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/90452f55e747d4702576842dc9a599cb189a97f7/bugs.md); source commit `90452f55e747d4702576842dc9a599cb189a97f7`.
+
+- **Affected code:** `src/activities/util/KeyboardEntryActivity.cpp`, especially `onEnter()`, `handleKeyPress()`, and `handleExternalTextInput()`; native entry path `src/native/NativeSystemUiBridge.cpp::keyboardRequest()`.
+- **Trigger / reproduction:** From a native app, call the System UI keyboard with UTF-8 initial text such as `"café"` or an emoji, then press Left/Right, Backspace, or Delete around the non-ASCII character and accept the result.
+- **Observed / logically demonstrated failure:** `cursorPos` is initialized to `text.length()` and treated as a raw byte index. Left/Right change it by one byte and Backspace/Delete erase exactly one byte. Deleting at the end of `"café"`, for example, removes only one byte of the two-byte `é`, leaving malformed UTF-8; moving the cursor can also place it inside a multibyte sequence before insertion or rendering.
+- **Likely root cause:** The keyboard stores the cursor as a byte offset but implements character navigation and deletion as single-byte operations, even though its `std::string` input/output paths can contain UTF-8.
+- **Impact:** Editing existing non-ASCII names, URLs, passwords, or other text can corrupt the returned string and can make cursor rendering/measurement operate on invalid UTF-8. The failure affects any caller that supplies UTF-8 initial text.
+- **Repair direction:** Keep the cursor as a UTF-8 boundary-safe byte offset or code-point index. Left/Right must move to the previous/next code-point boundary and Backspace/Delete must erase a complete code point. Ensure insertion/rendering never observes a cursor inside a continuation sequence. Add 2-, 3-, and 4-byte UTF-8 navigation/deletion tests.
+### 213. A too-small native keyboard result buffer silently truncates and consumes the only result
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0747, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/90452f55e747d4702576842dc9a599cb189a97f7/bugs.md); source commit `90452f55e747d4702576842dc9a599cb189a97f7`.
+
+- **Affected code:** `src/native/NativeSystemUiBridge.cpp::keyboardTakeResult()`; public contract in `lib/NativeApps/include/T5SystemUiApi.h`.
+- **Trigger / reproduction:** Request a firmware keyboard result longer than the buffer later supplied to `keyboard_take_result()`, for example enter 20 bytes and retrieve into `char text[8]`.
+- **Observed / logically demonstrated failure:** The bridge copies only `capacity - 1` bytes, appends NUL, still returns `true`, and immediately clears `keyboardState`. The caller receives a successful-but-truncated string and cannot retry with a larger buffer because the only pending result has already been consumed. If truncation lands inside a multibyte UTF-8 sequence, the returned string can also be malformed.
+- **Likely root cause:** `capacity` is treated as permission to truncate rather than as a destination-size precondition, while the ABI says the result is consumed after a successful call and provides no truncation/required-size signal.
+- **Impact:** Native applications can silently persist incomplete user input such as URLs, credentials, names, or arbitrary text while believing retrieval succeeded. Unlimited keyboard requests (`max_length == 0`) make the mismatch especially easy for callers to trigger.
+- **Repair direction:** Never report success while dropping result bytes. Preserve the pending result when the destination is too small and expose an unambiguous insufficient-capacity/required-size path, preferably in a versioned API while keeping v1 behavior safe. At minimum require a full fit including NUL before copying/consuming. Add exact-fit, one-byte-short, zero-capacity, long-input, and UTF-8-boundary tests.
+### 214. Reader-resume state becomes sticky after one reader sleep and can reopen an old book after sleeping from Home
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0822, scan-local #208](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/c2aaf32f406e5138088d5143e0ca5a6e581f3e7f/bugs.md); source commit `c2aaf32f406e5138088d5143e0ca5a6e581f3e7f`.
+- **Affected code:** `src/main.cpp`, especially `enterDeepSleep()`, `enterDeepSleepKeepingScreen()`, and `shouldResumeReaderOnBoot()`; persisted field `CrossPointState::lastSleepFromReader`.
+- **Trigger / reproduction:** Enable reader resume. Open a book and enter sleep once so `lastSleepFromReader` becomes true. Wake, return to Home so no reader activity remains in the stack, then enter sleep again from Home. Wake/reboot again (or leave desk-clock sleep).
+- **Observed / logically demonstrated failure:** Both ordinary sleep paths assign `APP_STATE.lastSleepFromReader = APP_STATE.lastSleepFromReader || activityManager.isReaderActivityInStack()`. Once a reader sleep sets the persisted flag true, a later Home sleep evaluates `true || false` and leaves it true. `shouldResumeReaderOnBoot()` and the desk-clock return path then interpret that stale flag as evidence that the most recent sleep began in the reader and can reopen `openEpubPath` even though the user actually slept from Home. The hard-power-off path already uses the correct non-sticky direct assignment, showing the intended semantics.
+- **Likely root cause:** A historical-state OR is being used for a field whose meaning is "the immediately preceding sleep originated from a reader." There is no corresponding reset when sleeping from a non-reader activity.
+- **Impact:** After the first reader-originated sleep, later sleeps from Home can unexpectedly reopen the previously read book, defeating the user's current navigation state and making reader-resume behavior appear random/stale.
+- **Repair direction:** Immediately before every sleep transition, assign `lastSleepFromReader = activityManager.isReaderActivityInStack()` rather than OR-ing with the persisted value. Keep the assignment before `goToSleep()` mutates the activity stack, persist it transactionally, and add a reader-sleep -> wake -> Home -> sleep regression asserting the second wake stays on Home. PR #220's current head was checked and still contains the same OR assignments.
+### 215. Signed package exact-inventory verification can fail open when directory enumeration errors after the expected signed entries
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0822, scan-local #209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/c2aaf32f406e5138088d5143e0ca5a6e581f3e7f/bugs.md); source commit `c2aaf32f406e5138088d5143e0ca5a6e581f3e7f`.
+- **Affected code:** `src/runtime/packages/PackageDeviceDirectory.cpp`, especially `exactDirectoryEntries()` and its use by `verifySignedDeviceDirectory()`.
+- **Trigger / reproduction:** Prepare a signed installed-package directory containing every archive-declared file plus the provenance record and one additional unsigned entry (for example `rogue.elf`). Arrange directory iteration so all expected signed entries are returned first, then inject an SD/`openNextFile()` failure when the iterator reaches the extra entry.
+- **Observed / logically demonstrated failure:** `exactDirectoryEntries()` treats every non-open result from `dir.openNextFile()` as normal end-of-directory. If the failure occurs only after all expected entries and provenance were seen, `observed == archive.entryCount + 1`, every `seen[i]` is true, `provenanceSeen` is true, and a later successful directory close satisfies every remaining guard. The function therefore returns true without ever observing the unsigned trailing file, allowing `verifySignedDeviceDirectory()` to classify a directory that is not an exact image of the signed package as authenticated.
+- **Likely root cause:** The security boundary relies on an iterator API/path that does not distinguish verified EOF from an enumeration I/O failure, while the post-loop checks prove only that required entries were seen—not that no unread entries remain.
+- **Impact:** A transient SD enumeration fault can turn the package verifier's explicit "no extra files" invariant into fail-open behavior. An installed driver/provider/application directory containing unexpected executable or data content can be accepted as a valid signed directory under that fault condition.
+- **Repair direction:** Make directory enumeration expose and check a distinct EOF-versus-error status and fail closed on any iterator error. Alternatively perform a storage-layer verified inventory pass that returns an explicit completion status before signature/package acceptance. Add fault-injection coverage with all required entries plus an extra file hidden behind an injected enumeration failure. Audit the same EOF/error assumption in package cleanup/recovery helpers, but keep authentication acceptance fail-closed regardless of cleanup behavior.
+
+- **Additional scan provenance:** [automation/bug-scan-20260930-1520, scan-local #208](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/f8b56224203ffb83b2ee445efe0226fca534918a/bugs.md). This is the same `exactDirectoryEntries()` failure as the 08:22 report, not another canonical bug. The later report explicitly names `.risc-auth`, the `AuthenticatedDirectory` result, and the foreign trailing-entry fault injection.
+### 216. NTP synchronization can skip every server when its timeout window crosses the 32-bit `millis()` rollover
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0822, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/c2aaf32f406e5138088d5143e0ca5a6e581f3e7f/bugs.md); source commit `c2aaf32f406e5138088d5143e0ca5a6e581f3e7f`.
+- **Affected code:** `src/ClockSync.cpp::syncWithNtp()`, specifically construction and comparison of `deadlineMs`.
+- **Trigger / reproduction:** Keep the device up until the 32-bit Arduino `millis()` counter is within `timeoutMs` of rollover (about 49.7 days), then invoke a forced NTP synchronization. For a 5-second timeout, for example, call `syncWithNtp(5000, true)` during the final five seconds before wrap.
+- **Observed / logically demonstrated failure:** `syncWithNtp()` computes `deadlineMs = syncStartMs + timeoutMs` in `unsigned long`, then tests `if (nowMs >= deadlineMs) break;`. When the deadline addition wraps to a small post-rollover value while `nowMs` is still near `UINT32_MAX`, the comparison is immediately true and the server loop exits before starting even the first NTP attempt. The inner `waitForSync()` correctly uses rollover-safe elapsed subtraction, so the outer absolute-deadline logic is the inconsistent part.
+- **Likely root cause:** An absolute unsigned timestamp is compared with ordinary relational operators across modular timer rollover instead of calculating elapsed/remaining time from the original start.
+- **Impact:** Time synchronization deterministically reports failure during the rollover-crossing window despite healthy networking and NTP servers. Workflows that force a clock sync at that moment can continue with stale time or report a spurious sync failure.
+- **Repair direction:** Track elapsed time as `static_cast<uint32_t>(millis() - syncStartMs)`, derive remaining budget from `timeoutMs - elapsed`, and never compare modular timestamps with `>=` across wrap. Add unit tests starting just below `UINT32_MAX` and advancing through zero, proving all remaining-budget/server-splitting logic is rollover-safe.
+### 217. Web File Transfer leaves Wi-Fi power saving disabled after the server stops
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0850, scan-local #208](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/517a989aa3a1c72aeb2895a7de72b4b8009a79d5/bugs.md); source commit `517a989aa3a1c72aeb2895a7de72b4b8009a79d5`.
+- **Affected code:** `src/network/CrossPointWebServer.cpp`, `CrossPointWebServer::begin()` and `CrossPointWebServer::stop()`.
+- **Trigger / reproduction:** Begin with Wi-Fi using its normal/default power-save mode, start the built-in File Transfer web server, then stop or leave the server while keeping the station connection alive. The same leaked policy occurs if `begin()` reaches `WiFi.setSleep(false)` and then fails before the server is fully started.
+- **Observed / logically demonstrated failure:** `begin()` unconditionally calls `WiFi.setSleep(false)` to improve web-server responsiveness. `stop()` tears down HTTP, WebSocket, and UDP resources but never restores the previous Wi-Fi sleep/power-save state. No previous policy is saved. Therefore merely using File Transfer can leave Wi-Fi in no-sleep mode for the rest of the connected session, and an initialization failure after the policy change has the same effect.
+- **Likely root cause:** The web server treats a process-global Wi-Fi power policy as local setup state and has no symmetric cleanup/RAII restoration.
+- **Impact:** After File Transfer is closed or fails to start, the device can continue drawing materially more Wi-Fi power than before, reducing battery life and changing network behavior outside the feature that requested the policy change.
+- **Repair direction:** Capture the prior ESP32 Wi-Fi power-save/sleep mode before changing it and restore that exact mode on every failed-start and normal-stop path. Keep the override scoped to the active server lifetime, preferably with a cleanup guard, and add a lifecycle regression proving start/stop and injected begin failures leave the original power-save mode unchanged.
+### 218. Browser clock sync reports failure after already changing the live system clock
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0850, scan-local #209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/517a989aa3a1c72aeb2895a7de72b4b8009a79d5/bugs.md); source commit `517a989aa3a1c72aeb2895a7de72b4b8009a79d5`.
+- **Affected code:** `src/network/CrossPointWebServer.cpp::handleClockSync()`; `src/ClockSync.cpp::commitCurrentSystemTime()`; RTC write path `HalClock::syncRtcFromSystemTime()`.
+- **Trigger / reproduction:** POST a valid `epochMs` to `/api/clock/sync` and allow `settimeofday()` to succeed, then force the RTC write in `ClockSync::commitCurrentSystemTime("Browser")` to fail.
+- **Observed / logically demonstrated failure:** The handler first commits the requested epoch to the process clock with `settimeofday()`. It then calls `commitCurrentSystemTime()`. If RTC write-back fails, that function returns `false` and the HTTP handler sends `500 {"ok":false,"error":"RTC commit failed"}`, but there is no rollback of the already changed system clock. The caller therefore receives a failed synchronization result while the running device has nevertheless adopted the submitted time. This is separate from report #69's retry-throttle defect: even with retry bookkeeping fixed, the web API's live clock mutation remains non-transactional.
+- **Likely root cause:** The operation is split into an irreversible live-clock mutation followed by a fallible persistence step, while the API exposes only all-or-nothing success/failure.
+- **Impact:** An RTC/storage fault can leave the device operating on a new time that the web client was told failed to synchronize; on reboot the RTC may restore a different time. Time-based logs, schedules, timestamps, and user-visible clock state can diverge from the reported operation result.
+- **Repair direction:** Make browser clock synchronization a coherent transaction or explicitly model partial success. For all-or-nothing semantics, capture the previous system epoch before `settimeofday()` and restore it if RTC commit fails, while ensuring retry/sync bookkeeping is also rolled back. Prefer a single ClockSync entry point that owns both live-clock and RTC commit semantics. Add a fault-injected RTC-write regression that asserts a failed request leaves the prior system time intact.
+### 219. Cover-image crop mode scales to fill but never crops to the requested target rectangle
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0850, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/517a989aa3a1c72aeb2895a7de72b4b8009a79d5/bugs.md); source commit `517a989aa3a1c72aeb2895a7de72b4b8009a79d5`.
+- **Affected code:** `lib/JpegToBmpConverter/JpegToBmpConverter.cpp::jpegFileToBmpStreamInternal()`; `lib/PngToBmpConverter/PngToBmpConverter.cpp::pngFileToBmpStreamInternal()`; callers in `lib/Epub/Epub.cpp::generateCoverBmp()` and `generateThumbBmp()`.
+- **Trigger / reproduction:** Convert a JPEG or PNG whose aspect ratio differs from the requested target with `crop=true`. For example, convert a 1600×900 landscape cover to a 540×960 portrait target, or generate its 240×400 home-screen thumbnail.
+- **Observed / logically demonstrated failure:** In crop mode both converters correctly choose the larger scale factor so the source covers the target, but then set `outWidth = sourceWidth * scale` and `outHeight = sourceHeight * scale` and write the entire scaled image. There is no crop rectangle, X/Y source offset, or target-sized output stage. The 1600×900→540×960 example therefore emits roughly 1706×960 rather than 540×960; the 240×400 thumbnail path emits roughly 711×400 rather than 240×400. The one-bit thumbnail helpers always request crop mode, so this occurs in an ordinary EPUB thumbnail path.
+- **Likely root cause:** Scale-to-fill and crop-to-target were conflated; the first half of cover-cropping was implemented without the second clipping step.
+- **Impact:** "Cropped" cover caches can be several times wider/taller than their advertised target, wasting SD space and conversion work and forcing downstream drawing to clip an oversized bitmap. Depending on the renderer's placement, the visible region can also be biased toward an edge rather than a centered crop.
+- **Repair direction:** After computing the scale-to-fill factor, define a target-sized crop window (normally centered), map that window to source/scaled coordinates, and emit exactly `targetWidth × targetHeight` pixels in crop mode. Keep fit mode unchanged. Add aspect-ratio fixtures for landscape→portrait and portrait→landscape JPEG/PNG covers and assert both BMP header dimensions and crop framing.
+### 220. Calibre Wireless shuts down a Wi-Fi connection that existed before the activity opened
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0921, scan-local #208](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/15e1c0e11560eb5f9156a93b096725f0205305f5/bugs.md); source commit `15e1c0e11560eb5f9156a93b096725f0205305f5`.
+- **Affected code:** `src/activities/network/CalibreConnectActivity.cpp`, especially `CalibreConnectActivity::onEnter()` and `onExit()`; shared network ownership through `runtime/network/NetworkService.cpp`.
+- **Trigger / reproduction:** Establish a working station connection before opening **File Transfer → Connect to Calibre**. Enter Calibre Wireless, confirm that it reuses the existing SSID/IP without opening the Wi-Fi selector, then back out of the Calibre activity.
+- **Observed / logically demonstrated failure:** `onEnter()` detects `RuntimeNetwork::connected()` and reuses that existing connection by reading its address/SSID and starting the web server; it does not acquire or create the connection in this path. `onExit()`, however, always calls `RuntimeNetwork::shutdown()` after stopping the web server and mDNS. Exiting Calibre therefore disconnects a network session that the activity did not create or own.
+- **Likely root cause:** Network cleanup is unconditional and no ownership/lease state records whether Calibre established the station connection or merely borrowed a pre-existing shared connection.
+- **Impact:** Opening and closing Calibre Wireless can unexpectedly tear down connectivity established for another workflow, forcing later apps/services to reconnect and interrupting shared network use.
+- **Repair direction:** Track whether this activity actually acquired/started the connection and shut it down only in that case, or move network lifetime to a reference-counted/leased NetworkService. Keep web-server/mDNS cleanup local to Calibre. Add regressions for both pre-connected entry (connection survives exit) and Calibre-owned connection (connection is released on exit).
+### 221. Malformed XTC chapter metadata can reserve memory proportional to the remainder of the file and exhaust the ESP32 heap
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0921, scan-local #209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/15e1c0e11560eb5f9156a93b096725f0205305f5/bugs.md); source commit `15e1c0e11560eb5f9156a93b096725f0205305f5`.
+- **Affected code:** `lib/Xtc/Xtc/XtcParser.cpp`, `XtcParser::readChapters()`, especially the `maxOffset` fallback, `chapterCount = available / 96`, and `m_chapters.reserve(chapterCount)`.
+- **Trigger / reproduction:** Use an otherwise openable XTC/XTCH with `hasChapters = 1`, a chapter offset inside the file, and header ordering where neither `pageTableOffset` nor `dataOffset` is greater than `chapterOffset`. Make the file tens of megabytes so substantial data remains after the chapter offset, then request the chapter list.
+- **Observed / logically demonstrated failure:** When neither later structural offset bounds the chapter region, `readChapters()` leaves `maxOffset` equal to the full file size. It interprets every remaining 96 bytes as a potential chapter and computes `chapterCount` from that span, then calls `m_chapters.reserve(chapterCount)` before reading even one record or encountering the empty-record terminator. A 64 MiB remainder implies roughly 699,000 `ChapterInfo` reservations, far beyond ESP32-S3 RAM, even if the file contains only a few chapters or malformed metadata.
+- **Likely root cause:** The parser derives allocation size from untrusted file extent instead of a validated chapter-table boundary/count and performs a bulk reserve before incrementally validating records.
+- **Impact:** A corrupt or malformed XTC can cause a huge heap/PSRAM allocation attempt, allocation failure/abort, severe memory pressure, or reset merely by opening its chapter navigation.
+- **Repair direction:** Validate chapter-region ordering against page-table/data offsets, impose a practical chapter-count ceiling (and at minimum cap by page count), and parse incrementally without reserving from raw file size. Treat inconsistent boundaries as corrupted metadata. Add a large-file fixture with overlapping/out-of-order offsets and verify chapter loading fails cleanly without a large allocation.
+### 222. Indexed BMPs with V4/V5 DIB headers read color-space header bytes as palette entries
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-0921, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/15e1c0e11560eb5f9156a93b096725f0205305f5/bugs.md); source commit `15e1c0e11560eb5f9156a93b096725f0205305f5`.
+- **Affected code:** `lib/GfxRenderer/Bitmap.cpp`, `Bitmap::parseHeaders()`; user-visible consumers include `BmpViewerActivity` and custom/sleep-screen BMP rendering.
+- **Trigger / reproduction:** Open a standards-valid 1/2/4/8-bpp BMP that uses a DIB header larger than the 40-byte `BITMAPINFOHEADER`, such as `BITMAPV4HEADER` (108 bytes) or `BITMAPV5HEADER` (124 bytes), with a normal color table located after the complete DIB header.
+- **Observed / logically demonstrated failure:** `parseHeaders()` accepts every `biSize >= 40`, parses only the first 40 bytes, and then immediately begins reading `colorsUsed` palette entries from the current position. It never skips the extra `biSize - 40` bytes before the color table. For V4/V5 indexed images, channel masks/color-space/endpoints/gamma fields are therefore consumed as BGR palette records. The later seek to `bfOffBits` finds the pixel array correctly, but `paletteLum[]` is already populated from the wrong bytes, so valid images render with incorrect grayscale/colors.
+- **Likely root cause:** The decoder treats all DIB headers as exactly 40 bytes after merely checking that they are at least 40 bytes, rather than using `biSize` to locate the palette.
+- **Impact:** Standards-compliant indexed BMPs produced with modern Windows V4/V5 headers can display badly or become effectively unreadable even though the parser reports `Ok`. The same valid asset can fail visually in Image Viewer or as a sleep/custom image without any explicit error.
+- **Repair direction:** After parsing the common 40-byte fields, skip/parse the remaining DIB bytes according to `biSize` before reading the color table; validate that the computed palette region fits before `bfOffBits`. Add 1/4/8-bpp V4/V5 fixtures with known palettes and verify luminance output matches equivalent 40-byte-header BMPs.
+### 223. Wi-Fi scans disable modem sleep and never restore the previous power-save policy
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1018, scan-local #208](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/0cf93da4fe6e5b326a3e97eb311c41cfd842194b/bugs.md); source commit `0cf93da4fe6e5b326a3e97eb311c41cfd842194b`.
+- **Affected code:** `src/providers/network/Esp32NetworkProvider.cpp::startScan()`; scan lifecycle in `src/activities/network/WifiSelectionActivity.cpp::startWifiScanAttempt()`, `processWifiScanResults()`, and `onExit()`.
+- **Trigger / reproduction:** Start from the normal station power-save policy, open a workflow that presents the Wi-Fi network list, allow a scan to complete (or cancel after the scan starts), then leave that workflow without entering File Transfer or another path that intentionally changes the Wi-Fi power policy.
+- **Observed / logically demonstrated failure:** `Esp32NetworkProvider::startScan()` calls `WiFi.setSleep(false)` after resetting STA mode. Neither successful scan completion (`clearScan()`), scan failure, nor `WifiSelectionActivity::onExit()` restores the prior power-save mode. The scan therefore has a process-wide power-policy side effect that survives the scan itself. This is separate from report #68, which covers the OTA begin-error path: an ordinary Wi-Fi scan can independently leave modem sleep disabled.
+- **Likely root cause:** The scan primitive changes a global radio policy as setup for reliable discovery but treats only scan resources, not the altered power-save state, as lifecycle-owned state.
+- **Impact:** Merely opening Wi-Fi Networks or another scan-driven selector can leave the ESP32-S3 radio in no-sleep mode for the remainder of the station session, increasing idle current and battery drain even after the user leaves the picker.
+- **Repair direction:** Snapshot the current ESP-IDF Wi-Fi power-save mode before the first scan-owned change and restore it on every scan completion, failure, cancellation, and activity exit unless the caller explicitly acquires a no-sleep lease for a subsequent operation. Prefer a centralized scoped/leased radio-power policy so overlapping users do not overwrite one another. Add regressions for successful scan, failed scan, retry, and cancel proving the pre-scan policy is restored.
+### 224. File Transfer shuts down a Wi-Fi connection it never acquired when the activity is cancelled before networking starts
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1018, scan-local #209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/0cf93da4fe6e5b326a3e97eb311c41cfd842194b/bugs.md); source commit `0cf93da4fe6e5b326a3e97eb311c41cfd842194b`.
+- **Affected code:** `src/activities/network/CrossPointWebServerActivity.cpp::onEnter()`, mode-selection callback, and `onExit()`; `src/runtime/network/NetworkService.cpp::shutdown()`.
+- **Trigger / reproduction:** Establish a working Wi-Fi station connection through any other workflow, open **File Transfer**, and immediately cancel/back out of the initial network-mode selection without choosing Join Network, Create Hotspot, or Calibre.
+- **Observed / logically demonstrated failure:** Entering File Transfer does not snapshot or acquire ownership of the existing network. Cancelling the first `NetworkModeSelectionActivity` calls `onGoHome()` before File Transfer has touched Wi-Fi, but the parent's `onExit()` unconditionally calls `RuntimeNetwork::shutdown()`. Thus a connection that predated File Transfer is torn down solely because the user opened and cancelled the screen. This is distinct from report #119, where the Wi-Fi selector itself disrupts an existing connection during auto-connect/scan; this reproduction never launches that selector.
+- **Likely root cause:** The activity treats process-wide network shutdown as unconditional cleanup rather than releasing only network state that File Transfer actually acquired.
+- **Impact:** Opening and cancelling File Transfer can unexpectedly disconnect another app/workflow, invalidate active sockets, and force later reconnects even though the user never requested a network change.
+- **Repair direction:** Record network ownership/state on entry. Only call `RuntimeNetwork::shutdown()` for a station/AP session created or explicitly taken over by File Transfer; otherwise preserve the pre-existing station connection and unrelated mDNS/network ownership. Add a regression that begins preconnected, cancels the first mode chooser, and verifies connection/address remain unchanged, plus owned STA/AP cases that still shut down correctly.
+### 225. Failed automatic saved-network bootstrap leaves the station/association attempt active after reporting failure
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1018, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/0cf93da4fe6e5b326a3e97eb311c41cfd842194b/bugs.md); source commit `0cf93da4fe6e5b326a3e97eb311c41cfd842194b`.
+- **Affected code:** `src/runtime/network/SavedNetworkConnection.cpp::ensureSavedConnection()`; `src/providers/network/Esp32NetworkProvider.cpp::connect()`; duplicated bootstrap logic in `src/native/NativeDriverManagerBridge.cpp::connectSavedWifi()`; callers such as `src/network/HttpDownloader.cpp::waitForNetworkReady()`.
+- **Trigger / reproduction:** Begin with Wi-Fi not connected and a saved credential whose AP is unavailable or whose association/DHCP completes just after the helper timeout. Invoke an automatic network consumer such as a catalog/download refresh and let the bootstrap return failure.
+- **Observed / logically demonstrated failure:** The bootstrap calls `wifi().connect()`, which switches the radio into STA mode and starts `WiFi.begin()`. On `Failed`, `NetworkNotFound`, or timeout, the helper returns `false` without disconnecting/cancelling the attempt or restoring the pre-call radio state. The Driver Manager's private copy has the same failure exits. A caller can therefore receive a definitive network-failure result while the process is still left in the connection state initiated by that failed operation; a late DHCP/association can even make the device become connected after the caller has already abandoned the request.
+- **Likely root cause:** Automatic connection helpers model only success/failure of the wait loop and do not model ownership or rollback of the global Wi-Fi state they mutate.
+- **Impact:** Failed background catalog/download attempts can leave Wi-Fi powered or connecting unexpectedly, consume battery, and create timing-dependent state where later code observes a connection that appeared after the originating operation reported failure. Repeated consumers also inherit radio state they did not create. This is distinct from report #70, which concerns failure to try alternate saved credentials.
+- **Repair direction:** Give saved-network bootstrap an explicit connection lease/ownership contract. If it starts a connection and ultimately reports failure, cancel that attempt and restore the prior radio/connection state unless a caller explicitly requests persistence; if a connection completes at the timeout boundary, resolve that state atomically before returning. Consolidate Driver Manager onto the same helper rather than maintaining divergent lifecycle logic. Add unavailable-AP, terminal-failure, exact-timeout, and late-DHCP tests that verify a false return leaves no bootstrap-owned connection active.
+### 226. App Store destroys the last good release catalog before a refresh succeeds
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1123, scan-local #208](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/068d91461f6ed21c0eac4851eda8b2e3bc5415d2/bugs.md); source commit `068d91461f6ed21c0eac4851eda8b2e3bc5415d2`.
+- **Affected code:** `src/native/NativeAppHost.cpp::appCatalogRefresh()`, `loadAvailableAppCatalog()`, and `ensureCatalogReady()`; consumer `Apps/app_store.c::refresh_releases()`.
+- **Trigger / reproduction:** Successfully load the App Store release catalog, then trigger another release refresh while saved Wi-Fi is unavailable, the authoritative release index is unreachable or malformed, or its aggregate/fallback catalog load fails.
+- **Observed / logically demonstrated failure:** `appCatalogRefresh()` first swaps `s->catalog` with an empty vector and only then calls `loadAvailableAppCatalog()`. The loader also clears the output after an authoritative-index failure and explicitly empties it when aggregate loading fails. If the replacement cannot be acquired and validated, the API returns `false` with the prior valid catalog already destroyed. `Apps/app_store.c` responds to an initial failure by setting `row_count = 0`, rendering **Release catalog unavailable**; a failed refresh when returning from the SD inbox leaves the user in the inbox with no way to use the previously valid release list.
+- **Likely root cause:** Refresh uses the published session catalog itself as scratch storage instead of building a candidate catalog transactionally and committing only after success.
+- **Impact:** A transient network, TLS, index, or manifest failure can turn a working App Store session into an empty/unavailable release catalog until a later refresh succeeds, discarding useful last-known-good application discovery state even though refresh reported failure.
+- **Repair direction:** Load and validate the complete replacement into a temporary vector, then swap it into `s->catalog` only on success. Preserve the previous catalog and its usable rows on failure while displaying the refresh error. Apply the same transaction rule to deferred `ensureCatalogReady()` reloads. Add regressions for connection failure, malformed authoritative data, aggregate failure, and deferred-refresh failure after a successful prior catalog.
+### 227. Native installed-app refresh publishes a partial Springboard inventory after directory-scan failure
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1123, scan-local #209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/068d91461f6ed21c0eac4851eda8b2e3bc5415d2/bugs.md); source commit `068d91461f6ed21c0eac4851eda8b2e3bc5415d2`.
+- **Affected code:** `src/native/NativeAppHost.cpp::installedRefresh()`, `installedCount()`, and `installedGet()`; consumer `Apps/springboard.c`.
+- **Trigger / reproduction:** Open/refresh Springboard after at least one valid app has been enumerated from `/Apps`, then cause `HalFile::openNextFile()` to fail before directory enumeration is complete, for example with a transient SD/card I/O failure. A separate trigger is a failure opening `/Apps` after a previous successful refresh.
+- **Observed / logically demonstrated failure:** `installedRefresh()` clears `s->installed` before opening the directory. During enumeration, any non-open result from `openNextFile()` is treated exactly like normal end-of-directory: the loop breaks, the collected prefix is sorted, and the function returns `true`. Thus a mid-scan I/O failure is published as a successful but incomplete installed-app inventory. If opening `/Apps` itself fails, the function returns `false` only after the previous known-good inventory has already been erased.
+- **Likely root cause:** The refresh has no distinction between clean EOF and enumeration error and mutates the live cache in place rather than staging a replacement.
+- **Impact:** Valid installed applications can disappear from Springboard, pinning/launch selection, and other consumers after a transient storage fault. Which apps disappear depends on directory enumeration order, and the API can report success for the partial result.
+- **Repair direction:** Enumerate into a temporary installed-app vector using a directory API that can distinguish EOF from I/O failure (or add an explicit enumeration-status check), close/verify the directory, and publish the candidate only after complete success. Preserve the previous inventory on any failure. Add tests for open failure and a fault injected after N valid entries, verifying both the return value and preservation of the old inventory.
+### 228. Native scrollable text view silently drops the tail of any paragraph that wraps past 96 lines
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1123, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/068d91461f6ed21c0eac4851eda8b2e3bc5415d2/bugs.md); source commit `068d91461f6ed21c0eac4851eda8b2e3bc5415d2`.
+- **Affected code:** `src/native/NativeUiBridge.cpp::renderTextView()` and `src/components/themes/BaseTheme.cpp::wrappedTextForRole()`; visible consumer `Apps/llm_ask.c::render_chat()`.
+- **Trigger / reproduction:** Pass `render_text_view` a single newline-free paragraph whose words require more than 96 wrapped lines at the current content width/font. Ask Manifold provides a normal user-facing path: one assistant turn can contain up to 2047 text bytes and is rendered through this API as a single paragraph unless the model inserts newlines.
+- **Observed / logically demonstrated failure:** `renderTextView()` splits the source only at newline boundaries and calls `wrappedTextForRole(..., 96, ...)` once for each paragraph. `wrappedTextForRole()` intentionally returns as soon as its `maxLines` budget is reached, truncating the 96th line to width and discarding the remainder of that paragraph. `renderTextView()` then computes `total_lines` and `max_scroll_lines` from this already-truncated vector, so the missing tail is not merely off-screen: it cannot be reached by scrolling and there is no truncation indicator.
+- **Likely root cause:** A bounded wrapping helper intended for fixed-height UI text is reused as the backing store for a scrollable document view with a hard-coded per-paragraph line budget.
+- **Impact:** Long LLM responses, diagnostic prose, logs, or other native-app text that happens not to contain frequent newlines can be silently cut off while the UI reports the truncated content as complete.
+- **Repair direction:** Make `renderTextView()` wrap complete paragraphs, either by using an unbounded/paged wrapper or by repeatedly consuming the unwrapped remainder in bounded chunks. Keep memory bounded by retaining only the line metadata/content needed for the scroll model, but ensure `total_lines` represents the full source. Add regressions for 95, 96, and 97+ wrapped lines and for a 2047-byte single-paragraph Ask response. This is distinct from #42, which loses text after an oversized first token even when the caller still has line budget.
+### 229. Managed-app recovery can report success after a mid-directory enumeration failure and leave later interrupted packages unrecovered
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1218, scan-local #208](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/68435250c3c0f0b02ba83533bd510db94630393b/bugs.md); source commit `68435250c3c0f0b02ba83533bd510db94630393b`.
+
+- **Affected code:** `src/native/AppPackageRecoveryInventory.cpp`, `RuntimePackages::recoverAppInventory()`; recovery primitive in `src/runtime/packages/PackagePairTransaction.h`; callers include installed-app refresh and Springboard launch preparation in `src/native/NativeAppHost.cpp`.
+- **Trigger / reproduction:** Leave at least two managed app transactions in recoverable interrupted states under `/Apps` (for example one earlier `.elf.bak/.json.bak` pair and another later `.part`/backup pair), then inject an SD directory-enumeration failure from `directory.openNextFile()` after the earlier candidate has been enumerated but before the later one is returned. Keep the directory itself openable and below the explicit 1024-entry/256-candidate limits.
+- **Observed / logically demonstrated failure:** The scan sets `complete = false` for explicit count overflow and oversized/unreadable names, but a failed `openNextFile()` is indistinguishable from clean end-of-directory: `if (!file.isOpen()) break;` leaves `complete == true`. The function closes the directory, recovers only the prefix already collected, and can return `true`. The later interrupted transaction is never passed to `recoverAppPair()`, so its backup/stage state remains stranded while callers are told inventory recovery completed successfully.
+- **Likely root cause:** The recovery inventory treats an invalid iterator result as EOF even though the storage API provides no proof that enumeration reached a clean end; the function's explicit "refusing partial recovery" policy covers only locally detected bounds/name failures.
+- **Impact:** A transient SD enumeration fault during boot/installed-app refresh can leave a later managed app in an interrupted update/install state without emitting the intended recovery failure. The app can remain missing, incomplete, or unavailable to launch/update even though recovery returned success, and the failure may persist until a later healthy scan happens to revisit that package.
+- **Repair direction:** Give directory iteration an explicit EOF-versus-I/O-error result (or verify completion with a lower-level iterator/status API), build the candidate list only from a proven complete enumeration, and return failure without claiming recovery success on any scan error. Add a fault-injection regression with recoverable candidates on both sides of a forced mid-directory failure and verify no partial scan is reported complete and the later package is recovered on retry.
+### 230. Device-permission prompts identify managed apps only by ELF basename, allowing different packages to present indistinguishable consent identities
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1218, scan-local #209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/68435250c3c0f0b02ba83533bd510db94630393b/bugs.md); source commit `68435250c3c0f0b02ba83533bd510db94630393b`.
+
+- **Affected code:** `src/native/NativeDeviceConsent.cpp`, especially `displayName()` and `nativeDeviceConsentPrompt()`; caller identity comes from `native_app_current_path()`. Canonical package identity is distinct from artifact filename, as supported by the managed-app package model.
+- **Trigger / reproduction:** Install two valid canonical packages with different package IDs/display identities but the same ELF artifact basename, for example `/Apps/trusted-tools/editor.elf` and `/Apps/other-tools/editor.elf`. Launch each and request the same consent-gated device capability/rights.
+- **Observed / logically demonstrated failure:** `displayName()` deliberately strips everything before the final slash and the prompt renders only `App: editor.elf` (further truncated to 30 printable characters). The canonical package directory/ID and verified manifest display name are never shown. Both different requesters therefore produce the same trusted permission UI even though the grant applies to the currently running invocation. A second collision is possible for distinct long artifact names sharing the first 30 displayed characters.
+- **Likely root cause:** The consent UI derives security-relevant caller identity from a presentation basename instead of the canonical managed-package identity that selected and launched the ELF.
+- **Impact:** A local package can impersonate another installed app in the device-permission prompt. The user can approve READ/WRITE/CONFIGURE rights believing the request came from a familiar package when the trusted UI has discarded the only path/package information that distinguishes the requester, weakening the meaning of per-run consent.
+- **Repair direction:** Resolve the active ELF back to its verified canonical package and display a stable unambiguous identity (package ID plus display name, with artifact/path detail as needed). For loose legacy ELFs, show enough canonical path or a short fingerprint to prevent basename collisions. Do not truncate away the distinguishing suffix without an alternate unique identifier. Add consent-UI tests for duplicate artifact basenames in different packages and long names with identical displayed prefixes.
+- **Open-PR overlap check:** PR #220 touches this file only to change the display-present mode from `HalDisplay::FULL_REFRESH` to `DisplayPresentMode::Clean`; it does not change requester identity construction or the text shown by the permission prompt.
+### 231. WebDAV PROPFIND bypasses protected-path checks and enumerates hidden internal directories when addressed directly
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1218, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/68435250c3c0f0b02ba83533bd510db94630393b/bugs.md); source commit `68435250c3c0f0b02ba83533bd510db94630393b`.
+
+- **Affected code:** `src/network/WebDAVHandler.cpp`, `WebDAVHandler::handlePropfind()`, `isProtectedPath()`, and `sendPropEntry()`.
+- **Trigger / reproduction:** Start WebDAV/File Transfer and issue `PROPFIND /.crosspoint` with `Depth: 1` (or directly address another protected path such as `/System Volume Information`). Compare with GET/HEAD/PUT/DELETE on the same path.
+- **Observed / logically demonstrated failure:** GET, HEAD, PUT, DELETE, MOVE, COPY, and MKCOL call `isProtectedPath()` and reject protected segments. `handlePropfind()` does not. It checks only existence/openability, emits a 207 response for the protected resource itself, and when depth is nonzero enumerates its children, including their names, sizes, MIME types, and hrefs. The child-filter logic hides protected names only while listing a parent; it does not protect a directory that the client names as the PROPFIND root.
+- **Likely root cause:** Hidden/protected filtering was implemented for directory children and mutating/content methods, but the PROPFIND entry point omitted the same path-authorization guard.
+- **Impact:** A WebDAV client can discover the structure and metadata of firmware-private SD state that the server intentionally makes inaccessible through ordinary content/mutation methods. This leaks internal filenames and sizes and makes the protected-path policy inconsistent and bypassable for metadata enumeration.
+- **Repair direction:** Apply `isProtectedPath(path)` at the start of `handlePropfind()` and return 403 before existence/open/enumeration for any protected request root. Keep the existing child filtering for allowed parents. Add regressions for direct PROPFIND of `/.crosspoint`, nested hidden segments, `/System Volume Information`, and normal root/library listings.
+### 232. Text Editor strips the `/sd` prefix from file-open handoffs and therefore cannot open the handed-off document
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1326, scan-local #208](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ca33f38d08dc2a2cfe6203725a9a55443512e3d3/bugs.md); source commit `ca33f38d08dc2a2cfe6203725a9a55443512e3d3`.
+- **Affected code:** `Apps/text_editor.c::load_handoff_path()`; storage ABI path mapping in `src/native/NativePlatformBridge.cpp::mapStoragePath()`; file-open source delivery in `src/native/NativeFileOpenBridge.cpp::sourcePathGet()`.
+- **Trigger / reproduction:** In File Browser, choose a valid `.txt` or `.md` file such as `/sd/Documents/notes.txt` and open it with Text Editor through the file-association/Open With workflow.
+- **Observed / logically demonstrated failure:** `sourcePathGet()` supplies the canonical VFS path beginning with `/sd/`. `load_handoff_path()` verifies that prefix and then immediately changes the path to `source + 3`, producing `/Documents/notes.txt`. It passes that stripped path to `storage->read_file()`. The storage bridge accepts only `/sd` or `/sd/...` ABI paths before it performs its own internal conversion, so the read is rejected. The editor consequently falls through to its **Untitled** state instead of loading the selected file; it also stores the stripped path for later saves, so even a future read workaround would leave Ctrl+S targeting an ABI-invalid path.
+- **Likely root cause:** The Text Editor performs the firmware bridge's internal SD-path conversion in application code even though the public storage ABI deliberately owns that conversion.
+- **Impact:** Direct Open With/file-association integration for Text Editor is nonfunctional for otherwise valid text documents, defeating the global file-association workflow and potentially leading the user to edit a new untitled buffer instead of the selected file.
+- **Repair direction:** Keep the original canonical `/sd/...` source unchanged for every `t5_storage_api_v1` call and for the editor's saved `path`; perform internal path conversion only inside the firmware bridge. Add a regression that hands `/sd/Documents/notes.txt` to Text Editor, proves its bytes load, edits them, saves, and verifies the same file was replaced.
+### 233. OTA checks leave prior successful release metadata live after a later failure or no-update result
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1326, scan-local #209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ca33f38d08dc2a2cfe6203725a9a55443512e3d3/bugs.md); source commit `ca33f38d08dc2a2cfe6203725a9a55443512e3d3`.
+- **Affected code:** `src/network/OtaUpdater.cpp::checkForUpdate()`, `isUpdateNewer()`, `getLatestVersion()`, and `installUpdate()`; process-static updater state exposed by `src/native/NativeOtaBridge.cpp`.
+- **Trigger / reproduction:** In one firmware session, let `checkForUpdate()` successfully discover a newer release A so `updateAvailable`, `latestVersion`, `otaUrl`, and `otaSize` are populated. Then make a subsequent check terminate with `HTTP_ERROR`, `JSON_PARSE_ERROR`, or fallback `NO_UPDATE` (for example, make the release index unavailable and the fallback release omit the board firmware asset). After that failed check, query `is_update_newer` / `latest_version`, or invoke `install_update` through the native OTA API.
+- **Observed / logically demonstrated failure:** `checkForUpdate()` publishes release fields only on success but never clears or invalidates them at the beginning of a new check or on any terminal non-success path. The `OtaUpdater` used by the native bridge is process-static, so release A remains live across calls and native-app invocations. `isUpdateNewer()` can therefore still report the stale A as newer and `getLatestVersion()` still returns A after the most recent check explicitly failed or found no firmware. `installUpdate()` relies on that retained state and can reuse A's stale URL if a caller proceeds after the failed check.
+- **Likely root cause:** Release discovery mutates long-lived published state without a generation/validity boundary; failed refreshes leave the previous generation indistinguishable from the result of the current check.
+- **Impact:** The OTA ABI can present contradictory state and can offer or install a stale/withdrawn release after the latest discovery attempt no longer establishes that release. The built-in update app currently gates on the check result, but other native clients of the exported ABI can observe and act on the stale state.
+- **Repair direction:** Build each discovery result in local candidate state, invalidate or explicitly version the previously published result when a new check starts, and publish metadata atomically only for the current successful check. Ensure all non-success outcomes make `isUpdateNewer()` false and prevent install until another successful discovery. Add a successive-check regression covering success -> HTTP failure, success -> invalid JSON, and success -> NO_UPDATE.
+### 234. SD firmware validation accepts non-SHA images with corrupted segment load addresses
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1326, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ca33f38d08dc2a2cfe6203725a9a55443512e3d3/bugs.md); source commit `ca33f38d08dc2a2cfe6203725a9a55443512e3d3`.
+- **Affected code:** `src/network/FirmwareFlasher.cpp::validateImageFile()`, especially ESP image header/segment-header validation and checksum handling; `flashFromSdPath()`.
+- **Trigger / reproduction:** Start with an otherwise valid T5S3 firmware image whose ESP image header has `hash_appended == 0`. Change one or more bytes of a segment header's 32-bit load address while leaving its data length, segment payload, trailing XOR checksum, total size, and embedded RiscRTE/T5S3 board marker unchanged. Run SD firmware validation/install.
+- **Observed / logically demonstrated failure:** The validator reads each 8-byte segment header and uses only its data-length field to bound parsing. It never checks the segment load address or other compatibility-critical ESP image metadata. The legacy XOR checksum is accumulated only over segment payload bytes, not the image or segment headers. Although the function feeds headers into an SHA-256 context, it compares that digest only when `hash_appended` is nonzero. For a legitimate non-SHA image, corrupting only a load address therefore leaves every enforced check unchanged and `validateImageFile()` can return `OK`. `flashFromSdPath()` then writes the accepted bytes and selects that partition for boot.
+- **Likely root cause:** The custom validator treats the legacy payload XOR checksum as sufficient integrity for images without an appended SHA while omitting the bootloader's semantic validation of segment/header fields.
+- **Impact:** A metadata-corrupted SD image can be reported as fully validated and installed even though its segment mapping is invalid. The subsequent reboot can fail to boot the selected image or otherwise reject it only after the update has already been reported successful.
+- **Repair direction:** Prefer requiring an appended SHA-256 for SD firmware, or add complete semantic checks for ESP32-S3 image headers and segment load ranges plus an integrity mechanism that covers metadata. Where ESP-IDF's full image verifier cannot be used because of the board's silicon compatibility workaround, mirror the relevant chip/segment validation explicitly. Add a fixture with `hash_appended == 0` and a one-byte load-address mutation and prove validation rejects it before partition erase/write.
+### 235. CrossPoint state loading accepts schema-invalid JSON as a successful empty state
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1353, scan-local #208](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/0b53f3365438f9d5bb7c2371e6872b1d342d819c/bugs.md); source commit `0b53f3365438f9d5bb7c2371e6872b1d342d819c`.
+- **Affected code:** `src/JsonSettingsIO.cpp::loadState()`; `src/CrossPointState.cpp::loadFromFile()`; state persistence through `JsonSettingsIO::saveState()`.
+- **Trigger / reproduction:** Put a non-empty, syntactically valid but schema-invalid `/.crosspoint/state.json` on the SD card, for example `{}`, `[]`, or an object missing the normal state fields. A legacy `/.crosspoint/state.bin` may still contain recoverable state.
+- **Observed / logically demonstrated failure:** `loadState()` checks only whether `deserializeJson()` succeeds. It never requires a JSON object or validates the expected field types/presence, then assigns defaults for absent values, clears `recentSleepImages`, and returns `true`. Because `CrossPointState::loadFromFile()` immediately returns that result for any non-empty JSON file, a schema-invalid JSON document is treated as authoritative success and the binary fallback is never attempted. The live `openEpubPath`, sleep-image history, reader-load guard, and `lastSleepFromReader` are consequently reset; the next successful state save can persist those defaults over the malformed JSON.
+- **Likely root cause:** State deserialization has parse-syntax validation but no document/schema validation, while the caller interprets `true` as “usable state loaded” and suppresses recovery.
+- **Impact:** A syntactically valid but structurally wrong state file can silently discard recoverable reader/sleep state and defeat the existing binary migration fallback instead of entering an explicit recovery path.
+- **Repair direction:** Require an object root and validate a minimum coherent state schema before mutating `CrossPointState`. Parse into a temporary state object, reject wrong field types/impossible ring metadata, and commit only after validation succeeds. On schema failure let `loadFromFile()` continue to an available legacy/recovery source rather than reporting success. Add regressions for `{}`, `[]`, wrong-typed fields, and a valid legacy fallback.
+### 236. SD firmware validation accepts ESP images whose segment count exceeds the bootloader limit
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1353, scan-local #209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/0b53f3365438f9d5bb7c2371e6872b1d342d819c/bugs.md); source commit `0b53f3365438f9d5bb7c2371e6872b1d342d819c`.
+- **Affected code:** `src/network/FirmwareFlasher.cpp::validateImageFile()` and `flashFromSdPath()`.
+- **Trigger / reproduction:** Provide an ESP application image with the correct 0xE9 magic, `segment_count = 17`, seventeen structurally in-bounds segment records, a matching image checksum, matching optional appended SHA-256, the expected board marker, and a total size that fits the OTA partition.
+- **Observed / logically demonstrated failure:** `validateImageFile()` copies header byte 1 into `segCount` and iterates all declared segments, but never enforces ESP-IDF's `ESP_IMAGE_MAX_SEGMENTS` limit of 16. A self-consistent 17-segment image can therefore pass every check in this validator and return `OK`. `flashFromSdPath()` then writes it to the next OTA partition and can select that partition even though the ESP bootloader's image validator rejects a header whose segment count exceeds 16.
+- **Likely root cause:** The custom SD validator reproduces checksum/hash/bounds checks from the ESP image format but omits the bootloader's segment-count invariant.
+- **Impact:** Firmware Flasher can label an image valid, erase/program the OTA slot, and switch boot selection to an image the bootloader will not accept. The update then fails only at reboot/rollback time instead of being rejected safely before flash mutation.
+- **Repair direction:** Reject `segCount > ESP_IMAGE_MAX_SEGMENTS` before iterating segments (using the ESP-IDF constant/header rather than a duplicate magic number where practical), and keep the validator aligned with bootloader header validation. Add boundary fixtures proving 16 segments can pass and 17 is rejected before any erase/write.
+### 237. A stale RTC variant hint overrides successful hardware probing and can select the wrong register map
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1353, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/0b53f3365438f9d5bb7c2371e6872b1d342d819c/bugs.md); source commit `0b53f3365438f9d5bb7c2371e6872b1d342d819c`.
+- **Affected code:** `lib/hal/HalClock.cpp::begin()`, `configure()`, `timeStartRegister()`, `syncSystemTimeFromRtc()`, and `syncRtcFromSystemTime()`; startup configuration in `src/main.cpp`; persisted `CrossPointSettings::rtcVariantHint`.
+- **Trigger / reproduction:** Boot hardware containing a PCF8563 with settings carrying `rtcVariantHint = 1` (PCF85063), for example after cloning/moving an SD settings file from a board with the other RTC variant or after the persisted hint becomes stale. The reverse mismatch is analogous.
+- **Observed / logically demonstrated failure:** `begin()` probes both layouts and can correctly select PCF8563, but `configure()` then unconditionally replaces `variant_` with any nonzero persisted hint whenever an RTC is merely `available_`; it does not verify that the hinted layout probed successfully. Subsequent reads therefore start at register 0x04 instead of the PCF8563 time base 0x02. A clock write using the wrong PCF85063 layout writes seven bytes beginning at 0x04, which on PCF8563 covers Hours through Years and then Minute_alarm/Hour_alarm rather than Seconds through Years, so a stale hint can both misread time and overwrite unrelated alarm registers.
+- **Likely root cause:** The persisted hint is treated as authoritative identity rather than as a tie-breaker/cache constrained by the hardware probes performed moments earlier.
+- **Impact:** Reusing settings across RTC variants, replacing hardware, or retaining a stale hint can make boot-time clock recovery fail or produce nonsensical time and can corrupt RTC alarm state during synchronization.
+- **Repair direction:** Retain the successful-probe set from `begin()` and honor a persisted hint only if that layout was positively detected; if exactly one layout probes, it must win. Use the hint only to disambiguate genuinely ambiguous probe results, and avoid write-based “verification” against a layout that did not probe. Add PCF85063/PCF8563 register-map fakes with deliberately contradictory hints and assert no wrong-layout write occurs.
+### 238. Signed-package backup cleanup can delete authenticated provenance after an incomplete directory scan and permanently strand the backup
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1423, scan-local #208](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/8448fb28c4173d410c3f609f722c399a81cc07a4/bugs.md); source commit `8448fb28c4173d410c3f609f722c399a81cc07a4`.
+- **Affected code:** `src/runtime/packages/PackageDevicePublication.cpp`, especially `onlyProvenance()` and `selectivePurgeBackup()`; recovery/publication state machine in `src/runtime/packages/PackageSignedTransaction.h`, especially `SignedTransactionDetail::recoverLocked()`.
+- **Trigger / reproduction:** Leave a signed `.<package>.previous` backup in an interrupted-cleanup state containing its authenticated provenance record plus at least one still-present manifest-listed payload. Resume cleanup, allow the per-file removal pass to leave that payload present, then on the next cleanup attempt inject a directory-enumeration failure in the final `onlyProvenance()` check after it has returned the provenance entry but before it returns the remaining payload.
+- **Observed / logically demonstrated failure:** `onlyProvenance()` interprets any non-open result from `dir.openNextFile()` as clean end-of-directory. In the injected case it therefore sees exactly one provenance file, returns `true`, and `selectivePurgeBackup()` deletes the authenticated provenance. The following `Storage.rmdir(path)` fails because the unseen payload still exists. The backup is now non-empty but has lost the signed metadata required by `inspectBackupProvenance()`. Future recovery reaches `purge(paths.backup)`, cannot authenticate the stranded backup, and returns `BackupCleanupPending`; signed publication retries are blocked on that same backup.
+- **Likely root cause:** The destructive last-file gate conflates verified EOF with an SD/enumeration error, so the code can discard the one object that makes interrupted cleanup safely resumable without first proving the directory contains nothing else.
+- **Impact:** A transient SD directory-read fault during package cleanup can convert a recoverable signed backup into a persistent package-management blocker. Later driver/provider/service/application updates for that package can remain unable to publish until the orphaned backup is repaired manually or removed by a trusted recovery path.
+- **Repair direction:** Make backup enumeration expose clean EOF separately from I/O failure and delete provenance only after a complete, verified scan proves it is the sole entry. Preserve provenance on any ambiguous enumeration result; preferably make final provenance removal plus directory retirement a resumable state with an explicit marker. Add fault-injection coverage for enumeration failure before, during, and after the provenance entry and verify the backup remains authenticatable and the next recovery completes.
+### 239. The persistent SD-font advance cache makes valid uncached glyphs measure as zero width after its 768-entry limit is reached
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1423, scan-local #209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/8448fb28c4173d410c3f609f722c399a81cc07a4/bugs.md); source commit `8448fb28c4173d410c3f609f722c399a81cc07a4`.
+- **Affected code:** `lib/EpdFont/SdCardFont.h`, `ADVANCE_CACHE_LIMIT`, `hasAdvanceTable()`, and `getAdvance()`; `lib/EpdFont/SdCardFont.cpp`, `fetchAdvancesForCodepoints()` and `mergeIntoAdvanceTable()`; fast measurement paths in `lib/GfxRenderer/GfxRenderer.cpp::getTextAdvanceX()`, `getSpaceWidth()`, and `getSpaceAdvance()`.
+- **Trigger / reproduction:** Use an SD-card font with more than 768 covered Unicode characters across successive layout passes, or lay out one section containing more than 768 distinct covered codepoints. Once one style's persistent advance table reaches `ADVANCE_CACHE_LIMIT == 768`, render text containing a covered codepoint that is not among the retained 768 entries.
+- **Observed / logically demonstrated failure:** `fetchAdvancesForCodepoints()` stops fetching entirely once a style table reaches 768 entries, and `mergeIntoAdvanceTable()` silently drops the sorted tail when a fetch would exceed the cap. `getAdvance()` returns `0` both for a real zero advance and for a cache miss. Because `hasAdvanceTable()` remains true as soon as any style table exists, `GfxRenderer::getTextAdvanceX()` takes the advance-table fast path for the whole string and blindly adds `getAdvance()` for every codepoint; it never falls back to glyph lookup for a missing entry. The uncached character is therefore measured as zero pixels even though the font contains it.
+- **Likely root cause:** A bounded cache is treated as a complete font-metrics table. Cache presence selects the fast path globally, but the per-codepoint lookup has no success/miss channel that would let the renderer use the documented slow-path fallback.
+- **Impact:** CJK/multilingual books and long reading sessions can acquire incorrect word widths and line-break decisions once enough distinct characters have been seen. Rendered glyphs can overlap, extend beyond calculated line bounds, or disagree with pagination, and the condition persists across layout passes until the font's persistent cache is cleared.
+- **Repair direction:** Expose a `tryGetAdvance(codepoint, style, &advance)`-style lookup (or another nonzero-independent miss signal) and fall back to the normal glyph-metrics path for individual misses. Alternatively use an eviction/LRU cache while guaranteeing every requested measurement is resolved. Propagate partial advance-table I/O failures similarly instead of treating the table as complete. Add a regression with more than 768 distinct covered codepoints and verify measured width/page breaks match uncached glyph lookup for characters beyond the cache boundary.
+### 240. Valid EPUB links with uppercase or unlisted URI schemes are misclassified as internal footnotes
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1423, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/8448fb28c4173d410c3f609f722c399a81cc07a4/bugs.md); source commit `8448fb28c4173d410c3f609f722c399a81cc07a4`.
+- **Affected code:** `lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp`, `isInternalEpubLink()` and the `<a href>` handling in `ChapterHtmlSlimParser::startElement()`; downstream footnote navigation in `src/activities/reader/EpubReaderActivity.cpp::navigateToHref()`.
+- **Trigger / reproduction:** Put a valid external link such as `<a href="HTTP://example.com/">Example</a>`, `<a href="MAILTO:user@example.com">Mail</a>`, or an absolute URI using another scheme such as `urn:isbn:...` in chapter XHTML and open that page.
+- **Observed / logically demonstrated failure:** `isInternalEpubLink()` rejects only a small, lowercase, case-sensitive list of prefixes (`http://`, `https://`, `mailto:`, `ftp://`, `tel:`, and `javascript:`). Uppercase/mixed-case spellings of those schemes and every other syntactically absolute URI fall through as `true`. The parser then marks the anchor as an internal footnote/cross-reference, underlines it, copies the external URI into `currentFootnote.href`, and exposes it through the reader's Footnotes workflow. Selecting it calls `navigateToHref()`, which attempts EPUB spine resolution and cannot resolve the external URI.
+- **Likely root cause:** External-vs-internal classification is implemented as a case-sensitive denylist of a few schemes instead of parsing the URI-reference form. URI schemes are case-insensitive, and an absolute URI is identified by a valid scheme prefix rather than by membership in this list.
+- **Impact:** Valid EPUB content can show ordinary external links as actionable internal footnotes and add dead entries to the Footnotes menu; selecting them produces failed internal navigation. Behavior depends on capitalization and scheme choice rather than on whether the target is actually inside the EPUB.
+- **Repair direction:** Classify links structurally: after trimming XML attribute whitespace, treat any `[A-Za-z][A-Za-z0-9+.-]*:` prefix as an absolute external URI unless the reader explicitly supports that scheme, using case-insensitive scheme handling. Reserve internal-link treatment for fragment and relative EPUB references. Add fixtures for mixed-case HTTP/HTTPS/mailto, `urn:` or custom schemes, fragment-only links, and relative chapter links.
+### 241. EPUB Footnotes overcounts visible rows and can move selection below the screen before scrolling
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1520, scan-local #209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/f8b56224203ffb83b2ee445efe0226fca534918a/bugs.md); source commit `f8b56224203ffb83b2ee445efe0226fca534918a`.
+- **Affected code:** `src/activities/reader/EpubReaderFootnotesActivity.cpp`, especially `render()` and `onTouchTap()` and their independent `visibleCount` calculations.
+- **Trigger / reproduction:** Open an EPUB with more footnote links than fit on one Footnotes screen, then navigate downward into the last rows of the first page. On a 540-pixel-high landscape viewport, continue through roughly the 14th/15th item; the same defect occurs in other orientations according to their logical screen height.
+- **Observed / logically demonstrated failure:** Rows are actually drawn starting at `60 + contentY` with a 36-pixel line height, but both render and touch code compute `visibleCount = (screenHeight - contentY) / 36`, omitting the 60-pixel title/list offset. At 540 pixels this claims 15 visible rows even though row 14 starts at y=564 and row 13 starts at y=528. The scroll condition therefore leaves `scrollOffset` unchanged while the selected row has already moved partly or entirely off-screen. The touch hit-test uses the same inflated count, so its accepted row range is also larger than the actual list viewport.
+- **Likely root cause:** Viewport capacity is calculated from the full content height rather than from the list's real top coordinate (and any reserved bottom UI), while drawing and hit-testing use a separate `listTop`.
+- **Impact:** Footnote selection can disappear below the panel before the list scrolls, making keyboard/controller navigation appear stuck or select an unseen target. Touch row validation can also describe positions outside the rendered list area.
+- **Repair direction:** Define one shared list viewport with `listTop` and bottom bound, derive `visibleCount = max(1, (listBottom - listTop) / lineHeight)`, and use it for rendering, scroll adjustment, and hit-testing. Add orientation tests with one more item than the real visible capacity and verify every selected row remains fully visible as scrolling begins.
+### 242. EPUB image pixel-cache names collide for different source formats that share a stem
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1520, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/f8b56224203ffb83b2ee445efe0226fca534918a/bugs.md); source commit `f8b56224203ffb83b2ee445efe0226fca534918a`.
+- **Affected code:** `lib/Epub/Epub/blocks/ImageBlock.cpp`, `getCachePath()`, `renderFromCache()`, and `ImageBlock::render()`.
+- **Trigger / reproduction:** Build an EPUB containing two different images in the same extracted directory, for example `diagram.jpg` and `diagram.png`, with equal (or within the allowed one-pixel tolerance) rendered dimensions. Display the JPEG first so its cache is created, then display the PNG.
+- **Observed / logically demonstrated failure:** `getCachePath()` replaces the final source extension with `.pxc`, so both sources map to the identical cache path `diagram.pxc`. `renderFromCache()` validates only the cached width/height against the expected dimensions; it stores no source path, format, size, timestamp, or content fingerprint. When the second image has matching dimensions, its render accepts and displays the first image's pixel cache without decoding the second source at all. If dimensions differ, the two images instead overwrite/thrash the same cache on alternating renders.
+- **Likely root cause:** The cache key discards a distinguishing part of the source identity, and the cache header has no source-generation identity capable of detecting the collision.
+- **Impact:** Valid EPUBs can display the wrong illustration whenever same-stem images of different formats coexist, while appearing to have loaded successfully. Dimension-mismatched collisions also cause repeated unnecessary decode/cache rewrites.
+- **Repair direction:** Derive the pixel-cache filename from the complete canonical image path including extension (preferably a collision-resistant digest), and/or store and validate a source identity in the cache header. Preserve format/path distinction even when output dimensions match. Add a fixture with same-directory `diagram.jpg` and `diagram.png` at identical dimensions and verify each renders its own pixels across repeated page visits.
+### 243. Invalid KOReader match-method values are displayed as Filename but executed as Binary
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1624, scan-local #208](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ae005ba74bef9f7936f45787b1d3f67e89004439/bugs.md); source commit `ae005ba74bef9f7936f45787b1d3f67e89004439`.
+- **Affected code:** `src/JsonSettingsIO.cpp::loadKOReader()`; `lib/KOReaderSync/KOReaderCredentialStore.cpp::loadFromBinaryFile()`; `src/native/NativeKOReaderBridge.cpp::readSettings()`; `src/activities/reader/KOReaderSyncActivity.cpp::performSync()`.
+- **Trigger / reproduction:** Put a syntactically valid `/.crosspoint/koreader.json` on the SD card with a match method outside the declared enum, for example `"matchMethod": 2`, then reload settings and perform KOReader sync. The same state can be produced by a legacy `koreader.bin` whose method byte is neither 0 nor 1.
+- **Observed / logically demonstrated failure:** Both loaders cast the stored byte directly to `DocumentMatchMethod` without validating it. The native settings bridge reports every value other than `BINARY` as `T5_KOREADER_MATCH_FILENAME`, so value 2 is shown to the user as Filename. The reader sync path uses the opposite predicate: only exact `FILENAME` selects filename matching, and every other value falls through to binary hashing. The same stored value is therefore presented as Filename while sync actually calculates and uses a binary document ID.
+- **Likely root cause:** Untrusted persisted integers are converted to an enum without range validation, and separate consumers use inconsistent two-way fallbacks for invalid enum values.
+- **Impact:** Corrupt or manually edited settings can make existing filename-keyed KOReader progress appear missing and can upload progress under a different binary document key while the settings UI still says Filename, splitting sync history and making diagnosis misleading.
+- **Repair direction:** Validate the persisted value at both JSON and legacy-binary load boundaries and accept only the two declared enum values. Normalize an invalid value to a single documented safe default (and resave) or reject the settings file. Centralize enum-to-ABI and sync-mode mapping so an invalid state cannot be interpreted differently by two consumers. Add tests for values 0, 1, 2, and 255 proving the displayed mode and document-ID algorithm always agree.
+### 244. Unsubscribing the last location stream leaves a bridge-started GPS provider running
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1624, scan-local #209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ae005ba74bef9f7936f45787b1d3f67e89004439/bugs.md); source commit `ae005ba74bef9f7936f45787b1d3f67e89004439`.
+- **Affected code:** `src/native/NativeLocationBridge.cpp::subscribe()` and `unsubscribe()`; provider lifecycle in `src/runtime/drivers/GpsDriverRuntime.cpp::start()`, `borrowLocationSource()`, and `stop()`; GNSS stream teardown through `src/native/NativeStreamBridge.cpp`.
+- **Trigger / reproduction:** With no GPS/location provider already running, launch a native app that has an approved `location.position` READ lease, call `t5_location_api_v1::subscribe()`, then call `unsubscribe()` while keeping the app alive.
+- **Observed / logically demonstrated failure:** `subscribe()` records a local `startedHere` flag when it has to call `GpsDriverRuntime::start()`, and it correctly stops that provider on subscription setup failures. After a successful subscription, however, that ownership bit is discarded. `unsubscribe()` only calls `nativeGnssUnsubscribe()`; it never calls `GpsDriverRuntime::stop()` when the subscription that caused startup is gone. The runtime therefore keeps the GPS provider/device/driver resources active until some broader app teardown path eventually cleans them up.
+- **Likely root cause:** Provider ownership is tracked only as a stack-local setup detail rather than as lifecycle state tied to successful location subscriptions.
+- **Impact:** An app that subscribes briefly and then releases location can leave the GPS/UART provider powered and leased for the rest of its invocation, wasting battery and retaining resources that other consumers may need.
+- **Repair direction:** Track whether the location bridge started the provider and maintain bridge-owned subscription/reference state. When the last bridge-owned subscription closes or is revoked, stop the GPS runtime only if this bridge started it; never stop a pre-existing borrowed source. Cover normal unsubscribe, stream/consent revocation, and app teardown. Add a regression proving a bridge-started source stops on final unsubscribe while a pre-existing source remains running.
+### 245. A failed Web Server start tears down pre-existing Wi-Fi before the server is known to be startable
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1624, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/ae005ba74bef9f7936f45787b1d3f67e89004439/bugs.md); source commit `ae005ba74bef9f7936f45787b1d3f67e89004439`.
+- **Affected code:** `src/native/NativeWebServerBridge.cpp::start()`, `shutdownNetwork()`, and `setError()`.
+- **Trigger / reproduction:** Begin with a working station Wi-Fi connection, then call the native Web Server API with an otherwise valid configuration whose `document_root` or required `index.html` does not exist. The same loss can occur after later DNS/HTTP/AP startup failures.
+- **Observed / logically demonstrated failure:** After only validating the configuration structure, `start()` immediately calls `shutdownNetwork()`. That helper stops any server state, disconnects AP mode if present, and unconditionally executes `WiFi.mode(WIFI_OFF)`. Only after the existing connection is destroyed does `start()` verify storage readiness and the document root/index. If that preflight fails, `setError()` calls `shutdownNetwork()` again and returns failure; the prior station connection is not restored. Failures after AP transition likewise leave Wi-Fi off rather than restoring the prior network state.
+- **Likely root cause:** Destructive network takeover occurs before non-network preconditions are validated, and the bridge has no snapshot/ownership model for restoring connectivity when startup aborts.
+- **Impact:** A Web Server launch that never becomes usable can still disconnect networking established by another workflow, interrupting downloads, sync, or other network-dependent activity despite returning a start error.
+- **Repair direction:** Complete all storage/config preflight before touching the network. For failures after network transition begins, preserve enough prior network state/ownership to roll back to the pre-existing connection (or use a shared network lease/transition abstraction) rather than forcing `WIFI_OFF`. Add tests for missing root/index plus DNS/HTTP/AP startup failures while a station connection already exists, and verify failure leaves that connection intact or restored.
+### 246. Confirmation dialogs treat any tap in the right half of the screen as approval
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1722, scan-local #208](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/d581a637894b45df2d45e649dd7a12f25e779692/bugs.md); source commit `d581a637894b45df2d45e649dd7a12f25e779692`.
+- **Affected code:** `src/activities/util/ConfirmationActivity.cpp::onTouchTap()`; destructive callers include `src/activities/settings/SdFirmwareUpdateActivity.cpp::promptConfirmation()` and `src/activities/GlobalMenuActivity.cpp::triggerShutdown()`.
+- **Trigger / reproduction:** Open a firmware-update confirmation or shutdown confirmation, then tap ordinary body/title content anywhere in the right half of the display rather than the rendered Confirm button hint.
+- **Observed / logically demonstrated failure:** `ConfirmationActivity::onTouchTap()` ignores the Y coordinate and all actual button bounds. It sets `isCancelled = x < screenWidth / 2`, so every touch in the entire right half becomes an affirmative result and immediately closes the dialog. The ActivityManager only intercepts taps that actually hit a button-hint bound; arbitrary body taps still reach this method. In the firmware-update flow that affirmative result proceeds directly to `performUpdate()`; in the global menu it proceeds to `requestShutdown()`.
+- **Likely root cause:** The confirmation screen implements touch as a full-screen left/right split instead of hit-testing the controls it displays.
+- **Impact:** An incidental tap on non-interactive content can authorize destructive or disruptive actions, including starting a firmware flash or shutting down the device.
+- **Repair direction:** Resolve touch only against the mapped Back/Cancel and Confirm button-hint rectangles (or explicit dialog buttons), ignore all other taps, and add tests proving body/header taps cannot complete a confirmation in any orientation.
+### 247. EPUB container parsing selects the last supported rootfile instead of the preferred first rendition
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1722, scan-local #209](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/d581a637894b45df2d45e649dd7a12f25e779692/bugs.md); source commit `d581a637894b45df2d45e649dd7a12f25e779692`.
+- **Affected code:** `lib/Epub/Epub/parsers/ContainerParser.cpp::startElement()`; consumed by `lib/Epub/Epub.cpp::findContentOpfFile()`.
+- **Trigger / reproduction:** Build a valid EPUB `META-INF/container.xml` containing two `rootfile` elements with `media-type="application/oebps-package+xml"`, placing the preferred/default package first and a second supported package afterward. Give the two OPFs visibly different titles/content and open the EPUB.
+- **Observed / logically demonstrated failure:** Every matching `rootfile` executes `self->fullPath = path`. The second match therefore overwrites the first, and `findContentOpfFile()` unconditionally opens the final stored path. A multi-rendition container consequently selects the last matching package rather than preserving the first supported rootfile in document order; if that later package is damaged or intentionally secondary, a usable preferred rendition can be ignored.
+- **Likely root cause:** `fullPath` is treated as a replaceable accumulator rather than a once-selected preferred package.
+- **Impact:** Standards-valid multi-rendition EPUBs can open the wrong language/layout/rendition or fail even though their preferred first package is valid.
+- **Repair direction:** Preserve the first supported rootfile unless an explicit rendition-selection policy chooses otherwise. Add a container fixture with two supported rootfiles and assert that the preferred first one is selected deterministically.
+### 248. Natural filename sorting invokes ctype with negative UTF-8 bytes
+
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Scan provenance:** [automation/bug-scan-20260930-1722, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/d581a637894b45df2d45e649dd7a12f25e779692/bugs.md); source commit `d581a637894b45df2d45e649dd7a12f25e779692`.
+- **Affected code:** `lib/FsHelpers/FsHelpers.cpp::sortFileList()`; direct firmware caller includes recovery-mode `src/activities/settings/SdFirmwareUpdateActivity.cpp::loadRecoveryEntries()`.
+- **Trigger / reproduction:** Put ordinary non-ASCII UTF-8 filenames such as `éclair.bin` and `über.bin` in a directory that is passed through `FsHelpers::sortFileList()` (for example the recovery firmware picker), on the ESP32 build where plain `char` is signed.
+- **Observed / logically demonstrated failure:** The case-insensitive branch calls `tolower(*s1)` and `tolower(*s2)` directly. UTF-8 bytes above 0x7F become negative when read through signed `char`; the C/C++ ctype contract only permits EOF or values representable as `unsigned char`. Passing those negative values is undefined behavior. The same helper correctly uses unsigned casts in `checkFileExtension()`, showing the sorter lacks the required conversion. Unicode filenames can therefore trigger implementation-dependent table indexing/mis-sorting and potentially invalid memory access while a directory is being sorted.
+- **Likely root cause:** The natural-sort comparator assumes filename bytes are non-negative ASCII before calling ctype.
+- **Impact:** Normal international filenames make a core sorting helper undefined on the target compiler and can destabilize any firmware list that uses it.
+- **Repair direction:** Cast every ctype operand through `unsigned char` before `tolower`/`isdigit`; preferably keep ASCII case folding explicitly byte-safe and leave multibyte UTF-8 bytes unchanged unless a real Unicode collation layer is added. Add sorting tests with 2-, 3-, and 4-byte UTF-8 names under signed-char builds.
+
+## Resolved reports retained for traceability
+
+### 91. GT911 drops a ready touch report after a transient contact-data read failure
+
+- **Status:** Fixed on master by merged [PR #283](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/283); targeted host regression re-run on the reconciliation baseline. No hardware-validation claim.
+- **Affected code:** `Drivers/gt911_touch/driver.c`, especially `service_one()`, `read_reg()`, `write_reg8()`, and the handoff into `apply_state()`.
+- **Trigger / reproduction:** Have the GT911 report `GT911_READY_MASK` with one or more contacts, then fault the I2C transaction that reads `GT911_FIRST_POINT_REG` while allowing the following write of zero to `GT911_STATUS_REG` to succeed. This can be reproduced with an injected one-shot failure in `bus->transact()` for the contact-data read.
+- **Observed / logically demonstrated failure:** When the raw contact read fails, `service_one()` executes `(void)write_reg8(GT911_STATUS_REG, 0u)` and returns `false`. Clearing the status acknowledges and discards the controller's ready report even though its contents were never acquired or passed to `apply_state()`. A missed DOWN can disappear until another report happens; more seriously, if the previous published snapshot contained a contact and the discarded report was its changed/released state, subscribers and `snapshot()` can retain stale contact state with no event that repairs it.
+- **Likely root cause:** The error path acknowledges a report before the driver has a coherent replacement state. The normal path intentionally acknowledges before publication to avoid duplicate delivery, but the failed-read path has nothing valid to publish and therefore destroys the only retryable copy of the report.
+- **Impact:** A transient I2C error can become a lost tap, missed motion, or apparently stuck touch rather than a recoverable failed poll. UI consumers can remain out of sync with the physical panel until the GT911 produces another valid report.
+- **Repair direction:** Do not clear `GT911_STATUS_REG` when the contact-data read fails; leave the ready report pending so a later poll can retry it. For malformed reports that must be discarded, explicitly invalidate/reconcile published contact state and subscriber queues rather than silently retaining the old snapshot. Add a fault-injection test that fails the first contact-data read, succeeds the retry, and proves exactly one coherent transition is published.
+
+- **Consolidation sources:** [automation/bug-scan-20260927-2219](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/9660dd8d0666b426983297016ead4505192f218d/bugs.md); [Drive: 2026-09-27 22-19 MDT - automation-bug-scan-20260927-2219 - bugs.md diff](https://docs.google.com/document/d/1Wc7kIceAGc40Fe2AsE_kUn2qH-_Qeo0f2PmKF0JnlCw/edit?usp=drivesdk); [Drive: 2026-09-27 22-19 MDT - automation-bug-scan-20260927-2219 - integration instructions](https://docs.google.com/document/d/1V2MnDTGfJQQ0NgxgrN3NEn3zX-ta4QCM7qWP9tzy9BU/edit?usp=drivesdk)
+
+- **Resolution evidence:** Merge commit [`36be2ee496468feb3779616e69f61e3a671c192b`](https://github.com/michaelrolphone-cmyk/T5S3-Reader/commit/36be2ee496468feb3779616e69f61e3a671c192b) is an ancestor of the reconciliation baseline. [`Drivers/gt911_touch/driver.c:208–214`](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/2b45ab662c0ffe3650ce0f841083ea47886022c9/Drivers/gt911_touch/driver.c#L208-L214) returns without acknowledging unread contact data. [`test/drivers/gt911_touch_test.c:208–219`](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/2b45ab662c0ffe3650ce0f841083ea47886022c9/test/drivers/gt911_touch_test.c#L208-L219) injects three contact-read failures, checks READY stays latched, then verifies the retry emits DOWN.
+- **Verification, 2026-09-30 UTC:** `ASAN_OPTIONS=detect_leaks=0 bash test/run_gt911_touch_test.sh` passed with AddressSanitizer and UndefinedBehaviorSanitizer. The default command could not complete LeakSanitizer in the container (`LeakSanitizer does not work under ptrace`); leak detection is unverified. No firmware build or physical-device qualification was run for this documentation reconciliation.
