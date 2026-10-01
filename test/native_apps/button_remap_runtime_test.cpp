@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "CrossPointSettings.h"
@@ -198,11 +199,11 @@ static void render(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows,
   assert(chrome && rows && count == 4 && selected >= 0 && selected < 4);
   assert(std::strcmp(chrome->title, "Remap Front Buttons") == 0);
   if (check_chrome) {
-    assert(std::strcmp(chrome->subtitle, "Side Up: Reset | Side Down: Cancel") == 0);
     assert(chrome->back_label && chrome->back_label[0] == '\0');
     assert(chrome->confirm_label && chrome->confirm_label[0] == '\0');
     assert(chrome->previous_label && chrome->previous_label[0] == '\0');
     assert(chrome->next_label && chrome->next_label[0] == '\0');
+    assert(std::strcmp(chrome->subtitle, "Side Up: Reset | Side Down: Cancel") == 0);
   }
   Frame frame{selected, chrome->status, {}};
   const char* names[] = {"Back", "Confirm", "Left", "Right"};
@@ -263,6 +264,7 @@ static std::vector<Event> buttons(const Mapping& target, unsigned count = 4) {
 }
 
 static void test_app() {
+  check_chrome = true;
   for (const auto& before : permutations()) {
     for (const auto& target : permutations()) {
       initialize(before, 2);
@@ -332,6 +334,7 @@ static void test_app() {
     assert(writes.empty());
     expect_state(custom);
   }
+  check_chrome = false;
   std::puts("Button Remap app PASS: 576 live-input retry transitions, reset failure/reopen, cancel, duplicate, touch, exit cleanup");
 }
 
