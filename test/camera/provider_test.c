@@ -15,6 +15,7 @@ bool cam_hw_begin(unsigned q){assert(q==12);return backend_begin;}
 int32_t cam_hw_poll(const uint8_t **p,uint32_t *n){*p=pixels;*n=sizeof(pixels);return backend_result;}
 bool cam_hw_stop_capture(void){stops++;return can_stop;}
 bool cam_hw_shutdown(void){shutdowns++;return can_stop;}
+const char *cam_hw_wait_reason(void){return "VSYNC boundary deadline";}
 uint64_t cam_hw_now(void){return now;}
 void cam_hw_yield(void){yields++;now++;}
 static int32_t publish(uint64_t c,const risc_stream_endpoint_v1 *s,uint32_t *out){
@@ -59,6 +60,9 @@ int main(void){
  blocked=true;driver->poll(1);assert(!status(j).transferred);blocked=false;
  for(unsigned i=0;i<3;i++)driver->poll(1);
  assert(status(j).state==RISC_CAMERA_DONE && status(j).transferred==sizeof(pixels));
+ struct {uint32_t prefix[8];uint32_t canary;} legacy={{32},0x12345678};
+ assert(offsetof(risc_camera_status_v1,detail)==32);
+ assert(api->status(NULL,j,(risc_camera_status_v1*)&legacy)==0 && legacy.canary==0x12345678);
  uint8_t copy[512];uint32_t got=99;
  assert(api->read(NULL,j,copy,513,&got)==T5_STREAM_INVALID && got==0);
  assert(api->read(NULL,j,copy,512,&got)==0 && got==512 && !memcmp(copy,pixels,512));
@@ -66,7 +70,7 @@ int main(void){
  assert(api->status(NULL,j,&s)==T5_STREAM_CLOSED);uint64_t next=begin();assert(next!=j);assert(api->cancel(NULL,j)==T5_STREAM_CLOSED);
  assert(api->cancel(NULL,next)==0 && status(next).result==T5_STREAM_CANCELLED);assert(api->release(NULL,next)==0);
  reset();j=begin();backend_result=T5_STREAM_AGAIN;driver->poll(1);now=510;driver->poll(1);
- assert(status(j).state==RISC_CAMERA_FAILED && status(j).result==T5_STREAM_TIMEOUT);assert(api->release(NULL,j)==0);
+ assert(status(j).state==RISC_CAMERA_FAILED && status(j).result==T5_STREAM_TIMEOUT && !strcmp(status(j).detail,"VSYNC boundary deadline"));assert(api->release(NULL,j)==0);
  reset();j=begin();driver->poll(1);blocked=true;now=510;driver->poll(1);assert(status(j).result==T5_STREAM_TIMEOUT);
  reset();j=begin();driver->poll(1);revoked=true;driver->poll(1);assert(status(j).result==T5_STREAM_DENIED);assert(api->release(NULL,j)==0);
  reset();j=begin();can_stop=false;assert(api->cancel(NULL,j)==T5_STREAM_BUSY);assert(api->release(NULL,j)==T5_STREAM_BUSY);

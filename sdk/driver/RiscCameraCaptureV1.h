@@ -20,6 +20,7 @@ enum { RISC_CAMERA_IDLE, RISC_CAMERA_CAPTURING, RISC_CAMERA_DELIVERING,
 typedef struct {
     uint32_t struct_size, state, format, width, height, length, transferred;
     int32_t result;
+    char detail[64]; /* copied bounded failure/timeout diagnostic */
 } risc_camera_status_v1;
 typedef struct {
     uint32_t api_version, struct_size;

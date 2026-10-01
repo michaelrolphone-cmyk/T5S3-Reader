@@ -10,3 +10,5 @@ bool cam_hw_stop_capture(void);
 bool cam_hw_shutdown(void);
 uint64_t cam_hw_now(void);
 void cam_hw_yield(void);
+
+const char *cam_hw_wait_reason(void);

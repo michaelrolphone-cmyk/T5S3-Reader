@@ -15,8 +15,8 @@ inline void cameraProofTick(const risc_camera_capture_api_v1 *api) {
   static HalFile file;
   static mbedtls_sha256_context hash;
   static uint8_t digest[32];
-  constexpr auto partial="/camera-elf-01.jpg.partial";
-  constexpr auto output="/camera-elf-01.jpg";
+  constexpr auto partial="/camera-elf-02.jpg.partial";
+  constexpr auto output="/camera-elf-02.jpg";
   if(done)return;
   auto fail=[&](const char* why){
     if(file)file.close();
@@ -49,7 +49,12 @@ inline void cameraProofTick(const risc_camera_capture_api_v1 *api) {
     LOG_INF("CAMERA","result=pass bytes=%u sha256=%s output=%s",total,text,output);done=true;return;
   }
   risc_camera_status_v1 state{sizeof(state)};
-  if(api->status(api->context,job,&state)!=0 || state.state==RISC_CAMERA_FAILED){fail("provider");return;}
+  if(api->status(api->context,job,&state)!=0){fail("status");return;}
+  if(state.state==RISC_CAMERA_FAILED){
+    LOG_ERR("CAMERA","provider_result=%d state=%u bytes=%u sent=%u detail=%.63s",
+      state.result,state.state,state.length,state.transferred,state.detail);
+    fail("provider");return;
+  }
   const int rc=api->read(api->context,job,bytes,sizeof(bytes),&n);
   if(rc==T5_STREAM_AGAIN)return;
   if(rc==T5_STREAM_OK){

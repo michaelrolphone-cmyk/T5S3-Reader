@@ -8,7 +8,7 @@ introduced. The runtime branch remains separate from U1 implementation history.
 
 ## Packages and boundary
 
-New, unpublished stable identities: `camera-esp32s3-ov3660` **0.1.0** and
+New, unpublished stable identities: `camera-esp32s3-ov3660` **0.1.1** and
 `cam-ov3660-profile` **0.1.0**. The latter provides installed wiring data through
 `board.camera.esp32s3.profile@1`; the former consumes it and publishes generic
 `camera.capture@1`. New identities have no earlier published camera lineage.
@@ -73,13 +73,13 @@ bundle command can reuse an already linked ELF.
 
 The opt-in `cam-camera-experiment` environment embeds the two ordinary ZIPs as a
 lab transfer medium, writes them with exclusive-create/exact-existing checks to
-`/Inbox/camera-elf-01`, and invokes the existing ordinary ZIP installer. This is
+`/Inbox/camera-elf-02`, and invokes the existing ordinary ZIP installer. This is
 an explicit one-shot lab deployment, not complete first-run/reapply provisioning.
 SD bootstrap checks dedicated CAM MAC `28:84:85:4b:57:98` before filesystem I/O.
 The normal recovery/inventory/graph/owner loop then activates installed modules.
-A generic consumer writes `/camera-elf-01.jpg.partial`, enforces bounded chunks
+A generic consumer writes `/camera-elf-02.jpg.partial`, enforces bounded chunks
 and deadline, waits for EOF/declared length, closes the stream/job and file,
-reads back SHA-256, then renames to `/camera-elf-01.jpg`. Existing output is never
+reads back SHA-256, then renames to `/camera-elf-02.jpg`. Existing output is never
 overwritten; incomplete bytes remain marked partial. No image tuning, display,
 networking, RF or other board work is part of this increment.
 
@@ -89,7 +89,29 @@ Host provider tests cover exact byte delivery, request bounds, BUSY, stale jobs,
 backpressure, capture/output deadline, cancellation, stream revoke/finish failure,
 partial start and uncertain-stop retention. Boot/SD and existing private-import
 checks remain independent. Builds and host checks do not prove sensor operation.
-The physical baseline remains firmware SHA256
-`597f88dcf4a3fb2aaff20fb24bea457e3089ba8bf3b6d667166ec4e2f7aa2da5`
-until a new guarded physical evidence checkpoint records otherwise. Preserve
-all earlier images/backups and separate the tested image from published source.
+The single camera physical batch used source `836f6adc` on integration base
+`5cb9367f`, firmware `f5614d6dd45d13b5c753aee5572234e403a62efc86cf576c68b12bb9c40975d7`
+(521568 bytes at 0x10000). MAC, exact previous597f88dc image, complete erase-range
+backup, readback and partition/OTA/NVS preservation passed. Both ordinary packages
+installed; the real loader relocated the camera ELF, its OV3660 initialization
+succeeded, and the normal graph granted camera.capture and reached Running.
+Capture failed after approximately15s; the generic diagnostic reported
+`stage=provider cleanup=0`. That is successful JOB cleanup, not evidence of full
+provider unload. No complete JPEG was produced. A partial output is preserved.
+The runner closed the serial port/device lock; no second flash was performed.
+
+The subsequent source audit found VSYNC matrix inversion missing relative to the
+working native witness (`cam_hal.c` sets `vsync_invert=true`). Source now matches
+that polarity and copies a bounded timeout-phase diagnostic into capture status.
+This is a concrete correction, **not proof that it resolves the physical timeout**.
+Because camera0.1.0 was actually installed, changed bytes are packaged as0.1.1;
+profile0.1.0 is unchanged. The updated experiment uses fresh camera-elf-02 paths
+to preserve earlier partial output. The0.1.1 candidate remains unflashed.
+
+Local broader CPU resolver tests cannot link weak provider logging symbols on
+this macOS host; the separately compiled production private-import preflight
+passes. Camera/boot/SD tests pass. Initial camera CI failed a GCC test indentation
+warning; test-only commit d956ed7b fixes it and its CAM contract CI passes.
+Remaining physical gate: successful frame completion, retrieval/decode and safe
+full-provider stop/restart for the corrected candidate. Full provisioning and
+wider U3/U4 acceptance remain separate, unimplemented scope. The PR stays draft.

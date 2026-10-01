@@ -140,6 +140,9 @@ bool cam_hw_start(const risc_camera_esp32s3_profile_v1 *p) {
     CAM.lc_dma_int_ena.val=0;CAM.lc_dma_int_clr.val=~0u;
     for(unsigned i=0;i<8;i++)input(pins.data[i],CAM_DATA_IN0_IDX+i);
     input(pins.pclk,CAM_PCLK_IDX);input(pins.vsync,CAM_V_SYNC_IDX);input(pins.href,CAM_H_ENABLE_IDX);
+    /* The qualified Espressif OV3660 path uses vsync_invert=true. The
+     * sensor pulse must be inverted at the matrix before CAM frame gating. */
+    esp_rom_gpio_connect_in_signal(pins.vsync,CAM_V_SYNC_IDX,true);
     esp_rom_gpio_pad_select_gpio(pins.xclk);PADS.enable_w1ts=1u<<pins.xclk;
     esp_rom_gpio_connect_out_signal(pins.xclk,CAM_CLK_IDX,false,false);
     for(unsigned i=0;i<2;i++){
@@ -241,4 +244,10 @@ bool cam_hw_shutdown(void) {
     }
     heap_caps_free(desc);heap_caps_free(buffer);desc=NULL;buffer=NULL;fault=false;frame_length=0;
     return true;
+}
+
+const char *cam_hw_wait_reason(void) {
+    if(waiting)return "VSYNC boundary deadline";
+    if(active)return "DMA frame EOF/park deadline";
+    return "JPEG trailer/output deadline";
 }

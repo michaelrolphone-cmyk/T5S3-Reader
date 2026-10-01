@@ -14,6 +14,8 @@ static const uint8_t *frame;
 static const char *error;
 static void fail(int32_t result, const char *why) {
     state.state=RISC_CAMERA_FAILED; state.result=result; error=why;
+    size_t n=strlen(why);if(n>=sizeof(state.detail))n=sizeof(state.detail)-1;
+    memcpy(state.detail,why,n);state.detail[n]=0;
     if(endpoint) host.finish(host.context,endpoint,result);
 }
 static bool valid(uint64_t token) { return running && token && token==job; }
@@ -42,9 +44,10 @@ static int32_t read_frame(void *ctx,uint64_t token,void *bytes,uint32_t capacity
     return host.consume(host.context,endpoint,bytes,capacity,count);
 }
 static int32_t status(void *ctx,uint64_t token,risc_camera_status_v1 *out) {
-    (void)ctx; if(!out || out->struct_size<sizeof(*out))return T5_STREAM_INVALID;
+    (void)ctx; if(!out || out->struct_size<offsetof(risc_camera_status_v1,detail))return T5_STREAM_INVALID;
     if(!valid(token))return T5_STREAM_CLOSED;
-    *out=state;return T5_STREAM_OK;
+    size_t capacity=out->struct_size;if(capacity>sizeof(state))capacity=sizeof(state);
+    memcpy(out,&state,capacity);return T5_STREAM_OK;
 }
 static int32_t cancel(void *ctx,uint64_t token) {
     (void)ctx;if(!valid(token))return T5_STREAM_CLOSED;
@@ -63,7 +66,8 @@ static void poll(uint32_t budget_ms) {
     if(!budget_ms || !running || !job || state.state>=RISC_CAMERA_DONE)return;
     uint64_t now=cam_hw_now();
     if(now==UINT64_MAX || now<began || now-began>=timeout){
-        cam_hw_stop_capture();fail(T5_STREAM_TIMEOUT,"capture/output deadline");return;
+        const char *reason=state.state==RISC_CAMERA_CAPTURING?cam_hw_wait_reason():"stream output deadline";
+        cam_hw_stop_capture();fail(T5_STREAM_TIMEOUT,reason);return;
     }
     if(state.state==RISC_CAMERA_CAPTURING){
         uint32_t length=0;int32_t rc=cam_hw_poll(&frame,&length);
