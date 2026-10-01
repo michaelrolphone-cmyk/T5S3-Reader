@@ -80,6 +80,34 @@ Firmware version comes from `[riscrte] version` in `platformio.ini`; app version
 
 The workflow validates all candidates and the final index budget before publishing the first release. Run it from the branch whose code and package manifests should be built and released.
 
+The independent workflow downloads the same immutable run plan in each selected
+build job, invokes only that product's selective builder, and runs the offline
+`verify_release_plan.py` gate before uploading artifacts. Driver custody carries
+only exported ZIPs plus the generic catalog; record verification does not depend
+on hidden intermediate files. After restoring all selected artifacts, the publish
+job repeats the offline gate before invoking the existing index/version-checked
+publisher. A selected product must have a successful build job; skipped or failed
+selected builds cannot pass the publication gate. The existing `contents: write`
+token permission is unchanged, and these source changes authorize no workflow
+execution, release or live index mutation.
+
+The offline gate rejects invalid/duplicate plans, missing or altered restores,
+wrong whole-archive records, symlinked assets, app sidecar integrity/size failures,
+and mismatched firmware source versions or OTA aliases. Firmware/app historical
+formats remain explicit compatibility paths; this workflow repair does not claim
+that independent apps have completed U1 ordinary-bundle migration.
+
+### Remaining online routing
+
+The online ordinary-package consumer currently pins one aggregate catalog tag
+for all rows. Independently released ZIPs require a per-package immutable tag/URL
+route and version-safe merging with aggregate/legacy entries. Do not replace its
+endpoint with the release index before that complete route exists. The current
+aggregate `package-catalog.json` now receives the same cache revalidation as other
+mutable catalogs; selected versioned ZIP URLs remain unchanged. No live catalog
+or deployed firmware was switched during this repair.
+
+
 ## Temporary third-party app listing
 
 The App Store temporarily includes the RiscRTE ELF from the T5S3-GameBoy repository through the shared release index. A scheduled workflow checks the upstream stable release every five minutes, validates the published `gameboy.json` identity, firmware requirement, ELF size and SHA-256, then updates only the GameBoy app entry on the `release-index` branch. The app remains hosted by the GameBoy release, so GameBoy app updates do not require a RiscRTE firmware or app release.

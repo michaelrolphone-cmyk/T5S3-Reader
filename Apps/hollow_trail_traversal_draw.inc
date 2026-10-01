@@ -24,13 +24,9 @@ static void ht_draw_traversal(const ht_game *g) {
     int cx=g->camera/256,cy=g->camera_y/256;
     const ht_platform *land=ht_level_land(g->level);
     const ht_mechanics *m=ht_mech(g);
-    /* Native hybrid mode seeds these distant planes from the logical
-     * half-resolution surface before entering this foreground pass. */
-    if(!ht_native_background_prepared) {
-        if(g->level==0)ht_forest_backdrop(g);
-        if(g->level==1)ht_city_backdrop(g);
-        ht_authored_backdrop(g);
-    }
+    if(g->level==0)ht_forest_backdrop(g);
+    if(g->level==1)ht_city_backdrop(g);
+    ht_authored_backdrop(g);
     if(!ht_grotto_opaque(g)) {
         ht_scene_geography(g);
         ht_landscape_detail(g);
@@ -63,6 +59,10 @@ static void ht_draw_traversal(const ht_game *g) {
     }
     ht_dam_spray(g);
     ht_boat_grotto(g);
+    /* Background/grotto retain the original full 960x540 native path.
+     * From here forward, native A/B uses 960x270 detail: full horizontal
+     * resolution with one computed row duplicated to each physical row pair. */
+    if(ht_native_active)ht_native_foreground_half_y=true;
     /* Distinct natural silhouettes stay anchored to the new physical route. */
     for(int i=0;i<HT_PLATFORMS;++i) {
         if(g->level==1 || i==m->bridge || (i!=0 && i!=2 && i!=5 && i!=8) || (g->level==4 && i==0)) continue;

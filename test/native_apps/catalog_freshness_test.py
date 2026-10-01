@@ -104,11 +104,13 @@ int main() {
   const std::string index="https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/release-index/release-index.json";
   const std::string latest="https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
   const std::string release="https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/";
-  const std::vector<std::string> mutableUrls={index,latest,release+"latest/download/app-catalog.json",release+"latest/download/driver-catalog.json"};
+  const std::vector<std::string> mutableUrls={index,latest,release+"latest/download/app-catalog.json",release+"latest/download/driver-catalog.json",release+"latest/download/package-catalog.json"};
   const std::vector<std::string> immutableUrls={
       release+"download/app-model_viewer-v1.2.0/model_viewer.json",
       release+"download/app-model_viewer-v1.2.0/model_viewer.elf",
       release+"download/firmware-v1.3.22/firmware-t5s3-pro.bin",
+      release+"download/driver-test-v1.0.0/driver-test-1.0.0-xtensa-esp32s3.rte.zip",
+      release+"download/v1.0.0/package-catalog.json",
       "https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/5258a9f/release-index.json",
       "https://raw.githubusercontent.com.attacker.test/michaelrolphone-cmyk/T5S3-Reader/release-index/release-index.json",
       index+".backup", "https://example.test/catalog.json?signature=abc", ""};

@@ -1,13 +1,54 @@
 # U1 implementation ledger
 
-## Active continuation — October 1, 2026, 00:52 UTC
+## October 1: coherent independent release workflow and artifact custody
 
-Claim: repair the release workflow handoff against validated driver ZIP records.
-Prior head `299d6840` passed both exact-head workflows. Restore coherent planned
-independent jobs and artifact custody without any live release/index operation;
-audit online consumers without a partial live/default catalog switch. Other
-continuations, including the 01:15 run, must not write concurrently until this
-claim becomes a verified checkpoint.
+Checkpoint on sole PR #96 / `impl/u1-riscrte`, integrating master
+**`be82695e`** and preserving its latest Hollow Trail changes. Claim released
+at publication; next continuation checks PR head/checks and active writer first.
+No workflow dispatch, live release/index update, tag, master merge or flash.
+
+The inspected workflow contained a partial merge: independent job headings with
+obsolete aggregate build/publication bodies, undefined `steps.ver` references,
+missing plan handoffs and no coherent final independent publisher. Restored the
+current master independent-job structure and connected it to U1's validated ZIP
+record/build contracts instead of trying to mutate every consumer at once.
+
+- Every selected firmware/app/driver job downloads the run plan, builds only
+  that product and validates its exact artifacts before upload. Driver handoff
+  includes exported ZIPs/catalog only, not hidden intermediate manifests.
+- A new bounded offline `verify_release_plan.py` gate checks whole-plan types,
+  identities, duplicate/count limits, source versions, exact artifact hashes,
+  symlink/size bounds, app sidecar integrity and firmware OTA alias identity.
+  Restored artifacts are rechecked before invoking the existing publisher.
+- A selected product must have a successful build result. Merely skipped,
+  cancelled or failed selected jobs cannot open the publication gate. Removed
+  the stray direct tagging/aggregate publication steps; existing GitHub token
+  permissions and source-trigger scope are unchanged. No new credentials.
+- Added generic aggregate `package-catalog.json` to mutable-catalog freshness
+  handling. It now gets unique refresh requests/revalidation in both native and
+  firmware transports; versioned catalog/ZIP URLs remain untouched.
+
+Observed checks: **10 offline plan/handoff fault tests**, **16 record tests**,
+**19 index tests**, **16 bulk-release tests**, **8 GameBoy tests**, one mocked
+publication-retry test, workflow graph/undefined-step/output/failure-gate checks,
+YAML parse, syntax and whitespace checks all passed. Catalog freshness passed its
+actual C++ transport harness. The new offline handoff gate also verified all
+**22 real provider ZIPs** from prior green `3ff5691a` artifact `11132629703`.
+Tests performed no real publication. Exact new-head firmware/ELF CI is pending at
+publication and will be recorded on the PR when terminal.
+
+### Remaining before nested resources
+
+The next complete slice is online routing: `NativeOnlineOrdinaryCatalog` still
+pins one aggregate release tag for every row. Independent ZIP records need a
+per-package immutable release locator and version-safe coexistence with valid
+aggregate/legacy app/driver entries. No partial endpoint switch was made.
+Independent app distribution still uses its preserved historical ELF/JSON path;
+it needs its own coherent ordinary-bundle consumer/publication migration.
+Only after these connected contracts are addressed should nested resources be
+layered onto the package engine. Other U1 blockers remain as recorded below.
+
+**Implementation In Progress**
 
 ## October 1: bundled driver release records and historical index compatibility
 
