@@ -240,11 +240,15 @@ int32_t cam_hw_poll(const uint8_t **bytes,uint32_t *length) {
         volatile lldesc_t *node=&desc[harvested];
         if(node->owner)break;
         __asm__ volatile("memw" ::: "memory");
-        uint32_t size=node->length;
-        if(!cam_frame_append(buffer,FRAME_LIMIT,&available,harvested*NODE_BYTES,NODE_BYTES,size)){
+        /* Camera GDMA marks completion but writes descriptor.length=1 for a
+         * full 1024-byte EOF block on this silicon. The vendor receiver also
+         * copies the configured block size, never descriptor.length. The
+         * immutable owned buffer is still bounded and JPEG markers/decode
+         * gate any publication. */
+        if(available>FRAME_LIMIT-NODE_BYTES || available!=harvested*NODE_BYTES){
             poll_fault="BADLN";return T5_STREAM_IO;
         }
-        harvested++;
+        available+=NODE_BYTES;harvested++;
     }
     cam_jpeg_scan_step(&jpeg,buffer,available);
     if(jpeg.done){

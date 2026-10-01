@@ -14,20 +14,3 @@ static inline void cam_jpeg_scan_step(cam_jpeg_scan *s,const uint8_t *bytes,uint
         else if(s->found && p>s->soi+2 && bytes[p-1]==0xff && bytes[p]==0xd9){s->length=p+1-s->soi;s->done=true;return;}
     }
 }
-
-/* Compact a completed descriptor into the immutable prefix. Destination is
- * never above source. Copy low-to-high to support overlap without importing
- * memmove or touching DMA's later, still-owned descriptors. */
-static inline bool cam_frame_append(uint8_t *buffer,uint32_t capacity,
-    uint32_t *available,uint32_t descriptor_offset,uint32_t node_size,uint32_t length){
-    /* ESP32-S3 camera GDMA can return a completed descriptor with length=0.
-     * The vendor receiver copies a fixed EOF block and never consults this
-     * writeback field. Zero is an unknown block length here, not zero image
-     * bytes; JPEG SOI/EOI and local decoding still gate publication. */
-    if(!length)length=node_size;
-    if(!buffer || !available || length>node_size || descriptor_offset>capacity ||
-       node_size>capacity-descriptor_offset || *available>descriptor_offset ||
-       length>capacity-*available)return false;
-    for(uint32_t i=0;i<length;i++)buffer[*available+i]=buffer[descriptor_offset+i];
-    *available+=length;return true;
-}
