@@ -23,6 +23,7 @@
 #endif
 
 #include "private/elf_platform.h"
+#include "private/esp_elf_data_layout.h"
 #include "private/esp_privileged_os_cpu.h"
 
 #define stype(_s, _t)               ((_s)->type == (_t))
@@ -196,7 +197,12 @@ uintptr_t elf_find_sym(const char *sym_name)
 static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
 {
     uint32_t entry;
-    uint32_t size;
+    uint32_t size = 0;
+    uint32_t alignments[ELF_SECS] = {0};
+    uint32_t offsets[ELF_SECS] = {0};
+    bool seen[ELF_SECS] = {false};
+    const unsigned data_sections[] = {ELF_SEC_DATA, ELF_SEC_RODATA, ELF_SEC_DRLRO, ELF_SEC_BSS};
+    int failure = -EINVAL;
 
     const elf32_hdr_t *ehdr = (const elf32_hdr_t *)pbuf;
     const elf32_shdr_t *shdr = (const elf32_shdr_t *)(pbuf + ehdr->shoff);
@@ -217,6 +223,9 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
                  * or a following unaligned .rodata address aliases into .text. */
                 elf->sec[ELF_SEC_TEXT].size    = shdr[i].size;
                 elf->sec[ELF_SEC_TEXT].offset  = shdr[i].offset;
+                if (seen[ELF_SEC_TEXT]) return -EINVAL;
+                seen[ELF_SEC_TEXT] = true;
+                alignments[ELF_SEC_TEXT] = shdr[i].addralign;
 
                 ESP_LOGD(TAG, ".text   offset is 0x%lx size is 0x%x",
                          elf->sec[ELF_SEC_TEXT].offset,
@@ -228,6 +237,9 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
                 elf->sec[ELF_SEC_DATA].v_addr  = shdr[i].addr;
                 elf->sec[ELF_SEC_DATA].size    = shdr[i].size;
                 elf->sec[ELF_SEC_DATA].offset  = shdr[i].offset;
+                if (seen[ELF_SEC_DATA]) return -EINVAL;
+                seen[ELF_SEC_DATA] = true;
+                alignments[ELF_SEC_DATA] = shdr[i].addralign;
 
                 ESP_LOGD(TAG, ".data   offset is 0x%lx size is 0x%x",
                          elf->sec[ELF_SEC_DATA].offset,
@@ -239,6 +251,9 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
                 elf->sec[ELF_SEC_RODATA].v_addr  = shdr[i].addr;
                 elf->sec[ELF_SEC_RODATA].size    = shdr[i].size;
                 elf->sec[ELF_SEC_RODATA].offset  = shdr[i].offset;
+                if (seen[ELF_SEC_RODATA]) return -EINVAL;
+                seen[ELF_SEC_RODATA] = true;
+                alignments[ELF_SEC_RODATA] = shdr[i].addralign;
 
                 ESP_LOGD(TAG, ".rodata offset is 0x%lx size is 0x%x",
                          elf->sec[ELF_SEC_RODATA].offset,
@@ -250,6 +265,9 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
                 elf->sec[ELF_SEC_DRLRO].v_addr  = shdr[i].addr;
                 elf->sec[ELF_SEC_DRLRO].size    = shdr[i].size;
                 elf->sec[ELF_SEC_DRLRO].offset  = shdr[i].offset;
+                if (seen[ELF_SEC_DRLRO]) return -EINVAL;
+                seen[ELF_SEC_DRLRO] = true;
+                alignments[ELF_SEC_DRLRO] = shdr[i].addralign;
 
                 ESP_LOGD(TAG, ".data.rel.ro offset is 0x%lx size is 0x%x",
                          elf->sec[ELF_SEC_DRLRO].offset,
@@ -264,6 +282,9 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
             elf->sec[ELF_SEC_BSS].v_addr  = shdr[i].addr;
             elf->sec[ELF_SEC_BSS].size    = shdr[i].size;
             elf->sec[ELF_SEC_BSS].offset  = shdr[i].offset;
+            if (seen[ELF_SEC_BSS]) return -EINVAL;
+            seen[ELF_SEC_BSS] = true;
+            alignments[ELF_SEC_BSS] = shdr[i].addralign;
 
             ESP_LOGD(TAG, ".bss    offset is 0x%lx size is 0x%x",
                      elf->sec[ELF_SEC_BSS].offset,
@@ -277,24 +298,44 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
         return -EINVAL;
     }
 
+    for (unsigned i = 0; i < ELF_SECS; ++i) {
+        if (!elf->sec[i].size) continue;
+        if (elf->sec[i].size > UINT32_MAX - elf->sec[i].v_addr) return -EINVAL;
+        for (unsigned j = 0; j < i; ++j) {
+            if (elf->sec[j].size && elf->sec[i].v_addr < elf->sec[j].v_addr + elf->sec[j].size &&
+                elf->sec[j].v_addr < elf->sec[i].v_addr + elf->sec[i].size) return -EINVAL;
+        }
+    }
+    for (unsigned i = 0; i < sizeof(data_sections) / sizeof(data_sections[0]); ++i) {
+        const unsigned section = data_sections[i];
+        if (elf->sec[section].size &&
+            !esp_elf_data_reserve(elf->sec[section].size, alignments[section],
+                                  elf->sec[section].v_addr, &size)) return -EINVAL;
+    }
+    if (elf->sec[ELF_SEC_TEXT].size > ESP_ELF_MAX_IMAGE_BYTES ||
+        size > ESP_ELF_MAX_IMAGE_BYTES - elf->sec[ELF_SEC_TEXT].size) return -EINVAL;
     elf->ptext = esp_elf_malloc(elf->sec[ELF_SEC_TEXT].size, true);
     if (!elf->ptext) {
         ESP_LOGE(TAG, "Failed to malloc %"PRIu32" bytes for text section",
                  (uint32_t)elf->sec[ELF_SEC_TEXT].size);
         return -ENOMEM;
     }
-
-    size = elf->sec[ELF_SEC_DATA].size +
-           elf->sec[ELF_SEC_RODATA].size +
-           elf->sec[ELF_SEC_BSS].size +
-           elf->sec[ELF_SEC_DRLRO].size;
     if (size) {
         elf->pdata = esp_elf_malloc(size, false);
         if (!elf->pdata) {
             ESP_LOGE(TAG, "Failed to malloc %"PRIu32" bytes for data section", size);
-            esp_elf_free(elf->ptext);
-            elf->ptext = NULL;
-            return -ENOMEM;
+            failure = -ENOMEM;
+            goto layout_failed;
+        }
+        uint32_t cursor = 0;
+        for (unsigned i = 0; i < sizeof(data_sections) / sizeof(data_sections[0]); ++i) {
+            const unsigned section = data_sections[i];
+            if (!elf->sec[section].size) continue;
+            if (!esp_elf_data_place((uintptr_t)elf->pdata, cursor, size,
+                                    elf->sec[section].size, alignments[section],
+                                    elf->sec[section].v_addr, &offsets[section])) goto layout_failed;
+            elf->sec[section].addr = (uintptr_t)elf->pdata + offsets[section];
+            cursor = offsets[section] + elf->sec[section].size;
         }
     }
 
@@ -306,9 +347,8 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
 
 #ifdef CONFIG_ELF_LOADER_SET_MMU
     if (esp_elf_arch_init_mmu(elf)) {
-        esp_elf_free(elf->ptext);
-        esp_elf_free(elf->pdata);
-        return -EIO;
+        failure = -EIO;
+        goto layout_failed;
     }
 #endif
 
@@ -318,40 +358,12 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
      * Todo: Dump ".rodata" to rodata section by MMU/MPU.
      */
 
-    if (size) {
-        uint8_t *pdata = elf->pdata;
-
-        if (elf->sec[ELF_SEC_DATA].size) {
-            elf->sec[ELF_SEC_DATA].addr = (uint32_t)pdata;
-
-            memcpy(pdata, pbuf + elf->sec[ELF_SEC_DATA].offset,
-                   elf->sec[ELF_SEC_DATA].size);
-
-            pdata += elf->sec[ELF_SEC_DATA].size;
-        }
-
-        if (elf->sec[ELF_SEC_RODATA].size) {
-            elf->sec[ELF_SEC_RODATA].addr = (uint32_t)pdata;
-
-            memcpy(pdata, pbuf + elf->sec[ELF_SEC_RODATA].offset,
-                   elf->sec[ELF_SEC_RODATA].size);
-
-            pdata += elf->sec[ELF_SEC_RODATA].size;
-        }
-
-        if (elf->sec[ELF_SEC_DRLRO].size) {
-            elf->sec[ELF_SEC_DRLRO].addr = (uint32_t)pdata;
-
-            memcpy(pdata, pbuf + elf->sec[ELF_SEC_DRLRO].offset,
-                   elf->sec[ELF_SEC_DRLRO].size);
-
-            pdata += elf->sec[ELF_SEC_DRLRO].size;
-        }
-
-        if (elf->sec[ELF_SEC_BSS].size) {
-            elf->sec[ELF_SEC_BSS].addr = (uint32_t)pdata;
-            memset(pdata, 0, elf->sec[ELF_SEC_BSS].size);
-        }
+    for (unsigned i = 0; i < sizeof(data_sections) / sizeof(data_sections[0]); ++i) {
+        const unsigned section = data_sections[i];
+        if (!elf->sec[section].size) continue;
+        uint8_t *destination = elf->pdata + offsets[section];
+        if (section == ELF_SEC_BSS) memset(destination, 0, elf->sec[section].size);
+        else memcpy(destination, pbuf + elf->sec[section].offset, elf->sec[section].size);
     }
 
     /* Set ELF entry */
@@ -366,6 +378,15 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
 #endif
 
     return 0;
+
+layout_failed:
+    esp_elf_free(elf->pdata);
+    esp_elf_free(elf->ptext);
+    elf->pdata = NULL;
+    elf->ptext = NULL;
+    elf->entry = NULL;
+    for (unsigned i = 0; i < ELF_SECS; ++i) elf->sec[i].addr = 0;
+    return failure;
 }
 
 #else

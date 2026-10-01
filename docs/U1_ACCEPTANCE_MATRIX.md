@@ -39,22 +39,37 @@ code needs the named production/link evidence, rather than a replacement design.
 | Bounded shared-stream ZIP intake and complete resource trees | Incomplete | Online archive bytes use existing HTTP stream path and whole-archive SHA; common offline bootstrap checks ZIP topology/CRC/declared entries and installs per-ID generations | Declared nested resource transport/install/recovery is implemented with local fault coverage (U1_NESTED_RESOURCE_IMPLEMENTATION.md); target builds are verified at green014fb6f7 and subsequent5466d93c. Scoped application and provider/driver/service resources are connected through the same stream registry and generation pins, with real bridge/loaded-ELF coverage. The same target checkpoints include these bridges; resource-only package semantics remain open. Strict ordinary ZIP intake now supplies the catalog byte cap before writes and a total deadline, with focused production-helper/adapter coverage. Archive SHA inspection has byte/time yield and duration bounds. Target builds passed at014fb6f7/5466d93c; lower SD/network-call termination remains open |
 | Independently installable ZIP service, bootstrap without that service | Connected; target/package checks passed at 014fb6f7 | `Services/archive_zip` supplies `archive.zip@1` through the existing provider graph and shared stored-ZIP bootstrap primitives. Actual loaded-ELF host tests cover copied scoped input/output, listing/extraction, empty files, expiry and teardown; ordinary install remains independent | Preserve the verified Xtensa service ZIP/catalog and explicit 128-KiB/17-entry/stored subset. See U1_ARCHIVE_SERVICE_IMPLEMENTATION.md. Final release tooling must account for service kind; no live publication implied |
 | Stable CDC identity and safe legacy migration | Connected; target/package checks passed at5466d93c | `usb-cdc-acm` 0.1.8 replaces alias 0.1.7 through the existing ordinary engine, shared canonical ABI-1 adapter, two-root leases and fingerprint-bound retirement/recovery. Production proxy retired to test fixtures; builders/index update enforce canonical lineage | Both workflows36819882405/36819882484 passed matching-head firmware/ELF/ZIP/catalog; reconcile final version identities; preserve unknown data and partial-recovery evidence. See U1_CDC_IDENTITY_MIGRATION.md. No live release/index mutation or physical power-cut claim |
-| Generation-bound installed verification receipts / inventory snapshot | Incomplete | Metadata-only installed inspection exists (`inspectInstalledOrdinarySdDirectory`, `inspectInstalledAppPair`); install/recovery retain SHA. Observed RAM storage epochs and strict retained Package Manager inventory passed both workflows at74b0b45e; no durable receipt implemented | See U1_STORAGE_GENERATION_IMPLEMENTATION.md: verify the follow-on discarded-close uncertainty guard, then implement durable boot/recovery receipts and compatible broader inventory policy; measure bounded hot-path work, preserve full install/update/explicit verification |
+| Generation-bound installed verification receipts / inventory snapshot | Incomplete | Metadata-only installed inspection exists (`inspectInstalledOrdinarySdDirectory`, `inspectInstalledAppPair`); install/recovery retain SHA. Observed RAM storage epochs and strict retained Package Manager inventory passed both workflows at74b0b45e; no durable receipt implemented | See U1_STORAGE_GENERATION_IMPLEMENTATION.md: Discarded-close uncertainty is verified at8dafce33; implement durable boot/recovery receipts and compatible broader inventory policy; measure bounded hot-path work, preserve full install/update/explicit verification |
 | Physically remove package-signing-only subsystem | Complete at cf1ac054 | The signing checkpoint deletes 45 isolated implementation/tool/fixture/experiment files, removes unused preflight security floors and neutralizes internal signing names. [Exact audit](U1_SIGNING_PURGE_AUDIT.md) records all removals and retained helpers. Ordinary-package, springboard, provider graph, authorization and stream suites pass; the new absence guard passes | Both workflows passed with the files physically absent. Preserve all SHA/ABI/import/TLS/authorization/quiescence behavior and user media; no deployed data/settings are changed |
 | Final software integration and single owner qualification sheet | Incomplete | One U1 PR; current master integrated; repeated exact-head host/target checkpoints available | Close actual rows above, reconcile the final firmware version above actual master/published lineage, run final relevant builds/link/source checks, supply one coherent artifact inventory and hardware procedure only at the final handoff; no new interim owner test gate |
 
+## Remaining implementation versus evidence
+
+Missing implementation: durable receipt commit/boot/recovery trust and broader
+coherent inventory reuse; independent service/provider record/index/build and
+runtime delivery; resource-only packages (current artifact contract still
+requires ELF); actual lower-I/O termination where synchronous SD/network or
+indefinite storage-mutex waits can outlive cooperative deadlines.
+
+Missing final evidence: target call/reference reachability for generic serial
+and excluded legacy USB paths; linked console/PHY handoff and restoration
+failure paths. Their production code and host fixtures already exist. Do not
+rebuild them from historical filenames or infer physical qualification from
+unrelated board smoke tests. Final master/version reconciliation and one
+coherent artifact/qualification sheet remain integration work.
+
+A confirmed production ELF packing defect is now the immediate correction:
+see U1_ELF_SECTION_LAYOUT_CORRECTION.md. The real clock/archive mapped-data
+fixture passes locally; this focused correction needs exact-head target CI.
+
 ## Immediate closure order
 
-1. Verify the observed storage-generation and retained Package Manager inventory
-   slice. Preserve compatible raw-storage app/provider admission; do not claim
-   general capability snapshots are coherent receipts.
-2. Implement durable generation-bound verification receipts and boot/recovery
-   trust policy on the existing ordinary transaction, with complete mutation
-   invalidation and bounded hot-path inventory reuse.
-3. Close resource-only package semantics, service-kind release selection and
-   demonstrable lower-I/O termination gaps; reconcile final master/version
-   lineage and software integration. Preserve completed USB/stream/resource,
-   archive and CDC closures. U2–U4 remain outside this continuation.
+1. Verify the focused production ELF mapped-data alignment correction.
+2. Finish the preserved existing-path four-kind independent distribution slice.
+3. Close durable receipts/resource-only and demonstrated lower-I/O gaps; finish
+   source/target reachability evidence and final master/version integration.
+   Existing generic stream, resource, archive and CDC closures are retained.
+   U2–U4 remain outside this continuation.
 
 The work must converge on these acceptance outcomes, not the number of commits
 or checks. Code already present on master is retained rather than reimplemented.

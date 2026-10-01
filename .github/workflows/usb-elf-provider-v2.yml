@@ -233,6 +233,7 @@ jobs:
           bash test/run_native_app_test.sh dist/experimental/platform-clock-v1/driver.elf
           python scripts/build_archive_zip.py
           bash test/run_native_app_test.sh dist/experimental/archive-zip/driver.elf
+          python test/native_apps/elf_section_layout_test.py dist/experimental/platform-clock-v1/driver.elf dist/experimental/archive-zip/driver.elf
           python scripts/build_gt911_touch.py
           bash test/run_native_app_test.sh dist/experimental/gt911-touch/driver.elf
       - name: Validate board-private C ABI and exact import matcher against linked ELFs

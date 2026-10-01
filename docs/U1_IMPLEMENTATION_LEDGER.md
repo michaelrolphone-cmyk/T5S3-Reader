@@ -7,12 +7,30 @@ The coordinating owner verified that the prior implementation worker was
 interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
 28-file staged resource slice from **cf1ac054** was preserved and integrated.
 This explicit transfer remains active; it was not based on claim expiry.
-Current published/tested checkpoint is **5466d93ca6916342d304af10d681208db2566de6**,
-identical tree **4a9eeb30d81c8f44d0b00d24edee196a7483272a** to local implementation
-**e76e8cfb**. Both workflows **36819882405 / 36819882484** succeeded.
-Master **1e0188c1** is integrated. The next local slice adds observed storage
-generations and strict retained inventory; no competing writer is authorized.
+Current published/tested checkpoint is **8dafce338996a0687b4fa956698d94c0714ff142**,
+identical tree **2089fefa29fe21d12fa6b941c44a3e149b731e49** to local implementation
+**694b22fb**. Both workflows **36825261735 / 36825261980** succeeded.
+Master **1e0188c1** is integrated. The current local slice fixes confirmed production ELF data-section packing;
+independent four-kind distribution changes are preserved separately. No
+competing writer is authorized.
 No live release, index, tag, master update or flash. CI remains feedback.
+
+## October 1: production ELF data-section alignment
+
+Observed generations/retained Package Manager inventory, including discarded
+failed-close uncertainty, passed exact-head target CI at **8dafce33** above.
+A subsequent isolated-port investigation led to a separately confirmed
+production defect: unpadded data-section packing made eight clock and14 archive
+relocation destinations unaligned in the verified **014fb6f7** artifacts.
+Production configuration uses byte-accessible PSRAM; the separate no-PSRAM
+executable-copy path is deliberately unchanged.
+
+The focused correction uses checked absolute-pointer-aware data placement,
+exact virtual ranges, original allocation ownership, and clean failure paths.
+The real production loader/relocator fixture passes both exact artifacts across
+16 heap residues and fails on the preceding loader. Detailed hashes, bounds,
+negative cases and CI connection are in **U1_ELF_SECTION_LAYOUT_CORRECTION.md**.
+This correction's target checks are pending; no physical success is claimed.
 
 ## October 1: exact generation checkpoint and failed-close retention
 

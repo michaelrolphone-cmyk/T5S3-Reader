@@ -18,6 +18,7 @@ if [[ $# -gt 0 ]]; then
   timeout --kill-after=5s 60s "$binary" "$1"
   exit 0
 fi
+python3 "$repo_dir/test/native_apps/elf_section_layout_test.py"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/NativeApps/src/NativeAppLauncher.c" \
