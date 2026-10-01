@@ -5,7 +5,9 @@ wait, packing and caught coat thread. The grass memory uses an enclosed flattene
 room with depth-lagged wind. The existing slow profile departure remains.
 Chapter I gains a grounded mill/register setting and a one-shot in-engine arrival
 tableau that returns to the unchanged game state. This is a focused increment,
-not whole-novella completion. See [actual frames and the 44-set remaining map](HOLLOW_TRAIL_NOVELLA_ALIGNMENT.md).
+not whole-novella completion. A same-PR continuation adds a player-earned city
+arrival tableau, rooted skyline beyond the forest gate and the first service
+terrace's puddle, worn door arrows and roof details. See [actual frames and the 44-set remaining map](HOLLOW_TRAIL_NOVELLA_ALIGNMENT.md).
 
 # Hollow Trail 1.1.35 — slower cinematic, solid tableaus, continuous departure
 

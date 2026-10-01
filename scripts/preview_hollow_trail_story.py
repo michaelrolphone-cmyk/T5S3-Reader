@@ -22,7 +22,10 @@ shots = [('kitchen', 140, 'Cold cup, chipped sister cup, wall/rake/bucket'),
          ('latch', 1415, 'The coat thread catches before departure'),
          ('orchard', 1830, 'Continuous doorstep / wall / orchard route'),
          ('roots', 2150, 'Domestic boundaries become root-soft road'),
-         ('mill', 170, 'Playable mill hollow / one-shot arrival tableau')]
+         ('mill', 170, 'Playable mill hollow / one-shot arrival tableau'),
+         ('gate', 0, 'Forest gate opens onto rooted gullies and towers'),
+         ('city', 230, 'Player-earned city arrival: held roofscape reveal'),
+         ('terrace', 0, 'First ladder puddle / worn bolt / crossed arrows')]
 source = r'''
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,12 +37,23 @@ int main(int argc,char **argv) {
  if(!mem||!bits)return 3;
  ht_bind(mem);ht_bind_native(mem);memset(&ht,0,sizeof(ht));ht.level=0;ht_spawn(true);
  ht_camera_mode=HT_CAMERA_NATIVE;
- if(!strcmp(argv[1],"mill")) {
+ bool gameplay=false;
+ if(!strcmp(argv[1],"city")) {
+  ht.level=1;ht_select_level(1);ht_spawn(true);ht_cutscene_begin(HT_CUTSCENE_CITY);
+ } else if(!strcmp(argv[1],"gate")) {
+  ht.x=3130*256;ht.y=ht_surface_at(&ht,9,3130)*256;
+  ht.camera=2930*256;ht.camera_y=(ht.y/256-180)*256;
+  ht.puzzle.solved=true;ht.puzzle.opening=48;gameplay=true;
+ } else if(!strcmp(argv[1],"terrace")) {
+  ht.level=1;ht_select_level(1);ht_spawn(true);ht.x=380*256;ht.y=220*256;
+  ht.camera=180*256;ht.camera_y=40*256;gameplay=true;
+ } else if(!strcmp(argv[1],"mill")) {
   ht.x=1071*256;ht.y=ht_surface_at(&ht,2,1071)*256;ht.camera=871*256;
   ht.camera_y=(ht.y/256-180)*256;ht.traversal.forest_log_phase=32;
   ht_cutscene_begin(HT_CUTSCENE_MILL);
  } else ht_cutscene_begin(HT_CUTSCENE_INTRO);
- ht_cutscene.tick=(uint16_t)atoi(argv[2]);ht_cutscene_render(&ht_cutscene);
+ ht_cutscene.tick=(uint16_t)atoi(argv[2]);
+ if(gameplay)ht_render_scene();else ht_cutscene_render(&ht_cutscene);
  char path[1024];snprintf(path,sizeof(path),"%s.pgm",argv[3]);FILE *f=fopen(path,"wb");
  if(!f)return 4;fprintf(f,"P5\n960 540\n255\n");
  for(unsigned i=0;i<HT_NATIVE_PIXELS;++i)fputc(255-ht_scene[i],f);fclose(f);
@@ -53,7 +67,7 @@ with tempfile.TemporaryDirectory(prefix='hollow-preview-') as tmp:
     binary = pathlib.Path(tmp) / 'preview'
     src.write_text(source)
     subprocess.run(['cc', '-std=c11', '-O2', '-Wno-unused-function', '-I' + str(repo / 'lib/NativeApps/include'), str(src), '-o', str(binary)], check=True)
-    sheet = Image.new('RGB', (1440, 915), '#e9e6df')
+    sheet = Image.new('RGB', (1440, 1210), '#e9e6df')
     draw = ImageDraw.Draw(sheet)
     draw.text((16, 8), 'HOLLOW TRAIL 1.1.36 | Actual host-rendered scenes | Native raster reduced for contact sheet; no device qualification', fill='#252525')
     for i, (name, tick, label) in enumerate(shots):

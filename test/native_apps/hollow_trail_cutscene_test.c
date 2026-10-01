@@ -100,6 +100,25 @@ int main(void) {
     ht_cutscene.tick=339;assert(ht_cutscene_step(&ht_cutscene));
     ht_cutscene_apply_handoff(&ht_cutscene);
     assert(!memcmp(&ht,&retained,sizeof(ht)));
+    /* City arrival is earned by the actual forest gate transition, not by
+     * a timer, a debug chapter choice, or crossing some arbitrary coordinate. */
+    ht_game gate=ht,city=ht;gate.level=0;gate.x=HT_GOAL*256;
+    city.level=1;gate.puzzle.solved=false;gate.puzzle.opening=48;
+    assert(!ht_cutscene_city_arrival(&gate,&city));
+    gate.puzzle.solved=true;assert(ht_cutscene_city_arrival(&gate,&city));
+    city.level=2;assert(!ht_cutscene_city_arrival(&gate,&city));
+    ht.level=1;ht_select_level(1);ht_spawn(true);retained=ht;
+    ht_cutscene_begin(HT_CUTSCENE_CITY);
+    city.level=1;assert(!ht_cutscene_city_arrival(&gate,&city));
+    for(unsigned mode=0;mode<2;++mode) {
+        ht_camera_mode=mode?HT_CAMERA_NATIVE:HT_CAMERA_BASELINE;
+        for(unsigned tick=0;tick<430;tick+=37) {
+            ht_cutscene.tick=(uint16_t)tick;ht_cutscene_render(&ht_cutscene);
+            assert(!memcmp(&ht,&retained,sizeof(ht)));
+        }
+    }
+    ht_cutscene.tick=429;assert(ht_cutscene_step(&ht_cutscene));
+    ht_cutscene_apply_handoff(&ht_cutscene);assert(!memcmp(&ht,&retained,sizeof(ht)));
     /* Grass wind is continuous through its wrap in every depth plane. */
     for(unsigned tick=0;tick<1024;++tick)
         assert(ht_abs(ht_cut_grass_wind(tick+1,11)-ht_cut_grass_wind(tick,11))<=1);
@@ -115,5 +134,5 @@ int main(void) {
         }
     }
     free(memory);
-    puts("Hollow Trail cutscene: domestic/memory/latch beats, both rasters, continuous wind, one-shot mill tableau, preserved gameplay and handoff PASS");
+    puts("Hollow Trail cutscene: domestic/memory/latch beats, both rasters, continuous wind, one-shot mill/city tableaus, earned gate transition, preserved gameplay and handoff PASS");
 }

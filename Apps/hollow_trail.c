@@ -141,7 +141,13 @@ static void ht_advance(uint32_t now) {
             held=previous=0;jump_down=pause_down=false;
             simulation_accumulator=0;++scene_revision;break;
         }
-        if(before.level!=ht.level) { simulation_accumulator=0; break; }
+        if(before.level!=ht.level) {
+            if(ht_cutscene_city_arrival(&before,&ht)) {
+                ht_cutscene_begin(HT_CUTSCENE_CITY);
+                held=previous=0;jump_down=pause_down=false;++scene_revision;
+            }
+            simulation_accumulator=0;break;
+        }
     }
 }
 static void ht_input_update(uint32_t wait) {

@@ -40,6 +40,21 @@ Pillow); individual grayscale and mono PNGs go to `dist/story-previews/`.
   per app session; neutral input is required afterward. Debug jumps do not
   manufacture an arrival. It leaves subsequent play in the player's hands
 
+## Same-PR continuation: forest gate and city threshold
+
+After the intro/mill checkpoint passed exact-head CI, this increment connects
+sets 7–8. Towers and living gullies are world anchored beyond the forest gate;
+they enter through clipping rather than popping in at an actor threshold. The
+first city terrace gains standing water around the ladder's bottom rung, a rubbed
+bolt/thumb patch and competing charcoal arrows, plus chimney cage/nest and a
+shallow reflecting tank on the first roof.
+
+A third in-engine tableau runs only after actual gameplay solves and exits the
+forest gate into the city. It holds/pulls back through the existing roofscape,
+then returns to the same spawned city state with a neutral-input gate. It does
+not solve the forest puzzle, automatically climb the ladder or substitute for
+city exploration. Later chapter jumps do not trigger it; it is once per session.
+
 ## Scene-by-scene remaining map
 
 “Partial” means there is relevant source/gameplay/art, not full novella parity.
@@ -55,8 +70,8 @@ traversal wholesale with autoplay.
 | 4 Marked forest | Partial: rooted terrain, monumental trunks, cloth evidence | Join older bark cut/date/socket to the cloth; local inspection framing |
 | 5 Fallen-tree hollow | Existing resisted push and gravity fall retained | Saw/root detail and bounded settling debris; tune effort only with route evidence |
 | 6 Mill hollow | Implemented exterior/desk placement and arrival tableau | Broken-shutter entry and a player-moved desk exposing the register's ink |
-| 7 Ravine/clearing/gate | Partial: loaded branch/rope, bell, gate | Clearing geometry and held layered-city reveal after the player opens gate |
-| 8 Service terrace | Existing roof routes/ladders and city depth | Puddle-set first rung, rubbed bolt/arrows and disappearance of forest road |
+| 7 Ravine/clearing/gate | Existing branch/rope/bell/gate; new layered skyline and earned city tableau | Extend clearing terrain/large vista and refine gate spatial continuity |
+| 8 Service terrace | New ladder puddle, rubbed bolt/arrows, cage/nest/tank and held city arrival | Extend abandoned terrace materials and continuous onward roof route |
 | 9 Schoolroom | Partial: city evidence exists | Actual child desks/map room with visible matching route landmarks |
 | 10 Rain tank/crossings | Existing roofs and rain | Tank refuge, meaningful opposite-window sightline, brief submerged street glimpse |
 | 11 Signal room/relay | Existing relay/log puzzle and narrative | Empty chair/automated wheel staging; reveal rather than assume mechanism |
@@ -96,7 +111,7 @@ traversal wholesale with autoplay.
 
 ## Next coherent increments
 
-1. Finish Chapter I's mill interaction and clearing/city transition without
+1. Finish Chapter I's mill interaction and clearing terrain without
    replacing tree/rope gameplay; use the new timeline where stillness aids story
 2. Build the schoolroom → rain tank → empty signal-room sequence as connected
    city spaces, preserving existing traversal and player-operated relay
@@ -109,8 +124,8 @@ Version: Hollow Trail 1.1.35 → 1.1.36, minimum firmware unchanged at 1.3.37.
 Published release-index was read before this bump and confirms 1.1.35.
 Host previews were inspected and corrected: initial latch arm targeted the wrong
 projected coordinates; final version targets the actual latch using the shared
-articulated pose. Only the forest/mill middle-view golden changes; the other
-29 complete renderer references, including all boat/dam references, stay exact.
+articulated pose. The forest/mill middle-view and first-city-view goldens change; the other
+28 complete renderer references, including all boat/dam references, stay exact.
 
 Local targeted timeline, input, full-route and Xtensa app results plus aggregate
 and CI status are recorded in the PR. No hardware appearance/FPS claim; no merge,

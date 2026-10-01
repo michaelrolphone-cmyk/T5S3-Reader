@@ -170,5 +170,19 @@ int main(void) {
     ht_advance(now+=32);
     assert(!ht_cutscene.active && ht_input_rearm && held==0 && previous==0);
     assert(!memcmp(&ht,&frozen,sizeof(ht)));
+    /* Real chapter transition launches the city track only after the gate
+     * is solved/open. Geometry loading may pause timing; it cannot erase the track. */
+    ht.level=0;ht_spawn(true);ht_geometry_level=0;ht_cutscene.active=false;
+    ht.x=(HT_GOAL-1)*256;ht.y=ht_surface_at(&ht,9,HT_GOAL-1)*256;
+    ht.puzzle.solved=true;ht.puzzle.opening=48;
+    ht_input_rearm=false;held=HT_RIGHT;simulation_started=false;
+    ht_advance(now);
+    for(int i=0;i<8 && !ht_cutscene.active;++i)ht_advance(now+=32);
+    assert(ht.level==1 && ht_cutscene.active && ht_cutscene.id==HT_CUTSCENE_CITY);
+    frozen=ht;uint16_t tick=ht_cutscene.tick;
+    ht_advance(now+=32);assert(ht_cutscene.tick==tick); /* geometry not ready */
+    ht_geometry_level=1;simulation_started=false;ht_advance(now);
+    for(int i=0;i<430;++i) {ht_advance(now+=32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+    assert(!ht_cutscene.active && ht_input_rearm && held==0 && previous==0);
     puts("Hollow Trail controls: receiver HID/XInput face labels, dedicated Start, A inspect, B jump, X back, arbitration and fault recovery PASS");
 }

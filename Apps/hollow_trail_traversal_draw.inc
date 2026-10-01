@@ -25,6 +25,7 @@ static void ht_draw_traversal(const ht_game *g) {
     const ht_platform *land=ht_level_land(g->level);
     const ht_mechanics *m=ht_mech(g);
     if(g->level==0)ht_forest_backdrop(g);
+    ht_forest_city_horizon(g);
     if(g->level==1)ht_city_backdrop(g);
     ht_authored_backdrop(g);
     if(!ht_grotto_opaque(g)) {
@@ -93,6 +94,7 @@ static void ht_draw_traversal(const ht_game *g) {
     }
     if(g->level==0)ht_forest_log_draw(g);
     ht_city_roof_detail(g);
+    ht_city_service_arrival(g);
     if(m->plate_kind) {
         int x=m->plate_x-cx,y=m->plate_y-cy;
         ht_rect(ht_scene,x-21,y-1,42,3,255);
