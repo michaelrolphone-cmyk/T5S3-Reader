@@ -1,5 +1,21 @@
 # U1 implementation ledger
 
+## October 1: current software handoff reconciliation
+
+PR #96 source checkpoint **1d93550f**, tree **38bbdc24**, integrates actual
+master fa517fea and is open/mergeable. Both exact-head workflows passed:
+PlatformIO/host **36915387635** (two boards, SD fault, loader/HTTP, four-kind
+package and version guard) and USB/ELF **36915387656** (linked packages and
+controller audit). The approved manual-reboot retained-fault policy closes the
+previously open selected SD/shared-SPI termination path; old loader/HTTP notes
+are checkpoint history, not a current missing implementation gate. The selected
+HTTP worker and loader have bounded production paths. No arbitrary SDK call
+preemption or physical stall behavior is claimed. The previously denied
+independent receipt review remains unperformed verification, not a known code
+defect. The compact current gate matrix and owner procedure are in
+U1_ACCEPTANCE_MATRIX.md and U1_OWNER_HANDOFF.md. No merge, release, flash or live
+catalog operation has occurred.
+
 ## October 1: master display/safety backmerge and version gate
 
 The prior native continuation ended at published PR #96 head **480bf345**;

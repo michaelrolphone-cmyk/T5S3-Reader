@@ -1,5 +1,11 @@
 # U1 HTTP worker termination
 
+**Current reconciliation:** the older paragraph below calling HalStorage/media
+termination open predates the owner-approved retained-fault SD/SPI policy. That
+policy passed exact-head host and target checks at 1d93550f. The selected
+HTTP worker bounds below and the source-pinned finite DNS/socket/TLS mechanisms
+remain; arbitrary synchronous SDK calls are not forcibly preempted.
+
 ## Confirmed source boundary
 
 `NativeStreamBridge.p1.inc::httpRequest` invokes the existing

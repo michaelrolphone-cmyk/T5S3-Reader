@@ -1,5 +1,11 @@
 # U1 loader I/O bounds
 
+**Current reconciliation:** the explicit remaining SD/SPI boundary below records
+this earlier loader checkpoint. The later owner-approved retained-fault policy
+in `U1_SD_SPI_REBOOT_POLICY.md` bounds the selected module-store port and parks
+the owner without unsafe unwind. Both exact-head workflows passed at 1d93550f.
+The loader still does not forcibly interrupt an arbitrary lower SDK call.
+
 The existing application loader now refuses descriptor-table contention after
 1000ms. Each VFS operation checks ownership before touching a slot; only a
 successful lock acquisition is released. A close timeout retains the live slot

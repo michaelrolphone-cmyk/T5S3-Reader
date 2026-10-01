@@ -80,7 +80,7 @@ wrappers are enabled on both current board profiles. The relevant framework sour
 - `libraries/SD/src/sd_diskio.cpp`:da967338589e71d18517d6137ecc8a573b438d13
 - `libraries/FS/src/vfs_api.cpp`:1dd8da94ac93cc6bf5e4f5bcc6854ab4fdef5481
 
-Firmware remains the cumulative unreleased1.3.50 candidate. LoRa remains its
+At the current integrated PR #96 checkpoint the cumulative unreleased firmware candidate is 1.3.52. LoRa remains its
 cumulative U1 ZIP1.0.1, above source/published1.0.0; the new refusal behavior is
 part of that same unreleased payload. The only observed LoRa release tag at
 13:34 UTC was app-lora-v1.0.0. Text Editor342 is owner-merged in master4530c8b2;
@@ -106,11 +106,11 @@ setup modified the shared PlatformIO framework package. That could contaminate
 later local builds using that package. PRE middleware now selects per-build
 copies instead. Host tests cover clean inputs, exact older-patch restoration,
 unrelated source passthrough and source/object paths confined to the build tree.
-No Mac SDK/configuration/toolchain was accessed by this cloud worker. The older
+The isolated Mac continuation used installed toolchains read-only and did not change global SDK/configuration/toolchain state. The older
 PR CI cache key is Linux-platformio-197500d0027cafa15431eaa41e9f15ab044ffabd0b588b4c661e37658fbf0d59;
 its existence is recorded in the EPD job's cache-save log. This correction cleans
 only the known patch when that package is restored; no cache entry deletion is
-claimed. The new target run must verify original shared sources after build.
+claimed. Both exact-head target jobs passed at 1d93550f; the shared-source custody and actual patch fixtures are part of run 36915387635.
 
 ## Development evidence and remaining physical gates
 
@@ -122,8 +122,7 @@ The pinned-source patch fixture executes the real transformed SPI wait and raw
 VFS close bodies; it verifies pre-lock reset ordering, all guarded waits/entries,
 idempotence and source-drift refusal. Binding guards cover module/task/board
 teardown. Existing native-app, stream, storage-generation and provider-graph
-aggregates passed locally. Target results remain pending until this exact
-published source completes both normal workflows.
+aggregates passed locally. Exact-head PlatformIO/host run 36915387635 and USB/ELF run 36915387656 passed on 1d93550f.
 
 No device stall, card removal, manual reset, shared-LoRa electrical state or
 physical restart/recovery result is claimed. Those belong to owner-directed

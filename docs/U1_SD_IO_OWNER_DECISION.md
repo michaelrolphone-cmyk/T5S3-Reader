@@ -16,7 +16,7 @@ sector retries share one enclosing operation deadline.
 
 Validated controller recovery remains a separate future choice requiring proof
 of stop, filesystem/cache reconciliation and shared-radio reinitialization.
-Full U3 controller extraction is outside this continuation. Target verification
-of the newly implemented policy is pending; physical results are not implied.
+Full U3 controller extraction is outside this continuation. The newly implemented policy passed exact-head host and target checks at
+1d93550f (runs 36915387635 / 36915387656); physical results are not implied.
 
 **Implementation In Progress**

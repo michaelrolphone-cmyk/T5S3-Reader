@@ -7,8 +7,9 @@ display provider ZIP 0.1.4 and firmware 1.3.52 above master's respective
 loose/source versions. The changed-package-source PR guard checks numeric
 version increases against the actual base, including all loose-to-ZIP apps;
 the existing index updater checks published same-version content conflicts.
-See the ledger for observed local checks. Exact-head target CI is pending;
-the earlier baseline and results below are historical, not current-head proof.
+Exact-head source checkpoint **1d93550f** passed PlatformIO/host run
+**36915387635** (both boards and host) and USB/ELF run **36915387656**.
+The detailed older checkpoints below remain historical evidence.
 
 Authority: `NEXT_HARDWARE_TEST_MILESTONE.md`,
 `FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md`,
@@ -16,7 +17,7 @@ Authority: `NEXT_HARDWARE_TEST_MILESTONE.md`,
 specifications. This is a source-backed implementation inventory, not a new
 milestone, a release request or a claim of owner hardware qualification.
 
-Baseline: sole PR #96, `impl/u1-riscrte`, current master **4530c8b2** integrated locally after green **1a5706e2**; merged Model Viewer and lab host checks passed.
+Earlier baseline: sole PR #96 had master **4530c8b2** integrated after green **1a5706e2**; this is superseded by the current-head evidence above.
 Full native-app/archive checks also passed at the preceding f79f7291 backmerge.
 Archive service checkpoint **014fb6f7** passed PlatformIO/host **36816333359**
 and USB/ELF **36816333240**, including actual service ZIP/import checks.
@@ -44,14 +45,14 @@ code needs the named production/link evidence, rather than a replacement design.
 | Stable I²C bus ELF and one BQ25896 charger/VBUS owner | Complete connected code; hardware pending | `RiscI2cBusV1.h`, restricted firmware bus ABI, I²C provider, BQ provider and `NativeBoardPowerPort`; prior checkpoint restored BoardT5S3 callers to installed owner and preserved BQ27220 gauge. Bounded retry/telemetry, grants and VBUS tests pass | Final current-head target/absence checks. Native I²C-controller takeover and unrelated fitted peripherals remain U3 |
 | Exclusive console/USB-host PHY handoff and rollback | Production cleanup faults and selected linked evidence verified at1a5706e2 | Controller `HostStartup.h`, `PhyRoute.h`, `RoleSwitch.h` retain capture/restore, drain and uncertain-cleanup state; prior target CI passed | Actual quiesce_host failure/retry fixture preserves route until DMA/host/PHY/VBUS are released and source-off observed; startup/role fixtures retained. Both exact-head workflows and compact controller references verified at1a5706e2; physical PHY success remains unclaimed |
 | Generic SPI/UART provider/import/lifetime foundation | Generic foundation present; no demonstrated extra U1 dependency | Generic provider graph, dependency ABI and byte/record lifecycle are reusable. The specific SPI/UART cutover spec requires concrete public contracts when needed for compatibility; no current U1 physical SPI/UART dependency was identified | Preserve generic graph/import restrictions. Do not invent unused SDK tables or bus ELFs as a U1 gate; concrete fitted-client contracts and controller migration remain U3 unless an actual dependency is found |
-| Four-kind common offline/online install/update/inventory/uninstall and rollback | Partly complete | Common ordinary stage/transaction/recovery/use-gate and PackageManager API; actual four-kind host tests; online driver ZIP source now joins aggregate four-kind rows through same installer | Independent app ZIP output/consumer wiring is connected with host coverage; all38 app ZIPs passed both target boards at cf1ac054 and subsequent green014fb6f7/5466d93c. Preserve legacy ELF/JSON input; verify final four-view recovery together |
+| Four-kind common offline/online install/update/inventory/uninstall and rollback | Software connected; physical pending | Common ordinary stage/transaction/recovery/use-gate and PackageManager API; actual four-kind host tests; online driver ZIP source now joins aggregate four-kind rows through same installer | Independent app ZIP output/consumer wiring is connected with host coverage; all38 app ZIPs passed both target boards at cf1ac054 and subsequent green014fb6f7/5466d93c. Preserve legacy ELF/JSON input. Exact-head host run 36915387635 passed ordinary four-kind lifecycle, recovery, Package Manager and Driver Manager tests; USB/ELF run 36915387656 assembled four-kind package outputs. Real media interruption and user interaction remain owner qualification |
 | Generic manifest-driven export/index with immutable per-package locators | All four kinds connected and target verified at bd9b09a7 | `build_release_record.py`, `update_release_index.py`, offline release-plan gate, `PackageIndependentCatalog.h`, `PackageOnlineCatalog.h`; current source record/URL round-trip, real 22-ZIP records and historical 40-app/21-driver index validated | Both target boards at **cf1ac054** built/validated all38 immutable app ZIPs in isolated artifacts; legacy loose input remains accepted. See U1_APP_BUNDLE_MIGRATION.md for exact published version lineage and identity rules. No live index/release operation |
-| Bounded shared-stream ZIP intake and complete resource trees | Incomplete | Online archive bytes use existing HTTP stream path and whole-archive SHA; common offline bootstrap checks ZIP topology/CRC/declared entries and installs per-ID generations | Earlier directory-intake and declared-tree fixtures passed at green014fb6f7/5466d93c, but actual SD ZIP staging remained flat-only through bd9b09a7. This slice connects that shared offline/online adapter to the same tree primitives; its actual production-stage regression fails on bd9b09a7 and passes locally after correction. Both target workflows36835619954 / 36835620195 passed the correction at c80bdee1 (U1_NESTED_RESOURCE_IMPLEMENTATION.md). Scoped application and provider/driver/service resources are connected through the same stream registry and generation pins, with real bridge/loaded-ELF coverage. The same target checkpoints include these bridges; Explicit schema3 non-executing service packs and authorized indexed app/provider consumers now pass local integration tests; both target workflows passed at c80bdee1 (U1_RESOURCE_ONLY_IMPLEMENTATION.md). Strict ordinary ZIP intake now supplies the catalog byte cap before writes and a total deadline, with focused production-helper/adapter coverage. Archive SHA inspection has byte/time yield and duration bounds. Target builds passed at014fb6f7/5466d93c; lower SD/network-call termination remains open |
+| Bounded shared-stream ZIP intake and complete resource trees | Software connected; physical pending | Online archive bytes use existing HTTP stream path and whole-archive SHA; common offline bootstrap checks ZIP topology/CRC/declared entries and installs per-ID generations | Earlier directory-intake and declared-tree fixtures passed at green014fb6f7/5466d93c, but actual SD ZIP staging remained flat-only through bd9b09a7. This slice connects that shared offline/online adapter to the same tree primitives; its actual production-stage regression fails on bd9b09a7 and passes locally after correction. Both target workflows36835619954 / 36835620195 passed the correction at c80bdee1 (U1_NESTED_RESOURCE_IMPLEMENTATION.md). Scoped application and provider/driver/service resources are connected through the same stream registry and generation pins, with real bridge/loaded-ELF coverage. The same target checkpoints include these bridges; Explicit schema3 non-executing service packs and authorized indexed app/provider consumers now pass local integration tests; both target workflows passed at c80bdee1 (U1_RESOURCE_ONLY_IMPLEMENTATION.md). Strict ordinary ZIP intake now supplies the catalog byte cap before writes and a total deadline, with focused production-helper/adapter coverage. Archive SHA inspection has byte/time yield and duration bounds. At exact-head 1d93550f, both board jobs and the host SD/SPI fault, dependency-backed HTTP body-budget and loader/SD VFS fixtures passed (run 36915387635). The approved SD/shared-SPI policy in `lib/hal/SdSpiFault.cpp` and pinned SDK port parks the owner, retains live resources and requires manual reboot on an unrecoverable stall. `src/network/HttpDownloader.cpp` bounds the selected worker; `lib/elf_loader/src/esp_elf.c` and `lib/NativeApps/src/SdVfs.cpp` bound loader work and descriptor waits. No arbitrary synchronous SDK-call preemption or physical stall recovery is claimed; neither is a separate approved software gate |
 | Independently installable ZIP service, bootstrap without that service | Connected; target/package checks passed at 014fb6f7 | `Services/archive_zip` supplies `archive.zip@1` through the existing provider graph and shared stored-ZIP bootstrap primitives. Actual loaded-ELF host tests cover copied scoped input/output, listing/extraction, empty files, expiry and teardown; ordinary install remains independent | Preserve the verified Xtensa service ZIP/catalog and explicit 128-KiB/17-entry/stored subset. See U1_ARCHIVE_SERVICE_IMPLEMENTATION.md. Independent service/provider delivery passed both workflows36829998475 / 36829998394 at bd9b09a7, including the actual built archive record/runtime locator. No live publication implied |
 | Stable CDC identity and safe legacy migration | Connected; target/package checks passed at5466d93c | `usb-cdc-acm` 0.1.8 replaces alias 0.1.7 through the existing ordinary engine, shared canonical ABI-1 adapter, two-root leases and fingerprint-bound retirement/recovery. Production proxy retired to test fixtures; builders/index update enforce canonical lineage | Both workflows36819882405/36819882484 passed matching-head firmware/ELF/ZIP/catalog; reconcile final version identities; preserve unknown data and partial-recovery evidence. See U1_CDC_IDENTITY_MIGRATION.md. No live release/index mutation or physical power-cut claim |
 | Generation-bound installed verification receipts / inventory snapshot | Connected; explicit-boundary and built-set host-work evidence verified at730d0773 | Metadata-only installed inspection exists (`inspectInstalledOrdinarySdDirectory`, `inspectInstalledAppPair`); install/recovery retain SHA. Observed RAM storage epochs and strict retained Package Manager inventory passed both workflows at8dafce33; staged receipts/provider snapshots passed both workflows atc33cb044 after the guard-preserving frame correction; canonical app admission passed both workflows atad7a0431 | See U1_STORAGE_GENERATION_IMPLEMENTATION.md: Discarded-close uncertainty is verified at8dafce33; compatible capability metadata reuse passed both workflows at029a58da. Receipt/provider admission is target-verified atc33cb044 (U1_VERIFICATION_RECEIPT_IMPLEMENTATION.md); canonical app admission is target-verified; graph-owned remap proof passed at a928d444; checksum-bearing loose legacy admission passed both workflows at3ba73f92; measure bounded hot-path work (U1_ELF_HOT_PATH_AUDIT.md), explicit full-check invalidation passed both workflows at730d0773; built-set host work reports are verified, preserve full install/update/verification |
 | Physically remove package-signing-only subsystem | Complete at cf1ac054 | The signing checkpoint deletes 45 isolated implementation/tool/fixture/experiment files, removes unused preflight security floors and neutralizes internal signing names. [Exact audit](U1_SIGNING_PURGE_AUDIT.md) records all removals and retained helpers. Ordinary-package, springboard, provider graph, authorization and stream suites pass; the new absence guard passes | Both workflows passed with the files physically absent. Preserve all SHA/ABI/import/TLS/authorization/quiescence behavior and user media; no deployed data/settings are changed |
-| Final software integration and single owner qualification sheet | Incomplete | One U1 PR; current master integrated; repeated exact-head host/target checkpoints available | Close actual rows above, reconcile the final firmware version above actual master/published lineage, run final relevant builds/link/source checks, supply one coherent artifact inventory and hardware procedure only at the final handoff; no new interim owner test gate |
+| Final software integration and single owner qualification sheet | Software candidate connected; owner qualification pending | One U1 PR; current master integrated; repeated exact-head host/target checkpoints available | Master fa517fea is an ancestor; firmware candidate 1.3.52 exceeds master 1.3.51. Both exact-head workflows passed at 1d93550f; see `U1_OWNER_HANDOFF.md` for source versions, CI artifact inventory and one-session physical procedure. No merge, release, flash or physical result is implied |
 
 ## Remaining implementation versus evidence
 
@@ -70,9 +71,9 @@ bounding VFS descriptor contention and chunked read work. The HTTP worker
 correction (U1_HTTP_WORKER_TERMINATION.md) passed both workflows at64d19d64,
 including the actual-dependency body-loop witness. The local single-read
 legacy sidecar correction passed actual-source faults and both target workflows
-at730d0773 (U1_LEGACY_SIDECAR_SNAPSHOT.md). The owner approved the SD/SPI retained-fault policy. Its connected port, task,
-file, LoRa and lifecycle implementation now passes local fault tests; exact-head
-target results are pending. See U1_SD_SPI_REBOOT_POLICY.md. No automatic reset
+at730d0773 (U1_LEGACY_SIDECAR_SNAPSHOT.md). The owner approved the SD/SPI retained-fault policy. Its connected port, task, file, LoRa and lifecycle implementation passed
+actual-source host fault fixtures and both exact-head target builds at 1d93550f.
+See U1_SD_SPI_REBOOT_POLICY.md. No automatic reset
 or controller-recovery policy is inferred.
 
 Resource-only software now supports the minimum explicit data-only service use
@@ -84,8 +85,8 @@ Selected source/target call and table evidence for generic serial, disabled
 legacy USB entrypoints and controller cleanup is verified at1a5706e2, with
 actual callback/cleanup host fixtures. Complete electrical and arbitrary dynamic
 runtime traces remain physical qualification evidence; old broader inventory
-wording is not a new implementation task. The current SD policy's target checks
-and final integrated artifact accounting remain to finish this code candidate.
+wording is not a new implementation task. The current SD policy passed exact-head host and target checks. The integrated
+artifact inventory and owner session procedure are in U1_OWNER_HANDOFF.md.
 
 The confirmed production ELF packing defect is corrected:
 see U1_ELF_SECTION_LAYOUT_CORRECTION.md. The real clock/archive mapped-data
@@ -93,31 +94,24 @@ fixture and both target workflows passed at28282e30. Independent four-kind
 distribution passed matching-head workflows36829998475 / 36829998394 at bd9b09a7;
 see U1_FOUR_KIND_INDEPENDENT_DISTRIBUTION.md.
 
-## Immediate closure order
+## Current gate classification
 
-1. Integrated candidate1a5706e2 is target-green in both workflows36861584009 /
-   36861584052; compiled checkoutdf009536, exact tree30bc8336 matches tested
-   local28d34d94. Masterd4df4609, Timecard1.0.3, Hollow1.1.42 and firmware1.3.50
-   are reconciled. Retained evidence was published; five current compact reports
-   were downloaded and hash/source checked. The approved SD fault slice below
-   supersedes that earlier budgeted stopping point.
-2. The SD/SPI owner decision is now approved and implemented locally. Complete
-   the same candidate's exact-head target checks and fix any source/build
-   regressions. Retained-fault semantics preserve the original task/TCB, mutex,
-   buffers/handles and mapped code; no reset/unlock/unmap escapes uncertainty.
-   Text Editor342 is integrated with ZIP0.2.3. See U1_SD_SPI_REBOOT_POLICY.md.
+| Classification | Result and proof |
+|---|---|
+| Completed software | Four-kind ZIP source/install/recovery, stable CDC migration, scoped streams/resources, source-version and loose-to-ZIP guard, installed verification/receipts, SD/shared-SPI retained-fault policy, bounded selected HTTP worker and loader, current-master integration. Exact-head PlatformIO/host run 36915387635 and USB/ELF run 36915387656 passed on 1d93550f. |
+| Incomplete software | No specific missing U1 production path or failing current-head software check identified in this reconciliation. A reproducible defect found during owner qualification reopens implementation on PR #96. The independent receipt-loader review was denied and is an unperformed verification, not an invented code-completion gate; it was not retried or replaced. |
+| Physical only | USB PHY/cable/CDC and power-rail behavior, real SD/shared-SPI stall and manual recovery, physical interruption/rollback, four-kind installation on owner media and non-USB witness operation. Arbitrary lower SDK call interruption and universal dynamic call-path proof are not claimed; the approved fail-closed contract preserves ownership instead of forcing cancellation. |
 
-3. Remaining evidence: physical PHY/cable and arbitrary indirect runtime paths,
-   final owner qualification (the isolated composite CAM witness now passes). The
-   blocked independent receipt review is still incomplete. Pinned DNS/socket/
-   TLS source has finite lower mechanisms, while arbitrary SDK interruption is
-   not certified. Recheck versions/master before a later final handoff; no
-   U2–U4, hardware port, release or deployment expansion.
+The previous loader/HTTP notes that say SD termination is still open describe
+checkpoints *before* the approved SD/SPI policy. That policy's source, host tests
+and both target builds are verified on the current candidate. DNS/socket/TLS
+source pins show finite mechanisms for the selected worker but do not prove a
+universal interruptible SDK. There is no identified ordinary U1 operation whose
+required bound still depends on a known indefinite SD/SPI wait.
 
 The work must converge on these acceptance outcomes, not the number of commits
 or checks. Code already present on master is retained rather than reimplemented.
-Hardware remains owner-controlled Release Qualification. The isolated CAM witness
-reported package installation followed by clock relocation failure of unknown
-cause; it does not qualify this checkpoint or prove a shared-source defect.
+Hardware remains owner-controlled Release Qualification. The separate draft camera PR #344 reports its own physical capture result; it
+does not qualify U1 or change U1 ownership of the shared firmware baseline.
 
-**Implementation In Progress**
+**Work Complete**
