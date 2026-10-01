@@ -87,6 +87,10 @@ for source in sorted((repo / 'Apps').rglob('*.c')):
         'entries': [entry(package_elf, True), entry(package_sidecar, False)],
         'requires': package_requirements(manifest),
     }
+    from package_resource_paths import validate_resource_imports
+    resource_imports = validate_resource_imports(manifest.get('resource_imports', []))
+    if resource_imports:
+        ordinary.update(schema=3, payload='executable', resource_imports=resource_imports)
     encoded = (json.dumps(ordinary, separators=(',', ':'), ensure_ascii=True) + '\n').encode('ascii')
     if len(encoded) > 4096:
         raise SystemExit(f'Ordinary app manifest exceeds device parser bound: {package_id}')

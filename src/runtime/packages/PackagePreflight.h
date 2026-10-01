@@ -117,8 +117,7 @@ PreflightResult preflightPackage(const PackageEnvelopeView& package,
     default: return PreflightResult::InvalidIdentity;
   }
   Identity canonical{};
-  if (!makeIdentity(package.identity.kind, package.identity.id,
-                    package.identity.version, package.identity.artifact, false, &canonical) ||
+  if (!canonicalIdentity(package.identity, &canonical) ||
       package.identity.legacyVersion) return PreflightResult::InvalidIdentity;
   if (!package.architecture || !runtime.architecture ||
       std::strcmp(package.architecture, runtime.architecture) != 0)
@@ -156,8 +155,9 @@ PreflightResult preflightPackage(const PackageEnvelopeView& package,
       return PreflightResult::ResourceBudgetExceeded;
     total += entry.sizeBytes;
   }
-  if (executableCount != 1) return PreflightResult::MissingExecutable;
-  if (package.requirementCount > kMaxPackageRequirements ||
+  if (executableCount != (resourceOnly(package.identity) ? 0u : 1u)) return PreflightResult::MissingExecutable;
+  if ((resourceOnly(package.identity) && package.requirementCount) ||
+      package.requirementCount > kMaxPackageRequirements ||
       (package.requirementCount && !package.requirements))
     return PreflightResult::InvalidRequirement;
   // Validate *all* declarations before consulting the capability registry.
@@ -214,8 +214,7 @@ inline InstallDecision decidePackageVersion(const Identity& candidate,
                                              bool allowDowngrade = false) {
   Identity canonical{};
   if (candidate.legacyVersion ||
-      !makeIdentity(candidate.kind, candidate.id, candidate.version,
-                    candidate.artifact, false, &canonical))
+      !canonicalIdentity(candidate, &canonical))
     return InstallDecision::InvalidCandidate;
   if (!installed) return InstallDecision::FreshInstall;
   if (!samePackage(candidate, *installed)) return InstallDecision::IdentityConflict;

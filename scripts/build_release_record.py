@@ -16,13 +16,15 @@ if __package__:
     from .generate_provider_package_inputs_v1 import canonical_manifest
     from .update_release_index import validate_bundle_manifest
     from .app_manifest import validate_manifest, package_requirements
-    from .package_resource_paths import safe_resource_path
+    from .package_resource_paths import safe_resource_path, validate_resource_imports
+    from .package_resource_source import resource_source, resource_manifest
 else:
     from pack_rte_zip import pack_directory, MAX_ENTRY_BYTES, MAX_TOTAL_BYTES, MAX_ARCHIVE_BYTES
     from generate_provider_package_inputs_v1 import canonical_manifest
     from update_release_index import validate_bundle_manifest
     from app_manifest import validate_manifest, package_requirements
-    from package_resource_paths import safe_resource_path
+    from package_resource_paths import safe_resource_path, validate_resource_imports
+    from package_resource_source import resource_source, resource_manifest
 
 REPOSITORY = "michaelrolphone-cmyk/T5S3-Reader"
 VERSION_RE = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
@@ -92,6 +94,7 @@ def package_bundle(kind: str, identity: str, version: str, root: Path) -> tuple[
         raise ValueError('unsafe canonical package identity')
     if kind in ('driver', 'service', 'provider'):
         sources = []
+        source_paths = []
         source_root = {'driver': 'Drivers', 'service': 'Services', 'provider': 'Providers'}[kind]
         for index, path in enumerate(sorted((root / source_root).glob('*/manifest.json'))):
             if index >= 64:
@@ -99,16 +102,20 @@ def package_bundle(kind: str, identity: str, version: str, root: Path) -> tuple[
             source = bounded_json(root, path, 4096)
             if not isinstance(source, dict):
                 raise ValueError('driver source manifest must be an object')
-            if source.get('type') == kind and source.get('driver_abi') == 2 and source.get('id') == identity:
-                canonical_manifest(path)
+            if source.get('type') == kind and (source.get('driver_abi') == 2 or source.get('payload') == 'resources') and source.get('id') == identity:
+                if source.get('payload') == 'resources':
+                    resource_source(path)
+                else:
+                    canonical_manifest(path)
                 sources.append(source)
+                source_paths.append(path)
         if len(sources) != 1 or sources[0].get('version') != version:
             raise ValueError('source driver identity/version is missing, duplicated or stale')
         source = sources[0]
         architecture = source['architecture']
         directory = root / ('dist/release-packages' if kind == 'driver' else f'dist/release-{kind}-packages')
         requirements = [{'capability': item['capability'], 'min_api': item['api']}
-                        for item in source['requires']]
+                        for item in source.get('requires', [])]
     elif kind == 'application':
         source = app_source(identity, version, root)
         architecture = 'xtensa-esp32s3'
@@ -145,7 +152,12 @@ def package_bundle(kind: str, identity: str, version: str, root: Path) -> tuple[
                 raise ValueError('ordinary manifest contains unsupported JSON escapes or non-ASCII bytes')
             manifest = json.loads(raw, object_pairs_hook=unique_object)
             validate_bundle_manifest(manifest, identity, version, architecture, kind)
-            if manifest['artifact'] != source['file_name'] or manifest['requires'] != requirements:
+            resources = source.get('payload') == 'resources'
+            if manifest.get('resource_imports', []) != validate_resource_imports(source.get('resource_imports', [])):
+                raise ValueError('bundled resource imports differ from source requests')
+            if resources and manifest != resource_manifest(source_paths[0])[0]:
+                raise ValueError('resource package differs from exact declared source bytes')
+            if manifest['artifact'] != source.get('file_name') or manifest['requires'] != requirements:
                 raise ValueError('bundled package artifact/dependencies differ from source manifest')
             if names != {'.package.json'} | {entry['name'] for entry in manifest['entries']}:
                 raise ValueError('package ZIP has missing or undeclared files')
@@ -156,7 +168,7 @@ def package_bundle(kind: str, identity: str, version: str, root: Path) -> tuple[
                     payload = zipped.read(entry['name'])
                     if len(payload) != entry['size_bytes'] or hashlib.sha256(payload).hexdigest() != entry['sha256']:
                         raise ValueError('package ZIP entry size/SHA-256 mismatch')
-                    if kind != 'application' and entry['name'] == 'provider-abi.v1':
+                    if kind != 'application' and not resources and entry['name'] == 'provider-abi.v1':
                         capability, api = source['provides'][0]['capability'], source['provides'][0]['api']
                         expected = f'os-cpu-abi=1\nprovides={capability}\napi={api}\n'.encode('ascii')
                         if payload != expected:
@@ -192,6 +204,8 @@ def package_bundle(kind: str, identity: str, version: str, root: Path) -> tuple[
                     'artifact': manifest['artifact'], 'architecture': architecture,
                     'archive': name, 'size_bytes': len(archive),
                     'sha256': hashlib.sha256(archive).hexdigest()}
+    if manifest.get('payload') == 'resources':
+        expected_row['payload'] = 'resources'
     if len(matches) != 1 or matches[0] != expected_row:
         raise ValueError('generic catalog does not uniquely match the verified package ZIP')
     return manifest, archive_path, archive

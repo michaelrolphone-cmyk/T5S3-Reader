@@ -96,7 +96,7 @@ void nativeStreamsEnd() {
 bool nativeStreamsBindPackageResources(const RuntimePackages::Identity& identity) {
   using namespace RuntimePackages;
   if (!active || !invocation.running(owner) || resourceRoot[0] ||
-      identity.kind != Kind::Application || identity.legacyVersion ||
+      identity.kind != Kind::Application || identity.payload != Payload::Executable || identity.legacyVersion ||
       !safeId(identity.id) || !safeVersion(identity.version) || !safeArtifact(identity.artifact)) return false;
   const std::string root = std::string("/Apps/") + identity.id;
   if (!systemPackageUseGate().pinned(root.c_str())) return false;

@@ -17,6 +17,7 @@ import export_canonical_driver_release as exporter
 from build_release_record import build_record
 from update_release_index import update_index, serialize_index
 from generate_provider_package_inputs_v1 import canonical_manifest
+from package_resource_source import resource_source
 from package_catalog_roundtrip_test import CPP
 
 
@@ -29,8 +30,11 @@ def verify(root):
         for kind, folder in [('service', 'Services'), ('provider', 'Providers')]:
             sources = []
             for path in sorted((root / folder).glob('*/manifest.json')):
-                canonical_manifest(path)
                 manifest = json.loads(path.read_text())
+                if manifest.get('payload') == 'resources':
+                    resource_source(path)
+                else:
+                    canonical_manifest(path)
                 if manifest['type'] != kind:
                     raise ValueError('source module kind mismatch')
                 sources.append(manifest)

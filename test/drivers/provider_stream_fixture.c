@@ -76,7 +76,17 @@ static int32_t read_resource(char* out) {
     if (host->close(host->context, handle) != 0) return -5;
     return result == 0 && count == 3 ? 0 : -5;
 }
-static const provider_stream_fixture_api api = {streams, source_handle, block_quiesce, polls, automatic, records, sink, consumed, record_sink, records_consumed, read_resource};
+static int32_t read_import(uint32_t index, const char* name, char* out) {
+    if (!host || host->struct_size < sizeof(risc_stream_provider_resources_v1)) return -2;
+    const risc_stream_provider_resources_v1* resources = (const risc_stream_provider_resources_v1*)host;
+    uint32_t handle = 0, count = 0;
+    int32_t result = resources->open_import(host->context, index, name, &handle);
+    if (result != 0) return result;
+    result = resources->read_resource(host->context, handle, out, 3, &count);
+    if (host->close(host->context, handle) != 0) return -5;
+    return result == 0 && count == 3 ? 0 : -5;
+}
+static const provider_stream_fixture_api api = {streams, source_handle, block_quiesce, polls, automatic, records, sink, consumed, record_sink, records_consumed, read_resource, read_import};
 static const risc_driver_poll_v2 driver = {
     {{RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_poll_v2),
       "fixture-streams", "fixture.streams", 1, &api, start, stop, quiesce}, 0, bind_streams},

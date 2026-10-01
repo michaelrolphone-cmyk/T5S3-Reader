@@ -11,6 +11,7 @@ namespace RuntimePackages {
 // and ID identify a package; its version identifies a candidate update. None
 // of these fields confer trust or authorize the ELF to execute.
 enum class Kind : uint8_t { Application, Driver, Service, Provider };
+enum class Payload : uint8_t { Executable, Resources };
 
 struct Identity {
   Kind kind = Kind::Application;
@@ -18,6 +19,7 @@ struct Identity {
   char version[32]{};
   char artifact[128]{};
   bool legacyVersion = false;
+  Payload payload = Payload::Executable;
 };
 
 inline bool safeId(const char* id) {
@@ -101,6 +103,27 @@ inline bool makeIdentity(Kind kind, const char* declaredId, const char* version,
   std::strcpy(out->artifact, artifact);
   out->legacyVersion = legacy;
   return true;
+}
+
+// Resource-only services are explicit schema-3 data, never a fallback for a
+// missing executable. Other kinds retain their existing executable contract.
+inline bool makeResourceIdentity(Kind kind, const char* id, const char* version, Identity* out) {
+  if (out) *out = {};
+  if (!out || kind != Kind::Service || !safeId(id) || !safeVersion(version)) return false;
+  out->kind = kind;
+  out->payload = Payload::Resources;
+  std::strcpy(out->id, id);
+  std::strcpy(out->version, version);
+  return true;
+}
+inline bool resourceOnly(const Identity& identity) { return identity.payload == Payload::Resources; }
+inline bool canonicalIdentity(const Identity& identity, Identity* out) {
+  if (out) *out = {};
+  if (identity.legacyVersion) return false;
+  if (resourceOnly(identity))
+    return !identity.artifact[0] && makeResourceIdentity(identity.kind, identity.id, identity.version, out);
+  return identity.payload == Payload::Executable &&
+      makeIdentity(identity.kind, identity.id, identity.version, identity.artifact, false, out);
 }
 
 inline bool samePackage(const Identity& a, const Identity& b) {

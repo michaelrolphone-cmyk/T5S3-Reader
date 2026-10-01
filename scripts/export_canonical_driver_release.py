@@ -29,7 +29,7 @@ MAX_VERSION_COMPONENT = 0xffffffff
 
 
 def runtime_identity(kind: object, identity: object, version: object,
-                     architecture: object, artifact: object) -> bool:
+                     architecture: object, artifact: object, payload: object = "executable") -> bool:
     """Mirror fixed-size Identity and catalog fields before emitting assets."""
     return (
         isinstance(kind, str) and kind in KINDS and
@@ -41,9 +41,10 @@ def runtime_identity(kind: object, identity: object, version: object,
             for component in version.split('.')) and
         isinstance(architecture, str) and 0 < len(architecture) < 32 and
         ARCH.fullmatch(architecture) is not None and
-        isinstance(artifact, str) and 4 < len(artifact) < 128 and
-        artifact[0] != '_' and ENTRY.fullmatch(artifact) is not None and
-        artifact.endswith('.elf') and '..' not in artifact
+        ((payload == 'resources' and kind == 'service' and artifact is None) or
+         (payload == 'executable' and isinstance(artifact, str) and 4 < len(artifact) < 128 and
+          artifact[0] != '_' and ENTRY.fullmatch(artifact) is not None and
+          artifact.endswith('.elf') and '..' not in artifact))
     )
 
 
@@ -84,8 +85,8 @@ def export(identities: set[str] | None = None, output: Path | None = None, kind_
         kind, identity, version, architecture, artifact = (
             manifest.get('kind'), manifest.get('id'), manifest.get('version'),
             manifest.get('architecture'), manifest.get('artifact'))
-        if (type(manifest.get('schema')) is not int or manifest['schema'] not in (1, 2) or
-                not runtime_identity(kind, identity, version, architecture, artifact) or
+        if (type(manifest.get('schema')) is not int or manifest['schema'] not in (1, 2, 3) or
+                not runtime_identity(kind, identity, version, architecture, artifact, manifest.get("payload", "executable")) or
                 directory.name != identity):
             raise ValueError(f'invalid package identity or schema: {directory}')
         if kind_filter is not None and kind != kind_filter:

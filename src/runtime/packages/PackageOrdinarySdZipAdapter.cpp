@@ -1,6 +1,7 @@
 #include "PackageCdcSdMigration.h"
 #include "PackageOrdinarySdZipAdapter.h"
 #include "PackageOrdinarySdAdapter.h"
+#include "PackageOrdinarySdTree.h"
 #include "PackageRteZipInstall.h"
 
 #include <HalStorage.h>
@@ -87,59 +88,15 @@ class Hash {
   mbedtls_sha256_context ctx_{};
 };
 
-// Reject unexpected files before deleting anything, including from an
-// interrupted cleanup. A missing manifest is tolerated only for an OWNED
-// partial stage or a directory from which all declared entries are gone.
+// Reuse the same declared-tree inventory and manifest-last cleanup as ordinary
+// directory intake. ZIP transport must not silently restore flat-only staging.
 bool inventory(const char* root, const OrdinaryPackagePlan& plan, bool complete) {
-  if (!root || plan.entryCount > kMaxPackageEntries) return false;
-  HalFile dir = Storage.open(root, O_RDONLY);
-  if (!dir.isOpen() || !dir.isDirectory()) {
-    if (dir.isOpen()) (void)dir.close();
-    return false;
-  }
-  bool seen[kMaxPackageEntries]{}, manifest = false, valid = true;
-  size_t count = 0;
-  while (valid) {
-    HalFile entry = dir.openNextFile();
-    if (!entry.isOpen()) break;
-    char name[128]{};
-    const size_t length = entry.getName(name, sizeof(name));
-    if (!length || length >= sizeof(name) || entry.isDirectory()) valid = false;
-    else if (!std::strcmp(name, kOrdinaryManifestName)) {
-      if (manifest) valid = false;
-      manifest = true;
-    } else {
-      bool found = false;
-      for (size_t i = 0; i < plan.entryCount; ++i) {
-        if (std::strcmp(name, plan.entries[i].name)) continue;
-        if (seen[i]) valid = false;
-        seen[i] = found = true;
-        break;
-      }
-      if (!found) valid = false;
-    }
-    (void)entry.close();
-    if (++count > plan.entryCount + 1) valid = false;
-  }
-  const bool closed = dir.close();
-  if (!closed || !valid) return false;
-  if (!complete) return true;
-  if (!manifest || count != plan.entryCount + 1) return false;
-  for (size_t i = 0; i < plan.entryCount; ++i) if (!seen[i]) return false;
-  return true;
+  OrdinarySdTreeOps ops(root);
+  return ordinaryTreeInventory(plan, ops, complete);
 }
-
 bool removeKnown(const char* root, const OrdinaryPackagePlan& plan) {
-  if (!inventory(root, plan, false)) return false;
-  for (size_t i = 0; i < plan.entryCount; ++i) {
-    const std::string filename = std::string(root) + "/" + plan.entries[i].name;
-    if (Storage.exists(filename.c_str()) && !Storage.remove(filename.c_str()))
-      return false;
-  }
-  const std::string manifest = std::string(root) + "/" + kOrdinaryManifestName;
-  if (Storage.exists(manifest.c_str()) && !Storage.remove(manifest.c_str()))
-    return false;
-  return Storage.rmdir(root);
+  OrdinarySdTreeOps ops(root);
+  return purgeOrdinaryTree(plan, ops, true);
 }
 
 class Stage {
@@ -160,6 +117,8 @@ class Stage {
   }
   bool beginEntry(const char* name, uint64_t) {
     if (!owned_ || writer_.isOpen() || !name) return false;
+    OrdinarySdTreeOps directories(root_.c_str());
+    if (!directories.createParents(name)) return false;
     writer_ = Storage.open((root_ + "/" + name).c_str(), O_WRONLY | O_CREAT | O_EXCL);
     return writer_.isOpen() && !writer_.isDirectory();
   }
@@ -231,7 +190,8 @@ OrdinaryInstallOutcome installOrdinaryFromSdZip(
     if (expected && (candidate.kind != expected->kind ||
                      std::strcmp(candidate.id, expected->id) ||
                      std::strcmp(candidate.version, expected->version) ||
-                     std::strcmp(candidate.artifact, expected->artifact))) return invalid;
+                     std::strcmp(candidate.artifact, expected->artifact) ||
+                     candidate.payload != expected->payload)) return invalid;
     kind = candidate.kind;
     id = candidate.id;
   }

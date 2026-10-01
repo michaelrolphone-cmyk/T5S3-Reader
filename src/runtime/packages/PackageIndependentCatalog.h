@@ -410,7 +410,7 @@ inline bool bundleManifest(const char* data, size_t length,
     abi = abi || !std::strcmp(entry.name, "provider-abi.v1");
     imports = imports || !std::strcmp(entry.name, "privileged-imports.v1");
   }
-  if (!app && (!abi || !imports)) return false;
+  if (!app && !resourceOnly(plan.identity) && (!abi || !imports)) return false;
   if (app) {
     char sidecar[80]{}, executable[80]{};
     std::snprintf(sidecar, sizeof(sidecar), "%s.json", row.id);

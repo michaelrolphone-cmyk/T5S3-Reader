@@ -53,8 +53,15 @@ def pack_directory(source: Path) -> bytes:
     if not 2 <= len(raw_manifest) <= MAX_MANIFEST_BYTES:
         raise ValueError('manifest exceeds device parser bound')
     manifest = json.loads(raw_manifest)
-    if type(manifest.get('schema')) is not int or manifest['schema'] not in (1, 2):
+    if type(manifest.get('schema')) is not int or manifest['schema'] not in (1, 2, 3):
         raise ValueError('ordinary schema 1 or 2 required')
+    if manifest['schema'] == 3:
+        if __package__:
+            from .update_release_index import validate_bundle_manifest
+        else:
+            from update_release_index import validate_bundle_manifest
+        validate_bundle_manifest(manifest, manifest.get('id'), manifest.get('version'),
+                                 manifest.get('architecture'), manifest.get('kind'))
     entries = manifest['entries']
     if not isinstance(entries, list) or not 1 <= len(entries) < MAX_ENTRIES:
         raise ValueError('declared inventory exceeds firmware ZIP entry limit')
@@ -131,7 +138,7 @@ def pack_directory(source: Path) -> bytes:
 
 def catalog_row(source: Path, archive_name: str, archive: bytes) -> dict:
     manifest = json.loads((source / '.package.json').read_text(encoding='utf-8'))
-    return {
+    row = {
         'kind': manifest['kind'],
         'id': manifest['id'],
         'version': manifest['version'],
@@ -141,6 +148,9 @@ def catalog_row(source: Path, archive_name: str, archive: bytes) -> dict:
         'size_bytes': len(archive),
         'sha256': hashlib.sha256(archive).hexdigest(),
     }
+    if manifest.get('payload') == 'resources':
+        row['payload'] = 'resources'
+    return row
 
 
 def main() -> int:

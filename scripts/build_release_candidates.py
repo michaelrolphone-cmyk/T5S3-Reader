@@ -64,6 +64,9 @@ def discover_module_builders(root: Path, kind: str) -> dict[str, list[tuple[str,
     for item in discover_module_sources(root):
         if item['metadata']['type'] != kind:
             continue
+        if item['resources_only']:
+            builders[item['id']] = []  # Common declarative packager, no invented build script.
+            continue
         source = item['source'].parent
         if not re.fullmatch(r'[a-z0-9_]+', source.name):
             raise ValueError(f'unsafe provider build source: {source}')

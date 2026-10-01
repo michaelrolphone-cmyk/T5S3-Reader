@@ -13,4 +13,5 @@ typedef struct {
     uint32_t (*record_sink)(void);
     uint32_t (*records_consumed)(void);
     int32_t (*read_resource)(char* out);
+    int32_t (*read_import)(uint32_t index, const char* name, char* out);
 } provider_stream_fixture_api;

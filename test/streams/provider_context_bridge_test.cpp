@@ -188,14 +188,21 @@ int main(int argc, char** argv) {
   {
     const char* root = "/Providers/fixture-streams";
     const std::string sha(64, '0');
-    const std::string json = std::string("{\"schema\":2,\"kind\":\"provider\",\"id\":\"fixture-streams\",\"version\":\"1.0.0\","
+    const std::string json = std::string("{\"schema\":3,\"payload\":\"executable\",\"kind\":\"provider\",\"id\":\"fixture-streams\",\"version\":\"1.0.0\","
         "\"artifact\":\"driver.elf\",\"architecture\":\"xtensa-esp32s3\",\"min_runtime_api\":1,\"entries\":["
         "{\"name\":\"driver.elf\",\"size_bytes\":52,\"sha256\":\"") + sha + "\",\"executable\":true},"
-        "{\"name\":\"assets/text.txt\",\"size_bytes\":3,\"sha256\":\"" + sha + "\",\"executable\":false}],\"requires\":[]}";
+        "{\"name\":\"assets/text.txt\",\"size_bytes\":3,\"sha256\":\"" + sha + "\",\"executable\":false}],\"requires\":[],\"resource_imports\":[{\"id\":\"reference-pack\",\"min_version\":\"1.0.0\"}]}";
     auto metadata = std::make_shared<TestFile>(); metadata->data.assign(json.begin(), json.end());
     files[std::string(root) + "/.package.json"] = metadata;
     auto payload = std::make_shared<TestFile>(); payload->data = {'a', 'b', 'c'};
     files[std::string(root) + "/assets/text.txt"] = payload;
+    const std::string pack = std::string("{\"schema\":3,\"payload\":\"resources\",\"kind\":\"service\",\"id\":\"reference-pack\",\"version\":\"1.0.0\","
+        "\"artifact\":null,\"architecture\":\"xtensa-esp32s3\",\"min_runtime_api\":1,\"entries\":["
+        "{\"name\":\"help.txt\",\"size_bytes\":3,\"sha256\":\"") + sha + "\",\"executable\":false}],\"requires\":[],\"resource_imports\":[]}";
+    auto packMetadata = std::make_shared<TestFile>(); packMetadata->data.assign(pack.begin(), pack.end());
+    files["/Services/reference-pack/.package.json"] = packMetadata;
+    auto packBytes = std::make_shared<TestFile>(); packBytes->data = {'x', 'y', 'z'};
+    files["/Services/reference-pack/help.txt"] = packBytes;
     auto& gate = RuntimePackages::systemPackageUseGate(); assert(gate.pin(root));
     SpecV2 scoped = spec;
     assert(RuntimePackages::makeIdentity(RuntimePackages::Kind::Provider, "fixture-streams", "1.0.0",
@@ -206,8 +213,15 @@ int main(int argc, char** argv) {
     const auto* bound = static_cast<const provider_stream_fixture_api*>(resources.interfaceFor(lease));
     char content[4]{}; assert(bound && bound->read_resource(content) == T5_STREAM_OK);
     assert(!std::strcmp(content, "abc"));
+    assert(bound->read_import(0, "help.txt", content) == T5_STREAM_OK);
+    assert(!std::strcmp(content, "xyz"));
+    assert(bound->read_import(1, "help.txt", content) == T5_STREAM_DENIED);
+    assert(bound->read_import(0, "other.txt", content) == T5_STREAM_DENIED);
+    assert(bound->read_import(0, "../help.txt", content) == T5_STREAM_INVALID);
+    assert(!gate.pinned("/Services/reference-pack"));
     bound->block_quiesce(true); assert(!resources.release(lease));
     assert(bound->read_resource(content) == T5_STREAM_DENIED);
+    assert(bound->read_import(0, "help.txt", content) == T5_STREAM_DENIED);
     bound->block_quiesce(false); assert(resources.release(lease));
     assert(resources.shutdown()); assert(gate.unpin(root)); assert(!gate.pinned(root));
   }

@@ -23,11 +23,15 @@ if __package__:
     from .generate_privileged_imports_v1 import extract_imports
     from .pack_rte_zip import catalog_row, pack_directory
     from .verify_provider_relocation_map import audit_loader_map
+    from .package_resource_source import resource_source, stage_resource_source
+    from .package_resource_paths import validate_resource_imports
 else:
     from generate_provider_package_inputs_v1 import canonical_manifest, prepare as provider_inputs
     from generate_privileged_imports_v1 import extract_imports
     from pack_rte_zip import catalog_row, pack_directory
     from verify_provider_relocation_map import audit_loader_map
+    from package_resource_source import resource_source, stage_resource_source
+    from package_resource_paths import validate_resource_imports
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'dist/experimental'
@@ -106,12 +110,16 @@ def source_candidates(root: Path | None = None, allow_empty: bool = False) -> li
         metadata = json.loads(path.read_text(encoding='utf-8'))
         if not isinstance(metadata, dict):
             raise ValueError(f'invalid provider manifest: {path}')
-        if metadata.get('type') not in ('driver', 'service', 'provider') or metadata.get('driver_abi') != 2:
+        resources = metadata.get('payload') == 'resources'
+        if resources:
+            metadata = resource_source(path)
+            metadata['requires'] = []
+        elif metadata.get('type') not in ('driver', 'service', 'provider') or metadata.get('driver_abi') != 2:
             continue
         # Enforce the bound before invoking any newly discovered build script.
         if len(candidates) >= MAX_PACKAGES:
             raise ValueError('provider count exceeds firmware package catalog bound')
-        capability, api = canonical_manifest(path)
+        capability, api = (None, 0) if resources else canonical_manifest(path)
         identity = metadata['id']
         version = metadata.get('version')
         if not isinstance(version, str) or not VERSION.fullmatch(version):
@@ -121,7 +129,7 @@ def source_candidates(root: Path | None = None, allow_empty: bool = False) -> li
         identities.add(identity)
         requirements = metadata['requires']
         candidates.append({'id': identity, 'source': path, 'metadata': metadata,
-                           'capability': capability, 'api': api, 'version': version,
+                           'capability': capability, 'api': api, 'version': version, 'resources_only': resources,
                            'requires': [required['capability'] for required in requirements]})
     if not candidates and not allow_empty:
         raise ValueError('no ABI-v2 provider source manifests found')
@@ -138,7 +146,8 @@ def dependency_order(candidates: list[dict]) -> list[dict]:
     offered = {}
     for candidate in candidates:
         name = candidate['capability']
-        offered[name] = max(offered.get(name, 0), candidate['api'])
+        if name:
+            offered[name] = max(offered.get(name, 0), candidate['api'])
     for candidate in candidates:
         missing = [f"{required['capability']}@{required['api']}"
                    for required in candidate['metadata']['requires']
@@ -158,7 +167,8 @@ def dependency_order(candidates: list[dict]) -> list[dict]:
         pending.remove(ready)
         ordered.append(ready)
         name = ready['capability']
-        available[name] = max(available.get(name, 0), ready['api'])
+        if name:
+            available[name] = max(available.get(name, 0), ready['api'])
     return ordered
 
 
@@ -176,7 +186,8 @@ def discovered(identities: set[str] | None = None) -> list[dict]:
     selected = [candidate for candidate in candidates
                 if identities is None or candidate['id'] in identities]
     for candidate in selected:
-        candidate['elf'] = linked_or_build(candidate['id'], candidate['source'].parent)
+        if not candidate['resources_only']:
+            candidate['elf'] = linked_or_build(candidate['id'], candidate['source'].parent)
     return selected
 
 
@@ -187,6 +198,15 @@ def build(identities: set[str] | None = None) -> list[dict]:
     for candidate in candidates:
         identity = candidate['id']
         metadata = candidate['metadata']
+        if candidate['resources_only']:
+            target = DESTINATION / identity
+            package = stage_resource_source(candidate['source'], target)
+            asset_name = f"service-{identity}-{candidate['version']}-{metadata['architecture']}.rte.zip"
+            archive = pack_directory(target)
+            (DESTINATION / asset_name).write_bytes(archive)
+            catalog.append(catalog_row(target, asset_name, archive))
+            print(f'Resource-only service: {identity}; no ELF, capability or activation')
+            continue
         elf = candidate['elf']
         mapping = audit_loader_map(elf)
         if (mapping['unmapped_relocations'] or mapping['unmapped_relative_values'] or
@@ -214,6 +234,9 @@ def build(identities: set[str] | None = None) -> list[dict]:
                    'version': candidate['version'], 'artifact': 'driver.elf',
                    'architecture': metadata['architecture'], 'min_runtime_api': 2,
                    'entries': entries, 'requires': dependencies}
+        resource_imports = validate_resource_imports(metadata.get('resource_imports', []))
+        if resource_imports:
+            package.update(schema=3, payload='executable', resource_imports=resource_imports)
         encoded = (json.dumps(package, separators=(',', ':'), ensure_ascii=True) + '\n').encode('ascii')
         if len(encoded) > 4096:
             raise ValueError(f'manifest exceeds device parser bound: {identity}')

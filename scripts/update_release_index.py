@@ -50,9 +50,9 @@ def version_tuple(value: str) -> tuple[int, int, int]:
 
 
 if __package__:
-    from .package_resource_paths import safe_resource_path, path_conflicts
+    from .package_resource_paths import safe_resource_path, path_conflicts, validate_resource_imports
 else:
-    from package_resource_paths import safe_resource_path, path_conflicts
+    from package_resource_paths import safe_resource_path, path_conflicts, validate_resource_imports
 
 
 def validate_bundle_manifest(manifest: Any, identity: str, version: str,
@@ -63,10 +63,19 @@ def validate_bundle_manifest(manifest: Any, identity: str, version: str,
     The builder must additionally verify raw manifest length, all payload
     hashes/ELF bytes and the actual ZIP; an index alone cannot prove those.
     """
-    if not isinstance(manifest, dict) or set(manifest) != BUNDLE_MANIFEST_KEYS:
-        raise ValueError("bundle manifest requires exactly the ordinary schema-1 fields")
-    if type(manifest["schema"]) is not int or manifest["schema"] not in (1, 2):
-        raise ValueError("bundle manifest requires ordinary schema 1 or 2")
+    if not isinstance(manifest, dict):
+        raise ValueError("bundle manifest must be an object")
+    schema = manifest.get('schema')
+    expected_fields = BUNDLE_MANIFEST_KEYS | ({'payload', 'resource_imports'} if schema == 3 else set())
+    if type(schema) is not int or schema not in (1, 2, 3) or set(manifest) != expected_fields:
+        raise ValueError("bundle manifest requires exact versioned ordinary fields")
+    resources = schema == 3 and manifest['payload'] == 'resources'
+    if schema == 3:
+        if manifest['payload'] not in ('resources', 'executable'):
+            raise ValueError('invalid package payload mode')
+        requests = validate_resource_imports(manifest['resource_imports'])
+        if resources and (kind != 'service' or requests or manifest['requires']):
+            raise ValueError('resource-only service cannot activate or import capabilities/resources')
     if (kind not in PACKAGE_KINDS.values() or manifest["kind"] != kind or manifest["id"] != identity or
             manifest["version"] != version or manifest["architecture"] != architecture):
         raise ValueError("bundle manifest kind, identity, version and architecture must match the record")
@@ -79,9 +88,9 @@ def validate_bundle_manifest(manifest: Any, identity: str, version: str,
     if not isinstance(architecture, str) or architecture not in BUNDLE_ARCHITECTURES:
         raise ValueError("bundle manifest architecture is unsupported")
     artifact = manifest["artifact"]
-    if (not isinstance(artifact, str) or not 4 < len(artifact) < 128 or
-            not BUNDLE_NAME_RE.fullmatch(artifact) or ".." in artifact or
-            not artifact.endswith(".elf")):
+    if (resources and artifact is not None) or (not resources and
+            (not isinstance(artifact, str) or not 4 < len(artifact) < 128 or
+             not BUNDLE_NAME_RE.fullmatch(artifact) or ".." in artifact or not artifact.endswith(".elf"))):
         raise ValueError("bundle manifest requires a safe executable artifact")
     if (type(manifest["min_runtime_api"]) is not int or
             not 0 < manifest["min_runtime_api"] <= UINT32_MAX):
@@ -115,7 +124,7 @@ def validate_bundle_manifest(manifest: Any, identity: str, version: str,
         inventory[name.casefold()] = item
         total += item["size_bytes"]
     required_entries = {"provider-abi.v1", "privileged-imports.v1"} if kind != "application" else {f"{identity}.json"}
-    if artifact not in inventory or not required_entries <= inventory.keys():
+    if not resources and (artifact not in inventory or not required_entries <= inventory.keys()):
         raise ValueError("bundle omits its executable or required runtime metadata")
     if kind == "application" and artifact != f"{identity}.elf":
         raise ValueError("application bundle must retain its canonical executable name")

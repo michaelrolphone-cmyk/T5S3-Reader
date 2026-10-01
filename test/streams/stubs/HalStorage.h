@@ -8,6 +8,8 @@
 #include <vector>
 #include "Arduino.h"
 #include "freertos/semphr.h"
+#include "../../../lib/hal/StorageGeneration.h"
+inline StorageGenerationTracker testStorageGeneration;
 enum class TestStorageOperation { Ready, Open, Metadata, Read, Write, Seek, Finish, Destroy, Remove };
 inline void (*testStorageHook)(TestStorageOperation) = nullptr;
 inline void testStorageIo(TestStorageOperation op) {
@@ -43,6 +45,8 @@ class HalFile {
 };
 class HalStorage {
  public:
+  StorageGenerationStamp generation() const { testStorageIo(TestStorageOperation::Metadata); return testStorageGeneration.stamp(storageReady); }
+  bool unchanged(const StorageGenerationStamp& stamp) const { return stamp.matches(generation()); }
   bool ready() { testStorageIo(TestStorageOperation::Ready); return storageReady; }
   HalFile open(const char* path, int flags) {
     testStorageIo(TestStorageOperation::Open);

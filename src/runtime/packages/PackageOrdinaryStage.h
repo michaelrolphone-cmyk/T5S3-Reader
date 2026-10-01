@@ -34,6 +34,11 @@ struct OrdinaryRequirement {
   char capability[64]{};
   uint32_t minApi = 0;
 };
+constexpr size_t kMaxResourceImports = 4;
+struct OrdinaryResourceImport {
+  char id[64]{};
+  char minVersion[32]{};
+};
 struct OrdinaryPackagePlan {
   uint32_t schemaVersion = 1;
   Identity identity{};
@@ -43,6 +48,8 @@ struct OrdinaryPackagePlan {
   size_t entryCount = 0;
   OrdinaryRequirement requirements[kMaxPackageRequirements]{};
   size_t requirementCount = 0;
+  OrdinaryResourceImport resourceImports[kMaxResourceImports]{};
+  size_t resourceImportCount = 0;
 };
 
 // CPU0's idle task must run even during repeated synchronous SD operations.
@@ -88,10 +95,19 @@ inline bool ordinaryDigestEquals(const uint8_t actual[32], const char expected[6
 template <typename Resolver>
 PreflightResult preflightOrdinaryPackage(const OrdinaryPackagePlan& plan,
     const PackageRuntimePolicy& limits, Resolver resolver) {
-  if ((plan.schemaVersion != 1 && plan.schemaVersion != 2) ||
+  if ((plan.schemaVersion != 1 && plan.schemaVersion != 2 && plan.schemaVersion != 3) ||
       plan.entryCount > kMaxPackageEntries ||
       plan.requirementCount > kMaxPackageRequirements ||
       !plan.architecture[0]) return PreflightResult::InvalidEntryList;
+  if ((resourceOnly(plan.identity) && (plan.schemaVersion != 3 || plan.resourceImportCount || plan.requirementCount)) ||
+      (plan.schemaVersion != 3 && plan.resourceImportCount) || plan.resourceImportCount > kMaxResourceImports)
+    return PreflightResult::InvalidIdentity;
+  for (size_t i = 0; i < plan.resourceImportCount; ++i) {
+    const auto& request = plan.resourceImports[i];
+    if (!safeId(request.id) || !safeVersion(request.minVersion)) return PreflightResult::InvalidRequirement;
+    for (size_t j = 0; j < i; ++j)
+      if (!std::strcmp(plan.resourceImports[j].id, request.id)) return PreflightResult::DuplicateRequirement;
+  }
   PackageEntry entries[kMaxPackageEntries]{};
   PackageRequirement needs[kMaxPackageRequirements]{};
   for (size_t i = 0; i < plan.entryCount; ++i) {

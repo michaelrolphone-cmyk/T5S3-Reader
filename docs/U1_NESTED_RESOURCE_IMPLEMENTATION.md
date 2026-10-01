@@ -1,5 +1,21 @@
 # U1 nested resource engine
 
+## October 1 correction: actual ZIP staging integration
+
+Earlier nested checks established directory intake, declared-tree helpers and
+producer/parser fixtures. They did **not** establish nested extraction through
+PackageOrdinarySdZipAdapter.cpp: that adapter retained a flat-only Stage and
+inventory through bd9b09a7. Both offline and online ZIP installs use it.
+The current resource-only slice connects that adapter to the already-verified
+OrdinarySdTreeOps parent creation, exact inventory and manifest-last cleanup.
+`package_sd_zip_stage_test.py` extracts and compiles the actual production Stage
+with the existing faultable SD fake. At bd9b09a7 it fails on nested entry open;
+with this correction it passes nested creation/readback/seal, failed parent
+creation, unknown-data preservation and directory-iterator failure.
+The earlier evidence below remains valid within its narrower scope. Matching
+target checks for this integration correction are pending.
+
+
 ## Existing engine, versioned format
 
 Ordinary schema 1 retains its flat-entry semantics. Schema 2 has the same

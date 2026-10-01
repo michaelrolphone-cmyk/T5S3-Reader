@@ -184,6 +184,8 @@ struct File {
   uint64_t length = 0, position = 0;
   char packagePin[96]{};
   bool closeUncertain = false;
+  bool checkGeneration = false;
+  StorageGenerationStamp generation{};
   ~File() {
     // Preserve the generation pin if closing the underlying handle is uncertain.
     if (file.isOpen() && !file.close()) closeUncertain = true;
@@ -193,10 +195,10 @@ struct File {
 };
 int32_t fileRead(void* ctx, void* data, uint32_t size, uint32_t* count) {
   auto& f = *static_cast<File*>(ctx);
-  if (!Storage.ready() || !f.file.isOpen()) return T5_STREAM_IO;
+  if (!Storage.ready() || !f.file.isOpen() || (f.checkGeneration && !Storage.unchanged(f.generation))) return T5_STREAM_IO;
   if (f.position == f.length) return T5_STREAM_EOF;
   auto n = f.file.read(data, static_cast<size_t>(std::min<uint64_t>(size, f.length - f.position)));
-  if (n <= 0) return T5_STREAM_IO;
+  if (n <= 0 || (f.checkGeneration && !Storage.unchanged(f.generation))) return T5_STREAM_IO;
   *count = n; f.position += n; return T5_STREAM_OK;
 }
 int32_t fileWrite(void* ctx, const void* data, uint32_t size, uint32_t* count) {
@@ -207,8 +209,9 @@ int32_t fileWrite(void* ctx, const void* data, uint32_t size, uint32_t* count) {
 }
 int32_t fileSeek(void* ctx, uint64_t offset) {
   auto& f = *static_cast<File*>(ctx);
+  if (f.checkGeneration && !Storage.unchanged(f.generation)) return T5_STREAM_IO;
   if (offset > f.length) return T5_STREAM_INVALID;
-  if (!f.file.seek64(offset)) return T5_STREAM_IO;
+  if (!f.file.seek64(offset) || (f.checkGeneration && !Storage.unchanged(f.generation))) return T5_STREAM_IO;
   f.position = offset; return T5_STREAM_OK;
 }
 int32_t fileFinish(void* ctx) {
@@ -276,6 +279,23 @@ int32_t openFile(const char* path, uint32_t mode, t5_stream_t* out) {
 // Called through an invocation-scoped API. The root/identity are copied only
 // by the trusted loader after canonical admission and package-use pinning.
 constexpr size_t kResourceManifestBytes = 4096;
+bool readResourcePlan(const char* root, const RuntimePackages::Identity* expected,
+                      RuntimePackages::OrdinaryPackagePlan& plan, bool& closeUncertain) {
+  std::unique_ptr<char[]> metadata(new (std::nothrow) char[kResourceManifestBytes]);
+  if (!metadata) return false;
+  HalFile manifest = Storage.open((std::string(root) + "/.package.json").c_str(), O_RDONLY);
+  if (!manifest.isOpen()) return false;
+  const bool regular = !manifest.isDirectory();
+  const uint64_t size = regular ? manifest.fileSize64() : 0;
+  const bool read = size && size <= kResourceManifestBytes &&
+      manifest.read(metadata.get(), static_cast<size_t>(size)) == static_cast<int>(size);
+  const bool closed = manifest.close();
+  if (!closed) closeUncertain = true;
+  if (!read || !closed || !RuntimePackages::parseOrdinaryManifest(metadata.get(), size, plan)) return false;
+  return !expected || (RuntimePackages::samePackage(*expected, plan.identity) &&
+      !std::strcmp(expected->version, plan.identity.version) &&
+      !std::strcmp(expected->artifact, plan.identity.artifact) && expected->payload == plan.identity.payload);
+}
 int32_t prepareResource(const char* root, const RuntimePackages::Identity& expected,
                         const char* relative, std::unique_ptr<File>& candidate) {
   if (!Storage.ready()) return T5_STREAM_IO;
@@ -284,22 +304,9 @@ int32_t prepareResource(const char* root, const RuntimePackages::Identity& expec
   auto* f = candidate.get();
   if (!RuntimePackages::systemPackageUseGate().pin(root)) return T5_STREAM_BUSY;
   std::strcpy(f->packagePin, root);
-  std::unique_ptr<char[]> metadata(new (std::nothrow) char[kResourceManifestBytes]);
-  std::unique_ptr<RuntimePackages::OrdinaryPackagePlan> plan(
-      new (std::nothrow) RuntimePackages::OrdinaryPackagePlan{});
-  if (!metadata || !plan) return T5_STREAM_LIMIT;
-  HalFile manifest = Storage.open((std::string(root) + "/.package.json").c_str(), O_RDONLY);
-  if (!manifest.isOpen()) return T5_STREAM_IO;
-  const bool regular = !manifest.isDirectory();
-  const uint64_t size = regular ? manifest.fileSize64() : 0;
-  const bool read = size && size <= kResourceManifestBytes &&
-      manifest.read(metadata.get(), static_cast<size_t>(size)) == static_cast<int>(size);
-  const bool closed = manifest.close();
-  if (!closed) f->closeUncertain = true;
-  if (!read || !closed || !RuntimePackages::parseOrdinaryManifest(metadata.get(), size, *plan) ||
-      !RuntimePackages::samePackage(expected, plan->identity) ||
-      std::strcmp(expected.version, plan->identity.version) ||
-      std::strcmp(expected.artifact, plan->identity.artifact)) return T5_STREAM_IO;
+  std::unique_ptr<RuntimePackages::OrdinaryPackagePlan> plan(new (std::nothrow) RuntimePackages::OrdinaryPackagePlan{});
+  if (!plan) return T5_STREAM_LIMIT;
+  if (!readResourcePlan(root, &expected, *plan, f->closeUncertain)) return T5_STREAM_IO;
   const RuntimePackages::OrdinaryEntry* declared = nullptr;
   for (size_t i = 0; i < plan->entryCount; ++i)
     if (!plan->entries[i].executable && !std::strcmp(plan->entries[i].name, relative))
@@ -309,6 +316,42 @@ int32_t prepareResource(const char* root, const RuntimePackages::Identity& expec
   if (!f->file.isOpen() || f->file.isDirectory()) return T5_STREAM_IO;
   f->length = f->file.fileSize64();
   if (f->length != declared->sizeBytes) return T5_STREAM_IO;
+  return T5_STREAM_OK;
+}
+// A declaration is a request, not an arbitrary root grant. Trusted manager
+// policy permits only this executing package's bounded import index, a current
+// non-executable service payload and its declared non-executable leaf.
+int32_t prepareResourceImport(const char* callerRoot, const RuntimePackages::Identity& caller,
+                              uint32_t index, const char* relative, std::unique_ptr<File>& candidate) {
+  using namespace RuntimePackages;
+  if (caller.payload != Payload::Executable || !systemPackageUseGate().pinned(callerRoot) ||
+      index >= kMaxResourceImports) return T5_STREAM_DENIED;
+  const auto generation = Storage.generation();
+  if (!generation.quiescent) return T5_STREAM_BUSY;
+  std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
+  if (!plan) return T5_STREAM_LIMIT;
+  File callerGuard;
+  if (!systemPackageUseGate().pin(callerRoot)) return T5_STREAM_BUSY;
+  std::strcpy(callerGuard.packagePin, callerRoot);
+  if (!readResourcePlan(callerRoot, &caller, *plan, callerGuard.closeUncertain)) return T5_STREAM_IO;
+  if (index >= plan->resourceImportCount) return T5_STREAM_DENIED;
+  const auto request = plan->resourceImports[index];
+  const std::string target = std::string("/Services/") + request.id;
+  // Guard the first metadata read as well as the eventual payload handle.
+  // A failed close retains this ownership even if admission cannot complete.
+  File targetGuard;
+  if (!systemPackageUseGate().pin(target.c_str())) return T5_STREAM_BUSY;
+  std::strcpy(targetGuard.packagePin, target.c_str());
+  if (!readResourcePlan(target.c_str(), nullptr, *plan, targetGuard.closeUncertain)) return T5_STREAM_IO;
+  const auto order = comparePackageVersions(plan->identity.version, request.minVersion);
+  if (!resourceOnly(plan->identity) || std::strcmp(plan->identity.id, request.id) ||
+      (order != VersionOrder::Equal && order != VersionOrder::Newer)) return T5_STREAM_DENIED;
+  const auto identity = plan->identity;
+  const int32_t result = prepareResource(target.c_str(), identity, relative, candidate);
+  if (result != T5_STREAM_OK) return result;
+  if (!Storage.unchanged(generation)) return T5_STREAM_IO;
+  candidate->checkGeneration = true;
+  candidate->generation = generation;
   return T5_STREAM_OK;
 }
 int32_t openResource(const char* name, t5_stream_t* out) {
@@ -341,8 +384,35 @@ int32_t openResource(const char* name, t5_stream_t* out) {
   if (result == T5_STREAM_OK) (void)candidate.release();
   return result;
 }
+int32_t openResourceImport(uint32_t index, const char* name, t5_stream_t* out) {
+  if (out) *out = 0;
+  if (!authorized()) return T5_STREAM_DENIED;
+  if (!out || !RuntimePackages::safePackageResourcePath(name)) return T5_STREAM_INVALID;
+  uint32_t openingOwner;
+  char root[96]{}, relative[128]{};
+  RuntimePackages::Identity expected{};
+  {
+    Lock lock;
+    if (!authorized() || !resourceRoot[0]) return T5_STREAM_DENIED;
+    openingOwner = owner; expected = resourceIdentity;
+    std::strcpy(root, resourceRoot); std::strcpy(relative, name);
+  }
+  std::unique_ptr<File> candidate;
+  const int32_t prepared = prepareResourceImport(root, expected, index, relative, candidate);
+  if (prepared != T5_STREAM_OK) return prepared;
+  RuntimeStreams::Provider provider{candidate.get(), fileRead, nullptr, fileSeek, fileFinish, fileClose};
+  int32_t result;
+  {
+    Lock lock;
+    result = authorized() && owner == openingOwner && !std::strcmp(root, resourceRoot)
+        ? registry.attach(openingOwner, T5_STREAM_BYTES, T5_STREAM_READ | T5_STREAM_SEEK, provider, out)
+        : T5_STREAM_DENIED;
+  }
+  if (result == T5_STREAM_OK) (void)candidate.release();
+  return result;
+}
 const t5_package_resource_api_v1 resourceApi = {
-  T5_PACKAGE_RESOURCE_API_VERSION, sizeof(t5_package_resource_api_v1), openResource
+  T5_PACKAGE_RESOURCE_API_VERSION, sizeof(t5_package_resource_api_v1), openResource, openResourceImport
 };
 
 struct SerialLink {

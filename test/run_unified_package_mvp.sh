@@ -16,6 +16,7 @@ flags=(-std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined
        -fno-omit-frame-pointer -pthread -I"$repo_dir/src")
 for test_case in package_identity package_preflight package_json_guard \
                  package_use_gate package_transaction package_recovery \
+                 package_resource_only package_resource_transaction \
                  package_ordinary_stage package_ordinary_tree package_ordinary_manifest package_ordinary_installer \
                  package_driver_transition driver_install_intake \
                  package_rte_zip package_rte_zip_integrity package_cdc_migration \
@@ -46,6 +47,8 @@ rmdir "$cdc_fixture" 2>/dev/null || true
 python3 "$repo_dir/test/resources/package_signing_absence_test.py"
 python3 "$repo_dir/test/resources/package_catalog_roundtrip_test.py"
 python3 "$repo_dir/test/resources/package_nested_zip_test.py"
+python3 "$repo_dir/test/resources/resource_only_delivery_test.py"
+python3 "$repo_dir/test/resources/package_sd_zip_stage_test.py"
 python3 "$repo_dir/test/resources/release_runtime_identity_test.py"
 python3 "$repo_dir/test/resources/package_driver_bridge_source_test.py"
 echo 'PASS: ordinary package MVP host tests (four kinds, shared mutation gate, runtime-compatible release identity, source-neutral integrity, early download refusal, ZIP CRC/topology, staging, versioned driver upgrades and recoverable publication).'

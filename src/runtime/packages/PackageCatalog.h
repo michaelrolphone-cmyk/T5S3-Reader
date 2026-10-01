@@ -124,7 +124,8 @@ inline bool parsePackageCatalog(const char* json, size_t length,
         if (!r.take('{')) { valid = false; break; }
         unsigned fields = 0;
         Kind kind{};
-        char id[64]{}, version[32]{}, artifact[128]{};
+        char id[64]{}, version[32]{}, artifact[128]{}, payload[16]{};
+        bool artifactNull = false;
         for (;;) {
           char field[24]{};
           if (!r.key(field, sizeof(field))) { valid = false; break; }
@@ -138,7 +139,9 @@ inline bool parsePackageCatalog(const char* json, size_t length,
             valid = !(fields & 4u) && r.text(version, sizeof(version));
             fields |= 4u;
           } else if (!std::strcmp(field, "artifact")) {
-            valid = !(fields & 8u) && r.text(artifact, sizeof(artifact));
+            if (fields & 8u) valid = false;
+            else if (r.word("null")) artifactNull = true;
+            else valid = r.text(artifact, sizeof(artifact));
             fields |= 8u;
           } else if (!std::strcmp(field, "architecture")) {
             valid = !(fields & 16u) &&
@@ -153,6 +156,9 @@ inline bool parsePackageCatalog(const char* json, size_t length,
           } else if (!std::strcmp(field, "sha256")) {
             valid = !(fields & 128u) && r.text(pkg.sha256, sizeof(pkg.sha256));
             fields |= 128u;
+          } else if (!std::strcmp(field, "payload")) {
+            valid = !(fields & 256u) && r.text(payload, sizeof(payload)) && !std::strcmp(payload, "resources");
+            fields |= 256u;
           } else {
             valid = false;
           }
@@ -161,8 +167,10 @@ inline bool parsePackageCatalog(const char* json, size_t length,
           if (!r.next('}', next)) { valid = false; break; }
           if (!next) break;
         }
-        if (!valid || fields != 255u ||
-            !makeIdentity(kind, id, version, artifact, false, &pkg.identity) ||
+        const bool resources = (fields & 256u) != 0;
+        const bool identityValid = resources ? artifactNull && makeResourceIdentity(kind, id, version, &pkg.identity) :
+            !artifactNull && makeIdentity(kind, id, version, artifact, false, &pkg.identity);
+        if (!valid || fields != (resources ? 511u : 255u) || !identityValid ||
             !CatalogDetail::archiveName(pkg.archive) ||
             !CatalogDetail::lowerSha256(pkg.sha256) ||
             pkg.sizeBytes > 4u * 1024u * 1024u + 65536u)

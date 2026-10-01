@@ -38,6 +38,13 @@ def canonical_manifest(path: Path) -> tuple[str, int]:
     if not isinstance(manifest, dict) or manifest.get('type') not in ('driver', 'service', 'provider') or (
         type(manifest.get('driver_abi')) is not int or manifest['driver_abi'] != 2):
         raise ValueError('expected one installed module with provider ABI v2')
+    if __package__:
+        from .package_resource_paths import validate_resource_imports
+    else:
+        from package_resource_paths import validate_resource_imports
+    if manifest.get('payload', 'executable') != 'executable':
+        raise ValueError('provider ABI requires executable payload')
+    validate_resource_imports(manifest.get('resource_imports', []))
     package_id = manifest.get('id')
     if manifest.get('type') == 'driver' and package_id == 'usb-cdc-acm-v2':
         raise ValueError('retired CDC alias is not a current package identity')

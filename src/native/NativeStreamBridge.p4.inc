@@ -155,6 +155,31 @@ int32_t providerOpenResource(uint64_t context, const char* name, uint32_t* out) 
   }
   return T5_STREAM_LIMIT;
 }
+int32_t providerOpenImport(uint64_t context, uint32_t index, const char* name, uint32_t* out) {
+  if (out) *out = 0;
+  if (!mutex) return T5_STREAM_DENIED;
+  if (!out || !RuntimePackages::safePackageResourcePath(name)) return T5_STREAM_INVALID;
+  char root[96]{}, relative[128]{};
+  RuntimePackages::Identity expected{};
+  {
+    Lock lock; auto* slot = providerContext(context);
+    if (!slot || !slot->resourceRoot[0]) return T5_STREAM_DENIED;
+    std::strcpy(root, slot->resourceRoot); std::strcpy(relative, name); expected = slot->resourceIdentity;
+  }
+  std::unique_ptr<File> candidate;
+  const auto prepared = prepareResourceImport(root, expected, index, relative, candidate);
+  if (prepared != T5_STREAM_OK) return prepared;
+  RuntimeStreams::Provider provider{candidate.get(), fileRead, nullptr, fileSeek, fileFinish, fileClose};
+  Lock lock; auto* slot = providerContext(context);
+  if (!slot || std::strcmp(root, slot->resourceRoot)) return T5_STREAM_DENIED;
+  for (auto& h : slot->resources) {
+    if (h) continue;
+    const auto result = registry.attach(slot->owner, T5_STREAM_BYTES, T5_STREAM_READ | T5_STREAM_SEEK, provider, out);
+    if (result == T5_STREAM_OK) { h = *out; (void)candidate.release(); }
+    return result;
+  }
+  return T5_STREAM_LIMIT;
+}
 int32_t providerReadResource(uint64_t context, uint32_t h, void* data,
                              uint32_t capacity, uint32_t* count) {
   if (count) *count = 0;
@@ -229,7 +254,7 @@ bool providerOpenResources(risc_stream_provider_resources_v1* out,
   *out = {};
   Identity canonical{};
   OrdinaryTransactionPaths paths{};
-  if (identity.kind == Kind::Application || identity.legacyVersion ||
+  if (identity.kind == Kind::Application || identity.payload != Payload::Executable || identity.legacyVersion ||
       !makeIdentity(identity.kind, identity.id, identity.version, identity.artifact, false, &canonical) ||
       !ordinaryTransactionPaths(identity.kind, identity.id, paths) ||
       !systemPackageUseGate().pinned(paths.target) || !providerOpenContext(&out->streams)) return false;
@@ -241,6 +266,7 @@ bool providerOpenResources(risc_stream_provider_resources_v1* out,
   out->open_resource = providerOpenResource;
   out->read_resource = providerReadResource;
   out->seek_resource = providerSeekResource;
+  out->open_import = providerOpenImport;
   return true;
 }
 bool providerGrant(uint64_t context, uint64_t lease, uint32_t consumer,

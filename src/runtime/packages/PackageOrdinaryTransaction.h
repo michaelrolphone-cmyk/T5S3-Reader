@@ -60,8 +60,7 @@ namespace OrdinaryTransactionDetail {
 // Ops implements exists(path), rename(src,dst); all mutations use HalStorage.
 inline bool validObserved(const Identity& observed, Kind kind, const char* id) {
   Identity canonical{};
-  return makeIdentity(observed.kind, observed.id, observed.version,
-                      observed.artifact, false, &canonical) &&
+  return canonicalIdentity(observed, &canonical) &&
          observed.kind == kind && std::strcmp(observed.id, id) == 0;
 }
 
@@ -147,8 +146,7 @@ OrdinaryTransactionResult publishLocked(Ops& ops,
     bool allowDowngrade = false) {
   OrdinaryTransactionPaths paths{};
   Identity canonical{};
-  if (!makeIdentity(candidate.kind, candidate.id, candidate.version,
-                    candidate.artifact, false, &canonical) ||
+  if (!canonicalIdentity(candidate, &canonical) ||
       candidate.legacyVersion ||
       !ordinaryTransactionPaths(candidate.kind, candidate.id, paths))
     return OrdinaryTransactionResult::InvalidIdentity;

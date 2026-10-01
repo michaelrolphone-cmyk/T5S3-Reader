@@ -121,7 +121,7 @@ bool snapshotCandidates(std::vector<Candidate>& candidates) {
       Identity installed{};
       if (!inspectInstalledOrdinarySdDirectory(path, kPolicy,
               [](const char*) -> uint32_t { return UINT32_MAX; }, installed) ||
-          std::strcmp(installed.id, id) ||
+          resourceOnly(installed) || std::strcmp(installed.id, id) ||
           (installed.kind != Kind::Driver && installed.kind != Kind::Provider &&
            installed.kind != Kind::Service)) continue;
       char profile[192]{};

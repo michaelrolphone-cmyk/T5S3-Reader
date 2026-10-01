@@ -7,14 +7,31 @@ The coordinating owner verified that the prior implementation worker was
 interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
 28-file staged resource slice from **cf1ac054** was preserved and integrated.
 This explicit transfer remains active; it was not based on claim expiry.
-Current published/tested checkpoint is **28282e306e662e11c184481ae7727a0fd6a61def**,
-identical tree **daab0a3b2b02dad3542eddb8b70d9504e125adc1** to local implementation
-**b45733b8**. Both workflows **36828487165 / 36828487151** succeeded, including
-actual newly built clock/archive production-mapper fixtures.
-Master **1e0188c1** is integrated. The current local slice extends existing independent distribution to all four
-package kinds and produces compact target reference evidence. No
-competing writer is authorized.
+Current published/tested checkpoint is **bd9b09a7e673e97406bc87c7560fdd1af2abd519**,
+identical tree **956480f0a1e55533b3140e3cb30dac7483fdfc9e** to local implementation
+**ce547969**. Both workflows **36829998475 / 36829998394** succeeded, including
+actual newly built archive independent-record/runtime-locator validation.
+Master **1e0188c1** remains integrated; PR96 was verified open on October1 at
+08:14 UTC. The sole owner is continuing explicit data-only resource services
+and existing scoped consumer APIs. No competing writer is authorized.
 No live release, index, tag, master update or flash. CI remains feedback.
+
+## October 1: explicit resource-only services and authorized consumers
+
+The same ordinary schema/parser/stager/recovery and four-kind delivery pipeline
+now support explicit schema3 non-executing service data packs. Optional bounded
+import declarations on executable packages are consumed through existing scoped
+app/provider resource-stream APIs. No arbitrary path grant, fake ELF/capability,
+new registry or automatic dependency installer. Actual provider ELF and app
+consumers read declared pack bytes under context, generation and use-pin checks.
+The real SD ZIP adapter retained flat staging through bd9b09a7: earlier nested
+evidence covered directory intake and fixtures, not that shared offline/online
+path. It now reuses declared-tree helpers; the actual production Stage fails
+its nested-open regression on bd9b09a7 and passes after correction. Import
+metadata-close uncertainty retains temporary caller/target use pins.
+Source delivery, common SHA/readback, rollback/retry, unknown inventory refusal
+and interrupted removal pass locally; target CI for this slice remains pending.
+See **U1_RESOURCE_ONLY_IMPLEMENTATION.md** for exact supported use and limits.
 
 ## October 1: four-kind independent distribution
 
@@ -31,7 +48,13 @@ retain an offline record report. Details/limits are in
 **U1_FOUR_KIND_INDEPENDENT_DISTRIBUTION.md**. This slice also requests compact
 source/target call and literal-table reference evidence during the normal
 firmware build; it does not revisit the inaccessible74b0 artifact.
-New exact-head target verification is pending. No release/index/dispatch action.
+Both exact-head workflows passed at **bd9b09a7**. Compact target reports from
+that normal build confirm the null USB API stub, unsupported/denied open_usb,
+and installed serial registry calls; indirect provider calls and full PHY
+restoration remain unproved. Requested head bd9b09a7 compiled PR merge checkout
+0806faac. T5 ELF SHA2568942f75ca202ae647d819a6171cf68a76e16f3e84dbf9fe322d5dde96dc01a79;
+EPD ELF SHA256840fd3c36c2e173c361179201006ddce5e88562e545637a721dbd60556cdd10c.
+No release/index/dispatch action.
 
 ## October 1: production ELF data-section alignment
 
@@ -48,7 +71,7 @@ exact virtual ranges, original allocation ownership, and clean failure paths.
 The real production loader/relocator fixture passes both exact artifacts across
 16 heap residues and fails on the preceding loader. Detailed hashes, bounds,
 negative cases and CI connection are in **U1_ELF_SECTION_LAYOUT_CORRECTION.md**.
-This correction's target checks are pending; no physical success is claimed.
+Both target workflows36828487165 / 36828487151 passed at28282e30; no physical success is claimed.
 
 ## October 1: exact generation checkpoint and failed-close retention
 

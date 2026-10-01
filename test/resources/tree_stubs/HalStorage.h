@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -6,8 +7,12 @@
 #include <string>
 #include <vector>
 #define O_RDONLY 0
+#define O_WRONLY 1
+#define O_CREAT 2
+#define O_EXCL 4
 struct TreeSd {
   std::map<std::string,bool> nodes;
+  std::map<std::string,std::vector<uint8_t>> contents;
   std::string readFailure, closeFailure, createFailure;
   std::vector<std::string> mutations;
   int handles=0;
@@ -29,7 +34,23 @@ class HalFile {
   }
   HalFile(const HalFile&)=delete;
   HalFile& operator=(const HalFile&)=delete;
-  HalFile(HalFile&& o) noexcept:path_(std::move(o.path_)),children_(std::move(o.children_)),at_(o.at_),open_(o.open_){o.open_=false;}
+  HalFile(HalFile&& o) noexcept:path_(std::move(o.path_)),children_(std::move(o.children_)),at_(o.at_),position_(o.position_),open_(o.open_){o.open_=false;}
+  HalFile& operator=(HalFile&& o) noexcept {
+    if(this!=&o){if(open_)--treeSd.handles;path_=std::move(o.path_);children_=std::move(o.children_);
+      at_=o.at_;position_=o.position_;open_=o.open_;o.open_=false;}return *this;
+  }
+  uint64_t fileSize64()const{return treeSd.contents[path_].size();}
+  bool seek64(uint64_t p){if(p>fileSize64())return false;position_=p;return true;}
+  int read(void* out,size_t count){
+    if(!open_||isDirectory()||path_==treeSd.readFailure)return -1;
+    const auto& bytes=treeSd.contents[path_];count=std::min(count,bytes.size()-position_);
+    std::memcpy(out,bytes.data()+position_,count);position_+=count;return static_cast<int>(count);
+  }
+  size_t write(const void* data,size_t count){
+    if(!open_||isDirectory())return 0;
+    const auto* bytes=static_cast<const uint8_t*>(data);
+    auto& out=treeSd.contents[path_];out.insert(out.end(),bytes,bytes+count);return count;
+  }
   ~HalFile(){if(open_)--treeSd.handles;}
   bool isOpen()const{return open_;}
   bool isDirectory()const{return open_&&treeSd.nodes[path_];}
@@ -47,12 +68,20 @@ class HalFile {
  private:
   std::string path_;
   std::vector<std::string> children_;
-  size_t at_=0;
+  size_t at_=0,position_=0;
   bool open_=false;
 };
 struct TreeStorage {
   bool exists(const char* path){return treeSd.nodes.count(path);}
-  HalFile open(const char* path,int){return HalFile(path);}
+  HalFile open(const char* path,int flags){
+    if((flags&O_EXCL)&&exists(path))return {};
+    if(!exists(path)&&(flags&O_CREAT)){
+      const std::string p(path),parent=p.substr(0,p.find_last_of('/'));
+      if(!exists(parent.c_str())||!treeSd.nodes[parent])return {};
+      treeSd.nodes[path]=false;treeSd.contents[path]={};
+    }
+    return HalFile(path);
+  }
   bool mkdir(const char* path,bool){
     if(exists(path)||path==treeSd.createFailure)return false;
     treeSd.nodes[path]=true;treeSd.mutations.emplace_back(path);return true;

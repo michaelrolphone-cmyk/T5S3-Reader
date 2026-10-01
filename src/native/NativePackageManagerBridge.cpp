@@ -336,12 +336,14 @@ bool installArchive(const char* archive) {
         !candidate.install_allowed || !permitted(candidate.kind)) return false;
     std::string source;
     if (!archivePath(archive, source)) return false;
-    RuntimePackages::Identity expected{};
-    if (!RuntimePackages::makeIdentity(
-            static_cast<RuntimePackages::Kind>(candidate.kind), candidate.id,
-            candidate.version, candidate.artifact, false, &expected)) return false;
+    std::unique_ptr<RuntimePackages::OrdinaryPackagePlan> plan(new (std::nothrow) RuntimePackages::OrdinaryPackagePlan{});
+    if (!plan || !archiveMetadata(archive, *plan) ||
+        static_cast<uint8_t>(plan->identity.kind) != candidate.kind ||
+        std::strcmp(plan->identity.id, candidate.id) || std::strcmp(plan->identity.version, candidate.version) ||
+        std::strcmp(plan->identity.artifact, candidate.artifact)) return false;
+    // Payload mode comes from the explicit manifest, never a missing preview ELF.
     const auto result = RuntimePackages::installOrdinaryFromSdZip(
-        source.c_str(), kPolicy, availableCapability, &expected);
+        source.c_str(), kPolicy, availableCapability, &plan->identity);
     return result.result == RuntimePackages::OrdinaryInstallResult::Installed;
 }
 

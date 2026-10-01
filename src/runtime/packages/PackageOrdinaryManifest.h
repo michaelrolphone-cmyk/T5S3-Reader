@@ -164,6 +164,36 @@ inline bool requirements(Reader& r, OrdinaryPackagePlan& out) {
     if (!more) return true;
   }
 }
+inline bool resourceImports(Reader& r, OrdinaryPackagePlan& out) {
+  if (!r.take('[')) return false;
+  if (r.take(']')) return true;
+  for (;;) {
+    if (out.resourceImportCount == kMaxResourceImports || !r.take('{')) return false;
+    auto& value = out.resourceImports[out.resourceImportCount];
+    unsigned seen = 0;
+    for (;;) {
+      char key[32]{};
+      if (!r.key(key, sizeof(key))) return false;
+      if (!std::strcmp(key, "id")) {
+        if (seen & 1u || !r.text(value.id, sizeof(value.id)) || !safeId(value.id)) return false;
+        seen |= 1u;
+      } else if (!std::strcmp(key, "min_version")) {
+        if (seen & 2u || !r.text(value.minVersion, sizeof(value.minVersion)) || !canonicalVersion(value.minVersion)) return false;
+        seen |= 2u;
+      } else return false;
+      bool more = false;
+      if (!r.next('}', more)) return false;
+      if (!more) break;
+    }
+    if (seen != 3u) return false;
+    for (size_t i = 0; i < out.resourceImportCount; ++i)
+      if (!std::strcmp(out.resourceImports[i].id, value.id)) return false;
+    ++out.resourceImportCount;
+    bool more = false;
+    if (!r.next(']', more)) return false;
+    if (!more) return true;
+  }
+}
 } // namespace OrdinaryManifestDetail
 
 // Reinitialize in place. Aggregate assignment can materialize a second ~4.7 KiB
@@ -178,7 +208,8 @@ inline bool parseOrdinaryManifest(const char* json, size_t length,
   clearOrdinaryManifestPlan(plan);
   if (!safePackageJsonObject(json, length)) return false;
   OrdinaryManifestDetail::Reader r(json, length);
-  char kind[16]{}, id[64]{}, version[32]{}, artifact[128]{};
+  char kind[16]{}, id[64]{}, version[32]{}, artifact[128]{}, payload[16]{};
+  bool artifactNull = false;
   uint64_t schema = 0;
   unsigned seen = 0;
   bool valid = r.take('{');
@@ -186,7 +217,7 @@ inline bool parseOrdinaryManifest(const char* json, size_t length,
     char key[32]{};
     if (!r.key(key, sizeof(key))) { valid = false; break; }
     if (!std::strcmp(key, "schema")) {
-      valid = !(seen & 1u) && r.integer(schema) && (schema == 1u || schema == 2u);
+      valid = !(seen & 1u) && r.integer(schema) && (schema == 1u || schema == 2u || schema == 3u);
       seen |= 1u;
     } else if (!std::strcmp(key, "kind")) {
       valid = !(seen & 2u) && r.text(kind, sizeof(kind)); seen |= 2u;
@@ -195,7 +226,10 @@ inline bool parseOrdinaryManifest(const char* json, size_t length,
     } else if (!std::strcmp(key, "version")) {
       valid = !(seen & 8u) && r.text(version, sizeof(version)); seen |= 8u;
     } else if (!std::strcmp(key, "artifact")) {
-      valid = !(seen & 16u) && r.text(artifact, sizeof(artifact)); seen |= 16u;
+      if (seen & 16u) valid = false;
+      else if (r.word("null")) artifactNull = true;
+      else valid = r.text(artifact, sizeof(artifact));
+      seen |= 16u;
     } else if (!std::strcmp(key, "architecture")) {
       valid = !(seen & 32u) && r.text(plan.architecture, sizeof(plan.architecture)); seen |= 32u;
     } else if (!std::strcmp(key, "min_runtime_api")) {
@@ -204,13 +238,17 @@ inline bool parseOrdinaryManifest(const char* json, size_t length,
       valid = !(seen & 128u) && OrdinaryManifestDetail::entries(r, plan); seen |= 128u;
     } else if (!std::strcmp(key, "requires")) {
       valid = !(seen & 256u) && OrdinaryManifestDetail::requirements(r, plan); seen |= 256u;
+    } else if (!std::strcmp(key, "payload")) {
+      valid = !(seen & 512u) && r.text(payload, sizeof(payload)); seen |= 512u;
+    } else if (!std::strcmp(key, "resource_imports")) {
+      valid = !(seen & 1024u) && OrdinaryManifestDetail::resourceImports(r, plan); seen |= 1024u;
     } else valid = false;
     if (!valid) break;
     bool more = false;
     if (!r.next('}', more)) { valid = false; break; }
     if (!more) break;
   }
-  if (!valid || !r.end() || seen != 511u || (schema != 1u && schema != 2u) ||
+  if (!valid || !r.end() || seen != (schema == 3u ? 2047u : 511u) || (schema != 1u && schema != 2u && schema != 3u) ||
       !OrdinaryManifestDetail::canonicalVersion(version)) { clearOrdinaryManifestPlan(plan); return false; }
   plan.schemaVersion = static_cast<uint32_t>(schema);
   Kind parsed{};
@@ -219,7 +257,11 @@ inline bool parseOrdinaryManifest(const char* json, size_t length,
   else if (!std::strcmp(kind, "service")) parsed = Kind::Service;
   else if (!std::strcmp(kind, "provider")) parsed = Kind::Provider;
   else { clearOrdinaryManifestPlan(plan); return false; }
-  if (!makeIdentity(parsed, id, version, artifact, false, &plan.identity) ||
+  const bool resources = schema == 3u && !std::strcmp(payload, "resources");
+  const bool executable = schema != 3u || !std::strcmp(payload, "executable");
+  const bool identityValid = resources ? artifactNull && makeResourceIdentity(parsed, id, version, &plan.identity) :
+      executable && !artifactNull && makeIdentity(parsed, id, version, artifact, false, &plan.identity);
+  if (!identityValid ||
       (std::strcmp(plan.architecture, "xtensa-esp32s3") &&
        std::strcmp(plan.architecture, "riscv32"))) { clearOrdinaryManifestPlan(plan); return false; }
   // Structural checks do not resolve grants or allow a driver to activate.

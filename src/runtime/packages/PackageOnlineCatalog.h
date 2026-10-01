@@ -31,7 +31,7 @@ inline bool onlineArchiveUrl(const CatalogPackage& package, const char* release,
 }
 
 inline bool sameCatalogPayload(const CatalogPackage& a, const CatalogPackage& b) {
-  return samePackage(a.identity, b.identity) &&
+  return samePackage(a.identity, b.identity) && a.identity.payload == b.identity.payload &&
       !std::strcmp(a.identity.version, b.identity.version) &&
       !std::strcmp(a.identity.artifact, b.identity.artifact) &&
       !std::strcmp(a.architecture, b.architecture) &&

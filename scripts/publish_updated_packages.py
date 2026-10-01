@@ -17,11 +17,13 @@ from typing import Any
 try:
     from .build_release_candidates import discover_module_builders, discover_module_sources
     from .generate_provider_package_inputs_v1 import canonical_manifest
+    from .package_resource_source import resource_source
     from .build_release_record import build_record, app_source
     from .update_release_index import serialize_index, update_index, version_tuple
 except ImportError:
     from build_release_candidates import discover_module_builders, discover_module_sources
     from generate_provider_package_inputs_v1 import canonical_manifest
+    from package_resource_source import resource_source
     from build_release_record import build_record, app_source
     from update_release_index import serialize_index, update_index, version_tuple
 
@@ -146,10 +148,13 @@ def release_assets(root: Path, product: str, identity: str,
         for path in (root / source_root).glob("*/manifest.json"):
             manifest = read_json(path)
             if (isinstance(manifest, dict) and manifest.get("type") == kind and
-                    manifest.get("driver_abi") == 2 and manifest.get("id") == identity):
+                    (manifest.get("driver_abi") == 2 or manifest.get("payload") == "resources") and manifest.get("id") == identity):
                 if path.is_symlink() or path.parent.is_symlink():
                     raise ValueError(f"unsafe driver source manifest for {identity}")
-                canonical_manifest(path)
+                if manifest.get('payload') == 'resources':
+                    resource_source(path)
+                else:
+                    canonical_manifest(path)
                 matches.append(manifest)
         if len(matches) != 1:
             raise ValueError(f"expected one current source manifest for driver {identity!r}")

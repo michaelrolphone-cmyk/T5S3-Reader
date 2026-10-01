@@ -18,6 +18,8 @@ from generate_privileged_imports_v1 import extract_imports, encode_imports
 from verify_provider_relocation_map import audit_loader_map
 from provider_discovery_test import ProviderDiscoveryTest
 from build_installed_usb_stack import dependency_order, source_candidates
+from package_resource_source import resource_manifest
+from pack_rte_zip import pack_directory, catalog_row
 PACKAGES = ROOT / 'dist/packages'
 CATALOG = PACKAGES / 'package-catalog.json'
 BRIDGE = 'risc_fw_i2c_transact_v1'
@@ -97,7 +99,7 @@ def run(identities=None):
     available = {}
     if identities is not None:
         for identity, source in sources.items():
-            if identity not in selected:
+            if identity not in selected and source.get("payload") != "resources":
                 provided = source['provides'][0]
                 capability, api = provided['capability'], provided['api']
                 available[capability] = max(available.get(capability, 0), api)
@@ -111,9 +113,18 @@ def run(identities=None):
         manifest_bytes = (folder / '.package.json').read_bytes()
         assert len(manifest_bytes) <= 4096
         manifest = json.loads(manifest_bytes)
+        if source.get('payload') == 'resources':
+            path = next(item['source'] for item in source_candidates() if item['id'] == identity)
+            assert manifest == resource_manifest(path)[0]
+            archive = pack_directory(folder)
+            assert (PACKAGES / record['archive']).read_bytes() == archive
+            assert record == catalog_row(folder, record['archive'], archive)
+            assert manifest['artifact'] is None and all(not item['executable'] for item in manifest['entries'])
+            continue
         assert set(manifest) == {'schema', 'kind', 'id', 'version', 'artifact',
-                                 'architecture', 'min_runtime_api', 'entries', 'requires'}
-        assert manifest['schema'] == 1 and manifest['kind'] == source['type']
+                                 'architecture', 'min_runtime_api', 'entries', 'requires'} | ({'payload', 'resource_imports'} if source.get('resource_imports') else set())
+        assert manifest['schema'] == (3 if source.get('resource_imports') else 1) and manifest['kind'] == source['type']
+        assert manifest.get('resource_imports', []) == source.get('resource_imports', [])
         assert record['kind'] == manifest['kind'] and record['id'] == manifest['id']
         assert record['version'] == manifest['version'] == source['version']
         assert record['artifact'] == manifest['artifact'] == 'driver.elf'
@@ -195,7 +206,7 @@ def run(identities=None):
         class_bridge_source), 'USB serial provider discovery is not capability-driven'
     expected_serial = {
         identity for identity, source in sources.items()
-        if source['provides'][0]['capability'] == 'serial.port'
+        if source.get('provides', [{}])[0].get('capability') == 'serial.port'
     }
     assert expected_serial, 'no serial.port provider packages discovered'
 

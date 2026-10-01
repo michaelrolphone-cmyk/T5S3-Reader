@@ -206,7 +206,7 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         // below, exactly once per startup rather than by rehashing every ELF.
         if (!inspectInstalledOrdinarySdDirectory(target, kPolicy,
                 [](const char*) -> uint32_t { return UINT32_MAX; }, identity) ||
-            identity.kind != kind || std::strcmp(identity.id, id) ||
+            resourceOnly(identity) || identity.kind != kind || std::strcmp(identity.id, id) ||
             std::strcmp(identity.artifact, "driver.elf")) break;
         auto& name = frame.name;
         if (!pathFor(name, root, id, ".package.json")) break;
@@ -219,7 +219,7 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         const bool parsed = plan && parseOrdinaryManifest(
             reinterpret_cast<const char*>(json), jsonSize, *plan);
         std::free(json);
-        if (!parsed || plan->identity.kind != kind ||
+        if (!parsed || resourceOnly(plan->identity) || plan->identity.kind != kind ||
             std::strcmp(plan->identity.id, id)) break;
         bool hasProfile = false, hasImports = false, hasExecutable = false;
         for (size_t i = 0; i < plan->entryCount; ++i) {
