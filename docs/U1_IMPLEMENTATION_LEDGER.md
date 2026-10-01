@@ -13,6 +13,32 @@ and auditing the remaining whole-U1 acceptance gates. Other continuations must
 not write this branch until this claim is explicitly released. No live release,
 index, tag, master update or flash. CI is feedback, not an idle-work gate.
 
+## October 1: independently installable archive service
+
+**48d84450** is the verified bounded-intake checkpoint (localb0c32d0d,
+identical treeefc4f6e), green on PlatformIO/host **36811898525** and
+USB/ELF **36811898523**. These workflow results certify that checkpoint,
+not the later archive service changes described below.
+
+The next slice adds **service/archive-zip0.1.0**, a software-only capability on
+the existing provider graph with generic clock dependency. Copied input/output,
+one128-KiB job,17 stored entries,512-byte API calls and a60-second job budget
+provide bounded listing/extraction without filesystem authority. Shared bootstrap
+structure/topology/CRC primitives now also accept explicitly non-package ZIPs;
+ordinary installation still requires its manifest and complete SHA/transaction
+validation and never needs the service. Empty ZIPs/files work. Provider-local OS mutex admission,
+stopping-before-quiescence and generation tokens preserve safe lifetime/retry.
+
+The existing source discovery, ordinary packer and catalog/exporter now include
+service/provider manifests with their real kinds. Existing driver payloads and
+versions stay unchanged; this new service starts at0.1.0. Host loaded-module and
+common package/discovery tests passed; actual Xtensa link and package CI remains
+pending. See U1_ARCHIVE_SERVICE_IMPLEMENTATION.md for the exact subset, tests,
+release-tooling distinction and limitations. The legacy ZipFile implementation is unchanged; no fault-revalidation
+result for that independent path is claimed here.
+
+**Implementation In Progress**
+
 ## October 1: strict ordinary archive intake bounds
 
 **24b84db6** is the verified four-kind resource checkpoint (local89860197,

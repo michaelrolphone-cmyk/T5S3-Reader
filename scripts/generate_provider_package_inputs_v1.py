@@ -35,9 +35,9 @@ def canonical_manifest(path: Path) -> tuple[str, int]:
             result[key] = value
         return result
     manifest = json.loads(path.read_text(encoding='utf-8'), object_pairs_hook=object_pairs)
-    if not isinstance(manifest, dict) or manifest.get('type') != 'driver' or (
+    if not isinstance(manifest, dict) or manifest.get('type') not in ('driver', 'service', 'provider') or (
         type(manifest.get('driver_abi')) is not int or manifest['driver_abi'] != 2):
-        raise ValueError('expected one driver with provider driver ABI v2')
+        raise ValueError('expected one installed module with provider ABI v2')
     package_id = manifest.get('id')
     if not isinstance(package_id, str) or not 0 < len(package_id) < 64 or (
         PACKAGE_ID.fullmatch(package_id) is None):

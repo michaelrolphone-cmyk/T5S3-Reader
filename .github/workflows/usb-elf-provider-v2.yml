@@ -3,6 +3,11 @@ name: Experimental USB ELF Provider v2
 on:
   pull_request:
     paths:
+      - "Services/**"
+      - "sdk/driver/RiscArchiveZipV1.h"
+      - "scripts/build_archive_zip.py"
+      - "test/services/**"
+      - "test/run_archive_zip_service_test.sh"
       - "Drivers/common/**"
       - "Drivers/usb_cdc_v2/**"
       - "Drivers/usb_cp210x_v2/**"
@@ -226,6 +231,8 @@ jobs:
           python scripts/build_platform_clock_v1.py
           python scripts/audit_usb_controller_elf.py dist/experimental/platform-clock-v1/driver.elf --strict
           bash test/run_native_app_test.sh dist/experimental/platform-clock-v1/driver.elf
+          python scripts/build_archive_zip.py
+          bash test/run_native_app_test.sh dist/experimental/archive-zip/driver.elf
           python scripts/build_gt911_touch.py
           bash test/run_native_app_test.sh dist/experimental/gt911-touch/driver.elf
       - name: Validate board-private C ABI and exact import matcher against linked ELFs
@@ -271,6 +278,7 @@ jobs:
             dist/experimental/i2c-*/
             dist/experimental/platform-clock-v1/
             dist/experimental/gt911-touch/
+            dist/experimental/archive-zip/
             dist/packages/
             dist/release-packages/
           if-no-files-found: warn

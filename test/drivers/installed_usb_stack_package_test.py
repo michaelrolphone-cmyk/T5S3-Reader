@@ -72,10 +72,8 @@ def mutation_rejected(elf: bytes, site: int, replacement: int) -> bool:
 
 def source_manifests():
     manifests = {}
-    for source in sorted((ROOT / 'Drivers').glob('*/manifest.json')):
-        metadata = json.loads(source.read_text(encoding='utf-8'))
-        if metadata.get('type') != 'driver' or metadata.get('driver_abi') != 2:
-            continue
+    for candidate in source_candidates():
+        metadata = candidate['metadata']
         identity = metadata['id']
         assert identity not in manifests, identity
         manifests[identity] = metadata
@@ -115,7 +113,7 @@ def run(identities=None):
         manifest = json.loads(manifest_bytes)
         assert set(manifest) == {'schema', 'kind', 'id', 'version', 'artifact',
                                  'architecture', 'min_runtime_api', 'entries', 'requires'}
-        assert manifest['schema'] == 1 and manifest['kind'] == 'driver'
+        assert manifest['schema'] == 1 and manifest['kind'] == source['type']
         assert record['kind'] == manifest['kind'] and record['id'] == manifest['id']
         assert record['version'] == manifest['version'] == source['version']
         assert record['artifact'] == manifest['artifact'] == 'driver.elf'

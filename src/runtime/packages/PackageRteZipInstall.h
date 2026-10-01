@@ -8,67 +8,6 @@
 
 namespace RuntimePackages {
 
-// Inspecting central/local headers alone does not establish that the stored
-// data is intact. The supported deterministic ZIP subset has contiguous local
-// entries in central-directory order followed immediately by the directory.
-// This rejects overlapping payloads, hidden gaps and data disguised as headers.
-namespace RteZipInstallDetail {
-inline uint32_t updateCrc(uint32_t crc, const uint8_t* bytes, size_t count) {
-  for (size_t i = 0; i < count; ++i) {
-    crc ^= bytes[i];
-    for (unsigned bit = 0; bit < 8; ++bit) {
-      const uint32_t mask = 0u - (crc & 1u);
-      crc = (crc >> 1) ^ (0xedb88320u & mask);
-    }
-  }
-  return crc;
-}
-
-template <typename ReadAt>
-bool validateArchive(ReadAt& readAt, const RteZipView& zip) {
-  if (!zip.entryCount || zip.manifestIndex >= zip.entryCount ||
-      zip.fileLength < kRteZipEocdBytes) return false;
-  uint8_t eocd[kRteZipEocdBytes]{};
-  if (!readAt(zip.fileLength - kRteZipEocdBytes, eocd, sizeof(eocd)) ||
-      RteZipDetail::le32(eocd) != kRteZipEocdSig) return false;
-  const uint64_t centralOffset = RteZipDetail::le32(eocd + 16);
-  uint64_t expectedLocalOffset = 0;
-  uint8_t chunk[kOrdinaryIoBytes]{};
-#if defined(ESP_PLATFORM)
-  TickType_t lastYield = xTaskGetTickCount();
-#endif
-  for (uint16_t i = 0; i < zip.entryCount; ++i) {
-    const auto& entry = zip.entries[i];
-    const uint64_t end = static_cast<uint64_t>(entry.dataOffset) + entry.sizeBytes;
-    if (entry.localHeaderOffset != expectedLocalOffset ||
-        entry.dataOffset != expectedLocalOffset + kRteZipLocalBytes +
-                                std::strlen(entry.name) ||
-        end > centralOffset || end > zip.fileLength) return false;
-    uint32_t crc = 0xffffffffu;
-    for (uint64_t offset = 0; offset < entry.sizeBytes;) {
-      const size_t count = static_cast<size_t>(std::min<uint64_t>(
-          sizeof(chunk), entry.sizeBytes - offset));
-      if (!readAt(entry.dataOffset + offset, chunk, count)) return false;
-      crc = updateCrc(crc, chunk, count);
-      offset += count;
-      // Byte and elapsed-time checkpoints: SHA/ELF checks still occur later
-      // inside the ordinary stager; neither CRC nor SHA authorizes an ELF.
-      ordinaryCooperativeYield(offset, entry.sizeBytes);
-#if defined(ESP_PLATFORM)
-      const TickType_t now = xTaskGetTickCount();
-      if (now - lastYield >= pdMS_TO_TICKS(10)) {
-        vTaskDelay(1);
-        lastYield = xTaskGetTickCount();
-      }
-#endif
-    }
-    if ((crc ^ 0xffffffffu) != entry.crc32) return false;
-    expectedLocalOffset = end;
-  }
-  return expectedLocalOffset == centralOffset;
-}
-} // namespace RteZipInstallDetail
-
 // Named-entry reader over an inspected stored .rte.zip. Same interface the
 // ordinary stager already uses for SD directories and online downloads.
 template <typename ReadAt>

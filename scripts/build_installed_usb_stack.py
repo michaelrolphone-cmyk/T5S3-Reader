@@ -98,13 +98,14 @@ def source_candidates() -> list[dict]:
     """Validate the source graph before any artifact access or build side effects."""
     candidates = []
     identities = set()
-    for path in sorted(DRIVER_SOURCES.glob('*/manifest.json')):
+    roots = (DRIVER_SOURCES, DRIVER_SOURCES.parent / 'Services', DRIVER_SOURCES.parent / 'Providers')
+    for path in sorted(path for root in roots for path in root.glob('*/manifest.json')):
         if path.is_symlink() or path.parent.is_symlink() or path.stat().st_size > 4096:
             raise ValueError(f'unsafe or oversized provider manifest: {path}')
         metadata = json.loads(path.read_text(encoding='utf-8'))
         if not isinstance(metadata, dict):
             raise ValueError(f'invalid provider manifest: {path}')
-        if metadata.get('type') != 'driver' or metadata.get('driver_abi') != 2:
+        if metadata.get('type') not in ('driver', 'service', 'provider') or metadata.get('driver_abi') != 2:
             continue
         # Enforce the bound before invoking any newly discovered build script.
         if len(candidates) >= MAX_PACKAGES:
@@ -208,7 +209,7 @@ def build(identities: set[str] | None = None) -> list[dict]:
                         for required in metadata['requires']]
         entries = [entry(target / name, name == 'driver.elf') for name in
                    ('driver.elf', 'provider-abi.v1', 'privileged-imports.v1')]
-        package = {'schema': 1, 'kind': 'driver', 'id': identity,
+        package = {'schema': 1, 'kind': metadata['type'], 'id': identity,
                    'version': candidate['version'], 'artifact': 'driver.elf',
                    'architecture': metadata['architecture'], 'min_runtime_api': 2,
                    'entries': entries, 'requires': dependencies}
@@ -216,7 +217,7 @@ def build(identities: set[str] | None = None) -> list[dict]:
         if len(encoded) > 4096:
             raise ValueError(f'manifest exceeds device parser bound: {identity}')
         (target / '.package.json').write_bytes(encoded)
-        asset_name = f"driver-{identity}-{candidate['version']}-{metadata['architecture']}.rte.zip"
+        asset_name = f"{metadata['type']}-{identity}-{candidate['version']}-{metadata['architecture']}.rte.zip"
         archive = pack_directory(target)
         (DESTINATION / asset_name).write_bytes(archive)
         catalog.append(catalog_row(target, asset_name, archive))
@@ -235,7 +236,7 @@ def build(identities: set[str] | None = None) -> list[dict]:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--ids', nargs='+', help='build only these canonical driver package IDs')
+    parser.add_argument('--ids', nargs='+', help='build only these canonical module package IDs')
     args = parser.parse_args()
     try:
         build(set(args.ids) if args.ids else None)

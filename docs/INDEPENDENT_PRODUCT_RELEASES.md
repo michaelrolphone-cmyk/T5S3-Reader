@@ -17,7 +17,7 @@ The existing combined release is a migration source only. New releases use immut
 | Product | Version authority | Tag format | Release contents |
 | --- | --- | --- | --- |
 | Firmware | `[riscrte] version` in `platformio.ini` | `firmware-v<version>` | Firmware flash/OTA images and matching ELF; the index records size and SHA-256 |
-| App | That app's `Apps/<name>.json` stable ID and `version` | `app-<id>-v<version>` | Current independent app path still uses `.elf`/`.json`; ordinary bundle conversion remains U1 work |
+| App | That app's `Apps/<name>.json` stable ID and `version` | `app-<id>-v<version>` | U1 emits one ordinary `.rte.zip` per app; historical `.elf`/`.json` records remain compatibility inputs |
 | Driver | That driver's package manifest stable ID and `version` | `driver-<id>-v<version>` | One `driver-<id>-<version>-<architecture>.rte.zip` containing its ordinary manifest, executable, provider ABI, import inventory and any declared resources; the index records archive size and SHA-256 |
 
 App and driver versions continue to use numeric MAJOR.MINOR.PATCH and must increase for every changed distributable package, under the existing version policies. Firmware version changes do not change app or driver versions. Package compatibility requirements such as minimum firmware, driver ABI, architecture, and capability API remain separate fields and are still enforced.

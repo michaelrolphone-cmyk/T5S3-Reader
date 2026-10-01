@@ -122,6 +122,23 @@ class ProviderDiscoveryTest(unittest.TestCase):
                              side_effect=AssertionError('unselected provider was built')):
             return builder.build(identities)
 
+    def test_software_service_uses_same_discovery_and_bundle_engine(self):
+        self.provider('clock', 'clock', 'platform.clock')
+        self.provider('archive_zip', 'archive-zip', 'archive.zip', ['platform.clock'])
+        services = self.drivers.parent / 'Services'
+        services.mkdir()
+        (self.drivers / 'archive_zip').rename(services / 'archive_zip')
+        path = services / 'archive_zip/manifest.json'
+        manifest = json.loads(path.read_text()); manifest['type'] = 'service'
+        path.write_text(json.dumps(manifest))
+        catalog = self.build_fixture_packages()
+        self.assertEqual([(row['id'], row['kind']) for row in catalog],
+                         [('clock', 'driver'), ('archive-zip', 'service')])
+        self.assertTrue(catalog[1]['archive'].startswith('service-archive-zip-'))
+        package = json.loads((self.packages / 'archive-zip/.package.json').read_text())
+        self.assertEqual(package['kind'], 'service')
+        self.assertEqual(package['requires'], [{'capability': 'platform.clock', 'min_api': 1}])
+
     def test_selected_build_skips_other_artifacts_and_keeps_dependency_metadata(self):
         self.provider('dependency', 'required-provider', 'test.clock', artifact=False)
         self.provider('selected', 'selected-provider', 'test.sensor', ['test.clock'])

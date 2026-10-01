@@ -2,6 +2,7 @@
 
 #include "PackageOrdinaryManifest.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -106,7 +107,8 @@ inline bool safeRelativePath(const char* name, size_t length) {
 } // namespace RteZipDetail
 
 template <typename ReadAt>
-RteZipResult inspectRteZip(ReadAt readAt, uint64_t fileLength, RteZipView& out) {
+RteZipResult inspectRteZip(ReadAt readAt, uint64_t fileLength, RteZipView& out,
+                           bool requireManifest = true) {
   out = {};
   out.fileLength = fileLength;
   if (fileLength < kRteZipEocdBytes || fileLength > kRteZipMaxTotalBytes + 65536u)
@@ -122,7 +124,7 @@ RteZipResult inspectRteZip(ReadAt readAt, uint64_t fileLength, RteZipView& out) 
   const uint16_t total = RteZipDetail::le16(eocd + 10);
   const uint32_t cdSize = RteZipDetail::le32(eocd + 12);
   const uint32_t cdOffset = RteZipDetail::le32(eocd + 16);
-  if (!entries || entries != total || entries > kRteZipMaxFiles ||
+  if ((requireManifest && !entries) || entries != total || entries > kRteZipMaxFiles ||
       entries > kRteZipMaxEntries)
     return RteZipResult::LimitExceeded;
   if (static_cast<uint64_t>(cdOffset) + cdSize + kRteZipEocdBytes != fileLength)
@@ -146,6 +148,12 @@ RteZipResult inspectRteZip(ReadAt readAt, uint64_t fileLength, RteZipView& out) 
     const uint16_t commentLen = RteZipDetail::le16(central + 32);
     const uint16_t disk = RteZipDetail::le16(central + 34);
     const uint32_t localOff = RteZipDetail::le32(central + 42);
+    const uint32_t attributes = RteZipDetail::le32(central + 38);
+    const uint32_t unixType = (attributes >> 16) & 0170000u;
+    // Never materialize archive links, directories or special Unix objects.
+    // Parent directories are implicit in validated relative file names.
+    if ((attributes & 0x10u) || (unixType && unixType != 0100000u))
+      return RteZipResult::UnsupportedFeature;
     if (flags || method != kRteZipStored || extraLen || commentLen || disk ||
         comp != uncomp)
       return RteZipResult::UnsupportedFeature;
@@ -199,10 +207,71 @@ RteZipResult inspectRteZip(ReadAt readAt, uint64_t fileLength, RteZipView& out) 
   }
   if (cursor != static_cast<uint64_t>(cdOffset) + cdSize)
     return RteZipResult::InvalidHeader;
-  if (out.manifestIndex == 0xffff) return RteZipResult::MissingManifest;
+  if (requireManifest && out.manifestIndex == 0xffff) return RteZipResult::MissingManifest;
   out.entryCount = entries;
   return RteZipResult::Ready;
 }
+
+// Inspecting central/local headers alone does not establish that the stored
+// data is intact. The supported deterministic ZIP subset has contiguous local
+// entries in central-directory order followed immediately by the directory.
+// This rejects overlapping payloads, hidden gaps and data disguised as headers.
+namespace RteZipInstallDetail {
+inline uint32_t updateCrc(uint32_t crc, const uint8_t* bytes, size_t count) {
+  for (size_t i = 0; i < count; ++i) {
+    crc ^= bytes[i];
+    for (unsigned bit = 0; bit < 8; ++bit) {
+      const uint32_t mask = 0u - (crc & 1u);
+      crc = (crc >> 1) ^ (0xedb88320u & mask);
+    }
+  }
+  return crc;
+}
+
+template <typename ReadAt>
+bool validateArchive(ReadAt& readAt, const RteZipView& zip, bool requireManifest = true) {
+  if ((requireManifest && (!zip.entryCount || zip.manifestIndex >= zip.entryCount)) ||
+      zip.fileLength < kRteZipEocdBytes) return false;
+  uint8_t eocd[kRteZipEocdBytes]{};
+  if (!readAt(zip.fileLength - kRteZipEocdBytes, eocd, sizeof(eocd)) ||
+      RteZipDetail::le32(eocd) != kRteZipEocdSig) return false;
+  const uint64_t centralOffset = RteZipDetail::le32(eocd + 16);
+  uint64_t expectedLocalOffset = 0;
+  uint8_t chunk[kOrdinaryIoBytes]{};
+#if defined(ESP_PLATFORM)
+  TickType_t lastYield = xTaskGetTickCount();
+#endif
+  for (uint16_t i = 0; i < zip.entryCount; ++i) {
+    const auto& entry = zip.entries[i];
+    const uint64_t end = static_cast<uint64_t>(entry.dataOffset) + entry.sizeBytes;
+    if (entry.localHeaderOffset != expectedLocalOffset ||
+        entry.dataOffset != expectedLocalOffset + kRteZipLocalBytes +
+                                std::strlen(entry.name) ||
+        end > centralOffset || end > zip.fileLength) return false;
+    uint32_t crc = 0xffffffffu;
+    for (uint64_t offset = 0; offset < entry.sizeBytes;) {
+      const size_t count = static_cast<size_t>(std::min<uint64_t>(
+          sizeof(chunk), entry.sizeBytes - offset));
+      if (!readAt(entry.dataOffset + offset, chunk, count)) return false;
+      crc = updateCrc(crc, chunk, count);
+      offset += count;
+      // Byte and elapsed-time checkpoints: SHA/ELF checks still occur later
+      // inside the ordinary stager; neither CRC nor SHA authorizes an ELF.
+      ordinaryCooperativeYield(offset, entry.sizeBytes);
+#if defined(ESP_PLATFORM)
+      const TickType_t now = xTaskGetTickCount();
+      if (now - lastYield >= pdMS_TO_TICKS(10)) {
+        vTaskDelay(1);
+        lastYield = xTaskGetTickCount();
+      }
+#endif
+    }
+    if ((crc ^ 0xffffffffu) != entry.crc32) return false;
+    expectedLocalOffset = end;
+  }
+  return expectedLocalOffset == centralOffset;
+}
+} // namespace RteZipInstallDetail
 
 template <typename ReadAt>
 RteZipResult readRteZipEntry(ReadAt readAt, const RteZipView& zip, uint16_t index,
