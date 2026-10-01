@@ -1,5 +1,15 @@
 # U1 implementation ledger
 
+## Active continuation — October 1, 2026, 00:05 UTC
+
+Claim: active U1 implementation on the sole `impl/u1-riscrte` / PR #96.
+This run is integrating master `2a55d0a0`, preserving power ABI and failed-grant
+lifetime semantics, repairing the two verified CI failures, and restoring the
+installed BQ25896-owner board integration found regressed in the prior head.
+Hourly continuations must not write concurrently while this claim is active;
+resume after this entry is replaced by a checkpoint with completed/remaining work.
+No merge to master, release, tag or flash is authorized by this continuation.
+
 ## September 27: witness acquire maps endpoint exhaustion to UNSUPPORTED
 
 `usb_witness_provider_graph_test` filled the 12-slot compiled buffer table
