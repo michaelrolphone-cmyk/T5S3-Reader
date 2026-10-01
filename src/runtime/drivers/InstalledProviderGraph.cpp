@@ -29,7 +29,7 @@ namespace RuntimeInstalledProviders {
 namespace {
 using namespace RuntimePackages;
 constexpr PackageRuntimePolicy kPolicy{
-    "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+    "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 constexpr size_t kMaxProviders = RuntimeProviders::GraphV2::kMaxModules;
 RuntimeProviders::GraphV2* graph = nullptr;
 char pinned[kMaxProviders][96]{};

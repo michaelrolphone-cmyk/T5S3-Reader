@@ -161,11 +161,11 @@ Version capabilities for random, SHA-256, HMAC, signature verify/sign with prote
 
 ## 26. Unified Package Model
 
-A package contains manifest, one or more ELF modules, resources, schemas, dependency/capability declarations, CPU/ABI compatibility, platform/security version and integrity/signatures. Types: application, driver, service, provider. Package is distribution unit; ELF is loadable implementation. Driver packages MUST include **functional hardware code**, not only a proxy into firmware.
+A package contains manifest, one or more ELF modules, resources, schemas, dependency/capability declarations, CPU/ABI compatibility, runtime/package version and content integrity. Types: application, driver, service, provider. Package is distribution unit; ELF is loadable implementation. Driver packages MUST include **functional hardware code**, not only a proxy into firmware.
 
 ## 27. Package Manager
 
-Manage install, validation, signatures, dependency/version checks, update, atomic replacement, rollback, uninstall, quarantine and inventory without executing unverified manifests. Offline removable-storage installation MUST work without requiring desktop-side Python. Online App Store/update delivery consumes the same format. Never silently substitute a firmware hardware driver for a missing/broken installed ELF.
+Manage install, integrity validation, dependency/version checks, update, atomic replacement, rollback, uninstall, quarantine and inventory without executing unverified manifests. Offline removable-storage installation MUST work without requiring desktop-side Python. Online App Store/update delivery consumes the same format. Never silently substitute a firmware hardware driver for a missing/broken installed ELF.
 
 ## 28. Dependency Model
 
@@ -221,7 +221,7 @@ Serial -> terminal/file, GNSS -> recorder and file -> programmer use the same bo
 
 ## 39. Priority 3: Unified Package Manager
 
-Install/upgrade/rollback/remove independently signed app/driver/service/provider packages with manifest/ELF validation and dependency graph. Acceptance includes genuine new hardware driver installation without rebuilding core and no hidden firmware fallback after uninstall.
+Install/upgrade/rollback/remove independently versioned ordinary app/driver/service/provider packages with manifest/ELF validation and dependency graph. Acceptance includes genuine new hardware driver installation without rebuilding core and no hidden firmware fallback after uninstall.
 
 ## 40. Priority 4: Generic Sensor and Recorder
 
@@ -237,7 +237,7 @@ A File Browser selects firmware, an intent invokes an installed programming prov
 
 ## 43. Priority 7: Vault and Crypto
 
-Centralize permission-scoped secret use and cryptographic services before broadly distributing privileged third-party ELFs; strengthen driver package signatures and trust.
+Centralize permission-scoped secret use and cryptographic services before broadly distributing privileged third-party ELFs; preserve independent privileged-driver authorization and exact import checks.
 
 ## 44. Priority 8: Search, Automation and Communications
 

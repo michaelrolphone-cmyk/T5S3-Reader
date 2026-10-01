@@ -161,9 +161,9 @@ bool ModuleV2::load(const char* path, const char* expectedId,
 }
 
 bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
-                                 const uint8_t authenticatedSha256[32],
-                                 const char* const* signedImports,
-                                 size_t signedImportCount,
+                                 const uint8_t contentSha256[32],
+                                 const char* const* declaredImports,
+                                 size_t declaredImportCount,
                                  const char* expectedId,
                                  const char* expectedCapability,
                                  uint32_t expectedApi,
@@ -173,8 +173,8 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
 #ifdef ESP_PLATFORM
   // Nonnull import metadata and an exact zero count is valid for a truly
   // self-contained ELF. The private matcher checks both symbol tables.
-  if (handle_ || !candidateBytes || !authenticatedSha256 || !length ||
-      !signedImports || signedImportCount > 128 ||
+  if (handle_ || !candidateBytes || !contentSha256 || !length ||
+      !declaredImports || declaredImportCount > 128 ||
       length > 8u * 1024u * 1024u ||
       !validRequest(expectedId, expectedCapability, expectedApi, deps, count)) {
     report(expectedId, "invalid-elf-request");
@@ -186,12 +186,12 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
   // Upstream USB/board-power providers must bind the i2c.bus capability,
   // never import the firmware transport themselves. This runs before mapping.
   bool importsFirmwareI2c = false;
-  for (size_t i = 0; i < signedImportCount; ++i) {
-    if (!signedImports[i]) {
+  for (size_t i = 0; i < declaredImportCount; ++i) {
+    if (!declaredImports[i]) {
       report(expectedId, "invalid-provider-import");
       return false;
     }
-    if (std::strcmp(signedImports[i], "risc_fw_i2c_transact_v1") == 0)
+    if (std::strcmp(declaredImports[i], "risc_fw_i2c_transact_v1") == 0)
       importsFirmwareI2c = true;
   }
   const bool isFirmwareI2cAdapter =
@@ -222,7 +222,7 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
     return false;
   }
   const int result = esp_elf_relocate_privileged_verified_v1(
-      image, snapshot, length, signedImports, signedImportCount);
+      image, snapshot, length, declaredImports, declaredImportCount);
   heap_caps_free(snapshot);
   if (result != 0) {
     std::free(image);
@@ -247,8 +247,8 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
   (void)closeMapped();
   return false;
 #else
-  (void)candidateBytes; (void)length; (void)authenticatedSha256;
-  (void)signedImports; (void)signedImportCount;
+  (void)candidateBytes; (void)length; (void)contentSha256;
+  (void)declaredImports; (void)declaredImportCount;
   (void)expectedId; (void)expectedCapability; (void)expectedApi;
   (void)deps; (void)count;
   return false;

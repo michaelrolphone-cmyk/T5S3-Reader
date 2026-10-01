@@ -63,27 +63,27 @@ bool GraphV2::addVerified(const SpecV2& spec) {
   return addChecked(spec, false);
 }
 
-bool GraphV2::addAuthenticatedPrivileged(const SpecV2& spec) {
-  // Manager-validated private entry; signing is optional, exact privileged
-  // import validation remains mandatory on relocation; checksums are install-time.
+bool GraphV2::addManagerValidatedPrivileged(const SpecV2& spec) {
+  // Manager-validated private entry. Exact privileged import validation stays
+  // mandatory on relocation; content checksums are installation consistency.
   return addChecked(spec, true);
 }
 
 bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
   bool emptyDigest = true;
-  for (uint8_t byte : spec.authenticatedElfSha256)
+  for (uint8_t byte : spec.contentSha256)
     if (byte) { emptyDigest = false; break; }
   const bool regular = spec.requiredOsCpuAbi == 0 &&
                        spec.verifiedElfBytes == nullptr &&
                        spec.verifiedElfLength == 0 &&
-                       spec.signedImports == nullptr &&
-                       spec.signedImportCount == 0 && emptyDigest;
+                       spec.declaredImports == nullptr &&
+                       spec.declaredImportCount == 0 && emptyDigest;
   const bool privileged = spec.requiredOsCpuAbi == 1 &&
                           spec.verifiedElfBytes != nullptr &&
                           spec.verifiedElfLength > 0 &&
                           spec.verifiedElfLength <= 8u * 1024u * 1024u &&
-                          spec.signedImports != nullptr &&
-                          spec.signedImportCount <= 128;
+                          spec.declaredImports != nullptr &&
+                          spec.declaredImportCount <= 128;
   if (count_ == kMaxModules || !validName(spec.id) ||
       !validName(spec.provides) || !spec.api ||
       (spec.verifiedElfPath && spec.verifiedElfPath[0] != '/') ||
@@ -93,12 +93,12 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
       spec.requirementCount > kMaxModules ||
       (spec.requirementCount && !spec.requirements)) return false;
   if (privileged) {
-    for (size_t i = 0; i < spec.signedImportCount; ++i) {
-      if (!spec.signedImports[i]) return false;
+    for (size_t i = 0; i < spec.declaredImportCount; ++i) {
+      if (!spec.declaredImports[i]) return false;
       char bounded[OwnedNodeV2::kImportName]{};
       if (!OwnedNodeV2::copyString(bounded, sizeof(bounded),
-                                   spec.signedImports[i])) return false;
-      if (i && std::strcmp(spec.signedImports[i - 1], spec.signedImports[i]) >= 0)
+                                   spec.declaredImports[i])) return false;
+      if (i && std::strcmp(spec.declaredImports[i - 1], spec.declaredImports[i]) >= 0)
         return false;
     }
   }
@@ -190,9 +190,9 @@ bool GraphV2::activate(size_t index) {
   const bool loaded = node.spec.requiredOsCpuAbi
       ? node.module.loadVerifiedBytes(node.spec.verifiedElfBytes,
                                       node.spec.verifiedElfLength,
-                                      node.spec.authenticatedElfSha256,
-                                      node.spec.signedImports,
-                                      node.spec.signedImportCount,
+                                      node.spec.contentSha256,
+                                      node.spec.declaredImports,
+                                      node.spec.declaredImportCount,
                                       node.spec.id, node.spec.provides,
                                       node.spec.api,
                                       node.spec.requirementCount ? node.boundDependencies : nullptr,

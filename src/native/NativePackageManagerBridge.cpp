@@ -21,7 +21,7 @@
 namespace {
 constexpr const char* kInbox = "/Packages/Inbox";
 constexpr RuntimePackages::PackageRuntimePolicy kPolicy{
-    "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+    "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 constexpr uint32_t kMaxInstalledPackages = 128u;
 t5_installed_package_t installedPackages[kMaxInstalledPackages]{};
 uint32_t installedPackageCount = 0;

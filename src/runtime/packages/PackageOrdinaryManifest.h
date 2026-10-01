@@ -222,7 +222,7 @@ inline bool parseOrdinaryManifest(const char* json, size_t length,
        std::strcmp(plan.architecture, "riscv32"))) { clearOrdinaryManifestPlan(plan); return false; }
   // Structural checks do not resolve grants or allow a driver to activate.
   // The real capability resolver and policy are mandatory at install/load time.
-  const PackageRuntimePolicy structural{plan.architecture, UINT32_MAX, 0,
+  const PackageRuntimePolicy structural{plan.architecture, UINT32_MAX,
       kOrdinaryMaxEntryBytes, kOrdinaryMaxTotalBytes};
   if (preflightOrdinaryPackage(plan, structural,
           [](const char*) -> uint32_t { return UINT32_MAX; }) !=

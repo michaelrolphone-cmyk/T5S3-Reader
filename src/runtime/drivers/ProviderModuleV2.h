@@ -4,8 +4,9 @@
 #include <cstdint>
 
 /* Generic module loader; cannot include USB, UART, GPIO or board headers.
- * Its caller must authenticate a signed manifest, pin dependencies, resolve
- * API versions and authorize provider execution. */
+ * Its trusted caller validates ordinary metadata and exact private ELF bytes,
+ * pins dependencies, resolves API versions and authorizes provider execution.
+ * Self-declared content hashes do not grant imports or hardware rights. */
 namespace RuntimeProviders {
 struct StreamHostV1 {
   bool (*open)(risc_stream_provider_v1*);
@@ -34,8 +35,8 @@ class ModuleV2 final {
    * Host builds deny this path; ownership requires separate capability grants
    * and successful quiescence before unmapping. */
   bool loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
-                         const uint8_t authenticatedSha256[32],
-                         const char* const* signedImports, size_t signedImportCount,
+                         const uint8_t contentSha256[32],
+                         const char* const* declaredImports, size_t declaredImportCount,
                          const char* expectedId, const char* expectedCapability,
                          uint32_t expectedApi,
                          const risc_provider_dependency_v1* dependencies,

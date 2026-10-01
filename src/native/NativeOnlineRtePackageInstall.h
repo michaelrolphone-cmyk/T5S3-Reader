@@ -109,7 +109,7 @@ inline bool install(const RuntimePackages::CatalogPackage& package,
         !Storage.rename(part.c_str(), archive.c_str())) return false;
   }
   constexpr RuntimePackages::PackageRuntimePolicy policy{
-      "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+      "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
   const auto installed = RuntimePackages::installOrdinaryFromSdZip(
       archive.c_str(), policy, RuntimePackages::installedCapabilityVersion,
       &package.identity);

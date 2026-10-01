@@ -23,9 +23,9 @@ struct SpecV2 {
   uint32_t requiredOsCpuAbi = 0;
   const uint8_t* verifiedElfBytes = nullptr;
   size_t verifiedElfLength = 0;
-  const char* const* signedImports = nullptr;
-  size_t signedImportCount = 0;
-  uint8_t authenticatedElfSha256[32] = {};
+  const char* const* declaredImports = nullptr;
+  size_t declaredImportCount = 0;
+  uint8_t contentSha256[32] = {};
 };
 struct GrantV2 {
   uint32_t slot = 0;
@@ -99,7 +99,7 @@ class GraphV2 final {
   // digest and import declarations BEFORE entering this API.
   // Friendship is an API boundary, not a memory-isolation guarantee.
   friend class ::RuntimePackages::DeviceProviderExecutorV2;
-  bool addAuthenticatedPrivileged(const SpecV2& spec);
+  bool addManagerValidatedPrivileged(const SpecV2& spec);
   bool addChecked(const SpecV2& spec, bool privilegedAdmission);
 
   enum class Visit : uint8_t { Idle, Visiting, Active };

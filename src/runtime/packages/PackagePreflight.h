@@ -30,7 +30,6 @@ struct PackageEnvelopeView {
   Identity identity;
   const char* architecture;
   uint32_t minRuntimeApi;
-  uint32_t securityVersion;
   const PackageEntry* entries;
   size_t entryCount;
   const PackageRequirement* requirements;
@@ -40,10 +39,6 @@ struct PackageEnvelopeView {
 struct PackageRuntimePolicy {
   const char* architecture;
   uint32_t runtimeApi;
-  // Zero explicitly disables the optional experimental security-version
-  // policy for ORDINARY integrity-checked packages. A nonzero threshold keeps
-  // existing signed-package/rollback behavior unchanged.
-  uint32_t minimumSecurityVersion;
   uint64_t maxEntryBytes;
   uint64_t maxTotalBytes;
 };
@@ -53,7 +48,6 @@ enum class PreflightResult : uint8_t {
   InvalidIdentity,
   UnsupportedArchitecture,
   IncompatibleRuntime,
-  SecurityRollback,
   InvalidEntryList,
   InvalidEntry,
   DuplicateEntry,
@@ -112,7 +106,7 @@ inline bool validSha256Hex(const char* digest) {
 // imply SHA-256 was computed. A caller must independently hash the payloads
 // against declared digests, retain exact candidate bytes through staging, and
 // apply execution-context grants at LOAD time. An ordinary digest is NOT a
-// publisher signature. Optional signed packages may enforce additional trust.
+// publisher identity or authorization to execute privileged imports.
 template <typename Resolver>
 PreflightResult preflightPackage(const PackageEnvelopeView& package,
                                  const PackageRuntimePolicy& runtime,
@@ -130,9 +124,6 @@ PreflightResult preflightPackage(const PackageEnvelopeView& package,
     return PreflightResult::UnsupportedArchitecture;
   if (!package.minRuntimeApi || package.minRuntimeApi > runtime.runtimeApi)
     return PreflightResult::IncompatibleRuntime;
-  if (runtime.minimumSecurityVersion &&
-      (!package.securityVersion || package.securityVersion < runtime.minimumSecurityVersion))
-    return PreflightResult::SecurityRollback;
   if (!package.entries || !package.entryCount || package.entryCount > kMaxPackageEntries ||
       !runtime.maxEntryBytes || !runtime.maxTotalBytes)
     return PreflightResult::InvalidEntryList;

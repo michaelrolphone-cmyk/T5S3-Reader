@@ -1,6 +1,6 @@
 # U1 implementation ledger
 
-## Active continuation claim — October 1, 01:15 UTC
+## Active continuation claim — October 1, renewed 02:08 UTC
 
 Owner: current U1 implementation worker on PR #96 / `impl/u1-riscrte`.
 Continuation starts from verified green `4b5c1816`, integrates observed master
@@ -8,6 +8,53 @@ Continuation starts from verified green `4b5c1816`, integrates observed master
 and auditing the remaining whole-U1 acceptance gates. Other continuations must
 not write this branch until this claim is explicitly released. No live release,
 index, tag, master update or flash. CI is feedback, not an idle-work gate.
+
+## October 1: remove the isolated package-signing subsystem
+
+Base **844a6d08** has verified successful PlatformIO/host **36803877752** and
+USB/ELF **36803877914** runs. Its predecessor **75316089** passed both target
+boards and USB/ELF but exposed a missing owner-tick stub in the standalone input
+focus harness; 844a6d08 fixes that harness and asserts its progress cadence.
+Master was refetched at this checkpoint and remains **3300229d**, already merged.
+
+The [purge audit](U1_SIGNING_PURGE_AUDIT.md) lists every exact removed path and
+retained neutral dependency. Deleted **45** isolated signed-format decoder,
+P-256/trust/floor/provenance/device-wrapper, writer, fixture/runner and experimental
+spec files, rather than archiving a disabled subsystem. No ordinary production
+caller depended on that subgraph. Existing ordinary manager/ELF helpers already
+hold the useful parsing, SHA, byte ownership, exact imports, transaction and
+quiescence machinery, so no replacement installer was introduced.
+
+- Remove unused authentication security-version fields/checks from internal
+  preflight; preserve ordinary numeric package versions and downgrade refusal.
+- Rename internal declared-import/content-digest/private-manager admission
+  fields/methods to match the actual unsigned contract. Public driver/stream
+  ABIs, exclusive trusted admission, exact import equality, privately copied
+  candidate bytes, dependency pins and failed-quiescence quarantine remain.
+- Rewrite active provider/security guidance around the retained controls and
+  remove stale package-signing mandates. Unrelated TLS/general crypto and
+  firmware-image protocol hashes remain; no credential/eFuse/device setting
+  or deployed SD/NVS data was changed. Unsupported legacy containers reject
+  read-only and preserve their bytes. App/driver payload versions are unchanged.
+- Added a normal-suite absence/reference guard; no deleted source/tool remains
+  a build/release dependency. Negative ordinary parser/ZIP checks reject retired
+  metadata/container input without changing its owner-held bytes.
+
+Observed after removal: full ordinary-package, springboard, stream, provider
+map/graph and authorization suites passed, including real loaded ELF context/
+quiescence, corruption, stale rights and exact import/owned-byte checks. Also
+19 release-index, 16 release-record and 10 offline handoff tests passed. ASan/
+UBSan used with only ptrace-incompatible LeakSanitizer disabled. Exact new-head
+firmware/ELF CI is pending at publication; prior green results do not certify it.
+
+This closes another actual U1 source gap. Remaining app bundle distribution,
+nested resources/scoped access, archive service, CDC migration, generation-bound
+receipts and final link/physical-ownership evidence remain in the acceptance
+matrix. The older single-open SD hashing branch is already represented in current
+source and is not being reimplemented. The sole-writer continuation claim remains
+active while this work is verified and remaining closures are selected.
+
+**Implementation In Progress**
 
 ## October 1: close generic installed-provider progress dependency
 

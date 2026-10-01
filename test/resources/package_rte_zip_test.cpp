@@ -46,6 +46,22 @@ Blob packFiles(const std::vector<RteZipSourceFile>& files) {
 } // namespace
 
 int main() {
+  // Retired non-ZIP containers are unsupported input, not an alternate trust
+  // path. Inspection is read-only and leaves the owner's bytes untouched.
+  {
+    Blob legacy;
+    legacy.bytes.assign(128, 0);
+    const uint8_t retired[] = {'R','I','S','C','P','K','G','1'};
+    std::memcpy(legacy.bytes.data(), retired, sizeof(retired));
+    const auto preserved = legacy.bytes;
+    RteZipView rejected{};
+    const auto read = [&](uint64_t at, uint8_t* out, size_t length) {
+      return legacy.readAt(at, out, length);
+    };
+    assert(inspectRteZip(read, legacy.bytes.size(), rejected) != RteZipResult::Ready);
+    assert(legacy.bytes == preserved);
+  }
+
   const char* kinds[] = {"application", "driver", "service", "provider"};
   uint8_t elf[52]{};
   elf[0] = 0x7f;

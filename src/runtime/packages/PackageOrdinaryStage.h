@@ -82,9 +82,8 @@ inline bool ordinaryDigestEquals(const uint8_t actual[32], const char expected[6
   return difference == 0;
 }
 
-// Reuse the same bounds, identity, CPU ABI, version, entry and dependency
-// preflight as signed archives, but explicitly omit experimental signer and
-// NVS-floor policy. A zero floor does not silently install signing keys.
+// One generic bounds/identity/CPU/version/entry/dependency preflight. Content
+// consistency and runtime capability authorization remain separate checks.
 template <typename Resolver>
 PreflightResult preflightOrdinaryPackage(const OrdinaryPackagePlan& plan,
     const PackageRuntimePolicy& limits, Resolver resolver) {
@@ -111,10 +110,8 @@ PreflightResult preflightOrdinaryPackage(const OrdinaryPackagePlan& plan,
   if (!std::memchr(plan.architecture, 0, sizeof(plan.architecture)))
     return PreflightResult::UnsupportedArchitecture;
   const PackageEnvelopeView envelope{plan.identity, plan.architecture,
-      plan.minRuntimeApi, 0, entries, plan.entryCount, needs, plan.requirementCount};
-  PackageRuntimePolicy ordinary = limits;
-  ordinary.minimumSecurityVersion = 0;
-  return preflightPackage(envelope, ordinary, resolver);
+      plan.minRuntimeApi, entries, plan.entryCount, needs, plan.requirementCount};
+  return preflightPackage(envelope, limits, resolver);
 }
 
 inline bool ordinaryElfHeader(const uint8_t* data, size_t size,

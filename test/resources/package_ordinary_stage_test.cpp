@@ -135,7 +135,7 @@ Source fixture() {
   return out;
 }
 constexpr uint8_t metadata[] = "{\"type\":\"ordinary\"}";
-constexpr PackageRuntimePolicy kLimits{"xtensa-esp32s3", 2, 0, 2048, 4096};
+constexpr PackageRuntimePolicy kLimits{"xtensa-esp32s3", 2, 2048, 4096};
 uint32_t resolve(const char* name) {
   return std::strcmp(name, "kernel.serial") == 0 ? 1u : 0u;
 }
