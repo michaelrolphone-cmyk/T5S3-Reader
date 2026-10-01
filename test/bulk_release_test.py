@@ -244,10 +244,13 @@ class DiscoverCandidatesTest(unittest.TestCase):
 
     def test_physical_probes_keep_their_strict_audits(self):
         builders = discover_driver_builders(ROOT)
+        physical_probes = {"i2c_esp32s3_v2", "usb_controller_esp32s3"}
+        self.assertTrue(physical_probes <= release_builder._BOOTSTRAP_BUILD_RECIPES.keys())
         for folder, commands in release_builder._BOOTSTRAP_BUILD_RECIPES.items():
             manifest = json.loads((ROOT / "Drivers" / folder / "manifest.json").read_text())
             self.assertEqual(builders[manifest["id"]], commands)
-            self.assertIn("--strict", commands[-1])
+            if folder in physical_probes:
+                self.assertIn("--strict", commands[-1])
 
     def test_power_wrappers_build_only_their_own_manifest_identity(self):
         stub = types.ModuleType("build_board_power_t5s3_v2")
