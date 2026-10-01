@@ -150,6 +150,8 @@ python3 "$repo_dir/test/resources/installed_provider_app_requirement_source_test
 python3 "$repo_dir/test/native_apps/network_cookie_session_source_test.py"
 python3 "$repo_dir/test/native_apps/home_shortcut_launch_contract_test.py"
 python3 "$repo_dir/test/native_apps/file_browser_retirement_contract_test.py"
+python3 "$repo_dir/test/native_apps/file_browser_oversize_usb_handle_source_test.py"
+python3 "$repo_dir/test/native_apps/file_browser_oversize_usb_handle_runtime_test.py"
 python3 "$repo_dir/test/native_apps/model_viewer_contract_test.py"
 MV_SANITIZE=1 python3 "$repo_dir/test/native_apps/model_viewer_shading_test.py"
 MV_SANITIZE=1 python3 "$repo_dir/test/native_apps/model_viewer_controls_test.py"
