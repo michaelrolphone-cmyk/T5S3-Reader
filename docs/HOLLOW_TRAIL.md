@@ -1,3 +1,21 @@
+# Hollow Trail 1.1.32 — Forward-X cutscene tableaus
+
+Hollow Trail **1.1.31 -> 1.1.32** extends the timeline cutscene layer with a cutscene-only three-axis tableau renderer. Gameplay remains a side scroller. A Forward-X cutscene camera looks down world X: world Y projects across the display, world Z projects vertically, and positive X becomes depth. Integer perspective scaling, depth-to-fog ink falloff and a bounded 96-object far-to-near render queue let foreground grass, room furniture, actors, trees, window frames and distant signal lights occlude one another naturally without a 3D framebuffer, floating point, heap work or changes to gameplay collision.
+
+Cutscene actors now have front, back, left-three-quarter and right-three-quarter views in addition to the existing profile gameplay silhouette. Forward actors reuse the game's limb/torso visual language but project joints in Y/Z and may move toward or away from the observer along X, so apparent size changes with actual scene depth rather than a screen-space zoom.
+
+The intro is re-authored around this renderer. The kitchen is viewed forward toward the fogged window from behind/near the protagonist; the garden wall, apple trees and three flashes occupy progressively deeper X planes behind the window frame. The tall-grass memory is an over-the-shoulder Forward-X tableau with the narrator close to the observer, the sister farther into the flattened room, grass at many depths crossing both figures, and the dark upstairs window much farther away. The departure begins looking through the doorway as the protagonist walks away from the observer through receding orchard rows, then deliberately cuts to the normal profile grammar for the final orchard/root passage. The last profile cue eases to the live forest's 1.5x framing so the handoff no longer changes scale abruptly.
+
+Native regression coverage now checks perspective shrinkage, convergence toward screen center, depth fog, distinct front/back/three-quarter actor renders, Forward-X kitchen/grass/departure frames, the profile transition and exact forest framing at handoff.
+
+# Hollow Trail 1.1.31 — timeline-driven intro cutscene
+
+Hollow Trail **1.1.30 -> 1.1.31** adds a reusable fixed-step cutscene layer above normal gameplay. A cutscene owns a bounded authored timeline of scene, actor pose, actor travel, camera travel, framing scale and caption cues. It renders through the same Hollow Trail raster primitives and articulated character renderer as gameplay; there is no pre-rendered video, second framebuffer, floating-point animation clock or per-frame allocation. Live movement, jump, interaction, pause and journal input are suppressed while a cutscene owns the actor, while the normal app exit remains available. The timeline advances on the same 32 ms fixed step as gameplay, so a delayed display scan cannot change cinematic choreography.
+
+The first launch now plays an approximately 27-second introduction: the kitchen window and three flashes, the tall-grass signal memory including the warning variant, the return to the empty kitchen, the pre-dawn departure and a continuous orchard walk in which domestic boundaries fall away and the road becomes roots. The cutscene drives the protagonist with authored wash/look/crouch/pack/walk poses, camera pullback and deterministic local light pulses. It then hands off to the existing level-1 forest spawn at x=95 with a neutral-input gate, so a held controller button cannot leak through the cinematic into a jump, interaction or pause. The intro plays only on app launch; completing the ten-chapter loop does not replay it.
+
+A native cutscene regression validates timeline boundaries, flash timing, distinct rendered kitchen/grass/orchard states, monotonic autonomous walking, finite completion and the exact forest handoff. The full native runner includes this test.
+
 # Hollow Trail 1.1.27 — foreground contours and rooftop composition
 
 Level 1's two existing near-camera trunks now use 40-vertex outlines, with
