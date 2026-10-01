@@ -44,6 +44,23 @@ static void native_resolution_tests(uint8_t *mem,uint8_t *bits){
   mixed=(a!=b)||(a!=c)||(a!=d);
  }
  assert(mixed);
+ /* The halfway foreground keeps native X but computes only 270 Y rows.
+  * Every foreground scanline must be copied to its physical row partner,
+  * while horizontal edges can still land on odd panel columns. */
+ memset(ht_native_a,0,HT_NATIVE_PIXELS);
+ ht_scene=ht_native_a;ht_native_active=true;ht_native_foreground_half_y=true;
+ ht_triangle(ht_scene,21,19,83,57,34,111,255);
+ bool odd_x=false;
+ for(int y=0;y<HT_H;++y) {
+  assert(!memcmp(ht_native_a+(2*y)*HT_NATIVE_W,
+                 ht_native_a+(2*y+1)*HT_NATIVE_W,HT_NATIVE_W));
+  for(int x=0;x<HT_W-1 && !odd_x;++x) {
+   int at=2*y*HT_NATIVE_W+2*x;
+   odd_x=ht_native_a[at]!=ht_native_a[at+1];
+  }
+ }
+ assert(odd_x);
+ ht_native_foreground_half_y=false;
  /* Native packing is one grayscale sample per physical dot. */
  for(unsigned i=0;i<HT_NATIVE_PIXELS;++i)ht_native_a[i]=(uint8_t)hash((const uint8_t *)&i,sizeof(i));
  ht_pack_mono(bits,HT_NATIVE_W/8);
@@ -57,7 +74,7 @@ static void native_resolution_tests(uint8_t *mem,uint8_t *bits){
  ht_bind(mem);ht_bind_native(mem);ht_camera_mode=HT_CAMERA_NATIVE;ht.level=0;ht_spawn(true);
  ht.camera=733*256;ht.x=(733+190)*256;ht.vista=256;ht.sway_phase=445;
  ht.rotation_phase=347u<<8;ht.camera_mood=256;
- ht_render_scene();assert(ht_native_active && ht_scene==ht_native_a);
+ ht_render_scene();assert(ht_native_active && !ht_native_foreground_half_y && ht_scene==ht_native_a);
  ht_pack_mono(bits,HT_NATIVE_W/8);unsigned first=hash(bits,HT_NATIVE_PIXELS/8);
  ht_render_scene();ht_pack_mono(bits,HT_NATIVE_W/8);
  assert(first==hash(bits,HT_NATIVE_PIXELS/8));
@@ -174,5 +191,5 @@ int main(void){
    assert(ht_filter[y*HT_W+x]==ht_average(sum,reciprocal));
   }
  }
- free(bits);free(mem);puts("Production renderer: baseline goldens plus native 960x540 raster/packing, camera, blur and FPS contracts PASS");
+ free(bits);free(mem);puts("Production renderer: baseline goldens plus full-native backgrounds, 960x270 foreground detail, packing, camera, blur and FPS contracts PASS");
 }
