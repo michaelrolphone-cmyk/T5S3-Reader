@@ -1,6 +1,7 @@
 #if defined(RISCRTE_PROFILE_HEADLESS)
 #include "HeadlessRuntime.h"
 #include "HeadlessLifecycle.h"
+#include "HeadlessAppHost.h"
 #include "native/NativeStreamBridge.h"
 #include "runtime/drivers/InstalledProviderGraph.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
@@ -23,6 +24,10 @@
 #include "../../../test/hardware/cam/Qualification.h"
 #endif
 
+#ifdef RISCRTE_CAM_APP_EXPERIMENT
+#include "../../../test/hardware/cam/CameraAppInstall.h"
+#endif
+
 #ifdef RISCRTE_CAM_CAMERA_EXPERIMENT
 #include "../../../test/hardware/cam/CameraProof.h"
 #include "../../../test/hardware/cam/CameraInstall.h"
@@ -33,7 +38,8 @@ namespace Packages = RuntimePackages;
 namespace Providers = RuntimeInstalledProviders;
 // Trusted deployment profile, independent of installation. This first offline
 // CAM profile grants only these two non-peripheral services. No directory scan
-// can expand the activation list. Provisioning and foreground apps are absent.
+// can expand the activation list. Provisioning remains absent; a verified
+// configured application may request its own declared capabilities.
 struct Request { Packages::Kind kind; const char* id; const char* capability; uint32_t version; };
 constexpr Request requests[] = {
   {Packages::Kind::Driver, "platform-clock-v1", "platform.clock", 1},
@@ -129,6 +135,9 @@ void setup() {
   LOG_INF("BOOT", "mac=%02x:%02x:%02x:%02x:%02x:%02x app=0x%x flash=%u psram=%u",
     mac[0],mac[1],mac[2],mac[3],mac[4],mac[5], unsigned(esp_ota_get_running_partition()->address),
     ESP.getFlashChipSize(), ESP.getPsramSize());
+#ifdef RISCRTE_CAM_APP_EXPERIMENT
+  if(!installCameraAppExperiment()){LOG_ERR("APP","result=failed stage=install");return;}
+#endif
 #ifdef RISCRTE_CAM_CAMERA_EXPERIMENT
   // Storage port verifies the dedicated CAM MAC before any filesystem I/O.
   // This selected profile reserves camera pins/LCD_CAM/GDMA RX4 exclusively;
@@ -143,6 +152,11 @@ void loop() {
   if (state != previous) {
     LOG_INF("BOOT", "state=%s", stateName(state));
     previous = state;
+  }
+  static bool defaultAppChecked = false;
+  if (state == State::Running && !defaultAppChecked) {
+    defaultAppChecked = true;
+    runConfiguredDefaultApp();
   }
   if (millis()-lastLog >= 5000) {
     lastLog = millis();

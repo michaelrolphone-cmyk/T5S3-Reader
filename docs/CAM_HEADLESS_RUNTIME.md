@@ -107,3 +107,10 @@ backups). Original-camera cumulative recovery hash remains
 `92a4400ab9f81b6f5741f27595f0731503a2c51bf11722f947fe06457a3c7bd0`.
 Current pre-write camera-image recovery range hash is
 `c710e66ef0e42d27f0ae8411288d24844110f3f3286e2d10306f8b8737f40bcb`.
+
+## Configured default app entry (PR 344 follow-up)
+
+The later configured-app increment is described in [DEFAULT_APP_ENTRY.md](DEFAULT_APP_ENTRY.md).
+It supersedes the initial statement above that this profile has no foreground
+app hosting. The no-selector behavior remains the same offline provider idle.
+This change does not imply general U4 provisioning or GUI extraction.

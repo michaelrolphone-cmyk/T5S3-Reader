@@ -10,6 +10,12 @@ on:
       - 'test/run_camera_provider_test.sh'
       - 'ports/cam/**'
       - 'src/runtime/boot/Headless*'
+      - 'src/runtime/boot/DefaultAppSelection.h'
+      - 'src/main.cpp'
+      - 'lib/NativeApps/src/NativeAppLauncher.c'
+      - 'Apps/camera_utility.*'
+      - 'test/native_apps/camera_utility_test.c'
+      - 'test/runtime/default_app_*'
       - 'test/boot/**'
       - 'test/run_cam_headless_test.sh'
       - '.github/workflows/cam-headless.yml'
@@ -38,3 +44,9 @@ jobs:
           done
       - name: Camera lifecycle and bounded stream contracts
         run: RISCRTE_PROVIDER_SDK_ROOT="$RUNNER_TEMP/u1-sdk" sh test/run_camera_provider_test.sh
+      - name: Default app selection and camera utility contracts
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -Itest/runtime/default_app_stubs -Ilib/NativeApps/include -Isrc test/runtime/default_app_selection_test.cpp -o "$RUNNER_TEMP/default-app-test"
+          "$RUNNER_TEMP/default-app-test"
+          cc -std=c11 -Wall -Wextra -Werror -Ilib/NativeApps/include -Isdk/driver test/native_apps/camera_utility_test.c -o "$RUNNER_TEMP/camera-app-test"
+          "$RUNNER_TEMP/camera-app-test"

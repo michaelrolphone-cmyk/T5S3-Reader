@@ -1,10 +1,8 @@
-#include <T5AppApi.h>
 #include <esp_err.h>
 #include "network/HttpDownloader.h"
 // This offline core-service profile has no foreground app launcher or network
 // provider. Unsupported surfaces fail closed; no successful stand-ins. Provider
 // contexts and scheduler use the unchanged production NativeStreamBridge.
-extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t) { return nullptr; }
 bool HttpDownloader::fetchUrl(const std::string&, Stream&, const std::string&, const std::string&) { return false; }
 // Arduino 2.0.14 otherwise auto-erases unfamiliar/newer NVS during initArduino.
 // This profile has no NVS consumer: report unsupported, never fake success or
