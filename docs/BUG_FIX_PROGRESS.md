@@ -1,6 +1,15 @@
 # Bug repair progress
 
-Snapshot: 2026-10-01 02:23 UTC. This record supersedes the pre-merge restoration snapshot.
+Snapshot: 2026-10-01 02:56 UTC. This record supersedes the pre-merge restoration snapshot.
+
+## Completed revalidation-only run — resolver #252
+
+- Coordinator `fix_reachable_confirmation_bug`; active ledger owner **none**. Refreshed master `a5e2db59077cc889079668dc9cd7428b08bc32a1`, ledger `637f18064645adfcd0e3c795a7d315f42046b103`, and open #332/#333/#334 before publication. #333 and #334 heads unchanged; both code slots occupied
+- #252 is **host-fault confirmed, unclaimed** on current master and U1 `015ae5d42a0d7fc294f0675703b8f4cb51810cac`: actual resolver source accepts the first managed match if the iterator returns invalid before a second duplicate. Seven controls pass; explicit fail-closed assertion fails (134) on both sources under ASan/UBSan. SD iterator and package validation are fixtures; no real SD fault, duplicate installation, target build or hardware qualification claimed
+- Source reachability traced through ordinary Home pinned-app launch and InstalledAppActivity; prerequisites and remaining storage/device uncertainty recorded in #252. No X4 physical-button assumption
+- U1 owner notified with source SHAs/reproduction and confirmed overlapping resolver edit changes only the policy initializer. No duplicate patch, implementation claim or third batch. Lower-layer EOF/error distinction remains an open implementation question, not an established fix
+- Inventory unchanged at **243 reports / 241 outstanding**: 237 need revalidation, 252 host-fault confirmed with storage/device validation pending, 16/17 held, 249 awaiting merge; 91/205 fixed. Next ID **255**
+- Only `bugs.md` and this progress document updated; original scan alias/provenance retained. No runtime/version/architecture edits, merge, release or flash. Future repair must coordinate with active U1 and available batch capacity
 
 ## Completed ledger-only reconciliation — 19:21 scan
 
@@ -8,7 +17,7 @@ Snapshot: 2026-10-01 02:23 UTC. This record supersedes the pre-merge restoration
 - Reconciled immutable scan `5a4a4653ce37b932f1485bb8cd9a5d4dda8dce87` from `automation/bug-scan-20260930-1921`: local **249 → canonical 252**, **250 → 253**, **251 → 254**. Existing 249–251 unchanged
 - 252: installed-app resolver accepts provisional uniqueness after iterator failure; distinct from #24 provider count cutoff, #227 partial live inventory publication, and #129 resolver capacity exhaustion. Similar shared iterator error/EOF limitation is cross-referenced without collapsing distinct consumers/failures
 - 253: combined I2C per-phase timeout reuse; 254: multi-device USB class-rejection cache represented by one token. Source patterns inspected on current master; these are **unclaimed candidates needing revalidation**, not new runtime or hardware findings. #254 overlaps NativeUsbBridge under active U1 #96 and must be reconciled before any repair
-- Current inventory: **243 canonical reports, 241 outstanding**: 238 need revalidation, 16/17 held, 249 awaiting merge; 91/205 fixed. Next unused ID **255**
+- Earlier reconciliation inventory: **243 canonical reports, 241 outstanding**: 238 need revalidation, 16/17 held, 249 awaiting merge; 91/205 fixed. Next unused ID **255**
 - **Two code-batch slots remain occupied** by #333 and #334. No implementation claim or third batch was created. No runtime/build/version edits, target tests, hardware I/O, merge or release for this documentation-only reconciliation
 - Verification: canonical headings/unique IDs, immutable source aliases, preserved existing report bodies, current-source/dedup notes, captured-parent non-force publication and remote content verification. Keep using open #332; next run must refresh claims and PR state
 
