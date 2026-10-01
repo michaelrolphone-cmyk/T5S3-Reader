@@ -29,7 +29,7 @@
 enum { HT_CAMERA_BASELINE, HT_CAMERA_NO_ROTATION, HT_CAMERA_NO_ZOOM, HT_CAMERA_OFF, HT_CAMERA_NATIVE, HT_CAMERA_MODES };
 static unsigned ht_camera_mode;
 static const char *const ht_camera_labels[]={"BASELINE", "ROTATION OFF", "ZOOM OFF", "BOTH OFF", "NATIVE 960X540"};
-static bool ht_framed,ht_native_active;
+static bool ht_framed,ht_native_active,ht_native_background_prepared;
 static int ht_world_scale=256; /* Draw-only projection; UI and cache geometry stay unscaled. */
 static int ht_view_margin(void) {return (480*256/ht_world_scale-480)/2;}
 static int ht_project_x(int x) {return 240+(x-240)*ht_world_scale/256;}
@@ -1557,6 +1557,10 @@ static void ht_city_observer_foreground(const ht_game *game);
 static void ht_authored_foreground(const ht_game *game);
 static void ht_draw_puzzle(const ht_game *game);
 static void ht_draw_evidence(const ht_game *game);
+static bool ht_authored_chapter(unsigned level);
+static void ht_forest_backdrop(const ht_game *game);
+static void ht_city_backdrop(const ht_game *game);
+static void ht_authored_backdrop(const ht_game *game);
 /* At full opacity the grotto supplies every background pixel itself. */
 static bool ht_grotto_opaque(const ht_game *g) {
     return g->level==4 && g->camera/256<=700;
@@ -1569,6 +1573,7 @@ static void ht_render_scene(void) {
     const bool native_mode=ht_camera_mode==HT_CAMERA_NATIVE;
     const unsigned camera_mode=native_mode?(unsigned)HT_CAMERA_BASELINE:ht_camera_mode;
     ht_native_active=native_mode;
+    ht_native_background_prepared=false;
     ht_scene=native_mode?ht_native_a:ht_scene_low;
     if(camera_mode==HT_CAMERA_NO_ZOOM || camera_mode==HT_CAMERA_OFF)game.vista=game.intimacy=0;
     ht_frame_camera(&game,camera_mode);
@@ -1586,6 +1591,23 @@ static void ht_render_scene(void) {
     }
     uint8_t *output=ht_scene;
     if(camera_pass)ht_scene=native_mode?ht_native_b:ht_temp;
+    /* Native A/B keeps the near scene at physical resolution, but authored
+     * distant backdrops only need logical 480x270 detail. Render those once
+     * into the logical surface and expand them before native traversal,
+     * character, props, weather and foreground occluders are overlaid. */
+    if(native_mode && (game.level==0 || game.level==1 || ht_authored_chapter(game.level))) {
+        uint8_t *native_target=ht_scene;
+        ht_scene=ht_scene_low;
+        ht_native_active=false;
+        ht_world_scale=ht_scene_scale(&game);
+        if(game.level==0)ht_forest_backdrop(&game);
+        if(game.level==1)ht_city_backdrop(&game);
+        ht_authored_backdrop(&game);
+        ht_scene=native_target;
+        ht_native_active=true;
+        ht_expand_scene_native(ht_scene_low,native_target);
+        ht_native_background_prepared=true;
+    }
     if(!opaque) {
         if(native_mode) {
             uint8_t *native_target=ht_scene;
