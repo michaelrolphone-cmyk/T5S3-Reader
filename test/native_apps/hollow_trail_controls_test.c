@@ -24,6 +24,44 @@ static void press(unsigned source,uint32_t mask) {
     reports[source][0].buttons=0; ht_input(1);
     reports[source][0].buttons=mask; ht_input(1);
 }
+/* Drive the real provider mapping and scheduler, not the emphasis helper. */
+static void motion_emphasis_controls(void) {
+    const unsigned x[2]={8,4},y[2]={4,8};
+    healthy=true;host_exit=false;app=&fake_app;pad=&xapi;hid_pad=&hapi;
+    for(unsigned source=0;source<2;++source) {
+        int velocity[3];
+        for(unsigned button=0;button<3;++button) {
+            memset(reports,0,sizeof(reports));
+            reports[source][0].connected=1;reports[source][0].device=source+1;
+            reports[source][0].hat=8;
+            memset(&ht,0,sizeof(ht));ht_spawn(true);ht_geometry_level=0;
+            ht_cutscene.active=false;ht_cutscene_seen=0;
+            reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
+            held=previous=mapped=0;ht_pad_owned=ht_input_rearm=false;
+            ht_pad_source=-1;simulation_started=false;
+            ht_input(1); /* Neutral owns/rearms this receiver. */
+            reports[source][0].hat=2;
+            reports[source][0].buttons=button==1?x[source]:button==2?y[source]:0;
+            ht_input(1);ht_advance(now);ht_advance(now+=HT_STEP_MS);
+            velocity[button]=ht.vx;
+            assert(ht_motion_emphasis==(button==2));
+            assert(!reading && !paused && !jump_down && !quitting);
+            assert(((held&HT_BACK)!=0)==(button==1));
+            assert(((held&HT_EMPHASIS)!=0)==(button==2));
+            if(button==2) {
+                reports[source][0].buttons=0;ht_input(1);ht_advance(now+=HT_STEP_MS);
+                assert(!ht_motion_emphasis && !(held&HT_EMPHASIS));
+                reports[source][0].buttons=y[source];ht_input(1);ht_advance(now+=HT_STEP_MS);
+                assert(ht_motion_emphasis);
+                paused=true;ht_advance(now+=HT_STEP_MS);assert(!ht_motion_emphasis);
+                paused=false;reading=true;ht_advance(now+=HT_STEP_MS);assert(!ht_motion_emphasis);
+                reading=false;ht_cutscene_begin(HT_CUTSCENE_INTRO);
+                ht_advance(now+=HT_STEP_MS);assert(!ht_motion_emphasis);
+            }
+        }
+        assert(velocity[0]==48 && velocity[1]==velocity[0] && velocity[2]==53);
+    }
+}
 int main(void) {
     app=&fake_app; pad=&xapi; hid_pad=&hapi;
     /* Receiver face-label correction reported on hardware for 1.0.15. */
@@ -184,5 +222,21 @@ int main(void) {
     ht_geometry_level=1;simulation_started=false;ht_advance(now);
     for(int i=0;i<430;++i) {ht_advance(now+=32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
     assert(!ht_cutscene.active && ht_input_rearm && held==0 && previous==0);
+    /* Held controller input cannot leak out of natural intro completion. */
+    memset(reports,0,sizeof(reports));healthy=true;mapped=0;host_exit=false;
+    reading=paused=quitting=loading=debug_jump=false;ht.level=0;ht_select_level(0);ht_spawn(true);
+    ht_cutscene_begin(HT_CUTSCENE_INTRO);ht_cutscene.tick=HT_INTRO_TICKS-1;
+    ht_geometry_level=0;simulation_started=false;ht_advance(now);
+    held=HT_RIGHT|HT_JUMP;ht_advance(now+=32);
+    assert(ht.x==95*256 && ht_input_rearm && !held && !jump_down);
+    mapped=T5_APP_BUTTON_RIGHT|T5_APP_BUTTON_UP;ht_input(1);
+    assert(!held && !jump_down && ht.x==95*256);
+    mapped=0;ht_input(1);assert(!ht_input_rearm);
+    mapped=T5_APP_BUTTON_RIGHT;ht_input(1);assert(held&HT_RIGHT);
+    /* Exiting during the last segment remains immediate and does not apply
+     * a second handoff or consume input as a gameplay action. */
+    ht_cutscene_begin(HT_CUTSCENE_INTRO);ht_cutscene.tick=2140;
+    host_exit=true;ht_input(1);assert(quitting && ht_cutscene.active);
+    motion_emphasis_controls();
     puts("Hollow Trail controls: receiver HID/XInput face labels, dedicated Start, A inspect, B jump, X back, arbitration and fault recovery PASS");
 }

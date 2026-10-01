@@ -25,7 +25,13 @@ shots = [('kitchen', 140, 'Cold cup, chipped sister cup, wall/rake/bucket'),
          ('mill', 170, 'Playable mill hollow / one-shot arrival tableau'),
          ('gate', 0, 'Forest gate opens onto rooted gullies and towers'),
          ('city', 230, 'Player-earned city arrival: held roofscape reveal'),
-         ('terrace', 0, 'First ladder puddle / worn bolt / crossed arrows')]
+         ('terrace', 0, 'First ladder puddle / worn bolt / crossed arrows'),
+         ('arrival', 2020, 'Departure begins revealing the actual first parcel'),
+         ('arrival', 2140, 'One walking silhouette through light-to-dark transition'),
+         ('arrival', 2279, 'Last intro frame already uses live gameplay geometry'),
+         ('boulder', 0, 'Irregular contrasting boulder / half-effort contact cue'),
+         ('boulder', 2, 'Same readable stone shape in the pumping plain'),
+         ('handoff', 2280, 'Control returned on the same first-parcel raster')]
 source = r'''
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +44,15 @@ int main(int argc,char **argv) {
  ht_bind(mem);ht_bind_native(mem);memset(&ht,0,sizeof(ht));ht.level=0;ht_spawn(true);
  ht_camera_mode=HT_CAMERA_NATIVE;
  bool gameplay=false;
+ if(!strcmp(argv[1],"boulder")) {
+  ht.level=(unsigned)atoi(argv[2]);ht_select_level(ht.level);ht_spawn(true);
+  ht.x=ht.traversal.ball_x-21*256;ht.y=ht.traversal.ball_y+HT_BALL_RADIUS*256;
+  ht.camera=ht.x-200*256;ht.camera_y=ht.y-180*256;ht.traversal.push_hint=HT_ROLL;
+  gameplay=true;
+ } else if(!strcmp(argv[1],"handoff")) {
+  ht_cutscene_begin(HT_CUTSCENE_INTRO);ht_cutscene.tick=HT_INTRO_TICKS;
+  ht_cutscene_apply_handoff(&ht_cutscene);gameplay=true;
+ } else
  if(!strcmp(argv[1],"city")) {
   ht.level=1;ht_select_level(1);ht_spawn(true);ht_cutscene_begin(HT_CUTSCENE_CITY);
  } else if(!strcmp(argv[1],"gate")) {
@@ -53,7 +68,7 @@ int main(int argc,char **argv) {
   ht_cutscene_begin(HT_CUTSCENE_MILL);
  } else ht_cutscene_begin(HT_CUTSCENE_INTRO);
  ht_cutscene.tick=(uint16_t)atoi(argv[2]);
- if(gameplay)ht_render_scene();else ht_cutscene_render(&ht_cutscene);
+ if(gameplay){ht_render_scene();ht_narration(&ht);}else ht_cutscene_render(&ht_cutscene);
  char path[1024];snprintf(path,sizeof(path),"%s.pgm",argv[3]);FILE *f=fopen(path,"wb");
  if(!f)return 4;fprintf(f,"P5\n960 540\n255\n");
  for(unsigned i=0;i<HT_NATIVE_PIXELS;++i)fputc(255-ht_scene[i],f);fclose(f);
@@ -67,15 +82,15 @@ with tempfile.TemporaryDirectory(prefix='hollow-preview-') as tmp:
     binary = pathlib.Path(tmp) / 'preview'
     src.write_text(source)
     subprocess.run(['cc', '-std=c11', '-O2', '-Wno-unused-function', '-I' + str(repo / 'lib/NativeApps/include'), str(src), '-o', str(binary)], check=True)
-    sheet = Image.new('RGB', (1440, 1210), '#e9e6df')
+    sheet = Image.new('RGB', (1440, 1800), '#e9e6df')
     draw = ImageDraw.Draw(sheet)
-    draw.text((16, 8), 'HOLLOW TRAIL 1.1.36 | Actual host-rendered scenes | Native raster reduced for contact sheet; no device qualification', fill='#252525')
+    draw.text((16, 8), 'HOLLOW TRAIL 1.1.38 | Actual host-rendered scenes | Native raster reduced for contact sheet; no device qualification', fill='#252525')
     for i, (name, tick, label) in enumerate(shots):
         stem = pathlib.Path(tmp) / name
         subprocess.run([str(binary), name, str(tick), str(stem)], check=True)
         frame = Image.open(stem.with_suffix('.pgm'))
-        frame.save(out / (name + '.png'))
-        Image.open(stem.with_suffix('.pbm')).save(out / (name + '-mono.png'))
+        frame.save(out / (name + str(tick) + '.png'))
+        Image.open(stem.with_suffix('.pbm')).save(out / (name + str(tick) + '-mono.png'))
         x, y = i % 3 * 480, 30 + i // 3 * 295
         sheet.paste(frame.resize((480, 270), Image.Resampling.LANCZOS).convert('RGB'), (x, y))
         draw.text((x + 9, y + 274), label, fill='#252525')

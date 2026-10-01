@@ -135,10 +135,25 @@ static bool ht_cutscene_step(ht_cutscene_state *s) {
     if(++s->tick<track->duration)return false;
     s->tick=track->duration;s->active=false;s->finished=true;return true;
 }
+/* The last walking segment reveals the real first parcel, with exactly the
+ * same camera, ground and actor pose used after control is returned. */
+static ht_game ht_intro_arrival_view(unsigned tick) {
+    ht_game view=ht_cutscene_anchor;
+    unsigned progress=(unsigned)ht_clamp((int)tick-2020,0,260);
+    view.x=(6+(int)(89u*progress/260u))*256;
+    view.y=ht_surface_at(&view,0,view.x/256)*256;
+    view.camera=(view.x/256-200)*256;
+    view.camera_y=(view.y/256-180)*256;
+    view.stride=(int)(progress*128u);
+    view.vx=progress<250?88:0;view.vy=0;view.grounded=true;
+    view.sway_phase=view.rotation_phase=view.drop_zoom=0;
+    return view;
+}
 static void ht_cutscene_apply_handoff(const ht_cutscene_state *s) {
     if(s->id==HT_CUTSCENE_INTRO) {
         const ht_cutscene_timeline *track=ht_cutscene_track(s);
         ht.level=track->handoff_level;ht_spawn(true);
+        if(s->tick>=track->duration)ht=ht_intro_arrival_view(track->duration);
     } /* A location tableau returns to its untouched game state, never respawns. */
 }
 
@@ -388,10 +403,11 @@ static void ht_cutscene_caption(unsigned caption) {
         {"THE CITY BEGAN OVERHEAD.","NO STREETS JOINED THESE ROOFS."},
     };
     if(caption>=sizeof(lines)/sizeof(lines[0]))return;
-    ht_rect(ht_scene,57,232,366,19,255);
+    ht_narration_key=2166136261u;
+    ht_rect(ht_scene,57,230,366,23,255);
     for(int row=0;row<2;++row) {
         const char *text=lines[caption][row];int x=(HT_W-(int)strlen(text)*6)/2;
-        ht_text_color(x,233+row*10,text,1,85);
+        ht_narration_hash(text);ht_text_color(x,233+row*10,text,1,85);
     }
 }
 static void ht_cutscene_queue_rect(int x,int y,int z,int width,int height,int ink) {
@@ -504,9 +520,9 @@ static void ht_cutscene_draw_orchard_profile(const ht_cutscene_state *s,const ht
         ht_limb(ht_scene,door-15,199,door-15,212,1,1,90);
     }
     /* Actor draws after terrain but before the closest observer trunk. */
-    ht_cutscene_profile_actor(actor,213,cue->pose,(int)s->tick,1);
-    ht_limb(ht_scene,actor-4,198,actor+5,205,1,1,150);
-    ht_rect(ht_scene,actor+3,204,6,7,202); /* packed shoulder bag */
+    if(s->tick<2020)ht_cutscene_profile_actor(actor,213,cue->pose,(int)s->tick,1);
+    if(s->tick<2020){ht_limb(ht_scene,actor-4,198,actor+5,205,1,1,150);
+    ht_rect(ht_scene,actor+3,204,6,7,202);} /* packed shoulder bag */
     int observer_x=760-camera;
     if(observer_x>-150 && observer_x<HT_W+150) {
         ht_limb(ht_scene,observer_x,270,observer_x-12,-10,18,13,252);
@@ -527,6 +543,33 @@ static void ht_cutscene_draw_arrival(const ht_cutscene_state *s) {
     ht_forest_foreground(&view);ht_city_observer_foreground(&view);
     ht_world_scale=256;ht_native_foreground_half_y=false;
 }
+static void ht_cutscene_draw_intro_arrival(const ht_cutscene_state *s,const ht_cutscene_cue *cue) {
+    int u=ht_clamp(((int)s->tick-2020)*256/230,0,256);
+    ht_game view=ht_intro_arrival_view(s->tick);
+    /* Existing spare render arena, no per-frame allocation. Final 30 ticks
+     * already are the live raster, so finishing cannot introduce a scene cut. */
+    if(u<256) {
+        ht_cutscene_draw_orchard_profile(s,cue);
+        uint8_t *saved=ht_native_active?ht_native_b:ht_near;
+        size_t pixels=ht_native_active?HT_NATIVE_PIXELS:HT_PIXELS;
+        for(size_t i=0;i<pixels;i+=HT_W) {
+            memcpy(saved+i,ht_scene+i,HT_W);ht_checkpoint();
+        }
+        ht_render_scene_from(&view,false);
+        for(size_t i=0;i<pixels;i+=HT_W) {
+            for(size_t j=i;j<i+HT_W;++j)ht_scene[j]=(uint8_t)((saved[j]*(256-u)+ht_scene[j]*u)/256);
+            ht_checkpoint();
+        }
+        /* One silhouette throughout, never a dissolve between two people. */
+        ht_game actor=view;ht_frame_camera(&actor,ht_camera_mode==HT_CAMERA_NATIVE?HT_CAMERA_BASELINE:ht_camera_mode);
+        int scale=ht_cutscene_scale(s);
+        ht_world_scale=ht_cutscene_lerp(scale,ht_scene_scale(&actor),u);
+        int x=ht_cutscene_lerp(ht_cutscene_actor_x(s)-ht_cutscene_camera_x(s),actor.x/256-actor.camera/256,u);
+        int feet=ht_cutscene_lerp(213,(actor.y-actor.camera_y)/256,u);
+        actor.traversal.support=1;
+        ht_character(x,feet,&actor);ht_world_scale=256;
+    } else ht_render_scene_from(&view,true);
+}
 static void ht_cutscene_render(const ht_cutscene_state *s) {
     const ht_cutscene_cue *cue=ht_cutscene_cue_at(s);if(!cue)return;
     /* Match the selected output raster; later tableaus can start after native
@@ -534,7 +577,8 @@ static void ht_cutscene_render(const ht_cutscene_state *s) {
     ht_native_active=ht_camera_mode==HT_CAMERA_NATIVE && ht_native_a;
     ht_native_foreground_half_y=false;
     ht_scene=ht_native_active?ht_native_a:ht_scene_low;
-    if(s->id==HT_CUTSCENE_MILL || s->id==HT_CUTSCENE_CITY)ht_cutscene_draw_arrival(s);
+    if(s->id==HT_CUTSCENE_INTRO && s->tick>=2020)ht_cutscene_draw_intro_arrival(s,cue);
+    else if(s->id==HT_CUTSCENE_MILL || s->id==HT_CUTSCENE_CITY)ht_cutscene_draw_arrival(s);
     else if(cue->pose==HT_CUT_POSE_THREAD)ht_cutscene_draw_latch(s,cue);
     else if(cue->view==HT_CUT_VIEW_FORWARD_X) {
         if(cue->scene==HT_CUT_KITCHEN)ht_cutscene_draw_kitchen_forward(s,cue);
@@ -545,6 +589,7 @@ static void ht_cutscene_render(const ht_cutscene_state *s) {
     if(s->id==HT_CUTSCENE_INTRO && s->tick<55) {
         const char *title="HOLLOW TRAIL";ht_text_color((HT_W-(int)strlen(title)*12)/2,25,title,2,255);
     }
-    ht_cutscene_caption(cue->caption);
+    if(s->id==HT_CUTSCENE_INTRO && s->tick>=2250){ht_game view=ht_intro_arrival_view(s->tick);ht_narration(&view);}
+    else ht_cutscene_caption(cue->caption);
     ht_vignette();
 }

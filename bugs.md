@@ -72,7 +72,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Persist the complete line coding across keyboard handoff and restore it before reacquiring. Test non-default configurations through both Send and Custom baud continuations.
 ### 14. Time Card records January 1, 1970 when the clock read fails
 
-- **Status:** Branch-complete on `fix/timecard-clock-failure`. Revalidated against master `a5e2db59077cc889079668dc9cd7428b08bc32a1`; the production fix, Timecard 1.0.1 -> 1.0.2 patch bump, focused regression, and branch push are complete. Awaiting merge.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260926-2025](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2025/bugs.md)
 
 - **Affected code:** `Apps/timecard.c` in `today()`, `now_minutes()`, and `punch_today()`.
@@ -81,7 +81,6 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Likely root cause:** Clock-read failure is represented by valid date/time values rather than propagated to the caller.
 - **Impact:** A transient clock failure can silently create a bogus historical punch and corrupt time-card history/totals.
 - **Repair direction:** Read one `t5_local_datetime_t` snapshot and refuse the punch if it fails. Derive both date and minutes from the successful snapshot, and test that failed clock reads create no record.
-- **Implemented fix / validation:** `punch_today()` now obtains exactly one clock snapshot and returns with `Clock unavailable` before calling `set_punch()` when the read fails. Date and minutes are derived from that same successful snapshot. The source-contract regression locks the fail-closed ordering and single-read contract; the focused runtime regression proves a failed read performs no store write or in-memory mutation and that a successful snapshot persists its exact date/time. The existing compiled Timecard UI test also passes.
 ### 15. App Store silently hides applications after row 64
 
 - **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.

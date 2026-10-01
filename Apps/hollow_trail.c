@@ -70,6 +70,7 @@ static void ht_perf_finish(const t5_video_api_v1 *video,uint32_t now) {
 #define HT_UP 512u
 #define HT_DOWN 1024u
 #define HT_BACK 256u /* Reading navigation only; never quits gameplay. */
+#define HT_EMPHASIS 2048u /* Y: transient gameplay motion emphasis. */
 #define HT_HAS(api,type,field) ((api) && (api)->struct_size >= offsetof(type,field)+sizeof((api)->field) && (api)->field)
 #include "hollow_trail_journal.inc"
 static void ht_log(const char *message) {
@@ -128,7 +129,7 @@ static void ht_advance(uint32_t now) {
     if(paused) { simulation_accumulator=0; jump_down=false; ht_motion_emphasis=false; return; }
     for(unsigned steps=0;simulation_accumulator>=HT_STEP_MS && steps<8;++steps) {
         int direction=((held&HT_RIGHT)!=0)-((held&HT_LEFT)!=0);
-        ht_motion_emphasis=(held&HT_BACK)!=0;
+        ht_motion_emphasis=(held&HT_EMPHASIS)!=0;
         ht_game before=ht;
         ht_step_controls(direction,((held&HT_DOWN)!=0)-((held&HT_UP)!=0),jump_down,(held&HT_JUMP)!=0);
         jump_down=false; simulation_accumulator-=HT_STEP_MS;
@@ -190,6 +191,7 @@ static void ht_input_update(uint32_t wait) {
             if(state->buttons&(source?0x01u:0x02u)) buttons|=HT_JUMP;
             if(state->buttons&(source?0x02u:0x01u)) buttons|=HT_INTERACT|HT_ACCEPT;
             if(state->buttons&(source?0x04u:0x08u)) buttons|=HT_BACK;
+            if(state->buttons&(source?0x08u:0x04u)) buttons|=HT_EMPHASIS;
             if(state->buttons&(source?0x80u:0x200u)) buttons|=HT_JOURNAL;
             if(state->buttons&(source?0x40u:0x100u)) buttons|=HT_PAUSE;
             break; // One controller owns the frame; never merge receiver slots.
@@ -332,6 +334,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     uint8_t *staging=(uint8_t *)app->psram_alloc(HT_PACKED_BYTES);
     if(!staging) ht_log("Hollow Trail: packed staging unavailable; using direct packing");
     bool started=false,display_initialized=false,display_reading=false;
+    uint32_t prepared_narration=0,display_narration=0;
     ht_reader_bitmap=arena+HT_MEMORY+HT_NATIVE_MEMORY;
     t5_video_surface_v1 surface={0};
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(false);
@@ -345,6 +348,8 @@ __attribute__((visibility("default"))) void app_main(void) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
     started=true;
+    if(!HT_HAS(video,t5_video_api_v1,reinforce_black) || !video->reinforce_black)
+        ht_log("Hollow Trail: narration extra black passes require firmware 1.3.48; ordinary display remains available");
     memset(&ht,0,sizeof(ht)); ht_spawn(true); ht_cutscene_seen=0; ht_cutscene_begin(HT_CUTSCENE_INTRO);
     reading=false; journal_page=0; ht_journal_index=true; ht_journal_selection=0;
     ht_journal_deciding=ht_journal_confirm=ht_journal_page_ready=false; ht_read_submitted_revision=0;
@@ -403,7 +408,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
     ht_fps_reset(&ht_fps,ht_perf.start);
-    ht_log("Hollow Trail 1.1.35: native 960x540 A/B + Forward-X cutscenes; rolling 10-second FPS");
+    ht_log("Hollow Trail 1.1.39: native 960x540 A/B + Forward-X cutscenes; rolling 10-second FPS");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -449,7 +454,7 @@ __attribute__((visibility("default"))) void app_main(void) {
          * scan. Only acquire/write the video backbuffer when it is ready. */
         if(redraw && !prepared && now-last_frame>=HT_FRAME_INTERVAL_MS) {
             last_frame=now; /* Start-to-start cadence, not an extra post-render wait. */
-            prepared_revision=scene_revision;
+            prepared_revision=scene_revision;ht_narration_key=0;
             const ht_game rendering_game=ht;
             const bool rendering_paused=paused,rendering_reading=reading;
             prepared_reader=rendering_reading;
@@ -462,7 +467,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             ht_render_scene();
             prepared_timing=ht_render_last;
             /* Initial instructions dismiss automatically after walking. */
-            if(rendering_game.x<230*256 && rendering_game.checkpoint==0) {
+            if(rendering_game.x<230*256 && rendering_game.checkpoint==0 && !ht_cutscene.finished) {
                 ht_rect(ht_scene,72,38,336,81,0);
                 ht_text(98,45,ht_chapters[rendering_game.level].title,2);
                 ht_text(98,66,"LEFT/RIGHT MOVE   B / UP JUMP",1);
@@ -477,7 +482,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.36",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.39",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
@@ -526,6 +531,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             } /* live game frame */
             } /* game/cutscene frame */
+            prepared_narration=ht_narration_key;
             prepared_since=app->millis();
             prepared_render_ms=prepared_since-now;
             prepared_pack_ms=0; prepared_staged=false;
@@ -557,6 +563,11 @@ __attribute__((visibility("default"))) void app_main(void) {
             if(debug_jump) {prepared=false;continue;}
             bool cropped=display_initialized && !prepared_reader && !display_reading;
             if(video->submit(cropped?ht_dirty_top:0,cropped?ht_dirty_height:0)) {
+                if(prepared_narration!=display_narration) {
+                    if(HT_HAS(video,t5_video_api_v1,reinforce_black) && video->reinforce_black)
+                        (void)video->reinforce_black(HT_NARRATION_Y*2,HT_NARRATION_HEIGHT*2,prepared_narration?2:0);
+                    display_narration=prepared_narration;
+                }
                 display_reading=prepared_reader;
                 if(prepared_reader) ht_read_submitted_revision=prepared_revision;
                 display_initialized=true;
