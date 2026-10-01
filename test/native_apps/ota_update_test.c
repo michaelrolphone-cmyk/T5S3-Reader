@@ -98,11 +98,22 @@ static int32_t hit_test(int16_t x, int16_t y) {
     return T5_UI_HIT_NONE;
 }
 
+// App rendering/service fixture. Real touch/edge dispatch is exercised by
+// confirmation_input_test.cpp against the production UI functions.
+static bool poll_event(t5_ui_event_t *event, uint32_t wait_ms) {
+    assert(event && wait_ms == 50);
+    memset(event, 0, sizeof(*event));
+    ++polls;
+    event->type = scenario != 0 && polls == 1 ? T5_UI_EVENT_CONFIRM : T5_UI_EVENT_BACK;
+    return true;
+}
+
 static const t5_ui_api_v1 ui_api = {
     .api_version = T5_UI_API_VERSION,
     .struct_size = sizeof(t5_ui_api_v1),
     .render_list = render_list,
     .hit_test = hit_test,
+    .poll_event = poll_event,
 };
 
 const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) {
