@@ -1,3 +1,4 @@
+#include <HalStorage.h>
 #include "BoardEPD47.h"
 
 #include <cassert>
@@ -126,6 +127,7 @@ void begin() {
 }
 
 void deinitForSleep() {
+  Storage.markUnavailable(); // Existing SD bus shutdown invalidates retained metadata.
   pinMode(EPD47_SD_CS, INPUT);
   pinMode(EPD47_SD_MISO, INPUT);
   pinMode(EPD47_SD_MOSI, INPUT);

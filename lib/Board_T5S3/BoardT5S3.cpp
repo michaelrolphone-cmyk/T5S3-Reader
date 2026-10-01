@@ -1,3 +1,4 @@
+#include <HalStorage.h>
 #include "BoardT5S3.h"
 #include "BoardPowerPort.h"
 
@@ -263,6 +264,7 @@ void begin() {
 void deinitForSleep() {
   // Pin the installed owner while SD is still available.
   (void)BoardPowerPort::prepareShutdown();
+  Storage.markUnavailable(); // Existing SD bus shutdown invalidates retained metadata.
   setBacklightLevel(0);
   pinMode(T5S3_BL_EN, OUTPUT);
   digitalWrite(T5S3_BL_EN, LOW);

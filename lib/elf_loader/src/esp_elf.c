@@ -1018,6 +1018,11 @@ int esp_elf_unregister_symbol(esp_elf_symbol_table_t *symbol_table)
  * @return Symbol address if found, 0 if not found.
  * @note Search order is registration order (earliest registered first).
  */
+// Optional host notification of an actually resolved registered import. The
+// privileged resolver never reaches this path; this grants no new symbols.
+extern void esp_elf_registered_symbol_used(const void *table, const char *name,
+                                           uintptr_t address) __attribute__((weak));
+
 uintptr_t esp_elf_find_symbol(const char *sym_name)
 {
     if (!sym_name) {
@@ -1030,6 +1035,8 @@ uintptr_t esp_elf_find_symbol(const char *sym_name)
             syms = g_symbol_tables[i];
             while (syms->name) {
                 if (!strcmp(syms->name, sym_name)) {
+                    if (esp_elf_registered_symbol_used)
+                        esp_elf_registered_symbol_used(g_symbol_tables[i], sym_name, (uintptr_t)syms->sym);
                     return (uintptr_t)syms->sym;
                 }
 

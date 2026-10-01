@@ -157,6 +157,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Verify storage generations and retained inventory
+        run: bash test/run_storage_generation_test.sh
+
       - name: Verify lab target and partition guards
         run: python3 -B test/lab/test_esp32_lab.py
 

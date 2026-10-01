@@ -17,6 +17,7 @@
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/PackageOrdinarySdZipAdapter.h"
 #include "runtime/packages/PackageOrdinaryTransaction.h"
+#include "runtime/packages/PackageOrdinaryStage.h"
 #include "runtime/packages/PackageRteZip.h"
 
 namespace {
@@ -26,10 +27,12 @@ constexpr RuntimePackages::PackageRuntimePolicy kPolicy{
 constexpr uint32_t kMaxInstalledPackages = 128u;
 t5_installed_package_t installedPackages[kMaxInstalledPackages]{};
 uint32_t installedPackageCount = 0;
+StorageGenerationStamp installedGeneration{};
 
 void clearInstalledCache() {
     std::memset(installedPackages, 0, sizeof(installedPackages));
     installedPackageCount = 0;
+    installedGeneration = {};
 }
 using Mutation = RuntimePackages::ScopedPackageMutation;
 
@@ -116,6 +119,11 @@ bool sourceMetadata(const char* folder, RuntimePackages::OrdinaryPackagePlan& pl
 bool refreshInstalled() {
     if (callerKind() != 4 || !Storage.ready()) return false;
     clearInstalledCache();
+    if (!Storage.reconcileExternalStorage()) return false;
+    const auto generation = Storage.generation();
+    if (!generation.quiescent) return false;
+    // Nothing is visible until the complete bounded scan closes successfully.
+    auto fail = [] { clearInstalledCache(); return false; };
     struct Root {
         RuntimePackages::Kind kind;
         const char* path;
@@ -128,17 +136,32 @@ bool refreshInstalled() {
     };
     for (const auto& root : roots) {
         HalFile directory = Storage.open(root.path, O_RDONLY);
-        if (!directory.isOpen() || !directory.isDirectory()) {
-            if (directory.isOpen()) (void)directory.close();
+        if (!directory.isOpen()) {
+            if (Storage.exists(root.path) || !Storage.unchanged(generation)) return fail();
             continue;
         }
-        while (installedPackageCount < kMaxInstalledPackages) {
+        if (!directory.isDirectory()) { (void)directory.close(); return fail(); }
+        size_t examined = 0;
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+        const TickType_t started = xTaskGetTickCount();
+#endif
+        while (true) {
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+            if (xTaskGetTickCount() - started >= pdMS_TO_TICKS(2000)) {
+                (void)directory.close(); return fail();
+            }
+#endif
+            RuntimePackages::ordinaryCooperativeYield(1, 1);
             HalFile entry = directory.openNextFile();
-            if (!entry.isOpen()) break;
+            if (!entry.isOpen()) {
+                if (directory.getError()) { (void)directory.close(); return fail(); }
+                break;
+            }
+            if (++examined > 256) { (void)entry.close(); (void)directory.close(); return fail(); }
             char name[T5_PACKAGE_ID_MAX]{};
             const size_t length = entry.getName(name, sizeof(name));
             const bool isDirectory = entry.isDirectory();
-            (void)entry.close();
+            if (!entry.close()) { (void)directory.close(); return fail(); }
             if (!isDirectory || !length || length >= sizeof(name) ||
                 !RuntimePackages::safeId(name))
                 continue;
@@ -147,6 +170,9 @@ bool refreshInstalled() {
             const std::string manifest = target + "/.package.json";
             if (!Storage.exists(manifest.c_str())) continue;
 
+            if (installedPackageCount == kMaxInstalledPackages) {
+                (void)directory.close(); return fail();
+            }
             auto& out = installedPackages[installedPackageCount];
             out = {};
             out.kind = static_cast<uint8_t>(root.kind);
@@ -161,17 +187,23 @@ bool refreshInstalled() {
             }
             ++installedPackageCount;
         }
-        (void)directory.close();
-        if (installedPackageCount >= kMaxInstalledPackages) break;
+        if (!directory.close()) return fail();
     }
+    if (!Storage.unchanged(generation)) return fail();
+    installedGeneration = generation;
     return true;
 }
 uint32_t installedCount() {
-    return callerKind() == 4 ? installedPackageCount : 0u;
+    if (callerKind() != 4) return 0;
+    if (!Storage.unchanged(installedGeneration)) clearInstalledCache();
+    return installedPackageCount;
 }
 bool installedGet(uint32_t index, t5_installed_package_t* out) {
-    if (callerKind() != 4 || !out || index >= installedPackageCount) return false;
+    if (!out || index >= installedCount()) return false;
     *out = installedPackages[index];
+    if (!Storage.unchanged(installedGeneration)) {
+        *out = {}; clearInstalledCache(); return false;
+    }
     return true;
 }
 

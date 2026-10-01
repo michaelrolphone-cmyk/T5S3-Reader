@@ -5,13 +5,32 @@
 Owner: resource-closure continuation on PR #96 / `impl/u1-riscrte`.
 The coordinating owner verified that the prior implementation worker was
 interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
-28-file staged resource slice in the app-bundle worktree is preserved for review;
-its parent is **cf1ac054**. This is an explicit transfer, not claim expiry.
-Continuation starts from verified green `4b5c1816`, integrates observed master
-`a5e2db59`, and keeps sole ownership while publishing/verifying this checkpoint
-and auditing the remaining whole-U1 acceptance gates. Other continuations must
-not write this branch until this claim is explicitly released. No live release,
-index, tag, master update or flash. CI is feedback, not an idle-work gate.
+28-file staged resource slice from **cf1ac054** was preserved and integrated.
+This explicit transfer remains active; it was not based on claim expiry.
+Current published/tested checkpoint is **5466d93ca6916342d304af10d681208db2566de6**,
+identical tree **4a9eeb30d81c8f44d0b00d24edee196a7483272a** to local implementation
+**e76e8cfb**. Both workflows **36819882405 / 36819882484** succeeded.
+Master **1e0188c1** is integrated. The next local slice adds observed storage
+generations and strict retained inventory; no competing writer is authorized.
+No live release, index, tag, master update or flash. CI remains feedback.
+
+## October 1: observed invalidation and retained Package Manager inventory
+
+Real HalStorage now tracks non-wrapping RAM mount/mutation epochs, writable
+handle lifetimes and attempted writes, with remount refusal for live handles.
+Actual compatibility imports of mutable SD/FS authority make stamps uncertain;
+retained/failed teardown leaves uncertainty sticky. File vtable/open return
+capabilities are covered along with named mutators. APIs stay available.
+
+Package Manager's retained inventory is all-or-nothing and generation-checked,
+with iterator/error/close/item/deadline bounds. General capability metadata
+queries preserve legacy raw-app provider admission and remain explicitly
+outside trusted snapshot reuse. Durable receipts and broader cache policy are
+still open. See **U1_STORAGE_GENERATION_IMPLEMENTATION.md** for boundaries.
+Focused actual-source host tests pass; target verification of this new slice
+is pending. The preceding CDC implementation is fully target-verified at the
+exact checkpoint above, not merely locally tested. Firmware version remains
+1.3.48 pending final reconciliation above actual master/published identities.
 
 ## October 1: canonical CDC lineage and recoverable migration
 
@@ -44,7 +63,7 @@ faults, each rename interruption, partial record writes, both-generation digest
 substitution, unknown records/data, active roots and partial cleanup. Full driver
 and ordinary-package aggregates, Driver Manager UI fixture and release
 record/index/discovery checks passed locally; target compile/link/package
-verification is pending.
+verification passed at **5466d93c**, workflows **36819882405 / 36819882484**.
 Detailed ordering, version evidence and verification limits are in
 **U1_CDC_IDENTITY_MIGRATION.md**. Final source checks are reported separately;
 this is not a physical power-cut or milestone-completion claim.

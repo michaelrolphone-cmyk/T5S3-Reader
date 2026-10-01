@@ -41,8 +41,8 @@ bool readSmall(const char* path, char* buffer, size_t capacity, size_t& length) 
   return true;
 }
 
-// A provider profile counts only after the entire managed directory has been
-// verified against its exact inventory and per-entry hashes. A profile is not
+// A provider profile counts only after bounded installed-directory metadata
+// inspection. This hot path does not rehash contents. A profile is not
 // a grant of execution or hardware rights.
 bool parseProfile(const char* path, char (&capability)[64], uint32_t& version) {
   version = 0;
@@ -76,9 +76,8 @@ struct Candidate {
   std::vector<OrdinaryRequirement> requirements;
 };
 
-// Snapshot and hash each candidate ONCE per query. Never cache this inventory
-// beyond a caller-owned, single operation. A later query independently verifies
-// current on-card bytes rather than trusting stale global state.
+// Inspect each candidate once per operation. This legacy metadata query is not
+// a coherent cache or durable content receipt, especially during raw FS access.
 bool snapshotCandidates(std::vector<Candidate>& candidates) {
   std::unique_ptr<char[]> json(new (std::nothrow) char[4097]{});
   std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
@@ -86,21 +85,33 @@ bool snapshotCandidates(std::vector<Candidate>& candidates) {
   const char* const roots[] = {"/Drivers", "/Providers", "/Services"};
   for (const char* root : roots) {
     HalFile directory = Storage.open(root, O_RDONLY);
-    if (!directory.isOpen() || !directory.isDirectory()) {
-      if (directory.isOpen()) (void)directory.close();
-      continue;
+    if (!directory.isOpen()) {
+      if (Storage.exists(root)) return false;
+      continue; // Optional namespace absent; no content-integrity claim.
     }
+    if (!directory.isDirectory()) { (void)directory.close(); return false; }
     size_t examined = 0;
-    while (examined++ < kMaxEntriesPerRoot) {
-      // SHA-256 verification yields within its byte loop; also give the idle
-      // task a chance to run between metadata and directory operations.
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+    const TickType_t started = xTaskGetTickCount();
+#endif
+    while (true) {
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+      if (xTaskGetTickCount() - started >= pdMS_TO_TICKS(2000)) { (void)directory.close(); return false; }
+#endif
+      // Metadata-only inspection still yields between bounded directory items.
       ordinaryCooperativeYield(1, 1);
       HalFile item = directory.openNextFile();
-      if (!item.isOpen()) break;
+      if (!item.isOpen()) {
+        if (directory.getError()) { (void)directory.close(); return false; }
+        break;
+      }
+      if (examined++ == kMaxEntriesPerRoot) {
+        (void)item.close(); (void)directory.close(); return false;
+      }
       char id[64]{};
       const size_t n = item.getName(id, sizeof(id));
       const bool candidate = item.isDirectory() && n > 0 && n < sizeof(id) && safeId(id);
-      (void)item.close();
+      if (!item.close()) { (void)directory.close(); return false; }
       if (!candidate) continue;
       char path[160]{};
       if (std::snprintf(path, sizeof(path), "%s/%s", root, id) >=

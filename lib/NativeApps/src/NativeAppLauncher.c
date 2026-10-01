@@ -69,6 +69,7 @@ extern bool native_hardware_display_is_borrowed(void);
 // lifetime of the current ELF. Neither function is an ELF export.
 extern int native_hardware_compat_register(void);
 extern void native_hardware_compat_unregister(void);
+extern void native_hardware_compat_storage_uncertain(void);
 
 static const char *TAG = "sd_elf_launcher";
 static atomic_flag s_running = ATOMIC_FLAG_INIT;
@@ -91,6 +92,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         return ESP_ERR_INVALID_STATE;
     }
     bool compat_registered = false;
+    bool unload_failed = false;
     bool module_initialized = false;
     bool retain_module = false;
     bool memory_active = false;
@@ -277,6 +279,7 @@ close_module:
     if (memory_active) { native_app_memory_end(); memory_active = false; }
     (void)dlerror();
     if (dlclose(handle) != 0) {
+        unload_failed = true;
         const char *close_error = dlerror();
         ESP_LOGE(TAG, "dlclose(%s): %s", sd_path,
                  close_error != NULL ? error : "unload failed without a diagnostic");
@@ -285,7 +288,10 @@ close_module:
 done:
     if (memory_active && !retain_module) native_app_memory_end();
     native_app_provider_capabilities_release();
-    if (compat_registered) native_hardware_compat_unregister();
+    if (compat_registered) {
+        if (retain_module || unload_failed) native_hardware_compat_storage_uncertain();
+        native_hardware_compat_unregister();
+    }
     native_app_capabilities_release();
     s_current_path = NULL;
     if (!retain_module) atomic_flag_clear_explicit(&s_running, memory_order_release);
