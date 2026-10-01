@@ -1,17 +1,25 @@
 # Hollow Trail native-resolution A/B mode
 
-Hollow Trail 1.1.31 added **NATIVE 960X540** to the existing pause-menu graphics comparison. Hollow Trail 1.1.33 changes that mode to a hybrid-resolution comparison: the distant authored backdrop is rendered at 480×270 while the foreground remains native 960×540. Pause the game and press **B / Up** to cycle through the graphics modes. The production baseline remains the default.
+Hollow Trail 1.1.34 changes the high-detail A/B mode to a power-of-two-friendly split:
 
-## What changes
+- **backgrounds:** restore the original full native **960×540** path
+- **foreground / gameplay geometry:** **960×270** detail raster
+- **panel output and camera:** remain **960×540**
 
-The baseline keeps the current performance-oriented pipeline: gameplay/world geometry is rasterized at 480×270, several scenery passes are evaluated below that resolution, and the final monochrome pack expands the logical image to the 960×540 panel.
+Pause the game and press **B / Up** to cycle to **DETAIL 960X270**. The production baseline remains the default.
 
-NATIVE 960X540 allocates two 960×540 grayscale surfaces in PSRAM. In 1.1.33, the forest, city and authored-chapter distant backdrops are evaluated at 480×270 and expanded once into the physical surface. The expensive near scene stays native: procedural terrain, character geometry and animation, trees, ropes, props, weather, foreground occluders, puzzle/evidence geometry, camera rotation/zoom, vignette, prompts and other overlays are rasterized at 960×540. The boat grotto remains on its dedicated native path rather than being forced through the authored-backdrop reduction.
+## Why 960×270
 
-The monochrome packer consumes one grayscale sample for each physical e-paper pixel and does not perform the baseline 480×270 → 960×540 interpolation. The only retained lower-resolution source is the pre-existing AI/cache depth reconstruction used beyond the grotto in the boat chapter; that distant cached source is bilinearly seeded into the native surface before the native traversal/foreground pass. The dedicated grotto itself is native.
+Baseline gameplay geometry is 480×270. The earlier full-native experiment was 960×540, which requires roughly four times as many raster samples as baseline for foreground shapes. The new foreground mode doubles only the horizontal axis, so it uses about twice the baseline raster sample count while preserving native X resolution.
 
-## Cost and purpose
+The 270 computed foreground rows are written directly into the physical 960-pixel-wide surface and each computed scanline is duplicated to its paired 540-row output line. This is a simple 2:1 operation: no 3/2 scaling, fractional coordinate grid, extra framebuffer resampler, or per-pixel divide is introduced.
 
-The mode still adds two 960×540 8-bit PSRAM surfaces, about 1,036,800 bytes, because the foreground and camera pipeline remain physical-resolution. The 1.1.33 hybrid reduces distant-background raster work by four physical samples per logical backdrop sample while preserving native-resolution silhouettes and interactive geometry. It remains an A/B quality/performance measurement mode; device FPS must establish the actual gain.
+## What remains full native
 
-Physics, collision, authored camera values, world coordinates, pacing and controls are unchanged. Switching the mode resets the existing performance window so FPS, render, pack and scan timings can be compared against the same scene.
+Forest, city, authored-chapter backdrops, the dedicated boat grotto, camera transform, vignette and final monochrome packing retain the original 960×540 implementation from the first native-resolution mode. The foreground reduction begins after those background/grotto passes.
+
+The reduced foreground includes traversal terrain and props, character geometry/animation, trees, ropes, evidence/puzzle geometry, weather, and near foreground occluders. Horizontal edges may still occupy odd physical columns; vertical detail is intentionally quantized to the baseline 270-row grid.
+
+## Purpose
+
+This is an A/B quality/performance compromise. It aims to keep the sharper silhouette and horizontal contour detail of the native mode while avoiding the full 4× foreground raster cost. Device FPS/RENDER/PACK measurements remain the authority for whether the tradeoff is worthwhile.
