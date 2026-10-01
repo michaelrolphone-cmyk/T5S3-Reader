@@ -1,5 +1,14 @@
 # U1 implementation ledger
 
+## Active continuation — October 1, 2026, 00:30 UTC
+
+Claim: release-record/index compatibility on sole PR #96. Prior checkpoint
+`3ff5691a` passed both exact-head GitHub workflows. This run is migrating
+current driver ZIP records while preserving historical index compatibility,
+integrity checks and immutable versions. No live index or release publication.
+Other continuations must not write concurrently until this claim is replaced
+by the tested checkpoint.
+
 ## October 1: master integration, sole power owner and selective package builds
 
 Continuation checkpoint on the sole `impl/u1-riscrte` / PR #96. Integrated
