@@ -3,6 +3,12 @@
 Snapshot: 2026-10-01 04:30 UTC. The completion record below supersedes historical held/open statuses and batch counts; older evidence and applicability history are retained.
 
 
+## Active Timecard revalidation and repair
+
+- Owner: `01a0f728-f5cb-70e7-9297-7a6abc7c6034` (isolated Mac task-3); started 2026-10-01. Canonical candidate 14, matched by Apps/timecard.c punch_today/today/now_minutes, not numeric alias alone. Previous ledger owner is idle/completed; remote ledger has no active claim. Earlier duplicate tasks remain paused under fresh user direction to find and fix bugs.
+- Baseline master `8157c0bb8bbb94c52229359ecef876dba046726a`; preserved repair `fix/timecard-clock-failure` at `97fd307c8636fd42a57b2c99b321455eacd0eb5d` will be reused if applicable. No duplicate Timecard PR found. Phase: revalidate actual local_datetime provider and workflow; no hardware claim.
+- Scope: one Timecard clock-snapshot/failure batch. No archive, U1, Hollow or architecture implementation. PR339 is now merged on baseline. No master/release/catalog/dispatch/flash writes. Claim remains active until a documented checkpoint.
+
 ## Completed merge reconciliation — PR #333 and PR #334
 
 - Coordinator `record_merged_bug_batches`; active ledger owner **none**. Previous ledger worker confirmed stopped by the parent; latest durable ledger records had no active claim. Captured parent `0b445caa34a0cc87fdf0a781c1ab88cf835ed1b7`; #332 remains the sole open draft coordination PR. This documentation-only run claims no implementation work; prior #333/#334 claims remain released and the reconciliation is terminal
