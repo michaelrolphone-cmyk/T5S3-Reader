@@ -78,7 +78,12 @@ changed bytes fail before relocation, allocation failure/fallback and exact
 imports remain checked. Full ordinary-package, provider-graph and driver host
 aggregates pass with LeakSanitizer disabled for executor ptrace limits.
 
-Target CI for this new slice is pending. Independent final review did not
+Published acaac50a passed provider workflow36839401087 and host/headless jobs
+in36839401286. Both full firmware builds rejected a1168-byte recursive provider
+registration frame against the existing384-byte limit. The correction preserves
+the guard, keeps new digest/stamp workspace in the existing per-depth heap frame,
+and places complete policy preflight out of that recursive frame. Its actual
+Module/admission tests pass; new target verification remains pending. Independent final review did not
 complete; no completed final review is claimed. Findings returned before that
 interruption were addressed and corresponding executed tests are identified
 above; this is not a substitute claim about unreturned review coverage.

@@ -7,16 +7,18 @@ The coordinating owner verified that the prior implementation worker was
 interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
 28-file staged resource slice from **cf1ac054** was preserved and integrated.
 This explicit transfer remains active; it was not based on claim expiry.
-Current published metadata-cache checkpoint is
-**029a58da054523eb4c29d0bcc373a0391fd0549d**, identical tree
-**8c583e6414042ee17352641d470759a6208c3486** to tested local **255f791e**.
-Both workflows **36836831826 / 36836831798** passed. Resource-only **c80bdee1**
-previously passed **36835619954 / 36835620195**; four-kind distribution
-**bd9b09a7** passed **36829998475 / 36829998394**.
-Master **1e0188c1** remains integrated; PR96 was verified open on October1 at
-08:54 UTC. The sole owner is continuing staged verification receipts and the
-first installed-provider owned-snapshot admission consumer. No competing writer
-is authorized. This new slice remains local, with target verification pending.
+Current published receipt/provider checkpoint is
+**acaac50a20c026cf09bc00bd7423ff21316a073c**, tree
+**9a17f5f84ab5d5668f068e2b5918d85174b56799**, identical to tested local **5c126119**.
+Provider workflow **36839401087** passed. Platform workflow **36839401286**
+passed host/headless jobs but both full firmware builds rejected the provider
+registration frame at1168 bytes against its unchanged384-byte guard.
+The narrow correction keeps new digest/stamp fields in the existing per-depth
+heap workspace and runs full captured-plan preflight outside the recursive
+registration frame. Actual Module/admission tests pass; target verification of
+this correction is pending. Last fully green checkpoint **029a58da** passed
+**36836831826 / 36836831798**. Master **1e0188c1** remains integrated; PR96 was
+verified open on October1 at08:54 UTC. Sole ownership remains unchanged.
 No live release, index, tag, master update or flash. CI remains feedback.
 
 ## October 1: staged receipt and provider-owned snapshot admission

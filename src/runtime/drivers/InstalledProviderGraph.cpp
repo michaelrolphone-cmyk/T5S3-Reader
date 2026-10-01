@@ -59,6 +59,9 @@ struct RegistrationFrame {
     RuntimeProviders::RequirementV2 needs[kMaxPackageRequirements]{};
     const char* symbols[128]{};
     ManagerProviderCandidateV2 candidate{};
+    uint8_t packageManifestSha256[32]{};
+    uint8_t executableDigest[32]{};
+    StorageGenerationStamp packageSourceStamp{};
 };
 
 struct ProviderAncestry {
@@ -200,7 +203,8 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
     if (n <= 0 || static_cast<size_t>(n) >= sizeof(target) ||
         !systemPackageUseGate().pin(target)) return false;
     bool accepted = false;
-    const auto packageSourceStamp = Storage.generation();
+    auto& packageSourceStamp = frame.packageSourceStamp;
+    packageSourceStamp = Storage.generation();
     do {
         auto& identity = frame.identity;
         identity = {};
@@ -219,16 +223,15 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         // A multi-kilobyte manifest plan must not live on loopTask's stack
         // during ELF read, SHA-256 and downstream graph registration.
         std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
-        uint8_t packageManifestSha256[32]{};
+        auto& packageManifestSha256 = frame.packageManifestSha256;
         const bool parsed = plan && packageSnapshotDigest(json,jsonSize,packageManifestSha256) &&
             parseOrdinaryManifest(reinterpret_cast<const char*>(json), jsonSize, *plan);
         std::free(json);
         if (!parsed || resourceOnly(plan->identity) || plan->identity.kind != kind ||
             std::strcmp(plan->identity.id, id) ||
-            preflightOrdinaryPackage(*plan,kPolicy,[](const char*) -> uint32_t { return UINT32_MAX; }) !=
-                PreflightResult::ReadyForContentVerification) break;
+            !preflightCapturedPackage(*plan,kPolicy)) break;
         bool hasProfile = false, hasImports = false, hasExecutable = false;
-        uint8_t executableDigest[32]{};
+        auto& executableDigest = frame.executableDigest;
         for (size_t i = 0; i < plan->entryCount; ++i) {
             const auto& entry = plan->entries[i];
             if (!std::strcmp(entry.name, "provider-abi.v1")) hasProfile = true;

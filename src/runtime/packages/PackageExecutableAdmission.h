@@ -6,6 +6,9 @@
 #include "PackageIdentity.h"
 namespace RuntimePackages {
 struct OrdinaryPackagePlan;
+struct PackageRuntimePolicy;
+// Preserve full policy checks outside recursive provider-registration frames.
+bool preflightCapturedPackage(const OrdinaryPackagePlan& plan, const PackageRuntimePolicy& policy);
 // Bounded SHA of operation-owned bytes, never a pathname reopen. Used by
 // manager admission for small profile/import snapshots and cold ELF mapping.
 bool packageSnapshotDigest(const uint8_t* bytes, size_t size, uint8_t (&digest)[32]);

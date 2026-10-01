@@ -40,6 +40,11 @@ bool sameImage(const AdmittedImage& a, const AdmittedImage& b) {
          !std::memcmp(a.executable, b.executable, 32);
 }
 }  // namespace
+__attribute__((noinline)) bool preflightCapturedPackage(const OrdinaryPackagePlan& plan,
+                                                        const PackageRuntimePolicy& policy) {
+  return preflightOrdinaryPackage(plan, policy, [](const char*) -> uint32_t { return UINT32_MAX; }) ==
+         PreflightResult::ReadyForContentVerification;
+}
 bool packageSnapshotDigest(const uint8_t* bytes, size_t size, uint8_t (&digest)[32]) {
   std::memset(digest, 0, sizeof(digest));
   if (!bytes || !size || size > 8u * 1024u * 1024u) return false;
@@ -94,9 +99,7 @@ bool admitInstalledExecutableSnapshot(const Identity& identity, const uint8_t* e
   const bool closed = file.close();
   if (!read || !closed || !parseOrdinaryManifest(metadata.get(), size, *plan)) return false;
   constexpr PackageRuntimePolicy policy{"xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
-  if (preflightOrdinaryPackage(*plan, policy, [](const char*) -> uint32_t { return UINT32_MAX; }) !=
-      PreflightResult::ReadyForContentVerification)
-    return false;
+  if (!preflightCapturedPackage(*plan, policy)) return false;
   if (!samePackage(identity, plan->identity) || std::strcmp(identity.version, plan->identity.version) ||
       std::strcmp(identity.artifact, plan->identity.artifact) || resourceOnly(plan->identity))
     return false;
