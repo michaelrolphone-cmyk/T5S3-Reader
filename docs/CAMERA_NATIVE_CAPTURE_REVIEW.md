@@ -2,13 +2,13 @@
 
 Reference: Espressif esp32-camera v2.0.4, e689c3b082985ee7b90198be32d330ce51ac5367,
 `target/esp32s3/ll_cam.c` and `driver/cam_hal.c`. This comparison precedes the
-complete 0.1.7 candidate hardware run; it is not a hardware success claim.
+complete 0.1.8 candidate hardware run; it is not a hardware success claim.
 
 | Transition | Reference | Installed finite polled receiver |
 |---|---|---|
 | Sensor initialization | OV3660 reset, JPEG, SVGA, quality | Retained sensor implementation; native private SCCB; bounded startup |
 | Waiting for boundary | CAM running, stop-on-full disabled | Same; DMA parked and cannot write memory |
-| Arming | CAM stop/reset, FIFO reset, GDMA RX reset, descriptor address/start, CAM update/start | Same ordering; finite 96 KiB chain rather than circular ping-pong |
+| Arming | CAM stop/reset, FIFO reset, GDMA RX reset, **restore 1023-byte receive count after reset**, descriptor address/start, CAM update/start | Same ordering; finite 96 KiB chain rather than circular ping-pong |
 | Resynchronization | `ll_cam_do_vsync` reverses matrix inversion for 10 us | Same, using bounded CPU cycle delay and existing ROM matrix import |
 | DMA completion | Byte-count EOF, not VSYNC-generated DMA EOF | 1024-byte EOF; inspect only CPU-owned completed descriptors after barrier |
 | Poll latency | Interrupt/event task starts near VSYNC | Discard partial prefix; require complete SOI/EOI within finite buffer; no assumption of ISR latency |

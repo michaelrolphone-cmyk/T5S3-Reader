@@ -221,6 +221,9 @@ int32_t cam_hw_poll(const uint8_t **bytes,uint32_t *length) {
         CAM.cam_ctrl1.cam_reset=1;CAM.cam_ctrl1.cam_reset=0;
         CAM.cam_ctrl1.cam_afifo_reset=1;CAM.cam_ctrl1.cam_afifo_reset=0;
         DMA.channel[ch].in.conf0.in_rst=1;DMA.channel[ch].in.conf0.in_rst=0;
+        /* cam_reset clears the receive-byte count. Restore it here, exactly
+         * where ll_cam_start does, or each descriptor EOF fires after 1 byte. */
+        CAM.cam_ctrl1.cam_rec_data_bytelen=NODE_BYTES-1;
         DMA.channel[ch].in.int_clr.val=~0u;
         DMA.channel[ch].in.link.addr=((uintptr_t)desc)&0xfffff;
         __asm__ volatile("memw" ::: "memory");
