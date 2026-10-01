@@ -5,6 +5,9 @@
 #include "runtime/resources/ExecutionContext.h"
 #include "native/InstalledAppPath.h"
 #include "native/AppManifest.h"
+#include "native/ManagedAppAdmission.h"
+#include "runtime/packages/InstalledCapabilityResolver.h"
+#include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "native/NativeStreamBridge.h"
 #include <NativeAppLauncher.h>
 #include <T5AppApi.h>
@@ -103,9 +106,11 @@ bool loadRequirements(const char* path){
   if(!path || strncmp(path,"/sd/",4))return false;
   const std::string elf(path+3);
   if(elf.size()<5 || elf.compare(elf.size()-4,4,".elf"))return false;
-  const std::string sidecar=elf.substr(0,elf.size()-4)+".json";
+  std::shared_ptr<const std::string> captured;
+  const auto state=RuntimePackages::captureManagedAppSidecar(path,captured);
+  if(state!=RuntimePackages::ManagedAppMetadata::Captured || !captured)return false;
   t5_app_manifest_t manifest{};
-  return readAppManifest(sidecar.c_str(),manifest,nullptr,true,&requirements) &&
+  return parseAppManifest(*captured,manifest,nullptr,true,&requirements) &&
     !strcmp(manifest.file_name,elf.c_str()+elf.find_last_of('/')+1) && manifest.compatible;
 }
 }
@@ -156,21 +161,32 @@ void runConfiguredDefaultApp(){
   }
   // The normal loader is serialized by its own guard. The host owns one
   // invocation and pins the installed generation until safe unload.
-  std::string root;
-  if(path.compare(0,9,"/sd/Apps/")==0){
-    const auto slash=path.find('/',9);
-    if(slash!=std::string::npos)root=path.substr(3,slash-3);
+  if(path.compare(0,9,"/sd/Apps/")!=0){
+    LOG_ERR("APP","default must be an ordinary managed package");return;
   }
-  if(!root.empty() && !RuntimePackages::systemPackageUseGate().pin(root.c_str())){
-    LOG_ERR("APP","default package busy");return;
+  const auto slash=path.find('/',9);
+  if(slash==std::string::npos){LOG_ERR("APP","default package path invalid");return;}
+  const std::string root=path.substr(3,slash-3);
+  const std::string id=path.substr(9,slash-9);
+  constexpr RuntimePackages::PackageRuntimePolicy appPolicy{
+      "xtensa-esp32s3",2,8u*1024u*1024u,16u*1024u*1024u};
+  RuntimePackages::Identity identity{};
+  if(!RuntimePackages::inspectInstalledOrdinarySdDirectory(root.c_str(),appPolicy,
+       RuntimePackages::installedCapabilityVersion,identity) ||
+     identity.kind!=RuntimePackages::Kind::Application ||
+     strcmp(identity.id,id.c_str()) || strcmp(identity.artifact,artifact) ||
+     !RuntimePackages::systemPackageUseGate().pin(root.c_str())){
+    LOG_ERR("APP","default package admission preflight failed");return;
   }
   ownerTask=xTaskGetCurrentTaskHandle();active=true;
   nativeStreamsBegin();
   const bool ready=RuntimeResources::ExecutionContext::current()!=nullptr;
-  const esp_err_t result=ready?launch_elf_app(path.c_str()):ESP_ERR_INVALID_STATE;
+  const bool admitted=ready && RuntimePackages::beginManagedAppAdmission(identity,path.c_str());
+  const esp_err_t result=admitted?launch_elf_app(path.c_str()):ESP_ERR_INVALID_STATE;
+  if(admitted)RuntimePackages::endManagedAppAdmission();
   nativeStreamsEnd();active=false;ownerTask=nullptr;
   // A failed loader may retain mapped memory, so retain the package pin.
-  if(!root.empty() && result==ESP_OK)
+  if(result==ESP_OK || !admitted)
     (void)RuntimePackages::systemPackageUseGate().unpin(root.c_str());
   LOG_INF("APP","default returned artifact=%s result=%d",artifact,int(result));
 }
