@@ -23,6 +23,8 @@ static bool quitting, jump_down, pause_down, paused;
 static uint32_t held, previous, last_poll, last_yield;
 static uint32_t simulation_clock, simulation_accumulator, scene_revision;
 static bool simulation_started,loading,reading;
+static bool ht_schoolroom_studying;
+static unsigned ht_schoolroom_focus;
 static unsigned journal_page,debug_level;
 static bool debug_select,debug_jump;
 #define HT_INPUT_INTERVAL_MS 8u
@@ -102,7 +104,7 @@ static void ht_acquire_pad(void) {
     }
 }
 static void ht_advance(uint32_t now) {
-    if(reading || loading || debug_jump || ht.level!=ht_geometry_level) { ht_motion_emphasis=false; simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
+    if(reading || ht_schoolroom_studying || loading || debug_jump || ht.level!=ht_geometry_level) { ht_motion_emphasis=false; simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
     if(!simulation_started) { simulation_clock=now; simulation_started=true; }
     if(ht_cutscene.active) {
         uint32_t elapsed=now-simulation_clock;
@@ -235,6 +237,20 @@ static void ht_input_update(uint32_t wait) {
         previous=held=0;jump_down=pause_down=false;last_poll=now;return;
     }
     uint32_t down=buttons&~previous;
+    if(ht_schoolroom_studying) {
+        if(down&(HT_LEFT|HT_RIGHT)) {
+            ht_schoolroom_focus=(ht_schoolroom_focus+((down&HT_RIGHT)?1u:HT_SCHOOL_FOCUSES-1u))%HT_SCHOOL_FOCUSES;
+            ++scene_revision;
+        }
+        if(down&(HT_ACCEPT|HT_JOURNAL)) {
+            ht_schoolroom_studying=false;ht_journal_open(3);reading=true;
+            ht_input_rearm=true;++scene_revision;
+        } else if(down&(HT_BACK|HT_EXIT|HT_PAUSE)) {
+            ht_schoolroom_studying=false;ht_input_rearm=true;++scene_revision;
+        }
+        jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;
+        previous=buttons;held=0;last_poll=now;return;
+    }
     if(reading) {
         if(down&HT_JOURNAL) { reading=false; ht_journal_deciding=ht_journal_confirm=false; }
         else ht_journal_input(down);
@@ -272,6 +288,10 @@ static void ht_input_update(uint32_t wait) {
     if(!reading && (down&HT_INTERACT) && !paused && !loading && ht.level==ht_geometry_level) {
         int page=ht_final_near(&ht)?-1:ht_inspect();
         if(ht_final_near(&ht)) { ht_journal_tower(); reading=true; }
+        else if(page==3 && ht_schoolroom_near(&ht)) {
+            ht_schoolroom_studying=true;ht_schoolroom_focus=0;
+            jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;
+        }
         else if(page>=0) { ht_journal_open((unsigned)page); reading=true; }
         else if(ht_traversal_interact()) { /* A grabs/releases a nearby traversal object. */ }
         else if(ht_puzzle_near(&ht)>=0) (void)ht_interact();
@@ -351,6 +371,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     if(!HT_HAS(video,t5_video_api_v1,reinforce_black) || !video->reinforce_black)
         ht_log("Hollow Trail: narration extra black passes require firmware 1.3.48; ordinary display remains available");
     memset(&ht,0,sizeof(ht)); ht_spawn(true); ht_cutscene_seen=0; ht_cutscene_begin(HT_CUTSCENE_INTRO);
+    ht_schoolroom_studying=false;ht_schoolroom_focus=0;
     reading=false; journal_page=0; ht_journal_index=true; ht_journal_selection=0;
     ht_journal_deciding=ht_journal_confirm=ht_journal_page_ready=false; ht_read_submitted_revision=0;
     ht_camera_mode=HT_CAMERA_BASELINE;
@@ -408,7 +429,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
     ht_fps_reset(&ht_fps,ht_perf.start);
-    ht_log("Hollow Trail 1.1.39: native 960x540 A/B + Forward-X cutscenes; rolling 10-second FPS");
+    ht_log("Hollow Trail 1.1.41: native display + player-controlled schoolroom map; rolling 10-second FPS");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -440,14 +461,14 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
 
         uint32_t now=app->millis();
-        if(profile_was_paused && !paused && !reading) {
+        if(profile_was_paused && !paused && !reading && !ht_schoolroom_studying) {
             ht_fps_reset(&ht_fps,now);ht_perf.fps10=0;
             ht_perf.start=now;
             ht_perf.scan_start=video->frame_counter?video->frame_counter():0;
             ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=ht_perf.input_ms=0;
             memset(&ht_perf.stages,0,sizeof(ht_perf.stages));
         }
-        profile_was_paused=paused || reading;
+        profile_was_paused=paused || reading || ht_schoolroom_studying;
         bool redraw=scene_revision!=drawn_revision;
         if(!redraw && !prepared) last_submit=now;
         /* Render into app-owned PSRAM while the panel finishes its previous
@@ -456,10 +477,17 @@ __attribute__((visibility("default"))) void app_main(void) {
             last_frame=now; /* Start-to-start cadence, not an extra post-render wait. */
             prepared_revision=scene_revision;ht_narration_key=0;
             const ht_game rendering_game=ht;
-            const bool rendering_paused=paused,rendering_reading=reading;
+            const bool rendering_paused=paused,rendering_reading=reading,rendering_study=ht_schoolroom_studying;
+            const unsigned rendering_focus=ht_schoolroom_focus;
             prepared_reader=rendering_reading;
-            prepared_profile=!rendering_paused && !rendering_reading;
+            prepared_profile=!rendering_paused && !rendering_reading && !rendering_study;
             if(rendering_reading) ht_journal_render();
+            else if(rendering_study) {
+                ht_schoolroom_study_render(rendering_focus);
+                ht_narration_key=2166136261u;
+                ht_narration_hash(ht_school_labels[rendering_focus%HT_SCHOOL_FOCUSES]);
+                ht_narration_hash("L/R TRACE   A READ NOTE   X/BACK RETURN");
+            }
             else {
             ht_cutscene_state cutscene_frame=ht_cutscene;
             if(cutscene_frame.active) ht_cutscene_render(&cutscene_frame);
@@ -482,7 +510,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.39",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.41",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,

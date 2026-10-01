@@ -24,6 +24,50 @@ static void press(unsigned source,uint32_t mask) {
     reports[source][0].buttons=0; ht_input(1);
     reports[source][0].buttons=mask; ht_input(1);
 }
+static void schoolroom_controls(void) {
+    const unsigned a[2]={1,2},x[2]={8,4},y[2]={4,8},start[2]={512,128};
+    healthy=true;host_exit=false;app=&fake_app;pad=&xapi;hid_pad=&hapi;
+    for(unsigned source=0;source<2;++source) {
+        memset(reports,0,sizeof(reports));reports[source][0].connected=1;
+        reports[source][0].device=source+1;reports[source][0].hat=8;
+        memset(&ht,0,sizeof(ht));ht.level=1;ht_select_level(1);ht_spawn(true);
+        ht.x=HT_SCHOOL_MAP_X*256;ht.y=ht_surface_at(&ht,1,HT_SCHOOL_MAP_X)*256;
+        ht.grounded=true;ht_cutscene.active=false;ht_cutscene_seen=0;
+        reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
+        ht_schoolroom_studying=false;held=previous=mapped=0;
+        ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;simulation_started=false;
+        ht_input(1);press(source,a[source]);
+        assert(ht_schoolroom_studying && !reading && ht_schoolroom_focus==0);
+        assert(ht_evidence_found(&ht,3));ht_game frozen=ht;
+        for(unsigned i=0;i<20;++i){ht_advance(now+=HT_STEP_MS);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+        press(source,y[source]);ht_advance(now+=HT_STEP_MS);
+        assert(ht_schoolroom_studying && !ht_motion_emphasis && !memcmp(&ht,&frozen,sizeof(ht)));
+        reports[source][0].buttons=0;ht_input(1);
+        reports[source][0].hat=2;ht_input(1);assert(ht_schoolroom_focus==1);
+        ht_input(1);assert(ht_schoolroom_focus==1); /* Held direction never repeats. */
+        reports[source][0].hat=8;ht_input(1);reports[source][0].hat=2;ht_input(1);
+        assert(ht_schoolroom_focus==2);
+        reports[source][0].hat=8;ht_input(1);reports[source][0].hat=2;ht_input(1);
+        assert(ht_schoolroom_focus==0);reports[source][0].hat=8;ht_input(1);
+        reports[source][0].hat=6;ht_input(1);assert(ht_schoolroom_focus==2);
+        reports[source][0].hat=8;ht_input(1);
+        press(source,x[source]);assert(!ht_schoolroom_studying && !reading && !quitting && ht_input_rearm);
+        assert(!memcmp(&ht,&frozen,sizeof(ht)));
+        reports[source][0].hat=2;ht_input(1);assert(!held && ht_input_rearm);
+        reports[source][0].hat=8;reports[source][0].buttons=0;ht_input(1);assert(!ht_input_rearm);
+        press(source,a[source]);assert(ht_schoolroom_studying);
+        ht_input(1);assert(ht_schoolroom_studying && !reading); /* Entry A is not read-note A. */
+        press(source,a[source]);assert(reading && journal_page==3 && !ht_schoolroom_studying);
+        press(source,x[source]);assert(ht_journal_index && reading);
+        press(source,x[source]);assert(!reading && !quitting);
+        press(source,a[source]);assert(ht_schoolroom_studying);
+        press(source,start[source]);assert(reading && !ht_schoolroom_studying && journal_page==3);
+        reading=false;reports[source][0].buttons=0;ht_input(1);
+        press(source,a[source]);assert(ht_schoolroom_studying);
+        host_exit=true;ht_input(1);assert(quitting);host_exit=false;
+        ht_schoolroom_studying=false;
+    }
+}
 /* Drive the real provider mapping and scheduler, not the emphasis helper. */
 static void motion_emphasis_controls(void) {
     const unsigned x[2]={8,4},y[2]={4,8};
@@ -237,6 +281,7 @@ int main(void) {
      * a second handoff or consume input as a gameplay action. */
     ht_cutscene_begin(HT_CUTSCENE_INTRO);ht_cutscene.tick=2140;
     host_exit=true;ht_input(1);assert(quitting && ht_cutscene.active);
+    schoolroom_controls();
     motion_emphasis_controls();
     puts("Hollow Trail controls: receiver HID/XInput face labels, dedicated Start, A inspect, B jump, X back, arbitration and fault recovery PASS");
 }

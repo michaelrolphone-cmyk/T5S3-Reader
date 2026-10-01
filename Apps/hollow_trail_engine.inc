@@ -317,7 +317,7 @@ static void ht_bind_native(uint8_t *memory) {
 static int ht_evidence_platform(unsigned level,int item) { return level==0?(item==0?0:item==1?3:7):1+item*3; }
 static int ht_evidence_x(unsigned level,int item) {
     const ht_platform *p=&ht_level_land(level)[ht_evidence_platform(level,item)];
-    return level==0?(item==0?140:item==1?1180:p->left+42):item==1?p->right-45:p->left+42;
+    return level==0?(item==0?140:item==1?1180:p->left+42):level==1 && item==0?535:item==1?p->right-45:p->left+42;
 }
 static bool ht_evidence_found(const ht_game *game,unsigned page) {
     return page<HT_LEVELS*3u && (game->evidence&(1u<<page))!=0;
@@ -330,6 +330,9 @@ static int ht_evidence_near(const ht_game *game) {
            ht_abs(game->y/256-ht_surface_at(game,ht_evidence_platform(game->level,item),game->x/256))<=3) return item;
     }
     return -1;
+}
+static bool ht_schoolroom_near(const ht_game *g) {
+    return g->level==1 && ht_evidence_near(g)==0;
 }
 static int ht_inspect(void) {
     int item=ht_evidence_near(&ht);
@@ -2050,6 +2053,13 @@ static void ht_draw_evidence(const ht_game *game) {
             ht_limb(ht_scene,x-9,y-36,x+5,y-42,3,0,255);
             ht_limb(ht_scene,x-10,y-24,x+1,y-20,1,0,ink);
             ht_limb(ht_scene,x+1,y-20,x+4,y-13,1,0,ink);
+        } else if(game->level==1 && item==0) {
+            /* Brick-weighted schoolroom map on its child-sized desk. */
+            ht_triangle(ht_scene,x-15,y-29,x+13,y-32,x+16,y-26,38);
+            ht_triangle(ht_scene,x-15,y-29,x+16,y-26,x-13,y-24,38);
+            ht_limb(ht_scene,x-9,y-27,x+8,y-29,0,0,160);
+            for(int side=-1;side<=1;side+=2)for(int row=0;row<2;++row)
+                ht_rect(ht_scene,x+side*13-2,y-30+row*4,4,2,189);
         } else if(game->level==0 && item==1) {
             /* Register remains on the mill desk, spatially joined to its beam. */
             ht_limb(ht_scene,x-15,y-21,x+15,y-25,2,2,210);

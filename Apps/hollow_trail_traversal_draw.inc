@@ -76,6 +76,7 @@ static void ht_draw_traversal(const ht_game *g) {
 
     }
     ht_forest_mill(g);
+    ht_city_schoolroom(g);
     ht_story_landmarks(g);
     ht_draw_evidence(g);
     for(int i=0;i<HT_PLATFORMS;++i) {
