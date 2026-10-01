@@ -344,7 +344,11 @@ void WifiSelectionActivity::loop() {
       if (savePromptSelection == 0) {
         // User chose "Yes" - save the password
         RenderLock lock(*this);
-        WIFI_STORE.addCredential(selectedSSID, enteredPassword);
+        if (!WIFI_STORE.addCredential(selectedSSID, enteredPassword)) {
+          connectionError = "Could not save Wi-Fi credentials";
+          requestUpdate();
+          return;
+        }
       }
       // Complete - parent will start web server
       onComplete(true);
@@ -373,7 +377,11 @@ void WifiSelectionActivity::loop() {
       if (forgetPromptSelection == 1) {
         RenderLock lock(*this);
         // User chose "Forget network" - forget the network
-        WIFI_STORE.removeCredential(selectedSSID);
+        if (!WIFI_STORE.removeCredential(selectedSSID)) {
+          connectionError = "Could not forget Wi-Fi network";
+          requestUpdate();
+          return;
+        }
         // Update the network list to reflect the change
         const auto network = find_if(networks.begin(), networks.end(),
                                      [this](const WifiNetworkInfo& net) { return net.ssid == selectedSSID; });
@@ -521,7 +529,11 @@ bool WifiSelectionActivity::onTouchTap(int16_t x, int16_t y) {
 
       if (savePromptSelection == 0) {
         RenderLock lock(*this);
-        WIFI_STORE.addCredential(selectedSSID, enteredPassword);
+        if (!WIFI_STORE.addCredential(selectedSSID, enteredPassword)) {
+          connectionError = "Could not save Wi-Fi credentials";
+          requestUpdate();
+          return true;
+        }
       }
       onComplete(true);
       return true;
@@ -550,7 +562,11 @@ bool WifiSelectionActivity::onTouchTap(int16_t x, int16_t y) {
 
       if (forgetPromptSelection == 1) {
         RenderLock lock(*this);
-        WIFI_STORE.removeCredential(selectedSSID);
+        if (!WIFI_STORE.removeCredential(selectedSSID)) {
+          connectionError = "Could not forget Wi-Fi network";
+          requestUpdate();
+          return true;
+        }
         const auto network =
             find_if(networks.begin(), networks.end(), [this](const WifiNetworkInfo& net) { return net.ssid == selectedSSID; });
         if (network != networks.end()) {
@@ -737,6 +753,7 @@ void WifiSelectionActivity::renderSavePrompt() const {
   renderer.drawCenteredText(UI_10_FONT_ID, top, ssidInfo.c_str());
 
   renderer.drawCenteredText(UI_10_FONT_ID, top + 40, tr(STR_SAVE_PASSWORD));
+  if (!connectionError.empty()) renderer.drawCenteredText(UI_10_FONT_ID, top + 60, connectionError.c_str());
 
   // Draw Yes/No buttons
   const int buttonY = top + 80;
@@ -794,6 +811,7 @@ void WifiSelectionActivity::renderForgetPrompt() const {
   renderer.drawCenteredText(UI_10_FONT_ID, top, ssidInfo.c_str());
 
   renderer.drawCenteredText(UI_10_FONT_ID, top + 40, tr(STR_FORGET_AND_REMOVE));
+  if (!connectionError.empty()) renderer.drawCenteredText(UI_10_FONT_ID, top + 60, connectionError.c_str());
 
   // Draw Cancel/Forget network buttons
   const int buttonY = top + 80;
