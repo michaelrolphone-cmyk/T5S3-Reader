@@ -15,11 +15,14 @@ constexpr uint32_t SD_SPI_FREQUENCY = 40000000;
 SdFat sd;
 StorageGenerationTracker storageGeneration;
 bool writableFlags(oflag_t flags) { return (flags & (O_WRONLY | O_RDWR | O_CREAT | O_TRUNC | O_APPEND)) != 0; }
-bool closeRaw(FsFile& file) {
+bool closeRaw(FsFile& file, bool retainedOnFailure = false) {
   if (!file.isOpen()) return file.close();
   const bool error = file.getError() != 0;
   const bool closed = file.close();
   if (error || !closed) storageGeneration.mutationAttempt();
+  // A failed close whose owner is being discarded has no safe retry boundary.
+  // Never certify fresh metadata or reset potentially unsynced caches afterward.
+  if (!closed && (!retainedOnFailure || !file.isOpen())) storageGeneration.externalUncertain();
   return closed;
 }
 
@@ -571,7 +574,7 @@ void HalFile::rewindDirectory() {
 bool HalFile::close() {
   HalStorage::StorageLock lock; assert(impl != nullptr);
   if (impl->writable && impl->tracked) storageGeneration.mutationAttempt();
-  const bool closed = closeRaw(impl->file);
+  const bool closed = closeRaw(impl->file, true);
   if (impl->tracked && !impl->file.isOpen()) {
     storageGeneration.closed(impl->writable); impl->tracked = false;
   }

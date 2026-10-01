@@ -14,6 +14,23 @@ Master **1e0188c1** is integrated. The next local slice adds observed storage
 generations and strict retained inventory; no competing writer is authorized.
 No live release, index, tag, master update or flash. CI remains feedback.
 
+## October 1: exact generation checkpoint and failed-close retention
+
+Both workflows **36824640916 / 36824640911** passed published
+**74b0b45e5c2df2d6215628b6ce72c90941d1cd36** (local **72e5e075**, tree
+**81c2cf4bfc8594390144e1589b08c20e4edd9430**), including both full firmware/app
+targets, headless and all new generation/inventory tests. The Board dependency
+repair is therefore target-verified.
+
+A subsequent narrow local safeguard latches uncertainty when failed-close
+ownership is discarded. Explicitly retained open handles may still retry;
+destructors/raw helpers or an already-closed failed handle have no safe retry
+boundary. The actual HalStorage fixture exercises failed destructor cleanup
+and verifies remount/coherent inventory remain refused. Source inspection of
+SdFat 2.3.1 confirms successful volume initialization invalidates sector caches,
+which is why raw-SDFS reconciliation needs a real mount, not only an epoch bump.
+This follow-on target verification is pending separately from green74b0b45e.
+
 ## October 1: target dependency repair
 
 Generation/inventory implementation **06defc76** (local **ae86eddf**, identical

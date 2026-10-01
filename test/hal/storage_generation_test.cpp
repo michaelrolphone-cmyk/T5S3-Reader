@@ -6,7 +6,19 @@
 
 #include <cassert>
 #include <iostream>
-int main() {
+int main(int argc, char**) {
+  if (argc > 1) {
+    assert(Storage.begin());
+    {
+      auto file = Storage.open("/close-failure", O_WRONLY | O_CREAT);
+      assert(file.isOpen());
+      FakeSd::failClose = "/close-failure";
+    }
+    FakeSd::failClose.clear();
+    assert(!Storage.generation().quiescent && !Storage.begin());
+    std::cout << "Discarded failed-close ownership remains uncertain PASS\n";
+    return 0;
+  }
   StorageGenerationTracker exhausted(UINT64_MAX);
   exhausted.mutationAttempt();
   assert(!exhausted.stamp(true).quiescent);

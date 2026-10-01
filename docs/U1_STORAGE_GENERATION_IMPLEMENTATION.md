@@ -13,9 +13,17 @@ A writable HalFile keeps stamps non-quiescent until close/destruction. Move
 construction transfers that ownership; move assignment closes the old handle
 under the same lock. Helper-returned handles are registered before unlocking;
 assignment to a pre-existing destination occurs outside the non-recursive lock.
+An explicitly retained handle may retry a failed close. If failed-close
+ownership is discarded (destructor/raw helper, or a closed object despite
+failure), uncertainty stays latched instead of allowing remount to discard
+potentially unsynced cache state.
 Remount is refused while any HalFile or uncontrolled compatibility session is
 alive, and every attempt invalidates old stamps. Failed mount leaves storage
 unavailable; counter exhaustion permanently refuses coherent stamps/remount.
+The existing SdFat 2.3.1 source confirms volume initialization calls cache.init,
+which invalidates sector/status state; this supports using successful remount,
+not merely an epoch increment, after raw SDFS access (FatPartition.cpp::init,
+common/FsCache.h::init).
 
 The temporary native compatibility table remains available. Actual registered
 symbol resolution, rather than merely registering the table, detects mutable
