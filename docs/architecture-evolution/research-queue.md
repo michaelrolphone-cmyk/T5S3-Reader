@@ -7,10 +7,14 @@ The next pass should answer the first unresolved question that can change a reco
 - Does the latest PR #220 still report completion on scan admission and certify quiescence after a void stop?
 - Can existing backend completion signals unambiguously represent a submitted frame through all drive pulses and format changes, or is a provider-owned sequence/fence needed?
 - What is the smallest compatibility-preserving propagation of actual teardown success?
+- For the first actual LCD/AMOLED provider, which formats, geometry/stride, safe layout, refresh intents, completion semantics and inputs are supported? Which current client assumptions prevent adaptation, and which are legitimate declared app requirements?
+- Can existing SDK fields express those requirements without new ABI? Do not invent panel behavior or require touch merely because the product is a watch.
 - **Evidence needed:** exact client/provider/backend call chain and one discriminating executable test result from an authorized implementation, if available.
 - **Decision:** narrow or retire P1 if those contracts are fixed; do not keep repeating a resolved defect. Native extraction remains a separate implementation decision.
 
 ## 2 Mixed-version capability and release witness
+
+- Which original CrossPoint product revision and app deployment/build contract define the parity target? Establish the user-visible feature inventory before claiming parity; record which functions remain in the core versus move to apps/drivers without dropping UX.
 
 - Verify old released CDC package with the U1 endpoint-requiring consumer: is rejection diagnosable and repairable without obscuring other providers?
 - Verify new endpoint-capable package with the previously supported runtime; distinguish ABI safety from usable capability behavior.

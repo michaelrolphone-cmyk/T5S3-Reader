@@ -18,6 +18,10 @@
 4. **General SemVer/SAT capability solver. Deferred.** Selection machinery does not define binary compatibility. Keep bounded existing selection unless a concrete incompatible-family or multi-provider use case requires more [E1](evidence.md#e1-capability-selection-and-abi).
 5. **Declare migration repository SDK drift or stale CI. Rejected as current findings.** All 22 overlapping driver SDK headers match the pinned Reader revision. Exact Drivers-head CI succeeds despite older migration prose saying some checks are pending. The gap is durable provenance and future compatibility coverage, not demonstrated current drift [E6, E7](evidence.md).
 
+## 2026-10-01 Clarify the portability goal
+
+The owner's ESP32/downloadable-driver clarification is context for these recommendations, not the whole platform vision. Keep all three priorities and the earlier rejected ideas. Strengthen P1 from a correct e-paper seam to a capability-based behavioral contract: existing SDK metadata is broader than the current MONO1/GRAY2 client, and the adapter ignores presentation options [E9](evidence.md#e9-display-portability-refinement). Recommend negotiation, adaptation or explicit refusal; do not prescribe a new compositor or speculative smartwatch stack. The three parallel near-term goals are expressive fast e-paper rendering, a minimal core preserving existing UX through drivers/apps, and CrossPoint product parity enabling its app. Preserve optional e-paper performance paths; do not equate core reduction with function removal. P2 remains platform-wide and adds a target-revision-specific CrossPoint compatibility witness; P3 becomes explicitly port/resource dependent. Reject the inference that hardware-independent applications require one binary across all CPU/ABI ports.
+
 ## Revision discipline
 
 For each later change record date, affected proposal, new immutable evidence, what was contradicted, and whether the ranking or recommendation changed. Keep superseded ideas here with short rationale, not as active TODOs. Remove questions once answered. A new active idea must displace a weaker one or explain why it belongs in the three-to-five-item set.
