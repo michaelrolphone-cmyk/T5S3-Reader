@@ -13,6 +13,9 @@ int main(void) {
     for(int n=0;n<120;++n)ht_step_controls(1,0,false,false);
     assert(ht.x>350*256 && ht.x<362*256 && ht.grounded && !ht.vx);
     assert(ht_forest_log_near(&ht));
+    assert(ht.traversal.push_hint==HT_PUSH && ht.traversal.mode==HT_FREE);
+    assert(!ht.traversal.forest_push && !ht.traversal.forest_log_falling);
+    ht_step_controls(0,0,false,false);assert(!ht.traversal.push_hint);
     for(int n=0;n<80;++n) {
         ht_step_controls(1,0,n==0,n==0);
         assert(ht.x<374*256 && !ht.traversal.forest_log_falling);
