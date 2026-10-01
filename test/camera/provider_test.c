@@ -22,7 +22,8 @@ static int32_t publish(uint64_t c,const risc_stream_endpoint_v1 *s,uint32_t *out
 }
 static int32_t produce(uint64_t c,uint32_t h,const void *bytes,uint32_t n,uint32_t *out){
  assert(c==17 && h==41 && n<=512);*out=0;produces++;
- if(revoked)return T5_STREAM_DENIED;if(blocked)return T5_STREAM_AGAIN;
+ if(revoked)return T5_STREAM_DENIED;
+ if(blocked)return T5_STREAM_AGAIN;
  assert(!memcmp(bytes,pixels+offset,n));offset+=n;*out=n;return 0;
 }
 static int32_t consume(uint64_t c,uint32_t h,void *bytes,uint32_t n,uint32_t *count){
