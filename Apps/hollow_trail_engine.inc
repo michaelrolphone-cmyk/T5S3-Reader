@@ -28,8 +28,8 @@
 #define HT_MASK_PIXELS ((HT_MASK_RADIUS*HT_MASK_RADIUS+15)&~15)
 enum { HT_CAMERA_BASELINE, HT_CAMERA_NO_ROTATION, HT_CAMERA_NO_ZOOM, HT_CAMERA_OFF, HT_CAMERA_NATIVE, HT_CAMERA_MODES };
 static unsigned ht_camera_mode;
-static const char *const ht_camera_labels[]={"BASELINE", "ROTATION OFF", "ZOOM OFF", "BOTH OFF", "NATIVE 960X540"};
-static bool ht_framed,ht_native_active,ht_native_background_prepared;
+static const char *const ht_camera_labels[]={"BASELINE", "ROTATION OFF", "ZOOM OFF", "BOTH OFF", "DETAIL 960X270"};
+static bool ht_framed,ht_native_active,ht_native_foreground_half_y;
 static int ht_world_scale=256; /* Draw-only projection; UI and cache geometry stay unscaled. */
 static int ht_view_margin(void) {return (480*256/ht_world_scale-480)/2;}
 static int ht_project_x(int x) {return 240+(x-240)*ht_world_scale/256;}
@@ -289,7 +289,7 @@ static void ht_bind(uint8_t *memory) {
     for(unsigned i=0;i<4;++i)ht_stage_reason[i]="NOT TESTED";
     ht_simd_test_pattern=ht_simd_test_phase=ht_simd_test_byte=0;
     ht_simd_test_expected=ht_simd_test_actual=0;
-    ht_geometry_level=0; ht_simd_stage_ready=0; ht_expanded_ready=false; ht_simd_ready=false; ht_framed=false; ht_native_active=false; ht_forest_frame_valid=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
+    ht_geometry_level=0; ht_simd_stage_ready=0; ht_expanded_ready=false; ht_simd_ready=false; ht_framed=false; ht_native_active=false; ht_native_foreground_half_y=false; ht_forest_frame_valid=false; ht_abort=false; ht_cache_job.active=false; ht_cache_builds=0;
     ht_raw=memory; ht_near=memory+HT_PIXELS; ht_wide=memory+2*HT_PIXELS;
     ht_scene_low=memory+3*HT_PIXELS; ht_scene=ht_scene_low; ht_temp=memory+4*HT_PIXELS; ht_filter=(int16_t *)ht_temp;
     uint8_t *cache=memory+6*HT_PIXELS;
@@ -520,6 +520,17 @@ static void ht_spawn(bool restart) {
 #include "hollow_trail_traversal.inc"
 
 static void ht_span(uint8_t *b,int x0,int x1,int y,int c) {
+    if(b==ht_scene && ht_native_active && ht_native_foreground_half_y) {
+        if(y<0 || y>=HT_H || x0>=HT_NATIVE_W || x1<0) return;
+        x0=ht_max(x0,0);x1=ht_min(x1,HT_NATIVE_W-1);
+        if(x1>=x0) {
+            size_t count=(size_t)(x1-x0+1);
+            uint8_t *top=b+(2*y)*HT_NATIVE_W+x0;
+            memset(top,c,count);
+            memcpy(top+HT_NATIVE_W,top,count);
+        }
+        return;
+    }
     int width=(b==ht_scene && ht_native_active)?HT_NATIVE_W:HT_W;
     int height=(b==ht_scene && ht_native_active)?HT_NATIVE_H:HT_H;
     if(y<0 || y>=height || x0>=width || x1<0) return;
@@ -532,23 +543,27 @@ static void ht_rect(uint8_t *b,int x,int y,int w,int h,int c) {
         int right=ht_project_x(x+w),bottom=ht_project_y(y+h);
         x=ht_project_x(x);y=ht_project_y(y);w=ht_max(1,right-x);h=ht_max(1,bottom-y);
     }
+    bool half_y=b==ht_scene && ht_native_active && ht_native_foreground_half_y;
     if(b==ht_scene && ht_native_active) {
-        x*=HT_NATIVE_SCALE;y*=HT_NATIVE_SCALE;w*=HT_NATIVE_SCALE;h*=HT_NATIVE_SCALE;
+        x*=HT_NATIVE_SCALE;w*=HT_NATIVE_SCALE;
+        if(!half_y){y*=HT_NATIVE_SCALE;h*=HT_NATIVE_SCALE;}
     }
-    int height=(b==ht_scene && ht_native_active)?HT_NATIVE_H:HT_H;
+    int height=half_y?HT_H:((b==ht_scene && ht_native_active)?HT_NATIVE_H:HT_H);
     for(int row=ht_max(0,y);row<ht_min(height,y+h);++row) ht_span(b,x,x+w-1,row,c);
 }
 static void ht_triangle(uint8_t *b,int ax,int ay,int bx,int by,int cx,int cy,int c) {
     if(b==ht_scene && ht_world_scale!=256) {
         ax=ht_project_x(ax);ay=ht_project_y(ay);bx=ht_project_x(bx);by=ht_project_y(by);cx=ht_project_x(cx);cy=ht_project_y(cy);
     }
+    bool half_y=b==ht_scene && ht_native_active && ht_native_foreground_half_y;
     if(b==ht_scene && ht_native_active) {
-        ax*=HT_NATIVE_SCALE;ay*=HT_NATIVE_SCALE;bx*=HT_NATIVE_SCALE;by*=HT_NATIVE_SCALE;cx*=HT_NATIVE_SCALE;cy*=HT_NATIVE_SCALE;
+        ax*=HT_NATIVE_SCALE;bx*=HT_NATIVE_SCALE;cx*=HT_NATIVE_SCALE;
+        if(!half_y){ay*=HT_NATIVE_SCALE;by*=HT_NATIVE_SCALE;cy*=HT_NATIVE_SCALE;}
     }
     if(ay>by){int t=ax;ax=bx;bx=t;t=ay;ay=by;by=t;}
     if(by>cy){int t=bx;bx=cx;cx=t;t=by;by=cy;cy=t;}
     if(ay>by){int t=ax;ax=bx;bx=t;t=ay;ay=by;by=t;}
-    int height=(b==ht_scene && ht_native_active)?HT_NATIVE_H:HT_H;
+    int height=half_y?HT_H:((b==ht_scene && ht_native_active)?HT_NATIVE_H:HT_H);
     for(int y=ht_max(ay,0);y<=ht_min(cy,height-1);++y) {
         int a=ax+(cx-ax)*(y-ay)/ht_max(1,cy-ay);
         int d=y<by?ax+(bx-ax)*(y-ay)/ht_max(1,by-ay):bx+(cx-bx)*(y-by)/ht_max(1,cy-by);
@@ -564,6 +579,14 @@ static void ht_limb(uint8_t *b,int x,int y,int ex,int ey,int r,int tip,int c) {
 }
 static void ht_disk(uint8_t *b,int x,int y,int r,int c) {
     if(b==ht_scene && ht_world_scale!=256) {x=ht_project_x(x);y=ht_project_y(y);r=ht_max(1,r*ht_world_scale/256);}
+    if(b==ht_scene && ht_native_active && ht_native_foreground_half_y) {
+        x*=HT_NATIVE_SCALE;
+        for(int dy=-r;dy<=r;++dy) {
+            int dx=r;while(dx>0 && dx*dx+dy*dy>r*r)--dx;
+            ht_span(b,x-dx*HT_NATIVE_SCALE,x+dx*HT_NATIVE_SCALE,y+dy,c);
+        }
+        return;
+    }
     if(b==ht_scene && ht_native_active) {x*=HT_NATIVE_SCALE;y*=HT_NATIVE_SCALE;r=ht_max(1,r*HT_NATIVE_SCALE);}
     for(int dy=-r;dy<=r;++dy) {
         int dx=r; while(dx>0 && dx*dx+dy*dy>r*r) --dx;
@@ -1358,20 +1381,40 @@ static int ht_weather_floor(const ht_game *g,int screen_x);
 static void ht_character(int x,int feet,const ht_game *game) {
     /* Local mist separation keeps the player visible when a black trunk
      * crosses behind them. Never wash out the landing surface underfoot. */
-    int raster=ht_native_active?HT_NATIVE_SCALE:1,width=ht_scene_width(),height=ht_scene_height();
-    int center=ht_project_x(x)*raster,base=ht_project_y(feet)*raster;
-    int radius=ht_max(1,25*ht_world_scale/256)*raster,middle=ht_project_y(feet-19)*raster;
-    for(int px=ht_max(0,center-radius);!(game->level==4 && game->camera/256<700) && px<=ht_min(width-1,center+radius);++px) {
-        int logical_px=px/raster;
-        int source=240+(logical_px-240)*256/ht_world_scale;
-        int floor=ht_min(base,ht_project_y(ht_weather_floor(game,source))*raster-raster);
-        for(int y=ht_max(0,ht_project_y(feet-43)*raster);y<ht_min(height,floor);++y) {
-            int dx=(px-center)*256/(ht_world_scale*raster),dy=(y-middle)*256/(ht_world_scale*raster);
-            int d=dx*dx+dy*dy;
-            if(d<625) {
-                int ceiling=170+85*ht_clamp(d-100,0,525)/525;
-                int i=y*width+px;
-                if(ht_scene[i]>ceiling) ht_scene[i]=(uint8_t)ceiling;
+    if(ht_native_active && ht_native_foreground_half_y) {
+        int center=ht_project_x(x)*HT_NATIVE_SCALE,base=ht_project_y(feet);
+        int radius=ht_max(1,25*ht_world_scale/256)*HT_NATIVE_SCALE,middle=ht_project_y(feet-19);
+        for(int px=ht_max(0,center-radius);!(game->level==4 && game->camera/256<700) && px<=ht_min(HT_NATIVE_W-1,center+radius);++px) {
+            int logical_px=px/HT_NATIVE_SCALE;
+            int source=240+(logical_px-240)*256/ht_world_scale;
+            int floor=ht_min(base,ht_project_y(ht_weather_floor(game,source))-1);
+            for(int y=ht_max(0,ht_project_y(feet-43));y<ht_min(HT_H,floor);++y) {
+                int dx=(px-center)*256/(ht_world_scale*HT_NATIVE_SCALE),dy=(y-middle)*256/ht_world_scale;
+                int d=dx*dx+dy*dy;
+                if(d<625) {
+                    int ceiling=170+85*ht_clamp(d-100,0,525)/525;
+                    int i=(2*y)*HT_NATIVE_W+px;
+                    if(ht_scene[i]>ceiling)ht_scene[i]=(uint8_t)ceiling;
+                    if(ht_scene[i+HT_NATIVE_W]>ceiling)ht_scene[i+HT_NATIVE_W]=(uint8_t)ceiling;
+                }
+            }
+        }
+    } else {
+        int raster=ht_native_active?HT_NATIVE_SCALE:1,width=ht_scene_width(),height=ht_scene_height();
+        int center=ht_project_x(x)*raster,base=ht_project_y(feet)*raster;
+        int radius=ht_max(1,25*ht_world_scale/256)*raster,middle=ht_project_y(feet-19)*raster;
+        for(int px=ht_max(0,center-radius);!(game->level==4 && game->camera/256<700) && px<=ht_min(width-1,center+radius);++px) {
+            int logical_px=px/raster;
+            int source=240+(logical_px-240)*256/ht_world_scale;
+            int floor=ht_min(base,ht_project_y(ht_weather_floor(game,source))*raster-raster);
+            for(int y=ht_max(0,ht_project_y(feet-43)*raster);y<ht_min(height,floor);++y) {
+                int dx=(px-center)*256/(ht_world_scale*raster),dy=(y-middle)*256/(ht_world_scale*raster);
+                int d=dx*dx+dy*dy;
+                if(d<625) {
+                    int ceiling=170+85*ht_clamp(d-100,0,525)/525;
+                    int i=y*width+px;
+                    if(ht_scene[i]>ceiling) ht_scene[i]=(uint8_t)ceiling;
+                }
             }
         }
     }
@@ -1557,10 +1600,6 @@ static void ht_city_observer_foreground(const ht_game *game);
 static void ht_authored_foreground(const ht_game *game);
 static void ht_draw_puzzle(const ht_game *game);
 static void ht_draw_evidence(const ht_game *game);
-static bool ht_authored_chapter(unsigned level);
-static void ht_forest_backdrop(const ht_game *game);
-static void ht_city_backdrop(const ht_game *game);
-static void ht_authored_backdrop(const ht_game *game);
 /* At full opacity the grotto supplies every background pixel itself. */
 static bool ht_grotto_opaque(const ht_game *g) {
     return g->level==4 && g->camera/256<=700;
@@ -1573,7 +1612,7 @@ static void ht_render_scene(void) {
     const bool native_mode=ht_camera_mode==HT_CAMERA_NATIVE;
     const unsigned camera_mode=native_mode?(unsigned)HT_CAMERA_BASELINE:ht_camera_mode;
     ht_native_active=native_mode;
-    ht_native_background_prepared=false;
+    ht_native_foreground_half_y=false;
     ht_scene=native_mode?ht_native_a:ht_scene_low;
     if(camera_mode==HT_CAMERA_NO_ZOOM || camera_mode==HT_CAMERA_OFF)game.vista=game.intimacy=0;
     ht_frame_camera(&game,camera_mode);
@@ -1591,23 +1630,6 @@ static void ht_render_scene(void) {
     }
     uint8_t *output=ht_scene;
     if(camera_pass)ht_scene=native_mode?ht_native_b:ht_temp;
-    /* Native A/B keeps the near scene at physical resolution, but authored
-     * distant backdrops only need logical 480x270 detail. Render those once
-     * into the logical surface and expand them before native traversal,
-     * character, props, weather and foreground occluders are overlaid. */
-    if(native_mode && (game.level==0 || game.level==1 || ht_authored_chapter(game.level))) {
-        uint8_t *native_target=ht_scene;
-        ht_scene=ht_scene_low;
-        ht_native_active=false;
-        ht_world_scale=ht_scene_scale(&game);
-        if(game.level==0)ht_forest_backdrop(&game);
-        if(game.level==1)ht_city_backdrop(&game);
-        ht_authored_backdrop(&game);
-        ht_scene=native_target;
-        ht_native_active=true;
-        ht_expand_scene_native(ht_scene_low,native_target);
-        ht_native_background_prepared=true;
-    }
     if(!opaque) {
         if(native_mode) {
             uint8_t *native_target=ht_scene;
@@ -1639,6 +1661,7 @@ static void ht_render_scene(void) {
     uint32_t post_start=ht_render_now();
     ht_render_last.world=post_start-world_start;
     ht_world_scale=256;
+    ht_native_foreground_half_y=false;
     ht_scene=output;
     if(camera_pass)ht_camera_into(native_mode?ht_native_b:ht_temp,&game,camera_mode);
     ht_vignette();
