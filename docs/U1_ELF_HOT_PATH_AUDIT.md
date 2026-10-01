@@ -70,4 +70,16 @@ Verified compact artifacts:
 Each report's selected source hashes match this published code. Full firmware
 artifacts were not downloaded for this measurement.
 
+### Integrated Timecard candidate1a5706e2
+
+Both target builds passed; compiled checkoutdf009536. Reports11161604959 (T5)
+and11161464663 (EPD) were downloaded with ZIP SHA-256 respectively
+44b3b9ea6a9b02e6a8217c40ff0e5de9512262b72f37824cd29834be3e61ec0c and
+5c4d0a4e647d9b1c16cde6b853e95fea44c5d32002c92ac86fa7b7c9492424f7;
+all report source hashes match the published candidate. Both cover38 built apps,
+599796 ELF bytes. Full verification hashes599796/read611323 bytes in678 reads;
+installed inspection hashes0/read11527 bytes in76 reads. Both open76 handles.
+Host full/metadata times: T5 2890/1390us, EPD3176/1482us. Same in-memory adapter
+method and limitations apply; these are not physical device launch benchmarks.
+
 **Implementation In Progress**

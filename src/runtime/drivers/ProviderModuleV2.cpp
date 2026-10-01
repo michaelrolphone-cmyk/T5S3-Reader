@@ -1,4 +1,5 @@
 #include "ProviderModuleV2.h"
+#include "../../../lib/hal/RuntimeFaultRetention.h"
 #ifdef ESP_PLATFORM
 #include "runtime/packages/PackageExecutableAdmission.h"
 #endif
@@ -62,6 +63,7 @@ void ModuleV2::report(const char* id, const char* stage, int code) {
 }
 
 bool ModuleV2::closeMapped() {
+  risc_runtime_retention_guard();
   if (!handle_) return true;
 #ifdef ESP_PLATFORM
   if (privileged_image_) {
@@ -82,6 +84,7 @@ bool ModuleV2::closeMapped() {
 bool ModuleV2::activateMapped(risc_driver_get_v2_fn get, const char* expectedId,
                               const char* expectedCapability, uint32_t expectedApi,
                               const risc_provider_dependency_v1* deps, size_t count) {
+  if (risc_runtime_retention_required()) return false;
   const risc_driver_v2* candidate = get ? get(RISC_PROVIDER_DRIVER_ABI_V2) : nullptr;
   const bool valid = candidate && candidate->abi_version == RISC_PROVIDER_DRIVER_ABI_V2 &&
       candidate->struct_size >= RISC_DRIVER_V2_BASE_SIZE &&
@@ -323,6 +326,7 @@ void ModuleV2::closeStreams() {
   streamApi_ = {};
 }
 bool ModuleV2::unload() {
+  risc_runtime_retention_guard();
   if (consumers_) return false;
   revokeStreams();
   if (state_ == State::Failed && handle_ && driver_) {

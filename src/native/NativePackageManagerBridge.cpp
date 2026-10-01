@@ -1,3 +1,4 @@
+#include <RuntimeFaultRetention.h>
 #include <T5PackageManagerApi.h>
 #include <HalStorage.h>
 #include <NativeAppLauncher.h>
@@ -432,6 +433,10 @@ void setOnlineInstallError(const char* message) {
 
 bool onlineInstallCommon(uint32_t index, t5_package_progress_fn progress, void* context) {
     onlineInstallError[0] = 0;
+    if (risc_runtime_retention_required()) {
+        setOnlineInstallError("storage unavailable; manual reboot required");
+        return false;
+    }
     if (callerKind() < 0) {
         setOnlineInstallError("caller is not allowed to install packages");
         return false;

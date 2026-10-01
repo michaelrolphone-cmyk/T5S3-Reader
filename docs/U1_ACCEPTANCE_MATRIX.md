@@ -6,7 +6,7 @@ Authority: `NEXT_HARDWARE_TEST_MILESTONE.md`,
 specifications. This is a source-backed implementation inventory, not a new
 milestone, a release request or a claim of owner hardware qualification.
 
-Baseline: sole PR #96, `impl/u1-riscrte`, current master **d4df4609** integrated locally; merged Model Viewer and lab host checks passed.
+Baseline: sole PR #96, `impl/u1-riscrte`, current master **4530c8b2** integrated locally after green **1a5706e2**; merged Model Viewer and lab host checks passed.
 Full native-app/archive checks also passed at the preceding f79f7291 backmerge.
 Archive service checkpoint **014fb6f7** passed PlatformIO/host **36816333359**
 and USB/ELF **36816333240**, including actual service ZIP/import checks.
@@ -32,7 +32,7 @@ code needs the named production/link evidence, rather than a replacement design.
 | Production serial.port uses installed class-owned RX/TX endpoints | Connected path and selected target references verified; hardware pending | `installedAcquirePort` requires `InstalledSerialSession::endpoints` and exact `attachEndpoint` grants, with no raw-I/O fallback. CDC/CP210x/CH34x and witness use `Drivers/common/SerialStreamPump.inc`. Stream/USB integration runners cover partial I/O, checked cleanup and reconnect | Both c80bdee1 targets confirm API/provider-table references through installed inventory resolve/endpoint attachment (U1_TARGET_REFERENCE_EVIDENCE.md); complete indirect/PHY evidence remains; preserve Serial Monitor/flasher DTR/RTS/control and failed-release recovery |
 | No normal firmware USB behavior/fallback; fourth compatible class without core edits | Production cutover and selected target entrypoints verified | ESP production preprocessing excludes `usbAcquirePort`, `UsbSerialProjection` and legacy class selection from the serial bridge; `NativeUsbBridge` exposes a null-returning ABI stub and `open_usb` is unsupported. Actual four-class installed-provider tests pass. Compiled semantic shuttle helpers have no production pair-opening caller found | Both c80bdee1 linked targets confirm null/unsupported compatibility entrypoints and the selected API-to-installed-provider table/call chain; full indirect/PHY reachability remains open (U1_TARGET_REFERENCE_EVIDENCE.md); preserve host compatibility ABI/tests. Do not resurrect old ledger allegations merely from filenames |
 | Stable I²C bus ELF and one BQ25896 charger/VBUS owner | Complete connected code; hardware pending | `RiscI2cBusV1.h`, restricted firmware bus ABI, I²C provider, BQ provider and `NativeBoardPowerPort`; prior checkpoint restored BoardT5S3 callers to installed owner and preserved BQ27220 gauge. Bounded retry/telemetry, grants and VBUS tests pass | Final current-head target/absence checks. Native I²C-controller takeover and unrelated fitted peripherals remain U3 |
-| Exclusive console/USB-host PHY handoff and rollback | Production cleanup fault tests passed; linked evidence pending | Controller `HostStartup.h`, `PhyRoute.h`, `RoleSwitch.h` retain capture/restore, drain and uncertain-cleanup state; prior target CI passed | Actual quiesce_host failure/retry fixture preserves route until DMA/host/PHY/VBUS are released and source-off observed; startup/role fixtures retained. Matching target controller report pending; physical PHY success remains unclaimed |
+| Exclusive console/USB-host PHY handoff and rollback | Production cleanup faults and selected linked evidence verified at1a5706e2 | Controller `HostStartup.h`, `PhyRoute.h`, `RoleSwitch.h` retain capture/restore, drain and uncertain-cleanup state; prior target CI passed | Actual quiesce_host failure/retry fixture preserves route until DMA/host/PHY/VBUS are released and source-off observed; startup/role fixtures retained. Both exact-head workflows and compact controller references verified at1a5706e2; physical PHY success remains unclaimed |
 | Generic SPI/UART provider/import/lifetime foundation | Generic foundation present; no demonstrated extra U1 dependency | Generic provider graph, dependency ABI and byte/record lifecycle are reusable. The specific SPI/UART cutover spec requires concrete public contracts when needed for compatibility; no current U1 physical SPI/UART dependency was identified | Preserve generic graph/import restrictions. Do not invent unused SDK tables or bus ELFs as a U1 gate; concrete fitted-client contracts and controller migration remain U3 unless an actual dependency is found |
 | Four-kind common offline/online install/update/inventory/uninstall and rollback | Partly complete | Common ordinary stage/transaction/recovery/use-gate and PackageManager API; actual four-kind host tests; online driver ZIP source now joins aggregate four-kind rows through same installer | Independent app ZIP output/consumer wiring is connected with host coverage; all38 app ZIPs passed both target boards at cf1ac054 and subsequent green014fb6f7/5466d93c. Preserve legacy ELF/JSON input; verify final four-view recovery together |
 | Generic manifest-driven export/index with immutable per-package locators | All four kinds connected and target verified at bd9b09a7 | `build_release_record.py`, `update_release_index.py`, offline release-plan gate, `PackageIndependentCatalog.h`, `PackageOnlineCatalog.h`; current source record/URL round-trip, real 22-ZIP records and historical 40-app/21-driver index validated | Both target boards at **cf1ac054** built/validated all38 immutable app ZIPs in isolated artifacts; legacy loose input remains accepted. See U1_APP_BUNDLE_MIGRATION.md for exact published version lineage and identity rules. No live index/release operation |
@@ -52,30 +52,30 @@ graph-owned remap evidence passed both at a928d444 (36845426266 / 36845426285).
 Explicit full-verification invalidation is now connected at canonical/pair
 boundaries using the existing observed generation; the actual failed-check,
 in-flight and warm-recovery regression passed locally and both target workflows
-at730d0773. This does not choose or implement the SD/SPI fault policy. Missing implementation: actual lower-I/O termination where synchronous SD/network
-or indefinite storage-mutex waits can outlive cooperative deadlines.
+at730d0773. That earlier checkpoint did not implement a lower-I/O fault policy.
+The separately approved current policy now connects bounded module-store SPI
+failure to permanent unavailable state and ownership-preserving manual reboot.
 The loader slice passed both workflows at73288020 (U1_LOADER_IO_BOUNDS.md),
 bounding VFS descriptor contention and chunked read work. The HTTP worker
 correction (U1_HTTP_WORKER_TERMINATION.md) passed both workflows at64d19d64,
 including the actual-dependency body-loop witness. The local single-read
 legacy sidecar correction passed actual-source faults and both target workflows
-at730d0773 (U1_LEGACY_SIDECAR_SNAPSHOT.md). Deeper HalStorage/media termination
-and synchronous SDK call limits remain open. The consequential SD/SPI fault
-policy is pending the owner choice in U1_SD_IO_OWNER_DECISION.md; no port patch
-or compatibility change is inferred from the proposed recommendation.
+at730d0773 (U1_LEGACY_SIDECAR_SNAPSHOT.md). The owner approved the SD/SPI retained-fault policy. Its connected port, task,
+file, LoRa and lifecycle implementation now passes local fault tests; exact-head
+target results are pending. See U1_SD_SPI_REBOOT_POLICY.md. No automatic reset
+or controller-recovery policy is inferred.
 
 Resource-only software now supports the minimum explicit data-only service use
 case and real app/provider read consumers, with both target workflows green at
 c80bdee1.
 No broader font/theme activation or arbitrary package reads are implied.
 
-Missing final evidence: complete target call/reference reachability for generic serial
-and excluded legacy USB paths; bd9b09a7 compact reports confirm the USB stub and
-installed serial registry calls, while indirect provider call resolution remains open; linked console/PHY handoff and restoration
-failure paths. Their production code and host fixtures already exist. Do not
-rebuild them from historical filenames or infer physical qualification from
-unrelated board smoke tests. Final master/version reconciliation and one
-coherent artifact/qualification sheet remain integration work.
+Selected source/target call and table evidence for generic serial, disabled
+legacy USB entrypoints and controller cleanup is verified at1a5706e2, with
+actual callback/cleanup host fixtures. Complete electrical and arbitrary dynamic
+runtime traces remain physical qualification evidence; old broader inventory
+wording is not a new implementation task. The current SD policy's target checks
+and final integrated artifact accounting remain to finish this code candidate.
 
 The confirmed production ELF packing defect is corrected:
 see U1_ELF_SECTION_LAYOUT_CORRECTION.md. The real clock/archive mapped-data
@@ -85,16 +85,24 @@ see U1_FOUR_KIND_INDEPENDENT_DISTRIBUTION.md.
 
 ## Immediate closure order
 
-1. Finish this integrated candidate: masterd4df4609, Timecard1.0.3,
-   Hollow1.1.42, firmware1.3.50, retained730d0773 evidence, production controller
-   cleanup fault coverage and selected linked controller/serial reports. Run
-   focused host checks and the one necessary pair of target workflows.
-2. Keep the SD/SPI owner decision explicit. No implementation of quarantine or
-   controller recovery is authorized yet; synchronous SDK limitations are not
-   waived by an outer deadline. If this is the remaining implementation blocker,
-   return the tested candidate and minimal decision instead of adding scope.
-3. Final physical qualification and full electrical/indirect runtime evidence
-   remain owner-controlled. U2–U4 and the isolated CAM port are outside this work.
+1. Integrated candidate1a5706e2 is target-green in both workflows36861584009 /
+   36861584052; compiled checkoutdf009536, exact tree30bc8336 matches tested
+   local28d34d94. Masterd4df4609, Timecard1.0.3, Hollow1.1.42 and firmware1.3.50
+   are reconciled. Retained evidence was published; five current compact reports
+   were downloaded and hash/source checked. The approved SD fault slice below
+   supersedes that earlier budgeted stopping point.
+2. The SD/SPI owner decision is now approved and implemented locally. Complete
+   the same candidate's exact-head target checks and fix any source/build
+   regressions. Retained-fault semantics preserve the original task/TCB, mutex,
+   buffers/handles and mapped code; no reset/unlock/unmap escapes uncertainty.
+   Text Editor342 is integrated with ZIP0.2.3. See U1_SD_SPI_REBOOT_POLICY.md.
+
+3. Remaining evidence: physical PHY/cable and arbitrary indirect runtime paths,
+   final owner qualification (the isolated composite CAM witness now passes). The
+   blocked independent receipt review is still incomplete. Pinned DNS/socket/
+   TLS source has finite lower mechanisms, while arbitrary SDK interruption is
+   not certified. Recheck versions/master before a later final handoff; no
+   U2–U4, hardware port, release or deployment expansion.
 
 The work must converge on these acceptance outcomes, not the number of commits
 or checks. Code already present on master is retained rather than reimplemented.

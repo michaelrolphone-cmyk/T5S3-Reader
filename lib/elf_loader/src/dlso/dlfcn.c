@@ -1,3 +1,4 @@
+#include "../../../hal/RuntimeFaultRetention.h"
 /*
  * SPDX-FileCopyrightText: 2026 Espressif Systems (Shanghai) CO LTD
  *
@@ -155,6 +156,7 @@ void *dlopen(const char *file, int mode)
  */
 int dlclose(void *handle)
 {
+    risc_runtime_retention_guard();
     if (!handle) {
         dlerror_set("Invalid NULL handle");
         return -1;

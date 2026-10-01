@@ -1,4 +1,5 @@
 #include <HalStorageLifecycle.h>
+#include <SdSpiFault.h>
 #include "BoardT5S3.h"
 #include "BoardPowerPort.h"
 
@@ -221,6 +222,7 @@ void restoreBacklightLevel(uint8_t level) {
 }
 
 void prepareSdBus() {
+  risc_sd_spi_guard(); // No bus-pin/rail change or automatic sleep after a stall.
   pinMode(T5S3_LORA_CS, OUTPUT);
   digitalWrite(T5S3_LORA_CS, HIGH);
   pinMode(T5S3_SD_CS, OUTPUT);
@@ -229,6 +231,7 @@ void prepareSdBus() {
 }
 
 void disableGpsLora() {
+  risc_sd_spi_guard(); // Shared-radio reset/rail shutdown cannot bypass retention.
   pinMode(T5S3_LORA_CS, OUTPUT);
   digitalWrite(T5S3_LORA_CS, HIGH);
   pinMode(T5S3_LORA_RST, OUTPUT);
@@ -262,6 +265,7 @@ void begin() {
 }
 
 void deinitForSleep() {
+  risc_sd_spi_guard(); // No bus-pin/rail change or automatic sleep after a stall.
   // Pin the installed owner while SD is still available.
   (void)BoardPowerPort::prepareShutdown();
   halStorageMediaUnavailable(); // Existing SD bus shutdown invalidates retained metadata.

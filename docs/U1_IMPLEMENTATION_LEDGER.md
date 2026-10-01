@@ -7,24 +7,46 @@ The coordinating owner verified that the prior implementation worker was
 interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
 28-file staged resource slice from **cf1ac054** was preserved and integrated.
 This explicit transfer remains active; it was not based on claim expiry.
-Current target-green checkpoint is **730d0773a96329f970030c34adf4df34d6094056**,
-tree **7dc5a992162b2509b92d8c79d362a2a580ce497c**, matching tested local
-**df0a4673**. Both workflows **36856309372 / 36856309324** passed; the compiled PR
-checkout was **8bf83b8ddb6119b4056f4929d5b52585b8e642ea**. Both compact app-work
-reports were independently downloaded and their ZIP/source hashes checked.
-This head integrates master **5c1284bf**, Hollow1.1.42 and Timecard1.0.3.
-PR96 remains open and the remote head matches at11:43 UTC. Master subsequently
-advanced to **d4df4609**; that newer source is not integrated into this checkpoint.
+Current target-green checkpoint is **1a5706e284273ec0f37e249da8de572d8b0548bd**,
+tree **30bc8336fbc8d908db2d64786b636a186ab0e4b1**, matching tested local
+**28d34d94fc08c8794e9fbbebc7632936f4cac0d8**. Both workflows
+**36861584009 / 36861584052** passed; compiled PR checkout was
+**df0095367bf5bd038e0912f947dfc8615653255e**. Five compact reports (two firmware
+references, controller references and two built-app work reports) were downloaded
+and ZIP/source hashes checked. PR96 is open/mergeable and remote head verified
+at12:35 UTC; master remains **d4df4609**, fully integrated. Source candidate
+versions: firmware1.3.50, Hollow1.1.42, Timecard1.0.3.
 
-The coordinating owner resumed this same writer at12:15 UTC for one coherent
-software integration/completion chunk, with no helpers or broad repeat audit.
-The five retained terminal-evidence updates are preserved for this publication.
-PR96 is open; fetched remote U1 remains730d0773 and actual master isd4df4609,
-including owner-merged Timecard341. Integrate that repair while preserving the
-unreleased Timecard1.0.3 ZIP identity, then close independently supportable
-source/target ownership evidence in the same necessary build. The SD/SPI policy
-is still unapproved: no port patch, live release, index, tag, master update or
-flash. The blocked independent review remains blocked and is not recreated.
+The coordinating owner resumed this same writer at13:14 UTC after the user
+approved reboot-required fail-closed SD/shared-SPI stall behavior. This is the
+sole active U1 code claim. Preserve green1a5706e2 and the five terminal-evidence
+updates, integrate actual master4530c8b2/Text Editor342 with ZIP0.2.3, and complete
+one ownership-preserving port/SD/LoRa failure chunk. No automatic reboot, forced
+cleanup, new controller owner, U2–U4 expansion, release, master write or flash.
+The blocked independent review remains blocked and is not recreated.
+
+The isolated composite CAM activation issue is resolved by its separate owner:
+b78955ac passed twice through installed clock/archive, production stream registry,
+rights, cleanup and stable heap. That is a development witness, not full U1/T5S3
+physical qualification; no duplicate CAM diagnosis is assigned here.
+
+## October 1: approved manual-reboot SD/shared-SPI policy
+
+Local171eb6a2 integrates actual master4530c8b2/Text Editor342 and ZIP0.2.3,
+following the evidence-preservation commitabeeef8a. The owner then approved
+retained-fault behavior. The current coherent implementation bounds the pinned
+Arduino SPI/SD port, preserves existing owners/mutexes/tasks, refuses destructive
+raw/managed cleanup, and gates LoRa/pin/board/module teardown until manual reboot.
+No reset/recovery worker, new bus owner, registry or installer was introduced.
+See U1_SD_SPI_REBOOT_POLICY.md for exact source pins and scope/limits.
+
+Actual policy, HalStorage lifetime, LoRa, both board pin wrappers, transformed
+SPI wait/raw VFS close and app display-refusal checks pass. Native-app, storage,
+stream and provider-graph aggregates pass locally. Firmware1.3.50 and LoRa1.0.1
+are existing cumulative unpublished candidates, above actual released lineage;
+Hollow1.1.42 and Timecard1.0.3 stay unchanged. Exact-head target checks are pending
+publication. The isolated CAM b78955ac witness is already resolved/passing; full
+U1/T5S3 physical qualification and the blocked independent review remain open.
 
 ## October 1: integrated completion candidate
 
@@ -46,8 +68,9 @@ alongside the existing firmware serial reference reports. These are selected
 call/table evidence, not universal indirect-call resolution or physical proof.
 
 Full native-app aggregate, actual parser/sidecar pair regressions, actual
-controller teardown and existing host/class tests passed locally. Stream/graph
-checks and exact-head target results remain pending at publication preparation. The only known unimplemented bounded-media contract still requires the
+controller teardown, host/class, stream and provider-graph tests passed locally.
+Both target workflows passed at1a5706e2. See U1_TARGET_REFERENCE_EVIDENCE.md for
+actual report observations and remaining physical/indirect limits. The only known unimplemented bounded-media contract still requires the
 owner's SD/SPI compatibility choice; synchronous SDK limitations remain explicit.
 No further independent implementation is invented to avoid that decision.
 

@@ -1,4 +1,5 @@
 #include "NativeAppLauncher.h"
+#include "../../hal/RuntimeFaultRetention.h"
 
 #include <stdatomic.h>
 #include <stddef.h>
@@ -83,6 +84,7 @@ const char *native_app_current_path(void)
 
 esp_err_t launch_elf_app(const char *sd_path)
 {
+    if (risc_runtime_retention_required()) return ESP_ERR_INVALID_STATE;
     if (sd_path == NULL || strncmp(sd_path, "/sd/", 4) != 0 || sd_path[4] == '\0') {
         ESP_LOGE(TAG, "Expected an absolute SD VFS file path");
         return ESP_ERR_INVALID_ARG;
@@ -246,6 +248,7 @@ esp_err_t launch_elf_app(const char *sd_path)
     result = ESP_OK;
 
 close_module:
+    risc_runtime_retention_guard(); // Before module destructors, context or heap disposal.
     s_current_path = NULL;
     // Destructors may release app-owned peripherals and callbacks, so run them
     // while the module is mapped and before the host restores shared hardware.

@@ -1,4 +1,5 @@
 #include "ProviderGraphV2.h"
+#include "../../../lib/hal/RuntimeFaultRetention.h"
 #include "ProviderOwnedSpecV2.h"
 #include <cstdlib>
 #include <cstdio>
@@ -28,6 +29,7 @@ bool validName(const char* s) {
 }
 
 GraphV2::~GraphV2() {
+  risc_runtime_retention_guard();
   // Bound dependency tables may be retained by mapped ELFs and IRQ callbacks.
   // Never destroy those arrays while a provider refuses verified quiescence.
   if (!shutdown()) std::abort();

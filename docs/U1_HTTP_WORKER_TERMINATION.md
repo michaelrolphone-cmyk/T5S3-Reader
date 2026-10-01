@@ -67,4 +67,22 @@ storage uncertainty remain independent. HalStorage mutex/destructor ownership
 and synchronous media termination remain open, as does full target/PHY evidence.
 The blocked independent receipt review remains incomplete and was not retried.
 
+### Pinned lower-call evidence, October 1 integration
+
+A targeted read of the same Arduino2.0.17 dependency distinguishes configured
+bounds from arbitrary interruption. WiFiGeneric.cpp blob
+`a6bc47e80daf247dc698759c0a7f1d5ab3c98d2f` uses a16-second DNS-idle wait and
+15-second result wait in hostByName. ssl_client.cpp blob
+`a8b570a88514f5784a6213f78df225e597106822` uses finite socket select/receive/send
+limits and checks handshake/write elapsed time with vTaskDelay(2). The caller's
+5-second socket/connect and15-second handshake settings therefore reach actual
+lower mechanisms; DNS has its own longer bound rather than inheriting5seconds.
+
+This is source evidence, not a deterministic maximum for arbitrary lwIP/SDK
+internals or a callback-lifetime proof. The same worker keeps its buffers/client
+until those calls return, then rejects an expired operation. No timeout-driven
+cross-task destruction or force-reset was added. The confirmed unresolved
+unbounded SPI/media path has a separate owner-policy decision; these finite
+network mechanisms should not be described as a proven indefinite DNS loop.
+
 **Implementation In Progress**

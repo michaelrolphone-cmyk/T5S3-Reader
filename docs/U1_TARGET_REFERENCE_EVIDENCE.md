@@ -59,7 +59,7 @@ exported getter, start/stop/quiesce, role service, startup, PHY release/capture/
 restore and event entrypoints that survive target optimization. Missing inlined
 symbols are not interpreted as missing behavior. Firmware reports additionally
 select installed configure/control/release and checked lease cleanup. The new
-reports remain pending until this exact candidate's target builds finish.
+reports passed and were inspected at1a5706e2, as recorded below.
 
 Source boundaries for the deliberately indirect production path:
 
@@ -91,5 +91,43 @@ version or electrical policy changes; this closes an actual-source test gap.
 Physical mux write/readback, SDK/interrupt timing and attached-cable behavior
 remain qualification evidence. Neither selected call reports nor these fault
 ports establish universal dynamic reachability or physical restoration success.
+
+### Exact integrated target observations
+
+Both workflows36861584009 /36861584052 passed requested head
+1a5706e284273ec0f37e249da8de572d8b0548bd; compiled checkout is
+df0095367bf5bd038e0912f947dfc8615653255e. Each report's ZIP digest and all
+listed source hashes were independently checked against this candidate.
+
+| Report | Artifact | ZIP SHA-256 |
+|---|---|---|
+| T5 firmware |11161914277|1d931e208b0ee13ca5b0d0105e7b78cb1e02add97f9d50f1930b93a6cc01837a|
+| EPD firmware |11161694367|855f468964c4634ff7381c1670ded687a63eab71b849e6d76603d8e92fe3578d|
+| Controller ELF |11162900274|bd68363e9acd3d158ea36a48b649d08e109ad0ecc64fda598e1d4c8804f2c7ce|
+
+Both firmware reports contain18 selected roots and no searched legacy symbols.
+Installed release references the optimized checked-cleanup helper;
+configure/control have one indirect provider call after authorization,
+revocation and device synchronization. Owner tick retains its deliberate
+indirect dispatcher. These extend, rather than replace, earlier path evidence.
+
+The controller ELF SHA-256 is
+8bd3a04dbffb87216ad793f19a150ce2d5ff993ff82d2e82757279ce5a8e7527.
+Its getter references the actual40-byte hid_driver table, whose lifecycle
+pointers identify start_with_role, stop_with_interrupt and the quiesce wrapper.
+The source wrappers drain interrupt slots before the base cleanup. Seven
+selected functions survive optimization. PIC code uses callx rather than direct
+call instructions; literal targets in quiesce_host identify actual IDF device/
+transfer/client cleanup, event handling, device-free, host-uninstall and
+usb_del_phy functions. Its retained disassembly includes the final saved PHY
+mux bit stores and clearing of route-captured state after the guarded power
+monitor branch. quiesce references quiesce_host; stop references quiesce;
+next_event references service_role. This is actual linked reference/register-
+write evidence, not merely successful symbol lookup.
+
+No physical register readback or arbitrary callback target is certified. The
+source fixture and linked report together close the selected software cleanup
+path evidence; electrical restoration and complete runtime dynamic traces remain
+Release Qualification. No extra build was triggered solely to retrieve reports.
 
 **Implementation In Progress**

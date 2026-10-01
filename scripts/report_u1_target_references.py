@@ -21,7 +21,8 @@ ROOT_NAMES = ('t5_usb_get_api', 't5_serial_port_get_api', 'installedAcquirePort'
               'ensureUsbRegistered', 'acquireInstalled', 'diagnosticAcquire',
               'esp_elf_open', 'esp_elf_admit_managed_app', 'beginManagedAppAdmission',
               'admitInstalledExecutableSnapshot', 'configureInstalled',
-              'controlInstalled', 'releaseInstalled', 'clearInstalledLease')
+              'controlInstalled', 'releaseInstalled', 'clearInstalledLease',
+              'risc_sd_spi_busy', 'risc_sd_spi_fail', '__wrap_vTaskDelete', '__wrap_gpio_config')
 CONTROLLER_NAMES = ('t5_driver_get', 'start', 'stop', 'quiesce', 'quiesce_host',
                     'start_host_controller', 'release_host_phy', 'capture_phy_route',
                     'restore_phy_route', 'service_role', 'next_event')
@@ -129,7 +130,8 @@ def report(path, objdump, source_head, profile="firmware"):
                 raise ValueError('selected disassembly exceeds report bound')
             item['disassembly'] = assembly
             item['references'] = references(assembly, read_virtual, objects, functions)
-    source_files = ['platformio.ini', 'src/native/NativeUsbBridge.cpp',
+    source_files = ['platformio.ini', 'lib/hal/SdSpiFault.cpp', 'lib/hal/SdSpiFaultPins.cpp',
+                    'scripts/patch_sd_spi_fault.py', 'src/native/NativeUsbBridge.cpp',
                     'src/native/ManagedAppAdmission.cpp', 'lib/elf_loader/src/esp_elf.c',
                     'src/native/NativeSerialPortBridge.cpp',
                     'src/native/NativeSerialPortBridge_implementation.inc', 'src/native/NativeStreamBridge.p1.inc',

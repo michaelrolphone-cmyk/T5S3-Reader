@@ -1,3 +1,4 @@
+#include <RuntimeFaultRetention.h>
 #include "NativeUiFrame.h"
 #include "NativeAppMemory.h"
 #include "NativeStreamBridge.h"
@@ -1408,6 +1409,10 @@ static bool validateLooseAdmissionSidecar(const std::string& json,const std::str
 
 esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManager& input) {
   lastLaunchError.clear();
+  if (risc_runtime_retention_required()) {
+    lastLaunchError = "Storage unavailable; resources retained. Manual reboot required.";
+    return ESP_ERR_INVALID_STATE;
+  }
   if (session) {
     lastLaunchError = "Another native application is already running.";
     return ESP_ERR_INVALID_STATE;
