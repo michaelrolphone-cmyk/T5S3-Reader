@@ -1,9 +1,17 @@
 # Bug repair progress
 
-Snapshot: 2026-10-01, after Text Editor document-opening repair. The completion record below supersedes historical held/open statuses and batch counts; older evidence and applicability history are retained.
+Snapshot: 2026-10-01, after Text Editor PR342 merge closure. The completion record below supersedes historical held/open statuses and batch counts; older evidence and applicability history are retained.
 
 
-## Completed Text Editor document-opening batch — PR342
+## Completed Text Editor merge closure — PR342
+
+- Documentation-only closure by `01a0f728-f5cb-70e7-9297-7a6abc7c6034`; active ledger/implementation owner **none**. Captured ledger parent `fb719416c23e07152208187c605ce54f02b94f0f`; no active competing durable claim. Existing PR332 remains the coordination PR.
+- Owner merged PR342 at2026-10-01 13:15:00UTC as `4530c8b23b13a64f29c212cd64f1e86b05885287`, exact repair head `4bfaa29d8e8a321eb11fb48896e5717a0692392e` as second parent. GitHub closed/merged state and merge ancestry independently verified on current master `2dbf7e0eb8b8b2e7b22b06debc5a95e82e1e0ae3`.
+- Canonical **20 and232: Fixed on master**. Text Editor0.2.2 app/manifest, focused regression and file-open/storage bridges are unchanged from the tested repair; native aggregate still registers the focused test. Prior exact-head tests/Xtensa build/CI remain evidence, not rerun for unchanged source. Existing Mac aggregate and physical keyboard/SD limits retained.
+- Inventory **249 retained/241 outstanding**:240 need revalidation and252 host-fault confirmed with device limits;14/16/17/20/91/205/232/249 fixed. NextID261 unchanged. This batch occupies zero pending code-batch slots; claims remain released. All247 unrelated entries and original affected report bodies/provenance preserved.
+- Closed PR342 untouched. No new scan, source fix, repeated tests, helper, master write, merge, release/catalog publication or device operation. CAM remains the separately owned code work. Earlier awaiting/ready wording below is historical and superseded by this closure.
+
+## Historical completed Text Editor document-opening batch — PR342
 
 - Owner `01a0f728-f5cb-70e7-9297-7a6abc7c6034`; active ledger/implementation owner **none** after final verified checkpoint. Claim `3c3a92eff2a80e729b069f4bf53d4c73ebfbab9c` published before source changes; no previous active claim or competing repair. Canonical20/232 matched by functions, triggers and root causes, preserving original reports.
 - [PR342](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/342), branch `fix/text-editor-document-open`, targets master `d4df4609f3e6fdd6889bb70a0971240711e35c3f`. Exact remote `4bfaa29d8e8a321eb11fb48896e5717a0692392e`, tree `04bfb6688252db9a10a1488453922383a2d804a4`, equals tested local `b5426f08007819b6de5dd3f6c6e79f95b8124c31`; fetched and diff-verified. Four files: app, manifest, focused runtime test, native aggregate registration.
