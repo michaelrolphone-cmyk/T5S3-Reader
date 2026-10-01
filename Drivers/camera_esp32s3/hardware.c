@@ -7,6 +7,7 @@
  */
 #include "hardware.h"
 #include "hardware_diag.h"
+#include "hardware_frame.h"
 #include "T5StreamApi.h"
 #include "vendor/ov3660.h"
 #include "soc/soc.h"
@@ -35,7 +36,8 @@ static sensor_t sensor;
 static lldesc_t *desc;
 static uint8_t *buffer;
 static bool touched, dma_owned, active, waiting, fault;
-static uint32_t scan, frame_length, sampled_gpio, sampled_changes;
+static uint32_t sampled_gpio, sampled_changes, available, harvested;
+static cam_jpeg_scan jpeg;
 static uint64_t init_deadline;
 uint64_t cam_hw_now(void) {
     struct timespec t;
@@ -124,7 +126,7 @@ bool cam_hw_start(const risc_camera_esp32s3_profile_v1 *p) {
      * or occupied GDMA RX before any writes. Never reset the whole DMA unit. */
     if(REG_GET_BIT(SYSTEM_PERIP_CLK_EN1_REG,SYSTEM_LCD_CAM_CLK_EN) ||
        DMA.channel[p->dma_channel].in.link.addr || DMA.channel[p->dma_channel].in.int_ena.val)return false;
-    pins=*p;fault=false;scan=0;frame_length=0;
+    pins=*p;fault=false;memset(&jpeg,0,sizeof(jpeg));
     buffer=heap_caps_malloc(FRAME_LIMIT,MALLOC_CAP_DMA|MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT);
     desc=heap_caps_calloc(NODES,sizeof(*desc),MALLOC_CAP_DMA|MALLOC_CAP_INTERNAL);
     if(!buffer || !desc)return false;
@@ -136,8 +138,10 @@ bool cam_hw_start(const risc_camera_esp32s3_profile_v1 *p) {
     CAM.cam_ctrl.val=0;CAM.cam_ctrl1.val=0;CAM.cam_rgb_yuv.val=0;
     CAM.cam_ctrl.cam_stop_en=0;CAM.cam_ctrl.cam_vsync_filter_thres=4;
     CAM.cam_ctrl.cam_clkm_div_num=8;CAM.cam_ctrl.cam_clk_sel=3;
-    CAM.cam_ctrl.cam_vs_eof_en=1;
-    CAM.cam_ctrl1.cam_rec_data_bytelen=65535;CAM.cam_ctrl1.cam_vsync_filter_en=1;
+    /* Match native reference: byte-count EOF commits full DMA descriptors.
+     * VSYNC is not a reliable frame EOF for the finite polled receiver. */
+    CAM.cam_ctrl.cam_vs_eof_en=0;
+    CAM.cam_ctrl1.cam_rec_data_bytelen=NODE_BYTES-1;CAM.cam_ctrl1.cam_vsync_filter_en=1;
     CAM.lc_dma_int_ena.val=0;CAM.lc_dma_int_clr.val=~0u;
     for(unsigned i=0;i<8;i++)input(pins.data[i],CAM_DATA_IN0_IDX+i);
     input(pins.pclk,CAM_PCLK_IDX);input(pins.vsync,CAM_V_SYNC_IDX);input(pins.href,CAM_H_ENABLE_IDX);
@@ -186,7 +190,7 @@ bool cam_hw_begin(unsigned quality) {
         memset(&desc[i],0,sizeof(desc[i]));desc[i].size=NODE_BYTES;desc[i].owner=1;
         desc[i].buf=buffer+i*NODE_BYTES;desc[i].qe.stqe_next=i+1<NODES?&desc[i+1]:NULL;
     }
-    scan=0;frame_length=0;CAM.lc_dma_int_clr.val=~0u;
+    memset(&jpeg,0,sizeof(jpeg));available=0;harvested=0;CAM.lc_dma_int_clr.val=~0u;
     sampled_gpio=PADS.in;sampled_changes=0;
     /* With DMA parked, FIFO fills before a later VSYNC can be observed. Do
      * not auto-stop sampling on that expected overflow. No DMA can write yet;
@@ -195,7 +199,7 @@ bool cam_hw_begin(unsigned quality) {
     /* Allow VSYNC observation while DMA is disabled. The next observed boundary
      * starts a finite capture; polling latency may truncate a frame, in which
      * case strict SOI/EOI validation fails instead of publishing junk. */
-    CAM.cam_ctrl1.cam_start=1;CAM.cam_ctrl.cam_update=1;waiting=true;return true;
+    CAM.cam_ctrl.cam_update=1;CAM.cam_ctrl1.cam_start=1;waiting=true;return true;
 }
 int32_t cam_hw_poll(const uint8_t **bytes,uint32_t *length) {
     *bytes=NULL;*length=0;unsigned ch=pins.dma_channel;
@@ -212,39 +216,48 @@ int32_t cam_hw_poll(const uint8_t **bytes,uint32_t *length) {
         DMA.channel[ch].in.link.addr=((uintptr_t)desc)&0xfffff;
         __asm__ volatile("memw" ::: "memory");
         DMA.channel[ch].in.link.start=1;
-        /* Once DMA is armed, stop rather than silently discard capture bytes
-         * on FIFO exhaustion. All buffers stay owned until DMA parks. */
         CAM.cam_ctrl.cam_stop_en=1;CAM.cam_ctrl.cam_update=1;CAM.cam_ctrl1.cam_start=1;
+        /* Same resynchronization as ll_cam_do_vsync; ccount edges provide
+         * >=10us without a new delay/ISR import. Polled start can be late,
+         * so discard a partial prefix and require an entire SOI..EOI JPEG. */
+        esp_rom_gpio_connect_in_signal(pins.vsync,CAM_V_SYNC_IDX,false);
+        edge();edge();
+        esp_rom_gpio_connect_in_signal(pins.vsync,CAM_V_SYNC_IDX,true);
         waiting=false;active=true;return T5_STREAM_AGAIN;
     }
-    if(active){
-        if(DMA.channel[ch].in.int_raw.in_dscr_err || DMA.channel[ch].in.int_raw.in_dscr_empty){
-            cam_hw_stop_capture();return T5_STREAM_LIMIT;
-        }
-        if(!DMA.channel[ch].in.int_raw.in_suc_eof)return T5_STREAM_AGAIN;
+    if(jpeg.done){
         if(!cam_hw_stop_capture())return T5_STREAM_AGAIN;
+        *bytes=buffer+jpeg.soi;*length=jpeg.length;return T5_STREAM_OK;
+    }
+    if(!active)return T5_STREAM_IO;
+    if(DMA.channel[ch].in.int_raw.in_dscr_err)return T5_STREAM_IO;
+    /* Only acquire completed, CPU-owned descriptors. This finite chain is
+     * never rearmed while scanning; DMA cannot revisit or overwrite them.
+     * Harvest <=4KiB and scan <=512 bytes per owner tick. A full-chain empty
+     * interrupt is expected exhaustion, not corruption of committed bytes. */
+    for(unsigned n=0;n<4 && harvested<NODES;n++){
+        volatile lldesc_t *node=&desc[harvested];
+        if(node->owner)break;
         __asm__ volatile("memw" ::: "memory");
-        /* DMA updates lengths on completed descriptors; never inspect bytes
-         * while DMA can write. Sum a bounded 96 descriptor list. */
-        for(unsigned i=0;i<NODES;i++){
-            if(desc[i].owner)break;
-            if(desc[i].length>NODE_BYTES)return T5_STREAM_IO;
-            frame_length+=desc[i].length;
-            if(desc[i].eof)break;
-        }
-        if(frame_length<4 || frame_length>=FRAME_LIMIT || buffer[0]!=0xff || buffer[1]!=0xd8)return T5_STREAM_IO;
-        scan=2;
+        if(node->length!=NODE_BYTES)return T5_STREAM_IO;
+        available+=NODE_BYTES;harvested++;
     }
-    if(!frame_length)return T5_STREAM_IO;
-    /* Search bounded 512 bytes per poll for EOI; no full-frame busy scan. */
-    unsigned end=scan+512;if(end>frame_length)end=frame_length;
-    for(;scan<end;scan++)if(buffer[scan-1]==0xff && buffer[scan]==0xd9){
-        *bytes=buffer;*length=scan+1;return T5_STREAM_OK;
+    cam_jpeg_scan_step(&jpeg,buffer,available);
+    if(jpeg.done){
+        if(!cam_hw_stop_capture())return T5_STREAM_AGAIN;
+        *bytes=buffer+jpeg.soi;*length=jpeg.length;return T5_STREAM_OK;
     }
-    return scan==frame_length?T5_STREAM_IO:T5_STREAM_AGAIN;
+    return harvested==NODES && jpeg.scan==available?T5_STREAM_LIMIT:T5_STREAM_AGAIN;
 }
 bool cam_hw_shutdown(void) {
-    if(!cam_hw_stop_capture())return false;
+    bool parked=cam_hw_stop_capture();
+    const uint64_t began=cam_hw_now();
+    for(unsigned retries=0;!parked && retries<25;retries++){
+        uint64_t now=cam_hw_now();
+        if(now==UINT64_MAX || began==UINT64_MAX || now<began || now-began>=25)break;
+        cam_hw_yield();parked=cam_hw_stop_capture();
+    }
+    if(!parked)return false; // retain mapping, buffers and claims on uncertainty
     if(touched){
         if(dma_owned){DMA.channel[pins.dma_channel].in.link.addr=0;DMA.channel[pins.dma_channel].in.int_clr.val=~0u;dma_owned=false;}
         CAM.cam_ctrl1.cam_start=0;CAM.cam_ctrl.cam_clk_sel=0;CAM.cam_ctrl.cam_update=1;
@@ -254,7 +267,7 @@ bool cam_hw_shutdown(void) {
         REG_CLR_BIT(SYSTEM_PERIP_CLK_EN1_REG,SYSTEM_LCD_CAM_CLK_EN);
         touched=false;
     }
-    heap_caps_free(desc);heap_caps_free(buffer);desc=NULL;buffer=NULL;fault=false;frame_length=0;
+    heap_caps_free(desc);heap_caps_free(buffer);desc=NULL;buffer=NULL;fault=false;memset(&jpeg,0,sizeof(jpeg));
     return true;
 }
 

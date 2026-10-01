@@ -154,8 +154,7 @@ void loop() {
   qualificationTick(lifecycle, adapter);
 #endif
 #ifdef RISCRTE_CAM_CAMERA_EXPERIMENT
-  if(state==State::Running)
-    cameraProofTick(static_cast<const risc_camera_capture_api_v1*>(adapter.leases[3].interface));
+  cameraLifecycleProofTick(lifecycle,adapter);
 #endif
   // Same owner task as setup, graph and bootstrap storage; independent of UI.
   vTaskDelay(pdMS_TO_TICKS(20)+1);

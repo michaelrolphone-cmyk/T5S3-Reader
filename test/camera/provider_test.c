@@ -1,3 +1,4 @@
+#include "../../Drivers/camera_esp32s3/hardware_frame.h"
 #include "../../Drivers/camera_esp32s3/hardware_diag.h"
 #include "RiscCameraCaptureV1.h"
 #include "RiscCameraEsp32s3ProfileV1.h"
@@ -11,9 +12,11 @@ static uint64_t now;
 static int32_t backend_result=T5_STREAM_OK,finish_result;
 static unsigned shutdowns,stops,yields,produces,closed,offset;
 static uint8_t pixels[1300];
+static uint32_t backend_length=sizeof(pixels);
+static bool null_frame;
 bool cam_hw_start(const risc_camera_esp32s3_profile_v1 *p){assert(p->sensor_pid==0x3660);return backend_start;}
 bool cam_hw_begin(unsigned q){assert(q==12);return backend_begin;}
-int32_t cam_hw_poll(const uint8_t **p,uint32_t *n){*p=pixels;*n=sizeof(pixels);return backend_result;}
+int32_t cam_hw_poll(const uint8_t **p,uint32_t *n){*p=null_frame?NULL:pixels;*n=backend_length;return backend_result;}
 bool cam_hw_stop_capture(void){stops++;return can_stop;}
 bool cam_hw_shutdown(void){shutdowns++;return can_stop;}
 const char *cam_hw_wait_reason(void){return "VSYNC boundary deadline";}
@@ -42,12 +45,26 @@ static const risc_driver_poll_v2 *driver;
 static const risc_camera_capture_api_v1 *api;
 static void reset(void){
  driver->streams.driver.stop();now=10;revoked=blocked=false;can_stop=backend_start=backend_begin=true;
- backend_result=finish_result=0;offset=produces=0;
+ backend_result=finish_result=0;backend_length=sizeof(pixels);null_frame=false;offset=produces=0;
  assert(driver->streams.bind_streams(&host));assert(driver->streams.driver.start(&dep,1));
 }
 static uint64_t begin(void){uint64_t j=0;uint32_t h=0;assert(api->capture(NULL,&request,&j,&h)==0 && j && h==41);return j;}
 static risc_camera_status_v1 status(uint64_t j){risc_camera_status_v1 s={.struct_size=sizeof(s)};assert(api->status(NULL,j,&s)==0);return s;}
 int main(void){
+ uint8_t frame[2048]={0};cam_jpeg_scan parser={0};
+ frame[2]=0xff;frame[3]=0xd9; // premature EOI must be ignored
+ frame[511]=0xff;frame[512]=0xd8;frame[513]=0xff;
+ frame[1023]=0xff;frame[1024]=0xd9;
+ cam_jpeg_scan_step(&parser,frame,512);assert(parser.scan==512 && !parser.found);
+ cam_jpeg_scan_step(&parser,frame,1024);assert(parser.scan==1024 && parser.found && !parser.done);
+ cam_jpeg_scan_step(&parser,frame,2048);assert(parser.done && parser.soi==511 && parser.length==514);
+ parser=(cam_jpeg_scan){0};memset(frame,0,sizeof(frame));
+ for(unsigned i=0;i<4;i++)cam_jpeg_scan_step(&parser,frame,sizeof(frame));
+ assert(parser.scan==sizeof(frame) && !parser.done);
+ parser=(cam_jpeg_scan){0};frame[0]=0xff;frame[1]=0xd8;frame[2]=0xff;
+ cam_jpeg_scan_step(&parser,frame,512);assert(parser.found && !parser.done);
+ cam_jpeg_scan_step(&parser,frame,0);assert(parser.scan==512 && !parser.done);
+
  struct {char detail[64];unsigned guard;} diag={{0},0x12345678};
  cam_hw_format_detail(diag.detail,"VSYNC",1,0x80000000,0xffffffff,0x12345678,0);
  assert(!strcmp(diag.detail,"VSYNC c=00000001 r=80000000 d=ffffffff g=12345678 x=00000000"));
@@ -88,6 +105,9 @@ int main(void){
  reset();j=begin();backend_result=T5_STREAM_LIMIT;driver->poll(1);assert(status(j).result==T5_STREAM_LIMIT);
  reset();j=begin();driver->poll(1);finish_result=T5_STREAM_DENIED;for(unsigned i=0;i<3;i++)driver->poll(1);
  assert(status(j).result==T5_STREAM_DENIED);
+ reset();j=begin();backend_length=0;driver->poll(1);assert(status(j).result==T5_STREAM_IO);
+ reset();j=begin();backend_length=96*1024+1;driver->poll(1);assert(status(j).result==T5_STREAM_IO);
+ reset();j=begin();null_frame=true;driver->poll(1);assert(status(j).result==T5_STREAM_IO);
  reset();j=begin();now=UINT64_MAX;driver->poll(1);assert(status(j).result==T5_STREAM_TIMEOUT);
  driver->streams.driver.stop();backend_start=false;assert(driver->streams.bind_streams(&host));
  assert(!driver->streams.driver.start(&dep,1));can_stop=false;assert(!driver->streams.driver.quiesce());

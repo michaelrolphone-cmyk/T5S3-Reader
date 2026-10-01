@@ -33,7 +33,7 @@ if env.subst("$PIOENV") == "cam-camera-experiment":
     declarations = ["#pragma once", "#include <stdint.h>"]
     for symbol, archive in (
         ("camProfileManifest", "driver-cam-ov3660-profile-0.1.0-xtensa-esp32s3.rte.zip"),
-        ("camDriverManifest", "driver-camera-esp32s3-ov3660-0.1.2-xtensa-esp32s3.rte.zip"),
+        ("camDriverManifest", "driver-camera-esp32s3-ov3660-0.1.3-xtensa-esp32s3.rte.zip"),
     ):
         with zipfile.ZipFile(root / "dist/packages" / archive) as package:
             if package.namelist().count(".package.json") != 1:

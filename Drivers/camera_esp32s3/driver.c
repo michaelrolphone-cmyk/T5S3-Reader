@@ -71,7 +71,10 @@ static void poll(uint32_t budget_ms) {
     }
     if(state.state==RISC_CAMERA_CAPTURING){
         uint32_t length=0;int32_t rc=cam_hw_poll(&frame,&length);
-        if(rc==T5_STREAM_OK){state.length=length;state.state=RISC_CAMERA_DELIVERING;}
+        if(rc==T5_STREAM_OK){
+            if(!frame || length<4 || length>96u*1024u)fail(T5_STREAM_IO,"invalid captured frame");
+            else {state.length=length;state.state=RISC_CAMERA_DELIVERING;}
+        }
         else if(rc!=T5_STREAM_AGAIN){cam_hw_stop_capture();fail(rc,"sensor capture failed");}
     }else if(state.state==RISC_CAMERA_DELIVERING){
         uint32_t count=state.length-state.transferred;if(count>512)count=512;
