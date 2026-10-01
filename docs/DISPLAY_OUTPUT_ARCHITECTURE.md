@@ -10,7 +10,9 @@ UI compatibility backend is still compiled into firmware during migration.
 
 ## Master integration (October 1, 2026)
 
-Backmerged master `1e0188c1`, including PRs #277, #333, #334, #336 and #337.
+Backmerged master `5c1284bf`, including PRs #277, #333, #334, #336, #337,
+#339 and #340. Hollow Trail retains the published 1.1.41 source and manifest
+unchanged, including Y motion-emphasis controls and the playable schoolroom.
 Preserves X/Back navigation, asynchronous boot/loading and wisp transitions,
 controller/math changes, the video narration strip, inherited video backlight,
 and the detached font renderer. Firmware advances published 1.3.48 → 1.3.49;

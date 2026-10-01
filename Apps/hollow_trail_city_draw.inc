@@ -298,7 +298,7 @@ static void ht_city_service_arrival(const ht_game *g) {
         for(int i=0;i<8;++i)ht_rect(ht_scene,x-37+i*11,y-3-(i%3),2,1,180);
     }
     /* Gutter, chimney cage and broken nest on the first roof reached by ladder. */
-    int bx=493-cx,roof=80-cy;
+    int bx=345-cx,roof=80-cy;
     if(bx> -70-margin && bx<HT_W+70+margin) {
         ht_rect(ht_scene,bx,roof-54,28,54,191);
         ht_rect(ht_scene,bx-4,roof-56,36,5,222);
@@ -313,3 +313,5 @@ static void ht_city_service_arrival(const ht_game *g) {
         ht_limb(ht_scene,bx+40,roof-4,bx+69,roof-6,0,0,59);
     }
 }
+
+#include "hollow_trail_schoolroom.inc"

@@ -31,7 +31,10 @@ shots = [('kitchen', 140, 'Cold cup, chipped sister cup, wall/rake/bucket'),
          ('arrival', 2279, 'Last intro frame already uses live gameplay geometry'),
          ('boulder', 0, 'Irregular contrasting boulder / half-effort contact cue'),
          ('boulder', 2, 'Same readable stone shape in the pumping plain'),
-         ('handoff', 2280, 'Control returned on the same first-parcel raster')]
+         ('handoff', 2280, 'Control returned on the same first-parcel raster'),
+         ('schoolroom', 0, 'Playable roof-level schoolroom and weighted map'),
+         ('study', 0, 'Trace the lowered-ladder sightline'),
+         ('study', 2, 'Trace the route toward the signal window')]
 source = r'''
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,7 +47,13 @@ int main(int argc,char **argv) {
  ht_bind(mem);ht_bind_native(mem);memset(&ht,0,sizeof(ht));ht.level=0;ht_spawn(true);
  ht_camera_mode=HT_CAMERA_NATIVE;
  bool gameplay=false;
- if(!strcmp(argv[1],"boulder")) {
+ if(!strcmp(argv[1],"study")) {
+  ht_schoolroom_study_render((unsigned)atoi(argv[2]));
+ } else if(!strcmp(argv[1],"schoolroom")) {
+  ht.level=1;ht_select_level(1);ht_spawn(true);ht.x=535*256;
+  ht.y=ht_surface_at(&ht,1,535)*256;
+  ht.camera=335*256;ht.camera_y=ht.y-180*256;gameplay=true;
+ } else if(!strcmp(argv[1],"boulder")) {
   ht.level=(unsigned)atoi(argv[2]);ht_select_level(ht.level);ht_spawn(true);
   ht.x=ht.traversal.ball_x-21*256;ht.y=ht.traversal.ball_y+HT_BALL_RADIUS*256;
   ht.camera=ht.x-200*256;ht.camera_y=ht.y-180*256;ht.traversal.push_hint=HT_ROLL;
@@ -68,7 +77,7 @@ int main(int argc,char **argv) {
   ht_cutscene_begin(HT_CUTSCENE_MILL);
  } else ht_cutscene_begin(HT_CUTSCENE_INTRO);
  ht_cutscene.tick=(uint16_t)atoi(argv[2]);
- if(gameplay){ht_render_scene();ht_narration(&ht);}else ht_cutscene_render(&ht_cutscene);
+ if(gameplay){ht_render_scene();ht_narration(&ht);}else if(strcmp(argv[1],"study"))ht_cutscene_render(&ht_cutscene);
  char path[1024];snprintf(path,sizeof(path),"%s.pgm",argv[3]);FILE *f=fopen(path,"wb");
  if(!f)return 4;fprintf(f,"P5\n960 540\n255\n");
  for(unsigned i=0;i<HT_NATIVE_PIXELS;++i)fputc(255-ht_scene[i],f);fclose(f);
@@ -82,9 +91,9 @@ with tempfile.TemporaryDirectory(prefix='hollow-preview-') as tmp:
     binary = pathlib.Path(tmp) / 'preview'
     src.write_text(source)
     subprocess.run(['cc', '-std=c11', '-O2', '-Wno-unused-function', '-I' + str(repo / 'lib/NativeApps/include'), str(src), '-o', str(binary)], check=True)
-    sheet = Image.new('RGB', (1440, 1800), '#e9e6df')
+    sheet = Image.new('RGB', (1440, 2100), '#e9e6df')
     draw = ImageDraw.Draw(sheet)
-    draw.text((16, 8), 'HOLLOW TRAIL 1.1.38 | Actual host-rendered scenes | Native raster reduced for contact sheet; no device qualification', fill='#252525')
+    draw.text((16, 8), 'HOLLOW TRAIL 1.1.41 | Actual host-rendered scenes | Native raster reduced for contact sheet; no device qualification', fill='#252525')
     for i, (name, tick, label) in enumerate(shots):
         stem = pathlib.Path(tmp) / name
         subprocess.run([str(binary), name, str(tick), str(stem)], check=True)
