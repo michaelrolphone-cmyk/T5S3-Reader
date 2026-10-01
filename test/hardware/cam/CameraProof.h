@@ -18,8 +18,8 @@ inline int cameraProofTick(const risc_camera_capture_api_v1 *api,unsigned cycle)
   static mbedtls_sha256_context hash;
   static uint8_t digest[32];
   char partial[64],output[64];
-  snprintf(partial,sizeof(partial),"/camera-elf-05-%u.jpg.partial",cycle);
-  snprintf(output,sizeof(output),"/camera-elf-05-%u.jpg",cycle);
+  snprintf(partial,sizeof(partial),"/camera-elf-06-%u.jpg.partial",cycle);
+  snprintf(output,sizeof(output),"/camera-elf-06-%u.jpg",cycle);
   if(previousCycle!=cycle){
     if(previousCycle && (!done || result!=1))return -1;
     previousCycle=cycle;result=0;done=started=verifying=false;

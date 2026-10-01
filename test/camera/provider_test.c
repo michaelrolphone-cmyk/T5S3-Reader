@@ -68,7 +68,7 @@ int main(void){
  assert(!cam_frame_append(compact,32,&used,8,8,9) && used==7);
  compact[16]=1;compact[17]=2;compact[18]=3;compact[19]=4;
  assert(cam_frame_append(compact,32,&used,16,8,4) && used==11 && compact[7]==1 && compact[10]==4);
- assert(cam_frame_append(compact,32,&used,24,8,0) && used==11);
+ assert(cam_frame_append(compact,32,&used,24,8,0) && used==19);
  parser=(cam_jpeg_scan){0};memset(frame,0,sizeof(frame));
  for(unsigned i=0;i<4;i++)cam_jpeg_scan_step(&parser,frame,sizeof(frame));
  assert(parser.scan==sizeof(frame) && !parser.done);
