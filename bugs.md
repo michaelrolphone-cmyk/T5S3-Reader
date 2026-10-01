@@ -2,7 +2,7 @@
 
 Reconciled on 2026-09-30 UTC against master [`2b45ab662c0ffe3650ce0f841083ea47886022c9`](https://github.com/michaelrolphone-cmyk/T5S3-Reader/commit/2b45ab662c0ffe3650ce0f841083ea47886022c9), including the 14 later scan branches from 06:50 through 17:22 MDT on 2026-09-30. This is the canonical report inventory. Scan-local IDs are aliases, never canonical identity.
 
-**237 distinct retained reports: 236 outstanding (235 need current-master revalidation and #205 awaits merge); #91 is verified fixed on master.** The 196 inherited master reports (IDs 5 and 13–207) have not been comprehensively revalidated. Only #91 and #205 were specifically rechecked in this restoration: #91 is resolved, #205 has a tested draft fix that is not on master, and the other 194 remain candidates. The 42 later scan reports add 41 distinct candidates (IDs 208–248), after collapsing one exact duplicate. Neither the historical word “Open” nor a closed-unmerged PR establishes current source status.
+**240 distinct retained reports: 239 outstanding (238 need current-master revalidation and #205 awaits merge); #91 is verified fixed on master.** The 196 inherited master reports (IDs 5 and 13–207) have not been comprehensively revalidated. Only #91 and #205 were specifically rechecked in this restoration: #91 is resolved, #205 has a tested draft fix that is not on master, and the other 194 remain candidates. The 42 later scan reports add 41 distinct candidates (IDs 208–248), after collapsing one exact duplicate. Neither the historical word “Open” nor a closed-unmerged PR establishes current source status.
 
 ## Status and provenance rules
 
@@ -2687,6 +2687,41 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Likely root cause:** The natural-sort comparator assumes filename bytes are non-negative ASCII before calling ctype.
 - **Impact:** Normal international filenames make a core sorting helper undefined on the target compiler and can destabilize any firmware list that uses it.
 - **Repair direction:** Cast every ctype operand through `unsigned char` before `tolower`/`isdigit`; preferably keep ASCII case folding explicitly byte-safe and leave multibyte UTF-8 bytes unchanged unless a real Unicode collation layer is added. Add sorting tests with 2-, 3-, and 4-byte UTF-8 names under signed-char builds.
+
+
+## Current-master scan findings after canonical #248
+
+IDs 249–254 are intentionally not reused here because open PR #332 already assigns those canonical IDs while reconciling the 18:21 and 19:21 scans. The three findings below were independently rechecked against current master `3300229d0a232b4e6047a7c93b2f518c033c3cfa`, the open issue set, open PRs #335, #334, #333, #332, #328, #277, #220, #194, and #96, and the reconciled ledger on PR #332. None of those PRs changes the affected implementation files.
+
+### 255. ZIP streaming can turn an SD read error into a huge buffer length and out-of-bounds access
+
+- **Status:** Verified against current master `3300229d0a232b4e6047a7c93b2f518c033c3cfa`.
+- **Affected code:** `lib/ZipFile/ZipFile.cpp`, especially `zipReadCallback()` and the stored-entry branch of `ZipFile::readFileToStream()`; downstream consumer `src/native/NativeArchiveBridge.cpp::extract()`.
+- **Trigger / reproduction:** Stream-extract a stored or deflated ZIP entry and inject an SD/filesystem read failure after extraction has begun so `FsFile::read()` returns a negative error (for example `-1`) rather than zero.
+- **Observed / logically demonstrated failure:** Both streaming paths assign the signed `FsFile::read()` result directly to `size_t`. In the stored path, `-1` becomes `SIZE_MAX`; the `dataRead == 0` check is bypassed and `out.write(buffer, dataRead)` is called with a length vastly larger than the allocated chunk buffer. In the deflated path, `zipReadCallback()` likewise converts the negative result to a huge `size_t`, subtracts it from `fileRemaining` (wrapping the remaining-byte counter), sets `source_limit` using that huge length, and returns a byte from a buffer that did not receive valid new input. A recoverable SD I/O error can therefore become an out-of-bounds read/crash or corrupted inflate state rather than a clean extraction failure.
+- **Likely root cause:** A signed I/O result is converted to an unsigned byte count before testing for `<= 0`.
+- **Impact:** Transient SD/media faults during ROM/resource extraction can destabilize the firmware, potentially reading far past the ZIP chunk buffer instead of simply rejecting the archive operation.
+- **Repair direction:** Keep every `read()` result in a signed type, reject `<= 0` before conversion, and only then cast the proven-positive byte count to `size_t`. In `zipReadCallback()`, leave `fileRemaining` and inflate source pointers unchanged on failure and return the callback's error sentinel. Add stored and deflated fault-injection tests where a mid-stream read returns `-1` and verify bounded clean failure with no sink write after the error.
+
+### 256. EOCD parsing performs unaligned typed loads from arbitrary ZIP byte offsets
+
+- **Status:** Verified against current master `3300229d0a232b4e6047a7c93b2f518c033c3cfa`.
+- **Affected code:** `lib/ZipFile/ZipFile.cpp::loadZipDetails()`.
+- **Trigger / reproduction:** Open an otherwise valid ZIP whose End of Central Directory record begins at a file offset that is not naturally aligned for 32-bit access. ZIP entry names, extra fields, comments, and payload sizes make such offsets ordinary and unconstrained. On ESP32-S3/Xtensa, exercise the backward EOCD scan and subsequent field extraction.
+- **Observed / logically demonstrated failure:** The scan tests every byte position with `*reinterpret_cast<uint32_t*>(&buffer[i])`. Because `i` advances one byte at a time, most candidate addresses are not 4-byte aligned. Once a signature is found, the parser also loads the 16-bit entry count and 32-bit central-directory offset through typed pointers at `buffer + foundOffset + 10` and `buffer + foundOffset + 16`, inheriting the EOCD record's arbitrary alignment. These dereferences violate the alignment requirements of the pointed-to types and can compile to target loads that raise a LoadStoreAlignment fault; at minimum they are C++ undefined behavior.
+- **Likely root cause:** On-disk little-endian fields are being parsed by pointer reinterpretation instead of alignment-safe byte decoding or `memcpy`.
+- **Impact:** A structurally valid ZIP can crash while merely being opened, with failure depending on the byte alignment of its EOCD record rather than its logical contents. ZIP-backed EPUB/archive workflows share this parser.
+- **Repair direction:** Scan the signature bytewise (or `memcpy` four bytes into an aligned local) and decode every EOCD field with explicit little-endian helpers/`memcpy` into aligned locals. Add ZIP fixtures whose EOCD starts at each offset modulo 4 and run them under the target/UBSan host tests.
+
+### 257. Native archive extraction rejects every legitimate zero-byte ZIP file entry
+
+- **Status:** Verified against current master `3300229d0a232b4e6047a7c93b2f518c033c3cfa`.
+- **Affected code:** `src/native/NativeArchiveBridge.cpp::extract()`; size lookup in `lib/ZipFile/ZipFile.cpp::getInflatedFileSize()`.
+- **Trigger / reproduction:** Create a valid ZIP containing an ordinary zero-length file entry (stored or deflated), then call the native archive API's `extract_file`/bridge extraction for that entry with a valid destination, positive `maxSize`, and timeout.
+- **Observed / logically demonstrated failure:** `getInflatedFileSize()` successfully reports the entry's legitimate uncompressed size as `0`, but `extract()` immediately rejects the operation with `expected == 0`. The lower streaming implementation can represent a zero-byte stored entry (its remaining-byte loop performs zero iterations and succeeds), so the failure is introduced specifically by the bridge treating size zero as synonymous with “entry not found.” A valid empty file can never be materialized through the API.
+- **Likely root cause:** The bridge collapses two distinct states—failed size lookup and a successful lookup whose declared size is zero—even though `getInflatedFileSize()` already returns a separate boolean for lookup success.
+- **Impact:** Native apps using the generic archive service cannot faithfully extract archives that contain required empty marker/config/resource files; an otherwise valid archive workflow can fail solely because one entry is empty.
+- **Repair direction:** Use the boolean result of `getInflatedFileSize()` to distinguish absence/error from a valid zero size. Permit `expected == 0`, create/close the staged empty file, and publish it through the same safe rename path. Add fixtures for a missing entry, an empty stored entry, and an empty deflated entry so only the missing case fails.
 
 ## Resolved reports retained for traceability
 
