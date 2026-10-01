@@ -1,6 +1,16 @@
 # Bug repair progress
 
-Snapshot: 2026-10-01 03:12 UTC. This record supersedes the pre-merge restoration snapshot.
+Snapshot: 2026-10-01 03:18 UTC. This record supersedes the pre-merge restoration snapshot.
+
+## Completed ledger-only reconciliation — 20:50 font/touch scan
+
+- Coordinator `reconcile_archive_scan_candidates`; active ledger owner **none**. Refreshed open draft #332 and captured remote ledger parent `43812a57260d494d79d1d35e4fdfda4fb575797e`; no active claim. Master `a5e2db59077cc889079668dc9cd7428b08bc32a1` inspected; affected files identical on checked U1 `e377948b29e83b85a09995fb415045d671e6397d`
+- Scan `21ba2700c7b262c966765600941dc3b1fcb0fba7` (`automation/bug-scan-20260930-2050`) reused local 255–257, mapping now **255 → 258**, **256 → 259**, **257 → 260**. Archive canonical 255–257 and every previous report remain unchanged. Original source bodies/status assertions retained as historical evidence, not adopted confirmation
+- #258 is missing/wrong-type top-level font families accepted as empty success, distinct from #76 partial-prefix publication on later error and #174 zero-file family installation. #259 duplicate-name storage identity collision is distinct from #77 failed single-family update and #78 truncated paths. #260 firmware touch teardown destroys retry handles after failure, distinct from #85 takeover rollback, #135 app setup leak and canonical bug #96 text-input cleanup
+- All three remain **unclaimed candidates needing revalidation**. No host, target, actual remote-catalog, storage mutation or device reproduction. #260 unsubscribe failure alone does not prove surviving resources after subsequent successful release; quarantine availability and actual resource leakage require separate fault cases. The earlier worker-stop failure retains handles and is a different path
+- U1 owner notified and confirms no current NativeTouchInput change/known fix. Refreshed open PR changed paths #96/#194/#220/#277/#333/#334 have no affected font/touch-file edits; coordinate provider-lifetime integration before repair. Both code slots remain held by #333/#334; no third batch or implementation claim
+- Inventory: **249 canonical reports / 247 outstanding**: 243 need revalidation, #252 host-fault confirmed with storage/device validation pending, #16/#17 held, #249 awaiting merge; #91/#205 fixed. Next unused ID **261**. Earlier inventories below are historical
+- Documentation verification: 249 unique IDs, all 246 prior report bodies preserved, all three new original bodies preserved, immutable aliases, whitespace, captured-parent non-force publication and exact remote-content comparison. Only bugs/progress documentation changed; no source/version edits, merge, release or flash
 
 ## Completed ledger-only reconciliation — 20:22 archive scan
 
