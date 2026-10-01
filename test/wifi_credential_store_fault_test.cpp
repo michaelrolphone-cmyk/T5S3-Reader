@@ -22,7 +22,8 @@ bool loadWifi(WifiCredentialStore& store,const char* raw,bool*) {
     const auto end=data.find('\n',at);const auto line=data.substr(at,end==std::string::npos?std::string::npos:end-at);
     const auto tab=line.find('\t');if(tab==std::string::npos||line.substr(0,tab).empty())return false;
     candidate.push_back({line.substr(0,tab),line.substr(tab+1)});
-    if(end==std::string::npos)break;at=end+1;
+    if(end==std::string::npos) break;
+    at=end+1;
   }
   store.credentials=std::move(candidate);return true;
 }

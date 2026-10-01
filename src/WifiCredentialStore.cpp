@@ -149,7 +149,7 @@ bool WifiCredentialStore::addCredential(const std::string& ssid, const std::stri
   if (ssid.empty() || ssid.size() > 32 || password.size() > 64) return false;
   auto candidate = credentials;
   // Check if this SSID already exists and update it
-  const auto cred = find_if(candidate.begin(), candidate.end(),
+  const auto cred = std::find_if(candidate.begin(), candidate.end(),
                             [&ssid](const WifiCredential& cred) { return cred.ssid == ssid; });
   if (cred != candidate.end()) {
     cred->password = password;
@@ -176,7 +176,7 @@ bool WifiCredentialStore::addCredential(const std::string& ssid, const std::stri
 bool WifiCredentialStore::removeCredential(const std::string& ssid) {
   auto candidate = credentials;
   std::string candidateLast = lastConnectedSsid;
-  const auto cred = find_if(candidate.begin(), candidate.end(),
+  const auto cred = std::find_if(candidate.begin(), candidate.end(),
                             [&ssid](const WifiCredential& cred) { return cred.ssid == ssid; });
   if (cred != candidate.end()) {
     candidate.erase(cred);
