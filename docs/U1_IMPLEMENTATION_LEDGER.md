@@ -1,5 +1,14 @@
 # U1 implementation ledger
 
+## Active continuation — October 1, 2026, 00:52 UTC
+
+Claim: repair the release workflow handoff against validated driver ZIP records.
+Prior head `299d6840` passed both exact-head workflows. Restore coherent planned
+independent jobs and artifact custody without any live release/index operation;
+audit online consumers without a partial live/default catalog switch. Other
+continuations, including the 01:15 run, must not write concurrently until this
+claim becomes a verified checkpoint.
+
 ## October 1: bundled driver release records and historical index compatibility
 
 Checkpoint on sole `impl/u1-riscrte` / PR #96, integrating master
