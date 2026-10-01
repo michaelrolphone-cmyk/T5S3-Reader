@@ -152,7 +152,9 @@ RteZipResult inspectRteZip(ReadAt readAt, uint64_t fileLength, RteZipView& out,
     const uint32_t unixType = (attributes >> 16) & 0170000u;
     // Never materialize archive links, directories or special Unix objects.
     // Parent directories are implicit in validated relative file names.
-    if ((attributes & 0x10u) || (unixType && unixType != 0100000u))
+    // Execution roles come from the manifest, never Unix permission bits.
+    if ((attributes & 0x10u) || ((attributes >> 16) & 0111u) ||
+        (unixType && unixType != 0100000u))
       return RteZipResult::UnsupportedFeature;
     if (flags || method != kRteZipStored || extraLen || commentLen || disk ||
         comp != uncomp)

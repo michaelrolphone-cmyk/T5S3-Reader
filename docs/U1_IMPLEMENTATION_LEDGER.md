@@ -13,6 +13,33 @@ and auditing the remaining whole-U1 acceptance gates. Other continuations must
 not write this branch until this claim is explicitly released. No live release,
 index, tag, master update or flash. CI is feedback, not an idle-work gate.
 
+## October 1: archive attribute refusal and retained target evidence
+
+The target stack-audit correction is published **d86f411a** (local
+**8914630e**, identical tree **5eeb42172b1ce199fff043e19e70a5917cee215f**).
+Matching-head workflows **36815881756 / 36815881749** were running before
+this later source change; no final success is inferred.
+
+The actual archive ELF from **68e3b8d4** workflow artifact **11141147400**
+was downloaded and checked against artifact SHA-256
+`f0832237d58c3eda09018389275d8db1f51bc700afc48fe501cd9d51c007f0e4`.
+Its 115656-byte ELF has SHA-256
+`5fd8d477c693a307c04f0ef9a37daa6d23d0ac44fb4546fab445c689a32c0bdb`.
+Current actual loader preflight, exact 16-import manifest matching, structural
+validation and 64-site relocation map pass. The existing generic packer/exporter
+and package/catalog checks produced the 116990-byte service ZIP, SHA-256
+`e9b872a1ecf6f1abd429ac2aabeb02c979c9bfaa37ff2712a9a9e583724538dc`.
+This is retained older-ELF evidence, not a later-source build or hardware run.
+
+Further source review against bundled-package requirements found that Unix
+executable permission bits were still accepted. The shared bootstrap now rejects
+those bits, as it already rejects links, directories and special objects;
+execution roles come only from the checked manifest. A focused regression failed
+before the change and passes after it. Full ordinary-package aggregate and
+loaded archive-service sanitizer checks pass. Canonical packer outputs use zero
+attributes, so normal package compatibility is preserved. Archive 0.1.0 remains
+its initial cumulative unreleased version; final target verification is pending.
+
 ## October 1: observed archive target build correction
 
 At **68e3b8d4**, PlatformIO/host workflow **36815185748 passed**. The

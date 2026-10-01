@@ -34,7 +34,8 @@ four-kind install tests run without this service being loaded.
 - Stored ZIP only: no compression, encryption, data descriptors, comments or
   extra fields; unsupported features fail explicitly
 - Canonical lowercase bounded relative names, implicit parent directories,
-  no links/special files, traversal, aliases or file/directory prefix conflicts
+  no links/special files, executable permission flags, traversal, aliases or
+  file/directory prefix conflicts
 - Empty ZIPs and zero-length regular files are supported
 - Complete local/central topology and all entry CRCs validate before listing or
   extraction; append cannot mutate a sealed generation

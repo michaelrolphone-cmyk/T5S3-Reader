@@ -52,6 +52,21 @@ int main() {
   RteZipView view = inspect(zip);
   assert(valid(zip, view));
 
+  // ZIP attributes cannot smuggle execution intent into declared data or
+  // materialize links/special objects. Permissions come only from the manager.
+  const uint32_t central = RteZipDetail::le32(
+      zip.bytes.data() + zip.bytes.size() - kRteZipEocdBytes + 16);
+  for (const uint32_t mode : {0100755u, 0120777u, 0020600u}) {
+    Archive attributes = zip;
+    RteZipDetail::put32(attributes.bytes.data() + central + 38, mode << 16);
+    RteZipView rejected{};
+    auto reader = [&](uint64_t at, uint8_t* dest, size_t n) {
+      return attributes.read(at, dest, n);
+    };
+    assert(inspectRteZip(reader, attributes.bytes.size(), rejected) ==
+           RteZipResult::UnsupportedFeature);
+  }
+
   // The old inspector checked only local-vs-central metadata: corrupting a
   // payload passed inspection and could skip the ZIP transport CRC entirely.
   Archive corrupt = zip;
