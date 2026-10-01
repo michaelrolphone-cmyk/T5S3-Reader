@@ -12,9 +12,28 @@ static t5_video_surface_v1 scan;
 static bool started;
 static bool active;
 static bool held;
+static bool needs_stop;
+static bool teardown_failed;
+static bool has_pending_token;
 static uint64_t frame_serial;
 static uint64_t pending_token;
 static uint32_t pending_counter;
+
+/* A failed start can also leave DMA/controller resources behind. Keep the
+ * provider pinned until the backend explicitly confirms their release. */
+static bool stop_backend(void) {
+    if (needs_stop && (!video || !video->try_stop())) {
+        teardown_failed = true;
+        return false;
+    }
+    started = false;
+    needs_stop = false;
+    teardown_failed = false;
+    video = NULL;
+    scan = (t5_video_surface_v1){0};
+    has_pending_token = false;
+    return true;
+}
 
 static bool get_info(void *context, risc_display_info_v1 *out) {
     (void)context;
@@ -39,29 +58,30 @@ static bool get_info(void *context, risc_display_info_v1 *out) {
 
 static bool acquire(void *context, uint32_t format, risc_display_surface_v1 *out) {
     (void)context;
-    if (!active || !out || held ||
+    if (!active || !out || held || teardown_failed ||
         (format != RISC_DISPLAY_FORMAT_MONO1 && format != RISC_DISPLAY_FORMAT_GRAY2)) return false;
     const uint8_t scan_format = format == RISC_DISPLAY_FORMAT_GRAY2
         ? T5_VIDEO_PIXEL_GRAY_2BPP_MSB : T5_VIDEO_PIXEL_MONO_1BPP_MSB;
     if (started && scan.pixel_format != scan_format) {
-        // stop joins the outgoing scan/DMA before changing format or buffers.
-        video->stop();
-        started = false;
+        if (!stop_backend()) return false;
     }
     if (!started) {
         video = t5_video_get_api(T5_VIDEO_API_VERSION);
         if (!video || video->api_version != T5_VIDEO_API_VERSION ||
             video->struct_size < sizeof(*video) || !video->start || !video->stop ||
             !video->backbuffer || !video->can_submit || !video->submit ||
-            !video->pending || !video->frame_counter || !video->start_format || !video->start_format(&scan, scan_format)) return false;
+            !video->pending || !video->frame_counter || !video->start_format ||
+            !video->try_stop) { video = NULL; return false; }
+        needs_stop = true;
+        if (!video->start_format(&scan, scan_format)) {
+            (void)stop_backend();
+            return false;
+        }
         started = true;
         if (scan.width != 960 || scan.height != 540 || scan.stride_bytes != (format == RISC_DISPLAY_FORMAT_GRAY2 ? 240u : 120u) ||
             scan.pixel_format != scan_format ||
             !(scan.flags & T5_VIDEO_FLAG_ONE_IS_BLACK)) {
-            video->stop();
-            started = false;
-            video = NULL;
-            scan = (t5_video_surface_v1){0};
+            (void)stop_backend();
             return false;
         }
     }
@@ -88,7 +108,7 @@ static bool submit(void *context, risc_display_frame_v1 frame,
                    risc_display_present_token_v1 *token_out) {
     (void)context;
     (void)options;
-    if (!started || !held || frame != frame_serial || count > RISC_DISPLAY_MAX_DAMAGE_RECTS ||
+    if (!started || teardown_failed || !held || frame != frame_serial || count > RISC_DISPLAY_MAX_DAMAGE_RECTS ||
         (count && !damage)) return false;
     uint32_t first = scan.height, last = 0;
     for (size_t i = 0; i < count; ++i) {
@@ -105,6 +125,7 @@ static bool submit(void *context, risc_display_frame_v1 frame,
     held = false;
     pending_counter = video->frame_counter();
     if (++pending_token == 0) ++pending_token;
+    has_pending_token = true;
     if (token_out) *token_out = pending_token;
     return true;
 }
@@ -112,7 +133,7 @@ static bool submit(void *context, risc_display_frame_v1 frame,
 static bool present_status(void *context, risc_display_present_token_v1 token,
                            risc_display_present_status_v1 *out) {
     (void)context;
-    if (!started || !out || !token || token != pending_token) return false;
+    if (!started || teardown_failed || !has_pending_token || !out || !token || token != pending_token) return false;
     *out = (risc_display_present_status_v1){0};
     out->state = (video->pending() && video->frame_counter() == pending_counter)
         ? RISC_DISPLAY_PRESENT_QUEUED : RISC_DISPLAY_PRESENT_COMPLETE;
@@ -141,18 +162,14 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     (void)deps;
     /* Mandatory app dependency resolution happens before display handoff.
      * Defer hardware start until the owner calls acquire after takeover. */
-    if (count || started || held || active) return false;
+    if (count || started || held || active || needs_stop || teardown_failed) return false;
     active = true;
     return true;
 }
 
 static bool quiesce(void) {
     if (held) return false;
-    if (started) {
-        video->stop(); /* synchronously joins scan/DMA before unloading */
-        started = false;
-        video = NULL;
-    }
+    if (!stop_backend()) return false;
     active = false;
     return true;
 }
