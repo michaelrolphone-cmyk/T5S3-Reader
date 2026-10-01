@@ -15,6 +15,14 @@ static void render_face(int face,uint32_t *hash) {
     ht_cutscene_queue_actor(220,0,0,HT_CUT_POSE_IDLE,face,7);
     ht_cutscene_render_objects(&camera);*hash=image_hash();
 }
+static void assert_prior_raster_independent(const ht_cutscene_state *s) {
+    size_t bytes=ht_camera_mode==HT_CAMERA_NATIVE?HT_NATIVE_PIXELS:HT_PIXELS;
+    uint8_t *out=ht_camera_mode==HT_CAMERA_NATIVE?ht_native_a:ht_scene_low;
+    uint8_t *expected=malloc(bytes);assert(expected);
+    memset(out,0,bytes);ht_cutscene_render(s);memcpy(expected,out,bytes);
+    memset(out,255,bytes);ht_cutscene_render(s);
+    assert(!memcmp(expected,out,bytes));free(expected);
+}
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY+HT_NATIVE_MEMORY);assert(memory);ht_bind(memory);ht_bind_native(memory);
     ht.level=0;memset(&ht,0,sizeof(ht));ht_spawn(true);
@@ -92,7 +100,7 @@ int main(void) {
     for(unsigned mode=0;mode<2;++mode) {
         ht_camera_mode=mode?HT_CAMERA_NATIVE:HT_CAMERA_BASELINE;
         for(unsigned tick=0;tick<340;tick+=37) {
-            ht_cutscene.tick=(uint16_t)tick;ht_cutscene_render(&ht_cutscene);
+            ht_cutscene.tick=(uint16_t)tick;assert_prior_raster_independent(&ht_cutscene);
             assert(!memcmp(&ht,&retained,sizeof(ht)));
             assert(ht_native_active==(mode!=0));
         }
@@ -113,7 +121,7 @@ int main(void) {
     for(unsigned mode=0;mode<2;++mode) {
         ht_camera_mode=mode?HT_CAMERA_NATIVE:HT_CAMERA_BASELINE;
         for(unsigned tick=0;tick<430;tick+=37) {
-            ht_cutscene.tick=(uint16_t)tick;ht_cutscene_render(&ht_cutscene);
+            ht_cutscene.tick=(uint16_t)tick;assert_prior_raster_independent(&ht_cutscene);
             assert(!memcmp(&ht,&retained,sizeof(ht)));
         }
     }
@@ -150,7 +158,7 @@ int main(void) {
         ht_camera_mode=mode?HT_CAMERA_NATIVE:HT_CAMERA_BASELINE;
         ht_cutscene_begin(HT_CUTSCENE_INTRO);
         for(unsigned tick=0;tick<HT_INTRO_TICKS;tick+=31) {
-            ht_cutscene.tick=(uint16_t)tick;ht_cutscene_render(&ht_cutscene);
+            ht_cutscene.tick=(uint16_t)tick;assert_prior_raster_independent(&ht_cutscene);
             assert(ht_cut_object_count<=HT_CUT_OBJECTS_MAX);
         }
     }
