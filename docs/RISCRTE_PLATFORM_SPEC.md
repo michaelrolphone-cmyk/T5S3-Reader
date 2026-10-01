@@ -100,6 +100,7 @@ Events have monotonic sequence, generation-qualified opaque handle, copied remov
 - [Stable Package Identity and Version Policy](PACKAGE_IDENTITY_VERSION_POLICY.md) — version/update identity rules, CDC fork repair and guards.
 - [Platform Abstraction Architecture](PLATFORM_ABSTRACTION_ARCHITECTURE.md) — execution model; conflicting hardware ownership is legacy.
 - [Runtime Driver Architecture](RUNTIME_DRIVER_ARCHITECTURE.md) — normative driver/capability model, constrained by hardware boundary and U1 package scope.
+- [Display Output and Adaptive UI Architecture](DISPLAY_OUTPUT_ARCHITECTURE.md) — runtime display surface, provider ABI and viewport migration contract.
 - [Runtime Driver Implementation](RUNTIME_DRIVER_IMPLEMENTATION.md) — migration status and legacy facts, not normative hardware ownership.
 - [USB ELF Migration Status](USB_ELF_MIGRATION_STATUS.md) — current real ELF foundation and remaining firmware residue.
 - [Memory Architecture](MEMORY_ARCHITECTURE.md)

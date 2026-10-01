@@ -5,6 +5,7 @@
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
+#include <HalDisplay.h>
 #include <Logging.h>
 
 #include <cstring>

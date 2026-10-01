@@ -645,7 +645,7 @@ void WifiSelectionActivity::render(RenderLock&&) {
       break;
   }
 
-  renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Balanced);
 }
 
 void WifiSelectionActivity::renderNetworkList() const {

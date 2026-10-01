@@ -28,6 +28,7 @@ BASELINE = {
     'platform-clock-v1': ('platform.clock', []),
     'i2c-esp32s3-v2': ('i2c.bus', []),
     'gt911-touch': ('input.touch.raw', ['i2c.bus', 'platform.clock']),
+    'display-epd-video': ('display.output', []),
     't5s3-usb-power-profile': ('board.power.bq25896.profile', []),
     'board-power-t5s3-v2': ('board.power.vbus',
                              ['i2c.bus', 'platform.clock', 'board.power.bq25896.profile']),
@@ -184,8 +185,9 @@ def run(identities=None):
         imports = extract_imports(elf_path)
         assert imports_bytes == encode_imports(imports), identity
         assert imports == sorted(set(imports))
-        assert (BRIDGE in imports) == (cap == 'i2c.bus'), identity
-        if cap == 'i2c.bus':
+        assert (BRIDGE in imports) == (identity == 'i2c-esp32s3-v2'), identity
+        assert ('t5_video_get_api' in imports) == (identity == 'display-epd-video'), identity
+        if identity == 'i2c-esp32s3-v2':
             assert not any(name.startswith(('i2c_', 'gpio_', 'periph_module_'))
                            for name in imports), imports
         available[cap] = max(available.get(cap, 0), api)

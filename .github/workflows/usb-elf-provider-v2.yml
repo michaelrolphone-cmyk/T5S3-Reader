@@ -33,6 +33,12 @@ on:
       - "Drivers/i2c_esp32s3_v2/**"
       - "Drivers/platform_clock_v1/**"
       - "Drivers/gt911_touch/**"
+      - "Drivers/display_epd_video/**"
+      - "sdk/driver/RiscDisplayOutputV1.h"
+      - "lib/NativeApps/include/T5VideoApi.h"
+      - "src/native/NativeVideoBridge.cpp"
+      - "scripts/build_display_epd_video.py"
+      - "test/drivers/display_epd_video_test.c"
       - "sdk/driver/RiscProviderV2.h"
       - "sdk/driver/RiscStreamProviderV1.h"
       - "sdk/driver/RiscSerialPortV1.h"
@@ -252,6 +258,12 @@ jobs:
           python test/native_apps/elf_section_layout_test.py dist/experimental/platform-clock-v1/driver.elf dist/experimental/archive-zip/driver.elf
           python scripts/build_gt911_touch.py
           bash test/run_native_app_test.sh dist/experimental/gt911-touch/driver.elf
+          python scripts/build_display_epd_video.py
+          bash test/run_native_app_test.sh dist/experimental/display-epd-video/driver.elf
+          cc -std=c11 -Wall -Wextra -Werror -Isdk/driver -Ilib/NativeApps/include \
+            Drivers/display_epd_video/driver.c test/drivers/display_epd_video_test.c \
+            -o /tmp/display-epd-test
+          /tmp/display-epd-test
       - name: Validate board-private C ABI and exact import matcher against linked ELFs
         run: |
           cc -std=gnu11 -O2 -Wall -Wextra -Werror -DBOARD_T5S3_PRO \
@@ -299,6 +311,7 @@ jobs:
             dist/experimental/platform-clock-v1/
             dist/experimental/gt911-touch/
             dist/experimental/archive-zip/
+            dist/experimental/display-epd-video/
             dist/packages/
             dist/release-packages/
             dist/release-service-packages/

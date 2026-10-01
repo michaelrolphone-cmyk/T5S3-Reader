@@ -9,7 +9,7 @@ class Txt;
 
 class ReaderActivity final : public Activity {
   std::string initialBookPath;
-  HalDisplay::RefreshMode initialRefreshMode = HalDisplay::FULL_REFRESH;
+  DisplayPresentMode initialRefreshMode = DisplayPresentMode::Clean;
   std::string currentBookPath;  // Track current book path for navigation
   static std::unique_ptr<Epub> loadEpub(const std::string& path);
   static std::unique_ptr<Xtc> loadXtc(const std::string& path);
@@ -28,7 +28,7 @@ class ReaderActivity final : public Activity {
 
  public:
   explicit ReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string initialBookPath,
-                          HalDisplay::RefreshMode initialRefreshMode = HalDisplay::FULL_REFRESH)
+                          DisplayPresentMode initialRefreshMode = DisplayPresentMode::Clean)
       : Activity("Reader", renderer, mappedInput),
         initialBookPath(std::move(initialBookPath)),
         initialRefreshMode(initialRefreshMode) {}

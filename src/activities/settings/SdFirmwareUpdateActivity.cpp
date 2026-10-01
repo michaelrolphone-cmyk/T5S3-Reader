@@ -398,7 +398,7 @@ void SdFirmwareUpdateActivity::render(RenderLock&&) {
       renderer.drawCenteredText(UI_10_FONT_ID, top, "Opening File Browser...");
       renderer.drawCenteredText(SMALL_FONT_ID, top + 36, "Select a .bin file to update firmware.");
     }
-    renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+    renderer.displayBuffer(DisplayPresentMode::Balanced);
     return;
   }
 

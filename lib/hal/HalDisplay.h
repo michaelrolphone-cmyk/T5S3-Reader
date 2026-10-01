@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <Board.h>
+#include <DisplaySurface.h>
 
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
 class T5S3M5GfxDisplay;
@@ -15,7 +16,7 @@ enum epd_mode_t : uint8_t;
 }  // namespace lgfx
 #endif
 
-class HalDisplay {
+class HalDisplay : public DisplaySurface {
  public:
   // Constructor with pin configuration
   HalDisplay();
@@ -23,21 +24,26 @@ class HalDisplay {
   // Destructor
   ~HalDisplay();
 
-  // Refresh modes
-  enum RefreshMode {
-    FULL_REFRESH,  // Full refresh with complete waveform
-    HALF_REFRESH,  // Half refresh (1720ms) - balanced quality and speed
-    BALANCED_REFRESH,  // Reader-focused fast refresh using the cleaner mid waveform
-    FAST_REFRESH   // Fast refresh using custom LUT
-  };
+  // Legacy names preserve current call sites while the renderer uses generic presentation intent.
+  using RefreshMode = DisplayPresentMode;
+  static constexpr RefreshMode FULL_REFRESH = RefreshMode::Clean;
+  static constexpr RefreshMode HALF_REFRESH = RefreshMode::Quality;
+  static constexpr RefreshMode BALANCED_REFRESH = RefreshMode::Balanced;
+  static constexpr RefreshMode FAST_REFRESH = RefreshMode::LowLatency;
 
-  enum DisplayEffect {
-    EFFECT_NONE,
-    EFFECT_READER_TURN_FORWARD_STANDARD,
-    EFFECT_READER_TURN_BACKWARD_STANDARD,
-    EFFECT_READER_TURN_FORWARD_FAST,
-    EFFECT_READER_TURN_BACKWARD_FAST
-  };
+  // Legacy refresh ordinals are persisted in settings and mapped throughout
+  // existing e-paper code. Never silently reorder these during abstraction work.
+  static_assert(static_cast<uint8_t>(FULL_REFRESH) == 0u);
+  static_assert(static_cast<uint8_t>(HALF_REFRESH) == 1u);
+  static_assert(static_cast<uint8_t>(BALANCED_REFRESH) == 2u);
+  static_assert(static_cast<uint8_t>(FAST_REFRESH) == 3u);
+
+  using DisplayEffect = ::DisplayEffect;
+  static constexpr DisplayEffect EFFECT_NONE = DisplayEffect::None;
+  static constexpr DisplayEffect EFFECT_READER_TURN_FORWARD_STANDARD = DisplayEffect::PageTurnForwardStandard;
+  static constexpr DisplayEffect EFFECT_READER_TURN_BACKWARD_STANDARD = DisplayEffect::PageTurnBackwardStandard;
+  static constexpr DisplayEffect EFFECT_READER_TURN_FORWARD_FAST = DisplayEffect::PageTurnForwardFast;
+  static constexpr DisplayEffect EFFECT_READER_TURN_BACKWARD_FAST = DisplayEffect::PageTurnBackwardFast;
 
   // Initialize the display hardware and driver. Cold-boot video scrub and
   // retained clock wakes pass false to preserve the physical image until their
@@ -66,26 +72,56 @@ class HalDisplay {
   static constexpr uint16_t DISPLAY_HEIGHT = BoardPins::DisplayHeight;
   static constexpr uint16_t DISPLAY_WIDTH_BYTES = DISPLAY_WIDTH / 8;
   static constexpr uint32_t BUFFER_SIZE = DISPLAY_WIDTH_BYTES * DISPLAY_HEIGHT;
+  static constexpr DisplaySafeInsets SAFE_INSETS{9, 3, 9, 3};
+  static constexpr DisplaySurfaceInfo SURFACE_INFO{DISPLAY_WIDTH, DISPLAY_HEIGHT, VISIBLE_WIDTH, VISIBLE_HEIGHT,
+                                                   DISPLAY_WIDTH_BYTES, BUFFER_SIZE, DisplayPixelFormat::Mono1,
+                                                   SAFE_INSETS};
+
+  // Intentionally duplicate the board-derived relationships as compile-time
+  // tripwires. A one-line geometry "cleanup" must break the build, not the screen.
+  static_assert(VISIBLE_WIDTH == BoardPins::LogicalWidth);
+  static_assert(VISIBLE_HEIGHT == BoardPins::LogicalHeight);
+  static_assert(DISPLAY_HEIGHT == BoardPins::DisplayHeight);
+  static_assert(DISPLAY_WIDTH == ((BoardPins::DisplayWidth + 15) / 16) * 16);
+  static_assert((DISPLAY_WIDTH % 8u) == 0u, "MONO1 scan width must be byte aligned");
+  static_assert(DISPLAY_WIDTH_BYTES * 8u == DISPLAY_WIDTH, "display stride must exactly cover scan width");
+  static_assert(BUFFER_SIZE == static_cast<uint32_t>(DISPLAY_WIDTH_BYTES) * DISPLAY_HEIGHT,
+                "display buffer geometry must remain internally consistent");
+  static_assert(validateDisplaySurfaceInfo(SURFACE_INFO) == DisplaySurfaceValidationError::None,
+                "HalDisplay surface metadata violates the generic display contract");
+
+  // The compiled-in compatibility backend is qualified only for the two
+  // currently shipped 4.7-inch e-paper profiles. Do not make a new panel fit
+  // by editing these numbers: new display hardware belongs behind display.output.
+  static_assert(DISPLAY_WIDTH == 960u && DISPLAY_HEIGHT == 540u,
+                "legacy e-paper scan geometry changed; use a display provider for new hardware");
+  static_assert(VISIBLE_WIDTH == 540u && VISIBLE_HEIGHT == 960u,
+                "legacy e-paper logical geometry changed; use a display provider for new hardware");
+  static_assert(DISPLAY_WIDTH_BYTES == 120u, "legacy MONO1 stride changed unexpectedly");
+  static_assert(BUFFER_SIZE == 64800u, "legacy MONO1 framebuffer size changed unexpectedly");
+  static_assert(SAFE_INSETS.top == 9u && SAFE_INSETS.right == 3u &&
+                    SAFE_INSETS.bottom == 9u && SAFE_INSETS.left == 3u,
+                "legacy e-paper safe insets changed unexpectedly");
 
   // Frame buffer operations
-  void clearScreen(uint8_t color = 0xFF) const;
+  void clearScreen(uint8_t color = 0xFF) const override;
   void drawImage(const uint8_t* imageData, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
-                 bool fromProgmem = false) const;
+                 bool fromProgmem = false) const override;
   void drawImageTransparent(const uint8_t* imageData, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
-                            bool fromProgmem = false) const;
+                            bool fromProgmem = false) const override;
 
-  void displayBuffer(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
+  void displayBuffer(RefreshMode mode = FAST_REFRESH, bool turnOffScreen = false) override;
   // Compare the current logical framebuffer with a reconstructed previous frame
   // and drive only the bounding rectangle that changed. This is intended for
   // deep-sleep clients such as the desk clock, where panel contents survive but
   // RAM does not. Falls back to displayBuffer() when a full refresh is required.
-  void displayBufferDiff(const uint8_t* previousBuffer, RefreshMode mode = RefreshMode::HALF_REFRESH);
-  void refreshDisplay(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
+  void displayBufferDiff(const uint8_t* previousBuffer, RefreshMode mode = HALF_REFRESH);
+  void refreshDisplay(RefreshMode mode = FAST_REFRESH, bool turnOffScreen = false);
 
   // When enabled, the physical panel output is mirrored 180° (whole UI upside down).
   void setFlipOutput(bool enabled);
-  void requestNextRefresh(RefreshMode mode = RefreshMode::HALF_REFRESH);
-  void requestNextDisplayEffect(DisplayEffect effect = DisplayEffect::EFFECT_NONE);
+  void requestNextRefresh(RefreshMode mode = HALF_REFRESH) override;
+  void requestNextDisplayEffect(DisplayEffect effect = EFFECT_NONE) override;
   void suppressInitialFullRefresh();
 
   // Power management
@@ -95,20 +131,82 @@ class HalDisplay {
   void setIdlePowerSaving(bool enabled);
 
   // Access to frame buffer
-  uint8_t* getFrameBuffer() const;
+  uint8_t* getFrameBuffer() const override;
 
   void copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* msbBuffer);
-  void copyGrayscaleLsbBuffers(const uint8_t* lsbBuffer);
-  void copyGrayscaleMsbBuffers(const uint8_t* msbBuffer);
-  bool captureGrayscaleBaseBuffer(const uint8_t* bwBuffer);
-  void cleanupGrayscaleBuffers(const uint8_t* bwBuffer);
+  void copyGrayscaleLsbBuffers(const uint8_t* lsbBuffer) override;
+  void copyGrayscaleMsbBuffers(const uint8_t* msbBuffer) override;
+  bool captureGrayscaleBaseBuffer(const uint8_t* bwBuffer) override;
+  void cleanupGrayscaleBuffers(const uint8_t* bwBuffer) override;
   // After capture and both copies: detect allocation failure before choosing
   // gray presentation. This query neither mutates buffers nor touches hardware.
-  bool grayscaleBuffersReady() const {
+  bool grayscaleBuffersReady() const override {
     return grayscaleBaseCaptured && grayscaleBaseBuffer && grayscaleLsbBuffer && grayscaleMsbBuffer;
   }
 
-  void displayGrayBuffer(RefreshMode mode = RefreshMode::HALF_REFRESH);
+  void displayGrayBuffer(RefreshMode mode = HALF_REFRESH) override;
+
+  bool isReady() const override { return displayReady && frameBuffer != nullptr; }
+
+  DisplaySurfaceInfo getSurfaceInfo() const override { return SURFACE_INFO; }
+
+  // Last-resort boot diagnostic that deliberately bypasses GfxRenderer and
+  // runtime surface metadata. A large X plus eight code boxes gives a visible
+  // indication that panel I/O still works when renderer initialization fails.
+  bool showEmergencyFailurePattern(uint8_t code) {
+    if (!isReady() || !frameBuffer) return false;
+
+    memset(frameBuffer, 0xFF, BUFFER_SIZE);
+    auto setPixel = [this](uint16_t x, uint16_t y, bool black) {
+      if (x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT) return;
+      uint8_t& value = frameBuffer[static_cast<uint32_t>(y) * DISPLAY_WIDTH_BYTES + x / 8u];
+      const uint8_t mask = static_cast<uint8_t>(0x80u >> (x & 7u));
+      if (black) value &= static_cast<uint8_t>(~mask);
+      else value |= mask;
+    };
+    auto fillRect = [&](uint16_t x, uint16_t y, uint16_t w, uint16_t h, bool black) {
+      for (uint32_t yy = y; yy < static_cast<uint32_t>(y) + h && yy < DISPLAY_HEIGHT; ++yy) {
+        for (uint32_t xx = x; xx < static_cast<uint32_t>(x) + w && xx < DISPLAY_WIDTH; ++xx) {
+          setPixel(static_cast<uint16_t>(xx), static_cast<uint16_t>(yy), black);
+        }
+      }
+    };
+
+    const uint16_t border = DISPLAY_WIDTH >= 320 ? 10u : 3u;
+    fillRect(0, 0, DISPLAY_WIDTH, border, true);
+    fillRect(0, DISPLAY_HEIGHT - border, DISPLAY_WIDTH, border, true);
+    fillRect(0, 0, border, DISPLAY_HEIGHT, true);
+    fillRect(DISPLAY_WIDTH - border, 0, border, DISPLAY_HEIGHT, true);
+
+    const uint16_t xThickness = DISPLAY_WIDTH >= 320 ? 6u : 2u;
+    for (uint32_t y = border * 3u; y + border * 3u < DISPLAY_HEIGHT; ++y) {
+      const uint32_t usableY = y - border * 3u;
+      const uint32_t usableH = DISPLAY_HEIGHT - border * 6u;
+      const uint32_t usableW = DISPLAY_WIDTH - border * 6u;
+      const uint16_t x1 = static_cast<uint16_t>(border * 3u + (usableY * usableW) / usableH);
+      const uint16_t x2 = static_cast<uint16_t>(DISPLAY_WIDTH - 1u - x1);
+      fillRect(x1, static_cast<uint16_t>(y), xThickness, 1, true);
+      fillRect(x2, static_cast<uint16_t>(y), xThickness, 1, true);
+    }
+
+    const uint16_t blockW = DISPLAY_WIDTH / 20u;
+    const uint16_t blockH = DISPLAY_HEIGHT / 16u;
+    const uint16_t gap = blockW / 3u;
+    const uint16_t totalW = static_cast<uint16_t>(8u * blockW + 7u * gap);
+    const uint16_t startX = static_cast<uint16_t>((DISPLAY_WIDTH - totalW) / 2u);
+    const uint16_t startY = static_cast<uint16_t>(DISPLAY_HEIGHT - border * 2u - blockH);
+    for (uint8_t bit = 0; bit < 8; ++bit) {
+      const uint16_t x = static_cast<uint16_t>(startX + bit * (blockW + gap));
+      fillRect(x, startY, blockW, blockH, true);
+      if ((code & static_cast<uint8_t>(0x80u >> bit)) == 0 && blockW > 4 && blockH > 4) {
+        fillRect(static_cast<uint16_t>(x + 2u), static_cast<uint16_t>(startY + 2u),
+                 static_cast<uint16_t>(blockW - 4u), static_cast<uint16_t>(blockH - 4u), false);
+      }
+    }
+
+    displayBuffer(FULL_REFRESH);
+    return true;
+  }
 
   // Runtime geometry passthrough
   uint16_t getDisplayWidth() const;
@@ -135,8 +233,8 @@ class HalDisplay {
   bool flipOutput = false;
   bool forceFullRefresh = true;
   bool forcedRefreshPending = false;
-  RefreshMode forcedRefreshMode = RefreshMode::HALF_REFRESH;
-  DisplayEffect pendingDisplayEffect = DisplayEffect::EFFECT_NONE;
+  RefreshMode forcedRefreshMode = HALF_REFRESH;
+  DisplayEffect pendingDisplayEffect = EFFECT_NONE;
   uint32_t refreshCycleCount = 0;
 
   uint8_t* allocatePlane();

@@ -1,5 +1,15 @@
 # U1 acceptance reconciliation — October 1, 2026
 
+Current continuation after this inventory: PR #96 now backmerges actual master
+**fa517fea**, including display foundation #220 and display safety #343.
+The candidate reconciles Model Viewer ZIP 1.2.8, Risc Strike ZIP 1.0.4,
+display provider ZIP 0.1.4 and firmware 1.3.52 above master's respective
+loose/source versions. The changed-package-source PR guard checks numeric
+version increases against the actual base, including all loose-to-ZIP apps;
+the existing index updater checks published same-version content conflicts.
+See the ledger for observed local checks. Exact-head target CI is pending;
+the earlier baseline and results below are historical, not current-head proof.
+
 Authority: `NEXT_HARDWARE_TEST_MILESTONE.md`,
 `FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md`,
 `STREAM_PIPE_MILESTONE_ALLOCATION.md`, bundled-package and ELF-verification

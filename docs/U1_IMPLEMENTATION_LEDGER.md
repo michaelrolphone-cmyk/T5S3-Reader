@@ -1,5 +1,31 @@
 # U1 implementation ledger
 
+## October 1: master display/safety backmerge and version gate
+
+The prior native continuation ended at published PR #96 head **480bf345**;
+its uncommitted cloud tree was not recoverable and is not treated as evidence.
+The sole U1 writer resumed in an isolated Mac checkout after verifying that
+PR #96 is open and master is **fa517fea** (display foundation #220 and single
+owner safety #343, plus the earlier Text Editor #342). This candidate merges
+actual master while retaining U1's dynamic four-kind archive build/export,
+private declared-import policy, SD/SPI retained-fault behavior and Text Editor.
+Master's display provider, shared boot path and paper app source changes remain.
+The display private import is checked using U1's declared import array; no
+package-signing dependency or firmware display fallback was reintroduced.
+
+Master's Model Viewer loose 1.2.7 and Risc Strike loose 1.0.3 become U1 ZIP
+1.2.8 and 1.0.4. Display provider 0.1.3 becomes U1 ZIP 0.1.4. Firmware
+candidate 1.3.52 exceeds master's 1.3.51. These are candidate source versions,
+not published release identities. The new PR build guard compares changed
+app/driver/service/provider sources with the actual PR base and requires every
+existing loose app to advance before U1 ZIP distribution. The index updater's
+published same-version collision check remains in place. Host version guard
+positive/negative fixtures, merged app contracts, display builder, both changed
+app ELF builds/validation, Risc Strike ZIP record/retry and release-plan checks
+passed locally. Target builds and exact-head CI remain to verify this merge.
+The independent receipt review remains blocked; no replacement review was
+requested. Physical PHY/SD/cable and owner qualification remain distinct gates.
+
 ## Active continuation claim — October 1, transferred 03:09 UTC
 
 Owner: resource-closure continuation on PR #96 / `impl/u1-riscrte`.

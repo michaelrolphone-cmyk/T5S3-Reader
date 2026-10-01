@@ -241,5 +241,5 @@ void GlobalMenuActivity::render(RenderLock&&) {
   // it cleanly to the menu's 1-bit BW content and keeps the preserved page below crisp.
   // Elsewhere FAST_REFRESH is overridden to HALF_REFRESH by the push transition, so this
   // preserves the existing (working) behavior for non-reader screens.
-  renderer.displayBuffer(overGrayscaleReader ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+  renderer.displayBuffer(overGrayscaleReader ? DisplayPresentMode::Clean : DisplayPresentMode::LowLatency);
 }

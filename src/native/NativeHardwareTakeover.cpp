@@ -83,7 +83,7 @@ extern "C" esp_err_t native_hardware_takeover_end(uint32_t requested) {
     else ESP_LOGE(kTag, "Failed to restore firmware touch capture after ELF exit");
 
     if (!displayRestored || !touchRestored) return ESP_FAIL;
-    display.requestNextRefresh(HalDisplay::FULL_REFRESH);
+    display.requestNextRefresh(DisplayPresentMode::Clean);
     ESP_LOGI(kTag, "Display ownership and firmware touch subscription restored");
   }
   return ESP_OK;

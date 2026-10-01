@@ -131,7 +131,7 @@ class NativeKeyboardActivity final : public Activity {
     const auto& metrics = UITheme::getInstance().getMetrics();
     GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight},
                    title.c_str());
-    renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+    renderer.displayBuffer(DisplayPresentMode::Balanced);
   }
 };
 
@@ -187,7 +187,7 @@ class NativeWifiActivity final : public Activity {
     renderer.clearScreen();
     const auto& metrics = UITheme::getInstance().getMetrics();
     GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight}, "Wi-Fi");
-    renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+    renderer.displayBuffer(DisplayPresentMode::Balanced);
   }
 };
 

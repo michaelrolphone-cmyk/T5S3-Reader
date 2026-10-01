@@ -31,6 +31,10 @@ _BOOTSTRAP_BUILD_RECIPES = {
         ("scripts/probe_i2c_esp32s3_v2.py",),
         ("scripts/audit_i2c_esp32s3_elf.py", "--strict"),
     ],
+    "gt911_touch": [("scripts/build_gt911_touch.py",)],
+    "display_epd_video": [("scripts/build_display_epd_video.py",)],
+    "t5s3_usb_power_profile": [("scripts/build_board_power_t5s3_v2.py", "--ids", "t5s3-usb-power-profile")],
+    "bq25896": [("scripts/build_board_power_t5s3_v2.py", "--ids", "board-power-t5s3-v2")],
     "usb_controller_esp32s3": [
         ("scripts/probe_usb_controller_esp32s3.py", "--link-experiment"),
         ("scripts/audit_usb_controller_elf.py", "--strict"),

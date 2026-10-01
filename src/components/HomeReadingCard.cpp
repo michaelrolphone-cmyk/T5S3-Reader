@@ -181,6 +181,6 @@ bool HomeReadingCard::present(GfxRenderer& renderer, Rect rect) {
   }
   // One physical presentation, using the existing four-gray compositor and
   // gray-capable refresh (not FAST_REFRESH, which would erase the gray tones).
-  renderer.displayGrayBuffer(HalDisplay::HALF_REFRESH);
+  renderer.displayGrayBuffer(DisplayPresentMode::Quality);
   return true;
 }
