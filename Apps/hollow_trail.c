@@ -332,6 +332,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     uint8_t *staging=(uint8_t *)app->psram_alloc(HT_PACKED_BYTES);
     if(!staging) ht_log("Hollow Trail: packed staging unavailable; using direct packing");
     bool started=false,display_initialized=false,display_reading=false;
+    uint32_t prepared_narration=0,display_narration=0;
     ht_reader_bitmap=arena+HT_MEMORY+HT_NATIVE_MEMORY;
     t5_video_surface_v1 surface={0};
     if(HT_HAS(app,t5_app_api_v1,set_back_exits_app)) app->set_back_exits_app(false);
@@ -345,6 +346,8 @@ __attribute__((visibility("default"))) void app_main(void) {
         ht_log("Hollow Trail: video start failed"); goto cleanup;
     }
     started=true;
+    if(!HT_HAS(video,t5_video_api_v1,reinforce_black) || !video->reinforce_black)
+        ht_log("Hollow Trail: narration extra black passes require firmware 1.3.48; ordinary display remains available");
     memset(&ht,0,sizeof(ht)); ht_spawn(true); ht_cutscene_seen=0; ht_cutscene_begin(HT_CUTSCENE_INTRO);
     reading=false; journal_page=0; ht_journal_index=true; ht_journal_selection=0;
     ht_journal_deciding=ht_journal_confirm=ht_journal_page_ready=false; ht_read_submitted_revision=0;
@@ -403,7 +406,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
     ht_fps_reset(&ht_fps,ht_perf.start);
-    ht_log("Hollow Trail 1.1.35: native 960x540 A/B + Forward-X cutscenes; rolling 10-second FPS");
+    ht_log("Hollow Trail 1.1.38: native 960x540 A/B + Forward-X cutscenes; rolling 10-second FPS");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -449,7 +452,7 @@ __attribute__((visibility("default"))) void app_main(void) {
          * scan. Only acquire/write the video backbuffer when it is ready. */
         if(redraw && !prepared && now-last_frame>=HT_FRAME_INTERVAL_MS) {
             last_frame=now; /* Start-to-start cadence, not an extra post-render wait. */
-            prepared_revision=scene_revision;
+            prepared_revision=scene_revision;ht_narration_key=0;
             const ht_game rendering_game=ht;
             const bool rendering_paused=paused,rendering_reading=reading;
             prepared_reader=rendering_reading;
@@ -462,7 +465,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             ht_render_scene();
             prepared_timing=ht_render_last;
             /* Initial instructions dismiss automatically after walking. */
-            if(rendering_game.x<230*256 && rendering_game.checkpoint==0) {
+            if(rendering_game.x<230*256 && rendering_game.checkpoint==0 && !ht_cutscene.finished) {
                 ht_rect(ht_scene,72,38,336,81,0);
                 ht_text(98,45,ht_chapters[rendering_game.level].title,2);
                 ht_text(98,66,"LEFT/RIGHT MOVE   B / UP JUMP",1);
@@ -477,7 +480,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.36",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.38",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
@@ -526,6 +529,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             } /* live game frame */
             } /* game/cutscene frame */
+            prepared_narration=ht_narration_key;
             prepared_since=app->millis();
             prepared_render_ms=prepared_since-now;
             prepared_pack_ms=0; prepared_staged=false;
@@ -557,6 +561,11 @@ __attribute__((visibility("default"))) void app_main(void) {
             if(debug_jump) {prepared=false;continue;}
             bool cropped=display_initialized && !prepared_reader && !display_reading;
             if(video->submit(cropped?ht_dirty_top:0,cropped?ht_dirty_height:0)) {
+                if(prepared_narration!=display_narration) {
+                    if(HT_HAS(video,t5_video_api_v1,reinforce_black) && video->reinforce_black)
+                        (void)video->reinforce_black(HT_NARRATION_Y*2,HT_NARRATION_HEIGHT*2,prepared_narration?2:0);
+                    display_narration=prepared_narration;
+                }
                 display_reading=prepared_reader;
                 if(prepared_reader) ht_read_submitted_revision=prepared_revision;
                 display_initialized=true;

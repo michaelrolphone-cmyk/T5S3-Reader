@@ -33,5 +33,14 @@ int main(void) {
         ht.ticks=i;ht_person_pose p=ht_person_pose_at(100,220,&ht);
         assert(p.hand[0].x==105+ht_boat_stroke(&ht)/2 && p.hand[0].y==214);
     }
+    /* Contact effort is half the active pose, without changing live state. */
+    ht.level=0;ht_spawn(true);ht.x=189*256;ht.y=220*256;ht.vx=0;
+    ht.traversal.push_hint=HT_ROLL;ht_game original=ht;
+    ht_person_pose hint=ht_person_pose_at(100,220,&ht);
+    assert(!memcmp(&original,&ht,sizeof(ht)));
+    ht.traversal.push_hint=0;ht.traversal.mode=HT_ROLL;
+    ht_person_pose full=ht_person_pose_at(100,220,&ht);
+    assert(hint.shoulder.x==101+(full.shoulder.x-101)/2);
+    assert(hint.hand[0].x==99+(full.hand[0].x-99)/2);
     free(memory);puts("Character: joint lengths, planted stance, jump phases, idle stability and oar contact PASS");
 }

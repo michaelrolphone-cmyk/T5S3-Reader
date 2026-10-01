@@ -1,5 +1,16 @@
 # U1 app ZIP distribution closure
 
+## October 1 master reconciliation
+
+Master `f79f72911ccb1dbd0666117370f54e040b5fc8e4` incorporates Hollow
+Trail mechanics, confirmation handling and button-remap fixes. Their actual
+source changes are retained. ZIP identities advance beyond those loose-package
+versions: button_remap, clear_cache and ota_update **1.0.1 -> 1.0.2**;
+Hollow Trail U1 **1.1.37 -> 1.1.40**, above master 1.1.38 and leaving the
+separately active 1.1.39 candidate its own identity. That unmerged candidate's
+source is not incorporated. Firmware inherits master 1.3.48; final U1 firmware
+version reconciliation remains open. The table below is the earlier checkpoint.
+
 ## Immutable identity and version lineage
 
 A published `(kind, id, version)` cannot change distribution format. Loose

@@ -93,6 +93,7 @@ typedef struct {
     uint8_t support,bridge_open,forest_log_phase;
     bool forest_log_falling;
     uint8_t forest_push,forest_push_release;
+    uint8_t push_hint; /* Draw-only half effort; never drives props or unlocks. */
     uint16_t forest_log_angle,forest_log_speed;
     uint8_t mode,ladder,ball_phase,ledge,climb,climb_phase,drop_cooldown;
     int ledge_side;
@@ -1605,10 +1606,10 @@ static bool ht_grotto_opaque(const ht_game *g) {
     return g->level==4 && g->camera/256<=700;
 }
 
-static void ht_render_scene(void) {
+static void ht_render_scene_from(const ht_game *source,bool character) {
     memset(&ht_render_last,0,sizeof(ht_render_last));
     uint32_t stage=ht_render_now();
-    ht_game game=ht;
+    ht_game game=*source;
     const bool native_mode=ht_camera_mode==HT_CAMERA_NATIVE;
     const unsigned camera_mode=native_mode?(unsigned)HT_CAMERA_BASELINE:ht_camera_mode;
     ht_native_active=native_mode;
@@ -1653,7 +1654,7 @@ static void ht_render_scene(void) {
     ht_world_scale=ht_scene_scale(&game);
     ht_draw_traversal(&game);
     ht_draw_puzzle(&game);
-    ht_character(px,(game.y-game.camera_y)/256,&game);
+    if(character)ht_character(px,(game.y-game.camera_y)/256,&game);
     ht_weather(&game);
     ht_forest_foreground(&game);
     ht_city_observer_foreground(&game);
@@ -1667,6 +1668,7 @@ static void ht_render_scene(void) {
     ht_vignette();
     ht_render_last.post=ht_render_now()-post_start;
 }
+static void ht_render_scene(void) {ht_render_scene_from(&ht,true);}
 /* Four physical gray levels. A fixed dispersed 8x8 threshold resolves only
  * fractional blur/fog values between them, with no temporal shimmer. Exact
  * white/light/dark/black fills remain solid. Work at physical pixel pitch so
@@ -1966,9 +1968,17 @@ static void ht_pack(uint8_t *out,int stride) { ht_pack_format(out,stride,false);
 
 /* Two subdued gray lines in the lower dark margin. These rows remain within
  * the computed physical dirty range; no temporal/typewriter effect. */
+#define HT_NARRATION_Y 230u
+#define HT_NARRATION_HEIGHT 23u
+static uint32_t ht_narration_key;
+static void ht_narration_hash(const char *text) {
+    for(;*text;++text){ht_narration_key^=(uint8_t)*text;ht_narration_key*=16777619u;}
+    ht_narration_key^=255;ht_narration_key*=16777619u;
+}
 static void ht_narration(const ht_game *game) {
+    ht_narration_key=2166136261u;
     unsigned beat=ht_story_beat(game->story_x);
-    ht_rect(ht_scene,57,232,366,19,255);
+    ht_rect(ht_scene,57,230,366,23,255);
     for(int line=0;line<2;++line) {
         const char *text=ht_chapters[game->level].lines[beat][line];
         if(game->x/256>=2780) text=game->puzzle.solved?
@@ -1978,6 +1988,7 @@ static void ht_narration(const ht_game *game) {
             text=line?"THE WAY IS OPEN WHEN I HAVE READ WHAT I CHANGED.":
                 (game->verdict==1?"I BROKE THE FEED. HER PLAN INCLUDED MY RESCUE.":
                                   "I COMPLETED THE FEED. THE PEN WRITES AS HER.");
+        ht_narration_hash(text);
         int x=(HT_W-(int)strlen(text)*6)/2, y=233+line*10;
         for(;*text;++text,x+=6) {
             const uint8_t *g=ht_glyph(*text);

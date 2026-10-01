@@ -1,4 +1,5 @@
 #include "../../src/native/NativeVideoIdle.h"
+#include "../../src/native/NativeVideoStrip.h"
 #include "../../src/native/NativeVideoGray.h"
 #include <assert.h>
 #include <stdio.h>
@@ -94,7 +95,30 @@ static void gray() {
   memset(state,255,sizeof(state)); memset(drive,0,sizeof(drive));
   assert(!nativeVideoReinforceIdleRow(source,state,drive,8,true,0,0));
 }
+static void blackStrip() {
+  NativeVideoBlackStrip<540> strip;
+  uint8_t source[4]={0xa5,0x5a,0xff,0},state[16],drive[8];
+  for(unsigned x=0;x<32;x+=2)state[x/2]=(uint8_t)(0xfc|((source[x/8]>>(6-(x&7)))&3));
+  assert(!strip.request(0,540,2) && !strip.request(530,20,2));
+  assert(!strip.request(1,1,3) && !strip.request(1,0,2));
+  assert(strip.request(460,46,2));
+  assert(!strip.active(459) && strip.active(460) && strip.active(505) && !strip.active(506));
+  for(unsigned pass=0;pass<2;++pass) {
+    memset(drive,0,sizeof(drive));
+    assert(!strip.row(459,source,state,drive,32,false));
+    assert(!strip.row(460,source,state,drive,32,true)); // normal settling wins
+    memset(drive,0xaa,sizeof(drive));assert(!strip.row(460,source,state,drive,32,false));
+    memset(drive,0,sizeof(drive));assert(strip.row(460,source,state,drive,32,false)==16);
+    for(unsigned x=0;x<32;++x)assert(((drive[x/4]>>(6-2*(x&3)))&3)==((source[x/8]>>(7-(x&7)))&1));
+  }
+  memset(drive,0,sizeof(drive));assert(!strip.row(460,source,state,drive,32,false));
+  assert(strip.request(480,1,1));assert(!strip.active(505)); // replacement, no queue
+  for(unsigned scan=0;scan<16;++scan)strip.finishScan();
+  assert(!strip.active(480)); // bounded expiry even if never settled
+  assert(strip.request(460,46,2));assert(strip.request(0,0,0));assert(!strip.active(460));
+}
 int main() {
+  blackStrip();
   scheduler();mono();gray();
   for(unsigned bits=0;bits<16;++bits)
     assert(nativeVideoCanQueueFrame(bits&1,bits&2,bits&4,bits&8)==(bool(bits&1)&&!bool(bits&2)));

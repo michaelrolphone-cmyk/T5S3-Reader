@@ -13,6 +13,25 @@ and auditing the remaining whole-U1 acceptance gates. Other continuations must
 not write this branch until this claim is explicitly released. No live release,
 index, tag, master update or flash. CI is feedback, not an idle-work gate.
 
+## October 1: current-master reconciliation
+
+Archive service published as **d437e4cc18210e44dcd0f4eb24a57b5eac528917**;
+its tree **c5caf8f535cec3f51051337131b66aa89908251f** equals host-tested
+local **45f244e3**. Specific owner publication approval resolved the earlier
+scope denial. Exact-head target CI is pending; no result is inferred.
+
+This separate backmerge integrates master **f79f7291**, retaining merged
+Hollow mechanics, confirmation handling and button-remap fixes. The only content
+conflict was Hollow's manifest version. ZIP identities now exceed the incoming
+loose distributions: three apps 1.0.1 -> 1.0.2; Hollow 1.1.37 -> 1.1.40,
+reserving the independently active 1.1.39 source identity without incorporating
+unmerged source. Firmware inherits 1.3.48; a final U1 version increment remains
+required. Full native-app sanitizer aggregate passed after conflict resolution, including
+actual confirmation and button-remap regression cases; archive loaded-service
+and ten provider-discovery/package tests also passed. All 38 source app versions
+exceed this master. Target ELF/package builds remain pending; the archive-only
+head had no PR runs while the master conflict blocked mergeability.
+
 ## October 1: independently installable archive service
 
 **48d84450** is the verified bounded-intake checkpoint (localb0c32d0d,

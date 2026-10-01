@@ -184,5 +184,20 @@ int main(void) {
     ht_geometry_level=1;simulation_started=false;ht_advance(now);
     for(int i=0;i<430;++i) {ht_advance(now+=32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
     assert(!ht_cutscene.active && ht_input_rearm && held==0 && previous==0);
+    /* Held controller input cannot leak out of natural intro completion. */
+    memset(reports,0,sizeof(reports));healthy=true;mapped=0;host_exit=false;
+    reading=paused=quitting=loading=debug_jump=false;ht.level=0;ht_select_level(0);ht_spawn(true);
+    ht_cutscene_begin(HT_CUTSCENE_INTRO);ht_cutscene.tick=HT_INTRO_TICKS-1;
+    ht_geometry_level=0;simulation_started=false;ht_advance(now);
+    held=HT_RIGHT|HT_JUMP;ht_advance(now+=32);
+    assert(ht.x==95*256 && ht_input_rearm && !held && !jump_down);
+    mapped=T5_APP_BUTTON_RIGHT|T5_APP_BUTTON_UP;ht_input(1);
+    assert(!held && !jump_down && ht.x==95*256);
+    mapped=0;ht_input(1);assert(!ht_input_rearm);
+    mapped=T5_APP_BUTTON_RIGHT;ht_input(1);assert(held&HT_RIGHT);
+    /* Exiting during the last segment remains immediate and does not apply
+     * a second handoff or consume input as a gameplay action. */
+    ht_cutscene_begin(HT_CUTSCENE_INTRO);ht_cutscene.tick=2140;
+    host_exit=true;ht_input(1);assert(quitting && ht_cutscene.active);
     puts("Hollow Trail controls: receiver HID/XInput face labels, dedicated Start, A inspect, B jump, X back, arbitration and fault recovery PASS");
 }
