@@ -1,6 +1,19 @@
 # Bug repair progress
 
-Snapshot: 2026-10-01 01:15 UTC. This record supersedes the pre-merge restoration snapshot.
+Snapshot: 2026-10-01 01:48 UTC. This record supersedes the pre-merge restoration snapshot.
+
+## Active hourly run — native confirmation safety
+
+- Owner: `fix_reachable_confirmation_bug`; phase: source revalidation complete, host reproduction/implementation next; claimed 2026-10-01 01:48 UTC
+- Canonical claim: **249 only**, two related app confirmation fixes; branch `fix/native-confirmation-249` from master `3300229d0a232b4e6047a7c93b2f518c033c3cfa`
+- Ledger parent captured: `fc72ad0dba3d207e44c83d0ee76738a9a017377d`; draft #332 still open. No prior active owner
+- Open #96/#194/#220/#277/#333 checked: no edits to `Apps/ota_update.c`, `Apps/clear_cache.c` or their manifests. Aggregate test runner may require additive integration reconciliation
+- #246 touches the separate legacy ConfirmationActivity also modified by #220; excluded from this batch. #333 remains held with review withdrawn; this claim reserves the second and final outstanding code-batch slot
+- Source reachability: NativeSettingsBridge System actions → ClearCacheActivity/OtaUpdateActivity → installed native app → NativeAppHost raw tap → NativeUiBridge row hit test. PRO uses installed touch provider, not legacy X4 front buttons. Requires installed compatible apps and working touch; OTA needs network/new firmware. Owner device installation/use is not claimed
+- Published index `e495c5e1` and current master both have clear_cache 1.0.0 and ota_update 1.0.0; planned app-only bump to 1.0.1 each. Existing UI event ABI suffices; no firmware bump
+- Reconciled scan `66bc650056964dcba8e5164d6d76f6c45cdb81ab` by affected function/trigger/failure: 249 native confirmation differs from 246; 250 terminal FLASH_END loss differs from earlier flashing reports; 251 skipped-role/incomplete validation differs from 16 persistence rollback and 17 labels. IDs 249–251 preserve scan provenance; 250/251 remain unclaimed/unvalidated
+- Current inventory: **240 canonical reports, 238 outstanding** (249 claimed; 16/17 on hold; 235 need revalidation); 91/205 fixed on master. Next unused ID **252**. Historical counts below describe the earlier snapshot
+- Next: actual app plus real UI event-function host regressions, baseline failure/fix pass, focused target app builds/native aggregate, draft PR and exact-head CI; no live deletion, install, flash, merge or release
 
 ## Board applicability correction — review request withdrawn
 
