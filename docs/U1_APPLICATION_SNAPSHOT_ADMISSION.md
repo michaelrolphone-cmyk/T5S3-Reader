@@ -62,7 +62,23 @@ only the standalone fallback is linked. Existing app/USB launch-order guards and
 native-app aggregate remain connected. These are host fixtures, not physical
 execution of native machine code.
 
-This application slice is currently local and target verification is pending.
+This application slice is published and target-verified at
+**ad7a0431af1c18e95cce96dbf4337cf79b01e7df**, matching locally tested **a59642d5**
+and tree **07c794fe3441a3760dd746a15e077f7a17677ca7**. Both workflows
+**36842590302 / 36842590322** succeeded. The compiled PR merge checkout was
+**d66340a64d72dc3a86b2303c60684352dc810f31**.
+
+The downloaded compact target reports were ZIP-SHA checked:
+- T5 artifact11152406596: e18579b122d7da087b30fdb5a8bdafc2d818509fde5d7458b1a594256e524def;
+  firmware ELF c1b95457b9a98dd3a706a28d613bc05ea34c2cb17a65ede10ad8587e8b777751
+- EPD artifact11152805198: 96c180e5642b999a657299914f03ab4e177d38f3a6d3de1089f94db023d0eaed;
+  firmware ELF4a9e6b0bbb95cb1f320487bc718542dd9618836035e4bf429530cee49bfe5107
+
+Both link the strong global callback, rather than the standalone weak fallback.
+`esp_elf_open` loads its callback address from a literal and executes callx8;
+the callback directly reaches `admitInstalledExecutableSnapshot`. The buffer
+register passed to admission is subsequently stored as the returned payload.
+This resolves that selected call edge, not every indirect call in the firmware.
 The preceding receipt/provider frame correction **c33cb044** passed both exact-
 head workflows **36840317554 / 36840317634**, retaining the 384-byte recursive
 registration guard. The earlier independent receipt review did not complete;
@@ -73,12 +89,12 @@ Remaining implementation/evidence is explicit:
 - Loose legacy app paths keep their existing compatibility/temporary installed-
   load contract; this new canonical invocation context does not silently rename
   or upgrade them
-- Retained provider snapshots with an older source-read epoch remain conservative
-  on remapping, as documented in U1_VERIFICATION_RECEIPT_IMPLEMENTATION.md
+- Retained provider remapping now has graph-owned memory evidence connected
+  locally, with target checks pending (U1_VERIFICATION_RECEIPT_IMPLEMENTATION.md)
 - Observed storage coherence is not authentication or a universal detector of
   unobserved media edits. Cold admission covers executable and used metadata,
   while install/recovery/explicit verification still check every declared leaf
-- Target callback binding, remaining lower-I/O termination, complete indirect/
+- Remaining lower-I/O termination, complete indirect/
   PHY evidence, final master/version reconciliation and owner qualification stay
   separate from these local host results
 

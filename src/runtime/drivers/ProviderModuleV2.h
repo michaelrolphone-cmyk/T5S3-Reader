@@ -69,6 +69,18 @@ class ModuleV2 final {
   State state() const { return state_; }
   uint32_t consumers() const { return consumers_; }
  private:
+  friend class GraphV2;
+  // Graph owns this private immutable allocation until after module shutdown.
+  // Public loadVerifiedBytes callers cannot opt themselves into this proof.
+  void bindGraphOwnedImage(const uint8_t* bytes, size_t size) {
+    if (ownedImage_ != bytes || ownedImageBytes_ != size) {
+      ownedImage_ = bytes; ownedImageBytes_ = size; ownedImageVerified_ = false;
+    }
+  }
+  const uint8_t* ownedImage_ = nullptr;
+  size_t ownedImageBytes_ = 0;
+  bool ownedImageVerified_ = false;
+  uint8_t ownedImageDigest_[32]{};
   char error_[160]{};
   void report(const char* id, const char* stage, int code = 0);
   bool activateMapped(risc_driver_get_v2_fn get, const char* expectedId,

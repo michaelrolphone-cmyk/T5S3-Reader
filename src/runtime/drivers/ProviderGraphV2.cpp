@@ -7,6 +7,18 @@
 
 namespace RuntimeProviders {
 namespace {
+template <size_t N>
+void copyError(char (&out)[N], const char* input) {
+  size_t count = 0;
+  if (input) while (count + 1 < N && input[count]) ++count;
+  // Both fields may share an enclosing object; do not use restrict-qualified
+  // formatting to copy a module diagnostic into its graph's diagnostic.
+  if (count) std::memmove(out, input, count);
+  out[count] = 0;
+}
+}
+
+namespace {
 bool validName(const char* s) {
   if (!s || !s[0]) return false;
   size_t i = 0;
@@ -136,6 +148,7 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
   Node& node = nodes_[count_++];
   node.owned = owned;
   node.spec = owned->spec;
+  node.module.bindGraphOwnedImage(node.spec.verifiedElfBytes, node.spec.verifiedElfLength);
   return true;
 }
 
@@ -170,7 +183,7 @@ bool GraphV2::activate(size_t index) {
   if (node.visit == Visit::Visiting) return fail("Dependency cycle", node.spec.id);
   if (node.module.state() == ModuleV2::State::Failed) {
     if (node.module.lastError()[0]) {
-      std::snprintf(error_, sizeof(error_), "%s", node.module.lastError());
+      copyError(error_, node.module.lastError());
       return false;
     }
     return fail("Provider failed", node.spec.id);
@@ -213,7 +226,7 @@ bool GraphV2::activate(size_t index) {
                          node.spec.requirementCount);
   if (!loaded) {
     if (node.module.lastError()[0])
-      std::snprintf(error_, sizeof(error_), "%s", node.module.lastError());
+      copyError(error_, node.module.lastError());
     else fail("Provider load/start failed (no diagnostic)", node.spec.id);
     if (node.module.unload()) {
       releaseDependencies(index);

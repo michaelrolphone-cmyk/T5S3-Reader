@@ -79,7 +79,8 @@ bool declaredPackageSnapshot(const OrdinaryPackagePlan& plan, const char* name, 
 }
 bool admitInstalledExecutableSnapshot(const Identity& identity, const uint8_t* expectedManifestDigest,
                                       const uint8_t* expectedExecutableDigest, const uint8_t* snapshot, size_t length,
-                                      const StorageGenerationStamp& sourceStamp) {
+                                      const StorageGenerationStamp& sourceStamp,
+                                      const VerifiedImageCopy* verifiedCopy) {
   Identity canonical{};
   OrdinaryTransactionPaths paths{};
   if (!canonicalIdentity(identity, &canonical) || resourceOnly(identity) || !expectedManifestDigest ||
@@ -130,6 +131,11 @@ bool admitInstalledExecutableSnapshot(const Identity& identity, const uint8_t* e
   // qualify for reuse, but cannot replace actual snapshot integrity verification.
   const bool reusable = (receiptStatus == ReceiptReadResult::Matched || receiptStatus == ReceiptReadResult::Missing) &&
                         sourceStamp.matches(before) && Storage.unchanged(before);
+  // This is memory-lifetime evidence, not a new filesystem-generation proof.
+  // The loader just copied an immutable graph-owned image that was verified
+  // earlier. Keep metadata/policy/receipt-close checks above, and do not insert
+  // this older-source image into the current storage memo below.
+  if (verifiedCopy && verifiedCopy->matches(snapshot, length, candidate.executable)) return true;
   bool warm = false;
   if (reusable) {
     std::lock_guard<std::mutex> lock(admissionMutex);

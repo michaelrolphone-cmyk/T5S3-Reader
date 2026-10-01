@@ -15,6 +15,7 @@ trap 'rm -rf "$build"' EXIT
   -I"$repo/test/resources/cdc_sd_stubs" -I"$repo/test/drivers/stub_privileged_loader" \
   -I"$repo/test/drivers/stubs" -I"$repo/sdk/driver" -I"$repo/src" \
   "$repo/lib/hal/HalStorage.cpp" "$repo/src/runtime/packages/PackageExecutableAdmission.cpp" \
+  "$repo/src/runtime/drivers/ProviderGraphV2.cpp" "$repo/src/runtime/drivers/DeviceProviderExecutorV2.cpp" \
   "$repo/test/drivers/privileged_elf_snapshot_v1_test.cpp" "$build/module.o" \
   -lcrypto -ldl -o "$exe"
 "$exe"

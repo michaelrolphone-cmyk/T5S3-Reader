@@ -8,15 +8,29 @@ interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
 28-file staged resource slice from **cf1ac054** was preserved and integrated.
 This explicit transfer remains active; it was not based on claim expiry.
 Current target-green checkpoint is
-**c33cb044e2a8197ca294ccdae1d8fc466529ca43**, tree
-**e9cfd55882880de0a2d3d9c035d4e013ac60bcd6**, identical to tested local **eebd0271**.
-Both workflows **36840317554 / 36840317634** passed, including both full targets
-with the unchanged 384-byte recursive registration-frame guard. This corrects
-the explicitly recorded acaac50a frame failure below. Master **1e0188c1** remains
-integrated; PR96 was verified open on October 1 at 09:20 UTC. Sole ownership
-remains unchanged. The current local slice connects canonical app owned-buffer
-admission and immutable invocation metadata; it is not target-verified yet.
+**ad7a0431af1c18e95cce96dbf4337cf79b01e7df**, tree
+**07c794fe3441a3760dd746a15e077f7a17677ca7**, identical to tested local **a59642d5**.
+Both workflows **36842590302 / 36842590322** passed. Compact target reports
+confirm strong app callback binding and the actual loader literal/callx edge
+into the shared snapshot helper on both boards. Prior receipt/provider correction
+**c33cb044** passed **36840317554 / 36840317634** with the384-byte recursive frame
+guard unchanged. Master **1e0188c1** remains integrated; PR96 was verified open on
+October 1 at09:20 UTC. Sole ownership remains unchanged. Legacy checksum-bearing
+loose admission, retained-node remap optimization and lower-I/O limits remain.
 No live release, index, tag, master update or flash. CI remains feedback.
+
+## October 1: immutable provider-node remap evidence
+
+The graph privately binds the allocation it already owns; public Module callers
+cannot declare a mutable buffer immutable. Successful integrity admission records
+memory-lifetime evidence. Later remaps copy those same owned bytes and retain
+current metadata/policy/close checks, without repeating ELF hashing or promoting
+an old source epoch into a new filesystem memo. New graphs start without proof.
+Actual graph + ESP Module/admission fixtures pass caller-buffer mutation,
+first-hash/remap byte counts, changed-metadata refusal and fresh-node rejection;
+provider graph regressions pass. Target verification remains pending. The
+optimized host build also required an overlap-safe bounded diagnostic copy,
+retaining all warnings instead of suppressing its snprintf restrict warning.
 
 ## October 1: canonical app-owned snapshot and metadata binding
 
@@ -26,7 +40,7 @@ ELF file reader closes its descriptor before admitting the same owned buffer tha
 relocation consumes. Owner/path/revoke checks and independent pins prevent late
 work or uncertain metadata close from permitting replacement. No new loader,
 installer, registry or SDK permission grant. Host context/loader fixtures and the
-native-app aggregate pass; current target verification is pending. Loose legacy
+native-app aggregate passed; both target workflows passed exact ad7a0431. Loose legacy
 input, retained-provider remap optimization and lower-I/O limits remain explicit.
 See **U1_APPLICATION_SNAPSHOT_ADMISSION.md**. The blocked final review is not
 represented as completed or replaced by these independently executed tests.

@@ -220,19 +220,33 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
   // Verify the exact owned bytes that relocation consumes. Reusable proof is
   // bound to the epoch captured BEFORE the manager read these bytes; never
   // attach a fresh stamp to an older snapshot after intervening writes.
+  RuntimePackages::VerifiedImageCopy copyEvidence;
+  const bool graphOwned = ownedImage_ && ownedImage_ == candidateBytes && ownedImageBytes_ == length;
+  const bool verifiedCopy = graphOwned && ownedImageVerified_ &&
+      !std::memcmp(ownedImageDigest_, contentSha256, sizeof(ownedImageDigest_));
+  if (verifiedCopy) {
+    copyEvidence.bytes_ = snapshot; copyEvidence.size_ = length;
+    std::memcpy(copyEvidence.digest_, ownedImageDigest_, sizeof(copyEvidence.digest_));
+  }
   bool admitted = false;
   if (resourceIdentity_.id[0]) {
     admitted = RuntimePackages::admitInstalledExecutableSnapshot(resourceIdentity_,
-        packageManifestSha256_, contentSha256, snapshot, length, packageSourceStamp_);
+        packageManifestSha256_, contentSha256, snapshot, length, packageSourceStamp_,
+        verifiedCopy ? &copyEvidence : nullptr);
   } else {
     uint8_t digest[32]{};
-    admitted = RuntimePackages::packageSnapshotDigest(snapshot,length,digest) &&
-        !std::memcmp(digest,contentSha256,sizeof(digest));
+    admitted = verifiedCopy || (RuntimePackages::packageSnapshotDigest(snapshot,length,digest) &&
+        !std::memcmp(digest,contentSha256,sizeof(digest)));
   }
   if (!admitted) {
     heap_caps_free(snapshot);
     report(expectedId, "installed-snapshot-integrity");
     return false;
+  }
+
+  if (graphOwned) {
+    std::memcpy(ownedImageDigest_, contentSha256, sizeof(ownedImageDigest_));
+    ownedImageVerified_ = true;
   }
 
   auto* image = static_cast<esp_elf_t*>(std::malloc(sizeof(esp_elf_t)));

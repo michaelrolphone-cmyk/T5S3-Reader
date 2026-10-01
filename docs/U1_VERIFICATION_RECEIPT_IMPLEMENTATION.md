@@ -94,10 +94,16 @@ This does **not** close the whole permanent-verification requirement:
 - Canonical application owned-buffer/context admission is now connected locally
   (U1_APPLICATION_SNAPSHOT_ADMISSION.md), with target verification pending. Loose
   legacy input retains its existing compatibility contract
-- A retained provider node whose source-read epoch became stale conservatively
-  rehashes on later remapping until rebuilt. Do not restamp old source bytes to
-  suppress that work; a further optimization needs explicit immutable graph-
-  owned memory lifetime evidence
+- Retained provider remapping now has a separate graph-owned immutable-memory
+  proof, connected locally and awaiting target checks. Only GraphV2 privately
+  binds its owned copy; direct Module callers cannot opt in. After successful
+  integrity admission, a fresh copy of those same immutable bytes can avoid
+  rehashing on later remaps, even after unrelated storage mutation. Current
+  manifest/policy and receipt-close checks still run. The loader alone creates
+  the ephemeral copy evidence, and this path never populates a fresh filesystem
+  stamp from old source bytes. Graph destruction ends this evidence lifetime.
+  The actual graph/ESP Module fixture checks first hash, remap byte counts,
+  caller-copy isolation, changed metadata, and new-node refusal
 - Cold provider checks establish executable/admission integrity, not current
   integrity of every optional resource. Explicit full verification remains
   available; no receipt authenticates a publisher or arbitrary external SD edits
