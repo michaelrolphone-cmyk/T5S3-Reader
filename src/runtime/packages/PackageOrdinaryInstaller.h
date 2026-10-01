@@ -22,20 +22,36 @@ struct OrdinaryInstallOutcome {
   OrdinaryTransactionResult transaction = OrdinaryTransactionResult::InvalidIdentity;
 };
 
+// An SD lineage adapter may coordinate multiple existing package identities
+// while retaining this exact stager, verifier and ordinary publication engine.
+struct OrdinaryInstallerTransaction {
+  template <typename Ops, typename Verify, typename Purge>
+  OrdinaryTransactionResult recover(Ops& ops, Kind kind, const char* id,
+      Verify verify, Purge purge, Identity& observed) const {
+    return recoverOrdinaryPackage(ops, kind, id, verify, purge, observed);
+  }
+  template <typename Ops, typename Verify, typename Purge>
+  OrdinaryTransactionResult publish(Ops& ops, const Identity& candidate,
+      Verify verify, Purge purge, Identity& observed, bool downgrade) const {
+    return publishOrdinaryPackage(ops, candidate, verify, purge, observed, downgrade);
+  }
+};
+
 // Caller owns source, parser, manager-derived temporary destination and a
 // per-stage serialization lock. Typed transaction code independently derives
 // all four-kind paths, checks semantic versions, takes a target replacement
 // lease and preserves the previous verified generation on interrupted updates.
 // This function never performs dlopen, activation, permission grants or UI.
 template <typename Source, typename Destination, typename Hash,
-          typename Resolver, typename Ops, typename Verify, typename Purge>
+          typename Resolver, typename Ops, typename Verify, typename Purge,
+          typename Transaction = OrdinaryInstallerTransaction>
 OrdinaryInstallOutcome installOrdinaryPackage(
     const OrdinaryPackagePlan& plan, const uint8_t* manifest,
     size_t manifestBytes, Source& source, Destination& destination, Hash& hash,
     Resolver resolver, const PackageRuntimePolicy& policy,
     uint8_t (&io)[kOrdinaryIoBytes], Ops& ops, Verify verifyDirectory,
     Purge purgeManagedBackup, bool replacementAllowed,
-    bool allowDowngrade = false) {
+    bool allowDowngrade = false, Transaction transaction = {}) {
   OrdinaryInstallOutcome outcome{};
   OrdinaryTransactionPaths paths{};
   if (!replacementAllowed || !ordinaryTransactionPaths(plan.identity.kind,
@@ -43,7 +59,7 @@ OrdinaryInstallOutcome installOrdinaryPackage(
     return outcome;
 
   Identity observed{};
-  outcome.transaction = recoverOrdinaryPackage(ops, plan.identity.kind,
+  outcome.transaction = transaction.recover(ops, plan.identity.kind,
       plan.identity.id, verifyDirectory, purgeManagedBackup, observed);
   if (outcome.transaction != OrdinaryTransactionResult::NoInstalledPackage &&
       outcome.transaction != OrdinaryTransactionResult::InstalledVerified &&
@@ -73,7 +89,7 @@ OrdinaryInstallOutcome installOrdinaryPackage(
     outcome.result = OrdinaryInstallResult::StageVerificationRejected;
     return outcome;
   }
-  outcome.transaction = publishOrdinaryPackage(ops, plan.identity,
+  outcome.transaction = transaction.publish(ops, plan.identity,
       verifyDirectory, purgeManagedBackup, observed, allowDowngrade);
   if (outcome.transaction == OrdinaryTransactionResult::CleanupPending) {
     // Newly published target is verified, but recovery must finish deleting

@@ -117,6 +117,9 @@ def discover_candidates(root: Path, index: dict[str, Any]) -> list[dict[str, str
         version = manifest.get("version")
         current = version_tuple(version)
         latest = drivers_released.get(identity)
+        if identity == "usb-cdc-acm" and "usb-cdc-acm-v2" in drivers_released:
+            alias_version = drivers_released["usb-cdc-acm-v2"]
+            latest = max(latest, alias_version) if latest is not None else alias_version
         if latest is None or current > latest:
             candidates.append({"product": "drivers", "id": identity, "version": version})
 

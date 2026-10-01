@@ -39,6 +39,8 @@ def canonical_manifest(path: Path) -> tuple[str, int]:
         type(manifest.get('driver_abi')) is not int or manifest['driver_abi'] != 2):
         raise ValueError('expected one installed module with provider ABI v2')
     package_id = manifest.get('id')
+    if manifest.get('type') == 'driver' and package_id == 'usb-cdc-acm-v2':
+        raise ValueError('retired CDC alias is not a current package identity')
     if not isinstance(package_id, str) or not 0 < len(package_id) < 64 or (
         PACKAGE_ID.fullmatch(package_id) is None):
         raise ValueError('invalid provider identity')

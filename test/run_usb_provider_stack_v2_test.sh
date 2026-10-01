@@ -43,7 +43,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
 
 # Repeat the same installed-stream/pipe regression with all production classes.
 classes=(cdc cp210x ch34x)
-ids=(usb-cdc-acm-v2 usb-cp210x-v2 usb-ch34x-v2)
+ids=(usb-cdc-acm usb-cp210x-v2 usb-ch34x-v2)
 for index in 0 1 2; do
   class="${classes[$index]}"
   cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fPIC -fvisibility=hidden -shared \

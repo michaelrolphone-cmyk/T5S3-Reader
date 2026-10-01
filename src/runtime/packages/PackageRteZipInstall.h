@@ -41,13 +41,14 @@ struct RteZipSource {
 // manifest digest, not a publisher signature. Keep multi-kilobyte views on
 // the heap, not the ESP32 loopTask stack (the old nested hashing path crashed).
 template <typename ReadAt, typename Destination, typename Hash,
-          typename Resolver, typename Ops, typename Verify, typename Purge>
+          typename Resolver, typename Ops, typename Verify, typename Purge,
+          typename Transaction = OrdinaryInstallerTransaction>
 OrdinaryInstallOutcome installOrdinaryFromRteZip(
     ReadAt readAt, uint64_t fileLength, uint8_t* manifestScratch,
     size_t manifestCapacity, Destination& destination, Hash& hash,
     Resolver resolver, const PackageRuntimePolicy& policy,
     uint8_t (&io)[kOrdinaryIoBytes], Ops& ops, Verify verifyDirectory,
-    Purge purgeManagedBackup, bool replacementAllowed) {
+    Purge purgeManagedBackup, bool replacementAllowed, Transaction transaction = {}) {
   OrdinaryInstallOutcome outcome{};
   std::unique_ptr<RteZipView> zip(new (std::nothrow) RteZipView{});
   std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
@@ -69,7 +70,7 @@ OrdinaryInstallOutcome installOrdinaryFromRteZip(
   return installOrdinaryPackage(*plan, manifestScratch,
       zip->entries[zip->manifestIndex].sizeBytes, named, destination, hash,
       resolver, policy, io, ops, verifyDirectory, purgeManagedBackup,
-      replacementAllowed);
+      replacementAllowed, false, transaction);
 }
 
 } // namespace RuntimePackages

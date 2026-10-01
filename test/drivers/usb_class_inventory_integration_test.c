@@ -20,7 +20,7 @@ int main(int argc, char **argv) {
     }
     const risc_driver_v2 *host_driver = load(libraries[0], "usb-host-v2");
     const risc_driver_v2 *classes[] = {
-        load(libraries[1], "usb-cdc-acm-v2"),
+        load(libraries[1], "usb-cdc-acm"),
         load(libraries[2], "usb-cp210x-v2"),
         load(libraries[3], "usb-ch34x-v2"),
         load(libraries[4], "usb-serial-witness")

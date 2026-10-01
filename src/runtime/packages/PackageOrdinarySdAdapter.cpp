@@ -1,4 +1,5 @@
 #include "PackageOrdinarySdAdapter.h"
+#include "PackageCdcSdMigration.h"
 #include "PackageOrdinaryManagedInstall.h"
 #include "PackageSequentialSdReader.h"
 #include "PackageOrdinarySdTree.h"
@@ -117,14 +118,14 @@ bool legacyInventory(const char* path, bool full) {
   size_t count = 0;
   while (good) {
     HalFile file = dir.openNextFile();
-    if (!file.isOpen()) break;
+    if (!file.isOpen()) { if (dir.getError()) good = false; break; }
     char name[128]{};
     const size_t length = file.getName(name, sizeof(name));
     if (!length || length >= sizeof(name) || file.isDirectory()) good = false;
     else if (!std::strcmp(name, "driver.elf") && !elf) elf = true;
     else if (!std::strcmp(name, "manifest.json") && !manifest) manifest = true;
     else good = false;
-    (void)file.close();
+    if (!file.close()) good = false;
     if (++count > 2) good = false;
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
     vTaskDelay(1);
@@ -336,8 +337,47 @@ bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
     const PackageRuntimePolicy& policy,
     uint32_t (*resolveCapability)(const char*), Identity& observed) {
   observed = {};
+  if (managedDirectory &&
+      (!std::strcmp(managedDirectory, kCdcCanonicalRoot) || !std::strcmp(managedDirectory, kCdcAliasRoot)) &&
+      cdcMigrationPendingOnSd()) return false;
   return Storage.ready() && safeSourcePath(managedDirectory) &&
       verifyCanonical(managedDirectory, policy, resolveCapability, observed, false);
+}
+bool verifyManagedOrdinarySdDirectory(const char* path, Kind kind, const char* id,
+    const PackageRuntimePolicy& policy, uint32_t (*resolver)(const char*),
+    Identity& observed, bool verifyContents) {
+  observed = {};
+  if (!Storage.ready() || !safeSourcePath(path) || !safeId(id)) return false;
+  if (verifyCanonical(path, policy, resolver, observed, verifyContents))
+    return observed.kind == kind && !std::strcmp(observed.id, id);
+  // The forked CDC lineage was shipped as an ordinary ABI-2 package. Never
+  // move an arbitrary ABI-1 manifest using that alias into its holding root.
+  if (kind == Kind::Driver && !std::strcmp(id, kCdcAliasId)) return false;
+  OrdinaryTransactionPaths paths{};
+  if (kind != Kind::Driver || !ordinaryTransactionPaths(kind, id, paths) ||
+      (std::strcmp(path, paths.target) && std::strcmp(path, paths.backup))) return false;
+  return legacyIdentity(path, id, observed);
+}
+bool inspectManagedOrdinarySdTree(const char* path, Kind kind, const char* id) {
+  if (!Storage.ready() || !safeSourcePath(path) || !safeId(id)) return false;
+  std::unique_ptr<char[]> text(new (std::nothrow) char[kManifestBytes]{});
+  std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
+  if (!text || !plan) return false;
+  size_t length = 0;
+  if (Storage.exists((std::string(path) + "/.package.json").c_str()))
+    return readManifest(path, kOrdinaryManifestName, text.get(), kManifestBytes, length) &&
+        parseOrdinaryManifest(text.get(), length, *plan) && plan->identity.kind == kind &&
+        !std::strcmp(plan->identity.id, id) && inventory(path, *plan, false);
+  if (Storage.exists((std::string(path) + "/manifest.json").c_str())) {
+    DriverPackageInfo info{};
+    return kind == Kind::Driver && legacyInventory(path, false) &&
+        readManifest(path, "manifest.json", text.get(), kManifestBytes, length) &&
+        parseDriverPackageManifest(std::string(text.get(), length), info) && !std::strcmp(info.id, id);
+  }
+  return inventory(path, *plan, false); // Manifest-free cleanup is empty only.
+}
+bool purgeManagedOrdinarySdDirectory(const char* path, Kind kind, const char* id) {
+  return Storage.ready() && safeSourcePath(path) && purgeManaged(path, kind, id);
 }
 OrdinaryInstallOutcome installOrdinaryFromSd(
     const char* sourceDirectory, const PackageRuntimePolicy& policy,
@@ -385,6 +425,6 @@ OrdinaryInstallOutcome installOrdinaryFromSd(
   // itself takes an exclusive mapping lease and independently re-verifies.
   return installCanonicalOrdinaryPackage(metadata.get(), length, source, *destination,
       hash, resolveCapability, policy, io, ops, verify, purge, true,
-      allowDowngrade);
+      allowDowngrade, OrdinarySdLineageTransaction{policy, resolveCapability});
 }
 } // namespace RuntimePackages

@@ -51,6 +51,11 @@ class ProviderDiscoveryTest(unittest.TestCase):
             output.mkdir()
             (output / 'driver.elf').write_bytes(b'\x7fELF' + bytes(64))
 
+    def test_retired_cdc_alias_is_not_a_current_provider(self):
+        self.provider('old_cdc', 'usb-cdc-acm-v2', 'serial.port')
+        with self.assertRaisesRegex(ValueError, 'retired CDC alias'):
+            builder.source_candidates()
+
     def test_additional_class_and_dependency_order(self):
         self.provider('class_extra', 'test-serial-class', 'serial.port', ['usb.host'])
         self.provider('usb_host', 'usb-host', 'usb.host', ['usb.controller'])

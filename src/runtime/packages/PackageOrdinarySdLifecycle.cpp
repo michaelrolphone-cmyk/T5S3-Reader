@@ -1,4 +1,5 @@
 #include "PackageOrdinarySdAdapter.h"
+#include "PackageCdcSdMigration.h"
 #include "PackageOrdinaryManifest.h"
 #include "PackageOrdinaryTransaction.h"
 #include "PackageOrdinarySdTree.h"
@@ -52,6 +53,8 @@ OrdinaryTransactionResult uninstallOrdinaryFromSd(Kind kind, const char* id,
   if (!Storage.ready() || !resolveCapability ||
       !ordinaryTransactionPaths(kind, id, paths))
     return OrdinaryTransactionResult::InvalidIdentity;
+  if (cdcLineage(kind, id) && cdcMigrationPendingOnSd())
+    return OrdinaryTransactionResult::AmbiguousState;
   Ops ops;
   Identity observed{};
   const auto verify = [&policy, resolveCapability](const char* path,

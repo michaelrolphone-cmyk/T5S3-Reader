@@ -1,3 +1,4 @@
+#include "PackageCdcSdMigration.h"
 #include "PackageOrdinarySdZipAdapter.h"
 #include "PackageOrdinarySdAdapter.h"
 #include "PackageRteZipInstall.h"
@@ -201,31 +202,6 @@ struct Ops {
   bool rename(const char* src, const char* dst) const { return Storage.rename(src, dst); }
 };
 
-bool purgeManaged(const char* path, Kind kind, const char* expectedId) {
-  if (!path || !safeId(expectedId)) return false;
-  const std::string filename = std::string(path) + "/" + kOrdinaryManifestName;
-  if (!Storage.exists(filename.c_str())) {
-    OrdinaryPackagePlan empty{};
-    return removeKnown(path, empty); // Never delete a directory containing unknown data.
-  }
-  HalFile file = Storage.open(filename.c_str(), O_RDONLY);
-  if (!file.isOpen() || file.isDirectory()) {
-    if (file.isOpen()) (void)file.close();
-    return false;
-  }
-  const uint64_t bytes = file.fileSize64();
-  if (!bytes || bytes > kManifestCapacity) { (void)file.close(); return false; }
-  std::unique_ptr<char[]> text(new (std::nothrow) char[kManifestCapacity]{});
-  std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
-  if (!text || !plan) { (void)file.close(); return false; }
-  const bool read = file.read(reinterpret_cast<uint8_t*>(text.get()),
-                               static_cast<size_t>(bytes)) == static_cast<int>(bytes);
-  if (!file.close() || !read ||
-      !parseOrdinaryManifest(text.get(), static_cast<size_t>(bytes), *plan) ||
-      plan->identity.kind != kind || std::strcmp(plan->identity.id, expectedId))
-    return false;
-  return removeKnown(path, *plan);
-}
 } // namespace
 
 OrdinaryInstallOutcome installOrdinaryFromSdZip(
@@ -272,17 +248,17 @@ OrdinaryInstallOutcome installOrdinaryFromSdZip(
   Hash hash;
   Ops ops;
   uint8_t io[kOrdinaryIoBytes]{};
-  const auto verify = [&policy, resolveCapability](const char* path, Identity& observed) {
-    return verifyOrdinarySdDirectory(path, policy, resolveCapability, observed);
+  const auto verify = [&policy, resolveCapability, kind, &id](const char* path, Identity& observed) {
+    return verifyManagedOrdinarySdDirectory(path, kind, id.c_str(), policy, resolveCapability, observed);
   };
   const auto purge = [kind, &id](const char* path) {
-    return purgeManaged(path, kind, id.c_str());
+    return purgeManagedOrdinarySdDirectory(path, kind, id.c_str());
   };
   // Archive CRC/topology, SHA-256, ABI/import, stage verification and
   // generation-preserving publication are all checked inside this call.
   return installOrdinaryFromRteZip(readAt, archive.size(), manifest.get(),
       kManifestCapacity, *destination, hash, resolveCapability, policy,
-      io, ops, verify, purge, true);
+      io, ops, verify, purge, true, OrdinarySdLineageTransaction{policy, resolveCapability});
 }
 
 } // namespace RuntimePackages

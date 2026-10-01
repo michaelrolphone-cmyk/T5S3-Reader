@@ -279,6 +279,8 @@ def update_index(index: Any, product: str, record: Any) -> dict[str, Any]:
     if not isinstance(index, dict) or index.get("schema") != 1:
         raise ValueError("index must be an object with schema=1")
     normalized = validate_record(product, record)
+    if product == "drivers" and normalized["id"] == "usb-cdc-acm-v2":
+        raise ValueError("retired CDC alias cannot be republished")
     result = {"schema": 1, "firmware": index.get("firmware"), "apps": index.get("apps"),
               "drivers": index.get("drivers")}
     if result["apps"] is None:
@@ -305,6 +307,13 @@ def update_index(index: Any, product: str, record: Any) -> dict[str, Any]:
     current = {entry.get("id"): entry for entry in entries if isinstance(entry, dict)}
     if len(current) != len(entries):
         raise ValueError(f"{key} index contains malformed or duplicate entries")
+    if product == "drivers" and normalized["id"] == "usb-cdc-acm":
+        alias = current.get("usb-cdc-acm-v2")
+        if alias and version_tuple(normalized["version"]) <= version_tuple(alias.get("version")):
+            raise ValueError("canonical CDC must be newer than the retired alias")
+        # The explicit canonical update retires only this historical row;
+        # unrelated driver/app records and immutable historical releases remain.
+        current.pop("usb-cdc-acm-v2", None)
     previous = current.get(normalized["id"])
     if previous:
         old_version = version_tuple(previous.get("version"))

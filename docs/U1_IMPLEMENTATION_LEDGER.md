@@ -13,6 +13,42 @@ and auditing the remaining whole-U1 acceptance gates. Other continuations must
 not write this branch until this claim is explicitly released. No live release,
 index, tag, master update or flash. CI is feedback, not an idle-work gate.
 
+## October 1: canonical CDC lineage and recoverable migration
+
+Archive checkpoint **014fb6f7fbf26ced95fdce03d6d6943275076041** is green on
+PlatformIO/host **36816333359** and USB/ELF **36816333240**, including the actual
+archive service ELF, runtime/exact import admission, ordinary ZIP/catalog and
+both firmware/app targets. It is the pinned development integration baseline.
+Current master remains **1e0188c1**; unmerged sibling version reservations are
+not incorporated. Firmware stays 1.3.48 pending final U1 reconciliation.
+
+The next connected slice repairs CDC identity to **usb-cdc-acm 0.1.8** above
+alias source **usb-cdc-acm-v2 0.1.7** and observed published 0.1.0 lineages.
+ZIP/directory intake, preview and recovery share the prior canonical ABI-1
+legacy adapter. The same ordinary stager/publisher is wrapped with both exact
+root leases and a bounded intent binding candidate and alias manifest hashes.
+Unknown data/records, active pins and non-increasing versions refuse mutation;
+valid precommit prefixes roll back safely, committed cleanup is manifest-last.
+Boot/explicit recovery and stage/uninstall/legacy guards share this state;
+uncertain CDC migration does not disable unrelated providers.
+
+Driver Manager **1.0.7 -> 1.0.8** uses truthful recovery wording for rollback as
+well as publication; current source/published baseline is 1.0.6.
+The ABI-1 proxy/loader sources are now historical test fixtures only. Current
+builders, source graph, descriptor and output paths use canonical identity.
+Future authorized release-index update retires only the alias row after a
+strict cross-lineage comparison. No live index or release changed.
+
+Host state-machine and actual SD-wrapper tests pass, including namespace read
+faults, each rename interruption, partial record writes, both-generation digest
+substitution, unknown records/data, active roots and partial cleanup. Full driver
+and ordinary-package aggregates, Driver Manager UI fixture and release
+record/index/discovery checks passed locally; target compile/link/package
+verification is pending.
+Detailed ordering, version evidence and verification limits are in
+**U1_CDC_IDENTITY_MIGRATION.md**. Final source checks are reported separately;
+this is not a physical power-cut or milestone-completion claim.
+
 ## October 1: archive attribute refusal and retained target evidence
 
 The target stack-audit correction is published **d86f411a** (local

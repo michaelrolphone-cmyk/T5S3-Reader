@@ -1,3 +1,4 @@
+#include "runtime/packages/PackageCdcSdMigration.h"
 #include <HalStorage.h>
 #include <Logging.h>
 #include <NativeAppLauncher.h>
@@ -99,6 +100,11 @@ bool rebuildRecoveryInventory() {
         if (found.size() > kMaxDriverAssets + 1) valid = false;
     }
     if (!directory.close() || !valid) return false;
+    if (RuntimePackages::cdcMigrationPendingOnSd() &&
+        std::none_of(found.begin(), found.end(), [](const RecoveryItem& item) {
+            return !item.isDownload && item.id == RuntimePackages::kCdcCanonicalId;
+        })) found.push_back({RuntimePackages::kCdcCanonicalId, false});
+    if (found.size() > kMaxDriverAssets + 1) return false;
     std::sort(found.begin(), found.end(), [](const RecoveryItem& a, const RecoveryItem& b) {
         if (a.isDownload != b.isDownload) return a.isDownload;
         return a.id < b.id;
@@ -168,6 +174,7 @@ bool recoveryGet(uint32_t index, t5_driver_recovery_entry_t* out) {
         case State::RecoveryRequired:
         case State::InvalidInstalled:
             out->state = T5_DRIVER_RECOVERY_REQUIRES_REPAIR;
+            out->can_retry = item.id == RuntimePackages::kCdcCanonicalId && RuntimePackages::cdcMigrationPendingOnSd();
             break;
     }
     return true;
@@ -180,8 +187,11 @@ bool recoveryRetry(uint32_t index) {
     const std::string id = recoveryItems[index].id;
     const auto result = RuntimeDrivers::retryDriverStage(id.c_str());
     const bool okay = result == RuntimePackages::OrdinaryTransactionResult::Published ||
-                      result == RuntimePackages::OrdinaryTransactionResult::CleanupPending;
-    if (okay && !rebuildRecoveryInventory()) LOG_ERR("DRVMGR", "Installed stage; recovery refresh failed");
+                      result == RuntimePackages::OrdinaryTransactionResult::CleanupPending ||
+                      result == RuntimePackages::OrdinaryTransactionResult::InstalledVerified ||
+                      result == RuntimePackages::OrdinaryTransactionResult::PreviousRestored ||
+                      result == RuntimePackages::OrdinaryTransactionResult::NoInstalledPackage;
+    if (okay && !rebuildRecoveryInventory()) LOG_ERR("DRVMGR", "Reconciled stage; recovery refresh failed");
     return okay;
 }
 

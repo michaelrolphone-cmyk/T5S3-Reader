@@ -202,7 +202,7 @@ jobs:
       - name: Build Xtensa provider ELFs
         run: |
           python scripts/build_usb_cdc_v2.py
-          bash test/run_native_app_test.sh dist/experimental/usb-cdc-acm-v2/driver.elf
+          bash test/run_native_app_test.sh dist/experimental/usb-cdc-acm/driver.elf
           python scripts/build_usb_cp210x_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-cp210x-v2/driver.elf
           python scripts/build_usb_ch34x_v2.py

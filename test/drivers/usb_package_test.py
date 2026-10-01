@@ -75,7 +75,7 @@ class UsbCdcPackage(unittest.TestCase):
         startup = (ROOT / 'Drivers/usb_controller_esp32s3/HostStartup.h').read_text(encoding='utf-8')
         return base.replace('#include "HostStartup.h"', startup)
     def test_installed_usb_cdc_elf_activation_uses_explicit_json_strings(self):
-        source = (ROOT / 'src/runtime/drivers/UsbCdcDriverRuntime.cpp').read_text(encoding='utf-8')
+        source = (ROOT / 'test/drivers/legacy_cdc/UsbCdcDriverRuntime.cpp').read_text(encoding='utf-8')
         self.assertNotIn(' | nullptr;', source)
         self.assertIn('const JsonDocument& view = doc;', source)
         self.assertIn('view["requires"].is<JsonArrayConst>()', source)

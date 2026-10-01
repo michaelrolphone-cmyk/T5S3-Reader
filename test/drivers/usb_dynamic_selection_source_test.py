@@ -28,7 +28,7 @@ publisher = (root / 'src/runtime/capabilities/SerialProviderDevices.h').read_tex
 for source in (selector, session, manager, serial_session, publisher):
     for forbidden in ('RiscUsbControllerV1.h', 'RiscUsbProviderV1.h',
                       'nativeUsb', 'USBREF', 'VBUSREF', 'usb_host_',
-                      '"usb-host-v2"', '"usb-cdc-acm-v2"',
+                      '"usb-host-v2"', '"usb-cdc-acm"',
                       '"usb-cp210x-v2"', 'vid ==', 'switch (vid)'):
         assert forbidden not in source, f'transport-specific core dependency: {forbidden}'
 

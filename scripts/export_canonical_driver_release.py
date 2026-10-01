@@ -86,6 +86,8 @@ def export(identities: set[str] | None = None, output: Path | None = None) -> No
                 not runtime_identity(kind, identity, version, architecture, artifact) or
                 directory.name != identity):
             raise ValueError(f'invalid package identity or schema: {directory}')
+        if kind == "driver" and identity == "usb-cdc-acm-v2":
+            raise ValueError("retired CDC alias cannot be exported")
         key = (kind, identity, architecture)
         if key in seen:
             raise ValueError(f'duplicate package identity/target: {key}')

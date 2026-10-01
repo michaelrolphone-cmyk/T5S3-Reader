@@ -101,8 +101,8 @@ jobs:
 
       - name: Build and validate installable USB CDC driver
         run: |
-          python scripts/build_usb_cdc_driver.py
-          bash test/run_native_app_test.sh dist/drivers/usb-cdc-acm/driver.elf
+          python scripts/build_usb_cdc_v2.py
+          bash test/run_native_app_test.sh dist/experimental/usb-cdc-acm/driver.elf
 
       - name: Build and validate all released apps and manifests
         run: |

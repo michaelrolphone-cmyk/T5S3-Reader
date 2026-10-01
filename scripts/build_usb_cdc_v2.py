@@ -11,13 +11,13 @@ from native_app_symbols import firmware_exports, validate_imports
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "Drivers/usb_cdc_v2"
-OUTPUT = ROOT / "dist/experimental/usb-cdc-acm-v2"
+OUTPUT = ROOT / "dist/experimental/usb-cdc-acm"
 
 
 def build(cc=None):
     manifest = json.loads((SOURCE / "manifest.json").read_text())
     required = {
-        "type": "driver", "id": "usb-cdc-acm-v2", "driver_abi": 2,
+        "type": "driver", "id": "usb-cdc-acm", "driver_abi": 2,
         "architecture": "xtensa-esp32s3", "file_name": "driver.elf",
         "requires": [{"capability": "usb.host", "api": 1}],
         "provides": [{"capability": "serial.port", "api": 1}],

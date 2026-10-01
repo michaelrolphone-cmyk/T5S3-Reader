@@ -66,6 +66,20 @@ class ReleaseIndexTests(unittest.TestCase):
     def setUp(self):
         self.empty = {"schema": 1, "firmware": None, "apps": [], "drivers": []}
 
+    def test_cdc_lineage_retirement_is_strict_and_preserves_other_rows(self):
+        alias = validate_record("drivers", package("drivers", "usb-cdc-acm-v2", "0.1.7"))
+        other = validate_record("drivers", package("drivers", "usb-host", "0.1.2"))
+        index = {**self.empty, "drivers": [alias, other]}
+        for version in ("0.1.6", "0.1.7"):
+            with self.assertRaisesRegex(ValueError, "newer than the retired alias"):
+                update_index(index, "drivers", bundle("usb-cdc-acm", version))
+        updated = update_index(index, "drivers", bundle("usb-cdc-acm", "0.1.8"))
+        self.assertEqual([row["id"] for row in updated["drivers"]], ["usb-cdc-acm", "usb-host"])
+        self.assertEqual(updated["drivers"][1], other)
+        self.assertEqual(index["drivers"], [alias, other])
+        with self.assertRaisesRegex(ValueError, "retired CDC alias"):
+            update_index(updated, "drivers", bundle("usb-cdc-acm-v2", "0.1.9"))
+
     def test_updates_only_selected_product_and_preserves_others(self):
         index = update_index(self.empty, "apps", package("apps", "clock", "1.0.0"))
         index = update_index(index, "drivers", package("drivers", "usb-host", "0.2.0"))

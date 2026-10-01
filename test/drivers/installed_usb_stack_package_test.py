@@ -32,7 +32,7 @@ BASELINE = {
     'usb-controller-esp32s3': ('usb.controller', ['board.power.vbus']),
     'usb-host-v2': ('usb.host', ['usb.controller']),
     'usb-mass-storage': ('storage.volume', ['usb.host']),
-    'usb-cdc-acm-v2': ('serial.port', ['usb.host']),
+    'usb-cdc-acm': ('serial.port', ['usb.host']),
     'usb-cp210x-v2': ('serial.port', ['usb.host']),
     'usb-serial-witness': ('serial.port', ['usb.host']),
     'usb-ftdi': ('serial.port', ['usb.host']),

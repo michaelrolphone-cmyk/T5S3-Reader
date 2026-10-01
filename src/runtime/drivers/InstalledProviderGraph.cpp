@@ -1,3 +1,5 @@
+#include "runtime/packages/PackageCdcSdMigration.h"
+#include "runtime/packages/PackageMutationGate.h"
 #include "InstalledProviderGraph.h"
 #include "native/NativeStreamBridge.h"
 #include "DeviceProviderExecutorV2.h"
@@ -391,6 +393,14 @@ void undoPins() {
 } // namespace
 
 bool prepare() {
+    if (RuntimePackages::cdcMigrationPendingOnSd()) {
+        RuntimePackages::ScopedPackageMutation mutation;
+        RuntimePackages::Identity recovered{};
+        if (mutation) (void)RuntimePackages::reconcileCdcMigrationFromSd(kPolicy,
+            [](const char*) -> uint32_t { return UINT32_MAX; }, recovered);
+        // Uncertain CDC state blocks only its two roots. Independent software
+        // and unrelated hardware providers remain usable during repair.
+    }
     if (graph) return true;
     if (!Storage.ready()) return false;
     graph = new (std::nothrow) RuntimeProviders::GraphV2(nativeProviderStreamHost());
@@ -436,6 +446,8 @@ bool nextProvider(const char* capability, uint32_t version, size_t* cursor,
                     length < sizeof(frame->id) && safeId(frame->id);
                 (void)item.close();
                 if (!valid) continue;
+                if (RuntimePackages::cdcLineage(root.kind, frame->id) &&
+                    RuntimePackages::cdcMigrationPendingOnSd()) continue;
                 if (count == kMaxProviders ||
                     !pathFor(frame->name, root.path, frame->id, "provider-abi.v1")) {
                     *cursor = SIZE_MAX; break;

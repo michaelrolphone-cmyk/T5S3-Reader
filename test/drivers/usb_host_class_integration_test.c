@@ -200,7 +200,7 @@ int main(int argc, char **argv) {
     void *ch_library = dlopen(argv[4], RTLD_NOW);
     void *witness_library = dlopen(argv[5], RTLD_NOW);
     const risc_driver_v2 *host_driver = load(host_library, "usb-host-v2");
-    const risc_driver_v2 *cdc = load(cdc_library, "usb-cdc-acm-v2");
+    const risc_driver_v2 *cdc = load(cdc_library, "usb-cdc-acm");
     const risc_driver_v2 *cp = load(cp_library, "usb-cp210x-v2");
     const risc_driver_v2 *ch = load(ch_library, "usb-ch34x-v2");
     const risc_driver_v2 *witness = load(witness_library, "usb-serial-witness");

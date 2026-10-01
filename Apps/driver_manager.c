@@ -221,7 +221,7 @@ static bool recovery_screen(const t5_driver_manager_api_v1 *driver,
         int32_t retry = -1, discard = -1;
         if (item.can_retry) {
             retry = (int32_t)n;
-            options[n++] = (t5_ui_list_row_t){"Retry verified stage", "Rehash/publish offline", "Retry", 0};
+            options[n++] = (t5_ui_list_row_t){"Retry recovery", "Verify/reconcile offline", "Retry", 0};
         }
         if (item.can_discard) {
             discard = (int32_t)n;
@@ -230,7 +230,7 @@ static bool recovery_screen(const t5_driver_manager_api_v1 *driver,
         const int32_t choice = menu(ui, "Recovery actions", item.id, options, n);
         if (retry >= 0 && choice == retry) {
             const bool ok = driver->recovery_retry((uint32_t)selected);
-            snprintf(status, sizeof(status), "%s", ok ? "Verified stage published" : "Retry refused; files retained");
+            snprintf(status, sizeof(status), "%s", ok ? "Recovery completed; list refreshed" : "Retry refused; files retained");
         } else if (discard >= 0 && choice == discard &&
                    confirm(ui, item.id, "Discard retained files")) {
             const bool ok = driver->recovery_discard((uint32_t)selected);

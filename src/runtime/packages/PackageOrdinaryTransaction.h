@@ -2,6 +2,7 @@
 
 #include "PackagePreflight.h"
 #include "PackageUseGate.h"
+#include "PackageCdcLineage.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -119,6 +120,7 @@ OrdinaryTransactionResult recoverOrdinaryPackage(Ops& ops, Kind kind,
   OrdinaryTransactionPaths paths{};
   if (!ordinaryTransactionPaths(kind, id, paths))
     return OrdinaryTransactionResult::InvalidIdentity;
+  if (cdcLineageBlocked(ops, kind, id)) return OrdinaryTransactionResult::AmbiguousState;
   // Normal inventory is read-only when there is no interrupted transaction.
   if (!ops.exists(paths.backup) && !ops.exists(paths.removing)) {
     if (!ops.exists(paths.target)) return OrdinaryTransactionResult::NoInstalledPackage;
@@ -132,13 +134,15 @@ OrdinaryTransactionResult recoverOrdinaryPackage(Ops& ops, Kind kind,
       verify, purge, observed);
 }
 
+namespace OrdinaryTransactionDetail {
+// Caller owns the exact target replacement lease for this entire operation.
 // The target and staged directory have already been fully integrity-checked;
 // this re-verifies both under the exclusive identity lease before publication.
 // Normal callers accept only a NEWER semver or a fresh installation. An
 // explicit package-manager replacement may allow an OLDER semver, but neither
 // metadata nor the caller can bypass the active mapping gate or identity check.
 template <typename Ops, typename Verify, typename Purge>
-OrdinaryTransactionResult publishOrdinaryPackage(Ops& ops,
+OrdinaryTransactionResult publishLocked(Ops& ops,
     const Identity& candidate, Verify verify, Purge purge, Identity& observed,
     bool allowDowngrade = false) {
   OrdinaryTransactionPaths paths{};
@@ -148,8 +152,6 @@ OrdinaryTransactionResult publishOrdinaryPackage(Ops& ops,
       candidate.legacyVersion ||
       !ordinaryTransactionPaths(candidate.kind, candidate.id, paths))
     return OrdinaryTransactionResult::InvalidIdentity;
-  PackageReplacementLease lease(paths.target);
-  if (!lease) return OrdinaryTransactionResult::InUse;
   if (!ops.exists(paths.stage) ||
       !OrdinaryTransactionDetail::inspect(verify, paths.stage,
           candidate.kind, candidate.id, observed) ||
@@ -197,6 +199,26 @@ OrdinaryTransactionResult publishOrdinaryPackage(Ops& ops,
   return OrdinaryTransactionResult::Published;
 }
 
+} // namespace OrdinaryTransactionDetail
+
+template <typename Ops, typename Verify, typename Purge>
+OrdinaryTransactionResult publishOrdinaryPackage(Ops& ops,
+    const Identity& candidate, Verify verify, Purge purge, Identity& observed,
+    bool allowDowngrade = false) {
+  OrdinaryTransactionPaths paths{};
+  if (!ordinaryTransactionPaths(candidate.kind, candidate.id, paths))
+    return OrdinaryTransactionResult::InvalidIdentity;
+  if (candidate.kind == Kind::Driver && !std::strcmp(candidate.id, kCdcAliasId))
+    return OrdinaryTransactionResult::InvalidIdentity;
+  if (cdcLineageBlocked(ops, candidate.kind, candidate.id) ||
+      (candidate.kind == Kind::Driver && !std::strcmp(candidate.id, kCdcCanonicalId) &&
+       ops.exists(kCdcAliasRoot))) return OrdinaryTransactionResult::AmbiguousState;
+  PackageReplacementLease lease(paths.target);
+  if (!lease) return OrdinaryTransactionResult::InUse;
+  return OrdinaryTransactionDetail::publishLocked(ops, candidate, verify, purge,
+                                                  observed, allowDowngrade);
+}
+
 // Uninstallation never activates any package or grants a capability. The
 // rename to a manager-owned tombstone commits the removal request. Recovery
 // retries selective purge after an interrupted removal, never reinstalls it.
@@ -206,6 +228,7 @@ OrdinaryTransactionResult uninstallOrdinaryPackage(Ops& ops, Kind kind,
   OrdinaryTransactionPaths paths{};
   if (!ordinaryTransactionPaths(kind, id, paths))
     return OrdinaryTransactionResult::InvalidIdentity;
+  if (cdcLineageBlocked(ops, kind, id)) return OrdinaryTransactionResult::AmbiguousState;
   PackageReplacementLease lease(paths.target);
   if (!lease) return OrdinaryTransactionResult::InUse;
   const auto recovery = OrdinaryTransactionDetail::recoverLocked(ops, paths,

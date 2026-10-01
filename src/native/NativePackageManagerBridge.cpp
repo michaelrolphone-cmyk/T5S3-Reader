@@ -12,6 +12,7 @@
 #include "NativeOnlineOrdinaryCatalog.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageMutationGate.h"
+#include "runtime/packages/PackageCdcSdMigration.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/PackageOrdinarySdZipAdapter.h"
@@ -217,6 +218,19 @@ bool describeIdentity(const RuntimePackages::Identity& identity,
     std::strcpy(out->id, identity.id);
     std::strcpy(out->version, identity.version);
     std::strcpy(out->artifact, identity.artifact);
+    if (identity.kind == RuntimePackages::Kind::Driver &&
+        !std::strcmp(identity.id, RuntimePackages::kCdcAliasId)) return true;
+    if (identity.kind == RuntimePackages::Kind::Driver &&
+        !std::strcmp(identity.id, RuntimePackages::kCdcCanonicalId)) {
+        RuntimePackages::Identity installed{};
+        bool allowed = false;
+        const bool valid = RuntimePackages::previewCanonicalCdcFromSd(identity, kPolicy,
+            availableCapability, installed, allowed);
+        out->valid_installation = valid ? 1 : 0;
+        out->install_allowed = valid && allowed ? 1 : 0;
+        if (valid && installed.version[0]) std::strcpy(out->installed_version, installed.version);
+        return true;
+    }
     bool good = true;
     if (Storage.exists(paths.target)) {
         RuntimePackages::Identity installed{};
