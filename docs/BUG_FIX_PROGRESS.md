@@ -1,6 +1,6 @@
 # Bug repair progress
 
-Snapshot: 2026-10-01 01:55 UTC. This record supersedes the pre-merge restoration snapshot.
+Snapshot: 2026-10-01 02:03 UTC. This record supersedes the pre-merge restoration snapshot.
 
 ## Active hourly run — native confirmation safety
 
@@ -13,10 +13,11 @@ Snapshot: 2026-10-01 01:55 UTC. This record supersedes the pre-merge restoration
 - Published index `e495c5e1` and current master both have clear_cache 1.0.0 and ota_update 1.0.0; planned app-only bump to 1.0.1 each. Existing UI event ABI suffices; no firmware bump
 - Reconciled scan `66bc650056964dcba8e5164d6d76f6c45cdb81ab` by affected function/trigger/failure: 249 native confirmation differs from 246; 250 terminal FLASH_END loss differs from earlier flashing reports; 251 skipped-role/incomplete validation differs from 16 persistence rollback and 17 labels. IDs 249–251 preserve scan provenance; 250/251 remain unclaimed/unvalidated
 - Current inventory: **240 canonical reports, 238 outstanding** (249 claimed; 16/17 on hold; 235 need revalidation); 91/205 fixed on master. Next unused ID **252**. Historical counts below describe the earlier snapshot
-- Draft [#334](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/334); exact remote head `f5a876549a6bf3a216a37afbe374d4998ed155c1` verified by fetch/content comparison; active claim commit `2697c3faa5432b41d30fde2302a1872be49ac610`
+- Draft [#334](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/334); exact remote head `98943199054e409987a957b9b909f32ccd4c9f49` verified by fetch/content comparison; active claim commit `2697c3faa5432b41d30fde2302a1872be49ac610`
 - PASS: 2,788 ASan/UBSan cases linking actual C apps and verbatim production event/hit-test/rotation functions; baseline body-row case fails independently for each original app. All 24 mappings/four orientations, non-control taps, explicit touch/physical Confirm, held buttons, cancellation, exit/poll failure, service failure/reopen and missing event API covered. Rendering/input hardware/destructive services are fixtures
 - PASS: full native aggregate, C syntax, shell syntax, whitespace. LeakSanitizer disabled for ptrace. Both local target app builds attempted and blocked by absent Xtensa compiler
-- Exact-head CI [36803281830](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36803281830) running; retain active claim until terminal. Both app manifests bumped to 1.0.1, unchanged minimum firmware
+- Initial CI 36803281830 passed both firmware-board/all-app builds and native aggregate, but old clear_cache/ota_update rendering fixtures lacked the required event callback. Those fixtures now supply explicit events without removing assertions; full springboard/app-manifest suite and focused regression pass locally
+- Final exact-head CI [36803968828](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36803968828) pending/running on `98943199054e409987a957b9b909f32ccd4c9f49`; retain active claim until terminal. Both app manifests bumped to 1.0.1, unchanged minimum firmware
 - Next: finish exact-head host/two-board/app CI and release claim with terminal result. No live deletion, install, flash, merge or release
 
 ## Board applicability correction — review request withdrawn
