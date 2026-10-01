@@ -13,10 +13,10 @@ This document defines coordination and evidence rules for the existing bug scan/
 
 ## Scope and batch limits
 
-- Maintain at most two outstanding bugfix code batches. The ledger-only coordination PR does not count as a code batch. Each new batch contains 2–4 related small fixes or one substantial fix; the recovered single #205 repair is the initial exception.
+- There is no fixed numerical cap on outstanding bugfix code batches. Sequence work by user priority, active ownership, overlap, and evidence. The ledger-only coordination PR is not a bugfix code batch. Each batch should remain coherent: 2–4 closely related small fixes or one substantial fix; the recovered single #205 repair was the initial exception.
 - Avoid overlapping open PRs #324, #277, #220, #194, and #96; recheck their state and changed paths before selection. Do not mutate their branches.
 - No direct master writes, merges, auto-merge, release, deployment, or cross-repository edits. Keep ledger changes on the coordination branch and source changes on focused repair branches.
-- Candidate next batch, after revalidation and capacity check: #16 and #17 (Button Remap persistence rollback and misleading Reset/Cancel labels). This restoration does not implement that batch.
+- Candidate next batch, after revalidation and ownership/overlap check: #16 and #17 (Button Remap persistence rollback and misleading Reset/Cancel labels). This restoration does not implement that batch.
 
 ## One run
 
