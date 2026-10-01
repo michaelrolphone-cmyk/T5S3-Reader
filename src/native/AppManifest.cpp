@@ -6,6 +6,8 @@
 #include "runtime/packages/PackageJsonGuard.h"
 #include "runtime/memory/PsramJson.h"
 #include <cstring>
+#include <memory>
+#include <new>
 
 #ifndef CROSSPOINT_COMPAT_VERSION
 #define CROSSPOINT_COMPAT_VERSION CROSSPOINT_VERSION
@@ -186,13 +188,20 @@ bool readAppManifest(const char* path, t5_app_manifest_t& out,
                      std::string* appVersion, bool requireAppVersion,
                      RuntimeDevices::AppCapabilityRequirements* requirements,
                      AppFileTypes* fileTypes, AppIntegrity* integrity) {
+  out = {};
+  if (appVersion) appVersion->clear();
   if (requirements) *requirements = {};
   if (fileTypes) *fileTypes = {};
   if (integrity) *integrity = {};
   HalFile file = Storage.open(path, O_RDONLY);
-  if (!file.isOpen() || file.isDirectory() || file.fileSize64() > 2048) return false;
-  file.close();
-  const String json = Storage.readFile(path);
-  return parseAppManifest(std::string(json.c_str(), json.length()), out, appVersion,
+  if (!file.isOpen()) return false;
+  const uint64_t size = !file.isDirectory() ? file.fileSize64() : 0;
+  std::unique_ptr<char[]> bytes(size && size <= 2048 ? new (std::nothrow) char[static_cast<size_t>(size)] : nullptr);
+  const bool read = bytes && file.read(bytes.get(), static_cast<size_t>(size)) == static_cast<int>(size);
+  const bool closed = file.close();
+  if (!read || !closed) return false;
+  // Parse exactly the bounded bytes just read. A probe/reopen or a second
+  // digest-field read could observe a different sidecar generation.
+  return parseAppManifest(std::string(bytes.get(), static_cast<size_t>(size)), out, appVersion,
                           requireAppVersion, requirements, fileTypes, integrity);
 }

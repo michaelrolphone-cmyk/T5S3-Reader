@@ -55,7 +55,8 @@ this shared fetch/HTTP-worker path are not claimed changed by this slice.
   updated for the client API, preserving all existing freshness assertions. The
   full native-app aggregate passed after that fixture update
 - Both normal board jobs run that dependency-backed fixture against the
-  dependency already used by their source build. Target results are pending
+  dependency already used by their source build. Both workflows36851475126 /
+  36851475033 passed exact64d19d64, tree59044fc1 matching tested localf4ef3a0b
 
 ## Limits retained
 

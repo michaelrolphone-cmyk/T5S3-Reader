@@ -161,6 +161,7 @@ bool HalStorage::begin() {
 bool HalStorage::ready() const { StorageLock lock; return initialized; }
 StorageGenerationStamp HalStorage::generation() const { StorageLock lock; return storageGeneration.stamp(initialized); }
 bool HalStorage::unchanged(const StorageGenerationStamp& stamp) const { return stamp.matches(generation()); }
+void HalStorage::invalidateObservations() { StorageLock lock; storageGeneration.mutationAttempt(); }
 void HalStorage::externalStorageBegin() { StorageLock lock; storageGeneration.externalBegin(); }
 void HalStorage::externalStorageEnd(bool closed) { StorageLock lock; storageGeneration.externalEnd(closed); }
 void HalStorage::externalStorageUncertain() { StorageLock lock; storageGeneration.externalUncertain(); }

@@ -113,4 +113,22 @@ migration, generation-bound verification receipts and bounded-I/O/link evidence.
 Signing removal is separately approved, audited and integrated; ordinary SHA,
 permissions, import/version checks and rollback remain intact.
 
+October1 master8157c0bb backmerge retains the owner-merged Hollow Y correction.
+Hollow source lineage is master1.1.39 → cumulative U1 ZIP candidate1.1.40.
+Unmerged schoolroom1.1.41 is not included; reconcile again if that lineage lands
+before the final U1 candidate. No release/catalog publication is implied.
+
+October1 version coordination reserves Timecard1.0.2 for the independent
+clock-failure repair. U1's unreleased ZIP candidate advances1.0.2 →1.0.3;
+master/published baseline remains1.0.1 at this checkpoint. The repair's
+NativePlatformBridge change is not copied; merge it through actual master
+when the owner lands it, then recheck lineage before the final candidate.
+
+October1 subsequent master5c1284bf includes the owner-merged schoolroom1.1.41
+and its Y correction. Hollow candidate advances1.1.40 →1.1.42, preserving the
+merged behavior. The earlier table is the initial ZIP-transition snapshot;
+these dated reconciliation entries supersede its candidate values. Timecard's
+current U1 candidate remains1.0.3; its independent1.0.2 repair is not yet in this
+master snapshot.
+
 **Implementation In Progress**

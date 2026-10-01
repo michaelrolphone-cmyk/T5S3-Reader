@@ -6,7 +6,8 @@ struct HalFile {
   bool isOpen() const { return false; }
   bool isDirectory() const { return false; }
   unsigned fileSize64() const { return 0; }
-  void close() {}
+  int read(void*, size_t) { return -1; }
+  bool close() { return true; }
 };
 struct ManifestTestStorage {
   HalFile open(const char*, int) { return {}; }

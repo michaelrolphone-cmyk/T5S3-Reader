@@ -127,6 +127,17 @@ jobs:
           python scripts/build_all_apps.py --export-bundles
           python test/native_apps/risc_strike_release_test.py
 
+      - name: Measure verification work on actual built app pairs
+        run: |
+          bash test/run_app_manifest_test.sh ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src" dist/apps "dist/u1-app-verification-work-${{ matrix.board_id }}.json"
+          python3 scripts/stamp_u1_app_work_report.py "dist/u1-app-verification-work-${{ matrix.board_id }}.json" dist/apps "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Preserve compact app verification work evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: u1-app-verification-work-${{ matrix.board_id }}
+          path: dist/u1-app-verification-work-${{ matrix.board_id }}.json
+          if-no-files-found: error
+
       - name: Stage board-qualified RiscRTE firmware
         run: |
           grep -a -q "RISCRTE_BOARD_ID:${{ matrix.board_id }}" ".pio/build/${{ matrix.environment }}/firmware.bin"

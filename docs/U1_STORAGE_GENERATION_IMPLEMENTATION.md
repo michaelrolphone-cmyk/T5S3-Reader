@@ -68,7 +68,8 @@ so a later same-generation query can recover the missing provider. Directory
 errors and overflow still refuse partial inventories. The local
 production-HalStorage fixture verifies zero additional SD opens/reads on warm
 capture, invalidation and interleaved-mutation refusal, as well as repeated
-uncached raw-session queries. Target checks for this cache addition are pending.
+uncached raw-session queries. Target checks for this cache addition passed at029a58da (36836831826 /
+36836831798), with later checkpoints retaining the coverage.
 
 ## Evidence and limits
 
@@ -84,10 +85,20 @@ module teardown. Tests are wired into the existing platform host workflow.
 These are observed coherence epochs, **not** content hashes, durable verification
 receipts, persistent boot generations, permissions or post-install SD tamper
 proof. SdFat malformed LFN/checksum entries can be rejected without getError;
-no universal media-corruption detector is claimed. Provider executable admission, app and file-association caches still need
-their respective coherent policies; metadata reuse does not close those gates.
-Install/update/recovery retain SHA verification; durable receipt serialization,
-boot/recovery trust and explicit verification invalidation remain U1 work.
+no universal media-corruption detector is claimed. Provider/app owned-buffer admission and graph-owned remap proof are now connected
+and target-verified in their linked implementation notes. Staged receipt
+serialization and cold boot trust are implemented; persisted bytes never seed
+RAM proof. Install/update/recovery and explicit integrity checking retain SHA.
+
+Explicit full verification now advances this existing non-wrapping observed
+generation before canonical/pair checking. No media I/O, remount or handle/task
+ownership change is performed by that invalidation. The actual pair/helper
+fixture demonstrates the former failed-full-check memo reuse, its correction,
+old/in-flight snapshot non-promotion, and later valid warm reuse. A live reader
+remains owned and usable at the HalFile layer; prior observation-based consumers
+must reacquire current evidence. This correction's target checks are pending.
+The separate SD/SPI stop/quarantine contract remains an owner decision, not a
+consequence of advancing a RAM observation counter.
 Firmware final-version reconciliation remains required before a final candidate.
 
 **Implementation In Progress**

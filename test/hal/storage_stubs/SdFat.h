@@ -16,8 +16,11 @@ struct Node {
 inline std::map<std::string, std::shared_ptr<Node>> nodes;
 inline bool mountOkay = true;
 inline unsigned mounts = 0, closedWrites = 0, opens = 0, reads = 0;
+inline uint64_t bytesRead = 0;
 inline std::string failWrite, failRead, failClose, failDirectory, failOpen, failSeek, failName;
 inline unsigned mediaError = 0;
+inline void (*afterClose)(const std::string&) = nullptr;
+inline void (*afterRead)(const std::string&, size_t) = nullptr;
 inline std::string path(const char* name) {
   std::string input = name ? name : "";
   if (input.empty() || input[0] != '/') input = '/' + input;
@@ -110,6 +113,7 @@ class FsFile {
     }
     if (write_) ++FakeSd::closedWrites;
     node_.reset();
+    if (FakeSd::afterClose) FakeSd::afterClose(path_);
     return true;
   }
   uint8_t getError() const {
@@ -157,6 +161,8 @@ class FsFile {
     count = std::min(count, node_->bytes.size() - position_);
     std::memcpy(out, node_->bytes.data() + position_, count);
     position_ += count;
+    FakeSd::bytesRead += count;
+    if (FakeSd::afterRead) FakeSd::afterRead(path_, count);
     return static_cast<int>(count);
   }
   int read() {

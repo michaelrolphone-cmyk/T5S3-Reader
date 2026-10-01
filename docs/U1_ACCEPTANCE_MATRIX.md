@@ -6,7 +6,7 @@ Authority: `NEXT_HARDWARE_TEST_MILESTONE.md`,
 specifications. This is a source-backed implementation inventory, not a new
 milestone, a release request or a claim of owner hardware qualification.
 
-Baseline: sole PR #96, `impl/u1-riscrte`, current master **1e0188c1** integrated; merged Model Viewer and lab host checks passed.
+Baseline: sole PR #96, `impl/u1-riscrte`, current master **5c1284bf** integrated; merged Model Viewer and lab host checks passed.
 Full native-app/archive checks also passed at the preceding f79f7291 backmerge.
 Archive service checkpoint **014fb6f7** passed PlatformIO/host **36816333359**
 and USB/ELF **36816333240**, including actual service ZIP/import checks.
@@ -39,7 +39,7 @@ code needs the named production/link evidence, rather than a replacement design.
 | Bounded shared-stream ZIP intake and complete resource trees | Incomplete | Online archive bytes use existing HTTP stream path and whole-archive SHA; common offline bootstrap checks ZIP topology/CRC/declared entries and installs per-ID generations | Earlier directory-intake and declared-tree fixtures passed at green014fb6f7/5466d93c, but actual SD ZIP staging remained flat-only through bd9b09a7. This slice connects that shared offline/online adapter to the same tree primitives; its actual production-stage regression fails on bd9b09a7 and passes locally after correction. Both target workflows36835619954 / 36835620195 passed the correction at c80bdee1 (U1_NESTED_RESOURCE_IMPLEMENTATION.md). Scoped application and provider/driver/service resources are connected through the same stream registry and generation pins, with real bridge/loaded-ELF coverage. The same target checkpoints include these bridges; Explicit schema3 non-executing service packs and authorized indexed app/provider consumers now pass local integration tests; both target workflows passed at c80bdee1 (U1_RESOURCE_ONLY_IMPLEMENTATION.md). Strict ordinary ZIP intake now supplies the catalog byte cap before writes and a total deadline, with focused production-helper/adapter coverage. Archive SHA inspection has byte/time yield and duration bounds. Target builds passed at014fb6f7/5466d93c; lower SD/network-call termination remains open |
 | Independently installable ZIP service, bootstrap without that service | Connected; target/package checks passed at 014fb6f7 | `Services/archive_zip` supplies `archive.zip@1` through the existing provider graph and shared stored-ZIP bootstrap primitives. Actual loaded-ELF host tests cover copied scoped input/output, listing/extraction, empty files, expiry and teardown; ordinary install remains independent | Preserve the verified Xtensa service ZIP/catalog and explicit 128-KiB/17-entry/stored subset. See U1_ARCHIVE_SERVICE_IMPLEMENTATION.md. Independent service/provider delivery passed both workflows36829998475 / 36829998394 at bd9b09a7, including the actual built archive record/runtime locator. No live publication implied |
 | Stable CDC identity and safe legacy migration | Connected; target/package checks passed at5466d93c | `usb-cdc-acm` 0.1.8 replaces alias 0.1.7 through the existing ordinary engine, shared canonical ABI-1 adapter, two-root leases and fingerprint-bound retirement/recovery. Production proxy retired to test fixtures; builders/index update enforce canonical lineage | Both workflows36819882405/36819882484 passed matching-head firmware/ELF/ZIP/catalog; reconcile final version identities; preserve unknown data and partial-recovery evidence. See U1_CDC_IDENTITY_MIGRATION.md. No live release/index mutation or physical power-cut claim |
-| Generation-bound installed verification receipts / inventory snapshot | Connected; final performance/reachability evidence pending | Metadata-only installed inspection exists (`inspectInstalledOrdinarySdDirectory`, `inspectInstalledAppPair`); install/recovery retain SHA. Observed RAM storage epochs and strict retained Package Manager inventory passed both workflows at8dafce33; staged receipts/provider snapshots passed both workflows atc33cb044 after the guard-preserving frame correction; canonical app admission passed both workflows atad7a0431 | See U1_STORAGE_GENERATION_IMPLEMENTATION.md: Discarded-close uncertainty is verified at8dafce33; compatible capability metadata reuse passed both workflows at029a58da. Receipt/provider admission is target-verified atc33cb044 (U1_VERIFICATION_RECEIPT_IMPLEMENTATION.md); canonical app admission is target-verified; graph-owned remap proof passed at a928d444; checksum-bearing loose legacy admission passed both workflows at3ba73f92; measure bounded hot-path work, preserve full install/update/explicit verification |
+| Generation-bound installed verification receipts / inventory snapshot | Connected; final explicit-boundary target/performance evidence pending | Metadata-only installed inspection exists (`inspectInstalledOrdinarySdDirectory`, `inspectInstalledAppPair`); install/recovery retain SHA. Observed RAM storage epochs and strict retained Package Manager inventory passed both workflows at8dafce33; staged receipts/provider snapshots passed both workflows atc33cb044 after the guard-preserving frame correction; canonical app admission passed both workflows atad7a0431 | See U1_STORAGE_GENERATION_IMPLEMENTATION.md: Discarded-close uncertainty is verified at8dafce33; compatible capability metadata reuse passed both workflows at029a58da. Receipt/provider admission is target-verified atc33cb044 (U1_VERIFICATION_RECEIPT_IMPLEMENTATION.md); canonical app admission is target-verified; graph-owned remap proof passed at a928d444; checksum-bearing loose legacy admission passed both workflows at3ba73f92; measure bounded hot-path work (U1_ELF_HOT_PATH_AUDIT.md), explicit full-check invalidation now passes actual helper tests and awaits target checks, preserve full install/update/verification |
 | Physically remove package-signing-only subsystem | Complete at cf1ac054 | The signing checkpoint deletes 45 isolated implementation/tool/fixture/experiment files, removes unused preflight security floors and neutralizes internal signing names. [Exact audit](U1_SIGNING_PURGE_AUDIT.md) records all removals and retained helpers. Ordinary-package, springboard, provider graph, authorization and stream suites pass; the new absence guard passes | Both workflows passed with the files physically absent. Preserve all SHA/ABI/import/TLS/authorization/quiescence behavior and user media; no deployed data/settings are changed |
 | Final software integration and single owner qualification sheet | Incomplete | One U1 PR; current master integrated; repeated exact-head host/target checkpoints available | Close actual rows above, reconcile the final firmware version above actual master/published lineage, run final relevant builds/link/source checks, supply one coherent artifact inventory and hardware procedure only at the final handoff; no new interim owner test gate |
 
@@ -49,13 +49,20 @@ Checksum-bearing loose app admission is connected and passed actual-parser/owned
 buffer and aggregate host tests plus both workflows at3ba73f92
 (36848254092 / 36848254100). Canonical app admission passed both workflows at ad7a0431 and private
 graph-owned remap evidence passed both at a928d444 (36845426266 / 36845426285).
-Missing implementation: actual lower-I/O termination where synchronous SD/network
+Explicit full-verification invalidation is now connected at canonical/pair
+boundaries using the existing observed generation; the actual failed-check,
+in-flight and warm-recovery regression passes locally. Target verification
+remains pending. This does not choose or implement the SD/SPI fault policy. Missing implementation: actual lower-I/O termination where synchronous SD/network
 or indefinite storage-mutex waits can outlive cooperative deadlines.
 The loader slice passed both workflows at73288020 (U1_LOADER_IO_BOUNDS.md),
-bounding VFS descriptor contention and chunked read work. The local HTTP worker
-correction (U1_HTTP_WORKER_TERMINATION.md) has passing actual-dependency host
-coverage; target checks remain pending. Deeper HalStorage/media termination
-and synchronous SDK call limits remain open.
+bounding VFS descriptor contention and chunked read work. The HTTP worker
+correction (U1_HTTP_WORKER_TERMINATION.md) passed both workflows at64d19d64,
+including the actual-dependency body-loop witness. The local single-read
+legacy sidecar correction has passing actual-source fault tests; target checks
+remain pending (U1_LEGACY_SIDECAR_SNAPSHOT.md). Deeper HalStorage/media termination
+and synchronous SDK call limits remain open. The consequential SD/SPI fault
+policy is pending the owner choice in U1_SD_IO_OWNER_DECISION.md; no port patch
+or compatibility change is inferred from the proposed recommendation.
 
 Resource-only software now supports the minimum explicit data-only service use
 case and real app/provider read consumers, with both target workflows green at
@@ -78,7 +85,8 @@ see U1_FOUR_KIND_INDEPENDENT_DISTRIBUTION.md.
 
 ## Immediate closure order
 
-1. Verify the connected HTTP worker termination slice on target. The loader
+1. Verify the bounded single-read legacy adapter correction on target. HTTP
+   worker termination is target-green at64d19d64. The loader
    contention/read-work slice is target-green at73288020. Loose admission is target-green at3ba73f92; graph-owned remap
    evidence is target-green at a928d444.
 2. Close demonstrated lower-I/O gaps; finish

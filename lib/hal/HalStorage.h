@@ -18,6 +18,9 @@ class HalStorage {
   bool ready() const;
   StorageGenerationStamp generation() const;
   bool unchanged(const StorageGenerationStamp& stamp) const;
+  // Explicit integrity boundaries retire cached observations even when no
+  // managed write was observed. No media/reset/handle ownership change.
+  void invalidateObservations();
   // Trusted compatibility boundary, not exported to applications. Actual raw
   // storage imports hold an uncertainty window through module teardown.
   void externalStorageBegin();

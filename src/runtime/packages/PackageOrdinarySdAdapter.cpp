@@ -299,6 +299,7 @@ struct Ops {
 };
 bool verifyCanonical(const char* path, const PackageRuntimePolicy& policy,
                      uint32_t (*resolver)(const char*), Identity& observed, bool verifyContents = true) {
+  if (verifyContents) Storage.invalidateObservations();
   if (!path || !resolver || !directoryExists(path)) return false;
   SdDirectory directory(path);
   SdHash hash;

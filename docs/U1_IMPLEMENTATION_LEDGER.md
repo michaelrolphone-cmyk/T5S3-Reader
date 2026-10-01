@@ -7,15 +7,65 @@ The coordinating owner verified that the prior implementation worker was
 interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
 28-file staged resource slice from **cf1ac054** was preserved and integrated.
 This explicit transfer remains active; it was not based on claim expiry.
-Current target-green checkpoint is **73288020fe5e688ebe420b15dc2cbc4ca87119b1**,
-tree **76170c82bcf9c6716f8df52ad40752e06256590a**, identical to tested local
-**17cb7cdb**. Both workflows **36849119638 / 36849119632** passed the bounded loader
-slice. Loose admission passed **3ba73f92** (36848254092 / 36848254100);
-graph-owned remap passed **a928d444** (36845426266 / 36845426285).
-Master **1e0188c1** remains integrated; PR96 was verified open on October 1 at
-10:47 UTC. Sole ownership remains unchanged. The current HTTP worker correction
-has passing host tests; exact target integration is pending.
+Current target-green checkpoint is **64d19d645720cba5c207f67c5d7fa1a031a07c0a**,
+tree **59044fc1649d6737ceb22222fc6073298c935093**, identical to tested local
+**f4ef3a0b**. Both workflows **36851475126 / 36851475033** passed the HTTP correction,
+including both boards' actual Arduino body-loop witness. Bounded loader work
+passed **73288020** (36849119638 / 36849119632); loose admission passed **3ba73f92**
+(36848254092 / 36848254100). Master **5c1284bf** is now integrated; PR96 was
+verified open on October 1 at11:28 UTC. Sole ownership remains unchanged.
+Current local work corrects the existing legacy sidecar snapshot/read-close
+boundary; SD/SPI policy remains an explicit owner decision, with no port patch.
 No live release, index, tag, master update or flash. CI remains feedback.
+
+## October 1: backmerge merged Hollow Y correction
+
+Owner-merged master8157c0bb contributes the actual PR339 Y-emphasis correction
+and its tests. The sole conflict was the Hollow version: master1.1.39 remains
+below U1's cumulative unreleased ZIP candidate1.1.40, which is preserved. No
+unmerged PR340/schoolroom1.1.41 work is absorbed. Sidecar/work evidence was
+preserved first in local01a4f8fa (treef0920493); the integrated merge is being
+tested separately before publication. Firmware final-version reconciliation
+remains open; development checkpoints do not create a release exemption.
+
+## October 1: backmerge merged schoolroom continuation
+
+Owner-merged master5c1284bf now includes PR340, including its already integrated
+Y correction. It is no longer an unmerged payload. Hollow's source/master1.1.41
+requires the U1 cumulative immutable ZIP candidate to advance1.1.40 →1.1.42.
+The manifest is the sole content conflict; the merged schoolroom code, tests and
+preview are preserved. Timecard remains1.0.3 above the independent repair's
+reserved1.0.2. Local explicit-boundary correctionf9ad787c (treee26ee17f) passed
+actual parser/pair, storage and driver tests before this backmerge.
+
+## October 1: independent Timecard repair version coordination
+
+Master/published Timecard1.0.1 remains the baseline. The independent clock-
+failure repair reserves1.0.2; U1's cumulative unreleased ZIP identity advances
+1.0.2 →1.0.3 to avoid collision. No unmerged NativePlatformBridge repair is
+copied. Integrate it via master after the owner merges it, preserving both the
+repair and the independent immutable ZIP identity.
+
+## October 1: explicit full-check invalidation correction
+
+Actual pair/helper evidence reproduced an old same-epoch admission memo accepting
+changed bytes after a full SHA failure. Canonical and pair full-check boundaries
+now advance the existing observed storage generation before checking; metadata-
+only inspection does not. Old/in-flight snapshots cannot receive the new epoch;
+new valid verification can regain warm reuse. Tests also show the invalidation
+performs no media I/O or mount and retains a live reader. No stopped SD port
+policy, task/handle ownership or new registry is involved. Target checks pending.
+
+## October 1: one bounded legacy sidecar read
+
+The existing parser now receives one owned bounded buffer after checked close;
+the pair adapter consumes its validated AppIntegrity instead of another read.
+Actual-source media-mutation tests fail both the old probe/reopen parser and the
+old second-read adapter, and pass the correction. Sidecar/ELF close failures,
+full SHA, deadline and hash-free installed inspection are covered. Identity and
+manual-input compatibility stay unchanged. Target integration is pending.
+See U1_LEGACY_SIDECAR_SNAPSHOT.md. SD/SPI policy is separately recorded in
+U1_SD_IO_OWNER_DECISION.md and remains unapproved/unimplemented.
 
 ## October 1: HTTP worker idle-body termination
 
@@ -26,7 +76,7 @@ redirects, explicit socket/connect/handshake limits, bounded header/chunk lines
 and binary readBytes compatibility. Expired partial EOF remains failure.
 Actual unchanged dependency-loop tests demonstrate baseline-over-budget and
 fixed termination; normal network tests, actual fetch-path/catalog tests and
-the full native-app aggregate pass. Target integration is pending.
+the full native-app aggregate pass. Both target workflows passed at64d19d64.
 No new parser/network stack, cross-task socket deletion or TLS policy change.
 See U1_HTTP_WORKER_TERMINATION.md for remaining synchronous-call limits.
 

@@ -182,11 +182,15 @@ class LiveInstallContract(unittest.TestCase):
     def test_real_adapter_checks_content_and_mapped_executable(self):
         for required in ('mbedtls_sha256_starts_ret', 'mbedtls_sha256_update_ret',
                          'mbedtls_sha256_finish_ret', 'declaredSha[2 * i]',
-                         'declaredSize.as<unsigned>()', 'native_app_current_path()',
+                         'integrity.sizeBytes, integrity.sha256', 'native_app_current_path()',
                          'recoverPairTransaction(', 'publishPairTransaction(',
                          '!safePackageEntryName(filename)',
                          'verifyNamedPair(paths.stageElf.c_str(), paths.stageManifest.c_str(), filename, true)'):
             self.assertIn(required, ADAPTER)
+        self.assertIn('readAppManifest(manifest, parsed, nullptr, false, nullptr, nullptr, &integrity)', ADAPTER)
+        self.assertNotIn('Storage.readFile(manifest)', ADAPTER)
+        self.assertIn('if (verifyContents) Storage.invalidateObservations();', ADAPTER)
+        self.assertIn('if (verifyContents) Storage.invalidateObservations();', SD_ADAPTER)
         self.assertLess(ADAPTER.index('native_app_current_path()'),
                         ADAPTER.index('publishPairTransaction('))
 

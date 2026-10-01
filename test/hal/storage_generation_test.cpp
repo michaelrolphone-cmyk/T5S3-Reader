@@ -55,6 +55,10 @@ int main(int argc, char**) {
     char data[3]{};
     assert(reader.read(data, 2) == 2);
     assert(Storage.unchanged(stamp));
+    const auto opens = FakeSd::opens, reads = FakeSd::reads, mounts = FakeSd::mounts;
+    Storage.invalidateObservations();
+    assert(!Storage.unchanged(stamp) && Storage.ready() && reader.isOpen());
+    assert(FakeSd::opens == opens && FakeSd::reads == reads && FakeSd::mounts == mounts);
     assert(!Storage.begin());
     assert(reader.close());
   }

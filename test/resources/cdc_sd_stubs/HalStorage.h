@@ -69,6 +69,7 @@ class HalFile {
 };
 struct CdcStorage {
   bool ready() const { return true; }
+  void invalidateObservations() {}  // Epoch behavior is tested with production HalStorage.
   bool exists(const char* path) const { return std::filesystem::exists(CdcSdTest::full(path)); }
   HalFile open(const char* path, int flags) const { return HalFile(path, flags); }
   bool rename(const char* from, const char* to) const {

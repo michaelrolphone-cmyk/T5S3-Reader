@@ -26,3 +26,21 @@ c++ -std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual \
   "$repo_dir/src/native/ManagedAppAdmission.cpp" "$repo_dir/test/resources/managed_app_admission_test.cpp" \
   -lcrypto -o "$binary"
 "$binary"
+
+# Preserve the legacy pair transaction's full SHA while reading metadata once.
+c++ -std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual \
+  -DCROSSPOINT_VERSION='"1.2.49"' \
+  -I"$repo_dir/test/native_apps/pair_stubs" -I"$repo_dir/test/hal/storage_stubs" \
+  -I"$repo_dir/lib/hal" -I"$repo_dir/test/resources/cdc_sd_stubs" \
+  -I"$repo_dir/test/native_apps/manifest_stubs" -I"$repo_dir/test/programmer/stubs" \
+  -I"$repo_dir/test/native_apps/stubs" \
+  -I"$json_include" -I"$repo_dir/src" -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/lib/hal/HalStorage.cpp" "$repo_dir/src/native/AppManifest.cpp" \
+  "$repo_dir/src/native/AppPackageInstaller.cpp" "$repo_dir/test/native_apps/app_pair_snapshot_test.cpp" \
+  "$repo_dir/src/runtime/packages/PackageExecutableAdmission.cpp" \
+  -lcrypto -o "$binary"
+"$binary"
+
+if [[ $# -ge 2 ]]; then
+  "$binary" "$2" >"${3:?measurement output required}"
+fi
