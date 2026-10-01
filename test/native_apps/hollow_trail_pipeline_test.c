@@ -6,7 +6,9 @@
 static uint32_t now_ms,release_at;
 static unsigned allocations,frees,submissions,backbuffer_calls;
 static bool armed,overlapped,reject_once,failed_alloc,transition;
-static unsigned city_loading_polls;
+static unsigned transition_loading_polls,reader_releases;
+static bool journal_run;
+static unsigned transition_level;
 static uint8_t *stage;
 static uint8_t display[HT_PACKED_BYTES];
 static uint32_t clock_ms(void) { return ++now_ms; }
@@ -19,9 +21,9 @@ static bool ready(void) {
 }
 static bool poll_input(t5_app_input_t *out,uint32_t wait) {
     now_ms+=wait;
-    if(loading && ht.level==1) { ++city_loading_polls; assert(ht.x==95*256); }
+    if(loading && ht.level==transition_level) { ++transition_loading_polls; assert(ht.x==95*256); }
     assert(now_ms<20000);
-    *out=(t5_app_input_t){.buttons=T5_APP_BUTTON_RIGHT,.exit_requested=submissions>=3};
+    *out=(t5_app_input_t){.buttons=T5_APP_BUTTON_RIGHT,.exit_requested=submissions>=(journal_run?4u:3u)};
     if(stage && armed && now_ms<release_at && stage[0]!=0x5a) {
         overlapped=true;
         // No writes to queued display memory while staging the next frame.
@@ -47,17 +49,41 @@ static uint8_t *buffer(size_t *size) {
 }
 static bool submit_frame(uint16_t y,uint16_t height) {
     assert(ready());
-    if(!submissions) assert(y==0 && height==0);
+    if(!submissions || (journal_run && submissions>=2)) assert(y==0 && height==0);
     else assert(y==ht_dirty_top && height==ht_dirty_height);
     if(submissions==1 && stage) assert(!memcmp(display,stage,sizeof(display)));
     if(submissions==1 && reject_once) { reject_once=false; return false; }
-    ++submissions;
-    if(transition && submissions==2) {
-        ht.x=HT_GOAL*256; ht.y=ht_forest[9].top*256;
-        ht.vx=ht.vy=0; ht.grounded=true; ht.puzzle.solved=true; ht_step(0,false,false);
-        assert(ht.level==1 && ht.checkpoint==0);
+    if(journal_run && submissions==2) {
+        for(unsigned row=42;row<498;++row)
+            for(unsigned col=17;col<113;++col) assert(display[row*120+col]==0xa5);
+        assert(display[0]==255); // The notebook frame surrounds the typeset page.
     }
-    if(transition && submissions==3) assert(ht_geometry_level==1 && city_loading_polls>0);
+    if(journal_run && submissions==3) assert(display[0]!=0xa5);
+    ++submissions;
+    /* This fixture tests delayed-display ownership and live chapter changes.
+     * The intro timeline has dedicated coverage; leave it after the startup
+     * title frame so the historical submission counts remain about gameplay. */
+    if(submissions==1 && ht_cutscene.active) {
+        ht_cutscene.tick=HT_INTRO_TICKS;ht_cutscene.active=false;ht_cutscene.finished=true;
+        ht_cutscene_apply_handoff(&ht_cutscene);ht_input_rearm=false;++scene_revision;
+    }
+    if(journal_run && submissions==2) { reading=true; ht_journal_open(30); ++scene_revision; }
+    if(journal_run && submissions==3) { reading=false; ++scene_revision; }
+
+    if(transition && submissions==2) {
+        ht.level=transition_level-1;
+        ht.x=HT_GOAL*256; ht.y=ht_land[9].top*256;
+        ht.vx=ht.vy=0; ht.grounded=true; ht.puzzle.solved=true; ht.puzzle.opening=48; ht_step(0,false,false);
+        assert(ht.level==transition_level && ht.checkpoint==0);
+    }
+    if(transition && submissions==3) {
+        assert(ht_geometry_level==transition_level);
+        if(transition_level==1) {
+            /* Opaque composed city needs no obsolete skyline warmup. */
+            assert(!transition_loading_polls && !ht_cache_builds);
+            assert(ht_forest_frame_valid && ht_composed_frame_level==1);
+        } else assert(transition_loading_polls>0); /* Other chapters still freeze during warmup. */
+    }
     return true;
 }
 static uint32_t scans(void) { return now_ms/42; }
@@ -70,14 +96,27 @@ static const t5_video_api_v1 mock_video={.api_version=T5_VIDEO_API_VERSION,.stru
 const t5_app_api_v1 *t5_app_get_api(uint32_t v) { (void)v;return &mock_app; }
 const t5_video_api_v1 *t5_video_get_api(uint32_t v) { (void)v;return &mock_video; }
 const t5_math_api_v1 *t5_math_get_api(uint32_t v) { (void)v;return NULL; }
-const t5_provider_capability_api_v1 *t5_provider_capability_get_api(uint32_t v) { (void)v;return NULL; }
+static bool reader_page(void *context,const risc_reader_page_request_v1*q,risc_reader_page_result_v1*r) {
+    assert(context==(void*)1 && q->width==768 && q->height==456 && q->stride==96);
+    assert(q->offset<q->length); memset(q->pixels,0xa5,q->capacity); r->next_offset=q->length; return true;
+}
+static const risc_reader_typography_v1 reader_api={1,sizeof(reader_api),(void*)1,reader_page};
+static bool capability_acquire(const char *name,uint32_t version,t5_provider_capability_lease_t*token,const void**api) {
+    assert(version==1); *token=0; *api=NULL;
+    if(strcmp(name,"reader.typography")) return false;
+    *token=12; *api=&reader_api; return true;
+}
+static bool capability_release(t5_provider_capability_lease_t token) { assert(token==12); ++reader_releases; return true; }
+static const t5_provider_capability_api_v1 capability_api={1,sizeof(capability_api),capability_acquire,capability_release,NULL};
+const t5_provider_capability_api_v1 *t5_provider_capability_get_api(uint32_t v) { (void)v;return journal_run?&capability_api:NULL; }
 int main(void) {
-    for(unsigned scenario=0;scenario<3;++scenario) {
+    for(unsigned scenario=0;scenario<5;++scenario) {
         now_ms=release_at=0;allocations=frees=submissions=backbuffer_calls=0;
         armed=overlapped=false;reject_once=true;failed_alloc=scenario==1;stage=NULL;
-        transition=scenario==2;city_loading_polls=0;
+        transition=scenario==2 || scenario==4;transition_level=scenario==4?4:1;transition_loading_polls=0; journal_run=scenario==3; reader_releases=0;
         app_main();
-        assert(submissions==3 && backbuffer_calls==4);
+        assert(submissions==(journal_run?4u:3u) && backbuffer_calls==(journal_run?5u:4u));
+        assert(reader_releases==(journal_run?1u:0u));
         assert(frees==(failed_alloc?1u:2u));
         assert(overlapped==!failed_alloc);
     }

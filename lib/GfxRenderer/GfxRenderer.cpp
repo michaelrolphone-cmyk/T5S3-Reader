@@ -24,6 +24,7 @@ uint8_t resolveSdCardStyle(const SdCardFont& font, const EpdFontFamily::Style st
 }  // namespace
 
 const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const EpdGlyph* glyph) const {
+  if (glyphSource_) return glyphSource_->getGlyphBitmap(fontData, glyph);
   if (fontData->groups != nullptr) {
     auto* fd = fontCacheManager_ ? fontCacheManager_->getDecompressor() : nullptr;
     if (!fd) {
@@ -1110,6 +1111,7 @@ std::vector<std::string> GfxRenderer::wrappedText(const int fontId, const char* 
 
 // Note: Internal driver treats screen in command orientation; this library exposes a logical orientation
 int GfxRenderer::getScreenWidth() const {
+  if (glyphSource_) return panelWidth; // Detached targets already use logical dimensions.
   switch (orientation) {
     case Portrait:
     case PortraitInverted:
@@ -1122,6 +1124,7 @@ int GfxRenderer::getScreenWidth() const {
 }
 
 int GfxRenderer::getScreenHeight() const {
+  if (glyphSource_) return panelHeight;
   switch (orientation) {
     case Portrait:
     case PortraitInverted:

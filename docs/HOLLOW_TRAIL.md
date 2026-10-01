@@ -1,4 +1,797 @@
-# Hollow Trail 1.0.14
+# Hollow Trail 1.1.35 — slower cinematic, solid tableaus, continuous departure
+
+Hollow Trail **1.1.34 -> 1.1.35** responds to on-device review of the Forward-X introduction. The intro is deliberately slowed from roughly thirty seconds to about sixty-one seconds. The six text-bearing opening beats each hold for at least 4.8 seconds, with the two tall-grass memories lasting more than seven seconds each and a long uncaptioned profile walk after the house. Signal flashes are spaced farther apart so the player can read the prose, look back into the scene, and then notice the light rather than processing all three at once.
+
+Forward-X scenery is no longer staged primarily from thin rectangles and limbs. The tableau renderer now has filled perspective boxes and quadrilateral faces for furniture and architecture. Kitchen counter, basin, shelves, table, chair, window frame and bag have visible depth planes; condensation, floor seams and wall wear sit over those masses. Forward trees use filled tapering trunks, root flares, growth-following bark seams, multi-segment branches and irregular overlapping crowns. Forward characters use heavier limbs, a filled coat silhouette with shoulder/waist/hem shape, hair mass, braid/face details and a subdued clothing seam. The tall-grass memory adds a visibly flattened nest of stems and seed-head detail rather than reading as a wireframe field.
+
+Continuity changes after packing: the camera now cuts directly to the side-scroller profile at the exterior of the house. The house, roof, chimney, window, wall and a real dark doorway are present, the door leaf opens, and the protagonist visibly walks out of it before continuing through the garden, orchard, ditch and root-soft road. There is no longer a Forward-X walk that starts partway outside.
+
+The reported forest pop-in came from a cinematic actor-position threshold that created the deeper trunks only after the protagonist passed x=560. That threshold is removed. Orchard and forest-approach trees are permanently world anchored and culled only with generous geometry-aware off-screen extents; roots and observer trunks are also drawn before they can enter the display. A native regression checks that forest ink is already present ahead of the character while she is still before x=560.
+
+This update is layered on the 1.1.34 Y-motion emphasis and 960×270 foreground-detail work from current master; those gameplay and graphics A/B changes are retained unchanged.
+
+# Hollow Trail 1.1.34 — Y motion emphasis and 960×270 foreground detail
+
+During live gameplay, holding the same **Y / journal-back** control used to back out of journal views adds a transient **10% motion emphasis**. The authored scene pace stored in the game state is not changed: ground locomotion, climbing, tree exits, jump takeoff momentum and directional acceleration are boosted only while Y is held. Rolling/crate effort, rowing and rope pumping receive the same bounded emphasis so physical actions respond consistently.
+
+Gravity, jump height, puzzle timing, the tree-push struggle duration, weather, camera timing and the fixed simulation clock are unchanged. Releasing Y returns immediately toward the scene-directed pace. In the journal, pause screen and debug level picker, the button retains its existing back/navigation behavior and never accelerates gameplay.
+
+
+The graphics A/B follow-up also replaces the full-native foreground experiment with **960×270** foreground detail. The original full-native 960×540 background/grotto code is restored unchanged. Foreground geometry keeps native horizontal resolution but computes only 270 Y rows, duplicating each row to the two physical output rows before the existing 960×540 camera/vignette/packer path. This is roughly 2× baseline foreground raster sampling instead of 4×, using only power-of-two scaling.
+
+# Hollow Trail 1.1.32 — Forward-X cutscene tableaus
+
+Hollow Trail **1.1.31 -> 1.1.32** extends the timeline cutscene layer with a cutscene-only three-axis tableau renderer. Gameplay remains a side scroller. A Forward-X cutscene camera looks down world X: world Y projects across the display, world Z projects vertically, and positive X becomes depth. Integer perspective scaling, depth-to-fog ink falloff and a bounded 96-object far-to-near render queue let foreground grass, room furniture, actors, trees, window frames and distant signal lights occlude one another naturally without a 3D framebuffer, floating point, heap work or changes to gameplay collision.
+
+Cutscene actors now have front, back, left-three-quarter and right-three-quarter views in addition to the existing profile gameplay silhouette. Forward actors reuse the game's limb/torso visual language but project joints in Y/Z and may move toward or away from the observer along X, so apparent size changes with actual scene depth rather than a screen-space zoom.
+
+The intro is re-authored around this renderer. The kitchen is viewed forward toward the fogged window from behind/near the protagonist; the garden wall, apple trees and three flashes occupy progressively deeper X planes behind the window frame. The tall-grass memory is an over-the-shoulder Forward-X tableau with the narrator close to the observer, the sister farther into the flattened room, grass at many depths crossing both figures, and the dark upstairs window much farther away. The departure begins looking through the doorway as the protagonist walks away from the observer through receding orchard rows, then deliberately cuts to the normal profile grammar for the final orchard/root passage. The last profile cue eases to the live forest's 1.5x framing so the handoff no longer changes scale abruptly.
+
+Native regression coverage now checks perspective shrinkage, convergence toward screen center, depth fog, distinct front/back/three-quarter actor renders, Forward-X kitchen/grass/departure frames, the profile transition and exact forest framing at handoff.
+
+# Hollow Trail 1.1.31 — timeline-driven intro cutscene
+
+Hollow Trail **1.1.30 -> 1.1.31** adds a reusable fixed-step cutscene layer above normal gameplay. A cutscene owns a bounded authored timeline of scene, actor pose, actor travel, camera travel, framing scale and caption cues. It renders through the same Hollow Trail raster primitives and articulated character renderer as gameplay; there is no pre-rendered video, second framebuffer, floating-point animation clock or per-frame allocation. Live movement, jump, interaction, pause and journal input are suppressed while a cutscene owns the actor, while the normal app exit remains available. The timeline advances on the same 32 ms fixed step as gameplay, so a delayed display scan cannot change cinematic choreography.
+
+The first launch now plays an approximately 27-second introduction: the kitchen window and three flashes, the tall-grass signal memory including the warning variant, the return to the empty kitchen, the pre-dawn departure and a continuous orchard walk in which domestic boundaries fall away and the road becomes roots. The cutscene drives the protagonist with authored wash/look/crouch/pack/walk poses, camera pullback and deterministic local light pulses. It then hands off to the existing level-1 forest spawn at x=95 with a neutral-input gate, so a held controller button cannot leak through the cinematic into a jump, interaction or pause. The intro plays only on app launch; completing the ten-chapter loop does not replay it.
+
+A native cutscene regression validates timeline boundaries, flash timing, distinct rendered kitchen/grass/orchard states, monotonic autonomous walking, finite completion and the exact forest handoff. The full native runner includes this test.
+
+# Hollow Trail 1.1.27 — foreground contours and rooftop composition
+
+Level 1's two existing near-camera trunks now use 40-vertex outlines, with
+16-vertex contours for their existing branch and root flare. Existing bank
+rocks use twelve-point weathered outlines. Detail follows bends, shoulders
+and root collars without increasing object counts or changing collision,
+climbing, movement, scenery placement, parallax or composed background planes.
+The renderer tessellates bounded static contours through clipped triangles;
+no new textures, frame buffers or allocations. App **1.1.26 -> 1.1.27**.
+
+Level 2 now has three authored skyline planes (16/34/58 percent parallax),
+light-facing facades, low street mist, lit service doors and attached fire
+escapes. Roof coping and drainpipes anchor the route in continuous buildings.
+Two sparse near-camera masonry corners frame the observer's path. Close views
+use 1.5x scale; the existing tower vista opens to a wider view. Walking pace
+keys are 272/288/336/288/272 Q8 units per fixed tick. The crate remains a physical
+object; its pressure plate and lowering gantry are removed in favor of a fixed
+roof crossing. Fire-escape ladders, evidence and the chapter puzzle remain.
+
+Forest and city reuse the same reserved depth-2 cache storage with a chapter
+key. City skips the obsolete blurred skyline cache and its speculative work.
+No additional frame buffers or per-frame allocations. This remains the same
+unmerged 1.1.27 update. Renderer captures, cache transitions, input-only route
+and S3 build are checked; device FPS and subjective feel are not yet measured.
+
+The same 1.1.27 update now composes levels 3, 4, 6, 7, 8, 9 and 10 separately:
+oil-field ridges and fixed pumps; railway cuttings and sheds around the existing
+train; stratified quarry faces and sparse cranes; curved glasshouses over planted
+beds; the reservoir valley around the existing dam/spillways; alpine ridges and
+snow facets; and a settlement beneath one radio mast. Each chapter has three
+world-anchored landscape planes, a localized pale opening, sparse thematic
+observer foreground and 1.5x close views that open into authored vistas. Rock
+outlines are weathered polygons; track ballast no longer sprouts boulders.
+
+Oil-field/quarry stones fill their physical hollows without triggering platforms.
+The final tower's crate no longer lowers a span either. These sites are fixed
+terrain; climbing routes and narrative mechanisms remain. Alpine ladder controls
+now operate fixed bolted safety lines on the rock face. Input-only traversal
+still covers all ten chapters, including physically rolling stones into the two
+hollows. First/second chapter and boat reference frames must remain byte-identical
+to the preceding commit for this extension. Cache tests cover every new chapter,
+close/wide views, vertical/horizontal motion and transitions through the boat.
+The boat alone retains its existing strip-cache pipeline; composed chapters reuse
+the existing reserved frame storage. Version remains **1.1.27** in this open PR.
+
+# Hollow Trail 1.1.26 — walking with the character
+
+Scene-directed walking pace, a lower fixed jump arc, slower climbing and
+closer framing replace the running-jump rhythm. The forest alternates between
+1.5x intimate views and broad vistas; two sparse near trunks establish an
+observer moving beside the path. The character and environment scale together.
+Shorter gaps and adjusted steps keep every chapter traversable at walking pace.
+Existing living-tree placement and deliberate Up entry remain.
+
+See [scene direction](HOLLOW_TRAIL_SCENE_DIRECTION.md) for authoring values,
+movement behavior, route adjustments and validation. App **1.1.25 -> 1.1.26**;
+minimum firmware remains **1.3.37**.
+
+# Hollow Trail 1.1.25 — first forest revision
+
+Level 1 restores the depth, monumental scale and directional light of PR #309
+without restoring its added climbable-tree placements or its living-tree
+renderer. Three continuous distant ridges move at 18/37/56 percent of camera
+travel; two sparse background tree planes move at 30/55 percent. Pale openings
+and narrow shafts separate those planes from the original foreground trees.
+Distant tones use the existing 2x scenery sampling scale; trees, terrain and
+actors keep full logical resolution. The original climbable-tree population
+and Up-only entry from PR #310 remain. PR #311's camera comparison controls
+are preserved.
+
+The opening rock/pressure-plate/gantry assembly is removed. One dead snag at
+the eroded bank can be pushed with the existing interaction button. It rotates
+about its roots, accelerates through the fall and rests across the ravine.
+Only the settled trunk is a solid crossing; its future location cannot catch
+a falling player. A completed crossing survives a death, while restarting the
+chapter resets it. An interrupted fall resets safely on respawn. There are
+no forest traversal instruction overlays or automatic proximity activation.
+
+The original loose stone now moves through a rounded depression in the ground.
+Its own body can fill the hollow and provide footing, independently of the
+trunk. No rock position moves any forest terrain. The remainder of the forest
+retains its continuous rounded contour and existing rope crossing. Industrial
+mechanisms in other chapters are outside this level-1 change.
+
+The forest skips background strips that its opaque depth composition replaces,
+including app warmup and speculative cache work. An unchanged camera/altitude/
+vista reuses the background in the unused terrain cache plane; no framebuffer
+allocation or increase to `HT_MEMORY`. All changing-frame raster loops retain
+bounded cooperative checkpoints. Cache invalidation covers rebinding memory,
+chapter changes, projection changes and scratch-plane use.
+
+Version: **1.1.24 -> 1.1.25**; minimum firmware remains **1.3.37**.
+Implementation checks and host timing are recorded in
+[render performance](HOLLOW_TRAIL_RENDER_PERFORMANCE.md). Device FPS and
+on-device visual acceptance are not claimed.
+
+# Hollow Trail 1.1.8
+
+Reworks the first ferry composition after visual review of 1.1.7 against the
+boat reference. Water now paints continuously behind the entire marsh bank;
+the physical channel bounds no longer clip the water at an eroded cliff edge.
+Three cave masses overlap at different parallax rates around a lit opening.
+Dark, sharp silhouette cores with narrow diffuse edges replace broad blur.
+A distinct horizontal waterline, sparse ripples and a broken hull reflection
+keep the water visible beneath the luminous opening. Water does not blend
+away into the cave backdrop.
+The skiff is a solid curved hull with a tapered mast and one continuous stay.
+Removed decorative rigging, exposed ribs and the idle oar; rowing still follows
+the seated player's stroke. The boat deck is now 38 pixels below its old
+position, beneath the shore lip as in the reference. Boarding follows the
+actual step down and the return uses a normal jump from the boat. The route
+witness exercises those actions through normal physics. The irregular near
+roof still shares its silhouette with head collision; hull width is unchanged.
+The two background faces have independently authored shelves and fractures.
+Their dark interiors fade toward the opening, while silhouette edges retain
+sharp cores and narrow diffuse fringes. The circular player halo is suppressed
+in this already-separated scene; shoreline vegetation is kept sparse.
+The extra cave profile uses 960 bytes of static scratch, no new framebuffer,
+and the bounded raster pass checkpoints every 16 rows.
+
+Version: **1.1.7 -> 1.1.8**, minimum firmware unchanged at 1.3.37. Focused
+ASan/UBSan route tests, water continuity/depth checks, cache/full-render
+comparisons and the Xtensa app build pass. Shore and mid-crossing host renders
+were inspected. Hardware appearance and FPS remain unmeasured.
+
+# Hollow Trail 1.1.7
+
+## Reference-led landscape and grotto ferry
+
+Hollow Trail **1.1.6 → 1.1.7**, from master after PR #287 merged. Minimum
+firmware remains **1.3.37**. The supplied forest and cave/boat reference images
+informed the composition, terrain silhouettes, foliage grouping and scale;
+the game renders its own procedural geometry and contains no copied image assets.
+
+Compared the original 1.0.0 forest and 1.0.14 city renderers. Restored the
+far forest hill/tree/mill layer and the tall far city skyline, which had been
+bypassed by the newer distant-landscape dispatch. Their independent 0.22/0.53
+parallax rates are preserved. Far silhouettes now retain contrast above the
+sky after fog; other chapter ridges also receive stronger tonal separation.
+The grotto deliberately keeps its pale open-water composition.
+
+Trees use buried trunks and tessellated curved roots, with no vertical fill
+pedestals. Static trees, landmarks and finds render before the soil, allowing
+the actual terrain to mask their buried bases. Wide rigid scenery samples its
+whole footprint; small chests and seedlings have their own soil contacts.
+Player separation mist follows vista projection and cannot bleach the soil.
+
+Exposed natural cliff faces now recede and project in unequal strata below
+an intact walking lip. The same profile supplies drawing and player/loose-body
+side contacts, including contact while falling past a projecting stratum.
+Machinery sockets, adjoining land and ladder recesses retain their geometry.
+Natural ground has clustered fine grasses, fern fronds, half-buried faceted
+rocks and shrubs behind the path. Tree foliage groups at branch ends, branch
+origins follow the actual bent trunk, and buttress roots curve into sampled
+soil. The forest ravine rope hangs from a large rooted tree limb.
+
+The marsh's first ferry crossing is composed as a rock grotto: a heavy dark
+roof, sparse uneven bank, pale opening, low wooden skiff, mast/furled cloth,
+slack rigging, shore ring/chain and faint strip reflections. Sunken shelters
+and willows begin beyond this opening. The roof uses the same authored curve
+for head collision and rasterization. A smooth distance ramp shades only the
+roof/fog region, reusing terrain-column scratch rather than allocating a blur
+surface. Open-water brightness eases into the normal marsh ambience inland.
+The ferry hull is 96 logical pixels wide; boarding, standing support and
+travel stops use its actual half-width. Other chapter boats keep their prior
+60-pixel width. All boat geometry follows the same moving boat snapshot.
+
+Validation: full native suite, focused ASan/UBSan gameplay checks and rendered
+scene/cache comparisons cover the changes. All ten chapters, all 30 finds and
+both endings remain covered. Added checks verify eroded cliff silhouette and
+side contact, loose bodies avoiding premature wall snapping, grotto ceiling
+contact and full hull containment at both banks. Hardware visual quality and
+FPS remain unmeasured.
+
+# Earlier update: Hollow Trail 1.1.6
+
+## Continuous landscape contours and grounded animation
+
+Hollow Trail **1.1.5 → 1.1.6** follows merged PR #285; minimum firmware
+remains **1.3.37**. Natural ground now follows authored world-space contour
+points rather than a symmetric bump that resets at every collision parcel.
+Joined forest, sand, mud and planting beds share continuous slopes; quarry
+and pass profiles use angular rock contours. Roofs, working pads, bridges,
+rope takeoffs, water crossings and puzzle machinery retain their functional
+heights. Rendering, walking, loose bodies, evidence and weather still consume
+the same surface function.
+
+Foreground trees no longer use flat root endpoints. The trunk footprint and
+both buttress roots sample the local soil, filling the previously visible
+triangular air gaps on hillsides. Contacts use the same camera and vista
+projection as the ground. The close scenery compositor also no longer cuts
+its output at a fixed 90 logical pixels.
+
+Pulling a crate or boulder leans the torso away from the load, steps backward
+and extends the arms while keeping both hands on the load. Pushing keeps its
+forward lean and bent-arm brace. Signed load motion selects the moving pose;
+the last intended direction selects the pose at rest or when blocked.
+
+Regression coverage includes continuous parcel joins, isolated tree-to-soil
+contact on both slope directions at three vista scales, distinct mirrored
+push/pull silhouettes with unchanged hand contacts, and the existing ten-chapter
+input-driven route. Full native tests, focused ASan/UBSan gameplay checks and the official Xtensa
+ELF/import build passed. The source manifest, ELF sidecar and generated app
+catalog agree on 1.1.6. Hardware appearance and frame rate remain unverified.
+
+# Earlier update: Hollow Trail 1.1.5
+
+## Discovery-driven mechanical deduction
+
+Hollow Trail **1.1.4 → 1.1.5**, from master after PR #284 merged. Minimum
+firmware remains **1.3.37**. See [the current puzzle design](HOLLOW_TRAIL_PUZZLES.md)
+for the evidence chains, deductions, operating rules and recovery guarantees.
+
+This replaces the shallow rail brake sequence with a three-wagon shunting
+problem, the single lock with a two-chamber finite-water problem, and independent
+hoist dials with a conserved stock of weights. Garden venting and dam priming
+introduce physical prerequisites that must be understood before the final
+configuration can work. The ridge requires diagnosing and isolating a returning
+echo. The city now distinguishes a correct endpoint route from a safe one.
+
+Operating facts are distributed across different finds. The mill's three socket
+rubbings reconstruct its plated-over frame; later documents contribute distinct
+capacity, direction, conservation and phase constraints. Remove the automatic
+answer-like narration and chapter recap hints. Feedback describes what the
+machine did; RUN tests the player's hypothesis instead of silently detecting
+an intermediate correct setting. Wrong experiments retain useful progress and
+remain recoverable. Existing camera, scene weather, animation and themed maps
+are retained.
+
+## Grounded terrain, scale and rope contact
+
+The ten chapters no longer render their middle sections as identical 18px
+floating shelves. A shared integer surface profile supplies drawing, feet,
+loose-body support, discovery interaction, landmarks, checkpoints and weather
+occlusion. Walking follows both sides of hills without requiring jumps or
+letting the character sink through a rising surface. Thick terrain/buildings
+have physical side walls; ladder approaches use matching visible recesses.
+Raised movable bridges remain solid and retain their mass/plate mechanisms.
+
+| Chapter | Walkable environment |
+| --- | --- |
+| Forest | Continuous rounded, rooted earth; a mill span and two purposeful ravines; enormous trunks and overhanging limbs |
+| City | Building bodies, rooftops, service connections and recessed ladder approaches |
+| Oil fields | Low eroded ground, service trenches and one supported catwalk |
+| Rail yard | Ballast and embankments, an abandoned locomotive and two carriages on a parallel track, a supported broken trestle and signal gantry |
+| Marsh | Low mud hummocks and reed banks around an actual ferry channel |
+| Quarry | Solid cut faces, uneven stone benches, hoist and ladder recesses |
+| Gardens | Overgrown beds and retained masonry terraces among greenhouse frames |
+| Dam | Masonry service routes beside a large reservoir wall and four cascading spill sheets |
+| High pass | Snow-edged rock slopes, cliff faces and exposed ravines |
+| Last light | Hillside buildings and substantial tower floors with visible walls |
+
+Remove all hovering clue boards. The first forest discovery now lies on the
+initial forest floor: cloth caught in bark. Other finds rest on or attach to
+scene objects. Collected prose retains every operating fact required by the
+new puzzles. Gameplay captions and nearby prompts use subdued gray; the
+apparatus prompt appears only within reach of a control. No distant objective
+flags or automatic solution hints are introduced.
+
+Authored wide-shot envelopes at selected clearings, towers, crossings and
+cliff/dam reveals ease the sharp world projection from 1x down to **11/16x**,
+with chapter-specific upward framing. A 480px view can expose about 698 world
+pixels at maximum width. Foreground terrain, character, props and landmarks
+share the projection; distant cached scenery remains a stable far plane.
+Normal 1–1.2x breathing, mood-driven rotation and the fall zoom envelope remain
+unchanged and compose with this framing. The vista envelope advances only with
+movement. Input, collision and rope positions always retain world bearings.
+There is no larger framebuffer or additional full-screen resampling pass.
+
+A/Confirm can catch any reachable rope segment. Grip distance is stored along
+the constrained rope, not snapped to its tail. Gravity projected along the
+local segment accelerates a bounded, gradual slide; pumping acts at the held
+segment. The player can release or jump before reaching the end, retaining the
+local swing/slide velocity. Existing rope length constraints and slow momentum
+build-up remain in effect.
+
+Development checks: the full native suite and final Xtensa ELF/import build
+passed. Focused ASan/UBSan checks cover all ten input-driven routes, thirty
+finds with zero deaths, puzzle-state recovery, slope/raster agreement, six rope
+grab heights and mid-rope jumps. Render snapshots, cache equivalence, controls,
+endings and pipeline ownership checks passed. Host previews were inspected
+across all chapters, including the wide dam view. Batched solid-terrain fills
+keep the sampled warm-cache host render time close to the preceding renderer;
+this does not establish on-device 24 FPS.
+
+Source manifest, ELF sidecar and aggregate catalog agree on **1.1.5**:
+**149544 bytes**, SHA-256 `92e059bf9fd1a0e22218b1d6ff0a01db20fe685c6c03e7c6f4813a7abec06081`. These are software checks, not hardware
+display/FPS qualification.
+
+# Earlier update: Hollow Trail 1.1.4
+
+## Scene direction, mechanisms and physical performance
+
+Hollow Trail **1.1.3 → 1.1.4**, directly from master after PR #282 merged.
+Minimum firmware remains **1.3.37**. The sections below this update retain
+historical implementation notes; the rules here supersede older puzzle,
+weather, camera, map and fall-timer behavior.
+
+### Story scenes, not chapter-wide weather
+
+A discovery starts a cue; a specified later discovery ends it. Walking into
+an exposed area without that discovery does not create weather. Within an
+active scene, terrain supplies shelter and a 160px boundary fade. The cue
+itself builds over 2.048 seconds and clears over 1.024 seconds. Revisiting the
+first document after the closing discovery cannot restart it. Death retains
+scene progress; a fresh chapter/debug replay resets the scene while retaining
+the journal archive. Reading and pause freeze the simulation clock.
+
+| Chapter | Starts after | Ends after | Visual direction |
+| --- | --- | --- | --- |
+| Forest | Thread in the Bark | Mill Register | Leaves and a dimmer clearing: guidance becoming admission |
+| City | Burnt Fuse | Watch Log | Rain, darkened sky and wind after the extinguished way out |
+| Oil Fields | Lantern Tag | Stove Plate | Grit and muted light around the cost of the gift |
+| Rail Yard | — | — | Still air around the cancelled journey |
+| Marsh | — | — | Still water around the prolonged wait |
+| Quarry | Brake Notice | Torn Note | Windblown chalk and dimming around responsibility for the load |
+| Gardens | — | — | Sheltered stillness: safety and confinement |
+| Dam | Garden Pipe | Ridge Circuit | Dark sky, rain and gusts after the common supply revelation |
+| High Pass | Other Half of the Scarf | Wind Shelter | Sleet and reduced light around uncertain guidance |
+| Last Light | — | — | Stillness around the final decision |
+
+The dam cue has two brief lightning pulses, 5.12 and 12.16 seconds after the
+cue begins, only while it remains active and the player is exposed. Each lasts
+at most 256ms with decay. Sky illumination reuses the existing scene clear and
+max compositor, preserving foreground silhouettes and upright UI. There is no
+endless flashing loop, display waveform change or extra full-screen pass.
+
+### Camera mood and falls
+
+The existing **1–1.20× breathing zoom** and its 13.1-second movement cycle are
+retained. Rotation has its own Q8 phase. At minimum tension, its amplitude and
+speed are approximately one-sixth of 1.1.3: roughly **±0.8–0.96° over 39 seconds**.
+Authored continuous chapter curves plus active discovery cues can raise both
+to the former **±5.76° / 6.55-second** range, with eased transitions rather
+than abrupt intensity changes. The dam revelation can reach that upper bound.
+Normal camera phase advances only during actual player-directed movement.
+
+Dropping more than 40px below the last supported height widens toward the
+uncropped 1× view over about half a second; recovery eases back into the
+existing breathing phase over about two seconds. The corner-safe rotation
+crop remains the lower limit on zoom. Ordinary jumps do not trigger it.
+This drop envelope may finish while stationary; normal sway still freezes.
+
+**The one-second free-fall death timer is removed.** Falling beyond the map's
+bottom (world y > 500) causes respawn. Long legitimate descents survive. All
+camera effects are visual; coordinates, collision and input bearings are fixed.
+
+### Mechanisms that expose their rules
+
+Eight chapters replace recipe-style switches/dials with causal mechanisms.
+The final familiar signal remains a narrative recall before the cabinet choice.
+Evidence prose and compact entries no longer give obsolete switch recipes;
+physical traces beside finds, machine diagrams, and notebook observations
+explain operating rules. Errors do not destroy resources or permanently jam a
+mechanism. Completion latches, survives death, and visibly opens the boundary
+over 48 simulation steps before passage is allowed.
+
+| Chapter | Reasoning and feedback | Boundary into the next setting |
+| --- | --- | --- |
+| Forest | Clutched adjacent shafts turn together; align cams with worn slots | Timber mill loading door, city brickwork beyond |
+| City | Trace three feeds through pair-swapping contacts; reverse outer returns while retaining heat | Riveted service hatch, oil pipes beyond |
+| Oil Fields | Divide eight measures equally using 8/5/3 vessels; taps transfer until full or empty | Round tank bulkhead, railway beyond |
+| Rail Yard | Brake, shunt the wagon clear, change points, then dispatch | Lifting rail barrier and signals, marsh reeds beyond |
+| Marsh | Seal a lock, equalize pressure, open its upper gate | Two lock leaves and a cut-stone channel |
+| Quarry | Allocate six loads; balance 3:2 lever arms and leave weight on the brake | Hoist cage, conservatory glazing beyond |
+| Gardens | Trace a reflected beam through shutter/mirror/clear positions to the low receiver | Glass conservatory lattice, dam conduits beyond |
+| Dam | Redistribute a conserved six-unit supply without starving turbine, heat or ridge | Heavy sluice and masonry, exposed rock beyond |
+| High Pass | Read four shelter-post heights and translate them into chimes | Snow-covered shelter gate, tower lines beyond |
+| Last Light | Recall the established three-flash signal, then make the existing cabinet decision | Interlocked original/live-pen cabinet |
+
+Pipes return visibly to their source, contact-bank lines show their current
+routes, vessels display contents/capacity, a balance tilts with torque, and
+an optical bench uses the same bounded ray rules as its receiver. No per-frame
+allocation, unbounded search, or new full-screen rendering pass is introduced.
+
+### Routes and character contact
+
+| Setting | Route emphasis |
+| --- | --- |
+| Forest | Ground-level floor and pits, a weighted bridge and one vine crossing; no ladders or crate staircase |
+| City | Rooftops, ladders, service access and a crate-operated span |
+| Oil Fields | Ground-level machinery and a boulder-filled trench, one elevated service catwalk |
+| Rail Yard | Mostly track grade, one broken cutting/vine crossing and one signal-gantry climb |
+| Marsh | Water-level banks and boardwalks with a boat crossing; no ladders |
+| Quarry | Vertical working terraces and lifting infrastructure |
+| Gardens | Planting floors, a crate-assisted ledge and one upper maintenance walk |
+| Dam | Reservoir crossing followed by ascent through machinery |
+| High Pass | Cliffs, exposed climbing and a rope crossing |
+| Last Light | Service approach, water crossing and signal-tower ascent |
+
+Ladder poses alternate hands and feet relative to actual rung heights, freezing
+when climbing stops. Ledge poses retain contact with the lip, bend/extend elbows,
+then bring a knee and planted foot onto the platform. Pushing uses both hands
+against the actual crate face or boulder rim, a leaning torso and bent legs;
+foot motion follows load movement, and a blocked load produces a planted brace.
+The player silhouette remains connected throughout each pose.
+
+### Development checks
+
+The full native suite passed, including controls, both cabinet outcomes,
+render-time simulation, pipeline ownership and cached/reference rendering.
+The final source also passed focused ASan/UBSan and the official Xtensa ELF/
+import build. All ten input-driven chapter routes reach their mechanisms,
+collect all 30 documents and complete with no deaths. Additional checks cover
+conserved fuel/power, pressure/interlock rejection, optical reception, weather
+start/end/replay semantics, lightning pulses, baseline/peak camera coefficients,
+unchanged breathing range, drop recovery and map-bottom-only fall death.
+Host previews of mechanisms, gates, weather and contact poses were inspected.
+
+ELF/sidecar/catalog agree on 1.1.4, **139280 bytes**, SHA-256
+`61b9fdf54bce579d27d56d1266c6f9e854f759a6251d148d5627cba2e2edca87`.
+A warm-cache moving-focus host sample measured 0.736ms render+pack. This is a
+host development sample, not device FPS or a controlled comparison of the
+changed scenes. The 24 FPS target remains unverified on the S3/display.
+
+# Historical implementation notes (through 1.1.3)
+
+## Atmospheric direction and interaction polish (1.1.3)
+
+Hollow Trail **1.1.2 → 1.1.3**; minimum firmware remains **1.3.37**.
+
+The original visual transform was active but only ±0.6° with 1.3% zoom change.
+It now reaches roughly **±5.76°** and **1–1.20× zoom**, with a 6.55-second sway
+cycle and a 13.1-second breathing cycle while moving. Phase advances only when
+movement input actually moves the character (including a committed climb), and
+freezes at rest/reading/pause. World collision and control bearings are unchanged;
+text and UI remain upright. Q12 matrix coefficients use a 344/4096 maximum
+off-diagonal term; a rotation-dependent inward crop covers the viewport
+corners, combined with a 0–682/4096 breathing reduction. This adds only a
+few integer operations per frame, with no trigonometry or extra raster pass.
+All four bilinear taps remain in bounds over the
+complete phase cycle, so the existing clamp-free pass is retained.
+
+Weather is spatial story direction rather than a global overlay. Entering or
+leaving an exposed interval fades particle count and physical wind over 160
+world pixels. Returning to shelter removes them again. Ground and overhead
+platforms occlude particles using the physical terrain segments.
+
+| Chapter | Weather / atmospheric intent |
+| --- | --- |
+| Forest | Dry fog; a few leaves in the clearing from x850–1750 |
+| City | Light rain and wind across exposed roofs, x500–1200 |
+| Oil Fields | Grit across the machinery, x1250–2250; no rain |
+| Rail Yard | Still, silent air |
+| Drowned Marsh | Still water and reeds; no rain or wind |
+| White Quarry | Windblown chalk, x650–2100 |
+| Glass Gardens | Shelter and tended growth; no weather |
+| Broken Dam | Heavy rain and gusts, x500–2620; hardship at the crossing |
+| High Pass | Wind-driven sleet, x180–2650, easing before the exit |
+| Last Light | Stillness around the final decision |
+
+There are two inspectable environmental scenes per chapter. **A/Confirm** near
+one reveals a short close observation for about seven seconds without opening
+the journal. Evidence, props and puzzle actions keep priority. Stitched trail
+cloth, crossed-out arrows, a locked service door, fuel allowances, a cancelled
+ticket, paired ferry records, a repaired hoist grip, an inside garden latch,
+return pipes, guyed signal towers and a mechanical writing arm connect the
+physical route to the two competing accounts. Observations point to material
+details rather than deciding either witness's motive.
+
+The three-flash lamp motif repeats across the route. In the last chapter its
+pen arm shares the signal circuit; breaking the feed stops both, and examining
+it then describes the stopped mechanism. The final decision/evidence logic is
+unchanged. Foreground surfaces now use chapter materials: metal seams/rivets,
+rail sleepers, weathered dock planks/stilts, fractured stone and garden masonry.
+
+Interaction feedback follows real motion: the weight plate's cable leads to a
+pulley and latching bridge, boat wakes and oar strokes require actual velocity,
+crates scrape as they move, and a landing briefly compresses the upper body and
+kicks up a bounded contact plume while feet remain on their collider. Rendering
+uses a frozen game snapshot. No allocations or full-frame passes were added;
+particle and scene counts remain fixed and clipped to the visible route.
+
+Validation includes all ten input-only routes and clues, HID/XInput inspection
+without opening the journal, weather window/shelter/occlusion checks, full-cycle
+transform source bounds, immutable world coordinates, all observation text
+widths, deterministic rendering and ASan/UBSan. Host previews of all ten chapter
+landmarks were inspected. The full native suite and official Xtensa ELF/import build pass.
+Matched -Os moving-focus host samples measured 0.783ms for 1.1.2 and 0.828ms
+for the initial atmosphere pass. The final boat/depth/bridge/rope/camera
+follow-up measured 0.809ms (about 3% above the 1.1.2 sample, subject to normal
+host timing noise). Actual S3 frame rate and physical display feel are not established
+by these host checks; 24 FPS remains the target.
+
+### Follow-up interaction and depth corrections (same unreleased 1.1.3)
+
+- Up/Down engages a ladder on grounded or airborne overlap, including contact
+  reached during the current physics step. No vertical input means pass through.
+  Down at the foot and Up at the top do not capture; Down at the top descends.
+  Generic navigation selects ladder intent nearby instead of jump/pause. B has
+  a short recapture cooldown. A is not required.
+- Boarding seats the player at the centre thwart. The seated knees, torso and
+  hands share the oar's stroke; walking stride is not rendered while rowing.
+  Boat limits include the full 30px half-width, keeping the hull between actual
+  water boundaries. Three channel endpoints and disembarkation witnesses were
+  adjusted accordingly; a stopped boat cannot continue into either bank.
+- Far scenery now has its own chapter composition: forest canopy/ridges,
+  skyline clusters, mesas, railway cuttings, island banks, quarry escarpments,
+  conservatory domes, reservoir valley/aqueduct, snow ranges and a distant
+  settlement. Middle-distance structures remain separate, and close framing
+  uses chapter-specific limbs, fire escapes, pipes, gantries, willow fronds,
+  conveyors/chains, broken glazing, conduit, overhangs and insulated wires.
+  These are different geometry, scale, spacing, seeds and tones, retained in
+  the existing cached parallax planes (0.22×, 0.53× and 1.23× translation).
+- Weight bridges park 224px above their lowered position, beyond a normal
+  jump. Their visible top is their physical top at every lift position, with
+  solid landing/head/side collision. A standing passenger rides down with the
+  bridge. Evidence and decorations ride at the same actual height; reaching
+  a raised span by another route is valid. Lowering is not a permission flag.
+- Rope pumping force drops from 384 to 64 Q8 units, with bounded inertial
+  increments. Holding one direction gives a modest first swing (~32px in the
+  host witness); timing inputs with the return swing builds ~50px of reach.
+  B gives the normal jump impulse and retains horizontal swing velocity.
+  The route witness now pumps across successive swings before releasing.
+
+The all-chapter route, explicit hull/seat bounds, raised-bridge landing/riding,
+held-versus-timed rope pumping, directional ladder cases, cached/fresh scenery
+comparison and full camera-phase source bounds are exercised by native tests.
+
+## Physical props and distinct routes (1.1.2)
+
+Hollow Trail **1.1.1 → 1.1.2**, minimum firmware unchanged at **1.3.37**.
+
+The stone is now 32 logical pixels across beside a 29-pixel character, with
+facets, rotating fractures and a circular standing surface shared with its
+collider. Pushing accelerates it gradually; release preserves rolling momentum
+with low friction. The 24×26 crate has planks, side shading, braces and nails,
+accelerates under effort and stops quickly through higher friction. Both obey
+gravity, terrace contacts and side walls. Supported feet follow moving props.
+Stone sockets are cut from the same terrain segments used by drawing and
+collision. A weighted plate lowers and latches a suspended bridge over 32 ticks.
+
+Boats have tapered hulls, raised gunwales, seats, ribs and moving oars, with
+inertia, water drag and bounded bobbing. The deck stays at or above shore level
+for reliable disembarking. Ropes hang 84 pixels from visible supported anchors;
+seven Verlet nodes use gravity, inertia, directional pumping and six bounded
+constraint passes, rather than an authored endpoint arc. Catching preserves
+the hand position, player/deck collision remains active, and release carries
+endpoint velocity. A jump-off uses the normal jump impulse and retains horizontal swing momentum.
+
+Ladders engage with **Up/Down while overlapping**, including in midair.
+Walking or jumping through without vertical input does not attach. Down at the
+bottom and Up at the top leave the player free; Down at the top descends. B
+jumps off with a brief recapture cooldown. A is not needed. A continuous downward free fall dies at the first 32ms physics
+tick beyond one second (1024ms). Ground, a caught ledge or an attached climb/
+rope ends that fall. Releasing jump still shortens the jump as before.
+
+| Chapter | Mechanical route |
+| --- | --- |
+| Forest | Weight bridge, crate-assisted ledge, canopy ladder, rope ravine |
+| City | Two-stage rooftop climb, crate weight bridge, return roof ladder |
+| Oil Field | Raised gantry, stone socket bridge, crate-assisted upper shelf |
+| Rail Yard | Switchback tower ladders, overhead rope crossing, final climb |
+| Village | Lake crossing first, then rooftops and descent through the village |
+| Salt Flats | Stone into a recessed socket, bridge, alternating high/low shelves |
+| Gardens | Move a crate to reach the first ledge, then two garden climbs |
+| Dam | Service ladders, reservoir boat, upper spillway rope gap |
+| High Pass | Immediate rope ravine, ridge ladder, movable crate ascent |
+| Last Light | Crate weight bridge, double ascent, descent to a final boat crossing |
+
+The ten maps have separately authored spans, elevations, overlap and prop
+placements. They no longer run every prop in the same order. Existing chapter
+story puzzles and evidence remain, and pause-menu selection reaches every map.
+
+Validation: an input-only journey completes all ten maps, all 30 evidence
+records and the ending without deaths. Focused checks cover circular feet,
+rolling inertia, crate friction, directional ladder capture, rope length/floor
+constraints and the 992ms/1024ms death boundary. Host art previews were inspected. The full native-app suite, focused ASan/UBSan
+checks and the official Xtensa ELF/import build pass. The warm-cache moving-focus
+host benchmark measured 0.731ms render+pack; this is not an S3 frame-rate result.
+Physics has fixed object/node counts, no per-frame allocation and no new raster
+pass. The 24 FPS target and prior renderer optimizations remain; device timing
+and physical controller/display feel still require measurement.
+
+## Current controls (1.1.2, supersedes historical mappings below)
+
+| Action | Controller | Device / generic navigation |
+| --- | --- | --- |
+| Move / turn journal page | D-pad Left/Right | Left/Right |
+| Jump / leave rope or boat | B | Up when not attached |
+| Engage / climb ladder | Up/Down while overlapping | Up/Down while overlapping |
+| Pull up from ledge | Up or A | Up or Confirm |
+| Drop from ledge | Down (B jumps away) | Down |
+| Grab / release object; row or pump swing | A, then Left/Right | Confirm, then Left/Right |
+| Inspect / use nearby mechanism | A | Confirm |
+| Journal | Start (toggles reading) | Down to pause, then Confirm |
+| Read / confirm decision | A | Confirm |
+| Back in reading | X | Back |
+| Close app from gameplay | Home / menu shortcut | Home / Back |
+| Pause / resume diagnostics | Select | Down |
+| Toggle DSP benchmark while paused | B | Up |
+
+A and X never close gameplay. A duplicate mapped Back accompanying a raw face
+button is suppressed. Device Back remains available with a neutral controller;
+the host Home/menu exit request remains active in every game screen.
+
+A away from an inspectable object or mechanism is inert. The journal never
+opens as an inspect fallback. Directional inputs cannot directly open it.
+Start has a dedicated edge-triggered journal action, separate from jumping,
+inspection and pause. Holding Back after closing reading does not exit the app.
+
+The owner found A/B reversed on the actual receiver in 1.0.15. Version 1.0.16
+corrects Hollow Trail's face-label bindings (without changing driver encoding):
+XInput A/B/X/Y/Start/Select = 0x01/0x02/0x08/0x04/0x200/0x100;
+HID = 0x02/0x01/0x04/0x08/0x80/0x40. The app declares and leases both optional
+`usb.xinput.gamepad` and `usb.hid.gamepad` capabilities; raw HID reports are not
+interpreted as normalized XInput. One connected pad supplies a frame, with
+XInput priority; multiple receiver slots are never ORed together. A raw poll
+failure suppresses mapped navigation while that pad owns input. A persistent
+failure yields back to neutral-gated device input after 250ms. Source changes
+and recovery require neutral input before accepting new actions. These rules
+prevent a fault from turning a held button into a new inspect/journal press.
+
+Regression tests drive production input with both raw layouts, duplicate OS
+navigation, all eight hats, unused face buttons, XInput trigger bits,
+Start/Select, empty-space inspection, reading/back, faults, recovery and a
+second receiver slot. The cumulative app version is unreleased 1.0.16
+(master/published 1.0.15). Firmware 1.3.36 contains the reader glyph fix and
+optional no-wait input service.
+
+
+## 24 FPS performance work (same unreleased 1.1.1)
+
+The objective remains a complete render/pack frame inside the display's
+41.7ms budget. The weather/debug PR now includes production hot-path changes,
+not just an explanation of the previous device counters:
+
+- Draw the world directly into the sway source buffer. Remove the per-frame
+  129,600-byte copy (259,200 bytes of read/write traffic). Transform only the
+  visible interior; the vignette owns the discarded pixels. Prove the four
+  bilinear taps stay in bounds for every phase of the 2,048-step cycle.
+- Rewrite bilinear arithmetic using differences, preserving rounding exactly.
+  Remove per-pixel clamps and repeated edge checks inside that proven region.
+- Cache two exact radial-lighting maps, shared across scenery depths. Reuse
+  them for settled focus and one-pixel camera-follow alternation; rebuild on
+  other focus changes with cooperative checkpoints. This adds 129,600 bytes
+  of PSRAM, allocated once with the scene. The optional DSP path retains its
+  original arithmetic and does not build an unused map.
+- Pack four output bytes at a time using aligned word writes and source-word
+  lookahead. A 2KiB dither table handles constant neighborhoods without
+  interpolation. Unaligned output retains the byte-safe path. Pixel phase,
+  dithering thresholds and interpolation results are unchanged.
+- Compile only compositor, upscaler, affine sampler and mono packer for speed;
+  the app-wide size optimization and bounded polling/yield behavior remain.
+
+A reproducible harness is `test/native_apps/hollow_trail_benchmark.c`.
+For this change, compare with engine revision
+`2fd95b1372c6752f2f24e74db66eeddd30f8420a`, using the same app include files
+(the only production change in this follow-up is the engine):
+
+```sh
+git show 2fd95b1372c6752f2f24e74db66eeddd30f8420a:Apps/hollow_trail_engine.inc > /tmp/ht-baseline.inc
+cc -std=c11 -Os -IApps -Ilib/NativeApps/include -DHT_BENCH_ENGINE='"/tmp/ht-baseline.inc"' test/native_apps/hollow_trail_benchmark.c -o /tmp/ht-before
+cc -std=c11 -Os -IApps -Ilib/NativeApps/include test/native_apps/hollow_trail_benchmark.c -o /tmp/ht-after
+/tmp/ht-before --moving
+/tmp/ht-after --moving
+/tmp/ht-before --hashes > /tmp/ht-before.hash
+/tmp/ht-after --hashes > /tmp/ht-after.hash
+cmp /tmp/ht-before.hash /tmp/ht-after.hash
+```
+
+Host `-Os` measurements over 500 warmed frames across ten chapters:
+changing focus **1.106 → 0.762ms/frame** (31% less); fixed focus with animated
+sway **1.085 → 0.693ms/frame** (36% less). With `-O2`, the corresponding runs
+were 1.133 → 0.724ms and 1.084 → 0.713ms. Packed output hashes match on all
+170 chapter/phase cases. These are CPU comparisons, not ESP32/PSRAM/display
+measurements or a claim that 24 FPS has been achieved. The next device run
+must establish whether RENDER+PACK fits the actual budget.
+
+## Debug level selection and weather (1.1.1)
+
+Hollow Trail **1.1.0 → 1.1.1**; firmware minimum stays **1.3.37**.
+From pause, Left/Right browses all ten chapters, wrapping at either end.
+A/Confirm loads the selected chapter, X cancels selection (generic Back also
+cancels). Without an active level selection, A still opens the journal;
+Start always opens it. Select resumes and B still toggles the DSP experiment.
+The destination starts with fresh puzzles, objects and checkpoint, preserving
+collected evidence and witnessed endings. No later clues are granted merely
+by selecting a chapter. Loading discards prepared old-scene frames, uses the
+existing cooperative cache warmup and requires neutral input before gameplay.
+Selecting the current chapter restarts it too.
+
+Historically, 1.1.1 drew 48 rain streaks and 12 leaves everywhere. This is
+superseded by the authored 1.1.3 weather windows above. That implementation used no
+new allocation or full-screen raster pass. Deterministic particles share the
+render snapshot; rain slants and leaves drift with a smooth reversing gust.
+Weather freezes in pause/journal. Wind ramps in on spawning and nudges free
+walking/falling by at most 40/256 logical pixels per 32ms tick (4.9 pixels/s,
+versus 78.1 pixels/s walking). Collision resolves the wind displacement, so
+idle gusts cannot push through a wall. Attached ladders, ropes, boats, ledges
+and grabbed objects remain stable. Gust-only drift does not advance visual
+camera sway. The existing 24-submission cap remains unchanged.
+
+Owner's 1.0.16 device measurement: **13.4 FPS**, 24 scans/s; RENDER 50ms,
+PACK 23ms, WAIT/CACHE/COPY 0ms, INPUT 9ms; SCAN 19ms, PREP 12ms,
+DMA 2ms, PACE 23ms, ROWS 481. Render + pack is 73ms (about 13.7 FPS),
+consistent with the measured submission rate. INPUT overlaps those stages;
+scan preparation, DMA and pacing are not additive app-frame costs. A 24 FPS
+producer needs about 41.7ms/frame, so roughly 31ms must still come out of the
+measured render/pack path. These readings predate 1.1.0 traversal/sway and this
+weather update; no new on-device speedup or particle cost is claimed.
+
+Validation covers all ten debug destinations, selection-edge/held-button
+behavior, cancellation, fresh-spawn state and discovery preservation. The
+input-only journey still completes all ten chapters and gathers every clue
+with gusts enabled. Positive/negative wind, displacement bounds, deterministic
+weather, render snapshot equivalence and existing controller/journal checks
+are covered by the native suite. Target ELF/sidecar/catalog use 1.1.1.
+
+## Traversal, journal and visual camera (1.1.0 / firmware 1.3.37)
+
+This update changes Hollow Trail **1.0.16 → 1.1.0** and firmware
+**1.3.36 → 1.3.37**. The app requires 1.3.37 because detached typography
+must report the dimensions of its target bitmap rather than rotating those
+logical extents a second time. The input scheduling and face-button fixes
+from 1.0.16 remain intact. Historical implementation notes below describe
+earlier layouts and are superseded by this section.
+
+The original 1.1.0 layout repeated the same mechanism sequence in every chapter.
+Version 1.1.2 replaces that layout and its scripted props; see the current
+route table above. Death preserves evidence, story, puzzle and opened bridge
+progress and resets movable props to their authored starting positions.
+
+An airborne approach within hand reach of a platform corner catches the edge.
+It holds until Up/A climbs over it, Down drops, or B jumps away. Climbing is a
+16-tick pull-up; dropping has a short re-grab cooldown. Holding horizontal
+movement cannot automatically pull the player up.
+
+The original 1.1.0 transform used ±0.6 degree of rocking and 1–1.013×
+breathing zoom; 1.1.3 increases its amplitude and cycle speed as described above. The phase freezes when movement input stops,
+including reading and pause. Bilinear fixed-point sampling transforms the
+world image and player together before the vignette; input axes and collision
+coordinates never rotate or scale. Journal, prompts and narration stay fixed.
+The transform reuses existing scratch memory with cooperative checkpoints.
+The obsolete terrain-cache plane is no longer generated or composited.
+Hardware frame cost remains to be measured; this is not a 24 FPS claim.
+
+The journal uses a stitched, worn notebook frame, chapter stamp and ink sketch,
+with a clear 768×456 typeset area inside the landscape screen. Texture stays
+outside text. Its index shows four discovered titles and an explicit selection
+marker; arrows select, A reads, X returns. Body pages retain reader-selected
+fonts, forward/back pagination and the ending's displayed-page confirmation
+checks. If typography fails or returns no ink, the same frame contains a
+compact, paginated text fallback. Large-font index/decision pages also fall
+back if all choices cannot fit on one page.
+
+Verification: the input-only route witness uses all five mechanisms across
+ten chapters, collects all thirty evidence records, solves the authored
+puzzles and completes a journey without a death. Targeted checks cover both
+ledge approaches, deliberate climbing, drop cooldown, idle sway, independent
+cache/render equivalence, input ownership, journal pagination and blank-font
+fallback. The detached-renderer regression exercises its real constructor and
+logical dimensions as well as glyph resolution. `scripts/build_all_apps.py
+--id hollow_trail` builds and validates the target ELF and runs the native suite.
+
 
 A separate, original ten-chapter silhouette platformer for the fast EPD interface, using fixed monochrome dithering by default.
 No external assets, file access, or network are required. Version 1.0.2 uses
@@ -1001,3 +1794,152 @@ relocation and links the corrected version with separate IRAM/flash addresses;
 it uses a minimal section-attribute header and linker script, not a full board
 link. The native C++ transition test still verifies all 1024 transitions and 40
 full scans. Firmware/app versions remain the cumulative unreleased 1.3.34/1.0.14.
+
+## Reader journal (app 1.0.15 / firmware 1.3.35)
+
+The 30 objects now open full found documents (roughly 130–180 words each),
+with physical details, different witnesses and the traveller's reflections.
+The operational directions remain explicit inside each document. Ambiguity
+concerns the people, the older trail and their choices, not arbitrary puzzle
+wording. Thirty additional reflective passages recap the ten chapters, unlocking
+alongside the matching on-trail narration. Recaps never reveal uncollected clues.
+
+B / Up inspects a nearby object, operates nearby machinery, or opens the journal
+elsewhere. The journal index contains **collected evidence** followed by **story
+so far**. Left/Right selects a record; A/Confirm opens it. In a record,
+Left/Right turns pages; A, B, Up, Back or Start returns to the index. From the
+index B, Up, Back or Start closes reading. Navigation is edge-triggered; held
+Back does not exit the game after closing the journal. There is no page-turn
+animation. Both evidence and reached narration survive death, chapter changes
+and replay within the current session; quitting still clears progress.
+
+### Typography boundary
+
+The manifest declares the optional `reader.typography` API 1 software capability.
+The app acquires/releases it through `T5ProviderCapabilityApi`, alongside its
+independent gamepad lease. Firmware validates the declaration and execution
+owner; each callback checks its lease generation and owner, and loader cleanup
+invalidates outstanding leases. This is a built-in software provider for the
+resident reader, not an installed hardware provider or a new direct font import.
+The app never sees `CrossPointSettings`, a `GfxRenderer`, SD font objects or a
+physical display handle. The public ABI is `sdk/driver/RiscReaderTypographyV1.h`.
+
+The service selects `SETTINGS.getReaderFontId()` after preparing the selected SD
+family when applicable, so family **and size** follow the ebook configuration.
+Line compression follows the reader setting too. Text is measured with the same
+font used to draw it, including the renderer's kerning and ligature handling.
+It draws into an app-owned, native-resolution 960x540 monochrome bitmap. Font
+pixels never pass through the reduced-resolution scenery compositor or upsampler.
+The detached renderer shares font registrations but cannot alter the host's
+orientation, framebuffer or display mode. The capability does not refresh the
+panel. A missing/failing service displays an explicit typography-unavailable
+message and allows returning to the game; it does not silently replace the
+selected reading font with the game's tiny bitmap face.
+
+Pages use bounded UTF-8 byte offsets. The app remembers up to 64 page starts
+per opened record; reopening starts at page one. Content is immutable during a
+reading visit because physics is frozen. Input during display copying queues a
+later revision rather than changing the prepared bitmap. There is one additional
+64,800-byte PSRAM reading bitmap and a 4 KiB text buffer; nothing is allocated per
+frame or per page. Normal gameplay does no typography work.
+
+The service limits text to 16 KiB, title/footer to 128 bytes, target storage to
+256 KiB, and uses a 255-byte line buffer. It yields after each 240-byte font
+metric preparation chunk and each laid-out line, with a five-second deadline;
+bitmap polarity conversion yields every 32 rows. Existing font loading remains
+inside the reader subsystem. Invalid requests and failures return false and the
+caller must discard the target. The service does not hold an app buffer after
+returning. Entering a journal page and the first restored game frame submit all
+rows through the existing fast video driver; this is **not** a clear/rewrite
+cycle, and unchanged reading frames retain the driver's idle cleanup behavior.
+
+Validation: native Xtensa ELF build; production-app queue test verifies native
+bitmap copying, full-screen entry/restoration, lease release, delayed submission
+and fallback allocation; input tests cover page history, reading freeze and
+unlocked records. Host tests compile the production typography service with fake
+font/device dependencies to verify configured font/spacing, polarity, capacity,
+progress and timeout. Separate layout tests exercise proportional measurement,
+UTF-8 boundaries, paragraph breaks, long words and cancellation. These are not
+physical display or SD font performance measurements.
+
+Versions: Hollow Trail 1.0.14 -> 1.0.15; firmware 1.3.34 -> 1.3.35, both above
+master and the published release index checked for this change. The app requires
+firmware 1.3.35 for the new typography capability.
+
+## Contending accounts and the final decision (1.0.15 revision)
+
+[The implemented story and ending design](HOLLOW_TRAIL_STORY.md) supersedes the
+straightforward rescue/reunion synopsis above. All 30 documents, 30 narration
+beats, chapter recaps and puzzle unlock messages now sustain the sister's and
+keeper's conflicting accounts. Her coercion, manipulation and leadership remain
+plausible as the same observations acquire different explanations.
+
+The last tower now requires **Break the circuit** or **Complete the circuit**,
+with a separate confirmation. The choice changes the final evidence entry and
+adds its result to the journal's witnessed endings. The opposite ending is
+hidden until played. Read the result and press A/Confirm on its last page before
+walking through the exit to restart. B cancels or returns to the journal without
+silently completing the chapter. Both choices and the replay flow have host
+input tests; the existing full-route test exercises the new exit gate.
+
+A reader capability failure now shows a labelled compact fallback with complete
+text and pagination rather than leaving the final gate impossible to complete.
+Normal reading still uses configured typography through the same capability.
+The app remains the cumulative unreleased 1.0.15; this revision adds no firmware
+changes or extra frame buffers. Journal/ending history remains session-only.
+
+
+## Input scheduling experiment (1.0.16 / firmware 1.3.36)
+
+Owner baseline on 1.0.14: approximately 12 FPS, RENDER 59ms, PACK 18ms,
+SCAN 23ms, PREP 10ms, DMA 8ms and PACE 19ms. Render/pack include input
+checkpoint time. PREP/DMA are scan components; display scanning overlaps app
+work, so those numbers must not all be added together.
+
+The host's original `poll`, including `poll(..., 0)`, deliberately delays before
+updating input. The controller `poll(..., 8)` argument is a report-count bound,
+not an 8ms delay. Firmware 1.3.36 adds optional `poll_nowait`, preserving the
+existing yielding call for every older app. Hollow Trail samples input at its
+existing raster checkpoints when 8ms have elapsed without that added sleep,
+and performs a real yielding poll at the first checkpoint after 32ms since its
+last yielding poll. Idle and display-wait loops still yield. The next frame's
+initial input poll also drops the old unconditional 4ms requested delay.
+
+The optional member is size/pointer guarded; 1.0.16 still runs on 1.3.35 using
+the original yielding input service. Install firmware 1.3.36 for the no-wait
+experiment. App minimum remains 1.3.35 because the fallback is functional.
+
+The pause screen adds INPUT, average milliseconds spent inside all input
+service calls per submitted gameplay frame (including provider work and
+scheduler delays). It overlaps RENDER/PACK/WAIT/CACHE/COPY accounting and is
+not an additional frame cost to sum. The startup log identifies no-wait versus
+legacy mode. Compare movement in the same chapter, controller and DSP setting;
+record FPS, RENDER, PACK, INPUT, CACHE, COPY and WAIT. No device speedup is
+claimed before measurement. The input scheduling experiment preserves rendering, packing, narrative,
+physics, display waveforms and the 24 FPS cap. The hardware-feedback fixes
+below additionally correct A/B actions and reader glyph resolution.
+
+
+### 1.0.15 hardware feedback included in 1.0.16
+
+Swap A/B actions to match the owner's receiver labels: A inspects/accepts,
+B jumps. X/Start/Select retain their masks and A cannot exit gameplay.
+
+The detached reader renderer copied font registrations but left its cache
+manager null. Compressed fonts therefore had valid metrics but no glyph
+bitmap decompressor: layout reported success and the resulting page was white.
+Detached targets now borrow glyph bitmap resolution from their live source
+renderer, without inheriting its scan-only recording mode or touching the
+physical display. The source must outlive the synchronous page target.
+Hollow Trail also rejects successful but entirely white typography pages and
+shows the readable compact fallback, including on firmware 1.3.35.
+
+
+The oil-field cactus arms now use shared elbow coordinates and overlap their
+horizontal branches. Previously independently rounded height fractions could
+leave the right arm disconnected (including the 39px cactus). Limb widths are
+now even and at least four logical pixels: the smallest stem retains two
+samples at either phase of the half-resolution scenery grid. This changes
+cached cactus geometry only, adding no per-frame filter or allocation. Tests
+check connected silhouettes at full and half resolution for heights 39–103,
+all sampling phases, and constant sampled small-stem thickness.

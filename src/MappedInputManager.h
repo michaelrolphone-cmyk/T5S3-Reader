@@ -36,6 +36,7 @@ class MappedInputManager {
   bool wasAnyReleased() const;
   unsigned long getHeldTime() const;
   bool wasTouchTapped(TouchPoint& point, const GfxRenderer& renderer) const;
+  bool getTouchContact(TouchPoint& point, const GfxRenderer& renderer) const;
   bool getTouchHold(TouchPoint& point, unsigned long& heldMs, const GfxRenderer& renderer) const;
   bool getTouchSwipe(TouchPoint& start, TouchPoint& end, const GfxRenderer& renderer) const;
   bool wasTouchHomeButtonPressed() const;

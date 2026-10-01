@@ -20,7 +20,7 @@ ASSOCIATIONS = (ROOT / "src/native/FileAssociationRegistry.cpp").read_text(encod
 
 class ModelViewerContract(unittest.TestCase):
     def test_manifest_and_release_contract(self):
-        self.assertEqual(MANIFEST["version"], "1.2.4")
+        self.assertEqual(MANIFEST["version"], "1.2.5")
         self.assertEqual(MANIFEST["min_firmware_version"], "1.3.29")
         self.assertEqual(MANIFEST["file_name"], "model_viewer.elf")
         self.assertEqual(MANIFEST["icon"], "solid:f1b2")
@@ -86,7 +86,7 @@ class ModelViewerContract(unittest.TestCase):
         self.assertIn("bool (*submit)", VIDEO_API)
         self.assertIn("void (*stop)", VIDEO_API)
         self.assertIn("native_hardware_display_is_borrowed()", VIDEO)
-        self.assertIn("nativeVideoForceStop();", TAKEOVER)
+        self.assertIn("if (!nativeVideoForceStop())", TAKEOVER)
         self.assertIn("ESP_ELFSYM_EXPORT(t5_video_get_api)", LAUNCHER)
 
     def test_fast_video_reuses_gameboy_scan_architecture(self):

@@ -55,6 +55,9 @@ class GfxRenderer {
   // recording to the (non-const) FontCacheManager. Same pragmatic compromise
   // as before, concentrated in a single pointer instead of four fields.
   mutable FontCacheManager* fontCacheManager_ = nullptr;
+  // A synchronous detached page borrows bitmap resolution from its source.
+  // Do not borrow scan/recording mode, which would suppress actual drawing.
+  const GfxRenderer* glyphSource_ = nullptr;
 
   void renderChar(const EpdFontFamily& fontFamily, uint32_t cp, int* x, int* y, bool pixelState,
                   EpdFontFamily::Style style) const;
@@ -73,6 +76,15 @@ class GfxRenderer {
   static constexpr int VIEWABLE_MARGIN_RIGHT = 3;
   static constexpr int VIEWABLE_MARGIN_BOTTOM = 9;
   static constexpr int VIEWABLE_MARGIN_LEFT = 3;
+
+  // A detached target shares font registrations and glyph resolution. It never calls
+  // HalDisplay or owns the caller's buffer; its save-buffer vector stays empty.
+  // The source renderer/font resources must outlive this synchronous target.
+  GfxRenderer(const GfxRenderer& fonts,uint8_t *target,uint16_t width,uint16_t height)
+      : display(fonts.display),renderMode(BW),orientation(LandscapeCounterClockwise),fadingFix(false),
+        frameBuffer(target),panelWidth(width),panelHeight(height),visibleWidth(width),visibleHeight(height),
+        panelWidthBytes(width/8),frameBufferSize(static_cast<uint32_t>(width/8)*height),
+        fontMap(fonts.fontMap),sdCardFonts_(fonts.sdCardFonts_),glyphSource_(&fonts) {}
 
   // Setup
   void begin();  // must be called right after display.begin()

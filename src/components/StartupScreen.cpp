@@ -1,7 +1,9 @@
 #include "StartupScreen.h"
+#include "native/NativeTouchInput.h"
 
 #include <Arduino.h>
 #include <cstring>
+#include <atomic>
 
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
 #include <T5HardwareTakeover.h>
@@ -15,7 +17,8 @@
 namespace StartupScreen {
 namespace {
 
-bool fadePending = false;  // Accessed only while holding RenderLock.
+bool fadePending = false;  // RenderLock protects the display handoff.
+std::atomic<bool> loading{false};  // Input opens only after the first destination frame.
 
 enum class BootBackend : uint8_t {
   None,
@@ -24,8 +27,6 @@ enum class BootBackend : uint8_t {
 };
 
 BootBackend bootBackend = BootBackend::None;
-
-constexpr unsigned long kRevealBudgetMs = 3500;
 
 constexpr int kLogoSize = 240;
 constexpr int kFrameHeight = 320;
@@ -93,69 +94,12 @@ void drawBootFrame(GfxRenderer& renderer, int rows) {
 void bootWithRenderer(GfxRenderer& renderer) {
   const auto mode = renderer.getRenderMode();
   renderer.setRenderMode(GfxRenderer::BW);
-
-  // Initial panel refresh is intentionally separate from the reveal timer.
-  drawBootFrame(renderer, 1);
+  // Slow-panel fallback presents one useful loading frame, without spending
+  // several physical refreshes playing an animation before doing any work.
+  drawBootFrame(renderer, 4);
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-
-  delay(1);
-
-  const unsigned long revealStart = millis();
-
-  for (int rows = 2; rows <= 4; ++rows) {
-    if (rows < 4 && millis() - revealStart >= kRevealBudgetMs) {
-      rows = 4;
-    }
-
-    drawBootFrame(renderer, rows);
-    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
-    delay(1);
-  }
-
   renderer.setRenderMode(mode);
   bootBackend = BootBackend::Renderer;
-}
-
-void finishRendererBoot(GfxRenderer& renderer) {
-  const auto mode = renderer.getRenderMode();
-  renderer.setRenderMode(GfxRenderer::BW);
-
-  constexpr uint8_t bayer[4][4] = {
-      {0, 8, 2, 10},
-      {12, 4, 14, 6},
-      {3, 11, 1, 9},
-      {15, 7, 13, 5},
-  };
-
-  const int x = (renderer.getScreenWidth() - kLogoSize) / 2;
-  const int y = (renderer.getScreenHeight() - kFrameHeight) / 2;
-
-  constexpr int fadeThresholds[] = {
-      4,
-      8,
-      12,
-  };
-
-  for (const int threshold : fadeThresholds) {
-    drawBootFrame(renderer, 4);
-
-    for (int py = 0; py < kFrameHeight; ++py) {
-      for (int px = 0; px < kLogoSize; ++px) {
-        if (bayer[py & 3][px & 3] < threshold) {
-          renderer.drawPixel(x + px, y + py, false);
-        }
-      }
-
-      if ((py & 63) == 63) {
-        delay(1);
-      }
-    }
-
-    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
-  }
-
-  renderer.setRenderMode(mode);
-  renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
 }
 
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
@@ -169,9 +113,9 @@ constexpr uint32_t kRevealDeadlineMs = 1800;
 constexpr uint8_t kFadeFrames = 6;
 constexpr uint8_t kPulseFrames = 48;
 constexpr uint8_t kFullCoverage = 64;
-constexpr uint8_t kPulseMinCoverage = 24;
+constexpr uint8_t kPulseMinCoverage = kFullCoverage;
 constexpr uint8_t kPulseMaxCoverage = kFullCoverage;
-constexpr uint32_t kMinimumPulseMs = 600;
+constexpr uint32_t kReadyFadeBudgetMs = 150;
 constexpr uint32_t kSubmitTimeoutMs = 350;
 constexpr uint32_t kIdleTimeoutMs = 1800;
 
@@ -183,9 +127,14 @@ t5_video_surface_v1 videoSurface{};
 bool videoTakeoverActive = false;
 bool videoStarted = false;
 TaskHandle_t pulseTaskHandle = nullptr;
-volatile bool pulseStopRequested = false;
-volatile uint8_t lastPulseCoverage = kFullCoverage;
-uint32_t pulseStartedAtMs = 0;
+std::atomic<bool> pulseStopRequested{false};
+std::atomic<bool> pulseExited{true};
+// Written only by the animation worker; read after its release/acquire join.
+uint8_t lastVisibleBlocks = 0;
+uint8_t lastPulseCoverage = kFullCoverage;
+uint8_t lastTextCoverage = 0;
+uint32_t visualStartedAtMs = 0;
+uint32_t visualTimeMs = 0;
 
 constexpr uint8_t kBayer8[8][8] = {
     {0, 48, 12, 60, 3, 51, 15, 63},
@@ -396,9 +345,155 @@ int textWidth(const char* text, int scale) {
                           static_cast<size_t>(scale));
 }
 
+struct InkPoint { int x; int y; };
+
+// Fixed-size convex strip rasterizer. All work is clipped to the panel; the
+// ribbons use 32 strips each and never allocate a path or framebuffer.
+void inkQuad(uint8_t* buffer,size_t size,const InkPoint* p,uint8_t coverage) {
+  if(!coverage) return;
+  int top=p[0].y,bottom=top;
+  for(int i=1;i<4;++i) {if(p[i].y<top) top=p[i].y;if(p[i].y>bottom) bottom=p[i].y;}
+  if(top<0) top=0;
+  if(bottom>=static_cast<int>(videoSurface.width)) bottom=videoSurface.width-1;
+  for(int y=top;y<=bottom;++y) {
+    int left=32767,right=-32768;
+    for(int i=0;i<4;++i) {
+      InkPoint a=p[i],b=p[(i+1)%4];
+      if(a.y>b.y) {const InkPoint swap=a;a=b;b=swap;}
+      if(a.y==b.y || y<a.y || y>=b.y) continue;
+      const int x=a.x+(b.x-a.x)*(y-a.y)/(b.y-a.y);
+      if(x<left) left=x;
+      if(x>right) right=x;
+    }
+    if(left<0) left=0;
+    if(right>=static_cast<int>(videoSurface.height)) right=videoSurface.height-1;
+    for(int x=left;x<=right;++x)
+      if(ditherPixel(x,y,coverage)) setPhysicalPixel(buffer,size,x,y,true);
+  }
+}
+
+InkPoint inkCurve(int t,int side,int cx,int cy) {
+  const int64_t q=1000-t;
+  const int64_t a=q*q*q,b=3*q*q*t,c=3*q*t*t;
+  return {cx+side*static_cast<int>((-330*a+340*b-190*c)/1000000000),
+          cy+side*static_cast<int>((-190*a-260*b+190*c)/1000000000)};
+}
+
+void drawInkSweep(uint8_t* buffer,size_t size,int cx,int cy,uint32_t time,uint8_t coverage) {
+  if(time>=780u || !coverage) return;
+  for(int side=-1;side<=1;side+=2) {
+    const int local=static_cast<int>(time)-(side==1?70:0);
+    if(local<0) continue;
+    const int head=local*1500/710;
+    const int tail=head-500;
+    InkPoint previousA{},previousB{};
+    bool previous=false;
+    for(int segment=0;segment<=32;++segment) {
+      const int along=segment*1000/32;
+      const int t=tail+500*along/1000;
+      if(t<0 || t>1000) {previous=false;continue;}
+      const InkPoint center=inkCurve(t,side,cx,cy);
+      const int64_t q=1000-t;
+      const int dx=side*static_cast<int>((670*q*q-1060*q*t+190LL*t*t)/1000000);
+      const int dy=side*static_cast<int>((-70*q*q+900*q*t-190LL*t*t)/1000000);
+      const int ax=dx<0?-dx:dx,ay=dy<0?-dy:dy;
+      const int norm=(ax>ay?ax+ay/2:ay+ax/2)+1;
+      // Tapered brush body: a broad belly, fine tail and pointed leading edge.
+      const int belly=4*along*(1000-along)/1000;
+      const int endTaper=t>875?(1000-t)*8:1000;
+      const int width=belly*(3+49*(1000-t)*(1000-t)/1000000)/1000*endTaper/1000;
+      const InkPoint a{center.x-dy*width/norm,center.y+dx*width/norm};
+      const InkPoint b{center.x+dy*width/norm,center.y-dx*width/norm};
+      if(previous) {const InkPoint quad[4]={previousA,a,b,previousB};inkQuad(buffer,size,quad,coverage);}
+      previousA=a;previousB=b;previous=true;
+    }
+  }
+}
+
+void drawFormingBlock(uint8_t* buffer,size_t size,int x,int y,int width,int height,
+                      uint32_t age,int side,uint8_t coverage) {
+  if(!coverage) return;
+  if(age>=360u) {
+    drawDitheredRoundedRect(buffer,size,x,y,width,height,4,coverage);
+    return;
+  }
+  const int t=static_cast<int>(age)*1000/360,q=t-1000;
+  // A restrained ease-out-back gives the ink weight and a soft pressure release.
+  const int ease=1000+static_cast<int>((2400LL*q*q*q/1000+1400LL*q*q)/1000000);
+  const int growth=ease<0?0:ease;
+  const int w=2+(width-2)*growth/1000,h=2+(height-2)*growth/1000;
+  const int cx=x+width/2+side*30*(1000-ease)/1000;
+  const int cy=y+height/2+45*(1000-ease)/1000;
+  const int bend=side*w*22*(1000-t)/200000;
+  const int radius=4+(h/2-4)*(1000-t)/1000;
+  for(int px=0;px<w;++px) {
+    const int u=px*1000/(w>1?w-1:1);
+    const int curl=bend*4*u*(1000-u)/1000000;
+    for(int py=0;py<h;++py) {
+      if(!insideRoundedRect(px,py,w,h,radius)) continue;
+      const int sx=cx-w/2+px,sy=cy-h/2+py+curl;
+      if(ditherPixel(sx,sy,coverage)) setPhysicalPixel(buffer,size,sx,sy,true);
+    }
+  }
+}
+
+// RiscRTE wordmark rasterized from DejaVu Sans Bold, 36 px.
+// Font notice: docs/BOOT_WORDMARK_LICENSE.txt. Static flash data; no font/SD load.
+constexpr uint8_t kWordmarkWidths[7]={28,12,21,21,28,25,25};
+constexpr uint32_t kWordmarkRows[7][32]={
+  {0x0u,0x3fff8u,0xffff8u,0x3ffff8u,0x3ffff8u,0x7ffff8u,0x7f01f8u,0x7e01f8u,0x7e01f8u,0x7e01f8u,0x7e01f8u,0x3f01f8u,0x3ffff8u,0x1ffff8u,0x7fff8u,0xffff8u,0x1ffff8u,0x3fc1f8u,0x3f81f8u,0x7f01f8u,0x7e01f8u,0xfe01f8u,0xfe01f8u,0xfc01f8u,0x1fc01f8u,0x1f801f8u,0x3f801f8u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x0u,0x0u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0x0u,0x0u,0x0u,0x0u,0x0u,0x0u,0x1ffc0u,0x7fff0u,0x7fff8u,0x7fffcu,0x781fcu,0x400fcu,0xfcu,0x1fcu,0x3ffcu,0x1fff8u,0x7fff0u,0xfff80u,0xfe000u,0xfc000u,0xfc004u,0xfe03cu,0x7fffcu,0x7fffcu,0x3fffcu,0x7fe0u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0x0u,0x0u,0x0u,0x0u,0x0u,0x0u,0xfe00u,0x3ff80u,0x7ffe0u,0x7fff0u,0x7fff8u,0x707f8u,0x401fcu,0x1fcu,0xfcu,0xfcu,0xfcu,0xfcu,0x1fcu,0x401fcu,0x707f8u,0x7fff8u,0x7fff0u,0x7ffe0u,0x3ffc0u,0xfe00u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0x3fff8u,0xffff8u,0x3ffff8u,0x3ffff8u,0x7ffff8u,0x7f01f8u,0x7e01f8u,0x7e01f8u,0x7e01f8u,0x7e01f8u,0x3f01f8u,0x3ffff8u,0x1ffff8u,0x7fff8u,0xffff8u,0x1ffff8u,0x3fc1f8u,0x3f81f8u,0x7f01f8u,0x7e01f8u,0xfe01f8u,0xfe01f8u,0xfc01f8u,0x1fc01f8u,0x1f801f8u,0x3f801f8u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0xffffffu,0xffffffu,0xffffffu,0xffffffu,0xffffffu,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x7e00u,0x0u,0x0u,0x0u,0x0u,0x0u},
+  {0x0u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1ffff8u,0x1ffff8u,0x1ffff8u,0x1ffff8u,0x1ffff8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x1f8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x3ffff8u,0x0u,0x0u,0x0u,0x0u,0x0u}
+};
+
+void drawBootWordmark(uint8_t* buffer,size_t size,int centerX,int y,uint8_t coverage) {
+  int total=0;for(int i=0;i<7;++i) total+=kWordmarkWidths[i];
+  int x=centerX-total/2;
+  const uint32_t elapsed=visualTimeMs>1000u?visualTimeMs-1000u:0;
+  for(int letter=0;letter<7;++letter) {
+    const int width=kWordmarkWidths[letter];
+    const int age=static_cast<int>(elapsed)-letter*25;
+    if(age>0 && coverage) {
+      if(age<130) {
+        const int height=27*age/130;
+        drawDitheredRoundedRect(buffer,size,x+width/2-3,y+27-height,6,height,1,coverage);
+      } else {
+        const int unfold=age>=360?1000:(age-130)*1000/230;
+        const int eased=unfold*unfold*(3000-2*unfold)/1000000;
+        const int drawnWidth=6+(width-6)*eased/1000;
+        for(int py=0;py<32;++py) {
+          if(letter==1 && py<5) continue; // dot arrives independently below
+          for(int dx=0;dx<drawnWidth;++dx) {
+            const int sourceX=dx*width/drawnWidth;
+            const int px=x+(width-drawnWidth)/2+dx;
+            if((kWordmarkRows[letter][py]&(1u<<sourceX)) && ditherPixel(px,y+py,coverage))
+              setPhysicalPixel(buffer,size,px,y+py,true);
+          }
+        }
+      }
+      if(letter==1 && age>=170) {
+        const int fall=age>=340?1000:(age-170)*1000/170;
+        int offset=-20+20*fall*fall/1000000;
+        if(age>=340 && age<450) {
+          const int bounce=(age-340)*1000/110;
+          offset=-4*4*bounce*(1000-bounce)/1000000;
+        }
+        for(int py=0;py<5;++py) for(int px=0;px<width;++px)
+          if((kWordmarkRows[letter][py]&(1u<<px)) && ditherPixel(x+px,y+py+offset,coverage))
+            setPhysicalPixel(buffer,size,x+px,y+py+offset,true);
+      }
+    }
+    x+=width;
+  }
+}
+
 void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
                    uint8_t logoCoverage, uint8_t textCoverage) {
-  // Fixed artwork: each block appears whole, in left-to-right array order.
+  // Large opening gesture resolves into the stationary brand mark.
   if (visibleBlocks > kLogoBlockCount) visibleBlocks = kLogoBlockCount;
 
   const int logicalWidth = static_cast<int>(videoSurface.height);
@@ -406,45 +501,53 @@ void drawVideoLogo(uint8_t* buffer, size_t bufferSize, uint8_t visibleBlocks,
   const int frameX = (logicalWidth - kLogoSize) / 2;
   const int frameY = (logicalHeight - kFrameHeight) / 2;
 
-  for (uint8_t rectIndex = 0; rectIndex < visibleBlocks; ++rectIndex) {
-    const auto& rect = kLogoRects[rectIndex];
-    drawDitheredRoundedRect(buffer, bufferSize, frameX + rect.x * 2,
-                            frameY + rect.y * 2, rect.width * 2,
-                            rect.height * 2, 4, logoCoverage);
+
+  drawInkSweep(buffer,bufferSize,logicalWidth/2,frameY+116,visualTimeMs,logoCoverage);
+  // The wave follows the arriving ink and leaves the original logo behind.
+  for(int rectIndex=0;rectIndex<kLogoBlockCount;++rectIndex) {
+    const uint32_t born=400u+static_cast<uint32_t>(rectIndex)*40u;
+    if(visualTimeMs<=born) continue;
+    const auto& rect=kLogoRects[rectIndex];
+    drawFormingBlock(buffer,bufferSize,frameX+rect.x*2,frameY+rect.y*2,
+                     rect.width*2,rect.height*2,visualTimeMs-born,
+                     (rectIndex&1)?1:-1,logoCoverage);
   }
 
   // Both labels stay at fixed coordinates and first appear after all blocks.
   if (visibleBlocks == kLogoBlockCount && textCoverage != 0U) {
-    constexpr char title[] = "RISCRTE";
-    constexpr char status[] = "STARTING...";
-    constexpr int titleScale = 4;
-    constexpr int statusScale = 2;
+    drawBootWordmark(buffer,bufferSize,logicalWidth/2,frameY+244,logoCoverage);
+    // A quiet three-dot loading beat begins after the wordmark settles.
+    if(visualTimeMs>=1510u) for(int dot=0;dot<3;++dot) {
+      const int phase=static_cast<int>((visualTimeMs/180u)%3u);
+      const int radius=dot==phase?3:2;
+      for(int py=-radius;py<=radius;++py) for(int px=-radius;px<=radius;++px) {
+        if(px*px+py*py>radius*radius) continue;
+        const int x=logicalWidth/2+(dot-1)*13+px,y=frameY+297+py;
+        if(ditherPixel(x,y,textCoverage)) setPhysicalPixel(buffer,bufferSize,x,y,true);
+      }
+    }
 
-    drawDitheredText(buffer, bufferSize,
-                     (logicalWidth - textWidth(title, titleScale)) / 2,
-                     frameY + 244, title, titleScale, textCoverage);
-    drawDitheredText(buffer, bufferSize,
-                     (logicalWidth - textWidth(status, statusScale)) / 2,
-                     frameY + 291, status, statusScale, textCoverage);
   }
 }
 
-bool waitUntilVideoCanSubmit(uint32_t timeoutMs) {
+bool waitUntilVideoCanSubmit(uint32_t timeoutMs, bool cancellable) {
   const uint32_t start = millis();
   while (videoApi != nullptr && !videoApi->can_submit()) {
-    if (elapsedAtLeast(start, timeoutMs)) {
+    if ((cancellable && pulseStopRequested.load(std::memory_order_relaxed)) ||
+        elapsedAtLeast(start, timeoutMs)) {
       return false;
     }
     delay(1);
   }
-  return videoApi != nullptr;
+  return videoApi != nullptr &&
+      !(cancellable && pulseStopRequested.load(std::memory_order_relaxed));
 }
 
 bool submitVideoFrame(uint8_t visibleBlocks, uint8_t logoCoverage,
                       uint8_t textCoverage,
-                      uint32_t submitTimeoutMs = kSubmitTimeoutMs) {
+                      uint32_t submitTimeoutMs = kSubmitTimeoutMs, bool cancellable = true) {
   if (!videoStarted || videoApi == nullptr ||
-      !waitUntilVideoCanSubmit(submitTimeoutMs)) {
+      !waitUntilVideoCanSubmit(submitTimeoutMs, cancellable)) {
     return false;
   }
 
@@ -456,6 +559,7 @@ bool submitVideoFrame(uint8_t visibleBlocks, uint8_t logoCoverage,
     return false;
   }
 
+  if (cancellable) visualTimeMs=static_cast<uint32_t>(millis()-visualStartedAtMs);
   std::memset(buffer, whiteByte(), bufferSize);
   drawVideoLogo(buffer, bufferSize, visibleBlocks, logoCoverage, textCoverage);
   return videoApi->submit(0, 0);
@@ -471,25 +575,24 @@ void waitForVideoIdle(uint32_t timeoutMs) {
   }
 }
 
-void releaseVideoOwner() {
-  pulseStopRequested = true;
-
+bool releaseVideoOwner() {
   if (videoStarted && videoApi != nullptr) {
     videoApi->stop();
+    videoStarted = false;  // A failed ownership restore must not reuse stopped video.
+  }
+  if (videoTakeoverActive) {
+    const esp_err_t rc = native_hardware_takeover_end(
+        T5_HARDWARE_TAKEOVER_DISPLAY | T5_HARDWARE_TAKEOVER_UI_VIDEO);
+    if (rc != ESP_OK) {
+      ESP_LOGE(kBootVideoTag, "display takeover release failed: %s", esp_err_to_name(rc));
+      return false;  // Keep ownership/state for a safe retry; no overlapping owner.
+    }
   }
   videoStarted = false;
   videoApi = nullptr;
   videoSurface = {};
-
-  if (videoTakeoverActive) {
-    const esp_err_t rc =
-        native_hardware_takeover_end(T5_HARDWARE_TAKEOVER_DISPLAY);
-    if (rc != ESP_OK) {
-      ESP_LOGE(kBootVideoTag, "display takeover release failed: %s",
-               esp_err_to_name(rc));
-    }
-  }
   videoTakeoverActive = false;
+  return true;
 }
 
 uint8_t smoothCoverage(uint8_t frame, uint8_t frameCount,
@@ -505,118 +608,118 @@ uint8_t smoothCoverage(uint8_t frame, uint8_t frameCount,
       (static_cast<uint32_t>(endCoverage - startCoverage) * smooth) / 1024U);
 }
 
-void pulseTask(void*) {
-  // Begin at full density so the first loading frame does not jump lighter
-  // immediately after the fourth layer completes.
-  uint8_t phase = static_cast<uint8_t>(kPulseFrames / 2U - 1U);
+bool renderLayerReveal();
 
-  while (!pulseStopRequested) {
+void pulseTask(void*) {
+  // Reveal and pulse both run alongside startup. Neither holds RenderLock,
+  // accesses the renderer, scans SD, nor loads provider modules.
+  const bool revealed = renderLayerReveal();
+  uint8_t phase = static_cast<uint8_t>(kPulseFrames / 2U - 1U);
+  while (revealed && !pulseStopRequested.load(std::memory_order_relaxed)) {
     const uint8_t ramp = phase < (kPulseFrames / 2U)
                              ? phase
                              : static_cast<uint8_t>(kPulseFrames - 1U - phase);
     const uint8_t coverage =
         smoothCoverage(ramp, static_cast<uint8_t>(kPulseFrames / 2U - 1U),
                        kPulseMinCoverage, kPulseMaxCoverage);
-
     if (submitVideoFrame(kLogoBlockCount, coverage, kFullCoverage)) {
+      lastVisibleBlocks = kLogoBlockCount;
       lastPulseCoverage = coverage;
+      lastTextCoverage = kFullCoverage;
       phase = static_cast<uint8_t>((phase + 1U) % kPulseFrames);
-    } else {
-      delay(2);
     }
+    delay(35);  // Cap cosmetic work so real startup keeps the CPU.
   }
-
-  pulseTaskHandle = nullptr;
-  vTaskDelete(nullptr);
+  pulseExited.store(true, std::memory_order_release);
+  vTaskDelete(nullptr);  // No video/shared-state access after publishing exit.
 }
 
 bool startPulseTask() {
-  pulseStopRequested = false;
+  pulseStopRequested.store(false, std::memory_order_relaxed);
+  pulseExited.store(false, std::memory_order_relaxed);
+  visualStartedAtMs = millis();
+  visualTimeMs = 0;
+  lastVisibleBlocks = 0;
   lastPulseCoverage = kFullCoverage;
-  pulseStartedAtMs = millis();
+  lastTextCoverage = 0;
   const BaseType_t rc = xTaskCreatePinnedToCore(
-      pulseTask, "boot_pulse", 4096, nullptr, 1, &pulseTaskHandle, 0);
+      pulseTask, "boot_animation", 4096, nullptr, 1, &pulseTaskHandle, 0);
+  if (rc != pdPASS) {
+    pulseTaskHandle = nullptr;
+    pulseExited.store(true, std::memory_order_release);
+  }
   return rc == pdPASS;
 }
 
-void stopPulseTask() {
-  if (pulseTaskHandle == nullptr) {
-    return;
-  }
-
-  pulseStopRequested = true;
+bool stopPulseTask() {
+  pulseStopRequested.store(true, std::memory_order_relaxed);
   const uint32_t start = millis();
-  while (pulseTaskHandle != nullptr && !elapsedAtLeast(start, 1000U)) {
+  while (!pulseExited.load(std::memory_order_acquire) && !elapsedAtLeast(start, 1000U)) delay(1);
+  if (!pulseExited.load(std::memory_order_acquire)) {
+    ESP_LOGW(kBootVideoTag, "animation still stopping; retaining video owner for retry");
+    return false;  // Never delete a task inside driver code or free its buffers.
+  }
+  pulseTaskHandle = nullptr;
+  return true;
+}
+
+bool waitForRevealTime(uint32_t start, uint32_t due) {
+  while (!elapsedAtLeast(start, due)) {
+    if (pulseStopRequested.load(std::memory_order_relaxed)) return false;
     delay(1);
   }
-
-  if (pulseTaskHandle != nullptr) {
-    TaskHandle_t stuckTask = pulseTaskHandle;
-    pulseTaskHandle = nullptr;
-    vTaskDelete(stuckTask);
-    ESP_LOGW(kBootVideoTag, "forced stalled pulse task to stop");
-  }
+  return !pulseStopRequested.load(std::memory_order_relaxed);
 }
 
 bool renderLayerReveal() {
-  // Each row gets the same 250 ms. Five top blocks pop every 50 ms, the next
-  // two every 125 ms, and each of the two wide blocks uses a whole row interval.
-  const uint32_t start = millis();
-  const auto submitBeforeDeadline = [start](uint8_t visibleBlocks,
-                                            uint8_t textCoverage) {
-    const uint32_t elapsed = static_cast<uint32_t>(millis() - start);
-    if (elapsed >= kRevealDeadlineMs) return false;
-    const uint32_t left = kRevealDeadlineMs - elapsed;
-    const uint32_t timeout = left < kSubmitTimeoutMs ? left : kSubmitTimeoutMs;
-    return submitVideoFrame(visibleBlocks, kFullCoverage, textCoverage, timeout);
-  };
-  uint8_t firstBlock = 0;
-  for (uint8_t layer = 0; layer < kLogoLayerCount; ++layer) {
-    const uint8_t lastBlock = kLogoLayerEnds[layer];
-    const uint8_t blocksInLayer = lastBlock - firstBlock;
-    for (uint8_t block = firstBlock + 1; block <= lastBlock; ++block) {
-      const uint32_t due = layer * kRevealLayerMs +
-          static_cast<uint32_t>(block - firstBlock) * kRevealLayerMs / blocksInLayer;
-      while (!elapsedAtLeast(start, due)) delay(1);
-      if (!submitBeforeDeadline(block, 0U)) return false;
+  // Preserve the left-to-right block build; animate the light field between
+  // block arrivals rather than pausing the image at each discrete layer.
+  const uint32_t start=millis();
+  constexpr uint32_t duration=kLogoLayerCount*kRevealLayerMs+kTextFadeMs;
+  uint32_t elapsed=0;
+  do {
+    if (pulseStopRequested.load(std::memory_order_relaxed)) return false;
+    elapsed=static_cast<uint32_t>(millis()-start);
+    if (elapsed>=kRevealDeadlineMs) return false;
+    uint8_t visible=0, firstBlock=0;
+    for (uint8_t layer=0; layer<kLogoLayerCount; ++layer) {
+      const uint8_t lastBlock=kLogoLayerEnds[layer];
+      const uint8_t blocksInLayer=lastBlock-firstBlock;
+      for (uint8_t block=firstBlock+1; block<=lastBlock; ++block) {
+        const uint32_t due=layer*kRevealLayerMs+(block-firstBlock)*kRevealLayerMs/blocksInLayer;
+        if (elapsed>=due) visible=block;
+      }
+      firstBlock=lastBlock;
     }
-    firstBlock = lastBlock;
-  }
-
-  // The completed graphic remains solid while only the stationary labels fade.
-  for (uint8_t frame = 1; frame <= kTextFadeFrames; ++frame) {
-    const uint32_t due = kLogoLayerCount * kRevealLayerMs +
-        static_cast<uint32_t>(frame) * kTextFadeMs / kTextFadeFrames;
-    while (!elapsedAtLeast(start, due)) delay(1);
-    const uint8_t coverage =
-        smoothCoverage(frame, kTextFadeFrames, 0U, kFullCoverage);
-    if (!submitBeforeDeadline(kLogoBlockCount, coverage)) return false;
-  }
-
+    const uint32_t textElapsed=elapsed>kLogoLayerCount*kRevealLayerMs ? elapsed-kLogoLayerCount*kRevealLayerMs : 0;
+    const uint8_t textFrame=static_cast<uint8_t>(textElapsed>=kTextFadeMs ? kTextFadeFrames : textElapsed*kTextFadeFrames/kTextFadeMs);
+    const uint8_t textCoverage=smoothCoverage(textFrame,kTextFadeFrames,0,kFullCoverage);
+    const uint32_t left=kRevealDeadlineMs-elapsed;
+    if (!submitVideoFrame(visible,kFullCoverage,textCoverage,left<kSubmitTimeoutMs?left:kSubmitTimeoutMs)) return false;
+    lastVisibleBlocks=visible;
+    lastPulseCoverage=kFullCoverage;
+    lastTextCoverage=textCoverage;
+    if (elapsed<duration && !waitForRevealTime(start,elapsed+40u)) return false;
+  } while (elapsed<duration);
   return true;
 }
 
 bool bootWithVideo(GfxRenderer& renderer) {
-  const auto mode = renderer.getRenderMode();
-  renderer.setRenderMode(GfxRenderer::BW);
-  renderer.clearScreen();
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-  renderer.setRenderMode(mode);
-
+  (void)renderer;  // Keep the retained panel image until the spatial scrub.
   const esp_err_t takeoverRc =
-      native_hardware_takeover_begin(T5_HARDWARE_TAKEOVER_DISPLAY);
+      native_hardware_takeover_begin(T5_HARDWARE_TAKEOVER_DISPLAY | T5_HARDWARE_TAKEOVER_UI_VIDEO);
   if (takeoverRc != ESP_OK) {
     ESP_LOGW(kBootVideoTag, "display takeover unavailable: %s",
              esp_err_to_name(takeoverRc));
     return false;
   }
   videoTakeoverActive = true;
+  bootBackend = BootBackend::Video;
 
   videoApi = t5_video_get_api(T5_VIDEO_API_VERSION);
   if (!validateVideoApi(videoApi) || !videoApi->start(&videoSurface)) {
     ESP_LOGE(kBootVideoTag, "EPD video service did not start");
-    releaseVideoOwner();
-    return false;
+    return !releaseVideoOwner();
   }
   videoStarted = true;
 
@@ -625,42 +728,44 @@ bool bootWithVideo(GfxRenderer& renderer) {
              "unsupported video surface %ux%u stride=%u format=%u",
              videoSurface.width, videoSurface.height,
              videoSurface.stride_bytes, videoSurface.pixel_format);
-    releaseVideoOwner();
-    return false;
+    return !releaseVideoOwner();
   }
 
-  if (!renderLayerReveal() || !startPulseTask()) {
-    ESP_LOGE(kBootVideoTag, "boot layer reveal could not enter pulse state");
-    stopPulseTask();
-    releaseVideoOwner();
-    return false;
+  if (!startPulseTask()) {
+    ESP_LOGE(kBootVideoTag, "boot animation worker unavailable");
+    return !releaseVideoOwner();
   }
 
   bootBackend = BootBackend::Video;
   return true;
 }
 
-void finishVideoBoot(GfxRenderer& renderer) {
-  while (!elapsedAtLeast(pulseStartedAtMs, kMinimumPulseMs)) {
-    delay(1);
-  }
-
-  stopPulseTask();
-
-  const uint8_t startCoverage = lastPulseCoverage;
-  for (uint8_t frame = 1; frame <= kFadeFrames; ++frame) {
-    const uint32_t remaining = kFadeFrames - frame;
-    const uint8_t coverage = static_cast<uint8_t>(
-        (static_cast<uint32_t>(startCoverage) * remaining * remaining) /
-        (kFadeFrames * kFadeFrames));
-    if (!submitVideoFrame(kLogoBlockCount, coverage, coverage)) {
-      break;
+bool finishVideoBoot(GfxRenderer& renderer) {
+  if (!stopPulseTask()) return false;
+  // Readiness cancels even a partly drawn reveal. Fade only what was actually
+  // submitted, with a total deadline; never finish the sequence just for show.
+  const uint32_t start = millis();
+  if (videoStarted && lastVisibleBlocks) {
+    for (uint8_t frame = 1; frame <= kFadeFrames; ++frame) {
+      const uint32_t elapsed = static_cast<uint32_t>(millis() - start);
+      if (elapsed >= kReadyFadeBudgetMs) break;
+      const uint32_t remaining = kFadeFrames - frame;
+      const uint8_t coverage = lastPulseCoverage * remaining * remaining / (kFadeFrames * kFadeFrames);
+      const uint8_t textCoverage = lastTextCoverage * remaining * remaining / (kFadeFrames * kFadeFrames);
+      if (!submitVideoFrame(lastVisibleBlocks, coverage, textCoverage, kReadyFadeBudgetMs - elapsed, false)) break;
     }
   }
-
-  waitForVideoIdle(kIdleTimeoutMs);
-  releaseVideoOwner();
-  renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
+  // Always finish on known white, even when readiness interrupts the reveal.
+  // Preserve that state across M5GFX re-init; otherwise handoff flashes again.
+  bool whiteSettled = false;
+  if (videoStarted && submitVideoFrame(0, 0, 0, kSubmitTimeoutMs, false)) {
+    waitForVideoIdle(kIdleTimeoutMs);
+    whiteSettled = !videoApi->pending();
+  }
+  if (!releaseVideoOwner()) return false;
+  if (whiteSettled) display.suppressInitialFullRefresh();
+  renderer.requestNextRefresh(whiteSettled ? HalDisplay::FAST_REFRESH : HalDisplay::FULL_REFRESH);
+  return true;
 }
 
 #endif
@@ -668,6 +773,7 @@ void finishVideoBoot(GfxRenderer& renderer) {
 }  // namespace
 
 void boot(GfxRenderer& renderer) {
+  loading.store(true, std::memory_order_release);
   fadePending = false;
   bootBackend = BootBackend::None;
 
@@ -683,28 +789,36 @@ void boot(GfxRenderer& renderer) {
 }
 
 void armBootFade() {
+  loading.store(true, std::memory_order_release);
   fadePending = true;
 }
 
-void finishBoot(GfxRenderer& renderer) {
-  if (!fadePending) {
-    return;
-  }
+bool isLoading() { return loading.load(std::memory_order_acquire); }
 
-  fadePending = false;
+void destinationReady() {
+  if (!isLoading() || fadePending) return;
+  nativeTouchDiscardGestures();
+  loading.store(false, std::memory_order_release);
+}
+
+bool finishBoot(GfxRenderer& renderer) {
+  if (!fadePending) return true;
 
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
   if (bootBackend == BootBackend::Video) {
-    finishVideoBoot(renderer);
+    if (!finishVideoBoot(renderer)) return false;
     bootBackend = BootBackend::None;
-    return;
+    fadePending = false;
+    return true;
   }
 #endif
 
   if (bootBackend == BootBackend::Renderer) {
-    finishRendererBoot(renderer);
+    renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
   }
   bootBackend = BootBackend::None;
+  fadePending = false;
+  return true;
 }
 
 }  // namespace StartupScreen

@@ -203,3 +203,29 @@ their relocation map and assembles installable packages. These tests cannot
 establish physical USB OTG, VBUS, an individual controller's report profile or
 T5S3 Paper Pro compatibility; board validation remains separate. This branch
 does not merge, flash or publish a release.
+
+### Controller-attached UI latency (gamepad 0.1.4)
+
+HID gamepad discovery runs synchronously in the navigation/app input caller.
+Previously every poll reopened unsupported non-boot HID interfaces and requested
+report descriptors again; each request permits a 100 ms control-transfer wait.
+Composite controllers/receivers with auxiliary HID interfaces could therefore
+repeatedly stall UI touch consumption despite the independent touch capture task.
+This is a source-confirmed failure path, not hardware confirmation for a specific
+controller.
+
+`usb-hid-gamepad` 0.1.4 requires `platform.clock@1` and caches rejected layouts by
+generation-qualified device handle, interface and alternate until disappearance.
+Discovery attempts at most one interface per poll. Failed claims/descriptor reads
+retry with 100 ms exponential backoff capped at 2 s, at most eight attempts within
+10 s of the first attempt; disconnect/reconnect or provider restart permits a new
+attempt series. The caller returns to its scheduler between polls. Existing pads
+continue receiving reports when capacity is full. Failed descriptor-session close
+retains ownership and prevents unload until cleanup succeeds.
+
+`test/run_usb_hid_test.sh` covers composite supported/unsupported interfaces over
+500 steady-state polls, retry limits and clock faults, reconnect, and failed-close
+ownership. Initial discovery/retry can still spend up to the existing 100 ms USB
+control deadline. On-device confirmation remains pending: compare tap/swipe
+response with the same controller attached and absent, then disconnect/reconnect
+and verify controller input and app transitions.

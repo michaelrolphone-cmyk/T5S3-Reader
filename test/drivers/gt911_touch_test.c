@@ -4,6 +4,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <pthread.h>
+#include <time.h>
 
 static uint8_t controller_address = 0x5du;
 static uint8_t status_reg;
@@ -13,6 +15,18 @@ static uint64_t claim_serial;
 static uint64_t active_claim;
 static uint8_t claimed_address;
 static unsigned release_calls;
+static unsigned fail_point_reads;
+static unsigned fail_ack_writes;
+static bool failed_ack_reaches_controller;
+static pthread_mutex_t gate = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t condition = PTHREAD_COND_INITIALIZER;
+static bool pause_status, in_status, resume_status;
+static const risc_touch_api_v1 *thread_api;
+static void *poll_thread(void *unused) {
+    (void)unused;
+    assert(thread_api->poll(NULL, 16u));
+    return NULL;
+}
 
 static bool claim_device(void *context, uint8_t address, uint64_t *out) {
     (void)context;
@@ -35,6 +49,11 @@ static bool transact(void *context, uint64_t claim,
     const uint16_t reg = (uint16_t)(((uint16_t)write_bytes[0] << 8u) |
                                     write_bytes[1]);
     if (write_length == 3u && !read_length && reg == 0x814eu) {
+        if (fail_ack_writes) {
+            --fail_ack_writes;
+            if (failed_ack_reaches_controller) status_reg = write_bytes[2];
+            return false;
+        }
         status_reg = write_bytes[2];
         return true;
     }
@@ -51,10 +70,18 @@ static bool transact(void *context, uint64_t claim,
         return true;
     }
     if (reg == 0x814eu && read_length == 1u) {
+        pthread_mutex_lock(&gate);
+        if (pause_status) {
+            in_status = true;
+            pthread_cond_broadcast(&condition);
+            while (!resume_status) pthread_cond_wait(&condition, &gate);
+        }
+        pthread_mutex_unlock(&gate);
         read_bytes[0] = status_reg;
         return true;
     }
     if (reg == 0x814fu && read_length <= sizeof(points)) {
+        if (fail_point_reads) { --fail_point_reads; return false; }
         memcpy(read_bytes, points, read_length);
         return true;
     }
@@ -178,6 +205,88 @@ int main(void) {
            snap.contact_count == 0u && snap.buttons == 0u);
     assert(api->next(api->context, a, &event_a) == 0);
 
+    // A failed point read must leave READY latched for a later retry.
+    report_one(3u, 100u, 200u);
+    fail_point_reads = 3;
+    for (unsigned i = 0; i < 3; ++i) {
+        assert(!api->poll(api->context, 1u));
+        assert(status_reg == 0x81u);
+        assert(api->next(api->context, a, &event_a) == 0);
+    }
+    assert(api->poll(api->context, 1u));
+    assert(take(api, a).kind == RISC_TOUCH_EVENT_DOWN);
+    assert(take(api, b).kind == RISC_TOUCH_EVENT_DOWN);
+    report_release();
+    fail_ack_writes = 1;
+    assert(!api->poll(api->context, 1u));
+    assert(take(api, a).kind == RISC_TOUCH_EVENT_UP);
+    assert(take(api, b).kind == RISC_TOUCH_EVENT_UP);
+    assert(api->poll(api->context, 1u));
+    assert(api->next(api->context, a, &event_a) == 0);
+    assert(api->next(api->context, b, &event_b) == 0);
+
+    // A failed ACK may actually clear READY. Both edges still arrive once.
+    failed_ack_reaches_controller = true;
+    report_one(3u, 100u, 200u); fail_ack_writes = 1;
+    assert(!api->poll(NULL, 1u) && status_reg == 0u);
+    assert(take(api, a).kind == RISC_TOUCH_EVENT_DOWN);
+    assert(take(api, b).kind == RISC_TOUCH_EVENT_DOWN);
+    assert(api->poll(NULL, 1u));
+    assert(api->next(NULL, a, &event_a) == 0);
+    report_release(); fail_ack_writes = 1;
+    assert(!api->poll(NULL, 1u) && status_reg == 0u);
+    assert(take(api, a).kind == RISC_TOUCH_EVENT_UP);
+    assert(take(api, b).kind == RISC_TOUCH_EVENT_UP);
+    assert(api->poll(NULL, 1u));
+    assert(api->next(NULL, a, &event_a) == 0);
+    failed_ack_reaches_controller = false;
+
+    // Malformed reports are explicitly signalled as GAP to both consumers.
+    report_one(3u, 100u, 200u);
+    assert(api->poll(api->context, 1u));
+    assert(take(api, a).kind == RISC_TOUCH_EVENT_DOWN);
+    assert(take(api, b).kind == RISC_TOUCH_EVENT_DOWN);
+    report_one(3u, 600u, 200u); // outside the 540px surface
+    assert(!api->poll(api->context, 1u));
+    assert(status_reg == 0u);
+    assert(api->next(api->context, a, &event_a) == -1);
+    assert(api->next(api->context, b, &event_b) == -1);
+    report_release();
+    assert(api->poll(api->context, 1u));
+    assert(take(api, a).kind == RISC_TOUCH_EVENT_UP);
+    assert(take(api, b).kind == RISC_TOUCH_EVENT_UP);
+    status_reg = 0x86u; // impossible six-contact report
+    assert(!api->poll(api->context, 1u));
+    assert(api->next(api->context, a, &event_a) == -1);
+    assert(api->next(api->context, b, &event_b) == -1);
+
+    // A second caller cannot interleave status/read/ack or observe torn state.
+    report_one(3u, 100u, 200u);
+    thread_api = api;
+    pause_status = true;
+    pthread_t thread;
+    assert(pthread_create(&thread, NULL, poll_thread, NULL) == 0);
+    pthread_mutex_lock(&gate);
+    while (!in_status) pthread_cond_wait(&condition, &gate);
+    pthread_mutex_unlock(&gate);
+    assert(!api->poll(NULL, 1u));
+    assert(api->next(NULL, a, &event_a) == -2); // busy is not GAP
+    assert(!api->snapshot(NULL, &snap));
+    pthread_mutex_lock(&gate);
+    resume_status = true;
+    pthread_cond_broadcast(&condition);
+    pthread_mutex_unlock(&gate);
+    assert(pthread_join(thread, NULL) == 0);
+    pause_status = false;
+    assert(take(api, a).kind == RISC_TOUCH_EVENT_DOWN);
+    assert(take(api, b).kind == RISC_TOUCH_EVENT_DOWN);
+    assert(api->poll(NULL, 16u));
+    assert(api->next(NULL, a, &event_a) == 0); // no duplicate DOWN
+    report_release();
+    assert(api->poll(NULL, 1u));
+    assert(take(api, a).kind == RISC_TOUCH_EVENT_UP);
+    assert(take(api, b).kind == RISC_TOUCH_EVENT_UP);
+
     fake_ms = 1040u;
     report_home(true);
     assert(api->poll(api->context, 1u));
@@ -219,6 +328,11 @@ int main(void) {
     status_reg = 0;
     assert(driver->start(dependencies, 2u));
     assert(claimed_address == 0x14u);
+    uint64_t fresh = api->subscribe(NULL);
+    assert(fresh > b);
+    assert(!api->unsubscribe(NULL, a));
+    assert(api->next(NULL, a, &event_a) == -1);
+    assert(api->unsubscribe(NULL, fresh));
     assert(driver->quiesce());
     driver->stop();
     assert(release_calls == 2u);

@@ -39,14 +39,14 @@ class HalDisplay {
     EFFECT_READER_TURN_BACKWARD_FAST
   };
 
-  // Initialize the display hardware and driver. Ordinary boots clear the
-  // panel during M5GFX initialization; deep-sleep clock timer wakes can retain
-  // the physical e-paper image and skip that startup clear.
+  // Initialize the display hardware and driver. Cold-boot video scrub and
+  // retained clock wakes pass false to preserve the physical image until their
+  // own bounded update. Recovery and ordinary callers keep the full clear.
   void begin(bool clearPanel = true);
 
   // Exclusive native ELF display takeover. The host MUST hold RenderLock and
-  // stop other display users for the entire interval. No UI/display calls are
-  // allowed between successful suspend and resume. Logical framebuffers stay
+  // stop other display users for the entire interval. Physical refresh calls
+  // are forbidden until resume. Software-only drawing is allowed; framebuffers stay
   // allocated at the same addresses so the existing GfxRenderer remains valid.
   // Other boards fail closed until their backend implements a real handoff.
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)

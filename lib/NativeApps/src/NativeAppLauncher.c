@@ -52,6 +52,9 @@
 #endif
 
 // Firmware-only owner-task hooks; never exported to application ELFs.
+extern bool native_app_memory_begin(void);
+extern void native_app_memory_end(void);
+extern void native_app_memory_relocation(bool active);
 extern bool native_app_capabilities_ready(const char *sd_path);
 extern bool native_app_capabilities_bind(const char *sd_path);
 extern void native_app_capabilities_release(void);
@@ -60,6 +63,7 @@ extern void native_app_provider_capabilities_release(void);
 // RenderLock. Individual ELFs only declare their requested resource mask.
 extern esp_err_t native_hardware_takeover_begin(uint32_t requested);
 extern esp_err_t native_hardware_takeover_end(uint32_t requested);
+extern bool native_hardware_display_is_borrowed(void);
 // Temporary direct hardware import inventory, registered only for the
 // lifetime of the current ELF. Neither function is an ELF export.
 extern int native_hardware_compat_register(void);
@@ -87,6 +91,8 @@ esp_err_t launch_elf_app(const char *sd_path)
     }
     bool compat_registered = false;
     bool module_initialized = false;
+    bool retain_module = false;
+    bool memory_active = false;
     bool takeover_active = false;
     elf_app_module_fini_t module_fini = NULL;
     esp_err_t result = native_app_register_sd_vfs();
@@ -154,8 +160,15 @@ esp_err_t launch_elf_app(const char *sd_path)
     compat_registered = true;
     result = ESP_FAIL;
     (void)dlerror();
+    if (!native_app_memory_begin()) {
+        result = ESP_ERR_NO_MEM;
+        goto done;
+    }
+    memory_active = true;
     ESP_LOGI(TAG, "Loading %s", sd_path);
+    native_app_memory_relocation(true);
     void *handle = dlopen(sd_path, RTLD_NOW);
+    native_app_memory_relocation(false);
     if (handle == NULL) {
         const char *error = dlerror();
         ESP_LOGE(TAG, "dlopen(%s): %s", sd_path,
@@ -248,10 +261,18 @@ close_module:
             ESP_LOGE(TAG, "Failed to restore host hardware for %s: %s",
                      sd_path, esp_err_to_name(restore));
             result = restore;
+            if (native_hardware_display_is_borrowed()) {
+                // A live hardware task/DMA can still reference this image or
+                // its heap. Fail closed; do not recycle it into the next app.
+                retain_module = true;
+                ESP_LOGE(TAG, "Live hardware retained; restart required before another app");
+                goto done;
+            }
         }
         takeover_active = false;
     }
     native_app_capabilities_release();
+    if (memory_active) { native_app_memory_end(); memory_active = false; }
     (void)dlerror();
     if (dlclose(handle) != 0) {
         const char *close_error = dlerror();
@@ -260,10 +281,11 @@ close_module:
         result = ESP_FAIL;
     }
 done:
+    if (memory_active && !retain_module) native_app_memory_end();
     native_app_provider_capabilities_release();
     if (compat_registered) native_hardware_compat_unregister();
     native_app_capabilities_release();
     s_current_path = NULL;
-    atomic_flag_clear_explicit(&s_running, memory_order_release);
+    if (!retain_module) atomic_flag_clear_explicit(&s_running, memory_order_release);
     return result;
 }

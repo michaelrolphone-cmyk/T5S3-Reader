@@ -49,6 +49,8 @@ int main(void) {
     }
     uint8_t *mono=malloc(120u*540),*gray=malloc(240u*540),*memory=malloc(HT_MEMORY);
     assert(mono && gray && memory); ht_bind(memory); ht_spawn(true); ht_render_scene();
+    /* Verify the standard scalar packing fallback against direct bilinear
+     * interpolation and the display dither thresholds. */
     for(unsigned pattern=0;pattern<2;++pattern) {
         if(pattern) {
             ht_framed=false;
@@ -63,7 +65,7 @@ int main(void) {
             assert(((mono[y*120+x/8]>>(7-(x&7)))&1)==epd_dither_black(value,x,y));
         }
     }
-    /* Both raster paths must represent the same final lighting/material tone. */
+        /* Both raster paths must represent the same final lighting/material tone. */
     fps_reset_game();
     for(unsigned scene=0;scene<3;++scene) {
         g_player_angle=(float)scene*1.1f;

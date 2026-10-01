@@ -317,8 +317,8 @@ void enterPowerOffKeepingScreen(const char* status) {
 bool g_shutdownRequested = false;
 void requestShutdown() { g_shutdownRequested = true; }
 
-void setupDisplayAndFonts() {
-  display.begin();
+void setupDisplayAndFonts(bool clearPanel = true) {
+  display.begin(clearPanel);
   renderer.begin();
   activityManager.begin();
   LOG_DBG("MAIN", "Display initialized");
@@ -348,8 +348,7 @@ void setupDisplayAndFonts() {
   renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
   renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
 
-  sdFontSystem.begin(renderer);
-  LOG_DBG("MAIN", "Fonts setup");
+  LOG_DBG("MAIN", "Built-in fonts setup");
 }
 
 void ensureSdFontLoaded() { sdFontSystem.ensureLoaded(renderer); }
@@ -455,8 +454,6 @@ void setup() {
     }
   }
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
-  KOREADER_STORE.loadFromFile();
-  OPDS_STORE.loadFromFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 
@@ -505,25 +502,33 @@ void setup() {
   // First serial output only here to avoid timing inconsistencies for power button press duration verification
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
 
+  const bool animateBoot = !recoveryFirmwareMode && !HalSystem::isRebootFromPanic() && !deskClockUserWake;
+#if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
+  setupDisplayAndFonts(!animateBoot);  // Spatial scrub owns the first physical clear.
+#else
   setupDisplayAndFonts();
-  logPlatformInputHealth();
-  // Touch is an optional installed provider capability. Do not attempt to
-  // activate it during setup: input.navigation gets the first provider-graph
-  // opportunity from MappedInputManager::update(), so a missing touch package
-  // can never strand USB/controller navigation before Driver Manager is usable.
-  // nativeTouchTick() activates touch later in the normal input loop.
-  LOG_INF("MAIN", "Touch provider activation deferred to input loop");
+#endif
   display.setFlipOutput(SETTINGS.flipUi != 0);
 
-  // Present before any activity or mapped-input update can activate installed
-  // ELF providers. Recovery and panic reports retain their direct boot paths.
-  if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic() && !deskClockUserWake) {
+  // Start the independent animation before SD font discovery, state loading,
+  // provider admission and Home/reader preparation. Recovery bypasses it.
+  if (animateBoot) {
     RenderLock lock;
     StartupScreen::boot(renderer);
   }
 
+  sdFontSystem.begin(renderer);
+  KOREADER_STORE.loadFromFile();
+  OPDS_STORE.loadFromFile();
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
+  // Keep provider loading on the normal owner task. The video worker only
+  // submits pixels; it cannot contend with SD/module/renderer initialization.
+  if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic()) {
+    logPlatformInputHealth();
+    mappedInputManager.update();  // Navigation first, then optional touch.
+    LOG_INF("MAIN", "Startup services ready in %lu ms", static_cast<unsigned long>(millis() - t1));
+  }
   const bool resumeReaderOnBoot = shouldResumeReaderOnBoot();
   const auto prepareStartupRefresh = [](HalDisplay::RefreshMode refreshMode) {
     display.suppressInitialFullRefresh();

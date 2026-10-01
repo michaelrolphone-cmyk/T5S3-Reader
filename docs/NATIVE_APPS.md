@@ -228,7 +228,13 @@ The stable prefix provides:
 
 `t5_app_input_t` supplies button bits, a tap flag, touch coordinates, and a
 sticky `exit_requested` flag. Apps should normally call `poll()` every 20-50 ms.
-The host clamps the polling delay to 1-50 ms.
+The host clamps the polling delay to 1-50 ms, including when passed zero.
+Firmware 1.3.36 appends optional `poll_nowait(input)`: size-check the member
+before calling it. It uses the same owner-task validation, input update, exit
+handling and watchdog feed, but adds no scheduling delay. Provider work still
+consumes time; it is not a hard nonblocking I/O guarantee. Callers must retain
+real yielding `poll(..., >=1)` calls every 20-50 ms, including in long raster
+loops, and fall back to `poll` on older hosts. Existing `poll` behavior is unchanged.
 
 By default Back, Power, and the touch Home gesture request exit. Power and Home
 remain unconditional exit/navigation gestures. Apps that need Back for internal
@@ -641,3 +647,24 @@ Firmware 1.3.29 adds the versioned `T5MathApi.h` table for bounded 16-bit vector
 addition/subtraction and bulk memory operations. ESP32-S3 uses bundled ESP-DSP
 assembly behind alignment/tail guards; callers use the same portable contract.
 See [Native math API](NATIVE_MATH_API.md) for bounds, ownership and integration.
+
+### Reader typography capability
+
+Apps that need book-style text can optionally declare `reader.typography` with
+`api: ">=1"` and acquire API 1 through `T5ProviderCapabilityApi`. Include
+`RiscReaderTypographyV1.h`; do not import reader settings or font implementation
+symbols. The built-in software provider renders one page into a caller-owned
+MSB-first 1bpp bitmap (one means black), using the reader's selected font and
+line spacing. It returns the next UTF-8 byte offset. The caller owns pagination
+history, input and presentation. Rendering is synchronous, bounded and yields;
+the interface and context are valid only for their owning invocation and lease.
+Release before freeing resources; loader cleanup also revokes it on app exit.
+
+`page()` requires NUL-terminated title/footer (<=128 bytes) and text whose stated
+length matches its terminator (<=16 KiB). Offset must be a UTF-8 boundary. The
+width is a multiple of eight, 320–2048; height 240–2048; stride is width/8 and
+capacity covers stride*height, at most 256 KiB. The target is overwritten, with
+32px margins and title/footer space reserved. False means the target must be
+discarded. No buffer pointers are retained, and no display refresh occurs.
+Firmware 1.3.35 introduces the capability. Hollow Trail demonstrates full-size
+reading pages beside a lower-resolution game renderer.

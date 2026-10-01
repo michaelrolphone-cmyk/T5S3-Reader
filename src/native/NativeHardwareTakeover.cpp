@@ -1,5 +1,6 @@
 #include <HalDisplay.h>
 #include "NativeTouchInput.h"
+#include "NativeAppMemory.h"
 #include "NativeVideoBridge.h"
 #include <Board.h>
 #include "CrossPointSettings.h"
@@ -27,12 +28,14 @@ extern "C" esp_err_t native_hardware_takeover_begin(uint32_t requested) {
              static_cast<unsigned long>(requested));
     return ESP_ERR_NOT_SUPPORTED;
   }
+  if ((requested & T5_HARDWARE_TAKEOVER_UI_VIDEO) &&
+      !(requested & T5_HARDWARE_TAKEOVER_DISPLAY)) return ESP_ERR_NOT_SUPPORTED;
   if (s_display_borrowed) return ESP_ERR_INVALID_STATE;
   if ((requested & T5_HARDWARE_TAKEOVER_DISPLAY) != 0U) {
     // Release the firmware's input.touch.raw subscription before a display-
     // takeover app starts. Legacy GameBoy binaries may still access GT911
     // directly; newer binaries can reacquire the same provider themselves.
-    s_touch_borrowed = nativeTouchAvailable();
+    s_touch_borrowed = !(requested & T5_HARDWARE_TAKEOVER_UI_VIDEO) && nativeTouchAvailable();
     if (s_touch_borrowed && !nativeTouchSuspend()) {
       s_touch_borrowed = false;
       ESP_LOGE(kTag, "Touch provider could not quiesce; refusing ELF entry");
@@ -46,7 +49,7 @@ extern "C" esp_err_t native_hardware_takeover_begin(uint32_t requested) {
     }
     s_display_borrowed = true;
     Board::restoreBacklightLevel(SETTINGS.backlightLevel);
-    ESP_LOGI(kTag, "Display ownership transferred; firmware touch subscription released");
+    ESP_LOGI(kTag, "Display ownership transferred (UI video preserves touch)");
   }
   return ESP_OK;
 }
@@ -58,7 +61,13 @@ extern "C" esp_err_t native_hardware_takeover_end(uint32_t requested) {
     // The ELF should stop its fast-video service itself. Force-stop the
     // firmware-owned GameBoy-derived bridge as an unload guard before restoring
     // the normal display. External ELFs such as GameBoy simply see a no-op.
-    nativeVideoForceStop();
+    if (!nativeVideoForceStop()) {
+      ESP_LOGE(kTag, "Video teardown incomplete; retaining display ownership");
+      return ESP_ERR_INVALID_STATE;
+    }
+    // App callbacks have returned and display DMA is stopped. Reclaim buffers
+    // before restoring the host display, which itself needs a large working set.
+    native_app_memory_end();
     s_display_borrowed = false;
     const bool displayRestored = display.resumeFromExternalOwner();
     // A display owner can re-route the light GPIO to its own PWM channel or
