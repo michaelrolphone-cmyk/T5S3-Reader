@@ -4,7 +4,11 @@ These questions refine the existing roadmap; they do not authorize implementatio
 
 ## 1 Close the actual bootstrap and resource contract — R1
 
+First resolve the [shared-bus recovery decision](recovery-contract.md) with the sole U1 owner: accept bounded fail-closed SD/LoRa outage until reboot only if lower polling/locks, raw admission and retained task/resource lifetimes can be proven safe. Otherwise retain explicit limited guarantees or separately scope validated abort, filesystem/cache and radio reinitialization. An outer timeout, task deletion or storage-only flag is insufficient. The current receipt/inventory slices are progress, not proof of lower-media termination [E19].
+
 Follow the existing SD-witness owner from bootstrap disk/compile-linked HalStorage/SdVfs to the unchanged ordinary package manager, loader and provider graph. Record the first readable package, exact mount/package generations, exclusive handoff, recoverable last-good state and behavior with removed/corrupt media. Coordinate its generation seam with the sole U1 receipt/inventory owner. Raw writable legacy SD/FS imports mean HalStorage-only invalidation is not enough; resolve ongoing/retained writer uncertainty while preserving compatibility.
+
+Retain the common transaction engine in light of the 40-case pinned LittleFS host witness. Investigate the consumed-core-state/retained-VFS-descriptor close failure rather than retrying blindly; retire the 64-character-name objection for the tested configuration. Host fault coverage is neither a complete backend nor physical qualification, and CAM SDMMC evidence does not qualify T5S3 SPI [E20].
 
 For the no-SD relay and zero-PSRAM Tracker, separately establish package-store population/recovery and executable mapping/peak memory-class feasibility before labeling package execution supported. Do not create a universal flash store or new U1 gate from diagnostic success. Preserve the clock's no-SD/no-full-UI wake path. PSRAM on the relay remains unknown.
 

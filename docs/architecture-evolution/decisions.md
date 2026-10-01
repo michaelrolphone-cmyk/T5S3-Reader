@@ -52,3 +52,11 @@ For each later change record date, affected proposal, new immutable evidence, wh
 - Keep all four goals equal. October 9 is a planning interpretation, not a release promise or a firmware version change. Daily T5S3 testing remains deferred; no CI/diagnostic result closes product qualification.
 
 Publication discipline: this pass started from open draft #328 at `c65ed014`; the branch had no competing PR comment claim and no other active architecture writer was visible in the checked task inventory. GitHub reported mergeable=true on recheck, so the previously reported conflict required no repair. No master merge or out-of-path change was used.
+
+## 2026-10-01 Challenge recovery claims against lower-level failures
+
+R1 remains first, but [the owner decision](recovery-contract.md) now distinguishes recovery after reboot from safe in-session resumption. Reject outer timeout as transfer cancellation, caller deletion as mutex release, HalStorage-only quarantine as protection against raw clients, and SD-only outage as the T5S3 shared-bus contract: LoRa is affected too. Prefer evaluating a narrow existing-port fail-closed correction only with accepted compatibility limits and proven bounded detection/retained owner lifetime; retain current limited guarantees if that cannot be shown. Controller abort plus filesystem/cache/radio reinitialization is extra scope, not an automatic U1 or U3 rewrite [E19].
+
+Retire the 64-character LittleFS transaction-name blocker for the tested configuration: 77 characters are valid. Forty simulated interruption cases strengthen the retained common transaction design, not physical/backend readiness. Reject blind close retry where VFS retains a descriptor after core file state is consumed; keep durability uncertainty distinct from live-resource retention [E20]. No new ranked proposal, hardware test, package engine or network rewrite is introduced.
+
+Ownership was rechecked against PR #328, the task inventory and current U1 ledger before this documentation pass. The sole U1 implementation owner retains all implementation work, including HTTP idle-body correction. Architecture publication is limited to this directory; the documentation claim is released after exact-commit verification.
