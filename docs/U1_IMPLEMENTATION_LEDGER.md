@@ -30,6 +30,19 @@ b78955ac passed twice through installed clock/archive, production stream registr
 rights, cleanup and stable heap. That is a development witness, not full U1/T5S3
 physical qualification; no duplicate CAM diagnosis is assigned here.
 
+## October 1: preserve the packaged Arduino SPI synchronization fix
+
+Published782e0883 (tree1359b8d7, tested local267fc429) connected the policy;
+both target builds correctly stopped before compilation on an SDK source-pin
+mismatch. The diagnostic follow-up a88c3158 (tree46a2786d, localbb0154b0) keeps
+validation all-or-nothing and preserves bounded failure evidence. Its actual
+packaged HAL includes the PR9333 configuration-sync backport and41 busy waits,
+not the official tag's40. Artifact11168113207 was downloaded/hash checked;
+all other inspected SDK files match. The correction preserves and bounds the
+extra wait, uses the exact reviewed HAL hash and explicitly pins the already
+selected PlatformIO framework version. It does not bypass source-drift refusal.
+Actual packaged-source wait/close fixtures and the policy aggregate pass.
+
 ## October 1: approved manual-reboot SD/shared-SPI policy
 
 Local171eb6a2 integrates actual master4530c8b2/Text Editor342 and ZIP0.2.3,

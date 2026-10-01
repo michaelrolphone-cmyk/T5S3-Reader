@@ -22,7 +22,7 @@ for kind,path in paths.items():
         else: raise AssertionError('Source drift was accepted')
     texts[kind]=result
 hal=texts['hal']; spi=texts['spi']; sd=texts['sd']
-assert hal.count('risc_sd_spi_busy(began)')==40
+assert hal.count('risc_sd_spi_busy(began)')==41
 assert hal.count('if (spi && spi->num == FSPI) risc_sd_spi_guard();')==49
 start=hal.split('spi_t * spiStartBus(',1)[1].split('void spiWaitReady(',1)[0]
 assert start.index('if (spi->num == FSPI) SPI_MUTEX_LOCK();') < start.index('periph_module_reset(')

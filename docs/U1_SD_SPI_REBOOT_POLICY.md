@@ -11,7 +11,7 @@ providers. Normal successful SD, raw SDFS/File and LoRa operation stays supporte
   operations preserve their original30-second deadline. HalStorage operations,
   Arduino SD disk operations and global FSPI transactions share that observer;
   it is not another bus mutex or a capability/installer registry
-- The pinned Arduino2.0.17 patch bounds all40 `cmd.usr`/`cmd.update` polls to a
+- The pinned Arduino2.0.17 patch bounds all41 `cmd.usr`/`cmd.update` polls to a
   fixed1-second transfer wait, checks chunk loops, and guards FSPI entrypoints.
   SPI parameter and bus mutexes remain the actual owners. Acquisition uses at
   most300 cooperative100-ms attempts within one30-second deadline. Failure
@@ -70,7 +70,8 @@ already-patched contents. Drift fails the build. PlatformIO applies the patch
 before dependency compilation and enables the lifetime wrappers on both current
 board profiles. The relevant framework sources are Arduino2.0.17:
 
-- `cores/esp32/esp32-hal-spi.c`:43ea98b960825416f9c00b6016326ea8edb9458a
+- `cores/esp32/esp32-hal-spi.c`:c635b836e8e77412f3fa5e7bf7196a477eb86d99
+  (PlatformIO3.20017.241212+sha.dcc1105b packaged backport)
 - `libraries/SPI/src/SPI.cpp`:3af07515c2be974168ddb683802f784f182b1769
 - `libraries/SD/src/sd_diskio.cpp`:da967338589e71d18517d6137ecc8a573b438d13
 - `libraries/FS/src/vfs_api.cpp`:1dd8da94ac93cc6bf5e4f5bcc6854ab4fdef5481
@@ -80,6 +81,19 @@ cumulative U1 ZIP1.0.1, above source/published1.0.0; the new refusal behavior is
 part of that same unreleased payload. The only observed LoRa release tag at
 13:34 UTC was app-lora-v1.0.0. Text Editor342 is owner-merged in master4530c8b2;
 U1 preserves that code and advances its ZIP identity0.2.2 →0.2.3.
+
+### Packaged-source reconciliation
+
+The first target build at782e0883 correctly refused the official2.0.17 HAL
+source pin. The actual PlatformIO package contains the backported PR9333
+configuration-update synchronization in spiTransaction, including one additional
+cmd.update wait. The normal-build diagnostic at a88c3158 preserved that exact
+input; artifact11168113207 ZIP SHA-256
+1750c8399f798829ec9f47d7d518b4ea7c63d55abed5a9187b3ee1436f79251f
+was downloaded and verified. The other three files match their original pins.
+The correction preserves that hardware fix and bounds all41 waits rather than
+removing it or accepting arbitrary source drift. All files validate before any
+cached dependency file is modified.
 
 ## Development evidence and remaining physical gates
 

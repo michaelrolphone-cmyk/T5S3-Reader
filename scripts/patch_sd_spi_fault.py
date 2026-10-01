@@ -8,9 +8,9 @@ import hashlib
 import json
 import re
 MARK = '// RiscRTE SD/SPI retained-fault port v1'
-PATCHED = {'hal': 'f62552189e54e2b412bd98c186ae9b37b87216a14321ef54c866de3b141f3e9b', 'spi': '98e19cea2fa17fb283157d3e3e49e66db543c6e6fa13f693b54bacca7c4edc4c', 'sd': '427725199401ad3a6254d6b993d9db371d1141627a3490c7a81c985fde29bd64', 'vfs': 'cba3ea1a987b9ae0f6efe42d9adc031484fb3147093262e93560fc43108bc2ba'}
+PATCHED = {'hal': 'f7d14845900aac311cf728f3416b5ce32f4ff205489b01d444e729c1ce59f37c', 'spi': '98e19cea2fa17fb283157d3e3e49e66db543c6e6fa13f693b54bacca7c4edc4c', 'sd': '427725199401ad3a6254d6b993d9db371d1141627a3490c7a81c985fde29bd64', 'vfs': 'cba3ea1a987b9ae0f6efe42d9adc031484fb3147093262e93560fc43108bc2ba'}
 EXPECTED = {
-    'hal': '43ea98b960825416f9c00b6016326ea8edb9458a',
+    'hal': 'c635b836e8e77412f3fa5e7bf7196a477eb86d99',
     'spi': '3af07515c2be974168ddb683802f784f182b1769',
     'sd': 'da967338589e71d18517d6137ecc8a573b438d13',
     'vfs': '1dd8da94ac93cc6bf5e4f5bcc6854ab4fdef5481',
@@ -63,7 +63,7 @@ def patch(text, kind):
             flag=m[1]
             return 'do { const uint32_t began = xTaskGetTickCount(); while (spi->dev->cmd.'+flag+') { if (spi->num == FSPI) risc_sd_spi_busy(began); } } while (0);'
         text,n=re.subn(pattern,wait,text)
-        if n!=40: raise RuntimeError('SPI wait count changed: '+str(n))
+        if n!=41: raise RuntimeError('SPI wait count changed: '+str(n))
         text,n=re.subn(r'(while\((?:size|len)\)\s*\{)', r'\1 if (spi->num == FSPI) risc_sd_spi_guard();', text)
         if n!=4: raise RuntimeError('SPI chunk loop count changed: '+str(n))
     elif kind == 'spi':
