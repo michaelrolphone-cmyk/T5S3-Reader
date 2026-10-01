@@ -173,6 +173,10 @@ python3 "$repo_dir/test/native_apps/button_remap_runtime_test.py"
 python3 "$repo_dir/test/native_apps/font_update_crc_source_test.py"
 python3 "$repo_dir/test/native_apps/rom_manager_actions_touch_source_test.py"
 python3 "$repo_dir/test/native_apps/text_editor_discard_source_test.py"
+cc -std=c11 -Wall -Wextra -Werror \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/text_editor_open_test.c" -o "$binary"
+"$binary"
 python3 "$repo_dir/test/native_apps/wifi_settings_cookie_source_test.py"
 python3 "$repo_dir/test/native_apps/font_manager_confirm_edge_source_test.py"
 python3 "$repo_dir/test/native_apps/timecard_clock_failure_source_test.py"
