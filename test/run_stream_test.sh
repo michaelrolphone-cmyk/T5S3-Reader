@@ -31,6 +31,7 @@ compile_run gnss-producer "$stream" "$repo/test/streams/cooperative_gnss_produce
 compile_run location-lease-binding "$stream" "$repo/test/streams/location_lease_binding_test.cpp"
 compile_run location-production-registry "$stream" "$repo/test/streams/location_production_registry_test.cpp"
 compile_run http-transfer "$stream" "$repo/test/streams/http_transfer_test.cpp"
+python3 "$repo/test/streams/bounded_download_adapter_test.py"
 printf '#include "T5StreamApi.h"\n#include "T5SerialPortApi.h"\n#include "T5DeviceApi.h"\n#include "RiscRteLocationRecords.h"\nint main(void) { return T5_STREAM_API_VERSION != 1 || T5_SERIAL_PORT_API_VERSION != 1 || T5_DEVICE_API_VERSION != 1 || RISCRTE_LOCATION_FIX_SIZE != 52; }\n' > "$build/abi.c"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/lib/NativeApps/include" "$build/abi.c" -o "$build/abi"
 "$build/abi"

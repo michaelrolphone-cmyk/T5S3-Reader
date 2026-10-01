@@ -7,6 +7,7 @@
 #include "network/HttpDownloader.h"
 
 #include <HalStorage.h>
+#include <Arduino.h>
 #include <esp_task_wdt.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -21,6 +22,8 @@
 
 namespace RuntimeOnlinePackages {
 namespace OrdinaryZip {
+constexpr uint32_t kArchiveDownloadTimeoutMs = 300000;
+constexpr uint32_t kArchiveVerifyTimeoutMs = 60000;
 
 // Only this exact published release may supply the archive. In particular, do
 // not use releases/latest/download after catalog selection: it can drift.
@@ -47,6 +50,8 @@ inline bool archiveMatches(const char* path,
                            const RuntimePackages::CatalogPackage& package) {
   if (!path || !RuntimePackages::CatalogDetail::lowerSha256(package.sha256))
     return false;
+  const uint32_t started = millis();
+  uint32_t checkpoint = started;
   HalFile file = Storage.open(path, O_RDONLY);
   if (!file.isOpen() || file.isDirectory()) {
     if (file.isOpen()) (void)file.close();
@@ -60,20 +65,22 @@ inline bool archiveMatches(const char* path,
   bool good = mbedtls_sha256_starts_ret(&hash, 0) == 0;
   uint64_t offset = 0;
   while (good && offset < package.sizeBytes) {
+    if (millis() - started >= kArchiveVerifyTimeoutMs) { good = false; break; }
     const size_t count = static_cast<size_t>(std::min<uint64_t>(1024, package.sizeBytes - offset));
     good = file.read(chunk.get(), count) == static_cast<int>(count) &&
            mbedtls_sha256_update_ret(&hash, chunk.get(), count) == 0;
     offset += good ? count : 0;
-    if (good && (offset % 16384u == 0 || offset == package.sizeBytes)) {
+    if (good && (offset % 16384u == 0 || offset == package.sizeBytes || millis() - checkpoint >= 8u)) {
       esp_task_wdt_reset();
       vTaskDelay(1);
+      checkpoint = millis();
     }
   }
   uint8_t digest[32]{};
   if (good) good = mbedtls_sha256_finish_ret(&hash, digest) == 0;
   mbedtls_sha256_free(&hash);
   const bool closed = file.close();
-  if (!good || !closed) return false;
+  if (!good || !closed || millis() - started >= kArchiveVerifyTimeoutMs) return false;
   constexpr char hex[] = "0123456789abcdef";
   unsigned mismatch = 0;
   for (unsigned i = 0; i < 32; ++i) {
@@ -103,7 +110,7 @@ inline bool install(const RuntimePackages::CatalogPackage& package,
   } else {
     // Unknown or interrupted file requires explicit recovery, never overwrite.
     if (Storage.exists(part.c_str()) ||
-        HttpDownloader::downloadToFile(url, part, progress) != HttpDownloader::OK)
+        HttpDownloader::downloadToFileBounded(url, part, package.sizeBytes, kArchiveDownloadTimeoutMs, progress) != HttpDownloader::OK)
       return false;
     if (!archiveMatches(part.c_str(), package) ||
         !Storage.rename(part.c_str(), archive.c_str())) return false;

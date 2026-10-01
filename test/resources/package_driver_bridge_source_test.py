@@ -22,7 +22,7 @@ locator = (root / 'src/runtime/packages/PackageOnlineCatalog.h').read_text(encod
 assert 'releases/download/' in locator
 assert 'releases/latest/download/' not in locator
 for required in ('RuntimePackages::onlineArchiveUrl(', 'archiveMatches(',
-                 'HttpDownloader::downloadToFile(url, part, progress)',
+                 'HttpDownloader::downloadToFileBounded(url, part, package.sizeBytes, kArchiveDownloadTimeoutMs, progress)',
                  'Storage.rename(part.c_str(), archive.c_str())',
                  'installOrdinaryFromSdZip(', '&package.identity',
                  'OrdinaryInstallResult::Installed'):

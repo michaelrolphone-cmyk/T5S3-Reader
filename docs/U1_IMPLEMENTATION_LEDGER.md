@@ -13,6 +13,37 @@ and auditing the remaining whole-U1 acceptance gates. Other continuations must
 not write this branch until this claim is explicitly released. No live release,
 index, tag, master update or flash. CI is feedback, not an idle-work gate.
 
+## October 1: strict ordinary archive intake bounds
+
+**24b84db6** is the verified four-kind resource checkpoint (local89860197,
+identical tree75982438), green on PlatformIO/host **36810742575** and
+USB/ELF **36810742520**. Master remains **a5e2db59**. The resource changes
+introduced no app/driver payload changes, but final U1 firmware version
+reconciliation is still mandatory before requesting merge/release readiness.
+Check actual master and published firmware lineage then; do not repeatedly bump
+for internal checkpoints or absorb an unmerged feature's version as if merged.
+
+The next bounded slice feeds the selected catalog archive length into strict
+staging before writes. The generic HTTP/file stream helper retains one chunk,
+replays short/AGAIN writes, rejects excess input before SD write and enforces
+both a total300-second budget and the existing no-progress timeout. The wrapper
+includes network readiness and post-close file-size verification in that budget;
+no authenticated stream context means failure rather than fallback to an
+unbounded transport. Only an exclusively created stage may be removed on failure.
+Ordinary archive SHA inspection now has a60-second elapsed limit and byte/time
+yield checkpoints. Underlying blocked-call termination remains open.
+
+Focused sanitizer tests passed for exact bytes, oversized/truncated replies,
+continuous progress past deadline, late read/finish, timer wrap, stalled and short
+writes, absent context, raced/existing stages and final metadata/close faults.
+The actual downloader method is exercised with the production transfer/registry,
+substituting only platform storage and network-readiness boundaries. Full
+stream and ordinary-package aggregates, metadata freshness routing and driver
+package compatibility tests passed. Exact-head target checks remain pending. No TLS changes,
+archive service, installation semantics, versions or live release changed here.
+
+**Implementation In Progress**
+
 ## October 1: provider-owned installed resource bindings
 
 **57c4b0a3** is the published app-resource checkpoint (local4a2d772f,

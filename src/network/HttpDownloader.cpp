@@ -21,6 +21,7 @@ using CrossPointHttpClientSecure = WiFiClientSecure;
 #endif
 #include <base64.h>
 
+#include <algorithm>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -227,7 +228,7 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
     return FILE_ERROR;
   }
 
-  // Native installers already create a transaction-specific, disposable .part
+  // Compatibility native downloads already create a transaction-specific, disposable .part
   // path. All of its bytes travel via HTTP stream -> lossless pipe -> exclusively
   // created file stream. The App Store still owns manifest policy and renames.
   const auto* streams = invocationStreams(username, password);
@@ -395,4 +396,43 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
   }
 
   return OK;
+}
+
+HttpDownloader::DownloadError HttpDownloader::downloadToFileBounded(
+    const std::string& url, const std::string& destPath, uint64_t expectedBytes,
+    uint32_t timeoutMs, ProgressCallback progress) {
+  const uint32_t started = millis();
+  if (!expectedBytes || expectedBytes > std::numeric_limits<size_t>::max() ||
+      !timeoutMs || timeoutMs > 300000u || destPath.size() < 6 || destPath.front() != '/' ||
+      destPath.compare(0, 4, "/sd/") == 0 ||
+      destPath.compare(destPath.size() - 5, 5, ".part") != 0 || Storage.exists(destPath.c_str()))
+    return FILE_ERROR;
+  const auto* streams = invocationStreams("", "");
+  if (!streams) return STREAM_ERROR;
+  if (!RuntimeNetwork::ensureSavedConnection(std::min(timeoutMs, kNetworkReadyTimeoutMs))) return HTTP_ERROR;
+  const uint32_t elapsed = millis() - started;
+  if (elapsed >= timeoutMs) return STREAM_ERROR;
+  uint64_t transferred = 0;
+  bool created = false;
+  auto report = [](void* context, uint64_t count) {
+    auto* callback = static_cast<ProgressCallback*>(context);
+    if (*callback) (*callback)(static_cast<size_t>(count), 0);
+  };
+  const std::string path = "/sd" + destPath;
+  const auto result = RuntimeHttpStreams::downloadBounded(streams, url.c_str(), path.c_str(),
+      streamHooks(), expectedBytes, timeoutMs - elapsed, report, &progress, &transferred, &created);
+  bool complete = result == RuntimeHttpStreams::Result::Ok && transferred == expectedBytes &&
+      millis() - started < timeoutMs;
+  if (complete) {
+    HalFile file = Storage.open(destPath.c_str(), O_RDONLY);
+    complete = file.isOpen() && !file.isDirectory() && file.fileSize64() == expectedBytes;
+    if (file.isOpen() && !file.close()) complete = false;
+    complete = complete && millis() - started < timeoutMs;
+  }
+  if (!complete && created) (void)Storage.remove(destPath.c_str());
+  if (complete) return OK;
+  if (result == RuntimeHttpStreams::Result::Cancelled) return ABORTED;
+  if (result == RuntimeHttpStreams::Result::Http) return HTTP_ERROR;
+  if (result == RuntimeHttpStreams::Result::File) return FILE_ERROR;
+  return STREAM_ERROR;
 }
