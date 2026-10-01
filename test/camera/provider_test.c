@@ -1,3 +1,4 @@
+#include "../../Drivers/camera_esp32s3/hardware_diag.h"
 #include "RiscCameraCaptureV1.h"
 #include "RiscCameraEsp32s3ProfileV1.h"
 #include "RiscStreamProviderV1.h"
@@ -47,6 +48,13 @@ static void reset(void){
 static uint64_t begin(void){uint64_t j=0;uint32_t h=0;assert(api->capture(NULL,&request,&j,&h)==0 && j && h==41);return j;}
 static risc_camera_status_v1 status(uint64_t j){risc_camera_status_v1 s={.struct_size=sizeof(s)};assert(api->status(NULL,j,&s)==0);return s;}
 int main(void){
+ struct {char detail[64];unsigned guard;} diag={{0},0x12345678};
+ cam_hw_format_detail(diag.detail,"VSYNC",1,0x80000000,0xffffffff,0x12345678,0);
+ assert(!strcmp(diag.detail,"VSYNC c=00000001 r=80000000 d=ffffffff g=12345678 x=00000000"));
+ assert(diag.guard==0x12345678);
+ cam_hw_format_detail(diag.detail,"OVERLONG",0,0,0,0,0);
+ assert(strlen(diag.detail)==60 && diag.guard==0x12345678);
+
  driver=(const risc_driver_poll_v2*)t5_driver_get(2);assert(driver && !t5_driver_get(1));
  assert(driver->streams.driver.struct_size==sizeof(*driver));api=driver->streams.driver.capability;
  for(unsigned i=0;i<sizeof(pixels);i++)pixels[i]=(uint8_t)i;

@@ -15,8 +15,8 @@ inline void cameraProofTick(const risc_camera_capture_api_v1 *api) {
   static HalFile file;
   static mbedtls_sha256_context hash;
   static uint8_t digest[32];
-  constexpr auto partial="/camera-elf-02.jpg.partial";
-  constexpr auto output="/camera-elf-02.jpg";
+  constexpr auto partial="/camera-elf-03.jpg.partial";
+  constexpr auto output="/camera-elf-03.jpg";
   if(done)return;
   auto fail=[&](const char* why){
     if(file)file.close();

@@ -6,6 +6,7 @@
  * 96KiB internal DMA, finite noncircular descriptors, one SVGA JPEG.
  */
 #include "hardware.h"
+#include "hardware_diag.h"
 #include "T5StreamApi.h"
 #include "vendor/ov3660.h"
 #include "soc/soc.h"
@@ -34,7 +35,7 @@ static sensor_t sensor;
 static lldesc_t *desc;
 static uint8_t *buffer;
 static bool touched, dma_owned, active, waiting, fault;
-static uint32_t scan, frame_length;
+static uint32_t scan, frame_length, sampled_gpio, sampled_changes;
 static uint64_t init_deadline;
 uint64_t cam_hw_now(void) {
     struct timespec t;
@@ -133,7 +134,7 @@ bool cam_hw_start(const risc_camera_esp32s3_profile_v1 *p) {
     REG_SET_BIT(SYSTEM_PERIP_RST_EN1_REG,SYSTEM_LCD_CAM_RST);
     REG_CLR_BIT(SYSTEM_PERIP_RST_EN1_REG,SYSTEM_LCD_CAM_RST);
     CAM.cam_ctrl.val=0;CAM.cam_ctrl1.val=0;CAM.cam_rgb_yuv.val=0;
-    CAM.cam_ctrl.cam_stop_en=1;CAM.cam_ctrl.cam_vsync_filter_thres=4;
+    CAM.cam_ctrl.cam_stop_en=0;CAM.cam_ctrl.cam_vsync_filter_thres=4;
     CAM.cam_ctrl.cam_clkm_div_num=8;CAM.cam_ctrl.cam_clk_sel=3;
     CAM.cam_ctrl.cam_vs_eof_en=1;
     CAM.cam_ctrl1.cam_rec_data_bytelen=65535;CAM.cam_ctrl1.cam_vsync_filter_en=1;
@@ -186,6 +187,11 @@ bool cam_hw_begin(unsigned quality) {
         desc[i].buf=buffer+i*NODE_BYTES;desc[i].qe.stqe_next=i+1<NODES?&desc[i+1]:NULL;
     }
     scan=0;frame_length=0;CAM.lc_dma_int_clr.val=~0u;
+    sampled_gpio=PADS.in;sampled_changes=0;
+    /* With DMA parked, FIFO fills before a later VSYNC can be observed. Do
+     * not auto-stop sampling on that expected overflow. No DMA can write yet;
+     * the FIFO is reset before the finite descriptor chain is armed below. */
+    CAM.cam_ctrl.cam_stop_en=0;
     /* Allow VSYNC observation while DMA is disabled. The next observed boundary
      * starts a finite capture; polling latency may truncate a frame, in which
      * case strict SOI/EOI validation fails instead of publishing junk. */
@@ -193,6 +199,9 @@ bool cam_hw_begin(unsigned quality) {
 }
 int32_t cam_hw_poll(const uint8_t **bytes,uint32_t *length) {
     *bytes=NULL;*length=0;unsigned ch=pins.dma_channel;
+    uint32_t sampled=PADS.in;
+    sampled_changes|=(sampled^sampled_gpio)&((1u<<pins.vsync)|(1u<<pins.href)|(1u<<pins.pclk));
+    sampled_gpio=sampled;
     if(waiting){
         if(!CAM.lc_dma_int_raw.cam_vsync_int_raw)return T5_STREAM_AGAIN;
         CAM.cam_ctrl1.cam_start=0;CAM.lc_dma_int_clr.val=~0u;
@@ -202,7 +211,10 @@ int32_t cam_hw_poll(const uint8_t **bytes,uint32_t *length) {
         DMA.channel[ch].in.int_clr.val=~0u;
         DMA.channel[ch].in.link.addr=((uintptr_t)desc)&0xfffff;
         __asm__ volatile("memw" ::: "memory");
-        DMA.channel[ch].in.link.start=1;CAM.cam_ctrl.cam_update=1;CAM.cam_ctrl1.cam_start=1;
+        DMA.channel[ch].in.link.start=1;
+        /* Once DMA is armed, stop rather than silently discard capture bytes
+         * on FIFO exhaustion. All buffers stay owned until DMA parks. */
+        CAM.cam_ctrl.cam_stop_en=1;CAM.cam_ctrl.cam_update=1;CAM.cam_ctrl1.cam_start=1;
         waiting=false;active=true;return T5_STREAM_AGAIN;
     }
     if(active){
@@ -247,7 +259,11 @@ bool cam_hw_shutdown(void) {
 }
 
 const char *cam_hw_wait_reason(void) {
-    if(waiting)return "VSYNC boundary deadline";
-    if(active)return "DMA frame EOF/park deadline";
-    return "JPEG trailer/output deadline";
+    static char detail[64];
+    /* Sampled changes are activity evidence only, never a frequency estimate.
+     * Snapshot before deadline cleanup clears START; no new CPU imports. */
+    cam_hw_format_detail(detail,waiting?"VSYNC":active?"DMA":"JPEG",
+        CAM.cam_ctrl1.val,CAM.lc_dma_int_raw.val,
+        DMA.channel[pins.dma_channel].in.int_raw.val,sampled_gpio,sampled_changes);
+    return detail;
 }
