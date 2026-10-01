@@ -41,6 +41,9 @@ def main():
         record = case.record()
         index = fixture.update_index({'schema': 1, 'firmware': None, 'apps': [], 'drivers': []},
                                      'drivers', record)
+        fixture.stage_app(case.root)
+        app = fixture.build_record('apps', 'clock', '1.2.3', case.root)
+        index = fixture.update_index(index, 'apps', app)
         with tempfile.TemporaryDirectory(prefix='package-catalog-roundtrip-') as temp:
             path = Path(temp)
             source, binary, metadata = path/'test.cpp', path/'test', path/'index.json'
@@ -49,7 +52,7 @@ def main():
                             '-Werror', '-I'+str(ROOT/'src'), str(source), '-o', str(binary)], check=True)
             metadata.write_text(fixture.serialize_index(index))
             result = subprocess.run([str(binary), str(metadata)], check=True, capture_output=True, text=True)
-            assert result.stdout.strip() == record['url']
+            assert set(result.stdout.splitlines()) == {record['url'], app['url']}
             # The producer's manifest/identity must remain joined at device intake.
             index['drivers'][0]['manifest']['version'] = '2.0.2'
             metadata.write_text(json.dumps(index))

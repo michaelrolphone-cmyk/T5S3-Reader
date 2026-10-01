@@ -75,8 +75,6 @@ def verify_plan(root: Path, plan, product: str | None = None):
         if product is not None and item['product'] != product:
             continue
         assets = release_assets(root, item['product'], item['id'], item['version'])
-        if item['product'] == 'apps':
-            bounded_json(root, root / 'dist/apps' / f"{item['id']}.json", 2048)
         hashes = {path.name: asset_digest(root, path) for path in assets}
         if len(hashes) != len(assets):
             raise ValueError('duplicate release artifact basename')
@@ -93,11 +91,6 @@ def verify_plan(root: Path, plan, product: str | None = None):
             alias = f"riscrte_lilygo_t5s3_{item['version']}-app.bin"
             if hashes.get(alias) != hashes[record['asset']]:
                 raise ValueError('firmware OTA aliases differ')
-        elif item['product'] == 'apps':
-            manifest = record['manifest']
-            if ('size_bytes' in manifest and manifest['size_bytes'] != record['size']) or (
-                    'sha256' in manifest and manifest['sha256'] != record['sha256']):
-                raise ValueError('app sidecar integrity differs from its ELF')
         records.append(record)
     return records
 

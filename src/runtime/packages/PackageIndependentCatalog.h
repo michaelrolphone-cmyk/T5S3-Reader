@@ -13,7 +13,7 @@ namespace RuntimePackages {
 // release-index.json is discovery metadata, never an execution grant. Keep
 // historical loose records as version barriers; only explicit rte.zip records
 // can become ordinary catalog candidates. The caller owns this bounded output
-// (about 64 KiB) and the immutable input, normally in PSRAM, not a task stack.
+// (bounded below 160 KiB) and the immutable input, normally in PSRAM, not a task stack.
 constexpr size_t kIndependentCatalogMaxBytes = 512u * 1024u;
 constexpr size_t kIndependentCatalogMaxDrivers = 64;
 constexpr size_t kIndependentCatalogMaxApps = 128;
@@ -29,16 +29,13 @@ struct IndependentDriverRecord {
   CatalogPackage package{};
 };
 
-struct IndependentLegacyAppRecord {
-  char id[65]{};
-  char version[32]{};
-};
+using IndependentAppRecord = IndependentDriverRecord;
 
 struct IndependentDriverCatalog {
   uint32_t schema = 0;
   IndependentDriverRecord rows[kIndependentCatalogMaxDrivers]{};
   size_t rowCount = 0;
-  IndependentLegacyAppRecord appRows[kIndependentCatalogMaxApps]{};
+  IndependentAppRecord appRows[kIndependentCatalogMaxApps]{};
   size_t appRowCount = 0;
   // Reused manifest workspace belongs to the heap/PSRAM catalog allocation.
   // A local plan here added ~4.8 KiB on top of the ordinary parser's frame,
@@ -52,7 +49,7 @@ inline void clearIndependentDriverCatalog(IndependentDriverCatalog& out) {
   out.appRowCount = 0;
   clearOrdinaryManifestPlan(out.parsingScratch);
   for (size_t i = 0; i < kIndependentCatalogMaxApps; ++i)
-    out.appRows[i] = IndependentLegacyAppRecord();
+    out.appRows[i] = IndependentAppRecord();
   for (size_t i = 0; i < kIndependentCatalogMaxDrivers; ++i)
     out.rows[i] = IndependentDriverRecord();
 }
@@ -373,9 +370,9 @@ inline bool legacyManifest(const char* data, size_t length,
 }
 
 inline bool bundleManifest(const char* data, size_t length,
-                           IndependentDriverRecord& row, WorkBudget& budget, OrdinaryPackagePlan& plan) {
+                           IndependentDriverRecord& row, WorkBudget& budget, OrdinaryPackagePlan& plan, bool app) {
   if (!budget.poll(true)) return false;
-  if (!parseOrdinaryManifest(data, length, plan) || plan.identity.kind != Kind::Driver ||
+  if (!parseOrdinaryManifest(data, length, plan) || plan.identity.kind != (app ? Kind::Application : Kind::Driver) ||
       std::strcmp(plan.identity.id, row.id) || std::strcmp(plan.identity.version, row.version) ||
       std::strcmp(plan.architecture, row.package.architecture)) return false;
   uint64_t total = length;
@@ -387,7 +384,16 @@ inline bool bundleManifest(const char* data, size_t length,
     abi = abi || !std::strcmp(entry.name, "provider-abi.v1");
     imports = imports || !std::strcmp(entry.name, "privileged-imports.v1");
   }
-  if (!abi || !imports) return false;
+  if (!app && (!abi || !imports)) return false;
+  if (app) {
+    char sidecar[80]{}, executable[80]{};
+    std::snprintf(sidecar, sizeof(sidecar), "%s.json", row.id);
+    std::snprintf(executable, sizeof(executable), "%s.elf", row.id);
+    bool found = false;
+    for (size_t i = 0; i < plan.entryCount; ++i)
+      found = found || (!std::strcmp(plan.entries[i].name, sidecar) && !plan.entries[i].executable);
+    if (!found || std::strcmp(plan.identity.artifact, executable)) return false;
+  }
   row.package.identity = plan.identity;
   return budget.poll(true);
 }
@@ -440,7 +446,7 @@ inline bool record(Cursor& r, IndependentDriverRecord& row, bool app, WorkBudget
     else if (!std::strcmp(key, "manifest")) { if (!r.objectAhead() || !r.slice(manifest, manifestLength)) return false; seen |= 128; }
     else if (!std::strcmp(key, "kind")) { if (!r.text(kind, sizeof(kind)) || std::strcmp(kind, app ? "app" : "driver")) return false; }
     else if (!std::strcmp(key, "format")) {
-      if (app || !r.text(format, sizeof(format)) || std::strcmp(format, "rte.zip")) return false;
+      if (!r.text(format, sizeof(format)) || std::strcmp(format, "rte.zip")) return false;
       row.bundled = true;
     } else if (!std::strcmp(key, "architecture")) {
       if (!r.text(row.package.architecture, sizeof(row.package.architecture))) return false;
@@ -459,7 +465,7 @@ inline bool record(Cursor& r, IndependentDriverRecord& row, bool app, WorkBudget
   char expectedTag[kPackageReleaseTagBytes]{};
   int n = 0;
   if (sourceRepo[0]) {
-    if (std::strcmp(row.id, "gameboy") || row.tag[0] != 'v' ||
+    if (row.bundled || std::strcmp(row.id, "gameboy") || row.tag[0] != 'v' ||
         !OrdinaryManifestDetail::canonicalVersion(row.tag + 1)) return false;
     std::strcpy(expectedTag, row.tag);
     n = static_cast<int>(std::strlen(expectedTag));
@@ -470,9 +476,9 @@ inline bool record(Cursor& r, IndependentDriverRecord& row, bool app, WorkBudget
   if (row.bundled) {
     if (!(seen & 256u) || row.package.sizeBytes < kRteZipEocdBytes ||
         row.package.sizeBytes > kRteZipMaxTotalBytes + 65536u ||
-        !bundleManifest(manifest, manifestLength, row, budget, scratch)) return false;
-    n = std::snprintf(expectedAsset, sizeof(expectedAsset), "driver-%s-%s-%s.rte.zip",
-                      row.id, row.version, row.package.architecture);
+        !bundleManifest(manifest, manifestLength, row, budget, scratch, app)) return false;
+    n = std::snprintf(expectedAsset, sizeof(expectedAsset), "%s-%s-%s-%s.rte.zip",
+                      app ? "application" : "driver", row.id, row.version, row.package.architecture);
   } else {
     if ((seen & 256u) || !(app ? appManifest(manifest, manifestLength, row, budget) :
                                    legacyManifest(manifest, manifestLength, row, budget))) return false;
@@ -514,8 +520,7 @@ inline bool parse(const char* json, size_t length, IndependentDriverCatalog& out
             !record(r, app, true, budget, out.parsingScratch)) return false;
         for (size_t i = 0; i < out.appRowCount; ++i)
           if (!std::strcmp(out.appRows[i].id, app.id)) return false;
-        std::strcpy(out.appRows[out.appRowCount].id, app.id);
-        std::strcpy(out.appRows[out.appRowCount].version, app.version);
+        out.appRows[out.appRowCount] = app;
         ++out.appRowCount;
         bool more = false;
         if (!r.next(']', more)) return false;
@@ -553,6 +558,22 @@ inline bool parseIndependentDriverCatalog(const char* json, size_t length,
   if (!budget.poll(true) || !IndependentCatalogDetail::parse(json, length, out, budget)) {
     clearIndependentDriverCatalog(out);
     return false;
+  }
+  return true;
+}
+
+// Bounded single-row adapter for the legacy app reader: current ZIP rows are
+// validated and skipped, never interpreted as loose ELF/sidecar assets.
+inline bool parseIndependentAppRecord(const char* json, size_t length,
+    IndependentAppRecord& out, OrdinaryPackagePlan& scratch) {
+  out = {};
+  if (!json || length < 2 || length > 8192) return false;
+  IndependentCatalogDetail::WorkBudget budget(nullptr, nullptr);
+  IndependentCatalogDetail::Cursor guard(json, length, budget);
+  if (!guard.objectOnly()) return false;
+  IndependentCatalogDetail::Cursor reader(json, length, budget);
+  if (!IndependentCatalogDetail::record(reader, out, true, budget, scratch) || !reader.end()) {
+    out = {}; return false;
   }
   return true;
 }

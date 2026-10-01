@@ -48,6 +48,8 @@ for product in ("firmware", "apps", "drivers"):
 assert 'needs: [plan, build_firmware, build_apps, build_drivers]' in jobs['publish']
 assert jobs['publish'].index('scripts/verify_release_plan.py') < jobs['publish'].index('scripts/publish_updated_packages.py')
 assert 'cp -a dist/release-packages' in jobs['build_drivers']
+assert 'cp -a dist/release-app-packages' in jobs['build_apps']
+assert 'cp dist/apps/' not in jobs['build_apps']
 assert 'cp -a dist/packages ' not in jobs['build_drivers']
 assert 'git tag ' not in WORKFLOW and 'gh release create ' not in WORKFLOW
 assert 'permissions:\n  contents: write' in WORKFLOW  # Existing token scope, no broader access.

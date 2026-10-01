@@ -56,6 +56,16 @@ static std::string app(const std::string& id = "clock", const std::string& versi
          (stamped ? ",\"size_bytes\":123,\"sha256\":\"" + sha + "\"" : "") + "}" +
          (external ? ",\"source_repo\":\"" + gameboyRepo + "\"" : "") + "}";
 }
+static std::string bundledApp(const std::string& id = "clock", const std::string& version = "1.2.4") {
+  const std::string tag = "app-" + id + "-v" + version;
+  const std::string asset = "application-" + id + "-" + version + "-xtensa-esp32s3.rte.zip";
+  const std::string ordinary = "{\"schema\":1,\"kind\":\"application\",\"id\":\""+id+
+      "\",\"version\":\""+version+"\",\"architecture\":\"xtensa-esp32s3\",\"artifact\":\""+id+
+      ".elf\",\"min_runtime_api\":2,\"entries\":["+entry(id+".elf",true)+","+entry(id+".json")+"],\"requires\":[]}";
+  return "{\"kind\":\"app\",\"id\":\""+id+"\",\"version\":\""+version+"\",\"tag\":\""+tag+
+      "\",\"asset\":\""+asset+"\",\"url\":\"https://github.com/"+repo+"/releases/download/"+tag+"/"+asset+
+      "\",\"size\":2048,\"sha256\":\""+sha+"\",\"format\":\"rte.zip\",\"architecture\":\"xtensa-esp32s3\",\"manifest\":"+ordinary+"}";
+}
 static std::string index(const std::string& drivers = "", const std::string& apps = "",
                          const std::string& firmware = "null") {
   return "{\"schema\":1,\"firmware\":" + firmware + ",\"apps\":[" + apps + "],\"drivers\":[" + drivers + "]}";
@@ -247,6 +257,20 @@ int main() {
   late.cancelAt = fullProgress.calls;
   assert(!parseIndependentDriverCatalog(full.data(), full.size(), out, checkpoint, &late));
   assert(!out.rowCount && !out.appRowCount && !out.rows[63].id[0] && !out.appRows[127].id[0]);
+
+  const auto appZip = bundledApp();
+  assert(accepted(index(record(), appZip + "," + app("gameboy", "1.2.3", true)), out));
+  assert(out.appRowCount == 2 && out.appRows[0].bundled && !out.appRows[1].bundled);
+  assert(out.appRows[0].package.identity.kind == Kind::Application);
+  assert(std::string(out.appRows[0].tag) == "app-clock-v1.2.4");
+  IndependentAppRecord oneApp{}; OrdinaryPackagePlan scratch{};
+  assert(parseIndependentAppRecord(appZip.data(), appZip.size(), oneApp, scratch) && oneApp.bundled);
+  assert(parseIndependentAppRecord(app().data(), app().size(), oneApp, scratch) && !oneApp.bundled);
+  reject(index("", replace(appZip, "\"artifact\":\"clock.elf\"", "\"artifact\":\"other.elf\"")));
+  reject(index("", replace(appZip, "\"name\":\"clock.json\"", "\"name\":\"missing.json\"")));
+  reject(index("", replace(appZip, "\"kind\":\"application\"", "\"kind\":\"driver\"")));
+  reject(index("", replace(appZip, "\"format\":\"rte.zip\"", "\"format\":\"elf\"")));
+  reject(index("", replace(appZip, "\"kind\":\"app\"", "\"kind\":\"app\",\"source_repo\":\""+gameboyRepo+"\"")));
 
   // Every truncation of a complete driver row must fail without residual data.
   const std::string one = index(row);

@@ -149,12 +149,12 @@ jobs:
           path: ${{ runner.temp }}/release-plan
       - name: Build only changed app packages
         run: python scripts/build_release_candidates.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product apps
-      - name: Verify legacy app compatibility artifacts
+      - name: Verify ordinary app bundle artifacts
         run: python scripts/verify_release_plan.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product apps
       - name: Stage app release assets
         run: |
-          mkdir -p "$RUNNER_TEMP/release-artifacts/dist/apps"
-          cp dist/apps/*.elf dist/apps/*.json "$RUNNER_TEMP/release-artifacts/dist/apps/"
+          mkdir -p "$RUNNER_TEMP/release-artifacts/dist/release-app-packages"
+          cp -a dist/release-app-packages/. "$RUNNER_TEMP/release-artifacts/dist/release-app-packages/"
       - name: Save app release assets
         uses: actions/upload-artifact@v4
         with:

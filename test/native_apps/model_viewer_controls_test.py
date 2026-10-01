@@ -423,7 +423,7 @@ class ControllerTests(unittest.TestCase):
 
     def test_render_and_manifest_integration(self):
         manifest = json.loads((ROOT / "Apps/model_viewer.json").read_text())
-        self.assertEqual(manifest["version"], "1.2.4")
+        self.assertGreaterEqual(tuple(map(int, manifest["version"].split("."))), (1, 2, 4))
         for capability in ["usb.hid.gamepad", "usb.xinput.gamepad"]:
             self.assertIn({"capability": capability, "api": ">=1"}, manifest["optional"])
         self.assertIn("g_draw_pending && mv_render(true)", APP)

@@ -16,14 +16,14 @@ static void render_face(int face,uint32_t *hash) {
     ht_cutscene_render_objects(&camera);*hash=image_hash();
 }
 int main(void) {
-    uint8_t *memory=malloc(HT_MEMORY);assert(memory);ht_bind(memory);
+    uint8_t *memory=malloc(HT_MEMORY+HT_NATIVE_MEMORY);assert(memory);ht_bind(memory);ht_bind_native(memory);
     ht.level=0;memset(&ht,0,sizeof(ht));ht_spawn(true);
     ht_cutscene_begin(HT_CUTSCENE_INTRO);
     assert(ht_cutscene.active && ht_cutscene.tick==0);
     assert(ht_cutscene_cue_at(&ht_cutscene)->scene==HT_CUT_KITCHEN);
     assert(ht_cutscene_cue_at(&ht_cutscene)->view==HT_CUT_VIEW_FORWARD_X);
     assert(ht_cutscene_track(&ht_cutscene)->duration==HT_INTRO_TICKS);
-    assert(HT_INTRO_TICKS==1900u);
+    assert(HT_INTRO_TICKS==2280u);
     /* Reading beats now have deliberate dwell instead of sub-four-second cuts. */
     for(unsigned i=0;i<6;++i) assert(ht_intro_cues[i].end-ht_intro_cues[i].start>=150);
 
@@ -50,7 +50,7 @@ int main(void) {
     assert(front!=back && back!=quarter && front!=quarter);
 
     /* Profile continuity begins at the house door after packing. */
-    while(ht_cutscene.tick<1180)assert(!ht_cutscene_step(&ht_cutscene));
+    while(ht_cutscene.tick<1540)assert(!ht_cutscene_step(&ht_cutscene));
     assert(ht_cutscene_cue_at(&ht_cutscene)->scene==HT_CUT_ORCHARD);
     assert(ht_cutscene_cue_at(&ht_cutscene)->view==HT_CUT_VIEW_PROFILE);
     assert(ht_cutscene_actor_x(&ht_cutscene)>=118 && ht_cutscene_actor_x(&ht_cutscene)<190);
@@ -59,7 +59,7 @@ int main(void) {
 
     /* At this point the actor is still before x=560, but the forest ahead is
      * already in the raster. This guards against the reported pop-in. */
-    while(ht_cutscene.tick<1500)assert(!ht_cutscene_step(&ht_cutscene));
+    while(ht_cutscene.tick<1880)assert(!ht_cutscene_step(&ht_cutscene));
     assert(ht_cutscene_actor_x(&ht_cutscene)<560);
     frame=ht_cutscene;ht_cutscene_render(&frame);
     unsigned forest_ink=0;
@@ -80,6 +80,59 @@ int main(void) {
     ht.level=7;ht_cutscene_apply_handoff(&ht_cutscene);
     assert(ht.level==0 && ht.x==95*256 && ht.grounded && ht.traversal.mode==HT_FREE);
     assert(ht_scene_scale(&ht)==384);
+    /* Actual non-intro track pauses a narrative arrival, preserves the entire
+     * gameplay state/evidence and cannot replay when the player walks back. */
+    ht_game before=ht;before.x=1069*256;before.grounded=true;
+    ht=before;ht.x=1071*256;ht.y=ht_surface_at(&ht,2,1071)*256;
+    ht.camera=871*256;ht.camera_y=(ht.y/256-180)*256;
+    assert(ht_cutscene_mill_arrival(&before,&ht));
+    ht.evidence=7;ht_game retained=ht;
+    ht_cutscene_begin(HT_CUTSCENE_MILL);
+    assert(!ht_cutscene_mill_arrival(&before,&ht));
+    for(unsigned mode=0;mode<2;++mode) {
+        ht_camera_mode=mode?HT_CAMERA_NATIVE:HT_CAMERA_BASELINE;
+        for(unsigned tick=0;tick<340;tick+=37) {
+            ht_cutscene.tick=(uint16_t)tick;ht_cutscene_render(&ht_cutscene);
+            assert(!memcmp(&ht,&retained,sizeof(ht)));
+            assert(ht_native_active==(mode!=0));
+        }
+    }
+    ht_cutscene.tick=339;assert(ht_cutscene_step(&ht_cutscene));
+    ht_cutscene_apply_handoff(&ht_cutscene);
+    assert(!memcmp(&ht,&retained,sizeof(ht)));
+    /* City arrival is earned by the actual forest gate transition, not by
+     * a timer, a debug chapter choice, or crossing some arbitrary coordinate. */
+    ht_game gate=ht,city=ht;gate.level=0;gate.x=HT_GOAL*256;
+    city.level=1;gate.puzzle.solved=false;gate.puzzle.opening=48;
+    assert(!ht_cutscene_city_arrival(&gate,&city));
+    gate.puzzle.solved=true;assert(ht_cutscene_city_arrival(&gate,&city));
+    city.level=2;assert(!ht_cutscene_city_arrival(&gate,&city));
+    ht.level=1;ht_select_level(1);ht_spawn(true);retained=ht;
+    ht_cutscene_begin(HT_CUTSCENE_CITY);
+    city.level=1;assert(!ht_cutscene_city_arrival(&gate,&city));
+    for(unsigned mode=0;mode<2;++mode) {
+        ht_camera_mode=mode?HT_CAMERA_NATIVE:HT_CAMERA_BASELINE;
+        for(unsigned tick=0;tick<430;tick+=37) {
+            ht_cutscene.tick=(uint16_t)tick;ht_cutscene_render(&ht_cutscene);
+            assert(!memcmp(&ht,&retained,sizeof(ht)));
+        }
+    }
+    ht_cutscene.tick=429;assert(ht_cutscene_step(&ht_cutscene));
+    ht_cutscene_apply_handoff(&ht_cutscene);assert(!memcmp(&ht,&retained,sizeof(ht)));
+    /* Grass wind is continuous through its wrap in every depth plane. */
+    for(unsigned tick=0;tick<1024;++tick)
+        assert(ht_abs(ht_cut_grass_wind(tick+1,11)-ht_cut_grass_wind(tick,11))<=1);
+    /* The register is in the authored mill hollow before the rope, not on a stump. */
+    assert(ht_evidence_platform(0,1)==3 && ht_evidence_x(0,1)==1180);
+    /* Exercise complete intro in both output rasters with bounded allocation. */
+    for(unsigned mode=0;mode<2;++mode) {
+        ht_camera_mode=mode?HT_CAMERA_NATIVE:HT_CAMERA_BASELINE;
+        ht_cutscene_begin(HT_CUTSCENE_INTRO);
+        for(unsigned tick=0;tick<HT_INTRO_TICKS;tick+=31) {
+            ht_cutscene.tick=(uint16_t)tick;ht_cutscene_render(&ht_cutscene);
+            assert(ht_cut_object_count<=HT_CUT_OBJECTS_MAX);
+        }
+    }
     free(memory);
-    puts("Hollow Trail cutscene: slow readable beats, solid Forward-X art, doorway continuity, pre-rendered forest approach and handoff PASS");
+    puts("Hollow Trail cutscene: domestic/memory/latch beats, both rasters, continuous wind, one-shot mill/city tableaus, earned gate transition, preserved gameplay and handoff PASS");
 }

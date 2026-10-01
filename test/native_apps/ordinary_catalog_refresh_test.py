@@ -192,6 +192,22 @@ static std::string independentJson(const char* version = "2.0.0") {
       "\",\"architecture\":\"xtensa-esp32s3\",\"artifact\":\"sensor.elf\"," +
       "\"min_runtime_api\":2,\"entries\":[" + entries + "],\"requires\":[]}}]}";
 }
+static std::string independentAppJson() {
+  std::string source = independentJson();
+  auto replaceAll = [&](const std::string& from, const std::string& to) {
+    size_t at = 0;
+    while ((at = source.find(from, at)) != std::string::npos) {
+      source.replace(at, from.size(), to); at += to.size();
+    }
+  };
+  replaceAll("\"apps\":[],\"drivers\":[", "\"drivers\":[],\"apps\":[");
+  replaceAll("driver-sensor-v", "app-reader-v");
+  replaceAll("driver-sensor-", "application-reader-");
+  replaceAll("sensor", "reader");
+  replaceAll("\"kind\":\"driver\"", "\"kind\":\"application\"");
+  replaceAll("provider-abi.v1", "reader.json");
+  return source;
+}
 static void noPartialSelection() {
   assert(!Catalog::active());
   assert(Catalog::count(4) == 0);
@@ -271,6 +287,18 @@ static void testSuccessAndPinnedSelection() {
   std::string after;
   assert(RuntimePackages::onlineArchiveUrl(pinned, pinnedTag, "xtensa-esp32s3", after));
   assert(before == after);
+}
+static void testIndependentApplicationSelection() {
+  prime();
+  responses[Catalog::kIndependentCatalog].body = independentAppJson();
+  assert(Catalog::refresh() && Catalog::count(0) == 1 && Catalog::count(4) == 4);
+  CatalogPackage app{}; char tag[RuntimePackages::kOnlineReleaseTagBytes]{};
+  assert(Catalog::selected(0, 0, app, tag));
+  assert(!std::strcmp(app.identity.version, "2.0.0") && !std::strcmp(tag, "app-reader-v2.0.0"));
+  responses[Catalog::kLatestCatalog] = {"", false};
+  assert(Catalog::refresh() && Catalog::count(0) == 1 && Catalog::count(4) == 1);
+  responses[Catalog::kIndependentCatalog].body.pop_back();
+  assert(!Catalog::refresh()); noPartialSelection();
 }
 static void testIndependentSelection() {
   prime();
@@ -419,6 +447,7 @@ static void testWifiFailureClearsSelection() {
 int main() {
   testSuccessAndPinnedSelection();
   testIndependentSelection();
+  testIndependentApplicationSelection();
   testInvalidSourcesAndRecovery();
   testDeadlineAndAllocationFailure();
   testBoundedSink();

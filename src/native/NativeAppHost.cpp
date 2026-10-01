@@ -20,6 +20,7 @@
 #include "runtime/packages/PackageUseGate.h"
 #include "runtime/packages/PackagePreflight.h"
 #include "runtime/memory/PsramJson.h"
+#include "runtime/packages/PackageIndependentCatalog.h"
 #include <AppManifestRules.h>
 #include <ArduinoJson.h>
 #include "components/FontAwesomeIcons.h"
@@ -722,6 +723,21 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
   indexed.reserve(entries.size());
   for (JsonVariantConst entry : entries) {
     esp_task_wdt_reset();
+    if (!entry["format"].isNull()) {
+      // Legacy ABI callers receive only historical loose applications. Current
+      // bundles belong to the common package API and must not become ELF URLs.
+      if (!entry["format"].is<const char*>() ||
+          std::strcmp(entry["format"].as<const char*>(), "rte.zip") ||
+          measureJson(entry) > 8192) return false;
+      std::string record;
+      serializeJson(entry, record);
+      RuntimePackages::IndependentAppRecord checked{};
+      std::unique_ptr<RuntimePackages::OrdinaryPackagePlan> scratch(
+          new (std::nothrow) RuntimePackages::OrdinaryPackagePlan{});
+      if (!scratch || !RuntimePackages::parseIndependentAppRecord(
+          record.data(), record.size(), checked, *scratch) || !checked.bundled) return false;
+      continue;
+    }
     if (!entry.is<JsonObjectConst>() || !entry["id"].is<const char*>() ||
         !entry["version"].is<const char*>() || !entry["tag"].is<const char*>() ||
         !entry["asset"].is<const char*>() || !entry["url"].is<const char*>() ||
@@ -949,8 +965,10 @@ bool verifiedManagedApp(const char* id, RuntimePackages::Identity& identity,
   const std::string json = elf.substr(0, elf.size() - 4) + ".json";
   if (!Storage.exists(elf.c_str()) || !Storage.exists(json.c_str())) return false;
   t5_app_manifest_t parsed{};
-  if (!readAppManifest(json.c_str(), parsed) ||
-      std::strcmp(parsed.file_name, identity.artifact)) return false;
+  std::string appVersion;
+  if (!readAppManifest(json.c_str(), parsed, &appVersion, true) ||
+      std::strcmp(parsed.file_name, identity.artifact) ||
+      appVersion != identity.version) return false;
   if (manifest) *manifest = parsed;
   return true;
 }

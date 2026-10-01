@@ -1,13 +1,49 @@
 # U1 implementation ledger
 
-## Active continuation claim — October 1, renewed 02:08 UTC
+## Active continuation claim — October 1, renewed 02:45 UTC
 
 Owner: current U1 implementation worker on PR #96 / `impl/u1-riscrte`.
 Continuation starts from verified green `4b5c1816`, integrates observed master
-`3300229d`, and keeps sole ownership while publishing/verifying this checkpoint
+`a5e2db59`, and keeps sole ownership while publishing/verifying this checkpoint
 and auditing the remaining whole-U1 acceptance gates. Other continuations must
 not write this branch until this claim is explicitly released. No live release,
 index, tag, master update or flash. CI is feedback, not an idle-work gate.
+
+## October 1: independent app ZIP distribution closure
+
+Approved signing cleanup is published at **36fad636**; exact-head target CI is
+running. App distribution work was implemented independently from green
+**844a6d08**, then reconciled with that cleanup and current master **a5e2db59**.
+Master's Hollow Trail changes are preserved; no master branch was written.
+
+Normal local app release output now uses one immutable ordinary ZIP per app,
+with isolated app/driver artifact catalogs and a shared offline record/index
+validation gate. Runtime catalog merging supports app ZIP locators and retains
+legacy numeric-version barriers and old loose/GameBoy inputs. The legacy app
+adapter validates/skips ZIPs; the common package API owns their installation.
+Canonical launch rejects a sidecar/ordinary version mismatch and recovers when
+coherent metadata is restored.
+
+[Distribution migration evidence](U1_APP_BUNDLE_MIGRATION.md) records the exact
+published lineage, loose-to-ZIP identity rule and every old/new app version.
+36 manifests receive version-only increments; App Store1.0.8 and Driver
+Manager1.0.7 remain unchanged. Hollow Trail1.1.37 exceeds newly merged master
+1.1.36. No app C content changed beyond that inherited master work. Existing
+mandatory app requirements now propagate into ordinary bundle metadata.
+
+Observed host checks: 20 release-record,19 index,11 release-plan,18 bulk-release,
+8 GameBoy compatibility tests, release retry and workflow tests; actual ZIP to
+runtime URL round-trip, managed-app identity and sanitizer-backed online refresh
+recovery checks. Ordinary package suite passed. Combined native-app aggregate
+is being rerun after repairing two stale exact-version test expectations.
+Both board CI jobs now export/validate all real built app ZIPs; exact combined
+head results remain pending, not covered by older green commits.
+
+Remaining closures are nested resources/scoped access, archive service, CDC
+migration, verification receipts and bounded-I/O/link evidence. The claim stays
+active; there is no live catalog/release/tag/flash operation.
+
+**Implementation In Progress**
 
 ## October 1: remove the isolated package-signing subsystem
 

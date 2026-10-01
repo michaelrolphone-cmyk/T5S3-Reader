@@ -108,6 +108,9 @@ def build_firmware() -> None:
 def build_apps(candidates: list[dict[str, str]]) -> None:
     for candidate in candidates:
         run([sys.executable, "scripts/build_all_apps.py", "--id", candidate["id"]])
+    if candidates:
+        run([sys.executable, "scripts/export_canonical_driver_release.py", "--output",
+             "dist/release-app-packages", "--ids", *sorted(item["id"] for item in candidates)])
 
 
 def build_drivers(candidates: list[dict[str, str]]) -> None:

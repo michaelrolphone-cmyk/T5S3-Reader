@@ -6,7 +6,9 @@ The direction is intended to preserve the story's environmental arc: **domestic 
 
 ## Intro cutscene and gameplay handoff
 
-The first cinematic should **linger**. Its current authored duration is about **61 seconds**, not a rapid montage. Text-bearing shots remain on screen for roughly five to seven seconds, and the two tall-grass memory shots each remain for more than seven seconds. The player should have time to read the two lines, stop reading, and still have several seconds left to study the environment and notice small motion.
+The first cinematic should **linger**. Its current authored duration is about **73 seconds**, not a rapid montage. Text-bearing shots remain on screen for roughly five to seven seconds, and the two tall-grass memory shots each remain for more than seven seconds. The player should have time to read the two lines, stop reading, and still have several seconds left to study the environment and notice small motion.
+
+The 1.1.36 increment adds the overnight chair wait and a close caught-thread insert, plus a separate mill-arrival tableau during Chapter I. See [actual implemented progress and remaining scene map](HOLLOW_TRAIL_NOVELLA_ALIGNMENT.md).
 
 The opening still uses **Forward-X** for the kitchen and memory: X is depth, Y is screen-left/right and Z is vertical. Those tableaus must read as finished scenes rather than visualization wireframes. Use filled perspective furniture/architecture, solid character silhouettes, substantial tree anatomy, irregular crown masses, surface wear, condensation, floor seams and botanical detail. Thin limbs are reserved for genuinely thin things such as grass stems, twigs, braids and small metal parts.
 

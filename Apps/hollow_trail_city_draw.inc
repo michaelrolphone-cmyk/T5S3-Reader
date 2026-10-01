@@ -39,6 +39,51 @@ static void ht_city_mass_draw(const ht_city_mass *b,int cx,int cy,int plane) {
             }
         }
     }
+    if(plane) {
+        /* Used masonry: coping courses, water-blackened seams and a broken
+         * plaster edge are anchored to each building, not screen noise. */
+        int low=135+(0-135)*256/ht_world_scale;
+        int high=135+(HT_H-135)*256/ht_world_scale;
+        int start=ht_max(0,ht_floor_div(low-y,38)),end=ht_min(19,(high-y)/38+1);
+        for(int row=start;row<end;++row) {
+            int yy=y+row*38+36;
+            ht_limb(ht_scene,x+2,yy,x+w-3,yy,0,0,tone-11);
+            if((row+(b->x/10))%3==0) {
+                int xx=x+w*3/4+3;
+                ht_limb(ht_scene,xx,yy-27,xx+4,yy-16,0,0,tone-7);
+                ht_limb(ht_scene,xx+4,yy-16,xx+1,yy-7,0,0,tone-7);
+            }
+        }
+        int pipe=x+w-7;
+        ht_limb(ht_scene,pipe,y+3,pipe+1,ht_min(bottom,high),1,1,tone+18);
+        for(int row=start;row<end;row+=2)ht_limb(ht_scene,pipe-3,y+row*38+19,pipe+4,y+row*38+19,0,0,tone+26);
+        /* Fading cables disappear before their far support, as in the book. */
+        if(b->crown!=1) {
+            int px=x+w-5,py=y+5;
+            for(int k=1;k<=12;++k) {
+                int nx=x+w-5+k*9,ny=y+5+26*k*(12-k)/36;
+                ht_limb(ht_scene,px,py,nx,ny,0,0,tone-(k>7?(k-7)*10:0));px=nx;py=ny;
+            }
+        }
+    }
+    if(plane==2) {
+        /* Chimney stacks, crooked aerials and remaining cage wires interrupt
+         * the pristine box silhouette without inventing playable footing. */
+        int roof=y-(b->crown==2?18:b->crown==1?23:0),ch=x+w/4;
+        ht_rect(ht_scene,ch,roof-24,15,26,tone+16);
+        ht_rect(ht_scene,ch-3,roof-27,21,4,tone+30);
+        for(int row=0;row<3;++row)ht_limb(ht_scene,ch+1,roof-6-row*7,ch+14,roof-6-row*7,0,0,tone-14);
+        ht_limb(ht_scene,ch+6,roof-28,ch+2,roof-57,1,0,tone+15);
+        for(int arm=0;arm<3;++arm) {
+            int yy=roof-39-arm*6;
+            ht_limb(ht_scene,ch-8+arm*3,yy,ch+14-arm*2,yy-3,0,0,tone+10);
+        }
+        for(int bar=0;bar<3;++bar)ht_limb(ht_scene,ch-1+bar*8,roof-28,ch-1+bar*8,roof-37+(bar==2?3:0),0,0,tone+28);
+        /* Soot under one roof bay and patched flashing are broad enough to
+         * survive mono packing. They remain behind the actual walkable roofs. */
+        ht_triangle(ht_scene,x+5,y+4,x+26,y+4,x+13,y+31,tone+9);
+        ht_limb(ht_scene,x+w-26,y+2,x+w-7,y+3,1,0,tone-25);
+    }
     ht_checkpoint();
 }
 static void ht_city_backdrop_low(const ht_game *g) {
@@ -188,5 +233,83 @@ static void ht_city_observer_foreground(const ht_game *g) {
         if(x< -40-ht_view_margin() || x>HT_W+40+ht_view_margin())continue;
         ht_foreground_contour(x,-cy,pier,sizeof(pier)/sizeof(pier[0]),249);
         ht_limb(ht_scene,x+20,-600-cy,x+20,520-cy,1,1,214);
+    }
+}
+
+/* The forest gate opens onto the same hills becoming walls and windows.
+ * Anchored beyond the clearing; clipping, not an actor threshold, reveals it. */
+static void ht_forest_city_horizon(const ht_game *g) {
+    if(g->level!=0)return;
+    int cx=g->camera/256,cy=g->camera_y/256,margin=ht_view_margin();
+    for(int plane=0;plane<3;++plane)for(int i=0;i<5;++i) {
+        int wx=3090+i*66+plane*28,x=wx-cx;
+        int w=41+(i%3)*13,top=35+(i*37+plane*19)%91;
+        int tone=65+plane*37;
+        if(x+w< -margin || x>HT_W+margin)continue;
+        int y=top-cy/3,base=222-cy/3;
+        ht_rect(ht_scene,x,y,w,base-y,tone);
+        ht_rect(ht_scene,x+w*3/4,y,w/4,base-y,tone-17);
+        ht_rect(ht_scene,x-2,y-3,w+4,4,tone+9);
+        if(i&1)ht_limb(ht_scene,x+w/2,y-3,x+w/2,y-28,0,0,tone);
+        for(int row=0;row<5;++row)for(int col=0;col<3;++col) {
+            int yy=y+12+row*24;if(yy>=base-8)continue;
+            ht_rect(ht_scene,x+6+col*(w-10)/3,yy,5,10,tone+12);
+        }
+        /* Foundations dissolve while the roof contours stay literal. */
+        for(int row=0;row<5;++row)ht_rect(ht_scene,x,base-25+row*5,w,5,tone-(tone-49)*row/5);
+    }
+    /* Living gullies persist between the new buildings, rather than a hard
+     * biome boundary. Drain and fence lines share their rooted slope. */
+    for(int i=0;i<3;++i) {
+        int x=3140+i*104-cx,y=218-cy/2;
+        if(x< -70-margin || x>HT_W+70+margin)continue;
+        ht_organic_tree(ht_scene,x,y,104+i*17,6,9631u+i*17u,154,true);
+        ht_limb(ht_scene,x+12,y-4,x+47,y-17,1,1,136);
+        ht_limb(ht_scene,x+47,y-17,x+47,y-47,1,1,136);
+    }
+    ht_checkpoint();
+}
+
+/* Novella II's first service terrace. These objects sit behind the existing
+ * walking/contact plane: no new ledges, hazards or automatic interaction. */
+static void ht_city_service_arrival(const ht_game *g) {
+    if(g->level!=1)return;
+    int cx=g->camera/256,cy=g->camera_y/256,margin=ht_view_margin();
+    int ladder=ht_mechanics_by_level[1].ladders[0].x,x=ladder-cx,y=220-cy;
+    if(x> -90-margin && x<HT_W+90+margin) {
+        /* Bottom rung rests in standing water; a narrow reflected rail remains
+         * visible between wet grit banks. All dimensions are world-relative. */
+        for(int row=0;row<5;++row) {
+            int edge=ht_abs(row-2)*4;
+            ht_rect(ht_scene,x-30+edge,y-1+row,60-edge*2,1,73+row*6);
+        }
+        ht_limb(ht_scene,x-8,y+1,x-6,y+4,0,0,187);
+        ht_limb(ht_scene,x+8,y+1,x+6,y+4,0,0,187);
+        ht_limb(ht_scene,x-15,y+1,x+20,y+1,0,0,39);
+        /* Rubbed bolt / thumb patch and competing charcoal arrows on the door. */
+        ht_disk(ht_scene,x+39,y-25,5,177);
+        ht_rect(ht_scene,x+30,y-26,14,2,98);ht_rect(ht_scene,x+35,y-29,3,6,202);
+        ht_limb(ht_scene,x+25,y-39,x+37,y-43,1,0,126);
+        ht_limb(ht_scene,x+25,y-39,x+28,y-44,0,0,126);
+        ht_limb(ht_scene,x+25,y-39,x+30,y-36,0,0,126);
+        ht_limb(ht_scene,x+26,y-47,x+36,y-35,0,0,227); /* crossed-out first route mark */
+        ht_limb(ht_scene,x+22,y-45,x+34,y-48,0,0,228);
+        ht_limb(ht_scene,x+22,y-45,x+27,y-48,0,0,228);
+        for(int i=0;i<8;++i)ht_rect(ht_scene,x-37+i*11,y-3-(i%3),2,1,180);
+    }
+    /* Gutter, chimney cage and broken nest on the first roof reached by ladder. */
+    int bx=493-cx,roof=80-cy;
+    if(bx> -70-margin && bx<HT_W+70+margin) {
+        ht_rect(ht_scene,bx,roof-54,28,54,191);
+        ht_rect(ht_scene,bx-4,roof-56,36,5,222);
+        for(int row=0;row<6;++row) {
+            ht_limb(ht_scene,bx+1,roof-7-row*8,bx+27,roof-7-row*8,0,0,153);
+            int joint=bx+(row&1?8:18);ht_limb(ht_scene,joint,roof-6-row*8,joint,roof-row*8,0,0,153);
+        }
+        for(int bar=0;bar<4;++bar)ht_limb(ht_scene,bx+1+bar*8,roof-56,bx+1+bar*8,roof-72,1,1,224);
+        ht_limb(ht_scene,bx-2,roof-72,bx+28,roof-72,1,1,229);
+        for(int twig=0;twig<6;++twig)ht_limb(ht_scene,bx-4+twig*4,roof-55,bx+12+twig*3,roof-62+twig%3,0,0,143);
+        ht_rect(ht_scene,bx+38,roof-10,54,9,191);ht_rect(ht_scene,bx+41,roof-8,48,4,18);
+        ht_limb(ht_scene,bx+40,roof-4,bx+69,roof-6,0,0,59);
     }
 }

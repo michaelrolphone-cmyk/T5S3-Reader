@@ -85,6 +85,8 @@ inline bool mergeOnlineCatalog(const PackageCatalog* aggregate,
           if (std::strcmp(package.identity.id, row.id)) continue;
           const auto order = comparePackageVersions(package.identity.version, row.version);
           if (order == VersionOrder::Invalid) return fail();
+          if (order == VersionOrder::Equal && row.bundled &&
+              !sameCatalogPayload(package, row.package)) return fail();
           retain = order == VersionOrder::Newer;
           break;
         }
@@ -92,18 +94,23 @@ inline bool mergeOnlineCatalog(const PackageCatalog* aggregate,
       if (retain && !append(package, aggregate->release)) return fail();
     }
   }
-  for (size_t i = 0; i < independent.rowCount; ++i) {
-    const auto& row = independent.rows[i];
-    if (!row.bundled || std::strcmp(row.package.architecture, architecture)) continue;
-    bool alreadyNewer = false;
-    for (size_t j = 0; j < out.packageCount; ++j) {
-      if (samePackage(out.packages[j].identity, row.package.identity)) {
-        alreadyNewer = true;
-        break;
+  auto appendIndependent = [&](const IndependentDriverRecord* rows, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+      const auto& row = rows[i];
+      if (!row.bundled || std::strcmp(row.package.architecture, architecture)) continue;
+      bool alreadyNewer = false;
+      for (size_t j = 0; j < out.packageCount; ++j) {
+        if (samePackage(out.packages[j].identity, row.package.identity)) {
+          alreadyNewer = true;
+          break;
+        }
       }
+      if (!alreadyNewer && !append(row.package, row.tag)) return false;
     }
-    if (!alreadyNewer && !append(row.package, row.tag)) return fail();
-  }
+    return true;
+  };
+  if (!appendIndependent(independent.rows, independent.rowCount) ||
+      !appendIndependent(independent.appRows, independent.appRowCount)) return fail();
   return true;
 }
 

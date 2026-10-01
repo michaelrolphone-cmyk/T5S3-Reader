@@ -14,9 +14,11 @@ import subprocess
 import sys
 
 from package_integrity import stamp_app_manifest
+from app_manifest import package_requirements
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--id", help="Build one stable app ID instead of every app")
+parser.add_argument("--export-bundles", action="store_true", help="export and verify current app ZIPs offline")
 args = parser.parse_args()
 
 repo = pathlib.Path(__file__).resolve().parents[1]
@@ -83,7 +85,7 @@ for source in sorted((repo / 'Apps').rglob('*.c')):
         'architecture': 'xtensa-esp32s3',
         'min_runtime_api': 2,
         'entries': [entry(package_elf, True), entry(package_sidecar, False)],
-        'requires': [],
+        'requires': package_requirements(manifest),
     }
     encoded = (json.dumps(ordinary, separators=(',', ':'), ensure_ascii=True) + '\n').encode('ascii')
     if len(encoded) > 4096:
@@ -100,3 +102,13 @@ if len(catalog) > 128 or len(encoded.encode('utf-8')) > 64 * 1024:
     raise SystemExit('Release catalog exceeds on-device parser budget')
 (apps_out / 'app-catalog.json').write_text(encoded, encoding='utf-8')
 print(f'Published aggregate compatibility catalog and staged {len(catalog)} ordinary application packages')
+
+if args.export_bundles:
+    from export_canonical_driver_release import export
+    from build_release_record import build_record
+    from update_release_index import validate_record
+    identities = {item['file_name'][:-4] for item in catalog}
+    export(identities, repo / 'dist/release-app-packages')
+    for item in catalog:
+        validate_record('apps', build_record('apps', item['file_name'][:-4], item['version'], repo))
+    print(f'Verified {len(catalog)} current application ZIP records offline; no publication')

@@ -87,6 +87,18 @@ int main() {
     assert(mergeOnlineCatalog(a.get(), *i, "xtensa-esp32s3", *out));
     assert(out->packageCount == (!std::strcmp(version, "0.9.9") ? 4u : 3u));
   }
+  i->appRows[0] = record("reader", "1.0.1");
+  i->appRows[0].package.identity.kind = Kind::Application;
+  std::strcpy(i->appRows[0].tag, "app-reader-v1.0.1");
+  assert(mergeOnlineCatalog(a.get(), *i, "xtensa-esp32s3", *out));
+  assert(out->packageCount == 4 && !std::strcmp(out->releases[3], "app-reader-v1.0.1"));
+  i->appRows[0] = record("reader", "1.0.0");
+  i->appRows[0].package = a->packages[0];
+  std::strcpy(i->appRows[0].tag, "app-reader-v1.0.0");
+  assert(mergeOnlineCatalog(a.get(), *i, "xtensa-esp32s3", *out));
+  assert(!std::strcmp(out->releases[3], "app-reader-v1.0.0"));
+  ++i->appRows[0].package.sizeBytes;
+  assert(!mergeOnlineCatalog(a.get(), *i, "xtensa-esp32s3", *out) && !out->packageCount);
   i->appRowCount = 0;
 
   a->packageCount = kCatalogMaxPackages;

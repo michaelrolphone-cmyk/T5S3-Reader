@@ -15,10 +15,12 @@ if __package__:
     from .pack_rte_zip import pack_directory, MAX_ENTRY_BYTES, MAX_TOTAL_BYTES, MAX_ARCHIVE_BYTES
     from .generate_provider_package_inputs_v1 import canonical_manifest
     from .update_release_index import validate_bundle_manifest
+    from .app_manifest import validate_manifest, package_requirements
 else:
     from pack_rte_zip import pack_directory, MAX_ENTRY_BYTES, MAX_TOTAL_BYTES, MAX_ARCHIVE_BYTES
     from generate_provider_package_inputs_v1 import canonical_manifest
     from update_release_index import validate_bundle_manifest
+    from app_manifest import validate_manifest, package_requirements
 
 REPOSITORY = "michaelrolphone-cmyk/T5S3-Reader"
 VERSION_RE = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
@@ -61,38 +63,65 @@ def bounded_json(root: Path, path: Path, maximum: int):
     return json.loads(bounded_file(root, path, maximum), object_pairs_hook=unique_object)
 
 
-def driver_bundle(identity: str, version: str, root: Path) -> tuple[dict, Path, bytes]:
-    """Verify source identity, ordinary bundle, exported bytes and generic catalog.
-
-    The canonical packer reconstructs a bounded private snapshot of the bundle.
-    Exact equality validates ZIP topology/CRC/contents without decompressing or
-    extracting unvalidated paths, and excludes appended/undeclared members.
-    This verifies integrity, not publisher trust or runtime import permission.
-    """
+def app_source(identity: str, version: str | None, root: Path) -> dict:
     if not re.fullmatch(r'[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?', identity):
-        raise ValueError('unsafe canonical driver identity')
+        raise ValueError('unsafe canonical application identity')
     sources = []
-    for index, path in enumerate(sorted((root / 'Drivers').glob('*/manifest.json'))):
-        if index >= 64:
-            raise ValueError('driver source inventory exceeds bound')
-        source = bounded_json(root, path, 4096)
-        if not isinstance(source, dict):
-            raise ValueError('driver source manifest must be an object')
-        if source.get('type') == 'driver' and source.get('driver_abi') == 2 and source.get('id') == identity:
-            canonical_manifest(path)
+    for index, path in enumerate(sorted((root / 'Apps').rglob('*.json'))):
+        if index >= 128:
+            raise ValueError('application source inventory exceeds bound')
+        source = bounded_json(root, path, 2048)
+        if isinstance(source, dict) and source.get('file_name') == f'{identity}.elf':
+            expected = str(path.relative_to(root / 'Apps').with_suffix('')).replace('/', '__') + '.elf'
+            if source['file_name'] != expected:
+                raise ValueError('application source path/identity mismatch')
+            if not path.with_suffix('.c').is_file():
+                raise ValueError('application source executable is missing')
+            validate_manifest(path.with_suffix('.c'), Path(f'{identity}.elf'))
             sources.append(source)
-    if len(sources) != 1 or sources[0].get('version') != version:
-        raise ValueError('source driver identity/version is missing, duplicated or stale')
-    source = sources[0]
-    architecture = source['architecture']
-    name = f'driver-{identity}-{version}-{architecture}.rte.zip'
-    archive_path = root / 'dist/release-packages' / name
+    if len(sources) != 1 or (version is not None and sources[0].get('version') != version):
+        raise ValueError('source application identity/version is missing, duplicated or stale')
+    return sources[0]
+
+
+def package_bundle(kind: str, identity: str, version: str, root: Path) -> tuple[dict, Path, bytes]:
+    """Verify either kind through the same bounded canonical ZIP contract."""
+    if not re.fullmatch(r'[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?', identity):
+        raise ValueError('unsafe canonical package identity')
+    if kind == 'driver':
+        sources = []
+        for index, path in enumerate(sorted((root / 'Drivers').glob('*/manifest.json'))):
+            if index >= 64:
+                raise ValueError('driver source inventory exceeds bound')
+            source = bounded_json(root, path, 4096)
+            if not isinstance(source, dict):
+                raise ValueError('driver source manifest must be an object')
+            if source.get('type') == 'driver' and source.get('driver_abi') == 2 and source.get('id') == identity:
+                canonical_manifest(path)
+                sources.append(source)
+        if len(sources) != 1 or sources[0].get('version') != version:
+            raise ValueError('source driver identity/version is missing, duplicated or stale')
+        source = sources[0]
+        architecture = source['architecture']
+        directory = root / 'dist/release-packages'
+        requirements = [{'capability': item['capability'], 'min_api': item['api']}
+                        for item in source['requires']]
+    elif kind == 'application':
+        source = app_source(identity, version, root)
+        architecture = 'xtensa-esp32s3'
+        # Separate artifact roots prevent restored app/driver catalogs colliding.
+        directory = root / 'dist/release-app-packages'
+        requirements = package_requirements(source)
+    else:
+        raise ValueError('unsupported ordinary release product')
+    name = f'{kind}-{identity}-{version}-{architecture}.rte.zip'
+    archive_path = directory / name
     archive = bounded_file(root, archive_path, MAX_ARCHIVE_BYTES)
     try:
         with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
             infos = zipped.infolist()
             if not 2 <= len(infos) <= 17:
-                raise ValueError('driver ZIP entry count exceeds bound')
+                raise ValueError('package ZIP entry count exceeds bound')
             names = set()
             total = 0
             for info in infos:
@@ -104,41 +133,47 @@ def driver_bundle(identity: str, version: str, root: Path) -> tuple[dict, Path, 
                         info.compress_size != info.file_size or info.external_attr or
                         info.internal_attr or info.extra or info.comment or
                         not 0 < info.file_size <= (4096 if entry_name == '.package.json' else MAX_ENTRY_BYTES)):
-                    raise ValueError('driver ZIP has noncanonical, unsafe or oversized entries')
+                    raise ValueError('package ZIP has noncanonical, unsafe or oversized entries')
                 names.add(entry_name)
                 total += info.file_size
             if total > MAX_TOTAL_BYTES or '.package.json' not in names:
-                raise ValueError('driver ZIP content/manifest bound violated')
+                raise ValueError('package ZIP content/manifest bound violated')
             raw = zipped.read('.package.json')  # Stored and bounded above; CRC is checked.
             if not raw.isascii() or b'\\' in raw:
-                raise ValueError('driver manifest contains unsupported JSON escapes or non-ASCII bytes')
+                raise ValueError('ordinary manifest contains unsupported JSON escapes or non-ASCII bytes')
             manifest = json.loads(raw, object_pairs_hook=unique_object)
-            validate_bundle_manifest(manifest, identity, version, architecture)
-            if manifest['artifact'] != source['file_name'] or manifest['requires'] != [
-                    {'capability': item['capability'], 'min_api': item['api']}
-                    for item in source['requires']]:
-                raise ValueError('bundled driver artifact/dependencies differ from source manifest')
+            validate_bundle_manifest(manifest, identity, version, architecture, kind)
+            if manifest['artifact'] != source['file_name'] or manifest['requires'] != requirements:
+                raise ValueError('bundled package artifact/dependencies differ from source manifest')
             if names != {'.package.json'} | {entry['name'] for entry in manifest['entries']}:
-                raise ValueError('driver ZIP has missing or undeclared files')
+                raise ValueError('package ZIP has missing or undeclared files')
             with tempfile.TemporaryDirectory(prefix='rte-record-') as temporary:
                 snapshot = Path(temporary)
                 (snapshot / '.package.json').write_bytes(raw)
                 for entry in manifest['entries']:
                     payload = zipped.read(entry['name'])
                     if len(payload) != entry['size_bytes'] or hashlib.sha256(payload).hexdigest() != entry['sha256']:
-                        raise ValueError('driver ZIP entry size/SHA-256 mismatch')
-                    if entry['name'] == 'provider-abi.v1':
+                        raise ValueError('package ZIP entry size/SHA-256 mismatch')
+                    if kind == 'driver' and entry['name'] == 'provider-abi.v1':
                         capability, api = source['provides'][0]['capability'], source['provides'][0]['api']
                         expected = f'os-cpu-abi=1\nprovides={capability}\napi={api}\n'.encode('ascii')
                         if payload != expected:
                             raise ValueError('bundled provider ABI differs from source manifest')
                     (snapshot / entry['name']).write_bytes(payload)
+                if kind == 'application':
+                    sidecar = bounded_json(snapshot, snapshot / f'{identity}.json', 2048)
+                    expected_sidecar = dict(source)
+                    executable = snapshot / manifest['artifact']
+                    expected_sidecar['size_bytes'] = executable.stat().st_size
+                    expected_sidecar['sha256'] = hashlib.sha256(executable.read_bytes()).hexdigest()
+                    if sidecar != expected_sidecar:
+                        raise ValueError('bundled app sidecar differs from source/ELF integrity')
                 expected_archive = pack_directory(snapshot)
             if archive != expected_archive:
-                raise ValueError('exported driver ZIP differs from canonical stored format')
+                raise ValueError('exported package ZIP differs from canonical stored format')
     except (zipfile.BadZipFile, RuntimeError, KeyError) as exc:
-        raise ValueError('driver ZIP is corrupt or incomplete') from exc
-    catalog = bounded_json(root, root / 'dist/release-packages/package-catalog.json', 32768)
+        raise ValueError('package ZIP is corrupt or incomplete') from exc
+    catalog = bounded_json(root, directory / 'package-catalog.json', 32768)
     if not isinstance(catalog, dict) or type(catalog.get('schema')) is not int or catalog['schema'] != 1:
         raise ValueError('generic package catalog schema is invalid')
     release = catalog.get('release')
@@ -148,14 +183,18 @@ def driver_bundle(identity: str, version: str, root: Path) -> tuple[dict, Path, 
     if not isinstance(packages, list) or not 1 <= len(packages) <= 64:
         raise ValueError('generic package catalog exceeds bounds')
     matches = [item for item in packages if isinstance(item, dict) and
-               item.get('kind') == 'driver' and item.get('id') == identity]
-    expected_row = {'kind': 'driver', 'id': identity, 'version': version,
+               item.get('kind') == kind and item.get('id') == identity]
+    expected_row = {'kind': kind, 'id': identity, 'version': version,
                     'artifact': manifest['artifact'], 'architecture': architecture,
                     'archive': name, 'size_bytes': len(archive),
                     'sha256': hashlib.sha256(archive).hexdigest()}
     if len(matches) != 1 or matches[0] != expected_row:
-        raise ValueError('generic catalog does not uniquely match the verified driver ZIP')
+        raise ValueError('generic catalog does not uniquely match the verified package ZIP')
     return manifest, archive_path, archive
+
+
+def driver_bundle(identity: str, version: str, root: Path) -> tuple[dict, Path, bytes]:
+    return package_bundle('driver', identity, version, root)
 
 
 def build_record(product: str, identity: str, version: str, root: Path) -> dict:
@@ -168,15 +207,10 @@ def build_record(product: str, identity: str, version: str, root: Path) -> dict:
     if product == "firmware":
         asset_path = root / "dist/firmware-t5s3-pro.bin"
         manifest = None
-    elif product == "apps":
-        manifest_path = root / "dist/apps" / f"{identity}.json"
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if manifest.get("file_name") != f"{identity}.elf" or manifest.get("version") != version:
-            raise ValueError("built app manifest identity/version does not match the request")
-        asset_path = root / "dist/apps" / f"{identity}.elf"
     else:
-        manifest, asset_path, archive = driver_bundle(identity, version, root)
-    size, sha256 = (len(archive), hashlib.sha256(archive).hexdigest()) if product == "drivers" else digest(asset_path)
+        manifest, asset_path, archive = package_bundle(
+            'application' if product == 'apps' else 'driver', identity, version, root)
+    size, sha256 = (len(archive), hashlib.sha256(archive).hexdigest()) if product != "firmware" else digest(asset_path)
     asset = asset_path.name
     record = {
         "id": identity if product != "firmware" else None,
@@ -191,7 +225,7 @@ def build_record(product: str, identity: str, version: str, root: Path) -> dict:
         record["manifest"] = manifest
     else:
         record.pop("id")
-    if product == "drivers":
+    if product != "firmware":
         record["format"] = "rte.zip"
         record["architecture"] = manifest["architecture"]
     return record

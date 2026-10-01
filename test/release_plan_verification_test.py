@@ -27,12 +27,22 @@ class ReleasePlanVerificationTests(unittest.TestCase):
         self.fixture.tearDown()
 
     def add_app(self):
-        payload = b'compatible historical app'
-        (self.root / 'dist/apps/clock.elf').write_bytes(payload)
-        manifest = {'file_name': 'clock.elf', 'version': '1.2.3',
-                    'size_bytes': len(payload), 'sha256': hashlib.sha256(payload).hexdigest()}
-        (self.root / 'dist/apps/clock.json').write_text(json.dumps(manifest))
+        self.app = fixtures.stage_app(self.root)
         self.plan.append({'product': 'apps', 'id': 'clock', 'version': '1.2.3'})
+
+    def repack_app(self):
+        stage = self.app['stage']
+        manifest = self.app['manifest']
+        for entry in manifest['entries']:
+            data = (stage / entry['name']).read_bytes()
+            entry['size_bytes'] = len(data)
+            entry['sha256'] = hashlib.sha256(data).hexdigest()
+        (stage / '.package.json').write_text(json.dumps(manifest, separators=(',', ':')))
+        archive = fixtures.pack_directory(stage)
+        (self.app['output'] / self.app['name']).write_bytes(archive)
+        (self.app['output'] / 'package-catalog.json').write_text(json.dumps({
+            'schema': 1, 'release': 'unpublished-build',
+            'packages': [fixtures.catalog_row(stage, self.app['name'], archive)]}))
 
     def add_firmware(self):
         version, payload = '1.2.3', b'firmware app image'
@@ -55,6 +65,14 @@ class ReleasePlanVerificationTests(unittest.TestCase):
         shutil.rmtree(self.root / 'dist/packages')
         self.assertEqual(len(verify_plan(self.root, self.plan)), 1)
 
+    def test_mixed_restore_needs_no_loose_or_hidden_intermediates(self):
+        self.add_app()
+        shutil.rmtree(self.root / 'dist/packages')
+        shutil.rmtree(self.root / 'dist/apps')
+        records = verify_plan(self.root, self.plan)
+        self.assertEqual(len(records), 2)
+        self.assertTrue(all(record['format'] == 'rte.zip' for record in records))
+
     def test_missing_restored_driver_archive_fails_before_publication(self):
         self.fixture.archive_path.unlink()
         with self.assertRaises(ValueError):
@@ -65,16 +83,18 @@ class ReleasePlanVerificationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify_plan(self.root, self.plan)
 
-    def test_legacy_app_sidecar_integrity_must_match_elf(self):
+    def test_bundled_app_sidecar_integrity_must_match_elf(self):
         self.add_app()
-        (self.root / 'dist/apps/clock.elf').write_bytes(b'wrong payload')
-        with self.assertRaisesRegex(ValueError, 'sidecar integrity'):
+        (self.app['stage'] / 'clock.elf').write_bytes(b'changed payload'.ljust(96, b'!'))
+        self.repack_app()
+        with self.assertRaisesRegex(ValueError, 'sidecar differs'):
             verify_plan(self.root, self.plan)
 
-    def test_legacy_app_manifest_keeps_runtime_size_bound(self):
+    def test_bundled_app_sidecar_keeps_runtime_size_bound(self):
         self.add_app()
-        path = self.root / 'dist/apps/clock.json'
+        path = self.app['stage'] / 'clock.json'
         path.write_text(path.read_text() + ' ' * 2048)
+        self.repack_app()
         with self.assertRaisesRegex(ValueError, 'oversized'):
             verify_plan(self.root, self.plan)
 
@@ -91,8 +111,8 @@ class ReleasePlanVerificationTests(unittest.TestCase):
 
     def test_symlinked_restored_app_is_rejected(self):
         self.add_app()
-        path = self.root / 'dist/apps/clock.elf'
-        target = self.root / 'real.elf'
+        path = self.app['output'] / self.app['name']
+        target = self.root / 'real.rte.zip'
         path.rename(target); path.symlink_to(target)
         with self.assertRaisesRegex(ValueError, 'symlink'):
             verify_plan(self.root, self.plan)

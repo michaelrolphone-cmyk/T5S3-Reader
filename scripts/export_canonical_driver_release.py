@@ -47,11 +47,12 @@ def runtime_identity(kind: object, identity: object, version: object,
     )
 
 
-def export(identities: set[str] | None = None) -> None:
+def export(identities: set[str] | None = None, output: Path | None = None) -> None:
+    target = output if output is not None else TARGET
     if not SOURCE.is_dir():
         raise FileNotFoundError(f'ordinary package source missing: {SOURCE}')
-    if TARGET.exists() and (not TARGET.is_dir() or any(TARGET.iterdir())):
-        raise FileExistsError(f'release export directory is not empty: {TARGET}')
+    if target.exists() and (not target.is_dir() or any(target.iterdir())):
+        raise FileExistsError(f'release export directory is not empty: {target}')
     release = os.environ.get('RISC_PACKAGE_RELEASE', 'unpublished-build')
     if not isinstance(release, str) or not 0 < len(release) < 64 or not re.fullmatch(
             r'[A-Za-z0-9._-]+', release) or '..' in release:
@@ -120,12 +121,12 @@ def export(identities: set[str] | None = None) -> None:
             not {'application', 'driver'} <= observed_kinds):
         raise ValueError(f'release catalog missing required U1 kinds: {observed_kinds}')
 
-    TARGET.mkdir(parents=True, exist_ok=True)
+    target.mkdir(parents=True, exist_ok=True)
     for name, archive, _ in staged:
-        (TARGET / name).write_bytes(archive)
+        (target / name).write_bytes(archive)
     index = {'schema': 1, 'release': release,
              'packages': [row for _, _, row in staged]}
-    (TARGET / 'package-catalog.json').write_text(
+    (target / 'package-catalog.json').write_text(
         json.dumps(index, indent=2, ensure_ascii=True) + '\n', encoding='utf-8')
     print(f'Exported {len(staged)} bundled packages + package-catalog.json; no release published.')
 
@@ -133,5 +134,6 @@ def export(identities: set[str] | None = None) -> None:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ids', nargs='+', help='export only these canonical package IDs')
+    parser.add_argument('--output', type=Path, help='isolated product artifact directory')
     args = parser.parse_args()
-    export(set(args.ids) if args.ids else None)
+    export(set(args.ids) if args.ids else None, args.output)

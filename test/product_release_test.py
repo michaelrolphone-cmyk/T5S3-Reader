@@ -18,6 +18,48 @@ from scripts.pack_rte_zip import pack_directory, catalog_row, crc32, put_local, 
 from scripts.update_release_index import update_index, validate_record, serialize_index
 
 
+def stage_app(root, identity='clock', version='1.2.3', requires=None):
+    source = {'file_name': identity+'.elf', 'version': version,
+              'display_name': 'Fixture app', 'min_firmware_version': '1.2.0',
+              'icon': 'solid:f017'}
+    if requires is not None:
+        source['requires'] = requires
+    app_source = root / 'Apps' / (identity+'.json')
+    app_source.parent.mkdir(exist_ok=True)
+    app_source.write_text(json.dumps(source))
+    app_source.with_suffix('.c').write_text('/* fixture source */')
+    payload = b'fixture application ELF'.ljust(96, b'\x00')
+    sidecar = dict(source, size_bytes=len(payload), sha256=hashlib.sha256(payload).hexdigest())
+    stage = root / 'dist/packages' / identity
+    stage.mkdir(parents=True, exist_ok=True)
+    (stage / (identity+'.elf')).write_bytes(payload)
+    (stage / (identity+'.json')).write_text(json.dumps(sidecar, separators=(',', ':')))
+    entries = []
+    for name in (identity+'.elf', identity+'.json'):
+        data = (stage / name).read_bytes()
+        entries.append({'name': name, 'size_bytes': len(data),
+                        'sha256': hashlib.sha256(data).hexdigest(),
+                        'executable': name.endswith('.elf')})
+    manifest = {'schema': 1, 'kind': 'application', 'id': identity,
+                'version': version, 'artifact': identity+'.elf',
+                'architecture': 'xtensa-esp32s3', 'min_runtime_api': 2,
+                'entries': entries,
+                'requires': [{'capability': item['capability'], 'min_api': int(item['api'][2:])}
+                             for item in requires or []]}
+    (stage / '.package.json').write_text(json.dumps(manifest, separators=(',', ':')))
+    output = root / 'dist/release-app-packages'
+    output.mkdir(parents=True, exist_ok=True)
+    name = f'application-{identity}-{version}-xtensa-esp32s3.rte.zip'
+    archive = pack_directory(stage)
+    (output / name).write_bytes(archive)
+    catalog = {'schema': 1, 'release': 'unpublished-build',
+               'packages': [catalog_row(stage, name, archive)]}
+    (output / 'package-catalog.json').write_text(json.dumps(catalog))
+    return {'source': source, 'sidecar': sidecar, 'manifest': manifest,
+            'stage': stage, 'output': output, 'archive': archive, 'name': name,
+            'source_path': app_source, 'payload': payload}
+
+
 class ProductReleaseTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -200,14 +242,55 @@ class ProductReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'unsafe canonical'):
             build_record('drivers', '../escape', '2.0.1', self.root)
 
-    def test_app_record_hashes_only_the_selected_app_asset(self):
-        data = b'clock app image'
-        (self.root / 'dist/apps/clock.elf').write_bytes(data)
-        (self.root / 'dist/apps/clock.json').write_text(json.dumps({'file_name': 'clock.elf', 'version': '1.2.3'}))
+    def test_app_record_hashes_whole_bundle_and_keeps_sidecar_inside(self):
+        app = stage_app(self.root, requires=[{'capability': 'input.touch.raw', 'api': '>=1'}])
         record = build_record('apps', 'clock', '1.2.3', self.root)
-        self.assertEqual(record['asset'], 'clock.elf')
-        self.assertEqual(record['size'], len(data))
-        self.assertEqual(record['sha256'], hashlib.sha256(data).hexdigest())
+        self.assertEqual(record['format'], 'rte.zip')
+        self.assertEqual(record['manifest'], app['manifest'])
+        self.assertEqual(record['asset'], app['name'])
+        self.assertEqual(record['size'], len(app['archive']))
+        self.assertEqual(record['sha256'], hashlib.sha256(app['archive']).hexdigest())
+        self.assertNotEqual(record['sha256'], app['sidecar']['sha256'])
+        self.assertEqual(validate_record('apps', record)['kind'], 'app')
+
+    def test_app_bundle_restore_needs_no_intermediate_or_loose_artifacts(self):
+        stage_app(self.root)
+        expected = build_record('apps', 'clock', '1.2.3', self.root)
+        shutil.rmtree(self.root / 'dist/packages')
+        shutil.rmtree(self.root / 'dist/apps')
+        self.assertEqual(build_record('apps', 'clock', '1.2.3', self.root), expected)
+
+    def test_app_source_and_sidecar_remain_bound_to_bundled_content(self):
+        app = stage_app(self.root)
+        source = dict(app['source'], display_name='Unexpected replacement')
+        app['source_path'].write_text(json.dumps(source))
+        with self.assertRaisesRegex(ValueError, 'sidecar differs'):
+            build_record('apps', 'clock', '1.2.3', self.root)
+        source['version'] = '1.2.4'
+        app['source_path'].write_text(json.dumps(source))
+        with self.assertRaisesRegex(ValueError, 'stale'):
+            build_record('apps', 'clock', '1.2.3', self.root)
+
+    def test_legacy_app_transition_requires_newer_version(self):
+        app = stage_app(self.root)
+        legacy = {'kind': 'app', 'id': 'clock', 'version': '1.2.3',
+                  'tag': 'app-clock-v1.2.3', 'asset': 'clock.elf',
+                  'url': 'https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-clock-v1.2.3/clock.elf',
+                  'size': len(app['payload']), 'sha256': app['sidecar']['sha256'],
+                  'manifest': app['sidecar']}
+        index = update_index({'schema': 1, 'apps': [], 'drivers': []}, 'apps', legacy)
+        with self.assertRaisesRegex(ValueError, 'different content'):
+            update_index(index, 'apps', build_record('apps', 'clock', '1.2.3', self.root))
+        stage_app(self.root, version='1.2.4')
+        updated = update_index(index, 'apps', build_record('apps', 'clock', '1.2.4', self.root))
+        self.assertEqual(updated['apps'][0]['version'], '1.2.4')
+        self.assertEqual(index['apps'][0], legacy)
+
+    def test_app_and_driver_catalogs_do_not_overwrite_each_other(self):
+        driver = self.record()
+        stage_app(self.root)
+        self.assertEqual(self.record(), driver)
+        self.assertEqual(build_record('apps', 'clock', '1.2.3', self.root)['manifest']['kind'], 'application')
 
     def test_firmware_record_keeps_existing_asset_contract(self):
         data = b'firmware image'

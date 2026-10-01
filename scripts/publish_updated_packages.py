@@ -17,12 +17,12 @@ from typing import Any
 try:
     from .build_release_candidates import discover_driver_builders
     from .generate_provider_package_inputs_v1 import canonical_manifest
-    from .build_release_record import build_record
+    from .build_release_record import build_record, app_source
     from .update_release_index import serialize_index, update_index, version_tuple
 except ImportError:
     from build_release_candidates import discover_driver_builders
     from generate_provider_package_inputs_v1 import canonical_manifest
-    from build_release_record import build_record
+    from build_release_record import build_record, app_source
     from update_release_index import serialize_index, update_index, version_tuple
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -136,8 +136,12 @@ def release_assets(root: Path, product: str, identity: str,
             root / "firmware" / f"riscrte_lilygo_t5s3_{firmware_version}.bin",
         ]
     elif product == "apps":
-        assets = [root / "dist/apps" / f"{identity}.elf",
-                  root / "dist/apps" / f"{identity}.json"]
+        source = app_source(identity, version, root)
+        name = f"application-{identity}-{source['version']}-xtensa-esp32s3.rte.zip"
+        asset = root / "dist/release-app-packages" / name
+        if asset.is_symlink():
+            raise ValueError("app archive is a symlink")
+        assets = [asset]
     else:
         # Select the exact current source identity/version/target. A broad
         # prefix glob can pick a neighboring ID, stale version, another target

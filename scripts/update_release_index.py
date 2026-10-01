@@ -48,7 +48,7 @@ def version_tuple(value: str) -> tuple[int, int, int]:
 
 
 def validate_bundle_manifest(manifest: Any, identity: str, version: str,
-                             architecture: str) -> dict[str, Any]:
+                             architecture: str, kind: str = "driver") -> dict[str, Any]:
     """Validate the exact ordinary driver descriptor, without granting trust.
 
     This structural check is shared by record construction and index intake.
@@ -59,7 +59,7 @@ def validate_bundle_manifest(manifest: Any, identity: str, version: str,
         raise ValueError("bundle manifest requires exactly the ordinary schema-1 fields")
     if type(manifest["schema"]) is not int or manifest["schema"] != 1:
         raise ValueError("bundle manifest requires ordinary schema 1")
-    if (manifest["kind"] != "driver" or manifest["id"] != identity or
+    if (kind not in ("driver", "application") or manifest["kind"] != kind or manifest["id"] != identity or
             manifest["version"] != version or manifest["architecture"] != architecture):
         raise ValueError("bundle manifest kind, identity, version and architecture must match the record")
     if (not isinstance(identity, str) or not 0 < len(identity) < 64 or
@@ -105,8 +105,11 @@ def validate_bundle_manifest(manifest: Any, identity: str, version: str,
             raise ValueError("bundle inventory must contain exactly its declared executable")
         inventory[name.casefold()] = item
         total += item["size_bytes"]
-    if artifact not in inventory or not {"provider-abi.v1", "privileged-imports.v1"} <= inventory.keys():
-        raise ValueError("driver bundle omits its executable or provider ABI/import metadata")
+    required_entries = {"provider-abi.v1", "privileged-imports.v1"} if kind == "driver" else {f"{identity}.json"}
+    if artifact not in inventory or not required_entries <= inventory.keys():
+        raise ValueError("bundle omits its executable or required runtime metadata")
+    if kind == "application" and artifact != f"{identity}.elf":
+        raise ValueError("application bundle must retain its canonical executable name")
 
     requirements = manifest["requires"]
     if not isinstance(requirements, list) or len(requirements) > BUNDLE_MAX_REQUIREMENTS:
@@ -142,8 +145,8 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
     if "kind" in record and record["kind"] != kind:
         raise ValueError("record kind must match its product")
     bundled = "format" in record
-    if bundled and (product != "drivers" or record["format"] != BUNDLE_FORMAT):
-        raise ValueError("only driver records support explicit format rte.zip")
+    if bundled and (product not in ("apps", "drivers") or record["format"] != BUNDLE_FORMAT):
+        raise ValueError("only app/driver records support explicit format rte.zip")
     if not bundled and "architecture" in record:
         raise ValueError("archive architecture requires explicit format rte.zip")
     required = {"version", "tag", "asset", "url", "size", "sha256"}
@@ -170,7 +173,7 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
             raise ValueError("manifest must be an object")
         if manifest.get("version") != version:
             raise ValueError("manifest version must match the release record")
-        if product == "apps":
+        if product == "apps" and not bundled:
             filename = manifest.get("file_name")
             if not isinstance(filename, str) or not filename.endswith(".elf"):
                 raise ValueError("app manifest must name its .elf file")
@@ -179,14 +182,14 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
             manifest_id = manifest.get("id")
         if manifest_id != stable_id:
             raise ValueError("manifest identity must match the release record")
-        if product == "drivers":
-            if bundled:
-                validate_bundle_manifest(manifest, stable_id, version, record.get("architecture"))
-            else:
-                validate_legacy_driver_manifest(manifest)
+        if bundled:
+            validate_bundle_manifest(manifest, stable_id, version, record.get("architecture"),
+                                     "application" if product == "apps" else "driver")
+        elif product == "drivers":
+            validate_legacy_driver_manifest(manifest)
         source_repo = record.get("source_repo")
         if source_repo is not None:
-            if (product != "apps" or stable_id != "gameboy" or
+            if (bundled or product != "apps" or stable_id != "gameboy" or
                     source_repo != TEMP_GAMEBOY_REPOSITORY):
                 raise ValueError("source_repo is reserved for the temporary GameBoy app provider")
             expected_tag = record.get("tag")
@@ -205,7 +208,8 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
         f"{stable_id}.elf" if product == "apps" else f"{stable_id}--driver.elf"
     )
     if bundled:
-        expected_asset = f"driver-{stable_id}-{version}-{record['architecture']}.rte.zip"
+        bundle_kind = "application" if product == "apps" else "driver"
+        expected_asset = f"{bundle_kind}-{stable_id}-{version}-{record['architecture']}.rte.zip"
         if len(asset) >= 160:
             raise ValueError("bundle asset exceeds the device catalog name bound")
     if asset != expected_asset:

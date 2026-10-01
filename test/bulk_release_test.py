@@ -9,6 +9,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "test"))
+import product_release_test as fixtures
 from scripts.publish_updated_packages import discover_candidates, release_assets  # noqa: E402
 from scripts import build_release_candidates as release_builder  # noqa: E402
 from scripts.build_release_candidates import discover_driver_builders  # noqa: E402
@@ -58,6 +60,29 @@ class DiscoverCandidatesTest(unittest.TestCase):
                 {"id": "usb-host-v2", "version": "0.1.3"},
             ],
         }
+
+    def test_app_release_is_one_exact_current_bundle(self):
+        app = fixtures.stage_app(self.root, version='1.0.2')
+        # Existing unrelated loose assets/catalogs never become publication assets.
+        (self.root / 'dist/apps').mkdir(exist_ok=True)
+        (self.root / 'dist/apps/clock.elf').write_bytes(b'legacy')
+        stale = app['output'] / 'application-clock-1.0.1-xtensa-esp32s3.rte.zip'
+        stale.write_bytes(b'stale')
+        self.assertEqual(release_assets(self.root, 'apps', 'clock', '1.0.2'),
+                         [app['output'] / app['name']])
+        with self.assertRaisesRegex(ValueError, 'stale'):
+            release_assets(self.root, 'apps', 'clock', '1.0.1')
+
+    def test_selected_apps_share_one_isolated_export(self):
+        candidates = [{'product': 'apps', 'id': 'clock', 'version': '1.0.2'},
+                      {'product': 'apps', 'id': 'reminders', 'version': '1.0.0'}]
+        with patch.object(release_builder, 'run') as run:
+            release_builder.build_apps(candidates)
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertEqual(commands[:2], [[sys.executable, 'scripts/build_all_apps.py', '--id', 'clock'],
+                                      [sys.executable, 'scripts/build_all_apps.py', '--id', 'reminders']])
+        self.assertEqual(commands[2], [sys.executable, 'scripts/export_canonical_driver_release.py',
+            '--output', 'dist/release-app-packages', '--ids', 'clock', 'reminders'])
 
     def test_selects_only_newer_source_manifest_versions(self):
         self.assertEqual(

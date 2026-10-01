@@ -104,7 +104,7 @@ jobs:
 
       - name: Build and validate all released apps and manifests
         run: |
-          python scripts/build_all_apps.py
+          python scripts/build_all_apps.py --export-bundles
           python test/native_apps/risc_strike_release_test.py
 
       - name: Stage board-qualified RiscRTE firmware
@@ -124,6 +124,7 @@ jobs:
             dist/${{ matrix.merged_firmware_name }}
             dist/${{ matrix.elf_name }}
             dist/apps/*
+            dist/release-app-packages/*
             dist/drivers/*.t5driver.zip
             dist/timecard.elf
             dist/timecard.json
